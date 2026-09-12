@@ -36,7 +36,7 @@ Production counts are exact `count(*)` taken 2026-09-12 18:40 UTC.
 
 | Module | Primary operator | Before | Depth | Features added this programme | After | Tests | Remaining gap | Verdict |
 |---|---|---|---|---|---|---|---|---|
-| Users & roles (`/admin/users`, 14 API handlers) | System administrator | 2 | OPERATED | Last-admin guard on revoke; account deactivate/reactivate with reason, session invalidation, self-lockout refusal; History link; the create form now labels each role with its permission count and warns when a role is empty | 3 | `AdminUserGovernanceGuards` (10), `admin-user-management` | **Nine of the twelve roles hold zero permissions in production** (Owner 130, PLATFORM_ADMINISTRATOR 121, LEGAL_REVIEWER 2, all others 0): ANALYST and SUPPORT_OPERATOR are offered at creation and would produce a user who can sign in and open nothing. Permission sets per role are an OWNER decision. MFA enrolment UI does not exist (0 of 7 enrolled) | READY, one OWNER decision |
+| Users & roles (`/admin/users`, 14 API handlers) | System administrator | 2 | OPERATED | Last-admin guard on revoke; account deactivate/reactivate with reason, session invalidation, self-lockout refusal; History link; the create form now labels each role with its permission count and warns when a role is empty | 3 | `AdminUserGovernanceGuards` (10), `admin-user-management` | Owner decision taken the same day: every role now has a defined permission set (see §3b), and roles are managed in the Back Office. MFA enrolment UI does not exist (0 of 7 enrolled) | READY |
 | Governance page (`/admin/governance`) | System administrator | 1 (stale admin-creation copy; five invented roles with invented Level 5..1 ranks; a hand-written permissions matrix; a 'Role: Super administrator' badge for everyone) | RENDERED (built SSR server, session cookie) | Copy corrected; roles, active users and permission codes now read from `/admin/roles` with honest denied/unavailable states; the badge shows the session's own permission count from `/auth/admin-session` | 2 (functional read) | `AdminSurfaceIntegrity` realigned | Read-only; the Roles screen remains the place to inspect a role in full | READY |
 | Customer workspace (`/admin/customers/:id`, new) | Customer-service agent | 0 | OPERATED (LIVE VERIFIED 303 unauth, API 401) | One screen: identity, orders newest-first, loyalty balance from the ledger, support by email, links to Orders/Support/History | 3 | `GetCustomerWorkspace` (4) | Read-only; no notes or tags; 7 users in prod so scale is not a concern | READY |
 | Support inbox (`/admin/support`) | Customer-service agent | 2 | OPERATED | Exact filters q/status/priority/assignee/overdue, summary, honest empty state, per-row status update | 3 | route-protection sweep | `support_issues` = 0 rows: never used in production; no assignment workflow beyond a field | READY, unused |
@@ -122,6 +122,15 @@ Ordered by value (§82), each with before / problem / capability / benefit / ris
 
 Shared code defines 104 permission codes; the database holds 130 rows over 126 distinct codes. Every code the routes check exists in the database and is held by Owner, so **no admin route is dead for everyone**. The 22 database-only codes are a legacy `read.products` / `manage.promotions` convention that no route checks; four of them exist twice. The platform administrator lacks exactly five of those legacy codes and nothing the routes use, so the earlier "121 versus 130" difference is not an access gap. Role holders today: two Owner accounts (one also PLATFORM_ADMINISTRATOR) and one LEGAL_REVIEWER (`legal.read`, `legal.approve`). The last-admin guard counts PLATFORM_ADMINISTRATOR holders only; with the platform administrator also an Owner, no sequence of deactivations can remove the last account able to manage access. Cleaning the 22 legacy rows is a production data change and is deferred to an owner-approved cleanup.
 
+## 3b. Role management (owner decision, same day)
+
+The owner asked for every role to be defined and for role management in the Back Office. Shipped at `217bbfad` + `f2b99a00`:
+
+* **Baselines** for all eleven governance roles in shared code (PLATFORM_ADMINISTRATOR = whole registry; the others scoped to their job, with supplier cost, refunds and payment confirmation kept out of every non-full-access role, and access management only with PLATFORM_ADMINISTRATOR and SECURITY_ADMIN). The boot sync seeds a baseline only into a role that holds no permission at all, so an operator's later edit is never undone.
+* **Role management API** under `/admin/roles` (roles.manage): catalogue, create, replace permissions exactly, delete. Guards: the two full-access roles are immutable system roles; only registry codes can be granted (legacy `read.products` rows are refused); removing auth.manage or roles.manage is refused when no other active user would still hold it; a role in use cannot be deleted. Audited as ROLE_CREATED / ROLE_PERMISSIONS_UPDATED (added and removed listed) / ROLE_DELETED.
+* **Roles screen** is an editor: per-role permission grid grouped by module, create role, delete unused role, history links. **Users screen** assigns and revokes roles per account and offers every existing role; both full-access roles go through the maker/checker request.
+* **Evidence:** RoleManagement (7) and RolePermissionBaselines (7) unit tests; full suite 455 files / 7,813 tests; both pages rendered through the built server; and a REHEARSAL on an ephemeral clone of the production database on the host: the sync seeded 191 baseline grants into the nine empty roles and added nothing on a second run, create → replace → read-back → legacy-code refusal → system-role refusal → delete all behaved as designed, clone torn down.
+
 ## 4. Deferred items with triggers (§83 context)
 
 | Item | Why deferred | Trigger to build | Risk if built now |
@@ -132,7 +141,6 @@ Shared code defines 104 permission codes; the database holds 130 rows over 126 d
 | Stock receipts and counts UI | tables exist, no page, no route, 0 rows; one stock location | the first supplier delivery recorded outside adjustments | new write path without a workflow owner |
 | MFA enrolment UI | `requireStepUp` exists; 0 enrolled; only one active platform administrator | a second administrator, or the credential rotation the owner still owes | lockout of the only admin |
 | Legacy permission rows (22 codes, 4 duplicated) | harmless: no route checks them; deleting rows from an access table is a production data change | owner-approved cleanup window | none functional |
-| Permission sets for the nine empty roles | Which screens a support operator, analyst, fulfilment manager or merchandiser may touch is a business decision; guessing would grant access nobody approved | the owner names the first person to hold one of these roles | over- or under-granting a real person |
 | Roles editor | 12 roles / 92 permissions are seeded; no operator has needed a custom role | first custom-role request | permission drift |
 | Controlled activation / release readiness clients | shells with 0 rows; the API exists | first measurement destination goes live | speculative UI |
 | Deployment page (maintenance flag) | API only; owner deploys by script | first request to toggle maintenance from a browser | none |
@@ -153,7 +161,6 @@ Shared code defines 104 permission codes; the database holds 130 rows over 126 d
 10. GTM/sGTM configuration and `PUBLIC_GTM_ID`.
 11. Secrets disaster recovery: `.env.production` exists on the host only.
 12. Restrict origin ports 80/443 to Cloudflare.
-13. Decide the permission sets for the nine empty roles before creating any user with them.
 
 Housekeeping done this pass: 101 scratch SQL files accumulated in `/tmp` on the host and in the database container across the programme (one matched a secret-like word, none held email addresses); all removed.
 
