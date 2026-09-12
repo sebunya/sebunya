@@ -183,16 +183,13 @@ const matrixRows = [
           <h3 class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-100 pb-3">User management status</h3>
           
           <div class="bg-gray-50 border border-gray-200 rounded-xl p-4 text-xs text-gray-500 leading-relaxed space-y-3">
-            <p class="font-medium text-brand-dark">Admin accounts are created outside this console by design.</p>
-            <p>Administrator access is granted through the controlled bootstrap process run by operations engineering. Keeping account creation off a web surface is a deliberate security decision, not a missing feature — a console that can mint administrators is a console worth attacking.</p>
+            <p class="font-medium text-brand-dark">Administrators are managed in the Users screen.</p>
+            <p>Creating an administrator or reviewer, granting or revoking a role, and deactivating an account all happen in <a href="/admin/users" class="underline font-bold text-brand-dark">Users</a>. Every change needs the manage-authentication permission, is written to the audit log, and a role grant can be routed through a second approver. The last active platform administrator cannot be removed or deactivated.</p>
           </div>
 
-          <button 
-            disabled 
-            class="w-full bg-gray-50 border border-gray-200 text-gray-400 text-xs font-black py-3 rounded-xl cursor-not-allowed select-none"
-          >
-            Invite admin user &mdash; disabled by security policy
-          </button>
+          <a href="/admin/users" class="block w-full text-center bg-brand-dark text-white text-xs font-black py-3 rounded-xl hover:bg-black transition-colors">
+            Open Users &rarr;
+          </a>
         </div>
 
         <div class="bg-brand-dark text-white rounded-2xl shadow-md p-6 relative overflow-hidden">

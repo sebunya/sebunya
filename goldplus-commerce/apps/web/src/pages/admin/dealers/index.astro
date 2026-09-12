@@ -8,14 +8,10 @@ if (!token) {
   return Astro.redirect("/admin/login?returnTo=/admin/dealers", 303);
 }
 
-// Mock pending dealers
-const fallbackDealers = [
-  { id: 'd1', businessName: 'Kampala Electronics Ltd', location: 'Kampala', status: 'pending', email: 'info@kelectronics.ug', contactPerson: 'Main Rep' },
-  { id: 'd2', businessName: 'Jinja Tech Hub', location: 'Jinja', status: 'pending', email: 'hello@jhub.ug', contactPerson: 'Site Mgr' }
-];
-
-// Attempt authentic fetching
-const result = await tryFetchAdminList('/governance/admin/dealers', fallbackDealers, undefined, token);
+// Live data only. A fabricated fallback list (two invented businesses) used to
+// sit here; tryFetchAdminList never rendered it, but invented records do not
+// belong in an admin page — removed 2026-09-12.
+const result = await tryFetchAdminList('/governance/admin/dealers', [], undefined, token);
 const dealers = result.items;
 ---
 

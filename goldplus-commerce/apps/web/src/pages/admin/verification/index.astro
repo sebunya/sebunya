@@ -7,9 +7,12 @@ if (!token) {
   return Astro.redirect("/admin/login?returnTo=/admin/verification", 303);
 }
 
+// No admin API reads verification_attempts or fake_product_reports yet, so
+// this page claims no numbers. It used to show "Verified / Active" and
+// "0 / Safe" as static text — invented status, removed 2026-09-12.
 const metrics = [
-  { label: 'Scanned Holograms', value: 'Verified', highlight: 'Active' },
-  { label: 'Reported Frauds', value: '0', highlight: 'Safe' },
+  { label: 'Verification scans', value: 'Not wired', highlight: 'No admin read' },
+  { label: 'Counterfeit reports', value: 'Not wired', highlight: 'No admin read' },
 ];
 ---
 
@@ -39,7 +42,7 @@ const metrics = [
             <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest">{m.label}</p>
             <p class="text-3xl font-black text-brand-dark mt-1">{m.value}</p>
           </div>
-          <span class="bg-brand-green/10 text-brand-green border border-brand-green/20 text-[8px] font-black px-2 py-1 rounded uppercase tracking-widest">
+          <span class="bg-yellow-50 text-yellow-700 border border-yellow-200 text-[8px] font-black px-2 py-1 rounded uppercase tracking-widest">
             {m.highlight}
           </span>
         </div>

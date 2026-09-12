@@ -3,6 +3,7 @@ import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../lib/session";
 import InfoTooltip from "../../../components/admin/InfoTooltip.astro";
 import { apiBase } from "../../../lib/api";
+import { CART_RETENTION_DAYS } from "@goldplus/shared";
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -17,14 +18,14 @@ const configGroups = [
       { label: 'Public API Connection', key: 'PUBLIC_API_BASE_URL', value: apiBase || 'UNCONFIGURED', desc: 'The core connection address resolving backend API queries.', source: 'Deployment setting' },
       { label: 'Primary Currency', key: 'CURRENCY_DEFAULT', value: 'UGX', desc: 'The presentation monetary unit utilized on storefront layouts.', source: 'Deployment setting' },
       { label: 'Default Language / Locale', key: 'DEFAULT_LOCALE', value: 'en-UG', desc: 'Language format determining number presentation.', source: 'Deployment setting' },
-      { label: 'Maintenance Status', key: 'MAINTENANCE_MODE', value: 'INACTIVE', desc: 'System toggle allowing store closure during scheduled maintenance.', source: 'Deployment setting' }
+      { label: 'Maintenance Status', key: 'MAINTENANCE_MODE', value: 'Runtime flag — see System', desc: 'A runtime flag held by the API deployment service; when on, write operations are frozen except health, metrics, deployment and queue routes. This page does not read it — check /admin/system.', source: 'API runtime' }
     ]
   },
   {
     id: 'grp-cart-settings',
     title: 'Cart settings',
     items: [
-      { label: 'Cart Retention Period', key: 'CART_EXPIRATION_TTL', value: '180 Days', desc: 'Guest carts are kept for 180 days so customers can return and continue shopping.', source: 'Deployment setting' },
+      { label: 'Cart Retention Period', key: 'CART_EXPIRATION_TTL', value: `${CART_RETENTION_DAYS} days`, desc: `Guest carts are kept for ${CART_RETENTION_DAYS} days so customers can return and continue shopping.`, source: 'Shared code constant' },
       { label: 'Guest Cart Resolution', key: 'CART_ASSOCIATION_METHOD', value: 'device-cookie-uuid', desc: 'Keeps guest carts tied to this browser.', source: 'Deployment setting' }
     ]
   },
@@ -32,24 +33,22 @@ const configGroups = [
     id: 'grp-recommendations',
     title: 'Recommendations',
     items: [
-      { label: 'Placement Threshold Limit', key: 'MAX_PLACEMENT_ITEMS', value: '10 Products', desc: 'Defines maximum quantity limits allowed inside dynamic rails.', source: 'Deployment setting' },
-      { label: 'System Version', key: 'REC_ENGINE_VER', value: 'v2.0-live', desc: 'Active underlying decision architecture version.', source: 'Deployment setting' }
+      { label: 'Rules and placements', key: 'RECOMMENDATION_RULES', value: 'Managed in Recommendations', desc: 'Rail sizes and placement rules are owned by the Recommendations module, not by an environment variable.', source: 'Admin module' }
     ]
   },
   {
     id: 'grp-admin-access',
     title: 'Admin access',
     items: [
-      { label: 'Session Cookie Security', key: 'SESSION_SECURITY', value: 'HttpOnly-Strict', desc: 'Protects operational admin sessions against external browser reads.', source: 'Deployment setting' },
-      { label: 'Session Expiration Limit', key: 'SESSION_TTL_HOURS', value: '24 Hours', desc: 'Period of continuous idle time before forcing re-authentication.', source: 'Deployment setting' }
+      { label: 'Session Cookie Security', key: 'SESSION_SECURITY', value: 'HttpOnly; SameSite=Lax', desc: 'The admin session cookie is HttpOnly and SameSite=Lax (apps/web/src/lib/session.ts), so scripts cannot read it and cross-site POSTs do not carry it.', source: 'Deployment setting' },
+      { label: 'Session Lifetime', key: 'SESSION_TTL', value: '7 days', desc: 'Sessions issued at sign-in live for 7 days from issue (AuthenticateUserUseCase); deactivating an account invalidates its sessions immediately.', source: 'API code constant' }
     ]
   },
   {
     id: 'grp-deployment',
     title: 'Deployment-managed settings',
     items: [
-      { label: 'Gateway Connection Timeout', key: 'GATEWAY_TIMEOUT', value: '30 Seconds', desc: 'Response waiting limit before emitting timeout errors.', source: 'Deployment setting' },
-      { label: 'JWT Token Signing Method', key: 'JWT_ALGORITHM', value: 'HS256', desc: 'Internal authentication signature verification protocol.', source: 'Deployment setting' }
+      { label: 'JWT Token Signing Method', key: 'JWT_ALGORITHM', value: 'HS256', desc: 'Access tokens are signed with HMAC-SHA256 (Hs256TokenSigner); the signing secret lives only in the host environment file.', source: 'API code' }
     ]
   }
 ];
