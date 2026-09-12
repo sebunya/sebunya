@@ -56,5 +56,6 @@ function text(cell: unknown): string {
   if (typeof cell === 'number') return Number.isInteger(cell) ? String(cell) : String(Math.round(cell * 10000) / 10000);
   if (typeof cell === 'boolean') return cell ? 'true' : 'false';
   // Strip control characters; a leading formula trigger is kept as data (it is never evaluated).
+  // eslint-disable-next-line no-control-regex -- stripping NUL and C0 control characters IS the point
   return String(cell).replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim();
 }

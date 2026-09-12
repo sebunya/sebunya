@@ -130,7 +130,7 @@ export interface StoredSnapshot {
   priorityBucket: string;
 }
 
-export interface ComputedSnapshot extends StoredSnapshot {}
+export type ComputedSnapshot = StoredSnapshot;
 
 /** Score movement below this is noise, not history. */
 export const SCORE_MATERIALITY = 1.0;

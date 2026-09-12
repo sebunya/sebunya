@@ -227,7 +227,7 @@ export class CrawlSiteUseCase {
     let pagesCrawled = 0;
     let issuesFound = 0;
     let count5xx = 0;
-    let noindexCommercial: string[] = [];
+    const noindexCommercial: string[] = [];
 
     const crawlOne = async (url: string, depth: number): Promise<void> => {
       // Follow redirects manually so every hop is allowlist-checked.

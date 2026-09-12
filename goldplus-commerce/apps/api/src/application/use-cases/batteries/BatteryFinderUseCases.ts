@@ -148,6 +148,7 @@ export class BatteryFinderUseCases {
   // ---------------------------------------------------------------- search
   async search(rawQuery: string, sessionId?: string | null): Promise<FinderResolution & { query: string; config: BatteryFinderConfig }> {
     const cfg = await this.config();
+    // eslint-disable-next-line no-control-regex -- stripping NUL and C0 control characters IS the point
     const query = rawQuery.replace(/[\x00-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, MAX_QUERY);
     if (query.length < 2) return { kind: 'NO_RESULT', message: 'Type at least two characters.', query, config: cfg };
     const [devices, batteries] = await Promise.all([this.repo.deviceCandidates(), this.repo.batteryCandidates()]);

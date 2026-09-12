@@ -67,7 +67,7 @@ export function slugifyTitle(value: string): string {
 }
 
 export function countWords(body: string): number {
-  const plain = body.replace(/[#>*_`\[\]()!-]/g, ' ').trim();
+  const plain = body.replace(/[#>*_`[\]()!-]/g, ' ').trim();
   return plain ? plain.split(/\s+/).filter(Boolean).length : 0;
 }
 

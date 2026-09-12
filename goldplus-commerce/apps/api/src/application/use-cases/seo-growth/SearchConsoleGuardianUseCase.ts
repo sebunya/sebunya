@@ -253,7 +253,7 @@ export class SearchConsoleGuardianUseCase {
       let materialChanges = 0;
       let incidentsOpened = 0;
       let actionsAttempted = 0;
-      let actionsFailed = 0;
+      const actionsFailed = 0;
 
       for (const w of windows) {
         const materiality = assessMateriality({

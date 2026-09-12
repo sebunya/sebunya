@@ -66,7 +66,7 @@ export function assessReadiness(input: ReadinessInput): ReadinessReport {
   if (!input.canonicalCode.trim() || input.codeStatus !== 'CONFIRMED') {
     blockers.push({ code: 'NO_CANONICAL_CODE', message: CODE_STATUS_MESSAGE[input.codeStatus] ?? 'Missing canonical battery code.' });
   }
-  if (/[\/]/.test(input.canonicalCode) || /\bAND\b/i.test(input.canonicalCode)) {
+  if (/[/]/.test(input.canonicalCode) || /\bAND\b/i.test(input.canonicalCode)) {
     blockers.push({ code: 'UNRESOLVED_COMPOUND_CODE', message: `"${input.canonicalCode}" combines more than one battery reference. Split it or confirm it is one packaged cross-reference.` });
   }
   if (input.aliasConflicts.length) {
