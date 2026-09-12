@@ -1,0 +1,107 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { apiBase } from '../../../lib/api';
+import { readSessionToken } from '../../../lib/session';
+
+const id = Astro.params.id ?? '';
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect(`/admin/login?returnTo=/admin/customers/${encodeURIComponent(id)}`, 303);
+
+let ws: any = null;
+let problem = '';
+try {
+  const res = await fetch(`${apiBase}/admin/customers/${encodeURIComponent(id)}`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8000) });
+  const json = await res.json().catch(() => null);
+  if (res.status === 403) problem = 'Your account cannot view customers (needs orders read access).';
+  else if (res.status === 404) problem = 'No customer account with this id.';
+  else if (res.ok && json?.success) ws = json.data;
+  else problem = json?.error?.message || 'The customer service is unavailable right now.';
+} catch {
+  problem = 'The customer service is unreachable right now.';
+}
+
+const ugx = (n: number) => 'UGX ' + Number(n || 0).toLocaleString('en-US');
+const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { timeZone: 'Africa/Kampala' });
+const supportHref = ws ? '/admin/support?q=' + encodeURIComponent(ws.user.email) : '/admin/support';
+const historyHref = '/admin/audit?entity=user&entityId=' + encodeURIComponent(id);
+const ordersHref = ws ? '/admin/orders?search=' + encodeURIComponent(ws.user.email) : '/admin/orders';
+const stateLabel = ws ? (ws.user.isActive ? 'Active' : 'Disabled') : '';
+const phoneLabel = ws ? (ws.user.phone ? ws.user.phone + (ws.user.phoneVerified ? ' (verified)' : ' (unverified)') : 'no phone') : '';
+---
+<AdminLayout title="Customer">
+  <div class="container mx-auto px-6 lg:px-8 max-w-6xl">
+    {problem && <div class="mt-8 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">{problem}</div>}
+    {ws && (
+      <div class="mt-8 space-y-8">
+        <header class="pb-6 border-b border-gray-200">
+          <h2 class="text-2xl font-black text-brand-dark tracking-tight break-all">{ws.user.email}</h2>
+          <p class="mt-1 text-sm text-gray-600">{phoneLabel} · {stateLabel} · customer since {when(ws.user.createdAt)}</p>
+          <nav aria-label="Related" class="mt-3 flex flex-wrap gap-2 text-[11px] font-bold">
+            <a href={ordersHref} class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">All orders</a>
+            <a href={supportHref} class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">Support tickets</a>
+            <a href={historyHref} class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">Account history</a>
+          </nav>
+        </header>
+
+        <section aria-labelledby="c-orders">
+          <h3 id="c-orders" class="text-xs font-black uppercase tracking-widest text-brand-dark">Orders ({ws.orders.length})</h3>
+          {ws.orders.length === 0 ? <p class="mt-2 text-sm text-gray-500">This customer has not placed an order yet.</p> : (
+            <table class="mt-3 w-full text-xs">
+              <thead class="text-[10px] uppercase font-black tracking-widest text-gray-500"><tr><th class="text-left py-2">Order</th><th class="text-left">Status</th><th class="text-right">Total</th><th class="text-right">Items</th><th class="text-right">Placed</th></tr></thead>
+              <tbody class="divide-y divide-gray-50">
+                {ws.orders.map((o: any) => (
+                  <tr>
+                    <td class="py-2 font-mono"><a href={'/admin/orders/' + o.id} class="font-bold hover:underline">{o.orderNumber}</a></td>
+                    <td class="uppercase font-bold text-[10px]">{o.status}</td>
+                    <td class="text-right">{ugx(o.totalAmountUgx)}</td>
+                    <td class="text-right">{o.itemCount}</td>
+                    <td class="text-right text-gray-500">{when(o.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </section>
+
+        <section aria-labelledby="c-loyalty">
+          <h3 id="c-loyalty" class="text-xs font-black uppercase tracking-widest text-brand-dark">Loyalty</h3>
+          {!ws.loyalty ? <p class="mt-2 text-sm text-gray-500">No loyalty account — points are created when the first eligible order is delivered.</p> : (
+            <div class="mt-3">
+              <p class="text-sm"><span class="font-black">{ws.loyalty.available} points available</span> · {ws.loyalty.lifetimeEarned} earned · {ws.loyalty.lifetimeRedeemed} redeemed{ws.loyalty.pendingExpiry > 0 ? ' · ' + ws.loyalty.pendingExpiry + ' pending expiry' : ''}</p>
+              {ws.loyalty.available < 0 && <p class="mt-1 text-xs text-amber-800 font-bold">Negative balance: a clawback exceeded the points on hand and is carried forward by design.</p>}
+              <ul class="mt-3 space-y-1 text-xs">
+                {ws.loyalty.entries.map((e: any) => (
+                  <li class="flex flex-wrap gap-x-3 border-b border-gray-50 pb-1">
+                    <span class="font-mono text-gray-500">{when(e.createdAt)}</span>
+                    <span class="uppercase font-bold text-[10px]">{e.type}</span>
+                    <span class={'font-black ' + (e.points < 0 ? 'text-red-700' : 'text-emerald-700')}>{e.points > 0 ? '+' : ''}{e.points}</span>
+                    <span class="text-gray-600">{e.reason}</span>
+                    {e.orderId && <a href={'/admin/orders/' + e.orderId} class="text-gray-400 hover:underline">order</a>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+
+        <section aria-labelledby="c-support">
+          <h3 id="c-support" class="text-xs font-black uppercase tracking-widest text-brand-dark">Support tickets ({ws.support.length})</h3>
+          {ws.support.length === 0 ? <p class="mt-2 text-sm text-gray-500">No support tickets from this customer's email.</p> : (
+            <ul class="mt-3 space-y-1 text-xs">
+              {ws.support.map((t: any) => (
+                <li class="flex flex-wrap gap-x-3 border-b border-gray-50 pb-1">
+                  <span class="font-mono text-gray-500">{when(t.createdAt)}</span>
+                  <span class="font-bold">{t.subject ?? '(no subject)'}</span>
+                  <span class="uppercase text-[10px] font-bold">{t.status}</span>
+                  <span class="uppercase text-[10px]">{t.priority}</span>
+                  {t.overdue && <span class="text-[10px] font-black text-red-700">OVERDUE</span>}
+                  <span class="text-gray-400">{t.assignedTo ? 'assigned to ' + t.assignedTo : 'unassigned'}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    )}
+  </div>
+</AdminLayout>

@@ -17,6 +17,7 @@ import webhookRoutes from './routes/webhooks';
 import accountRoutes from './routes/account';
 import adminAuditRoutes from './routes/admin/audit';
 import adminUsersRoutes from './routes/admin/users';
+import adminCustomersRoutes from './routes/admin/customers';
 import adminRolesRoutes from './routes/admin/roles';
 import adminProductsRoutes from './routes/admin/products';
 import adminProductCostsRoutes from './routes/admin/product-costs';
@@ -224,6 +225,7 @@ app.route('/webhooks', webhookRoutes);
 app.route('/account', accountRoutes);
 app.route('/admin/audit', adminAuditRoutes);
 app.route('/admin/users', adminUsersRoutes);
+app.route('/admin/customers', adminCustomersRoutes);
 app.route('/admin/roles', adminRolesRoutes);
 app.route('/admin/products', adminProductsRoutes);
 app.route('/admin/product-costs', adminProductCostsRoutes);
@@ -420,6 +422,7 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/seo',
   '/admin/surveys',
   '/admin/users',
+  '/admin/customers',
   '/api/admin/consent/operations',
   '/auth',
   '/commerce',

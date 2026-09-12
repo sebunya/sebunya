@@ -452,7 +452,7 @@ const remainingRefundableUgx = Math.max(0, collectedUgx - refundedUgx);
 const completedAttempt = paymentAttempts.find((a: any) => a.status === 'completed');
 const orderHistoryHref = `/admin/audit?entity=order&entityId=${encodeURIComponent(order.id)}`;
 const orderPaymentsHref = `/admin/payments?q=${encodeURIComponent(order.orderNumber || order.id)}`;
-const customerHref = order.userId ? `/admin/customer-dna/${encodeURIComponent(order.userId)}` : null;
+const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order.userId)}` : null;
 
 ---
 
