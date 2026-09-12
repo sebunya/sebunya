@@ -118,6 +118,10 @@ Ordered by value (§82), each with before / problem / capability / benefit / ris
 11. **Deactivation is proven to bite immediately** — checked, not assumed: the admin auth path (`liveSession`) rejects a token whose user is inactive or whose issue time precedes the revocation cutoff on every request, so a deactivated administrator loses access at once rather than at the 7-day token expiry.
 12. **Truthful Settings, Verification, Dealers, Governance and Products pages** — four pages stated invented or stale facts (session 24 h vs 7 days, cookie Strict vs Lax, a recommendation engine version, a gateway timeout, "Verified / Safe" hologram status, an aggregation API "being designed", two invented dealer businesses, an invented fallback product, five invented roles with ranks, a hardcoded 'Super administrator' badge, "admins cannot be created here"). Corrected across 34daedc2, 757d05a5, f1f5d475 and 3bbcdae5; all four pages rendered through the built server and read back. Live: see §9.
 
+## 3a. Permission reconciliation (third pass)
+
+Shared code defines 104 permission codes; the database holds 130 rows over 126 distinct codes. Every code the routes check exists in the database and is held by Owner, so **no admin route is dead for everyone**. The 22 database-only codes are a legacy `read.products` / `manage.promotions` convention that no route checks; four of them exist twice. The platform administrator lacks exactly five of those legacy codes and nothing the routes use, so the earlier "121 versus 130" difference is not an access gap. Role holders today: two Owner accounts (one also PLATFORM_ADMINISTRATOR) and one LEGAL_REVIEWER (`legal.read`, `legal.approve`). The last-admin guard counts PLATFORM_ADMINISTRATOR holders only; with the platform administrator also an Owner, no sequence of deactivations can remove the last account able to manage access. Cleaning the 22 legacy rows is a production data change and is deferred to an owner-approved cleanup.
+
 ## 4. Deferred items with triggers (§83 context)
 
 | Item | Why deferred | Trigger to build | Risk if built now |
@@ -127,6 +131,7 @@ Ordered by value (§82), each with before / problem / capability / benefit / ris
 | Bulk price / stock operations | 192 SKUs are still one-by-one workable; bulk writes to price or stock without preview/confirm/audit are the highest-regression change in the estate | a second price-list import, or > 50 SKUs needing one change | commercial semantics changed en masse |
 | Stock receipts and counts UI | tables exist, no page, no route, 0 rows; one stock location | the first supplier delivery recorded outside adjustments | new write path without a workflow owner |
 | MFA enrolment UI | `requireStepUp` exists; 0 enrolled; only one active platform administrator | a second administrator, or the credential rotation the owner still owes | lockout of the only admin |
+| Legacy permission rows (22 codes, 4 duplicated) | harmless: no route checks them; deleting rows from an access table is a production data change | owner-approved cleanup window | none functional |
 | Permission sets for the nine empty roles | Which screens a support operator, analyst, fulfilment manager or merchandiser may touch is a business decision; guessing would grant access nobody approved | the owner names the first person to hold one of these roles | over- or under-granting a real person |
 | Roles editor | 12 roles / 92 permissions are seeded; no operator has needed a custom role | first custom-role request | permission drift |
 | Controlled activation / release readiness clients | shells with 0 rows; the API exists | first measurement destination goes live | speculative UI |

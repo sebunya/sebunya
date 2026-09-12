@@ -66,6 +66,21 @@ describe('the admin console never promises an unbuilt future', () => {
     expect(gov).not.toMatch(/disabled by security policy/i);
   });
 
+  it('access facts are read from the API, never hand-written', () => {
+    // Governance once listed five invented roles with invented ranks and a
+    // hand-written permissions matrix; the Users create form offered roles
+    // without saying whether they carried any permission. Both must stay wired
+    // to /admin/roles.
+    const gov = readFileSync(join(ADMIN, 'governance/index.astro'), 'utf8');
+    expect(gov).toMatch(/fetch\(`\$\{apiBase\}\/admin\/roles`/);
+    expect(gov).not.toMatch(/const roles = \[/);
+    expect(gov).not.toMatch(/matrixRows|Super administrator<|Level [1-5]'/);
+    const users = readFileSync(join(ADMIN, 'users/index.astro'), 'utf8');
+    expect(users).toMatch(/fetch\(`\$\{apiBase\}\/admin\/roles`/);
+    expect(users).toMatch(/roleLabel\('SUPPORT_OPERATOR'\)/);
+    expect(users).toMatch(/no permissions yet/);
+  });
+
   it('describes a read-only view as a design, not a missing editor', () => {
     const merch = readFileSync(join(ADMIN, 'merchandising/index.astro'), 'utf8');
     expect(merch).toMatch(/read-only view/i);
