@@ -75,22 +75,54 @@ test.describe("product pages — truthful rails", () => {
     return (json.data ?? []).map((p) => p.slug);
   }
 
-  test("every sampled PDP shows the rail exactly when the API has items for it — never filler, never a lost rail", async ({ page, request }) => {
+  test("every sampled PDP is a real, coherent product page that agrees with its engine", async ({ page, request }) => {
     const slugs = (await liveSlugs(request)).slice(0, 8);
     expect(slugs.length).toBeGreaterThan(0);
+    let railsSeen = 0;
+    let itemsSeen = 0;
     for (const slug of slugs) {
-      const product = (await (await request.get(`${API}/products/${slug}`)).json()) as { data?: { id: string } };
-      const id = product.data?.id;
-      expect(id, slug).toBeTruthy();
-      const rec = (await (await request.get(`${API}/recommendations?placement=complete_setup&productId=${id}&limit=4`)).json()) as { data?: { items: unknown[] } };
-      const apiHasItems = (rec.data?.items?.length ?? 0) > 0;
+      const api = (await (await request.get(`${API}/products/${slug}`)).json()) as {
+        data?: { id: string; name: string; slug: string; retailPriceUgx: number | null; availability: { kind: string }; primaryImageUrl: string | null };
+      };
+      const p = api.data;
+      expect(p, slug).toBeTruthy();
+      const rec = (await (await request.get(`${API}/recommendations?placement=complete_setup&productId=${p!.id}&limit=4`)).json()) as { data?: { items: unknown[] } };
+      const apiItems = rec.data?.items?.length ?? 0;
+
+      const failures: string[] = [];
+      page.on("response", (r) => { if (r.status() >= 500) failures.push(`${r.status()} ${r.url()}`); });
       const response = await page.goto(`/products/${slug}`);
       expect(response?.status(), slug).toBe(200);
+
+      // Identity and title come from the source of truth, not the fixture.
+      await expect(page.locator("h1")).toContainText(p!.name.slice(0, 24));
+      // Canonical is the bare host, exactly this slug.
+      await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", `https://shopgoldplus.com/products/${p!.slug}`);
+      // Structured data: a Product with the same name and a numeric UGX price
+      // that is not above the regular price (a running sale may lower it).
+      const ld = await page.locator('script[type="application/ld+json"]').allTextContents();
+      const product = ld.map((t) => { try { return JSON.parse(t); } catch { return null; } }).flatMap((j) => (Array.isArray(j) ? j : [j])).find((o) => o && o["@type"] === "Product");
+      expect(product, `${slug}: Product JSON-LD`).toBeTruthy();
+      expect(String(product.name)).toContain(p!.name.slice(0, 24));
+      if (p!.retailPriceUgx != null) {
+        expect(product.offers?.priceCurrency).toBe("UGX");
+        expect(Number(product.offers?.price)).toBeGreaterThan(0);
+        expect(Number(product.offers?.price)).toBeLessThanOrEqual(p!.retailPriceUgx);
+        // The visible price is on the page too, formatted as the shop formats it.
+        await expect(page.getByText(new RegExp(`UGX\\s*${Number(product.offers.price).toLocaleString("en-US")}`)).first()).toBeVisible();
+      }
+      // Availability coherent with the API.
+      if (p!.availability?.kind === "in_stock") expect(String(product.offers?.availability ?? "")).toContain("InStock");
+      // Image behaviour coherent: an imaged product carries its image in the markup; an unimaged one carries none.
+      if (p!.primaryImageUrl) expect(product.image, `${slug}: image in JSON-LD`).toBeTruthy(); else expect(product.image).toBeUndefined();
+      // Recommendation UI agrees with the engine, and the agreement is not a tautology:
+      // the counts are accumulated so the suite can see whether it ever observed items.
       const railCount = await page.getByText(RAIL).count();
-      // The page must agree with its own engine: a rail with nothing behind it
-      // is filler; items with no rail is a broken page.
-      expect(railCount > 0, `${slug}: api items=${apiHasItems} rail=${railCount}`).toBe(apiHasItems);
+      expect(railCount > 0, `${slug}: api items=${apiItems} rail=${railCount}`).toBe(apiItems > 0);
+      railsSeen += railCount > 0 ? 1 : 0; itemsSeen += apiItems > 0 ? 1 : 0;
+      expect(failures, `${slug}: server errors during render`).toEqual([]);
     }
+    console.log(`[pdp e2e] sampled=${slugs.length} rails=${railsSeen} engineItems=${itemsSeen}`);
   });
 
   test("a product the catalogue does not contain is a 404, never a fabricated page", async ({ page }) => {

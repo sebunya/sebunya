@@ -170,9 +170,29 @@ suite('order_events ledger (real PostgreSQL, P0-2 AC2/AC3)', () => {
     // Both settle (one real write, one idempotent replay) OR one rejects if the
     // second observed the already-processing state — either way, EXACTLY ONE event.
     const fulfilled = results.filter((r) => r.status === 'fulfilled');
-    expect(fulfilled.length).toBeGreaterThanOrEqual(1);
-    expect((await orderRow(orderId)).status).toBe('processing');
-    expect((await eventsFor(orderId)).length).toBe(1);
+    const events = await eventsFor(orderId);
+    const row = await orderRow(orderId);
+    try {
+      expect(fulfilled.length).toBeGreaterThanOrEqual(1);
+      expect(row.status).toBe('processing');
+      expect(events.length).toBe(1);
+    } catch (err) {
+      // This case failed once in a full serial run (2026-09-12) and the run kept
+      // no evidence. Retain exactly what a diagnosis needs, once, on failure.
+      const activity = await raw`select state, wait_event_type, count(*)::int as n from pg_stat_activity where datname = current_database() group by 1, 2`;
+      const locks = await raw`select mode, granted, count(*)::int as n from pg_locks l join pg_class c on c.oid = l.relation where c.relname in ('orders','order_events') group by 1, 2`;
+      console.error('[ledger-race DIAGNOSTIC]', JSON.stringify({
+        orderId, key,
+        results: results.map((r) => r.status === 'fulfilled'
+          ? { fulfilled: { eventId: (r.value as { eventId?: string }).eventId, replay: (r.value as { idempotentReplay?: boolean }).idempotentReplay } }
+          : { rejected: String((r.reason as Error)?.message ?? r.reason).slice(0, 200) }),
+        row,
+        events: events.map((e: { id: string; idempotency_key: string | null; from_status: string | null; to_status: string; occurred_at: Date }) => ({ id: e.id, key: e.idempotency_key, from: e.from_status, to: e.to_status, at: e.occurred_at })),
+        pg_stat_activity: activity, locks,
+        at: new Date().toISOString(),
+      }));
+      throw err;
+    }
   });
 
   it('concurrency/idempotency: a sequential replay with the same key returns the same event and writes no duplicate', async () => {
