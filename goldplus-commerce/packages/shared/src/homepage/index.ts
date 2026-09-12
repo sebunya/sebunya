@@ -11,6 +11,11 @@ export interface HomeTrustItem {
   body: string;
 }
 
+export interface HomeWhatsappChannel {
+  heading: string;
+  body: string;
+}
+
 export interface HomePathwayCard {
   title: string;
   body: string;
@@ -21,6 +26,8 @@ export interface HomePathwayCard {
 export interface HomepageContent {
   trustItems: HomeTrustItem[];
   pathwayCards: HomePathwayCard[];
+  /** Footer WhatsApp channel block copy (0114 extension). Editable; icon/CTA stay in code. */
+  whatsappChannel: HomeWhatsappChannel;
 }
 
 export const HOME_TRUST_ICON_KEYS = ['shield', 'clipboard', 'support'] as const;
@@ -43,6 +50,10 @@ export const DEFAULT_HOMEPAGE_CONTENT: HomepageContent = {
       body: 'Message our team on WhatsApp and reach a person, not a queue. Report a fake and we act on it.',
     },
   ],
+  whatsappChannel: {
+    heading: 'New at GoldPlus',
+    body: 'New arrivals, restocks and offers — straight from GoldPlus.',
+  },
   pathwayCards: [
     {
       title: 'Shopping for yourself',

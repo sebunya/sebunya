@@ -17,9 +17,14 @@ function sanitize(input: any): HomepageContent {
     .map((c: any) => ({ title: s(c?.title, 120), body: s(c?.body, 400), ctaLabel: s(c?.ctaLabel, 40), href: s(c?.href, 300) }))
     .filter((c: any) => c.title && c.body && c.ctaLabel && c.href)
     .slice(0, 6);
+  const whatsappChannel = {
+    heading: s(input?.whatsappChannel?.heading, 80) || DEFAULT_HOMEPAGE_CONTENT.whatsappChannel.heading,
+    body: s(input?.whatsappChannel?.body, 200) || DEFAULT_HOMEPAGE_CONTENT.whatsappChannel.body,
+  };
   return {
     trustItems: trustItems.length > 0 ? trustItems : DEFAULT_HOMEPAGE_CONTENT.trustItems,
     pathwayCards: pathwayCards.length > 0 ? pathwayCards : DEFAULT_HOMEPAGE_CONTENT.pathwayCards,
+    whatsappChannel,
   };
 }
 

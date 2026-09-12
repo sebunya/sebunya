@@ -31,7 +31,11 @@ if (Astro.request.method === 'POST') {
       ctaLabel: String(form.get(`card.${i}.ctaLabel`) ?? '').trim(),
       href: String(form.get(`card.${i}.href`) ?? '').trim(),
     })).filter((c) => c.title && c.body && c.ctaLabel && c.href);
-    const res = await authed('/admin/homepage', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config: { trustItems, pathwayCards } }) });
+    const whatsappChannel = {
+      heading: String(form.get('whatsapp.heading') ?? '').trim(),
+      body: String(form.get('whatsapp.body') ?? '').trim(),
+    };
+    const res = await authed('/admin/homepage', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config: { trustItems, pathwayCards, whatsappChannel } }) });
     const json: any = await res.json().catch(() => null);
     notice = res.ok && json?.success
       ? { kind: 'ok', message: `Saved (version ${json.data.version}). Live on the homepage within a minute.` }
@@ -52,6 +56,7 @@ try {
 
 const trust = (i: number) => cfg?.trustItems?.[i] ?? { iconKey: 'shield', title: '', body: '' };
 const card = (i: number) => cfg?.pathwayCards?.[i] ?? { title: '', body: '', ctaLabel: '', href: '' };
+const wa = cfg?.whatsappChannel ?? { heading: 'New at GoldPlus', body: 'New arrivals, restocks and offers — straight from GoldPlus.' };
 ---
 <AdminLayout title="Homepage content">
   <div class="mx-auto max-w-3xl px-4 py-8">
@@ -109,6 +114,18 @@ const card = (i: number) => cfg?.pathwayCards?.[i] ?? { title: '', body: '', cta
                 </label>
               </div>
             ))}
+          </div>
+        </section>
+
+        <section>
+          <h2 class="text-sm font-black uppercase tracking-wider text-slate-500">WhatsApp channel block (footer)</h2>
+          <div class="mt-3 rounded-xl border border-slate-200 p-4 space-y-2">
+            <label class="text-xs block">Heading
+              <input name="whatsapp.heading" value={wa.heading} class="mt-1 w-full rounded border px-3 py-2 text-sm" />
+            </label>
+            <label class="text-xs block">Supporting copy
+              <textarea name="whatsapp.body" rows="2" class="mt-1 w-full rounded border px-3 py-2 text-sm">{wa.body}</textarea>
+            </label>
           </div>
         </section>
 
