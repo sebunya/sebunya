@@ -181,9 +181,7 @@ function getStatusColor(status: string) {
       <nav aria-label="Orders needing attention" class="mt-4 flex flex-wrap gap-2 text-[11px] font-bold">
         <span class="self-center text-gray-500">Needs attention:</span>
         <a href="/admin/orders?paymentStatus=paid&status=received" class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">Paid, not started</a>
-        <a href="/admin/orders?paymentStatus=paid&status=processing" class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">Paid, in preparation</a>
         <a href="/admin/orders?paymentStatus=failed" class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">Payment failed</a>
-        <a href="/admin/orders?paymentStatus=unpaid&status=received" class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">Awaiting payment</a>
         <a href="/admin/orders?status=delivery_failed" class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">Delivery failed</a>
         <a href="/admin/orders?status=pending_owner_review" class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">Owner review</a>
       </nav>
