@@ -8,11 +8,11 @@ Vocabulary is the programme's evidence vocabulary: FOUND / REPRODUCED / FIXED / 
 
 | Item | Value | Evidence |
 |---|---|---|
-| Local HEAD | `757d05a5` | `git log` |
-| Origin HEAD | `757d05a5` | `git push` output |
-| Host git HEAD | `757d05a5` | `git rev-parse` on goldplus-prod |
+| Local HEAD | `10e4b655` (+ this docs commit) | `git log` |
+| Origin HEAD | `10e4b655` (+ this docs commit) | `git push` output |
+| Host git HEAD | `10e4b655` | `git rev-parse` on goldplus-prod |
 | API runtime | `rollback-89ba2b7a` image | `docker inspect` image id = tag id |
-| Web runtime | `rollback-757d05a5` image (66602ab8 plus the self-critique follow-up), DEPLOYED 2026-09-12 and LIVE VERIFIED: settings, verification, dealers, governance, users and customer pages answer 303 unauthenticated, storefront and shop 200, 0 web errors, 0 new API level-50 lines. Authenticated rendering of the four corrected pages was checked by serving the built SSR bundle locally with a session cookie and reading the output (200, corrected values present, 0 errors); no production admin session was available | `docker inspect` image id = tag id |
+| Web runtime | `rollback-10e4b655` image (three self-critique follow-ups on 66602ab8: 757d05a5, f1f5d475, 3bbcdae5, 10e4b655), DEPLOYED 2026-09-12 and LIVE VERIFIED: settings, verification, dealers, governance, users and customer pages answer 303 unauthenticated, storefront and shop 200, 0 web errors, 0 new API level-50 lines. Authenticated rendering of the four corrected pages was checked by serving the built SSR bundle locally with a session cookie and reading the output (200, corrected values present, 0 errors); no production admin session was available | `docker inspect` image id = tag id |
 | Services | 2 api + 2 web, all healthy, 0 restarts | `docker ps` |
 | Migrations | journal entries 0000–0130 (131), last `0130_order_payment_method` | `_journal.json` |
 | Clean-tree suite | unit + architecture: 453 files / 7,798 tests, 0 failures. The long-running `ExperienceProfile` intermittent is FIXED at its cause: the tampered-token case built the flipped character from a second random token, so about 1.5% of runs left the token unchanged | `vitest run tests/unit tests/architecture` |
