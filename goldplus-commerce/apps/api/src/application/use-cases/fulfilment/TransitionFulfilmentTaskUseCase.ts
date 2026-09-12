@@ -3,6 +3,8 @@ import { IFulfilmentRepository } from '../../ports/IFulfilmentRepository';
 import { IAuditRepository } from '../../ports/IAuditRepository';
 import { IOrderTransitionPort } from '../../ports/IOrderTransitionPort';
 import { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
+import type { OrderStatus } from '../../../domain/commerce/Order';
+import { isTerminalOrderStatus } from '../../../domain/commerce/OrderStateMachine';
 
 export type TransitionFulfilmentResult =
   | { ok: true; taskId: string; orderId: string; from: FulfilmentStatus; to: FulfilmentStatus }
@@ -35,6 +37,17 @@ export class TransitionFulfilmentTaskUseCase {
       dispatches?: { getByTask(taskId: string): Promise<unknown | null> };
       packingSessions?: { getByTask(taskId: string): Promise<{ status: string } | null> };
     },
+    /**
+     * The task's ORDER. A cancelled/completed/refunded order must never be
+     * worked: the fulfilment queue already hides such tasks, but a task reached
+     * directly by id could still be acknowledged, picked and dispatched — the
+     * order mirror on dispatch is deliberately non-fatal, so goods would leave
+     * for an order that is no longer live. Forward moves are refused when the
+     * order is terminal; CANCELLED stays allowed so a stale task can be closed.
+     * Optional so existing callers and tests construct unchanged (unwired =
+     * no order check, the previous behaviour).
+     */
+    private readonly orders?: { findById(id: string): Promise<{ orderStatus: OrderStatus } | null> },
   ) {}
 
   async execute(input: {
@@ -55,6 +68,20 @@ export class TransitionFulfilmentTaskUseCase {
     }
 
     const from = snapshot.status;
+
+    if (to !== 'CANCELLED' && this.orders) {
+      const order = await this.orders.findById(snapshot.orderId);
+      // Fail closed: a status the state machine does not know is not a live
+      // order either, and must not become a 500 on the operator's screen.
+      const orderIsClosed = (status: OrderStatus): boolean => { try { return isTerminalOrderStatus(status); } catch { return true; } };
+      if (order && orderIsClosed(order.orderStatus)) {
+        return {
+          ok: false,
+          code: 'INVALID_TRANSITION',
+          message: `Order is ${order.orderStatus} — its fulfilment task cannot be moved to ${to}. Cancel the task instead.`,
+        };
+      }
+    }
 
     if (to === 'OUT_FOR_DELIVERY' && this.guards?.dispatches) {
       const dispatch = await this.guards.dispatches.getByTask(input.taskId);

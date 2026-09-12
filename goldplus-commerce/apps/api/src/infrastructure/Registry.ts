@@ -967,6 +967,9 @@ export class Registry {
     // class field initialiser may not read a field that has not run yet.
     dispatches: { getByTask: (taskId: string) => this.fulfilmentDispatchRepo.getByTask(taskId) },
     packingSessions: { getByTask: (taskId: string) => this.packingSessionRepo.getByTask(taskId) },
+  }, {
+    // The task's order: forward moves are refused once the order is terminal.
+    findById: (id: string) => this.orderRepo.findById(id),
   });
   /** Recovery for a task cancelled against a still-open order (see the use case). */
   public readonly reinstateFulfilmentTaskUseCase = new ReinstateFulfilmentTaskUseCase(this.fulfilmentRepo, this.auditRepo, {
