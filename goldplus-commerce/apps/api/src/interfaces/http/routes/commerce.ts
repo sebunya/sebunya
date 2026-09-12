@@ -4,7 +4,6 @@ import { Registry } from '../../../infrastructure/Registry';
 import { ApiResponse } from '@goldplus/shared';
 import { customerSessionMiddleware } from '../middleware/customerSession';
 import { createHash } from 'crypto';
-import { clientIp } from '../clientAddress';
 import type { StartPaymentOutcome } from '../../../application/use-cases/commerce/StartOrderPaymentUseCase';
 import { verifyOrderByContact } from '../../../application/services/OrderContactVerification';
 import { RedisFailureLockout } from '../../../infrastructure/security/RedisFailureLockout';
@@ -775,7 +774,7 @@ const orderContactLockout = new RedisFailureLockout('lockout:order-contact');
 async function verifyOrderRequest(c: any) {
   const body = await c.req.json().catch(() => null);
   return verifyOrderByContact(
-    { reference: body?.reference, contact: body?.contact, ip: clientIp(c), now: Date.now() },
+    { reference: body?.reference, contact: body?.contact, now: Date.now() },
     { lockout: orderContactLockout, findOrder: (reference: string) => registry.getOrderByIdUseCase.execute(reference) },
   );
 }

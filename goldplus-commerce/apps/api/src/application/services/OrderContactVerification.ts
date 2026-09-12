@@ -9,9 +9,14 @@ import type { FailureLockoutStore } from '../ports/FailureLockoutStore';
  * routes call it. Pure: the caller supplies the clock, the client address, the
  * shared failure-lockout store and the order finder.
  *
- * Five failed attempts per (address, reference) in ten minutes lock that pair
- * out; a success clears it. An unknown reference and a wrong contact are the
- * same answer — the response never says which half was wrong.
+ * Five failed attempts against one reference in ten minutes lock that
+ * reference out; a success clears it. The key is the reference ALONE, not
+ * (address, reference): the reference is the thing being guessed, and the
+ * client address is not a stable identity here — behind Cloudflare the API
+ * sees a different edge address on consecutive requests (see D-1), and on
+ * 2026-09-12 that spread eight failures over five keys so the sixth attempt
+ * still answered 401 in production. An unknown reference and a wrong contact
+ * are the same answer — the response never says which half was wrong.
  */
 export interface VerifiableOrder {
   id: string;
@@ -35,7 +40,7 @@ export const CONTACT_LOCKOUT_WINDOW_MS = 10 * 60 * 1000;
 export const CONTACT_LOCKOUT_MAX_FAILURES = 5;
 
 export async function verifyOrderByContact<O extends VerifiableOrder>(
-  input: { reference: unknown; contact: unknown; ip: string; now: number },
+  input: { reference: unknown; contact: unknown; now: number },
   deps: ContactVerificationDeps<O>,
 ): Promise<ContactVerificationResult<O>> {
   const failed = (): ContactVerificationResult<O> => ({ ok: false, status: 400, code: 'VERIFICATION_FAILED', message: FAILED_MESSAGE });
@@ -45,7 +50,7 @@ export async function verifyOrderByContact<O extends VerifiableOrder>(
   if (!reference || !contact || reference.length > 80 || contact.length > 120) return failed();
   if (reference.toUpperCase().startsWith('GP-DRAFT-')) return failed();
 
-  const fingerprint = createHash('sha256').update(`${input.ip}-${reference.toUpperCase()}`).digest('hex');
+  const fingerprint = createHash('sha256').update(reference.toUpperCase()).digest('hex');
   if ((await deps.lockout.failures(fingerprint, input.now)) >= CONTACT_LOCKOUT_MAX_FAILURES) {
     return { ok: false, status: 429, code: 'TOO_MANY_REQUESTS', message: 'Too many lookup attempts. Please wait a few minutes and try again.' };
   }

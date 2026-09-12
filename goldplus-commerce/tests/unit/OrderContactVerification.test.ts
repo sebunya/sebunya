@@ -6,8 +6,8 @@ import { MemoryFailureLockout } from '../../apps/api/src/application/ports/Failu
 
 const order = { id: 'o1', orderNumber: 'GP-202609-ABCD', customerEmail: 'Robert@Example.com', customerPhone: '+256 705 004545' };
 const deps = (found: typeof order | null = order) => ({ lockout: new MemoryFailureLockout(), findOrder: async () => found });
-const run = (reference: unknown, contact: unknown, d = deps(), now = 1_000_000, ip = '41.84.203.9') =>
-  verifyOrderByContact({ reference, contact, ip, now }, d);
+const run = (reference: unknown, contact: unknown, d = deps(), now = 1_000_000) =>
+  verifyOrderByContact({ reference, contact, now }, d);
 
 describe('verifyOrderByContact — the one proof a guest has', () => {
   it('refuses wrong types, empties, over-long values and demo drafts with a 400, before touching the store', async () => {
@@ -35,13 +35,21 @@ describe('verifyOrderByContact — the one proof a guest has', () => {
     expect(d2.lockout.size).toBe(1);
   });
 
-  it(`locks the (address, reference) pair after ${CONTACT_LOCKOUT_MAX_FAILURES} failures, and only that pair`, async () => {
+  it(`locks the reference after ${CONTACT_LOCKOUT_MAX_FAILURES} failures, whoever sends them, and only that reference`, async () => {
     const d = deps();
     for (let i = 0; i < CONTACT_LOCKOUT_MAX_FAILURES; i++) expect((await run('GP-202609-ABCD', 'wrong@x.y', d)).ok).toBe(false);
     const locked = await run('GP-202609-ABCD', '+256705004545', d); // even the RIGHT contact is refused now
     expect(locked).toMatchObject({ ok: false, status: 429, code: 'TOO_MANY_REQUESTS' });
-    const otherIp = await run('GP-202609-ABCD', '+256705004545', d, 1_000_000, '10.0.0.2');
-    expect(otherIp.ok).toBe(true);
+    const otherReference = await run('gp-202609-abcd ', '+256705004545', d); // case/whitespace do not make a new key
+    expect(otherReference).toMatchObject({ ok: false, status: 429 });
+    const unrelated = await run('GP-202609-ZZZZ', '+256705004545', d);
+    expect(unrelated.ok).toBe(true);
+  });
+
+  it('the key does not depend on the client address — the API sees a different Cloudflare edge address per request', () => {
+    const src = readFileSync(resolve(__dirname, '../../apps/api/src/application/services/OrderContactVerification.ts'), 'utf8');
+    expect(src).toMatch(/createHash\('sha256'\)\.update\(reference\.toUpperCase\(\)\)/);
+    expect(src).not.toMatch(/input\.ip/);
   });
 
   it('the lockout expires with the window, and a success clears it', async () => {
