@@ -35,7 +35,7 @@ export interface AbandonmentRecord {
 
 export interface IAbandonmentRepository {
   /** Carts with items, stale beyond `staleBefore`, having NO open classification. */
-  findNewlyAbandoned(staleBefore: Date, limit: number): Promise<AbandonmentCandidate[]>;
+  findNewlyAbandoned(staleBefore: Date, limit: number, now?: Date): Promise<AbandonmentCandidate[]>;
   createOpen(candidate: AbandonmentCandidate): Promise<AbandonmentRecord | null>;
   /** OPEN rows whose cart has passed its expiry → EXPIRED. Returns count. */
   expireOverdue(now: Date): Promise<number>;
@@ -61,7 +61,7 @@ export class AbandonmentUseCase {
   async scan(): Promise<{ classified: number; expired: number }> {
     const now = this.now();
     const staleBefore = new Date(now.getTime() - ABANDONMENT_STALE_HOURS * 3600_000);
-    const candidates = await this.repo.findNewlyAbandoned(staleBefore, 500);
+    const candidates = await this.repo.findNewlyAbandoned(staleBefore, 500, now);
     let classified = 0;
     for (const candidate of candidates) {
       if (candidate.itemCount <= 0) continue; // an empty basket is not an abandonment

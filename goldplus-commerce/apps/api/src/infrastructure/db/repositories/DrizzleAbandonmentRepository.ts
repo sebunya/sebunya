@@ -23,7 +23,7 @@ const toRecord = (r: Row): AbandonmentRecord => ({
 });
 
 export class DrizzleAbandonmentRepository implements IAbandonmentRepository {
-  async findNewlyAbandoned(staleBefore: Date, limit: number): Promise<AbandonmentCandidate[]> {
+  async findNewlyAbandoned(staleBefore: Date, limit: number, now: Date = new Date()): Promise<AbandonmentCandidate[]> {
     // Priced the same way the cart reads price: retail price-book entry first,
     // catalogue display price as fallback — the recorded subtotal matches what the
     // shopper saw, not a re-derivation.
@@ -44,6 +44,10 @@ export class DrizzleAbandonmentRepository implements IAbandonmentRepository {
       .where(
         and(
           lt(carts.updatedAt, staleBefore),
+          // An expired cart cannot be recovered, so it is not "newly abandoned"
+          // — classifying it again only manufactured a second lifecycle for the
+          // same cart (and, before 0129, the collision that stalled every expiry).
+          sql`(${carts.expiresAt} is null or ${carts.expiresAt} > ${now})`,
           sql`not exists (select 1 from ${cartAbandonments} ca where ca.cart_id = ${carts.id} and ca.status = 'OPEN')`,
         ),
       )

@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { pgTable, uuid, varchar, timestamp, integer, bigint, index, uniqueIndex } from 'drizzle-orm/pg-core';
 
 /**
@@ -26,7 +27,9 @@ export const cartAbandonments = pgTable(
   },
   (t) => ({
     // One live classification per cart; resolved rows keep history.
-    openCartUq: uniqueIndex('cart_abandonments_open_cart_uq').on(t.cartId, t.status),
+    // One OPEN classification per cart. Partial on purpose (0129): a cart may be
+    // abandoned, expire, and be abandoned again, so EXPIRED must repeat.
+    openCartUq: uniqueIndex('cart_abandonments_open_cart_uq').on(t.cartId).where(sql`${t.status} = 'OPEN'`),
     statusIdx: index('cart_abandonments_status_idx').on(t.status),
     classifiedIdx: index('cart_abandonments_classified_idx').on(t.classifiedAt),
   }),
