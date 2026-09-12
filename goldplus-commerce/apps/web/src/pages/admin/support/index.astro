@@ -50,6 +50,22 @@ const result = await tryFetchAdminList<InboxTicket>(
   token,
 );
 
+// Exact filters over the full fetched inbox (support volume is small; nothing is
+// paged away). q matches the identifiers staff actually hold.
+const f = (k: string) => (Astro.url.searchParams.get(k) ?? '').trim().slice(0, 120);
+const sf = { q: f('q').toLowerCase(), status: f('status'), priority: f('priority'), assignedTo: f('assignedTo'), overdue: f('overdue') === '1' };
+const activeSupportFilters = Object.entries(sf).filter(([k, v]) => (k === 'overdue' ? v === true : Boolean(v)));
+const haystack = (t: any) => [t.id, t.email, t.phone, t.subject, t.topic, t.name, t.customerName, t.orderNumber].filter(Boolean).join(' ').toLowerCase();
+const filteredTickets = result.items.filter((t: any) =>
+  (!sf.q || haystack(t).includes(sf.q)) &&
+  (!sf.status || t.status === sf.status) &&
+  (!sf.priority || t.priority === sf.priority) &&
+  (!sf.assignedTo || (sf.assignedTo === 'unassigned' ? !t.assignedTo : (t.assignedTo ?? '') === sf.assignedTo)) &&
+  (!sf.overdue || t.sla?.overdue === true));
+const supportFilterSummary = activeSupportFilters.length > 0
+  ? 'Showing ' + filteredTickets.length + ' of ' + result.items.length + ' tickets for ' + activeSupportFilters.map(([k, v]) => k + '=' + (k === 'overdue' ? 'yes' : v)).join(' · ')
+  : '';
+
 const statusBadge: Record<SampleSupportTicket['status'], 'pending' | 'warning' | 'success' | 'neutral'> = {
   open: 'pending',
   'in-progress': 'warning',
@@ -84,7 +100,7 @@ const typeLabel: Record<SampleSupportTicket['type'], string> = {
       </div>
       <div class="flex items-center gap-2">
         <span class="bg-gray-100 text-gray-600 border border-gray-200 text-xs font-bold px-3 py-1.5 rounded-lg font-mono">
-          CASES: {result.items.length}
+          CASES: {filteredTickets.length}{activeSupportFilters.length > 0 ? ` of ${result.items.length}` : ''}
         </span>
       </div>
     </div>
@@ -110,7 +126,18 @@ const typeLabel: Record<SampleSupportTicket['type'], string> = {
     ) : (
       <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
         <div class="overflow-x-auto">
-          <table class="w-full text-left border-collapse">
+          <form method="GET" class="mb-4 flex flex-wrap gap-2 items-end" aria-label="Filter support tickets">
+          <input name="q" value={f('q')} placeholder="Email, phone, subject, order no." class="min-w-[16rem] flex-1 rounded-lg border px-3 py-2 text-sm" aria-label="Search tickets" />
+          <select name="status" class="rounded-lg border px-2 py-2 text-sm" aria-label="Status"><option value="">Any status</option>{['open','in-progress','resolved','closed'].map((v) => <option value={v} selected={sf.status === v}>{v}</option>)}</select>
+          <select name="priority" class="rounded-lg border px-2 py-2 text-sm" aria-label="Priority"><option value="">Any priority</option>{['urgent','high','medium','low'].map((v) => <option value={v} selected={sf.priority === v}>{v}</option>)}</select>
+          <input name="assignedTo" value={f('assignedTo')} placeholder="Assignee or 'unassigned'" class="w-44 rounded-lg border px-3 py-2 text-sm" aria-label="Assignee" />
+          <label class="text-xs flex items-center gap-1"><input type="checkbox" name="overdue" value="1" checked={sf.overdue} /> Overdue only</label>
+          <button type="submit" class="rounded-full bg-slate-900 px-4 py-2 text-sm font-bold text-white">Filter</button>
+          {activeSupportFilters.length > 0 && <a href="/admin/support" class="rounded-full border px-4 py-2 text-sm font-bold">Clear</a>}
+        </form>
+        {supportFilterSummary && <p class="mb-3 text-xs text-slate-600">{supportFilterSummary}</p>}
+        {activeSupportFilters.length > 0 && filteredTickets.length === 0 && <p class="mb-3 text-sm text-slate-700">No ticket matches these filters. Search matches email, phone, subject and order number; clear a filter to widen the view.</p>}
+        <table class="w-full text-left border-collapse">
             <thead>
               <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100">
                 <th class="p-6">Topic / Subject</th>
@@ -124,7 +151,7 @@ const typeLabel: Record<SampleSupportTicket['type'], string> = {
               </tr>
             </thead>
             <tbody class="text-xs divide-y divide-gray-50">
-              {result.items.map((t) => (
+              {filteredTickets.map((t) => (
                 <tr class="hover:bg-gray-50 transition-colors">
                   <td class="p-6 font-bold text-brand-dark text-sm">
                     {t.subject}

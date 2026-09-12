@@ -138,7 +138,7 @@ try {
                 <div class="font-bold text-brand-dark">{p.name}</div>
                 <div class="text-[10px] text-gray-400 mt-0.5">{p.categoryName || 'General'}</div>
               </td>
-              <td class="p-5 font-mono text-gray-500">{p.sku}</td>
+              <td class="p-5 font-mono text-gray-500">{p.sku}<a href={`/admin/audit?entity=product&entityId=${encodeURIComponent(p.id)}&action=STOCK_ADJUSTED`} class="ml-2 text-[10px] font-bold text-gray-400 hover:text-gray-800 underline underline-offset-2" title="Stock adjustment history (who, when, why, before/after)">History</a></td>
               <td class="p-5 text-right">{led ? led.stockOnHand : '—'}</td>
               <td class="p-5 text-right">{led ? led.reserved : '—'}</td>
               <td class={`p-5 text-right font-black ${led && led.available <= 0 ? 'text-red-600' : 'text-brand-dark'}`}>{led ? led.available : '—'}</td>
