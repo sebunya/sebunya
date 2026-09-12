@@ -8,24 +8,12 @@ if (!token) {
   return Astro.redirect("/admin/login?returnTo=/admin/products", 303);
 }
 
-const fallbackProducts = [
-  {
-    id: "p1",
-    name: "Generic Fast Charger",
-    sku: "GP-CHG-001",
-    modelNumber: "GP-001",
-    category: "Power",
-    stockStatus: "in_stock",
-    priceUgx: 50000,
-    active: true,
-    approvalStatus: "approved",
-    slug: "generic-fast-charger",
-    imageUrl: undefined
-  }
-];
+// Live data only. An invented fallback product ("Generic Fast Charger",
+// UGX 50,000) used to sit here; the list helper never rendered it, but an
+// invented record has no place in the catalogue screen — removed 2026-09-12.
 
 // Call central governance endpoint which lists all products
-const result = await tryFetchAdminList('/governance/admin/products', fallbackProducts, undefined, token);
+const result = await tryFetchAdminList('/governance/admin/products', [], undefined, token);
 const products = result.items || [];
 
 // 1. Extract unique values for contextual filter selections
