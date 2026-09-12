@@ -99,6 +99,29 @@ routes.post('/:id/roles/revoke', requirePermissions([PERMISSIONS.AUTH_MANAGE]), 
   return c.json({ success: true, data: outcome.value });
 });
 
+/**
+ * Deactivate / reactivate an account (pre-live audit, 2026-09-12). Guards live in
+ * the use case: not yourself, not the last active PLATFORM_ADMINISTRATOR, a
+ * reason for deactivation; live sessions of a deactivated account are ended.
+ */
+routes.post('/:id/active', requirePermissions([PERMISSIONS.AUTH_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const actorId = (c.get('user') as { id: string }).id;
+  const active = body?.active === true;
+  const reason = typeof body?.reason === 'string' ? body.reason.slice(0, 300) : null;
+  const id = c.req.param('id') ?? '';
+  const registry = Registry.getInstance();
+  const outcome = await registry.adminUserManagementUseCase.setActive({ userId: id, active, actorId, reason });
+  if (!outcome.ok) return c.json({ success: false, error: { code: outcome.code, message: outcome.message } }, outcome.status as 400 | 403 | 404 | 409);
+  if (outcome.value.changed) {
+    await registry.createAuditLogUseCase.execute({
+      actorId, action: active ? 'ADMIN_USER_REACTIVATED' : 'ADMIN_USER_DEACTIVATED', entity: 'user', entityId: id,
+      previousState: { isActive: !active }, newState: { isActive: active, reason },
+    });
+  }
+  return c.json({ success: true, data: outcome.value });
+});
+
 routes.post('/grant-requests/:id/withdraw', requirePermissions([PERMISSIONS.AUTH_MANAGE]), async (c) => {
   const registry = Registry.getInstance();
   const actorId = (c.get('user') as { id: string }).id;

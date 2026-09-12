@@ -41,6 +41,18 @@ if (!token) {
         umNotice = res2.ok && json2?.success
           ? { kind: "success", text: `User ${json2.data.email} created — role ${json2.data.roleOutcome === "ASSIGNED" ? "assigned" : "awaiting a second administrator's approval"}. Communicate the initial password out-of-band and have them change it on first login.` }
           : { kind: "error", text: json2?.error?.message || "User creation refused." };
+      } else if (action === "set-active") {
+        const id = String(form.get("id") || "");
+        const active = String(form.get("active") || "") === "true";
+        const res2 = await fetch(`${apiBase}/admin/users/${encodeURIComponent(id)}/active`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ active, reason: form.get("reason") || null }),
+        });
+        const json2 = await res2.json().catch(() => null);
+        umNotice = res2.ok && json2?.success
+          ? { kind: "success", text: active ? "Account reactivated. They can sign in again." : "Account deactivated. Their sessions have been ended and they can no longer sign in." }
+          : { kind: "error", text: json2?.error?.message || "Change refused." };
       } else if (action === "decide-grant") {
         const id = String(form.get("id") || "");
         const res2 = await fetch(`${apiBase}/admin/users/grant-requests/${encodeURIComponent(id)}/decide`, {
@@ -152,6 +164,14 @@ try {
                     }`}>
                       {u.isActive ? 'Active' : 'Disabled'}
                     </span>
+                    <form method="POST" class="mt-2 flex flex-col items-center gap-1">
+                      <input type="hidden" name="action" value="set-active" />
+                      <input type="hidden" name="id" value={u.id} />
+                      <input type="hidden" name="active" value={u.isActive ? 'false' : 'true'} />
+                      {u.isActive && <input name="reason" required minlength="5" maxlength="300" placeholder="Reason (required, audited)" class="w-40 rounded border px-2 py-1 text-[10px]" />}
+                      <button type="submit" class="text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-gray-900" onclick={u.isActive ? "return confirm('Deactivate this account? Their sessions end immediately.')" : undefined}>{u.isActive ? 'Deactivate' : 'Reactivate'}</button>
+                    </form>
+                    <a href={`/admin/audit?entity=user&entityId=${encodeURIComponent(u.id)}`} class="mt-1 inline-block text-[10px] font-bold text-gray-400 hover:text-gray-800 underline underline-offset-2">History</a>
                   </td>
                   <td class="p-6 text-right font-mono text-gray-400 text-[10px]">
                     {new Date(u.createdAt).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala' })}

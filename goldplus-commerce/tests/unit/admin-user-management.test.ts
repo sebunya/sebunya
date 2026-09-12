@@ -36,6 +36,20 @@ class FakeRepo implements IAdminUserWriteRepository {
   async userHasRole(userId: string, roleName: string) {
     return this.roles.get(userId)?.has(roleName) ?? false;
   }
+  // Additive port methods (2026-09-12 governance guards): every known user is
+  // active unless deactivated here; a user is "known" once it has any roles.
+  inactive = new Set<string>();
+  async findUserById(id: string) {
+    return this.roles.has(id) || this.inactive.has(id) ? { id, isActive: !this.inactive.has(id) } : null;
+  }
+  async countActiveUsersWithRole(roleName: string) {
+    return [...this.roles.entries()].filter(([id, set]) => set.has(roleName) && !this.inactive.has(id)).length;
+  }
+  async setUserActive(userId: string, active: boolean) {
+    if (!this.roles.has(userId) && !this.inactive.has(userId)) return false;
+    if (active) this.inactive.delete(userId); else this.inactive.add(userId);
+    return true;
+  }
   async createGrantRequest(input: { userId: string; roleName: string; requestedBy: string; reason: string | null }) {
     const dupe = [...this.requests.values()].some(
       (r) => r.userId === input.userId && r.roleName === input.roleName && r.status === 'PENDING',
@@ -117,7 +131,10 @@ describe('AdminUserManagementUseCase (§6 governance)', () => {
     await repo.assignRole('admin-1', 'PLATFORM_ADMINISTRATOR');
     expect(await useCase.revokeRole({ userId: 'admin-1', roleName: 'PLATFORM_ADMINISTRATOR', actorId: 'admin-1' }))
       .toMatchObject({ ok: false, code: 'SELF_LOCKOUT', status: 403 });
-    // A different admin may revoke it.
+    // A different admin may revoke it — provided another active full admin
+    // remains. (2026-09-12: this assertion used to strip the ONLY holder and
+    // leave zero administrators; that is now refused as LAST_ADMIN.)
+    await repo.assignRole('admin-2', 'PLATFORM_ADMINISTRATOR');
     expect(await useCase.revokeRole({ userId: 'admin-1', roleName: 'PLATFORM_ADMINISTRATOR', actorId: 'admin-2' }))
       .toMatchObject({ ok: true, value: { revoked: true } });
   });

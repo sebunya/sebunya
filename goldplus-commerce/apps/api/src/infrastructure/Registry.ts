@@ -720,7 +720,9 @@ export class Registry {
   public readonly adminUserWriteRepo = new DrizzleAdminUserWriteRepository();
   // Stateless hasher constructed inline: the shared field is declared later in the
   // class and TS rightly refuses use-before-initialization.
-  public readonly adminUserManagementUseCase = new AdminUserManagementUseCase(this.adminUserWriteRepo, new ScryptPasswordHasher());
+  public readonly adminUserManagementUseCase = new AdminUserManagementUseCase(this.adminUserWriteRepo, new ScryptPasswordHasher(), {
+    invalidateSessionsAfter: (userId: string, at: Date) => this.userRepo.invalidateSessionsAfter(userId, at),
+  });
   public readonly campaignSendEngine = new CampaignSendEngineUseCase(this.campaignSendRepo, this.campaignSendRepo);
 
   // Wave 2E-3 — notification wording overrides.

@@ -24,6 +24,11 @@ export interface IAdminUserWriteRepository {
   createGrantRequest(input: { userId: string; roleName: string; requestedBy: string; reason: string | null }): Promise<{ id: string } | null>; // null = duplicate pending
   findGrantRequest(id: string): Promise<{ id: string; userId: string; roleName: string; status: string; requestedBy: string } | null>;
   decideGrantRequest(id: string, fields: { status: 'APPROVED' | 'REJECTED'; decidedBy: string; reason: string | null }): Promise<void>;
+  /** Active users currently holding the role — the platform's remaining full administrators when asked for PLATFORM_ADMINISTRATOR. */
+  countActiveUsersWithRole(roleName: string): Promise<number>;
+  findUserById(id: string): Promise<{ id: string; isActive: boolean } | null>;
+  /** false = user unknown. */
+  setUserActive(userId: string, active: boolean): Promise<boolean>;
   listGrantRequests(): Promise<Array<{ id: string; userId: string; roleName: string; status: string; requestedBy: string; requestedAt: Date }>>;
 }
 
@@ -36,8 +41,18 @@ const refuse = (code: string, message: string, status = 400): UmOutcome<never> =
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** Live sessions of a deactivated account must die with it; the auth middleware does not re-read is_active per request. */
+export interface SessionInvalidatorPort {
+  invalidateSessionsAfter(userId: string, at: Date): Promise<void>;
+}
+
 export class AdminUserManagementUseCase {
-  constructor(private readonly repo: IAdminUserWriteRepository, private readonly hasher: PasswordHasherPort) {}
+  constructor(
+    private readonly repo: IAdminUserWriteRepository,
+    private readonly hasher: PasswordHasherPort,
+    /** Optional so existing callers/tests construct unchanged. */
+    private readonly sessions?: SessionInvalidatorPort,
+  ) {}
 
   async createUser(args: {
     email: string;
@@ -112,8 +127,45 @@ export class AdminUserManagementUseCase {
       // Lockout guard: removing your own full-admin role can strand the platform.
       return refuse('SELF_LOCKOUT', 'You cannot revoke your own PLATFORM_ADMINISTRATOR role.', 403);
     }
+    if (args.roleName === PLATFORM_ADMINISTRATOR_ROLE) {
+      // Platform guard (pre-live audit, 2026-09-12): the self check above did not
+      // stop ANOTHER administrator from stripping the last remaining full admin,
+      // leaving nobody able to manage access. Refuse if the target is an active
+      // holder and no other active holder would remain.
+      const target = await this.repo.findUserById(args.userId);
+      const holds = await this.repo.userHasRole(args.userId, PLATFORM_ADMINISTRATOR_ROLE);
+      if (target?.isActive && holds && (await this.repo.countActiveUsersWithRole(PLATFORM_ADMINISTRATOR_ROLE)) <= 1) {
+        return refuse('LAST_ADMIN', 'This is the last active PLATFORM_ADMINISTRATOR. Grant the role to someone else before revoking it.', 409);
+      }
+    }
     const revoked = await this.repo.revokeRole(args.userId, args.roleName);
     return { ok: true, value: { revoked } };
+  }
+
+  /**
+   * Deactivate / reactivate an account. users.is_active existed and login
+   * honoured it, but nothing let an operator set it — a departed staff member
+   * could not be disabled from the Back Office. Guards: never yourself; never
+   * the last active full administrator; a deactivation needs a reason and
+   * ends the account's live sessions.
+   */
+  async setActive(args: { userId: string; active: boolean; actorId: string; reason?: string | null }): Promise<UmOutcome<{ changed: boolean; active: boolean }>> {
+    if (!args.active && args.userId === args.actorId) {
+      return refuse('SELF_LOCKOUT', 'You cannot deactivate your own account.', 403);
+    }
+    const target = await this.repo.findUserById(args.userId);
+    if (!target) return refuse('NOT_FOUND', 'User not found.', 404);
+    if (!args.active) {
+      if ((args.reason ?? '').trim().length < 5) return refuse('REASON_REQUIRED', 'Give a reason for deactivating this account (at least 5 characters).');
+      const holds = await this.repo.userHasRole(args.userId, PLATFORM_ADMINISTRATOR_ROLE);
+      if (target.isActive && holds && (await this.repo.countActiveUsersWithRole(PLATFORM_ADMINISTRATOR_ROLE)) <= 1) {
+        return refuse('LAST_ADMIN', 'This is the last active PLATFORM_ADMINISTRATOR and cannot be deactivated.', 409);
+      }
+    }
+    if (target.isActive === args.active) return { ok: true, value: { changed: false, active: args.active } };
+    await this.repo.setUserActive(args.userId, args.active);
+    if (!args.active) await this.sessions?.invalidateSessionsAfter(args.userId, new Date());
+    return { ok: true, value: { changed: true, active: args.active } };
   }
 
   /** The REQUESTER may withdraw their own PENDING request (withdraw ≠ decide). */

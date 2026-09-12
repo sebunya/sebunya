@@ -50,6 +50,27 @@ export class DrizzleAdminUserWriteRepository implements IAdminUserWriteRepositor
     return deleted.length > 0;
   }
 
+  async countActiveUsersWithRole(roleName: string): Promise<number> {
+    const roleId = await this.roleId(roleName);
+    if (!roleId) return 0;
+    const [row] = await db
+      .select({ n: sql<number>`count(distinct ${userRoles.userId})::int` })
+      .from(userRoles)
+      .innerJoin(users, eq(users.id, userRoles.userId))
+      .where(and(eq(userRoles.roleId, roleId), eq(users.isActive, true)));
+    return Number(row?.n ?? 0);
+  }
+
+  async findUserById(id: string): Promise<{ id: string; isActive: boolean } | null> {
+    const [row] = await db.select({ id: users.id, isActive: users.isActive }).from(users).where(eq(users.id, id)).limit(1);
+    return row ? { id: row.id, isActive: Boolean(row.isActive) } : null;
+  }
+
+  async setUserActive(userId: string, active: boolean): Promise<boolean> {
+    const updated = await db.update(users).set({ isActive: active }).where(eq(users.id, userId)).returning({ id: users.id });
+    return updated.length > 0;
+  }
+
   async userHasRole(userId: string, roleName: string): Promise<boolean> {
     const roleId = await this.roleId(roleName);
     if (!roleId) return false;
