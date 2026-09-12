@@ -160,7 +160,9 @@ describe('a failure says what it is', () => {
   it('the basket is cleared on the server, not just in the cookie', () => {
     const src = read('apps/web/src/pages/checkout.astro');
     expect(src).toMatch(/async function clearBasketAfterOrder/);
-    expect(src.match(/await clearBasketAfterOrder\(\);/g)?.length).toBe(3);
+    // Four sites: pay-now handoff, offline order, other confirmed outcomes, and
+    // the already-ordered resubmit (the basket became that order too).
+    expect(src.match(/await clearBasketAfterOrder\(\);/g)?.length).toBe(4);
   });
 
   it('device-priced totals are declared, never shown silently', () => {

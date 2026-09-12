@@ -13,8 +13,11 @@ interface Props {
    */
   actionHref?: string;
   actionLabel?: string;
+  /** A human, for the cases a button cannot solve. Shown for errors only. */
+  helpHref?: string;
+  helpPhone?: string;
 }
-const { status, message, reference, actionHref, actionLabel } = Astro.props;
+const { status, message, reference, actionHref, actionLabel, helpHref, helpPhone } = Astro.props;
 
 const palette = {
   success: { bg: 'bg-green-50', border: 'border-green-200', text: 'text-green-900', label: 'Success' },
@@ -32,6 +35,9 @@ const c = status ? palette[status] : null;
       {reference && <p class="text-xs mt-2 font-mono text-gray-700">Ref: {reference}</p>}
       {actionHref && actionLabel && (
         <a href={actionHref} class="inline-flex items-center gap-1.5 mt-3 rounded-full bg-gray-900 text-white px-4 py-2 text-xs font-bold hover:bg-black transition-colors">{actionLabel} <span aria-hidden="true">→</span></a>
+      )}
+      {status === 'error' && helpHref && (
+        <p class="text-xs mt-3 text-gray-700">Stuck? <a href={helpHref} class="font-bold underline underline-offset-2">Message us on WhatsApp</a>{helpPhone && <> or call {helpPhone}</>} — we will sort it out with you.</p>
       )}
     </div>
   </div>

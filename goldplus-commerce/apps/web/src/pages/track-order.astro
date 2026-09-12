@@ -166,8 +166,17 @@ const paymentCopy = order ? paymentStatusCopy(order.paymentStatus) : null;
                 </div>
               ) : isUnpaid ? (
                 <div class="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  <p class="font-semibold">Waiting for payment before we prepare it.</p>
-                  <p class="mt-1 text-xs">If you started paying online and it has not cleared, please do not pay again. Request a follow-up below or ask us on WhatsApp and we will check.</p>
+                  {order.paymentStatus === 'failed' ? (
+                    <>
+                      <p class="font-semibold">Your online payment did not go through — nothing was taken.</p>
+                      <p class="mt-1 text-xs">Your order is still saved. You can pay on delivery or at our shop, or ask us on WhatsApp and we will send you a payment link.</p>
+                    </>
+                  ) : (
+                    <>
+                      <p class="font-semibold">Waiting for payment before we prepare it.</p>
+                      <p class="mt-1 text-xs">If you started paying online and it has not cleared, please do not pay again. Request a follow-up below or ask us on WhatsApp and we will check.</p>
+                    </>
+                  )}
                 </div>
               ) : (
                 <ol class="mt-6 space-y-0" aria-label="Dispatch progress">

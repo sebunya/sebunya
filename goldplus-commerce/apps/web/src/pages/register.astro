@@ -134,7 +134,7 @@ if (Astro.request.method === 'POST') {
           <Notice kind="warning" title="Sign-up is temporarily unavailable" message="Please try again shortly. You can still shop and check out as a guest." />
         </div>
       )}
-      {!notConfigured && <FormFeedback status={status} message={message} />}
+      {!notConfigured && <FormFeedback status={status} message={message} actionHref={status === 'error' && message?.startsWith('There is already an account') ? '/login' : undefined} actionLabel="Sign in instead" />}
 
       <SocialSignIn returnTo={Astro.url.searchParams.get('returnTo') ?? '/account'} intent="signup" />
 

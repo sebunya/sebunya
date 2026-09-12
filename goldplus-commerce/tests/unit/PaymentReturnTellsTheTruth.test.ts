@@ -47,10 +47,13 @@ describe('payment return copy', () => {
     }
   });
 
-  it('offers a retry only on a genuine failure, and says it will not duplicate the order', () => {
+  it('a genuine failure leads to the ORDER, not to a checkout whose basket is gone, and says it will not duplicate the order', () => {
     const c = paymentReturnCopy('failed', 'GP-202608-3F7A');
-    expect(c.primaryCta.href).toBe('/checkout');
+    // /checkout redirects to an empty cart once the basket became an order — that
+    // was a dead end the copy itself apologised for ("if the checkout looks empty").
+    expect(c.primaryCta.href).toBe('/track-order?reference=GP-202608-3F7A');
     expect(c.next).toMatch(/not create a second/i);
+    expect(c.next).toMatch(/payment link|pay on delivery/i);
   });
 
   it('treats an unrecognised or empty status as unknown, never as success or failure', () => {

@@ -234,13 +234,13 @@ export function paymentStartMessageFor(code: PaymentStartErrorCode | 'NETWORK'):
     case 'NETWORK':
       return 'We could not reach the payment service. Your order is saved. Please try again shortly.';
     case 'CHECKOUT_INTENT_REQUIRED':
-      return 'Your checkout session expired. Please reload the page and try again.';
+      return 'This checkout page has been open for a while. Reload it and try again — your order is saved and you have not been charged.';
     case 'ORDER_NOT_FOUND':
     case 'PAYMENT_START_FAILED':
     default:
       // `default` so a code this client does not know (the API once returned
       // ORDER_ID_REQUIRED) cannot yield `undefined` and a blank error box.
-      return 'We could not start payment for this order. Your order is saved. Please contact us and quote the order number shown here.';
+      return 'We could not start the online payment for this order. Your order is saved and nothing has been charged. You can pay on delivery or at the shop, or message us and we will send you a payment link.';
   }
 }
 
@@ -254,6 +254,8 @@ export function paymentStartMessageFor(code: PaymentStartErrorCode | 'NETWORK'):
 export function customerMessageFor(result: CheckoutCallResult): {
   status: 'received' | 'awaiting_payment' | 'error' | 'retry';
   message: string;
+  /** A way forward, when one exists that a button can open. */
+  action?: { href: string; label: string };
 } {
   if (result.ok) {
     switch (result.data.nextAction) {
@@ -295,7 +297,7 @@ export function customerMessageFor(result: CheckoutCallResult): {
       // ever reached if that recovery itself fails.
       return {
         status: 'retry',
-        message: 'That checkout session had already been used. Please submit the form again.',
+        message: 'That attempt had already been used. Please press Complete order once more — your details are still filled in. You have not been charged.',
       };
     case 'CHECKOUT_ALREADY_ORDERED':
       // Deliberately NOT a second order. The page names the existing one and
@@ -310,12 +312,13 @@ export function customerMessageFor(result: CheckoutCallResult): {
     case 'CHECKOUT_INTENT_REVOKED':
       return {
         status: 'error',
-        message: 'Your checkout session expired. Please reload the page and try again.',
+        message: 'This checkout page has been open for a while, so it needs a fresh start. Reload it and your basket will still be here. You have not been charged.',
+        action: { href: '/checkout', label: 'Reload checkout' },
       };
     case 'STOCK_NOT_RESERVED':
       return {
         status: 'error',
-        message: 'Your order was recorded but stock could not be confirmed, so it cannot be paid for yet.',
+        message: 'Your order is saved, but we could not confirm stock for it yet, so it cannot be paid for right now. We will contact you as soon as it is confirmed — or message us and we will check straight away. You have not been charged.',
       };
     case 'NETWORK':
       return {
@@ -338,6 +341,7 @@ export function customerMessageFor(result: CheckoutCallResult): {
     case 'PRODUCT_UNAVAILABLE':
       return {
         status: 'error',
+        action: { href: '/cart', label: 'Go to your cart' },
         message: 'One of the items in your basket is no longer available. Please remove it from your cart and try again. You have not been charged.',
       };
     case 'PRICE_UNAVAILABLE':
