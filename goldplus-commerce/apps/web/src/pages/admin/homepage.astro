@@ -2,7 +2,7 @@
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import { readSessionToken } from '../../lib/session';
 import { apiBase } from '../../lib/api';
-import { HOME_TRUST_ICON_KEYS } from '@goldplus/shared';
+import { HOME_TRUST_ICON_KEYS, DEFAULT_HOMEPAGE_CONTENT } from '@goldplus/shared';
 
 /**
  * Homepage marketing content editor (0114). The trust strip and the three
@@ -35,7 +35,26 @@ if (Astro.request.method === 'POST') {
       heading: String(form.get('whatsapp.heading') ?? '').trim(),
       body: String(form.get('whatsapp.body') ?? '').trim(),
     };
-    const res = await authed('/admin/homepage', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config: { trustItems, pathwayCards, whatsappChannel } }) });
+    const FCOLS = 4, FLINKS = 8, FLEGAL = 8;
+    const footer = {
+      columns: Array.from({ length: FCOLS }, (_, ci) => ({
+        heading: String(form.get(`footer.col.${ci}.heading`) ?? '').trim(),
+        links: Array.from({ length: FLINKS }, (_, li) => ({
+          label: String(form.get(`footer.col.${ci}.link.${li}.label`) ?? '').trim(),
+          href: String(form.get(`footer.col.${ci}.link.${li}.href`) ?? '').trim(),
+        })).filter((l) => l.label && l.href),
+      })).filter((c) => c.heading && c.links.length > 0),
+      legalLinks: Array.from({ length: FLEGAL }, (_, i) => ({
+        label: String(form.get(`footer.legal.${i}.label`) ?? '').trim(),
+        href: String(form.get(`footer.legal.${i}.href`) ?? '').trim(),
+      })).filter((l) => l.label && l.href),
+      attribution: { label: String(form.get('footer.attribution.label') ?? '').trim(), href: String(form.get('footer.attribution.href') ?? '').trim() },
+      paymentHeading: String(form.get('footer.paymentHeading') ?? '').trim(),
+      copyrightNotice: String(form.get('footer.copyrightNotice') ?? '').trim(),
+      visitHeading: String(form.get('footer.visitHeading') ?? '').trim(),
+      openHeading: String(form.get('footer.openHeading') ?? '').trim(),
+    };
+    const res = await authed('/admin/homepage', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ config: { trustItems, pathwayCards, whatsappChannel, footer } }) });
     const json: any = await res.json().catch(() => null);
     notice = res.ok && json?.success
       ? { kind: 'ok', message: `Saved (version ${json.data.version}). Live on the homepage within a minute.` }
@@ -57,6 +76,12 @@ try {
 const trust = (i: number) => cfg?.trustItems?.[i] ?? { iconKey: 'shield', title: '', body: '' };
 const card = (i: number) => cfg?.pathwayCards?.[i] ?? { title: '', body: '', ctaLabel: '', href: '' };
 const wa = cfg?.whatsappChannel ?? { heading: 'New at GoldPlus', body: 'New arrivals, restocks and offers — straight from GoldPlus.' };
+const ftr = cfg?.footer ?? DEFAULT_HOMEPAGE_CONTENT.footer;
+const FCOLS = 4, FLINKS = 8, FLEGAL = 8;
+const fcol = (ci: number) => ftr.columns?.[ci] ?? { heading: '', links: [] };
+const flink = (ci: number, li: number) => (ftr.columns?.[ci]?.links?.[li]) ?? { label: '', href: '' };
+const flegal = (i: number) => ftr.legalLinks?.[i] ?? { label: '', href: '' };
+const fattr = ftr.attribution ?? { label: '', href: '' };
 ---
 <AdminLayout title="Homepage content">
   <div class="mx-auto max-w-3xl px-4 py-8">
@@ -126,6 +151,58 @@ const wa = cfg?.whatsappChannel ?? { heading: 'New at GoldPlus', body: 'New arri
             <label class="text-xs block">Supporting copy
               <textarea name="whatsapp.body" rows="2" class="mt-1 w-full rounded border px-3 py-2 text-sm">{wa.body}</textarea>
             </label>
+          </div>
+        </section>
+
+        <section>
+          <h2 class="text-sm font-black uppercase tracking-wider text-slate-500">Footer link columns</h2>
+          <p class="mt-1 text-xs text-slate-500">Heading + links for each footer column. Leave a link row blank to remove it; fill a blank row to add one. Clear a whole column's heading and links to hide it.</p>
+          <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
+            {Array.from({ length: FCOLS }).map((_, ci) => (
+              <div class="rounded-xl border border-slate-200 p-4 space-y-2">
+                <label class="text-xs block font-bold">Column heading
+                  <input name={`footer.col.${ci}.heading`} value={fcol(ci).heading} class="mt-1 w-full rounded border px-3 py-2 text-sm" />
+                </label>
+                {Array.from({ length: FLINKS }).map((_, li) => (
+                  <div class="grid grid-cols-2 gap-2">
+                    <input name={`footer.col.${ci}.link.${li}.label`} value={flink(ci, li).label} placeholder="Label" class="rounded border px-2 py-1.5 text-xs" />
+                    <input name={`footer.col.${ci}.link.${li}.href`} value={flink(ci, li).href} placeholder="/path" class="rounded border px-2 py-1.5 text-xs font-mono" />
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section>
+          <h2 class="text-sm font-black uppercase tracking-wider text-slate-500">Footer legal &amp; brand row</h2>
+          <div class="mt-3 rounded-xl border border-slate-200 p-4 space-y-2">
+            <p class="text-xs font-bold">Legal links</p>
+            {Array.from({ length: FLEGAL }).map((_, i) => (
+              <div class="grid grid-cols-2 gap-2">
+                <input name={`footer.legal.${i}.label`} value={flegal(i).label} placeholder="Label" class="rounded border px-2 py-1.5 text-xs" />
+                <input name={`footer.legal.${i}.href`} value={flegal(i).href} placeholder="/path" class="rounded border px-2 py-1.5 text-xs font-mono" />
+              </div>
+            ))}
+            <p class="text-xs font-bold pt-2">Attribution link</p>
+            <div class="grid grid-cols-2 gap-2">
+              <input name="footer.attribution.label" value={fattr.label} placeholder="Label" class="rounded border px-2 py-1.5 text-xs" />
+              <input name="footer.attribution.href" value={fattr.href} placeholder="https://…" class="rounded border px-2 py-1.5 text-xs font-mono" />
+            </div>
+            <label class="text-xs block pt-2">Payment heading
+              <input name="footer.paymentHeading" value={ftr.paymentHeading} class="mt-1 w-full rounded border px-3 py-2 text-sm" />
+            </label>
+            <label class="text-xs block">Copyright notice (year is added automatically)
+              <input name="footer.copyrightNotice" value={ftr.copyrightNotice} class="mt-1 w-full rounded border px-3 py-2 text-sm" />
+            </label>
+            <div class="grid grid-cols-2 gap-2">
+              <label class="text-xs block">"Visit" heading
+                <input name="footer.visitHeading" value={ftr.visitHeading} class="mt-1 w-full rounded border px-3 py-2 text-sm" />
+              </label>
+              <label class="text-xs block">"Open" heading
+                <input name="footer.openHeading" value={ftr.openHeading} class="mt-1 w-full rounded border px-3 py-2 text-sm" />
+              </label>
+            </div>
           </div>
         </section>
 

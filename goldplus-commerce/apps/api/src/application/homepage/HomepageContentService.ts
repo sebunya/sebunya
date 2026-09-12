@@ -21,10 +21,29 @@ function sanitize(input: any): HomepageContent {
     heading: s(input?.whatsappChannel?.heading, 80) || DEFAULT_HOMEPAGE_CONTENT.whatsappChannel.heading,
     body: s(input?.whatsappChannel?.body, 200) || DEFAULT_HOMEPAGE_CONTENT.whatsappChannel.body,
   };
+  const link = (l: any): { label: string; href: string } => ({ label: s(l?.label, 60), href: s(l?.href, 300) });
+  const validLink = (l: { label: string; href: string }) => Boolean(l.label && l.href);
+  const df = DEFAULT_HOMEPAGE_CONTENT.footer;
+  const columns = (Array.isArray(input?.footer?.columns) ? input.footer.columns : [])
+    .map((c: any) => ({ heading: s(c?.heading, 40), links: (Array.isArray(c?.links) ? c.links : []).map(link).filter(validLink).slice(0, 12) }))
+    .filter((c: any) => c.heading && c.links.length > 0)
+    .slice(0, 6);
+  const legalLinks = (Array.isArray(input?.footer?.legalLinks) ? input.footer.legalLinks : []).map(link).filter(validLink).slice(0, 12);
+  const attribution = validLink(link(input?.footer?.attribution)) ? link(input?.footer?.attribution) : df.attribution;
+  const footer = {
+    columns: columns.length > 0 ? columns : df.columns,
+    legalLinks: legalLinks.length > 0 ? legalLinks : df.legalLinks,
+    attribution,
+    paymentHeading: s(input?.footer?.paymentHeading, 60) || df.paymentHeading,
+    copyrightNotice: s(input?.footer?.copyrightNotice, 120) || df.copyrightNotice,
+    visitHeading: s(input?.footer?.visitHeading, 40) || df.visitHeading,
+    openHeading: s(input?.footer?.openHeading, 40) || df.openHeading,
+  };
   return {
     trustItems: trustItems.length > 0 ? trustItems : DEFAULT_HOMEPAGE_CONTENT.trustItems,
     pathwayCards: pathwayCards.length > 0 ? pathwayCards : DEFAULT_HOMEPAGE_CONTENT.pathwayCards,
     whatsappChannel,
+    footer,
   };
 }
 

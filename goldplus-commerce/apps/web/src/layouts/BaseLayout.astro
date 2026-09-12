@@ -5,13 +5,16 @@ import GpNav from '../components/GpNav.astro';
 import { whatsappSupportNumber } from '../lib/api';
 import { getBusinessInfo } from '../lib/businessInfo';
 import { getHomepageContent } from '../lib/homepageContent';
+import { DEFAULT_HOMEPAGE_CONTENT } from '@goldplus/shared';
 import { SITE_ORIGIN } from '../lib/sitemap';
 import { resolveMeasurementConfig } from '../lib/measurement';
 
 // Business/contact info — admin-editable, DB-backed (falls back to DEFAULT).
 const biz = await getBusinessInfo();
-// WhatsApp channel block copy — admin-editable via homepage_content (falls back to DEFAULT).
-const whatsappChannel = (await getHomepageContent()).whatsappChannel ?? { heading: 'New at GoldPlus', body: 'New arrivals, restocks and offers — straight from GoldPlus.' };
+// Footer copy + links — admin-editable via homepage_content (falls back to DEFAULT).
+const homepageContentForFooter = await getHomepageContent();
+const whatsappChannel = homepageContentForFooter.whatsappChannel ?? DEFAULT_HOMEPAGE_CONTENT.whatsappChannel;
+const footer = homepageContentForFooter.footer ?? DEFAULT_HOMEPAGE_CONTENT.footer;
 
 interface Props {
   title: string;
@@ -231,13 +234,13 @@ const measurement = resolveMeasurementConfig(import.meta.env);
             </a>
             <div class="mt-7 grid grid-cols-1 sm:grid-cols-2 gap-6 text-xs">
               <div>
-                <p class="font-bold text-white mb-1.5">Visit the shop</p>
+                <p class="font-bold text-white mb-1.5">{footer.visitHeading}</p>
                 {biz.addressLine1 && <p class="text-slate-400 leading-relaxed">{biz.addressLine1}</p>}
                 {biz.addressLine2 && <p class="text-slate-500 leading-relaxed">{biz.addressLine2}</p>}
                 {biz.phoneDisplay && <a href={biz.phoneDial || `tel:${biz.phoneDisplay}`} class="mt-2 inline-block font-bold text-slate-300 hover:text-brand-primary transition-colors">{biz.phoneDisplay}</a>}
               </div>
               <div>
-                <p class="font-bold text-white mb-1.5">Open</p>
+                <p class="font-bold text-white mb-1.5">{footer.openHeading}</p>
                 {biz.shopHours && <p class="text-slate-400">Shop &middot; {biz.shopHours}</p>}
                 {biz.deliveryHours && <p class="text-slate-400">Delivery &middot; {biz.deliveryHours}</p>}
                 {biz.openDays && <p class="text-slate-500">{biz.openDays}</p>}
@@ -246,55 +249,16 @@ const measurement = resolveMeasurementConfig(import.meta.env);
             </div>
           </div>
 
-          <div class="flex flex-col">
-            <h4 class="font-bold text-xs uppercase tracking-wider mb-5 text-white">Shop</h4>
-            <ul class="space-y-3.5 text-xs">
-              <li><a href="/shop?category=power" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Power</a></li>
-              <li><a href="/shop?category=sound" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Sound</a></li>
-              <li><a href="/shop?category=storage" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Storage</a></li>
-              <li><a href="/shop?category=car" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Car</a></li>
-              <li><a href="/shop?category=pc" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">PC</a></li>
-              <li><a href="/shop" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Shop all</a></li>
-              <li><a href="/product-finder" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Find the right product</a></li>
-              <li><a href="/blog" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Guides &amp; advice</a></li>
-            </ul>
-          </div>
-
-          <div class="flex flex-col">
-            <h4 class="font-bold text-xs uppercase tracking-wider mb-5 text-white">Buying</h4>
-            <ul class="space-y-3.5 text-xs">
-              <li><a href="/cart" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Your cart</a></li>
-              <li><a href="/checkout" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Checkout</a></li>
-              <li><a href="/track-order" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Track your order</a></li>
-              <li><a href="/quote-request" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Request a quote</a></li>
-              <li><a href="/loyalty" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">GoldPlus Rewards</a></li>
-              <li><a href="/dealers/apply" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Become a dealer</a></li>
-            </ul>
-          </div>
-
-          <div class="flex flex-col">
-            <h4 class="font-bold text-xs uppercase tracking-wider mb-5 text-white">Account</h4>
-            <ul class="space-y-3.5 text-xs">
-              <li><a href="/account" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">My account</a></li>
-              <li><a href="/account/orders" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Your orders</a></li>
-              <li><a href="/account/addresses" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Saved addresses</a></li>
-              <li><a href="/account/loyalty" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Points &amp; rewards</a></li>
-              <li><a href="/login" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Sign in</a></li>
-              <li><a href="/register" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Create an account</a></li>
-            </ul>
-          </div>
-
-          <div class="flex flex-col">
-            <h4 class="font-bold text-xs uppercase tracking-wider mb-5 text-white">Help</h4>
-            <ul class="space-y-3.5 text-xs">
-              <li><a href="/verification" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Verify a product</a></li>
-              <li><a href="/faq" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Questions and answers</a></li>
-              <li><a href="/support" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Get support</a></li>
-              <li><a href="/support/issue" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Report an issue</a></li>
-              <li><a href="/support/fake" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Report a counterfeit</a></li>
-              <li><a href="/preferences" class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">Your preferences</a></li>
-            </ul>
-          </div>
+          {footer.columns.map((col) => (
+            <div class="flex flex-col">
+              <h4 class="font-bold text-xs uppercase tracking-wider mb-5 text-white">{col.heading}</h4>
+              <ul class="space-y-3.5 text-xs">
+                {col.links.map((l) => (
+                  <li><a href={l.href} class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">{l.label}</a></li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </div>
 
         {/* SOCIAL, CONTACT & COMMUNITY ICON ROW */}
@@ -322,29 +286,26 @@ const measurement = resolveMeasurementConfig(import.meta.env);
         {/* LOWER BRAND & LEGAL ROW */}
         <div class="border-t border-zinc-900 mt-10 pt-10 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-8 text-xs text-slate-500">
           <div class="max-w-sm">
-            <h4 class="font-bold text-xs uppercase tracking-wider mb-4 text-white">Pay how you already pay</h4>
+            <h4 class="font-bold text-xs uppercase tracking-wider mb-4 text-white">{footer.paymentHeading}</h4>
             <div class="flex flex-wrap items-center gap-2.5 mb-6">
               <span class="inline-flex items-center justify-center h-12 min-w-[76px] px-4 rounded-xl bg-white shadow-sm" title="MTN Mobile Money"><img src="/payment/mtn-momo.svg" alt="MTN Mobile Money" class="h-9 w-auto object-contain" /></span>
               <span class="inline-flex items-center justify-center h-12 min-w-[76px] px-4 rounded-xl bg-white shadow-sm" title="Airtel Money"><img src="/payment/airtel-money.svg" alt="Airtel Money" class="h-9 w-auto object-contain" /></span>
               <span class="inline-flex items-center justify-center h-12 min-w-[76px] px-4 rounded-xl bg-white shadow-sm" title="Visa"><img src="/payment/visa.svg" alt="Visa" class="h-5 w-auto object-contain" /></span>
               <span class="inline-flex items-center justify-center h-12 min-w-[76px] px-4 rounded-xl bg-white shadow-sm" title="Mastercard"><img src="/payment/mastercard.svg" alt="Mastercard" class="h-7 w-auto object-contain" /></span>
             </div>
-            <p>&copy; {new Date().getFullYear()} GoldPlus. All rights reserved.</p>
+            <p>&copy; {new Date().getFullYear()} {footer.copyrightNotice}</p>
           </div>
           <div class="flex flex-wrap items-center gap-x-6 gap-y-3 justify-start md:justify-end">
-            <a href="/privacy" class="hover:text-white transition-colors hover:underline decoration-white/30 underline-offset-4">Privacy Policy</a>
-            <a href="/preferences" class="hover:text-white transition-colors hover:underline decoration-white/30 underline-offset-4">Preferences</a>
-            <a href="/terms" class="hover:text-white transition-colors hover:underline decoration-white/30 underline-offset-4">Terms of sale</a>
-            <a href="/returns" class="hover:text-white transition-colors hover:underline decoration-white/30 underline-offset-4">Returns</a>
-            <a href="/warranty" class="hover:text-white transition-colors hover:underline decoration-white/30 underline-offset-4">Warranty</a>
-            <a href="/cookies" class="hover:text-white transition-colors hover:underline decoration-white/30 underline-offset-4">Cookies</a>
+            {footer.legalLinks.map((l) => (
+              <a href={l.href} class="hover:text-white transition-colors hover:underline decoration-white/30 underline-offset-4">{l.label}</a>
+            ))}
             <a
-              href="https://www.tenxafrica.com"
+              href={footer.attribution.href}
               target="_blank"
               rel="noopener noreferrer"
               class="hover:text-white transition-colors hover:underline decoration-white/30 underline-offset-4 inline-flex items-center gap-1"
             >
-              Built by Ten-X Africa
+              {footer.attribution.label}
             </a>
           </div>
         </div>
