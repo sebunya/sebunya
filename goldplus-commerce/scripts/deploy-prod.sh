@@ -14,6 +14,15 @@ cd /opt/goldplus/app/goldplus-commerce
 exec 9>/tmp/goldplus-deploy.lock
 flock -n 9 || { echo "STOP: another deploy-prod.sh is already running (lock /tmp/goldplus-deploy.lock)"; exit 1; }
 PREV="$(git rev-parse HEAD)"
+# Preserve the images that are RUNNING RIGHT NOW under an unambiguous name,
+# before anything is fetched or built. The rollback-<sha> tag written at the
+# end of a roll names the image just built (its own sha), so the previous
+# runtime was only reachable through the previous roll having done the same.
+# This makes the pre-mutation runtime recoverable even if that chain is broken.
+for s in $SERVICES; do
+  IMG="$(docker inspect -f '{{.Image}}' "goldplus-commerce-$s-1" 2>/dev/null || true)"
+  [ -n "$IMG" ] && docker tag "$IMG" "goldplus-commerce-$s:rollback-pre-$(git rev-parse --short "$PREV")"
+done
 git fetch origin deploy/price-floor-145k -q
 git merge --ff-only FETCH_HEAD -q
 HEAD="$(git rev-parse --short HEAD)"
