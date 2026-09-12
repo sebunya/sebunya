@@ -10,6 +10,7 @@ import {
   PLATFORM_ADMINISTRATOR_ROLE,
   registryPermissionRows,
 } from './permissionRegistryContract';
+import { ROLE_PERMISSION_BASELINES } from '@goldplus/shared';
 
 /**
  * Converges the database on the code permission registry at every boot.
@@ -34,6 +35,8 @@ export interface PermissionSyncSummary {
   adminGrantsAdded: number;
   legacyGrantsAdded: number;
   legalReviewerGrantsAdded: number;
+  /** Baseline grants written to governance roles that held NO permission at all (first seed only). */
+  baselineGrantsAdded: number;
   bootstrapAdminAssigned: boolean;
   permissionsBeyondRegistry: number;
 }
@@ -85,22 +88,34 @@ export async function syncPermissionRegistry(): Promise<PermissionSyncSummary> {
     const adminGrantsAdded = await grantAll(adminRoleId);
 
 
-    // §6/§7 alignment: LEGAL_REVIEWER's function is defined by its name — reviewing
-    // and approving legal wording. Baseline grants are add-only, like everything in
-    // this sync; other vocabulary roles stay empty pending business decisions.
-    const legalReviewerId = await findRoleId('LEGAL_REVIEWER');
+    // Baselines (2026-09-12): a governance role that holds NO permission at all
+    // receives its baseline set once. A role that already holds anything — even
+    // one code — is left exactly as the Back Office last set it: the roles
+    // screen is the authority after the first seed and a boot must never undo
+    // an operator's edit. PLATFORM_ADMINISTRATOR is converged by grantAll above.
+    // Still add-only: nothing is ever removed here.
+    let baselineGrantsAdded = 0;
     let legalReviewerGrantsAdded = 0;
-    if (legalReviewerId) {
-      const baselineCodes = ['legal.read', 'legal.approve'];
-      const baselineIds = baselineCodes.map((code) => existingByCode.get(code)).filter((v): v is string => Boolean(v));
-      if (baselineIds.length > 0) {
-        const granted = await tx
-          .insert(rolePermissions)
-          .values(baselineIds.map((permissionId) => ({ roleId: legalReviewerId, permissionId })))
-          .onConflictDoNothing()
-          .returning({ permissionId: rolePermissions.permissionId });
-        legalReviewerGrantsAdded = granted.length;
-      }
+    for (const roleName of GOVERNANCE_ROLES) {
+      if (roleName === PLATFORM_ADMINISTRATOR_ROLE) continue;
+      const roleId = await findRoleId(roleName);
+      if (!roleId) continue;
+      const [held] = await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(rolePermissions)
+        .where(eq(rolePermissions.roleId, roleId));
+      if (Number(held?.n ?? 0) > 0) continue;
+      const baselineIds = (ROLE_PERMISSION_BASELINES[roleName] ?? [])
+        .map((code) => existingByCode.get(code))
+        .filter((v): v is string => Boolean(v));
+      if (baselineIds.length === 0) continue;
+      const granted = await tx
+        .insert(rolePermissions)
+        .values(baselineIds.map((permissionId) => ({ roleId, permissionId })))
+        .onConflictDoNothing()
+        .returning({ permissionId: rolePermissions.permissionId });
+      baselineGrantsAdded += granted.length;
+      if (roleName === 'LEGAL_REVIEWER') legalReviewerGrantsAdded = granted.length;
     }
 
     // Top up (never trim) the legacy full-access role the bootstrap admin holds today.
@@ -132,6 +147,7 @@ export async function syncPermissionRegistry(): Promise<PermissionSyncSummary> {
       adminGrantsAdded,
       legacyGrantsAdded,
       legalReviewerGrantsAdded,
+      baselineGrantsAdded,
       bootstrapAdminAssigned,
       permissionsBeyondRegistry: existing.filter((p) => !registry.some((r) => r.code === `${p.action}.${p.resource}`)).length,
     };
@@ -142,6 +158,7 @@ export async function syncPermissionRegistry(): Promise<PermissionSyncSummary> {
       summary.adminGrantsAdded > 0 ||
       summary.legacyGrantsAdded > 0 ||
       summary.legalReviewerGrantsAdded > 0 ||
+      summary.baselineGrantsAdded > 0 ||
       summary.bootstrapAdminAssigned;
 
     if (changed) {

@@ -1,4 +1,4 @@
-import { GOVERNANCE_ROLES, PLATFORM_ADMINISTRATOR_ROLE } from '@goldplus/shared';
+import { FULL_ACCESS_ROLES, PLATFORM_ADMINISTRATOR_ROLE } from '@goldplus/shared';
 
 /**
  * Governed admin-user creation and role assignment (§6 completion).
@@ -18,6 +18,8 @@ import { GOVERNANCE_ROLES, PLATFORM_ADMINISTRATOR_ROLE } from '@goldplus/shared'
 export interface IAdminUserWriteRepository {
   findUserByEmail(email: string): Promise<{ id: string } | null>;
   createUser(input: { email: string; phone: string | null; passwordHash: string }): Promise<{ id: string; email: string }>;
+  /** Any role that exists — the governance vocabulary plus roles created in the Back Office. */
+  roleExists(roleName: string): Promise<boolean>;
   assignRole(userId: string, roleName: string): Promise<boolean>; // false = role unknown
   revokeRole(userId: string, roleName: string): Promise<boolean>;
   userHasRole(userId: string, roleName: string): Promise<boolean>;
@@ -63,8 +65,8 @@ export class AdminUserManagementUseCase {
   }): Promise<UmOutcome<{ userId: string; email: string; roleOutcome: 'ASSIGNED' | 'PENDING_APPROVAL' }>> {
     const email = args.email.trim().toLowerCase();
     if (!EMAIL_RE.test(email)) return refuse('BAD_EMAIL', 'A valid email address is required.');
-    if (!(GOVERNANCE_ROLES as readonly string[]).includes(args.roleName)) {
-      return refuse('UNKNOWN_ROLE', `roleName must be one of the governance vocabulary: ${GOVERNANCE_ROLES.join(', ')}`);
+    if (!(await this.repo.roleExists(args.roleName))) {
+      return refuse('UNKNOWN_ROLE', `No role named ${args.roleName} exists. Roles are managed in the Back Office.`);
     }
     const password = args.initialPassword;
     if (typeof password !== 'string' || password.length < 12) {
@@ -81,7 +83,7 @@ export class AdminUserManagementUseCase {
     const passwordHash = await this.hasher.hash(password);
     const user = await this.repo.createUser({ email, phone: args.phone?.trim() || null, passwordHash });
 
-    if (args.roleName === PLATFORM_ADMINISTRATOR_ROLE) {
+    if ((FULL_ACCESS_ROLES as readonly string[]).includes(args.roleName)) {
       // Never direct — the two-person rule starts at creation time.
       await this.repo.createGrantRequest({ userId: user.id, roleName: args.roleName, requestedBy: args.actorId, reason: 'Requested at user creation' });
       return { ok: true, value: { userId: user.id, email: user.email, roleOutcome: 'PENDING_APPROVAL' } };
@@ -92,10 +94,11 @@ export class AdminUserManagementUseCase {
   }
 
   async grantRole(args: { userId: string; roleName: string; actorId: string; reason?: string | null }): Promise<UmOutcome<{ outcome: 'ASSIGNED' | 'PENDING_APPROVAL' }>> {
-    if (!(GOVERNANCE_ROLES as readonly string[]).includes(args.roleName)) {
-      return refuse('UNKNOWN_ROLE', `roleName must be one of: ${GOVERNANCE_ROLES.join(', ')}`);
+    if (!(await this.repo.roleExists(args.roleName))) {
+      return refuse('UNKNOWN_ROLE', `No role named ${args.roleName} exists. Roles are managed in the Back Office.`);
     }
-    if (args.roleName === PLATFORM_ADMINISTRATOR_ROLE) {
+    if ((FULL_ACCESS_ROLES as readonly string[]).includes(args.roleName)) {
+      // Both full-access roles go through the two-person rule.
       const request = await this.repo.createGrantRequest({ userId: args.userId, roleName: args.roleName, requestedBy: args.actorId, reason: args.reason ?? null });
       if (!request) return refuse('DUPLICATE_PENDING', 'A pending request for this grant already exists.', 409);
       return { ok: true, value: { outcome: 'PENDING_APPROVAL' } };

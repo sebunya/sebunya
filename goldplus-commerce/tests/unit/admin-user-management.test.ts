@@ -3,6 +3,7 @@ import {
   AdminUserManagementUseCase,
   IAdminUserWriteRepository,
 } from '../../apps/api/src/application/use-cases/identity/AdminUserManagementUseCase';
+import { GOVERNANCE_ROLES } from '@goldplus/shared';
 
 /**
  * §6 governance invariants: PLATFORM_ADMINISTRATOR is never granted in one step
@@ -24,7 +25,12 @@ class FakeRepo implements IAdminUserWriteRepository {
     this.users.set(user.id, user);
     return user;
   }
+  knownRoles = new Set<string>(GOVERNANCE_ROLES);
+  async roleExists(roleName: string) {
+    return this.knownRoles.has(roleName);
+  }
   async assignRole(userId: string, roleName: string) {
+    if (!this.knownRoles.has(roleName)) return false;
     const set = this.roles.get(userId) ?? new Set();
     set.add(roleName);
     this.roles.set(userId, set);

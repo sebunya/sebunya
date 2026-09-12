@@ -68,6 +68,8 @@ import { DrizzleAddressRepository } from './db/repositories/DrizzleAddressReposi
 import { DrizzleRoleRepository } from './db/repositories/DrizzleRoleRepository';
 import { DrizzleFakeReportRepository } from './db/repositories/DrizzleFakeReportRepository';
 import { DrizzleAdminRoleReadRepository } from './db/repositories/DrizzleAdminRoleReadRepository';
+import { DrizzleAdminRoleWriteRepository } from './db/repositories/DrizzleAdminRoleWriteRepository';
+import { RoleManagementUseCase } from '../application/use-cases/admin/RoleManagementUseCase';
 import { DrizzleAdminUserReadRepository } from './db/repositories/DrizzleAdminUserReadRepository';
 import { DrizzleProductImageRepository } from './db/repositories/DrizzleProductImageRepository';
 import { DrizzleAttributeRepository } from './db/repositories/DrizzleAttributeRepository';
@@ -688,6 +690,8 @@ export class Registry {
   public readonly roleRepo = new DrizzleRoleRepository();
   public readonly fakeReportRepo = new DrizzleFakeReportRepository();
   public readonly adminRoleReadRepo = new DrizzleAdminRoleReadRepository();
+  public readonly adminRoleWriteRepo = new DrizzleAdminRoleWriteRepository();
+  public readonly roleManagementUseCase = new RoleManagementUseCase(this.adminRoleWriteRepo);
   public readonly recommendationEventRepo = new DrizzleRecommendationEventRepository();
   public readonly recommendationRuleRepo = new DrizzleRecommendationRuleRepository();
   public readonly recommendationRuleAuditRepo = new DrizzleRecommendationRuleAuditRepository();

@@ -64,6 +64,30 @@ if (!token) {
         umNotice = res2.ok && json2?.success
           ? { kind: "success", text: `Grant request ${json2.data.decided}.` }
           : { kind: "error", text: json2?.error?.message || "Decision refused." };
+      } else if (action === "assign-role") {
+        const id = String(form.get("id") || "");
+        const roleName = String(form.get("roleName") || "");
+        const res2 = await fetch(`${apiBase}/admin/users/${encodeURIComponent(id)}/roles`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ roleName, reason: form.get("reason") || null }),
+        });
+        const json2 = await res2.json().catch(() => null);
+        umNotice = res2.ok && json2?.success
+          ? { kind: "success", text: json2.data.outcome === "ASSIGNED" ? `${roleName} assigned. It applies on their next request.` : `${roleName} requested — a different administrator must approve it below.` }
+          : { kind: "error", text: json2?.error?.message || "Role assignment refused." };
+      } else if (action === "revoke-role") {
+        const id = String(form.get("id") || "");
+        const roleName = String(form.get("roleName") || "");
+        const res2 = await fetch(`${apiBase}/admin/users/${encodeURIComponent(id)}/roles/revoke`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ roleName }),
+        });
+        const json2 = await res2.json().catch(() => null);
+        umNotice = res2.ok && json2?.success
+          ? { kind: "success", text: json2.data.revoked ? `${roleName} revoked. It stops applying on their next request.` : `${roleName} was not held by that account.` }
+          : { kind: "error", text: json2?.error?.message || "Revoke refused." };
       }
     } catch {
       umNotice = { kind: "error", text: "User service is unreachable right now." };
@@ -75,21 +99,33 @@ if (!token) {
   // them can sign in and open nothing. The select says so instead of letting
   // the grant fail silently. If roles cannot be listed, labels stay plain.
   const permissionCountByRole = new Map<string, number>();
+  // Every role that exists, from the roles API — the governance vocabulary plus
+  // roles created on the Roles screen. Full-access roles need a second
+  // administrator's approval. If roles cannot be listed, the vocabulary below
+  // is offered with plain labels.
+  const FALLBACK_ROLE_NAMES = ['LEGAL_REVIEWER', 'ANALYST', 'SUPPORT_OPERATOR', 'PLATFORM_ADMINISTRATOR'];
+  let roleOptions: { name: string; isSystem: boolean }[] = [];
   try {
     const rr = await fetch(`${apiBase}/admin/roles`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(4000) });
     const rj = rr.ok ? await rr.json().catch(() => null) : null;
     if (rj?.success && Array.isArray(rj.data)) {
-      for (const r of rj.data as { name: string; permissionCodes: string[] }[]) permissionCountByRole.set(r.name, r.permissionCodes.length);
+      for (const r of rj.data as { name: string; permissionCodes: string[]; isSystem?: boolean }[]) {
+        permissionCountByRole.set(r.name, r.permissionCodes.length);
+        roleOptions.push({ name: r.name, isSystem: Boolean(r.isSystem) });
+      }
+      roleOptions.sort((a, b) => Number(a.isSystem) - Number(b.isSystem) || a.name.localeCompare(b.name));
     }
   } catch {
     // labels stay plain
   }
+  if (roleOptions.length === 0) roleOptions = FALLBACK_ROLE_NAMES.map((name) => ({ name, isSystem: name === 'PLATFORM_ADMINISTRATOR' }));
   const roleLabel = (name: string, suffix = ''): string => {
     const n = permissionCountByRole.get(name);
     if (n === undefined) return `${name}${suffix}`;
     if (n === 0) return `${name} — no permissions yet: can sign in, opens nothing${suffix}`;
     return `${name} — ${n} permissions${suffix}`;
   };
+  const optionLabel = (r: { name: string; isSystem: boolean }): string => roleLabel(r.name, r.isSystem ? ' (needs approval)' : '');
   let grantRequests: any[] = [];
   try {
     const gr = await fetch(`${apiBase}/admin/users/grant-requests`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(4000) });
@@ -169,14 +205,30 @@ try {
                   </td>
                   <td class="p-6">
                     {u.roleNames.length === 0 ? (
-                      <span class="text-[10px] text-gray-400 italic font-medium">Zero Assigned Scopes</span>
+                      <span class="text-[10px] text-gray-400 italic font-medium">No roles</span>
                     ) : (
                       <div class="flex flex-wrap gap-1.5">
                         {u.roleNames.map((name) => (
-                          <span class="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border bg-gray-100 text-gray-600 border-gray-200">{name}</span>
+                          <form method="POST" class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider border bg-gray-100 text-gray-600 border-gray-200">
+                            <input type="hidden" name="action" value="revoke-role" />
+                            <input type="hidden" name="id" value={u.id} />
+                            <input type="hidden" name="roleName" value={name} />
+                            <span>{name}</span>
+                            <button type="submit" class="text-gray-400 hover:text-red-700" aria-label={`Revoke ${name}`} title={`Revoke ${name}`} onclick={`return confirm('Revoke ${name} from this account? It stops applying on their next request.')`}>&times;</button>
+                          </form>
                         ))}
                       </div>
                     )}
+                    <form method="POST" class="mt-2 flex items-center gap-1">
+                      <input type="hidden" name="action" value="assign-role" />
+                      <input type="hidden" name="id" value={u.id} />
+                      <select name="roleName" aria-label={`Assign a role to ${u.email}`} class="rounded border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-bold max-w-[16rem]">
+                        {roleOptions.filter((r) => !u.roleNames.includes(r.name)).map((r) => (
+                          <option value={r.name}>{optionLabel(r)}</option>
+                        ))}
+                      </select>
+                      <button type="submit" class="text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-gray-900">Assign</button>
+                    </form>
                   </td>
                   <td class="p-6 text-center">
                     <span class={`inline-block px-2.5 py-0.5 rounded font-black text-[9px] uppercase tracking-wide border ${
@@ -214,10 +266,9 @@ try {
         <input name="email" type="email" required placeholder="email@shopgoldplus.com" class="sm:col-span-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
         <input name="initialPassword" type="password" required minlength="12" placeholder="Initial password (min 12)" autocomplete="new-password" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
         <select name="roleName" aria-label="Governance role for the new user" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-bold outline-none">
-          <option value="LEGAL_REVIEWER">{roleLabel('LEGAL_REVIEWER')}</option>
-          <option value="ANALYST">{roleLabel('ANALYST')}</option>
-          <option value="SUPPORT_OPERATOR">{roleLabel('SUPPORT_OPERATOR')}</option>
-          <option value="PLATFORM_ADMINISTRATOR">{roleLabel('PLATFORM_ADMINISTRATOR', ' (needs approval)')}</option>
+          {roleOptions.map((r) => (
+            <option value={r.name}>{optionLabel(r)}</option>
+          ))}
         </select>
         <button type="submit" class="rounded-xl bg-brand-dark px-4 py-2.5 text-xs font-black uppercase tracking-wide text-white hover:bg-black">Create user</button>
       </form>

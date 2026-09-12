@@ -77,7 +77,8 @@ describe('the admin console never promises an unbuilt future', () => {
     expect(gov).not.toMatch(/matrixRows|Super administrator<|Level [1-5]'/);
     const users = readFileSync(join(ADMIN, 'users/index.astro'), 'utf8');
     expect(users).toMatch(/fetch\(`\$\{apiBase\}\/admin\/roles`/);
-    expect(users).toMatch(/roleLabel\('SUPPORT_OPERATOR'\)/);
+    expect(users).toMatch(/roleOptions\.map\(/); // options come from the API, not a hardcoded list
+    expect(users).not.toMatch(/<option value="SUPPORT_OPERATOR">/);
     expect(users).toMatch(/no permissions yet/);
   });
 

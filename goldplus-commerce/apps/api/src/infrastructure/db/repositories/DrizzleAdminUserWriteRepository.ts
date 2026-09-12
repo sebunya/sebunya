@@ -28,6 +28,10 @@ export class DrizzleAdminUserWriteRepository implements IAdminUserWriteRepositor
     return row?.id ?? null;
   }
 
+  async roleExists(roleName: string): Promise<boolean> {
+    return (await this.roleId(roleName)) !== null;
+  }
+
   async assignRole(userId: string, roleName: string): Promise<boolean> {
     const roleId = await this.roleId(roleName);
     if (!roleId) return false;
