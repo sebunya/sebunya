@@ -18,7 +18,7 @@ const configGroups = [
       { label: 'Public API Connection', key: 'PUBLIC_API_BASE_URL', value: apiBase || 'UNCONFIGURED', desc: 'The core connection address resolving backend API queries.', source: 'Deployment setting' },
       { label: 'Primary Currency', key: 'CURRENCY_DEFAULT', value: 'UGX', desc: 'The presentation monetary unit utilized on storefront layouts.', source: 'Deployment setting' },
       { label: 'Default Language / Locale', key: 'DEFAULT_LOCALE', value: 'en-UG', desc: 'Language format determining number presentation.', source: 'Deployment setting' },
-      { label: 'Maintenance Status', key: 'MAINTENANCE_MODE', value: 'Runtime flag — see System', desc: 'A runtime flag held by the API deployment service; when on, write operations are frozen except health, metrics, deployment and queue routes. This page does not read it — check /admin/system.', source: 'API runtime' }
+      { label: 'Maintenance Status', key: 'MAINTENANCE_MODE', value: 'Not shown in the console', desc: 'A runtime flag held by the API deployment service; when on, write operations are frozen except health, metrics, deployment and queue routes. No admin page reads it yet; it is exposed only by the deployment API.', source: 'API runtime' }
     ]
   },
   {

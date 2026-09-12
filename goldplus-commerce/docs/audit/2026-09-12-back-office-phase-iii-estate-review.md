@@ -14,7 +14,7 @@ Vocabulary is the programme's evidence vocabulary: FOUND / REPRODUCED / FIXED / 
 | API runtime | `rollback-89ba2b7a` image | `docker inspect` image id = tag id |
 | Web runtime | `rollback-66602ab8` image, DEPLOYED 2026-09-12 and LIVE VERIFIED: settings, verification, dealers, governance, users and customer pages answer 303 unauthenticated, storefront and shop 200, 0 web errors, 0 new API level-50 lines. Authenticated rendering of the four corrected pages rests on the passing build; no admin session was available to this session | `docker inspect` image id = tag id |
 | Services | 2 api + 2 web, all healthy, 0 restarts | `docker ps` |
-| Migrations | 138 (last `0130_order_payment_method`) | journal |
+| Migrations | journal entries 0000–0130 (131), last `0130_order_payment_method` | `_journal.json` |
 | Clean-tree suite | unit + architecture: 453 files / 7,798 tests, 0 failures | `vitest run tests/unit tests/architecture` |
 | Integration suite | not run on this workstation (Docker down, `ZeroSkipGate` fails by design when the env is absent) | `docker info` |
 | New level-50 API log lines since the roll | 0 new; the 2 present are the pre-existing PAYMENT_SILENCE alarms | `docker logs --since 20m` |
@@ -25,6 +25,7 @@ Three depths, stated per row. §81 forbids scoring a module I did not operate ab
 
 * **OPERATED** — I used the screen or endpoint against production (authenticated where the programme had a session, unauthenticated probe otherwise), or ran the module's write path through its canonical script, and read the result back from the database.
 * **DB+CODE** — I read the page and route source and the production row counts behind them, but did not drive a write through the module.
+* **RENDERED** — the page was served by the built SSR server with a session cookie and its output read; used for pages that have no write path.
 * **CODE** — source only. The level given is a ceiling, not a claim.
 
 Levels: 0 absent or placeholder · 1 static shell or informational · 2 functional read, or writes without guards/history · 3 operational: read + guarded writes + audit + honest empty/denied states · 4 mature: exact filters, contextual history, exception views, tests, live verified.
@@ -36,11 +37,11 @@ Production counts are exact `count(*)` taken 2026-09-12 18:40 UTC.
 | Module | Primary operator | Before | Depth | Features added this programme | After | Tests | Remaining gap | Verdict |
 |---|---|---|---|---|---|---|---|---|
 | Users & roles (`/admin/users`, 14 API handlers) | System administrator | 2 | OPERATED | Last-admin guard on revoke; account deactivate/reactivate with reason, session invalidation, self-lockout refusal; History link | 3 | `AdminUserGovernanceGuards` (10), `admin-user-management` | MFA enrolment UI does not exist (0 of 7 users enrolled); `/admin/roles` is a read-only list | READY |
-| Governance page (`/admin/governance`) | System administrator | 1 (stale: claimed admins cannot be created in-console) | OPERATED (source + build) | Copy corrected to the truth, links to Users | 1 (informational by design) | `AdminSurfaceIntegrity` realigned | Static permissions matrix is hand-written, not read from `role_permissions` (253 rows) | READY, informational |
+| Governance page (`/admin/governance`) | System administrator | 1 (stale: claimed admins cannot be created in-console) | RENDERED (built SSR server, session cookie; no write path exists) | Copy corrected to the truth, links to Users | 1 (informational by design) | `AdminSurfaceIntegrity` realigned | Static permissions matrix is hand-written, not read from `role_permissions` (253 rows) | READY, informational |
 | Customer workspace (`/admin/customers/:id`, new) | Customer-service agent | 0 | OPERATED (LIVE VERIFIED 303 unauth, API 401) | One screen: identity, orders newest-first, loyalty balance from the ledger, support by email, links to Orders/Support/History | 3 | `GetCustomerWorkspace` (4) | Read-only; no notes or tags; 7 users in prod so scale is not a concern | READY |
 | Support inbox (`/admin/support`) | Customer-service agent | 2 | OPERATED | Exact filters q/status/priority/assignee/overdue, summary, honest empty state, per-row status update | 3 | route-protection sweep | `support_issues` = 0 rows: never used in production; no assignment workflow beyond a field | READY, unused |
 | Quotes (`/admin/quotes`) | Store administrator | 2 | DB+CODE | none | 2 | sweep | 1 `quote_requests` row; list only, no reply/convert action | BASIC |
-| Dealers (`/admin/dealers`) | Store administrator | 2 (carried two invented businesses as fallback data) | DB+CODE | Fabricated fallback removed | 2 | sweep | 0 applications; approve/reject path not exercised | BASIC |
+| Dealers (`/admin/dealers`) | Store administrator | 2 (carried two invented businesses as fallback data) | RENDERED + DB (built SSR server; approve path not driven) | Fabricated fallback removed | 2 | sweep | 0 applications; approve/reject path not exercised | BASIC |
 | Orders list + detail (`/admin/orders`) | Store administrator | 3 | OPERATED | Presets limited to true exceptions (paid-not-started, payment failed, delivery failed, owner review); refunds card; Payments/History/Customer links; intent-spent divert on failed orders | 4 | `PaymentOpsSweep`, `FulfilmentTaskRefusesTerminalOrder`, checkout tests | Search is in-memory over the fetched page; DB-side search deferred (trigger below) | READY |
 | Payments queue (`/admin/payments`) | Finance operator | 2 | OPERATED | Search by reference/order/email; per-attempt provider status; refund panel with collected/refunded/remaining, reason, confirm, idempotency key; sweeps select `payment_method='pesapal'` only | 3 | `PaymentOpsSweep` contract | 0 successful payments have ever landed (18 attempts); `payments_ops_config` empty so sweeps are OFF; controlled attempt BE693CD2 ended `invalid` | READY WITH KNOWN RISK, BOUNDED by the provider |
 | Refunds | Finance operator | 0 (link to nowhere) | OPERATED to the confirm step, not executed | Refund request UI on top of the existing refund use case | 3 | `RefundOrderUseCase` unit tests (existing) | Never executed against a real payment (none exists); 0 `payment_refunds` | READY, UNVERIFIED LIVE by design |
@@ -93,12 +94,12 @@ Production counts are exact `count(*)` taken 2026-09-12 18:40 UTC.
 | Deployment (API only, 5 handlers) | System administrator | 2 | CODE | none | 2 | sweep | Maintenance flag and deploy info exist as an API; no page reads them | BASIC |
 | Operational health (`/admin/system`, `/health`) | System administrator | 3 | OPERATED | none | 3 | — | Synthetic catalogue monitor is blind (Cloudflare 403 to Node fetch, pre-existing) | READY, one blind monitor |
 | Audit (`/admin/audit`) | System administrator | 2 (approximate in-memory filters) | OPERATED | DB-side actor/action/entity filters, before/after state, history links from Orders, Users, Products, Inventory, Customer | 4 | audit filter tests | 874 rows; entity history is exact | READY |
-| Settings (`/admin/settings`) | System administrator | 1 (stated four values that were wrong or invented) | OPERATED (source + build) | Wrong values corrected, invented rows removed, cart retention bound to the shared constant | 1 (informational by design) | build | Reads nothing at runtime; maintenance flag not shown | informational |
-| Verification / holograms (`/admin/verification`) | Store administrator | 0 (showed "Verified / Active" and "0 / Safe" from static text) | OPERATED (source + build) | Invented status replaced by Not wired | 0, honest | build | No admin read over `verification_attempts` (3) or `fake_product_reports` | PLACEHOLDER, honest |
+| Settings (`/admin/settings`) | System administrator | 1 (stated four values that were wrong or invented) | RENDERED (built SSR server, session cookie; no write path exists) | Wrong values corrected, invented rows removed, cart retention bound to the shared constant | 1 (informational by design) | build | Reads nothing at runtime; maintenance flag not shown | informational |
+| Verification / holograms (`/admin/verification`) | Store administrator | 0 (showed "Verified / Active" and "0 / Safe" from static text) | RENDERED (built SSR server, session cookie; no write path exists) | Invented status replaced by Not wired | 0, honest | build | No admin read over `verification_attempts` (3) or `fake_product_reports` | PLACEHOLDER, honest |
 | Commerce OS | Store administrator | 1 | CODE | none | 1 | sweep | 0 records | PLACEHOLDER |
 | Locations (`/admin/locations`, 15 handlers) | Store administrator | 3 | DB+CODE | none | 3 | location suite | 5,805 areas, 255 data exceptions to review | READY |
 
-Route protection: all 139 admin pages redirect unauthenticated (303) and all 60 API route modules require a permission; the counts are pinned by `Slice08B1AdminRouteProtectionSweep`.
+Route protection: all 139 admin pages redirect unauthenticated (303) and all 62 admin API route modules require a permission; the counts are pinned by `Slice08B1AdminRouteProtectionSweep`.
 
 ## 3. Feature inventory — what this programme added to the Back Office
 
@@ -114,7 +115,7 @@ Ordered by value (§82), each with before / problem / capability / benefit / ris
 8. **Order exception presets limited to true exceptions** — after my own presets had manufactured urgency. Live: DEPLOYED.
 9. **Checkout intent divert on un-collectable orders** — a failed order no longer wedges the customer. Live: DEPLOYED.
 10. **Admin-managed WhatsApp block and footer; hero final copy**. Live: LIVE VERIFIED on the storefront.
-11. **Truthful Settings, Verification, Dealers, Governance pages** — four pages stated invented or stale facts (session 24 h vs 7 days, cookie Strict vs Lax, a recommendation engine version, a gateway timeout, "Verified / Safe" hologram status, two invented dealer businesses, "admins cannot be created here"). All corrected at 34daedc2. Live: see §9.
+11. **Truthful Settings, Verification, Dealers, Governance pages** — four pages stated invented or stale facts (session 24 h vs 7 days, cookie Strict vs Lax, a recommendation engine version, a gateway timeout, "Verified / Safe" hologram status, an aggregation API "being designed", two invented dealer businesses, "admins cannot be created here"). Corrected at 34daedc2 and the self-critique follow-up; all four pages rendered through the built server and read back. Live: see §9.
 
 ## 4. Deferred items with triggers (§83 context)
 
@@ -172,7 +173,7 @@ Context: strong for orders, payments, customers, audit; weak for growth modules 
 12. **Biggest regression surface:** the fulfilment terminal-order guard and the payment-method sweep filter, because they sit inside money and stock paths. Both are fail-closed and contract-tested.
 13. **Deferred as too risky:** bulk price/stock operations and category creation.
 14. **Rejected as bloat:** a notes/tags system on the customer workspace, a roles editor, a deployment page, and UI for the activation shells.
-15. **Surface-inspected only:** yes, and named per row. Every module was read at source and against production counts, but 39 of the 60 route modules were not operated with a write. The blocker is not external: they hold no data to operate on, and writing synthetic rows into production to "operate" them is outside the safety boundary.
+15. **Surface-inspected only:** yes, and named per row. Every module was read at source and against production counts, but 45 of the 62 matrix rows were not operated with a write (17 were). The blocker is not external: they hold no data to operate on, and writing synthetic rows into production to "operate" them is outside the safety boundary.
 16. **Unresolved process:** none. The earlier background shell was the deploy whose SSH dropped after the roll; the roll itself completed (image tags and healthy containers confirm it).
 17. **Runtime SHA:** API image id equals the `rollback-89ba2b7a` tag id; web is confirmed in §9.
 18. **What prevents world-class:** no payment has ever succeeded, the email channel is dead, and half the growth estate has never been used. Those are owner and provider facts, not code facts, and the report would be dishonest to score around them.
@@ -181,7 +182,7 @@ Context: strong for orders, payments, customers, audit; weak for growth modules 
 
 **TECHNICAL READINESS: READY WITH KNOWN RISKS.** Every admin surface is permission-gated, the money and stock paths are guarded and contract-tested, the suite is green on a clean tree, and each roll has a rollback tag. The known risks are external: an unproven payment provider path, a dead email provider, and the unpatched Caddy client-IP defect.
 
-**OPERATIONAL MATURITY: DEVELOPING.** The core operating loop (orders, payments, fulfilment, customers, audit, content) is at Level 3–4. The rest of the estate is functional but unused: 25 modules sit on tables with fewer than ten rows. Strong technical readiness does not lift this; a Back Office is mature when its operators run it, and most of this one has not been run.
+**OPERATIONAL MATURITY: DEVELOPING.** The core operating loop (orders, payments, fulfilment, customers, audit, content) is at Level 3–4. The rest of the estate is functional but unused: 28 of 62 modules are at Level 0–2, almost all on tables with fewer than ten rows. Strong technical readiness does not lift this; a Back Office is mature when its operators run it, and most of this one has not been run.
 
-**REVIEW COVERAGE: SUBSTANTIAL.** Every one of the 60 route modules and 139 pages was individually inspected at source and against exact production counts, and none is hidden behind a summary row. It is not COMPLETE because 39 modules were not operated with a write, for the reason given in answer 15.
+**REVIEW COVERAGE: SUBSTANTIAL.** Every one of the 62 admin route modules and 139 pages was individually inspected at source and against exact production counts, and none is hidden behind a summary row. It is not COMPLETE because 45 of the 62 modules were not operated with a write, for the reason given in answer 15.
 
