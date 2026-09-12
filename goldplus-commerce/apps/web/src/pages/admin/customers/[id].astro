@@ -20,7 +20,8 @@ try {
   problem = 'The customer service is unreachable right now.';
 }
 
-const ugx = (n: number) => 'UGX ' + Number(n || 0).toLocaleString('en-US');
+const ugxFmt = new Intl.NumberFormat('en-US');
+const ugx = (n: number) => 'UGX ' + ugxFmt.format(Number(n || 0));
 const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { timeZone: 'Africa/Kampala' });
 const supportHref = ws ? '/admin/support?q=' + encodeURIComponent(ws.user.email) : '/admin/support';
 const historyHref = '/admin/audit?entity=user&entityId=' + encodeURIComponent(id);

@@ -79,7 +79,8 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
     // makes the blog writable without a deploy.
     // 138 adds the listing-quality module (2026-09-01): the quality report,
     // the per-product listing editor and the photos-by-code uploader.
-    expect(adminPages).toHaveLength(138);
+    // 139: +1 for the customer workspace (admin/customers/[id], 2026-09-12).
+    expect(adminPages).toHaveLength(139);
     expect(adminPages[0]).toBe('apps/web/src/pages/admin/analytics/index.astro');
     expect(adminPages.at(-1)).toBe('apps/web/src/pages/admin/verification/index.astro');
   });
@@ -97,7 +98,7 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
 
   it('fails closed for every non-allowlisted admin Astro page', () => {
     const protectedPages = adminPages.filter((page) => !publicAllowlist.includes(page as typeof publicAllowlist[number]));
-    expect(protectedPages).toHaveLength(137);
+    expect(protectedPages).toHaveLength(138);
     for (const page of protectedPages) {
       const source = read(page);
       expect(source, `${page} must use the server-side session contract`).toContain('readSessionToken(Astro.request)');
@@ -140,7 +141,8 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
     // 21: +2 for the integration detail page and its connection wizard.
     // 23: +2 for one battery's detail page and one staged import's detail page.
     // 25: +1 for the product listing editor.
-    expect(dynamicPages).toHaveLength(25);
+    // 26: +1 for the customer workspace detail page.
+    expect(dynamicPages).toHaveLength(26);
     for (const page of dynamicPages) {
       expect(read(page), `${page} requires source-level protection`).toContain('readSessionToken(Astro.request)');
     }
