@@ -16,7 +16,10 @@ function build() {
   const calls: string[] = [];
   const all = [row({ id: 'a1' }), row({ id: 'a2', actorId: 'u2', action: 'ORDER_CANCELLED', entity: 'order', entityId: 'o1' }), row({ id: 'a3', entityId: 'p2' })];
   const repo = {
-    findAll: async ({ limit }: { limit: number }) => { calls.push(`all:${limit}`); return all.slice(0, limit); },
+    findAll: async ({ limit, actorId, action }: { limit: number; actorId?: string; action?: string }) => {
+      calls.push(`all:${limit}:${actorId ?? ''}:${action ?? ''}`);
+      return all.filter((r) => (!actorId || r.actorId === actorId) && (!action || r.action.toUpperCase().includes(action.toUpperCase()))).slice(0, limit);
+    },
     findByEntity: async (entity: string, entityId: string) => { calls.push(`entity:${entity}:${entityId}`); return all.filter((r) => r.entity === entity && r.entityId === entityId); },
   } as unknown as IAuditRepository;
   return { uc: new ListAuditLogsUseCase(repo), calls };
@@ -29,10 +32,11 @@ describe('audit log filtering', () => {
     expect(calls).toEqual(['entity:product:p1']);
     expect(rows.map((r) => r.id)).toEqual(['a1']);
   });
-  it('actor and action narrow the feed (action is case-insensitive substring)', async () => {
-    const { uc } = build();
+  it('actor and action narrow the feed IN THE QUERY (never an in-memory page that could miss older rows)', async () => {
+    const { uc, calls } = build();
     expect((await uc.execute({ actorId: 'u2' })).map((r) => r.id)).toEqual(['a2']);
     expect((await uc.execute({ action: 'cancel' })).map((r) => r.id)).toEqual(['a2']);
+    expect(calls).toEqual(['all:50:u2:', 'all:50::cancel']);
   });
   it('carries old and new values so the operator sees what changed', async () => {
     const { uc } = build();
@@ -40,16 +44,16 @@ describe('audit log filtering', () => {
     expect(first.previousState).toEqual({ stock: 1 });
     expect(first.newState).toEqual({ stock: 2 });
   });
-  it('caps limit at 200 and still honours it after narrowing', async () => {
+  it('caps limit at 200 and honours it with narrowing', async () => {
     const { uc, calls } = build();
     await uc.execute({ limit: 999 });
-    expect(calls[0]).toBe('all:200');
+    expect(calls[0]).toBe('all:200::');
     expect((await uc.execute({ action: 'STOCK', limit: 1 })).length).toBe(1);
   });
   it('unfiltered call is unchanged for existing callers', async () => {
     const { uc, calls } = build();
     const rows = await uc.execute();
-    expect(calls).toEqual(['all:50']);
+    expect(calls).toEqual(['all:50::']);
     expect(rows.length).toBe(3);
   });
 });

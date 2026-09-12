@@ -1,7 +1,7 @@
 import { db } from '../client';
 import { auditEntityId } from '../../../domain/audit/AuditEntityId';
 import { auditLogs } from '../schema/system';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and, ilike } from 'drizzle-orm';
 import { AuditLogEntity } from '../../../domain/audit/AuditLogEntity';
 import { IAuditRepository } from '../../../application/ports/IAuditRepository';
 
@@ -19,8 +19,12 @@ export class DrizzleAuditRepository implements IAuditRepository {
     });
   }
 
-  async findAll(opts?: { limit?: number }): Promise<AuditLogEntity[]> {
+  async findAll(opts?: { limit?: number; actorId?: string; action?: string }): Promise<AuditLogEntity[]> {
+    const conditions = [];
+    if (opts?.actorId) conditions.push(eq(auditLogs.actorId, opts.actorId));
+    if (opts?.action) conditions.push(ilike(auditLogs.action, `%${opts.action}%`));
     const results = await db.query.auditLogs.findMany({
+      where: conditions.length ? and(...conditions) : undefined,
       orderBy: [desc(auditLogs.createdAt)],
       limit: opts?.limit,
     });

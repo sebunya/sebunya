@@ -28,16 +28,16 @@ export class ListAuditLogsUseCase {
     const limit = Math.max(1, Math.min(opts.limit ?? 50, 200));
     const entity = opts.entity?.trim();
     const entityId = opts.entityId?.trim();
+    const actorId = opts.actorId?.trim() || undefined;
+    const action = opts.action?.trim() || undefined;
     // One record's history comes from the per-entity index (bounded by that
-    // record's own rows); otherwise the recent feed. Actor/action narrow either.
-    const source = entity && entityId
-      ? await this.audit.findByEntity(entity, entityId)
-      : await this.audit.findAll({ limit: opts.actorId || opts.action ? 200 : limit });
-    const actorId = opts.actorId?.trim();
-    const action = opts.action?.trim().toUpperCase();
-    const rows = source
-      .filter((r) => (!actorId || r.actorId === actorId) && (!action || r.action.toUpperCase().includes(action)))
-      .slice(0, limit);
+    // record's own rows, narrowed here); the feed is narrowed IN THE QUERY, so a
+    // match older than the most recent page is never silently missed.
+    const rows = entity && entityId
+      ? (await this.audit.findByEntity(entity, entityId))
+          .filter((r) => (!actorId || r.actorId === actorId) && (!action || r.action.toUpperCase().includes(action.toUpperCase())))
+          .slice(0, limit)
+      : await this.audit.findAll({ limit, actorId, action });
     return rows.map((r) => ({
       id: r.id,
       actorId: r.actorId,
