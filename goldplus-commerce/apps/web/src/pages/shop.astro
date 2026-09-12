@@ -22,6 +22,8 @@ import { getTaxonomy } from '../lib/taxonomy';
 import { shopCrawlDirective } from '../lib/crawlPolicy';
 import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
 import { SITE_ORIGIN } from '../lib/sitemap';
+import { offerPriceUgx } from '../lib/offerPrice';
+import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../lib/storefrontDiscount';
 import { fetchApprovedCatalogue } from '../lib/catalogue';
 import { isListableProduct } from '../lib/product-discovery';
 import { isLikelyHuman } from '../lib/humanTraffic';
@@ -150,6 +152,9 @@ const activeFilters = [
   sort !== 'default' ? { label: 'Custom sort', href: shopUrl({ sort: 'default' }) } : null,
 ].filter((item): item is { label: string; href: string } => Boolean(item));
 
+// The same campaign the cards render, so the ItemList offer says what the card says.
+const shopDiscount = await getStorefrontDiscount();
+const shopCampaignRunning = shopDiscount.active && shopDiscount.percentBps > 0;
 const shopItemList = {
   '@context': 'https://schema.org',
   '@type': 'ItemList',
@@ -163,7 +168,7 @@ const shopItemList = {
       name: p.name,
       url: `${SITE_ORIGIN}/products/${p.slug}`,
       ...(p.primaryImageUrl ? { image: /^https?:\/\//i.test(p.primaryImageUrl) ? p.primaryImageUrl : `${SITE_ORIGIN}${p.primaryImageUrl}` } : {}),
-      ...(p.retailPriceUgx != null ? { offers: { '@type': 'Offer', priceCurrency: 'UGX', price: p.retailPriceUgx, availability: p.availability?.kind === 'in_stock' ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock', url: `${SITE_ORIGIN}/products/${p.slug}` } } : {}),
+      ...(p.retailPriceUgx != null ? { offers: { '@type': 'Offer', priceCurrency: 'UGX', price: offerPriceUgx(p.retailPriceUgx, shopCampaignRunning ? salePriceUgx(p.retailPriceUgx, shopDiscount.percentBps, effectiveFloorUgx(shopDiscount.priceFloorUgx, p.floorPriceUgx, p.retailPriceUgx)) : null), availability: p.availability?.kind === 'in_stock' ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock', url: `${SITE_ORIGIN}/products/${p.slug}` } } : {}),
     },
   })),
 };

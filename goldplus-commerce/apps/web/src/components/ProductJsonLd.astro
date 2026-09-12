@@ -1,14 +1,17 @@
 ---
 import type { ProductPublicDto } from '@goldplus/shared';
+import { offerPriceUgx } from '../lib/offerPrice';
 import { SITE_ORIGIN } from '../lib/sitemap';
 import { merchantReturnPolicyJsonLd } from '../lib/returnsPolicy';
 
 interface Props {
   product: ProductPublicDto;
   url: string;
+  /** The campaign sale price the page is showing, when one is running. */
+  priceUgx?: number | null;
 }
 
-const { product, url } = Astro.props;
+const { product, url, priceUgx } = Astro.props;
 
 const availabilityUrl: Record<string, string | null> = {
   in_stock: 'https://schema.org/InStock',
@@ -64,7 +67,8 @@ if (product.retailPriceUgx !== null) {
   const offers: Record<string, unknown> = {
     '@type': 'Offer',
     priceCurrency: 'UGX',
-    price: product.retailPriceUgx,
+    // The price the customer sees and pays — never the regular price under a running sale.
+    price: offerPriceUgx(product.retailPriceUgx, priceUgx),
     url,
     itemCondition: 'https://schema.org/NewCondition',
     // The shop's returns promise, on the offer Google reads.

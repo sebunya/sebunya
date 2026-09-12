@@ -365,7 +365,7 @@ if (product) {
 <BaseLayout title={pageTitle} description={description} canonicalUrl={canonical} image={product?.primaryImageUrl ?? undefined} robotsMeta={lifecycleNoindex ? 'noindex,follow' : undefined}>
   {product && (
     <Fragment slot="head">
-      <ProductJsonLd product={product} url={canonical} />
+      <ProductJsonLd product={product} url={canonical} priceUgx={pdpSaleUgx} />
       {breadcrumbJson && <script type="application/ld+json" is:inline set:html={breadcrumbJson} />}
     </Fragment>
   )}
