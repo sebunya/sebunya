@@ -28,8 +28,10 @@ describe('Slice 06-D legal policy routes P0', () => {
   });
 
   it('repairs the destinations already linked by the existing footer', () => {
-    expect(layout).toContain('href="/privacy"');
-    expect(layout).toContain('href="/terms"');
+    // Footer links are admin-managed content; the SSR fallback/seed is DEFAULT_HOMEPAGE_CONTENT.footer.
+    const footerDefaults = read('packages/shared/src/homepage/index.ts');
+    expect(footerDefaults).toContain("href: '/privacy'");
+    expect(footerDefaults).toContain("href: '/terms'");
   });
 
   it('qualifies order, delivery, returns and warranty guidance honestly', () => {

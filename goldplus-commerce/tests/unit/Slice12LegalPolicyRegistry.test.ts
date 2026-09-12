@@ -61,9 +61,10 @@ describe('Slice 12 legal policy registry', () => {
   });
 
   it('the footer links every policy page', () => {
-    const layout = read('apps/web/src/layouts/BaseLayout.astro');
+    // Footer links are admin-managed content; the SSR fallback/seed is DEFAULT_HOMEPAGE_CONTENT.footer.
+    const footerDefaults = read('packages/shared/src/homepage/index.ts');
     for (const p of LEGAL_POLICIES) {
-      expect(layout, `footer must link ${p.path}`).toContain(`href="${p.path}"`);
+      expect(footerDefaults, `footer must link ${p.path}`).toContain(`href: '${p.path}'`);
     }
   });
 

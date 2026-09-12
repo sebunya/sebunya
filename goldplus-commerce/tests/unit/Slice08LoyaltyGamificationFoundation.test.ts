@@ -156,7 +156,8 @@ describe("Slice 8-A protected operator preview and discoverability", () => {
     expect(moduleCard).toContain("module.previewHref");
   });
   it("adds a public footer and sitemap route", () => {
-    expect(footer).toContain('href="/loyalty"');
+    // Footer links are admin-managed content; the SSR fallback/seed is DEFAULT_HOMEPAGE_CONTENT.footer.
+    expect(readFileSync(resolve(root, "packages/shared/src/homepage/index.ts"), "utf8")).toContain("href: '/loyalty'");
     expect(sitemap).toContain("'/loyalty'");
   });
   it("keeps forbidden live claims out of public and admin copy", () => {

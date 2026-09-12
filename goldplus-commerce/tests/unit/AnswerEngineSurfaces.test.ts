@@ -112,7 +112,8 @@ describe('the FAQ answers from the site\'s own commitments', () => {
 
   it('is reachable: sitemap, footer and llms.txt point at it', () => {
     expect(read('apps/web/src/lib/sitemap.ts')).toContain("'/faq'");
-    expect(read('apps/web/src/layouts/BaseLayout.astro')).toContain('href="/faq"');
+    // Footer links are admin-managed content; the SSR fallback/seed is DEFAULT_HOMEPAGE_CONTENT.footer.
+    expect(read('packages/shared/src/homepage/index.ts')).toContain("href: '/faq'");
     expect(read('apps/web/src/pages/llms.txt.ts')).toContain('/faq');
   });
 });

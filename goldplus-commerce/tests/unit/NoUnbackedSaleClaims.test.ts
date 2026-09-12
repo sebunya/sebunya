@@ -28,11 +28,12 @@ describe('the storefront does not advertise a sale it does not have', () => {
   it('the blog is reachable from the site, not only from the sitemap', () => {
     // An orphaned page is one no customer can find and one search engines
     // discount: /blog was reachable only by typing the URL or reading the XML.
-    expect(read('apps/web/src/layouts/BaseLayout.astro')).toContain('href="/blog"');
+    // Footer links are admin-managed content; the SSR fallback/seed is DEFAULT_HOMEPAGE_CONTENT.footer.
+    expect(read('packages/shared/src/homepage/index.ts')).toContain("href: '/blog'");
   });
 
   it('the footer still offers the real ways to browse', () => {
-    const footer = read('apps/web/src/layouts/BaseLayout.astro');
+    const footer = read('packages/shared/src/homepage/index.ts'); // footer defaults (admin-managed content seed)
     for (const href of ['/shop?category=power', '/shop?category=sound', '/shop?category=storage', '/shop?category=car', '/shop?category=pc', '/product-finder']) {
       expect(footer, href).toContain(href);
     }
