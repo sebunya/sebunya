@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { isInternalCall } from '../clientAddress';
 import * as client from 'prom-client';
 import { QueueService, QUEUES } from '../../../infrastructure/queues/QueueService';
 import { Registry } from '../../../infrastructure/Registry';
@@ -6,6 +7,21 @@ import { eventLoopLagMonitor } from '../../../infrastructure/observability/Event
 import { containerMetricsCollector } from '../../../infrastructure/observability/ContainerMetricsCollector';
 
 const routes = new Hono();
+
+/**
+ * Prometheus scrapes this from INSIDE the Docker network (ops/prometheus:
+ * `api:3000`), where Caddy has not stamped X-Forwarded-For / X-Real-IP. Every
+ * request that arrives through the edge carries them. Until 2026-09-12 this
+ * route answered the public internet: DB connection and WAL figures, queue
+ * depths, memory, consent counters — infrastructure state handed to anyone,
+ * and each scrape runs the DB health collectors, so it was also a free way to
+ * make the database do work. An external caller now sees exactly what it
+ * would see for any path that does not exist.
+ */
+routes.use('*', async (c, next) => {
+  if (!isInternalCall(c)) return c.notFound();
+  await next();
+});
 const OPTIONAL_METRICS_TIMEOUT_MS = 750;
 
 // Enable default metrics collection (only once, checks if it's already registered to avoid errors)
