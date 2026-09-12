@@ -8,9 +8,9 @@ Vocabulary is the programme's evidence vocabulary: FOUND / REPRODUCED / FIXED / 
 
 | Item | Value | Evidence |
 |---|---|---|
-| Local HEAD | `10e4b655` (+ this docs commit) | `git log` |
-| Origin HEAD | `10e4b655` (+ this docs commit) | `git push` output |
-| Host git HEAD | `10e4b655` | `git rev-parse` on goldplus-prod |
+| Local HEAD | `10e4b655` is the last runtime commit; commits after it are tests and docs only | `git log` |
+| Origin HEAD | equals local; every commit is pushed | `git push` output |
+| Host git HEAD | `10e4b655`; the host is only fetched by a deploy, so docs-only commits do not advance it | `git rev-parse` on goldplus-prod |
 | API runtime | `rollback-89ba2b7a` image | `docker inspect` image id = tag id |
 | Web runtime | `rollback-10e4b655` image (three self-critique follow-ups on 66602ab8: 757d05a5, f1f5d475, 3bbcdae5, 10e4b655), DEPLOYED 2026-09-12 and LIVE VERIFIED: settings, verification, dealers, governance, users and customer pages answer 303 unauthenticated, storefront and shop 200, 0 web errors, 0 new API level-50 lines. Authenticated rendering of the four corrected pages was checked by serving the built SSR bundle locally with a session cookie and reading the output (200, corrected values present, 0 errors); no production admin session was available | `docker inspect` image id = tag id |
 | Services | 2 api + 2 web, all healthy, 0 restarts | `docker ps` |
@@ -154,6 +154,8 @@ Shared code defines 104 permission codes; the database holds 130 rows over 126 d
 11. Secrets disaster recovery: `.env.production` exists on the host only.
 12. Restrict origin ports 80/443 to Cloudflare.
 13. Decide the permission sets for the nine empty roles before creating any user with them.
+
+Housekeeping done this pass: 101 scratch SQL files accumulated in `/tmp` on the host and in the database container across the programme (one matched a secret-like word, none held email addresses); all removed.
 
 ## 6. Remaining Level 0–2 modules (§83), each with the reason
 
