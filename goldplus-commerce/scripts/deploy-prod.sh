@@ -7,6 +7,12 @@
 set -euo pipefail
 EXPECTED="${1:?expected short sha}"; shift; SERVICES="${*:-api web}"
 cd /opt/goldplus/app/goldplus-commerce
+# ONE deploy at a time. On 2026-09-12 two invocations started seven seconds
+# apart and ran two full `docker compose build api` on the 2-vCPU host: load
+# reached 77, swap filled, and the public site timed out for over a minute.
+# A second invocation must fail immediately, not queue and not race.
+exec 9>/tmp/goldplus-deploy.lock
+flock -n 9 || { echo "STOP: another deploy-prod.sh is already running (lock /tmp/goldplus-deploy.lock)"; exit 1; }
 PREV="$(git rev-parse HEAD)"
 git fetch origin deploy/price-floor-145k -q
 git merge --ff-only FETCH_HEAD -q
@@ -24,6 +30,17 @@ fi
 docker compose --env-file .env.production -f docker-compose.production.yml build $SERVICES 2>&1 | tail -1
 docker compose --env-file .env.production -f docker-compose.production.yml up -d $SERVICES 2>&1 | tail -1
 N=$(echo $SERVICES | wc -w); WANT=$((N*2))
-until [ "$(docker compose --env-file .env.production -f docker-compose.production.yml ps --format '{{.Name}} {{.Status}}' | grep -cE "($(echo $SERVICES | tr ' ' '|'))-[12] .*healthy")" -ge "$WANT" ]; do sleep 5; done
+# Bounded wait. This loop had no timeout: a replica that never reports
+# healthy (or a service with no healthcheck at all — caddy has none) would
+# hang the deploy forever with the old containers already replaced.
+DEADLINE=$(( $(date +%s) + ${HEALTH_TIMEOUT_SECONDS:-600} ))
+until [ "$(docker compose --env-file .env.production -f docker-compose.production.yml ps --format '{{.Name}} {{.Status}}' | grep -cE "($(echo $SERVICES | tr ' ' '|'))-[12] .*healthy")" -ge "$WANT" ]; do
+  if [ "$(date +%s)" -ge "$DEADLINE" ]; then
+    echo "STOP: $WANT healthy replicas of [$SERVICES] not reached within ${HEALTH_TIMEOUT_SECONDS:-600}s. Inspect with: docker compose ps; roll back with the rollback-$(git rev-parse --short "$PREV") image if needed."
+    docker compose --env-file .env.production -f docker-compose.production.yml ps --format '{{.Name}} {{.Status}}' | grep -E "($(echo $SERVICES | tr ' ' '|'))"
+    exit 1
+  fi
+  sleep 5
+done
 for s in $SERVICES; do docker tag "goldplus-commerce-$s:latest" "goldplus-commerce-$s:rollback-$HEAD"; done
 echo "DEPLOYED $HEAD, $WANT/$WANT healthy, tagged rollback-$HEAD"
