@@ -54,12 +54,16 @@ describe('the admin console never promises an unbuilt future', () => {
     expect(adminPages().length).toBeGreaterThan(100);
   });
 
-  it('states the reason when a capability is deliberately withheld', () => {
-    // Governance disables admin invitation on purpose. The button must say why,
-    // or it reads as a broken control.
+  it('governance tells the truth about where administrators are managed', () => {
+    // Until 2026-09-12 this page said admin accounts were created outside the
+    // console "by design" while /admin/users had a create form, role grants
+    // and deactivation. The copy must point at Users, and must not resurrect
+    // the withheld-by-policy story.
     const gov = readFileSync(join(ADMIN, 'governance/index.astro'), 'utf8');
-    expect(gov).toMatch(/disabled by security policy/i);
-    expect(gov).toMatch(/deliberate security decision/i);
+    expect(gov).toMatch(/managed in the Users screen/i);
+    expect(gov).toMatch(/href="\/admin\/users"/);
+    expect(gov).not.toMatch(/created outside this console/i);
+    expect(gov).not.toMatch(/disabled by security policy/i);
   });
 
   it('describes a read-only view as a design, not a missing editor', () => {
