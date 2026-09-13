@@ -1,8 +1,6 @@
 ---
-import { apiBase } from "../../lib/api";
 import { getStorefrontDiscount } from "../../lib/storefrontDiscount";
-import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
-import { fetchApprovedCatalogue } from '../../lib/catalogue';
+
 
 interface Props {
   title?: string;
@@ -25,30 +23,10 @@ const {
   fallbackProducts = []
 } = Astro.props;
 
-// Fresh server truth per product (price, stock, image): local history is a
-// bookmark, not a price list — what renders must match what the shop charges.
-let liveByProduct: Record<string, { price?: number; floor?: number | null; availability?: ProductPublicDto["availability"]; imageUrl?: string }> = {};
-try {
-  // The whole approved catalogue, paged. With a fixed 50, a product the
-  // customer had just viewed could fall outside the list and be dropped from
-  // the rail as "invalid" — or worse, shown at a stale localStorage price.
-  const catalogue = await fetchApprovedCatalogue(apiBase);
-  if (catalogue.length > 0) {
-    {
-      for (const p of catalogue) {
-        liveByProduct[p.id] = {
-          price: typeof p.retailPriceUgx === "number" && p.retailPriceUgx > 0 ? p.retailPriceUgx : undefined,
-          // The product's own floor (Price A). Absent = not discountable.
-          floor: typeof p.floorPriceUgx === "number" && p.floorPriceUgx > 0 ? p.floorPriceUgx : null,
-          availability: p.availability,
-          imageUrl: p.primaryImageUrl ?? undefined,
-        };
-      }
-    }
-  }
-} catch {
-  // Graceful fallback
-}
+// Fresh server truth per product (price, stock, image) is fetched by the
+// client from /api/catalogue-live only when the rail is about to render: local
+// history is a bookmark, not a price list. It was stamped here as
+// data-live-products on every page (34 KB of HTML) — see that endpoint.
 
 // R1: when the catalogue cannot be fetched, the rail stays hidden rather
 // than validating against fabricated seed IDs (retired 2026-08-06).
@@ -65,7 +43,6 @@ const railDiscount = await getStorefrontDiscount();
   data-recently-viewed-rail
   data-always-render={alwaysRender ? "true" : "false"}
   data-fallback-products={JSON.stringify(fallbackProducts)}
-  data-live-products={JSON.stringify(liveByProduct)}
   data-sale-bps={railDiscount.active ? String(railDiscount.percentBps) : ""}
   data-sale-percent={railDiscount.active ? String(railDiscount.percent) : ""}
   data-sale-floor={railDiscount.active ? String(railDiscount.priceFloorUgx) : ""}
@@ -87,7 +64,7 @@ const railDiscount = await getStorefrontDiscount();
   import { shouldShowPickUpWhereYouLeftOff, getRecentlyViewedHistory } from "../../lib/returning-user";
   import { salePriceUgx, effectiveFloorUgx } from "../../lib/storefrontDiscount";
 
-  document.addEventListener("DOMContentLoaded", () => {
+  document.addEventListener("DOMContentLoaded", async () => {
     const rail = document.querySelector("[data-recently-viewed-rail]") as HTMLElement | null;
     const list = document.querySelector("[data-recently-viewed-list]");
 
@@ -115,9 +92,16 @@ const railDiscount = await getStorefrontDiscount();
 
     // Overlay fresh server truth (price, stock, image) onto local history —
     // a bookmark from last week must not show last week's price.
-    const liveAttr = rail.getAttribute("data-live-products");
-    const liveByProduct: Record<string, { price?: number; floor?: number | null; availability?: { kind: string; quantity?: number }; imageUrl?: string }> =
-      liveAttr ? JSON.parse(liveAttr) : {};
+    // Nothing to show and nothing to fetch: the returning-visitor rail with no history.
+    if (!alwaysRender && getRecentlyViewedHistory().length === 0) return;
+    let liveByProduct: Record<string, { price?: number; floor?: number | null; availability?: { kind: string; quantity?: number }; imageUrl?: string }> = {};
+    try {
+      const res = await fetch("/api/catalogue-live", { credentials: "same-origin" });
+      const body = await res.json();
+      if (body && body.success && body.data && typeof body.data === "object") liveByProduct = body.data;
+    } catch {
+      // Same as an empty catalogue before: no overlay and no id filter.
+    }
     // The live map's keys ARE the approved catalogue; a separate id list was the same
     // 184 ids stamped a second time into every page.
     const validIds: string[] = Object.keys(liveByProduct);

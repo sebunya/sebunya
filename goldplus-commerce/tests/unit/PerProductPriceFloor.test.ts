@@ -135,7 +135,8 @@ describe('no storefront surface reads only the first 50 products', () => {
     for (const f of [
       'apps/web/src/pages/index.astro',
       'apps/web/src/pages/products/[slug].astro',
-      'apps/web/src/components/recommendations/RecentlyViewedRail.astro',
+      // the rail's live price/stock overlay moved to a same-origin endpoint (2026-09-13)
+      'apps/web/src/pages/api/catalogue-live.ts',
       'apps/web/src/lib/navFeatured.ts',
     ]) {
       expect(read(f), f).not.toMatch(/products\?limit=50/);
