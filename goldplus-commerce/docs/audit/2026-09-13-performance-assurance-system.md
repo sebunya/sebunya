@@ -143,3 +143,47 @@ Only `.env` on the host (mode 600, git-ignored) holds `TARGET_URL` and `PERF_AUD
 45. Biggest remaining weakness? The measurement corpus is thin until keys exist: real field-like LCP/TBT come from WPT/GTmetrix/DebugBear, all awaiting credentials.
 46. Second weakness? webhint flags cache-control/compression on sub-resources that Caddy should already cover; whether that is a Cloudflare-served asset behaviour or a real gap has not been analysed (out of scope for this mandate; recorded as an owner-visible finding).
 47. Would I run this on a busier host? The audit is idle-priority and short (~75 s today); with all providers keyed the external waits dominate, not CPU.
+
+## 11. Back-office integration (added 2026-09-13, second pass)
+
+`/admin/seo/performance-audit` (Search Growth group) shows the scheduler
+health (HEALTHY / DUE / RETRYING / CYCLE_FAILED / STALE / SCHEDULER_SILENT /
+NEVER_RAN / NOT_CONFIGURED, derived only from the audit's state file and the
+daily-tick heartbeat), the latest run's key cells, movements beyond noise,
+provider statuses, the provider matrix, the run history, and a "Queue the run"
+form. Reading needs `seo.view`; queueing needs `seo.audit.run` (Owner holds
+both).
+
+How the button works without giving the API any power over the host:
+
+1. The API (`RequestPerformanceAuditRunUseCase`) validates the label, refuses
+   the reserved baseline label, refuses a second request while one is queued or
+   processing, and refuses the seventh request in a rolling 24 h. It then writes
+   `requests/queue/<id>.json` into the audit data directory, which is
+   bind-mounted into the API container (`PERFORMANCE_AUDIT_DATA_DIR`). The
+   queue directory is the only path the API user can write.
+2. systemd path unit `goldplus-performance-audit-request.path` fires
+   `schedule/process-requests.sh` on the host, which re-validates every rule,
+   runs the request through the same container runner as the scheduler
+   (`--ad-hoc --label` or `--force --label` for "recurring now"), and records
+   the outcome in `requests/done/<id>.json`. Heavy load cannot be requested
+   from this path at all.
+3. The page reads the request list and the resulting run.
+
+Every recurring tick now writes `state/last_tick_at` and evaluates the stale
+conditions (`alerts.py --stale-check`, at most one delivery per 24 h), so a
+scheduler that never manages to run alerts instead of staying silent — the gap
+found in this pass's self-critique.
+
+### Self-critique of the second pass
+
+1. Does the API ever execute the audit or touch Docker? No; it writes one JSON file into a sticky directory.
+2. Could an admin overload the production host? Six back-office runs per day, one at a time, enforced twice (API and host); each run is ~75 s today at idle priority.
+3. Could an admin trigger heavy load? No; the request schema has no such field and the host script never passes `--heavy`.
+4. Could a crafted run id read outside the data directory? Run ids must match a UTC stamp and the store re-checks the resolved path; tested.
+5. What if the mount is missing on the API? The page says NOT CONFIGURED and refuses requests with 503; nothing is invented.
+6. What if the host writes a run while the admin reads? Every read tolerates a missing or half-written file.
+7. Is the "recurring now" option dangerous? It only moves the ten-day clock, which the operator may want after a Cloudflare change; it is opt-in in the form.
+8. Was the previous pass's biggest silent failure fixed? Yes: a dead timer now shows SCHEDULER_SILENT in the admin and stale conditions are evaluated on every tick.
+9. Permissions? Reuses `seo.view` / `seo.audit.run`; no new permission code, no role baseline change.
+10. What is not verified until the roll? The bind mount and the path unit on the host; both are in this report's deploy steps and are verified live before the report is closed.

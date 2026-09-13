@@ -71,6 +71,8 @@ import { DrizzleAdminRoleReadRepository } from './db/repositories/DrizzleAdminRo
 import { DrizzleAdminRoleWriteRepository } from './db/repositories/DrizzleAdminRoleWriteRepository';
 import { RoleManagementUseCase } from '../application/use-cases/admin/RoleManagementUseCase';
 import { RecordLighthouseReportUseCase } from '../application/use-cases/seo-growth/LighthouseWatchUseCases';
+import { GetPerformanceAuditOverviewUseCase, GetPerformanceAuditRunUseCase, RequestPerformanceAuditRunUseCase } from '../application/use-cases/seo-growth/PerformanceAuditUseCases';
+import { FilesystemPerformanceAuditStore } from './performance-audit/FilesystemPerformanceAuditStore';
 import { DrizzleAdminUserReadRepository } from './db/repositories/DrizzleAdminUserReadRepository';
 import { DrizzleProductImageRepository } from './db/repositories/DrizzleProductImageRepository';
 import { DrizzleAttributeRepository } from './db/repositories/DrizzleAttributeRepository';
@@ -677,6 +679,11 @@ export class Registry {
   public readonly seoTechnicalRepo = new DrizzleSeoTechnicalRepository();
   // Lighthouse Watch: stores lab runs as Web Vitals rows and keeps one SEO alert per shortfall.
   public readonly recordLighthouseReportUseCase = new RecordLighthouseReportUseCase(this.seoTechnicalRepo, this.seoGrowthRepo);
+  // Continuous Performance Assurance: the API reads the host audit's data directory and queues run requests; it never runs a probe.
+  public readonly performanceAuditStore = new FilesystemPerformanceAuditStore();
+  public readonly getPerformanceAuditOverviewUseCase = new GetPerformanceAuditOverviewUseCase(this.performanceAuditStore);
+  public readonly getPerformanceAuditRunUseCase = new GetPerformanceAuditRunUseCase(this.performanceAuditStore);
+  public readonly requestPerformanceAuditRunUseCase = new RequestPerformanceAuditRunUseCase(this.performanceAuditStore);
   public readonly mobileMoneyDisbursement = new NoSendMobileMoneyDisbursement();
   public readonly submitReviewUseCase = new SubmitReviewUseCase(this.reviewRepo, process.env.IDENTITY_HASH_PEPPER ?? '');
   public readonly pricingOperationsRepo = new DrizzlePricingOperationsRepository();

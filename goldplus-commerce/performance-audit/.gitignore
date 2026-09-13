@@ -11,3 +11,5 @@ state/
 logs/
 locks/
 *.log
+__pycache__/
+*.pyc

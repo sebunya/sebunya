@@ -357,7 +357,8 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
   { label: 'robots.txt', href: '/admin/seo/robots', group: 'Search Growth', status: 'working', description: 'Versioned robots.txt with a line diff, two-person approval and rollback; exactly one version is live.' },
   { label: 'Core Web Vitals', href: '/admin/seo/web-vitals', group: 'Search Growth', status: 'working', description: 'Measured lab (PageSpeed) and field (CrUX) vitals kept strictly separate; unmeasured URLs show as NOT MEASURED.' },
   { label: 'Organic Intelligence', href: '/admin/seo/opportunities-intel', group: 'Search Growth', status: 'working', description: 'The persisted opportunity portfolio with the evidence behind every decision; absent providers read WAITING FOR PROVIDER, never zero.' },
-  { label: 'Intelligence Domains', href: '/admin/seo/intelligence', group: 'Search Growth', status: 'working', description: 'Query clusters and their page ownership, cannibalisation findings, content intelligence, content gaps, and the actions the system would propose but is not authorised to take.' }
+  { label: 'Intelligence Domains', href: '/admin/seo/intelligence', group: 'Search Growth', status: 'working', description: 'Query clusters and their page ownership, cannibalisation findings, content intelligence, content gaps, and the actions the system would propose but is not authorised to take.' },
+  { label: 'Performance Audit', href: '/admin/seo/performance-audit', group: 'Search Growth', status: 'working', description: 'The rolling ten-day, fourteen-provider audit of the live storefront: scheduler health, every measured cell, provider statuses, and a one-click request for an ad-hoc run on the host.' }
 ];
 
 // Group helper to replicate traditional display grouping without duplicate data

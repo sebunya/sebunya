@@ -21,10 +21,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from perf_audit_py import http_json, load_dotenv, now_iso  # noqa: E402
 
 
-def conditions(run_dir: Path, data_dir: Path, outcome: str) -> list[dict]:
-    out = []
-    if outcome == "FAILED":
-        out.append({"kind": "AUDIT_FAILED", "detail": f"run {run_dir.name} failed"})
+def state_conditions(data_dir: Path) -> list[dict]:
+    """Conditions that depend only on the scheduler state (evaluated on every daily tick)."""
+    out: list[dict] = []
     state_path = data_dir / "state" / "schedule.json"
     if state_path.exists():
         st = json.loads(state_path.read_text())
@@ -34,6 +33,14 @@ def conditions(run_dir: Path, data_dir: Path, outcome: str) -> list[dict]:
                 out.append({"kind": "NO_SUCCESS_12_DAYS", "detail": f"last success {st['last_success_at']}"})
         if st.get("cycle_failed"):
             out.append({"kind": "CYCLE_FAILED_RETRIES_EXHAUSTED", "detail": f"retry_count {st.get('retry_count')}"})
+    return out
+
+
+def conditions(run_dir: Path, data_dir: Path, outcome: str) -> list[dict]:
+    out = []
+    if outcome == "FAILED":
+        out.append({"kind": "AUDIT_FAILED", "detail": f"run {run_dir.name} failed"})
+    out.extend(state_conditions(data_dir))
     reg_path = run_dir / "regression.json"
     if reg_path.exists():
         for r in json.loads(reg_path.read_text()).get("rows", []):
@@ -54,12 +61,27 @@ def conditions(run_dir: Path, data_dir: Path, outcome: str) -> list[dict]:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--data-dir", required=True)
-    ap.add_argument("--run", required=True)
-    ap.add_argument("--outcome", required=True)
+    ap.add_argument("--run")
+    ap.add_argument("--outcome")
+    ap.add_argument("--stale-check", action="store_true", help="evaluate only the scheduler-state conditions (daily tick); at most one delivery per 24 h")
     a = ap.parse_args()
-    run_dir, data_dir = Path(a.run), Path(a.data_dir)
-    found = conditions(run_dir, data_dir, a.outcome)
-    (run_dir / "alerts.json").write_text(json.dumps({"run_id": run_dir.name, "generated_at": now_iso(), "alerts": found}, indent=2) + "\n")
+    data_dir = Path(a.data_dir)
+    if a.stale_check:
+        found = state_conditions(data_dir)
+        stamp = data_dir / "logs" / "alerts.stale.last"
+        if found and stamp.exists() and (datetime.now(timezone.utc).timestamp() - stamp.stat().st_mtime) < 86400:
+            print(f"alerts: {len(found)} stale condition(s) already reported in the last 24 h")
+            return
+        if found:
+            stamp.parent.mkdir(parents=True, exist_ok=True)
+            stamp.write_text(now_iso() + "\n")
+        run_dir = data_dir / "state"
+    else:
+        if not a.run or not a.outcome:
+            ap.error("--run and --outcome are required unless --stale-check")
+        run_dir = Path(a.run)
+        found = conditions(run_dir, data_dir, a.outcome)
+        (run_dir / "alerts.json").write_text(json.dumps({"run_id": run_dir.name, "generated_at": now_iso(), "alerts": found}, indent=2) + "\n")
     if not found:
         print("alerts: none")
         return

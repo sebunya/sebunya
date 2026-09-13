@@ -185,8 +185,12 @@ services:
       - SHADOW_TRAFFIC_URL=${SHADOW_TRAFFIC_URL:-}
       - SHADOW_TRAFFIC_RATIO=${SHADOW_TRAFFIC_RATIO:-0}
       - NODE_OPTIONS=--max-old-space-size=400
+      # Continuous Performance Assurance: the API READS the host audit's data directory
+      # and writes run requests into its queue; the audit itself runs on the host.
+      - PERFORMANCE_AUDIT_DATA_DIR=/data/performance-audit
     volumes:
       - media_uploads:/data/media
+      - ${PERFORMANCE_AUDIT_HOST_DATA_DIR:-/var/lib/goldplus-performance-audit}:/data/performance-audit
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health/live').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]
       interval: 10s

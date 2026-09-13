@@ -5,6 +5,7 @@ AUDIT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DATA_DIR="${PERF_AUDIT_DATA_DIR:-/var/lib/goldplus-performance-audit}"
 echo "== systemd"; systemctl list-timers goldplus-performance-audit.timer --no-pager 2>/dev/null | head -3 || echo "timer not installed"
 systemctl is-active goldplus-performance-audit.timer 2>/dev/null || true
+echo "request queue path unit: $(systemctl is-active goldplus-performance-audit-request.path 2>/dev/null || echo not-installed); queued: $(ls "$DATA_DIR/requests/queue"/*.json 2>/dev/null | wc -l | tr -d ' '), processing: $(ls "$DATA_DIR/requests/processing"/*.json 2>/dev/null | wc -l | tr -d ' '), done: $(ls "$DATA_DIR/requests/done"/*.json 2>/dev/null | wc -l | tr -d ' ')"
 echo "== state ($DATA_DIR/state/schedule.json)"
 if [ -f "$DATA_DIR/state/schedule.json" ]; then
   python3 - "$DATA_DIR/state/schedule.json" <<'EOF'

@@ -118,6 +118,22 @@ host itself has no node. `run-in-container.sh` mounts the checkout read-only,
 the data dir, and the docker socket (the k6 canary runs as a sibling
 container from `grafana/k6:1.8.1`).
 
+## Back office (admin) view and one-click runs
+
+`/admin/seo/performance-audit` (permission `seo.view`; requesting a run needs
+`seo.audit.run`) shows the scheduler health, the latest run's key cells,
+provider statuses, movements beyond noise, the provider matrix, and the run
+history. "Queue the run" writes `requests/queue/<id>.json`; the host path unit
+`goldplus-performance-audit-request.path` drains the queue through
+`schedule/process-requests.sh`, which runs the same container runner. The API
+never runs the audit and never touches Docker. Limits: one request in flight,
+six back-office runs per rolling 24 h (API and host both enforce it), reserved
+baseline label refused, heavy load impossible from this path.
+
+The API container reads the data directory through a bind mount
+(`PERFORMANCE_AUDIT_DATA_DIR`, see `docker-compose.production.yml`). Without
+the mount the page says NOT CONFIGURED and reports stay host-only.
+
 ## Local development
 
 ```

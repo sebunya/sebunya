@@ -22,10 +22,20 @@ if [ "$ADHOC" = 1 ]; then
   bash run_all.sh --kind ad-hoc ${LABEL:+--label "$LABEL"}; exit $?
 fi
 
+# Heartbeat: every recurring tick records that the host scheduler is alive, due or not
+# (the admin view derives SCHEDULER_SILENT from its age).
+date -u +%FT%TZ > "$PERF_AUDIT_DATA_DIR/state/last_tick_at.tmp" && mv -f "$PERF_AUDIT_DATA_DIR/state/last_tick_at.tmp" "$PERF_AUDIT_DATA_DIR/state/last_tick_at"
+
 # Recurring: due gate first.
 DUE="$(node -e 'import("./lib/state.mjs").then(async m=>{const {loadConfig}=await import("./lib/config.mjs");const c=loadConfig().schedule;const s=m.readState(process.argv[1]);const d=m.computeDue(s,Date.now(),c);console.log(JSON.stringify(d))})' "$STATE")" || { echo "STOP: cannot evaluate schedule state"; exit 1; }
 IS_DUE="$(printf '%s' "$DUE" | python3 -c 'import json,sys;print(json.load(sys.stdin)["due"])')"
-if [ "$FORCE" != 1 ] && [ "$IS_DUE" != "True" ]; then echo "not due: $(printf '%s' "$DUE" | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d["reason"],"— next due",d["dueAt"])')"; exit 0; fi
+if [ "$FORCE" != 1 ] && [ "$IS_DUE" != "True" ]; then
+  echo "not due: $(printf '%s' "$DUE" | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d["reason"],"— next due",d["dueAt"])')"
+  # Staleness is judged on every tick, not only after a run: a scheduler that never
+  # manages to run would otherwise never alert.
+  python3 alerts.py --data-dir "$PERF_AUDIT_DATA_DIR" --stale-check || true
+  exit 0
+fi
 
 # Mark the attempt (ATOMIC), run, then record the outcome. A crash between the
 # two leaves last_attempt_at set and last_success_at untouched: the retry policy applies.

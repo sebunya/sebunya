@@ -1,0 +1,272 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { seoGet, seoPost, fmtWhen } from "../../../lib/adminSeo";
+
+/** Continuous Performance Assurance — the back-office view of the host audit.
+ *
+ *  Everything here is READ from the audit's own files (state, manifests,
+ *  regression rows, provider statuses). The one action, "Request a run",
+ *  writes a queue file that the host picks up; the API never runs the audit
+ *  and this page never invents a number. A provider without credentials shows
+ *  as AWAITING CREDENTIALS, not as a score of anything. */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/seo/performance-audit", 303);
+
+let notice: string | null = null;
+let formError: string | null = null;
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  if (String(form.get("intent") ?? "") === "request-run") {
+    const res = await seoPost<{ id: string; label: string; kind: string }>(token, "/admin/performance-audit/runs", {
+      label: String(form.get("label") ?? ""),
+      kind: String(form.get("kind") ?? "ad-hoc"),
+    });
+    if (res.ok) notice = `Run "${res.data.label}" queued (${res.data.kind}). The host picks it up within a minute; a full run takes about two minutes today and longer once external providers are keyed. Reload to follow it.`;
+    else formError = res.message;
+  }
+}
+
+type Req = { id: string; kind: string; label: string; requestedBy: string; requestedAt: string; status: string; runId?: string | null; outcome?: string | null; finishedAt?: string | null; message?: string | null };
+type Run = { runId: string; kind: string; label: string | null; outcome: string | null; startedAt: string | null; finishedAt: string | null; repoSha: string | null; metricCount: number | null; providers: Record<string, string>; regressionCounts: Record<string, number> };
+type Overview = {
+  configured: boolean;
+  state: { lastAttemptAt: string | null; lastSuccessAt: string | null; lastSuccessRunId: string | null; nextDueAt: string | null; retryCount: number; cycleFailed: boolean; lastTickAt: string | null } | null;
+  health: { status: string; detail: string };
+  latestRun: Run | null; runs: Run[]; requests: Req[]; inFlight: Req | null; runsRequestedLast24h: number; maxRunsPerDay: number;
+  providerMatrix: Array<{ id: string; name: string; status: string; credentials: string; notes: string }> | null;
+};
+type Row = { cell: string; provider: string; page: string; device: string; location: string; metric: string; unit: string; current: number | string | null; previous: number | string | null; best: number | string | null; budget: number | null; budgetStatus: string | null; status: string; pct: number | null };
+type Detail = Run & { executiveSummaryMd: string | null; rows: Row[]; alerts: Array<{ kind: string; detail: string }>; providerSummaries: Record<string, { status: string; summary: string; limitations: string | null; error: string | null }> };
+
+const res = await seoGet<Overview>(token, "/admin/performance-audit");
+const ov = res.ok ? res.data : null;
+const params = new URL(Astro.request.url).searchParams;
+const selectedRunId = params.get("run") ?? ov?.latestRun?.runId ?? null;
+const detailRes = selectedRunId && ov?.configured ? await seoGet<Detail>(token, `/admin/performance-audit/runs/${encodeURIComponent(selectedRunId)}`) : null;
+const detail = detailRes && detailRes.ok ? detailRes.data : null;
+
+const healthClass = (s: string) =>
+  s === "HEALTHY" ? "bg-emerald-100 text-emerald-900" : s === "DUE" || s === "RETRYING" ? "bg-amber-100 text-amber-900" : s === "NEVER_RAN" || s === "NOT_CONFIGURED" ? "bg-gray-100 text-gray-700" : "bg-red-100 text-red-900";
+const outcomeClass = (o: string | null) => (o === "SUCCESS" ? "text-emerald-700" : o === "PARTIAL_SUCCESS" ? "text-amber-700" : o ? "text-red-700" : "text-gray-500");
+const statusLabel = (s: string) => s.replace(/_/g, " ");
+const statusClass = (s: string) =>
+  s === "IMPLEMENTED_AND_VERIFIED" ? "bg-emerald-100 text-emerald-900" : s.startsWith("IMPLEMENTED_AWAITING") ? "bg-sky-100 text-sky-900" : s === "SKIPPED_FOR_SAFETY" ? "bg-amber-100 text-amber-900" : s === "PROVIDER_FAILURE" ? "bg-red-100 text-red-900" : "bg-gray-100 text-gray-700";
+const rowClass = (s: string) =>
+  s === "CRITICAL_REGRESSION" ? "bg-red-50 text-red-900" : s === "REGRESSION" ? "bg-orange-50 text-orange-900" : s === "WARNING" ? "bg-amber-50 text-amber-900" : s === "IMPROVEMENT" ? "bg-emerald-50 text-emerald-900" : "";
+const fmtVal = (v: number | string | null, unit: string) => (v === null || v === undefined ? "no data" : typeof v === "number" ? (unit === "bytes" ? `${(v / 1024).toFixed(1)} KB` : unit === "ratio" ? v.toFixed(3) : Number.isInteger(v) ? String(v) : v.toFixed(unit === "score" ? 3 : 0)) : String(v));
+
+/** The cells an operator reads first; everything else stays in the full table. */
+const KEY = ["lcp_ms", "fcp_ms", "ttfb_ms", "cls", "tbt_ms", "total_bytes", "js_bytes", "requests", "p95_latency_ms", "error_rate", "security_score", "availability_pct", "page_generation_ms"];
+const keyRows = detail ? detail.rows.filter((r) => KEY.includes(r.metric) && r.current !== null && r.status !== "NO_DATA").sort((a, b) => KEY.indexOf(a.metric) - KEY.indexOf(b.metric)) : [];
+const flagged = detail ? detail.rows.filter((r) => ["CRITICAL_REGRESSION", "REGRESSION", "WARNING", "IMPROVEMENT"].includes(r.status)) : [];
+const providerNames = detail ? Object.keys(detail.providers).sort() : [];
+const canRequest = Boolean(ov?.configured) && !ov?.inFlight && (ov?.runsRequestedLast24h ?? 0) < (ov?.maxRunsPerDay ?? 0);
+---
+
+<AdminLayout title="Performance Audit" description="Continuous Performance Assurance: the rolling ten-day, fourteen-provider audit of the live storefront.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl space-y-8">
+    <header class="flex flex-wrap items-end justify-between gap-4 pb-6 border-b border-gray-200">
+      <div>
+        <h1 class="text-2xl font-black text-brand-dark tracking-tight">Performance Audit</h1>
+        <p class="mt-1 text-sm text-gray-600">Measured by the host runner every ten days and on request. Every number below was read from the audit's own files; nothing is estimated here.</p>
+      </div>
+      {ov && ov.configured && ov.latestRun && (
+        <a class="text-sm text-brand-primary underline" href="/admin/seo/web-vitals">Lighthouse Watch scores →</a>
+      )}
+    </header>
+
+    {notice && <p class="rounded border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{notice}</p>}
+    {formError && <p class="rounded border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900">{formError}</p>}
+    {!res.ok && <p class="rounded border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900">{res.message}</p>}
+
+    {ov && (
+      <section class="grid gap-4 md:grid-cols-3">
+        <div class="rounded-lg border border-gray-200 bg-white p-4">
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-500">Scheduler</h2>
+          <p class={`mt-2 inline-block rounded px-2 py-1 text-sm font-semibold ${healthClass(ov.health.status)}`}>{statusLabel(ov.health.status)}</p>
+          <p class="mt-2 text-sm text-gray-700">{ov.health.detail}</p>
+          {ov.state && (
+            <dl class="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-gray-600">
+              <dt>Last success</dt><dd>{ov.state.lastSuccessAt ? fmtWhen(ov.state.lastSuccessAt) : "never"}</dd>
+              <dt>Next due</dt><dd>{ov.state.nextDueAt ? fmtWhen(ov.state.nextDueAt) : "—"}</dd>
+              <dt>Retries this cycle</dt><dd>{ov.state.retryCount}{ov.state.cycleFailed ? " (cycle failed)" : ""}</dd>
+              <dt>Host last checked in</dt><dd>{ov.state.lastTickAt ? fmtWhen(ov.state.lastTickAt) : "not recorded yet"}</dd>
+            </dl>
+          )}
+        </div>
+
+        <div class="rounded-lg border border-gray-200 bg-white p-4">
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-500">Latest run</h2>
+          {ov.latestRun ? (
+            <div class="mt-2 text-sm text-gray-800">
+              <p><span class={`font-semibold ${outcomeClass(ov.latestRun.outcome)}`}>{ov.latestRun.outcome ?? "running"}</span> · {ov.latestRun.kind}{ov.latestRun.label ? ` · ${ov.latestRun.label}` : ""}</p>
+              <p class="mt-1 text-xs text-gray-600">{ov.latestRun.runId} · {ov.latestRun.metricCount ?? "?"} measurements · code {ov.latestRun.repoSha ?? "?"}</p>
+              <p class="mt-1 text-xs text-gray-600">{Object.entries(ov.latestRun.regressionCounts).map(([k, v]) => `${statusLabel(k).toLowerCase()} ${v}`).join(" · ") || "no regression counts"}</p>
+            </div>
+          ) : (
+            <p class="mt-2 text-sm text-gray-600">No run has been recorded yet.</p>
+          )}
+        </div>
+
+        <div class="rounded-lg border border-gray-200 bg-white p-4">
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-500">Request a run</h2>
+          {!ov.configured ? (
+            <p class="mt-2 text-sm text-gray-600">Not configured on this API (the audit data directory is not mounted). Reports still exist on the host; see <code>performance-audit/README.md</code>.</p>
+          ) : ov.inFlight ? (
+            <p class="mt-2 text-sm text-amber-800">A run is {ov.inFlight.status}: "{ov.inFlight.label}" requested {fmtWhen(ov.inFlight.requestedAt)}. One at a time.</p>
+          ) : (
+            <form method="POST" class="mt-2 space-y-2">
+              <input type="hidden" name="intent" value="request-run" />
+              <label class="block text-xs text-gray-600">Label
+                <input name="label" required maxlength="61" pattern="[a-z0-9][a-z0-9._-]{0,60}" placeholder="e.g. post-cloudflare-2026-09-20" class="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm text-gray-900" />
+              </label>
+              <label class="block text-xs text-gray-600">Kind
+                <select name="kind" class="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm text-gray-900">
+                  <option value="ad-hoc">Ad-hoc (does not move the ten-day clock)</option>
+                  <option value="recurring-now">Recurring now (counts as the scheduled audit)</option>
+                </select>
+              </label>
+              <button type="submit" disabled={!canRequest} class="rounded bg-brand-primary px-3 py-1.5 text-sm font-semibold text-brand-charcoal disabled:opacity-50">Queue the run</button>
+              <p class="text-xs text-gray-500">{ov.runsRequestedLast24h} of {ov.maxRunsPerDay} back-office runs used in the last 24 h. Labels starting <code>post-cloudflare</code> produce the Cloudflare comparison. No heavy load ever runs from here.</p>
+            </form>
+          )}
+        </div>
+      </section>
+    )}
+
+    {ov && ov.requests.length > 0 && (
+      <section class="rounded-lg border border-gray-200 bg-white p-4">
+        <h2 class="text-sm font-semibold text-gray-900">Requests</h2>
+        <table class="mt-2 w-full text-xs text-gray-800">
+          <thead class="text-left text-gray-500"><tr><th class="py-1 pr-3">Requested</th><th class="py-1 pr-3">Label</th><th class="py-1 pr-3">Kind</th><th class="py-1 pr-3">Status</th><th class="py-1 pr-3">Run</th><th class="py-1">Note</th></tr></thead>
+          <tbody>
+            {ov.requests.slice(0, 12).map((r) => (
+              <tr class="border-t border-gray-100">
+                <td class="py-1 pr-3">{fmtWhen(r.requestedAt)}</td><td class="py-1 pr-3">{r.label}</td><td class="py-1 pr-3">{r.kind}</td>
+                <td class="py-1 pr-3">{r.status}{r.outcome ? ` · ${r.outcome}` : ""}</td>
+                <td class="py-1 pr-3">{r.runId ? <a class="underline" href={`/admin/seo/performance-audit?run=${r.runId}`}>{r.runId}</a> : "—"}</td>
+                <td class="py-1 text-gray-600">{r.message ?? ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+    )}
+
+    {detail && (
+      <section class="space-y-4">
+        <div class="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 class="text-lg font-semibold text-gray-900">Run {detail.runId} <span class={`text-sm ${outcomeClass(detail.outcome)}`}>{detail.outcome}</span>{detail.label ? <span class="text-sm text-gray-500"> · {detail.label}</span> : null}</h2>
+          <form method="GET" class="text-xs">
+            <label class="text-gray-600">Show run
+              <select name="run" class="ml-1 rounded border border-gray-300 px-2 py-1 text-gray-900" onchange="this.form.submit()">
+                {ov!.runs.map((r) => <option value={r.runId} selected={r.runId === detail.runId}>{r.runId} · {r.kind}{r.label ? ` · ${r.label}` : ""} · {r.outcome ?? "?"}</option>)}
+              </select>
+            </label>
+          </form>
+        </div>
+
+        {detail.alerts.length > 0 && (
+          <ul class="rounded border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900">
+            {detail.alerts.map((a) => <li><strong>{a.kind}</strong> — {a.detail}</li>)}
+          </ul>
+        )}
+
+        <div class="grid gap-4 lg:grid-cols-2">
+          <div class="rounded-lg border border-gray-200 bg-white p-4">
+            <h3 class="text-sm font-semibold text-gray-900">Key measurements</h3>
+            <p class="text-xs text-gray-500">Browser rows come from the runner's own Chromium (unthrottled): a real customer path, not a field-device number. Origin rows bypass Cloudflare.</p>
+            {keyRows.length === 0 ? <p class="mt-2 text-sm text-gray-600">No key cell was measured in this run.</p> : (
+              <table class="mt-2 w-full text-xs text-gray-800">
+                <thead class="text-left text-gray-500"><tr><th class="py-1 pr-2">Metric</th><th class="py-1 pr-2">Page</th><th class="py-1 pr-2">Source</th><th class="py-1 pr-2 text-right">Now</th><th class="py-1 pr-2 text-right">Before</th><th class="py-1 pr-2 text-right">Best</th><th class="py-1 pr-2">Budget</th><th class="py-1">Status</th></tr></thead>
+                <tbody>
+                  {keyRows.map((r) => (
+                    <tr class={`border-t border-gray-100 ${rowClass(r.status)}`}>
+                      <td class="py-1 pr-2 font-medium">{r.metric.replace(/_ms$/, "").replace(/_/g, " ")}</td><td class="py-1 pr-2">{r.page}</td><td class="py-1 pr-2">{r.provider}/{r.location}</td>
+                      <td class="py-1 pr-2 text-right">{fmtVal(r.current, r.unit)}</td><td class="py-1 pr-2 text-right">{fmtVal(r.previous, r.unit)}</td><td class="py-1 pr-2 text-right">{fmtVal(r.best, r.unit)}</td>
+                      <td class="py-1 pr-2">{r.budgetStatus ? statusLabel(r.budgetStatus).toLowerCase() : "—"}</td><td class="py-1">{statusLabel(r.status).toLowerCase()}{r.pct !== null && r.status !== "PASS" ? ` (${r.pct > 0 ? "+" : ""}${r.pct.toFixed(1)}%)` : ""}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <div class="rounded-lg border border-gray-200 bg-white p-4">
+            <h3 class="text-sm font-semibold text-gray-900">Providers in this run</h3>
+            <ul class="mt-2 space-y-1 text-xs">
+              {providerNames.map((name) => {
+                const ps = detail.providerSummaries[name];
+                const st = ps?.status ?? detail.providers[name];
+                return (
+                  <li class="flex flex-wrap items-start gap-2">
+                    <span class={`rounded px-1.5 py-0.5 font-semibold ${statusClass(st)}`}>{statusLabel(st)}</span>
+                    <span class="font-medium text-gray-900">{name}</span>
+                    <span class="text-gray-600">{ps?.summary ? ps.summary.slice(0, 160) : ""}{ps?.error ? ` — ${ps.error.slice(0, 120)}` : ""}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
+
+        <div class="rounded-lg border border-gray-200 bg-white p-4">
+          <h3 class="text-sm font-semibold text-gray-900">Movements beyond noise ({flagged.length})</h3>
+          {flagged.length === 0 ? <p class="mt-2 text-sm text-gray-600">Nothing moved beyond the noise floors in this run{detail.previousRun ? ` compared with ${detail.previousRun}` : " (first run: nothing to compare)"}.</p> : (
+            <table class="mt-2 w-full text-xs text-gray-800">
+              <thead class="text-left text-gray-500"><tr><th class="py-1 pr-2">Cell</th><th class="py-1 pr-2 text-right">Now</th><th class="py-1 pr-2 text-right">Before</th><th class="py-1 pr-2 text-right">Change</th><th class="py-1">Status</th></tr></thead>
+              <tbody>{flagged.map((r) => <tr class={`border-t border-gray-100 ${rowClass(r.status)}`}><td class="py-1 pr-2">{r.cell}</td><td class="py-1 pr-2 text-right">{fmtVal(r.current, r.unit)}</td><td class="py-1 pr-2 text-right">{fmtVal(r.previous, r.unit)}</td><td class="py-1 pr-2 text-right">{r.pct === null ? "—" : `${r.pct > 0 ? "+" : ""}${r.pct.toFixed(1)}%`}</td><td class="py-1">{statusLabel(r.status).toLowerCase()}</td></tr>)}</tbody>
+            </table>
+          )}
+        </div>
+
+        {detail.executiveSummaryMd && (
+          <details class="rounded-lg border border-gray-200 bg-white p-4">
+            <summary class="cursor-pointer text-sm font-semibold text-gray-900">Executive summary (as written by the audit)</summary>
+            <pre class="mt-2 whitespace-pre-wrap text-xs text-gray-800">{detail.executiveSummaryMd}</pre>
+          </details>
+        )}
+      </section>
+    )}
+
+    {ov && ov.providerMatrix && (
+      <section class="rounded-lg border border-gray-200 bg-white p-4">
+        <h2 class="text-sm font-semibold text-gray-900">Provider matrix (what each integration is, and what unlocks it)</h2>
+        <table class="mt-2 w-full text-xs text-gray-800">
+          <thead class="text-left text-gray-500"><tr><th class="py-1 pr-3">Provider</th><th class="py-1 pr-3">Status</th><th class="py-1 pr-3">Needs</th><th class="py-1">Notes</th></tr></thead>
+          <tbody>
+            {ov.providerMatrix.map((p) => (
+              <tr class="border-t border-gray-100 align-top">
+                <td class="py-1 pr-3 font-medium">{p.name}</td>
+                <td class="py-1 pr-3"><span class={`rounded px-1.5 py-0.5 font-semibold ${statusClass(p.status)}`}>{statusLabel(p.status)}</span></td>
+                <td class="py-1 pr-3 text-gray-700">{p.credentials}</td>
+                <td class="py-1 text-gray-600">{p.notes}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p class="mt-2 text-xs text-gray-500">Credentials go into <code>performance-audit/.env</code> on the host; the next run picks them up. Heavy load (k6 ramp, Artillery, Loader.io) needs a staging <code>LOAD_TARGET_URL</code> and never runs against production without two explicit approvals.</p>
+      </section>
+    )}
+
+    {ov && ov.runs.length > 1 && (
+      <section class="rounded-lg border border-gray-200 bg-white p-4">
+        <h2 class="text-sm font-semibold text-gray-900">Run history</h2>
+        <table class="mt-2 w-full text-xs text-gray-800">
+          <thead class="text-left text-gray-500"><tr><th class="py-1 pr-3">Run</th><th class="py-1 pr-3">Kind</th><th class="py-1 pr-3">Label</th><th class="py-1 pr-3">Outcome</th><th class="py-1 pr-3">Measurements</th><th class="py-1">Regressions</th></tr></thead>
+          <tbody>
+            {ov.runs.map((r) => (
+              <tr class="border-t border-gray-100">
+                <td class="py-1 pr-3"><a class="underline" href={`/admin/seo/performance-audit?run=${r.runId}`}>{r.runId}</a></td><td class="py-1 pr-3">{r.kind}</td><td class="py-1 pr-3">{r.label ?? "—"}</td>
+                <td class={`py-1 pr-3 font-semibold ${outcomeClass(r.outcome)}`}>{r.outcome ?? "?"}</td><td class="py-1 pr-3">{r.metricCount ?? "?"}</td>
+                <td class="py-1">{(r.regressionCounts.CRITICAL_REGRESSION ?? 0) + (r.regressionCounts.REGRESSION ?? 0)} regressions · {r.regressionCounts.WARNING ?? 0} warnings · {r.regressionCounts.IMPROVEMENT ?? 0} improvements</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+    )}
+  </div>
+</AdminLayout>

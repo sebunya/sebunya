@@ -28,6 +28,7 @@ import adminNavRoutes from './routes/admin/nav';
 import navPublicRoutes from './routes/nav';
 import seoPublicRoutes from './routes/seo';
 import adminSeoGrowthRoutes from './routes/admin/seo-growth';
+import adminPerformanceAuditRoutes from './routes/admin/performance-audit';
 import adminSeoIntegrationRoutes from './routes/admin/seo-integrations';
 import adminSeoCatalogueRoutes from './routes/admin/seo-catalogue';
 import adminSeoWorkQueueRoutes from './routes/admin/seo-workqueue';
@@ -230,6 +231,7 @@ app.route('/admin/audit', adminAuditRoutes);
 app.route('/admin/users', adminUsersRoutes);
 app.route('/admin/customers', adminCustomersRoutes);
 app.route('/admin/roles', adminRolesRoutes);
+app.route('/admin/performance-audit', adminPerformanceAuditRoutes);
 app.route('/admin/products', adminProductsRoutes);
 app.route('/admin/product-costs', adminProductCostsRoutes);
 app.route('/admin/hero', adminHeroRoutes);
@@ -414,6 +416,7 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/admin/recommendations',
   '/admin/release-readiness',
   '/admin/roles',
+  '/admin/performance-audit',
   '/admin/search-demand',
   '/admin/seo',
   '/admin/seo/integrations',
