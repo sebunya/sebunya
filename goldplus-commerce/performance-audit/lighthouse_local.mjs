@@ -37,6 +37,12 @@ function summarise(lhr) {
     ttfb_ms: num('server-response-time'), total_bytes: num('total-byte-weight'), js_execution_ms: num('bootup-time'), main_thread_ms: num('mainthread-work-breakdown'), max_potential_fid_ms: num('max-potential-fid'),
     requests: items.length, js_bytes: bytesBy(isType('script')), css_bytes: bytesBy(isType('stylesheet')), image_bytes: bytesBy(isType('image')), font_bytes: bytesBy(isType('font')), html_bytes: bytesBy(isType('document')),
     third_party_bytes: bytesBy((r) => !firstParty(r)), third_party_requests: items.filter((r) => !firstParty(r)).length, long_tasks: longTasks,
+    // Cloudflare-injected scripts (Rocket Loader, JS detections, Web Analytics beacon) come and go per response and move
+    // TBT, request count, script bytes and the best-practices "deprecations" audit. Recorded per sample so a
+    // comparison never blames application code for an edge-side change.
+    cloudflare_injected_requests: items.filter((r) => /\/cdn-cgi\/|cloudflareinsights\.com/.test(r.url)).length,
+    cloudflare_injected_bytes: bytesBy((r) => /\/cdn-cgi\/|cloudflareinsights\.com/.test(r.url)),
+    rocket_loader: items.some((r) => /rocket-loader/.test(r.url)),
     failing_audits: failing, lighthouse_version: lhr.lighthouseVersion, fetch_time: lhr.fetchTime, final_url: lhr.finalDisplayedUrl,
     numeric: Object.fromEntries(AUDIT_NUM.map((k) => [k, num(k)])),
   };
@@ -88,7 +94,8 @@ runProvider('lighthouse', async (ctx) => {
         add('third_party_bytes', med('third_party_bytes'), 'bytes'); add('third_party_requests', med('third_party_requests'), 'count');
         add('js_execution_ms', med('js_execution_ms'), 'ms', 'bootup-time'); add('main_thread_ms', med('main_thread_ms'), 'ms', 'mainthread-work-breakdown'); add('long_tasks', med('long_tasks'), 'count');
         add('tti_ms', med('tti_ms'), 'ms');
-        lines.push(`${page}/${ff}: perf ${medScore('performance')} (${ok.map((s) => s.scores.performance).join('/')}), a11y ${medScore('accessibility')}, bp ${medScore('best_practices')}, seo ${medScore('seo')}; LCP ${Math.round(med('lcp_ms'))} ms, TBT ${Math.round(med('tbt_ms'))} ms, CLS ${med('cls')}, SI ${Math.round(med('speed_index_ms'))} ms, ${Math.round(med('total_bytes') / 1024)} KB, ${med('requests')} req, long tasks ${med('long_tasks')}`);
+        add('third_party_requests', med('third_party_requests'), 'count'); metrics.push(metric({ provider: 'lighthouse', page, device: ff, location: loc, metric: 'cloudflare_injected_requests', value: med('cloudflare_injected_requests'), unit: 'count', kind: 'synthetic', note: `rocket loader per run: ${ok.map((s) => (s.rocket_loader ? 'on' : 'off')).join('/')}`, sample_size: ok.length }));
+        lines.push(`${page}/${ff}: perf ${medScore('performance')} (${ok.map((s) => s.scores.performance).join('/')}; cf scripts ${ok.map((s) => s.cloudflare_injected_requests).join('/')}), a11y ${medScore('accessibility')}, bp ${medScore('best_practices')}, seo ${medScore('seo')}; LCP ${Math.round(med('lcp_ms'))} ms, TBT ${Math.round(med('tbt_ms'))} ms, CLS ${med('cls')}, SI ${Math.round(med('speed_index_ms'))} ms, ${Math.round(med('total_bytes') / 1024)} KB, ${med('requests')} req, long tasks ${med('long_tasks')}`);
       }
     }
   } finally { await chrome.kill(); }

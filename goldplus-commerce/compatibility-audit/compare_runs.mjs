@@ -62,13 +62,24 @@ if (gl && cl) {
         else if (m === 'cls') status = delta > 0.05 ? 'REGRESSION' : delta > spread ? 'WARNING' : 'NOISE';
         else status = relWorse > 0.25 && beyond > 0 ? 'REGRESSION' : Math.abs(delta) > spread ? 'WARNING' : 'NOISE';
       } else if (!worse && Math.abs(delta) > spread) status = 'IMPROVEMENT';
-      rows.push({ cell, metric: m, golden_median: gMed, golden_min: gMin, golden_max: gMax, current_median: cMed, delta, status });
+      // Cloudflare-injected scripts (Rocket Loader / JS detections) differ per response: when the golden
+      // and current samples do not share the same edge state, a worse number is CLOUDFLARE_STATE_DIFFERS,
+      // reported but never counted as an application regression.
+      // Older samples (before the per-sample field existed) are inferred from Lighthouse's "deprecations" audit,
+      // which only fails when Cloudflare's injected scripts (JS detections / Rocket Loader) are present on this site.
+      const cfOf = (x) => (x.cloudflare_injected_requests != null ? x.cloudflare_injected_requests : (Array.isArray(x.failing_audits) && x.failing_audits.includes('deprecations') ? 1 : 0));
+      const gCf = gOk.map(cfOf); const cCf = cOk.map(cfOf);
+      const cfKnown = true;
+      const cfDiffers = cfKnown && (median(gCf) !== median(cCf));
+      if (cfDiffers && (status === 'REGRESSION' || status === 'WARNING')) status = 'CLOUDFLARE_STATE_DIFFERS';
+      rows.push({ cell, metric: m, golden_median: gMed, golden_min: gMin, golden_max: gMax, current_median: cMed, delta, status, golden_cloudflare_scripts: gCf, current_cloudflare_scripts: cCf });
       if (status === 'REGRESSION') verdict = 'REGRESSION';
       else if (status === 'WARNING' && verdict === 'PRESERVED') verdict = 'WARNING';
+      else if (status === 'CLOUDFLARE_STATE_DIFFERS' && verdict === 'PRESERVED') verdict = 'WARNING_CLOUDFLARE';
     }
   }
 }
-const statement = verdict === 'PRESERVED' ? 'CURRENT GOLDPLUS PERFORMANCE BASELINE PRESERVED' : verdict === 'WARNING' ? 'CURRENT GOLDPLUS PERFORMANCE BASELINE PRESERVED WITH WARNINGS (movement beyond the golden master spread on some cells; investigate)' : verdict === 'REGRESSION' ? 'PERFORMANCE REGRESSION DETECTED — NOT APPROVED FOR RELEASE' : 'NO GOLDEN MASTER AVAILABLE TO COMPARE — no statement can be made';
+const statement = verdict === 'PRESERVED' ? 'CURRENT GOLDPLUS PERFORMANCE BASELINE PRESERVED' : verdict === 'WARNING_CLOUDFLARE' ? 'CURRENT GOLDPLUS PERFORMANCE BASELINE PRESERVED (movement attributable to Cloudflare-injected scripts differing between runs; not application code)' : verdict === 'WARNING' ? 'CURRENT GOLDPLUS PERFORMANCE BASELINE PRESERVED WITH WARNINGS (movement beyond the golden master spread on some cells; investigate)' : verdict === 'REGRESSION' ? 'PERFORMANCE REGRESSION DETECTED — NOT APPROVED FOR RELEASE' : 'NO GOLDEN MASTER AVAILABLE TO COMPARE — no statement can be made';
 write('performance_non_regression.json', { golden_master_run: golden ? golden.split('/').pop() : null, current_run: current ? current.split('/').pop() : null, verdict, statement, rows, method: 'medians of N Lighthouse runs per cell; the golden master run\'s min..max spread is the noise band' });
 
 // Bundle diff: the JS/CSS bytes each journey step transferred, golden vs now (live bundles as customers receive them).

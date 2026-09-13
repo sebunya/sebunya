@@ -18,8 +18,9 @@ export function attachMonitor(page, { firstPartyHost }) {
     // Cloudflare marks its challenge/block interstitials with cf-mitigated. From a datacenter IP a
     // headless browser earns one regardless of the storefront: recorded as BLOCKED_BY_EDGE, never as
     // a defect, and never evaded.
-    const mitigated = res.headers()['cf-mitigated'];
-    if (mitigated && res.request().resourceType() === 'document') network.push({ kind: 'cf_challenge', url: url.slice(0, 200), type: 'document', mitigated, impact: 'BLOCKED_BY_EDGE' });
+    const h = res.headers(); const mitigated = h['cf-mitigated'];
+    const edgeBlock = res.request().resourceType() === 'document' && (mitigated || ((st === 403 || st === 503) && /cloudflare/i.test(h['server'] ?? '') && !h['x-astro-route'] && !h['content-security-policy']));
+    if (edgeBlock) { network.push({ kind: 'cf_challenge', url: url.slice(0, 200), type: 'document', mitigated: mitigated ?? `http_${st}`, impact: 'BLOCKED_BY_EDGE' }); return; }
     if (st >= 400) network.push({ kind: `http_${st}`, url: url.slice(0, 200), type: res.request().resourceType(), impact: classifyImpact(url, res.request().resourceType(), firstPartyHost) });
   });
   return {
