@@ -18,11 +18,17 @@ const write = (name, data) => writeFileSync(join(OUT, name), typeof data === 'st
 mkdirSync(OUT, { recursive: true });
 
 // ── Playwright results → per-test status per project ────────────────────────
-let pw = { suites: [] };
-try { pw = JSON.parse(readFileSync(join(OUT, 'playwright-results.json'), 'utf8')); } catch { /* no results */ }
+// One results file per pass: playwright-results-edge.json (Cloudflare path, low volume) and
+// playwright-results-origin.json (full matrix through Caddy). Both are merged; each test carries its pass.
 const tests = [];
-const walk = (suite, file) => { for (const s of suite.suites ?? []) walk(s, s.file ?? file); for (const sp of suite.specs ?? []) for (const t of sp.tests ?? []) tests.push({ file: sp.file ?? file, title: sp.title, project: t.projectName, status: t.results?.at(-1)?.status ?? t.status, duration_ms: t.results?.reduce((a, r) => a + (r.duration ?? 0), 0) ?? 0, error: t.results?.at(-1)?.error?.message?.split('\n')[0]?.slice(0, 200) ?? null }); };
-for (const s of pw.suites ?? []) walk(s, s.file);
+for (const f of readdirSync(OUT).filter((n) => /^playwright-results-.*\.json$/.test(n))) {
+  const pass = f.replace(/^playwright-results-|\.json$/g, '');
+  let pw = { suites: [] };
+  try { pw = JSON.parse(readFileSync(join(OUT, f), 'utf8')); } catch { continue; }
+  const walk = (suite, file) => { for (const s of suite.suites ?? []) walk(s, s.file ?? file); for (const sp of suite.specs ?? []) for (const t of sp.tests ?? []) tests.push({ pass, file: sp.file ?? file, title: sp.title, project: t.projectName, status: t.results?.at(-1)?.status ?? t.status, duration_ms: t.results?.reduce((a, r) => a + (r.duration ?? 0), 0) ?? 0, error: t.results?.at(-1)?.error?.message?.split('\n')[0]?.slice(0, 200) ?? null }); };
+  for (const s of pw.suites ?? []) walk(s, s.file);
+}
+const PASSES = [...new Set(tests.map((t) => t.pass))];
 const byStatus = (st) => tests.filter((t) => t.status === st).length;
 
 // ── Journeys ────────────────────────────────────────────────────────────────
@@ -63,7 +69,7 @@ for (const c of matrix.classes) {
 }
 const realDev = rec('real_device');
 for (const r of realDev) { const cell = cells.find((x) => x.class_id === r.class_id); if (cell) { cell.real_device = { status: r.status, evidence: r.evidence, reason: r.reason ?? null, device: r.real?.device ?? r.real?.os ?? null, browser: r.real?.browser ?? null, viewport: r.viewport ?? null }; if (r.status === 'PASS' || r.status === 'FAIL') { cell.status = r.status; cell.evidence = r.evidence; } } }
-write('compatibility_matrix.json', { run_id: RUN_ID, label: LABEL, generated_at: new Date().toISOString(), note: 'engine cells are Playwright engines on the Linux runner — NOT Safari, NOT Samsung Internet, NOT a real phone; real cells need a provider credential', cells });
+write('compatibility_matrix.json', { run_id: RUN_ID, label: LABEL, generated_at: new Date().toISOString(), passes: PASSES, note: 'engine cells are Playwright engines on the Linux runner — NOT Safari, NOT Samsung Internet, NOT a real phone; real cells need a provider credential. Pass "origin": the full matrix reaches the origin stack through Caddy with the real hostname and certificate (Cloudflare bypassed: its bot wall challenges headless traffic from the host at volume). Pass "edge": low-volume probes through Cloudflare (Rocket Loader, data usage, PWA).', cells });
 
 const constrained = rec('constrained');
 write('constrained_experience_matrix.json', { run_id: RUN_ID, evidence: 'EMULATED_CONSTRAINED_DEVICE (Chromium CDP CPU throttling + network conditions); no REAL_LOW_END_ANDROID result exists until a device provider is credentialed', cells: constrained.map((r) => ({ class_id: r.class_id, cpu_profile: r.cpu, network_profile: r.network, profile: r.profile, home: r.home, product: r.product, product_nav_ms: r.product_nav_ms, add_to_cart_ms: r.add_to_cart_ms, total_ms: r.total_ms, status: r.status })), search: rec('search_constraint'), interruption: rec('interruption'), storage_loss: rec('storage_loss') });
@@ -109,7 +115,7 @@ write('responsive_report.json', { run_id: RUN_ID, cells: rec('responsive') });
 
 // ── Summary + manifest ──────────────────────────────────────────────────────
 const p0 = sev('P0'), p1 = sev('P1'), p2 = sev('P2'), p3 = sev('P3');
-const headline = `${MODE}: ${journeysPassed} journey tests passed, ${journeysFailed} failed across ${new Set(journeyTests.map((t) => t.project)).size} engine/viewport classes; P0 ${p0}, P1 ${p1}, P2 ${p2}, P3 ${p3}; PWA ${pwaClass}; real devices ${realDev.length ? realDev[0].status : 'not run'}`;
+const headline = `${MODE} (${PASSES.join('+') || 'no results'}): ${journeysPassed} journey tests passed, ${journeysFailed} failed across ${new Set(journeyTests.map((t) => t.project)).size} engine/viewport classes; P0 ${p0}, P1 ${p1}, P2 ${p2}, P3 ${p3}; PWA ${pwaClass}; real devices ${realDev.length ? realDev[0].status : 'not run'}`;
 const summary = { headline, journeys_passed: journeysPassed, journeys_failed: journeysFailed, tests_total: tests.length, tests_failed: byStatus('failed') + byStatus('timedOut'), console_errors: consoleErrors.length, network_failures: networkFailures.filter((n) => n.impact !== 'OPTIONAL_THIRD_PARTY' && n.impact !== 'FIRST_PARTY_ANALYTICS').length, a11y_serious: a11y.reduce((a, r) => a + (r.serious ?? 0), 0), a11y_total: a11y.reduce((a, r) => a + (r.total ?? 0), 0), p0, p1, p2, p3, visual_regressions: rec('visual').filter((v) => v.status === 'DIFF').length, pwa_classification: pwaClass, data_usage: usageByJourney };
 write('compatibility_manifest.json', { run_id: RUN_ID, label: LABEL || null, mode: MODE, generated_at: new Date().toISOString(), target: process.env.COMPAT_TARGET_URL ?? null, playwright: '1.61.1', projects: [...new Set(tests.map((t) => t.project))], summary, defects });
 write('defects.json', { run_id: RUN_ID, defects });

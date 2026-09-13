@@ -60,7 +60,7 @@ export const test = base.extend<{ gp: Gp }>({
       },
       report(kind, payload) { record(kind, { ...gp.cell(), ...payload }); },
       cell(extra = {}) {
-        return { project: testInfo.project.name, class_id: gp.classId, engine: gp.engine, tier: gp.tier, cpu_profile: gp.cpu, network_profile: gp.network, evidence: gp.evidence, viewport: (testInfo.project.use as { viewport?: unknown }).viewport ?? null, test: testInfo.title, file: testInfo.file.split('/').slice(-2).join('/'), ...extra };
+        return { project: testInfo.project.name, path: process.env.COMPAT_PATH || 'edge', class_id: gp.classId, engine: gp.engine, tier: gp.tier, cpu_profile: gp.cpu, network_profile: gp.network, evidence: gp.evidence, viewport: (testInfo.project.use as { viewport?: unknown }).viewport ?? null, test: testInfo.title, file: testInfo.file.split('/').slice(-2).join('/'), ...extra };
       },
     };
     await use(gp);

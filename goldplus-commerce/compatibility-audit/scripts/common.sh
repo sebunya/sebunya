@@ -16,6 +16,7 @@ export COMPAT_TARGET_URL="${COMPAT_TARGET_URL:-https://shopgoldplus.com}"
 export COMPAT_BASELINE_DIR="${COMPAT_BASELINE_DIR:-${PERF_AUDIT_DATA_DIR:-$HERE/out}/compat-baselines}"
 mkdir -p "$COMPAT_BASELINE_DIR"
 export COMPAT_WORKERS="${COMPAT_WORKERS:-1}"
+export COMPAT_PASS="${COMPAT_PASS:-origin}" COMPAT_PATH="${COMPAT_PATH:-${COMPAT_PATH_DEFAULT:-edge}}"
 [ -x node_modules/.bin/playwright ] || { echo "STOP: @playwright/test is not installed (npm install in compatibility-audit/)"; exit 1; }
 pw() { node_modules/.bin/playwright test --config playwright.config.ts "$@"; }
 finish_reports() {

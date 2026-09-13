@@ -33,11 +33,14 @@ export default defineConfig({
   testDir: '.',
   testMatch: ['journeys/**/*.spec.ts', 'browser/**/*.spec.ts', 'mobile/**/*.spec.ts', 'low-end/**/*.spec.ts', 'responsive/**/*.spec.ts', 'network/**/*.spec.ts', 'data-usage/**/*.spec.ts', 'pwa/**/*.spec.ts', 'accessibility/**/*.spec.ts', 'visual/**/*.spec.ts', 'real-device/**/*.spec.ts'],
   timeout: 90_000,
+  // Hard stop for the whole run, BELOW the performance-audit provider timeout (5400 s), so the
+  // reports are always generated: tests that did not run are reported as such, never lost.
+  globalTimeout: Number(process.env.COMPAT_GLOBAL_TIMEOUT_MS || 70 * 60_000),
   expect: { timeout: 15_000, toHaveScreenshot: { maxDiffPixelRatio: 0.02, animations: 'disabled', caret: 'hide', scale: 'css' } },
   fullyParallel: false,
   workers: Number(process.env.COMPAT_WORKERS || 1), // the audit shares a 2-vCPU production host
   retries: 0, // a flaky result is a finding, not something to hide with retries
-  reporter: [['list'], ['json', { outputFile: join(OUT, 'playwright-results.json') }]],
+  reporter: [['list'], ['json', { outputFile: join(OUT, `playwright-results-${process.env.COMPAT_PASS || 'main'}.json`) }]],
   outputDir: join(OUT, 'test-results'),
   snapshotPathTemplate: `${process.env.COMPAT_BASELINE_DIR || join(__dirname, 'baselines')}/{projectName}/{testFilePath}/{arg}{ext}`,
   updateSnapshots: (process.env.COMPAT_UPDATE_SNAPSHOTS as 'all' | 'missing' | 'none') || 'missing',
