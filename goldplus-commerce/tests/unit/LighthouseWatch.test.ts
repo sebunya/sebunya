@@ -91,6 +91,10 @@ describe('evaluateLighthouse', () => {
     const t = targetsFromEnv((k) => ({ LIGHTHOUSE_WATCH_TARGET_PERFORMANCE: '95', LIGHTHOUSE_WATCH_TARGET_SEO: '250' } as any)[k]);
     expect(t).toEqual({ ...DEFAULT_LIGHTHOUSE_TARGETS, performance: 95 });
     expect(evaluateLighthouse([summary({ performance: 0.96 })], t).ok).toBe(true);
+    // compose passes "" for an unset variable: it must fall back to 100, never become a target of 0
+    const empty = targetsFromEnv(() => '');
+    expect(empty).toEqual(DEFAULT_LIGHTHOUSE_TARGETS);
+    expect(evaluateLighthouse([summary({ performance: 0.95 })], empty).ok).toBe(false);
   });
 
   it('describes a shortfall with its audits and the owner action', () => {

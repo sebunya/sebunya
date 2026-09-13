@@ -29,6 +29,8 @@ export interface LighthouseFailingAudit {
   weight: number;
   /** Set when the cause is outside the codebase (a Cloudflare zone setting). */
   ownerAction: string | null;
+  /** Up to five offending items (element snippet or resource URL, plus the audit's explanation), so a failing audit names WHAT failed. */
+  items: Array<{ snippet: string | null; url: string | null; explanation: string | null }>;
 }
 
 export interface LighthouseLabSummary {
@@ -86,6 +88,11 @@ export function summariseLighthouseResult(lhr: any, formFactor: LighthouseFormFa
         category: cat,
         weight,
         ownerAction: OWNER_ACTION_AUDITS[String(ref.id)] ?? null,
+        items: (Array.isArray(au?.details?.items) ? au.details.items : []).slice(0, 5).map((it: any) => ({
+          snippet: typeof it?.node?.snippet === 'string' ? it.node.snippet.slice(0, 200) : null,
+          url: typeof it?.url === 'string' ? it.url.slice(0, 200) : null,
+          explanation: typeof it?.node?.explanation === 'string' ? it.node.explanation.slice(0, 200) : null,
+        })),
       });
     }
   }
@@ -185,8 +192,10 @@ export function describeShortfall(s: LighthouseShortfall): string {
 
 export function targetsFromEnv(envLookup: (name: string) => string | undefined): LighthouseTargets {
   const read = (name: string, fallback: number): number => {
-    const v = Number(envLookup(name));
-    return Number.isFinite(v) && v >= 0 && v <= 100 ? Math.round(v) : fallback;
+    const raw = (envLookup(name) ?? '').trim();
+    if (raw === '') return fallback; // compose passes "" for an unset variable; "" must not become target 0
+    const v = Number(raw);
+    return Number.isFinite(v) && v >= 1 && v <= 100 ? Math.round(v) : fallback;
   };
   return {
     performance: read('LIGHTHOUSE_WATCH_TARGET_PERFORMANCE', 100),

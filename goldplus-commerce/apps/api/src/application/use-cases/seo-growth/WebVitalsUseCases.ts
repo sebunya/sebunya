@@ -90,7 +90,7 @@ export interface WebVitalsView {
     runner: string | null;
     fetchTime: string | null;
     categories: Record<string, number | null>;
-    failingAudits: Array<{ id: string; title: string; category: string; displayValue: string | null; ownerAction: string | null }>;
+    failingAudits: Array<{ id: string; title: string; category: string; displayValue: string | null; ownerAction: string | null; items: Array<{ snippet: string | null; url: string | null; explanation: string | null }> }>;
   } | null;
 }
 
@@ -179,6 +179,7 @@ function lighthouseOf(source: WebVitalSource, raw: unknown): WebVitalsView['ligh
         category: String(a?.category ?? ''),
         displayValue: typeof a?.displayValue === 'string' ? a.displayValue : null,
         ownerAction: typeof a?.ownerAction === 'string' ? a.ownerAction : null,
+        items: Array.isArray(a?.items) ? a.items.slice(0, 5) : [],
       }))
     : [];
   return { runner: typeof o.runner === 'string' ? o.runner : null, fetchTime: typeof o.fetchTime === 'string' ? o.fetchTime : null, categories, failingAudits };
