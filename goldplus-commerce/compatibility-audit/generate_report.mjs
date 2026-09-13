@@ -37,9 +37,13 @@ const journeyTests = tests.filter((t) => /journeys\//.test(t.file));
 const journeyResults = journeyTests.map((t) => ({ ...t, record: journeys.find((j) => j.project === t.project && j.test === t.title) ?? null }));
 const journeysPassed = journeyTests.filter((t) => t.status === 'passed').length;
 const journeysFailed = journeyTests.filter((t) => t.status === 'failed' || t.status === 'timedOut').length;
+const journeysBlocked = journeyTests.filter((t) => t.status === 'blocked_by_edge').length;
 
 // ── Defects (findings with a severity) ──────────────────────────────────────
 const defects = [];
+const edgeBlocked = rec('edge_blocked');
+const isBlocked = (t) => edgeBlocked.some((b) => b.project === t.project && b.test === t.title);
+for (const t of tests) if ((t.status === 'failed' || t.status === 'timedOut') && isBlocked(t)) t.status = 'blocked_by_edge';
 for (const t of tests.filter((x) => x.status === 'failed' || x.status === 'timedOut')) {
   const p0 = /journeys\//.test(t.file) && /checkout|cart|product|discovery|search/i.test(t.title);
   defects.push({ severity: p0 ? 'P0' : 'P1', source: 'test_failure', project: t.project, file: t.file, title: t.title, detail: t.error, evidence: (journeys.find((j) => j.project === t.project) ?? {}).evidence ?? null });
@@ -65,7 +69,8 @@ for (const c of matrix.classes) {
   const projectName = c.engine ? `${c.engine}:${c.id}` : null;
   const jt = projectName ? journeyTests.filter((t) => t.project === projectName) : [];
   const evidence = c.engine ? (c.cpu || c.network ? 'EMULATED_CONSTRAINED_DEVICE' : (c.isMobile && c.engine === 'chromium' ? 'EMULATED_VIEWPORT' : 'ENGINE_CONTROL')) : (c.evidence ?? 'AWAITING_REAL_DEVICE');
-  cells.push({ class_id: c.id, label: c.label, tier: c.tier, engine: c.engine, browser: c.engine ? ({ chromium: 'Chromium (engine control for Chrome/Edge/Samsung Internet/WebView)', firefox: 'Firefox (engine)', webkit: 'WebKit (engine control for Safari)' })[c.engine] : (c.real?.browser ?? 'n/a'), os: 'Linux runner', device: c.engine ? 'emulated descriptor' : (c.real?.device ?? c.real?.os ?? 'n/a'), viewport: c.viewport ?? null, network_profile: c.network ?? 'unthrottled', cpu_profile: c.cpu ?? 'reference', mode: 'browser', evidence, journeys: jt.length ? { passed: jt.filter((t) => t.status === 'passed').length, failed: jt.filter((t) => t.status !== 'passed' && t.status !== 'skipped').length, skipped: jt.filter((t) => t.status === 'skipped').length } : null, status: !c.engine ? 'AWAITING_REAL_DEVICE' : jt.length === 0 ? 'NOT_TESTED' : jt.some((t) => t.status === 'failed' || t.status === 'timedOut') ? 'FAIL' : 'PASS' });
+  const blockedHere = jt.length > 0 && jt.every((t) => t.status === 'blocked_by_edge' || t.status === 'skipped');
+  cells.push({ class_id: c.id, label: c.label, tier: c.tier, engine: c.engine, paths: [...new Set(jt.map((t) => t.pass))], browser: c.engine ? ({ chromium: 'Chromium (engine control for Chrome/Edge/Samsung Internet/WebView)', firefox: 'Firefox (engine)', webkit: 'WebKit (engine control for Safari)' })[c.engine] : (c.real?.browser ?? 'n/a'), os: 'Linux runner', device: c.engine ? 'emulated descriptor' : (c.real?.device ?? c.real?.os ?? 'n/a'), viewport: c.viewport ?? null, network_profile: c.network ?? 'unthrottled', cpu_profile: c.cpu ?? 'reference', mode: 'browser', evidence, journeys: jt.length ? { passed: jt.filter((t) => t.status === 'passed').length, failed: jt.filter((t) => t.status !== 'passed' && t.status !== 'skipped').length, skipped: jt.filter((t) => t.status === 'skipped').length } : null, status: !c.engine ? 'AWAITING_REAL_DEVICE' : jt.length === 0 ? 'NOT_TESTED' : blockedHere ? 'BLOCKED_BY_EDGE' : jt.some((t) => t.status === 'failed' || t.status === 'timedOut') ? 'FAIL' : 'PASS' });
 }
 const realDev = rec('real_device');
 for (const r of realDev) { const cell = cells.find((x) => x.class_id === r.class_id); if (cell) { cell.real_device = { status: r.status, evidence: r.evidence, reason: r.reason ?? null, device: r.real?.device ?? r.real?.os ?? null, browser: r.real?.browser ?? null, viewport: r.viewport ?? null }; if (r.status === 'PASS' || r.status === 'FAIL') { cell.status = r.status; cell.evidence = r.evidence; } } }
@@ -115,8 +120,8 @@ write('responsive_report.json', { run_id: RUN_ID, cells: rec('responsive') });
 
 // ── Summary + manifest ──────────────────────────────────────────────────────
 const p0 = sev('P0'), p1 = sev('P1'), p2 = sev('P2'), p3 = sev('P3');
-const headline = `${MODE} (${PASSES.join('+') || 'no results'}): ${journeysPassed} journey tests passed, ${journeysFailed} failed across ${new Set(journeyTests.map((t) => t.project)).size} engine/viewport classes; P0 ${p0}, P1 ${p1}, P2 ${p2}, P3 ${p3}; PWA ${pwaClass}; real devices ${realDev.length ? realDev[0].status : 'not run'}`;
-const summary = { headline, journeys_passed: journeysPassed, journeys_failed: journeysFailed, tests_total: tests.length, tests_failed: byStatus('failed') + byStatus('timedOut'), console_errors: consoleErrors.length, network_failures: networkFailures.filter((n) => n.impact !== 'OPTIONAL_THIRD_PARTY' && n.impact !== 'FIRST_PARTY_ANALYTICS').length, a11y_serious: a11y.reduce((a, r) => a + (r.serious ?? 0), 0), a11y_total: a11y.reduce((a, r) => a + (r.total ?? 0), 0), p0, p1, p2, p3, visual_regressions: rec('visual').filter((v) => v.status === 'DIFF').length, pwa_classification: pwaClass, data_usage: usageByJourney };
+const headline = `${MODE} (${PASSES.join('+') || 'no results'}): ${journeysPassed} journey tests passed, ${journeysFailed} failed${journeysBlocked ? `, ${journeysBlocked} blocked by the Cloudflare edge (not defects)` : ''} across ${new Set(journeyTests.map((t) => t.project)).size} engine/viewport classes; P0 ${p0}, P1 ${p1}, P2 ${p2}, P3 ${p3}; PWA ${pwaClass}; real devices ${realDev.length ? realDev[0].status : 'not run'}`;
+const summary = { headline, journeys_passed: journeysPassed, journeys_failed: journeysFailed, journeys_blocked_by_edge: journeysBlocked, tests_blocked_by_edge: byStatus('blocked_by_edge'), tests_total: tests.length, tests_failed: byStatus('failed') + byStatus('timedOut'), console_errors: consoleErrors.length, network_failures: networkFailures.filter((n) => n.impact !== 'OPTIONAL_THIRD_PARTY' && n.impact !== 'FIRST_PARTY_ANALYTICS').length, a11y_serious: a11y.reduce((a, r) => a + (r.serious ?? 0), 0), a11y_total: a11y.reduce((a, r) => a + (r.total ?? 0), 0), p0, p1, p2, p3, visual_regressions: rec('visual').filter((v) => v.status === 'DIFF').length, pwa_classification: pwaClass, data_usage: usageByJourney };
 write('compatibility_manifest.json', { run_id: RUN_ID, label: LABEL || null, mode: MODE, generated_at: new Date().toISOString(), target: process.env.COMPAT_TARGET_URL ?? null, playwright: '1.61.1', projects: [...new Set(tests.map((t) => t.project))], summary, defects });
 write('defects.json', { run_id: RUN_ID, defects });
 

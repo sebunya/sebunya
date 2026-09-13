@@ -7,6 +7,6 @@ export COMPAT_MODE=smoke
 export COMPAT_GLOBAL_TIMEOUT_MS="${COMPAT_GLOBAL_TIMEOUT_MS:-1500000}"  # 25 min hard stop for release verification
 echo "=== compatibility smoke $COMPAT_RUN_ID target=$COMPAT_TARGET_URL"
 pw journeys pwa --project 'chromium:small_low_end_android' --project 'chromium:mainstream_android' --project 'firefox:desktop_1440_firefox' --project 'webkit:mainstream_iphone'; RC=$?
-pw network --project 'chromium:small_low_end_android' --grep 'slow_mobile'
+pw network --project 'chromium:small_low_end_android' --grep 'slow_mobile|search under high latency'
 finish_reports
 exit 0

@@ -15,12 +15,18 @@ export function attachMonitor(page, { firstPartyHost }) {
   });
   page.on('response', (res) => {
     const st = res.status(); const url = res.url();
+    // Cloudflare marks its challenge/block interstitials with cf-mitigated. From a datacenter IP a
+    // headless browser earns one regardless of the storefront: recorded as BLOCKED_BY_EDGE, never as
+    // a defect, and never evaded.
+    const mitigated = res.headers()['cf-mitigated'];
+    if (mitigated && res.request().resourceType() === 'document') network.push({ kind: 'cf_challenge', url: url.slice(0, 200), type: 'document', mitigated, impact: 'BLOCKED_BY_EDGE' });
     if (st >= 400) network.push({ kind: `http_${st}`, url: url.slice(0, 200), type: res.request().resourceType(), impact: classifyImpact(url, res.request().resourceType(), firstPartyHost) });
   });
   return {
     console: console_, network,
     snapshot() { return { console: [...console_], network: [...network] }; },
     commerceFailures() { return network.filter((n) => n.impact === 'COMMERCE'); },
+    blockedByEdge() { return network.some((n) => n.kind === 'cf_challenge'); },
   };
 }
 

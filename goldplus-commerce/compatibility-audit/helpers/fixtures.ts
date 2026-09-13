@@ -66,7 +66,8 @@ export const test = base.extend<{ gp: Gp }>({
     await use(gp);
     // Every test leaves its console/network evidence behind, classified.
     const snap = monitor.snapshot();
-    if (snap.console.length || snap.network.length) record('console_network', { ...gp.cell(), console: snap.console.slice(0, 30), network: snap.network.slice(0, 50), status: testInfo.status });
+    if (snap.console.length || snap.network.length) record('console_network', { ...gp.cell(), console: snap.console.slice(0, 30), network: snap.network.slice(0, 50), status: testInfo.status, blocked_by_edge: monitor.blockedByEdge() });
+    if (monitor.blockedByEdge()) record('edge_blocked', { ...gp.cell(), status: testInfo.status, note: 'Cloudflare answered a document request with a challenge (cf-mitigated). The cell is BLOCKED_BY_EDGE for this pass; not a storefront defect and not evaded.' });
   },
 });
 

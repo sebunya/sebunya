@@ -707,7 +707,7 @@ const checkoutOnSale = campaignRunning && checkoutSavings > 0;
               <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 <FormField id="name" name="name" label="Full name" required autocomplete="name" defaultValue={values.name} errorMessage={errors.name} />
                 <FormField id="email" name="email" label="Email" type="email" autocomplete="email" defaultValue={values.email} />
-                <FormField id="phone" name="phone" label="Phone (MTN / Airtel)" type="tel" required inputmode="tel" placeholder="07XX XXX XXX" defaultValue={values.phone} errorMessage={errors.phone} />
+                <FormField id="phone" name="phone" label="Phone (MTN / Airtel)" type="tel" required inputmode="tel" autocomplete="tel" placeholder="07XX XXX XXX" defaultValue={values.phone} errorMessage={errors.phone} />
                 <div class="md:col-span-2 space-y-4">
                    {savedAddresses.length > 0 && (
                      <fieldset class="space-y-2">
