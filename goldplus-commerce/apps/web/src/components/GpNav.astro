@@ -841,6 +841,14 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 .gp-nav__scrim{position:fixed;inset:0;z-index:58;background:rgba(4,4,4,.55);
   opacity:0;visibility:hidden;transition:opacity .35s,visibility .35s;}
 .gp-nav[data-open] .gp-nav__scrim{opacity:1;visibility:visible;}
+/* The scrim is fixed and full-screen inside the header's own stacking context,
+   so without a level of their own the header rows sat UNDER it: with a mega menu
+   open, the hovered category link, the search box and the logo all clicked the
+   scrim (which just closed the menu). Rows above the scrim; the bar above the
+   rail so its search/account/cart pop-overs still cover the rail and mega panel.
+   Mobile keeps its own rule below. Found by the Firefox desktop journey, 2026-09-13. */
+.gp-nav__top,.gp-nav__rail{position:relative;z-index:61;}
+.gp-nav__bar{position:relative;z-index:62;}
 
 .gp-nav__mob{display:none;}
 
