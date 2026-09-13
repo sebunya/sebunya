@@ -19,7 +19,7 @@ if [ "$STATUS" = 1 ]; then node -e 'import("./lib/state.mjs").then(async m=>{con
 
 if [ "$ADHOC" = 1 ]; then
   echo "ad-hoc run (label: ${LABEL:-none}); the recurring schedule is not changed"
-  bash run_all.sh --kind ad-hoc ${LABEL:+--label "$LABEL"}; exit $?
+  bash run_all.sh --kind ad-hoc ${LABEL:+--label "$LABEL"} ${PERF_AUDIT_ONLY:+--only "$PERF_AUDIT_ONLY"}; exit $?
 fi
 
 # Heartbeat: every recurring tick records that the host scheduler is alive, due or not

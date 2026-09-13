@@ -34,7 +34,7 @@ LOWER_IS_BETTER = {"ttfb_ms", "fcp_ms", "lcp_ms", "cls", "inp_ms", "tbt_ms", "sp
 HIGHER_IS_BETTER = {"availability_pct", "cache_efficiency_pct", "throughput_rps", "performance_score", "accessibility_score", "best_practices_score",
                     "seo_score", "security_score", "yellowlab_global_score", "journeys_passed"}
 THRESHOLD_KEY = {"lcp_ms": "lcp_pct", "fcp_ms": "fcp_pct", "ttfb_ms": "ttfb_pct", "tbt_ms": "tbt_pct", "speed_index_ms": "speed_index_pct",
-                 "js_bytes": "js_bytes_pct", "total_bytes": "total_bytes_pct", "requests": "requests_pct", "p95_latency_ms": "p95_latency_pct"}
+                 "js_bytes": "js_bytes_pct", "total_bytes": "total_bytes_pct", "requests": "requests_pct", "p95_latency_ms": "p95_latency_pct", "p99_latency_ms": "p99_latency_pct"}
 BUDGET_KEY = {"lcp_ms": "lcp_ms", "fcp_ms": "fcp_ms", "ttfb_ms": "ttfb_ms", "tbt_ms": "tbt_ms", "cls": "cls", "inp_ms": "inp_ms", "speed_index_ms": "speed_index_ms",
               "total_bytes": "total_bytes", "js_bytes": "js_bytes", "requests": "requests", "p95_latency_ms": "p95_latency_ms", "error_rate": "error_rate"}
 OWNER_HINT = {"lighthouse": "APPLICATION", "compatibility": "APPLICATION", "control": "ORIGIN_INFRASTRUCTURE", "observatory": "APPLICATION", "webhint": "APPLICATION", "k6": "ORIGIN_INFRASTRUCTURE", "artillery": "ORIGIN_INFRASTRUCTURE", "loaderio": "ORIGIN_INFRASTRUCTURE"}

@@ -66,6 +66,8 @@ tests/                     node:test + unittest + static checks
 | SpeedCurve | `speedcurve_analytics.js` | IMPLEMENTED_AWAITING_SUBSCRIPTION |
 | Mozilla Observatory v2 | `mozilla_observatory.py` | IMPLEMENTED_AND_VERIFIED |
 | webhint | `run_webhint.sh` + `.hintrc` | IMPLEMENTED_AND_VERIFIED (where the optional dependency installs) |
+| Lighthouse 12 local (3-run medians, mobile simulated + desktop) | `lighthouse_local.mjs` | IMPLEMENTED_AND_VERIFIED — the performance golden-master guard |
+| Compatibility programme (`../compatibility-audit`: engines, constrained profiles, data usage, PWA, a11y, visual) | `run_compatibility.sh` | IMPLEMENTED_AND_VERIFIED (real devices AWAITING_CREDENTIALS) |
 
 Every provider writes `status.json`, `normalized.json`, and where available
 `raw.json` (redacted) and `summary.md` into `providers/<name>/` of the run.

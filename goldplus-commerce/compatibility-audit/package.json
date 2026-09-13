@@ -1,0 +1,20 @@
+{
+  "name": "@goldplus/compatibility-audit",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GoldPlus continuous mobile, cross-browser, low-end device and PWA compatibility assurance (test-only; never shipped to customers).",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "smoke": "bash run_smoke.sh",
+    "full": "bash run_full.sh",
+    "low-end": "bash run_low_end.sh",
+    "pwa": "bash run_pwa.sh",
+    "check": "bash scripts/static_checks.sh",
+    "test:unit": "node --test helpers/*.test.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "@axe-core/playwright": "4.13.0"
+  }
+}

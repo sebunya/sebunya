@@ -11,7 +11,8 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; cd "$HERE"
 LABEL=""; KIND="ad-hoc"; HEAVY=0
-while [ $# -gt 0 ]; do case "$1" in --label) LABEL="$2"; shift 2;; --kind) KIND="$2"; shift 2;; --heavy) HEAVY=1; shift;; *) echo "unknown arg $1"; exit 2;; esac; done
+ONLY="${PERF_AUDIT_ONLY:-}"
+while [ $# -gt 0 ]; do case "$1" in --label) LABEL="$2"; shift 2;; --kind) KIND="$2"; shift 2;; --heavy) HEAVY=1; shift;; --only) ONLY="$2"; shift 2;; *) echo "unknown arg $1"; exit 2;; esac; done
 
 PRE_ENV_KEYS="$(env | cut -d= -f1 | tr "\n" " ")"; source "$HERE/lib/env.sh"; load_dotenv "$HERE/.env"; load_admin_settings "${PERF_AUDIT_DATA_DIR:-$HERE/data}" "$PRE_ENV_KEYS"
 export PERF_AUDIT_DATA_DIR="${PERF_AUDIT_DATA_DIR:-$HERE/data}"
@@ -69,7 +70,18 @@ declare -A CMD=(
 ORDER=(control lighthouse observatory yellowlab speedvitals gtmetrix debugbear webpagetest wpt_ecommerce_flow speedcurve pingdom keycdn webhint k6 artillery loaderio compatibility)
 [ "$HEAVY" = 1 ] && CMD[k6]="bash run_k6.sh --heavy"
 timeout_for() { python3 -c 'import json,sys;t=json.load(open("config.resolved.json")).get("timeouts_seconds",{});print(int(t.get(sys.argv[1],t.get("provider_default",900))))' "$1"; }
+# --only a,b (or PERF_AUDIT_ONLY): run a subset (the post-deploy smoke); every other provider records DISABLED_FOR_THIS_RUN.
 for P in "${ORDER[@]}"; do
+  if [ -n "$ONLY" ] && ! printf ',%s,' "$(echo "$ONLY" | tr ' ' ',')" | grep -q ",$P,"; then
+    mkdir -p "$PERF_AUDIT_RUN_DIR/providers/$P"
+    python3 - "$PERF_AUDIT_RUN_DIR/providers/$P" "$P" <<'EOF'
+import json,sys,datetime
+d,p=sys.argv[1:3]; now=datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+json.dump({"provider":p,"status":"DISABLED","started_at":now,"finished_at":now,"summary":"not selected for this run (--only)","refs":{},"limitations":None,"error":None},open(f"{d}/status.json","w"),indent=2)
+json.dump({"provider":p,"status":"DISABLED","metrics":[]},open(f"{d}/normalized.json","w"),indent=2)
+EOF
+    continue
+  fi
   T="$(timeout_for "$P")"
   echo "--- $P (timeout ${T}s) $(date -u +%T)"
   # Heavy-only providers are skipped in a non-heavy run BEFORE anything is created; they record SKIPPED_FOR_SAFETY themselves.

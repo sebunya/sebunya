@@ -18,7 +18,7 @@ timeouts_seconds:
   provider_default: 900       # any single provider is killed after this
   webpagetest: 1500           # 3 runs x 2 profiles can queue for a while
   lighthouse: 1500            # 3 runs x 2 form factors x 2 pages on a 2-vCPU host
-  compatibility: 2400         # Playwright engine matrix + constrained profiles
+  compatibility: 5400         # Playwright engine matrix + constrained profiles on a 2-vCPU host
   gtmetrix: 900
   debugbear: 900
   speedvitals: 600
@@ -123,6 +123,7 @@ regression:
   total_bytes_pct: 10
   requests_pct: 10
   p95_latency_pct: 20
+  p99_latency_pct: 60             # p99 of a 36-request canary is a single request; only a large move means anything
   critical_multiplier: 2      # > 2x the threshold → CRITICAL_REGRESSION
   noise_floor_ms: 100
   noise_floor_bytes: 10240      # byte movements under 10 KiB are never a regression (personalised hero + beacon variants)

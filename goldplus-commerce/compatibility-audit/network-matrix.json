@@ -1,0 +1,11 @@
+{
+  "note": "Plausible classes, not measured Ugandan carrier profiles. Applied through Chromium's CDP network emulation only (EMULATED_NETWORK); Firefox and WebKit cannot be throttled through Playwright and are run unthrottled.",
+  "profiles": {
+    "fast_reference": { "latency_ms": 20, "down_kbps": 51200, "up_kbps": 20480 },
+    "normal_4g": { "latency_ms": 70, "down_kbps": 9216, "up_kbps": 3072 },
+    "slow_mobile": { "latency_ms": 300, "down_kbps": 1638, "up_kbps": 750, "note": "3G-like" },
+    "high_latency": { "latency_ms": 800, "down_kbps": 4096, "up_kbps": 1024 },
+    "intermittent": { "note": "online → offline → online during safe actions; implemented with context.setOffline()" },
+    "severe_constrained": { "latency_ms": 500, "down_kbps": 400, "up_kbps": 200 }
+  }
+}
