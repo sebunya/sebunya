@@ -289,7 +289,7 @@ function fillHeroTokens(text: string): string {
           </div>
 
           {s.media === 'stage' && (
-            <div class="gp-hero__media"><div class="gp-hero__stage" data-img={s.imageUrl} data-alt={s.imageAlt}><span class="gp-hero__stage-glow"></span></div></div>
+            <div class="gp-hero__media"><div class="gp-hero__stage" data-img={s.imageUrl} data-alt={s.imageAlt}><span class="gp-hero__stage-glow"></span>{isLead && s.imageUrl && <img class="gp-hero__stage-img" src={s.imageUrl} alt={s.imageAlt} width="600" height="600" loading="eager" fetchpriority="high" decoding="async" />}</div></div>
           )}
 
           {s.media === 'card' && (
@@ -514,6 +514,9 @@ function fillHeroTokens(text: string): string {
   transition:opacity .55s var(--gph-ease),transform .55s var(--gph-ease);
 }
 .gp-hero__arch img.is-in{opacity:1;transform:none;}
+/* the lead's product, rendered by the server so it is on screen at first paint;
+   the JS arch (opaque cream) parks exactly over it, so nothing double-shows */
+.gp-hero__stage-img{position:absolute;inset:13%;width:74%;height:74%;object-fit:contain;filter:brightness(1.09) contrast(1.04);mix-blend-mode:multiply;z-index:1;}
 /* glow sits under the arch, never hazes across it */
 .gp-hero__slide[data-media="stage"] .gp-hero__media{z-index:0;}
 /* gold rim light behind the arch */
@@ -1039,7 +1042,7 @@ function fillHeroTokens(text: string): string {
 
   function setupRail(){
     slides.forEach(function(s, i){
-      s.hidden = false;                // SSR hid all but the lead; reveal the deck
+      s.hidden = i !== 0;              // only the active slide is rendered; the rest stay display:none
       s.setAttribute('role','group');
       s.setAttribute('aria-roledescription','slide');
       s.setAttribute('aria-label',(i+1) + ' of ' + total);
@@ -1136,7 +1139,9 @@ function fillHeroTokens(text: string): string {
   function paint(){
     slides.forEach(function(s, i){
       var on = i === index;
+      if (on && s.hidden){ s.hidden = false; void s.offsetWidth; }
       if (on) s.setAttribute('data-active',''); else s.removeAttribute('data-active');
+      if (!on && !s.hidden){ (function(el){ setTimeout(function(){ if (!el.hasAttribute('data-active')) el.hidden = true; }, 600); })(s); }
       s.setAttribute('aria-hidden', on ? 'false' : 'true');
       if (on) s.removeAttribute('inert'); else s.setAttribute('inert','');
       if (!INERT_OK){
