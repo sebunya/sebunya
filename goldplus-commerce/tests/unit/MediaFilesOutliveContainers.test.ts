@@ -50,7 +50,11 @@ describe('media files outlive the container that stored them', () => {
 
   it('a Caddyfile change on deploy recreates the container instead of reloading a stale inode', () => {
     const deploy = read('scripts/deploy-prod.sh');
-    expect(deploy).toMatch(/git diff --name-only "\$PREV" HEAD \| grep -qx Caddyfile/);
+    // --relative is load-bearing: this checkout is a nested directory of the
+    // repository, so without it git prints "goldplus-commerce/Caddyfile" and
+    // the exact match never fires (a Caddyfile change rolled on 2026-09-13
+    // without recreating Caddy).
+    expect(deploy).toMatch(/git diff --name-only --relative "\$PREV" HEAD \| grep -qx Caddyfile/);
     expect(deploy).toMatch(/up -d --force-recreate --no-deps caddy/);
     const executed = deploy.split('\n').filter((l) => !l.trim().startsWith('#')).join('\n');
     expect(executed).not.toMatch(/caddy reload/);
