@@ -48,3 +48,27 @@ Optional: with a Google API key (PageSpeed Insights API enabled) in
 `GOOGLE_PAGESPEED_API_KEY`, the API also pulls PageSpeed's own numbers every
 96 hours — identical to what pagespeed.web.dev shows — and records them the same
 way. The keyless API is shared and quota-exhausted, so it is not used.
+
+## Rocket Loader — measured customer impact (2026-09-13, compatibility programme)
+
+Rocket Loader is still ON. Evidence from a Chromium session against the live
+site (compatibility-audit/browser/early-interaction.spec.ts and the probes that
+found it):
+
+- The storefront's one module script (`/_astro/hoisted.*.js`) is served twice:
+  once as `<script type="module">` and once rewritten to
+  `type="<hash>-module"`, and both copies download (two 200 responses per page).
+- Every handler (menu, search suggestions, add-to-cart analytics, checkout
+  draft) is bound only after `window.load`, when Rocket Loader executes the
+  rewritten scripts. A tap on the menu or typing in checkout before that moment
+  does nothing. On a slow connection with large hero images that window is
+  seconds long.
+- Chrome logs "A preload for hoisted.*.js is found, but is not used because the
+  request credentials mode does not match" on every page.
+
+The storefront binds its handlers synchronously in inline and module scripts;
+none of this is application code. Switching Rocket Loader OFF removes the
+double download and restores immediate interactivity. The post-deploy smoke
+and the ten-day audit record the early-interaction result every run, so the
+change will be visible as `tap_after_dcl_worked: true` in
+`compatibility_manifest.json` → `early_interaction`.

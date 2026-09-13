@@ -49,7 +49,8 @@ runProvider('lighthouse', async (ctx) => {
   if (!chromePath) return { status: 'PROVIDER_FAILURE', error: 'no Chromium found (PLAYWRIGHT_BROWSERS_PATH / CHROME_PATH)', summary: 'no browser' };
   const { launch } = require('chrome-launcher');
   const cfgL = ctx.cfg.lighthouse ?? {};
-  const runs = Math.max(1, Math.min(5, Number(cfgL.runs ?? 3)));
+  // LIGHTHOUSE_RUNS overrides the configured count (the post-deploy smoke uses 1: a lightweight performance smoke, never a golden-master comparison).
+  const runs = Math.max(1, Math.min(5, Number(process.env.LIGHTHOUSE_RUNS || cfgL.runs || 3)));
   const formFactors = Array.isArray(cfgL.form_factors) && cfgL.form_factors.length ? cfgL.form_factors : ['mobile', 'desktop'];
   const pageNames = Array.isArray(cfgL.pages) && cfgL.pages.length ? cfgL.pages : ['home', 'shop'];
   const pages = {};

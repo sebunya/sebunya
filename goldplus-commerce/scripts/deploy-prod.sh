@@ -70,7 +70,7 @@ fi
 # ten-day clock): control + local Lighthouse + the compatibility programme in smoke mode
 # (Chromium low-end/mainstream, Firefox, WebKit journeys, PWA health, one slow profile).
 if [ -x performance-audit/schedule/run-in-container.sh ]; then
-  (PERF_AUDIT_ONLY="control lighthouse compatibility" COMPATIBILITY_AUDIT_MODE=smoke \
+  (PERF_AUDIT_ONLY="control lighthouse compatibility" COMPATIBILITY_AUDIT_MODE=smoke LIGHTHOUSE_RUNS=1 \
     nohup performance-audit/schedule/run-in-container.sh --ad-hoc --label "post-deploy-smoke-$HEAD" \
     >> /var/log/goldplus/performance-audit-post-deploy.log 2>&1 </dev/null &)
   echo "post-deploy compatibility/performance smoke started in the background (label post-deploy-smoke-$HEAD; results under /var/lib/goldplus-performance-audit and on /admin/seo/performance-audit)"

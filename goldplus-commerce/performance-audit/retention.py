@@ -18,7 +18,7 @@ def plan(reports: list[dict], keep_runs: int, keep_ad_hoc: int, protected: set[s
     adh = sorted([r for r in reports if r.get("kind") != "recurring"], key=lambda r: r["run_id"])
     victims = rec[:-keep_runs] if keep_runs > 0 and len(rec) > keep_runs else []
     victims += adh[:-keep_ad_hoc] if keep_ad_hoc > 0 and len(adh) > keep_ad_hoc else []
-    protected_label = lambda l: str(l or "").endswith("baseline") or str(l or "").endswith("golden-master")  # noqa: E731
+    protected_label = lambda l: "baseline" in str(l or "") or "golden-master" in str(l or "")  # noqa: E731
     return [r["run_id"] for r in victims if r["run_id"] not in protected and not protected_label(r.get("label"))]
 
 

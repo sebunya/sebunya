@@ -24,8 +24,14 @@ export function attachMonitor(page, { firstPartyHost }) {
   };
 }
 
+// First-party analytics relays (nav/hero/recommendation events, telemetry): their
+// rejection of automated traffic (the API's bot detection answers 403 to a
+// headless UA) is expected and never a commerce failure.
+const FIRST_PARTY_ANALYTICS = [/\/api\/nav\/events/, /\/api\/hero\/events/, /\/api\/hero\/signals/, /\/api\/rec\//, /\/telemetry\//, /\/cdn-cgi\/rum/];
+
 export function classifyImpact(url, resourceType, firstPartyHost) {
   if (isOptionalHost(url)) return 'OPTIONAL_THIRD_PARTY';
+  if (FIRST_PARTY_ANALYTICS.some((re) => re.test(url))) return 'FIRST_PARTY_ANALYTICS';
   let host = ''; try { host = new URL(url).host.replace(/^www\./, ''); } catch { /* ignore */ }
   const firstParty = host === firstPartyHost || host.endsWith(`.${firstPartyHost}`);
   if (!firstParty) return 'THIRD_PARTY';

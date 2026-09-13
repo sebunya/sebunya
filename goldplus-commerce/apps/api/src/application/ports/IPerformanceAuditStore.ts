@@ -60,6 +60,8 @@ export interface PerformanceAuditRunDetail extends PerformanceAuditRunSummary {
   rows: PerformanceAuditMetricRow[];
   alerts: Array<{ kind: string; detail: string }>;
   providerSummaries: Record<string, { status: string; summary: string; limitations: string | null; error: string | null }>;
+  /** The compatibility programme's own executive summary and headline numbers for this run, when it ran. */
+  compatibility: { executiveSummaryMd: string | null; summary: Record<string, unknown> | null; defects: Array<Record<string, unknown>> } | null;
 }
 
 export type PerformanceAuditRequestKind = 'ad-hoc' | 'recurring-now';

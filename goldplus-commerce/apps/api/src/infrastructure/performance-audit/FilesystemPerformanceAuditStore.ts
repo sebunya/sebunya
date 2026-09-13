@@ -120,7 +120,15 @@ export class FilesystemPerformanceAuditStore implements IPerformanceAuditStore {
       rows,
       alerts: alertsDoc?.alerts ?? [],
       providerSummaries,
+      compatibility: await this.readCompatibility(dir),
     };
+  }
+
+  private async readCompatibility(runDir: string): Promise<PerformanceAuditRunDetail['compatibility']> {
+    const base = join(runDir, 'providers', 'compatibility', 'compatibility');
+    const manifest = await this.readJson<{ summary?: Record<string, unknown>; defects?: Array<Record<string, unknown>> }>(join(base, 'compatibility_manifest.json'));
+    if (!manifest) return null;
+    return { executiveSummaryMd: await this.readText(join(base, 'compatibility_executive_summary.md')), summary: manifest.summary ?? null, defects: (manifest.defects ?? []).slice(0, 100) };
   }
 
   async listRequests(): Promise<PerformanceAuditRunRequest[]> {

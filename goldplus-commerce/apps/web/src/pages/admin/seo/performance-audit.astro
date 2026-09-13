@@ -38,7 +38,7 @@ type Overview = {
   providerMatrix: Array<{ id: string; name: string; status: string; credentials: string; notes: string }> | null;
 };
 type Row = { cell: string; provider: string; page: string; device: string; location: string; metric: string; unit: string; current: number | string | null; previous: number | string | null; best: number | string | null; budget: number | null; budgetStatus: string | null; status: string; pct: number | null };
-type Detail = Run & { executiveSummaryMd: string | null; rows: Row[]; alerts: Array<{ kind: string; detail: string }>; providerSummaries: Record<string, { status: string; summary: string; limitations: string | null; error: string | null }> };
+type Detail = Run & { executiveSummaryMd: string | null; rows: Row[]; alerts: Array<{ kind: string; detail: string }>; providerSummaries: Record<string, { status: string; summary: string; limitations: string | null; error: string | null }>; compatibility?: { executiveSummaryMd: string | null; summary: Record<string, unknown> | null; defects: Array<Record<string, unknown>> } | null };
 
 const res = await seoGet<Overview>(token, "/admin/performance-audit");
 const ov = res.ok ? res.data : null;
@@ -222,6 +222,22 @@ const canRequest = Boolean(ov?.configured) && !ov?.inFlight && (ov?.runsRequeste
             </table>
           )}
         </div>
+
+        {detail.compatibility && (
+          <section class="rounded-lg border border-gray-200 bg-white p-4">
+            <h3 class="text-sm font-semibold text-gray-900">Compatibility programme (browsers, low-end devices, networks, PWA)</h3>
+            {detail.compatibility.summary && <p class="mt-1 text-xs text-gray-700">{String(detail.compatibility.summary.headline ?? "")}</p>}
+            {detail.compatibility.defects.length > 0 ? (
+              <table class="mt-2 w-full text-xs text-gray-800">
+                <thead class="text-left text-gray-500"><tr><th class="py-1 pr-2">Sev</th><th class="py-1 pr-2">Where</th><th class="py-1 pr-2">Evidence</th><th class="py-1">Finding</th></tr></thead>
+                <tbody>{detail.compatibility.defects.slice(0, 40).map((d) => <tr class={`border-t border-gray-100 ${d.severity === "P0" || d.severity === "P1" ? "bg-red-50" : d.severity === "P2" ? "bg-amber-50" : ""}`}><td class="py-1 pr-2 font-semibold">{String(d.severity)}</td><td class="py-1 pr-2">{String(d.project ?? d.source ?? "")}</td><td class="py-1 pr-2">{String(d.evidence ?? "—")}</td><td class="py-1">{String(d.title)}{d.detail ? ` — ${String(d.detail).slice(0, 220)}` : ""}</td></tr>)}</tbody>
+              </table>
+            ) : <p class="mt-2 text-sm text-gray-600">No defects reproduced in this run.</p>}
+            {detail.compatibility.executiveSummaryMd && (
+              <details class="mt-2"><summary class="cursor-pointer text-xs font-semibold text-gray-900">Compatibility executive summary (as written by the programme)</summary><pre class="mt-2 whitespace-pre-wrap text-xs text-gray-800">{detail.compatibility.executiveSummaryMd}</pre></details>
+            )}
+          </section>
+        )}
 
         {detail.executiveSummaryMd && (
           <details class="rounded-lg border border-gray-200 bg-white p-4">

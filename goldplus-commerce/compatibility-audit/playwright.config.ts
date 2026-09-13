@@ -26,7 +26,6 @@ const projects = matrix.classes
       deviceScaleFactor: c.deviceScaleFactor,
       isMobile: c.engine === 'firefox' ? false : c.isMobile, // Firefox has no mobile emulation in Playwright
       hasTouch: c.hasTouch,
-      userAgent: c.ua,
     },
   }));
 
