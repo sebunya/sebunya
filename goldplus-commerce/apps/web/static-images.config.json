@@ -37,7 +37,7 @@
     {
       "id": "hero-range-avif",
       "source": "hero/range.jpg",
-      "output": "hero/range-{w}.avif",
+      "output": "hero/range-{w}.{hash}.avif",
       "widths": [
         480,
         760
@@ -48,12 +48,12 @@
         "effort": 6,
         "chromaSubsampling": "4:2:0"
       },
-      "note": "AVIF ahead of the existing WebP in the hero <picture> and the lead preload. q50 checked side by side against the WebP at 2x zoom (2026-09-13): no visible loss; range 760 px 22.2 KB -> 10.9 KB."
+      "note": "AVIF ahead of the existing WebP in the hero <picture> and the lead preload. q50 checked side by side against the WebP at 2x zoom (2026-09-13): no visible loss; range 760 px 22.2 KB -> 10.9 KB. Filenames carry the content hash: the first AVIFs were cached at the Cloudflare edge as application/octet-stream before the Caddy type fix, and a hashed name needs no purge."
     },
     {
       "id": "hero-ambassador-avif",
       "source": "hero/ambassador.jpg",
-      "output": "hero/ambassador-{w}.avif",
+      "output": "hero/ambassador-{w}.{hash}.avif",
       "widths": [
         480,
         760
@@ -64,12 +64,12 @@
         "effort": 6,
         "chromaSubsampling": "4:2:0"
       },
-      "note": "AVIF ahead of the existing WebP in the hero <picture> and the lead preload. q50 checked side by side against the WebP at 2x zoom (2026-09-13): no visible loss; range 760 px 22.2 KB -> 10.9 KB."
+      "note": "AVIF ahead of the existing WebP in the hero <picture> and the lead preload. q50 checked side by side against the WebP at 2x zoom (2026-09-13): no visible loss; range 760 px 22.2 KB -> 10.9 KB. Filenames carry the content hash: the first AVIFs were cached at the Cloudflare edge as application/octet-stream before the Caddy type fix, and a hashed name needs no purge."
     },
     {
       "id": "hero-new-arrivals-avif",
       "source": "hero/new-arrivals.jpg",
-      "output": "hero/new-arrivals-{w}.avif",
+      "output": "hero/new-arrivals-{w}.{hash}.avif",
       "widths": [
         480,
         760
@@ -80,7 +80,7 @@
         "effort": 6,
         "chromaSubsampling": "4:2:0"
       },
-      "note": "AVIF ahead of the existing WebP in the hero <picture> and the lead preload. q50 checked side by side against the WebP at 2x zoom (2026-09-13): no visible loss; range 760 px 22.2 KB -> 10.9 KB."
+      "note": "AVIF ahead of the existing WebP in the hero <picture> and the lead preload. q50 checked side by side against the WebP at 2x zoom (2026-09-13): no visible loss; range 760 px 22.2 KB -> 10.9 KB. Filenames carry the content hash: the first AVIFs were cached at the Cloudflare edge as application/octet-stream before the Caddy type fix, and a hashed name needs no purge."
     }
   ],
   "budgets": [

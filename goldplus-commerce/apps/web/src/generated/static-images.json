@@ -27,18 +27,18 @@
     "sourceBytes": 25533,
     "width": 760,
     "height": 460,
-    "hash": "50869d44f8a4cea4",
+    "hash": "f79e7b836e0c560d",
     "variants": [
       {
         "w": 480,
-        "url": "/hero/ambassador-480.avif",
+        "url": "/hero/ambassador-480.f79e7b83.avif",
         "width": 480,
         "height": 291,
         "bytes": 3799
       },
       {
         "w": 760,
-        "url": "/hero/ambassador-760.avif",
+        "url": "/hero/ambassador-760.f79e7b83.avif",
         "width": 760,
         "height": 460,
         "bytes": 6339
@@ -50,18 +50,18 @@
     "sourceBytes": 35832,
     "width": 760,
     "height": 507,
-    "hash": "868233a50136e835",
+    "hash": "d7e9ed9668a42f81",
     "variants": [
       {
         "w": 480,
-        "url": "/hero/new-arrivals-480.avif",
+        "url": "/hero/new-arrivals-480.d7e9ed96.avif",
         "width": 480,
         "height": 320,
         "bytes": 5147
       },
       {
         "w": 760,
-        "url": "/hero/new-arrivals-760.avif",
+        "url": "/hero/new-arrivals-760.d7e9ed96.avif",
         "width": 760,
         "height": 507,
         "bytes": 7693
@@ -73,18 +73,18 @@
     "sourceBytes": 42268,
     "width": 760,
     "height": 507,
-    "hash": "1a53076ef44a5aa1",
+    "hash": "e03b1622b57c0a1e",
     "variants": [
       {
         "w": 480,
-        "url": "/hero/range-480.avif",
+        "url": "/hero/range-480.e03b1622.avif",
         "width": 480,
         "height": 320,
         "bytes": 6358
       },
       {
         "w": 760,
-        "url": "/hero/range-760.avif",
+        "url": "/hero/range-760.e03b1622.avif",
         "width": 760,
         "height": 507,
         "bytes": 10856

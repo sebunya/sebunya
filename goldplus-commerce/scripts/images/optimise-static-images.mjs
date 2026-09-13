@@ -23,7 +23,9 @@ export function loadConfig(path = CONFIG_PATH) {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 
-const outputFor = (entry, w) => entry.output.replace('{w}', String(w));
+// {w} is the width; {hash} is the entry hash (source bytes + settings), so a
+// regenerated file gets a new URL that no browser or edge cache has seen.
+const outputFor = (entry, w, hash) => entry.output.replace('{w}', String(w)).replace('{hash}', hash ?? '');
 const formatOf = (entry) => entry.format ?? 'webp';
 const entryHash = (entry, sourceBytes) => createHash('sha256').update(JSON.stringify({ widths: entry.widths, format: formatOf(entry), options: entry[formatOf(entry)] ?? null, output: entry.output })).update(sourceBytes).digest('hex').slice(0, 16);
 
@@ -51,17 +53,18 @@ export function checkStaticImages(config = loadConfig(), root = ROOT) {
     const expected = entryHash(entry, readFileSync(src));
     if (manifest[entry.id]?.hash !== expected) problems.push(`${entry.id}: variants are stale or were never generated (run pnpm images:optimise)`);
     for (const w of entry.widths) {
-      const out = join(pub, outputFor(entry, w));
-      if (!existsSync(out)) { problems.push(`${entry.id}: missing ${outputFor(entry, w)}`); continue; }
+      const name = outputFor(entry, w, expected.slice(0, 8));
+      const out = join(pub, name);
+      if (!existsSync(out)) { problems.push(`${entry.id}: missing ${name}`); continue; }
       if (formatOf(entry) === 'avif') {
         // no header parser for AVIF: the manifest records what sharp wrote, and the file must match its size
         const rec = manifest[entry.id]?.variants?.find((v) => v.w === w);
-        if (!rec || rec.width !== w || rec.bytes !== statSync(out).size) problems.push(`${entry.id}: ${outputFor(entry, w)} does not match the manifest (run pnpm images:optimise)`);
+        if (!rec || rec.width !== w || rec.bytes !== statSync(out).size) problems.push(`${entry.id}: ${name} does not match the manifest (run pnpm images:optimise)`);
         continue;
       }
       const d = imageDimensions(out);
-      if (!d) problems.push(`${entry.id}: ${outputFor(entry, w)} is not a readable image`);
-      else if (d.width !== w) problems.push(`${entry.id}: ${outputFor(entry, w)} is ${d.width}px wide, expected ${w}`);
+      if (!d) problems.push(`${entry.id}: ${name} is not a readable image`);
+      else if (d.width !== w) problems.push(`${entry.id}: ${name} is ${d.width}px wide, expected ${w}`);
     }
   }
 
@@ -112,12 +115,14 @@ async function generate(config, force) {
     const input = readFileSync(src);
     const hash = entryHash(entry, input);
     const meta = await sharp(input).metadata();
-    const current = manifest[entry.id]?.hash === hash && entry.widths.every((w) => existsSync(join(pub, outputFor(entry, w))));
+    const short = hash.slice(0, 8);
+    const current = manifest[entry.id]?.hash === hash && entry.widths.every((w) => existsSync(join(pub, outputFor(entry, w, short))));
     if (current && !force) { console.log(`= ${entry.id} up to date`); continue; }
     const variants = [];
     for (const w of entry.widths) {
       if (w > meta.width) throw new Error(`${entry.id}: ${w}px is wider than the ${meta.width}px source; upscaling is refused`);
-      const out = join(pub, outputFor(entry, w));
+      const name = outputFor(entry, w, short);
+      const out = join(pub, name);
       mkdirSync(dirname(out), { recursive: true });
       const pipeline = sharp(input).resize({ width: w, withoutEnlargement: true });
       const format = formatOf(entry);
@@ -128,8 +133,8 @@ async function generate(config, force) {
       writeFileSync(out, buf);
       // AVIF headers are not parsed by the dependency-free reader; ask sharp for them
       const d = format === 'avif' ? await sharp(buf).metadata() : imageDimensions(out);
-      variants.push({ w, url: `/${outputFor(entry, w)}`, width: d.width, height: d.height, bytes: buf.length });
-      console.log(`+ ${outputFor(entry, w)}  ${d.width}x${d.height}  ${buf.length} B`);
+      variants.push({ w, url: `/${name}`, width: d.width, height: d.height, bytes: buf.length });
+      console.log(`+ ${name}  ${d.width}x${d.height}  ${buf.length} B`);
     }
     manifest[entry.id] = { source: `/${entry.source}`, sourceBytes: input.length, width: meta.width, height: meta.height, hash, variants };
   }
