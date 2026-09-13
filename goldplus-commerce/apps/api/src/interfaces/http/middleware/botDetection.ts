@@ -91,11 +91,17 @@ export async function botDetectionMiddleware(c: Context, next: Next): Promise<Re
   // skipped rather than reading a header that cannot mean anything.
   if (proxyConfig().mode === 'CLOUDFLARE_EDGE') {
     const cfBotScore = parseInt(c.req.header('x-cf-bot-score') ?? '100', 10);
-    if (Number.isFinite(cfBotScore) && cfBotScore < 30) return c.newResponse(null, 403);
+    if (Number.isFinite(cfBotScore) && cfBotScore < 30) return c.newResponse(null, 204);
   }
 
   // 2. User-agent check
-  if (isBotUserAgent(ua)) return c.newResponse(null, 403);
+  //
+  // Bots get 204 No Content, not 403 (2026-09-14): the event is discarded exactly as
+  // before and nothing is recorded, but a telemetry beacon is fire-and-forget, so a
+  // 403 only made every headless browser (PageSpeed Insights, Lighthouse, monitors)
+  // log a console error and fail Best Practices. Refusing tells a bot nothing more
+  // than accepting silently does.
+  if (isBotUserAgent(ua)) return c.newResponse(null, 204);
 
   // 3. Velocity check
   if (checkVelocity(ip)) return c.newResponse(null, 429);

@@ -23,4 +23,12 @@ describe('storefront telemetry beacon needs no CORS preflight', () => {
     expect(mw).toContain('parsedBody = JSON.parse(text);');
     expect(read('apps/api/src/interfaces/http/app.ts')).not.toMatch(/credentials:\s*true/);
   });
+
+  it('bot-flagged telemetry is discarded with 204, never a 403 that logs a console error', () => {
+    const mw = read('apps/api/src/interfaces/http/middleware/botDetection.ts');
+    expect(mw).toContain('if (isBotUserAgent(ua)) return c.newResponse(null, 204);');
+    expect(mw).toContain('cfBotScore < 30) return c.newResponse(null, 204);');
+    expect(mw).not.toMatch(/newResponse\(null, 403\)/);
+  });
 });
+
