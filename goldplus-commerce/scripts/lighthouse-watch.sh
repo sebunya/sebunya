@@ -49,12 +49,13 @@ docker run --rm --cpus=1.5 --memory=1500m --shm-size=512m \
   --entrypoint bash "$IMAGE" -c '
     set -e
     CHROME="$(ls -d /ms-playwright/chromium-*/chrome-linux*/chrome | head -1)"
+    export CHROME_PATH="$CHROME"   # chrome-launcher reads the env var; the CLI flag is not enough
     cd /work
     for URL in $URLS; do
       SLUG="$(echo "$URL" | sed -E "s#https?://##; s#[^A-Za-z0-9]+#_#g")"
       for FF in mobile desktop; do
         if [ "$FF" = mobile ]; then FLAGS="--form-factor=mobile --screenEmulation.mobile --throttling-method=simulate"; else FLAGS="--preset=desktop"; fi
-        npx -y lighthouse@12 "$URL" $FLAGS --chrome-path="$CHROME" --chrome-flags="--headless=new --no-sandbox --disable-dev-shm-usage" \
+        npx -y lighthouse@12 "$URL" $FLAGS --chrome-flags="--headless=new --no-sandbox --disable-dev-shm-usage" \
           --output=json --output-path="/work/$SLUG.$FF.json" --quiet || echo "lighthouse failed for $URL $FF"
       done
     done

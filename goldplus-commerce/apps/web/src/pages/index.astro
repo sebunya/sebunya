@@ -7,6 +7,11 @@ import PopularNowRail from '../components/recommendations/PopularNowRail.astro';
 import RecentlyViewedRail from '../components/recommendations/RecentlyViewedRail.astro';
 import CartAwareRail from '../components/home/CartAwareRail.astro';
 import HeroSlider from '../components/hero/HeroSlider.astro';
+import { fetchHeroPersonalised, heroContextFrom, heroLeadPreload } from '../lib/heroPersonalised';
+// The lead slide's image is preloaded from <head> (2026-09-13): inside the hero
+// markup the browser only found it after parsing the styles and the whole nav
+// (Lighthouse: 1.4 s of LCP load delay). The hero reuses this cached fetch.
+const heroLead = heroLeadPreload(await fetchHeroPersonalised(Astro, heroContextFrom(Astro)));
 import HomeCommerceHighlights from '../components/HomeCommerceHighlights.astro';
 import SiteJsonLd from '../components/SiteJsonLd.astro';
 import { buildHomepageProductAllocation } from '../lib/homepage-merchandising';
@@ -91,6 +96,8 @@ const usedProductIds = [
 
   {/* U6 — Organization + WebSite structured data, homepage only. */}
   <Fragment slot="head">
+    {heroLead && heroLead.href && <link rel="preload" as="image" href={heroLead.href} fetchpriority="high" />}
+    {heroLead && heroLead.imagesrcset && <link rel="preload" as="image" imagesrcset={heroLead.imagesrcset} imagesizes={heroLead.imagesizes} fetchpriority="high" />}
     <SiteJsonLd />
   </Fragment>
 

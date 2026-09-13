@@ -1,0 +1,25 @@
+import productImages from '../generated/product-images.json';
+
+/**
+ * Responsive candidates for a product image (2026-09-13). Two sources:
+ *  - media-library renditions under /uploads/assets/<id>/: every asset that has
+ *    a pdp.webp (1024) also has card.webp (480) and thumb.webp (160) — the
+ *    generator writes all purposes at upload (checked in production: 26 of 26);
+ *  - the legacy /products/*.webp catalogue files, whose 320/640 variants are
+ *    generated into /public and listed in the committed manifest.
+ * Anything else returns null and the <img> keeps its single src.
+ */
+type Manifest = Record<string, { width: number; height: number; variants: { w: number; url: string }[] }>;
+const MANIFEST = productImages as Manifest;
+
+export const CARD_SIZES = '(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px';
+export const STAGE_SIZES = '(max-width: 640px) 160px, 320px';
+
+export function productSrcset(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const m = url.match(/^(\/uploads\/assets\/[^?#]+\/)pdp\.webp$/);
+  if (m) return `${m[1]}thumb.webp 160w, ${m[1]}card.webp 480w, ${url} 1024w`;
+  const entry = MANIFEST[url];
+  if (entry && entry.variants.length > 1) return entry.variants.map((v) => `${v.url} ${v.w}w`).join(', ');
+  return null;
+}

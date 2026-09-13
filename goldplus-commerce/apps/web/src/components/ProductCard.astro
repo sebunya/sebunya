@@ -1,5 +1,6 @@
 ---
 import type { ProductPublicDto } from '@goldplus/shared';
+import { productSrcset, CARD_SIZES } from '../lib/imageSrcset';
 import { formatUgx } from '../lib/money';
 import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../lib/storefrontDiscount';
 
@@ -78,11 +79,14 @@ const availabilityBadgeClass = (() => {
   <div class="relative mb-4">
     <a href={productHref} class="block aspect-square bg-slate-50 rounded-xl overflow-hidden relative outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30 border border-slate-100">
       {product.primaryImageUrl ? (
-        <img 
-          src={product.primaryImageUrl} 
-          alt={`Photo of ${product.name}`} 
+        <img
+          src={product.primaryImageUrl}
+          srcset={productSrcset(product.primaryImageUrl) ?? undefined}
+          sizes={productSrcset(product.primaryImageUrl) ? CARD_SIZES : undefined}
+          alt={`Photo of ${product.name}`}
           class="object-cover w-full h-full"
           loading="lazy"
+          decoding="async"
         />
       ) : (
         <div class="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 p-4 text-center select-none">

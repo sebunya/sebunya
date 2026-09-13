@@ -2,6 +2,8 @@
 import { apiBase } from '../../lib/api';
 import { getBusinessInfo } from '../../lib/businessInfo';
 import heroImages from '../../generated/hero-images.json';
+import { productSrcset, STAGE_SIZES } from '../../lib/imageSrcset';
+import { fetchHeroPersonalised } from '../../lib/heroPersonalised';
 
 /**
  * WebP renditions of the bleed photos (2026-09-13). The originals are 760px
@@ -75,14 +77,10 @@ const reqUrl = new URL(Astro.request.url);
 const referred = reqUrl.searchParams.has('ref') || reqUrl.searchParams.get('utm_campaign') === 'referral';
 const force = reqUrl.searchParams.get('gp');
 try {
-  const qs = new URLSearchParams({ cart: '0', ref: referred ? '1' : '0' });
-  if (force) qs.set('force', force);
-  const res = await fetch(`${apiBase}/hero/personalised?${qs.toString()}`, {
-    headers: visit ? { 'x-gp-visit': visit } : {},
-    signal: AbortSignal.timeout(2500),
-  });
-  const json = await res.json().catch(() => null);
-  if (res.ok && json?.success && Array.isArray(json.data?.slides) && json.data.slides.length > 0) {
+  // One request per page render: the page already fetched this for the head
+  // preload, so this call returns the cached answer (src/lib/heroPersonalised).
+  const json = await fetchHeroPersonalised(Astro, { visit, referred, force });
+  if (json && Array.isArray(json.data?.slides) && json.data.slides.length > 0) {
     slides = json.data.slides;
     config = json.data.config;
     leadKey = json.data.lead || slides[0].slideKey;
@@ -199,9 +197,7 @@ function fillHeroTokens(text: string): string {
 ---
 {/* Preload the lead image for LCP. A preload link in body is valid HTML and
     functions; the lead <img> also carries fetchpriority="high". */}
-{leadImage && (heroPicture(leadImage)
-  ? <link rel="preload" as="image" imagesrcset={heroPicture(leadImage)!.srcset} imagesizes={HERO_SIZES} fetchpriority="high" />
-  : <link rel="preload" as="image" href={leadImage} fetchpriority="high" />)}
+{/* The lead image preload moved to the page <head> (src/lib/heroPersonalised.ts) so the preload scanner sees it first. */}
 
 <section class="gp-hero" data-cutoff-hour={String(heroBiz.sameDayCutoffHour)} data-closed-days={heroBiz.closedDays.join(",")}>
   {/* One stable page heading, decoupled from the rotation. The rotating slide
@@ -289,7 +285,7 @@ function fillHeroTokens(text: string): string {
           </div>
 
           {s.media === 'stage' && (
-            <div class="gp-hero__media"><div class="gp-hero__stage" data-img={s.imageUrl} data-alt={s.imageAlt}><span class="gp-hero__stage-glow"></span>{isLead && s.imageUrl && <img class="gp-hero__stage-img" src={s.imageUrl} alt={s.imageAlt} width="600" height="600" loading="eager" fetchpriority="high" decoding="async" />}</div></div>
+            <div class="gp-hero__media"><div class="gp-hero__stage" data-img={s.imageUrl} data-alt={s.imageAlt}><span class="gp-hero__stage-glow"></span>{isLead && s.imageUrl && <img class="gp-hero__stage-img" src={s.imageUrl} srcset={productSrcset(s.imageUrl) ?? undefined} sizes={productSrcset(s.imageUrl) ? STAGE_SIZES : undefined} alt={s.imageAlt} width="600" height="600" loading="eager" fetchpriority="high" decoding="async" />}</div></div>
           )}
 
           {s.media === 'card' && (
@@ -936,7 +932,7 @@ function fillHeroTokens(text: string): string {
 
 </style>
 
-<script is:inline>
+<script>
 (function(){
   'use strict';
 

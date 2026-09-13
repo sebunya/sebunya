@@ -16,7 +16,10 @@ export default defineConfig({
     mode: 'standalone'
   }),
   integrations: [
-    tailwind(),
+    // applyBaseStyles: false — the @tailwind directives live in src/styles/global.css
+    // (storefront config) and src/styles/admin.css (full config); the integration's
+    // injected base would add the full-config utilities to every page again.
+    tailwind({ applyBaseStyles: false }),
     ...(sentryDsn
       ? [sentry({ dsn: sentryDsn, sourceMapsUploadOptions: { telemetry: false } })]
       : []),

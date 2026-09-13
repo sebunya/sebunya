@@ -1,5 +1,6 @@
 ---
 import type { RecommendationItemDto, RecommendationPlacement } from "@goldplus/shared";
+import { productSrcset, CARD_SIZES } from '../../lib/imageSrcset';
 import { supportedRecommendationReason } from "../../lib/recommendation-display";
 import { formatUgx } from "../../lib/money";
 import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from "../../lib/storefrontDiscount";
@@ -85,8 +86,11 @@ const productType = lowerName.includes("charger") ? "Charger"
       {item.imageUrl ? (
         <img
           src={item.imageUrl}
+          srcset={productSrcset(item.imageUrl) ?? undefined}
+          sizes={productSrcset(item.imageUrl) ? CARD_SIZES : undefined}
           alt={item.imageAlt ?? `${item.name} product image`}
           loading="lazy"
+          decoding="async"
           class="object-cover w-full h-full transition-transform duration-500 group-hover:scale-105"
         />
       ) : (
