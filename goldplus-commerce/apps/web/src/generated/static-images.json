@@ -1,0 +1,55 @@
+{
+  "admin-wordmark": {
+    "source": "/nav/gp-wordmark-cream.png",
+    "sourceBytes": 5126,
+    "width": 480,
+    "height": 138,
+    "hash": "fcb3b0bb188c8f28",
+    "variants": [
+      {
+        "w": 84,
+        "url": "/nav/gp-wordmark-cream-admin-84.webp",
+        "width": 84,
+        "height": 24,
+        "bytes": 2152
+      },
+      {
+        "w": 168,
+        "url": "/nav/gp-wordmark-cream-admin-168.webp",
+        "width": 168,
+        "height": 48,
+        "bytes": 4706
+      }
+    ]
+  },
+  "nav-wordmark": {
+    "source": "/nav/gp-wordmark-cream-320.png",
+    "sourceBytes": 7095,
+    "width": 320,
+    "height": 92,
+    "hash": "0874d26fcf5bcfb0",
+    "variants": [
+      {
+        "w": 105,
+        "url": "/nav/gp-wordmark-cream-105.webp",
+        "width": 105,
+        "height": 30,
+        "bytes": 2798
+      },
+      {
+        "w": 160,
+        "url": "/nav/gp-wordmark-cream-160.webp",
+        "width": 160,
+        "height": 46,
+        "bytes": 4282
+      },
+      {
+        "w": 320,
+        "url": "/nav/gp-wordmark-cream-320.webp",
+        "width": 320,
+        "height": 92,
+        "bytes": 6252
+      }
+    ]
+  }
+}

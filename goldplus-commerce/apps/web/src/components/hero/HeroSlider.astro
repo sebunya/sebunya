@@ -225,13 +225,14 @@ function fillHeroTokens(text: string): string {
         <div class="gp-hero__slide" data-id={s.slideKey} data-theme={s.theme} data-tint={s.tint} data-media={s.media} data-priority={String(s.priority ?? 0)} data-product-agnostic={agnostic ? '1' : undefined} data-active={isLead ? '' : undefined} hidden={isLead ? undefined : true}>
           {s.media === 'bleed' && (
             <div class="gp-hero__bleed">
-              {/* Every deck photo loads eagerly: the deck sits in the viewport and a
-                  slide rotated in must paint at once, not after a lazy fetch. The lead
-                  is fetched first (high); the others wait behind it (low). Real pixel
-                  dimensions come from the manifest so the box is right before decode. */}
+              {/* The lead photo loads eagerly at high priority. The other deck photos
+                  are lazy until the page's load event, when the hero script switches
+                  them to eager, so they no longer compete with the lead on a phone and
+                  are still decoded before the first rotation. Real pixel dimensions
+                  come from the manifest so the box is right before decode. */}
               <picture>
                 {pic && <source type="image/webp" srcset={pic.srcset} sizes={HERO_SIZES} />}
-                <img src={s.imageUrl} alt={s.imageAlt} width={picW} height={picH} loading="eager" fetchpriority={isLead ? 'high' : 'low'} decoding="async" />
+                <img src={s.imageUrl} alt={s.imageAlt} width={picW} height={picH} loading={isLead ? 'eager' : 'lazy'} fetchpriority={isLead ? 'high' : 'low'} decoding={isLead ? undefined : 'async'} data-deck-photo={isLead ? undefined : ''} />
               </picture>
             </div>
           )}
@@ -325,6 +326,14 @@ function fillHeroTokens(text: string): string {
 @font-face{font-family:'Poppins';font-style:normal;font-weight:400;font-display:swap;src:url('/hero/fonts/poppins-400.woff2') format('woff2');}
 @font-face{font-family:'Poppins';font-style:normal;font-weight:600;font-display:swap;src:url('/hero/fonts/poppins-600.woff2') format('woff2');}
 @font-face{font-family:'Poppins';font-style:normal;font-weight:700;font-display:swap;src:url('/hero/fonts/poppins-700.woff2') format('woff2');}
+/* Metric-matched local fallback for Poppins (2026-09-13). Until the woff2 arrives the text
+   renders in Arial (or its metric twins Liberation Sans / Arimo on Linux) scaled to Poppins'
+   advance widths and vertical metrics, so the swap does not rewrap the hero copy — the
+   swap was a layout shift of 0.006–0.26 on mobile Lighthouse. Computed from the shipped
+   poppins-*.woff2 against Arial / Arial Bold; nothing is downloaded. */
+@font-face{font-family:'Poppins Fallback';font-style:normal;font-weight:400;src:local('Arial'),local('ArialMT'),local('Liberation Sans'),local('LiberationSans'),local('Arimo'),local('Helvetica');size-adjust:110.02%;ascent-override:95.44%;descent-override:31.81%;line-gap-override:9.09%;}
+@font-face{font-family:'Poppins Fallback';font-style:normal;font-weight:600;src:local('Arial Bold'),local('Arial-BoldMT'),local('Liberation Sans Bold'),local('LiberationSans-Bold'),local('Arimo Bold'),local('Helvetica Bold');size-adjust:104.36%;ascent-override:100.61%;descent-override:33.54%;line-gap-override:9.58%;}
+@font-face{font-family:'Poppins Fallback';font-style:normal;font-weight:700;src:local('Arial Bold'),local('Arial-BoldMT'),local('Liberation Sans Bold'),local('LiberationSans-Bold'),local('Arimo Bold'),local('Helvetica Bold');size-adjust:105%;ascent-override:100%;descent-override:33.33%;line-gap-override:9.52%;}
 
 
 /* ==========================================================================
@@ -358,7 +367,7 @@ function fillHeroTokens(text: string): string {
    its own, the container owns both, which is what keeps the hero's left/right
    edges flush with everything below it. Only a small top gap and the brand
    font are the hero's own. */
-.gp-hero{width:100%;margin:16px 0 0;padding:0;font-family:'Poppins',system-ui,sans-serif;}
+.gp-hero{width:100%;margin:16px 0 0;padding:0;font-family:'Poppins','Poppins Fallback',system-ui,sans-serif;}
 /* if the mode changes mid-session, ease into it */
 .gp-hero__slide,.gp-hero__arch i,.gp-hero__cta,.gp-hero__bleed img,.gp-hero__arch img{
   transition-property:opacity,visibility,background,box-shadow,filter;
@@ -385,7 +394,7 @@ function fillHeroTokens(text: string): string {
 
 .gp-hero__ghost{
   position:absolute;top:clamp(4px,1.8vw,18px);left:clamp(38px,5.4vw,62px);
-  font-family:'Poppins',sans-serif;font-weight:700;font-size:clamp(130px,16vw,210px);
+  font-family:'Poppins','Poppins Fallback',sans-serif;font-weight:700;font-size:clamp(130px,16vw,210px);
   line-height:.78;letter-spacing:-.04em;color:rgba(243,239,232,.05);
   pointer-events:none;user-select:none;z-index:0;
 }
@@ -394,9 +403,9 @@ function fillHeroTokens(text: string): string {
 .gp-hero__copy{position:relative;z-index:4;max-width:530px;padding-bottom:42px;}
 .gp-hero__eyebrow{display:flex;align-items:center;gap:15px;margin-bottom:13px;}
 .gp-hero__rule{display:block;width:44px;height:2px;background:var(--gph-green);flex:none;}
-.gp-hero__kicker{font-family:'Poppins',sans-serif;font-size:12px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--gph-green);}
+.gp-hero__kicker{font-family:'Poppins','Poppins Fallback',sans-serif;font-size:12px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;color:var(--gph-green);}
 .gp-hero__title{
-  font-family:'Poppins',sans-serif;font-weight:700;
+  font-family:'Poppins','Poppins Fallback',sans-serif;font-weight:700;
   font-size:clamp(30px,4.15vw,57px);line-height:1.0;letter-spacing:-.038em;
   color:var(--gph-cream);margin:0 0 14px;text-wrap:balance;
   font-feature-settings:"kern" 1;
@@ -405,7 +414,7 @@ function fillHeroTokens(text: string): string {
 .gp-hero__sub{color:var(--gph-muted);font-size:clamp(13.5px,1.1vw,16.5px);line-height:1.52;margin:0 0 22px;max-width:40ch;text-wrap:pretty;}
 .gp-hero__cta{
   display:inline-flex;align-items:center;gap:10px;background:var(--gph-green);color:var(--gph-ink);
-  font-family:'Poppins',sans-serif;font-weight:700;font-size:15.5px;text-decoration:none;
+  font-family:'Poppins','Poppins Fallback',sans-serif;font-weight:700;font-size:15.5px;text-decoration:none;
   padding:15px 27px;border-radius:999px;border:none;cursor:pointer;
   box-shadow:0 0 34px rgba(147,213,0,.32);
   transition:transform .3s var(--gph-spring),background .3s,box-shadow .3s;
@@ -418,12 +427,12 @@ function fillHeroTokens(text: string): string {
 /* ---------- micro-mechanisms ---------- */
 .gp-hero__count{display:flex;align-items:center;gap:8px;margin:0 0 20px;}
 .gp-hero__count-unit{min-width:50px;padding:7px 6px 5px;text-align:center;border:1px solid rgba(147,213,0,.34);border-radius:10px;background:rgba(147,213,0,.07);}
-.gp-hero__count-n{display:block;font-family:'Poppins',sans-serif;font-size:19px;font-weight:700;line-height:1;color:var(--gph-green);font-variant-numeric:tabular-nums;}
+.gp-hero__count-n{display:block;font-family:'Poppins','Poppins Fallback',sans-serif;font-size:19px;font-weight:700;line-height:1;color:var(--gph-green);font-variant-numeric:tabular-nums;}
 .gp-hero__count-l{display:block;margin-top:3px;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--gph-muted);}
 
 .gp-hero__meter{margin:0 0 20px;max-width:320px;}
 .gp-hero__meter-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px;}
-.gp-hero__meter-pts{font-family:'Poppins',sans-serif;font-size:15px;font-weight:600;color:var(--gph-cream);}
+.gp-hero__meter-pts{font-family:'Poppins','Poppins Fallback',sans-serif;font-size:15px;font-weight:600;color:var(--gph-cream);}
 .gp-hero__meter-goal{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--gph-muted);}
 .gp-hero__meter-rail{display:block;height:6px;border-radius:999px;background:rgba(243,239,232,.14);overflow:hidden;}
 .gp-hero__meter-fill{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#4E7A00,var(--gph-green));transform:scaleX(0);transform-origin:left center;}
@@ -433,16 +442,16 @@ function fillHeroTokens(text: string): string {
 .gp-hero__chip{
   display:inline-flex;align-items:center;gap:11px;margin:0 0 20px;padding:9px 9px 9px 15px;
   border-radius:12px;cursor:pointer;border:1px dashed rgba(147,213,0,.55);background:rgba(147,213,0,.08);
-  font-family:'Poppins',sans-serif;font-size:15px;font-weight:600;letter-spacing:.14em;color:var(--gph-green);
+  font-family:'Poppins','Poppins Fallback',sans-serif;font-size:15px;font-weight:600;letter-spacing:.14em;color:var(--gph-green);
   transition:background .25s,border-color .25s;
 }
 .gp-hero__chip:hover{background:rgba(147,213,0,.16);border-color:var(--gph-green);}
-.gp-hero__chip small{font-family:'Poppins',sans-serif;font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--gph-ink);background:var(--gph-green);padding:5px 9px;border-radius:7px;}
+.gp-hero__chip small{font-family:'Poppins','Poppins Fallback',sans-serif;font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--gph-ink);background:var(--gph-green);padding:5px 9px;border-radius:7px;}
 
 /* fee table — ambiguity aversion killer */
 .gp-hero__fees{display:flex;gap:8px;margin:0 0 20px;flex-wrap:wrap;}
 .gp-hero__fee{padding:8px 13px;border-radius:10px;background:rgba(243,239,232,.07);border:1px solid rgba(243,239,232,.13);}
-.gp-hero__fee b{display:block;font-family:'Poppins',sans-serif;font-size:14.5px;color:var(--gph-cream);}
+.gp-hero__fee b{display:block;font-family:'Poppins','Poppins Fallback',sans-serif;font-size:14.5px;color:var(--gph-cream);}
 .gp-hero__fee span{display:block;margin-top:2px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--gph-muted);}
 
 /* cutoff pill — goal-gradient urgency */
@@ -544,7 +553,7 @@ function fillHeroTokens(text: string): string {
   -webkit-mask-image:linear-gradient(90deg,transparent 0%,transparent 24%,#000 54%);
   mask-image:linear-gradient(90deg,transparent 0%,transparent 24%,#000 54%);
 }
-.gp-hero__ph b{font-family:'Poppins',sans-serif;font-size:14px;color:var(--gph-green);letter-spacing:.08em;text-transform:uppercase;}
+.gp-hero__ph b{font-family:'Poppins','Poppins Fallback',sans-serif;font-size:14px;color:var(--gph-green);letter-spacing:.08em;text-transform:uppercase;}
 .gp-hero__ph span{font-size:12px;max-width:22ch;line-height:1.45;}
 
 /* ---------- scratch card ---------- */
@@ -555,9 +564,9 @@ function fillHeroTokens(text: string): string {
   box-shadow:0 22px 46px rgba(2,18,11,.5);background:#04180F;cursor:crosshair;touch-action:none;
 }
 .gp-hero__prize{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;text-align:center;padding:16px;background:radial-gradient(120% 120% at 50% 30%,#0E6B45,#04180F 78%);}
-.gp-hero__prize-n{font-family:'Poppins',sans-serif;font-weight:700;font-size:clamp(38px,4.6vw,56px);line-height:1;letter-spacing:-.03em;color:var(--gph-green);}
+.gp-hero__prize-n{font-family:'Poppins','Poppins Fallback',sans-serif;font-weight:700;font-size:clamp(38px,4.6vw,56px);line-height:1;letter-spacing:-.03em;color:var(--gph-green);}
 .gp-hero__prize-l{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--gph-cream);}
-.gp-hero__prize-c{margin-top:8px;font-family:'Poppins',sans-serif;font-size:13px;letter-spacing:.16em;color:var(--gph-muted);}
+.gp-hero__prize-c{margin-top:8px;font-family:'Poppins','Poppins Fallback',sans-serif;font-size:13px;letter-spacing:.16em;color:var(--gph-muted);}
 .gp-hero__foil{position:absolute;inset:0;display:block;width:100%;height:100%;}
 .gp-hero__foil[data-cleared]{opacity:0;transition:opacity .45s ease;pointer-events:none;}
 .gp-hero__hint{position:absolute;left:0;right:0;bottom:10px;text-align:center;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:rgba(6,48,31,.72);font-weight:700;pointer-events:none;}
@@ -590,7 +599,7 @@ function fillHeroTokens(text: string): string {
 /* price anchor */
 .gp-hero__price{display:flex;align-items:baseline;gap:12px;margin:0 0 18px;}
 .gp-hero__price s{color:rgba(243,239,232,.45);font-size:16px;}
-.gp-hero__price b{font-family:'Poppins',sans-serif;font-size:clamp(23px,2.4vw,31px);color:var(--gph-cream);letter-spacing:-.02em;}
+.gp-hero__price b{font-family:'Poppins','Poppins Fallback',sans-serif;font-size:clamp(23px,2.4vw,31px);color:var(--gph-cream);letter-spacing:-.02em;}
 .gp-hero__price em{font-style:normal;font-size:11.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--gph-ink);background:var(--gph-gold);padding:4px 9px;border-radius:7px;}
 .gp-hero__slide[data-active] .gp-hero__price{animation:gph-rise .6s var(--gph-ease) 120ms both;}
 
@@ -711,7 +720,7 @@ function fillHeroTokens(text: string): string {
   100%{transform:translate(calc(100vw),-50%);opacity:0;}
 }
 .gp-hero__seg-num{
-  font-family:'Poppins',sans-serif;font-size:15px;font-weight:700;letter-spacing:.02em;
+  font-family:'Poppins','Poppins Fallback',sans-serif;font-size:15px;font-weight:700;letter-spacing:.02em;
   color:rgba(243,239,232,.72);
   transition:color .45s var(--gph-ease),transform .45s var(--gph-spring);
   transform-origin:left center;
@@ -1130,6 +1139,10 @@ function fillHeroTokens(text: string): string {
     document.fonts.ready.then(function(){ reflowArch(); });
   }
   window.addEventListener('load', reflowArch);
+  // Hidden slides' photos wait for the page's load event (they competed with the lead
+  // image for bandwidth on a phone), then fetch at once so a rotated-in slide is
+  // already decoded. Lazy images inside display:none never load on their own.
+  window.addEventListener('load', function(){ document.querySelectorAll('img[data-deck-photo]').forEach(function(i){ i.loading = 'eager'; }); });
   if (window.visualViewport) visualViewport.addEventListener('resize', reflowArch, { passive: true });
 
   function paint(){

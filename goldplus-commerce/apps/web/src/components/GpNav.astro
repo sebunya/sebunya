@@ -236,7 +236,7 @@ const nbaJson = escNav(JSON.stringify(nba));
     <button class="gp-nav__burger" id="gpNavBurger" type="button" aria-expanded="false" aria-controls="gpNavMega" aria-label="Open menu"><span></span><span></span><span></span></button>
 
     <a class="gp-nav__logo" href="/" aria-label="GoldPlus home">
-      <img src="/nav/gp-wordmark-cream-320.png" alt="GoldPlus" width="320" height="92">
+      <img src="/nav/gp-wordmark-cream-160.webp" srcset="/nav/gp-wordmark-cream-105.webp 105w, /nav/gp-wordmark-cream-160.webp 160w, /nav/gp-wordmark-cream-320.webp 320w" sizes="(max-width: 980px) 91px, 105px" alt="GoldPlus" width="320" height="92">
     </a>
 
     <form class="gp-nav__search" role="search" action="/shop">
@@ -579,6 +579,14 @@ const nbaJson = escNav(JSON.stringify(nba));
 @font-face{font-family:'Poppins';font-style:normal;font-weight:400;font-display:swap;src:url('/hero/fonts/poppins-400.woff2') format('woff2');}
 @font-face{font-family:'Poppins';font-style:normal;font-weight:600;font-display:swap;src:url('/hero/fonts/poppins-600.woff2') format('woff2');}
 @font-face{font-family:'Poppins';font-style:normal;font-weight:700;font-display:swap;src:url('/hero/fonts/poppins-700.woff2') format('woff2');}
+/* Metric-matched local fallback for Poppins (2026-09-13). Until the woff2 arrives the text
+   renders in Arial (or its metric twins Liberation Sans / Arimo on Linux) scaled to Poppins'
+   advance widths and vertical metrics, so the swap does not rewrap the hero copy — the
+   swap was a layout shift of 0.006–0.26 on mobile Lighthouse. Computed from the shipped
+   poppins-*.woff2 against Arial / Arial Bold; nothing is downloaded. */
+@font-face{font-family:'Poppins Fallback';font-style:normal;font-weight:400;src:local('Arial'),local('ArialMT'),local('Liberation Sans'),local('LiberationSans'),local('Arimo'),local('Helvetica');size-adjust:110.02%;ascent-override:95.44%;descent-override:31.81%;line-gap-override:9.09%;}
+@font-face{font-family:'Poppins Fallback';font-style:normal;font-weight:600;src:local('Arial Bold'),local('Arial-BoldMT'),local('Liberation Sans Bold'),local('LiberationSans-Bold'),local('Arimo Bold'),local('Helvetica Bold');size-adjust:104.36%;ascent-override:100.61%;descent-override:33.54%;line-gap-override:9.58%;}
+@font-face{font-family:'Poppins Fallback';font-style:normal;font-weight:700;src:local('Arial Bold'),local('Arial-BoldMT'),local('Liberation Sans Bold'),local('LiberationSans-Bold'),local('Arimo Bold'),local('Helvetica Bold');size-adjust:105%;ascent-override:100%;descent-override:33.33%;line-gap-override:9.52%;}
 
 /* =====================================================================
    GOLDPLUS NAVIGATION v2
@@ -613,7 +621,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   --gpn-ease:cubic-bezier(.22,.9,.28,1);
   position:relative;z-index:60;background:var(--gpn-ink);
   box-shadow:0 1px 0 rgba(147,213,0,.14), 0 18px 40px -26px rgba(10,10,10,.6);
-  font-family:'Poppins',system-ui,sans-serif;color:var(--gpn-cream);
+  font-family:'Poppins','Poppins Fallback',system-ui,sans-serif;color:var(--gpn-cream);
 }
 .gp-nav,.gp-nav *,.gp-nav *::before,.gp-nav *::after{box-sizing:border-box;}
 /* The reset must NOT outweigh component rules: `.gp-nav a` is (0,1,1) and

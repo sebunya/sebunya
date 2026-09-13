@@ -1,0 +1,67 @@
+{
+  "$comment": "Static storefront images: what the optimiser generates and the budgets every file in apps/web/public must meet. Run `pnpm images:optimise` after adding or replacing a source; `pnpm images:check` (and tests/unit/StaticImageBudget.test.ts) fail when a file is over budget or a generated variant is missing. Uploaded media (/uploads) has its own rendition pipeline in the API and is not covered here.",
+  "publicDir": "apps/web/public",
+  "manifest": "apps/web/src/generated/static-images.json",
+  "generate": [
+    {
+      "id": "nav-wordmark",
+      "source": "nav/gp-wordmark-cream-320.png",
+      "output": "nav/gp-wordmark-cream-{w}.webp",
+      "widths": [
+        105,
+        160,
+        320
+      ],
+      "webp": {
+        "nearLossless": true,
+        "quality": 80,
+        "effort": 6
+      },
+      "note": "Rendered 30 px tall on desktop (105 CSS px wide), 23–26 px on phones (~91 CSS px). Near-lossless beats lossless once resampled; a 209 px step was larger than 320 px and is left out."
+    },
+    {
+      "id": "admin-wordmark",
+      "source": "nav/gp-wordmark-cream.png",
+      "output": "nav/gp-wordmark-cream-admin-{w}.webp",
+      "widths": [
+        84,
+        168
+      ],
+      "webp": {
+        "nearLossless": true,
+        "quality": 80,
+        "effort": 6
+      },
+      "note": "Admin header logo, h-6 (24 px tall, ~84 CSS px wide)."
+    }
+  ],
+  "budgets": [
+    {
+      "dir": "nav",
+      "maxWidth": 400,
+      "maxBytes": 20000,
+      "note": "icons and the wordmark render at 34–105 CSS px"
+    },
+    {
+      "dir": "hero",
+      "maxWidth": 1600,
+      "maxBytes": 60000
+    },
+    {
+      "dir": "products",
+      "maxWidth": 2048,
+      "maxBytes": 260000,
+      "requireVariantsFrom": "apps/web/src/generated/product-images.json",
+      "note": "legacy catalogue masters; the storefront serves their 320/640 variants"
+    },
+    {
+      "dir": ".",
+      "maxWidth": 1280,
+      "maxBytes": 80000,
+      "note": "icons, favicons and the default share image"
+    }
+  ],
+  "allow": {
+    "nav/featured-default.png": "600 px for a mega-menu card up to ~296 CSS px wide (2x). Referenced by stored nav configuration by this exact URL, so it is kept as delivered (checked 2026-09-13)."
+  }
+}
