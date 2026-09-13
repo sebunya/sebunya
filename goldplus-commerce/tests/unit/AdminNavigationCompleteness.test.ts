@@ -22,6 +22,7 @@ const pagesDir = join(root, 'apps/web/src/pages/admin');
 /** Deliberately not in the sidebar — each with the reason it is excluded. */
 const EXCLUDED: Record<string, string> = {
   '/admin/login': 'the door, not a room',
+  '/admin/seo/performance-audit/settings': 'reached from Performance Audit',
   '/admin/products/new': 'reached from Products',
   '/admin/blog/new': 'reached from Articles',
   '/admin/fulfilment/report': 'reached from Fulfilment',

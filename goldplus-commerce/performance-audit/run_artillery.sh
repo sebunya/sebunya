@@ -6,7 +6,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; NAME=artillery
 : "${PERF_AUDIT_RUN_DIR:?run through run_all.sh}"
 OUT="$PERF_AUDIT_RUN_DIR/providers/$NAME"; mkdir -p "$OUT"; STARTED="$(date -u +%FT%TZ)"
-source "$HERE/lib/env.sh"; load_dotenv "$HERE/.env"
+PRE_ENV_KEYS="$(env | cut -d= -f1 | tr "\n" " ")"; source "$HERE/lib/env.sh"; load_dotenv "$HERE/.env"; load_admin_settings "${PERF_AUDIT_DATA_DIR:-$HERE/data}" "$PRE_ENV_KEYS"
 finish() { python3 - "$OUT" "$STARTED" "$1" "$2" "${3:-}" <<'EOF'
 import json,sys,datetime,os
 out,started,status,summary,lim=sys.argv[1:6]

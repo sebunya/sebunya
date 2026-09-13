@@ -12,7 +12,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 NAME=debugbear
 : "${PERF_AUDIT_RUN_DIR:?run through run_all.sh}"
 OUT="$PERF_AUDIT_RUN_DIR/providers/$NAME"; mkdir -p "$OUT"
-source "$HERE/lib/env.sh"; load_dotenv "$HERE/.env"
+PRE_ENV_KEYS="$(env | cut -d= -f1 | tr "\n" " ")"; source "$HERE/lib/env.sh"; load_dotenv "$HERE/.env"; load_admin_settings "${PERF_AUDIT_DATA_DIR:-$HERE/data}" "$PRE_ENV_KEYS"
 KEY="${DEBUGBEAR_API_KEY:-}"; PROJECT="${DEBUGBEAR_PROJECT_ID:-}"
 TARGET="$(python3 -c 'import json;print(json.load(open("'"$HERE"'/config.resolved.json"))["resolved"]["targetUrl"])')/"
 REGION="$(python3 -c 'import json;print(json.load(open("'"$HERE"'/config.resolved.json")).get("debugbear",{}).get("region","eu-west"))')"

@@ -78,6 +78,21 @@ export interface PerformanceAuditRunRequest {
   message?: string | null;
 }
 
+/** Admin-written overrides the host runner layers over audit.config.yaml and .env (never secrets). */
+export interface PerformanceAuditSettingsDocument {
+  version: 1;
+  env: Record<string, string>;
+  config: {
+    schedule?: { interval_seconds: number };
+    target?: { pages: Record<string, string> };
+    providers?: Record<string, boolean>;
+    canary?: Record<string, unknown>;
+    budget?: Record<string, number>;
+    regression?: Record<string, number>;
+    retention?: Record<string, number>;
+  };
+}
+
 export interface IPerformanceAuditStore {
   /** False when the data directory is not mounted into the API container. */
   isConfigured(): Promise<boolean>;
@@ -89,4 +104,12 @@ export interface IPerformanceAuditStore {
   enqueueRequest(request: PerformanceAuditRunRequest): Promise<void>;
   /** Provider matrix as designed (provider_status.json in the repository), if mounted. */
   readProviderMatrix(): Promise<Array<{ id: string; name: string; status: string; credentials: string; notes: string }> | null>;
+  /** state/config.effective.json — the secret-free configuration the runner used at its last run or tick. */
+  readEffectiveConfig(): Promise<Record<string, unknown> | null>;
+  readSettingsOverrides(): Promise<PerformanceAuditSettingsDocument | null>;
+  writeSettingsOverrides(doc: PerformanceAuditSettingsDocument): Promise<void>;
+  /** Which of the named credentials exist in settings/secrets.env (values are never returned). */
+  secretsPresence(names: string[]): Promise<Record<string, boolean>>;
+  /** Rewrites settings/secrets.env (mode 600): sets the given values, removes the cleared names, keeps the rest. */
+  updateSecrets(set: Record<string, string>, clear: string[]): Promise<void>;
 }

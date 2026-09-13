@@ -9,13 +9,13 @@
 #   ./run_safe_recurring.sh --status             # print the schedule state
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; cd "$HERE"
-source "$HERE/lib/env.sh"; load_dotenv "$HERE/.env"
+PRE_ENV_KEYS="$(env | cut -d= -f1 | tr "\n" " ")"; source "$HERE/lib/env.sh"; load_dotenv "$HERE/.env"; load_admin_settings "${PERF_AUDIT_DATA_DIR:-$HERE/data}" "$PRE_ENV_KEYS"
 export PERF_AUDIT_DATA_DIR="${PERF_AUDIT_DATA_DIR:-$HERE/data}"
 STATE="$PERF_AUDIT_DATA_DIR/state/schedule.json"; mkdir -p "$PERF_AUDIT_DATA_DIR/state"
 LABEL=""; ADHOC=0; FORCE=0; STATUS=0
 while [ $# -gt 0 ]; do case "$1" in --label) LABEL="$2"; shift 2;; --ad-hoc) ADHOC=1; shift;; --force) FORCE=1; shift;; --status) STATUS=1; shift;; *) echo "unknown arg $1"; exit 2;; esac; done
 
-if [ "$STATUS" = 1 ]; then node -e 'import("./lib/state.mjs").then(m=>{const s=m.readState(process.argv[1]);const cfg={interval_seconds:864000,retry_delays_seconds:[21600,43200,86400]};console.log(JSON.stringify({state:s,due:m.computeDue(s,Date.now(),cfg)},null,2))})' "$STATE"; exit 0; fi
+if [ "$STATUS" = 1 ]; then node -e 'import("./lib/state.mjs").then(async m=>{const {loadConfig}=await import("./lib/config.mjs");const cfg=loadConfig().schedule;const s=m.readState(process.argv[1]);console.log(JSON.stringify({state:s,schedule:cfg,due:m.computeDue(s,Date.now(),cfg)},null,2))})' "$STATE"; exit 0; fi
 
 if [ "$ADHOC" = 1 ]; then
   echo "ad-hoc run (label: ${LABEL:-none}); the recurring schedule is not changed"
@@ -25,6 +25,7 @@ fi
 # Heartbeat: every recurring tick records that the host scheduler is alive, due or not
 # (the admin view derives SCHEDULER_SILENT from its age).
 date -u +%FT%TZ > "$PERF_AUDIT_DATA_DIR/state/last_tick_at.tmp" && mv -f "$PERF_AUDIT_DATA_DIR/state/last_tick_at.tmp" "$PERF_AUDIT_DATA_DIR/state/last_tick_at"
+node -e 'import("./lib/config.mjs").then(m=>{const c=m.loadConfig();m.writeResolvedConfig(c,process.argv[1])})' "$PERF_AUDIT_DATA_DIR/state/config.effective.json.tmp" 2>/dev/null && mv -f "$PERF_AUDIT_DATA_DIR/state/config.effective.json.tmp" "$PERF_AUDIT_DATA_DIR/state/config.effective.json" || true
 
 # Recurring: due gate first.
 DUE="$(node -e 'import("./lib/state.mjs").then(async m=>{const {loadConfig}=await import("./lib/config.mjs");const c=loadConfig().schedule;const s=m.readState(process.argv[1]);const d=m.computeDue(s,Date.now(),c);console.log(JSON.stringify(d))})' "$STATE")" || { echo "STOP: cannot evaluate schedule state"; exit 1; }

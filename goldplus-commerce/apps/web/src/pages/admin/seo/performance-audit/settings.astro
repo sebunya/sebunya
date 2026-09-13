@@ -1,0 +1,216 @@
+---
+import AdminLayout from "../../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../../lib/session";
+import { seoGet, seoPost } from "../../../../lib/adminSeo";
+import { apiBase } from "../../../../lib/api";
+
+/** Performance Audit → Settings.
+ *
+ *  Everything the audit runner reads can be changed here after launch, without
+ *  a terminal: targets, pages, interval, providers on/off, canary size, budgets,
+ *  regression thresholds, retention, provider credentials and the alert webhook.
+ *  The API stores non-secret values in settings/config.overrides.json and
+ *  credentials in settings/secrets.env (mode 600) inside the audit data
+ *  directory; the host runner layers them over the repository defaults on its
+ *  next run. Credentials are never displayed back — only whether one is set.
+ *  Deliberately absent: the two production load approvals (terminal only). */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/seo/performance-audit/settings", 303);
+
+type View = {
+  configured: boolean;
+  effective: { resolved?: { targetUrl?: string; productUrl?: string; loadTargetUrl?: string; wptServer?: string; debugbearProjectId?: string; speedcurveSiteId?: string }; schedule?: { interval_seconds?: number }; target?: { pages?: Record<string, string> }; providers?: Record<string, boolean>; canary?: { enabled?: boolean; vus?: number; duration_seconds?: number; paths?: string[] }; budget?: Record<string, number>; regression?: Record<string, number>; retention?: Record<string, number>; admin_settings?: { applied?: boolean; error?: string | null } } | null;
+  overrides: { env: Record<string, string>; config: Record<string, any> } | null;
+  secretsPresent: Record<string, boolean>;
+  productionHost: string;
+  limits: { minIntervalDays: number; maxIntervalDays: number; providers: string[]; budgetKeys: string[]; regressionKeys: string[] };
+};
+
+let notice: string | null = null;
+let formError: string | null = null;
+
+async function apiPut(path: string, body: unknown): Promise<{ ok: true; data: any } | { ok: false; message: string }> {
+  try {
+    const res = await fetch(`${apiBase}${path}`, { method: "PUT", headers: { Accept: "application/json", Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.success) return { ok: false, message: json?.error?.message ? `${json.error.message}${json.error.field ? ` (field: ${json.error.field})` : ""}` : `The API declined the request (HTTP ${res.status}).` };
+    return { ok: true, data: json.data };
+  } catch { return { ok: false, message: "Could not reach the API." }; }
+}
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") ?? "");
+  const f = (k: string) => (form.has(k) ? String(form.get(k) ?? "") : undefined);
+  if (intent === "save") {
+    const pages: Record<string, string> = {};
+    for (let i = 0; i < 6; i++) { const n = String(form.get(`page_name_${i}`) ?? "").trim(); const p = String(form.get(`page_path_${i}`) ?? "").trim(); if (n && p) pages[n] = p; }
+    const providers: Record<string, boolean> = {};
+    for (const p of form.getAll("provider_known").map(String)) providers[p] = form.getAll("provider_on").map(String).includes(p);
+    const budget: Record<string, string> = {}; for (const [k, v] of form.entries()) if (k.startsWith("budget_") && String(v).trim() !== "") budget[k.slice(7)] = String(v);
+    const regression: Record<string, string> = {}; for (const [k, v] of form.entries()) if (k.startsWith("regression_") && String(v).trim() !== "") regression[k.slice(11)] = String(v);
+    const secrets: Record<string, string> = {};
+    for (const [k, v] of form.entries()) {
+      if (k.startsWith("secret_") && String(v).trim() !== "") secrets[k.slice(7)] = String(v).trim();
+    }
+    for (const k of form.getAll("clear_secret").map(String)) secrets[k] = "";
+    const body = {
+      env: { TARGET_URL: f("TARGET_URL"), AUDIT_PRODUCT_URL: f("AUDIT_PRODUCT_URL"), LOAD_TARGET_URL: f("LOAD_TARGET_URL"), WPT_SERVER: f("WPT_SERVER"), DEBUGBEAR_PROJECT_ID: f("DEBUGBEAR_PROJECT_ID"), SPEEDCURVE_SITE_ID: f("SPEEDCURVE_SITE_ID") },
+      intervalDays: f("intervalDays"),
+      pages: Object.keys(pages).length ? pages : undefined,
+      providers,
+      canary: { enabled: form.get("canary_enabled") === "on", vus: f("canary_vus"), duration_seconds: f("canary_duration"), paths: f("canary_paths") },
+      budget, regression,
+      retention: { keep_runs: f("keep_runs"), keep_ad_hoc_runs: f("keep_ad_hoc_runs") },
+      secrets,
+    };
+    const res = await apiPut("/admin/performance-audit/settings", body);
+    if (res.ok) {
+      const set = (res.data?.secretsSet ?? []) as string[]; const cleared = (res.data?.secretsCleared ?? []) as string[];
+      notice = `Settings saved. They apply from the next run or the next daily check${set.length ? `; credentials stored: ${set.join(", ")}` : ""}${cleared.length ? `; credentials cleared: ${cleared.join(", ")}` : ""}. Use "Queue the run" on the Performance Audit page to measure with them now.`;
+    } else formError = res.message;
+  } else if (intent === "reset") {
+    const res = await seoPost(token, "/admin/performance-audit/settings/reset", { clearSecrets: form.get("clear_secrets_too") === "on" });
+    if (res.ok) notice = "Overrides removed. The repository defaults apply from the next run."; else formError = res.message;
+  }
+}
+
+const res = await seoGet<View>(token, "/admin/performance-audit/settings");
+const v = res.ok ? res.data : null;
+const eff = v?.effective ?? null;
+const ov = v?.overrides ?? { env: {}, config: {} };
+const pick = <T,>(overrideVal: T | undefined, effectiveVal: T | undefined, fallback: T): T => (overrideVal !== undefined ? overrideVal : effectiveVal !== undefined ? effectiveVal : fallback);
+const envVal = (k: string, effKey: string) => pick(ov.env?.[k], (eff?.resolved as any)?.[effKey] as string | undefined, "");
+const intervalDays = Math.round(pick(ov.config?.schedule?.interval_seconds, eff?.schedule?.interval_seconds, 864000) / 86400);
+const pages: Array<[string, string]> = Object.entries(pick(ov.config?.target?.pages, eff?.target?.pages, { home: "/", shop: "/shop" }));
+const providers = v?.limits.providers ?? [];
+const providerOn = (p: string) => pick(ov.config?.providers?.[p], eff?.providers?.[p], true) !== false;
+const canary = { ...(eff?.canary ?? { enabled: true, vus: 2, duration_seconds: 30, paths: ["/", "/shop"] }), ...(ov.config?.canary ?? {}) } as { enabled?: boolean; vus?: number; duration_seconds?: number; paths?: string[] };
+const budget = { ...(eff?.budget ?? {}), ...(ov.config?.budget ?? {}) } as Record<string, number>;
+const regression = { ...(eff?.regression ?? {}), ...(ov.config?.regression ?? {}) } as Record<string, number>;
+const retention = { ...(eff?.retention ?? { keep_runs: 40, keep_ad_hoc_runs: 20 }), ...(ov.config?.retention ?? {}) } as Record<string, number>;
+const overridden = (section: string) => Boolean(ov.config?.[section]) ;
+const SECRETS: Array<[string, string]> = [["WPT_API_KEY", "WebPageTest API key"], ["GTMETRIX_API_KEY", "GTmetrix API key"], ["DEBUGBEAR_API_KEY", "DebugBear API key"], ["SPEEDVITALS_API_KEY", "SpeedVitals API key"], ["PINGDOM_API_TOKEN", "Pingdom API token (paid)"], ["LOADERIO_API_KEY", "Loader.io API key"], ["LOADERIO_VERIFICATION_TOKEN", "Loader.io verification token"], ["SPEEDCURVE_API_KEY", "SpeedCurve API key"], ["PERF_AUDIT_ALERT_WEBHOOK_URL", "Alert webhook URL"]];
+const budgetLabels: Record<string, string> = { lcp_ms: "LCP (ms)", fcp_ms: "FCP (ms)", ttfb_ms: "TTFB (ms)", tbt_ms: "TBT (ms)", cls: "CLS", inp_ms: "INP (ms)", speed_index_ms: "Speed Index (ms)", total_bytes: "Total bytes", js_bytes: "JS bytes", requests: "Requests", p95_latency_ms: "p95 latency (ms)", error_rate: "Error rate", observatory_score: "Observatory score" };
+const regressionLabels: Record<string, string> = { lcp_pct: "LCP %", fcp_pct: "FCP %", ttfb_pct: "TTFB %", tbt_pct: "TBT %", speed_index_pct: "Speed Index %", cls_abs: "CLS (absolute)", js_bytes_pct: "JS bytes %", total_bytes_pct: "Total bytes %", requests_pct: "Requests %", p95_latency_pct: "p95 latency %", critical_multiplier: "Critical multiplier", noise_floor_ms: "Noise floor (ms)", noise_floor_bytes: "Noise floor (bytes)" };
+const input = "mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm text-gray-900";
+---
+
+<AdminLayout title="Performance Audit Settings" description="Everything the audit runner reads, editable without a terminal.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl space-y-8">
+    <header class="pb-6 border-b border-gray-200">
+      <a class="text-xs text-brand-primary underline" href="/admin/seo/performance-audit">← Performance Audit</a>
+      <h1 class="mt-1 text-2xl font-black text-brand-dark tracking-tight">Performance Audit Settings</h1>
+      <p class="mt-1 text-sm text-gray-600">Saved values apply from the next run or the next daily check. Fields show the value the runner used last time unless you have overridden them. Leave a credential blank to keep it; tick "clear" to remove it. Credentials are never shown back.</p>
+    </header>
+
+    {notice && <p class="rounded border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{notice}</p>}
+    {formError && <p class="rounded border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900">{formError}</p>}
+    {!res.ok && <p class="rounded border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900">{res.message}</p>}
+    {v && !v.configured && <p class="rounded border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">Not configured on this API: the audit data directory is not mounted, so settings cannot be stored. Reports and settings stay host-only.</p>}
+    {eff?.admin_settings?.error && <p class="rounded border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900">The runner ignored the stored overrides at its last run: {eff.admin_settings.error}. Save again to rewrite them.</p>}
+
+    {v && v.configured && (
+      <form method="POST" class="space-y-6">
+        <input type="hidden" name="intent" value="save" />
+
+        <section class="rounded-lg border border-gray-200 bg-white p-4 grid gap-3 md:grid-cols-2">
+          <h2 class="md:col-span-2 text-sm font-semibold text-gray-900">Targets {ov.env?.TARGET_URL || ov.env?.AUDIT_PRODUCT_URL || ov.env?.LOAD_TARGET_URL ? <span class="ml-2 rounded bg-sky-100 px-1.5 text-xs text-sky-900">overridden</span> : null}</h2>
+          <label class="text-xs text-gray-600">Site to audit (https)<input name="TARGET_URL" value={envVal("TARGET_URL", "targetUrl")} class={input} placeholder="https://shopgoldplus.com" /></label>
+          <label class="text-xs text-gray-600">Test product page (for the cart journey; must be on the audited site)<input name="AUDIT_PRODUCT_URL" value={envVal("AUDIT_PRODUCT_URL", "productUrl")} class={input} placeholder="https://shopgoldplus.com/products/…" /></label>
+          <label class="text-xs text-gray-600">Staging host for heavy load tests (never the live site)<input name="LOAD_TARGET_URL" value={envVal("LOAD_TARGET_URL", "loadTargetUrl")} class={input} placeholder="https://staging.example.com" /></label>
+          <label class="text-xs text-gray-600">WebPageTest server<input name="WPT_SERVER" value={envVal("WPT_SERVER", "wptServer")} class={input} placeholder="https://www.webpagetest.org" /></label>
+          <label class="text-xs text-gray-600">DebugBear project id<input name="DEBUGBEAR_PROJECT_ID" value={envVal("DEBUGBEAR_PROJECT_ID", "debugbearProjectId")} class={input} /></label>
+          <label class="text-xs text-gray-600">SpeedCurve site id<input name="SPEEDCURVE_SITE_ID" value={envVal("SPEEDCURVE_SITE_ID", "speedcurveSiteId")} class={input} /></label>
+          <p class="md:col-span-2 text-xs text-gray-500">Heavy load against the live site cannot be switched on here by design: it needs two explicit approvals that only exist on the host. A staging host is enough for k6, Artillery and Loader.io.</p>
+        </section>
+
+        <section class="rounded-lg border border-gray-200 bg-white p-4 grid gap-3 md:grid-cols-3">
+          <h2 class="md:col-span-3 text-sm font-semibold text-gray-900">Schedule and pages {overridden("schedule") || overridden("target") ? <span class="ml-2 rounded bg-sky-100 px-1.5 text-xs text-sky-900">overridden</span> : null}</h2>
+          <label class="text-xs text-gray-600">Days between scheduled audits ({v.limits.minIntervalDays}–{v.limits.maxIntervalDays})<input name="intervalDays" type="number" min={v.limits.minIntervalDays} max={v.limits.maxIntervalDays} value={intervalDays} class={input} /></label>
+          <div class="md:col-span-2">
+            <p class="text-xs text-gray-600">Pages measured (name → path; "home" is required, up to six)</p>
+            <div class="mt-1 grid grid-cols-2 gap-1">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <>
+                  <input name={`page_name_${i}`} value={pages[i]?.[0] ?? ""} placeholder="name" class={input} />
+                  <input name={`page_path_${i}`} value={pages[i]?.[1] ?? ""} placeholder="/path" class={input} />
+                </>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section class="rounded-lg border border-gray-200 bg-white p-4">
+          <h2 class="text-sm font-semibold text-gray-900">Providers {overridden("providers") ? <span class="ml-2 rounded bg-sky-100 px-1.5 text-xs text-sky-900">overridden</span> : null}</h2>
+          <p class="text-xs text-gray-500">Switch a provider off to skip it. A provider that is on but has no credential reports AWAITING CREDENTIALS, which is harmless.</p>
+          <div class="mt-2 grid gap-1 sm:grid-cols-2 lg:grid-cols-4 text-sm text-gray-800">
+            {providers.map((p) => (
+              <label class="flex items-center gap-2"><input type="hidden" name="provider_known" value={p} /><input type="checkbox" name="provider_on" value={p} checked={providerOn(p)} /> {p}</label>
+            ))}
+          </div>
+        </section>
+
+        <section class="rounded-lg border border-gray-200 bg-white p-4 grid gap-3 md:grid-cols-4">
+          <h2 class="md:col-span-4 text-sm font-semibold text-gray-900">Read-only canary (runs against the live origin every audit) {overridden("canary") ? <span class="ml-2 rounded bg-sky-100 px-1.5 text-xs text-sky-900">overridden</span> : null}</h2>
+          <label class="flex items-center gap-2 text-sm text-gray-800"><input type="checkbox" name="canary_enabled" checked={canary.enabled !== false} /> enabled</label>
+          <label class="text-xs text-gray-600">Virtual users (1–3)<input name="canary_vus" type="number" min="1" max="3" value={canary.vus ?? 2} class={input} /></label>
+          <label class="text-xs text-gray-600">Duration seconds (10–60)<input name="canary_duration" type="number" min="10" max="60" value={canary.duration_seconds ?? 30} class={input} /></label>
+          <label class="text-xs text-gray-600">Paths (comma-separated, up to 4)<input name="canary_paths" value={(canary.paths ?? ["/", "/shop"]).join(",")} class={input} /></label>
+        </section>
+
+        <section class="rounded-lg border border-gray-200 bg-white p-4">
+          <h2 class="text-sm font-semibold text-gray-900">Performance budget {overridden("budget") ? <span class="ml-2 rounded bg-sky-100 px-1.5 text-xs text-sky-900">overridden</span> : null}</h2>
+          <p class="text-xs text-gray-500">A measurement above its budget is reported OVER BUDGET. These are GoldPlus targets, not an industry percentile.</p>
+          <div class="mt-2 grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
+            {v.limits.budgetKeys.map((k) => <label class="text-xs text-gray-600">{budgetLabels[k] ?? k}<input name={`budget_${k}`} type="number" step="any" min="0" value={budget[k] ?? ""} class={input} /></label>)}
+          </div>
+        </section>
+
+        <section class="rounded-lg border border-gray-200 bg-white p-4">
+          <h2 class="text-sm font-semibold text-gray-900">Regression thresholds {overridden("regression") ? <span class="ml-2 rounded bg-sky-100 px-1.5 text-xs text-sky-900">overridden</span> : null}</h2>
+          <p class="text-xs text-gray-500">A change beyond a threshold is a WARNING once, a REGRESSION when repeated, CRITICAL beyond the multiplier. Movements under the noise floors are never flagged.</p>
+          <div class="mt-2 grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
+            {v.limits.regressionKeys.map((k) => <label class="text-xs text-gray-600">{regressionLabels[k] ?? k}<input name={`regression_${k}`} type="number" step="any" min="0" value={regression[k] ?? ""} class={input} /></label>)}
+          </div>
+        </section>
+
+        <section class="rounded-lg border border-gray-200 bg-white p-4 grid gap-3 md:grid-cols-3">
+          <h2 class="md:col-span-3 text-sm font-semibold text-gray-900">Retention {overridden("retention") ? <span class="ml-2 rounded bg-sky-100 px-1.5 text-xs text-sky-900">overridden</span> : null}</h2>
+          <label class="text-xs text-gray-600">Scheduled runs kept (5–200)<input name="keep_runs" type="number" min="5" max="200" value={retention.keep_runs ?? 40} class={input} /></label>
+          <label class="text-xs text-gray-600">Ad-hoc runs kept (5–200)<input name="keep_ad_hoc_runs" type="number" min="5" max="200" value={retention.keep_ad_hoc_runs ?? 20} class={input} /></label>
+          <p class="text-xs text-gray-500 self-end">The latest success, every historical best and any run labelled *baseline are never deleted.</p>
+        </section>
+
+        <section class="rounded-lg border border-gray-200 bg-white p-4">
+          <h2 class="text-sm font-semibold text-gray-900">Provider credentials and alerting</h2>
+          <p class="text-xs text-gray-500">Stored on the host with owner-only permissions and never displayed. Needs the credentials permission to change.</p>
+          <div class="mt-2 grid gap-3 md:grid-cols-2">
+            {SECRETS.map(([k, label]) => (
+              <div class="text-xs text-gray-600">
+                <label>{label} <span class={`ml-1 rounded px-1.5 ${v.secretsPresent[k] ? "bg-emerald-100 text-emerald-900" : "bg-gray-100 text-gray-600"}`}>{v.secretsPresent[k] ? "set" : "not set"}</span>
+                  <input name={`secret_${k}`} type="password" autocomplete="off" placeholder={v.secretsPresent[k] ? "leave blank to keep" : "paste to set"} class={input} />
+                </label>
+                {v.secretsPresent[k] && <label class="mt-1 flex items-center gap-1"><input type="checkbox" name="clear_secret" value={k} /> clear</label>}
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <div class="flex flex-wrap items-center gap-3">
+          <button type="submit" class="rounded bg-brand-primary px-4 py-2 text-sm font-semibold text-brand-charcoal">Save settings</button>
+          <span class="text-xs text-gray-500">Changes are recorded in the audit log.</span>
+        </div>
+      </form>
+    )}
+
+    {v && v.configured && (
+      <form method="POST" class="rounded-lg border border-gray-200 bg-white p-4 flex flex-wrap items-center gap-3">
+        <input type="hidden" name="intent" value="reset" />
+        <span class="text-sm text-gray-800">Back to the repository defaults</span>
+        <label class="flex items-center gap-1 text-xs text-gray-600"><input type="checkbox" name="clear_secrets_too" /> also remove stored credentials</label>
+        <button type="submit" class="rounded border border-red-300 px-3 py-1.5 text-sm text-red-800">Remove all overrides</button>
+      </form>
+    )}
+  </div>
+</AdminLayout>

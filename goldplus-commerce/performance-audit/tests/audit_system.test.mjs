@@ -120,3 +120,25 @@ test('manifest of the run directory layout is what the README promises', () => {
   const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8');
   for (const f of ['manifest.json', 'normalized_metrics.json', 'engineering_report.md', 'executive_summary.md', 'regression_report.md', 'trend_summary.md']) assert.ok(readme.includes(f), f);
 });
+
+test('admin settings: .env < settings written by the API < process env; a malformed overrides file is ignored with a reason', async () => {
+  const { readAdminSettings, loadConfig } = await import('../lib/config.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'perf-audit-settings-'));
+  const { mkdirSync } = await import('node:fs');
+  mkdirSync(join(dir, 'settings'), { recursive: true });
+  writeFileSync(join(dir, 'settings', 'config.overrides.json'), JSON.stringify({ env: { TARGET_URL: 'https://admin.example.test', LOAD_TARGET_URL: 'https://staging.example.test', NOT_ALLOWED: 'x' }, config: { schedule: { interval_seconds: 432000 }, budget: { lcp_ms: 2000 }, providers: { yellowlab: false }, bogus: { a: 1 } } }));
+  writeFileSync(join(dir, 'settings', 'secrets.env'), 'GTMETRIX_API_KEY=gt-secret-value-123456\nRANDOM_KEY=nope\n');
+  const a = readAdminSettings(dir);
+  assert.equal(a.env.TARGET_URL, 'https://admin.example.test'); assert.equal(a.env.NOT_ALLOWED, undefined);
+  assert.equal(a.secrets.GTMETRIX_API_KEY, 'gt-secret-value-123456'); assert.equal(a.secrets.RANDOM_KEY, undefined);
+  assert.equal(a.config.bogus, undefined);
+  const cfg = loadConfig({ PERF_AUDIT_DATA_DIR: dir, TARGET_URL: 'https://admin.example.test', LOAD_TARGET_URL: 'https://staging.example.test', GTMETRIX_API_KEY: 'gt-secret-value-123456' });
+  assert.equal(cfg.schedule.interval_seconds, 432000); assert.equal(cfg.schedule.retry_delays_seconds.length, 3); // untouched keys survive
+  assert.equal(cfg.budget.lcp_ms, 2000); assert.equal(cfg.budget.ttfb_ms, 800);
+  assert.equal(cfg.providers.yellowlab, false); assert.equal(cfg.providers.observatory, true);
+  assert.equal(cfg.resolved.credentials.GTMETRIX_API_KEY, true);
+  assert.deepEqual(cfg.admin_settings.overridden_sections.sort(), ['budget', 'providers', 'schedule']);
+  writeFileSync(join(dir, 'settings', 'config.overrides.json'), '{ not json');
+  const bad = loadConfig({ PERF_AUDIT_DATA_DIR: dir });
+  assert.equal(bad.schedule.interval_seconds, 864000); assert.match(bad.admin_settings.error, /ignored/);
+});

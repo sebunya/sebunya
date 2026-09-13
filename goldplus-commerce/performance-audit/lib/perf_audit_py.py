@@ -40,6 +40,20 @@ def load_dotenv(path: Path = AUDIT_ROOT / ".env") -> dict:
             if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
                 v = v[1:-1]
             out[k.strip().replace("export ", "")] = v
+    # admin-managed settings (written by the API into the data dir) override .env, never the process env
+    data_dir = os.environ.get("PERF_AUDIT_DATA_DIR") or out.get("PERF_AUDIT_DATA_DIR") or str(AUDIT_ROOT / "data")
+    try:
+        ov = json.loads((Path(data_dir) / "settings" / "config.overrides.json").read_text()).get("env", {})
+        out.update({k: v for k, v in ov.items() if isinstance(v, str)})
+    except Exception:
+        pass
+    sp = Path(data_dir) / "settings" / "secrets.env"
+    if sp.exists():
+        for raw in sp.read_text().splitlines():
+            line = raw.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                out[k.strip()] = v.strip().strip("\"'")
     out.update({k: v for k, v in os.environ.items()})
     for k, v in out.items():
         if re.search(r"KEY|TOKEN|SECRET|WEBHOOK", k, re.I) and v and len(v) >= 6:

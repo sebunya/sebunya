@@ -134,6 +134,31 @@ The API container reads the data directory through a bind mount
 (`PERFORMANCE_AUDIT_DATA_DIR`, see `docker-compose.production.yml`). Without
 the mount the page says NOT CONFIGURED and reports stay host-only.
 
+## Admin-managed settings (no terminal after launch)
+
+`/admin/seo/performance-audit/settings` edits everything the runner reads:
+targets and the test product, a staging load host, pages, the interval (1–30
+days), providers on/off, canary size (bounded 1–3 users, 10–60 s), budgets,
+regression thresholds, retention, provider credentials and the alert webhook.
+The API writes `settings/config.overrides.json` (non-secret) and
+`settings/secrets.env` (mode 600, owned by the API user) into the data
+directory. Precedence, lowest to highest:
+
+```
+audit.config.yaml  <  performance-audit/.env  <  admin settings  <  process environment
+```
+
+`lib/config.mjs` (`readAdminSettings`), `lib/env.sh` (`load_admin_settings`)
+and `lib/perf_audit_py.py` all apply the same layering, so the shell path and
+the scheduler see exactly what the admin saved. A malformed overrides file is
+ignored with a reason (logged in the run and shown on the settings page), never
+half-applied. The runner snapshots its secret-free effective configuration to
+`state/config.effective.json` on every run and tick; the settings page shows
+those values as the defaults. Deliberately not editable from the browser:
+`ALLOW_PROD_LOAD_TEST` and `PROD_LOAD_TEST_ACK` — heavy load against the
+production host stays a terminal-only, two-value decision, and the settings
+validator refuses a `LOAD_TARGET_URL` on the production host.
+
 ## Local development
 
 ```

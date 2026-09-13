@@ -187,3 +187,44 @@ found in this pass's self-critique.
 8. Was the previous pass's biggest silent failure fixed? Yes: a dead timer now shows SCHEDULER_SILENT in the admin and stale conditions are evaluated on every tick.
 9. Permissions? Reuses `seo.view` / `seo.audit.run`; no new permission code, no role baseline change.
 10. What was verified after the roll (82779b9c, DEPLOYED 4/4 healthy)? LIVE VERIFIED: the bind mount is present in the api container (uid 1000 reads reports, writes only the queue); a request written from inside the api container was picked up by the path unit within seconds and produced run `20260913T071913Z` (SUCCESS, 75 measurements, compared against the baseline, ten-day clock untouched); the admin page rendered HEALTHY, the request row, the finished run, 28 key cells, 15 provider statuses and the matrix. The form's own button was not clicked by the assistant (form submission is an owner action in the browser); the write it performs is byte-identical to the verified one.
+
+## 12. Admin-managed settings (added 2026-09-13, third pass)
+
+Owner requirement: the shell path must keep working, and every operating
+setting must be editable from the back office once the site is launched.
+
+`/admin/seo/performance-audit/settings` (reached from the Performance Audit
+page) edits: the audited site and test product, a staging load host, the
+pages measured, the interval in days (1–30), each provider on/off, the canary
+(bounded 1–3 users, 10–60 s), every budget, every regression threshold,
+retention, the nine provider credentials and the alert webhook. Reads need
+`seo.view`; saving needs `seo.audit.run`; saving a credential additionally
+needs `seo.integrations.credentials`. Every save is written to the audit log
+with the non-secret values and the names of credentials set or cleared.
+
+Mechanism: the API writes `settings/config.overrides.json` (non-secret) and
+`settings/secrets.env` (mode 600, owned by the API user) into the audit data
+directory. `lib/config.mjs`, `lib/env.sh` and `lib/perf_audit_py.py` layer
+them identically: `audit.config.yaml < .env < admin settings < process env`.
+A malformed overrides file is ignored with a reason, shown on the settings
+page and in the run log. The runner snapshots its secret-free effective
+configuration to `state/config.effective.json` on every run and tick, and the
+settings page shows those values as the defaults with an "overridden" badge
+where the admin has changed something. "Remove all overrides" returns to the
+repository defaults, keeping credentials unless asked.
+
+Deliberately not editable from the browser: `ALLOW_PROD_LOAD_TEST` and
+`PROD_LOAD_TEST_ACK`. The validator also refuses a `LOAD_TARGET_URL` on the
+production host, and the request schema cannot express "heavy", so no
+combination of admin actions can generate real traffic against the live site.
+
+### Self-critique of the third pass
+
+1. Can the admin break the audit with a bad value? Every field is validated (https URLs, identifiers, ranges, allowlisted keys) and the runner tolerates a malformed file by ignoring it with a reason.
+2. Can the admin turn the canary into a load test? No: 1–3 users, 10–60 s, 1–4 GET paths.
+3. Where do credentials live and who can read them? `settings/secrets.env`, mode 600, owned by uid 1000 in a 700 directory; the root runner reads it; the API never returns values, only presence. This equals the posture of the existing `.env` on the host.
+4. Does the shell path still work? Yes: the same files are read by `run_all.sh`, `run_safe_recurring.sh` and every runner; a terminal `.env` still applies where the admin has not overridden.
+5. Which wins when both exist? Admin over `.env`, process environment over both; tested in node:test, bash and Python.
+6. Is a settings change measured immediately? No, it applies at the next run or tick; the page says so and links to "Queue the run".
+7. What if the API cannot write the settings directory? 503 with the reason; nothing half-written (temp file + rename).
+8. Any new permission code or role change? None; three existing SEO rights are reused.

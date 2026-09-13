@@ -13,7 +13,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; cd "$HERE"
 LABEL=""; KIND="ad-hoc"; HEAVY=0
 while [ $# -gt 0 ]; do case "$1" in --label) LABEL="$2"; shift 2;; --kind) KIND="$2"; shift 2;; --heavy) HEAVY=1; shift;; *) echo "unknown arg $1"; exit 2;; esac; done
 
-source "$HERE/lib/env.sh"; load_dotenv "$HERE/.env"
+PRE_ENV_KEYS="$(env | cut -d= -f1 | tr "\n" " ")"; source "$HERE/lib/env.sh"; load_dotenv "$HERE/.env"; load_admin_settings "${PERF_AUDIT_DATA_DIR:-$HERE/data}" "$PRE_ENV_KEYS"
 export PERF_AUDIT_DATA_DIR="${PERF_AUDIT_DATA_DIR:-$HERE/data}"
 mkdir -p "$PERF_AUDIT_DATA_DIR"/{reports,state,logs,locks}
 LOCK="$PERF_AUDIT_DATA_DIR/locks/audit.lock"
@@ -29,7 +29,9 @@ if command -v timeout >/dev/null 2>&1; then TIMEOUT=(timeout --kill-after=30); e
 with_timeout() { local t="$1"; shift; if [ ${#TIMEOUT[@]} -gt 0 ]; then "${TIMEOUT[@]}" "$t" "$@"; else "$@"; fi; }
 
 # Validate configuration (yaml parse, gate evaluation) and write the secret-free resolved copy.
-node -e 'import("./lib/config.mjs").then(m=>{const c=m.loadConfig();m.writeResolvedConfig(c);const g=m.heavyLoadDecision(c.resolved);console.log("config ok; target",c.resolved.targetUrl,"; heavy:",g.status)})' || { echo "STOP: configuration invalid"; exit 1; }
+node -e 'import("./lib/config.mjs").then(m=>{const c=m.loadConfig();m.writeResolvedConfig(c);const g=m.heavyLoadDecision(c.resolved);const a=c.admin_settings||{};console.log("config ok; target",c.resolved.targetUrl,"; heavy:",g.status,"; admin settings:",a.applied?("applied ("+[...a.overridden_sections,...a.overridden_env].join(",")+(a.secrets_from_admin.length?"; credentials: "+a.secrets_from_admin.join(","):"")+")"):"none",a.error?("; WARNING "+a.error):"")})' || { echo "STOP: configuration invalid"; exit 1; }
+# The secret-free effective configuration, for the admin view ("effective at the last run").
+cp -f config.resolved.json "$PERF_AUDIT_DATA_DIR/state/config.effective.json" 2>/dev/null || true
 
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"; export PERF_AUDIT_RUN_ID="$RUN_ID"
 export PERF_AUDIT_RUN_DIR="$PERF_AUDIT_DATA_DIR/reports/$RUN_ID"; mkdir -p "$PERF_AUDIT_RUN_DIR/providers"

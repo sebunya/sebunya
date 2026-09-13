@@ -17,6 +17,8 @@ command -v docker >/dev/null || { echo "docker is required on the runner"; exit 
 # redacted on write), the queue is sticky-world-writable, everything else stays root's.
 mkdir -p "$DATA_DIR"/{reports,state,logs,locks,requests/queue,requests/processing,requests/done}
 chmod 755 "$DATA_DIR" "$DATA_DIR"/{reports,state,logs,requests,requests/processing,requests/done}; chmod 700 "$DATA_DIR/locks"; chmod 1777 "$DATA_DIR/requests/queue"
+# settings/: written by the API (uid 1000 in the api container) — credentials live here with mode 600.
+install -d -m 700 -o "${PERF_AUDIT_API_UID:-1000}" -g "${PERF_AUDIT_API_GID:-1000}" "$DATA_DIR/settings"
 cat > /etc/systemd/system/goldplus-performance-audit.service <<EOF
 [Unit]
 Description=GoldPlus Continuous Performance Assurance (runs only when the rolling 10-day gate is due)

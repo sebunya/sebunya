@@ -72,9 +72,10 @@ const canRequest = Boolean(ov?.configured) && !ov?.inFlight && (ov?.runsRequeste
         <h1 class="text-2xl font-black text-brand-dark tracking-tight">Performance Audit</h1>
         <p class="mt-1 text-sm text-gray-600">Measured by the host runner every ten days and on request. Every number below was read from the audit's own files; nothing is estimated here.</p>
       </div>
-      {ov && ov.configured && ov.latestRun && (
-        <a class="text-sm text-brand-primary underline" href="/admin/seo/web-vitals">Lighthouse Watch scores →</a>
-      )}
+      <div class="flex gap-4 text-sm">
+        <a class="text-brand-primary underline" href="/admin/seo/performance-audit/settings">Settings (targets, providers, budgets, credentials) →</a>
+        <a class="text-brand-primary underline" href="/admin/seo/web-vitals">Lighthouse Watch scores →</a>
+      </div>
     </header>
 
     {notice && <p class="rounded border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{notice}</p>}

@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type {
   IPerformanceAuditStore,
+  PerformanceAuditSettingsDocument,
   PerformanceAuditMetricRow,
   PerformanceAuditRunDetail,
   PerformanceAuditRunRequest,
@@ -141,6 +142,55 @@ export class FilesystemPerformanceAuditStore implements IPerformanceAuditStore {
     const tmp = join(dir, `.${request.id}.tmp`);
     await fs.writeFile(tmp, JSON.stringify(request, null, 2) + '\n', { flag: 'wx' });
     await fs.rename(tmp, join(dir, `${request.id}.json`));
+  }
+
+  async readEffectiveConfig(): Promise<Record<string, unknown> | null> {
+    return this.readJson<Record<string, unknown>>(this.p('state', 'config.effective.json'));
+  }
+
+  async readSettingsOverrides(): Promise<PerformanceAuditSettingsDocument | null> {
+    const doc = await this.readJson<PerformanceAuditSettingsDocument>(this.p('settings', 'config.overrides.json'));
+    if (!doc || typeof doc !== 'object') return null;
+    return { version: 1, env: doc.env && typeof doc.env === 'object' ? doc.env : {}, config: doc.config && typeof doc.config === 'object' ? doc.config : {} };
+  }
+
+  private async writeAtomic(path: string, content: string, mode: number): Promise<void> {
+    const tmp = `${path}.tmp-${process.pid}-${Date.now()}`;
+    await fs.writeFile(tmp, content, { mode, flag: 'wx' });
+    await fs.chmod(tmp, mode);
+    await fs.rename(tmp, path);
+  }
+
+  async writeSettingsOverrides(doc: PerformanceAuditSettingsDocument): Promise<void> {
+    await fs.mkdir(this.p('settings'), { recursive: true, mode: 0o700 });
+    await this.writeAtomic(this.p('settings', 'config.overrides.json'), JSON.stringify({ version: 1, env: doc.env, config: doc.config, written_at: new Date().toISOString() }, null, 2) + '\n', 0o644);
+  }
+
+  private async readSecretsFile(): Promise<Record<string, string>> {
+    const text = await this.readText(this.p('settings', 'secrets.env'), 64 * 1024);
+    const out: Record<string, string> = {};
+    for (const raw of (text ?? '').split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line || line.startsWith('#')) continue;
+      const eq = line.indexOf('=');
+      if (eq <= 0) continue;
+      out[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
+    }
+    return out;
+  }
+
+  async secretsPresence(names: string[]): Promise<Record<string, boolean>> {
+    const current = await this.readSecretsFile();
+    return Object.fromEntries(names.map((n) => [n, Boolean(current[n])]));
+  }
+
+  async updateSecrets(set: Record<string, string>, clear: string[]): Promise<void> {
+    await fs.mkdir(this.p('settings'), { recursive: true, mode: 0o700 });
+    const current = await this.readSecretsFile();
+    for (const k of clear) delete current[k];
+    for (const [k, v] of Object.entries(set)) { if (!/^[A-Z][A-Z0-9_]{1,63}$/.test(k) || /[\r\n]/.test(v)) throw new Error(`refusing to store ${k}`); current[k] = v; }
+    const body = ['# Written by the GoldPlus admin (Performance Audit → Settings). Mode 600. Do not commit.', ...Object.entries(current).map(([k, v]) => `${k}=${v}`), ''].join('\n');
+    await this.writeAtomic(this.p('settings', 'secrets.env'), body, 0o600);
   }
 
   async readProviderMatrix(): Promise<Array<{ id: string; name: string; status: string; credentials: string; notes: string }> | null> {

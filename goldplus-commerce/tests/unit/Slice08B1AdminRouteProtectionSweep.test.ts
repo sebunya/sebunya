@@ -81,7 +81,8 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
     // the per-product listing editor and the photos-by-code uploader.
     // 139: +1 for the customer workspace (admin/customers/[id], 2026-09-12).
     // 140: +1 for the Performance Audit view (admin/seo/performance-audit, 2026-09-13).
-    expect(adminPages).toHaveLength(140);
+    // 141: +1 for its Settings page (admin/seo/performance-audit/settings, 2026-09-13).
+    expect(adminPages).toHaveLength(141);
     expect(adminPages[0]).toBe('apps/web/src/pages/admin/analytics/index.astro');
     expect(adminPages.at(-1)).toBe('apps/web/src/pages/admin/verification/index.astro');
   });
@@ -99,7 +100,7 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
 
   it('fails closed for every non-allowlisted admin Astro page', () => {
     const protectedPages = adminPages.filter((page) => !publicAllowlist.includes(page as typeof publicAllowlist[number]));
-    expect(protectedPages).toHaveLength(139);
+    expect(protectedPages).toHaveLength(140);
     for (const page of protectedPages) {
       const source = read(page);
       expect(source, `${page} must use the server-side session contract`).toContain('readSessionToken(Astro.request)');

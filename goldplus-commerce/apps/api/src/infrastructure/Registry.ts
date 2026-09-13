@@ -73,6 +73,7 @@ import { RoleManagementUseCase } from '../application/use-cases/admin/RoleManage
 import { RecordLighthouseReportUseCase } from '../application/use-cases/seo-growth/LighthouseWatchUseCases';
 import { GetPerformanceAuditOverviewUseCase, GetPerformanceAuditRunUseCase, RequestPerformanceAuditRunUseCase } from '../application/use-cases/seo-growth/PerformanceAuditUseCases';
 import { FilesystemPerformanceAuditStore } from './performance-audit/FilesystemPerformanceAuditStore';
+import { GetPerformanceAuditSettingsUseCase, ResetPerformanceAuditSettingsUseCase, UpdatePerformanceAuditSettingsUseCase } from '../application/use-cases/seo-growth/PerformanceAuditSettingsUseCases';
 import { DrizzleAdminUserReadRepository } from './db/repositories/DrizzleAdminUserReadRepository';
 import { DrizzleProductImageRepository } from './db/repositories/DrizzleProductImageRepository';
 import { DrizzleAttributeRepository } from './db/repositories/DrizzleAttributeRepository';
@@ -684,6 +685,9 @@ export class Registry {
   public readonly getPerformanceAuditOverviewUseCase = new GetPerformanceAuditOverviewUseCase(this.performanceAuditStore);
   public readonly getPerformanceAuditRunUseCase = new GetPerformanceAuditRunUseCase(this.performanceAuditStore);
   public readonly requestPerformanceAuditRunUseCase = new RequestPerformanceAuditRunUseCase(this.performanceAuditStore);
+  public readonly getPerformanceAuditSettingsUseCase = new GetPerformanceAuditSettingsUseCase(this.performanceAuditStore);
+  public readonly updatePerformanceAuditSettingsUseCase = new UpdatePerformanceAuditSettingsUseCase(this.performanceAuditStore);
+  public readonly resetPerformanceAuditSettingsUseCase = new ResetPerformanceAuditSettingsUseCase(this.performanceAuditStore);
   public readonly mobileMoneyDisbursement = new NoSendMobileMoneyDisbursement();
   public readonly submitReviewUseCase = new SubmitReviewUseCase(this.reviewRepo, process.env.IDENTITY_HASH_PEPPER ?? '');
   public readonly pricingOperationsRepo = new DrizzlePricingOperationsRepository();

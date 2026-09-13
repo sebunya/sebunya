@@ -29,16 +29,66 @@ export function parseDotenv(text) {
   return out;
 }
 
+/**
+ * Admin-managed settings (written by the GoldPlus API from /admin/seo/performance-audit/settings,
+ * never by hand): $PERF_AUDIT_DATA_DIR/settings/config.overrides.json { env: {...}, config: {...} }
+ * and $PERF_AUDIT_DATA_DIR/settings/secrets.env (provider credentials, mode 600).
+ * Precedence, lowest to highest: audit.config.yaml → performance-audit/.env → admin settings → process env.
+ * A malformed overrides file is IGNORED with a reason (the audit must still run), never partially applied.
+ */
+export const OVERRIDABLE_SECTIONS = ['providers', 'canary', 'budget', 'regression', 'retention'];
+export const OVERRIDABLE_ENV = ['TARGET_URL', 'AUDIT_PRODUCT_URL', 'LOAD_TARGET_URL', 'WPT_SERVER', 'DEBUGBEAR_PROJECT_ID', 'SPEEDCURVE_SITE_ID'];
+
+export function readAdminSettings(dataDir) {
+  const out = { env: {}, config: {}, secrets: {}, source: null, error: null };
+  if (!dataDir) return out;
+  const overridesPath = resolve(dataDir, 'settings', 'config.overrides.json');
+  if (existsSync(overridesPath)) {
+    try {
+      const doc = JSON.parse(readFileSync(overridesPath, 'utf8'));
+      const env = doc && typeof doc.env === 'object' && doc.env ? doc.env : {};
+      for (const k of OVERRIDABLE_ENV) if (typeof env[k] === 'string') out.env[k] = env[k];
+      const config = doc && typeof doc.config === 'object' && doc.config ? doc.config : {};
+      for (const k of OVERRIDABLE_SECTIONS) if (config[k] && typeof config[k] === 'object') out.config[k] = config[k];
+      if (config.schedule && typeof config.schedule === 'object' && Number.isFinite(Number(config.schedule.interval_seconds))) out.config.schedule = { interval_seconds: Number(config.schedule.interval_seconds) };
+      if (config.target && typeof config.target === 'object' && config.target.pages && typeof config.target.pages === 'object') out.config.target = { pages: config.target.pages };
+      out.source = overridesPath;
+    } catch (e) { out.error = `settings/config.overrides.json ignored: ${e.message}`; }
+  }
+  const secretsPath = resolve(dataDir, 'settings', 'secrets.env');
+  if (existsSync(secretsPath)) {
+    try { for (const [k, v] of Object.entries(parseDotenv(readFileSync(secretsPath, 'utf8')))) if (SECRET_ENV_NAMES.includes(k) && v) out.secrets[k] = v; }
+    catch (e) { out.error = `${out.error ? out.error + '; ' : ''}settings/secrets.env unreadable: ${e.message}`; }
+  }
+  return out;
+}
+
 export function loadEnv(envPath = resolve(AUDIT_ROOT, '.env')) {
   const fileEnv = existsSync(envPath) ? parseDotenv(readFileSync(envPath, 'utf8')) : {};
-  // Process environment wins (the runner may inject secrets without a file).
-  return { ...fileEnv, ...Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== undefined)) };
+  const processEnv = Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== undefined));
+  const dataDir = processEnv.PERF_AUDIT_DATA_DIR || fileEnv.PERF_AUDIT_DATA_DIR || resolve(AUDIT_ROOT, 'data');
+  const admin = readAdminSettings(dataDir);
+  // .env < admin settings < process environment (the runner may inject secrets without a file).
+  return { ...fileEnv, ...admin.env, ...admin.secrets, ...processEnv, __ADMIN_SETTINGS_ERROR: admin.error || '' , __ADMIN_SETTINGS_SOURCE: admin.source || '' };
+}
+
+function mergeSection(base, override) {
+  if (!override || typeof override !== 'object') return base;
+  const out = { ...(base || {}) };
+  for (const [k, v] of Object.entries(override)) out[k] = v;
+  return out;
 }
 
 export function loadConfig(env = loadEnv()) {
-  const cfg = yaml.load(readFileSync(resolve(AUDIT_ROOT, 'audit.config.yaml'), 'utf8'));
-  const targetUrl = (env.TARGET_URL || cfg.target.url).replace(/\/+$/, '');
+  const raw = yaml.load(readFileSync(resolve(AUDIT_ROOT, 'audit.config.yaml'), 'utf8'));
   const dataDir = env.PERF_AUDIT_DATA_DIR || resolve(AUDIT_ROOT, 'data');
+  const admin = readAdminSettings(dataDir);
+  const cfg = { ...raw };
+  for (const k of OVERRIDABLE_SECTIONS) if (admin.config[k]) cfg[k] = mergeSection(raw[k], admin.config[k]);
+  if (admin.config.schedule) cfg.schedule = { ...raw.schedule, interval_seconds: admin.config.schedule.interval_seconds };
+  if (admin.config.target) cfg.target = { ...raw.target, pages: admin.config.target.pages };
+  cfg.admin_settings = { applied: Object.keys(admin.config).length > 0 || Object.keys(admin.env).length > 0 || Object.keys(admin.secrets).length > 0, source: admin.source, error: admin.error, overridden_sections: Object.keys(admin.config), overridden_env: Object.keys(admin.env), secrets_from_admin: Object.keys(admin.secrets) };
+  const targetUrl = (env.TARGET_URL || cfg.target.url).replace(/\/+$/, '');
   const productUrl = env[cfg.target.product_url_env] || '';
   return {
     ...cfg,
