@@ -1,0 +1,126 @@
+# GoldPlus Continuous Performance Assurance — non-secret configuration.
+# Secrets live in .env (see .env.example). Everything here is safe to commit.
+
+target:
+  url: https://shopgoldplus.com
+  pages:                      # what the recurring audit measures
+    home: /
+    shop: /shop
+  product_url_env: AUDIT_PRODUCT_URL   # a product page, from the runner's .env
+
+schedule:
+  interval_seconds: 864000    # ten days, rolling, UTC (see lib/state.mjs)
+  retry_delays_seconds: [21600, 43200, 86400]   # +6h, +12h, +24h after a failed cycle
+  overdue_alert_seconds: 1036800                # no success for > 12 days → alert
+  # the host timer checks daily; the internal gate keeps real audits 10 days apart
+
+timeouts_seconds:
+  provider_default: 900       # any single provider is killed after this
+  webpagetest: 1500           # 3 runs x 2 profiles can queue for a while
+  gtmetrix: 900
+  debugbear: 900
+  speedvitals: 600
+  yellowlab: 900
+  observatory: 300
+  webhint: 900
+  control: 120
+  k6_canary: 120
+
+providers:                    # enable/disable without deleting code
+  webpagetest: true
+  gtmetrix: true
+  debugbear: true
+  speedvitals: true
+  pingdom: true
+  yellowlab: true
+  keycdn: true
+  wpt_ecommerce_flow: true
+  k6: true                    # canary in recurring runs; heavy profile only via LOAD_TARGET_URL + dual gate
+  artillery: true             # heavy profile only via LOAD_TARGET_URL + dual gate
+  loaderio: true              # heavy profile only via LOAD_TARGET_URL + dual gate
+  speedcurve: true
+  observatory: true
+  webhint: true
+
+webpagetest:
+  location_desktop: "Dulles:Chrome"
+  location_mobile: "Dulles_MotoG4:Chrome"     # Moto G4-class; verified live only once a key exists
+  runs: 3
+  first_view_only: false
+
+gtmetrix:
+  location: "1"               # GTmetrix location id (Vancouver default); set to the id nearest Kampala once known
+  browser: "3"                # Chrome
+  connection: "9000/5000/125" # 4G-class down/up/latency (Kbps/Kbps/ms), the closest verified option to "LTE"
+  simulate_device: "iPhone14"
+
+debugbear:
+  devices: ["Mobile", "Desktop"]
+  region: "eu-west"
+
+speedvitals:
+  ttfb_regions: [us-east, us-west, eu-central, ap-south, af-south]   # requested regions; only those the API lists are used
+
+yellowlab:
+  device: "phone"
+
+canary:                       # production-safe k6 read-only canary
+  enabled: true
+  vus: 2
+  duration_seconds: 30
+  paths: ["/", "/shop"]
+
+load:                         # heavy profiles (NEVER production without the dual gate)
+  k6:
+    stages: [{ duration: "2m", target: 200 }, { duration: "5m", target: 200 }, { duration: "1m", target: 0 }]
+    thresholds: { http_req_duration: ["p(95)<500"], http_req_failed: ["rate<0.01"] }
+  artillery:
+    warmup: { duration: 60, arrivalRate: 5 }
+    ramp: { duration: 180, arrivalRate: 5, rampTo: 50 }
+    peak: { duration: 300, arrivalRate: 50 }
+  loaderio:
+    total_clients: 1000
+    duration_seconds: 60
+
+# GoldPlus Stretch Performance Budget. These are OUR targets, not a claim of a
+# global percentile: no percentile dataset exists for this store. Refine from
+# field data (CrUX) and the trend history as they accumulate.
+budget:
+  lcp_ms: 2500
+  fcp_ms: 1800
+  ttfb_ms: 800
+  tbt_ms: 200
+  cls: 0.1
+  inp_ms: 200
+  speed_index_ms: 3400
+  total_bytes: 1500000
+  js_bytes: 350000
+  requests: 60
+  p95_latency_ms: 500
+  error_rate: 0.01
+  observatory_score: 90
+
+# Regression thresholds: relative change vs the previous successful run that
+# counts as a regression. Synthetic tests vary; a 15% LCP move on one run is
+# WARNING, a repeat on the next run (or > 2x threshold) is REGRESSION.
+regression:
+  lcp_pct: 15
+  fcp_pct: 15
+  ttfb_pct: 20
+  tbt_pct: 20
+  speed_index_pct: 15
+  cls_abs: 0.02
+  js_bytes_pct: 10
+  total_bytes_pct: 10
+  requests_pct: 10
+  p95_latency_pct: 20
+  critical_multiplier: 2      # > 2x the threshold → CRITICAL_REGRESSION
+  noise_floor_ms: 100
+  noise_floor_bytes: 10240      # byte movements under 10 KiB are never a regression (personalised hero + beacon variants)
+
+retention:
+  keep_runs: 40               # ~13 months of 10-day runs; latest success and historical best are always kept
+  keep_ad_hoc_runs: 20
+
+report:
+  executive_max_actions: 5

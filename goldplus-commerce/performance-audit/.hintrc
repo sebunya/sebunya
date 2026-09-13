@@ -1,0 +1,44 @@
+{
+  "extends": [
+    "web-recommended"
+  ],
+  "connector": {
+    "name": "puppeteer",
+    "options": {
+      "headless": true,
+      "ignoreHTTPSErrors": false
+    }
+  },
+  "formatters": [
+    "html",
+    "json"
+  ],
+  "hints": {
+    "http-compression": "error",
+    "http-cache": "error",
+    "no-http-redirects": "warning",
+    "performance-budget": [
+      "warning",
+      {
+        "connectionType": "4G"
+      }
+    ],
+    "axe/forms": "error",
+    "axe/keyboard": "error",
+    "axe/color": "error",
+    "compat-api/css": "warning",
+    "compat-api/html": "warning",
+    "strict-transport-security": "error",
+    "x-content-type-options": "error",
+    "no-disallowed-headers": "warning",
+    "no-vulnerable-javascript-libraries": "error",
+    "ssllabs": "off",
+    "no-broken-links": "off",
+    "image-optimization-cloudinary": "off",
+    "manifest-file-extension": "off",
+    "apple-touch-icons": "warning",
+    "webpack-config/is-installed": "off",
+    "typescript-config/is-valid": "off"
+  },
+  "hintsTimeout": 120000
+}

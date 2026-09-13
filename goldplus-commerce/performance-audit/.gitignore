@@ -1,0 +1,13 @@
+# Secrets and runtime data never enter Git.
+.env
+.env.*
+!.env.example
+node_modules/
+config.resolved.json
+# Local runs (the durable runner writes to PERF_AUDIT_DATA_DIR, never here)
+data/
+reports/
+state/
+logs/
+locks/
+*.log

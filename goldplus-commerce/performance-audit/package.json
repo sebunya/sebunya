@@ -1,0 +1,28 @@
+{
+  "name": "@goldplus/performance-audit",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GoldPlus Continuous Performance Assurance: 14-provider audit, normalized metrics, regression engine, rolling 10-day scheduler.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "audit": "bash run_all.sh",
+    "recurring": "bash run_safe_recurring.sh",
+    "check": "bash tests/static_checks.sh",
+    "test": "node --test tests/*.test.mjs && python3 -m unittest discover -s tests -p 'test_*.py'"
+  },
+  "dependencies": {
+    "js-yaml": "4.1.0",
+    "playwright-core": "1.61.1",
+    "webpagetest": "0.7.6"
+  },
+  "optionalDependencies": {
+    "hint": "7.1.13",
+    "@hint/hint-performance-budget": "2.4.27"
+  },
+  "devDependencies": {
+    "artillery": "2.0.34"
+  }
+}

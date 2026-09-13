@@ -1,0 +1,36 @@
+# Artillery heavy profile — NEVER production without the dual gate (run_artillery.sh).
+# Artillery 2.0.34 (verified 2026-09-13) bundles the Playwright engine
+# (`engine: playwright`, dependencies playwright + @playwright/test); no
+# separate artillery-engine-playwright package is needed for 2.x.
+# Profile (owner brief): warm-up 5 arrivals/s for 60 s → ramp 5→50/s over 180 s
+# → peak 50/s for 300 s. Journey: homepage → product → cart → checkout ENTRY.
+# STOPS BEFORE PAYMENT (see artillery_processor.mjs).
+config:
+  target: "{{ $processEnvironment.LOAD_TARGET_URL }}"
+  processor: "./artillery_processor.mjs"
+  engines:
+    playwright:
+      launchOptions:
+        headless: true
+      aggregateByName: true
+      defaultNavigationTimeout: 30000
+  phases:
+    - name: warmup
+      duration: 60
+      arrivalRate: 5
+    - name: ramp
+      duration: 180
+      arrivalRate: 5
+      rampTo: 50
+    - name: peak
+      duration: 300
+      arrivalRate: 50
+  ensure:
+    thresholds:
+      - browser.page.TTFB.https://{{ $processEnvironment.LOAD_HOST }}/: { p95: 800 }
+    conditions:
+      - expression: "vusers.failed < 10"
+scenarios:
+  - name: storefront-journey-stop-before-payment
+    engine: playwright
+    testFunction: journey

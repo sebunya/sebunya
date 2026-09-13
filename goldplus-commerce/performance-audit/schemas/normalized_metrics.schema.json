@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shopgoldplus.com/schemas/performance-audit/normalized_metrics.schema.json",
+  "title": "GoldPlus normalized performance metric record",
+  "description": "One record per provider × page × device × location × metric. A metric the provider does not expose is recorded with value null and unit 'unsupported'; nothing is inferred.",
+  "type": "object",
+  "required": ["provider", "page", "device", "location", "metric", "value", "unit", "source", "kind"],
+  "properties": {
+    "provider": { "type": "string", "description": "webpagetest | gtmetrix | debugbear | speedvitals | pingdom | yellowlab | keycdn | wpt_ecommerce_flow | k6 | artillery | loaderio | speedcurve | observatory | webhint | control" },
+    "page": { "type": "string", "description": "home | shop | product | cart | checkout | flow | site" },
+    "device": { "type": "string", "description": "desktop | mobile | n/a" },
+    "location": { "type": "string", "description": "provider location id or region, n/a when not applicable" },
+    "metric": { "type": "string" },
+    "value": { "type": ["number", "string", "null"] },
+    "unit": { "type": "string", "enum": ["ms", "score", "count", "bytes", "percent", "label", "ratio", "rps", "code", "unsupported"] },
+    "source": { "type": "string", "description": "the API or tool the number came from" },
+    "kind": { "type": "string", "enum": ["synthetic", "rum", "control", "load", "security"] },
+    "run_ref": { "type": ["string", "null"], "description": "provider-side test id / result URL where permitted" },
+    "note": { "type": ["string", "null"] },
+    "sample_size": { "type": ["number", "null"] }
+  },
+  "additionalProperties": false
+}
