@@ -22,7 +22,7 @@ finish() { # status summary [error]
   python3 - "$OUT" "$NAME" "$STARTED" "$1" "$2" "${3:-}" <<'EOF'
 import json,sys,datetime
 out,name,started,status,summary,error=sys.argv[1:7]
-json.dump({"provider":name,"status":status,"started_at":started,"finished_at":datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),"summary":summary,"refs":{},"limitations":None if status!="IMPLEMENTED_AWAITING_CREDENTIALS" else "Create a project + API key at app.debugbear.com and set DEBUGBEAR_API_KEY and DEBUGBEAR_PROJECT_ID in performance-audit/.env.","error":error or None},open(f"{out}/status.json","w"),indent=2)
+json.dump({"provider":name,"status":status,"started_at":started,"finished_at":datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),"summary":summary,"refs":{},"limitations":None if status!="IMPLEMENTED_AWAITING_CREDENTIALS" else "Create a project + API key at app.debugbear.com and set DEBUGBEAR_API_KEY and DEBUGBEAR_PROJECT_ID in performance-audit/.env.","error":error or None},open(f"{out}/status.json","w"),indent=2)
 if not __import__("os").path.exists(f"{out}/normalized.json"): json.dump({"provider":name,"status":status,"metrics":[]},open(f"{out}/normalized.json","w"),indent=2)
 print(f"[{name}] {status} — {summary}")
 EOF

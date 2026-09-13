@@ -10,7 +10,7 @@ source "$HERE/lib/env.sh"; load_dotenv "$HERE/.env"
 finish() { python3 - "$OUT" "$STARTED" "$1" "$2" "${3:-}" <<'EOF'
 import json,sys,datetime,os
 out,started,status,summary,lim=sys.argv[1:6]
-json.dump({"provider":"artillery","status":status,"started_at":started,"finished_at":datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),"summary":summary,"refs":{},"limitations":lim or None,"error":None},open(f"{out}/status.json","w"),indent=2)
+json.dump({"provider":"artillery","status":status,"started_at":started,"finished_at":datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),"summary":summary,"refs":{},"limitations":lim or None,"error":None},open(f"{out}/status.json","w"),indent=2)
 if not os.path.exists(f"{out}/normalized.json"): json.dump({"provider":"artillery","status":status,"metrics":[]},open(f"{out}/normalized.json","w"),indent=2)
 print(f"[artillery] {status} — {summary}")
 EOF

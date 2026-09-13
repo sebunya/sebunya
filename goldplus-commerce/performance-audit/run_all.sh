@@ -40,7 +40,7 @@ import json,sys,subprocess,datetime
 d,rid,kind,label,heavy=sys.argv[1:6]
 import os
 sha=os.environ.get("PERF_AUDIT_REPO_SHA") or subprocess.run(["git","rev-parse","--short","HEAD"],capture_output=True,text=True).stdout.strip() or "unknown"
-json.dump({"run_id":rid,"kind":kind,"label":label or None,"heavy_requested":heavy=="1","started_at":datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),"finished_at":None,"outcome":None,"repo_sha":sha,"target":json.load(open("config.resolved.json"))["resolved"]["targetUrl"],"providers":{}},open(f"{d}/manifest.json","w"),indent=2)
+json.dump({"run_id":rid,"kind":kind,"label":label or None,"heavy_requested":heavy=="1","started_at":datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),"finished_at":None,"outcome":None,"repo_sha":sha,"target":json.load(open("config.resolved.json"))["resolved"]["targetUrl"],"providers":{}},open(f"{d}/manifest.json","w"),indent=2)
 EOF
 
 # provider name → command. Each runs with its own bounded timeout; a non-zero
@@ -74,7 +74,7 @@ for P in "${ORDER[@]}"; do
     mkdir -p "$PERF_AUDIT_RUN_DIR/providers/$P"
     python3 - "$PERF_AUDIT_RUN_DIR/providers/$P" "$P" "$RC" <<'EOF'
 import json,sys,datetime
-d,p,rc=sys.argv[1:4]; now=datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+d,p,rc=sys.argv[1:4]; now=datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 json.dump({"provider":p,"status":"PROVIDER_FAILURE","started_at":now,"finished_at":now,"summary":f"no status written (exit {rc}; timeout kills return 124)","refs":{},"limitations":None,"error":f"exit {rc}"},open(f"{d}/status.json","w"),indent=2)
 json.dump({"provider":p,"status":"PROVIDER_FAILURE","metrics":[]},open(f"{d}/normalized.json","w"),indent=2)
 EOF

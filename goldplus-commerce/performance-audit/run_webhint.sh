@@ -11,7 +11,7 @@ TARGET="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["resolv
 finish() { python3 - "$OUT" "$STARTED" "$1" "$2" "${3:-}" <<'EOF'
 import json,sys,datetime,os
 out,started,status,summary,err=sys.argv[1:6]
-json.dump({"provider":"webhint","status":status,"started_at":started,"finished_at":datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),"summary":summary,"refs":{},"limitations":None,"error":err or None},open(f"{out}/status.json","w"),indent=2)
+json.dump({"provider":"webhint","status":status,"started_at":started,"finished_at":datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),"summary":summary,"refs":{},"limitations":None,"error":err or None},open(f"{out}/status.json","w"),indent=2)
 if not os.path.exists(f"{out}/normalized.json"): json.dump({"provider":"webhint","status":status,"metrics":[]},open(f"{out}/normalized.json","w"),indent=2)
 print(f"[webhint] {status} — {summary}")
 EOF
