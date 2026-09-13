@@ -1,47 +1,57 @@
 import { test, expect } from '../helpers/fixtures';
 
 /**
- * Time-to-interactive-handlers. A customer on a slow connection taps the menu
- * or starts typing long before every image has loaded. This test taps the menu
- * right after DOMContentLoaded and again after load, and inspects how the
- * page's scripts are delivered. Discovery 2026-09-13: Cloudflare Rocket Loader
- * rewrites <script type="module"> to a deferred type, injects a second copy
- * (the nav bundle is downloaded twice) and executes it after window.load, so
- * early taps are lost. Cloudflare-owned; reported, never "fixed" in code.
+ * Time-to-interactive-handlers, measured. From the first byte the page polls
+ * every 100 ms until the menu button actually responds, and records that
+ * moment relative to DOMContentLoaded and load. It also inspects how the
+ * page's scripts were delivered: Cloudflare Rocket Loader (found ON on
+ * 2026-09-13 ~09:00 UTC, apparently OFF ~09:30 UTC) rewrites
+ * <script type="module"> to a deferred type, downloads the nav bundle twice
+ * and binds every handler only after window.load; the storefront itself binds
+ * within a few milliseconds of DOMContentLoaded. A gap above one second is a
+ * P2 finding; above three seconds a P1. Cloudflare-owned when the rewrite is
+ * present; application-owned otherwise.
  */
 test.describe('early interaction', () => {
   test.skip(() => !/small_low_end_android|mainstream_android|mainstream_iphone|desktop_1440_firefox/.test(test.info().project.name), 'one class per engine plus low-end');
 
-  test('menu responds to a tap right after DOMContentLoaded; script delivery is inspected for Rocket Loader', async ({ page, gp }) => {
+  test('menu handler binding time vs DOMContentLoaded and load; script delivery (Rocket Loader) inspected', async ({ page, gp }) => {
+    test.setTimeout(120_000);
     const jsResponses: string[] = [];
     page.on('response', (r) => { if (r.request().resourceType() === 'script') jsResponses.push(r.url().split('/').pop()!.slice(0, 40)); });
-    const t0 = Date.now();
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
-    const tDcl = Date.now() - t0;
-    const burger = page.locator('#gpNavBurger');
-    const mobile = await burger.isVisible().catch(() => false);
-    let earlyWorked: boolean | null = null; let lateWorked: boolean | null = null;
-    if (mobile) {
-      await burger.click(); await page.waitForTimeout(400);
-      earlyWorked = (await burger.getAttribute('aria-expanded')) === 'true';
-      if (earlyWorked) { await burger.click(); await page.waitForTimeout(300); }
-    }
-    await page.waitForLoadState('load'); const tLoad = Date.now() - t0; await page.waitForTimeout(600);
-    if (mobile) { await burger.click(); await page.waitForTimeout(400); lateWorked = (await burger.getAttribute('aria-expanded')) === 'true'; }
-    const delivery = await page.evaluate(() => {
-      const scripts = [...document.scripts];
-      const rewritten = scripts.filter((s) => /-module$|-text\/javascript$/.test(s.type)).length;
-      const rocket = scripts.some((s) => /rocket-loader/.test(s.src)) || rewritten > 0;
-      const hoisted = scripts.filter((s) => /hoisted\./.test(s.src)).map((s) => `${s.type}:${s.src.split('/').pop()}`);
-      return { rocket_loader: rocket, rewritten_script_types: rewritten, hoisted_script_tags: hoisted, module_tags: scripts.filter((s) => s.type === 'module').length };
-    });
+    await page.goto('/', { waitUntil: 'commit' });
+    const timing = await page.evaluate(() => new Promise<Record<string, unknown>>((resolve) => {
+      const out: Record<string, unknown> = { dcl_ms: null, load_ms: null, bound_ms: null, tries: 0, mobile_menu_present: false };
+      const mark = () => { const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined; if (nav) { out.dcl_ms = out.dcl_ms ?? (nav.domContentLoadedEventEnd ? Math.round(nav.domContentLoadedEventEnd) : null); out.load_ms = out.load_ms ?? (nav.loadEventEnd ? Math.round(nav.loadEventEnd) : null); } };
+      const iv = setInterval(() => {
+        (out.tries as number)++; mark();
+        const b = document.getElementById('gpNavBurger');
+        if (b && getComputedStyle(b).display !== 'none') {
+          out.mobile_menu_present = true;
+          b.click();
+          if (b.getAttribute('aria-expanded') === 'true') { out.bound_ms = Math.round(performance.now()); b.click(); clearInterval(iv); setTimeout(() => { mark(); finish(); }, 1200); return; }
+        } else if (b) { out.mobile_menu_present = false; }
+        if ((out.tries as number) > 600) { clearInterval(iv); mark(); finish(); }
+      }, 100);
+      function finish() {
+        mark();
+        const scripts = [...document.scripts];
+        out.delivery = { rocket_loader: scripts.some((s) => /rocket-loader/.test(s.src)) || scripts.some((s) => /-module$|-text\/javascript$/.test(s.type)), rewritten_script_types: scripts.filter((s) => /-module$|-text\/javascript$/.test(s.type)).length, hoisted_script_tags: scripts.filter((s) => /hoisted\./.test(s.src)).map((s) => `${s.type}:${s.src.split('/').pop()}`), module_tags: scripts.filter((s) => s.type === 'module').length };
+        out.hoisted_resource_timeline = performance.getEntriesByType('resource').filter((e) => /hoisted/.test(e.name)).map((e) => ({ start_ms: Math.round(e.startTime), end_ms: Math.round(e.responseEnd), transfer_bytes: Math.round((e as PerformanceResourceTiming).transferSize) }));
+        resolve(out);
+      }
+    }));
     const dupes = jsResponses.filter((u, i, a) => a.indexOf(u) !== i);
-    const finding = mobile && earlyWorked === false && lateWorked === true;
+    const bound = timing.bound_ms as number | null; const dcl = timing.dcl_ms as number | null; const load = timing.load_ms as number | null;
+    const gapAfterDcl = bound != null && dcl != null ? bound - dcl : null;
+    const mobile = timing.mobile_menu_present as boolean;
+    const delivery = timing.delivery as { rocket_loader: boolean };
+    const severity = !mobile ? null : bound == null ? 'P1' : gapAfterDcl != null && gapAfterDcl > 3000 ? 'P1' : gapAfterDcl != null && gapAfterDcl > 1000 ? 'P2' : null;
     gp.report('early_interaction', {
-      dcl_ms: tDcl, load_ms: tLoad, mobile_menu_present: mobile, tap_after_dcl_worked: earlyWorked, tap_after_load_worked: lateWorked, delivery, duplicate_script_downloads: dupes,
-      status: finding ? 'FINDING' : 'PASS', severity: finding ? 'P1' : null, owner: delivery.rocket_loader ? 'CLOUDFLARE' : 'APPLICATION',
-      note: finding ? `Handlers bind only after window.load (${tLoad} ms here; far later on a slow connection). ${delivery.rocket_loader ? 'Cloudflare Rocket Loader rewrites the module scripts and defers them; the storefront itself binds synchronously. OWNER ACTION: switch Rocket Loader OFF (docs/hardening/cloudflare-lighthouse-owner-settings.md).' : ''}${dupes.length ? ` The same script was downloaded twice: ${dupes.join(', ')}.` : ''}` : null,
+      ...timing, handler_bound_after_dcl_ms: gapAfterDcl, handler_bound_after_load_ms: bound != null && load != null ? bound - load : null, duplicate_script_downloads: dupes,
+      status: severity ? 'FINDING' : 'PASS', severity, owner: delivery.rocket_loader ? 'CLOUDFLARE' : 'APPLICATION',
+      note: severity ? `Menu handler responded ${gapAfterDcl ?? 'never'} ms after DOMContentLoaded (${bound == null ? 'not within 60 s' : `${bound} ms after navigation start`}).${delivery.rocket_loader ? ' Cloudflare Rocket Loader rewrites the module scripts and defers them past window.load. OWNER ACTION: switch Rocket Loader OFF.' : ''}${dupes.length ? ` Same script downloaded twice: ${dupes.join(', ')}.` : ''}` : null,
     });
-    expect(mobile ? lateWorked : true, 'menu works after load').toBe(true);
+    if (mobile) expect(bound, 'menu handler eventually bound').not.toBeNull();
   });
 });
