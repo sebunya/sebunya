@@ -51,4 +51,22 @@ describe('web fonts load after the first paint', () => {
       expect((read(f).match(/font-family:'Poppins Fallback'/g) ?? []).length, f).toBe(3);
     }
   });
+
+  it('Cloudflare Web Analytics is installed manually and loads after window.load, never beside the document', () => {
+    const layout = read('apps/web/src/layouts/BaseLayout.astro');
+    expect(layout).toContain('set:html={CF_BEACON_LOADER}');
+    expect(layout).toMatch(/CF_BEACON_LOADER = `[^`]*addEventListener\('load',idle\)/);
+    expect(layout).toMatch(/CF_BEACON_LOADER = `[^`]*requestIdleCallback/);
+    expect(layout).not.toMatch(/<script[^>]*src="https:\/\/static\.cloudflareinsights\.com/);
+  });
+
+  it('the homepage trust strip is hidden for a returning visitor before first paint, not after', () => {
+    const layout = read('apps/web/src/layouts/BaseLayout.astro');
+    const home = read('apps/web/src/pages/index.astro');
+    expect(layout).toContain("localStorage.getItem('goldplus_seen_before')==='true')document.documentElement.classList.add('gp-seen')");
+    expect(layout).toContain('set:html={SEEN_FLAG}');
+    expect(home).toContain('html.gp-seen #homepage-trust-strip{display:none}');
+    expect(read('apps/web/src/lib/returning-user.ts')).toContain('"goldplus_seen_before"');
+  });
 });
+

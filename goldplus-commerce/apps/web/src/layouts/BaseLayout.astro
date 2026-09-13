@@ -124,6 +124,10 @@ const canonical = canonicalUrl ?? `${SITE_ORIGIN}${Astro.url.pathname}`;
 const shareImage = /^https?:\/\//i.test(image) ? image : `${SITE_ORIGIN}${image.startsWith('/') ? '' : '/'}${image}`;
 const measurement = resolveMeasurementConfig(import.meta.env);
 // Loads /fonts/faces.css right after the first paint (see the <head> comment).
+// Loads Cloudflare Web Analytics after load + idle (see the <head> comment).
+const CF_BEACON_LOADER = `(function(){function go(){var s=document.createElement('script');s.defer=true;s.src='https://static.cloudflareinsights.com/beacon.min.js';s.setAttribute('data-cf-beacon','{"token":"6288c9e8fae24ebcbc432462132ae7bd"}');document.body.appendChild(s);}function idle(){(window.requestIdleCallback||function(f){setTimeout(f,1500);})(go,{timeout:4000});}if(document.readyState==='complete'){idle();}else{addEventListener('load',idle);}})();`;
+// Returning-visitor flag on <html> before first paint (see the <head> comment).
+const SEEN_FLAG = `try{if(localStorage.getItem('goldplus_seen_before')==='true')document.documentElement.classList.add('gp-seen')}catch(e){}`;
 const FONT_LOADER = `(function(){var d=0;function go(){if(d)return;d=1;var l=document.createElement('link');l.rel='stylesheet';l.href='/fonts/faces.css?v=20260913';document.head.appendChild(l);}try{var o=new PerformanceObserver(function(){o.disconnect();setTimeout(go,0);});o.observe({type:'paint',buffered:true});}catch(e){}addEventListener('load',function(){setTimeout(go,0);});setTimeout(go,3000);})();`;
 ---
 
@@ -196,7 +200,18 @@ const FONT_LOADER = `(function(){var d=0;function go(){if(d)return;d=1;var l=doc
     {/* data-cfasync="false": Cloudflare Rocket Loader otherwise rewrites this script to run
         after window.load, and the fonts swapped late (PSI: speed index 2.0 s -> 3.2 s). */}
     <script is:inline data-cfasync="false" set:html={FONT_LOADER}></script>
+    {/* Returning-visitor flag set BEFORE first paint (2026-09-14). The homepage trust strip
+        is for new visitors; hiding it at DOMContentLoaded moved everything below it after the
+        first paint (Cloudflare RUM: CLS 0.106 on the section under it). Same localStorage
+        key as lib/returning-user.ts. */}
+    <script is:inline data-cfasync="false" set:html={SEEN_FLAG}></script>
     <noscript><link rel="stylesheet" href="/fonts/faces.css?v=20260913" /></noscript>
+    {/* Cloudflare Web Analytics (real-user LCP/INP/CLS), installed manually and loaded after
+        window.load when the browser is idle (2026-09-14). Cloudflare's automatic injection
+        put the 10 KB beacon beside the document before first paint on every page view.
+        The beacon's observers are buffered, so paints and shifts before it loads are still
+        reported. The token is the site's public beacon token (it was already in every page). */}
+    <script is:inline data-cfasync="false" set:html={CF_BEACON_LOADER}></script>
     <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
     <link rel="icon" href="/favicon.ico" sizes="32x32" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />

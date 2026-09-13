@@ -118,7 +118,9 @@ const usedProductIds = [
     <RecentlyViewedRail />
   </div>
 
-  {/* 3. Trust strip (New Visitors Only, hidden client-side if returning) */}
+  {/* 3. Trust strip (New Visitors Only). Hidden before first paint for a returning visitor
+      by the html.gp-seen flag BaseLayout sets in <head>; hiding it later shifted the page. */}
+  <style is:global>html.gp-seen #homepage-trust-strip{display:none}</style>
   <section id="homepage-trust-strip" class="bg-white py-10 border-b border-slate-100">
     <div class="container mx-auto px-4 lg:px-8">
       <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-center md:text-left">
