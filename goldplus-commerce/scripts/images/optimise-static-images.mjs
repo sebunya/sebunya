@@ -17,14 +17,15 @@ import { imageDimensions } from './image-dimensions.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const CONFIG_PATH = join(ROOT, 'apps/web/static-images.config.json');
-const RASTER = /\.(png|jpe?g|webp|gif)$/i;
+const RASTER = /\.(png|jpe?g|webp|gif|avif)$/i;
 
 export function loadConfig(path = CONFIG_PATH) {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
 
 const outputFor = (entry, w) => entry.output.replace('{w}', String(w));
-const entryHash = (entry, sourceBytes) => createHash('sha256').update(JSON.stringify({ widths: entry.widths, webp: entry.webp, output: entry.output })).update(sourceBytes).digest('hex').slice(0, 16);
+const formatOf = (entry) => entry.format ?? 'webp';
+const entryHash = (entry, sourceBytes) => createHash('sha256').update(JSON.stringify({ widths: entry.widths, format: formatOf(entry), options: entry[formatOf(entry)] ?? null, output: entry.output })).update(sourceBytes).digest('hex').slice(0, 16);
 
 function walk(dir, skip) {
   const out = [];
@@ -52,6 +53,12 @@ export function checkStaticImages(config = loadConfig(), root = ROOT) {
     for (const w of entry.widths) {
       const out = join(pub, outputFor(entry, w));
       if (!existsSync(out)) { problems.push(`${entry.id}: missing ${outputFor(entry, w)}`); continue; }
+      if (formatOf(entry) === 'avif') {
+        // no header parser for AVIF: the manifest records what sharp wrote, and the file must match its size
+        const rec = manifest[entry.id]?.variants?.find((v) => v.w === w);
+        if (!rec || rec.width !== w || rec.bytes !== statSync(out).size) problems.push(`${entry.id}: ${outputFor(entry, w)} does not match the manifest (run pnpm images:optimise)`);
+        continue;
+      }
       const d = imageDimensions(out);
       if (!d) problems.push(`${entry.id}: ${outputFor(entry, w)} is not a readable image`);
       else if (d.width !== w) problems.push(`${entry.id}: ${outputFor(entry, w)} is ${d.width}px wide, expected ${w}`);
@@ -71,7 +78,10 @@ export function checkStaticImages(config = loadConfig(), root = ROOT) {
     if (!rule) continue;
     const bytes = statSync(file).size;
     const d = imageDimensions(file);
-    if (!d) { problems.push(`${rel}: unreadable image header`); continue; }
+    if (!d) {
+      if (rel.endsWith('.avif')) { if (bytes > rule.maxBytes) problems.push(`${rel}: ${bytes} bytes exceeds the ${rule.dir} budget of ${rule.maxBytes}`); continue; }
+      problems.push(`${rel}: unreadable image header`); continue;
+    }
     if (rule.requireVariantsFrom) {
       if (!variantSets.has(rule.requireVariantsFrom)) {
         const p = join(root, rule.requireVariantsFrom);
@@ -110,9 +120,14 @@ async function generate(config, force) {
       const out = join(pub, outputFor(entry, w));
       mkdirSync(dirname(out), { recursive: true });
       const pipeline = sharp(input).resize({ width: w, withoutEnlargement: true });
-      const buf = await pipeline.webp(entry.webp ?? { quality: 82, effort: 6 }).toBuffer();
+      const format = formatOf(entry);
+      if (format !== 'webp' && format !== 'avif') throw new Error(`${entry.id}: unsupported format ${format}`);
+      const buf = format === 'avif'
+        ? await pipeline.avif(entry.avif ?? { quality: 50, effort: 6 }).toBuffer()
+        : await pipeline.webp(entry.webp ?? { quality: 82, effort: 6 }).toBuffer();
       writeFileSync(out, buf);
-      const d = imageDimensions(out);
+      // AVIF headers are not parsed by the dependency-free reader; ask sharp for them
+      const d = format === 'avif' ? await sharp(buf).metadata() : imageDimensions(out);
       variants.push({ w, url: `/${outputFor(entry, w)}`, width: d.width, height: d.height, bytes: buf.length });
       console.log(`+ ${outputFor(entry, w)}  ${d.width}x${d.height}  ${buf.length} B`);
     }

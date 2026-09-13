@@ -2,7 +2,7 @@
 import { apiBase } from '../../lib/api';
 import { getBusinessInfo } from '../../lib/businessInfo';
 import heroImages from '../../generated/hero-images.json';
-import { productSrcset, STAGE_SIZES } from '../../lib/imageSrcset';
+import { productSrcset, staticAvifSrcset, STAGE_SIZES } from '../../lib/imageSrcset';
 import { fetchHeroPersonalised } from '../../lib/heroPersonalised';
 
 /**
@@ -14,10 +14,10 @@ import { fetchHeroPersonalised } from '../../lib/heroPersonalised';
 type HeroRendition = { width: number; height: number; variants: { w: number; url: string }[] };
 const HERO_IMAGES = heroImages as Record<string, HeroRendition>;
 const HERO_SIZES = '(max-width: 640px) 100vw, (max-width: 1100px) 90vw, 1100px';
-function heroPicture(url: string): { srcset: string; width: number; height: number } | null {
+function heroPicture(url: string): { srcset: string; avif: string | null; width: number; height: number } | null {
   const r = HERO_IMAGES[url];
   if (!r || r.variants.length === 0) return null;
-  return { srcset: r.variants.map((v) => `${v.url} ${v.w}w`).join(', '), width: r.width, height: r.height };
+  return { srcset: r.variants.map((v) => `${v.url} ${v.w}w`).join(', '), avif: staticAvifSrcset(url), width: r.width, height: r.height };
 }
 import { kampalaCutoff } from '@goldplus/shared';
 import {
@@ -231,6 +231,7 @@ function fillHeroTokens(text: string): string {
                   are still decoded before the first rotation. Real pixel dimensions
                   come from the manifest so the box is right before decode. */}
               <picture>
+                {pic?.avif && <source type="image/avif" srcset={pic.avif} sizes={HERO_SIZES} />}
                 {pic && <source type="image/webp" srcset={pic.srcset} sizes={HERO_SIZES} />}
                 <img src={s.imageUrl} alt={s.imageAlt} width={picW} height={picH} loading={isLead ? 'eager' : 'lazy'} fetchpriority={isLead ? 'high' : 'low'} decoding={isLead ? undefined : 'async'} data-deck-photo={isLead ? undefined : ''} />
               </picture>

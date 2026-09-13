@@ -27,6 +27,23 @@ describe('static image budget', () => {
     expect(nav).not.toContain('src="/nav/gp-wordmark-cream-320.png"');
   });
 
+  it('hero photos offer their generated AVIF ahead of WebP, and the lead preload asks for the same AVIF', () => {
+    const hero = readFileSync(join(root, 'apps/web/src/components/hero/HeroSlider.astro'), 'utf8');
+    const preload = readFileSync(join(root, 'apps/web/src/lib/heroPersonalised.ts'), 'utf8');
+    const index = readFileSync(join(root, 'apps/web/src/pages/index.astro'), 'utf8');
+    expect(hero.indexOf('type="image/avif"')).toBeGreaterThan(-1);
+    expect(hero.indexOf('type="image/avif"')).toBeLessThan(hero.indexOf('type="image/webp"'));
+    expect(preload).toContain("type: 'image/avif'");
+    expect(index).toContain('type={heroLead.type}');
+    const manifest = JSON.parse(readFileSync(join(root, 'apps/web/src/generated/static-images.json'), 'utf8'));
+    for (const name of ['range', 'ambassador', 'new-arrivals']) {
+      const e = manifest[`hero-${name}-avif`];
+      expect(e.source).toBe(`/hero/${name}.jpg`);
+      const webp760 = readFileSync(join(root, `apps/web/public/hero/${name}.webp`)).length;
+      expect(e.variants.find((v: { w: number }) => v.w === 760).bytes).toBeLessThan(webp760);
+    }
+  });
+
   it('reads PNG, WebP (lossy, lossless, extended) and JPEG dimensions from headers', () => {
     const pub = join(root, 'apps/web/public');
     expect(imageDimensions(join(pub, 'nav/gp-wordmark-cream-320.png'))).toMatchObject({ width: 320, height: 92, format: 'png' });

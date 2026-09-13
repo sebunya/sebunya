@@ -4,7 +4,7 @@
     "sourceBytes": 5126,
     "width": 480,
     "height": 138,
-    "hash": "fcb3b0bb188c8f28",
+    "hash": "5907cbcbbac9450c",
     "variants": [
       {
         "w": 84,
@@ -22,12 +22,81 @@
       }
     ]
   },
+  "hero-ambassador-avif": {
+    "source": "/hero/ambassador.jpg",
+    "sourceBytes": 25533,
+    "width": 760,
+    "height": 460,
+    "hash": "50869d44f8a4cea4",
+    "variants": [
+      {
+        "w": 480,
+        "url": "/hero/ambassador-480.avif",
+        "width": 480,
+        "height": 291,
+        "bytes": 3799
+      },
+      {
+        "w": 760,
+        "url": "/hero/ambassador-760.avif",
+        "width": 760,
+        "height": 460,
+        "bytes": 6339
+      }
+    ]
+  },
+  "hero-new-arrivals-avif": {
+    "source": "/hero/new-arrivals.jpg",
+    "sourceBytes": 35832,
+    "width": 760,
+    "height": 507,
+    "hash": "868233a50136e835",
+    "variants": [
+      {
+        "w": 480,
+        "url": "/hero/new-arrivals-480.avif",
+        "width": 480,
+        "height": 320,
+        "bytes": 5147
+      },
+      {
+        "w": 760,
+        "url": "/hero/new-arrivals-760.avif",
+        "width": 760,
+        "height": 507,
+        "bytes": 7693
+      }
+    ]
+  },
+  "hero-range-avif": {
+    "source": "/hero/range.jpg",
+    "sourceBytes": 42268,
+    "width": 760,
+    "height": 507,
+    "hash": "1a53076ef44a5aa1",
+    "variants": [
+      {
+        "w": 480,
+        "url": "/hero/range-480.avif",
+        "width": 480,
+        "height": 320,
+        "bytes": 6358
+      },
+      {
+        "w": 760,
+        "url": "/hero/range-760.avif",
+        "width": 760,
+        "height": 507,
+        "bytes": 10856
+      }
+    ]
+  },
   "nav-wordmark": {
     "source": "/nav/gp-wordmark-cream-320.png",
     "sourceBytes": 7095,
     "width": 320,
     "height": 92,
-    "hash": "0874d26fcf5bcfb0",
+    "hash": "1630b5a02ccf6f77",
     "variants": [
       {
         "w": 105,

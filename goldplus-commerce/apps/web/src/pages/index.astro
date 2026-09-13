@@ -97,7 +97,7 @@ const usedProductIds = [
   {/* U6 — Organization + WebSite structured data, homepage only. */}
   <Fragment slot="head">
     {heroLead && heroLead.href && <link rel="preload" as="image" href={heroLead.href} fetchpriority="high" />}
-    {heroLead && heroLead.imagesrcset && <link rel="preload" as="image" imagesrcset={heroLead.imagesrcset} imagesizes={heroLead.imagesizes} fetchpriority="high" />}
+    {heroLead && heroLead.imagesrcset && <link rel="preload" as="image" type={heroLead.type} imagesrcset={heroLead.imagesrcset} imagesizes={heroLead.imagesizes} fetchpriority="high" />}
     <SiteJsonLd />
   </Fragment>
 

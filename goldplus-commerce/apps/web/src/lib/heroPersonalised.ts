@@ -1,7 +1,7 @@
 import type { AstroGlobal } from 'astro';
 import { apiBase } from './api';
 import heroImages from '../generated/hero-images.json';
-import { productSrcset, STAGE_SIZES } from './imageSrcset';
+import { productSrcset, staticAvifSrcset, STAGE_SIZES } from './imageSrcset';
 
 /**
  * The personalised hero rail, fetched ONCE per page render (2026-09-13).
@@ -55,7 +55,7 @@ const HERO_IMAGES = heroImages as HeroManifest;
 const HERO_SIZES = '(max-width: 640px) 100vw, (max-width: 1100px) 90vw, 1100px';
 
 /** The <link rel=preload> attributes for the lead slide's image, or null when there is nothing to preload. */
-export function heroLeadPreload(json: any | null): { href?: string; imagesrcset?: string; imagesizes?: string } | null {
+export function heroLeadPreload(json: any | null): { href?: string; imagesrcset?: string; imagesizes?: string; type?: string } | null {
   const slides = Array.isArray(json?.data?.slides) ? json.data.slides : [];
   if (slides.length === 0) return null;
   const leadKey = json.data.lead || slides[0].slideKey;
@@ -63,6 +63,10 @@ export function heroLeadPreload(json: any | null): { href?: string; imagesrcset?
   if (!lead || lead.media === 'card' || !lead.imageUrl) return null;
   const url = String(lead.imageUrl);
   if (lead.media === 'bleed') {
+    // Preload the format the <picture> will pick: AVIF when generated (a browser
+    // without AVIF ignores a preload whose type it cannot decode), else WebP.
+    const avif = staticAvifSrcset(url);
+    if (avif) return { imagesrcset: avif, imagesizes: HERO_SIZES, type: 'image/avif' };
     const r = HERO_IMAGES[url];
     if (r && r.variants.length > 0) return { imagesrcset: r.variants.map((v) => `${v.url} ${v.w}w`).join(', '), imagesizes: HERO_SIZES };
     return { href: url };
