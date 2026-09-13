@@ -15,11 +15,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "lib"))
 from perf_audit_py import now_iso  # noqa: E402
 
 KEY_CELLS = [  # (label, metric, preferred providers in order)
-    ("LCP (mobile)", "lcp_ms", ["webpagetest", "gtmetrix", "debugbear", "speedcurve", "control"]),
+    ("Lighthouse performance (mobile)", "performance_score", ["lighthouse"]),
+    ("LCP (mobile)", "lcp_ms", ["lighthouse", "webpagetest", "gtmetrix", "debugbear", "speedcurve", "control"]),
     ("TTFB (control, home)", "ttfb_ms", ["control"]),
     ("TTFB global median (SpeedVitals)", "ttfb_ms", ["speedvitals"]),
-    ("TBT (mobile)", "tbt_ms", ["webpagetest", "gtmetrix", "debugbear"]),
-    ("CLS", "cls", ["webpagetest", "gtmetrix", "debugbear", "control"]),
+    ("TBT (mobile)", "tbt_ms", ["lighthouse", "webpagetest", "gtmetrix", "debugbear"]),
+    ("CLS", "cls", ["lighthouse", "webpagetest", "gtmetrix", "debugbear", "control"]),
     ("JS bytes (home)", "js_bytes", ["control", "yellowlab"]),
     ("Total bytes (home)", "total_bytes", ["control", "webpagetest", "yellowlab"]),
     ("Requests (home)", "requests", ["control", "webpagetest", "yellowlab"]),
@@ -109,10 +110,11 @@ def main() -> None:
     else:
         ex.append(f"Faster: {imps} cells improved, {regs} regressed.")
     ex += ["", "## The questions", ""]
-    ex.append(answer("Core Web Vitals — LCP", pick(rows, "lcp_ms", ["webpagetest", "gtmetrix", "debugbear", "speedcurve", "control"])))
-    ex.append(answer("Core Web Vitals — CLS", pick(rows, "cls", ["webpagetest", "gtmetrix", "debugbear", "control"])))
+    ex.append(answer("Lighthouse performance score (mobile, median)", pick(rows, "performance_score", ["lighthouse"])))
+    ex.append(answer("Core Web Vitals — LCP", pick(rows, "lcp_ms", ["lighthouse", "webpagetest", "gtmetrix", "debugbear", "speedcurve", "control"])))
+    ex.append(answer("Core Web Vitals — CLS", pick(rows, "cls", ["lighthouse", "webpagetest", "gtmetrix", "debugbear", "control"])))
     ex.append(answer("Global TTFB", pick(rows, "ttfb_ms", ["speedvitals"]) or pick(rows, "ttfb_ms", ["control"])))
-    ex.append(answer("JS / main-thread cost (TBT)", pick(rows, "tbt_ms", ["webpagetest", "gtmetrix", "debugbear"])))
+    ex.append(answer("JS / main-thread cost (TBT)", pick(rows, "tbt_ms", ["lighthouse", "webpagetest", "gtmetrix", "debugbear"])))
     ex.append(answer("Page weight", pick(rows, "total_bytes", ["control", "webpagetest", "yellowlab"])))
     ex.append(answer("Security", pick(rows, "security_score", ["observatory"])))
     ex.append(answer("Error rate (canary)", pick(rows, "error_rate", ["k6"])))

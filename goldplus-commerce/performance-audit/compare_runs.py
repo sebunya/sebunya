@@ -28,14 +28,16 @@ LOWER_IS_BETTER = {"ttfb_ms", "fcp_ms", "lcp_ms", "cls", "inp_ms", "tbt_ms", "sp
                    "js_execution_ms", "layout_ms", "render_ms", "main_thread_ms", "requests", "total_bytes", "html_bytes", "css_bytes", "js_bytes",
                    "image_bytes", "font_bytes", "p50_latency_ms", "p75_latency_ms", "p95_latency_ms", "p99_latency_ms", "error_rate",
                    "lcp_load_delay_ms", "lcp_load_time_ms", "lcp_render_delay_ms", "tls_handshake_ms", "connect_ms", "synchronous_scripts",
-                   "duplicate_css_selectors", "webhint_errors", "webhint_findings", "security_tests_failed"}
+                   "duplicate_css_selectors", "webhint_errors", "webhint_findings", "security_tests_failed", "long_tasks", "tti_ms", "third_party_bytes",
+                   "third_party_requests", "journeys_failed", "console_errors", "network_failures", "a11y_violations_serious", "a11y_violations_total",
+                   "p0_defects", "p1_defects", "p2_defects", "visual_regressions"}
 HIGHER_IS_BETTER = {"availability_pct", "cache_efficiency_pct", "throughput_rps", "performance_score", "accessibility_score", "best_practices_score",
-                    "seo_score", "security_score", "yellowlab_global_score"}
+                    "seo_score", "security_score", "yellowlab_global_score", "journeys_passed"}
 THRESHOLD_KEY = {"lcp_ms": "lcp_pct", "fcp_ms": "fcp_pct", "ttfb_ms": "ttfb_pct", "tbt_ms": "tbt_pct", "speed_index_ms": "speed_index_pct",
                  "js_bytes": "js_bytes_pct", "total_bytes": "total_bytes_pct", "requests": "requests_pct", "p95_latency_ms": "p95_latency_pct"}
 BUDGET_KEY = {"lcp_ms": "lcp_ms", "fcp_ms": "fcp_ms", "ttfb_ms": "ttfb_ms", "tbt_ms": "tbt_ms", "cls": "cls", "inp_ms": "inp_ms", "speed_index_ms": "speed_index_ms",
               "total_bytes": "total_bytes", "js_bytes": "js_bytes", "requests": "requests", "p95_latency_ms": "p95_latency_ms", "error_rate": "error_rate"}
-OWNER_HINT = {"control": "ORIGIN_INFRASTRUCTURE", "observatory": "APPLICATION", "webhint": "APPLICATION", "k6": "ORIGIN_INFRASTRUCTURE", "artillery": "ORIGIN_INFRASTRUCTURE", "loaderio": "ORIGIN_INFRASTRUCTURE"}
+OWNER_HINT = {"lighthouse": "APPLICATION", "compatibility": "APPLICATION", "control": "ORIGIN_INFRASTRUCTURE", "observatory": "APPLICATION", "webhint": "APPLICATION", "k6": "ORIGIN_INFRASTRUCTURE", "artillery": "ORIGIN_INFRASTRUCTURE", "loaderio": "ORIGIN_INFRASTRUCTURE"}
 
 
 def cell_key(m: dict) -> str:

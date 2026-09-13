@@ -16,7 +16,9 @@
   "dependencies": {
     "js-yaml": "4.1.0",
     "playwright-core": "1.61.1",
-    "webpagetest": "0.7.6"
+    "webpagetest": "0.7.6",
+    "lighthouse": "12.8.2",
+    "chrome-launcher": "1.2.0"
   },
   "optionalDependencies": {
     "hint": "7.1.13",

@@ -16,7 +16,7 @@ import type { IPerformanceAuditStore, PerformanceAuditSettingsDocument } from '.
  * terminal-only, two-value decision; the admin may set a STAGING load target.
  */
 
-export const SETTINGS_PROVIDERS = ['webpagetest', 'wpt_ecommerce_flow', 'gtmetrix', 'debugbear', 'speedvitals', 'pingdom', 'yellowlab', 'keycdn', 'k6', 'artillery', 'loaderio', 'speedcurve', 'observatory', 'webhint'] as const;
+export const SETTINGS_PROVIDERS = ['webpagetest', 'wpt_ecommerce_flow', 'gtmetrix', 'debugbear', 'speedvitals', 'pingdom', 'yellowlab', 'keycdn', 'k6', 'artillery', 'loaderio', 'speedcurve', 'observatory', 'webhint', 'lighthouse', 'compatibility'] as const;
 export const SETTINGS_SECRETS = ['WPT_API_KEY', 'GTMETRIX_API_KEY', 'DEBUGBEAR_API_KEY', 'SPEEDVITALS_API_KEY', 'PINGDOM_API_TOKEN', 'LOADERIO_API_KEY', 'LOADERIO_VERIFICATION_TOKEN', 'SPEEDCURVE_API_KEY', 'PERF_AUDIT_ALERT_WEBHOOK_URL'] as const;
 export const SETTINGS_ENV = ['TARGET_URL', 'AUDIT_PRODUCT_URL', 'LOAD_TARGET_URL', 'WPT_SERVER', 'DEBUGBEAR_PROJECT_ID', 'SPEEDCURVE_SITE_ID'] as const;
 export const BUDGET_KEYS = ['lcp_ms', 'fcp_ms', 'ttfb_ms', 'tbt_ms', 'cls', 'inp_ms', 'speed_index_ms', 'total_bytes', 'js_bytes', 'requests', 'p95_latency_ms', 'error_rate', 'observatory_score'] as const;

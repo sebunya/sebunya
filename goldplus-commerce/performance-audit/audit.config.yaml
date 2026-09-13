@@ -17,6 +17,8 @@ schedule:
 timeouts_seconds:
   provider_default: 900       # any single provider is killed after this
   webpagetest: 1500           # 3 runs x 2 profiles can queue for a while
+  lighthouse: 1500            # 3 runs x 2 form factors x 2 pages on a 2-vCPU host
+  compatibility: 2400         # Playwright engine matrix + constrained profiles
   gtmetrix: 900
   debugbear: 900
   speedvitals: 600
@@ -41,6 +43,13 @@ providers:                    # enable/disable without deleting code
   speedcurve: true
   observatory: true
   webhint: true
+  lighthouse: true            # local Lighthouse 12, medians of N runs (the performance golden-master guard)
+  compatibility: true         # compatibility-audit/ Playwright programme (engines, constrained profiles, PWA)
+
+lighthouse:                   # local runs from the runner's Chromium (same engine as Lighthouse Watch)
+  runs: 3                     # median of N; raise to 5 for sensitive comparisons
+  form_factors: [mobile, desktop]
+  pages: [home, shop]         # add "product" once AUDIT_PRODUCT_URL is set
 
 webpagetest:
   location_desktop: "Dulles:Chrome"

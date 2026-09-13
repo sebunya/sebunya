@@ -12,7 +12,9 @@ export const METRICS = {
   p99_latency_ms: 'ms', error_rate: 'ratio', throughput_rps: 'rps', performance_score: 'score', accessibility_score: 'score',
   best_practices_score: 'score', seo_score: 'score', security_score: 'score', security_grade: 'label', page_generation_ms: 'ms',
   lcp_load_delay_ms: 'ms', lcp_load_time_ms: 'ms', lcp_render_delay_ms: 'ms', lcp_ttfb_ms: 'ms', tls_handshake_ms: 'ms', connect_ms: 'ms',
-  synchronous_scripts: 'count', duplicate_css_selectors: 'count', http_status: 'code',
+  synchronous_scripts: 'count', duplicate_css_selectors: 'count', http_status: 'code', long_tasks: 'count', tti_ms: 'ms',
+  third_party_bytes: 'bytes', third_party_requests: 'count', journeys_passed: 'count', journeys_failed: 'count', console_errors: 'count', network_failures: 'count',
+  a11y_violations_serious: 'count', a11y_violations_total: 'count', p0_defects: 'count', p1_defects: 'count', p2_defects: 'count', visual_regressions: 'count',
 };
 
 /**

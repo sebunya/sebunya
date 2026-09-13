@@ -33,7 +33,7 @@ node -e 'import("./lib/config.mjs").then(m=>{const c=m.loadConfig();m.writeResol
 # The secret-free effective configuration, for the admin view ("effective at the last run").
 cp -f config.resolved.json "$PERF_AUDIT_DATA_DIR/state/config.effective.json" 2>/dev/null || true
 
-RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"; export PERF_AUDIT_RUN_ID="$RUN_ID"
+RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"; export PERF_AUDIT_RUN_ID="$RUN_ID"; export PERF_AUDIT_RUN_LABEL="$LABEL"
 export PERF_AUDIT_RUN_DIR="$PERF_AUDIT_DATA_DIR/reports/$RUN_ID"; mkdir -p "$PERF_AUDIT_RUN_DIR/providers"
 LOG="$PERF_AUDIT_DATA_DIR/logs/$RUN_ID.log"; exec > >(tee -a "$LOG") 2>&1
 echo "=== run $RUN_ID kind=$KIND label=${LABEL:-none} heavy=$HEAVY started $(date -u +%FT%TZ)"
@@ -63,8 +63,10 @@ declare -A CMD=(
   [k6]="bash run_k6.sh"
   [artillery]="bash run_artillery.sh --heavy"
   [loaderio]="node loaderio_setup.js"
+  [lighthouse]="node lighthouse_local.mjs"
+  [compatibility]="bash run_compatibility.sh"
 )
-ORDER=(control observatory yellowlab speedvitals gtmetrix debugbear webpagetest wpt_ecommerce_flow speedcurve pingdom keycdn webhint k6 artillery loaderio)
+ORDER=(control lighthouse observatory yellowlab speedvitals gtmetrix debugbear webpagetest wpt_ecommerce_flow speedcurve pingdom keycdn webhint k6 artillery loaderio compatibility)
 [ "$HEAVY" = 1 ] && CMD[k6]="bash run_k6.sh --heavy"
 timeout_for() { python3 -c 'import json,sys;t=json.load(open("config.resolved.json")).get("timeouts_seconds",{});print(int(t.get(sys.argv[1],t.get("provider_default",900))))' "$1"; }
 for P in "${ORDER[@]}"; do
