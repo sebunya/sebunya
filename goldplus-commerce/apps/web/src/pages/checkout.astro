@@ -863,7 +863,7 @@ const checkoutOnSale = campaignRunning && checkoutSavings > 0;
                   {initialDeliveryEstimate?.kind === 'CONFIRMED' && initialDeliveryEstimate.feeUgx !== null ? (
                     <span class="font-bold text-gray-900 tabular-nums">{formatUgx(initialDeliveryEstimate.feeUgx)}</span>
                   ) : initialDeliveryEstimate?.kind === 'ESTIMATED' && initialDeliveryEstimate.feeUgx !== null ? (
-                    <span class="font-bold text-gray-900 tabular-nums">about {formatUgx(initialDeliveryEstimate.feeUgx)} <span class="block text-[10px] font-semibold text-slate-400">confirmed before the rider leaves</span></span>
+                    <span class="font-bold text-gray-900 tabular-nums">about {formatUgx(initialDeliveryEstimate.feeUgx)} <span class="block text-[10px] font-semibold text-slate-600">confirmed before the rider leaves</span></span>
                   ) : (
                     <span class="text-[11px] font-bold text-slate-600">Shown when you pick a location</span>
                   )}
@@ -1066,7 +1066,7 @@ const checkoutOnSale = campaignRunning && checkoutSavings > 0;
       } else if (est && est.kind === 'ESTIMATED' && est.feeUgx !== null) {
         // An estimate is not a commitment: it is shown, but only a CONFIRMED
         // operator-zone fee joins the committed total (Slice 03 P0 contract).
-        estimateEl.innerHTML = `<span class="font-bold text-gray-900 tabular-nums">about ${ugx(est.feeUgx)} <span class="block text-[10px] font-semibold text-slate-400">confirmed before the rider leaves</span></span>`;
+        estimateEl.innerHTML = `<span class="font-bold text-gray-900 tabular-nums">about ${ugx(est.feeUgx)} <span class="block text-[10px] font-semibold text-slate-600">confirmed before the rider leaves</span></span>`;
         totalLabelEl.textContent = 'Estimated total';
         totalEl.textContent = ugx(goodsTotal());
       } else {
