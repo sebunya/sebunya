@@ -201,7 +201,12 @@ function flushQueue(): void {
   // Batch-beacon all events in one Blob to the API
   // Note: sendBeacon supports up to 64KB per call
   const events = batch.map(e => e.payload);
-  const blob = new Blob([JSON.stringify(events)], { type: 'application/json' });
+  // text/plain, not application/json (2026-09-14): sendBeacon always sends credentials, and a
+  // JSON content type forces a credentialed CORS preflight that the API (rightly) does not allow
+  // (no Access-Control-Allow-Credentials) — every batch from the storefront was blocked with a
+  // console error (Lighthouse Best Practices 96 on product pages). text/plain is CORS-safelisted,
+  // so no preflight; the API's bot-detection middleware reads the raw body and parses the JSON.
+  const blob = new Blob([JSON.stringify(events)], { type: 'text/plain;charset=UTF-8' });
 
   let sent = false;
   if (navigator.sendBeacon) {
