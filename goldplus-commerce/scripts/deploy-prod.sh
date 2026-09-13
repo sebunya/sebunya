@@ -30,7 +30,10 @@ HEAD="$(git rev-parse --short HEAD)"
 # The Caddyfile is a SINGLE-FILE bind mount: git replaces it by rename, so the
 # running container keeps the old inode and `caddy reload` re-reads stale text.
 # Only a recreate picks the new file up (seconds of edge downtime; certs persist).
-if git diff --name-only "$PREV" HEAD | grep -qx Caddyfile; then
+# --relative: this checkout is a nested directory of the repository, so without
+# it git prints "goldplus-commerce/Caddyfile" and the exact match below never
+# fired (found 2026-09-13: a Caddyfile change rolled without recreating Caddy).
+if git diff --name-only --relative "$PREV" HEAD | grep -qx Caddyfile; then
   docker compose --env-file .env.production -f docker-compose.production.yml up -d --force-recreate --no-deps caddy 2>&1 | tail -1
   sleep 5
   docker compose --env-file .env.production -f docker-compose.production.yml exec -T caddy caddy validate --config /etc/caddy/Caddyfile 2>&1 | grep -q 'Valid configuration' || { echo "STOP: Caddyfile invalid after recreate"; exit 1; }
