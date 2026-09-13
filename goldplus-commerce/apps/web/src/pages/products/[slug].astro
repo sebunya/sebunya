@@ -674,7 +674,9 @@ if (product) {
           categoryName={product.categoryName}
           subcategoryName={productSubcategory}
         />
-        <div class="border-t border-slate-100 pt-10">
+        {/* The rails carry their own vertical margin (my-12); the divider wrappers
+            add no padding of their own, or the two stack into a void. */}
+        <div class="border-t border-slate-100">
           <RelatedProductsRail
             productId={product.id}
             productSlug={product.slug}
@@ -682,7 +684,7 @@ if (product) {
             subcategoryName={productSubcategory}
           />
         </div>
-        <div class="border-t border-slate-100 pt-10">
+        <div class="border-t border-slate-100">
           <RecentlyViewedRail 
             title="Browse available products"
             subtitle="A few more from the GoldPlus shelf."
