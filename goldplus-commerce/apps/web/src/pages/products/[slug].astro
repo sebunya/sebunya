@@ -420,7 +420,7 @@ if (product) {
                 decoding="async"
               />
             ) : (
-              <div class="absolute inset-0 flex items-center justify-center text-slate-400 p-6 text-center">
+              <div class="absolute inset-0 flex items-center justify-center text-slate-600 p-6 text-center">
                 <span>No photo of this one yet.</span>
               </div>
             )}
@@ -429,7 +429,7 @@ if (product) {
 
         <div class="w-full lg:w-1/2 flex flex-col">
           <div class="mb-6">
-            <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1.5">{product.categoryName}</p>
+            <p class="text-xs font-bold text-slate-600 uppercase tracking-widest mb-1.5">{product.categoryName}</p>
             <h1 class="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-gray-900 mb-4">{product.name}</h1>
 
             <div class="flex items-baseline gap-3 mb-4 flex-wrap">
@@ -438,7 +438,7 @@ if (product) {
                 {pdpOnSale ? (
                   <div class="flex flex-wrap items-baseline gap-3">
                     <p class="text-3xl font-black text-gray-900 tabular-nums">{formatUgx(pdpSaleUgx)}</p>
-                    <p class="text-lg font-semibold text-slate-400 line-through tabular-nums">{formatUgx(product.retailPriceUgx)}</p>
+                    <p class="text-lg font-semibold text-slate-600 line-through tabular-nums">{formatUgx(product.retailPriceUgx)}</p>
                     <span class="text-xs font-black uppercase tracking-wider rounded-full px-2.5 py-1" style="background:#93D500;color:#0A0A0A">{pdpDiscount.percent}% discount</span>
                   </div>
                 ) : (

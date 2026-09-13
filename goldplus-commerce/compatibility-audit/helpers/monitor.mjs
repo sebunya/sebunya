@@ -1,7 +1,7 @@
 // Console + network capture for a Playwright page, classified by customer
 // impact. Optional third parties that are blocked (analytics, beacons) are
 // recorded as OPTIONAL_THIRD_PARTY, never as commerce failures.
-const OPTIONAL_HOSTS = [/cloudflareinsights\.com$/, /static\.cloudflareinsights\.com$/, /googletagmanager\.com$/, /google-analytics\.com$/, /sentry\.io$/, /facebook\.net$/, /doubleclick\.net$/];
+const OPTIONAL_HOSTS = [/cloudflareinsights\.com$/, /static\.cloudflareinsights\.com$/, /challenges\.cloudflare\.com$/, /googletagmanager\.com$/, /google-analytics\.com$/, /sentry\.io$/, /facebook\.net$/, /doubleclick\.net$/];
 const isOptionalHost = (url) => { try { const h = new URL(url).host; return OPTIONAL_HOSTS.some((re) => re.test(h)); } catch { return false; } };
 
 export function attachMonitor(page, { firstPartyHost }) {
@@ -10,7 +10,7 @@ export function attachMonitor(page, { firstPartyHost }) {
   page.on('pageerror', (err) => console_.push({ kind: 'uncaught', text: String(err?.message ?? err).slice(0, 300), url: page.url() }));
   page.on('requestfailed', (req) => {
     const url = req.url(); const et = req.failure()?.errorText ?? '';
-    if (/net::ERR_ABORTED/.test(et)) return; // navigations cancel in-flight requests; not a failure
+    if (/net::ERR_ABORTED|NS_BINDING_ABORTED|cancelled|canceled|Load cancelled/i.test(et)) return; // navigations and AbortController cancel in-flight requests; not failures
     network.push({ kind: 'failed', url: url.slice(0, 200), error: et, type: req.resourceType(), impact: classifyImpact(url, req.resourceType(), firstPartyHost) });
   });
   page.on('response', (res) => {

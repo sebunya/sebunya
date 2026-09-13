@@ -64,7 +64,7 @@ test.describe('mobile ergonomics', () => {
     if (await add.isVisible().catch(() => false)) {
       await add.click(); await page.waitForURL(/\/cart/);
       await page.getByRole('link', { name: /checkout/i }).first().click(); await page.waitForURL(/\/checkout/);
-      inputs = await page.locator('#checkout-form input:not([type=hidden]):not([type=radio]):not([type=checkbox]), #checkout-form textarea, #checkout-form select').evaluateAll((els) => els.map((el) => ({ name: el.getAttribute('name'), type: el.getAttribute('type'), inputmode: el.getAttribute('inputmode'), autocomplete: el.getAttribute('autocomplete'), fontSizePx: parseFloat(getComputedStyle(el).fontSize) })));
+      inputs = await page.locator('#checkout-form input:not([type=hidden]):not([type=radio]):not([type=checkbox]), #checkout-form textarea, #checkout-form select').evaluateAll((els) => els.map((el) => ({ name: el.getAttribute('name') ?? el.id ?? el.tagName.toLowerCase(), tag: el.tagName.toLowerCase(), type: el.getAttribute('type'), inputmode: el.getAttribute('inputmode'), autocomplete: el.getAttribute('autocomplete'), fontSizePx: parseFloat(getComputedStyle(el).fontSize) })));
     }
     const tooSmall = inputs.filter((i) => (i.fontSizePx as number) < 16);
     const userScalable = !/user-scalable\s*=\s*(no|0)/i.test(meta ?? '') && !/maximum-scale\s*=\s*1(\.0)?\b/i.test(meta ?? '');

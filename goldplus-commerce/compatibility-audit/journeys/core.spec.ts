@@ -26,14 +26,18 @@ test.describe('critical journeys', () => {
     const power = page.getByRole('link', { name: /^Power\b/ }).filter({ visible: true }).first();
     await expect(power).toBeVisible();
     await power.click();
-    await page.waitForURL(/\/shop\?category=power/);
+    // Some engines (Firefox reports no hover capability) treat the first click on a rail item as "open the panel".
+    let secondClick = false;
+    try { await page.waitForURL(/\/shop\?category=power/, { timeout: 5000 }); } catch { secondClick = true; await power.click(); await page.waitForURL(/\/shop\?category=power/); }
     await expectRenderedPage(page);
+    await page.mouse.move(8, 700); await page.keyboard.press('Escape'); // leave the header so the mega menu overlay cannot cover the cards
     const card = page.locator('main a[href^="/products/"]').filter({ visible: true }).first();
     await expect(card, 'category page lists at least one product').toBeVisible();
+    await card.scrollIntoViewIfNeeded();
     await card.click();
     await page.waitForURL(/\/products\//);
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    gp.report('journeys', { journey: 'A', status: 'PASS', menu: mobile ? 'burger' : 'inline', url: page.url() });
+    gp.report('journeys', { journey: 'A', status: 'PASS', menu: mobile ? 'burger' : 'inline', rail_needed_second_click: secondClick, url: page.url() });
   });
 
   test(journey('B', 'search: home → search → results → product'), async ({ page, gp }) => {

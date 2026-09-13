@@ -254,7 +254,7 @@ const shopBreadcrumb = breadcrumbJsonLd([
 
     {activeFilters.length > 0 && (
       <section aria-label="Active filters" class="mt-5 flex flex-wrap items-center gap-2">
-        <span class="text-xs font-bold uppercase tracking-wide text-slate-500">Active filters</span>
+        <span class="text-xs font-bold uppercase tracking-wide text-slate-600">Active filters</span>
         {activeFilters.map((item) => <a href={item.href} aria-label={`Remove filter ${item.label}`} class="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700">{item.label} <span aria-hidden="true">×</span></a>)}
       </section>
     )}

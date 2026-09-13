@@ -46,14 +46,21 @@ if (gl && cl) {
       const gv = gOk.map((s) => get(s, m)); const cv = cOk.map((s) => get(s, m));
       const gMed = median(gv), cMed = median(cv); if (gMed == null || cMed == null) continue;
       const gMin = Math.min(...gv.filter((x) => typeof x === 'number')), gMax = Math.max(...gv.filter((x) => typeof x === 'number'));
-      const spread = Math.max(gMax - gMin, m.endsWith('_ms') ? 100 : m === 'cls' ? 0.02 : m.endsWith('_bytes') ? 10240 : m === 'scores.performance' ? 1 : 1);
+      // Three golden runs can land unusually close together (shop/mobile LCP spread was 82 ms while
+      // home/mobile spread 840 ms on the same day), so the band is never narrower than 15 % of the
+      // golden median for timings/bytes/counts: WARNING beyond the band, REGRESSION beyond 25 % or −2
+      // score points. Both are reported with the golden min..max so a person can judge.
+      const relBand = m === 'scores.performance' ? 0 : m === 'cls' ? 0 : Math.abs(gMed) * 0.15;
+      const spread = Math.max(gMax - gMin, relBand, m.endsWith('_ms') ? 100 : m === 'cls' ? 0.02 : m.endsWith('_bytes') ? 10240 : m === 'scores.performance' ? 1 : 1);
       const worse = higherBetter(m) ? cMed < gMed : cMed > gMed;
       const delta = cMed - gMed;
       let status = 'NOISE';
       if (worse) {
         const beyond = higherBetter(m) ? gMin - cMed : cMed - gMax;
+        const relWorse = gMed ? Math.abs(delta) / Math.abs(gMed) : 0;
         if (m === 'scores.performance') status = gMed - cMed >= 2 ? 'REGRESSION' : (cMed < gMin ? 'WARNING' : 'NOISE');
-        else status = beyond > spread * 0.1 + (m.endsWith('_ms') ? 100 : 0) ? 'REGRESSION' : beyond > 0 ? 'WARNING' : 'NOISE';
+        else if (m === 'cls') status = delta > 0.05 ? 'REGRESSION' : delta > spread ? 'WARNING' : 'NOISE';
+        else status = relWorse > 0.25 && beyond > 0 ? 'REGRESSION' : Math.abs(delta) > spread ? 'WARNING' : 'NOISE';
       } else if (!worse && Math.abs(delta) > spread) status = 'IMPROVEMENT';
       rows.push({ cell, metric: m, golden_median: gMed, golden_min: gMin, golden_max: gMax, current_median: cMed, delta, status });
       if (status === 'REGRESSION') verdict = 'REGRESSION';

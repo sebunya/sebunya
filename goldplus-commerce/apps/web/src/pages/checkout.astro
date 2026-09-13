@@ -836,7 +836,7 @@ const checkoutOnSale = campaignRunning && checkoutSavings > 0;
                 <li class="flex items-start justify-between gap-3">
                   <div class="min-w-0">
                     <p class="font-bold text-gray-900 truncate">{item.name}</p>
-                    <p class="text-xs text-slate-400 font-medium">Qty {item.quantity} × {formatUgx(item.unitPriceUgx || item.priceUgx)}</p>
+                    <p class="text-xs text-slate-600 font-medium">Qty {item.quantity} × {formatUgx(item.unitPriceUgx || item.priceUgx)}</p>
                   </div>
                   <p class="font-bold text-gray-900 whitespace-nowrap text-sm">{formatUgx((item.unitPriceUgx || item.priceUgx) * item.quantity)}</p>
                 </li>
@@ -865,7 +865,7 @@ const checkoutOnSale = campaignRunning && checkoutSavings > 0;
                   ) : initialDeliveryEstimate?.kind === 'ESTIMATED' && initialDeliveryEstimate.feeUgx !== null ? (
                     <span class="font-bold text-gray-900 tabular-nums">about {formatUgx(initialDeliveryEstimate.feeUgx)} <span class="block text-[10px] font-semibold text-slate-400">confirmed before the rider leaves</span></span>
                   ) : (
-                    <span class="text-[11px] font-bold text-slate-400">Shown when you pick a location</span>
+                    <span class="text-[11px] font-bold text-slate-600">Shown when you pick a location</span>
                   )}
                 </dd>
               </div>
@@ -873,13 +873,16 @@ const checkoutOnSale = campaignRunning && checkoutSavings > 0;
                   free-delivery progress, pickup and the proportionality
                   interstitial. Every sentence resolved from the registry. */}
               <div class="pt-3">
-                <DeliveryQuote
-                  stage={2}
-                  areaSlug={initialAreaSlug}
-                  district={initialDistrict}
-                  items={cart.items.map((i: any) => ({ productId: i.productId, quantity: i.quantity }))}
-                  subtotalUgx={cart.subtotalUgx}
-                />
+                <dt class="sr-only">Delivery commitment</dt>
+                <dd>
+                  <DeliveryQuote
+                    stage={2}
+                    areaSlug={initialAreaSlug}
+                    district={initialDistrict}
+                    items={cart.items.map((i: any) => ({ productId: i.productId, quantity: i.quantity }))}
+                    subtotalUgx={cart.subtotalUgx}
+                  />
+                </dd>
               </div>
               <div class="flex items-center justify-between pt-3 border-t border-slate-100">
                 <dt class="font-bold text-gray-900 text-sm" id="grand-total-label">{initialDeliveryEstimate?.kind === 'CONFIRMED' ? 'Total to pay' : 'Estimated total'}</dt>
@@ -887,10 +890,10 @@ const checkoutOnSale = campaignRunning && checkoutSavings > 0;
                   {formatUgx(checkoutSaleSubtotal + (initialDeliveryEstimate?.kind === 'CONFIRMED' ? (initialDeliveryEstimate.feeUgx ?? 0) : 0))}
                 </dd>
               </div>
-              {initialDeliveryEstimate?.kind === 'ESTIMATED' && (
-                <p class="text-[10px] text-slate-400 text-right -mt-1">Delivery is added on top and confirmed before the rider leaves.</p>
-              )}
             </dl>
+            {initialDeliveryEstimate?.kind === 'ESTIMATED' && (
+              <p class="text-[10px] text-slate-600 text-right mt-1">Delivery is added on top and confirmed before the rider leaves.</p>
+            )}
             {loyaltyProgramme.active && loyaltyProgramme.redemption.configured && loyaltyAvailablePoints >= (loyaltyProgramme.redemption.minPoints ?? 1) && (
               <div class="mt-4 rounded-xl bg-slate-50 border border-slate-200 px-3.5 py-3 space-y-2">
                 <label for="redeemPoints" class="block text-xs font-black uppercase tracking-wider text-slate-600">
@@ -1067,7 +1070,7 @@ const checkoutOnSale = campaignRunning && checkoutSavings > 0;
         totalLabelEl.textContent = 'Estimated total';
         totalEl.textContent = ugx(goodsTotal());
       } else {
-        estimateEl.innerHTML = '<span class="text-[11px] font-bold text-slate-400">Shown when you pick a location</span>';
+        estimateEl.innerHTML = '<span class="text-[11px] font-bold text-slate-600">Shown when you pick a location</span>';
         totalLabelEl.textContent = 'Estimated total';
         totalEl.textContent = ugx(goodsTotal());
       }
