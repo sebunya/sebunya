@@ -26,7 +26,7 @@ function envInt(name: string, fallback: number): number {
 // busy with audits. The review only reads stored rows and runs every 6 hours.
 const PULL_INTERVAL_MS = envInt('LIGHTHOUSE_WATCH_INTERVAL_MINUTES', 96 * 60) * 60_000;
 const REVIEW_INTERVAL_MS = 6 * 60 * 60_000;
-const WATCH_URLS = (process.env.LIGHTHOUSE_WATCH_URLS ?? 'https://shopgoldplus.com/ https://shopgoldplus.com/shop').split(/[\s,]+/).filter(Boolean);
+const WATCH_URLS = (process.env.LIGHTHOUSE_WATCH_URLS || 'https://shopgoldplus.com/ https://shopgoldplus.com/shop').split(/[\s,]+/).filter(Boolean); // || : compose passes an empty string when unset
 
 const scoreGauge = new client.Gauge({
   name: 'goldplus_lighthouse_score',
