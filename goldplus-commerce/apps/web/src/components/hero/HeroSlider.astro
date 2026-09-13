@@ -1062,8 +1062,7 @@ function fillHeroTokens(text: string): string {
     // Rotation starts one dwell after the page has fully LOADED, not after this
     // script ran: the lead slide must own the first paint and the LCP before
     // any other slide is drawn (2026-09-13).
-    if (document.readyState === 'complete') restart();
-    else window.addEventListener('load', function(){ if (playing) restart(); }, { once: true });
+    armRotationSoon();
   }
 
   /* park the persistent arch over the active slide's stage box */
@@ -1165,9 +1164,26 @@ function fillHeroTokens(text: string): string {
     placeArch();
   }
   var lastUserNav = false;
-  function go(i, byUser){ index = (i + total) % total; lastUserNav = !!byUser; paint(); restart(); }
+  function go(i, byUser){ index = (i + total) % total; lastUserNav = !!byUser; paint(); if (byUser) armRotation(); restart(); }
   function next(byUser){ go(index+1, byUser); } function prev(byUser){ go(index-1, byUser); }
+  /* Rotation is ARMED by the first interaction, or 8 s after load — never
+     before. Until then every restart() call (init, hover-out, tab focus, the
+     intersection observer) is a no-op, so the lead slide owns the first paint
+     and the LCP. A user's own prev/next/dot click is itself an interaction. */
+  var rotationArmed = false;
+  var ARM_EVENTS = ['pointerdown','touchstart','keydown','scroll','wheel'];
+  function armRotation(){
+    if (rotationArmed) return; rotationArmed = true;
+    ARM_EVENTS.forEach(function(ev){ window.removeEventListener(ev, armRotation); });
+    if (playing) restart();
+  }
+  function armRotationSoon(){
+    ARM_EVENTS.forEach(function(ev){ window.addEventListener(ev, armRotation, { passive: true }); });
+    var later = function(){ setTimeout(armRotation, 8000); };
+    if (document.readyState === 'complete') later(); else window.addEventListener('load', later, { once: true });
+  }
   function restart(){
+    if (!rotationArmed) return;
     cancelAnimationFrame(raf);
     if (!playing || reduce || total < 2){ if (fills[index]) fills[index].style.transform = 'scaleX(0)'; return; }
     startedAt = performance.now(); raf = requestAnimationFrame(tick);

@@ -821,7 +821,8 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 .gp-nav__feat p{margin:5px 0 0;font-size:13.5px;font-weight:600;line-height:1.35;}
 .gp-nav__feat span{display:block;margin-top:3px;font-size:12.5px;color:var(--gpn-muted);}
 
-.gp-nav__cat--flash .gp-nav__cat-tag{animation:gpn-live 2.6s ease-out infinite;}
+.gp-nav__cat--flash .gp-nav__cat-tag{animation:gpn-tag 2.6s ease-in-out infinite;}
+@keyframes gpn-tag{0%,100%{opacity:1}50%{opacity:.72}}
 .gp-nav__cd{display:flex;gap:8px;margin-bottom:14px;}
 .gp-nav__cd span{
   min-width:56px;padding:9px 8px 7px;text-align:center;
