@@ -1,6 +1,7 @@
 ---
 import type { ProductPublicDto } from "@goldplus/shared";
 import { formatUgx } from "../lib/money";
+import { productSrcset } from "../lib/imageSrcset";
 import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from "../lib/storefrontDiscount";
 
 /**
@@ -61,6 +62,8 @@ function getProductType(p: ProductPublicDto) {
               {promoProduct.primaryImageUrl ? (
                 <img
                   src={promoProduct.primaryImageUrl}
+                  srcset={productSrcset(promoProduct.primaryImageUrl) ?? undefined}
+                  sizes={productSrcset(promoProduct.primaryImageUrl) ? "(max-width: 640px) 96px, 128px" : undefined}
                   alt={promoProduct.name}
                   class="object-cover w-full h-full transition-transform group-hover:scale-105"
                   loading="lazy"
@@ -115,6 +118,8 @@ function getProductType(p: ProductPublicDto) {
               {todaysPickProduct.primaryImageUrl ? (
                 <img
                   src={todaysPickProduct.primaryImageUrl}
+                  srcset={productSrcset(todaysPickProduct.primaryImageUrl) ?? undefined}
+                  sizes={productSrcset(todaysPickProduct.primaryImageUrl) ? "(max-width: 640px) 96px, 128px" : undefined}
                   alt={todaysPickProduct.name}
                   class="object-cover w-full h-full transition-transform group-hover:scale-105"
                   loading="lazy"

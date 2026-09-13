@@ -9,9 +9,11 @@ interface Props {
   subcategory?: string;
   searchQuery?: string;
   searchRank?: number;
+  /** First-row cards are in the first viewport on desktop: eager, not lazy. */
+  eager?: boolean;
 }
 
-const { product, subcategory = '', searchQuery = '', searchRank = 0 } = Astro.props;
+const { product, subcategory = '', searchQuery = '', searchRank = 0, eager = false } = Astro.props;
 const productHref = searchQuery && searchRank > 0
   ? `/products/${product.slug}?searchQuery=${encodeURIComponent(searchQuery)}&searchRank=${searchRank}`
   : `/products/${product.slug}`;
@@ -85,7 +87,8 @@ const availabilityBadgeClass = (() => {
           sizes={productSrcset(product.primaryImageUrl) ? CARD_SIZES : undefined}
           alt={`Photo of ${product.name}`}
           class="object-cover w-full h-full"
-          loading="lazy"
+          loading={eager ? 'eager' : 'lazy'}
+          fetchpriority={eager ? 'high' : undefined}
           decoding="async"
         />
       ) : (

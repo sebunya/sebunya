@@ -25,7 +25,6 @@ const {
   fallbackProducts = []
 } = Astro.props;
 
-let validIds: string[] = [];
 // Fresh server truth per product (price, stock, image): local history is a
 // bookmark, not a price list — what renders must match what the shop charges.
 let liveByProduct: Record<string, { price?: number; floor?: number | null; availability?: ProductPublicDto["availability"]; imageUrl?: string }> = {};
@@ -36,7 +35,6 @@ try {
   const catalogue = await fetchApprovedCatalogue(apiBase);
   if (catalogue.length > 0) {
     {
-      validIds = catalogue.map(p => p.id).filter((id): id is string => typeof id === "string");
       for (const p of catalogue) {
         liveByProduct[p.id] = {
           price: typeof p.retailPriceUgx === "number" && p.retailPriceUgx > 0 ? p.retailPriceUgx : undefined,
@@ -65,7 +63,6 @@ const railDiscount = await getStorefrontDiscount();
   style="display: none;"
   aria-labelledby="recommendation-recently-viewed"
   data-recently-viewed-rail
-  data-valid-ids={JSON.stringify(validIds)}
   data-always-render={alwaysRender ? "true" : "false"}
   data-fallback-products={JSON.stringify(fallbackProducts)}
   data-live-products={JSON.stringify(liveByProduct)}
@@ -103,8 +100,6 @@ const railDiscount = await getStorefrontDiscount();
       return;
     }
 
-    const validIdsAttr = rail.getAttribute("data-valid-ids");
-    const validIds: string[] = validIdsAttr ? JSON.parse(validIdsAttr) : [];
     const safeSlug = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
     const escapeHtml = (value: unknown) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({
       "&": "&amp;",
@@ -123,6 +118,12 @@ const railDiscount = await getStorefrontDiscount();
     const liveAttr = rail.getAttribute("data-live-products");
     const liveByProduct: Record<string, { price?: number; floor?: number | null; availability?: { kind: string; quantity?: number }; imageUrl?: string }> =
       liveAttr ? JSON.parse(liveAttr) : {};
+    // The live map's keys ARE the approved catalogue; a separate id list was the same
+    // 184 ids stamped a second time into every page.
+    const validIds: string[] = Object.keys(liveByProduct);
+    // Same rule as lib/imageSrcset.ts for media-library masters: the card box is
+    // 160–320 px wide, the master is 1024 px.
+    const srcsetOf = (url: string) => { const m = url.match(/^(\/uploads\/assets\/[^?#]+\/)pdp\.webp$/); return m ? ` srcset="${m[1]}thumb.webp 160w, ${m[1]}card.webp 480w, ${url} 1024w" sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px"` : ""; };
     const overlay = (item: any) => {
       const live = liveByProduct[item.productId];
       return live ? { ...item, price: live.price ?? item.price, floor: live.floor ?? null, availability: live.availability ?? item.availability, imageUrl: live.imageUrl ?? item.imageUrl } : { ...item, floor: null };
@@ -186,7 +187,7 @@ const railDiscount = await getStorefrontDiscount();
           : "Accessory";
 
         const img = imageUrl
-           ? `<img src="${escapeHtml(imageUrl)}" alt="${escapedName} product image" loading="lazy" class="object-cover w-full h-full transition-transform duration-500 group-hover:scale-105" />`
+           ? `<img src="${escapeHtml(imageUrl)}"${srcsetOf(imageUrl)} alt="${escapedName} product image" loading="lazy" class="object-cover w-full h-full transition-transform duration-500 group-hover:scale-105" />`
            : `<div class="absolute inset-0 flex flex-col items-center justify-center bg-brand-softGrey p-4 text-center select-none">
                 <svg class="w-10 h-10 mb-2 text-brand-mutedGrey/20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                 <span class="text-[10px] font-bold text-brand-mutedGrey tracking-wider uppercase">${productType}</span>

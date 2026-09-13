@@ -1,5 +1,6 @@
 ---
 import { cartClient } from '../lib/cartClient';
+import { productSrcset } from '../lib/imageSrcset';
 import { resolveCartCredential } from '../lib/cartCredential';
 import { resolveAuthenticatedUserId } from '../lib/customerAuth';
 import { readSessionToken } from '../lib/session';
@@ -349,7 +350,7 @@ const nbaJson = escNav(JSON.stringify(nba));
         </div>
         {featAt(0) && (
           <a class="gp-nav__feat" href={`/products/${featAt(0)!.slug}`}>
-            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featAt(0)!.imageUrl} alt={featAt(0)!.name} loading="lazy" decoding="async"></div>
+            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featAt(0)!.imageUrl} srcset={productSrcset(featAt(0)!.imageUrl) ?? undefined} sizes={productSrcset(featAt(0)!.imageUrl) ? "200px" : undefined} alt={featAt(0)!.name} loading="lazy" decoding="async"></div>
             <div><small>{featAt(0)!.label}</small><p>{featAt(0)!.name}</p><span>{featAt(0)!.blurb}</span></div>
           </a>
         )}
@@ -369,7 +370,7 @@ const nbaJson = escNav(JSON.stringify(nba));
              photography when it exists and restore the category product. -->
         {featAt(1) && (
           <a class="gp-nav__feat" href={`/products/${featAt(1)!.slug}`}>
-            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featAt(1)!.imageUrl} alt={featAt(1)!.name} loading="lazy" decoding="async"></div>
+            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featAt(1)!.imageUrl} srcset={productSrcset(featAt(1)!.imageUrl) ?? undefined} sizes={productSrcset(featAt(1)!.imageUrl) ? "200px" : undefined} alt={featAt(1)!.name} loading="lazy" decoding="async"></div>
             <div><small>{featAt(1)!.label}</small><p>{featAt(1)!.name}</p><span>{featAt(1)!.blurb}</span></div>
           </a>
         )}
@@ -411,7 +412,7 @@ const nbaJson = escNav(JSON.stringify(nba));
         </div>
         {featAt(2) && (
           <a class="gp-nav__feat" href={`/products/${featAt(2)!.slug}`}>
-            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featAt(2)!.imageUrl} alt={featAt(2)!.name} loading="lazy" decoding="async"></div>
+            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featAt(2)!.imageUrl} srcset={productSrcset(featAt(2)!.imageUrl) ?? undefined} sizes={productSrcset(featAt(2)!.imageUrl) ? "200px" : undefined} alt={featAt(2)!.name} loading="lazy" decoding="async"></div>
             <div><small>{featAt(2)!.label}</small><p>{featAt(2)!.name}</p><span>{featAt(2)!.blurb}</span></div>
           </a>
         )}
@@ -424,7 +425,7 @@ const nbaJson = escNav(JSON.stringify(nba));
         </div>
         {featAt(3) && (
           <a class="gp-nav__feat" href={`/products/${featAt(3)!.slug}`}>
-            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featAt(3)!.imageUrl} alt={featAt(3)!.name} loading="lazy" decoding="async"></div>
+            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featAt(3)!.imageUrl} srcset={productSrcset(featAt(3)!.imageUrl) ?? undefined} sizes={productSrcset(featAt(3)!.imageUrl) ? "200px" : undefined} alt={featAt(3)!.name} loading="lazy" decoding="async"></div>
             <div><small>{featAt(3)!.label}</small><p>{featAt(3)!.name}</p><span>{featAt(3)!.blurb}</span></div>
           </a>
         )}
@@ -437,7 +438,7 @@ const nbaJson = escNav(JSON.stringify(nba));
         </div>
         {featAt(4) && (
           <a class="gp-nav__feat" href={`/products/${featAt(4)!.slug}`}>
-            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featAt(4)!.imageUrl} alt={featAt(4)!.name} loading="lazy" decoding="async"></div>
+            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featAt(4)!.imageUrl} srcset={productSrcset(featAt(4)!.imageUrl) ?? undefined} sizes={productSrcset(featAt(4)!.imageUrl) ? "200px" : undefined} alt={featAt(4)!.name} loading="lazy" decoding="async"></div>
             <div><small>{featAt(4)!.label}</small><p>{featAt(4)!.name}</p><span>{featAt(4)!.blurb}</span></div>
           </a>
         )}
@@ -481,7 +482,7 @@ const nbaJson = escNav(JSON.stringify(nba));
         </div>
         {featAt(0) && (
           <a class="gp-nav__feat" href={`/products/${featAt(0)!.slug}`}>
-            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featAt(0)!.imageUrl} alt={featAt(0)!.name} loading="lazy" decoding="async"></div>
+            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featAt(0)!.imageUrl} srcset={productSrcset(featAt(0)!.imageUrl) ?? undefined} sizes={productSrcset(featAt(0)!.imageUrl) ? "200px" : undefined} alt={featAt(0)!.name} loading="lazy" decoding="async"></div>
             <div><small>{dealFeatOnSale ? 'On sale now' : featAt(0)!.label}</small><p>{featAt(0)!.name}</p>
               {dealFeatOnSale ? (
                 <span>{formatUgx(featAt(0)!.priceUgx!)} → <b style="color:var(--gpn-green)">{formatUgx(dealFeatSaleUgx!)}</b></span>
