@@ -184,6 +184,9 @@ const measurement = resolveMeasurementConfig(import.meta.env);
     {/* Crawlers and browsers request /favicon.ico by convention whatever the
         link tags say, and Apple devices ignore an SVG apple-touch-icon — both
         were 404ing for Googlebot and Applebot until 2026-09-02. */}
+    {/* The two weights every page paints first; the rest load on demand. */}
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/plus-jakarta-sans-400-latin.woff2" crossorigin />
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/plus-jakarta-sans-700-latin.woff2" crossorigin />
     <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
     <link rel="icon" href="/favicon.ico" sizes="32x32" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
@@ -228,7 +231,7 @@ const measurement = resolveMeasurementConfig(import.meta.env);
           <div class="flex flex-col">
             <h3 class="text-white text-base font-black tracking-tight">{whatsappChannel.heading}</h3>
             <p class="text-xs text-slate-400 leading-relaxed mt-2 mb-4">{whatsappChannel.body}</p>
-            <a href={biz.whatsappChannelUrl} target="_blank" rel="noopener noreferrer" aria-label="Follow GoldPlus on WhatsApp" class="inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-xs font-bold w-fit outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30 transition-colors" style="background:#93D500;color:#0A0A0A">
+            <a href={biz.whatsappChannelUrl} target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-xs font-bold w-fit outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30 transition-colors" style="background:#93D500;color:#0A0A0A">
               <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 004.79 1.22h.01c5.46 0 9.9-4.45 9.9-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0012.04 2z"/></svg>
               Follow on WhatsApp
             </a>
@@ -236,15 +239,15 @@ const measurement = resolveMeasurementConfig(import.meta.env);
               <div>
                 <p class="font-bold text-white mb-1.5">{footer.visitHeading}</p>
                 {biz.addressLine1 && <p class="text-slate-400 leading-relaxed">{biz.addressLine1}</p>}
-                {biz.addressLine2 && <p class="text-slate-500 leading-relaxed">{biz.addressLine2}</p>}
+                {biz.addressLine2 && <p class="text-slate-400 leading-relaxed">{biz.addressLine2}</p>}
                 {biz.phoneDisplay && <a href={biz.phoneDial || `tel:${biz.phoneDisplay}`} class="mt-2 inline-block font-bold text-slate-300 hover:text-brand-primary transition-colors">{biz.phoneDisplay}</a>}
               </div>
               <div>
                 <p class="font-bold text-white mb-1.5">{footer.openHeading}</p>
                 {biz.shopHours && <p class="text-slate-400">Shop &middot; {biz.shopHours}</p>}
                 {biz.deliveryHours && <p class="text-slate-400">Delivery &middot; {biz.deliveryHours}</p>}
-                {biz.openDays && <p class="text-slate-500">{biz.openDays}</p>}
-                {biz.deliveryNote && <p class="text-slate-500 mt-1.5">{biz.deliveryNote}</p>}
+                {biz.openDays && <p class="text-slate-400">{biz.openDays}</p>}
+                {biz.deliveryNote && <p class="text-slate-400 mt-1.5">{biz.deliveryNote}</p>}
               </div>
             </div>
           </div>
@@ -288,10 +291,11 @@ const measurement = resolveMeasurementConfig(import.meta.env);
           <div class="max-w-sm">
             <h4 class="font-bold text-xs uppercase tracking-wider mb-4 text-white">{footer.paymentHeading}</h4>
             <div class="flex flex-wrap items-center gap-2.5 mb-6">
-              <span class="inline-flex items-center justify-center h-12 min-w-[76px] px-4 rounded-xl bg-white shadow-sm" title="MTN Mobile Money"><img src="/payment/mtn-momo.svg" alt="MTN Mobile Money" class="h-9 w-auto object-contain" /></span>
-              <span class="inline-flex items-center justify-center h-12 min-w-[76px] px-4 rounded-xl bg-white shadow-sm" title="Airtel Money"><img src="/payment/airtel-money.svg" alt="Airtel Money" class="h-9 w-auto object-contain" /></span>
-              <span class="inline-flex items-center justify-center h-12 min-w-[76px] px-4 rounded-xl bg-white shadow-sm" title="Visa"><img src="/payment/visa.svg" alt="Visa" class="h-5 w-auto object-contain" /></span>
-              <span class="inline-flex items-center justify-center h-12 min-w-[76px] px-4 rounded-xl bg-white shadow-sm" title="Mastercard"><img src="/payment/mastercard.svg" alt="Mastercard" class="h-7 w-auto object-contain" /></span>
+              {/* Sized and lazy: they sit below the fold on every page. The MTN mark was a 120 KB SVG wrapping a bitmap; it is now a 2 KB WebP. */}
+              <span class="inline-flex items-center justify-center h-12 min-w-[76px] px-4 rounded-xl bg-white shadow-sm" title="MTN Mobile Money"><img src="/payment/mtn-momo.webp" alt="MTN Mobile Money" width="36" height="36" loading="lazy" decoding="async" class="h-9 w-auto object-contain" /></span>
+              <span class="inline-flex items-center justify-center h-12 min-w-[76px] px-4 rounded-xl bg-white shadow-sm" title="Airtel Money"><img src="/payment/airtel-money.svg" alt="Airtel Money" width="36" height="36" loading="lazy" decoding="async" class="h-9 w-auto object-contain" /></span>
+              <span class="inline-flex items-center justify-center h-12 min-w-[76px] px-4 rounded-xl bg-white shadow-sm" title="Visa"><img src="/payment/visa.svg" alt="Visa" width="62" height="20" loading="lazy" decoding="async" class="h-5 w-auto object-contain" /></span>
+              <span class="inline-flex items-center justify-center h-12 min-w-[76px] px-4 rounded-xl bg-white shadow-sm" title="Mastercard"><img src="/payment/mastercard.svg" alt="Mastercard" width="45" height="28" loading="lazy" decoding="async" class="h-7 w-auto object-contain" /></span>
             </div>
             <p>&copy; {new Date().getFullYear()} {footer.copyrightNotice}</p>
           </div>

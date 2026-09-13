@@ -3,6 +3,13 @@ import tailwind from '@astrojs/tailwind';
 import node from '@astrojs/node';
 import sentry from '@sentry/astro';
 
+// Sentry only when a DSN exists. With no DSN the integration still shipped its
+// whole browser SDK to every visitor (the 92 KB `page.*.js` that Lighthouse
+// reported as 88% unused, and the only source of legacy polyfills), for an
+// error reporter that had nowhere to send anything. Production has never set
+// a DSN (checked 2026-09-13).
+const sentryDsn = process.env.PUBLIC_SENTRY_DSN || process.env.SENTRY_DSN;
+
 export default defineConfig({
   output: 'server',
   adapter: node({
@@ -10,13 +17,15 @@ export default defineConfig({
   }),
   integrations: [
     tailwind(),
-    sentry({
-      dsn: process.env.PUBLIC_SENTRY_DSN || process.env.SENTRY_DSN,
-      sourceMapsUploadOptions: {
-        telemetry: false,
-      },
-    })
+    ...(sentryDsn
+      ? [sentry({ dsn: sentryDsn, sourceMapsUploadOptions: { telemetry: false } })]
+      : []),
   ],
+  build: {
+    // Every page stylesheet is a few KB; inlining them removes three
+    // render-blocking requests from the first paint of every page.
+    inlineStylesheets: 'always',
+  },
   server: {
     port: 4321
   },

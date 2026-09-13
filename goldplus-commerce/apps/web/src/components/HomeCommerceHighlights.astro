@@ -68,7 +68,7 @@ function getProductType(p: ProductPublicDto) {
               ) : (
                 <div class="absolute inset-0 flex flex-col items-center justify-center text-center p-2 select-none bg-white/5">
                   <svg class="w-6 h-6 mb-1 text-white/20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                  <span class="text-[8px] font-bold text-white/40 uppercase tracking-wider">{getProductType(promoProduct)}</span>
+                  <span class="text-[8px] font-bold text-white/75 uppercase tracking-wider">{getProductType(promoProduct)}</span>
                 </div>
               )}
             </div>
@@ -82,7 +82,7 @@ function getProductType(p: ProductPublicDto) {
                   {promoProduct.name}
                 </a>
               </h3>
-              <p class="text-brand-mutedGrey text-xs sm:text-sm leading-relaxed mb-3 font-medium">
+              <p class="text-slate-300 text-xs sm:text-sm leading-relaxed mb-3 font-medium">
                 Authentic GoldPlus electronics, verified before you buy.
               </p>
               <p class={`font-black text-lg ${promoProduct.retailPriceUgx ? 'text-brand-primary' : 'text-brand-mutedGrey font-bold text-sm'}`}>
@@ -95,7 +95,7 @@ function getProductType(p: ProductPublicDto) {
             <a href={`/products/${promoProduct.slug}`} class="bg-brand-primary text-brand-charcoal px-5 py-2.5 rounded-lg font-bold text-sm hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-brand-primary focus:ring-offset-2 focus:ring-offset-brand-charcoal">
               View product
             </a>
-            <a href="/verification" class="text-brand-mutedGrey hover:text-white font-semibold text-xs sm:text-sm underline decoration-2 underline-offset-4 transition-colors">
+            <a href="/verification" class="text-slate-300 hover:text-white font-semibold text-xs sm:text-sm underline decoration-2 underline-offset-4 transition-colors">
               Verify product
             </a>
           </div>
@@ -137,7 +137,7 @@ function getProductType(p: ProductPublicDto) {
                   {todaysPickProduct.name}
                 </a>
               </h3>
-              <p class="text-brand-mutedGrey text-xs sm:text-sm leading-relaxed mb-3 font-medium">
+              <p class="text-slate-300 text-xs sm:text-sm leading-relaxed mb-3 font-medium">
                 Selected product worth checking out.
               </p>
               <p class={`font-black text-lg ${todaysPickProduct.retailPriceUgx ? 'text-brand-charcoal' : 'text-brand-mutedGrey font-bold text-sm'}`}>

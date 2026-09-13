@@ -235,7 +235,7 @@ const nbaJson = escNav(JSON.stringify(nba));
     <button class="gp-nav__burger" id="gpNavBurger" type="button" aria-expanded="false" aria-controls="gpNavMega" aria-label="Open menu"><span></span><span></span><span></span></button>
 
     <a class="gp-nav__logo" href="/" aria-label="GoldPlus home">
-      <img src="/nav/gp-wordmark-cream.png" alt="GoldPlus" width="480" height="138">
+      <img src="/nav/gp-wordmark-cream-320.png" alt="GoldPlus" width="320" height="92">
     </a>
 
     <form class="gp-nav__search" role="search" action="/shop">
@@ -519,7 +519,7 @@ const nbaJson = escNav(JSON.stringify(nba));
             <li><a href="/shop?category=power&q=wall+charger">Wall chargers</a></li>
             <li><a href="/shop?category=power&q=adapter">Adapters</a></li>
             <li><a href="/shop?category=power&q=cable">Cables</a></li>
-            <li><h4>Phone batteries</h4>
+            <li><h3>Phone batteries</h3>
               <form class="gp-nav__mfinder" action="/battery-finder" role="search">
                 <input type="search" name="q" placeholder="Type your phone, e.g. Tecno Spark 10" aria-label="Find a battery for your phone model">
               </form>
@@ -543,8 +543,8 @@ const nbaJson = escNav(JSON.stringify(nba));
         <div class="gp-nav__acc" data-acc="storage">
           <div class="gp-nav__acc-head"><a href="/shop?category=storage">Storage</a><button class="gp-nav__acc-tog" type="button" aria-expanded="false" aria-label="Show Storage sizes">+</button></div>
           <ul>
-            <li><h4>Flash drives</h4><div class="gp-nav__caps"><a href="/shop?category=storage&q=1gb">1GB</a><a href="/shop?category=storage&q=2gb">2GB</a><a href="/shop?category=storage&q=4gb">4GB</a><a href="/shop?category=storage&q=8gb">8GB</a><a href="/shop?category=storage&q=16gb">16GB</a><a href="/shop?category=storage&q=32gb">32GB</a><a href="/shop?category=storage&q=64gb">64GB</a><a href="/shop?category=storage&q=128gb">128GB</a><a href="/shop?category=storage&q=256gb">256GB</a><a href="/shop?category=storage&q=512gb">512GB</a></div></li>
-            <li><h4>Memory cards</h4><div class="gp-nav__caps"><a href="/shop?category=storage&q=1gb">1GB</a><a href="/shop?category=storage&q=2gb">2GB</a><a href="/shop?category=storage&q=4gb">4GB</a><a href="/shop?category=storage&q=8gb">8GB</a><a href="/shop?category=storage&q=16gb">16GB</a><a href="/shop?category=storage&q=32gb">32GB</a><a href="/shop?category=storage&q=64gb">64GB</a><a href="/shop?category=storage&q=128gb">128GB</a><a href="/shop?category=storage&q=256gb">256GB</a><a href="/shop?category=storage&q=512gb">512GB</a></div></li>
+            <li><h3>Flash drives</h3><div class="gp-nav__caps"><a href="/shop?category=storage&q=1gb">1GB</a><a href="/shop?category=storage&q=2gb">2GB</a><a href="/shop?category=storage&q=4gb">4GB</a><a href="/shop?category=storage&q=8gb">8GB</a><a href="/shop?category=storage&q=16gb">16GB</a><a href="/shop?category=storage&q=32gb">32GB</a><a href="/shop?category=storage&q=64gb">64GB</a><a href="/shop?category=storage&q=128gb">128GB</a><a href="/shop?category=storage&q=256gb">256GB</a><a href="/shop?category=storage&q=512gb">512GB</a></div></li>
+            <li><h3>Memory cards</h3><div class="gp-nav__caps"><a href="/shop?category=storage&q=1gb">1GB</a><a href="/shop?category=storage&q=2gb">2GB</a><a href="/shop?category=storage&q=4gb">4GB</a><a href="/shop?category=storage&q=8gb">8GB</a><a href="/shop?category=storage&q=16gb">16GB</a><a href="/shop?category=storage&q=32gb">32GB</a><a href="/shop?category=storage&q=64gb">64GB</a><a href="/shop?category=storage&q=128gb">128GB</a><a href="/shop?category=storage&q=256gb">256GB</a><a href="/shop?category=storage&q=512gb">512GB</a></div></li>
           </ul>
         </div>
         <div class="gp-nav__acc" data-acc="car">
@@ -665,9 +665,10 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 .gp-nav__nba:hover .gp-nav__nba-x{display:grid;}
 .gp-nav__nba-x:hover{color:var(--gpn-cream);background:rgba(243,239,228,.08);}
 .gp-nav__dot[data-urgent]{background:#E8C96A;}
-.gp-nav__dot{width:5px;height:5px;border-radius:50%;background:var(--gpn-green);flex:none;
-  box-shadow:0 0 0 0 rgba(147,213,0,.55);animation:gpn-live 2.6s ease-out infinite;}
-@keyframes gpn-live{0%{box-shadow:0 0 0 0 rgba(147,213,0,.5)}70%{box-shadow:0 0 0 7px rgba(147,213,0,0)}100%{box-shadow:0 0 0 0 rgba(147,213,0,0)}}
+.gp-nav__dot{position:relative;width:5px;height:5px;border-radius:50%;background:var(--gpn-green);flex:none;}
+/* the pulse is a ring scaled on the compositor: no box-shadow repaint per frame */
+.gp-nav__dot::after{content:"";position:absolute;inset:-1px;border-radius:50%;border:2px solid rgba(147,213,0,.5);animation:gpn-live 2.6s ease-out infinite;will-change:transform,opacity;}
+@keyframes gpn-live{0%{transform:scale(1);opacity:.9}70%{transform:scale(3.4);opacity:0}100%{transform:scale(3.4);opacity:0}}
 
 .gp-nav__reach{display:flex;align-items:center;gap:4px;flex:none;}
 .gp-nav__reach a{
@@ -1192,7 +1193,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   .gp-nav__acc .gp-nav__chips,.gp-nav__acc .gp-nav__caps{padding:0 0 16px 15px;}
   /* 44px, not the desktop 38 — these capacity chips ARE mobile storage navigation */
   .gp-nav__acc .gp-nav__chips a,.gp-nav__acc .gp-nav__caps a{min-height:44px;display:flex;align-items:center;justify-content:center;}
-  .gp-nav__acc h4{margin:14px 0 8px 15px;font-size:13px;color:var(--gpn-cream);}
+  .gp-nav__acc h3{margin:14px 0 8px 15px;font-size:13px;color:var(--gpn-cream);}
   .gp-nav__acc[data-exp] ul{max-height:640px;}
   .gp-nav__mfinder{margin:0 0 12px 15px;}
   .gp-nav__mfinder input{

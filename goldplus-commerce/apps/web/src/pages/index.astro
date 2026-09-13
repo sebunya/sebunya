@@ -122,7 +122,7 @@ const usedProductIds = [
             </div>
             <div>
               <h3 class="font-bold text-sm text-gray-900 mb-1">{item.title}</h3>
-              <p class="text-slate-500 text-[13px] leading-relaxed">{item.body}</p>
+              <p class="text-slate-600 text-[13px] leading-relaxed">{item.body}</p>
             </div>
           </div>
         ))}
@@ -177,7 +177,7 @@ const usedProductIds = [
 
       {hasApiError ? (
         <div class="p-8 text-center bg-slate-50 border border-slate-200/80 rounded-2xl">
-           <p class="text-slate-500 text-sm">We could not load the featured items just now. The shop itself is open.</p>
+           <p class="text-slate-600 text-sm">We could not load the featured items just now. The shop itself is open.</p>
            <a href="/shop" class="inline-block mt-4 text-gray-900 font-bold underline">Go to the shop</a>
         </div>
       ) : featuredProducts.length > 0 ? (
@@ -188,7 +188,7 @@ const usedProductIds = [
         </div>
       ) : (
         <div class="p-8 text-center bg-slate-50 border border-slate-200/80 rounded-2xl">
-          <p class="text-slate-500 text-sm">Nothing is featured right now. <a href="/shop" class="font-bold underline text-gray-900">See everything in the shop</a></p>
+          <p class="text-slate-600 text-sm">Nothing is featured right now. <a href="/shop" class="font-bold underline text-gray-900">See everything in the shop</a></p>
         </div>
       )}
     </div>

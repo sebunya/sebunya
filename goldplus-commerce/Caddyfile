@@ -31,7 +31,11 @@ shopgoldplus.com, www.shopgoldplus.com {
     X-Frame-Options            "SAMEORIGIN"
     Referrer-Policy            "strict-origin-when-cross-origin"
     Permissions-Policy         "camera=(), microphone=(), geolocation=(self)"
-    Content-Security-Policy    "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://pay.pesapal.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://www.googletagmanager.com; connect-src 'self' https://api.shopgoldplus.com https://metrics.shopgoldplus.com; frame-src 'self' https://pay.pesapal.com;"
+    # static.cloudflareinsights.com / cloudflareinsights.com: Cloudflare Web
+    # Analytics is switched on at the zone and injects its beacon into every
+    # page; without these two sources the beacon is refused by this policy and
+    # every page logs a console error (Lighthouse Best Practices, 2026-09-13).
+    Content-Security-Policy    "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://pay.pesapal.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://www.googletagmanager.com; connect-src 'self' https://api.shopgoldplus.com https://metrics.shopgoldplus.com https://cloudflareinsights.com; frame-src 'self' https://pay.pesapal.com;"
     -Server
   }
 
@@ -51,6 +55,26 @@ shopgoldplus.com, www.shopgoldplus.com {
     @absent not file
     header @absent Cache-Control "no-store"
     file_server
+  }
+
+  # Public static files served by the web container (hero photos, product
+  # photos, payment logos, nav art, self-hosted fonts, icons). The Astro server
+  # sends no Cache-Control for them, so Cloudflare fell back to a 4-hour browser
+  # TTL and every return visit re-fetched them (Lighthouse, 2026-09-13). Only a
+  # 200 gets the long header: the same 404-cached-for-a-year trap as /uploads.
+  @static path /hero/* /products/* /payment/* /nav/* /fonts/* /icon-192.svg /favicon.ico /apple-touch-icon.png
+  handle @static {
+    reverse_proxy web:4321 {
+      header_up Host              {host}
+      header_up X-Real-IP         {remote_host}
+      header_up X-Forwarded-For  {remote_host}
+      header_up X-Forwarded-Proto {scheme}
+      @ok status 200
+      handle_response @ok {
+        header Cache-Control "public, max-age=2592000, stale-while-revalidate=86400"
+        copy_response
+      }
+    }
   }
 
   handle {

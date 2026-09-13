@@ -113,7 +113,7 @@ const productType = lowerName.includes("charger") ? "Charger"
           <span class="flex flex-col min-w-0">
             <span class="flex flex-wrap items-baseline gap-x-2">
               <span class={variant === "cart-compact" ? "font-black tracking-tight tabular-nums text-sm text-brand-primary" : "font-black tracking-tight tabular-nums text-lg text-brand-charcoal"}>{formatUgx(saleUgx)}</span>
-              <span class="text-[11px] font-semibold text-slate-400 line-through tabular-nums">{formatUgx(item.price)}</span>
+              <span class="text-[11px] font-semibold text-slate-600 line-through tabular-nums">{formatUgx(item.price)}</span>
               <span class="text-[9px] font-black uppercase tracking-wider rounded-full px-1.5 py-0.5" style="background:#93D500;color:#0A0A0A">{discount.percent}% discount</span>
             </span>
             {variant !== "cart-compact" && discount.endsIso && (
@@ -122,7 +122,7 @@ const productType = lowerName.includes("charger") ? "Charger"
           </span>
         ) : (
           <span class={variant === "cart-compact"
-            ? `font-black tracking-tight ${hasValidPrice ? 'text-sm text-brand-primary' : 'text-[10px] text-slate-400 font-bold uppercase'}`
+            ? `font-black tracking-tight ${hasValidPrice ? 'text-sm text-brand-primary' : 'text-[10px] text-slate-600 font-bold uppercase'}`
             : `font-black tracking-tight ${hasValidPrice ? 'text-lg text-brand-charcoal' : 'text-xs text-brand-mutedGrey font-bold'}`}>
             {formattedPrice}
           </span>
@@ -140,7 +140,7 @@ const productType = lowerName.includes("charger") ? "Charger"
           <input type="hidden" name="priceUgx" value={item.price ?? 0} />
           <button
             type="submit"
-            aria-label={`Add ${item.name} to cart`}
+            aria-label={`Add to cart: ${item.name}`}
             class={variant === "cart-compact"
               ? "flex-1 min-h-9 rounded-full border border-slate-300 text-[10px] font-black uppercase tracking-wider text-gray-800 outline-none transition hover:border-gray-900 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-primary active:scale-[0.98]"
               : "flex-1 min-h-10 rounded-full border border-slate-300 text-[11px] font-black uppercase tracking-wider text-gray-800 outline-none transition hover:border-gray-900 hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-brand-primary active:scale-[0.98]"}
@@ -149,7 +149,7 @@ const productType = lowerName.includes("charger") ? "Charger"
             type="submit"
             name="buyNow"
             value="1"
-            aria-label={`Buy ${item.name} now`}
+            aria-label={`Buy now: ${item.name}`}
             class={variant === "cart-compact"
               ? "flex-1 min-h-9 rounded-full text-[10px] font-black uppercase tracking-wider outline-none transition hover:shadow-md hover:shadow-brand-primary/25 focus-visible:ring-2 focus-visible:ring-brand-primary active:scale-[0.98]"
               : "flex-1 min-h-10 rounded-full text-[11px] font-black uppercase tracking-wider outline-none transition hover:shadow-md hover:shadow-brand-primary/25 focus-visible:ring-2 focus-visible:ring-brand-primary active:scale-[0.98]"}
