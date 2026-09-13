@@ -247,3 +247,28 @@ Linux Chromium container and not in Chrome on macOS or in PSI.
 (1) Cloudflare JavaScript Detections and Rocket Loader, visible to every tool that is not a
 verified bot (≈480–650 ms TBT per run), an owner setting that is also a bot-protection
 control; and (2) PSI run-to-run variance of a few points on FCP/LCP at the 1.8–2.2 s level.
+
+### 7d. Fonts after first paint (c3a943b8, 2b836549) — and what 100 needs
+
+Bisecting the live build's HTML on the Lighthouse 13.4.1 bench found the remaining
+application cost: Lantern's pessimistic FCP/LCP graphs include every request started
+before the observed first paint, and the inline CSS started all eight brand font files
+(~88 KB) with the document. Moving the eight `@font-face` rules to `/fonts/faces.css`,
+loaded on the first `paint` entry, with the metric-matched fallbacks kept inline:
+bench FCP 1.21–1.37 s → 1.06 s, LCP 1.37–1.68 s → 1.38–1.40 s, CLS 0.001 → 0.000
+(origin HTML: 100/100/100/99/99). Live check: all brand fonts load, CLS 0.0007 mobile /
+0.0016 desktop, no console errors. Rocket Loader had rewritten the inline loader to run
+after `load`; `data-cfasync="false"` exempts it.
+
+PSI mobile, live: before 94 and 98 (FCP 1.9/1.8 s, LCP 2.2 s, SI 2.0 s); after 98 and 96
+(FCP 1.7/2.0 s, LCP 1.8/2.3 s, SI 3.2/3.3 s). Lantern's speed index is
+1.4 × observed SI + 0.4 × layout-weighted SI, and a later font swap raises both, so SI
+rose while LCP (25 % weight) fell. Modelled with Lighthouse's log-normal curves the two
+states are within noise of each other (≈97.5 before, ≈96–98 after); kept for the LCP gain.
+
+What a steady 100 needs on PSI mobile (same curves): FCP ≲ 1.4 s and LCP ≲ 1.5 s. PSI
+measures ~0.6 s more than the origin bench because of the TLS handshake and real edge
+latency, and because Cloudflare adds requests before first paint (Rocket Loader,
+the Web Analytics beacon, speculation). The code-side levers found in this session are
+all applied; the remaining ones are the Cloudflare settings (Rocket Loader OFF, Web
+Analytics beacon OFF; JavaScript Detections OFF for non-bot tools).
