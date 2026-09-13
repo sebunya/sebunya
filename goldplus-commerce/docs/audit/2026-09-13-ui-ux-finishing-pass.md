@@ -170,3 +170,80 @@ Cloudflare state the owner controls (see §4), not this pass.
 - *Were claims verified?* Every "fixed" item was checked on the live site
   (headless Chromium through Cloudflare) after deploy; the one claim that turned
   out false (the results-file fix) is called out above.
+
+## 7. Home mobile toward 100 (owner request, evening 2026-09-13)
+
+Method: Lighthouse 13.4.1 (the PageSpeed Insights version) on a local bench serving
+the origin's own HTML (fetched on the host behind Cloudflare, so Cloudflare's
+injected scripts are absent) with cached assets and brotli; A/B variants
+alternated to share machine noise; Lighthouse traces read directly for layout
+shifts. Then live runs.
+
+Findings and fixes:
+
+| Finding | Evidence | Fix | Commit |
+| --- | --- | --- | --- |
+| Hero copy rewrapped when Poppins arrived (CLS 0.006–0.26, timing-dependent) | trace: `.gp-hero__copy` 207 → 227 px, cause "Web font loaded" | metric-matched local fallback `Poppins Fallback` (Arial / Liberation Sans / Arimo, overrides computed from the shipped woff2) | addc5486 |
+| Wordmark PNG 7.3 KB at high priority | request timeline | WebP 105/160/320 px via srcset (near-lossless; lossless and AVIF were larger for this transparent mark) | addc5486 |
+| Hidden hero slides' photos eager beside the lead | request timeline | lazy until `load`, then switched to eager before the first rotation | addc5486 |
+| Lead hero photo (the LCP element) 22.2 KB WebP | LCP element + request timeline | AVIF q50 (10.9 KB), checked side by side at 2× zoom; `<source type=image/avif>` first, preload `type=image/avif` | d5e00ae2 |
+| AVIF served as application/octet-stream | response headers | Caddy names `image/avif` | 9efe0d7a |
+| Three AVIF URLs cached at the edge with the wrong type; no purge token on the host | `cf-cache-status: HIT`, octet-stream | content-hashed output names in the optimiser | c02f18b2 |
+
+Image optimisation module: `scripts/images/optimise-static-images.mjs` +
+`apps/web/static-images.config.json` (`pnpm images:optimise`, `pnpm images:check`,
+`tests/unit/StaticImageBudget.test.ts`). WebP and AVIF generation with the API's
+sharp, `{w}`/`{hash}` output names, per-directory budgets for every raster in
+`apps/web/public` with a dependency-free header reader. Uploaded media keeps its
+own rendition pipeline in the API.
+
+Live home mobile after d5e00ae2 (3 runs, Lighthouse 13.4.1 from an ordinary Chrome):
+FCP 1.33–1.38 s, LCP 1.38–1.51 s, CLS 0.001 on every run (earlier the same day:
+LCP 2.1–5.2 s, CLS up to 0.097). Scores 85 / 81 / 72, with total blocking time
+542–2,033 ms coming from Cloudflare's `challenge-platform/scripts/jsd/main.js`
+(JavaScript Detections) in every run; the application's own scripts under
+100 ms. Bench with Cloudflare's scripts absent: home 97–100, shop 100, product 99–100.
+
+**Correction to an earlier statement.** The nav `brand` block (`logoSrc`, alt, href)
+is not read by the storefront, but it is also not editable in the admin (the nav
+admin page has no brand fields): it is unused default configuration, not an
+"admin saves it, the site ignores it" defect. No change made.
+
+### 7b. Owner PSI at 98 — the document crossed a slow-4G round trip (1e076c69)
+
+PageSpeed Insights mobile (owner, 20:25 EAT): 98 — FCP 1.8 s, LCP 2.2 s, TBT 0, CLS 0.007.
+Lighthouse's simulated TCP (`TCPConnection.js`, rtt 150 ms, 1.6 Mbps) delivers 14.6 KB with
+the first byte and 29.2 KB per round trip; the edge-compressed home document plus headers
+was ~49 KB (two extra round trips, 43.8 KB is the one-round limit). The largest removable
+block was `data-live-products` (the whole catalogue for the recently-viewed rail, ~5 KB
+compressed, on every page, although that rail renders only for returning visitors with
+history or on the product page). It now comes from `/api/catalogue-live` when the rail
+renders; pricing logic untouched; verified live (rail renders with the live price on the
+product page and for a returning visitor on home). Document after: 40.0 KB body + 2.0 KB
+headers; PSI's own dependency tree shows 40.92 KiB.
+
+Rejected after measurement: `content-visibility:auto` below the hero (paint −60 % but
+style/layout and score variance worse); stripping per-page Tailwind utilities (~34 KB raw
+unused on home) because client-built rails use class names from JS.
+
+### 7c. All tools after 1e076c69 (21:08–21:40 EAT)
+
+| Tool | Result | Notes |
+| --- | --- | --- |
+| PageSpeed Insights mobile | 94 (FCP 1.9 s, LCP 2.2 s, TBT 0, CLS ~0) | owner's run an hour earlier: 98; PSI varies ±3 per run |
+| PageSpeed Insights desktop | **100** (FCP 0.5 s, LCP 0.5 s, TBT 0, CLS 0, SI 0.7 s) | |
+| SpeedVitals mobile (US) | 87 (was 84): LCP 1.6 s (1.8), FCP 1.3 s, CLS 0.001 (0.015), TBT 512 ms | 481 ms of the TBT is Cloudflare `challenge-platform/scripts/jsd/main.js`; application ~31 ms |
+| DebugBear, 14 pages | average 84; mobile 74–84, desktop 85–93 | all 14 fired at once while the full server audit ran (server CPU contention): "reduce server response time" 7 pages; "avoid unnecessarily large images" 0 % → 86 % passing |
+| Server audit `all-tools-1e076c69` | Lighthouse 3-run: home mobile 95 (80/95/97), desktop 100/100/100, shop mobile 99, shop desktop 100; compatibility 44/44 journeys, P0 0; k6 canary pass; Observatory B+ | Yellow Lab 429 (public API fair-use limit) |
+| GTmetrix, WebPageTest | not run | the browser extension has no permission on those domains; the audit system has no API keys |
+| Pingdom | not run | the free test would not start after three attempts (likely a bot check); not pursued |
+
+Residual layout shift: desktop hero copy settles 11 px when Poppins arrives (0.0014,
+fallback tuned for phone widths); a 0.0368 section shift appears only in the server's
+Linux Chromium container and not in Chrome on macOS or in PSI.
+
+**Where 100 stands.** Page code: the bench (origin HTML, no Cloudflare scripts) scores
+97–100 on home mobile and 100 on shop and product; desktop is 100. The live remainder is
+(1) Cloudflare JavaScript Detections and Rocket Loader, visible to every tool that is not a
+verified bot (≈480–650 ms TBT per run), an owner setting that is also a bot-protection
+control; and (2) PSI run-to-run variance of a few points on FCP/LCP at the 1.8–2.2 s level.
