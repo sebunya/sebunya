@@ -109,7 +109,7 @@ write('browser_failures.json', { run_id: RUN_ID, failures: tests.filter((t) => t
 write('console_errors.json', { run_id: RUN_ID, count: consoleErrors.length, errors: consoleErrors });
 write('network_failures.json', { run_id: RUN_ID, count: networkFailures.length, commerce_impact: networkFailures.filter((n) => n.impact === 'COMMERCE').length, optional_third_party: networkFailures.filter((n) => n.impact === 'OPTIONAL_THIRD_PARTY').length, first_party_analytics: networkFailures.filter((n) => n.impact === 'FIRST_PARTY_ANALYTICS').length, failures: networkFailures });
 write('accessibility_findings.json', { run_id: RUN_ID, states: a11y, serious_total: a11y.reduce((a, r) => a + (r.serious ?? 0), 0), total: a11y.reduce((a, r) => a + (r.total ?? 0), 0), manual_at: 'MANUAL_AT_VALIDATION_REQUIRED (VoiceOver, TalkBack, NVDA checklists in constrained-device-policy.md)', keyboard: rec('keyboard') });
-write('visual_regressions.json', { run_id: RUN_ID, cells: rec('visual'), diffs: rec('visual').filter((v) => v.status === 'DIFF').length });
+write('visual_regressions.json', { run_id: RUN_ID, cells: rec('visual'), created: rec('visual').filter((v) => v.status === 'CREATED').length, matched: rec('visual').filter((v) => v.status === 'MATCH').length, diffs: rec('visual').filter((v) => v.status === 'DIFF').length });
 write('service_worker_report.json', { run_id: RUN_ID, cells: swRec });
 write('manifest_report.json', { run_id: RUN_ID, cells: manRec });
 write('offline_report.json', { run_id: RUN_ID, cells: offRec, interruption: rec('interruption') });

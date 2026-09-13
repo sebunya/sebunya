@@ -1,4 +1,14 @@
 import { test, expect } from '../helpers/fixtures';
+import { existsSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
+
+/** First run of a class creates the baseline explicitly (Playwright would otherwise fail the test on a missing snapshot). */
+async function compareOrCreate(page: import('@playwright/test').Page, testInfo: import('@playwright/test').TestInfo, name: string, masks: import('@playwright/test').Locator[]): Promise<{ status: string; detail: string | null }> {
+  const path = testInfo.snapshotPath(name);
+  if (!existsSync(path)) { mkdirSync(dirname(path), { recursive: true }); await page.screenshot({ path, fullPage: false, mask: masks, animations: 'disabled', caret: 'hide', scale: 'css' }); return { status: 'CREATED', detail: null }; }
+  try { await expect(page).toHaveScreenshot(name, { fullPage: false, mask: masks, maxDiffPixelRatio: 0.02 }); return { status: 'MATCH', detail: null }; }
+  catch (e) { return { status: 'DIFF', detail: String((e as Error).message).split('\n')[0].slice(0, 200) }; }
+}
 
 /**
  * Visual baselines for representative routes on one mobile Chromium, one
@@ -20,19 +30,15 @@ test.describe('visual', () => {
       await page.waitForTimeout(800);
       await page.evaluate(() => document.fonts?.ready);
       const masks = MASKS.map((m) => page.locator(m));
-      let diff: string | null = null;
-      try { await expect(page).toHaveScreenshot(`${name}.png`, { fullPage: false, mask: masks, maxDiffPixelRatio: 0.02 }); }
-      catch (e) { diff = String((e as Error).message).split('\n')[0].slice(0, 200); }
-      gp.report('visual', { route: name, path, status: diff ? 'DIFF' : 'MATCH_OR_CREATED', detail: diff, classification: diff ? 'NEEDS_HUMAN_CLASSIFICATION' : null, baseline_dir: testInfo.snapshotDir });
+      const r = await compareOrCreate(page, testInfo, `${name}.png`, masks);
+      gp.report('visual', { route: name, path, status: r.status, detail: r.detail, classification: r.status === 'DIFF' ? 'NEEDS_HUMAN_CLASSIFICATION' : null, baseline_dir: testInfo.snapshotDir });
     });
   }
 
   test('baseline — product', async ({ page, gp }, testInfo) => {
     const url = await gp.resolveProduct(page);
     await page.goto(url, { waitUntil: 'load' }); await page.waitForTimeout(800);
-    let diff: string | null = null;
-    try { await expect(page).toHaveScreenshot('product.png', { fullPage: false, mask: MASKS.map((m) => page.locator(m)), maxDiffPixelRatio: 0.02 }); }
-    catch (e) { diff = String((e as Error).message).split('\n')[0].slice(0, 200); }
-    gp.report('visual', { route: 'product', path: url, status: diff ? 'DIFF' : 'MATCH_OR_CREATED', detail: diff, classification: diff ? 'NEEDS_HUMAN_CLASSIFICATION' : null, baseline_dir: testInfo.snapshotDir });
+    const r = await compareOrCreate(page, testInfo, 'product.png', MASKS.map((m) => page.locator(m)));
+    gp.report('visual', { route: 'product', path: url, status: r.status, detail: r.detail, classification: r.status === 'DIFF' ? 'NEEDS_HUMAN_CLASSIFICATION' : null, baseline_dir: testInfo.snapshotDir });
   });
 });
