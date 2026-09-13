@@ -72,3 +72,30 @@ double download and restores immediate interactivity. The post-deploy smoke
 and the ten-day audit record the early-interaction result every run, so the
 change will be visible as `tap_after_dcl_worked: true` in
 `compatibility_manifest.json` → `early_interaction`.
+
+## Third-party audits — the same three settings again (2026-09-13, owner's screenshots)
+
+Seven tools measured the home page on 2026-09-13. The ones that reach the site as
+an ordinary browser see Cloudflare's injected scripts; PageSpeed Insights, whose
+Lighthouse runs as a verified bot, does not. That is the whole difference between
+"94–96" and "75–84":
+
+| Tool | Score | What it saw |
+| --- | --- | --- |
+| PageSpeed Insights, mobile (14:28 EAT) | 96 | no injected scripts; TBT 70 ms, LCP 2.4 s |
+| PageSpeed Insights, mobile (05:36 EAT) | 94 | TBT 30 ms, LCP 2.8 s |
+| SpeedVitals, mobile | 84 | TBT 628 ms, of which `cdn-cgi/challenge-platform/scripts/jsd/main.js` **501 ms**, `rocket-loader.min.js` 19 ms; application scripts 106 ms |
+| DebugBear, 14 pages | 75–93 (avg 84) | mobile pages 75–83 with LCP 1.3–1.9 s and CLS 0: the score is TBT from the same injected script |
+| GTmetrix, desktop | A 89 % | TBT 0, CLS 0, LCP 1.5 s; "reduce initial server response time 629 ms" |
+| WebPageTest, desktop (Iowa) | — | TTFB 635 ms, LCP 1.31 s, CLS 0, TBT 117 ms; console: the modulepreload for `_astro/hoisted.*.js` "was not used" because Rocket Loader rewrote the script tag |
+| Yellow Lab | A 91 | 8 webfonts (all used: 3 Poppins for hero/nav, 5 Plus Jakarta Sans) |
+
+Owner actions, unchanged: **JavaScript Detections OFF** (Security → Bots) removes
+the 501 ms; **Rocket Loader OFF** (Speed → Optimization → Content) stops the
+double download and the unused preload; the **Web Analytics beacon** is a
+10 KB third-party script the owner may keep or drop.
+
+The 630 ms time-to-first-byte reported from US test locations is distance, not
+the application: the origin renders `/` in 60–140 ms and the product page in
+80–110 ms (measured on the host through Caddy). Cloudflare Argo Smart Routing /
+Tiered Cache or a closer region would move it; nothing in the code will.
