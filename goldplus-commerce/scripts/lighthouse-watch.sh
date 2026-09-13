@@ -34,7 +34,10 @@ date +%s > "$STAMP"
 
 TOKEN="$(grep -E '^LIGHTHOUSE_WATCH_TOKEN=' .env.production | cut -d= -f2- | tr -d '"' || true)"
 if [ "${#TOKEN}" -lt 32 ]; then echo "STOP: LIGHTHOUSE_WATCH_TOKEN missing from .env.production"; exit 1; fi
-API="${LIGHTHOUSE_WATCH_API:-https://api.shopgoldplus.com}"
+# Results are posted to the API over the compose network, not the public host:
+# Cloudflare answers a non-browser POST to api.shopgoldplus.com with 403.
+API="${LIGHTHOUSE_WATCH_API:-http://api:3000}"
+NET="${LIGHTHOUSE_WATCH_NETWORK:-goldplus-commerce_default}"
 URLS="${LIGHTHOUSE_WATCH_URLS:-https://shopgoldplus.com/ https://shopgoldplus.com/shop}"
 IMAGE="${LIGHTHOUSE_WATCH_IMAGE:-mcr.microsoft.com/playwright:v1.61.1-noble}"
 
@@ -43,7 +46,7 @@ cp scripts/lighthouse-watch/run.mjs "$WORK/run.mjs"
 
 # --cpus keeps a 2-core host responsive for customers while the audit runs.
 # The npm cache volume keeps the lighthouse download to the first run only.
-docker run --rm --cpus=1.5 --memory=1500m --shm-size=512m \
+docker run --rm --cpus=1.5 --memory=1500m --shm-size=512m --network "$NET" \
   -v "$WORK:/work" -v lighthouse-watch-npm:/root/.npm \
   -e URLS="$URLS" -e API="$API" -e TOKEN="$TOKEN" -e REASON="$REASON" \
   --entrypoint bash "$IMAGE" -c '
