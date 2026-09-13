@@ -193,7 +193,9 @@ const FONT_LOADER = `(function(){var d=0;function go(){if(d)return;d=1;var l=doc
         FCP and LCP back ~300 ms each (bench: FCP 1.36 s -> 1.06 s, LCP 1.68 s -> 1.39 s,
         CLS 0.001 -> 0.000). A real visitor sees the fonts about one frame later than
         before. Fallbacks: the load event, a 3 s timer, and <noscript>. */}
-    <script is:inline set:html={FONT_LOADER}></script>
+    {/* data-cfasync="false": Cloudflare Rocket Loader otherwise rewrites this script to run
+        after window.load, and the fonts swapped late (PSI: speed index 2.0 s -> 3.2 s). */}
+    <script is:inline data-cfasync="false" set:html={FONT_LOADER}></script>
     <noscript><link rel="stylesheet" href="/fonts/faces.css?v=20260913" /></noscript>
     <link rel="icon" type="image/svg+xml" href="/icon-192.svg" />
     <link rel="icon" href="/favicon.ico" sizes="32x32" />
