@@ -71,7 +71,9 @@ shopgoldplus.com, www.shopgoldplus.com {
       header_up X-Forwarded-Proto {scheme}
       @ok status 200
       handle_response @ok {
-        header Cache-Control "public, max-age=2592000, stale-while-revalidate=86400"
+        # ">" defers the set until the copied response is written, so it
+        # REPLACES the upstream "public, max-age=0" instead of standing beside it.
+        header >Cache-Control "public, max-age=2592000, stale-while-revalidate=86400"
         copy_response
       }
     }
