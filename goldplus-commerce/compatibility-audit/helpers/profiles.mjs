@@ -13,9 +13,14 @@ export const CPU_PROFILES = Object.freeze({ reference: 1, mainstream_android: 2,
 
 export async function applyProfile(page, { network, cpu }) {
   const cdp = await page.context().newCDPSession(page);
-  if (network) { const n = NETWORK_PROFILES[network]; await cdp.send('Network.enable'); await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: n.latency, downloadThroughput: n.downloadThroughput, uploadThroughput: n.uploadThroughput }); }
+  const n = network ? NETWORK_PROFILES[network] : null;
+  if (n) { await cdp.send('Network.enable'); await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: n.latency, downloadThroughput: n.downloadThroughput, uploadThroughput: n.uploadThroughput }); }
   if (cpu) await cdp.send('Emulation.setCPUThrottlingRate', { rate: CPU_PROFILES[cpu] ?? Number(cpu) });
-  return cdp;
+  // Going offline must use the SAME session as the throttle: context.setOffline() speaks through a
+  // different CDP session and the last emulateNetworkConditions wins (found 2026-09-13: a request
+  // meant to fail completed under latency and produced a false "No match" finding).
+  const setOffline = async (offline) => { await cdp.send('Network.enable'); await cdp.send('Network.emulateNetworkConditions', { offline, latency: n ? n.latency : 0, downloadThroughput: n ? n.downloadThroughput : -1, uploadThroughput: n ? n.uploadThroughput : -1 }); };
+  return { cdp, setOffline };
 }
 
 export async function longTasks(page) {
