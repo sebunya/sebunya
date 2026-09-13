@@ -261,15 +261,17 @@ const shopBreadcrumb = breadcrumbJsonLd([
 
     <div class="mt-7 flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
       <p aria-live="polite" class="text-sm font-semibold text-slate-700">{catalogueNotice ? 'Products could not be loaded' : `${products.length} matching product${products.length === 1 ? '' : 's'}${totalPages > 1 ? ` · showing ${pageStart}–${pageEnd}` : ''}`}</p>
-      <label class="flex items-center gap-2 text-sm font-bold text-slate-700">
-        Sort products
-        <select onchange="window.location.href = this.value" class="rounded-lg border border-slate-300 bg-white px-3 py-2" aria-label="Sort products">
-          <option value={shopUrl({ sort: 'default' })} selected={sort === 'default'}>Default order</option>
-          <option value={shopUrl({ sort: 'price-low-high' })} selected={sort === 'price-low-high'}>Price: low to high</option>
-          <option value={shopUrl({ sort: 'price-high-low' })} selected={sort === 'price-high-low'}>Price: high to low</option>
-          <option value={shopUrl({ sort: 'name-a-z' })} selected={sort === 'name-a-z'}>Name: A to Z</option>
-        </select>
-      </label>
+      {products.length > 0 && (
+        <label class="flex items-center gap-2 text-sm font-bold text-slate-700">
+          Sort products
+          <select onchange="window.location.href = this.value" class="rounded-lg border border-slate-300 bg-white px-3 py-2" aria-label="Sort products">
+            <option value={shopUrl({ sort: 'default' })} selected={sort === 'default'}>Default order</option>
+            <option value={shopUrl({ sort: 'price-low-high' })} selected={sort === 'price-low-high'}>Price: low to high</option>
+            <option value={shopUrl({ sort: 'price-high-low' })} selected={sort === 'price-high-low'}>Price: high to low</option>
+            <option value={shopUrl({ sort: 'name-a-z' })} selected={sort === 'name-a-z'}>Name: A to Z</option>
+          </select>
+        </label>
+      )}
     </div>
 
     {products.length > 0 ? (

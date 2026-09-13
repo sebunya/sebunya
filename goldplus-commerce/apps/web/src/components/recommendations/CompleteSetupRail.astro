@@ -33,11 +33,16 @@ const finalItems = filterDisplayableRecommendations(response.items, {
 });
 ---
 
+{/* The divider lives here, not on the page: an empty rail used to leave
+    its border and 100+ px of padding behind on every product without
+    complete-setup candidates (most of the catalogue). */}
 {finalItems.length > 0 && (
-  <RecommendationRail
-    title="You may also need"
-    subtitle="Made to work with the one you're looking at."
-    placement="complete_setup"
-    items={finalItems}
-  />
+  <div class="border-t border-slate-100 pt-10">
+    <RecommendationRail
+      title="You may also need"
+      subtitle="Made to work with the one you're looking at."
+      placement="complete_setup"
+      items={finalItems}
+    />
+  </div>
 )}
