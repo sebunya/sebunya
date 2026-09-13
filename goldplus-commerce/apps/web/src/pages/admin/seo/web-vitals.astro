@@ -45,7 +45,15 @@ type View = {
   collectedAt?: string | null; collectionDate?: string | null;
   metrics?: Record<string, Metric>; performanceScore?: number | null;
   sampleSize?: number | null; notMeasuredReason?: string | null;
+  lighthouse?: {
+    runner: string | null; fetchTime: string | null;
+    categories: Record<string, number | null>;
+    failingAudits: Array<{ id: string; title: string; category: string; displayValue: string | null; ownerAction: string | null }>;
+  } | null;
 };
+const LH_CATEGORIES: Array<[string, string]> = [["performance", "Performance"], ["accessibility", "Accessibility"], ["best-practices", "Best practices"], ["seo", "SEO"]];
+const scoreClass = (v: number | null | undefined) =>
+  v === null || v === undefined ? "bg-gray-100 text-gray-500" : v >= 100 ? "bg-emerald-100 text-emerald-900" : v >= 90 ? "bg-amber-100 text-amber-900" : "bg-red-100 text-red-900";
 
 const res = await seoGet<{
   formFactor?: string; lab?: View[]; field?: View[];
@@ -58,6 +66,17 @@ const field: View[] = Array.isArray(data?.field) ? data!.field! : [];
 const reason = emptyReason(res, "No Core Web Vitals measurements have been recorded yet");
 const notMeasuredUrls: string[] = Array.isArray(data?.notMeasuredUrls) ? data!.notMeasuredUrls! : [];
 
+// Lighthouse Watch rows: lab views that carry the four category scores.
+const lhRows = lab
+  .filter((v) => v.lighthouse && v.lighthouse.categories)
+  .map((v) => {
+    const lh = v.lighthouse!;
+    const scores = LH_CATEGORIES.map(([key, label]) => ({ key, label, value: lh.categories[key] ?? null }));
+    const below = scores.filter((s) => s.value === null || s.value < 100).map((s) => s.label);
+    const audits = lh.failingAudits.map((a) => ({ ...a, detail: a.displayValue ? `, ${a.displayValue}` : "" }));
+    return { url: v.url ?? "", formFactor: v.formFactor ?? formFactor, collectedAt: v.collectedAt ?? null, runner: lh.runner, scores, below, audits };
+  });
+const lhAllAtTarget = lhRows.length > 0 && lhRows.every((r) => r.below.length === 0);
 const METRICS = ["LCP", "INP", "CLS", "TTFB", "FCP"];
 const ratingClass = (r?: string) =>
   r === "GOOD" ? "bg-emerald-100 text-emerald-900"
@@ -83,6 +102,43 @@ const metricText = (m?: Metric, key?: string) => {
 
     {notice && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</div>}
     {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+
+    <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <h3 class="text-sm font-black uppercase tracking-widest text-gray-500">Lighthouse Watch — {formFactor}</h3>
+        <span class={`rounded px-2 py-1 text-[11px] font-black uppercase tracking-wide ${lhRows.length === 0 ? "bg-gray-100 text-gray-500" : lhAllAtTarget ? "bg-emerald-100 text-emerald-900" : "bg-red-100 text-red-900"}`}>
+          {lhRows.length === 0 ? "No watch run recorded yet" : lhAllAtTarget ? "Every category at 100" : "Below target"}
+        </span>
+      </div>
+      <p class="text-xs text-gray-500 mb-4">
+        Real Lighthouse runs against the live site: every six hours from the host, and again after every deploy. Target is 100 in all four categories. An audit marked <strong>owner</strong> is a Cloudflare zone setting, not code.
+      </p>
+      {lhRows.length === 0 && <p class="text-xs text-gray-500">The runner has not posted yet. It runs on the host as <code>scripts/lighthouse-watch.sh</code>; its log is <code>/var/log/goldplus/lighthouse-watch.log</code>.</p>}
+      <div class="space-y-4">
+        {lhRows.map((r) => (
+          <div class="border border-gray-100 rounded-xl p-4">
+            <div class="flex flex-wrap items-center gap-2 mb-2">
+              <span class="font-mono text-xs text-gray-700 break-all">{r.url}</span>
+              <span class="text-[10px] text-gray-400">{r.formFactor} · {r.runner ?? "lab"} · {r.collectedAt ? new Date(r.collectedAt).toLocaleString("en-GB", { timeZone: "Africa/Kampala" }) : "date unknown"}</span>
+            </div>
+            <div class="flex flex-wrap gap-2 mb-2">
+              {r.scores.map((s) => (
+                <span class={`rounded px-2 py-1 text-xs font-black tabular-nums ${scoreClass(s.value)}`}>{s.label} {s.value === null ? "—" : s.value}</span>
+              ))}
+            </div>
+            <ul class="text-xs text-gray-700 space-y-1">
+              {r.audits.map((a) => (
+                <li>
+                  <span class="font-mono">{a.id}</span>
+                  <span class="text-gray-500">({a.category}{a.detail})</span>
+                  {a.ownerAction && <span class="ml-1 rounded bg-amber-100 text-amber-900 px-1.5 py-0.5 text-[10px] font-bold">owner: {a.ownerAction}</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </section>
 
     <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
       <form method="GET" class="flex flex-wrap items-end gap-3">

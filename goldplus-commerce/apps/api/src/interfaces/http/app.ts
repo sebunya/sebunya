@@ -14,6 +14,7 @@ import productRoutes from './routes/products';
 import commerceRoutes from './routes/commerce';
 import governanceRoutes from './routes/governance';
 import webhookRoutes from './routes/webhooks';
+import internalLighthouseRoutes from './routes/internal/lighthouse';
 import accountRoutes from './routes/account';
 import adminAuditRoutes from './routes/admin/audit';
 import adminUsersRoutes from './routes/admin/users';
@@ -222,6 +223,8 @@ app.route('/products', productRoutes);
 app.route('/commerce', commerceRoutes);
 app.route('/governance', governanceRoutes);
 app.route('/webhooks', webhookRoutes);
+// Lighthouse Watch ingest: machine token, not an admin session (see the route file).
+app.route('/internal/lighthouse', internalLighthouseRoutes);
 app.route('/account', accountRoutes);
 app.route('/admin/audit', adminAuditRoutes);
 app.route('/admin/users', adminUsersRoutes);
@@ -442,6 +445,7 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/recommendations',
   '/telemetry',
   '/webhooks',
+  '/internal/lighthouse',
 ] as const;
 
 registerMountedPrefixes(MOUNTED_API_PREFIXES);

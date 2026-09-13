@@ -70,6 +70,7 @@ import { DrizzleFakeReportRepository } from './db/repositories/DrizzleFakeReport
 import { DrizzleAdminRoleReadRepository } from './db/repositories/DrizzleAdminRoleReadRepository';
 import { DrizzleAdminRoleWriteRepository } from './db/repositories/DrizzleAdminRoleWriteRepository';
 import { RoleManagementUseCase } from '../application/use-cases/admin/RoleManagementUseCase';
+import { RecordLighthouseReportUseCase } from '../application/use-cases/seo-growth/LighthouseWatchUseCases';
 import { DrizzleAdminUserReadRepository } from './db/repositories/DrizzleAdminUserReadRepository';
 import { DrizzleProductImageRepository } from './db/repositories/DrizzleProductImageRepository';
 import { DrizzleAttributeRepository } from './db/repositories/DrizzleAttributeRepository';
@@ -674,6 +675,8 @@ export class Registry {
   public readonly seoWorkQueueRepo = new DrizzleSeoWorkQueueRepository();
   public readonly seoObservabilityRepo = new DrizzleSeoObservabilityRepository();
   public readonly seoTechnicalRepo = new DrizzleSeoTechnicalRepository();
+  // Lighthouse Watch: stores lab runs as Web Vitals rows and keeps one SEO alert per shortfall.
+  public readonly recordLighthouseReportUseCase = new RecordLighthouseReportUseCase(this.seoTechnicalRepo, this.seoGrowthRepo);
   public readonly mobileMoneyDisbursement = new NoSendMobileMoneyDisbursement();
   public readonly submitReviewUseCase = new SubmitReviewUseCase(this.reviewRepo, process.env.IDENTITY_HASH_PEPPER ?? '');
   public readonly pricingOperationsRepo = new DrizzlePricingOperationsRepository();

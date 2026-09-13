@@ -1183,9 +1183,13 @@ function fillHeroTokens(text: string): string {
     if (playing) restart();
   }
   function armRotationSoon(){
+    /* Interaction only — no timer. Chrome keeps updating a page's largest
+       paint until the first input, so any timed rotation that draws a bigger
+       slide becomes the recorded LCP for every visitor who has not yet
+       touched the page (the trace showed it: a bleed photo at +14 s became
+       the LCP). Nearly every real visit scrolls or taps within seconds, and
+       that first gesture starts the rotation. */
     ARM_EVENTS.forEach(function(ev){ window.addEventListener(ev, armRotation, { passive: true }); });
-    var later = function(){ setTimeout(armRotation, 8000); };
-    if (document.readyState === 'complete') later(); else window.addEventListener('load', later, { once: true });
   }
   function restart(){
     if (!rotationArmed) return;
@@ -1235,6 +1239,9 @@ function fillHeroTokens(text: string): string {
     if (Math.abs(dx)>50 && Math.abs(dx)>Math.abs(dy)) dx<0?next(true):prev(true);
   });
 
+  /* parallax and day/night: deferred to its own task after first paint, so no single
+     main-thread task runs long on a slow phone (TBT). */
+  setTimeout(function(){
   /* ---------------- pointer parallax on the product stage ---------------- */
   if (!reduce && matchMedia('(hover:hover)').matches){
     var pmRaf = 0, pmX = 0, pmY = 0, pmBox = null;
@@ -1291,6 +1298,10 @@ function fillHeroTokens(text: string): string {
     }
   })();
 
+  }, 0);
+  /* countdown, cut-off, copy code: deferred to its own task after first paint, so no single
+     main-thread task runs long on a slow phone (TBT). */
+  setTimeout(function(){
   /* ---------------- flash-sale countdown (label derived from the clock) ---------------- */
   var cd = document.getElementById('gpCountdown');
   if (cd && CTX.saleLive){
@@ -1340,6 +1351,10 @@ function fillHeroTokens(text: string): string {
     else done();
   });
 
+  }, 0);
+  /* scratch card: deferred to its own task after first paint, so no single
+     main-thread task runs long on a slow phone (TBT). */
+  setTimeout(function(){
   /* ---------------- scratch card ---------------- */
   (function(){
     var card = document.getElementById('gpScratch'); if (!card) return;
@@ -1434,6 +1449,7 @@ function fillHeroTokens(text: string): string {
     }
   })();
 
+  }, 0);
   // First render — reveal the server-chosen rail and start rotating.
   setupRail();
 

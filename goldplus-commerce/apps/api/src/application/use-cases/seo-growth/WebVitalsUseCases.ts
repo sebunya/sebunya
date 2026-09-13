@@ -85,6 +85,13 @@ export interface WebVitalsView {
   sampleSize: number | null;
   /** Why there is nothing to show, when there is nothing to show. */
   notMeasuredReason: string | null;
+  /** Lighthouse Watch (lab rows only): the four category scores and the audits that cost points. */
+  lighthouse: {
+    runner: string | null;
+    fetchTime: string | null;
+    categories: Record<string, number | null>;
+    failingAudits: Array<{ id: string; title: string; category: string; displayValue: string | null; ownerAction: string | null }>;
+  } | null;
 }
 
 const numOrNull = (v: unknown): number | null => {
@@ -129,6 +136,7 @@ export function toVitalsView(
         source === 'CRUX_FIELD'
           ? 'No field data. Either this URL has never been synced, or CrUX has too few real-user samples to report it.'
           : 'No lab run recorded for this URL and form factor.',
+      lighthouse: null,
     };
   }
   const r = row as Record<string, unknown>;
@@ -153,7 +161,27 @@ export function toVitalsView(
     performanceScore: source === 'PAGESPEED_LAB' ? numOrNull(r.performance_score ?? r.performanceScore) : null,
     sampleSize: numOrNull(r.sample_size ?? r.sampleSize),
     notMeasuredReason: null,
+    lighthouse: lighthouseOf(source, r.raw),
   };
+}
+
+/** Lighthouse Watch payload carried in a lab row's `raw`; null when the row predates the watch or is field data. */
+function lighthouseOf(source: WebVitalSource, raw: unknown): WebVitalsView['lighthouse'] {
+  if (source !== 'PAGESPEED_LAB' || !raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, any>;
+  if (!o.categories || typeof o.categories !== 'object') return null;
+  const categories: Record<string, number | null> = {};
+  for (const [k, v] of Object.entries(o.categories)) categories[k] = numOrNull(v);
+  const failingAudits = Array.isArray(o.failingAudits)
+    ? o.failingAudits.map((a: any) => ({
+        id: String(a?.id ?? ''),
+        title: String(a?.title ?? a?.id ?? ''),
+        category: String(a?.category ?? ''),
+        displayValue: typeof a?.displayValue === 'string' ? a.displayValue : null,
+        ownerAction: typeof a?.ownerAction === 'string' ? a.ownerAction : null,
+      }))
+    : [];
+  return { runner: typeof o.runner === 'string' ? o.runner : null, fetchTime: typeof o.fetchTime === 'string' ? o.fetchTime : null, categories, failingAudits };
 }
 
 /**

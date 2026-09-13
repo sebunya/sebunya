@@ -18,6 +18,7 @@ import app from './app';
 import { startOutboxTicker, gracefulStopOutboxTicker } from '../../infrastructure/scheduler/OutboxTicker';
 import { startLoyaltyDailyTicker, stopLoyaltyDailyTicker } from '../../infrastructure/scheduler/LoyaltyDailyTicker';
 import { startPaymentReconcileTicker, stopPaymentReconcileTicker } from '../../infrastructure/scheduler/PaymentReconcileTicker';
+import { startLighthouseWatchTicker, stopLighthouseWatchTicker } from '../../infrastructure/scheduler/LighthouseWatchTicker';
 import { runPermissionRegistrySyncAtBoot } from '../../infrastructure/security/PermissionRegistrySync';
 import { runHeroSlideSeedAtBoot } from '../../infrastructure/hero/HeroSlideSeeder';
 import { runNavSeedAtBoot } from '../../infrastructure/nav/NavSeeder';
@@ -48,6 +49,8 @@ const server = serve({
   // The payment safety net: polls the provider for every attempt still
   // non-terminal past the threshold. Must run even when callbacks work.
   startPaymentReconcileTicker();
+  // Lighthouse Watch: keeps the storefront's Lighthouse scores measured and alerted.
+  startLighthouseWatchTicker();
     registerAllWorkers();
     // Converge DB permissions on the code registry (advisory-locked, add-only).
     void runPermissionRegistrySyncAtBoot();
@@ -108,6 +111,7 @@ async function gracefulShutdown(signal: string) {
     logger.info('[Process] Waiting for background tasks to finish...');
     stopLoyaltyDailyTicker();
   stopPaymentReconcileTicker();
+  stopLighthouseWatchTicker();
     await gracefulStopOutboxTicker(10000);
 
     logger.info('[Process] Closing database connections...');

@@ -56,3 +56,11 @@ until [ "$(docker compose --env-file .env.production -f docker-compose.productio
 done
 for s in $SERVICES; do docker tag "goldplus-commerce-$s:latest" "goldplus-commerce-$s:rollback-$HEAD"; done
 echo "DEPLOYED $HEAD, $WANT/$WANT healthy, tagged rollback-$HEAD"
+# Lighthouse Watch: measure the live site after every roll, in the background,
+# so a regression is recorded and alerted within minutes of the deploy that
+# caused it. Never blocks or fails the deploy; results land in the API log,
+# the Web Vitals screen and the SEO alerts.
+if [ -x scripts/lighthouse-watch.sh ]; then
+  nohup scripts/lighthouse-watch.sh deploy >/dev/null 2>&1 &
+  echo "Lighthouse Watch started in the background (log: /var/log/goldplus/lighthouse-watch.log)"
+fi
