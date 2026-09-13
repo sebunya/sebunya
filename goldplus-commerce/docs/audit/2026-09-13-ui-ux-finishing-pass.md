@@ -272,3 +272,35 @@ latency, and because Cloudflare adds requests before first paint (Rocket Loader,
 the Web Analytics beacon, speculation). The code-side levers found in this session are
 all applied; the remaining ones are the Cloudflare settings (Rocket Loader OFF, Web
 Analytics beacon OFF; JavaScript Detections OFF for non-bot tools).
+
+### 7e. Owner-instructed Cloudflare changes and the last code fixes (2026-09-14)
+
+Cloudflare (dashboard, owner's instruction "fix the cloudflare settings … to get us to 100 everywhere"):
+- Speed → Rocket Loader: **OFF** (verified: no `rocket-loader` in the edge HTML).
+- Web Analytics RUM: **Enable with JS Snippet installation** — the site now loads
+  `beacon.min.js` itself after `load` + idle (BaseLayout `CF_BEACON_LOADER`, same public
+  token); verified collecting (`cdn-cgi/rum` 204).
+- Security → Bots → Bot Fight Mode: **OFF**. It had been switched back on since the
+  2026-08-29 payment-callback incident. Checked first: 0 WAF custom rules, rate-limiting
+  rule still active.
+- Still injected after >15 min: `cdn-cgi/challenge-platform/scripts/jsd/main.js`
+  (JavaScript Detections). No switch is exposed for it on this Free-plan zone in the
+  dashboard; the API field is `enable_js` on `/zones/:id/bot_management`. It does not
+  affect PageSpeed Insights; it causes TBT and the `deprecations` Best Practices audit
+  in non-bot tools.
+
+Code (deployed):
+- 3c33374e — Cloudflare Web Analytics after load + idle; returning-visitor trust strip
+  hidden before first paint (RUM showed CLS 0.106 on the section under it).
+- 76e1b3bb — telemetry beacon as `text/plain`: `sendBeacon` sends credentials, and the JSON
+  content type forced a credentialed CORS preflight the API rightly refuses; every batch
+  was blocked with a console error (PSI Best Practices 96 on product pages).
+- 7b00f8a0 — bot-flagged telemetry answered 204 instead of 403 (still discarded; no
+  console error in headless browsers).
+
+Results: PageSpeed Insights mobile — home **100** (FCP 1.1 s, LCP 1.2 s, TBT 0, CLS 0.007,
+SI 1.5 s), shop **100 / 100 / 100 / 100** (FCP 1.1 s, LCP 1.2 s, CLS 0.003), product page
+performance **100** (FCP 1.0 s, LCP 1.0 s). After the telemetry fixes, no console errors on
+home, shop or product page; Lighthouse 13 from a non-bot browser: Accessibility 100, SEO
+100, Best Practices 100 on home and shop, 81 on the product page from `deprecations`
+(the JavaScript Detections script).
