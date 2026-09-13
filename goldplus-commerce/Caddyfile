@@ -64,6 +64,11 @@ shopgoldplus.com, www.shopgoldplus.com {
   # 200 gets the long header: the same 404-cached-for-a-year trap as /uploads.
   @static path /hero/* /products/* /payment/* /nav/* /fonts/* /icon-192.svg /favicon.ico /apple-touch-icon.png
   handle @static {
+    # The web container's MIME table has no AVIF entry and answers
+    # application/octet-stream (with nosniff). The hero photos are AVIF first
+    # (2026-09-13), so name the type here.
+    @avif path *.avif
+    header @avif >Content-Type "image/avif"
     reverse_proxy web:4321 {
       header_up Host              {host}
       header_up X-Real-IP         {remote_host}
