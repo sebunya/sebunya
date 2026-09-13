@@ -111,7 +111,7 @@ const metricText = (m?: Metric, key?: string) => {
         </span>
       </div>
       <p class="text-xs text-gray-500 mb-4">
-        Real Lighthouse runs against the live site: every six hours from the host, and again after every deploy. Target is 100 in all four categories. An audit marked <strong>owner</strong> is a Cloudflare zone setting, not code.
+        Real Lighthouse runs against the live site, at most once every 96 hours (daily check from the host, plus a deploy hook that respects the same interval). Target is 100 in all four categories. An audit marked <strong>owner</strong> is a Cloudflare zone setting, not code.
       </p>
       {lhRows.length === 0 && <p class="text-xs text-gray-500">The runner has not posted yet. It runs on the host as <code>scripts/lighthouse-watch.sh</code>; its log is <code>/var/log/goldplus/lighthouse-watch.log</code>.</p>}
       <div class="space-y-4">

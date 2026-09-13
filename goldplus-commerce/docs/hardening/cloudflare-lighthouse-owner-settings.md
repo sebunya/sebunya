@@ -23,11 +23,12 @@ Everything) and re-run https://pagespeed.web.dev/ for mobile and desktop.
 Shipped 2026-09-13 (`3dbf0121`). Real Lighthouse 12, the engine behind PageSpeed
 Insights, runs against the live site for `/` and `/shop`, mobile and desktop:
 
-* **every 6 hours** from the host (`/etc/cron.d/goldplus-lighthouse-watch` →
-  `scripts/lighthouse-watch.sh cron`), in the Playwright image already on the
-  host, CPU-limited so customers are unaffected;
-* **after every deploy** (`scripts/deploy-prod.sh` starts a run in the
-  background as its last step);
+* **at most once every 96 hours** (owner decision): cron checks daily at 03:17 UTC
+  (`/etc/cron.d/goldplus-lighthouse-watch` → `scripts/lighthouse-watch.sh cron`)
+  and the deploy hook offers a run after every roll, but the runner skips any
+  automatic run within 96 h of the last one (stamp: `/var/log/goldplus/
+  lighthouse-watch.last-run`). `./scripts/lighthouse-watch.sh manual` runs now.
+  In the Playwright image already on the host, CPU-limited;
 * log: `/var/log/goldplus/lighthouse-watch.log`.
 
 Each run posts to `POST /internal/lighthouse/report` (machine token in
@@ -45,5 +46,5 @@ Where to look: **Admin → SEO → Core Web Vitals**, "Lighthouse Watch" panel.
 
 Optional: with a Google API key (PageSpeed Insights API enabled) in
 `GOOGLE_PAGESPEED_API_KEY`, the API also pulls PageSpeed's own numbers every
-6 hours — identical to what pagespeed.web.dev shows — and records them the same
+96 hours — identical to what pagespeed.web.dev shows — and records them the same
 way. The keyless API is shared and quota-exhausted, so it is not used.

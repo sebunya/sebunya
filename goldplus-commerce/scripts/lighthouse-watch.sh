@@ -8,18 +8,29 @@
 #
 #   ./scripts/lighthouse-watch.sh [reason]        # reason is logged: cron | deploy | manual
 #
-# Scheduling: a cron entry every 6 hours plus a call at the end of every deploy
-# (scripts/deploy-prod.sh). Chromium comes from the Playwright image already
-# on the host; the lighthouse package is cached in a named volume so a run
-# costs no download after the first. One run takes ~3 minutes on this host
-# and is CPU-limited to leave room for the site.
+# Scheduling (owner decision 2026-09-13): AT MOST ONE AUTOMATIC RUN EVERY 96 HOURS.
+# Cron checks daily and the deploy hook calls after every roll, but both pass
+# through the interval guard below and are skipped inside the window; only
+# `manual` bypasses it. Chromium comes from the Playwright image already on the
+# host; the lighthouse package is cached in a named volume. One run takes
+# ~3 minutes and is CPU-limited to leave room for the site.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 REASON="${1:-manual}"
 LOG_DIR="${LIGHTHOUSE_WATCH_LOG_DIR:-/var/log/goldplus}"; mkdir -p "$LOG_DIR" 2>/dev/null || LOG_DIR=/tmp
 LOG="$LOG_DIR/lighthouse-watch.log"
+STAMP="$LOG_DIR/lighthouse-watch.last-run"
+MIN_HOURS="${LIGHTHOUSE_WATCH_MIN_INTERVAL_HOURS:-96}"
 exec >>"$LOG" 2>&1
+if [ "$REASON" != "manual" ] && [ -f "$STAMP" ]; then
+  AGE=$(( ( $(date +%s) - $(cat "$STAMP") ) / 3600 ))
+  if [ "$AGE" -lt "$MIN_HOURS" ]; then
+    echo "=== $(date -u +%FT%TZ) lighthouse-watch skipped reason=$REASON: last run ${AGE}h ago, minimum interval ${MIN_HOURS}h"
+    exit 0
+  fi
+fi
 echo "=== $(date -u +%FT%TZ) lighthouse-watch start reason=$REASON"
+date +%s > "$STAMP"
 
 TOKEN="$(grep -E '^LIGHTHOUSE_WATCH_TOKEN=' .env.production | cut -d= -f2- | tr -d '"' || true)"
 if [ "${#TOKEN}" -lt 32 ]; then echo "STOP: LIGHTHOUSE_WATCH_TOKEN missing from .env.production"; exit 1; fi

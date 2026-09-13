@@ -8,22 +8,24 @@ import { LIGHTHOUSE_ALERT_KIND, LIGHTHOUSE_CATEGORIES, describeShortfall, evalua
  *
  * Two things, on a schedule:
  *  1. With GOOGLE_PAGESPEED_API_KEY set, pulls fresh PageSpeed Insights results
- *     (all four categories, mobile and desktop) for the watch URLs and records
- *     them through the same use case the host runner posts to.
- *  2. Always: re-reads the latest stored lab rows, publishes them as Prometheus
- *     gauges, and repeats the ALERT line hourly while anything is below target,
- *     so a shortfall cannot go quiet between runs.
+ *     (all four categories, mobile and desktop) for the watch URLs every 96 h
+ *     and records them through the same use case the host runner posts to.
+ *  2. Always: every 6 h re-reads the latest stored lab rows, publishes them as
+ *     Prometheus gauges, and repeats the ALERT line while anything is below
+ *     target, so a shortfall cannot go quiet between runs.
  *
  * Without a Google key the measurements come from the host runner
- * (scripts/lighthouse-watch.sh, cron every 6 h + after every deploy); the
+ * (scripts/lighthouse-watch.sh, at most once every 96 h, cron or deploy); the
  * ticker says so once at boot instead of pretending to measure.
  */
 function envInt(name: string, fallback: number): number {
   const v = Number(process.env[name]);
   return Number.isFinite(v) && v > 0 ? v : fallback;
 }
-const PULL_INTERVAL_MS = envInt('LIGHTHOUSE_WATCH_INTERVAL_MINUTES', 360) * 60_000;
-const REVIEW_INTERVAL_MS = 60 * 60_000;
+// Owner decision 2026-09-13: measure at most every 96 hours so the host is never
+// busy with audits. The review only reads stored rows and runs every 6 hours.
+const PULL_INTERVAL_MS = envInt('LIGHTHOUSE_WATCH_INTERVAL_MINUTES', 96 * 60) * 60_000;
+const REVIEW_INTERVAL_MS = 6 * 60 * 60_000;
 const WATCH_URLS = (process.env.LIGHTHOUSE_WATCH_URLS ?? 'https://shopgoldplus.com/ https://shopgoldplus.com/shop').split(/[\s,]+/).filter(Boolean);
 
 const scoreGauge = new client.Gauge({
@@ -122,7 +124,7 @@ export function startLighthouseWatchTicker(): void {
   setTimeout(() => void review(), 90_000);
   if (hasKey) {
     pullTimer = setInterval(() => void pullFromPageSpeed(), PULL_INTERVAL_MS);
-    setTimeout(() => void pullFromPageSpeed(), 5 * 60_000);
+    setTimeout(() => void pullFromPageSpeed(), 15 * 60_000);
   }
 }
 
