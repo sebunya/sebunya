@@ -62,7 +62,11 @@ shopgoldplus.com, www.shopgoldplus.com {
   # sends no Cache-Control for them, so Cloudflare fell back to a 4-hour browser
   # TTL and every return visit re-fetched them (Lighthouse, 2026-09-13). Only a
   # 200 gets the long header: the same 404-cached-for-a-year trap as /uploads.
-  @static path /hero/* /products/* /payment/* /nav/* /fonts/* /icon-192.svg /favicon.ico /apple-touch-icon.png
+  # /products/ is ALSO the product PAGE prefix (/products/<slug>), so only image
+  # files there are static. A bare /products/* sent every product page with a
+  # 30-day browser cache: a repriced product kept its old price for a month
+  # for anyone who had viewed it (found 2026-09-18 after the 18-9-26 reprice).
+  @static path /hero/* /products/*.webp /products/*.avif /products/*.svg /products/*.png /products/*.jpg /products/*.jpeg /payment/* /nav/* /fonts/* /icon-192.svg /favicon.ico /apple-touch-icon.png
   handle @static {
     # The web container's MIME table has no AVIF entry and answers
     # application/octet-stream (with nosniff). The hero photos are AVIF first
