@@ -24,7 +24,9 @@ migrate_against() { # <network> <database url> [--env-file]
     -e PUBLIC_API_BASE_URL=http://rehearsal:3000 -e PROXY_TOPOLOGY_MODE=DIRECT \
     "$MIG" pnpm -F @goldplus/api db:migrate
 }
-cleanup() { docker rm -f "$DB" >/dev/null 2>&1 || true; docker network rm "$NET" >/dev/null 2>&1 || true; }
+# -v: the clone's anonymous data volume is a full copy of production data;
+# without it every rehearsal left ~2 GB behind (33 copies, 16 GB, found 2026-09-18).
+cleanup() { docker rm -f -v "$DB" >/dev/null 2>&1 || true; docker network rm "$NET" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
 echo "=== 1. BACKUP → $DUMP"
