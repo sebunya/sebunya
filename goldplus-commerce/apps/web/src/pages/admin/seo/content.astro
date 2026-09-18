@@ -11,48 +11,66 @@ if (!token) return Astro.redirect("/admin/login?returnTo=/admin/seo/content", 30
 let notice: string | null = null;
 let formError: string | null = null;
 
+// Field names and choices below are the API's and the database's own. Every
+// form on this page sent different ones (topic/changeType/description, no
+// query, no "change"), so none of them had ever saved anything (2026-09-18).
+const SCOPES = ["CONTENT", "METADATA", "SCHEMA", "URL", "TEMPLATE", "NAVIGATION", "REDIRECT", "ROBOTS", "SITEMAP", "SETTINGS", "OTHER"] as const;
+const list = (v: FormDataEntryValue | null) => String(v ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   const intent = String(form.get("intent") ?? "");
   if (intent === "gap") {
+    const pos = String(form.get("ourPosition") ?? "").trim();
     const res = await seoPost(token, "/admin/seo/gaps", {
-      topic: String(form.get("topic") ?? "").trim(),
-      queryCluster: String(form.get("queryCluster") ?? "").trim() || undefined,
-      competitorCoverage: String(form.get("competitorCoverage") ?? "").trim() || undefined,
-      notes: String(form.get("notes") ?? "").trim() || undefined,
+      queryId: String(form.get("queryId") ?? "").trim(),
+      ourPosition: pos === "" ? null : Number(pos),
+      ourUrl: String(form.get("ourUrl") ?? "").trim() || null,
+      leaderUrl: String(form.get("leaderUrl") ?? "").trim() || null,
+      observedGaps: list(form.get("observedGaps")),
+      action: String(form.get("action") ?? "").trim() || null,
+      confidence: String(form.get("confidence") ?? "LOW"),
     });
     if (res.ok) notice = "Gap recorded."; else formError = res.message;
   } else if (intent === "ledger") {
+    const when = String(form.get("occurredAt") ?? "").trim();
     const res = await seoPost(token, "/admin/seo/change-ledger", {
-      changeType: String(form.get("changeType") ?? "").trim(),
+      scope: String(form.get("scope") ?? "").trim(),
       target: String(form.get("target") ?? "").trim(),
-      description: String(form.get("description") ?? "").trim(),
-      changedAt: String(form.get("changedAt") ?? "").trim() || undefined,
+      reason: String(form.get("reason") ?? "").trim(),
+      occurredAt: when ? new Date(when).toISOString() : undefined,
     });
     if (res.ok) notice = "Change recorded in the ledger."; else formError = res.message;
   } else if (intent === "experiment") {
     const res = await seoPost(token, "/admin/seo/experiments", {
       name: String(form.get("name") ?? "").trim(),
       hypothesis: String(form.get("hypothesis") ?? "").trim(),
-      metric: String(form.get("metric") ?? "").trim() || undefined,
-      target: String(form.get("e_target") ?? "").trim() || undefined,
+      change: String(form.get("change") ?? "").trim(),
+      metric: String(form.get("metric") ?? "").trim(),
+      cohort: String(form.get("cohort") ?? "").trim() || null,
+      // baseline is a JSON column: the starting value goes in as a note.
+      baseline: String(form.get("baseline") ?? "").trim() ? { note: String(form.get("baseline")).trim() } : null,
     });
     if (res.ok) notice = "Experiment created."; else formError = res.message;
   }
 }
 
-const [gapsRes, ledgerRes, expRes] = await Promise.all([
+const [gapsRes, ledgerRes, expRes, queriesRes] = await Promise.all([
   seoGet(token, "/admin/seo/gaps"),
   seoGet(token, "/admin/seo/change-ledger"),
   seoGet(token, "/admin/seo/experiments"),
+  seoGet(token, "/admin/seo/queries?limit=500"),
 ]);
-type Row = Record<string, unknown>;
+type Row = Record<string, any>;
 const gaps = rowsOf<Row>(gapsRes);
 const ledger = rowsOf<Row>(ledgerRes);
 const experiments = rowsOf<Row>(expRes);
+const queries = rowsOf<Row>(queriesRes);
+const queryText = new Map(queries.map((q) => [String(q.id), String(q.query ?? "")]));
 const gapsReason = emptyReason(gapsRes, "No content gaps recorded yet");
 const ledgerReason = emptyReason(ledgerRes, "No SEO changes recorded yet");
 const expReason = emptyReason(expRes, "No experiments yet");
+const listText = (v: unknown) => (Array.isArray(v) ? v.join(", ") || "—" : str(v));
 ---
 
 <AdminLayout title="SEO Content & Experiments" description="Content gaps, the SEO change ledger and controlled experiments.">
@@ -69,41 +87,58 @@ const expReason = emptyReason(expRes, "No experiments yet");
 
     {/* ── Gaps ── */}
     <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8">
-      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">Content gaps</h3>
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-1">Content gaps</h3>
+      <p class="text-xs text-gray-500 mb-4">A gap is tied to a tracked search: what ranks for it, and what our page is missing.</p>
       {gapsReason && <p class="text-sm text-gray-500 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4 mb-4">{gapsReason}</p>}
       {!gapsReason && gaps.length === 0 && <p class="text-sm text-gray-500 mb-4">No content gaps recorded yet.</p>}
       {gaps.length > 0 && (
         <div class="overflow-x-auto mb-6">
           <table class="w-full text-left text-xs">
             <thead><tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
-              <th class="py-2 pr-4">Topic</th><th class="py-2 pr-4">Query cluster</th><th class="py-2 pr-4">Competitor coverage</th><th class="py-2 pr-4">Status</th><th class="py-2">Notes</th>
+              <th class="py-2 pr-4">Search</th><th class="py-2 pr-4">Our page (position)</th><th class="py-2 pr-4">Page that wins</th><th class="py-2 pr-4">What is missing</th><th class="py-2 pr-4">Action</th><th class="py-2">Status</th>
             </tr></thead>
             <tbody>{gaps.map((g) => (
               <tr class="border-b border-gray-100 align-top">
-                <td class="py-2 pr-4 font-bold text-brand-dark">{str(g.topic)}</td>
-                <td class="py-2 pr-4">{str(g.queryCluster)}</td>
-                <td class="py-2 pr-4">{str(g.competitorCoverage)}</td>
-                <td class="py-2 pr-4">{str(g.status)}</td>
-                <td class="py-2 text-gray-500 max-w-xs">{str(g.notes)}</td>
+                <td class="py-2 pr-4 font-bold text-brand-dark">{queryText.get(String(g.queryId)) || str(g.queryId)}</td>
+                <td class="py-2 pr-4 font-mono max-w-xs truncate">{str(g.ourUrl)}{g.ourPosition != null ? ` (${g.ourPosition})` : ""}</td>
+                <td class="py-2 pr-4 font-mono max-w-xs truncate">{str(g.leaderUrl)}</td>
+                <td class="py-2 pr-4">{listText(g.observedGaps)}</td>
+                <td class="py-2 pr-4">{str(g.action)}</td>
+                <td class="py-2">{str(g.status)}</td>
               </tr>))}
             </tbody>
           </table>
         </div>
       )}
-      <form method="POST" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <input type="hidden" name="intent" value="gap" />
-        <label class="text-xs font-bold text-gray-700">Topic
-          <input name="topic" required class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-        <label class="text-xs font-bold text-gray-700">Query cluster
-          <input name="queryCluster" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-        <label class="text-xs font-bold text-gray-700">Competitor coverage
-          <input name="competitorCoverage" placeholder="who covers it" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-        <label class="text-xs font-bold text-gray-700">Notes
-          <input name="notes" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-        <div class="sm:col-span-2 lg:col-span-4">
-          <button type="submit" class="rounded-full bg-brand-dark px-6 py-2.5 text-sm font-bold text-white hover:bg-black">Record gap</button>
-        </div>
-      </form>
+      {queries.length === 0 ? (
+        <p class="text-sm text-gray-500">Track a search on the Queries page first; a gap is recorded against one.</p>
+      ) : (
+        <form method="POST" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <input type="hidden" name="intent" value="gap" />
+          <label class="text-xs font-bold text-gray-700 sm:col-span-2">Search
+            <select name="queryId" required class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              <option value="">— choose a tracked search —</option>
+              {queries.map((q) => <option value={str(q.id)}>{str(q.query)}</option>)}
+            </select></label>
+          <label class="text-xs font-bold text-gray-700">Our page
+            <input name="ourUrl" placeholder="/power/power-banks" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
+          <label class="text-xs font-bold text-gray-700">Our position
+            <input name="ourPosition" type="number" min="1" max="200" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <label class="text-xs font-bold text-gray-700 sm:col-span-2">Page that wins
+            <input name="leaderUrl" placeholder="https://…" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
+          <label class="text-xs font-bold text-gray-700 sm:col-span-2">What ours is missing (comma-separated)
+            <input name="observedGaps" placeholder="price table, compatibility list, FAQ" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <label class="text-xs font-bold text-gray-700 sm:col-span-3">Planned action
+            <input name="action" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <label class="text-xs font-bold text-gray-700">Confidence
+            <select name="confidence" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              <option value="LOW" selected>Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option>
+            </select></label>
+          <div class="sm:col-span-2 lg:col-span-4">
+            <button type="submit" class="rounded-full bg-brand-dark px-6 py-2.5 text-sm font-bold text-white hover:bg-black">Record gap</button>
+          </div>
+        </form>
+      )}
     </section>
 
     {/* ── Change ledger ── */}
@@ -116,14 +151,14 @@ const expReason = emptyReason(expRes, "No experiments yet");
         <div class="overflow-x-auto mb-6">
           <table class="w-full text-left text-xs">
             <thead><tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
-              <th class="py-2 pr-4">When</th><th class="py-2 pr-4">Type</th><th class="py-2 pr-4">Target</th><th class="py-2">Description</th>
+              <th class="py-2 pr-4">When</th><th class="py-2 pr-4">Type</th><th class="py-2 pr-4">Target</th><th class="py-2">Why</th>
             </tr></thead>
             <tbody>{ledger.map((l) => (
               <tr class="border-b border-gray-100 align-top">
-                <td class="py-2 pr-4">{fmtWhen(l.changedAt ?? l.createdAt)}</td>
-                <td class="py-2 pr-4 font-bold">{str(l.changeType)}</td>
+                <td class="py-2 pr-4">{fmtWhen(l.occurredAt ?? l.createdAt)}</td>
+                <td class="py-2 pr-4 font-bold">{str(l.scope)}</td>
                 <td class="py-2 pr-4 font-mono max-w-xs truncate">{str(l.target)}</td>
-                <td class="py-2 text-gray-600 max-w-md">{str(l.description)}</td>
+                <td class="py-2 text-gray-600 max-w-md">{str(l.reason)}</td>
               </tr>))}
             </tbody>
           </table>
@@ -131,17 +166,16 @@ const expReason = emptyReason(expRes, "No experiments yet");
       )}
       <form method="POST" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         <input type="hidden" name="intent" value="ledger" />
-        <label class="text-xs font-bold text-gray-700">Change type
-          <select name="changeType" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-            <option value="CONTENT">Content</option><option value="TECHNICAL">Technical</option>
-            <option value="STRUCTURE">Structure</option><option value="REDIRECT">Redirect</option><option value="OTHER">Other</option>
+        <label class="text-xs font-bold text-gray-700">What changed
+          <select name="scope" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            {SCOPES.map((v) => <option value={v}>{v.charAt(0) + v.slice(1).toLowerCase()}</option>)}
           </select></label>
         <label class="text-xs font-bold text-gray-700">Target (URL or area)
           <input name="target" required class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
-        <label class="text-xs font-bold text-gray-700">Changed at
-          <input name="changedAt" type="date" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-        <label class="text-xs font-bold text-gray-700">Description
-          <input name="description" required class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="text-xs font-bold text-gray-700">When
+          <input name="occurredAt" type="date" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="text-xs font-bold text-gray-700">Why
+          <input name="reason" required class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
         <div class="sm:col-span-2 lg:col-span-4">
           <button type="submit" class="rounded-full bg-brand-dark px-6 py-2.5 text-sm font-bold text-white hover:bg-black">Record change</button>
         </div>
@@ -157,15 +191,16 @@ const expReason = emptyReason(expRes, "No experiments yet");
         <div class="overflow-x-auto mb-6">
           <table class="w-full text-left text-xs">
             <thead><tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
-              <th class="py-2 pr-4">Name</th><th class="py-2 pr-4">Hypothesis</th><th class="py-2 pr-4">Metric</th><th class="py-2 pr-4">Target</th><th class="py-2">Status</th>
+              <th class="py-2 pr-4">Name</th><th class="py-2 pr-4">Hypothesis</th><th class="py-2 pr-4">Change</th><th class="py-2 pr-4">Metric</th><th class="py-2 pr-4">Pages</th><th class="py-2">Decision</th>
             </tr></thead>
             <tbody>{experiments.map((e) => (
               <tr class="border-b border-gray-100 align-top">
                 <td class="py-2 pr-4 font-bold text-brand-dark">{str(e.name)}</td>
                 <td class="py-2 pr-4 max-w-md text-gray-600">{str(e.hypothesis)}</td>
+                <td class="py-2 pr-4 max-w-md text-gray-600">{str(e.change)}</td>
                 <td class="py-2 pr-4">{str(e.metric)}</td>
-                <td class="py-2 pr-4 font-mono max-w-xs truncate">{str(e.target)}</td>
-                <td class="py-2">{str(e.status)}</td>
+                <td class="py-2 pr-4 font-mono max-w-xs truncate">{str(e.cohort)}</td>
+                <td class="py-2">{str(e.decision)}</td>
               </tr>))}
             </tbody>
           </table>
@@ -175,12 +210,16 @@ const expReason = emptyReason(expRes, "No experiments yet");
         <input type="hidden" name="intent" value="experiment" />
         <label class="text-xs font-bold text-gray-700">Name
           <input name="name" required class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-        <label class="text-xs font-bold text-gray-700 sm:col-span-2">Hypothesis
-          <input name="hypothesis" required class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-        <label class="text-xs font-bold text-gray-700">Success metric
-          <input name="metric" placeholder="e.g. top-10 share" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-        <label class="text-xs font-bold text-gray-700 sm:col-span-2">Target (URL or area)
-          <input name="e_target" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
+        <label class="text-xs font-bold text-gray-700 sm:col-span-3">Hypothesis
+          <input name="hypothesis" required placeholder="If we … then … because …" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="text-xs font-bold text-gray-700 sm:col-span-2">What we change
+          <input name="change" required class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="text-xs font-bold text-gray-700">How we measure it
+          <input name="metric" required placeholder="e.g. clicks from Search Console" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="text-xs font-bold text-gray-700">Starting value
+          <input name="baseline" placeholder="e.g. 3 clicks / 28 days" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <label class="text-xs font-bold text-gray-700 sm:col-span-2 lg:col-span-4">Pages in the test
+          <input name="cohort" placeholder="/power/power-banks, /audio" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
         <div class="sm:col-span-2 lg:col-span-4">
           <button type="submit" class="rounded-full bg-brand-dark px-6 py-2.5 text-sm font-bold text-white hover:bg-black">Create experiment</button>
         </div>

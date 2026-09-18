@@ -12,42 +12,87 @@ if (!token) return Astro.redirect("/admin/login?returnTo=/admin/seo/aeo", 303);
 let notice: string | null = null;
 let formError: string | null = null;
 
+// The API's engines. Lower-case values and "ai_overview" were refused by the
+// database check, so an observation could never be saved (found 2026-09-18).
+const ENGINES = [
+  ["CHATGPT", "ChatGPT"], ["GEMINI", "Gemini"], ["PERPLEXITY", "Perplexity"],
+  ["COPILOT", "Copilot"], ["CLAUDE", "Claude"], ["OTHER", "Other (e.g. Google AI Overview)"],
+] as const;
+const engineLabel = (e: unknown) => ENGINES.find(([v]) => v === e)?.[1] ?? str(e);
+
+type Prompt = { id?: string; prompt?: string; engine?: string; category?: string; status?: string };
+type Observation = { promptId?: string; engine?: string; executedAt?: string; weMentioned?: boolean; weCited?: boolean };
+const load = async () => {
+  // GET /admin/seo/aeo answers { prompts, observations }. rowsOf() read neither
+  // key, so the bank always looked empty, whatever it held.
+  const res = await seoGet<{ prompts?: Prompt[]; observations?: Observation[] }>(token, "/admin/seo/aeo");
+  return {
+    reason: emptyReason(res, "The prompt bank could not be loaded"),
+    prompts: res.ok && Array.isArray(res.data?.prompts) ? res.data.prompts : [],
+    observations: res.ok && Array.isArray(res.data?.observations) ? res.data.observations : [],
+  };
+};
+
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   const intent = String(form.get("intent") ?? "");
   if (intent === "add-prompt") {
-    const res = await seoPost(token, "/admin/seo/aeo", {
-      kind: "prompt",
-      prompt: String(form.get("prompt") ?? "").trim(),
-      category: String(form.get("category") ?? "").trim() || undefined,
-    });
-    if (res.ok) notice = "Prompt added to the bank."; else formError = res.message;
+    // Was POSTed to /admin/seo/aeo, which has no POST route, and without the
+    // engine the API requires: adding a prompt had never worked.
+    const prompt = String(form.get("prompt") ?? "").trim();
+    const category = String(form.get("category") ?? "").trim() || undefined;
+    const engines = form.getAll("engine").map(String).filter((e) => ENGINES.some(([v]) => v === e));
+    if (!prompt || engines.length === 0) {
+      formError = "Write the question and pick at least one engine.";
+    } else {
+      const results = await Promise.all(engines.map((engine) => seoPost(token, "/admin/seo/aeo/prompts", { prompt, engine, category })));
+      const failed = results.find((r) => !r.ok);
+      if (failed && !failed.ok) formError = failed.message;
+      else notice = `Question added for ${engines.map(engineLabel).join(", ")}.`;
+    }
   } else if (intent === "observation") {
-    const res = await seoPost(token, "/admin/seo/aeo", {
-      kind: "observation",
-      promptId: String(form.get("promptId") ?? "").trim(),
-      engine: String(form.get("engine") ?? "").trim(),
-      model: String(form.get("model") ?? "").trim() || undefined,
-      observedAt: String(form.get("observedAt") ?? "").trim() || undefined,
-      excerpt: String(form.get("excerpt") ?? "").trim(),
-      mentioned: String(form.get("mentioned") ?? "") === "on",
-      cited: String(form.get("cited") ?? "") === "on",
-      competitorsMentioned: String(form.get("competitors") ?? "")
-        .split(",").map((c) => c.trim()).filter(Boolean),
-    });
-    if (res.ok) notice = "Observation recorded."; else formError = res.message;
+    const promptId = String(form.get("promptId") ?? "").trim();
+    // The engine is the prompt's own: a prompt in the bank is asked of ONE engine.
+    const bank = (await load()).prompts;
+    const chosen = bank.find((p) => p.id === promptId);
+    const excerpt = String(form.get("excerpt") ?? "").trim();
+    if (!chosen) {
+      formError = "Choose the question you asked from the bank.";
+    } else if (!excerpt) {
+      formError = "Paste the relevant part of the answer — the excerpt is the evidence.";
+    } else {
+      const observedAt = String(form.get("observedAt") ?? "").trim();
+      const res = await seoPost(token, "/admin/seo/aeo/observations", {
+        promptId,
+        engine: chosen.engine,
+        modelVersion: String(form.get("model") ?? "").trim() || undefined,
+        executedAt: observedAt ? new Date(observedAt).toISOString() : undefined,
+        responseExcerpt: excerpt,
+        weMentioned: String(form.get("mentioned") ?? "") === "on",
+        weCited: String(form.get("cited") ?? "") === "on",
+        competitorsMentioned: String(form.get("competitors") ?? "").split(",").map((c) => c.trim()).filter(Boolean),
+      });
+      if (res.ok) notice = "Observation recorded."; else formError = res.message;
+    }
   }
 }
 
-type Prompt = { id?: string; prompt?: string; category?: string; lastExecutedAt?: string; observationCount?: number };
-const promptsRes = await seoGet(token, "/admin/seo/aeo");
-const prompts = rowsOf<Prompt>(promptsRes);
-const promptsReason = emptyReason(promptsRes, "The prompt bank is empty");
+const { reason: promptsReason, prompts, observations } = await load();
+const obsByPrompt = new Map<string, Observation[]>();
+for (const o of observations) {
+  if (!o.promptId) continue;
+  obsByPrompt.set(o.promptId, [...(obsByPrompt.get(o.promptId) ?? []), o]);
+}
+const lastObserved = (list: Observation[] | undefined) =>
+  (list ?? []).map((o) => o.executedAt ?? "").filter(Boolean).sort().at(-1) ?? null;
 
-type Coverage = { engine?: string; executedPrompts?: number; mentionedRate?: number; citedRate?: number; lastObservedAt?: string };
+// GET /aeo/coverage answers { engine, observations, mentionRate, citationRate };
+// the page read executedPrompts / mentionedRate / citedRate, which never exist.
+type Coverage = { engine?: string; observations?: number; mentionRate?: number; citationRate?: number };
 const coverageRes = await seoGet(token, "/admin/seo/aeo/coverage");
 const coverage = rowsOf<Coverage>(coverageRes);
 const coverageReason = emptyReason(coverageRes, "No coverage data yet");
+const lastByEngine = (engine: unknown) => lastObserved(observations.filter((o) => o.engine === engine));
 ---
 
 <AdminLayout title="AEO" description="Answer-engine prompt bank, recorded observations and per-engine coverage.">
@@ -78,16 +123,16 @@ const coverageReason = emptyReason(coverageRes, "No coverage data yet");
         <div class="overflow-x-auto">
           <table class="w-full text-left text-xs">
             <thead><tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
-              <th class="py-2 pr-4">Engine</th><th class="py-2 pr-4 text-right">Executed prompts</th>
+              <th class="py-2 pr-4">Engine</th><th class="py-2 pr-4 text-right">Answers recorded</th>
               <th class="py-2 pr-4 text-right">Mentioned</th><th class="py-2 pr-4 text-right">Cited</th><th class="py-2">Last observed</th>
             </tr></thead>
             <tbody>{coverage.map((c) => (
               <tr class="border-b border-gray-100">
-                <td class="py-2 pr-4 font-bold text-brand-dark">{str(c.engine)}</td>
-                <td class="py-2 pr-4 text-right tabular-nums">{num(c.executedPrompts)}</td>
-                <td class="py-2 pr-4 text-right tabular-nums">{pct(c.mentionedRate)}</td>
-                <td class="py-2 pr-4 text-right tabular-nums">{pct(c.citedRate)}</td>
-                <td class="py-2">{fmtWhen(c.lastObservedAt)}</td>
+                <td class="py-2 pr-4 font-bold text-brand-dark">{engineLabel(c.engine)}</td>
+                <td class="py-2 pr-4 text-right tabular-nums">{num(c.observations)}</td>
+                <td class="py-2 pr-4 text-right tabular-nums">{pct(c.mentionRate)}</td>
+                <td class="py-2 pr-4 text-right tabular-nums">{pct(c.citationRate)}</td>
+                <td class="py-2">{fmtWhen(lastByEngine(c.engine))}</td>
               </tr>))}
             </tbody>
           </table>
@@ -101,18 +146,25 @@ const coverageReason = emptyReason(coverageRes, "No coverage data yet");
       {promptsReason && <p class="text-sm text-gray-500 rounded-xl border border-dashed border-gray-300 bg-gray-50 p-4 mb-4">{promptsReason}</p>}
       {!promptsReason && prompts.length === 0 && <p class="text-sm text-gray-500 mb-4">The prompt bank is empty — add the questions customers would ask an AI.</p>}
       {prompts.length > 0 && (
+        <p class="text-xs text-gray-500 mb-3">
+          {prompts.filter((p) => p.status === "EXECUTED").length} of {prompts.length} asked. To fill coverage: ask a question in that engine
+          (signed out, or a private window), then record exactly what came back below.
+        </p>
+      )}
+      {prompts.length > 0 && (
         <div class="overflow-x-auto mb-6">
           <table class="w-full text-left text-xs">
             <thead><tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
-              <th class="py-2 pr-4">Prompt</th><th class="py-2 pr-4">Category</th>
-              <th class="py-2 pr-4 text-right">Observations</th><th class="py-2">Last executed</th>
+              <th class="py-2 pr-4">Question</th><th class="py-2 pr-4">Engine</th><th class="py-2 pr-4">Why it is in the bank</th>
+              <th class="py-2 pr-4 text-right">Answers recorded</th><th class="py-2">Last asked</th>
             </tr></thead>
             <tbody>{prompts.map((p) => (
               <tr class="border-b border-gray-100 align-top">
                 <td class="py-2 pr-4 font-bold text-brand-dark max-w-md">{str(p.prompt)}</td>
-                <td class="py-2 pr-4">{str(p.category)}</td>
-                <td class="py-2 pr-4 text-right tabular-nums">{num(p.observationCount)}</td>
-                <td class="py-2">{fmtWhen(p.lastExecutedAt)}</td>
+                <td class="py-2 pr-4 whitespace-nowrap">{engineLabel(p.engine)}</td>
+                <td class="py-2 pr-4 text-gray-600">{str(p.category)}</td>
+                <td class="py-2 pr-4 text-right tabular-nums">{num((obsByPrompt.get(String(p.id)) ?? []).length)}</td>
+                <td class="py-2">{p.status === "EXECUTED" ? fmtWhen(lastObserved(obsByPrompt.get(String(p.id)))) : "Not asked yet"}</td>
               </tr>))}
             </tbody>
           </table>
@@ -125,6 +177,14 @@ const coverageReason = emptyReason(coverageRes, "No coverage data yet");
             class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
         <label class="text-xs font-bold text-gray-700">Category
           <input name="category" placeholder="e.g. chargers" class="mt-1 block w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        <fieldset class="text-xs font-bold text-gray-700">
+          <legend>Ask it of</legend>
+          <div class="mt-1 flex flex-wrap gap-3">
+            {ENGINES.map(([v, label], i) => (
+              <label class="inline-flex items-center gap-1.5 font-normal"><input type="checkbox" name="engine" value={v} checked={i < 3} class="rounded border-gray-300" /> {label}</label>
+            ))}
+          </div>
+        </fieldset>
         <button type="submit" class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-6 text-sm font-bold text-white hover:bg-black">Add prompt</button>
       </form>
     </section>
@@ -140,14 +200,8 @@ const coverageReason = emptyReason(coverageRes, "No coverage data yet");
         <input type="hidden" name="intent" value="observation" />
         <label class="text-xs font-bold text-gray-700 lg:col-span-2">Prompt
           <select name="promptId" required class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-            <option value="">— choose from the bank —</option>
-            {prompts.map((p) => <option value={str(p.id)}>{str(p.prompt)}</option>)}
-          </select></label>
-        <label class="text-xs font-bold text-gray-700">Engine
-          <select name="engine" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-            <option value="chatgpt">ChatGPT</option><option value="gemini">Gemini</option>
-            <option value="perplexity">Perplexity</option><option value="ai_overview">Google AI Overview</option>
-            <option value="copilot">Copilot</option><option value="other">Other</option>
+            <option value="">— choose the question you asked —</option>
+            {prompts.map((p) => <option value={str(p.id)}>{engineLabel(p.engine)} · {str(p.prompt)}</option>)}
           </select></label>
         <label class="text-xs font-bold text-gray-700">Model (if shown)
           <input name="model" placeholder="e.g. GPT-5" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>

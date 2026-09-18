@@ -17,8 +17,12 @@ if (Astro.request.method === "POST") {
   const intent = String(form.get("intent") ?? "");
   if (intent === "add") {
     const res = await seoPost(token, "/admin/seo/competitors", {
-      name: String(form.get("name") ?? "").trim(),
-      type: String(form.get("type") ?? "").trim() || undefined,
+      // The API reads canonicalName/businessType; "name"/"type" were refused
+      // ("canonicalName is required"), so adding a competitor never worked.
+      canonicalName: String(form.get("name") ?? "").trim(),
+      businessType: String(form.get("type") ?? "").trim() || undefined,
+      status: "ACTIVE",
+      evidenceState: "MANAGEMENT_SUPPLIED",
       directness: String(form.get("directness") ?? "").trim() || undefined,
       ugandaRelevance: String(form.get("ugandaRelevance") ?? "").trim() || undefined,
       domains: String(form.get("domains") ?? "")
@@ -34,8 +38,9 @@ if (Astro.request.method === "POST") {
       body.directness = String(form.get("directness") ?? "").trim() || undefined;
     }
     if (intent === "ignore") body.status = "IGNORED";
-    if (intent === "merge") body.mergeIntoId = String(form.get("mergeIntoId") ?? "").trim();
-    const res = await seoPatch(token, `/admin/seo/competitors?id=${encodeURIComponent(id)}`, { id, ...body });
+    // The API reads mergedIntoId and status MERGED, with the id in the path.
+    if (intent === "merge") { body.status = "MERGED"; body.mergedIntoId = String(form.get("mergeIntoId") ?? "").trim(); }
+    const res = await seoPatch(token, `/admin/seo/competitors/${encodeURIComponent(id)}`, body);
     if (res.ok) notice = `Competitor ${intent === "classify" ? "classified" : intent === "ignore" ? "ignored" : "merged"}.`;
     else formError = res.message;
   }
@@ -47,8 +52,16 @@ type Competitor = {
   id?: string; name?: string; type?: string; directness?: string;
   ugandaRelevance?: string; status?: string; domains?: string[];
   evidence?: unknown;
+  canonicalName?: string; businessType?: string; evidenceSource?: string; evidenceState?: string;
 };
-const competitors = rowsOf<Competitor>(listRes);
+// The API's rows are seo_competitors columns (canonical_name, business_type,
+// evidence_source); the page read name/type/evidence, which never exist.
+const competitors = rowsOf<Competitor>(listRes).map((c) => ({
+  ...c,
+  name: c.name ?? c.canonicalName,
+  type: c.type ?? c.businessType,
+  evidence: c.evidence ?? ([c.evidenceState, c.evidenceSource].filter(Boolean).join(" · ") || undefined),
+}));
 const listReason = emptyReason(listRes, "No competitors are registered yet");
 const candidates = competitors.filter((c) => c.status === "CANDIDATE");
 const others = competitors.filter((c) => c.status !== "CANDIDATE");
@@ -88,7 +101,7 @@ const evidenceText = (e: unknown): string =>
                   <input type="hidden" name="id" value={str(c.id)} />
                   <select name="directness" class="rounded-lg border border-gray-300 px-2 py-1.5 text-xs">
                     <option value="DIRECT">Direct</option>
-                    <option value="INDIRECT">Indirect</option>
+                    <option value="ADJACENT">Adjacent</option>
                     <option value="MARKETPLACE">Marketplace</option>
                   </select>
                   <button type="submit" class="rounded-full bg-brand-dark px-4 py-1.5 text-xs font-bold text-white hover:bg-black">Classify as competitor</button>
@@ -168,12 +181,23 @@ const evidenceText = (e: unknown): string =>
           <input name="name" required maxlength="160" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
         <label class="text-xs font-bold text-gray-700">Type
           <select name="type" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-            <option value="RETAILER">Retailer</option><option value="MARKETPLACE">Marketplace</option>
-            <option value="BRAND">Brand</option><option value="PUBLISHER">Publisher</option><option value="OTHER">Other</option>
+            <option value="LOCAL_ECOMMERCE">Local online shop</option>
+            <option value="SPECIALIST_ACCESSORY_RETAILER">Accessory retailer</option>
+            <option value="PHONE_RETAILER">Phone retailer</option>
+            <option value="COMPUTER_RETAILER">Computer retailer</option>
+            <option value="OMNICHANNEL_RETAILER">Shop with stores and online</option>
+            <option value="MARKETPLACE">Marketplace (e.g. Jumia)</option>
+            <option value="CLASSIFIED_MARKETPLACE">Classifieds (e.g. Jiji)</option>
+            <option value="SOCIAL_COMMERCE">Sells on social media</option>
+            <option value="DIRECT_BRAND">Brand selling direct</option>
+            <option value="TELECOM_RETAILER">Telecom retailer</option>
+            <option value="INFORMATIONAL_SERP_COMPETITOR">Information site (ranks, does not sell)</option>
+            <option value="UNRESOLVED" selected>Not sure yet</option>
           </select></label>
         <label class="text-xs font-bold text-gray-700">Directness
           <select name="directness" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-            <option value="DIRECT">Direct</option><option value="INDIRECT">Indirect</option>
+            <option value="DIRECT">Direct — sells what we sell</option><option value="ADJACENT">Adjacent — overlaps in part</option>
+            <option value="SERP_ONLY">Search only — competes for rankings</option><option value="UNRESOLVED" selected>Not sure yet</option>
           </select></label>
         <label class="text-xs font-bold text-gray-700">Uganda relevance
           <select name="ugandaRelevance" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">

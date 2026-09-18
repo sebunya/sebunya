@@ -15,17 +15,28 @@ let formError: string | null = null;
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   const rankRaw = String(form.get("rank") ?? "").trim();
+  // The API takes { observations: [...] }, each with a provider and observedAt,
+  // and the database accepts GOOGLE/BING/OTHER and MOBILE/DESKTOP. The form sent
+  // one bare object, lower-case values and no provider, so no manual SERP was
+  // ever recorded and market share / competitors stayed empty (2026-09-18).
+  const pageUrl = String(form.get("url") ?? "").trim();
+  let domain: string | undefined;
+  try { domain = pageUrl ? new URL(pageUrl).hostname.replace(/^www\./, "") : undefined; } catch { domain = undefined; }
+  const observedRaw = String(form.get("observedAt") ?? "").trim();
   const res = await seoPost(token, "/admin/seo/serp/observations", {
-    queryId: String(form.get("queryId") ?? "").trim(),
-    engine: String(form.get("engine") ?? "").trim(),
-    device: String(form.get("device") ?? "").trim(),
-    rank: rankRaw === "" ? null : Number(rankRaw),
-    url: String(form.get("url") ?? "").trim() || undefined,
-    resultType: String(form.get("resultType") ?? "").trim() || undefined,
-    serpFeatures: String(form.get("serpFeatures") ?? "")
-      .split(",").map((f) => f.trim()).filter(Boolean),
-    observedAt: String(form.get("observedAt") ?? "").trim() || undefined,
-    source: "manual-operator",
+    observations: [{
+      queryId: String(form.get("queryId") ?? "").trim(),
+      provider: "OPERATOR",
+      engine: String(form.get("engine") ?? "GOOGLE").trim().toUpperCase(),
+      device: String(form.get("device") ?? "MOBILE").trim().toUpperCase(),
+      rank: rankRaw === "" ? null : Number(rankRaw),
+      url: pageUrl || undefined,
+      domain,
+      resultType: String(form.get("resultType") ?? "").trim() || undefined,
+      serpFeatures: String(form.get("serpFeatures") ?? "")
+        .split(",").map((f) => f.trim()).filter(Boolean),
+      observedAt: observedRaw ? new Date(observedRaw).toISOString() : new Date().toISOString(),
+    }],
   });
   if (res.ok) notice = "Observation recorded.";
   else formError = res.message;
@@ -140,11 +151,11 @@ const selectedQuery = queries.find((q) => q.id === queryId);
           </select></label>
         <label class="text-xs font-bold text-gray-700">Engine
           <select name="engine" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-            <option value="google">Google</option><option value="bing">Bing</option><option value="duckduckgo">DuckDuckGo</option>
+            <option value="GOOGLE">Google</option><option value="BING">Bing</option><option value="OTHER">Other</option>
           </select></label>
         <label class="text-xs font-bold text-gray-700">Device
           <select name="device" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
-            <option value="mobile">Mobile</option><option value="desktop">Desktop</option>
+            <option value="MOBILE">Mobile</option><option value="DESKTOP">Desktop</option>
           </select></label>
         <label class="text-xs font-bold text-gray-700">Rank (empty = not ranked)
           <input name="rank" type="number" min="1" max="200" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>

@@ -744,7 +744,15 @@ export class DrizzleSeoGrowthRepository {
 
   async listCrawlRuns(limit = 50): Promise<any[]> {
     return rowsOf(await db.execute(sql`
-      select * from seo_crawl_runs order by started_at desc limit ${Math.min(Math.max(limit, 1), 200)}
+      -- issue_count: pages with a real issue. The Technical SEO screen had an
+      -- Issues column that nothing filled. Policy-intended noindex is not one.
+      select r.*, (
+        select count(*)::int from seo_crawl_pages p
+        where p.run_id = r.id and exists (
+          select 1 from jsonb_array_elements_text(coalesce(p.issues, '[]'::jsonb)) e where e <> 'NOINDEX_BY_POLICY'
+        )
+      ) as issue_count
+      from seo_crawl_runs r order by r.started_at desc limit ${Math.min(Math.max(limit, 1), 200)}
     `));
   }
 

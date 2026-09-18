@@ -41,7 +41,9 @@ if (Astro.request.method === "POST") {
       intent: String(form.get("q_intent") ?? "").trim() || undefined,
       category: String(form.get("category") ?? "").trim() || undefined,
       priority: String(form.get("priority") ?? "").trim() || undefined,
-      source: "manual",
+      // The database accepts OPERATOR (not "manual") and P0–P3/UNTRIAGED (not
+      // HIGH/MEDIUM/LOW): adding a query had never saved (2026-09-18).
+      source: "OPERATOR",
     });
     if (res.ok) notice = "Query added.";
     else formError = res.message;
@@ -51,7 +53,11 @@ if (Astro.request.method === "POST") {
     if (errors.length > 0) {
       formError = `The CSV was not imported: ${errors.slice(0, 10).join(" ")}`;
     } else {
-      const res = await seoPost(token, "/admin/seo/queries/import-csv", { rows, source: "csv-import" });
+      // provider is required: where these keyword facts came from.
+      const provider = String(form.get("provider") ?? "").trim();
+      const res = provider
+        ? await seoPost(token, "/admin/seo/queries/import-csv", { rows, provider })
+        : { ok: false as const, message: "Say where these queries came from (for example Google Keyword Planner)." };
       if (res.ok) {
         const d = res.data as { imported?: number; skipped?: number } | null;
         notice = d && typeof d.imported === "number"
@@ -160,7 +166,7 @@ const fv = (f: string) => url.searchParams.get(f) ?? "";
               <input name="category" placeholder="e.g. solar" class="mt-1 block w-full rounded-lg border border-gray-300 px-2 py-2 text-sm" /></label>
             <label class="text-xs font-bold text-gray-700">Priority
               <select name="priority" class="mt-1 block w-full rounded-lg border border-gray-300 px-2 py-2 text-sm">
-                <option value="HIGH">High</option><option value="MEDIUM" selected>Medium</option><option value="LOW">Low</option>
+                <option value="P0">P0 — act now</option><option value="P1">P1</option><option value="P2">P2</option><option value="P3">P3</option><option value="UNTRIAGED" selected>Untriaged</option>
               </select></label>
           </div>
           <button type="submit" class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-6 text-sm font-bold text-white hover:bg-black">Add query</button>
@@ -176,7 +182,9 @@ const fv = (f: string) => url.searchParams.get(f) ?? "";
         </p>
         <form method="POST" class="space-y-3">
           <input type="hidden" name="intent" value="import" />
-          <textarea name="csv" rows="6" required placeholder={`query,intent,category,priority\nsolar battery price uganda,TRANSACTIONAL,solar,HIGH`}
+          <label class="block text-xs font-bold text-gray-700">Where these came from
+            <input name="provider" required placeholder="e.g. Google Keyword Planner" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <textarea name="csv" rows="6" required placeholder={`query,intent,category,priority\npower bank price uganda,TRANSACTIONAL,power,P1`}
             class="block w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs"></textarea>
           <button type="submit" class="inline-flex min-h-11 items-center rounded-full border-2 border-brand-dark px-6 text-sm font-bold text-brand-dark hover:bg-gray-50">Import</button>
         </form>

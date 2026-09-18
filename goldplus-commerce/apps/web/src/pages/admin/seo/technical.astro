@@ -20,10 +20,11 @@ if (Astro.request.method === "POST") {
     if (res.ok) notice = "Crawl started — refresh this page to watch its progress.";
     else formError = res.message;
   } else if (intent === "alert-ack" || intent === "alert-resolve") {
-    const res = await seoPost(token, "/admin/seo/alerts", {
-      id: String(form.get("id") ?? ""),
-      action: intent === "alert-ack" ? "ACKNOWLEDGE" : "RESOLVE",
-    });
+    // The API takes the id in the path (/alerts/:id/acknowledge|resolve);
+    // POST /admin/seo/alerts did not exist, so these buttons never worked.
+    const id = String(form.get("id") ?? "");
+    const action = intent === "alert-ack" ? "acknowledge" : "resolve";
+    const res = await seoPost(token, `/admin/seo/alerts/${encodeURIComponent(id)}/${action}`, {});
     if (res.ok) notice = intent === "alert-ack" ? "Alert acknowledged." : "Alert resolved.";
     else formError = res.message;
   }

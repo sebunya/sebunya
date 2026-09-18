@@ -18,14 +18,15 @@ if (Astro.request.method === "POST") {
   if (intent === "generate") {
     const res = await seoPost(token, "/admin/seo/opportunities/generate", {});
     if (res.ok) {
-      const d = res.data as { generated?: number } | null;
-      notice = d && typeof d.generated === "number"
-        ? `Generated ${d.generated} opportunit${d.generated === 1 ? "y" : "ies"} from measured data.`
+      // The API answers { created, updated }; "generated" never existed.
+      const d = res.data as { created?: number; updated?: number } | null;
+      notice = d && typeof d.created === "number"
+        ? `${d.created} new and ${d.updated ?? 0} updated opportunit${(d.created + (d.updated ?? 0)) === 1 ? "y" : "ies"} from measured data.`
         : "Generation completed.";
     } else formError = res.message;
   } else if (intent === "dismiss") {
     const id = String(form.get("id") ?? "");
-    const res = await seoPatch(token, "/admin/seo/opportunities", { id, status: "DISMISSED" });
+    const res = await seoPatch(token, `/admin/seo/opportunities/${encodeURIComponent(id)}`, { status: "DISMISSED" });
     if (res.ok) notice = "Opportunity dismissed.";
     else formError = res.message;
   }
