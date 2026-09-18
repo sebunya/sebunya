@@ -13,6 +13,12 @@ import { endDbConnection } from '../infrastructure/db/client';
  * B/C tiers. Every product is created as a DRAFT: approval_status 'draft',
  * active false, out of stock. Nothing becomes sellable here.
  *
+ * MODE=UPSERT re-prices existing products instead (a revised price list): the
+ * apply writes name, category, descriptions, retail and tiers only — stock,
+ * images, visibility and the live slug are left alone — so rows must carry the
+ * product's current name/category/descriptions. SESSION_NAME and SOURCE_FILE
+ * label the session.
+ *
  * Four eyes: the pipeline refuses to let the uploader approve, so a second
  * admin identity (APPROVER_USER_ID) approves and applies. `create` is
  * idempotent on the row digest: a re-run resumes the same session.
@@ -29,14 +35,17 @@ async function main(): Promise<void> {
   if (!uuid(actorId)) throw new Error('ACTOR_USER_ID must be the uploading admin uuid.');
   const rows = JSON.parse(readFileSync(String(process.env.ROWS_FILE ?? '/import/rows.json'), 'utf8')) as Record<string, unknown>[];
   const dryRun = process.env.DRY_RUN === '1';
+  const mode = process.env.MODE === 'UPSERT' ? 'UPSERT' : 'CREATE_ONLY';
+  const sessionName = String(process.env.SESSION_NAME ?? 'Price list 18-8-2026');
+  const sourceFilename = String(process.env.SOURCE_FILE ?? 'GoldPlus_PriceGuard_Pricing_Review_2026-08-31.csv');
   const pim = Registry.getInstance().pimImportOperationsUseCase;
   const sessionOf = async (id: string): Promise<Sess> => (await pim.detail(id)).session as unknown as Sess;
 
   const created = await pim.create({
-    name: `Price list 18-8-2026 (${rows.length} rows)`,
-    sourceFilename: 'GoldPlus_PriceGuard_Pricing_Review_2026-08-31.csv',
+    name: `${sessionName} (${rows.length} rows)`,
+    sourceFilename,
     sourceSha256: createHash('sha256').update(JSON.stringify(rows)).digest('hex'),
-    mode: 'CREATE_ONLY',
+    mode,
     rows,
     actorId,
   });
@@ -69,7 +78,7 @@ async function main(): Promise<void> {
   if (!uuid(approverId) || approverId === actorId) throw new Error('APPROVER_USER_ID must be a DIFFERENT admin uuid (four eyes).');
 
   if (s.status === 'READY_FOR_APPROVAL') {
-    await pim.approve({ id: s.id, expectedVersion: s.version, actorId: approverId, decision: 'APPROVED', reason: 'Owner price list 18-8-2026; retail = Price D, floor = Price A; every product created as a draft.' });
+    await pim.approve({ id: s.id, expectedVersion: s.version, actorId: approverId, decision: 'APPROVED', reason: mode === 'UPSERT' ? `${sessionName}; retail = Price D, floor = Price A, tiers B/C; existing products re-priced.` : 'Owner price list 18-8-2026; retail = Price D, floor = Price A; every product created as a draft.' });
     s = await sessionOf(s.id);
   }
   if (s.status === 'APPROVED') {
