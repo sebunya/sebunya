@@ -1,0 +1,224 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import AiSearchNav from "../../../components/admin/AiSearchNav.astro";
+import { readSessionToken } from "../../../lib/session";
+import { aivGet, aivPost, providerLabel, rate, delta, when, usd, RUN_STATE, DEFAULT_PROJECT } from "../../../lib/adminAiVisibility";
+
+/** AI Search overview: what changed, why, what needs attention, what to do. */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/ai-search", 303);
+const project = Astro.url.searchParams.get("project") ?? DEFAULT_PROJECT;
+const P = `/projects/${encodeURIComponent(project)}`;
+
+let notice: string | null = null;
+let formError: string | null = null;
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") ?? "");
+  if (intent === "run") {
+    const r = await aivPost<{ run: { id: string; status: string }; created: boolean }>(token, `${P}/runs`, {});
+    if (r.ok) notice = r.data.created ? `Run ${RUN_STATE[r.data.run.status]?.toLowerCase() ?? r.data.run.status}.` : "That run was already requested this hour; showing it below.";
+    else formError = r.message;
+  } else if (intent === "create-action") {
+    const rec = JSON.parse(String(form.get("rec") ?? "{}"));
+    const r = await aivPost<{ id: string }>(token, `${P}/actions`, { category: "CONTENT_CHANGE", title: rec.title, reason: rec.why, mechanism: rec.mechanism, targetPage: rec.targetPage, limitations: rec.limitations, confidence: rec.confidence, evidence: rec.evidence, expectedImpact: rec.verification });
+    if (r.ok) return Astro.redirect(`/admin/ai-search/actions?id=${r.data.id}${project !== DEFAULT_PROJECT ? `&project=${project}` : ""}`, 303);
+    formError = r.message;
+  }
+}
+
+type Metrics = { answered: number; mentioned: number; mentionRate: number | null; citationEligible: number; cited: number; citationRate: number | null; shareOfMentions: number | null; shareOfCitations: number | null };
+type Summary = {
+  project: { name: string; brandName: string; domains: string[]; marketCountry: string; marketCity: string | null };
+  state: { providersConfigured: string[]; trackedQueries: number; pinnedCompetitors: number; lastSuccessfulRun: { id: string; status: string; finishedAt: string } | null; activeRun: any | null; evidence: { answers: number } };
+  current: Metrics; previous: Metrics | null;
+  byProvider: Array<Metrics & { provider: string }>;
+  series: Array<{ day: string; provider: string; answered: number; mentioned: number; eligible: number; cited: number }>;
+  competitors: Array<{ id: string; name: string; domains: string[]; mentioned?: number; mentionRate?: number | null; cited?: number; citationRate?: number | null }>;
+  movements: Array<{ kind: string; queryText: string; queryId: string | null; provider: string; observationIds: string[]; detail: string }>;
+  nextBestAction: any | null;
+  openGaps: number;
+};
+const res = await aivGet<Summary>(token, `${P}/summary?days=28`);
+const s = res.ok ? res.data : null;
+const active = s?.state.activeRun ?? null;
+
+// One chart: overall mention and citation rate per day (sum across providers).
+const days = s ? [...new Set(s.series.map((x) => x.day))].sort() : [];
+const pts = days.map((d) => {
+  const rows = s!.series.filter((x) => x.day === d);
+  const a = rows.reduce((t, x) => t + x.answered, 0), m = rows.reduce((t, x) => t + x.mentioned, 0);
+  const e = rows.reduce((t, x) => t + x.eligible, 0), c = rows.reduce((t, x) => t + x.cited, 0);
+  return { d, mention: a ? m / a : null, citation: e ? c / e : null, n: a };
+});
+const W = 640, H = 180, PAD = 32;
+const xAt = (i: number) => PAD + (days.length <= 1 ? (W - 2 * PAD) / 2 : (i * (W - 2 * PAD)) / (days.length - 1));
+const yAt = (v: number) => H - PAD - v * (H - 2 * PAD);
+const path = (k: "mention" | "citation") => pts.map((p, i) => (p[k] == null ? null : `${xAt(i)},${yAt(p[k] as number)}`)).filter(Boolean).join(" ");
+const MOVE: Record<string, string> = { CITATION_LOST: "Citation lost", CITATION_GAINED: "Citation gained", MENTION_LOST: "Mention lost", MENTION_GAINED: "Mention gained", COMPETITOR_EMERGED: "Competitor newly cited" };
+const q = project !== DEFAULT_PROJECT ? `&project=${encodeURIComponent(project)}` : "";
+---
+
+<AdminLayout title="AI Search" description="Where AI answer engines name and cite the brand, what changed, and what to do next.">
+  {active && ["QUEUED", "RUNNING"].includes(active.status) && <meta http-equiv="refresh" content="10" slot="head" />}
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <header class="mb-4">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">AI Search</h2>
+      {s && (
+        <p class="text-sm text-gray-600 mt-1">
+          {s.project.brandName} · {s.project.domains.join(", ")} · {s.project.marketCity ? `${s.project.marketCity}, ` : ""}{s.project.marketCountry}
+          · Last completed run: {s.state.lastSuccessfulRun ? when(s.state.lastSuccessfulRun.finishedAt) : "none yet"}
+        </p>
+      )}
+    </header>
+    <AiSearchNav current="overview" project={project} />
+
+    {notice && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</div>}
+    {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+    {!res.ok && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{res.message}</div>}
+
+    {s && (
+      <>
+        {/* ── Current system state / truthful next step ─────────────────── */}
+        {s.state.providersConfigured.length === 0 ? (
+          <section class="mb-8 rounded-2xl border border-amber-300 bg-amber-50 p-6">
+            <h3 class="font-black text-amber-900">No AI provider is connected</h3>
+            <p class="text-sm text-amber-900 mt-1 max-w-2xl">Nothing can be measured until at least one answer engine has an API key. Add a key for ChatGPT (OpenAI), Claude, Gemini or Perplexity, test it, then switch it on. Keys are stored encrypted and never shown again.</p>
+            <a href={`/admin/ai-search/settings${q.replace("&", "?")}`} class="mt-3 inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Connect a provider</a>
+          </section>
+        ) : s.state.trackedQueries === 0 ? (
+          <section class="mb-8 rounded-2xl border border-amber-300 bg-amber-50 p-6">
+            <h3 class="font-black text-amber-900">No questions are tracked</h3>
+            <p class="text-sm text-amber-900 mt-1">Add the questions customers actually ask, in their words.</p>
+            <a href={`/admin/ai-search/queries${q.replace("&", "?")}`} class="mt-3 inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Add questions</a>
+          </section>
+        ) : (
+          <section class="mb-8 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-gray-200 bg-white p-5">
+            <div class="text-sm text-gray-700">
+              {active ? (
+                <span><strong>{RUN_STATE[active.status] ?? active.status}</strong>{active.phase ? ` — ${active.phase}` : ""} · {active.succeeded + active.failed + active.skipped}/{active.totalTasks} answers · est. {usd(active.estimatedUsd)}
+                  {active.status === "AWAITING_APPROVAL" && <> · <a class="underline font-bold" href={`/admin/ai-search/runs${q.replace("&", "?")}`}>review</a></>}</span>
+              ) : (
+                <span>{s.state.trackedQueries} tracked questions × {s.state.providersConfigured.map(providerLabel).join(", ")} · {s.state.pinnedCompetitors} pinned competitors</span>
+              )}
+            </div>
+            {!active && (
+              <form method="POST"><input type="hidden" name="intent" value="run" />
+                <button class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white hover:bg-black">{s.state.lastSuccessfulRun ? "Run a visibility check" : "Run the first baseline"}</button>
+              </form>
+            )}
+          </section>
+        )}
+
+        {s.state.evidence.answers === 0 ? (
+          <section class="mb-8 rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-8 text-sm text-gray-600">
+            No answers have been recorded yet, so there is nothing to report — not a zero, an absence of evidence. The first completed run sets the baseline.
+          </section>
+        ) : (
+          <>
+            {/* ── Visibility summary: mentions and citations, never blended ── */}
+            <section aria-labelledby="vis" class="mb-8">
+              <h3 id="vis" class="sr-only">Visibility</h3>
+              <div class="grid grid-cols-2 lg:grid-cols-4 gap-px overflow-hidden rounded-2xl border border-gray-200 bg-gray-200">
+                {[
+                  ["Mentioned", rate(s.current.mentionRate), `${s.current.mentioned} of ${s.current.answered} answers name ${s.project.brandName}`, delta(s.current.mentionRate, s.previous?.mentionRate)],
+                  ["Cited", rate(s.current.citationRate), `${s.current.cited} of ${s.current.citationEligible} sourced answers cite our site`, delta(s.current.citationRate, s.previous?.citationRate)],
+                  ["Share of mentions", rate(s.current.shareOfMentions), "vs pinned competitors", ""],
+                  ["Share of citations", rate(s.current.shareOfCitations), "vs pinned competitors", ""],
+                ].map(([label, value, sub, d]) => (
+                  <div class="bg-white p-5">
+                    <p class="text-xs font-bold uppercase tracking-wider text-gray-500">{label}</p>
+                    <p class="mt-1 text-3xl font-black text-brand-dark tabular-nums">{value}</p>
+                    <p class="mt-1 text-xs text-gray-500">{sub}</p>
+                    {d && <p class="mt-1 text-xs font-bold text-gray-700">{d}</p>}
+                  </div>
+                ))}
+              </div>
+              <p class="mt-2 text-xs text-gray-500">Latest answer per question and provider · {s.state.evidence.answers} answers · <a class="underline" href={`/admin/ai-search/answers${q.replace("&", "?")}`}>see every answer</a>. Answers whose provider returned no sources are left out of the citation rate, not counted as uncited.</p>
+            </section>
+
+            {/* ── Next best action: one, dominant ─────────────────────────── */}
+            {s.nextBestAction && (
+              <section aria-labelledby="nba" class="mb-8 rounded-2xl border-2 border-brand-dark bg-white p-6">
+                <p class="text-xs font-bold uppercase tracking-wider text-gray-500">Next best action · confidence {String(s.nextBestAction.confidence).toLowerCase()}</p>
+                <h3 id="nba" class="mt-1 text-lg font-black text-brand-dark">{s.nextBestAction.title}</h3>
+                <dl class="mt-3 grid gap-2 text-sm text-gray-700 max-w-3xl">
+                  <div><dt class="inline font-bold">Why: </dt><dd class="inline">{s.nextBestAction.why}</dd></div>
+                  <div><dt class="inline font-bold">How it would help: </dt><dd class="inline">{s.nextBestAction.mechanism}</dd></div>
+                  <div><dt class="inline font-bold">How we would know: </dt><dd class="inline">{s.nextBestAction.verification}</dd></div>
+                  <div class="text-xs text-gray-500">{s.nextBestAction.limitations}</div>
+                </dl>
+                <div class="mt-4 flex flex-wrap gap-3">
+                  <form method="POST"><input type="hidden" name="intent" value="create-action" /><input type="hidden" name="rec" value={JSON.stringify(s.nextBestAction)} />
+                    <button class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white hover:bg-black">Draft this as an action</button></form>
+                  <a class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-5 text-sm font-bold text-gray-700" href={`/admin/ai-search/answers?id=${s.nextBestAction.evidence.observationIds[0]}${q}`}>See the evidence</a>
+                  <a class="inline-flex min-h-11 items-center px-2 text-sm font-bold text-gray-600 underline" href={`/admin/ai-search/gaps${q.replace("&", "?")}`}>All {s.openGaps} gaps</a>
+                </div>
+              </section>
+            )}
+
+            {/* ── Trend: one chart ────────────────────────────────────────── */}
+            <section aria-labelledby="trend" class="mb-8 rounded-2xl border border-gray-200 bg-white p-6">
+              <h3 id="trend" class="text-sm font-black uppercase tracking-widest text-gray-500">Last 28 days</h3>
+              {pts.length < 2 ? (
+                <p class="mt-3 text-sm text-gray-500">A trend needs runs on at least two days. {pts.length === 1 ? "One day recorded so far." : ""}</p>
+              ) : (
+                <figure class="mt-3 overflow-x-auto">
+                  <svg viewBox={`0 0 ${W} ${H}`} class="w-full max-w-3xl" role="img" aria-label="Daily mention rate and citation rate">
+                    {[0, 0.5, 1].map((v) => (<g><line x1={PAD} x2={W - PAD} y1={yAt(v)} y2={yAt(v)} stroke="#e5e7eb" /><text x={4} y={yAt(v) + 4} font-size="10" fill="#6b7280">{v * 100}%</text></g>))}
+                    <polyline points={path("mention")} fill="none" stroke="#0A0A0A" stroke-width="2" />
+                    <polyline points={path("citation")} fill="none" stroke="#6BA300" stroke-width="2" stroke-dasharray="5 3" />
+                    <text x={PAD} y={H - 8} font-size="10" fill="#6b7280">{days[0]}</text>
+                    <text x={W - PAD} y={H - 8} font-size="10" fill="#6b7280" text-anchor="end">{days[days.length - 1]}</text>
+                  </svg>
+                  <figcaption class="mt-2 text-xs text-gray-600"><span class="font-bold">Solid:</span> mentioned · <span class="font-bold text-[#4d7a00]">Dashed:</span> cited. Share of answers that day, all providers.</figcaption>
+                </figure>
+              )}
+              <div class="mt-5 overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead><tr class="text-left text-xs font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200"><th class="py-2 pr-4">Provider</th><th class="py-2 pr-4 text-right">Answers</th><th class="py-2 pr-4 text-right">Mentioned</th><th class="py-2 text-right">Cited</th></tr></thead>
+                  <tbody>{s.byProvider.map((p) => (
+                    <tr class="border-b border-gray-100"><td class="py-2 pr-4 font-bold">{providerLabel(p.provider)}</td><td class="py-2 pr-4 text-right tabular-nums">{p.answered}</td><td class="py-2 pr-4 text-right tabular-nums">{rate(p.mentionRate)}</td><td class="py-2 text-right tabular-nums">{rate(p.citationRate)}</td></tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            </section>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-12">
+              {/* ── Biggest movements ─────────────────────────────────────── */}
+              <section aria-labelledby="mv" class="rounded-2xl border border-gray-200 bg-white p-6">
+                <h3 id="mv" class="text-sm font-black uppercase tracking-widest text-gray-500">What changed since the previous run</h3>
+                {s.movements.length === 0 ? (
+                  <p class="mt-3 text-sm text-gray-500">{s.previous ? "Nothing moved between the last two runs." : "Changes appear once a question has been asked in two runs."}</p>
+                ) : (
+                  <ul class="mt-3 divide-y divide-gray-100">{s.movements.map((m) => (
+                    <li class="py-2.5 text-sm">
+                      <p><span class="font-bold">{MOVE[m.kind] ?? m.kind}</span> · {providerLabel(m.provider)}</p>
+                      <p class="text-gray-700">“{m.queryText}” — {m.detail} <a class="underline" href={`/admin/ai-search/answers?id=${m.observationIds[m.observationIds.length - 1]}${q}`}>answer</a></p>
+                    </li>
+                  ))}</ul>
+                )}
+              </section>
+
+              {/* ── Competitive landscape ─────────────────────────────────── */}
+              <section aria-labelledby="cl" class="rounded-2xl border border-gray-200 bg-white p-6">
+                <h3 id="cl" class="text-sm font-black uppercase tracking-widest text-gray-500">Pinned competitors in the same answers</h3>
+                {s.competitors.length === 0 ? <p class="mt-3 text-sm text-gray-500">No competitors pinned. <a class="underline" href={`/admin/ai-search/competitors${q.replace("&", "?")}`}>Pin the ones that matter.</a></p> : (
+                  <table class="mt-3 w-full text-sm">
+                    <thead><tr class="text-left text-xs font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200"><th class="py-2 pr-3">Brand</th><th class="py-2 pr-3 text-right">Mentioned</th><th class="py-2 text-right">Cited</th></tr></thead>
+                    <tbody>
+                      <tr class="border-b border-gray-100 bg-gray-50"><td class="py-2 pr-3 font-black">{s.project.brandName} (us)</td><td class="py-2 pr-3 text-right tabular-nums">{rate(s.current.mentionRate)}</td><td class="py-2 text-right tabular-nums">{rate(s.current.citationRate)}</td></tr>
+                      {[...s.competitors].sort((a, b) => (b.mentioned ?? 0) - (a.mentioned ?? 0)).slice(0, 8).map((c) => (
+                        <tr class="border-b border-gray-100"><td class="py-2 pr-3">{c.name}</td><td class="py-2 pr-3 text-right tabular-nums">{rate(c.mentionRate)}</td><td class="py-2 text-right tabular-nums">{rate(c.citationRate)}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </section>
+            </div>
+          </>
+        )}
+      </>
+    )}
+  </div>
+</AdminLayout>

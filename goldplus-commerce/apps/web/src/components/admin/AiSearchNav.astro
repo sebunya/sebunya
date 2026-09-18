@@ -1,0 +1,32 @@
+---
+/** Section navigation for AI Search: one sidebar entry, tabs inside. */
+interface Props { current: string; project: string }
+const { current, project } = Astro.props;
+const tabs = [
+  { key: "overview", label: "Overview", href: "/admin/ai-search" },
+  { key: "gaps", label: "Citation gaps", href: "/admin/ai-search/gaps" },
+  { key: "answers", label: "Answers", href: "/admin/ai-search/answers" },
+  { key: "competitors", label: "Competitors", href: "/admin/ai-search/competitors" },
+  { key: "queries", label: "Questions", href: "/admin/ai-search/queries" },
+  { key: "runs", label: "Runs & research", href: "/admin/ai-search/runs" },
+  { key: "actions", label: "Actions", href: "/admin/ai-search/actions" },
+  { key: "settings", label: "Settings", href: "/admin/ai-search/settings" },
+];
+const q = project && project !== "goldplus" ? `?project=${encodeURIComponent(project)}` : "";
+---
+<nav aria-label="AI Search sections" class="mb-8 -mx-1 overflow-x-auto">
+  <ul class="flex gap-1 border-b border-gray-200 min-w-max">
+    {tabs.map((t) => (
+      <li>
+        <a
+          href={`${t.href}${q}`}
+          aria-current={t.key === current ? "page" : undefined}
+          class:list={[
+            "inline-block px-3 py-2.5 text-sm font-bold border-b-2 -mb-px focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded-t",
+            t.key === current ? "border-brand-dark text-brand-dark" : "border-transparent text-gray-500 hover:text-brand-dark",
+          ]}
+        >{t.label}</a>
+      </li>
+    ))}
+  </ul>
+</nav>

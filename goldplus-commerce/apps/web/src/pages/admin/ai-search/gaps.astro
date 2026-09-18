@@ -1,0 +1,106 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import AiSearchNav from "../../../components/admin/AiSearchNav.astro";
+import { readSessionToken } from "../../../lib/session";
+import { aivGet, aivPost, providerLabel, DEFAULT_PROJECT } from "../../../lib/adminAiVisibility";
+
+/** Citation gaps: where competitors or third parties are cited and we are not. */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/ai-search/gaps", 303);
+const project = Astro.url.searchParams.get("project") ?? DEFAULT_PROJECT;
+const P = `/projects/${encodeURIComponent(project)}`;
+const q = project !== DEFAULT_PROJECT ? `&project=${encodeURIComponent(project)}` : "";
+
+let formError: string | null = null;
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const rec = JSON.parse(String(form.get("rec") ?? "{}"));
+  const CATEGORY: Record<string, string> = { IMPROVE_STRUCTURED_DATA: "SCHEMA_CHANGE", INVESTIGATE_LOST_CITATION: "OTHER", EARN_THIRD_PARTY_SOURCE: "OTHER" };
+  const r = await aivPost<{ id: string }>(token, `${P}/actions`, {
+    category: CATEGORY[rec.actionClass] ?? "CONTENT_CHANGE", title: rec.title, reason: rec.why, mechanism: rec.mechanism, targetPage: rec.targetPage,
+    limitations: rec.limitations, confidence: rec.confidence, evidence: rec.evidence, expectedImpact: rec.verification,
+  });
+  if (r.ok) return Astro.redirect(`/admin/ai-search/actions?id=${r.data.id}${q}`, 303);
+  formError = r.message;
+}
+
+type Gap = { kind: string; severity: string; rule: string; observationIds: string[]; competitorNames: string[]; queryText: string; queryId: string | null; provider: string; citedHosts: string[] };
+type Rec = { actionClass: string; title: string; why: string; mechanism: string; risk: string; effort: string; targetPage: string | null; verification: string; confidence: string; limitations: string; evidence: { queryId: string; observationIds: string[]; providers: string[] } };
+const res = await aivGet<{ gaps: Gap[]; recommendations: Rec[] }>(token, `${P}/gaps`);
+const KIND: Record<string, string> = {
+  LOST_CITATION: "Citation lost", COMPETITOR_CITED_NOT_US: "Competitor cited, not us", MENTIONED_NOT_CITED: "Named, not cited",
+  THIRD_PARTY_DOMINATED: "Only third-party sources", ABSENT: "Absent",
+};
+const kindFilter = Astro.url.searchParams.get("kind") ?? "";
+const gaps = res.ok ? res.data.gaps.filter((g) => !kindFilter || g.kind === kindFilter) : [];
+---
+<AdminLayout title="Citation gaps · AI Search" description="Questions where competitors or third parties are cited and our site is not.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <h2 class="text-2xl font-black text-brand-dark tracking-tight mb-4">Citation gaps</h2>
+    <AiSearchNav current="gaps" project={project} />
+    {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+    {!res.ok && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{res.message}</div>}
+
+    {res.ok && res.data.gaps.length === 0 && (
+      <p class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-8 text-sm text-gray-600">No gaps in the latest answers. Either nothing has been measured yet, or every sourced answer cites our site. Answers whose provider returned no sources can never produce a gap.</p>
+    )}
+
+    {res.ok && res.data.recommendations.length > 0 && (
+      <section aria-labelledby="recs" class="mb-10">
+        <h3 id="recs" class="text-sm font-black uppercase tracking-widest text-gray-500 mb-3">Recommended, most urgent first</h3>
+        <ol class="divide-y divide-gray-200 rounded-2xl border border-gray-200 bg-white">
+          {res.data.recommendations.slice(0, 10).map((r) => (
+            <li class="p-5">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="max-w-3xl">
+                  <p class="font-black text-brand-dark">{r.title}</p>
+                  <p class="mt-1 text-sm text-gray-700">{r.why}</p>
+                  <p class="mt-1 text-sm text-gray-600"><span class="font-bold">Mechanism:</span> {r.mechanism}</p>
+                  <p class="mt-1 text-xs text-gray-500">Confidence {r.confidence.toLowerCase()} ({r.evidence.providers.map(providerLabel).join(", ")}) · risk {r.risk.toLowerCase()} · effort {r.effort.toLowerCase()} · {r.limitations}</p>
+                </div>
+                <div class="flex gap-2">
+                  <a class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-4 text-sm font-bold" href={`/admin/ai-search/answers?id=${r.evidence.observationIds[r.evidence.observationIds.length - 1]}${q}`}>Evidence</a>
+                  <form method="POST"><input type="hidden" name="rec" value={JSON.stringify(r)} /><button class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-4 text-sm font-bold text-white">Draft action</button></form>
+                </div>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </section>
+    )}
+
+    {res.ok && res.data.gaps.length > 0 && (
+      <section aria-labelledby="all">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <h3 id="all" class="text-sm font-black uppercase tracking-widest text-gray-500">Every gap in the latest answers ({gaps.length})</h3>
+          <form method="GET" class="flex gap-2 items-center">
+            {project !== DEFAULT_PROJECT && <input type="hidden" name="project" value={project} />}
+            <label class="text-xs font-bold text-gray-600" for="kind">Type</label>
+            <select id="kind" name="kind" class="rounded-lg border border-gray-300 px-2 py-1.5 text-sm">
+              <option value="">All</option>{Object.entries(KIND).map(([k, v]) => <option value={k} selected={k === kindFilter}>{v}</option>)}
+            </select>
+            <button class="rounded-full border border-gray-300 px-3 py-1.5 text-sm font-bold">Filter</button>
+          </form>
+        </div>
+        <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+          <table class="w-full text-sm">
+            <thead><tr class="text-left text-xs font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200">
+              <th class="p-3">Question</th><th class="p-3">Provider</th><th class="p-3">Gap</th><th class="p-3">Competitors cited</th><th class="p-3">Sources cited</th><th class="p-3">Rule</th><th class="p-3"></th>
+            </tr></thead>
+            <tbody>{gaps.map((g) => (
+              <tr class="border-b border-gray-100 align-top">
+                <td class="p-3 font-bold max-w-xs">{g.queryText}</td>
+                <td class="p-3 whitespace-nowrap">{providerLabel(g.provider)}</td>
+                <td class="p-3 whitespace-nowrap">{KIND[g.kind] ?? g.kind}</td>
+                <td class="p-3">{g.competitorNames.join(", ") || "—"}</td>
+                <td class="p-3 text-xs font-mono text-gray-600 max-w-xs">{g.citedHosts.slice(0, 5).join(", ") || "—"}{g.citedHosts.length > 5 ? ` +${g.citedHosts.length - 5}` : ""}</td>
+                <td class="p-3 text-xs text-gray-500 max-w-xs">{g.rule}</td>
+                <td class="p-3"><a class="underline text-xs font-bold" href={`/admin/ai-search/answers?id=${g.observationIds[g.observationIds.length - 1]}${q}`}>Answer</a></td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      </section>
+    )}
+  </div>
+</AdminLayout>

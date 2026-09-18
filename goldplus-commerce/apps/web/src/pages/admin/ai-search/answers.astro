@@ -1,0 +1,151 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import AiSearchNav from "../../../components/admin/AiSearchNav.astro";
+import { readSessionToken } from "../../../lib/session";
+import { aivGet, providerLabel, when, usd, PROVIDER_LABEL, DEFAULT_PROJECT } from "../../../lib/adminAiVisibility";
+
+/**
+ * Answer Explorer. ?id= shows one answer in full with its citations and
+ * mentions; ?compare=<queryId> puts one question side by side across
+ * providers, now vs the previous run; otherwise a filtered list.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/ai-search/answers", 303);
+const u = Astro.url.searchParams;
+const project = u.get("project") ?? DEFAULT_PROJECT;
+const P = `/projects/${encodeURIComponent(project)}`;
+const q = project !== DEFAULT_PROJECT ? `&project=${encodeURIComponent(project)}` : "";
+const id = u.get("id");
+const compareId = u.get("compare");
+
+const one = id ? await aivGet<any>(token, `${P}/answers/${encodeURIComponent(id)}`) : null;
+const cmp = compareId ? await aivGet<any>(token, `${P}/queries/${encodeURIComponent(compareId)}/compare`) : null;
+const filters = ["provider", "runKind", "status", "mentioned", "cited", "runId", "queryId"] as const;
+const qs = filters.map((f) => [f, u.get(f)] as const).filter(([, v]) => v).map(([f, v]) => `${f}=${encodeURIComponent(v as string)}`);
+const pageNo = Math.max(1, Number(u.get("page") ?? 1) || 1);
+const list = !id && !compareId ? await aivGet<{ rows: any[]; total: number }>(token, `${P}/answers?limit=50&offset=${(pageNo - 1) * 50}${qs.length ? `&${qs.join("&")}` : ""}`) : null;
+const yn = (v: unknown) => (v === true ? "Yes" : v === false ? "No" : "Unknown");
+const ROLE: Record<string, string> = { OWN: "Our site", COMPETITOR: "Competitor", THIRD_PARTY: "Third party" };
+---
+<AdminLayout title="Answers · AI Search" description="The actual answers AI engines gave, with their sources.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <h2 class="text-2xl font-black text-brand-dark tracking-tight mb-4">Answers</h2>
+    <AiSearchNav current="answers" project={project} />
+
+    {one && !one.ok && <p role="alert" class="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{one.message}</p>}
+    {one && one.ok && (() => { const a = one.data; return (
+      <article class="mb-10">
+        <p class="text-sm"><a class="underline" href={`/admin/ai-search/answers${q.replace("&", "?")}`}>← All answers</a>{a.queryId && <> · <a class="underline" href={`/admin/ai-search/answers?compare=${a.queryId}${q}`}>Compare across providers</a></>}</p>
+        <h3 class="mt-3 text-xl font-black text-brand-dark">“{a.queryText}”</h3>
+        <p class="mt-1 text-sm text-gray-600">{providerLabel(a.provider)} · {a.model ?? "model unknown"} · {when(a.executedAt)} · {a.runKind === "RESEARCH" ? "research run (not in KPIs)" : "monitoring run"} · <a class="underline" href={`/admin/ai-search/answers?runId=${a.runId}${q}`}>run</a></p>
+        {a.status !== "SUCCEEDED" ? (
+          <p class="mt-4 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900"><strong>{a.status === "FAILED" ? "The provider call failed" : "Skipped"}:</strong> {a.errorMessage} ({a.errorCode})</p>
+        ) : (
+          <>
+            <dl class="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-px overflow-hidden rounded-2xl border border-gray-200 bg-gray-200 text-sm">
+              <div class="bg-white p-4"><dt class="text-xs font-bold uppercase text-gray-500">Brand named</dt><dd class="text-lg font-black">{yn(a.brandMentioned)}</dd></div>
+              <div class="bg-white p-4"><dt class="text-xs font-bold uppercase text-gray-500">Our site cited</dt><dd class="text-lg font-black">{a.citationSupport === "SUPPORTED" ? yn(a.ownCited) : "Unknown — no sources returned"}</dd></div>
+              <div class="bg-white p-4"><dt class="text-xs font-bold uppercase text-gray-500">Sources</dt><dd class="text-lg font-black tabular-nums">{a.citations.length}</dd></div>
+              <div class="bg-white p-4"><dt class="text-xs font-bold uppercase text-gray-500">Location</dt><dd class="text-sm">{a.appliedLocation ? `Applied: ${a.appliedLocation}` : a.requestedLocation ? `Requested ${a.requestedLocation}; not applied by this provider` : "—"}</dd></div>
+            </dl>
+            <div class="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <section class="lg:col-span-2 rounded-2xl border border-gray-200 bg-white p-6">
+                <h4 class="text-xs font-black uppercase tracking-widest text-gray-500 mb-3">Full answer</h4>
+                <div class="whitespace-pre-wrap text-[15px] leading-7 text-gray-900">{a.answerText}</div>
+              </section>
+              <aside class="space-y-6">
+                <section class="rounded-2xl border border-gray-200 bg-white p-5">
+                  <h4 class="text-xs font-black uppercase tracking-widest text-gray-500 mb-3">Sources, in order</h4>
+                  {a.citations.length === 0 ? <p class="text-sm text-gray-500">{a.citationSupport === "SUPPORTED" ? "The answer cited no sources." : "This provider returned no source data for this answer."}</p> : (
+                    <ol class="space-y-2 text-sm">{a.citations.map((c: any) => (
+                      <li><span class="text-xs font-bold text-gray-500">{c.position}. {ROLE[c.role]}{c.competitorName ? ` · ${c.competitorName}` : c.sourceKind ? ` · ${c.sourceKind.toLowerCase()}` : ""}</span><br />
+                        <a class="break-all underline" href={c.url} rel="noopener noreferrer nofollow" target="_blank">{c.title || c.url}</a></li>
+                    ))}</ol>
+                  )}
+                </section>
+                <section class="rounded-2xl border border-gray-200 bg-white p-5">
+                  <h4 class="text-xs font-black uppercase tracking-widest text-gray-500 mb-3">Named in the answer</h4>
+                  {a.mentions.length === 0 ? <p class="text-sm text-gray-500">No tracked brand is named.</p> : (
+                    <ul class="text-sm space-y-1">{a.mentions.map((m: any) => <li>{m.entityKind === "BRAND" ? "Our brand" : m.competitorName ?? "Competitor"}: “{m.matchedText}” ×{m.occurrences}</li>)}</ul>
+                  )}
+                </section>
+                {a.history?.length > 1 && (
+                  <section class="rounded-2xl border border-gray-200 bg-white p-5">
+                    <h4 class="text-xs font-black uppercase tracking-widest text-gray-500 mb-3">Same question, same provider</h4>
+                    <ul class="text-sm space-y-1">{a.history.map((h: any) => (
+                      <li><a class="underline" href={`/admin/ai-search/answers?id=${h.id}${q}`}>{when(h.executedAt)}</a> · named {yn(h.brandMentioned)} · cited {yn(h.ownCited)}</li>
+                    ))}</ul>
+                  </section>
+                )}
+                <p class="text-xs text-gray-500">Cost {usd(a.costUsd)}{a.rawMetadata?.costBasis === "ESTIMATE_PER_CALL" ? " (estimate)" : ""} · {a.latencyMs ?? "—"} ms</p>
+              </aside>
+            </div>
+          </>
+        )}
+      </article>
+    ); })()}
+
+    {cmp && !cmp.ok && <p role="alert" class="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{cmp.message}</p>}
+    {cmp && cmp.ok && (
+      <section>
+        <p class="text-sm"><a class="underline" href={`/admin/ai-search/answers${q.replace("&", "?")}`}>← All answers</a></p>
+        <h3 class="mt-3 text-xl font-black text-brand-dark">“{cmp.data.queryText}” across providers</h3>
+        <div class="mt-4 overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+          <table class="w-full text-sm">
+            <thead><tr class="text-left text-xs font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200"><th class="p-3">Provider</th><th class="p-3">Now: named / cited</th><th class="p-3">Previous: named / cited</th><th class="p-3">Sources now</th><th class="p-3"></th></tr></thead>
+            <tbody>{cmp.data.providers.map((p: any) => (
+              <tr class="border-b border-gray-100 align-top">
+                <td class="p-3 font-bold">{providerLabel(p.provider)}</td>
+                <td class="p-3">{yn(p.now.brandMentioned)} / {yn(p.now.ownCited)} <span class="text-xs text-gray-500">({when(p.now.executedAt)})</span></td>
+                <td class="p-3">{p.previous ? <>{yn(p.previous.brandMentioned)} / {yn(p.previous.ownCited)}</> : "—"}</td>
+                <td class="p-3 text-xs font-mono">{p.now.citedHosts.join(", ") || "—"}</td>
+                <td class="p-3"><a class="underline text-xs font-bold" href={`/admin/ai-search/answers?id=${p.now.id}${q}`}>Answer</a></td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      </section>
+    )}
+
+    {list && (
+      <section>
+        <form method="GET" class="mb-4 flex flex-wrap items-end gap-2 text-sm">
+          {project !== DEFAULT_PROJECT && <input type="hidden" name="project" value={project} />}
+          <label class="text-xs font-bold text-gray-600">Provider<select name="provider" class="mt-1 block rounded-lg border border-gray-300 px-2 py-1.5"><option value="">All</option>{Object.entries(PROVIDER_LABEL).map(([k, v]) => <option value={k} selected={u.get("provider") === k}>{v}</option>)}</select></label>
+          <label class="text-xs font-bold text-gray-600">Named<select name="mentioned" class="mt-1 block rounded-lg border border-gray-300 px-2 py-1.5"><option value="">Any</option><option value="true" selected={u.get("mentioned") === "true"}>Yes</option><option value="false" selected={u.get("mentioned") === "false"}>No</option></select></label>
+          <label class="text-xs font-bold text-gray-600">Cited<select name="cited" class="mt-1 block rounded-lg border border-gray-300 px-2 py-1.5"><option value="">Any</option><option value="true" selected={u.get("cited") === "true"}>Yes</option><option value="false" selected={u.get("cited") === "false"}>No</option></select></label>
+          <label class="text-xs font-bold text-gray-600">Run type<select name="runKind" class="mt-1 block rounded-lg border border-gray-300 px-2 py-1.5"><option value="">Any</option><option value="MONITOR" selected={u.get("runKind") === "MONITOR"}>Monitoring</option><option value="RESEARCH" selected={u.get("runKind") === "RESEARCH"}>Research</option></select></label>
+          <label class="text-xs font-bold text-gray-600">Outcome<select name="status" class="mt-1 block rounded-lg border border-gray-300 px-2 py-1.5"><option value="">Any</option><option value="SUCCEEDED" selected={u.get("status") === "SUCCEEDED"}>Answered</option><option value="FAILED" selected={u.get("status") === "FAILED"}>Failed</option><option value="SKIPPED" selected={u.get("status") === "SKIPPED"}>Skipped</option></select></label>
+          <button class="min-h-9 rounded-full border border-gray-300 px-4 font-bold">Filter</button>
+        </form>
+        {!list.ok ? <p role="alert" class="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{list.message}</p> : list.data.rows.length === 0 ? (
+          <p class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-8 text-sm text-gray-600">No answers match. {qs.length ? "Clear the filters to see everything." : "Answers appear here after the first run."}</p>
+        ) : (
+          <>
+            <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+              <table class="w-full text-sm">
+                <thead><tr class="text-left text-xs font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200"><th class="p-3">When</th><th class="p-3">Question</th><th class="p-3">Provider</th><th class="p-3">Named</th><th class="p-3">Cited</th><th class="p-3 text-right">Sources</th><th class="p-3"></th></tr></thead>
+                <tbody>{list.data.rows.map((r) => (
+                  <tr class="border-b border-gray-100">
+                    <td class="p-3 whitespace-nowrap text-gray-600">{when(r.executedAt)}</td>
+                    <td class="p-3 max-w-md">{r.queryText}{r.runKind === "RESEARCH" && <span class="ml-2 text-xs font-bold text-gray-500">research</span>}</td>
+                    <td class="p-3 whitespace-nowrap">{providerLabel(r.provider)}</td>
+                    <td class="p-3">{r.status === "SUCCEEDED" ? yn(r.brandMentioned) : <span class="text-red-700 font-bold">{r.status === "FAILED" ? "Failed" : "Skipped"}</span>}</td>
+                    <td class="p-3">{r.status === "SUCCEEDED" ? (r.citationSupport === "SUPPORTED" ? yn(r.ownCited) : "Unknown") : "—"}</td>
+                    <td class="p-3 text-right tabular-nums">{r.citationCount}</td>
+                    <td class="p-3"><a class="underline text-xs font-bold" href={`/admin/ai-search/answers?id=${r.id}${q}`}>Open</a></td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+            <p class="mt-3 text-sm text-gray-600">
+              {list.data.total} answers · page {pageNo}
+              {pageNo > 1 && <> · <a class="underline" href={`?${[...qs, `page=${pageNo - 1}`].join("&")}${q}`}>previous</a></>}
+              {pageNo * 50 < list.data.total && <> · <a class="underline" href={`?${[...qs, `page=${pageNo + 1}`].join("&")}${q}`}>next</a></>}
+            </p>
+          </>
+        )}
+      </section>
+    )}
+  </div>
+</AdminLayout>

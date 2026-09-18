@@ -22,7 +22,10 @@ const EXPECTED: Array<{ label: string; href: string }> = [
   // Integrations Control Plane.
   { label: 'Sync Operations', href: '/admin/seo/integrations/sync' },
   { label: 'Content & Experiments', href: '/admin/seo/content' },
-  { label: 'AEO', href: '/admin/seo/aeo' },
+  // AI Search (0131): measured answer-engine visibility; the old manual AEO
+  // log stays, relabelled so the two are not confused.
+  { label: 'AI Search', href: '/admin/ai-search' },
+  { label: 'AEO manual log', href: '/admin/seo/aeo' },
   // Tranche 2 (2026-08-13): the three catalogue-intelligence surfaces.
   { label: 'Battery Compatibility', href: '/admin/seo/battery-compatibility' },
   { label: 'Storage Testing', href: '/admin/seo/storage-tests' },

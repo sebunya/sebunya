@@ -1,0 +1,113 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import AiSearchNav from "../../../components/admin/AiSearchNav.astro";
+import { readSessionToken } from "../../../lib/session";
+import { aivGet, aivPost, when, DEFAULT_PROJECT } from "../../../lib/adminAiVisibility";
+
+/**
+ * Action Center. Recommendations become proposals; a person other than the
+ * proposer approves; the change is made and recorded; after the measurement
+ * window the same questions are compared before/after.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/ai-search/actions", 303);
+const u = Astro.url.searchParams;
+const project = u.get("project") ?? DEFAULT_PROJECT;
+const P = `/projects/${encodeURIComponent(project)}`;
+const q = project !== DEFAULT_PROJECT ? `&project=${encodeURIComponent(project)}` : "";
+const id = u.get("id");
+
+let notice: string | null = null;
+let formError: string | null = null;
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") ?? "");
+  const aid = encodeURIComponent(String(form.get("id") ?? ""));
+  const note = String(form.get("note") ?? "").trim() || undefined;
+  const map: Record<string, [string, Record<string, unknown>]> = {
+    submit: ["submit", {}], approve: ["approve", { note }], reject: ["reject", { note }], cancel: ["cancel", { note }], verify: ["verify", {}],
+    execute: ["execute", { result: String(form.get("result") ?? ""), rollback: String(form.get("rollback") ?? "") || undefined, verifyAfterDays: Number(form.get("days") ?? 14) }],
+  };
+  if (map[intent]) {
+    const r = await aivPost(token, `${P}/actions/${aid}/${map[intent][0]}`, map[intent][1]);
+    if (r.ok) notice = "Updated."; else formError = r.message;
+  }
+}
+
+const STATUS: Record<string, string> = {
+  DRAFT: "Draft", AWAITING_APPROVAL: "Awaiting approval", APPROVED: "Approved", REJECTED: "Rejected", EXECUTING: "In progress", COMPLETED: "Done",
+  FAILED: "Failed", VERIFICATION_PENDING: "Waiting to measure", VERIFIED: "Improvement observed", NOT_VERIFIED: "No improvement observed", CANCELLED: "Cancelled",
+};
+const one = id ? await aivGet<any>(token, `${P}/actions/${encodeURIComponent(id)}`) : null;
+const list = await aivGet<{ rows: any[]; total: number }>(token, `${P}/actions?limit=100`);
+---
+<AdminLayout title="Actions · AI Search" description="Proposed, approved and verified changes, each with its evidence.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <h2 class="text-2xl font-black text-brand-dark tracking-tight mb-4">Actions</h2>
+    <AiSearchNav current="actions" project={project} />
+    {notice && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</div>}
+    {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+
+    {one && one.ok && (() => { const a = one.data; return (
+      <article class="mb-10 rounded-2xl border-2 border-brand-dark bg-white p-6">
+        <p class="text-xs font-bold uppercase tracking-wider text-gray-500">{STATUS[a.status] ?? a.status} · {a.category.replace(/_/g, " ").toLowerCase()} · risk {a.risk.toLowerCase()}{a.confidence ? ` · confidence ${a.confidence.toLowerCase()}` : ""}</p>
+        <h3 class="mt-1 text-xl font-black text-brand-dark">{a.title}</h3>
+        <dl class="mt-4 grid gap-2 text-sm text-gray-800 max-w-3xl">
+          <div><dt class="inline font-bold">Why: </dt><dd class="inline">{a.reason}</dd></div>
+          {a.mechanism && <div><dt class="inline font-bold">Mechanism: </dt><dd class="inline">{a.mechanism}</dd></div>}
+          {a.expectedImpact && <div><dt class="inline font-bold">Verification plan: </dt><dd class="inline">{a.expectedImpact}</dd></div>}
+          {a.targetPage && <div><dt class="inline font-bold">Target page: </dt><dd class="inline break-all">{a.targetPage}</dd></div>}
+          {a.limitations && <div class="text-xs text-gray-500">{a.limitations}</div>}
+          {Array.isArray(a.evidence?.observationIds) && <div><dt class="inline font-bold">Evidence: </dt><dd class="inline">{a.evidence.observationIds.map((o: string, i: number) => <a class="underline mr-2" href={`/admin/ai-search/answers?id=${o}${q}`}>answer {i + 1}</a>)}</dd></div>}
+          {a.result && <div><dt class="inline font-bold">What was done: </dt><dd class="inline">{a.result}</dd></div>}
+          {a.baseline && <div><dt class="inline font-bold">Baseline at approval: </dt><dd class="inline">{a.baseline.cited} of {a.baseline.eligible} sourced answers cited our site</dd></div>}
+          {a.verifyAfter && a.status === "VERIFICATION_PENDING" && <div><dt class="inline font-bold">Measure after: </dt><dd class="inline">{when(a.verifyAfter)}</dd></div>}
+          {a.verification && <div class="rounded-xl bg-gray-50 p-3"><dt class="font-bold">Verification</dt><dd>{a.verification.summary}</dd></div>}
+        </dl>
+
+        <div class="mt-5 flex flex-wrap gap-3 items-end">
+          {a.status === "DRAFT" && <form method="POST"><input type="hidden" name="intent" value="submit" /><input type="hidden" name="id" value={a.id} /><button class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Submit for approval</button></form>}
+          {a.status === "AWAITING_APPROVAL" && (<>
+            <form method="POST" class="flex gap-2 items-end"><input type="hidden" name="intent" value="approve" /><input type="hidden" name="id" value={a.id} />
+              <label class="text-xs font-bold text-gray-700">Note<input name="note" class="mt-1 block rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+              <button class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Approve</button></form>
+            <form method="POST"><input type="hidden" name="intent" value="reject" /><input type="hidden" name="id" value={a.id} /><button class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-5 text-sm font-bold">Reject</button></form>
+          </>)}
+          {a.status === "APPROVED" && (
+            <form method="POST" class="grid gap-2 w-full max-w-2xl"><input type="hidden" name="intent" value="execute" /><input type="hidden" name="id" value={a.id} />
+              {a.category !== "MEASUREMENT_RUN" && <label class="text-xs font-bold text-gray-700">What was done, and where<textarea name="result" required rows="2" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"></textarea></label>}
+              <label class="text-xs font-bold text-gray-700">How to undo it (optional)<input name="rollback" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+              <label class="text-xs font-bold text-gray-700">Measure again after (days)<input name="days" type="number" min="1" max="90" value="14" class="mt-1 block w-28 rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+              <button class="inline-flex min-h-11 w-fit items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">{a.category === "MEASUREMENT_RUN" ? "Start the run" : "Record as done"}</button></form>
+          )}
+          {a.status === "VERIFICATION_PENDING" && <form method="POST"><input type="hidden" name="intent" value="verify" /><input type="hidden" name="id" value={a.id} /><button class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Compare before and after</button></form>}
+          {["DRAFT", "AWAITING_APPROVAL", "APPROVED"].includes(a.status) && <form method="POST"><input type="hidden" name="intent" value="cancel" /><input type="hidden" name="id" value={a.id} /><button class="inline-flex min-h-11 items-center px-2 text-sm font-bold underline">Cancel</button></form>}
+        </div>
+
+        {a.events?.length > 0 && (
+          <details class="mt-6"><summary class="cursor-pointer text-sm font-bold text-gray-700">History ({a.events.length})</summary>
+            <ol class="mt-2 space-y-1 text-sm text-gray-700">{a.events.map((e: any) => <li>{when(e.createdAt)} · {e.fromStatus ? `${STATUS[e.fromStatus] ?? e.fromStatus} → ` : ""}{STATUS[e.toStatus] ?? e.toStatus} · by {e.actorKind.toLowerCase()}{e.note ? ` — ${e.note}` : ""}</li>)}</ol>
+          </details>
+        )}
+      </article>
+    ); })()}
+
+    {!list.ok ? <p role="alert" class="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{list.message}</p> : list.data.rows.length === 0 ? (
+      <p class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-8 text-sm text-gray-600">No actions yet. Draft one from a recommendation on the Overview or Citation gaps page.</p>
+    ) : (
+      <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white mb-12">
+        <table class="w-full text-sm">
+          <thead><tr class="text-left text-xs font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200"><th class="p-3">Action</th><th class="p-3">Status</th><th class="p-3">Risk</th><th class="p-3">Updated</th></tr></thead>
+          <tbody>{list.data.rows.map((a) => (
+            <tr class:list={["border-b border-gray-100", a.id === id && "bg-gray-50"]}>
+              <td class="p-3"><a class="font-bold underline" href={`/admin/ai-search/actions?id=${a.id}${q}`}>{a.title}</a><span class="block text-xs text-gray-500">proposed by {a.proposerKind.toLowerCase()}</span></td>
+              <td class="p-3 whitespace-nowrap">{STATUS[a.status] ?? a.status}</td>
+              <td class="p-3 text-xs">{a.risk.toLowerCase()}</td>
+              <td class="p-3 whitespace-nowrap text-gray-600">{when(a.updatedAt)}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </div>
+    )}
+  </div>
+</AdminLayout>

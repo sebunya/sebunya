@@ -1,0 +1,116 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import AiSearchNav from "../../../components/admin/AiSearchNav.astro";
+import { readSessionToken } from "../../../lib/session";
+import { aivGet, aivPatch, aivPut, aivDelete, aivPost, providerLabel, when, DEFAULT_PROJECT } from "../../../lib/adminAiVisibility";
+
+/**
+ * Project and provider settings. API keys are write-only: the field is never
+ * pre-filled, the key is encrypted on the server and only a mask comes back.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/ai-search/settings", 303);
+const project = Astro.url.searchParams.get("project") ?? DEFAULT_PROJECT;
+const P = `/projects/${encodeURIComponent(project)}`;
+
+let notice: string | null = null;
+let formError: string | null = null;
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") ?? "");
+  const f = (k: string) => String(form.get(k) ?? "").trim();
+  const prov = encodeURIComponent(f("provider"));
+  let r: { ok: boolean; message?: string } | null = null;
+  if (intent === "project") {
+    r = await aivPatch(token, P, {
+      brandName: f("brandName"), brandAliases: f("brandAliases"), domains: f("domains"), marketCountry: f("marketCountry"), marketCity: f("marketCity") || null,
+      budget: { maxQueriesPerRun: Number(f("maxQueriesPerRun")), maxSpendPerRunUsd: Number(f("maxSpendPerRunUsd")), maxDailySpendUsd: Number(f("maxDailySpendUsd")), maxMonthlySpendUsd: Number(f("maxMonthlySpendUsd")), approvalAboveUsd: Number(f("approvalAboveUsd")) },
+    });
+    if (r.ok) notice = "Project saved.";
+  } else if (intent === "key") {
+    r = await aivPut(token, `${P}/providers/${prov}/credential`, { apiKey: f("apiKey") });
+    if (r.ok) notice = `${providerLabel(f("provider"))} key saved (encrypted). Test it, then switch the provider on.`;
+  } else if (intent === "remove-key") {
+    r = await aivDelete(token, `${P}/providers/${prov}/credential`);
+    if (r.ok) notice = "Key removed and provider switched off.";
+  } else if (intent === "test") {
+    const t = await aivPost<{ message: string }>(token, `${P}/providers/${prov}/test`);
+    r = t;
+    if (t.ok) notice = `${providerLabel(f("provider"))}: ${t.data.message}`;
+  } else if (intent === "provider") {
+    r = await aivPatch(token, `${P}/providers/${prov}`, { enabled: form.get("enabled") === "on", model: f("model"), estUsdPerCall: Number(f("estUsdPerCall")), monthlyCapUsd: f("monthlyCapUsd") === "" ? null : Number(f("monthlyCapUsd")) });
+    if (r.ok) notice = `${providerLabel(f("provider"))} settings saved.`;
+  }
+  if (r && !r.ok) formError = r.message ?? "Could not save.";
+}
+
+const [proj, providers] = await Promise.all([aivGet<any>(token, P), aivGet<any[]>(token, `${P}/providers`)]);
+const p = proj.ok ? proj.data : null;
+---
+<AdminLayout title="Settings · AI Search" description="Brand, domains, spend limits and AI provider connections.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <h2 class="text-2xl font-black text-brand-dark tracking-tight mb-4">Settings</h2>
+    <AiSearchNav current="settings" project={project} />
+    {notice && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</div>}
+    {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+
+    <section aria-labelledby="prov" class="mb-8">
+      <h3 id="prov" class="text-sm font-black uppercase tracking-widest text-gray-500 mb-1">AI providers</h3>
+      <p class="text-xs text-gray-500 mb-3 max-w-3xl">Each question is sent exactly as written, with web search switched on, so every answer can show its sources. The estimated cost per question is an upper bound used to stop runs that would exceed the spend limits before they start; the provider's own reported cost is recorded where it gives one.</p>
+      {!providers.ok ? <p role="alert" class="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{providers.message}</p> : (
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">{providers.data.map((c) => (
+          <div class="rounded-2xl border border-gray-200 bg-white p-5">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="font-black text-brand-dark">{providerLabel(c.provider)}</p>
+                <p class="text-xs text-gray-600 mt-0.5">{!c.hasCredential ? "Not configured — no key" : c.enabled ? "On" : "Key saved, switched off"}{c.credentialMask ? ` · key ${c.credentialMask}` : ""}</p>
+                {c.lastHealthStatus && <p class:list={["text-xs mt-0.5", c.lastHealthStatus === "OK" ? "text-emerald-700" : "text-red-700"]}>Last test {when(c.lastHealthAt)}: {c.lastHealthMessage}</p>}
+              </div>
+              {c.hasCredential && (
+                <div class="flex gap-2">
+                  <form method="POST"><input type="hidden" name="intent" value="test" /><input type="hidden" name="provider" value={c.provider} /><button class="rounded-full border border-gray-300 px-3 py-1.5 text-xs font-bold" title="Makes one small call without web search">Test</button></form>
+                  <form method="POST"><input type="hidden" name="intent" value="remove-key" /><input type="hidden" name="provider" value={c.provider} /><button class="px-2 py-1.5 text-xs font-bold underline">Remove key</button></form>
+                </div>
+              )}
+            </div>
+            <form method="POST" class="mt-4 flex gap-2 items-end" autocomplete="off">
+              <input type="hidden" name="intent" value="key" /><input type="hidden" name="provider" value={c.provider} />
+              <label class="grow text-xs font-bold text-gray-700">{c.hasCredential ? "Replace key" : "API key"}
+                <input name="apiKey" type="password" required autocomplete="new-password" spellcheck="false" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
+              <button class="inline-flex min-h-10 items-center rounded-full bg-brand-dark px-4 text-xs font-bold text-white">Save key</button>
+            </form>
+            <form method="POST" class="mt-4 grid grid-cols-2 gap-3">
+              <input type="hidden" name="intent" value="provider" /><input type="hidden" name="provider" value={c.provider} />
+              <label class="text-xs font-bold text-gray-700">Model<input name="model" value={c.model} class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
+              <label class="text-xs font-bold text-gray-700">Est. USD per question<input name="estUsdPerCall" type="number" step="0.001" min="0" max="5" value={c.estUsdPerCall} class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+              <label class="text-xs font-bold text-gray-700">Monthly cap USD (optional)<input name="monthlyCapUsd" type="number" step="0.01" min="0" value={c.monthlyCapUsd ?? ""} class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+              <label class="flex items-center gap-2 text-sm font-bold text-gray-700 self-end pb-2"><input type="checkbox" name="enabled" checked={c.enabled} disabled={!c.hasCredential} class="rounded border-gray-300" /> Include in runs</label>
+              <div class="col-span-2"><button class="rounded-full border border-gray-300 px-4 py-1.5 text-xs font-bold">Save</button></div>
+            </form>
+          </div>
+        ))}</div>
+      )}
+    </section>
+
+    {p && (
+      <section aria-labelledby="proj" class="mb-12 rounded-2xl border border-gray-200 bg-white p-6">
+        <h3 id="proj" class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">Brand, market and spend limits</h3>
+        <form method="POST" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <input type="hidden" name="intent" value="project" />
+          <label class="text-xs font-bold text-gray-700">Brand name<input name="brandName" value={p.brandName} required class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <label class="text-xs font-bold text-gray-700 lg:col-span-2">Other names customers use (comma-separated)<input name="brandAliases" value={p.brandAliases.join(", ")} class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <label class="text-xs font-bold text-gray-700 lg:col-span-3">Our domains (a citation of any page on these counts as ours)<input name="domains" value={p.domains.join(", ")} required class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
+          <label class="text-xs font-bold text-gray-700">Country (2 letters)<input name="marketCountry" value={p.marketCountry} maxlength="2" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm uppercase" /></label>
+          <label class="text-xs font-bold text-gray-700">City<input name="marketCity" value={p.marketCity ?? ""} class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <div></div>
+          <label class="text-xs font-bold text-gray-700">Max questions per run<input name="maxQueriesPerRun" type="number" min="1" max="1000" value={p.budget.maxQueriesPerRun} class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <label class="text-xs font-bold text-gray-700">Max USD per run<input name="maxSpendPerRunUsd" type="number" step="0.01" min="0" value={p.budget.maxSpendPerRunUsd} class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <label class="text-xs font-bold text-gray-700">A run needs a second person above USD<input name="approvalAboveUsd" type="number" step="0.01" min="0" value={p.budget.approvalAboveUsd} class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <label class="text-xs font-bold text-gray-700">Max USD per day<input name="maxDailySpendUsd" type="number" step="0.01" min="0" value={p.budget.maxDailySpendUsd} class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <label class="text-xs font-bold text-gray-700">Max USD per month<input name="maxMonthlySpendUsd" type="number" step="0.01" min="0" value={p.budget.maxMonthlySpendUsd} class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <div class="sm:col-span-2 lg:col-span-3"><button class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-6 text-sm font-bold text-white">Save</button></div>
+        </form>
+      </section>
+    )}
+  </div>
+</AdminLayout>
