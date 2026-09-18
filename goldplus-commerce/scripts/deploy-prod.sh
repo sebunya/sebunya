@@ -62,7 +62,9 @@ echo "DEPLOYED $HEAD, $WANT/$WANT healthy, tagged rollback-$HEAD"
 #   ./scripts/lighthouse-watch.sh manual
 # Never blocks or fails the deploy.
 if [ -x scripts/lighthouse-watch.sh ]; then
-  nohup scripts/lighthouse-watch.sh deploy >/dev/null 2>&1 &
+  # 9>&- : a background job must not inherit the deploy lock. It did, and the
+  # next deploy was refused for as long as the smoke ran (2026-09-18).
+  nohup scripts/lighthouse-watch.sh deploy >/dev/null 2>&1 9>&- &
   echo "Lighthouse Watch started in the background (log: /var/log/goldplus/lighthouse-watch.log)"
 fi
 
@@ -72,6 +74,6 @@ fi
 if [ -x performance-audit/schedule/run-in-container.sh ]; then
   (PERF_AUDIT_ONLY="control lighthouse compatibility" COMPATIBILITY_AUDIT_MODE=smoke LIGHTHOUSE_RUNS=1 \
     nohup performance-audit/schedule/run-in-container.sh --ad-hoc --label "post-deploy-smoke-$HEAD" \
-    >> /var/log/goldplus/performance-audit-post-deploy.log 2>&1 </dev/null &)
+    >> /var/log/goldplus/performance-audit-post-deploy.log 2>&1 </dev/null 9>&- &)
   echo "post-deploy compatibility/performance smoke started in the background (label post-deploy-smoke-$HEAD; results under /var/lib/goldplus-performance-audit and on /admin/seo/performance-audit)"
 fi
