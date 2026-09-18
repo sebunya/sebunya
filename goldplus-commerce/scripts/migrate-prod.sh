@@ -40,7 +40,7 @@ docker run -d --name "$DB" --network "$NET" -e POSTGRES_USER=rehearse -e POSTGRE
 # check over TCP only passes against the final server. Required twice in a
 # row so a server mid-restart is not mistaken for a ready one (2026-09-18:
 # the migrator hit "not yet accepting connections" and the rehearsal failed).
-ready() { docker exec "$DB" psql -h 127.0.0.1 -U rehearse -d goldplus -tAc 'select 1' >/dev/null 2>&1; }
+ready() { docker exec -e PGPASSWORD=rehearse "$DB" psql -h 127.0.0.1 -U rehearse -d goldplus -tAc 'select 1' >/dev/null 2>&1; }
 wait_ready() {
   local ok=0
   for i in $(seq 1 90); do
@@ -54,16 +54,16 @@ docker cp "$DUMP" "$DB":/tmp/prod.dump
 # pg_restore exits non-zero on harmless ownership/extension warnings, so its
 # status is not trusted either way: the restored copy is CHECKED instead. A
 # rehearsal against a half-empty clone would prove nothing.
-docker exec "$DB" sh -c 'pg_restore -h 127.0.0.1 -U rehearse -d goldplus --no-owner --no-privileges /tmp/prod.dump' > /tmp/migrate-restore.log 2>&1 || true
+docker exec -e PGPASSWORD=rehearse "$DB" sh -c 'pg_restore -h 127.0.0.1 -U rehearse -d goldplus --no-owner --no-privileges /tmp/prod.dump' > /tmp/migrate-restore.log 2>&1 || true
 LIVE_TABLES=$(docker exec goldplus-commerce-postgres-1 sh -c "psql -U \$POSTGRES_USER -d \$POSTGRES_DB -tAc \"select count(*) from information_schema.tables where table_schema='public'\"" | tr -d '[:space:]')
-CLONE_TABLES=$(docker exec "$DB" psql -h 127.0.0.1 -U rehearse -d goldplus -tAc "select count(*) from information_schema.tables where table_schema='public'" | tr -d '[:space:]')
+CLONE_TABLES=$(docker exec -e PGPASSWORD=rehearse "$DB" psql -h 127.0.0.1 -U rehearse -d goldplus -tAc "select count(*) from information_schema.tables where table_schema='public'" | tr -d '[:space:]')
 [ -n "$LIVE_TABLES" ] && [ "$CLONE_TABLES" = "$LIVE_TABLES" ] || { echo "STOP: restore incomplete — clone has '$CLONE_TABLES' tables, live has '$LIVE_TABLES'"; tail -5 /tmp/migrate-restore.log; exit 1; }
 echo "restored clone: $CLONE_TABLES tables (matches live)"
 wait_ready
 URL=postgres://rehearse:rehearse@$DB:5432/goldplus
 migrate_against "$NET" "$URL" > /tmp/migrate-rehearsal-1.log 2>&1 || { echo "STOP: rehearsal run 1 failed"; tail -20 /tmp/migrate-rehearsal-1.log; exit 1; }
 migrate_against "$NET" "$URL" > /tmp/migrate-rehearsal-2.log 2>&1 || { echo "STOP: rehearsal run 2 (idempotency) failed"; tail -20 /tmp/migrate-rehearsal-2.log; exit 1; }
-R=$(docker exec "$DB" psql -h 127.0.0.1 -U rehearse -d goldplus -tAc "$ASSERT" | tr -d '[:space:]')
+R=$(docker exec -e PGPASSWORD=rehearse "$DB" psql -h 127.0.0.1 -U rehearse -d goldplus -tAc "$ASSERT" | tr -d '[:space:]')
 [ "$R" = "1" ] || { echo "STOP: rehearsal assertion returned '$R', expected 1"; exit 1; }
 echo "REHEARSE_OK (two runs, assertion 1)"
 cleanup
