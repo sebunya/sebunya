@@ -1,6 +1,7 @@
 import './logging/appLoggerBinding';
 import { createHmac, randomInt as nodeRandomInt } from 'node:crypto';
 import { db } from './db/client';
+import { createAiVisibility } from './ai-visibility/AiVisibilityWiring';
 import { DrizzleCartRepository } from './db/repositories/DrizzleCartRepository';
 import { DrizzleCartQueryRepository } from './db/repositories/DrizzleCartQueryRepository';
 import { DrizzleOrderRepository } from './db/repositories/DrizzleOrderRepository';
@@ -697,6 +698,8 @@ export class Registry {
   public readonly verificationRepo = new DrizzleVerificationRepository();
   public readonly auditRepo = new DrizzleAuditRepository();
   public readonly createAuditLogUseCase = new CreateAuditLogUseCase(this.auditRepo);
+  /** AI Search Visibility (AEO/GEO) — migration 0131; see docs/ai-visibility/README.md. */
+  public readonly aiVisibility = createAiVisibility(this.createAuditLogUseCase);
   public readonly paymentRepo = new DrizzlePaymentRepository();
   public readonly userRepo = new DrizzleUserRepository();
   public readonly addressRepo = new DrizzleAddressRepository();

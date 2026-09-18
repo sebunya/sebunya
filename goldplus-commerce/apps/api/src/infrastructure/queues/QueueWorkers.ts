@@ -20,6 +20,12 @@ export function registerAllWorkers(): void {
     return;
   }
 
+  // AI visibility (0131): a run left RUNNING by a crashed or restarted worker
+  // would block new runs forever. Two hours is far beyond any real run.
+  void Registry.getInstance().aiVisibility.repo.failStaleRuns(120)
+    .then((ids) => { if (ids.length) logger.warn({ runIds: ids }, '[QueueWorker] marked stale AI visibility runs FAILED'); })
+    .catch(() => undefined);
+
   // Helper to extract trace context from job payload or create a new one
   const getContext = (job: Job) => {
     const traceContext = (job.data as any)?._traceContext;
@@ -182,6 +188,12 @@ export function registerAllWorkers(): void {
         if (!result.success) {
           throw new Error('Recommendation materialization failed');
         }
+      } else if (job.name === 'aiv-run') {
+        // AI Search Visibility run (0131). The use case claims only a QUEUED run,
+        // so a duplicate job is a no-op; per-call budget checks happen inside.
+        const { runId } = job.data as { runId: string };
+        const outcome = await registry.aiVisibility.runs.execute(runId);
+        logger.info({ runId, ...outcome }, '[QueueWorker] AI visibility run finished');
       } else if (job.name === 'seo-crawl') {
         // Organic Growth OS: first-party technical crawl. The use case enforces
         // the SSRF host allowlist, page/depth/time limits and cancellation
