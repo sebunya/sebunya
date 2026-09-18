@@ -118,7 +118,7 @@ const rate = (n: number | null) => (n == null ? '— (below sample floor)' : `${
 <AdminLayout title="Header (navigation)">
   <div class="mx-auto max-w-4xl px-4 py-8">
     <h1 class="text-2xl font-black text-slate-900">Header (navigation)</h1>
-    <p class="mt-2 text-sm text-slate-600">Edit the top navigation. Changes go live for every visitor after you press Save. See <a class="underline" href="/docs/header/HEADER-GUIDE.md">the guide</a> if anything looks wrong.</p>
+    <p class="mt-2 text-sm text-slate-600">Edit the top navigation. Changes go live for every visitor after you press Save.</p>
 
     {notice && (
       <div class:list={["mt-6 rounded-xl border p-4 text-sm", notice.kind === 'ok' ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-red-300 bg-red-50 text-red-900']}>

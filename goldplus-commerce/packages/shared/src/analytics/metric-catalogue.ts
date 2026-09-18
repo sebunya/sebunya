@@ -226,7 +226,7 @@ export const ANALYTICS_METRIC_CATALOGUE: readonly MetricDefinition[] = [
     minimumSample: 5,
     freshnessExpectationMinutes: 60,
     owner: 'payments',
-    drilldownRoute: '/admin/measurement/payments',
+    drilldownRoute: '/admin/payments',
   },
   {
     key: 'payment_failure_rate',
@@ -245,7 +245,7 @@ export const ANALYTICS_METRIC_CATALOGUE: readonly MetricDefinition[] = [
     minimumSample: 5,
     freshnessExpectationMinutes: 60,
     owner: 'payments',
-    drilldownRoute: '/admin/measurement/payments',
+    drilldownRoute: '/admin/payments',
   },
   {
     key: 'order_cancellation_rate',

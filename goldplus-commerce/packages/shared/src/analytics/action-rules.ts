@@ -97,7 +97,7 @@ export function deriveCommerceActions(inputs: ActionRuleInputs): AnalyticsAction
         sampleSize: inputs.orders.orders,
         recommendedAction: 'Inspect payment reconciliation, provider errors and callback completeness.',
         requiredPermission: 'payments.read',
-        drilldownRoute: '/admin/measurement/payments',
+        drilldownRoute: '/admin/payments',
         priority: 96,
       }));
     }
