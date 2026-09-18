@@ -34,3 +34,11 @@ Welcome, future AI agent. When working in this repository, you MUST follow these
 - **`docs/delivery/CONTRACT.md` is the contract for delivery quoting — read it before touching any delivery fee, delivery window, or quoting code, and hold it in context for the whole run.** Ten guarantees, one page. The two that catch people out: there is exactly ONE quoting service, and the fee and the window come from the SAME expected-minutes number.
 - The model and calibration are in `docs/delivery/MODEL.md`. Operations, the Control Centre, phases, guardrails and the definition of done are in `docs/delivery/OPERATIONS.md`.
 - `goldplus_locations_seed.sql` is RETIRED. It creates a conflicting `ug_area` shape and must never run; the CSVs are the only import path.
+
+## AI Search Visibility (AEO/GEO)
+- `docs/ai-visibility/README.md` governs the AI Search module (`/admin/ai-search`, API `/admin/ai-visibility`, migration 0131). Read it before touching AEO, AI answers, citations or provider code.
+- A MENTION (answer names the brand) and a CITATION (answer's sources include our domain) are separate measures with separate denominators. Never blend them into one score. Unknown citation data is NULL, never FALSE; an empty rate is "no data", never 0%.
+- Observations, citations and mentions are insert-only. Never rewrite evidence.
+- Research runs never change KPIs, tracked questions, competitors or schedules.
+- Machine actors (`X-Actor-Kind: AGENT`) may propose and prepare only: their runs wait for a person, they never approve, and PUBLISH actions are carried out by a person.
+- Provider keys are write-only (vault-encrypted, masked). No provider call without a configured key — "Not configured", never simulated.
