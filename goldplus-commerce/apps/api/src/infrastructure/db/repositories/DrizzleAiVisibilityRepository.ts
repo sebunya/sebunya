@@ -210,7 +210,10 @@ export class DrizzleAiVisibilityRepository implements AiVisibilityRepository {
       insert into aiv_runs (project_id, kind, status, idempotency_key, providers, query_ids, adhoc_queries, total_tasks, estimated_usd, requested_by, actor_kind, action_id)
       values (${i.projectId}::uuid, ${i.kind}, ${i.status}, ${i.idempotencyKey}, ${pgJsonb(i.providers)}, ${pgJsonb(i.queryIds)}, ${pgJsonb(i.adhocQueries)}, ${i.totalTasks}, ${i.estimatedUsd},
         ${i.requestedBy && UUID.test(i.requestedBy) ? sql`${i.requestedBy}::uuid` : sql`null`}, ${i.actorKind}, ${i.actionId && UUID.test(i.actionId) ? sql`${i.actionId}::uuid` : sql`null`})
+      on conflict (project_id, idempotency_key) do nothing
       returning *`))[0];
+    // Two identical requests in the same instant: the second gets the first's run, not a 500.
+    if (!r) return (await this.findRunByIdempotencyKey(i.projectId, i.idempotencyKey)) as AivRun;
     return run(r);
   }
   async getRun(projectId: string, runId: string) {
