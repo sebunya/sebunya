@@ -36,6 +36,8 @@ export interface CrawlRunStore {
   finishCrawlRun(runId: string, outcome: { status: 'COMPLETE' | 'FAILED' | 'CANCELLED'; pagesCrawled: number; notes?: string | null }): Promise<any>;
   replaceLinkGraphForPath(fromPath: string, links: Array<{ toPath: string; anchor?: string | null }>): Promise<number>;
   raiseAlert(input: { severity: string; kind: string; message: string; dedupeKey: string }): Promise<any>;
+  /** Resolves the OPEN/ACKNOWLEDGED alert with this dedupe key, if any. */
+  clearAlert?(dedupeKey: string): Promise<number>;
 }
 
 export interface CrawlOptions {
@@ -300,17 +302,21 @@ export class CrawlSiteUseCase {
           if (!facts.h1) issues.push('MISSING_H1');
           const robots = (facts.metaRobots ?? '').toLowerCase();
           if (robots.includes('noindex') && isCommercialPath(toPath(finalUrl))) {
-            // Recorded on the page either way, so the evidence is never lost.
-            issues.push('NOINDEX_COMMERCIAL');
-            // Escalated only when the page was supposed to be indexable.
+            // Recorded on the page either way, so the evidence is never lost —
+            // but a noindex the policy INTENDS (filtered /shop URLs) is labelled
+            // as such, not as an issue: 46 of them made a clean crawl read as
+            // 46 problems (2026-09-18). Only an unexpected one is escalated.
             if (isExpectedIndexable(toPath(finalUrl), finalUrl)) {
+              issues.push('NOINDEX_COMMERCIAL');
               noindexCommercial.push(toPath(finalUrl));
+            } else {
+              issues.push('NOINDEX_BY_POLICY');
             }
           }
         }
       }
 
-      issuesFound += issues.length;
+      issuesFound += issues.filter((i) => i !== 'NOINDEX_BY_POLICY').length;
       await this.store.insertCrawlPages(runId, [{
         url,
         finalUrl,
@@ -380,6 +386,12 @@ export class CrawlSiteUseCase {
         });
       }
 
+      // A complete crawl that found no unexpected noindex is evidence the old
+      // alert no longer holds. Without this it stayed CRITICAL and OPEN from
+      // 2026-08-13 to 2026-09-18, after the problem it named was gone.
+      if (noindexCommercial.length === 0 && pagesCrawled > 0) {
+        await this.store.clearAlert?.('NOINDEX_COMMERCIAL');
+      }
       await this.store.finishCrawlRun(runId, { status: 'COMPLETE', pagesCrawled });
       return { status: 'COMPLETE', pagesCrawled, issuesFound };
     } catch (err) {

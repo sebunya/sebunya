@@ -19,7 +19,7 @@ type Overview = {
   } | null;
   opportunitiesByKind?: Record<string, number> | null;
   openAlerts?: Array<Record<string, unknown>> | null;
-  integrations?: Array<{ provider?: string; status?: string; envVars?: string[] }> | null;
+  integrations?: Array<{ provider?: string; status?: string; envVars?: Array<string | { name?: string; present?: boolean }> }> | null;
   latestCrawl?: Record<string, unknown> | null;
 };
 
@@ -105,7 +105,7 @@ const subPages = [
       {/* Opportunities by kind */}
       <section class="bg-white border border-gray-200 rounded-2xl p-6">
         <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-4">
-          Open opportunities <a href="/admin/seo/opportunities" class="float-right text-xs font-bold underline normal-case tracking-normal">view all</a>
+          Open opportunities <a href="/admin/seo/opportunities-intel" class="float-right text-xs font-bold underline normal-case tracking-normal">view all</a>
         </h3>
         {oppKinds && Object.keys(oppKinds).length > 0 ? (
           <ul class="space-y-2">
@@ -117,7 +117,7 @@ const subPages = [
             ))}
           </ul>
         ) : (
-          <p class="text-sm text-gray-500">No open opportunities yet — generate them from measured data on the Opportunities page.</p>
+          <p class="text-sm text-gray-500">No open opportunities. The organic intelligence engine re-evaluates every hour from Search Console data.</p>
         )}
       </section>
 
@@ -157,9 +157,17 @@ const subPages = [
               }`}
             >
               {str(i.provider)} · {str(i.status)}
-              {i.status !== "CONNECTED" && Array.isArray(i.envVars) && i.envVars.length > 0 && (
-                <span class="font-mono font-normal text-[10px]">({i.envVars.join(", ")})</span>
-              )}
+              {(() => {
+                // The API sends { name, present } per setting; joining the objects
+                // printed "[object Object]". Name only what is still missing.
+                const missing = i.status === "CONNECTED" || !Array.isArray(i.envVars) ? [] : i.envVars
+                  .filter((v) => typeof v === "string" || !v?.present)
+                  .map((v) => (typeof v === "string" ? v : String(v?.name ?? "")))
+                  .filter(Boolean);
+                return missing.length > 0 && (
+                  <span class="font-mono font-normal text-[10px]">(needs {missing.join(", ")})</span>
+                );
+              })()}
             </span>
           ))}
         </div>

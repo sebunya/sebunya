@@ -83,23 +83,26 @@ const audit = async (c: Context, action: string, entity: string, entityId: strin
 
 routes.get('/overview', requirePermissions([PERMISSIONS.SEO_VIEW]), async (c) => {
   const repo = Registry.getInstance().seoGrowthRepo;
-  const [marketShare, counts, crawlRuns, integrations, openAlerts] = await Promise.all([
+  const [marketShare, counts, crawlRuns, integrations, openAlerts, opportunitiesByKind] = await Promise.all([
     repo.marketShare(30),
     repo.overviewCounts(),
     repo.listCrawlRuns(1),
     vaultConfiguredProviders().then((vaultIds) =>
       new SyncSeoIntegrationStatusesUseCase(repo, process.env, vaultIds).execute()),
     repo.listAlerts({ status: 'OPEN', limit: 20 }),
+    repo.intelOpenOpportunitiesByClass(),
   ]);
   return ok(c, {
     marketShare,
     openOpportunities: counts.openOpportunities,
+    opportunitiesByKind,
     openAlertsCount: counts.openAlerts,
     openAlerts,
     competitors: counts.competitors,
     candidateCompetitors: counts.candidateCompetitors,
     trackedQueries: counts.trackedQueries,
     latestCrawlRun: crawlRuns[0] ?? null,
+    latestCrawl: crawlRuns[0] ?? null,
     integrations,
   });
 });

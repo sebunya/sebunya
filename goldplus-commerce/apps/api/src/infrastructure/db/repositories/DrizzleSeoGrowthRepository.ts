@@ -686,6 +686,20 @@ export class DrizzleSeoGrowthRepository {
     return pages.length;
   }
 
+  /**
+   * Open opportunities from the Organic Intelligence engine (the hourly
+   * materialiser), by class. The overview read a count nobody computed and
+   * showed "No open opportunities" while this table held 11 (2026-09-18).
+   */
+  async intelOpenOpportunitiesByClass(): Promise<Record<string, number>> {
+    const rows = rowsOf(await db.execute(sql`
+      select opportunity_class as k, count(*)::int as n from seo_intel_opportunities
+      where status not in ('CLOSED', 'DECAYED')
+      group by 1 order by 2 desc
+    `));
+    return Object.fromEntries(rows.map((r) => [String(r.k), Number(r.n)]));
+  }
+
   async listCrawlRuns(limit = 50): Promise<any[]> {
     return rowsOf(await db.execute(sql`
       select * from seo_crawl_runs order by started_at desc limit ${Math.min(Math.max(limit, 1), 200)}
@@ -781,6 +795,14 @@ export class DrizzleSeoGrowthRepository {
       returning *
     `));
     return rows[0];
+  }
+
+  async clearAlert(dedupeKey: string): Promise<number> {
+    const rows = rowsOf(await db.execute(sql`
+      update seo_alerts set status = 'RESOLVED', resolved_at = now()
+      where dedupe_key = ${dedupeKey} and status in ('OPEN', 'ACKNOWLEDGED') returning id
+    `));
+    return rows.length;
   }
 
   async resolveAlert(id: string): Promise<boolean> {

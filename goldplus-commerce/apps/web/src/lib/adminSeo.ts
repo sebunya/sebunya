@@ -9,6 +9,31 @@
  */
 import { apiBase } from "./api";
 
+/**
+ * Most SEO endpoints return raw database rows (snake_case: started_at,
+ * pages_crawled, http_status) while these pages were written against
+ * camelCase (startedAt, pagesCrawled, statusCode). Every such field rendered
+ * "—" and the module read as empty although the data existed (found
+ * 2026-09-18). Each object gains the camelCase alias of every snake_case key;
+ * the original key stays, so pages already reading snake_case keep working.
+ */
+const camel = (k: string) => k.replace(/_([a-z0-9])/g, (_m, c: string) => c.toUpperCase());
+const ALIASES: Record<string, string> = { httpStatus: "statusCode" };
+export function withCamelAliases(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(withCamelAliases);
+  if (!v || typeof v !== "object" || v instanceof Date) return v;
+  const out: Record<string, unknown> = {};
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) out[k] = withCamelAliases(val);
+  for (const k of Object.keys(out)) {
+    if (!k.includes("_")) continue;
+    const c = camel(k);
+    if (!(c in out)) out[c] = out[k];
+    const alias = ALIASES[c];
+    if (alias && !(alias in out)) out[alias] = out[k];
+  }
+  return out;
+}
+
 export type SeoResult<T> =
   | { ok: true; data: T }
   /** `details` carries the API's structured error payload (e.g. robots.txt
@@ -48,7 +73,7 @@ async function request<T>(
         details: json?.error ?? undefined,
       };
     }
-    return { ok: true, data: json.data as T };
+    return { ok: true, data: withCamelAliases(json.data) as T };
   } catch {
     return { ok: false, message: "Could not reach the API." };
   }
@@ -66,12 +91,15 @@ export function seoPatch<T = unknown>(token: string, path: string, body: unknown
   return request<T>(token, path, { method: "PATCH", body: JSON.stringify(body) });
 }
 
-/** Rows from a GET that may return {items:[…]}, a bare array, or nothing yet. */
+/** Rows from a GET that may return {items:[…]}, {rows:[…], total}, a bare array, or nothing yet. */
 export function rowsOf<T = Record<string, unknown>>(result: SeoResult<unknown>): T[] {
   if (!result.ok) return [];
-  const d = result.data as { items?: T[] } | T[] | null | undefined;
+  const d = result.data as { items?: T[]; rows?: T[] } | T[] | null | undefined;
   if (Array.isArray(d)) return d;
   if (d && Array.isArray((d as { items?: T[] }).items)) return (d as { items: T[] }).items;
+  // listCrawlPages (and other paged endpoints) answer { rows, total }; this
+  // returned [] for them, so a 128-page crawl showed "No pages recorded".
+  if (d && Array.isArray((d as { rows?: T[] }).rows)) return (d as { rows: T[] }).rows;
   return [];
 }
 
