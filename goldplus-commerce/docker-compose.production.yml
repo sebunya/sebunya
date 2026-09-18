@@ -100,6 +100,9 @@ services:
       # from the session-token stream. Web and API MUST share the same values or every
       # shopper loses their basket / cannot check out.
       - CART_CREDENTIAL_SECRET=${CART_CREDENTIAL_SECRET}
+      # Storefront SSR -> API: proves the caller is our own SSR, the only caller
+      # that receives product floors (Price A). MUST match between api and web.
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
       - CHECKOUT_INTENT_SECRET=${CHECKOUT_INTENT_SECRET}
       # Integration credential vault. Independent of JWT_SECRET on purpose: the
       # vault falls back to JWT_SECRET when this is unset, which would couple
@@ -242,6 +245,9 @@ services:
       # cannot mint a credential (keys() returns null), every shopper degrades to a
       # local-only basket, and the checkout funnel is dead. MUST match the API's values.
       - CART_CREDENTIAL_SECRET=${CART_CREDENTIAL_SECRET}
+      # Storefront SSR -> API: proves the caller is our own SSR, the only caller
+      # that receives product floors (Price A). MUST match between api and web.
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
       - CHECKOUT_INTENT_SECRET=${CHECKOUT_INTENT_SECRET}
       - NODE_OPTIONS=--max-old-space-size=400
     healthcheck:

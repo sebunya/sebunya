@@ -1,3 +1,4 @@
+import { floorPriceRedaction } from './middleware/floorPriceRedaction';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { publicAbuseControl } from './middleware/publicAbuseControl';
@@ -156,6 +157,9 @@ app.use('*', async (c, next) => {
     await next();
   });
 });
+
+// Product floors (Price A) leave the API only to the storefront's own SSR.
+app.use('*', floorPriceRedaction());
 
 // Use Pino for structured request logging
 app.use('*', pinoLogger({

@@ -127,20 +127,29 @@ describe('the browse rail advertises what the basket charges', () => {
   const rail = () =>
     readFileSync(resolve(__dirname, '../../apps/web/src/components/recommendations/RecentlyViewedRail.astro'), 'utf8');
 
-  it('stamps the campaign floor alongside the percentage', () => {
-    expect(rail()).toMatch(/data-sale-floor=\{railDiscount\.active \? String\(railDiscount\.priceFloorUgx\) : ""\}/);
+  // 2026-09-18: the product floor (Price A) must never reach a browser, so the
+  // sale price is computed on the server by /api/catalogue-live — the same
+  // shared helper, campaign floor AND product floor included — and the rail
+  // only displays it.
+  const live = () =>
+    readFileSync(resolve(__dirname, '../../apps/web/src/pages/api/catalogue-live.ts'), 'utf8');
+
+  it('the server computes the sale price through the one shared helper, floor included', () => {
+    const src = live();
+    expect(src).toMatch(/import \{ getStorefrontDiscount, salePriceUgx, effectiveFloorUgx \} from '\.\.\/\.\.\/lib\/storefrontDiscount'/);
+    expect(src).toMatch(/salePriceUgx\(price, discount\.percentBps, effectiveFloorUgx\(discount\.priceFloorUgx, floor, price\)\)/);
+    // The unfloored formula this replaced must not come back, anywhere.
+    expect(rail()).not.toMatch(/regular - Math\.floor\(\(regular \* saleBps\)/);
   });
 
-  it('prices through the one shared helper, floor included', () => {
-    const src = rail();
-    expect(src).toMatch(/import \{ salePriceUgx, effectiveFloorUgx \} from "\.\.\/\.\.\/lib\/storefrontDiscount"/);
-    expect(src).toMatch(/salePriceUgx\(regular, saleBps, effectiveFloorUgx\(saleFloor, floor, regular\)\)/);
-    // The unfloored formula this replaced must not come back.
-    expect(src).not.toMatch(/regular - Math\.floor\(\(regular \* saleBps\)/);
+  it('never sends the product floor to the browser', () => {
+    expect(live()).not.toMatch(/\bfloor:\s/);
+    expect(rail()).not.toMatch(/item\.floor|data-sale-floor/);
   });
 
   it('calls it a sale only when the price actually drops', () => {
-    expect(rail()).toMatch(/const onSale = saleActive && hasPrice && salePriceOf\(item\.price, item\.floor\) < item\.price;/);
+    expect(live()).toContain('sale: sale !== null && sale < (price ?? 0) ? sale : null');
+    expect(rail()).toMatch(/const onSale = saleActive && hasPrice && typeof item\.sale === "number" && item\.sale > 0 && item\.sale < item\.price;/);
   });
 
   it('the shared helper stops the cut at the floor', () => {

@@ -26,6 +26,32 @@ function resolveApiOrigin(): string {
 
 const API_BASE = resolveApiOrigin();
 
+/**
+ * SSR only: every request to the INTERNAL API origin carries
+ * X-GoldPlus-Internal-Key, so the API returns product floors (Price A) that
+ * the storefront needs for sale prices and strips for every other caller
+ * (apps/api/.../middleware/floorPriceRedaction.ts). Installed once, here,
+ * because this module is what every SSR fetch takes its origin from. The key
+ * is sent to the internal origin and nowhere else, and never reaches a browser.
+ */
+if (import.meta.env.SSR) {
+  const env = (globalThis as unknown as { process?: { env?: Record<string, string | undefined> } })?.process?.env ?? {};
+  const internalOrigin = (env.INTERNAL_API_ORIGIN ?? '').replace(/\/+$/, '');
+  const key = env.INTERNAL_API_KEY ?? '';
+  const g = globalThis as unknown as { fetch: typeof fetch; __gpInternalKeyFetch?: boolean };
+  if (internalOrigin && key && !g.__gpInternalKeyFetch) {
+    const base = g.fetch.bind(globalThis);
+    g.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (!url.startsWith(`${internalOrigin}/`)) return base(input, init);
+      const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+      headers.set('X-GoldPlus-Internal-Key', key);
+      return base(input, { ...init, headers });
+    };
+    g.__gpInternalKeyFetch = true;
+  }
+}
+
 export type ApiEnvelope<T> = {
   success: boolean;
   data?: T;

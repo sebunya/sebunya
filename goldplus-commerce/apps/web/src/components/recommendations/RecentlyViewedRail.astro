@@ -42,10 +42,9 @@ const railDiscount = await getStorefrontDiscount();
   aria-labelledby="recommendation-recently-viewed"
   data-recently-viewed-rail
   data-always-render={alwaysRender ? "true" : "false"}
-  data-fallback-products={JSON.stringify(fallbackProducts)}
+  data-fallback-products={JSON.stringify(fallbackProducts.map(({ productId, slug, name, imageUrl, price, availability }) => ({ productId, slug, name, imageUrl, price, availability })))}
   data-sale-bps={railDiscount.active ? String(railDiscount.percentBps) : ""}
   data-sale-percent={railDiscount.active ? String(railDiscount.percent) : ""}
-  data-sale-floor={railDiscount.active ? String(railDiscount.priceFloorUgx) : ""}
   data-sale-ends-iso={railDiscount.active ? (railDiscount.endsIso ?? "") : ""}
 >
   <div class="mb-6">
@@ -62,7 +61,6 @@ const railDiscount = await getStorefrontDiscount();
 
 <script>
   import { shouldShowPickUpWhereYouLeftOff, getRecentlyViewedHistory } from "../../lib/returning-user";
-  import { salePriceUgx, effectiveFloorUgx } from "../../lib/storefrontDiscount";
 
   document.addEventListener("DOMContentLoaded", async () => {
     const rail = document.querySelector("[data-recently-viewed-rail]") as HTMLElement | null;
@@ -94,7 +92,7 @@ const railDiscount = await getStorefrontDiscount();
     // a bookmark from last week must not show last week's price.
     // Nothing to show and nothing to fetch: the returning-visitor rail with no history.
     if (!alwaysRender && getRecentlyViewedHistory().length === 0) return;
-    let liveByProduct: Record<string, { price?: number; floor?: number | null; availability?: { kind: string; quantity?: number }; imageUrl?: string }> = {};
+    let liveByProduct: Record<string, { price?: number; sale?: number | null; availability?: { kind: string; quantity?: number }; imageUrl?: string }> = {};
     try {
       const res = await fetch("/api/catalogue-live", { credentials: "same-origin" });
       const body = await res.json();
@@ -110,7 +108,7 @@ const railDiscount = await getStorefrontDiscount();
     const srcsetOf = (url: string) => { const m = url.match(/^(\/uploads\/assets\/[^?#]+\/)pdp\.webp$/); return m ? ` srcset="${m[1]}thumb.webp 160w, ${m[1]}card.webp 480w, ${url} 1024w" sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px"` : ""; };
     const overlay = (item: any) => {
       const live = liveByProduct[item.productId];
-      return live ? { ...item, price: live.price ?? item.price, floor: live.floor ?? null, availability: live.availability ?? item.availability, imageUrl: live.imageUrl ?? item.imageUrl } : { ...item, floor: null };
+      return live ? { ...item, price: live.price ?? item.price, sale: live.sale ?? null, availability: live.availability ?? item.availability, imageUrl: live.imageUrl ?? item.imageUrl } : { ...item, sale: null };
     };
 
     const rawHistory = getRecentlyViewedHistory();
@@ -141,14 +139,10 @@ const railDiscount = await getStorefrontDiscount();
     const saleBps = Number(rail.getAttribute("data-sale-bps") || 0);
     const salePercent = Number(rail.getAttribute("data-sale-percent") || 0);
     const saleEndsIso = rail.getAttribute("data-sale-ends-iso") || "";
-    const saleFloor = Number(rail.getAttribute("data-sale-floor") || 0);
     const saleActive = Number.isFinite(saleBps) && saleBps > 0;
-    // The evaluator's exact per-line formula, from the one shared helper,
-    // INCLUDING the floor. Without the floor this rail advertised 155,000 down
-    // to 139,500 on a product the basket charges 145,000 for.
-    // Per product: the campaign's extra floor combined with the product's own
-    // Price A; a product whose floor is unknown is shown at full price.
-    const salePriceOf = (regular: number, floor: number | null | undefined) => salePriceUgx(regular, saleBps, effectiveFloorUgx(saleFloor, floor, regular));
+    // The sale price is computed on the server by /api/catalogue-live with the
+    // evaluator's exact per-line formula, INCLUDING the product's floor (Price
+    // A), which never reaches the browser. No live sale = full price.
 
     const sharedRailRenderId = crypto.randomUUID();
     list.innerHTML = items
@@ -192,11 +186,11 @@ const railDiscount = await getStorefrontDiscount();
         // A campaign is not a sale unless this product's price actually
         // drops. At the floor the cut is nothing, and "145,000 was 145,000,
         // 10% discount" is a claim the basket does not honour.
-        const onSale = saleActive && hasPrice && salePriceOf(item.price, item.floor) < item.price;
+        const onSale = saleActive && hasPrice && typeof item.sale === "number" && item.sale > 0 && item.sale < item.price;
         const priceHtml = onSale
           ? `<span class="flex flex-col min-w-0">
                <span class="flex flex-wrap items-baseline gap-x-2">
-                 <span class="font-black tracking-tight tabular-nums text-lg text-brand-charcoal">UGX ${salePriceOf(item.price, item.floor).toLocaleString("en-US")}</span>
+                 <span class="font-black tracking-tight tabular-nums text-lg text-brand-charcoal">UGX ${item.sale.toLocaleString("en-US")}</span>
                  <span class="text-[11px] font-semibold text-slate-600 line-through tabular-nums">UGX ${item.price.toLocaleString("en-US")}</span>
                  <span class="text-[9px] font-black uppercase tracking-wider rounded-full px-1.5 py-0.5" style="background:#93D500;color:#0A0A0A">${salePercent}% discount</span>
                </span>
