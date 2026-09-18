@@ -13,7 +13,7 @@ const REDACT_KEYS = [
   'pepper', 'apiKey', 'api_key', 'clientSecret', 'consumerSecret', 'accountNumber',
   'cardNumber', 'cvv', 'pin', 'ssn', 'email', 'phone',
 ];
-const REDACT_PATHS = REDACT_KEYS.flatMap((k) => [
+export const REDACT_PATHS = REDACT_KEYS.flatMap((k) => [
   k,
   `*.${k}`,
   `err.${k}`,
@@ -22,7 +22,16 @@ const REDACT_PATHS = REDACT_KEYS.flatMap((k) => [
   `body.${k}`,
   `headers.${k}`,
   `*.headers.${k}`,
-]);
+]).concat(
+  // Hyphenated secret HEADERS need bracket paths. The storefront's internal key
+  // was logged in clear on every SSR request for an hour after it shipped
+  // (2026-09-18) because only dotted keys were listed.
+  ['x-goldplus-internal-key', 'x-api-key'].flatMap((h) => [
+    `req.headers["${h}"]`,
+    `headers["${h}"]`,
+    `*.headers["${h}"]`,
+  ]),
+);
 
 // Initialize Structured Logger with dynamic context injection
 export const logger = pino({
