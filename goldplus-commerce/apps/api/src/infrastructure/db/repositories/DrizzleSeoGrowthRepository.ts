@@ -691,6 +691,48 @@ export class DrizzleSeoGrowthRepository {
    * materialiser), by class. The overview read a count nobody computed and
    * showed "No open opportunities" while this table held 11 (2026-09-18).
    */
+  /**
+   * Google Search Console performance, as synced into gsc_performance. It was
+   * collected daily and shown on no admin screen (found 2026-09-18). Position
+   * is Google's average position, weighted by impressions when aggregated.
+   * The window ends at the newest synced date, not today: GSC lags ~2 days.
+   */
+  async searchPerformance(days = 28): Promise<{
+    latestDate: string | null; windowStart: string | null; days: number;
+    totals: { clicks: number; impressions: number; ctr: number | null; position: number | null };
+    queries: Array<{ query: string; clicks: number; impressions: number; ctr: number | null; position: number | null }>;
+    pages: Array<{ page: string; clicks: number; impressions: number; ctr: number | null; position: number | null }>;
+  }> {
+    const d = Math.min(Math.max(Math.trunc(days) || 28, 1), 480);
+    const latest = rowsOf(await db.execute(sql`select max(date)::text as d from gsc_performance`))[0]?.d ?? null;
+    const empty = { clicks: 0, impressions: 0, ctr: null, position: null };
+    if (!latest) return { latestDate: null, windowStart: null, days: d, totals: empty, queries: [], pages: [] };
+    const start = sql`(${latest}::date - ${d - 1}::int)`;
+    const agg = sql`
+      coalesce(sum(clicks), 0)::int as clicks,
+      coalesce(sum(impressions), 0)::int as impressions,
+      case when sum(impressions) > 0 then sum(clicks)::float / sum(impressions) end as ctr,
+      case when sum(impressions) > 0 then sum(position * impressions)::float / sum(impressions) end as position`;
+    const shape = (r: any) => ({
+      clicks: Number(r.clicks), impressions: Number(r.impressions),
+      ctr: r.ctr == null ? null : Number(r.ctr), position: r.position == null ? null : Number(r.position),
+    });
+    const [tot] = rowsOf(await db.execute(sql`select ${agg} from gsc_performance where date between ${start} and ${latest}::date`));
+    const q = rowsOf(await db.execute(sql`
+      select query, ${agg} from gsc_performance where date between ${start} and ${latest}::date and query is not null
+      group by query order by sum(impressions) desc, sum(clicks) desc limit 25`));
+    const pg = rowsOf(await db.execute(sql`
+      select page, ${agg} from gsc_performance where date between ${start} and ${latest}::date and page is not null
+      group by page order by sum(impressions) desc, sum(clicks) desc limit 15`));
+    const ws = rowsOf(await db.execute(sql`select ${start}::text as s`))[0]?.s ?? null;
+    return {
+      latestDate: String(latest), windowStart: ws ? String(ws) : null, days: d,
+      totals: tot ? shape(tot) : empty,
+      queries: q.map((r) => ({ query: String(r.query), ...shape(r) })),
+      pages: pg.map((r) => ({ page: String(r.page), ...shape(r) })),
+    };
+  }
+
   async intelOpenOpportunitiesByClass(): Promise<Record<string, number>> {
     const rows = rowsOf(await db.execute(sql`
       select opportunity_class as k, count(*)::int as n from seo_intel_opportunities

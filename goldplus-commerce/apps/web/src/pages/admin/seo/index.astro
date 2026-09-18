@@ -33,6 +33,22 @@ const alerts = Array.isArray(overview?.openAlerts) ? overview!.openAlerts! : [];
 const integrations = Array.isArray(overview?.integrations) ? overview!.integrations! : [];
 const crawl = overview?.latestCrawl ?? null;
 
+// Google Search Console — the one provider actually connected. Collected daily
+// and, until 2026-09-18, shown nowhere.
+type PerfRow = { clicks: number; impressions: number; ctr: number | null; position: number | null };
+type SearchPerf = {
+  latestDate: string | null; windowStart: string | null; days: number;
+  totals: PerfRow;
+  queries: Array<PerfRow & { query: string }>;
+  pages: Array<PerfRow & { page: string }>;
+};
+const perfRes = await seoGet<SearchPerf>(token, "/admin/seo/search-performance?days=28");
+const perf = perfRes.ok ? perfRes.data : null;
+const perfReason = emptyReason(perfRes, "Search Console performance is not available");
+const posFmt = (p: number | null) => (p == null ? "—" : p.toFixed(1));
+const ctrFmt = (c: number | null) => (c == null ? "—" : `${(c * 100).toFixed(1)}%`);
+const pagePath = (u: string) => { try { const x = new URL(u); return (x.host.startsWith("www.") ? "www · " : "") + (x.pathname + x.search || "/"); } catch { return u; } };
+
 const subPages = [
   { href: "/admin/seo/competitors", label: "Competitors", note: "Registry, candidate review, evidence." },
   { href: "/admin/seo/queries", label: "Queries", note: "Query intelligence, add & CSV import." },
@@ -61,6 +77,53 @@ const subPages = [
         {overviewReason}
       </div>
     )}
+
+    {/* ── Google Search (Search Console) ─────────────────────────────────── */}
+    <section aria-labelledby="gsc-heading" class="bg-white border border-gray-200 rounded-2xl p-6 lg:p-8 mb-8">
+      <h3 id="gsc-heading" class="text-sm font-black uppercase tracking-widest text-gray-500 mb-1">Google Search — last {perf?.days ?? 28} days of data</h3>
+      <p class="text-xs text-gray-500 mb-4">
+        From Google Search Console{perf?.latestDate ? `, ${perf.windowStart} to ${perf.latestDate} (Google reports with a ~2-day delay)` : ""}.
+        Position is Google's average position, weighted by impressions.
+      </p>
+      {perfReason ? (
+        <p class="text-sm text-gray-500">{perfReason}</p>
+      ) : !perf?.latestDate ? (
+        <p class="text-sm text-gray-500">No Search Console data has been synced yet.</p>
+      ) : (
+        <>
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div class="rounded-xl border border-gray-200 p-4"><p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Clicks</p><p class="text-3xl font-black text-brand-dark tabular-nums">{num(perf.totals.clicks)}</p></div>
+            <div class="rounded-xl border border-gray-200 p-4"><p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Impressions</p><p class="text-3xl font-black text-brand-dark tabular-nums">{num(perf.totals.impressions)}</p></div>
+            <div class="rounded-xl border border-gray-200 p-4"><p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Click rate</p><p class="text-3xl font-black text-brand-dark tabular-nums">{ctrFmt(perf.totals.ctr)}</p></div>
+            <div class="rounded-xl border border-gray-200 p-4"><p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Avg position</p><p class="text-3xl font-black text-brand-dark tabular-nums">{posFmt(perf.totals.position)}</p></div>
+          </div>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="overflow-x-auto">
+              <h4 class="text-xs font-black uppercase tracking-widest text-gray-500 mb-2">What people searched</h4>
+              <table class="w-full text-sm tabular-nums">
+                <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400"><th class="py-1 pr-2">Search</th><th class="py-1 px-2 text-right">Impr.</th><th class="py-1 px-2 text-right">Clicks</th><th class="py-1 pl-2 text-right">Pos.</th></tr></thead>
+                <tbody>
+                  {perf.queries.map((r) => (
+                    <tr class="border-t border-gray-100"><td class="py-1.5 pr-2 text-gray-800">{r.query}</td><td class="py-1.5 px-2 text-right">{num(r.impressions)}</td><td class="py-1.5 px-2 text-right">{num(r.clicks)}</td><td class="py-1.5 pl-2 text-right">{posFmt(r.position)}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div class="overflow-x-auto">
+              <h4 class="text-xs font-black uppercase tracking-widest text-gray-500 mb-2">Pages Google showed</h4>
+              <table class="w-full text-sm tabular-nums">
+                <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400"><th class="py-1 pr-2">Page</th><th class="py-1 px-2 text-right">Impr.</th><th class="py-1 px-2 text-right">Clicks</th><th class="py-1 pl-2 text-right">Pos.</th></tr></thead>
+                <tbody>
+                  {perf.pages.map((r) => (
+                    <tr class="border-t border-gray-100"><td class="py-1.5 pr-2 text-gray-800 break-all">{pagePath(r.page)}</td><td class="py-1.5 px-2 text-right">{num(r.impressions)}</td><td class="py-1.5 px-2 text-right">{num(r.clicks)}</td><td class="py-1.5 pl-2 text-right">{posFmt(r.position)}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+    </section>
 
     {/* ── Hero metric: organic market share ─────────────────────────────── */}
     <section aria-labelledby="share-heading" class="bg-white border border-gray-200 rounded-2xl p-6 lg:p-8 mb-8">

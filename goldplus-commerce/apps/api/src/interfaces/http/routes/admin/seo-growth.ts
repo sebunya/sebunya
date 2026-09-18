@@ -107,6 +107,12 @@ routes.get('/overview', requirePermissions([PERMISSIONS.SEO_VIEW]), async (c) =>
   });
 });
 
+/** Google Search Console performance (clicks, impressions, CTR, position). */
+routes.get('/search-performance', requirePermissions([PERMISSIONS.SEO_VIEW]), async (c) => {
+  const days = Number(c.req.query('days')) || 28;
+  return ok(c, await Registry.getInstance().seoGrowthRepo.searchPerformance(days));
+});
+
 // ── Competitors ─────────────────────────────────────────────────────────────
 
 routes.get('/competitors', requirePermissions([PERMISSIONS.SEO_VIEW]), async (c) => {
