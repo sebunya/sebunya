@@ -27,7 +27,7 @@ const MAX_ATTEMPTS = 5;
 const BACKOFF_MS = [30_000, 5 * 60_000, 15 * 60_000, 60 * 60_000, 6 * 60 * 60_000];
 const repo = new DrizzleAdDestinationRepository();
 
-let activeCache: { at: number; list: Array<{ platform: string; config: Record<string, string>; secretEnc: string }> } | null = null;
+let activeCache: { at: number; list: Array<{ platform: string; config: Record<string, string>; secretEnc: string | null }> } | null = null;
 async function activePlatforms() {
   if (!activeCache || Date.now() - activeCache.at > 60_000) activeCache = { at: Date.now(), list: await repo.active() };
   return activeCache.list;
@@ -53,6 +53,7 @@ export async function fanOutAdConversions(event: CanonicalTelemetryEvent): Promi
   }
 }
 
+/** Postback platforms have no token: they are live with ids alone. */
 export async function processAdConversionBatch(): Promise<{ claimed: number; sent: number; retried: number; deadLettered: number; skipped: number }> {
   const now = new Date();
   const candidates = await db.select({ id: outboxEvents.id }).from(outboxEvents)
@@ -74,9 +75,11 @@ export async function processAdConversionBatch(): Promise<{ claimed: number; sen
     const finish = (status: string, extra: Record<string, unknown> = {}) =>
       db.update(outboxEvents).set({ isProcessed: true, processedAt: new Date(), status, ...extra }).where(eq(outboxEvents.id, row.id));
     // Switched off (or token removed) since it was queued: nothing is sent.
-    if (!dest || !vault) { await finish('withdrawn', { lastError: !vault ? 'credential vault key not set' : 'platform switched off' }); out.skipped++; continue; }
-    let secret: string;
-    try { secret = String(vault.decrypt<{ apiKey: string }>(dest.secretEnc).apiKey ?? ''); } catch {
+    const def = adPlatform(platform);
+    const needsSecret = !!def?.secretLabel;
+    if (!dest || (needsSecret && !vault)) { await finish('withdrawn', { lastError: !dest ? 'platform switched off' : 'credential vault key not set' }); out.skipped++; continue; }
+    let secret = '';
+    try { if (needsSecret) secret = String(vault!.decrypt<{ apiKey: string }>(dest.secretEnc as string).apiKey ?? ''); } catch {
       // Shown on the platform in admin: a rotated vault key (or JWT_SECRET, its
       // fallback) makes every stored token unreadable until it is re-entered.
       await finish('withdrawn', { lastError: 'token could not be decrypted' });
@@ -87,9 +90,13 @@ export async function processAdConversionBatch(): Promise<{ claimed: number; sen
     if (!req) { await finish('skipped', { lastError: 'no equivalent event or required identifier' }); out.skipped++; continue; }
     const attempt = row.attemptCount + 1;
     try {
-      const res = await fetch(req.url, { method: 'POST', headers: req.headers, body: JSON.stringify(req.body), signal: AbortSignal.timeout(10_000) });
+      const auth = def?.authorize ? await def.authorize(req, dest.config, secret) : {};
+      const method = req.method ?? 'POST';
+      const res = await fetch(req.url, { method, headers: { ...req.headers, ...auth }, body: method === 'GET' ? undefined : JSON.stringify(req.body), redirect: 'manual', signal: AbortSignal.timeout(10_000) });
       const text = await res.text().catch(() => '');
       if (!res.ok) throw Object.assign(new Error(`${platform} HTTP ${res.status}: ${text.slice(0, 300)}`), { status: res.status });
+      const replyErr = def?.replyError ? def.replyError((() => { try { return JSON.parse(text); } catch { return null; } })()) : null;
+      if (replyErr) throw Object.assign(new Error(`${platform}: ${replyErr}`), { status: 400 });
       await finish('sent');
       await repo.recordResult(platform, true);
       out.sent++;

@@ -47,13 +47,17 @@ export async function enqueuePurchaseEvent(opts: {
   hashedEmail?: string;
   hashedPhone?: string;
   hashedPhonePlus?: string;
+  /** Ad-network click ids kept on the order (0139). */
+  clickIds?: Record<string, string> | null;
   // Drizzle transaction context for atomicity
   tx?: Parameters<typeof db.insert>[0] extends infer T ? any : never;
 }): Promise<string | null> {
   const {
     orderId, transactionId, value, currency,
-    userId, fpClientId, ipAddress, userAgent, pageLocation, traceId, gaSessionId, gaSessionNumber, hashedEmail, hashedPhone, hashedPhonePlus,
+    userId, fpClientId, ipAddress, userAgent, pageLocation, traceId, gaSessionId, gaSessionNumber, hashedEmail, hashedPhone, hashedPhonePlus, clickIds,
   } = opts;
+  const ck = clickIds ?? {};
+  const networkParam = ck.clickid ? 'clickid' : ck.click_id ? 'click_id' : undefined;
 
   // Enrich with stored identity signals (click IDs captured on previous sessions)
   let identityEnrichment: {
@@ -130,6 +134,11 @@ export async function enqueuePurchaseEvent(opts: {
       hashed_email: hashedEmail ?? identityEnrichment.hashedEmail,
       hashed_phone: hashedPhone ?? identityEnrichment.hashedPhone,
       hashed_phone_plus: hashedPhonePlus,
+      // Click ids from the order win over the identity graph's (they are this sale's).
+      ...(ck.gclid ? { gclid: ck.gclid } : {}), ...(ck.gbraid ? { gbraid: ck.gbraid } : {}), ...(ck.wbraid ? { wbraid: ck.wbraid } : {}),
+      ...(ck.ttclid ? { ttclid: ck.ttclid } : {}), ...(ck.twclid ? { twclid: ck.twclid } : {}), ...(ck.li_fat_id ? { li_fat_id: ck.li_fat_id } : {}),
+      ...(ck.msclkid ? { msclkid: ck.msclkid } : {}), ...(ck.ScCid ? { sccid: ck.ScCid } : {}),
+      ...(networkParam ? { network_click_id: ck[networkParam], network_click_param: networkParam } : {}),
     },
     ecommerce: {
       transaction_id: transactionId,

@@ -2,8 +2,8 @@ import type { AdDestinationRepository, AdDestinationRow, SecretCipher } from '..
 import type { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
 
 export interface AdPlatformInfo {
-  key: string; name: string; secretLabel: string; unavailable?: string;
-  fields: Array<{ key: string; label: string; pattern: RegExp; hint: string }>;
+  key: string; name: string; secretLabel: string; secretHint?: string; unavailable?: string;
+  fields: Array<{ key: string; label: string; pattern: RegExp; hint: string; optional?: boolean }>;
   events: Record<string, string>;
 }
 type R<T> = { ok: true; value: T } | { ok: false; code: 'NOT_FOUND' | 'BAD_INPUT' | 'NOT_CONFIGURED'; message: string };
@@ -25,7 +25,7 @@ export class AdDestinationUseCases {
     const rows = new Map((await this.repo.list()).map((r) => [r.platform, r]));
     return this.platforms.map((p) => {
       const row = rows.get(p.key) ?? null;
-      const complete = !p.unavailable && !!row?.hasSecret && p.fields.every((f) => f.pattern.test(row?.config?.[f.key] ?? ''));
+      const complete = !p.unavailable && (!p.secretLabel || !!row?.hasSecret) && p.fields.every((f) => (f.optional && !row?.config?.[f.key]) || f.pattern.test(row?.config?.[f.key] ?? ''));
       const state = p.unavailable ? 'NOT_AVAILABLE' : !complete ? 'NOT_CONFIGURED' : row?.enabled ? 'LIVE' : 'READY_OFF';
       return { ...p, state, row };
     });
@@ -46,15 +46,24 @@ export class AdDestinationUseCases {
       const v = input.config?.[f.key];
       if (v === undefined) continue;
       const s = String(v).trim();
+      if (f.optional && s === '') { delete config[f.key]; continue; }
       if (!f.pattern.test(s)) return { ok: false, code: 'BAD_INPUT', message: `${f.label} does not look right (${f.hint}).` };
       config[f.key] = s;
     }
     let secretEnc: string | null | undefined;
     let secretMask: string | null | undefined;
-    if (typeof input.secret === 'string' && input.secret.trim()) {
+    if (typeof input.secret === 'string' && input.secret.trim() && p.secretLabel) {
       if (!this.cipher) return { ok: false, code: 'NOT_CONFIGURED', message: 'Not configured: the credential vault key is not set on the server.' };
       const s = input.secret.trim();
       if (s.length < 20 || s.length > 4000) return { ok: false, code: 'BAD_INPUT', message: `${p.secretLabel} does not look right.` };
+      if (p.secretHint?.startsWith('{')) {
+        // A JSON bundle: check its shape now, not at the first failed send.
+        let o: Record<string, unknown> | null = null;
+        try { o = JSON.parse(s); } catch { /* reported below */ }
+        const want = [...p.secretHint.matchAll(/"(\w+)"\s*:/g)].map((m) => m[1]);
+        const missing = !o ? want : want.filter((k) => typeof o![k] !== 'string' || !(o![k] as string).trim());
+        if (missing.length) return { ok: false, code: 'BAD_INPUT', message: `${p.secretLabel}: paste JSON with ${want.join(', ')} (missing: ${missing.join(', ')}).` };
+      }
       secretEnc = this.cipher.encrypt(s);
       secretMask = this.cipher.mask(s);
     }
@@ -64,8 +73,8 @@ export class AdDestinationUseCases {
       await this.audit.execute({ actorId, action: 'AD_DESTINATION_TOKEN_REMOVED', entity: 'ad_destination', entityId: key, newState: { enabled: false } } as never);
       return { ok: true, value: row };
     }
-    const willBeComplete = p.fields.every((f) => f.pattern.test(config[f.key] ?? '')) && (!!secretEnc || !!current?.hasSecret);
-    if (input.enabled === true && !willBeComplete) return { ok: false, code: 'BAD_INPUT', message: `Enter the ${p.fields.map((f) => f.label).join(', ')} and the ${p.secretLabel} before switching ${p.name} on.` };
+    const willBeComplete = p.fields.every((f) => (f.optional && !config[f.key]) || f.pattern.test(config[f.key] ?? '')) && (!p.secretLabel || !!secretEnc || !!current?.hasSecret);
+    if (input.enabled === true && !willBeComplete) return { ok: false, code: 'BAD_INPUT', message: `Enter the ${p.fields.filter((f) => !f.optional).map((f) => f.label).join(', ')}${p.secretLabel ? ` and the ${p.secretLabel}` : ''} before switching ${p.name} on.` };
     const row = await this.repo.save(key, { enabled: input.enabled, config, secretEnc, secretMask, updatedBy: actorId });
     await this.audit.execute({ actorId, action: 'AD_DESTINATION_CONFIGURED', entity: 'ad_destination', entityId: key,
       newState: { enabled: row.enabled, config, secretChanged: secretEnc !== undefined } } as never);

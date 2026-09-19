@@ -93,7 +93,10 @@ function getPageSessionId(): string {
 export function extractClickIds(): Record<string, string> {
   const params = new URLSearchParams(window.location.search);
   const ids: Record<string, string> = {};
-  const clickIdKeys = ['gclid', 'wbraid', 'gbraid', 'ttclid', 'twclid', 'li_fat_id', 'epik'];
+  // msclkid: Microsoft Ads; ScCid: Snapchat; clickid/click_id: the network
+  // click id Opera, Transsion (Eagllwin), Boomplay and most ad networks append
+  // for server-to-server postbacks.
+  const clickIdKeys = ['gclid', 'wbraid', 'gbraid', 'ttclid', 'twclid', 'li_fat_id', 'epik', 'msclkid', 'ScCid', 'clickid', 'click_id'];
   for (const key of clickIdKeys) {
     const val = params.get(key);
     if (val) ids[key] = val;
@@ -112,6 +115,14 @@ export function captureAndPersistClickIds(): Record<string, string> {
   if (Object.keys(fresh).length > 0) {
     sessionStorage.setItem('_gp_click_ids', JSON.stringify(fresh));
   }
+  // Also kept 30 days in localStorage: an ad click today and a purchase next
+  // week is still that ad's sale (the order carries these to the server).
+  try {
+    if (Object.keys(fresh).length > 0) {
+      const prev = JSON.parse(localStorage.getItem('_gp_click_ids_30d') || '{}');
+      localStorage.setItem('_gp_click_ids_30d', JSON.stringify({ ...prev, ...fresh, _at: Date.now() }));
+    }
+  } catch { /* storage unavailable: session copy only */ }
   const stored = sessionStorage.getItem('_gp_click_ids');
   return stored ? { ...JSON.parse(stored), ...fresh } : fresh;
 }

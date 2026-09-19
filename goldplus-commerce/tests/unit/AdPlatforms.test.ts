@@ -48,7 +48,7 @@ describe('advertising platforms: request builders', () => {
     expect(buildAdRequest('pinterest', { ...purchase, event_name: 'begin_checkout' }, { adAccountId: '549755885175' }, 'P')).toBeNull();
   });
   it('platforms without an implemented API are listed with a reason, never built', () => {
-    for (const k of ['google_ads', 'microsoft_ads', 'x', 'spotify', 'opera', 'transsion', 'sa360']) {
+    for (const k of ['spotify', 'sa360']) {
       const p = AD_PLATFORMS.find((x) => x.key === k)!;
       expect(p.unavailable).toBeTruthy();
       expect(buildAdRequest(k, purchase, {}, 't')).toBeNull();
@@ -109,3 +109,55 @@ describe('advertising: second-review fixes', () => {
   });
 });
 
+
+import { oauth1Header, safePostbackUrl } from '../../apps/api/src/infrastructure/advertising/AdPlatforms';
+
+describe('advertising: Google Ads, Microsoft, X and network postbacks', () => {
+  const withClicks = { ...purchase, user_data: { ...purchase.user_data, gclid: 'Cj0KCQ', msclkid: 'ms123', twclid: 'tw123', network_click_id: 'abc-123', network_click_param: 'clickid' } };
+  it('Google Ads: uploadClickConversions with gclid, UTC datetime, value, order id and enhanced-conversion identifiers', () => {
+    const r = buildAdRequest('google_ads', withClicks, { customerId: '1234567890', conversionActionId: '987654' }, '{}')!;
+    expect(r.url).toBe('https://googleads.googleapis.com/v21/customers/1234567890:uploadClickConversions');
+    const c = (r.body as any).conversions[0];
+    expect(c.gclid).toBe('Cj0KCQ');
+    expect(c.conversionAction).toBe('customers/1234567890/conversionActions/987654');
+    expect(c.conversionDateTime).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\+00:00$/);
+    expect(c.userIdentifiers).toEqual([{ hashedEmail: purchase.user_data.hashed_email }, { hashedPhoneNumber: purchase.user_data.hashed_phone_plus }]);
+    expect((r.body as any).partialFailure).toBe(true);
+  });
+  it('Google Ads: a 200 with partialFailureError is a failure', () => {
+    const g = AD_PLATFORMS.find((p) => p.key === 'google_ads')!;
+    expect(g.replyError!({ partialFailureError: { message: 'bad gclid' } })).toMatch(/bad gclid/);
+    expect(g.replyError!({ results: [{}] })).toBeNull();
+  });
+  it('Microsoft: UET event with msclkid; X: identifiers incl twclid, signed OAuth1 header', () => {
+    const m = buildAdRequest('microsoft_ads', withClicks, { tagId: '12345678' }, 'MS')!;
+    expect(m.url).toBe('https://capi.uet.microsoft.com/v1/12345678/events');
+    expect((m.body as any).data[0].userData.msclkid).toBe('ms123');
+    const x = buildAdRequest('x', withClicks, { pixelId: 'o8z6j', purchaseEventId: 'tw-o8z6j-o8z6k' }, '{}')!;
+    expect((x.body as any).conversions[0].identifiers[0]).toEqual({ twclid: 'tw123' });
+    const h = oauth1Header('POST', x.url, { consumerKey: 'ck', consumerSecret: 'cs', accessToken: 'at', accessTokenSecret: 'ats' }, 'nonce', '1700000000');
+    expect(h).toMatch(/^OAuth oauth_consumer_key="ck", oauth_nonce="nonce", oauth_signature_method="HMAC-SHA1", oauth_timestamp="1700000000", oauth_token="at", oauth_version="1.0", oauth_signature="[A-Za-z0-9%]+"$/);
+    // Deterministic: same inputs, same signature.
+    expect(h).toBe(oauth1Header('POST', x.url, { consumerKey: 'ck', consumerSecret: 'cs', accessToken: 'at', accessTokenSecret: 'ats' }, 'nonce', '1700000000'));
+  });
+  it('postback: fills macros for a purchase from THAT network only; refuses unsafe URLs', () => {
+    const r = buildAdRequest('opera', withClicks, { postbackUrl: 'https://track.opera.example.com/pb?cid={click_id}&v={value}&o={order_id}', clickParam: 'clickid' }, '')!;
+    expect(r.method).toBe('GET');
+    expect(r.url).toBe('https://track.opera.example.com/pb?cid=abc-123&v=145000&o=GP-1');
+    expect(buildAdRequest('opera', withClicks, { postbackUrl: 'https://t.example.com/pb?c={click_id}', clickParam: 'click_id' }, '')).toBeNull();
+    for (const bad of ['http://t.example.com/x', 'https://10.0.0.1/x', 'https://localhost/x', 'https://user:pw@t.example.com/x', 'https://t.example.com:8443/x', 'https://sgtm-production/x'])
+      expect(safePostbackUrl(bad)).toBeNull();
+  });
+  it('no-token platforms can go live with ids alone; JSON credentials are checked on save', async () => {
+    const rows = new Map<string, any>();
+    const repo = { list: async () => [...rows.values()], get: async (k: string) => rows.get(k) ?? null, active: async () => [],
+      save: async (k: string, p: any) => { const cur = rows.get(k) ?? { platform: k, enabled: false, config: {}, hasSecret: false, secretMask: null, sentCount: 0, failedCount: 0 };
+        const next = { ...cur, enabled: p.enabled ?? cur.enabled, config: p.config ?? cur.config, hasSecret: p.secretEnc !== undefined ? !!p.secretEnc : cur.hasSecret }; rows.set(k, next); return next; } };
+    const uc = new AdDestinationUseCases(repo as any, AD_PLATFORMS as any, { encrypt: (s: string) => s, decrypt: (s: string) => s, mask: () => 'm' }, { execute: async () => ({}) } as any);
+    expect((await uc.configure('u', 'boomplay', { config: { postbackUrl: 'https://pb.boomplay.example.com/c?id={click_id}', clickParam: 'clickid' }, enabled: true })).ok).toBe(true);
+    expect((await uc.list()).find((p) => p.key === 'boomplay')!.state).toBe('LIVE');
+    const bad = await uc.configure('u', 'google_ads', { config: { customerId: '1234567890', conversionActionId: '987654' }, secret: '{"developerToken":"x","clientId":"y"}' });
+    expect(bad).toMatchObject({ ok: false, code: 'BAD_INPUT' });
+    expect((bad as any).message).toMatch(/missing: clientSecret, refreshToken/);
+  });
+});

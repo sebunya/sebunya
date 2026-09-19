@@ -31,7 +31,8 @@ export class DrizzleAdDestinationRepository implements AdDestinationRepository {
     return map(r);
   }
   async active() {
-    return rowsOf(await db.execute(sql`select platform, config, secret_enc from ad_destinations where enabled and secret_enc is not null`))
+    // Postback platforms carry no token; completeness is enforced when switched on.
+    return rowsOf(await db.execute(sql`select platform, config, secret_enc from ad_destinations where enabled`))
       .map((r) => ({ platform: r.platform, config: (typeof r.config === 'string' ? JSON.parse(r.config) : r.config) ?? {}, secretEnc: r.secret_enc }));
   }
   async recordResult(platform: string, ok: boolean, error?: string) {

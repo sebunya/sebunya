@@ -12,14 +12,20 @@ import type { CanonicalTelemetryEvent } from '@goldplus/shared';
  */
 
 export type AdEventName = 'view_item' | 'add_to_cart' | 'begin_checkout' | 'add_payment_info' | 'purchase';
-export interface AdRequest { url: string; headers: Record<string, string>; body: unknown }
+export interface AdRequest { url: string; headers: Record<string, string>; body?: unknown; method?: 'POST' | 'GET' }
 export interface AdPlatformDef {
   key: string;
   name: string;
   /** Non-secret ids the owner enters (shown in admin). */
-  fields: Array<{ key: string; label: string; pattern: RegExp; hint: string }>;
-  /** Label for the single write-only secret. */
+  fields: Array<{ key: string; label: string; pattern: RegExp; hint: string; optional?: boolean }>;
+  /** Label for the single write-only secret ('' = the platform needs none). */
   secretLabel: string;
+  /** Secret format hint shown in admin (e.g. a JSON bundle). */
+  secretHint?: string;
+  /** Per-send auth headers derived from the secret (OAuth exchange / request signing). */
+  authorize?: (req: AdRequest, cfg: Record<string, string>, secret: string) => Promise<Record<string, string>>;
+  /** A 2xx reply can still carry a failure (Google Ads partial failure): return it. */
+  replyError?: (json: unknown) => string | null;
   events: Partial<Record<AdEventName, string>>;
   build?: (e: CanonicalTelemetryEvent, cfg: Record<string, string>, secret: string) => AdRequest | null;
   /** When not implementable yet: why (shown as-is in admin). */
@@ -57,6 +63,78 @@ const value = (e: CanonicalTelemetryEvent) => e.ecommerce?.value ?? items(e).red
 const ids = (e: CanonicalTelemetryEvent) => items(e).map((i) => i.item_id);
 const u = (e: CanonicalTelemetryEvent) => e.user_data ?? {};
 const extId = (e: CanonicalTelemetryEvent) => (u(e).fp_client_id ? sha(u(e).fp_client_id as string) : undefined);
+
+/** Parses a JSON secret bundle; throws a message that names the missing keys (never their values). */
+export function parseJsonSecret(secret: string, keys: string[]): Record<string, string> {
+  let o: Record<string, unknown>;
+  try { o = JSON.parse(secret); } catch { throw new Error('credentials are not valid JSON'); }
+  const missing = keys.filter((k) => typeof o[k] !== 'string' || !(o[k] as string).trim());
+  if (missing.length) throw new Error(`credentials missing: ${missing.join(', ')}`);
+  return o as Record<string, string>;
+}
+
+const tokenCache = new Map<string, { token: string; until: number }>();
+/** OAuth2 refresh-token exchange (Google), cached until shortly before expiry. */
+async function googleAccessToken(clientId: string, clientSecret: string, refreshToken: string): Promise<string> {
+  const key = sha(`${clientId}:${refreshToken}`);
+  const hit = tokenCache.get(key);
+  if (hit && hit.until > Date.now()) return hit.token;
+  const res = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'refresh_token', client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken }), signal: AbortSignal.timeout(10_000) });
+  const j = (await res.json().catch(() => null)) as { access_token?: string; expires_in?: number; error?: string } | null;
+  if (!res.ok || !j?.access_token) throw Object.assign(new Error(`Google OAuth refused: ${j?.error ?? res.status}`), { status: res.status });
+  tokenCache.set(key, { token: j.access_token, until: Date.now() + Math.max(60, (j.expires_in ?? 3600) - 300) * 1000 });
+  return j.access_token;
+}
+
+const pct = (s: string) => encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+/** OAuth 1.0a HMAC-SHA1 header (X Ads API). A JSON body is not part of the signature. */
+export function oauth1Header(method: string, url: string, c: Record<string, string>, nonce = crypto.randomBytes(16).toString('hex'), ts = Math.floor(Date.now() / 1000).toString()): string {
+  const u2 = new URL(url);
+  const oauth: Record<string, string> = { oauth_consumer_key: c.consumerKey, oauth_nonce: nonce, oauth_signature_method: 'HMAC-SHA1', oauth_timestamp: ts, oauth_token: c.accessToken, oauth_version: '1.0' };
+  const params = [...Object.entries(oauth), ...[...u2.searchParams.entries()]].map(([k, v]) => [pct(k), pct(v)]).sort(([a, x], [b, y]) => (a === b ? (x < y ? -1 : 1) : a < b ? -1 : 1));
+  const base = [method.toUpperCase(), pct(`${u2.origin}${u2.pathname}`), pct(params.map(([k, v]) => `${k}=${v}`).join('&'))].join('&');
+  const signature = crypto.createHmac('sha1', `${pct(c.consumerSecret)}&${pct(c.accessTokenSecret)}`).update(base).digest('base64');
+  return 'OAuth ' + Object.entries({ ...oauth, oauth_signature: signature }).map(([k, v]) => `${pct(k)}="${pct(v)}"`).join(', ');
+}
+
+/** A network postback URL the OWNER entered: https, a real host name, never an address or internal name. */
+export function safePostbackUrl(raw: string): URL | null {
+  try {
+    const x = new URL(raw);
+    if (x.protocol !== 'https:' || x.username || x.password || x.port) return null;
+    if (/^[\d.]+$/.test(x.hostname) || x.hostname.includes(':') || !x.hostname.includes('.') || /(^|\.)(local|internal|localhost)$/i.test(x.hostname)) return null;
+    return x;
+  } catch { return null; }
+}
+
+/**
+ * Generic server-to-server postback (Opera, Eagllwin, Boomplay, any network):
+ * the network's own URL with macros, called for a purchase that came from that
+ * network's link (its click id in the URL parameter the owner names).
+ * Macros: {click_id} {value} {currency} {order_id} {event_id}.
+ */
+function postback(key: string, name: string, where: string): AdPlatformDef {
+  return {
+    key, name, secretLabel: '', events: { purchase: 'postback' },
+    fields: [
+      { key: 'postbackUrl', label: 'Postback URL (with {click_id})', pattern: /^https:\/\/[^\s]+\{click_id\}[^\s]*$/, hint: `From ${where}. Macros: {click_id} {value} {currency} {order_id} {event_id}` },
+      { key: 'clickParam', label: 'Click-id URL parameter', pattern: /^(clickid|click_id)$/, hint: 'The parameter the network adds to your links: clickid or click_id' },
+    ],
+    build(e, cfg) {
+      const ud = u(e);
+      if (e.event_name !== 'purchase' || !ud.network_click_id || ud.network_click_param !== cfg.clickParam) return null;
+      const filled = cfg.postbackUrl
+        .replace(/\{click_id\}/g, encodeURIComponent(ud.network_click_id))
+        .replace(/\{value\}/g, encodeURIComponent(String(value(e))))
+        .replace(/\{currency\}/g, encodeURIComponent(e.ecommerce?.currency ?? 'UGX'))
+        .replace(/\{order_id\}/g, encodeURIComponent(e.ecommerce?.transaction_id ?? ''))
+        .replace(/\{event_id\}/g, encodeURIComponent(e.event_id));
+      const url = safePostbackUrl(filled);
+      return url ? { url: url.toString(), headers: {}, method: 'GET' } : null;
+    },
+  };
+}
 
 export const AD_PLATFORMS: AdPlatformDef[] = [
   {
@@ -161,20 +239,98 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
       };
     },
   },
-  { key: 'google_ads', name: 'Google Ads (Search, Shopping, YouTube, PMax)', fields: [], secretLabel: '', events: {},
-    unavailable: 'Sent through the Tag Manager server container (Google Ads conversion tag), not from here. Needs an active Google Ads account and its conversion ID + label.' },
-  { key: 'microsoft_ads', name: 'Microsoft Advertising (Bing)', fields: [], secretLabel: '', events: {},
-    unavailable: 'Needs a Microsoft Advertising account and UET tag ID; its server-side conversions API is added once the account exists.' },
-  { key: 'x', name: 'X (Twitter) Ads', fields: [], secretLabel: '', events: {},
-    unavailable: 'X Conversions API needs a developer app with OAuth 1.0a keys; added once the X Ads account and app exist.' },
+  {
+    key: 'google_ads', name: 'Google Ads (Search, Shopping, YouTube, PMax)',
+    fields: [
+      { key: 'customerId', label: 'Customer ID (10 digits, no dashes)', pattern: /^\d{10}$/, hint: 'Google Ads, top right' },
+      { key: 'conversionActionId', label: 'Conversion action ID', pattern: /^\d{4,20}$/, hint: 'Goals > Conversions > the purchase action (ctId in its URL)' },
+      { key: 'loginCustomerId', label: 'Manager account ID (if used)', pattern: /^(\d{10})?$/, hint: 'Only when access goes through an MCC', optional: true },
+      { key: 'apiVersion', label: 'Google Ads API version', pattern: /^v\d{2}$/, hint: 'e.g. v21 — Google sunsets versions yearly', optional: true },
+    ],
+    secretLabel: 'API credentials (JSON)',
+    secretHint: '{"developerToken":"…","clientId":"….apps.googleusercontent.com","clientSecret":"…","refreshToken":"…"}',
+    events: { purchase: 'uploadClickConversions' },
+    async authorize(_req, _cfg, secret) {
+      const c = parseJsonSecret(secret, ['developerToken', 'clientId', 'clientSecret', 'refreshToken']);
+      const token = await googleAccessToken(c.clientId, c.clientSecret, c.refreshToken);
+      return { Authorization: `Bearer ${token}`, 'developer-token': c.developerToken };
+    },
+    replyError: (j) => { const e = (j as { partialFailureError?: { message?: string } })?.partialFailureError; return e ? `partial failure: ${String(e.message ?? '').slice(0, 300)}` : null; },
+    build(e, cfg) {
+      if (e.event_name !== 'purchase') return null;
+      const ud = u(e);
+      // A click id, or the hashed email/phone for enhanced conversions; neither = nothing to match.
+      const userIdentifiers = [ud.hashed_email ? { hashedEmail: ud.hashed_email } : null, ud.hashed_phone_plus ? { hashedPhoneNumber: ud.hashed_phone_plus } : null].filter(Boolean);
+      if (!ud.gclid && !ud.gbraid && !ud.wbraid && userIdentifiers.length === 0) return null;
+      const t = new Date(e.event_time * 1000).toISOString().replace('T', ' ').slice(0, 19) + '+00:00';
+      const v = cfg.apiVersion || 'v21';
+      return {
+        url: `https://googleads.googleapis.com/${v}/customers/${cfg.customerId}:uploadClickConversions`,
+        headers: { 'content-type': 'application/json', ...(cfg.loginCustomerId ? { 'login-customer-id': cfg.loginCustomerId } : {}) },
+        body: { partialFailure: true, conversions: [{
+          ...(ud.gclid ? { gclid: ud.gclid } : ud.gbraid ? { gbraid: ud.gbraid } : ud.wbraid ? { wbraid: ud.wbraid } : {}),
+          conversionAction: `customers/${cfg.customerId}/conversionActions/${cfg.conversionActionId}`,
+          conversionDateTime: t, conversionValue: value(e), currencyCode: e.ecommerce?.currency ?? 'UGX', orderId: e.ecommerce?.transaction_id,
+          ...(userIdentifiers.length ? { userIdentifiers } : {}),
+        }] },
+      };
+    },
+  },
+  {
+    key: 'microsoft_ads', name: 'Microsoft Advertising (Bing)',
+    fields: [{ key: 'tagId', label: 'UET tag ID', pattern: /^\d{6,12}$/, hint: 'Microsoft Advertising > Tools > UET tag' }],
+    secretLabel: 'UET Conversions API token',
+    events: { view_item: 'view_item', add_to_cart: 'add_to_cart', begin_checkout: 'begin_checkout', purchase: 'purchase' },
+    build(e, cfg, token) {
+      const name = this.events[e.event_name as AdEventName]; if (!name) return null;
+      const ud = u(e);
+      return {
+        url: `https://capi.uet.microsoft.com/v1/${cfg.tagId}/events`,
+        headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+        body: { data: [{
+          eventType: 'custom', eventName: name, eventId: e.event_id, eventTime: e.event_time, eventSourceUrl: e.page_location,
+          userData: { em: ud.hashed_email, ph: ud.hashed_phone, clientIpAddress: ud.ip_address, clientUserAgent: ud.user_agent, msclkid: ud.msclkid, anonymousId: extId(e) },
+          customData: { value: value(e), currency: e.ecommerce?.currency ?? 'UGX', transactionId: e.ecommerce?.transaction_id, itemIds: ids(e), pageType: e.event_name === 'purchase' ? 'purchase' : 'product' },
+        }] },
+      };
+    },
+  },
+  {
+    key: 'x', name: 'X (Twitter) Ads',
+    fields: [
+      { key: 'pixelId', label: 'Pixel ID', pattern: /^[a-z0-9]{4,10}$/, hint: 'X Ads > Events Manager' },
+      { key: 'purchaseEventId', label: 'Purchase event ID (tw-…)', pattern: /^tw-[a-z0-9]+-[a-z0-9]+$/, hint: 'The purchase event you created in Events Manager' },
+      { key: 'addToCartEventId', label: 'Add-to-cart event ID (tw-…)', pattern: /^(tw-[a-z0-9]+-[a-z0-9]+)?$/, hint: 'Optional', optional: true },
+    ],
+    secretLabel: 'API keys (JSON)',
+    secretHint: '{"consumerKey":"…","consumerSecret":"…","accessToken":"…","accessTokenSecret":"…"}',
+    events: { add_to_cart: 'add_to_cart', purchase: 'purchase' },
+    async authorize(req, _cfg, secret) {
+      const c = parseJsonSecret(secret, ['consumerKey', 'consumerSecret', 'accessToken', 'accessTokenSecret']);
+      return { Authorization: oauth1Header(req.method ?? 'POST', req.url, c) };
+    },
+    build(e, cfg) {
+      const eventId = e.event_name === 'purchase' ? cfg.purchaseEventId : e.event_name === 'add_to_cart' ? cfg.addToCartEventId : '';
+      if (!eventId) return null;
+      const ud = u(e);
+      const identifiers = [ud.twclid ? { twclid: ud.twclid } : null, ud.hashed_email ? { hashed_email: ud.hashed_email } : null, ud.hashed_phone ? { hashed_phone_number: ud.hashed_phone } : null].filter(Boolean);
+      if (identifiers.length === 0) return null;
+      return {
+        url: `https://ads-api.x.com/12/measurement/conversions/${cfg.pixelId}`,
+        headers: { 'content-type': 'application/json' },
+        body: { conversions: [{ conversion_time: new Date(e.event_time * 1000).toISOString(), event_id: eventId, identifiers,
+          conversion_id: e.event_id, value: value(e), price_currency: e.ecommerce?.currency ?? 'UGX', number_items: items(e).reduce((s, i) => s + (i.quantity ?? 1), 0) }] },
+      };
+    },
+  },
+  postback('opera', 'Opera Ads (postback)', 'Opera Ads account manager / campaign tracking settings'),
+  postback('transsion', 'Transsion Eagllwin (Tecno, Infinix, itel) (postback)', 'Eagllwin campaign tracking settings'),
+  postback('boomplay', 'Boomplay Ads (postback)', 'Boomplay Ads campaign tracking settings'),
+  postback('network', 'Any other ad network (postback)', 'The network\'s server-to-server postback settings'),
   { key: 'spotify', name: 'Spotify Ads', fields: [], secretLabel: '', events: {},
-    unavailable: 'Needs a Spotify Ad Analytics account; its conversions API credentials are issued per advertiser.' },
-  { key: 'opera', name: 'Opera Ads', fields: [], secretLabel: '', events: {},
-    unavailable: 'Opera Ads conversions are server-to-server postbacks configured per campaign by Opera; added with the first campaign.' },
-  { key: 'transsion', name: 'Transsion (Eagllwin) / Boomplay', fields: [], secretLabel: '', events: {},
-    unavailable: 'No public self-serve conversion API. Measured by campaign links (UTM), which order attribution already records.' },
+    unavailable: 'Spotify Ad Analytics issues its conversions API credentials to each advertiser under its own terms. If Spotify gives you a postback URL, use "Any other ad network (postback)".' },
   { key: 'sa360', name: 'Search Ads 360 / Campaign Manager 360', fields: [], secretLabel: '', events: {},
-    unavailable: 'Enterprise products under a Google/agency contract; they read conversions from GA4 or CM360 Floodlight once contracted.' },
+    unavailable: 'Enterprise products under a Google/agency contract; once contracted they read conversions from GA4 (already live) or Floodlight.' },
 ];
 
 export const adPlatform = (key: string) => AD_PLATFORMS.find((p) => p.key === key) ?? null;

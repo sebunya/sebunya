@@ -74,6 +74,21 @@ export interface CheckoutAttribution {
   landingPath: string | null;
   referrer: string | null;
   firstAt: string | null;
+  /** Ad-network click ids seen in the last 30 days (see lib/telemetry). */
+  clickIds?: Record<string, string>;
+}
+
+const CLICK_KEYS = ['gclid', 'wbraid', 'gbraid', 'ttclid', 'twclid', 'li_fat_id', 'epik', 'msclkid', 'ScCid', 'clickid', 'click_id'];
+function recentClickIds(): Record<string, string> {
+  try {
+    const raw = JSON.parse(localStorage.getItem('_gp_click_ids_30d') || '{}');
+    if (!raw._at || Date.now() - Number(raw._at) > 30 * 864e5) return {};
+    const out: Record<string, string> = {};
+    for (const k of CLICK_KEYS) if (typeof raw[k] === 'string' && raw[k].length <= 512) out[k] = raw[k];
+    return out;
+  } catch {
+    return {};
+  }
 }
 
 export function getCheckoutAttribution(): CheckoutAttribution | null {
@@ -92,6 +107,7 @@ export function getCheckoutAttribution(): CheckoutAttribution | null {
       landingPath: last.landingPath || first.landingPath || null,
       referrer: last.referrer || first.referrer || null,
       firstAt: first.at || null,
+      clickIds: recentClickIds(),
     };
   } catch {
     return null;

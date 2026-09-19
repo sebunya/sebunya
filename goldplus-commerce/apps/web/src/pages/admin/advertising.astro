@@ -45,7 +45,7 @@ const when = (iso: unknown) => (typeof iso === "string" && iso ? new Date(iso).t
 <AdminLayout title="Advertising platforms" description="Server-side conversions to ad platforms: status, ids and write-only tokens.">
   <div class="container mx-auto px-6 lg:px-8 max-w-5xl">
     <h2 class="text-2xl font-black text-brand-dark tracking-tight mb-2">Advertising platforms</h2>
-    <p class="text-sm text-gray-600 mb-6 max-w-3xl">Conversions (product views, add to cart, checkout, purchases) are sent to each platform from our server, with hashed email and phone for matching. A platform receives nothing until its IDs and token are entered and it is switched on. The privacy page lists the platforms that are live.</p>
+    <p class="text-sm text-gray-600 mb-6 max-w-3xl">Conversions (product views, add to cart, checkout, purchases) are sent to each platform from our server, with hashed email and phone and the ad click id (kept 30 days) for matching. Network postbacks (Opera, Eagllwin, Boomplay, others) fire for purchases that came from that network's link. A platform receives nothing until its IDs and token are entered and it is switched on. The privacy page lists the platforms that are live.</p>
     {notice && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</div>}
     {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
     {!list.ok ? <p role="alert" class="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{list.message}</p> : (
@@ -63,9 +63,11 @@ const when = (iso: unknown) => (typeof iso === "string" && iso ? new Date(iso).t
                 <form method="POST" class="mt-4 grid gap-3 sm:grid-cols-2">
                   <input type="hidden" name="platform" value={p.key} />
                   {p.fields.map((f: any) => (
-                    <label class="text-xs font-bold text-gray-700">{f.label}<input name={`cfg.${f.key}`} value={f.value} autocomplete="off" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal" /><span class="font-normal text-gray-500">{f.hint}</span></label>
+                    <label class="text-xs font-bold text-gray-700">{f.label}{f.optional && <span class="font-normal text-gray-500"> (optional)</span>}<input name={`cfg.${f.key}`} value={f.value} autocomplete="off" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal" /><span class="font-normal text-gray-500">{f.hint}</span></label>
                   ))}
-                  <label class="text-xs font-bold text-gray-700">{p.secretLabel}<input name="secret" type="password" autocomplete="new-password" placeholder={p.secretMask ? `Stored: ${p.secretMask} (leave blank to keep)` : "Paste the token"} class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal" /><span class="font-normal text-gray-500">Write-only: stored encrypted, never shown again.</span></label>
+                  {p.secretLabel && (p.secretHint
+                    ? <label class="text-xs font-bold text-gray-700 sm:col-span-2">{p.secretLabel}<textarea name="secret" rows="3" autocomplete="off" spellcheck="false" placeholder={p.secretMask ? `Stored: ${p.secretMask} (leave blank to keep)` : p.secretHint} class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs font-normal"></textarea><span class="font-normal text-gray-500">Write-only: stored encrypted, never shown again. Format: {p.secretHint}</span></label>
+                    : <label class="text-xs font-bold text-gray-700">{p.secretLabel}<input name="secret" type="password" autocomplete="new-password" placeholder={p.secretMask ? `Stored: ${p.secretMask} (leave blank to keep)` : "Paste the token"} class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal" /><span class="font-normal text-gray-500">Write-only: stored encrypted, never shown again.</span></label>)}
                   <div class="flex flex-wrap gap-2 sm:col-span-2">
                     <button name="intent" value="save" class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-5 text-sm font-bold">Save</button>
                     {p.enabled

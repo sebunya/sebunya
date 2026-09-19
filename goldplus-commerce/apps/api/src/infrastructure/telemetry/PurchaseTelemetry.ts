@@ -6,7 +6,7 @@ import { and, eq, inArray, like } from 'drizzle-orm';
 import crypto from 'crypto';
 import { hashEmail, hashPhone, hashPhonePlus } from '../advertising/AdPlatforms';
 
-type Visitor = { fpClientId?: string | null; clientIp?: string | null; userAgent?: string | null; gaSessionId?: string | null; gaSessionNumber?: number | null };
+type Visitor = { fpClientId?: string | null; clientIp?: string | null; userAgent?: string | null; gaSessionId?: string | null; gaSessionNumber?: number | null; clickIds?: Record<string, string> | null };
 
 async function dispatchNow(outboxId: string, jobKey: string) {
   const { QueueService, QUEUES } = await import('../queues/QueueService');
@@ -53,6 +53,7 @@ export async function queuePurchaseTelemetry(input: {
       hashedEmail: hashEmail(input.email),
       hashedPhone: hashPhone(input.phone),
       hashedPhonePlus: hashPhonePlus(input.phone),
+      clickIds: input.visitor?.clickIds ?? null,
       traceId: input.traceId,
     });
     if (!outboxId) return; // already enqueued for this order

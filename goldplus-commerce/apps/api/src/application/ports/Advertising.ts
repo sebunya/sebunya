@@ -18,7 +18,7 @@ export interface AdDestinationRepository {
   get(platform: string): Promise<AdDestinationRow | null>;
   save(platform: string, patch: { enabled?: boolean; config?: Record<string, string>; secretEnc?: string | null; secretMask?: string | null; updatedBy: string | null }): Promise<AdDestinationRow>;
   /** Enabled, fully configured platforms with the ENCRYPTED secret (dispatch only). */
-  active(): Promise<Array<{ platform: string; config: Record<string, string>; secretEnc: string }>>;
+  active(): Promise<Array<{ platform: string; config: Record<string, string>; secretEnc: string | null }>>;
 }
 
 export interface SecretCipher { encrypt(plain: string): string; decrypt(enc: string): string; mask(plain: string): string }

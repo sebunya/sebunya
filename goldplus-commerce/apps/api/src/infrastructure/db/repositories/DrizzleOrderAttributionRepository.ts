@@ -8,6 +8,17 @@ const clean = (v: unknown, max: number): string | null => {
   return t || null;
 };
 
+const CLICK_KEYS = new Set(['gclid', 'wbraid', 'gbraid', 'ttclid', 'twclid', 'li_fat_id', 'epik', 'msclkid', 'ScCid', 'clickid', 'click_id']);
+/** Only known click-id keys, short printable values; null when none. */
+function cleanClickIds(v: unknown): Record<string, string> | null {
+  if (!v || typeof v !== 'object') return null;
+  const out: Record<string, string> = {};
+  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+    if (CLICK_KEYS.has(k) && typeof val === 'string' && /^[\x21-\x7e]{1,512}$/.test(val)) out[k] = val;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 export interface OrderAttributionInput {
   orderId: string;
   orderNumber?: string | null;
@@ -24,6 +35,7 @@ export interface OrderAttributionInput {
   userAgent?: string | null;
   gaSessionId?: string | null;
   gaSessionNumber?: number | null;
+  clickIds?: Record<string, string> | null;
 }
 
 /**
@@ -51,6 +63,7 @@ export class DrizzleOrderAttributionRepository {
         userAgent: clean(input.userAgent, 1024),
         gaSessionId: input.gaSessionId && /^\d{1,20}$/.test(input.gaSessionId) ? input.gaSessionId : null,
         gaSessionNumber: Number.isInteger(input.gaSessionNumber) && (input.gaSessionNumber as number) > 0 ? input.gaSessionNumber : null,
+        clickIds: cleanClickIds(input.clickIds),
       })
       .onConflictDoNothing();
   }

@@ -113,6 +113,7 @@ const checkoutBodySchema = z.object({
       userAgent: z.string().trim().max(1024).nullish(),
       gaSessionId: z.string().trim().regex(/^\d{1,20}$/).nullish(),
       gaSessionNumber: z.number().int().positive().max(1_000_000).nullish(),
+      clickIds: z.record(z.string().max(40), z.string().max(512)).nullish(),
     })
     .nullish(),
 });

@@ -44,6 +44,11 @@ export const TelemetryUserDataSchema = z.object({
   twclid:    z.string().max(512).optional(),
   li_fat_id: z.string().max(512).optional(),
   epik:      z.string().max(512).optional(),
+  msclkid:   z.string().max(512).optional(),
+  sccid:     z.string().max(512).optional(),
+  /** A network's own click id (Opera, Eagllwin, Boomplay …) and the URL parameter it came in. */
+  network_click_id:    z.string().max(512).optional(),
+  network_click_param: z.string().max(40).optional(),
 
   // Forwarded from browser for CAPI IP/UA matching requirements
   ip_address: z.string().max(64).optional(),

@@ -17,8 +17,8 @@ const svc = () => Registry.getInstance().advertising;
 const STATUS: Record<string, number> = { NOT_FOUND: 404, BAD_INPUT: 400, NOT_CONFIGURED: 409 };
 
 const view = async () => (await svc().list()).map((p) => ({
-  key: p.key, name: p.name, state: p.state, unavailable: p.unavailable ?? null, secretLabel: p.secretLabel,
-  fields: p.fields.map((f) => ({ key: f.key, label: f.label, hint: f.hint, value: p.row?.config?.[f.key] ?? '' })),
+  key: p.key, name: p.name, state: p.state, unavailable: p.unavailable ?? null, secretLabel: p.secretLabel, secretHint: p.secretHint ?? null,
+  fields: p.fields.map((f) => ({ key: f.key, label: f.label, hint: f.hint, optional: !!f.optional, value: p.row?.config?.[f.key] ?? '' })),
   events: p.events, enabled: p.row?.enabled ?? false, secretMask: p.row?.secretMask ?? null,
   lastSuccessAt: p.row?.lastSuccessAt ?? null, lastError: p.row?.lastError ?? null, lastErrorAt: p.row?.lastErrorAt ?? null,
   sentCount: p.row?.sentCount ?? 0, failedCount: p.row?.failedCount ?? 0,
