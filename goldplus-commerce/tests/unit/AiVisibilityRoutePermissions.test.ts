@@ -8,11 +8,15 @@ import { resolve } from 'node:path';
  * reachable with no permission check at all.
  */
 const src = readFileSync(resolve(__dirname, '../../apps/api/src/interfaces/http/routes/admin/ai-visibility.ts'), 'utf8');
-const routes = [...src.matchAll(/routes\.(get|post|put|patch|delete)\('([^']+)',\s*(\w+)/g)].map((m) => ({ method: m[1].toUpperCase(), path: m[2], guard: m[3] }));
+// Guards are written inline (requirePermissions([P.AI_VISIBILITY_X])) so the
+// repo-wide AuthorizationCoverage scan sees them; X is the guard name here.
+const routes = [...src.matchAll(/routes\.(get|post|put|patch|delete)\('([^']+)',\s*requirePermissions\(\[P\.AI_VISIBILITY_(\w+)\]\)/g)].map((m) => ({ method: m[1].toUpperCase(), path: m[2], guard: m[3] }));
+const total = [...src.matchAll(/routes\.(get|post|put|patch|delete)\(/g)].length;
 
 describe('AI Search route permissions', () => {
   it('finds the routes and guards every one', () => {
     expect(routes.length).toBeGreaterThan(30);
+    expect(routes.length, 'a route without an inline AI Search guard').toBe(total);
     for (const r of routes) expect(['VIEW', 'MANAGE', 'RUN', 'APPROVE', 'CREDENTIALS'], `${r.method} ${r.path}`).toContain(r.guard);
   });
   it('reads are VIEW; nothing that writes is VIEW', () => {

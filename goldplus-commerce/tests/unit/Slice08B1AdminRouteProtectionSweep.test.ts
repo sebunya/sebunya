@@ -82,8 +82,10 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
     // 139: +1 for the customer workspace (admin/customers/[id], 2026-09-12).
     // 140: +1 for the Performance Audit view (admin/seo/performance-audit, 2026-09-13).
     // 141: +1 for its Settings page (admin/seo/performance-audit/settings, 2026-09-13).
-    expect(adminPages).toHaveLength(141);
-    expect(adminPages[0]).toBe('apps/web/src/pages/admin/analytics/index.astro');
+    // 150: +9 for AI Search (admin/ai-search: overview, gaps, answers, competitors,
+    // questions, runs, actions, settings, report — 2026-09-18).
+    expect(adminPages).toHaveLength(150);
+    expect(adminPages[0]).toBe('apps/web/src/pages/admin/ai-search/actions.astro');
     expect(adminPages.at(-1)).toBe('apps/web/src/pages/admin/verification/index.astro');
   });
 
@@ -100,7 +102,7 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
 
   it('fails closed for every non-allowlisted admin Astro page', () => {
     const protectedPages = adminPages.filter((page) => !publicAllowlist.includes(page as typeof publicAllowlist[number]));
-    expect(protectedPages).toHaveLength(140);
+    expect(protectedPages).toHaveLength(149);
     for (const page of protectedPages) {
       const source = read(page);
       expect(source, `${page} must use the server-side session contract`).toContain('readSessionToken(Astro.request)');
@@ -202,6 +204,12 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
         'clears the HttpOnly cookie with Set-Cookie, which page-level Astro ' +
         'frontmatter cannot do. Unauthenticated calls are a no-op that ' +
         'redirect to the login screen.',
+    ],
+    [
+      'report.json.ts',
+      'AI Search report download (admin/ai-search). Returns JSON, not a page: ' +
+        'with no session it answers 401 and reads nothing; with one, the API ' +
+        'enforces the AI Search view permission. Sent with Cache-Control: no-store.',
     ],
   ]);
 

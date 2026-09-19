@@ -21,11 +21,6 @@ const routes = new Hono();
 routes.use('*', authMiddleware);
 
 const P = PERMISSIONS;
-const VIEW = requirePermissions([P.AI_VISIBILITY_VIEW]);
-const MANAGE = requirePermissions([P.AI_VISIBILITY_MANAGE]);
-const RUN = requirePermissions([P.AI_VISIBILITY_RUN]);
-const APPROVE = requirePermissions([P.AI_VISIBILITY_APPROVE]);
-const CREDENTIALS = requirePermissions([P.AI_VISIBILITY_CREDENTIALS]);
 
 const svc = () => Registry.getInstance().aiVisibility;
 const MACHINE = new Set(['AGENT', 'SCHEDULER', 'API_KEY', 'WEBHOOK', 'SYSTEM']);
@@ -50,78 +45,78 @@ const bool = (v: string | undefined) => (v === 'true' ? true : v === 'false' ? f
 const project = async (c: Context) => svc().setup.getProject(c.req.param('project') ?? '');
 
 // ── Projects ──────────────────────────────────────────────────────────────────
-routes.get('/projects', VIEW, async (c) => data(c, await svc().setup.listProjects()));
-routes.post('/projects', MANAGE, async (c) => send(c, await svc().setup.createProject(actor(c), await body(c)), 201));
-routes.get('/projects/:project', VIEW, async (c) => send(c, await project(c)));
-routes.patch('/projects/:project', MANAGE, async (c) => {
+routes.get('/projects', requirePermissions([P.AI_VISIBILITY_VIEW]), async (c) => data(c, await svc().setup.listProjects()));
+routes.post('/projects', requirePermissions([P.AI_VISIBILITY_MANAGE]), async (c) => send(c, await svc().setup.createProject(actor(c), await body(c)), 201));
+routes.get('/projects/:project', requirePermissions([P.AI_VISIBILITY_VIEW]), async (c) => send(c, await project(c)));
+routes.patch('/projects/:project', requirePermissions([P.AI_VISIBILITY_MANAGE]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().setup.updateProject(actor(c), p.value.id, await body(c)));
 });
 
-routes.post('/projects/:project/reclassify', MANAGE, async (c) => {
+routes.post('/projects/:project/reclassify', requirePermissions([P.AI_VISIBILITY_MANAGE]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().setup.reclassify(actor(c), p.value.id));
 });
 
 // ── Competitors ───────────────────────────────────────────────────────────────
-routes.get('/projects/:project/competitors', VIEW, async (c) => {
+routes.get('/projects/:project/competitors', requirePermissions([P.AI_VISIBILITY_VIEW]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return data(c, await svc().setup.competitors(p.value.id));
 });
-routes.post('/projects/:project/competitors/:competitorId/pin', MANAGE, async (c) => {
+routes.post('/projects/:project/competitors/:competitorId/pin', requirePermissions([P.AI_VISIBILITY_MANAGE]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().setup.pinCompetitor(actor(c), p.value.id, prm(c, 'competitorId'), true));
 });
-routes.delete('/projects/:project/competitors/:competitorId/pin', MANAGE, async (c) => {
+routes.delete('/projects/:project/competitors/:competitorId/pin', requirePermissions([P.AI_VISIBILITY_MANAGE]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().setup.pinCompetitor(actor(c), p.value.id, prm(c, 'competitorId'), false));
 });
 
 // ── Queries ───────────────────────────────────────────────────────────────────
-routes.get('/projects/:project/queries', VIEW, async (c) => {
+routes.get('/projects/:project/queries', requirePermissions([P.AI_VISIBILITY_VIEW]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return data(c, await svc().setup.listQueries(p.value.id, { active: bool(c.req.query('active')), search: c.req.query('search') || undefined, limit: int(c.req.query('limit'), 200), offset: int(c.req.query('offset'), 0) }));
 });
-routes.post('/projects/:project/queries', MANAGE, async (c) => {
+routes.post('/projects/:project/queries', requirePermissions([P.AI_VISIBILITY_MANAGE]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().setup.createQuery(actor(c), p.value.id, await body(c)), 201);
 });
-routes.patch('/projects/:project/queries/:queryId', MANAGE, async (c) => {
+routes.patch('/projects/:project/queries/:queryId', requirePermissions([P.AI_VISIBILITY_MANAGE]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().setup.updateQuery(actor(c), p.value.id, prm(c, 'queryId'), await body(c)));
 });
 
 // ── Providers (keys are write-only: never returned, only a mask) ──────────────
-routes.get('/projects/:project/providers', VIEW, async (c) => {
+routes.get('/projects/:project/providers', requirePermissions([P.AI_VISIBILITY_VIEW]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return data(c, await svc().setup.providerConfigs(p.value.id));
 });
-routes.patch('/projects/:project/providers/:provider', MANAGE, async (c) => {
+routes.patch('/projects/:project/providers/:provider', requirePermissions([P.AI_VISIBILITY_MANAGE]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().setup.updateProvider(actor(c), p.value.id, prm(c, 'provider').toUpperCase(), await body(c)));
 });
-routes.put('/projects/:project/providers/:provider/credential', CREDENTIALS, async (c) => {
+routes.put('/projects/:project/providers/:provider/credential', requirePermissions([P.AI_VISIBILITY_CREDENTIALS]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   const b = await body(c);
   if (typeof b.apiKey !== 'string' || b.apiKey.length > 500) return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'apiKey is required.' } }, 400);
   return send(c, await svc().setup.setCredential(actor(c), p.value.id, prm(c, 'provider').toUpperCase(), b.apiKey));
 });
-routes.delete('/projects/:project/providers/:provider/credential', CREDENTIALS, async (c) => {
+routes.delete('/projects/:project/providers/:provider/credential', requirePermissions([P.AI_VISIBILITY_CREDENTIALS]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().setup.setCredential(actor(c), p.value.id, prm(c, 'provider').toUpperCase(), null));
 });
-routes.post('/projects/:project/providers/:provider/test', CREDENTIALS, async (c) => {
+routes.post('/projects/:project/providers/:provider/test', requirePermissions([P.AI_VISIBILITY_CREDENTIALS]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().setup.testProvider(actor(c), p.value.id, prm(c, 'provider').toUpperCase()));
 });
 
 // ── Runs ──────────────────────────────────────────────────────────────────────
-routes.get('/projects/:project/runs', VIEW, async (c) => {
+routes.get('/projects/:project/runs', requirePermissions([P.AI_VISIBILITY_VIEW]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   const kind = c.req.query('kind');
   return data(c, await svc().runs.listRuns(p.value.id, int(c.req.query('limit'), 20), int(c.req.query('offset'), 0), kind === 'MONITOR' || kind === 'RESEARCH' || kind === 'VERIFICATION' ? kind : undefined));
 });
-routes.post('/projects/:project/runs', RUN, async (c) => {
+routes.post('/projects/:project/runs', requirePermissions([P.AI_VISIBILITY_RUN]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   const b = await body(c);
   const r = await svc().runs.start(actor(c), p.value.id, {
@@ -132,7 +127,7 @@ routes.post('/projects/:project/runs', RUN, async (c) => {
   });
   return send(c, r, r.ok && r.value.created ? 202 : 200);
 });
-routes.post('/projects/:project/research', RUN, async (c) => {
+routes.post('/projects/:project/research', requirePermissions([P.AI_VISIBILITY_RUN]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   const b = await body(c);
   const r = await svc().runs.start(actor(c), p.value.id, {
@@ -143,42 +138,42 @@ routes.post('/projects/:project/research', RUN, async (c) => {
   });
   return send(c, r, r.ok && r.value.created ? 202 : 200);
 });
-routes.get('/projects/:project/runs/:runId', VIEW, async (c) => {
+routes.get('/projects/:project/runs/:runId', requirePermissions([P.AI_VISIBILITY_VIEW]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   const run = await svc().runs.getRun(p.value.id, prm(c, 'runId'));
   return run ? data(c, run) : c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Run not found.' } }, 404);
 });
-routes.post('/projects/:project/runs/:runId/approve', APPROVE, async (c) => {
+routes.post('/projects/:project/runs/:runId/approve', requirePermissions([P.AI_VISIBILITY_APPROVE]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().runs.approve(actor(c), p.value.id, prm(c, 'runId')));
 });
-routes.post('/projects/:project/runs/:runId/reject', APPROVE, async (c) => {
+routes.post('/projects/:project/runs/:runId/reject', requirePermissions([P.AI_VISIBILITY_APPROVE]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().runs.reject(actor(c), p.value.id, prm(c, 'runId')));
 });
-routes.post('/projects/:project/runs/:runId/cancel', RUN, async (c) => {
+routes.post('/projects/:project/runs/:runId/cancel', requirePermissions([P.AI_VISIBILITY_RUN]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().runs.cancel(actor(c), p.value.id, prm(c, 'runId')));
 });
 
 // ── Evidence & insight (read) ─────────────────────────────────────────────────
-routes.get('/projects/:project/summary', VIEW, async (c) => {
+routes.get('/projects/:project/summary', requirePermissions([P.AI_VISIBILITY_VIEW]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().insights.summary(p.value.id, Math.min(int(c.req.query('days'), 28), 365)));
 });
-routes.get('/projects/:project/report', VIEW, async (c) => {
+routes.get('/projects/:project/report', requirePermissions([P.AI_VISIBILITY_VIEW]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().insights.report(p.value.id, Math.min(int(c.req.query('days'), 28), 365)));
 });
-routes.get('/projects/:project/gaps', VIEW, async (c) => {
+routes.get('/projects/:project/gaps', requirePermissions([P.AI_VISIBILITY_VIEW]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().insights.gaps(p.value.id));
 });
-routes.get('/projects/:project/landscape', VIEW, async (c) => {
+routes.get('/projects/:project/landscape', requirePermissions([P.AI_VISIBILITY_VIEW]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().insights.landscape(p.value.id));
 });
-routes.get('/projects/:project/answers', VIEW, async (c) => {
+routes.get('/projects/:project/answers', requirePermissions([P.AI_VISIBILITY_VIEW]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   const q = (k: string) => c.req.query(k) || undefined;
   return data(c, await svc().insights.listAnswers(p.value.id, {
@@ -187,59 +182,59 @@ routes.get('/projects/:project/answers', VIEW, async (c) => {
     limit: int(q('limit'), 50), offset: int(q('offset'), 0),
   }));
 });
-routes.get('/projects/:project/answers/:answerId', VIEW, async (c) => {
+routes.get('/projects/:project/answers/:answerId', requirePermissions([P.AI_VISIBILITY_VIEW]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().insights.answer(p.value.id, prm(c, 'answerId')));
 });
-routes.get('/projects/:project/queries/:queryId/compare', VIEW, async (c) => {
+routes.get('/projects/:project/queries/:queryId/compare', requirePermissions([P.AI_VISIBILITY_VIEW]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().insights.compare(p.value.id, prm(c, 'queryId')));
 });
 
 // ── Actions ───────────────────────────────────────────────────────────────────
-routes.get('/projects/:project/actions', VIEW, async (c) => {
+routes.get('/projects/:project/actions', requirePermissions([P.AI_VISIBILITY_VIEW]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return data(c, await svc().actions.list(p.value.id, c.req.query('status') || null, int(c.req.query('limit'), 50), int(c.req.query('offset'), 0)));
 });
-routes.post('/projects/:project/actions', MANAGE, async (c) => {
+routes.post('/projects/:project/actions', requirePermissions([P.AI_VISIBILITY_MANAGE]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().actions.propose(actor(c), p.value.id, await body(c)), 201);
 });
-routes.get('/projects/:project/actions/:actionId', VIEW, async (c) => {
+routes.get('/projects/:project/actions/:actionId', requirePermissions([P.AI_VISIBILITY_VIEW]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().actions.get(p.value.id, prm(c, 'actionId')));
 });
-routes.post('/projects/:project/actions/:actionId/submit', MANAGE, async (c) => {
+routes.post('/projects/:project/actions/:actionId/submit', requirePermissions([P.AI_VISIBILITY_MANAGE]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().actions.submit(actor(c), p.value.id, prm(c, 'actionId')));
 });
-routes.post('/projects/:project/actions/:actionId/approve', APPROVE, async (c) => {
+routes.post('/projects/:project/actions/:actionId/approve', requirePermissions([P.AI_VISIBILITY_APPROVE]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   const b = await body(c);
   return send(c, await svc().actions.approve(actor(c), p.value.id, prm(c, 'actionId'), b.note ? String(b.note) : null));
 });
-routes.post('/projects/:project/actions/:actionId/reject', APPROVE, async (c) => {
+routes.post('/projects/:project/actions/:actionId/reject', requirePermissions([P.AI_VISIBILITY_APPROVE]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   const b = await body(c);
   return send(c, await svc().actions.reject(actor(c), p.value.id, prm(c, 'actionId'), b.note ? String(b.note) : null));
 });
-routes.post('/projects/:project/actions/:actionId/execute', MANAGE, async (c) => {
+routes.post('/projects/:project/actions/:actionId/execute', requirePermissions([P.AI_VISIBILITY_MANAGE]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   const b = await body(c);
   delete b.__runPermission; // only the RUN-guarded route below may set it
   return send(c, await svc().actions.execute(actor(c), p.value.id, prm(c, 'actionId'), b));
 });
 /** Carrying out a MEASUREMENT_RUN action spends money: RUN permission, like any run. */
-routes.post('/projects/:project/actions/:actionId/start-run', RUN, async (c) => {
+routes.post('/projects/:project/actions/:actionId/start-run', requirePermissions([P.AI_VISIBILITY_RUN]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   const b = await body(c);
   return send(c, await svc().actions.execute(actor(c), p.value.id, prm(c, 'actionId'), { ...b, __runPermission: true }));
 });
-routes.post('/projects/:project/actions/:actionId/verify', MANAGE, async (c) => {
+routes.post('/projects/:project/actions/:actionId/verify', requirePermissions([P.AI_VISIBILITY_MANAGE]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().actions.verify(actor(c), p.value.id, prm(c, 'actionId')));
 });
-routes.post('/projects/:project/actions/:actionId/cancel', MANAGE, async (c) => {
+routes.post('/projects/:project/actions/:actionId/cancel', requirePermissions([P.AI_VISIBILITY_MANAGE]), async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   const b = await body(c);
   return send(c, await svc().actions.cancel(actor(c), p.value.id, prm(c, 'actionId'), b.note ? String(b.note) : null));

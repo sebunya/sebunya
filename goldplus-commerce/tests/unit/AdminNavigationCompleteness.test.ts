@@ -22,6 +22,14 @@ const pagesDir = join(root, 'apps/web/src/pages/admin');
 /** Deliberately not in the sidebar — each with the reason it is excluded. */
 const EXCLUDED: Record<string, string> = {
   '/admin/login': 'the door, not a room',
+  '/admin/ai-search/actions': 'reached from AI Search (its own tab bar)',
+  '/admin/ai-search/answers': 'reached from AI Search (its own tab bar)',
+  '/admin/ai-search/competitors': 'reached from AI Search (its own tab bar)',
+  '/admin/ai-search/gaps': 'reached from AI Search (its own tab bar)',
+  '/admin/ai-search/queries': 'reached from AI Search (its own tab bar)',
+  '/admin/ai-search/report': 'reached from AI Search (its own tab bar)',
+  '/admin/ai-search/runs': 'reached from AI Search (its own tab bar)',
+  '/admin/ai-search/settings': 'reached from AI Search (its own tab bar)',
   '/admin/seo/performance-audit/settings': 'reached from Performance Audit',
   '/admin/products/new': 'reached from Products',
   '/admin/blog/new': 'reached from Articles',
