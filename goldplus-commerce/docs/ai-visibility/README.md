@@ -99,12 +99,28 @@ Adding a provider = one adapter implementing `AiAnswerProvider` + one line in
    `AIV_RUN_REFUSED_BUDGET`).
 3. **Approval**: above `approval_above_usd`, **or requested by any machine
    actor**, the run waits for a person (never the requester).
-4. **Execute** (BullMQ `analytics-fanout`, job `aiv-run`, jobId = run id):
-   providers in parallel, questions sequential per provider; before each call
-   the spend is re-checked; transient errors retry with exponential backoff
-   (3 attempts); a failed call is stored as a FAILED observation with its
-   error; one provider failing makes the run PARTIAL, not FAILED.
-5. **Recovery**: runs stuck RUNNING > 2 h are marked FAILED at worker start.
+4. **Execute** (its own BullMQ queue `ai-visibility`, job `aiv-run`, jobId =
+   run id — never the shared analytics-fanout, whose slots the synthetic
+   monitor and crons need): providers in parallel, questions sequential per
+   provider; **before each call the recorded spend is re-read** (so concurrent
+   runs cannot jointly exceed a limit) and the per-provider monthly cap is
+   checked; transient errors retry with exponential backoff (3 attempts); a
+   failed call is stored as a FAILED observation with its error; a 401/402/403
+   stops that provider for the rest of the run (remaining questions SKIPPED
+   with the reason, provider marked FAILED in Settings); one provider failing
+   makes the run PARTIAL, not FAILED.
+5. **Recovery**: runs stuck RUNNING > 2 h are marked FAILED at worker start and
+   by the hourly schedule tick.
+
+Provider **Test** (Settings) makes one small call exactly as runs do — web
+search on — so a key whose organisation has not enabled web search (a
+separate switch in the Anthropic console) fails the test, not the first run.
+
+Competitor **mentions** use the registry name, its aliases, the name without
+market/channel words ("Oraimo Uganda" → "Oraimo") and the website's brand
+label (`ug.oraimo.com` → "oraimo") — only when the site is the brand's own
+domain or a country subdomain (`market.momo.africa` gives no "momo", which in
+Uganda means MTN Mobile Money), at least 4 characters, never a generic word.
 
 Cost per answer: the provider's reported cost where it gives one
 (`PROVIDER_REPORTED`), otherwise the configured per-call estimate
