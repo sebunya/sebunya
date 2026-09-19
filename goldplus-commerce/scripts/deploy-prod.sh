@@ -59,6 +59,10 @@ echo "DEPLOYED $HEAD, $WANT/$WANT healthy, tagged rollback-$HEAD"
 # Rollback images accumulated without limit (286, disk full 2026-09-18).
 # Keep the newest 10 per service; never fails the deploy.
 [ -x scripts/prune-rollback-images.sh ] && { scripts/prune-rollback-images.sh 10 || true; }
+# Build cache: every deploy left 2-8 GB behind; the disk reached 97% on
+# 2026-09-20 after a day of deploys. Cache older than a day is dropped (the
+# next build is slower, never wrong). Never fails the deploy.
+docker builder prune -f --filter until=24h >/dev/null 2>&1 || true
 # Lighthouse Watch: offer a measurement after the roll, in the background. The
 # runner enforces at most one automatic run per 96 hours (owner decision), so
 # most deploys are skipped by it; a manual run is always available:
