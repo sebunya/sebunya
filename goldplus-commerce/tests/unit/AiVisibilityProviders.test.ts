@@ -118,4 +118,15 @@ describe('provider transport timeout', () => {
       await expect(postJson('https://api.example.com', {}, {}, 30)).rejects.toMatchObject({ code: 'TIMEOUT' });
     } finally { globalThis.fetch = orig; }
   });
+
+  it('a body cut off after the headers keeps the status and counts as possibly billed', async () => {
+    const { postJson, possiblyBilled } = await import('../../apps/api/src/infrastructure/ai-visibility/providers/http');
+    const orig = globalThis.fetch;
+    globalThis.fetch = (async () => ({ ok: true, status: 200, text: () => Promise.reject(new TypeError('socket reset')) })) as any;
+    try {
+      const e = await postJson('https://api.example.com', {}, {}, 5000).catch((x) => x);
+      expect(e).toMatchObject({ code: 'TIMEOUT', status: 200 });
+      expect(possiblyBilled(e)).toBe(true);
+    } finally { globalThis.fetch = orig; }
+  });
 });

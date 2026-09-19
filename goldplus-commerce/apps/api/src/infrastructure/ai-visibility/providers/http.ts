@@ -17,11 +17,19 @@ export async function postJson(url: string, headers: Record<string, string>, bod
   // The timer covers the whole exchange, body included: a server that sends
   // headers and then stalls must not hold a worker past the timeout.
   try {
-    res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body), signal: ctrl.signal });
-    text = await res.text();
-  } catch (err) {
-    if ((err as { name?: string })?.name === 'AbortError' || ctrl.signal.aborted) throw new ProviderCallError(`No answer within ${Math.round(timeoutMs / 1000)}s.`, null, 'TIMEOUT');
-    throw new ProviderCallError('The provider could not be reached.', null, 'NETWORK');
+    try {
+      res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body), signal: ctrl.signal });
+    } catch (err) {
+      if ((err as { name?: string })?.name === 'AbortError' || ctrl.signal.aborted) throw new ProviderCallError(`No answer within ${Math.round(timeoutMs / 1000)}s.`, null, 'TIMEOUT');
+      throw new ProviderCallError('The provider could not be reached.', null, 'NETWORK');
+    }
+    try {
+      text = await res.text();
+    } catch {
+      // Headers arrived, so the provider did the work (and may have billed it):
+      // counted as a timeout, which the spend rules treat as possibly billed.
+      throw new ProviderCallError(ctrl.signal.aborted ? `No answer within ${Math.round(timeoutMs / 1000)}s.` : `The reply was cut off after HTTP ${res.status}.`, res.status, 'TIMEOUT');
+    }
   } finally {
     clearTimeout(t);
   }

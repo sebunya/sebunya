@@ -434,9 +434,20 @@ describe('AI visibility — first vertical slice', () => {
     expect(first).toMatchObject({ ok: false, code: 'CONFLICT' });
     const linked = repo.s.runs.find((r) => r.idempotencyKey === `action:${act.id}`);
     expect((await runs.approve(other, pid, linked.id)).ok).toBe(true);
-    const second = await actions.execute(user, pid, act.id, { __runPermission: true });
-    expect(second.ok).toBe(true);
-    expect(repo.s.runs.filter((r) => r.actionId === act.id)).toHaveLength(1);
+    // Approved but only queued: not recorded yet (it could still be cancelled or lost).
+    expect(await actions.execute(user, pid, act.id, { __runPermission: true })).toMatchObject({ ok: false, code: 'CONFLICT' });
+    // Cancelled while queued -> pressing again starts attempt 2 instead of completing against nothing.
+    await runs.cancel(user, pid, linked.id);
+    await actions.execute(user, pid, act.id, { __runPermission: true });
+    const second = repo.s.runs.find((r) => r.idempotencyKey === `action:${act.id}:2`);
+    expect(second).toBeTruthy();
+    expect((await runs.approve(other, pid, second.id)).ok).toBe(true);
+    await runs.execute(second.id);
+    const done = await actions.execute(user, pid, act.id, { __runPermission: true });
+    expect(done.ok).toBe(true);
+    expect(repo.s.runs.filter((r) => r.actionId === act.id)).toHaveLength(2);
+    // Final counts include skips.
+    expect(repo.s.runs.find((r) => r.id === second.id).succeeded + repo.s.runs.find((r) => r.id === second.id).skipped).toBeGreaterThan(0);
   });
 
   it('with no provider configured the run is refused as not configured, never simulated', async () => {

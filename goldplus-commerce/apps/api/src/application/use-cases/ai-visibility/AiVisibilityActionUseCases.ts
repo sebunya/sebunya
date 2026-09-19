@@ -124,14 +124,20 @@ export class AiVisibilityActionUseCases {
         prior = found;
       }
       let runRef = prior;
-      if (prior && prior.status === 'AWAITING_APPROVAL') return fail('CONFLICT', `Run ${prior.id} is waiting for approval (over the spend threshold). Once someone else approves it under Runs, press "Start the run" again to record it here.`);
       if (!prior || ['REJECTED', 'CANCELLED', 'FAILED'].includes(prior.status)) {
+        if (attempt > 50) return fail('CONFLICT', 'This action has had 50 measurement attempts; cancel it and propose a new one.');
         const r = await this.runs.start(actor, projectId, { kind: 'MONITOR', queryIds: a.queryIds.length ? a.queryIds : undefined, actionId: a.id, idempotencyKey: attempt === 1 ? `action:${a.id}` : `action:${a.id}:${attempt}` });
         if (!r.ok) return r as Result<AivAction>;
-        if (r.value.run.status === 'AWAITING_APPROVAL') return fail('CONFLICT', `Run ${r.value.run.id} is waiting for approval (over the spend threshold). Once someone else approves it under Runs, press "Start the run" again to record it here.`);
         runRef = r.value.run;
       }
-      result = `Run ${runRef!.id} ${runRef!.status.toLowerCase().replace('_', ' ')}.`;
+      // Recorded as done only once the run has actually run (or is running).
+      // A queued run can still be cancelled, lost or expire; completing the
+      // action then would leave it done against a measurement that never happened.
+      const st = runRef!.status;
+      if (st === 'AWAITING_APPROVAL') return fail('CONFLICT', `Run ${runRef!.id} is waiting for approval (over the spend threshold). Once someone else approves it under Runs, press "Start the run" again to record it here.`);
+      if (st === 'QUEUED') return fail('CONFLICT', `Run ${runRef!.id} is queued. Press "Start the run" again once it is running or finished to record it here.`);
+      if (!['RUNNING', 'COMPLETED', 'PARTIAL'].includes(st)) return fail('CONFLICT', `Run ${runRef!.id} ended ${st.toLowerCase()}; press "Start the run" again to try once more.`);
+      result = `Run ${runRef!.id} ${st.toLowerCase()}.`;
     } else if (result.length < 5) {
       return fail('BAD_INPUT', 'Say what was done (and where), so the history is useful.');
     }

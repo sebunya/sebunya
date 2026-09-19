@@ -269,6 +269,8 @@ export class AiVisibilityRunUseCases {
         }
       }));
 
+      // Final counts, including skips (skip paths do not write progress).
+      await this.repo.updateRunProgress(run.id, { ...counts, actualUsd: runSpent, phase: 'Finishing' });
       const cancelled = await this.repo.isCancelRequested(run.id);
       const status = finalStatus({ total: run.totalTasks, ...counts, pending: 0 }, cancelled);
       const moved = await this.repo.moveRun(run.id, ['RUNNING'], status, { phase: 'Done', finished: true, error: status === 'FAILED' ? 'Every provider call failed; see the per-answer errors.' : null });
@@ -321,15 +323,17 @@ export class AiVisibilityRunUseCases {
   /**
    * Ends runs nobody moved, so one forgotten request never blocks a project:
    * AWAITING_APPROVAL for a day (nobody else was there to approve it) and
-   * QUEUED for an hour (the queue lost it). Each is audited and alerted.
+   * QUEUED for six hours (the queue lost it). Each is audited and alerted.
    */
   async expireUnattended(): Promise<number> {
-    const ended = await this.repo.expireUnattendedRuns(24, 60);
+    // QUEUED: 6 hours, not 1 — runs of several projects and re-classification
+    // share one queue, and a long run ahead can legitimately keep one waiting.
+    const ended = await this.repo.expireUnattendedRuns(24, 360);
     for (const r of ended) {
       await this.audit.execute({ actorId: null, action: 'AIV_RUN_EXPIRED', entity: 'aiv_run', entityId: r.id, newState: { from: r.from, actorKind: 'SCHEDULER' } });
       await this.alerts?.raise({ severity: 'INFO', kind: 'AIV_RUN_EXPIRED', message: r.from === 'AWAITING_APPROVAL'
         ? `AI Search run ${r.id} waited 24 hours for approval and was closed. Over the approval threshold a second person must approve; lower the estimate or raise the threshold if you work alone.`
-        : `AI Search run ${r.id} was queued for an hour without starting and was closed; the background queue may be down.`, dedupeKey: `AIV_RUN_EXPIRED:${r.projectId}` }).catch(() => undefined);
+        : `AI Search run ${r.id} was queued for six hours without starting and was closed; the background queue may be down.`, dedupeKey: `AIV_RUN_EXPIRED:${r.projectId}` }).catch(() => undefined);
     }
     return ended.length;
   }

@@ -127,8 +127,10 @@ Adding a provider = one adapter implementing `AiAnswerProvider` + one line in
    the run. A stalled-job redelivery of a RUNNING run is not resumed; the
    reaper ends it and the project is free again.
 6. **Nothing blocks a project forever**: hourly, a run AWAITING_APPROVAL for
-   24 hours is closed as REJECTED and one QUEUED for 60 minutes without starting
-   as FAILED (audit `AIV_RUN_EXPIRED`, alert `AIV_RUN_EXPIRED`). If queueing
+   24 hours is closed as REJECTED and one QUEUED for 6 hours without starting
+   as FAILED (not sooner: every project's runs and re-classification share one
+   queue). Runs already awaiting approval when 0135 was applied count as over
+   the threshold (there were none in production) (audit `AIV_RUN_EXPIRED`, alert `AIV_RUN_EXPIRED`). If queueing
    throws, the run fails at once. A scheduled run refused because another run is
    active raises `AIV_SCHEDULE_SKIPPED`.
 
@@ -205,9 +207,10 @@ that a before/after comparison shows coincidence, not cause.
 
 A **measurement action** starts its run with the key `action:<id>` (then
 `action:<id>:2`, … per attempt). Pressing "Start the run" again: if the run is
-waiting for approval, it says so; once approved (queued, running or done) that
-run is recorded as the action's measurement; if it was rejected, cancelled or
-failed, a new attempt starts.
+waiting for approval or still queued, it says so; once it is running or has
+finished (completed/partial) it is recorded as the action's measurement; if it
+was rejected, cancelled or failed, a new attempt starts (at most 50). A reply
+cut off after its headers counts as possibly billed.
 
 ## Permissions
 
