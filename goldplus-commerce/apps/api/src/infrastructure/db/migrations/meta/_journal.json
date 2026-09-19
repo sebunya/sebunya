@@ -988,6 +988,13 @@
       "when": 1790130000000,
       "tag": "0140_measurement_core",
       "breakpoints": true
+    },
+    {
+      "idx": 141,
+      "version": "5",
+      "when": 1790140000000,
+      "tag": "0141_measurement_operations",
+      "breakpoints": true
     }
   ]
 }

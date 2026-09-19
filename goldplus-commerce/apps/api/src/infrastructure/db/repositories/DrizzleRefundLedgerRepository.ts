@@ -1,4 +1,5 @@
 import { sql } from 'drizzle-orm';
+import { guardedMeasurementWrite, recordRefundSettled } from '../../measurement/BusinessEventWriter';
 import { db } from '../client';
 import type {
   IRefundLedgerRepository,
@@ -151,14 +152,22 @@ export class DrizzleRefundLedgerRepository implements IRefundLedgerRepository {
     providerStatus?: string | null;
     providerMessage?: string | null;
   }): Promise<void> {
-    await db.execute(sql`
-      update payment_refunds
-      set status = ${update.status},
-          provider_status = ${update.providerStatus ?? null},
-          provider_message = ${update.providerMessage ?? null},
-          settled_at = case when ${update.status} = 'settled' then now() else settled_at end
-      where id = ${refundId}::uuid
-    `);
+    await db.transaction(async (tx) => {
+      const changed: any = await tx.execute(sql`
+        update payment_refunds
+        set status = ${update.status},
+            provider_status = ${update.providerStatus ?? null},
+            provider_message = ${update.providerMessage ?? null},
+            settled_at = case when ${update.status} = 'settled' then now() else settled_at end
+        where id = ${refundId}::uuid
+        returning id
+      `);
+      // refund_confirmed + REFUND ledger entry in the same transaction (0140);
+      // guarded so measurement can never block recording a refund (D-008).
+      if (update.status === 'settled' && (Array.isArray(changed) ? changed : changed?.rows ?? []).length) {
+        await guardedMeasurementWrite(tx as never, refundId, 'refund_settled', (sp) => recordRefundSettled(sp, refundId, new Date()));
+      }
+    });
   }
 
   async getRefundedTotalUgx(paymentAttemptId: string): Promise<number> {
@@ -233,6 +242,9 @@ export class DrizzleRefundLedgerRepository implements IRefundLedgerRepository {
         set status = 'settled', settled_at = now()
         where id = any(${pgUuidArray(settleIds)})
       `);
+      for (const id of settleIds) {
+        await guardedMeasurementWrite(tx as never, id, 'refund_settled', (sp) => recordRefundSettled(sp, id, new Date()));
+      }
       return settleIds.length;
     });
   }

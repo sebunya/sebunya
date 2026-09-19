@@ -50,6 +50,10 @@ suite('measurement core (real PostgreSQL)', () => {
         await raw`delete from measurement.commercial_entry where event_id = any(${evs})`;
         await raw`delete from measurement.business_event where event_id = any(${evs})`;
       }
+      await raw`delete from measurement.touchpoint where anonymous_id like 'it-touch-%'`;
+      await raw`delete from measurement.collector_batch where page_instance_id = 'it-collector'`;
+      await raw`delete from payment_refunds where order_id = any(${orders})`;
+      await raw`delete from payment_attempts where order_id = any(${orders})`;
       await raw`delete from order_attribution where order_id = any(${orders})`;
       await raw`delete from order_events where order_id = any(${orders})`;
       await raw`delete from order_items where order_id = any(${orders})`;
@@ -189,6 +193,79 @@ suite('measurement core (real PostgreSQL)', () => {
     await transition.transition(o.id, 'cancelled', { actorType: 'administrator', source: 'admin_api', reasonCode: 'it_cancel', idempotencyKey: `it-cancel-${o.id}` });
     await M.routeBusinessEvents();
     expect((await intentsOf(o.id)).length).toBe(2);
+  });
+
+  it('a settled refund is ONE refund_confirmed event, a negative ledger entry and a partial GA4 refund', async () => {
+    const o = await seed();
+    await pay(o.id, `pesapal:completed:it-${o.id}`);
+    const [att] = await raw`insert into payment_attempts (order_id, merchant_reference, amount, status, provider)
+      values (${o.id}, ${'it-ref-' + o.number}, 95000, 'completed', 'pesapal') returning id`;
+    const [ref] = await raw`insert into payment_refunds (payment_attempt_id, order_id, idempotency_key, amount_ugx, reason, status)
+      values (${att.id}, ${o.id}, ${'it-refkey-' + o.number}, 30000, 'IT partial', 'requested') returning id`;
+    const { DrizzleRefundLedgerRepository } = await import('../../apps/api/src/infrastructure/db/repositories/DrizzleRefundLedgerRepository');
+    const repo = new DrizzleRefundLedgerRepository();
+    await repo.recordProviderOutcome(ref.id, { status: 'settled', providerStatus: 'OK' });
+    await repo.recordProviderOutcome(ref.id, { status: 'settled', providerStatus: 'OK' }); // replay
+    const refunds = (await eventsOf(o.id)).filter((e: any) => e.event_name === 'refund_confirmed');
+    expect(refunds).toHaveLength(1);
+    expect(refunds[0].payload.amountUGX).toBe('30000');
+    const [entry] = await raw`select * from measurement.commercial_entry where event_id = ${refunds[0].event_id}`;
+    expect(Number(entry.net_merchandise_ugx)).toBe(-30000);
+    await M.routeBusinessEvents();
+    const refundIntents = (await intentsOf(o.id)).filter((i: any) => i.sink_key === 'ga4:refund');
+    expect(refundIntents).toHaveLength(1);
+  });
+
+  it('replay of a DEAD_LETTER delivery resets the budget and keeps the provider event id', async () => {
+    const o = await seed();
+    await pay(o.id, `pesapal:completed:it-${o.id}`);
+    await M.routeBusinessEvents();
+    const [intent] = await intentsOf(o.id);
+    await raw`update measurement.delivery_intent set state = 'DEAD_LETTER', attempt_count = 8, state_reason = 'IT' where delivery_id = ${intent.delivery_id}`;
+    const { DrizzleMeasurementOperationsRepository } = await import('../../apps/api/src/infrastructure/db/repositories/DrizzleMeasurementOperationsRepository');
+    const ops = new DrizzleMeasurementOperationsRepository();
+    expect(await ops.replay([intent.delivery_id])).toBe(1);
+    const [after] = await raw`select * from measurement.delivery_intent where delivery_id = ${intent.delivery_id}`;
+    expect(after.state).toBe('RETRY_WAIT');
+    expect(Number(after.replay_count)).toBe(1);
+    expect(Number(after.attempts_at_replay)).toBe(8);
+    expect(after.provider_event_id).toBe(intent.provider_event_id);
+    // The replayed delivery is due again and its attempt budget starts from the replay.
+    const scheduled: string[] = [];
+    await M.scheduleDueDeliveries(async (_jobId: string, d: any) => { scheduled.push(d.deliveryId); return true; });
+    expect(scheduled).toContain(intent.delivery_id);
+  });
+
+  it('collector v2: a landing touch is stored once and the same batch id answers the same receipt', async () => {
+    const { CollectBrowserBatchUseCase } = await import('../../apps/api/src/application/use-cases/telemetry/CollectBrowserBatchUseCase');
+    const { DrizzleCollectorStore } = await import('../../apps/api/src/infrastructure/db/repositories/DrizzleCollectorStore');
+    const uc = new CollectBrowserBatchUseCase(new DrizzleCollectorStore(), async () => {});
+    const anon = `it-touch-${Date.now().toString(36)}`;
+    const body = JSON.stringify({ batchId: crypto.randomUUID(), schemaVersion: 1, pageInstanceId: 'it-collector', events: [{
+      event_name: 'landing_touch', event_id: crypto.randomUUID(), event_time: Math.floor(Date.now() / 1000), source: 'browser',
+      user_data: { fp_client_id: anon },
+      touch: { source: 'google', medium: 'cpc', campaign: 'c', referrer_host: 'www.google.com', landing_path: '/shop', click_id_types: ['gclid'] } }] });
+    const a: any = await uc.execute(body);
+    const b: any = await uc.execute(body);
+    expect(a.status).toBe(202);
+    expect(b.replay).toBe(true);
+    expect(b.receipt.receiptId).toBe(a.receipt.receiptId);
+    const stored = await raw`select channel from measurement.touchpoint where anonymous_id = ${anon}`;
+    expect(stored).toHaveLength(1);
+    expect(stored[0].channel).toBe('paid_search');
+  });
+
+  it('attribution batch runs under the lease and says INSUFFICIENT_DATA rather than inventing a model', async () => {
+    const { runAttributionBatch } = await import('../../apps/api/src/infrastructure/measurement/AttributionJob');
+    const r = await runAttributionBatch('integration-test');
+    expect(['COMPLETE', 'DEFERRED_RESOURCE']).toContain(r.state);
+    if (r.state === 'COMPLETE') {
+      const runs = await raw`select method, status from measurement.attribution_run where started_at > now() - interval '5 minutes'`;
+      expect(runs.length).toBeGreaterThan(0);
+      for (const run of runs) expect(['COMPLETE', 'INSUFFICIENT_DATA', 'NOT_IDENTIFIABLE', 'DATA_INVALID']).toContain(run.status);
+      const [lease] = await raw`select lease_until from measurement.analytics_lease where name = 'analytics'`;
+      expect(new Date(lease.lease_until).getTime()).toBeLessThanOrEqual(Date.now() + 1000);
+    }
   });
 
   it('no visitor id: GA4 delivery is SUPPRESSED(IDENTITY_UNAVAILABLE), never sent with an invented visitor', async () => {

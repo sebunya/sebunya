@@ -396,6 +396,8 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
       import { captureAttribution, recordAdClick } from '../lib/attribution';
       captureAttribution();
       recordAdClick();
+      import { recordLandingTouch } from '../lib/telemetry';
+      recordLandingTouch();
     </script>
 
     <script>

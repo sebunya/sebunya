@@ -185,6 +185,20 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Measurement Control Tower — consent governance, sGTM routing, attribution intelligence.'
   },
   {
+    label: 'Measurement deliveries',
+    href: '/admin/measurement/deliveries',
+    group: 'Measurement',
+    status: 'working',
+    description: 'Durable delivery of sales, cancellations and refunds to GA4 and ad platforms: queue, unknown outcomes, failures, replay and the kill switch.'
+  },
+  {
+    label: 'Attribution models',
+    href: '/admin/measurement/attribution-models',
+    group: 'Measurement',
+    status: 'working',
+    description: 'Where confirmed sales came from: rule-based, Markov and Shapley side by side, computed nightly, with plain "not enough data" states.',
+  },
+  {
     label: 'Advertising platforms',
     href: '/admin/advertising',
     group: 'Measurement',

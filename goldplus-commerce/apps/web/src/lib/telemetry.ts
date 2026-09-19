@@ -392,3 +392,38 @@ if (typeof window !== 'undefined') {
     flushQueue();
   }, { capture: true });
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Landing touch (collector contract v2): one per visit, plus one whenever a new
+// campaign, click id or outside referrer arrives mid-visit. The server
+// classifies the channel and keeps it for attribution; it is never forwarded
+// to GA4 or an ad platform. Automation (webdriver) is not a visit.
+// ─────────────────────────────────────────────────────────────────────────────
+const TOUCH_CLICK_KEYS = ['gclid', 'gbraid', 'wbraid', 'msclkid', 'fbclid', 'ttclid', 'twclid', 'ScCid', 'li_fat_id', 'epik', 'clickid', 'click_id'];
+export function recordLandingTouch(): void {
+  try {
+    if ((navigator as { webdriver?: boolean }).webdriver) return;
+    const q = new URLSearchParams(location.search);
+    const clickTypes = TOUCH_CLICK_KEYS.filter((k) => q.get(k));
+    let refHost: string | null = null;
+    try { const h = document.referrer ? new URL(document.referrer).host : ''; refHost = h && h !== location.host ? h.slice(0, 253) : null; } catch { /* no referrer */ }
+    const hasCampaign = !!(q.get('utm_source') || q.get('utm_medium') || clickTypes.length || refHost);
+    let seen = false;
+    try { seen = sessionStorage.getItem('_gp_touch') === '1'; sessionStorage.setItem('_gp_touch', '1'); } catch { /* storage off */ }
+    if (seen && !hasCampaign) return;
+    const clip = (v: string | null, n: number) => (v ? v.slice(0, n) : null);
+    const body = JSON.stringify({
+      batchId: crypto.randomUUID(), schemaVersion: 1,
+      events: [{
+        event_name: 'landing_touch', event_id: crypto.randomUUID(), event_time: Math.floor(Date.now() / 1000), source: 'browser',
+        user_data: { fp_client_id: getFpClientId() },
+        touch: { source: clip(q.get('utm_source'), 100), medium: clip(q.get('utm_medium'), 100), campaign: clip(q.get('utm_campaign'), 150),
+          referrer_host: refHost, landing_path: location.pathname.slice(0, 300), click_id_types: clickTypes },
+      }],
+    });
+    const blob = new Blob([body], { type: 'text/plain;charset=UTF-8' });
+    if (!(navigator.sendBeacon && navigator.sendBeacon(`${TELEMETRY_ENDPOINT}/batch`, blob))) {
+      fetch(`${TELEMETRY_ENDPOINT}/batch`, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body, keepalive: true }).catch(() => {});
+    }
+  } catch { /* measurement never breaks a page */ }
+}

@@ -103,6 +103,17 @@ export async function routeBusinessEvents(): Promise<{ routed: number; intents: 
             if (ga && ['ACCEPTED', 'PROCESSED'].includes(ga.state)) sinks.push({ sink: 'ga4:refund', providerEventId: `refund:${orderNumber}` });
           }
         }
+        if (ev?.event_name === 'refund_confirmed') {
+          // A partial refund to GA4 only when its purchase reached GA4, and
+          // never on top of a cancellation that already refunded the order.
+          const orderEvents = rows(await tx.execute(sql`select event_id, event_name from measurement.business_event
+            where aggregate_type = 'order' and aggregate_id = ${ev.aggregate_id} and environment = ${ev.environment}`));
+          const conf = orderEvents.find((e: any) => e.event_name === 'order_confirmed');
+          const cancel = orderEvents.find((e: any) => e.event_name === 'order_cancelled');
+          const ga = conf ? rows(await tx.execute(sql`select state from measurement.delivery_intent where event_id = ${conf.event_id}::uuid and sink_key = 'ga4:purchase'`))[0] : null;
+          const fullRefund = cancel ? rows(await tx.execute(sql`select 1 from measurement.delivery_intent where event_id = ${cancel.event_id}::uuid and sink_key = 'ga4:refund' and state not in ('CANCELLED','SUPPRESSED')`)).length > 0 : false;
+          if (ga && ['ACCEPTED', 'PROCESSED'].includes(ga.state) && !fullRefund) sinks.push({ sink: 'ga4:refund', providerEventId: `refund:${ev.payload?.refundId}` });
+        }
         let n = 0;
         for (const s of sinks) {
           const r = rows(await tx.execute(sql`insert into measurement.delivery_intent (delivery_id, event_id, sink_key, environment, provider_event_id, state)
@@ -191,7 +202,9 @@ export function toCanonical(ev: { event_id: string; event_name: string; occurred
   const p = ev.payload ?? {};
   const isRefund = sink === 'ga4:refund';
   const items = (p.items ?? []).map((l: any) => ({ item_id: l.productId, item_name: l.name, price: Math.round(Number(l.netLineUGX) / Math.max(1, Number(l.quantity))), quantity: Number(l.quantity) }));
-  const value = Number(p.netMerchandiseUGX ?? 0) + Number(p.collectedDeliveryUGX ?? 0) + Number(p.taxUGX ?? 0);
+  // A partial refund carries its own amount; a cancellation refunds the order's value.
+  const value = ev.event_name === 'refund_confirmed' ? Number(p.amountUGX ?? 0)
+    : Number(p.netMerchandiseUGX ?? 0) + Number(p.collectedDeliveryUGX ?? 0) + Number(p.taxUGX ?? 0);
   return {
     event_name: isRefund ? 'refund' : 'purchase',
     event_id: ev.event_id,
@@ -252,7 +265,10 @@ export async function deliverOne(deliveryId: string, generation: number, fetchIm
   if (await killSwitchOn()) { await finish(deliveryId, token, 'RETRY_WAIT', 'KILL_SWITCH', { nextAt: new Date(Date.now() + 5 * 60_000) }); return 'HELD'; }
   const age = Date.now() - new Date(ev.occurred_at).getTime();
   if (sink.startsWith('ad:') && age > MAX_EVENT_AGE_MS) { await finish(deliveryId, token, 'SUPPRESSED', 'EXPIRED_EVENT'); return 'SUPPRESSED'; }
-  if (Number(claimed.attempt_count) >= MAX_ATTEMPTS || Date.now() - new Date(claimed.created_at).getTime() > HORIZON_MS) { await finish(deliveryId, token, 'DEAD_LETTER', 'RETRY_BUDGET_EXHAUSTED'); return 'DEAD_LETTER'; }
+  // Budget and horizon count from the last operator replay (0141), if any.
+  const attemptsSince = Number(claimed.attempt_count) - Number(claimed.attempts_at_replay ?? 0);
+  const horizonFrom = new Date(claimed.replayed_at ?? claimed.created_at).getTime();
+  if (attemptsSince >= MAX_ATTEMPTS || Date.now() - horizonFrom > HORIZON_MS) { await finish(deliveryId, token, 'DEAD_LETTER', 'RETRY_BUDGET_EXHAUSTED'); return 'DEAD_LETTER'; }
   const identity = await loadIdentity(String(ev.aggregate_id));
   if (sink.startsWith('ad:')) {
     const refusal = rows(await db.execute(sql`select advertising_granted, last_grant_type, expires_at from consent_current_state
@@ -307,7 +323,7 @@ export async function deliverOne(deliveryId: string, generation: number, fetchIm
   if (c.kind === 'accepted') { await finish(deliveryId, token, 'ACCEPTED', 'OK', { accepted: true }); if (platform) await adRepo.recordResult(platform, true).catch(() => undefined); return 'ACCEPTED'; }
   if (platform) await adRepo.recordResult(platform, false, `${c.code}${status ? ` (HTTP ${status})` : ''}`).catch(() => undefined);
   if (c.kind === 'unknown') { await finish(deliveryId, token, 'UNKNOWN_OUTCOME', c.code); return 'UNKNOWN_OUTCOME'; }
-  if (c.kind === 'retry' && attemptNo < MAX_ATTEMPTS) { await finish(deliveryId, token, 'RETRY_WAIT', c.code, { nextAt: new Date(Date.now() + nextAttemptDelayMs(attemptNo, retryAfter)) }); return 'RETRY_WAIT'; }
+  if (c.kind === 'retry' && attemptNo - Number(claimed.attempts_at_replay ?? 0) < MAX_ATTEMPTS) { await finish(deliveryId, token, 'RETRY_WAIT', c.code, { nextAt: new Date(Date.now() + nextAttemptDelayMs(attemptNo, retryAfter)) }); return 'RETRY_WAIT'; }
   await finish(deliveryId, token, 'DEAD_LETTER', c.code);
   logger.warn({ deliveryId, sink, code: c.code, status }, '[Delivery] dead-lettered');
   return 'DEAD_LETTER';

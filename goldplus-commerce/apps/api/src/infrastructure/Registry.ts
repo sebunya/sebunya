@@ -1,4 +1,9 @@
 import './logging/appLoggerBinding';
+import { MeasurementOperationsUseCases } from '../application/use-cases/measurement/MeasurementOperationsUseCases';
+import { CollectBrowserBatchUseCase } from '../application/use-cases/telemetry/CollectBrowserBatchUseCase';
+import { DrizzleCollectorStore } from './db/repositories/DrizzleCollectorStore';
+import { PgAttributionPort } from './measurement/AttributionJob';
+import { DrizzleMeasurementOperationsRepository } from './db/repositories/DrizzleMeasurementOperationsRepository';
 import { AdDestinationUseCases } from '../application/use-cases/advertising/AdDestinationUseCases';
 import { DrizzleAdDestinationRepository } from './db/repositories/DrizzleAdDestinationRepository';
 import { AD_PLATFORMS } from './advertising/AdPlatforms';
@@ -705,6 +710,10 @@ export class Registry {
   /** AI Search Visibility (AEO/GEO) — migration 0131; see docs/ai-visibility/README.md. */
   public readonly aiVisibility = createAiVisibility(this.createAuditLogUseCase);
   // Advertising destinations (0138): server-side conversion APIs, token vault-encrypted.
+  // Measurement delivery operations (0140/0141): queue, replay, quarantine, kill switch.
+  /** Collector contract v2 (0141); the per-event durable write is the caller's tracking path. */
+  public collectBrowserBatch(trackEvent: (event: unknown) => Promise<void>) { return new CollectBrowserBatchUseCase(new DrizzleCollectorStore(), trackEvent); }
+  public readonly measurementOperations = new MeasurementOperationsUseCases(new DrizzleMeasurementOperationsRepository(), this.createAuditLogUseCase, new PgAttributionPort());
   public readonly advertising = new AdDestinationUseCases(new DrizzleAdDestinationRepository(), AD_PLATFORMS, vaultCipher(), this.createAuditLogUseCase);
   public readonly paymentRepo = new DrizzlePaymentRepository();
   public readonly userRepo = new DrizzleUserRepository();

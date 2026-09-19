@@ -9,7 +9,7 @@ import { z } from 'zod';
  * JSON without floating-point loss. Payloads are strict: unknown keys reject.
  */
 
-export const COMMERCE_EVENT_NAMES = ['order_created', 'order_confirmed', 'order_dispatched', 'order_delivered', 'order_cancelled'] as const;
+export const COMMERCE_EVENT_NAMES = ['order_created', 'order_confirmed', 'order_dispatched', 'order_delivered', 'order_cancelled', 'refund_confirmed'] as const;
 export type CommerceEventName = typeof COMMERCE_EVENT_NAMES[number];
 export type Environment = 'development' | 'test' | 'staging' | 'production';
 
@@ -45,12 +45,20 @@ export const OrderStatusData = z.object({
   reasonCode: z.string().max(120).nullable(),
 }).strict();
 
+export const RefundConfirmedData = z.object({
+  orderId: Id, orderNumber: z.string().min(1).max(40), refundId: Id, currency: z.literal('UGX'),
+  /** Positive amount returned to the customer; the ledger entry carries the sign. */
+  amountUGX: MoneyUGX.refine((v) => Number(v) > 0, 'refund must be positive'),
+  reason: z.string().max(500).nullable(),
+}).strict();
+
 export const EVENT_DATA_SCHEMAS: Record<CommerceEventName, z.ZodTypeAny> = {
   order_created: OrderCreatedData,
   order_confirmed: OrderConfirmedData,
   order_dispatched: OrderStatusData,
   order_delivered: OrderStatusData,
   order_cancelled: OrderStatusData,
+  refund_confirmed: RefundConfirmedData,
 };
 
 export const ECONOMIC_POLICY_VERSION = 'ugx-v1';
@@ -74,8 +82,9 @@ export const canonicalSha256 = (eventName: string, payload: unknown) =>
  * One business effect per source transition. Order-level milestones happen once
  * per order (a second "confirmed" is not a second sale), so they key on the order.
  */
-export function businessDedupeKey(eventName: CommerceEventName, orderId: string): string {
-  return `${eventName}:order:${orderId}`;
+export function businessDedupeKey(eventName: CommerceEventName, orderId: string, refundId?: string): string {
+  // Two real partial refunds are two events (dossier EVT-06): keyed on the refund.
+  return eventName === 'refund_confirmed' ? `refund_confirmed:refund:${refundId}` : `${eventName}:order:${orderId}`;
 }
 
 export function environmentOf(nodeEnv: string | undefined): Environment {

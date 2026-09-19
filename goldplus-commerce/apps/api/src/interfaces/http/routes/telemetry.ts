@@ -5,6 +5,7 @@ import { logger } from '../../../infrastructure/logging/logger';
 import { TrackBrowserTelemetryEventUseCase } from '../../../application/use-cases/telemetry/TrackBrowserTelemetryEventUseCase';
 import { StitchBrowserIdentityUseCase } from '../../../application/use-cases/telemetry/StitchBrowserIdentityUseCase';
 import { clientIp } from '../clientAddress';
+import { Registry } from '../../../infrastructure/Registry';
 
 const routes = new Hono();
 const trackUseCase = new TrackBrowserTelemetryEventUseCase();
@@ -57,7 +58,23 @@ routes.post('/collect/batch', botDetectionMiddleware, async (c) => {
     return c.json({ success: false, error: 'PAYLOAD_TOO_LARGE' }, 413);
   }
 
-  const body = (c as any)._parsedBody ?? await c.req.json().catch(() => null);
+  const parsedBody = (c as any)._parsedBody;
+  const body = parsedBody ?? await c.req.json().catch(() => null);
+  // Collector contract v2: an envelope with a batchId gets a durable receipt.
+  if (body && !Array.isArray(body) && typeof body === 'object' && 'batchId' in body) {
+    const realIp = clientIp(c);
+    const realUa = c.req.header('user-agent') || '';
+    const gaSession = gaSessionFromCookieHeader(c.req.header('cookie'));
+    const uc = Registry.getInstance().collectBrowserBatch((ev: unknown) => trackUseCase.execute(ev as never, realIp, realUa, gaSession));
+    try {
+      const r = await uc.execute(JSON.stringify(body));
+      if (r.status === 202) return c.json({ success: true, receiptId: r.receipt.receiptId, accepted: r.receipt.accepted, rejected: r.receipt.rejected, replay: r.replay }, 202);
+      return c.json({ success: false, error: r.error }, r.status);
+    } catch (err) {
+      logger.error({ err }, '[Telemetry] collector v2 unavailable');
+      return c.json({ success: false, error: 'NO_DURABLE_SINK' }, 503);
+    }
+  }
   if (!Array.isArray(body)) {
     return c.json({ success: false, error: 'EXPECTED_ARRAY' }, 400);
   }

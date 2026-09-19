@@ -19,6 +19,9 @@ async function runMeasurementDelivery() {
     await deliverOne(data.deliveryId, data.enqueueGeneration);
     return true;
   });
+  // Nightly attribution batch: one bounded job under the analytics lease (addendum 17).
+  const { maybeRunScheduledAttribution } = await import('../measurement/AttributionJob');
+  void maybeRunScheduledAttribution().catch((err) => logger.error({ err }, '[OutboxTicker] attribution schedule failed'));
   if (routed.routed || scheduled || leases.toPending || leases.toUnknown) logger.info({ ...routed, ...leases, scheduled, queueUp }, '[OutboxTicker] measurement delivery cycle');
 }
 import { logger } from '../logging/logger';

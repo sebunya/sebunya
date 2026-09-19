@@ -26,11 +26,11 @@ const str = (n: unknown) => String(Math.trunc(Number(n ?? 0)));
 export interface AppendResult { eventId: string; inserted: boolean; conflict: boolean }
 
 export async function appendBusinessEvent(tx: Tx, input: {
-  eventName: CommerceEventName; orderId: string; sourceTransitionId: string; data: unknown; occurredAt: Date; traceId?: string | null;
+  eventName: CommerceEventName; orderId: string; sourceTransitionId: string; data: unknown; occurredAt: Date; traceId?: string | null; refundId?: string;
 }): Promise<AppendResult> {
   const data = validateEventData(input.eventName, input.data);
   const env = ENV();
-  const key = businessDedupeKey(input.eventName, input.orderId);
+  const key = businessDedupeKey(input.eventName, input.orderId, input.refundId);
   const hash = canonicalSha256(input.eventName, data);
   const eventId = randomUUID();
   const ins = rows(await tx.execute(sql`
@@ -146,4 +146,22 @@ export async function guardedMeasurementWrite(tx: Tx, aggregateId: string, conte
     // eslint-disable-next-line no-console
     console.error('MEASUREMENT_WRITE_FAILED', { aggregateId, context, error: msg });
   }
+}
+
+/**
+ * A refund the provider settled (payment_refunds.status → settled): one
+ * refund_confirmed event per refund and a negative REFUND ledger entry, in the
+ * caller's transaction. Settling the same refund again writes nothing.
+ */
+export async function recordRefundSettled(tx: Tx, refundId: string, occurredAt: Date): Promise<void> {
+  const r = rows(await tx.execute(sql`select pr.id, pr.order_id, pr.amount_ugx, pr.reason, o.order_number
+    from payment_refunds pr join orders o on o.id = pr.order_id where pr.id = ${refundId}::uuid and pr.status = 'settled'`))[0];
+  if (!r) return;
+  const res = await appendBusinessEvent(tx, { eventName: 'refund_confirmed', orderId: String(r.order_id), refundId: String(r.id), sourceTransitionId: `payment_refund:${r.id}:settled`,
+    data: { orderId: String(r.order_id), orderNumber: String(r.order_number), refundId: String(r.id), currency: 'UGX', amountUGX: str(r.amount_ugx), reason: r.reason ? String(r.reason).slice(0, 500) : null },
+    occurredAt });
+  if (!res.inserted) return;
+  await tx.execute(sql`insert into measurement.commercial_entry (entry_id, environment, order_ref, source_system, source_entry_key, component, amount_ugx, occurred_at, economic_policy_version, event_id)
+    values (${randomUUID()}::uuid, ${ENV()}, ${String(r.order_id)}, 'payment_refunds', ${`refund:${r.id}`}, 'REFUND', ${-Number(r.amount_ugx)}, ${occurredAt.toISOString()}::timestamptz, ${ECONOMIC_POLICY_VERSION}, ${res.eventId}::uuid)
+    on conflict (environment, source_system, source_entry_key) do nothing`);
 }

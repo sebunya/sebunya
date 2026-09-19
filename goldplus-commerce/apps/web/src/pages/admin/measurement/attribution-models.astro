@@ -1,0 +1,88 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { apiBase } from "../../../lib/api";
+
+/**
+ * Attribution (0141): rule-based, Markov and Shapley results computed nightly
+ * in PostgreSQL under the host-wide analytics lease. Observational only; each
+ * method's status says plainly when there is too little data to say anything.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect('/admin/login?returnTo=/admin/measurement/attribution-models', 303);
+}
+
+async function call(method: string, path: string, body?: unknown) {
+  try {
+    const res = await fetch(`${apiBase}/admin/measurement-delivery${path}`, { method, headers: { Accept: "application/json", Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
+    const json = await res.json().catch(() => null);
+    if (res.status === 401 || res.status === 403) return { ok: false as const, message: "Your account does not have the measurement permission this needs." };
+    return res.ok && json?.success ? { ok: true as const, data: json.data } : { ok: false as const, message: json?.error?.message ?? `The API declined the request (HTTP ${res.status}).` };
+  } catch { return { ok: false as const, message: "Could not reach the API." }; }
+}
+
+let notice: string | null = null;
+let formError: string | null = null;
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const r = await call("POST", "/attribution/run", { reason: String(f.get("reason") ?? "") });
+  if (r.ok) notice = r.data.state === "COMPLETE" ? "Attribution recomputed." : `Not run now: ${r.data.reason === "LEASE_HELD" ? "another analytics job is running" : r.data.reason === "CPU_BUSY" ? "the server is busy" : r.data.reason === "MEMORY_LOW" ? "the server is short of memory" : r.data.reason ?? r.data.state}. Try again later; the nightly run will also pick it up.`;
+  else formError = r.message;
+}
+const data = await call("GET", "/attribution");
+const METHOD: Record<string, [string, string]> = {
+  first_touch: ["First touch", "All credit to the first recorded visit source."],
+  last_touch: ["Last touch", "All credit to the last visit source before the order."],
+  last_non_direct: ["Last non-direct", "Last source that was not a direct visit."],
+  linear: ["Linear", "Credit shared equally across the visits."],
+  position_based: ["Position-based", "40% first, 40% last, 20% shared by the middle."],
+  time_decay: ["Time decay", "Recent visits count more; weight halves every 7 days."],
+  markov: ["Markov (observed journey contribution)", "How much the conversion rate of observed journeys depends on each source. Not a causal estimate."],
+  shapley: ["Shapley", "Fair share of the observed conversion probability across sources. Not a causal estimate."],
+};
+const STATUS: Record<string, string> = { COMPLETE: "Computed", INSUFFICIENT_DATA: "Not enough data yet", NOT_IDENTIFIABLE: "Cannot be told apart", DATA_INVALID: "Input refused", FAILED: "Failed", RUNNING: "Running" };
+const when = (iso: unknown) => (typeof iso === "string" && iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Kampala" }) : "—");
+const ugx = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 0 });
+const fmt = (v: number, unit: string) => unit === "UGX" ? `UGX ${ugx.format(v)}` : unit === "raw_removal_effect" ? `${(v * 100).toFixed(1)}% removal effect` : v.toFixed(4);
+const order = Object.keys(METHOD);
+const runs = data.ok ? [...data.data.runs].sort((a: any, b: any) => order.indexOf(a.method) - order.indexOf(b.method)) : [];
+const lastBatch = data.ok ? data.data.batches[0] : null;
+---
+<AdminLayout title="Attribution models" description="Which sources lead to sales: rule-based, Markov and Shapley, computed nightly.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <h2 class="text-2xl font-black text-brand-dark tracking-tight mb-2">Attribution models</h2>
+    <p class="text-sm text-gray-600 mb-6 max-w-3xl">Where confirmed sales came from, by several methods side by side. Visits are recorded server-side; each sale is matched to the same visitor's visits in the 30 days before it. These are observational comparisons, not proof that a channel caused a sale. Methods that disagree are shown as they are, not averaged.</p>
+    {notice && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</div>}
+    {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+    {!data.ok ? <p role="alert" class="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{data.message}</p> : (
+      <>
+        <section aria-label="Freshness" class="mb-6 rounded-2xl border border-gray-200 bg-white p-5">
+          <p class="text-sm">Last batch: <strong>{lastBatch ? `${lastBatch.state} · ${when(lastBatch.startedAt)}` : "never run"}</strong>{lastBatch?.reason && <span class="text-gray-600"> — {lastBatch.reason}</span>}. Runs nightly (02:00–06:00 Kampala) when the server has room.</p>
+          <form method="POST" class="mt-3 flex flex-wrap items-end gap-3">
+            <label class="text-xs font-bold text-gray-700">Reason (required)<input name="reason" required minlength="5" class="mt-1 block w-80 max-w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal" /></label>
+            <button class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Recompute now</button>
+          </form>
+        </section>
+        {runs.length === 0 ? <p class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-8 text-sm text-gray-600 mb-12">No attribution has been computed yet.</p> : (
+          <div class="grid gap-4 md:grid-cols-2 mb-12">
+            {runs.map((r: any) => (
+              <section class="rounded-2xl border border-gray-200 bg-white p-5">
+                <h3 class="font-black text-brand-dark">{METHOD[r.method]?.[0] ?? r.method}</h3>
+                <p class="text-xs text-gray-600">{METHOD[r.method]?.[1]}</p>
+                <p class="mt-2 text-sm"><strong>{STATUS[r.status] ?? r.status}</strong> · computed {when(r.finishedAt ?? r.startedAt)} · {r.coveredOrders} of {r.inputOrders} sales matched to visits</p>
+                {r.diagnostics?.reason && <p class="text-xs text-gray-600 mt-1">{String(r.diagnostics.reason)}</p>}
+                {r.diagnostics?.unattributedUGX && r.diagnostics.unattributedUGX !== "0" && <p class="text-xs text-gray-600 mt-1">Unattributed: UGX {ugx.format(Number(r.diagnostics.unattributedUGX))} (no recorded visit)</p>}
+                {r.channels.length > 0 && (
+                  <table class="mt-3 w-full text-sm"><tbody>
+                    {r.channels.map((c: any) => <tr class="border-t border-gray-100"><td class="py-1">{c.channel.replace(/_/g, " ")}</td><td class="py-1 text-right font-bold">{fmt(c.value, c.detail?.unit)}</td></tr>)}
+                  </tbody></table>
+                )}
+              </section>
+            ))}
+          </div>
+        )}
+      </>
+    )}
+  </div>
+</AdminLayout>
