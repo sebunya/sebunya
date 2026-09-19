@@ -94,7 +94,9 @@ suite('measurement core (real PostgreSQL)', () => {
 
   it('D-008: a failing measurement write never rolls back the commerce change', async () => {
     await dbc.transaction(async (tx: any) => {
-      const { sql } = await import('drizzle-orm');
+      // drizzle-orm is an apps/api dependency: resolve it from there.
+      const { createRequire } = await import('node:module');
+      const { sql } = createRequire(new URL('../../apps/api/package.json', import.meta.url))('drizzle-orm');
       await tx.execute(sql`insert into measurement.control (key, value) values ('it-d008', 'true'::jsonb) on conflict (key) do nothing`);
       await W.guardedMeasurementWrite(tx, 'it-agg', 'it-context', async () => { throw new Error('boom'); });
     });

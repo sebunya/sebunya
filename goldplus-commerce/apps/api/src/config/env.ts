@@ -219,6 +219,8 @@ export function validateEnv(): Config {
       pesapalIpnUrl: process.env.PESAPAL_IPN_URL,
       pesapalRedirectMode: process.env.PESAPAL_REDIRECT_MODE,
       metricsInternalUrl: process.env.METRICS_INTERNAL_URL || 'http://localhost:8080',
+      // Read in tests too: delivery routing to GA4 keys on it.
+      ga4MeasurementId: process.env.GA4_MEASUREMENT_ID,
       measurement: {
         dryRun: process.env.MEASUREMENT_DRY_RUN !== 'false',
         liveDestinationsEnabled: process.env.MEASUREMENT_LIVE_DESTINATIONS_ENABLED === 'true',
