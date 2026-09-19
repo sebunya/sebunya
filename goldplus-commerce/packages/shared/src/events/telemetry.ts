@@ -22,6 +22,8 @@ export const TelemetryUserDataSchema = z.object({
   // Hashed PII — SHA-256 + pepper, all lowercase, whitespace-stripped before hashing
   hashed_email: z.string().length(64).optional(),
   hashed_phone: z.string().length(64).optional(),
+  /** SHA-256 of '+'-prefixed E.164 (TikTok's rule). */
+  hashed_phone_plus: z.string().length(64).optional(),
 
   // First-party identity
   fp_client_id: z.string().max(255).optional(),

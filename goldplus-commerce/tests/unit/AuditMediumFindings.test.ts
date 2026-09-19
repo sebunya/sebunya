@@ -111,7 +111,7 @@ describe('security and sessions', () => {
 
 describe('operations that must not double, drift or lie', () => {
   it('the notification worker leaves telemetry events to the telemetry dispatcher', () => {
-    expect(read('apps/api/src/application/use-cases/outbox/ProcessOutboxBatchUseCase.ts')).toMatch(/\[\.\.\.CHECKOUT_SIDE_EFFECT_EVENT_TYPES, 'TELEMETRY_DISPATCH'\]/);
+    expect(read('apps/api/src/application/use-cases/outbox/ProcessOutboxBatchUseCase.ts')).toMatch(/\[\.\.\.CHECKOUT_SIDE_EFFECT_EVENT_TYPES, 'TELEMETRY_DISPATCH', 'AD_CONVERSION'\]/); // and ad conversions (0138)
   });
 
   it('a stale stock count is refused when the live balance moved without a reason', () => {

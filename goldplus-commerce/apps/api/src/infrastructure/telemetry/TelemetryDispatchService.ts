@@ -223,6 +223,11 @@ export class TelemetryDispatchService {
     // Both paths (the queue worker and the batch sweep) arrive here; the
     // worker passes the raw row payload, which production double-encodes.
     const event = decodeTelemetryPayload(raw);
+    // Advertising platforms first, and independently of GA4 (0138): a GA
+    // outage, a missing measurement id or a visitor-less event must not stop
+    // conversions that carry their own identifiers. Idempotent per platform
+    // and event, so a retried GA dispatch never queues them twice.
+    await fanOutAdConversions(event);
     // Every ecommerce event goes to GA4 from HERE, server-side (owner decision
     // 2026-09-19): the browser only beacons it to our own API, which survives
     // ad blockers and does not depend on browser cookies. The web container no
@@ -281,9 +286,7 @@ export class TelemetryDispatchService {
         const body = await response.text().catch(() => '');
         throw new Error(`sGTM ${response.status}: ${body.slice(0, 300)}`);
       }
-      // Accepted for GA4: queue it for every LIVE advertising platform too
-      // (0138). Idempotent per platform and event; never fails this dispatch.
-      await fanOutAdConversions(event);
+
     } catch (err) {
       if (!(err instanceof Error && err.message.includes('sGTM'))) {
         gtmConversionFailures.inc({ status: 'network_error' });

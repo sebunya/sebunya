@@ -76,7 +76,13 @@ export async function processAdConversionBatch(): Promise<{ claimed: number; sen
     // Switched off (or token removed) since it was queued: nothing is sent.
     if (!dest || !vault) { await finish('withdrawn', { lastError: !vault ? 'credential vault key not set' : 'platform switched off' }); out.skipped++; continue; }
     let secret: string;
-    try { secret = String(vault.decrypt<{ apiKey: string }>(dest.secretEnc).apiKey ?? ''); } catch { await finish('withdrawn', { lastError: 'token could not be decrypted' }); out.skipped++; continue; }
+    try { secret = String(vault.decrypt<{ apiKey: string }>(dest.secretEnc).apiKey ?? ''); } catch {
+      // Shown on the platform in admin: a rotated vault key (or JWT_SECRET, its
+      // fallback) makes every stored token unreadable until it is re-entered.
+      await finish('withdrawn', { lastError: 'token could not be decrypted' });
+      await repo.recordResult(platform, false, 'The stored token could not be decrypted (the server key changed). Re-enter the token.').catch(() => undefined);
+      out.skipped++; continue;
+    }
     const req = buildAdRequest(platform, event, dest.config, secret);
     if (!req) { await finish('skipped', { lastError: 'no equivalent event or required identifier' }); out.skipped++; continue; }
     const attempt = row.attemptCount + 1;

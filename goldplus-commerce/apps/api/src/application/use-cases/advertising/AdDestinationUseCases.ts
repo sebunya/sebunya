@@ -36,7 +36,7 @@ export class AdDestinationUseCases {
     return (await this.list()).filter((p) => p.state === 'LIVE').map((p) => p.name);
   }
 
-  async configure(actorId: string | null, key: string, input: { config?: Record<string, unknown>; secret?: string; enabled?: boolean }): Promise<R<AdDestinationRow>> {
+  async configure(actorId: string | null, key: string, input: { config?: Record<string, unknown>; secret?: string; enabled?: boolean; removeSecret?: boolean }): Promise<R<AdDestinationRow>> {
     const p = this.platforms.find((x) => x.key === key);
     if (!p) return { ok: false, code: 'NOT_FOUND', message: 'Unknown advertising platform.' };
     if (p.unavailable) return { ok: false, code: 'NOT_CONFIGURED', message: `Not configured: ${p.unavailable}` };
@@ -57,6 +57,12 @@ export class AdDestinationUseCases {
       if (s.length < 20 || s.length > 4000) return { ok: false, code: 'BAD_INPUT', message: `${p.secretLabel} does not look right.` };
       secretEnc = this.cipher.encrypt(s);
       secretMask = this.cipher.mask(s);
+    }
+    if (input.removeSecret) {
+      // A leaked or retired token: gone, and the platform switched off with it.
+      const row = await this.repo.save(key, { enabled: false, config, secretEnc: null, secretMask: null, updatedBy: actorId });
+      await this.audit.execute({ actorId, action: 'AD_DESTINATION_TOKEN_REMOVED', entity: 'ad_destination', entityId: key, newState: { enabled: false } } as never);
+      return { ok: true, value: row };
     }
     const willBeComplete = p.fields.every((f) => f.pattern.test(config[f.key] ?? '')) && (!!secretEnc || !!current?.hasSecret);
     if (input.enabled === true && !willBeComplete) return { ok: false, code: 'BAD_INPUT', message: `Enter the ${p.fields.map((f) => f.label).join(', ')} and the ${p.secretLabel} before switching ${p.name} on.` };

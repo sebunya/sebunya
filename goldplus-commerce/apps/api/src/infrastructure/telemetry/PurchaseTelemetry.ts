@@ -2,9 +2,9 @@ import { enqueuePurchaseEvent } from '../../application/use-cases/telemetry/Enqu
 import { logger } from '../logging/logger';
 import { db } from '../db/client';
 import { outboxEvents } from '../db/schema/system';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, like } from 'drizzle-orm';
 import crypto from 'crypto';
-import { hashEmail, hashPhone } from '../advertising/AdPlatforms';
+import { hashEmail, hashPhone, hashPhonePlus } from '../advertising/AdPlatforms';
 
 type Visitor = { fpClientId?: string | null; clientIp?: string | null; userAgent?: string | null; gaSessionId?: string | null; gaSessionNumber?: number | null };
 
@@ -52,6 +52,7 @@ export async function queuePurchaseTelemetry(input: {
       gaSessionNumber: input.visitor?.gaSessionNumber ?? undefined,
       hashedEmail: hashEmail(input.email),
       hashedPhone: hashPhone(input.phone),
+      hashedPhonePlus: hashPhonePlus(input.phone),
       traceId: input.traceId,
     });
     if (!outboxId) return; // already enqueued for this order
@@ -72,9 +73,16 @@ export async function queuePurchaseTelemetry(input: {
  */
 export async function queueRefundTelemetry(input: { orderId: string; orderNumber: string; valueUgx: number; visitor: Visitor | null }): Promise<void> {
   try {
-    const purchase = await db.select({ id: outboxEvents.id, status: outboxEvents.status }).from(outboxEvents)
+    const purchase = await db.select({ id: outboxEvents.id, status: outboxEvents.status, payload: outboxEvents.payload }).from(outboxEvents)
       .where(and(eq(outboxEvents.idempotencyKey, `purchase:${input.orderNumber}`), eq(outboxEvents.eventType, 'TELEMETRY_DISPATCH'))).limit(1);
     if (purchase.length === 0) return;
+    // Ad platforms: withdraw this sale's conversions that have not gone out yet
+    // (they have no refund event; a sent one cannot be recalled).
+    const pp = typeof purchase[0].payload === 'string' ? JSON.parse(purchase[0].payload as string) : purchase[0].payload;
+    if (pp?.event_id) {
+      await db.update(outboxEvents).set({ status: 'withdrawn', isProcessed: true, processedAt: new Date() })
+        .where(and(eq(outboxEvents.eventType, 'AD_CONVERSION'), like(outboxEvents.idempotencyKey, `ad:%:${pp.event_id}`), inArray(outboxEvents.status, ['pending', 'retrying'])));
+    }
     if (purchase[0].status !== 'sent') {
       // Not delivered yet (pending or retrying): withdraw it instead of sending
       // a purchase and then its refund; GA never sees a sale that did not stand.

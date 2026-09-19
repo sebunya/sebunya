@@ -29,7 +29,7 @@ if (Astro.request.method === "POST") {
   const secret = String(f.get("secret") ?? "").trim() || undefined;
   const intent = String(f.get("intent") ?? "save");
   const enabled = intent === "enable" ? true : intent === "disable" ? false : undefined;
-  const r = await call("PUT", `/${encodeURIComponent(key)}`, { config, secret, enabled });
+  const r = await call("PUT", `/${encodeURIComponent(key)}`, intent === "remove-token" ? { removeSecret: true } : { config, secret, enabled });
   if (r.ok) notice = "Saved."; else formError = r.message;
 }
 
@@ -71,6 +71,7 @@ const when = (iso: unknown) => (typeof iso === "string" && iso ? new Date(iso).t
                     {p.enabled
                       ? <button name="intent" value="disable" class="inline-flex min-h-11 items-center rounded-full border border-red-300 px-5 text-sm font-bold text-red-800">Switch off</button>
                       : <button name="intent" value="enable" class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Save and switch on</button>}
+                    {p.secretMask && <button name="intent" value="remove-token" class="inline-flex min-h-11 items-center px-2 text-sm font-bold text-red-800 underline">Remove token</button>}
                   </div>
                 </form>
               </>

@@ -26,18 +26,31 @@ export interface AdPlatformDef {
   unavailable?: string;
 }
 
+/**
+ * API versions. Meta supports a Graph version ~2 years (v23.0: May 2025).
+ * LinkedIn sunsets a monthly version ~12 months after release, so the header
+ * is derived: two months back from today is released and well inside support.
+ */
+export const META_GRAPH_VERSION = 'v23.0';
+export function linkedInVersion(now = new Date()): string {
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 2, 1));
+  return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
 const sha = (v: string) => crypto.createHash('sha256').update(v).digest('hex');
 /** Lower-cased trimmed email, hashed. */
 export const hashEmail = (email?: string | null) => (email && email.includes('@') ? sha(email.trim().toLowerCase()) : undefined);
 /** Ugandan numbers to E.164 digits (07XXXXXXXX -> 2567XXXXXXXX), hashed. */
 export function normalisePhoneUg(phone?: string | null): string | undefined {
-  const d = String(phone ?? '').replace(/\D/g, '');
+  const d = String(phone ?? '').replace(/\D/g, '').replace(/^00/, '');
   if (/^0\d{9}$/.test(d)) return `256${d.slice(1)}`;
   if (/^256\d{9}$/.test(d)) return d;
   if (/^7\d{8}$/.test(d)) return `256${d}`;
   return d.length >= 10 && d.length <= 15 ? d : undefined;
 }
 export const hashPhone = (phone?: string | null) => { const n = normalisePhoneUg(phone); return n ? sha(n) : undefined; };
+/** TikTok hashes E.164 WITH the leading '+' (Meta/Pinterest/Snapchat want digits only). */
+export const hashPhonePlus = (phone?: string | null) => { const n = normalisePhoneUg(phone); return n ? sha(`+${n}`) : undefined; };
 
 const items = (e: CanonicalTelemetryEvent) => e.ecommerce?.items ?? [];
 const value = (e: CanonicalTelemetryEvent) => e.ecommerce?.value ?? items(e).reduce((s, i) => s + (i.price ?? 0) * (i.quantity ?? 1), 0);
@@ -55,7 +68,7 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
       const name = this.events[e.event_name as AdEventName]; if (!name) return null;
       const ud = u(e);
       return {
-        url: `https://graph.facebook.com/v21.0/${cfg.datasetId}/events?access_token=${encodeURIComponent(token)}`,
+        url: `https://graph.facebook.com/${META_GRAPH_VERSION}/${cfg.datasetId}/events?access_token=${encodeURIComponent(token)}`,
         headers: { 'content-type': 'application/json' },
         body: { data: [{
           event_name: name, event_time: e.event_time, event_id: e.event_id, action_source: 'website',
@@ -81,7 +94,7 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
         headers: { 'content-type': 'application/json', 'Access-Token': token },
         body: { event_source: 'web', event_source_id: cfg.pixelCode, data: [{
           event: name, event_time: e.event_time, event_id: e.event_id,
-          user: { email: ud.hashed_email, phone: ud.hashed_phone, external_id: extId(e), ip: ud.ip_address, user_agent: ud.user_agent, ttclid: ud.ttclid },
+          user: { email: ud.hashed_email, phone: ud.hashed_phone_plus, external_id: extId(e), ip: ud.ip_address, user_agent: ud.user_agent, ttclid: ud.ttclid },
           page: { url: e.page_location, referrer: e.page_referrer },
           properties: { currency: e.ecommerce?.currency ?? 'UGX', value: value(e), content_type: 'product', order_id: e.ecommerce?.transaction_id,
             contents: items(e).map((i) => ({ content_id: i.item_id, content_name: i.item_name, quantity: i.quantity ?? 1, price: i.price })) },
@@ -141,7 +154,7 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
       if (e.event_name !== 'purchase' || !ud.hashed_email) return null;
       return {
         url: 'https://api.linkedin.com/rest/conversionEvents',
-        headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}`, 'LinkedIn-Version': '202405', 'X-Restli-Protocol-Version': '2.0.0' },
+        headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}`, 'LinkedIn-Version': linkedInVersion(), 'X-Restli-Protocol-Version': '2.0.0' },
         body: { conversion: `urn:lla:llaPartnerConversion:${cfg.conversionId}`, conversionHappenedAt: e.event_time * 1000, eventId: e.event_id,
           conversionValue: { currencyCode: e.ecommerce?.currency ?? 'UGX', amount: String(value(e)) },
           user: { userIds: [{ idType: 'SHA256_EMAIL', idValue: ud.hashed_email }] } },

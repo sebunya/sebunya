@@ -26,9 +26,9 @@ const view = async () => (await svc().list()).map((p) => ({
 
 routes.get('/', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => c.json({ success: true, data: await view() }));
 routes.put('/:platform', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c: Context) => {
-  const b = (await c.req.json().catch(() => null)) as { config?: Record<string, unknown>; secret?: string; enabled?: boolean } | null;
+  const b = (await c.req.json().catch(() => null)) as { config?: Record<string, unknown>; secret?: string; enabled?: boolean; removeSecret?: boolean } | null;
   const actorId = (c.get('user') as { id?: string } | undefined)?.id ?? null;
-  const r = await svc().configure(actorId, c.req.param('platform') ?? '', { config: b?.config, secret: b?.secret, enabled: typeof b?.enabled === 'boolean' ? b.enabled : undefined });
+  const r = await svc().configure(actorId, c.req.param('platform') ?? '', { config: b?.config, secret: b?.secret, enabled: typeof b?.enabled === 'boolean' ? b.enabled : undefined, removeSecret: b?.removeSecret === true });
   if (!r.ok) return c.json({ success: false, error: { code: r.code, message: r.message } }, (STATUS[r.code] ?? 400) as never);
   return c.json({ success: true, data: (await view()).find((p) => p.key === c.req.param('platform')) });
 });

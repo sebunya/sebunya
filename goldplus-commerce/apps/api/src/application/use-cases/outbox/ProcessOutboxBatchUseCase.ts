@@ -77,7 +77,8 @@ export class ProcessOutboxBatchUseCase {
     // route, and retired them as "unroutable": every claim it won was a
     // measurement event silently dropped.
     const events = await this.outboxRepo.claimDueBatch(now, BATCH_SIZE, {
-      excludeEventTypes: [...CHECKOUT_SIDE_EFFECT_EVENT_TYPES, 'TELEMETRY_DISPATCH'],
+      // AD_CONVERSION (0138) likewise belongs to the advertising dispatcher.
+      excludeEventTypes: [...CHECKOUT_SIDE_EFFECT_EVENT_TYPES, 'TELEMETRY_DISPATCH', 'AD_CONVERSION'],
     });
 
     const result: ProcessOutboxBatchResult = {

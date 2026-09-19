@@ -130,8 +130,10 @@ const CF_BEACON_LOADER = `(function(){function go(){var s=document.createElement
 const SEEN_FLAG = `try{if(localStorage.getItem('goldplus_seen_before')==='true')document.documentElement.classList.add('gp-seen')}catch(e){}`;
 const FONT_LOADER = `(function(){var d=0;function go(){if(d)return;d=1;var l=document.createElement('link');l.rel='stylesheet';l.href='/fonts/faces.css?v=20260913';document.head.appendChild(l);}try{var o=new PerformanceObserver(function(){o.disconnect();setTimeout(go,0);});o.observe({type:'paint',buffered:true});}catch(e){}addEventListener('load',function(){setTimeout(go,0);});setTimeout(go,3000);})();`;
 const clarityId = /^[a-z0-9]{6,20}$/.test(import.meta.env.PUBLIC_CLARITY_ID ?? '') ? import.meta.env.PUBLIC_CLARITY_ID : null;
-// Pages where everything (not just inputs) is masked in Clarity recordings.
-const clarityMaskAll = /^\/(checkout|account|orders|track-order|login|register|reset-password)/.test(Astro.url.pathname);
+// Clarity records page TEXT, not only inputs: everything is masked except the
+// public catalogue (home, shop, products, categories, blog, info pages), so a
+// name, phone or quote shown back on any other page is never recorded.
+const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|search|batteries|deals|about|faq|delivery|returns|warranty|contact)(\/|$|\?)/.test(Astro.url.pathname);
 ---
 
 <!doctype html>
