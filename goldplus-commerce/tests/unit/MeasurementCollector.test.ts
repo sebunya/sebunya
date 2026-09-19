@@ -53,3 +53,22 @@ describe('collector contract v2', () => {
     expect((await uc.execute(env(Array.from({ length: 21 }, () => touch())))).status).toBe(422);
   });
 });
+
+describe('what the collector records about the caller', () => {
+  it('carries the edge traffic class onto the stored touch, never a guess', async () => {
+    const { s, touches } = store();
+    const uc = new CollectBrowserBatchUseCase(s, async () => {}, () => now);
+    await uc.execute(env([touch()]), 'automated');
+    expect(touches[0].trafficClass).toBe('automated');
+    const second = store();
+    await new CollectBrowserBatchUseCase(second.s, async () => {}, () => now).execute(env([touch()]));
+    expect(second.touches[0].trafficClass).toBe('customer');
+  });
+  it('refuses a touch whose time is far outside the window', async () => {
+    const { s, touches } = store();
+    const uc = new CollectBrowserBatchUseCase(s, async () => {}, () => now);
+    const r: any = await uc.execute(env([touch({ event_time: Math.floor(now.getTime() / 1000) - 40 * 86400 })]));
+    expect(r.receipt.rejected[0].reason).toBe('EVENT_TIME_OUT_OF_RANGE');
+    expect(touches).toHaveLength(0);
+  });
+});

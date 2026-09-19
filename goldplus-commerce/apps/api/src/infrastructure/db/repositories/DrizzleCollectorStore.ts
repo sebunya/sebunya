@@ -21,9 +21,9 @@ export class DrizzleCollectorStore implements CollectorStore {
     return r.length ? 'SAVED' : 'EXISTS';
   }
   async saveTouch(t: Parameters<CollectorStore['saveTouch']>[0]) {
-    await db.execute(sql`insert into measurement.touchpoint (touch_id, environment, anonymous_id, client_event_id, occurred_at, channel, source, medium, campaign, referrer_host, landing_path, click_id_types)
+    await db.execute(sql`insert into measurement.touchpoint (touch_id, environment, anonymous_id, client_event_id, occurred_at, channel, source, medium, campaign, referrer_host, landing_path, click_id_types, traffic_class)
       values (${t.touchId}::uuid, ${environmentOf(process.env.NODE_ENV)}, ${t.anonymousId}, ${t.clientEventId}::uuid, ${t.occurredAt.toISOString()}::timestamptz, ${t.channel},
-        ${t.source}, ${t.medium}, ${t.campaign}, ${t.referrerHost}, ${t.landingPath}, ${`{${t.clickIdTypes.map((c) => c.replace(/[^A-Za-z_]/g, '')).join(',')}}`}::text[])
+        ${t.source}, ${t.medium}, ${t.campaign}, ${t.referrerHost}, ${t.landingPath}, ${`{${t.clickIdTypes.map((c) => c.replace(/[^A-Za-z_]/g, '')).join(',')}}`}::text[], ${t.trafficClass})
       on conflict (environment, anonymous_id, client_event_id) do nothing`);
   }
 }

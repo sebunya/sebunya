@@ -37,11 +37,14 @@ export const BatchEnvelope = z.object({
 
 const FORBIDDEN_USER_FIELDS = ['user_id', 'ip_address', 'user_agent', 'hashed_email', 'hashed_phone'];
 
+/** What we can honestly say about the caller; 'customer' only when nothing says otherwise. */
+export type TrafficClass = 'customer' | 'automated';
+
 export interface CollectorStore {
   findBatch(batchId: string): Promise<{ contentSha256: string; receipt: BatchReceipt } | null>;
   saveBatch(batchId: string, contentSha256: string, pageInstanceId: string | null, receipt: BatchReceipt): Promise<'SAVED' | 'EXISTS'>;
   saveTouch(t: { touchId: string; anonymousId: string; clientEventId: string; occurredAt: Date; channel: string; source: string | null; medium: string | null;
-    campaign: string | null; referrerHost: string | null; landingPath: string | null; clickIdTypes: string[] }): Promise<void>;
+    campaign: string | null; referrerHost: string | null; landingPath: string | null; clickIdTypes: string[]; trafficClass: TrafficClass }): Promise<void>;
 }
 export interface BatchReceipt { receiptId: string; accepted: string[]; rejected: Array<{ eventId: string; reason: string }> }
 export type CollectResult =
@@ -56,7 +59,7 @@ export class CollectBrowserBatchUseCase {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  async execute(rawBody: string): Promise<CollectResult> {
+  async execute(rawBody: string, trafficClass: TrafficClass = 'customer'): Promise<CollectResult> {
     if (Buffer.byteLength(rawBody, 'utf8') > MAX_BYTES) return { status: 413, error: 'PAYLOAD_TOO_LARGE' };
     let json: unknown;
     try { json = JSON.parse(rawBody); } catch { return { status: 422, error: 'INVALID_JSON' }; }
@@ -83,7 +86,7 @@ export class CollectBrowserBatchUseCase {
         await this.store.saveTouch({ touchId: randomUUID(), anonymousId: t.data.user_data.fp_client_id, clientEventId: t.data.event_id, occurredAt: at,
           channel: classifyChannel({ source: t.data.touch.source, medium: t.data.touch.medium, referrerHost: t.data.touch.referrer_host, clickIdTypes: t.data.touch.click_id_types }),
           source: t.data.touch.source, medium: t.data.touch.medium, campaign: t.data.touch.campaign, referrerHost: t.data.touch.referrer_host,
-          landingPath: t.data.touch.landing_path, clickIdTypes: t.data.touch.click_id_types });
+          landingPath: t.data.touch.landing_path, clickIdTypes: t.data.touch.click_id_types, trafficClass });
         accepted.push(t.data.event_id);
         continue;
       }

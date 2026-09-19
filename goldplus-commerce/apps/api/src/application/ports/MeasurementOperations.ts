@@ -14,6 +14,8 @@ export interface DeliverySummary {
   oldestDueMinutes: number | null; unroutedEvents: number; writeFailures: number; eventConflicts: number;
   killSwitch: { on: boolean; reason: string | null; updatedAt: string | null };
   events: { total: number; last24h: number };
+  /** Browser intake health: rejections are how a broken or hostile client shows up. */
+  collector: { batches24h: number; acceptedEvents24h: number; rejectedEvents24h: number; touches24h: number };
 }
 export interface MeasurementOperationsRepository {
   summary(): Promise<DeliverySummary>;

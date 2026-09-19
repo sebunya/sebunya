@@ -78,6 +78,12 @@ const s = summary.ok ? summary.data : null;
           <div class="rounded-2xl border border-gray-200 bg-white p-4"><p class="text-xs font-bold uppercase text-gray-500">Integrity</p><p class="text-sm mt-1">Unrouted events: <strong>{s.unroutedEvents}</strong></p><p class="text-sm">Write failures: <strong class={s.writeFailures ? "text-red-700" : ""}>{s.writeFailures}</strong></p><p class="text-sm">Content conflicts: <strong class={s.eventConflicts ? "text-red-700" : ""}>{s.eventConflicts}</strong></p></div>
         </section>
 
+        <section aria-label="Browser intake" class="mb-6 rounded-2xl border border-gray-200 bg-white p-4">
+          <p class="text-xs font-bold uppercase text-gray-500">Browser intake (last 24 h)</p>
+          <p class="text-sm mt-1">{s.collector.batches24h} batch(es) · {s.collector.acceptedEvents24h} event(s) accepted · <strong class={s.collector.rejectedEvents24h ? "text-amber-800" : ""}>{s.collector.rejectedEvents24h} rejected</strong> · {s.collector.touches24h} visit source(s) recorded</p>
+          <p class="text-xs text-gray-500 mt-1">Rejections are normal only in small numbers. A sustained rise means the storefront is sending something the server will not accept — worth looking at, not ignoring.</p>
+        </section>
+
         <section aria-labelledby="kill-h" class={`mb-8 rounded-2xl border p-5 ${s.killSwitch.on ? "border-red-300 bg-red-50" : "border-gray-200 bg-white"}`}>
           <h3 id="kill-h" class="font-black text-brand-dark">Kill switch: {s.killSwitch.on ? "ON — nothing is being sent" : "off"}</h3>
           {s.killSwitch.reason && <p class="text-xs text-gray-600 mt-1">Last change {when(s.killSwitch.updatedAt)}: {s.killSwitch.reason}</p>}

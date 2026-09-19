@@ -4,7 +4,7 @@ import { botDetectionMiddleware } from '../middleware/botDetection';
 import { logger } from '../../../infrastructure/logging/logger';
 import { TrackBrowserTelemetryEventUseCase } from '../../../application/use-cases/telemetry/TrackBrowserTelemetryEventUseCase';
 import { StitchBrowserIdentityUseCase } from '../../../application/use-cases/telemetry/StitchBrowserIdentityUseCase';
-import { clientIp } from '../clientAddress';
+import { clientIp, proxyConfig } from '../clientAddress';
 import { Registry } from '../../../infrastructure/Registry';
 
 const routes = new Hono();
@@ -67,7 +67,13 @@ routes.post('/collect/batch', botDetectionMiddleware, async (c) => {
     const gaSession = gaSessionFromCookieHeader(c.req.header('cookie'));
     const uc = Registry.getInstance().collectBrowserBatch((ev: unknown) => trackUseCase.execute(ev as never, realIp, realUa, gaSession));
     try {
-      const r = await uc.execute(JSON.stringify(body));
+      // Cloudflare's own score is the only automation signal we can trust here,
+      // and only when Cloudflare is actually the edge. An outright bot never
+      // reaches this handler (botDetectionMiddleware answers 204 first), so a
+      // borderline score is what is left to record — never a guess from the UA.
+      const score = proxyConfig().mode === 'CLOUDFLARE_EDGE' ? parseInt(c.req.header('x-cf-bot-score') ?? '100', 10) : 100;
+      const trafficClass = Number.isFinite(score) && score < 60 ? 'automated' as const : 'customer' as const;
+      const r = await uc.execute(JSON.stringify(body), trafficClass);
       if (r.status === 202) return c.json({ success: true, receiptId: r.receipt.receiptId, accepted: r.receipt.accepted, rejected: r.receipt.rejected, replay: r.replay }, 202);
       return c.json({ success: false, error: r.error }, r.status);
     } catch (err) {

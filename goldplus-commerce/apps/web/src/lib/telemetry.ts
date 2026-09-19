@@ -411,6 +411,15 @@ export function recordLandingTouch(): void {
     let seen = false;
     try { seen = sessionStorage.getItem('_gp_touch') === '1'; sessionStorage.setItem('_gp_touch', '1'); } catch { /* storage off */ }
     if (seen && !hasCampaign) return;
+    // A second tab is a second session but not a second arrival. Without this,
+    // every extra tab opened straight from the address bar filed another
+    // "direct" touch and inflated direct in the attribution models.
+    const signature = [q.get('utm_source') ?? '', q.get('utm_medium') ?? '', q.get('utm_campaign') ?? '', clickTypes.join('+'), refHost ?? ''].join('|');
+    try {
+      const prev = JSON.parse(localStorage.getItem('_gp_touch_last') ?? 'null') as { sig: string; at: number } | null;
+      if (prev && prev.sig === signature && Date.now() - prev.at < 30 * 60 * 1000) return;
+      localStorage.setItem('_gp_touch_last', JSON.stringify({ sig: signature, at: Date.now() }));
+    } catch { /* storage off: record the touch rather than lose it */ }
     const clip = (v: string | null, n: number) => (v ? v.slice(0, n) : null);
     const body = JSON.stringify({
       batchId: crypto.randomUUID(), schemaVersion: 1,

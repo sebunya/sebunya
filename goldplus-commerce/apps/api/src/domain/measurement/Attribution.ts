@@ -63,6 +63,14 @@ export function ruleWeights(method: RuleMethod, touches: Touch[], conversionAt: 
   return out;
 }
 
+/**
+ * Consecutive same-channel touches are one arrival (dossier §9.2 model option).
+ * A model choice, declared in each run's policy — the recorded touches stand.
+ */
+export function collapseConsecutive(touches: Touch[]): Touch[] {
+  return touches.filter((t, i) => i === 0 || t.channel !== touches[i - 1].channel);
+}
+
 export interface Journey { path: string[]; converted: boolean }
 const START = '__START__';
 

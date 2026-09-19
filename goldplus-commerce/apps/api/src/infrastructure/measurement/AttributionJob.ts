@@ -5,7 +5,7 @@ import { db } from '../db/client';
 import { pgJsonb } from '../db/PgParams';
 import { logger } from '../logging/logger';
 import { environmentOf } from '../../domain/measurement/BusinessEvents';
-import { RULE_METHODS, DEFAULT_RULE_POLICY, allocateInteger, ruleWeights, markovRemovalEffects, exactShapley, SHAPLEY_EXACT_LIMIT, type Journey, type Touch } from '../../domain/measurement/Attribution';
+import { collapseConsecutive as collapse, RULE_METHODS, DEFAULT_RULE_POLICY, allocateInteger, ruleWeights, markovRemovalEffects, exactShapley, SHAPLEY_EXACT_LIMIT, type Journey, type Touch } from '../../domain/measurement/Attribution';
 import type { AttributionPort, AttributionRunView, BatchRunView } from '../../application/ports/MeasurementOperations';
 
 /**
@@ -76,7 +76,8 @@ async function compute(env: string, batchStats: Record<string, unknown>) {
     return;
   }
   const lookbackMs = LOOKBACK_DAYS * 86_400_000;
-  const journeysFor = (o: OrderIn) => (o.visitor ? (byVisitor.get(o.visitor) ?? []).filter((t) => t.at <= o.at && o.at.getTime() - t.at.getTime() <= lookbackMs) : []);
+    // Two tabs opened from the same place are one arrival, not two.
+  const journeysFor = (o: OrderIn) => (o.visitor ? collapse((byVisitor.get(o.visitor) ?? []).filter((t) => t.at <= o.at && o.at.getTime() - t.at.getTime() <= lookbackMs)) : []);
   const unidentified = orders.filter((o) => !o.visitor).length;
   batchStats.orders = orders.length; batchStats.visitors = byVisitor.size;
 
@@ -93,9 +94,16 @@ async function compute(env: string, batchStats: Record<string, unknown>) {
       for (const [ch, v] of Object.entries(alloc)) { results.push([o.orderId, ch, w[ch], v]); perChannel.set(ch, (perChannel.get(ch) ?? 0n) + v); }
     }
     const status = !orders.length ? 'INSUFFICIENT_DATA' : covered === 0 ? 'NOT_IDENTIFIABLE' : 'COMPLETE';
-    const runId = await insertRun(method, status, { ...DEFAULT_RULE_POLICY, lookbackDays: LOOKBACK_DAYS, orderWindowDays: ORDER_WINDOW_DAYS },
+    const runId = await insertRun(method, status, { ...DEFAULT_RULE_POLICY, lookbackDays: LOOKBACK_DAYS, orderWindowDays: ORDER_WINDOW_DAYS, collapseConsecutiveChannels: true },
       { input: orders.length, covered, journeys: covered }, { unattributedUGX: unattributedUGX.toString(), unidentifiedOrders: unidentified, observational: true });
-    for (const [orderId, ch, w, v] of results) await db.execute(sql`insert into measurement.attribution_result (run_id, order_id, channel, weight, allocated_ugx) values (${runId}::uuid, ${orderId}, ${ch}, ${w}, ${v.toString()}::bigint)`);
+    // One statement per 500 rows: a run must not become thousands of round trips
+    // while it holds the single analytics lease.
+    for (let i = 0; i < results.length; i += 500) {
+      const chunk = results.slice(i, i + 500);
+      await db.execute(sql`insert into measurement.attribution_result (run_id, order_id, channel, weight, allocated_ugx)
+        select ${runId}::uuid, x->>0, x->>1, (x->>2)::numeric, (x->>3)::bigint
+        from jsonb_array_elements(${pgJsonb(chunk.map(([o, ch, w, v]) => [o, ch, String(w), v.toString()]))}) as x`);
+    }
     for (const [ch, v] of perChannel) await db.execute(sql`insert into measurement.attribution_channel (run_id, channel, value, detail) values (${runId}::uuid, ${ch}, ${v.toString()}, ${pgJsonb({ unit: 'UGX' })})`);
   }
 
@@ -107,12 +115,12 @@ async function compute(env: string, batchStats: Record<string, unknown>) {
   for (const [v, ts] of byVisitor) {
     if (convertedVisitors.has(v)) continue;
     if (ts[ts.length - 1].at.getTime() > matureCut) { censored++; continue; }
-    journeys.push({ path: ts.slice(-20).map((x) => x.channel), converted: false });
+    journeys.push({ path: collapse(ts).slice(-20).map((x) => x.channel), converted: false });
   }
   const conversions = journeys.filter((j) => j.converted).length;
   const nonConv = journeys.length - conversions;
   const diag = { conversions, nonConversions: nonConv, rightCensored: censored, removal: 'redirect_to_null', label: 'Observed Journey Contribution', observational: true };
-  const policy = { lookbackDays: LOOKBACK_DAYS, matureDays: MATURE_DAYS, minConversions: MIN_MARKOV_CONVERSIONS };
+  const policy = { lookbackDays: LOOKBACK_DAYS, matureDays: MATURE_DAYS, minConversions: MIN_MARKOV_CONVERSIONS, collapseConsecutiveChannels: true };
   if (conversions < MIN_MARKOV_CONVERSIONS || nonConv === 0) {
     for (const m of ['markov', 'shapley']) await insertRun(m, 'INSUFFICIENT_DATA', policy, { input: orders.length, covered: conversions, journeys: journeys.length }, { ...diag, reason: `needs ${MIN_MARKOV_CONVERSIONS}+ identified conversions and some mature non-converting journeys` });
     return;

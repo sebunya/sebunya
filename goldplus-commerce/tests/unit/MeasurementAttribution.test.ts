@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { allocateInteger, markovProbability, exactShapley, markovRemovalEffects, ruleWeights } from '../../apps/api/src/domain/measurement/Attribution';
+import { collapseConsecutive, allocateInteger, markovProbability, exactShapley, markovRemovalEffects, ruleWeights } from '../../apps/api/src/domain/measurement/Attribution';
 import { classifyChannel } from '../../apps/api/src/domain/measurement/Channels';
 
 const sum = (o: Record<string, bigint>) => Object.values(o).reduce((a, b) => a + b, 0n);
@@ -70,5 +70,13 @@ describe('channel classification', () => {
     expect(classifyChannel({ referrerHost: 'l.facebook.com' })).toBe('organic_social');
     expect(classifyChannel({ referrerHost: 'jumia.ug' })).toBe('referral');
     expect(classifyChannel({})).toBe('direct');
+  });
+});
+
+describe('journey shaping', () => {
+  const t = (c: string, d: number) => ({ channel: c, at: new Date(Date.UTC(2026, 8, d)) });
+  it('collapses consecutive repeats of one channel but keeps a genuine return', () => {
+    expect(collapseConsecutive([t('direct', 1), t('direct', 1), t('paid_search', 2), t('direct', 3)]).map((x: any) => x.channel))
+      .toEqual(['direct', 'paid_search', 'direct']);
   });
 });
