@@ -182,6 +182,16 @@ export function registerAllWorkers(): void {
   // AI Search runs (0131) on their own queue: a run takes minutes and must
   // never occupy the analytics-fanout slots. The use case claims only a QUEUED
   // run, so a duplicate or re-delivered job is a no-op.
+  // Measurement deliveries (0140, dossier GP-DLV). The job is only a pointer:
+  // deliverOne claims the durable intent by generation + lease, so a stale,
+  // duplicate or redelivered job sends nothing.
+  queueService.registerWorker(QUEUES.MEASUREMENT_DELIVERY, async (job: Job) => {
+    const { deliveryId, enqueueGeneration } = job.data as { deliveryId: string; enqueueGeneration: number };
+    const { deliverOne } = await import('../measurement/DeliveryService');
+    const outcome = await deliverOne(deliveryId, Number(enqueueGeneration));
+    logger.info({ deliveryId, enqueueGeneration, outcome }, '[QueueWorker] measurement delivery');
+  });
+
   queueService.registerWorker(QUEUES.AI_VISIBILITY, async (job: Job) => {
     const ctx = getContext(job);
     return traceLocalStorage.run(ctx, async () => {

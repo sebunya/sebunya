@@ -1,4 +1,5 @@
 import { db } from '../client';
+import { guardedMeasurementWrite, recordOrderPlaced } from '../../measurement/BusinessEventWriter';
 import { orders, orderItems , checkoutIdempotency } from '../schema/commerce';
 import { pricingQuotes, promotionRedemptions, promotionReservations } from '../schema/pricing';
 import { products, productPrices } from '../schema/products';
@@ -225,6 +226,9 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
         await tx.insert(promotionRedemptions).values(reservations.map((reservation) => ({ reservationId: reservation.id, orderId: input.order.id, redeemedAt: new Date() })));
         await tx.update(promotionReservations).set({ status: 'REDEEMED', updatedAt: new Date() }).where(inArray(promotionReservations.id, reservations.map((row) => row.id)));
       }
+      // order_created (+ order_confirmed for cash on delivery, D-006) in the
+      // same transaction as the order; guarded so it never blocks checkout (D-008).
+      await guardedMeasurementWrite(tx, input.order.id, 'order_placed', (sp) => recordOrderPlaced(sp, input.order.id, input.order.createdAt));
       return { order: input.order, duplicate: false };
     });
   }

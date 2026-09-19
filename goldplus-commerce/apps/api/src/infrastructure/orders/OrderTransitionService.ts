@@ -1,4 +1,5 @@
 import { desc, eq } from 'drizzle-orm';
+import { guardedMeasurementWrite, recordOrderTransition } from '../measurement/BusinessEventWriter';
 import { db } from '../db/client';
 import { orders, orderEvents } from '../db/schema';
 import { canTransitionOrder } from '../../domain/commerce/OrderStateMachine';
@@ -162,6 +163,13 @@ export class OrderTransitionService implements IOrderTransitionPort {
           occurredAt: now,
         })
         .returning({ id: orderEvents.id });
+
+      // Authoritative business event for this transition, in THIS transaction
+      // (dossier GP-EVT, D-003); guarded so it can never block the sale (D-008).
+      await guardedMeasurementWrite(tx, orderId, `transition:${from}->${toStatus}`, (sp) => recordOrderTransition(sp, {
+        orderId, orderEventId: inserted[0].id, fromStatus: from, toStatus,
+        paymentStatus: ctx.paymentStatus ?? row.paymentStatus, reasonCode: ctx.reasonCode ?? null, occurredAt: now, correlationId: ctx.correlationId ?? null,
+      }));
 
       return { orderId, fromStatus: from, toStatus, eventId: inserted[0].id, idempotentReplay: false };
     }

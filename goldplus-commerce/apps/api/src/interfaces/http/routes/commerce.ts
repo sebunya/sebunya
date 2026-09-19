@@ -1,5 +1,4 @@
 import { Hono, type Context } from 'hono';
-import { queuePurchaseTelemetry } from '../../../infrastructure/telemetry/PurchaseTelemetry';
 import { z } from 'zod';
 import { Registry } from '../../../infrastructure/Registry';
 import { ApiResponse } from '@goldplus/shared';
@@ -653,15 +652,8 @@ routes.post('/orders/create', async (c) => {
         .catch(() => undefined);
     }
 
-    // A cash-on-delivery order is a sale when it is placed (there is no payment
-    // to wait for): its GA4 purchase is sent server-side now. Online orders send
-    // theirs when the payment is confirmed. Never on a replay; never blocks.
-    // Only an EXPLICIT offline order: one with no method stated could still be
-    // paid online later and would then be counted twice.
-    if (outcome.kind !== 'BLOCKED_STOCK' && !outcome.idempotentReplay && body.paymentMethod === 'offline' && (outcome.order as any)?.id) {
-      const o = outcome.order as any;
-      void queuePurchaseTelemetry({ orderId: o.id, orderNumber: o.orderNumber, valueUgx: Number(o.totalUgx) || 0, userId: o.userId ?? null, visitor: body.attribution ?? null, traceId, email: o.customerEmail ?? null, phone: o.customerPhone ?? null });
-    }
+    // COD purchases: order_confirmed (approved_cod) is appended in the order's own
+    // transaction (DrizzleOrderRepository.savePricedOrder, 0140) and delivered durably.
 
     if (outcome.kind === 'BLOCKED_STOCK') {
       // The order exists and is recorded truthfully, but it does not progress.

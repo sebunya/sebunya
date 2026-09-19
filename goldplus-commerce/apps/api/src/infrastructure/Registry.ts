@@ -3,7 +3,6 @@ import { AdDestinationUseCases } from '../application/use-cases/advertising/AdDe
 import { DrizzleAdDestinationRepository } from './db/repositories/DrizzleAdDestinationRepository';
 import { AD_PLATFORMS } from './advertising/AdPlatforms';
 import { vaultCipher } from './ai-visibility/AiVisibilityWiring';
-import { queuePurchaseTelemetry, queueRefundTelemetry } from './telemetry/PurchaseTelemetry';
 import { createHmac, randomInt as nodeRandomInt } from 'node:crypto';
 import { db } from './db/client';
 import { createAiVisibility } from './ai-visibility/AiVisibilityWiring';
@@ -1930,12 +1929,9 @@ export class Registry {
       },
       recordMeasurement: async ({ verification, trackingId, reference }) => {
         const order = await this.orderRepo.findById(verification.orderId);
-        // GA4 purchase, server-side: the payment is confirmed, so this is a sale.
-        // The visitor comes from checkout (order_attribution). Never throws.
-        if (order) {
-          const visitor = await this.orderAttributionRepo.getByOrderId(order.id).catch(() => null);
-          await queuePurchaseTelemetry({ orderId: order.id, orderNumber: order.orderNumber, valueUgx: verification.amount ?? order.totalUgx, userId: order.userId, visitor, traceId: reference, email: order.customerEmail, phone: order.customerPhone });
-        }
+        // GA4/ad purchases are no longer sent from here: the verified payment's
+        // order transition appends an authoritative order_confirmed event in the
+        // same transaction (0140), and durable delivery intents carry it out.
         const mapped = this.pesapalMeasurementMapper.map({
           verifiedPayment: verification,
           trackingId,
@@ -2521,14 +2517,8 @@ export class Registry {
    *    reverse an applied redemption, points returning with original expiry.
    */
   private registerOrderTransitionSubscribers(): void {
-    // GA4: a cancelled order whose purchase was sent is taken back out of revenue.
-    this.orderTransitionService.onTransition(async ({ orderId, toStatus }) => {
-      if (toStatus !== 'cancelled') return;
-      const order = await this.orderRepo.findById(orderId).catch(() => null);
-      if (!order) return;
-      const visitor = await this.orderAttributionRepo.getByOrderId(orderId).catch(() => null);
-      await queueRefundTelemetry({ orderId, orderNumber: order.orderNumber, valueUgx: order.totalUgx, visitor });
-    });
+    // GA4 refunds / ad withdrawals for a cancelled order: the order_cancelled
+    // business event routes them (0140), in the delivery layer.
     this.orderTransitionService.onTransition(async ({ orderId, toStatus, ctx }) => {
       if (toStatus === 'delivered' || toStatus === 'completed') {
         await this.vestLoyaltyOnDeliveryUseCase.execute(orderId);

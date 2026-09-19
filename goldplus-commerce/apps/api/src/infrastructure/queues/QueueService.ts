@@ -40,6 +40,8 @@ export const QUEUES = {
   // AI Search runs take minutes each; on their own queue they can never hold
   // the analytics-fanout slots the synthetic monitor and crons depend on.
   AI_VISIBILITY: 'ai-visibility',
+  // Durable measurement deliveries (0140): jobs carry only {deliveryId, generation}.
+  MEASUREMENT_DELIVERY: 'measurement-delivery',
 } as const;
 
 export type QueueName = typeof QUEUES[keyof typeof QUEUES];
