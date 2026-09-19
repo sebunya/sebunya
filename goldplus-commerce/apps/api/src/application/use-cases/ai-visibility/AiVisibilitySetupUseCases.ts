@@ -86,9 +86,18 @@ export class AiVisibilitySetupUseCases {
       if (Object.values(budget).some((v) => Number.isNaN(v)) || budget.maxQueriesPerRun < 1) return fail('BAD_INPUT', 'Budget limits must be non-negative numbers within sane bounds.');
       patch.budget = budget;
     }
-    const after = await this.repo.updateProject(projectId, patch);
+    let schedule: { monitor: 'OFF' | 'DAILY' | 'WEEKLY'; setBy: string | null } | undefined;
+    if (body.schedule !== undefined) {
+      const m = String(body.schedule).toUpperCase();
+      if (!['OFF', 'DAILY', 'WEEKLY'].includes(m)) return fail('BAD_INPUT', 'schedule must be OFF, DAILY or WEEKLY.');
+      // A schedule spends money without asking each time, so switching it on
+      // is itself the approval — only a person may do it, and it is recorded.
+      if (m !== 'OFF' && actor.kind !== 'USER') return fail('FORBIDDEN', 'Only a person can switch on a recurring schedule.');
+      schedule = { monitor: m as 'OFF' | 'DAILY' | 'WEEKLY', setBy: m === 'OFF' ? null : actor.id };
+    }
+    const after = await this.repo.updateProject(projectId, { ...patch, ...(schedule ? { schedule } : {}) });
     if (!after) return fail('NOT_FOUND', 'Project not found.');
-    await this.log(actor, 'AIV_PROJECT_UPDATED', 'aiv_project', projectId, patch as Record<string, unknown>, { domains: before.domains, budget: before.budget });
+    await this.log(actor, 'AIV_PROJECT_UPDATED', 'aiv_project', projectId, { ...(patch as Record<string, unknown>), ...(schedule ? { schedule: schedule.monitor } : {}) }, { domains: before.domains, budget: before.budget, schedule: before.schedule.monitor });
     return ok(after);
   }
 

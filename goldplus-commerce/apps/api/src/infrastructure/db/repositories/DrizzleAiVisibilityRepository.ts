@@ -25,6 +25,7 @@ const project = (r: any): AivProject => ({
   id: r.id, slug: r.slug, name: r.name, brandName: r.brand_name, brandAliases: arr(r.brand_aliases), domains: arr(r.domains),
   marketCountry: r.market_country, marketCity: r.market_city, language: r.language,
   budget: { maxQueriesPerRun: n(r.max_queries_per_run), maxSpendPerRunUsd: n(r.max_spend_per_run_usd), maxDailySpendUsd: n(r.max_daily_spend_usd), maxMonthlySpendUsd: n(r.max_monthly_spend_usd), approvalAboveUsd: n(r.approval_above_usd) },
+  schedule: { monitor: r.monitor_schedule ?? 'OFF', setBy: r.schedule_set_by ?? null, lastScheduledAt: iso(r.last_scheduled_at) },
 });
 const competitor = (r: any): AivCompetitor => ({ id: r.id, name: r.canonical_name, aliases: arr(r.aliases), domains: arr(r.domains), businessType: r.business_type ?? null, directness: r.directness ?? null });
 const providerCfg = (r: any): AivProviderConfig => ({
@@ -80,7 +81,7 @@ export class DrizzleAiVisibilityRepository implements AiVisibilityRepository {
     return project(r);
   }
 
-  async updateProject(id: string, p: Partial<Omit<AivProject, 'id' | 'slug'>>) {
+  async updateProject(id: string, p: Parameters<AiVisibilityRepository['updateProject']>[1]) {
     const b = p.budget;
     const r = rowsOf(await db.execute(sql`
       update aiv_projects set
@@ -95,9 +96,21 @@ export class DrizzleAiVisibilityRepository implements AiVisibilityRepository {
         max_daily_spend_usd = coalesce(${b?.maxDailySpendUsd ?? null}, max_daily_spend_usd),
         max_monthly_spend_usd = coalesce(${b?.maxMonthlySpendUsd ?? null}, max_monthly_spend_usd),
         approval_above_usd = coalesce(${b?.approvalAboveUsd ?? null}, approval_above_usd),
+        monitor_schedule = coalesce(${p.schedule?.monitor ?? null}, monitor_schedule),
+        schedule_set_by = ${p.schedule ? (p.schedule.setBy && UUID.test(p.schedule.setBy) ? sql`${p.schedule.setBy}::uuid` : sql`null`) : sql`schedule_set_by`},
         updated_at = now()
       where id = ${id}::uuid returning *`))[0];
     return r ? project(r) : null;
+  }
+
+  async dueScheduledProjects(nowIso: string) {
+    return rowsOf(await db.execute(sql`
+      select * from aiv_projects
+      where (monitor_schedule = 'DAILY' and (last_scheduled_at is null or last_scheduled_at < ${nowIso}::timestamptz - interval '23 hours'))
+         or (monitor_schedule = 'WEEKLY' and (last_scheduled_at is null or last_scheduled_at < ${nowIso}::timestamptz - interval '6 days 23 hours'))`)).map(project);
+  }
+  async markScheduled(projectId: string) {
+    await db.execute(sql`update aiv_projects set last_scheduled_at = now() where id = ${projectId}::uuid`);
   }
 
   async listPinnedCompetitors(projectId: string) {

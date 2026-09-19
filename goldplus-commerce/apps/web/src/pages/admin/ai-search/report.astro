@@ -1,0 +1,103 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import AiSearchNav from "../../../components/admin/AiSearchNav.astro";
+import { readSessionToken } from "../../../lib/session";
+import { aivGet, providerLabel, rate, delta, when, usd, DEFAULT_PROJECT } from "../../../lib/adminAiVisibility";
+
+/**
+ * The AI Search report, rendered from the same /report data as the JSON
+ * export. Printable: navigation hides in print, every section keeps links to
+ * the answers behind it.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/ai-search/report", 303);
+const project = Astro.url.searchParams.get("project") ?? DEFAULT_PROJECT;
+const days = Math.min(Math.max(Number(Astro.url.searchParams.get("days") ?? 28) || 28, 1), 365);
+const res = await aivGet<any>(token, `/projects/${encodeURIComponent(project)}/report?days=${days}`);
+const r = res.ok ? res.data : null;
+const q = project !== DEFAULT_PROJECT ? `&project=${encodeURIComponent(project)}` : "";
+const MOVE: Record<string, string> = { CITATION_LOST: "Citation lost", CITATION_GAINED: "Citation gained", MENTION_LOST: "Mention lost", MENTION_GAINED: "Mention gained", COMPETITOR_EMERGED: "Competitor newly cited" };
+---
+<AdminLayout title="Report · AI Search" description="AI Search report: visibility, changes, competitors, opportunities and actions.">
+  <style is:global>
+    @media print { aside, nav, header[role="banner"], .no-print { display: none !important; } main { padding: 0 !important; } a { color: inherit; text-decoration: none; } section { break-inside: avoid; } }
+  </style>
+  <div class="container mx-auto px-6 lg:px-8 max-w-5xl">
+    <div class="no-print"><h2 class="text-2xl font-black text-brand-dark tracking-tight mb-4">Report</h2><AiSearchNav current="report" project={project} /></div>
+    {!res.ok && <p role="alert" class="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{res.message}</p>}
+    {r && (
+      <article class="space-y-8 text-sm text-gray-800">
+        <header>
+          <h3 class="text-2xl font-black text-brand-dark">AI Search report — {r.project.brandName}</h3>
+          <p class="text-gray-600">{r.project.domains.join(", ")} · last {r.periodDays} days · generated {when(r.generatedAt)}</p>
+          <p class="no-print mt-2 flex flex-wrap gap-3">
+            <a class="underline font-bold" href={`/admin/ai-search/report.json?days=${days}${q}`}>Download JSON</a>
+            <button type="button" onclick="window.print()" class="underline font-bold">Print / save as PDF</button>
+            {[7, 28, 90].map((d) => <a class:list={["underline", d === days && "font-black"]} href={`?days=${d}${q}`}>{d} days</a>)}
+          </p>
+        </header>
+
+        <section>
+          <h4 class="text-xs font-black uppercase tracking-widest text-gray-500 mb-2">Executive summary</h4>
+          {r.executiveSummary.answers === 0 ? <p>No answers have been measured yet, so there is nothing to report.</p> : (
+            <ul class="list-disc pl-5 space-y-1">
+              <li>{r.project.brandName} was named in {rate(r.executiveSummary.mentionRate)} of the latest answers {delta(r.executiveSummary.mentionRate, r.executiveSummary.previousMentionRate) && `(${delta(r.executiveSummary.mentionRate, r.executiveSummary.previousMentionRate)})`}.</li>
+              <li>Our site was cited in {rate(r.executiveSummary.citationRate)} of answers that showed sources {delta(r.executiveSummary.citationRate, r.executiveSummary.previousCitationRate) && `(${delta(r.executiveSummary.citationRate, r.executiveSummary.previousCitationRate)})`}.</li>
+              <li>{r.executiveSummary.openGaps} citation gaps are open.</li>
+              {r.executiveSummary.nextBestAction && <li>Next best action: {r.executiveSummary.nextBestAction.title}.</li>}
+            </ul>
+          )}
+        </section>
+
+        <section>
+          <h4 class="text-xs font-black uppercase tracking-widest text-gray-500 mb-2">What changed since the previous run</h4>
+          {r.whatChanged.length === 0 ? <p>No changes between the last two runs (or only one run so far).</p> : (
+            <ul class="space-y-1">{r.whatChanged.map((m: any) => <li><strong>{MOVE[m.kind] ?? m.kind}</strong> · {providerLabel(m.provider)} · “{m.queryText}” — <a class="underline" href={`/admin/ai-search/answers?id=${m.observationIds[m.observationIds.length - 1]}${q}`}>answer</a></li>)}</ul>
+          )}
+        </section>
+
+        <section>
+          <h4 class="text-xs font-black uppercase tracking-widest text-gray-500 mb-2">AI visibility by provider</h4>
+          <table class="w-full"><thead><tr class="text-left text-xs uppercase text-gray-500 border-b"><th class="py-1">Provider</th><th class="py-1 text-right">Answers</th><th class="py-1 text-right">Named</th><th class="py-1 text-right">Cited</th></tr></thead>
+            <tbody>{r.visibility.byProvider.map((p: any) => <tr class="border-b border-gray-100"><td class="py-1">{providerLabel(p.provider)}</td><td class="py-1 text-right">{p.answered}</td><td class="py-1 text-right">{rate(p.mentionRate)}</td><td class="py-1 text-right">{rate(p.citationRate)}</td></tr>)}</tbody></table>
+        </section>
+
+        {r.competitiveLandscape && (
+          <section>
+            <h4 class="text-xs font-black uppercase tracking-widest text-gray-500 mb-2">Competitive landscape</h4>
+            <table class="w-full"><thead><tr class="text-left text-xs uppercase text-gray-500 border-b"><th class="py-1">Competitor</th><th class="py-1 text-right">Named</th><th class="py-1 text-right">Cited</th></tr></thead>
+              <tbody>{r.competitiveLandscape.pinned.filter((c: any) => (c.mentioned ?? 0) + (c.cited ?? 0) > 0).slice(0, 12).map((c: any) => <tr class="border-b border-gray-100"><td class="py-1">{c.name}</td><td class="py-1 text-right">{rate(c.mentionRate)}</td><td class="py-1 text-right">{rate(c.citationRate)}</td></tr>)}</tbody></table>
+            {r.competitiveLandscape.sources.length > 0 && <p class="mt-2 text-gray-600">Most-used sources: {r.competitiveLandscape.sources.slice(0, 8).map((s: any) => s.host).join(", ")}.</p>}
+          </section>
+        )}
+
+        <section>
+          <h4 class="text-xs font-black uppercase tracking-widest text-gray-500 mb-2">Opportunities</h4>
+          {r.opportunities.length === 0 ? <p>None from the latest answers.</p> : (
+            <ol class="list-decimal pl-5 space-y-2">{r.opportunities.map((o: any) => <li><strong>{o.title}</strong> — {o.why} <span class="text-gray-500">(confidence {o.confidence.toLowerCase()})</span></li>)}</ol>
+          )}
+        </section>
+
+        <section>
+          <h4 class="text-xs font-black uppercase tracking-widest text-gray-500 mb-2">Actions taken and verification</h4>
+          {r.actionsTaken.length === 0 && r.verification.length === 0 ? <p>No actions were carried out in this period.</p> : (
+            <ul class="space-y-1">
+              {r.actionsTaken.map((a: any) => <li><strong>{a.title}</strong> — {a.result} ({when(a.executedAt)})</li>)}
+              {r.verification.map((a: any) => <li>Verification · {a.title}: {a.verification.summary}</li>)}
+            </ul>
+          )}
+        </section>
+
+        <section>
+          <h4 class="text-xs font-black uppercase tracking-widest text-gray-500 mb-2">Runs</h4>
+          {r.runs.length === 0 ? <p>No monitoring runs yet.</p> : <ul class="space-y-0.5">{r.runs.map((x: any) => <li>{when(x.createdAt)} · {x.status.toLowerCase()} · {x.succeeded} answered, {x.failed} failed · {usd(x.actualUsd)}</li>)}</ul>}
+        </section>
+
+        <section class="border-t border-gray-200 pt-4 text-xs text-gray-500">
+          <h4 class="font-black uppercase tracking-widest mb-1">How to read this</h4>
+          <ul class="list-disc pl-5 space-y-1">{r.method.map((m: string) => <li>{m}</li>)}</ul>
+        </section>
+      </article>
+    )}
+  </div>
+</AdminLayout>

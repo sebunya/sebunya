@@ -24,6 +24,7 @@ if (Astro.request.method === "POST") {
   if (intent === "project") {
     r = await aivPatch(token, P, {
       brandName: f("brandName"), brandAliases: f("brandAliases"), domains: f("domains"), marketCountry: f("marketCountry"), marketCity: f("marketCity") || null,
+      schedule: f("schedule") || undefined,
       budget: { maxQueriesPerRun: Number(f("maxQueriesPerRun")), maxSpendPerRunUsd: Number(f("maxSpendPerRunUsd")), maxDailySpendUsd: Number(f("maxDailySpendUsd")), maxMonthlySpendUsd: Number(f("maxMonthlySpendUsd")), approvalAboveUsd: Number(f("approvalAboveUsd")) },
     });
     if (r.ok) notice = "Project saved.";
@@ -108,6 +109,11 @@ const p = proj.ok ? proj.data : null;
           <label class="text-xs font-bold text-gray-700">A run needs a second person above USD<input name="approvalAboveUsd" type="number" step="0.01" min="0" value={p.budget.approvalAboveUsd} class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
           <label class="text-xs font-bold text-gray-700">Max USD per day<input name="maxDailySpendUsd" type="number" step="0.01" min="0" value={p.budget.maxDailySpendUsd} class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
           <label class="text-xs font-bold text-gray-700">Max USD per month<input name="maxMonthlySpendUsd" type="number" step="0.01" min="0" value={p.budget.maxMonthlySpendUsd} class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <label class="text-xs font-bold text-gray-700 sm:col-span-2 lg:col-span-3">Automatic visibility check
+            <select name="schedule" class="mt-1 block w-full max-w-sm rounded-lg border border-gray-300 px-3 py-2 text-sm">
+              {[["OFF", "Off — only when someone presses Run"], ["DAILY", "Daily"], ["WEEKLY", "Weekly"]].map(([v, l]) => <option value={v} selected={p.schedule?.monitor === v}>{l}</option>)}
+            </select>
+            <span class="mt-1 block font-normal text-gray-500">Switching this on is your approval for recurring runs within the limits above; a run over the approval threshold still waits for a person. {p.schedule?.lastScheduledAt ? `Last scheduled ${when(p.schedule.lastScheduledAt)}.` : ""}</span></label>
           <div class="sm:col-span-2 lg:col-span-3"><button class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-6 text-sm font-bold text-white">Save</button></div>
         </form>
       </section>

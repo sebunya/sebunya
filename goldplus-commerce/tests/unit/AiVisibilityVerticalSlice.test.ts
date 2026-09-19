@@ -23,8 +23,10 @@ function memoryRepo() {
     s,
     listProjects: async () => s.projects,
     getProject: async (k: string) => s.projects.find((p) => p.id === k || p.slug === k) ?? null,
-    updateProject: async (pid: string, p: any) => Object.assign(s.projects.find((x) => x.id === pid), p),
-    createProject: async (i: any) => { const p = { ...i, id: id(), language: 'en', budget: { maxQueriesPerRun: 50, maxSpendPerRunUsd: 2, maxDailySpendUsd: 5, maxMonthlySpendUsd: 30, approvalAboveUsd: 1 } }; s.projects.push(p); for (const prov of ['OPENAI', 'ANTHROPIC', 'GEMINI', 'PERPLEXITY']) s.configs.push({ projectId: p.id, id: id(), provider: prov, enabled: false, model: prov === 'ANTHROPIC' ? 'claude-sonnet-5' : 'm', webSearch: true, estUsdPerCall: 0.02, monthlyCapUsd: null, hasCredential: false, credentialMask: null }); return p; },
+    updateProject: async (pid: string, p: any) => { const x = s.projects.find((y) => y.id === pid); const { schedule, ...rest } = p; Object.assign(x, rest); if (schedule) x.schedule = { ...x.schedule, ...schedule }; return x; },
+    dueScheduledProjects: async () => s.projects.filter((x) => x.schedule.monitor !== 'OFF' && !x.schedule.lastScheduledAt),
+    markScheduled: async (pid: string) => { s.projects.find((x) => x.id === pid).schedule.lastScheduledAt = now(); },
+    createProject: async (i: any) => { const p = { ...i, id: id(), language: 'en', budget: { maxQueriesPerRun: 50, maxSpendPerRunUsd: 2, maxDailySpendUsd: 5, maxMonthlySpendUsd: 30, approvalAboveUsd: 1 }, schedule: { monitor: 'OFF', setBy: null, lastScheduledAt: null } }; s.projects.push(p); for (const prov of ['OPENAI', 'ANTHROPIC', 'GEMINI', 'PERPLEXITY']) s.configs.push({ projectId: p.id, id: id(), provider: prov, enabled: false, model: prov === 'ANTHROPIC' ? 'claude-sonnet-5' : 'm', webSearch: true, estUsdPerCall: 0.02, monthlyCapUsd: null, hasCredential: false, credentialMask: null }); return p; },
     listPinnedCompetitors: async (pid: string) => s.comps.filter((c) => s.pins.some((x) => x.p === pid && x.c === c.id)),
     listRegistryCompetitors: async () => s.comps,
     pinCompetitor: async (p: string, c: string) => { s.pins.push({ p, c }); return true; },
@@ -82,6 +84,7 @@ function memoryRepo() {
 const audit = { rows: [] as any[], execute: async (x: any) => { audit.rows.push(x); return { ok: true, id: 'x' }; } } as any;
 const cipher = { encrypt: (p: string) => `enc:${p}`, decrypt: (c: string) => c.slice(4), mask: () => '••••1234' };
 const logger = { debug() {}, info() {}, warn() {}, error() {} };
+const alerts = { rows: [] as any[], raise: async (a: any) => { alerts.rows.push(a); } };
 
 /** A fake provider that answers from a script keyed by query text. */
 function fake(pid: any, script: (q: string) => { text: string; cites: string[] } | Error): AiAnswerProvider {
@@ -104,7 +107,7 @@ describe('AI visibility — first vertical slice', () => {
   const build = () => {
     const queue = { enqueueRun: async (rid: string) => { queued.push(rid); return true; } };
     const setup = new AiVisibilitySetupUseCases(repo, audit, providers, cipher);
-    const runs = new AiVisibilityRunUseCases(repo, audit, providers, cipher, queue, logger, async () => undefined);
+    const runs = new AiVisibilityRunUseCases(repo, audit, providers, cipher, queue, logger, alerts, async () => undefined);
     return { setup, runs, insights: new AiVisibilityInsightsUseCases(repo), actions: new AiVisibilityActionUseCases(repo, audit, runs) };
   };
 
@@ -112,6 +115,7 @@ describe('AI visibility — first vertical slice', () => {
     repo = memoryRepo();
     queued = [];
     audit.rows = [];
+    alerts.rows = [];
     providers = {
       OPENAI: fake('OPENAI', (q) => ({ text: `For "${q}", GoldPlus and Oraimo both sell them.`, cites: ['https://ug.oraimo.com/p', 'https://en.wikipedia.org/wiki/Power_bank'] })),
       ANTHROPIC: fake('ANTHROPIC', () => new ProviderCallError('HTTP 401: invalid x-api-key', 401, 'HTTP')),
@@ -205,6 +209,33 @@ describe('AI visibility — first vertical slice', () => {
     const denied = await runs.start(user, pid, { idempotencyKey: 'k2' });
     expect(denied).toMatchObject({ ok: false, code: 'BUDGET' });
     expect(audit.rows.some((a) => a.action === 'AIV_RUN_REFUSED_BUDGET')).toBe(true);
+  });
+
+  it('schedules: only a person switches one on; the tick runs within budget; alerts on lost citations', async () => {
+    const { setup, runs } = build();
+    const pid = ((await setup.createProject(user, { name: 'S', domains: 'shopgoldplus.com', brandName: 'GoldPlus' })) as any).value.id;
+    await setup.createQuery(user, pid, { text: 'power bank kampala' });
+    await setup.setCredential(user, pid, 'OPENAI', 'sk-a');
+    await setup.updateProvider(user, pid, 'OPENAI', { enabled: true });
+    expect((await setup.updateProject(agent, pid, { schedule: 'DAILY' })).ok).toBe(false);
+    expect((await setup.updateProject(user, pid, { schedule: 'DAILY' })).ok).toBe(true);
+    // First run cites us; the scheduled run does not -> CITATION_LOST alert.
+    let cite = true;
+    providers.OPENAI = fake('OPENAI', () => ({ text: 'GoldPlus.', cites: cite ? ['https://shopgoldplus.com/power'] : ['https://jumia.ug/x'] }));
+    const r1 = await build().runs.start(user, pid, { idempotencyKey: 'manual-baseline' });
+    await build().runs.execute((r1 as any).value.run.id);
+    cite = false;
+    const tick = await build().runs.runSchedules();
+    expect(tick).toEqual({ started: 1, refused: 0 });
+    const sched = repo.s.runs.find((r) => r.actorKind === 'SCHEDULER');
+    expect(sched.status).toBe('QUEUED'); // within budget, a person switched it on -> no approval
+    await build().runs.execute(sched.id);
+    expect(alerts.rows.map((a) => a.kind)).toContain('AIV_CITATION_LOST');
+    expect((await build().runs.runSchedules()).started).toBe(0); // not due again
+    // The report is built from the same evidence and carries its method notes.
+    const rep = await build().insights.report(pid);
+    expect(rep.ok && (rep.value as any).whatChanged.map((m: any) => m.kind)).toContain('CITATION_LOST');
+    expect((rep as any).value.method.join(' ')).toMatch(/do not by themselves show/);
   });
 
   it('with no provider configured the run is refused as not configured, never simulated', async () => {

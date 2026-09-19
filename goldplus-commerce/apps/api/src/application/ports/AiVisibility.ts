@@ -53,6 +53,7 @@ export interface AivProject {
   id: string; slug: string; name: string; brandName: string; brandAliases: string[]; domains: string[];
   marketCountry: string; marketCity: string | null; language: string;
   budget: { maxQueriesPerRun: number; maxSpendPerRunUsd: number; maxDailySpendUsd: number; maxMonthlySpendUsd: number; approvalAboveUsd: number };
+  schedule: { monitor: 'OFF' | 'DAILY' | 'WEEKLY'; setBy: string | null; lastScheduledAt: string | null };
 }
 
 export interface AivCompetitor { id: string; name: string; aliases: string[]; domains: string[]; businessType: string | null; directness: string | null }
@@ -113,7 +114,10 @@ export interface Page<T> { rows: T[]; total: number; limit: number; offset: numb
 export interface AiVisibilityRepository {
   listProjects(): Promise<AivProject[]>;
   getProject(idOrSlug: string): Promise<AivProject | null>;
-  updateProject(id: string, patch: Partial<Omit<AivProject, 'id' | 'slug'>>): Promise<AivProject | null>;
+  updateProject(id: string, patch: Partial<Omit<AivProject, 'id' | 'slug' | 'schedule'>> & { schedule?: { monitor: 'OFF' | 'DAILY' | 'WEEKLY'; setBy: string | null } }): Promise<AivProject | null>;
+  /** Projects whose monitoring schedule is due at `nowIso`. */
+  dueScheduledProjects(nowIso: string): Promise<AivProject[]>;
+  markScheduled(projectId: string): Promise<void>;
   createProject(input: { slug: string; name: string; brandName: string; brandAliases: string[]; domains: string[]; marketCountry: string; marketCity: string | null }): Promise<AivProject>;
 
   listPinnedCompetitors(projectId: string): Promise<AivCompetitor[]>;
@@ -182,4 +186,9 @@ export interface ObservationFilter {
 
 export interface RunQueue {
   enqueueRun(runId: string): Promise<boolean>;
+}
+
+/** Where operator-facing alerts go (the existing SEO alert list). Deduped while open. */
+export interface AlertSink {
+  raise(input: { severity: 'CRITICAL' | 'HIGH' | 'INFO'; kind: string; message: string; dedupeKey: string }): Promise<void>;
 }

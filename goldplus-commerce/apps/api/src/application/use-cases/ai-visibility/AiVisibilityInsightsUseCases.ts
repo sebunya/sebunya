@@ -174,6 +174,48 @@ export class AiVisibilityInsightsUseCases {
     });
   }
 
+  /**
+   * The report, as data. The web report and the JSON export are two views of
+   * this one object; every figure keeps the observation ids behind it and the
+   * method notes say what the numbers do and do not mean.
+   */
+  async report(projectId: string, days = 28): Promise<Result<Record<string, unknown>>> {
+    const summary = await this.summary(projectId, days);
+    if (!summary.ok) return summary;
+    const s = summary.value as Record<string, any>;
+    const [gaps, landscape, runs, actions] = await Promise.all([
+      this.gaps(projectId), this.landscape(projectId),
+      this.repo.listRuns(s.project.id, 10, 0, 'MONITOR'), this.repo.listActions(s.project.id, null, 50, 0),
+    ]);
+    const acts = actions.rows;
+    const since = new Date(this.now().getTime() - days * 86_400_000).toISOString();
+    return ok({
+      generatedAt: this.now().toISOString(),
+      periodDays: days,
+      project: s.project,
+      executiveSummary: {
+        answers: s.state.evidence.answers,
+        mentionRate: s.current.mentionRate, citationRate: s.current.citationRate,
+        previousMentionRate: s.previous?.mentionRate ?? null, previousCitationRate: s.previous?.citationRate ?? null,
+        openGaps: s.openGaps,
+        nextBestAction: s.nextBestAction,
+      },
+      whatChanged: s.movements,
+      visibility: { current: s.current, previous: s.previous, byProvider: s.byProvider, series: s.series },
+      competitiveLandscape: landscape.ok ? landscape.value : null,
+      opportunities: gaps.ok ? gaps.value.recommendations.slice(0, 15) : [],
+      runs: runs.rows.map((r) => ({ id: r.id, status: r.status, createdAt: r.createdAt, finishedAt: r.finishedAt, succeeded: r.succeeded, failed: r.failed, actualUsd: r.actualUsd })),
+      actionsTaken: acts.filter((a) => a.executedAt && a.executedAt >= since).map((a) => ({ id: a.id, title: a.title, status: a.status, result: a.result, executedAt: a.executedAt })),
+      verification: acts.filter((a) => a.verification).map((a) => ({ id: a.id, title: a.title, status: a.status, verification: a.verification })),
+      nextActions: acts.filter((a) => ['DRAFT', 'AWAITING_APPROVAL', 'APPROVED', 'VERIFICATION_PENDING'].includes(a.status)).map((a) => ({ id: a.id, title: a.title, status: a.status })),
+      method: [
+        'Mentioned = the answer names the brand. Cited = the answer\'s sources include a page on the project\'s domains. They are reported separately.',
+        'Rates use the latest monitoring answer per question and provider; research answers are excluded. Answers whose provider returned no sources are excluded from the citation rate.',
+        'AI answers vary between runs; one run is a sample. Changes that follow an action coincide with it; they do not by themselves show that it caused them.',
+      ],
+    });
+  }
+
   listAnswers(projectId: string, f: ObservationFilter) { return this.repo.listObservations(projectId, f); }
 
   async answer(projectId: string, id: string): Promise<Result<Record<string, unknown>>> {

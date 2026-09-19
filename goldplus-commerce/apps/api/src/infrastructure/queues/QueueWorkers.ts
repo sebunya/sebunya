@@ -188,6 +188,11 @@ export function registerAllWorkers(): void {
         if (!result.success) {
           throw new Error('Recommendation materialization failed');
         }
+      } else if (job.name === 'aiv-schedule-tick') {
+        // AI Search schedules (0132): starts due MONITOR runs. A schedule is
+        // OFF until a person turns it on; budget and approval rules still apply.
+        const outcome = await registry.aiVisibility.runs.runSchedules();
+        if (outcome.started || outcome.refused) logger.info(outcome, '[QueueWorker] AI visibility schedule tick');
       } else if (job.name === 'aiv-run') {
         // AI Search Visibility run (0131). The use case claims only a QUEUED run,
         // so a duplicate job is a no-op; per-call budget checks happen inside.
@@ -321,6 +326,19 @@ export function registerAllWorkers(): void {
         jobId: 'abandonment-scan-job',
       }
     ).catch(err => logger.error({ err }, '[QueueWorkers] Failed to schedule abandonment scan cron'));
+
+    // AI Search schedule tick (0132), hourly at :17. Starts only projects whose
+    // DAILY/WEEKLY schedule a person switched on; jobId keeps one schedule.
+    syntheticQueue.add(
+      'aiv-schedule-tick',
+      {},
+      {
+        removeOnFail: { count: 200 },
+        removeOnComplete: { count: 50 },
+        repeat: { pattern: '17 * * * *' },
+        jobId: 'aiv-schedule-tick-job',
+      }
+    ).catch(err => logger.error({ err }, '[QueueWorkers] Failed to schedule AI visibility tick'));
 
     // Six-hourly Search Console Guardian. NOT hourly: Search Console settles
     // its data over ~3 days, so a faster cadence would only re-read the same

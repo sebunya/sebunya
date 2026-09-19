@@ -1,4 +1,4 @@
-import { ProviderCallError, type AiAnswerProvider, type AiVisibilityRepository, type AivProject, type AivRun, type CredentialCipher, type RunQueue } from '../../ports/AiVisibility';
+import { ProviderCallError, type AiAnswerProvider, type AiVisibilityRepository, type AivProject, type AivRun, type AlertSink, type CredentialCipher, type RunQueue } from '../../ports/AiVisibility';
 import type { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
 import type { ILogger } from '../../ports/ILogger';
 import type { ProviderId } from '../../../domain/ai-visibility/Evidence';
@@ -39,6 +39,7 @@ export class AiVisibilityRunUseCases {
     private readonly cipher: CredentialCipher | null,
     private readonly queue: RunQueue,
     private readonly logger: ILogger,
+    private readonly alerts: AlertSink | null = null,
     private readonly sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
     private readonly now: () => Date = () => new Date(),
   ) {}
@@ -88,7 +89,9 @@ export class AiVisibilityRunUseCases {
       await this.audit.execute({ actorId: actor.id, action: 'AIV_RUN_REFUSED_BUDGET', entity: 'aiv_project', entityId: project.id, newState: { kind, reason: decision.reason, estimatedUsd: decision.estimatedUsd, actorKind: actor.kind } });
       return fail('BUDGET', decision.reason);
     }
-    const needsApproval = decision.requiresApproval || actor.kind !== 'USER';
+    // A person, or the schedule a person switched on, may spend within the
+    // limits without asking again. Agents, API keys and webhooks never may.
+    const needsApproval = decision.requiresApproval || !(actor.kind === 'USER' || actor.kind === 'SCHEDULER');
     const run = await this.repo.createRun({
       projectId: project.id, kind, status: needsApproval ? 'AWAITING_APPROVAL' : 'QUEUED', idempotencyKey: key,
       providers, queryIds, adhocQueries: adhoc, totalTasks: queryCount * providers.length,
@@ -226,6 +229,7 @@ export class AiVisibilityRunUseCases {
       const cancelled = await this.repo.isCancelRequested(run.id);
       const status = finalStatus({ total: run.totalTasks, ...counts, pending: 0 }, cancelled);
       await this.repo.moveRun(run.id, ['RUNNING'], status, { phase: 'Done', finished: true, error: status === 'FAILED' ? 'Every provider call failed; see the per-answer errors.' : null });
+      await this.raiseAlerts(run, status, counts);
       await this.audit.execute({ actorId: null, action: 'AIV_RUN_FINISHED', entity: 'aiv_run', entityId: run.id, newState: { status, ...counts, actualUsd: runSpent, actorKind: 'SCHEDULER' } });
       this.logger.info({ runId: run.id, status, ...counts, actualUsd: runSpent }, 'aiv run finished');
       return { status };
@@ -234,6 +238,50 @@ export class AiVisibilityRunUseCases {
       this.logger.error({ runId: run.id, err: (e as Error).message }, 'aiv run crashed');
       return { status: 'FAILED' };
     }
+  }
+
+  /**
+   * Alerts worth a person's attention, and only those: a failed run, a run
+   * where some calls failed, and our site losing citations it had last run.
+   * Deduped while open, so a daily schedule does not repeat an open alert.
+   */
+  private async raiseAlerts(run: AivRun, status: string, counts: { succeeded: number; failed: number; skipped: number }) {
+    if (!this.alerts || run.kind === 'RESEARCH') return;
+    try {
+      if (status === 'FAILED') {
+        await this.alerts.raise({ severity: 'HIGH', kind: 'AIV_RUN_FAILED', message: `AI Search run ${run.id} failed: every provider call failed. Open the run to see each provider's error.`, dedupeKey: `AIV_RUN_FAILED:${run.projectId}` });
+      } else if (counts.failed > 0) {
+        await this.alerts.raise({ severity: 'INFO', kind: 'AIV_RUN_PARTIAL', message: `AI Search run ${run.id}: ${counts.failed} of ${run.totalTasks} provider calls failed; the other answers were recorded.`, dedupeKey: `AIV_RUN_PARTIAL:${run.projectId}` });
+      }
+      const lost = (await this.repo.latestPairs(run.projectId, null))
+        .filter((p) => p.current.runId === run.id && p.previous?.ownCited === true && p.current.ownCited === false);
+      if (lost.length > 0) {
+        const qs = [...new Set(lost.map((p) => p.queryText))];
+        await this.alerts.raise({ severity: 'HIGH', kind: 'AIV_CITATION_LOST', message: `Our site stopped being cited in ${lost.length} answer(s) since the previous run: ${qs.slice(0, 3).map((q) => `"${q}"`).join(', ')}${qs.length > 3 ? '…' : ''}.`, dedupeKey: `AIV_CITATION_LOST:${run.projectId}` });
+      }
+    } catch (e) {
+      this.logger.warn({ runId: run.id, err: (e as Error).message }, 'aiv alert raise failed');
+    }
+  }
+
+  /** Hourly tick: start the monitoring run of every project whose schedule is due. */
+  async runSchedules(): Promise<{ started: number; refused: number }> {
+    let started = 0, refused = 0;
+    for (const p of await this.repo.dueScheduledProjects(this.now().toISOString())) {
+      // Marked first, so a refused or failing project is not retried every hour.
+      await this.repo.markScheduled(p.id);
+      const r = await this.start({ id: p.schedule.setBy, kind: 'SCHEDULER' }, p.id, { kind: 'MONITOR' });
+      // An identical run already requested this hour is not a new start (and costs nothing more).
+      if (r.ok) { if (r.value.created) started += 1; }
+      else {
+        refused += 1;
+        this.logger.warn({ projectId: p.id, code: r.code, reason: r.message }, 'aiv scheduled run not started');
+        if (r.code === 'BUDGET' || r.code === 'NOT_CONFIGURED') {
+          await this.alerts?.raise({ severity: 'INFO', kind: 'AIV_SCHEDULE_SKIPPED', message: `Scheduled AI Search run not started: ${r.message}`, dedupeKey: `AIV_SCHEDULE_SKIPPED:${p.id}` }).catch(() => undefined);
+        }
+      }
+    }
+    return { started, refused };
   }
 
   getRun(projectId: string, runId: string) { return this.repo.getRun(projectId, runId); }

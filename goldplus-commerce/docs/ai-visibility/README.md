@@ -197,13 +197,31 @@ these endpoints (not new business logic).
 | Citation rate "no data" | no answer with source data yet (provider returned none, or no run) |
 | HTTP 402 BUDGET | the run would break a spend limit; the message says which |
 
+## Schedules, alerts and reports (0132)
+
+- **Schedule** (Settings → Automatic visibility check): OFF / DAILY / WEEKLY per
+  project, OFF by default. Only a person can switch it on, and that is the
+  approval for recurring runs within the spend limits (a run over the approval
+  threshold still waits). An hourly tick (`aiv-schedule-tick`, :17) starts due
+  projects as actor SCHEDULER; a project is marked scheduled before the attempt
+  so a refused one is not retried every hour. An identical run already
+  requested that hour is not duplicated.
+- **Alerts** go to the existing SEO alert list (`seo_alerts`, shown on
+  `/admin/seo`), deduped while open: `AIV_RUN_FAILED` (HIGH), `AIV_RUN_PARTIAL`
+  (INFO), `AIV_CITATION_LOST` (HIGH — our site cited last run, not this one),
+  `AIV_SCHEDULE_SKIPPED` (INFO — budget or not configured). Research runs never alert.
+- **Report**: `GET …/report?days=` (JSON), `/admin/ai-search/report` (printable
+  page, "Print / save as PDF") and `/admin/ai-search/report.json` (download).
+  All three are the same object: executive summary, what changed, visibility by
+  provider, competitive landscape, opportunities, actions taken, verification,
+  runs, and method notes.
+
 ## Not built yet (next phases)
 
-Schedules for recurring runs, alerts and signed webhooks, the web/JSON report,
-GA4 and AI-referral classification, a site graph, CMS/indexing execution, an
-MCP server and CLI. Search Console performance is already on `/admin/seo`;
-crawler activity on `/admin/seo/crawler-logs`; technical crawl on
-`/admin/seo/technical`.
+Signed outbound webhooks, GA4 and AI-referral classification, a site graph,
+CMS/indexing execution, an MCP server and CLI, service-account identities for
+agents. Search Console performance is already on `/admin/seo`; crawler activity
+on `/admin/seo/crawler-logs`; technical crawl on `/admin/seo/technical`.
 
 ## Provenance
 

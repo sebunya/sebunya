@@ -161,6 +161,14 @@ routes.get('/projects/:project/summary', VIEW, async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().insights.summary(p.value.id, Math.min(int(c.req.query('days'), 28), 365)));
 });
+routes.get('/projects/:project/report', VIEW, async (c) => {
+  const p = await project(c); if (!p.ok) return send(c, p);
+  return send(c, await svc().insights.report(p.value.id, Math.min(int(c.req.query('days'), 28), 365)));
+});
+routes.post('/projects/:project/schedules/tick', APPROVE, async (c) => {
+  // Manual trigger of the hourly schedule check (same use case as the cron).
+  return data(c, await svc().runs.runSchedules());
+});
 routes.get('/projects/:project/gaps', VIEW, async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().insights.gaps(p.value.id));
