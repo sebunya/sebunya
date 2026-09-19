@@ -22,6 +22,13 @@ export function ga4CollectHit(event: CanonicalTelemetryEvent, measurementId: str
   p.set('cid', cid);
   p.set('en', event.event_name);
   p.set('ep.event_id', event.event_id);
+  // The visit's GA4 session: without it GA opens a new session for a server
+  // hit, and the sale lands under direct/(not set) in every acquisition report.
+  if (event.user_data?.ga_session_id) {
+    p.set('sid', event.user_data.ga_session_id);
+    if (event.user_data.ga_session_number) p.set('sct', String(event.user_data.ga_session_number));
+    p.set('seg', '1');
+  }
   if (event.user_data?.user_id) p.set('uid', event.user_data.user_id);
   if (event.page_location) p.set('dl', event.page_location);
   if (event.page_referrer) p.set('dr', event.page_referrer);

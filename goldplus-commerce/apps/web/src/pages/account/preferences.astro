@@ -113,6 +113,16 @@ try {
 } catch (err) {
   // Graceful fallback
 }
+// Mirror the analytics choice into a cookie the page's tag reads BEFORE it
+// loads (BaseLayout consent defaults): a refusal saved here must stop the
+// browser tag too, not only the server-side record. Read back from the API,
+// so it reflects what was actually stored, after a save or on any visit.
+{
+  const analytics = (preferences as { consent?: { analytics?: boolean } }).consent?.analytics;
+  if (typeof analytics === 'boolean') {
+    Astro.cookies.set('gp_consent', analytics ? 'a1' : 'a0', { path: '/', maxAge: 60 * 60 * 24 * 395, sameSite: 'lax', secure: true, httpOnly: false });
+  }
+}
 ---
 
 <BaseLayout robotsMeta="noindex,follow" title="My Preferences">

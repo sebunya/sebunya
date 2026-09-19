@@ -22,6 +22,8 @@ export interface OrderAttributionInput {
   fpClientId?: string | null;
   clientIp?: string | null;
   userAgent?: string | null;
+  gaSessionId?: string | null;
+  gaSessionNumber?: number | null;
 }
 
 /**
@@ -47,6 +49,8 @@ export class DrizzleOrderAttributionRepository {
         fpClientId: clean(input.fpClientId, 255),
         clientIp: clean(input.clientIp, 64),
         userAgent: clean(input.userAgent, 1024),
+        gaSessionId: input.gaSessionId && /^\d{1,20}$/.test(input.gaSessionId) ? input.gaSessionId : null,
+        gaSessionNumber: Number.isInteger(input.gaSessionNumber) && (input.gaSessionNumber as number) > 0 ? input.gaSessionNumber : null,
       })
       .onConflictDoNothing();
   }

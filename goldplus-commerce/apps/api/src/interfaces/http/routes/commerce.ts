@@ -111,6 +111,8 @@ const checkoutBodySchema = z.object({
       fpClientId: z.string().trim().max(255).nullish(),
       clientIp: z.string().trim().max(64).nullish(),
       userAgent: z.string().trim().max(1024).nullish(),
+      gaSessionId: z.string().trim().regex(/^\d{1,20}$/).nullish(),
+      gaSessionNumber: z.number().int().positive().max(1_000_000).nullish(),
     })
     .nullish(),
 });

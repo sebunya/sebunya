@@ -115,6 +115,22 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const isDocument =
     !path.startsWith("/api/") && !path.startsWith("/_astro/") && !/\.[A-Za-z0-9]{2,8}$/.test(path);
 
+  // The analytics visitor id (`_fp_cid`, GA's client_id) is set by the SERVER
+  // and refreshed on every page: Safari caps cookies written by JavaScript at 7
+  // days, so a script-set id turned every returning Safari shopper into a new
+  // user. Not HttpOnly: the page's tag reads it. Same format as lib/telemetry.
+  // Refreshed at most once a day (the `_fp_r` marker): a Set-Cookie on EVERY
+  // page would make every HTML response uncacheable at the edge.
+  if (isDocument) {
+    const fp = context.cookies.get('_fp_cid')?.value;
+    const valid = !!fp && /^fp\.\d+\.[0-9a-f-]{36}$/.test(fp);
+    if (!valid || !context.cookies.get('_fp_r')) {
+      const id = valid ? fp! : `fp.${Date.now()}.${crypto.randomUUID()}`;
+      context.cookies.set('_fp_cid', id, { path: '/', maxAge: 60 * 60 * 24 * 395, sameSite: 'lax', secure: true, httpOnly: false });
+      context.cookies.set('_fp_r', '1', { path: '/', maxAge: 60 * 60 * 24, sameSite: 'lax', secure: true, httpOnly: true });
+    }
+  }
+
   const existing = context.cookies.get(VISIT_COOKIE_NAME)?.value;
   if (isSignedVisitToken(existing)) {
     // Only tokens WE signed resolve to continuity — a fabricated or

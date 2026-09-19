@@ -1,4 +1,4 @@
-import { index, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import { index, integer, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 
 /**
  * Marketing attribution for an order (0111). A SIDE table keyed by the order,
@@ -22,6 +22,9 @@ export const orderAttribution = pgTable(
     fpClientId: varchar('fp_client_id', { length: 255 }),
     clientIp: varchar('client_ip', { length: 64 }),
     userAgent: varchar('user_agent', { length: 1024 }),
+    // 0137: GA4's session for this visit (from the `_ga_<id>` cookie).
+    gaSessionId: varchar('ga_session_id', { length: 32 }),
+    gaSessionNumber: integer('ga_session_number'),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({

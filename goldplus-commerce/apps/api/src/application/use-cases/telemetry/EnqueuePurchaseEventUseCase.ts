@@ -41,12 +41,14 @@ export async function enqueuePurchaseEvent(opts: {
   userAgent?: string;
   pageLocation?: string;
   traceId?: string;
+  gaSessionId?: string;
+  gaSessionNumber?: number;
   // Drizzle transaction context for atomicity
   tx?: Parameters<typeof db.insert>[0] extends infer T ? any : never;
 }): Promise<string | null> {
   const {
     orderId, transactionId, value, currency,
-    userId, fpClientId, ipAddress, userAgent, pageLocation, traceId,
+    userId, fpClientId, ipAddress, userAgent, pageLocation, traceId, gaSessionId, gaSessionNumber,
   } = opts;
 
   // Enrich with stored identity signals (click IDs captured on previous sessions)
@@ -117,6 +119,8 @@ export async function enqueuePurchaseEvent(opts: {
       fp_client_id: fpClientId,
       ip_address: ipAddress,
       user_agent: userAgent,
+      ga_session_id: gaSessionId,
+      ga_session_number: gaSessionNumber,
     },
     ecommerce: {
       transaction_id: transactionId,

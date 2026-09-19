@@ -1,5 +1,5 @@
 import './logging/appLoggerBinding';
-import { queuePurchaseTelemetry } from './telemetry/PurchaseTelemetry';
+import { queuePurchaseTelemetry, queueRefundTelemetry } from './telemetry/PurchaseTelemetry';
 import { createHmac, randomInt as nodeRandomInt } from 'node:crypto';
 import { db } from './db/client';
 import { createAiVisibility } from './ai-visibility/AiVisibilityWiring';
@@ -2515,6 +2515,14 @@ export class Registry {
    *    reverse an applied redemption, points returning with original expiry.
    */
   private registerOrderTransitionSubscribers(): void {
+    // GA4: a cancelled order whose purchase was sent is taken back out of revenue.
+    this.orderTransitionService.onTransition(async ({ orderId, toStatus }) => {
+      if (toStatus !== 'cancelled') return;
+      const order = await this.orderRepo.findById(orderId).catch(() => null);
+      if (!order) return;
+      const visitor = await this.orderAttributionRepo.getByOrderId(orderId).catch(() => null);
+      await queueRefundTelemetry({ orderId, orderNumber: order.orderNumber, valueUgx: order.totalUgx, visitor });
+    });
     this.orderTransitionService.onTransition(async ({ orderId, toStatus, ctx }) => {
       if (toStatus === 'delivered' || toStatus === 'completed') {
         await this.vestLoyaltyOnDeliveryUseCase.execute(orderId);

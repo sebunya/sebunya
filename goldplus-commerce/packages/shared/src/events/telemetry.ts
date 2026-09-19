@@ -27,6 +27,10 @@ export const TelemetryUserDataSchema = z.object({
   fp_client_id: z.string().max(255).optional(),
   user_id:      z.string().uuid().optional(),
   session_id:   z.string().max(255).optional(),
+  // GA4's own session (from the `_ga_<id>` cookie at checkout): a server-sent
+  // purchase carrying it joins the visit's session and its traffic source.
+  ga_session_id:     z.string().regex(/^\d{1,20}$/).optional(),
+  ga_session_number: z.number().int().positive().optional(),
 
   // Ad-network attribution signals
   gclid:     z.string().max(512).optional(),
@@ -87,6 +91,7 @@ export const CANONICAL_EVENT_NAMES = [
   'add_shipping_info',
   'add_payment_info',
   'purchase',  // SERVER-SIDE ONLY — guarded in router-level middleware
+  'refund',    // SERVER-SIDE ONLY — a sent purchase whose order was cancelled
 ] as const;
 
 export type CanonicalEventName = typeof CANONICAL_EVENT_NAMES[number];
@@ -126,13 +131,13 @@ export const CanonicalTelemetryEventSchema = z.object({
 // PURCHASE IS EXCLUDED. The server enforces this at the route level.
 // ─────────────────────────────────────────────────────────────────────────────
 export const BrowserTelemetryEventNames = CANONICAL_EVENT_NAMES.filter(
-  (n) => n !== 'purchase'
-) as Exclude<CanonicalEventName, 'purchase'>[];
+  (n) => n !== 'purchase' && n !== 'refund'
+) as Exclude<CanonicalEventName, 'purchase' | 'refund'>[];
 
 export const BrowserTelemetryEventSchema = CanonicalTelemetryEventSchema.extend({
   event_name: z.enum(BrowserTelemetryEventNames as [string, ...string[]] as [
-    Exclude<CanonicalEventName, 'purchase'>,
-    ...Exclude<CanonicalEventName, 'purchase'>[]
+    Exclude<CanonicalEventName, 'purchase' | 'refund'>,
+    ...Exclude<CanonicalEventName, 'purchase' | 'refund'>[]
   ]),
   source: z.literal('browser'),
 });

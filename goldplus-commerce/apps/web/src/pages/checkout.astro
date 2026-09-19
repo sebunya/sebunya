@@ -1,4 +1,5 @@
 ---
+import { gaSessionFromCookieHeader } from '../lib/gaSession';
 import DeliveryQuote from "../components/DeliveryQuote.astro";
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Notice from '../components/Notice.astro';
@@ -364,7 +365,11 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
              const fp = Astro.cookies.get('_fp_cid')?.value;
              const ip = Astro.request.headers.get('cf-connecting-ip');
              const ua = Astro.request.headers.get('user-agent');
-             return { attribution: { ...a, ...(fp ? { fpClientId: fp.slice(0, 255) } : {}), ...(ip ? { clientIp: ip.slice(0, 64) } : {}), ...(ua ? { userAgent: ua.slice(0, 1024) } : {}) } };
+             // GA4's own session for this visit, from its `_ga_<stream>` cookie
+             // (GS1.1.<sid>.<n>… or GS2.1.s<sid>$o<n>$…): the server-sent purchase
+             // must land in THIS session, or GA credits the sale to "direct".
+             const gaSession = gaSessionFromCookieHeader(Astro.request.headers.get('cookie')) ?? {};
+             return { attribution: { ...a, ...gaSession, ...(fp ? { fpClientId: fp.slice(0, 255) } : {}), ...(ip ? { clientIp: ip.slice(0, 64) } : {}), ...(ua ? { userAgent: ua.slice(0, 1024) } : {}) } };
            })() ),
         },
         intentToken: activeIntentToken,
