@@ -62,10 +62,16 @@ describe('server-side GA4: sessions, refunds, consent', () => {
     expect(caddy).toMatch(/client_ip_headers CF-Connecting-IP/);
     expect(caddy).not.toMatch(/header_up X-Forwarded-For\s+\{remote_host\}/);
   });
-  it('one purchase source only: settlement and explicit COD; the webhook no longer enqueues one', () => {
+  it('one purchase source only: the authoritative order_confirmed event (0140); no route, webhook or settlement effect enqueues one', () => {
     const wh = readFileSync(resolve(__dirname, '../../apps/api/src/interfaces/http/routes/webhooks.ts'), 'utf8');
     expect(wh).not.toMatch(/enqueuePurchaseEvent\(/);
     const commerce = readFileSync(resolve(__dirname, '../../apps/api/src/interfaces/http/routes/commerce.ts'), 'utf8');
-    expect(commerce).toMatch(/body\.paymentMethod === 'offline'/);
+    expect(commerce).not.toMatch(/queuePurchaseTelemetry\(/);
+    const registry = readFileSync(resolve(__dirname, '../../apps/api/src/infrastructure/Registry.ts'), 'utf8');
+    expect(registry).not.toMatch(/queuePurchaseTelemetry\(|queueRefundTelemetry\(/);
+    const transition = readFileSync(resolve(__dirname, '../../apps/api/src/infrastructure/orders/OrderTransitionService.ts'), 'utf8');
+    expect(transition).toMatch(/recordOrderTransition\(sp/);
+    const orders = readFileSync(resolve(__dirname, '../../apps/api/src/infrastructure/db/repositories/DrizzleOrderRepository.ts'), 'utf8');
+    expect(orders).toMatch(/recordOrderPlaced\(sp/);
   });
 });
