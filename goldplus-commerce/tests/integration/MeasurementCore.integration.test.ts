@@ -202,6 +202,9 @@ suite('measurement core (real PostgreSQL)', () => {
       values (${o.id}, ${'it-ref-' + o.number}, 95000, 'completed', 'pesapal') returning id`;
     const [ref] = await raw`insert into payment_refunds (payment_attempt_id, order_id, idempotency_key, amount_ugx, reason, status)
       values (${att.id}, ${o.id}, ${'it-refkey-' + o.number}, 30000, 'IT partial', 'requested') returning id`;
+    // A partial refund only follows a purchase GA4 actually accepted.
+    await M.routeBusinessEvents();
+    await raw`update measurement.delivery_intent set state = 'ACCEPTED' where sink_key = 'ga4:purchase' and event_id in (select event_id from measurement.business_event where aggregate_id = ${o.id})`;
     const { DrizzleRefundLedgerRepository } = await import('../../apps/api/src/infrastructure/db/repositories/DrizzleRefundLedgerRepository');
     const repo = new DrizzleRefundLedgerRepository();
     await repo.recordProviderOutcome(ref.id, { status: 'settled', providerStatus: 'OK' });
@@ -215,6 +218,7 @@ suite('measurement core (real PostgreSQL)', () => {
     await M.routeBusinessEvents();
     const refundIntents = (await intentsOf(o.id)).filter((i: any) => i.sink_key === 'ga4:refund');
     expect(refundIntents).toHaveLength(1);
+    expect(refundIntents[0].provider_event_id).toBe(`refund:${ref.id}`);
   });
 
   it('replay of a DEAD_LETTER delivery resets the budget and keeps the provider event id', async () => {

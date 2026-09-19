@@ -97,7 +97,7 @@ describe('values are preserved, not quietly coerced', () => {
 
   it('rejects malformed uuids before they reach the database', () => {
     expect(params(pgUuidArray(['not-a-uuid', '11111111-1111-1111-1111-111111111111'])))
-      .toEqual(['["11111111-1111-1111-1111-111111111111"]']);
+      .toEqual(['{11111111-1111-1111-1111-111111111111}']);
   });
 
   it('represents an absent value as JSON null, not as the string "undefined"', () => {
