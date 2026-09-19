@@ -15,6 +15,8 @@ export interface PreferenceCentreDto {
     advertising: boolean;
     personalization: boolean;
     essential: boolean;
+    /** True only when the customer actually chose (a stored, unexpired record). */
+    explicit: boolean;
   };
 }
 
@@ -27,6 +29,7 @@ export class GetCustomerPreferenceCentreUseCase {
   async execute(userId: string): Promise<PreferenceCentreDto> {
     const prefs = await this.preferenceRepo.getPreferences(userId);
     const consent = await this.consentService.getCurrentState(undefined, userId);
+    const explicit = (await this.consentService.getExplicitState(undefined, userId)) !== null;
 
     return {
       channels: prefs?.channels || { email: false, sms: false, whatsapp: false },
@@ -38,6 +41,7 @@ export class GetCustomerPreferenceCentreUseCase {
         advertising: consent.advertising,
         personalization: consent.personalization,
         essential: true, // Always true for strictly necessary
+        explicit,
       }
     };
   }

@@ -2,7 +2,6 @@ import { Hono } from 'hono';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { Registry } from '../../../infrastructure/Registry';
 import { RecordPaymentWebhookUseCase } from '../../../application/use-cases/payments/RecordPaymentWebhookUseCase';
-import { enqueuePurchaseEvent } from '../../../application/use-cases/telemetry/EnqueuePurchaseEventUseCase';
 import { ApiResponse } from '@goldplus/shared';
 import { logger } from '../../../infrastructure/logging/logger';
 import { clientIp } from '../clientAddress';
@@ -160,31 +159,10 @@ routes.post('/payment/:provider', async (c) => {
       res.meta = { ...res.meta, requiresReview: true };
     }
 
-    // ─── Enqueue server-side purchase event on first confirmed SUCCESS ────────
-    // "Confirmed" excludes a payment held for review: it has not been
-    // authenticated, so treating it as a purchase would report revenue that
-    // nobody has established happened.
-    if (result.payment.status === 'SUCCESS' && !result.replay && !result.requiresReview) {
-      enqueuePurchaseEvent({
-        orderId: result.payment.orderId,
-        transactionId: result.payment.providerReference || result.payment.id,
-        value: Number(parsed.amount) || 0,
-        currency: 'UGX',
-        // Attempt to extract client context forwarded by the provider webhook
-        ipAddress: clientIp(c),
-        traceId: c.req.header('x-request-id'),
-      }).then(async (outboxId) => {
-        if (outboxId) {
-          const { QueueService, QUEUES } = await import('../../../infrastructure/queues/QueueService');
-          await QueueService.getInstance().enqueue(
-            QUEUES.TELEMETRY_DISPATCH,
-            `purchase-dispatch:${result.payment.orderId}`,
-            { outboxId },
-            outboxId
-          );
-        }
-      }).catch(err => logger.error({ err, orderId: result.payment.orderId }, '[Webhook] Failed to enqueue purchase telemetry event'));
-    }
+    // The GA4 purchase is sent by payment settlement (PesaPal) and COD placement
+    // only (infrastructure/telemetry/PurchaseTelemetry). This route used to
+    // enqueue one too, keyed differently and without a visitor, which wrote
+    // misleading `sent` rows and would have double-counted once given one.
 
     return c.json(res, 200);
 

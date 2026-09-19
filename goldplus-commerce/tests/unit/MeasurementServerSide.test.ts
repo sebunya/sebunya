@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { ga4CollectHit } from '../../apps/api/src/infrastructure/telemetry/Ga4CollectHit';
 import { gaSessionFromCookieHeader } from '../../apps/web/src/lib/gaSession';
+import { decodeTelemetryPayload } from '../../apps/api/src/infrastructure/telemetry/TelemetryDispatchService';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -29,14 +30,40 @@ describe('server-side GA4: sessions, refunds, consent', () => {
   it('the dispatcher skips browser events and decodes string payloads', () => {
     const src = readFileSync(resolve(__dirname, '../../apps/api/src/infrastructure/telemetry/TelemetryDispatchService.ts'), 'utf8');
     expect(src).toMatch(/if \(event\.source === 'browser'\) return;/);
-    expect(src).toMatch(/typeof row\.payload === 'string' \? JSON\.parse\(row\.payload\)/);
+    // BOTH paths decode: the queue worker hands dispatch() the raw row payload.
+    expect(src).toMatch(/private async dispatch\(raw[^)]*\)[^{]*\{\s*\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*const event = decodeTelemetryPayload\(raw\)/);
   });
   it('the page honours a preference-centre refusal and GPC before the tag loads; the visitor id is server-set', () => {
     const layout = readFileSync(resolve(__dirname, '../../apps/web/src/layouts/BaseLayout.astro'), 'utf8');
-    expect(layout).toMatch(/gp_consent=\[\^;\]\*a0/);
+    expect(layout).toMatch(/gp_consent=a0/);
     expect(layout).toMatch(/analytics_storage: gpc \|\| refused \? 'denied' : 'granted'/);
     expect(layout.indexOf("gtag('consent', 'default'")).toBeLessThan(layout.indexOf("'/gtm.js?id='"));
     const mw = readFileSync(resolve(__dirname, '../../apps/web/src/middleware.ts'), 'utf8');
     expect(mw).toMatch(/context\.cookies\.set\('_fp_cid'/);
+  });
+
+  it('a double-encoded purchase decodes to its visitor (the worker path lost every purchase)', () => {
+    const e = { event_name: 'purchase', source: 'server', user_data: { fp_client_id: 'fp.1.x' } };
+    expect(decodeTelemetryPayload(JSON.stringify(e))).toEqual(e);
+    expect(decodeTelemetryPayload(e)).toBe(e);
+    expect(ga4CollectHit({ ...ev(), ...decodeTelemetryPayload(JSON.stringify(ev())) } as any, 'G-X')).not.toBeNull();
+  });
+  it('robots never load the tag; opted-out shoppers get no id and no captured visitor', () => {
+    const layout = readFileSync(resolve(__dirname, '../../apps/web/src/layouts/BaseLayout.astro'), 'utf8');
+    expect(layout).toMatch(/navigator\.webdriver === true \|\| \/HeadlessChrome\|Chrome-Lighthouse/);
+    expect(layout).toMatch(/if \(!gpc && !refused\) \{/);
+    const checkout = readFileSync(resolve(__dirname, '../../apps/web/src/pages/checkout.astro'), 'utf8');
+    expect(checkout).toMatch(/if \(optedOut\) return \{ attribution: a \};/);
+    const mw = readFileSync(resolve(__dirname, '../../apps/web/src/middleware.ts'), 'utf8');
+    expect(mw).toMatch(/isDocument && !optedOut/);
+    const prefs = readFileSync(resolve(__dirname, '../../apps/web/src/pages/account/preferences.astro'), 'utf8');
+    expect(prefs).toMatch(/c\?\.explicit === true/);
+  });
+  it('one purchase source only: settlement and explicit COD; the webhook no longer enqueues one', () => {
+    const wh = readFileSync(resolve(__dirname, '../../apps/api/src/interfaces/http/routes/webhooks.ts'), 'utf8');
+    expect(wh).not.toMatch(/enqueuePurchaseEvent\(/);
+    const commerce = readFileSync(resolve(__dirname, '../../apps/api/src/interfaces/http/routes/commerce.ts'), 'utf8');
+    expect(commerce).toMatch(/body\.paymentMethod === 'offline'/);
+    expect(commerce).toMatch(/analyticsRefused: choice\?\.analytics === false/);
   });
 });

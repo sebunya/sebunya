@@ -55,6 +55,17 @@ export class DrizzleOrderAttributionRepository {
       .onConflictDoNothing();
   }
 
+  /**
+   * The buyer's IP and browser are kept only as long as a purchase or refund
+   * could still need them (GA4 geo/device for the sale): 90 days, then erased.
+   * The visitor id and GA session stay (pseudonymous, needed to join a refund).
+   */
+  async eraseNetworkDetailsOlderThan(days: number): Promise<number> {
+    const r = await db.execute(sql`update order_attribution set client_ip = null, user_agent = null
+      where created_at < now() - make_interval(days => ${Math.max(30, Math.trunc(days))}) and (client_ip is not null or user_agent is not null) returning order_id`);
+    return (Array.isArray(r) ? r : (r as any).rows ?? []).length;
+  }
+
   async getByOrderId(orderId: string) {
     const rows = await db.select().from(orderAttribution).where(eq(orderAttribution.orderId, orderId)).limit(1);
     return rows[0] ?? null;

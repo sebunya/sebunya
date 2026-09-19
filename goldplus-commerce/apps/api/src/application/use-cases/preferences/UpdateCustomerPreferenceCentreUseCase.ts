@@ -108,7 +108,8 @@ export class UpdateCustomerPreferenceCentreUseCase {
         analytics: input.consent?.analytics ?? false, // Will be exact on next GET
         advertising: input.consent?.advertising ?? false,
         personalization: input.consent?.personalization ?? false,
-        essential: true
+        essential: true,
+        explicit: input.consent !== undefined, // a save with consent values IS a choice
       }
     };
   }

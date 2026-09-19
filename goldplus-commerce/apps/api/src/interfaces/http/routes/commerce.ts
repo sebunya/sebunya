@@ -655,9 +655,13 @@ routes.post('/orders/create', async (c) => {
     // A cash-on-delivery order is a sale when it is placed (there is no payment
     // to wait for): its GA4 purchase is sent server-side now. Online orders send
     // theirs when the payment is confirmed. Never on a replay; never blocks.
-    if (outcome.kind !== 'BLOCKED_STOCK' && !outcome.idempotentReplay && (body.paymentMethod ?? 'offline') === 'offline' && (outcome.order as any)?.id) {
+    // Only an EXPLICIT offline order: one with no method stated could still be
+    // paid online later and would then be counted twice.
+    if (outcome.kind !== 'BLOCKED_STOCK' && !outcome.idempotentReplay && body.paymentMethod === 'offline' && (outcome.order as any)?.id) {
       const o = outcome.order as any;
-      void queuePurchaseTelemetry({ orderId: o.id, orderNumber: o.orderNumber, valueUgx: Number(o.totalUgx) || 0, userId: o.userId ?? null, visitor: body.attribution ?? null, traceId });
+      void registry.consentService.getExplicitState(body.attribution?.fpClientId ?? undefined, o.userId ?? undefined)
+        .then((choice) => queuePurchaseTelemetry({ orderId: o.id, orderNumber: o.orderNumber, valueUgx: Number(o.totalUgx) || 0, userId: o.userId ?? null, visitor: body.attribution ?? null, traceId, analyticsRefused: choice?.analytics === false }))
+        .catch(() => undefined);
     }
 
     if (outcome.kind === 'BLOCKED_STOCK') {

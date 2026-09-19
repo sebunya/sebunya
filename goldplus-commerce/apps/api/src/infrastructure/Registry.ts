@@ -1928,7 +1928,8 @@ export class Registry {
         // The visitor comes from checkout (order_attribution). Never throws.
         if (order) {
           const visitor = await this.orderAttributionRepo.getByOrderId(order.id).catch(() => null);
-          await queuePurchaseTelemetry({ orderId: order.id, orderNumber: order.orderNumber, valueUgx: verification.amount ?? order.totalUgx, userId: order.userId, visitor, traceId: reference });
+          const choice = await this.consentService.getExplicitState(visitor?.fpClientId ?? undefined, order.userId ?? undefined);
+          await queuePurchaseTelemetry({ orderId: order.id, orderNumber: order.orderNumber, valueUgx: verification.amount ?? order.totalUgx, userId: order.userId, visitor, traceId: reference, analyticsRefused: choice?.analytics === false });
         }
         const mapped = this.pesapalMeasurementMapper.map({
           verifiedPayment: verification,

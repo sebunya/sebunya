@@ -219,6 +219,9 @@ export function registerAllWorkers(): void {
         const expired = await registry.aiVisibility.runs.expireUnattended();
         if (expired) logger.warn({ expired }, '[QueueWorker] closed unattended AI visibility runs');
         const outcome = await registry.aiVisibility.runs.runSchedules();
+        // Privacy: buyers' IP/browser captured for GA4 are erased after 90 days.
+        const erased = await registry.orderAttributionRepo.eraseNetworkDetailsOlderThan(90).catch(() => 0);
+        if (erased) logger.info({ erased }, '[QueueWorker] erased old buyer network details');
         if (outcome.started || outcome.refused) logger.info(outcome, '[QueueWorker] AI visibility schedule tick');
       } else if (job.name === 'seo-crawl') {
         // Organic Growth OS: first-party technical crawl. The use case enforces

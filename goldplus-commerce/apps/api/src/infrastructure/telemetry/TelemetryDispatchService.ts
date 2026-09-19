@@ -82,6 +82,17 @@ export const EVENT_TYPE_TELEMETRY = 'TELEMETRY_DISPATCH';
  */
 export const CLAIM_LEASE_MS = 300_000;
 
+
+/**
+ * Some writers store the event as a JSON string inside the jsonb column
+ * (production rows are double-encoded). Read as-is, every field is undefined:
+ * `source` never matches and the visitor id is missing, so the event is
+ * silently dropped as "no visitor" and marked sent.
+ */
+export function decodeTelemetryPayload(payload: unknown): CanonicalTelemetryEvent {
+  return (typeof payload === 'string' ? JSON.parse(payload) : payload) as CanonicalTelemetryEvent;
+}
+
 export class TelemetryDispatchService {
   /**
    * Process one batch of pending telemetry outbox events.
@@ -139,7 +150,7 @@ export class TelemetryDispatchService {
       // Some writers store the event as a JSON string inside the jsonb column
       // (production rows are double-encoded). Read as-is, every field was
       // undefined: `source` never matched and the visitor id was missing.
-      const event   = (typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload) as CanonicalTelemetryEvent;
+      const event   = decodeTelemetryPayload(row.payload);
       const attempt = row.attemptCount + 1;
 
       try {
@@ -207,7 +218,10 @@ export class TelemetryDispatchService {
    *
    * sGTM validates the payload and fans out to all configured destinations.
    */
-  private async dispatch(event: CanonicalTelemetryEvent): Promise<void> {
+  private async dispatch(raw: CanonicalTelemetryEvent | string): Promise<void> {
+    // Both paths (the queue worker and the batch sweep) arrive here; the
+    // worker passes the raw row payload, which production double-encodes.
+    const event = decodeTelemetryPayload(raw);
     // Browser events reach GA4 through the web container (gtm.js -> tagging
     // server -> GA4) with the visitor's own cookies, IP and consent state.
     // Re-sending the API's copy from here would count every one of them twice.

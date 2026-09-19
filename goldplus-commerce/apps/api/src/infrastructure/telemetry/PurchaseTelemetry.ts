@@ -2,7 +2,7 @@ import { enqueuePurchaseEvent } from '../../application/use-cases/telemetry/Enqu
 import { logger } from '../logging/logger';
 import { db } from '../db/client';
 import { outboxEvents } from '../db/schema/system';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import crypto from 'crypto';
 
 type Visitor = { fpClientId?: string | null; clientIp?: string | null; userAgent?: string | null; gaSessionId?: string | null; gaSessionNumber?: number | null };
@@ -31,7 +31,11 @@ export async function queuePurchaseTelemetry(input: {
   userId?: string | null;
   visitor: Visitor | null;
   traceId?: string;
+  /** The shopper's stored, explicit analytics refusal (ConsentService.getExplicitState). */
+  analyticsRefused?: boolean;
 }): Promise<void> {
+  // A refusal wins over everything: nothing about this sale goes to Google.
+  if (input.analyticsRefused) return;
   try {
     const outboxId = await enqueuePurchaseEvent({
       orderId: input.orderId,
@@ -64,9 +68,17 @@ export async function queuePurchaseTelemetry(input: {
  */
 export async function queueRefundTelemetry(input: { orderId: string; orderNumber: string; valueUgx: number; visitor: Visitor | null }): Promise<void> {
   try {
-    const purchase = await db.select({ id: outboxEvents.id }).from(outboxEvents)
+    const purchase = await db.select({ id: outboxEvents.id, status: outboxEvents.status }).from(outboxEvents)
       .where(and(eq(outboxEvents.idempotencyKey, `purchase:${input.orderNumber}`), eq(outboxEvents.eventType, 'TELEMETRY_DISPATCH'))).limit(1);
     if (purchase.length === 0) return;
+    if (purchase[0].status !== 'sent') {
+      // Not delivered yet (pending or retrying): withdraw it instead of sending
+      // a purchase and then its refund; GA never sees a sale that did not stand.
+      // Dead-lettered or already withdrawn: nothing reached GA, nothing to undo.
+      await db.update(outboxEvents).set({ status: 'withdrawn', isProcessed: true, processedAt: new Date() })
+        .where(and(eq(outboxEvents.id, purchase[0].id), inArray(outboxEvents.status, ['pending', 'retrying'])));
+      return;
+    }
     const event = {
       event_name: 'refund' as const,
       event_id: crypto.randomUUID(),

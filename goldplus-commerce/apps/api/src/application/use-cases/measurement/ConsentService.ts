@@ -181,6 +181,21 @@ export class ConsentService {
   }
 
   /**
+   * The stored, unexpired choice for an identity, or null when the person
+   * never chose (the owner default then applies). Used where "chose to refuse"
+   * must be told apart from "never asked".
+   */
+  async getExplicitState(fpClientId?: string, userId?: string): Promise<ConsentState | null> {
+    try {
+      const { row } = await this.consentRepo.getCurrentState(fpClientId, userId);
+      if (!row || (row.expiresAt && row.expiresAt < new Date())) return null;
+      return ConsentStateSchema.parse({ essential: true, analytics: row.analyticsGranted, advertising: row.advertisingGranted, personalization: row.personalizationGranted });
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Check if routing to a specific measurement destination is permitted.
    * This is the hot path — called before every conversion event dispatch.
    */

@@ -368,6 +368,11 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
              // GA4's own session for this visit, from its `_ga_<stream>` cookie
              // (GS1.1.<sid>.<n>… or GS2.1.s<sid>$o<n>$…): the server-sent purchase
              // must land in THIS session, or GA credits the sale to "direct".
+             // A shopper who refused analytics or sends GPC: marketing attribution
+             // only; no visitor id, IP, browser or GA session is captured, so no
+             // purchase is ever sent to Google for them.
+             const optedOut = Astro.request.headers.get('sec-gpc') === '1' || /^a0/.test(Astro.cookies.get('gp_consent')?.value ?? '');
+             if (optedOut) return { attribution: a };
              const gaSession = gaSessionFromCookieHeader(Astro.request.headers.get('cookie')) ?? {};
              return { attribution: { ...a, ...gaSession, ...(fp ? { fpClientId: fp.slice(0, 255) } : {}), ...(ip ? { clientIp: ip.slice(0, 64) } : {}), ...(ua ? { userAgent: ua.slice(0, 1024) } : {}) } };
            })() ),
