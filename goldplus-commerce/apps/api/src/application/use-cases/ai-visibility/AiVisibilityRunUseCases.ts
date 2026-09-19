@@ -11,6 +11,8 @@ import { fail, isProvider, ok, type Actor, type Result } from './AiVisibilitySet
 const MAX_ATTEMPTS = 3;
 const CALL_TIMEOUT_MS = 90_000;
 const MAX_ADHOC = 20;
+/** Largest provider reply kept verbatim for re-parsing (~300 KB). */
+const RAW_MAX_CHARS = 300_000;
 
 const hash = (s: string) => {
   let h = 5381;
@@ -208,6 +210,10 @@ export class AiVisibilityRunUseCases {
               const { raw, latencyMs } = await adapter.executeQuery(input, callCfg);
               const answer = adapter.normalize(raw, callCfg, latencyMs, input);
               // Cost: what the provider reported, else the configured per-call estimate (labelled as such).
+              // The provider's reply itself is the evidence: kept (bounded) so a
+              // parser fixed later can re-read every past answer (see reclassify).
+              const rawSize = JSON.stringify(raw ?? null).length;
+              answer.rawMetadata = { ...answer.rawMetadata, ...(rawSize <= RAW_MAX_CHARS ? { rawResponse: raw } : { rawResponseOmitted: `reply was ${rawSize} characters (limit ${RAW_MAX_CHARS})` }), parsedWith: pid, requestedModel: cfg.model };
               const providerReported = answer.costUsd !== null;
               const cost = (answer.costUsd ?? cfg.estUsdPerCall) + possiblyBilled * cfg.estUsdPerCall;
               answer.costUsd = cost;

@@ -44,13 +44,13 @@ function memoryRepo() {
     ledger: [] as any[],
     spendToDate: async (pid: string) => { const m = s.obs.filter((o) => o.projectId === pid).reduce((a, o) => a + (o.costUsd ?? 0), 0) + repo.ledger.filter((l: any) => l.projectId === pid).reduce((a: number, l: any) => a + l.costUsd, 0); return { todayUsd: m, monthUsd: m, providerMonthUsd: {} }; },
     recordSpend: async (e: any) => { repo.ledger.push(e); },
-    listEvidenceForReclassification: async (pid: string, after: string | null) => s.obs.filter((o) => o.projectId === pid && o.status === 'SUCCEEDED' && (!after || o.id > after)).sort((a, b) => a.id.localeCompare(b.id)).map((o) => ({ id: o.id, answerText: o.answerText, citationSupport: o.citationSupport, citations: s.cites.filter((c) => c.observationId === o.id).map((c) => ({ url: c.url, title: c.title ?? null, position: c.position ?? null })) })),
+    listEvidenceForReclassification: async (pid: string, after: string | null) => s.obs.filter((o) => o.projectId === pid && o.status === 'SUCCEEDED' && (!after || o.id > after)).sort((a, b) => a.id.localeCompare(b.id)).map((o) => ({ id: o.id, provider: o.provider, model: o.model, queryText: o.queryText, latencyMs: null, rawResponse: o.rawMetadata?.rawResponse ?? null, answerText: o.answerText, citationSupport: o.citationSupport, citations: s.cites.filter((c) => c.observationId === o.id).map((c) => ({ url: c.url, title: c.title ?? null, position: c.position ?? null })) })),
     replaceClassification: async (x: any) => {
       s.cites = s.cites.filter((c) => c.observationId !== x.observationId); s.ments = s.ments.filter((m) => m.observationId !== x.observationId);
       for (const c of x.citations) s.cites.push({ ...c, observationId: x.observationId });
       if (x.brandMention) s.ments.push({ observationId: x.observationId, entityKind: 'BRAND', competitorId: null, ...x.brandMention });
       for (const m of x.competitorMentions) s.ments.push({ observationId: x.observationId, entityKind: 'COMPETITOR', competitorId: m.entityId, ...m });
-      Object.assign(s.obs.find((o) => o.id === x.observationId), { brandMentioned: x.brandMentioned, ownCited: x.ownCited, citationCount: x.citations.length });
+      Object.assign(s.obs.find((o) => o.id === x.observationId), { brandMentioned: x.brandMentioned, ownCited: x.ownCited, citationCount: x.citations.length }, x.reparsed ? { answerText: x.reparsed.answerText, citationSupport: x.reparsed.citationSupport } : {});
     },
     findRunByIdempotencyKey: async (pid: string, k: string) => s.runs.find((r) => r.projectId === pid && r.idempotencyKey === k) ?? null,
     findActiveRun: async (pid: string, kind: string) => s.runs.find((r) => r.projectId === pid && r.kind === kind && ['AWAITING_APPROVAL', 'QUEUED', 'RUNNING'].includes(r.status)) ?? null,
@@ -347,6 +347,28 @@ describe('AI visibility — first vertical slice', () => {
     expect(((await build().insights.summary(pid)) as any).value.current.answered).toBe(2);
     await setup.updateQuery(user, pid, q1.id, { active: false });
     expect(((await build().insights.summary(pid)) as any).value.current.answered).toBe(1);
+  });
+
+  it('a parser fixed after the fact corrects past answers from the stored raw reply', async () => {
+    const { setup } = build();
+    const pid = ((await setup.createProject(user, { name: 'R', brandName: 'GoldPlus', domains: 'shopgoldplus.com' })) as any).value.id;
+    await setup.createQuery(user, pid, { text: 'power banks' });
+    await setup.setCredential(user, pid, 'OPENAI', 'sk-a');
+    await setup.updateProvider(user, pid, 'OPENAI', { enabled: true });
+    const good = fake('OPENAI', () => ({ text: 'Try GoldPlus.', cites: ['https://shopgoldplus.com/power'] }));
+    // A buggy parser: reads the text but misses the sources.
+    providers.OPENAI = { ...good, normalize: (raw: any, cfg: any, l: number, i: any) => ({ ...good.normalize(raw, cfg, l, i), citations: [] }) };
+    const r = await build().runs.start(user, pid, {});
+    await build().runs.execute((r as any).value.run.id);
+    const o = repo.s.obs.find((x) => x.projectId === pid);
+    expect(o.ownCited).toBe(false);
+    expect(o.rawMetadata.rawResponse).toBeTruthy();
+    providers.OPENAI = good; // the parser is fixed
+    expect((await setup.reclassify(user, pid)).ok).toBe(true);
+    expect(o.ownCited).toBe(true);
+    const detail = (await build().insights.answer(pid, o.id)) as any;
+    expect(detail.value.rawMetadata.rawResponse).toBeUndefined(); // not shipped to the answer view
+    expect(detail.value.rawMetadata.rawResponseStored).toBe(true);
   });
 
   it('with no provider configured the run is refused as not configured, never simulated', async () => {

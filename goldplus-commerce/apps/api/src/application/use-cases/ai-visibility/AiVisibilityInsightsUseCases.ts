@@ -253,8 +253,12 @@ export class AiVisibilityInsightsUseCases {
     const [citations, mentions, comps] = await Promise.all([this.repo.citationsFor([o.id]), this.repo.mentionsFor([o.id]), this.repo.listPinnedCompetitors(projectId)]);
     const name = new Map(comps.map((c) => [c.id, c.name]));
     const history = o.queryId ? (await this.repo.listObservations(projectId, { queryId: o.queryId, provider: o.provider, limit: 10, offset: 0 })).rows : [];
+    // The raw provider reply stays in storage (for re-parsing); the answer view
+    // does not ship it — it can be hundreds of kilobytes.
+    const { rawResponse: _raw, ...rawMetadata } = (o.rawMetadata ?? {}) as Record<string, unknown>;
     return ok({
       ...o,
+      rawMetadata: { ...rawMetadata, rawResponseStored: _raw !== undefined },
       citations: citations.map((c) => ({ ...c, competitorName: c.competitorId ? name.get(c.competitorId) ?? null : null })),
       mentions: mentions.map((m) => ({ ...m, competitorName: m.competitorId ? name.get(m.competitorId) ?? null : null })),
       history: history.map((h) => ({ id: h.id, runId: h.runId, executedAt: h.executedAt, status: h.status, brandMentioned: h.brandMentioned, ownCited: h.ownCited, citationCount: h.citationCount })),

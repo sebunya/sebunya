@@ -142,9 +142,11 @@ export interface AiVisibilityRepository {
   spendToDate(projectId: string): Promise<{ todayUsd: number; monthUsd: number; providerMonthUsd: Record<string, number> }>;
   recordSpend(e: { projectId: string; provider: ProviderId; kind: 'PROVIDER_TEST'; costUsd: number; basis: 'PROVIDER_REPORTED' | 'ESTIMATE_PER_CALL'; actorId: string | null }): Promise<void>;
   /** Stored evidence for re-classification: answer text + support + the citations' URLs/titles/positions. */
-  listEvidenceForReclassification(projectId: string, afterId: string | null, limit: number): Promise<Array<{ id: string; answerText: string | null; citationSupport: string | null; citations: Array<{ url: string; title: string | null; position: number | null }> }>>;
+  listEvidenceForReclassification(projectId: string, afterId: string | null, limit: number): Promise<Array<{ id: string; provider: ProviderId; model: string | null; queryText: string; latencyMs: number | null; rawResponse: unknown; answerText: string | null; citationSupport: string | null; citations: Array<{ url: string; title: string | null; position: number | null }> }>>;
   /** Replaces the DERIVED classification of one observation (flags, citation roles, mentions); evidence untouched. */
-  replaceClassification(o: { observationId: string; projectId: string; brandMentioned: boolean; ownCited: boolean | null; citations: ClassifiedCitation[]; brandMention: MentionHit | null; competitorMentions: MentionHit[] }): Promise<void>;
+  replaceClassification(o: { observationId: string; projectId: string; brandMentioned: boolean; ownCited: boolean | null; citations: ClassifiedCitation[]; brandMention: MentionHit | null; competitorMentions: MentionHit[];
+    /** Set only when re-parsed from the stored raw reply: the parser's reading of it. */
+    reparsed?: { answerText: string; citationSupport: 'SUPPORTED' | 'UNSUPPORTED' } }): Promise<void>;
 
   findRunByIdempotencyKey(projectId: string, key: string): Promise<AivRun | null>;
   findActiveRun(projectId: string, kind: AivRun['kind']): Promise<AivRun | null>;

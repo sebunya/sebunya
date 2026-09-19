@@ -266,8 +266,23 @@ export class AiVisibilitySetupUseCases {
       const batch = await this.repo.listEvidenceForReclassification(project.id, after, 200);
       if (batch.length === 0) break;
       for (const o of batch) {
-        const ev = extractEvidence({ answerText: o.answerText ?? '', citationSupport: o.citationSupport === 'SUPPORTED' ? 'SUPPORTED' : 'UNSUPPORTED', citations: o.citations.map((c) => ({ url: c.url, title: c.title, position: c.position })) }, ctx);
-        await this.repo.replaceClassification({ observationId: o.id, projectId: project.id, brandMentioned: ev.brandMentioned, ownCited: ev.ownCited, citations: ev.citations, brandMention: ev.brandMention, competitorMentions: ev.competitorMentions });
+        // With the provider's raw reply stored, re-read it with the CURRENT
+        // parser (a parser fix then corrects past answers too); otherwise
+        // re-classify the stored reading.
+        let reading = { answerText: o.answerText ?? '', citationSupport: (o.citationSupport === 'SUPPORTED' ? 'SUPPORTED' : 'UNSUPPORTED') as 'SUPPORTED' | 'UNSUPPORTED', citations: o.citations.map((c) => ({ url: c.url, title: c.title, position: c.position })) };
+        let reparsed: { answerText: string; citationSupport: 'SUPPORTED' | 'UNSUPPORTED' } | undefined;
+        const adapter = isProvider(o.provider) ? this.providers[o.provider] : null;
+        if (o.rawResponse && adapter) {
+          try {
+            const n = adapter.normalize(o.rawResponse, { model: o.model ?? '' }, o.latencyMs ?? 0, { query: o.queryText, location: null });
+            reading = { answerText: n.answerText, citationSupport: n.citationSupport, citations: n.citations.map((c) => ({ url: c.url, title: c.title ?? null, position: c.position ?? null })) };
+            reparsed = { answerText: n.answerText, citationSupport: n.citationSupport };
+          } catch {
+            // an unreadable stored reply keeps its previous reading
+          }
+        }
+        const ev = extractEvidence(reading, ctx);
+        await this.repo.replaceClassification({ observationId: o.id, projectId: project.id, brandMentioned: ev.brandMentioned, ownCited: ev.ownCited, citations: ev.citations, brandMention: ev.brandMention, competitorMentions: ev.competitorMentions, reparsed });
         answers += 1;
       }
       after = batch[batch.length - 1].id;

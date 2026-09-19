@@ -79,8 +79,10 @@ The question is sent **exactly as written** — no system prompt, no brand
 injection, no location pasted into the question. Where a provider has no
 location parameter, `applied_location` is NULL and the UI says so. Engine
 self-links (chatgpt.com, perplexity.ai, vertexaisearch redirects…) are never
-counted as sources. Raw metadata (served model, search queries, response id)
-is kept so evidence can be re-parsed.
+counted as sources. The provider's **raw reply** is stored with each answer
+(up to ~300 KB; larger replies are flagged, not truncated), so a parser fixed
+later re-reads every past answer: re-classification uses the stored reply when
+present. The answer view does not ship the raw reply.
 
 Adding a provider = one adapter implementing `AiAnswerProvider` + one line in
 `providers/index.ts` + the CHECK constraint on `aiv_provider_configs.provider`.

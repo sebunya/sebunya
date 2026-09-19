@@ -222,13 +222,13 @@ export class DrizzleAiVisibilityRepository implements AiVisibilityRepository {
   }
   async listEvidenceForReclassification(projectId: string, afterId: string | null, limit: number) {
     const rows = rowsOf(await db.execute(sql`
-      select o.id, o.answer_text, o.citation_support,
+      select o.id, o.provider, o.model, o.query_text, o.latency_ms, o.raw_metadata -> 'rawResponse' as raw_response, o.answer_text, o.citation_support,
         coalesce((select jsonb_agg(jsonb_build_object('url', c.url, 'title', c.title, 'position', c.position) order by c.position)
                   from aiv_citations c where c.observation_id = o.id), '[]'::jsonb) as citations
       from aiv_observations o
       where o.project_id = ${projectId}::uuid and o.status = 'SUCCEEDED' ${afterId && UUID.test(afterId) ? sql`and o.id > ${afterId}::uuid` : sql``}
       order by o.id limit ${Math.min(Math.max(limit, 1), 500)}`));
-    return rows.map((r) => ({ id: String(r.id), answerText: r.answer_text, citationSupport: r.citation_support, citations: Array.isArray(r.citations) ? r.citations : [] }));
+    return rows.map((r) => ({ id: String(r.id), provider: r.provider, model: r.model, queryText: r.query_text, latencyMs: nn(r.latency_ms), rawResponse: r.raw_response ?? null, answerText: r.answer_text, citationSupport: r.citation_support, citations: Array.isArray(r.citations) ? r.citations : [] }));
   }
   async replaceClassification(o: Parameters<AiVisibilityRepository['replaceClassification']>[0]) {
     await db.transaction(async (tx) => {
@@ -248,6 +248,7 @@ export class DrizzleAiVisibilityRepository implements AiVisibilityRepository {
           values (${o.observationId}::uuid, ${o.projectId}::uuid, ${x.kind}, ${x.cid && UUID.test(x.cid) ? sql`${x.cid}::uuid` : sql`null`}, ${x.m.matchedText.slice(0, 200)}, ${x.m.firstIndex}, ${x.m.occurrences})`);
       }
       await tx.execute(sql`update aiv_observations set brand_mentioned = ${o.brandMentioned}, own_cited = ${o.ownCited}, citation_count = ${o.citations.length}
+        ${o.reparsed ? sql`, answer_text = ${o.reparsed.answerText}, citation_support = ${o.reparsed.citationSupport}` : sql``}
         where id = ${o.observationId}::uuid`);
     });
   }

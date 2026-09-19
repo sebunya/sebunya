@@ -40,6 +40,10 @@ if (Astro.request.method === "POST") {
     const t = await aivPost<{ message: string }>(token, `${P}/providers/${prov}/test`);
     r = t;
     if (t.ok) notice = `${providerLabel(f("provider"))}: ${t.data.message}`;
+  } else if (intent === "reclassify") {
+    const t = await aivPost<{ answers?: number }>(token, `${P}/reclassify`);
+    r = t;
+    if (t.ok) notice = typeof t.data?.answers === "number" ? `Re-read ${t.data.answers} stored answers with the current rules.` : "Re-reading stored answers in the background.";
   } else if (intent === "provider") {
     r = await aivPatch(token, `${P}/providers/${prov}`, { enabled: form.get("enabled") === "on", model: f("model"), estUsdPerCall: Number(f("estUsdPerCall")), monthlyCapUsd: f("monthlyCapUsd") === "" ? null : Number(f("monthlyCapUsd")) });
     if (r.ok) notice = `${providerLabel(f("provider"))} settings saved.`;
@@ -93,6 +97,11 @@ const p = proj.ok ? proj.data : null;
           </div>
         ))}</div>
       )}
+    </section>
+
+    <section class="mb-8 rounded-2xl border border-gray-200 bg-white p-5 flex flex-wrap items-center justify-between gap-3">
+      <p class="text-sm text-gray-700 max-w-2xl">Stored answers are re-read automatically when the brand, domains or pinned competitors change. Re-read them by hand after a parser fix: each answer's saved provider reply is read again with the current rules. Nothing is asked again and nothing is spent.</p>
+      <form method="POST"><input type="hidden" name="intent" value="reclassify" /><button class="rounded-full border border-gray-300 px-4 py-2 text-sm font-bold">Re-read stored answers</button></form>
     </section>
 
     {p && (
