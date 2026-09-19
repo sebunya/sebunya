@@ -24,6 +24,8 @@ import adminRolesRoutes from './routes/admin/roles';
 import adminProductsRoutes from './routes/admin/products';
 import adminProductCostsRoutes from './routes/admin/product-costs';
 import adminAiVisibilityRoutes from './routes/admin/ai-visibility';
+import adminAdvertisingRoutes from './routes/admin/advertising';
+import advertisingRoutes from './routes/advertising';
 import adminHeroRoutes from './routes/admin/hero';
 import heroPublicRoutes from './routes/hero';
 import adminNavRoutes from './routes/admin/nav';
@@ -240,6 +242,8 @@ app.route('/admin/performance-audit', adminPerformanceAuditRoutes);
 app.route('/admin/products', adminProductsRoutes);
 app.route('/admin/product-costs', adminProductCostsRoutes);
 app.route('/admin/ai-visibility', adminAiVisibilityRoutes);
+app.route('/admin/advertising', adminAdvertisingRoutes);
+app.route('/advertising', advertisingRoutes);
 app.route('/admin/hero', adminHeroRoutes);
 app.route('/admin/nav', adminNavRoutes);
 app.route('/admin/business-info', adminBusinessInfoRoutes);
@@ -376,6 +380,8 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/auth/social',
   '/admin/product-costs',
   '/admin/ai-visibility',
+  '/admin/advertising',
+  '/advertising',
   '/account',
   '/account/behavioural-interventions',
   '/account/consent-operating',

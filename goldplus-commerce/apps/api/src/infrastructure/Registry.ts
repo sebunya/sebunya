@@ -1,4 +1,8 @@
 import './logging/appLoggerBinding';
+import { AdDestinationUseCases } from '../application/use-cases/advertising/AdDestinationUseCases';
+import { DrizzleAdDestinationRepository } from './db/repositories/DrizzleAdDestinationRepository';
+import { AD_PLATFORMS } from './advertising/AdPlatforms';
+import { vaultCipher } from './ai-visibility/AiVisibilityWiring';
 import { queuePurchaseTelemetry, queueRefundTelemetry } from './telemetry/PurchaseTelemetry';
 import { createHmac, randomInt as nodeRandomInt } from 'node:crypto';
 import { db } from './db/client';
@@ -701,6 +705,8 @@ export class Registry {
   public readonly createAuditLogUseCase = new CreateAuditLogUseCase(this.auditRepo);
   /** AI Search Visibility (AEO/GEO) — migration 0131; see docs/ai-visibility/README.md. */
   public readonly aiVisibility = createAiVisibility(this.createAuditLogUseCase);
+  // Advertising destinations (0138): server-side conversion APIs, token vault-encrypted.
+  public readonly advertising = new AdDestinationUseCases(new DrizzleAdDestinationRepository(), AD_PLATFORMS, vaultCipher(), this.createAuditLogUseCase);
   public readonly paymentRepo = new DrizzlePaymentRepository();
   public readonly userRepo = new DrizzleUserRepository();
   public readonly addressRepo = new DrizzleAddressRepository();
@@ -1928,7 +1934,7 @@ export class Registry {
         // The visitor comes from checkout (order_attribution). Never throws.
         if (order) {
           const visitor = await this.orderAttributionRepo.getByOrderId(order.id).catch(() => null);
-          await queuePurchaseTelemetry({ orderId: order.id, orderNumber: order.orderNumber, valueUgx: verification.amount ?? order.totalUgx, userId: order.userId, visitor, traceId: reference });
+          await queuePurchaseTelemetry({ orderId: order.id, orderNumber: order.orderNumber, valueUgx: verification.amount ?? order.totalUgx, userId: order.userId, visitor, traceId: reference, email: order.customerEmail, phone: order.customerPhone });
         }
         const mapped = this.pesapalMeasurementMapper.map({
           verifiedPayment: verification,

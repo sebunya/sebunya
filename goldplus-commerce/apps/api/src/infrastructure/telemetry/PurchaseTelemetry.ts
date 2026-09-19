@@ -4,6 +4,7 @@ import { db } from '../db/client';
 import { outboxEvents } from '../db/schema/system';
 import { and, eq, inArray } from 'drizzle-orm';
 import crypto from 'crypto';
+import { hashEmail, hashPhone } from '../advertising/AdPlatforms';
 
 type Visitor = { fpClientId?: string | null; clientIp?: string | null; userAgent?: string | null; gaSessionId?: string | null; gaSessionNumber?: number | null };
 
@@ -31,6 +32,9 @@ export async function queuePurchaseTelemetry(input: {
   userId?: string | null;
   visitor: Visitor | null;
   traceId?: string;
+  /** The order's contact, for ad-platform matching; hashed here, never stored raw in the event. */
+  email?: string | null;
+  phone?: string | null;
 }): Promise<void> {
   // Sent for every sale (owner decision 2026-09-19: server-side measurement is
   // always on; the browser-cookie choice does not apply to it).
@@ -46,6 +50,8 @@ export async function queuePurchaseTelemetry(input: {
       userAgent: input.visitor?.userAgent ?? undefined,
       gaSessionId: input.visitor?.gaSessionId ?? undefined,
       gaSessionNumber: input.visitor?.gaSessionNumber ?? undefined,
+      hashedEmail: hashEmail(input.email),
+      hashedPhone: hashPhone(input.phone),
       traceId: input.traceId,
     });
     if (!outboxId) return; // already enqueued for this order

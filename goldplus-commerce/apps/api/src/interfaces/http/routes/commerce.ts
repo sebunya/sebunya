@@ -659,7 +659,7 @@ routes.post('/orders/create', async (c) => {
     // paid online later and would then be counted twice.
     if (outcome.kind !== 'BLOCKED_STOCK' && !outcome.idempotentReplay && body.paymentMethod === 'offline' && (outcome.order as any)?.id) {
       const o = outcome.order as any;
-      void queuePurchaseTelemetry({ orderId: o.id, orderNumber: o.orderNumber, valueUgx: Number(o.totalUgx) || 0, userId: o.userId ?? null, visitor: body.attribution ?? null, traceId });
+      void queuePurchaseTelemetry({ orderId: o.id, orderNumber: o.orderNumber, valueUgx: Number(o.totalUgx) || 0, userId: o.userId ?? null, visitor: body.attribution ?? null, traceId, email: o.customerEmail ?? null, phone: o.customerPhone ?? null });
     }
 
     if (outcome.kind === 'BLOCKED_STOCK') {

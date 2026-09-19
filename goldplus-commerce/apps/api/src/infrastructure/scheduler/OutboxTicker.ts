@@ -1,5 +1,6 @@
 import { Registry } from '../Registry';
 import { telemetryDispatcher } from '../telemetry/TelemetryDispatchService';
+import { processAdConversionBatch } from '../advertising/AdConversionDispatch';
 import { logger } from '../logging/logger';
 
 let tickerHandle: NodeJS.Timeout | null = null;
@@ -32,11 +33,16 @@ async function runTick(): Promise<void> {
     // not outbound messages, so they must not share a failure domain with a
     // provider that can hang for its whole timeout — a stalled email provider must
     // never be the reason an order gets no fulfilment task.
-    const [notifResult, telemetryResult, sideEffectResult] = await Promise.allSettled([
+    const [notifResult, telemetryResult, sideEffectResult, adsResult] = await Promise.allSettled([
       registry.processOutboxBatchUseCase.execute(),
       telemetryDispatcher.processBatch(),
       registry.processCheckoutSideEffectBatchUseCase.execute(),
+      // Advertising conversions (0138): a fourth isolated domain, so a slow ad
+      // platform never delays GA4, notifications or checkout work.
+      processAdConversionBatch(),
     ]);
+    if (adsResult.status === 'fulfilled' && adsResult.value.claimed > 0) logger.info(adsResult.value, '[OutboxTicker] Ad conversions batch complete');
+    if (adsResult.status === 'rejected') logger.error({ err: adsResult.reason }, '[OutboxTicker] Ad conversions batch failed');
 
     // Log notification results
     if (notifResult.status === 'fulfilled') {

@@ -7,6 +7,7 @@ import { env } from '../../config/env';
 import type { CanonicalTelemetryEvent } from '@goldplus/shared';
 import * as client from 'prom-client';
 import { ga4CollectHit } from './Ga4CollectHit';
+import { fanOutAdConversions } from '../advertising/AdConversionDispatch';
 import { DEAD_LETTER_STATE } from '../../domain/outbox/TerminalState';
 
 const gtmOutboundLatency = new client.Histogram({
@@ -280,6 +281,9 @@ export class TelemetryDispatchService {
         const body = await response.text().catch(() => '');
         throw new Error(`sGTM ${response.status}: ${body.slice(0, 300)}`);
       }
+      // Accepted for GA4: queue it for every LIVE advertising platform too
+      // (0138). Idempotent per platform and event; never fails this dispatch.
+      await fanOutAdConversions(event);
     } catch (err) {
       if (!(err instanceof Error && err.message.includes('sGTM'))) {
         gtmConversionFailures.inc({ status: 'network_error' });

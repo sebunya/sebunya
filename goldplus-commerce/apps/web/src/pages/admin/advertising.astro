@@ -1,0 +1,83 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../lib/session";
+import { apiBase } from "../../lib/api";
+
+/**
+ * Advertising platforms (0138): server-side conversion APIs. Each platform goes
+ * LIVE only when its ids and token are entered and a person switches it on.
+ * Tokens are write-only: stored encrypted, shown only as a mask.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/advertising", 303);
+
+async function call(method: string, path: string, body?: unknown) {
+  try {
+    const res = await fetch(`${apiBase}/admin/advertising${path}`, { method, headers: { Accept: "application/json", Authorization: `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
+    const json = await res.json().catch(() => null);
+    return res.ok && json?.success ? { ok: true as const, data: json.data } : { ok: false as const, message: json?.error?.message ?? `The API declined the request (HTTP ${res.status}).` };
+  } catch { return { ok: false as const, message: "Could not reach the API." }; }
+}
+
+let notice: string | null = null;
+let formError: string | null = null;
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const key = String(f.get("platform") ?? "");
+  const config: Record<string, string> = {};
+  for (const [k, v] of f.entries()) if (k.startsWith("cfg.") && String(v).trim()) config[k.slice(4)] = String(v).trim();
+  const secret = String(f.get("secret") ?? "").trim() || undefined;
+  const intent = String(f.get("intent") ?? "save");
+  const enabled = intent === "enable" ? true : intent === "disable" ? false : undefined;
+  const r = await call("PUT", `/${encodeURIComponent(key)}`, { config, secret, enabled });
+  if (r.ok) notice = "Saved."; else formError = r.message;
+}
+
+const list = await call("GET", "/");
+const STATE: Record<string, [string, string]> = {
+  LIVE: ["Live — sending conversions", "bg-emerald-100 text-emerald-900"],
+  READY_OFF: ["Configured, switched off", "bg-amber-100 text-amber-900"],
+  NOT_CONFIGURED: ["Not configured", "bg-gray-100 text-gray-700"],
+  NOT_AVAILABLE: ["Needs an outside account first", "bg-gray-100 text-gray-500"],
+};
+const when = (iso: unknown) => (typeof iso === "string" && iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Kampala" }) : "—");
+---
+<AdminLayout title="Advertising platforms" description="Server-side conversions to ad platforms: status, ids and write-only tokens.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-5xl">
+    <h2 class="text-2xl font-black text-brand-dark tracking-tight mb-2">Advertising platforms</h2>
+    <p class="text-sm text-gray-600 mb-6 max-w-3xl">Conversions (product views, add to cart, checkout, purchases) are sent to each platform from our server, with hashed email and phone for matching. A platform receives nothing until its IDs and token are entered and it is switched on. The privacy page lists the platforms that are live.</p>
+    {notice && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</div>}
+    {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+    {!list.ok ? <p role="alert" class="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{list.message}</p> : (
+      <div class="grid gap-5 mb-12">
+        {(list.data as any[]).map((p) => (
+          <section class="rounded-2xl border border-gray-200 bg-white p-5" aria-labelledby={`h-${p.key}`}>
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <h3 id={`h-${p.key}`} class="text-lg font-black text-brand-dark">{p.name}</h3>
+              <span class={`rounded-full px-3 py-1 text-xs font-bold ${STATE[p.state]?.[1]}`}>{STATE[p.state]?.[0] ?? p.state}</span>
+            </div>
+            {p.unavailable ? <p class="mt-2 text-sm text-gray-600">{p.unavailable}</p> : (
+              <>
+                <p class="mt-1 text-xs text-gray-500">Events: {Object.entries(p.events).map(([k, v]) => `${k} → ${v}`).join(" · ")}</p>
+                {(p.sentCount > 0 || p.lastError) && <p class="mt-1 text-xs text-gray-600">Sent {p.sentCount} · failed {p.failedCount} · last success {when(p.lastSuccessAt)}{p.lastError && <span class="block text-red-700">Last error ({when(p.lastErrorAt)}): {p.lastError}</span>}</p>}
+                <form method="POST" class="mt-4 grid gap-3 sm:grid-cols-2">
+                  <input type="hidden" name="platform" value={p.key} />
+                  {p.fields.map((f: any) => (
+                    <label class="text-xs font-bold text-gray-700">{f.label}<input name={`cfg.${f.key}`} value={f.value} autocomplete="off" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal" /><span class="font-normal text-gray-500">{f.hint}</span></label>
+                  ))}
+                  <label class="text-xs font-bold text-gray-700">{p.secretLabel}<input name="secret" type="password" autocomplete="new-password" placeholder={p.secretMask ? `Stored: ${p.secretMask} (leave blank to keep)` : "Paste the token"} class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal" /><span class="font-normal text-gray-500">Write-only: stored encrypted, never shown again.</span></label>
+                  <div class="flex flex-wrap gap-2 sm:col-span-2">
+                    <button name="intent" value="save" class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-5 text-sm font-bold">Save</button>
+                    {p.enabled
+                      ? <button name="intent" value="disable" class="inline-flex min-h-11 items-center rounded-full border border-red-300 px-5 text-sm font-bold text-red-800">Switch off</button>
+                      : <button name="intent" value="enable" class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Save and switch on</button>}
+                  </div>
+                </form>
+              </>
+            )}
+          </section>
+        ))}
+      </div>
+    )}
+  </div>
+</AdminLayout>

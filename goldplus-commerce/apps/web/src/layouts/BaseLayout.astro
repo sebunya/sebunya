@@ -129,6 +129,9 @@ const CF_BEACON_LOADER = `(function(){function go(){var s=document.createElement
 // Returning-visitor flag on <html> before first paint (see the <head> comment).
 const SEEN_FLAG = `try{if(localStorage.getItem('goldplus_seen_before')==='true')document.documentElement.classList.add('gp-seen')}catch(e){}`;
 const FONT_LOADER = `(function(){var d=0;function go(){if(d)return;d=1;var l=document.createElement('link');l.rel='stylesheet';l.href='/fonts/faces.css?v=20260913';document.head.appendChild(l);}try{var o=new PerformanceObserver(function(){o.disconnect();setTimeout(go,0);});o.observe({type:'paint',buffered:true});}catch(e){}addEventListener('load',function(){setTimeout(go,0);});setTimeout(go,3000);})();`;
+const clarityId = /^[a-z0-9]{6,20}$/.test(import.meta.env.PUBLIC_CLARITY_ID ?? '') ? import.meta.env.PUBLIC_CLARITY_ID : null;
+// Pages where everything (not just inputs) is masked in Clarity recordings.
+const clarityMaskAll = /^\/(checkout|account|orders|track-order|login|register|reset-password)/.test(Astro.url.pathname);
 ---
 
 <!doctype html>
@@ -164,6 +167,19 @@ const FONT_LOADER = `(function(){var d=0;function go(){if(d)return;d=1;var l=doc
         The endpoint is now part of the same readiness condition. It used to
         default to https://metrics.shopgoldplus.com, which has no DNS record —
         so setting the id alone would have shipped a loader aimed at nothing. */}
+    {/* Microsoft Clarity (heatmaps, session recordings): only with a project id,
+        never for robots. Clarity masks typed input by default; checkout and
+        account pages are masked entirely (data-clarity-mask on <body>). */}
+    {clarityId && (
+      <script define:vars={{ clarityId }}>
+        (function () {
+          if (navigator.webdriver === true || /HeadlessChrome|Chrome-Lighthouse|PTST|GTmetrix|Pingdom/i.test(navigator.userAgent || '')) return;
+          (function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+          t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+          y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window,document,"clarity","script",clarityId);
+        })();
+      </script>
+    )}
     {measurement.configured && (
       <script define:vars={{ metricsUrl: measurement.metricsUrl, gtmId: measurement.gtmId, userId: Astro.locals.gpUserId ?? null }}>
         (function () {
@@ -250,7 +266,7 @@ const FONT_LOADER = `(function(){var d=0;function go(){if(d)return;d=1;var l=doc
     <link rel="alternate" type="application/rss+xml" title="GoldPlus guides and advice" href="/rss.xml" />
     <meta name="theme-color" content="#0A0A0A" />
   </head>
-  <body class="bg-brand-softGrey text-brand-charcoal flex flex-col min-h-screen font-sans selection:bg-brand-primary selection:text-brand-charcoal">
+  <body data-clarity-mask={clarityMaskAll ? "true" : undefined} class="bg-brand-softGrey text-brand-charcoal flex flex-col min-h-screen font-sans selection:bg-brand-primary selection:text-brand-charcoal">
 
     {/* Slice 13: keyboard users skip repeated navigation. Visible on focus only. */}
     <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[100] focus:rounded-lg focus:bg-slate-950 focus:px-4 focus:py-2 focus:text-sm focus:font-bold focus:text-white">Skip to content</a>

@@ -43,12 +43,15 @@ export async function enqueuePurchaseEvent(opts: {
   traceId?: string;
   gaSessionId?: string;
   gaSessionNumber?: number;
+  /** SHA-256 of the order's normalised email / E.164 phone (ad-platform matching). */
+  hashedEmail?: string;
+  hashedPhone?: string;
   // Drizzle transaction context for atomicity
   tx?: Parameters<typeof db.insert>[0] extends infer T ? any : never;
 }): Promise<string | null> {
   const {
     orderId, transactionId, value, currency,
-    userId, fpClientId, ipAddress, userAgent, pageLocation, traceId, gaSessionId, gaSessionNumber,
+    userId, fpClientId, ipAddress, userAgent, pageLocation, traceId, gaSessionId, gaSessionNumber, hashedEmail, hashedPhone,
   } = opts;
 
   // Enrich with stored identity signals (click IDs captured on previous sessions)
@@ -121,6 +124,10 @@ export async function enqueuePurchaseEvent(opts: {
       user_agent: userAgent,
       ga_session_id: gaSessionId,
       ga_session_number: gaSessionNumber,
+      // Canonical field names (the identity enrichment above spreads camelCase
+      // keys the schema does not read): the order's own contact, hashed.
+      hashed_email: hashedEmail ?? identityEnrichment.hashedEmail,
+      hashed_phone: hashedPhone ?? identityEnrichment.hashedPhone,
     },
     ecommerce: {
       transaction_id: transactionId,

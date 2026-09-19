@@ -185,6 +185,13 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Measurement Control Tower — consent governance, sGTM routing, attribution intelligence.'
   },
   {
+    label: 'Advertising platforms',
+    href: '/admin/advertising',
+    group: 'Measurement',
+    status: 'working',
+    description: 'Server-side conversions to Meta, TikTok, Pinterest, Snapchat and LinkedIn: status, IDs and write-only tokens.'
+  },
+  {
     label: 'Consent Audit',
     href: '/admin/measurement/consent',
     group: 'Measurement',

@@ -246,6 +246,7 @@ services:
         # reach the page, and the GTM loader stays off whatever .env says.
         - PUBLIC_GTM_ID=${PUBLIC_GTM_ID:-}
         - PUBLIC_METRICS_URL=${PUBLIC_METRICS_URL:-}
+        - PUBLIC_CLARITY_ID=${PUBLIC_CLARITY_ID:-}
     restart: always
     environment:
       - NODE_ENV=production

@@ -967,6 +967,13 @@
       "when": 1790100000000,
       "tag": "0137_order_attribution_ga_session",
       "breakpoints": true
+    },
+    {
+      "idx": 138,
+      "version": "5",
+      "when": 1790110000000,
+      "tag": "0138_ad_destinations",
+      "breakpoints": true
     }
   ]
 }

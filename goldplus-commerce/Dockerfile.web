@@ -15,6 +15,9 @@ ARG PUBLIC_GTM_ID
 ENV PUBLIC_GTM_ID=$PUBLIC_GTM_ID
 ARG PUBLIC_METRICS_URL
 ENV PUBLIC_METRICS_URL=$PUBLIC_METRICS_URL
+# Microsoft Clarity project id (heatmaps/recordings); empty = not loaded.
+ARG PUBLIC_CLARITY_ID
+ENV PUBLIC_CLARITY_ID=$PUBLIC_CLARITY_ID
 
 # Copy configuration files
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
