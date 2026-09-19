@@ -36,6 +36,9 @@ export interface VerifyPesaPalPaymentOutput {
   lifecycleConflict?: boolean;
 }
 
+/** How long an unpaid (PesaPal status 0) attempt stays open before 0 is taken as final. */
+const UNPAID_GRACE_MS = (Number(process.env.PESAPAL_UNPAID_GRACE_HOURS) > 0 ? Number(process.env.PESAPAL_UNPAID_GRACE_HOURS) : 24) * 3_600_000;
+
 export class VerifyPesaPalPaymentUseCase {
   private paymentRepo: IPesaPalPaymentRepository;
   private pesapalClient: IPesaPalClient;
@@ -246,6 +249,25 @@ export class VerifyPesaPalPaymentUseCase {
         break;
       case 0:
       default:
+        // PesaPal answers 0 / INVALID for a transaction nobody has paid YET:
+        // production recorded it 5–22 seconds after the payment page was
+        // created, on the very first poll, before any customer could have
+        // entered a PIN (14 of 19 attempts, 2026-09-12/13). Written as terminal
+        // `invalid`, that killed the attempt, told the customer "payment
+        // failed" while they were still paying, and left a later payment with
+        // nowhere to land. While the attempt is young it is simply not paid
+        // yet: nothing is written, and the reconciliation poller asks again.
+        // A description that names an outcome (CANCELLED, ...) stays final.
+        if (statusResponse.status_code === 0 && /^(invalid|pending)?$/i.test(String(statusResponse.payment_status_description ?? '').trim()) && Date.now() - new Date(attempt.createdAt).getTime() < UNPAID_GRACE_MS) {
+          return {
+            ok: false,
+            status: 'pending',
+            amount: attempt.amount,
+            currency: attempt.currency,
+            orderId: attempt.orderId,
+            message: `PAYMENT_PENDING: not paid yet (PesaPal: ${statusResponse.payment_status_description}).`,
+          };
+        }
         mappedStatus = 'invalid';
         orderPaymentStatus = 'failed';
         break;

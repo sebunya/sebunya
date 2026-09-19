@@ -246,12 +246,22 @@ describe('PesaPal Payment Integration Unit Tests', () => {
       idempotencyKey: 'pesapal:reversed:track-123',
     }));
 
-    // Map 0 = INVALID => payment-only, like FAILED.
+    // Map 0 = INVALID on a YOUNG attempt => not paid yet: nothing written, the poller asks again.
+    // (Production: PesaPal said INVALID seconds after the page opened, before anyone could pay.)
     vi.spyOn(client, 'getTransactionStatus').mockResolvedValue({
       order_tracking_id: 'track-123', merchant_reference: 'ref-123',
       amount: 50000, currency: 'UGX', status_code: 0, payment_status_description: 'INVALID'
     });
-    output = await useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'ipn' });
+    (mockPaymentRepo.updateOrderPaymentStatusSafely as any).mockClear?.();
+    const young = { ...(await mockPaymentRepo.findByTrackingId('track-123'))!, status: 'pending', createdAt: new Date() };
+    vi.spyOn(mockPaymentRepo, 'findByTrackingId').mockResolvedValue(young);
+    output = await useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'poll' });
+    expect(output.status).toBe('pending');
+    expect(mockPaymentRepo.updateOrderPaymentStatusSafely).not.toHaveBeenCalled();
+
+    // ...and on an attempt past the grace window => final invalid, payment-only, like FAILED.
+    vi.spyOn(mockPaymentRepo, 'findByTrackingId').mockResolvedValue({ ...young, createdAt: new Date(Date.now() - 25 * 3_600_000) });
+    output = await useCase.execute({ orderTrackingId: 'track-123', merchantReference: 'ref-123', source: 'poll' });
     expect(output.status).toBe('invalid');
     expect(mockPaymentRepo.updateOrderPaymentStatusSafely).toHaveBeenCalledWith('order-123', 'failed');
   });
