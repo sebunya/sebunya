@@ -184,6 +184,11 @@ services:
       # Server-side measurement: the GA4 stream server-confirmed purchases are
       # sent to, and the container config the /health/deep probe keys on.
       # Without these the API had no way to know measurement was provisioned.
+      # The storefront's own origins may send cookie-bearing POSTs to the API.
+      # Unset, every browser beacon was refused as cross-site (CSRF) as soon as
+      # any cookie reached api.shopgoldplus.com, which GA4's domain-wide _ga
+      # cookies guarantee: all server-side ecommerce tracking was blocked.
+      - CSRF_ALLOWED_ORIGINS=${CSRF_ALLOWED_ORIGINS:-https://shopgoldplus.com,https://www.shopgoldplus.com}
       - GA4_MEASUREMENT_ID=${GA4_MEASUREMENT_ID:-}
       - GTM_CONTAINER_CONFIG=${GTM_CONTAINER_CONFIG:-}
       - PUBLIC_GTM_ID=${PUBLIC_GTM_ID:-}
