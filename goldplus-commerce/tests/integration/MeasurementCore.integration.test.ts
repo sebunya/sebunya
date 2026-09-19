@@ -50,6 +50,7 @@ suite('measurement core (real PostgreSQL)', () => {
         await raw`delete from measurement.commercial_entry where event_id = any(${evs})`;
         await raw`delete from measurement.business_event where event_id = any(${evs})`;
       }
+      await raw`delete from order_attribution where order_id = any(${orders})`;
       await raw`delete from order_events where order_id = any(${orders})`;
       await raw`delete from order_items where order_id = any(${orders})`;
       await raw`delete from orders where id = any(${orders})`;
@@ -64,6 +65,10 @@ suite('measurement core (real PostgreSQL)', () => {
       values (${on}, 'IT', '0700000009', 'Kla', 'Adr', 90000, 5000, 95000, 'received', 'unpaid', 'pesapal') returning id`;
     await raw`insert into order_items (order_id, product_id, sku, product_name, quantity, unit_price, final_line_total, cogs_snapshot_ugx)
       values (${o.id}, ${productId}, 'IT-SKU', 'IT item', 2, 45000, 90000, 55000)`;
+    // The visitor as checkout records it (GA4 needs a client id; without one
+    // the delivery is SUPPRESSED(IDENTITY_UNAVAILABLE), never sent with an invented visitor).
+    await raw`insert into order_attribution (order_id, order_number, fp_client_id, client_ip, user_agent)
+      values (${o.id}, ${on}, ${'fp.1700000000000.00000000-0000-4000-8000-' + on.padEnd(12, '0').slice(0, 12)}, '41.84.203.125', 'Mozilla/5.0 IT')`;
     orders.push(o.id);
     return { id: o.id as string, number: on };
   };
@@ -96,7 +101,7 @@ suite('measurement core (real PostgreSQL)', () => {
     await dbc.transaction(async (tx: any) => {
       // drizzle-orm is an apps/api dependency: resolve it from there.
       const { createRequire } = await import('node:module');
-      const { sql } = createRequire(new URL('../../apps/api/package.json', import.meta.url))('drizzle-orm');
+      const { sql } = createRequire(new globalThis.URL('../../apps/api/package.json', import.meta.url))('drizzle-orm');
       await tx.execute(sql`insert into measurement.control (key, value) values ('it-d008', 'true'::jsonb) on conflict (key) do nothing`);
       await W.guardedMeasurementWrite(tx, 'it-agg', 'it-context', async () => { throw new Error('boom'); });
     });
@@ -177,12 +182,26 @@ suite('measurement core (real PostgreSQL)', () => {
     await M.routeBusinessEvents();
     const [intent] = await intentsOf(o.id);
     await raw`update measurement.delivery_intent set state = 'ACCEPTED' where delivery_id = ${intent.delivery_id}`;
-    await transition.transition(o.id, 'cancelled', { actorType: 'admin', source: 'admin', reasonCode: 'it_cancel', idempotencyKey: `it-cancel-${o.id}` });
+    await transition.transition(o.id, 'cancelled', { actorType: 'administrator', source: 'admin', reasonCode: 'it_cancel', idempotencyKey: `it-cancel-${o.id}` });
     await M.routeBusinessEvents();
     const sinks = (await intentsOf(o.id)).map((i: any) => i.sink_key).sort();
     expect(sinks).toEqual(['ga4:purchase', 'ga4:refund']);
-    await transition.transition(o.id, 'cancelled', { actorType: 'admin', source: 'admin', reasonCode: 'it_cancel', idempotencyKey: `it-cancel-${o.id}` });
+    await transition.transition(o.id, 'cancelled', { actorType: 'administrator', source: 'admin', reasonCode: 'it_cancel', idempotencyKey: `it-cancel-${o.id}` });
     await M.routeBusinessEvents();
     expect((await intentsOf(o.id)).length).toBe(2);
   });
+
+  it('no visitor id: GA4 delivery is SUPPRESSED(IDENTITY_UNAVAILABLE), never sent with an invented visitor', async () => {
+    const o = await seed();
+    await raw`delete from order_attribution where order_id = ${o.id}`;
+    await pay(o.id, `pesapal:completed:it-${o.id}`);
+    await M.routeBusinessEvents();
+    const [intent] = await intentsOf(o.id);
+    await raw`update measurement.delivery_intent set enqueue_generation = 7 where delivery_id = ${intent.delivery_id}`;
+    let calls = 0;
+    expect(await M.deliverOne(intent.delivery_id, 7, (async () => { calls++; return new Response('', { status: 204 }); }) as any)).toBe('SUPPRESSED');
+    expect(calls).toBe(0);
+    expect((await raw`select state_reason from measurement.delivery_intent where delivery_id = ${intent.delivery_id}`)[0].state_reason).toBe('IDENTITY_UNAVAILABLE');
+  });
 });
+
