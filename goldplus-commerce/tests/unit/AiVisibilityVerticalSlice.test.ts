@@ -22,7 +22,8 @@ function memoryRepo() {
   const repo: any = {
     s,
     listProjects: async () => s.projects,
-    getProject: async (k: string) => s.projects.find((p) => p.id === k || p.slug === k) ?? null,
+    // Copies, like a real database read: callers must never share the stored object.
+    getProject: async (k: string) => { const p = s.projects.find((x) => x.id === k || x.slug === k); return p ? structuredClone(p) : null; },
     updateProject: async (pid: string, p: any) => { const x = s.projects.find((y) => y.id === pid); const { schedule, ...rest } = p; Object.assign(x, rest); if (schedule) x.schedule = { ...x.schedule, ...schedule }; return x; },
     dueScheduledProjects: async () => s.projects.filter((x) => x.schedule.monitor !== 'OFF' && !x.schedule.lastScheduledAt),
     markScheduled: async (pid: string) => { s.projects.find((x) => x.id === pid).schedule.lastScheduledAt = now(); },
@@ -40,7 +41,17 @@ function memoryRepo() {
     updateProviderConfig: async (pid: string, prov: string, p: any) => { const c = s.configs.find((x) => x.projectId === pid && x.provider === prov); if (!c) return null; for (const [k, v] of Object.entries(p)) if (v !== undefined) (c as any)[k] = v; return c; },
     setProviderCredential: async (pid: string, prov: string, ct: string | null) => { if (ct) s.creds.set(`${pid}|${prov}`, ct); else s.creds.delete(`${pid}|${prov}`); },
     recordProviderHealth: async () => undefined,
-    spendToDate: async (pid: string) => { const m = s.obs.filter((o) => o.projectId === pid && o.status === 'SUCCEEDED').reduce((a, o) => a + (o.costUsd ?? 0), 0); return { todayUsd: m, monthUsd: m, providerMonthUsd: {} }; },
+    ledger: [] as any[],
+    spendToDate: async (pid: string) => { const m = s.obs.filter((o) => o.projectId === pid).reduce((a, o) => a + (o.costUsd ?? 0), 0) + repo.ledger.filter((l: any) => l.projectId === pid).reduce((a: number, l: any) => a + l.costUsd, 0); return { todayUsd: m, monthUsd: m, providerMonthUsd: {} }; },
+    recordSpend: async (e: any) => { repo.ledger.push(e); },
+    listEvidenceForReclassification: async (pid: string, after: string | null) => s.obs.filter((o) => o.projectId === pid && o.status === 'SUCCEEDED' && (!after || o.id > after)).sort((a, b) => a.id.localeCompare(b.id)).map((o) => ({ id: o.id, answerText: o.answerText, citationSupport: o.citationSupport, citations: s.cites.filter((c) => c.observationId === o.id).map((c) => ({ url: c.url, title: c.title ?? null, position: c.position ?? null })) })),
+    replaceClassification: async (x: any) => {
+      s.cites = s.cites.filter((c) => c.observationId !== x.observationId); s.ments = s.ments.filter((m) => m.observationId !== x.observationId);
+      for (const c of x.citations) s.cites.push({ ...c, observationId: x.observationId });
+      if (x.brandMention) s.ments.push({ observationId: x.observationId, entityKind: 'BRAND', competitorId: null, ...x.brandMention });
+      for (const m of x.competitorMentions) s.ments.push({ observationId: x.observationId, entityKind: 'COMPETITOR', competitorId: m.entityId, ...m });
+      Object.assign(s.obs.find((o) => o.id === x.observationId), { brandMentioned: x.brandMentioned, ownCited: x.ownCited, citationCount: x.citations.length });
+    },
     findRunByIdempotencyKey: async (pid: string, k: string) => s.runs.find((r) => r.projectId === pid && r.idempotencyKey === k) ?? null,
     findActiveRun: async (pid: string, kind: string) => s.runs.find((r) => r.projectId === pid && r.kind === kind && ['AWAITING_APPROVAL', 'QUEUED', 'RUNNING'].includes(r.status)) ?? null,
     createRun: async (i: any) => { const r = { ...i, id: id(), succeeded: 0, failed: 0, skipped: 0, actualUsd: 0, phase: null, error: null, cancelRequested: false, approvedBy: null, createdAt: now(), startedAt: null, finishedAt: null }; s.runs.push(r); return r; },
@@ -56,7 +67,7 @@ function memoryRepo() {
       const dup = s.obs.find((x) => x.runId === o.runId && x.queryText === o.queryText && x.provider === o.provider);
       if (dup) return { id: dup.id, inserted: false };
       const oid = id();
-      s.obs.push({ id: oid, runId: o.runId, projectId: o.projectId, runKind: o.runKind, queryId: o.queryId, queryText: o.queryText, provider: o.provider, model: o.answer?.model ?? null, status: o.status, errorCode: o.errorCode, errorMessage: o.errorMessage, citationSupport: o.answer?.citationSupport ?? null, brandMentioned: o.brandMentioned, ownCited: o.ownCited, citationCount: o.citations.length, costUsd: o.answer?.costUsd ?? null, latencyMs: null, requestedLocation: null, appliedLocation: null, executedAt: new Date(Date.now() + seq).toISOString(), answerText: o.answer?.answerText ?? null, rawMetadata: o.answer?.rawMetadata ?? {} });
+      s.obs.push({ id: oid, runId: o.runId, projectId: o.projectId, runKind: o.runKind, queryId: o.queryId, queryText: o.queryText, provider: o.provider, model: o.answer?.model ?? null, status: o.status, errorCode: o.errorCode, errorMessage: o.errorMessage, citationSupport: o.answer?.citationSupport ?? null, brandMentioned: o.brandMentioned, ownCited: o.ownCited, citationCount: o.citations.length, costUsd: o.answer?.costUsd ?? o.costUsd ?? null, latencyMs: null, requestedLocation: null, appliedLocation: null, executedAt: new Date(Date.now() + seq).toISOString(), answerText: o.answer?.answerText ?? null, rawMetadata: o.answer?.rawMetadata ?? {} });
       for (const c of o.citations) s.cites.push({ ...c, observationId: oid });
       if (o.brandMention) s.ments.push({ observationId: oid, entityKind: 'BRAND', competitorId: null, ...o.brandMention });
       for (const m of o.competitorMentions) s.ments.push({ observationId: oid, entityKind: 'COMPETITOR', competitorId: m.entityId, ...m });
@@ -280,6 +291,42 @@ describe('AI visibility — first vertical slice', () => {
     const claude = repo.s.obs.filter((o) => o.provider === 'ANTHROPIC').map((o) => o.status);
     expect(claude.sort()).toEqual(['FAILED', 'SKIPPED', 'SKIPPED']);
     expect(repo.s.obs.filter((o) => o.provider === 'OPENAI' && o.status === 'SUCCEEDED')).toHaveLength(3);
+  });
+
+  it('every cost counts: provider tests, and timeouts that may have been billed (never a refused key)', async () => {
+    const { setup } = build();
+    const pid = ((await setup.createProject(user, { name: 'C', domains: 'c.com' })) as any).value.id;
+    await setup.createQuery(user, pid, { text: 'question one' });
+    for (const [p, k] of [['OPENAI', 'sk-a'], ['ANTHROPIC', 'sk-ant-b']]) { await setup.setCredential(user, pid, p, k); await setup.updateProvider(user, pid, p, { enabled: true }); }
+    expect((await setup.testProvider(user, pid, 'OPENAI')).ok).toBe(true);
+    expect((await repo.spendToDate(pid)).todayUsd).toBeCloseTo(0.02);
+    let tries = 0;
+    providers.OPENAI = fake('OPENAI', () => (++tries < 3 ? new ProviderCallError('No answer within 90s.', null, 'TIMEOUT') : { text: 'x', cites: [] }));
+    providers.ANTHROPIC = fake('ANTHROPIC', () => new ProviderCallError('HTTP 401: bad key', 401, 'HTTP'));
+    const r = await build().runs.start(user, pid, {});
+    await build().runs.execute((r as any).value.run.id);
+    const oa = repo.s.obs.find((o) => o.provider === 'OPENAI');
+    expect(oa.costUsd).toBeCloseTo(0.06); // answer + two timed-out attempts
+    expect(repo.s.obs.find((o) => o.provider === 'ANTHROPIC').costUsd).toBeNull(); // refused: not billed
+  });
+
+  it('changing our domain re-classifies stored answers; the evidence itself is untouched', async () => {
+    const { setup } = build();
+    const pid = ((await setup.createProject(user, { name: 'D', brandName: 'GoldPlus', domains: 'old-site.com' })) as any).value.id;
+    await setup.createQuery(user, pid, { text: 'power banks' });
+    await setup.setCredential(user, pid, 'OPENAI', 'sk-a');
+    await setup.updateProvider(user, pid, 'OPENAI', { enabled: true });
+    providers.OPENAI = fake('OPENAI', () => ({ text: 'Gold Plus has them.', cites: ['https://shopgoldplus.com/power'] }));
+    const r = await build().runs.start(user, pid, {});
+    await build().runs.execute((r as any).value.run.id);
+    const o = repo.s.obs.find((x) => x.projectId === pid);
+    expect(o.ownCited).toBe(false);
+    const text = o.answerText;
+    expect((await setup.updateProject(user, pid, { domains: 'old-site.com, shopgoldplus.com' })).ok).toBe(true);
+    expect(o.ownCited).toBe(true);
+    expect(o.answerText).toBe(text);
+    expect(repo.s.cites.filter((c) => c.observationId === o.id).map((c) => c.role)).toEqual(['OWN']);
+    expect(audit.rows.some((a) => a.action === 'AIV_EVIDENCE_RECLASSIFIED')).toBe(true);
   });
 
   it('with no provider configured the run is refused as not configured, never simulated', async () => {

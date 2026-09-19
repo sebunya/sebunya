@@ -3,7 +3,7 @@ import type { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
 import type { ILogger } from '../../ports/ILogger';
 import type { ProviderId } from '../../../domain/ai-visibility/Evidence';
 import { extractEvidence } from '../../../domain/ai-visibility/Evidence';
-import { competitorMentionAliases } from '../../../domain/ai-visibility/Mentions';
+import { buildEvidenceContext } from './EvidenceContext';
 import { evaluateRunBudget, mayContinue } from '../../../domain/ai-visibility/Budget';
 import { backoffMs, finalStatus, isRetryable } from '../../../domain/ai-visibility/RunLifecycle';
 import { fail, isProvider, ok, type Actor, type Result } from './AiVisibilitySetupUseCases';
@@ -162,12 +162,7 @@ export class AiVisibilityRunUseCases {
       const tasks: Array<{ queryId: string | null; text: string; location: { country: string; city: string | null } | null }> = run.kind === 'RESEARCH'
         ? run.adhocQueries.map((t) => ({ queryId: null, text: t, location: { country: project.marketCountry, city: project.marketCity } }))
         : queries.map((q) => ({ queryId: q.id, text: q.text, location: { country: q.marketCountry ?? project.marketCountry, city: q.marketCity ?? project.marketCity } }));
-      const ctx = {
-        brand: { id: 'BRAND', name: project.brandName, aliases: project.brandAliases },
-        ownDomains: project.domains,
-        // Registry names are descriptive ("Oraimo Uganda"); answers say "Oraimo".
-        competitors: competitors.map((c) => ({ id: c.id, name: c.name, aliases: [...c.aliases, ...competitorMentionAliases(c)], domains: c.domains })),
-      };
+      const ctx = buildEvidenceContext(project, competitors);
       const counts = { succeeded: 0, failed: 0, skipped: 0 };
       let runSpent = 0;
       const policy = project.budget;
@@ -206,15 +201,19 @@ export class AiVisibilityRunUseCases {
           const callCfg = { apiKey: this.cipher.decrypt(secret), model: cfg.model, webSearch: cfg.webSearch, timeoutMs: CALL_TIMEOUT_MS };
           const input = { query: task.text, location: adapter.appliesLocation ? task.location : null };
           let lastErr: ProviderCallError | Error | null = null;
+          // Attempts that failed AFTER the provider may have done the work
+          // (timeouts, 5xx) can still be billed; each counts at the estimate so
+          // the spend limits err towards stopping, never towards overspending.
+          let possiblyBilled = 0;
           for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             try {
               const { raw, latencyMs } = await adapter.executeQuery(input, callCfg);
               const answer = adapter.normalize(raw, callCfg, latencyMs, input);
               // Cost: what the provider reported, else the configured per-call estimate (labelled as such).
               const providerReported = answer.costUsd !== null;
-              const cost = answer.costUsd ?? cfg.estUsdPerCall;
+              const cost = (answer.costUsd ?? cfg.estUsdPerCall) + possiblyBilled * cfg.estUsdPerCall;
               answer.costUsd = cost;
-              answer.rawMetadata = { ...answer.rawMetadata, costBasis: providerReported ? 'PROVIDER_REPORTED' : 'ESTIMATE_PER_CALL', attempts: attempt };
+              answer.rawMetadata = { ...answer.rawMetadata, costBasis: providerReported && possiblyBilled === 0 ? 'PROVIDER_REPORTED' : 'ESTIMATE_PER_CALL', attempts: attempt, possiblyBilledRetries: possiblyBilled };
               const ev = extractEvidence(answer, ctx);
               await this.repo.insertObservation({ ...base, status: 'SUCCEEDED', errorCode: null, errorMessage: null, answer,
                 brandMentioned: ev.brandMentioned, ownCited: ev.ownCited, citations: ev.citations, brandMention: ev.brandMention, competitorMentions: ev.competitorMentions });
@@ -225,13 +224,16 @@ export class AiVisibilityRunUseCases {
             } catch (e) {
               lastErr = e as Error;
               const pe = e instanceof ProviderCallError ? e : null;
+              if (pe && (pe.code === 'TIMEOUT' || (pe.status != null && pe.status >= 500))) possiblyBilled += 1;
               if (attempt < MAX_ATTEMPTS && pe && isRetryable(pe.status, pe.code)) { await this.sleep(backoffMs(attempt)); continue; }
               break;
             }
           }
           if (lastErr) {
             const pe = lastErr instanceof ProviderCallError ? lastErr : null;
-            await this.repo.insertObservation({ ...base, status: 'FAILED', errorCode: pe ? `${pe.code}${pe.status ? `_${pe.status}` : ''}` : 'ERROR', errorMessage: lastErr.message.slice(0, 500) });
+            const failedCost = possiblyBilled * cfg.estUsdPerCall;
+            await this.repo.insertObservation({ ...base, status: 'FAILED', errorCode: pe ? `${pe.code}${pe.status ? `_${pe.status}` : ''}` : 'ERROR', errorMessage: lastErr.message.slice(0, 500), costUsd: failedCost > 0 ? failedCost : null });
+            runSpent += failedCost;
             counts.failed += 1;
             this.logger.warn({ runId: run.id, provider: pid, code: pe?.code, status: pe?.status }, 'aiv provider call failed');
             if (pe && pe.status != null && [401, 402, 403].includes(pe.status)) {

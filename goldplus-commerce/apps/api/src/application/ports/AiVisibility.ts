@@ -86,6 +86,8 @@ export interface NewObservation {
   answer: NormalizedAnswer | null; requestedLocation: string | null;
   brandMentioned: boolean | null; ownCited: boolean | null;
   citations: ClassifiedCitation[]; brandMention: MentionHit | null; competitorMentions: MentionHit[];
+  /** Cost of a FAILED call that may still have been billed (timeouts, 5xx); null otherwise. */
+  costUsd?: number | null;
 }
 
 export interface AivObservationRow {
@@ -136,7 +138,13 @@ export interface AiVisibilityRepository {
   setProviderCredential(projectId: string, provider: ProviderId, ciphertext: string | null, mask: string | null): Promise<void>;
   recordProviderHealth(projectId: string, provider: ProviderId, status: 'OK' | 'FAILED', message: string): Promise<void>;
 
+  /** Answers (succeeded or possibly-billed failures) plus ledger entries such as provider tests. */
   spendToDate(projectId: string): Promise<{ todayUsd: number; monthUsd: number; providerMonthUsd: Record<string, number> }>;
+  recordSpend(e: { projectId: string; provider: ProviderId; kind: 'PROVIDER_TEST'; costUsd: number; basis: 'PROVIDER_REPORTED' | 'ESTIMATE_PER_CALL'; actorId: string | null }): Promise<void>;
+  /** Stored evidence for re-classification: answer text + support + the citations' URLs/titles/positions. */
+  listEvidenceForReclassification(projectId: string, afterId: string | null, limit: number): Promise<Array<{ id: string; answerText: string | null; citationSupport: string | null; citations: Array<{ url: string; title: string | null; position: number | null }> }>>;
+  /** Replaces the DERIVED classification of one observation (flags, citation roles, mentions); evidence untouched. */
+  replaceClassification(o: { observationId: string; projectId: string; brandMentioned: boolean; ownCited: boolean | null; citations: ClassifiedCitation[]; brandMention: MentionHit | null; competitorMentions: MentionHit[] }): Promise<void>;
 
   findRunByIdempotencyKey(projectId: string, key: string): Promise<AivRun | null>;
   findActiveRun(projectId: string, kind: AivRun['kind']): Promise<AivRun | null>;

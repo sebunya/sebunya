@@ -58,6 +58,11 @@ routes.patch('/projects/:project', MANAGE, async (c) => {
   return send(c, await svc().setup.updateProject(actor(c), p.value.id, await body(c)));
 });
 
+routes.post('/projects/:project/reclassify', MANAGE, async (c) => {
+  const p = await project(c); if (!p.ok) return send(c, p);
+  return send(c, await svc().setup.reclassify(actor(c), p.value.id));
+});
+
 // ── Competitors ───────────────────────────────────────────────────────────────
 routes.get('/projects/:project/competitors', VIEW, async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);

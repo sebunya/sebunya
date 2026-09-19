@@ -198,18 +198,59 @@ export class DrizzleAiVisibilityRepository implements AiVisibilityRepository {
   }
 
   async spendToDate(projectId: string) {
+    // Answers that succeeded, failures recorded as possibly billed (cost set),
+    // and ledger entries (provider tests) — every cost, one sum.
     const rows = rowsOf(await db.execute(sql`
       select provider,
-        coalesce(sum(cost_usd) filter (where executed_at >= date_trunc('day', now())), 0) as today,
+        coalesce(sum(cost_usd) filter (where at >= date_trunc('day', now())), 0) as today,
         coalesce(sum(cost_usd), 0) as month
-      from aiv_observations where project_id = ${projectId}::uuid and status = 'SUCCEEDED' and executed_at >= date_trunc('month', now())
-      group by provider`));
+      from (
+        select provider, cost_usd, executed_at as at from aiv_observations
+          where project_id = ${projectId}::uuid and cost_usd is not null and executed_at >= date_trunc('month', now())
+        union all
+        select provider, cost_usd, created_at as at from aiv_spend_ledger
+          where project_id = ${projectId}::uuid and created_at >= date_trunc('month', now())
+      ) s group by provider`));
     const providerMonthUsd: Record<string, number> = {};
     let todayUsd = 0, monthUsd = 0;
     for (const r of rows) { providerMonthUsd[r.provider] = n(r.month); todayUsd += n(r.today); monthUsd += n(r.month); }
     return { todayUsd, monthUsd, providerMonthUsd };
   }
-
+  async recordSpend(e: { projectId: string; provider: ProviderId; kind: 'PROVIDER_TEST'; costUsd: number; basis: 'PROVIDER_REPORTED' | 'ESTIMATE_PER_CALL'; actorId: string | null }) {
+    await db.execute(sql`insert into aiv_spend_ledger (project_id, provider, kind, cost_usd, basis, actor_id)
+      values (${e.projectId}::uuid, ${e.provider}, ${e.kind}, ${e.costUsd}, ${e.basis}, ${e.actorId && UUID.test(e.actorId) ? sql`${e.actorId}::uuid` : sql`null`})`);
+  }
+  async listEvidenceForReclassification(projectId: string, afterId: string | null, limit: number) {
+    const rows = rowsOf(await db.execute(sql`
+      select o.id, o.answer_text, o.citation_support,
+        coalesce((select jsonb_agg(jsonb_build_object('url', c.url, 'title', c.title, 'position', c.position) order by c.position)
+                  from aiv_citations c where c.observation_id = o.id), '[]'::jsonb) as citations
+      from aiv_observations o
+      where o.project_id = ${projectId}::uuid and o.status = 'SUCCEEDED' ${afterId && UUID.test(afterId) ? sql`and o.id > ${afterId}::uuid` : sql``}
+      order by o.id limit ${Math.min(Math.max(limit, 1), 500)}`));
+    return rows.map((r) => ({ id: String(r.id), answerText: r.answer_text, citationSupport: r.citation_support, citations: Array.isArray(r.citations) ? r.citations : [] }));
+  }
+  async replaceClassification(o: Parameters<AiVisibilityRepository['replaceClassification']>[0]) {
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`delete from aiv_citations where observation_id = ${o.observationId}::uuid`);
+      await tx.execute(sql`delete from aiv_mentions where observation_id = ${o.observationId}::uuid`);
+      for (const c of o.citations) {
+        await tx.execute(sql`insert into aiv_citations (observation_id, project_id, position, url, title, host, page_key, role, competitor_id, source_kind)
+          values (${o.observationId}::uuid, ${o.projectId}::uuid, ${c.position}, ${c.url.slice(0, 2000)}, ${c.title ? c.title.slice(0, 500) : null}, ${c.host}, ${c.pageKey.slice(0, 2000)}, ${c.role},
+            ${c.competitorId ? sql`${c.competitorId}::uuid` : sql`null`}, ${c.sourceKind})`);
+      }
+      const ments = [
+        ...(o.brandMention ? [{ kind: 'BRAND', cid: null as string | null, m: o.brandMention }] : []),
+        ...o.competitorMentions.map((m) => ({ kind: 'COMPETITOR', cid: m.entityId, m })),
+      ];
+      for (const x of ments) {
+        await tx.execute(sql`insert into aiv_mentions (observation_id, project_id, entity_kind, competitor_id, matched_text, first_index, occurrences)
+          values (${o.observationId}::uuid, ${o.projectId}::uuid, ${x.kind}, ${x.cid && UUID.test(x.cid) ? sql`${x.cid}::uuid` : sql`null`}, ${x.m.matchedText.slice(0, 200)}, ${x.m.firstIndex}, ${x.m.occurrences})`);
+      }
+      await tx.execute(sql`update aiv_observations set brand_mentioned = ${o.brandMentioned}, own_cited = ${o.ownCited}, citation_count = ${o.citations.length}
+        where id = ${o.observationId}::uuid`);
+    });
+  }
   async findRunByIdempotencyKey(projectId: string, key: string) {
     const r = rowsOf(await db.execute(sql`select * from aiv_runs where project_id = ${projectId}::uuid and idempotency_key = ${key}`))[0];
     return r ? run(r) : null;
@@ -288,7 +329,7 @@ export class DrizzleAiVisibilityRepository implements AiVisibilityRepository {
         values (${o.runId}::uuid, ${o.projectId}::uuid, ${o.runKind}, ${o.queryId && UUID.test(o.queryId) ? sql`${o.queryId}::uuid` : sql`null`}, ${o.queryText}, ${o.provider}, ${a?.model ?? null},
           ${o.status}, ${o.errorCode}, ${o.errorMessage}, ${a?.answerText ?? null}, ${a?.citationSupport ?? null}, ${o.brandMentioned}, ${o.ownCited}, ${o.citations.length},
           ${o.requestedLocation}, ${a?.appliedLocation ?? null}, ${a?.latencyMs ?? null}, ${a?.usage.inputTokens ?? null}, ${a?.usage.outputTokens ?? null}, ${a?.usage.searchCalls ?? null},
-          ${a?.costUsd ?? null}, ${pgJsonb(a?.rawMetadata ?? {})})
+          ${a?.costUsd ?? o.costUsd ?? null}, ${pgJsonb(a?.rawMetadata ?? (o.costUsd != null ? { costBasis: 'ESTIMATE_PER_CALL', possiblyBilled: true } : {}))})
         on conflict (run_id, query_text, provider) do nothing returning id`))[0];
       if (!r) {
         const e = rowsOf(await tx.execute(sql`select id from aiv_observations where run_id = ${o.runId}::uuid and query_text = ${o.queryText} and provider = ${o.provider}`))[0];

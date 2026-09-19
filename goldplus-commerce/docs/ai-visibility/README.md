@@ -124,8 +124,21 @@ Uganda means MTN Mobile Money), at least 4 characters, never a generic word.
 
 Cost per answer: the provider's reported cost where it gives one
 (`PROVIDER_REPORTED`), otherwise the configured per-call estimate
-(`ESTIMATE_PER_CALL`, labelled "estimate" in the UI). Spend limits are
-computed from these recorded costs.
+(`ESTIMATE_PER_CALL`, labelled "estimate" in the UI). Attempts that failed
+after the provider may have done the work (timeouts, 5xx) each add the
+estimate — to the answer if a retry succeeded, or to the FAILED observation —
+so limits err towards stopping. Refusals (4xx) are not billed and add nothing.
+Successful provider **Tests** are recorded in `aiv_spend_ledger` (0133). Spend
+limits are computed from all of these together.
+
+## Re-classification (evidence vs classification)
+
+The evidence — answer text and the source URLs, titles and order — is never
+changed. Its **classification** (brand named? our page cited? which competitor?)
+is derived, and is re-derived for every stored answer when the project's
+domains, brand name or aliases change, or a competitor is pinned or unpinned
+(also `POST …/reclassify`), so history is judged by the current rules instead
+of a mix of old and new ones. Audited as `AIV_EVIDENCE_RECLASSIFIED`.
 
 ## Research vs monitoring
 

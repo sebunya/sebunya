@@ -2,6 +2,8 @@ import type { AiAnswerProvider, AiVisibilityRepository, AivProject, AivQuery, Cr
 import type { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
 import type { ProviderId } from '../../../domain/ai-visibility/Evidence';
 import { normalizeHost } from '../../../domain/ai-visibility/Domains';
+import { extractEvidence } from '../../../domain/ai-visibility/Evidence';
+import { buildEvidenceContext } from './EvidenceContext';
 
 export type Result<T> = { ok: true; value: T } | { ok: false; code: 'NOT_FOUND' | 'BAD_INPUT' | 'CONFLICT' | 'NOT_CONFIGURED' | 'FORBIDDEN' | 'BUDGET' | 'UPSTREAM'; message: string };
 export const ok = <T>(value: T): Result<T> => ({ ok: true, value });
@@ -98,6 +100,10 @@ export class AiVisibilitySetupUseCases {
     const after = await this.repo.updateProject(projectId, { ...patch, ...(schedule ? { schedule } : {}) });
     if (!after) return fail('NOT_FOUND', 'Project not found.');
     await this.log(actor, 'AIV_PROJECT_UPDATED', 'aiv_project', projectId, { ...(patch as Record<string, unknown>), ...(schedule ? { schedule: schedule.monitor } : {}) }, { domains: before.domains, budget: before.budget, schedule: before.schedule.monitor });
+    const same = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+    if (!same(before.domains, after.domains) || before.brandName !== after.brandName || !same(before.brandAliases, after.brandAliases)) {
+      await this.reclassify(actor, after.id);
+    }
     return ok(after);
   }
 
@@ -120,6 +126,7 @@ export class AiVisibilitySetupUseCases {
       await this.repo.unpinCompetitor(projectId, competitorId);
     }
     await this.log(actor, pin ? 'AIV_COMPETITOR_PINNED' : 'AIV_COMPETITOR_UNPINNED', 'aiv_project', projectId, { competitorId });
+    await this.reclassify(actor, projectId);
     return ok({ pinned: pin });
   }
 
@@ -228,7 +235,37 @@ export class AiVisibilitySetupUseCases {
     const h = await this.providers[provider].healthcheck({ apiKey: this.cipher.decrypt(secret), model: cfg.model, webSearch: cfg.webSearch, timeoutMs: 60_000 });
     const message = h.ok ? `Answered${h.servedModel ? ` as ${h.servedModel}` : ''}.` : h.reason;
     await this.repo.recordProviderHealth(projectId, provider, h.ok ? 'OK' : 'FAILED', message);
+    // A successful test is a billed call: it counts towards the spend limits.
+    if (h.ok) await this.repo.recordSpend({ projectId, provider, kind: 'PROVIDER_TEST', costUsd: cfg.estUsdPerCall, basis: 'ESTIMATE_PER_CALL', actorId: actor.id });
     await this.log(actor, 'AIV_PROVIDER_TESTED', 'aiv_provider_config', cfg.id, { provider, ok: h.ok });
     return h.ok ? ok({ provider, message }) : fail('UPSTREAM', message);
+  }
+
+  /**
+   * Re-derives who is named and whose page is cited, for every stored answer,
+   * from the stored evidence (answer text + source URLs), under the CURRENT
+   * brand, domains and pinned competitors. The evidence itself is never
+   * touched — only its classification — so changing the domain list or a
+   * competitor pin gives consistent history instead of old answers judged by
+   * old rules. Answers whose provider returned no sources stay "unknown".
+   */
+  async reclassify(actor: Actor, projectId: string): Promise<Result<{ answers: number }>> {
+    const project = await this.repo.getProject(projectId);
+    if (!project) return fail('NOT_FOUND', 'Project not found.');
+    const ctx = buildEvidenceContext(project, await this.repo.listPinnedCompetitors(project.id));
+    let after: string | null = null;
+    let answers = 0;
+    for (;;) {
+      const batch = await this.repo.listEvidenceForReclassification(project.id, after, 200);
+      if (batch.length === 0) break;
+      for (const o of batch) {
+        const ev = extractEvidence({ answerText: o.answerText ?? '', citationSupport: o.citationSupport === 'SUPPORTED' ? 'SUPPORTED' : 'UNSUPPORTED', citations: o.citations.map((c) => ({ url: c.url, title: c.title, position: c.position })) }, ctx);
+        await this.repo.replaceClassification({ observationId: o.id, projectId: project.id, brandMentioned: ev.brandMentioned, ownCited: ev.ownCited, citations: ev.citations, brandMention: ev.brandMention, competitorMentions: ev.competitorMentions });
+        answers += 1;
+      }
+      after = batch[batch.length - 1].id;
+    }
+    await this.log(actor, 'AIV_EVIDENCE_RECLASSIFIED', 'aiv_project', project.id, { answers, domains: project.domains });
+    return ok({ answers });
   }
 }
