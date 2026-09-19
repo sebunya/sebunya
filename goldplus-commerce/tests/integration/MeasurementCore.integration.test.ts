@@ -121,7 +121,7 @@ suite('measurement core (real PostgreSQL)', () => {
     const job = jobs.find((j) => j.deliveryId === intent.delivery_id);
     expect(job.jobId).toBe(`gp-${intent.delivery_id}-g1`);
     let calls = 0;
-    const ok = (async () => { calls++; return new Response('', { status: 204 }); }) as any;
+    const ok = (async () => { calls++; return new Response(null, { status: 204 }); }) as any;
     expect(await M.deliverOne(intent.delivery_id, 0, ok)).toBe('NOT_CLAIMED'); // DLV-06
     expect(calls).toBe(0);
     expect(await M.deliverOne(intent.delivery_id, 1, ok)).toBe('ACCEPTED');
@@ -170,7 +170,7 @@ suite('measurement core (real PostgreSQL)', () => {
     await raw`insert into measurement.control (key, value) values ('kill_switch', 'true'::jsonb) on conflict (key) do update set value = 'true'::jsonb`;
     await raw`update measurement.delivery_intent set enqueue_generation = 3 where delivery_id = ${intent.delivery_id}`;
     let calls = 0;
-    expect(await M.deliverOne(intent.delivery_id, 3, (async () => { calls++; return new Response('', { status: 204 }); }) as any)).toBe('HELD');
+    expect(await M.deliverOne(intent.delivery_id, 3, (async () => { calls++; return new Response(null, { status: 204 }); }) as any)).toBe('HELD');
     expect(calls).toBe(0);
     expect((await raw`select state, state_reason from measurement.delivery_intent where delivery_id = ${intent.delivery_id}`)[0]).toEqual({ state: 'RETRY_WAIT', state_reason: 'KILL_SWITCH' });
     await raw`delete from measurement.control where key = 'kill_switch'`;
@@ -182,11 +182,11 @@ suite('measurement core (real PostgreSQL)', () => {
     await M.routeBusinessEvents();
     const [intent] = await intentsOf(o.id);
     await raw`update measurement.delivery_intent set state = 'ACCEPTED' where delivery_id = ${intent.delivery_id}`;
-    await transition.transition(o.id, 'cancelled', { actorType: 'administrator', source: 'admin', reasonCode: 'it_cancel', idempotencyKey: `it-cancel-${o.id}` });
+    await transition.transition(o.id, 'cancelled', { actorType: 'administrator', source: 'admin_api', reasonCode: 'it_cancel', idempotencyKey: `it-cancel-${o.id}` });
     await M.routeBusinessEvents();
     const sinks = (await intentsOf(o.id)).map((i: any) => i.sink_key).sort();
     expect(sinks).toEqual(['ga4:purchase', 'ga4:refund']);
-    await transition.transition(o.id, 'cancelled', { actorType: 'administrator', source: 'admin', reasonCode: 'it_cancel', idempotencyKey: `it-cancel-${o.id}` });
+    await transition.transition(o.id, 'cancelled', { actorType: 'administrator', source: 'admin_api', reasonCode: 'it_cancel', idempotencyKey: `it-cancel-${o.id}` });
     await M.routeBusinessEvents();
     expect((await intentsOf(o.id)).length).toBe(2);
   });
@@ -199,7 +199,7 @@ suite('measurement core (real PostgreSQL)', () => {
     const [intent] = await intentsOf(o.id);
     await raw`update measurement.delivery_intent set enqueue_generation = 7 where delivery_id = ${intent.delivery_id}`;
     let calls = 0;
-    expect(await M.deliverOne(intent.delivery_id, 7, (async () => { calls++; return new Response('', { status: 204 }); }) as any)).toBe('SUPPRESSED');
+    expect(await M.deliverOne(intent.delivery_id, 7, (async () => { calls++; return new Response(null, { status: 204 }); }) as any)).toBe('SUPPRESSED');
     expect(calls).toBe(0);
     expect((await raw`select state_reason from measurement.delivery_intent where delivery_id = ${intent.delivery_id}`)[0].state_reason).toBe('IDENTITY_UNAVAILABLE');
   });
