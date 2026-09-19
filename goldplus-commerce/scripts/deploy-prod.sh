@@ -58,7 +58,7 @@ for s in $SERVICES; do docker tag "goldplus-commerce-$s:latest" "goldplus-commer
 echo "DEPLOYED $HEAD, $WANT/$WANT healthy, tagged rollback-$HEAD"
 # Rollback images accumulated without limit (286, disk full 2026-09-18).
 # Keep the newest 10 per service; never fails the deploy.
-[ -x scripts/prune-rollback-images.sh ] && { scripts/prune-rollback-images.sh 10 || true; }
+[ -x scripts/prune-rollback-images.sh ] && { scripts/prune-rollback-images.sh 2 || true; }
 # Build cache: every deploy left 2-8 GB behind; the disk reached 97% on
 # 2026-09-20 after a day of deploys. Cache older than a day is dropped (the
 # next build is slower, never wrong). Never fails the deploy.
