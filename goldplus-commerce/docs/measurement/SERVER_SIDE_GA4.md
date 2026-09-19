@@ -8,25 +8,26 @@
 | GA4 property | ShopGoldPlus 549232812, stream 15408433033, G-YVV0KLGMQJ |
 | Tagging server | `sgtm-production` (compose), public at metrics.shopgoldplus.com via Caddy (CF-Connecting-IP forwarded) |
 
-## Flows
-- **Browser events** (view_item … add_payment_info): dataLayer → web container (loaded first-party from
-  metrics.shopgoldplus.com) → tagging server → GA4. Consent Mode v2 defaults are set in `BaseLayout.astro`
-  before the container: analytics granted unless the browser sends Global Privacy Control; ads denied.
-- **Purchase** (server only): an online order when PesaPal confirms payment (settlement effect), a cash-on-
-  delivery order when placed. `queuePurchaseTelemetry` → outbox (`purchase:<order number>`, once per order) →
-  `TelemetryDispatchService` → `http://sgtm-production:8080/g/collect` as a GA4 hit (`Ga4CollectHit.ts`),
-  with `cid` = the visitor's `_fp_cid` captured at checkout (order_attribution, 0136) and the buyer's IP/UA.
-  Browser-origin copies in the outbox are NOT re-sent (the web tag already sent them).
+## Policy (OWNER DECISION 2026-09-19)
+Server-side analytics is **always on**, for every visitor, including browsers sending "do not track"/GPC.
+IP address and browser details are kept on our servers and not deleted. The preference-centre switch governs
+analytics **cookies in the browser** only (Consent Mode `analytics_storage`), and its wording says so; the
+privacy (#analytics) and cookies pages state all of this. Supersedes the 2026-08-07 "analytics off by default" rule.
 
-## Accuracy measures (2026-09-19, second pass)
-- **Session stitching:** checkout reads GA4's `_ga_<stream>` cookie (GS1/GS2 formats, `lib/gaSession.ts`) into
-  order_attribution (0137); the server purchase carries `sid`/`sct`/`seg`, so the sale is credited to the visit's source.
-- **Refunds:** an order moving to `cancelled` whose purchase was sent gets one GA4 `refund` (`refund:<order number>`).
-- **Consent:** the preference-centre analytics choice is mirrored into `gp_consent` (a0/a1) by /account/preferences;
-  the page denies analytics_storage on a0 or Global Privacy Control, before GTM loads.
-- **Durable visitor id:** `_fp_cid` is set by the web server (middleware), refreshed at most daily (`_fp_r`),
-  so Safari's 7-day cap on script-set cookies no longer applies. Refreshing on every page would make HTML uncacheable.
-- **user_id:** signed-in shoppers' id is pushed to the dataLayer; the Google tag sends it (`user_id` = DLV user_id).
+## Flows
+- **Page views:** the web container (GTM-PS424MV3, loaded first-party from metrics.shopgoldplus.com) → tagging
+  server → GA4. Robots (webdriver/headless/Lighthouse) never load it.
+- **Ecommerce events** (view_item_list … add_payment_info): the browser beacons them to OUR API
+  (`/telemetry/collect/batch`), which records them first-party with the real IP/UA and the GA4 session read from the
+  `_ga_<stream>` cookie, and sends each to GA4 server-side (`/g/collect` on the internal tagging server). Survives ad
+  blockers; no cookie dependency. The web container's GA4 event tag is PAUSED (version 4) — never un-pause it, or every
+  event counts twice.
+- **Purchase / refund:** server only. Purchase on PesaPal confirmation or explicit COD placement; refund once when an
+  order whose purchase was SENT is cancelled (an unsent purchase is withdrawn instead).
+- **Real client IP:** Caddy `{client_ip}` = CF-Connecting-IP, believed only from Cloudflare's published ranges
+  (global `trusted_proxies`); all vhosts forward it as X-Forwarded-For / X-Real-IP.
+- **CSRF:** `CSRF_ALLOWED_ORIGINS` must include the storefront origins. GA's `_ga` cookies are domain-wide, so every
+  beacon to api.shopgoldplus.com carries a cookie; without the allowlist every one was refused (403).
 
 ## Env (.env.production)
 `GA4_MEASUREMENT_ID`, `GTM_CONTAINER_CONFIG` (server container config string), `PUBLIC_GTM_ID`,
