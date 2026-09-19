@@ -105,7 +105,10 @@ Adding a provider = one adapter implementing `AiAnswerProvider` + one line in
    the person whose schedule asked) can never approve. Under the threshold a
    machine-origin run only needs a human confirmation, which the person behind
    the agent may give. Only **one run per project** (any kind) may be active,
-   so two runs never spend against the same limit at once.
+   so two runs never spend against the same limit at once. Whether a run is
+   over the threshold is decided **when it is requested** and stored on the run
+   (`aiv_runs.over_threshold`, 0135): raising the threshold afterwards never lets
+   the requester approve their own run.
 4. **Execute** (its own BullMQ queue `ai-visibility`, job `aiv-run`, jobId =
    run id — never the shared analytics-fanout, whose slots the synthetic
    monitor and crons need): providers in parallel, questions sequential per
@@ -120,7 +123,14 @@ Adding a provider = one adapter implementing `AiAnswerProvider` + one line in
    no progress for 20 minutes is dead and marked FAILED (at worker start and
    hourly); age alone never is — a healthy run may take hours. A worker whose
    run was ended elsewhere (stale, cancelled) stops before its next call and
-   records `AIV_RUN_WORKER_STOPPED` with what it did.
+   records `AIV_RUN_WORKER_STOPPED` with what it did, writing nothing more to
+   the run. A stalled-job redelivery of a RUNNING run is not resumed; the
+   reaper ends it and the project is free again.
+6. **Nothing blocks a project forever**: hourly, a run AWAITING_APPROVAL for
+   24 hours is closed as REJECTED and one QUEUED for 60 minutes without starting
+   as FAILED (audit `AIV_RUN_EXPIRED`, alert `AIV_RUN_EXPIRED`). If queueing
+   throws, the run fails at once. A scheduled run refused because another run is
+   active raises `AIV_SCHEDULE_SKIPPED`.
 
 Provider **Test** (Settings) makes one small call exactly as runs do — web
 search on — so a key whose organisation has not enabled web search (a
@@ -193,6 +203,12 @@ frozen at approval. Verification compares only answers recorded **after** the
 change, after the measurement window (default 14 days), and its wording states
 that a before/after comparison shows coincidence, not cause.
 
+A **measurement action** starts its run with the key `action:<id>` (then
+`action:<id>:2`, … per attempt). Pressing "Start the run" again: if the run is
+waiting for approval, it says so; once approved (queued, running or done) that
+run is recorded as the action's measurement; if it was rejected, cancelled or
+failed, a new attempt starts.
+
 ## Permissions
 
 | Permission | Allows |
@@ -247,7 +263,8 @@ these endpoints (not new business logic).
 | Symptom | Cause |
 |---|---|
 | "Not configured: no AI provider is enabled" | add a key, test it, switch the provider on |
-| Run stays "Waiting for approval" | over the approval threshold or requested by an agent; approve under Runs |
+| Run stays "Waiting for approval" | over the approval threshold or requested by an agent; someone other than the requester approves under Runs. Unapproved after 24 h it closes by itself |
+| Run closed "queued but never started" | the background queue (Redis) was down; start it again |
 | Run PARTIAL | at least one call failed; open the run's answers — each failure shows the provider's error |
 | Citation rate "no data" | no answer with source data yet (provider returned none, or no run) |
 | HTTP 402 BUDGET | the run would break a spend limit; the message says which |

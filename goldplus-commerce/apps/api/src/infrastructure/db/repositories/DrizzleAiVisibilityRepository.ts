@@ -350,14 +350,19 @@ export class DrizzleAiVisibilityRepository implements AiVisibilityRepository {
     return r.cancel_requested ? ('CANCELLED' as const) : null;
   }
   async expireUnattendedRuns(approvalHours: number, queuedMinutes: number) {
+    // The old status is read in the same statement (locked), not inferred from the text written.
     const r = rowsOf(await db.execute(sql`
-      update aiv_runs set status = case when status = 'AWAITING_APPROVAL' then 'REJECTED' else 'FAILED' end,
+      with due as (
+        select id, status from aiv_runs
+        where (status = 'AWAITING_APPROVAL' and created_at < now() - make_interval(hours => ${Math.max(1, Math.trunc(approvalHours))}))
+           or (status = 'QUEUED' and coalesce(approved_at, created_at) < now() - make_interval(mins => ${Math.max(10, Math.trunc(queuedMinutes))}))
+        for update skip locked)
+      update aiv_runs r set status = case when due.status = 'AWAITING_APPROVAL' then 'REJECTED' else 'FAILED' end,
         finished_at = now(), phase = 'Closed',
-        error = case when status = 'AWAITING_APPROVAL' then 'Nobody approved this run within ' || ${Math.trunc(approvalHours)}::int || ' hours.'
+        error = case when due.status = 'AWAITING_APPROVAL' then ${`Nobody approved this run within ${Math.trunc(approvalHours)} hours.`}
                      else 'The run was queued but never started (the background queue lost it).' end
-      where (status = 'AWAITING_APPROVAL' and created_at < now() - make_interval(hours => ${Math.max(1, Math.trunc(approvalHours))}))
-         or (status = 'QUEUED' and coalesce(approved_at, created_at) < now() - make_interval(mins => ${Math.max(10, Math.trunc(queuedMinutes))}))
-      returning id, project_id, (case when phase = 'Closed' and error like 'Nobody%' then 'AWAITING_APPROVAL' else 'QUEUED' end) as from_status`));
+      from due where r.id = due.id and r.status = due.status
+      returning r.id, r.project_id, due.status as from_status`));
     return r.map((x) => ({ id: String(x.id), projectId: String(x.project_id), from: String(x.from_status) }));
   }
   async isCancelRequested(runId: string) {
