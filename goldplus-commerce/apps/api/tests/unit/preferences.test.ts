@@ -34,7 +34,7 @@ describe('Storefront Preference Centre', () => {
   describe('GetCustomerPreferenceCentreUseCase', () => {
     it('merges DB preferences with ConsentService state', async () => {
       const mockPrefRepo = { getPreferences: vi.fn(), upsertPreferences: vi.fn() };
-      const mockConsentService = { getCurrentState: vi.fn(), recordSignal: vi.fn() };
+      const mockConsentService = { getCurrentState: vi.fn(), getExplicitState: vi.fn().mockResolvedValue(null), recordSignal: vi.fn() };
 
       mockPrefRepo.getPreferences.mockResolvedValue({
         channels: { email: true, sms: false, whatsapp: true },
@@ -59,6 +59,8 @@ describe('Storefront Preference Centre', () => {
       expect(result.consent.advertising).toBe(false);
       expect(result.consent.personalization).toBe(true);
       expect(result.consent.essential).toBe(true);
+      // Nothing stored: the state shown is the default, not a choice.
+      expect(result.consent.explicit).toBe(false);
     });
   });
 
