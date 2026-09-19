@@ -79,12 +79,35 @@ export interface CheckoutAttribution {
 }
 
 const CLICK_KEYS = ['gclid', 'wbraid', 'gbraid', 'ttclid', 'twclid', 'li_fat_id', 'epik', 'msclkid', 'ScCid', 'clickid', 'click_id'];
+const CLICK_STORE = '_gp_ad_click';
+const CLICK_WINDOW_MS = 30 * 864e5;
+
+/**
+ * The last ad click, kept 30 days FROM THE CLICK. Called on every page (from
+ * BaseLayout), so an ad landing on the home page, a category or a blog post is
+ * recorded before the shopper navigates away and the query string is gone.
+ * Last click wins: a new ad click replaces the previous one entirely, so an old
+ * gclid never rides along with a new network's click and both claim the sale.
+ * `src` is the utm_source of that click: it tells two networks that use the
+ * same parameter name (clickid) apart. Only URL parameters, never cookies.
+ */
+export function recordAdClick(): void {
+  try {
+    const p = new URLSearchParams(location.search);
+    const ids: Record<string, string> = {};
+    for (const k of CLICK_KEYS) { const v = p.get(k); if (v && v.length <= 512) ids[k] = v; }
+    if (Object.keys(ids).length === 0) return;
+    localStorage.setItem(CLICK_STORE, JSON.stringify({ ids, src: (p.get('utm_source') || '').toLowerCase().slice(0, 60), at: Date.now() }));
+  } catch { /* storage unavailable */ }
+}
+
 function recentClickIds(): Record<string, string> {
   try {
-    const raw = JSON.parse(localStorage.getItem('_gp_click_ids_30d') || '{}');
-    if (!raw._at || Date.now() - Number(raw._at) > 30 * 864e5) return {};
+    const raw = JSON.parse(localStorage.getItem(CLICK_STORE) || '{}');
+    if (!raw.at || Date.now() - Number(raw.at) > CLICK_WINDOW_MS) return {};
     const out: Record<string, string> = {};
-    for (const k of CLICK_KEYS) if (typeof raw[k] === 'string' && raw[k].length <= 512) out[k] = raw[k];
+    for (const k of CLICK_KEYS) if (typeof raw.ids?.[k] === 'string') out[k] = raw.ids[k];
+    if (Object.keys(out).length && raw.src) out.src = String(raw.src);
     return out;
   } catch {
     return {};

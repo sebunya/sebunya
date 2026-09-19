@@ -7,6 +7,32 @@ import { DEAD_LETTER_STATE } from '../../domain/outbox/TerminalState';
 import { DrizzleAdDestinationRepository } from '../db/repositories/DrizzleAdDestinationRepository';
 import { IntegrationCredentialVault } from '../seo/IntegrationCredentialVault';
 import { adPlatform, buildAdRequest } from './AdPlatforms';
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
+
+/** Private, loopback, link-local, CGNAT, ULA, metadata and other non-public ranges. */
+export function isNonPublicAddress(ip: string): boolean {
+  if (isIP(ip) === 4) {
+    const [a, b] = ip.split('.').map(Number);
+    return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)
+      || (a === 100 && b >= 64 && b <= 127) || a >= 224 || (a === 192 && b === 0) || (a === 198 && (b === 18 || b === 19));
+  }
+  const v = ip.toLowerCase();
+  if (v.startsWith('::ffff:')) return isNonPublicAddress(v.slice(7));
+  return v === '::' || v === '::1' || v.startsWith('fc') || v.startsWith('fd') || v.startsWith('fe8') || v.startsWith('fe9') || v.startsWith('fea') || v.startsWith('feb') || v.startsWith('ff');
+}
+
+/**
+ * An owner-entered postback host must resolve ONLY to public addresses: a name
+ * pointing at the server itself, the docker network or cloud metadata is
+ * refused at send time. (A rebinding between this check and the connection is
+ * the residual risk; the request is a blind GET with redirects not followed.)
+ */
+async function assertPublicHost(url: string): Promise<void> {
+  const host = new URL(url).hostname;
+  const addrs = await lookup(host, { all: true }).catch(() => []);
+  if (addrs.length === 0 || addrs.some((a) => isNonPublicAddress(a.address))) throw Object.assign(new Error(`postback host ${host} does not resolve to a public address`), { status: 400 });
+}
 
 /**
  * Server-side conversions to advertising platforms (0138).
@@ -92,6 +118,7 @@ export async function processAdConversionBatch(): Promise<{ claimed: number; sen
     try {
       const auth = def?.authorize ? await def.authorize(req, dest.config, secret) : {};
       const method = req.method ?? 'POST';
+      if (method === 'GET') await assertPublicHost(req.url);
       const res = await fetch(req.url, { method, headers: { ...req.headers, ...auth }, body: method === 'GET' ? undefined : JSON.stringify(req.body), redirect: 'manual', signal: AbortSignal.timeout(10_000) });
       const text = await res.text().catch(() => '');
       if (!res.ok) throw Object.assign(new Error(`${platform} HTTP ${res.status}: ${text.slice(0, 300)}`), { status: res.status });

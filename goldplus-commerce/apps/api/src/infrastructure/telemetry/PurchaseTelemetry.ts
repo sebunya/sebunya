@@ -4,7 +4,7 @@ import { db } from '../db/client';
 import { outboxEvents } from '../db/schema/system';
 import { and, eq, inArray, like } from 'drizzle-orm';
 import crypto from 'crypto';
-import { hashEmail, hashPhone, hashPhonePlus } from '../advertising/AdPlatforms';
+import { hashEmail, hashEmailGoogle, hashPhone, hashPhonePlus } from '../advertising/AdPlatforms';
 
 type Visitor = { fpClientId?: string | null; clientIp?: string | null; userAgent?: string | null; gaSessionId?: string | null; gaSessionNumber?: number | null; clickIds?: Record<string, string> | null };
 
@@ -53,6 +53,7 @@ export async function queuePurchaseTelemetry(input: {
       hashedEmail: hashEmail(input.email),
       hashedPhone: hashPhone(input.phone),
       hashedPhonePlus: hashPhonePlus(input.phone),
+      hashedEmailGoogle: hashEmailGoogle(input.email),
       clickIds: input.visitor?.clickIds ?? null,
       traceId: input.traceId,
     });

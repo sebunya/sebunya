@@ -47,6 +47,7 @@ export async function enqueuePurchaseEvent(opts: {
   hashedEmail?: string;
   hashedPhone?: string;
   hashedPhonePlus?: string;
+  hashedEmailGoogle?: string;
   /** Ad-network click ids kept on the order (0139). */
   clickIds?: Record<string, string> | null;
   // Drizzle transaction context for atomicity
@@ -54,7 +55,7 @@ export async function enqueuePurchaseEvent(opts: {
 }): Promise<string | null> {
   const {
     orderId, transactionId, value, currency,
-    userId, fpClientId, ipAddress, userAgent, pageLocation, traceId, gaSessionId, gaSessionNumber, hashedEmail, hashedPhone, hashedPhonePlus, clickIds,
+    userId, fpClientId, ipAddress, userAgent, pageLocation, traceId, gaSessionId, gaSessionNumber, hashedEmail, hashedPhone, hashedPhonePlus, hashedEmailGoogle, clickIds,
   } = opts;
   const ck = clickIds ?? {};
   const networkParam = ck.clickid ? 'clickid' : ck.click_id ? 'click_id' : undefined;
@@ -134,11 +135,13 @@ export async function enqueuePurchaseEvent(opts: {
       hashed_email: hashedEmail ?? identityEnrichment.hashedEmail,
       hashed_phone: hashedPhone ?? identityEnrichment.hashedPhone,
       hashed_phone_plus: hashedPhonePlus,
+      hashed_email_google: hashedEmailGoogle,
       // Click ids from the order win over the identity graph's (they are this sale's).
       ...(ck.gclid ? { gclid: ck.gclid } : {}), ...(ck.gbraid ? { gbraid: ck.gbraid } : {}), ...(ck.wbraid ? { wbraid: ck.wbraid } : {}),
       ...(ck.ttclid ? { ttclid: ck.ttclid } : {}), ...(ck.twclid ? { twclid: ck.twclid } : {}), ...(ck.li_fat_id ? { li_fat_id: ck.li_fat_id } : {}),
       ...(ck.msclkid ? { msclkid: ck.msclkid } : {}), ...(ck.ScCid ? { sccid: ck.ScCid } : {}),
-      ...(networkParam ? { network_click_id: ck[networkParam], network_click_param: networkParam } : {}),
+      ...(ck.epik ? { epik: ck.epik } : {}),
+      ...(networkParam ? { network_click_id: ck[networkParam], network_click_param: networkParam, ...(ck.src ? { network_click_source: ck.src } : {}) } : {}),
     },
     ecommerce: {
       transaction_id: transactionId,

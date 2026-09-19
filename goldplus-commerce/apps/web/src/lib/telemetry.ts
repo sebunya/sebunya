@@ -115,14 +115,8 @@ export function captureAndPersistClickIds(): Record<string, string> {
   if (Object.keys(fresh).length > 0) {
     sessionStorage.setItem('_gp_click_ids', JSON.stringify(fresh));
   }
-  // Also kept 30 days in localStorage: an ad click today and a purchase next
-  // week is still that ad's sale (the order carries these to the server).
-  try {
-    if (Object.keys(fresh).length > 0) {
-      const prev = JSON.parse(localStorage.getItem('_gp_click_ids_30d') || '{}');
-      localStorage.setItem('_gp_click_ids_30d', JSON.stringify({ ...prev, ...fresh, _at: Date.now() }));
-    }
-  } catch { /* storage unavailable: session copy only */ }
+  // The 30-day ad-click record is kept by lib/attribution (recordAdClick),
+  // which runs on EVERY page from BaseLayout.
   const stored = sessionStorage.getItem('_gp_click_ids');
   return stored ? { ...JSON.parse(stored), ...fresh } : fresh;
 }

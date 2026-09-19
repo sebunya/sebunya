@@ -46,6 +46,16 @@ export function linkedInVersion(now = new Date()): string {
 const sha = (v: string) => crypto.createHash('sha256').update(v).digest('hex');
 /** Lower-cased trimmed email, hashed. */
 export const hashEmail = (email?: string | null) => (email && email.includes('@') ? sha(email.trim().toLowerCase()) : undefined);
+/**
+ * Google's email normalisation for enhanced conversions: lower-case, trim, and
+ * for gmail.com / googlemail.com remove dots from the local part.
+ */
+export const hashEmailGoogle = (email?: string | null) => {
+  if (!email || !email.includes('@')) return undefined;
+  const [local, domain] = email.trim().toLowerCase().split('@');
+  const l = domain === 'gmail.com' || domain === 'googlemail.com' ? local.replace(/\./g, '') : local;
+  return sha(`${l}@${domain}`);
+};
 /** Ugandan numbers to E.164 digits (07XXXXXXXX -> 2567XXXXXXXX), hashed. */
 export function normalisePhoneUg(phone?: string | null): string | undefined {
   const d = String(phone ?? '').replace(/\D/g, '').replace(/^00/, '');
@@ -67,9 +77,10 @@ const extId = (e: CanonicalTelemetryEvent) => (u(e).fp_client_id ? sha(u(e).fp_c
 /** Parses a JSON secret bundle; throws a message that names the missing keys (never their values). */
 export function parseJsonSecret(secret: string, keys: string[]): Record<string, string> {
   let o: Record<string, unknown>;
-  try { o = JSON.parse(secret); } catch { throw new Error('credentials are not valid JSON'); }
+  // status 400: a malformed bundle will not fix itself on retry (dead-letter at once).
+  try { o = JSON.parse(secret); } catch { throw Object.assign(new Error('credentials are not valid JSON'), { status: 400 }); }
   const missing = keys.filter((k) => typeof o[k] !== 'string' || !(o[k] as string).trim());
-  if (missing.length) throw new Error(`credentials missing: ${missing.join(', ')}`);
+  if (missing.length) throw Object.assign(new Error(`credentials missing: ${missing.join(', ')}`), { status: 400 });
   return o as Record<string, string>;
 }
 
@@ -103,6 +114,7 @@ export function safePostbackUrl(raw: string): URL | null {
   try {
     const x = new URL(raw);
     if (x.protocol !== 'https:' || x.username || x.password || x.port) return null;
+    x.hostname = x.hostname.replace(/\.+$/, '');
     if (/^[\d.]+$/.test(x.hostname) || x.hostname.includes(':') || !x.hostname.includes('.') || /(^|\.)(local|internal|localhost)$/i.test(x.hostname)) return null;
     return x;
   } catch { return null; }
@@ -120,10 +132,12 @@ function postback(key: string, name: string, where: string): AdPlatformDef {
     fields: [
       { key: 'postbackUrl', label: 'Postback URL (with {click_id})', pattern: /^https:\/\/[^\s]+\{click_id\}[^\s]*$/, hint: `From ${where}. Macros: {click_id} {value} {currency} {order_id} {event_id}` },
       { key: 'clickParam', label: 'Click-id URL parameter', pattern: /^(clickid|click_id)$/, hint: 'The parameter the network adds to your links: clickid or click_id' },
+      { key: 'sourceMatch', label: 'utm_source on this network\'s links', pattern: /^[a-z0-9._-]{2,60}$/, hint: 'e.g. opera — set utm_source to exactly this on every ad link. Only sales whose click came with it fire this postback (several networks share clickid).' },
     ],
     build(e, cfg) {
       const ud = u(e);
       if (e.event_name !== 'purchase' || !ud.network_click_id || ud.network_click_param !== cfg.clickParam) return null;
+      if ((ud.network_click_source ?? '').toLowerCase() !== cfg.sourceMatch.toLowerCase()) return null;
       const filled = cfg.postbackUrl
         .replace(/\{click_id\}/g, encodeURIComponent(ud.network_click_id))
         .replace(/\{value\}/g, encodeURIComponent(String(value(e))))
@@ -243,9 +257,9 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
     key: 'google_ads', name: 'Google Ads (Search, Shopping, YouTube, PMax)',
     fields: [
       { key: 'customerId', label: 'Customer ID (10 digits, no dashes)', pattern: /^\d{10}$/, hint: 'Google Ads, top right' },
-      { key: 'conversionActionId', label: 'Conversion action ID', pattern: /^\d{4,20}$/, hint: 'Goals > Conversions > the purchase action (ctId in its URL)' },
+      { key: 'conversionActionId', label: 'Conversion action ID', pattern: /^\d{4,20}$/, hint: 'Must be an IMPORT action: Goals > Conversions > New > Import > "Conversions from clicks" (ctId in its URL). A website-tag action is refused. For sales without a click id, turn on "Enhanced conversions for leads".' },
       { key: 'loginCustomerId', label: 'Manager account ID (if used)', pattern: /^(\d{10})?$/, hint: 'Only when access goes through an MCC', optional: true },
-      { key: 'apiVersion', label: 'Google Ads API version', pattern: /^v\d{2}$/, hint: 'e.g. v21 — Google sunsets versions yearly', optional: true },
+      { key: 'apiVersion', label: 'Google Ads API version', pattern: /^v\d{2}$/, hint: 'The newest version in Google Ads API release notes (e.g. v24). Versions sunset about a year after release: update it when Google announces a sunset.' },
     ],
     secretLabel: 'API credentials (JSON)',
     secretHint: '{"developerToken":"…","clientId":"….apps.googleusercontent.com","clientSecret":"…","refreshToken":"…"}',
@@ -260,10 +274,11 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
       if (e.event_name !== 'purchase') return null;
       const ud = u(e);
       // A click id, or the hashed email/phone for enhanced conversions; neither = nothing to match.
-      const userIdentifiers = [ud.hashed_email ? { hashedEmail: ud.hashed_email } : null, ud.hashed_phone_plus ? { hashedPhoneNumber: ud.hashed_phone_plus } : null].filter(Boolean);
+      const gEmail = ud.hashed_email_google ?? ud.hashed_email;
+      const userIdentifiers = [gEmail ? { hashedEmail: gEmail } : null, ud.hashed_phone_plus ? { hashedPhoneNumber: ud.hashed_phone_plus } : null].filter(Boolean);
       if (!ud.gclid && !ud.gbraid && !ud.wbraid && userIdentifiers.length === 0) return null;
       const t = new Date(e.event_time * 1000).toISOString().replace('T', ' ').slice(0, 19) + '+00:00';
-      const v = cfg.apiVersion || 'v21';
+      const v = cfg.apiVersion;
       return {
         url: `https://googleads.googleapis.com/${v}/customers/${cfg.customerId}:uploadClickConversions`,
         headers: { 'content-type': 'application/json', ...(cfg.loginCustomerId ? { 'login-customer-id': cfg.loginCustomerId } : {}) },
@@ -313,7 +328,7 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
       const eventId = e.event_name === 'purchase' ? cfg.purchaseEventId : e.event_name === 'add_to_cart' ? cfg.addToCartEventId : '';
       if (!eventId) return null;
       const ud = u(e);
-      const identifiers = [ud.twclid ? { twclid: ud.twclid } : null, ud.hashed_email ? { hashed_email: ud.hashed_email } : null, ud.hashed_phone ? { hashed_phone_number: ud.hashed_phone } : null].filter(Boolean);
+      const identifiers = [ud.twclid ? { twclid: ud.twclid } : null, ud.hashed_email ? { hashed_email: ud.hashed_email } : null, ud.hashed_phone_plus ? { hashed_phone_number: ud.hashed_phone_plus } : null].filter(Boolean);
       if (identifiers.length === 0) return null;
       return {
         url: `https://ads-api.x.com/12/measurement/conversions/${cfg.pixelId}`,

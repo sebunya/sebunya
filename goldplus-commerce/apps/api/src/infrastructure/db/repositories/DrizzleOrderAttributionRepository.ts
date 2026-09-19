@@ -8,7 +8,8 @@ const clean = (v: unknown, max: number): string | null => {
   return t || null;
 };
 
-const CLICK_KEYS = new Set(['gclid', 'wbraid', 'gbraid', 'ttclid', 'twclid', 'li_fat_id', 'epik', 'msclkid', 'ScCid', 'clickid', 'click_id']);
+// `src`: the utm_source of the click (tells networks sharing `clickid` apart).
+const CLICK_KEYS = new Set(['gclid', 'wbraid', 'gbraid', 'ttclid', 'twclid', 'li_fat_id', 'epik', 'msclkid', 'ScCid', 'clickid', 'click_id', 'src']);
 /** Only known click-id keys, short printable values; null when none. */
 function cleanClickIds(v: unknown): Record<string, string> | null {
   if (!v || typeof v !== 'object') return null;

@@ -49,6 +49,10 @@ export const TelemetryUserDataSchema = z.object({
   /** A network's own click id (Opera, Eagllwin, Boomplay …) and the URL parameter it came in. */
   network_click_id:    z.string().max(512).optional(),
   network_click_param: z.string().max(40).optional(),
+  /** utm_source of the click that carried it (which network issued it). */
+  network_click_source: z.string().max(60).optional(),
+  /** SHA-256 of the email under Google's normalisation (gmail dots removed). */
+  hashed_email_google: z.string().length(64).optional(),
 
   // Forwarded from browser for CAPI IP/UA matching requirements
   ip_address: z.string().max(64).optional(),

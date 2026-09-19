@@ -25,7 +25,9 @@ if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
   const key = String(f.get("platform") ?? "");
   const config: Record<string, string> = {};
-  for (const [k, v] of f.entries()) if (k.startsWith("cfg.") && String(v).trim()) config[k.slice(4)] = String(v).trim();
+  // Every field is sent, blanks included: an optional field (Google manager
+  // account, X add-to-cart id) can then be cleared; a blank required one is refused.
+  for (const [k, v] of f.entries()) if (k.startsWith("cfg.")) config[k.slice(4)] = String(v).trim();
   const secret = String(f.get("secret") ?? "").trim() || undefined;
   const intent = String(f.get("intent") ?? "save");
   const enabled = intent === "enable" ? true : intent === "disable" ? false : undefined;

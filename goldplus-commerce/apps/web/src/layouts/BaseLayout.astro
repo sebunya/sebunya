@@ -393,8 +393,9 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
     <script>
       // Capture marketing attribution (last-touch UTM + external referrer) on every
       // page, so an order can be attributed to where it came from.
-      import { captureAttribution } from '../lib/attribution';
+      import { captureAttribution, recordAdClick } from '../lib/attribution';
       captureAttribution();
+      recordAdClick();
     </script>
 
     <script>
