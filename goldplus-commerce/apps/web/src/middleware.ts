@@ -121,10 +121,9 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // user. Not HttpOnly: the page's tag reads it. Same format as lib/telemetry.
   // Refreshed at most once a day (the `_fp_r` marker): a Set-Cookie on EVERY
   // page would make every HTML response uncacheable at the edge.
-  // Never for a browser sending Global Privacy Control or one that refused
-  // analytics (gp_consent=a0): an identifier is not set for someone who said no.
-  const optedOut = context.request.headers.get('sec-gpc') === '1' || /^a0/.test(context.cookies.get('gp_consent')?.value ?? '');
-  if (isDocument && !optedOut) {
+  // Set for every visitor: server-side measurement is always on (owner
+  // decision 2026-09-19); this is a first-party id our own server sets.
+  if (isDocument) {
     const fp = context.cookies.get('_fp_cid')?.value;
     const valid = !!fp && /^fp\.\d+\.[0-9a-f-]{36}$/.test(fp);
     if (!valid || !context.cookies.get('_fp_r')) {

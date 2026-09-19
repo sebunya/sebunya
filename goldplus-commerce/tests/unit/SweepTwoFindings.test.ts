@@ -75,15 +75,16 @@ describe('bounded inputs and bounded waits', () => {
   }
 });
 
-describe('telemetry respects a withdrawn analytics consent', () => {
-  it('asks the consent state before enriching or queueing, and records the block', () => {
+describe('telemetry and the analytics choice (owner decision 2026-09-19)', () => {
+  // Realigned, not deleted: the 2026-08 rule dropped a refuser's events here.
+  // The owner has since decided server-side measurement is always on; the
+  // preference-centre switch governs browser analytics COOKIES only, and its
+  // wording says exactly that (PreferenceCentreForm, privacy #analytics).
+  it('records every browser event server-side; the refusal no longer silently drops it', () => {
     const src = read('apps/api/src/application/use-cases/telemetry/TrackBrowserTelemetryEventUseCase.ts');
-    const gate = src.indexOf('consentRepo');
-    expect(gate).toBeGreaterThan(-1);
-    expect(gate).toBeLessThan(src.indexOf('identityRepo\n'));
-    expect(gate).toBeLessThan(src.indexOf('.insert(outboxEvents)'));
-    expect(src).toMatch(/consent\.analyticsGranted === false/);
-    expect(src).toMatch(/action: 'CONSENT_BLOCKED'/);
+    expect(src).not.toMatch(/action: 'CONSENT_BLOCKED'/);
+    expect(src).toMatch(/owner decision 2026-09-19/);
+    expect(read('apps/web/src/components/preferences/PreferenceCentreForm.astro')).toMatch(/switching this off stops the cookies, not that record/);
   });
 
   it('telemetry dispatch refuses to sign with a default secret', () => {

@@ -31,11 +31,9 @@ export async function queuePurchaseTelemetry(input: {
   userId?: string | null;
   visitor: Visitor | null;
   traceId?: string;
-  /** The shopper's stored, explicit analytics refusal (ConsentService.getExplicitState). */
-  analyticsRefused?: boolean;
 }): Promise<void> {
-  // A refusal wins over everything: nothing about this sale goes to Google.
-  if (input.analyticsRefused) return;
+  // Sent for every sale (owner decision 2026-09-19: server-side measurement is
+  // always on; the browser-cookie choice does not apply to it).
   try {
     const outboxId = await enqueuePurchaseEvent({
       orderId: input.orderId,

@@ -1,13 +1,10 @@
 import { db } from '../../../infrastructure/db/client';
 import { outboxEvents } from '../../../infrastructure/db/schema/system';
 import { DrizzleIdentityRepository } from '../../../infrastructure/db/repositories/DrizzleIdentityRepository';
-import { DrizzleConsentRepository } from '../../../infrastructure/measurement/DrizzleConsentRepository';
-import { measurementAuditLogs } from '../../../infrastructure/db/schema/measurement-advanced';
 import { logger } from '../../../infrastructure/logging/logger';
 import type { CanonicalTelemetryEvent, BrowserTelemetryEvent } from '@goldplus/shared';
 
 const identityRepo = new DrizzleIdentityRepository();
-const consentRepo = new DrizzleConsentRepository();
 const EVENT_TYPE_TELEMETRY = 'TELEMETRY_DISPATCH';
 
 export class TrackBrowserTelemetryEventUseCase {
@@ -15,6 +12,7 @@ export class TrackBrowserTelemetryEventUseCase {
     event: BrowserTelemetryEvent,
     realIp: string,
     realUa: string,
+    gaSession: { gaSessionId: string; gaSessionNumber: number } | null = null,
   ): Promise<void> {
     const enrichedEvent: CanonicalTelemetryEvent = {
       ...event,
@@ -23,36 +21,16 @@ export class TrackBrowserTelemetryEventUseCase {
         ...event.user_data,
         ip_address: realIp,
         user_agent: realUa,
+        // The visit's GA4 session: these events are sent to GA4 server-side.
+        ...(gaSession ? { ga_session_id: gaSession.gaSessionId, ga_session_number: gaSession.gaSessionNumber } : {}),
       },
     };
 
-    // CONSENT FIRST. A visitor who withdrew analytics consent has a row in
-    // consent_current_state saying so; this use case never asked, so their
-    // events were enriched into the identity graph and queued for dispatch
-    // exactly like everyone else's. The control tower's "blocked by consent"
-    // count existed with nothing feeding it. A visitor with no recorded
-    // decision is not blocked here: the ads dispatch is gated downstream.
+    // Always recorded (owner decision 2026-09-19): measurement runs server-side
+    // for every visitor. The preference centre's analytics switch governs
+    // analytics COOKIES in the browser (Consent Mode), and says so; it does not
+    // stop the server-side record. See docs/measurement/SERVER_SIDE_GA4.md.
     const fpClientId = event.user_data?.fp_client_id;
-    // ONLY AN EXPLICIT, LIVE REFUSAL BLOCKS.
-    //
-    // Two things make the stored boolean alone the wrong test. An EXPIRED
-    // decision is no decision — ConsentService treats it that way and this must
-    // agree. And `analytics_granted` is false in the owner default, so a row
-    // materialised by an unrelated preference save (marketing email off) would
-    // otherwise read as an analytics refusal for a customer who never made one,
-    // silently dropping their events forever.
-    const { row: consent } = await consentRepo
-      .getCurrentState(fpClientId, event.user_data?.user_id)
-      .catch(() => ({ row: null }));
-    const expired = !!consent?.expiresAt && new Date(consent.expiresAt) < new Date();
-    const decided = !!consent && consent.lastGrantType !== 'unknown';
-    if (consent && decided && !expired && consent.analyticsGranted === false) {
-      await db
-        .insert(measurementAuditLogs)
-        .values({ entityType: 'telemetry_event', entityId: String(event.event_id ?? 'unknown').slice(0, 255), action: 'CONSENT_BLOCKED', changes: { event_name: event.event_name } })
-        .catch((err) => logger.warn({ err }, '[Telemetry] consent-block audit failed'));
-      return;
-    }
 
     // Fire-and-forget identity graph enrichment
     if (fpClientId) {

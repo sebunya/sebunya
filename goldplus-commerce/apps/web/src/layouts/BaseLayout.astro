@@ -174,33 +174,28 @@ const FONT_LOADER = `(function(){var d=0;function go(){if(d)return;d=1;var l=doc
         var ua = navigator.userAgent || '';
         if (navigator.webdriver === true || /HeadlessChrome|Chrome-Lighthouse|PTST|GTmetrix|Pingdom/i.test(ua)) return;
 
-        // Consent Mode v2 defaults, set BEFORE the container loads (policy:
-        // docs/measurement/SERVER_SIDE_GA4.md). A browser sending Global
-        // Privacy Control, or a refusal saved in the preference centre
-        // (gp_consent=a0), is denied. Advertising storage is off: no
-        // advertising destination is connected.
+        // Consent Mode v2 defaults, set BEFORE the container loads. Owner
+        // decision 2026-09-19: measurement is always on and runs server-side.
+        // The one choice a shopper makes here (preference centre, gp_consent=a0)
+        // is about analytics COOKIES in their browser: with it, Google's tag
+        // runs cookieless. Advertising storage is off: no ad destination exists.
         window.dataLayer = window.dataLayer || [];
         window.gtag = window.gtag || function () { dataLayer.push(arguments); };
-        var gpc = navigator.globalPrivacyControl === true;
-        var refused = /(?:^|; )gp_consent=a0/.test(document.cookie);
+        var noCookies = /(?:^|; )gp_consent=a0/.test(document.cookie);
         gtag('consent', 'default', {
-          analytics_storage: gpc || refused ? 'denied' : 'granted',
+          analytics_storage: noCookies ? 'denied' : 'granted',
           ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied',
           functionality_storage: 'granted', security_storage: 'granted',
         });
-        // One visitor id for the browser tag AND the server-sent purchase (GA's
-        // client_id = our `_fp_cid`, set by the server in middleware). Never
-        // created or shared for a visitor who refused or sends GPC.
-        if (!gpc && !refused) {
-          var m = document.cookie.match(/(?:^|; )_fp_cid=([^;]*)/);
-          var cid = m ? decodeURIComponent(m[1]) : null;
-          if (!cid) {
-            cid = 'fp.' + Date.now() + '.' + (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
-            document.cookie = '_fp_cid=' + cid + '; expires=' + new Date(Date.now() + 365 * 864e5).toUTCString() + '; path=/; SameSite=Lax; Secure';
-          }
-          // Signed-in shoppers: the same user id the server sends with a purchase.
-          dataLayer.push(userId ? { fp_client_id: cid, user_id: userId } : { fp_client_id: cid });
+        // One visitor id for the tag AND the server (GA client_id = `_fp_cid`,
+        // set by our server in middleware; written here only as a fallback).
+        var m = document.cookie.match(/(?:^|; )_fp_cid=([^;]*)/);
+        var cid = m ? decodeURIComponent(m[1]) : null;
+        if (!cid) {
+          cid = 'fp.' + Date.now() + '.' + (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
+          document.cookie = '_fp_cid=' + cid + '; expires=' + new Date(Date.now() + 365 * 864e5).toUTCString() + '; path=/; SameSite=Lax; Secure';
         }
+        dataLayer.push(userId ? { fp_client_id: cid, user_id: userId } : { fp_client_id: cid });
         (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
         new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
         j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=

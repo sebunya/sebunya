@@ -16,6 +16,15 @@
   # Aggressive TLS hardening — OCSP stapling + TLS 1.2 minimum
   servers {
     protocols h1 h2 h3
+    # The shopper's real address. Every request reaches us through Cloudflare,
+    # so {remote_host} is a Cloudflare edge: every visitor looked like a handful
+    # of addresses (rate limits, lockouts and analytics all saw the edge).
+    # CF-Connecting-IP is believed ONLY from Cloudflare's published ranges
+    # (https://www.cloudflare.com/ips/, 2026-09-19); from anywhere else the
+    # header is ignored and {client_ip} is the connecting address, so it cannot
+    # be forged by calling the origin directly.
+    trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
+    client_ip_headers CF-Connecting-IP
   }
 }
 
@@ -78,8 +87,8 @@ shopgoldplus.com, www.shopgoldplus.com {
     header @avif >Content-Type "image/avif"
     reverse_proxy web:4321 {
       header_up Host              {host}
-      header_up X-Real-IP         {remote_host}
-      header_up X-Forwarded-For  {remote_host}
+      header_up X-Real-IP         {client_ip}
+      header_up X-Forwarded-For  {client_ip}
       header_up X-Forwarded-Proto {scheme}
       @ok status 200
       handle_response @ok {
@@ -94,8 +103,8 @@ shopgoldplus.com, www.shopgoldplus.com {
   handle {
     reverse_proxy web:4321 {
       header_up Host              {host}
-      header_up X-Real-IP         {remote_host}
-      header_up X-Forwarded-For  {remote_host}
+      header_up X-Real-IP         {client_ip}
+      header_up X-Forwarded-For  {client_ip}
       header_up X-Forwarded-Proto {scheme}
     }
   }
@@ -138,8 +147,8 @@ api.shopgoldplus.com {
     #
     # These two are SET (not appended), so whatever the caller sent is
     # discarded and the API sees only the address Caddy actually observed.
-    header_up X-Real-IP         {remote_host}
-    header_up X-Forwarded-For   {remote_host}
+    header_up X-Real-IP         {client_ip}
+    header_up X-Forwarded-For   {client_ip}
     header_up X-Forwarded-Proto {scheme}
 
     # reverse_proxy forwards every header it is not told about, so any
@@ -196,12 +205,11 @@ metrics.shopgoldplus.com {
   # preview traffic to the preview server itself (PREVIEW_SERVER_URL). The old
   # two-reverse_proxy split overlapped: Caddy does not evaluate those in order.
   #
-  # The visitor's real address: behind Cloudflare, {remote_host} is a
-  # Cloudflare edge; GA4 geo would put every visitor wherever that edge is.
+  # The visitor's real address ({client_ip}: see the global trusted_proxies).
   reverse_proxy sgtm-production:8080 {
     header_up Host              {host}
-    header_up X-Forwarded-For   {http.request.header.CF-Connecting-IP}
-    header_up X-Real-IP         {http.request.header.CF-Connecting-IP}
+    header_up X-Forwarded-For   {client_ip}
+    header_up X-Real-IP         {client_ip}
     header_up X-Forwarded-Proto https
   }
 }
@@ -221,8 +229,8 @@ preview-metrics.shopgoldplus.com {
 
   reverse_proxy sgtm-preview:8080 {
     header_up Host              {host}
-    header_up X-Forwarded-For   {http.request.header.CF-Connecting-IP}
-    header_up X-Real-IP         {http.request.header.CF-Connecting-IP}
+    header_up X-Forwarded-For   {client_ip}
+    header_up X-Real-IP         {client_ip}
     header_up X-Forwarded-Proto https
   }
 }

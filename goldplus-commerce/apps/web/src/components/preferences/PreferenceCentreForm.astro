@@ -23,8 +23,8 @@ const { preferences } = Astro.props;
     <ConsentToggle 
       id="consent_analytics" 
       name="consent.analytics" 
-      label="Measurement & Analytics" 
-      description="Help us improve by allowing anonymous usage tracking." 
+      label="Analytics cookies in your browser" 
+      description="Lets Google Analytics store cookies on this device. GoldPlus always keeps a server-side record of visits and orders (including your IP address and browser) to run the shop and personalise it; switching this off stops the cookies, not that record." 
       checked={preferences.consent?.analytics ?? true} 
     />
     <ConsentToggle 

@@ -222,12 +222,11 @@ export class TelemetryDispatchService {
     // Both paths (the queue worker and the batch sweep) arrive here; the
     // worker passes the raw row payload, which production double-encodes.
     const event = decodeTelemetryPayload(raw);
-    // Browser events reach GA4 through the web container (gtm.js -> tagging
-    // server -> GA4) with the visitor's own cookies, IP and consent state.
-    // Re-sending the API's copy from here would count every one of them twice.
-    // The API's copy stays in our first-party record; only server-origin
-    // events (a confirmed purchase: no browser is present) are sent from here.
-    if (event.source === 'browser') return;
+    // Every ecommerce event goes to GA4 from HERE, server-side (owner decision
+    // 2026-09-19): the browser only beacons it to our own API, which survives
+    // ad blockers and does not depend on browser cookies. The web container no
+    // longer sends ecommerce events (its GA4 event tag is paused), so nothing
+    // is counted twice; it still sends page views.
 
     const measurementId = (env.ga4MeasurementId ?? '').trim();
     if (!/^G-[A-Z0-9]+$/.test(measurementId)) throw new Error('GTM_NOT_CONFIGURED: GA4_MEASUREMENT_ID is not set; server-side measurement is not configured.');

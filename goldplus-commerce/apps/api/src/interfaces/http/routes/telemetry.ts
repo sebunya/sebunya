@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { BrowserTelemetryEventSchema } from '@goldplus/shared';
+import { BrowserTelemetryEventSchema, gaSessionFromCookieHeader } from '@goldplus/shared';
 import { botDetectionMiddleware } from '../middleware/botDetection';
 import { logger } from '../../../infrastructure/logging/logger';
 import { TrackBrowserTelemetryEventUseCase } from '../../../application/use-cases/telemetry/TrackBrowserTelemetryEventUseCase';
@@ -39,7 +39,7 @@ routes.post('/collect', botDetectionMiddleware, async (c) => {
   const realUa = c.req.header('user-agent') || '';
 
   try {
-    await trackUseCase.execute(parsed.data, realIp, realUa);
+    await trackUseCase.execute(parsed.data, realIp, realUa, gaSessionFromCookieHeader(c.req.header('cookie')));
     return c.json({ success: true, event_id: parsed.data.event_id }, 202);
   } catch (err) {
     logger.error({ err, eventId: parsed.data.event_id }, '[Telemetry] Enqueue failed');
@@ -84,7 +84,7 @@ routes.post('/collect/batch', botDetectionMiddleware, async (c) => {
     }
 
     try {
-      await trackUseCase.execute(parsed.data, realIp, realUa);
+      await trackUseCase.execute(parsed.data, realIp, realUa, gaSessionFromCookieHeader(c.req.header('cookie')));
       results.push({ event_id: parsed.data.event_id, ok: true });
     } catch (err) {
       logger.error({ err, eventId: parsed.data.event_id }, '[Telemetry] Batch enqueue failed');

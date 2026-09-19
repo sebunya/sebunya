@@ -373,9 +373,13 @@ describe('the edge strips forgeable identity headers', () => {
     }
   });
 
+  // {client_ip}, not {remote_host} (2026-09-19): {remote_host} was always a
+  // Cloudflare edge. {client_ip} is CF-Connecting-IP ONLY when the connection
+  // comes from Cloudflare's published ranges (global trusted_proxies), and the
+  // connecting address otherwise, so a direct caller still cannot forge it.
   it('still overwrites the two headers the API actually reads', () => {
-    expect(apiBlock).toMatch(/header_up X-Real-IP\s+\{remote_host\}/);
-    expect(apiBlock).toMatch(/header_up X-Forwarded-For\s+\{remote_host\}/);
+    expect(apiBlock).toMatch(/header_up X-Real-IP\s+\{client_ip\}/);
+    expect(apiBlock).toMatch(/header_up X-Forwarded-For\s+\{client_ip\}/);
   });
 });
 
