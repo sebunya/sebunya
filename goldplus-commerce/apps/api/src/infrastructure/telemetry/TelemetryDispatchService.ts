@@ -6,7 +6,7 @@ import { logger } from '../logging/logger';
 import { env } from '../../config/env';
 import type { CanonicalTelemetryEvent } from '@goldplus/shared';
 import * as client from 'prom-client';
-import crypto from 'crypto';
+import { ga4CollectHit } from './Ga4CollectHit';
 import { DEAD_LETTER_STATE } from '../../domain/outbox/TerminalState';
 
 const gtmOutboundLatency = new client.Histogram({
@@ -205,7 +205,22 @@ export class TelemetryDispatchService {
    * sGTM validates the payload and fans out to all configured destinations.
    */
   private async dispatch(event: CanonicalTelemetryEvent): Promise<void> {
-    const url = `${env.metricsInternalUrl}/mp/collect`;
+    // Browser events reach GA4 through the web container (gtm.js -> tagging
+    // server -> GA4) with the visitor's own cookies, IP and consent state.
+    // Re-sending the API's copy from here would count every one of them twice.
+    // The API's copy stays in our first-party record; only server-origin
+    // events (a confirmed purchase: no browser is present) are sent from here.
+    if (event.source === 'browser') return;
+
+    const measurementId = (env.ga4MeasurementId ?? '').trim();
+    if (!/^G-[A-Z0-9]+$/.test(measurementId)) throw new Error('GTM_NOT_CONFIGURED: GA4_MEASUREMENT_ID is not set; server-side measurement is not configured.');
+    const hit = ga4CollectHit(event, measurementId);
+    if (!hit) {
+      // No visitor id: sending would invent a visitor. Recorded, not retried.
+      logger.warn({ eventId: event.event_id, eventName: event.event_name }, '[Telemetry] server event has no visitor id; not sent to GA4');
+      return;
+    }
+    const url = `${env.metricsInternalUrl}/g/collect?${hit.toString()}`;
 
     // SSRF Destination Validation Guard
     const parsedUrl = new URL(url);
@@ -218,15 +233,6 @@ export class TelemetryDispatchService {
     }
 
     const start = Date.now();
-    const bodyStr = JSON.stringify(event);
-    // No secret, no signature. Signing with a baked-in default produced a
-    // signature anyone could forge and made an unconfigured integration look
-    // configured, which is exactly the "fake integration" the repo forbids.
-    const hmacSecret = (process.env.GTM_HMAC_SECRET ?? '').trim();
-    if (!hmacSecret) throw new Error('GTM_NOT_CONFIGURED: GTM_HMAC_SECRET is not set; telemetry dispatch is not configured.');
-    const signature = crypto.createHmac('sha256', hmacSecret)
-      .update(bodyStr)
-      .digest('hex');
 
     // Track matching signals
     const ud = event.user_data;
@@ -242,18 +248,13 @@ export class TelemetryDispatchService {
     }
 
     try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type':      'application/json',
-          'X-Telemetry-Source': 'goldplus-api-worker',
-          'X-Event-Id':         event.event_id,
-          'X-Event-Name':       event.event_name,
-          'X-Signature':        signature,
-        },
-        body:   bodyStr,
-        signal: AbortSignal.timeout(10_000), // Hard 10s cap — never blocks the ticker
-      });
+      // Internal network only (never the public host). The customer's own IP
+      // and browser, captured when they checked out, are passed so GA4 geo and
+      // device reports describe the buyer, not our server.
+      const headers: Record<string, string> = { 'X-Telemetry-Source': 'goldplus-api-worker', 'X-Event-Id': event.event_id };
+      if (ud?.user_agent) headers['User-Agent'] = ud.user_agent;
+      if (ud?.ip_address) headers['X-Forwarded-For'] = ud.ip_address;
+      const response = await fetch(url, { method: 'POST', headers, signal: AbortSignal.timeout(10_000) });
 
       const latencySec = (Date.now() - start) / 1000;
       gtmOutboundLatency.observe(latencySec);

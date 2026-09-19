@@ -19,6 +19,9 @@ export interface OrderAttributionInput {
   landingPath?: string | null;
   referrer?: string | null;
   firstAt?: string | Date | null;
+  fpClientId?: string | null;
+  clientIp?: string | null;
+  userAgent?: string | null;
 }
 
 /**
@@ -41,8 +44,16 @@ export class DrizzleOrderAttributionRepository {
         landingPath: clean(input.landingPath, 2000),
         referrer: clean(input.referrer, 2000),
         firstAt: first && !Number.isNaN(first.getTime()) ? first : null,
+        fpClientId: clean(input.fpClientId, 255),
+        clientIp: clean(input.clientIp, 64),
+        userAgent: clean(input.userAgent, 1024),
       })
       .onConflictDoNothing();
+  }
+
+  async getByOrderId(orderId: string) {
+    const rows = await db.select().from(orderAttribution).where(eq(orderAttribution.orderId, orderId)).limit(1);
+    return rows[0] ?? null;
   }
 
   async getByOrderNumber(orderNumber: string) {

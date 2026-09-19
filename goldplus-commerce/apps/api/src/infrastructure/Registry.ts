@@ -1,4 +1,5 @@
 import './logging/appLoggerBinding';
+import { queuePurchaseTelemetry } from './telemetry/PurchaseTelemetry';
 import { createHmac, randomInt as nodeRandomInt } from 'node:crypto';
 import { db } from './db/client';
 import { createAiVisibility } from './ai-visibility/AiVisibilityWiring';
@@ -1923,6 +1924,12 @@ export class Registry {
       },
       recordMeasurement: async ({ verification, trackingId, reference }) => {
         const order = await this.orderRepo.findById(verification.orderId);
+        // GA4 purchase, server-side: the payment is confirmed, so this is a sale.
+        // The visitor comes from checkout (order_attribution). Never throws.
+        if (order) {
+          const visitor = await this.orderAttributionRepo.getByOrderId(order.id).catch(() => null);
+          await queuePurchaseTelemetry({ orderId: order.id, orderNumber: order.orderNumber, valueUgx: verification.amount ?? order.totalUgx, userId: order.userId, visitor, traceId: reference });
+        }
         const mapped = this.pesapalMeasurementMapper.map({
           verifiedPayment: verification,
           trackingId,

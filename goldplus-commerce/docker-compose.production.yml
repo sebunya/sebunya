@@ -181,6 +181,12 @@ services:
       - ZEPTOMAIL_API_BASE_URL=${ZEPTOMAIL_API_BASE_URL}
       - NOTIFICATIONS_PROVIDER_TIMEOUT_MS=${NOTIFICATIONS_PROVIDER_TIMEOUT_MS}
       - METRICS_INTERNAL_URL=${METRICS_INTERNAL_URL:-http://sgtm-production:8080}
+      # Server-side measurement: the GA4 stream server-confirmed purchases are
+      # sent to, and the container config the /health/deep probe keys on.
+      # Without these the API had no way to know measurement was provisioned.
+      - GA4_MEASUREMENT_ID=${GA4_MEASUREMENT_ID:-}
+      - GTM_CONTAINER_CONFIG=${GTM_CONTAINER_CONFIG:-}
+      - PUBLIC_GTM_ID=${PUBLIC_GTM_ID:-}
       # Wave 2B: durable media storage on the shared volume the edge serves. Without
       # this the api wrote uploads into its own ephemeral filesystem (write-only
       # black hole — the original broken-images root cause).
@@ -231,6 +237,10 @@ services:
       dockerfile: Dockerfile.web
       args:
         - PUBLIC_API_BASE_URL=${PUBLIC_API_BASE_URL}
+        # Astro inlines PUBLIC_* at BUILD time: set only at runtime they never
+        # reach the page, and the GTM loader stays off whatever .env says.
+        - PUBLIC_GTM_ID=${PUBLIC_GTM_ID:-}
+        - PUBLIC_METRICS_URL=${PUBLIC_METRICS_URL:-}
     restart: always
     environment:
       - NODE_ENV=production
@@ -337,29 +347,26 @@ services:
     ports:
       - "127.0.0.1:9100:9100"
 
-  # ── Server-side GTM ─────────────────────────────────────────────────────────
-  # Behind the `measurement` profile because the integration is NOT PROVISIONED:
-  # GTM_CONTAINER_CONFIG, PUBLIC_GTM_ID and DNS for metrics.shopgoldplus.com do
-  # not exist. The image exits immediately on an empty CONTAINER_CONFIG, and
-  # `restart: always` turned that into 6,301 restarts in four days — pure churn,
-  # plus a permanent false `degraded` on /health/deep.
-  #
-  # The capability is preserved, not removed. Once the owner supplies the three
-  # inputs, bring it back with:
-  #     docker compose --env-file .env.production -f docker-compose.production.yml \
-  #       --profile measurement up -d sgtm-production sgtm-preview
+  # ── Server-side GTM (provisioned 2026-09-19) ────────────────────────────────
+  # GoldPlus GTM account 6377806000: web container GTM-PS424MV3 (loaded from
+  # https://metrics.shopgoldplus.com/gtm.js via the server's web-container
+  # client), server container GTM-P5VKZN7V (this image), GA4 G-YVV0KLGMQJ.
+  # GTM_CONTAINER_CONFIG is the server container's config string (Admin >
+  # Install Google Tag Manager > Manually provision). The production server
+  # forwards Tag Assistant preview requests to the preview server itself, over
+  # the internal network — so Caddy sends everything to production.
   sgtm-production:
     image: gcr.io/cloud-tagging-10302018/gtm-cloud-image:stable
-    profiles: ["measurement"]
     restart: always
     environment:
       - CONTAINER_CONFIG=${GTM_CONTAINER_CONFIG}
       - RUN_AS_PREVIEW_SERVER=false
-      - PREVIEW_SERVER_URL=https://metrics.shopgoldplus.com
+      - PREVIEW_SERVER_URL=http://sgtm-preview:8080
     ports:
       - "127.0.0.1:8080:8080"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/healthy"]
+      # The image ships node, not curl.
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8080/healthy').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -367,14 +374,13 @@ services:
 
   sgtm-preview:
     image: gcr.io/cloud-tagging-10302018/gtm-cloud-image:stable
-    profiles: ["measurement"]
     restart: always
     environment:
       - CONTAINER_CONFIG=${GTM_CONTAINER_CONFIG}
       - RUN_AS_PREVIEW_SERVER=true
     ports:
       - "127.0.0.1:8081:8080"
-    mem_limit: 512m
+    mem_limit: 256m
 
 volumes:
   media_uploads:

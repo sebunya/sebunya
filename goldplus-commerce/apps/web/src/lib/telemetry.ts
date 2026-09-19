@@ -191,12 +191,8 @@ function flushQueue(): void {
 
   const batch = queue.splice(0, queue.length);
 
-  // Push each to GTM dataLayer immediately (synchronous)
-  for (const { payload } of batch) {
-    if ((window as any).dataLayer) {
-      (window as any).dataLayer.push({ event: payload.event_name, ...payload });
-    }
-  }
+  // dataLayer: already pushed once, in track(). Pushing again here fired every
+  // GTM trigger twice (every view_item/add_to_cart counted double in GA4).
 
   // Batch-beacon all events in one Blob to the API
   // Note: sendBeacon supports up to 64KB per call
@@ -262,19 +258,16 @@ export function track(eventName: EventName, opts: TrackOptions = {}): string {
     page_title:             document.title,
   };
 
-  // Immediate dataLayer push — don't wait for batch flush
-  if ((window as any).dataLayer) {
-    (window as any).dataLayer.push({ event: eventName, event_id: eventId, ...payload });
-  }
+  // Immediate dataLayer push, exactly once. `ecommerce: null` first is GA4's
+  // documented reset: GTM merges dataLayer objects, so without it one event's
+  // items leak into the next event that has none.
+  const dl = ((window as any).dataLayer = (window as any).dataLayer || []);
+  if (payload.ecommerce) dl.push({ ecommerce: null });
+  dl.push({ event: eventName, ...payload });
 
-  // Queue for batched API delivery
-  return new Promise<string>((resolve) => {
-    queue.push({ payload, resolve });
-    scheduleFlush();
-  }) as unknown as string; // Synchronous contract maintained for call sites
-
-  // Note: The actual return value is the eventId above. The Promise wrapping
-  // is internal. We return the eventId synchronously for immediate use.
+  // Queue for batched API delivery (the API keeps its own first-party record).
+  queue.push({ payload, resolve: () => undefined });
+  scheduleFlush();
   return eventId;
 }
 

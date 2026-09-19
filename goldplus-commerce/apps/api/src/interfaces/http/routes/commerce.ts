@@ -1,4 +1,5 @@
 import { Hono, type Context } from 'hono';
+import { queuePurchaseTelemetry } from '../../../infrastructure/telemetry/PurchaseTelemetry';
 import { z } from 'zod';
 import { Registry } from '../../../infrastructure/Registry';
 import { ApiResponse } from '@goldplus/shared';
@@ -107,6 +108,9 @@ const checkoutBodySchema = z.object({
       landingPath: z.string().trim().max(2000).nullish(),
       referrer: z.string().trim().max(2000).nullish(),
       firstAt: z.string().trim().max(40).nullish(),
+      fpClientId: z.string().trim().max(255).nullish(),
+      clientIp: z.string().trim().max(64).nullish(),
+      userAgent: z.string().trim().max(1024).nullish(),
     })
     .nullish(),
 });
@@ -644,6 +648,14 @@ routes.post('/orders/create', async (c) => {
       void registry.orderAttributionRepo
         .record({ orderId: (outcome.order as any).id, orderNumber: (outcome.order as any).orderNumber ?? null, ...body.attribution })
         .catch(() => undefined);
+    }
+
+    // A cash-on-delivery order is a sale when it is placed (there is no payment
+    // to wait for): its GA4 purchase is sent server-side now. Online orders send
+    // theirs when the payment is confirmed. Never on a replay; never blocks.
+    if (outcome.kind !== 'BLOCKED_STOCK' && !outcome.idempotentReplay && (body.paymentMethod ?? 'offline') === 'offline' && (outcome.order as any)?.id) {
+      const o = outcome.order as any;
+      void queuePurchaseTelemetry({ orderId: o.id, orderNumber: o.orderNumber, valueUgx: Number(o.totalUgx) || 0, userId: o.userId ?? null, visitor: body.attribution ?? null, traceId });
     }
 
     if (outcome.kind === 'BLOCKED_STOCK') {

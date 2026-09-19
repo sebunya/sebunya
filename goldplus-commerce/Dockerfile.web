@@ -10,6 +10,11 @@ FROM base AS builder
 # Declare build args
 ARG PUBLIC_API_BASE_URL
 ENV PUBLIC_API_BASE_URL=$PUBLIC_API_BASE_URL
+# GTM web container + first-party tagging server (Astro inlines these at build).
+ARG PUBLIC_GTM_ID
+ENV PUBLIC_GTM_ID=$PUBLIC_GTM_ID
+ARG PUBLIC_METRICS_URL
+ENV PUBLIC_METRICS_URL=$PUBLIC_METRICS_URL
 
 # Copy configuration files
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./

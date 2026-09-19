@@ -354,7 +354,18 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
            ...( (() => { const cc = String(formData.get('couponCode') || '').trim(); return cc ? { couponCode: cc } : {}; })() ),
            ...( (() => { const q = String(formData.get('previewQuoteId') || '').trim(); return /^[0-9a-f-]{36}$/i.test(q) ? { previewQuoteId: q } : {}; })() ),
            // Marketing attribution captured client-side; recorded best-effort, never priced.
-           ...( (() => { try { const a = JSON.parse(String(formData.get('attribution') || 'null')); return a && typeof a === 'object' ? { attribution: a } : {}; } catch { return {}; } })() ),
+           // Plus the visitor as the browser tag knows it (the `_fp_cid` cookie is
+           // GA's client_id) and the buyer's own IP and browser: payment is
+           // confirmed later, server to server, where no browser is present, and
+           // the purchase sent to GA4 then must join THIS visit, not invent one.
+           ...( (() => {
+             let a: Record<string, unknown> = {};
+             try { const p = JSON.parse(String(formData.get('attribution') || 'null')); if (p && typeof p === 'object') a = p; } catch { /* optional */ }
+             const fp = Astro.cookies.get('_fp_cid')?.value;
+             const ip = Astro.request.headers.get('cf-connecting-ip');
+             const ua = Astro.request.headers.get('user-agent');
+             return { attribution: { ...a, ...(fp ? { fpClientId: fp.slice(0, 255) } : {}), ...(ip ? { clientIp: ip.slice(0, 64) } : {}), ...(ua ? { userAgent: ua.slice(0, 1024) } : {}) } };
+           })() ),
         },
         intentToken: activeIntentToken,
         sessionToken: Astro.cookies.get('goldplus_session')?.value ?? null,

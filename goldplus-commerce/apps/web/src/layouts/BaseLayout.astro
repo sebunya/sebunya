@@ -166,6 +166,26 @@ const FONT_LOADER = `(function(){var d=0;function go(){if(d)return;d=1;var l=doc
         so setting the id alone would have shipped a loader aimed at nothing. */}
     {measurement.configured && (
       <script define:vars={{ metricsUrl: measurement.metricsUrl, gtmId: measurement.gtmId }}>
+        // Consent Mode v2 defaults, set BEFORE the container loads. Analytics
+        // follows the site's stated policy (on unless refused; the preference
+        // centre and the API honour a refusal); a browser sending Global
+        // Privacy Control is treated as a refusal. Advertising storage is off:
+        // no advertising destination is connected.
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){ dataLayer.push(arguments); }
+        var gpc = navigator.globalPrivacyControl === true;
+        gtag('consent', 'default', {
+          analytics_storage: gpc ? 'denied' : 'granted',
+          ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied',
+          functionality_storage: 'granted', security_storage: 'granted',
+        });
+        // One visitor id for the browser tag AND the server-sent purchase: GA's
+        // client_id is set to our first-party id (lib/telemetry.ts, same cookie
+        // and format), so a purchase confirmed server-side joins its visit.
+        var m = document.cookie.match(/(?:^|; )_fp_cid=([^;]*)/);
+        var cid = m ? decodeURIComponent(m[1]) : 'fp.' + Date.now() + '.' + (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
+        if (!m) document.cookie = '_fp_cid=' + cid + '; expires=' + new Date(Date.now() + 365 * 864e5).toUTCString() + '; path=/; SameSite=Lax; Secure';
+        dataLayer.push({ fp_client_id: cid });
         (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
         new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
         j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=

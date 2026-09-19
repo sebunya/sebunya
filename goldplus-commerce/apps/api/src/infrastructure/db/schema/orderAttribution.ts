@@ -18,6 +18,10 @@ export const orderAttribution = pgTable(
     landingPath: text('landing_path'),
     referrer: text('referrer'),
     firstAt: timestamp('first_at', { withTimezone: true }),
+    // 0136: the visitor as GA4 knows it, so a server-confirmed purchase joins its visit.
+    fpClientId: varchar('fp_client_id', { length: 255 }),
+    clientIp: varchar('client_ip', { length: 64 }),
+    userAgent: varchar('user_agent', { length: 1024 }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => ({
