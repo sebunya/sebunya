@@ -140,6 +140,17 @@ domains, brand name or aliases change, or a competitor is pinned or unpinned
 (also `POST …/reclassify`), so history is judged by the current rules instead
 of a mix of old and new ones. Audited as `AIV_EVIDENCE_RECLASSIFIED`.
 
+## What "current" means
+
+Every figure, gap, movement and recommendation uses the latest monitoring
+answer per (question, provider) for questions that are **still tracked and
+active**. Pausing or deleting a question removes it from the current state;
+its answers stay in history. Each answer is classified with the project's
+brand, domains and pins as they are at the moment it is recorded;
+re-classification (a background job, `aiv-reclassify`) brings stored answers
+onto the current rules after a change. Alerts close themselves when their
+condition ends.
+
 ## Research vs monitoring
 
 RESEARCH runs ask ad-hoc questions once. They are stored (and browsable in
