@@ -77,6 +77,8 @@ export interface AivRun {
   providers: ProviderId[]; queryIds: string[]; adhocQueries: string[];
   totalTasks: number; succeeded: number; failed: number; skipped: number;
   estimatedUsd: number; actualUsd: number; phase: string | null; error: string | null;
+  /** Decided when requested: over the approval threshold then (four eyes applies). */
+  overThreshold: boolean;
   requestedBy: string | null; actorKind: ActorKind; approvedBy: string | null; actionId: string | null; cancelRequested: boolean;
   createdAt: string; startedAt: string | null; finishedAt: string | null;
 }
@@ -159,6 +161,10 @@ export interface AiVisibilityRepository {
   moveRun(runId: string, from: readonly string[], to: RunStatus, patch?: { approvedBy?: string; phase?: string; error?: string | null; started?: boolean; finished?: boolean }): Promise<boolean>;
   updateRunProgress(runId: string, p: { succeeded: number; failed: number; skipped: number; actualUsd: number; phase: string }): Promise<void>;
   requestCancel(runId: string): Promise<boolean>;
+  /** Why a worker must stop before its next call: cancelled by a person, or ended elsewhere (stale/failed). */
+  runStopReason(runId: string): Promise<'CANCELLED' | 'ENDED' | null>;
+  /** Ends runs nobody moved: AWAITING_APPROVAL past `approvalHours`, QUEUED never picked up past `queuedMinutes`. */
+  expireUnattendedRuns(approvalHours: number, queuedMinutes: number): Promise<Array<{ id: string; projectId: string; from: string }>>;
   /** Marks RUNNING runs with no progress for `minutes` as FAILED (a worker died mid-run). Returns ids. */
   failStaleRuns(minutes: number): Promise<string[]>;
   isCancelRequested(runId: string): Promise<boolean>;

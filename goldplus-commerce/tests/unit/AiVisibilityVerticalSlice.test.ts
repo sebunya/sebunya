@@ -59,7 +59,16 @@ function memoryRepo() {
     getRunById: async (rid: string) => s.runs.find((r) => r.id === rid) ?? null,
     listRuns: async (pid: string, _l: number, _o: number, kind?: string) => { const rows = s.runs.filter((r) => r.projectId === pid && (!kind || r.kind === kind)).reverse(); return { rows, total: rows.length, limit: 20, offset: 0 }; },
     moveRun: async (rid: string, from: string[], to: string, p: any = {}) => { const r = s.runs.find((x) => x.id === rid); if (!r || !from.includes(r.status)) return false; r.status = to; if (p.error !== undefined) r.error = p.error; if (p.approvedBy) r.approvedBy = p.approvedBy; if (p.finished) r.finishedAt = now(); return true; },
-    updateRunProgress: async (rid: string, p: any) => Object.assign(s.runs.find((r) => r.id === rid), p),
+    updateRunProgress: async (rid: string, p: any) => { const r = s.runs.find((x) => x.id === rid); if (r?.status === 'RUNNING') Object.assign(r, p); },
+    runStopReason: async (rid: string) => { const r = s.runs.find((x) => x.id === rid); if (!r || r.status !== 'RUNNING') return 'ENDED'; return r.cancelRequested ? 'CANCELLED' : null; },
+    expireUnattendedRuns: async (hours: number, mins: number) => {
+      const out: any[] = [];
+      for (const r of s.runs) {
+        const age = Date.now() - new Date(r.createdAt).getTime();
+        if ((r.status === 'AWAITING_APPROVAL' && age > hours * 3_600_000) || (r.status === 'QUEUED' && age > mins * 60_000)) { out.push({ id: r.id, projectId: r.projectId, from: r.status }); r.status = r.status === 'AWAITING_APPROVAL' ? 'REJECTED' : 'FAILED'; }
+      }
+      return out;
+    },
     requestCancel: async () => true,
     isCancelRequested: async (rid: string) => { const r = s.runs.find((x) => x.id === rid); return !r || !!r.cancelRequested || r.status !== 'RUNNING'; },
     failStaleRuns: async () => [],
@@ -389,9 +398,45 @@ describe('AI visibility — first vertical slice', () => {
     providers.OPENAI = fake('OPENAI', () => { calls += 1; if (calls === 2) repo.s.runs.find((r) => r.id === (big as any).value.run.id).status = 'FAILED'; return { text: 'x', cites: [] }; });
     expect((await runs.execute((big as any).value.run.id)).status).toBe('ENDED_ELSEWHERE');
     expect(calls).toBe(2);
+    // ...and writes nothing more: no "cancelled" skips, no progress over the FAILED record.
+    expect(repo.s.obs.filter((o) => o.runId === (big as any).value.run.id && o.status === 'SKIPPED')).toHaveLength(0);
     // A provider test is refused once it would break the daily limit.
     await setup.updateProject(user, pid, { budget: { maxDailySpendUsd: 0.01 } });
     expect(await setup.testProvider(user, pid, 'OPENAI')).toMatchObject({ ok: false, code: 'BUDGET' });
+  });
+
+  it('second review: threshold is fixed at request; stuck runs expire; a measurement action completes after approval', async () => {
+    const { setup, runs, actions } = build();
+    const pid = ((await setup.createProject(user, { name: 'G', domains: 'g.com' })) as any).value.id;
+    for (let i = 0; i < 30; i++) await setup.createQuery(user, pid, { text: `question number ${i}` });
+    await setup.setCredential(user, pid, 'OPENAI', 'sk-a');
+    await setup.updateProvider(user, pid, 'OPENAI', { enabled: true, estUsdPerCall: 0.05 });
+    // Over threshold ($1.50 > $1). Raising the threshold afterwards does not let the requester approve.
+    const big = (await runs.start(user, pid, {}) as any).value.run;
+    expect(big.status).toBe('AWAITING_APPROVAL');
+    await setup.updateProject(user, pid, { budget: { approvalAboveUsd: 100 } });
+    expect(await runs.approve(user, pid, big.id)).toMatchObject({ ok: false, code: 'FORBIDDEN' });
+    // Nobody else approves: after a day it is closed, the project is free, an alert says why.
+    repo.s.runs.find((r) => r.id === big.id).createdAt = new Date(Date.now() - 25 * 3_600_000).toISOString();
+    expect(await runs.expireUnattended()).toBe(1);
+    expect(repo.s.runs.find((r) => r.id === big.id).status).toBe('REJECTED');
+    expect(alerts.rows.some((a: any) => a.kind === 'AIV_RUN_EXPIRED')).toBe(true);
+    // A queue that throws does not leave a QUEUED run blocking the project.
+    await setup.updateProject(user, pid, { budget: { approvalAboveUsd: 1 } });
+    const q2 = new AiVisibilityRunUseCases(repo, audit, providers, cipher, { enqueueRun: async () => { throw new Error('redis down'); } }, logger, alerts, async () => undefined);
+    const r2 = (await q2.start(user, pid, { queryIds: [repo.s.queries.find((q: any) => q.projectId === pid).id] }) as any).value.run;
+    expect(repo.s.runs.find((r) => r.id === r2.id).status).toBe('FAILED');
+    // Measurement action: first press waits for approval; after someone else approves, pressing again completes it.
+    const act = (await actions.propose(user, pid, { category: 'MEASUREMENT_RUN', title: 'Measure all questions', reason: 'baseline before the FAQ change' }) as any).value;
+    await actions.submit(user, pid, act.id);
+    await actions.approve(other, pid, act.id);
+    const first = await actions.execute(user, pid, act.id, { __runPermission: true });
+    expect(first).toMatchObject({ ok: false, code: 'CONFLICT' });
+    const linked = repo.s.runs.find((r) => r.idempotencyKey === `action:${act.id}`);
+    expect((await runs.approve(other, pid, linked.id)).ok).toBe(true);
+    const second = await actions.execute(user, pid, act.id, { __runPermission: true });
+    expect(second.ok).toBe(true);
+    expect(repo.s.runs.filter((r) => r.actionId === act.id)).toHaveLength(1);
   });
 
   it('with no provider configured the run is refused as not configured, never simulated', async () => {

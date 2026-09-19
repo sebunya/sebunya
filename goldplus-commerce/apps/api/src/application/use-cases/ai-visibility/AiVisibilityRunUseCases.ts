@@ -99,6 +99,8 @@ export class AiVisibilityRunUseCases {
       projectId: project.id, kind, status: needsApproval ? 'AWAITING_APPROVAL' : 'QUEUED', idempotencyKey: key,
       providers, queryIds, adhocQueries: adhoc, totalTasks: queryCount * providers.length,
       estimatedUsd: decision.estimatedUsd, requestedBy: actor.id, actorKind: actor.kind, actionId: input.actionId ?? null,
+      // Fixed now: raising the threshold later must not let the requester approve their own run.
+      overThreshold: decision.requiresApproval,
     });
     await this.audit.execute({ actorId: actor.id, action: 'AIV_RUN_REQUESTED', entity: 'aiv_run', entityId: run.id, newState: { kind, providers, queryCount, estimatedUsd: decision.estimatedUsd, status: run.status, actorKind: actor.kind } });
     if (!needsApproval) await this.dispatch(run);
@@ -106,7 +108,8 @@ export class AiVisibilityRunUseCases {
   }
 
   private async dispatch(run: AivRun) {
-    const queued = await this.queue.enqueueRun(run.id);
+    // A throwing queue (Redis down) must not leave a QUEUED run that blocks the project.
+    const queued = await this.queue.enqueueRun(run.id).catch((e: Error) => { this.logger.error({ runId: run.id, err: e.message }, 'aiv enqueue failed'); return false; });
     if (!queued) await this.repo.moveRun(run.id, ['QUEUED'], 'FAILED', { error: 'The background queue is unavailable; the run was not started.', finished: true });
   }
 
@@ -120,8 +123,8 @@ export class AiVisibilityRunUseCases {
     // spend threshold, the requester (or the person whose schedule asked) never
     // approves. Under it, a machine-origin run only needs a human confirmation,
     // which that same person may give.
-    const overThreshold = run.estimatedUsd > project.budget.approvalAboveUsd;
-    if (overThreshold && run.requestedBy && run.requestedBy === actor.id) return fail('FORBIDDEN', 'Someone other than the requester must approve a run over the approval threshold.');
+    // Decided when the run was requested (stored on the run), never from today's threshold.
+    if (run.overThreshold && run.requestedBy && run.requestedBy === actor.id) return fail('FORBIDDEN', 'Someone other than the requester must approve a run over the approval threshold.');
     // Budget is re-checked at approval time: spend may have moved since the request.
     const spent = await this.repo.spendToDate(projectId);
     if (spent.todayUsd + run.estimatedUsd > project.budget.maxDailySpendUsd || spent.monthUsd + run.estimatedUsd > project.budget.maxMonthlySpendUsd) {
@@ -158,6 +161,9 @@ export class AiVisibilityRunUseCases {
 
   /** Worker entry point. Safe to call twice: only a QUEUED run is claimed. */
   async execute(runId: string): Promise<{ status: string }> {
+    // Only QUEUED is claimed. A stalled-job redelivery of a RUNNING run is not
+    // resumed: the stale reaper ends it after 20 minutes without a heartbeat,
+    // which frees the project for the next run (answers already stored stay).
     if (!(await this.repo.moveRun(runId, ['QUEUED'], 'RUNNING', { started: true, phase: 'Asking providers' }))) return { status: 'NOT_CLAIMED' };
     const run = (await this.repo.getRunById(runId)) as AivRun;
     try {
@@ -193,7 +199,9 @@ export class AiVisibilityRunUseCases {
           };
           if (!cfg || !secret || !this.cipher || !cfg.enabled) { await skip('Provider was disabled or lost its key after the run was planned.'); continue; }
           if (providerStop) { await skip(providerStop); continue; }
-          if (await this.repo.isCancelRequested(run.id)) { await skip('Run cancelled.'); continue; }
+          const stop = await this.repo.runStopReason(run.id);
+          if (stop === 'ENDED') return; // marked failed/stale elsewhere: write nothing more
+          if (stop === 'CANCELLED') { await skip('Run cancelled.'); continue; }
           // Spend is re-read before EVERY call: recorded costs include this run's
           // answers so far and any other run spending at the same time (a
           // monitoring and a research run together). A snapshot taken at the
@@ -310,6 +318,22 @@ export class AiVisibilityRunUseCases {
     }
   }
 
+  /**
+   * Ends runs nobody moved, so one forgotten request never blocks a project:
+   * AWAITING_APPROVAL for a day (nobody else was there to approve it) and
+   * QUEUED for an hour (the queue lost it). Each is audited and alerted.
+   */
+  async expireUnattended(): Promise<number> {
+    const ended = await this.repo.expireUnattendedRuns(24, 60);
+    for (const r of ended) {
+      await this.audit.execute({ actorId: null, action: 'AIV_RUN_EXPIRED', entity: 'aiv_run', entityId: r.id, newState: { from: r.from, actorKind: 'SCHEDULER' } });
+      await this.alerts?.raise({ severity: 'INFO', kind: 'AIV_RUN_EXPIRED', message: r.from === 'AWAITING_APPROVAL'
+        ? `AI Search run ${r.id} waited 24 hours for approval and was closed. Over the approval threshold a second person must approve; lower the estimate or raise the threshold if you work alone.`
+        : `AI Search run ${r.id} was queued for an hour without starting and was closed; the background queue may be down.`, dedupeKey: `AIV_RUN_EXPIRED:${r.projectId}` }).catch(() => undefined);
+    }
+    return ended.length;
+  }
+
   /** Hourly tick: start the monitoring run of every project whose schedule is due. */
   async runSchedules(): Promise<{ started: number; refused: number }> {
     let started = 0, refused = 0;
@@ -322,7 +346,7 @@ export class AiVisibilityRunUseCases {
       else {
         refused += 1;
         this.logger.warn({ projectId: p.id, code: r.code, reason: r.message }, 'aiv scheduled run not started');
-        if (r.code === 'BUDGET' || r.code === 'NOT_CONFIGURED') {
+        if (r.code === 'BUDGET' || r.code === 'NOT_CONFIGURED' || r.code === 'CONFLICT') {
           await this.alerts?.raise({ severity: 'INFO', kind: 'AIV_SCHEDULE_SKIPPED', message: `Scheduled AI Search run not started: ${r.message}`, dedupeKey: `AIV_SCHEDULE_SKIPPED:${p.id}` }).catch(() => undefined);
         }
       }
@@ -331,5 +355,6 @@ export class AiVisibilityRunUseCases {
   }
 
   getRun(projectId: string, runId: string) { return this.repo.getRun(projectId, runId); }
+  findByKey(projectId: string, key: string) { return this.repo.findRunByIdempotencyKey(projectId, key); }
   listRuns(projectId: string, limit: number, offset: number, kind?: AivRun['kind']) { return this.repo.listRuns(projectId, limit, offset, kind); }
 }

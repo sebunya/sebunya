@@ -946,6 +946,13 @@
       "when": 1790000000000,
       "tag": "0134_ai_visibility_run_heartbeat",
       "breakpoints": true
+    },
+    {
+      "idx": 135,
+      "version": "5",
+      "when": 1790080000000,
+      "tag": "0135_ai_visibility_run_over_threshold",
+      "breakpoints": true
     }
   ]
 }

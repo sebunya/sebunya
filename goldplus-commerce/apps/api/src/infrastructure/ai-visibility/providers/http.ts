@@ -13,16 +13,19 @@ export async function postJson(url: string, headers: Record<string, string>, bod
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   const started = Date.now();
   let res: Response;
+  let text: string;
+  // The timer covers the whole exchange, body included: a server that sends
+  // headers and then stalls must not hold a worker past the timeout.
   try {
     res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body), signal: ctrl.signal });
+    text = await res.text();
   } catch (err) {
-    clearTimeout(t);
-    if ((err as { name?: string })?.name === 'AbortError') throw new ProviderCallError(`No answer within ${Math.round(timeoutMs / 1000)}s.`, null, 'TIMEOUT');
+    if ((err as { name?: string })?.name === 'AbortError' || ctrl.signal.aborted) throw new ProviderCallError(`No answer within ${Math.round(timeoutMs / 1000)}s.`, null, 'TIMEOUT');
     throw new ProviderCallError('The provider could not be reached.', null, 'NETWORK');
+  } finally {
+    clearTimeout(t);
   }
-  clearTimeout(t);
   const latencyMs = Date.now() - started;
-  const text = await res.text();
   let json: unknown = null;
   try { json = text ? JSON.parse(text) : null; } catch { json = null; }
   if (!res.ok) {

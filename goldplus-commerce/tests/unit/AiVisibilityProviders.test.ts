@@ -105,3 +105,17 @@ describe('Perplexity Sonar', () => {
     expect(a.costUsd).toBe(0.006);
   });
 });
+
+describe('provider transport timeout', () => {
+  it('covers the body, not just the headers: a stalled body is a TIMEOUT', async () => {
+    const { postJson } = await import('../../apps/api/src/infrastructure/ai-visibility/providers/http');
+    const orig = globalThis.fetch;
+    globalThis.fetch = (async (_u: unknown, init: { signal: AbortSignal }) => ({
+      ok: true, status: 200,
+      text: () => new Promise((_r, rej) => init.signal.addEventListener('abort', () => rej(Object.assign(new Error('aborted'), { name: 'AbortError' })))),
+    })) as any;
+    try {
+      await expect(postJson('https://api.example.com', {}, {}, 30)).rejects.toMatchObject({ code: 'TIMEOUT' });
+    } finally { globalThis.fetch = orig; }
+  });
+});

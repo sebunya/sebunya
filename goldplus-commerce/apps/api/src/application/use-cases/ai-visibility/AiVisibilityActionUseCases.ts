@@ -1,4 +1,4 @@
-import type { AiVisibilityRepository, AivAction } from '../../ports/AiVisibility';
+import type { AiVisibilityRepository, AivAction, AivRun } from '../../ports/AiVisibility';
 import type { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
 import { canMove, mayApprove, mayExecute, RISK_OF, verificationVerdict, type ActionCategory, type ActionStatus } from '../../../domain/ai-visibility/Actions';
 import { fail, ok, type Actor, type Result } from './AiVisibilitySetupUseCases';
@@ -112,11 +112,26 @@ export class AiVisibilityActionUseCases {
       // counts as done — an existing identical run, or one still waiting for
       // approval, is not this action's measurement.
       if (!body.__runPermission) return fail('FORBIDDEN', 'Starting a measurement run needs the AI Search run permission; use the "Start the run" button.');
-      const r = await this.runs.start(actor, projectId, { kind: 'MONITOR', queryIds: a.queryIds.length ? a.queryIds : undefined, actionId: a.id, idempotencyKey: `action:${a.id}` });
-      if (!r.ok) return r as Result<AivAction>;
-      if (!r.value.created) return fail('CONFLICT', `This action's run was already started (${r.value.run.id}).`);
-      if (r.value.run.status === 'AWAITING_APPROVAL') return fail('CONFLICT', `Run ${r.value.run.id} is waiting for approval (over the spend threshold); approve it under Runs, and the action stays approved until then.`);
-      result = `Run ${r.value.run.id} ${r.value.run.status.toLowerCase().replace('_', ' ')}.`;
+      // One key per attempt: the action's latest run decides what pressing the
+      // button again does. Waiting for approval -> say so; approved/going/done
+      // -> that run IS the measurement (complete the action); rejected,
+      // cancelled or failed -> a fresh attempt with a new key.
+      let attempt = 1;
+      let prior: AivRun | null = null;
+      for (; attempt <= 50; attempt++) {
+        const found = await this.runs.findByKey(projectId, attempt === 1 ? `action:${a.id}` : `action:${a.id}:${attempt}`);
+        if (!found) break;
+        prior = found;
+      }
+      let runRef = prior;
+      if (prior && prior.status === 'AWAITING_APPROVAL') return fail('CONFLICT', `Run ${prior.id} is waiting for approval (over the spend threshold). Once someone else approves it under Runs, press "Start the run" again to record it here.`);
+      if (!prior || ['REJECTED', 'CANCELLED', 'FAILED'].includes(prior.status)) {
+        const r = await this.runs.start(actor, projectId, { kind: 'MONITOR', queryIds: a.queryIds.length ? a.queryIds : undefined, actionId: a.id, idempotencyKey: attempt === 1 ? `action:${a.id}` : `action:${a.id}:${attempt}` });
+        if (!r.ok) return r as Result<AivAction>;
+        if (r.value.run.status === 'AWAITING_APPROVAL') return fail('CONFLICT', `Run ${r.value.run.id} is waiting for approval (over the spend threshold). Once someone else approves it under Runs, press "Start the run" again to record it here.`);
+        runRef = r.value.run;
+      }
+      result = `Run ${runRef!.id} ${runRef!.status.toLowerCase().replace('_', ' ')}.`;
     } else if (result.length < 5) {
       return fail('BAD_INPUT', 'Say what was done (and where), so the history is useful.');
     }

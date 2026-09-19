@@ -21,7 +21,8 @@ export function registerAllWorkers(): void {
   }
 
   // AI visibility (0131): a run left RUNNING by a crashed or restarted worker
-  // would block new runs forever. Two hours is far beyond any real run.
+  // would block new runs forever. Dead = 20 minutes without a heartbeat
+  // (one provider call takes at most ~5 minutes; every call beats).
   void Registry.getInstance().aiVisibility.repo.failStaleRuns(20)
     .then((ids) => { if (ids.length) logger.warn({ runIds: ids }, '[QueueWorker] marked stale AI visibility runs FAILED'); })
     .catch(() => undefined);
@@ -210,12 +211,15 @@ export function registerAllWorkers(): void {
       } else if (job.name === 'aiv-schedule-tick') {
         // AI Search schedules (0132): starts due MONITOR runs. A schedule is
         // OFF until a person turns it on; budget and approval rules still apply.
-        const outcome = await registry.aiVisibility.runs.runSchedules();
-        if (outcome.started || outcome.refused) logger.info(outcome, '[QueueWorker] AI visibility schedule tick');
-        // Also hourly: a run left RUNNING by a worker that died would otherwise
-        // block every new run until the next restart.
+        // First free the projects: a run left RUNNING by a dead worker, one
+        // nobody approved within a day, or one the queue lost would otherwise
+        // block every new run (including this tick's).
         const stale = await registry.aiVisibility.repo.failStaleRuns(20);
         if (stale.length) logger.warn({ runIds: stale }, '[QueueWorker] marked stale AI visibility runs FAILED');
+        const expired = await registry.aiVisibility.runs.expireUnattended();
+        if (expired) logger.warn({ expired }, '[QueueWorker] closed unattended AI visibility runs');
+        const outcome = await registry.aiVisibility.runs.runSchedules();
+        if (outcome.started || outcome.refused) logger.info(outcome, '[QueueWorker] AI visibility schedule tick');
       } else if (job.name === 'seo-crawl') {
         // Organic Growth OS: first-party technical crawl. The use case enforces
         // the SSRF host allowlist, page/depth/time limits and cancellation

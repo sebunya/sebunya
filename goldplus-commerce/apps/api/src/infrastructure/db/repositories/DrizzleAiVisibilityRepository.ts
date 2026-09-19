@@ -42,7 +42,7 @@ const run = (r: any): AivRun => ({
   id: r.id, projectId: r.project_id, kind: r.kind, status: r.status, idempotencyKey: r.idempotency_key, providers: arr(r.providers) as ProviderId[],
   queryIds: arr(r.query_ids), adhocQueries: arr(r.adhoc_queries), totalTasks: n(r.total_tasks), succeeded: n(r.succeeded), failed: n(r.failed), skipped: n(r.skipped),
   estimatedUsd: n(r.estimated_usd), actualUsd: n(r.actual_usd), phase: r.phase, error: r.error, requestedBy: r.requested_by, actorKind: r.actor_kind,
-  approvedBy: r.approved_by, actionId: r.action_id, cancelRequested: !!r.cancel_requested, createdAt: iso(r.created_at) as string, startedAt: iso(r.started_at), finishedAt: iso(r.finished_at),
+  approvedBy: r.approved_by, actionId: r.action_id, overThreshold: r.over_threshold !== false, cancelRequested: !!r.cancel_requested, createdAt: iso(r.created_at) as string, startedAt: iso(r.started_at), finishedAt: iso(r.finished_at),
 });
 const obs = (r: any): AivObservationRow => ({
   id: r.id, runId: r.run_id, runKind: r.run_kind, queryId: r.query_id, queryText: r.query_text, provider: r.provider, model: r.model, status: r.status,
@@ -232,6 +232,10 @@ export class DrizzleAiVisibilityRepository implements AiVisibilityRepository {
   }
   async replaceClassification(o: Parameters<AiVisibilityRepository['replaceClassification']>[0]) {
     return db.transaction(async (tx) => {
+      // Row lock first: two re-classification passes over the same answer
+      // (overlapping jobs) otherwise both delete-then-insert and double its
+      // citations and mentions. The second waits and rewrites cleanly.
+      await tx.execute(sql`select id from aiv_observations where id = ${o.observationId}::uuid for update`);
       // A re-read that changes the reading keeps the previous one in the
       // answer's own history: nothing a parser once read is lost silently.
       let readingChanged = false;
@@ -283,9 +287,9 @@ export class DrizzleAiVisibilityRepository implements AiVisibilityRepository {
   }
   async createRun(i: Parameters<AiVisibilityRepository['createRun']>[0]) {
     const r = rowsOf(await db.execute(sql`
-      insert into aiv_runs (project_id, kind, status, idempotency_key, providers, query_ids, adhoc_queries, total_tasks, estimated_usd, requested_by, actor_kind, action_id)
+      insert into aiv_runs (project_id, kind, status, idempotency_key, providers, query_ids, adhoc_queries, total_tasks, estimated_usd, requested_by, actor_kind, action_id, over_threshold)
       values (${i.projectId}::uuid, ${i.kind}, ${i.status}, ${i.idempotencyKey}, ${pgJsonb(i.providers)}, ${pgJsonb(i.queryIds)}, ${pgJsonb(i.adhocQueries)}, ${i.totalTasks}, ${i.estimatedUsd},
-        ${i.requestedBy && UUID.test(i.requestedBy) ? sql`${i.requestedBy}::uuid` : sql`null`}, ${i.actorKind}, ${i.actionId && UUID.test(i.actionId) ? sql`${i.actionId}::uuid` : sql`null`})
+        ${i.requestedBy && UUID.test(i.requestedBy) ? sql`${i.requestedBy}::uuid` : sql`null`}, ${i.actorKind}, ${i.actionId && UUID.test(i.actionId) ? sql`${i.actionId}::uuid` : sql`null`}, ${i.overThreshold})
       on conflict (project_id, idempotency_key) do nothing
       returning *`))[0];
     // Two identical requests in the same instant: the second gets the first's run, not a 500.
@@ -324,7 +328,7 @@ export class DrizzleAiVisibilityRepository implements AiVisibilityRepository {
     return r.length > 0;
   }
   async updateRunProgress(runId: string, p: { succeeded: number; failed: number; skipped: number; actualUsd: number; phase: string }) {
-    await db.execute(sql`update aiv_runs set succeeded = ${p.succeeded}, failed = ${p.failed}, skipped = ${p.skipped}, actual_usd = ${p.actualUsd}, phase = ${p.phase}, heartbeat_at = now() where id = ${runId}::uuid`);
+    await db.execute(sql`update aiv_runs set succeeded = ${p.succeeded}, failed = ${p.failed}, skipped = ${p.skipped}, actual_usd = ${p.actualUsd}, phase = ${p.phase}, heartbeat_at = now() where id = ${runId}::uuid and status = 'RUNNING'`);
   }
   async requestCancel(runId: string) {
     const r = rowsOf(await db.execute(sql`update aiv_runs set cancel_requested = true where id = ${runId}::uuid and status = 'RUNNING' returning id`));
@@ -339,6 +343,22 @@ export class DrizzleAiVisibilityRepository implements AiVisibilityRepository {
       where status = 'RUNNING' and coalesce(heartbeat_at, started_at, created_at) < now() - make_interval(mins => ${Math.max(5, Math.trunc(minutes))})
       returning id`));
     return r.map((x) => String(x.id));
+  }
+  async runStopReason(runId: string) {
+    const r = rowsOf(await db.execute(sql`select cancel_requested, status from aiv_runs where id = ${runId}::uuid`))[0];
+    if (!r || r.status !== 'RUNNING') return 'ENDED' as const;
+    return r.cancel_requested ? ('CANCELLED' as const) : null;
+  }
+  async expireUnattendedRuns(approvalHours: number, queuedMinutes: number) {
+    const r = rowsOf(await db.execute(sql`
+      update aiv_runs set status = case when status = 'AWAITING_APPROVAL' then 'REJECTED' else 'FAILED' end,
+        finished_at = now(), phase = 'Closed',
+        error = case when status = 'AWAITING_APPROVAL' then 'Nobody approved this run within ' || ${Math.trunc(approvalHours)}::int || ' hours.'
+                     else 'The run was queued but never started (the background queue lost it).' end
+      where (status = 'AWAITING_APPROVAL' and created_at < now() - make_interval(hours => ${Math.max(1, Math.trunc(approvalHours))}))
+         or (status = 'QUEUED' and coalesce(approved_at, created_at) < now() - make_interval(mins => ${Math.max(10, Math.trunc(queuedMinutes))}))
+      returning id, project_id, (case when phase = 'Closed' and error like 'Nobody%' then 'AWAITING_APPROVAL' else 'QUEUED' end) as from_status`));
+    return r.map((x) => ({ id: String(x.id), projectId: String(x.project_id), from: String(x.from_status) }));
   }
   async isCancelRequested(runId: string) {
     // "Stop" also when the run is no longer RUNNING (e.g. marked FAILED as
