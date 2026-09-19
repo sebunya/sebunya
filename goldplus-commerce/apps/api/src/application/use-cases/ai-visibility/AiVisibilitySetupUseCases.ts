@@ -1,4 +1,4 @@
-import type { AiAnswerProvider, AiVisibilityRepository, AivProject, AivQuery, CredentialCipher } from '../../ports/AiVisibility';
+import type { AiAnswerProvider, AiVisibilityRepository, AivProject, AivQuery, CredentialCipher, RunQueue } from '../../ports/AiVisibility';
 import type { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
 import type { ProviderId } from '../../../domain/ai-visibility/Evidence';
 import { normalizeHost } from '../../../domain/ai-visibility/Domains';
@@ -32,7 +32,14 @@ export class AiVisibilitySetupUseCases {
     private readonly audit: CreateAuditLogUseCase,
     private readonly providers: Record<ProviderId, AiAnswerProvider>,
     private readonly cipher: CredentialCipher | null,
+    private readonly queue: RunQueue | null = null,
   ) {}
+
+  /** Re-classification in the background when a queue exists (it can touch every stored answer); inline otherwise. */
+  private async requestReclassify(actor: Actor, projectId: string) {
+    if (this.queue?.enqueueReclassify && (await this.queue.enqueueReclassify(projectId).catch(() => false))) return;
+    await this.reclassify(actor, projectId);
+  }
 
   private async log(actor: Actor, action: string, entity: string, entityId: string, newState: Record<string, unknown>, previousState?: Record<string, unknown> | null) {
     await this.audit.execute({ actorId: actor.id, action, entity, entityId, previousState: previousState ?? null, newState: { ...newState, actorKind: actor.kind } });
@@ -102,7 +109,7 @@ export class AiVisibilitySetupUseCases {
     await this.log(actor, 'AIV_PROJECT_UPDATED', 'aiv_project', projectId, { ...(patch as Record<string, unknown>), ...(schedule ? { schedule: schedule.monitor } : {}) }, { domains: before.domains, budget: before.budget, schedule: before.schedule.monitor });
     const same = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
     if (!same(before.domains, after.domains) || before.brandName !== after.brandName || !same(before.brandAliases, after.brandAliases)) {
-      await this.reclassify(actor, after.id);
+      await this.requestReclassify(actor, after.id);
     }
     return ok(after);
   }
@@ -126,7 +133,7 @@ export class AiVisibilitySetupUseCases {
       await this.repo.unpinCompetitor(projectId, competitorId);
     }
     await this.log(actor, pin ? 'AIV_COMPETITOR_PINNED' : 'AIV_COMPETITOR_UNPINNED', 'aiv_project', projectId, { competitorId });
-    await this.reclassify(actor, projectId);
+    await this.requestReclassify(actor, projectId);
     return ok({ pinned: pin });
   }
 

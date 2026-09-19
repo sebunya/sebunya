@@ -154,15 +154,13 @@ export class AiVisibilityRunUseCases {
     const run = (await this.repo.getRunById(runId)) as AivRun;
     try {
       const project = (await this.repo.getProject(run.projectId)) as AivProject;
-      const [configs, competitors, queries] = await Promise.all([
+      const [configs, queries] = await Promise.all([
         this.repo.listProviderConfigs(project.id),
-        this.repo.listPinnedCompetitors(project.id),
         run.queryIds.length ? this.repo.getQueries(project.id, run.queryIds) : Promise.resolve([]),
       ]);
       const tasks: Array<{ queryId: string | null; text: string; location: { country: string; city: string | null } | null }> = run.kind === 'RESEARCH'
         ? run.adhocQueries.map((t) => ({ queryId: null, text: t, location: { country: project.marketCountry, city: project.marketCity } }))
         : queries.map((q) => ({ queryId: q.id, text: q.text, location: { country: q.marketCountry ?? project.marketCountry, city: q.marketCity ?? project.marketCity } }));
-      const ctx = buildEvidenceContext(project, competitors);
       const counts = { succeeded: 0, failed: 0, skipped: 0 };
       let runSpent = 0;
       const policy = project.budget;
@@ -214,7 +212,11 @@ export class AiVisibilityRunUseCases {
               const cost = (answer.costUsd ?? cfg.estUsdPerCall) + possiblyBilled * cfg.estUsdPerCall;
               answer.costUsd = cost;
               answer.rawMetadata = { ...answer.rawMetadata, costBasis: providerReported && possiblyBilled === 0 ? 'PROVIDER_REPORTED' : 'ESTIMATE_PER_CALL', attempts: attempt, possiblyBilledRetries: possiblyBilled };
-              const ev = extractEvidence(answer, ctx);
+              // Classified with the rules as they are NOW, not as they were when the
+              // run started: a domain or pin change mid-run (which re-classifies
+              // stored answers) must not leave this run's answers on the old rules.
+              const liveProject = (await this.repo.getProject(project.id)) ?? project;
+              const ev = extractEvidence(answer, buildEvidenceContext(liveProject, await this.repo.listPinnedCompetitors(project.id)));
               await this.repo.insertObservation({ ...base, status: 'SUCCEEDED', errorCode: null, errorMessage: null, answer,
                 brandMentioned: ev.brandMentioned, ownCited: ev.ownCited, citations: ev.citations, brandMention: ev.brandMention, competitorMentions: ev.competitorMentions });
               runSpent += cost;
@@ -272,8 +274,14 @@ export class AiVisibilityRunUseCases {
       } else if (counts.failed > 0) {
         await this.alerts.raise({ severity: 'INFO', kind: 'AIV_RUN_PARTIAL', message: `AI Search run ${run.id}: ${counts.failed} of ${run.totalTasks} provider calls failed; the other answers were recorded.`, dedupeKey: `AIV_RUN_PARTIAL:${run.projectId}` });
       }
-      const lost = (await this.repo.latestPairs(run.projectId, null))
-        .filter((p) => p.current.runId === run.id && p.previous?.ownCited === true && p.current.ownCited === false);
+      // Close what no longer holds: a clean run ends "failed"/"partial" alerts.
+      if (status === 'COMPLETED' || status === 'PARTIAL') await this.alerts.clear(`AIV_RUN_FAILED:${run.projectId}`);
+      if (status === 'COMPLETED') await this.alerts.clear(`AIV_RUN_PARTIAL:${run.projectId}`);
+      const pairs = await this.repo.latestPairs(run.projectId, null);
+      const lost = pairs.filter((p) => p.current.runId === run.id && p.previous?.ownCited === true && p.current.ownCited === false);
+      // No question currently in a lost state (latest answer uncited after a cited one) -> the alert is over.
+      const stillLost = pairs.some((p) => p.previous?.ownCited === true && p.current.ownCited === false);
+      if (!stillLost) await this.alerts.clear(`AIV_CITATION_LOST:${run.projectId}`);
       if (lost.length > 0) {
         const qs = [...new Set(lost.map((p) => p.queryText))];
         await this.alerts.raise({ severity: 'HIGH', kind: 'AIV_CITATION_LOST', message: `Our site stopped being cited in ${lost.length} answer(s) since the previous run: ${qs.slice(0, 3).map((q) => `"${q}"`).join(', ')}${qs.length > 3 ? '…' : ''}.`, dedupeKey: `AIV_CITATION_LOST:${run.projectId}` });
@@ -291,7 +299,7 @@ export class AiVisibilityRunUseCases {
       await this.repo.markScheduled(p.id);
       const r = await this.start({ id: p.schedule.setBy, kind: 'SCHEDULER' }, p.id, { kind: 'MONITOR' });
       // An identical run already requested this hour is not a new start (and costs nothing more).
-      if (r.ok) { if (r.value.created) started += 1; }
+      if (r.ok) { if (r.value.created) started += 1; await this.alerts?.clear(`AIV_SCHEDULE_SKIPPED:${p.id}`).catch(() => undefined); }
       else {
         refused += 1;
         this.logger.warn({ projectId: p.id, code: r.code, reason: r.message }, 'aiv scheduled run not started');

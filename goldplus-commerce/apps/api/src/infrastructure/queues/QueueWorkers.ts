@@ -184,6 +184,12 @@ export function registerAllWorkers(): void {
   queueService.registerWorker(QUEUES.AI_VISIBILITY, async (job: Job) => {
     const ctx = getContext(job);
     return traceLocalStorage.run(ctx, async () => {
+      if (job.name === 'aiv-reclassify') {
+        const { projectId } = job.data as { projectId: string };
+        const r = await Registry.getInstance().aiVisibility.setup.reclassify({ id: null, kind: 'SYSTEM' }, projectId);
+        logger.info({ projectId, ok: r.ok, answers: r.ok ? r.value.answers : 0 }, '[QueueWorker] AI visibility re-classification');
+        return;
+      }
       if (job.name !== 'aiv-run') return;
       const { runId } = job.data as { runId: string };
       const outcome = await Registry.getInstance().aiVisibility.runs.execute(runId);

@@ -35,7 +35,7 @@ function memoryRepo() {
     listQueries: async (pid: string, f: any) => { const rows = s.queries.filter((q) => q.projectId === pid && (f.active === undefined || q.active === f.active)); return { rows, total: rows.length, limit: f.limit, offset: 0 }; },
     getQueries: async (pid: string, ids: string[]) => s.queries.filter((q) => q.projectId === pid && ids.includes(q.id)),
     createQuery: async (pid: string, q: any) => { if (s.queries.some((x) => x.projectId === pid && x.text.toLowerCase() === q.text.toLowerCase())) return null; const r = { ...q, id: id(), projectId: pid, createdAt: now() }; s.queries.push(r); return r; },
-    updateQuery: async () => null,
+    updateQuery: async (pid: string, qid: string, p: any) => { const q = s.queries.find((x) => x.projectId === pid && x.id === qid); if (!q) return null; Object.assign(q, p); return q; },
     listProviderConfigs: async (pid: string) => s.configs.filter((c) => c.projectId === pid).map((c) => ({ ...c, hasCredential: s.creds.has(`${pid}|${c.provider}`) })),
     getProviderCredential: async (pid: string, prov: string) => s.creds.get(`${pid}|${prov}`) ?? null,
     updateProviderConfig: async (pid: string, prov: string, p: any) => { const c = s.configs.find((x) => x.projectId === pid && x.provider === prov); if (!c) return null; for (const [k, v] of Object.entries(p)) if (v !== undefined) (c as any)[k] = v; return c; },
@@ -79,7 +79,7 @@ function memoryRepo() {
     mentionsFor: async (ids: string[]) => s.ments.filter((m) => ids.includes(m.observationId)),
     latestPairs: async (pid: string) => {
       const groups = new Map<string, any[]>();
-      for (const o of s.obs.filter((x) => x.projectId === pid && x.runKind !== 'RESEARCH' && x.status === 'SUCCEEDED')) { const k = `${o.queryId}|${o.provider}`; groups.set(k, [...(groups.get(k) ?? []), o]); }
+      for (const o of s.obs.filter((x) => x.projectId === pid && x.runKind !== 'RESEARCH' && x.status === 'SUCCEEDED' && s.queries.some((q) => q.id === x.queryId && q.active))) { const k = `${o.queryId}|${o.provider}`; groups.set(k, [...(groups.get(k) ?? []), o]); }
       return [...groups.values()].map((g) => { g.sort((a, b) => b.executedAt.localeCompare(a.executedAt)); return { queryId: g[0].queryId, queryText: g[0].queryText, provider: g[0].provider, current: g[0], previous: g[1] ?? null }; });
     },
     dailySeries: async () => [],
@@ -95,7 +95,7 @@ function memoryRepo() {
 const audit = { rows: [] as any[], execute: async (x: any) => { audit.rows.push(x); return { ok: true, id: 'x' }; } } as any;
 const cipher = { encrypt: (p: string) => `enc:${p}`, decrypt: (c: string) => c.slice(4), mask: () => '••••1234' };
 const logger = { debug() {}, info() {}, warn() {}, error() {} };
-const alerts = { rows: [] as any[], raise: async (a: any) => { alerts.rows.push(a); } };
+const alerts = { rows: [] as any[], cleared: [] as string[], raise: async (a: any) => { alerts.rows.push(a); }, clear: async (k: string) => { alerts.cleared.push(k); } };
 
 /** A fake provider that answers from a script keyed by query text. */
 function fake(pid: any, script: (q: string) => { text: string; cites: string[] } | Error): AiAnswerProvider {
@@ -127,6 +127,7 @@ describe('AI visibility — first vertical slice', () => {
     queued = [];
     audit.rows = [];
     alerts.rows = [];
+    alerts.cleared = [];
     providers = {
       OPENAI: fake('OPENAI', (q) => ({ text: `For "${q}", GoldPlus and Oraimo both sell them.`, cites: ['https://ug.oraimo.com/p', 'https://en.wikipedia.org/wiki/Power_bank'] })),
       ANTHROPIC: fake('ANTHROPIC', () => new ProviderCallError('HTTP 401: invalid x-api-key', 401, 'HTTP')),
@@ -327,6 +328,25 @@ describe('AI visibility — first vertical slice', () => {
     expect(o.answerText).toBe(text);
     expect(repo.s.cites.filter((c) => c.observationId === o.id).map((c) => c.role)).toEqual(['OWN']);
     expect(audit.rows.some((a) => a.action === 'AIV_EVIDENCE_RECLASSIFIED')).toBe(true);
+  });
+
+  it('a paused question leaves the figures; a regained citation closes its alert', async () => {
+    const { setup } = build();
+    const pid = ((await setup.createProject(user, { name: 'P', brandName: 'GoldPlus', domains: 'shopgoldplus.com' })) as any).value.id;
+    const q1 = ((await setup.createQuery(user, pid, { text: 'question one' })) as any).value;
+    await setup.createQuery(user, pid, { text: 'question two' });
+    await setup.setCredential(user, pid, 'OPENAI', 'sk-a');
+    await setup.updateProvider(user, pid, 'OPENAI', { enabled: true });
+    let cite = true;
+    providers.OPENAI = fake('OPENAI', () => ({ text: 'x', cites: cite ? ['https://shopgoldplus.com/a'] : ['https://other.com/'] }));
+    const run = async (key: string) => { const r = await build().runs.start(user, pid, { idempotencyKey: key }); await build().runs.execute((r as any).value.run.id); };
+    await run('r1'); cite = false; await run('r2');
+    expect(alerts.rows.map((a) => a.kind)).toContain('AIV_CITATION_LOST');
+    cite = true; await run('r3');
+    expect(alerts.cleared).toContain(`AIV_CITATION_LOST:${pid}`);
+    expect(((await build().insights.summary(pid)) as any).value.current.answered).toBe(2);
+    await setup.updateQuery(user, pid, q1.id, { active: false });
+    expect(((await build().insights.summary(pid)) as any).value.current.answered).toBe(1);
   });
 
   it('with no provider configured the run is refused as not configured, never simulated', async () => {

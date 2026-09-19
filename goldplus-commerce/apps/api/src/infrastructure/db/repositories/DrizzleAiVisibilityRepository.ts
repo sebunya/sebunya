@@ -392,8 +392,11 @@ export class DrizzleAiVisibilityRepository implements AiVisibilityRepository {
   async latestPairs(projectId: string, sinceIso: string | null) {
     const rows = rowsOf(await db.execute(sql`
       select * from (
-        select o.*, row_number() over (partition by coalesce(o.query_id::text, o.query_text), o.provider order by o.executed_at desc) as rn
+        select o.*, row_number() over (partition by o.query_id, o.provider order by o.executed_at desc) as rn
         from aiv_observations o
+        -- Current state = questions still tracked AND active. A paused or deleted
+        -- question's last answer must not keep moving the figures and gaps.
+        join aiv_queries q on q.id = o.query_id and q.active
         where o.project_id = ${projectId}::uuid and o.run_kind <> 'RESEARCH' and o.status = 'SUCCEEDED'
           ${sinceIso ? sql`and o.executed_at >= ${sinceIso}::timestamptz` : sql``}
       ) t where rn <= 2 order by query_text, provider, rn`));

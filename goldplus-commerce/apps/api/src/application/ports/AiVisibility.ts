@@ -194,9 +194,13 @@ export interface ObservationFilter {
 
 export interface RunQueue {
   enqueueRun(runId: string): Promise<boolean>;
+  /** Background re-classification of a project's stored answers; false when no queue. */
+  enqueueReclassify?(projectId: string): Promise<boolean>;
 }
 
 /** Where operator-facing alerts go (the existing SEO alert list). Deduped while open. */
 export interface AlertSink {
   raise(input: { severity: 'CRITICAL' | 'HIGH' | 'INFO'; kind: string; message: string; dedupeKey: string }): Promise<void>;
+  /** Resolves the open alert with this dedupe key, when its condition no longer holds. */
+  clear(dedupeKey: string): Promise<void>;
 }

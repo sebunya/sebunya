@@ -31,18 +31,28 @@ export const bullRunQueue: RunQueue = {
     await q.add('aiv-run', { runId }, { jobId: `aiv-run-${runId}`, attempts: 1, removeOnComplete: 100, removeOnFail: 200 });
     return true;
   },
+  async enqueueReclassify(projectId: string) {
+    const q = QueueService.getInstance().getQueue(QUEUES.AI_VISIBILITY);
+    if (!q) return false;
+    // One waiting job per project: repeated edits collapse into one pass.
+    await q.add('aiv-reclassify', { projectId }, { jobId: `aiv-reclassify-${projectId}`, attempts: 2, removeOnComplete: true, removeOnFail: 50 });
+    return true;
+  },
 };
 
 /** AI Search alerts land in the existing SEO alert list (seo_alerts), deduped while open. */
 export function seoAlertSink(repo = new DrizzleSeoGrowthRepository()): AlertSink {
-  return { raise: async (a) => { await repo.raiseAlert(a); } };
+  return {
+    raise: async (a) => { await repo.raiseAlert(a); },
+    clear: async (key) => { await repo.clearAlert(key); },
+  };
 }
 
 export function createAiVisibility(audit: CreateAuditLogUseCase) {
   const repo = new DrizzleAiVisibilityRepository();
   const providers = createProviderRegistry();
   const cipher = vaultCipher();
-  const setup = new AiVisibilitySetupUseCases(repo, audit, providers, cipher);
+  const setup = new AiVisibilitySetupUseCases(repo, audit, providers, cipher, bullRunQueue);
   const runs = new AiVisibilityRunUseCases(repo, audit, providers, cipher, bullRunQueue, appLogger, seoAlertSink());
   const insights = new AiVisibilityInsightsUseCases(repo);
   const actions = new AiVisibilityActionUseCases(repo, audit, runs);
