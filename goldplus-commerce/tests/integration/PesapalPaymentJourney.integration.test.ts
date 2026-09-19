@@ -177,9 +177,22 @@ suite('Pesapal payment journey (real PostgreSQL)', () => {
     expect(await eventsFor(orderId)).toHaveLength(0);
   });
 
-  it('an INVALID (abandoned page) answer resolves the attempt without inventing a lifecycle move', async () => {
+  it('INVALID on a NEW attempt means not paid yet: nothing written (fixed 3f013f3d, 2026-09-19)', async () => {
+    // Production: PesaPal answers 0/INVALID seconds after the page opens,
+    // before anyone can pay. Writing that as terminal killed every checkout.
     const { orderId, reference, trackingId } = await seed({ amount: 110_000 });
     providerAnswers.set(trackingId, { status_code: 0, description: 'INVALID', amount: 110_000, reference });
+    const r = await verify().execute({ orderTrackingId: trackingId, merchantReference: reference, source: 'poll' });
+    expect(r.status).toBe('pending');
+    expect((await repo.findByTrackingId(trackingId)).status).toBe('pending');
+    expect((await orderRow(orderId)).status).toBe('received');
+    expect(await eventsFor(orderId)).toHaveLength(0);
+  });
+
+  it('an INVALID (abandoned page) answer past the 24h window resolves the attempt without inventing a lifecycle move', async () => {
+    const { orderId, reference, trackingId } = await seed({ amount: 110_000 });
+    providerAnswers.set(trackingId, { status_code: 0, description: 'INVALID', amount: 110_000, reference });
+    await raw`update payment_attempts set created_at = now() - interval '25 hours' where order_tracking_id = ${trackingId}`;
 
     await verify().execute({ orderTrackingId: trackingId, merchantReference: reference, source: 'poll' });
     expect((await repo.findByTrackingId(trackingId)).status).toBe('invalid');
