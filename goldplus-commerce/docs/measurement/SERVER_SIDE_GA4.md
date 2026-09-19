@@ -18,11 +18,22 @@
   with `cid` = the visitor's `_fp_cid` captured at checkout (order_attribution, 0136) and the buyer's IP/UA.
   Browser-origin copies in the outbox are NOT re-sent (the web tag already sent them).
 
+## Accuracy measures (2026-09-19, second pass)
+- **Session stitching:** checkout reads GA4's `_ga_<stream>` cookie (GS1/GS2 formats, `lib/gaSession.ts`) into
+  order_attribution (0137); the server purchase carries `sid`/`sct`/`seg`, so the sale is credited to the visit's source.
+- **Refunds:** an order moving to `cancelled` whose purchase was sent gets one GA4 `refund` (`refund:<order number>`).
+- **Consent:** the preference-centre analytics choice is mirrored into `gp_consent` (a0/a1) by /account/preferences;
+  the page denies analytics_storage on a0 or Global Privacy Control, before GTM loads.
+- **Durable visitor id:** `_fp_cid` is set by the web server (middleware), refreshed at most daily (`_fp_r`),
+  so Safari's 7-day cap on script-set cookies no longer applies. Refreshing on every page would make HTML uncacheable.
+- **user_id:** signed-in shoppers' id is pushed to the dataLayer; the Google tag sends it (`user_id` = DLV user_id).
+
 ## Env (.env.production)
 `GA4_MEASUREMENT_ID`, `GTM_CONTAINER_CONFIG` (server container config string), `PUBLIC_GTM_ID`,
 `PUBLIC_METRICS_URL` (the last two are web BUILD args). `GTM_HMAC_SECRET` is no longer used by dispatch.
 
 ## Not done
-- Server-container **preview** (Tag Assistant) needs its own HTTPS host (e.g. preview-metrics.shopgoldplus.com
-  DNS record → `sgtm-preview`, then `PREVIEW_SERVER_URL` on production). The image rejects an internal URL.
+- Preview is live at preview-metrics.shopgoldplus.com (`sgtm-preview`; production's PREVIEW_SERVER_URL).
+- The web-container client's custom tag-serving path (ad-blocker resistance) is not used yet: every form tried
+  returned 400; the page still loads /gtm.js.
 - No advertising destinations (Google Ads, Meta CAPI) are connected; ad consent stays denied until they are.
