@@ -22,3 +22,35 @@ B-001 analytics host (ClickHouse/PeerDB/Dagster/dbt/science); B-002/3 ad account
 
 ## Operational note
 Production disk: 97% → 85% (removed today's migrator images + build cache) → 87% after this deploy. `deploy-prod.sh` now prunes build cache older than 24 h. Always `docker rmi` a migrator/test image after use.
+
+
+## 2026-09-20 — items 1–4 live (3d10f4c8, migration 0141)
+
+- **Control Tower** `/admin/measurement/deliveries`: queue, unknown outcomes,
+  failures, previewed + reason-required replay, kill switch (holds, never drops).
+- **Refund events**: a settled `payment_refunds` row writes ONE
+  `refund_confirmed` event + a negative REFUND commercial entry in the same
+  transaction (savepoint-guarded), then a partial `ga4:refund` — but only when
+  that order's purchase actually reached GA4, and never on top of a
+  cancellation refund.
+- **Collector contract v2** at `POST /telemetry/collect/batch`: envelope with a
+  batch id → durable receipt; same batch → same receipt; reused id with other
+  content → 409; >20 events or >64 KiB → 413/422; the browser may not claim
+  `user_id`/`ip_address`/`user_agent` or send purchase/refund. Legacy array
+  input still accepted for cached pages. New `landing_touch` → `touchpoint`,
+  channel-classified server-side, never forwarded to GA4 or ads.
+  Verified in production: 202 / 202 replay / 409.
+- **Attribution** `/admin/measurement/attribution-models`: six rule methods with
+  exact integer UGX largest-remainder allocation, Markov observed-journey
+  contribution (redirect-to-NULL) and exact Shapley (≤8 grouped players), run
+  nightly 02:00–06:00 Kampala as ONE bounded job under
+  `measurement.analytics_lease` with CPU/memory admission (else
+  DEFERRED_RESOURCE). Statuses INSUFFICIENT_DATA / NOT_IDENTIFIABLE are stated,
+  never filled in. The dossier §13.4 reference assertions are unit tests.
+
+**Bug this found**: `pgUuidArray` emitted `= any((select …))`, the ANY(subquery)
+form, so every multi-id query raised `operator does not exist: uuid = uuid[]` —
+operator replay/quarantine, the refund ledger batch settle and three
+AI-visibility lookups. Fixed to an array literal.
+
+13/13 integration tests pass on a clone of production; disk 31%.
