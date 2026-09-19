@@ -3,6 +3,7 @@ import type { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
 import type { ILogger } from '../../ports/ILogger';
 import type { ProviderId } from '../../../domain/ai-visibility/Evidence';
 import { extractEvidence } from '../../../domain/ai-visibility/Evidence';
+import { competitorMentionAliases } from '../../../domain/ai-visibility/Mentions';
 import { evaluateRunBudget, mayContinue } from '../../../domain/ai-visibility/Budget';
 import { backoffMs, finalStatus, isRetryable } from '../../../domain/ai-visibility/RunLifecycle';
 import { fail, isProvider, ok, type Actor, type Result } from './AiVisibilitySetupUseCases';
@@ -165,7 +166,8 @@ export class AiVisibilityRunUseCases {
       const ctx = {
         brand: { id: 'BRAND', name: project.brandName, aliases: project.brandAliases },
         ownDomains: project.domains,
-        competitors: competitors.map((c) => ({ id: c.id, name: c.name, aliases: c.aliases, domains: c.domains })),
+        // Registry names are descriptive ("Oraimo Uganda"); answers say "Oraimo".
+        competitors: competitors.map((c) => ({ id: c.id, name: c.name, aliases: [...c.aliases, ...competitorMentionAliases(c)], domains: c.domains })),
       };
       const counts = { succeeded: 0, failed: 0, skipped: 0 };
       let runSpent = 0;

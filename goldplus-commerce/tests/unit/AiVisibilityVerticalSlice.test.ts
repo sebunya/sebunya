@@ -182,6 +182,10 @@ describe('AI visibility — first vertical slice', () => {
     // Action: agent proposes; the agent cannot approve; the proposer cannot approve; another person can.
     const act = await actions.propose(agent, pid, { category: 'CONTENT_CHANGE', title: rec.title, reason: rec.why, evidence: rec.evidence, mechanism: rec.mechanism });
     const aid = (act as any).value.id;
+    // The drafted recommendation is marked, and is no longer offered as the next best action.
+    const after = (await insights.gaps(pid)) as any;
+    expect(after.value.recommendations.find((r: any) => r.title === rec.title).existingActionId).toBe(aid);
+    expect(((await insights.summary(pid)) as any).value.nextBestAction?.title).not.toBe(rec.title);
     await actions.submit(agent, pid, aid);
     expect((await actions.approve(agent, pid, aid, null)).ok).toBe(false);
     expect((await actions.approve(other, pid, aid, 'ok')).ok).toBe(true);
@@ -231,6 +235,9 @@ describe('AI visibility — first vertical slice', () => {
     expect(sched.status).toBe('QUEUED'); // within budget, a person switched it on -> no approval
     await build().runs.execute(sched.id);
     expect(alerts.rows.map((a) => a.kind)).toContain('AIV_CITATION_LOST');
+    // The lost-citation recommendation names the page that used to be cited.
+    const lostRec = ((await build().insights.gaps(pid)) as any).value.recommendations.find((r: any) => r.actionClass === 'INVESTIGATE_LOST_CITATION');
+    expect(lostRec.targetPage).toBe('https://shopgoldplus.com/power');
     expect((await build().runs.runSchedules()).started).toBe(0); // not due again
     // The report is built from the same evidence and carries its method notes.
     const rep = await build().insights.report(pid);

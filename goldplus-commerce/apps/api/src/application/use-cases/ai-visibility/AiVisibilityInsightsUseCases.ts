@@ -57,7 +57,7 @@ export class AiVisibilityInsightsUseCases {
     const compM = competitorMetrics(cur, competitors.map((c) => c.id));
     const movements = this.movements(pairs, cites);
     const gaps = this.gapRows(pairs, cites);
-    const recs = this.recommendations(gaps);
+    const recs = await this.withOpenActions(project.id, this.recommendations(gaps, this.ownPageByQuery(pairs, cites)));
     const lastRun = runs.rows.find((r) => ['COMPLETED', 'PARTIAL'].includes(r.status)) ?? null;
     return ok({
       project: { id: project.id, name: project.name, brandName: project.brandName, domains: project.domains, marketCountry: project.marketCountry, marketCity: project.marketCity },
@@ -75,7 +75,9 @@ export class AiVisibilityInsightsUseCases {
       series,
       competitors: competitors.map((c) => ({ ...compM.find((m) => m.competitorId === c.id), id: c.id, name: c.name, domains: c.domains })),
       movements: movements.slice(0, 12),
-      nextBestAction: recs[0] ?? null,
+      // The most urgent recommendation nobody has picked up yet.
+      nextBestAction: recs.find((r) => !r.existingActionId) ?? null,
+      recommendationsInHand: recs.filter((r) => r.existingActionId).length,
       openGaps: gaps.length,
     });
   }
@@ -113,7 +115,20 @@ export class AiVisibilityInsightsUseCases {
     return rows;
   }
 
-  private recommendations(gaps: ReturnType<AiVisibilityInsightsUseCases['gapRows']>): Recommendation[] {
+  /** Per question, one of OUR pages already cited for it (latest first) — the obvious page to work on. */
+  private ownPageByQuery(pairs: Awaited<ReturnType<AiVisibilityRepository['latestPairs']>>, cites: AivCitationRow[]): Map<string, string> {
+    const out = new Map<string, string>();
+    for (const p of pairs) {
+      if (!p.queryId || out.has(p.queryId)) continue;
+      for (const o of [p.current, p.previous]) {
+        const own = o ? cites.find((c) => c.observationId === o.id && c.role === 'OWN') : undefined;
+        if (own) { out.set(p.queryId, own.url); break; }
+      }
+    }
+    return out;
+  }
+
+  private recommendations(gaps: ReturnType<AiVisibilityInsightsUseCases['gapRows']>, ownPages: Map<string, string> = new Map()): Recommendation[] {
     // One recommendation per (query, gap kind), pooling providers as independent evidence.
     const groups = new Map<string, { kind: Gap['kind']; queryId: string; queryText: string; providers: string[]; observationIds: string[]; competitorIds: string[] }>();
     for (const g of gaps) {
@@ -128,7 +143,21 @@ export class AiVisibilityInsightsUseCases {
     const order: Record<string, number> = { LOST_CITATION: 0, COMPETITOR_CITED_NOT_US: 1, MENTIONED_NOT_CITED: 2, THIRD_PARTY_DOMINATED: 3, ABSENT: 4 };
     return [...groups.values()]
       .sort((a, b) => order[a.kind] - order[b.kind] || b.providers.length - a.providers.length)
-      .map((g) => recommendFor({ ...g, providers: [...new Set(g.providers)], competitorIds: [...new Set(g.competitorIds)], candidatePage: null }));
+      .map((g) => recommendFor({ ...g, providers: [...new Set(g.providers)], competitorIds: [...new Set(g.competitorIds)], candidatePage: ownPages.get(g.queryId) ?? null }));
+  }
+
+  /**
+   * Marks each recommendation that already has an open action (same query,
+   * same title), so it is not drafted twice and the next best action moves on
+   * to work nobody has picked up yet.
+   */
+  private async withOpenActions(projectId: string, recs: Recommendation[]): Promise<Array<Recommendation & { existingActionId: string | null }>> {
+    const open = (await this.repo.listActions(projectId, null, 200, 0)).rows
+      .filter((a) => !['REJECTED', 'CANCELLED', 'VERIFIED', 'NOT_VERIFIED'].includes(a.status));
+    return recs.map((r) => {
+      const hit = open.find((a) => a.title === r.title && (a.queryIds.includes(r.evidence.queryId) || (a.evidence as { queryId?: string }).queryId === r.evidence.queryId));
+      return { ...r, existingActionId: hit?.id ?? null };
+    });
   }
 
   async gaps(projectId: string): Promise<Result<{ gaps: unknown[]; recommendations: Recommendation[] }>> {
@@ -138,7 +167,7 @@ export class AiVisibilityInsightsUseCases {
     const comps = await this.repo.listPinnedCompetitors(project.id);
     const name = new Map(comps.map((c) => [c.id, c.name]));
     const gaps = this.gapRows(pairs, cites).map((g) => ({ ...g, competitorNames: g.competitorIds.map((id) => name.get(id) ?? id) }));
-    return ok({ gaps, recommendations: this.recommendations(gaps) });
+    return ok({ gaps, recommendations: await this.withOpenActions(project.id, this.recommendations(gaps, this.ownPageByQuery(pairs, cites))) });
   }
 
   /** Pinned competitors plus OBSERVED domains, kept apart from pure SOURCES. */

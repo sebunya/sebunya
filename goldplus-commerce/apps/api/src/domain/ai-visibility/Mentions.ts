@@ -42,6 +42,34 @@ export function aliasPattern(alias: string): RegExp | null {
   return new RegExp(`(?<![\\p{L}\\p{N}])${body}(?![\\p{L}\\p{N}])`, 'giu');
 }
 
+/** Domain labels that are ordinary words ("computers.co.ug"): never used as a brand alias. */
+const GENERIC_LABELS = new Set(['computers', 'computer', 'phones', 'phone', 'mobile', 'gadgets', 'gadget', 'electronics', 'store', 'shop', 'online', 'market', 'mall', 'deals', 'tech']);
+const QUALIFIERS = /\b(uganda|ug|kampala|east africa|africa|official|store|shop|online|outlet|direct|portal|ltd|limited)\b/gi;
+/**
+ * The names an answer would actually use for a competitor. Registry names are
+ * descriptive ("Oraimo Uganda", "Samsung Uganda Direct", "Anker Uganda Outlet
+ * (via Abanista)"); answers say "Oraimo", "Samsung", "Anker". Adds the name
+ * without market/channel qualifiers and each website's brand label
+ * ("ug.oraimo.com" -> "oraimo"). Labels under 4 characters are skipped — too
+ * likely to match ordinary words (same floor Canonry uses).
+ */
+export function competitorMentionAliases(c: { name: string; aliases?: readonly string[]; domains?: readonly string[] }): string[] {
+  const out = new Set<string>();
+  for (const raw of [c.name, ...(c.aliases ?? [])]) {
+    const base = raw.replace(/\(.*?\)/g, ' ').replace(QUALIFIERS, ' ').replace(/\s+/g, ' ').trim();
+    if (base.length >= 3) out.add(base);
+  }
+  for (const d of c.domains ?? []) {
+    const host = d.toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+    const parts = host.split('.');
+    // the label before the public suffix: oraimo.com -> oraimo, ug.oraimo.com -> oraimo, jumia.co.ug -> jumia
+    const suffixLen = parts.length >= 3 && parts[parts.length - 2].length <= 3 ? 2 : 1;
+    const label = parts[parts.length - suffixLen - 1];
+    if (label && label.length >= 4 && /^[a-z0-9-]+$/.test(label) && !GENERIC_LABELS.has(label)) out.add(label);
+  }
+  return [...out];
+}
+
 export function detectMentions(answerText: string | null | undefined, entities: readonly MentionEntity[]): MentionHit[] {
   const text = answerText ?? '';
   if (!text) return [];

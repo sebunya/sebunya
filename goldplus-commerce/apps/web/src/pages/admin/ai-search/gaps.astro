@@ -60,7 +60,9 @@ const gaps = res.ok ? res.data.gaps.filter((g) => !kindFilter || g.kind === kind
                 </div>
                 <div class="flex gap-2">
                   <a class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-4 text-sm font-bold" href={`/admin/ai-search/answers?id=${r.evidence.observationIds[r.evidence.observationIds.length - 1]}${q}`}>Evidence</a>
-                  <form method="POST"><input type="hidden" name="rec" value={JSON.stringify(r)} /><button class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-4 text-sm font-bold text-white">Draft action</button></form>
+                  {(r as any).existingActionId
+                    ? <a class="inline-flex min-h-11 items-center rounded-full border-2 border-brand-dark px-4 text-sm font-bold" href={`/admin/ai-search/actions?id=${(r as any).existingActionId}${q}`}>Action drafted — view</a>
+                    : <form method="POST"><input type="hidden" name="rec" value={JSON.stringify(r)} /><button class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-4 text-sm font-bold text-white">Draft action</button></form>}
                 </div>
               </div>
             </li>

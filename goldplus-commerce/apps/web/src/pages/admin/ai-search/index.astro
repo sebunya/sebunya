@@ -153,6 +153,7 @@ const q = project !== DEFAULT_PROJECT ? `&project=${encodeURIComponent(project)}
                     <button class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white hover:bg-black">Draft this as an action</button></form>
                   <a class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-5 text-sm font-bold text-gray-700" href={`/admin/ai-search/answers?id=${s.nextBestAction.evidence.observationIds[0]}${q}`}>See the evidence</a>
                   <a class="inline-flex min-h-11 items-center px-2 text-sm font-bold text-gray-600 underline" href={`/admin/ai-search/gaps${q.replace("&", "?")}`}>All {s.openGaps} gaps</a>
+                  {(s as any).recommendationsInHand > 0 && <a class="inline-flex min-h-11 items-center px-2 text-sm text-gray-600 underline" href={`/admin/ai-search/actions${q.replace("&", "?")}`}>{(s as any).recommendationsInHand} already have an action</a>}
                 </div>
               </section>
             )}

@@ -162,3 +162,22 @@ describe('actions and approvals', () => {
     expect(r.limitations).toMatch(/does not by itself show/);
   });
 });
+
+describe('competitor mention aliases (registry names are descriptive)', () => {
+  it('derives the names answers actually use', async () => {
+    const { competitorMentionAliases, detectMentions } = await import('../../apps/api/src/domain/ai-visibility/Mentions');
+    const cases: Array<[any, string, boolean]> = [
+      [{ name: 'Oraimo Uganda', domains: ['ug.oraimo.com', 'oraimo.com'] }, 'Oraimo power banks are popular.', true],
+      [{ name: 'Samsung Uganda Direct', domains: ['samsung.com'] }, 'Buy a Samsung charger.', true],
+      [{ name: 'Jumia Uganda', domains: ['jumia.ug', 'jumia.co.ug'] }, 'Order it on Jumia.', true],
+      [{ name: 'Anker', aliases: ['Anker Uganda Outlet (via Abanista)'], domains: ['anker.com'] }, 'Anker cables last.', true],
+      [{ name: 'Computers.co.ug', domains: ['computers.co.ug'] }, 'Laptops and computers are sold here.', false],
+      [{ name: 'MoMo Market', domains: ['market.momo.africa'] }, 'MoMo Market sells phones.', true],
+    ];
+    for (const [c, text, expected] of cases) {
+      const hits = detectMentions(text, [{ id: 'x', name: c.name, aliases: [...(c.aliases ?? []), ...competitorMentionAliases(c)] }]);
+      expect(hits.length > 0, `${c.name} in "${text}"`).toBe(expected);
+    }
+    expect(competitorMentionAliases({ name: 'X', domains: ['jumia.co.ug'] })).toContain('jumia');
+  });
+});
