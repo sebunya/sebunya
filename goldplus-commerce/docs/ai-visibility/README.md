@@ -100,7 +100,12 @@ Adding a provider = one adapter implementing `AiAnswerProvider` + one line in
    breaks the per-run, daily, monthly or per-provider cap (audited as
    `AIV_RUN_REFUSED_BUDGET`).
 3. **Approval**: above `approval_above_usd`, **or requested by any machine
-   actor**, the run waits for a person (never the requester).
+   actor**, the run waits for a person. Four eyes is about the **person**,
+   whatever kind the request declared: over the threshold the requester (or
+   the person whose schedule asked) can never approve. Under the threshold a
+   machine-origin run only needs a human confirmation, which the person behind
+   the agent may give. Only **one run per project** (any kind) may be active,
+   so two runs never spend against the same limit at once.
 4. **Execute** (its own BullMQ queue `ai-visibility`, job `aiv-run`, jobId =
    run id — never the shared analytics-fanout, whose slots the synthetic
    monitor and crons need): providers in parallel, questions sequential per
@@ -111,12 +116,17 @@ Adding a provider = one adapter implementing `AiAnswerProvider` + one line in
    stops that provider for the rest of the run (remaining questions SKIPPED
    with the reason, provider marked FAILED in Settings); one provider failing
    makes the run PARTIAL, not FAILED.
-5. **Recovery**: runs stuck RUNNING > 2 h are marked FAILED at worker start and
-   by the hourly schedule tick.
+5. **Liveness**: every finished call touches `heartbeat_at` (0134). A run with
+   no progress for 20 minutes is dead and marked FAILED (at worker start and
+   hourly); age alone never is — a healthy run may take hours. A worker whose
+   run was ended elsewhere (stale, cancelled) stops before its next call and
+   records `AIV_RUN_WORKER_STOPPED` with what it did.
 
 Provider **Test** (Settings) makes one small call exactly as runs do — web
 search on — so a key whose organisation has not enabled web search (a
 separate switch in the Anthropic console) fails the test, not the first run.
+A test obeys the daily, monthly and provider limits and is recorded as spend
+when it answered or failed after the work was done.
 
 Competitor **mentions** use the registry name, its aliases, the name without
 market/channel words ("Oraimo Uganda" → "Oraimo") and the website's brand
@@ -135,9 +145,12 @@ limits are computed from all of these together.
 
 ## Re-classification (evidence vs classification)
 
-The evidence — answer text and the source URLs, titles and order — is never
-changed. Its **classification** (brand named? our page cited? which competitor?)
-is derived, and is re-derived for every stored answer when the project's
+The **provider's raw reply** is the evidence and is never changed. The
+*reading* of it (answer text, sources) and its *classification* (brand named?
+our page cited? which competitor?) are derived. When a re-read changes a
+reading, the previous one is appended to the answer's `readingHistory` and the
+audit row counts how many changed — nothing is lost silently. Only `http(s)`
+addresses are accepted as sources. Classification is derived, and is re-derived for every stored answer when the project's
 domains, brand name or aliases change, or a competitor is pinned or unpinned
 (also `POST …/reclassify`), so history is judged by the current rules instead
 of a mix of old and new ones. Audited as `AIV_EVIDENCE_RECLASSIFIED`.

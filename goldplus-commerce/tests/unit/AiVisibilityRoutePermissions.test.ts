@@ -31,6 +31,12 @@ describe('AI Search route permissions', () => {
     expect(g('PUT', '/projects/:project/providers/:provider/credential')).toBe('CREDENTIALS');
     expect(g('DELETE', '/projects/:project/providers/:provider/credential')).toBe('CREDENTIALS');
     expect(g('POST', '/projects/:project/providers/:provider/test')).toBe('CREDENTIALS');
+    // Carrying out a measurement action spends money: RUN, not MANAGE.
+    expect(g('POST', '/projects/:project/actions/:actionId/start-run')).toBe('RUN');
+    // The MANAGE execute route strips the marker only the RUN route may set.
+    expect(src).toMatch(/delete b\.__runPermission/);
+    // No route runs every project's schedule on demand.
+    expect(routes.some((r) => r.path.includes('schedules/tick'))).toBe(false);
   });
   it('the actor header can only lower privilege', () => {
     expect(src).toMatch(/MACHINE\.has\(declared\) \? \(declared as Actor\['kind'\]\) : 'USER'/);

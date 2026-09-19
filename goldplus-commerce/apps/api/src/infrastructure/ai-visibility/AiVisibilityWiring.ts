@@ -34,8 +34,11 @@ export const bullRunQueue: RunQueue = {
   async enqueueReclassify(projectId: string) {
     const q = QueueService.getInstance().getQueue(QUEUES.AI_VISIBILITY);
     if (!q) return false;
-    // One waiting job per project: repeated edits collapse into one pass.
-    await q.add('aiv-reclassify', { projectId }, { jobId: `aiv-reclassify-${projectId}`, attempts: 2, removeOnComplete: true, removeOnFail: 50 });
+    // No fixed jobId: BullMQ silently ignores add() while a job with that id
+    // exists in ANY state, so one failed (or still-active) job swallowed every
+    // later request. Re-classification is idempotent; each request gets a pass
+    // that reads the rules as they are when it runs.
+    await q.add('aiv-reclassify', { projectId }, { attempts: 3, backoff: { type: 'exponential', delay: 5000 }, removeOnComplete: true, removeOnFail: 50 });
     return true;
   },
 };

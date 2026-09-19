@@ -14,6 +14,9 @@ export function normalizeHost(input: string | null | undefined): string | null {
   if (!input) return null;
   let raw = String(input).trim();
   if (!raw) return null;
+  // Only web addresses. "javascript://example.com/%0Aalert(1)" parses with a
+  // host, and a citation is rendered as a link in the admin.
+  if (/^[a-z][a-z0-9+.-]*:/i.test(raw) && !/^https?:\/\//i.test(raw)) return null;
   if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) raw = `https://${raw}`;
   let host: string;
   try {

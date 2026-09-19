@@ -22,7 +22,7 @@ export function registerAllWorkers(): void {
 
   // AI visibility (0131): a run left RUNNING by a crashed or restarted worker
   // would block new runs forever. Two hours is far beyond any real run.
-  void Registry.getInstance().aiVisibility.repo.failStaleRuns(120)
+  void Registry.getInstance().aiVisibility.repo.failStaleRuns(20)
     .then((ids) => { if (ids.length) logger.warn({ runIds: ids }, '[QueueWorker] marked stale AI visibility runs FAILED'); })
     .catch(() => undefined);
 
@@ -214,7 +214,7 @@ export function registerAllWorkers(): void {
         if (outcome.started || outcome.refused) logger.info(outcome, '[QueueWorker] AI visibility schedule tick');
         // Also hourly: a run left RUNNING by a worker that died would otherwise
         // block every new run until the next restart.
-        const stale = await registry.aiVisibility.repo.failStaleRuns(120);
+        const stale = await registry.aiVisibility.repo.failStaleRuns(20);
         if (stale.length) logger.warn({ runIds: stale }, '[QueueWorker] marked stale AI visibility runs FAILED');
       } else if (job.name === 'seo-crawl') {
         // Organic Growth OS: first-party technical crawl. The use case enforces

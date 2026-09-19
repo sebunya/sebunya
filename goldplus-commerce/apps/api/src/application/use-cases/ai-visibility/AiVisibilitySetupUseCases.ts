@@ -239,11 +239,19 @@ export class AiVisibilitySetupUseCases {
     // Tested exactly as runs will call it — web search included. A key whose
     // organisation has not enabled web search (Anthropic makes it a separate
     // switch) passes a plain call and then fails every real run.
+    // A test is a paid call: it obeys the same daily/monthly limits as runs.
+    const project = (await this.repo.getProject(projectId)) as AivProject;
+    const spent = await this.repo.spendToDate(projectId);
+    if (spent.todayUsd + cfg.estUsdPerCall > project.budget.maxDailySpendUsd || spent.monthUsd + cfg.estUsdPerCall > project.budget.maxMonthlySpendUsd
+      || (cfg.monthlyCapUsd != null && (spent.providerMonthUsd[provider] ?? 0) + cfg.estUsdPerCall > cfg.monthlyCapUsd)) {
+      return fail('BUDGET', 'A test call would exceed a spend limit.');
+    }
     const h = await this.providers[provider].healthcheck({ apiKey: this.cipher.decrypt(secret), model: cfg.model, webSearch: cfg.webSearch, timeoutMs: 60_000 });
     const message = h.ok ? `Answered${h.servedModel ? ` as ${h.servedModel}` : ''}.` : h.reason;
     await this.repo.recordProviderHealth(projectId, provider, h.ok ? 'OK' : 'FAILED', message);
     // A successful test is a billed call: it counts towards the spend limits.
-    if (h.ok) await this.repo.recordSpend({ projectId, provider, kind: 'PROVIDER_TEST', costUsd: cfg.estUsdPerCall, basis: 'ESTIMATE_PER_CALL', actorId: actor.id });
+    // Billed when it answered, and when it failed after the work was done.
+    if (h.ok || h.possiblyBilled) await this.repo.recordSpend({ projectId, provider, kind: 'PROVIDER_TEST', costUsd: cfg.estUsdPerCall, basis: 'ESTIMATE_PER_CALL', actorId: actor.id });
     await this.log(actor, 'AIV_PROVIDER_TESTED', 'aiv_provider_config', cfg.id, { provider, ok: h.ok });
     return h.ok ? ok({ provider, message }) : fail('UPSTREAM', message);
   }
@@ -262,6 +270,7 @@ export class AiVisibilitySetupUseCases {
     const ctx = buildEvidenceContext(project, await this.repo.listPinnedCompetitors(project.id));
     let after: string | null = null;
     let answers = 0;
+    let readingsChanged = 0;
     for (;;) {
       const batch = await this.repo.listEvidenceForReclassification(project.id, after, 200);
       if (batch.length === 0) break;
@@ -282,12 +291,13 @@ export class AiVisibilitySetupUseCases {
           }
         }
         const ev = extractEvidence(reading, ctx);
-        await this.repo.replaceClassification({ observationId: o.id, projectId: project.id, brandMentioned: ev.brandMentioned, ownCited: ev.ownCited, citations: ev.citations, brandMention: ev.brandMention, competitorMentions: ev.competitorMentions, reparsed });
+        const res = await this.repo.replaceClassification({ observationId: o.id, projectId: project.id, brandMentioned: ev.brandMentioned, ownCited: ev.ownCited, citations: ev.citations, brandMention: ev.brandMention, competitorMentions: ev.competitorMentions, reparsed });
+        if (res?.readingChanged) readingsChanged += 1;
         answers += 1;
       }
       after = batch[batch.length - 1].id;
     }
-    await this.log(actor, 'AIV_EVIDENCE_RECLASSIFIED', 'aiv_project', project.id, { answers, domains: project.domains });
+    await this.log(actor, 'AIV_EVIDENCE_RECLASSIFIED', 'aiv_project', project.id, { answers, readingsChanged, domains: project.domains });
     return ok({ answers });
   }
 }

@@ -114,9 +114,15 @@ export class AiVisibilityRunUseCases {
     const run = await this.repo.getRun(projectId, runId);
     if (!run) return fail('NOT_FOUND', 'Run not found.');
     if (actor.kind !== 'USER') return fail('FORBIDDEN', 'Only a person can approve a run that spends provider budget.');
-    if (run.requestedBy && run.requestedBy === actor.id && run.actorKind === 'USER') return fail('FORBIDDEN', 'Someone other than the requester must approve an over-threshold run.');
-    // Budget is re-checked at approval time: spend may have moved since the request.
     const project = (await this.repo.getProject(projectId)) as AivProject;
+    // Four eyes is about the PERSON, whatever kind the request declared: a user
+    // could send X-Actor-Kind: AGENT and then approve their own run. Over the
+    // spend threshold, the requester (or the person whose schedule asked) never
+    // approves. Under it, a machine-origin run only needs a human confirmation,
+    // which that same person may give.
+    const overThreshold = run.estimatedUsd > project.budget.approvalAboveUsd;
+    if (overThreshold && run.requestedBy && run.requestedBy === actor.id) return fail('FORBIDDEN', 'Someone other than the requester must approve a run over the approval threshold.');
+    // Budget is re-checked at approval time: spend may have moved since the request.
     const spent = await this.repo.spendToDate(projectId);
     if (spent.todayUsd + run.estimatedUsd > project.budget.maxDailySpendUsd || spent.monthUsd + run.estimatedUsd > project.budget.maxMonthlySpendUsd) {
       return fail('BUDGET', 'Approving now would exceed the daily or monthly spend limit.');
@@ -232,7 +238,9 @@ export class AiVisibilityRunUseCases {
             } catch (e) {
               lastErr = e as Error;
               const pe = e instanceof ProviderCallError ? e : null;
-              if (pe && (pe.code === 'TIMEOUT' || (pe.status != null && pe.status >= 500))) possiblyBilled += 1;
+              // Timeouts, 5xx and errors reported inside a 200 reply (Anthropic's
+              // web_search_tool_result error) happened after work was done.
+              if (pe && (pe.code === 'TIMEOUT' || (pe.status != null && (pe.status >= 500 || pe.status === 200)))) possiblyBilled += 1;
               if (attempt < MAX_ATTEMPTS && pe && isRetryable(pe.status, pe.code)) { await this.sleep(backoffMs(attempt)); continue; }
               break;
             }
@@ -255,7 +263,12 @@ export class AiVisibilityRunUseCases {
 
       const cancelled = await this.repo.isCancelRequested(run.id);
       const status = finalStatus({ total: run.totalTasks, ...counts, pending: 0 }, cancelled);
-      await this.repo.moveRun(run.id, ['RUNNING'], status, { phase: 'Done', finished: true, error: status === 'FAILED' ? 'Every provider call failed; see the per-answer errors.' : null });
+      const moved = await this.repo.moveRun(run.id, ['RUNNING'], status, { phase: 'Done', finished: true, error: status === 'FAILED' ? 'Every provider call failed; see the per-answer errors.' : null });
+      if (!moved) {
+        // Ended elsewhere (cancelled, or marked stale): record what actually happened, not a status the database does not hold.
+        await this.audit.execute({ actorId: null, action: 'AIV_RUN_WORKER_STOPPED', entity: 'aiv_run', entityId: run.id, newState: { wouldHaveBeen: status, ...counts, actualUsd: runSpent, actorKind: 'SCHEDULER' } });
+        return { status: 'ENDED_ELSEWHERE' };
+      }
       await this.raiseAlerts(run, status, counts);
       await this.audit.execute({ actorId: null, action: 'AIV_RUN_FINISHED', entity: 'aiv_run', entityId: run.id, newState: { status, ...counts, actualUsd: runSpent, actorKind: 'SCHEDULER' } });
       this.logger.info({ runId: run.id, status, ...counts, actualUsd: runSpent }, 'aiv run finished');

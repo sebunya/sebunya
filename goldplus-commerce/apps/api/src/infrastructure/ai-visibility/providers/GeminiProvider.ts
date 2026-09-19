@@ -1,7 +1,7 @@
 import type { AiAnswerProvider, ProviderCallConfig, QueryExecutionInput } from '../../../application/ports/AiVisibility';
 import type { NormalizedAnswer } from '../../../domain/ai-visibility/Evidence';
 import { normalizeHost } from '../../../domain/ai-visibility/Domains';
-import { asArray, dedupeCitations, num, postJson } from './http';
+import { asArray, dedupeCitations, num, possiblyBilled, postJson } from './http';
 
 /**
  * Gemini generateContent with Google Search grounding.
@@ -30,7 +30,7 @@ export class GeminiProvider implements AiAnswerProvider {
       const { raw } = await this.executeQuery({ query: 'What is the capital of Uganda? Answer in one word.', location: null }, cfg);
       return { ok: true as const, servedModel: String((raw as { modelVersion?: string })?.modelVersion ?? '') || null };
     } catch (e) {
-      return { ok: false as const, reason: (e as Error).message };
+      return { ok: false as const, reason: (e as Error).message, possiblyBilled: possiblyBilled(e) };
     }
   }
 

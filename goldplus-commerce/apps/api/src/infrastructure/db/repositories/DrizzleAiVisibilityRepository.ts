@@ -231,7 +231,24 @@ export class DrizzleAiVisibilityRepository implements AiVisibilityRepository {
     return rows.map((r) => ({ id: String(r.id), provider: r.provider, model: r.model, queryText: r.query_text, latencyMs: nn(r.latency_ms), rawResponse: r.raw_response ?? null, answerText: r.answer_text, citationSupport: r.citation_support, citations: Array.isArray(r.citations) ? r.citations : [] }));
   }
   async replaceClassification(o: Parameters<AiVisibilityRepository['replaceClassification']>[0]) {
-    await db.transaction(async (tx) => {
+    return db.transaction(async (tx) => {
+      // A re-read that changes the reading keeps the previous one in the
+      // answer's own history: nothing a parser once read is lost silently.
+      let readingChanged = false;
+      if (o.reparsed) {
+        const cur = rowsOf(await tx.execute(sql`select answer_text, citation_support,
+          coalesce((select jsonb_agg(c.url order by c.position) from aiv_citations c where c.observation_id = ${o.observationId}::uuid), '[]'::jsonb) as urls
+          from aiv_observations where id = ${o.observationId}::uuid`))[0];
+        const prevUrls: string[] = Array.isArray(cur?.urls) ? cur.urls : [];
+        const nextUrls = o.citations.map((c) => c.url);
+        readingChanged = !!cur && (cur.answer_text !== o.reparsed.answerText || cur.citation_support !== o.reparsed.citationSupport
+          || prevUrls.length !== nextUrls.length || prevUrls.some((u, i) => u !== nextUrls[i]));
+        if (readingChanged) {
+          await tx.execute(sql`update aiv_observations set raw_metadata = jsonb_set(raw_metadata, '{readingHistory}',
+            coalesce(raw_metadata -> 'readingHistory', '[]'::jsonb) || ${pgJsonb([{ replacedAt: new Date().toISOString(), answerText: cur.answer_text, citationSupport: cur.citation_support, citationUrls: prevUrls }])})
+            where id = ${o.observationId}::uuid`);
+        }
+      }
       await tx.execute(sql`delete from aiv_citations where observation_id = ${o.observationId}::uuid`);
       await tx.execute(sql`delete from aiv_mentions where observation_id = ${o.observationId}::uuid`);
       for (const c of o.citations) {
@@ -250,6 +267,7 @@ export class DrizzleAiVisibilityRepository implements AiVisibilityRepository {
       await tx.execute(sql`update aiv_observations set brand_mentioned = ${o.brandMentioned}, own_cited = ${o.ownCited}, citation_count = ${o.citations.length}
         ${o.reparsed ? sql`, answer_text = ${o.reparsed.answerText}, citation_support = ${o.reparsed.citationSupport}` : sql``}
         where id = ${o.observationId}::uuid`);
+      return { readingChanged };
     });
   }
   async findRunByIdempotencyKey(projectId: string, key: string) {
@@ -257,7 +275,10 @@ export class DrizzleAiVisibilityRepository implements AiVisibilityRepository {
     return r ? run(r) : null;
   }
   async findActiveRun(projectId: string, kind: AivRun['kind']) {
-    const r = rowsOf(await db.execute(sql`select * from aiv_runs where project_id = ${projectId}::uuid and kind = ${kind} and status in ('AWAITING_APPROVAL','QUEUED','RUNNING') order by created_at desc limit 1`))[0];
+    // One active run per project, whatever its kind: two runs spending at once
+    // could each pass the per-call spend check and jointly exceed a limit.
+    void kind;
+    const r = rowsOf(await db.execute(sql`select * from aiv_runs where project_id = ${projectId}::uuid and status in ('AWAITING_APPROVAL','QUEUED','RUNNING') order by created_at desc limit 1`))[0];
     return r ? run(r) : null;
   }
   async createRun(i: Parameters<AiVisibilityRepository['createRun']>[0]) {
@@ -297,12 +318,13 @@ export class DrizzleAiVisibilityRepository implements AiVisibilityRepository {
         approved_by = ${p.approvedBy && UUID.test(p.approvedBy) ? sql`${p.approvedBy}::uuid` : sql`approved_by`},
         approved_at = ${p.approvedBy ? sql`now()` : sql`approved_at`},
         started_at = ${p.started ? sql`now()` : sql`started_at`},
+        heartbeat_at = ${p.started ? sql`now()` : sql`heartbeat_at`},
         finished_at = ${p.finished ? sql`now()` : sql`finished_at`}
       where id = ${runId}::uuid and status in (select jsonb_array_elements_text(${pgJsonb([...from])})) returning id`));
     return r.length > 0;
   }
   async updateRunProgress(runId: string, p: { succeeded: number; failed: number; skipped: number; actualUsd: number; phase: string }) {
-    await db.execute(sql`update aiv_runs set succeeded = ${p.succeeded}, failed = ${p.failed}, skipped = ${p.skipped}, actual_usd = ${p.actualUsd}, phase = ${p.phase} where id = ${runId}::uuid`);
+    await db.execute(sql`update aiv_runs set succeeded = ${p.succeeded}, failed = ${p.failed}, skipped = ${p.skipped}, actual_usd = ${p.actualUsd}, phase = ${p.phase}, heartbeat_at = now() where id = ${runId}::uuid`);
   }
   async requestCancel(runId: string) {
     const r = rowsOf(await db.execute(sql`update aiv_runs set cancel_requested = true where id = ${runId}::uuid and status = 'RUNNING' returning id`));
@@ -312,13 +334,17 @@ export class DrizzleAiVisibilityRepository implements AiVisibilityRepository {
     const r = rowsOf(await db.execute(sql`
       update aiv_runs set status = 'FAILED', finished_at = now(), phase = 'Failed',
         error = 'The worker stopped before the run finished (server restart or crash). Answers already recorded are kept.'
-      where status = 'RUNNING' and coalesce(started_at, created_at) < now() - make_interval(mins => ${Math.max(5, Math.trunc(minutes))})
+      -- Dead = no progress for this long (heartbeat), not "started long ago":
+      -- a healthy run may take hours; one call takes at most ~5 minutes.
+      where status = 'RUNNING' and coalesce(heartbeat_at, started_at, created_at) < now() - make_interval(mins => ${Math.max(5, Math.trunc(minutes))})
       returning id`));
     return r.map((x) => String(x.id));
   }
   async isCancelRequested(runId: string) {
-    const r = rowsOf(await db.execute(sql`select cancel_requested from aiv_runs where id = ${runId}::uuid`))[0];
-    return !!r?.cancel_requested;
+    // "Stop" also when the run is no longer RUNNING (e.g. marked FAILED as
+    // stale): a worker must never keep spending for a run the database has ended.
+    const r = rowsOf(await db.execute(sql`select cancel_requested, status from aiv_runs where id = ${runId}::uuid`))[0];
+    return !r || !!r.cancel_requested || r.status !== 'RUNNING';
   }
 
   async insertObservation(o: NewObservation) {

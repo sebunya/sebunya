@@ -26,6 +26,8 @@ const pageNo = Math.max(1, Number(u.get("page") ?? 1) || 1);
 const list = !id && !compareId ? await aivGet<{ rows: any[]; total: number }>(token, `${P}/answers?limit=50&offset=${(pageNo - 1) * 50}${qs.length ? `&${qs.join("&")}` : ""}`) : null;
 const yn = (v: unknown) => (v === true ? "Yes" : v === false ? "No" : "Unknown");
 const ROLE: Record<string, string> = { OWN: "Our site", COMPETITOR: "Competitor", THIRD_PARTY: "Third party" };
+/** Only web addresses become links (a provider-supplied javascript: URL must never be clickable). */
+const isWebUrl = (u: unknown) => typeof u === "string" && /^https?:\/\//i.test(u);
 ---
 <AdminLayout title="Answers · AI Search" description="The actual answers AI engines gave, with their sources.">
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
@@ -59,7 +61,7 @@ const ROLE: Record<string, string> = { OWN: "Our site", COMPETITOR: "Competitor"
                   {a.citations.length === 0 ? <p class="text-sm text-gray-500">{a.citationSupport === "SUPPORTED" ? "The answer cited no sources." : "This provider returned no source data for this answer."}</p> : (
                     <ol class="space-y-2 text-sm">{a.citations.map((c: any) => (
                       <li><span class="text-xs font-bold text-gray-500">{c.position}. {ROLE[c.role]}{c.competitorName ? ` · ${c.competitorName}` : c.sourceKind ? ` · ${c.sourceKind.toLowerCase()}` : ""}</span><br />
-                        <a class="break-all underline" href={c.url} rel="noopener noreferrer nofollow" target="_blank">{c.title || c.url}</a></li>
+                        {isWebUrl(c.url) ? <a class="break-all underline" href={c.url} rel="noopener noreferrer nofollow" target="_blank">{c.title || c.url}</a> : <span class="break-all">{c.title || c.url}</span>}</li>
                     ))}</ol>
                   )}
                 </section>

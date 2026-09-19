@@ -170,10 +170,6 @@ routes.get('/projects/:project/report', VIEW, async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().insights.report(p.value.id, Math.min(int(c.req.query('days'), 28), 365)));
 });
-routes.post('/projects/:project/schedules/tick', APPROVE, async (c) => {
-  // Manual trigger of the hourly schedule check (same use case as the cron).
-  return data(c, await svc().runs.runSchedules());
-});
 routes.get('/projects/:project/gaps', VIEW, async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
   return send(c, await svc().insights.gaps(p.value.id));
@@ -229,7 +225,15 @@ routes.post('/projects/:project/actions/:actionId/reject', APPROVE, async (c) =>
 });
 routes.post('/projects/:project/actions/:actionId/execute', MANAGE, async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);
-  return send(c, await svc().actions.execute(actor(c), p.value.id, prm(c, 'actionId'), await body(c)));
+  const b = await body(c);
+  delete b.__runPermission; // only the RUN-guarded route below may set it
+  return send(c, await svc().actions.execute(actor(c), p.value.id, prm(c, 'actionId'), b));
+});
+/** Carrying out a MEASUREMENT_RUN action spends money: RUN permission, like any run. */
+routes.post('/projects/:project/actions/:actionId/start-run', RUN, async (c) => {
+  const p = await project(c); if (!p.ok) return send(c, p);
+  const b = await body(c);
+  return send(c, await svc().actions.execute(actor(c), p.value.id, prm(c, 'actionId'), { ...b, __runPermission: true }));
 });
 routes.post('/projects/:project/actions/:actionId/verify', MANAGE, async (c) => {
   const p = await project(c); if (!p.ok) return send(c, p);

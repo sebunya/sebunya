@@ -36,7 +36,8 @@ export interface AiAnswerProvider {
   /** false when the provider cannot apply a location without changing the question. */
   readonly appliesLocation: boolean;
   validateConfiguration(cfg: Pick<ProviderCallConfig, 'apiKey' | 'model'>): { ok: true } | { ok: false; reason: string };
-  healthcheck(cfg: ProviderCallConfig): Promise<{ ok: true; servedModel: string | null } | { ok: false; reason: string }>;
+  /** possiblyBilled: the failure happened after the provider may have done (and charged for) the work. */
+  healthcheck(cfg: ProviderCallConfig): Promise<{ ok: true; servedModel: string | null } | { ok: false; reason: string; possiblyBilled: boolean }>;
   executeQuery(input: QueryExecutionInput, cfg: ProviderCallConfig): Promise<{ raw: unknown; latencyMs: number }>;
   normalize(raw: unknown, cfg: Pick<ProviderCallConfig, 'model'>, latencyMs: number, input: QueryExecutionInput): NormalizedAnswer;
 }
@@ -146,7 +147,7 @@ export interface AiVisibilityRepository {
   /** Replaces the DERIVED classification of one observation (flags, citation roles, mentions); evidence untouched. */
   replaceClassification(o: { observationId: string; projectId: string; brandMentioned: boolean; ownCited: boolean | null; citations: ClassifiedCitation[]; brandMention: MentionHit | null; competitorMentions: MentionHit[];
     /** Set only when re-parsed from the stored raw reply: the parser's reading of it. */
-    reparsed?: { answerText: string; citationSupport: 'SUPPORTED' | 'UNSUPPORTED' } }): Promise<void>;
+    reparsed?: { answerText: string; citationSupport: 'SUPPORTED' | 'UNSUPPORTED' } }): Promise<{ readingChanged: boolean }>;
 
   findRunByIdempotencyKey(projectId: string, key: string): Promise<AivRun | null>;
   findActiveRun(projectId: string, kind: AivRun['kind']): Promise<AivRun | null>;

@@ -1,6 +1,6 @@
 import type { AiAnswerProvider, ProviderCallConfig, QueryExecutionInput } from '../../../application/ports/AiVisibility';
 import type { NormalizedAnswer } from '../../../domain/ai-visibility/Evidence';
-import { asArray, dedupeCitations, num, postJson } from './http';
+import { asArray, dedupeCitations, num, possiblyBilled, postJson } from './http';
 
 /**
  * OpenAI Responses API with the hosted web_search tool, search REQUIRED.
@@ -24,7 +24,7 @@ export class OpenAiProvider implements AiAnswerProvider {
       const { raw } = await this.executeQuery({ query: 'What is the capital of Uganda? Answer in one word.', location: null }, cfg);
       return { ok: true as const, servedModel: String((raw as { model?: string })?.model ?? '') || null };
     } catch (e) {
-      return { ok: false as const, reason: (e as Error).message };
+      return { ok: false as const, reason: (e as Error).message, possiblyBilled: possiblyBilled(e) };
     }
   }
 

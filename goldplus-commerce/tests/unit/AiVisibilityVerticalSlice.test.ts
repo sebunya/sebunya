@@ -53,7 +53,7 @@ function memoryRepo() {
       Object.assign(s.obs.find((o) => o.id === x.observationId), { brandMentioned: x.brandMentioned, ownCited: x.ownCited, citationCount: x.citations.length }, x.reparsed ? { answerText: x.reparsed.answerText, citationSupport: x.reparsed.citationSupport } : {});
     },
     findRunByIdempotencyKey: async (pid: string, k: string) => s.runs.find((r) => r.projectId === pid && r.idempotencyKey === k) ?? null,
-    findActiveRun: async (pid: string, kind: string) => s.runs.find((r) => r.projectId === pid && r.kind === kind && ['AWAITING_APPROVAL', 'QUEUED', 'RUNNING'].includes(r.status)) ?? null,
+    findActiveRun: async (pid: string) => s.runs.find((r) => r.projectId === pid && ['AWAITING_APPROVAL', 'QUEUED', 'RUNNING'].includes(r.status)) ?? null,
     createRun: async (i: any) => { const r = { ...i, id: id(), succeeded: 0, failed: 0, skipped: 0, actualUsd: 0, phase: null, error: null, cancelRequested: false, approvedBy: null, createdAt: now(), startedAt: null, finishedAt: null }; s.runs.push(r); return r; },
     getRun: async (pid: string, rid: string) => s.runs.find((r) => r.projectId === pid && r.id === rid) ?? null,
     getRunById: async (rid: string) => s.runs.find((r) => r.id === rid) ?? null,
@@ -61,7 +61,7 @@ function memoryRepo() {
     moveRun: async (rid: string, from: string[], to: string, p: any = {}) => { const r = s.runs.find((x) => x.id === rid); if (!r || !from.includes(r.status)) return false; r.status = to; if (p.error !== undefined) r.error = p.error; if (p.approvedBy) r.approvedBy = p.approvedBy; if (p.finished) r.finishedAt = now(); return true; },
     updateRunProgress: async (rid: string, p: any) => Object.assign(s.runs.find((r) => r.id === rid), p),
     requestCancel: async () => true,
-    isCancelRequested: async (rid: string) => !!s.runs.find((r) => r.id === rid)?.cancelRequested,
+    isCancelRequested: async (rid: string) => { const r = s.runs.find((x) => x.id === rid); return !r || !!r.cancelRequested || r.status !== 'RUNNING'; },
     failStaleRuns: async () => [],
     insertObservation: async (o: any) => {
       const dup = s.obs.find((x) => x.runId === o.runId && x.queryText === o.queryText && x.provider === o.provider);
@@ -201,6 +201,8 @@ describe('AI visibility — first vertical slice', () => {
     expect(((await insights.summary(pid)) as any).value.nextBestAction?.title).not.toBe(rec.title);
     await actions.submit(agent, pid, aid);
     expect((await actions.approve(agent, pid, aid, null)).ok).toBe(false);
+    // The person behind the agent cannot approve it either (four eyes is about the person).
+    expect((await actions.approve(user, pid, aid, null))).toMatchObject({ ok: false, code: 'FORBIDDEN' });
     expect((await actions.approve(other, pid, aid, 'ok')).ok).toBe(true);
     const done = await actions.execute(user, pid, aid, { result: 'Added a Kampala power-bank answer to /power.', verifyAfterDays: 1 });
     expect(done.ok && done.value.status).toBe('VERIFICATION_PENDING');
@@ -369,6 +371,27 @@ describe('AI visibility — first vertical slice', () => {
     const detail = (await build().insights.answer(pid, o.id)) as any;
     expect(detail.value.rawMetadata.rawResponse).toBeUndefined(); // not shipped to the answer view
     expect(detail.value.rawMetadata.rawResponseStored).toBe(true);
+  });
+
+  it('review fixes: header cannot dodge four eyes; a stale-marked run stops spending; tests obey limits', async () => {
+    const { setup, runs } = build();
+    const pid = ((await setup.createProject(user, { name: 'F', domains: 'f.com' })) as any).value.id;
+    for (let i = 0; i < 30; i++) await setup.createQuery(user, pid, { text: `question number ${i}` });
+    await setup.setCredential(user, pid, 'OPENAI', 'sk-a');
+    await setup.updateProvider(user, pid, 'OPENAI', { enabled: true, estUsdPerCall: 0.05 });
+    // Over the $1 threshold, requested "as an agent" by the same person: they may not approve it.
+    const big = await runs.start(agent, pid, {});
+    expect((big as any).value.run.status).toBe('AWAITING_APPROVAL');
+    expect(await runs.approve(user, pid, (big as any).value.run.id)).toMatchObject({ ok: false, code: 'FORBIDDEN' });
+    expect((await runs.approve(other, pid, (big as any).value.run.id)).ok).toBe(true);
+    // The database marks it FAILED (e.g. stale) while the worker is running: it stops at once.
+    let calls = 0;
+    providers.OPENAI = fake('OPENAI', () => { calls += 1; if (calls === 2) repo.s.runs.find((r) => r.id === (big as any).value.run.id).status = 'FAILED'; return { text: 'x', cites: [] }; });
+    expect((await runs.execute((big as any).value.run.id)).status).toBe('ENDED_ELSEWHERE');
+    expect(calls).toBe(2);
+    // A provider test is refused once it would break the daily limit.
+    await setup.updateProject(user, pid, { budget: { maxDailySpendUsd: 0.01 } });
+    expect(await setup.testProvider(user, pid, 'OPENAI')).toMatchObject({ ok: false, code: 'BUDGET' });
   });
 
   it('with no provider configured the run is refused as not configured, never simulated', async () => {

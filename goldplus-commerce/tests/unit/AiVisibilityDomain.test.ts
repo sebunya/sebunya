@@ -183,3 +183,13 @@ describe('competitor mention aliases (registry names are descriptive)', () => {
     expect(competitorMentionAliases({ name: 'X', domains: ['jumia.co.ug'] })).toContain('jumia');
   });
 });
+
+describe('only web addresses become citations', () => {
+  it('drops javascript: and other schemes, even with a host', async () => {
+    const { classifyCitations } = await import('../../apps/api/src/domain/ai-visibility/Citations');
+    const { normalizeHost } = await import('../../apps/api/src/domain/ai-visibility/Domains');
+    expect(normalizeHost('javascript://example.com/%0Aalert(1)')).toBeNull();
+    expect(normalizeHost('data:text/html,x')).toBeNull();
+    expect(classifyCitations([{ url: 'javascript://evil.com/%0Aalert(1)' }, { url: 'https://ok.com/a' }], [], []).map((c) => c.host)).toEqual(['ok.com']);
+  });
+});

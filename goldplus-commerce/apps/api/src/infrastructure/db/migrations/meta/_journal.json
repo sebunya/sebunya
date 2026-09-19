@@ -939,6 +939,13 @@
       "when": 1789920000000,
       "tag": "0133_ai_visibility_spend_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 134,
+      "version": "5",
+      "when": 1790000000000,
+      "tag": "0134_ai_visibility_run_heartbeat",
+      "breakpoints": true
     }
   ]
 }

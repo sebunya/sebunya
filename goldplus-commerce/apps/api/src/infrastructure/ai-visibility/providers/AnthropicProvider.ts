@@ -1,6 +1,6 @@
 import { ProviderCallError, type AiAnswerProvider, type ProviderCallConfig, type QueryExecutionInput } from '../../../application/ports/AiVisibility';
 import type { NormalizedAnswer } from '../../../domain/ai-visibility/Evidence';
-import { asArray, dedupeCitations, num, postJson } from './http';
+import { asArray, dedupeCitations, num, possiblyBilled, postJson } from './http';
 
 /**
  * Anthropic Messages API with the server-side web_search tool, forced via
@@ -28,7 +28,7 @@ export class AnthropicProvider implements AiAnswerProvider {
       const { raw } = await this.executeQuery({ query: 'What is the capital of Uganda? Answer in one word.', location: null }, cfg);
       return { ok: true as const, servedModel: String((raw as { model?: string })?.model ?? '') || null };
     } catch (e) {
-      return { ok: false as const, reason: (e as Error).message };
+      return { ok: false as const, reason: (e as Error).message, possiblyBilled: possiblyBilled(e) };
     }
   }
 

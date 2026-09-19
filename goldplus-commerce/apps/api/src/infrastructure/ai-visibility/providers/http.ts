@@ -52,3 +52,9 @@ export function dedupeCitations(list: RawCitation[]): RawCitation[] {
 
 export const asArray = (v: unknown): any[] => (Array.isArray(v) ? v : []);
 export const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+
+/** A failure after which the provider may still have charged: timeout, 5xx, or an error inside a 200 reply. */
+export function possiblyBilled(e: unknown): boolean {
+  if (!(e instanceof ProviderCallError)) return false;
+  return e.code === 'TIMEOUT' || (e.status != null && (e.status >= 500 || e.status === 200));
+}

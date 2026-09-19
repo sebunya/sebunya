@@ -80,7 +80,9 @@ export class AiVisibilityActionUseCases {
   async approve(actor: Actor, projectId: string, id: string, note: string | null): Promise<Result<AivAction>> {
     const a = await this.repo.getAction(projectId, id);
     if (!a) return fail('NOT_FOUND', 'Action not found.');
-    const d = mayApprove({ approverKind: actor.kind, approverId: actor.id ?? '', proposerId: a.proposerKind === 'USER' ? a.proposedBy : null, status: a.status });
+    // The proposer is the PERSON behind the proposal, whatever kind it declared
+    // (an agent working on someone's login is that someone for four eyes).
+    const d = mayApprove({ approverKind: actor.kind, approverId: actor.id ?? '', proposerId: a.proposedBy, status: a.status });
     if (!d.ok) return fail('FORBIDDEN', d.reason);
     // The baseline is frozen at approval: what verification compares against.
     const baseline = a.queryIds.length ? await this.citationState(projectId, a.queryIds, null) : null;
@@ -105,8 +107,15 @@ export class AiVisibilityActionUseCases {
     if (!d.ok) return fail('FORBIDDEN', d.reason);
     let result = String(body.result ?? '').trim();
     if (a.category === 'MEASUREMENT_RUN') {
-      const r = await this.runs.start(actor, projectId, { kind: 'MONITOR', queryIds: a.queryIds.length ? a.queryIds : undefined, actionId: a.id });
+      // Spending is the RUN permission's; the route for this path requires it
+      // (executeMeasurement). Here, only a NEW run that is actually going
+      // counts as done — an existing identical run, or one still waiting for
+      // approval, is not this action's measurement.
+      if (!body.__runPermission) return fail('FORBIDDEN', 'Starting a measurement run needs the AI Search run permission; use the "Start the run" button.');
+      const r = await this.runs.start(actor, projectId, { kind: 'MONITOR', queryIds: a.queryIds.length ? a.queryIds : undefined, actionId: a.id, idempotencyKey: `action:${a.id}` });
       if (!r.ok) return r as Result<AivAction>;
+      if (!r.value.created) return fail('CONFLICT', `This action's run was already started (${r.value.run.id}).`);
+      if (r.value.run.status === 'AWAITING_APPROVAL') return fail('CONFLICT', `Run ${r.value.run.id} is waiting for approval (over the spend threshold); approve it under Runs, and the action stays approved until then.`);
       result = `Run ${r.value.run.id} ${r.value.run.status.toLowerCase().replace('_', ' ')}.`;
     } else if (result.length < 5) {
       return fail('BAD_INPUT', 'Say what was done (and where), so the history is useful.');
