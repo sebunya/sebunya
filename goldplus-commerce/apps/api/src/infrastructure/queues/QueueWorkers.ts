@@ -178,6 +178,19 @@ export function registerAllWorkers(): void {
   });
 
   // 5. Analytics Fanout & Synthetic Monitor Worker
+  // AI Search runs (0131) on their own queue: a run takes minutes and must
+  // never occupy the analytics-fanout slots. The use case claims only a QUEUED
+  // run, so a duplicate or re-delivered job is a no-op.
+  queueService.registerWorker(QUEUES.AI_VISIBILITY, async (job: Job) => {
+    const ctx = getContext(job);
+    return traceLocalStorage.run(ctx, async () => {
+      if (job.name !== 'aiv-run') return;
+      const { runId } = job.data as { runId: string };
+      const outcome = await Registry.getInstance().aiVisibility.runs.execute(runId);
+      logger.info({ runId, ...outcome }, '[QueueWorker] AI visibility run finished');
+    });
+  });
+
   queueService.registerWorker(QUEUES.ANALYTICS_FANOUT, async (job: Job) => {
     const ctx = getContext(job);
     return traceLocalStorage.run(ctx, async () => {
@@ -193,12 +206,10 @@ export function registerAllWorkers(): void {
         // OFF until a person turns it on; budget and approval rules still apply.
         const outcome = await registry.aiVisibility.runs.runSchedules();
         if (outcome.started || outcome.refused) logger.info(outcome, '[QueueWorker] AI visibility schedule tick');
-      } else if (job.name === 'aiv-run') {
-        // AI Search Visibility run (0131). The use case claims only a QUEUED run,
-        // so a duplicate job is a no-op; per-call budget checks happen inside.
-        const { runId } = job.data as { runId: string };
-        const outcome = await registry.aiVisibility.runs.execute(runId);
-        logger.info({ runId, ...outcome }, '[QueueWorker] AI visibility run finished');
+        // Also hourly: a run left RUNNING by a worker that died would otherwise
+        // block every new run until the next restart.
+        const stale = await registry.aiVisibility.repo.failStaleRuns(120);
+        if (stale.length) logger.warn({ runIds: stale }, '[QueueWorker] marked stale AI visibility runs FAILED');
       } else if (job.name === 'seo-crawl') {
         // Organic Growth OS: first-party technical crawl. The use case enforces
         // the SSRF host allowlist, page/depth/time limits and cancellation

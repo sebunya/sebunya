@@ -37,6 +37,9 @@ export const QUEUES = {
   EMAIL_JOBS: 'email-jobs',
   ABANDONED_CART_EVENTS: 'abandoned-cart-events',
   RECOMMENDATION_MATERIALIZATION: 'recommendation-materialization',
+  // AI Search runs take minutes each; on their own queue they can never hold
+  // the analytics-fanout slots the synthetic monitor and crons depend on.
+  AI_VISIBILITY: 'ai-visibility',
 } as const;
 
 export type QueueName = typeof QUEUES[keyof typeof QUEUES];

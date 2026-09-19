@@ -65,6 +65,12 @@ export function competitorMentionAliases(c: { name: string; aliases?: readonly s
     // the label before the public suffix: oraimo.com -> oraimo, ug.oraimo.com -> oraimo, jumia.co.ug -> jumia
     const suffixLen = parts.length >= 3 && parts[parts.length - 2].length <= 3 ? 2 : 1;
     const label = parts[parts.length - suffixLen - 1];
+    // Only when the site IS the brand's domain, or a country/language
+    // subdomain of it (ug.oraimo.com). A product subdomain means the domain
+    // label names something else: market.momo.africa is MoMo Market, and
+    // "MoMo" alone is MTN Mobile Money — named in countless Ugandan answers.
+    const sub = parts.slice(0, parts.length - suffixLen - 1);
+    if (sub.length > 1 || (sub.length === 1 && sub[0].length > 3)) continue;
     if (label && label.length >= 4 && /^[a-z0-9-]+$/.test(label) && !GENERIC_LABELS.has(label)) out.add(label);
   }
   return [...out];

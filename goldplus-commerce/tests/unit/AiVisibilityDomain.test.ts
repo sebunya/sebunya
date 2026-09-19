@@ -173,6 +173,8 @@ describe('competitor mention aliases (registry names are descriptive)', () => {
       [{ name: 'Anker', aliases: ['Anker Uganda Outlet (via Abanista)'], domains: ['anker.com'] }, 'Anker cables last.', true],
       [{ name: 'Computers.co.ug', domains: ['computers.co.ug'] }, 'Laptops and computers are sold here.', false],
       [{ name: 'MoMo Market', domains: ['market.momo.africa'] }, 'MoMo Market sells phones.', true],
+      // "MoMo" alone is MTN Mobile Money, not the competitor MoMo Market.
+      [{ name: 'MoMo Market', domains: ['market.momo.africa'] }, 'You can pay with MoMo on delivery.', false],
     ];
     for (const [c, text, expected] of cases) {
       const hits = detectMentions(text, [{ id: 'x', name: c.name, aliases: [...(c.aliases ?? []), ...competitorMentionAliases(c)] }]);

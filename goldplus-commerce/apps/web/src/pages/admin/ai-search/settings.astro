@@ -71,7 +71,7 @@ const p = proj.ok ? proj.data : null;
               </div>
               {c.hasCredential && (
                 <div class="flex gap-2">
-                  <form method="POST"><input type="hidden" name="intent" value="test" /><input type="hidden" name="provider" value={c.provider} /><button class="rounded-full border border-gray-300 px-3 py-1.5 text-xs font-bold" title="Makes one small call without web search">Test</button></form>
+                  <form method="POST"><input type="hidden" name="intent" value="test" /><input type="hidden" name="provider" value={c.provider} /><button class="rounded-full border border-gray-300 px-3 py-1.5 text-xs font-bold" title="Makes one small call with web search, exactly as runs do (about a cent)">Test</button></form>
                   <form method="POST"><input type="hidden" name="intent" value="remove-key" /><input type="hidden" name="provider" value={c.provider} /><button class="px-2 py-1.5 text-xs font-bold underline">Remove key</button></form>
                 </div>
               )}

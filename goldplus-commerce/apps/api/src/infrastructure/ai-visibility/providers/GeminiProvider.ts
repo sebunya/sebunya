@@ -27,7 +27,7 @@ export class GeminiProvider implements AiAnswerProvider {
 
   async healthcheck(cfg: ProviderCallConfig) {
     try {
-      const { raw } = await this.executeQuery({ query: 'Reply with the single word: ok', location: null }, { ...cfg, webSearch: false });
+      const { raw } = await this.executeQuery({ query: 'What is the capital of Uganda? Answer in one word.', location: null }, cfg);
       return { ok: true as const, servedModel: String((raw as { modelVersion?: string })?.modelVersion ?? '') || null };
     } catch (e) {
       return { ok: false as const, reason: (e as Error).message };

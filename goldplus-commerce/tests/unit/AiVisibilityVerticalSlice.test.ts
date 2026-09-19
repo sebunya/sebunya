@@ -159,6 +159,7 @@ describe('AI visibility — first vertical slice', () => {
     // 8–12: persisted, mentioned, not cited, competitor cited, full answer
     const failed = repo.s.obs.find((o) => o.provider === 'ANTHROPIC');
     expect(failed).toMatchObject({ status: 'FAILED', errorCode: 'HTTP_401' });
+    // One question here; with more, the rest would be skipped, not re-asked (see the next test).
     const ok = repo.s.obs.find((o) => o.provider === 'OPENAI');
     expect(ok).toMatchObject({ brandMentioned: true, ownCited: false });
     const detail = await insights.answer(pid, ok.id);
@@ -243,6 +244,42 @@ describe('AI visibility — first vertical slice', () => {
     const rep = await build().insights.report(pid);
     expect(rep.ok && (rep.value as any).whatChanged.map((m: any) => m.kind)).toContain('CITATION_LOST');
     expect((rep as any).value.method.join(' ')).toMatch(/do not by themselves show/);
+  });
+
+  it('spend is re-read before every call: another run spending at the same time stops this one at the limit', async () => {
+    const { setup, runs } = build();
+    const pid = ((await setup.createProject(user, { name: 'L', domains: 'l.com' })) as any).value.id;
+    await setup.createQuery(user, pid, { text: 'first question' });
+    await setup.createQuery(user, pid, { text: 'second question' });
+    await setup.setCredential(user, pid, 'OPENAI', 'sk-a');
+    await setup.updateProvider(user, pid, 'OPENAI', { enabled: true });
+    await setup.updateProject(user, pid, { budget: { maxDailySpendUsd: 0.05 } }); // plan: 2 x $0.02 fits
+    let calls = 0;
+    providers.OPENAI = fake('OPENAI', () => {
+      calls += 1;
+      // A concurrent research run records $0.03 while this run is going.
+      if (calls === 1) repo.s.obs.push({ id: 'other', projectId: pid, status: 'SUCCEEDED', costUsd: 0.03, runKind: 'RESEARCH', executedAt: new Date(0).toISOString() });
+      return { text: 'x', cites: [] };
+    });
+    const r = await build().runs.start(user, pid, {});
+    expect((await build().runs.execute((r as any).value.run.id)).status).toBe('PARTIAL');
+    expect(calls).toBe(1); // the second call would have taken the day to $0.07
+    expect(repo.s.obs.find((o) => o.status === 'SKIPPED')?.errorMessage).toBe('Stopped by the spend limit.');
+  });
+
+  it('a refused key stops that provider after the first failure; the others carry on', async () => {
+    const { setup } = build();
+    const pid = ((await setup.createProject(user, { name: 'K', domains: 'k.com' })) as any).value.id;
+    for (const t of ['question one', 'question two', 'question three']) await setup.createQuery(user, pid, { text: t });
+    for (const [p, k] of [['OPENAI', 'sk-a'], ['ANTHROPIC', 'sk-ant-b']]) { await setup.setCredential(user, pid, p, k); await setup.updateProvider(user, pid, p, { enabled: true }); }
+    let claudeCalls = 0;
+    providers.ANTHROPIC = fake('ANTHROPIC', () => { claudeCalls += 1; return new ProviderCallError('HTTP 401: invalid x-api-key', 401, 'HTTP'); });
+    const r = await build().runs.start(user, pid, {});
+    expect((await build().runs.execute((r as any).value.run.id)).status).toBe('PARTIAL');
+    expect(claudeCalls).toBe(1);
+    const claude = repo.s.obs.filter((o) => o.provider === 'ANTHROPIC').map((o) => o.status);
+    expect(claude.sort()).toEqual(['FAILED', 'SKIPPED', 'SKIPPED']);
+    expect(repo.s.obs.filter((o) => o.provider === 'OPENAI' && o.status === 'SUCCEEDED')).toHaveLength(3);
   });
 
   it('with no provider configured the run is refused as not configured, never simulated', async () => {

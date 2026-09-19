@@ -154,11 +154,10 @@ export class AiVisibilityRunUseCases {
     const run = (await this.repo.getRunById(runId)) as AivRun;
     try {
       const project = (await this.repo.getProject(run.projectId)) as AivProject;
-      const [configs, competitors, queries, spentAtStart] = await Promise.all([
+      const [configs, competitors, queries] = await Promise.all([
         this.repo.listProviderConfigs(project.id),
         this.repo.listPinnedCompetitors(project.id),
         run.queryIds.length ? this.repo.getQueries(project.id, run.queryIds) : Promise.resolve([]),
-        this.repo.spendToDate(project.id),
       ]);
       const tasks: Array<{ queryId: string | null; text: string; location: { country: string; city: string | null } | null }> = run.kind === 'RESEARCH'
         ? run.adhocQueries.map((t) => ({ queryId: null, text: t, location: { country: project.marketCountry, city: project.marketCity } }))
@@ -179,6 +178,10 @@ export class AiVisibilityRunUseCases {
         const cfg = configs.find((c) => c.provider === pid);
         const adapter = this.providers[pid];
         const secret = cfg ? await this.repo.getProviderCredential(project.id, pid) : null;
+        // An authorisation failure (bad, revoked or unpaid key) fails every
+        // question the same way; after the first one the provider is not asked
+        // again this run, and Settings shows why.
+        let providerStop: string | null = null;
         for (const task of tasks) {
           const base = { runId: run.id, projectId: project.id, runKind: run.kind, queryId: task.queryId, queryText: task.text, provider: pid,
             requestedLocation: task.location ? [task.location.city, task.location.country].filter(Boolean).join(', ') : null,
@@ -188,8 +191,16 @@ export class AiVisibilityRunUseCases {
             counts.skipped += 1;
           };
           if (!cfg || !secret || !this.cipher || !cfg.enabled) { await skip('Provider was disabled or lost its key after the run was planned.'); continue; }
+          if (providerStop) { await skip(providerStop); continue; }
           if (await this.repo.isCancelRequested(run.id)) { await skip('Run cancelled.'); continue; }
-          if (!mayContinue(runSpent, cfg.estUsdPerCall, policy, { todayUsd: spentAtStart.todayUsd + runSpent, monthUsd: spentAtStart.monthUsd + runSpent, providerMonthUsd: {} })) {
+          // Spend is re-read before EVERY call: recorded costs include this run's
+          // answers so far and any other run spending at the same time (a
+          // monitoring and a research run together). A snapshot taken at the
+          // start let two concurrent runs each stay "within" the daily limit.
+          const live = await this.repo.spendToDate(project.id);
+          const providerCap = cfg.monthlyCapUsd;
+          if (!mayContinue(runSpent, cfg.estUsdPerCall, policy, live)
+            || (providerCap != null && (live.providerMonthUsd[pid] ?? 0) + cfg.estUsdPerCall > providerCap)) {
             await skip('Stopped by the spend limit.'); continue;
           }
           const callCfg = { apiKey: this.cipher.decrypt(secret), model: cfg.model, webSearch: cfg.webSearch, timeoutMs: CALL_TIMEOUT_MS };
@@ -223,6 +234,10 @@ export class AiVisibilityRunUseCases {
             await this.repo.insertObservation({ ...base, status: 'FAILED', errorCode: pe ? `${pe.code}${pe.status ? `_${pe.status}` : ''}` : 'ERROR', errorMessage: lastErr.message.slice(0, 500) });
             counts.failed += 1;
             this.logger.warn({ runId: run.id, provider: pid, code: pe?.code, status: pe?.status }, 'aiv provider call failed');
+            if (pe && pe.status != null && [401, 402, 403].includes(pe.status)) {
+              providerStop = `Not asked: the provider refused the key earlier in this run (HTTP ${pe.status}).`;
+              await this.repo.recordProviderHealth(project.id, pid, 'FAILED', `Refused during run ${run.id}: ${lastErr.message}`.slice(0, 500));
+            }
           }
           await this.repo.updateRunProgress(run.id, { ...counts, actualUsd: runSpent, phase: `Asking providers (${counts.succeeded + counts.failed + counts.skipped}/${run.totalTasks})` });
         }

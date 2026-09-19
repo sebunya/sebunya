@@ -22,10 +22,10 @@ export function vaultCipher(): CredentialCipher | null {
   };
 }
 
-/** Runs execute on the existing analytics-fanout worker, job name 'aiv-run'. */
+/** Runs execute on their own queue ('ai-visibility'), job name 'aiv-run'. */
 export const bullRunQueue: RunQueue = {
   async enqueueRun(runId: string) {
-    const q = QueueService.getInstance().getQueue(QUEUES.ANALYTICS_FANOUT);
+    const q = QueueService.getInstance().getQueue(QUEUES.AI_VISIBILITY);
     if (!q) return false;
     // jobId = run id: BullMQ will not enqueue the same run twice.
     await q.add('aiv-run', { runId }, { jobId: `aiv-run-${runId}`, attempts: 1, removeOnComplete: 100, removeOnFail: 200 });

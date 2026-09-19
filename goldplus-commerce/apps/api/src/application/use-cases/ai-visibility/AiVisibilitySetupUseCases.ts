@@ -216,13 +216,16 @@ export class AiVisibilitySetupUseCases {
     return ok({ provider, hasCredential: true, mask: this.cipher.mask(key) });
   }
 
-  /** A real, minimal call (no web search) to prove the key and model work. Costs one small call. */
+  /** A real, minimal call made the way runs make it (web search on) — proves key, model and search access. Costs one small call. */
   async testProvider(actor: Actor, projectId: string, provider: string) {
     if (!isProvider(provider)) return fail('BAD_INPUT', 'Unknown provider.');
     const cfg = (await this.repo.listProviderConfigs(projectId)).find((c) => c.provider === provider);
     const secret = await this.repo.getProviderCredential(projectId, provider);
     if (!cfg || !secret || !this.cipher) return fail('NOT_CONFIGURED', 'Not configured: add an API key first.');
-    const h = await this.providers[provider].healthcheck({ apiKey: this.cipher.decrypt(secret), model: cfg.model, webSearch: false, timeoutMs: 30_000 });
+    // Tested exactly as runs will call it — web search included. A key whose
+    // organisation has not enabled web search (Anthropic makes it a separate
+    // switch) passes a plain call and then fails every real run.
+    const h = await this.providers[provider].healthcheck({ apiKey: this.cipher.decrypt(secret), model: cfg.model, webSearch: cfg.webSearch, timeoutMs: 60_000 });
     const message = h.ok ? `Answered${h.servedModel ? ` as ${h.servedModel}` : ''}.` : h.reason;
     await this.repo.recordProviderHealth(projectId, provider, h.ok ? 'OK' : 'FAILED', message);
     await this.log(actor, 'AIV_PROVIDER_TESTED', 'aiv_provider_config', cfg.id, { provider, ok: h.ok });
