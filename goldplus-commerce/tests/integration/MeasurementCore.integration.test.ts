@@ -210,7 +210,8 @@ suite('measurement core (real PostgreSQL)', () => {
     expect(refunds).toHaveLength(1);
     expect(refunds[0].payload.amountUGX).toBe('30000');
     const [entry] = await raw`select * from measurement.commercial_entry where event_id = ${refunds[0].event_id}`;
-    expect(Number(entry.net_merchandise_ugx)).toBe(-30000);
+    expect(Number(entry.amount_ugx)).toBe(-30000);
+    expect(entry.component).toBe('REFUND');
     await M.routeBusinessEvents();
     const refundIntents = (await intentsOf(o.id)).filter((i: any) => i.sink_key === 'ga4:refund');
     expect(refundIntents).toHaveLength(1);

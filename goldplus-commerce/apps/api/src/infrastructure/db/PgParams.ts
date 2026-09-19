@@ -51,7 +51,9 @@ export function pgUuidArray(values: readonly unknown[]): SQL {
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const items = (values ?? []).map((v) => String(v ?? '')).filter((v) => UUID.test(v));
   if (items.length === 0) return sql`'{}'::uuid[]`;
-  return sql`(select coalesce(array_agg(value::uuid), '{}')::uuid[] from jsonb_array_elements_text(${JSON.stringify(items)}::text::jsonb))`;
+  // A literal array, not a subquery: `= any(<subquery>)` compares against ROWS
+  // (uuid = uuid[]), which Postgres rejects. Every item passed the UUID regex above.
+  return sql`${`{${items.join(',')}}`}::uuid[]`;
 }
 
 /** A numeric[] literal. Non-finite values are dropped, never coerced to 0. */
