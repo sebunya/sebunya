@@ -205,3 +205,24 @@ metrics.shopgoldplus.com {
     header_up X-Forwarded-Proto https
   }
 }
+
+# ------------------------------------------------------------------------------
+# 4. sGTM PREVIEW — preview-metrics.shopgoldplus.com (Tag Assistant for the
+#    server container). Production forwards preview traffic here.
+# ------------------------------------------------------------------------------
+preview-metrics.shopgoldplus.com {
+  tls admin@shopgoldplus.com
+
+  header {
+    Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+    X-Content-Type-Options    "nosniff"
+    -Server
+  }
+
+  reverse_proxy sgtm-preview:8080 {
+    header_up Host              {host}
+    header_up X-Forwarded-For   {http.request.header.CF-Connecting-IP}
+    header_up X-Real-IP         {http.request.header.CF-Connecting-IP}
+    header_up X-Forwarded-Proto https
+  }
+}
