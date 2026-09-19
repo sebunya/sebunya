@@ -352,16 +352,18 @@ services:
   # https://metrics.shopgoldplus.com/gtm.js via the server's web-container
   # client), server container GTM-P5VKZN7V (this image), GA4 G-YVV0KLGMQJ.
   # GTM_CONTAINER_CONFIG is the server container's config string (Admin >
-  # Install Google Tag Manager > Manually provision). The production server
-  # forwards Tag Assistant preview requests to the preview server itself, over
-  # the internal network — so Caddy sends everything to production.
+  # Install Google Tag Manager > Manually provision).
+  # Preview (Tag Assistant for the SERVER container) needs its own public HTTPS
+  # host: the image refuses an internal http PREVIEW_SERVER_URL ("Invalid
+  # preview server URL"). Until a DNS record like preview-metrics.shopgoldplus.com
+  # exists, production runs without it and the preview server stays parked in
+  # the `measurement-preview` profile. Live measurement does not need it.
   sgtm-production:
     image: gcr.io/cloud-tagging-10302018/gtm-cloud-image:stable
     restart: always
     environment:
       - CONTAINER_CONFIG=${GTM_CONTAINER_CONFIG}
       - RUN_AS_PREVIEW_SERVER=false
-      - PREVIEW_SERVER_URL=http://sgtm-preview:8080
     ports:
       - "127.0.0.1:8080:8080"
     healthcheck:
@@ -374,6 +376,7 @@ services:
 
   sgtm-preview:
     image: gcr.io/cloud-tagging-10302018/gtm-cloud-image:stable
+    profiles: ["measurement-preview"]
     restart: always
     environment:
       - CONTAINER_CONFIG=${GTM_CONTAINER_CONFIG}
