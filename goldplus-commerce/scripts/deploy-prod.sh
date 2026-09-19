@@ -56,6 +56,9 @@ until [ "$(docker compose --env-file .env.production -f docker-compose.productio
 done
 for s in $SERVICES; do docker tag "goldplus-commerce-$s:latest" "goldplus-commerce-$s:rollback-$HEAD"; done
 echo "DEPLOYED $HEAD, $WANT/$WANT healthy, tagged rollback-$HEAD"
+# Rollback images accumulated without limit (286, disk full 2026-09-18).
+# Keep the newest 10 per service; never fails the deploy.
+[ -x scripts/prune-rollback-images.sh ] && { scripts/prune-rollback-images.sh 10 || true; }
 # Lighthouse Watch: offer a measurement after the roll, in the background. The
 # runner enforces at most one automatic run per 96 hours (owner decision), so
 # most deploys are skipped by it; a manual run is always available:
