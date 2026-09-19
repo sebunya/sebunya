@@ -136,7 +136,10 @@ export class TelemetryDispatchService {
     let deadLettered = 0;
 
     for (const row of rows) {
-      const event   = row.payload as CanonicalTelemetryEvent;
+      // Some writers store the event as a JSON string inside the jsonb column
+      // (production rows are double-encoded). Read as-is, every field was
+      // undefined: `source` never matched and the visitor id was missing.
+      const event   = (typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload) as CanonicalTelemetryEvent;
       const attempt = row.attemptCount + 1;
 
       try {
