@@ -357,3 +357,23 @@ Undeclared automation watch: profiles/day ÷ visitor-action events/day, bursts o
 | Publish any fit | **NO-GO — no claim has evidence yet** | two photos each of BL-49FT and BL-49GX unlock up to 12 fits; then activate those two batteries |
 | Send the evidence sheet to the supplier | prepared; **not authorized, not sent** | owner forwards `evidence-request-sheet.md` |
 | Credentials | **OPEN** | owner: regenerate ZeptoMail token; change admin password |
+
+## 20. Editable battery compatibility (runtime candidate `fa4fdcdb`, 2026-09-20)
+
+**Gap map (verified in code before building)**
+| Capability | Already there | Gap → change |
+|---|---|---|
+| Battery → phones, add/submit/verify/reject/publish/unpublish/archive/restore, maker≠verifier server-side, evidence upload, device add/merge, material edit reopens review | yes (routes `admin/batteries.ts`, `CompatibilityWorkflow`, unit-tested) | none |
+| Phone → batteries | API filtered by `deviceId`; the screen ignored it and the battery page linked there with a slug (dead link) | screen filters by phone, shows all statuses for one battery/phone; phones list links to it; dead link fixed |
+| Place a research row with no/unknown battery code | "correct the spreadsheet and upload again" | **Link battery** on the row (migration 0146; beside the row, audited, forces a new dry run, identity only) |
+| Replay safety | READY/ACTIVE skipped | ARCHIVED (withdrawn) and reviewer-judged claims now skipped too |
+| Suspend a wrong fit | Unpublish / Archive exist | none (documented) |
+
+**Counts, by entity (corrected language).** The native dry run INGESTED 102 source rows into one import session; it created **0** devices and **0** claims (a dry run persists only the session, its rows and events). Of the 102: 57 would create draft claims (34 stronger + 23 weak evidence), 12 are held, 33 cannot be placed. With `proposed-battery-links.md`, 33 of those have a proposed catalogue battery (29 clear/likely, 3 ambiguous, 1 importer-held compound) and 1 has none. Unique live batteries referenced: 23 by code + up to 21 more via links.
+
+**Evidence.** Unit: `BatteryImportRowLinkAndReplay` 5/5. Full suite at `fa4fdcdb`: 8,145 passed / 1 failed (`ZeroSkipGate`, environment) / 243 skipped. Real PostgreSQL (production copy, Steward-admitted, lane released): `BatteryImportRowLink` 1/1 — invalid → link → session back to MAPPED → dry run VALID `CREATE_CLAIM` `SUPPLIER_LISTED`, source cell still empty, devices/claims counts unchanged, one audited event; `PersonalisationReads` 5/5; migrations 0144–0146 applied by the real runner. Web `tsc` + `astro build` clean.
+**Not done:** no browser walkthrough or screenshots of the admin screens — they sit behind the admin login and I do not enter passwords; the guide is text. Maker≠verifier was not re-exercised with two identities in staging (it is enforced server-side and unit-tested: "a draft is submitted, then the maker cannot verify it"). Self-review only.
+
+**States:** implemented ✔ · verified (unit + real DB) ✔ · staged ✘ · reviewed ✘ · activated ✘ · published ✘ — the last four need the deploy, then two staff members.
+
+**Release now carries three migrations** (0144 table, 0145 index, 0146 three nullable columns — metadata-only `ADD COLUMN`, no rewrite). Post-condition adds: `select count(*)=3 from information_schema.columns where table_name='battery_import_rows' and column_name like 'linked_battery_%'`.
