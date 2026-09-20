@@ -53,3 +53,6 @@ Checked against public parts listings:
 - **"Pop 2 Go"** — TECNO's range has Pop 2, Pop 2F, Pop 2 Plus and Pop 2 Power but no phone officially called "Pop 2 Go". Held on BL-24ET as an *identity* question (get the model number off the phone) so it does not become a duplicate of the Pop 2/2F. The old research row "Pop 2 Go on BL-38BT" is held as **rejected by the client**.
 
 Sources: sunsky-online.com and mobspares.com (Pop 5 GO BL-38BT 4000mAh); aliexpress.com item 1005009736929075 (Pop 6 Go BL-38CT 3850mAh); alibaba.com BL-24ET listing (F3/B1/Pop 2/B1F); daraz.pk (BL-24ET for Pop 2, Pop 2F). Seller listings are leads, not proof.
+
+## Final file through the native importer (commit `9321cc2d`, production copy)
+`ready to apply: 188 · held for review: 7 · with errors: 0`; `devices` 0 → 0, `product_device_compatibility` 0 → 0. Client-facing status workbook: `~/Downloads/GoldPlus_Battery_Phone_Compatibility_v3_After_Client_Answers_2026-09-20.xlsx` (supersedes v1 and v2).
