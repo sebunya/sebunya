@@ -162,6 +162,39 @@ describe('a decline followed by a real payment on the same tracking id', () => {
     expect(canTransitionAttempt('reversed', 'completed', { providerConfirmed: true })).toBe(false);
   });
   it('names the provider route in the error, so 2am greps find it', () => {
-    expect(() => assertAttemptTransition('failed', 'completed')).toThrow(/with provider confirmation: completed, reversed/);
+    expect(() => assertAttemptTransition('failed', 'completed')).toThrow(/with provider confirmation: completed, invalid, reversed/);
+  });
+});
+
+/**
+ * The full sequence one provider transaction can report, in order:
+ * INVALID (nothing yet) → FAILED (instrument declined) → COMPLETED (another
+ * instrument paid) → REVERSED (money returned). Every step must be writable
+ * when the provider is the one saying it, or the endpoint 500s and the shop's
+ * books stop matching the provider's.
+ */
+describe('the whole provider sequence on one tracking id', () => {
+  const P = { providerConfirmed: true };
+  it('walks 0 → 2 → 1 → 3 without an illegal move', () => {
+    expect(canTransitionAttempt('pending', 'invalid', P)).toBe(true);
+    expect(canTransitionAttempt('invalid', 'failed', P)).toBe(true);
+    expect(canTransitionAttempt('failed', 'completed', P)).toBe(true);
+    expect(canTransitionAttempt('completed', 'reversed', P)).toBe(true);
+  });
+  it('lets a poller that gave up still record what the provider later reports', () => {
+    for (const to of ['completed', 'failed', 'invalid', 'reversed'] as const) {
+      expect(canTransitionAttempt('abandoned', to, P)).toBe(true);
+    }
+  });
+  it('keeps reversed final: money that went back does not come back by itself', () => {
+    for (const to of ['completed', 'failed', 'invalid', 'pending'] as const) {
+      expect(canTransitionAttempt('reversed', to, P)).toBe(false);
+    }
+  });
+  it('never lets a provider move re-open a settled attempt into flight', () => {
+    for (const from of ['failed', 'invalid', 'abandoned', 'completed'] as const) {
+      expect(canTransitionAttempt(from, 'pending', P)).toBe(false);
+      expect(canTransitionAttempt(from, 'verification_pending', P)).toBe(false);
+    }
   });
 });

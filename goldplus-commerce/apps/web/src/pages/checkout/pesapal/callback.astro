@@ -1,6 +1,7 @@
 ---
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import { getBusinessInfo } from '../../../lib/businessInfo';
+import { apiBase } from '../../../lib/api';
 import {
   normalisePaymentReturnKind,
   orderNumberFromMerchantReference,
@@ -16,8 +17,32 @@ import {
  * printed verbatim is deliberately ignored: it was raw provider or exception
  * text on a page the customer reads.
  */
-const reference = Astro.url.searchParams.get('reference') || '';
-const kind = normalisePaymentReturnKind(Astro.url.searchParams.get('status') || '');
+const reference = Astro.url.searchParams.get('reference') || Astro.url.searchParams.get('OrderMerchantReference') || '';
+const trackingId = Astro.url.searchParams.get('trackingId') || Astro.url.searchParams.get('OrderTrackingId') || '';
+
+/**
+ * The status in the URL is what was true at the instant PesaPal redirected.
+ * A payment that settles a moment later — the common case when an instrument
+ * declines and the customer pays with another — left this page saying "we
+ * could not confirm your payment" for ever, on an order that was paid.
+ * So we ask the API what the settlement says NOW; settlement is idempotent,
+ * and the URL's status is only the fallback when we cannot ask.
+ */
+let kind = normalisePaymentReturnKind(Astro.url.searchParams.get('status') || '');
+if (trackingId && reference) {
+  try {
+    const res = await fetch(
+      `${apiBase}/commerce/payments/pesapal/return-state?OrderTrackingId=${encodeURIComponent(trackingId)}&OrderMerchantReference=${encodeURIComponent(reference)}`,
+      { headers: { Accept: 'application/json' } },
+    );
+    const json = await res.json().catch(() => null);
+    if (res.ok && json?.success && typeof json.data?.kind === 'string') {
+      kind = normalisePaymentReturnKind(json.data.kind);
+    }
+  } catch {
+    // Keep the redirect's verdict rather than inventing a happier one.
+  }
+}
 const orderNumber = orderNumberFromMerchantReference(reference);
 const copy = paymentReturnCopy(kind, orderNumber);
 

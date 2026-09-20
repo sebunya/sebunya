@@ -84,3 +84,42 @@ consumed by nothing.
   reconciliation confirmed none could settle; 8 units returned to sale; audited
   as RESERVATION_RELEASED_OPERATOR_DIRECTED. The two Aug-6 reservations (0AD8,
   BFDF) left to the TTL.
+
+## 2026-09-20 — one provider transaction can hold several attempts
+
+**What happened.** The shop's FIRST successful collection (order
+GP-202609-0B3BA402, UGX 4,000) was recorded as a failure. MTN declined, the IPN
+wrote the attempt `failed`, the customer paid the SAME PesaPal page with Airtel
+and it completed (AirtelUG, confirmation 156914631189). The second notification
+could not be written — `failed` was terminal — so the endpoint answered 500 and
+the shop held the money with the order unpaid, while PesaPal's own page told the
+customer "Payment Received" and ours said "We could not confirm your payment.
+Please do not pay again."
+
+**The wrong assumption.** Our attempt state machine treated a provider verdict
+as monotonic: one transaction, one outcome. PesaPal is not like that. One
+tracking id can report, in order, `0 INVALID` → `2 FAILED` → `1 COMPLETED` →
+`3 REVERSED`, because the customer may try several instruments on the same live
+page. On Ugandan mobile money a first decline is routine, so this would have
+struck a large share of real customers — each of them paying and appearing not
+to.
+
+**Decisions.**
+
+1. `failed`, `invalid` and `abandoned` may reach any later provider verdict
+   (`completed`, `failed`, `invalid`, `reversed`), but ONLY when the status is
+   the provider's own answer — an IPN, the return leg, or the poller reading
+   `GetTransactionStatus`. Our own bookkeeping still cannot make that move, and
+   a provider move may never put a settled attempt back in flight.
+2. `reversed` stays terminal: money that went back does not come back by itself.
+3. `completed` keeps its single exit to `reversed`.
+4. Safe because verification always RE-READS the provider's current status
+   rather than trusting a notification body, so a late or duplicated
+   notification cannot drag a completed payment backwards; it re-reads
+   "Completed" and self-loops.
+5. The customer's return page asks what the settlement says NOW instead of
+   rendering the verdict from the instant of the redirect. Settlement is
+   idempotent (`ALREADY_SETTLED` is an expected outcome), so a payment that
+   resolves seconds later stops the page insisting it could not be confirmed.
+   Both doors — the redirect and that lookup — go through one
+   `describeSettlement`, so they can never tell the customer different things.

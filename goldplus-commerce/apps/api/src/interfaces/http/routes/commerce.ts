@@ -975,48 +975,45 @@ routes.post('/payments/pesapal/start', async (c) => {
   return respondToStartOutcome(c, outcome, traceId);
 });
 
-routes.get('/payments/pesapal/callback', async (c) => {
-  const trackingId = c.req.query('OrderTrackingId') || c.req.query('orderTrackingId') || '';
-  const reference = c.req.query('OrderMerchantReference') || c.req.query('orderMerchantReference') || '';
-  
-  const frontendCallbackUrl = process.env.PESAPAL_CALLBACK_URL || 'http://localhost:3000/checkout/pesapal/callback';
-
-  if (!trackingId || !reference) {
-    // Without both ids nothing can be settled, so nothing is known about the
-    // money — "unknown", not "failed", which the page renders as "not charged".
-    return c.redirect(`${frontendCallbackUrl}?status=unknown_attempt`);
-  }
-
+/**
+ * Settle this payment and say what the CUSTOMER should be told about it.
+ *
+ * The browser return leg and the return-state lookup are two doors onto the
+ * same question, so they share one answer: reading the provider status
+ * separately in each could tell the customer "success" for a payment the
+ * settlement parked for review, and the two would disagree.
+ */
+async function describeSettlement(trackingId: string, reference: string, traceId: string): Promise<{ kind: string; code: string }> {
+  if (!trackingId || !reference) return { kind: 'unknown_attempt', code: 'MISSING_IDS' };
   try {
-    // ONE settlement path for callback, IPN, poller and ops re-verify. The
-    // ~90-line effects block that used to live here is inside it, reported
-    // per-effect rather than swallowed.
-    const { verification: result, settlement } = await registry.settlePaymentUseCase.execute({
+    const { settlement } = await registry.settlePaymentUseCase.execute({
       orderTrackingId: trackingId,
       merchantReference: reference,
       source: 'callback',
-      traceId: c.req.header('x-request-id') ?? crypto.randomUUID(),
+      traceId,
     });
-    void result;
-
-    // What the CUSTOMER is told follows the settlement, not the raw provider status.
-    // Reading the status directly here could show "success" for a payment the settlement
-    // parked for review — the two would disagree, and the customer would believe the more
-    // optimistic one.
-    if (paymentDidConfirm(settlement)) {
-      return c.redirect(`${frontendCallbackUrl}?status=success&trackingId=${encodeURIComponent(trackingId)}&reference=${encodeURIComponent(reference)}`);
-    }
-
-    // Deliberately no provider message in the URL: it is provider text on a page the
-    // customer sees, and the storefront maps this code to its own wording.
-    return c.redirect(`${frontendCallbackUrl}?status=${encodeURIComponent(settlement.kind.toLowerCase())}&trackingId=${encodeURIComponent(trackingId)}&reference=${encodeURIComponent(reference)}&code=${encodeURIComponent(settlement.reason)}`);
-  } catch (err: any) {
-    console.error('[API_ERROR] PesaPal callback failed:', err);
-    // An exception here means we do NOT know what happened to the money, so
-    // the customer is told exactly that — never "failed" (which the page
-    // renders as "you have not been charged"), and never the exception text.
-    return c.redirect(`${frontendCallbackUrl}?status=unknown_attempt&trackingId=${encodeURIComponent(trackingId)}&reference=${encodeURIComponent(reference)}`);
+    return paymentDidConfirm(settlement)
+      ? { kind: 'success', code: settlement.reason }
+      : { kind: settlement.kind.toLowerCase(), code: settlement.reason };
+  } catch (err) {
+    // We do not know what happened to the money, and must not guess either way.
+    console.error('[API_ERROR] PesaPal settlement failed:', err);
+    return { kind: 'unknown_attempt', code: 'SETTLEMENT_ERROR' };
   }
+}
+
+routes.get('/payments/pesapal/callback', async (c) => {
+  const trackingId = c.req.query('OrderTrackingId') || c.req.query('orderTrackingId') || '';
+  const reference = c.req.query('OrderMerchantReference') || c.req.query('orderMerchantReference') || '';
+  const frontendCallbackUrl = process.env.PESAPAL_CALLBACK_URL || 'http://localhost:3000/checkout/pesapal/callback';
+  const traceId = c.req.header('x-request-id') ?? crypto.randomUUID();
+
+  const { kind, code } = await describeSettlement(trackingId, reference, traceId);
+  if (!trackingId || !reference) return c.redirect(`${frontendCallbackUrl}?status=unknown_attempt`);
+  const ids = `&trackingId=${encodeURIComponent(trackingId)}&reference=${encodeURIComponent(reference)}`;
+  // Deliberately no provider message in the URL: the storefront maps this code
+  // to its own wording rather than printing provider text at a customer.
+  return c.redirect(`${frontendCallbackUrl}?status=${encodeURIComponent(kind)}${ids}${kind === 'success' ? '' : `&code=${encodeURIComponent(code)}`}`);
 });
 
 const handleIpn = async (c: any) => {
@@ -1066,6 +1063,26 @@ const handleIpn = async (c: any) => {
     return c.json({ error: 'An internal error occurred.' }, 500);
   }
 };
+
+/**
+ * What the settlement says about this payment NOW.
+ *
+ * The return page used to render the verdict from the instant of the redirect
+ * and keep it for ever: a customer whose payment settled seconds later still
+ * read "we could not confirm your payment, do not pay again" on every refresh,
+ * while PesaPal's own page said "Payment Received" (observed 2026-09-20).
+ * Settlement is idempotent and re-entrant by design — ALREADY_SETTLED is an
+ * expected outcome — so asking again is safe and is the only way the page can
+ * tell the truth as it stands.
+ */
+routes.get('/payments/pesapal/return-state', async (c) => {
+  const described = await describeSettlement(
+    c.req.query('OrderTrackingId') || c.req.query('orderTrackingId') || '',
+    c.req.query('OrderMerchantReference') || c.req.query('orderMerchantReference') || '',
+    c.req.header('x-request-id') ?? crypto.randomUUID(),
+  );
+  return c.json({ success: true, data: described });
+});
 
 routes.post('/payments/pesapal/ipn', handleIpn);
 routes.get('/payments/pesapal/ipn', handleIpn);

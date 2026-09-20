@@ -95,10 +95,23 @@ const TRANSITIONS: Record<PaymentAttemptStatus, readonly PaymentAttemptStatus[]>
  * Our own bookkeeping still may not make this move; it is legal only when the
  * provider's own status is the source (IPN, return leg or the poller).
  */
+/**
+ * One PesaPal tracking id can legitimately report, in order:
+ *   0 INVALID (nothing paid yet) -> 2 FAILED (an instrument declined)
+ *   -> 1 COMPLETED (another instrument paid) -> 3 REVERSED (money returned).
+ * Any of those may be the FIRST thing we hear, and any may follow any other
+ * while the page is live, so every non-money state must be able to reach every
+ * later provider verdict. Only `reversed` is final: the money went back, and
+ * that transaction is over.
+ *
+ * Verification always RE-READS the provider's current status rather than
+ * trusting a notification body, so a late or duplicated notification cannot
+ * drag a completed payment backwards — it re-reads "Completed" and self-loops.
+ */
 const PROVIDER_CONFIRMED_TRANSITIONS: Record<string, readonly PaymentAttemptStatus[]> = {
-  failed: ['completed', 'reversed'],
-  invalid: ['completed', 'reversed'],
-  abandoned: ['completed'],
+  failed: ['completed', 'invalid', 'reversed'],
+  invalid: ['completed', 'failed', 'reversed'],
+  abandoned: ['completed', 'failed', 'invalid', 'reversed'],
 };
 
 export function canTransitionAttempt(
