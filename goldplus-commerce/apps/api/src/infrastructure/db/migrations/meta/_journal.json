@@ -1023,6 +1023,13 @@
       "when": 1790140000004,
       "tag": "0145_recommendation_events_source_product_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 146,
+      "version": "5",
+      "when": 1790140000005,
+      "tag": "0146_battery_import_row_battery_link",
+      "breakpoints": true
     }
   ]
 }

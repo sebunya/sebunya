@@ -208,7 +208,8 @@ const current = brands.find((b) => b.id === brandId) ?? null;
                 {devices.map((dv) => (
                   <tr class="border-b border-gray-50 hover:bg-gray-50/50">
                     <td class="p-4"><span class="font-bold text-brand-dark">{dv.brandName} {dv.model}</span>{dv.seriesName && <span class="text-gray-400"> · {dv.seriesName}</span>}
-                      {dv.modelAliases.length > 0 && <p class="text-gray-400 mt-0.5">also: {dv.modelAliases.join(', ')}</p>}</td>
+                      {dv.modelAliases.length > 0 && <p class="text-gray-400 mt-0.5">also: {dv.modelAliases.join(', ')}</p>}
+                      <a href={`/admin/batteries/compatibility?deviceId=${dv.id}`} class="mt-1 inline-block text-[10px] font-black uppercase tracking-widest text-brand-primary">Matching batteries ({dv.claimCount}, {dv.verifiedFits} verified)</a></td>
                     <td class="p-4 font-mono text-gray-600">{dv.modelNumber ?? <span class="text-amber-700">not recorded</span>}{dv.variant ? ` (${dv.variant})` : ''}</td>
                     <td class="p-4 text-center tabular-nums">{dv.verifiedFits}<span class="text-gray-400"> / {dv.claimCount}</span></td>
                     <td class="p-4 text-center"><span class="text-[9px] font-black px-2 py-1 rounded uppercase tracking-widest border border-gray-200 bg-gray-50 text-gray-600">{dv.status}</span></td>

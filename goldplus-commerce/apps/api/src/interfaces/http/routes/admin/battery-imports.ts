@@ -93,6 +93,12 @@ routes.post('/:id/rows/:rowId/resolve', requirePermissions([PERMISSIONS.PIM_MAP]
   return run(c, () => uc().resolveRow({ id: param(c, 'id'), rowId: param(c, 'rowId'), resolution: b.data.resolution, note: b.data.note ?? null, override: b.data.override ?? null, actorId: actor(c) }));
 });
 
+routes.post('/:id/rows/:rowId/link-battery', requirePermissions([PERMISSIONS.PIM_MAP]), async (c) => {
+  const b = await body(c, z.object({ canonicalCode: z.string().trim().max(80).nullable(), note: z.string().trim().min(3).max(500) }));
+  if (!b.ok) return b.response;
+  return run(c, () => uc().linkRowBattery({ id: param(c, 'id'), rowId: param(c, 'rowId'), canonicalCode: b.data.canonicalCode || null, note: b.data.note, actorId: actor(c) }));
+});
+
 routes.post('/:id/approval', requirePermissions([PERMISSIONS.PIM_APPROVE]), async (c) => {
   const b = await body(c, version.extend({ decision: z.enum(['APPROVED', 'REJECTED']), reason: z.string().trim().min(3).max(2000) }));
   if (!b.ok) return b.response;

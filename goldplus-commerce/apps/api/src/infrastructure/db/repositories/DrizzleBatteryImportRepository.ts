@@ -167,6 +167,28 @@ export class DrizzleBatteryImportRepository implements IBatteryImportRepository 
     });
   }
 
+  async linkRowBattery(sessionId: string, rowId: string, canonicalCode: string | null, note: string, actorId: string) {
+    return db.transaction(async (tx) => {
+      const [row] = await tx.select().from(batteryImportRows).where(and(eq(batteryImportRows.id, rowId), eq(batteryImportRows.sessionId, sessionId))).limit(1);
+      if (!row) return null;
+      const [updated] = await tx.update(batteryImportRows).set({
+        linkedBatteryCode: canonicalCode, linkedBatteryBy: canonicalCode ? actorId : null, linkedBatteryAt: canonicalCode ? new Date() : null,
+      }).where(eq(batteryImportRows.id, rowId)).returning();
+      // The stored preview no longer describes this session: approval must wait
+      // for a new dry run, which re-validates the row against the linked battery.
+      const [s] = await tx.update(batteryImportSessions)
+        .set({ status: 'MAPPED', previewDigest: null, version: sql`${batteryImportSessions.version} + 1`, updatedAt: new Date() })
+        .where(and(eq(batteryImportSessions.id, sessionId), inArray(batteryImportSessions.status, ['MAPPED', 'READY_FOR_APPROVAL'])))
+        .returning();
+      if (!s) return null;
+      await tx.insert(batteryImportEvents).values({
+        sessionId, actorId, action: canonicalCode ? 'ROW_BATTERY_LINKED' : 'ROW_BATTERY_UNLINKED', reason: note,
+        evidence: jsonb({ rowNumber: row.rowNumber, previousLink: row.linkedBatteryCode ?? null, linkedBatteryCode: canonicalCode }) as never,
+      });
+      return { session: session(s), row: rowRecord(updated) };
+    });
+  }
+
   async approve(input: { id: string; expectedVersion: number; actorId: string; decision: 'APPROVED' | 'REJECTED'; reason: string }) {
     return db.transaction(async (tx) => {
       const [current] = await tx.select().from(batteryImportSessions).where(and(eq(batteryImportSessions.id, input.id), eq(batteryImportSessions.version, input.expectedVersion), eq(batteryImportSessions.status, 'READY_FOR_APPROVAL'))).limit(1);

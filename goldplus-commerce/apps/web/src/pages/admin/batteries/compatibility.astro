@@ -48,13 +48,18 @@ if (Astro.request.method === 'POST') {
 }
 
 const url = new URL(Astro.request.url);
-const workflowStatus = url.searchParams.get('workflowStatus') ?? 'REVIEW';
 const evidenceStatus = url.searchParams.get('evidenceStatus') ?? '';
 const productId = url.searchParams.get('productId') ?? '';
+// The same claims, seen from the phone: "which batteries are matched to this phone?"
+const deviceId = /^[0-9a-f-]{36}$/i.test(url.searchParams.get('deviceId') ?? '') ? String(url.searchParams.get('deviceId')) : '';
+// Looking at ONE battery or ONE phone shows every status by default — a reviewer
+// hunting a wrong fit must not have it hidden behind the "In review" tab.
+const workflowStatus = url.searchParams.get('workflowStatus') ?? (productId || deviceId ? '' : 'REVIEW');
 const query = new URLSearchParams();
 if (workflowStatus) query.set('workflowStatus', workflowStatus);
 if (evidenceStatus) query.set('evidenceStatus', evidenceStatus);
 if (productId) query.set('productId', productId);
+if (deviceId) query.set('deviceId', deviceId);
 query.set('limit', '300');
 
 const [claimsRes, batteriesRes, devicesRes] = await Promise.all([
@@ -113,9 +118,16 @@ const TABS = [['REVIEW', 'Waiting for a checker'], ['DRAFT', 'Drafts'], ['READY'
       </form>
     </section>
 
+    {(productId || deviceId) && (
+      <p class="mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-xs text-gray-700">
+        Showing every claim for{' '}
+        <strong>{deviceId ? (() => { const dv = (devicesRes.data ?? []).find((x) => x.id === deviceId); return dv ? `the ${dv.brandName} ${dv.model}${dv.modelNumber ? ` (${dv.modelNumber})` : ''}` : 'this phone'; })() : (() => { const b = batteries.find((x) => x.product.productId === productId); return b ? `battery ${b.profile.canonicalCode}` : 'this battery'; })()}</strong>,
+        in any status. <a href="/admin/batteries/compatibility" class="font-bold underline">Show the review queue instead</a>
+      </p>
+    )}
     <nav class="flex flex-wrap gap-2 mb-4">
       {TABS.map(([v, l]) => (
-        <a href={`/admin/batteries/compatibility?workflowStatus=${v}`} class={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase tracking-widest ${v === workflowStatus ? 'border-brand-primary bg-brand-primary/10 text-brand-dark' : 'border-gray-300 text-gray-600 hover:border-brand-primary'}`}>{l}</a>
+        <a href={`/admin/batteries/compatibility?workflowStatus=${v}${productId ? `&productId=${productId}` : ''}${deviceId ? `&deviceId=${deviceId}` : ''}`} class={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase tracking-widest ${v === workflowStatus ? 'border-brand-primary bg-brand-primary/10 text-brand-dark' : 'border-gray-300 text-gray-600 hover:border-brand-primary'}`}>{l}</a>
       ))}
     </nav>
 

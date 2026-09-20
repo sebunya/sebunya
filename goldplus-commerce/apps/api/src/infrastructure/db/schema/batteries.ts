@@ -300,6 +300,10 @@ export const batteryImportRows = pgTable('battery_import_rows', {
   resolutionNote: varchar('resolution_note', { length: 500 }),
   resolvedBy: uuid('resolved_by'),
   resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  /** A person's identity decision for a row whose battery code is missing or unknown. source_data is never edited. */
+  linkedBatteryCode: varchar('linked_battery_code', { length: 80 }),
+  linkedBatteryBy: uuid('linked_battery_by'),
+  linkedBatteryAt: timestamp('linked_battery_at', { withTimezone: true }),
   appliedRecordIds: jsonb('applied_record_ids'),
   beforeSnapshot: jsonb('before_snapshot'),
   afterSnapshot: jsonb('after_snapshot'),

@@ -411,7 +411,10 @@ export function normaliseImportRow(
       let action: ProposedAction = 'CREATE_CLAIM';
       if (battery && !('ambiguous' in battery)) {
         const existing = ctx.findClaim(battery.productId, { brand: deviceBrand, model: deviceModel ?? modelNumber ?? '', modelNumber, variant });
-        if (existing && (existing.workflowStatus === 'READY' || existing.workflowStatus === 'ACTIVE')) {
+        if (existing && existing.workflowStatus === 'ARCHIVED') {
+          action = 'SKIP_CLAIM';
+          warnings.push('This fit was withdrawn by a person; the import does not bring it back. Restore it from the compatibility screen if that was a mistake.');
+        } else if (existing && (existing.workflowStatus === 'READY' || existing.workflowStatus === 'ACTIVE')) {
           action = 'SKIP_CLAIM';
           warnings.push('A verified or live claim already exists for this battery and device; the import does not change it.');
         } else if (existing) action = 'UPDATE_CLAIM';

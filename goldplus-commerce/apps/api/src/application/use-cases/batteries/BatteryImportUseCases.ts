@@ -197,8 +197,9 @@ export class BatteryImportUseCases {
     if (!session) throw notFound('Import');
     if (!session.mapping) throw unprocessable('INVALID_STATE', 'Map the columns before running the dry run.');
     if (!['MAPPED', 'READY_FOR_APPROVAL', 'UPLOADED'].includes(session.status)) throw unprocessable('INVALID_STATE', `A ${session.status.toLowerCase().replace(/_/g, ' ')} import cannot be previewed again.`);
-    const rows = await this.repo.rows(input.id);
     const mapping = session.mapping;
+    // A linked battery stands in for the row's own code cell; sourceData itself is never rewritten.
+    const rows = (await this.repo.rows(input.id)).map((r) => (r.linkedBatteryCode && mapping.batteryCode ? { ...r, sourceData: { ...r.sourceData, [mapping.batteryCode]: r.linkedBatteryCode } } : r));
     const ctx = await this.catalogueContext();
     const codeFields = session.importType === 'BATTERY_CATALOGUE' ? ['canonicalCode', 'sourceItem'] : ['batteryCode'];
     await ctx.preload(rows.flatMap((r) => codeFields.flatMap((f) => {
@@ -258,6 +259,32 @@ export class BatteryImportUseCases {
     const updated = await this.repo.savePreview(input.id, input.expectedVersion, digest, previewRows, input.actorId);
     if (!updated) throw unprocessable('STALE_VERSION', 'The import changed before the dry run could be stored.');
     return { session: updated, previewDigest: digest, rows: await this.repo.rows(input.id) };
+  }
+
+  /**
+   * "This research row is about THAT catalogue battery." An identity decision
+   * for a COMPATIBILITY row whose battery code is missing or unknown — it says
+   * nothing about fit: the row still stages as a supplier-listed draft.
+   */
+  async linkRowBattery(input: { id: string; rowId: string; canonicalCode: string | null; note: string; actorId: string }) {
+    const session = await this.repo.find(input.id);
+    if (!session) throw notFound('Import');
+    if (session.importType !== 'COMPATIBILITY') throw unprocessable('INVALID_STATE', 'Only a compatibility import row can be linked to a battery.');
+    if (!['READY_FOR_APPROVAL', 'MAPPED'].includes(session.status)) throw unprocessable('INVALID_STATE', 'Rows can be linked after mapping and before approval.');
+    if (!session.mapping?.batteryCode) throw unprocessable('INVALID_STATE', 'Map the battery code column first.');
+    if (!input.note.trim()) throw invalid('Say why this row is about that battery.');
+    let code: string | null = null;
+    if (input.canonicalCode) {
+      const ctx = await this.catalogueContext();
+      await ctx.preload([input.canonicalCode]);
+      const battery = ctx.resolveBattery(input.canonicalCode);
+      if (!battery) throw invalid(`There is no battery "${input.canonicalCode}" in the catalogue.`);
+      if ('ambiguous' in battery) throw invalid(`"${input.canonicalCode}" matches more than one battery; choose the exact one.`);
+      code = battery.canonicalCode;
+    }
+    const result = await this.repo.linkRowBattery(input.id, input.rowId, code, input.note.trim(), input.actorId);
+    if (!result) throw notFound('Import row');
+    return result;
   }
 
   async resolveRow(input: { id: string; rowId: string; resolution: 'INCLUDE' | 'EXCLUDE' | 'HOLD'; note: string | null; override: Record<string, unknown> | null; actorId: string }) {
@@ -386,7 +413,10 @@ export class BatteryImportUseCases {
         const productId = String(data.batteryProductId);
         const existing = await this.compatRepo.findPair(productId, device.id);
         if (existing) {
-          if (existing.workflowStatus === 'READY' || existing.workflowStatus === 'ACTIVE') return { status: 'SKIPPED', appliedRecordIds: null, beforeSnapshot: null, afterSnapshot: null, error: null };
+          // A replayed research file never outranks a person: a verified or live
+          // claim, a fit someone SUSPENDED (archived), and a claim whose evidence a
+          // reviewer has already judged are all left exactly as they are.
+          if (['READY', 'ACTIVE', 'ARCHIVED'].includes(existing.workflowStatus) || existing.evidenceStatus !== 'SUPPLIER_LISTED') return { status: 'SKIPPED', appliedRecordIds: null, beforeSnapshot: null, afterSnapshot: null, error: null };
           const updated = await this.compatibility.update(existing.id, { evidenceSource: data.evidenceSource ?? existing.evidenceSource, notes: [existing.notes, data.notes].filter(Boolean).join('\n') || null }, actorId);
           return { status: 'APPLIED', appliedRecordIds: { claims: [existing.id], devices: deviceCreated ? [device.id] : [] }, beforeSnapshot: { evidenceSource: existing.evidenceSource, notes: existing.notes }, afterSnapshot: { evidenceSource: updated?.evidenceSource ?? null }, error: null };
         }

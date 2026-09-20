@@ -12,7 +12,7 @@ interface Detail {
   product: { productId: string; sku: string; slug: string; name: string; shortDescription: string; longDescription: string; priceUgx: number; primaryImageUrl: string | null; stockQuantity: number; approvalStatus: string; movementCount: number };
   aliases: Array<{ id: string; alias: string; aliasType: string; source: string | null; isActive: boolean }>;
   evidence: Array<{ id: string; url: string; kind: string; note: string | null; createdAt: string }>;
-  compatibility: Array<{ id: string; workflowStatus: string; evidenceStatus: string; publicCondition: string | null; device: { label: string; slug: string; status: string } }>;
+  compatibility: Array<{ id: string; deviceId: string; workflowStatus: string; evidenceStatus: string; publicCondition: string | null; device: { label: string; slug: string; status: string } }>;
   inventory: { stock: number; reserved: number; available: number; movements: Array<{ id: string; movementType: string; quantityDelta: number; quantityAfter: number; reason: string; occurredAt: string; referenceNumber: string | null; unitCostUgx: number | null }> };
   price: { retailUgx: number; hasRetailPrice: boolean };
   readiness: { ready: boolean; blockers: Array<{ code: string; message: string }>; warnings: Array<{ code: string; message: string }> };
@@ -218,7 +218,7 @@ const CLAIM_BADGE: Record<string, string> = { ACTIVE: 'bg-green-50 text-green-80
                 <ul class="divide-y divide-gray-50 text-xs">
                   {d.compatibility.map((c) => (
                     <li class="py-3 flex flex-wrap items-center justify-between gap-2">
-                      <a href={`/admin/batteries/compatibility?deviceId=${c.device.slug}`} class="font-bold text-brand-dark">{c.device.label}</a>
+                      <a href={`/admin/batteries/compatibility?deviceId=${c.deviceId}`} class="font-bold text-brand-dark">{c.device.label}</a>
                       <span class="flex items-center gap-2">
                         <span class="text-gray-500">{c.evidenceStatus.replace(/_/g, ' ').toLowerCase()}</span>
                         <span class={`text-[9px] font-black px-2 py-1 rounded uppercase tracking-widest border ${CLAIM_BADGE[c.workflowStatus]}`}>{c.workflowStatus}</span>

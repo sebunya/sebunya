@@ -46,6 +46,8 @@ export interface ImportRowRecord {
   resolutionNote: string | null;
   resolvedBy: string | null;
   resolvedAt: Date | null;
+  /** Catalogue battery a person linked this row to; the source row is untouched. */
+  linkedBatteryCode: string | null;
   appliedRecordIds: Record<string, string[]> | null;
   beforeSnapshot: Record<string, unknown> | null;
   afterSnapshot: Record<string, unknown> | null;
@@ -80,6 +82,8 @@ export interface IBatteryImportRepository {
   saveMapping(id: string, expectedVersion: number, mapping: ImportMapping, templateId: string | null, actorId: string): Promise<ImportSessionRecord | null>;
   savePreview(id: string, expectedVersion: number, digest: string, rows: PreviewRowWrite[], actorId: string): Promise<ImportSessionRecord | null>;
   resolveRow(sessionId: string, rowId: string, resolution: 'INCLUDE' | 'EXCLUDE' | 'HOLD', note: string | null, override: Record<string, unknown> | null, actorId: string): Promise<{ session: ImportSessionRecord; row: ImportRowRecord } | null>;
+  /** Record which catalogue battery a row is about. Forces a fresh dry run before approval. */
+  linkRowBattery(sessionId: string, rowId: string, canonicalCode: string | null, note: string, actorId: string): Promise<{ session: ImportSessionRecord; row: ImportRowRecord } | null>;
   approve(input: { id: string; expectedVersion: number; actorId: string; decision: 'APPROVED' | 'REJECTED'; reason: string }): Promise<ImportSessionRecord | null>;
   beginApply(id: string, expectedVersion: number, actorId: string): Promise<ImportSessionRecord | null>;
   markRowApplied(rowId: string, result: { status: 'APPLIED' | 'SKIPPED' | 'FAILED'; appliedRecordIds: Record<string, string[]> | null; beforeSnapshot: Record<string, unknown> | null; afterSnapshot: Record<string, unknown> | null; error: string | null }): Promise<void>;
