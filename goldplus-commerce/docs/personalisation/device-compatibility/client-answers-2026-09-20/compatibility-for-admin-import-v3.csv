@@ -109,88 +109,83 @@ A11/BLP727,Realme,C20,RMX3061,Supplier claim,Client answer 2026-09-20 (GoldPlus 
 A11/BLP727,Realme,C21,RMX3201,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),Client lists these under the A11/BLP727 battery; the phones' own pack is BLP729 — needs a GoldPlus packaging or fit check.,V3-108
 A11/BLP727,Realme,C20A,RMX3063,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),Bangladesh market name of the C20 (RMX3061/RMX3063).,V3-109
 A11/BLP727,Realme,C21Y,RMX3261,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),Client-listed; pack family not confirmed by us — needs packaging or fit check.,V3-110
-A11/BLP727,Realme,6i,RMX2040,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),CONFLICT: the global Realme 6i (RMX2040) uses BLP771 and the India RMX2002 a different pack; do not publish without a GoldPlus fit test.,V3-111
-A11/BLP727,Realme,C25,RMX3191,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),CONFLICT: the Realme C25 (RMX3191/RMX3193) uses the 6000 mAh BLP793 pack; do not publish without a GoldPlus fit test.,V3-112
-BL-15DI,TECNO,T350,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration) + printed list (BL-15DT = T350),"Client: BL-15DI and BL-15DT are the same pack (one TECNO, one itel), usually written BL-15DI/DT.",V3-113
-BL-681,OPPO,F9,,Supplier claim,"Client answer 2026-09-20 (GoldPlus supplier declaration) + stock list ""OPPO F9 (BL 681)""",,V3-114
-BL-681,OPPO,F9 Pro,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration) + printed list (BL-P683 = A7X/F9 Pro),Client: BLP681 and BLP683 are used interchangeably. Kept as two technical codes.,V3-115
-BL-681,OPPO,A7x,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration) + printed list (BL-P683 = A7X/F9 Pro),Client: BLP681 and BLP683 are used interchangeably. Kept as two technical codes.,V3-116
-NOKIA C1,Nokia,C1 (2019),TA-1165,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration) + printed list (S5420AP = C1),"Identity: client sells it simply as ""C1""; the printed list has separate packs for C1 2nd Edition (WT141) and C1 Plus (SP210). Confirm the generation from the packaging before publishing.",V3-117
-VIVO B-B1,Vivo,Y55,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-118
-VIVO B-B1,Vivo,Y55A,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-119
-VIVO B-B1,Vivo,Y55L,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-120
-VIVO B-B1,Vivo,Y55s,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"CONFLICT: ""Y55s"" is also a 2021+ 5G phone with a different pack; record the exact legacy model before publishing.",V3-121
-VIVO B-B2,Vivo,V5,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-122
-VIVO B-B2,Vivo,V5s,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-123
-VIVO B-B2,Vivo,V5 Lite,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-124
-VIVO B-B2,Vivo,Y65,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-125
-VIVO B-B2,Vivo,Y66,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-126
-VIVO B-B2,Vivo,Y66L,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-127
-VIVO B-B2,Vivo,Y67,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-128
-VIVO B-B2,Vivo,Y67L,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-129
-VIVO B-B2,Vivo,Y69,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-130
-VIVO B-D2,Vivo,X20 Plus,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-131
-VIVO B-D2,Vivo,X20 Plus A,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-132
-VIVO B-D2,Vivo,X20 Plus UD,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-133
-VIVO B-D2,Vivo,X20,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),CONFLICT: the ordinary Vivo X20 / X20A uses the B-D1 pack; B-D2 is the X20 Plus family.,V3-134
-4UL,Nokia,Asha 500,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),CONFLICT: the client lists the Asha 500 under BOTH BL-4U and BL-4UL; one phone takes one pack. Staged under BL-4U (with the 501/503); confirm before adding it here.,V3-135
-4L,Nokia,E71,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-136
-4L,Nokia,E71x,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-137
-4L,Nokia,E72,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-138
-4L,Nokia,E63,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-139
-4L,Nokia,E90,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-140
-4L,Nokia,E52,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-141
-4L,Nokia,E55,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-142
-4L,Nokia,E61i,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-143
-4L,Nokia,E6,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-144
-4L,Nokia,E73,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-145
-4L,Nokia,N97,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-146
-4L,Nokia,N810,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-147
-4L,Nokia,N800,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-148
-4L,Nokia,6650 Fold,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-149
-4L,Nokia,6760 Slide,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-150
-4L,Nokia,6790 Surge,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-151
-4U,Nokia,Asha 206,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-152
-4U,Nokia,Asha 210,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-153
-4U,Nokia,Asha 300,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-154
-4U,Nokia,Asha 301,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-155
-4U,Nokia,Asha 305,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-156
-4U,Nokia,Asha 306,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-157
-4U,Nokia,Asha 308,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-158
-4U,Nokia,Asha 309,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-159
-4U,Nokia,Asha 310,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-160
-4U,Nokia,Asha 311,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-161
-4U,Nokia,Asha 500,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-162
-4U,Nokia,Asha 501,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-163
-4U,Nokia,Asha 503,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-164
-4U,Nokia,E66,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-165
-4U,Nokia,E75,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-166
-4UL,Nokia,3310 3G,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote ""Asha 220, 225, 230"" — those phones are sold as Nokia 220 / 225 / 230, recorded that way (the 225 once). Names such as 3310, 225, 5310 and 6310 span generations; confirm the generation (and BL-4UL vs BL-4WL for the 6310) before publishing.",V3-167
-4UL,Nokia,3310 4G,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote ""Asha 220, 225, 230"" — those phones are sold as Nokia 220 / 225 / 230, recorded that way (the 225 once). Names such as 3310, 225, 5310 and 6310 span generations; confirm the generation (and BL-4UL vs BL-4WL for the 6310) before publishing.",V3-168
-4UL,Nokia,225,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote ""Asha 220, 225, 230"" — those phones are sold as Nokia 220 / 225 / 230, recorded that way (the 225 once). Names such as 3310, 225, 5310 and 6310 span generations; confirm the generation (and BL-4UL vs BL-4WL for the 6310) before publishing.",V3-169
-4UL,Nokia,225 Dual SIM,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote ""Asha 220, 225, 230"" — those phones are sold as Nokia 220 / 225 / 230, recorded that way (the 225 once). Names such as 3310, 225, 5310 and 6310 span generations; confirm the generation (and BL-4UL vs BL-4WL for the 6310) before publishing.",V3-170
-4UL,Nokia,225 4G,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote ""Asha 220, 225, 230"" — those phones are sold as Nokia 220 / 225 / 230, recorded that way (the 225 once). Names such as 3310, 225, 5310 and 6310 span generations; confirm the generation (and BL-4UL vs BL-4WL for the 6310) before publishing.",V3-171
-4UL,Nokia,5310 (2020),,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote ""Asha 220, 225, 230"" — those phones are sold as Nokia 220 / 225 / 230, recorded that way (the 225 once). Names such as 3310, 225, 5310 and 6310 span generations; confirm the generation (and BL-4UL vs BL-4WL for the 6310) before publishing.",V3-172
-4UL,Nokia,6310 (2021),,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote ""Asha 220, 225, 230"" — those phones are sold as Nokia 220 / 225 / 230, recorded that way (the 225 once). Names such as 3310, 225, 5310 and 6310 span generations; confirm the generation (and BL-4UL vs BL-4WL for the 6310) before publishing.",V3-173
-4UL,Nokia,220,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote ""Asha 220, 225, 230"" — those phones are sold as Nokia 220 / 225 / 230, recorded that way (the 225 once). Names such as 3310, 225, 5310 and 6310 span generations; confirm the generation (and BL-4UL vs BL-4WL for the 6310) before publishing.",V3-174
-4UL,Nokia,230,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote ""Asha 220, 225, 230"" — those phones are sold as Nokia 220 / 225 / 230, recorded that way (the 225 once). Names such as 3310, 225, 5310 and 6310 span generations; confirm the generation (and BL-4UL vs BL-4WL for the 6310) before publishing.",V3-175
-4UL,Nokia,Asha 502,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote ""Asha 220, 225, 230"" — those phones are sold as Nokia 220 / 225 / 230, recorded that way (the 225 once). Names such as 3310, 225, 5310 and 6310 span generations; confirm the generation (and BL-4UL vs BL-4WL for the 6310) before publishing.",V3-176
-5C,Nokia,1100,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-177
-5C,Nokia,1101,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-178
-5C,Nokia,1110,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-179
-5C,Nokia,1112,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-180
-5C,itel,it2160,2160,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-181
-5C,itel,it2161,2161,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-182
-5C,itel,it2162,2162,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-183
-5C,itel,it2163,2163,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-184
-5C,TECNO,T301,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote the numbers only (""301/312/…""); ""T"" prefix assumed for TECNO feature phones — confirm.",V3-185
-5C,TECNO,T312,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote the numbers only (""301/312/…""); ""T"" prefix assumed for TECNO feature phones — confirm.",V3-186
-5C,TECNO,T313,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote the numbers only (""301/312/…""); ""T"" prefix assumed for TECNO feature phones — confirm.",V3-187
-5C,TECNO,T349,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote the numbers only (""301/312/…""); ""T"" prefix assumed for TECNO feature phones — confirm.",V3-188
-5C,TECNO,T401,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote the numbers only (""301/312/…""); ""T"" prefix assumed for TECNO feature phones — confirm.",V3-189
-5C,TECNO,T101,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote the numbers only (""301/312/…""); ""T"" prefix assumed for TECNO feature phones — confirm.",V3-190
-BL-28AT,TECNO,Y2,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),Client: BL-28AT and BL-28ATLONG are DIFFERENT packs; never merge.,V3-191
-BL-28AT,TECNO,Camon Y3 Plus,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),Client: BL-28AT and BL-28ATLONG are DIFFERENT packs; never merge.,V3-192
-BL-38BT,TECNO,Pop 6 Go,BE6,Supplier claim,Client answer 2026-09-20 (second message),"Client: BL-38BT is for the Pop 5 Go AND the Pop 6 Go. The client's printed list (and at least one parts listing) puts the Pop 6 Go on BL-38CT, so it is recorded on both; a fit check should confirm the two packs are interchangeable in this phone.",V3-193
-BL-24ET,TECNO,Pop 2 Go,,Supplier claim,Client answer 2026-09-20 (second message),"CONFLICT (identity): client says the 'Pop 2 Go' uses BL-24ET. TECNO sold a Pop 2 (B1), Pop 2F (B1F), Pop 2 Plus and Pop 2 Power, but no phone officially named 'Pop 2 Go' — record the model number printed on the phone before creating it, so it does not become a duplicate of the Pop 2 / Pop 2F already on this battery.",V3-194
-BL-38BT,TECNO,Pop 2 Go,,Poster claim,Supplier research 2026-08-26,CONFLICT: rejected by the client (2026-09-20): the Pop 2 Go does NOT use BL-38BT; BL-38BT is for the Pop 5 Go and Pop 6 Go.,V3-195
+A11/BLP727,Realme,6i,RMX2040,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client-listed. Global Realme 6i (RMX2040) only: its own pack is BLP771, the same 5000 mAh OPPO/Realme class as BLP727/BLP729 — needs a GoldPlus fit check before it is verified. NOT the India RMX2002 (4300 mAh, different pack).",V3-111
+BL-15DI,TECNO,T350,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration) + printed list (BL-15DT = T350),"Client: BL-15DI and BL-15DT are the same pack (one TECNO, one itel), usually written BL-15DI/DT.",V3-112
+BL-681,OPPO,F9,,Supplier claim,"Client answer 2026-09-20 (GoldPlus supplier declaration) + stock list ""OPPO F9 (BL 681)""",,V3-113
+BL-681,OPPO,F9 Pro,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration) + printed list (BL-P683 = A7X/F9 Pro),Client: BLP681 and BLP683 are used interchangeably. Kept as two technical codes.,V3-114
+BL-681,OPPO,A7x,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration) + printed list (BL-P683 = A7X/F9 Pro),Client: BLP681 and BLP683 are used interchangeably. Kept as two technical codes.,V3-115
+NOKIA C1,Nokia,C1 (2019),TA-1165,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration) + printed list (S5420AP = C1),"Identity: client sells it simply as ""C1""; the printed list has separate packs for C1 2nd Edition (WT141) and C1 Plus (SP210). Confirm the generation from the packaging before publishing.",V3-116
+VIVO B-B1,Vivo,Y55,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-117
+VIVO B-B1,Vivo,Y55A,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-118
+VIVO B-B1,Vivo,Y55L,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-119
+VIVO B-B1,Vivo,Y55s (2017),1610,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"The 2017 Y55s (model 1610) — independent sellers list it on B-B1 with the Y55/Y55L/Y55A. NOT the 2021+ Y55s 5G, which takes a different pack.",V3-120
+VIVO B-B2,Vivo,V5,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-121
+VIVO B-B2,Vivo,V5s,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-122
+VIVO B-B2,Vivo,V5 Lite,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-123
+VIVO B-B2,Vivo,Y65,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-124
+VIVO B-B2,Vivo,Y66,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-125
+VIVO B-B2,Vivo,Y66L,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-126
+VIVO B-B2,Vivo,Y67,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-127
+VIVO B-B2,Vivo,Y67L,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-128
+VIVO B-B2,Vivo,Y69,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-129
+VIVO B-D2,Vivo,X20 Plus,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-130
+VIVO B-D2,Vivo,X20 Plus A,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-131
+VIVO B-D2,Vivo,X20 Plus UD,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-132
+4L,Nokia,E71,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-133
+4L,Nokia,E71x,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-134
+4L,Nokia,E72,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-135
+4L,Nokia,E63,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-136
+4L,Nokia,E90,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-137
+4L,Nokia,E52,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-138
+4L,Nokia,E55,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-139
+4L,Nokia,E61i,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-140
+4L,Nokia,E6,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-141
+4L,Nokia,E73,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-142
+4L,Nokia,N97,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-143
+4L,Nokia,N810,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-144
+4L,Nokia,N800,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-145
+4L,Nokia,6650 Fold,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-146
+4L,Nokia,6760 Slide,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-147
+4L,Nokia,6790 Surge,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L"".",V3-148
+4U,Nokia,Asha 206,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-149
+4U,Nokia,Asha 210,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-150
+4U,Nokia,Asha 300,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-151
+4U,Nokia,Asha 301,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-152
+4U,Nokia,Asha 305,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-153
+4U,Nokia,Asha 306,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-154
+4U,Nokia,Asha 308,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-155
+4U,Nokia,Asha 309,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-156
+4U,Nokia,Asha 310,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-157
+4U,Nokia,Asha 311,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-158
+4U,Nokia,Asha 500,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-159
+4U,Nokia,Asha 501,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-160
+4U,Nokia,Asha 503,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-161
+4U,Nokia,E66,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-162
+4U,Nokia,E75,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client also wrote ""etc."" — not stored; only named phones.",V3-163
+4UL,Nokia,3310 3G,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote ""Asha 220, 225, 230"" — those phones are sold as Nokia 220 / 225 / 230, recorded that way (the 225 once). Names such as 3310, 225, 5310 and 6310 span generations; confirm the generation (and BL-4UL vs BL-4WL for the 6310) before publishing.",V3-164
+4UL,Nokia,3310 4G,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote ""Asha 220, 225, 230"" — those phones are sold as Nokia 220 / 225 / 230, recorded that way (the 225 once). Names such as 3310, 225, 5310 and 6310 span generations; confirm the generation (and BL-4UL vs BL-4WL for the 6310) before publishing.",V3-165
+4UL,Nokia,225,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote ""Asha 220, 225, 230"" — those phones are sold as Nokia 220 / 225 / 230, recorded that way (the 225 once). Names such as 3310, 225, 5310 and 6310 span generations; confirm the generation (and BL-4UL vs BL-4WL for the 6310) before publishing.",V3-166
+4UL,Nokia,225 Dual SIM,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote ""Asha 220, 225, 230"" — those phones are sold as Nokia 220 / 225 / 230, recorded that way (the 225 once). Names such as 3310, 225, 5310 and 6310 span generations; confirm the generation (and BL-4UL vs BL-4WL for the 6310) before publishing.",V3-167
+4UL,Nokia,225 4G,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote ""Asha 220, 225, 230"" — those phones are sold as Nokia 220 / 225 / 230, recorded that way (the 225 once). Names such as 3310, 225, 5310 and 6310 span generations; confirm the generation (and BL-4UL vs BL-4WL for the 6310) before publishing.",V3-168
+4UL,Nokia,5310 (2020),,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote ""Asha 220, 225, 230"" — those phones are sold as Nokia 220 / 225 / 230, recorded that way (the 225 once). Names such as 3310, 225, 5310 and 6310 span generations; confirm the generation (and BL-4UL vs BL-4WL for the 6310) before publishing.",V3-169
+4UL,Nokia,6310 (2021),,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote ""Asha 220, 225, 230"" — those phones are sold as Nokia 220 / 225 / 230, recorded that way (the 225 once). Names such as 3310, 225, 5310 and 6310 span generations; confirm the generation (and BL-4UL vs BL-4WL for the 6310) before publishing.",V3-170
+4UL,Nokia,220,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote ""Asha 220, 225, 230"" — those phones are sold as Nokia 220 / 225 / 230, recorded that way (the 225 once). Names such as 3310, 225, 5310 and 6310 span generations; confirm the generation (and BL-4UL vs BL-4WL for the 6310) before publishing.",V3-171
+4UL,Nokia,230,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote ""Asha 220, 225, 230"" — those phones are sold as Nokia 220 / 225 / 230, recorded that way (the 225 once). Names such as 3310, 225, 5310 and 6310 span generations; confirm the generation (and BL-4UL vs BL-4WL for the 6310) before publishing.",V3-172
+4UL,Nokia,Asha 502,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote ""Asha 220, 225, 230"" — those phones are sold as Nokia 220 / 225 / 230, recorded that way (the 225 once). Names such as 3310, 225, 5310 and 6310 span generations; confirm the generation (and BL-4UL vs BL-4WL for the 6310) before publishing.",V3-173
+5C,Nokia,1100,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-174
+5C,Nokia,1101,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-175
+5C,Nokia,1110,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-176
+5C,Nokia,1112,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-177
+5C,itel,it2160,2160,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-178
+5C,itel,it2161,2161,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-179
+5C,itel,it2162,2162,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-180
+5C,itel,it2163,2163,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-181
+5C,TECNO,T301,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote the numbers only (""301/312/…""); ""T"" prefix assumed for TECNO feature phones — confirm.",V3-182
+5C,TECNO,T312,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote the numbers only (""301/312/…""); ""T"" prefix assumed for TECNO feature phones — confirm.",V3-183
+5C,TECNO,T313,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote the numbers only (""301/312/…""); ""T"" prefix assumed for TECNO feature phones — confirm.",V3-184
+5C,TECNO,T349,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote the numbers only (""301/312/…""); ""T"" prefix assumed for TECNO feature phones — confirm.",V3-185
+5C,TECNO,T401,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote the numbers only (""301/312/…""); ""T"" prefix assumed for TECNO feature phones — confirm.",V3-186
+5C,TECNO,T101,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote the numbers only (""301/312/…""); ""T"" prefix assumed for TECNO feature phones — confirm.",V3-187
+BL-28AT,TECNO,Y2,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),Client: BL-28AT and BL-28ATLONG are DIFFERENT packs; never merge.,V3-188
+BL-28AT,TECNO,Camon Y3 Plus,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),Client: BL-28AT and BL-28ATLONG are DIFFERENT packs; never merge.,V3-189
+BL-38BT,TECNO,Pop 6 Go,BE6,Supplier claim,Client answer 2026-09-20 (second message),"Client: BL-38BT is for the Pop 5 Go AND the Pop 6 Go. The client's printed list (and at least one parts listing) puts the Pop 6 Go on BL-38CT, so it is recorded on both; a fit check should confirm the two packs are interchangeable in this phone.",V3-190

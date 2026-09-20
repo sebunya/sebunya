@@ -33,9 +33,23 @@ describe("client answers, encoded for the native importer", () => {
     }
   });
 
-  it("the contradicted client entries are HELD, not staged: Asha 500 on a second pack, Realme 6i, Realme C25, generic Vivo Y55s, ordinary Vivo X20, and the superseded Pop 2 Go", () => {
-    const held = records.filter((r) => run(r).action === "HOLD_CONFLICT").map((r) => `${r["Battery Reference"]}|${r["Device Brand"]} ${r["Marketing Name"]}`).sort();
-    expect(held).toEqual(["4UL|Nokia Asha 500", "A11/BLP727|Realme 6i", "A11/BLP727|Realme C25", "BL-24ET|TECNO Pop 2 Go", "BL-38BT|TECNO Pop 2 Go", "VIVO B-B1|Vivo Y55s", "VIVO B-D2|Vivo X20"]);
+  it("nothing is left on hold: the seven contradictions were resolved, and the rejected ones are simply absent", () => {
+    expect(records.filter((r) => run(r).action !== "CREATE_CLAIM")).toEqual([]);
+    const has = (code: string, name: RegExp) => records.some((r) => r["Battery Reference"] === code && name.test(r["Marketing Name"]));
+    expect(has("4UL", /Asha 500/)).toBe(false);          // Asha 500 takes BL-4U
+    expect(has("4U", /Asha 500/)).toBe(true);
+    expect(has("VIVO B-D2", /^X20$/)).toBe(false);        // plain X20 takes B-D1
+    expect(has("A11/BLP727", /C25/)).toBe(false);         // 6000 mAh BLP793
+    expect(has("BL-38BT", /Pop 2/)).toBe(false);          // rejected by the client
+    expect(has("BL-24ET", /Pop 2 Go/)).toBe(false);       // an alias of the Pop 2 (B1), not a new phone
+    expect(has("BL-24ET", /^Pop 2$/)).toBe(true);
+  });
+
+  it("the two that were kept are pinned to an exact model so a namesake can never match", () => {
+    const row = (code: string, name: string) => records.find((r) => r["Battery Reference"] === code && r["Marketing Name"] === name)!;
+    expect(row("VIVO B-B1", "Y55s (2017)")["Exact Model Number"]).toBe("1610");
+    expect(row("A11/BLP727", "6i")["Exact Model Number"]).toBe("RMX2040");
+    expect(row("A11/BLP727", "6i")["Condition / Conflict"]).toMatch(/NOT the India RMX2002/);
   });
 
   it("everything else stages as a SUPPLIER-LISTED draft and nothing can arrive verified", () => {
