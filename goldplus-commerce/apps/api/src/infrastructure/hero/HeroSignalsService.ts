@@ -122,11 +122,22 @@ export class HeroSignalsService {
     const rows = rowsOf(
       await db.execute(sql`
         select
-          extract(epoch from (now() - ep.first_seen_at)) as age_seconds,
+          extract(epoch from (now() - coalesce((
+            select min(sib.first_seen_at) from experience_profiles sib
+            where sib.customer_id = ep.customer_id and ep.customer_id is not null
+          ), ep.first_seen_at))) as age_seconds,
           coalesce((
             select count(distinct date_trunc('day', e.created_at))
             from recommendation_events e
-            where e.profile_id = ${profileId}::uuid
+            where e.profile_id in (
+              -- This browser's profile AND every other profile of the same
+              -- signed-in customer: a new phone is not a new person.
+              select ${profileId}::uuid
+              union
+              select sib.id from experience_profiles me
+              join experience_profiles sib on sib.customer_id = me.customer_id
+              where me.id = ${profileId}::uuid and me.customer_id is not null
+            )
               -- A day counts when the visitor DID something. Anything we emit
               -- ourselves (a rendered rail, an impression of it, a future
               -- operational type) is not on this list and so can never feed
@@ -166,7 +177,15 @@ export class HeroSignalsService {
         from recommendation_events e
         join products p on p.id = coalesce(e.recommendation_product_id, e.product_id)
         join categories c on c.id = p.category_id
-        where e.profile_id = ${profileId}::uuid
+        where e.profile_id in (
+              -- This browser's profile AND every other profile of the same
+              -- signed-in customer: a new phone is not a new person.
+              select ${profileId}::uuid
+              union
+              select sib.id from experience_profiles me
+              join experience_profiles sib on sib.customer_id = me.customer_id
+              where me.id = ${profileId}::uuid and me.customer_id is not null
+            )
         group by c.slug
         having sum(case e.event_type
                      when 'RECOMMENDATION_ADD_TO_CART' then 3

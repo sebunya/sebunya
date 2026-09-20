@@ -43,4 +43,10 @@ describe("recommendation reads leave no trace (personalisation rebuild, R0)", ()
     expect(mw).toContain("VISIT_COOKIE_MAX_AGE_SECONDS = 400 * 24 * 60 * 60");
     expect(mw).toContain("if (firstDocumentToday) context.cookies.set(VISIT_COOKIE_NAME, existing, visitCookieOptions());");
   });
+
+  it("a signed-in customer's history follows them to a new device", () => {
+    const hero = read("apps/api/src/infrastructure/hero/HeroSignalsService.ts");
+    expect(hero.match(/join experience_profiles sib on sib\.customer_id = me\.customer_id/g)?.length).toBe(2);
+    expect(hero).toContain("select min(sib.first_seen_at) from experience_profiles sib");
+  });
 });
