@@ -86,6 +86,8 @@ suite('personalisation reads (real PostgreSQL)', () => {
     expect(s.visits).toBe(3);
     expect(s.categoryAffinity.length).toBe(1);
     expect(s.categoryAffinity[0].score).toBeGreaterThan(2.8);
+    expect(await svc.getCategoryAffinity(p1)).toEqual(s.categoryAffinity);
+    expect(await svc.getCategoryAffinity(null)).toEqual([]);
 
     // The same views a year ago fade to almost nothing.
     await raw`update recommendation_events set created_at = created_at - interval '365 days' where profile_id = ${p1} and event_type = 'PRODUCT_VIEWED'`;

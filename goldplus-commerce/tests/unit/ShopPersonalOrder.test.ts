@@ -33,7 +33,7 @@ describe("the shop's default order leads with the visitor's own interest", () =>
     const src = readFileSync("apps/web/src/pages/shop.astro", "utf8");
     expect(src).toContain("sort === 'default' && !search && !category && !subcategory");
     expect(src).toContain("personalOrderEligible && Astro.locals.gpVisit");
-    expect(src).toContain("import.meta.env.SHOP_PERSONAL_ORDER !== 'false'");
+    expect(src).toContain("process.env.SHOP_PERSONAL_ORDER !== 'false'");
     // Sparse history is not an interest, the explanation claims only what is true,
     // and paging carries the page-1 decision instead of re-deciding.
     expect(src).toContain("Number(a.score) >= 2");

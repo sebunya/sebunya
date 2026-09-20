@@ -93,7 +93,7 @@ const filteredProducts = filterDiscoveryProducts(availableProducts, { search, ca
 // turns it off. A pure read: it creates no profile and records nothing.
 let preferredCategories: string[] = [];
 const standardOrderChosen = Astro.url.searchParams.get('order') === 'standard';
-const personalOrderEligible = import.meta.env.SHOP_PERSONAL_ORDER !== 'false'
+const personalOrderEligible = process.env.SHOP_PERSONAL_ORDER !== 'false'
   && sort === 'default' && !search && !category && !subcategory && !standardOrderChosen;
 // Paging must not reshuffle: page 1 decides the lead categories and every page
 // link carries them (`lead`), so interest that changes mid-browse cannot
@@ -104,7 +104,7 @@ if (personalOrderEligible && leadParam !== null) {
   preferredCategories = leadParam.split(',').map((v) => normalizeCategoryParam(v, taxonomy)).filter(Boolean).slice(0, 3);
 } else if (personalOrderEligible && Astro.locals.gpVisit) {
   try {
-    const res = await fetch(`${apiBase}/hero/signals`, { headers: { 'x-gp-visit': Astro.locals.gpVisit }, signal: AbortSignal.timeout(1200) });
+    const res = await fetch(`${apiBase}/hero/affinity`, { headers: { 'x-gp-visit': Astro.locals.gpVisit }, signal: AbortSignal.timeout(1200) });
     const body = await res.json().catch(() => null);
     const affinity = res.ok && Array.isArray(body?.data?.categoryAffinity) ? body.data.categoryAffinity : [];
     preferredCategories = affinity

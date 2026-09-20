@@ -66,6 +66,14 @@ routes.get('/signals', async (c) => {
   return c.json({ success: true, data: signals });
 });
 
+// The shop's default order needs the interest ranking only — not the orders,
+// loyalty and stock lookups /signals performs. A pure read.
+routes.get('/affinity', async (c) => {
+  const profileId = await profileFrom(c);
+  c.header('Cache-Control', 'private, no-store');
+  return c.json({ success: true, data: { categoryAffinity: await registry.heroSignalsService.getCategoryAffinity(profileId) } });
+});
+
 routes.post('/events', async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ success: false, error: { code: 'BAD_JSON', message: 'Invalid body' } }, 400);

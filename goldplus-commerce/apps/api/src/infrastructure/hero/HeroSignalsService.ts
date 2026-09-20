@@ -158,6 +158,12 @@ export class HeroSignalsService {
     return Math.max(1, tenure, eventDays);
   }
 
+  /** Just the interest ranking: one indexed query, for callers that order a list. */
+  async getCategoryAffinity(profileId: string | null): Promise<Array<{ categorySlug: string; score: number }>> {
+    if (!profileId) return [];
+    try { return await this.categoryAffinity(profileId); } catch { return []; }
+  }
+
   /** Categories this profile has engaged with, by weighted event count. */
   private async categoryAffinity(profileId: string): Promise<Array<{ categorySlug: string; score: number }>> {
     const rows = rowsOf(

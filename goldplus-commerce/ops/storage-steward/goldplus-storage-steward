@@ -663,7 +663,10 @@ def busy_reasons() -> list[str]:
     checks = [
         ("a deployment is running", ["pgrep", "-f", "deploy-prod.sh"]),
         ("a migration is running", ["pgrep", "-f", "migrate-prod.sh"]),
-        ("a docker build is running", ["pgrep", "-f", "docker build"]),
+        # Anchored: an operator's own shell whose command line merely MENTIONS
+        # "docker build" (e.g. `ssh host 'steward admit …; docker build …'`)
+        # must not read as a build in progress — observed 2026-09-20.
+        ("a docker build is running", ["pgrep", "-f", "^docker (buildx )?build"]),
         ("a database dump is running", ["pgrep", "-x", "pg_dump"]),
         ("a restore rehearsal is running", ["pgrep", "-x", "pg_restore"]),
     ]
