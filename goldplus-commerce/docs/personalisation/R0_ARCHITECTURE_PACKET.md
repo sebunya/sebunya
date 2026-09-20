@@ -172,3 +172,38 @@ events is a FAILURE signal, not success.
 ## 10. States
 code ready: YES (pending host integration run) · production authorized: NO ·
 deployment verified: NO · observation complete: NO
+
+## 11. Second-pass challenge (2026-09-20) — corrections and evidence
+
+**Claims I made that were wrong, now corrected**
+- "400 days is the longest browsers allow / forgotten only after 400 days": wrong as a guarantee. We REQUEST 400 days on a server-set, HttpOnly, Secure, SameSite=Lax, path=/ first-party cookie, renewed at most once a day on a document request (same token re-set — no new identity, no DB write). Chrome caps requests at 400 days; users, private windows and browser privacy rules can end it sooner. When the cookie is lost the server-side profile REMAINS; only a signed-in customer reconnects to it (`linkCustomer` on login/register).
+- "A forced kill loses at most one minute": only with a healthy database. During an outage everything retained in memory (up to 6 h) dies with the process. Nothing is durable before it is written.
+- "Can double-count one hour of one placement": understated — retries could compound. Now capped at 3 attempts per bucket per process, then dropped and logged.
+- "Only one profile's rows" is not a bound. **Measured on production (read-only, 15 s timeout):** heaviest profile all-time = 891 rows (434 visitor actions); 7-day p50 = 1, p99 = 6, max = 151 across 125,520 profiles. The all-history aggregate is small today; revisit if any profile passes ~50k rows.
+
+**Retention vs continuity vs ranking — now separate**
+- Retention: profiles and events are never deleted (prune removed; the prune's past deletions — ~43k rows — are not recoverable and not claimed).
+- Continuity: the cookie request above.
+- Ranking: visit strength = lifetime relationship (distinct days with a visitor action; its tenure floor already made "regular" permanent before this work, so semantics are unchanged). Category affinity = current interest: all history, weight halves every 90 days, server clock, future-dated rows clamped.
+
+**Provenance of events admitted to visit strength.** `PRODUCT_VIEWED` fires from browser JS on PDP load and `PRODUCT_SEARCHED` from SSR on `/shop?search=` — neither proves a human. Known automation that runs our JS (Lighthouse Watch and the rolling audits, UA `GoldPlusSyntheticProbe`; lab browsers that self-identify) is now dropped at the three event relays. Suppression-only, so spoofing it gains nothing. Undeclared JS-running bots remain a residual: watch new profiles/day vs visitor-action events/day after release. Incoming event types are runtime-validated (`isRecommendationEventType`); the classification test reads the authoritative shared vocabulary, not a copy.
+
+**First visit (from code, not yet from a browser trace):** browser events go same-origin to `/api/rec/events` with `credentials: same-origin`; the relay reads the HttpOnly cookie itself and forwards it, so SameSite/API-origin do not apply and no SSR-provided token is needed. A controlled browser trace is a post-deploy check.
+
+**Derived state.** Hero signals are computed at read time, so they correct themselves on deploy. No stored segment is rebuilt by this work.
+
+**Tests — commit f24ac009**, `npx vitest run tests --maxWorkers=3 --minWorkers=1`: 8,101 passed, 1 failed, 237 skipped. The failure is `ZeroSkipGate` (asserts integration services exist; none on the workstation — a verification GAP, not a pass). The 237 skips are the 46 real-Postgres integration files gated on those services; they include the recommendation/profile integration tests, so the changed SQL (0144 upsert, hero queries) is unverified against a real database until the clone run. `performance-audit/tests/*.mjs` is a `node:test` file vitest mis-collects; unrelated to this change. `compatibility-audit` is Playwright against the live site — relevant only post-deploy.
+
+## 12. Decisions per action
+| Action | State |
+|---|---|
+| Push branch (no CI deploy is attached to this branch) | GO — needs the runtime permission |
+| Copy `git archive` to `/root/itest-src` (staging dir, not the running tree) | GO — needs the runtime permission |
+| `integration-on-clone.sh` on host (ephemeral PG container; check ≥1 GB free RAM first, abort otherwise) | GO after copy |
+| Migration 0144 + deploy api/web | NO-GO until the clone run is green, then owner approval |
+| Delete the ~780k render-minted profiles | NO-GO (no off-host restore proof; separate review) |
+| 15 m / 1 h / 24 h / 72 h observations | NOT scheduled — runbook in §9 |
+
+## 13. Credential incident (open)
+- ZeptoMail send token: exposed in this session's transcript only (not in git). Rotation needs a Zoho console sign-in, which I must not perform. Owner: ZeptoMail → Mail Agents → the agent → SMTP/API → regenerate token; put the new value in the host env file as `ZEPTOMAIL_API_TOKEN`; tell me and I will restart the API and verify a send. Regenerating revokes the old token.
+- Admin password: reached git history. Owner: change it in the admin account screen; I will then verify old sessions are invalid. Until both are done the incident is OPEN regardless of code status.
