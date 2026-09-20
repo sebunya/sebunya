@@ -59,7 +59,13 @@ export class CollectBrowserBatchUseCase {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  async execute(rawBody: string, trafficClass: TrafficClass = 'customer'): Promise<CollectResult> {
+  /**
+   * `serverVisitorId` is the `_fp_cid` the server set on this browser. When it
+   * is present it WINS: a page may observe, but it may not name which visitor
+   * an arrival belongs to, or anyone could file touches against someone else's
+   * visitor id and shift the attribution models.
+   */
+  async execute(rawBody: string, trafficClass: TrafficClass = 'customer', serverVisitorId?: string | null): Promise<CollectResult> {
     if (Buffer.byteLength(rawBody, 'utf8') > MAX_BYTES) return { status: 413, error: 'PAYLOAD_TOO_LARGE' };
     let json: unknown;
     try { json = JSON.parse(rawBody); } catch { return { status: 422, error: 'INVALID_JSON' }; }
@@ -83,7 +89,7 @@ export class CollectBrowserBatchUseCase {
         const at = new Date(t.data.event_time * 1000);
         const skewOk = Math.abs(this.now().getTime() - at.getTime()) < 7 * 24 * 3600_000;
         if (!skewOk) { rejected.push({ eventId: id, reason: 'EVENT_TIME_OUT_OF_RANGE' }); continue; }
-        await this.store.saveTouch({ touchId: randomUUID(), anonymousId: t.data.user_data.fp_client_id, clientEventId: t.data.event_id, occurredAt: at,
+        await this.store.saveTouch({ touchId: randomUUID(), anonymousId: serverVisitorId || t.data.user_data.fp_client_id, clientEventId: t.data.event_id, occurredAt: at,
           channel: classifyChannel({ source: t.data.touch.source, medium: t.data.touch.medium, referrerHost: t.data.touch.referrer_host, clickIdTypes: t.data.touch.click_id_types }),
           source: t.data.touch.source, medium: t.data.touch.medium, campaign: t.data.touch.campaign, referrerHost: t.data.touch.referrer_host,
           landingPath: t.data.touch.landing_path, clickIdTypes: t.data.touch.click_id_types, trafficClass });

@@ -23,6 +23,7 @@ const MATURE_DAYS = 7;              // non-converting journeys must be quiet thi
 const MAX_JOURNEYS = 50_000;        // bounded input; above it the run is refused, not truncated silently
 const MIN_MARKOV_CONVERSIONS = 30;  // below this a chain is noise (ATTR-04)
 const METHOD_VERSION = 'v1';
+const RECEIPT_RETENTION_DAYS = 14;  // a browser retry never spans this
 
 function admission(): { ok: boolean; reason: string | null; resources: Record<string, number> } {
   const cpus = os.cpus().length || 1;
@@ -159,6 +160,10 @@ export async function runAttributionBatch(trigger: string): Promise<{ state: str
   try {
     await db.execute(sql`insert into measurement.batch_run (run_id, job, state, resources, stats) values (${batchRunId}::uuid, ${JOB}, 'RUNNING', ${pgJsonb(adm.resources)}, ${pgJsonb({ trigger })})`);
     await compute(environmentOf(process.env.NODE_ENV), stats);
+    // A receipt exists to answer a client's retry, not to be kept for ever.
+    // Touchpoints are evidence and are never pruned here.
+    const pruned = rows(await db.execute(sql`delete from measurement.collector_batch where received_at < now() - make_interval(days => ${RECEIPT_RETENTION_DAYS}) returning batch_id`));
+    stats.receiptsPruned = pruned.length;
     stats.ms = Date.now() - t0;
     await record('COMPLETE', null, stats);
     return { state: 'COMPLETE', reason: null, batchRunId };

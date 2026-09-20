@@ -72,3 +72,18 @@ describe('what the collector records about the caller', () => {
     expect(touches).toHaveLength(0);
   });
 });
+
+describe('the visitor id is the server\'s to decide', () => {
+  it('files the touch against the cookie the server set, not the id the page sent', async () => {
+    const { s, touches } = store();
+    const uc = new CollectBrowserBatchUseCase(s, async () => {}, () => now);
+    await uc.execute(env([touch()]), 'customer', 'GP-server-set');
+    expect(touches[0].anonymousId).toBe('GP-server-set');
+  });
+  it('falls back to the page value only when the server set no cookie', async () => {
+    const { s, touches } = store();
+    const uc = new CollectBrowserBatchUseCase(s, async () => {}, () => now);
+    await uc.execute(env([touch()]), 'customer', null);
+    expect(touches[0].anonymousId).toBe('GP1.1.abc');
+  });
+});

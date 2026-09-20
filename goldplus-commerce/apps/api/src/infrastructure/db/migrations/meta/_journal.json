@@ -995,6 +995,13 @@
       "when": 1790140000000,
       "tag": "0141_measurement_operations",
       "breakpoints": true
+    },
+    {
+      "idx": 142,
+      "version": "5",
+      "when": 1790140000001,
+      "tag": "0142_measurement_hygiene",
+      "breakpoints": true
     }
   ]
 }

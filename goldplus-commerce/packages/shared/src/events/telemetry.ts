@@ -168,3 +168,13 @@ export function gaSessionFromCookieHeader(cookieHeader: string | null | undefine
   const m = raw.match(/^GS1\.\d\.(\d{1,20})\.(\d{1,7})/) ?? raw.match(/^GS2\.\d\.s(\d{1,20})\$o(\d{1,7})/);
   return m ? { gaSessionId: m[1], gaSessionNumber: Number(m[2]) } : null;
 }
+
+/**
+ * The analytics visitor id the SERVER set on this browser (`_fp_cid`, see the
+ * web middleware). The collector prefers it over any id a page sends, so that
+ * one visitor's arrivals cannot be filed against another's id.
+ */
+export function fpClientIdFromCookieHeader(cookieHeader: string | null | undefined): string | null {
+  const raw = (cookieHeader ?? '').match(/(?:^|;\s*)_fp_cid=([^;]+)/)?.[1] ?? '';
+  return /^[A-Za-z0-9._-]{1,255}$/.test(raw) ? raw : null;
+}

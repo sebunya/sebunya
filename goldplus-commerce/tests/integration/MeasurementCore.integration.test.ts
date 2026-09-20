@@ -273,6 +273,21 @@ suite('measurement core (real PostgreSQL)', () => {
     }
   });
 
+  it('the canary counts a sale placed with no business event, and ignores orders from before measurement began', async () => {
+    const { DrizzleMeasurementOperationsRepository } = await import('../../apps/api/src/infrastructure/db/repositories/DrizzleMeasurementOperationsRepository');
+    const ops = new DrizzleMeasurementOperationsRepository();
+    const [started] = await raw`select (value #>> '{}')::timestamptz t from measurement.control where key = 'measurement_started_at'`;
+    expect(started?.t).toBeTruthy(); // 0142 records it; without it the canary is blind
+    const before = (await ops.summary()).ordersWithoutEvents;
+    // An order placed AFTER measurement began whose events never got written.
+    const o = await seed();
+    await raw`update orders set created_at = now() where id = ${o.id}`;
+    expect((await ops.summary()).ordersWithoutEvents).toBe(before + 1);
+    // The same order, dated before measurement began, is not "missing".
+    await raw`update orders set created_at = ${started.t}::timestamptz - interval '1 day' where id = ${o.id}`;
+    expect((await ops.summary()).ordersWithoutEvents).toBe(before);
+  });
+
   it('no visitor id: GA4 delivery is SUPPRESSED(IDENTITY_UNAVAILABLE), never sent with an invented visitor', async () => {
     const o = await seed();
     await raw`delete from order_attribution where order_id = ${o.id}`;

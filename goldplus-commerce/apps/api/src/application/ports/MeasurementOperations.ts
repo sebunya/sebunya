@@ -17,6 +17,12 @@ export interface DeliverySummary {
   events: { total: number; last24h: number; since: string | null };
   /** Browser intake health: rejections are how a broken or hostile client shows up. */
   collector: { batches24h: number; acceptedEvents24h: number; rejectedEvents24h: number; touches24h: number };
+  /**
+   * Orders placed since measurement began that produced no business event at
+   * all. Zero is the only acceptable value: anything else means the writer
+   * stopped and sales are going unrecorded in silence.
+   */
+  ordersWithoutEvents: number;
 }
 export interface MeasurementOperationsRepository {
   summary(): Promise<DeliverySummary>;

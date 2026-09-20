@@ -16,7 +16,7 @@ const SELECT = sql`select i.*, e.event_name, e.occurred_at, e.payload->>'orderNu
 
 export class DrizzleMeasurementOperationsRepository implements MeasurementOperationsRepository {
   async summary(): Promise<DeliverySummary> {
-    const [states, sinks, due, unrouted, wf, conf, kill, ev, cb, tp] = await Promise.all([
+    const [states, sinks, due, unrouted, wf, conf, kill, ev, cb, tp, owe] = await Promise.all([
       db.execute(sql`select state, count(*)::int n from measurement.delivery_intent group by state`),
       db.execute(sql`select sink_key, state, count(*)::int n from measurement.delivery_intent group by sink_key, state order by sink_key, state`),
       db.execute(sql`select extract(epoch from (now() - min(next_attempt_at)))/60 m from measurement.delivery_intent where state in ('PENDING','RETRY_WAIT') and next_attempt_at <= now()`),
@@ -27,6 +27,12 @@ export class DrizzleMeasurementOperationsRepository implements MeasurementOperat
       db.execute(sql`select count(*)::int total, count(*) filter (where recorded_at > now() - interval '24 hours')::int d, min(recorded_at) since from measurement.business_event`),
       db.execute(sql`select count(*)::int batches, coalesce(sum(accepted),0)::int acc, coalesce(sum(rejected),0)::int rej from measurement.collector_batch where received_at > now() - interval '24 hours'`),
       db.execute(sql`select count(*)::int n from measurement.touchpoint where occurred_at > now() - interval '24 hours'`),
+      // Compared against the recorded start of measurement (0142), not against
+      // the first event: a writer that never worked would otherwise read zero
+      // for ever. No start recorded yet → nothing is claimed missing.
+      db.execute(sql`select count(*)::int n from orders o
+        where o.created_at > (select (value #>> '{}')::timestamptz from measurement.control where key = 'measurement_started_at')
+          and not exists (select 1 from measurement.business_event e where e.aggregate_type = 'order' and e.aggregate_id = o.id::text)`),
     ]);
     const k = rows(kill)[0];
     const m = rows(due)[0]?.m;
@@ -37,6 +43,7 @@ export class DrizzleMeasurementOperationsRepository implements MeasurementOperat
       unroutedEvents: rows(unrouted)[0]?.n ?? 0, writeFailures: rows(wf)[0]?.n ?? 0, eventConflicts: rows(conf)[0]?.n ?? 0,
       killSwitch: { on: k?.value === true || k?.value?.on === true, reason: k?.reason ?? null, updatedAt: iso(k?.updated_at) },
       events: { total: rows(ev)[0]?.total ?? 0, last24h: rows(ev)[0]?.d ?? 0, since: iso(rows(ev)[0]?.since) },
+      ordersWithoutEvents: rows(owe)[0]?.n ?? 0,
       collector: { batches24h: rows(cb)[0]?.batches ?? 0, acceptedEvents24h: rows(cb)[0]?.acc ?? 0, rejectedEvents24h: rows(cb)[0]?.rej ?? 0, touches24h: rows(tp)[0]?.n ?? 0 },
     };
   }

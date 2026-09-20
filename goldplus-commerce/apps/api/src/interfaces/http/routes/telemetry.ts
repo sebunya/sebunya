@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { BrowserTelemetryEventSchema, gaSessionFromCookieHeader } from '@goldplus/shared';
+import { BrowserTelemetryEventSchema, fpClientIdFromCookieHeader, gaSessionFromCookieHeader } from '@goldplus/shared';
 import { botDetectionMiddleware } from '../middleware/botDetection';
 import { logger } from '../../../infrastructure/logging/logger';
 import { TrackBrowserTelemetryEventUseCase } from '../../../application/use-cases/telemetry/TrackBrowserTelemetryEventUseCase';
@@ -73,7 +73,7 @@ routes.post('/collect/batch', botDetectionMiddleware, async (c) => {
       // borderline score is what is left to record — never a guess from the UA.
       const score = proxyConfig().mode === 'CLOUDFLARE_EDGE' ? parseInt(c.req.header('x-cf-bot-score') ?? '100', 10) : 100;
       const trafficClass = Number.isFinite(score) && score < 60 ? 'automated' as const : 'customer' as const;
-      const r = await uc.execute(JSON.stringify(body), trafficClass);
+      const r = await uc.execute(JSON.stringify(body), trafficClass, fpClientIdFromCookieHeader(c.req.header('cookie')));
       if (r.status === 202) return c.json({ success: true, receiptId: r.receipt.receiptId, accepted: r.receipt.accepted, rejected: r.receipt.rejected, replay: r.replay }, 202);
       return c.json({ success: false, error: r.error }, r.status);
     } catch (err) {
