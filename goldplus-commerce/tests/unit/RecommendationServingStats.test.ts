@@ -85,4 +85,36 @@ describe("serving counter — documented loss/duplication model", () => {
     await s.stop(50);
     expect(Date.now() - t0).toBeLessThan(1000);
   });
+
+  it("an ambiguous failure cannot compound: a bucket is retried at most 3 times, then dropped and reported", async () => {
+    const reports: Array<{ retained: number; droppedResponses: number }> = [];
+    const s = new RecommendationServingStats((_e, h) => reports.push(h), 3_600_000);
+    s.record({ placement: "cart_addon", empty: false, fallbackServed: false, at: new Date() });
+    failNext = 99;
+    await s.flush(); await s.flush(); await s.flush();
+    expect(reports.map((r) => r.droppedResponses)).toEqual([0, 0, 1]);
+    expect(held(s).length).toBe(0);
+    await s.stop(10);
+  });
+
+  it("shutdown joins a flush already in flight and then writes what arrived during it", async () => {
+    const s = new RecommendationServingStats(() => {}, 3_600_000);
+    let open!: () => void;
+    gate = new Promise<void>((r) => { open = r; });
+    s.record({ placement: "pdp_related", empty: false, fallbackServed: false, at: new Date() });
+    const first = s.flush();
+    s.record({ placement: "pdp_related", empty: false, fallbackServed: false, at: new Date() });
+    const stopping = s.stop(2000);
+    open(); gate = null;
+    await Promise.all([first, stopping]);
+    expect(executed.length).toBe(2);
+    expect(held(s).length).toBe(0);
+  });
+
+  it("counting never throws into the serve, and the key space is capped", () => {
+    const s = new RecommendationServingStats(() => {}, 3_600_000);
+    for (let i = 0; i < 1000; i++) s.record({ placement: `junk_${i}`, empty: false, fallbackServed: false, at: new Date() });
+    expect(held(s).length).toBe(256);
+    expect(() => s.record({ placement: "x", empty: false, fallbackServed: false, at: new Date(NaN) })).not.toThrow();
+  });
 });

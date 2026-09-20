@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { isDeclaredAutomation } from "../../../lib/declaredAutomation";
 import { VISIT_COOKIE_NAME } from "../../../middleware";
 
 /**
@@ -17,6 +18,8 @@ const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 
 export const POST: APIRoute = async ({ request, cookies }) => {
+  // Declared automation runs our scripts; what it "does" is not shopping.
+  if (isDeclaredAutomation(request.headers.get("user-agent"))) return new Response(null, { status: 204 });
   const declared = Number(request.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return json(413, { success: false });
   const raw = await request.text();

@@ -157,7 +157,12 @@ export class HeroSignalsService {
                      when 'PRODUCT_ADDED_TO_CART' then 3
                      when 'RECOMMENDATION_CLICKED' then 2
                      when 'PRODUCT_VIEWED' then 1
-                     else 0 end)::int as score
+                     else 0 end
+                   -- History is never cut off, but it fades: an action counts
+                   -- half as much every 90 days, so last week's new interest
+                   -- outranks last year's. created_at is the SERVER's clock; a
+                   -- future-dated row is clamped to "now".
+                   * power(0.5, greatest(extract(epoch from (now() - e.created_at)), 0) / (90 * 86400.0)))::float8 as score
         from recommendation_events e
         join products p on p.id = coalesce(e.recommendation_product_id, e.product_id)
         join categories c on c.id = p.category_id
@@ -168,7 +173,12 @@ export class HeroSignalsService {
                      when 'PRODUCT_ADDED_TO_CART' then 3
                      when 'RECOMMENDATION_CLICKED' then 2
                      when 'PRODUCT_VIEWED' then 1
-                     else 0 end) > 0
+                     else 0 end
+                   -- History is never cut off, but it fades: an action counts
+                   -- half as much every 90 days, so last week's new interest
+                   -- outranks last year's. created_at is the SERVER's clock; a
+                   -- future-dated row is clamped to "now".
+                   * power(0.5, greatest(extract(epoch from (now() - e.created_at)), 0) / (90 * 86400.0))) > 0.05
         order by score desc
         limit 5
       `),
