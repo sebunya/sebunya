@@ -35,7 +35,7 @@ describe("client answers, encoded for the native importer", () => {
 
   it("the contradicted client entries are HELD, not staged: Asha 500 on a second pack, Realme 6i, Realme C25, generic Vivo Y55s, ordinary Vivo X20, and the superseded Pop 2 Go", () => {
     const held = records.filter((r) => run(r).action === "HOLD_CONFLICT").map((r) => `${r["Battery Reference"]}|${r["Device Brand"]} ${r["Marketing Name"]}`).sort();
-    expect(held).toEqual(["4UL|Nokia Asha 500", "A11/BLP727|Realme 6i", "A11/BLP727|Realme C25", "BL-38BT|TECNO Pop 2 Go", "VIVO B-B1|Vivo Y55s", "VIVO B-D2|Vivo X20"]);
+    expect(held).toEqual(["4UL|Nokia Asha 500", "A11/BLP727|Realme 6i", "A11/BLP727|Realme C25", "BL-24ET|TECNO Pop 2 Go", "BL-38BT|TECNO Pop 2 Go", "VIVO B-B1|Vivo Y55s", "VIVO B-D2|Vivo X20"]);
   });
 
   it("everything else stages as a SUPPLIER-LISTED draft and nothing can arrive verified", () => {
@@ -47,10 +47,11 @@ describe("client answers, encoded for the native importer", () => {
     expect(records.some((r) => /A32 4G|SM-A325/.test(r["Marketing Name"] + r["Exact Model Number"]))).toBe(false);
   });
 
-  it("B-D2 carries the X20 PLUS family; BL-38BT carries Pop 5 Go", () => {
+  it("B-D2 carries the X20 PLUS family; BL-38BT carries Pop 5 Go + Pop 6 Go; the Pop 2 family stays on BL-24ET", () => {
     const staged = (code: string) => records.filter((r) => r["Battery Reference"] === code && run(r).action === "CREATE_CLAIM").map((r) => r["Marketing Name"]);
     expect(staged("VIVO B-D2")).toEqual(["X20 Plus", "X20 Plus A", "X20 Plus UD"]);
-    expect(staged("BL-38BT")).toEqual(["Pop 5 Go"]);
+    expect(staged("BL-38BT")).toEqual(["Pop 5 Go", "Pop 6 Go"]);
+    expect(staged("BL-24ET")).toEqual(["Pop 1", "Pop 2", "Pop 2F"]);
   });
 });
 
@@ -61,11 +62,11 @@ describe("one phone, one identity, one pack", () => {
     for (const r of records) seen.set(key(r), (seen.get(key(r)) ?? new Set()).add(r["Exact Model Number"]));
     expect([...seen].filter(([, v]) => v.size > 1).map(([k]) => k)).toEqual([]);
   });
-  it("a phone is STAGED on two batteries only where the client said the packs are the same (A10S = A10S/A20S)", () => {
+  it("a phone is STAGED on two batteries only where the client put it on both (A10S = A10S/A20S; Pop 6 Go on BL-38BT and BL-38CT)", () => {
     const packs = new Map<string, Set<string>>();
     for (const r of records) if (run(r).action === "CREATE_CLAIM") packs.set(key(r), (packs.get(key(r)) ?? new Set()).add(r["Battery Reference"]));
     const multi = [...packs].filter(([, v]) => v.size > 1).map(([k, v]) => `${k}:${[...v].sort().join("+")}`).sort();
-    expect(multi).toEqual(["samsung|galaxya10s:A10S+A10S/A20S", "samsung|galaxya20s:A10S+A10S/A20S"]);
+    expect(multi).toEqual(["samsung|galaxya10s:A10S+A10S/A20S", "samsung|galaxya20s:A10S+A10S/A20S", "tecno|pop6go:BL-38BT+BL-38CT"]);
   });
 });
 

@@ -1,6 +1,6 @@
 # Client answers absorbed (2026-09-20)
 
-`client-answers-verbatim.md` keeps exactly what the client said. `client-answers-rows.csv` is that answer as explicit battery→phone rows. `compatibility-for-admin-import-v3.csv` is the file to upload: the printed-list rows for batteries the client did not revisit + the client rows. **193 rows on 77 of the 80 batteries.** Run through the importer's rules: **187 would become drafts, 6 are held as conflicts.** Nothing is staged, reviewed or published yet.
+`client-answers-verbatim.md` keeps exactly what the client said. `client-answers-rows.csv` is that answer as explicit battery→phone rows. `compatibility-for-admin-import-v3.csv` is the file to upload: the printed-list rows for batteries the client did not revisit + the client rows. **195 rows on 77 of the 80 batteries.** Run through the importer's rules: **188 would become drafts, 7 are held.** Nothing is staged, reviewed or published yet.
 
 ## What "dry run" really does (mutation contract)
 Upload + mapping + dry run **persist** one import session, its rows (source, normalised value, proposed action, errors) and audit events. They write **nothing** to brands, devices, claims, aliases, products or stock — verified on a production copy (devices 0 → 0, claims 0 → 0). "Dry run" therefore means "no catalogue writes", not "no database writes".
@@ -42,3 +42,14 @@ A GoldPlus packaging photo or a technician's fit check overrides any of these.
 - Guards added: no phone may appear with two different model-number cells; a phone may be staged on two batteries only where the client declared the packs identical.
 - This revision (193 rows) was validated with the importer's rules locally; the previous revision (194) is the one that ran through the native importer on a production copy. The rules are the same function.
 - Follow-up questions for the client: `~/Downloads/GoldPlus_Battery_Follow-up_Questions_for_Client_2026-09-20.txt` (11 short points).
+
+## Second client message (2026-09-20): BL-38BT and the Pop 2 Go
+Client: *"BL-38BT is for … Techno POP 5 Go and Techno POP 6 Go whereas for the phone Pop 2 Go it uses BL-24ET which it shares with other phones."*
+
+Checked against public parts listings:
+- **Pop 5 Go (BD1) → BL-38BT, 4000 mAh** — consistent across many independent sellers. Staged.
+- **Pop 6 Go (BE6)** — the client's own printed list puts it on **BL-38CT**, and a parts listing sells "Pop 6 Go BL-38CT 3850 mAh"; the client now also puts it on BL-38BT. Both packs are the same ~4000 mAh class. Recorded on BOTH batteries as drafts with that note; a fit check decides whether the packs are interchangeable in this phone.
+- **BL-24ET** — listings agree with the printed list: Pop 1 (F3), Pop 2 (B1), Pop 2F (B1F), 2400–2500 mAh. Those three now carry their model numbers.
+- **"Pop 2 Go"** — TECNO's range has Pop 2, Pop 2F, Pop 2 Plus and Pop 2 Power but no phone officially called "Pop 2 Go". Held on BL-24ET as an *identity* question (get the model number off the phone) so it does not become a duplicate of the Pop 2/2F. The old research row "Pop 2 Go on BL-38BT" is held as **rejected by the client**.
+
+Sources: sunsky-online.com and mobspares.com (Pop 5 GO BL-38BT 4000mAh); aliexpress.com item 1005009736929075 (Pop 6 Go BL-38CT 3850mAh); alibaba.com BL-24ET listing (F3/B1/Pop 2/B1F); daraz.pk (BL-24ET for Pop 2, Pop 2F). Seller listings are leads, not proof.

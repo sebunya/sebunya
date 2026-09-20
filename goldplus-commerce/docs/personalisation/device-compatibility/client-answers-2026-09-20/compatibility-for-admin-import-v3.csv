@@ -25,9 +25,9 @@ BL-20JT,TECNO,F1,,Supplier claim,GoldPlus Battery Original compatible phone list
 BL-20JT,TECNO,F2,,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: BL-20JT,V3-024
 BL-20JT,TECNO,SA6S,,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: BL-20JT,V3-025
 BL-20NT,TECNO,T315,,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: BL-20NT,V3-026
-BL-24ET,TECNO,Pop 1,,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: BL-24ET,V3-027
-BL-24ET,TECNO,Pop 2,,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: BL-24ET,V3-028
-BL-24ET,TECNO,Pop 2F,,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: BL-24ET,V3-029
+BL-24ET,TECNO,Pop 1,F3,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: BL-24ET,V3-027
+BL-24ET,TECNO,Pop 2,B1,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: BL-24ET,V3-028
+BL-24ET,TECNO,Pop 2F,B1F,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: BL-24ET,V3-029
 BL-25BI,itel,it5600,5600,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: BL-25BI,V3-030
 BL-25JT,TECNO,WX3,,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: BL-25JT,V3-031
 BL-29BT,TECNO,Spark 4 Air,,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: BL-29BT,V3-032
@@ -40,8 +40,8 @@ BL-36BT,TECNO,Camon X,,Supplier claim,GoldPlus Battery Original compatible phone
 BL-36BT,TECNO,Camon 11,,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: BL-36BT,V3-039
 BL-36BT,TECNO,Camon 11 Pro,,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: BL-36BT,V3-040
 BL-38AT,TECNO,Pop 2 Power,,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: BL-38AT,V3-041
-BL-38BT,TECNO,Pop 5 Go,,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: BL-38BT,V3-042
-BL-38CT,TECNO,Pop 6 Go,,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: BL-38CT,V3-043
+BL-38BT,TECNO,Pop 5 Go,BD1,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: BL-38BT,V3-042
+BL-38CT,TECNO,Pop 6 Go,BE6,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: BL-38CT,V3-043
 BL-39AX,Infinix,X556,X556,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: BL-39AX,V3-044
 BL-39AX,Infinix,X557,X557,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: BL-39AX,V3-045
 BL-39EX,Infinix,X559,X559,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: BL-39EX,V3-046
@@ -191,4 +191,6 @@ VIVO B-D2,Vivo,X20,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier d
 5C,TECNO,T101,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client wrote the numbers only (""301/312/…""); ""T"" prefix assumed for TECNO feature phones — confirm.",V3-190
 BL-28AT,TECNO,Y2,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),Client: BL-28AT and BL-28ATLONG are DIFFERENT packs; never merge.,V3-191
 BL-28AT,TECNO,Camon Y3 Plus,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),Client: BL-28AT and BL-28ATLONG are DIFFERENT packs; never merge.,V3-192
-BL-38BT,TECNO,Pop 2 Go,,Poster claim,Supplier research 2026-08-26,CONFLICT: superseded — the printed GoldPlus list and device documentation give Pop 5 Go (BD1) for BL-38BT.,V3-193
+BL-38BT,TECNO,Pop 6 Go,BE6,Supplier claim,Client answer 2026-09-20 (second message),"Client: BL-38BT is for the Pop 5 Go AND the Pop 6 Go. The client's printed list (and at least one parts listing) puts the Pop 6 Go on BL-38CT, so it is recorded on both; a fit check should confirm the two packs are interchangeable in this phone.",V3-193
+BL-24ET,TECNO,Pop 2 Go,,Supplier claim,Client answer 2026-09-20 (second message),"CONFLICT (identity): client says the 'Pop 2 Go' uses BL-24ET. TECNO sold a Pop 2 (B1), Pop 2F (B1F), Pop 2 Plus and Pop 2 Power, but no phone officially named 'Pop 2 Go' — record the model number printed on the phone before creating it, so it does not become a duplicate of the Pop 2 / Pop 2F already on this battery.",V3-194
+BL-38BT,TECNO,Pop 2 Go,,Poster claim,Supplier research 2026-08-26,CONFLICT: rejected by the client (2026-09-20): the Pop 2 Go does NOT use BL-38BT; BL-38BT is for the Pop 5 Go and Pop 6 Go.,V3-195
