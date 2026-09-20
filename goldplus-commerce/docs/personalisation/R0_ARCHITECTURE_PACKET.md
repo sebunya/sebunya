@@ -113,3 +113,62 @@ deleted until off-host restore + PITR are proven and R3 has passed.**
 | Q8 | — | "rollback restores exactly" is false | ACCEPT — reworded: rollback is safe, not identical (RESPONSE gap, later first_seen_at) |
 
 BLOCK F7 is resolved by ordering: the visitStrength filter is a prerequisite of the response flag.
+
+## 7. Self-review of 1c38db53 and the external brief (2026-09-20)
+
+Did the first commit close the causal loop or only reduce symptoms? **It reduced
+them.** Three gaps remained and are fixed in 8b0dacfe / bd07895d:
+
+| Gap | Why it mattered | Fix |
+|---|---|---|
+| Visit strength excluded ONE event name | impressions/views we emit when a rail renders still fed strength → rendering fed rendering | explicit `VISITOR_ACTION_EVENT_TYPES` (shared); a new type fails the build until classified |
+| Counter dropped a batch on any DB error, never flushed on SIGTERM, could flush concurrently | health page would silently under-report | retain+retry failed buckets, 6 h outage cap with reported drops, single-flight, 3 s shutdown flush |
+| 180-day profile prune + 180-day cookie | deletes history (violates invariant 8) and contradicts the owner decision "keep personalisation forever" | prune removed; cookie = 400-day browser cap, sliding daily; hero strength/affinity read whole profile history (profile_id-indexed) |
+
+Owner decision recorded: **personalisation history has no time limit.**
+"Forever" for an anonymous browser is bounded by the browser's 400-day cookie
+cap; a signed-in customer's profile is permanent.
+
+Rejected from the brief, with reason: a returned cookie is *not* treated as proof
+of humanity here — it is only the condition for identity continuity; profile
+creation still requires a visitor action. JS-running bots that POST events can
+still create profiles (R0 F10) — measured after release, not guessed at.
+
+Counter accuracy model: operational gauge. Loss ≤ one 60 s interval on kill/OOM;
+possible double count of one bucket on a commit-then-timeout. Not used for
+revenue, attribution or experiment conclusions.
+
+First visit: page 1 is served generic; the cookie is set on that response, so
+the first click/add-to-cart from page 1 already carries it through the browser
+relays (`api/rec`, `api/hero/events`, `api/nav/events`) and creates the profile
+with behaviour intent. Checkout/login/register keep create semantics.
+
+## 8. Test evidence (commit bd07895d, `npx vitest run tests --maxWorkers=3 --minWorkers=1`)
+
+8b0dacfe: 8,094 passed / 3 failed / 237 skipped. Two were introduced by this
+work (PgParams boundary, 180-day cookie pin) and are fixed in bd07895d
+(architecture + affected files: 134/134). `ZeroSkipGate` is environment-only
+(no integration services on the workstation). Slice09 guards pass once the tree
+is committed. `compatibility-audit/*` and `performance-audit/*` are Playwright/
+node specs that vitest only collects when run from the repo root without the
+`tests` path — not part of this suite. Real-Postgres integration for 0144 and
+the hero query is NOT yet run (needs `scripts/integration-on-clone.sh` on the host).
+
+## 9. Release (NOT executed — push and host copy are permission-blocked)
+
+1. `git push`
+2. `git archive HEAD | ssh goldplus-prod 'tar -x -C /root/itest-src'`
+3. host: `scripts/integration-on-clone.sh` (abort on any failure)
+4. host: `scripts/migrate-prod.sh <image> 0144 "select (count(*)=1)::int from information_schema.tables where table_name='recommendation_serving_hourly'"` — additive CREATE TABLE IF NOT EXISTS, no lock on existing tables, safe under the old app
+5. host: `nohup ./scripts/deploy-prod.sh <sha> api web > /tmp/deploy-<sha>.log &`
+6. Rollback: redeploy `rollback-340fb1f5`, or set any of `SSR_IDENTITY_V2` / `PROFILE_READ_PURE` / `RESPONSE_EVENT_TO_METRIC` to `false` and restart (restores the old pollution — a containment trade-off, not a safe state). The table stays; no data rollback is needed.
+
+Thresholds (baseline: ~19–27k events/day, ~all profiles seen once): RESPONSE rows
+written after deploy = 0; new profiles/day falls by >90% and every new profile
+has ≥1 visitor-action event; event POST accept rate unchanged; checkout smoke
+passes; `RECOMMENDATION_SERVING_STATS_FLUSH_FAILED` = 0. A fall in visitor-action
+events is a FAILURE signal, not success.
+
+## 10. States
+code ready: YES (pending host integration run) · production authorized: NO ·
+deployment verified: NO · observation complete: NO
