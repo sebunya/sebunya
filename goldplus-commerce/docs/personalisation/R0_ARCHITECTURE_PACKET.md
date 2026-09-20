@@ -207,3 +207,21 @@ deployment verified: NO · observation complete: NO
 ## 13. Credential incident (open)
 - ZeptoMail send token: exposed in this session's transcript only (not in git). Rotation needs a Zoho console sign-in, which I must not perform. Owner: ZeptoMail → Mail Agents → the agent → SMTP/API → regenerate token; put the new value in the host env file as `ZEPTOMAIL_API_TOKEN`; tell me and I will restart the API and verify a send. Regenerating revokes the old token.
 - Admin password: reached git history. Owner: change it in the admin account screen; I will then verify old sessions are invalid. Until both are done the incident is OPEN regardless of code status.
+
+## 14. Consolidated brief — decisions and evidence (2026-09-20)
+
+**What works / blocked / unverified / next**
+- Works (verified existing, not new): recently-viewed + cart-aware rails on home; device cookie + fit badges on PDP/cart.
+- Blocked by DATA, not code: fit badges — `devices`, `device_brands`, `product_device_compatibility` = 0 rows. The 80 battery profiles / 204 aliases describe batteries, not phones. Prepared: `device-compatibility/` (34 source-backed claims, validated, NOT applied; 68 held with reasons).
+- Taxonomy: affinity keys on `categories.slug`; only 3 categories + Other exist, so shop ordering is COARSE (moves whole categories). Nav labels (Power/Sound/Storage/Car/PC) are collections, not stored categories. Not rebuilt here.
+- Next increment chosen: "this phone?" suggestion on the battery finder — needs no mappings to be honest, and feeds the existing search.
+
+**Shop ordering contract (as implemented):** whole catalogue is sorted BEFORE pagination (not a page reshuffle). Standard order when: first visit, no affinity ≥ 2, any query/filter/chosen sort, `?order=standard` (URL-scoped: survives paging, not a saved preference), `SHOP_PERSONAL_ORDER=false`. Page-1 lead categories ride in `lead=` so paging is stable; the value is only matched against the taxonomy. Ties: taxonomy → subcategory → name. Path creates no profile and emits no behavioural event (reads still cost one indexed query, 1.2 s timeout, generic fallback). Shared-browser caveat: affinity follows the browser cookie; login rotates the visit token (existing), so a second account does not inherit the first's browser profile.
+
+**Browsing device:** UA-CH `model` (mobile only) or an unreduced Android UA → offered as a question on the finder. Reduced Chrome ("K"), iPhone, iPad, Mac, Windows, TV → no suggestion, generic finder. Nothing stored, nothing sent, no cache variance (client-side). Simulated UAs only — no real-hardware or TV evidence.
+
+**Build/test evidence**
+- Web: `tsc --noEmit` clean; `astro build` Complete (commit 3b18296a and after).
+- Suite on the committed tree (3b18296a): 8,114 passed / 1 failed (`ZeroSkipGate`, environment) / 237 skipped (46 real-Postgres files). All 13 earlier failures reconciled: 11 Slice09 dirty-tree guards pass on a clean tree; `performance-audit` is a `node:test` file — `node --test` → 12/12 pass.
+- Push triggers nothing: the repo has no `.github/workflows`.
+- Real PostgreSQL: `tests/integration/PersonalisationReads.integration.test.ts` added; result recorded below when the clone run finishes.
