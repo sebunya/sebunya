@@ -45,12 +45,36 @@ export function normaliseUgandaMobile(raw: string): { ok: true; value: string } 
   return { ok: true, value: `+256${m[1]}` };
 }
 
+export const MAX_ALERT_RECIPIENTS = 10;
+
+/**
+ * A list of numbers, however the operator separates them — commas, spaces or
+ * new lines. Each is validated on its own, duplicates collapse, and ONE bad
+ * entry fails the whole save rather than being dropped quietly: a number
+ * silently missing from an alert list is a person who thinks they are being
+ * told and is not.
+ */
+export function normaliseRecipientList(raw: string): { ok: true; value: string } | { ok: false; message: string } {
+  const parts = String(raw ?? '').split(/[,;\n]+/).map((p) => p.trim()).filter(Boolean);
+  if (!parts.length) return { ok: false, message: 'Enter at least one Ugandan mobile number.' };
+  if (parts.length > MAX_ALERT_RECIPIENTS) {
+    return { ok: false, message: `That is more than ${MAX_ALERT_RECIPIENTS} numbers. Keep the list short enough that somebody acts on it.` };
+  }
+  const out: string[] = [];
+  for (const part of parts) {
+    const one = normaliseUgandaMobile(part);
+    if (!one.ok) return { ok: false, message: `"${part}" is not a Ugandan mobile number. Use a form like 0776004545 or +256776004545.` };
+    if (!out.includes(one.value)) out.push(one.value);
+  }
+  return { ok: true, value: out.join(',') };
+}
+
 export type FulfilmentAlertValidation = { ok: true; value: string } | { ok: false; message: string };
 
 export function validateFulfilmentAlertValue(key: string, raw: string): FulfilmentAlertValidation {
   if (!isFulfilmentAlertConfigKey(key)) return { ok: false, message: `"${key}" is not a fulfilment alert setting.` };
   const trimmed = String(raw ?? '').trim();
-  if (key === 'paid_order_sms_recipient') return normaliseUgandaMobile(trimmed);
+  if (key === 'paid_order_sms_recipient') return normaliseRecipientList(trimmed);
   if (key === 'paid_order_sms_enabled') {
     if (trimmed !== 'true' && trimmed !== 'false') return { ok: false, message: 'Use "true" or "false".' };
     return { ok: true, value: trimmed };
@@ -58,9 +82,16 @@ export function validateFulfilmentAlertValue(key: string, raw: string): Fulfilme
   return { ok: false, message: `"${key}" has no validation rule.` };
 }
 
-/** The alert is sent only when a recipient exists AND it is switched on. */
+/** Everyone who should be told, or nobody. Needs a list AND the switch. */
+export function alertRecipients(values: Record<string, string>): string[] {
+  if (values.paid_order_sms_enabled !== 'true') return [];
+  return (values.paid_order_sms_recipient ?? '')
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean);
+}
+
+/** The first recipient, for callers that show a single example. */
 export function alertRecipient(values: Record<string, string>): string | null {
-  const enabled = values.paid_order_sms_enabled === 'true';
-  const recipient = (values.paid_order_sms_recipient ?? '').trim();
-  return enabled && recipient ? recipient : null;
+  return alertRecipients(values)[0] ?? null;
 }

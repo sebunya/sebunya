@@ -28,6 +28,46 @@ const FORWARD: Record<Status, Status[]> = {
   CANCELLED: [],
   ON_HOLD: ["ACKNOWLEDGED", "PICKING", "PACKED", "READY_FOR_DISPATCH", "OUT_FOR_DELIVERY"],
 };
+/**
+ * Plain words for machine states.
+ *
+ * The queue used to show ACKNOWLEDGED, READY_FOR_DISPATCH and "SLA" at a person
+ * who just needs to know what to do with an order. The states are unchanged —
+ * only what a human reads.
+ */
+const STATUS_WORDS: Record<Status, string> = {
+  NEW: "New",
+  ACKNOWLEDGED: "Seen",
+  PICKING: "Being picked",
+  PACKED: "Packed",
+  READY_FOR_DISPATCH: "Ready for the rider",
+  OUT_FOR_DELIVERY: "With the rider",
+  DELIVERED: "Delivered",
+  CANCELLED: "Cancelled",
+  ON_HOLD: "On hold",
+};
+
+/** The single next step, as an instruction. Everything else goes under "More". */
+const NEXT_STEP: Partial<Record<Status, { to: Status; label: string }>> = {
+  NEW: { to: "PICKING", label: "Start picking" },
+  ACKNOWLEDGED: { to: "PICKING", label: "Start picking" },
+  PICKING: { to: "PACKED", label: "Mark packed" },
+  PACKED: { to: "READY_FOR_DISPATCH", label: "Ready for the rider" },
+  READY_FOR_DISPATCH: { to: "OUT_FOR_DELIVERY", label: "Hand to the rider" },
+  OUT_FOR_DELIVERY: { to: "DELIVERED", label: "Mark delivered" },
+};
+
+/** "in 2 hours", "3 days late" — a time a person can act on. */
+function dueInWords(iso: string, overdue: boolean): string {
+  const due = new Date(iso).getTime();
+  if (!Number.isFinite(due)) return "";
+  const mins = Math.round(Math.abs(due - Date.now()) / 60000);
+  const amount = mins < 60 ? `${mins} minute${mins === 1 ? "" : "s"}`
+    : mins < 1440 ? `${Math.round(mins / 60)} hour${Math.round(mins / 60) === 1 ? "" : "s"}`
+    : `${Math.round(mins / 1440)} day${Math.round(mins / 1440) === 1 ? "" : "s"}`;
+  return overdue || due < Date.now() ? `${amount} late` : `due in ${amount}`;
+}
+
 function nextActions(from: Status): Status[] {
   const opts = new Set<Status>(FORWARD[from] ?? []);
   if (from !== "DELIVERED" && from !== "CANCELLED") {
@@ -52,7 +92,7 @@ try {
 let notice: { kind: "success" | "error"; text: string } | null = null;
 let alertRecipientValue = "";
 let alertEnabled = false;
-let alertActive: string | null = null;
+let alertActive: string[] = [];
 
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
@@ -164,7 +204,7 @@ try {
     if (alertJson?.success) {
       alertRecipientValue = alertJson.data.entries.find((e: any) => e.key === "paid_order_sms_recipient")?.value ?? "";
       alertEnabled = alertJson.data.entries.find((e: any) => e.key === "paid_order_sms_enabled")?.value === "true";
-      alertActive = alertJson.data.activeRecipient ?? null;
+      alertActive = alertJson.data.activeRecipients ?? [];
     }
   } catch {
     // Leave the section showing its unset state rather than a wrong number.
@@ -227,15 +267,15 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
       <h3 id="alert-h" class="font-black text-brand-dark">Tell someone when an order is paid</h3>
       <p class="text-sm text-gray-600 mt-1 max-w-3xl">
         One SMS the moment money is confirmed, so an order is never sitting paid and unnoticed. It goes to the shop, never to the customer, and carries no customer name or address.
-        {alertActive
-          ? <span class="block mt-1 text-emerald-800">Currently alerting <strong class="font-mono">{alertActive}</strong>.</span>
-          : <span class="block mt-1 text-amber-800">No alert is being sent: save a number and switch it on.</span>}
+        {alertActive.length > 0
+          ? <span class="block mt-1 text-emerald-800">Alerting {alertActive.length} number{alertActive.length === 1 ? "" : "s"}: <strong class="font-mono">{alertActive.join(", ")}</strong>. Each one gets its own SMS.</span>
+          : <span class="block mt-1 text-amber-800">No alert is being sent: add at least one number and switch it on.</span>}
       </p>
       <form method="POST" class="mt-4 flex flex-wrap items-end gap-3">
         <input type="hidden" name="action" value="alert-save" />
-        <label class="text-xs font-bold text-gray-700">Phone number
-          <input name="recipient" value={alertRecipientValue} placeholder="0776004545" inputmode="tel"
-            class="mt-1 block w-56 rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal font-mono" />
+        <label class="text-xs font-bold text-gray-700">Phone numbers <span class="font-normal text-gray-500">(one per line, or separated by commas)</span>
+          <textarea name="recipient" rows="4" placeholder={"0776004545\n0705770907"}
+            class="mt-1 block w-72 rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal font-mono">{alertRecipientValue.split(",").join("\n")}</textarea>
         </label>
         <label class="flex items-center gap-2 text-sm font-bold text-gray-700 pb-2">
           <input type="checkbox" name="enabled" checked={alertEnabled} class="w-4 h-4" />
@@ -258,25 +298,25 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
         <a href="/admin/fulfilment/report" class="bg-brand-dark text-white text-xs font-bold px-3 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
           Report
         </a>
-        <span class="bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold px-3 py-1.5 rounded-lg font-mono">
-          NEW ORDERS: {badge}
+        <span class="bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold px-3 py-1.5 rounded-lg">
+          {badge} waiting to be picked up
         </span>
-        <span class={`text-xs font-bold px-3 py-1.5 rounded-lg font-mono border ${overdueBadge > 0 ? "bg-red-50 text-red-700 border-red-200" : "bg-gray-100 text-gray-600 border-gray-200"}`}>
-          OVERDUE: {overdueBadge}
+        <span class={`text-xs font-bold px-3 py-1.5 rounded-lg border ${overdueBadge > 0 ? "bg-red-50 text-red-700 border-red-200" : "bg-gray-100 text-gray-600 border-gray-200"}`}>
+          {overdueBadge} late
         </span>
-        <span class="bg-gray-100 text-gray-600 border border-gray-200 text-xs font-bold px-3 py-1.5 rounded-lg font-mono">
-          SHOWING: {total}
+        <span class="bg-gray-100 text-gray-600 border border-gray-200 text-xs font-bold px-3 py-1.5 rounded-lg">
+          showing {total}
         </span>
       </div>
     </div>
 
     {sla && (
       <div class="flex flex-wrap items-center gap-2 mb-6 text-[11px] font-bold">
-        <span class="text-gray-400 uppercase tracking-wider">SLA:</span>
-        <span class="px-2.5 py-1 rounded-lg border bg-green-50 text-green-700 border-green-200">On track {sla.onTrack}</span>
-        <span class="px-2.5 py-1 rounded-lg border bg-amber-50 text-amber-800 border-amber-200">Due soon {sla.dueSoon}</span>
-        <span class="px-2.5 py-1 rounded-lg border bg-orange-50 text-orange-700 border-orange-200">Overdue {sla.overdue}</span>
-        <span class="px-2.5 py-1 rounded-lg border bg-red-50 text-red-700 border-red-200">Escalated {sla.escalated}</span>
+        <span class="text-gray-500">Against the time we promised the customer:</span>
+        <span class="px-2.5 py-1 rounded-lg border bg-green-50 text-green-700 border-green-200">{sla.onTrack} on time</span>
+        <span class="px-2.5 py-1 rounded-lg border bg-amber-50 text-amber-800 border-amber-200">{sla.dueSoon} due soon</span>
+        <span class="px-2.5 py-1 rounded-lg border bg-orange-50 text-orange-700 border-orange-200">{sla.overdue} late</span>
+        <span class="px-2.5 py-1 rounded-lg border bg-red-50 text-red-700 border-red-200">{sla.escalated} escalated</span>
       </div>
     )}
 
@@ -294,10 +334,10 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
 
     <form method="GET" class="flex flex-wrap items-end gap-3 mb-8">
       <div>
-        <label for="status" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Filter by stage</label>
+        <label for="status" class="block text-[11px] font-bold text-gray-500 mb-1.5">Show</label>
         <select name="status" id="status" class="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
-          <option value="" selected={statusFilter === ""}>Active (all open)</option>
-          {ALL_STATUSES.map((s) => <option value={s} selected={statusFilter === s}>{s.replace(/_/g, " ")}</option>)}
+          <option value="" selected={statusFilter === ""}>Everything still open</option>
+          {ALL_STATUSES.map((s) => <option value={s} selected={statusFilter === s}>{STATUS_WORDS[s]}</option>)}
         </select>
       </div>
       <button type="submit" class="bg-brand-dark text-white text-xs font-bold px-5 py-2.5 rounded-xl hover:opacity-90 transition-opacity">Apply</button>
@@ -316,18 +356,20 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
             <div>
               <div class="flex items-center gap-2 flex-wrap">
                 <span class="font-mono font-black text-brand-dark">{task.orderNumber}</span>
-                <span class={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border ${statusChip(task.status)}`}>{task.status.replace(/_/g, " ")}</span>
-                <span class={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border ${payChip(task.paymentStatus)}`}>PAYMENT: {task.paymentStatus}</span>
-                <span class={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border ${prioChip(task.priority)}`}>{task.priority}</span>
+                <span class={`text-[11px] font-bold px-2.5 py-1 rounded-lg border ${statusChip(task.status)}`}>{STATUS_WORDS[task.status]}</span>
+                <span class={`text-[11px] font-bold px-2.5 py-1 rounded-lg border ${payChip(task.paymentStatus)}`}>{task.paymentStatus === "paid" ? "Paid" : task.paymentStatus === "failed" ? "Payment failed" : "Not paid yet"}</span>
+                {task.priority !== "normal" && (
+                  <span class={`text-[11px] font-bold px-2.5 py-1 rounded-lg border ${prioChip(task.priority)}`}>{task.priority} priority</span>
+                )}
                 {task.overdue && (
-                  <span class="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border bg-red-600 text-white border-red-700">OVERDUE</span>
+                  <span class="text-[11px] font-bold px-2.5 py-1 rounded-lg border bg-red-600 text-white border-red-700">Late</span>
                 )}
               </div>
               <p class="text-xs text-gray-500 mt-1.5">
                 {task.customerName} · {task.customerContactMasked} · {task.deliverySummary || task.deliveryArea}
               </p>
               <p class="text-[11px] text-gray-400 mt-1">
-                SLA due {new Date(task.slaDueAt).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })} · {task.assignedTo ? (task.assignedTo === currentUserId ? "assigned to you" : "assigned") : "unassigned"}
+                Promised to the customer {new Date(task.slaDueAt).toLocaleString("en-GB", { timeZone: "Africa/Kampala", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} — {dueInWords(task.slaDueAt, task.overdue)} · {task.assignedTo ? (task.assignedTo === currentUserId ? "you are handling it" : "somebody is handling it") : "nobody is handling it yet"}
               </p>
             </div>
             <div class="text-right">
@@ -378,16 +420,20 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
             <form method="POST" class="flex flex-wrap items-end gap-3">
               <input type="hidden" name="id" value={task.id} />
               <div>
-                <label class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Move to</label>
+                <label class="block text-[11px] font-bold text-gray-500 mb-1.5">What happens next</label>
                 <select name="toStatus" class="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
-                  {nextActions(task.status).map((s) => <option value={s}>{s.replace(/_/g, " ")}</option>)}
+                  {nextActions(task.status).map((s) => (
+                    <option value={s} selected={NEXT_STEP[task.status]?.to === s}>
+                      {NEXT_STEP[task.status]?.to === s ? `${NEXT_STEP[task.status]?.label} (next step)` : STATUS_WORDS[s]}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div class="flex-1 min-w-[180px]">
-                <label class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Note (optional)</label>
+                <label class="block text-[11px] font-bold text-gray-500 mb-1.5">Note (optional)</label>
                 <input type="text" name="notes" maxlength="2000" placeholder="e.g. packed, awaiting boda" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold" />
               </div>
-              <button type="submit" class="bg-brand-gold text-brand-dark text-xs font-black px-5 py-2.5 rounded-xl hover:opacity-90 transition-opacity">Update</button>
+              <button type="submit" class="bg-brand-gold text-brand-dark text-xs font-black px-5 py-2.5 rounded-xl hover:opacity-90 transition-opacity">{NEXT_STEP[task.status]?.label ?? "Update"}</button>
             </form>
 
             <div class="flex flex-wrap items-end gap-3 mt-3 pt-3 border-t border-gray-100">
@@ -395,7 +441,7 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
                 <input type="hidden" name="id" value={task.id} />
                 <input type="hidden" name="action" value="priority" />
                 <div>
-                  <label class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Priority</label>
+                  <label class="block text-[11px] font-bold text-gray-500 mb-1.5">Priority</label>
                   <select name="priority" class="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
                     {PRIORITIES.map((p) => <option value={p} selected={p === task.priority}>{p}</option>)}
                   </select>

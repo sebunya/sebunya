@@ -78,14 +78,14 @@ routes.get('/badge', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) =>
  * the closed key list and writes an audit row (createAuditLogUseCase).
  */
 routes.get('/alerts', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
-  const { FULFILMENT_ALERT_CONFIG_REGISTRY, alertRecipient } = await import('../../../../domain/fulfilment/FulfilmentAlertConfig');
+  const { FULFILMENT_ALERT_CONFIG_REGISTRY, alertRecipients } = await import('../../../../domain/fulfilment/FulfilmentAlertConfig');
   const values = await Registry.getInstance().fulfilmentAlertConfig.values();
   return c.json({
     success: true,
     data: {
       entries: FULFILMENT_ALERT_CONFIG_REGISTRY.map((e) => ({ ...e, value: values[e.key] ?? null, set: values[e.key] !== undefined })),
-      activeRecipient: alertRecipient(values),
-      note: 'No alert is sent until a number is saved AND the alert is switched on.',
+      activeRecipients: alertRecipients(values),
+      note: 'No alert is sent until at least one number is saved AND the alert is switched on. Every number on the list gets its own SMS.',
     },
   });
 });

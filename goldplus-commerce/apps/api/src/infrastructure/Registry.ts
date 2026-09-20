@@ -2,7 +2,7 @@ import './logging/appLoggerBinding';
 import { MeasurementOperationsUseCases } from '../application/use-cases/measurement/MeasurementOperationsUseCases';
 import { CollectBrowserBatchUseCase } from '../application/use-cases/telemetry/CollectBrowserBatchUseCase';
 import { DrizzleCollectorStore } from './db/repositories/DrizzleCollectorStore';
-import { alertRecipient, validateFulfilmentAlertValue } from '../domain/fulfilment/FulfilmentAlertConfig';
+import { alertRecipient, alertRecipients, validateFulfilmentAlertValue } from '../domain/fulfilment/FulfilmentAlertConfig';
 import { PgAttributionPort } from './measurement/AttributionJob';
 import { DrizzleMeasurementOperationsRepository } from './db/repositories/DrizzleMeasurementOperationsRepository';
 import { AdDestinationUseCases } from '../application/use-cases/advertising/AdDestinationUseCases';
@@ -752,12 +752,17 @@ export class Registry {
     /** Queues the paid-order alert. Returns why nothing was queued, never silently. */
     enqueuePaidOrderAlert: async (orderId: string, opts?: { test?: boolean }): Promise<{ queued: boolean; reason: string }> => {
       const values = await this.fulfilmentAlertConfig.values();
-      const recipient = alertRecipient(values);
-      if (!recipient) return { queued: false, reason: 'NO_RECIPIENT_OR_DISABLED' };
+      const recipients = alertRecipients(values);
+      if (!recipients.length) return { queued: false, reason: 'NO_RECIPIENT_OR_DISABLED' };
       const order = await this.orderRepo.findById(orderId);
       if (!order) return { queued: false, reason: 'ORDER_NOT_FOUND' };
       const { db } = await import('./db/client');
       const { outboxEvents } = await import('./db/schema');
+      // One event per person, each with its own idempotency key: a failure to
+      // reach one phone must not stop the others, and a retry must not send the
+      // same person the same order twice.
+      const stamp = opts?.test ? Date.now() : 0;
+      for (const recipient of recipients) {
       await db.insert(outboxEvents).values({
         eventType: 'FULFILMENT_PAID_ORDER_ALERT',
         payload: {
@@ -768,15 +773,16 @@ export class Registry {
           test: opts?.test === true,
         } as never,
         idempotencyKey: opts?.test
-          ? `fulfilment-alert-test:${orderId}:${Date.now()}`
-          : `fulfilment-alert:${orderId}`,
+          ? `fulfilment-alert-test:${orderId}:${recipient}:${stamp}`
+          : `fulfilment-alert:${orderId}:${recipient}`,
         status: 'pending',
         channel: 'sms',
         template: 'FULFILMENT_PAID_ORDER_ALERT',
         relatedEntity: 'order',
         relatedEntityId: orderId,
       } as never).onConflictDoNothing({ target: outboxEvents.idempotencyKey });
-      return { queued: true, reason: 'QUEUED' };
+      }
+      return { queued: true, reason: `QUEUED_FOR_${recipients.length}` };
     },
   };
 

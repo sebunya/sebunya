@@ -94,6 +94,30 @@ const TRANSACTIONAL_TEMPLATES = new Set([
   'PHONE_VERIFICATION',
 ]);
 
+/**
+ * Has a human decided what this template IS?
+ *
+ * The owner's instruction (2026-09-20) was that none of this shop's messages
+ * are marketing and none should be blocked. The way to honour that is NOT to
+ * stop the consent gate working — a genuine promotional send must still be
+ * refused without consent, which is a legal duty under Uganda's Data Protection
+ * and Privacy Act 2019 — but to make sure no real message is ever left
+ * unclassified, which is what actually blocked them.
+ *
+ * Three were: the password reset, the phone-verification OTP, and the
+ * paid-order fulfilment alert. Each was written, deployed and switched on, then
+ * silently refused NO_CONSENT_FOR_MARKETING because nobody added it to a list.
+ *
+ * So the runtime default stays fail-closed, and the guard moves to where it can
+ * be seen: a test reads every template the producers hard-code and fails the
+ * build if any of them is not named in one of the three lists above. An
+ * unclassified template can no longer reach production to be blocked there.
+ */
+export function isTemplateClassified(template: string): boolean {
+  const key = (template || '').trim().toUpperCase();
+  return OPERATIONAL_TEMPLATES.has(key) || TRANSACTIONAL_TEMPLATES.has(key);
+}
+
 export function classifyTemplate(template: string): MessageClass {
   // Compared case-insensitively against upper-case identifiers, so a template written
   // in the wrong case is still classified rather than silently falling through to
