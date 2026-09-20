@@ -37,11 +37,13 @@ describe("client answers, encoded for the native importer", () => {
     expect(records.filter((r) => run(r).action !== "CREATE_CLAIM")).toEqual([]);
     const row = (code: string, name: RegExp) => records.find((r) => r["Battery Reference"] === code && name.test(r["Marketing Name"]));
     // Client-listed, recorded — each carries a reviewer note because parts catalogues disagree.
-    for (const [code, name] of [["A11/BLP727", /^C25$/], ["VIVO B-D2", /^X20$/], ["4UL", /Asha 500/]] as const) {
+    for (const [code, name] of [["A11/BLP727", /^C25$/], ["VIVO B-D2", /^X20$/]] as const) {
       expect(row(code, name), `${code}`).toBeTruthy();
       expect(row(code, name)!["Condition / Conflict"]).toMatch(/Reviewer note: .*fit-check/);
     }
-    expect(row("4U", /Asha 500/)).toBeTruthy();
+    // The client later confirmed both packs fit these two phones: recorded on both, no reviewer caution left.
+    for (const code of ["4U", "4UL"]) expect(row(code, /Asha 500/)!["Condition / Conflict"]).toMatch(/Client confirmed: both/);
+    for (const code of ["BL-38BT", "BL-38CT"]) expect(row(code, /Pop 6 Go/)!["Condition / Conflict"]).toMatch(/Client confirmed: both/);
     expect(row("BL-38BT", /Pop 2/)).toBeUndefined();       // the client rejected this one
     expect(row("BL-24ET", /Pop 2 Go/)).toBeUndefined();    // trade name of the Pop 2 (B1): an alias, not a second phone
     expect(row("BL-24ET", /^Pop 2$/)).toBeTruthy();
@@ -69,9 +71,37 @@ describe("client answers, encoded for the native importer", () => {
 
   it("B-D2 carries the X20 PLUS family; BL-38BT carries Pop 5 Go + Pop 6 Go; the Pop 2 family stays on BL-24ET", () => {
     const staged = (code: string) => records.filter((r) => r["Battery Reference"] === code && run(r).action === "CREATE_CLAIM").map((r) => r["Marketing Name"]);
-    expect(staged("VIVO B-D2")).toEqual(["X20 Plus", "X20 Plus A", "X20 Plus UD", "X20"]);
-    expect(staged("BL-38BT")).toEqual(["Pop 5 Go", "Pop 6 Go"]);
-    expect(staged("BL-24ET")).toEqual(["Pop 1", "Pop 2", "Pop 2F"]);
+    expect(staged("VIVO B-D2").sort()).toEqual(["X20", "X20 Plus", "X20 Plus A", "X20 Plus UD"]);
+    expect(staged("BL-38BT").sort()).toEqual(["Pop 5 Go", "Pop 6 Go"]);
+    expect(staged("BL-24ET").sort()).toEqual(["Pop 1", "Pop 2", "Pop 2F"]);
+  });
+});
+
+describe("enrichment: phones are findable by NAME and by MODEL NUMBER", () => {
+  const find = (code: string, name: string) => records.find((r) => r["Battery Reference"] === code && r["Marketing Name"] === name);
+  it("no Infinix/TECNO phone is left known only by its code", () => {
+    const codeOnly = records.filter((r) => /^(Infinix|TECNO)$/.test(r["Device Brand"]) && /^(X\d{3,4}[A-Z]?|L[A-C]\d[A-Za-z]?|CH\d)$/.test(r["Marketing Name"]));
+    expect(codeOnly.map((r) => r["Marketing Name"])).toEqual([]);
+  });
+  it("the market name leads and the code is kept as the model number", () => {
+    expect(find("BL-39AX", "Hot 4 Pro")!["Exact Model Number"]).toBe("X556");
+    expect(find("BL-39EX", "Hot 5")!["Exact Model Number"]).toBe("X559");
+    expect(find("BL-39KX", "Hot 7")!["Exact Model Number"]).toBe("X624");
+    expect(find("BL-49JT", "Camon 18P")!["Exact Model Number"]).toBe("CH7");
+  });
+  it("the printed list's '3Air' and 'LC6A' are ONE phone, not two", () => {
+    const p3 = records.filter((r) => r["Battery Reference"] === "BL-49ET" && /Pouvoir 3 Air|LC6A/.test(r["Marketing Name"] + r["Exact Model Number"]));
+    expect(p3.length).toBe(1);
+    expect(p3[0]["Exact Model Number"]).toBe("LC6A");
+  });
+  it("research extras are labelled as research, never as the printed list or the client", () => {
+    const extras = records.filter((r) => /Supplier research/.test(r["Evidence Source"]));
+    expect(extras.length).toBeGreaterThan(10);
+    for (const r of extras) expect(r["Condition / Conflict"]).toMatch(/Not on the GoldPlus printed list/);
+  });
+  it("the blurred BL-58BT cell is recorded with the physically consistent phones only", () => {
+    const names = records.filter((r) => r["Battery Reference"] === "BL-58BT").map((r) => r["Marketing Name"]).sort();
+    expect(names).toEqual(["Pouvoir 4", "Pouvoir 4 Pro", "Spark 6 Air"]);
   });
 });
 
