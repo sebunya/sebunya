@@ -90,7 +90,10 @@ suite('personalisation reads (real PostgreSQL)', () => {
     expect(s.visits).toBe(3);
     expect(s.categoryAffinity.length).toBe(1);
     expect(s.categoryAffinity[0].score).toBeGreaterThan(2.8);
-    expect(await svc.getCategoryAffinity(p1)).toEqual(s.categoryAffinity);
+    // Scores decay with now(), so two reads differ in the last decimals.
+    const light = await svc.getCategoryAffinity(p1);
+    expect(light.map((a) => a.categorySlug)).toEqual(s.categoryAffinity.map((a) => a.categorySlug));
+    expect(light[0].score).toBeCloseTo(s.categoryAffinity[0].score, 3);
     expect(await svc.getCategoryAffinity(null)).toEqual([]);
 
     // The same views a year ago fade to almost nothing.
