@@ -310,6 +310,9 @@ export class ZeptoMailAdapter implements INotificationProvider {
           // The cause, so failures group by what is actually wrong rather than
           // by which HTTP number the provider chose to express it with.
           providerCode: `PROVIDER_${failure.classification.toUpperCase()}`,
+          // The provider's verdict, carried to the outbox so it does not spend
+          // eight attempts on something that cannot succeed.
+          retryable: failure.retryable === 'no' ? false : true,
           providerMessage: [
             `HTTP error status ${response.status}`,
             `class=${failure.classification}`,

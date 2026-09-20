@@ -1,4 +1,4 @@
-import { INotificationProvider } from '../../application/ports/INotificationProvider';
+import { INotificationProvider, NotificationDispatchPayload, NotificationDispatchResult } from '../../application/ports/INotificationProvider';
 import { INotificationRouter, NotificationRoutingTarget } from '../../application/use-cases/outbox/ProcessOutboxBatchUseCase';
 import { parseAdminRecipients } from '../../domain/notifications/AdminOrderEmail';
 import { IAutomationActionRepository } from '../../application/ports/IAutomationActionRepository';
@@ -21,6 +21,27 @@ export class DefaultNotificationRouter implements INotificationRouter {
     const relatedEntity = String(payload.relatedEntity || '');
     // Canonical absence is null, never ''. See domain/notifications/RelatedEntityId.
     const relatedEntityId = toRelatedEntityId(payload.relatedEntityId ?? payload.id);
+
+    /**
+     * Honours `dryRunOnly` for customer messages.
+     *
+     * The flag was decorative: the customer branch never consulted it and the
+     * processor never consulted it either, so an event written with
+     * `dry_run_only = true` still sent a REAL SMS to a REAL customer — proven
+     * on 2026-09-20, when a payment-success SMS went out while the switch that
+     * is supposed to gate customer messaging was unset. A flag that does not
+     * govern anything is worse than no flag: someone reads it and believes it.
+     */
+    const honourDryRun = (provider: INotificationProvider, dryRun: boolean): INotificationProvider =>
+      dryRun
+        ? {
+            dispatch: async (payload: NotificationDispatchPayload): Promise<NotificationDispatchResult> => ({
+              status: 'DRY_RUN',
+              providerCode: 'DRY_RUN',
+              providerMessage: `Customer messaging is in dry run: the ${payload.template} message was prepared and not sent.`,
+            }),
+          }
+        : provider;
 
     switch (eventType) {
       case 'AUTOMATION_ACTION_REQUESTED': {
@@ -232,16 +253,17 @@ export class DefaultNotificationRouter implements INotificationRouter {
           ? payload.template
           : eventType;
         const entity = eventType === 'CUSTOMER_ORDER_MESSAGE' ? 'order' : relatedEntity || 'customer_request';
+        const dryRun = payload.dryRunOnly === true;
         if (customerPhone) {
           targets.push({
             channel: 'sms',
-            provider: this.smsProvider,
+            provider: honourDryRun(this.smsProvider, dryRun),
             payload: { recipient: customerPhone, template, data: payload, relatedEntity: entity, relatedEntityId },
           });
         } else if (customerEmail) {
           targets.push({
             channel: 'email',
-            provider: this.emailProvider,
+            provider: honourDryRun(this.emailProvider, dryRun),
             payload: { recipient: customerEmail, template, data: payload, relatedEntity: entity, relatedEntityId },
           });
         }

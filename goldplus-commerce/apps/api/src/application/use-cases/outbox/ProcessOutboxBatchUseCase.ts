@@ -106,6 +106,7 @@ export class ProcessOutboxBatchUseCase {
         }
 
         let hasSent = false;
+        let hopeless = false;
         let hasFailed = false;
         let finalError: string | null = null;
         let allTerminalNonRetryable = true;
@@ -140,6 +141,10 @@ export class ProcessOutboxBatchUseCase {
             hasFailed = true;
             allTerminalNonRetryable = false;
             finalError = dispatchResult.providerMessage;
+            // The provider said retrying cannot help. Believe it: production
+            // spent 244 attempts re-sending into "Credit exhausted", which both
+            // burned the budget and made an account problem look temporary.
+            if (dispatchResult.retryable === false) hopeless = true;
           } else {
             // NOT_CONFIGURED or DISABLED
             if (!finalError) {
@@ -150,7 +155,17 @@ export class ProcessOutboxBatchUseCase {
 
         if (hasFailed) {
           const nextAttemptCount = event.attemptCount + 1;
-          if (nextAttemptCount >= MAX_ATTEMPTS) {
+          if (hopeless) {
+            // Dead-lettered on the first answer, with the provider's own reason,
+            // so the queue shows what must be FIXED rather than what to wait for.
+            const message = `Not retryable: ${finalError}`;
+            if (this.outboxRepo.markDeadLettered) {
+              await this.outboxRepo.markDeadLettered(event.id, message);
+            } else {
+              await this.outboxRepo.markProcessed(event.id, { lastError: message });
+            }
+            result.exhausted++;
+          } else if (nextAttemptCount >= MAX_ATTEMPTS) {
             // Dead-letter, not "processed". An exhausted event was never
             // delivered, and recording it as processed made it identical to a
             // success in every metric and query — the failures were invisible.

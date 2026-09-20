@@ -21,6 +21,14 @@ export interface NotificationDispatchResult {
   status: NotificationStatus;
   providerCode: string | null;
   providerMessage: string;
+  /**
+   * False when the provider's own answer says retrying cannot help — an
+   * exhausted credit balance, an unverified sender, a rejected recipient.
+   * Production spent 244 attempts re-sending into "Credit exhausted", which
+   * both wasted the budget and dressed an account problem up as a passing blip.
+   * Omitted means "unknown", which retries as before.
+   */
+  retryable?: boolean;
 }
 
 export interface INotificationProvider {

@@ -1917,10 +1917,13 @@ export class Registry {
           idempotencyKey: `customer-order-message:${orderId}:${template}`,
           relatedEntity: 'order',
           relatedEntityId: orderId,
-          // The notification registry marks order messages DEFERRED: they are
-          // recorded as DRY_RUN until the owner switches live customer
-          // messaging on. Wording and routing are exercised either way.
-          dryRunOnly: process.env.CUSTOMER_ORDER_MESSAGES_LIVE !== 'true',
+          // These messages have been reaching customers all along: the router
+          // never consulted this flag, so "deferred until the owner switches it
+          // on" was not true — a payment-success SMS went to a real customer on
+          // 2026-09-20 while the switch was unset. The flag is now honoured, so
+          // the default states what actually happens: customer order messages
+          // are LIVE, and CUSTOMER_ORDER_MESSAGES_LIVE=false stops them.
+          dryRunOnly: process.env.CUSTOMER_ORDER_MESSAGES_LIVE === 'false',
         });
       },
       enqueueAdminEmail: async (orderId) => {
