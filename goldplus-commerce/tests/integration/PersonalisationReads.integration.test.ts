@@ -57,6 +57,18 @@ suite('personalisation reads (real PostgreSQL)', () => {
     expect(rows[0]).toMatchObject({ r: 9, e: 1, f: 2 });
   });
 
+  it('customer-facing compatibility reads run on real PostgreSQL and show nothing for a staged (DRAFT) claim', async () => {
+    const { DrizzleDeviceRepository } = await import('../../apps/api/src/infrastructure/db/repositories/DrizzleDeviceRepository');
+    const repo = new DrizzleDeviceRepository();
+    const device = await repo.createDevice({ brand: 'ITEST', model: `Phone ${Date.now()}` });
+    await raw`insert into product_device_compatibility (product_id, device_id, fit_type, confidence) values (${product.id}, ${device.id}, 'exact', 'declared')`;
+    // Column defaults are DRAFT + SUPPLIER_LISTED: exactly what an import stages.
+    expect(await repo.compatibleProducts(device.id)).toEqual([]);
+    expect(await repo.accessorySuggestions(device.id, [], 3)).toEqual([]);
+    await raw`delete from product_device_compatibility where device_id = ${device.id}`;
+    await raw`delete from devices where id = ${device.id}`;
+  });
+
   it('serving health reads the counter', async () => {
     const { DrizzleRecommendationAnalyticsRepository } = await import('../../apps/api/src/infrastructure/db/repositories/DrizzleRecommendationAnalyticsRepository');
     const health = await new DrizzleRecommendationAnalyticsRepository().getServingHealth(1);
