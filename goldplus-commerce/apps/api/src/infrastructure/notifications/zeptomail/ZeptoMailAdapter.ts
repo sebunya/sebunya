@@ -2,6 +2,7 @@ import { emailCopy } from '../../../application/notifications/CustomerMessages';
 import { outboundGovernance } from '../OutboundGovernanceService';
 import { failsReleaseReadiness } from '../../../domain/notifications/OutboundGovernancePolicy';
 import { classifyMessage } from '../messageClassification';
+import { customerEmailData, hasEmailTemplate, renderEmailTemplate, type CustomerEmailSource, type RenderedEmail } from '../email/emailTemplateData';
 import {
   INotificationProvider,
   NotificationDispatchPayload,
@@ -187,7 +188,52 @@ export class ZeptoMailAdapter implements INotificationProvider {
       'ORDER_FULFILLMENT_COMPLETED',
     ].includes(payload.template);
 
-    if (payload.template === 'ADMIN_ORDER_EMAIL' && typeof payload.data?.html === 'string') {
+    /**
+     * The reviewed design first (apps/api/templates/email), for any template we
+     * have. Until now only the admin email used it, so the shop had two email
+     * designs and the reviewed one applied to a single message.
+     *
+     * The renderer throws when a value it needs is missing, so a template we
+     * cannot fill completely falls through to the previous path rather than
+     * sending a half-filled email.
+     */
+    const designedKey = payload.template === 'password_reset' ? 'PASSWORD_RESET'
+      : payload.template === 'PAYMENT_SUCCESS' ? 'ORDER_PAYMENT_SUCCESS'
+      : payload.template === 'PAYMENT_FAILED' ? 'ORDER_PAYMENT_FAILED'
+      : payload.template;
+    let designed: RenderedEmail | null = null;
+    if (designedKey !== 'ADMIN_ORDER_EMAIL' && hasEmailTemplate(designedKey)) {
+      try {
+        const d = (payload.data || {}) as Record<string, unknown>;
+        designed = renderEmailTemplate(designedKey, customerEmailData(designedKey, {
+          customerName: (d.customerName as string) ?? null,
+          orderNumber: (d.orderNumber as string) ?? null,
+          createdAt: (d.orderCreatedAt as string) ?? null,
+          totalUgx: Number(d.totalUgx ?? 0),
+          deliveryFeeUgx: Number(d.deliveryFeeUgx ?? 0),
+          deliveryLocation: (d.deliveryLocation as string) ?? null,
+          paymentStatus: (d.paymentStatus as string) ?? null,
+          orderUrl: (d.orderUrl as string) ?? null,
+          items: Array.isArray(d.items) ? (d.items as CustomerEmailSource['items']) : [],
+          amountReceivedUgx: Number(d.totalUgx ?? 0),
+          paymentMethod: (d.paymentMethod as string) ?? null,
+          paymentReference: (d.paymentReference as string) ?? null,
+          paymentDate: (d.paymentDate as string) ?? null,
+          resetUrl: (d.resetUrl as string) ?? (d.reset_url as string) ?? null,
+          resetExpiryMinutes: Number(d.resetExpiryMinutes ?? 30),
+          cancellationReason: (d.cancellationReason as string) ?? null,
+          refundUpdate: (d.refundUpdate as string) ?? null,
+        }));
+      } catch {
+        // Not enough data for the reviewed template: use the previous path.
+        designed = null;
+      }
+    }
+    if (designed) {
+      subject = designed.subject;
+      htmlContent = designed.html;
+      textContent = designed.text;
+    } else if (payload.template === 'ADMIN_ORDER_EMAIL' && typeof payload.data?.html === 'string') {
       // Pre-rendered admin order email (already escaped in the pure domain).
       subject = String(payload.data.subject || subject);
       htmlContent = String(payload.data.html);

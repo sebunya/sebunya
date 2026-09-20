@@ -1,0 +1,11 @@
+[Unit]
+Description=GoldPlus Storage Steward — housekeeping at a quiet hour
+
+[Timer]
+# 03:20 Kampala. The Steward still refuses to run if the machine is busy.
+OnCalendar=*-*-* 00:20:00 UTC
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target

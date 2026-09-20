@@ -1,0 +1,10 @@
+[Unit]
+Description=GoldPlus Storage Steward — deep maintenance, weekly
+
+[Timer]
+OnCalendar=Sun *-*-* 01:40:00 UTC
+Persistent=true
+RandomizedDelaySec=900
+
+[Install]
+WantedBy=timers.target

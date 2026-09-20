@@ -1,0 +1,12 @@
+[Unit]
+Description=GoldPlus Storage Steward — bounded reclamation
+After=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/goldplus-storage-steward housekeep
+Nice=19
+IOSchedulingClass=idle
+CPUWeight=10
+IOWeight=10
+TimeoutStartSec=1800

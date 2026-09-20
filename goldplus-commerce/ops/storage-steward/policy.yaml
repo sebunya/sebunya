@@ -1,0 +1,62 @@
+# GoldPlus Storage Steward — policy
+#
+# Every number here is an operator decision, not a developer's guess. The
+# Steward reads this file on each run; nothing is compiled in. Where a value is
+# missing the Steward uses the conservative default in the code and says so in
+# the report.
+
+pressure:
+  # Boundaries on USED percentage. Velocity is judged separately: a disk at 41%
+  # growing 8 GB/day is a bigger problem than one at 60% that is flat.
+  green: 45
+  watch: 55
+  pressure: 65
+  high: 75
+  critical: 85
+  # Growth that earns attention regardless of how empty the disk is.
+  growth_gb_per_day_warn: 2.0
+  growth_gb_per_day_alarm: 5.0
+  # Forecast horizon for "days until the next boundary".
+  forecast_days: 30
+
+docker:
+  # Releases kept on the box per service. Everything older lives in git and the
+  # registry, which are the real history.
+  keep_rollback_images: 2
+  build_cache_max_gb: 2
+  # Container log bounds. Unbounded json-file logging is how an application
+  # fills a disk without anyone changing a byte of data.
+  log_max_size_mb: 50
+  log_max_files: 3
+
+backups:
+  directory: /root/goldplus-db-backups
+  # Retention is by RECOVERY POINT, not by file age. The newest verified copy is
+  # never expired to hit a percentage target.
+  keep_recent: 5
+  keep_daily: 7
+  keep_weekly: 4
+  min_keep_always: 3
+  # A local copy is not resilience. Until a verified remote exists, the Steward
+  # refuses to expire the last good local recovery state.
+  remote_configured: false
+
+logs:
+  journald_max_mb: 200
+  audit_dir: /var/lib/goldplus-performance-audit
+  audit_keep_days: 10
+
+temp:
+  paths:
+    - /tmp
+    - /var/tmp
+  ttl_hours: 48
+
+# Subsystems the spec describes that are NOT installed on this host. The Steward
+# reports them as absent rather than pretending to manage them.
+optional_subsystems:
+  - pgbackrest
+  - restic
+  - clickhouse
+  - peerdb
+  - dagster

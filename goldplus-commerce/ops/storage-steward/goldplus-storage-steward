@@ -1,0 +1,998 @@
+#!/usr/bin/env python3
+"""GoldPlus Storage Steward — observe, decide, then let specialists execute.
+
+The principle: if 50 GB already exists and 200 MB changed, we should consume
+roughly the changed bytes, not another 50 GB. The Steward does not reinvent
+backup, deduplication or Docker GC; it measures what changed, decides whether
+action is warranted and safe, and calls the right tool.
+
+It is a timer-driven process: it starts, reads its SQLite state, measures,
+acts if it must, records, and exits. Nothing stays resident.
+
+Safety, in order of precedence:
+  * If the state database cannot be opened, run OBSERVATION ONLY.
+  * If a dependency or verification cannot be established, DO NOT DELETE.
+  * The newest good local recovery state is never expired to hit a percentage.
+  * Heavy work never runs concurrently with other heavy work (lease table).
+
+Commands:
+  observe    cheap measurement; updates state; detects anomalies
+  report     print the storage health report from current state
+  housekeep  bounded reclamation, low-load only
+  deep       integrity/verification work that must not run often
+  status     one-line state for monitoring
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import sqlite3
+import subprocess
+import sys
+import time
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+
+STATE_DIR = os.environ.get("STEWARD_STATE_DIR", "/var/lib/goldplus-storage-steward")
+STATE_DB = os.path.join(STATE_DIR, "state.db")
+POLICY_PATH = os.environ.get("STEWARD_POLICY", "/etc/goldplus-storage-steward/policy.yaml")
+LOG_DIR = os.environ.get("STEWARD_LOG_DIR", "/var/log/goldplus-storage-steward")
+ROOT_FS = "/"
+GB = 1024 ** 3
+MB = 1024 ** 2
+
+DEFAULT_POLICY = {
+    "pressure": {"green": 45, "watch": 55, "pressure": 65, "high": 75, "critical": 85,
+                 "growth_gb_per_day_warn": 2.0, "growth_gb_per_day_alarm": 5.0, "forecast_days": 30},
+    "docker": {"keep_rollback_images": 2, "build_cache_max_gb": 2, "log_max_size_mb": 50, "log_max_files": 3},
+    "backups": {"directory": "/root/goldplus-db-backups", "keep_recent": 5, "keep_daily": 7,
+                "keep_weekly": 4, "min_keep_always": 3, "remote_configured": False},
+    "logs": {"journald_max_mb": 200, "audit_dir": "/var/lib/goldplus-performance-audit", "audit_keep_days": 10},
+    "temp": {"paths": ["/tmp", "/var/tmp"], "ttl_hours": 48},
+    "optional_subsystems": ["pgbackrest", "restic", "clickhouse", "peerdb", "dagster"],
+}
+
+
+def now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def human(n: float) -> str:
+    """Bytes a person can read. Negative means space was returned."""
+    sign = "-" if n < 0 else ""
+    n = abs(float(n))
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024 or unit == "TB":
+            return f"{sign}{n:.0f} {unit}" if unit in ("B", "KB") else f"{sign}{n:.1f} {unit}"
+        n /= 1024
+    return f"{sign}{n:.1f} TB"
+
+
+def run(cmd: list[str] | str, timeout: int = 60) -> tuple[int, str]:
+    """A command's exit code and output. Never raises: a missing tool is data."""
+    try:
+        p = subprocess.run(cmd, shell=isinstance(cmd, str), capture_output=True, text=True, timeout=timeout)
+        return p.returncode, (p.stdout or p.stderr or "").strip()
+    except FileNotFoundError:
+        return 127, "not installed"
+    except subprocess.TimeoutExpired:
+        return 124, "timed out"
+    except Exception as exc:  # pragma: no cover - defensive
+        return 1, str(exc)
+
+
+def load_policy() -> dict:
+    """Policy from disk, falling back to conservative defaults, never to nothing."""
+    policy = json.loads(json.dumps(DEFAULT_POLICY))
+    try:
+        import yaml  # PyYAML is present on this host; absence is not fatal.
+        with open(POLICY_PATH, "r", encoding="utf-8") as fh:
+            loaded = yaml.safe_load(fh) or {}
+        for key, value in loaded.items():
+            if isinstance(value, dict) and isinstance(policy.get(key), dict):
+                policy[key].update(value)
+            else:
+                policy[key] = value
+    except Exception:
+        pass
+    return policy
+
+
+# ── state ────────────────────────────────────────────────────────────────────
+
+SCHEMA = """
+CREATE TABLE IF NOT EXISTS observation (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  at TEXT NOT NULL,
+  disk_total INTEGER, disk_used INTEGER, disk_free INTEGER,
+  used_pct REAL, inode_pct REAL, pressure TEXT
+);
+CREATE TABLE IF NOT EXISTS resource (
+  observation_id INTEGER NOT NULL,
+  resource TEXT NOT NULL,
+  resource_type TEXT NOT NULL,
+  logical_size INTEGER DEFAULT 0,
+  physical_size INTEGER DEFAULT 0,
+  reclaimable INTEGER DEFAULT 0,
+  detail TEXT,
+  PRIMARY KEY (observation_id, resource)
+);
+CREATE INDEX IF NOT EXISTS resource_name_idx ON resource (resource);
+CREATE TABLE IF NOT EXISTS lease (
+  name TEXT PRIMARY KEY, holder TEXT NOT NULL, until TEXT NOT NULL, reason TEXT
+);
+CREATE TABLE IF NOT EXISTS action (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  at TEXT NOT NULL, kind TEXT NOT NULL, target TEXT,
+  state TEXT NOT NULL, bytes INTEGER DEFAULT 0, note TEXT
+);
+CREATE TABLE IF NOT EXISTS alert (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  at TEXT NOT NULL, severity TEXT NOT NULL, cause TEXT NOT NULL, detail TEXT
+);
+"""
+
+
+class State:
+    """SQLite state. If it cannot be opened the Steward degrades to read-only."""
+
+    def __init__(self) -> None:
+        self.db: sqlite3.Connection | None = None
+        self.safe_mode_reason: str | None = None
+        try:
+            os.makedirs(STATE_DIR, exist_ok=True)
+            self.db = sqlite3.connect(STATE_DB, timeout=20)
+            self.db.row_factory = sqlite3.Row
+            self.db.executescript(SCHEMA)
+            self.db.commit()
+        except Exception as exc:
+            self.safe_mode_reason = f"state database unavailable: {exc}"
+
+    @property
+    def observation_only(self) -> bool:
+        return self.db is None
+
+    def acquire(self, name: str, minutes: int, reason: str) -> bool:
+        """One heavy job at a time. A stale lease expires rather than deadlocks."""
+        if not self.db:
+            return False
+        holder = f"{os.getpid()}@{time.time():.0f}"
+        until = (now() + timedelta(minutes=minutes)).isoformat()
+        cur = self.db.execute(
+            "INSERT INTO lease (name, holder, until, reason) VALUES (?,?,?,?) "
+            "ON CONFLICT(name) DO UPDATE SET holder=excluded.holder, until=excluded.until, reason=excluded.reason "
+            "WHERE lease.until < ?",
+            (name, holder, until, reason, now().isoformat()),
+        )
+        self.db.commit()
+        return cur.rowcount > 0
+
+    def release(self, name: str) -> None:
+        if self.db:
+            self.db.execute("DELETE FROM lease WHERE name = ?", (name,))
+            self.db.commit()
+
+    def record_action(self, kind: str, target: str, state: str, num_bytes: int = 0, note: str = "") -> None:
+        if self.db:
+            self.db.execute(
+                "INSERT INTO action (at, kind, target, state, bytes, note) VALUES (?,?,?,?,?,?)",
+                (now().isoformat(), kind, target, state, int(num_bytes), note),
+            )
+            self.db.commit()
+
+    def record_alert(self, severity: str, cause: str, detail: str) -> None:
+        if self.db:
+            self.db.execute(
+                "INSERT INTO alert (at, severity, cause, detail) VALUES (?,?,?,?)",
+                (now().isoformat(), severity, cause, detail),
+            )
+            self.db.commit()
+
+
+# ── observation ──────────────────────────────────────────────────────────────
+
+@dataclass
+class Resource:
+    """One thing that occupies space, and how much of it could be given back."""
+    resource: str
+    resource_type: str
+    logical_size: int = 0
+    physical_size: int = 0
+    reclaimable: int = 0
+    detail: dict = field(default_factory=dict)
+
+
+def dir_bytes(path: str) -> int:
+    code, out = run(["du", "-sb", path], timeout=120)
+    if code != 0:
+        return 0
+    try:
+        return int(out.split()[0])
+    except Exception:
+        return 0
+
+
+def collect_filesystem() -> tuple[dict, list[Resource]]:
+    usage = shutil.disk_usage(ROOT_FS)
+    code, out = run(["df", "-i", "--output=pcent", ROOT_FS])
+    inode_pct = 0.0
+    if code == 0:
+        try:
+            inode_pct = float(out.strip().splitlines()[-1].strip().rstrip("%"))
+        except Exception:
+            inode_pct = 0.0
+    facts = {
+        "disk_total": usage.total,
+        "disk_used": usage.used,
+        "disk_free": usage.free,
+        "used_pct": round(usage.used / usage.total * 100, 2),
+        "inode_pct": inode_pct,
+    }
+    return facts, []
+
+
+def collect_docker() -> list[Resource]:
+    """Docker's own accounting — never a hand-rolled walk of /var/lib/docker."""
+    out: list[Resource] = []
+    code, raw = run(["docker", "system", "df", "--format", "{{json .}}"], timeout=90)
+    if code != 0:
+        return [Resource("docker", "docker", detail={"status": "unavailable"})]
+    for line in raw.splitlines():
+        try:
+            row = json.loads(line)
+        except Exception:
+            continue
+        kind = str(row.get("Type", "")).lower().replace(" ", "_")
+        size = parse_size(row.get("Size", "0B"))
+        recl = parse_size(str(row.get("Reclaimable", "0B")).split(" ")[0])
+        out.append(Resource(f"docker.{kind}", "docker", logical_size=size, physical_size=size,
+                            reclaimable=recl, detail={"count": row.get("TotalCount"), "active": row.get("Active")}))
+    # Container logs are a separate risk from images: an application that never
+    # changes can still fill a disk by talking.
+    logs = dir_bytes("/var/lib/docker/containers")
+    out.append(Resource("docker.container_logs", "logs", logical_size=logs, physical_size=logs))
+    return out
+
+
+def parse_size(text: str) -> int:
+    """Docker prints '1.671GB'; turn that into bytes without trusting locale."""
+    text = str(text).strip().replace(" ", "")
+    units = {"B": 1, "KB": 1024, "MB": 1024 ** 2, "GB": 1024 ** 3, "TB": 1024 ** 4,
+             "KIB": 1024, "MIB": 1024 ** 2, "GIB": 1024 ** 3}
+    for unit in sorted(units, key=len, reverse=True):
+        if text.upper().endswith(unit):
+            try:
+                return int(float(text[: -len(unit)]) * units[unit])
+            except ValueError:
+                return 0
+    try:
+        return int(float(text))
+    except ValueError:
+        return 0
+
+
+def postgres_container() -> str | None:
+    code, out = run("docker ps --format '{{.Names}}' | grep postgres | head -1", timeout=30)
+    return out.strip() or None if code == 0 else None
+
+
+def collect_postgres() -> list[Resource]:
+    """Database size, WAL, and replication slots — the three ways Postgres grows."""
+    container = postgres_container()
+    if not container:
+        return [Resource("postgres", "database", detail={"status": "not running"})]
+    out: list[Resource] = []
+
+    code, size = run(["docker", "exec", container, "psql", "-U", "goldplus", "-d", "goldplus", "-tAc",
+                      "select pg_database_size('goldplus')"], timeout=60)
+    db_bytes = int(size.strip()) if code == 0 and size.strip().isdigit() else 0
+    out.append(Resource("postgres.database", "database", logical_size=db_bytes, physical_size=db_bytes))
+
+    code, wal = run(["docker", "exec", container, "sh", "-c", "du -sb $PGDATA/pg_wal 2>/dev/null | cut -f1"], timeout=60)
+    wal_bytes = int(wal.strip()) if code == 0 and wal.strip().isdigit() else 0
+    out.append(Resource("postgres.wal", "database", logical_size=wal_bytes, physical_size=wal_bytes))
+
+    # A replication slot nobody is consuming is the classic way WAL becomes a
+    # disk leak. Measured even when no slot exists, so the zero is evidence.
+    code, slots = run(["docker", "exec", container, "psql", "-U", "goldplus", "-d", "goldplus", "-tAc",
+                       "select coalesce(string_agg(slot_name||'|'||active::text||'|'||"
+                       "coalesce(pg_wal_lsn_diff(pg_current_wal_lsn(), restart_lsn),0)::bigint||'|'||"
+                       "coalesce(wal_status,'unknown'), ';'), '') from pg_replication_slots"], timeout=60)
+    detail: dict = {"slots": []}
+    retained = 0
+    if code == 0 and slots.strip():
+        for entry in slots.strip().split(";"):
+            parts = entry.split("|")
+            if len(parts) == 4:
+                held = int(float(parts[2]))
+                retained += held
+                detail["slots"].append({"name": parts[0], "active": parts[1] == "t",
+                                        "retained_wal": held, "wal_status": parts[3]})
+    out.append(Resource("postgres.replication_slots", "database", logical_size=retained,
+                        physical_size=retained, detail=detail))
+    return out
+
+
+def collect_backups(policy: dict) -> list[Resource]:
+    """Recovery points, their sizes and their ages. No file is judged by age alone."""
+    directory = policy["backups"]["directory"]
+    if not os.path.isdir(directory):
+        return [Resource("backups", "backup", detail={"status": "absent"})]
+    files = []
+    total = 0
+    for root, _dirs, names in os.walk(directory):
+        for name in names:
+            if not name.endswith((".dump", ".sql", ".gz")):
+                continue
+            full = os.path.join(root, name)
+            try:
+                st = os.stat(full)
+            except OSError:
+                continue
+            files.append({"path": full, "bytes": st.st_size, "mtime": st.st_mtime})
+            total += st.st_size
+    files.sort(key=lambda f: f["mtime"], reverse=True)
+    return [Resource("backups.postgres_dumps", "backup", logical_size=total, physical_size=total,
+                     detail={"count": len(files), "newest": files[0]["path"] if files else None,
+                             "files": files[:40]})]
+
+
+def collect_logs(policy: dict) -> list[Resource]:
+    out: list[Resource] = []
+    code, raw = run(["journalctl", "--disk-usage"], timeout=30)
+    journal = 0
+    if code == 0:
+        for token in raw.replace(",", "").split():
+            parsed = parse_size(token)
+            if parsed:
+                journal = parsed
+                break
+    out.append(Resource("logs.journald", "logs", logical_size=journal, physical_size=journal))
+    var_log = dir_bytes("/var/log")
+    out.append(Resource("logs.var_log", "logs", logical_size=var_log, physical_size=var_log))
+    audit_dir = policy["logs"]["audit_dir"]
+    if os.path.isdir(audit_dir):
+        size = dir_bytes(audit_dir)
+        out.append(Resource("logs.performance_audit", "logs", logical_size=size, physical_size=size))
+    return out
+
+
+def collect_temp(policy: dict) -> list[Resource]:
+    out: list[Resource] = []
+    for path in policy["temp"]["paths"]:
+        if os.path.isdir(path):
+            size = dir_bytes(path)
+            out.append(Resource(f"temp{path.replace('/', '.')}", "temp", logical_size=size, physical_size=size))
+    return out
+
+
+def collect_optional(policy: dict) -> list[Resource]:
+    """Subsystems the design anticipates but this host does not run.
+
+    Reported as absent rather than managed. A Steward that claimed to be
+    pruning ClickHouse on a machine with no ClickHouse would be lying.
+    """
+    out: list[Resource] = []
+    for name in policy.get("optional_subsystems", []):
+        present = shutil.which(name) is not None
+        out.append(Resource(f"optional.{name}", "optional", detail={"present": present}))
+    return out
+
+
+def observe(policy: dict) -> tuple[dict, list[Resource]]:
+    facts, resources = collect_filesystem()
+    resources += collect_docker()
+    resources += collect_postgres()
+    resources += collect_backups(policy)
+    resources += collect_logs(policy)
+    resources += collect_temp(policy)
+    resources += collect_optional(policy)
+    return facts, resources
+
+
+# ── decide ───────────────────────────────────────────────────────────────────
+
+PRESSURE_ORDER = ["GREEN", "WATCH", "PRESSURE", "HIGH", "CRITICAL", "EMERGENCY"]
+
+
+def pressure_from_usage(used_pct: float, policy: dict) -> str:
+    p = policy["pressure"]
+    if used_pct < p["green"]:
+        return "GREEN"
+    if used_pct < p["watch"]:
+        return "WATCH"
+    if used_pct < p["pressure"]:
+        return "PRESSURE"
+    if used_pct < p["high"]:
+        return "HIGH"
+    if used_pct < p["critical"]:
+        return "CRITICAL"
+    return "EMERGENCY"
+
+
+def growth_per_day(state: State, hours: int = 168) -> float | None:
+    """GB/day from the observation history. None when there is not enough of it."""
+    if not state.db:
+        return None
+    since = (now() - timedelta(hours=hours)).isoformat()
+    rows = state.db.execute(
+        "SELECT at, disk_used FROM observation WHERE at >= ? ORDER BY at", (since,)
+    ).fetchall()
+    if len(rows) < 2:
+        return None
+    first, last = rows[0], rows[-1]
+    span_h = (datetime.fromisoformat(last["at"]) - datetime.fromisoformat(first["at"])).total_seconds() / 3600
+    if span_h < 1:
+        return None
+    return ((last["disk_used"] - first["disk_used"]) / GB) / (span_h / 24)
+
+
+def escalate(level: str, steps: int = 1) -> str:
+    idx = min(PRESSURE_ORDER.index(level) + steps, len(PRESSURE_ORDER) - 1)
+    return PRESSURE_ORDER[idx]
+
+
+def decide_pressure(facts: dict, state: State, policy: dict) -> tuple[str, list[str]]:
+    """Size AND velocity. A disk at 41% gaining 8 GB a day is the bigger problem."""
+    level = pressure_from_usage(facts["used_pct"], policy)
+    notes: list[str] = []
+    rate = growth_per_day(state)
+    p = policy["pressure"]
+    if rate is not None:
+        facts["growth_gb_per_day"] = round(rate, 3)
+        if rate >= p["growth_gb_per_day_alarm"]:
+            level = escalate(level, 2)
+            notes.append(f"growing {rate:.1f} GB/day — escalated two levels on velocity alone")
+        elif rate >= p["growth_gb_per_day_warn"]:
+            level = escalate(level, 1)
+            notes.append(f"growing {rate:.1f} GB/day — escalated one level on velocity")
+        if rate > 0.01:
+            free_gb = facts["disk_free"] / GB
+            total_gb = facts["disk_total"] / GB
+            for name in ("watch", "pressure", "high", "critical"):
+                target_used = total_gb * p[name] / 100
+                gap = target_used - facts["disk_used"] / GB
+                if gap > 0:
+                    facts[f"days_to_{name}"] = round(gap / rate, 1)
+                    break
+            facts["days_to_full"] = round(free_gb / rate, 1)
+    if facts["inode_pct"] >= 80:
+        level = escalate(level, 1)
+        notes.append(f"inodes {facts['inode_pct']}% — space is not the only way to run out")
+    return level, notes
+
+
+def previous_observation(state: State, hours: int) -> tuple[dict | None, dict[str, sqlite3.Row]]:
+    if not state.db:
+        return None, {}
+    target = (now() - timedelta(hours=hours)).isoformat()
+    row = state.db.execute(
+        "SELECT * FROM observation WHERE at <= ? ORDER BY at DESC LIMIT 1", (target,)
+    ).fetchone()
+    if row is None:
+        row = state.db.execute("SELECT * FROM observation ORDER BY at ASC LIMIT 1").fetchone()
+    if row is None:
+        return None, {}
+    resources = {
+        r["resource"]: r
+        for r in state.db.execute("SELECT * FROM resource WHERE observation_id = ?", (row["id"],)).fetchall()
+    }
+    return dict(row), resources
+
+
+def attribute_change(state: State, resources: list[Resource], hours: int = 24) -> list[tuple[str, int]]:
+    """Who produced the growth. An unexplained 8 GB is the thing to fear."""
+    _prev_obs, prev = previous_observation(state, hours)
+    if not prev:
+        return []
+    deltas: list[tuple[str, int]] = []
+    for res in resources:
+        before = prev.get(res.resource)
+        if before is None:
+            continue
+        change = res.physical_size - before["physical_size"]
+        if abs(change) >= 1 * MB:
+            deltas.append((res.resource, change))
+    deltas.sort(key=lambda d: abs(d[1]), reverse=True)
+    return deltas
+
+
+def storage_amplification(state: State, resources: list[Resource], hours: int = 24) -> float | None:
+    """Physical bytes added per logical byte changed.
+
+    0.8x is excellent — compression and deduplication earning their keep.
+    100x means a strategy that copies instead of referencing, and is the single
+    most useful number for catching that.
+    """
+    _prev_obs, prev = previous_observation(state, hours)
+    if not prev:
+        return None
+    by_name = {r.resource: r for r in resources}
+    db_now = by_name.get("postgres.database")
+    db_then = prev.get("postgres.database")
+    backup_now = by_name.get("backups.postgres_dumps")
+    backup_then = prev.get("backups.postgres_dumps")
+    if not (db_now and db_then and backup_now and backup_then):
+        return None
+    logical_changed = abs(db_now.logical_size - db_then["logical_size"])
+    physical_added = backup_now.physical_size - backup_then["physical_size"]
+    if physical_added <= 0:
+        return 0.0
+    if logical_changed < 1 * MB:
+        # Nothing meaningful changed, yet physical storage grew: the ratio is
+        # unbounded, so report it as a large number rather than divide by ~zero.
+        return 999.0
+    return round(physical_added / logical_changed, 2)
+
+
+# ── execute ──────────────────────────────────────────────────────────────────
+
+def busy_reasons() -> list[str]:
+    """Work that must not be joined by more heavy work on a 2-vCPU box.
+
+    Each probe runs WITHOUT a shell on purpose. `pgrep -f deploy-prod.sh` inside
+    `sh -c` matches the shell that carries the pattern, so every probe reports
+    true and the Steward defers for ever — observed on the first real run here,
+    and the same trap that once made a finished deployment look like it was
+    still going. pgrep excludes itself; it cannot exclude a parent shell nobody
+    needed.
+    """
+    reasons = []
+    checks = [
+        ("a deployment is running", ["pgrep", "-f", "deploy-prod.sh"]),
+        ("a migration is running", ["pgrep", "-f", "migrate-prod.sh"]),
+        ("a docker build is running", ["pgrep", "-f", "docker build"]),
+        ("a database dump is running", ["pgrep", "-x", "pg_dump"]),
+        ("a restore rehearsal is running", ["pgrep", "-x", "pg_restore"]),
+    ]
+    for label, probe in checks:
+        code, _ = run(probe, timeout=15)
+        if code == 0:
+            reasons.append(label)
+    try:
+        load1 = os.getloadavg()[0]
+        cpus = os.cpu_count() or 1
+        if load1 / cpus > 0.8:
+            reasons.append(f"load is {load1:.2f} over {cpus} cpu(s)")
+    except OSError:
+        pass
+    return reasons
+
+
+def docker_log_bounds(policy: dict, apply: bool) -> list[str]:
+    """Docker's json-file driver is unbounded by default.
+
+    An application that never changes a byte of data can still fill the disk by
+    talking. This reports the bound and, when asked, writes it — but the running
+    containers keep their current setting until they are next recreated, so the
+    report says so rather than implying an instant fix.
+    """
+    notes: list[str] = []
+    cfg_path = "/etc/docker/daemon.json"
+    desired = {"log-driver": "json-file",
+               "log-opts": {"max-size": f"{policy['docker']['log_max_size_mb']}m",
+                            "max-file": str(policy["docker"]["log_max_files"])}}
+    current: dict = {}
+    if os.path.exists(cfg_path):
+        try:
+            with open(cfg_path, "r", encoding="utf-8") as fh:
+                current = json.load(fh) or {}
+        except Exception as exc:
+            notes.append(f"{cfg_path} is not readable JSON ({exc}); left untouched")
+            return notes
+    if current.get("log-opts") == desired["log-opts"]:
+        notes.append("docker log rotation already bounded")
+        return notes
+    if not apply:
+        notes.append(f"docker logs are UNBOUNDED; would set max-size={desired['log-opts']['max-size']} "
+                     f"max-file={desired['log-opts']['max-file']}")
+        return notes
+    merged = dict(current)
+    merged.update(desired)
+    try:
+        with open(cfg_path + ".steward-tmp", "w", encoding="utf-8") as fh:
+            json.dump(merged, fh, indent=2)
+        os.replace(cfg_path + ".steward-tmp", cfg_path)
+        notes.append("docker log rotation written to /etc/docker/daemon.json; "
+                     "applies to each container when it is next recreated")
+    except Exception as exc:
+        notes.append(f"could not write {cfg_path}: {exc}")
+    return notes
+
+
+def prune_build_cache(policy: dict, apply: bool) -> tuple[int, str]:
+    code, raw = run(["docker", "system", "df", "--format", "{{json .}}"], timeout=60)
+    size = 0
+    if code == 0:
+        for line in raw.splitlines():
+            try:
+                row = json.loads(line)
+            except Exception:
+                continue
+            if str(row.get("Type", "")).lower().startswith("build"):
+                size = parse_size(row.get("Size", "0B"))
+    cap = policy["docker"]["build_cache_max_gb"] * GB
+    if size <= cap:
+        return 0, f"build cache {human(size)} is within its {policy['docker']['build_cache_max_gb']} GB bound"
+    if not apply:
+        return size - cap, f"build cache {human(size)} exceeds bound; would reclaim to {human(cap)}"
+    run(["docker", "builder", "prune", "-f", "--keep-storage", str(cap)], timeout=600)
+    return size - cap, f"build cache trimmed towards {human(cap)}"
+
+
+def backup_retention(state: State, policy: dict, apply: bool) -> list[str]:
+    """Retention by recovery point, never by age alone.
+
+    Three refusals are deliberate:
+      * the newest recovery point is never expired;
+      * without a verified remote, local copies below the floor are kept;
+      * anything uncertain is left alone.
+    """
+    cfg = policy["backups"]
+    notes: list[str] = []
+    directory = cfg["directory"]
+    if not os.path.isdir(directory):
+        return ["no backup directory on this host"]
+    entries = []
+    for root, _dirs, names in os.walk(directory):
+        for name in names:
+            if name.endswith((".dump", ".sql", ".gz")):
+                full = os.path.join(root, name)
+                try:
+                    st = os.stat(full)
+                except OSError:
+                    continue
+                entries.append({"path": full, "bytes": st.st_size, "mtime": st.st_mtime})
+    entries.sort(key=lambda e: e["mtime"], reverse=True)
+    if not entries:
+        return ["no recovery points found"]
+
+    if not cfg.get("remote_configured"):
+        notes.append("no verified remote repository is configured, so local recovery points are NOT expired "
+                     "(a copy on the same disk as production is not resilience)")
+        return notes
+
+    keep: set[str] = {e["path"] for e in entries[: max(cfg["keep_recent"], cfg["min_keep_always"])]}
+    seen_days: set[str] = set()
+    seen_weeks: set[str] = set()
+    for entry in entries:
+        stamp = datetime.fromtimestamp(entry["mtime"], timezone.utc)
+        day = stamp.strftime("%Y-%m-%d")
+        week = stamp.strftime("%G-W%V")
+        if day not in seen_days and len(seen_days) < cfg["keep_daily"]:
+            seen_days.add(day)
+            keep.add(entry["path"])
+        if week not in seen_weeks and len(seen_weeks) < cfg["keep_weekly"]:
+            seen_weeks.add(week)
+            keep.add(entry["path"])
+    expire = [e for e in entries if e["path"] not in keep]
+    if not expire:
+        return notes + [f"{len(entries)} recovery points, all within the retention pyramid"]
+    freed = sum(e["bytes"] for e in expire)
+    if not apply:
+        return notes + [f"{len(expire)} recovery points beyond the pyramid ({human(freed)}) would be expired"]
+    for entry in expire:
+        try:
+            os.remove(entry["path"])
+            state.record_action("expire_backup", entry["path"], "COMMITTED", entry["bytes"])
+        except OSError as exc:
+            state.record_action("expire_backup", entry["path"], "FAILED", 0, str(exc))
+    return notes + [f"expired {len(expire)} recovery points, {human(freed)} returned"]
+
+
+def temp_ttl(policy: dict, apply: bool) -> list[str]:
+    """Temporary files with an owner and an expiry, not a mystery."""
+    ttl_hours = policy["temp"]["ttl_hours"]
+    notes = []
+    for path in policy["temp"]["paths"]:
+        if not os.path.isdir(path):
+            continue
+        cmd = ["find", path, "-xdev", "-mindepth", "1", "-mmin", f"+{ttl_hours * 60}",
+               "-not", "-path", "*/systemd-private-*", "-not", "-path", "*/snap-*"]
+        if apply:
+            code, out = run(cmd + ["-delete"], timeout=180)
+            notes.append(f"{path}: expired files older than {ttl_hours}h" if code == 0 else f"{path}: {out}")
+        else:
+            code, out = run(cmd, timeout=120)
+            count = len([line for line in out.splitlines() if line.strip()]) if code == 0 else 0
+            notes.append(f"{path}: {count} entries older than {ttl_hours}h")
+    return notes
+
+
+def journald_bounds(policy: dict, apply: bool) -> str:
+    cap_mb = policy["logs"]["journald_max_mb"]
+    if not apply:
+        return f"journald would be capped at {cap_mb} MB"
+    code, out = run(["journalctl", f"--vacuum-size={cap_mb}M"], timeout=180)
+    return f"journald capped at {cap_mb} MB" if code == 0 else f"journald unchanged: {out}"
+
+
+# ── report ───────────────────────────────────────────────────────────────────
+
+def persist(state: State, facts: dict, resources: list[Resource], level: str) -> int | None:
+    if not state.db:
+        return None
+    cur = state.db.execute(
+        "INSERT INTO observation (at, disk_total, disk_used, disk_free, used_pct, inode_pct, pressure) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (now().isoformat(), facts["disk_total"], facts["disk_used"], facts["disk_free"],
+         facts["used_pct"], facts["inode_pct"], level),
+    )
+    observation_id = cur.lastrowid
+    for res in resources:
+        state.db.execute(
+            "INSERT OR REPLACE INTO resource (observation_id, resource, resource_type, logical_size, "
+            "physical_size, reclaimable, detail) VALUES (?,?,?,?,?,?,?)",
+            (observation_id, res.resource, res.resource_type, res.logical_size, res.physical_size,
+             res.reclaimable, json.dumps(res.detail)),
+        )
+    state.db.commit()
+    return observation_id
+
+
+def build_report(state: State, policy: dict, facts: dict, resources: list[Resource],
+                 level: str, notes: list[str]) -> str:
+    by_name = {r.resource: r for r in resources}
+    lines: list[str] = []
+    add = lines.append
+
+    add(f"STORAGE HEALTH             {level}")
+    if state.observation_only:
+        add("MODE                       OBSERVATION ONLY — state database unavailable, nothing will be deleted")
+    add("")
+    add(f"Disk used                  {facts['used_pct']:.0f}%  ({human(facts['disk_used'])} of {human(facts['disk_total'])})")
+    add(f"Free                       {human(facts['disk_free'])}")
+    add(f"Inodes used                {facts['inode_pct']:.0f}%")
+    rate = facts.get("growth_gb_per_day")
+    if rate is None:
+        add("Growth                     not enough history yet (needs two observations an hour apart)")
+    else:
+        add(f"Growth                     {rate:+.2f} GB/day (7-day trend)")
+        for name in ("watch", "pressure", "high", "critical"):
+            if f"days_to_{name}" in facts:
+                add(f"Days to {name.upper():<10}         {facts[f'days_to_{name}']}")
+                break
+        if "days_to_full" in facts:
+            add(f"Days to full               {facts['days_to_full']}")
+    for note in notes:
+        add(f"  ! {note}")
+
+    add("")
+    add("Largest consumers")
+    ranked = sorted([r for r in resources if r.physical_size > 0], key=lambda r: r.physical_size, reverse=True)
+    for res in ranked[:8]:
+        add(f"  {res.resource:<34} {human(res.physical_size):>10}")
+
+    deltas = attribute_change(state, resources)
+    add("")
+    if deltas:
+        add("Changed in the last 24 hours")
+        total = 0
+        for name, change in deltas[:10]:
+            total += change
+            add(f"  {name:<34} {human(change):>10}")
+        add(f"  {'TOTAL NET':<34} {human(total):>10}")
+    else:
+        add("Changed in the last 24 hours   no comparable earlier observation yet")
+
+    amp = storage_amplification(state, resources)
+    add("")
+    if amp is None:
+        add("Storage amplification      not measurable yet")
+    elif amp >= 999:
+        add("Storage amplification      backups grew while the database did not — investigate")
+    else:
+        add(f"Storage amplification      {amp:.2f}x  (physical stored per logical byte changed)")
+
+    backups = by_name.get("backups.postgres_dumps")
+    if backups and backups.detail.get("count"):
+        add(f"Recovery points            {backups.detail['count']} local, {human(backups.physical_size)}")
+        add(f"Remote repository          {'configured' if policy['backups'].get('remote_configured') else 'NONE — local copies are not resilience'}")
+    slots = by_name.get("postgres.replication_slots")
+    if slots is not None:
+        detail = slots.detail.get("slots", [])
+        add(f"Replication slots          {len(detail)} ({human(slots.physical_size)} WAL retained)")
+    cache = by_name.get("docker.build_cache")
+    if cache:
+        add(f"Build cache                {human(cache.physical_size)} / {policy['docker']['build_cache_max_gb']} GB bound")
+    recl = sum(r.reclaimable for r in resources)
+    add(f"Docker reclaimable         {human(recl)}")
+
+    absent = [r.resource.split(".", 1)[1] for r in resources
+              if r.resource_type == "optional" and not r.detail.get("present")]
+    if absent:
+        add("")
+        add(f"Not installed on this host  {', '.join(absent)}")
+        add("  (reported as absent rather than managed — nothing here pretends to prune them)")
+
+    if state.db:
+        recent = state.db.execute(
+            "SELECT severity, cause FROM alert WHERE at >= ? ORDER BY at DESC LIMIT 5",
+            ((now() - timedelta(hours=24)).isoformat(),),
+        ).fetchall()
+        add("")
+        add(f"Anomalies (24h)            {'NONE' if not recent else ''}")
+        for row in recent:
+            add(f"  {row['severity']}: {row['cause']}")
+    return "\n".join(lines)
+
+
+def raise_alerts(state: State, policy: dict, facts: dict, resources: list[Resource], level: str) -> None:
+    """Alert on causes, not on a percentage."""
+    by_name = {r.resource: r for r in resources}
+    rate = facts.get("growth_gb_per_day")
+    if rate is not None and rate >= policy["pressure"]["growth_gb_per_day_alarm"]:
+        state.record_alert("HIGH", f"disk growing {rate:.1f} GB/day",
+                           f"at this rate the next boundary arrives in {facts.get('days_to_high', '?')} days")
+    slots = by_name.get("postgres.replication_slots")
+    if slots and slots.physical_size > 1 * GB:
+        state.record_alert("HIGH", f"replication slots retain {human(slots.physical_size)} of WAL",
+                           json.dumps(slots.detail))
+    cache = by_name.get("docker.build_cache")
+    if cache and cache.physical_size > policy["docker"]["build_cache_max_gb"] * GB:
+        state.record_alert("WATCH", f"build cache {human(cache.physical_size)} exceeds its bound", "")
+    amp = storage_amplification(state, resources)
+    if amp is not None and amp >= 10:
+        state.record_alert("WATCH", f"storage amplification {amp}x",
+                           "physical growth far exceeds logical change — backup strategy needs inspection")
+    if level in ("CRITICAL", "EMERGENCY"):
+        state.record_alert("CRITICAL", f"storage pressure {level}", f"{facts['used_pct']}% used")
+
+
+# ── commands ─────────────────────────────────────────────────────────────────
+
+def cmd_observe(args, policy: dict, state: State) -> int:
+    facts, resources = observe(policy)
+    level, notes = decide_pressure(facts, state, policy)
+    persist(state, facts, resources, level)
+    raise_alerts(state, policy, facts, resources, level)
+    if args.quiet:
+        print(f"{level} {facts['used_pct']:.0f}% used, {human(facts['disk_free'])} free")
+    else:
+        print(build_report(state, policy, facts, resources, level, notes))
+    return 0
+
+
+def cmd_report(args, policy: dict, state: State) -> int:
+    facts, resources = observe(policy)
+    level, notes = decide_pressure(facts, state, policy)
+    print(build_report(state, policy, facts, resources, level, notes))
+    return 0
+
+
+def cmd_status(args, policy: dict, state: State) -> int:
+    facts, _ = collect_filesystem()
+    level, _ = decide_pressure(facts, state, policy)
+    rate = facts.get("growth_gb_per_day")
+    print(json.dumps({
+        "pressure": level,
+        "used_pct": facts["used_pct"],
+        "free_bytes": facts["disk_free"],
+        "growth_gb_per_day": rate,
+        "observation_only": state.observation_only,
+    }))
+    return 0
+
+
+def cmd_housekeep(args, policy: dict, state: State) -> int:
+    """Bounded reclamation. Yields to production and to other heavy work."""
+    apply = not args.dry_run
+    if state.observation_only:
+        print("OBSERVATION ONLY: the state database is unavailable, so nothing will be changed.")
+        apply = False
+    busy = busy_reasons()
+    if busy and apply:
+        print("Deferred — the machine is busy with work that outranks housekeeping:")
+        for reason in busy:
+            print(f"  · {reason}")
+        state.record_action("housekeep", "-", "DEFERRED", 0, "; ".join(busy))
+        return 0
+    if apply and not state.acquire("housekeeper", 30, "bounded reclamation"):
+        print("Deferred — another Steward run holds the housekeeping lease.")
+        return 0
+    try:
+        facts, resources = observe(policy)
+        level, _ = decide_pressure(facts, state, policy)
+        print(f"Pressure {level} at {facts['used_pct']:.0f}% used, {human(facts['disk_free'])} free")
+        print(f"Mode: {'APPLY' if apply else 'DRY RUN — nothing will be changed'}")
+        print("")
+        for note in docker_log_bounds(policy, apply):
+            print(f"  logs      {note}")
+        freed, note = prune_build_cache(policy, apply)
+        print(f"  build     {note}")
+        for note in temp_ttl(policy, apply):
+            print(f"  temp      {note}")
+        print(f"  journald  {journald_bounds(policy, apply)}")
+        for note in backup_retention(state, policy, apply):
+            print(f"  backups   {note}")
+        # Docker's own GC for things nothing references. Caches and dangling
+        # layers are the one class that needs no grace window.
+        if apply and level != "GREEN":
+            code, out = run(["docker", "image", "prune", "-f"], timeout=300)
+            print(f"  images    {'dangling layers reclaimed' if code == 0 else out}")
+        elif level == "GREEN":
+            print("  images    left alone: pressure is GREEN and dangling layers cost little")
+        state.record_action("housekeep", "-", "COMMITTED" if apply else "PLANNED", 0, level)
+    finally:
+        if apply:
+            state.release("housekeeper")
+    return 0
+
+
+def cmd_deep(args, policy: dict, state: State) -> int:
+    """Verification, not reclamation. Runs rarely and proves recovery is real."""
+    if state.observation_only:
+        print("OBSERVATION ONLY: the state database is unavailable.")
+        return 0
+    if not state.acquire("deep", 120, "integrity and restore verification"):
+        print("Deferred — another deep maintenance run is in progress.")
+        return 0
+    try:
+        print("Deep maintenance")
+        cfg = policy["backups"]
+        directory = cfg["directory"]
+        newest = None
+        if os.path.isdir(directory):
+            candidates = []
+            for root, _dirs, names in os.walk(directory):
+                for name in names:
+                    if name.endswith(".dump"):
+                        full = os.path.join(root, name)
+                        candidates.append((os.stat(full).st_mtime, full))
+            candidates.sort(reverse=True)
+            newest = candidates[0][1] if candidates else None
+        if not newest:
+            print("  no recovery point to verify")
+            state.record_action("verify_backup", "-", "FAILED", 0, "no dump found")
+            return 1
+        # Reads the archive's table of contents. A dump that cannot be listed
+        # cannot be restored, and that is worth knowing before it is needed.
+        code, out = run(["docker", "run", "--rm", "-v", f"{os.path.dirname(newest)}:/b:ro",
+                         "postgres:16-alpine", "pg_restore", "--list", f"/b/{os.path.basename(newest)}"],
+                        timeout=600)
+        if code == 0 and out:
+            entries = len([line for line in out.splitlines() if line and not line.startswith(";")])
+            print(f"  {os.path.basename(newest)}: readable, {entries} objects in its table of contents")
+            state.record_action("verify_backup", newest, "VERIFIED", 0, f"{entries} objects")
+        else:
+            print(f"  {os.path.basename(newest)}: NOT READABLE — {out[:200]}")
+            state.record_action("verify_backup", newest, "FAILED", 0, out[:200])
+            state.record_alert("CRITICAL", "newest recovery point is not readable", newest)
+            return 1
+        if not cfg.get("remote_configured"):
+            print("  remote repository: NONE — every recovery point lives on the same disk as production")
+            state.record_alert("HIGH", "no remote backup repository",
+                               "a local-only copy does not survive the machine")
+    finally:
+        state.release("deep")
+    return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="GoldPlus Storage Steward")
+    sub = parser.add_subparsers(dest="command", required=True)
+    for name, help_text in [("observe", "measure, record, detect"), ("report", "print the health report"),
+                            ("status", "one-line JSON state"), ("housekeep", "bounded reclamation"),
+                            ("deep", "integrity and restore verification")]:
+        p = sub.add_parser(name, help=help_text)
+        p.add_argument("--dry-run", action="store_true", help="decide and explain, change nothing")
+        p.add_argument("--quiet", action="store_true", help="one line of output")
+    args = parser.parse_args()
+
+    policy = load_policy()
+    state = State()
+    if state.safe_mode_reason:
+        print(f"WARNING: {state.safe_mode_reason}", file=sys.stderr)
+    handlers = {"observe": cmd_observe, "report": cmd_report, "status": cmd_status,
+                "housekeep": cmd_housekeep, "deep": cmd_deep}
+    try:
+        return handlers[args.command](args, policy, state)
+    finally:
+        if state.db:
+            state.db.close()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

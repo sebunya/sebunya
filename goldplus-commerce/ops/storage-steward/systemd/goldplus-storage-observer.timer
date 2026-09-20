@@ -1,0 +1,12 @@
+[Unit]
+Description=GoldPlus Storage Steward — observe every 15 minutes
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=15min
+# Survives reboots and missed windows rather than silently skipping a day.
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

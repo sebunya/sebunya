@@ -80,3 +80,97 @@ export function renderEmailTemplate(key: string, data: TemplateData): RenderedEm
 }
 
 export const hasEmailTemplate = (key: string): boolean => key in GENERATED_EMAIL_TEMPLATES;
+
+/** What the shop knows about an order when it messages the customer about it. */
+export interface CustomerEmailSource {
+  customerName?: string | null;
+  orderNumber?: string | null;
+  createdAt?: Date | string | null;
+  totalUgx?: number | null;
+  deliveryFeeUgx?: number | null;
+  deliveryLocation?: string | null;
+  paymentStatus?: string | null;
+  orderUrl?: string | null;
+  items?: Array<{ name: string; quantity: number; unitPriceUgx: number; lineTotalUgx: number }>;
+  /** Payment receipt extras. */
+  amountReceivedUgx?: number | null;
+  paymentMethod?: string | null;
+  paymentReference?: string | null;
+  paymentDate?: Date | string | null;
+  /** Account recovery. */
+  resetUrl?: string | null;
+  resetExpiryMinutes?: number | null;
+  /** Why an order was cancelled, in the shop's own words. */
+  cancellationReason?: string | null;
+  refundUpdate?: string | null;
+}
+
+const firstName = (full?: string | null) => String(full ?? '').trim().split(/\s+/)[0] || 'there';
+const asDate = (v: Date | string | null | undefined) => (v ? new Date(v) : new Date());
+
+/**
+ * Builds the variables for a CUSTOMER template. Only the keys a given template
+ * uses need to be present; the renderer throws if one it needs is missing,
+ * which is how a half-filled email is caught before it is sent rather than
+ * after a customer reads it.
+ */
+export function customerEmailData(template: string, src: CustomerEmailSource): TemplateData {
+  const items = (src.items ?? []).map((i) => ({
+    name: i.name,
+    quantity: i.quantity,
+    unit_price: ugx(i.unitPriceUgx),
+    line_total: ugx(i.lineTotalUgx),
+  }));
+  const subtotal = (src.items ?? []).reduce((sum, i) => sum + (Number(i.lineTotalUgx) || 0), 0);
+  const deliveryFee = Number(src.deliveryFeeUgx) || 0;
+  const data: TemplateData = {
+    year: String(new Date().getFullYear()),
+    first_name: firstName(src.customerName),
+  };
+
+  // Every order template shares this block.
+  if (template.startsWith('ORDER_')) {
+    Object.assign(data, {
+      order_reference: src.orderNumber ?? '',
+      order_date: orderDate(asDate(src.createdAt)),
+      order_url: src.orderUrl ?? 'https://shopgoldplus.com/orders',
+      delivery_location: src.deliveryLocation ?? 'your delivery address',
+      payment_status: src.paymentStatus === 'paid' ? 'Paid' : src.paymentStatus === 'failed' ? 'Not paid' : 'Awaiting payment',
+      items,
+      subtotal: ugx(subtotal),
+      delivery_fee: deliveryFee > 0 ? ugx(deliveryFee) : 'To be confirmed',
+      total: ugx(subtotal + deliveryFee),
+      // A delivery fee nobody has agreed yet is not part of a settled total,
+      // and the template shows the subtotal alone rather than a figure the
+      // customer never accepted.
+      total_confirmed: deliveryFee > 0,
+    });
+  }
+
+  if (template === 'ORDER_PAYMENT_SUCCESS') {
+    Object.assign(data, {
+      amount_received: ugx(Number(src.amountReceivedUgx ?? src.totalUgx) || 0),
+      payment_method: src.paymentMethod ?? 'Mobile money',
+      payment_reference: src.paymentReference ?? src.orderNumber ?? '',
+      payment_date: asDate(src.paymentDate).toLocaleString('en-GB', {
+        timeZone: 'Africa/Kampala', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
+      }) + ' EAT',
+    });
+  }
+
+  if (template === 'ORDER_CANCELLED_BY_SHOP') {
+    Object.assign(data, {
+      cancellation_reason: src.cancellationReason ?? 'We could not complete this order.',
+      refund_update: src.refundUpdate ?? 'If any money was taken, we will return it and tell you when it is done.',
+    });
+  }
+
+  if (template === 'PASSWORD_RESET') {
+    Object.assign(data, {
+      reset_url: src.resetUrl ?? '',
+      reset_expiry_minutes: String(src.resetExpiryMinutes ?? 30),
+    });
+  }
+
+  return data;
+}

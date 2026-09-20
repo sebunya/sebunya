@@ -1992,6 +1992,20 @@ export class Registry {
             customerName: order.customerName,
             orderNumber: order.orderNumber,
             totalUgx: order.totalUgx,
+            // What the reviewed email templates need to render a real receipt:
+            // the lines, the money and where it is going. Without these the
+            // adapter cannot fill the design and falls back to the older body.
+            orderCreatedAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : order.createdAt,
+            deliveryFeeUgx: order.deliveryFeeUgx ?? 0,
+            deliveryLocation: order.deliveryLocation?.displayLabel || order.deliveryArea || '',
+            paymentStatus: order.paymentStatus,
+            orderUrl: `${(process.env.PUBLIC_WEB_BASE_URL || 'https://shopgoldplus.com').replace(/\/$/, '')}/orders/${encodeURIComponent(order.orderNumber)}`,
+            items: (order.items ?? []).map((i) => ({
+              name: i.name,
+              quantity: i.quantity,
+              unitPriceUgx: i.price,
+              lineTotalUgx: i.finalLineTotal ?? i.price * i.quantity,
+            })),
           },
           idempotencyKey: `customer-order-message:${orderId}:${template}`,
           relatedEntity: 'order',
