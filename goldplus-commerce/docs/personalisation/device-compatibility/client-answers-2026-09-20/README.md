@@ -1,6 +1,6 @@
 # Client answers absorbed (2026-09-20)
 
-`client-answers-verbatim.md` keeps exactly what the client said. `client-answers-rows.csv` is that answer as explicit battery→phone rows. `compatibility-for-admin-import-v3.csv` is the file to upload: the printed-list rows for batteries the client did not revisit + the client rows. **194 rows on 77 of the 80 batteries.** Run through the importer's rules: **189 would become drafts, 5 are held as conflicts.** Nothing is staged, reviewed or published yet.
+`client-answers-verbatim.md` keeps exactly what the client said. `client-answers-rows.csv` is that answer as explicit battery→phone rows. `compatibility-for-admin-import-v3.csv` is the file to upload: the printed-list rows for batteries the client did not revisit + the client rows. **193 rows on 77 of the 80 batteries.** Run through the importer's rules: **187 would become drafts, 6 are held as conflicts.** Nothing is staged, reviewed or published yet.
 
 ## What "dry run" really does (mutation contract)
 Upload + mapping + dry run **persist** one import session, its rows (source, normalised value, proposed action, errors) and audit events. They write **nothing** to brands, devices, claims, aliases, products or stock — verified on a production copy (devices 0 → 0, claims 0 → 0). "Dry run" therefore means "no catalogue writes", not "no database writes".
@@ -12,6 +12,7 @@ Upload + mapping + dry run **persist** one import session, its rows (source, nor
 | A11/BLP727 | Realme C25 | C25 (RMX3191/3193) uses the 6000 mAh BLP793 |
 | VIVO B-B1 | Y55s | the name is also a 2021+ 5G phone with a different pack — needs the exact legacy model |
 | VIVO B-D2 | X20 | ordinary X20/X20A uses B-D1; B-D2 is the X20 Plus family |
+| 4UL | Asha 500 (also listed under 4U) | one phone takes one pack; staged under 4U with the 501/503 |
 | BL-38BT | (no answer) | earlier research "Pop 2 Go" is superseded by the printed list's Pop 5 Go (BD1) |
 A GoldPlus packaging photo or a technician's fit check overrides any of these.
 
@@ -33,3 +34,11 @@ A GoldPlus packaging photo or a technician's fit check overrides any of these.
 
 ## Native importer, production copy (commit `4edd1ee3`, Steward-admitted, lane released)
 `ready to apply: 189 · held for review: 5 · with errors: 0`; the five held rows are exactly the five listed above; `devices` 0 → 0 and `product_device_compatibility` 0 → 0.
+
+## Self-review fixes (same day)
+- The printed-list rows for `A10S/A20S` had no model numbers while the client rows for `A10S` had `SM-A107`/`SM-A207`: the importer keys a phone on brand + name + model number, so it would have created **two "Galaxy A10s" and two "Galaxy A20s" records**. All four rows now carry the same identity.
+- The client listed the **Asha 500 under both BL-4U and BL-4UL**. Staged under 4U, held under 4UL.
+- Client's "Asha 220 / 225 / 230" are sold as Nokia 220 / 225 / 230 (not Asha-branded) — recorded that way, and the 225 only once.
+- Guards added: no phone may appear with two different model-number cells; a phone may be staged on two batteries only where the client declared the packs identical.
+- This revision (193 rows) was validated with the importer's rules locally; the previous revision (194) is the one that ran through the native importer on a production copy. The rules are the same function.
+- Follow-up questions for the client: `~/Downloads/GoldPlus_Battery_Follow-up_Questions_for_Client_2026-09-20.txt` (11 short points).

@@ -33,9 +33,9 @@ describe("client answers, encoded for the native importer", () => {
     }
   });
 
-  it("the contradicted client entries are HELD, not staged: Realme 6i, Realme C25, generic Vivo Y55s, ordinary Vivo X20, and the superseded Pop 2 Go", () => {
+  it("the contradicted client entries are HELD, not staged: Asha 500 on a second pack, Realme 6i, Realme C25, generic Vivo Y55s, ordinary Vivo X20, and the superseded Pop 2 Go", () => {
     const held = records.filter((r) => run(r).action === "HOLD_CONFLICT").map((r) => `${r["Battery Reference"]}|${r["Device Brand"]} ${r["Marketing Name"]}`).sort();
-    expect(held).toEqual(["A11/BLP727|Realme 6i", "A11/BLP727|Realme C25", "BL-38BT|TECNO Pop 2 Go", "VIVO B-B1|Vivo Y55s", "VIVO B-D2|Vivo X20"]);
+    expect(held).toEqual(["4UL|Nokia Asha 500", "A11/BLP727|Realme 6i", "A11/BLP727|Realme C25", "BL-38BT|TECNO Pop 2 Go", "VIVO B-B1|Vivo Y55s", "VIVO B-D2|Vivo X20"]);
   });
 
   it("everything else stages as a SUPPLIER-LISTED draft and nothing can arrive verified", () => {
@@ -51,6 +51,21 @@ describe("client answers, encoded for the native importer", () => {
     const staged = (code: string) => records.filter((r) => r["Battery Reference"] === code && run(r).action === "CREATE_CLAIM").map((r) => r["Marketing Name"]);
     expect(staged("VIVO B-D2")).toEqual(["X20 Plus", "X20 Plus A", "X20 Plus UD"]);
     expect(staged("BL-38BT")).toEqual(["Pop 5 Go"]);
+  });
+});
+
+describe("one phone, one identity, one pack", () => {
+  const key = (r: Record<string, string>) => `${r["Device Brand"]}|${r["Marketing Name"]}`.toLowerCase().replace(/[^a-z0-9|]/g, "");
+  it("a phone never appears with two different model-number cells (that would create duplicate phone records)", () => {
+    const seen = new Map<string, Set<string>>();
+    for (const r of records) seen.set(key(r), (seen.get(key(r)) ?? new Set()).add(r["Exact Model Number"]));
+    expect([...seen].filter(([, v]) => v.size > 1).map(([k]) => k)).toEqual([]);
+  });
+  it("a phone is STAGED on two batteries only where the client said the packs are the same (A10S = A10S/A20S)", () => {
+    const packs = new Map<string, Set<string>>();
+    for (const r of records) if (run(r).action === "CREATE_CLAIM") packs.set(key(r), (packs.get(key(r)) ?? new Set()).add(r["Battery Reference"]));
+    const multi = [...packs].filter(([, v]) => v.size > 1).map(([k, v]) => `${k}:${[...v].sort().join("+")}`).sort();
+    expect(multi).toEqual(["samsung|galaxya10s:A10S+A10S/A20S", "samsung|galaxya20s:A10S+A10S/A20S"]);
   });
 });
 
