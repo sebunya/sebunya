@@ -47,6 +47,10 @@ export default defineConfig({
   use: {
     baseURL: target,
     ignoreHTTPSErrors: false,
+    // Declares this run as OUR automation so its journeys (product views, add-to-carts) are not recorded as
+    // shopper behaviour. A first-party cookie: every engine keeps its real user agent (that is what the audit
+    // tests) and nothing extra is sent to third-party hosts.
+    storageState: { cookies: [{ name: 'gp_probe', value: 'compatibility-audit', domain: new URL(target).hostname, path: '/', expires: -1, httpOnly: false, secure: target.startsWith('https'), sameSite: 'Lax' as const }], origins: [] },
     actionTimeout: 20_000,
     navigationTimeout: 60_000,
     screenshot: 'only-on-failure',

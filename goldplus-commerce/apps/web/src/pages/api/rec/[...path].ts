@@ -31,7 +31,7 @@ const VISIT_TOKEN_SHAPE = /^[A-Za-z0-9_-]{44}$/;
 
 export const POST: APIRoute = async ({ request, params, cookies, clientAddress }) => {
   // Declared automation runs our scripts; what it "does" is not shopping.
-  if (isDeclaredAutomation(request.headers.get("user-agent"))) return new Response(null, { status: 204 });
+  if (isDeclaredAutomation(request.headers)) return new Response(null, { status: 204 });
   if ((params.path ?? "") !== "events") {
     return json(404, { success: false, error: { code: "NOT_PROXIED", message: "This endpoint is not proxied." } });
   }

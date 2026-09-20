@@ -19,7 +19,7 @@ const json = (status: number, body: unknown) =>
 
 export const POST: APIRoute = async ({ request, cookies }) => {
   // Declared automation runs our scripts; what it "does" is not shopping.
-  if (isDeclaredAutomation(request.headers.get("user-agent"))) return new Response(null, { status: 204 });
+  if (isDeclaredAutomation(request.headers)) return new Response(null, { status: 204 });
   const declared = Number(request.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return json(413, { success: false });
   const raw = await request.text();

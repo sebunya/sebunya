@@ -136,7 +136,7 @@ const browseFallback = products.length === 0 ? availableProducts.slice(0, 6) : [
 // profile-attached copy that lets recommendations respond to recent intent
 // (§5A.10). Fire-and-forget: search results never wait on telemetry.
 // Our own probes keep cookies; a search THEY run is not a shopper's search.
-if (search && Astro.locals.gpVisit && !isDeclaredAutomation(Astro.request.headers.get('user-agent'))) {
+if (search && Astro.locals.gpVisit && !isDeclaredAutomation(Astro.request.headers)) {
   fetch(`${apiBase}/recommendations/events`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-gp-visit': Astro.locals.gpVisit },
