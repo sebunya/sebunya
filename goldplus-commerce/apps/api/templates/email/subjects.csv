@@ -1,0 +1,16 @@
+event,file,subject,preheader,audience
+ORDER_RECEIVED_UNPAID,templates/customer-ORDER_RECEIVED_UNPAID.html,Order received · {{order_reference}},Your order is in. Payment is still outstanding.,customer
+ORDER_PAYMENT_PENDING,templates/customer-ORDER_PAYMENT_PENDING.html,Payment being checked · {{order_reference}},Please wait for confirmation before trying another payment.,customer
+ORDER_PAYMENT_SUCCESS,templates/customer-ORDER_PAYMENT_SUCCESS.html,Payment received · {{order_reference}},Thank you. Your payment of {{amount_received}} is confirmed.,customer
+ORDER_PAYMENT_FAILED,templates/customer-ORDER_PAYMENT_FAILED.html,Payment unsuccessful · {{order_reference}},Check whether money left your account before trying again.,customer
+ORDER_PAYMENT_CANCELLED,templates/customer-ORDER_PAYMENT_CANCELLED.html,Payment cancelled · {{order_reference}},The payment attempt was cancelled. Check your order for its current status.,customer
+ORDER_FULFILLMENT_PROCESSING,templates/customer-ORDER_FULFILLMENT_PROCESSING.html,We’re preparing your order · {{order_reference}},Your GoldPlus order is being prepared.,customer
+ORDER_DISPATCHED,templates/customer-ORDER_DISPATCHED.html,Your order is on its way · {{order_reference}},Keep your phone nearby so delivery can reach you.,customer
+ORDER_FULFILLMENT_COMPLETED,templates/customer-ORDER_FULFILLMENT_COMPLETED.html,Order marked delivered · {{order_reference}},Please check your items. We’re here if something needs attention.,customer
+ORDER_CANCELLED_BY_SHOP,templates/customer-ORDER_CANCELLED_BY_SHOP.html,Order cancelled · {{order_reference}},Your order has been cancelled. See the update below.,customer
+PASSWORD_RESET,templates/customer-PASSWORD_RESET.html,Reset your GoldPlus password,Use this link to choose a new password.,customer
+SUPPORT_REQUEST_RECEIVED,templates/customer-SUPPORT_REQUEST_RECEIVED.html,We’ve received your support request,Your message is with the GoldPlus team.,customer
+QUOTE_REQUEST_RECEIVED,templates/customer-QUOTE_REQUEST_RECEIVED.html,Your GoldPlus quote request is in,"We’ll confirm the products, quantities and delivery details.",customer
+DEALER_APPLICATION_RECEIVED,templates/customer-DEALER_APPLICATION_RECEIVED.html,Your GoldPlus dealer application is in,We’ll review your business details and contact you.,customer
+FAKE_REPORT_RECEIVED,templates/customer-FAKE_REPORT_RECEIVED.html,We’ve received your product report,Thank you for bringing your concern to our attention.,customer
+ADMIN_ORDER_EMAIL,templates/internal-ADMIN_ORDER_EMAIL.html,[GoldPlus] {{admin_event_label}} · {{order_reference}},{{preparation_state}} · {{order_reference}},internal

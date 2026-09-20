@@ -1,0 +1,50 @@
+{
+  "first_name": "Aisha",
+  "order_reference": "GP-202609-0B3BA402",
+  "order_date": "20 September 2026",
+  "delivery_location": "Kansanga, Kampala",
+  "customer_name": "Aisha Nakato",
+  "customer_phone": "+256 77* *** 545",
+  "delivery_address": "Sample address, Ggaba Road, Kansanga",
+  "items": [
+    {
+      "name": "GoldPlus GP-P07 Power Bank with Digital Display",
+      "sku": "GP-P07",
+      "quantity": 1,
+      "unit_price": "UGX 130,000",
+      "line_total": "UGX 130,000"
+    },
+    {
+      "name": "GoldPlus GP-L03 USB-C Fast Charging Cable, 1 m, 3A",
+      "sku": "GP-L03",
+      "quantity": 2,
+      "unit_price": "UGX 4,000",
+      "line_total": "UGX 8,000"
+    },
+    {
+      "name": "GoldPlus GP-C08 12W USB Fast Charger, 2A (UK plug)",
+      "sku": "GP-C08",
+      "quantity": 1,
+      "unit_price": "UGX 10,000",
+      "line_total": "UGX 10,000"
+    }
+  ],
+  "subtotal": "UGX 148,000",
+  "delivery_fee": "UGX 5,000",
+  "total": "UGX 153,000",
+  "total_confirmed": true,
+  "amount_received": "UGX 153,000",
+  "payment_method": "PesaPal",
+  "payment_reference": "SAMPLE-PAYMENT-001",
+  "payment_date": "20 September 2026, 11:20 EAT",
+  "payment_status": "Payment unsuccessful",
+  "order_url": "https://shopgoldplus.com/track-order?reference=GP-202609-0B3BA402",
+  "reset_url": "https://shopgoldplus.com/account/reset?token=sample-token",
+  "reset_expiry_minutes": 60,
+  "admin_url": "https://shopgoldplus.com/",
+  "admin_event_label": "Payment confirmed",
+  "preparation_state": "READY_FOR_PREPARATION",
+  "preparation_instruction": "Payment and stock are confirmed. Open the order to verify the current preparation state before picking.",
+  "stock_status": "Confirmed",
+  "year": "2026"
+}

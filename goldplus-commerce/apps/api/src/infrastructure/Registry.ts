@@ -1670,7 +1670,13 @@ export class Registry {
   public readonly listRecentNotificationsUseCase = new ListRecentNotificationsUseCase(this.notificationAttemptRepo);
   public readonly listOrderNotificationsUseCase = new ListOrderNotificationsUseCase(this.outboxRepo, this.notificationAttemptRepo);
   // Transactional admin order email (reuses the outbox + ProcessOutboxBatch + ZeptoMail).
-  public readonly enqueueAdminOrderEmailUseCase = new EnqueueAdminOrderEmailUseCase(this.outboxRepo);
+  public readonly enqueueAdminOrderEmailUseCase = new EnqueueAdminOrderEmailUseCase(
+    this.outboxRepo,
+    (orderId, error) => logger.error(
+      { orderId, err: error instanceof Error ? error.message : String(error) },
+      '[ADMIN_ORDER_EMAIL] the reviewed template did not render; the fallback body was sent',
+    ),
+  );
   public readonly replayAdminOrderEmailUseCase = new ReplayAdminOrderEmailUseCase(this.outboxRepo, this.auditRepo);
   public readonly uploadProductImagesUseCase = new UploadProductImagesUseCase(this.productImageStorage, this.productImageRepo);
   public readonly processOutboxBatchUseCase = new ProcessOutboxBatchUseCase(
