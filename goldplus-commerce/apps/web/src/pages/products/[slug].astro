@@ -17,6 +17,7 @@ import { previewRecommendationRules, productToRecommendationItem } from '../../l
 import { breadcrumbJsonLd, serializeJsonLd } from '../../lib/jsonld';
 import { getBusinessInfo } from '../../lib/businessInfo';
 import ThisPhoneSuggestion from '../../components/ThisPhoneSuggestion.astro';
+import CheckYourPhoneNote from '../../components/CheckYourPhoneNote.astro';
 import { publicBattery, parseDeviceCookie, serialiseDeviceCookie, DEVICE_COOKIE, FIT_BADGE } from '../../lib/batteries';
 import { SITE_ORIGIN } from '../../lib/sitemap';
 import { fetchApprovedCatalogue } from '../../lib/catalogue';
@@ -480,6 +481,8 @@ if (product) {
               )}
             </div>
           )}
+
+          {battery && <CheckYourPhoneNote class="mb-6" />}
 
           {(descIntro || descBody) && (
             <div class="mb-6 prose prose-sm max-w-none text-slate-600 leading-relaxed">

@@ -44,4 +44,13 @@ describe("the browsing device is a suggestion, and unknown stays unknown", () =>
     expect(cfg).toContain("We have not matched a battery to this phone yet");
     expect(cfg).toContain("That does not mean one does not exist");
   });
+
+  it("aftermarket wording: the customer confirms; no OEM/original/guarantee claim and no returns waiver", () => {
+    const c = readFileSync("apps/web/src/components/CheckYourPhoneNote.astro", "utf8");
+    const copy = c.slice(c.indexOf("<div"));
+    expect(copy).toContain("Check your phone before you buy");
+    expect(copy).toContain("replacement battery");
+    expect(copy).not.toMatch(/\bOEM\b|original|genuine|guarantee|no returns|non-refundable|at your own risk/i);
+    expect(copy).not.toMatch(/IMEI|serial/i);
+  });
 });

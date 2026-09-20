@@ -1,0 +1,24 @@
+---
+/**
+ * GoldPlus sells replacement (aftermarket) batteries. Our matches are the best
+ * guidance we have; phones vary by region, revision and past repair, so the
+ * customer confirms the final choice. One calm paragraph, no fear, no "OEM" or
+ * "original" claim, and nothing here limits returns or warranty — those are
+ * governed by the shop's own policies.
+ */
+interface Props { class?: string }
+const { class: className = '' } = Astro.props;
+---
+<div class={`rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 ${className}`}>
+  <p class="font-bold text-brand-dark">Check your phone before you buy</p>
+  <p class="mt-1">
+    This is a replacement battery. We match it to phones using the model information we have, and phones can differ by
+    model number, region or an earlier repair. Please confirm your exact model (Settings, About phone) or compare the
+    code printed on the battery you are replacing.
+  </p>
+  <p class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-bold">
+    <a href="/battery-finder" class="underline">Choose a different phone</a>
+    <a href="/battery-finder" class="underline">I know my battery code</a>
+    <a href="/battery-finder?help=1#request-heading" class="underline">I'm not sure, help me check</a>
+  </p>
+</div>

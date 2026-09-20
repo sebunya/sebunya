@@ -3,6 +3,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import { SITE_ORIGIN } from '../lib/sitemap';
 import { getBusinessInfo } from '../lib/businessInfo';
 import ThisPhoneSuggestion from '../components/ThisPhoneSuggestion.astro';
+import CheckYourPhoneNote from '../components/CheckYourPhoneNote.astro';
 import { publicBattery, submitBatteryRequest, DEVICE_COOKIE, serialiseDeviceCookie, ugx, FIT_BADGE } from '../lib/batteries';
 import type { BatteryFinderConfig, FinderBatteryResultDto, FinderBrandDto, FinderDeviceDto, FinderSeriesDto } from '@goldplus/shared';
 
@@ -216,6 +217,7 @@ const shownDevice: FinderDeviceDto | null = device?.device ?? (search?.kind === 
                     </div>
                   </article>
                 ))}
+                <CheckYourPhoneNote />
                 <p class="text-xs text-gray-500">
                   "Verified fit" means we checked this battery against this phone ourselves. Anything else is labelled for
                   what it is. Ask us before you buy if you are unsure.
@@ -242,7 +244,7 @@ const shownDevice: FinderDeviceDto | null = device?.device ?? (search?.kind === 
           <div role="status" class={`mt-6 rounded-xl border px-4 py-3 text-sm font-bold ${requestNotice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-700'}`}>{requestNotice.text}</div>
         )}
 
-        {(noResult || (shownDevice && results.length === 0) || (brand && brand.devices.length === 0)) && !requestNotice && (
+        {(noResult || (shownDevice && results.length === 0) || (brand && brand.devices.length === 0) || url.searchParams.get('help') === '1') && !requestNotice && (
           <section class="mt-6 rounded-2xl border border-gray-200 bg-white p-5" aria-labelledby="request-heading">
             <h2 id="request-heading" class="text-sm font-black text-brand-dark">{cfg?.requestCta ?? 'Ask us to find this battery'}</h2>
             <p class="text-xs text-gray-500 mt-1">Tell us the phone and we will confirm the right battery before you buy. Your phone number is only used to answer you.</p>
