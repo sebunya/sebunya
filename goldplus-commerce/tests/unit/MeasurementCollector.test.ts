@@ -87,3 +87,16 @@ describe('the visitor id is the server\'s to decide', () => {
     expect(touches[0].anonymousId).toBe('GP1.1.abc');
   });
 });
+
+describe('our own synthetic browsers are not customers', () => {
+  const SYNTHETIC = /GoldPlusSyntheticProbe|Chrome-Lighthouse|HeadlessChrome|Playwright|Puppeteer|PTST/i;
+  it('recognises every agent our tooling and the common auditors send', () => {
+    const lighthouseWatchUa = 'Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36 GoldPlusSyntheticProbe';
+    for (const ua of [lighthouseWatchUa, 'Chrome-Lighthouse', 'HeadlessChrome/120', 'PTST/230101']) expect(SYNTHETIC.test(ua)).toBe(true);
+    expect(SYNTHETIC.test('Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36')).toBe(false);
+  });
+  it('the agent our Lighthouse Watch sends still reads as a mobile Chrome', () => {
+    const ua = 'Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36 GoldPlusSyntheticProbe';
+    expect(/Android/.test(ua) && /Mobile Safari/.test(ua)).toBe(true); // form factor unchanged
+  });
+});

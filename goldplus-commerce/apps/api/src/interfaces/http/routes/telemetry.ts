@@ -72,7 +72,11 @@ routes.post('/collect/batch', botDetectionMiddleware, async (c) => {
       // reaches this handler (botDetectionMiddleware answers 204 first), so a
       // borderline score is what is left to record — never a guess from the UA.
       const score = proxyConfig().mode === 'CLOUDFLARE_EDGE' ? parseInt(c.req.header('x-cf-bot-score') ?? '100', 10) : 100;
-      const trafficClass = Number.isFinite(score) && score < 60 ? 'automated' as const : 'customer' as const;
+      // Lighthouse and the like drive Chrome over CDP, so `navigator.webdriver`
+      // is false and the page cannot tell. The user agent it sends can, and our
+      // own probes are told to name themselves (scripts/lighthouse-watch.sh).
+      const automatedUa = /GoldPlusSyntheticProbe|Chrome-Lighthouse|HeadlessChrome|Playwright|Puppeteer|PTST/i.test(realUa);
+      const trafficClass = automatedUa || (Number.isFinite(score) && score < 60) ? 'automated' as const : 'customer' as const;
       const r = await uc.execute(JSON.stringify(body), trafficClass, fpClientIdFromCookieHeader(c.req.header('cookie')));
       if (r.status === 202) return c.json({ success: true, receiptId: r.receipt.receiptId, accepted: r.receipt.accepted, rejected: r.receipt.rejected, replay: r.replay }, 202);
       return c.json({ success: false, error: r.error }, r.status);

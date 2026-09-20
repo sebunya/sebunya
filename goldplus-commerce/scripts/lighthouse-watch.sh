@@ -52,13 +52,23 @@ docker run --rm --cpus=1.5 --memory=1500m --shm-size=512m --network "$NET" \
   --entrypoint bash "$IMAGE" -c '
     set -e
     CHROME="$(ls -d /ms-playwright/chromium-*/chrome-linux*/chrome | head -1)"
+    UA_MOBILE="Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Mobile Safari/537.36 GoldPlusSyntheticProbe"
+    UA_DESKTOP="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36 GoldPlusSyntheticProbe"
     export CHROME_PATH="$CHROME"   # chrome-launcher reads the env var; the CLI flag is not enough
     cd /work
     for URL in $URLS; do
       SLUG="$(echo "$URL" | sed -E "s#https?://##; s#[^A-Za-z0-9]+#_#g")"
       for FF in mobile desktop; do
         if [ "$FF" = mobile ]; then FLAGS="--form-factor=mobile --screenEmulation.mobile --throttling-method=simulate"; else FLAGS="--preset=desktop"; fi
-        npx -y lighthouse@12 "$URL" $FLAGS --chrome-flags="--headless=new --no-sandbox --disable-dev-shm-usage" \
+        # The probe names itself in the user agent. Lighthouse EMULATES a plain
+        # mobile/desktop Chrome (overriding whatever agent the browser would
+        # send, so a Chrome flag does not survive) and drives it over CDP, where
+        # navigator.webdriver is false. Without this, a monitor running once a
+        # minute reads as a very loyal visitor who never buys, and quietly
+        # enters the attribution models. The token is appended to the default
+        # Lighthouse agent, so form-factor detection is unchanged.
+        UA="$UA_MOBILE"; [ "$FF" = desktop ] && UA="$UA_DESKTOP"
+        npx -y lighthouse@12 "$URL" $FLAGS --emulatedUserAgent="$UA" --chrome-flags="--headless=new --no-sandbox --disable-dev-shm-usage" \
           --output=json --output-path="/work/$SLUG.$FF.json" --quiet || echo "lighthouse failed for $URL $FF"
       done
     done
