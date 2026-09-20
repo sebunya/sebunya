@@ -58,3 +58,24 @@ describe("linkRowBattery — server-side rules", () => {
     await expect(make(session({ status: "APPROVED" })).uc.linkRowBattery({ id: "s", rowId: "r", canonicalCode: "IP X", note: "because", actorId: "a" })).rejects.toThrow(/before approval/i);
   });
 });
+
+describe("a catalogue code that contains a slash is one battery, not a compound line", () => {
+  const cols2 = ["Battery Reference", "Device Brand", "Marketing Name", "Evidence Status", "Evidence Source"];
+  const map2 = suggestMapping("COMPATIBILITY", cols2);
+  const cat = (known: string[]) => ({
+    resolveBattery: (c: string) => (known.includes(c) ? { productId: "p-" + c, canonicalCode: c, lifecycle: "REVIEW" } : null),
+    findClaim: () => null, locationExists: () => true, receiptAlreadyApplied: () => false, currentStock: () => null,
+  }) as never;
+  const row = (code: string) => ({ "Battery Reference": code, "Device Brand": "Samsung", "Marketing Name": "Galaxy A20", "Evidence Status": "Supplier claim", "Evidence Source": "client list" });
+
+  it("'A20/A30/A50' exists in the catalogue → a claim can be staged on it", () => {
+    const r = normaliseImportRow("COMPATIBILITY", row("A20/A30/A50"), map2, cat(["A20/A30/A50"])) as { action: string; errors: string[] };
+    expect(r.errors).toEqual([]);
+    expect(r.action).toBe("CREATE_CLAIM");
+  });
+
+  it("a slash reference that names NO single battery is still held for splitting", () => {
+    const r = normaliseImportRow("COMPATIBILITY", row("BL-38CT / BL-38CI"), map2, cat(["A20/A30/A50"])) as { action: string };
+    expect(r.action).toBe("HOLD_COMPOUND");
+  });
+});

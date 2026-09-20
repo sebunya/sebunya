@@ -385,7 +385,12 @@ export function normaliseImportRow(
       const deviceModel = modelPending ? null : deviceModelRaw || null;
       if (!deviceModel && !modelNumber) errors.push('A marketing name or an exact model number is required.');
 
-      if (/\//.test(batteryCode) || /^HOLD-SPLIT/i.test(batteryCode) || /\bAND\b/i.test(batteryCode)) {
+      // "A20/A30/A50" is ONE battery in the catalogue — its own code contains the
+      // slash. A reference is a compound line only when it does NOT name exactly
+      // one existing battery; otherwise those batteries could never receive a
+      // claim from any import (found 2026-09-20 with the client's own list).
+      const namesOneBattery = (() => { const b = batteryCode ? ctx.resolveBattery(batteryCode) : null; return Boolean(b && !('ambiguous' in b)); })();
+      if (!namesOneBattery && (/\//.test(batteryCode) || /^HOLD-SPLIT/i.test(batteryCode) || /\bAND\b/i.test(batteryCode))) {
         return { rowKey: `${normaliseBatteryCode(batteryCode)}|${normaliseDeviceToken(deviceBrand)}|${normaliseDeviceToken(deviceModel ?? modelNumber ?? '')}`, action: 'HOLD_COMPOUND', value: null, warnings, errors, hold: `The battery reference "${batteryCode}" is a compound line; split the battery first.` };
       }
       const conflict = knownConflict(batteryCode) ?? knownConflict(`${deviceBrand} ${deviceModelRaw}`) ?? (/conflict|ambiguous/i.test(evidenceCell) || /must not share|conflict|resolve conflict|cross-brand/i.test(condition) ? condition || evidenceCell : null);
