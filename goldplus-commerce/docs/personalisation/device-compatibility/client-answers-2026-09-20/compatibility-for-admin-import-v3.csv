@@ -40,7 +40,7 @@ Battery Reference,Device Brand,Marketing Name,Exact Model Number,Evidence Status
 4UL,Nokia,3310 4G,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client confirmed these are the current-generation models (3310 3G/4G, 225 4G, 5310 2020, 6310 2021).",V3-039
 4UL,Nokia,5310 (2020),,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client confirmed these are the current-generation models (3310 3G/4G, 225 4G, 5310 2020, 6310 2021).",V3-040
 4UL,Nokia,6310 (2021),,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client confirmed these are the current-generation models (3310 3G/4G, 225 4G, 5310 2020, 6310 2021).",V3-041
-4UL,Nokia,Asha 500,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),Client confirmed: both BL-4U and BL-4UL fit the Asha 500.,V3-042
+4UL,Nokia,Asha 500,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),Client confirmed: both BL-4U and BL-4UL fit the Asha 500. Reviewer note: Nokia specifies BL-4U for this phone and lists the two packs as not interchangeable; fit-check before verifying it on BL-4UL.,V3-042
 4UL,Nokia,Asha 502,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client confirmed these are the current-generation models (3310 3G/4G, 225 4G, 5310 2020, 6310 2021).",V3-043
 5C,Nokia,1100,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-044
 5C,Nokia,1101,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-045
@@ -187,7 +187,7 @@ IP 14 PRO,Apple,iPhone 14 Pro,,Supplier claim,GoldPlus Battery Original compatib
 IP 14 PROMAX,Apple,iPhone 14 Pro Max,,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: IP14 series,V3-186
 IP X,Apple,iPhone X,,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: IPX series,V3-187
 IP XR,Apple,iPhone XR,,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: IPX series,V3-188
-NOKIA C1,Nokia,C1 (2019),TA-1165,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration) + printed list (S5420AP = C1),"Sold simply as ""C1""; this is the first Nokia C1 (2019). The C1 2nd Edition and C1 Plus are different phones with their own batteries.",V3-189
+NOKIA C1,Nokia,C1 (2019),TA-1165,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration) + printed list (S5420AP = C1),"Sold simply as ""C1"". Recorded as the first Nokia C1 (2019, TA-1165) because the GoldPlus printed list has separate packs for the C1 2nd Edition (WT141) and C1 Plus (SP210). Reviewer note: some sellers list the S5420AP pack for the C1 2nd Edition (TA-1380) instead; check the code on the GoldPlus pack before verifying.",V3-189
 NOTE 4,Samsung,Galaxy Note 4,,Supplier claim,GoldPlus Battery Original compatible phone list (client poster received 2026-09-20),Poster battery code: Note4,V3-190
 VIVO B-B1,Vivo,Y55,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-191
 VIVO B-B1,Vivo,Y55A,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),,V3-192
