@@ -24,7 +24,7 @@ export class DrizzleMeasurementOperationsRepository implements MeasurementOperat
       db.execute(sql`select count(*)::int n from measurement.write_failure where resolved_at is null`),
       db.execute(sql`select count(*)::int n from measurement.event_conflict`),
       db.execute(sql`select value, reason, updated_at from measurement.control where key = 'kill_switch'`),
-      db.execute(sql`select count(*)::int total, count(*) filter (where recorded_at > now() - interval '24 hours')::int d from measurement.business_event`),
+      db.execute(sql`select count(*)::int total, count(*) filter (where recorded_at > now() - interval '24 hours')::int d, min(recorded_at) since from measurement.business_event`),
       db.execute(sql`select count(*)::int batches, coalesce(sum(accepted),0)::int acc, coalesce(sum(rejected),0)::int rej from measurement.collector_batch where received_at > now() - interval '24 hours'`),
       db.execute(sql`select count(*)::int n from measurement.touchpoint where occurred_at > now() - interval '24 hours'`),
     ]);
@@ -36,7 +36,7 @@ export class DrizzleMeasurementOperationsRepository implements MeasurementOperat
       oldestDueMinutes: m == null ? null : Math.round(Number(m)),
       unroutedEvents: rows(unrouted)[0]?.n ?? 0, writeFailures: rows(wf)[0]?.n ?? 0, eventConflicts: rows(conf)[0]?.n ?? 0,
       killSwitch: { on: k?.value === true || k?.value?.on === true, reason: k?.reason ?? null, updatedAt: iso(k?.updated_at) },
-      events: { total: rows(ev)[0]?.total ?? 0, last24h: rows(ev)[0]?.d ?? 0 },
+      events: { total: rows(ev)[0]?.total ?? 0, last24h: rows(ev)[0]?.d ?? 0, since: iso(rows(ev)[0]?.since) },
       collector: { batches24h: rows(cb)[0]?.batches ?? 0, acceptedEvents24h: rows(cb)[0]?.acc ?? 0, rejectedEvents24h: rows(cb)[0]?.rej ?? 0, touches24h: rows(tp)[0]?.n ?? 0 },
     };
   }

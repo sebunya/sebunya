@@ -194,7 +194,12 @@ export class PgAttributionPort implements AttributionPort {
     }
     const batches: BatchRunView[] = rows(await db.execute(sql`select run_id, job, state, reason, started_at, finished_at, stats from measurement.batch_run where job = ${JOB} order by started_at desc limit 10`))
       .map((b) => ({ runId: b.run_id, job: b.job, state: b.state, reason: b.reason, startedAt: new Date(b.started_at).toISOString(), finishedAt: b.finished_at ? new Date(b.finished_at).toISOString() : null, stats: b.stats ?? {} }));
-    return { runs: out, batches };
+    // Why a number is zero matters as much as the number: measurement records
+    // sales only from the day it started, so an empty model is not a broken one.
+    const cov = rows(await db.execute(sql`select count(*)::int n, min(recorded_at) first_at,
+      count(*) filter (where event_name = 'order_confirmed' and occurred_at > now() - make_interval(days => ${ORDER_WINDOW_DAYS}))::int confirmed
+      from measurement.business_event where environment = ${environmentOf(process.env.NODE_ENV)}`))[0];
+    return { runs: out, batches, coverage: { businessEvents: cov?.n ?? 0, firstEventAt: cov?.first_at ? new Date(cov.first_at).toISOString() : null, confirmedOrders90d: cov?.confirmed ?? 0 } };
   }
   runNow(trigger: string) { return runAttributionBatch(trigger); }
 }

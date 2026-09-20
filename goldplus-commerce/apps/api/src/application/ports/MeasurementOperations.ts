@@ -13,7 +13,8 @@ export interface DeliverySummary {
   byState: Record<string, number>; bySink: Array<{ sink: string; state: string; n: number }>;
   oldestDueMinutes: number | null; unroutedEvents: number; writeFailures: number; eventConflicts: number;
   killSwitch: { on: boolean; reason: string | null; updatedAt: string | null };
-  events: { total: number; last24h: number };
+  /** `since` is when measurement began recording; before it, orders have no events by design. */
+  events: { total: number; last24h: number; since: string | null };
   /** Browser intake health: rejections are how a broken or hostile client shows up. */
   collector: { batches24h: number; acceptedEvents24h: number; rejectedEvents24h: number; touches24h: number };
 }
@@ -34,8 +35,9 @@ export interface AttributionRunView {
   channels: Array<{ channel: string; value: number; detail: Record<string, unknown> }>;
 }
 export interface BatchRunView { runId: string; job: string; state: string; reason: string | null; startedAt: string; finishedAt: string | null; stats: Record<string, unknown> }
+export interface AttributionCoverage { businessEvents: number; firstEventAt: string | null; confirmedOrders90d: number }
 export interface AttributionPort {
-  latest(): Promise<{ runs: AttributionRunView[]; batches: BatchRunView[] }>;
+  latest(): Promise<{ runs: AttributionRunView[]; batches: BatchRunView[]; coverage: AttributionCoverage }>;
   /** Runs now if the lease and the host admit it; otherwise records DEFERRED_RESOURCE. */
   runNow(trigger: string): Promise<{ state: string; reason: string | null; batchRunId: string }>;
 }
