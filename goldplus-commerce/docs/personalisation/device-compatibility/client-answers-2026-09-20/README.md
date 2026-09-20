@@ -56,3 +56,6 @@ Sources: sunsky-online.com and mobspares.com (Pop 5 GO BL-38BT 4000mAh); aliexpr
 
 ## Final file through the native importer (commit `9321cc2d`, production copy)
 `ready to apply: 188 · held for review: 7 · with errors: 0`; `devices` 0 → 0, `product_device_compatibility` 0 → 0. Client-facing status workbook: `~/Downloads/GoldPlus_Battery_Phone_Compatibility_v3_After_Client_Answers_2026-09-20.xlsx` (supersedes v1 and v2).
+
+## Final file, native importer, production copy (commit `4f158c38`)
+`ready to apply: 190 · held for review: 0 · with errors: 0`; devices 0 → 0, claims 0 → 0.
