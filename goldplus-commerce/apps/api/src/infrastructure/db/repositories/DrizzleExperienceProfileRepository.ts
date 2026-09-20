@@ -8,6 +8,15 @@ import type {
 } from "../../../application/use-cases/identity/ExperienceProfileUseCases";
 
 export class DrizzleExperienceProfileRepository implements IExperienceProfileRepository {
+  async find(tokenHash: string): Promise<ExperienceProfileRecord | null> {
+    const rows = await db
+      .select({ id: experienceProfiles.id, customerId: experienceProfiles.customerId })
+      .from(experienceProfiles)
+      .where(eq(experienceProfiles.tokenHash, tokenHash))
+      .limit(1);
+    return rows[0] ?? null;
+  }
+
   async resolveOrCreate(tokenHash: string): Promise<ExperienceProfileRecord> {
     const rows = await db
       .insert(experienceProfiles)

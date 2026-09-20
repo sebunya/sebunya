@@ -60,7 +60,9 @@ export interface ExperienceProfileRecord {
 }
 
 export interface IExperienceProfileRepository {
-  /** Upsert by token hash; touches last_seen_at. */
+  /** SELECT only. A read never creates or touches a profile. */
+  find(tokenHash: string): Promise<ExperienceProfileRecord | null>;
+  /** Upsert by token hash; touches last_seen_at. Behavioural writes only. */
   resolveOrCreate(tokenHash: string): Promise<ExperienceProfileRecord>;
   /**
    * Set customer_id if currently NULL (returns 'linked'); no-op if already
@@ -72,13 +74,26 @@ export interface IExperienceProfileRepository {
   observeAnonymousId(profileId: string, anonymousId: string): Promise<void>;
 }
 
+/**
+ * Why the caller wants the profile. `read` serves a page (recommendations,
+ * hero): it must leave no trace, so a crawler or probe cannot mint identities.
+ * `behaviour` records something the visitor did (an event, a checkout) and is
+ * the only intent allowed to create the row.
+ */
+export type ProfileIntent = "read" | "behaviour";
+
 export class ResolveExperienceProfileUseCase {
-  constructor(private readonly profiles: IExperienceProfileRepository) {}
+  constructor(
+    private readonly profiles: IExperienceProfileRepository,
+    /** Rollback switch (PROFILE_READ_PURE=false): reads create again. */
+    private readonly options: { readsArePure: boolean } = { readsArePure: true },
+  ) {}
 
   /** Returns null (never throws) for malformed tokens — junk cannot reach the DB. */
-  async execute(rawToken: string): Promise<ExperienceProfileRecord | null> {
+  async execute(rawToken: string, intent: ProfileIntent = "read"): Promise<ExperienceProfileRecord | null> {
     const tokenHash = hashVisitToken(rawToken);
     if (!tokenHash) return null;
+    if (intent === "read" && this.options.readsArePure) return this.profiles.find(tokenHash);
     return this.profiles.resolveOrCreate(tokenHash);
   }
 }

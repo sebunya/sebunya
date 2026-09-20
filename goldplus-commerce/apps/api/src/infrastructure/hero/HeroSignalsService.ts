@@ -126,6 +126,9 @@ export class HeroSignalsService {
             from recommendation_events e
             where e.profile_id = ${profileId}::uuid
               and e.created_at >= now() - interval '180 days'
+              -- A day counts when the visitor DID something. A rail we rendered
+              -- is our activity, not theirs (R0 F7).
+              and e.event_type <> 'RECOMMENDATION_RESPONSE'
           ), 0)::int as event_days
         from experience_profiles ep
         where ep.id = ${profileId}::uuid

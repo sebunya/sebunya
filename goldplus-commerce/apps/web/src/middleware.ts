@@ -142,7 +142,13 @@ export const onRequest = defineMiddleware(async (context, next) => {
     const token = mintSignedVisitToken();
     if (token) {
       context.cookies.set(VISIT_COOKIE_NAME, token, visitCookieOptions());
-      context.locals.gpVisit = token;
+      // A token minted on THIS request is not an identity yet: nothing proves
+      // the client keeps cookies. Forwarding it made every crawler, link
+      // preview and monitor probe create one profile per page load (780,545 of
+      // 780,935 profiles were seen exactly once). It becomes `locals.gpVisit`
+      // when the browser sends it back. SSR_IDENTITY_V2=false restores the
+      // old forwarding.
+      if (process.env.SSR_IDENTITY_V2 === 'false') context.locals.gpVisit = token;
       // First document request we have ever seen from this browser — the cheapest
       // honest "brand-new visitor" signal (the cookie then persists 180 days), so
       // the header can pick welcome vs signup without a per-page profile lookup.

@@ -17,7 +17,7 @@ async function profileFrom(c: any): Promise<string | null> {
   const rawVisit = c.req.header('x-gp-visit');
   if (!rawVisit) return null;
   try {
-    const profile = await registry.resolveExperienceProfileUseCase.execute(rawVisit);
+    const profile = await registry.resolveExperienceProfileUseCase.execute(rawVisit, 'behaviour');
     return profile?.id ?? null;
   } catch {
     return null;

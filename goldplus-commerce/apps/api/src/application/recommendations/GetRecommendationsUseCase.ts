@@ -130,6 +130,8 @@ export class GetRecommendationsUseCase {
       placement: string,
       error: unknown,
     ) => void,
+    /** Where "we rendered a rail" is counted. Present = no RESPONSE behaviour row. */
+    private readonly servingStats?: import("../ports/IRecommendationServingStats").IRecommendationServingStats,
   ) {}
 
   async execute(
@@ -313,7 +315,17 @@ export class GetRecommendationsUseCase {
     };
 
     // ── Stage 13: the server-native serving fact ─────────────────────────────
-    if (serverContext?.emitResponseEvent && this.events) {
+    // A rendered rail is OUR activity. It is counted as an operational fact;
+    // it is written to the behavioural stream only when no counter is wired
+    // (RESPONSE_EVENT_TO_METRIC=false).
+    if (serverContext?.emitResponseEvent && this.servingStats) {
+      this.servingStats.record({
+        placement: input.placement,
+        empty: meta.emptyReason !== undefined,
+        fallbackServed: (meta.fallbackLevel ?? 0) > 0,
+        at: new Date(),
+      });
+    } else if (serverContext?.emitResponseEvent && this.events) {
       this.emitResponseEvent(input, response, serverContext).catch((e) =>
         this.onDegraded?.("response_event_failed", input.placement, e),
       );

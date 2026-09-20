@@ -16,11 +16,11 @@ import { HERO_SLIDE_LIBRARY } from '@goldplus/shared';
 const routes = new Hono();
 const registry = Registry.getInstance();
 
-async function profileFrom(c: any): Promise<string | null> {
+async function profileFrom(c: any, intent: 'read' | 'behaviour' = 'read'): Promise<string | null> {
   const rawVisit = c.req.header('x-gp-visit');
   if (!rawVisit) return null;
   try {
-    const profile = await registry.resolveExperienceProfileUseCase.execute(rawVisit);
+    const profile = await registry.resolveExperienceProfileUseCase.execute(rawVisit, intent);
     return profile?.id ?? null;
   } catch { return null; }
 }
@@ -69,7 +69,7 @@ routes.get('/signals', async (c) => {
 routes.post('/events', async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ success: false, error: { code: 'BAD_JSON', message: 'Invalid body' } }, 400);
-  const profileId = await profileFrom(c);
+  const profileId = await profileFrom(c, 'behaviour');
   const result = await registry.heroTelemetryService.capture({
     eventType: String(body.eventType ?? ''),
     slideKey: String(body.slideKey ?? ''),

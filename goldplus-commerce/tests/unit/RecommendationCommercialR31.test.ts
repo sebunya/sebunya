@@ -228,7 +228,7 @@ describe("the stitching chain that makes PROVEN attribution possible", () => {
     expect(read("apps/web/src/pages/checkout.astro")).toContain("visitToken: Astro.locals.gpVisit");
     expect(read("apps/web/src/lib/checkoutClient.ts")).toContain("headers['x-gp-visit'] = args.visitToken");
     const route = read("apps/api/src/interfaces/http/routes/commerce.ts");
-    expect(route).toContain("resolveExperienceProfileUseCase.execute(rawVisitToken)");
+    expect(route).toContain("resolveExperienceProfileUseCase.execute(rawVisitToken, 'behaviour')");
     expect(route).toContain("profileId: checkoutProfileId");
     const repo = read("apps/api/src/infrastructure/db/repositories/DrizzleOrderRepository.ts");
     expect(repo).toContain("profileId: input.stitching?.profileId ?? null");

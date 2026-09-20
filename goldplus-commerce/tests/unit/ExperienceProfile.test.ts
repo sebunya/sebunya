@@ -36,6 +36,10 @@ class FakeProfiles implements IExperienceProfileRepository {
   observed: Array<{ profileId: string; anonymousId: string }> = [];
   private seq = 0;
 
+  async find(tokenHash: string) {
+    return this.rows.get(tokenHash) ?? null;
+  }
+
   async resolveOrCreate(tokenHash: string) {
     const existing = this.rows.get(tokenHash);
     if (existing) return existing;
@@ -90,9 +94,9 @@ describe("the opaque token contract", () => {
     const useCase = new ResolveExperienceProfileUseCase(repo);
     const tokenA = signedToken();
     const tokenB = signedToken();
-    const a1 = await useCase.execute(tokenA);
-    const a2 = await useCase.execute(tokenA);
-    const b = await useCase.execute(tokenB);
+    const a1 = await useCase.execute(tokenA, "behaviour");
+    const a2 = await useCase.execute(tokenA, "behaviour");
+    const b = await useCase.execute(tokenB, "behaviour");
     expect(a1!.id).toBe(a2!.id);
     expect(b!.id).not.toBe(a1!.id);
   });
@@ -198,5 +202,30 @@ describe("the browser holds ONLY an opaque locator (AC48/AC49)", () => {
       expect(src, page).toContain("/recommendations/profile/link");
       expect(src, page).toContain("AbortSignal.timeout(3000)");
     }
+  });
+
+  it("a READ never creates a profile: a crawler or probe leaves no identity behind", async () => {
+    const repo = new FakeProfiles();
+    const useCase = new ResolveExperienceProfileUseCase(repo);
+    const token = signedToken();
+    expect(await useCase.execute(token)).toBeNull();
+    expect(await useCase.execute(token, "read")).toBeNull();
+    expect(repo.rows.size).toBe(0);
+  });
+
+  it("a read finds the profile that behaviour created", async () => {
+    const repo = new FakeProfiles();
+    const useCase = new ResolveExperienceProfileUseCase(repo);
+    const token = signedToken();
+    const created = await useCase.execute(token, "behaviour");
+    expect((await useCase.execute(token))!.id).toBe(created!.id);
+    expect(repo.rows.size).toBe(1);
+  });
+
+  it("the rollback switch restores create-on-read", async () => {
+    const repo = new FakeProfiles();
+    const useCase = new ResolveExperienceProfileUseCase(repo, { readsArePure: false });
+    expect(await useCase.execute(signedToken())).not.toBeNull();
+    expect(repo.rows.size).toBe(1);
   });
 });

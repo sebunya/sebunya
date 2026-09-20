@@ -609,7 +609,7 @@ routes.post('/orders/create', async (c) => {
   const rawVisitToken = c.req.header('x-gp-visit');
   if (rawVisitToken) {
     try {
-      checkoutProfileId = (await registry.resolveExperienceProfileUseCase.execute(rawVisitToken))?.id ?? null;
+      checkoutProfileId = (await registry.resolveExperienceProfileUseCase.execute(rawVisitToken, 'behaviour'))?.id ?? null;
     } catch {
       // Provenance, not correctness.
     }

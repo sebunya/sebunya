@@ -319,6 +319,7 @@ import { EnqueueAdminOrderEmailUseCase } from '../application/use-cases/notifica
 import { ReplayAdminOrderEmailUseCase } from '../application/use-cases/notifications/ReplayAdminOrderEmailUseCase';
 import { UploadProductImagesUseCase } from '../application/use-cases/products/UploadProductImagesUseCase';
 import { TrackRecommendationEventUseCase } from '../application/recommendations/TrackRecommendationEventUseCase';
+import { RecommendationServingStats } from './recommendations/RecommendationServingStats';
 import { ResolveExperienceProfileUseCase, LinkExperienceProfileUseCase } from '../application/use-cases/identity/ExperienceProfileUseCases';
 import { AssignRecommendationExperimentUseCase } from '../application/recommendations/AssignRecommendationExperimentUseCase';
 import { RecommendationModelReadinessUseCase } from '../application/recommendations/RecommendationModelReadiness';
@@ -1817,7 +1818,7 @@ export class Registry {
     this.experimentRepo,
   );
 
-  public readonly resolveExperienceProfileUseCase = new ResolveExperienceProfileUseCase(this.experienceProfileRepo);
+  public readonly resolveExperienceProfileUseCase = new ResolveExperienceProfileUseCase(this.experienceProfileRepo, { readsArePure: process.env.PROFILE_READ_PURE !== 'false' });
 
   public readonly linkExperienceProfileUseCase = new LinkExperienceProfileUseCase(this.experienceProfileRepo);
 
@@ -1845,6 +1846,10 @@ export class Registry {
       this.searchAffinityReader,
       (stage, placement, error) =>
         logger.error({ stage, placement, err: error instanceof Error ? error.message : String(error) }, 'RECOMMENDATION_ENGINE_DEGRADED'),
+      process.env.RESPONSE_EVENT_TO_METRIC === 'false'
+        ? undefined
+        : new RecommendationServingStats((error) =>
+            logger.error({ err: error instanceof Error ? error.message : String(error) }, 'RECOMMENDATION_SERVING_STATS_FLUSH_FAILED')),
     );
 
   public readonly getRecentlyViewedUseCase = new GetRecentlyViewedUseCase(

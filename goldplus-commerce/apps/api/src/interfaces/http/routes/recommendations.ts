@@ -26,7 +26,7 @@ routes.post('/events', async (c) => {
     let origin: { producer: string; profileId?: string } = { producer: 'public-api' };
     if (rawVisit) {
       try {
-        const profile = await registry.resolveExperienceProfileUseCase.execute(rawVisit);
+        const profile = await registry.resolveExperienceProfileUseCase.execute(rawVisit, 'behaviour');
         if (profile) origin = { producer: 'web-relay', profileId: profile.id };
       } catch {
         // Profile resolution is continuity, not correctness — the event still lands.
@@ -154,6 +154,8 @@ routes.get('/', async (c) => {
       success: true,
       data,
     };
+    // Varies by visitor: never shared-cached (R0 F11).
+    c.header('Cache-Control', 'private, no-store');
     return c.json(res);
   } catch (error) {
     const res: ApiResponse<never> = {

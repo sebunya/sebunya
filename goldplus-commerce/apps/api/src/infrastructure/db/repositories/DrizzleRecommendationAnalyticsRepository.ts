@@ -52,13 +52,31 @@ export class DrizzleRecommendationAnalyticsRepository implements IRecommendation
           and created_at >= now() - make_interval(days => ${sinceDays})
           and placement is not null
       )
+      -- Since 0144 a rendered rail is counted hourly, not stored as an event.
+      -- Older windows still hold RESPONSE rows; the two never overlap in time
+      -- for the same serve, so they add.
+      , combined as (
+        select
+          placement,
+          count(*)::int as responses,
+          count(*) filter (where meta ? 'emptyReason')::int as empty,
+          count(*) filter (where coalesce((meta->>'fallbackLevel')::int, 0) > 0)::int as fallback_served,
+          max(created_at) as last_response_at
+        from responses
+        group by placement
+        union all
+        select placement, sum(responses)::int, sum(empty)::int, sum(fallback_served)::int, max(last_response_at)
+        from recommendation_serving_hourly
+        where hour >= date_trunc('hour', now() - make_interval(days => ${sinceDays}))
+        group by placement
+      )
       select
         placement,
-        count(*)::int as responses,
-        count(*) filter (where meta ? 'emptyReason')::int as empty,
-        count(*) filter (where coalesce((meta->>'fallbackLevel')::int, 0) > 0)::int as fallback_served,
-        max(created_at) as last_response_at
-      from responses
+        sum(responses)::int as responses,
+        sum(empty)::int as empty,
+        sum(fallback_served)::int as fallback_served,
+        max(last_response_at) as last_response_at
+      from combined
       group by placement
       order by placement
     `)) as unknown as Array<{
