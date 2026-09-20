@@ -72,6 +72,55 @@ routes.get('/badge', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) =>
   return c.json(res);
 });
 
+/* ── Paid-order alerts (0143) ─────────────────────────────────────────────
+ * Static paths, registered before '/:id' so they are not shadowed by it.
+ * Every change goes through the registry's own set(), which validates against
+ * the closed key list and writes an audit row (createAuditLogUseCase).
+ */
+routes.get('/alerts', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+  const { FULFILMENT_ALERT_CONFIG_REGISTRY, alertRecipient } = await import('../../../../domain/fulfilment/FulfilmentAlertConfig');
+  const values = await Registry.getInstance().fulfilmentAlertConfig.values();
+  return c.json({
+    success: true,
+    data: {
+      entries: FULFILMENT_ALERT_CONFIG_REGISTRY.map((e) => ({ ...e, value: values[e.key] ?? null, set: values[e.key] !== undefined })),
+      activeRecipient: alertRecipient(values),
+      note: 'No alert is sent until a number is saved AND the alert is switched on.',
+    },
+  });
+});
+
+routes.put('/alerts/:key', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const result = await Registry.getInstance().fulfilmentAlertConfig.set({
+    key: String(c.req.param('key') ?? ''),
+    value: String(body?.value ?? ''),
+    actorId: (c.get('user') as { id?: string } | undefined)?.id ?? null,
+  });
+  if (!result.ok) return c.json({ success: false, error: { code: 'INVALID_CONFIG', message: result.message } }, 400);
+  return c.json({ success: true, data: { saved: true } });
+});
+
+/** Sends one alert for the most recent paid order, so the number can be proven. */
+routes.post('/alerts/test', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const registry = Registry.getInstance();
+  const { db } = await import('../../../../infrastructure/db/client');
+  const { sql } = await import('drizzle-orm');
+  const rows = (await db.execute(sql`select id from orders where payment_status = 'paid' order by created_at desc limit 1`)) as unknown as Array<{ id: string }>;
+  const list = Array.isArray(rows) ? rows : ((rows as { rows?: Array<{ id: string }> }).rows ?? []);
+  if (!list.length) {
+    return c.json({ success: false, error: { code: 'NO_PAID_ORDER', message: 'There is no paid order to base a test alert on yet.' } }, 400);
+  }
+  const out = await registry.fulfilmentAlertConfig.enqueuePaidOrderAlert(list[0].id, { test: true });
+  if (!out.queued) {
+    const message = out.reason === 'NO_RECIPIENT_OR_DISABLED'
+      ? 'Save a number and switch the alert on first.'
+      : `The test alert was not queued (${out.reason}).`;
+    return c.json({ success: false, error: { code: out.reason, message } }, 400);
+  }
+  return c.json({ success: true, data: { queued: true, note: 'The test SMS goes out on the next send cycle, within about a minute.' } });
+});
+
 // F5 report — registered before '/:id' so the static path is not shadowed.
 routes.get('/report', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
   const report = await Registry.getInstance().getFulfilmentReportUseCase.execute();

@@ -17,6 +17,8 @@ const build = (effects: Partial<Record<string, unknown>>, log: string[]) =>
       markFulfilmentPaid: async () => void log.push('fulfilment'),
       settleLoyalty: async () => void log.push('loyalty'),
       enqueueAdminEmail: async () => void log.push('admin_email'),
+      // 0143: tells whoever prepares orders, on a phone, that money has landed.
+      notifyFulfilmentOfPaidOrder: async () => void log.push('fulfilment_alert'),
       recordMeasurement: async () => void log.push('measurement'),
       enqueueCustomerMessage: async () => void log.push('customer_message'),
       onEffectFailed: (effect: string) => void log.push(`REPORTED:${effect}`),
@@ -32,7 +34,7 @@ describe('SettlePaymentUseCase — post-settlement effect isolation', () => {
     const log: string[] = [];
     const result = await run(build({}, log));
     expect(result.confirmed).toBe(true);
-    expect(log).toEqual(['fulfilment', 'loyalty', 'admin_email', 'measurement', 'customer_message']);
+    expect(log).toEqual(['fulfilment', 'loyalty', 'admin_email', 'fulfilment_alert', 'measurement', 'customer_message']);
   });
 
   it('a REJECTING effect is reported and the rest still run', async () => {
@@ -66,10 +68,10 @@ describe('SettlePaymentUseCase — post-settlement effect isolation', () => {
     const boom = () => { throw new Error('everything is down'); };
     const result = await run(build({
       markFulfilmentPaid: boom, settleLoyalty: boom, enqueueAdminEmail: boom,
-      recordMeasurement: boom, enqueueCustomerMessage: boom,
+      notifyFulfilmentOfPaidOrder: boom, recordMeasurement: boom, enqueueCustomerMessage: boom,
     }, log));
     expect(result.confirmed).toBe(true);
-    expect(log.filter((l) => l.startsWith('REPORTED:'))).toHaveLength(5);
+    expect(log.filter((l) => l.startsWith('REPORTED:'))).toHaveLength(6);
   });
 
   it('a throwing REPORTER cannot break the chain it exists to observe', async () => {

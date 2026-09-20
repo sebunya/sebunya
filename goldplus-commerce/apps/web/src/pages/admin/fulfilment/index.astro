@@ -50,11 +50,46 @@ try {
 } catch { /* non-fatal */ }
 
 let notice: { kind: "success" | "error"; text: string } | null = null;
+let alertRecipientValue = "";
+let alertEnabled = false;
+let alertActive: string | null = null;
 
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   const id = String(form.get("id") || "");
   const action = String(form.get("action") || "status");
+
+  // Paid-order alerts (0143): who is told, on a phone, that money has landed.
+  if (action === "alert-save" || action === "alert-test") {
+    try {
+      if (action === "alert-test") {
+        const res = await fetch(`${apiBase}/admin/fulfilment/alerts/test`, { method: "POST", headers });
+        const json = await res.json().catch(() => null);
+        notice = json?.success
+          ? { kind: "success", text: "Test alert queued — it arrives within about a minute." }
+          : { kind: "error", text: json?.error?.message || "The test alert could not be queued." };
+      } else {
+        const number = String(form.get("recipient") || "").trim();
+        const enabled = form.get("enabled") === "on" ? "true" : "false";
+        let failed: string | null = null;
+        if (number) {
+          const r1 = await fetch(`${apiBase}/admin/fulfilment/alerts/paid_order_sms_recipient`, { method: "PUT", headers, body: JSON.stringify({ value: number }) });
+          const j1 = await r1.json().catch(() => null);
+          if (!j1?.success) failed = j1?.error?.message || "That number was not accepted.";
+        }
+        if (!failed) {
+          const r2 = await fetch(`${apiBase}/admin/fulfilment/alerts/paid_order_sms_enabled`, { method: "PUT", headers, body: JSON.stringify({ value: enabled }) });
+          const j2 = await r2.json().catch(() => null);
+          if (!j2?.success) failed = j2?.error?.message || "The setting was not saved.";
+        }
+        notice = failed
+          ? { kind: "error", text: failed }
+          : { kind: "success", text: enabled === "true" ? "Saved. A paid order will now send an SMS." : "Saved. The alert is off." };
+      }
+    } catch {
+      notice = { kind: "error", text: "Fulfilment service is unreachable right now." };
+    }
+  } else {
   try {
     let endpoint = `${apiBase}/admin/fulfilment/${encodeURIComponent(id)}/status`;
     let payload: Record<string, unknown> = {};
@@ -80,6 +115,7 @@ if (Astro.request.method === "POST") {
       : { kind: "error", text: json?.error?.message || "Could not update the fulfilment task." };
   } catch {
     notice = { kind: "error", text: "Fulfilment service is unreachable right now." };
+  }
   }
 }
 
@@ -119,6 +155,19 @@ try {
   if (badgeJson?.success) {
     badge = badgeJson.data.newOrders;
     overdueBadge = badgeJson.data.overdue ?? 0;
+  }
+  // Paid-order alerts (0143). Read separately so a failure here cannot empty
+  // the queue the operator came for.
+  try {
+    const alertRes = await fetch(`${apiBase}/admin/fulfilment/alerts`, { headers });
+    const alertJson = await alertRes.json().catch(() => null);
+    if (alertJson?.success) {
+      alertRecipientValue = alertJson.data.entries.find((e: any) => e.key === "paid_order_sms_recipient")?.value ?? "";
+      alertEnabled = alertJson.data.entries.find((e: any) => e.key === "paid_order_sms_enabled")?.value === "true";
+      alertActive = alertJson.data.activeRecipient ?? null;
+    }
+  } catch {
+    // Leave the section showing its unset state rather than a wrong number.
   }
 } catch {
   loadFailed = true;
@@ -174,6 +223,32 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
   description="Actionable New Orders queue: every placed order, its products, truthful payment status, and lifecycle transitions."
 >
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <section aria-labelledby="alert-h" class="mb-8 rounded-2xl border border-gray-200 bg-white p-5">
+      <h3 id="alert-h" class="font-black text-brand-dark">Tell someone when an order is paid</h3>
+      <p class="text-sm text-gray-600 mt-1 max-w-3xl">
+        One SMS the moment money is confirmed, so an order is never sitting paid and unnoticed. It goes to the shop, never to the customer, and carries no customer name or address.
+        {alertActive
+          ? <span class="block mt-1 text-emerald-800">Currently alerting <strong class="font-mono">{alertActive}</strong>.</span>
+          : <span class="block mt-1 text-amber-800">No alert is being sent: save a number and switch it on.</span>}
+      </p>
+      <form method="POST" class="mt-4 flex flex-wrap items-end gap-3">
+        <input type="hidden" name="action" value="alert-save" />
+        <label class="text-xs font-bold text-gray-700">Phone number
+          <input name="recipient" value={alertRecipientValue} placeholder="0776004545" inputmode="tel"
+            class="mt-1 block w-56 rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal font-mono" />
+        </label>
+        <label class="flex items-center gap-2 text-sm font-bold text-gray-700 pb-2">
+          <input type="checkbox" name="enabled" checked={alertEnabled} class="w-4 h-4" />
+          Send the alert
+        </label>
+        <button class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Save</button>
+      </form>
+      <form method="POST" class="mt-2">
+        <input type="hidden" name="action" value="alert-test" />
+        <button class="text-xs font-bold text-brand-dark underline">Send a test alert to that number</button>
+      </form>
+    </section>
+
     <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
       <div>
         <h2 class="text-2xl font-black text-brand-dark tracking-tight">Fulfilment Queue</h2>

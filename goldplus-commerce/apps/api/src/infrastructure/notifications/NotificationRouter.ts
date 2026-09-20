@@ -244,6 +244,35 @@ export class DefaultNotificationRouter implements INotificationRouter {
       // adapter never has to invent one. SMS first, email as the fallback.
       case 'SUPPORT_REQUEST_RECEIVED':
       case 'QUOTE_REQUEST_RECEIVED':
+      /**
+       * The paid-order alert (0143). Internal: it goes to the shop's own
+       * fulfilment phone, never to a customer, and carries no customer name or
+       * address — just what is needed to go and pick the order up.
+       */
+      case 'FULFILMENT_PAID_ORDER_ALERT': {
+        const recipient = typeof payload.recipient === 'string' ? payload.recipient : '';
+        if (!recipient) break;
+        const orderNumber = String(payload.orderNumber ?? '');
+        const total = Number(payload.totalUgx ?? 0);
+        const area = String(payload.deliveryArea ?? '').trim();
+        const amount = Number.isFinite(total) ? `UGX ${Math.round(total).toLocaleString('en-GB')}` : '';
+        const message = payload.test === true
+          ? `GoldPlus test alert: this is how a paid order will reach you. Nothing has been sold.`
+          : `GoldPlus: order ${orderNumber} is PAID${amount ? ` (${amount})` : ''}${area ? ` for ${area}` : ''}. Prepare it for delivery.`;
+        targets.push({
+          channel: 'sms',
+          provider: this.smsProvider,
+          payload: {
+            recipient,
+            template: 'FULFILMENT_PAID_ORDER_ALERT',
+            data: { ...payload, message },
+            relatedEntity: 'order',
+            relatedEntityId,
+          },
+        });
+        break;
+      }
+
       case 'DEALER_APPLICATION_RECEIVED':
       case 'FAKE_REPORT_RECEIVED':
       case 'CUSTOMER_ORDER_MESSAGE': {

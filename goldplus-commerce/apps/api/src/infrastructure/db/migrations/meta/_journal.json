@@ -1002,6 +1002,13 @@
       "when": 1790140000001,
       "tag": "0142_measurement_hygiene",
       "breakpoints": true
+    },
+    {
+      "idx": 143,
+      "version": "5",
+      "when": 1790140000002,
+      "tag": "0143_fulfilment_alerts",
+      "breakpoints": true
     }
   ]
 }

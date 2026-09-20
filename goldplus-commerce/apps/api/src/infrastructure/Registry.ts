@@ -2,6 +2,7 @@ import './logging/appLoggerBinding';
 import { MeasurementOperationsUseCases } from '../application/use-cases/measurement/MeasurementOperationsUseCases';
 import { CollectBrowserBatchUseCase } from '../application/use-cases/telemetry/CollectBrowserBatchUseCase';
 import { DrizzleCollectorStore } from './db/repositories/DrizzleCollectorStore';
+import { alertRecipient, validateFulfilmentAlertValue } from '../domain/fulfilment/FulfilmentAlertConfig';
 import { PgAttributionPort } from './measurement/AttributionJob';
 import { DrizzleMeasurementOperationsRepository } from './db/repositories/DrizzleMeasurementOperationsRepository';
 import { AdDestinationUseCases } from '../application/use-cases/advertising/AdDestinationUseCases';
@@ -713,6 +714,72 @@ export class Registry {
   // Measurement delivery operations (0140/0141): queue, replay, quarantine, kill switch.
   /** Collector contract v2 (0141); the per-event durable write is the caller's tracking path. */
   public collectBrowserBatch(trackEvent: (event: unknown) => Promise<void>) { return new CollectBrowserBatchUseCase(new DrizzleCollectorStore(), trackEvent); }
+  /**
+   * Fulfilment alerts (0143). Who is told, on a phone, that an order is paid.
+   * Closed registry, validated in the domain, audited on every change.
+   */
+  public readonly fulfilmentAlertConfig = {
+    values: async (): Promise<Record<string, string>> => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      const rows = (await db.execute(sql`select config_key, config_value from fulfilment_alert_config`)) as unknown as Array<{
+        config_key: string; config_value: string;
+      }>;
+      const list = Array.isArray(rows) ? rows : ((rows as { rows?: typeof rows }).rows ?? []);
+      return Object.fromEntries(list.map((r) => [r.config_key, r.config_value]));
+    },
+    set: async (input: { key: string; value: string; actorId: string | null }) => {
+      const check = validateFulfilmentAlertValue(input.key, input.value);
+      if (!check.ok) return { ok: false as const, message: check.message };
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      const before = await this.fulfilmentAlertConfig.values();
+      await db.execute(sql`
+        insert into fulfilment_alert_config (config_key, config_value, updated_by, updated_at)
+        values (${input.key}, ${check.value}, ${input.actorId}, now())
+        on conflict (config_key) do update set config_value = excluded.config_value,
+          updated_by = excluded.updated_by, updated_at = now()`);
+      await this.createAuditLogUseCase.execute({
+        actorId: input.actorId,
+        action: 'FULFILMENT_ALERT_CONFIG_SET',
+        entity: 'fulfilment_alert_config',
+        entityId: input.key,
+        previousState: { value: before[input.key] ?? null },
+        newState: { value: check.value },
+      } as never);
+      return { ok: true as const };
+    },
+    /** Queues the paid-order alert. Returns why nothing was queued, never silently. */
+    enqueuePaidOrderAlert: async (orderId: string, opts?: { test?: boolean }): Promise<{ queued: boolean; reason: string }> => {
+      const values = await this.fulfilmentAlertConfig.values();
+      const recipient = alertRecipient(values);
+      if (!recipient) return { queued: false, reason: 'NO_RECIPIENT_OR_DISABLED' };
+      const order = await this.orderRepo.findById(orderId);
+      if (!order) return { queued: false, reason: 'ORDER_NOT_FOUND' };
+      const { db } = await import('./db/client');
+      const { outboxEvents } = await import('./db/schema');
+      await db.insert(outboxEvents).values({
+        eventType: 'FULFILMENT_PAID_ORDER_ALERT',
+        payload: {
+          recipient,
+          orderNumber: order.orderNumber,
+          totalUgx: order.totalUgx,
+          deliveryArea: (order as { deliveryArea?: string }).deliveryArea ?? '',
+          test: opts?.test === true,
+        } as never,
+        idempotencyKey: opts?.test
+          ? `fulfilment-alert-test:${orderId}:${Date.now()}`
+          : `fulfilment-alert:${orderId}`,
+        status: 'pending',
+        channel: 'sms',
+        template: 'FULFILMENT_PAID_ORDER_ALERT',
+        relatedEntity: 'order',
+        relatedEntityId: orderId,
+      } as never).onConflictDoNothing({ target: outboxEvents.idempotencyKey });
+      return { queued: true, reason: 'QUEUED' };
+    },
+  };
+
   public readonly measurementOperations = new MeasurementOperationsUseCases(new DrizzleMeasurementOperationsRepository(), this.createAuditLogUseCase, new PgAttributionPort());
   public readonly advertising = new AdDestinationUseCases(new DrizzleAdDestinationRepository(), AD_PLATFORMS, vaultCipher(), this.createAuditLogUseCase);
   public readonly paymentRepo = new DrizzlePaymentRepository();
@@ -1925,6 +1992,12 @@ export class Registry {
           // are LIVE, and CUSTOMER_ORDER_MESSAGES_LIVE=false stops them.
           dryRunOnly: process.env.CUSTOMER_ORDER_MESSAGES_LIVE === 'false',
         });
+      },
+      notifyFulfilmentOfPaidOrder: async (orderId: string) => {
+        const r = await this.fulfilmentAlertConfig.enqueuePaidOrderAlert(orderId);
+        if (!r.queued && r.reason !== 'NO_RECIPIENT_OR_DISABLED') {
+          logger.warn({ orderId, reason: r.reason }, '[fulfilment] paid-order alert was not queued');
+        }
       },
       enqueueAdminEmail: async (orderId) => {
         const paidOrder = await this.orderRepo.findById(orderId);

@@ -274,6 +274,8 @@ describe('SettlePaymentUseCase — one path for callback, IPN, poller and ops', 
           throw new Error('loyalty boom');
         },
         enqueueAdminEmail: async () => void effectLog.push('email'),
+        // 0143: the paid-order alert to whoever prepares orders.
+        notifyFulfilmentOfPaidOrder: async () => void effectLog.push('fulfilment_alert'),
         recordMeasurement: async () => void effectLog.push('measurement'),
         enqueueCustomerMessage: async (_orderId, template) => void effectLog.push(`customer:${template}`),
         onEffectFailed: (effect) => void failures.push(effect),
@@ -286,7 +288,7 @@ describe('SettlePaymentUseCase — one path for callback, IPN, poller and ops', 
     const { settle, effectLog, failures } = makeWorld({ verifyStatus: 'completed', verifyOk: true, settleKind: 'CONFIRMED' });
     const result = await settle.execute({ orderTrackingId: 't', merchantReference: 'r', source: 'poll', traceId: 'x' });
     expect(result.confirmed).toBe(true);
-    expect(effectLog).toEqual(['fulfilment', 'loyalty', 'email', 'measurement', 'customer:ORDER_PAYMENT_SUCCESS']);
+    expect(effectLog).toEqual(['fulfilment', 'loyalty', 'email', 'fulfilment_alert', 'measurement', 'customer:ORDER_PAYMENT_SUCCESS']);
     // Non-fatal AND non-silent: the loyalty failure surfaced by name.
     expect(failures).toEqual(['loyalty_settlement']);
   });

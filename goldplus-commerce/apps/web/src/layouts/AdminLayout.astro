@@ -1,6 +1,8 @@
 ---
 import '../styles/admin.css';
 import { ADMIN_NAVIGATION } from '../lib/admin-navigation';
+import { readSessionToken } from '../lib/session';
+import { apiBase } from '../lib/api';
 
 interface Props {
   title: string;
@@ -15,6 +17,39 @@ const {
 } = Astro.props;
 
 const currentPath = activePath ?? Astro.url.pathname;
+
+/**
+ * Fulfilment alert bar.
+ *
+ * Orders that are paid and waiting, and orders past their promised time, are
+ * the two facts an admin must not have to go looking for — a paid order nobody
+ * picks up is a customer waiting for goods they have already bought. Read
+ * server-side from the same badge the fulfilment screens use, so it cannot
+ * disagree with them, and rendered on EVERY admin page.
+ *
+ * It fails quiet, not loud: if the API cannot be reached the bar is simply
+ * absent. A layout must never break the page it wraps, and a bar that shows
+ * "0" after a failed read would be a lie.
+ */
+let fulfilmentAlert: { newOrders: number; overdue: number; unworkable: number } | null = null;
+const alertToken = readSessionToken(Astro.request);
+if (alertToken && currentPath.startsWith('/admin') && !currentPath.startsWith('/admin/login')) {
+  try {
+    const res = await fetch(`${apiBase}/admin/fulfilment/badge`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${alertToken}` },
+    });
+    const json = await res.json().catch(() => null);
+    const d = json?.data ?? json;
+    if (res.ok && d && typeof d.newOrders === 'number') {
+      fulfilmentAlert = { newOrders: d.newOrders ?? 0, overdue: d.overdue ?? 0, unworkable: d.unworkable ?? 0 };
+    }
+  } catch {
+    // Unreachable API: show nothing rather than a reassuring zero.
+  }
+}
+const alertTotal = fulfilmentAlert
+  ? fulfilmentAlert.newOrders + fulfilmentAlert.overdue + fulfilmentAlert.unworkable
+  : 0;
 
 // Custom active indicator logic
 const isPathActive = (href: string) => {
@@ -159,6 +194,36 @@ const isPathActive = (href: string) => {
 
       {/* Scrolling Area for Specific Page Content */}
       <main class="flex-1 relative overflow-y-auto focus:outline-none bg-gray-50 text-brand-dark">
+        {fulfilmentAlert && alertTotal > 0 && (
+          <div
+            role="status"
+            aria-live="polite"
+            class={`border-b px-6 lg:px-8 py-3 ${fulfilmentAlert.overdue > 0 ? 'bg-red-50 border-red-200' : 'bg-amber-50 border-amber-200'}`}
+          >
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <span class={`text-sm font-black ${fulfilmentAlert.overdue > 0 ? 'text-red-900' : 'text-amber-900'}`}>
+                Fulfilment
+              </span>
+              <span class="text-sm text-gray-800">
+                {fulfilmentAlert.newOrders > 0 && (
+                  <span><strong>{fulfilmentAlert.newOrders}</strong> order{fulfilmentAlert.newOrders === 1 ? '' : 's'} waiting to be picked up</span>
+                )}
+                {fulfilmentAlert.newOrders > 0 && (fulfilmentAlert.overdue > 0 || fulfilmentAlert.unworkable > 0) && <span class="text-gray-400"> · </span>}
+                {fulfilmentAlert.overdue > 0 && (
+                  <span class="text-red-900"><strong>{fulfilmentAlert.overdue}</strong> past the time we promised</span>
+                )}
+                {fulfilmentAlert.overdue > 0 && fulfilmentAlert.unworkable > 0 && <span class="text-gray-400"> · </span>}
+                {fulfilmentAlert.unworkable > 0 && (
+                  <span><strong>{fulfilmentAlert.unworkable}</strong> open order{fulfilmentAlert.unworkable === 1 ? '' : 's'} with nobody assigned</span>
+                )}
+              </span>
+              <a
+                href="/admin/fulfilment"
+                class="ml-auto inline-flex min-h-9 items-center rounded-full bg-brand-dark px-4 text-xs font-bold text-white hover:bg-black"
+              >Open fulfilment</a>
+            </div>
+          </div>
+        )}
         <div class="py-8">
           <slot />
         </div>

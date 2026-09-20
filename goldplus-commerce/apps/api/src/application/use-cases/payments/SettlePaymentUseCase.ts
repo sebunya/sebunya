@@ -30,6 +30,12 @@ export interface SettlePaymentEffects {
   /** Transactional admin email. Enqueued, not sent inline. */
   enqueueAdminEmail(orderId: string): Promise<void>;
   /**
+   * Tells whoever prepares orders, on a phone, that money has landed. A paid
+   * order nobody picks up is a customer waiting for goods they have already
+   * paid for, and email cannot carry this today.
+   */
+  notifyFulfilmentOfPaidOrder(orderId: string): Promise<void>;
+  /**
    * What the CUSTOMER is told. Enqueued through the outbox, never sent
    * inline, and governed by the same gates as every customer message. The
    * template names the outcome the settlement actually reached.
@@ -92,6 +98,8 @@ export class SettlePaymentUseCase {
         this.effects.settleLoyalty(verification.orderId));
       await this.runEffect('admin_email', verification.orderId, () =>
         this.effects.enqueueAdminEmail(verification.orderId));
+      await this.runEffect('fulfilment_alert', verification.orderId, () =>
+        this.effects.notifyFulfilmentOfPaidOrder(verification.orderId));
       await this.runEffect('measurement', verification.orderId, () =>
         this.effects.recordMeasurement({ verification, trackingId: input.orderTrackingId, reference: input.merchantReference }));
       await this.runEffect('customer_message', verification.orderId, () =>
