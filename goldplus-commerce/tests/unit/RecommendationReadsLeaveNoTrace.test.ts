@@ -32,7 +32,7 @@ describe("recommendation reads leave no trace (personalisation rebuild, R0)", ()
 
   it("visit strength counts what the visitor did, not what we rendered", () => {
     const hero = read("apps/api/src/infrastructure/hero/HeroSignalsService.ts");
-    expect(hero).toContain("e.event_type = any(${pgTextArray(VISITOR_ACTION_EVENT_TYPES)})");
+    expect(hero).toContain("pgInTextList(sql`e.event_type`, VISITOR_ACTION_EVENT_TYPES)");
     expect(hero).not.toContain("interval '180 days'");
   });
 

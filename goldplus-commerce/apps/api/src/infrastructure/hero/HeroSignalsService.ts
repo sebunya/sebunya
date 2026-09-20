@@ -1,7 +1,8 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { VISITOR_ACTION_EVENT_TYPES } from '@goldplus/shared';
-import { pgTextArray } from '../db/PgParams';
+import { pgInTextList } from '../db/PgParams';
+import { logger } from '../logging/logger';
 
 /**
  * Per-visitor hero signals.
@@ -79,8 +80,10 @@ export class HeroSignalsService {
       const preferredProduct = affinity.length > 0 ? await this.preferredProduct(affinity[0].categorySlug) : null;
 
       return { customer, visits, hasOrdered: ordered, categoryAffinity: affinity, preferredProduct, loyalty, stockBySlug: stock, zone: null };
-    } catch {
+    } catch (error) {
       // A signals failure must never break the hero: return the neutral payload.
+      // But never SILENTLY: a broken query here makes every visitor look new.
+      logger.error({ err: error instanceof Error ? error.message : String(error) }, 'HERO_SIGNALS_FAILED');
       return EMPTY;
     }
   }
@@ -143,7 +146,7 @@ export class HeroSignalsService {
               -- operational type) is not on this list and so can never feed
               -- back into what we render (R0 F7). No time window: history is
               -- kept forever, and the lookup is one profile's indexed rows.
-              and e.event_type = any(${pgTextArray(VISITOR_ACTION_EVENT_TYPES)})
+              and ${pgInTextList(sql`e.event_type`, VISITOR_ACTION_EVENT_TYPES)}
           ), 0)::int as event_days
         from experience_profiles ep
         where ep.id = ${profileId}::uuid
@@ -161,7 +164,10 @@ export class HeroSignalsService {
   /** Just the interest ranking: one indexed query, for callers that order a list. */
   async getCategoryAffinity(profileId: string | null): Promise<Array<{ categorySlug: string; score: number }>> {
     if (!profileId) return [];
-    try { return await this.categoryAffinity(profileId); } catch { return []; }
+    try { return await this.categoryAffinity(profileId); } catch (error) {
+      logger.error({ err: error instanceof Error ? error.message : String(error) }, 'HERO_AFFINITY_FAILED');
+      return [];
+    }
   }
 
   /** Categories this profile has engaged with, by weighted event count. */

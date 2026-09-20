@@ -74,6 +74,10 @@ suite('personalisation reads (real PostgreSQL)', () => {
       await raw`insert into recommendation_events (event_type, producer, profile_id, placement, created_at) values ('RECOMMENDATION_RESPONSE', 'api-engine', ${p1}, 'home_trending', now() - make_interval(days => ${d}))`;
       await raw`insert into recommendation_events (event_type, producer, profile_id, placement, product_id, created_at) values ('RECOMMENDATION_IMPRESSION', 'web', ${p1}, 'home_trending', ${product.id}, now() - make_interval(days => ${d}))`;
     }
+    // getSignals swallows errors by design, so the queries are also called
+    // directly: a broken query must FAIL here, not read as "a new visitor".
+    expect(await (svc as any).visitStrength(p1)).toBe(1);
+    expect(await (svc as any).categoryAffinity(p1)).toEqual([]);
     let s = await svc.getSignals(p1, []);
     expect(s.visits).toBe(1);
     expect(s.categoryAffinity).toEqual([]);
