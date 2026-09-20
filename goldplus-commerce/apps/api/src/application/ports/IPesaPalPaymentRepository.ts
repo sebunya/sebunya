@@ -35,6 +35,13 @@ export interface IPesaPalPaymentRepository {
     redirectUrl?: string | null;
     ipnReceivedAt?: Date | null;
     callbackReceivedAt?: Date | null;
+    /**
+     * True only when this status IS the provider's own answer about the money
+     * (IPN, return leg or the poller reading GetTransactionStatus). It is what
+     * lets a declined attempt still record the collection that followed it on
+     * the same tracking id; our own bookkeeping may never set it.
+     */
+    providerConfirmed?: boolean;
   }): Promise<RecordedPaymentAttempt>;
 
   /**

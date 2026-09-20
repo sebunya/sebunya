@@ -274,7 +274,9 @@ export class VerifyPesaPalPaymentUseCase {
     }
 
     // 5. Persist the verification outcome on the payment attempt.
-    await this.paymentRepo.updatePaymentAttemptStatus(attempt.id, { status: mappedStatus });
+    // The provider's own answer about the money, so it may record a collection
+    // that followed an earlier decline on the same tracking id (2026-09-20).
+    await this.paymentRepo.updatePaymentAttemptStatus(attempt.id, { status: mappedStatus, providerConfirmed: true });
 
     // 6. Apply the order-side effect.
     if (lifecycleTarget) {

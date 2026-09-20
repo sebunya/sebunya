@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { StartPesaPalPaymentUseCase } from '../../apps/api/src/application/use-cases/payments/StartPesaPalPaymentUseCase';
 import {
   TERMINAL_ATTEMPT_STATUSES,
+  assertAttemptTransition,
   canTransitionAttempt,
   type PaymentAttemptStatus,
 } from '../../apps/api/src/domain/payments/PaymentAttemptState';
@@ -129,5 +130,38 @@ describe('what must NOT change', () => {
     const { useCase, created } = build(null);
     await useCase.execute({ orderId: ORDER.id });
     expect(created).toHaveLength(1);
+  });
+});
+
+/**
+ * The same provider transaction can hold a decline AND the collection that
+ * followed it.
+ *
+ * Observed in production on 2026-09-20, on the shop's FIRST successful
+ * collection: order GP-202609-0B3BA402 (UGX 4,000). MTN declined, so the IPN
+ * wrote the attempt `failed`; the customer then paid the SAME PesaPal page with
+ * Airtel and it completed (confirmation 156914631189). The second IPN tried to
+ * write `completed` over `failed`, the state machine refused, the endpoint
+ * answered 500 — and the shop held the money with the order still marked
+ * unpaid. Money collected against an unfulfilled order is the one outcome the
+ * payments brief refuses to allow.
+ *
+ * Only the PROVIDER may make this move: it is the only party that knows whether
+ * money moved. Our own bookkeeping still cannot.
+ */
+describe('a decline followed by a real payment on the same tracking id', () => {
+  it('records the collection when the provider is the one saying so', () => {
+    expect(canTransitionAttempt('failed', 'completed', { providerConfirmed: true })).toBe(true);
+    expect(canTransitionAttempt('invalid', 'completed', { providerConfirmed: true })).toBe(true);
+    expect(canTransitionAttempt('abandoned', 'completed', { providerConfirmed: true })).toBe(true);
+  });
+  it('still refuses the same move from our own bookkeeping', () => {
+    expect(canTransitionAttempt('failed', 'completed')).toBe(false);
+    expect(canTransitionAttempt('invalid', 'completed')).toBe(false);
+    expect(canTransitionAttempt('failed', 'pending', { providerConfirmed: true })).toBe(false);
+    expect(canTransitionAttempt('reversed', 'completed', { providerConfirmed: true })).toBe(false);
+  });
+  it('names the provider route in the error, so 2am greps find it', () => {
+    expect(() => assertAttemptTransition('failed', 'completed')).toThrow(/with provider confirmation: completed, reversed/);
   });
 });

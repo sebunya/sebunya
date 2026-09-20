@@ -68,13 +68,14 @@ export class DrizzlePaymentAttemptRepository implements IPesaPalPaymentRepositor
     redirectUrl?: string | null;
     ipnReceivedAt?: Date | null;
     callbackReceivedAt?: Date | null;
+    providerConfirmed?: boolean;
   }): Promise<RecordedPaymentAttempt> {
     // THE state machine is enforced here, at the single write path, because
     // production held five attempts trapped in `pending` from May to August.
     // An illegal move throws — a warning on a money path is a log line nobody
     // reads. A self-loop (re-stamping timestamps) is legal.
     const current = await db.query.paymentAttempts.findFirst({ where: eq(paymentAttempts.id, id) });
-    if (current) assertAttemptTransition(current.status, update.status);
+    if (current) assertAttemptTransition(current.status, update.status, { providerConfirmed: update.providerConfirmed });
     const [row] = await db
       .update(paymentAttempts)
       .set({

@@ -20,7 +20,11 @@
  *   verification_failed    -> completed | failed | invalid | reversed
  *                             (ops re-verify; integrity mismatches need eyes)
  *   completed              -> reversed (a provider reversal or a refund)
- *   failed | invalid | reversed | abandoned  TERMINAL
+ *   failed | invalid       -> completed | reversed, but ONLY on the provider's
+ *                             own word: one tracking id can hold a declined
+ *                             attempt and then a successful one
+ *   abandoned              -> completed (same rule)
+ *   reversed               TERMINAL
  *
  * The transition map is enforced at the single write path. An illegal move
  * throws rather than warns, because the last module's lesson was that a warning
@@ -75,9 +79,36 @@ const TRANSITIONS: Record<PaymentAttemptStatus, readonly PaymentAttemptStatus[]>
   abandoned: [],
 };
 
-export function canTransitionAttempt(from: PaymentAttemptStatus, to: PaymentAttemptStatus): boolean {
+/**
+ * Moves that only the PROVIDER may make, because only the provider knows
+ * whether money moved.
+ *
+ * One provider transaction can carry more than one attempt by the customer: a
+ * declined MTN PIN followed by a successful Airtel payment is ONE tracking id
+ * with two outcomes. Our books recorded the decline and treated it as final, so
+ * the success that followed could not be written — observed in production on
+ * 2026-09-20 with the shop's first ever successful collection: PesaPal held
+ * "Completed, UGX 4,000, confirmation 156914631189" while the order said
+ * failed and unpaid. Money collected against an unfulfilled order is the one
+ * outcome the payments brief calls unacceptable.
+ *
+ * Our own bookkeeping still may not make this move; it is legal only when the
+ * provider's own status is the source (IPN, return leg or the poller).
+ */
+const PROVIDER_CONFIRMED_TRANSITIONS: Record<string, readonly PaymentAttemptStatus[]> = {
+  failed: ['completed', 'reversed'],
+  invalid: ['completed', 'reversed'],
+  abandoned: ['completed'],
+};
+
+export function canTransitionAttempt(
+  from: PaymentAttemptStatus,
+  to: PaymentAttemptStatus,
+  options?: { providerConfirmed?: boolean },
+): boolean {
   if (from === to) return true; // self-loop: re-stamping timestamps is legal
-  return TRANSITIONS[from]?.includes(to) ?? false;
+  if (TRANSITIONS[from]?.includes(to)) return true;
+  return options?.providerConfirmed === true && (PROVIDER_CONFIRMED_TRANSITIONS[from]?.includes(to) ?? false);
 }
 
 /**
@@ -86,17 +117,19 @@ export function canTransitionAttempt(from: PaymentAttemptStatus, to: PaymentAtte
  * The message names both states, because "invalid status" on a payment write is
  * exactly the kind of error text somebody greps for at 2am.
  */
-export function assertAttemptTransition(from: string, to: string): void {
+export function assertAttemptTransition(from: string, to: string, options?: { providerConfirmed?: boolean }): void {
   if (!isPaymentAttemptStatus(to)) {
     throw new Error(`PAYMENT_STATE_UNKNOWN: "${to}" is not a payment attempt status.`);
   }
   // An unknown FROM (legacy value) may move anywhere legal-to-enter once, so a
   // vocabulary migration cannot brick existing rows; it may not stay unknown.
   if (!isPaymentAttemptStatus(from)) return;
-  if (!canTransitionAttempt(from, to)) {
+  if (!canTransitionAttempt(from, to, options)) {
+    const provider = PROVIDER_CONFIRMED_TRANSITIONS[from];
     throw new Error(
       `PAYMENT_STATE_ILLEGAL_TRANSITION: a payment attempt cannot move from "${from}" to "${to}". ` +
-        `Legal exits from "${from}": ${TRANSITIONS[from].length ? TRANSITIONS[from].join(', ') : '(terminal)'}.`,
+        `Legal exits from "${from}": ${TRANSITIONS[from].length ? TRANSITIONS[from].join(', ') : '(terminal)'}` +
+        `${provider?.length ? `; with provider confirmation: ${provider.join(', ')}` : ''}.`,
     );
   }
 }
