@@ -388,3 +388,20 @@ What "stores and sends nothing" means precisely: passive detection sends nothing
 Also flagged, not changed: all 80 batteries show exactly **200 in stock** — asked the client whether that is real.
 
 Host after teardown: no task-owned containers; migrator image `goldplus-itest:12d3c7f8` kept on purpose; 28.69 GB used.
+
+## 22. RELEASED to production — 2026-09-20 (owner: "proceed … fully implement")
+
+| Step | Result |
+|---|---|
+| Preflight | Steward PRESSURE/admit, 1.9 GB RAM free, disk 38%, 0 transactions older than 60 s, live app `340fb1f5` |
+| `migrate-prod.sh goldplus-migrator:16ac9afc` (0144–0147) | backup `goldplus-prod-pre-0144-0147-personalisation-batteries-20260920-185345.dump` (158 MB) → rehearsal on a copy, run twice → **REHEARSE_OK** → live → assertion = 1 (table + valid index + 3 link columns + Benco inactive) |
+| `deploy-prod.sh 16ac9afc api web` | **DEPLOYED, 4/4 healthy**, `rollback-16ac9afc`; previous runtime kept as `rollback-pre-340fb1f5` |
+| Found live, minute 1 | 5 profiles with no visitor action — automatic hero `IMPRESSION` / nav `NBA_IMPRESSION` beacons created them |
+| Hotfix `0e4bc8d2` (api) | exposure beacons resolve read-only; only a visitor action creates a profile. **DEPLOYED 2/2 healthy** |
+| Found live, minute 7 | 8 add-to-carts from our own post-deploy Playwright smoke (normal Chrome UA) |
+| Hotfix `b815e300` (web) | the audit declares itself with a first-party `gp_probe` cookie; relays drop it. **DEPLOYED 2/2 healthy** |
+| Public check (Chrome, through Cloudflare) | `/battery-finder` renders; `/products/benco-23011-battery` → 404 |
+
+**First 13 minutes on production vs the same window yesterday:** rendered-rail rows **0** (counter: home_trending 532, product_related 97, cart_addon 64, complete_setup 97 empty); new profiles **16 vs 170**, all 16 with a visitor action (and all from our own smoke run, before it was taught to declare itself); behaviour events **34 vs 190**; hero/nav exposure beacons still recorded (12 / 109) with the profile optional; API errors 0; 4/4 healthy.
+Rollback: `rollback-pre-340fb1f5` images, or the three containment switches. Schema objects stay on rollback.
+**Not scheduled:** the 1 h / 24 h / 72 h observations (runbook §18.7). **Not done (needs people):** import upload + second-person approval, aliases, pack data, battery activation, publishing.
