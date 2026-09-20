@@ -263,3 +263,17 @@ probe matched any shell that mentioned the words.
 | Data-ready | compatibility: 34 claims prepared, awaiting owner decision; not applied |
 | Production-authorized | NO — migration 0144 + deploy await the owner |
 | Deployed / outcome-measured | NO / NO |
+
+## 17. Loose-ends pass (2026-09-20, later)
+
+- **Unindexed foreign key (production issue, pre-existing).** `recommendation_events.source_product_id → products` had no index: deleting one product scanned ~830k rows. Surfaced by a test cleanup exceeding 10 s on the production-size clone. Migration **0145** adds a partial index; on the clone that test went from a hook timeout to 4/4 in 0.4 s. Plain `CREATE INDEX` (migrator is transactional): event inserts wait a few seconds during the build; pages and checkout never wait on event ingestion.
+- **The clone harness silently skipped tests.** The image has no `vitest.config.ts`, so files importing `@goldplus/shared` (HeroContent, NavContent, TaxonomyConfig) could never load. The script now mounts the config; all three pass.
+- **Server-side search event** on `/shop?search=` is no longer recorded for declared automation (it was the one event path outside the three relays).
+- **Steward fix installed on the host** (backup `goldplus-storage-steward.bak-20260920`): verified — a command line that merely mentions "docker build" no longer reads as a running build.
+- **Cleaned up after my own testing:** the test builds and clone restores grew the disk 33% → 39% and tripped the Steward's growth alarm. Test images removed, build cache trimmed to the 2 GB policy, logs removed: disk back to 33.4%. The growth-rate alarm clears as its window rolls. Seven older dangling volumes were inspected and LEFT (audit caches and pre-existing data, not mine).
+- Synthetic monitor checkout sends no visit header (verified) — it cannot create a profile.
+
+**Real-PostgreSQL result on the final code (image e07beac1 + test timeout fix):** 8 files, **47/47**: PersonalisationReads, RecommendationCompatibilityMappings, HeroContent, NavContent, TaxonomyConfig, HeroSignals, ExperienceProfile, MeasurementCore. Migrations 0144 and 0145 applied cleanly on the production copy.
+
+Release now carries TWO migrations: 0144 (new table) and 0145 (index). Assert for migrate-prod:
+`select (count(*)=2)::int from pg_class where relname in ('recommendation_serving_hourly','recommendation_events_source_product_idx')`

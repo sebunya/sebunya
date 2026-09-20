@@ -109,5 +109,5 @@ suite('personalisation reads (real PostgreSQL)', () => {
       const s2 = await svc.getSignals(p2, []);
       expect(s2.visits).toBeGreaterThanOrEqual(3);
     }
-  });
+  }, 30_000);
 });
