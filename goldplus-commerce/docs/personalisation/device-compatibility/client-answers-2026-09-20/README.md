@@ -59,3 +59,6 @@ Sources: sunsky-online.com and mobspares.com (Pop 5 GO BL-38BT 4000mAh); aliexpr
 
 ## Final file, native importer, production copy (commit `4f158c38`)
 `ready to apply: 190 · held for review: 0 · with errors: 0`; devices 0 → 0, claims 0 → 0.
+
+## Rehearsal on a production copy (commit `98f8fbd9`)
+Migration 0147 through the real runner: Benco → `active = false`, battery `ARCHIVED`, its 1 stock-ledger record kept; the other **79** batteries untouched. Final file through the native importer: `ready to apply: 193 · held: 0 · errors: 0`; devices 0 → 0, claims 0 → 0.
