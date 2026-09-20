@@ -30,3 +30,6 @@ A GoldPlus packaging photo or a technician's fit check overrides any of these.
 
 ## Still no phone: 3 of 80
 `BENCO 23011` (client: skip for now), `WIFI BAT BIG`, `WIFI BATTERY SMALL`.
+
+## Native importer, production copy (commit `4edd1ee3`, Steward-admitted, lane released)
+`ready to apply: 189 · held for review: 5 · with errors: 0`; the five held rows are exactly the five listed above; `devices` 0 → 0 and `product_device_compatibility` 0 → 0.
