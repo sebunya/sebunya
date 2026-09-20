@@ -63,3 +63,8 @@ The client sent GoldPlus's printed **"Battery Original — Compatible Phone list
 - ~230 batteries on the list are not on the website — a catalogue gap for the owner, not an import error.
 
 Client-facing workbook: `~/Downloads/GoldPlus_Battery_Phone_Compatibility_v2_from_Client_List_2026-09-20.xlsx`.
+
+### While the client's answers are pending (2026-09-20, later)
+Five of the twelve batteries missing from the printed list are named by the OWNER'S OWN stock list (the aliases the catalogue import kept): `A11/BLP727` (A11 paired with BLP727 = an OPPO pack; two supplier lists agree → OPPO A11, A11x, A5 2020, A9 2020), `BL-681` ("OPPO F9 (BL 681)"), `A10S`, `A32/5G`, `NOKIA C1` (generation unknown). They are added to the import file as drafts with their own evidence source, clearly *not* attributed to the printed list: **99 claims on 69 batteries, all 99 pass the importer's rules.** The client is still asked to confirm them.
+
+**Exactly 11 of the 80 batteries have no phone from any GoldPlus record:** `4L`, `4U`, `4UL`, `5C` (the list prints the Nokia battery type only), `BL-15DI`, `BENCO 23011`, `VIVO B-B1`, `VIVO B-B2`, `VIVO B-D2`, `WIFI BAT BIG`, `WIFI BATTERY SMALL`. The production database holds nothing more for them (no supplier code, capacity or notes). They remain findable by their battery code; they need the client, a label photo, or a deliberate decision to cite a public Nokia reference.
