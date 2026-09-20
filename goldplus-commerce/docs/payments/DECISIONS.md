@@ -123,3 +123,32 @@ to.
    resolves seconds later stops the page insisting it could not be confirmed.
    Both doors — the redirect and that lookup — go through one
    `describeSettlement`, so they can never tell the customer different things.
+
+## 2026-09-20 (second pass) — the order's money, and what "pay again" means
+
+Reviewing the module after the first collection turned up three more, two of
+which I had argued my way out of once.
+
+6. **The order's payment status is its own state machine.**
+   `updateOrderPaymentStatusSafely` guarded nothing. An order holds several
+   attempts — the decline and the one that paid — and the provider notifies per
+   TRANSACTION and retries, so a late word about the declined sibling wrote
+   `failed` over `paid`. `paid` is now withdrawn only by a reversal, `reversed`
+   is final, and a failed attempt may still be followed by a payment. Enforced
+   at BOTH writers (repository and `OrderTransitionService`). A refused write is
+   logged and skipped rather than thrown: a provider retry is normal traffic,
+   and turning normal traffic into a 500 is what caused the original incident.
+
+7. **"Pay again" returns to the page the customer was on**, while it is
+   plausibly still open (30 minutes, `PESAPAL_RETRY_REUSE_MINUTES`), with the
+   amount unchanged. The earlier reasoning — that reuse risked double payment —
+   was backwards: opening a SECOND transaction is what leaves two payable pages
+   for one order, and placing a new order did that already. PesaPal publishes no
+   page lifetime, so the window is a stated assumption, and past it we open a
+   fresh transaction because that is the safe direction.
+
+8. **A parked checkout is released once the question is answered.**
+   `PAYMENT_REVIEW` means "we do not know what happened to the money". When the
+   provider then says nothing did, the checkout returns to the trunk
+   (`PAYMENT_STARTED`) and the order is payable again. It used to stay parked
+   for ever, leaving an order we KNEW was unpaid permanently unpayable.
