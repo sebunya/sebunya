@@ -47,3 +47,6 @@ None qualifies today: not one claim has packaging or fit evidence on file. The s
 
 ## Guard added in code
 `DrizzleDeviceRepository.compatibleProducts` / `accessorySuggestions` read this table with no publication filter. They have no callers today, but the first caller would have shown every staged claim as a fit. Both now require a published claim, checked evidence and an active battery — verified on real PostgreSQL with a staged DRAFT row (returns nothing).
+
+## The 14 iPhone lines
+Their source rows have no battery code — those batteries are identified by phone name. The live catalogue codes them `IP X`, `IP XR`, `IP 11`…, so they can be staged simply by putting that code in the *Battery Reference* column. That is a data decision for the owner (it asserts "the IP X battery is the iPhone X battery"), so the file leaves them blank.

@@ -334,3 +334,26 @@ Immediately: smoke list above; `RESPONSE` rows written after deploy = 0; counter
 15 min / 1 h: API 5xx and p99 unchanged (±20%); new profiles ≈ sessions with an action, not page loads; checkout page loads.
 24 h / 72 h: events/day falls by roughly the RESPONSE share; every new profile has ≥1 visitor-action event; disk growth slope flattens; **a fall in visitor-action events, or any drop in orders started, is a failure signal → set the three containment switches to `false` and investigate.**
 Undeclared automation watch: profiles/day ÷ visitor-action events/day, bursts of profiles with a single PRODUCT_VIEWED and nothing else, regular inter-arrival timing. Signals for investigation, not proof about any shopper.
+
+## 19. Batteries, phone suggestion, and corrections (2026-09-20 13:40 UTC)
+
+**Runtime candidate is now `1a944208`** (app code) — later commits touch only the Steward, docs and one ledger. Diff `55447fe7 → 1a944208`: `ThisPhoneSuggestion.astro` (new), `battery-finder.astro`, `products/[slug].astro`, `DrizzleDeviceRepository.ts` (publication predicate), tests. Evidence for that diff: web `tsc` + `astro build` clean; full suite at the commit **8,140 passed / 1 failed (`ZeroSkipGate`, environment) / 241 skipped**; real PostgreSQL `PersonalisationReads` **5/5** including the new predicate against a staged DRAFT row; migrations re-applied by the real runner. NOT re-observed in a browser: the two pages that gained the suggestion (the component is hidden by default and was visually confirmed hidden on desktop Chrome in its previous inline form). Diff `ff750336 → 55447fe7` was covered in §18: migration bounds (re-run by the real runner), vitest excludes (full suite), docs/CSV.
+
+**Wording corrected.** `lock_timeout = 5s` bounds how long the migration WAITS for the table lock; it does not mean it never queues — it may queue for up to 5 s, then aborts. 1.5 s build / ~4 s runner time are observations on a copy, not production guarantees; the 120 s statement bound and the `indisvalid` post-condition are the controls.
+
+**What the battery module already had (verified, not rebuilt):** evidence ladder (`SUPPLIER_LISTED → PACKAGE_VERIFIED / FIT_TESTED / VERIFIED_EXACT`, `CONDITIONAL`, `REJECTED`), workflow `DRAFT → REVIEW → READY → ACTIVE → ARCHIVED` with maker≠verifier, publication = claim check × battery check (`publicFitState`, unit-tested for every combination), honest copy ("We have not matched a battery to this phone yet… That does not mean one does not exist"), an assisted request form with WhatsApp hand-off, and request statuses that turn an enquiry into a draft claim (`BATTERY_MAPPED`, `DRAFT_CREATED`). Suspension = archive (history kept).
+
+**Added:** the phone suggestion as one component on the finder and on battery product pages (question, correctable, stores/sends nothing, never evidence); a search that came from it pre-fills the model-number field of the help form; safety/privacy lines on the help form; the publication predicate on two unguarded reads; the grouped evidence-request sheet; ledger reconciled to the native dry run (34 / 23 / 12 / 33).
+
+**Two Steward defects found by using it, both fixed and installed (sha256 `c857106f…`):** the "docker build" probe matched any shell mentioning the words (earlier), and `admit --dry-run` TOOK the lease it was asking about — one check held the heavy-I/O lane for an hour. Verified: consecutive dry runs admit and leave no lease. The Steward later DENIED my second clone run (growth alarm from my own restores); I did not override it and reconciled from the first run instead.
+
+**Host footprint of today's verification:** 26.85 GB → 28.43 GB used (13:36 UTC); one 970 MB image kept on purpose (`goldplus-itest:1a944208`, the migrator image for the release); nothing else of mine remains. Growth alarm: PRESSURE, expected to decay as its window rolls — not yet cleared.
+
+**Decisions (unchanged in kind, updated in detail)**
+| Decision | Status | Next action |
+|---|---|---|
+| Apply 0144+0145, deploy api+web at `1a944208` | code-ready, DB-verified, desktop-browser-verified for shop ordering; suggestion pages build-verified only; **not authorized** | owner approval → `migrate-prod.sh goldplus-itest:1a944208 …` then `deploy-prod.sh` |
+| Stage the 69 importable claims as invisible drafts | native dry run passed on a production copy; **not authorized** | owner uploads/approves at /admin/batteries (needs a second person to apply — maker≠checker) |
+| Publish any fit | **NO-GO — no claim has evidence yet** | two photos each of BL-49FT and BL-49GX unlock up to 12 fits; then activate those two batteries |
+| Send the evidence sheet to the supplier | prepared; **not authorized, not sent** | owner forwards `evidence-request-sheet.md` |
+| Credentials | **OPEN** | owner: regenerate ZeptoMail token; change admin password |
