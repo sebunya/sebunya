@@ -154,11 +154,11 @@ describe("migration 0100 — additive, reversible, no inserts", () => {
 });
 
 describe("the browser holds ONLY an opaque locator (AC48/AC49)", () => {
-  it("the middleware mints an HttpOnly, SameSite=Lax, 180-day, SIGNED cookie", () => {
+  it("the middleware mints an HttpOnly, SameSite=Lax, 400-day sliding, SIGNED cookie", () => {
     const mw = read("apps/web/src/middleware.ts");
     expect(mw).toContain('httpOnly: true');
     expect(mw).toContain('sameSite: "lax"');
-    expect(mw).toContain("180 * 24 * 60 * 60");
+    expect(mw).toContain("400 * 24 * 60 * 60");
     // R9 M2: minting and verification go through the signed-token lib —
     // an unsigned or fabricated cookie is replaced, never trusted.
     expect(mw).toContain("mintSignedVisitToken");

@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { VISITOR_ACTION_EVENT_TYPES } from '@goldplus/shared';
+import { pgTextArray } from '../db/PgParams';
 
 /**
  * Per-visitor hero signals.
@@ -44,9 +45,6 @@ export interface HeroSignals {
    */
   zone: null;
 }
-
-// A Postgres text[] literal; the names are our own closed vocabulary.
-const VISITOR_ACTIONS = `{${VISITOR_ACTION_EVENT_TYPES.join(',')}}`;
 
 const rowsOf = (r: any): any[] => (Array.isArray(r) ? r : r?.rows ?? []);
 
@@ -134,7 +132,7 @@ export class HeroSignalsService {
               -- operational type) is not on this list and so can never feed
               -- back into what we render (R0 F7). No time window: history is
               -- kept forever, and the lookup is one profile's indexed rows.
-              and e.event_type = any(${VISITOR_ACTIONS}::text[])
+              and e.event_type = any(${pgTextArray(VISITOR_ACTION_EVENT_TYPES)})
           ), 0)::int as event_days
         from experience_profiles ep
         where ep.id = ${profileId}::uuid
