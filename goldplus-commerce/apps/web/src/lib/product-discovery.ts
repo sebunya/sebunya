@@ -162,7 +162,13 @@ export function filterDiscoveryProducts(
     .filter((product) => matchesDiscoveryQuery(product, filters.search, taxonomy));
 }
 
-export function sortDiscoveryProducts(products: ProductPublicDto[], sort: DiscoverySort, taxonomy: Taxonomy = DEFAULT_TAXONOMY): ProductPublicDto[] {
+/**
+ * `preferredCategories` (the visitor's own interest, strongest first) only
+ * moves whole categories to the front of the DEFAULT browse order. It never
+ * touches an order the shopper chose, never hides anything, and within a
+ * category the order is the same for everyone.
+ */
+export function sortDiscoveryProducts(products: ProductPublicDto[], sort: DiscoverySort, taxonomy: Taxonomy = DEFAULT_TAXONOMY, preferredCategories: readonly string[] = []): ProductPublicDto[] {
   const list = [...products];
   const safePrice = (product: ProductPublicDto) =>
     typeof product.retailPriceUgx === 'number' && Number.isFinite(product.retailPriceUgx) && product.retailPriceUgx > 0
@@ -174,7 +180,12 @@ export function sortDiscoveryProducts(products: ProductPublicDto[], sort: Discov
   // Default: the order the shop is BROWSED in — taxonomy category, then
   // subcategory, then name — never creation time. "Newest first" put the
   // 89 batteries, imported last, on the first four pages of the shop.
-  const categoryRank = new Map(taxonomy.map((c, i) => [c.name, i]));
+  const preferred = preferredCategories.map((slug) => normalizeCategoryParam(slug, taxonomy)).filter(Boolean);
+  const ordered = [...taxonomy].sort((a, b) => {
+    const pa = preferred.indexOf(a.slug); const pb = preferred.indexOf(b.slug);
+    return (pa < 0 ? Infinity : pa) - (pb < 0 ? Infinity : pb) || taxonomy.indexOf(a) - taxonomy.indexOf(b);
+  });
+  const categoryRank = new Map(ordered.map((c, i) => [c.name, i]));
   const subRank = new Map<string, number>();
   taxonomy.forEach((c) => c.subcategories.forEach((sc, i) => subRank.set(sc.slug, i)));
   const rank = (p: ProductPublicDto) => [categoryRank.get(p.categoryName) ?? taxonomy.length, subRank.get(getProductSubcategory(p, taxonomy)) ?? 999] as const;

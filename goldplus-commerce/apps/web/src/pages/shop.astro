@@ -68,6 +68,8 @@ function shopUrl(overrides: Partial<{ search: string; category: string; subcateg
   if (state.subcategory) params.set('subcategory', state.subcategory);
   if (state.sort && state.sort !== 'default') params.set('sort', state.sort);
   if (state.page && state.page > 1) params.set('page', String(state.page));
+  // The shopper's choice of the standard order survives paging.
+  if (Astro.url.searchParams.get('order') === 'standard') params.set('order', 'standard');
   const query = params.toString();
   return query ? `/shop?${query}` : '/shop';
 }
@@ -84,7 +86,28 @@ if (rawProducts.length === 0) {
 
 const availableProducts = dedupeProductsById(getCleanCatalog(rawProducts, taxonomy)).filter(isListableProduct);
 const filteredProducts = filterDiscoveryProducts(availableProducts, { search, category, subcategory }, taxonomy);
-const products = sortDiscoveryProducts(filteredProducts, sort, taxonomy);
+// The default browse order leads with what THIS visitor has been looking at.
+// Only for a returning browser (a first visit and every crawler get the
+// standard order), only when nothing else was chosen, and `?order=standard`
+// turns it off. A pure read: it creates no profile and records nothing.
+let preferredCategories: string[] = [];
+const personalOrderEligible = sort === 'default' && !search && !category && !subcategory
+  && Astro.url.searchParams.get('order') !== 'standard' && !!Astro.locals.gpVisit;
+if (personalOrderEligible) {
+  try {
+    const res = await fetch(`${apiBase}/hero/signals`, { headers: { 'x-gp-visit': Astro.locals.gpVisit! }, signal: AbortSignal.timeout(1200) });
+    const body = await res.json().catch(() => null);
+    const affinity = res.ok && Array.isArray(body?.data?.categoryAffinity) ? body.data.categoryAffinity : [];
+    preferredCategories = affinity.map((a: { categorySlug?: unknown }) => String(a.categorySlug ?? '')).filter(Boolean);
+  } catch {
+    // The standard order is always a fine answer.
+  }
+}
+const standardLead = sortDiscoveryProducts(filteredProducts, sort, taxonomy)[0]?.categoryName;
+const products = sortDiscoveryProducts(filteredProducts, sort, taxonomy, preferredCategories);
+// Said plainly, and only when it actually changed what is on top.
+const personalLead = preferredCategories.length > 0 && products[0] && products[0].categoryName !== standardLead ? products[0].categoryName : '';
+if (personalLead) Astro.response.headers.set('Cache-Control', 'private, no-store');
 const totalPages = Math.max(1, Math.ceil(products.length / PAGE_SIZE));
 // A page past the end shows the last page rather than an empty grid.
 const page = Math.min(requestedPage, totalPages);
@@ -257,6 +280,13 @@ const shopBreadcrumb = breadcrumbJsonLd([
         <span class="text-xs font-bold uppercase tracking-wide text-slate-600">Active filters</span>
         {activeFilters.map((item) => <a href={item.href} aria-label={`Remove filter ${item.label}`} class="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700">{item.label} <span aria-hidden="true">×</span></a>)}
       </section>
+    )}
+
+    {personalLead && (
+      <p class="mt-5 text-sm text-slate-700">
+        Showing <strong>{personalLead}</strong> first because you have been looking at them.
+        {' '}<a href="/shop?order=standard" class="font-bold underline">Show the standard order</a>
+      </p>
     )}
 
     <div class="mt-7 flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
