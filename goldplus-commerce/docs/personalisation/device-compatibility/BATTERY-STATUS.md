@@ -39,5 +39,5 @@
 - Nokia C1: sellers disagree on whether the S5420AP pack is for the C1 (2019) or the C1 2nd Edition.
 - BL-58BT: the printed cell was blurred; recorded from the research reading.
 - Reference capacity/voltage is the ORIGINAL pack's rating (19 seen on independent parts listings, 23 from public specifications, 35 from the BL-code convention with no voltage) — never to be shown as the GoldPlus pack's own rating until read from the pack.
-- Every battery shows exactly 200 in stock — likely a placeholder.
+- (Resolved: 200 per battery is the real opening stock — owner, 2026-09-20.)
 - ~230 batteries on the client's printed list are not on the website; the Nokia block, half the Samsung block and the Redmi/Pixel rows of that list were read at normal size only.
