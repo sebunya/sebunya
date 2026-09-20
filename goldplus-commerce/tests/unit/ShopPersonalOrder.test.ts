@@ -32,7 +32,13 @@ describe("the shop's default order leads with the visitor's own interest", () =>
   it("the page only personalises a returning browser on the bare default view, says so, offers the way out, and is never shared-cached", () => {
     const src = readFileSync("apps/web/src/pages/shop.astro", "utf8");
     expect(src).toContain("sort === 'default' && !search && !category && !subcategory");
-    expect(src).toContain("!!Astro.locals.gpVisit");
+    expect(src).toContain("personalOrderEligible && Astro.locals.gpVisit");
+    expect(src).toContain("import.meta.env.SHOP_PERSONAL_ORDER !== 'false'");
+    // Sparse history is not an interest, the explanation claims only what is true,
+    // and paging carries the page-1 decision instead of re-deciding.
+    expect(src).toContain("Number(a.score) >= 2");
+    expect(src).toContain("based on your recent activity on GoldPlus");
+    expect(src).toContain("params.set('lead', preferredCategories.join(','))");
     expect(src).toContain("Show the standard order");
     expect(src).toContain("if (personalLead) Astro.response.headers.set('Cache-Control', 'private, no-store')");
   });

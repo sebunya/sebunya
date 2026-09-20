@@ -70,6 +70,7 @@ function shopUrl(overrides: Partial<{ search: string; category: string; subcateg
   if (state.page && state.page > 1) params.set('page', String(state.page));
   // The shopper's choice of the standard order survives paging.
   if (Astro.url.searchParams.get('order') === 'standard') params.set('order', 'standard');
+  if (state.page && state.page > 1 && preferredCategories.length > 0) params.set('lead', preferredCategories.join(','));
   const query = params.toString();
   return query ? `/shop?${query}` : '/shop';
 }
@@ -91,14 +92,27 @@ const filteredProducts = filterDiscoveryProducts(availableProducts, { search, ca
 // standard order), only when nothing else was chosen, and `?order=standard`
 // turns it off. A pure read: it creates no profile and records nothing.
 let preferredCategories: string[] = [];
-const personalOrderEligible = sort === 'default' && !search && !category && !subcategory
-  && Astro.url.searchParams.get('order') !== 'standard' && !!Astro.locals.gpVisit;
-if (personalOrderEligible) {
+const standardOrderChosen = Astro.url.searchParams.get('order') === 'standard';
+const personalOrderEligible = import.meta.env.SHOP_PERSONAL_ORDER !== 'false'
+  && sort === 'default' && !search && !category && !subcategory && !standardOrderChosen;
+// Paging must not reshuffle: page 1 decides the lead categories and every page
+// link carries them (`lead`), so interest that changes mid-browse cannot
+// duplicate or drop a product between pages. The value is only ever matched
+// against the taxonomy, never echoed.
+const leadParam = Astro.url.searchParams.get('lead');
+if (personalOrderEligible && leadParam !== null) {
+  preferredCategories = leadParam.split(',').map((v) => normalizeCategoryParam(v, taxonomy)).filter(Boolean).slice(0, 3);
+} else if (personalOrderEligible && Astro.locals.gpVisit) {
   try {
-    const res = await fetch(`${apiBase}/hero/signals`, { headers: { 'x-gp-visit': Astro.locals.gpVisit! }, signal: AbortSignal.timeout(1200) });
+    const res = await fetch(`${apiBase}/hero/signals`, { headers: { 'x-gp-visit': Astro.locals.gpVisit }, signal: AbortSignal.timeout(1200) });
     const body = await res.json().catch(() => null);
     const affinity = res.ok && Array.isArray(body?.data?.categoryAffinity) ? body.data.categoryAffinity : [];
-    preferredCategories = affinity.map((a: { categorySlug?: unknown }) => String(a.categorySlug ?? '')).filter(Boolean);
+    preferredCategories = affinity
+      // One glance at a product is not an interest: a view scores 1 and fades,
+      // so 2 needs a click/add-to-cart or several recent views.
+      .filter((a: { score?: unknown }) => Number(a.score) >= 2)
+      .map((a: { categorySlug?: unknown }) => normalizeCategoryParam(String(a.categorySlug ?? ''), taxonomy))
+      .filter(Boolean).slice(0, 3);
   } catch {
     // The standard order is always a fine answer.
   }
@@ -284,7 +298,7 @@ const shopBreadcrumb = breadcrumbJsonLd([
 
     {personalLead && (
       <p class="mt-5 text-sm text-slate-700">
-        Showing <strong>{personalLead}</strong> first because you have been looking at them.
+        Showing <strong>{personalLead}</strong> first, based on your recent activity on GoldPlus.
         {' '}<a href="/shop?order=standard" class="font-bold underline">Show the standard order</a>
       </p>
     )}

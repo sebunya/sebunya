@@ -104,6 +104,14 @@ const shownDevice: FinderDeviceDto | null = device?.device ?? (search?.kind === 
           <button type="submit" class="rounded-xl bg-brand-dark px-6 py-3 font-bold text-white hover:opacity-90">Search</button>
         </form>
 
+        {!q && !brandSlug && !deviceSlug && (
+          <p id="gp-this-phone" hidden class="mt-4 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-brand-dark">
+            Shopping for the phone you are using?
+            {' '}<a id="gp-this-phone-link" href="/battery-finder" class="font-bold underline">Search for <span id="gp-this-phone-model"></span></a>
+            <span class="text-gray-600"> — or type a different phone above.</span>
+          </p>
+        )}
+
         {brands.length > 0 && !q && !brandSlug && !deviceSlug && (
           <section class="mt-8" aria-labelledby="brands-heading">
             <h2 id="brands-heading" class="text-sm font-black uppercase tracking-widest text-gray-500">{cfg?.findByPhoneLabel ?? 'Find by phone'}</h2>
@@ -267,3 +275,24 @@ const shownDevice: FinderDeviceDto | null = device?.device ?? (search?.kind === 
     )}
   </div>
 </BaseLayout>
+
+<script>
+  // The browser's own model code, offered as a QUESTION. Nothing is stored or
+  // sent; choosing it is an ordinary search the shopper can see and change.
+  import { plausibleModelCode, modelFromUserAgent } from '../lib/browsingDevice';
+  const box = document.getElementById('gp-this-phone');
+  if (box) {
+    const show = (model: string | null) => {
+      if (!model) return;
+      (document.getElementById('gp-this-phone-model') as HTMLElement).textContent = model;
+      (document.getElementById('gp-this-phone-link') as HTMLAnchorElement).href = '/battery-finder?q=' + encodeURIComponent(model);
+      box.hidden = false;
+    };
+    const uaData = (navigator as unknown as { userAgentData?: { mobile?: boolean; getHighEntropyValues?: (h: string[]) => Promise<{ model?: string }> } }).userAgentData;
+    if (uaData?.getHighEntropyValues && uaData.mobile) {
+      uaData.getHighEntropyValues(['model']).then((v) => show(plausibleModelCode(v.model) ?? modelFromUserAgent(navigator.userAgent))).catch(() => show(modelFromUserAgent(navigator.userAgent)));
+    } else {
+      show(modelFromUserAgent(navigator.userAgent));
+    }
+  }
+</script>
