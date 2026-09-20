@@ -277,3 +277,60 @@ probe matched any shell that mentioned the words.
 
 Release now carries TWO migrations: 0144 (new table) and 0145 (index). Assert for migrate-prod:
 `select (count(*)=2)::int from pg_class where relname in ('recommendation_serving_hourly','recommendation_events_source_product_idx')`
+
+## 18. Release closure (candidate `55447fe7` + this docs commit; 2026-09-20 13:10 UTC)
+
+State: **application undeployed** (live = `340fb1f5`); **host tooling updated** (Steward, sha256 `e32e29d6…22dd` = repo file; backup `…steward.bak-20260920` sha256 `d11c1d0b…9889`; rollback = copy the backup back). Steward verified both ways: a command line that only mentions "docker build" → not busy; a process actually named `docker build …` → DEFER. No task-owned process, container, network or tunnel remains on the host or the workstation. Push triggers nothing (no CI workflows).
+
+### 18.1 Isolated staging used for the proof
+Candidate API image + newest production dump restored into a throwaway Postgres 16 (900 MB cap) + Redis, private Docker network, API bound to `127.0.0.1` only, random clone-scoped secrets, **no provider keys** (no SMS/email/payment/ads possible), outbox neutralised before start. Candidate web (final build) ran on the workstation through an SSH tunnel. Destroyed afterwards with volumes.
+
+### 18.2 Journeys — measured database deltas (curl, real routes)
+| Step | profiles | events | RESPONSE rows |
+|---|---|---|---|
+| 4 cookieless renders (/, /shop, PDP, /cart) | +0 | +0 | 0 |
+| 6 renders with a RETURNED cookie, no action | +0 | +0 | 0 |
+| declared-automation product view, cookie retained → HTTP 204 | +0 | +0 | 0 |
+| first real action (product view), same browser → 200 | **+1** | **+1** | 0 |
+| probe search `/shop?search=` with retained cookie | +0 | +0 | 0 |
+| shopper search, same route | +0 | +1 | 0 |
+Serving counter rose (23 responses / 6 empty / 17 fallback) with zero flush failures; zero `HERO_*_FAILED`.
+Shop: one view (score 1.0) → standard order, no note. View + add-to-cart in Storage (4.0) → note "Showing **Storage Devices** first, based on your recent activity on GoldPlus", `Cache-Control: private, no-store`, opt-out link, page links carry `lead=storage-devices`; all 184 products appear exactly once across pages in both orders; explicit sort, search and `?order=standard` → no personal order, and `order=standard` survives paging; hostile `lead=` ignored. When the interest is already the first category nothing changes and nothing is claimed.
+
+### 18.3 Real browser (Chrome on macOS, desktop viewport — NOT a handset)
+First visit to /shop: standard order, no note. Three genuine product-page views (the page's own script sent the events) → /shop leads with Storage and shows the note; clicking "Show the standard order" restores chargers-first and removes the note. Battery finder on a Mac: generic finder, **no** phone suggestion. Console: no errors on /shop or /battery-finder. Product images are placeholders in staging (media volume not mounted) — expected.
+**Not observed:** any physical phone or TV; the "this phone?" suggestion appearing (needs an Android browser that reports a model — logic covered by unit tests only); login/logout/account-switch in the browser (covered by existing `ExperienceProfile` integration tests 5/5, not re-observed visually); keyboard/touch passes. Containment for that gap: the suggestion is client-side, hidden by default, stores and sends nothing, and only pre-fills a search the shopper can see.
+
+### 18.4 Migrations — operational envelope (PostgreSQL 16.14)
+- FK: `recommendation_events.source_product_id → products(id) ON DELETE SET NULL`; no existing index leads with that column. **0 of 880,621 live rows are non-null**, so the partial index is 8 KB; the cost is one heap scan.
+- Build on the production copy (875k rows, 912 MB heap): **1.49 s**, `indisvalid = t`. Through the real runner (drizzle, one transaction): 0144 + 0145 in ~4 s including container start. Attribution of the speed-up: same clone, same fixtures — the product-delete cleanup went from >10 s hook timeout to 0.4 s only after the index existed.
+- Lock: plain `CREATE INDEX` takes SHARE on the table: reads continue, INSERTs wait. Writers to this table: browser event POSTs (fire-and-forget, ~818/h now, far fewer after this release) and nothing in checkout/order code (verified by search). During the ~1.5 s build a handful of event requests hold a pool connection; pages and checkout do not write here.
+- Bounded: `SET LOCAL lock_timeout='5s'` (abort instead of queueing behind a long transaction — a queued lock would block all later inserts) and `statement_timeout='120s'`. On abort the whole migrate transaction rolls back (0144 too) and is simply re-run. No sessions are killed. Pre-check: no transaction older than 60 s on the table (there were none at 12:50 UTC). `CONCURRENTLY` rejected: the runner is transactional and a failed concurrent build leaves an invalid index to clean up — not worth it for a 1.5 s scan.
+- Compatibility: old app + new schema is safe (new table unused, index invisible). New app REQUIRES 0144 (counter table) → migrate first. Application rollback keeps both objects; neither is dropped.
+- Post-conditions: `select (count(*)=2)::int from pg_class where relname in ('recommendation_serving_hourly','recommendation_events_source_product_idx')` = 1 AND `indisvalid`.
+
+### 18.5 Tests — one summary
+- Chronology resolved: the "13 failures" run executed BEFORE committing (dirty-tree guards did their job). On a clean tree at `ff750336`: **8,116 passed / 1 failed / 241 skipped**; the run leaves the tree clean. All eleven Slice09 guards pass.
+- The 1 failure is `ZeroSkipGate`: by contract it fails unless five services exist (`DATABASE_URL`, `COMMERCE_`, `AUTH_`, `ANALYTICS_TEST_DATABASE_URL`, `REDIS_TEST_URL`) via `scripts/integration-env.sh`, which needs local Docker (unavailable on this workstation). It stays red locally — not weakened.
+- The 241 skips = the real-Postgres suites (237 before + my 4 new tests). Independently executed on the production clone: 8 files, **47/47**, including every suite touching the changed paths (profiles, hero signals, counter, affinity, reader, commercial stitching). NOT executed anywhere: suites gated only on the AUTH / ANALYTICS / Redis test services — none import the changed modules.
+- Harness fix proven by collection: HeroContent 6, NavContent 5, TaxonomyConfig 3 tests now execute on the clone (previously failed to load).
+- Audit packages: vitest no longer mis-collects them; `performance-audit` 12/12 under `node --test` (its package script). `compatibility-audit` is Playwright against a live site → post-deploy check.
+- Web `tsc` clean and `astro build` complete on the final code (rebuilt for staging).
+- Earlier statement corrected: the catalogue has FIVE categories (Power 142, Storage 21, Sound 14, PC 4, Car 3), not "three plus Other".
+
+### 18.6 Decisions (each independent)
+| Decision | Evidence | Status | Residual risk | Exact next action |
+|---|---|---|---|---|
+| Apply 0144 + 0145 | §18.4; applied by the real runner on a production copy | code-ready, DB-verified; **not authorized** | event inserts pause ≤ ~2 s; abort+rerun if a lock isn't free in 5 s | owner approval → `scripts/migrate-prod.sh goldplus-itest:55447fe7 0145-personalisation "<post-condition SQL>"` (takes its own backup + rehearsal first) |
+| Deploy api + web | §18.2–18.5 | code-ready, DB-verified, browser-verified on desktop; **not authorized** | handset/TV unobserved; undeclared JS bots | after migrations: `./scripts/deploy-prod.sh <sha> api web`; smoke: /health, /shop, PDP, cart, checkout page, `/recommendations` header; rollback `rollback-340fb1f5` |
+| Independent switches | code | ready | — | `SHOP_PERSONAL_ORDER=false` (shop order only); `SSR_IDENTITY_V2`, `PROFILE_READ_PURE`, `RESPONSE_EVENT_TO_METRIC` (containment; turning these off restores the pollution). The phone suggestion has no server switch — it is inert markup; remove via a web redeploy if ever needed |
+| Stage battery claims (DRAFT, invisible) | `device-compatibility/` ledger; importer rules run on all 102 | prepared; **not authorized**; not yet rehearsed through the admin UI on a clone | none customer-facing: imports never publish, and all 80 batteries are lifecycle REVIEW | owner approval → upload the CSV at /admin/batteries (type Compatibility), dry run, apply |
+| Publish any fit | — | **NO-GO** | — | needs package/fit evidence per claim + battery activation; separate decision |
+| Credentials | §13 | **OPEN** | token usable by anyone with the transcript; admin password in git history | owner-only (console sign-ins I must not perform): regenerate the ZeptoMail send token (revokes the old one) and place it in the host env file; change the admin password in the admin UI. Neither blocks this release technically — email does not deliver today — but both stay open until done |
+
+### 18.7 Observation plan (NOT scheduled — manual runbook)
+Baselines: ~19–27k events/day, ~95% RESPONSE; nearly every profile seen once; DB p99 ≈ 43 ms; disk 27.4 GB used.
+Immediately: smoke list above; `RESPONSE` rows written after deploy = 0; counter rows appearing; zero `*_FAILED` log lines.
+15 min / 1 h: API 5xx and p99 unchanged (±20%); new profiles ≈ sessions with an action, not page loads; checkout page loads.
+24 h / 72 h: events/day falls by roughly the RESPONSE share; every new profile has ≥1 visitor-action event; disk growth slope flattens; **a fall in visitor-action events, or any drop in orders started, is a failure signal → set the three containment switches to `false` and investigate.**
+Undeclared automation watch: profiles/day ÷ visitor-action events/day, bursts of profiles with a single PRODUCT_VIEWED and nothing else, regular inter-arrival timing. Signals for investigation, not proof about any shopper.
