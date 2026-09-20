@@ -71,3 +71,6 @@ Client confirmed: Pop 6 Go fits **both** BL-38BT and BL-38CT; Asha 500 fits **bo
 - **Model numbers** filled from the August research where the lists give a name only (83 rows now carry one). **18 extra phones** added from that research where two independent supplier lists agree — labelled as research, not as the printed list.
 - **`battery-enrichment-catalogue.csv`** (and `~/Downloads/GoldPlus_Battery_Enrichment_per_SKU_2026-09-20.xlsx`): one line per SKU — SKU and website code unchanged, original-pack code, reference capacity (77 of 79) and voltage (36 of 79), compatible phones with model numbers, search keywords, and a suggested SEO title/description.
   **Capacity and voltage here are the ORIGINAL pack's public rating, not the GoldPlus pack's printed rating.** The system (rightly) requires the pack's own figures — "read them from the pack; never guess" — so these are reference values beside an empty column for staff to fill from the pack. Voltage is blank wherever no listing or specification stated it. SEO text that names phones is for use once those matches are verified; code keywords are safe now. All of it goes in through the admin listing editor — nothing here writes to the live catalogue.
+
+## Enriched file, native importer, production copy (commit `23a579d5`)
+`ready to apply: 208 · held: 0 · errors: 0`; devices 0 → 0, claims 0 → 0.
