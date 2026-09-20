@@ -16,6 +16,23 @@ const FIT_RANK = sql`CASE ${productDeviceCompatibility.fitType} WHEN 'exact' THE
 // Popularity signal = real units sold; avoids inventing a metric.
 const SOLD = sql`(SELECT count(*) FROM order_items oi WHERE oi.product_id = ${products.id})`;
 
+/**
+ * The ONLY compatibility rows a customer-facing read may see: published by a
+ * reviewer, with evidence we checked (or a stated condition), and — when the
+ * product is a battery — a battery that is itself active. A staged import is
+ * DRAFT + SUPPLIER_LISTED and never passes. Mirrors
+ * domain/batteries/CompatibilityWorkflow.publicFitState; before this existed,
+ * these two reads would have shown every staged supplier claim as a fit.
+ */
+const PUBLISHED_FIT = sql`(
+  ${productDeviceCompatibility.workflowStatus} = 'ACTIVE'
+  and ${productDeviceCompatibility.evidenceStatus} in ('PACKAGE_VERIFIED', 'FIT_TESTED', 'VERIFIED_EXACT', 'CONDITIONAL')
+  and not exists (
+    select 1 from battery_profiles bp
+    where bp.product_id = ${productDeviceCompatibility.productId} and bp.lifecycle_status <> 'ACTIVE'
+  )
+)`;
+
 export class DrizzleDeviceRepository implements IDeviceRepository {
   async createDevice(input: CreateDeviceInput): Promise<{ id: string; slug: string }> {
     const aliases = input.modelAliases ?? [];
@@ -66,7 +83,7 @@ export class DrizzleDeviceRepository implements IDeviceRepository {
       .select({ productId: products.id, sku: products.sku, name: products.name, fitType: productDeviceCompatibility.fitType, confidence: productDeviceCompatibility.confidence })
       .from(productDeviceCompatibility)
       .innerJoin(products, eq(products.id, productDeviceCompatibility.productId))
-      .where(and(eq(productDeviceCompatibility.deviceId, deviceId), eq(products.active, true), eq(products.approvalStatus, 'approved')))
+      .where(and(eq(productDeviceCompatibility.deviceId, deviceId), eq(products.active, true), eq(products.approvalStatus, 'approved'), PUBLISHED_FIT))
       .orderBy(FIT_RANK, sql`${SOLD} DESC`, products.name);
     return rows as CompatibleProduct[];
   }
@@ -84,6 +101,7 @@ export class DrizzleDeviceRepository implements IDeviceRepository {
           eq(products.approvalStatus, 'approved'),
           eq(products.stockStatus, 'in_stock'),
           notInArray(products.id, exclude),
+          PUBLISHED_FIT,
         ),
       )
       .orderBy(FIT_RANK, sql`${SOLD} DESC`, products.name)

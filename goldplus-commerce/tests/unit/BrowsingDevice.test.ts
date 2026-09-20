@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { modelFromUserAgent, plausibleModelCode } from "../../apps/web/src/lib/browsingDevice";
 
@@ -22,5 +23,25 @@ describe("the browsing device is a suggestion, and unknown stays unknown", () =>
       expect(plausibleModelCode(v)).toBeNull();
     }
     expect(plausibleModelCode("SM-G991B")).toBe("SM-G991B");
+  });
+
+  it("the suggestion is one component, hidden by default, a question, and never a fit claim", () => {
+    const c = readFileSync("apps/web/src/components/ThisPhoneSuggestion.astro", "utf8");
+    expect(c).toContain("<p data-this-phone hidden");
+    expect(c).toContain("choose a different phone");
+    expect(c).not.toMatch(/\bfits\b|compatible with your/i);
+    expect(c).not.toMatch(/localStorage|cookie|fetch\(/);
+    for (const page of ["apps/web/src/pages/battery-finder.astro", "apps/web/src/pages/products/[slug].astro"]) {
+      expect(readFileSync(page, "utf8")).toContain("<ThisPhoneSuggestion");
+    }
+  });
+
+  it("the help route is safe: no opening sealed phones, no IMEI, and an unknown match is not 'no battery exists'", () => {
+    const f = readFileSync("apps/web/src/pages/battery-finder.astro", "utf8");
+    expect(f).toContain("do not open a sealed phone or remove a swollen or damaged battery");
+    expect(f).toContain("we never need your IMEI or serial number");
+    const cfg = readFileSync("packages/shared/src/batteries/index.ts", "utf8");
+    expect(cfg).toContain("We have not matched a battery to this phone yet");
+    expect(cfg).toContain("That does not mean one does not exist");
   });
 });

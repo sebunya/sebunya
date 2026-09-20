@@ -2,6 +2,7 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { SITE_ORIGIN } from '../lib/sitemap';
 import { getBusinessInfo } from '../lib/businessInfo';
+import ThisPhoneSuggestion from '../components/ThisPhoneSuggestion.astro';
 import { publicBattery, submitBatteryRequest, DEVICE_COOKIE, serialiseDeviceCookie, ugx, FIT_BADGE } from '../lib/batteries';
 import type { BatteryFinderConfig, FinderBatteryResultDto, FinderBrandDto, FinderDeviceDto, FinderSeriesDto } from '@goldplus/shared';
 
@@ -13,6 +14,8 @@ import type { BatteryFinderConfig, FinderBatteryResultDto, FinderBrandDto, Finde
  */
 const url = new URL(Astro.request.url);
 const q = (url.searchParams.get('q') ?? '').trim().slice(0, 120);
+// The search was pre-filled from the browser's own model code (a question the shopper accepted).
+const fromThisPhone = url.searchParams.get('from') === 'this-phone';
 const brandSlug = (url.searchParams.get('brand') ?? '').trim().slice(0, 80);
 const deviceSlug = (url.searchParams.get('device') ?? '').trim().slice(0, 160);
 const sessionId = Astro.cookies.get('goldplus_cart_session')?.value ?? Astro.cookies.get('gp_finder')?.value ?? null;
@@ -105,11 +108,7 @@ const shownDevice: FinderDeviceDto | null = device?.device ?? (search?.kind === 
         </form>
 
         {!q && !brandSlug && !deviceSlug && (
-          <p id="gp-this-phone" hidden class="mt-4 rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-brand-dark">
-            Shopping for the phone you are using?
-            {' '}<a id="gp-this-phone-link" href="/battery-finder" class="font-bold underline">Search for <span id="gp-this-phone-model"></span></a>
-            <span class="text-gray-600"> — or type a different phone above.</span>
-          </p>
+          <ThisPhoneSuggestion class="mt-4" />
         )}
 
         {brands.length > 0 && !q && !brandSlug && !deviceSlug && (
@@ -246,7 +245,8 @@ const shownDevice: FinderDeviceDto | null = device?.device ?? (search?.kind === 
         {(noResult || (shownDevice && results.length === 0) || (brand && brand.devices.length === 0)) && !requestNotice && (
           <section class="mt-6 rounded-2xl border border-gray-200 bg-white p-5" aria-labelledby="request-heading">
             <h2 id="request-heading" class="text-sm font-black text-brand-dark">{cfg?.requestCta ?? 'Ask us to find this battery'}</h2>
-            <p class="text-xs text-gray-500 mt-1">Tell us the phone and we will confirm the right battery. Your phone number is only used to answer you.</p>
+            <p class="text-xs text-gray-500 mt-1">Tell us the phone and we will confirm the right battery before you buy. Your phone number is only used to answer you.</p>
+            <p class="text-xs text-gray-500 mt-1">The model number is in Settings, under About phone. Please do not open a sealed phone or remove a swollen or damaged battery to find a code, and we never need your IMEI or serial number.</p>
             <form method="POST" class="mt-4 grid gap-3 sm:grid-cols-2">
               <input type="hidden" name="queryText" value={q} />
               <input type="text" name="website" tabindex="-1" autocomplete="off" class="hidden" aria-hidden="true" />
@@ -255,7 +255,7 @@ const shownDevice: FinderDeviceDto | null = device?.device ?? (search?.kind === 
               <label class="block"><span class="text-xs font-bold text-gray-600">Phone model</span>
                 <input name="deviceText" maxlength="120" value={shownDevice?.model ?? q} class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-base" /></label>
               <label class="block"><span class="text-xs font-bold text-gray-600">Exact model number, if you have it</span>
-                <input name="modelNumberText" maxlength="80" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-base font-mono" /></label>
+                <input name="modelNumberText" maxlength="80" value={fromThisPhone ? q : ''} class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-base font-mono" /></label>
               <label class="block"><span class="text-xs font-bold text-gray-600">Battery code on the old battery</span>
                 <input name="batteryCodeText" maxlength="120" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-base font-mono" /></label>
               <label class="block"><span class="text-xs font-bold text-gray-600">Your name</span>
@@ -275,24 +275,3 @@ const shownDevice: FinderDeviceDto | null = device?.device ?? (search?.kind === 
     )}
   </div>
 </BaseLayout>
-
-<script>
-  // The browser's own model code, offered as a QUESTION. Nothing is stored or
-  // sent; choosing it is an ordinary search the shopper can see and change.
-  import { plausibleModelCode, modelFromUserAgent } from '../lib/browsingDevice';
-  const box = document.getElementById('gp-this-phone');
-  if (box) {
-    const show = (model: string | null) => {
-      if (!model) return;
-      (document.getElementById('gp-this-phone-model') as HTMLElement).textContent = model;
-      (document.getElementById('gp-this-phone-link') as HTMLAnchorElement).href = '/battery-finder?q=' + encodeURIComponent(model);
-      box.hidden = false;
-    };
-    const uaData = (navigator as unknown as { userAgentData?: { mobile?: boolean; getHighEntropyValues?: (h: string[]) => Promise<{ model?: string }> } }).userAgentData;
-    if (uaData?.getHighEntropyValues && uaData.mobile) {
-      uaData.getHighEntropyValues(['model']).then((v) => show(plausibleModelCode(v.model) ?? modelFromUserAgent(navigator.userAgent))).catch(() => show(modelFromUserAgent(navigator.userAgent)));
-    } else {
-      show(modelFromUserAgent(navigator.userAgent));
-    }
-  }
-</script>

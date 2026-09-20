@@ -1,0 +1,40 @@
+---
+/**
+ * "Shopping for the phone you are using?" — the browser's own model code,
+ * offered as a QUESTION that pre-fills the battery finder. It is never a fit
+ * claim and never evidence: the finder still answers only from reviewed
+ * compatibility, and says so when it has not confirmed a match.
+ *
+ * Hidden unless the browser reports a plausible model (UA-CH `model` on a
+ * mobile browser, or an unreduced Android UA). iPhone, Mac, Windows, TVs and
+ * reduced Chrome report none, so they see nothing. Nothing is stored or sent.
+ */
+interface Props { lead?: string; class?: string }
+const { lead = 'Shopping for the phone you are using?', class: className = '' } = Astro.props;
+---
+<p data-this-phone hidden class={`rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-brand-dark ${className}`}>
+  {lead}
+  {' '}<a data-this-phone-link href="/battery-finder" class="font-bold underline">Check batteries for <span data-this-phone-model></span></a>
+  <span class="text-gray-600"> — or <a href="/battery-finder" class="underline">choose a different phone</a>.</span>
+</p>
+
+<script>
+  import { plausibleModelCode, modelFromUserAgent } from '../lib/browsingDevice';
+  const boxes = document.querySelectorAll<HTMLElement>('[data-this-phone]');
+  if (boxes.length) {
+    const show = (model: string | null) => {
+      if (!model) return;
+      boxes.forEach((box) => {
+        box.querySelector<HTMLElement>('[data-this-phone-model]')!.textContent = model;
+        box.querySelector<HTMLAnchorElement>('[data-this-phone-link]')!.href = '/battery-finder?from=this-phone&q=' + encodeURIComponent(model);
+        box.hidden = false;
+      });
+    };
+    const uaData = (navigator as unknown as { userAgentData?: { mobile?: boolean; getHighEntropyValues?: (h: string[]) => Promise<{ model?: string }> } }).userAgentData;
+    if (uaData?.getHighEntropyValues && uaData.mobile) {
+      uaData.getHighEntropyValues(['model']).then((v) => show(plausibleModelCode(v.model) ?? modelFromUserAgent(navigator.userAgent))).catch(() => show(modelFromUserAgent(navigator.userAgent)));
+    } else {
+      show(modelFromUserAgent(navigator.userAgent));
+    }
+  }
+</script>
