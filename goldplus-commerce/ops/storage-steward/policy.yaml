@@ -60,3 +60,16 @@ optional_subsystems:
   - clickhouse
   - peerdb
   - dagster
+
+commerce:
+  # The customer experience is an input to resource governance: a machine can
+  # look healthy on every gauge while the shop is slow. When p99 exceeds this
+  # budget, P3 maintenance yields.
+  prometheus_url: http://127.0.0.1:9090
+  # Shop HTTP latency is NOT instrumented on this host yet (only Prometheus'
+  # own request metrics exist), so the signal in use is database query p99 —
+  # which the contract also names as a commerce input. Measured baseline is
+  # ~44 ms, so 250 ms is roughly 5x headroom before maintenance yields.
+  # Replace with the shop histogram the moment the API exports one.
+  p99_query: 'histogram_quantile(0.99, sum(rate(goldplus_db_query_duration_seconds_bucket[5m])) by (le))'
+  p99_budget_ms: 250

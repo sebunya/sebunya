@@ -263,6 +263,24 @@ def collect_host() -> dict:
         facts["load_per_cpu"] = round(load1 / cpus, 2)
     except OSError:
         pass
+    # Pressure Stall Information: the share of time work was stalled waiting for
+    # a resource. RAM can look available while memory PSI climbs, and that is
+    # the moment to defer expensive work — not after the shop slows down.
+    for kind in ("cpu", "io", "memory"):
+        try:
+            with open(f"/proc/pressure/{kind}", "r", encoding="utf-8") as fh:
+                for line in fh:
+                    if line.startswith("some"):
+                        for part in line.split():
+                            if part.startswith("avg60="):
+                                facts[f"psi_{kind}_some60"] = float(part.split("=")[1])
+                    elif line.startswith("full"):
+                        for part in line.split():
+                            if part.startswith("avg60="):
+                                facts[f"psi_{kind}_full60"] = float(part.split("=")[1])
+        except (OSError, ValueError):
+            pass
+
     # Swapping OUT is the signal that matters. Pages parked in swap after a long
     # uptime are cold, not an emergency; sustained so/s is the emergency.
     code, out = run(["vmstat", "1", "2"], timeout=20)
@@ -277,6 +295,34 @@ def collect_host() -> dict:
             except (IndexError, ValueError):
                 pass
     return facts
+
+
+def commerce_slo(policy: dict) -> dict:
+    """What the customer is actually experiencing.
+
+    Read from the Prometheus already running beside the shop. When it cannot be
+    reached the result is empty rather than optimistic: an unknown latency must
+    not read as a healthy one, so admission simply loses this signal instead of
+    gaining a false green light.
+    """
+    url = policy.get("commerce", {}).get("prometheus_url", "http://127.0.0.1:9090")
+    query = policy.get("commerce", {}).get(
+        "p99_query",
+        'histogram_quantile(0.99, sum(rate(caddy_http_request_duration_seconds_bucket[5m])) by (le))',
+    )
+    code, out = run(["curl", "-sS", "--max-time", "5", "-G", f"{url}/api/v1/query",
+                     "--data-urlencode", f"query={query}"], timeout=15)
+    if code != 0:
+        return {}
+    try:
+        payload = json.loads(out)
+        result = payload.get("data", {}).get("result", [])
+        if not result:
+            return {}
+        seconds = float(result[0]["value"][1])
+        return {"p99_ms": seconds * 1000}
+    except Exception:
+        return {}
 
 
 def collect_docker() -> list[Resource]:
@@ -524,6 +570,17 @@ def decide_pressure(facts: dict, state: State, policy: dict) -> tuple[str, list[
         notes.append("the machine is swapping in AND out — that is resource failure, not capacity")
     if host.get("load_per_cpu", 0) > 2:
         notes.append(f"load {host['load_per_cpu']}x per cpu — heavy work should wait")
+    # Contention beats utilisation as a signal: stalled time is what a customer
+    # actually feels.
+    if host.get("psi_memory_full60", 0) > 5:
+        level = escalate(level, 2)
+        notes.append(f"memory PSI full60 {host['psi_memory_full60']}% — the machine is stalling on memory")
+    elif host.get("psi_memory_some60", 0) > 20:
+        level = escalate(level, 1)
+        notes.append(f"memory PSI some60 {host['psi_memory_some60']}%")
+    if host.get("psi_io_full60", 0) > 10:
+        level = escalate(level, 1)
+        notes.append(f"I/O PSI full60 {host['psi_io_full60']}% — disk is the bottleneck")
     return level, notes
 
 
@@ -774,24 +831,29 @@ def journald_bounds(policy: dict, apply: bool) -> str:
 
 # ── admission ────────────────────────────────────────────────────────────────
 
-HEAVY_IO_LANE = "goldplus-heavy-io"
+# Three dimensions, because "heavy" is not one resource. A PostgreSQL backup and
+# a ClickHouse rebuild both hammer disk, but they contend for different things,
+# and an operation may need more than one.
+LANES = ("heavy-io", "postgres-heavy", "analytics-heavy")
+HEAVY_IO_LANE = "goldplus-heavy-io"  # retained: the original single-lane name
 
 # What an expensive operation needs before it may start. Numbers are the
 # operator's, not a developer's guess: they are what the machine must still have
 # AFTER the work is admitted, so commerce is never the thing that runs out.
 OPERATION_REQUIREMENTS: dict[str, dict] = {
-    "peerdb_initial_load":   {"free_gb": 12, "mem_mb": 700, "lane": True,  "class": "P3"},
-    "peerdb_resync":         {"free_gb": 15, "mem_mb": 700, "lane": True,  "class": "P3"},
-    "dagster_backfill":      {"free_gb": 6,  "mem_mb": 400, "lane": True,  "class": "P3"},
-    "pgbackrest_full":       {"free_gb": 8,  "mem_mb": 300, "lane": True,  "class": "P3"},
-    "pgbackrest_incremental":{"free_gb": 3,  "mem_mb": 200, "lane": False, "class": "P2"},
-    "restic_backup":         {"free_gb": 3,  "mem_mb": 300, "lane": False, "class": "P2"},
-    "restic_prune":          {"free_gb": 5,  "mem_mb": 400, "lane": True,  "class": "P3"},
-    "clickhouse_backup":     {"free_gb": 6,  "mem_mb": 400, "lane": True,  "class": "P3"},
-    "clickhouse_restore":    {"free_gb": 10, "mem_mb": 600, "lane": True,  "class": "P3"},
-    "docker_build":          {"free_gb": 8,  "mem_mb": 600, "lane": True,  "class": "P3"},
-    "recovery_drill":        {"free_gb": 10, "mem_mb": 600, "lane": True,  "class": "P3"},
-    "housekeeping":          {"free_gb": 1,  "mem_mb": 100, "lane": False, "class": "P3"},
+    "peerdb_initial_load":   {"free_gb": 12, "mem_mb": 700, "lanes": ["postgres-heavy", "analytics-heavy"], "class": "P3"},
+    "peerdb_resync":         {"free_gb": 15, "mem_mb": 700, "lanes": ["postgres-heavy", "analytics-heavy"], "class": "P3"},
+    "dagster_backfill":      {"free_gb": 6,  "mem_mb": 400, "lanes": ["analytics-heavy"], "class": "P3"},
+    "pgbackrest_full":       {"free_gb": 8,  "mem_mb": 300, "lanes": ["heavy-io", "postgres-heavy"], "class": "P3"},
+    "pgbackrest_incremental":{"free_gb": 3,  "mem_mb": 200, "lanes": [], "class": "P2"},
+    "restic_backup":         {"free_gb": 3,  "mem_mb": 300, "lanes": [], "class": "P2"},
+    "restic_prune":          {"free_gb": 5,  "mem_mb": 400, "lanes": ["heavy-io"], "class": "P3"},
+    "clickhouse_backup":     {"free_gb": 6,  "mem_mb": 400, "lanes": ["heavy-io", "analytics-heavy"], "class": "P3"},
+    "clickhouse_restore":    {"free_gb": 10, "mem_mb": 600, "lanes": ["heavy-io", "analytics-heavy"], "class": "P3"},
+    "clickhouse_rebuild":    {"free_gb": 8,  "mem_mb": 600, "lanes": ["heavy-io", "analytics-heavy"], "class": "P3"},
+    "docker_build":          {"free_gb": 8,  "mem_mb": 600, "lanes": ["heavy-io"], "class": "P3"},
+    "recovery_drill":        {"free_gb": 10, "mem_mb": 600, "lanes": ["heavy-io", "postgres-heavy"], "class": "P3"},
+    "housekeeping":          {"free_gb": 1,  "mem_mb": 100, "lanes": [], "class": "P3"},
 }
 
 # Above these pressure levels a class of work simply does not start.
@@ -830,28 +892,68 @@ def admit(state: State, policy: dict, operation: str, hold_minutes: int = 60) ->
 
     if host.get("load_per_cpu", 0) > 1.5:
         return "DEFER", f"load is {host['load_per_cpu']}x per cpu; the machine is already working"
+    if host.get("psi_memory_some60", 0) > 20:
+        return "DEFER", f"memory PSI some60 is {host['psi_memory_some60']}%; work is already stalling on memory"
+    if host.get("psi_io_some60", 0) > 40:
+        return "DEFER", f"I/O PSI some60 is {host['psi_io_some60']}%; the disk is already the bottleneck"
+
+    # The machine can look healthy while the customer experience degrades. If
+    # the shop is slow, maintenance waits — whatever the gauges say.
+    slo = commerce_slo(policy)
+    if slo.get("p99_ms") and slo["p99_ms"] > policy.get("commerce", {}).get("p99_budget_ms", 2000):
+        return "DEFER", (f"shop p99 is {slo['p99_ms']:.0f} ms, above the "
+                         f"{policy.get('commerce', {}).get('p99_budget_ms', 2000)} ms budget; "
+                         f"analytics yields to the customer")
 
     busy = busy_reasons()
     if busy:
         return "DEFER", "; ".join(busy)
 
-    if need["lane"]:
-        # One heavy job at a time, across every subsystem. Each one believing
-        # 02:00 is a good moment is how a disk cache gets destroyed.
-        if not state.acquire(HEAVY_IO_LANE, hold_minutes, operation):
-            holder = None
-            if state.db:
-                row = state.db.execute("SELECT reason, until FROM lease WHERE name = ?", (HEAVY_IO_LANE,)).fetchone()
-                holder = row["reason"] if row else None
-            return "DEFER", f"the heavy-I/O lane is held by {holder or 'another job'}"
+    # Lanes are taken all-or-nothing: holding one of two and waiting for the
+    # other is how two jobs deadlock each other into a stall.
+    wanted = list(need.get("lanes", []))
+    taken: list[str] = []
+    for lane in wanted:
+        if state.acquire(f"goldplus-{lane}", hold_minutes, operation):
+            taken.append(lane)
+            continue
+        holder = None
+        if state.db:
+            row = state.db.execute("SELECT reason FROM lease WHERE name = ?", (f"goldplus-{lane}",)).fetchone()
+            holder = row["reason"] if row else None
+        for held in taken:
+            state.release(f"goldplus-{held}")
+        return "DEFER", f"the {lane} lane is held by {holder or 'another job'}"
 
     state.record_action("admit", operation, "ADMITTED", 0, f"pressure={level} free={free_gb:.1f}GB")
     return "ADMIT", f"pressure {level}, {free_gb:.1f} GB free, {avail_mb:.0f} MB RAM available"
 
 
 def release_lane(state: State, operation: str) -> None:
+    """Gives back every lane this operation could hold. Safe to call twice."""
+    need = OPERATION_REQUIREMENTS.get(operation, {})
+    for lane in need.get("lanes", LANES):
+        state.release(f"goldplus-{lane}")
     state.release(HEAVY_IO_LANE)
     state.record_action("admit", operation, "RELEASED")
+
+
+def conflict_matrix() -> str:
+    """Which operations can never overlap, derived from the lanes they need."""
+    ops = sorted(OPERATION_REQUIREMENTS)
+    heavy = [o for o in ops if OPERATION_REQUIREMENTS[o].get("lanes")]
+    width = max(len(o) for o in heavy) + 2
+    lines = [" " * width + "  ".join(f"{o[:12]:<12}" for o in heavy)]
+    for row in heavy:
+        cells = []
+        for col in heavy:
+            if row == col:
+                cells.append(f"{'—':<12}")
+            else:
+                shared = set(OPERATION_REQUIREMENTS[row]["lanes"]) & set(OPERATION_REQUIREMENTS[col]["lanes"])
+                cells.append(f"{('NO' if shared else 'ok'):<12}")
+        lines.append(f"{row:<{width}}" + "  ".join(cells))
+    return "\n".join(lines)
 
 
 # ── report ───────────────────────────────────────────────────────────────────
@@ -900,6 +1002,14 @@ def build_report(state: State, policy: dict, facts: dict, resources: list[Resour
                 f"{' — ACTIVELY SWAPPING OUT' if swapping else ' (parked, not swapping out)'}")
         add(f"Load                       {host.get('load1', 0)} over {host.get('cpus', 0)} cpu "
             f"({host.get('load_per_cpu', 0)}x), io wait {host.get('io_wait_pct', 0)}%")
+        if "psi_cpu_some60" in host:
+            add(f"Stalled time (PSI 60s)     cpu {host.get('psi_cpu_some60', 0):.1f}% · "
+                f"io {host.get('psi_io_some60', 0):.1f}% · memory {host.get('psi_memory_some60', 0):.1f}%")
+        slo = commerce_slo(policy)
+        budget = policy.get("commerce", {}).get("p99_budget_ms", 250)
+        add(f"Commerce latency p99       {slo['p99_ms']:.0f} ms of {budget} ms budget (database queries)"
+            if slo.get("p99_ms")
+            else "Commerce latency p99       not available — admission loses this signal rather than assuming health")
     rate = facts.get("growth_gb_per_day")
     if rate is None:
         add("Growth                     not enough history yet (needs two observations an hour apart)")
@@ -1014,6 +1124,17 @@ def cmd_report(args, policy: dict, state: State) -> int:
     facts, resources = observe(policy)
     level, notes = decide_pressure(facts, state, policy)
     print(build_report(state, policy, facts, resources, level, notes))
+    return 0
+
+
+def cmd_matrix(args, policy: dict, state: State) -> int:
+    """The conflict matrix, derived from lanes rather than written twice."""
+    print("Operations that may never overlap (NO), derived from the lanes each needs:\n")
+    print(conflict_matrix())
+    print("\nLanes: " + ", ".join(LANES) + " — each admits one holder at a time.")
+    if state.db:
+        held = state.db.execute("SELECT name, reason, until FROM lease ORDER BY name").fetchall()
+        print("\nHeld now: " + (", ".join(f"{r['name'].replace('goldplus-','')}={r['reason']}" for r in held) or "nothing"))
     return 0
 
 
@@ -1151,6 +1272,9 @@ def main() -> int:
         p = sub.add_parser(name, help=help_text)
         p.add_argument("--dry-run", action="store_true", help="decide and explain, change nothing")
         p.add_argument("--quiet", action="store_true", help="one line of output")
+    p = sub.add_parser("matrix", help="show which operations cannot overlap")
+    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--quiet", action="store_true")
     for name, help_text in [("admit", "ask permission for an expensive operation"),
                             ("release", "give the heavy-I/O lane back")]:
         p = sub.add_parser(name, help=help_text)
@@ -1165,7 +1289,8 @@ def main() -> int:
     if state.safe_mode_reason:
         print(f"WARNING: {state.safe_mode_reason}", file=sys.stderr)
     handlers = {"observe": cmd_observe, "report": cmd_report, "status": cmd_status,
-                "housekeep": cmd_housekeep, "deep": cmd_deep, "admit": cmd_admit, "release": cmd_release}
+                "housekeep": cmd_housekeep, "deep": cmd_deep, "admit": cmd_admit, "release": cmd_release,
+                "matrix": cmd_matrix}
     try:
         return handlers[args.command](args, policy, state)
     finally:
