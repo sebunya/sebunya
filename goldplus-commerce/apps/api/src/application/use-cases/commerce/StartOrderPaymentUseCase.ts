@@ -88,7 +88,7 @@ export interface PaymentProviderStarter {
 
 export interface PaymentAttemptReader {
   findAttemptsByOrderId(orderId: string): Promise<
-    Array<{ status: string; redirectUrl: string | null; orderTrackingId: string | null; merchantReference: string; amount: number }>
+    Array<{ status: string; redirectUrl: string | null; orderTrackingId: string | null; merchantReference: string; amount: number; createdAt: Date }>
   >;
 }
 
@@ -105,6 +105,8 @@ export interface StartPaymentOrderReader {
 const CLOSED_ORDER_STATUSES = new Set(['cancelled', 'failed']);
 
 export interface StartOrderPaymentDeps {
+  /** Injected so the reuse window is testable without waiting 30 minutes. */
+  now?: () => Date;
   idempotency: ICheckoutIdempotencyRepository;
   orders: StartPaymentOrderReader;
   attempts: PaymentAttemptReader;
@@ -123,6 +125,27 @@ export interface StartOrderPaymentDeps {
  * `invalid` and `reversed` are deliberately absent: those need a fresh attempt.
  */
 const REUSABLE_ATTEMPT_STATUSES = new Set(['pending', 'verification_pending']);
+
+/**
+ * A declined attempt whose provider page is almost certainly still open.
+ *
+ * On Ugandan mobile money a first decline is routine — no funds on that wallet,
+ * a mistyped PIN — and the provider page stays usable: proven in production on
+ * 2026-09-20, when MTN declined and the SAME PesaPal page then took an Airtel
+ * payment (order GP-202609-0B3BA402). Sending the customer back to that page is
+ * both what they expect and the only retry that cannot double-charge them:
+ * opening a SECOND provider transaction leaves two payable pages for one order.
+ *
+ * The window is ours, not the provider's — PesaPal does not publish a page
+ * lifetime, so this is a deliberately conservative assumption rather than a
+ * documented fact. Past it we open a fresh transaction, which is the safe
+ * direction: a customer who waited that long is starting again anyway.
+ */
+const RETRY_REUSE_STATUSES = new Set(['failed', 'invalid']);
+function retryReuseWindowMs(): number {
+  const minutes = Number(process.env.PESAPAL_RETRY_REUSE_MINUTES);
+  return (Number.isInteger(minutes) && minutes > 0 ? minutes : 30) * 60_000;
+}
 
 /**
  * Provider faults that will not resolve by retrying the same request. Kept as a
@@ -193,13 +216,16 @@ export class StartOrderPaymentUseCase {
     // provider page still quotes the old figure, and verification compares the
     // payment against the ATTEMPT's amount, so the order settled as fully paid
     // at the stale, lower total and the shop silently under-collected.
-    const reusable = existing.find(
-      (a) =>
-        REUSABLE_ATTEMPT_STATUSES.has(a.status) &&
-        a.redirectUrl &&
-        a.orderTrackingId &&
-        a.amount === order.totalUgx,
-    );
+    const now = this.deps.now?.() ?? new Date();
+    const stillOpen = (a: { status: string; createdAt: Date }) =>
+      REUSABLE_ATTEMPT_STATUSES.has(a.status) ||
+      (RETRY_REUSE_STATUSES.has(a.status) &&
+        now.getTime() - new Date(a.createdAt).getTime() < retryReuseWindowMs());
+    const reusable = existing
+      // Newest first: the page the customer was last on is the one to return to.
+      .slice()
+      .sort((x, y) => new Date(y.createdAt).getTime() - new Date(x.createdAt).getTime())
+      .find((a) => stillOpen(a) && a.redirectUrl && a.orderTrackingId && a.amount === order.totalUgx);
     if (reusable) {
       await this.recordPaymentProgress(checkout.identity, orderId, command);
       return {

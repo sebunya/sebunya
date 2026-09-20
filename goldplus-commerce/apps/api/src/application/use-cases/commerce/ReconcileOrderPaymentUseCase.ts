@@ -156,10 +156,29 @@ export class ReconcileOrderPaymentUseCase {
     }
 
     if (FAILED_STATUSES.has(status)) {
-      // Terminal, and deliberately NOT advanced to a confirmed stage. The order remains
+      // Not advanced to a confirmed stage: no money arrived. The order remains
       // unpaid and the customer may retry onto the same checkout.
+      //
+      // A checkout PARKED for a human is released here, and only here. Parking
+      // means "we do not know what happened to the money"; the provider has now
+      // answered that nothing did, so the question is closed. Leaving it parked
+      // left the order permanently unpayable — a customer with a declined card
+      // could neither retry nor be helped, on an order we KNEW was unpaid.
+      // Back onto the trunk, not backwards: PAYMENT_STARTED is simply true (a
+      // payment WAS started and it declined), it is a stage the port already
+      // allows, and it is past PAYMENT_READY, so the order is payable again.
+      const released = checkout.stage === 'PAYMENT_REVIEW'
+        ? await this.deps.idempotency
+            .advancePaymentStage(orderId, 'PAYMENT_STARTED', ['PAYMENT_REVIEW'])
+            .catch(() => false)
+        : false;
       this.deps.observer?.onSettled(orderId, 'FAILED', traceId);
-      return { kind: 'FAILED', orderId, stage: checkout.stage as CheckoutSagaStage, reason: 'PAYMENT_FAILED' };
+      return {
+        kind: 'FAILED',
+        orderId,
+        stage: released ? 'PAYMENT_STARTED' : (checkout.stage as CheckoutSagaStage),
+        reason: 'PAYMENT_FAILED',
+      };
     }
 
     if (PENDING_STATUSES.has(status)) {

@@ -66,6 +66,27 @@ suite('a decline followed by a real payment (real PostgreSQL)', () => {
     expect((await raw`select status from payment_attempts where id = ${attemptId}`)[0].status).toBe('failed');
   });
 
+  it('a late word about the declined sibling cannot un-pay a paid order', async () => {
+    // The shape that made this reachable: ONE order, TWO attempts — the decline
+    // and the one that paid. The provider retries notifications per transaction.
+    const { orderId, attemptId: declined } = await seedAttempt('failed');
+    await raw`update orders set payment_status = 'paid' where id = ${orderId}`;
+    await repo.updateOrderPaymentStatusSafely(orderId, 'failed');
+    expect((await raw`select payment_status from orders where id = ${orderId}`)[0].payment_status).toBe('paid');
+    // The attempt's own record still tells the truth about that attempt.
+    expect((await raw`select status from payment_attempts where id = ${declined}`)[0].status).toBe('failed');
+    // And a real reversal still lands.
+    await repo.updateOrderPaymentStatusSafely(orderId, 'reversed');
+    expect((await raw`select payment_status from orders where id = ${orderId}`)[0].payment_status).toBe('reversed');
+  });
+
+  it('lets a later attempt pay an order whose earlier attempt failed', async () => {
+    const { orderId } = await seedAttempt('failed');
+    await repo.updateOrderPaymentStatusSafely(orderId, 'failed');
+    await repo.updateOrderPaymentStatusSafely(orderId, 'paid');
+    expect((await raw`select payment_status from orders where id = ${orderId}`)[0].payment_status).toBe('paid');
+  });
+
   it('walks the whole provider sequence a live page can report', async () => {
     const { attemptId } = await seedAttempt('pending');
     for (const status of ['invalid', 'failed', 'completed', 'reversed']) {

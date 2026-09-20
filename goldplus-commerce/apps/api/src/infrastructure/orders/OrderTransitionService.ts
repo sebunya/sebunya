@@ -5,6 +5,7 @@ import { orders, orderEvents } from '../db/schema';
 import { canTransitionOrder } from '../../domain/commerce/OrderStateMachine';
 import { OrderStatus, PaymentStatus } from '../../domain/commerce/Order';
 import { DomainError } from '../../domain/errors/DomainError';
+import { orderPaymentWriteDecision } from '../../domain/payments/OrderPaymentState';
 import {
   IOrderTransitionPort,
   OrderTransitionContext,
@@ -135,6 +136,19 @@ export class OrderTransitionService implements IOrderTransitionPort {
         // no payment change, no event (P0-2 AC2).
         const category = decision.code === 'UNPAID' ? 'FORBIDDEN' : 'CONFLICT';
         throw new DomainError(`ORDER_TRANSITION_${decision.code}`, category, decision.message, { clientSafe: true });
+      }
+
+      // The money is its own state machine. A paid order is never un-paid by
+      // anything but a reversal — not by a late notification about a sibling
+      // attempt that declined. Refused here as a CONFLICT, which the payment
+      // verifier already catches and routes to review rather than forcing.
+      if (ctx.paymentStatus && ctx.paymentStatus !== row.paymentStatus) {
+        const money = orderPaymentWriteDecision(String(row.paymentStatus ?? ''), ctx.paymentStatus);
+        if (!money.write) {
+          throw new DomainError('ORDER_PAYMENT_STATUS_CONFLICT', 'CONFLICT',
+            `The order's payment is already "${row.paymentStatus}" and cannot become "${ctx.paymentStatus}" (${money.reason}).`,
+            { clientSafe: true });
+        }
       }
 
       const now = new Date();

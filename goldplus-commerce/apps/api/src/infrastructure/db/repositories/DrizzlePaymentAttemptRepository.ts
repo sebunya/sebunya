@@ -4,6 +4,8 @@ import { orders, paymentAttempts } from '../schema/commerce';
 import { paymentRefunds } from '../schema/commerce';
 import { IPesaPalPaymentRepository, RecordedPaymentAttempt } from '../../../application/ports/IPesaPalPaymentRepository';
 import { POLLABLE_ATTEMPT_STATUSES, assertAttemptTransition } from '../../../domain/payments/PaymentAttemptState';
+import { orderPaymentWriteDecision } from '../../../domain/payments/OrderPaymentState';
+import { logger } from '../../logging/logger';
 
 function rowToPaymentAttempt(row: typeof paymentAttempts.$inferSelect): RecordedPaymentAttempt {
   return {
@@ -97,6 +99,24 @@ export class DrizzlePaymentAttemptRepository implements IPesaPalPaymentRepositor
   ): Promise<void> {
     // Payment status ONLY. The lifecycle `status` is never written here — that is
     // the exclusive job of OrderTransitionService, which records an order_event.
+    //
+    // "Safely" now means something: an order can hold a DECLINED attempt and the
+    // one that paid, and the provider retries its notifications, so a late word
+    // about the declined sibling used to write `failed` over `paid` and un-pay a
+    // paid order. A refused move is normal, not an error — it is logged and
+    // skipped, never thrown, so a provider retry cannot become a 500.
+    const current = await db.query.orders.findFirst({
+      where: eq(orders.id, orderId),
+      columns: { paymentStatus: true },
+    });
+    const decision = orderPaymentWriteDecision(String(current?.paymentStatus ?? ''), status);
+    if (!decision.write) {
+      logger.warn(
+        { orderId, from: current?.paymentStatus, to: status, reason: decision.reason },
+        '[payments] order payment status write refused: a later fact about the money already stands',
+      );
+      return;
+    }
     await db
       .update(orders)
       .set({
