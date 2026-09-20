@@ -1,6 +1,6 @@
 # Client answers absorbed (2026-09-20)
 
-`client-answers-verbatim.md` keeps exactly what the client said. `client-answers-rows.csv` is that answer as explicit battery→phone rows. `compatibility-for-admin-import-v3.csv` is the file to upload: the printed-list rows for batteries the client did not revisit + the client rows. **190 rows on 77 of the 80 batteries; all 190 stage as drafts, 0 held** — the seven contradictions are resolved in `resolutions-of-held-matches.md` (4 rejected, 2 kept with an exact model, 1 is an alias). Nothing is staged, reviewed or published yet.
+`client-answers-verbatim.md` keeps exactly what the client said. `client-answers-rows.csv` is that answer as explicit battery→phone rows. `compatibility-for-admin-import-v3.csv` is the file to upload: the printed-list rows for batteries the client did not revisit + the client rows. **193 rows on 77 of the 79 batteries (Benco 23011 is retired by migration 0147); all 193 stage as drafts, 0 held** — the seven contradictions are resolved in `resolutions-of-held-matches.md` (4 rejected, 2 kept with an exact model, 1 is an alias). Nothing is staged, reviewed or published yet.
 
 ## What "dry run" really does (mutation contract)
 Upload + mapping + dry run **persist** one import session, its rows (source, normalised value, proposed action, errors) and audit events. They write **nothing** to brands, devices, claims, aliases, products or stock — verified on a production copy (devices 0 → 0, claims 0 → 0). "Dry run" therefore means "no catalogue writes", not "no database writes".

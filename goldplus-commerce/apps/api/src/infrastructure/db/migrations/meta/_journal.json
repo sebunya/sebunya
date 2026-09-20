@@ -1030,6 +1030,13 @@
       "when": 1790140000005,
       "tag": "0146_battery_import_row_battery_link",
       "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "5",
+      "when": 1790140000006,
+      "tag": "0147_retire_benco_23011_battery",
+      "breakpoints": true
     }
   ]
 }

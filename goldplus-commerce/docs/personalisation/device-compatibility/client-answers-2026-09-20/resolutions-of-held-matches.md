@@ -19,3 +19,8 @@ The client was offline; each decision below can be reversed by a GoldPlus packag
 - **Phone alias:** "Pop 2 Go" → TECNO Pop 2 (B1).
 
 Sources: en.wikipedia.org/wiki/Nokia_Asha_500 · devicespecifications.com (Asha 500 battery) · lpcwiki.miraheze.org/wiki/Nokia_BL-4U · batteryclub.org (B-D1 X20/X20A) · indclues.com (X20 B-D1) · batteriestar.com (B-D2 X20 Plus; B-B1 Y55) · alibaba.com (Y55S/Y55L 1610 B-B1; BLP793; BLP771) · virateck.com, kaeeloriginal.com, zeenkart.com (Y55s B-B1; 6i BLP771) · gsmserver.com, all-spares.com, replacebase.co.uk (C25 BLP793 6000 mAh) · ebay.com item 202481981215, rounded.com (6i RMX2040 BLP771) · gsm-forsage.com (BL-24ET Pop 1 Pro / Pop 2 / Pop 2F) · mainmarketonline.com (Pop 2 Power "Android 8.1 GO Edition").
+
+## Owner instruction, later the same day: "use what the client has shared"
+Rows 1, 2 and 4 above are **no longer dropped**. The Asha 500 on BL-4UL, the plain Vivo X20 on B-D2 and the Realme C25 on A11/BLP727 are recorded exactly as the client stated, each with a *Reviewer note* saying what the parts catalogues say and asking for a fit check before it is verified. They are invisible drafts like every other row. Row 7 stays out (the client themselves rejected it) and row 6 stays an alias (the client's statement — Pop 2 on BL-24ET — is what is recorded). The "does not fit" list for staff shrinks to: Galaxy A10 on A10S(/A20S) · Galaxy A32 4G on A32/5G · Pop 2 on BL-38BT — all three from the client's own words.
+
+**BENCO 23011 is removed from the shop** by migration 0147 (hidden everywhere public, battery archived; no orders or baskets referenced it; stock and import history kept). The catalogue is therefore **79 batteries**: 77 have phones recorded (**193 rows, all stage, 0 held**); the two WiFi batteries remain.

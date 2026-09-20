@@ -21,6 +21,7 @@ A11/BLP727,Realme,C21,RMX3201,Supplier claim,Client answer 2026-09-20 (GoldPlus 
 A11/BLP727,Realme,C20A,RMX3063,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),Bangladesh market name of the C20 (RMX3061/RMX3063).
 A11/BLP727,Realme,C21Y,RMX3261,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),Client-listed; pack family not confirmed by us — needs packaging or fit check.
 A11/BLP727,Realme,6i,RMX2040,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Client-listed. Global Realme 6i (RMX2040) only: its own pack is BLP771, the same 5000 mAh OPPO/Realme class as BLP727/BLP729 — needs a GoldPlus fit check before it is verified. NOT the India RMX2002 (4300 mAh, different pack)."
+A11/BLP727,Realme,C25,RMX3191,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),Recorded as the client stated. Reviewer note: parts catalogues give the C25 a larger 6000 mAh pack (BLP793); fit-check this one before verifying.
 BL-15DI,TECNO,T350,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration) + printed list (BL-15DT = T350),"Client: BL-15DI and BL-15DT are the same pack (one TECNO, one itel), usually written BL-15DI/DT."
 BL-681,OPPO,F9,,Supplier claim,"Client answer 2026-09-20 (GoldPlus supplier declaration) + stock list ""OPPO F9 (BL 681)""",
 BL-681,OPPO,F9 Pro,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration) + printed list (BL-P683 = A7X/F9 Pro),Client: BLP681 and BLP683 are used interchangeably. Kept as two technical codes.
@@ -42,6 +43,8 @@ VIVO B-B2,Vivo,Y69,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier d
 VIVO B-D2,Vivo,X20 Plus,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),
 VIVO B-D2,Vivo,X20 Plus A,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),
 VIVO B-D2,Vivo,X20 Plus UD,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),
+VIVO B-D2,Vivo,X20,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),Recorded as the client stated. Reviewer note: parts catalogues give the plain X20 / X20A the B-D1 pack; fit-check this one before verifying.
+4UL,Nokia,Asha 500,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),Recorded as the client stated (they list the Asha 500 under both BL-4U and BL-4UL). Reviewer note: Nokia specifies BL-4U for this phone; fit-check before verifying it here.
 4L,Nokia,E71,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L""."
 4L,Nokia,E71x,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L""."
 4L,Nokia,E72,,Supplier claim,Client answer 2026-09-20 (GoldPlus supplier declaration),"Standard Nokia code is BP-4L; client wording ""BL-4L""."

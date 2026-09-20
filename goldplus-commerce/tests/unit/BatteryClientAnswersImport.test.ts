@@ -33,16 +33,22 @@ describe("client answers, encoded for the native importer", () => {
     }
   });
 
-  it("nothing is left on hold: the seven contradictions were resolved, and the rejected ones are simply absent", () => {
+  it("nothing is left on hold, and what the client stated is recorded as they stated it", () => {
     expect(records.filter((r) => run(r).action !== "CREATE_CLAIM")).toEqual([]);
-    const has = (code: string, name: RegExp) => records.some((r) => r["Battery Reference"] === code && name.test(r["Marketing Name"]));
-    expect(has("4UL", /Asha 500/)).toBe(false);          // Asha 500 takes BL-4U
-    expect(has("4U", /Asha 500/)).toBe(true);
-    expect(has("VIVO B-D2", /^X20$/)).toBe(false);        // plain X20 takes B-D1
-    expect(has("A11/BLP727", /C25/)).toBe(false);         // 6000 mAh BLP793
-    expect(has("BL-38BT", /Pop 2/)).toBe(false);          // rejected by the client
-    expect(has("BL-24ET", /Pop 2 Go/)).toBe(false);       // an alias of the Pop 2 (B1), not a new phone
-    expect(has("BL-24ET", /^Pop 2$/)).toBe(true);
+    const row = (code: string, name: RegExp) => records.find((r) => r["Battery Reference"] === code && name.test(r["Marketing Name"]));
+    // Client-listed, recorded — each carries a reviewer note because parts catalogues disagree.
+    for (const [code, name] of [["A11/BLP727", /^C25$/], ["VIVO B-D2", /^X20$/], ["4UL", /Asha 500/]] as const) {
+      expect(row(code, name), `${code}`).toBeTruthy();
+      expect(row(code, name)!["Condition / Conflict"]).toMatch(/Reviewer note: .*fit-check/);
+    }
+    expect(row("4U", /Asha 500/)).toBeTruthy();
+    expect(row("BL-38BT", /Pop 2/)).toBeUndefined();       // the client rejected this one
+    expect(row("BL-24ET", /Pop 2 Go/)).toBeUndefined();    // trade name of the Pop 2 (B1): an alias, not a second phone
+    expect(row("BL-24ET", /^Pop 2$/)).toBeTruthy();
+  });
+
+  it("the retired Benco battery is not in the file", () => {
+    expect(records.some((r) => /benco/i.test(r["Battery Reference"]))).toBe(false);
   });
 
   it("the two that were kept are pinned to an exact model so a namesake can never match", () => {
@@ -63,7 +69,7 @@ describe("client answers, encoded for the native importer", () => {
 
   it("B-D2 carries the X20 PLUS family; BL-38BT carries Pop 5 Go + Pop 6 Go; the Pop 2 family stays on BL-24ET", () => {
     const staged = (code: string) => records.filter((r) => r["Battery Reference"] === code && run(r).action === "CREATE_CLAIM").map((r) => r["Marketing Name"]);
-    expect(staged("VIVO B-D2")).toEqual(["X20 Plus", "X20 Plus A", "X20 Plus UD"]);
+    expect(staged("VIVO B-D2")).toEqual(["X20 Plus", "X20 Plus A", "X20 Plus UD", "X20"]);
     expect(staged("BL-38BT")).toEqual(["Pop 5 Go", "Pop 6 Go"]);
     expect(staged("BL-24ET")).toEqual(["Pop 1", "Pop 2", "Pop 2F"]);
   });
@@ -76,11 +82,11 @@ describe("one phone, one identity, one pack", () => {
     for (const r of records) seen.set(key(r), (seen.get(key(r)) ?? new Set()).add(r["Exact Model Number"]));
     expect([...seen].filter(([, v]) => v.size > 1).map(([k]) => k)).toEqual([]);
   });
-  it("a phone is STAGED on two batteries only where the client put it on both (A10S = A10S/A20S; Pop 6 Go on BL-38BT and BL-38CT)", () => {
+  it("a phone is STAGED on two batteries only where the client put it on both (A10S = A10S/A20S; Pop 6 Go; Asha 500)", () => {
     const packs = new Map<string, Set<string>>();
     for (const r of records) if (run(r).action === "CREATE_CLAIM") packs.set(key(r), (packs.get(key(r)) ?? new Set()).add(r["Battery Reference"]));
     const multi = [...packs].filter(([, v]) => v.size > 1).map(([k, v]) => `${k}:${[...v].sort().join("+")}`).sort();
-    expect(multi).toEqual(["samsung|galaxya10s:A10S+A10S/A20S", "samsung|galaxya20s:A10S+A10S/A20S", "tecno|pop6go:BL-38BT+BL-38CT"]);
+    expect(multi).toEqual(["nokia|asha500:4U+4UL", "samsung|galaxya10s:A10S+A10S/A20S", "samsung|galaxya20s:A10S+A10S/A20S", "tecno|pop6go:BL-38BT+BL-38CT"]);
   });
 });
 
