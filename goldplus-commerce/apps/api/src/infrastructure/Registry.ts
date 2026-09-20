@@ -1833,6 +1833,13 @@ export class Registry {
       this.recommendationRuleConflictService,
     );
     
+  /** Null = RESPONSE_EVENT_TO_METRIC=false: rendered rails go back to being event rows. */
+  public readonly recommendationServingStats: RecommendationServingStats | null =
+    process.env.RESPONSE_EVENT_TO_METRIC === 'false'
+      ? null
+      : new RecommendationServingStats((error, held) =>
+          logger.error({ err: error instanceof Error ? error.message : String(error), ...held }, 'RECOMMENDATION_SERVING_STATS_FLUSH_FAILED'));
+
     public readonly getRecommendationsUseCase = new GetRecommendationsUseCase(
       this.productRecommendationReader,
       this.recommendationSignalExtractor,
@@ -1846,10 +1853,7 @@ export class Registry {
       this.searchAffinityReader,
       (stage, placement, error) =>
         logger.error({ stage, placement, err: error instanceof Error ? error.message : String(error) }, 'RECOMMENDATION_ENGINE_DEGRADED'),
-      process.env.RESPONSE_EVENT_TO_METRIC === 'false'
-        ? undefined
-        : new RecommendationServingStats((error) =>
-            logger.error({ err: error instanceof Error ? error.message : String(error) }, 'RECOMMENDATION_SERVING_STATS_FLUSH_FAILED')),
+      this.recommendationServingStats ?? undefined,
     );
 
   public readonly getRecentlyViewedUseCase = new GetRecentlyViewedUseCase(

@@ -373,3 +373,26 @@ export interface RecommendationAnalyticsResponse {
   unavailableMetrics: UnavailableMetric[];
 }
 
+
+/**
+ * Things WE emit about our own rendering: the engine answered, a rail was
+ * drawn, a rail scrolled into view, the engine failed. They are evidence about
+ * the system, never about what a person chose to do, and must never feed a
+ * profile feature — otherwise rendering strengthens the profile, which changes
+ * rendering (the loop closed on 2026-09-20).
+ */
+export const SYSTEM_EXPOSURE_EVENT_TYPES = [
+  "RECOMMENDATION_RESPONSE",
+  "RECOMMENDATION_ERROR",
+  "RECOMMENDATION_IMPRESSION",
+  "RECOMMENDATION_VIEWED",
+] as const satisfies readonly RecommendationEventType[];
+
+/**
+ * Things a visitor did. Derived, so a NEW event type counts as visitor activity
+ * only after someone has decided it is not a system exposure — the
+ * classification test fails the build until it is placed in one list.
+ */
+export const VISITOR_ACTION_EVENT_TYPES: readonly RecommendationEventType[] = RECOMMENDATION_EVENT_TYPES.filter(
+  (t) => !(SYSTEM_EXPOSURE_EVENT_TYPES as readonly string[]).includes(t),
+);

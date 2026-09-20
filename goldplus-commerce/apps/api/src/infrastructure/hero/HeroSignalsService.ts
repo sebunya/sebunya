@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client';
+import { VISITOR_ACTION_EVENT_TYPES } from '@goldplus/shared';
 
 /**
  * Per-visitor hero signals.
@@ -43,6 +44,9 @@ export interface HeroSignals {
    */
   zone: null;
 }
+
+// A Postgres text[] literal; the names are our own closed vocabulary.
+const VISITOR_ACTIONS = `{${VISITOR_ACTION_EVENT_TYPES.join(',')}}`;
 
 const rowsOf = (r: any): any[] => (Array.isArray(r) ? r : r?.rows ?? []);
 
@@ -125,10 +129,12 @@ export class HeroSignalsService {
             select count(distinct date_trunc('day', e.created_at))
             from recommendation_events e
             where e.profile_id = ${profileId}::uuid
-              and e.created_at >= now() - interval '180 days'
-              -- A day counts when the visitor DID something. A rail we rendered
-              -- is our activity, not theirs (R0 F7).
-              and e.event_type <> 'RECOMMENDATION_RESPONSE'
+              -- A day counts when the visitor DID something. Anything we emit
+              -- ourselves (a rendered rail, an impression of it, a future
+              -- operational type) is not on this list and so can never feed
+              -- back into what we render (R0 F7). No time window: history is
+              -- kept forever, and the lookup is one profile's indexed rows.
+              and e.event_type = any(${VISITOR_ACTIONS}::text[])
           ), 0)::int as event_days
         from experience_profiles ep
         where ep.id = ${profileId}::uuid
@@ -158,7 +164,6 @@ export class HeroSignalsService {
         join products p on p.id = coalesce(e.recommendation_product_id, e.product_id)
         join categories c on c.id = p.category_id
         where e.profile_id = ${profileId}::uuid
-          and e.created_at >= now() - interval '90 days'
         group by c.slug
         having sum(case e.event_type
                      when 'RECOMMENDATION_ADD_TO_CART' then 3

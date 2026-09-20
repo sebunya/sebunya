@@ -22,7 +22,11 @@ import { SESSION_COOKIE_NAME } from "./lib/session";
  */
 
 export const VISIT_COOKIE_NAME = "gp_visit";
-export const VISIT_COOKIE_MAX_AGE_SECONDS = 180 * 24 * 60 * 60;
+// Owner decision 2026-09-20: personalisation continuity is kept for as long as
+// the browser allows. Browsers cap a cookie at 400 days, so the lifetime is
+// that cap and it SLIDES: every day the visitor comes back it is renewed, so
+// anyone who returns at least once in 400 days is never forgotten.
+export const VISIT_COOKIE_MAX_AGE_SECONDS = 400 * 24 * 60 * 60;
 
 export function visitCookieOptions() {
   return {
@@ -123,6 +127,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // page would make every HTML response uncacheable at the edge.
   // Set for every visitor: server-side measurement is always on (owner
   // decision 2026-09-19); this is a first-party id our own server sets.
+  // Read BEFORE the block below sets it: absent = first document today.
+  const firstDocumentToday = isDocument && !context.cookies.get('_fp_r');
   if (isDocument) {
     const fp = context.cookies.get('_fp_cid')?.value;
     const valid = !!fp && /^fp\.\d+\.[0-9a-f-]{36}$/.test(fp);
@@ -138,6 +144,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
     // Only tokens WE signed resolve to continuity — a fabricated or
     // stale-secret cookie is replaced, never trusted (R9 M2).
     context.locals.gpVisit = existing;
+    // Slide the lifetime, at most once a day (same cadence as `_fp_r`).
+    if (firstDocumentToday) context.cookies.set(VISIT_COOKIE_NAME, existing, visitCookieOptions());
   } else if (isDocument) {
     const token = mintSignedVisitToken();
     if (token) {

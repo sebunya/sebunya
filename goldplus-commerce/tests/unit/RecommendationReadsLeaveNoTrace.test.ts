@@ -32,6 +32,15 @@ describe("recommendation reads leave no trace (personalisation rebuild, R0)", ()
 
   it("visit strength counts what the visitor did, not what we rendered", () => {
     const hero = read("apps/api/src/infrastructure/hero/HeroSignalsService.ts");
-    expect(hero).toContain("e.event_type <> 'RECOMMENDATION_RESPONSE'");
+    expect(hero).toContain("e.event_type = any(${VISITOR_ACTIONS}::text[])");
+    expect(hero).not.toContain("interval '180 days'");
+  });
+
+  it("personalisation is kept forever: no profile prune, a sliding 400-day cookie", () => {
+    const mat = read("apps/api/src/infrastructure/scheduler/RecommendationMaterializer.ts");
+    expect(mat).not.toContain("delete from experience_profiles");
+    const mw = read("apps/web/src/middleware.ts");
+    expect(mw).toContain("VISIT_COOKIE_MAX_AGE_SECONDS = 400 * 24 * 60 * 60");
+    expect(mw).toContain("if (firstDocumentToday) context.cookies.set(VISIT_COOKIE_NAME, existing, visitCookieOptions());");
   });
 });

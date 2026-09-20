@@ -19,6 +19,7 @@ import { startOutboxTicker, gracefulStopOutboxTicker } from '../../infrastructur
 import { startLoyaltyDailyTicker, stopLoyaltyDailyTicker } from '../../infrastructure/scheduler/LoyaltyDailyTicker';
 import { startPaymentReconcileTicker, stopPaymentReconcileTicker } from '../../infrastructure/scheduler/PaymentReconcileTicker';
 import { startLighthouseWatchTicker, stopLighthouseWatchTicker } from '../../infrastructure/scheduler/LighthouseWatchTicker';
+import { Registry } from '../../infrastructure/Registry';
 import { runPermissionRegistrySyncAtBoot } from '../../infrastructure/security/PermissionRegistrySync';
 import { runHeroSlideSeedAtBoot } from '../../infrastructure/hero/HeroSlideSeeder';
 import { runNavSeedAtBoot } from '../../infrastructure/nav/NavSeeder';
@@ -113,6 +114,7 @@ async function gracefulShutdown(signal: string) {
   stopPaymentReconcileTicker();
   stopLighthouseWatchTicker();
     await gracefulStopOutboxTicker(10000);
+    await Registry.getInstance().recommendationServingStats?.stop(3000);
 
     logger.info('[Process] Closing database connections...');
     await endDbConnection();
