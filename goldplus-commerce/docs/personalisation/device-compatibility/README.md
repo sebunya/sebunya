@@ -1,31 +1,40 @@
-# Device compatibility — proposed import (NOT applied)
+# Battery → phone compatibility: activation proposal (nothing applied)
 
-**Why the finder shows no phones in production:** `devices`, `device_brands` and
-`product_device_compatibility` are empty (0 rows). The 80 `battery_profiles` and
-204 `battery_aliases` describe BATTERIES (codes and their alternative spellings);
-an alias proves two names mean the same battery, not that it fits a phone.
+**Correction.** An earlier version of this folder proposed a CLI import with
+`confidence=declared`. That bypassed the shop's own review workflow and is
+withdrawn. The battery module already has the right model, and its admin
+importer (`/admin/batteries` → Import → type **Compatibility**) was built for
+exactly this workbook sheet: its column auto-mapping matches all 11 columns.
 
-**Source:** `GoldPlus_Battery_Catalogue_Audit_and_Mapping_2026-08-26.xlsx`, sheet
-"02 Compatibility Map": 102 battery→phone claims. The workbook itself marks all
-85 stock lines `Publish Status = HOLD` and every claim "Exact only after model
-confirmation".
+## How a claim becomes customer-visible (existing code, `CompatibilityWorkflow.ts`)
+A fit is shown only when ALL hold: claim `workflow_status = ACTIVE`; battery
+lifecycle `ACTIVE`; product approved+active; and evidence is
+- `PACKAGE_VERIFIED` / `FIT_TESTED` / `VERIFIED_EXACT` → "Verified fit, in stock / out of stock"
+- `CONDITIONAL` → "Fits with a condition"
+- `SUPPLIER_LISTED` → shown ONLY if the finder setting *show awaiting verification* is on, as **"Listed by the supplier, not yet checked by us"** (never "fits your phone").
 
-| Evidence status in the workbook | Claims | Treatment |
+An import always stages `DRAFT` + `SUPPLIER_LISTED`. **Imports never publish.**
+Note: all 80 live batteries are currently lifecycle `REVIEW`, so no fit can be
+public until batteries are activated too — a second, separate gate.
+
+## What the importer's own rules do with the 102 claims (`evidence-ledger.csv`)
+| Outcome | Rows | Meaning |
 |---|---|---|
-| Supplier cross-check, battery code matches a LIVE SKU, exact model number given | **34** (34 phones, 11 batteries) | proposed here, `confidence=declared`, source named per row |
-| Supplier cross-check, no matching live SKU (EB-BA505ABU, EB-BA217ABY, BLP727, HQ-50S) | 12 | held — the battery is not a live product |
-| Inventory-name / poster / supplier-only / ambiguous / conflicting | 56 | held — not strong enough for a customer-facing fit claim |
+| Stage, then review for verification | 34 | two independent supplier sources agree, exact model number, battery is a live product |
+| Stage only | 22 | single weak source (inventory name / poster); needs package or fit evidence |
+| Held by the importer | 12 | compound battery line or a recorded conflict — split/resolve first |
+| Not importable | 34 | the battery code is not a live product (e.g. EB-BA505ABU, BLP727, HQ-50S) |
 
-Nothing is `verified`: a supplier's list is a declaration, not our own check.
-No charger, cable or case compatibility is derived from battery data.
+`evidence-ledger.csv` is row-level: claim id, battery, device, exact model,
+the workbook's evidence wording, source and URL (as supplied — nothing added),
+the importer outcome and the proposal. Produced by running
+`normaliseImportRow` against the live battery codes and aliases (read-only).
 
-**Files:** `proposed-devices.csv`, `proposed-compatibility.csv` (validated by the
-importer's own validator in `tests/unit/ProposedDeviceCompatibilityImport.test.ts`).
+## Recommended evidence threshold
+- **Internal staging (safe now):** upload `compatibility-map-for-admin-import.csv`, run the dry run, apply. Result: DRAFT claims, invisible to customers.
+- **"Verified fit":** the battery's printed code photographed on the packaging/label and matching the claim (`PACKAGE_VERIFIED`) is enough for the 34; a physical fit test (`FIT_TESTED`) is needed only where the workbook records a conflict or a variant question. A fit test proves it seats and powers on — not capacity or longevity.
+- **Supplier-listed wording in public:** optional, one switch, exact copy above.
 
-**To apply (owner approval required; rehearse on the clone first):**
-1. `tsx apps/api/src/scripts/import-devices.ts proposed-devices.csv` (dry run) then `--apply` — rerun-safe, existing slugs skipped.
-2. `tsx apps/api/src/scripts/import-device-compatibility.ts proposed-compatibility.csv <actorId>` — whole-file validation, one transaction.
-
-**The one business question:** are you content for these 34 to show as
-supplier-declared fits ("awaiting verification" styling), or do you want a
-physical check of each battery first so they can be marked verified?
+## The two decisions
+1. Stage all importable rows as DRAFT (invisible)? — reversible: archive the session's claims.
+2. Separately, later: which verified claims to activate, and whether to show supplier-listed ones with the wording above.

@@ -21,6 +21,10 @@ export default defineConfig({
   test: {
     // Playwright owns tests/e2e (run via `pnpm test:e2e`); vitest must not
     // try to load @playwright/test specs.
-    exclude: [...configDefaults.exclude, 'tests/e2e/**', 'tests/e2e-production/**'],
+    // The audit packages own their runners and are NOT vitest suites:
+    // performance-audit runs `node --test` + python unittest (its package
+    // `test` script); compatibility-audit is Playwright against a live site.
+    // A root `vitest run` could only report them as un-collectable failures.
+    exclude: [...configDefaults.exclude, 'tests/e2e/**', 'tests/e2e-production/**', 'performance-audit/**', 'compatibility-audit/**'],
   },
 });
