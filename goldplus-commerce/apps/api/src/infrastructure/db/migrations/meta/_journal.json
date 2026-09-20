@@ -1016,6 +1016,13 @@
       "when": 1790140000003,
       "tag": "0144_recommendation_serving_hourly",
       "breakpoints": true
+    },
+    {
+      "idx": 145,
+      "version": "5",
+      "when": 1790140000004,
+      "tag": "0145_recommendation_events_source_product_idx",
+      "breakpoints": true
     }
   ]
 }

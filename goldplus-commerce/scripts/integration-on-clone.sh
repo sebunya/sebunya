@@ -7,6 +7,8 @@
 # applies every migration (the image's), runs the named vitest files with the
 # repository's tests mounted, and destroys the clone and its volume. Never
 # touches the live database; providers are stubbed inside the tests.
+# The root vitest.config.ts is mounted too: without its aliases any test that
+# imports @goldplus/shared could never load here (three files silently never ran).
 set -euo pipefail
 IMG="$1"; SRC="$2"; shift 2
 STAMP=$(date +%Y%m%d-%H%M%S); NET=itest-$STAMP; DB=itest-db-$STAMP
@@ -29,4 +31,4 @@ COMMON=(--network "$NET" -e DATABASE_URL="$URL" -e COMMERCE_TEST_DATABASE_URL="$
   -e GA4_MEASUREMENT_ID=G-ITEST00001 -e METRICS_INTERNAL_URL=http://127.0.0.1:9)
 docker run --rm "${COMMON[@]}" -e NODE_ENV=production "$IMG" pnpm -F @goldplus/api db:migrate > /tmp/itest-migrate.log 2>&1 || { echo "STOP: migrate failed"; tail -15 /tmp/itest-migrate.log; exit 1; }
 echo "clone migrated"
-docker run --rm "${COMMON[@]}" -e NODE_ENV=test -v "$SRC/tests:/app/tests:ro" "$IMG" sh -c "cd /app && pnpm exec vitest run $*"
+docker run --rm "${COMMON[@]}" -e NODE_ENV=test -v "$SRC/tests:/app/tests:ro" -v "$SRC/vitest.config.ts:/app/vitest.config.ts:ro" "$IMG" sh -c "cd /app && pnpm exec vitest run $*"

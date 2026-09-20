@@ -4,6 +4,7 @@ import { serializeJsonLd, breadcrumbJsonLd } from '../lib/jsonld';
 import ProductCard from '../components/ProductCard.astro';
 import Notice from '../components/Notice.astro';
 import { apiBase, publicApiBase } from '../lib/api';
+import { isDeclaredAutomation } from '../lib/declaredAutomation';
 import { getCleanCatalog } from '../lib/catalog/catalog';
 import {
   categoryNameForSlug,
@@ -134,7 +135,8 @@ const browseFallback = products.length === 0 ? availableProducts.slice(0, 6) : [
 // the identity-free search aggregates stay identity-free; this is the
 // profile-attached copy that lets recommendations respond to recent intent
 // (§5A.10). Fire-and-forget: search results never wait on telemetry.
-if (search && Astro.locals.gpVisit) {
+// Our own probes keep cookies; a search THEY run is not a shopper's search.
+if (search && Astro.locals.gpVisit && !isDeclaredAutomation(Astro.request.headers.get('user-agent'))) {
   fetch(`${apiBase}/recommendations/events`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-gp-visit': Astro.locals.gpVisit },

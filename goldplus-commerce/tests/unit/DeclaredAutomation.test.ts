@@ -21,4 +21,9 @@ describe("declared automation never records shopper behaviour", () => {
       expect(post.indexOf("isDeclaredAutomation(")).toBeLessThan(post.indexOf("fetch("));
     }
   });
+
+  it("the server-side search event on /shop is guarded too", () => {
+    const src = readFileSync("apps/web/src/pages/shop.astro", "utf8");
+    expect(src).toContain("if (search && Astro.locals.gpVisit && !isDeclaredAutomation(Astro.request.headers.get('user-agent')))");
+  });
 });
