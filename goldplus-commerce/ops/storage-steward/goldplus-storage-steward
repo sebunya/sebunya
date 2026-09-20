@@ -863,7 +863,7 @@ OPERATION_REQUIREMENTS: dict[str, dict] = {
 CLASS_CEILING = {"P3": "PRESSURE", "P2": "HIGH", "P1": "CRITICAL", "P0": "EMERGENCY"}
 
 
-def admit(state: State, policy: dict, operation: str, hold_minutes: int = 60) -> tuple[str, str]:
+def admit(state: State, policy: dict, operation: str, hold_minutes: int = 60, hold: bool = True) -> tuple[str, str]:
     """ADMIT, DEFER or DENY — one answer, with the reason that produced it.
 
     DEFER means "not now, ask again"; DENY means "not until something changes".
@@ -929,6 +929,11 @@ def admit(state: State, policy: dict, operation: str, hold_minutes: int = 60) ->
         return "DEFER", f"the {lane} lane is held by {holder or 'another job'}"
 
     state.record_action("admit", operation, "ADMITTED", 0, f"pressure={level} free={free_gb:.1f}GB")
+    if not hold:
+        # --dry-run ASKS; it must not leave the lanes taken. It used to: one
+        # "just checking" held heavy I/O for an hour (observed 2026-09-20).
+        for held in taken:
+            state.release(f"goldplus-{held}")
     return "ADMIT", f"pressure {level}, {free_gb:.1f} GB free, {avail_mb:.0f} MB RAM available"
 
 
@@ -1143,7 +1148,7 @@ def cmd_matrix(args, policy: dict, state: State) -> int:
 
 def cmd_admit(args, policy: dict, state: State) -> int:
     """Ask permission for an expensive operation. Exit code carries the verdict."""
-    verdict, reason = admit(state, policy, args.operation, args.hold_minutes)
+    verdict, reason = admit(state, policy, args.operation, args.hold_minutes, hold=not args.dry_run)
     print(json.dumps({"operation": args.operation, "verdict": verdict, "reason": reason}))
     return {"ADMIT": 0, "DEFER": 75, "DENY": 77}[verdict]
 
