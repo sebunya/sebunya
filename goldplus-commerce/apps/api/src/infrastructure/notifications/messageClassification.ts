@@ -30,6 +30,9 @@ import { NotificationDispatchPayload } from '../../application/ports/INotificati
  */
 const OPERATIONAL_TEMPLATES = new Set([
   'ADMIN_ORDER_EMAIL',
+  // The paid-order alert (0143): to the shop's own fulfilment phone, so that a
+  // paid order is never sitting unnoticed. Never to a customer.
+  'FULFILMENT_PAID_ORDER_ALERT',
   'DEALER_APPLICATION',
   'NEW_QUOTE_REQUEST',
   'FAKE_REPORT_ALERT',
