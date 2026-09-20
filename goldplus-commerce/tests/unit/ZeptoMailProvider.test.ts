@@ -157,7 +157,11 @@ describe('ZeptoMail Transactional Email Adapter Unit Tests', () => {
     expect(parsedBody.from.address).toBe('receipts@shopgoldplus.com');
     expect(parsedBody.to[0].email_address.address).toBe('customer@example.com');
     expect(parsedBody.reply_to[0].address).toBe('support@shopgoldplus.com');
-    expect(parsedBody.subject).toBe('Payment received for your GoldPlus order');
+    // The reviewed design (apps/api/templates/email) now renders customer mail,
+    // so the subject names the order the customer is reading about. The old
+    // wording came from the previous in-code renderer, which remains only as a
+    // fallback for a template we cannot fill completely.
+    expect(parsedBody.subject).toBe('Payment received · GP-1001');
     expect(parsedBody.htmlbody).toContain('Alice');
     expect(parsedBody.htmlbody).toContain('GP-1001');
     expect(parsedBody.textbody).toContain('Alice');
