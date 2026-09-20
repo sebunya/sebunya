@@ -225,3 +225,41 @@ deployment verified: NO · observation complete: NO
 - Suite on the committed tree (3b18296a): 8,114 passed / 1 failed (`ZeroSkipGate`, environment) / 237 skipped (46 real-Postgres files). All 13 earlier failures reconciled: 11 Slice09 dirty-tree guards pass on a clean tree; `performance-audit` is a `node:test` file — `node --test` → 12/12 pass.
 - Push triggers nothing: the repo has no `.github/workflows`.
 - Real PostgreSQL: `tests/integration/PersonalisationReads.integration.test.ts` added; result recorded below when the clone run finishes.
+
+## 15. Real-PostgreSQL verification and what it caught (2026-09-20)
+
+Run: `scripts/integration-on-clone.sh goldplus-itest:8412d746 …` on the host — a
+throwaway `postgres:16-alpine` on a private network, restored from the newest
+production dump, all migrations applied (0144 included), no provider keys,
+destroyed with its volume afterwards. Host before/after: ~1.8 GB RAM available,
+load < 2.2, disk 39%. This is integration proof, NOT an off-host restore test.
+
+**It caught a bug 8,000 unit tests could not.** `e.event_type = any(pgTextArray(…))`
+is rejected by PostgreSQL (`varchar = text[]`: the helper expands to a
+subselect). `getSignals` swallows errors and returns the neutral payload, so in
+production EVERY visitor would have read as brand-new — silently. Fixed with
+`pgInTextList`; an architecture guard bans the broken form; swallowed signal
+failures are now logged (`HERO_SIGNALS_FAILED`); the integration test calls the
+queries directly so a broken query fails rather than looking like a new visitor.
+
+Results on the final code:
+- `PersonalisationReads` 4/4: pure read writes nothing; 3 concurrent creates → 1 row; counter adds across flushes and two processes (9/1/2); serving health reads it; 5 days of rendered rails + impressions = visits 1, affinity none; 3 days of views = visits 3; year-old views fade below 0.3 while lifetime visits stay; a second profile of the same customer inherits the history.
+- `MeasurementCore` 14/14, `ExperienceProfile` 5/5, `HeroSignals` 6/6, `RecommendationReaderR3` 6/6, `RecommendationCommercialR31` 7/7, `RecommendationTrendingQuery` 3/3.
+- Pre-existing harness issues, untouched by this work: `HeroContent` cannot resolve `@goldplus/shared` from the mounted tests dir; `RecommendationCompatibilityMappings` passes 4/4 but its `afterAll` product delete exceeds the 10 s hook limit on a full-size clone.
+
+Other loose ends closed in this pass: `SHOP_PERSONAL_ORDER` was read from
+`import.meta.env` (inlined at build — not a runtime switch) → `process.env`;
+`/shop` now calls `GET /hero/affinity` (one indexed query) instead of
+`/hero/signals` (orders, loyalty, stock, address); the Steward's "docker build"
+probe matched any shell that mentioned the words.
+
+## 16. States (final candidate = HEAD of `deploy/price-floor-145k`)
+| State | |
+|---|---|
+| Implemented | containment, forever-retention, cross-device history, fading affinity, declared-automation guard, shop ordering, this-phone suggestion, compatibility import (prepared) |
+| Build-tested | API + web typecheck clean; `astro build` complete |
+| Unit/architecture | 8,115 pass; only `ZeroSkipGate` (environment) fails locally |
+| Database-verified | YES for the changed SQL (above) |
+| Data-ready | compatibility: 34 claims prepared, awaiting owner decision; not applied |
+| Production-authorized | NO — migration 0144 + deploy await the owner |
+| Deployed / outcome-measured | NO / NO |
