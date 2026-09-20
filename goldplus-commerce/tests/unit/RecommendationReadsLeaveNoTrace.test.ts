@@ -19,7 +19,7 @@ describe("recommendation reads leave no trace (personalisation rebuild, R0)", ()
     const getCall = rec.slice(rec.indexOf("const rawVisitToken = c.req.header('x-gp-visit')"));
     expect(getCall.slice(0, 400)).toContain("resolveExperienceProfileUseCase.execute(rawVisitToken))");
     const hero = read("apps/api/src/interfaces/http/routes/hero.ts");
-    expect(hero.match(/profileFrom\(c, 'behaviour'\)/g)?.length).toBe(1);
+    expect(hero).toContain("isAutomaticExposureEvent(String(body.eventType ?? '')) ? 'read' : 'behaviour'");
     expect(hero).toContain("intent: 'read' | 'behaviour' = 'read'");
   });
 
@@ -48,5 +48,13 @@ describe("recommendation reads leave no trace (personalisation rebuild, R0)", ()
     const hero = read("apps/api/src/infrastructure/hero/HeroSignalsService.ts");
     expect(hero.match(/join experience_profiles sib on sib\.customer_id = me\.customer_id/g)?.length).toBe(2);
     expect(hero).toContain("select min(sib.first_seen_at) from experience_profiles sib");
+  });
+
+  it("automatic exposure beacons never create a profile; visitor actions do (found live on 2026-09-20)", async () => {
+    const { isAutomaticExposureEvent } = await import("../../packages/shared/src/recommendations");
+    for (const t of ["IMPRESSION", "NBA_IMPRESSION", "SEARCH_SUGGEST_SHOWN", "SEARCH_ZERO", "RECOMMENDATION_IMPRESSION", "RECOMMENDATION_VIEWED"]) expect(isAutomaticExposureEvent(t), t).toBe(true);
+    for (const t of ["CLICK", "PANEL_OPEN", "NBA_CLICK", "SEARCH_SUBMIT", "PRODUCT_VIEWED", "PRODUCT_ADDED_TO_CART"]) expect(isAutomaticExposureEvent(t), t).toBe(false);
+    for (const f of ["hero", "nav"]) expect(read(`apps/api/src/interfaces/http/routes/${f}.ts`)).toContain("isAutomaticExposureEvent(String(body.eventType ?? '')) ? 'read' : 'behaviour'");
+    expect(read("apps/api/src/interfaces/http/routes/recommendations.ts")).toContain("exposure ? 'read' : 'behaviour'");
   });
 });

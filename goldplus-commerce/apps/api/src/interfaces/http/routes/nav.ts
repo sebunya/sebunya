@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { isAutomaticExposureEvent } from '@goldplus/shared';
 import { Registry } from '../../../infrastructure/Registry';
 
 /**
@@ -13,11 +14,11 @@ import { Registry } from '../../../infrastructure/Registry';
 const routes = new Hono();
 const registry = Registry.getInstance();
 
-async function profileFrom(c: any): Promise<string | null> {
+async function profileFrom(c: any, intent: 'read' | 'behaviour'): Promise<string | null> {
   const rawVisit = c.req.header('x-gp-visit');
   if (!rawVisit) return null;
   try {
-    const profile = await registry.resolveExperienceProfileUseCase.execute(rawVisit, 'behaviour');
+    const profile = await registry.resolveExperienceProfileUseCase.execute(rawVisit, intent);
     return profile?.id ?? null;
   } catch {
     return null;
@@ -33,7 +34,8 @@ routes.get('/', async (c) => {
 routes.post('/events', async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ success: false, error: { code: 'BAD_JSON', message: 'Invalid body' } }, 400);
-  const profileId = await profileFrom(c);
+  // An automatic exposure beacon may USE a profile that exists; only a visitor action may create one.
+  const profileId = await profileFrom(c, isAutomaticExposureEvent(String(body.eventType ?? '')) ? 'read' : 'behaviour');
   const result = await registry.navTelemetryService.capture({
     eventType: String(body.eventType ?? ''),
     itemKey: String(body.itemKey ?? ''),

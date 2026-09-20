@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { SYSTEM_EXPOSURE_EVENT_TYPES } from '@goldplus/shared';
 import { Registry } from '../../../infrastructure/Registry';
 import { customerSessionMiddleware } from '../middleware/customerSession';
 import type { ApiResponse, GetRecommendationsInput } from '@goldplus/shared';
@@ -26,7 +27,10 @@ routes.post('/events', async (c) => {
     let origin: { producer: string; profileId?: string } = { producer: 'public-api' };
     if (rawVisit) {
       try {
-        const profile = await registry.resolveExperienceProfileUseCase.execute(rawVisit, 'behaviour');
+        // A rail scrolling into view is OUR rendering: it may use a profile that
+        // exists, never create one. Only what the visitor did creates a profile.
+        const exposure = (SYSTEM_EXPOSURE_EVENT_TYPES as readonly string[]).includes(String((body as { eventType?: unknown }).eventType ?? ''));
+        const profile = await registry.resolveExperienceProfileUseCase.execute(rawVisit, exposure ? 'read' : 'behaviour');
         if (profile) origin = { producer: 'web-relay', profileId: profile.id };
       } catch {
         // Profile resolution is continuity, not correctness — the event still lands.

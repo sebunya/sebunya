@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { isAutomaticExposureEvent } from '@goldplus/shared';
 import { Registry } from '../../../infrastructure/Registry';
 import { HERO_SLIDE_LIBRARY } from '@goldplus/shared';
 
@@ -77,7 +78,8 @@ routes.get('/affinity', async (c) => {
 routes.post('/events', async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ success: false, error: { code: 'BAD_JSON', message: 'Invalid body' } }, 400);
-  const profileId = await profileFrom(c, 'behaviour');
+  // An automatic exposure beacon may USE a profile that exists; only a visitor action may create one.
+  const profileId = await profileFrom(c, isAutomaticExposureEvent(String(body.eventType ?? '')) ? 'read' : 'behaviour');
   const result = await registry.heroTelemetryService.capture({
     eventType: String(body.eventType ?? ''),
     slideKey: String(body.slideKey ?? ''),

@@ -396,3 +396,15 @@ export const SYSTEM_EXPOSURE_EVENT_TYPES = [
 export const VISITOR_ACTION_EVENT_TYPES: readonly RecommendationEventType[] = RECOMMENDATION_EVENT_TYPES.filter(
   (t) => !(SYSTEM_EXPOSURE_EVENT_TYPES as readonly string[]).includes(t),
 );
+
+/**
+ * Hero and nav telemetry: events the PAGE fires by itself when something is
+ * drawn. They are recorded, but they must never create a visitor profile —
+ * on the first minute after the 2026-09-20 release, automatic hero IMPRESSION
+ * and nav NBA_IMPRESSION beacons alone minted 5 profiles with no action at all.
+ * Anything not matched here (a click, opening a panel, a search the visitor
+ * typed) is something the visitor did.
+ */
+export function isAutomaticExposureEvent(eventType: string): boolean {
+  return /(^|_)IMPRESSION$|_SHOWN$|^RECOMMENDATION_VIEWED$|^SEARCH_ZERO$/.test(String(eventType ?? '').toUpperCase());
+}
