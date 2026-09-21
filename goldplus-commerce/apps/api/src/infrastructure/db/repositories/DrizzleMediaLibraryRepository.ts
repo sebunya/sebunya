@@ -185,27 +185,6 @@ export class DrizzleMediaLibraryRepository implements IMediaLibraryRepository {
       .limit(200);
   }
 
-  async assignPrimaryProductImage(productId: string, asset: MediaAssetRecord) {
-    // All three writes or none. Autocommitted, a failure after the demote
-    // left the product pointing at an image its gallery marked as not
-    // primary, so the PDP and the gallery disagreed about the main photo.
-    return db.transaction(async (tx) => {
-      const [product] = await tx
-        .update(products)
-        .set({ imageUrl: asset.url, hasImage: true })
-        .where(eq(products.id, productId))
-        .returning({ id: products.id });
-      if (!product) return null;
-      // Gallery consistency: demote existing primaries, then add the library-backed row.
-      await tx.update(productImages).set({ isPrimary: false }).where(eq(productImages.productId, productId));
-      await tx.insert(productImages).values({
-        productId,
-        url: asset.url,
-        altText: asset.altText,
-        isPrimary: true,
-        assetId: asset.id,
-      });
-      return { productId, url: asset.url };
-    });
-  }
+  // Focus 4: `assignPrimaryProductImage` was removed — gallery writes belong to
+  // DrizzleProductMediaRepository.applySlotMap (locked, revision-checked, audited).
 }

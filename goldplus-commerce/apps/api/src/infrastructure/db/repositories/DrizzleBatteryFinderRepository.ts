@@ -7,7 +7,7 @@ import type { BatteryFinderConfig, BatteryRequestStatus, FinderBrandDto, FinderD
 import type { BatteryRequestRecord, DemandOverview, FinderEventWrite, IBatteryFinderRepository, PublicFitRow } from '../../../application/ports/IBatteryFinderRepository';
 import type { BatteryCandidate, DeviceCandidate } from '../../../domain/batteries/FinderRanking';
 import { deviceLabel } from '../../../domain/batteries/DeviceHierarchy';
-import { displayImageUrlSql } from '../mediaDisplayUrl';
+import { displayImageUrlSql, galleryOrderSql, galleryVisibleSql } from '../mediaDisplayUrl';
 
 const jsonb = (value: unknown) => sql`${client.json(value as never)}::jsonb`;
 
@@ -15,7 +15,7 @@ const jsonb = (value: unknown) => sql`${client.json(value as never)}::jsonb`;
 const PUBLIC_CLAIM = sql`${productDeviceCompatibility.workflowStatus} = 'ACTIVE' AND ${productDeviceCompatibility.evidenceStatus} <> 'REJECTED'`;
 const VERIFIED_PUBLIC = sql`c.workflow_status = 'ACTIVE' AND c.evidence_status IN ('PACKAGE_VERIFIED','FIT_TESTED','VERIFIED_EXACT','CONDITIONAL') AND bp.lifecycle_status = 'ACTIVE' AND p.approval_status = 'approved' AND p.active`;
 
-const PRIMARY_IMAGE = sql<string | null>`COALESCE((SELECT ${displayImageUrlSql('i')} FROM product_images i WHERE i.product_id = ${products.id} ORDER BY i.is_primary DESC, i.display_order ASC LIMIT 1), ${products.imageUrl})`;
+const PRIMARY_IMAGE = sql<string | null>`COALESCE((SELECT ${displayImageUrlSql('i')} FROM product_images i WHERE i.product_id = ${products.id} AND ${galleryVisibleSql('i', sql`${products.id}`)} ORDER BY ${galleryOrderSql('i')} LIMIT 1), ${products.imageUrl})`;
 
 function deviceDto(d: typeof devices.$inferSelect, seriesName: string | null, verifiedFits: number): FinderDeviceDto {
   return {

@@ -3,7 +3,6 @@ import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
 import { Registry } from '../../../../infrastructure/Registry';
 import { CreateAuditLogUseCase } from '../../../../application/use-cases/audit/CreateAuditLogUseCase';
-import { AddProductImageByUrlUseCase } from '../../../../application/use-cases/products/AddProductImageByUrlUseCase';
 import { RemoveProductImageUseCase } from '../../../../application/use-cases/products/RemoveProductImageUseCase';
 import { SetAttributeValueUseCase } from '../../../../application/use-cases/products/SetAttributeValueUseCase';
 import { DefineAttributeUseCase } from '../../../../application/use-cases/products/DefineAttributeUseCase';
@@ -20,38 +19,16 @@ const MAX_PRICE_UGX = 100_000_000;
 const routes = new Hono();
 routes.use('*', authMiddleware);
 
+// Focus 4: adding an image by external https URL is an obsolete write path. Such
+// a row would have no library asset and no renditions, so it could never enter a
+// gallery slot or be served as a rendition. The path is disabled, not rerouted:
+// upload the file through the media library (or the product gallery editor).
 routes.post('/:id/images', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) => {
-  const productId = c.req.param('id') ?? '';
-  const body = await c.req.json().catch(() => null);
-  if (!body) {
-    const res: ApiResponse<never> = { success: false, error: { code: 'BAD_JSON', message: 'Body must be JSON.' } };
-    return c.json(res, 400);
-  }
-
-  const registry = Registry.getInstance();
-  const uc = new AddProductImageByUrlUseCase(registry.productImageRepo);
-  const result = await uc.execute({
-    productId,
-    url: String(body.url ?? ''),
-    altText: body.altText == null ? null : String(body.altText),
-    makePrimary: Boolean(body.makePrimary),
-  });
-  if (!result.ok) {
-    const res: ApiResponse<never> = { success: false, error: { code: result.code, message: result.message } };
-    return c.json(res, 400);
-  }
-
-  const auditUc = new CreateAuditLogUseCase(registry.auditRepo);
-  await auditUc.execute({
-    actorId: (c.get('user') as any).id,
-    action: 'PRODUCT_IMAGE_ADDED',
-    entity: 'product',
-    entityId: productId,
-    newState: { imageId: result.image.id, url: result.image.url, isPrimary: result.image.isPrimary },
-  });
-
-  const res: ApiResponse<typeof result.image> = { success: true, data: result.image };
-  return c.json(res, 201);
+  const res: ApiResponse<never> = {
+    success: false,
+    error: { code: 'SUPERSEDED', message: 'Adding an image by URL is no longer supported. Upload the file in the product gallery editor (Admin → Products → Media) so it gets renditions and a slot.' },
+  };
+  return c.json(res, 410);
 });
 
 routes.post('/:id/images/upload', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) => {
@@ -84,7 +61,8 @@ routes.post('/:id/images/upload', requirePermissions([PERMISSIONS.PRODUCTS_WRITE
       productId,
       files: logicalFiles,
       altText: typeof body['altText'] === 'string' ? body['altText'] : undefined,
-      makeFirstPrimary: body['makeFirstPrimary'] === 'true' || body['makeFirstPrimary'] === '1'
+      makeFirstPrimary: body['makeFirstPrimary'] === 'true' || body['makeFirstPrimary'] === '1',
+      actorId: (c.get('user') as any).id as string,
     });
 
     // Bulk audit record
@@ -94,9 +72,9 @@ routes.post('/:id/images/upload', requirePermissions([PERMISSIONS.PRODUCTS_WRITE
       action: 'PRODUCT_IMAGE_UPLOADED',
       entity: 'product',
       entityId: productId,
-      newState: { 
-        count: savedImages.length, 
-        imageIds: savedImages.map(i => i.id) 
+      newState: {
+        count: savedImages.length,
+        outcomes: savedImages.map((i) => ({ assetId: i.assetId, slot: i.slot, outcome: i.outcome })),
       },
     });
 
@@ -120,12 +98,29 @@ routes.post('/:id/images/upload', requirePermissions([PERMISSIONS.PRODUCTS_WRITE
 routes.delete('/images/:imageId', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) => {
   const imageId = c.req.param('imageId') ?? '';
   const registry = Registry.getInstance();
-  const uc = new RemoveProductImageUseCase(registry.productImageRepo);
-  const result = await uc.execute(imageId);
-  if (!result.ok) {
+  const actorId = (c.get('user') as any).id as string;
+  // Focus 4: a slotted image leaves through the gallery service (a cover needs a
+  // replacement — never a silent promotion); only a legacy, unslotted row may be
+  // deleted directly.
+  const owner = await registry.productImageRepo.findProductIdForImage(imageId);
+  if (!owner) {
     const res: ApiResponse<never> = { success: false, error: { code: 'NOT_FOUND', message: 'Image not found.' } };
     return c.json(res, 404);
   }
+  const removal = await registry.productMediaUseCases.removeImage({ productId: owner, imageId, actorId });
+  if (!removal.ok) {
+    const res: ApiResponse<never> = { success: false, error: { code: removal.code, message: removal.message } };
+    return c.json(res, removal.code === 'NOT_FOUND' ? 404 : 409);
+  }
+  if ('legacyRowRemoved' in removal) {
+    const uc = new RemoveProductImageUseCase(registry.productImageRepo);
+    const legacy = await uc.execute(imageId);
+    if (!legacy.ok) {
+      const res: ApiResponse<never> = { success: false, error: { code: 'NOT_FOUND', message: 'Image not found.' } };
+      return c.json(res, 404);
+    }
+  }
+  const result = { ok: true as const, productId: owner };
   const auditUc = new CreateAuditLogUseCase(registry.auditRepo);
   await auditUc.execute({
     actorId: (c.get('user') as any).id,

@@ -76,7 +76,8 @@ describe('the images arriving this week are actually shown', () => {
     const src = read('apps/api/src/application/use-cases/products/SearchUseCases.ts');
     expect(src).toMatch(/imageUrl: string \| null;/);
     expect(src).toMatch(/imageUrl: primaryImageUrl\(c\.row\.images\)/);
-    expect(src).toMatch(/Number\(b\.isPrimary\) - Number\(a\.isPrimary\)/);
+    // Focus 4: the ONE cover resolver (slot 1, else the legacy projection).
+    expect(src).toMatch(/resolveGallery\(/);
   });
 
   it('the dropdown renders it rather than a hard-coded blank', () => {

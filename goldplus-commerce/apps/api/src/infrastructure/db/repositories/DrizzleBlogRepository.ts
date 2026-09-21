@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, inArray, ne, sql } from 'drizzle-orm';
+import { resolveGallery } from '@goldplus/shared';
 import { db } from '../client';
 import { blogPosts, blogPostProducts } from '../schema/blog';
 import { products, productPrices, categories } from '../schema/products';
@@ -200,11 +201,13 @@ export class DrizzleBlogRepository implements IBlogRepository {
     const floorById = new Map(priceRows.map((p) => [p.productId, p.floorPrice ?? null]));
     const categoryById = new Map(categoryRows.map((c) => [c.id, c.name]));
     const display = await displayUrlMap(imageRows);
+    // Focus 4: the ONE cover resolver, per product.
+    const rowsByProduct = new Map<string, typeof imageRows>();
+    for (const image of imageRows) rowsByProduct.set(image.productId, [...(rowsByProduct.get(image.productId) ?? []), image]);
     const imageByProduct = new Map<string, string>();
-    for (const image of [...imageRows].sort(
-      (a, b) => Number(b.isPrimary) - Number(a.isPrimary) || (a.displayOrder ?? 0) - (b.displayOrder ?? 0),
-    )) {
-      if (!imageByProduct.has(image.productId)) imageByProduct.set(image.productId, display.get(image.url) ?? image.url);
+    for (const [productId, list] of rowsByProduct) {
+      const cover = resolveGallery(list.map((i) => ({ ...i, slot: i.slot ?? null }))).cover;
+      if (cover) imageByProduct.set(productId, display.get(cover.url) ?? cover.url);
     }
 
     return rows.map((r) => ({

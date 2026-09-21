@@ -48,11 +48,21 @@ export type UploadOutcome =
   | { kind: 'STORED'; asset: MediaAssetRecord; deduplicated: boolean }
   | { kind: 'REJECTED'; filename: string; reason: 'UNSUPPORTED_TYPE' | 'TOO_LARGE' | 'EMPTY' };
 
+/**
+ * Focus 4: every "make this the product's picture" request is a gallery write.
+ * The media library does not write product_images itself any more; it hands the
+ * asset to the ONE mutation service (slot 1 = cover, revision-checked, audited).
+ */
+export interface ProductGalleryAssignPort {
+  assignAsCover(input: { productId: string; assetId: string; actorId: string }): Promise<{ ok: true } | { ok: false; code: string; message: string }>;
+}
+
 export class MediaLibraryUseCase {
   constructor(
     private readonly repo: IMediaLibraryRepository,
     private readonly storage: MediaStoragePort,
     private readonly variants: IMediaVariantGenerator,
+    private readonly gallery: ProductGalleryAssignPort,
   ) {}
 
   async upload(args: {
@@ -159,13 +169,15 @@ export class MediaLibraryUseCase {
     return { kind: 'DELETED' };
   }
 
-  /** Repair flow: make this asset the product's primary image and record the usage. */
-  async assignToProduct(assetId: string, productId: string): Promise<{ productId: string; url: string } | { kind: 'NOT_FOUND' }> {
+  /**
+   * Make this asset the product's cover (slot 1). Routed through the gallery
+   * mutation service, which also maintains the usage graph and the audit row.
+   */
+  async assignToProduct(assetId: string, productId: string, actorId: string): Promise<{ productId: string; url: string } | { kind: 'NOT_FOUND' } | { kind: 'REFUSED'; code: string; message: string }> {
     const asset = await this.repo.findById(assetId);
     if (!asset) return { kind: 'NOT_FOUND' };
-    const assigned = await this.repo.assignPrimaryProductImage(productId, asset);
-    if (!assigned) return { kind: 'NOT_FOUND' };
-    await this.repo.recordUsage(assetId, 'product', productId, 'primary_image');
-    return assigned;
+    const r = await this.gallery.assignAsCover({ productId, assetId, actorId });
+    if (!r.ok) return r.code === 'NOT_FOUND' ? { kind: 'NOT_FOUND' } : { kind: 'REFUSED', code: r.code, message: r.message };
+    return { productId, url: asset.url };
   }
 }

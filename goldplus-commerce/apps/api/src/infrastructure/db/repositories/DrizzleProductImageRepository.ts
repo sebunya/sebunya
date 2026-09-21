@@ -1,4 +1,4 @@
-import { and, eq, asc } from 'drizzle-orm';
+import { and, eq, asc, isNull } from 'drizzle-orm';
 import { db } from '../client';
 import { productImages } from '../schema/phase11';
 import { IProductImageRepository, PersistedProductImage } from '../../../application/ports/IProductImageRepository';
@@ -23,59 +23,34 @@ export class DrizzleProductImageRepository implements IProductImageRepository {
     return rows.map(rowToDto);
   }
 
-  async add(input: {
-    productId: string;
-    url: string;
-    altText: string | null;
-    makePrimary: boolean;
-  }): Promise<PersistedProductImage> {
-    return db.transaction(async (tx) => {
-      const existing = await tx.query.productImages.findMany({ where: eq(productImages.productId, input.productId) });
-      const shouldBePrimary = input.makePrimary || existing.length === 0;
-
-      if (shouldBePrimary && existing.some((i) => i.isPrimary)) {
-        await tx.update(productImages).set({ isPrimary: false }).where(eq(productImages.productId, input.productId));
-      }
-
-      const [row] = await tx
-        .insert(productImages)
-        .values({
-          productId: input.productId,
-          url: input.url,
-          altText: input.altText,
-          displayOrder: existing.length,
-          isPrimary: shouldBePrimary,
-        })
-        .returning();
-      return rowToDto(row);
-    });
+  async findProductIdForImage(imageId: string): Promise<string | null> {
+    const row = await db.query.productImages.findFirst({ where: eq(productImages.id, imageId), columns: { productId: true } });
+    return row?.productId ?? null;
   }
 
+  /**
+   * Focus 4: refused. A gallery row is written only by ProductMediaUseCases
+   * (slot map, revision, projection, usages and audit in one transaction).
+   * Kept on the port so old callers fail loudly instead of silently bypassing.
+   */
+  async add(): Promise<PersistedProductImage> {
+    throw new Error('SUPERSEDED: product_images is written only through ProductMediaUseCases (Focus 4).');
+  }
+
+  /**
+   * Legacy rows only. A row that holds a gallery slot must leave through the
+   * mutation service (a cover needs a replacement; nothing is promoted here).
+   */
   async remove(imageId: string): Promise<{ removedProductId: string } | null> {
     const row = await db.query.productImages.findFirst({ where: eq(productImages.id, imageId) });
     if (!row) return null;
-    await db.delete(productImages).where(eq(productImages.id, imageId));
-    // If the removed row was primary, promote the lowest-display-order survivor.
-    if (row.isPrimary) {
-      const survivors = await db.query.productImages.findMany({
-        where: eq(productImages.productId, row.productId),
-        orderBy: [asc(productImages.displayOrder)],
-        limit: 1,
-      });
-      if (survivors[0]) {
-        await db.update(productImages).set({ isPrimary: true }).where(eq(productImages.id, survivors[0].id));
-      }
-    }
+    if (row.slot !== null) throw new Error('SUPERSEDED: a slotted gallery image is removed through ProductMediaUseCases (Focus 4).');
+    await db.delete(productImages).where(and(eq(productImages.id, imageId), isNull(productImages.slot)));
     return { removedProductId: row.productId };
   }
 
-  async setPrimary(productId: string, imageId: string): Promise<void> {
-    await db.transaction(async (tx) => {
-      await tx.update(productImages).set({ isPrimary: false }).where(eq(productImages.productId, productId));
-      await tx
-        .update(productImages)
-        .set({ isPrimary: true })
-        .where(and(eq(productImages.productId, productId), eq(productImages.id, imageId)));
-    });
+  /** Focus 4: refused — use ProductMediaUseCases.mutate({ type: 'SET_COVER' }). */
+  async setPrimary(): Promise<void> {
+    throw new Error('SUPERSEDED: the cover is slot 1, set through ProductMediaUseCases (Focus 4).');
   }
 }

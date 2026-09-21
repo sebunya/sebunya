@@ -10,7 +10,8 @@ export interface ProductWithPrice {
    */
   floorPriceUgx?: number | null;
   categoryName: string | null;
-  images: Array<{ url: string; altText: string | null; displayOrder: number; isPrimary: boolean }>;
+  /** `slot` is the Focus 4 canonical position (1 = cover) or null for a legacy row; readers resolve order with `resolveGallery`. */
+  images: Array<{ url: string; altText: string | null; displayOrder: number; isPrimary: boolean; slot: number | null }>;
   attributeValues: Array<{ attributeName: string; unit: string | null; value: string; isVerified: boolean }>;
 }
 

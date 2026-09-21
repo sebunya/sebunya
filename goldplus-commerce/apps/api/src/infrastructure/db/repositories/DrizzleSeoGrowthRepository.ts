@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../client';
 import { pgJsonb } from '../PgParams';
-import { displayImageUrlSql } from '../mediaDisplayUrl';
+import { displayImageUrlSql, galleryOrderSql, galleryVisibleSql } from '../mediaDisplayUrl';
 
 /**
  * Organic Growth OS data access (migration 0116). Raw-SQL via db.execute with
@@ -588,8 +588,8 @@ export class DrizzleSeoGrowthRepository {
                 from product_attribute_values v join attributes a on a.id = v.attribute_id
                 where v.product_id = p.id and v.is_verified = true) as verified_specs,
              p.category_name, p.subcategory,
-             coalesce((select ${displayImageUrlSql('i')} from product_images i where i.product_id = p.id order by i.is_primary desc, i.display_order asc limit 1), p.image_url) as image_url,
-             coalesce((select array_agg(u order by ord) from (select ${displayImageUrlSql('i')} as u, row_number() over (order by i.is_primary desc, i.display_order asc) as ord from product_images i where i.product_id = p.id) g), '{}') as image_urls,
+             coalesce((select ${displayImageUrlSql('i')} from product_images i where i.product_id = p.id and ${galleryVisibleSql('i', sql.raw('p.id'))} order by ${galleryOrderSql('i')} limit 1), p.image_url) as image_url,
+             coalesce((select array_agg(u order by ord) from (select ${displayImageUrlSql('i')} as u, row_number() over (order by ${galleryOrderSql('i')}) as ord from product_images i where i.product_id = p.id and ${galleryVisibleSql('i', sql.raw('p.id'))}) g), '{}') as image_urls,
              p.model_number, p.is_feed_eligible, p.active, p.approval_status,
              pp.floor_price
       from products p

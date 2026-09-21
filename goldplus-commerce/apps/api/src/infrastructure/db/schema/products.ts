@@ -42,6 +42,13 @@ export const products = pgTable('products', {
   isPreOrderEnabled: boolean('is_pre_order_enabled').default(false).notNull(),
   hasRetailPrice: boolean('has_retail_price').default(false).notNull(),
   hasImage: boolean('has_image').default(false).notNull(),
+  /**
+   * Focus 4 (0148): optimistic-concurrency revision of the product's gallery.
+   * Every slot-map write compares the caller's expected revision under a row
+   * lock and increments it; a stale editor gets a conflict, never a silent
+   * last-writer-wins. 0 = never edited through the gallery service.
+   */
+  mediaRevision: integer('media_revision').default(0).notNull(),
   stockQuantity: integer('stock_quantity').default(0).notNull(),
   // Inventory ledger (Section 12): reserved holds stock committed to open orders;
   // available = stock_quantity - reserved_quantity. reorder_point drives low-stock alerts.

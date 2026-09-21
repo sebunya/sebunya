@@ -1037,6 +1037,13 @@
       "when": 1790140000006,
       "tag": "0147_retire_benco_23011_battery",
       "breakpoints": true
+    },
+    {
+      "idx": 148,
+      "version": "5",
+      "when": 1790140000007,
+      "tag": "0148_product_media_slots",
+      "breakpoints": true
     }
   ]
 }

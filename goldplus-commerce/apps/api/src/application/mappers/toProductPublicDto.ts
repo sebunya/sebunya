@@ -1,4 +1,4 @@
-import { ProductPublicDto, ProductAvailability } from '@goldplus/shared';
+import { ProductPublicDto, ProductAvailability, resolveGallery } from '@goldplus/shared';
 import { ProductWithPrice } from '../ports/IProductRepository';
 
 const MISSING_SENTINELS = new Set([
@@ -63,10 +63,12 @@ export function toProductPublicDto(
   const { entity, retailPriceUgx, floorPriceUgx, categoryName, images, attributeValues } = source;
   const stockTracked = opts.stockTracked ?? true;
 
-  // Build new fields
-  const sortedImages = [...images].sort((a, b) => (a.isPrimary === b.isPrimary ? a.displayOrder - b.displayOrder : a.isPrimary ? -1 : 1));
-  const dtoImages = sortedImages.map((i) => ({ url: i.url, alt: i.altText }));
-  const primaryImageUrl = dtoImages[0]?.url ?? null;
+  // Focus 4: ONE cover authority. Canonical slot order for a migrated product
+  // (slot 1 = cover, legacy rows hidden); the historical is_primary/display_order
+  // order only for a product the backfill has not reached.
+  const gallery = resolveGallery(images.map((i) => ({ ...i, slot: i.slot ?? null })));
+  const dtoImages = gallery.ordered.map((i) => ({ url: i.url, alt: i.altText }));
+  const primaryImageUrl = gallery.cover?.url ?? null;
 
   const dtoAttrs = attributeValues
     .map((v) => ({

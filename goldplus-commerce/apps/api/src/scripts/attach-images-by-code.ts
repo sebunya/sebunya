@@ -54,20 +54,21 @@ async function main(): Promise<void> {
   for (const c of conflicts) console.log(`  REFUSED ${c}`);
   if (dryRun) { console.log('DRY RUN — nothing attached.'); return; }
 
-  let attached = 0, skipped = 0;
+  // Focus 4: every placement is a gallery write through ProductMediaUseCases —
+  // the next free slot (cover first when the gallery is empty); 4/4 is reported.
+  let attached = 0, skipped = 0, full = 0;
   for (const [productId, fs] of plan) {
     const product = products.find((p) => p.id === productId)!;
-    const existing = await r.productImageRepo.findByProductId(productId);
-    for (const [i, file] of fs.entries()) {
+    for (const file of fs) {
       const [outcome] = await r.mediaLibraryUseCase.upload({ files: [{ filename: file, mime: MIME[extname(file).toLowerCase()], buffer: readFileSync(join(dir, file)) }], altText: product.name, caption: null, actorId });
       if (outcome.kind !== 'STORED') { console.log(`  ${product.name}: ${file} ${outcome.kind}`); continue; }
-      const url = outcome.asset.url;
-      if (existing.some((img) => img.url === url)) { skipped += 1; continue; }
-      if (i === 0 && existing.length === 0) await r.mediaLibraryUseCase.assignToProduct(outcome.asset.id, productId);
-      else await r.productImageRepo.add({ productId, url, altText: product.name, makePrimary: false });
-      attached += 1;
+      const placed = await r.productMediaUseCases.assignNextFree({ productId, assetId: outcome.asset.id, actorId, altText: product.name });
+      if (placed.ok) attached += 1;
+      else if (placed.code === 'DUPLICATE_ASSET') skipped += 1;
+      else if (placed.code === 'INVALID_SLOT') { full += 1; console.log(`  ${product.name}: ${file} — gallery full (4/4)`); }
+      else console.log(`  ${product.name}: ${file} — ${placed.code}: ${placed.message}`);
     }
   }
-  console.log(`attached ${attached}, already present ${skipped}`);
+  console.log(`attached ${attached}, already present ${skipped}, gallery full ${full}`);
 }
 main().then(() => endDbConnection()).catch(async (e) => { console.error(e); await endDbConnection(); process.exit(1); });

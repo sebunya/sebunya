@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, text, integer, boolean, timestamp, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, integer, smallint, boolean, timestamp, primaryKey } from 'drizzle-orm/pg-core';
 import { products, categories } from './products';
 import { users } from './identity';
 
@@ -23,7 +23,16 @@ export const productImages = pgTable('product_images', {
   isPrimary: boolean('is_primary').default(false).notNull(),
   // Wave 2B: gallery rows created from the media library link back to their asset.
   assetId: uuid('asset_id').references(() => mediaAssets.id, { onDelete: 'set null' }),
+  /**
+   * Focus 4 (0148): canonical gallery position 1–4; 1 is the cover. NULL = a
+   * legacy row not yet placed in the gallery (readers fall back to is_primary /
+   * display_order for such products). Partial unique indexes on (product, slot)
+   * and (product, asset) live in the migration. is_primary and display_order
+   * are a one-way projection of slot, written only by the mutation service.
+   */
+  slot: smallint('slot'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
 export const attributes = pgTable('attributes', {

@@ -470,8 +470,9 @@ export class BatteryCatalogueUseCases {
         const evidence = await this.repo.addEvidence({ subjectType: input.subjectType, subjectId: input.subjectId, assetId: o.asset.id, kind: input.kind, note: input.note, actorId: input.actorId });
         stored.push({ id: evidence.id, url: o.asset.url });
         if (input.subjectType === 'BATTERY' && input.setPrimaryImage && stored.length === 1) {
-          await this.mediaRepo.assignPrimaryProductImage(input.subjectId, o.asset);
-          await this.repo.setPrimaryImageFromAsset(input.subjectId, o.asset.id, o.asset.url, o.asset.altText ?? null);
+          // Focus 4: the cover is slot 1 of the gallery, written by the one mutation service.
+          const assigned = await this.media.assignToProduct(o.asset.id, input.subjectId, input.actorId);
+          if ('kind' in assigned && assigned.kind === 'REFUSED') rejected.push({ filename: o.asset.filename, reason: `stored as evidence, not set as the product photo: ${assigned.message}` });
         }
       } else rejected.push({ filename: o.filename, reason: o.reason });
     }

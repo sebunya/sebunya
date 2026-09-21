@@ -181,11 +181,16 @@ describe('a repository write is all of it or none of it', () => {
     expect(repo('DrizzleSeoGrowthRepository.ts')).toMatch(/order by created_at desc, id desc/);
   });
 
-  it('a primary image is never half-assigned', () => {
-    const src = repo('DrizzleMediaLibraryRepository.ts');
-    const body = src.slice(src.indexOf('async assignPrimaryProductImage'));
+  it('a cover is never half-assigned: the ONE gallery write is a locked, revision-checked transaction (Focus 4)', () => {
+    // The old assignPrimaryProductImage is gone; every product_images write is applySlotMap.
+    expect(repo('DrizzleMediaLibraryRepository.ts')).not.toMatch(/async assignPrimaryProductImage/);
+    const src = repo('DrizzleProductMediaRepository.ts');
+    const body = src.slice(src.indexOf('async applySlotMap'), src.indexOf('async listGalleryAudit'));
     expect(body).toMatch(/return db\.transaction/);
-    expect(body).not.toMatch(/await db\.update\(productImages\)/);
+    expect(body).toMatch(/\.for\('update'\)/);
+    expect(body).toMatch(/mediaRevision !== expectedRevision/);
+    expect(body).toMatch(/tx\.insert\(auditLogs\)/);
+    expect(body).not.toMatch(/await db\.(update|insert|delete)\(/);
   });
 
   it('an NBA decision keeps the candidates it was chosen from', () => {

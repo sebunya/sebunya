@@ -22,6 +22,28 @@ export function displayImageUrlSql(imageAlias: string): SQL<string> {
   return sql<string>`COALESCE((SELECT v.url FROM media_asset_variants v WHERE v.asset_id = ${i}.asset_id AND v.purpose = ${DISPLAY_RENDITION.purpose} AND v.format = ${DISPLAY_RENDITION.format} ORDER BY v.width DESC LIMIT 1), ${i}.url)`;
 }
 
+/**
+ * Focus 4 — THE gallery order for SQL readers (`i` must alias product_images):
+ * canonical slot first (cover = slot 1), then the legacy projection for
+ * products not yet backfilled. The row-level twin is `resolveGallery` in
+ * @goldplus/shared; the two must agree, and `tests/architecture/single-cover-resolver`
+ * fails the build if a reader orders images any other way.
+ */
+export function galleryOrderSql(imageAlias: string): SQL {
+  const i = sql.raw(imageAlias);
+  return sql`${i}.slot ASC NULLS LAST, ${i}.is_primary DESC, ${i}.display_order ASC`;
+}
+
+/**
+ * Predicate: rows the gallery shows. A migrated product (any slotted row) shows
+ * only its slotted rows; an unmigrated one shows its legacy rows. `i` aliases
+ * the row under test and `p` the product (or pass the product id expression).
+ */
+export function galleryVisibleSql(imageAlias: string, productIdExpr: SQL): SQL {
+  const i = sql.raw(imageAlias);
+  return sql`(${i}.slot IS NOT NULL OR NOT EXISTS (SELECT 1 FROM product_images s WHERE s.product_id = ${productIdExpr} AND s.slot IS NOT NULL))`;
+}
+
 /** Pure choice, unit-testable: the rendition when recorded, else the original. */
 export function pickDisplayUrl(original: string, renditionUrl: string | null | undefined): string {
   return renditionUrl && renditionUrl.length > 0 ? renditionUrl : original;

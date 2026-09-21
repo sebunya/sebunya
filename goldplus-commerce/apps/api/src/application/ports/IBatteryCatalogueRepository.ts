@@ -173,7 +173,7 @@ export interface IBatteryCatalogueRepository {
 
   addEvidence(input: { subjectType: 'BATTERY' | 'COMPATIBILITY'; subjectId: string; assetId: string; kind: EvidenceKind; note: string | null; actorId: string }): Promise<EvidenceAssetRecord>;
   evidenceFor(subjectType: 'BATTERY' | 'COMPATIBILITY', subjectId: string): Promise<EvidenceAssetRecord[]>;
-  setPrimaryImageFromAsset(productId: string, assetId: string, url: string, altText: string | null): Promise<void>;
+  // Focus 4: `setPrimaryImageFromAsset` was removed; the product photo is gallery slot 1 (ProductMediaUseCases).
 
   dashboard(): Promise<BatteryDashboardCounts>;
   /** Compatibility facts the readiness check needs. */

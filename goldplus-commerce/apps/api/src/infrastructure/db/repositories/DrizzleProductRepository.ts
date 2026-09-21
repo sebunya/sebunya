@@ -1,7 +1,7 @@
 import { db } from '../client';
 import { products, productPrices, categories } from '../schema/products';
 import { productImages, productAttributeValues, attributes as attributesTable } from '../schema/phase11';
-import { eq, inArray, and, or, ilike, gt, SQL, asc, desc } from 'drizzle-orm';
+import { eq, inArray, and, or, ilike, gt, SQL, asc, desc, sql } from 'drizzle-orm';
 import { ProductEntity, StockStatus } from '../../../domain/products/ProductEntity';
 import { IProductRepository, ProductWithPrice } from '../../../application/ports/IProductRepository';
 import { likeContains } from '../like';
@@ -270,6 +270,7 @@ export class DrizzleProductRepository implements IProductRepository {
         altText: i.altText ?? null,
         displayOrder: i.displayOrder,
         isPrimary: i.isPrimary,
+        slot: i.slot ?? null,
       })),
       attributeValues: valueRows
         .map((v) => {
@@ -437,6 +438,7 @@ export class DrizzleProductRepository implements IProductRepository {
           altText: i.altText ?? null,
           displayOrder: i.displayOrder,
           isPrimary: i.isPrimary,
+          slot: i.slot ?? null,
         })),
         attributeValues: rowValues
           .map((v) => {
@@ -569,7 +571,7 @@ export class DrizzleProductRepository implements IProductRepository {
     const row = await db.query.products.findFirst({ where: eq(products.id, productId) });
     if (!row) return null;
     const [imageRows, valueRows] = await Promise.all([
-      db.query.productImages.findMany({ where: eq(productImages.productId, productId), orderBy: [desc(productImages.isPrimary), asc(productImages.displayOrder)] }),
+      db.query.productImages.findMany({ where: eq(productImages.productId, productId), orderBy: [sql`${productImages.slot} ASC NULLS LAST`, desc(productImages.isPrimary), asc(productImages.displayOrder)] }),
       db.select({ attributeId: productAttributeValues.attributeId, value: productAttributeValues.value, isVerified: productAttributeValues.isVerified, name: attributesTable.name, unit: attributesTable.unit, order: attributesTable.displayOrder })
         .from(productAttributeValues).innerJoin(attributesTable, eq(attributesTable.id, productAttributeValues.attributeId)).where(eq(productAttributeValues.productId, productId)),
     ]);

@@ -76,6 +76,10 @@ class FakeRepo implements IMediaLibraryRepository {
   }
 }
 
+/** Focus 4: the library hands "make this the cover" to the gallery service; the test records the call. */
+const galleryCalls: Array<{ productId: string; assetId: string; actorId: string }> = [];
+const gallery = { assignAsCover: async (input: { productId: string; assetId: string; actorId: string }) => { galleryCalls.push(input); return { ok: true as const }; } };
+
 const storage: MediaStoragePort = {
   async saveAsset(dir, name) {
     return { url: `/${dir}/${name}`, storageKey: `${dir}/${name}`, physicalPath: `/data/media/${dir}/${name}` };
@@ -95,7 +99,7 @@ const png = (content: string) => ({ filename: 'photo.png', mime: 'image/png', bu
 describe('MediaLibraryUseCase', () => {
   it('stores a new file and deduplicates identical bytes to the same asset', async () => {
     const repo = new FakeRepo();
-    const useCase = new MediaLibraryUseCase(repo, storage, noVariants);
+    const useCase = new MediaLibraryUseCase(repo, storage, noVariants, gallery);
     const first = await useCase.upload({ files: [png('same-bytes')], actorId: 'u1' });
     const second = await useCase.upload({ files: [png('same-bytes')], actorId: 'u1' });
     expect(first[0]).toMatchObject({ kind: 'STORED', deduplicated: false });
@@ -117,7 +121,7 @@ describe('MediaLibraryUseCase', () => {
       async deleteByKey() {},
       async exists(key) { return onDisk.has(key); },
     };
-    const useCase = new MediaLibraryUseCase(repo, healing, noVariants);
+    const useCase = new MediaLibraryUseCase(repo, healing, noVariants, gallery);
     const [first] = await useCase.upload({ files: [png('lost-bytes')], actorId: 'u1' });
     expect(first).toMatchObject({ kind: 'STORED', deduplicated: false });
     onDisk.clear(); // the container died with the file
@@ -133,7 +137,7 @@ describe('MediaLibraryUseCase', () => {
 
   it('refuses unsupported types and oversized files per-file, without failing the batch', async () => {
     const repo = new FakeRepo();
-    const useCase = new MediaLibraryUseCase(repo, storage, noVariants);
+    const useCase = new MediaLibraryUseCase(repo, storage, noVariants, gallery);
     const outcomes = await useCase.upload({
       files: [
         { filename: 'doc.pdf', mime: 'application/pdf', buffer: Buffer.from('x') },
@@ -149,7 +153,7 @@ describe('MediaLibraryUseCase', () => {
 
   it('safeDelete refuses while usages exist and deletes when the graph is clear', async () => {
     const repo = new FakeRepo();
-    const useCase = new MediaLibraryUseCase(repo, storage, noVariants);
+    const useCase = new MediaLibraryUseCase(repo, storage, noVariants, gallery);
     const [stored] = await useCase.upload({ files: [png('img')], actorId: null });
     const id = (stored as { asset: MediaAssetRecord }).asset.id;
     await repo.recordUsage(id, 'product', 'p-1', 'primary_image');
@@ -160,14 +164,16 @@ describe('MediaLibraryUseCase', () => {
     expect(repo.deleted).toEqual([id]);
   });
 
-  it('assignToProduct sets the primary image and records the usage edge', async () => {
+  it('assignToProduct hands the cover to the gallery service (Focus 4) and writes no gallery row itself', async () => {
     const repo = new FakeRepo();
-    const useCase = new MediaLibraryUseCase(repo, storage, noVariants);
+    const useCase = new MediaLibraryUseCase(repo, storage, noVariants, gallery);
     const [stored] = await useCase.upload({ files: [png('img')], actorId: null });
     const asset = (stored as { asset: MediaAssetRecord }).asset;
-    const outcome = await useCase.assignToProduct(asset.id, 'prod-9');
+    galleryCalls.length = 0;
+    const outcome = await useCase.assignToProduct(asset.id, 'prod-9', 'admin-1');
     expect(outcome).toEqual({ productId: 'prod-9', url: asset.url });
-    expect(repo.assigned).toEqual([{ productId: 'prod-9', url: asset.url }]);
-    expect(repo.usageRows).toEqual([{ assetId: asset.id, entity: 'product', entityId: 'prod-9', field: 'primary_image' }]);
+    expect(galleryCalls).toEqual([{ productId: 'prod-9', assetId: asset.id, actorId: 'admin-1' }]);
+    expect(repo.assigned).toEqual([]);
+    expect(repo.usageRows).toEqual([]);
   });
 });

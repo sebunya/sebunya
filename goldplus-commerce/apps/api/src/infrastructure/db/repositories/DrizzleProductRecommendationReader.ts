@@ -11,6 +11,7 @@ import { experienceProfiles } from "../schema/experience";
 import { productImages } from "../schema/phase11";
 import { recommendationMaterializedCache } from "../schema/recommendations";
 import { displayUrlMap } from '../mediaDisplayUrl';
+import { resolveGallery } from '@goldplus/shared';
 
 export class DrizzleProductRecommendationReader implements IProductRecommendationReader {
   async findProductById(productId: string): Promise<RecommendationProductRecord | null> {
@@ -192,11 +193,17 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
     const priceByProduct = new Map(priceRows.map((p) => [p.productId, p.retailPrice]));
     const floorByProduct = new Map(priceRows.map((p) => [p.productId, p.floorPrice ?? null]));
     const display = await displayUrlMap(imageRows);
-    const primaryImageByProduct = new Map<string, string>();
+    // Focus 4: the ONE cover resolver, per product (slot 1, else the legacy projection).
+    const rowsByProduct = new Map<string, typeof imageRows>();
     for (const img of imageRows) {
-      if (!primaryImageByProduct.has(img.productId) || img.isPrimary) {
-        primaryImageByProduct.set(img.productId, display.get(img.url) ?? img.url);
-      }
+      const list = rowsByProduct.get(img.productId) ?? [];
+      list.push(img);
+      rowsByProduct.set(img.productId, list);
+    }
+    const primaryImageByProduct = new Map<string, string>();
+    for (const [productId, list] of rowsByProduct) {
+      const cover = resolveGallery(list.map((i) => ({ ...i, slot: i.slot ?? null }))).cover;
+      if (cover) primaryImageByProduct.set(productId, display.get(cover.url) ?? cover.url);
     }
 
     return rows.map((row) =>

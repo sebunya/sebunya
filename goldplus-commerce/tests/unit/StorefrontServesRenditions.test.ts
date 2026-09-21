@@ -30,8 +30,10 @@ describe('the storefront serves renditions', () => {
     }
     for (const r of ['DrizzleBatteryCatalogueRepository', 'DrizzleBatteryFinderRepository', 'DrizzleSeoGrowthRepository']) {
       const src = read(`apps/api/src/infrastructure/db/repositories/${r}.ts`);
-      expect(src, r).toContain("import { displayImageUrlSql } from '../mediaDisplayUrl';");
+      // Focus 4: the rendition resolver AND the one gallery order come from the same module.
+      expect(src, r).toContain("import { displayImageUrlSql, galleryOrderSql, galleryVisibleSql } from '../mediaDisplayUrl';");
       expect(src, r).toContain("${displayImageUrlSql('i')}");
+      expect(src, r).toContain("${galleryOrderSql('i')}");
     }
     // No reader hands the raw column to a public surface any more.
     expect(read('apps/api/src/infrastructure/db/repositories/DrizzleBatteryFinderRepository.ts')).not.toMatch(/SELECT i\.url FROM product_images/);
@@ -40,7 +42,8 @@ describe('the storefront serves renditions', () => {
   it('the merchant feed no longer depends on the legacy products.image_url column alone', () => {
     const feed = read('apps/api/src/infrastructure/db/repositories/DrizzleSeoGrowthRepository.ts');
     // The gallery's rendition first; the legacy column only when there is no gallery image.
-    expect(feed).toContain("coalesce((select ${displayImageUrlSql('i')} from product_images i where i.product_id = p.id order by i.is_primary desc, i.display_order asc limit 1), p.image_url) as image_url");
+    // Focus 4: slot 1 first (galleryOrderSql), legacy rows hidden once migrated (galleryVisibleSql), legacy column last.
+    expect(feed).toContain("coalesce((select ${displayImageUrlSql('i')} from product_images i where i.product_id = p.id and ${galleryVisibleSql('i', sql.raw('p.id'))} order by ${galleryOrderSql('i')} limit 1), p.image_url) as image_url");
     for (const r of ['DrizzleBatteryCatalogueRepository', 'DrizzleBatteryFinderRepository']) {
       const src = read(`apps/api/src/infrastructure/db/repositories/${r}.ts`);
       expect(src, r).toMatch(/COALESCE\(\(SELECT \$\{displayImageUrlSql\('i'\)\}.*LIMIT 1\), \$\{products\.imageUrl\}\)/);

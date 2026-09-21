@@ -74,8 +74,8 @@ export interface IMediaLibraryRepository {
   deleteRow(id: string): Promise<void>;
   /** Products whose catalogue row has no usable image — the repair worklist. */
   productsMissingImages(): Promise<Array<{ id: string; name: string; slug: string }>>;
-  /** Points the product's primary image at the asset's URL (catalogue + gallery). */
-  assignPrimaryProductImage(productId: string, asset: MediaAssetRecord): Promise<{ productId: string; url: string } | null>;
+  // Focus 4: `assignPrimaryProductImage` was removed. The cover is gallery slot 1,
+  // written only by ProductMediaUseCases.
 }
 
 export interface IMediaVariantGenerator {

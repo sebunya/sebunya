@@ -12,13 +12,11 @@ import {
 } from '../../../domain/products/ProductSearchService';
 import type { IPricingRepository } from '../../ports/IPricingRepository';
 import { resolveStorefrontDiscount, INACTIVE_DISCOUNT } from '../../pricing/StorefrontDiscountQuery';
-import { salePriceUgx, effectiveFloorUgx } from '@goldplus/shared';
+import { salePriceUgx, effectiveFloorUgx, resolveGallery } from '@goldplus/shared';
 
-/** The image the card and the product page lead with, or none. */
-function primaryImageUrl(images: Array<{ url: string; displayOrder: number; isPrimary: boolean }>): string | null {
-  if (images.length === 0) return null;
-  const ordered = [...images].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary) || a.displayOrder - b.displayOrder);
-  return ordered[0]?.url ?? null;
+/** The image the card and the product page lead with, or none — the ONE cover resolver (Focus 4). */
+function primaryImageUrl(images: Array<{ url: string; displayOrder: number; isPrimary: boolean; slot?: number | null }>): string | null {
+  return resolveGallery(images.map((i) => ({ ...i, slot: i.slot ?? null }))).cover?.url ?? null;
 }
 
 export interface ProductSuggestionDto {

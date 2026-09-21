@@ -139,8 +139,11 @@ routes.post('/:id/assign-product', requirePermissions([PERMISSIONS.MEDIA_MANAGE]
   const body = await c.req.json().catch(() => null);
   const productId = typeof body?.productId === 'string' ? body.productId.trim() : '';
   if (!productId) return bad(c, 'BAD_INPUT', 'productId is required.');
-  const outcome = await Registry.getInstance().mediaLibraryUseCase.assignToProduct((c.req.param('id') ?? ''), productId);
-  if ('kind' in outcome) return bad(c, 'NOT_FOUND', 'Asset or product not found.', 404);
+  const outcome = await Registry.getInstance().mediaLibraryUseCase.assignToProduct((c.req.param('id') ?? ''), productId, (c.get('user') as any).id as string);
+  if ('kind' in outcome) {
+    if (outcome.kind === 'REFUSED') return bad(c, outcome.code, outcome.message, 409);
+    return bad(c, 'NOT_FOUND', 'Asset or product not found.', 404);
+  }
   await audit(c, 'MEDIA_ASSET_ASSIGNED_PRODUCT', (c.req.param('id') ?? ''), outcome);
   return ok(c, outcome);
 });
@@ -178,20 +181,25 @@ routes.post('/attach-by-code/apply', requirePermissions([PERMISSIONS.PRODUCTS_WR
   const pairs: Array<{ assetId: string; productId: string }> = Array.isArray(body?.pairs) ? body.pairs.filter((p: any) => typeof p?.assetId === 'string' && typeof p?.productId === 'string') : [];
   if (pairs.length === 0) return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'Nothing to attach.' } }, 400);
   const registry = Registry.getInstance();
-  let attached = 0, alreadyPresent = 0, missing = 0;
+  const actorId = (c.get('user') as any).id as string;
+  // Focus 4: every assignment is a gallery write through the one mutation service —
+  // first photo of a product with no cover becomes slot 1, the rest fill the next
+  // free slot; a full gallery (4/4) is reported, never silently truncated.
+  let attached = 0, alreadyPresent = 0, missing = 0, galleryFull = 0, refused = 0;
   for (const { assetId, productId } of pairs) {
     const asset = await registry.mediaLibraryRepo.findById(assetId);
     if (!asset) { missing += 1; continue; }
-    const existing = await registry.productImageRepo.findByProductId(productId);
-    if (existing.some((img) => img.url === asset.url)) { alreadyPresent += 1; continue; }
-    if (existing.length === 0) await registry.mediaLibraryUseCase.assignToProduct(assetId, productId);
-    else await registry.productImageRepo.add({ productId, url: asset.url, altText: asset.altText ?? null, makePrimary: false });
-    attached += 1;
+    const r = await registry.productMediaUseCases.assignNextFree({ productId, assetId, actorId, altText: asset.altText ?? null });
+    if (r.ok) attached += 1;
+    else if (r.code === 'DUPLICATE_ASSET') alreadyPresent += 1;
+    else if (r.code === 'INVALID_SLOT') galleryFull += 1;
+    else if (r.code === 'NOT_FOUND') missing += 1;
+    else refused += 1;
   }
   await new CreateAuditLogUseCase(registry.auditRepo).execute({
-    actorId: (c.get('user') as any).id, action: 'PRODUCT_PHOTOS_ATTACHED_BY_CODE', entity: 'product_photo_batch', entityId: randomUUID(), newState: { pairs: pairs.length, attached, alreadyPresent, missing },
+    actorId, action: 'PRODUCT_PHOTOS_ATTACHED_BY_CODE', entity: 'product_photo_batch', entityId: randomUUID(), newState: { pairs: pairs.length, attached, alreadyPresent, missing, galleryFull, refused },
   });
-  return c.json({ success: true, data: { attached, alreadyPresent, missing } });
+  return c.json({ success: true, data: { attached, alreadyPresent, missing, galleryFull, refused } });
 });
 
 export default routes;

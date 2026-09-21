@@ -87,6 +87,8 @@ import { FilesystemPerformanceAuditStore } from './performance-audit/FilesystemP
 import { GetPerformanceAuditSettingsUseCase, ResetPerformanceAuditSettingsUseCase, UpdatePerformanceAuditSettingsUseCase } from '../application/use-cases/seo-growth/PerformanceAuditSettingsUseCases';
 import { DrizzleAdminUserReadRepository } from './db/repositories/DrizzleAdminUserReadRepository';
 import { DrizzleProductImageRepository } from './db/repositories/DrizzleProductImageRepository';
+import { DrizzleProductMediaRepository } from './db/repositories/DrizzleProductMediaRepository';
+import { ProductMediaUseCases } from '../application/use-cases/media/ProductMediaUseCases';
 import { DrizzleAttributeRepository } from './db/repositories/DrizzleAttributeRepository';
 import { DrizzleNotificationAttemptRepository } from './db/repositories/DrizzleNotificationAttemptRepository';
 import { DrizzleOutboxRepository } from './db/repositories/DrizzleOutboxRepository';
@@ -857,12 +859,17 @@ export class Registry {
     },
   });
 
+  // Focus 4 — the ONE write path for product gallery slots (cover = slot 1).
+  public readonly productMediaRepo = new DrizzleProductMediaRepository();
+  public readonly productMediaUseCases = new ProductMediaUseCases(this.productMediaRepo);
+
   // Wave 2B — media library (DAM) on the same storage owner.
   public readonly mediaLibraryRepo = new DrizzleMediaLibraryRepository();
   public readonly mediaLibraryUseCase = new MediaLibraryUseCase(
     this.mediaLibraryRepo,
     this.productImageStorage,
     new SharpVariantGenerator(),
+    this.productMediaUseCases,
   );
 
   // Battery catalogue, device hierarchy, compatibility workflow, inventory
@@ -1679,7 +1686,7 @@ export class Registry {
     ),
   );
   public readonly replayAdminOrderEmailUseCase = new ReplayAdminOrderEmailUseCase(this.outboxRepo, this.auditRepo);
-  public readonly uploadProductImagesUseCase = new UploadProductImagesUseCase(this.productImageStorage, this.productImageRepo);
+  public readonly uploadProductImagesUseCase = new UploadProductImagesUseCase(this.mediaLibraryUseCase, this.productMediaUseCases);
   public readonly processOutboxBatchUseCase = new ProcessOutboxBatchUseCase(
     this.outboxRepo,
     this.notificationRouter,

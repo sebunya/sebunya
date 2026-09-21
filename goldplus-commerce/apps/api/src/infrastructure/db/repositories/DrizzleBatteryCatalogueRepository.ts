@@ -27,7 +27,7 @@ import type {
 import type { BatteryAliasType, BatteryCategory, BatteryChemistry, BatteryLifecycleStatus, EvidenceKind } from '@goldplus/shared';
 import { VERIFIED_EVIDENCE_STATUSES } from '@goldplus/shared';
 import { likeContains } from '../like';
-import { displayImageUrlSql } from '../mediaDisplayUrl';
+import { displayImageUrlSql, galleryOrderSql, galleryVisibleSql } from '../mediaDisplayUrl';
 
 const jsonb = (value: unknown) => sql`${client.json(value as never)}::jsonb`;
 const num = (v: string | number | null | undefined): number | null => (v == null ? null : Number(v));
@@ -48,7 +48,7 @@ function profileRecord(row: typeof batteryProfiles.$inferSelect): BatteryProfile
 
 const MOVEMENTS = sql<number>`(SELECT count(*) FROM inventory_movements m WHERE m.product_id = ${sql.raw("products.id")})::int`;
 const IMAGES = sql<number>`(SELECT count(*) FROM product_images i WHERE i.product_id = ${sql.raw("products.id")})::int`;
-const PRIMARY_IMAGE = sql<string | null>`COALESCE((SELECT ${displayImageUrlSql('i')} FROM product_images i WHERE i.product_id = ${sql.raw("products.id")} ORDER BY i.is_primary DESC, i.display_order ASC LIMIT 1), ${products.imageUrl})`;
+const PRIMARY_IMAGE = sql<string | null>`COALESCE((SELECT ${displayImageUrlSql('i')} FROM product_images i WHERE i.product_id = ${sql.raw("products.id")} AND ${galleryVisibleSql('i', sql.raw('products.id'))} ORDER BY ${galleryOrderSql('i')} LIMIT 1), ${products.imageUrl})`;
 
 function productFacts(row: {
   id: string; sku: string; slug: string; name: string; shortDescription: string; longDescription: string; categoryName: string | null; subcategory: string | null;
@@ -387,14 +387,6 @@ export class DrizzleBatteryCatalogueRepository implements IBatteryCatalogueRepos
       .where(and(eq(batteryEvidenceAssets.subjectType, subjectType), eq(batteryEvidenceAssets.subjectId, subjectId)))
       .orderBy(desc(batteryEvidenceAssets.createdAt));
     return rows.map((r) => ({ ...r.e, subjectType: r.e.subjectType as 'BATTERY' | 'COMPATIBILITY', kind: r.e.kind as EvidenceKind, url: r.url }));
-  }
-
-  async setPrimaryImageFromAsset(productId: string, assetId: string, url: string, altText: string | null) {
-    await db.transaction(async (tx) => {
-      const [existing] = await tx.select({ id: productImages.id }).from(productImages).where(and(eq(productImages.productId, productId), eq(productImages.assetId, assetId))).limit(1);
-      if (!existing) await tx.insert(productImages).values({ productId, url, altText, isPrimary: true, displayOrder: 0, assetId });
-      await tx.update(products).set({ imageUrl: url, hasImage: true, updatedAt: new Date() }).where(eq(products.id, productId));
-    });
   }
 
   async mappingsSummary(productId: string) {

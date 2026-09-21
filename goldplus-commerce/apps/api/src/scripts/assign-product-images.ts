@@ -58,7 +58,7 @@ async function main(): Promise<void> {
     });
     if (outcome.kind !== 'STORED') { console.log(`${slug}: UPLOAD ${outcome.kind} (${'reason' in outcome ? outcome.reason : ''})`); continue; }
 
-    const assigned = await media.assignToProduct(outcome.asset.id, productId);
+    const assigned = await media.assignToProduct(outcome.asset.id, productId, actorId);
     console.log(`${slug}: ${'url' in assigned ? `ASSIGNED ${assigned.url}${outcome.deduplicated ? ' (deduplicated)' : ''}` : 'ASSIGN_FAILED'}`);
   }
 }
