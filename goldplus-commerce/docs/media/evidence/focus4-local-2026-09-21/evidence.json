@@ -1,0 +1,1434 @@
+{
+  "base": "http://127.0.0.1:4321",
+  "at": "2026-09-21T12:30:30.144Z",
+  "geometry": [
+    {
+      "width": 320,
+      "height": 844,
+      "label": "four",
+      "path": "/products/goldplus-bluetooth-gp03bt",
+      "addToCart": {
+        "top": 1107,
+        "left": 16,
+        "w": 288,
+        "h": 40
+      },
+      "gallery": {
+        "top": 184,
+        "left": 16,
+        "w": 288,
+        "h": 420
+      },
+      "stage": {
+        "top": 185,
+        "left": 17,
+        "w": 286,
+        "h": 286
+      },
+      "previews": [
+        {
+          "top": 540,
+          "left": 56,
+          "w": 64,
+          "h": 64
+        },
+        {
+          "top": 540,
+          "left": 128,
+          "w": 64,
+          "h": 64
+        },
+        {
+          "top": 540,
+          "left": 200,
+          "w": 64,
+          "h": 64
+        }
+      ],
+      "specTable": {
+        "top": 1464,
+        "left": 17,
+        "w": 286,
+        "h": 186
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 4899,
+      "actionVisibleWithoutScroll": false,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 320,
+      "height": 844,
+      "label": "one",
+      "path": "/products/fixture-one-image",
+      "addToCart": {
+        "top": 943,
+        "left": 16,
+        "w": 288,
+        "h": 40
+      },
+      "gallery": {
+        "top": 184,
+        "left": 16,
+        "w": 288,
+        "h": 288
+      },
+      "stage": {
+        "top": 185,
+        "left": 17,
+        "w": 286,
+        "h": 286
+      },
+      "previews": [],
+      "specTable": {
+        "top": 1300,
+        "left": 17,
+        "w": 286,
+        "h": 186
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 4735,
+      "actionVisibleWithoutScroll": false,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 360,
+      "height": 844,
+      "label": "four",
+      "path": "/products/goldplus-bluetooth-gp03bt",
+      "addToCart": {
+        "top": 1121,
+        "left": 16,
+        "w": 328,
+        "h": 40
+      },
+      "gallery": {
+        "top": 184,
+        "left": 16,
+        "w": 328,
+        "h": 460
+      },
+      "stage": {
+        "top": 185,
+        "left": 17,
+        "w": 326,
+        "h": 326
+      },
+      "previews": [
+        {
+          "top": 580,
+          "left": 76,
+          "w": 64,
+          "h": 64
+        },
+        {
+          "top": 580,
+          "left": 148,
+          "w": 64,
+          "h": 64
+        },
+        {
+          "top": 580,
+          "left": 220,
+          "w": 64,
+          "h": 64
+        }
+      ],
+      "specTable": {
+        "top": 1452,
+        "left": 17,
+        "w": 326,
+        "h": 186
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 4772,
+      "actionVisibleWithoutScroll": false,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 360,
+      "height": 844,
+      "label": "one",
+      "path": "/products/fixture-one-image",
+      "addToCart": {
+        "top": 957,
+        "left": 16,
+        "w": 328,
+        "h": 40
+      },
+      "gallery": {
+        "top": 184,
+        "left": 16,
+        "w": 328,
+        "h": 328
+      },
+      "stage": {
+        "top": 185,
+        "left": 17,
+        "w": 326,
+        "h": 326
+      },
+      "previews": [],
+      "specTable": {
+        "top": 1288,
+        "left": 17,
+        "w": 326,
+        "h": 186
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 4608,
+      "actionVisibleWithoutScroll": false,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 375,
+      "height": 844,
+      "label": "four",
+      "path": "/products/goldplus-bluetooth-gp03bt",
+      "addToCart": {
+        "top": 1136,
+        "left": 16,
+        "w": 343,
+        "h": 40
+      },
+      "gallery": {
+        "top": 184,
+        "left": 16,
+        "w": 343,
+        "h": 475
+      },
+      "stage": {
+        "top": 185,
+        "left": 17,
+        "w": 341,
+        "h": 341
+      },
+      "previews": [
+        {
+          "top": 595,
+          "left": 84,
+          "w": 64,
+          "h": 64
+        },
+        {
+          "top": 595,
+          "left": 156,
+          "w": 64,
+          "h": 64
+        },
+        {
+          "top": 595,
+          "left": 228,
+          "w": 64,
+          "h": 64
+        }
+      ],
+      "specTable": {
+        "top": 1467,
+        "left": 17,
+        "w": 341,
+        "h": 186
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 4778,
+      "actionVisibleWithoutScroll": false,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 375,
+      "height": 844,
+      "label": "one",
+      "path": "/products/fixture-one-image",
+      "addToCart": {
+        "top": 972,
+        "left": 16,
+        "w": 343,
+        "h": 40
+      },
+      "gallery": {
+        "top": 184,
+        "left": 16,
+        "w": 343,
+        "h": 343
+      },
+      "stage": {
+        "top": 185,
+        "left": 17,
+        "w": 341,
+        "h": 341
+      },
+      "previews": [],
+      "specTable": {
+        "top": 1303,
+        "left": 17,
+        "w": 341,
+        "h": 186
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 4614,
+      "actionVisibleWithoutScroll": false,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "label": "four",
+      "path": "/products/goldplus-bluetooth-gp03bt",
+      "addToCart": {
+        "top": 1118,
+        "left": 16,
+        "w": 358,
+        "h": 40
+      },
+      "gallery": {
+        "top": 184,
+        "left": 16,
+        "w": 358,
+        "h": 490
+      },
+      "stage": {
+        "top": 185,
+        "left": 17,
+        "w": 356,
+        "h": 356
+      },
+      "previews": [
+        {
+          "top": 610,
+          "left": 91,
+          "w": 64,
+          "h": 64
+        },
+        {
+          "top": 610,
+          "left": 163,
+          "w": 64,
+          "h": 64
+        },
+        {
+          "top": 610,
+          "left": 235,
+          "w": 64,
+          "h": 64
+        }
+      ],
+      "specTable": {
+        "top": 1449,
+        "left": 17,
+        "w": 356,
+        "h": 186
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 4710,
+      "actionVisibleWithoutScroll": false,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "label": "one",
+      "path": "/products/fixture-one-image",
+      "addToCart": {
+        "top": 954,
+        "left": 16,
+        "w": 358,
+        "h": 40
+      },
+      "gallery": {
+        "top": 184,
+        "left": 16,
+        "w": 358,
+        "h": 358
+      },
+      "stage": {
+        "top": 185,
+        "left": 17,
+        "w": 356,
+        "h": 356
+      },
+      "previews": [],
+      "specTable": {
+        "top": 1285,
+        "left": 17,
+        "w": 356,
+        "h": 186
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 4546,
+      "actionVisibleWithoutScroll": false,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 412,
+      "height": 844,
+      "label": "four",
+      "path": "/products/goldplus-bluetooth-gp03bt",
+      "addToCart": {
+        "top": 1140,
+        "left": 16,
+        "w": 380,
+        "h": 40
+      },
+      "gallery": {
+        "top": 184,
+        "left": 16,
+        "w": 380,
+        "h": 512
+      },
+      "stage": {
+        "top": 185,
+        "left": 17,
+        "w": 378,
+        "h": 378
+      },
+      "previews": [
+        {
+          "top": 632,
+          "left": 102,
+          "w": 64,
+          "h": 64
+        },
+        {
+          "top": 632,
+          "left": 174,
+          "w": 64,
+          "h": 64
+        },
+        {
+          "top": 632,
+          "left": 246,
+          "w": 64,
+          "h": 64
+        }
+      ],
+      "specTable": {
+        "top": 1471,
+        "left": 17,
+        "w": 378,
+        "h": 186
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 4743,
+      "actionVisibleWithoutScroll": false,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 412,
+      "height": 844,
+      "label": "one",
+      "path": "/products/fixture-one-image",
+      "addToCart": {
+        "top": 976,
+        "left": 16,
+        "w": 380,
+        "h": 40
+      },
+      "gallery": {
+        "top": 184,
+        "left": 16,
+        "w": 380,
+        "h": 380
+      },
+      "stage": {
+        "top": 185,
+        "left": 17,
+        "w": 378,
+        "h": 378
+      },
+      "previews": [],
+      "specTable": {
+        "top": 1307,
+        "left": 17,
+        "w": 378,
+        "h": 186
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 4579,
+      "actionVisibleWithoutScroll": false,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 430,
+      "height": 844,
+      "label": "four",
+      "path": "/products/goldplus-bluetooth-gp03bt",
+      "addToCart": {
+        "top": 1158,
+        "left": 16,
+        "w": 398,
+        "h": 40
+      },
+      "gallery": {
+        "top": 184,
+        "left": 16,
+        "w": 398,
+        "h": 530
+      },
+      "stage": {
+        "top": 185,
+        "left": 17,
+        "w": 396,
+        "h": 396
+      },
+      "previews": [
+        {
+          "top": 650,
+          "left": 111,
+          "w": 64,
+          "h": 64
+        },
+        {
+          "top": 650,
+          "left": 183,
+          "w": 64,
+          "h": 64
+        },
+        {
+          "top": 650,
+          "left": 255,
+          "w": 64,
+          "h": 64
+        }
+      ],
+      "specTable": {
+        "top": 1489,
+        "left": 17,
+        "w": 396,
+        "h": 166
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 4750,
+      "actionVisibleWithoutScroll": false,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 430,
+      "height": 844,
+      "label": "one",
+      "path": "/products/fixture-one-image",
+      "addToCart": {
+        "top": 994,
+        "left": 16,
+        "w": 398,
+        "h": 40
+      },
+      "gallery": {
+        "top": 184,
+        "left": 16,
+        "w": 398,
+        "h": 398
+      },
+      "stage": {
+        "top": 185,
+        "left": 17,
+        "w": 396,
+        "h": 396
+      },
+      "previews": [],
+      "specTable": {
+        "top": 1325,
+        "left": 17,
+        "w": 396,
+        "h": 166
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 4586,
+      "actionVisibleWithoutScroll": false,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 768,
+      "height": 900,
+      "label": "four",
+      "path": "/products/goldplus-bluetooth-gp03bt",
+      "addToCart": {
+        "top": 1466,
+        "left": 16,
+        "w": 362,
+        "h": 40
+      },
+      "gallery": {
+        "top": 184,
+        "left": 16,
+        "w": 736,
+        "h": 880
+      },
+      "stage": {
+        "top": 185,
+        "left": 17,
+        "w": 734,
+        "h": 734
+      },
+      "previews": [
+        {
+          "top": 988,
+          "left": 262,
+          "w": 76,
+          "h": 76
+        },
+        {
+          "top": 988,
+          "left": 346,
+          "w": 76,
+          "h": 76
+        },
+        {
+          "top": 988,
+          "left": 430,
+          "w": 76,
+          "h": 76
+        }
+      ],
+      "specTable": {
+        "top": 1693,
+        "left": 17,
+        "w": 734,
+        "h": 146
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 4315,
+      "actionVisibleWithoutScroll": false,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 768,
+      "height": 900,
+      "label": "one",
+      "path": "/products/fixture-one-image",
+      "addToCart": {
+        "top": 1322,
+        "left": 16,
+        "w": 362,
+        "h": 40
+      },
+      "gallery": {
+        "top": 184,
+        "left": 16,
+        "w": 736,
+        "h": 736
+      },
+      "stage": {
+        "top": 185,
+        "left": 17,
+        "w": 734,
+        "h": 734
+      },
+      "previews": [],
+      "specTable": {
+        "top": 1549,
+        "left": 17,
+        "w": 734,
+        "h": 146
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 4171,
+      "actionVisibleWithoutScroll": false,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 820,
+      "height": 900,
+      "label": "four",
+      "path": "/products/goldplus-bluetooth-gp03bt",
+      "addToCart": {
+        "top": 1466,
+        "left": 42,
+        "w": 362,
+        "h": 40
+      },
+      "gallery": {
+        "top": 184,
+        "left": 42,
+        "w": 736,
+        "h": 880
+      },
+      "stage": {
+        "top": 185,
+        "left": 43,
+        "w": 734,
+        "h": 734
+      },
+      "previews": [
+        {
+          "top": 988,
+          "left": 288,
+          "w": 76,
+          "h": 76
+        },
+        {
+          "top": 988,
+          "left": 372,
+          "w": 76,
+          "h": 76
+        },
+        {
+          "top": 988,
+          "left": 456,
+          "w": 76,
+          "h": 76
+        }
+      ],
+      "specTable": {
+        "top": 1693,
+        "left": 43,
+        "w": 734,
+        "h": 146
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 4315,
+      "actionVisibleWithoutScroll": false,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 820,
+      "height": 900,
+      "label": "one",
+      "path": "/products/fixture-one-image",
+      "addToCart": {
+        "top": 1322,
+        "left": 42,
+        "w": 362,
+        "h": 40
+      },
+      "gallery": {
+        "top": 184,
+        "left": 42,
+        "w": 736,
+        "h": 736
+      },
+      "stage": {
+        "top": 185,
+        "left": 43,
+        "w": 734,
+        "h": 734
+      },
+      "previews": [],
+      "specTable": {
+        "top": 1549,
+        "left": 43,
+        "w": 734,
+        "h": 146
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 4171,
+      "actionVisibleWithoutScroll": false,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 1024,
+      "height": 900,
+      "label": "four",
+      "path": "/products/goldplus-bluetooth-gp03bt",
+      "addToCart": {
+        "top": 701,
+        "left": 598,
+        "w": 191,
+        "h": 40
+      },
+      "gallery": {
+        "top": 273,
+        "left": 32,
+        "w": 510,
+        "h": 662
+      },
+      "stage": {
+        "top": 274,
+        "left": 33,
+        "w": 508,
+        "h": 508
+      },
+      "previews": [
+        {
+          "top": 851,
+          "left": 153,
+          "w": 84,
+          "h": 84
+        },
+        {
+          "top": 851,
+          "left": 245,
+          "w": 84,
+          "h": 84
+        },
+        {
+          "top": 851,
+          "left": 337,
+          "w": 84,
+          "h": 84
+        }
+      ],
+      "specTable": {
+        "top": 980,
+        "left": 599,
+        "w": 392,
+        "h": 166
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 3240,
+      "actionVisibleWithoutScroll": true,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 1024,
+      "height": 900,
+      "label": "one",
+      "path": "/products/fixture-one-image",
+      "addToCart": {
+        "top": 701,
+        "left": 598,
+        "w": 191,
+        "h": 40
+      },
+      "gallery": {
+        "top": 273,
+        "left": 32,
+        "w": 510,
+        "h": 510
+      },
+      "stage": {
+        "top": 274,
+        "left": 33,
+        "w": 508,
+        "h": 508
+      },
+      "previews": [],
+      "specTable": {
+        "top": 980,
+        "left": 599,
+        "w": 392,
+        "h": 166
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 3240,
+      "actionVisibleWithoutScroll": true,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 1280,
+      "height": 900,
+      "label": "four",
+      "path": "/products/goldplus-bluetooth-gp03bt",
+      "addToCart": {
+        "top": 675,
+        "left": 741,
+        "w": 248,
+        "h": 40
+      },
+      "gallery": {
+        "top": 273,
+        "left": 32,
+        "w": 653,
+        "h": 805
+      },
+      "stage": {
+        "top": 274,
+        "left": 33,
+        "w": 651,
+        "h": 651
+      },
+      "previews": [
+        {
+          "top": 994,
+          "left": 224,
+          "w": 84,
+          "h": 84
+        },
+        {
+          "top": 994,
+          "left": 316,
+          "w": 84,
+          "h": 84
+        },
+        {
+          "top": 994,
+          "left": 408,
+          "w": 84,
+          "h": 84
+        }
+      ],
+      "specTable": {
+        "top": 928,
+        "left": 742,
+        "w": 505,
+        "h": 146
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 3126,
+      "actionVisibleWithoutScroll": true,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 1280,
+      "height": 900,
+      "label": "one",
+      "path": "/products/fixture-one-image",
+      "addToCart": {
+        "top": 635,
+        "left": 741,
+        "w": 248,
+        "h": 40
+      },
+      "gallery": {
+        "top": 273,
+        "left": 32,
+        "w": 653,
+        "h": 653
+      },
+      "stage": {
+        "top": 274,
+        "left": 33,
+        "w": 651,
+        "h": 651
+      },
+      "previews": [],
+      "specTable": {
+        "top": 888,
+        "left": 742,
+        "w": 505,
+        "h": 146
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 3086,
+      "actionVisibleWithoutScroll": true,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 1366,
+      "height": 900,
+      "label": "four",
+      "path": "/products/goldplus-bluetooth-gp03bt",
+      "addToCart": {
+        "top": 675,
+        "left": 784,
+        "w": 248,
+        "h": 40
+      },
+      "gallery": {
+        "top": 273,
+        "left": 75,
+        "w": 653,
+        "h": 805
+      },
+      "stage": {
+        "top": 274,
+        "left": 76,
+        "w": 651,
+        "h": 651
+      },
+      "previews": [
+        {
+          "top": 994,
+          "left": 267,
+          "w": 84,
+          "h": 84
+        },
+        {
+          "top": 994,
+          "left": 359,
+          "w": 84,
+          "h": 84
+        },
+        {
+          "top": 994,
+          "left": 451,
+          "w": 84,
+          "h": 84
+        }
+      ],
+      "specTable": {
+        "top": 928,
+        "left": 785,
+        "w": 505,
+        "h": 146
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 3126,
+      "actionVisibleWithoutScroll": true,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 1366,
+      "height": 900,
+      "label": "one",
+      "path": "/products/fixture-one-image",
+      "addToCart": {
+        "top": 635,
+        "left": 784,
+        "w": 248,
+        "h": 40
+      },
+      "gallery": {
+        "top": 273,
+        "left": 75,
+        "w": 653,
+        "h": 653
+      },
+      "stage": {
+        "top": 274,
+        "left": 76,
+        "w": 651,
+        "h": 651
+      },
+      "previews": [],
+      "specTable": {
+        "top": 888,
+        "left": 785,
+        "w": 505,
+        "h": 146
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 3086,
+      "actionVisibleWithoutScroll": true,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "label": "four",
+      "path": "/products/goldplus-bluetooth-gp03bt",
+      "addToCart": {
+        "top": 675,
+        "left": 821,
+        "w": 248,
+        "h": 40
+      },
+      "gallery": {
+        "top": 273,
+        "left": 112,
+        "w": 653,
+        "h": 805
+      },
+      "stage": {
+        "top": 274,
+        "left": 113,
+        "w": 651,
+        "h": 651
+      },
+      "previews": [
+        {
+          "top": 994,
+          "left": 304,
+          "w": 84,
+          "h": 84
+        },
+        {
+          "top": 994,
+          "left": 396,
+          "w": 84,
+          "h": 84
+        },
+        {
+          "top": 994,
+          "left": 488,
+          "w": 84,
+          "h": 84
+        }
+      ],
+      "specTable": {
+        "top": 928,
+        "left": 822,
+        "w": 505,
+        "h": 146
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 3126,
+      "actionVisibleWithoutScroll": true,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 1440,
+      "height": 900,
+      "label": "one",
+      "path": "/products/fixture-one-image",
+      "addToCart": {
+        "top": 635,
+        "left": 821,
+        "w": 248,
+        "h": 40
+      },
+      "gallery": {
+        "top": 273,
+        "left": 112,
+        "w": 653,
+        "h": 653
+      },
+      "stage": {
+        "top": 274,
+        "left": 113,
+        "w": 651,
+        "h": 651
+      },
+      "previews": [],
+      "specTable": {
+        "top": 888,
+        "left": 822,
+        "w": 505,
+        "h": 146
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 3086,
+      "actionVisibleWithoutScroll": true,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 1680,
+      "height": 900,
+      "label": "four",
+      "path": "/products/goldplus-bluetooth-gp03bt",
+      "addToCart": {
+        "top": 635,
+        "left": 956,
+        "w": 304,
+        "h": 40
+      },
+      "gallery": {
+        "top": 273,
+        "left": 104,
+        "w": 796,
+        "h": 948
+      },
+      "stage": {
+        "top": 274,
+        "left": 105,
+        "w": 794,
+        "h": 794
+      },
+      "previews": [
+        {
+          "top": 1137,
+          "left": 368,
+          "w": 84,
+          "h": 84
+        },
+        {
+          "top": 1137,
+          "left": 460,
+          "w": 84,
+          "h": 84
+        },
+        {
+          "top": 1137,
+          "left": 552,
+          "w": 84,
+          "h": 84
+        }
+      ],
+      "specTable": {
+        "top": 862,
+        "left": 957,
+        "w": 618,
+        "h": 146
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 3182,
+      "actionVisibleWithoutScroll": true,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 1680,
+      "height": 900,
+      "label": "one",
+      "path": "/products/fixture-one-image",
+      "addToCart": {
+        "top": 635,
+        "left": 956,
+        "w": 304,
+        "h": 40
+      },
+      "gallery": {
+        "top": 273,
+        "left": 104,
+        "w": 796,
+        "h": 796
+      },
+      "stage": {
+        "top": 274,
+        "left": 105,
+        "w": 794,
+        "h": 794
+      },
+      "previews": [],
+      "specTable": {
+        "top": 862,
+        "left": 957,
+        "w": 618,
+        "h": 146
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 3079,
+      "actionVisibleWithoutScroll": true,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 1920,
+      "height": 900,
+      "label": "four",
+      "path": "/products/goldplus-bluetooth-gp03bt",
+      "addToCart": {
+        "top": 635,
+        "left": 1076,
+        "w": 304,
+        "h": 40
+      },
+      "gallery": {
+        "top": 273,
+        "left": 224,
+        "w": 796,
+        "h": 948
+      },
+      "stage": {
+        "top": 274,
+        "left": 225,
+        "w": 794,
+        "h": 794
+      },
+      "previews": [
+        {
+          "top": 1137,
+          "left": 488,
+          "w": 84,
+          "h": 84
+        },
+        {
+          "top": 1137,
+          "left": 580,
+          "w": 84,
+          "h": 84
+        },
+        {
+          "top": 1137,
+          "left": 672,
+          "w": 84,
+          "h": 84
+        }
+      ],
+      "specTable": {
+        "top": 862,
+        "left": 1077,
+        "w": 618,
+        "h": 146
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 3182,
+      "actionVisibleWithoutScroll": true,
+      "actionBeforeSpecTable": true
+    },
+    {
+      "width": 1920,
+      "height": 900,
+      "label": "one",
+      "path": "/products/fixture-one-image",
+      "addToCart": {
+        "top": 635,
+        "left": 1076,
+        "w": 304,
+        "h": 40
+      },
+      "gallery": {
+        "top": 273,
+        "left": 224,
+        "w": 796,
+        "h": 796
+      },
+      "stage": {
+        "top": 274,
+        "left": 225,
+        "w": 794,
+        "h": 794
+      },
+      "previews": [],
+      "specTable": {
+        "top": 862,
+        "left": 1077,
+        "w": 618,
+        "h": 146
+      },
+      "h1Count": 1,
+      "horizontalOverflow": false,
+      "docHeight": 3079,
+      "actionVisibleWithoutScroll": true,
+      "actionBeforeSpecTable": true
+    }
+  ],
+  "network": {
+    "coldLoadRaw": [
+      {
+        "url": "/uploads/assets/f1/fixture1fixture/pdp.webp",
+        "status": 200
+      },
+      {
+        "url": "/uploads/assets/f2/fixture2fixture/thumb.webp",
+        "status": 200
+      },
+      {
+        "url": "/uploads/assets/f3/fixture3fixture/thumb.webp",
+        "status": 200
+      },
+      {
+        "url": "/uploads/assets/f4/fixture4fixture/thumb.webp",
+        "status": 200
+      },
+      {
+        "url": "/uploads/assets/f1/fixture1fixture/pdp.webp",
+        "status": 200
+      },
+      {
+        "url": "/uploads/assets/f2/fixture2fixture/thumb.webp",
+        "status": 200
+      },
+      {
+        "url": "/uploads/assets/f3/fixture3fixture/thumb.webp",
+        "status": 200
+      },
+      {
+        "url": "/uploads/assets/f4/fixture4fixture/thumb.webp",
+        "status": 200
+      },
+      {
+        "url": "/uploads/assets/f1/fixture1fixture/pdp.webp",
+        "status": 200
+      }
+    ],
+    "afterSelectingThirdRaw": [
+      {
+        "url": "/uploads/assets/f3/fixture3fixture/pdp.webp",
+        "status": 200
+      },
+      {
+        "url": "/uploads/assets/f1/fixture1fixture/thumb.webp",
+        "status": 200
+      },
+      {
+        "url": "/uploads/assets/f3/fixture3fixture/pdp.webp",
+        "status": 200
+      },
+      {
+        "url": "/uploads/assets/f1/fixture1fixture/thumb.webp",
+        "status": 200
+      },
+      {
+        "url": "/uploads/assets/f2/fixture2fixture/thumb.webp",
+        "status": 200
+      },
+      {
+        "url": "/uploads/assets/f4/fixture4fixture/thumb.webp",
+        "status": 200
+      },
+      {
+        "url": "/uploads/assets/f1/fixture1fixture/pdp.webp",
+        "status": 200
+      }
+    ],
+    "coldUnique": [
+      "/uploads/assets/f1/fixture1fixture/pdp.webp",
+      "/uploads/assets/f2/fixture2fixture/thumb.webp",
+      "/uploads/assets/f3/fixture3fixture/thumb.webp",
+      "/uploads/assets/f4/fixture4fixture/thumb.webp"
+    ],
+    "selectUnique": [
+      "/uploads/assets/f3/fixture3fixture/pdp.webp",
+      "/uploads/assets/f1/fixture1fixture/thumb.webp",
+      "/uploads/assets/f2/fixture2fixture/thumb.webp",
+      "/uploads/assets/f4/fixture4fixture/thumb.webp",
+      "/uploads/assets/f1/fixture1fixture/pdp.webp"
+    ],
+    "coverImgsOutsideGallery": 1,
+    "coldHasLargeSecondary": false,
+    "coldIsCoverPlusThumbs": true,
+    "selectLoadedThirdLarge": true,
+    "selectLoadedNoOtherSecondaryLarge": true,
+    "selectLoadedCoverThumb": true,
+    "selectReloadedCoverLargeByGallery": false,
+    "compositionAfterSelect": {
+      "counter": "3 / 4",
+      "previews": [
+        "Show image 1 of 4: TEST FRAME 1 of 4",
+        "Show image 2 of 4: TEST FRAME 2 of 4",
+        "Show image 4 of 4: TEST FRAME 4 of 4"
+      ],
+      "activeAlt": "TEST FRAME 3 of 4"
+    }
+  },
+  "keyboard": {
+    "afterEnter": {
+      "counter": "2 / 4",
+      "focusedIs": "controls",
+      "focusInGallery": true,
+      "status": "Image 2 of 4"
+    },
+    "atEnd": {
+      "counter": "4 / 4",
+      "nextDisabled": true
+    },
+    "noWrapCounter": "4 / 4",
+    "tabAwayNotPulledBack": true,
+    "focusedBefore": "<a href=\"/uploads/assets/f1/fixture1fixture/pdp.webp\" class=",
+    "focusedAfter": "<a href=\"/uploads/assets/f1/fixture1fixture/pdp.webp\" class="
+  },
+  "nojs": {
+    "cover": true,
+    "previewLinks": [
+      "/uploads/assets/f2/fixture2fixture/pdp.webp",
+      "/uploads/assets/f3/fixture3fixture/pdp.webp",
+      "/uploads/assets/f4/fixture4fixture/pdp.webp"
+    ],
+    "arrowsHidden": true,
+    "buyForm": true
+  },
+  "axe": {
+    "violations": [],
+    "passes": 17
+  },
+  "enrichmentOff": null,
+  "thumbFailure": {
+    "previews": [
+      {
+        "label": "Show image 2 of 4: TEST FRAME 2 of 4",
+        "thumbFailed": false,
+        "text": ""
+      },
+      {
+        "label": "Show image 3 of 4: TEST FRAME 3 of 4",
+        "thumbFailed": true,
+        "text": "Image 3"
+      },
+      {
+        "label": "Show image 4 of 4: TEST FRAME 4 of 4",
+        "thumbFailed": false,
+        "text": ""
+      }
+    ],
+    "selectedAfterThumbFailure": "3 / 4"
+  },
+  "noImage": {
+    "fallbackText": true,
+    "gallery": false
+  }
+}

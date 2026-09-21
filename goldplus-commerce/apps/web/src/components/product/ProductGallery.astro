@@ -216,6 +216,19 @@ const uid = `gallery-${Math.random().toString(36).slice(2, 8)}`;
       const wanted = previewsOf(state);
       const existing = new Map<string, HTMLLIElement>();
       list.querySelectorAll<HTMLLIElement>('li[data-media-id]').forEach((li) => existing.set(li.dataset.mediaId!, li));
+      // Moving a focused node (appendChild) blurs it, so the row is rebuilt ONLY when its
+      // composition changes (a commit or an authoritative removal). A pending request or a
+      // thumbnail failure only refreshes labels in place.
+      const currentIds = [...existing.keys()];
+      const wantedIds = wanted.map((m) => m.id);
+      if (currentIds.length === wantedIds.length && currentIds.every((id, i) => id === wantedIds[i])) {
+        for (const m of wanted) {
+          const a = existing.get(m.id)!.querySelector<HTMLAnchorElement>('a')!;
+          a.setAttribute('aria-label', `Show image ${ordinalOf(state, m.id)} of ${state.available.length}: ${m.alt}`);
+          if (state.failedThumb.has(m.id) && !a.hasAttribute('data-thumb-failed')) { a.setAttribute('data-thumb-failed', ''); a.textContent = `Image ${ordinalOf(state, m.id)}`; }
+        }
+        return;
+      }
       // Reuse nodes (stable identity for focus), reorder to canonical order, hide the active one.
       const frag = document.createDocumentFragment();
       for (const m of wanted) {
@@ -288,7 +301,14 @@ const uid = `gallery-${Math.random().toString(36).slice(2, 8)}`;
     }, { passive: true });
     stage.addEventListener('touchcancel', () => { touch = null; }, { passive: true });
 
-    list?.querySelectorAll<HTMLImageElement>('[data-gallery-thumb]').forEach((img) => wireThumb(img, img.closest<HTMLLIElement>('li[data-media-id]')!.dataset.mediaId!));
+    list?.querySelectorAll<HTMLImageElement>('[data-gallery-thumb]').forEach((img) => {
+      const id = img.closest<HTMLLIElement>('li[data-media-id]')!.dataset.mediaId!;
+      wireThumb(img, id);
+      // A thumbnail that failed BEFORE this controller mounted fired its error event into the
+      // void (or the layout's broken-image fallback already swapped it). Detect that state now.
+      const swapped = /image-unavailable\.svg$/.test(img.currentSrc || img.src);
+      if (swapped || (img.complete && img.naturalWidth === 0)) dispatch({ type: 'THUMB_FAILED', id });
+    });
     image.addEventListener('error', () => {
       // A broken cover: keep the neutral image element (BaseLayout swaps a fallback), never redefine slot 1.
       errorEl.hidden = false;
