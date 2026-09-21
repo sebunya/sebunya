@@ -77,6 +77,12 @@ Open, honestly:
 
 Bounded rollout (when authorised): `migrate-prod.sh` with 0148+0149 (backup → clone rehearsal → live, as the house does) → deploy api+web → `backfill-product-media-slots.ts` dry run → review report → apply → check `/admin/media/gallery-queue` shows every imaged product `migrated` → observe PDP for one hour. Rollback: previous images (`rollback-*` tags); the projection keeps the correct cover; `PRODUCT_GALLERY_ENRICHMENT=false` as the containment switch. Schema stays.
 
+## 7a. Regression proof for the other modules (added after self-review, 2026-09-21)
+
+The entire real-PostgreSQL integration suite (49 files) was run on a disposable production clone with a builder image from this branch: **39 files passed, 7 skipped (provider-gated), 3 failed (5 tests)** — `CustomerRfm` (a count from the backup's real orders), `DeviceCatalogue` AC1/AC3/AC5 (the pre-battery-module compatibility table semantics), `PesapalPaymentJourney` (a test stub lacks `notifyFulfilmentOfPaidOrder`). The same three suites were then run against an image built from the **base commit `b580b3e5`** on a fresh clone: **the identical 5 tests fail there too.** They are pre-existing and unrelated to this branch (none touches product images). Every suite that exercises the readers this branch changed — product public view, merchant feed SQL, battery finder and catalogue SQL, recommendation readers, blog, search — passed on the clone.
+
+Also fixed in self-review: the older product edit page still offered "add image by URL" (now 410) — replaced with a link to the gallery editor and the copy corrected to four files; the 0148 indexes are now declared in the Drizzle schema so a future `db:generate` cannot propose dropping them; the legacy image repository lists canonical slots first.
+
 ## 8. Explicit status
 
 implemented ✔ · tested ✔ (unit, architecture, real-PG on a clone, Chromium evidence) · committed ✔ · pushed ✘ · deployed ✘
