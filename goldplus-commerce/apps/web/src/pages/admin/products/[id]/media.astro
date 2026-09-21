@@ -1,0 +1,253 @@
+---
+import AdminLayout from '../../../../layouts/AdminLayout.astro';
+import FormFeedback from '../../../../components/FormFeedback.astro';
+import { apiBase } from '../../../../lib/api';
+import { readSessionToken } from '../../../../lib/session';
+import { GALLERY_SLOT_ROLES } from '@goldplus/shared';
+
+/**
+ * Focus 4 — the product gallery editor: four explicit slots, Slot 1 = Cover / Main.
+ * Every button is a server-side form POST carrying the revision the page was
+ * rendered with; the API refuses a stale revision, and the page shows the
+ * conflict instead of overwriting a colleague's edit. No token in the browser.
+ */
+const { id } = Astro.params;
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect(`/admin/login?returnTo=/admin/products/${encodeURIComponent(id ?? '')}/media`, 303);
+const headers = { Authorization: `Bearer ${token}` };
+const jsonHeaders = { ...headers, 'Content-Type': 'application/json' };
+const self = `/admin/products/${encodeURIComponent(id ?? '')}/media`;
+
+interface Slot { slot: 1 | 2 | 3 | 4; imageId: string | null; assetId: string | null; url: string | null; displayUrl: string | null; thumbUrl: string | null; altText: string | null; filename: string | null; width: number | null; height: number | null; byteSize: number | null; ready: boolean }
+interface Gallery { productId: string; sku: string; name: string; slug: string; mediaRevision: number; migrated: boolean; missingCover: boolean; completeness: { assigned: number; label: string; hasCover: boolean }; slots: Slot[]; legacyRows: Array<{ imageId: string; url: string; reason: string }>; history: Array<{ id: string; action: string; actorId: string | null; createdAt: string; revision: number }> }
+interface Asset { id: string; url: string; filename: string; width: number | null; height: number | null; byteSize: number; status: string }
+
+let status: 'success' | 'error' | null = null; let message = '';
+const url = new URL(Astro.request.url);
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const kind = String(form.get('kind') ?? '');
+  const expectedRevision = Number(form.get('expectedRevision'));
+  let res: Response | null = null;
+  if (kind === 'upload') {
+    const files = form.getAll('files').filter((f): f is File => typeof f !== 'string' && f.size > 0);
+    if (files.length === 0) { status = 'error'; message = 'Choose at least one image.'; }
+    else if (files.length > 4) { status = 'error'; message = `A gallery holds four images; you chose ${files.length}. Remove ${files.length - 4}.`; }
+    else {
+      const body = new FormData();
+      for (const f of files) body.append('files', f, f.name);
+      for (const s of form.getAll('slots')) body.append('slots', String(s));
+      body.append('expectedRevision', String(expectedRevision));
+      if (form.get('replace') === 'on') body.append('replace', 'true');
+      res = await fetch(`${apiBase}/admin/products/${encodeURIComponent(id ?? '')}/media/upload`, { method: 'POST', headers, body });
+    }
+  } else if (kind === 'action') {
+    const type = String(form.get('type') ?? '');
+    const num = (k: string) => Number(form.get(k));
+    const str = (k: string) => { const v = form.get(k); return v == null || v === '' ? null : String(v); };
+    const action: Record<string, unknown> =
+      type === 'SET_COVER' ? { type, assetId: str('assetId') }
+      : type === 'REMOVE' ? { type, slot: num('slot'), replacementAssetId: str('replacementAssetId') }
+      : type === 'MOVE' ? { type, from: num('from'), to: num('to') }
+      : type === 'ASSIGN' ? { type, slot: num('slot'), assetId: str('assetId') }
+      : type === 'REPLACE' ? { type, slot: num('slot'), assetId: str('assetId') }
+      : type === 'SET_ALT' ? { type, slot: num('slot'), altText: str('altText') }
+      : type === 'UNDO' ? { type, auditId: str('auditId') }
+      : { type };
+    res = await fetch(`${apiBase}/admin/products/${encodeURIComponent(id ?? '')}/media`, { method: 'PUT', headers: jsonHeaders, body: JSON.stringify({ expectedRevision, action }) });
+  }
+  if (res) {
+    const json = await res.json().catch(() => null);
+    if (json?.success) return Astro.redirect(`${self}?saved=${encodeURIComponent(kind)}`, 303);
+    status = 'error';
+    message = json?.error?.code === 'STALE_REVISION'
+      ? `Someone changed this gallery after you opened it (now revision ${json.error.currentRevision}). The slots below are current again — check them and repeat your change.`
+      : json?.error?.message ?? `The change was not saved (HTTP ${res.status}).`;
+  }
+}
+
+const res = await fetch(`${apiBase}/admin/products/${encodeURIComponent(id ?? '')}/media`, { headers, signal: AbortSignal.timeout(10000) });
+const json = await res.json().catch(() => null);
+const gallery: Gallery | null = json?.success ? (json.data as Gallery) : null;
+if (!gallery) return Astro.redirect('/admin/listing-quality', 303);
+
+if (url.searchParams.get('saved') === 'upload') { status = 'success'; message = 'Images saved into their slots.'; }
+if (url.searchParams.get('saved') === 'action') { status = 'success'; message = 'Gallery updated.'; }
+
+// Choose existing: a small server-paged search of the library, thumbnails only.
+const pick = url.searchParams.get('pick') ?? '';
+const pickSlot = Number(url.searchParams.get('pickSlot')) || 0;
+let candidates: Asset[] = []; let candidateTotal = 0;
+if (pick || pickSlot) {
+  const q = new URLSearchParams({ limit: '24', page: String(Number(url.searchParams.get('page')) || 1), status: 'ACTIVE' });
+  if (pick) q.set('query', pick);
+  const r = await fetch(`${apiBase}/admin/media?${q.toString()}`, { headers, signal: AbortSignal.timeout(10000) });
+  const j = await r.json().catch(() => null);
+  if (j?.success) { candidates = j.data.items as Asset[]; candidateTotal = Number(j.data.total ?? candidates.length); }
+}
+const thumbOf = (u: string) => u.replace(/[^/]+$/, 'thumb.webp');
+const inGallery = new Set(gallery.slots.map((s) => s.assetId).filter(Boolean));
+const emptySlots = gallery.slots.filter((s) => !s.assetId);
+const filledSecondaries = gallery.slots.filter((s) => s.assetId && s.slot !== 1);
+const kb = (n: number | null) => (n == null ? '' : `${Math.round(n / 1024)} kB`);
+---
+<AdminLayout title={`Gallery — ${gallery.name}`} description="One cover and up to three supporting images." activePath="/admin/listing-quality">
+  <div class="container mx-auto px-6 lg:px-8 max-w-5xl space-y-8">
+    <div class="flex items-center gap-4 pb-6 border-b border-gray-200">
+      <a href={`/admin/products/${gallery.productId}/listing`} class="p-2 hover:bg-gray-100 rounded-xl transition-colors border border-gray-200 bg-white shadow-xs" aria-label="Back to the listing editor">&larr;</a>
+      <div class="flex-1 min-w-0">
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight truncate">{gallery.name}</h2>
+        <p class="text-sm text-gray-500 mt-1 font-mono">{gallery.sku} · Media {gallery.completeness.label} · revision {gallery.mediaRevision}</p>
+      </div>
+      <a href={`/products/${gallery.slug}`} target="_blank" rel="noopener" class="bg-white border border-gray-200 hover:bg-gray-50 text-brand-dark font-bold text-xs px-4 py-2 rounded-xl shadow-xs">View page &rarr;</a>
+    </div>
+
+    {status && <FormFeedback status={status} message={message} />}
+    {gallery.missingCover && <FormFeedback status="error" message="This gallery has supporting images but no cover (slot 1). Cards, search, cart and social previews show the neutral fallback until a cover is set." />}
+    {!gallery.migrated && gallery.legacyRows.length > 0 && <FormFeedback status="error" message="This product's images have not been placed into slots yet (legacy rows below). Assign a cover to start the gallery; the backfill will otherwise do it." />}
+
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {gallery.slots.map((s) => (
+        <article class="bg-white border border-gray-200 rounded-2xl shadow-sm p-4 flex flex-col gap-3" class:list={[s.slot === 1 ? 'ring-2 ring-brand-green/60' : '']}>
+          <header class="flex items-start justify-between gap-2">
+            <div>
+              <p class="text-[10px] font-black uppercase tracking-wider text-gray-400">Slot {s.slot}</p>
+              <h3 class="text-sm font-black text-brand-dark">{GALLERY_SLOT_ROLES[s.slot].name}</h3>
+              <p class="text-[11px] text-gray-500">{GALLERY_SLOT_ROLES[s.slot].question}</p>
+            </div>
+            {s.assetId ? <span class="text-[10px] font-black px-2 py-0.5 rounded-full border" class:list={[s.ready ? 'text-green-700 bg-green-50 border-green-200' : 'text-amber-700 bg-amber-50 border-amber-200']}>{s.ready ? 'Ready' : 'Not ready'}</span> : <span class="text-[10px] font-black px-2 py-0.5 rounded-full border text-gray-500 bg-gray-50 border-gray-200">Empty</span>}
+          </header>
+          {s.slot === 1 && <p class="text-[11px] text-gray-600 -mt-1">Used on product cards, search, the cart and social previews.</p>}
+          <div class="aspect-square bg-gray-50 border border-gray-200 rounded-xl overflow-hidden flex items-center justify-center">
+            {s.assetId ? <img src={s.thumbUrl ?? s.displayUrl ?? s.url ?? ''} alt={s.altText ?? ''} width="160" height="160" loading="lazy" class="w-full h-full object-contain p-2" /> : <span class="text-xs text-gray-400">No image</span>}
+          </div>
+          {s.assetId && (
+            <p class="text-[11px] text-gray-500 truncate" title={s.filename ?? ''}>{s.filename} · {s.width && s.height ? `${s.width}×${s.height}` : 'size unknown'} · {kb(s.byteSize)}</p>
+          )}
+          <div class="flex flex-wrap gap-2">
+            {s.assetId && s.slot !== 1 && (
+              <form method="POST"><input type="hidden" name="kind" value="action" /><input type="hidden" name="expectedRevision" value={gallery.mediaRevision} /><input type="hidden" name="type" value="SET_COVER" /><input type="hidden" name="assetId" value={s.assetId} />
+                <button type="submit" class="text-[11px] font-black uppercase tracking-wider px-3 py-2 rounded-xl bg-brand-dark text-white">Set as cover</button></form>
+            )}
+            {s.assetId && s.slot !== 1 && (
+              <form method="POST"><input type="hidden" name="kind" value="action" /><input type="hidden" name="expectedRevision" value={gallery.mediaRevision} /><input type="hidden" name="type" value="REMOVE" /><input type="hidden" name="slot" value={s.slot} />
+                <button type="submit" class="text-[11px] font-black uppercase tracking-wider px-3 py-2 rounded-xl border border-gray-300 bg-white">Remove</button></form>
+            )}
+            {s.assetId && s.slot === 1 && filledSecondaries.length > 0 && (
+              <form method="POST" class="flex items-center gap-1"><input type="hidden" name="kind" value="action" /><input type="hidden" name="expectedRevision" value={gallery.mediaRevision} /><input type="hidden" name="type" value="REMOVE" /><input type="hidden" name="slot" value="1" />
+                <label class="text-[11px] text-gray-600">Replace cover with
+                  <select name="replacementAssetId" required class="ml-1 text-[11px] border border-gray-300 rounded-lg px-1 py-1">
+                    {filledSecondaries.map((f) => <option value={f.assetId}>slot {f.slot}</option>)}
+                  </select></label>
+                <button type="submit" class="text-[11px] font-black uppercase tracking-wider px-3 py-2 rounded-xl border border-gray-300 bg-white">Swap</button></form>
+            )}
+            {s.assetId && (
+              <form method="POST" class="flex items-center gap-1"><input type="hidden" name="kind" value="action" /><input type="hidden" name="expectedRevision" value={gallery.mediaRevision} /><input type="hidden" name="type" value="MOVE" /><input type="hidden" name="from" value={s.slot} />
+                <label class="text-[11px] text-gray-600">Move to
+                  <select name="to" class="ml-1 text-[11px] border border-gray-300 rounded-lg px-1 py-1">
+                    {[1, 2, 3, 4].filter((n) => n !== s.slot).map((n) => <option value={n}>{n}{n === 1 ? ' (becomes cover)' : ''}</option>)}
+                  </select></label>
+                <button type="submit" class="text-[11px] font-black uppercase tracking-wider px-3 py-2 rounded-xl border border-gray-300 bg-white">Move</button></form>
+            )}
+            {!s.assetId && <a href={`${self}?pickSlot=${s.slot}#choose`} class="text-[11px] font-black uppercase tracking-wider px-3 py-2 rounded-xl border border-gray-300 bg-white">Choose existing</a>}
+            {s.assetId && <a href={`${self}?pickSlot=${s.slot}&replace=1#choose`} class="text-[11px] font-black uppercase tracking-wider px-3 py-2 rounded-xl border border-gray-300 bg-white">Replace</a>}
+          </div>
+          {s.assetId && (
+            <form method="POST" class="flex items-center gap-1"><input type="hidden" name="kind" value="action" /><input type="hidden" name="expectedRevision" value={gallery.mediaRevision} /><input type="hidden" name="type" value="SET_ALT" /><input type="hidden" name="slot" value={s.slot} />
+              <label class="sr-only" for={`alt-${s.slot}`}>Alt text for slot {s.slot}</label>
+              <input id={`alt-${s.slot}`} name="altText" value={s.altText ?? ''} maxlength="255" placeholder="What this image truthfully shows" class="flex-1 min-w-0 text-[11px] border border-gray-300 rounded-lg px-2 py-1.5" />
+              <button type="submit" class="text-[11px] font-black uppercase tracking-wider px-3 py-2 rounded-xl border border-gray-300 bg-white">Save</button></form>
+          )}
+        </article>
+      ))}
+    </section>
+
+    <!-- Multi-image intake -->
+    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-4">
+      <div>
+        <h3 class="text-xs font-black uppercase tracking-wider text-gray-400">Add images</h3>
+        <p class="text-sm text-gray-600 mt-1">Up to four files at once. Each file goes into the slot you choose (or the next empty slot). The product alone, unclipped, on a plain background; masters of about 2000 × 2000 are ideal, but a valid smaller file is not refused.</p>
+      </div>
+      <form method="POST" enctype="multipart/form-data" class="space-y-3">
+        <input type="hidden" name="kind" value="upload" />
+        <input type="hidden" name="expectedRevision" value={gallery.mediaRevision} />
+        <div>
+          <label for="files" class="block text-xs font-bold text-gray-700 mb-1">Files (JPG, PNG, WebP, AVIF; up to 4)</label>
+          <input id="files" name="files" type="file" accept="image/*" multiple required class="block w-full text-sm text-gray-700 file:mr-3 file:bg-brand-dark file:text-white file:font-black file:text-xs file:px-4 file:py-2.5 file:rounded-xl file:border-0 file:uppercase file:tracking-wider" />
+        </div>
+        <fieldset class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <legend class="text-xs font-bold text-gray-700 mb-1">Proposed slots (in file order)</legend>
+          {[1, 2, 3, 4].map((n) => (
+            <label class="text-[11px] text-gray-600">File {n} →
+              <select name="slots" class="ml-1 text-[11px] border border-gray-300 rounded-lg px-1 py-1">
+                <option value="">next empty</option>
+                {[1, 2, 3, 4].map((s) => <option value={s} selected={emptySlots[n - 1]?.slot === s}>slot {s}{s === 1 ? ' (cover)' : ''}</option>)}
+              </select></label>
+          ))}
+        </fieldset>
+        <label class="flex items-center gap-2 text-sm text-gray-700 select-none"><input type="checkbox" name="replace" class="w-4 h-4 accent-brand-green" /> Allow replacing an occupied slot</label>
+        <button type="submit" class="bg-white border border-gray-300 hover:bg-gray-50 text-brand-dark font-black text-xs px-5 py-3 rounded-xl uppercase tracking-wider">Upload and assign</button>
+      </form>
+    </section>
+
+    <!-- Choose existing -->
+    <section id="choose" class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-4">
+      <div class="flex flex-wrap items-end gap-3 justify-between">
+        <div>
+          <h3 class="text-xs font-black uppercase tracking-wider text-gray-400">Choose an existing image{pickSlot ? ` for slot ${pickSlot}` : ''}</h3>
+          <p class="text-sm text-gray-600 mt-1">Search the media library by SKU, model or filename. Thumbnails only; nothing is re-uploaded.</p>
+        </div>
+        <form method="GET" class="flex items-center gap-2">
+          {pickSlot > 0 && <input type="hidden" name="pickSlot" value={pickSlot} />}
+          {url.searchParams.get('replace') && <input type="hidden" name="replace" value="1" />}
+          <label class="sr-only" for="pick">Search the library</label>
+          <input id="pick" name="pick" value={pick} placeholder={gallery.sku} class="text-sm border border-gray-300 rounded-xl px-3 py-2" />
+          <button type="submit" class="text-xs font-black uppercase tracking-wider px-4 py-2.5 rounded-xl bg-brand-dark text-white">Search</button>
+        </form>
+      </div>
+      {(pick || pickSlot) && (
+        candidates.length === 0 ? <p class="text-sm text-gray-500">No library image matches.</p> : (
+          <ul class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+            {candidates.map((a) => (
+              <li class="border border-gray-200 rounded-xl p-2 flex flex-col gap-2">
+                <img src={thumbOf(a.url)} alt="" width="160" height="160" loading="lazy" class="w-full aspect-square object-contain bg-gray-50 rounded-lg" onerror={`this.src=${JSON.stringify(a.url)}`} />
+                <p class="text-[10px] text-gray-500 truncate" title={a.filename}>{a.filename}</p>
+                {inGallery.has(a.id) ? <span class="text-[10px] text-gray-400">In this gallery</span> : (
+                  <form method="POST"><input type="hidden" name="kind" value="action" /><input type="hidden" name="expectedRevision" value={gallery.mediaRevision} /><input type="hidden" name="assetId" value={a.id} />
+                    {pickSlot > 0 ? (<><input type="hidden" name="type" value={url.searchParams.get('replace') ? 'REPLACE' : 'ASSIGN'} /><input type="hidden" name="slot" value={pickSlot} /></>) : (<><input type="hidden" name="type" value="ASSIGN" /><input type="hidden" name="slot" value={emptySlots[0]?.slot ?? 1} /></>)}
+                    <button type="submit" class="w-full text-[10px] font-black uppercase tracking-wider px-2 py-1.5 rounded-lg border border-gray-300 bg-white">Use{pickSlot ? ` in slot ${pickSlot}` : ''}</button></form>
+                )}
+              </li>
+            ))}
+          </ul>
+        )
+      )}
+      {candidateTotal > 24 && <p class="text-xs text-gray-500">{candidateTotal} matches; refine the search.</p>}
+    </section>
+
+    {gallery.legacyRows.length > 0 && (
+      <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-2">
+        <h3 class="text-xs font-black uppercase tracking-wider text-gray-400">Not in the gallery</h3>
+        <ul class="text-sm text-gray-600 space-y-1">
+          {gallery.legacyRows.map((r) => <li class="flex items-center gap-3"><img src={r.url} alt="" width="40" height="40" loading="lazy" class="w-10 h-10 object-contain bg-gray-50 border border-gray-200 rounded-lg" /><span>{r.reason}</span></li>)}
+        </ul>
+      </section>
+    )}
+
+    {gallery.history.length > 0 && (
+      <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-3">
+        <h3 class="text-xs font-black uppercase tracking-wider text-gray-400">Recent changes</h3>
+        <ul class="text-sm text-gray-600 space-y-2">
+          {gallery.history.map((h) => (
+            <li class="flex items-center justify-between gap-3">
+              <span><span class="font-mono text-xs">{h.action}</span> · revision {h.revision} · {new Date(h.createdAt).toLocaleString('en-UG')}</span>
+              <form method="POST"><input type="hidden" name="kind" value="action" /><input type="hidden" name="expectedRevision" value={gallery.mediaRevision} /><input type="hidden" name="type" value="UNDO" /><input type="hidden" name="auditId" value={h.id} />
+                <button type="submit" class="text-[11px] font-black uppercase tracking-wider px-3 py-1.5 rounded-xl border border-gray-300 bg-white">Restore the state before this</button></form>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )}
+  </div>
+</AdminLayout>

@@ -1,0 +1,303 @@
+---
+/**
+ * Focus 4 — product gallery: one focused image, every other available image as a
+ * preview. Server renders slot 1 (the cover) and native preview links, so with no
+ * JavaScript the page is complete and every image opens as an optimized file.
+ * With JavaScript, `productGalleryState` becomes the single authority: the
+ * newest intent wins, only the latest still-relevant load commits, failures keep
+ * the previous image and offer retry, the preview row never strands focus.
+ *
+ * Initial cost: one responsive cover + up to three 160px thumbnails + this
+ * controller. Large secondaries load on intentional selection only.
+ */
+import { productSrcset, productThumbUrl, PDP_STAGE_SIZES, PDP_THUMB_SIZES } from '../../lib/imageSrcset';
+
+interface Props {
+  productName: string;
+  /** Canonical order, cover first (index 0 = slot 1). Already resolved by the API. */
+  images: Array<{ url: string; alt: string | null }>;
+  /** PRODUCT_GALLERY_ENRICHMENT=false → cover only, no previews, no controller. */
+  enrichment?: boolean;
+}
+const { productName, images, enrichment = true } = Astro.props;
+
+const media = images.slice(0, 4).map((img, i) => ({
+  id: `m${i + 1}`,
+  src: img.url,
+  srcset: productSrcset(img.url),
+  thumb: productThumbUrl(img.url) ?? img.url,
+  alt: img.alt?.trim() || `${productName}${i === 0 ? '' : ` — image ${i + 1}`}`,
+}));
+const cover = media[0] ?? null;
+const previews = enrichment ? media.slice(1) : [];
+const count = enrichment ? media.length : Math.min(media.length, 1);
+const uid = `gallery-${Math.random().toString(36).slice(2, 8)}`;
+---
+{cover ? (
+  <section
+    class="gp-gallery"
+    aria-label="Product images"
+    data-gallery
+    data-gallery-enrichment={enrichment ? '1' : '0'}
+    data-gallery-media={JSON.stringify(enrichment ? media : media.slice(0, 1))}
+  >
+    <div class="gp-gallery__stage bg-white rounded-2xl border border-slate-200/80 shadow-xs relative overflow-hidden" data-gallery-stage>
+      <img
+        src={cover.src}
+        srcset={cover.srcset ?? undefined}
+        sizes={cover.srcset ? PDP_STAGE_SIZES : undefined}
+        alt={cover.alt}
+        width="1024"
+        height="1024"
+        class="gp-gallery__image"
+        loading="eager"
+        fetchpriority="high"
+        decoding="async"
+        data-gallery-image
+        data-media-id={cover.id}
+      />
+      <div class="gp-gallery__pending" data-gallery-pending hidden aria-hidden="true"></div>
+      <p class="gp-gallery__error" data-gallery-error hidden>
+        <span>That image did not load.</span>
+        <button type="button" class="gp-gallery__retry" data-gallery-retry>Try again</button>
+      </p>
+    </div>
+
+    {count > 1 && (
+      <div class="gp-gallery__controls" data-gallery-controls tabindex="-1" aria-describedby={`${uid}-hint`}>
+        <button type="button" class="gp-gallery__arrow" data-gallery-prev aria-label="Previous image" disabled hidden>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+        </button>
+        <span class="gp-gallery__counter" data-gallery-counter aria-hidden="true">1 / {count}</span>
+        <button type="button" class="gp-gallery__arrow" data-gallery-next aria-label="Next image" hidden>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+        <span id={`${uid}-hint`} class="sr-only">Use the left and right arrow keys to change the image. Home and End go to the first and last image.</span>
+      </div>
+    )}
+
+    {previews.length > 0 && (
+      <ul class="gp-gallery__previews" data-gallery-previews>
+        {previews.map((p, i) => (
+          <li data-media-id={p.id}>
+            <a href={p.src} class="gp-gallery__preview" data-gallery-preview aria-label={`Show image ${i + 2} of ${count}: ${p.alt}`}>
+              <img src={p.thumb} sizes={PDP_THUMB_SIZES} alt="" width="160" height="160" loading="lazy" decoding="async" data-gallery-thumb />
+            </a>
+          </li>
+        ))}
+      </ul>
+    )}
+
+    <p class="sr-only" data-gallery-status role="status" aria-live="polite"></p>
+  </section>
+) : (
+  <div class="bg-white aspect-square rounded-2xl flex items-center justify-center relative overflow-hidden border border-slate-200/80 shadow-xs">
+    <div class="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 p-6 text-center select-none">
+      <svg class="w-12 h-12 mb-3 text-brand-mutedGrey/20" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+      <span class="text-sm font-semibold text-slate-600">No photo of this one yet.</span>
+    </div>
+  </div>
+)}
+
+<style>
+  .gp-gallery { display: grid; gap: 0.75rem; }
+  /* Reserved square geometry: the image never causes layout shift. */
+  .gp-gallery__stage { aspect-ratio: 1 / 1; width: 100%; }
+  .gp-gallery__image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; padding: 1.25rem; background: #fff; }
+  .gp-gallery__pending { position: absolute; inset: 0; background: rgba(255,255,255,0.35); backdrop-filter: saturate(0.9); }
+  .gp-gallery__pending::after { content: ''; position: absolute; left: 50%; top: 50%; width: 28px; height: 28px; margin: -14px 0 0 -14px; border-radius: 50%; border: 3px solid #E5E5E5; border-top-color: #93D500; animation: gp-gallery-spin 0.8s linear infinite; }
+  @keyframes gp-gallery-spin { to { transform: rotate(360deg); } }
+  .gp-gallery__error { position: absolute; left: 0.75rem; right: 0.75rem; bottom: 0.75rem; margin: 0; display: flex; gap: 0.75rem; align-items: center; justify-content: center; font-size: 0.8125rem; font-weight: 600; color: #1C1C1C; background: #F7F7F7; border: 1px solid #E5E5E5; border-radius: 9999px; padding: 0.5rem 0.75rem; }
+  .gp-gallery__retry { font-weight: 800; text-decoration: underline; text-underline-offset: 2px; color: #0A0A0A; }
+  .gp-gallery__controls { display: flex; align-items: center; justify-content: center; gap: 0.75rem; min-height: 44px; border-radius: 0.5rem; outline: none; }
+  .gp-gallery__controls:focus-visible { box-shadow: 0 0 0 4px rgba(147, 213, 0, 0.3); }
+  .gp-gallery__arrow { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 9999px; border: 1px solid #E5E5E5; background: #fff; color: #0A0A0A; cursor: pointer; }
+  .gp-gallery__arrow:hover { border-color: #93D500; }
+  .gp-gallery__arrow:disabled { opacity: 0.35; cursor: not-allowed; }
+  .gp-gallery__arrow:focus-visible { outline: none; box-shadow: 0 0 0 4px rgba(147, 213, 0, 0.3); }
+  .gp-gallery__counter { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; color: #6B6B6B; font-variant-numeric: tabular-nums; min-width: 3.5rem; text-align: center; }
+  .gp-gallery__previews { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0; padding: 0; list-style: none; justify-content: center; }
+  .gp-gallery__preview { display: block; width: 64px; height: 64px; border-radius: 0.75rem; overflow: hidden; border: 1px solid #E5E5E5; background: #fff; outline: none; }
+  @media (min-width: 640px) { .gp-gallery__preview { width: 76px; height: 76px; } }
+  @media (min-width: 1024px) { .gp-gallery__preview { width: 84px; height: 84px; } }
+  .gp-gallery__preview img { width: 100%; height: 100%; object-fit: contain; padding: 4px; }
+  .gp-gallery__preview:hover { border-color: #93D500; }
+  .gp-gallery__preview:focus-visible { box-shadow: 0 0 0 4px rgba(147, 213, 0, 0.3); border-color: #93D500; }
+  .gp-gallery__preview[data-thumb-failed] { display: flex; align-items: center; justify-content: center; font-size: 0.6875rem; font-weight: 700; color: #6B6B6B; text-align: center; padding: 4px; }
+  @media (prefers-reduced-motion: reduce) { .gp-gallery__pending::after { animation: none; } }
+</style>
+
+<script>
+  import { createGalleryState, reduce, previews as previewsOf, canGoNext, canGoPrev, ordinalOf, type GalleryMedia, type GalleryState, type GalleryIntent } from '../../lib/productGalleryState';
+  import { PDP_STAGE_SIZES } from '../../lib/imageSrcset';
+
+  type Effect = ReturnType<typeof reduce>[1];
+
+  function mount(root: HTMLElement) {
+    if (root.dataset.galleryMounted === '1' || root.dataset.galleryEnrichment !== '1') return;
+    root.dataset.galleryMounted = '1';
+    let media: GalleryMedia[] = [];
+    try { media = JSON.parse(root.dataset.galleryMedia ?? '[]').map((m: Partial<GalleryMedia>) => ({ ...m, width: 1024, height: 1024 })) as GalleryMedia[]; } catch { return; }
+    if (media.length < 2) return;
+
+    const image = root.querySelector<HTMLImageElement>('[data-gallery-image]')!;
+    const pendingEl = root.querySelector<HTMLElement>('[data-gallery-pending]')!;
+    const errorEl = root.querySelector<HTMLElement>('[data-gallery-error]')!;
+    const retryBtn = root.querySelector<HTMLButtonElement>('[data-gallery-retry]')!;
+    const controls = root.querySelector<HTMLElement>('[data-gallery-controls]');
+    const prevBtn = root.querySelector<HTMLButtonElement>('[data-gallery-prev]');
+    const nextBtn = root.querySelector<HTMLButtonElement>('[data-gallery-next]');
+    const counter = root.querySelector<HTMLElement>('[data-gallery-counter]');
+    const list = root.querySelector<HTMLUListElement>('[data-gallery-previews]');
+    const status = root.querySelector<HTMLElement>('[data-gallery-status]')!;
+
+    let state: GalleryState = createGalleryState(media, image.dataset.mediaId);
+    const loaders = new Map<number, HTMLImageElement>();
+    let lastActivation: 'keyboard' | 'pointer' | null = null;
+    let disposed = false;
+
+    // Controls become live only once the controller is ready (inert JS-only controls are hidden until then).
+    prevBtn?.removeAttribute('hidden');
+    nextBtn?.removeAttribute('hidden');
+
+    function dispatch(intent: GalleryIntent) {
+      if (disposed) return;
+      const [next, effect] = reduce(state, intent);
+      state = next;
+      runEffect(effect, intent);
+      render(intent);
+    }
+
+    function runEffect(effect: Effect, intent: GalleryIntent) {
+      if (effect.load) startLoad(effect.load.id, effect.load.generation);
+      if (effect.committed && lastActivation === 'keyboard') restoreFocus(effect.committed.id);
+      if (effect.countChanged !== undefined) status.textContent = `${effect.countChanged} images available`;
+      if (intent.type === 'LOADED' && state.announcement) { status.textContent = state.announcement; }
+    }
+
+    function startLoad(id: string, generation: number) {
+      const m = state.available.find((x) => x.id === id);
+      if (!m) return;
+      // Decode the same responsive candidate the stage will show, so no second request follows.
+      const probe = new Image();
+      if (m.srcset) { probe.srcset = m.srcset; probe.sizes = PDP_STAGE_SIZES; }
+      probe.src = m.src;
+      loaders.set(generation, probe);
+      const done = (ok: boolean) => {
+        loaders.delete(generation);
+        if (disposed) return;
+        dispatch(ok ? { type: 'LOADED', id, generation } : { type: 'FAILED', id, generation });
+      };
+      const decodeThen = () => (probe.decode ? probe.decode().then(() => done(true), () => done(true)) : done(true));
+      if (probe.complete && probe.naturalWidth > 0) decodeThen();
+      else { probe.onload = decodeThen; probe.onerror = () => done(false); }
+    }
+
+    function render(intent: GalleryIntent) {
+      const active = state.available.find((m) => m.id === state.activeId);
+      if (active && image.dataset.mediaId !== active.id) {
+        // Commit image, alt, counter, previews and controls together.
+        image.dataset.mediaId = active.id;
+        if (active.srcset) { image.srcset = active.srcset; image.sizes = PDP_STAGE_SIZES; } else { image.removeAttribute('srcset'); image.removeAttribute('sizes'); }
+        image.src = active.src;
+        image.alt = active.alt;
+      }
+      pendingEl.hidden = state.pending === null;
+      // A failure shows the retry line; any new intent clears it (the previous image is still showing).
+      errorEl.hidden = intent.type !== 'FAILED';
+      if (counter) counter.textContent = `${ordinalOf(state, state.activeId)} / ${state.available.length}`;
+      if (prevBtn) prevBtn.disabled = !canGoPrev(state);
+      if (nextBtn) nextBtn.disabled = !canGoNext(state);
+      renderPreviews();
+    }
+
+    function renderPreviews() {
+      if (!list) return;
+      const wanted = previewsOf(state);
+      const existing = new Map<string, HTMLLIElement>();
+      list.querySelectorAll<HTMLLIElement>('li[data-media-id]').forEach((li) => existing.set(li.dataset.mediaId!, li));
+      // Reuse nodes (stable identity for focus), reorder to canonical order, hide the active one.
+      const frag = document.createDocumentFragment();
+      for (const m of wanted) {
+        let li = existing.get(m.id);
+        if (!li) {
+          li = document.createElement('li');
+          li.dataset.mediaId = m.id;
+          const a = document.createElement('a');
+          a.href = m.src; a.className = 'gp-gallery__preview'; a.dataset.galleryPreview = '';
+          const img = document.createElement('img');
+          img.src = m.thumb; img.alt = ''; img.width = 160; img.height = 160; img.loading = 'lazy'; img.decoding = 'async'; img.dataset.galleryThumb = '';
+          a.appendChild(img); li.appendChild(a);
+          wireThumb(img, m.id);
+        }
+        const a = li.querySelector<HTMLAnchorElement>('a')!;
+        a.setAttribute('aria-label', `Show image ${ordinalOf(state, m.id)} of ${state.available.length}: ${m.alt}`);
+        if (state.failedThumb.has(m.id)) { a.setAttribute('data-thumb-failed', ''); a.textContent = `Image ${ordinalOf(state, m.id)}`; }
+        frag.appendChild(li);
+        existing.delete(m.id);
+      }
+      existing.forEach((li) => li.remove());
+      list.appendChild(frag);
+    }
+
+    function wireThumb(img: HTMLImageElement, id: string) {
+      img.addEventListener('error', () => dispatch({ type: 'THUMB_FAILED', id }), { once: true });
+    }
+
+    function restoreFocus(removedId: string) {
+      // Only if focus still sits on the preview that just disappeared; a shopper who tabbed on is never pulled back.
+      const focused = document.activeElement as HTMLElement | null;
+      const li = focused?.closest<HTMLLIElement>('li[data-media-id]');
+      if (!focused || !root.contains(focused) || !li || li.dataset.mediaId !== removedId) return;
+      if (controls) controls.focus({ preventScroll: true });
+    }
+
+    // ── Input ────────────────────────────────────────────────────────────────
+    root.addEventListener('click', (e) => {
+      const a = (e.target as HTMLElement).closest<HTMLAnchorElement>('[data-gallery-preview]');
+      if (!a) return;
+      // Preserve modified clicks / open-in-new-tab on the native link.
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+      e.preventDefault();
+      lastActivation = (e as MouseEvent).detail === 0 ? 'keyboard' : 'pointer';
+      const id = a.closest<HTMLLIElement>('li[data-media-id]')?.dataset.mediaId;
+      if (id) dispatch({ type: 'SELECT', id });
+    });
+    prevBtn?.addEventListener('click', () => { lastActivation = 'pointer'; dispatch({ type: 'PREV' }); });
+    nextBtn?.addEventListener('click', () => { lastActivation = 'pointer'; dispatch({ type: 'NEXT' }); });
+    retryBtn.addEventListener('click', () => { errorEl.hidden = true; dispatch({ type: 'RETRY' }); });
+    root.addEventListener('keydown', (e) => {
+      // Local keys only, and never inside an unrelated input.
+      const t = e.target as HTMLElement;
+      if (t.matches('input, textarea, select, [contenteditable]')) return;
+      const map: Record<string, GalleryIntent | undefined> = { ArrowLeft: { type: 'PREV' }, ArrowRight: { type: 'NEXT' }, Home: { type: 'FIRST' }, End: { type: 'LAST' } };
+      const intent = map[e.key];
+      if (intent) { e.preventDefault(); lastActivation = 'keyboard'; dispatch(intent); return; }
+      if (e.key === ' ' && t.matches('[data-gallery-preview]')) { e.preventDefault(); lastActivation = 'keyboard'; (t as HTMLAnchorElement).click(); }
+    });
+    // Swipe: deliberate horizontal intent only; vertical scrolling and pinch are untouched (no global preventDefault).
+    let touch: { x: number; y: number; id: number } | null = null;
+    const stage = root.querySelector<HTMLElement>('[data-gallery-stage]')!;
+    stage.addEventListener('touchstart', (e) => { if (e.touches.length === 1) touch = { x: e.touches[0].clientX, y: e.touches[0].clientY, id: e.touches[0].identifier }; else touch = null; }, { passive: true });
+    stage.addEventListener('touchend', (e) => {
+      if (!touch || e.changedTouches.length !== 1 || e.changedTouches[0].identifier !== touch.id) { touch = null; return; }
+      const dx = e.changedTouches[0].clientX - touch.x; const dy = e.changedTouches[0].clientY - touch.y; touch = null;
+      if (Math.abs(dx) < 48 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      lastActivation = 'pointer';
+      dispatch(dx < 0 ? { type: 'NEXT' } : { type: 'PREV' });
+    }, { passive: true });
+    stage.addEventListener('touchcancel', () => { touch = null; }, { passive: true });
+
+    list?.querySelectorAll<HTMLImageElement>('[data-gallery-thumb]').forEach((img) => wireThumb(img, img.closest<HTMLLIElement>('li[data-media-id]')!.dataset.mediaId!));
+    image.addEventListener('error', () => {
+      // A broken cover: keep the neutral image element (BaseLayout swaps a fallback), never redefine slot 1.
+      errorEl.hidden = false;
+    });
+
+    render({ type: 'RESET', available: media, activeId: state.activeId });
+    // Release on page replacement; repeated client navigation must not double-register.
+    document.addEventListener('astro:before-swap', () => { disposed = true; loaders.clear(); }, { once: true });
+  }
+
+  document.querySelectorAll<HTMLElement>('[data-gallery]').forEach(mount);
+</script>

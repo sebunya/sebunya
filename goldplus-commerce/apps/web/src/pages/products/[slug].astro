@@ -18,6 +18,9 @@ import { breadcrumbJsonLd, serializeJsonLd } from '../../lib/jsonld';
 import { getBusinessInfo } from '../../lib/businessInfo';
 import ThisPhoneSuggestion from '../../components/ThisPhoneSuggestion.astro';
 import CheckYourPhoneNote from '../../components/CheckYourPhoneNote.astro';
+import ProductGallery from '../../components/product/ProductGallery.astro';
+// Focus 4 rollback switch: PRODUCT_GALLERY_ENRICHMENT=false shows slot 1 only (still the correct cover).
+const galleryEnrichment = process.env.PRODUCT_GALLERY_ENRICHMENT !== 'false';
 import { publicBattery, parseDeviceCookie, serialiseDeviceCookie, DEVICE_COOKIE, FIT_BADGE } from '../../lib/batteries';
 import { SITE_ORIGIN } from '../../lib/sitemap';
 import { fetchApprovedCatalogue } from '../../lib/catalogue';
@@ -409,28 +412,12 @@ if (product) {
     {product && (
       <div class="flex flex-col lg:flex-row gap-10 lg:gap-14">
 
-        <div class="w-full lg:w-1/2">
-          <div class="bg-white aspect-square rounded-2xl flex items-center justify-center relative overflow-hidden border border-slate-200/80 shadow-xs">
-            {product.primaryImageUrl ? (
-              <img
-                src={product.primaryImageUrl}
-                alt={product.images[0]?.alt ?? product.name}
-                width="800"
-                height="800"
-                class="w-full h-full object-contain p-6 hover:scale-[1.01] transition-transform duration-500"
-                loading="eager"
-                decoding="async"
-              />
-            ) : (
-              <div class="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 p-6 text-center select-none">
-                <svg class="w-12 h-12 mb-3 text-brand-mutedGrey/20" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                <span class="text-sm font-semibold text-slate-600">No photo of this one yet.</span>
-              </div>
-            )}
-          </div>
+        {/* Focus 4: ~56% media / ~44% decision column on desktop; one column below lg. */}
+        <div class="w-full lg:w-[calc(56%-1.75rem)] lg:shrink-0">
+          <ProductGallery productName={product.name} images={product.images} enrichment={galleryEnrichment} />
         </div>
 
-        <div class="w-full lg:w-1/2 flex flex-col">
+        <div class="w-full lg:w-[calc(44%-1.75rem)] flex flex-col min-w-0">
           <div class="mb-6">
             <p class="text-xs font-bold text-slate-600 uppercase tracking-widest mb-1.5">{product.categoryName}</p>
             <h1 class="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-gray-900 mb-4">{product.name}</h1>
@@ -484,55 +471,22 @@ if (product) {
 
           {battery && <CheckYourPhoneNote class="mb-6" />}
 
-          {(descIntro || descBody) && (
-            <div class="mb-6 prose prose-sm max-w-none text-slate-600 leading-relaxed">
-              {descIntro && <p class="font-bold text-gray-900 text-base mb-2">{descIntro}</p>}
-              {descBody && descBody.split('\n\n').map(p => <p class="mb-3">{p}</p>)}
-            </div>
+          {/* Focus 4 purchase hierarchy: one concise summary and at most three
+              decision facts before the buying actions; the full description,
+              benefits and specification table follow the actions below. */}
+          {descIntro && (
+            <p class="mb-4 font-bold text-gray-900 text-base leading-relaxed">{descIntro}</p>
           )}
-
           {whyYoullLikeIt.length > 0 && (
-            <div class="mb-8">
-              <h3 class="text-sm font-bold text-gray-900 mb-3">Why You'll Like It</h3>
-              <ul class="space-y-2">
-                {whyYoullLikeIt.map(item => (
-                  <li class="flex items-start gap-2 text-sm text-slate-600">
-                    <svg class="w-5 h-5 text-brand-primary shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                    <span>{item}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <ul class="mb-6 space-y-1.5" aria-label="Key facts">
+              {whyYoullLikeIt.slice(0, 3).map(item => (
+                <li class="flex items-start gap-2 text-sm text-slate-600">
+                  <svg class="w-5 h-5 text-brand-primary shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
           )}
-
-
-
-          <div class="border border-slate-200/80 rounded-xl overflow-hidden mb-6 bg-white shadow-xs">
-            <table class="w-full text-sm text-left">
-              <caption class="sr-only">Specifications for {product.name}</caption>
-              <tbody>
-                {hasValidSku && (
-                  <tr class="border-b border-slate-100">
-                    <th scope="row" class="px-5 py-3.5 bg-slate-50/60 font-bold text-gray-800 w-1/3 text-[10px] uppercase tracking-wider">SKU</th>
-                    <td class="px-5 py-3.5 text-slate-700 font-mono text-sm">{product.sku}</td>
-                  </tr>
-                )}
-                {verifiedAttributes.map((v) => (
-                  <tr class="border-b border-slate-100 last:border-b-0">
-                    <th scope="row" class="px-5 py-3.5 bg-slate-50/60 font-bold text-gray-800 w-1/3 text-[10px] uppercase tracking-wider">{v.name}</th>
-                    <td class="px-5 py-3.5 text-slate-700 text-sm flex items-center gap-2">
-                      <span>{v.value}{v.unit ? ` ${v.unit}` : ''}</span>
-                    </td>
-                  </tr>
-                ))}
-                {!hasValidSku && verifiedAttributes.length === 0 && (
-                  <tr>
-                    <td class="px-5 py-6 text-slate-450 italic text-center text-sm" colspan="2">No specifications published yet.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
 
           {/* Delivery, stage 1: an estimate labelled as one, before an area
               is known. Same endpoint and same copy as the cart and checkout. */}
@@ -583,6 +537,53 @@ if (product) {
               Want this one? <a href={askAboutHref} class="font-bold text-gray-900 underline">Ask us on WhatsApp</a> and we will tell you what we have.
             </p>
           )}
+
+          {/* Full details, after the buying actions. Nothing material is removed:
+              the whole description, every benefit and the complete specification
+              table, with its table semantics intact. */}
+          {(descBody || whyYoullLikeIt.length > 3) && (
+            <div class="mb-6 prose prose-sm max-w-none text-slate-600 leading-relaxed">
+              <h2 class="text-sm font-bold text-gray-900 mb-2 not-prose">About this product</h2>
+              {descBody && descBody.split('\n\n').map(p => <p class="mb-3">{p}</p>)}
+              {whyYoullLikeIt.length > 3 && (
+                <ul class="space-y-2 not-prose">
+                  {whyYoullLikeIt.slice(3).map(item => (
+                    <li class="flex items-start gap-2 text-sm text-slate-600">
+                      <svg class="w-5 h-5 text-brand-primary shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          <div class="border border-slate-200/80 rounded-xl overflow-hidden mb-6 bg-white shadow-xs">
+            <table class="w-full text-sm text-left">
+              <caption class="sr-only">Specifications for {product.name}</caption>
+              <tbody>
+                {hasValidSku && (
+                  <tr class="border-b border-slate-100">
+                    <th scope="row" class="px-5 py-3.5 bg-slate-50/60 font-bold text-gray-800 w-1/3 text-[10px] uppercase tracking-wider">SKU</th>
+                    <td class="px-5 py-3.5 text-slate-700 font-mono text-sm">{product.sku}</td>
+                  </tr>
+                )}
+                {verifiedAttributes.map((v) => (
+                  <tr class="border-b border-slate-100 last:border-b-0">
+                    <th scope="row" class="px-5 py-3.5 bg-slate-50/60 font-bold text-gray-800 w-1/3 text-[10px] uppercase tracking-wider">{v.name}</th>
+                    <td class="px-5 py-3.5 text-slate-700 text-sm flex items-center gap-2">
+                      <span>{v.value}{v.unit ? ` ${v.unit}` : ''}</span>
+                    </td>
+                  </tr>
+                ))}
+                {!hasValidSku && verifiedAttributes.length === 0 && (
+                  <tr>
+                    <td class="px-5 py-6 text-slate-450 italic text-center text-sm" colspan="2">No specifications published yet.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
 
           {battery ? (
             <>

@@ -48,7 +48,11 @@ if (specEntries.length > 0) {
   node.description = (product.longDescription?.trim() || product.shortDescription).trim();
 }
 
-if (product.primaryImageUrl) node.image = /^https?:\/\//i.test(product.primaryImageUrl) ? product.primaryImageUrl : `${SITE_ORIGIN}${product.primaryImageUrl}`;
+// Focus 4: every available canonical image, slot 1 first, absolute, no empties.
+const abs = (u: string) => (/^https?:\/\//i.test(u) ? u : `${SITE_ORIGIN}${u}`);
+const jsonLdImages = (product.images ?? []).map((i) => i.url).filter((u): u is string => typeof u === 'string' && u.length > 0).map(abs);
+if (jsonLdImages.length > 0) node.image = jsonLdImages.length === 1 ? jsonLdImages[0] : jsonLdImages;
+else if (product.primaryImageUrl) node.image = abs(product.primaryImageUrl);
 
 const verifiedAttrs = product.attributeValues.filter((v) => v.isVerified);
 if (verifiedAttrs.length > 0) {

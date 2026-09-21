@@ -621,5 +621,88 @@ routes.put('/:id', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) =
   }
 });
 
+// ── Focus 4: product gallery (one cover, up to four slots) ───────────────────
+// Reads return the full slot view with the revision the editor must send back.
+// Every write is one action against an expected revision; a stale editor gets
+// 409 STALE_REVISION with the current revision and must review before retrying.
+routes.get('/:id/media', requirePermissions([PERMISSIONS.PRODUCTS_READ]), async (c) => {
+  const registry = Registry.getInstance();
+  const view = await registry.productMediaUseCases.getGallery(c.req.param('id') ?? '');
+  if (!view) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Product not found.' } }, 404);
+  const history = await registry.productMediaUseCases.history(view.productId, 10);
+  return c.json({ success: true, data: { ...view, history } });
+});
+
+routes.put('/:id/media', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const expectedRevision = Number(body?.expectedRevision);
+  const action = body?.action;
+  if (!body || !Number.isInteger(expectedRevision) || !action || typeof action.type !== 'string') {
+    return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'expectedRevision and an action are required.' } }, 400);
+  }
+  const registry = Registry.getInstance();
+  const actorId = (c.get('user') as any).id as string;
+  const productId = c.req.param('id') ?? '';
+  const result = action.type === 'UNDO'
+    ? await registry.productMediaUseCases.undo({ productId, expectedRevision, auditId: String(action.auditId ?? ''), actorId })
+    : await registry.productMediaUseCases.mutate({ productId, expectedRevision, action, actorId, requestId: c.req.header('x-request-id') ?? null });
+  if (!result.ok) {
+    const status = result.code === 'NOT_FOUND' ? 404 : result.code === 'STALE_REVISION' ? 409 : 422;
+    return c.json({ success: false, error: { code: result.code, message: result.message, ...(result.code === 'STALE_REVISION' ? { currentRevision: result.currentRevision } : {}) } }, status);
+  }
+  return c.json({ success: true, data: result });
+});
+
+// Multi-image intake: up to four files reviewed together with a proposed slot map.
+// Files go through the media library first (type sniffed, deduplicated, renditions),
+// then ONE revision-checked slot-map write places them. A fifth file is refused
+// up front; a slot that is already occupied is refused unless `replace` is set.
+routes.post('/:id/media/upload', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) => {
+  const body = await c.req.parseBody({ all: true });
+  const raw = body['files'];
+  const files = (Array.isArray(raw) ? raw : raw ? [raw] : []).filter((f): f is File => f instanceof File && f.size > 0);
+  if (files.length === 0) return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'Choose at least one image.' } }, 400);
+  if (files.length > 4) return c.json({ success: false, error: { code: 'BAD_INPUT', message: `A gallery holds four images; ${files.length} were chosen. Remove ${files.length - 4}.` } }, 400);
+  const expectedRevision = Number(body['expectedRevision']);
+  if (!Number.isInteger(expectedRevision)) return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'expectedRevision is required.' } }, 400);
+  const slotsRaw = body['slots'];
+  const slots = (Array.isArray(slotsRaw) ? slotsRaw : slotsRaw ? [slotsRaw] : []).map((s) => Number(s));
+  const replace = body['replace'] === 'true' || body['replace'] === '1';
+  const registry = Registry.getInstance();
+  const actorId = (c.get('user') as any).id as string;
+  const productId = c.req.param('id') ?? '';
+  const snap = await registry.productMediaRepo.getSnapshot(productId);
+  if (!snap) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Product not found.' } }, 404);
+  if (snap.mediaRevision !== expectedRevision) return c.json({ success: false, error: { code: 'STALE_REVISION', message: 'The gallery changed while you were choosing files. Review it and try again.', currentRevision: snap.mediaRevision } }, 409);
+  const current = registry.productMediaUseCases.currentMap(snap);
+  const taken = new Set(current.map((a) => a.slot));
+  const free = ([1, 2, 3, 4] as const).filter((s) => !taken.has(s));
+  // Proposed map: explicit slots when given (must be legal and, unless replace, empty), else the next free slots.
+  const proposed = files.map((f, i) => ({ file: f, slot: Number.isInteger(slots[i]) && slots[i] >= 1 && slots[i] <= 4 ? (slots[i] as 1 | 2 | 3 | 4) : free[i] }));
+  const seen = new Set<number>();
+  for (const p of proposed) {
+    if (!p.slot) return c.json({ success: false, error: { code: 'INVALID_SLOT', message: 'Not enough empty slots for these files. Replace or remove an image first, or choose the slots explicitly.' } }, 422);
+    if (seen.has(p.slot)) return c.json({ success: false, error: { code: 'DUPLICATE_SLOT', message: `Two files were given slot ${p.slot}.` } }, 422);
+    seen.add(p.slot);
+    if (taken.has(p.slot) && !replace) return c.json({ success: false, error: { code: 'SLOT_OCCUPIED', message: `Slot ${p.slot} already holds an image. Tick "replace" to overwrite it.` } }, 422);
+  }
+  // Stage every file first; a rejected file stops the batch before anything is assigned (valid staged assets stay in the library for choose-existing).
+  const staged: Array<{ slot: 1 | 2 | 3 | 4; assetId: string; filename: string; deduplicated: boolean }> = [];
+  const rejected: Array<{ filename: string; reason: string }> = [];
+  for (const p of proposed) {
+    const [outcome] = await registry.mediaLibraryUseCase.upload({ files: [{ filename: p.file.name, mime: p.file.type, buffer: Buffer.from(await p.file.arrayBuffer()) }], altText: null, caption: null, actorId });
+    if (outcome.kind === 'STORED') staged.push({ slot: p.slot, assetId: outcome.asset.id, filename: p.file.name, deduplicated: outcome.deduplicated });
+    else rejected.push({ filename: p.file.name, reason: outcome.reason });
+  }
+  if (rejected.length) return c.json({ success: false, error: { code: 'FILE_REJECTED', message: `Not assigned: ${rejected.map((r) => `${r.filename} (${r.reason})`).join(', ')}. The valid files are in the media library; choose them from there or fix the rejected file and try again.` }, data: { staged, rejected } }, 422);
+  const map = [...current.filter((a) => !seen.has(a.slot)), ...staged.map((s) => ({ slot: s.slot, assetId: s.assetId, altText: null }))];
+  const result = await registry.productMediaUseCases.replaceMap({ productId, expectedRevision, map, actorId, action: 'MULTI_UPLOAD', requestId: c.req.header('x-request-id') ?? null });
+  if (!result.ok) {
+    const status = result.code === 'STALE_REVISION' ? 409 : 422;
+    return c.json({ success: false, error: { code: result.code, message: result.message }, data: { staged } }, status);
+  }
+  return c.json({ success: true, data: { ...result, staged } });
+});
+
 export default routes;
 

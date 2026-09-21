@@ -31,6 +31,26 @@ export function staticAvifSrcset(sourceUrl: string | null | undefined): string |
 
 export const CARD_SIZES = '(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px';
 export const STAGE_SIZES = '(max-width: 640px) 160px, 320px';
+/**
+ * Focus 4 — the product page's main stage: near-full width on phones, then a
+ * column of the two-column layout (56% of a ≤1280px container), capped so a
+ * 1920px screen does not request a 2048 master. Matches the CSS in ProductGallery.
+ */
+export const PDP_STAGE_SIZES = '(max-width: 1023px) calc(100vw - 32px), (max-width: 1280px) 56vw, 700px';
+/** Focus 4 — preview row: 56–88px squares, so the 160px thumb rendition is always the right candidate. */
+export const PDP_THUMB_SIZES = '88px';
+
+/**
+ * Focus 4 — the small rendition beside a media-library rendition URL, or null
+ * when the URL is not a library rendition (legacy /products/*.webp keep one src).
+ * The generator writes thumb/card/pdp together for any source ≥ 480px; a
+ * smaller source has no thumb and the caller falls back to the display URL.
+ */
+export function productThumbUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const m = url.match(/^(\/uploads\/assets\/[^?#]+\/)pdp\.webp$/);
+  return m ? `${m[1]}thumb.webp` : null;
+}
 
 export function productSrcset(url: string | null | undefined): string | null {
   if (!url) return null;
