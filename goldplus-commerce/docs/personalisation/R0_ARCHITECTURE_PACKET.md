@@ -423,3 +423,15 @@ Window: deploy 18:53 UTC 20 Sep → 06:53 UTC 21 Sep (12 h), compared with the s
 | Undeclared automation | 12 profiles with a single PRODUCT_VIEWED and nothing else, all from the 19:xx smoke; nothing overnight | pass |
 
 **Reading:** the release is doing what it was built to do — profile and event minting by renders/beacons/audits has stopped, serving health is on the counter, nothing failed. Two open verifications: (1) one real browser visit (product page → add to cart) should create exactly one profile with a visitor action — do it from a normal Chrome, then re-run the "new profiles without action" query; (2) the 24 h (18:53 UTC today) and 72 h (23 Sep) checks, same queries (`scratchpad obs*.sql` shape: after/before window on `recommendation_events`, `experience_profiles.first_seen_at`, `recommendation_serving_hourly`, `hero_events`, `nav_events`, `orders`). Containment switches unchanged (`SSR_IDENTITY_V2`/`PROFILE_READ_PURE`/`RESPONSE_EVENT_TO_METRIC` are not set in the container env → code defaults apply).
+
+### 23.1 Self-review of §23 (same morning) — two corrections and one gap closed
+
+**Correction 1 — the overnight baseline was understated.** §23 quotes "1 and 6" visitor actions on the previous nights; that came from a 4-day window that cut the 16th short. The 6-day read for 20:00–07:00 UTC: 15 Sep **30**, 16 Sep **47**, 17 Sep **6**, 18 Sep 199, 19 Sep 1,035, 20 Sep **0**. Those pre-release nights also contain Lighthouse Watch and the rolling audits (dropped only since this release), so night-to-night comparison is not clean evidence either way. It cannot prove the pipeline works — so it was checked directly (below).
+
+**Correction 2 — "0 actions since 19:12" was true only until 07:00.** The 06:55 read ran minutes before the first real visitor of the day.
+
+**Gap closed — a real shopper's action does land.** 07:00–07:06 UTC, a mobile visitor on a Ugandan carrier address (`41.210.x.x`, normal browser, no probe cookie): 2 `PRODUCT_VIEWED`, 2 `RECOMMENDATION_CLICKED`, 8 `RECOMMENDATION_IMPRESSION`, 5 nav + 1 hero beacon — every row attached to the same profile, first seen 13 Sep (223 events lifetime, 15 today, not linked to a customer). No new profile was created because the returning `gp_visit` cookie resolved the existing one — identity continuity works across the release.
+
+**Bot behaviour confirmed (R0 F10 measured):** 20:00 UTC, Googlebot (`66.249.91.96`) executed the page JS and sent 6 `RECOMMENDATION_IMPRESSION` + 1 hero + 1 nav beacon with a visit header. They were stored as exposure rows **without a profile** (`profile_id` NULL) — the api hotfix holds: exposure beacons never mint a profile, even from a JS-running crawler.
+
+**Unchanged from §23:** p99 not measurable without app HTTP metrics or `pg_stat_statements` (installing the extension needs `shared_preload_libraries` + a Postgres restart — an owner decision, not done); orders too sparse to read; 24 h check at 18:53 UTC today, 72 h on 23 Sep. Verdict stands: release healthy, now with direct proof rather than an absence-of-signal argument.
