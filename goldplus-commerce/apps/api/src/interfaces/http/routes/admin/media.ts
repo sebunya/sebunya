@@ -6,6 +6,7 @@ import { Registry } from '../../../../infrastructure/Registry';
 import { CreateAuditLogUseCase } from '../../../../application/use-cases/audit/CreateAuditLogUseCase';
 import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
 import { planPhotoAttachments, IMAGE_EXTENSIONS } from '../../../../domain/media/PhotoCodeMatcher';
+import { csvCell } from '../../csv';
 
 /**
  * Media library admin surface (Wave 2B DAM). Thin transport over
@@ -200,6 +201,65 @@ routes.post('/attach-by-code/apply', requirePermissions([PERMISSIONS.PRODUCTS_WR
     actorId, action: 'PRODUCT_PHOTOS_ATTACHED_BY_CODE', entity: 'product_photo_batch', entityId: randomUUID(), newState: { pairs: pairs.length, attached, alreadyPresent, missing, galleryFull, refused },
   });
   return c.json({ success: true, data: { attached, alreadyPresent, missing, galleryFull, refused } });
+});
+
+// ── Focus 4: gallery completeness queue + reconciliation export ─────────────
+// One catalogue-wide read (no per-asset HEAD requests): 0/4 … 4/4, missing cover,
+// unready rows, legacy rows, and — for the export — matching unassigned library
+// assets by the product's code tokens. Counts are counts; readiness is separate.
+routes.get('/gallery-queue', requirePermissions([PERMISSIONS.MEDIA_READ]), async (c) => {
+  const registry = Registry.getInstance();
+  const filter = c.req.query('filter') ?? 'all';
+  const q = (c.req.query('q') ?? '').trim().toLowerCase();
+  const all = await registry.productMediaRepo.listCompleteness();
+  const items = all.filter((p) => {
+    if (q && !(`${p.sku} ${p.name}`.toLowerCase().includes(q))) return false;
+    switch (filter) {
+      case '0': return p.assigned === 0;
+      case '1': return p.assigned === 1;
+      case '2': return p.assigned === 2;
+      case '3': return p.assigned === 3;
+      case '4': return p.assigned === 4;
+      case 'needs-media': return p.assigned === 0;
+      case 'missing-cover': return p.assigned > 0 && !p.hasCover;
+      case 'unready': return p.unreadyRows > 0;
+      case 'legacy': return p.legacyRows > 0;
+      case 'incomplete': return p.assigned < 4;
+      default: return true;
+    }
+  });
+  const summary = { total: all.length, byCount: [0, 1, 2, 3, 4].map((n) => all.filter((p) => p.assigned === n).length), missingCover: all.filter((p) => p.assigned > 0 && !p.hasCover).length, unready: all.filter((p) => p.unreadyRows > 0).length, legacy: all.filter((p) => p.legacyRows > 0).length };
+  return ok(c, { items, summary, filter });
+});
+
+routes.get('/gallery-queue/reconciliation.csv', requirePermissions([PERMISSIONS.MEDIA_READ]), async (c) => {
+  const registry = Registry.getInstance();
+  const [completeness, codeIndex, unassigned] = await Promise.all([
+    registry.productMediaRepo.listCompleteness(),
+    registry.productRepo.listCodeIndex(),
+    registry.productMediaRepo.listUnassignedAssets(500, 0),
+  ]);
+  // Candidate matching reuses the photo-code matcher: whole-token code containment, longest code wins, ties are ambiguous.
+  const plan = planPhotoAttachments(unassigned.map((a) => a.filename), codeIndex);
+  const candidatesByProduct = new Map<string, string[]>();
+  for (const m of plan.matched) candidatesByProduct.set(m.productId, [...(candidatesByProduct.get(m.productId) ?? []), m.file]);
+  const columns = ['sku', 'product', 'slug', 'active', 'approval', 'assigned', 'has_cover', 'slot_1', 'slot_2', 'slot_3', 'slot_4', 'unready_rows', 'legacy_rows', 'matching_unassigned_candidates', 'blockers', 'media_revision'];
+  const lines = [columns.join(',')];
+  for (const p of completeness) {
+    const snap = await registry.productMediaRepo.getSnapshot(p.productId);
+    const slotFile = (n: number) => snap?.rows.find((r) => r.slot === n)?.asset?.filename ?? '';
+    const blockers: string[] = [];
+    if (p.assigned === 0) blockers.push('no images');
+    if (p.assigned > 0 && !p.hasCover) blockers.push('missing cover');
+    if (p.unreadyRows > 0) blockers.push(`${p.unreadyRows} unready asset(s)`);
+    if (p.legacyRows > 0) blockers.push(`${p.legacyRows} legacy row(s) not in a slot`);
+    lines.push([p.sku, p.name, p.slug, p.active ? 'yes' : 'no', p.approvalStatus, p.assigned, p.hasCover ? 'yes' : 'no', slotFile(1), slotFile(2), slotFile(3), slotFile(4), p.unreadyRows, p.legacyRows, (candidatesByProduct.get(p.productId) ?? []).join(' | '), blockers.join(' | '), p.mediaRevision].map(csvCell).join(','));
+  }
+  lines.push('');
+  lines.push(['INVENTORY', `products=${completeness.length}`, `unassigned_assets=${unassigned.length}`, `ambiguous_candidates=${plan.ambiguous.length}`, `unmatched_candidates=${plan.unmatched.length}`, `generated_at=${new Date().toISOString()}`].map(csvCell).join(','));
+  for (const a of plan.ambiguous) lines.push(['AMBIGUOUS_CANDIDATE', a.file, a.candidates.join(' | ')].map(csvCell).join(','));
+  for (const f of plan.unmatched) lines.push(['UNMATCHED_CANDIDATE', f].map(csvCell).join(','));
+  return c.body(lines.join('\r\n'), 200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="gallery-reconciliation.csv"' });
 });
 
 export default routes;

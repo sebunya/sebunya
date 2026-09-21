@@ -34,6 +34,7 @@ export class DrizzleProductMediaRepository implements IProductMediaRepository {
         url: productImages.url,
         altText: productImages.altText,
         assetFilename: mediaAssets.filename,
+        assetChecksum: mediaAssets.checksum,
         assetWidth: mediaAssets.width,
         assetHeight: mediaAssets.height,
         assetBytes: mediaAssets.byteSize,
@@ -55,7 +56,7 @@ export class DrizzleProductMediaRepository implements IProductMediaRepository {
       url: r.url,
       altText: r.altText,
       asset: r.assetId && r.assetFilename
-        ? { filename: r.assetFilename, width: r.assetWidth, height: r.assetHeight, byteSize: Number(r.assetBytes ?? 0), status: r.assetStatus ?? 'ACTIVE', displayUrl: r.displayUrl, thumbUrl: r.thumbUrl, ready: Boolean(r.assetReady) }
+        ? { filename: r.assetFilename, checksum: r.assetChecksum ?? '', width: r.assetWidth, height: r.assetHeight, byteSize: Number(r.assetBytes ?? 0), status: r.assetStatus ?? 'ACTIVE', displayUrl: r.displayUrl, thumbUrl: r.thumbUrl, ready: Boolean(r.assetReady) }
         : null,
     }));
     return { productId: product.id, sku: product.sku, name: product.name, slug: product.slug, mediaRevision: product.mediaRevision, rows: mapped };
@@ -177,6 +178,18 @@ export class DrizzleProductMediaRepository implements IProductMediaRepository {
       .orderBy(products.id)
       .limit(limit);
     return rows;
+  }
+
+  /** Library assets no product gallery references (candidates for reconciliation). Metadata only, paginated. */
+  async listUnassignedAssets(limit: number, offset: number): Promise<Array<{ id: string; filename: string; url: string; width: number | null; height: number | null; byteSize: number; checksum: string; ready: boolean; createdAt: Date }>> {
+    const rows = await db
+      .select({ id: mediaAssets.id, filename: mediaAssets.filename, url: mediaAssets.url, width: mediaAssets.width, height: mediaAssets.height, byteSize: mediaAssets.byteSize, checksum: mediaAssets.checksum, createdAt: mediaAssets.createdAt, ready: sql<boolean>`COALESCE(${readyExpression()}, false)` })
+      .from(mediaAssets)
+      .where(and(eq(mediaAssets.status, 'ACTIVE'), sql`NOT EXISTS (SELECT 1 FROM ${productImages} pi WHERE pi.asset_id = ${mediaAssets.id})`))
+      .orderBy(desc(mediaAssets.createdAt))
+      .limit(Math.max(1, Math.min(limit, 500)))
+      .offset(Math.max(0, offset));
+    return rows.map((r) => ({ ...r, byteSize: Number(r.byteSize), ready: Boolean(r.ready) }));
   }
 
   /** Completeness across the catalogue for the queue. */

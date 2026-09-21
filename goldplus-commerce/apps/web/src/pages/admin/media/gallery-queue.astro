@@ -1,0 +1,87 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { apiBase } from '../../../lib/api';
+import { readSessionToken } from '../../../lib/session';
+
+/**
+ * Focus 4 — gallery completeness queue. One image is functional; four is
+ * media-complete, not a quality score. Readiness and legacy rows are shown
+ * separately from the count so nobody mistakes "4/4" for "good photography".
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/media/gallery-queue', 303);
+const headers = { Authorization: `Bearer ${token}` };
+const url = new URL(Astro.request.url);
+const filter = url.searchParams.get('filter') ?? 'incomplete';
+const q = url.searchParams.get('q') ?? '';
+
+interface Item { productId: string; sku: string; name: string; slug: string; active: boolean; approvalStatus: string; assigned: number; hasCover: boolean; migrated: boolean; legacyRows: number; unreadyRows: number; mediaRevision: number }
+interface Data { items: Item[]; summary: { total: number; byCount: number[]; missingCover: number; unready: number; legacy: number } }
+const res = await fetch(`${apiBase}/admin/media/gallery-queue?filter=${encodeURIComponent(filter)}&q=${encodeURIComponent(q)}`, { headers, signal: AbortSignal.timeout(15000) });
+const json = await res.json().catch(() => null);
+const data: Data | null = json?.success ? (json.data as Data) : null;
+const filters: Array<[string, string]> = [['incomplete', 'Fewer than 4'], ['0', '0/4 — needs media'], ['1', '1/4'], ['2', '2/4'], ['3', '3/4'], ['4', '4/4'], ['missing-cover', 'Missing cover'], ['unready', 'Unready asset'], ['legacy', 'Legacy rows'], ['all', 'All']];
+---
+<AdminLayout title="Gallery queue" description="Which products still need images, a cover, or a repair." activePath="/admin/media/gallery-queue">
+  <div class="container mx-auto px-6 lg:px-8 max-w-6xl space-y-6">
+    <div class="flex flex-wrap items-end justify-between gap-4 pb-6 border-b border-gray-200">
+      <div>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Gallery queue</h2>
+        <p class="text-sm text-gray-500 mt-1">Completeness by slot count. Assigned count, valid cover, asset readiness and editorial quality are four different things.</p>
+      </div>
+      <div class="flex gap-2">
+        <a href={`${apiBase}/admin/media/gallery-queue/reconciliation.csv`} class="bg-white border border-gray-200 hover:bg-gray-50 text-brand-dark font-bold text-xs px-4 py-2 rounded-xl shadow-xs" title="Needs the API session; open from an admin browser session">Reconciliation CSV</a>
+        <a href="/admin/media/imports" class="bg-brand-dark text-white font-bold text-xs px-4 py-2 rounded-xl shadow-xs">Bulk import</a>
+      </div>
+    </div>
+
+    {!data ? <p class="text-sm text-red-700">The queue could not be loaded (HTTP {res.status}).</p> : (
+      <>
+        <section class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+          {data.summary.byCount.map((n, i) => (
+            <a href={`?filter=${i}`} class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm" class:list={[filter === String(i) ? 'ring-2 ring-brand-green/60' : '']}>
+              <p class="text-[10px] font-black uppercase tracking-wider text-gray-400">{i}/4</p>
+              <p class="text-2xl font-black text-brand-dark">{n}</p>
+            </a>
+          ))}
+          <a href="?filter=missing-cover" class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm"><p class="text-[10px] font-black uppercase tracking-wider text-gray-400">Missing cover</p><p class="text-2xl font-black text-amber-700">{data.summary.missingCover}</p></a>
+          <a href="?filter=unready" class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm"><p class="text-[10px] font-black uppercase tracking-wider text-gray-400">Unready</p><p class="text-2xl font-black text-amber-700">{data.summary.unready}</p></a>
+          <a href="?filter=legacy" class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm"><p class="text-[10px] font-black uppercase tracking-wider text-gray-400">Legacy rows</p><p class="text-2xl font-black text-gray-700">{data.summary.legacy}</p></a>
+        </section>
+
+        <form method="GET" class="flex flex-wrap items-center gap-2">
+          <label class="sr-only" for="filter">Filter</label>
+          <select id="filter" name="filter" class="text-sm border border-gray-300 rounded-xl px-3 py-2">
+            {filters.map(([v, label]) => <option value={v} selected={v === filter}>{label}</option>)}
+          </select>
+          <label class="sr-only" for="q">Search by SKU, model or name</label>
+          <input id="q" name="q" value={q} placeholder="SKU, model or name" class="text-sm border border-gray-300 rounded-xl px-3 py-2" />
+          <button type="submit" class="text-xs font-black uppercase tracking-wider px-4 py-2.5 rounded-xl bg-brand-dark text-white">Apply</button>
+          <span class="text-xs text-gray-500">{data.items.length} of {data.summary.total} products</span>
+        </form>
+
+        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-x-auto">
+          <table class="w-full text-sm">
+            <caption class="sr-only">Products and their gallery completeness</caption>
+            <thead class="bg-gray-50 text-[10px] font-black uppercase tracking-wider text-gray-500">
+              <tr><th scope="col" class="text-left px-4 py-3">Product</th><th scope="col" class="text-left px-4 py-3">Media</th><th scope="col" class="text-left px-4 py-3">Cover</th><th scope="col" class="text-left px-4 py-3">Readiness</th><th scope="col" class="text-left px-4 py-3">Status</th><th scope="col" class="px-4 py-3"><span class="sr-only">Actions</span></th></tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              {data.items.map((p) => (
+                <tr>
+                  <td class="px-4 py-3"><p class="font-bold text-brand-dark">{p.name}</p><p class="text-xs text-gray-500 font-mono">{p.sku}</p></td>
+                  <td class="px-4 py-3 font-black tabular-nums">{p.assigned}/4</td>
+                  <td class="px-4 py-3">{p.hasCover ? <span class="text-green-700 font-bold text-xs">Valid</span> : p.assigned > 0 ? <span class="text-amber-700 font-bold text-xs">Missing</span> : <span class="text-gray-400 text-xs">—</span>}</td>
+                  <td class="px-4 py-3 text-xs">{p.unreadyRows > 0 && <span class="text-amber-700 font-bold">{p.unreadyRows} unready</span>}{p.legacyRows > 0 && <span class="text-gray-600"> · {p.legacyRows} legacy</span>}{p.unreadyRows === 0 && p.legacyRows === 0 && <span class="text-gray-400">ok</span>}</td>
+                  <td class="px-4 py-3 text-xs text-gray-600">{p.approvalStatus}{!p.active && ' · inactive'}</td>
+                  <td class="px-4 py-3 text-right"><a href={`/admin/products/${p.productId}/media`} class="text-xs font-black uppercase tracking-wider px-3 py-1.5 rounded-xl border border-gray-300 bg-white">Edit gallery</a></td>
+                </tr>
+              ))}
+              {data.items.length === 0 && <tr><td colspan="6" class="px-4 py-8 text-center text-sm text-gray-500">Nothing matches this filter.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </>
+    )}
+  </div>
+</AdminLayout>

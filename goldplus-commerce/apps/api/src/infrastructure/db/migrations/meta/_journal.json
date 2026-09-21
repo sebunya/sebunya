@@ -1044,6 +1044,13 @@
       "when": 1790140000007,
       "tag": "0148_product_media_slots",
       "breakpoints": true
+    },
+    {
+      "idx": 149,
+      "version": "5",
+      "when": 1790140000008,
+      "tag": "0149_media_import_sessions",
+      "breakpoints": true
     }
   ]
 }

@@ -45,6 +45,7 @@ export * from './creators';
 export * from './flashSales';
 export * from './seo';
 export * from './media';
+export * from './mediaImports';
 export * from './legal';
 export * from './abandonment';
 export * from './notificationTemplates';

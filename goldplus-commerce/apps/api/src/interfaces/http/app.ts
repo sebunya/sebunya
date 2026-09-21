@@ -22,6 +22,7 @@ import adminUsersRoutes from './routes/admin/users';
 import adminCustomersRoutes from './routes/admin/customers';
 import adminRolesRoutes from './routes/admin/roles';
 import adminProductsRoutes from './routes/admin/products';
+import adminMediaImportsRoutes from './routes/admin/media-imports';
 import adminProductCostsRoutes from './routes/admin/product-costs';
 import adminAiVisibilityRoutes from './routes/admin/ai-visibility';
 import adminAdvertisingRoutes from './routes/admin/advertising';
@@ -241,6 +242,7 @@ app.route('/admin/customers', adminCustomersRoutes);
 app.route('/admin/roles', adminRolesRoutes);
 app.route('/admin/performance-audit', adminPerformanceAuditRoutes);
 app.route('/admin/products', adminProductsRoutes);
+app.route('/admin/media-imports', adminMediaImportsRoutes);
 app.route('/admin/product-costs', adminProductCostsRoutes);
 app.route('/admin/ai-visibility', adminAiVisibilityRoutes);
 app.route('/admin/advertising', adminAdvertisingRoutes);
@@ -422,6 +424,7 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/admin/measurement/paid-social',
   '/admin/measurement/payments',
   '/admin/media',
+  '/admin/media-imports',
   '/admin/modules',
   '/admin/notifications',
   '/admin/orders',

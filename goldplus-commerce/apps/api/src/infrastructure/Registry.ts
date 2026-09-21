@@ -89,6 +89,8 @@ import { DrizzleAdminUserReadRepository } from './db/repositories/DrizzleAdminUs
 import { DrizzleProductImageRepository } from './db/repositories/DrizzleProductImageRepository';
 import { DrizzleProductMediaRepository } from './db/repositories/DrizzleProductMediaRepository';
 import { ProductMediaUseCases } from '../application/use-cases/media/ProductMediaUseCases';
+import { DrizzleMediaImportRepository } from './db/repositories/DrizzleMediaImportRepository';
+import { MediaImportUseCases } from '../application/use-cases/media/MediaImportUseCases';
 import { DrizzleAttributeRepository } from './db/repositories/DrizzleAttributeRepository';
 import { DrizzleNotificationAttemptRepository } from './db/repositories/DrizzleNotificationAttemptRepository';
 import { DrizzleOutboxRepository } from './db/repositories/DrizzleOutboxRepository';
@@ -898,6 +900,10 @@ export class Registry {
     this.deviceCatalogueUseCases,
     this.inventoryLedgerUseCases,
   );
+
+  // Focus 4 — reviewed bulk image import (stage → four-eyes approval → per-product apply with a ledger).
+  public readonly mediaImportRepo = new DrizzleMediaImportRepository();
+  public readonly mediaImportUseCases = new MediaImportUseCases(this.mediaImportRepo, this.mediaLibraryUseCase, this.productRepo, this.productMediaRepo, this.productMediaUseCases);
 
   public readonly adminUserReadRepo = new DrizzleAdminUserReadRepository();
   public readonly productImageRepo = new DrizzleProductImageRepository();

@@ -1,0 +1,124 @@
+---
+import AdminLayout from '../../../../layouts/AdminLayout.astro';
+import FormFeedback from '../../../../components/FormFeedback.astro';
+import { apiBase } from '../../../../lib/api';
+import { readSessionToken } from '../../../../lib/session';
+
+/** Focus 4 — one import session: the plan, its blockers, approval (second person), apply / resume, results. */
+const { id } = Astro.params;
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect(`/admin/login?returnTo=/admin/media/imports/${encodeURIComponent(id ?? '')}`, 303);
+const headers = { Authorization: `Bearer ${token}` };
+const jsonHeaders = { ...headers, 'Content-Type': 'application/json' };
+const self = `/admin/media/imports/${encodeURIComponent(id ?? '')}`;
+
+let status: 'success' | 'error' | null = null; let message = '';
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const kind = String(form.get('kind') ?? '');
+  const expectedVersion = Number(form.get('expectedVersion'));
+  const path = kind === 'approve' || kind === 'reject' ? 'approval' : kind === 'apply' || kind === 'resume' ? 'apply' : '';
+  if (path) {
+    const body = kind === 'approve' ? { expectedVersion, decision: 'APPROVED', reason: String(form.get('reason') ?? '') }
+      : kind === 'reject' ? { expectedVersion, decision: 'REJECTED', reason: String(form.get('reason') ?? '') }
+      : { expectedVersion, resume: kind === 'resume' };
+    const res = await fetch(`${apiBase}/admin/media-imports/${encodeURIComponent(id ?? '')}/${path}`, { method: 'POST', headers: jsonHeaders, body: JSON.stringify(body) });
+    const json = await res.json().catch(() => null);
+    if (json?.success) return Astro.redirect(`${self}?done=${kind}`, 303);
+    status = 'error'; message = json?.error?.message ?? `The action failed (HTTP ${res.status}).`;
+  }
+}
+
+interface Row { id: string; rowNumber: number; filename: string; productSku: string | null; skuToken: string | null; slot: number | null; role: string | null; status: string; issues: string[]; source: string; expectedRevision: number | null; applyStatus: string | null; appliedRevision: number | null; error: string | null }
+interface Session { id: string; name: string; status: string; version: number; totals: Record<string, number>; blocking: boolean; planHash: string; importerVersion: string; manifestFilename: string | null; createdBy: string; approvedBy: string | null; approvedAt: string | null; rejectedReason: string | null; appliedAt: string | null; applySummary: Record<string, unknown> | null; createdAt: string }
+const res = await fetch(`${apiBase}/admin/media-imports/${encodeURIComponent(id ?? '')}`, { headers, signal: AbortSignal.timeout(15000) });
+const json = await res.json().catch(() => null);
+if (!json?.success) return Astro.redirect('/admin/media/imports', 303);
+const session: Session = json.data.session; const rows: Row[] = json.data.rows;
+const done = new URL(Astro.request.url).searchParams.get('done') ?? new URL(Astro.request.url).searchParams.get('staged');
+if (done === '1') { status = 'success'; message = 'Batch staged and planned. Review every row below; a second person must approve before anything is applied.'; }
+if (done === 'approve') { status = 'success'; message = 'Plan approved. Apply when ready.'; }
+if (done === 'reject') { status = 'success'; message = 'Plan rejected. Nothing was applied.'; }
+if (done === 'apply' || done === 'resume') { status = 'success'; message = 'Apply finished. Check the per-product outcomes below.'; }
+
+const blocking = rows.filter((r) => ['UNMATCHED_PRODUCT', 'AMBIGUOUS', 'DUPLICATE_SLOT', 'INVALID_SLOT', 'INVALID_FILE', 'MANIFEST_CONFLICT'].includes(r.status));
+const statusClass = (s: string) => s === 'NEW' ? 'text-green-700' : s === 'WOULD_REPLACE' || s === 'EXACT_DUPLICATE' ? 'text-amber-700' : s === 'UNCHANGED' ? 'text-gray-500' : 'text-red-700';
+---
+<AdminLayout title={`Import — ${session.name}`} description="Plan, approval, apply and results for one image batch." activePath="/admin/media/imports">
+  <div class="container mx-auto px-6 lg:px-8 max-w-6xl space-y-6">
+    <div class="flex items-center gap-4 pb-6 border-b border-gray-200">
+      <a href="/admin/media/imports" class="p-2 hover:bg-gray-100 rounded-xl transition-colors border border-gray-200 bg-white shadow-xs" aria-label="Back to imports">&larr;</a>
+      <div class="flex-1 min-w-0">
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight truncate">{session.name}</h2>
+        <p class="text-sm text-gray-500 mt-1"><span class="font-black">{session.status}</span> · version {session.version} · {session.totals.TOTAL ?? rows.length} rows · plan {session.planHash.slice(0, 12)} · {session.importerVersion}{session.manifestFilename ? ` · manifest ${session.manifestFilename}` : ''}</p>
+      </div>
+      <a href={`${apiBase}/admin/media-imports/${session.id}/results.csv`} class="bg-white border border-gray-200 hover:bg-gray-50 text-brand-dark font-bold text-xs px-4 py-2 rounded-xl shadow-xs">Results CSV</a>
+    </div>
+
+    {status && <FormFeedback status={status} message={message} />}
+
+    <section class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      {(['NEW', 'WOULD_REPLACE', 'EXACT_DUPLICATE', 'UNCHANGED'] as const).map((k) => (
+        <div class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm"><p class="text-[10px] font-black uppercase tracking-wider text-gray-400">{k.replace('_', ' ')}</p><p class="text-2xl font-black text-brand-dark">{session.totals[k] ?? 0}</p></div>
+      ))}
+      <div class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm"><p class="text-[10px] font-black uppercase tracking-wider text-gray-400">Blocking</p><p class="text-2xl font-black" class:list={[blocking.length ? 'text-red-700' : 'text-green-700']}>{blocking.length}</p></div>
+    </section>
+
+    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-3">
+      <h3 class="text-xs font-black uppercase tracking-wider text-gray-400">Decision</h3>
+      {session.status === 'PLANNED' && (
+        <div class="flex flex-wrap gap-3 items-end">
+          <form method="POST" class="flex items-end gap-2">
+            <input type="hidden" name="kind" value="approve" /><input type="hidden" name="expectedVersion" value={session.version} />
+            <button type="submit" disabled={blocking.length > 0} class="bg-brand-dark text-white font-black text-xs px-5 py-3 rounded-xl uppercase tracking-wider disabled:opacity-40" title={blocking.length ? 'Fix the blocking rows and stage again' : 'Approve (a different person than the one who staged)'}>Approve plan</button>
+          </form>
+          <form method="POST" class="flex items-end gap-2">
+            <input type="hidden" name="kind" value="reject" /><input type="hidden" name="expectedVersion" value={session.version} />
+            <label class="text-xs text-gray-600">Reason <input name="reason" maxlength="500" required class="ml-1 text-xs border border-gray-300 rounded-lg px-2 py-2" /></label>
+            <button type="submit" class="bg-white border border-gray-300 text-brand-dark font-black text-xs px-5 py-3 rounded-xl uppercase tracking-wider">Reject</button>
+          </form>
+          <p class="text-xs text-gray-500 basis-full">The person who staged this batch cannot approve it. {blocking.length > 0 ? `${blocking.length} row(s) block approval: fix the files or the manifest and stage again.` : 'Every row resolved; approval enables Apply.'}</p>
+        </div>
+      )}
+      {session.status === 'APPROVED' && (
+        <form method="POST" class="flex items-center gap-3">
+          <input type="hidden" name="kind" value="apply" /><input type="hidden" name="expectedVersion" value={session.version} />
+          <button type="submit" class="bg-brand-dark text-white font-black text-xs px-5 py-3 rounded-xl uppercase tracking-wider">Apply plan</button>
+          <p class="text-xs text-gray-500">One transaction per product; revisions and asset readiness are re-checked at write time. The batch stops on an unexpected failure and reports what was not attempted.</p>
+        </form>
+      )}
+      {(session.status === 'PARTIALLY_APPLIED' || session.status === 'FAILED') && (
+        <form method="POST" class="flex items-center gap-3">
+          <input type="hidden" name="kind" value="resume" /><input type="hidden" name="expectedVersion" value={session.version} />
+          <button type="submit" class="bg-brand-dark text-white font-black text-xs px-5 py-3 rounded-xl uppercase tracking-wider">Resume remaining products</button>
+          <p class="text-xs text-gray-500">Applied products are skipped; STALE products (someone edited the gallery meanwhile) need a fresh plan.</p>
+        </form>
+      )}
+      {session.status === 'APPLIED' && <p class="text-sm text-green-700 font-bold">Applied {session.appliedAt ? new Date(session.appliedAt).toLocaleString('en-UG') : ''}. Undo per product from each gallery's history (a new revision-checked write, never a blind restore).</p>}
+      {session.status === 'REJECTED' && <p class="text-sm text-gray-600">Rejected: {session.rejectedReason}</p>}
+      {session.applySummary && <p class="text-xs text-gray-500 font-mono">{JSON.stringify(session.applySummary)}</p>}
+    </section>
+
+    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-x-auto">
+      <table class="w-full text-sm">
+        <caption class="sr-only">Plan rows</caption>
+        <thead class="bg-gray-50 text-[10px] font-black uppercase tracking-wider text-gray-500">
+          <tr><th scope="col" class="text-left px-3 py-3">#</th><th scope="col" class="text-left px-3 py-3">File</th><th scope="col" class="text-left px-3 py-3">Product</th><th scope="col" class="text-left px-3 py-3">Slot</th><th scope="col" class="text-left px-3 py-3">Plan</th><th scope="col" class="text-left px-3 py-3">Issue</th><th scope="col" class="text-left px-3 py-3">Applied</th></tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          {rows.map((r) => (
+            <tr>
+              <td class="px-3 py-2 text-xs text-gray-500 tabular-nums">{r.rowNumber}</td>
+              <td class="px-3 py-2 font-mono text-xs truncate max-w-[16rem]" title={r.filename}>{r.filename}{r.source === 'MANIFEST' && <span class="ml-1 text-[10px] text-gray-400">(manifest)</span>}</td>
+              <td class="px-3 py-2 text-xs">{r.productSku ?? r.skuToken ?? '—'}</td>
+              <td class="px-3 py-2 text-xs">{r.slot ?? '—'}{r.role ? ` · ${r.role}` : ''}</td>
+              <td class="px-3 py-2 text-xs font-black" class:list={[statusClass(r.status)]}>{r.status.replace(/_/g, ' ')}</td>
+              <td class="px-3 py-2 text-xs text-gray-600">{r.issues.join(' ')}</td>
+              <td class="px-3 py-2 text-xs">{r.applyStatus ? <span class:list={[r.applyStatus === 'APPLIED' ? 'text-green-700 font-bold' : r.applyStatus === 'FAILED' || r.applyStatus === 'STALE' ? 'text-red-700 font-bold' : 'text-gray-500']}>{r.applyStatus}{r.appliedRevision != null ? ` (rev ${r.appliedRevision})` : ''}</span> : '—'}{r.error && <span class="block text-red-700">{r.error}</span>}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  </div>
+</AdminLayout>

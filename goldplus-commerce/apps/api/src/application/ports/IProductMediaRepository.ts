@@ -14,6 +14,8 @@ export interface ProductMediaRow {
   altText: string | null;
   asset: {
     filename: string;
+    /** sha256 of the stored bytes (content-addressed identity). */
+    checksum: string;
     width: number | null;
     height: number | null;
     byteSize: number;

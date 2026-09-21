@@ -25,7 +25,9 @@ describe('share image is the product photo', () => {
   it('structured data carries absolute image URLs', () => {
     const jsonLd = web('components/ProductJsonLd.astro');
     expect(jsonLd).toContain("import { SITE_ORIGIN } from '../lib/sitemap';");
-    expect(jsonLd).toMatch(/node\.image = .*SITE_ORIGIN/);
+    // Focus 4: every canonical image, slot 1 first, absolutised through one helper.
+    expect(jsonLd).toMatch(/const abs = .*SITE_ORIGIN/);
+    expect(jsonLd).toMatch(/node\.image = jsonLdImages/);
     expect(web('pages/blog/[slug].astro')).toMatch(/image: \[.*SITE_ORIGIN.*post\.coverImageUrl/);
   });
 });

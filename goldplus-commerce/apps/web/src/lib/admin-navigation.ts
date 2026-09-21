@@ -42,11 +42,25 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Every product ranked by what still holds its Google Shopping listing back; edit title, descriptions, specs and photos in one place.'
   },
   {
+    label: 'Gallery queue',
+    href: '/admin/media/gallery-queue',
+    group: 'Commerce',
+    status: 'working',
+    description: 'Which products have 0–4 gallery images, a missing cover, or an unready asset; opens each product\'s gallery editor; reconciliation export.'
+  },
+  {
+    label: 'Image imports',
+    href: '/admin/media/imports',
+    group: 'Commerce',
+    status: 'working',
+    description: 'Stage a folder named SKU__01-main.jpg …, review the plan, second-person approval, apply per product with a ledger.'
+  },
+  {
     label: 'Product photos',
     href: '/admin/photos',
     group: 'Commerce',
     status: 'working',
-    description: 'Upload a folder of photos named by product code, preview the match, attach.'
+    description: 'Upload a folder of photos named by product code, preview the match, attach into the next free gallery slot (unreviewed; superseded by Image imports for batches).'
   },
   {
     label: 'Platform Modules',

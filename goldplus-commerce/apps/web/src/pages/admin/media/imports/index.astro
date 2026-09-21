@@ -1,0 +1,90 @@
+---
+import AdminLayout from '../../../../layouts/AdminLayout.astro';
+import FormFeedback from '../../../../components/FormFeedback.astro';
+import { apiBase } from '../../../../lib/api';
+import { readSessionToken } from '../../../../lib/session';
+
+/**
+ * Focus 4 — reviewed bulk image import. Stage a folder (named SKU__01-main.ext …)
+ * and optionally a manifest; review the plan; a second person approves; apply.
+ * Staging stores the files in the media library and creates a session — it is
+ * labelled as a write here, not as a dry run.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/media/imports', 303);
+const headers = { Authorization: `Bearer ${token}` };
+
+let status: 'success' | 'error' | null = null; let message = '';
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const files = form.getAll('files').filter((f): f is File => typeof f !== 'string' && f.size > 0);
+  const manifest = form.get('manifest');
+  if (files.length === 0) { status = 'error'; message = 'Choose at least one image file.'; }
+  else {
+    const body = new FormData();
+    for (const f of files) body.append('files', f, f.name);
+    if (manifest && typeof manifest !== 'string' && manifest.size > 0) body.append('manifest', manifest, manifest.name);
+    body.append('name', String(form.get('name') ?? ''));
+    const res = await fetch(`${apiBase}/admin/media-imports`, { method: 'POST', headers, body });
+    const json = await res.json().catch(() => null);
+    if (json?.success) return Astro.redirect(`/admin/media/imports/${json.data.session.id}?staged=1`, 303);
+    status = 'error'; message = json?.error?.message ?? `The batch was not staged (HTTP ${res.status}).`;
+  }
+}
+
+interface Session { id: string; name: string; status: string; version: number; totals: Record<string, number>; blocking: boolean; createdAt: string; approvedAt: string | null; appliedAt: string | null }
+const res = await fetch(`${apiBase}/admin/media-imports`, { headers, signal: AbortSignal.timeout(10000) });
+const json = await res.json().catch(() => null);
+const sessions: Session[] = json?.success ? (json.data.sessions as Session[]) : [];
+---
+<AdminLayout title="Image imports" description="Stage a folder of product images, review the plan, approve with a second person, apply." activePath="/admin/media/imports">
+  <div class="container mx-auto px-6 lg:px-8 max-w-5xl space-y-8">
+    <div class="pb-6 border-b border-gray-200">
+      <h2 class="text-2xl font-black text-brand-dark tracking-tight">Image imports</h2>
+      <p class="text-sm text-gray-500 mt-1">Name files <code class="font-mono">SKU__01-main.jpg</code>, <code class="font-mono">SKU__02-alt.jpg</code>, <code class="font-mono">SKU__03-detail.jpg</code>, <code class="font-mono">SKU__04-context.jpg</code>. The number is the slot; the word after it is a note. A manifest (CSV with sku, slot, filename, role, alt_text — or JSON) overrides filenames row by row.</p>
+    </div>
+
+    {status && <FormFeedback status={status} message={message} />}
+
+    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-4">
+      <h3 class="text-xs font-black uppercase tracking-wider text-gray-400">Stage a batch</h3>
+      <p class="text-sm text-gray-600">Staging stores the files in the media library (deduplicated by content) and writes a plan. No product gallery changes until a second person approves and someone applies.</p>
+      <form method="POST" enctype="multipart/form-data" class="space-y-3">
+        <div>
+          <label for="name" class="block text-xs font-bold text-gray-700 mb-1">Batch name</label>
+          <input id="name" name="name" maxlength="160" placeholder="e.g. Studio shoot, September" class="w-full text-sm border border-gray-300 rounded-xl px-3 py-2" />
+        </div>
+        <div>
+          <label for="files" class="block text-xs font-bold text-gray-700 mb-1">Image files (up to 250)</label>
+          <input id="files" name="files" type="file" accept="image/*" multiple required class="block w-full text-sm text-gray-700 file:mr-3 file:bg-brand-dark file:text-white file:font-black file:text-xs file:px-4 file:py-2.5 file:rounded-xl file:border-0 file:uppercase file:tracking-wider" />
+        </div>
+        <div>
+          <label for="manifest" class="block text-xs font-bold text-gray-700 mb-1">Manifest (optional, .csv or .json)</label>
+          <input id="manifest" name="manifest" type="file" accept=".csv,.json,text/csv,application/json" class="block w-full text-sm text-gray-700" />
+        </div>
+        <button type="submit" class="bg-brand-dark text-white font-black text-xs px-5 py-3 rounded-xl uppercase tracking-wider">Stage and plan</button>
+      </form>
+    </section>
+
+    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-x-auto">
+      <table class="w-full text-sm">
+        <caption class="sr-only">Import sessions</caption>
+        <thead class="bg-gray-50 text-[10px] font-black uppercase tracking-wider text-gray-500">
+          <tr><th scope="col" class="text-left px-4 py-3">Batch</th><th scope="col" class="text-left px-4 py-3">Status</th><th scope="col" class="text-left px-4 py-3">Rows</th><th scope="col" class="text-left px-4 py-3">Staged</th><th scope="col" class="px-4 py-3"><span class="sr-only">Open</span></th></tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          {sessions.map((s) => (
+            <tr>
+              <td class="px-4 py-3 font-bold text-brand-dark">{s.name}</td>
+              <td class="px-4 py-3 text-xs"><span class="font-black">{s.status}</span>{s.blocking && s.status === 'PLANNED' && <span class="ml-2 text-amber-700">blocked</span>}</td>
+              <td class="px-4 py-3 text-xs tabular-nums">{s.totals.TOTAL ?? 0} rows · {s.totals.NEW ?? 0} new · {s.totals.WOULD_REPLACE ?? 0} replace</td>
+              <td class="px-4 py-3 text-xs text-gray-500">{new Date(s.createdAt).toLocaleString('en-UG')}</td>
+              <td class="px-4 py-3 text-right"><a href={`/admin/media/imports/${s.id}`} class="text-xs font-black uppercase tracking-wider px-3 py-1.5 rounded-xl border border-gray-300 bg-white">Open</a></td>
+            </tr>
+          ))}
+          {sessions.length === 0 && <tr><td colspan="5" class="px-4 py-8 text-center text-sm text-gray-500">No import sessions yet.</td></tr>}
+        </tbody>
+      </table>
+    </section>
+  </div>
+</AdminLayout>
