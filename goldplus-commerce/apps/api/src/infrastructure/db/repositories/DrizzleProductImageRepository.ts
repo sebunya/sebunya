@@ -1,4 +1,4 @@
-import { and, eq, asc, isNull } from 'drizzle-orm';
+import { and, eq, asc, isNull, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { productImages } from '../schema/phase11';
 import { IProductImageRepository, PersistedProductImage } from '../../../application/ports/IProductImageRepository';
@@ -18,7 +18,8 @@ export class DrizzleProductImageRepository implements IProductImageRepository {
   async findByProductId(productId: string): Promise<PersistedProductImage[]> {
     const rows = await db.query.productImages.findMany({
       where: eq(productImages.productId, productId),
-      orderBy: [asc(productImages.displayOrder), asc(productImages.createdAt)],
+      // Focus 4: canonical slot first, legacy projection after — the same precedence as the resolver.
+      orderBy: [sql`${productImages.slot} ASC NULLS LAST`, asc(productImages.displayOrder), asc(productImages.createdAt)],
     });
     return rows.map(rowToDto);
   }
