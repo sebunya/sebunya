@@ -29,23 +29,9 @@ if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const action = String(form.get('_action') ?? '');
 
-  if (action === 'add_image') {
-    const url = String(form.get('url') ?? '').trim();
-    const altText = String(form.get('altText') ?? '').trim() || null;
-    const makePrimary = form.get('makePrimary') === 'on';
-    const res = await authedJson(`/admin/products/${encodeURIComponent(id ?? '')}/images`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, altText, makePrimary }),
-    });
-    if (res.status >= 200 && res.status < 300) {
-      status = 'success';
-      message = 'Image URL linked.';
-    } else {
-      status = 'error';
-      message = res.error ?? `Could not add image (HTTP ${res.status}).`;
-    }
-  } else if (action === 'upload_images') {
+  // Focus 4: "add image by URL" was retired (the API answers 410); the gallery editor
+  // at /admin/products/:id/media owns cover, slots, reorder and choose-existing.
+  if (action === 'upload_images') {
     const apiFormData = new FormData();
     const allFiles = form.getAll('files');
     
@@ -175,7 +161,7 @@ const product = productRes.data;
                   <div class="pointer-events-none">
                     <div class="text-xs font-black text-gray-400 mb-3 uppercase tracking-widest">Upload Area</div>
                     <p class="text-xs font-black text-brand-dark">Click or Drag File Binaries</p>
-                    <p class="text-[9px] text-gray-400 mt-1 leading-relaxed">JPG, PNG, or WebP. Maximum batch count 8.</p>
+                    <p class="text-[9px] text-gray-400 mt-1 leading-relaxed">JPG, PNG, or WebP. Up to 4 files (a gallery holds four images).</p>
                   </div>
                 </div>
 
@@ -193,19 +179,15 @@ const product = productRes.data;
 
             <div class="border-t md:border-t-0 md:border-l border-gray-100 pt-8 md:pt-0 md:pl-8 flex flex-col justify-between">
               <div>
-                <h3 class="text-xs font-black text-brand-dark uppercase tracking-wider mb-4">Synthesize External URL</h3>
-                <form method="POST" action={Astro.url.pathname} class="space-y-4">
-                  <input type="hidden" name="_action" value="add_image" />
-                  <FormField id="url" name="url" label="Fully Qualified Resource Link (HTTPS)" type="url" required placeholder="https://static.brand.cdn/img.jpg" />
-                  <FormField id="altText" name="altText" label="Context Accessibility Text" />
-                  <label class="flex items-center gap-3 cursor-pointer">
-                    <input type="checkbox" name="makePrimary" class="w-4 h-4 rounded-lg border-gray-300 text-brand-green focus:ring-brand-green" />
-                    <span class="text-xs font-bold text-brand-dark">Override current leading image</span>
-                  </label>
-                  <button type="submit" class="w-full bg-white border border-gray-200 text-brand-dark py-3 rounded-xl font-black text-xs uppercase tracking-wider hover:bg-gray-50 transition-colors shadow-sm mt-2">
-                    Register URL Reference
-                  </button>
-                </form>
+                <h3 class="text-xs font-black text-brand-dark uppercase tracking-wider mb-4">Gallery: cover and slots</h3>
+                <p class="text-xs text-gray-600 leading-relaxed mb-4">
+                  Uploads here land in the product's next free gallery slot (the first becomes the cover when the gallery is empty).
+                  To set the cover, reorder, replace or remove images, or pick an image already in the library, use the gallery editor.
+                  Linking an external image by URL is no longer supported: such an image would have no renditions and could not enter a slot.
+                </p>
+                <a href={`/admin/products/${encodeURIComponent(id ?? '')}/media`} class="inline-block w-full text-center bg-white border border-gray-200 text-brand-dark py-3 rounded-xl font-black text-xs uppercase tracking-wider hover:bg-gray-50 transition-colors shadow-sm">
+                  Open the gallery editor
+                </a>
               </div>
             </div>
           </div>

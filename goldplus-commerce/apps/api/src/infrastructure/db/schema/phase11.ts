@@ -1,4 +1,5 @@
-import { pgTable, uuid, varchar, text, integer, smallint, boolean, timestamp, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, text, integer, smallint, boolean, timestamp, primaryKey, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { products, categories } from './products';
 import { users } from './identity';
 
@@ -33,7 +34,12 @@ export const productImages = pgTable('product_images', {
   slot: smallint('slot'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-});
+}, (t) => ({
+  // Declared here so drizzle-kit's diff agrees with migration 0148 and never proposes dropping them.
+  productSlotUq: uniqueIndex('product_images_product_slot_uq').on(t.productId, t.slot).where(sql`${t.slot} IS NOT NULL`),
+  productAssetUq: uniqueIndex('product_images_product_asset_uq').on(t.productId, t.assetId).where(sql`${t.assetId} IS NOT NULL AND ${t.slot} IS NOT NULL`),
+  productSlotIdx: index('product_images_product_slot_idx').on(t.productId, t.slot),
+}));
 
 export const attributes = pgTable('attributes', {
   id: uuid('id').defaultRandom().primaryKey(),
