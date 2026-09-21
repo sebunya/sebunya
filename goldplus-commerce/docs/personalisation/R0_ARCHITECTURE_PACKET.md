@@ -405,3 +405,21 @@ Host after teardown: no task-owned containers; migrator image `goldplus-itest:12
 **First 13 minutes on production vs the same window yesterday:** rendered-rail rows **0** (counter: home_trending 532, product_related 97, cart_addon 64, complete_setup 97 empty); new profiles **16 vs 170**, all 16 with a visitor action (and all from our own smoke run, before it was taught to declare itself); behaviour events **34 vs 190**; hero/nav exposure beacons still recorded (12 / 109) with the profile optional; API errors 0; 4/4 healthy.
 Rollback: `rollback-pre-340fb1f5` images, or the three containment switches. Schema objects stay on rollback.
 **Not scheduled:** the 1 h / 24 h / 72 h observations (runbook §18.7). **Not done (needs people):** import upload + second-person approval, aliases, pack data, battery activation, publishing.
+
+## 23. 12-hour observation on production — 2026-09-21 06:55 UTC (runbook §18.7, read-only)
+
+Window: deploy 18:53 UTC 20 Sep → 06:53 UTC 21 Sep (12 h), compared with the same 12 h a day earlier. Everything read with a 20 s statement timeout, no writes. Host: 4/4 app containers healthy (api restarted 19:06 = `0e4bc8d2`, web 19:18 = `b815e300`); disk 37% (26 GB used, unchanged from the pre-release 38%); DB 1,714 MB (recommendation_events 1,362 MB, experience_profiles 287 MB).
+
+| Check (§18.7) | Result | Verdict |
+|---|---|---|
+| RESPONSE rows written after deploy = 0 | **72**, all `home_trending`, 18:53–18:58 — the roll window, before the api hotfix restart (19:06). Last RESPONSE row ever: 18:58:39. **0 in the 12 h since.** | pass (explained) |
+| Counter rows appearing | 4 placements × every hour; home_trending ≈ 770 responses/h all night (the synthetic monitor + cookieless SSR, as predicted) — `fallback_served` = responses for home_trending/product_related/cart_addon; complete_setup 100% empty | pass |
+| Events: system-exposure share falls | before window 10,579 exposure / 299 action; after 98 / 56 | pass |
+| Every new profile has ≥1 visitor action | 114 new profiles; **82 without** — 70 at 18:53–18:59 (66 hold only exposure events: the beacon-created profiles the api hotfix stopped) and 12 at 19:04–19:05 (nav beacons, one minute before that restart). **Last profile 19:12:15, last visitor action 19:12:16 (our smoke). None created since.** | pass (all pre-hotfix) |
+| API 5xx / `*_FAILED` | 0 × 5xx in ~86k requests (37k 200, 11k 404 = empty-cart lookups + redirect-resolver misses, pre-existing); level-50 lines = 4, all Lighthouse-Watch shortfall reports; 1 level-40 = aiv worker marked a run FAILED on the restart (by design) | pass |
+| p99 / DB latency | **not measurable**: no app HTTP metrics in Prometheus (node metrics only) and `pg_stat_statements` is not installed | gap |
+| Orders started | 0 since deploy; last order 05:23 UTC 20 Sep; 1 order in the last 7 days — too sparse to read as a signal either way | inconclusive |
+| Fall in visitor-action events | 0 actions 19:30 → 06:53. Same overnight window on the nights of 16 and 17 Sep: **1 and 6**. The 199 / 1,035 on 18/19 Sep were our own audits (hourly blocks of ~73/146), which now declare themselves and are dropped — so the fall is the intended one. Not proven: that a real shopper's action still lands (browser check not possible from this session — Chrome extension not connected) | pass with a gap |
+| Undeclared automation | 12 profiles with a single PRODUCT_VIEWED and nothing else, all from the 19:xx smoke; nothing overnight | pass |
+
+**Reading:** the release is doing what it was built to do — profile and event minting by renders/beacons/audits has stopped, serving health is on the counter, nothing failed. Two open verifications: (1) one real browser visit (product page → add to cart) should create exactly one profile with a visitor action — do it from a normal Chrome, then re-run the "new profiles without action" query; (2) the 24 h (18:53 UTC today) and 72 h (23 Sep) checks, same queries (`scratchpad obs*.sql` shape: after/before window on `recommendation_events`, `experience_profiles.first_seen_at`, `recommendation_serving_hourly`, `hero_events`, `nav_events`, `orders`). Containment switches unchanged (`SSR_IDENTITY_V2`/`PROFILE_READ_PURE`/`RESPONSE_EVENT_TO_METRIC` are not set in the container env → code defaults apply).
