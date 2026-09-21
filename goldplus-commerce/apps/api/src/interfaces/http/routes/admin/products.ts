@@ -97,6 +97,10 @@ routes.post('/:id/images/upload', requirePermissions([PERMISSIONS.PRODUCTS_WRITE
 
 routes.delete('/images/:imageId', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) => {
   const imageId = c.req.param('imageId') ?? '';
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(imageId)) {
+    const res: ApiResponse<never> = { success: false, error: { code: 'NOT_FOUND', message: 'Image not found.' } };
+    return c.json(res, 404);
+  }
   const registry = Registry.getInstance();
   const actorId = (c.get('user') as any).id as string;
   // Focus 4: a slotted image leaves through the gallery service (a cover needs a

@@ -17,7 +17,7 @@ Status: implemented on branch `focus4/product-gallery`, tested, committed, **not
 
 **Cover authority.** Slot 1 is the cover. `resolveGallery()` (`packages/shared/src/media/resolveGallery.ts`) is the only row-level rule; `galleryOrderSql()` / `galleryVisibleSql()` (`apps/api/src/infrastructure/db/mediaDisplayUrl.ts`) the only SQL rule. A product with any slotted row shows only its slotted rows, in slot order; a product not yet backfilled falls back to `is_primary DESC, display_order ASC` and reports `migrated: false`. `tests/architecture/single-cover-resolver.test.ts` fails the build if any reader sorts images another way or any file but the mutation repository writes `product_images`.
 
-**Readiness.** An asset may enter a slot only if it is `ACTIVE` and has the storefront rendition (`pdp`/`webp`). Legacy URL-only rows (no asset) can never be slotted; they stay visible through the fallback until re-ingested.
+**Readiness.** An asset may enter a slot only if it is `ACTIVE` and the storefront can serve it: either the display rendition (`pdp`/`webp`, 1024 px) exists, or the original is itself no wider than 1024 px (the generator never upscales, so a valid 800 px master has no `pdp` rendition and the resolver serves the original as-is). Found and fixed by the end-to-end run on a clone: the first rule alone refused every valid original narrower than 1024 px. Legacy URL-only rows (no asset) can never be slotted; they stay visible through the fallback until re-ingested.
 
 ## 2. Request lifecycle
 

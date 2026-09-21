@@ -83,6 +83,12 @@ The entire real-PostgreSQL integration suite (49 files) was run on a disposable 
 
 Also fixed in self-review: the older product edit page still offered "add image by URL" (now 410) — replaced with a link to the gallery editor and the copy corrected to four files; the 0148 indexes are now declared in the Drizzle schema so a future `db:generate` cannot propose dropping them; the legacy image repository lists canonical slots first.
 
+## 7b. Admin API end to end on a real database (second self-review, 2026-09-21)
+
+`tests/integration/ProductMediaAdminApi.integration.test.ts` drives the **real Hono app with the real Registry, real media library and sharp**, only authentication stubbed (the bearer token names the actor, so two different people act), on a disposable production clone: gallery read → multi-upload with a slot map (a fifth file refused) → set cover → stale editor 409 with the current revision → undo → cover removal refused / secondary removed → completeness queue and formula-safe reconciliation CSV → bulk import: blocked plan refused, self-approval 403, second person approves, apply, results CSV, re-apply refused → legacy add-by-URL 410, legacy delete routed through the gallery → **backfill dry run over the whole production copy**.
+
+The first run found a real defect: readiness required the 1024 px `pdp` rendition, and the generator never upscales, so **every valid original narrower than 1024 px was refused** as "not ready" — the false rejection of smaller legacy assets the brief forbids. Fixed: ready = ACTIVE and (display rendition exists OR original width ≤ 1024). Also fixed: a malformed image id on the legacy delete route produced a 500 (now 404). Rerun on a fresh clone: **17/17** (admin API 8, mutation 9). Backfill dry run over the whole production copy: **29 × ASSIGN_COVER, 0 conflicts** — the 29 current primaries would each become slot 1, nothing else invented. Enrichment-off render captured locally (`evidence/focus4-local-2026-09-21/enrichment-off.txt`): gallery marked off, zero previews, zero controls, cover served with `fetchpriority=high`, `og:image` = slot 1.
+
 ## 8. Explicit status
 
 implemented ✔ · tested ✔ (unit, architecture, real-PG on a clone, Chromium evidence) · committed ✔ · pushed ✘ · deployed ✘

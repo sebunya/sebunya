@@ -16,8 +16,16 @@ export const GALLERY_AUDIT_ACTION = 'PRODUCT_MEDIA_SLOTS_CHANGED';
 const GALLERY_USAGE_FIELD = 'gallery';
 const LEGACY_PRIMARY_USAGE_FIELD = 'primary_image';
 
+/**
+ * READY = the storefront can serve it: ACTIVE and either the display rendition
+ * exists, or the original is already no wider than the display size (the
+ * generator never upscales, so a valid 800 px master has no `pdp` rendition and
+ * the resolver serves the original itself). A legacy asset is never refused
+ * merely for being smaller than the recommended master size.
+ */
+const DISPLAY_MAX_WIDTH = 1024;
 function readyExpression() {
-  return sql<boolean>`EXISTS (SELECT 1 FROM ${mediaAssetVariants} v WHERE v.asset_id = ${mediaAssets.id} AND v.purpose = ${DISPLAY_RENDITION.purpose} AND v.format = ${DISPLAY_RENDITION.format}) AND ${mediaAssets.status} = 'ACTIVE'`;
+  return sql<boolean>`${mediaAssets.status} = 'ACTIVE' AND (EXISTS (SELECT 1 FROM ${mediaAssetVariants} v WHERE v.asset_id = ${mediaAssets.id} AND v.purpose = ${DISPLAY_RENDITION.purpose} AND v.format = ${DISPLAY_RENDITION.format}) OR (${mediaAssets.width} IS NOT NULL AND ${mediaAssets.width} <= ${DISPLAY_MAX_WIDTH}))`;
 }
 
 export class DrizzleProductMediaRepository implements IProductMediaRepository {
@@ -200,7 +208,7 @@ export class DrizzleProductMediaRepository implements IProductMediaRepository {
         BOOL_OR(pi.slot = 1) AS has_cover,
         COUNT(pi.id) FILTER (WHERE pi.slot IS NOT NULL) > 0 AS migrated,
         COUNT(pi.id) FILTER (WHERE pi.slot IS NULL) AS legacy_rows,
-        COUNT(pi.id) FILTER (WHERE pi.slot IS NOT NULL AND NOT COALESCE((SELECT a.status = 'ACTIVE' AND EXISTS (SELECT 1 FROM media_asset_variants v WHERE v.asset_id = a.id AND v.purpose = ${DISPLAY_RENDITION.purpose} AND v.format = ${DISPLAY_RENDITION.format}) FROM media_assets a WHERE a.id = pi.asset_id), false)) AS unready_rows
+        COUNT(pi.id) FILTER (WHERE pi.slot IS NOT NULL AND NOT COALESCE((SELECT a.status = 'ACTIVE' AND (EXISTS (SELECT 1 FROM media_asset_variants v WHERE v.asset_id = a.id AND v.purpose = ${DISPLAY_RENDITION.purpose} AND v.format = ${DISPLAY_RENDITION.format}) OR (a.width IS NOT NULL AND a.width <= ${DISPLAY_MAX_WIDTH})) FROM media_assets a WHERE a.id = pi.asset_id), false)) AS unready_rows
       FROM products p
       LEFT JOIN product_images pi ON pi.product_id = p.id
       GROUP BY p.id
