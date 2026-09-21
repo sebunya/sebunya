@@ -373,8 +373,10 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     healthcheck:
-      # The image ships node, not curl.
-      test: ["CMD", "node", "-e", "fetch('http://localhost:8080/healthy').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      # The image ships no curl and no `node` on PATH (a bare "node" failed every
+      # check for 37 h while the service answered 200). Use the image's own
+      # checker — the same command its built-in HEALTHCHECK runs.
+      test: ["CMD", "/nodejs/bin/node", "/app/health_checker_bin.js"]
       interval: 30s
       timeout: 10s
       retries: 3
