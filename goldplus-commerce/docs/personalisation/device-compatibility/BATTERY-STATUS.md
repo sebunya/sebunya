@@ -41,3 +41,8 @@
 - Reference capacity/voltage is the ORIGINAL pack's rating (19 seen on independent parts listings, 23 from public specifications, 35 from the BL-code convention with no voltage) — never to be shown as the GoldPlus pack's own rating until read from the pack.
 - (Resolved: 200 per battery is the real opening stock — owner, 2026-09-20.)
 - ~230 batteries on the client's printed list are not on the website; the Nokia block, half the Samsung block and the Redmi/Pixel rows of that list were read at normal size only.
+
+## 2026-09-21 — import staged on production; publication still physically gated
+- Compatibility import session `f29e931c-9085-438a-a2b7-fac794162d29` is on production: 208 ready / 0 held / 0 errors, awaiting approval by a second admin account and then Apply (drafts only).
+- **Going public is not a switch anyone can flip today.** Read from production: all 79 live batteries have **no image, no capacity/voltage, verification UNVERIFIED, code PROVISIONAL (51) or DEVICE_NAMED (28)**. The publication rule (`BatteryReadiness`) refuses each of those, and every one is a fact that only the physical pack can supply: photograph the pack (front + label), read capacity and voltage off it, confirm the printed code, mark verified, and verify at least one fit (package / fit test / exact). The reference ratings in `battery-enrichment-catalogue.csv` describe the ORIGINAL manufacturer's pack, not GoldPlus's aftermarket pack — they must not be entered as the pack's specs.
+- Until then the finder stays honest: "We have not matched a battery to this phone yet".

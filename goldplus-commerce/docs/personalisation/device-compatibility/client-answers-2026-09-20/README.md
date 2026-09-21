@@ -74,3 +74,8 @@ Client confirmed: Pop 6 Go fits **both** BL-38BT and BL-38CT; Asha 500 fits **bo
 
 ## Enriched file, native importer, production copy (commit `23a579d5`)
 `ready to apply: 208 · held: 0 · errors: 0`; devices 0 → 0, claims 0 → 0.
+
+## Staged on PRODUCTION — 2026-09-21 07:50 UTC (owner instruction)
+`compatibility-for-admin-import-v3.csv` went through the native importer against the live database (`battery-source-import.ts` in the release's builder image, actor = the owner's admin account): session **`f29e931c-9085-438a-a2b7-fac794162d29`**, type Compatibility, **208 ready · 0 held · 0 errors**, status `READY_FOR_APPROVAL`, version 3. Devices 0 → 0, brands 0 → 0, claims 0 → 0 — nothing reached the catalogue. Open `/admin/batteries/imports/f29e931c-9085-438a-a2b7-fac794162d29`.
+
+**What remains is a person's press, by design (`FOUR_EYES_REQUIRED`):** the uploader's account cannot approve. A *different* admin account approves the preview, then presses **Apply**, which creates 208 DRAFT claims and the devices behind them — still invisible to customers. Imports never publish.
