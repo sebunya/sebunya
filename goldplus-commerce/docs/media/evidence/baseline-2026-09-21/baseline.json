@@ -1,0 +1,2086 @@
+[
+  {
+    "slug": "goldplus-bluetooth-gp03bt",
+    "viewport": {
+      "w": 1440,
+      "h": 900,
+      "dpr": 1,
+      "name": "desktop"
+    },
+    "status": 200,
+    "loadMs": 4547,
+    "imageRequests": [
+      {
+        "url": "/uploads/assets/d4/d4014c7527d7/card.webp",
+        "bytes": 15916,
+        "ct": "image/webp"
+      },
+      {
+        "url": "/uploads/assets/6f/6f35e56642c6/card.webp",
+        "bytes": 16840,
+        "ct": "image/webp"
+      },
+      {
+        "url": "/uploads/assets/65/653e01784fe5/card.webp",
+        "bytes": 14808,
+        "ct": "image/webp"
+      },
+      {
+        "url": "/payment/visa.svg",
+        "bytes": 732,
+        "ct": "image/svg+xml"
+      },
+      {
+        "url": "/payment/airtel-money.svg",
+        "bytes": 1769,
+        "ct": "image/svg+xml"
+      },
+      {
+        "url": "/payment/mastercard.svg",
+        "bytes": 428,
+        "ct": "image/svg+xml"
+      },
+      {
+        "url": "/payment/mtn-momo.webp",
+        "bytes": 2052,
+        "ct": "image/webp"
+      },
+      {
+        "url": "/uploads/assets/74/74a994ff8663/card.webp",
+        "bytes": 13954,
+        "ct": "image/webp"
+      },
+      {
+        "url": "/uploads/assets/93/938bb591fb3f/pdp.webp",
+        "bytes": 44024,
+        "ct": "image/webp"
+      },
+      {
+        "url": "/nav/gp-wordmark-cream-105.webp",
+        "bytes": 2798,
+        "ct": "image/webp"
+      },
+      {
+        "url": "/uploads/assets/93/938bb591fb3f/card.webp",
+        "bytes": 15842,
+        "ct": "image/webp"
+      }
+    ],
+    "title": "GoldPlus GP03BT TWS Wireless Earphones, Bluetooth 5.4, 6h Play Time, Zinc Alloy Case",
+    "h1": {
+      "top": 295,
+      "left": 748,
+      "w": 580,
+      "h": 120
+    },
+    "addToCart": {
+      "top": 1700,
+      "left": 748,
+      "w": 284,
+      "h": 40
+    },
+    "addToCartText": "Add to cart",
+    "docHeight": 4173,
+    "imgsInDoc": [
+      {
+        "src": "/nav/gp-wordmark-cream-105.webp",
+        "rendered": [
+          105,
+          30
+        ],
+        "natural": [
+          105,
+          30
+        ],
+        "sizes": "(max-width: 980px) 91px, 105px",
+        "srcset": "/nav/gp-wordmark-cream-105.webp 105w, /nav/gp-wordmark-cream-160.webp 160w, /nav/gp-wordmark-cream-320.webp 320w",
+        "loading": "auto",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/93/938bb591fb3f/thumb.webp 160w, /uploads/assets/93/938bb591fb3f/card.webp 480w, /uploads/assets/93/938b",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/9d/9d993f5ef5a7/thumb.webp 160w, /uploads/assets/9d/9d993f5ef5a7/card.webp 480w, /uploads/assets/9d/9d99",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/1b/1b8a06018270/thumb.webp 160w, /uploads/assets/1b/1b8a06018270/card.webp 480w, /uploads/assets/1b/1b8a",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/1c/1c02cbb25091/thumb.webp 160w, /uploads/assets/1c/1c02cbb25091/card.webp 480w, /uploads/assets/1c/1c02",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/86/86a059744c85/thumb.webp 160w, /uploads/assets/86/86a059744c85/card.webp 480w, /uploads/assets/86/86a0",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/93/938bb591fb3f/pdp.webp",
+        "rendered": [
+          578,
+          578
+        ],
+        "natural": [
+          1024,
+          1024
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "eager",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/d4/d4014c7527d7/card.webp",
+        "rendered": [
+          242,
+          242
+        ],
+        "natural": [
+          320,
+          320
+        ],
+        "sizes": "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px",
+        "srcset": "/uploads/assets/d4/d4014c7527d7/thumb.webp 160w, /uploads/assets/d4/d4014c7527d7/card.webp 480w, /uploads/assets/d4/d401",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/74/74a994ff8663/card.webp",
+        "rendered": [
+          242,
+          242
+        ],
+        "natural": [
+          320,
+          320
+        ],
+        "sizes": "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px",
+        "srcset": "/uploads/assets/74/74a994ff8663/thumb.webp 160w, /uploads/assets/74/74a994ff8663/card.webp 480w, /uploads/assets/74/74a9",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/65/653e01784fe5/card.webp",
+        "rendered": [
+          242,
+          242
+        ],
+        "natural": [
+          320,
+          320
+        ],
+        "sizes": "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px",
+        "srcset": "/uploads/assets/65/653e01784fe5/thumb.webp 160w, /uploads/assets/65/653e01784fe5/card.webp 480w, /uploads/assets/65/653e",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/6f/6f35e56642c6/card.webp",
+        "rendered": [
+          242,
+          242
+        ],
+        "natural": [
+          320,
+          320
+        ],
+        "sizes": "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px",
+        "srcset": "/uploads/assets/6f/6f35e56642c6/thumb.webp 160w, /uploads/assets/6f/6f35e56642c6/card.webp 480w, /uploads/assets/6f/6f35",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/93/938bb591fb3f/pdp.webp",
+        "rendered": [
+          242,
+          242
+        ],
+        "natural": [
+          320,
+          320
+        ],
+        "sizes": "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px",
+        "srcset": "/uploads/assets/93/938bb591fb3f/thumb.webp 160w, /uploads/assets/93/938bb591fb3f/card.webp 480w, /uploads/assets/93/938b",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/payment/mtn-momo.webp",
+        "rendered": [
+          36,
+          36
+        ],
+        "natural": [
+          96,
+          96
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/payment/airtel-money.svg",
+        "rendered": [
+          36,
+          36
+        ],
+        "natural": [
+          800,
+          800
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/payment/visa.svg",
+        "rendered": [
+          63,
+          20
+        ],
+        "natural": [
+          63,
+          20
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/payment/mastercard.svg",
+        "rendered": [
+          46,
+          28
+        ],
+        "natural": [
+          39,
+          24
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      }
+    ],
+    "order": [
+      "BUTTON:×@0",
+      "BUTTON:@0",
+      "FORM:@57",
+      "BUTTON:@57",
+      "FORM:Join free@150",
+      "BUTTON:Join free@202",
+      "H3:Start here@0",
+      "H3:Power@0",
+      "H3:Phone batteries@0",
+      "FORM:@0",
+      "H2:Good morning@0",
+      "FORM:Join free@0",
+      "BUTTON:Join free@0",
+      "FORM:@0",
+      "BUTTON:+@0",
+      "H3:Phone batteries@0",
+      "FORM:@0",
+      "BUTTON:+@0",
+      "BUTTON:+@0",
+      "H3:Flash drives@0",
+      "H3:Memory cards@0",
+      "BUTTON:+@0",
+      "BUTTON:+@0",
+      "H1:GoldPlus GP03BT TWS Wireless Earphones, @295",
+      "H3:Why You'll Like It@792",
+      "TABLE:Specifications for GoldPlus GP03BT TWS W@933",
+      "FORM:Add to cart Buy now@1700",
+      "BUTTON:Add to cart@1700",
+      "BUTTON:Buy now@1700",
+      "H2:Similar products@2003",
+      "H3:GoldPlus GP-W03 Wireless Earbuds, Blueto@2364",
+      "FORM:Add to cart Buy now@2497",
+      "BUTTON:Add to cart@2497",
+      "BUTTON:Buy now@2497",
+      "H3:GoldPlus GP-W04 Open-Ear Clip Wireless E@2364",
+      "FORM:Add to cart Buy now@2497",
+      "BUTTON:Add to cart@2497",
+      "BUTTON:Buy now@2497",
+      "H3:GoldPlus GP-W05 Wireless Earphones, Blue@2364",
+      "FORM:Add to cart Buy now@2497"
+    ],
+    "hasJsonLd": true,
+    "og": "https://shopgoldplus.com/uploads/assets/93/938bb591fb3f/pdp.webp"
+  },
+  {
+    "slug": "goldplus-battery-gp-39lt9",
+    "viewport": {
+      "w": 1440,
+      "h": 900,
+      "dpr": 1,
+      "name": "desktop"
+    },
+    "status": 200,
+    "loadMs": 2428,
+    "imageRequests": [
+      {
+        "url": "/nav/gp-wordmark-cream-105.webp",
+        "bytes": 2798,
+        "ct": "image/webp"
+      },
+      {
+        "url": "/payment/mtn-momo.webp",
+        "bytes": 2052,
+        "ct": "image/webp"
+      },
+      {
+        "url": "/payment/airtel-money.svg",
+        "bytes": 1769,
+        "ct": "image/svg+xml"
+      },
+      {
+        "url": "/payment/visa.svg",
+        "bytes": 732,
+        "ct": "image/svg+xml"
+      },
+      {
+        "url": "/payment/mastercard.svg",
+        "bytes": 428,
+        "ct": "image/svg+xml"
+      },
+      {
+        "url": "/uploads/assets/93/938bb591fb3f/card.webp",
+        "bytes": 15842,
+        "ct": "image/webp"
+      },
+      {
+        "url": "/uploads/assets/9d/9d993f5ef5a7/card.webp",
+        "bytes": 7018,
+        "ct": "image/webp"
+      }
+    ],
+    "title": "GoldPlus Replacement Battery GP-39LT9 — fits the Spark 4 and the A56",
+    "h1": {
+      "top": 295,
+      "left": 748,
+      "w": 580,
+      "h": 120
+    },
+    "addToCart": {
+      "top": 1060,
+      "left": 748,
+      "w": 284,
+      "h": 40
+    },
+    "addToCartText": "Add to cart",
+    "docHeight": 3533,
+    "imgsInDoc": [
+      {
+        "src": "/nav/gp-wordmark-cream-105.webp",
+        "rendered": [
+          105,
+          30
+        ],
+        "natural": [
+          105,
+          30
+        ],
+        "sizes": "(max-width: 980px) 91px, 105px",
+        "srcset": "/nav/gp-wordmark-cream-105.webp 105w, /nav/gp-wordmark-cream-160.webp 160w, /nav/gp-wordmark-cream-320.webp 320w",
+        "loading": "auto",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/93/938bb591fb3f/card.webp",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          200,
+          200
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/93/938bb591fb3f/thumb.webp 160w, /uploads/assets/93/938bb591fb3f/card.webp 480w, /uploads/assets/93/938b",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/9d/9d993f5ef5a7/card.webp",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          200,
+          200
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/9d/9d993f5ef5a7/thumb.webp 160w, /uploads/assets/9d/9d993f5ef5a7/card.webp 480w, /uploads/assets/9d/9d99",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/1b/1b8a06018270/thumb.webp 160w, /uploads/assets/1b/1b8a06018270/card.webp 480w, /uploads/assets/1b/1b8a",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/1c/1c02cbb25091/thumb.webp 160w, /uploads/assets/1c/1c02cbb25091/card.webp 480w, /uploads/assets/1c/1c02",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/86/86a059744c85/thumb.webp 160w, /uploads/assets/86/86a059744c85/card.webp 480w, /uploads/assets/86/86a0",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/9d/9d993f5ef5a7/card.webp",
+        "rendered": [
+          242,
+          242
+        ],
+        "natural": [
+          320,
+          320
+        ],
+        "sizes": "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px",
+        "srcset": "/uploads/assets/9d/9d993f5ef5a7/thumb.webp 160w, /uploads/assets/9d/9d993f5ef5a7/card.webp 480w, /uploads/assets/9d/9d99",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/93/938bb591fb3f/card.webp",
+        "rendered": [
+          242,
+          242
+        ],
+        "natural": [
+          320,
+          320
+        ],
+        "sizes": "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px",
+        "srcset": "/uploads/assets/93/938bb591fb3f/thumb.webp 160w, /uploads/assets/93/938bb591fb3f/card.webp 480w, /uploads/assets/93/938b",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/payment/mtn-momo.webp",
+        "rendered": [
+          36,
+          36
+        ],
+        "natural": [
+          96,
+          96
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/payment/airtel-money.svg",
+        "rendered": [
+          36,
+          36
+        ],
+        "natural": [
+          800,
+          800
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/payment/visa.svg",
+        "rendered": [
+          63,
+          20
+        ],
+        "natural": [
+          63,
+          20
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/payment/mastercard.svg",
+        "rendered": [
+          46,
+          28
+        ],
+        "natural": [
+          39,
+          24
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      }
+    ],
+    "order": [
+      "BUTTON:×@0",
+      "BUTTON:@0",
+      "FORM:@57",
+      "BUTTON:@57",
+      "FORM:Join free@150",
+      "BUTTON:Join free@202",
+      "H3:Start here@0",
+      "H3:Power@0",
+      "H3:Phone batteries@0",
+      "FORM:@0",
+      "H2:Welcome back@0",
+      "FORM:Join free@0",
+      "BUTTON:Join free@0",
+      "FORM:@0",
+      "BUTTON:+@0",
+      "H3:Phone batteries@0",
+      "FORM:@0",
+      "BUTTON:+@0",
+      "BUTTON:+@0",
+      "H3:Flash drives@0",
+      "H3:Memory cards@0",
+      "BUTTON:+@0",
+      "BUTTON:+@0",
+      "H1:GoldPlus Replacement Battery GP-39LT9 — @295",
+      "TABLE:Specifications for GoldPlus Replacement @734",
+      "FORM:Add to cart Buy now@1060",
+      "BUTTON:Add to cart@1060",
+      "BUTTON:Buy now@1060",
+      "H2:Also in the shop@1363",
+      "H3:GoldPlus ADT-S005 USB Sound Card@1724",
+      "FORM:Add to cart Buy now@1857",
+      "BUTTON:Add to cart@1857",
+      "BUTTON:Buy now@1857",
+      "H2:Browse available products@2031",
+      "H3:GoldPlus Replacement Battery GP-39LT9 — @2392",
+      "FORM:Add to cart Buy now@2526",
+      "BUTTON:Add to cart@2526",
+      "BUTTON:Buy now@2526",
+      "H3:GoldPlus GP03BT TWS Wireless Earphones, @2392",
+      "FORM:Add to cart Buy now@2526"
+    ],
+    "hasJsonLd": true,
+    "og": "https://shopgoldplus.com/og-default.png"
+  },
+  {
+    "slug": "goldplus-charger-gp-c08",
+    "viewport": {
+      "w": 1440,
+      "h": 900,
+      "dpr": 1,
+      "name": "desktop"
+    },
+    "status": 200,
+    "loadMs": 2422,
+    "imageRequests": [
+      {
+        "url": "/nav/gp-wordmark-cream-105.webp",
+        "bytes": 2798,
+        "ct": "image/webp"
+      },
+      {
+        "url": "/payment/mtn-momo.webp",
+        "bytes": 2052,
+        "ct": "image/webp"
+      },
+      {
+        "url": "/payment/airtel-money.svg",
+        "bytes": 1769,
+        "ct": "image/svg+xml"
+      },
+      {
+        "url": "/payment/visa.svg",
+        "bytes": 732,
+        "ct": "image/svg+xml"
+      },
+      {
+        "url": "/payment/mastercard.svg",
+        "bytes": 428,
+        "ct": "image/svg+xml"
+      },
+      {
+        "url": "/uploads/assets/9d/9d993f5ef5a7/card.webp",
+        "bytes": 7018,
+        "ct": "image/webp"
+      },
+      {
+        "url": "/uploads/assets/93/938bb591fb3f/card.webp",
+        "bytes": 15842,
+        "ct": "image/webp"
+      },
+      {
+        "url": "/uploads/assets/86/86a059744c85/pdp.webp",
+        "bytes": 27558,
+        "ct": "image/webp"
+      },
+      {
+        "url": "/uploads/assets/86/86a059744c85/card.webp",
+        "bytes": 10550,
+        "ct": "image/webp"
+      }
+    ],
+    "title": "GoldPlus GP-C08 12W USB Fast Charger, 2A (UK plug)",
+    "h1": {
+      "top": 295,
+      "left": 748,
+      "w": 580,
+      "h": 80
+    },
+    "addToCart": {
+      "top": 1389,
+      "left": 748,
+      "w": 284,
+      "h": 40
+    },
+    "addToCartText": "Add to cart",
+    "docHeight": 3862,
+    "imgsInDoc": [
+      {
+        "src": "/nav/gp-wordmark-cream-105.webp",
+        "rendered": [
+          105,
+          30
+        ],
+        "natural": [
+          105,
+          30
+        ],
+        "sizes": "(max-width: 980px) 91px, 105px",
+        "srcset": "/nav/gp-wordmark-cream-105.webp 105w, /nav/gp-wordmark-cream-160.webp 160w, /nav/gp-wordmark-cream-320.webp 320w",
+        "loading": "auto",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/93/938bb591fb3f/card.webp",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          200,
+          200
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/93/938bb591fb3f/thumb.webp 160w, /uploads/assets/93/938bb591fb3f/card.webp 480w, /uploads/assets/93/938b",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/9d/9d993f5ef5a7/card.webp",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          200,
+          200
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/9d/9d993f5ef5a7/thumb.webp 160w, /uploads/assets/9d/9d993f5ef5a7/card.webp 480w, /uploads/assets/9d/9d99",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/1b/1b8a06018270/thumb.webp 160w, /uploads/assets/1b/1b8a06018270/card.webp 480w, /uploads/assets/1b/1b8a",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/1c/1c02cbb25091/thumb.webp 160w, /uploads/assets/1c/1c02cbb25091/card.webp 480w, /uploads/assets/1c/1c02",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/86/86a059744c85/card.webp",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          200,
+          197
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/86/86a059744c85/thumb.webp 160w, /uploads/assets/86/86a059744c85/card.webp 480w, /uploads/assets/86/86a0",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/86/86a059744c85/pdp.webp",
+        "rendered": [
+          578,
+          578
+        ],
+        "natural": [
+          1024,
+          1011
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "eager",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/9d/9d993f5ef5a7/card.webp",
+        "rendered": [
+          242,
+          242
+        ],
+        "natural": [
+          320,
+          320
+        ],
+        "sizes": "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px",
+        "srcset": "/uploads/assets/9d/9d993f5ef5a7/thumb.webp 160w, /uploads/assets/9d/9d993f5ef5a7/card.webp 480w, /uploads/assets/9d/9d99",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/86/86a059744c85/card.webp",
+        "rendered": [
+          242,
+          242
+        ],
+        "natural": [
+          320,
+          316
+        ],
+        "sizes": "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px",
+        "srcset": "/uploads/assets/86/86a059744c85/thumb.webp 160w, /uploads/assets/86/86a059744c85/card.webp 480w, /uploads/assets/86/86a0",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/93/938bb591fb3f/card.webp",
+        "rendered": [
+          242,
+          242
+        ],
+        "natural": [
+          320,
+          320
+        ],
+        "sizes": "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px",
+        "srcset": "/uploads/assets/93/938bb591fb3f/thumb.webp 160w, /uploads/assets/93/938bb591fb3f/card.webp 480w, /uploads/assets/93/938b",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/payment/mtn-momo.webp",
+        "rendered": [
+          36,
+          36
+        ],
+        "natural": [
+          96,
+          96
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/payment/airtel-money.svg",
+        "rendered": [
+          36,
+          36
+        ],
+        "natural": [
+          800,
+          800
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/payment/visa.svg",
+        "rendered": [
+          63,
+          20
+        ],
+        "natural": [
+          63,
+          20
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/payment/mastercard.svg",
+        "rendered": [
+          46,
+          28
+        ],
+        "natural": [
+          39,
+          24
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      }
+    ],
+    "order": [
+      "BUTTON:×@0",
+      "BUTTON:@0",
+      "FORM:@57",
+      "BUTTON:@57",
+      "FORM:Join free@150",
+      "BUTTON:Join free@202",
+      "H3:Start here@0",
+      "H3:Power@0",
+      "H3:Phone batteries@0",
+      "FORM:@0",
+      "H2:Welcome back@0",
+      "FORM:Join free@0",
+      "BUTTON:Join free@0",
+      "FORM:@0",
+      "BUTTON:+@0",
+      "H3:Phone batteries@0",
+      "FORM:@0",
+      "BUTTON:+@0",
+      "BUTTON:+@0",
+      "H3:Flash drives@0",
+      "H3:Memory cards@0",
+      "BUTTON:+@0",
+      "BUTTON:+@0",
+      "H1:GoldPlus GP-C08 12W USB Fast Charger, 2A@295",
+      "TABLE:Specifications for GoldPlus GP-C08 12W U@720",
+      "FORM:Add to cart Buy now@1389",
+      "BUTTON:Add to cart@1389",
+      "BUTTON:Buy now@1389",
+      "H2:Also in the shop@1692",
+      "H3:GoldPlus ADT-S005 USB Sound Card@2053",
+      "FORM:Add to cart Buy now@2186",
+      "BUTTON:Add to cart@2186",
+      "BUTTON:Buy now@2186",
+      "H2:Browse available products@2360",
+      "H3:GoldPlus GP-C08 12W USB Fast Charger, 2A@2721",
+      "FORM:Add to cart Buy now@2855",
+      "BUTTON:Add to cart@2855",
+      "BUTTON:Buy now@2855",
+      "H3:GoldPlus Replacement Battery GP-39LT9 — @2721",
+      "FORM:Add to cart Buy now@2855"
+    ],
+    "hasJsonLd": true,
+    "og": "https://shopgoldplus.com/uploads/assets/86/86a059744c85/pdp.webp"
+  },
+  {
+    "slug": "goldplus-bluetooth-gp03bt",
+    "viewport": {
+      "w": 390,
+      "h": 844,
+      "dpr": 3,
+      "name": "mobile"
+    },
+    "status": 200,
+    "loadMs": 3809,
+    "imageRequests": [
+      {
+        "url": "/uploads/assets/93/938bb591fb3f/pdp.webp",
+        "bytes": 44024,
+        "ct": "image/webp"
+      },
+      {
+        "url": "/nav/gp-wordmark-cream-320.webp",
+        "bytes": 6252,
+        "ct": "image/webp"
+      },
+      {
+        "url": "/uploads/assets/65/653e01784fe5/pdp.webp",
+        "bytes": 42352,
+        "ct": "image/webp"
+      },
+      {
+        "url": "/uploads/assets/6f/6f35e56642c6/pdp.webp",
+        "bytes": 47052,
+        "ct": "image/webp"
+      },
+      {
+        "url": "/uploads/assets/74/74a994ff8663/pdp.webp",
+        "bytes": 40348,
+        "ct": "image/webp"
+      },
+      {
+        "url": "/uploads/assets/d4/d4014c7527d7/pdp.webp",
+        "bytes": 43758,
+        "ct": "image/webp"
+      }
+    ],
+    "title": "GoldPlus GP03BT TWS Wireless Earphones, Bluetooth 5.4, 6h Play Time, Zinc Alloy Case",
+    "h1": {
+      "top": 604,
+      "left": 16,
+      "w": 358,
+      "h": 96
+    },
+    "addToCart": {
+      "top": 2235,
+      "left": 16,
+      "w": 358,
+      "h": 40
+    },
+    "addToCartText": "Add to cart",
+    "docHeight": 6044,
+    "imgsInDoc": [
+      {
+        "src": "/nav/gp-wordmark-cream-320.webp",
+        "rendered": [
+          90,
+          26
+        ],
+        "natural": [
+          91,
+          26
+        ],
+        "sizes": "(max-width: 980px) 91px, 105px",
+        "srcset": "/nav/gp-wordmark-cream-105.webp 105w, /nav/gp-wordmark-cream-160.webp 160w, /nav/gp-wordmark-cream-320.webp 320w",
+        "loading": "auto",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/93/938bb591fb3f/pdp.webp",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          200,
+          200
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/93/938bb591fb3f/thumb.webp 160w, /uploads/assets/93/938bb591fb3f/card.webp 480w, /uploads/assets/93/938b",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/9d/9d993f5ef5a7/thumb.webp 160w, /uploads/assets/9d/9d993f5ef5a7/card.webp 480w, /uploads/assets/9d/9d99",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/1b/1b8a06018270/thumb.webp 160w, /uploads/assets/1b/1b8a06018270/card.webp 480w, /uploads/assets/1b/1b8a",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/1c/1c02cbb25091/thumb.webp 160w, /uploads/assets/1c/1c02cbb25091/card.webp 480w, /uploads/assets/1c/1c02",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/86/86a059744c85/thumb.webp 160w, /uploads/assets/86/86a059744c85/card.webp 480w, /uploads/assets/86/86a0",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/93/938bb591fb3f/pdp.webp",
+        "rendered": [
+          356,
+          356
+        ],
+        "natural": [
+          1024,
+          1024
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "eager",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/d4/d4014c7527d7/pdp.webp",
+        "rendered": [
+          127,
+          127
+        ],
+        "natural": [
+          195,
+          195
+        ],
+        "sizes": "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px",
+        "srcset": "/uploads/assets/d4/d4014c7527d7/thumb.webp 160w, /uploads/assets/d4/d4014c7527d7/card.webp 480w, /uploads/assets/d4/d401",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/74/74a994ff8663/pdp.webp",
+        "rendered": [
+          127,
+          127
+        ],
+        "natural": [
+          195,
+          195
+        ],
+        "sizes": "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px",
+        "srcset": "/uploads/assets/74/74a994ff8663/thumb.webp 160w, /uploads/assets/74/74a994ff8663/card.webp 480w, /uploads/assets/74/74a9",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/65/653e01784fe5/pdp.webp",
+        "rendered": [
+          127,
+          127
+        ],
+        "natural": [
+          195,
+          195
+        ],
+        "sizes": "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px",
+        "srcset": "/uploads/assets/65/653e01784fe5/thumb.webp 160w, /uploads/assets/65/653e01784fe5/card.webp 480w, /uploads/assets/65/653e",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/6f/6f35e56642c6/pdp.webp",
+        "rendered": [
+          127,
+          127
+        ],
+        "natural": [
+          195,
+          195
+        ],
+        "sizes": "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px",
+        "srcset": "/uploads/assets/6f/6f35e56642c6/thumb.webp 160w, /uploads/assets/6f/6f35e56642c6/card.webp 480w, /uploads/assets/6f/6f35",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/93/938bb591fb3f/pdp.webp",
+        "rendered": [
+          127,
+          127
+        ],
+        "natural": [
+          195,
+          195
+        ],
+        "sizes": "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px",
+        "srcset": "/uploads/assets/93/938bb591fb3f/thumb.webp 160w, /uploads/assets/93/938bb591fb3f/card.webp 480w, /uploads/assets/93/938b",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          36,
+          36
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          36,
+          36
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          62,
+          20
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          45,
+          28
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      }
+    ],
+    "order": [
+      "BUTTON:×@0",
+      "BUTTON:@43",
+      "FORM:@0",
+      "BUTTON:@43",
+      "FORM:Join free@136",
+      "BUTTON:Join free@188",
+      "H3:Start here@0",
+      "H3:Power@0",
+      "H3:Phone batteries@0",
+      "FORM:@0",
+      "H2:Good morning@-733",
+      "FORM:Join free@-665",
+      "BUTTON:Join free@-665",
+      "FORM:@-551",
+      "BUTTON:+@-410",
+      "H3:Phone batteries@-147",
+      "FORM:@-120",
+      "BUTTON:+@-351",
+      "BUTTON:+@-292",
+      "H3:Flash drives@-220",
+      "H3:Memory cards@-69",
+      "BUTTON:+@-233",
+      "BUTTON:+@-174",
+      "H1:GoldPlus GP03BT TWS Wireless Earphones, @604",
+      "H3:Why You'll Like It@1187",
+      "TABLE:Specifications for GoldPlus GP03BT TWS W@1328",
+      "FORM:Add to cart Buy now@2235",
+      "BUTTON:Add to cart@2235",
+      "BUTTON:Buy now@2287",
+      "H2:Similar products@2590",
+      "H3:GoldPlus GP-W03 Wireless Earbuds, Blueto@2836",
+      "FORM:Add to cart Buy now@2969",
+      "BUTTON:Add to cart@2969",
+      "BUTTON:Buy now@2969",
+      "H3:GoldPlus GP-W04 Open-Ear Clip Wireless E@2836",
+      "FORM:Add to cart Buy now@2969",
+      "BUTTON:Add to cart@2969",
+      "BUTTON:Buy now@2969",
+      "H3:GoldPlus GP-W05 Wireless Earphones, Blue@3212",
+      "FORM:Add to cart Buy now@3346"
+    ],
+    "hasJsonLd": true,
+    "og": "https://shopgoldplus.com/uploads/assets/93/938bb591fb3f/pdp.webp"
+  },
+  {
+    "slug": "goldplus-battery-gp-39lt9",
+    "viewport": {
+      "w": 390,
+      "h": 844,
+      "dpr": 3,
+      "name": "mobile"
+    },
+    "status": 200,
+    "loadMs": 2686,
+    "imageRequests": [
+      {
+        "url": "/nav/gp-wordmark-cream-320.webp",
+        "bytes": 6252,
+        "ct": "image/webp"
+      },
+      {
+        "url": "/uploads/assets/9d/9d993f5ef5a7/pdp.webp",
+        "bytes": 19946,
+        "ct": "image/webp"
+      },
+      {
+        "url": "/uploads/assets/93/938bb591fb3f/pdp.webp",
+        "bytes": 44024,
+        "ct": "image/webp"
+      }
+    ],
+    "title": "GoldPlus Replacement Battery GP-39LT9 — fits the Spark 4 and the A56",
+    "h1": {
+      "top": 604,
+      "left": 16,
+      "w": 358,
+      "h": 96
+    },
+    "addToCart": {
+      "top": 1526,
+      "left": 16,
+      "w": 358,
+      "h": 40
+    },
+    "addToCartText": "Add to cart",
+    "docHeight": 4958,
+    "imgsInDoc": [
+      {
+        "src": "/nav/gp-wordmark-cream-320.webp",
+        "rendered": [
+          90,
+          26
+        ],
+        "natural": [
+          91,
+          26
+        ],
+        "sizes": "(max-width: 980px) 91px, 105px",
+        "srcset": "/nav/gp-wordmark-cream-105.webp 105w, /nav/gp-wordmark-cream-160.webp 160w, /nav/gp-wordmark-cream-320.webp 320w",
+        "loading": "auto",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/93/938bb591fb3f/pdp.webp",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          200,
+          200
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/93/938bb591fb3f/thumb.webp 160w, /uploads/assets/93/938bb591fb3f/card.webp 480w, /uploads/assets/93/938b",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/9d/9d993f5ef5a7/pdp.webp",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          200,
+          200
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/9d/9d993f5ef5a7/thumb.webp 160w, /uploads/assets/9d/9d993f5ef5a7/card.webp 480w, /uploads/assets/9d/9d99",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/1b/1b8a06018270/thumb.webp 160w, /uploads/assets/1b/1b8a06018270/card.webp 480w, /uploads/assets/1b/1b8a",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/1c/1c02cbb25091/thumb.webp 160w, /uploads/assets/1c/1c02cbb25091/card.webp 480w, /uploads/assets/1c/1c02",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/86/86a059744c85/thumb.webp 160w, /uploads/assets/86/86a059744c85/card.webp 480w, /uploads/assets/86/86a0",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/9d/9d993f5ef5a7/pdp.webp",
+        "rendered": [
+          127,
+          127
+        ],
+        "natural": [
+          195,
+          195
+        ],
+        "sizes": "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px",
+        "srcset": "/uploads/assets/9d/9d993f5ef5a7/thumb.webp 160w, /uploads/assets/9d/9d993f5ef5a7/card.webp 480w, /uploads/assets/9d/9d99",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/93/938bb591fb3f/pdp.webp",
+        "rendered": [
+          127,
+          127
+        ],
+        "natural": [
+          195,
+          195
+        ],
+        "sizes": "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px",
+        "srcset": "/uploads/assets/93/938bb591fb3f/thumb.webp 160w, /uploads/assets/93/938bb591fb3f/card.webp 480w, /uploads/assets/93/938b",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          36,
+          36
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          36,
+          36
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          62,
+          20
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          45,
+          28
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      }
+    ],
+    "order": [
+      "BUTTON:×@0",
+      "BUTTON:@43",
+      "FORM:@0",
+      "BUTTON:@43",
+      "FORM:Join free@136",
+      "BUTTON:Join free@188",
+      "H3:Start here@0",
+      "H3:Power@0",
+      "H3:Phone batteries@0",
+      "FORM:@0",
+      "H2:Welcome back@-733",
+      "FORM:Join free@-665",
+      "BUTTON:Join free@-665",
+      "FORM:@-551",
+      "BUTTON:+@-410",
+      "H3:Phone batteries@-147",
+      "FORM:@-120",
+      "BUTTON:+@-351",
+      "BUTTON:+@-292",
+      "H3:Flash drives@-220",
+      "H3:Memory cards@-69",
+      "BUTTON:+@-233",
+      "BUTTON:+@-174",
+      "H1:GoldPlus Replacement Battery GP-39LT9 — @604",
+      "TABLE:Specifications for GoldPlus Replacement @1160",
+      "FORM:Add to cart Buy now@1526",
+      "BUTTON:Add to cart@1526",
+      "BUTTON:Buy now@1578",
+      "H2:Also in the shop@1881",
+      "H3:GoldPlus ADT-S005 USB Sound Card@2127",
+      "FORM:Add to cart Buy now@2260",
+      "BUTTON:Add to cart@2260",
+      "BUTTON:Buy now@2260",
+      "H2:Browse available products@2434",
+      "H3:GoldPlus Replacement Battery GP-39LT9 — @2680",
+      "FORM:Add to cart Buy now@2814",
+      "BUTTON:Add to cart@2814",
+      "BUTTON:Buy now@2814",
+      "H3:GoldPlus GP03BT TWS Wireless Earphones, @2680",
+      "FORM:Add to cart Buy now@2814"
+    ],
+    "hasJsonLd": true,
+    "og": "https://shopgoldplus.com/og-default.png"
+  },
+  {
+    "slug": "goldplus-charger-gp-c08",
+    "viewport": {
+      "w": 390,
+      "h": 844,
+      "dpr": 3,
+      "name": "mobile"
+    },
+    "status": 200,
+    "loadMs": 3199,
+    "imageRequests": [
+      {
+        "url": "/nav/gp-wordmark-cream-320.webp",
+        "bytes": 6252,
+        "ct": "image/webp"
+      },
+      {
+        "url": "/uploads/assets/9d/9d993f5ef5a7/pdp.webp",
+        "bytes": 19946,
+        "ct": "image/webp"
+      },
+      {
+        "url": "/uploads/assets/93/938bb591fb3f/pdp.webp",
+        "bytes": 44024,
+        "ct": "image/webp"
+      },
+      {
+        "url": "/uploads/assets/86/86a059744c85/pdp.webp",
+        "bytes": 27558,
+        "ct": "image/webp"
+      }
+    ],
+    "title": "GoldPlus GP-C08 12W USB Fast Charger, 2A (UK plug)",
+    "h1": {
+      "top": 604,
+      "left": 16,
+      "w": 358,
+      "h": 64
+    },
+    "addToCart": {
+      "top": 1931,
+      "left": 16,
+      "w": 358,
+      "h": 40
+    },
+    "addToCartText": "Add to cart",
+    "docHeight": 5740,
+    "imgsInDoc": [
+      {
+        "src": "/nav/gp-wordmark-cream-320.webp",
+        "rendered": [
+          90,
+          26
+        ],
+        "natural": [
+          91,
+          26
+        ],
+        "sizes": "(max-width: 980px) 91px, 105px",
+        "srcset": "/nav/gp-wordmark-cream-105.webp 105w, /nav/gp-wordmark-cream-160.webp 160w, /nav/gp-wordmark-cream-320.webp 320w",
+        "loading": "auto",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/93/938bb591fb3f/pdp.webp",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          200,
+          200
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/93/938bb591fb3f/thumb.webp 160w, /uploads/assets/93/938bb591fb3f/card.webp 480w, /uploads/assets/93/938b",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/9d/9d993f5ef5a7/pdp.webp",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          200,
+          200
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/9d/9d993f5ef5a7/thumb.webp 160w, /uploads/assets/9d/9d993f5ef5a7/card.webp 480w, /uploads/assets/9d/9d99",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/1b/1b8a06018270/thumb.webp 160w, /uploads/assets/1b/1b8a06018270/card.webp 480w, /uploads/assets/1b/1b8a",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/1c/1c02cbb25091/thumb.webp 160w, /uploads/assets/1c/1c02cbb25091/card.webp 480w, /uploads/assets/1c/1c02",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/86/86a059744c85/pdp.webp",
+        "rendered": [
+          0,
+          0
+        ],
+        "natural": [
+          200,
+          197
+        ],
+        "sizes": "200px",
+        "srcset": "/uploads/assets/86/86a059744c85/thumb.webp 160w, /uploads/assets/86/86a059744c85/card.webp 480w, /uploads/assets/86/86a0",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/86/86a059744c85/pdp.webp",
+        "rendered": [
+          356,
+          356
+        ],
+        "natural": [
+          1024,
+          1011
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "eager",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/9d/9d993f5ef5a7/pdp.webp",
+        "rendered": [
+          127,
+          127
+        ],
+        "natural": [
+          195,
+          195
+        ],
+        "sizes": "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px",
+        "srcset": "/uploads/assets/9d/9d993f5ef5a7/thumb.webp 160w, /uploads/assets/9d/9d993f5ef5a7/card.webp 480w, /uploads/assets/9d/9d99",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/86/86a059744c85/pdp.webp",
+        "rendered": [
+          127,
+          127
+        ],
+        "natural": [
+          195,
+          192
+        ],
+        "sizes": "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px",
+        "srcset": "/uploads/assets/86/86a059744c85/thumb.webp 160w, /uploads/assets/86/86a059744c85/card.webp 480w, /uploads/assets/86/86a0",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "/uploads/assets/93/938bb591fb3f/pdp.webp",
+        "rendered": [
+          127,
+          127
+        ],
+        "natural": [
+          195,
+          195
+        ],
+        "sizes": "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px",
+        "srcset": "/uploads/assets/93/938bb591fb3f/thumb.webp 160w, /uploads/assets/93/938bb591fb3f/card.webp 480w, /uploads/assets/93/938b",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          36,
+          36
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          36,
+          36
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          62,
+          20
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      },
+      {
+        "src": "",
+        "rendered": [
+          45,
+          28
+        ],
+        "natural": [
+          0,
+          0
+        ],
+        "sizes": null,
+        "srcset": "",
+        "loading": "lazy",
+        "fp": null
+      }
+    ],
+    "order": [
+      "BUTTON:×@0",
+      "BUTTON:@43",
+      "FORM:@0",
+      "BUTTON:@43",
+      "FORM:Join free@136",
+      "BUTTON:Join free@188",
+      "H3:Start here@0",
+      "H3:Power@0",
+      "H3:Phone batteries@0",
+      "FORM:@0",
+      "H2:Welcome back@-733",
+      "FORM:Join free@-665",
+      "BUTTON:Join free@-665",
+      "FORM:@-551",
+      "BUTTON:+@-410",
+      "H3:Phone batteries@-147",
+      "FORM:@-120",
+      "BUTTON:+@-351",
+      "BUTTON:+@-292",
+      "H3:Flash drives@-220",
+      "H3:Memory cards@-69",
+      "BUTTON:+@-233",
+      "BUTTON:+@-174",
+      "H1:GoldPlus GP-C08 12W USB Fast Charger, 2A@604",
+      "TABLE:Specifications for GoldPlus GP-C08 12W U@1182",
+      "FORM:Add to cart Buy now@1931",
+      "BUTTON:Add to cart@1931",
+      "BUTTON:Buy now@1983",
+      "H2:Also in the shop@2286",
+      "H3:GoldPlus ADT-S005 USB Sound Card@2532",
+      "FORM:Add to cart Buy now@2665",
+      "BUTTON:Add to cart@2665",
+      "BUTTON:Buy now@2665",
+      "H2:Browse available products@2839",
+      "H3:GoldPlus GP-C08 12W USB Fast Charger, 2A@3085",
+      "FORM:Add to cart Buy now@3219",
+      "BUTTON:Add to cart@3219",
+      "BUTTON:Buy now@3219",
+      "H3:GoldPlus Replacement Battery GP-39LT9 — @3085",
+      "FORM:Add to cart Buy now@3219"
+    ],
+    "hasJsonLd": true,
+    "og": "https://shopgoldplus.com/uploads/assets/86/86a059744c85/pdp.webp"
+  }
+]
