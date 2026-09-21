@@ -94,7 +94,7 @@ const statusClass = (s: string) => s === 'NEW' ? 'text-green-700' : s === 'WOULD
           <p class="text-xs text-gray-500">Applied products are skipped; STALE products (someone edited the gallery meanwhile) need a fresh plan.</p>
         </form>
       )}
-      {session.status === 'APPLIED' && <p class="text-sm text-green-700 font-bold">Applied {session.appliedAt ? new Date(session.appliedAt).toLocaleString('en-UG') : ''}. Undo per product from each gallery's history (a new revision-checked write, never a blind restore).</p>}
+      {session.status === 'APPLIED' && <p class="text-sm text-green-700 font-bold">Applied {session.appliedAt ? new Date(session.appliedAt).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' }) : ''}. Undo per product from each gallery's history (a new revision-checked write, never a blind restore).</p>}
       {session.status === 'REJECTED' && <p class="text-sm text-gray-600">Rejected: {session.rejectedReason}</p>}
       {session.applySummary && <p class="text-xs text-gray-500 font-mono">{JSON.stringify(session.applySummary)}</p>}
     </section>

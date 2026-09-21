@@ -78,7 +78,7 @@ const sessions: Session[] = json?.success ? (json.data.sessions as Session[]) : 
               <td class="px-4 py-3 font-bold text-brand-dark">{s.name}</td>
               <td class="px-4 py-3 text-xs"><span class="font-black">{s.status}</span>{s.blocking && s.status === 'PLANNED' && <span class="ml-2 text-amber-700">blocked</span>}</td>
               <td class="px-4 py-3 text-xs tabular-nums">{s.totals.TOTAL ?? 0} rows · {s.totals.NEW ?? 0} new · {s.totals.WOULD_REPLACE ?? 0} replace</td>
-              <td class="px-4 py-3 text-xs text-gray-500">{new Date(s.createdAt).toLocaleString('en-UG')}</td>
+              <td class="px-4 py-3 text-xs text-gray-500">{new Date(s.createdAt).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}</td>
               <td class="px-4 py-3 text-right"><a href={`/admin/media/imports/${s.id}`} class="text-xs font-black uppercase tracking-wider px-3 py-1.5 rounded-xl border border-gray-300 bg-white">Open</a></td>
             </tr>
           ))}

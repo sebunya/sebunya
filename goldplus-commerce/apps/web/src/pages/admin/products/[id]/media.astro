@@ -241,7 +241,7 @@ const kb = (n: number | null) => (n == null ? '' : `${Math.round(n / 1024)} kB`)
         <ul class="text-sm text-gray-600 space-y-2">
           {gallery.history.map((h) => (
             <li class="flex items-center justify-between gap-3">
-              <span><span class="font-mono text-xs">{h.action}</span> · revision {h.revision} · {new Date(h.createdAt).toLocaleString('en-UG')}</span>
+              <span><span class="font-mono text-xs">{h.action}</span> · revision {h.revision} · {new Date(h.createdAt).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}</span>
               <form method="POST"><input type="hidden" name="kind" value="action" /><input type="hidden" name="expectedRevision" value={gallery.mediaRevision} /><input type="hidden" name="type" value="UNDO" /><input type="hidden" name="auditId" value={h.id} />
                 <button type="submit" class="text-[11px] font-black uppercase tracking-wider px-3 py-1.5 rounded-xl border border-gray-300 bg-white">Restore the state before this</button></form>
             </li>
