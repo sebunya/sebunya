@@ -53,6 +53,31 @@ Read the report (`backfill-product-media-slots.report.json`: WOULD_ASSIGN_COVER 
 
 Photos named by code, unreviewed (superseded for batches, still works for a handful of files): **Admin → Product photos**, or `attach-images-by-code.ts` with the media volume mounted. Each photo goes to the product's next free slot; a full gallery is reported.
 
+## 4a. The sample images you see today (and how they go away)
+
+Until real photography arrives, every product shows four frames so the gallery is visible across the site:
+
+| Product | What it shows |
+|---|---|
+| Has a real photo (23) | Slot 1 is that photo. Slots 2–4 are the **same photo** presented three ways — a little closer, on a studio backdrop, and as it is — each with a small "SAMPLE" marker in the corner. |
+| Has no photo (160) | All four slots are a branded card reading "SAMPLE IMAGE · REAL PHOTO COMING · <SKU>". |
+
+These are placeholders, and the site treats them as such: they never go to the Google merchant feed, never become the WhatsApp/Facebook share image, and never appear in a product's structured data. A product whose only images are samples counts as having no photo.
+
+**Replacing them.** Upload the real photo into the slot in the gallery editor; it replaces that sample and nothing else. When a product has real photography in every slot, none of its samples remain.
+
+**Removing them all at once** (on the host, in the API builder image):
+
+```
+docker run --rm --network goldplus-commerce_default --env-file .env.production \
+  -e NODE_ENV=production -e DRY_RUN=0 -e MODE=remove -e REMOVE_PLACEHOLDERS=1 \
+  -e ACTOR_USER_ID=<admin uuid> -e MEDIA_STORAGE_ROOT=/data/media \
+  -v goldplus-commerce_media_uploads:/data/media -w /app/apps/api goldplus-migrator:<tag> \
+  npx tsx src/scripts/demo-gallery-frames.ts
+```
+
+Without `REMOVE_PLACEHOLDERS=1` it removes only the sample frames beside real photos and leaves the photo-less products' placeholder sets. `DRY_RUN=1` plans without writing. Every change is audited like any gallery edit.
+
 ## 5. Conflicts and recovery, in one place
 
 | Message | Meaning | What to do |

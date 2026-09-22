@@ -138,3 +138,11 @@ Trade-offs, stated: placeholder covers now appear on product cards, in search an
 ## 8. Explicit status
 
 implemented ✔ · tested ✔ (unit, architecture, real-PG on a clone, Chromium evidence) · committed ✔ · pushed ✔ · **deployed ✔ (migrations 0148–0149 live, api+web at 1ee11c58, backfill applied)**
+
+## 13. Final submission pass (2026-09-22, live at 9f555380)
+
+- **Badge**: the "SAMPLE" marker was a banner across the product; it is now ~18 % of the frame width, white on 55 % black, a marker rather than a label. All 709 frames regenerated (183 products, 0 failures).
+- **Samples cannot pose as the product anywhere**: already excluded from the merchant feed; now also excluded from `og:image`/`twitter:image` (the page hands the layout its first REAL photo) and from Product structured data — a product whose only images are samples emits **no** `image` at all, rather than a placeholder. Verified live: the flash drive exposes 1 real image and its own `og:image`; the photo-less earphone page exposes 0 and the site default.
+- **Operator documentation**: `GOLDPLUS_FOCUS4_ADMIN_GUIDE.md` §4a explains what the samples are, that a real upload replaces one sample and nothing else, and the exact command to retire them (with and without the placeholder sets).
+- **Host hygiene**: old migrator images pruned each run; disk 54 % → 50 %.
+- Full suites on the clean tree: 500 files / 8,168 tests, 0 failures. api + web 4/4 healthy, `rollback-9f555380` tagged.
