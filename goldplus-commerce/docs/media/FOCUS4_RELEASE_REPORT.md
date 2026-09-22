@@ -107,6 +107,14 @@ Screenshots: `evidence/focus4-local-2026-09-21/live-1440-fold.png`, `live-390-fo
 
 Rollback if needed: `rollback-pre-1ee11c58` images for api and web (the projection keeps the covers correct on the old code); schema objects stay; `PRODUCT_GALLERY_ENRICHMENT=false` as the containment switch.
 
+## 10. Demo frames across the site (owner decision, 2026-09-22)
+
+The owner asked for four images on every product now, using the same photo as a visible demo, so the gallery is seen site-wide before real photography arrives. Done with `apps/api/src/scripts/demo-gallery-frames.ts`: for every active product with a cover, slots 2–4 hold that product's OWN cover photo with a small corner mark ("SAMPLE 2/3/4" with pips, font-independent), each a distinct asset, alt text "Sample view (same photo as the cover, placeholder until real photos) — <SKU> frame n", assigned through the audited gallery service. Result: **23 products at 4/4, 69 sample assets, 0 orphans** (a first run had produced byte-identical frames — the container has no fonts, so the text rendered empty and the library deduplicated them; fixed with pips, and the 33 unreferenced assets pruned). The 160 active products with no image at all stay at 0/4. Removal in one command: `MODE=remove` (matches the alt marker; real photos replace a slot through the editor at any time).
+
+Live, real Chromium: GP03BT shows `1 / 4`, three previews, finite arrows, JSON-LD with 4 images; selecting the third commits `3 / 4`. A screenshot taken mid-transition showed a transient retry line and a not-yet-loaded preview; both hardened (state-driven retry line only; eagerly loaded inserted previews) and rolled as a web-only deploy.
+
+Known trade-off, stated: the merchant feed now emits the sample frames as `additional_image_link`; Google may flag text overlays on additional images. Replace with real photos or run `MODE=remove` before a Merchant Center review.
+
 ## 8. Explicit status
 
 implemented ✔ · tested ✔ (unit, architecture, real-PG on a clone, Chromium evidence) · committed ✔ · pushed ✔ · **deployed ✔ (migrations 0148–0149 live, api+web at 1ee11c58, backfill applied)**
