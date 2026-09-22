@@ -115,6 +115,14 @@ Live, real Chromium: GP03BT shows `1 / 4`, three previews, finite arrows, JSON-L
 
 Known trade-off, stated: the merchant feed now emits the sample frames as `additional_image_link`; Google may flag text overlays on additional images. Replace with real photos or run `MODE=remove` before a Merchant Center review.
 
+## 11. Self-review after the demo frames (2026-09-22) — three real defects fixed, live at 6689a34f
+
+Looking at the live screenshots rather than the DOM checks exposed what the checks had missed:
+1. **The retry line showed permanently.** `[data-gallery-error hidden]` was hidden as an attribute, but the component's `display: flex` rule outranked the user-agent `[hidden]` style (Tailwind's preflight is off in this app). The arrows were affected the same way in the no-JS state. Fix: an explicit `.gp-gallery [hidden] { display: none !important }`.
+2. **A runtime-created preview rendered at full size.** Astro scopes component styles with a data attribute that nodes created by the controller never receive, so the demoted cover's preview had no styling. Fix: the gallery stylesheet is `is:global` under its own namespace.
+3. **The gallery was below the fold on a laptop.** A square stage at 56 % width put the previews and arrows at 930 px+. Fix: on ≥1024 px the previews form a vertical rail beside a stage capped at `min(72vh, 640px)`; measured live at 1440×900: previews from 273 px, controls at 836 px — all inside the first screen. Mobile keeps the row under the stage (controls 554 px, previews 610 px).
+4. **Demo frames were four identical pictures.** Replaced with three distinct views derived from the same real photo (centre detail at 1.6×, lower-right close-up at 2×, full), each marked with a corner badge; the first fill's identical frames were removed (69 assets pruned) and refilled: 23 products, 69 frames, 0 failures. A first replacement attempt ran the remove as a fill because `MODE` was set on the host shell instead of `-e MODE` in the container — corrected. The badge text needs a font the ops container lacks, so the badge shows the pips only; the alt text carries the words.
+
 ## 8. Explicit status
 
 implemented ✔ · tested ✔ (unit, architecture, real-PG on a clone, Chromium evidence) · committed ✔ · pushed ✔ · **deployed ✔ (migrations 0148–0149 live, api+web at 1ee11c58, backfill applied)**
