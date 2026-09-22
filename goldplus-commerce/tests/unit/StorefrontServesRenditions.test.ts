@@ -43,7 +43,8 @@ describe('the storefront serves renditions', () => {
     const feed = read('apps/api/src/infrastructure/db/repositories/DrizzleSeoGrowthRepository.ts');
     // The gallery's rendition first; the legacy column only when there is no gallery image.
     // Focus 4: slot 1 first (galleryOrderSql), legacy rows hidden once migrated (galleryVisibleSql), legacy column last.
-    expect(feed).toContain("coalesce((select ${displayImageUrlSql('i')} from product_images i where i.product_id = p.id and ${galleryVisibleSql('i', sql.raw('p.id'))} order by ${galleryOrderSql('i')} limit 1), p.image_url) as image_url");
+    // A sample/placeholder frame (alt "Sample …") never reaches Google; a migrated product with only samples counts as "no image".
+    expect(feed).toContain("coalesce((select ${displayImageUrlSql('i')} from product_images i where i.product_id = p.id and ${galleryVisibleSql('i', sql.raw('p.id'))} and coalesce(i.alt_text, '') not like 'Sample %' order by ${galleryOrderSql('i')} limit 1), case when exists (select 1 from product_images s where s.product_id = p.id and s.slot is not null) then null else p.image_url end) as image_url");
     for (const r of ['DrizzleBatteryCatalogueRepository', 'DrizzleBatteryFinderRepository']) {
       const src = read(`apps/api/src/infrastructure/db/repositories/${r}.ts`);
       expect(src, r).toMatch(/COALESCE\(\(SELECT \$\{displayImageUrlSql\('i'\)\}.*LIMIT 1\), \$\{products\.imageUrl\}\)/);
