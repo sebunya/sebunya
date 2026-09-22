@@ -102,10 +102,11 @@ async function sampleFrame(sharp: any, source: Buffer, slot: 2 | 3 | 4): Promise
   source = await base.png().toBuffer();
   const meta = await sharp(source).metadata();
   const w = meta.width ?? 1000; const h = meta.height ?? 1000;
-  const px = Math.max(2, Math.round(w * 0.0065));
-  const measured = glyphText(LABELS[slot], px, 0, 0, '#93D500');
+  // Small and quiet: a marker, not a banner. Sized so the badge is ~18% of the frame width.
+  const px = Math.max(1, Math.round((w * 0.18) / (LABELS[slot].length * 6)));
+  const measured = glyphText(LABELS[slot], px, 0, 0, '#FFFFFF');
   const badgeW = measured.width + px * 8; const badgeH = px * 7 + px * 6;
-  const badge = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${badgeW}" height="${badgeH}"><rect width="100%" height="100%" rx="${Math.round(badgeH / 2)}" fill="#0A0A0A" fill-opacity="0.78"/>${glyphText(LABELS[slot], px, px * 4, px * 3, '#93D500').svg}</svg>`);
+  const badge = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${badgeW}" height="${badgeH}"><rect width="100%" height="100%" rx="${Math.round(badgeH / 2)}" fill="#0A0A0A" fill-opacity="0.55"/>${glyphText(LABELS[slot], px, px * 4, px * 3, '#FFFFFF').svg}</svg>`);
   return sharp(source).composite([{ input: badge, top: Math.round(h * 0.03), left: Math.round(w - badgeW - w * 0.03) }]).webp({ quality: 82 }).toBuffer();
 }
 

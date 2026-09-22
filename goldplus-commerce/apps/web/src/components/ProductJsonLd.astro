@@ -50,9 +50,13 @@ if (specEntries.length > 0) {
 
 // Focus 4: every available canonical image, slot 1 first, absolute, no empties.
 const abs = (u: string) => (/^https?:\/\//i.test(u) ? u : `${SITE_ORIGIN}${u}`);
-const jsonLdImages = (product.images ?? []).map((i) => i.url).filter((u): u is string => typeof u === 'string' && u.length > 0).map(abs);
+// Demo/sample frames (alt begins "Sample ") are placeholders: they must never be published as
+// this product's picture to Google or any other consumer of structured data.
+const jsonLdImages = (product.images ?? [])
+  .filter((i) => !(i.alt ?? '').startsWith('Sample '))
+  .map((i) => i.url).filter((u): u is string => typeof u === 'string' && u.length > 0).map(abs);
 if (jsonLdImages.length > 0) node.image = jsonLdImages.length === 1 ? jsonLdImages[0] : jsonLdImages;
-else if (product.primaryImageUrl) node.image = abs(product.primaryImageUrl);
+// No real photograph: no `image` at all. A placeholder card is not a picture of the product.
 
 const verifiedAttrs = product.attributeValues.filter((v) => v.isVerified);
 if (verifiedAttrs.length > 0) {

@@ -19,7 +19,8 @@ describe('share image is the product photo', () => {
   });
 
   it('the product page passes its primary photo to the layout', () => {
-    expect(web('pages/products/[slug].astro')).toMatch(/<BaseLayout[^>]*image=\{product\?\.primaryImageUrl \?\? undefined\}/);
+    // The first REAL photo: a demo/sample frame (alt "Sample …") is never the share image.
+    expect(web('pages/products/[slug].astro')).toMatch(/<BaseLayout[^>]*image=\{product\?\.images\?\.find\(\(i\) => !\(i\.alt \?\? ''\)\.startsWith\('Sample '\)\)\?\.url \?\? undefined\}/);
   });
 
   it('structured data carries absolute image URLs', () => {
