@@ -99,31 +99,43 @@ const uid = `gallery-${Math.random().toString(36).slice(2, 8)}`;
   </div>
 )}
 
-<style>
-  .gp-gallery { display: grid; gap: 0.75rem; }
-  /* Reserved square geometry: the image never causes layout shift. */
-  .gp-gallery__stage { aspect-ratio: 1 / 1; width: 100%; }
+<style is:global>
+  /* GLOBAL on purpose: the controller creates preview nodes at runtime, and Astro's scoped
+     styles would not reach them (they carry no scope attribute). The gp-gallery__ namespace
+     keeps this contained. */
+  .gp-gallery [hidden] { display: none !important; }
+  .gp-gallery { display: grid; gap: 0.75rem; grid-template-areas: "stage" "controls" "previews"; }
+  /* Reserved square geometry: the image never causes layout shift. Capped so the previews and
+     the arrows stay inside the first screen on a laptop instead of below the fold. */
+  .gp-gallery__stage { grid-area: stage; aspect-ratio: 1 / 1; width: 100%; max-height: min(72vh, 680px); margin-inline: auto; }
   .gp-gallery__image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; padding: 1.25rem; background: #fff; }
-  .gp-gallery__pending { position: absolute; inset: 0; background: rgba(255,255,255,0.35); backdrop-filter: saturate(0.9); }
+  .gp-gallery__pending { position: absolute; inset: 0; background: rgba(255,255,255,0.35); }
   .gp-gallery__pending::after { content: ''; position: absolute; left: 50%; top: 50%; width: 28px; height: 28px; margin: -14px 0 0 -14px; border-radius: 50%; border: 3px solid #E5E5E5; border-top-color: #93D500; animation: gp-gallery-spin 0.8s linear infinite; }
   @keyframes gp-gallery-spin { to { transform: rotate(360deg); } }
   .gp-gallery__error { position: absolute; left: 0.75rem; right: 0.75rem; bottom: 0.75rem; margin: 0; display: flex; gap: 0.75rem; align-items: center; justify-content: center; font-size: 0.8125rem; font-weight: 600; color: #1C1C1C; background: #F7F7F7; border: 1px solid #E5E5E5; border-radius: 9999px; padding: 0.5rem 0.75rem; }
   .gp-gallery__retry { font-weight: 800; text-decoration: underline; text-underline-offset: 2px; color: #0A0A0A; }
-  .gp-gallery__controls { display: flex; align-items: center; justify-content: center; gap: 0.75rem; min-height: 44px; border-radius: 0.5rem; outline: none; }
+  .gp-gallery__controls { grid-area: controls; display: flex; align-items: center; justify-content: center; gap: 0.75rem; min-height: 44px; border-radius: 0.5rem; outline: none; }
   .gp-gallery__controls:focus-visible { box-shadow: 0 0 0 4px rgba(147, 213, 0, 0.3); }
   .gp-gallery__arrow { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 9999px; border: 1px solid #E5E5E5; background: #fff; color: #0A0A0A; cursor: pointer; }
   .gp-gallery__arrow:hover { border-color: #93D500; }
   .gp-gallery__arrow:disabled { opacity: 0.35; cursor: not-allowed; }
   .gp-gallery__arrow:focus-visible { outline: none; box-shadow: 0 0 0 4px rgba(147, 213, 0, 0.3); }
   .gp-gallery__counter { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.06em; color: #6B6B6B; font-variant-numeric: tabular-nums; min-width: 3.5rem; text-align: center; }
-  .gp-gallery__previews { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0; padding: 0; list-style: none; justify-content: center; }
+  .gp-gallery__previews { grid-area: previews; display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0; padding: 0; list-style: none; justify-content: center; }
   .gp-gallery__preview { display: block; width: 64px; height: 64px; border-radius: 0.75rem; overflow: hidden; border: 1px solid #E5E5E5; background: #fff; outline: none; }
-  @media (min-width: 640px) { .gp-gallery__preview { width: 76px; height: 76px; } }
-  @media (min-width: 1024px) { .gp-gallery__preview { width: 84px; height: 84px; } }
-  .gp-gallery__preview img { width: 100%; height: 100%; object-fit: contain; padding: 4px; }
+  .gp-gallery__preview img { display: block; width: 100%; height: 100%; object-fit: contain; padding: 4px; }
   .gp-gallery__preview:hover { border-color: #93D500; }
   .gp-gallery__preview:focus-visible { box-shadow: 0 0 0 4px rgba(147, 213, 0, 0.3); border-color: #93D500; }
   .gp-gallery__preview[data-thumb-failed] { display: flex; align-items: center; justify-content: center; font-size: 0.6875rem; font-weight: 700; color: #6B6B6B; text-align: center; padding: 4px; }
+  @media (min-width: 640px) { .gp-gallery__preview { width: 76px; height: 76px; } }
+  /* Desktop: a vertical preview rail beside the stage, so the alternatives are visible at once
+     without scrolling; the arrows and counter sit under the stage. */
+  @media (min-width: 1024px) {
+    .gp-gallery { grid-template-columns: 88px minmax(0, 1fr); grid-template-areas: "previews stage" "previews controls"; align-items: start; column-gap: 0.875rem; }
+    .gp-gallery__previews { flex-direction: column; flex-wrap: nowrap; justify-content: flex-start; }
+    .gp-gallery__preview { width: 84px; height: 84px; }
+    .gp-gallery__stage { max-height: min(72vh, 640px); }
+  }
   @media (prefers-reduced-motion: reduce) { .gp-gallery__pending::after { animation: none; } }
 </style>
 

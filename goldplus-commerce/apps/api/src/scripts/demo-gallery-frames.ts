@@ -26,9 +26,21 @@ import type { GallerySlot } from '@goldplus/shared';
  * a slot without touching the others.
  */
 export const SAMPLE_ALT_PREFIX = 'Sample view (same photo as the cover, placeholder until real photos)';
-const LABELS: Record<2 | 3 | 4, string> = { 2: 'SAMPLE 2', 3: 'SAMPLE 3', 4: 'SAMPLE 4' };
+const LABELS: Record<2 | 3 | 4, string> = { 2: 'SAMPLE · DETAIL', 3: 'SAMPLE · CLOSE-UP', 4: 'SAMPLE · FULL' };
 
+/**
+ * Three visibly different views derived from the SAME real photo, so the demo shows what
+ * a gallery is for: slot 2 = the centre at 1.6×, slot 3 = the lower-right quarter at 2×
+ * (where the loose product sits on GoldPlus packaging shots), slot 4 = the full photo.
+ * Crops of a real photo state nothing new about the product; the badge says which view.
+ */
 async function sampleFrame(sharp: any, source: Buffer, slot: 2 | 3 | 4): Promise<Buffer> {
+  const meta0 = await sharp(source).metadata();
+  const W = meta0.width ?? 1000; const H = meta0.height ?? 1000;
+  let base = sharp(source);
+  if (slot === 2) base = sharp(source).extract({ left: Math.round(W * 0.19), top: Math.round(H * 0.19), width: Math.round(W * 0.62), height: Math.round(H * 0.62) }).resize(W, H, { fit: 'cover' });
+  if (slot === 3) base = sharp(source).extract({ left: Math.round(W * 0.5), top: Math.round(H * 0.45), width: Math.round(W * 0.5), height: Math.round(H * 0.5) }).resize(W, H, { fit: 'cover' });
+  source = await base.png().toBuffer();
   const meta = await sharp(source).metadata();
   const w = meta.width ?? 1000; const h = meta.height ?? 1000;
   const badgeW = Math.round(w * 0.22); const badgeH = Math.round(h * 0.07); const font = Math.round(badgeH * 0.55);
