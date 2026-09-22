@@ -26,30 +26,77 @@ import type { GallerySlot } from '@goldplus/shared';
  * a slot without touching the others.
  */
 export const SAMPLE_ALT_PREFIX = 'Sample view (same photo as the cover, placeholder until real photos)';
-const LABELS: Record<2 | 3 | 4, string> = { 2: 'SAMPLE · DETAIL', 3: 'SAMPLE · CLOSE-UP', 4: 'SAMPLE · FULL' };
+const LABELS: Record<2 | 3 | 4, string> = { 2: 'SAMPLE DETAIL', 3: 'SAMPLE CLOSE-UP', 4: 'SAMPLE FULL' };
 
 /**
- * Three visibly different views derived from the SAME real photo, so the demo shows what
- * a gallery is for: slot 2 = the centre at 1.6×, slot 3 = the lower-right quarter at 2×
- * (where the loose product sits on GoldPlus packaging shots), slot 4 = the full photo.
- * Crops of a real photo state nothing new about the product; the badge says which view.
+ * A tiny 5×7 glyph set drawn as rectangles: the badge text never depends on a font, so it
+ * renders identically in the ops container (which has none), and each frame's bytes differ
+ * by its words rather than by luck.
+ */
+const GLYPHS: Record<string, string[]> = {
+  A: ['01110', '10001', '10001', '11111', '10001', '10001', '10001'],
+  C: ['01110', '10001', '10000', '10000', '10000', '10001', '01110'],
+  D: ['11110', '10001', '10001', '10001', '10001', '10001', '11110'],
+  E: ['11111', '10000', '10000', '11110', '10000', '10000', '11111'],
+  F: ['11111', '10000', '10000', '11110', '10000', '10000', '10000'],
+  I: ['11111', '00100', '00100', '00100', '00100', '00100', '11111'],
+  L: ['10000', '10000', '10000', '10000', '10000', '10000', '11111'],
+  M: ['10001', '11011', '10101', '10101', '10001', '10001', '10001'],
+  O: ['01110', '10001', '10001', '10001', '10001', '10001', '01110'],
+  P: ['11110', '10001', '10001', '11110', '10000', '10000', '10000'],
+  S: ['01111', '10000', '10000', '01110', '00001', '00001', '11110'],
+  T: ['11111', '00100', '00100', '00100', '00100', '00100', '00100'],
+  U: ['10001', '10001', '10001', '10001', '10001', '10001', '01110'],
+  '-': ['00000', '00000', '00000', '11111', '00000', '00000', '00000'],
+  ' ': ['00000', '00000', '00000', '00000', '00000', '00000', '00000'],
+};
+function glyphText(text: string, px: number, x0: number, y0: number, fill: string): { svg: string; width: number } {
+  let svg = ''; let x = x0;
+  for (const ch of text) {
+    const g = GLYPHS[ch] ?? GLYPHS[' '];
+    g.forEach((row, r) => { for (let c = 0; c < 5; c++) if (row[c] === '1') svg += `<rect x="${x + c * px}" y="${y0 + r * px}" width="${px}" height="${px}" fill="${fill}"/>`; });
+    x += 6 * px;
+  }
+  return { svg, width: x - x0 - px };
+}
+
+/** Where the product actually is: the photo minus its plain background. Falls back to the full frame. */
+async function contentBox(sharp: any, source: Buffer, W: number, H: number): Promise<{ left: number; top: number; width: number; height: number }> {
+  try {
+    const { info } = await sharp(source).trim({ threshold: 24 }).toBuffer({ resolveWithObject: true });
+    const left = Math.max(0, -(info.trimOffsetLeft ?? 0)); const top = Math.max(0, -(info.trimOffsetTop ?? 0));
+    if (info.width >= W * 0.15 && info.height >= H * 0.15) return { left, top, width: info.width, height: info.height };
+  } catch { /* fall through to the full frame */ }
+  return { left: 0, top: 0, width: W, height: H };
+}
+
+/**
+ * Three visibly different views derived from the SAME real photo, so the demo shows what a
+ * gallery is for: slot 2 = the content's centre at 1.6×, slot 3 = the content's right half at
+ * 2× (the loose product on GoldPlus packaging shots), slot 4 = the full photo. Crops of a real
+ * photo state nothing new about the product; the badge says which view.
  */
 async function sampleFrame(sharp: any, source: Buffer, slot: 2 | 3 | 4): Promise<Buffer> {
   const meta0 = await sharp(source).metadata();
   const W = meta0.width ?? 1000; const H = meta0.height ?? 1000;
+  const box = await contentBox(sharp, source, W, H);
+  const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, Math.round(v)));
   let base = sharp(source);
-  if (slot === 2) base = sharp(source).extract({ left: Math.round(W * 0.19), top: Math.round(H * 0.19), width: Math.round(W * 0.62), height: Math.round(H * 0.62) }).resize(W, H, { fit: 'cover' });
-  if (slot === 3) base = sharp(source).extract({ left: Math.round(W * 0.5), top: Math.round(H * 0.45), width: Math.round(W * 0.5), height: Math.round(H * 0.5) }).resize(W, H, { fit: 'cover' });
+  if (slot === 2) {
+    const cw = clamp(box.width * 0.62, 64, W); const ch = clamp(box.height * 0.62, 64, H);
+    base = sharp(source).extract({ left: clamp(box.left + (box.width - cw) / 2, 0, W - cw), top: clamp(box.top + (box.height - ch) / 2, 0, H - ch), width: cw, height: ch }).resize(W, H, { fit: 'cover' });
+  }
+  if (slot === 3) {
+    const cw = clamp(box.width * 0.5, 64, W); const ch = clamp(box.height * 0.55, 64, H);
+    base = sharp(source).extract({ left: clamp(box.left + box.width - cw, 0, W - cw), top: clamp(box.top + (box.height - ch) / 2, 0, H - ch), width: cw, height: ch }).resize(W, H, { fit: 'cover' });
+  }
   source = await base.png().toBuffer();
   const meta = await sharp(source).metadata();
   const w = meta.width ?? 1000; const h = meta.height ?? 1000;
-  const badgeW = Math.round(w * 0.22); const badgeH = Math.round(h * 0.07); const font = Math.round(badgeH * 0.55);
-  // The container may have no fonts (text then renders empty and every frame would be
-  // byte-identical → the library deduplicates them into ONE asset → DUPLICATE_ASSET).
-  // So the frame number is also drawn as pips (2, 3 or 4 dots), which never need a font.
-  const pipR = Math.round(badgeH * 0.16);
-  const pips = Array.from({ length: slot }, (_, i) => `<circle cx="${Math.round(badgeW * 0.12 + i * pipR * 2.6)}" cy="${Math.round(badgeH / 2)}" r="${pipR}" fill="#93D500"/>`).join('');
-  const badge = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${badgeW}" height="${badgeH}"><rect width="100%" height="100%" rx="${Math.round(badgeH / 2)}" fill="#0A0A0A" fill-opacity="0.72"/>${pips}<text x="62%" y="52%" dominant-baseline="middle" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="${font}" font-weight="700" letter-spacing="1" fill="#93D500">${LABELS[slot]}</text></svg>`);
+  const px = Math.max(2, Math.round(w * 0.0065));
+  const measured = glyphText(LABELS[slot], px, 0, 0, '#93D500');
+  const badgeW = measured.width + px * 8; const badgeH = px * 7 + px * 6;
+  const badge = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${badgeW}" height="${badgeH}"><rect width="100%" height="100%" rx="${Math.round(badgeH / 2)}" fill="#0A0A0A" fill-opacity="0.78"/>${glyphText(LABELS[slot], px, px * 4, px * 3, '#93D500').svg}</svg>`);
   return sharp(source).composite([{ input: badge, top: Math.round(h * 0.03), left: Math.round(w - badgeW - w * 0.03) }]).webp({ quality: 82 }).toBuffer();
 }
 
@@ -116,6 +163,11 @@ async function main() {
   console.log(`${dryRun ? 'DRY RUN — nothing written.' : 'APPLIED.'} mode=${mode} products ${totals.products}, frames ${mode === 'remove' ? 'removed' : 'added'} ${mode === 'remove' ? totals.framesRemoved : totals.framesAdded}, skipped ${totals.skipped}, failed ${totals.failed}. Products without any cover are untouched (${all.filter((p) => p.active && !p.hasCover).length}).`);
 }
 
-main()
-  .then(async () => { await endDbConnection(); process.exit(0); })
-  .catch(async (error) => { console.error('FAILED:', error instanceof Error ? error.message : error); await endDbConnection(); process.exit(1); });
+/** Exported so a local check can render frames from a file without a database. */
+export { sampleFrame };
+
+if (process.env.DEMO_FRAMES_NO_MAIN !== '1') {
+  main()
+    .then(async () => { await endDbConnection(); process.exit(0); })
+    .catch(async (error) => { console.error('FAILED:', error instanceof Error ? error.message : error); await endDbConnection(); process.exit(1); });
+}
