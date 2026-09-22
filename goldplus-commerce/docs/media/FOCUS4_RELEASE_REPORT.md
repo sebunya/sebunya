@@ -123,6 +123,18 @@ Looking at the live screenshots rather than the DOM checks exposed what the chec
 3. **The gallery was below the fold on a laptop.** A square stage at 56 % width put the previews and arrows at 930 px+. Fix: on ≥1024 px the previews form a vertical rail beside a stage capped at `min(72vh, 640px)`; measured live at 1440×900: previews from 273 px, controls at 836 px — all inside the first screen. Mobile keeps the row under the stage (controls 554 px, previews 610 px).
 4. **Demo frames were four identical pictures.** Replaced with three distinct views derived from the same real photo (centre detail at 1.6×, lower-right close-up at 2×, full), each marked with a corner badge; the first fill's identical frames were removed (69 assets pruned) and refilled: 23 products, 69 frames, 0 failures. A first replacement attempt ran the remove as a fill because `MODE` was set on the host shell instead of `-e MODE` in the container — corrected. The badge text needs a font the ops container lacks, so the badge shows the pips only; the alt text carries the words.
 
+## 12. Whole-site demo and design pass (2026-09-22, live at 2afc243c + frames from 7d-series script)
+
+Owner feedback: the extra frames "look out of place and feel zoomed in", and the demo had not reached the 160 products without a photo.
+
+- **Frames are gentle variations of the whole photo, not crops**: slot 2 = the object a little closer (the content box at 1.12×, square, so a flash drive stays a flash drive), slot 3 = the same photo at 84 % on a soft studio backdrop, slot 4 = the photo as it is. Badges read "SAMPLE DETAIL / STUDIO / FULL", drawn from a built-in 5×7 glyph set (no font dependency). Regenerated on the 23 photographed products (69 frames, 0 failures).
+- **Every product now has four frames**: the 160 photo-less products received a labelled placeholder set (a branded card reading "SAMPLE IMAGE · REAL PHOTO COMING · <SKU>", four tinted variants) — 640 frames, 0 failures. `MODE=remove` leaves these unless `REMOVE_PLACEHOLDERS=1`.
+- **Google is protected**: the merchant feed treats any frame whose alt starts with "Sample " as absent and a migrated product with only sample frames as "no image" — verified on the live feed: 23 items, 0 sample references, 0 additional images.
+- **Design**: arrows are quiet overlays at the stage edges (fade in on hover on pointer devices, always visible on touch, hidden at the ends), the counter is a small pill inside the stage, the stage is a flat white card with less padding, previews sit in a rail beside it on desktop; the controls row that pushed the page down is gone. Delivery information moved below the buying actions, which now sit inside the first screen on a laptop.
+- Verified live from the host through the public route (the workstation's own connection was refusing Cloudflare at that moment): placeholder page, flash-drive page and GP03BT page each render `1 / 4`, three previews and the overlay arrows; api and web 4/4 healthy at 2afc243c; host disk 51 % after 640 new assets and rollback images.
+
+Trade-offs, stated: placeholder covers now appear on product cards, in search and in recommendation rails for the 160 photo-less products (the owner asked for the demo across the entire site); they are visibly labelled and one command removes them. The JSON-LD `image` arrays on those pages contain placeholder URLs until real photos replace them.
+
 ## 8. Explicit status
 
 implemented ✔ · tested ✔ (unit, architecture, real-PG on a clone, Chromium evidence) · committed ✔ · pushed ✔ · **deployed ✔ (migrations 0148–0149 live, api+web at 1ee11c58, backfill applied)**
