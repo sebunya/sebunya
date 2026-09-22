@@ -89,6 +89,24 @@ Also fixed in self-review: the older product edit page still offered "add image 
 
 The first run found a real defect: readiness required the 1024 px `pdp` rendition, and the generator never upscales, so **every valid original narrower than 1024 px was refused** as "not ready" — the false rejection of smaller legacy assets the brief forbids. Fixed: ready = ACTIVE and (display rendition exists OR original width ≤ 1024). Also fixed: a malformed image id on the legacy delete route produced a 500 (now 404). Rerun on a fresh clone: **17/17** (admin API 8, mutation 9). Backfill dry run over the whole production copy: **29 × ASSIGN_COVER, 0 conflicts** — the 29 current primaries would each become slot 1, nothing else invented. Enrichment-off render captured locally (`evidence/focus4-local-2026-09-21/enrichment-off.txt`): gallery marked off, zero previews, zero controls, cover served with `fetchpriority=high`, `og:image` = slot 1.
 
+## 9. DEPLOYED to production — 2026-09-21/22 (owner: "git push and deploy, don't hold back")
+
+| Step | Result |
+|---|---|
+| Push | `deploy/price-floor-145k` fast-forwarded `b580b3e5 → 1ee11c58` (the Focus 4 branch, 13 commits) |
+| Migrator image | `goldplus-migrator:1ee11c58` built on the host (Steward admitted; its "a migration is running" DEFER was a `pgrep` false positive on the wrapper shell's own command line — the build proceeded) |
+| `migrate-prod.sh … focus4-0148-0149` | backup `goldplus-prod-pre-focus4-0148-0149-20260921-141706.dump` (158 MB) → ephemeral clone restored (367 tables = live) → migrator run twice → **REHEARSE_OK** → live → assertion 1 (slot column, partial unique index, both import tables) |
+| `deploy-prod.sh 1ee11c58 api web` | rolled; the SSH session dropped after the roll, verified afterwards: 4/4 healthy on the new images, `rollback-1ee11c58` and `rollback-pre-1ee11c58` tags present, lock free, checkout at 1ee11c58, gallery markup present in the running web image |
+| Backfill dry run (production, media volume mounted) | scanned 29 · would assign 29 · conflicts 0 |
+| Backfill apply | **APPLIED: 29 assigned, 0 conflicts, 0 stale, 0 failed**; live DB: 29 products `media_revision > 0`, 29 covers, 0 legacy rows, 29 audit rows, 29 gallery usages, 0 products with `has_image` but no cover |
+| Live, real Chromium (probe cookie) | GP03BT: gallery mounted, cover `pdp.webp` with `srcset`/`sizes`/`fetchpriority=high`, JSON-LD image absolute, `og:image` = slot 1, no horizontal overflow at 1440 or 390; GP-C08 likewise; `/shop` and `/` show 10 and 13 cover images, **0 broken** |
+| Purchase action on the real GP03BT | 1440×900: Add to cart top **929 px** (baseline 1700) — a content-driven exception: the real title is 78 characters and the summary is two lines, so the action sits just under the 900 px fold on desktop; 390×844: **1226 px**, above the spec table at 1623 (baseline 2235) |
+| API errors since the roll | only the pre-existing Lighthouse shortfall reports; 0 × 5xx |
+
+Screenshots: `evidence/focus4-local-2026-09-21/live-1440-fold.png`, `live-390-fold.png`.
+
+Rollback if needed: `rollback-pre-1ee11c58` images for api and web (the projection keeps the covers correct on the old code); schema objects stay; `PRODUCT_GALLERY_ENRICHMENT=false` as the containment switch.
+
 ## 8. Explicit status
 
-implemented ✔ · tested ✔ (unit, architecture, real-PG on a clone, Chromium evidence) · committed ✔ · pushed ✘ · deployed ✘
+implemented ✔ · tested ✔ (unit, architecture, real-PG on a clone, Chromium evidence) · committed ✔ · pushed ✔ · **deployed ✔ (migrations 0148–0149 live, api+web at 1ee11c58, backfill applied)**
