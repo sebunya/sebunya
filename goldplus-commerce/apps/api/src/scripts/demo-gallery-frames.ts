@@ -15,7 +15,7 @@ import type { GallerySlot } from '@goldplus/shared';
  * audited gallery service, and removable with MODE=remove.
  *
  *   MODE=fill    (default)  add sample frames to empty slots 2–4
- *   MODE=remove             remove every frame this script created (by its alt marker)
+ *   MODE=remove             remove the sample frames beside real covers (REMOVE_PLACEHOLDERS=1 also removes placeholder sets)
  *   DRY_RUN=1    (default)  plan only
  *   ACTOR_USER_ID=<uuid>    required to apply
  *   ONLY=<sku>[,<sku>]      restrict to some products
@@ -26,7 +26,7 @@ import type { GallerySlot } from '@goldplus/shared';
  * a slot without touching the others.
  */
 export const SAMPLE_ALT_PREFIX = 'Sample view (same photo as the cover, placeholder until real photos)';
-const LABELS: Record<2 | 3 | 4, string> = { 2: 'SAMPLE DETAIL', 3: 'SAMPLE CLOSE-UP', 4: 'SAMPLE FULL' };
+const LABELS: Record<2 | 3 | 4, string> = { 2: 'SAMPLE DETAIL', 3: 'SAMPLE STUDIO', 4: 'SAMPLE FULL' };
 
 /**
  * A tiny 5×7 glyph set drawn as rectangles: the badge text never depends on a font, so it
@@ -75,10 +75,10 @@ async function contentBox(sharp: any, source: Buffer, W: number, H: number): Pro
 }
 
 /**
- * Three visibly different views derived from the SAME real photo, so the demo shows what a
- * gallery is for: slot 2 = the content's centre at 1.6×, slot 3 = the content's right half at
- * 2× (the loose product on GoldPlus packaging shots), slot 4 = the full photo. Crops of a real
- * photo state nothing new about the product; the badge says which view.
+ * Three gentle variations of the SAME real photo (owner: "use the same image"), designed to
+ * look like a set rather than crops: slot 2 = the whole object a little closer (1.3× on the
+ * content box, so it never becomes an abstract slab), slot 3 = the same photo on a soft
+ * studio backdrop, slot 4 = the photo as it is. Each carries a corner badge naming the view.
  */
 async function sampleFrame(sharp: any, source: Buffer, slot: 2 | 3 | 4): Promise<Buffer> {
   const meta0 = await sharp(source).metadata();
@@ -87,12 +87,17 @@ async function sampleFrame(sharp: any, source: Buffer, slot: 2 | 3 | 4): Promise
   const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, Math.round(v)));
   let base = sharp(source);
   if (slot === 2) {
-    const cw = clamp(box.width * 0.62, 64, W); const ch = clamp(box.height * 0.62, 64, H);
-    base = sharp(source).extract({ left: clamp(box.left + (box.width - cw) / 2, 0, W - cw), top: clamp(box.top + (box.height - ch) / 2, 0, H - ch), width: cw, height: ch }).resize(W, H, { fit: 'cover' });
+    // Whole content box, with a little breathing room, scaled to fill: the object is closer, not cut.
+    const cw = clamp(box.width * 1.12, 64, W); const ch = clamp(box.height * 1.12, 64, H);
+    const side = Math.max(cw, ch);
+    const cw2 = clamp(side, 64, W); const ch2 = clamp(side, 64, H);
+    base = sharp(source).extract({ left: clamp(box.left + (box.width - cw2) / 2, 0, W - cw2), top: clamp(box.top + (box.height - ch2) / 2, 0, H - ch2), width: cw2, height: ch2 }).resize(W, H, { fit: 'cover' });
   }
   if (slot === 3) {
-    const cw = clamp(box.width * 0.5, 64, W); const ch = clamp(box.height * 0.55, 64, H);
-    base = sharp(source).extract({ left: clamp(box.left + box.width - cw, 0, W - cw), top: clamp(box.top + (box.height - ch) / 2, 0, H - ch), width: cw, height: ch }).resize(W, H, { fit: 'cover' });
+    // The same photo, 84 % size, on a soft studio backdrop — a different presentation, the same truth.
+    const inner = await sharp(source).resize(Math.round(W * 0.84), Math.round(H * 0.84), { fit: 'inside' }).png().toBuffer();
+    const im = await sharp(inner).metadata();
+    base = sharp({ create: { width: W, height: H, channels: 4, background: '#EEF1F4' } }).composite([{ input: inner, left: Math.round((W - (im.width ?? 0)) / 2), top: Math.round((H - (im.height ?? 0)) / 2) }]);
   }
   source = await base.png().toBuffer();
   const meta = await sharp(source).metadata();
@@ -160,7 +165,8 @@ async function main() {
 
     if (mode === 'remove') {
       // Sample frames on a real cover leave slots 2–4; a placeholder set (sample cover) leaves entirely.
-      const sampleSlots = snap.rows.filter((row) => row.slot && ((row.altText ?? '').startsWith(SAMPLE_ALT_PREFIX) || (row.altText ?? '').startsWith(PLACEHOLDER_ALT_PREFIX))).map((row) => row.slot as GallerySlot);
+      const removePlaceholders = process.env.REMOVE_PLACEHOLDERS === '1';
+      const sampleSlots = snap.rows.filter((row) => row.slot && ((row.altText ?? '').startsWith(SAMPLE_ALT_PREFIX) || (removePlaceholders && (row.altText ?? '').startsWith(PLACEHOLDER_ALT_PREFIX)))).map((row) => row.slot as GallerySlot);
       if (sampleSlots.length === 0) { totals.skipped += 1; continue; }
       totals.products += 1;
       if (dryRun) { totals.framesRemoved += sampleSlots.length; console.log(`${p.sku}: would remove sample slots ${sampleSlots.join(',')}`); continue; }
