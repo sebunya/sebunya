@@ -239,7 +239,8 @@ const uid = `gallery-${Math.random().toString(36).slice(2, 8)}`;
           const a = document.createElement('a');
           a.href = m.src; a.className = 'gp-gallery__preview'; a.dataset.galleryPreview = '';
           const img = document.createElement('img');
-          img.src = m.thumb; img.alt = ''; img.width = 160; img.height = 160; img.loading = 'lazy'; img.decoding = 'async'; img.dataset.galleryThumb = '';
+          // A preview created after a commit (the demoted cover) is in view now: load it eagerly so the row never shows a gap.
+          img.src = m.thumb; img.alt = ''; img.width = 160; img.height = 160; img.loading = 'eager'; img.decoding = 'async'; img.dataset.galleryThumb = '';
           a.appendChild(img); li.appendChild(a);
           wireThumb(img, m.id);
         }
@@ -309,10 +310,10 @@ const uid = `gallery-${Math.random().toString(36).slice(2, 8)}`;
       const swapped = /image-unavailable\.svg$/.test(img.currentSrc || img.src);
       if (swapped || (img.complete && img.naturalWidth === 0)) dispatch({ type: 'THUMB_FAILED', id });
     });
-    image.addEventListener('error', () => {
-      // A broken cover: keep the neutral image element (BaseLayout swaps a fallback), never redefine slot 1.
-      errorEl.hidden = false;
-    });
+    // No raw `error` listener on the stage image: swapping `srcset`/`sizes`/`src` on commit can
+    // fire a transient error in some engines and flashed the retry line over a healthy image.
+    // Failures are reported only by the state machine (a probe that failed to load/decode),
+    // and a broken initial cover already gets the layout's neutral fallback.
 
     render({ type: 'RESET', available: media, activeId: state.activeId });
     // Release on page replacement; repeated client navigation must not double-register.
