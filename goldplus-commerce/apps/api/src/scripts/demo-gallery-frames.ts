@@ -32,7 +32,12 @@ async function sampleFrame(sharp: any, source: Buffer, slot: 2 | 3 | 4): Promise
   const meta = await sharp(source).metadata();
   const w = meta.width ?? 1000; const h = meta.height ?? 1000;
   const badgeW = Math.round(w * 0.22); const badgeH = Math.round(h * 0.07); const font = Math.round(badgeH * 0.55);
-  const badge = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${badgeW}" height="${badgeH}"><rect width="100%" height="100%" rx="${Math.round(badgeH / 2)}" fill="#0A0A0A" fill-opacity="0.72"/><text x="50%" y="52%" dominant-baseline="middle" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="${font}" font-weight="700" letter-spacing="1" fill="#93D500">${LABELS[slot]}</text></svg>`);
+  // The container may have no fonts (text then renders empty and every frame would be
+  // byte-identical → the library deduplicates them into ONE asset → DUPLICATE_ASSET).
+  // So the frame number is also drawn as pips (2, 3 or 4 dots), which never need a font.
+  const pipR = Math.round(badgeH * 0.16);
+  const pips = Array.from({ length: slot }, (_, i) => `<circle cx="${Math.round(badgeW * 0.12 + i * pipR * 2.6)}" cy="${Math.round(badgeH / 2)}" r="${pipR}" fill="#93D500"/>`).join('');
+  const badge = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${badgeW}" height="${badgeH}"><rect width="100%" height="100%" rx="${Math.round(badgeH / 2)}" fill="#0A0A0A" fill-opacity="0.72"/>${pips}<text x="62%" y="52%" dominant-baseline="middle" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="${font}" font-weight="700" letter-spacing="1" fill="#93D500">${LABELS[slot]}</text></svg>`);
   return sharp(source).composite([{ input: badge, top: Math.round(h * 0.03), left: Math.round(w - badgeW - w * 0.03) }]).webp({ quality: 82 }).toBuffer();
 }
 
@@ -87,6 +92,14 @@ async function main() {
     if (additions.length === 0) { totals.failed += 1; continue; }
     const res = await gallery.replaceMap({ productId: p.productId, expectedRevision: snap.mediaRevision, map: [...current, ...additions], actorId, action: 'DEMO_FRAMES_FILL' });
     if (res.ok) totals.framesAdded += additions.length; else { totals.failed += 1; console.log(`${p.sku}: FAILED ${res.code} ${res.message}`); }
+  }
+  // Sample assets that no gallery references (a failed run, or frames since removed) are pruned:
+  // safeDelete refuses anything still in use, so a live frame can never be deleted here.
+  if (!dryRun) {
+    const unassigned = (await repo.listUnassignedAssets(500, 0)).filter((a) => a.filename.endsWith('-sample.webp'));
+    let pruned = 0;
+    for (const a of unassigned) { const res = await library.safeDelete(a.id); if (res.kind === 'DELETED') pruned += 1; }
+    if (unassigned.length) console.log(`pruned ${pruned} of ${unassigned.length} unreferenced sample assets`);
   }
   console.log(`${dryRun ? 'DRY RUN — nothing written.' : 'APPLIED.'} mode=${mode} products ${totals.products}, frames ${mode === 'remove' ? 'removed' : 'added'} ${mode === 'remove' ? totals.framesRemoved : totals.framesAdded}, skipped ${totals.skipped}, failed ${totals.failed}. Products without any cover are untouched (${all.filter((p) => p.active && !p.hasCover).length}).`);
 }
