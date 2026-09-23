@@ -371,7 +371,7 @@ const shopBreadcrumb = breadcrumbJsonLd([
     )}
   </main>
 
-  <script is:inline define:vars={{ apiBase: publicApiBase }}>
+  <script nonce={Astro.locals.cspNonce} is:inline define:vars={{ apiBase: publicApiBase }}>
     // Progressive autocomplete. The form works without JavaScript; this only
     // fills the datalist with catalogue names on capable browsers.
     (function () {

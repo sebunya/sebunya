@@ -287,7 +287,7 @@ if (Astro.request.method === 'POST') {
     </form>
   </div>
 
-  <script is:inline>
+  <script nonce={Astro.locals.cspNonce} is:inline>
     // Client-side auto slug generator from name input
     const nameInput = document.getElementById('name');
     const slugInput = document.getElementById('slug');

@@ -248,7 +248,7 @@ const rate = (n: number | null) => (n == null ? '— (below sample floor)' : `${
       </section>
     )}
   </div>
-  <script is:inline>
+  <script nonce={Astro.locals.cspNonce} is:inline>
     // §9 live character counters on top of the server-side limits.
     document.querySelectorAll('[data-nav-editor] [data-limit]').forEach(function (el) {
       var max = Number(el.getAttribute('data-limit'));

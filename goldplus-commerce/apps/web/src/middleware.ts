@@ -182,6 +182,9 @@ export const onRequest = defineMiddleware(async (context, next) => {
     }
   }
 
+  // Made BEFORE rendering: templates put it on the inline scripts they own.
+  const cspNonce = makeNonce();
+  context.locals.cspNonce = cspNonce;
   const response = await next();
   // Tell agents the cheaper representation exists. Only for documents we can
   // actually serve as Markdown, so the header never promises a 404.
@@ -189,7 +192,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     response.headers.append('Link', `<${context.url.origin}${path}>; rel="alternate"; type="text/markdown"`);
     response.headers.append('Vary', 'Accept');
   }
-  return withStrictScriptPolicyReport(response);
+  return withStrictScriptPolicyReport(response, cspNonce);
 });
 
 /**
@@ -199,12 +202,11 @@ export const onRequest = defineMiddleware(async (context, next) => {
  *   enforce           Content-Security-Policy — alongside Caddy's policy; a script must pass both
  *   off               no nonce, no header
  */
-function withStrictScriptPolicyReport(response: Response): Response {
+function withStrictScriptPolicyReport(response: Response, nonce: string): Response {
   const mode = strictPolicyMode(process.env.CSP_STRICT_MODE);
   if (mode === 'off') return response;
   const type = response.headers.get('content-type') ?? '';
   if (!type.toLowerCase().startsWith('text/html') || !response.body) return response;
-  const nonce = makeNonce();
   const headers = new Headers(response.headers);
   headers.delete('content-length'); // the body grows by the nonce attributes
   headers.set(mode === 'enforce' ? 'Content-Security-Policy' : 'Content-Security-Policy-Report-Only', strictReportOnlyPolicy(nonce));

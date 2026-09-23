@@ -38,7 +38,7 @@ describe('web fonts load after the first paint', () => {
     expect(layout).toMatch(/observe\(\{type:'paint',buffered:true\}\)/);
     expect(layout).toContain('set:html={FONT_LOADER}');
     // Rocket Loader must not defer the loader to after window.load
-    expect(layout).toContain('<script is:inline data-cfasync="false" set:html={FONT_LOADER}>');
+    expect(layout).toContain('<script nonce={Astro.locals.cspNonce} is:inline data-cfasync="false" set:html={FONT_LOADER}>');
     expect(layout).toContain("addEventListener('load'");
     expect(layout).toContain('setTimeout(go,3000)');
     expect(layout).toMatch(/<noscript><link rel="stylesheet" href="\/fonts\/faces\.css\?v=\d+" \/><\/noscript>/);

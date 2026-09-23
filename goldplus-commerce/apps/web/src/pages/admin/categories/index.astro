@@ -82,7 +82,7 @@ try {
     </div>
   </template>
 
-  <script is:inline define:vars={{ initial: cfg, apiBase, token }}>
+  <script nonce={Astro.locals.cspNonce} is:inline define:vars={{ initial: cfg }}>
     const $ = (sel, root = document) => root.querySelector(sel);
     const catList = document.getElementById('categories');
     const catTpl = document.getElementById('tpl-category');

@@ -51,19 +51,38 @@ function reduceUrl(value: string, keepPath = false): string {
   }
 }
 
-/** Logs each distinct violation once per window, with how many times it was seen in the previous one. */
+/**
+ * Logs each distinct violation once per window, with how many times it was seen
+ * in the previous one. The endpoint is public, so the TOTAL is budgeted too:
+ * de-duplication alone lets anyone mint unlimited "new" keys and flood the log.
+ * Past the budget, lines are counted and reported once as a suppressed total
+ * when the next window opens.
+ */
 export class CspViolationLog {
   private readonly seen = new Map<string, { firstAt: number; count: number }>();
+  private windowStart = 0;
+  private linesInWindow = 0;
+  private suppressed = 0;
 
-  constructor(private readonly opts: { windowMs: number; maxKeys: number; now?: () => number }) {}
+  constructor(private readonly opts: { windowMs: number; maxKeys: number; maxLinesPerWindow?: number; now?: () => number }) {}
 
-  record(v: CspViolation): (CspViolation & { seenInWindow: number }) | null {
+  /** Lines to log for this report (zero, one, or a suppressed-total line followed by one). */
+  record(v: CspViolation): Array<(CspViolation & { seenInWindow: number }) | { suppressedInPreviousWindow: number }> {
     const now = (this.opts.now ?? Date.now)();
+    const out: Array<(CspViolation & { seenInWindow: number }) | { suppressedInPreviousWindow: number }> = [];
+    if (now - this.windowStart >= this.opts.windowMs) {
+      if (this.suppressed > 0) out.push({ suppressedInPreviousWindow: this.suppressed });
+      this.windowStart = now; this.linesInWindow = 0; this.suppressed = 0;
+    }
     const key = `${v.directive}|${v.blocked}|${v.source}|${v.disposition}`;
     const entry = this.seen.get(key);
     if (entry && now - entry.firstAt < this.opts.windowMs) {
       entry.count += 1;
-      return null;
+      return out;
+    }
+    if (this.linesInWindow >= (this.opts.maxLinesPerWindow ?? 200)) {
+      this.suppressed += 1;
+      return out;
     }
     const previous = entry?.count ?? 0;
     if (!entry && this.seen.size >= this.opts.maxKeys) {
@@ -72,6 +91,8 @@ export class CspViolationLog {
     }
     this.seen.delete(key);
     this.seen.set(key, { firstAt: now, count: 1 });
-    return { ...v, seenInWindow: previous };
+    this.linesInWindow += 1;
+    out.push({ ...v, seenInWindow: previous });
+    return out;
   }
 }

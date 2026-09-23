@@ -320,7 +320,7 @@ function fillHeroTokens(text: string): string {
   </div>
 </section>
 
-<script is:inline set:html={`window.__GPHERO=${configJson};`}></script>
+<script nonce={Astro.locals.cspNonce} is:inline set:html={`window.__GPHERO=${configJson};`}></script>
 
 <style is:global>
 /* Poppins — self-hosted (CSP font-src 'self'); the hero's sole brand typeface */

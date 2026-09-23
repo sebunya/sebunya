@@ -214,7 +214,7 @@ const warnedRows = rows.filter((p) => p.included && (p.issues ?? []).length > 0)
     )}
   </div>
 
-  <script is:inline define:vars={{ FEED_URL }}>
+  <script nonce={Astro.locals.cspNonce} is:inline define:vars={{ FEED_URL }}>
     document.getElementById('copy-feed')?.addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(FEED_URL);

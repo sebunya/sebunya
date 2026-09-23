@@ -395,7 +395,7 @@ const pct = (progress: number, threshold: number) =>
 
   {/* Reveal feedback only. The outcome is decided entirely on the server —
       this just stops a double submit and shows the card is being scratched. */}
-  <script is:inline>
+  <script nonce={Astro.locals.cspNonce} is:inline>
     (function () {
       var form = document.querySelector('[data-scratch-form]');
       if (!form) return;

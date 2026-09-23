@@ -7,8 +7,9 @@
  * Clarity bootstraps, the font loader, Cloudflare's injected beacon and, while
  * it is switched on, Rocket Loader's loader. Checkout would break with it.
  *
- * So every HTML response carries a per-request nonce on each <script> tag and a
- * nonce-based policy in `Content-Security-Policy-Report-Only`. Browsers enforce
+ * So every HTML response carries a per-request nonce — written by templates on
+ * the inline scripts they own, stamped here on our same-site script files —
+ * and a nonce-based policy in `Content-Security-Policy-Report-Only`. Browsers enforce
  * nothing from it; they report what it WOULD block to /api/csp-report. When the
  * reports are quiet, CSP_STRICT_MODE=enforce sends it as an enforced policy
  * (docs/hardening/strict-csp.md).
@@ -48,15 +49,26 @@ export function strictReportOnlyPolicy(nonce: string): string {
 
 const OPEN = '<script';
 
-/** Adds nonce="…" to every <script …> start tag in one piece of HTML. */
+/**
+ * Adds nonce="…" to <script> start tags that load a SAME-SITE FILE
+ * (src="/…", our own bundles) and have no nonce yet. Inline scripts are never
+ * touched: a template that owns one writes nonce={Astro.locals.cspNonce}
+ * itself. Stamping every <script> would hand the nonce to a script an attacker
+ * managed to inject into the page — the very thing the policy exists to stop.
+ */
 export function nonceScriptTags(html: string, nonce: string): string {
-  return html.replace(/<script(?=[\s>])/gi, `<script nonce="${nonce}"`);
+  return html.replace(/<script(?=[\s>])([^>]*)>/gi, (tag, attrs: string) => {
+    if (/\snonce\s*=/i.test(attrs)) return tag;
+    const src = /\ssrc\s*=\s*(["'])([^"']*)\1/i.exec(attrs)?.[2];
+    if (!src || !src.startsWith('/') || src.startsWith('//')) return tag;
+    return `<script nonce="${nonce}"${attrs}>`;
+  });
 }
 
 /**
- * The same, as a stream, so the page still streams to the browser. A tag split
- * across two chunks ("…<scr" | "ipt src=…") is held back until the next chunk
- * completes it.
+ * The same, as a stream, so the page still streams to the browser. A start tag
+ * split across chunks ("…<scr" | "ipt src=…>") is held back until its closing
+ * ">" arrives.
  */
 export function nonceScriptStream(nonce: string): TransformStream<Uint8Array, Uint8Array> {
   const decoder = new TextDecoder();
@@ -77,11 +89,12 @@ export function nonceScriptStream(nonce: string): TransformStream<Uint8Array, Ui
   });
 }
 
-/** Where a possibly-unfinished "<script" starts at the end of `text` (or text.length when there is none). */
+/** Start of an unfinished script start tag (or of a possible "<script" prefix) at the end of `text`; text.length when there is none. */
 function heldTailStart(text: string): number {
-  const at = text.lastIndexOf('<', text.length - 1);
+  const open = text.toLowerCase().lastIndexOf(OPEN);
+  // A complete "<script" whose tag has not closed yet: hold from it (bounded, so a stray one cannot stall the stream).
+  if (open !== -1 && text.indexOf('>', open) === -1 && text.length - open < 4096) return open;
+  const at = text.lastIndexOf('<');
   if (at === -1 || text.length - at > OPEN.length) return text.length;
-  const tail = text.slice(at).toLowerCase();
-  // "<script" itself is held too: whether it is a tag depends on the next character.
-  return OPEN.startsWith(tail) ? at : text.length;
+  return OPEN.startsWith(text.slice(at).toLowerCase()) ? at : text.length;
 }

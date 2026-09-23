@@ -151,7 +151,7 @@ const field = (name: string) => errors.find((e) => e.field === name)?.message ??
     </div>
   </div>
 
-  <script is:inline>
+  <script nonce={Astro.locals.cspNonce} is:inline>
     document.getElementById('copy-url')?.addEventListener('click', async () => {
       const text = document.getElementById('built-url')?.textContent ?? '';
       if (!text) return;

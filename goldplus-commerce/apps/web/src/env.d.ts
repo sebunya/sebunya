@@ -33,5 +33,12 @@ declare namespace App {
     gpCart?: { token: string; cartId: string; fresh: boolean } | null;
     /** The signed-in customer for this request, resolved once per render. */
     gpUserId?: string | null;
+    /**
+     * This response's script nonce (lib/contentSecurityPolicy). Every INLINE
+     * executable script a template writes carries nonce={Astro.locals.cspNonce};
+     * the middleware only stamps same-site script FILES, so an injected inline
+     * script never receives it.
+     */
+    cspNonce?: string;
   }
 }

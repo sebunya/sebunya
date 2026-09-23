@@ -182,7 +182,7 @@ const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB');
   </div>
 
   {/* Referral copy — plain progressive enhancement, no framework (single-digit KB budget). */}
-  <script is:inline>
+  <script nonce={Astro.locals.cspNonce} is:inline>
     (function () {
       var btn = document.querySelector('[data-copy-referral]');
       if (!btn) return;

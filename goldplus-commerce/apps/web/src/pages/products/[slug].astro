@@ -705,7 +705,7 @@ if (product) {
   </div>
 </BaseLayout>
 
-<script is:inline>
+<script nonce={Astro.locals.cspNonce} is:inline>
   (function () {
     // SCOPED to the PDP's own element: the header carries data-sale-ends for the
     // flash-sale strip, and a bare [data-sale-ends] query matched it FIRST —

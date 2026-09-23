@@ -853,7 +853,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
              </div>
 
             <!-- Client Script for UI Controls -->
-            <script is:inline>
+            <script nonce={Astro.locals.cspNonce} is:inline>
               function switchTab(activeTab) {
                 const btnEmail = document.getElementById('btn-tab-email');
                 const btnWa = document.getElementById('btn-tab-whatsapp');

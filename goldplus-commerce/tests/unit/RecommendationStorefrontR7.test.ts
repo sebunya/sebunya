@@ -109,7 +109,7 @@ describe("no tracking loader without real configuration (§32)", () => {
 
   it("PostHog loads only with a real key — the mock key connected to app.posthog.com on every page", () => {
     expect(layout).not.toContain("phc_mock_key_for_telemetry',");
-    expect(layout).toContain("{import.meta.env.PUBLIC_POSTHOG_KEY && <script>");
+    expect(layout).toContain("{import.meta.env.PUBLIC_POSTHOG_KEY && <script nonce={Astro.locals.cspNonce}>");
   });
 });
 

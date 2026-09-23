@@ -1225,7 +1225,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 .gp-nav[data-mode="day"]{--gpn-cream:#FFFDF7;--gpn-muted:rgba(255,253,247,.7);}
 </style>
 
-<script is:inline set:html={`window.__GPNAV=${navConfigJson};window.GP_NBA=${nbaJson};`}></script>
+<script nonce={Astro.locals.cspNonce} is:inline set:html={`window.__GPNAV=${navConfigJson};window.GP_NBA=${nbaJson};`}></script>
 
 <script>
   /* The shop's clock is Africa/Kampala, and its cutoff and closed days are set
