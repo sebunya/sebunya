@@ -4,6 +4,7 @@ import { ControlledActivationOperatorChecklistRepository, OperatorChecklist } fr
 import { ControlledActivationRunbookBuilder, CanaryRunbook } from '../../ports/activation/ControlledActivationRunbookBuilder';
 import { ControlledActivationStakeholderLiveApprovalRepository, StakeholderLiveApproval } from '../../ports/activation/ControlledActivationStakeholderLiveApprovalRepository';
 import { ControlledActivationIncidentPlanRepository, ControlledActivationIncidentPlan } from '../../ports/activation/ControlledActivationIncidentPlanRepository';
+import { DomainError } from '../../../domain/errors/DomainError';
 
 export interface GetLiveReviewCandidateCommand {
   adminId: string;
@@ -30,16 +31,16 @@ export class GetControlledActivationLiveReviewCandidateUseCase {
   ) {}
 
   async execute(command: GetLiveReviewCandidateCommand): Promise<LiveReviewCandidateDetails> {
-    if (!command.adminId) throw new Error('adminId is required');
-    if (!command.candidateId) throw new Error('candidateId is required');
+    if (!command.adminId) throw new DomainError('LIVE_REVIEW_INVALID', 'VALIDATION', 'adminId is required');
+    if (!command.candidateId) throw new DomainError('LIVE_REVIEW_INVALID', 'VALIDATION', 'candidateId is required');
 
     if (!this.accessPolicy.canViewActivation(command.adminId)) {
-      throw new Error(`Admin ${command.adminId} is not authorized to view live review candidates.`);
+      throw new DomainError('LIVE_REVIEW_FORBIDDEN', 'FORBIDDEN', `Admin ${command.adminId} is not authorized to view live review candidates.`);
     }
 
     const candidate = await this.liveReviewRepository.getCandidateById(command.candidateId);
     if (!candidate) {
-      throw new Error(`Candidate ${command.candidateId} not found.`);
+      throw new DomainError('LIVE_REVIEW_NOT_FOUND', 'NOT_FOUND', `Candidate ${command.candidateId} not found.`);
     }
 
     const checks = await this.liveReviewRepository.getReadinessChecksByCandidateId(command.candidateId);

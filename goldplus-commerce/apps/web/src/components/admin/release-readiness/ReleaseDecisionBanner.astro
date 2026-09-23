@@ -5,7 +5,7 @@ let colorClass = 'bg-gray-100 border-gray-200 text-gray-800';
 let title = 'Not Ready For Release';
 
 if (!run) {
-  title = 'No Run Found';
+  title = 'No readiness run recorded';
 } else if (decision?.status === 'APPROVED_FOR_CONTROLLED_ACTIVATION') {
   colorClass = 'bg-green-100 border-green-200 text-green-800';
   title = 'APPROVED FOR CONTROLLED ACTIVATION';
@@ -15,6 +15,9 @@ if (!run) {
 } else if (run.status === 'WARN') {
   colorClass = 'bg-yellow-100 border-yellow-200 text-yellow-800';
   title = 'WARNING: Non-critical issues detected';
+} else if (run.status === 'UNKNOWN') {
+  colorClass = 'bg-gray-100 border-gray-200 text-gray-800';
+  title = 'NOT CHECKED: the checks in this run did not run';
 } else if (run.status === 'PASS') {
   colorClass = 'bg-blue-100 border-blue-200 text-blue-800';
   title = 'READY: All safe checks passed';

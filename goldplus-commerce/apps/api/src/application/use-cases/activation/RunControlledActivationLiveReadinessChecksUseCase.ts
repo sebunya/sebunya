@@ -7,6 +7,7 @@ import { ControlledActivationAuditRepository } from '../../ports/activation/Cont
 import { ControlledActivationLiveReadinessChecker } from '../../ports/activation/ControlledActivationLiveReadinessChecker';
 import { BuildControlledActivationEvidencePackUseCase } from './BuildControlledActivationEvidencePackUseCase';
 import { ControlledActivationCanaryPlanner } from '../../ports/activation/ControlledActivationCanaryPlanner';
+import { DomainError } from '../../../domain/errors/DomainError';
 
 export interface RunLiveReadinessChecksCommand {
   adminId: string;
@@ -26,36 +27,36 @@ export class RunControlledActivationLiveReadinessChecksUseCase {
   ) {}
 
   async execute(command: RunLiveReadinessChecksCommand): Promise<LiveReadinessCheck[]> {
-    if (!command.adminId) throw new Error('adminId is required');
-    if (!command.candidateId) throw new Error('candidateId is required');
+    if (!command.adminId) throw new DomainError('LIVE_REVIEW_INVALID', 'VALIDATION', 'adminId is required');
+    if (!command.candidateId) throw new DomainError('LIVE_REVIEW_INVALID', 'VALIDATION', 'candidateId is required');
 
     if (!this.accessPolicy.canViewActivation(command.adminId)) {
-      throw new Error(`Admin ${command.adminId} is not authorized to run live readiness checks.`);
+      throw new DomainError('LIVE_REVIEW_FORBIDDEN', 'FORBIDDEN', `Admin ${command.adminId} is not authorized to run live readiness checks.`);
     }
 
     const candidate = await this.liveReviewRepository.getCandidateById(command.candidateId);
     if (!candidate) {
-      throw new Error(`Candidate ${command.candidateId} not found.`);
+      throw new DomainError('LIVE_REVIEW_NOT_FOUND', 'NOT_FOUND', `Candidate ${command.candidateId} not found.`);
     }
 
     if (candidate.status !== 'READY_FOR_REVIEW' && candidate.status !== 'BLOCKED') {
-      throw new Error(`Cannot run checks on a candidate in status: ${candidate.status}`);
+      throw new DomainError('LIVE_REVIEW_STATE_CONFLICT', 'CONFLICT', `Cannot run checks on a candidate in status: ${candidate.status}`);
     }
 
     const dryRun = await this.dryRunRepository.getDryRun(candidate.dryRunId);
     if (!dryRun) {
-      throw new Error(`Dry run ${candidate.dryRunId} not found.`);
+      throw new DomainError('LIVE_REVIEW_NOT_FOUND', 'NOT_FOUND', `Dry run ${candidate.dryRunId} not found.`);
     }
 
     const executionPlan = await this.executionPlanRepository.getExecutionPlan(candidate.executionPlanId);
     if(!executionPlan) {
-        throw new Error('Execution plan not found');
+        throw new DomainError('LIVE_REVIEW_NOT_FOUND', 'NOT_FOUND', 'Execution plan not found');
     }
 
     const evidencePack = await this.evidencePackBuilder.execute(dryRun.id, candidate.activationRequestId);
 
     const canaryPlan = await this.canaryPlanner.getCanaryPlan(executionPlan.id);
-    if (!canaryPlan) throw new Error('Canary plan is missing');
+    if (!canaryPlan) throw new DomainError('LIVE_REVIEW_INVALID', 'VALIDATION', 'Canary plan is missing');
 
     const checks = await this.liveReadinessChecker.checkReadiness(
       candidate.id,

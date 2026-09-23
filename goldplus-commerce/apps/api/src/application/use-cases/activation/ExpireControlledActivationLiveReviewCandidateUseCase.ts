@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { ControlledActivationLiveReviewRepository } from '../../ports/activation/ControlledActivationLiveReviewRepository';
 import { ControlledActivationAuditRepository } from '../../ports/activation/ControlledActivationAuditRepository';
+import { DomainError } from '../../../domain/errors/DomainError';
 
 export interface ExpireLiveReviewCandidateCommand {
   adminId: string;
@@ -15,13 +16,13 @@ export class ExpireControlledActivationLiveReviewCandidateUseCase {
   ) {}
 
   async execute(command: ExpireLiveReviewCandidateCommand): Promise<void> {
-    if (!command.adminId) throw new Error('adminId is required');
-    if (!command.candidateId) throw new Error('candidateId is required');
-    if (!command.expiryReason) throw new Error('expiryReason is required');
+    if (!command.adminId) throw new DomainError('LIVE_REVIEW_INVALID', 'VALIDATION', 'adminId is required');
+    if (!command.candidateId) throw new DomainError('LIVE_REVIEW_INVALID', 'VALIDATION', 'candidateId is required');
+    if (!command.expiryReason) throw new DomainError('LIVE_REVIEW_INVALID', 'VALIDATION', 'expiryReason is required');
 
     const candidate = await this.liveReviewRepository.getCandidateById(command.candidateId);
     if (!candidate) {
-      throw new Error(`Candidate ${command.candidateId} not found.`);
+      throw new DomainError('LIVE_REVIEW_NOT_FOUND', 'NOT_FOUND', `Candidate ${command.candidateId} not found.`);
     }
 
     if (candidate.status === 'CANCELLED' || candidate.status === 'EXPIRED') {

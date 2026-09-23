@@ -3,6 +3,7 @@ import { ControlledActivationLiveReviewRepository } from '../../ports/activation
 import { ControlledActivationStakeholderLiveApprovalRepository } from '../../ports/activation/ControlledActivationStakeholderLiveApprovalRepository';
 import { ControlledActivationAccessPolicy } from '../../ports/activation/ControlledActivationAccessPolicy';
 import { ControlledActivationAuditRepository } from '../../ports/activation/ControlledActivationAuditRepository';
+import { DomainError } from '../../../domain/errors/DomainError';
 
 export interface RecordStakeholderLiveApprovalCommand {
   adminId: string;
@@ -20,45 +21,45 @@ export class RecordControlledActivationStakeholderLiveApprovalUseCase {
   ) {}
 
   async execute(command: RecordStakeholderLiveApprovalCommand): Promise<void> {
-    if (!command.adminId) throw new Error('adminId is required');
-    if (!command.candidateId) throw new Error('candidateId is required');
-    if (!command.approvalStatus) throw new Error('approvalStatus is required');
-    if (!command.approvalNote) throw new Error('approvalNote is required');
+    if (!command.adminId) throw new DomainError('LIVE_REVIEW_INVALID', 'VALIDATION', 'adminId is required');
+    if (!command.candidateId) throw new DomainError('LIVE_REVIEW_INVALID', 'VALIDATION', 'candidateId is required');
+    if (!command.approvalStatus) throw new DomainError('LIVE_REVIEW_INVALID', 'VALIDATION', 'approvalStatus is required');
+    if (!command.approvalNote) throw new DomainError('LIVE_REVIEW_INVALID', 'VALIDATION', 'approvalNote is required');
 
     if (!this.accessPolicy.canViewActivation(command.adminId)) {
-      throw new Error(`Admin ${command.adminId} is not authorized to record live approvals.`);
+      throw new DomainError('LIVE_REVIEW_FORBIDDEN', 'FORBIDDEN', `Admin ${command.adminId} is not authorized to record live approvals.`);
     }
 
     const candidate = await this.liveReviewRepository.getCandidateById(command.candidateId);
     if (!candidate) {
-      throw new Error(`Candidate ${command.candidateId} not found.`);
+      throw new DomainError('LIVE_REVIEW_NOT_FOUND', 'NOT_FOUND', `Candidate ${command.candidateId} not found.`);
     }
 
     if (candidate.status === 'APPROVED_FOR_FUTURE_CONTROLLED_ACTIVATION') {
-      throw new Error('Candidate is already approved for future controlled activation.');
+      throw new DomainError('LIVE_REVIEW_STATE_CONFLICT', 'CONFLICT', 'Candidate is already approved for future controlled activation.');
     }
 
     if (candidate.status === 'BLOCKED') {
-      throw new Error('Cannot approve a BLOCKED candidate. Resolve blockers and re-run checks.');
+      throw new DomainError('LIVE_REVIEW_STATE_CONFLICT', 'CONFLICT', 'Cannot approve a BLOCKED candidate. Resolve blockers and re-run checks.');
     }
     
     if (candidate.status !== 'READY_FOR_REVIEW') {
-       throw new Error(`Cannot approve candidate in status: ${candidate.status}`);
+       throw new DomainError('LIVE_REVIEW_STATE_CONFLICT', 'CONFLICT', `Cannot approve candidate in status: ${candidate.status}`);
     }
 
     const checks = await this.liveReviewRepository.getReadinessChecksByCandidateId(command.candidateId);
     if (checks.length === 0) {
-      throw new Error('Cannot approve candidate without readiness checks.');
+      throw new DomainError('LIVE_REVIEW_STATE_CONFLICT', 'CONFLICT', 'Cannot approve candidate without readiness checks.');
     }
     
     const hasBlockers = checks.some(c => c.status === 'BLOCKED' || c.status === 'EXPIRED' || c.status === 'NOT_CONFIGURED' || c.status === 'CONSENT_BLOCKED');
     if (hasBlockers) {
-      throw new Error('Cannot approve candidate with BLOCKED readiness checks.');
+      throw new DomainError('LIVE_REVIEW_STATE_CONFLICT', 'CONFLICT', 'Cannot approve candidate with BLOCKED readiness checks.');
     }
 
     const now = new Date();
     if (now > candidate.activationWindowEnd) {
-       throw new Error('Cannot approve candidate. Activation window has expired.');
+       throw new DomainError('LIVE_REVIEW_STATE_CONFLICT', 'CONFLICT', 'Cannot approve candidate. Activation window has expired.');
     }
 
     await this.approvalRepository.recordApproval({

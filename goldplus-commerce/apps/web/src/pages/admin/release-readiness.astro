@@ -2,18 +2,32 @@
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import ReleaseReadinessShell from '../../components/admin/release-readiness/ReleaseReadinessShell.astro';
 import { readSessionToken } from '../../lib/session';
+import { apiFetch } from '../../utils/api-fetch';
 
 const token = readSessionToken(Astro.request);
 if (!token) {
   return Astro.redirect('/admin/login?returnTo=/admin/release-readiness', 303);
 }
 
-// In a real app, we would fetch data from the API or a loader
-// For now we just pass a token or dummy data flag to the shell
+// The real summary (latest run, its gate results, the recorded decision).
+// This page used to render invented results ("TypeScript Typecheck: PASS",
+// "Duplicate tag found in dry-run") with a button that did nothing.
+let summary: { latestRun: any; gates: any[]; decision: any } | null = null;
+let loadError: string | null = null;
+try {
+  const res = await apiFetch('/admin/release-readiness/summary', {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (res.ok) summary = await res.json();
+  else loadError = res.status === 403 ? 'Your account cannot view release readiness.' : `The readiness service answered ${res.status}.`;
+} catch {
+  loadError = 'The readiness service could not be reached.';
+}
 
 const title = 'Release Readiness - Measurement Control Tower';
 ---
 
 <AdminLayout title={title}>
-  <ReleaseReadinessShell />
+  <ReleaseReadinessShell summary={summary} loadError={loadError} />
 </AdminLayout>

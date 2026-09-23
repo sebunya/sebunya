@@ -1,8 +1,8 @@
 ---
-import { apiFetch } from '../../../../../../utils/api-fetch';
 import { formatDisplayDateTime } from '../../../../../../utils/date-format';
 import AdminLayout from '../../../../../../layouts/AdminLayout.astro';
 import { readSessionToken } from '../../../../../../lib/session';
+import { liveReviewAct, liveReviewGet } from '../../../../../../lib/liveReviewApi';
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -10,32 +10,33 @@ if (!token) {
 }
 
 const { id } = Astro.params;
-const adminId = Astro.cookies.get('adminId')?.value || 'admin-123';
+const self = `/admin/measurement/control-tower/controlled-activation/live-review/${encodeURIComponent(id ?? '')}`;
 
-let details = null;
-let error = null;
-
-try {
-  const response = await apiFetch(`/admin/controlled-activation-live-review/live-review-candidates/${id}`, {
-    headers: {
-      'x-user-id': adminId
-    }
-  });
-  
-  if (response.ok) {
-    details = await response.json();
-  } else {
-    error = "Failed to load candidate details.";
-  }
-} catch (e) {
-  error = e instanceof Error ? e.message : 'Unknown error';
+// Actions are form POSTs handled here, with the admin's own session. They used to be
+// browser fetches straight to the API as a hard-coded 'admin-123', which could never act.
+let actionError: string | null = null;
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const kind = String(form.get('action') ?? '');
+  const note = String(form.get('note') ?? '').trim().slice(0, 1000);
+  const outcome =
+    kind === 'checks' ? await liveReviewAct(token, id ?? '', { kind: 'checks' })
+      : kind === 'runbook' ? await liveReviewAct(token, id ?? '', { kind: 'runbook' })
+        : kind === 'APPROVED' || kind === 'REJECTED' ? await liveReviewAct(token, id ?? '', { kind: 'approval', status: kind, note: note || `${kind} via admin` })
+          : { ok: false as const, error: 'Unknown action.' };
+  if (outcome.ok) return Astro.redirect(`${self}?done=${encodeURIComponent(kind)}`, 303);
+  actionError = outcome.error;
 }
+const done = Astro.url.searchParams.get('done');
 
-if (!details) {
+type StakeholderLiveApproval = { approvalStatus: string; approvedAt: string; approvalNote: string };
+const result = await liveReviewGet<any>(token, `/${encodeURIComponent(id ?? '')}`);
+if (!result.ok && result.error.startsWith('That candidate')) {
   return Astro.redirect('/admin/measurement/control-tower/controlled-activation/live-review');
 }
-
-const { candidate, checklist, runbook, approvals, incidentPlan } = details;
+const error = result.ok ? null : result.error;
+const details = result.ok ? result.data : null;
+const { candidate, runbook, approvals, incidentPlan } = details ?? {};
 ---
 
 <AdminLayout title={`Live Review Candidate | Controlled Activation | Control Tower`}>
@@ -44,6 +45,8 @@ const { candidate, checklist, runbook, approvals, incidentPlan } = details;
       <a href="/admin/measurement/control-tower/controlled-activation/live-review" class="text-sm font-medium text-blue-500 hover:text-blue-600">&larr; Back to Candidates</a>
     </div>
 
+    {actionError && <div class="bg-red-50 text-red-700 p-4 rounded-sm border border-red-200 mb-4" role="alert">{actionError}</div>}
+    {done && !actionError && <div class="bg-emerald-50 text-emerald-800 p-4 rounded-sm border border-emerald-200 mb-4" role="status">Saved.</div>}
     {error ? (
       <div class="bg-red-50 text-red-600 p-4 rounded-sm border border-red-200">
         {error}
@@ -60,38 +63,24 @@ const { candidate, checklist, runbook, approvals, incidentPlan } = details;
               <p><span class="font-medium text-slate-700">Created At:</span> {formatDisplayDateTime(candidate.createdAt)}</p>
             </div>
           </div>
-          <div class="flex gap-2" id="action-buttons" data-candidate-id={candidate.id}>
+          <div class="flex flex-col items-end gap-2">
             {candidate.status === 'DRAFT' && (
-              <button
-                  id="btn-run-checks"
-                  class="btn bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-sm disabled:opacity-50"
-                >
-                Run Readiness Checks
-              </button>
+              <form method="POST"><input type="hidden" name="action" value="checks" />
+                <button type="submit" class="btn bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-sm">Run Readiness Checks</button></form>
             )}
             {candidate.status === 'READY_FOR_REVIEW' && !runbook && (
-              <button
-                  id="btn-build-runbook"
-                  class="btn bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-sm disabled:opacity-50"
-                >
-                Build Runbook
-              </button>
+              <form method="POST"><input type="hidden" name="action" value="runbook" />
+                <button type="submit" class="btn bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-sm">Build Runbook</button></form>
             )}
             {candidate.status === 'READY_FOR_REVIEW' && runbook && (
-              <>
-                <button
-                  id="btn-approve"
-                  class="btn bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-sm disabled:opacity-50"
-                >
-                  Approve
-                </button>
-                <button
-                  id="btn-reject"
-                  class="btn bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-sm disabled:opacity-50"
-                >
-                  Reject
-                </button>
-              </>
+              <form method="POST" class="flex flex-col items-end gap-2">
+                <label class="text-xs text-slate-600">Note (optional)
+                  <textarea name="note" maxlength="1000" rows="2" class="mt-1 block w-72 border border-slate-300 rounded-sm p-2 text-sm"></textarea></label>
+                <div class="flex gap-2">
+                  <button type="submit" name="action" value="APPROVED" class="btn bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-sm" data-confirm="Record your approval of this candidate?">Approve</button>
+                  <button type="submit" name="action" value="REJECTED" class="btn bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-sm" data-confirm="Record a rejection of this candidate?">Reject</button>
+                </div>
+              </form>
             )}
           </div>
         </div>
@@ -180,94 +169,3 @@ const { candidate, checklist, runbook, approvals, incidentPlan } = details;
   </div>
 </AdminLayout>
 
-<script>
-  // Setup interactive actions
-  const container = document.getElementById('action-buttons');
-  if (container) {
-    const candidateId = container.dataset.candidateId;
-    const runChecksBtn = document.getElementById('btn-run-checks') as HTMLButtonElement;
-    const buildRunbookBtn = document.getElementById('btn-build-runbook') as HTMLButtonElement;
-    const approveBtn = document.getElementById('btn-approve') as HTMLButtonElement;
-    const rejectBtn = document.getElementById('btn-reject') as HTMLButtonElement;
-
-    // Helper to extract JWT cookie (or mock)
-    function getAdminId() {
-      const match = document.cookie.match(/(^| )adminId=([^;]+)/);
-      return match ? match[2] : 'admin-123';
-    }
-    
-    // API base URL
-        const API_BASE = window.__GP_API_BASE__ || 'http://localhost:3000';
-
-    if (runChecksBtn) {
-      runChecksBtn.addEventListener('click', async () => {
-        runChecksBtn.disabled = true;
-        runChecksBtn.textContent = 'Running...';
-        try {
-          await fetch(`${API_BASE}/admin/controlled-activation-live-review/live-review-candidates/${candidateId}/checks`, {
-            method: 'POST',
-            headers: { 'x-user-id': getAdminId() }
-          });
-          window.location.reload();
-        } catch (e) {
-          console.error(e);
-          runChecksBtn.disabled = false;
-          runChecksBtn.textContent = 'Run Readiness Checks';
-        }
-      });
-    }
-
-    if (buildRunbookBtn) {
-      buildRunbookBtn.addEventListener('click', async () => {
-        buildRunbookBtn.disabled = true;
-        buildRunbookBtn.textContent = 'Building...';
-        try {
-          await fetch(`${API_BASE}/admin/controlled-activation-live-review/live-review-candidates/${candidateId}/runbook`, {
-            method: 'POST',
-            headers: { 'x-user-id': getAdminId() }
-          });
-          window.location.reload();
-        } catch (e) {
-          console.error(e);
-          buildRunbookBtn.disabled = false;
-          buildRunbookBtn.textContent = 'Build Runbook';
-        }
-      });
-    }
-
-    const handleApproval = async (status: 'APPROVED' | 'REJECTED', btn: HTMLButtonElement) => {
-      const note = prompt(`Enter ${status === 'APPROVED' ? 'approval' : 'rejection'} note (optional):`);
-      if (note === null) return;
-      
-      btn.disabled = true;
-      const originalText = btn.textContent;
-      btn.textContent = 'Saving...';
-      
-      try {
-        await fetch(`${API_BASE}/admin/controlled-activation-live-review/live-review-candidates/${candidateId}/stakeholder-approval`, {
-          method: 'POST',
-          headers: { 
-            'x-user-id': getAdminId(),
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            approvalStatus: status,
-            approvalNote: note || `${status} via Admin UI`
-          })
-        });
-        window.location.reload();
-      } catch (e) {
-        console.error(e);
-        btn.disabled = false;
-        btn.textContent = originalText;
-      }
-    };
-
-    if (approveBtn) {
-      approveBtn.addEventListener('click', () => handleApproval('APPROVED', approveBtn));
-    }
-    if (rejectBtn) {
-      rejectBtn.addEventListener('click', () => handleApproval('REJECTED', rejectBtn));
-    }
-  }
-</script>

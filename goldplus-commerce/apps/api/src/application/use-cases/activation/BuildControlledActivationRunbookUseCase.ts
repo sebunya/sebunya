@@ -6,6 +6,7 @@ import { ControlledActivationRunbookBuilder, CanaryRunbook } from '../../ports/a
 import { ControlledActivationCanaryPlanner } from '../../ports/activation/ControlledActivationCanaryPlanner';
 import { ControlledActivationExecutionPlanRepository } from '../../ports/activation/ControlledActivationExecutionPlanRepository';
 import { ControlledActivationIncidentPlanRepository } from '../../ports/activation/ControlledActivationIncidentPlanRepository';
+import { DomainError } from '../../../domain/errors/DomainError';
 
 export interface BuildCanaryRunbookCommand {
   adminId: string;
@@ -24,25 +25,25 @@ export class BuildControlledActivationRunbookUseCase {
   ) {}
 
   async execute(command: BuildCanaryRunbookCommand): Promise<CanaryRunbook> {
-    if (!command.adminId) throw new Error('adminId is required');
-    if (!command.candidateId) throw new Error('candidateId is required');
+    if (!command.adminId) throw new DomainError('LIVE_REVIEW_INVALID', 'VALIDATION', 'adminId is required');
+    if (!command.candidateId) throw new DomainError('LIVE_REVIEW_INVALID', 'VALIDATION', 'candidateId is required');
 
     if (!this.accessPolicy.canViewActivation(command.adminId)) {
-      throw new Error(`Admin ${command.adminId} is not authorized to build runbooks.`);
+      throw new DomainError('LIVE_REVIEW_FORBIDDEN', 'FORBIDDEN', `Admin ${command.adminId} is not authorized to build runbooks.`);
     }
 
     const candidate = await this.liveReviewRepository.getCandidateById(command.candidateId);
     if (!candidate) {
-      throw new Error(`Candidate ${command.candidateId} not found.`);
+      throw new DomainError('LIVE_REVIEW_NOT_FOUND', 'NOT_FOUND', `Candidate ${command.candidateId} not found.`);
     }
 
     const executionPlan = await this.executionPlanRepository.getExecutionPlan(candidate.executionPlanId);
     if (!executionPlan) {
-      throw new Error(`Execution plan not found.`);
+      throw new DomainError('LIVE_REVIEW_NOT_FOUND', 'NOT_FOUND', `Execution plan not found.`);
     }
 
     const canaryPlan = await this.canaryPlanner.getCanaryPlan(executionPlan.id);
-    if (!canaryPlan) throw new Error('Canary plan is missing');
+    if (!canaryPlan) throw new DomainError('LIVE_REVIEW_INVALID', 'VALIDATION', 'Canary plan is missing');
     
     let incidentPlan = await this.incidentPlanRepository.getIncidentPlanByCandidateId(candidate.id);
     if (!incidentPlan) {

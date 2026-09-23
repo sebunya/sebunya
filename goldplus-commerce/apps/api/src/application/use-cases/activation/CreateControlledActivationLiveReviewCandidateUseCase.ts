@@ -4,6 +4,7 @@ import { ControlledActivationDryRunRepository } from '../../ports/activation/Con
 import { ControlledActivationExecutionPlanRepository } from '../../ports/activation/ControlledActivationExecutionPlanRepository';
 import { ControlledActivationAccessPolicy } from '../../ports/activation/ControlledActivationAccessPolicy';
 import { ControlledActivationAuditRepository } from '../../ports/activation/ControlledActivationAuditRepository';
+import { DomainError } from '../../../domain/errors/DomainError';
 
 export interface CreateLiveReviewCandidateCommand {
   adminId: string;
@@ -30,33 +31,33 @@ export class CreateControlledActivationLiveReviewCandidateUseCase {
   ) {}
 
   async execute(command: CreateLiveReviewCandidateCommand): Promise<LiveReviewCandidate> {
-    if (!command.adminId) throw new Error('adminId is required');
-    if (!command.activationRequestId) throw new Error('activationRequestId is required');
-    if (!command.executionPlanId) throw new Error('executionPlanId is required');
-    if (!command.dryRunId) throw new Error('dryRunId is required');
-    if (!command.evidencePackId) throw new Error('evidencePackId is required');
-    if (!command.canaryScopeSummary) throw new Error('canaryScopeSummary is required');
-    if (!command.rollbackOwner) throw new Error('rollbackOwner is required');
-    if (!command.monitoringOwner) throw new Error('monitoringOwner is required');
-    if (!command.incidentOwner) throw new Error('incidentOwner is required');
-    if (!command.activationWindowStart || !command.activationWindowEnd) throw new Error('Activation window bounds are required');
+    if (!command.adminId) throw new DomainError('LIVE_REVIEW_INVALID', 'VALIDATION', 'adminId is required');
+    if (!command.activationRequestId) throw new DomainError('LIVE_REVIEW_INVALID', 'VALIDATION', 'activationRequestId is required');
+    if (!command.executionPlanId) throw new DomainError('LIVE_REVIEW_INVALID', 'VALIDATION', 'executionPlanId is required');
+    if (!command.dryRunId) throw new DomainError('LIVE_REVIEW_INVALID', 'VALIDATION', 'dryRunId is required');
+    if (!command.evidencePackId) throw new DomainError('LIVE_REVIEW_INVALID', 'VALIDATION', 'evidencePackId is required');
+    if (!command.canaryScopeSummary) throw new DomainError('LIVE_REVIEW_INVALID', 'VALIDATION', 'canaryScopeSummary is required');
+    if (!command.rollbackOwner) throw new DomainError('LIVE_REVIEW_INVALID', 'VALIDATION', 'rollbackOwner is required');
+    if (!command.monitoringOwner) throw new DomainError('LIVE_REVIEW_INVALID', 'VALIDATION', 'monitoringOwner is required');
+    if (!command.incidentOwner) throw new DomainError('LIVE_REVIEW_INVALID', 'VALIDATION', 'incidentOwner is required');
+    if (!command.activationWindowStart || !command.activationWindowEnd) throw new DomainError('LIVE_REVIEW_INVALID', 'VALIDATION', 'Activation window bounds are required');
 
     if (!this.accessPolicy.canViewActivation(command.adminId)) {
-      throw new Error(`Admin ${command.adminId} is not authorized to create live review candidates.`);
+      throw new DomainError('LIVE_REVIEW_FORBIDDEN', 'FORBIDDEN', `Admin ${command.adminId} is not authorized to create live review candidates.`);
     }
 
     const dryRun = await this.dryRunRepository.getDryRun(command.dryRunId);
     if (!dryRun) {
-      throw new Error(`Dry run ${command.dryRunId} not found.`);
+      throw new DomainError('LIVE_REVIEW_NOT_FOUND', 'NOT_FOUND', `Dry run ${command.dryRunId} not found.`);
     }
 
     if (dryRun.status !== 'PASSED') {
-      throw new Error(`Cannot create live review candidate for a dry run that has not PASSED (Current status: ${dryRun.status})`);
+      throw new DomainError('LIVE_REVIEW_STATE_CONFLICT', 'CONFLICT', `Cannot create live review candidate for a dry run that has not PASSED (Current status: ${dryRun.status})`);
     }
 
     const executionPlan = await this.executionPlanRepository.getExecutionPlan(command.executionPlanId);
     if (!executionPlan) {
-      throw new Error(`Execution plan ${command.executionPlanId} not found.`);
+      throw new DomainError('LIVE_REVIEW_NOT_FOUND', 'NOT_FOUND', `Execution plan ${command.executionPlanId} not found.`);
     }
 
     const candidate: LiveReviewCandidate = {

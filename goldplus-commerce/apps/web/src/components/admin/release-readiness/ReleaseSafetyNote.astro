@@ -1,5 +1,5 @@
 ---
 ---
 <div class="bg-blue-50 border border-blue-200 text-blue-800 p-4 rounded-md text-sm mb-4">
-  <strong class="font-semibold">Safety Note:</strong> This dashboard executes read-only validation commands (e.g. <code>pnpm run typecheck</code>, <code>vitest</code>, GTM dry-runs). It does <strong>not</strong> push code, publish tags, or override live consent settings.
+  <strong class="font-semibold">About these checks:</strong> readiness runs execute source checks (typecheck, architecture and release tests). They run in CI and on a developer machine; the production server carries no source, so a run recorded from it shows <code>NOT_CONFIGURED</code> rather than a result. Nothing here pushes code, publishes tags or changes consent settings.
 </div>

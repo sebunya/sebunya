@@ -4,6 +4,7 @@ import { IReleaseReadinessRepository, ReleaseReadinessGateResult } from '../../p
 import { IReleaseReadinessCheckRunner } from '../../ports/release/ReleaseReadinessCheckRunner';
 import { IReleaseReadinessAccessPolicy } from '../../ports/release/ReleaseReadinessAccessPolicy';
 import { IReleaseReadinessAuditRepository } from '../../ports/release/ReleaseReadinessAuditRepository';
+import { readinessVerdict } from '../../../domain/release/ReadinessVerdict';
 
 export class RunReleaseReadinessChecksUseCase {
   constructor(
@@ -31,7 +32,7 @@ export class RunReleaseReadinessChecksUseCase {
   }
 
   private async runChecksAsync(runId: string, adminUserId: string) {
-    let overallStatus = 'PASS';
+    let overallStatus: string = 'UNKNOWN';
     try {
       const results = await this.checkRunner.runAll();
       const gateResults: ReleaseReadinessGateResult[] = [];
@@ -50,13 +51,9 @@ export class RunReleaseReadinessChecksUseCase {
           recommendation: result.recommendation,
           checkedAt: new Date().toISOString()
         });
-
-        if (result.status === 'FAIL' || result.status === 'BLOCKED') {
-          overallStatus = 'FAIL';
-        } else if (result.status === 'WARN' && overallStatus === 'PASS') {
-          overallStatus = 'WARN';
-        }
       }
+      // A check that did not run is never a pass (see domain/release/ReadinessVerdict).
+      overallStatus = readinessVerdict(gateResults.map((g) => g.status));
 
       await this.repository.saveGateResults(gateResults);
       await this.repository.updateReadinessRun(runId, overallStatus);
