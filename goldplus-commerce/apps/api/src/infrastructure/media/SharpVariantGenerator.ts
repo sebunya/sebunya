@@ -1,5 +1,9 @@
 import { logger } from '../logging/logger';
 import { IMediaVariantGenerator, MediaVariantRecord } from '../../application/ports/IMediaLibrary';
+import { MAX_IMAGE_PIXELS } from '../../domain/media/ImageHeaderDimensions';
+
+/** The decoder's own cap, matching the upload check: a header the upload could not read still cannot make sharp allocate past it. */
+const DECODE_LIMITS = { limitInputPixels: MAX_IMAGE_PIXELS } as const;
 
 /**
  * Derivative generation via sharp, loaded lazily so an environment without the
@@ -45,7 +49,7 @@ export class SharpVariantGenerator implements IMediaVariantGenerator {
     if (!sharp) return { width: null, height: null, variants: [] };
 
     try {
-      const meta = await sharp(args.buffer).metadata();
+      const meta = await sharp(args.buffer, DECODE_LIMITS).metadata();
       const sourceWidth = meta.width ?? null;
       const sourceHeight = meta.height ?? null;
       const variants: MediaVariantRecord[] = [];
@@ -54,7 +58,7 @@ export class SharpVariantGenerator implements IMediaVariantGenerator {
         // Never upscale: a 500px original gets thumb+card only.
         if (sourceWidth !== null && width > sourceWidth) continue;
         for (const { format, ext } of FORMATS) {
-          const pipeline = sharp(args.buffer).resize({ width, withoutEnlargement: true });
+          const pipeline = sharp(args.buffer, DECODE_LIMITS).resize({ width, withoutEnlargement: true });
           const output =
             format === 'avif'
               ? await pipeline.avif({ quality: 55 }).toBuffer({ resolveWithObject: true })

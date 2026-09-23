@@ -7,6 +7,7 @@ import { CreateAuditLogUseCase } from '../../../../application/use-cases/audit/C
 import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
 import { planPhotoAttachments, IMAGE_EXTENSIONS } from '../../../../domain/media/PhotoCodeMatcher';
 import { csvCell } from '../../csv';
+import { describeUploadRejection } from '../../../../application/use-cases/media/MediaLibraryUseCase';
 
 /**
  * Media library admin surface (Wave 2B DAM). Thin transport over
@@ -82,7 +83,7 @@ routes.post('/upload', requirePermissions([PERMISSIONS.MEDIA_MANAGE]), async (c)
     .map((o) => ({ id: o.asset.id, url: o.asset.url, deduplicated: o.deduplicated }));
   const rejected = outcomes
     .filter((o): o is Extract<typeof o, { kind: 'REJECTED' }> => o.kind === 'REJECTED')
-    .map((o) => ({ filename: o.filename, reason: o.reason }));
+    .map((o) => ({ filename: o.filename, reason: o.reason, message: describeUploadRejection(o.reason) }));
   for (const u of uploaded) await audit(c, 'MEDIA_ASSET_UPLOADED', u.id, { url: u.url, deduplicated: u.deduplicated });
   return ok(c, { uploaded, rejected });
 });
@@ -171,7 +172,7 @@ routes.post('/attach-by-code/preview', requirePermissions([PERMISSIONS.PRODUCTS_
   for (const f of files) {
     const [outcome] = await registry.mediaLibraryUseCase.upload({ files: [{ filename: f.name, mime: f.type, buffer: Buffer.from(await f.arrayBuffer()) }], altText: plan.matched.find((m) => m.file === f.name)?.productName ?? null, caption: null, actorId });
     if (outcome.kind === 'STORED') stored[f.name] = { assetId: outcome.asset.id, url: outcome.asset.url };
-    else plan.refused.push({ file: f.name, productName: '', reason: `rejected by the media library (${outcome.reason})` });
+    else plan.refused.push({ file: f.name, productName: '', reason: `rejected by the media library: ${describeUploadRejection(outcome.reason)}` });
   }
   const matched = plan.matched.filter((m) => stored[m.file]).map((m) => ({ ...m, assetId: stored[m.file].assetId, url: stored[m.file].url }));
   return c.json({ success: true, data: { matched, unmatched: plan.unmatched, ambiguous: plan.ambiguous, refused: plan.refused } });

@@ -43,11 +43,16 @@ if (Astro.request.method === "POST") {
       const json = await res.json().catch(() => null);
       if (!json?.success) return finish("error", json?.error?.message || "Upload failed.");
       const uploaded: Array<{ id: string; url: string; deduplicated: boolean }> = json.data?.uploaded ?? [];
+      const rejected: Array<{ filename: string; reason: string; message?: string }> = json.data?.rejected ?? [];
       const dedup = uploaded.filter((u) => u.deduplicated);
-      const text = dedup.length > 0
+      const stored = dedup.length > 0
         ? `Uploaded ${uploaded.length} image${uploaded.length === 1 ? "" : "s"} — ${dedup.length} matched existing assets and ${dedup.length === 1 ? "was" : "were"} deduplicated.`
         : `Uploaded ${uploaded.length} image${uploaded.length === 1 ? "" : "s"}.`;
-      return finish("success", text, dedup.length > 0 ? { dedup: dedup.map((u) => u.id).join(",") } : {});
+      // A refused file must say so: without this, an all-refused batch read "Uploaded 0 images." as a success.
+      const refused = rejected.length > 0
+        ? ` Not uploaded: ${rejected.map((r) => `${r.filename} (${r.message ?? r.reason})`).join("; ")}.`
+        : "";
+      return finish(rejected.length > 0 ? "error" : "success", `${stored}${refused}`, dedup.length > 0 ? { dedup: dedup.map((u) => u.id).join(",") } : {});
     }
 
     if (!id) return finish("error", "Missing asset id.");

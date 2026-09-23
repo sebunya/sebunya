@@ -4,6 +4,7 @@ import {
   IMediaVariantGenerator,
   MediaAssetRecord,
 } from '../../ports/IMediaLibrary';
+import { checkImagePixelBudget, MAX_IMAGE_EDGE, MAX_IMAGE_PIXELS } from '../../../domain/media/ImageHeaderDimensions';
 
 /**
  * Media library mutations (Wave 2B DAM).
@@ -44,9 +45,22 @@ export function sniffImageMime(buffer: Buffer): string | null {
 }
 const MAX_BYTES = 15 * 1024 * 1024;
 
+export type UploadRejectReason = 'UNSUPPORTED_TYPE' | 'TOO_LARGE' | 'TOO_MANY_PIXELS' | 'EMPTY';
+
+/** One plain-language sentence per refusal, shared by every upload surface so none of them shows a bare code. */
+export function describeUploadRejection(reason: string): string {
+  switch (reason) {
+    case 'UNSUPPORTED_TYPE': return 'not a PNG, JPEG, WebP, AVIF or GIF image (checked from the file itself, not its name)';
+    case 'TOO_LARGE': return `larger than ${MAX_BYTES / (1024 * 1024)} MB`;
+    case 'TOO_MANY_PIXELS': return `more than ${MAX_IMAGE_PIXELS / 1_000_000} megapixels or wider/taller than ${MAX_IMAGE_EDGE.toLocaleString('en-GB')} px — resize it first`;
+    case 'EMPTY': return 'the file is empty';
+    default: return reason;
+  }
+}
+
 export type UploadOutcome =
   | { kind: 'STORED'; asset: MediaAssetRecord; deduplicated: boolean }
-  | { kind: 'REJECTED'; filename: string; reason: 'UNSUPPORTED_TYPE' | 'TOO_LARGE' | 'EMPTY' };
+  | { kind: 'REJECTED'; filename: string; reason: UploadRejectReason };
 
 /**
  * Focus 4: every "make this the product's picture" request is a gallery write.
@@ -86,6 +100,12 @@ export class MediaLibraryUseCase {
       file = { ...file, mime: sniffed };
       if (file.buffer.length > MAX_BYTES) {
         outcomes.push({ kind: 'REJECTED', filename: file.filename, reason: 'TOO_LARGE' });
+        continue;
+      }
+      // A small file can declare a gigantic canvas (a decompression bomb). The header
+      // says so before anything decodes it — here, in sharp, or in a customer's browser.
+      if (!checkImagePixelBudget(file.buffer, file.mime).ok) {
+        outcomes.push({ kind: 'REJECTED', filename: file.filename, reason: 'TOO_MANY_PIXELS' });
         continue;
       }
 

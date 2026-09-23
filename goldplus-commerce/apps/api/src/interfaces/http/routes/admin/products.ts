@@ -12,6 +12,7 @@ import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
 import { parsePriceTiers } from '../../../../domain/products/PriceTiers';
 import { UpdateProductListingUseCase } from '../../../../application/use-cases/products/UpdateProductListingUseCase';
 import { FeedQualityUseCase } from '../../../../application/use-cases/seo-growth/MerchantFeedUseCase';
+import { describeUploadRejection } from '../../../../application/use-cases/media/MediaLibraryUseCase';
 
 /** Above this a value cannot be a shilling price; it is a typo or an int4 overflow. */
 const MAX_PRICE_UGX = 100_000_000;
@@ -698,7 +699,7 @@ routes.post('/:id/media/upload', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]
     if (outcome.kind === 'STORED') staged.push({ slot: p.slot, assetId: outcome.asset.id, filename: p.file.name, deduplicated: outcome.deduplicated });
     else rejected.push({ filename: p.file.name, reason: outcome.reason });
   }
-  if (rejected.length) return c.json({ success: false, error: { code: 'FILE_REJECTED', message: `Not assigned: ${rejected.map((r) => `${r.filename} (${r.reason})`).join(', ')}. The valid files are in the media library; choose them from there or fix the rejected file and try again.` }, data: { staged, rejected } }, 422);
+  if (rejected.length) return c.json({ success: false, error: { code: 'FILE_REJECTED', message: `Not assigned: ${rejected.map((r) => `${r.filename} (${describeUploadRejection(r.reason)})`).join('; ')}. The valid files are in the media library; choose them from there or fix the rejected file and try again.` }, data: { staged, rejected } }, 422);
   const map = [...current.filter((a) => !seen.has(a.slot)), ...staged.map((s) => ({ slot: s.slot, assetId: s.assetId, altText: null }))];
   const result = await registry.productMediaUseCases.replaceMap({ productId, expectedRevision, map, actorId, action: 'MULTI_UPLOAD', requestId: c.req.header('x-request-id') ?? null });
   if (!result.ok) {

@@ -1,5 +1,6 @@
 import { ImageFileValidator } from '../../services/ImageFileValidator';
 import type { GallerySlot } from '@goldplus/shared';
+import { describeUploadRejection } from '../media/MediaLibraryUseCase';
 
 /**
  * Focus 4: the listing editor's "add photos" form. Every file goes through the
@@ -69,7 +70,7 @@ export class UploadProductImagesUseCase {
       const file = files[i];
       const [stored] = await this.library.upload({ files: [{ filename: file.name, mime: file.type, buffer: file.buffer }], altText: input.altText ?? null, caption: null, actorId: input.actorId });
       if (!stored || stored.kind === 'REJECTED') {
-        results.push({ assetId: '', url: '', slot: null, deduplicated: false, outcome: 'REJECTED', message: stored ? `Rejected by the media library (${stored.reason}).` : 'Not stored.' });
+        results.push({ assetId: '', url: '', slot: null, deduplicated: false, outcome: 'REJECTED', message: stored ? `Rejected: ${describeUploadRejection(stored.reason)}.` : 'Not stored.' });
         continue;
       }
       const wantsCover = i === 0 && input.makeFirstPrimary === true;
