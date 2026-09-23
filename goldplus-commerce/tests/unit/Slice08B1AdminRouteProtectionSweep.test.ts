@@ -89,7 +89,8 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
     // 153: +1 for Attribution models (admin/measurement/attribution-models, 2026-09-20).
     // 157 = 153 + Focus 4 (2026-09-21): products/[id]/media (gallery editor), media/gallery-queue,
     // media/imports/index and media/imports/[id] (reviewed image import).
-    expect(adminPages).toHaveLength(157);
+    // 158: +1 for Ambassadors & models (admin/homepage/ambassadors, 2026-09-23).
+    expect(adminPages).toHaveLength(158);
     expect(adminPages[0]).toBe('apps/web/src/pages/admin/advertising.astro');
     expect(adminPages.at(-1)).toBe('apps/web/src/pages/admin/verification/index.astro');
   });
@@ -107,7 +108,7 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
 
   it('fails closed for every non-allowlisted admin Astro page', () => {
     const protectedPages = adminPages.filter((page) => !publicAllowlist.includes(page as typeof publicAllowlist[number]));
-    expect(protectedPages).toHaveLength(156);
+    expect(protectedPages).toHaveLength(157);
     for (const page of protectedPages) {
       const source = read(page);
       expect(source, `${page} must use the server-side session contract`).toContain('readSessionToken(Astro.request)');

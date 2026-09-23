@@ -1,5 +1,13 @@
-import { DEFAULT_HOMEPAGE_CONTENT, type HomepageContent } from '@goldplus/shared';
+import { DEFAULT_HOMEPAGE_CONTENT, type HomeAmbassador, type HomepageContent } from '@goldplus/shared';
 import type { IHomepageContentRepository } from '../ports/IHomepageContentRepository';
+import type { IAmbassadorMedia } from '../ports/IAmbassadorMedia';
+import {
+  portraitRenditions,
+  publicAmbassadors,
+  readStoredAmbassadors,
+  validateAmbassadorsEdit,
+  type AmbassadorFieldError,
+} from '../../domain/homepage/Ambassadors';
 
 /**
  * Homepage marketing content for the storefront and the editor. Public reads
@@ -44,16 +52,23 @@ function sanitize(input: any): HomepageContent {
     pathwayCards: pathwayCards.length > 0 ? pathwayCards : DEFAULT_HOMEPAGE_CONTENT.pathwayCards,
     whatsappChannel,
     footer,
+    ambassadors: readStoredAmbassadors(input?.ambassadors),
   };
 }
 
 export class HomepageContentService {
-  constructor(private readonly repo: IHomepageContentRepository) {}
+  constructor(
+    private readonly repo: IHomepageContentRepository,
+    /** Needed only to edit the ambassadors section; reads never touch the media library. */
+    private readonly ambassadorMedia?: IAmbassadorMedia,
+  ) {}
 
   async getPublicConfig(): Promise<HomepageContent> {
     try {
       const stored = await this.repo.getConfig();
-      return stored?.config ? sanitize(stored.config) : DEFAULT_HOMEPAGE_CONTENT;
+      const config = stored?.config ? sanitize(stored.config) : DEFAULT_HOMEPAGE_CONTENT;
+      // Drafts, unpublished people and anyone without a release on file never leave the API.
+      return { ...config, ambassadors: publicAmbassadors(config.ambassadors) };
     } catch {
       return DEFAULT_HOMEPAGE_CONTENT;
     }
@@ -64,9 +79,48 @@ export class HomepageContentService {
     return { config: stored?.config ? sanitize(stored.config) : DEFAULT_HOMEPAGE_CONTENT, version: stored?.version ?? 0 };
   }
 
+  /**
+   * The whole-document editor (/admin/homepage) knows nothing of the ambassadors
+   * section, and sends the whole document. Its save must never wipe the people
+   * the ambassadors editor manages, so the STORED section is always kept here.
+   */
   async updateConfig(input: unknown, actorId: string): Promise<{ ok: true; version: number }> {
-    const clean = sanitize(input);
+    const current = await this.repo.getConfig();
+    const kept = readStoredAmbassadors((current?.config as any)?.ambassadors);
+    const clean = { ...sanitize(input), ambassadors: kept };
     const stored = await this.repo.updateConfig(clean, actorId);
+    return { ok: true, version: stored.version };
+  }
+
+  /**
+   * Replaces the ambassadors section. Every photo must be a media-library image;
+   * it is stored as its renditions, and the library records the usage so the
+   * image cannot be deleted while it is on the page. Nothing is saved if any
+   * entry has a problem — the editor shows each one next to its field.
+   */
+  async updateAmbassadors(input: unknown, actorId: string): Promise<{ ok: true; version: number } | { ok: false; errors: AmbassadorFieldError[] }> {
+    if (!this.ambassadorMedia) throw new Error('Ambassador media port is not configured.');
+    const { section, people, errors } = validateAmbassadorsEdit(input);
+    const current = await this.repo.getConfig();
+    const resolved: HomeAmbassador[] = [];
+    for (const [index, p] of people.entries()) {
+      let image: HomeAmbassador['image'] = null;
+      if (p.imageUrl) {
+        const found = await this.ambassadorMedia.resolveByUrl(p.imageUrl);
+        if (!found) {
+          errors.push({ index, field: 'imageUrl', message: 'That photo is not in the media library. Upload it here or pick it from the library.' });
+        } else if (found.status !== 'ACTIVE') {
+          errors.push({ index, field: 'imageUrl', message: 'That photo is archived in the media library. Restore it or choose another.' });
+        } else {
+          image = { assetId: found.assetId, ...portraitRenditions(found.original, found.variants) };
+        }
+      }
+      resolved.push({ id: p.id, name: p.name, role: p.role, tagline: p.tagline, image, imageAlt: p.imageAlt, productSlug: p.productSlug, releaseOnFile: p.releaseOnFile, published: p.published });
+    }
+    if (errors.length > 0) return { ok: false, errors };
+    const base = current?.config ? sanitize(current.config) : DEFAULT_HOMEPAGE_CONTENT;
+    const stored = await this.repo.updateConfig({ ...base, ambassadors: { ...section, people: resolved } }, actorId);
+    await this.ambassadorMedia.syncUsages(resolved.filter((p) => p.image).map((p) => ({ personId: p.id, assetId: p.image!.assetId })));
     return { ok: true, version: stored.version };
   }
 }

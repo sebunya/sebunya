@@ -350,6 +350,7 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
   { label: 'Homepage hero', href: '/admin/hero', group: 'Storefront', status: 'working', description: 'The hero slide library and rotation — live with no deploy.' },
   { label: 'Header & navigation', href: '/admin/nav', group: 'Storefront', status: 'working', description: 'The header rail, featured cards, flash sale and offer figures.' },
   { label: 'Homepage content', href: '/admin/homepage', group: 'Storefront', status: 'working', description: 'The trust strip and business-pathway cards below the hero.' },
+  { label: 'Ambassadors & models', href: '/admin/homepage/ambassadors', group: 'Storefront', status: 'working', description: 'Portraits of real people with GoldPlus products above the homepage footer; each needs a signed photo release.' },
   { label: 'Storefront copy', href: '/admin/storefront-copy', group: 'Storefront', status: 'working', description: 'Support-page intro and checkout payment-method wording.' },
   { label: 'Business info', href: '/admin/business-info', group: 'Storefront', status: 'working', description: 'Address, hours, phone, WhatsApp, socials and the same-day cutoff.' },
   { label: 'Legal pages', href: '/admin/legal', group: 'Storefront', status: 'working', description: 'Privacy, terms, returns, warranty and cookies content.' },

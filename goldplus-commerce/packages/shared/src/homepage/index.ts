@@ -44,6 +44,48 @@ export interface HomePathwayCard {
   href: string;
 }
 
+export type HomeAmbassadorRole = 'AMBASSADOR' | 'MODEL';
+export const HOME_AMBASSADOR_ROLES: readonly HomeAmbassadorRole[] = ['AMBASSADOR', 'MODEL'];
+export const HOME_AMBASSADOR_ROLE_LABEL: Record<HomeAmbassadorRole, string> = { AMBASSADOR: 'GoldPlus ambassador', MODEL: 'GoldPlus model' };
+/** Most people the section holds (the owner plans eight). */
+export const HOME_AMBASSADORS_MAX = 12;
+
+/** A portrait resolved from the media library at save time: the renditions the page serves, never the multi-megabyte original. */
+export interface HomeAmbassadorImage {
+  assetId: string;
+  src: string;
+  srcset: string | null;
+  width: number | null;
+  height: number | null;
+}
+
+/**
+ * A real person photographed with a GoldPlus product. Only people with a signed
+ * photo release on file AND published are ever sent to the storefront; everything
+ * shown is what the owner entered (no invented quotes, no stand-in people).
+ */
+export interface HomeAmbassador {
+  id: string;
+  name: string;
+  role: HomeAmbassadorRole;
+  /** One short line under the name, in the owner's words. Empty: the product held is shown instead. */
+  tagline: string;
+  image: HomeAmbassadorImage | null;
+  imageAlt: string;
+  /** The product in the photo; the card links to it. Empty: the card does not link. */
+  productSlug: string;
+  releaseOnFile: boolean;
+  published: boolean;
+}
+
+export interface HomeAmbassadors {
+  heading: string;
+  intro: string;
+  ctaLabel: string;
+  ctaHref: string;
+  people: HomeAmbassador[];
+}
+
 export interface HomepageContent {
   trustItems: HomeTrustItem[];
   pathwayCards: HomePathwayCard[];
@@ -51,6 +93,8 @@ export interface HomepageContent {
   whatsappChannel: HomeWhatsappChannel;
   /** Footer copy + link columns (0114 extension). */
   footer: HomeFooter;
+  /** Ambassadors & models section above the footer. Hidden while no one is published. */
+  ambassadors: HomeAmbassadors;
 }
 
 export const HOME_TRUST_ICON_KEYS = ['shield', 'clipboard', 'support'] as const;
@@ -148,4 +192,11 @@ export const DEFAULT_HOMEPAGE_CONTENT: HomepageContent = {
       href: '/quote-request?kind=corporate',
     },
   ],
+  ambassadors: {
+    heading: 'Powered by GoldPlus',
+    intro: '',
+    ctaLabel: 'Shop all products',
+    ctaHref: '/shop',
+    people: [],
+  },
 };

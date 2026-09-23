@@ -34,4 +34,36 @@ routes.put('/', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => 
   return c.json({ success: true, data: { version: result.version } });
 });
 
+/**
+ * Ambassadors & models section. GET returns every entry (drafts included) for the
+ * editor; PUT replaces only this section and answers 422 with per-field messages
+ * when anything is wrong — nothing is half-saved.
+ */
+routes.get('/ambassadors', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const { config, version } = await Registry.getInstance().homepageContentService.getAdminConfig();
+  return c.json({ success: true, data: { ambassadors: config.ambassadors, version } });
+});
+
+routes.put('/ambassadors', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body || typeof body.ambassadors !== 'object' || body.ambassadors === null) {
+    return c.json({ success: false, error: { code: 'INVALID_JSON', message: 'An ambassadors object is required.' } }, 400);
+  }
+  const actorId = (c.get('user') as { id: string }).id;
+  const result = await Registry.getInstance().homepageContentService.updateAmbassadors(body.ambassadors, actorId);
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: 'AMBASSADORS_INVALID', message: 'Some entries need attention.', fields: result.errors } }, 422);
+  }
+  const people = Array.isArray(body.ambassadors.people) ? body.ambassadors.people : [];
+  await Registry.getInstance().createAuditLogUseCase.execute({
+    actorId,
+    action: 'HOMEPAGE_AMBASSADORS_UPDATED',
+    entity: 'homepage_content',
+    entityId: 'global',
+    previousState: null,
+    newState: { version: result.version, people: people.length, published: people.filter((p: any) => p?.published === true).length },
+  });
+  return c.json({ success: true, data: { version: result.version } });
+});
+
 export default routes;

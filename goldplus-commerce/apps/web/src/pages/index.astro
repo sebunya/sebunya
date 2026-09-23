@@ -18,6 +18,7 @@ import { buildHomepageProductAllocation } from '../lib/homepage-merchandising';
 import { getCleanCatalog } from '../lib/catalog/catalog';
 import { getTaxonomy } from '../lib/taxonomy';
 import { getHomepageContent } from '../lib/homepageContent';
+import AmbassadorsRail from '../components/home/AmbassadorsRail.astro';
 import { fetchApprovedCatalogue } from '../lib/catalogue';
 
 let rawProducts: ProductPublicDto[] = [];
@@ -235,6 +236,9 @@ const usedProductIds = [
       </div>
     </div>
   </section>
+
+  {/* 9. Ambassadors & models — real people with GoldPlus products (renders only when someone is published). */}
+  <AmbassadorsRail section={homepageContent.ambassadors} products={allProducts} />
 
 </BaseLayout>
 
