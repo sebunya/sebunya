@@ -122,7 +122,7 @@ const replayable = (s: string) => s === "DEAD_LETTER" || s === "RETRYING" || s =
           {replayable(it.deliveryState) && (
             <form method="POST" class="flex items-end gap-2">
               <input type="hidden" name="id" value={it.id} />
-              <input type="text" name="reason" maxlength="500" placeholder="Replay reason (optional)" class="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold" />
+              <input type="text" name="reason" maxlength="500" placeholder="Replay reason (optional)" class="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-primaryInk" />
               <button type="submit" class="bg-brand-gold text-brand-dark text-xs font-black px-4 py-2 rounded-xl hover:opacity-90 transition-opacity">Replay</button>
             </form>
           )}

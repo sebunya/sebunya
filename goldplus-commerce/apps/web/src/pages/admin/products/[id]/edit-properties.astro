@@ -149,7 +149,7 @@ if (Astro.request.method === 'POST') {
               id="categoryId"
               name="categoryId"
               required
-              class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green focus:border-brand-green outline-none transition-colors text-sm font-semibold"
+              class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-primaryInk focus:border-brand-primaryInk outline-none transition-colors text-sm font-semibold"
             >
               {/* Without this, an unmatched category left the browser selecting
                   the first option on its own, which is the silent
@@ -204,7 +204,7 @@ if (Astro.request.method === 'POST') {
             <select
               id="stockStatus"
               name="stockStatus"
-              class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green focus:border-brand-green outline-none transition-colors text-sm font-semibold"
+              class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-primaryInk focus:border-brand-primaryInk outline-none transition-colors text-sm font-semibold"
             >
               <option value="in_stock" selected={product.stockStatus === 'in_stock'}>In Stock</option>
               <option value="low_stock" selected={product.stockStatus === 'low_stock'}>Low Stock</option>
@@ -267,7 +267,7 @@ if (Astro.request.method === 'POST') {
             <select
               id="approvalStatus"
               name="approvalStatus"
-              class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green focus:border-brand-green outline-none transition-colors text-sm font-semibold"
+              class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-primaryInk focus:border-brand-primaryInk outline-none transition-colors text-sm font-semibold"
             >
               <option value="draft" selected={product.approvalStatus === 'draft'}>Draft (Under Review)</option>
               <option value="approved" selected={product.approvalStatus === 'approved'}>Approved (Safe to Publish)</option>
@@ -283,7 +283,7 @@ if (Astro.request.method === 'POST') {
                 name="active"
                 type="checkbox"
                 checked={product.active}
-                class="w-5 h-5 accent-brand-green rounded border-gray-300 focus:ring-brand-green"
+                class="w-5 h-5 accent-brand-green rounded border-gray-300 focus:ring-brand-primaryInk"
               />
               <div>
                 <span class="text-sm font-bold text-brand-dark block">Active & Enabled</span>
@@ -299,7 +299,7 @@ if (Astro.request.method === 'POST') {
                 name="isFeedEligible"
                 type="checkbox"
                 checked={product.isFeedEligible !== false}
-                class="w-5 h-5 accent-brand-green rounded border-gray-300 focus:ring-brand-green"
+                class="w-5 h-5 accent-brand-green rounded border-gray-300 focus:ring-brand-primaryInk"
               />
               <div>
                 <span class="text-sm font-bold text-brand-dark block">Listed in the Google Merchant feed</span>

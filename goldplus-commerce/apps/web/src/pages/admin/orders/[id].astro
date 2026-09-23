@@ -730,7 +730,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
                   name="template" 
                   id="template-select" 
                   data-submit-on-change
-                  class="bg-white border border-gray-200 rounded-lg px-2.5 py-1 text-[10px] font-black text-brand-dark outline-none focus:border-brand-gold"
+                  class="bg-white border border-gray-200 rounded-lg px-2.5 py-1 text-[10px] font-black text-brand-dark outline-none focus:border-brand-primaryInk"
                 >
                   <option value="ORDER_RECEIVED_UNPAID" selected={previewData.template === 'ORDER_RECEIVED_UNPAID' || previewData.template === ''}>Received & Unpaid</option>
                   <option value="ORDER_PAYMENT_PENDING" selected={previewData.template === 'ORDER_PAYMENT_PENDING'}>Payment Pending</option>
@@ -964,7 +964,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
                     name="status" 
                     id="status" 
                     required
-                    class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold transition-colors appearance-none"
+                    class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-3 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk transition-colors appearance-none"
                   >
                     <option value="" disabled selected>Choose target status...</option>
                     {transitionOptions.map(opt => (
@@ -990,13 +990,13 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
               <p class="text-[10px] font-black uppercase tracking-wide text-gray-500 mb-2">Order lifecycle</p>
               <form method="POST" class="space-y-3">
                 <input type="hidden" name="action" value="lifecycle" />
-                <select name="toStatus" aria-label="Move order to status" required class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold appearance-none">
+                <select name="toStatus" aria-label="Move order to status" required class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk appearance-none">
                   <option value="" disabled selected>Move order to…</option>
                   <option value="processing">processing</option>
                   <option value="completed">completed</option>
                   <option value="cancelled">cancelled</option>
                 </select>
-                <input name="reason" required maxlength="500" placeholder="Reason (required — recorded in the order ledger)" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
+                <input name="reason" required maxlength="500" placeholder="Reason (required — recorded in the order ledger)" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-primaryInk" />
                 <button type="submit" class="w-full bg-brand-dark hover:bg-black text-white text-xs font-black py-3 rounded-xl transition-colors tracking-wide">Apply lifecycle transition</button>
               </form>
               <p class="mt-2 text-[9px] leading-relaxed text-gray-400 font-medium">Illegal moves and unpaid-order processing are refused by the state machine with the exact reason shown above.</p>
@@ -1006,7 +1006,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
               <p class="text-[10px] font-black uppercase tracking-wide text-gray-400 mb-2">Operator note</p>
               <form method="POST" class="space-y-3">
                 <input type="hidden" name="action" value="note" />
-                <textarea name="note" required maxlength="1000" rows="2" placeholder="Note for the audit trail…" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold"></textarea>
+                <textarea name="note" required maxlength="1000" rows="2" placeholder="Note for the audit trail…" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-primaryInk"></textarea>
                 <button type="submit" class="w-full bg-white border border-gray-200 hover:border-brand-gold text-brand-dark text-xs font-black py-3 rounded-xl transition-colors tracking-wide">Record note</button>
               </form>
             </div>

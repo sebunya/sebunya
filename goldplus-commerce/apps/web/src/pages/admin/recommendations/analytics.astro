@@ -139,15 +139,15 @@ const placements = [
               programmatically associated, so a screen reader announced four
               unnamed controls. */}
           <label for="filter-start-date" class="block text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Start Date</label>
-          <input id="filter-start-date" type="date" name="startDate" value={startDate} class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-brand-primary" />
+          <input id="filter-start-date" type="date" name="startDate" value={startDate} class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-brand-primaryInk" />
         </div>
         <div>
           <label for="filter-end-date" class="block text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">End Date</label>
-          <input id="filter-end-date" type="date" name="endDate" value={endDate} class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-brand-primary" />
+          <input id="filter-end-date" type="date" name="endDate" value={endDate} class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-brand-primaryInk" />
         </div>
         <div>
           <label for="filter-placement" class="block text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Placement</label>
-          <select id="filter-placement" name="placement" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-brand-primary appearance-none">
+          <select id="filter-placement" name="placement" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-brand-primaryInk appearance-none">
             <option value="">All Placements</option>
             {placements.map(p => (
               <option value={p.id} selected={placement === p.id}>{p.name}</option>
@@ -156,7 +156,7 @@ const placements = [
         </div>
         <div>
           <label for="filter-rule" class="block text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Rule</label>
-          <select id="filter-rule" name="ruleId" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-brand-primary appearance-none">
+          <select id="filter-rule" name="ruleId" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-brand-primaryInk appearance-none">
             <option value="">All Rules</option>
             {allRules.map((r: any) => (
               <option value={r.id} selected={ruleId === r.id}>{r.name}</option>

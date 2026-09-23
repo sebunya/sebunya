@@ -147,13 +147,13 @@ function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG", 
           <input type="hidden" name="expectedVersion" value={dispatch.version} />
           <div>
             <label for="trackingStatus" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Tracking status</label>
-            <select id="trackingStatus" name="trackingStatus" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
+            <select id="trackingStatus" name="trackingStatus" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk">
               {TRACKING.map((t) => <option value={t} selected={t === dispatch!.trackingStatus}>{t}</option>)}
             </select>
           </div>
           <div>
             <label for="eta2" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Est. delivery</label>
-            <input id="eta2" name="estimatedDeliveryAt" type="datetime-local" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+            <input id="eta2" name="estimatedDeliveryAt" type="datetime-local" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
           </div>
           <div class="sm:col-span-2 flex justify-end">
             <button type="submit" class="bg-brand-dark text-white text-xs font-bold px-5 py-2.5 rounded-xl hover:opacity-90">Update tracking</button>
@@ -168,29 +168,29 @@ function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG", 
           <input type="hidden" name="action" value="record" />
           <div>
             <label for="method" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Method</label>
-            <select id="method" name="method" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
+            <select id="method" name="method" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk">
               {METHODS.map((m) => <option value={m}>{m}</option>)}
             </select>
           </div>
           <div>
             <label for="eta" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Est. delivery (optional)</label>
-            <input id="eta" name="estimatedDeliveryAt" type="datetime-local" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+            <input id="eta" name="estimatedDeliveryAt" type="datetime-local" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
           </div>
           <div>
             <label for="carrierName" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Carrier (optional)</label>
-            <input id="carrierName" name="carrierName" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+            <input id="carrierName" name="carrierName" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
           </div>
           <div>
             <label for="riderName" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Rider (optional)</label>
-            <input id="riderName" name="riderName" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+            <input id="riderName" name="riderName" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
           </div>
           <div>
             <label for="contact" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Rider contact (stored masked)</label>
-            <input id="contact" name="contact" type="text" maxlength="40" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+            <input id="contact" name="contact" type="text" maxlength="40" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
           </div>
           <div>
             <label for="notes" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Notes (optional)</label>
-            <input id="notes" name="notes" type="text" maxlength="2000" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+            <input id="notes" name="notes" type="text" maxlength="2000" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
           </div>
           <label class="sm:col-span-2 flex items-center gap-2 text-xs font-bold text-brand-dark">
             <input type="checkbox" name="allowCashOnDelivery" class="rounded border-gray-300" />

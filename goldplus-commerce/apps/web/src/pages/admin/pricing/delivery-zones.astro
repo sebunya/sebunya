@@ -161,13 +161,13 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
             <label class="block">
               <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">{label}</span>
               <input name={name} required inputmode="numeric" value={String(value)}
-                class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
+                class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primaryInk focus:border-brand-primaryInk" />
             </label>
           ))}
           <label class="block col-span-2">
             <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Note (why these numbers)</span>
             <input name="note" maxlength="300" value={intel.policy.note ?? ""}
-              class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
+              class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primaryInk focus:border-brand-primaryInk" />
           </label>
           <label class="inline-flex items-center gap-2 text-xs font-bold text-gray-600">
             <input type="checkbox" name="policyEnabled" checked={intel.policy.enabled} class="w-4 h-4 text-brand-primary border-gray-300 rounded" />
@@ -185,12 +185,12 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
       <label class="block md:col-span-2">
         <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">District</span>
         <input name="district" required maxlength="100" placeholder="e.g. Kampala"
-          class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
+          class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primaryInk focus:border-brand-primaryInk" />
       </label>
       <label class="block">
         <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Fee (UGX)</span>
         <input name="feeUgx" required inputmode="numeric" pattern="[0-9,]*" placeholder="e.g. 10000"
-          class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
+          class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primaryInk focus:border-brand-primaryInk" />
       </label>
       <div class="flex items-center gap-3">
         <label class="inline-flex items-center gap-2 text-xs font-bold text-gray-600">

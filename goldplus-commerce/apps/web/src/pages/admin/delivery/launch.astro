@@ -305,7 +305,7 @@ const step = published ? "done" : preview ? "preview" : derived.length > 0 ? "de
           <p class="text-xs text-gray-500 mb-3">Type the name people actually use. Najjera, Kabalagala, Bweyogerere.</p>
           <div class="flex flex-wrap gap-2 items-end">
             <input name="areaQuery" value={answers.areaQuery} placeholder="Ntinda"
-              class="flex-1 min-w-[200px] rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
+              class="flex-1 min-w-[200px] rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primaryInk focus:border-brand-primaryInk" />
             <button type="submit" formnovalidate name="intent" value="search"
               class="border border-gray-300 text-gray-700 text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:bg-gray-50">
               Find it
@@ -335,7 +335,7 @@ const step = published ? "done" : preview ? "preview" : derived.length > 0 ? "de
             <span class="block text-xs text-gray-500 mb-2">Including finding the address. Not one way — the whole round trip.</span>
             <div class="flex items-center gap-2">
               <input name="roundTripMinutes" inputmode="numeric" required value={answers.roundTripMinutes}
-                class="w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
+                class="w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primaryInk focus:border-brand-primaryInk" />
               <span class="text-sm text-gray-500">minutes</span>
             </div>
           </label>
@@ -345,7 +345,7 @@ const step = published ? "done" : preview ? "preview" : derived.length > 0 ? "de
             <div class="flex items-center gap-2 mt-2">
               <span class="text-sm text-gray-500">UGX</span>
               <input name="riderPayUgx" inputmode="numeric" required value={answers.riderPayUgx}
-                class="w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
+                class="w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primaryInk focus:border-brand-primaryInk" />
             </div>
           </label>
 
@@ -354,7 +354,7 @@ const step = published ? "done" : preview ? "preview" : derived.length > 0 ? "de
             <span class="block text-xs text-gray-500 mb-2">Picking, packing and handing over. Not travel time.</span>
             <div class="flex items-center gap-2">
               <input name="handlingMinutes" inputmode="numeric" required value={answers.handlingMinutes}
-                class="w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
+                class="w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primaryInk focus:border-brand-primaryInk" />
               <span class="text-sm text-gray-500">minutes</span>
             </div>
           </label>
@@ -363,7 +363,7 @@ const step = published ? "done" : preview ? "preview" : derived.length > 0 ? "de
             <span class="text-sm font-black text-gray-700">5. What do you want to make on top of what it costs you?</span>
             <div class="flex items-center gap-2 mt-2">
               <input name="marginPercent" inputmode="decimal" required value={answers.marginPercent}
-                class="w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
+                class="w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primaryInk focus:border-brand-primaryInk" />
               <span class="text-sm text-gray-500">percent</span>
             </div>
           </label>
@@ -373,7 +373,7 @@ const step = published ? "done" : preview ? "preview" : derived.length > 0 ? "de
             <div class="flex items-center gap-2 mt-2">
               <span class="text-sm text-gray-500">UGX</span>
               <input name="minimumFeeUgx" inputmode="numeric" required value={answers.minimumFeeUgx}
-                class="w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
+                class="w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primaryInk focus:border-brand-primaryInk" />
             </div>
           </label>
 
@@ -389,7 +389,7 @@ const step = published ? "done" : preview ? "preview" : derived.length > 0 ? "de
                 <span>Yes, above</span>
                 <span class="text-gray-500">UGX</span>
                 <input name="freeDeliveryThresholdUgx" inputmode="numeric" value={answers.freeDeliveryThresholdUgx}
-                  class="w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
+                  class="w-40 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primaryInk focus:border-brand-primaryInk" />
               </label>
             </div>
           </div>
@@ -466,7 +466,7 @@ const step = published ? "done" : preview ? "preview" : derived.length > 0 ? "de
             <label class="block">
               <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">{label}</span>
               <input name={name} inputmode="decimal"
-                class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
+                class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primaryInk focus:border-brand-primaryInk" />
               <span class="text-[10px] text-gray-500">{unit}</span>
             </label>
           ))}

@@ -102,7 +102,7 @@ if (defaultValue && defaultValue.startsWith('{')) {
       <input
         type="text"
         id={`${id}_input`}
-        class="w-full px-4 py-4 bg-white border border-brand-borderGrey rounded-xl shadow-sm focus:ring-2 focus:ring-brand-primary focus:border-transparent outline-none transition-all font-medium"
+        class="w-full px-4 py-4 bg-white border border-brand-borderGrey rounded-xl shadow-sm focus:ring-2 focus:ring-brand-primaryInk focus:border-transparent outline-none transition-all font-medium"
         placeholder={placeholder}
         autocomplete="off"
         inputmode="search"
@@ -129,7 +129,7 @@ if (defaultValue && defaultValue.startsWith('{')) {
       <span class="text-[11px] font-bold uppercase tracking-widest text-brand-mutedGrey whitespace-nowrap">Browse by district</span>
       <select
         aria-label="Pick your district from the official list"
-        class="js-district-select flex-1 bg-white border border-brand-borderGrey px-3 py-2.5 rounded-lg text-sm font-medium outline-none focus:ring-2 focus:ring-brand-primary"
+        class="js-district-select flex-1 bg-white border border-brand-borderGrey px-3 py-2.5 rounded-lg text-sm font-medium outline-none focus:ring-2 focus:ring-brand-primaryInk"
       >
         <option value="">Pick your district…</option>
         {UGANDA_DISTRICTS.map((d) => <option value={d}>{d}</option>)}
@@ -149,7 +149,7 @@ if (defaultValue && defaultValue.startsWith('{')) {
         id={`${id}_manual`}
         rows="2"
         maxlength="400"
-        class="js-manual-text w-full px-3 py-2.5 bg-white border border-brand-borderGrey rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-primary"
+        class="js-manual-text w-full px-3 py-2.5 bg-white border border-brand-borderGrey rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-primaryInk"
         placeholder="e.g. Kyanamukaaka trading centre, past the mosque, ask for Ssalongo's shop"></textarea>
       <p class="text-xs text-amber-800">Our team will confirm the delivery details with a phone call before dispatch.</p>
       <button type="button" class="js-manual-commit bg-brand-charcoal text-white text-sm font-bold px-4 py-2 rounded-lg">
@@ -168,7 +168,7 @@ if (defaultValue && defaultValue.startsWith('{')) {
       </div>
       <input
         type="text"
-        class="js-pin-link w-full px-3 py-2.5 bg-white border border-brand-borderGrey rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-primary"
+        class="js-pin-link w-full px-3 py-2.5 bg-white border border-brand-borderGrey rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-primaryInk"
         placeholder="…or paste a WhatsApp / Google Maps location link"
         autocomplete="off"
       />

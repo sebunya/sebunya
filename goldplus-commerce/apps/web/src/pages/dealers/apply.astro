@@ -61,11 +61,11 @@ if (Astro.request.method === 'POST') {
 <BaseLayout title="Apply to be a GoldPlus Dealer | GoldPlus">
   <div class="bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 text-white py-14 border-b border-slate-950">
     <div class="container mx-auto px-4 lg:px-8 text-center">
-      <span class="inline-flex items-center gap-1.5 py-1 px-3 rounded-full bg-brand-primary/10 text-brand-primaryInk text-[10px] font-black tracking-widest uppercase mb-4 border border-brand-primary/15">
+      <span class="inline-flex items-center gap-1.5 py-1 px-3 rounded-full bg-brand-primary/10 text-brand-primary text-[10px] font-black tracking-widest uppercase mb-4 border border-brand-primary/15">
         Authorised dealership
       </span>
       <h1 class="text-3xl md:text-4xl font-black tracking-tight mb-4">Become a GoldPlus dealer</h1>
-      <p class="text-slate-500 max-w-2xl mx-auto text-sm sm:text-base leading-relaxed font-medium">
+      <p class="text-slate-400 max-w-2xl mx-auto text-sm sm:text-base leading-relaxed font-medium">
         Partner with a trusted electronics brand. Verified stock, marketing support and protected pricing.
       </p>
     </div>
@@ -139,8 +139,8 @@ if (Astro.request.method === 'POST') {
                 By applying, you commit to selling only original GoldPlus products and observing recommended pricing and service standards.
               </p>
               <label class="flex items-center gap-3 cursor-pointer group select-none">
-                <input type="checkbox" name="agree" required class="w-4 h-4 rounded border-slate-250 text-brand-primary focus:ring-brand-primary cursor-pointer" />
-                <span class="text-xs font-bold text-slate-700 group-hover:text-brand-primary transition-colors">I agree to the GoldPlus dealer terms</span>
+                <input type="checkbox" name="agree" required class="w-4 h-4 rounded border-slate-250 text-brand-primary focus:ring-brand-primaryInk cursor-pointer" />
+                <span class="text-xs font-bold text-slate-700 group-hover:text-brand-primaryInk transition-colors">I agree to the GoldPlus dealer terms</span>
               </label>
               {errors.agree && <p class="text-xs text-brand-error mt-2 font-bold">{errors.agree}</p>}
             </div>

@@ -106,13 +106,13 @@ const isFiltered = q || cat || stock || visible || appr;
             id="q"
             value={q}
             placeholder="Name or SKU..." 
-            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2 text-xs text-brand-dark font-semibold focus:border-brand-gold outline-none" 
+            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2 text-xs text-brand-dark font-semibold focus:border-brand-primaryInk outline-none" 
           />
         </div>
 
         <div>
           <label for="cat" class="block text-[9px] font-bold text-gray-500 uppercase mb-1.5">Category</label>
-          <select name="cat" id="cat" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
+          <select name="cat" id="cat" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk">
             <option value="">All</option>
             {categories.map(c => <option value={c} selected={cat === c}>{c}</option>)}
           </select>
@@ -120,7 +120,7 @@ const isFiltered = q || cat || stock || visible || appr;
 
         <div>
           <label for="stock" class="block text-[9px] font-bold text-gray-500 uppercase mb-1.5">Stock</label>
-          <select name="stock" id="stock" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
+          <select name="stock" id="stock" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk">
             <option value="">All</option>
             {stockStatuses.map(s => <option value={s} selected={stock === s}>{s.replace('_', ' ')}</option>)}
           </select>
@@ -128,7 +128,7 @@ const isFiltered = q || cat || stock || visible || appr;
 
         <div>
           <label for="visible" class="block text-[9px] font-bold text-gray-500 uppercase mb-1.5">Visibility</label>
-          <select name="visible" id="visible" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
+          <select name="visible" id="visible" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk">
             <option value="">All</option>
             <option value="true" selected={visible === 'true'}>Active</option>
             <option value="false" selected={visible === 'false'}>Hidden</option>
@@ -137,7 +137,7 @@ const isFiltered = q || cat || stock || visible || appr;
 
         <div>
           <label for="appr" class="block text-[9px] font-bold text-gray-500 uppercase mb-1.5">Approval</label>
-          <select name="appr" id="appr" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
+          <select name="appr" id="appr" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk">
             <option value="">All</option>
             {approvalStatuses.map(s => <option value={s} selected={appr === s}>{s}</option>)}
           </select>

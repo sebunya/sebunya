@@ -108,7 +108,7 @@ function fmt(x: string | null) { return x ? new Date(x).toLocaleString("en-UG", 
               <form method="POST"><input type="hidden" name="action" value="recompute"/><input type="hidden" name="expectedVersion" value={d.version}/><button class="bg-gray-100 text-brand-dark text-xs font-bold px-4 py-2 rounded-lg hover:bg-gray-200">Recompute</button></form>
               <form method="POST" class="flex items-end gap-2">
                 <input type="hidden" name="action" value="assign"/><input type="hidden" name="expectedVersion" value={d.version}/>
-                <div><label class="block text-[10px] font-black uppercase tracking-wider text-gray-600 mb-1.5">Assign to (user id)</label><input name="assignedTo" type="text" maxlength="64" class="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold"/></div>
+                <div><label class="block text-[10px] font-black uppercase tracking-wider text-gray-600 mb-1.5">Assign to (user id)</label><input name="assignedTo" type="text" maxlength="64" class="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk"/></div>
                 <button class="bg-brand-dark text-white text-xs font-bold px-4 py-2 rounded-lg hover:opacity-90">Assign</button>
               </form>
             </div>
@@ -116,13 +116,13 @@ function fmt(x: string | null) { return x ? new Date(x).toLocaleString("en-UG", 
               <form method="POST" class="flex items-end gap-2">
                 <input type="hidden" name="action" value="resolve"/><input type="hidden" name="expectedVersion" value={d.version}/>
                 <div class="flex-1"><label class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Resolve</label>
-                  <select name="resolutionCode" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">{RESOLVE_CODES.map((r) => <option value={r}>{r.replace(/_/g," ")}</option>)}</select></div>
+                  <select name="resolutionCode" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk">{RESOLVE_CODES.map((r) => <option value={r}>{r.replace(/_/g," ")}</option>)}</select></div>
                 <button class="bg-green-100 text-green-800 text-xs font-bold px-4 py-2 rounded-lg hover:bg-green-200">Resolve</button>
               </form>
               <form method="POST" class="flex items-end gap-2">
                 <input type="hidden" name="action" value="dismiss"/><input type="hidden" name="expectedVersion" value={d.version}/>
                 <div class="flex-1"><label class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Dismiss</label>
-                  <select name="resolutionCode" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">{RESOLVE_CODES.map((r) => <option value={r}>{r.replace(/_/g," ")}</option>)}</select></div>
+                  <select name="resolutionCode" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk">{RESOLVE_CODES.map((r) => <option value={r}>{r.replace(/_/g," ")}</option>)}</select></div>
                 <button class="bg-red-100 text-red-800 text-xs font-bold px-4 py-2 rounded-lg hover:bg-red-200">Dismiss</button>
               </form>
             </div>

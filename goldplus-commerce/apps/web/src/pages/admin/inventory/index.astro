@@ -69,14 +69,14 @@ try {
       <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">Stock adjustment</h2>
       <p class="mt-1 text-xs text-slate-500">Row-locked; refused below zero or below reserved holds; before/after audited with your reason.</p>
       <form method="POST" class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-5">
-        <input name="productId" required placeholder="Product ID (uuid)" class="sm:col-span-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
-        <select name="mode" aria-label="Adjustment mode: set to, or adjust by" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-bold outline-none focus:border-brand-gold">
+        <input name="productId" required placeholder="Product ID (uuid)" class="sm:col-span-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-primaryInk" />
+        <select name="mode" aria-label="Adjustment mode: set to, or adjust by" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-bold outline-none focus:border-brand-primaryInk">
           <option value="set">Set to</option>
           <option value="delta">Adjust by</option>
         </select>
-        <input name="value" required type="number" step="1" placeholder="Quantity" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
+        <input name="value" required type="number" step="1" placeholder="Quantity" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-primaryInk" />
         <button type="submit" class="rounded-xl bg-brand-dark px-4 py-2.5 text-xs font-black uppercase tracking-wide text-white hover:bg-black">Apply</button>
-        <input name="reason" required maxlength="300" placeholder="Reason (required — audited)" class="sm:col-span-5 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
+        <input name="reason" required maxlength="300" placeholder="Reason (required — audited)" class="sm:col-span-5 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-primaryInk" />
       </form>
     </section>
     

@@ -268,7 +268,7 @@ function derivedChip(d: string) {
                       <div class="flex-1">
                         <label for={`packed-${l.id}`} class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Packed (total, max {maxPack})</label>
                         <input id={`packed-${l.id}`} name="packed" type="number" min="0" max={maxPack} value={l.packedQuantity} inputmode="numeric"
-                          class="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+                          class="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
                       </div>
                       <button type="submit" class="bg-brand-dark text-white text-xs font-bold px-4 py-2 rounded-lg hover:opacity-90">Save</button>
                     </form>
@@ -281,10 +281,10 @@ function derivedChip(d: string) {
                         <div class="w-20">
                           <label for={`bo-${l.id}`} class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Backorder</label>
                           <input id={`bo-${l.id}`} name="quantity" type="number" min="1" max={rem} value={rem} inputmode="numeric"
-                            class="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+                            class="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
                         </div>
                         <input name="reason" type="text" maxlength="500" placeholder="reason (optional)"
-                          class="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold" />
+                          class="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs text-brand-dark placeholder-gray-300 outline-none focus:border-brand-primaryInk" />
                         <button type="submit" class="bg-orange-100 text-orange-800 text-xs font-bold px-3 py-2 rounded-lg hover:bg-orange-200">Hold</button>
                       </form>
                       <form method="POST" class="flex items-end gap-2 bg-gray-50 border border-gray-100 rounded-xl p-3">
@@ -294,10 +294,10 @@ function derivedChip(d: string) {
                         <div class="w-20">
                           <label for={`cx-${l.id}`} class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Cancel</label>
                           <input id={`cx-${l.id}`} name="quantity" type="number" min="1" max={rem} value={rem} inputmode="numeric"
-                            class="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+                            class="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
                         </div>
                         <input name="reason" type="text" maxlength="500" placeholder="reason (optional)"
-                          class="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold" />
+                          class="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs text-brand-dark placeholder-gray-300 outline-none focus:border-brand-primaryInk" />
                         <button type="submit" class="bg-red-100 text-red-800 text-xs font-bold px-3 py-2 rounded-lg hover:bg-red-200">Cancel</button>
                       </form>
                     </div>
@@ -328,18 +328,18 @@ function derivedChip(d: string) {
                 <div>
                   <label for="pkgcount" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Package count</label>
                   <input id="pkgcount" name="packageCount" type="number" min="1" inputmode="numeric" placeholder="e.g. 2"
-                    class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold" />
+                    class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-primaryInk" />
                 </div>
                 <div>
                   <label for="pkgref" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Package reference</label>
                   <input id="pkgref" name="packageReference" type="text" maxlength="120" placeholder="optional"
-                    class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold" />
+                    class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-primaryInk" />
                 </div>
               </div>
               <div class="mb-4">
                 <label for="pknotes" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Packing notes</label>
                 <input id="pknotes" name="notes" type="text" maxlength="2000" placeholder="optional"
-                  class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold" />
+                  class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-primaryInk" />
               </div>
               <button type="submit" disabled={anyUnresolved}
                 class={`text-xs font-black px-5 py-2.5 rounded-xl transition-opacity ${anyUnresolved ? "bg-gray-100 text-gray-600 cursor-not-allowed" : "bg-brand-gold text-brand-dark hover:opacity-90"}`}>
@@ -354,7 +354,7 @@ function derivedChip(d: string) {
               <div class="mb-3">
                 <label for="exreason" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Reason</label>
                 <input id="exreason" name="reason" type="text" required maxlength="500" placeholder="e.g. one unit damaged in store"
-                  class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold" />
+                  class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-primaryInk" />
               </div>
               <label class="flex items-center gap-2 text-xs font-bold text-brand-dark mb-4">
                 <input type="checkbox" name="hold" class="rounded border-gray-300" />

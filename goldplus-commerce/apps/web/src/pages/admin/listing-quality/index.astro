@@ -74,7 +74,7 @@ const href = (issue: string) => { const p = new URLSearchParams(); if (issue) p.
     <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-5 space-y-4">
       <form method="GET" class="flex flex-wrap items-center gap-3">
         <label class="sr-only" for="q">Search products</label>
-        <input id="q" name="q" value={q} placeholder="Search by name, SKU or category" class="flex-1 min-w-[16rem] border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-green focus:border-brand-green" />
+        <input id="q" name="q" value={q} placeholder="Search by name, SKU or category" class="flex-1 min-w-[16rem] border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-primaryInk focus:border-brand-primaryInk" />
         {issueFilter && <input type="hidden" name="issue" value={issueFilter} />}
         <button type="submit" class="bg-white border border-gray-300 hover:bg-gray-50 text-brand-dark font-black text-xs px-4 py-2.5 rounded-xl uppercase tracking-wider">Search</button>
       </form>

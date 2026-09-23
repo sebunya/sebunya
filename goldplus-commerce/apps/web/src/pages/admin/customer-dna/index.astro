@@ -73,7 +73,7 @@ function maskKey(k: string) { return k.length > 8 ? `${k.slice(0, 4)}…${k.slic
     <form method="GET" class="flex items-end gap-3 mb-8">
       <div class="flex-1">
         <label for="q" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Search (canonical id or account id)</label>
-        <input id="q" name="q" type="text" value={q} placeholder="paste a customer or account id" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold" />
+        <input id="q" name="q" type="text" value={q} placeholder="paste a customer or account id" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-primaryInk" />
       </div>
       <button type="submit" class="bg-brand-dark text-white text-xs font-bold px-5 py-2.5 rounded-xl hover:opacity-90">Search</button>
     </form>

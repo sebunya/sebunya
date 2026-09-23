@@ -572,7 +572,7 @@ const linkButtonClass = "text-[10px] font-black uppercase tracking-widest text-g
                       </td>
                       <td class="p-4">
                         <div class="flex flex-col items-end gap-1.5">
-                          <a href={versionHref(v.id)} class="text-[10px] font-black uppercase tracking-widest text-brand-dark hover:text-brand-primary">
+                          <a href={versionHref(v.id)} class="text-[10px] font-black uppercase tracking-widest text-brand-dark hover:text-brand-primaryInk">
                             {v.status === "DRAFT" || v.status === "IN_REVIEW" ? "Edit" : "View"}
                           </a>
                           {v.status === "DRAFT" && (

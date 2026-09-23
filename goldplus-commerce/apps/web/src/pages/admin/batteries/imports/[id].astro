@@ -76,7 +76,7 @@ const canRollback = s && ['APPLIED', 'PARTIALLY_APPLIED'].includes(s.status);
 <AdminLayout title={s ? `Import ${s.name}` : 'Import'} description="Map, dry run, resolve, approve, apply." activePath="/admin/batteries">
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
     <p class="text-[10px] uppercase font-black tracking-widest text-gray-500 mb-1">
-      <a href="/admin/batteries" class="hover:text-brand-primary">Batteries</a> / <a href="/admin/batteries/imports" class="hover:text-brand-primary">Imports</a> / {s?.name ?? id}
+      <a href="/admin/batteries" class="hover:text-brand-primaryInk">Batteries</a> / <a href="/admin/batteries/imports" class="hover:text-brand-primaryInk">Imports</a> / {s?.name ?? id}
     </p>
 
     {!detail.ok && <div role="status" class="my-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{batteryMessage(detail.error)}</div>}

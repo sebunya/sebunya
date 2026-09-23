@@ -335,7 +335,7 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
     <form method="GET" class="flex flex-wrap items-end gap-3 mb-8">
       <div>
         <label for="status" class="block text-[11px] font-bold text-gray-500 mb-1.5">Show</label>
-        <select name="status" id="status" class="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
+        <select name="status" id="status" class="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk">
           <option value="" selected={statusFilter === ""}>Everything still open</option>
           {ALL_STATUSES.map((s) => <option value={s} selected={statusFilter === s}>{STATUS_WORDS[s]}</option>)}
         </select>
@@ -421,7 +421,7 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
               <input type="hidden" name="id" value={task.id} />
               <div>
                 <label class="block text-[11px] font-bold text-gray-500 mb-1.5">What happens next</label>
-                <select name="toStatus" class="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
+                <select name="toStatus" class="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk">
                   {nextActions(task.status).map((s) => (
                     <option value={s} selected={NEXT_STEP[task.status]?.to === s}>
                       {NEXT_STEP[task.status]?.to === s ? `${NEXT_STEP[task.status]?.label} (next step)` : STATUS_WORDS[s]}
@@ -431,7 +431,7 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
               </div>
               <div class="flex-1 min-w-[180px]">
                 <label class="block text-[11px] font-bold text-gray-500 mb-1.5">Note (optional)</label>
-                <input type="text" name="notes" maxlength="2000" placeholder="e.g. packed, awaiting boda" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold" />
+                <input type="text" name="notes" maxlength="2000" placeholder="e.g. packed, awaiting boda" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-primaryInk" />
               </div>
               <button type="submit" class="bg-brand-gold text-brand-dark text-xs font-black px-5 py-2.5 rounded-xl hover:opacity-90 transition-opacity">{NEXT_STEP[task.status]?.label ?? "Update"}</button>
             </form>
@@ -442,7 +442,7 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
                 <input type="hidden" name="action" value="priority" />
                 <div>
                   <label class="block text-[11px] font-bold text-gray-500 mb-1.5">Priority</label>
-                  <select name="priority" class="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
+                  <select name="priority" class="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk">
                     {PRIORITIES.map((p) => <option value={p} selected={p === task.priority}>{p}</option>)}
                   </select>
                 </div>

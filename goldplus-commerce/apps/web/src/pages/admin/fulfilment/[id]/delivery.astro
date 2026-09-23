@@ -118,41 +118,41 @@ function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG", 
         <form method="POST" class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm grid gap-4 sm:grid-cols-2 mb-8">
           <div class="sm:col-span-2">
             <label for="outcome" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Outcome</label>
-            <select id="outcome" name="outcome" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
+            <select id="outcome" name="outcome" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk">
               {OUTCOMES.map((o) => <option value={o}>{o.replace(/_/g, " ")}</option>)}
             </select>
           </div>
           <div>
             <label for="deliveredQuantity" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Delivered qty (partial)</label>
-            <input id="deliveredQuantity" name="deliveredQuantity" type="number" min="0" inputmode="numeric" placeholder="auto" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+            <input id="deliveredQuantity" name="deliveredQuantity" type="number" min="0" inputmode="numeric" placeholder="auto" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
           </div>
           <div>
             <label for="returnedQuantity" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Returned qty</label>
-            <input id="returnedQuantity" name="returnedQuantity" type="number" min="0" inputmode="numeric" placeholder="0" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+            <input id="returnedQuantity" name="returnedQuantity" type="number" min="0" inputmode="numeric" placeholder="0" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
           </div>
           <div>
             <label for="recipientName" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Recipient (stored masked)</label>
-            <input id="recipientName" name="recipientName" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+            <input id="recipientName" name="recipientName" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
           </div>
           <div>
             <label for="proofReference" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Proof reference</label>
-            <input id="proofReference" name="proofReference" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+            <input id="proofReference" name="proofReference" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
           </div>
           <div>
             <label for="recipientConfirmation" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Confirmation (OTP/signature ref)</label>
-            <input id="recipientConfirmation" name="recipientConfirmation" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+            <input id="recipientConfirmation" name="recipientConfirmation" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
           </div>
           <div>
             <label for="rescheduledFor" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Reschedule date (RESCHEDULED)</label>
-            <input id="rescheduledFor" name="rescheduledFor" type="datetime-local" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+            <input id="rescheduledFor" name="rescheduledFor" type="datetime-local" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
           </div>
           <div class="sm:col-span-2">
             <label for="failedReason" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Failure reason (DELIVERY FAILED)</label>
-            <input id="failedReason" name="failedReason" type="text" maxlength="500" placeholder="e.g. customer not home" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+            <input id="failedReason" name="failedReason" type="text" maxlength="500" placeholder="e.g. customer not home" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
           </div>
           <div class="sm:col-span-2">
             <label for="notes" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Notes (optional)</label>
-            <input id="notes" name="notes" type="text" maxlength="2000" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
+            <input id="notes" name="notes" type="text" maxlength="2000" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
           </div>
           <div class="sm:col-span-2 flex justify-end">
             <button type="submit" class="bg-brand-gold text-brand-dark text-xs font-black px-5 py-2.5 rounded-xl hover:opacity-90">Record attempt</button>

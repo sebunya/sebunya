@@ -201,7 +201,7 @@ const corrections = importResult?.plan.filter((p) => p.isCorrection).length ?? 0
             name="source"
             required
             value={submittedSource}
-            class="w-full sm:w-80 border border-gray-300 rounded-lg p-2 text-sm outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30"
+            class="w-full sm:w-80 border border-gray-300 rounded-lg p-2 text-sm outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk"
           />
         </div>
 
@@ -216,7 +216,7 @@ const corrections = importResult?.plan.filter((p) => p.isCorrection).length ?? 0
             spellcheck="false"
             aria-describedby="cost-rows-help"
             placeholder={`GP-101,45000,${today}`}
-            class="w-full border border-gray-300 rounded-lg p-3 text-sm font-mono outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30"
+            class="w-full border border-gray-300 rounded-lg p-3 text-sm font-mono outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk"
           >{submittedRows}</textarea>
           <p id="cost-rows-help" class="text-[11px] text-gray-500 mt-1">
             Costs are UGX only. A second currency needs a conversion source before margin can mean anything,
@@ -229,7 +229,7 @@ const corrections = importResult?.plan.filter((p) => p.isCorrection).length ?? 0
             type="submit"
             name="intent"
             value="check"
-            class="bg-slate-900 text-white font-black text-xs uppercase tracking-widest rounded-xl px-5 py-3 outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30"
+            class="bg-slate-900 text-white font-black text-xs uppercase tracking-widest rounded-xl px-5 py-3 outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk"
           >
             Check the file
           </button>
@@ -237,7 +237,7 @@ const corrections = importResult?.plan.filter((p) => p.isCorrection).length ?? 0
             type="submit"
             name="intent"
             value="apply"
-            class="bg-brand-primary text-brand-charcoal font-black text-xs uppercase tracking-widest rounded-xl px-5 py-3 outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30"
+            class="bg-brand-primary text-brand-charcoal font-black text-xs uppercase tracking-widest rounded-xl px-5 py-3 outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk"
           >
             Apply
           </button>

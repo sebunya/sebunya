@@ -121,14 +121,14 @@ const STATUS_STYLE: Record<string, string> = {
       <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">New campaign</h2>
       <form method="POST" class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-5">
         <input type="hidden" name="action" value="create" />
-        <input name="name" required maxlength="255" placeholder="Name" class="sm:col-span-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
-        <input name="objective" required maxlength="50" placeholder="Objective (e.g. recover-carts)" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
-        <select name="channel" aria-label="Campaign channel" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-bold outline-none focus:border-brand-gold">
+        <input name="name" required maxlength="255" placeholder="Name" class="sm:col-span-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-primaryInk" />
+        <input name="objective" required maxlength="50" placeholder="Objective (e.g. recover-carts)" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-primaryInk" />
+        <select name="channel" aria-label="Campaign channel" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-bold outline-none focus:border-brand-primaryInk">
           <option value="email">email</option><option value="sms">sms</option>
           <option value="whatsapp">whatsapp</option><option value="internal">internal</option>
         </select>
         <button type="submit" class="rounded-xl bg-brand-dark px-4 py-2.5 text-xs font-black uppercase tracking-wide text-white hover:bg-black">Create draft</button>
-        <input name="targetUrl" placeholder="Target URL (https://shopgoldplus.com/…)" class="sm:col-span-5 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
+        <input name="targetUrl" placeholder="Target URL (https://shopgoldplus.com/…)" class="sm:col-span-5 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-primaryInk" />
       </form>
     </section>
 

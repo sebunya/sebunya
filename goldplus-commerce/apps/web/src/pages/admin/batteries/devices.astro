@@ -67,7 +67,7 @@ const current = brands.find((b) => b.id === brandId) ?? null;
 
 <AdminLayout title="Phones and brands" description="Brands, series and exact phone models a battery can be matched to." activePath="/admin/batteries">
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
-    <p class="text-[10px] uppercase font-black tracking-widest text-gray-500 mb-1"><a href="/admin/batteries" class="hover:text-brand-primary">Batteries</a> / Phones</p>
+    <p class="text-[10px] uppercase font-black tracking-widest text-gray-500 mb-1"><a href="/admin/batteries" class="hover:text-brand-primaryInk">Batteries</a> / Phones</p>
     <div class="mb-6 pb-6 border-b border-gray-200">
       <h2 class="text-2xl font-black text-brand-dark tracking-tight">Phones and brands</h2>
       <p class="text-sm text-gray-500 mt-1 max-w-3xl">
@@ -87,7 +87,7 @@ const current = brands.find((b) => b.id === brandId) ?? null;
             {brands.map((b) => (
               <li class={`px-5 py-3 ${b.id === brandId ? 'bg-brand-primary/5' : ''}`}>
                 <div class="flex items-center justify-between gap-2">
-                  <a href={`/admin/batteries/devices?brandId=${b.id}`} class="font-black text-brand-dark hover:text-brand-primary">{b.name}</a>
+                  <a href={`/admin/batteries/devices?brandId=${b.id}`} class="font-black text-brand-dark hover:text-brand-primaryInk">{b.name}</a>
                   <span class="text-gray-400">{b.deviceCount} phone{b.deviceCount === 1 ? '' : 's'}</span>
                 </div>
                 <p class="text-gray-400 mt-0.5">{b.verifiedFits} live fit{b.verifiedFits === 1 ? '' : 's'}{b.isFeatured ? ' · featured' : ''}{b.status !== 'ACTIVE' ? ' · archived' : ''}</p>

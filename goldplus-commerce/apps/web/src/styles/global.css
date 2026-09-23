@@ -16,8 +16,10 @@
   }
 
   /* Premium focused states */
-  input:focus, select:focus, textarea:focus {
-    @apply outline-none ring-4 ring-brand-primary/10 border-brand-primary transition-all duration-300;
+  /* Focused fields: a solid ink ring (5.46:1 on white). The old 10% lime ring
+     measured 1.16:1 — a keyboard user could not see which field had focus. */
+    input:focus, select:focus, textarea:focus {
+    @apply outline-none ring-2 ring-brand-primaryInk border-brand-primaryInk transition-all duration-300;
   }
 
   /* Custom hide scrollbar utility */
@@ -41,4 +43,18 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Keyboard focus that is always visible (WCAG 2.4.7 / 2.4.11, 2026-09-23).
+   Measured by tabbing the storefront: 48 of 270 focus stops showed an indicator
+   under 3:1 or none — lime rings at 10–40% on white. Fields get a solid ink ring;
+   anything without its own focus RING or OUTLINE utility gets a two-tone ring
+   (white inner, ink outer), visible on light AND dark surfaces. */
+:where(a[href], button, summary, [role="button"], [tabindex]:not([tabindex="-1"])):focus-visible:not([class*="focus:ring"]):not([class*="focus-visible:ring"]):not([class*="focus:outline"]):not([class*="focus-visible:outline"]),
+/* A visually hidden radio/checkbox inside a card label: the CARD shows the focus
+   (quote request, checkout, admin pickers) — before, nothing visible changed. */
+label:has(input.sr-only:focus-visible) {
+  outline: 2px solid #0A0A0A;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px #FFFFFF;
 }

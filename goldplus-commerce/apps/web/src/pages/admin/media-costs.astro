@@ -269,21 +269,21 @@ const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-
         <label class="block text-xs font-bold text-gray-700">
           Source (applies to every row — where this file came from)
           <input name="source" value={submittedSource} required maxlength="120"
-            class="mt-1 block w-full sm:w-96 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-primary outline-none" />
+            class="mt-1 block w-full sm:w-96 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-brand-primaryInk outline-none" />
         </label>
         <label class="block text-xs font-bold text-gray-700">
           Spend rows
           <textarea name="rows" rows="8" required
             placeholder={`2026-08-01,paid_social,Meta,GoldPlus Main,August Chargers,250000\n2026-08-01,paid_search,Google,GoldPlus Ads,Brand Search,120000,21600`}
-            class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs focus:ring-2 focus:ring-brand-primary outline-none">{submittedRows}</textarea>
+            class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs focus:ring-2 focus:ring-brand-primaryInk outline-none">{submittedRows}</textarea>
         </label>
         <div class="flex flex-wrap gap-3">
           <button type="submit" name="intent" value="check"
-            class="inline-flex min-h-11 items-center rounded-full border-2 border-brand-dark px-6 text-sm font-bold text-brand-dark outline-none hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-brand-primary">
+            class="inline-flex min-h-11 items-center rounded-full border-2 border-brand-dark px-6 text-sm font-bold text-brand-dark outline-none hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-brand-primaryInk">
             Check the file
           </button>
           <button type="submit" name="intent" value="apply"
-            class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-6 text-sm font-bold text-white outline-none hover:bg-black focus-visible:ring-2 focus-visible:ring-brand-primary">
+            class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-6 text-sm font-bold text-white outline-none hover:bg-black focus-visible:ring-2 focus-visible:ring-brand-primaryInk">
             Apply
           </button>
         </div>

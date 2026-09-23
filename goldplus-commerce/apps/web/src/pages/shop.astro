@@ -258,12 +258,12 @@ const shopBreadcrumb = breadcrumbJsonLd([
           placeholder="Search by product name, category, or model"
           list="shop-suggest"
           autocomplete="off"
-          class="min-w-0 flex-1 rounded-xl border border-slate-300 px-4 py-3 text-base outline-none focus:border-brand-primary focus:ring-4 focus:ring-brand-primary/20"
+          class="min-w-0 flex-1 rounded-xl border border-slate-300 px-4 py-3 text-base outline-none focus:border-brand-primaryInk focus:ring-4 focus:ring-brand-primaryInk"
         />
         <datalist id="shop-suggest"></datalist>
         {category && <input type="hidden" name="category" value={category} />}
         {subcategory && <input type="hidden" name="subcategory" value={subcategory} />}
-        <button type="submit" class="rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white hover:bg-brand-primary hover:text-slate-950 focus-visible:ring-4 focus-visible:ring-brand-primary/30">Search</button>
+        <button type="submit" class="rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white hover:bg-brand-primary hover:text-slate-950 focus-visible:ring-4 focus-visible:ring-brand-primaryInk">Search</button>
       </div>
     </form>
 

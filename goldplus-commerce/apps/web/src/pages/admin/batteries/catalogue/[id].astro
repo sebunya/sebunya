@@ -96,7 +96,7 @@ const CLAIM_BADGE: Record<string, string> = { ACTIVE: 'bg-green-50 text-green-80
 <AdminLayout title={p ? `Battery ${p.canonicalCode}` : 'Battery'} description="One battery: its identity, evidence, fits, price and stock." activePath="/admin/batteries">
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
     <p class="text-[10px] uppercase font-black tracking-widest text-gray-500 mb-1">
-      <a href="/admin/batteries" class="hover:text-brand-primary">Batteries</a> / <a href="/admin/batteries/catalogue" class="hover:text-brand-primary">Catalogue</a> / {p?.canonicalCode ?? id}
+      <a href="/admin/batteries" class="hover:text-brand-primaryInk">Batteries</a> / <a href="/admin/batteries/catalogue" class="hover:text-brand-primaryInk">Catalogue</a> / {p?.canonicalCode ?? id}
     </p>
 
     {!detail.ok && (

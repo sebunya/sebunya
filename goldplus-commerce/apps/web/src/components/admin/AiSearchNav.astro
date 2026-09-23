@@ -23,7 +23,7 @@ const q = project && project !== "goldplus" ? `?project=${encodeURIComponent(pro
           href={`${t.href}${q}`}
           aria-current={t.key === current ? "page" : undefined}
           class:list={[
-            "inline-block px-3 py-2.5 text-sm font-bold border-b-2 -mb-px focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary rounded-t",
+            "inline-block px-3 py-2.5 text-sm font-bold border-b-2 -mb-px focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primaryInk rounded-t",
             t.key === current ? "border-brand-dark text-brand-dark" : "border-transparent text-gray-500 hover:text-brand-dark",
           ]}
         >{t.label}</a>

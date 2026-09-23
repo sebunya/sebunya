@@ -263,8 +263,8 @@ try {
       {umNotice && <div class={`mt-3 rounded-xl px-4 py-3 text-sm font-semibold ${umNotice.kind === "success" ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"}`}>{umNotice.text}</div>}
       <form method="POST" class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-5">
         <input type="hidden" name="action" value="create-user" />
-        <input name="email" type="email" required placeholder="email@shopgoldplus.com" class="sm:col-span-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
-        <input name="initialPassword" type="password" required minlength="12" placeholder="Initial password (min 12)" autocomplete="new-password" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-gold" />
+        <input name="email" type="email" required placeholder="email@shopgoldplus.com" class="sm:col-span-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-primaryInk" />
+        <input name="initialPassword" type="password" required minlength="12" placeholder="Initial password (min 12)" autocomplete="new-password" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-primaryInk" />
         <select name="roleName" aria-label="Governance role for the new user" class="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-bold outline-none">
           {roleOptions.map((r) => (
             <option value={r.name}>{optionLabel(r)}</option>

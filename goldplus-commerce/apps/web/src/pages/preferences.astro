@@ -43,7 +43,7 @@ const messagesWeSend = communicationPreferences.filter((item) =>
         </div>
         <div class="mt-8">
           <a href="/account/preferences" class="inline-flex min-h-12 items-center justify-center rounded-full px-6 text-sm font-bold outline-none focus-visible:ring-4 focus-visible:ring-white/40" style="background:#93D500;color:#0A0A0A">Manage your preferences &rarr;</a>
-          <p class="mt-2 text-xs text-slate-500">{preferenceCentreStatus.signedInMessage}</p>
+          <p class="mt-2 text-xs text-slate-400">{preferenceCentreStatus.signedInMessage}</p>
         </div>
         <nav aria-label="Preference Centre sections" class="mt-8 flex flex-wrap gap-3 text-sm font-bold">
           <a href="#communication" class="rounded-full border border-slate-600 px-4 py-3 text-white focus-visible:ring-2 focus-visible:ring-brand-primary">What we send</a>
@@ -146,7 +146,7 @@ const messagesWeSend = communicationPreferences.filter((item) =>
             {preferenceCentreStatus.signedInMessage} {preferenceCentreStatus.supportMessage}
           </p>
           <nav aria-label="Preference support and policy links" class="mt-8 flex flex-wrap justify-center gap-3">
-            <a href="/account/preferences" class="inline-flex min-h-11 items-center rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">Manage in your account</a>
+            <a href="/account/preferences" class="inline-flex min-h-11 items-center rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white outline-none focus-visible:ring-2 focus-visible:ring-brand-primaryInk">Manage in your account</a>
             {supportActions.map((action) => (
               <a href={action.href} title={action.description} class="inline-flex min-h-11 items-center rounded-full border border-slate-300 px-6 py-3 text-sm font-bold text-slate-800 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary">{action.label}</a>
             ))}

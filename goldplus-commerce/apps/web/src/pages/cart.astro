@@ -333,7 +333,7 @@ const cutoffLine = cut.closed
             title="Your cart is empty"
             message="Pick something from the shop and it will show up here."
           >
-            <a href="/shop" class="inline-flex items-center justify-center min-w-[200px] h-12 px-6 bg-brand-charcoal text-white rounded-full font-bold hover:bg-black transition-colors text-sm outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30">
+            <a href="/shop" class="inline-flex items-center justify-center min-w-[200px] h-12 px-6 bg-brand-charcoal text-white rounded-full font-bold hover:bg-black transition-colors text-sm outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk">
               Shop all products
             </a>
           </EmptyState>
@@ -363,7 +363,7 @@ const cutoffLine = cut.closed
                 
                 return (
                   <li class="p-5 md:p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
-                    <a href={`/products/${item.slug}`} class="flex-shrink-0 outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30 rounded-2xl block">
+                    <a href={`/products/${item.slug}`} class="flex-shrink-0 outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk rounded-2xl block">
                       {imageUrl ? (
                         <img 
                           src={imageUrl} 
@@ -384,7 +384,7 @@ const cutoffLine = cut.closed
                       {item.categoryName && (
                         <p class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">{item.categoryName}</p>
                       )}
-                      <a href={`/products/${item.slug}`} class="font-bold text-gray-900 hover:text-brand-primary transition-colors line-clamp-2 outline-none focus-visible:ring-2 focus-visible:ring-brand-primary/50 rounded leading-snug">{item.name}</a>
+                      <a href={`/products/${item.slug}`} class="font-bold text-gray-900 hover:text-brand-primaryInk transition-colors line-clamp-2 outline-none focus-visible:ring-2 focus-visible:ring-brand-primaryInk rounded leading-snug">{item.name}</a>
                       <p class="text-sm font-bold text-brand-primaryInk mt-1.5">{formatUgx(item.unitPriceUgx)} <span class="text-xs font-normal text-slate-600 ml-1">each</span></p>
                       {selectedDevice && deviceFits[item.productId] && (
                         deviceFits[item.productId].fitState ? (
@@ -410,7 +410,7 @@ const cutoffLine = cut.closed
                           name="quantity" 
                           value={item.quantity - 1} 
                           aria-label={`Decrease quantity of ${item.name}`}
-                          class="w-11 h-11 rounded-full border border-slate-200 flex items-center justify-center font-bold text-gray-700 hover:bg-slate-50 hover:border-slate-300 transition-colors outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30 active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          class="w-11 h-11 rounded-full border border-slate-200 flex items-center justify-center font-bold text-gray-700 hover:bg-slate-50 hover:border-slate-300 transition-colors outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                           disabled={item.quantity <= 1}
                         >
                           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4"/></svg>
@@ -425,7 +425,7 @@ const cutoffLine = cut.closed
                           name="quantity" 
                           value={item.quantity + 1} 
                           aria-label={`Increase quantity of ${item.name}`}
-                          class="w-11 h-11 rounded-full border border-slate-200 flex items-center justify-center font-bold text-gray-700 hover:bg-slate-50 hover:border-slate-300 transition-colors outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30 active:scale-95 cursor-pointer"
+                          class="w-11 h-11 rounded-full border border-slate-200 flex items-center justify-center font-bold text-gray-700 hover:bg-slate-50 hover:border-slate-300 transition-colors outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk active:scale-95 cursor-pointer"
                         >
                           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                         </button>
@@ -499,7 +499,7 @@ const cutoffLine = cut.closed
 
             <a
               href="/checkout"
-              class="flex items-center justify-center w-full h-[52px] px-6 rounded-full font-semibold outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30 transition-all shadow-md active:scale-95 text-[15px] cursor-pointer"
+              class="flex items-center justify-center w-full h-[52px] px-6 rounded-full font-semibold outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk transition-all shadow-md active:scale-95 text-[15px] cursor-pointer"
               style="background:#93D500;color:#0A0A0A"
             >
               Continue to checkout

@@ -121,7 +121,7 @@ function getStatusColor(status: string) {
             id="search" 
             value={search} 
             placeholder="Order number, customer name, email or phone..."
-            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold transition-colors"
+            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-primaryInk transition-colors"
           />
         </div>
 
@@ -130,7 +130,7 @@ function getStatusColor(status: string) {
           <select 
             name="status" 
             id="status"
-            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold transition-colors appearance-none"
+            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk transition-colors appearance-none"
           >
             <option value="">All Fulfillment Statuses</option>
             <option value="received" selected={statusFilter === 'received'}>Received</option>
@@ -151,7 +151,7 @@ function getStatusColor(status: string) {
           <select 
             name="paymentStatus" 
             id="paymentStatus"
-            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold transition-colors appearance-none"
+            class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk transition-colors appearance-none"
           >
             <option value="">All Payment Statuses</option>
             <option value="unpaid" selected={paymentStatusFilter === 'unpaid'}>Unpaid</option>
@@ -206,7 +206,7 @@ function getStatusColor(status: string) {
             {orders.map(order => (
               <tr class="hover:bg-gray-50 transition-colors">
                 <td class="p-6 font-mono font-bold text-brand-dark text-sm">
-                  <a href={`/admin/orders/${order.id}`} class="hover:underline hover:text-brand-gold transition-colors">
+                  <a href={`/admin/orders/${order.id}`} class="hover:underline hover:text-brand-primaryInk transition-colors">
                     {order.orderNumber || order.id.substring(0,8).toUpperCase()}
                   </a>
                 </td>
