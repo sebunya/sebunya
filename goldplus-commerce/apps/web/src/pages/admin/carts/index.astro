@@ -91,7 +91,7 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
       <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm relative overflow-hidden flex flex-col justify-between">
         <div>
-          <p class="text-[10px] font-black text-brand-green uppercase tracking-widest">Where to find Cart IDs</p>
+          <p class="text-[10px] font-black text-brand-primaryInk uppercase tracking-widest">Where to find Cart IDs</p>
           <p class="text-xs text-gray-500 mt-2 leading-relaxed">
             Retrieve from customer session cookies (<span class="font-mono bg-gray-100 px-1 rounded">goldplus_cart_id</span>), database auditing logs, or active Redis sessions.
           </p>
@@ -105,8 +105,8 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
       </div>
 
       <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm relative overflow-hidden">
-        <p class="text-[10px] font-black text-brand-gold uppercase tracking-widest">API connection</p>
-        <h4 class={`text-2xl font-black mt-2 uppercase flex items-center gap-2 ${apiLive ? 'text-brand-green' : 'text-red-600'}`}>
+        <p class="text-[10px] font-black text-brand-primaryInk uppercase tracking-widest">API connection</p>
+        <h4 class={`text-2xl font-black mt-2 uppercase flex items-center gap-2 ${apiLive ? 'text-brand-primaryInk' : 'text-red-600'}`}>
           {apiLive ? 'Active' : 'Offline'}
           <span class={`inline-block w-2.5 h-2.5 rounded-full ${apiLive ? 'bg-brand-green animate-pulse' : 'bg-red-500'}`}></span>
         </h4>
@@ -184,7 +184,7 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
           <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
             <h3 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Cart details</h3>
             {lookupResult && (
-              <span class="text-[9px] bg-brand-green/10 text-brand-green border border-brand-green/20 font-black px-2 py-0.5 rounded uppercase">Success</span>
+              <span class="text-[9px] bg-brand-green/10 text-brand-primaryInk border border-brand-green/20 font-black px-2 py-0.5 rounded uppercase">Success</span>
             )}
           </div>
 
@@ -241,7 +241,7 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
                         <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest">Subtotal (UGX)</p>
                         <p class="text-lg font-black text-brand-dark mt-0.5">{formatter.format(lookupResult.subtotalUgx || 0)}</p>
                       </div>
-                      <span class="px-2 py-0.5 bg-brand-gold/10 text-brand-gold border border-brand-gold/20 font-black text-[8px] uppercase rounded">Active Status</span>
+                      <span class="px-2 py-0.5 bg-brand-gold/10 text-brand-primaryInk border border-brand-gold/20 font-black text-[8px] uppercase rounded">Active Status</span>
                     </div>
                     <div class="border-t border-gray-200/50 pt-2 mt-2 flex justify-between items-center text-[9px] text-gray-400 font-medium">
                       <span>Retention: 90-day lifespan</span>

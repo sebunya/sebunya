@@ -79,7 +79,7 @@ const crumbs = breadcrumbJsonLd([
         <h1 class="text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">Questions and answers</h1>
         <p class="mt-3 text-base leading-relaxed text-slate-600">
           The things people ask us most, answered plainly. If yours is not here,
-          <a href="/support" class="font-bold text-brand-primary underline underline-offset-2">ask support</a> —
+          <a href="/support" class="font-bold text-brand-primaryInk underline underline-offset-2">ask support</a> —
           we answer on WhatsApp on {biz.phoneDisplay}.
         </p>
       </div>
@@ -98,7 +98,7 @@ const crumbs = breadcrumbJsonLd([
                     {f.links.map((l) => (
                       <a
                         href={l.href}
-                        class="text-sm font-bold text-brand-primary underline underline-offset-2 hover:no-underline"
+                        class="text-sm font-bold text-brand-primaryInk underline underline-offset-2 hover:no-underline"
                         {...(l.href.startsWith('http') ? { target: '_blank', rel: 'noopener' } : {})}
                       >{l.label} &rarr;</a>
                     ))}

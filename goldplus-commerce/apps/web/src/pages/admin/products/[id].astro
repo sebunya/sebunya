@@ -137,7 +137,7 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
             
             <div class="flex justify-between items-start gap-4">
               <div>
-                <span class="text-[9px] font-black text-brand-gold uppercase tracking-widest border border-brand-gold/20 bg-brand-gold/5 px-2 py-0.5 rounded">{product.categoryName || 'General'}</span>
+                <span class="text-[9px] font-black text-brand-primaryInk uppercase tracking-widest border border-brand-gold/20 bg-brand-gold/5 px-2 py-0.5 rounded">{product.categoryName || 'General'}</span>
                 <h3 class="text-xl font-black text-brand-dark mt-2 leading-snug">{product.name}</h3>
                 <code class="text-[10px] text-gray-400 font-mono bg-gray-50 px-2 py-0.5 rounded border border-gray-100 inline-block mt-1.5">UUID: {product.id}</code>
               </div>
@@ -246,7 +246,7 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
                          <div class="min-w-0">
                             <div class="flex items-center gap-2">
                                <span class="font-black uppercase text-[8px] tracking-wider text-gray-400">Slot {idx + 1}</span>
-                               {idx === 0 && <span class="bg-brand-gold/10 text-brand-gold text-[7px] font-black uppercase px-1 rounded">Primary</span>}
+                               {idx === 0 && <span class="bg-brand-gold/10 text-brand-primaryInk text-[7px] font-black uppercase px-1 rounded">Primary</span>}
                             </div>
                             <p class="text-[9px] text-gray-500 italic truncate max-w-xs mt-0.5">{img.url}</p>
                             <p class="text-brand-dark font-medium text-[10px] mt-1 font-bold">Alt: {img.alt || 'No context descriptive text provided'}</p>

@@ -82,7 +82,7 @@ const { preferences } = Astro.props;
               name={`interests.${topic.toLowerCase().replace(' ', '_')}`} 
               value="true"
               checked={preferences.interests?.[topic.toLowerCase().replace(' ', '_')] ?? true}
-              class="text-brand-primary focus:ring-brand-primary" 
+              class="text-brand-primaryInk focus:ring-brand-primary" 
             />
             <span class="text-sm font-bold text-brand-charcoal">{topic}</span>
           </label>

@@ -738,11 +738,11 @@ const checkoutOnSale = campaignRunning && checkoutSavings > 0;
                              value={a.id}
                              data-district={a.district}
                              checked={a.id === defaultAddress?.id}
-                             class="mt-1 w-4 h-4 text-brand-primary border-slate-250 focus:ring-brand-primary cursor-pointer js-address-choice"
+                             class="mt-1 w-4 h-4 text-brand-primaryInk border-slate-250 focus:ring-brand-primary cursor-pointer js-address-choice"
                            />
                            <span class="min-w-0">
                              <span class="font-bold text-gray-900 text-sm">{a.label}</span>
-                             {a.isDefault && <span class="ml-2 text-[10px] font-black uppercase tracking-widest text-brand-primary">Default</span>}
+                             {a.isDefault && <span class="ml-2 text-[10px] font-black uppercase tracking-widest text-brand-primaryInk">Default</span>}
                              <span class="block text-xs text-slate-500 mt-0.5">{a.recipientName} · {a.phone}</span>
                              <span class="block text-xs text-slate-500">{a.areaDetails}, {a.district}</span>
                            </span>
@@ -958,7 +958,7 @@ const checkoutOnSale = campaignRunning && checkoutSavings > 0;
                 <button
                   type="button"
                   id="promo-apply"
-                  class="inline-flex min-h-10 items-center rounded-full border-2 border-brand-primary px-4 text-xs font-black uppercase tracking-wider text-gray-900 outline-none hover:bg-brand-primary/10 focus-visible:ring-4 focus-visible:ring-brand-primary/30 disabled:opacity-50"
+                  class="inline-flex min-h-11 items-center rounded-full border-2 border-brand-primary px-4 text-xs font-black uppercase tracking-wider text-gray-900 outline-none hover:bg-brand-primary/10 focus-visible:ring-4 focus-visible:ring-brand-primary/30 disabled:opacity-50"
                 >Apply</button>
               </div>
               <p id="promo-message" class="text-[11px] font-semibold text-slate-500" aria-live="polite"></p>

@@ -235,7 +235,7 @@ const placements = [
           </div>
           <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
             <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">CTR</p>
-            <h4 class={`text-2xl font-black ${data!.summary.ctr && data!.summary.ctr > 0.05 ? 'text-brand-green' : 'text-brand-dark'}`}>
+            <h4 class={`text-2xl font-black ${data!.summary.ctr && data!.summary.ctr > 0.05 ? 'text-brand-primaryInk' : 'text-brand-dark'}`}>
               {fmtPct(data!.summary.ctr)}
             </h4>
           </div>
@@ -274,7 +274,7 @@ const placements = [
                 <div class="flex items-center justify-between">
                   <span class="text-xs text-gray-500 font-bold">System Health</span>
                   <div class="flex items-center gap-2">
-                    {data!.eventHealth.trackingStatus === 'healthy' && <span class="text-[10px] font-black bg-brand-green/10 text-brand-green px-2 py-0.5 rounded uppercase">Healthy</span>}
+                    {data!.eventHealth.trackingStatus === 'healthy' && <span class="text-[10px] font-black bg-brand-green/10 text-brand-primaryInk px-2 py-0.5 rounded uppercase">Healthy</span>}
                     {data!.eventHealth.trackingStatus === 'quiet' && <span class="text-[10px] font-black bg-amber-50 text-amber-600 px-2 py-0.5 rounded uppercase">Quiet / No Recent Signals</span>}
                   </div>
                 </div>
@@ -372,7 +372,7 @@ const placements = [
                           <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(p.impressions)}</td>
                           <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(p.clicks)}</td>
                           <td class="px-6 py-4 text-right text-xs font-black text-brand-dark">{fmtPct(p.ctr)}</td>
-                          <td class="px-6 py-4 text-right text-xs font-bold text-brand-green">{fmtNum(p.addToCart)}</td>
+                          <td class="px-6 py-4 text-right text-xs font-bold text-brand-primaryInk">{fmtNum(p.addToCart)}</td>
                         </tr>
                       ))
                     )}
@@ -417,7 +417,7 @@ const placements = [
                       <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(r.impressions)}</td>
                       <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(r.clicks)}</td>
                       <td class="px-6 py-4 text-right text-xs font-black text-brand-dark">{fmtPct(r.ctr)}</td>
-                      <td class="px-6 py-4 text-right text-xs font-bold text-brand-green">{fmtNum(r.addToCart)}</td>
+                      <td class="px-6 py-4 text-right text-xs font-bold text-brand-primaryInk">{fmtNum(r.addToCart)}</td>
                       <td class="px-6 py-4">
                         <div class="flex flex-wrap gap-1">
                           {r.placementsTouched.map(p => (
@@ -472,7 +472,7 @@ const placements = [
                       <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(p.impressions)}</td>
                       <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(p.clicks)}</td>
                       <td class="px-6 py-4 text-right text-xs font-black text-brand-dark">{fmtPct(p.ctr)}</td>
-                      <td class="px-6 py-4 text-right text-xs font-bold text-brand-green">{fmtNum(p.addToCart)}</td>
+                      <td class="px-6 py-4 text-right text-xs font-bold text-brand-primaryInk">{fmtNum(p.addToCart)}</td>
                     </tr>
                   ))
                 )}

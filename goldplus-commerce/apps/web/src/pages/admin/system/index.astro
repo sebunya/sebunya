@@ -134,7 +134,7 @@ const lastChecked = new Date().toLocaleTimeString('en-GB', { timeZone: 'Africa/K
       <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
         <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest">Diagnostic Summary</p>
         <div class="flex items-center justify-between mt-2">
-          <h4 class={`text-xl font-black uppercase tracking-tight ${overallHealth === 'System Online' ? 'text-brand-green' : 'text-red-600'}`}>
+          <h4 class={`text-xl font-black uppercase tracking-tight ${overallHealth === 'System Online' ? 'text-brand-primaryInk' : 'text-red-600'}`}>
             {overallHealth}
           </h4>
           <div class={`w-3 h-3 rounded-full ${overallHealth === 'System Online' ? 'bg-brand-green' : 'bg-red-600'}`}></div>
