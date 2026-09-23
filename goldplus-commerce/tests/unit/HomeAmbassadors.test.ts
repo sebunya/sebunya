@@ -3,9 +3,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { DEFAULT_HOMEPAGE_CONTENT } from '@goldplus/shared';
 import {
+  ambassadorsRevision,
   portraitRenditions,
   publicAmbassadors,
   readStoredAmbassadors,
+  releaseProvenance,
   validateAmbassadorsEdit,
 } from '../../apps/api/src/domain/homepage/Ambassadors';
 import { HomepageContentService } from '../../apps/api/src/application/homepage/HomepageContentService';
@@ -44,6 +46,22 @@ describe('what the storefront may see', () => {
   it('only published people with a release on file, a portrait and a description — in order', () => {
     const a = readStoredAmbassadors({ people: [person(1), person(2, { published: false }), person(3, { releaseOnFile: false }), person(4, { image: null }), person(5, { imageAlt: '' }), person(6)] });
     expect(publicAmbassadors(a).people.map((p) => p.id)).toEqual([id(1), id(6)]);
+  });
+  it('carries only what a card shows — never release provenance, publish flags or media-library ids', () => {
+    const pub = publicAmbassadors(readStoredAmbassadors({ people: [person(1, { releaseConfirmedBy: id(50), releaseConfirmedAt: '2026-09-23T10:00:00.000Z' })] }));
+    expect(Object.keys(pub.people[0]).sort()).toEqual(['id', 'image', 'imageAlt', 'name', 'productSlug', 'role', 'tagline']);
+    expect(Object.keys(pub.people[0].image).sort()).toEqual(['height', 'src', 'srcset', 'width']);
+  });
+});
+
+describe('release provenance (consent evidence)', () => {
+  const at = new Date('2026-09-23T10:00:00.000Z');
+  it('is recorded when the box is first ticked, kept while it stays ticked, cleared when unticked', () => {
+    const first = releaseProvenance({ releaseOnFile: true }, undefined, id(50), at);
+    expect(first).toEqual({ releaseConfirmedBy: id(50), releaseConfirmedAt: '2026-09-23T10:00:00.000Z' });
+    const later = releaseProvenance({ releaseOnFile: true }, { releaseOnFile: true, ...first }, id(51), new Date('2026-10-01T00:00:00Z'));
+    expect(later).toEqual(first); // another admin re-saving does not rewrite who confirmed
+    expect(releaseProvenance({ releaseOnFile: false }, { releaseOnFile: true, ...first }, id(51), at)).toEqual({ releaseConfirmedBy: null, releaseConfirmedAt: null });
   });
 });
 
@@ -139,6 +157,36 @@ describe('HomepageContentService', () => {
     expect(bad).toMatchObject({ ok: false });
     expect((bad as any).errors.map((e: any) => `${e.index}:${e.field}`)).toEqual(['0:imageUrl', '1:imageUrl']);
     expect(current().version).toBe(before); // all-or-nothing
+  });
+});
+
+describe('HomepageContentService — consent and concurrency', () => {
+  const setup = (people: any[] = []) => {
+    let stored = { config: { ...DEFAULT_HOMEPAGE_CONTENT, ambassadors: { ...DEFAULT_HOMEPAGE_CONTENT.ambassadors, people } }, version: 5 };
+    const repo = { getConfig: vi.fn(async () => stored), updateConfig: vi.fn(async (c: any) => { stored = { config: c, version: stored.version + 1 }; return stored; }), seedMissing: vi.fn() } as any;
+    const m: IAmbassadorMedia = { resolveByUrl: vi.fn(async (url: string) => ({ assetId: id(77), status: 'ACTIVE' as const, original: { url, width: 1200, height: 2000 }, variants: [] })), syncUsages: vi.fn(async () => undefined) };
+    return { svc: new HomepageContentService(repo, m), current: () => stored };
+  };
+  const edit = (over: Record<string, unknown> = {}) => ({ id: id(1), name: 'Grace', role: 'AMBASSADOR', tagline: '', imageUrl: '/uploads/g.jpg', imageAlt: 'Grace with a power bank', productSlug: '', releaseOnFile: true, published: true, ...over });
+
+  it('records who confirmed the release and when — from the session, never from the request', async () => {
+    const { svc, current } = setup();
+    const r = await svc.updateAmbassadors({ people: [{ ...edit(), releaseConfirmedBy: id(66), releaseConfirmedAt: '2020-01-01T00:00:00.000Z' }] }, id(50), undefined, new Date('2026-09-23T10:00:00.000Z'));
+    expect(r).toMatchObject({ ok: true, releasesConfirmed: [id(1)], releasesWithdrawn: [] });
+    expect(current().config.ambassadors.people[0]).toMatchObject({ releaseConfirmedBy: id(50), releaseConfirmedAt: '2026-09-23T10:00:00.000Z' });
+  });
+
+  it('a stale editor saves nothing; a trust-strip save in the other editor is NOT a conflict', async () => {
+    const { svc, current } = setup([person(1)]);
+    const { revision } = await svc.getAmbassadorsAdmin();
+    await svc.updateConfig({ ...DEFAULT_HOMEPAGE_CONTENT, trustItems: [{ iconKey: 'shield', title: 'Changed', body: 'Changed body' }] }, 'actor');
+    expect((await svc.getAmbassadorsAdmin()).revision).toBe(revision);
+    expect(await svc.updateAmbassadors({ people: [edit()] }, id(50), revision)).toMatchObject({ ok: true });
+    const v = current().version;
+    const stale = await svc.updateAmbassadors({ people: [edit({ name: 'Someone else' })] }, id(51), revision);
+    expect(stale).toMatchObject({ ok: false, conflict: true });
+    expect(current().version).toBe(v);
+    expect(ambassadorsRevision(readStoredAmbassadors(current().config.ambassadors))).not.toBe(revision);
   });
 });
 

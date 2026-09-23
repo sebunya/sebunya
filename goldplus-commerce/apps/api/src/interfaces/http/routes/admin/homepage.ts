@@ -40,8 +40,8 @@ routes.put('/', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => 
  * when anything is wrong — nothing is half-saved.
  */
 routes.get('/ambassadors', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
-  const { config, version } = await Registry.getInstance().homepageContentService.getAdminConfig();
-  return c.json({ success: true, data: { ambassadors: config.ambassadors, version } });
+  const data = await Registry.getInstance().homepageContentService.getAmbassadorsAdmin();
+  return c.json({ success: true, data });
 });
 
 routes.put('/ambassadors', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
@@ -50,7 +50,11 @@ routes.put('/ambassadors', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), as
     return c.json({ success: false, error: { code: 'INVALID_JSON', message: 'An ambassadors object is required.' } }, 400);
   }
   const actorId = (c.get('user') as { id: string }).id;
-  const result = await Registry.getInstance().homepageContentService.updateAmbassadors(body.ambassadors, actorId);
+  const expectedRevision = typeof body.expectedRevision === 'string' ? body.expectedRevision : undefined;
+  const result = await Registry.getInstance().homepageContentService.updateAmbassadors(body.ambassadors, actorId, expectedRevision);
+  if (!result.ok && 'conflict' in result) {
+    return c.json({ success: false, error: { code: 'STALE_REVISION', message: 'Someone else saved this section after you opened it.', currentRevision: result.currentRevision } }, 409);
+  }
   if (!result.ok) {
     return c.json({ success: false, error: { code: 'AMBASSADORS_INVALID', message: 'Some entries need attention.', fields: result.errors } }, 422);
   }
@@ -61,7 +65,8 @@ routes.put('/ambassadors', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), as
     entity: 'homepage_content',
     entityId: 'global',
     previousState: null,
-    newState: { version: result.version, people: people.length, published: people.filter((p: any) => p?.published === true).length },
+    // Consent evidence: which people had a signed photo release confirmed or withdrawn, by this actor, now.
+    newState: { version: result.version, people: people.length, published: people.filter((p: any) => p?.published === true).length, releasesConfirmed: result.releasesConfirmed, releasesWithdrawn: result.releasesWithdrawn },
   });
   return c.json({ success: true, data: { version: result.version } });
 });

@@ -1,9 +1,11 @@
-import { DEFAULT_HOMEPAGE_CONTENT, type HomeAmbassador, type HomepageContent } from '@goldplus/shared';
+import { DEFAULT_HOMEPAGE_CONTENT, DEFAULT_PUBLIC_HOMEPAGE_CONTENT, type HomeAmbassador, type HomepageContent, type PublicHomepageContent } from '@goldplus/shared';
 import type { IHomepageContentRepository } from '../ports/IHomepageContentRepository';
 import type { IAmbassadorMedia } from '../ports/IAmbassadorMedia';
 import {
   portraitRenditions,
   publicAmbassadors,
+  releaseProvenance,
+  ambassadorsRevision,
   readStoredAmbassadors,
   validateAmbassadorsEdit,
   type AmbassadorFieldError,
@@ -63,15 +65,22 @@ export class HomepageContentService {
     private readonly ambassadorMedia?: IAmbassadorMedia,
   ) {}
 
-  async getPublicConfig(): Promise<HomepageContent> {
+  async getPublicConfig(): Promise<PublicHomepageContent> {
     try {
       const stored = await this.repo.getConfig();
       const config = stored?.config ? sanitize(stored.config) : DEFAULT_HOMEPAGE_CONTENT;
       // Drafts, unpublished people and anyone without a release on file never leave the API.
       return { ...config, ambassadors: publicAmbassadors(config.ambassadors) };
     } catch {
-      return DEFAULT_HOMEPAGE_CONTENT;
+      return DEFAULT_PUBLIC_HOMEPAGE_CONTENT;
     }
+  }
+
+  /** The ambassadors editor's view: every entry (drafts and provenance included) and the section fingerprint. */
+  async getAmbassadorsAdmin(): Promise<{ ambassadors: HomepageContent['ambassadors']; revision: string }> {
+    const stored = await this.repo.getConfig();
+    const ambassadors = readStoredAmbassadors((stored?.config as any)?.ambassadors);
+    return { ambassadors, revision: ambassadorsRevision(ambassadors) };
   }
 
   async getAdminConfig(): Promise<{ config: HomepageContent; version: number }> {
@@ -97,12 +106,34 @@ export class HomepageContentService {
    * it is stored as its renditions, and the library records the usage so the
    * image cannot be deleted while it is on the page. Nothing is saved if any
    * entry has a problem — the editor shows each one next to its field.
+   *
+   * `expectedRevision` (the section fingerprint the editor loaded) stops two people
+   * editing it at once from silently overwriting each other: a mismatch saves nothing.
+   * Release provenance — who ticked "signed release on file", and when — is
+   * recorded here, never taken from the request.
    */
-  async updateAmbassadors(input: unknown, actorId: string): Promise<{ ok: true; version: number } | { ok: false; errors: AmbassadorFieldError[] }> {
+  async updateAmbassadors(
+    input: unknown,
+    actorId: string,
+    expectedRevision?: string,
+    now: Date = new Date(),
+  ): Promise<
+    | { ok: true; version: number; releasesConfirmed: string[]; releasesWithdrawn: string[] }
+    | { ok: false; errors: AmbassadorFieldError[] }
+    | { ok: false; conflict: true; currentRevision: string }
+  > {
     if (!this.ambassadorMedia) throw new Error('Ambassador media port is not configured.');
-    const { section, people, errors } = validateAmbassadorsEdit(input);
     const current = await this.repo.getConfig();
+    const stored = readStoredAmbassadors((current?.config as any)?.ambassadors);
+    const currentRevision = ambassadorsRevision(stored);
+    if (typeof expectedRevision === 'string' && expectedRevision && expectedRevision !== currentRevision) {
+      return { ok: false, conflict: true, currentRevision };
+    }
+    const { section, people, errors } = validateAmbassadorsEdit(input);
+    const before = new Map(stored.people.map((p) => [p.id, p]));
     const resolved: HomeAmbassador[] = [];
+    const releasesConfirmed: string[] = [];
+    const releasesWithdrawn: string[] = [];
     for (const [index, p] of people.entries()) {
       let image: HomeAmbassador['image'] = null;
       if (p.imageUrl) {
@@ -115,12 +146,17 @@ export class HomepageContentService {
           image = { assetId: found.assetId, ...portraitRenditions(found.original, found.variants) };
         }
       }
-      resolved.push({ id: p.id, name: p.name, role: p.role, tagline: p.tagline, image, imageAlt: p.imageAlt, productSlug: p.productSlug, releaseOnFile: p.releaseOnFile, published: p.published });
+      const prior = before.get(p.id);
+      const provenance = releaseProvenance(p, prior, actorId, now);
+      // The audit names exactly the people stamped by THIS save — the stamp and the record agree.
+      if (provenance.releaseConfirmedAt && provenance.releaseConfirmedAt !== prior?.releaseConfirmedAt) releasesConfirmed.push(p.id);
+      if (!p.releaseOnFile && prior?.releaseOnFile) releasesWithdrawn.push(p.id);
+      resolved.push({ id: p.id, name: p.name, role: p.role, tagline: p.tagline, image, imageAlt: p.imageAlt, productSlug: p.productSlug, releaseOnFile: p.releaseOnFile, ...provenance, published: p.published });
     }
     if (errors.length > 0) return { ok: false, errors };
     const base = current?.config ? sanitize(current.config) : DEFAULT_HOMEPAGE_CONTENT;
-    const stored = await this.repo.updateConfig({ ...base, ambassadors: { ...section, people: resolved } }, actorId);
+    const saved = await this.repo.updateConfig({ ...base, ambassadors: { ...section, people: resolved } }, actorId);
     await this.ambassadorMedia.syncUsages(resolved.filter((p) => p.image).map((p) => ({ personId: p.id, assetId: p.image!.assetId })));
-    return { ok: true, version: stored.version };
+    return { ok: true, version: saved.version, releasesConfirmed, releasesWithdrawn };
   }
 }

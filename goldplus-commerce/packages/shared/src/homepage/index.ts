@@ -75,7 +75,21 @@ export interface HomeAmbassador {
   /** The product in the photo; the card links to it. Empty: the card does not link. */
   productSlug: string;
   releaseOnFile: boolean;
+  /** Who confirmed the signed release, and when (set by the API when the box is ticked; admin-only, never public). */
+  releaseConfirmedBy: string | null;
+  releaseConfirmedAt: string | null;
   published: boolean;
+}
+
+/** What the storefront receives for a person: only what the card shows. */
+export interface HomeAmbassadorPublic {
+  id: string;
+  name: string;
+  role: HomeAmbassadorRole;
+  tagline: string;
+  image: { src: string; srcset: string | null; width: number | null; height: number | null };
+  imageAlt: string;
+  productSlug: string;
 }
 
 export interface HomeAmbassadors {
@@ -96,6 +110,18 @@ export interface HomepageContent {
   /** Ambassadors & models section above the footer. Hidden while no one is published. */
   ambassadors: HomeAmbassadors;
 }
+
+/** The ambassadors section as the storefront receives it (see HomeAmbassadorPublic). */
+export interface HomeAmbassadorsPublic {
+  heading: string;
+  intro: string;
+  ctaLabel: string;
+  ctaHref: string;
+  people: HomeAmbassadorPublic[];
+}
+
+/** The homepage document as the PUBLIC endpoint serves it: the ambassadors reduced to what cards show. */
+export type PublicHomepageContent = Omit<HomepageContent, 'ambassadors'> & { ambassadors: HomeAmbassadorsPublic };
 
 export const HOME_TRUST_ICON_KEYS = ['shield', 'clipboard', 'support'] as const;
 
@@ -199,4 +225,10 @@ export const DEFAULT_HOMEPAGE_CONTENT: HomepageContent = {
     ctaHref: '/shop',
     people: [],
   },
+};
+
+/** The default as the public endpoint serves it (no people until the owner publishes some). */
+export const DEFAULT_PUBLIC_HOMEPAGE_CONTENT: PublicHomepageContent = {
+  ...DEFAULT_HOMEPAGE_CONTENT,
+  ambassadors: { ...DEFAULT_HOMEPAGE_CONTENT.ambassadors, people: [] },
 };

@@ -13,10 +13,10 @@
  * have a signed photo release on file; with no one to show, nothing renders.
  * A card links to the product in the photo when that product is on sale.
  */
-import { HOME_AMBASSADOR_ROLE_LABEL, type HomeAmbassadors, type ProductPublicDto } from '@goldplus/shared';
+import { HOME_AMBASSADOR_ROLE_LABEL, type HomeAmbassadorsPublic, type ProductPublicDto } from '@goldplus/shared';
 
 interface Props {
-  section: HomeAmbassadors | undefined;
+  section: HomeAmbassadorsPublic | undefined;
   products: ProductPublicDto[];
 }
 const { section, products } = Astro.props;

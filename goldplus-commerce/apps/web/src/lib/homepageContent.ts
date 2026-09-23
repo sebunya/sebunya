@@ -1,5 +1,5 @@
 import { apiBase } from './api';
-import { DEFAULT_HOMEPAGE_CONTENT, type HomepageContent } from '@goldplus/shared';
+import { DEFAULT_PUBLIC_HOMEPAGE_CONTENT as DEFAULT_HOMEPAGE_CONTENT, type PublicHomepageContent as HomepageContent } from '@goldplus/shared';
 
 /**
  * Homepage marketing content (trust strip + pathway cards), cached in-process

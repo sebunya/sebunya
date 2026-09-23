@@ -31,6 +31,7 @@ const authed = (path: string, init?: RequestInit) =>
 type Row = {
   id: string; name: string; role: string; tagline: string; imageUrl: string; imageAlt: string;
   productSlug: string; releaseOnFile: boolean; published: boolean; position: number; preview: string | null;
+  releaseConfirmedAt: string | null;
 };
 type FieldErrors = Record<string, string>; // key `${row}.${field}` or `section.${field}`
 
@@ -38,12 +39,14 @@ let notice: { kind: 'ok' | 'error'; message: string } | null = null;
 let errors: FieldErrors = {};
 let rows: Row[] | null = null;
 let sectionDraft: Omit<HomeAmbassadors, 'people'> | null = null;
+let revision: string | null = null;
 
 const bool = (v: FormDataEntryValue | null) => v === 'on' || v === 'true';
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const count = Math.min(Number(form.get('rowCount') ?? 0) || 0, HOME_AMBASSADORS_MAX + 1);
+  revision = String(form.get('revision') ?? '').trim() || null;
   sectionDraft = {
     heading: String(form.get('heading') ?? ''),
     intro: String(form.get('intro') ?? ''),
@@ -51,6 +54,9 @@ if (Astro.request.method === 'POST') {
     ctaHref: String(form.get('ctaHref') ?? ''),
   };
   const submitted: Row[] = [];
+  // Upload problems are keyed by the row's id, not its position: rows are re-sorted
+  // by their typed position below, and a message must stay next to its own photo.
+  const uploadErrors = new Map<string, string>();
   for (let i = 0; i < count; i++) {
     const f = (k: string) => String(form.get(`p.${i}.${k}`) ?? '').trim();
     const photo = form.get(`p.${i}.photo`);
@@ -59,7 +65,7 @@ if (Astro.request.method === 'POST') {
       id: f('id') || crypto.randomUUID(),
       name: f('name'), role: f('role') || 'AMBASSADOR', tagline: f('tagline'), imageUrl: f('imageUrl'), imageAlt: f('imageAlt'),
       productSlug: f('productSlug'), releaseOnFile: bool(form.get(`p.${i}.releaseOnFile`)), published: bool(form.get(`p.${i}.published`)),
-      position: Number(f('position')) || i + 1, preview: f('preview') || null,
+      position: Number(f('position')) || i + 1, preview: f('preview') || null, releaseConfirmedAt: f('releaseConfirmedAt') || null,
     };
     if (bool(form.get(`p.${i}.remove`))) continue;
     // The blank "add a person" row, left blank.
@@ -74,9 +80,10 @@ if (Astro.request.method === 'POST') {
         const up = json?.data?.uploaded?.[0];
         const rej = json?.data?.rejected?.[0];
         if (up?.url) { row.imageUrl = up.url; row.preview = up.url; }
-        else errors[`${submitted.length}.imageUrl`] = rej ? `The photo was not accepted: ${rej.message ?? rej.reason}.` : (json?.error?.message ?? 'The photo could not be uploaded.');
+        else if (res.status === 403) uploadErrors.set(row.id, 'Your account cannot upload to the media library. Ask an owner for media permission, or use an address of a photo already in the library.');
+        else uploadErrors.set(row.id, rej ? `The photo was not accepted: ${rej.message ?? rej.reason}.` : (json?.error?.message ?? 'The photo could not be uploaded.'));
       } catch {
-        errors[`${submitted.length}.imageUrl`] = 'The photo could not be uploaded right now.';
+        uploadErrors.set(row.id, 'The photo could not be uploaded right now.');
       }
     }
     submitted.push(row);
@@ -84,9 +91,11 @@ if (Astro.request.method === 'POST') {
   // Keep the typed order even when errors send the page back.
   submitted.sort((a, b) => a.position - b.position);
   rows = submitted.map((r, i) => ({ ...r, position: i + 1 }));
+  rows.forEach((r, i) => { const m = uploadErrors.get(r.id); if (m) errors[`${i}.imageUrl`] = m; });
 
   if (Object.keys(errors).length === 0) {
     const payload = {
+      ...(revision ? { expectedRevision: revision } : {}),
       ambassadors: {
         ...sectionDraft,
         people: rows.map((r) => ({ id: r.id, name: r.name, role: r.role, tagline: r.tagline, imageUrl: r.imageUrl, imageAlt: r.imageAlt, productSlug: r.productSlug, releaseOnFile: r.releaseOnFile, published: r.published })),
@@ -97,8 +106,15 @@ if (Astro.request.method === 'POST') {
       if (res.status === 401 || res.status === 403) return Astro.redirect('/admin/login?returnTo=/admin/homepage/ambassadors', 303);
       const json: any = await res.json().catch(() => null);
       if (res.ok && json?.success) return Astro.redirect(`/admin/homepage/ambassadors?saved=${encodeURIComponent(String(json.data?.version ?? ''))}`, 303);
-      for (const e of json?.error?.fields ?? []) errors[e.index === -1 ? `section.${e.field}` : `${e.index}.${e.field}`] = e.message;
-      notice = { kind: 'error', message: json?.error?.fields?.length ? 'Nothing was saved. Fix the entries marked below.' : (json?.error?.message ?? `Nothing was saved (HTTP ${res.status}).`) };
+      if (res.status === 409) {
+        // Someone else saved since this page was opened. Keep these edits; saving again
+        // (now against their version) replaces theirs deliberately.
+        revision = String(json?.error?.currentRevision ?? revision ?? '') || null;
+        notice = { kind: 'error', message: 'Someone else saved this section after you opened the page. Your edits are still below — save again to replace their version with yours, or reload the page to see theirs first.' };
+      } else {
+        for (const e of json?.error?.fields ?? []) errors[e.index === -1 ? `section.${e.field}` : `${e.index}.${e.field}`] = e.message;
+        notice = { kind: 'error', message: json?.error?.fields?.length ? 'Nothing was saved. Fix the entries marked below.' : (json?.error?.message ?? `Nothing was saved (HTTP ${res.status}).`) };
+      }
     } catch {
       notice = { kind: 'error', message: 'The service is unreachable right now. Nothing was saved.' };
     }
@@ -116,9 +132,11 @@ if (!rows) {
     const a: HomeAmbassadors = json?.success ? json.data.ambassadors : DEFAULT_HOMEPAGE_CONTENT.ambassadors;
     if (!json?.success) loadError = json?.error?.message ?? 'Could not load the section.';
     sectionDraft = { heading: a.heading, intro: a.intro, ctaLabel: a.ctaLabel, ctaHref: a.ctaHref };
+    revision = json?.success ? String(json.data.revision ?? '') || null : null;
     rows = a.people.map((p, i) => ({
       id: p.id, name: p.name, role: p.role, tagline: p.tagline, imageUrl: p.image?.src ?? '', imageAlt: p.imageAlt,
       productSlug: p.productSlug, releaseOnFile: p.releaseOnFile, published: p.published, position: i + 1, preview: p.image?.src ?? null,
+      releaseConfirmedAt: p.releaseConfirmedAt ?? null,
     }));
   } catch {
     loadError = 'The service is unreachable right now.';
@@ -137,7 +155,7 @@ try {
 const list = rows ?? [];
 const canAdd = list.length < HOME_AMBASSADORS_MAX;
 const all: Row[] = canAdd
-  ? [...list, { id: '', name: '', role: 'AMBASSADOR', tagline: '', imageUrl: '', imageAlt: '', productSlug: '', releaseOnFile: false, published: false, position: list.length + 1, preview: null }]
+  ? [...list, { id: '', name: '', role: 'AMBASSADOR', tagline: '', imageUrl: '', imageAlt: '', productSlug: '', releaseOnFile: false, published: false, position: list.length + 1, preview: null, releaseConfirmedAt: null }]
   : list;
 const live = list.filter((r) => r.published && r.releaseOnFile && r.imageUrl && r.imageAlt).length;
 const err = (i: number, f: string) => errors[`${i}.${f}`];
@@ -163,6 +181,7 @@ const input = 'mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm';
 
     <form method="POST" enctype="multipart/form-data" class="mt-8 space-y-8">
       <input type="hidden" name="rowCount" value={all.length} />
+      {revision && <input type="hidden" name="revision" value={revision} />}
       <section class="rounded-xl border border-slate-200 bg-white p-5">
         <h2 class="text-sm font-black uppercase tracking-wider text-slate-600">Section</h2>
         <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -189,6 +208,7 @@ const input = 'mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm';
           <section class:list={['rounded-xl border bg-white p-5', Object.keys(errors).some((k) => k.startsWith(`${i}.`)) ? 'border-red-300' : 'border-slate-200']} aria-labelledby={`amb-${i}-title`}>
             <input type="hidden" name={`p.${i}.id`} value={r.id} />
             <input type="hidden" name={`p.${i}.preview`} value={r.preview ?? ''} />
+            <input type="hidden" name={`p.${i}.releaseConfirmedAt`} value={r.releaseConfirmedAt ?? ''} />
             <div class="flex items-start justify-between gap-4">
               <h2 id={`amb-${i}-title`} class="text-sm font-black text-slate-900">{isNew ? 'Add a person' : (r.name || `Person ${i + 1}`)}</h2>
               {!isNew && (
@@ -238,7 +258,9 @@ const input = 'mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm';
                 </label>
                 <label class="flex items-start gap-2 text-sm text-slate-800 sm:col-span-2">
                   <input type="checkbox" name={`p.${i}.releaseOnFile`} checked={r.releaseOnFile} class="mt-0.5 h-4 w-4" />
-                  <span>I hold a <strong>signed photo release</strong> from this person allowing GoldPlus to show their photo.</span>
+                  <span>I hold a <strong>signed photo release</strong> from this person allowing GoldPlus to show their photo.
+                    {r.releaseOnFile && r.releaseConfirmedAt && <span class="block text-xs text-slate-600">Confirmed {new Date(r.releaseConfirmedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Kampala' })} — recorded with your account in the audit log.</span>}
+                  </span>
                 </label>
                 {err(i, 'releaseOnFile') && <p class="-mt-2 text-xs font-bold text-red-700 sm:col-span-2">{err(i, 'releaseOnFile')}</p>}
                 <div class="flex flex-wrap items-center gap-5 sm:col-span-2">

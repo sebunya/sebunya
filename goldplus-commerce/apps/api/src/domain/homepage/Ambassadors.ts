@@ -4,6 +4,7 @@ import {
   HOME_AMBASSADOR_ROLES,
   type HomeAmbassador,
   type HomeAmbassadorImage,
+  type HomeAmbassadorPublic,
   type HomeAmbassadorRole,
   type HomeAmbassadors,
 } from '@goldplus/shared';
@@ -23,6 +24,7 @@ import {
 const s = (v: unknown, max: number): string => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 /** A same-site path only: no other origins, no protocol-relative URLs, no schemes. */
 const isSitePath = (v: string) => v.startsWith('/') && !v.startsWith('//') && !/[\s<>"'`]/.test(v);
 
@@ -74,6 +76,8 @@ export function readStoredAmbassadors(input: unknown): HomeAmbassadors {
         imageAlt: s(p?.imageAlt, AMBASSADOR_LIMITS.imageAlt),
         productSlug: SLUG.test(slug) ? slug : '',
         releaseOnFile: p?.releaseOnFile === true,
+        releaseConfirmedBy: p?.releaseOnFile === true && UUID.test(String(p?.releaseConfirmedBy ?? '')) ? String(p.releaseConfirmedBy) : null,
+        releaseConfirmedAt: p?.releaseOnFile === true && ISO.test(String(p?.releaseConfirmedAt ?? '')) ? String(p.releaseConfirmedAt) : null,
         published: p?.published === true,
       };
     })
@@ -82,12 +86,46 @@ export function readStoredAmbassadors(input: unknown): HomeAmbassadors {
   return section(raw, people);
 }
 
-/** What the storefront may see: published people with a release on file and a portrait, in order. */
-export function publicAmbassadors(a: HomeAmbassadors): HomeAmbassadors {
+/**
+ * What the storefront may see: published people with a release on file and a
+ * portrait, in order — and only the fields a card shows. Release provenance,
+ * publish flags and media-library ids never leave the API.
+ */
+export function publicAmbassadors(a: HomeAmbassadors): Omit<HomeAmbassadors, 'people'> & { people: HomeAmbassadorPublic[] } {
   const people = a.people
     .filter((p) => p.published && p.releaseOnFile && p.image !== null && p.imageAlt.length > 0)
-    .map((p) => ({ ...p }));
-  return { ...a, people };
+    .map((p): HomeAmbassadorPublic => ({
+      id: p.id, name: p.name, role: p.role, tagline: p.tagline, imageAlt: p.imageAlt, productSlug: p.productSlug,
+      image: { src: p.image!.src, srcset: p.image!.srcset, width: p.image!.width, height: p.image!.height },
+    }));
+  return { heading: a.heading, intro: a.intro, ctaLabel: a.ctaLabel, ctaHref: a.ctaHref, people };
+}
+
+/**
+ * Release provenance: the moment the box goes from unticked to ticked, record who
+ * and when; while it stays ticked, keep the original confirmation; unticked, clear it.
+ */
+export function releaseProvenance(
+  now: { releaseOnFile: boolean },
+  before: { releaseOnFile: boolean; releaseConfirmedBy: string | null; releaseConfirmedAt: string | null } | undefined,
+  actorId: string,
+  at: Date,
+): { releaseConfirmedBy: string | null; releaseConfirmedAt: string | null } {
+  if (!now.releaseOnFile) return { releaseConfirmedBy: null, releaseConfirmedAt: null };
+  if (before?.releaseOnFile && before.releaseConfirmedAt) return { releaseConfirmedBy: before.releaseConfirmedBy, releaseConfirmedAt: before.releaseConfirmedAt };
+  return { releaseConfirmedBy: UUID.test(actorId) ? actorId : null, releaseConfirmedAt: at.toISOString() };
+}
+
+/**
+ * A fingerprint of the stored section, so two people editing it at once can't
+ * silently overwrite each other — scoped to THIS section, so a save of the trust
+ * strip in the other editor is not a false conflict. FNV-1a (not security, just identity).
+ */
+export function ambassadorsRevision(a: HomeAmbassadors): string {
+  const text = JSON.stringify(a);
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return h.toString(16).padStart(8, '0');
 }
 
 // ── Editing ─────────────────────────────────────────────────────────────────
