@@ -25,6 +25,15 @@ vi.mock('../../apps/api/src/interfaces/http/middleware/auth', async () => {
   };
 });
 
+// Uploaded files go to a throwaway folder. Without this the Registry's dev
+// default is apps/web/public, so every local run left real images in the tree.
+const { mkdtempSync, rmSync } = await import('node:fs');
+const { tmpdir } = await import('node:os');
+const { join } = await import('node:path');
+const MEDIA_ROOT = process.env.MEDIA_STORAGE_ROOT ?? mkdtempSync(join(tmpdir(), 'goldplus-itest-media-'));
+const ownMediaRoot = !process.env.MEDIA_STORAGE_ROOT;
+process.env.MEDIA_STORAGE_ROOT = MEDIA_ROOT;
+
 const { createRequire } = await import('node:module');
 const sharp = createRequire(import.meta.url)('sharp');
 // Distinct bytes per label WITHOUT relying on fonts (the container may have none): the label
@@ -73,6 +82,7 @@ suite('product media admin API (real PostgreSQL, real app)', () => {
     }
     await fx?.cleanup();
     await raw.end();
+    if (ownMediaRoot) rmSync(MEDIA_ROOT, { recursive: true, force: true });
   });
 
   const galleryOf = async (actor = maker) => {

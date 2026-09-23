@@ -44,3 +44,6 @@ data/locations/v1/*.csv
 data/locations/v1/*.sql
 data/locations/v2/*.csv
 data/locations/v1/*.RETIRED
+
+# Local dev/test media uploads (production writes to the media volume, never the tree)
+apps/web/public/uploads/
