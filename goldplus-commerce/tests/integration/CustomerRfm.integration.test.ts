@@ -51,6 +51,11 @@ suite('customer RFM scoring (real PostgreSQL)', () => {
     await mkPaidOrders(await mkUser('mid'), 2, 45, 750_000);
     await mkPaidOrders(await mkUser('weak'), 1, 120, 400_000);
     await mkPaidOrders(await mkUser('worst'), 1, 300, 100_000);
+    // A paying customer whose orders come AFTER the scoring instant — what a
+    // production clone always contains when NOW is a fixed date. Their orders
+    // do not exist yet as of NOW, so they must neither be scored nor move the
+    // quintile boundaries (negative recency once ranked them above everyone).
+    await mkPaidOrders(await mkUser('future'), 9, -49, 9_000_000);
     // An UNPAID order for champ that must be ignored by the aggregation.
     const on = `u${Date.now().toString(36)}`.slice(0, 20);
     await raw`
@@ -78,6 +83,12 @@ suite('customer RFM scoring (real PostgreSQL)', () => {
     expect(champ.f).toBe(5);
     expect(worst.segment).toBe('Lost');
     expect(report.segmentCounts['Champions']).toBeGreaterThanOrEqual(1);
+  });
+
+  it('scores as of NOW: orders placed after it are not counted', async () => {
+    const report = await useCase.execute({ now: NOW, limit: 5000 });
+    expect(report.scores.find((s: any) => s.customerId === key['future'])).toBeUndefined();
+    expect(report.scores.every((s: any) => s.recencyDays === null || s.recencyDays >= 0)).toBe(true);
   });
 
   it('ignores unpaid orders — the champion order_count is 5, not 6', async () => {

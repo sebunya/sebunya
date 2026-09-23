@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { Fixtures } from './helpers/fixtures';
 /**
  * Focus 4 — the ADMIN API end to end on REAL PostgreSQL (disposable production
  * copy): the real Hono app, the real Registry, the real media library (sharp
@@ -41,19 +42,21 @@ suite('product media admin API (real PostgreSQL, real app)', () => {
   let app: any; let raw: any; let maker: string; let checker: string;
   let productId = ''; let sku = ''; let slug = '';
   const created: { assets: string[]; sessions: string[] } = { assets: [], sessions: [] };
+  let fx: Fixtures; let legacyProductId = '';
   const J = { 'Content-Type': 'application/json' };
   const as = (actor: string, init: RequestInit = {}) => ({ ...init, headers: { ...(init.headers as Record<string, string> | undefined), Authorization: `Bearer ${actor}` } });
 
   beforeAll(async () => {
     raw = createRequire(import.meta.url)('postgres')(URL as string, { max: 4, onnotice: () => undefined });
     app = (await import('../../apps/api/src/interfaces/http/app')).default;
-    const users = await raw`select id from users order by created_at limit 2`;
-    maker = users[0].id; checker = users[1]?.id ?? users[0].id;
-    const cat = (await raw`select id from categories limit 1`)[0].id;
+    // Two DIFFERENT people: the import approval is four-eyes, so a lone user would test nothing.
+    fx = new Fixtures(raw);
+    maker = await fx.user(); checker = await fx.user();
+    const cat = await fx.category();
     const tag = Date.now();
     sku = `ITEST-ADM-${tag}`; slug = `itest-adm-${tag}`;
     productId = (await raw`insert into products (sku, model_number, name, slug, category_id, approval_status, active) values (${sku}, ${sku}, 'itest admin gallery', ${slug}, ${cat}, 'approved', true) returning id`)[0].id;
-  });
+  }, 60_000);
 
   afterAll(async () => {
     if (productId) {
@@ -63,7 +66,12 @@ suite('product media admin API (real PostgreSQL, real app)', () => {
       await raw`delete from products where id = ${productId}::uuid`;
     }
     for (const s of created.sessions) await raw`delete from media_import_sessions where id = ${s}::uuid`;
-    if (created.assets.length) await raw`delete from media_assets where id = any(${created.assets}::uuid[])`;
+    if (legacyProductId) await raw`delete from product_images where product_id = ${legacyProductId}::uuid`;
+    if (created.assets.length) {
+      await raw`delete from media_asset_variants where asset_id = any(${created.assets}::uuid[])`;
+      await raw`delete from media_assets where id = any(${created.assets}::uuid[])`;
+    }
+    await fx?.cleanup();
     await raw.end();
   });
 
@@ -211,10 +219,24 @@ suite('product media admin API (real PostgreSQL, real app)', () => {
     expect((await del.json()).error.code).toBe('COVER_REQUIRES_REPLACEMENT');
   });
 
-  it('backfill dry run on the production copy: every current primary is a clean WOULD_ASSIGN_COVER (no conflicts)', async () => {
+  it('backfill dry run: a legacy primary becomes a clean ASSIGN_COVER, and no current primary conflicts', async () => {
     const { Registry } = await import('../../apps/api/src/infrastructure/Registry');
     const { planBackfill } = await import('../../apps/api/src/domain/media/ProductMediaBackfill');
     const repo = Registry.getInstance().productMediaRepo as any;
+    // A legacy (pre-slot) product with one primary image on a ready asset — what every
+    // imaged product looked like before 0148. Seeded here so the dry run has a known case
+    // on ANY database, not only on a production copy that happens to contain some.
+    const legacy = await fx.product();
+    legacyProductId = legacy.id;
+    const sha = `${Date.now().toString(16)}`.padEnd(64, 'b').slice(0, 64);
+    const assetId = (await raw`insert into media_assets (filename, mime, byte_size, width, height, checksum_sha256, storage_key, url, status)
+      values ('itest-legacy.webp', 'image/webp', 1000, 1600, 1600, ${sha}, ${`uploads/assets/it/${sha.slice(0, 12)}/itest-legacy.webp`}, ${`/uploads/assets/it/${sha.slice(0, 12)}/itest-legacy.webp`}, 'ACTIVE') returning id`)[0].id;
+    created.assets.push(assetId);
+    await raw`insert into media_asset_variants (asset_id, purpose, format, width, height, byte_size, storage_key, url)
+      values (${assetId}, 'pdp', 'webp', 1024, 1024, 500, ${`uploads/assets/it/${sha.slice(0, 12)}/pdp.webp`}, ${`/uploads/assets/it/${sha.slice(0, 12)}/pdp.webp`})`;
+    await raw`insert into product_images (product_id, url, is_primary, display_order, asset_id)
+      values (${legacy.id}, ${`/uploads/assets/it/${sha.slice(0, 12)}/itest-legacy.webp`}, true, 0, ${assetId})`;
+    let legacyDecision = '';
     const decisions: Record<string, number> = {};
     let after: string | null = null;
     for (;;) {
@@ -226,9 +248,11 @@ suite('product media admin API (real PostgreSQL, real app)', () => {
         const d = planBackfill({ mediaRevision: snap.mediaRevision }, snap.rows.map((r: any) => ({ imageId: r.imageId, assetId: r.assetId, slot: r.slot, isPrimary: r.isPrimary, displayOrder: r.displayOrder, altText: r.altText, assetReady: r.asset?.ready ?? false })));
         const key = d.kind === 'CONFLICT' ? `CONFLICT:${d.code}` : d.kind;
         decisions[key] = (decisions[key] ?? 0) + 1;
+        if (p.productId === legacy.id) legacyDecision = key;
       }
     }
     // The itest product itself is migrated, so it is not in this set.
+    expect(legacyDecision).toBe('ASSIGN_COVER');
     expect(decisions.ASSIGN_COVER ?? 0).toBeGreaterThan(0);
     expect(Object.keys(decisions).filter((k) => k.startsWith('CONFLICT'))).toEqual([]);
     console.log('backfill dry run on the copy:', JSON.stringify(decisions));

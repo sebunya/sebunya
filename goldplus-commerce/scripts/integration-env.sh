@@ -56,7 +56,12 @@ rebuild goldplus_test_analytics empty
 # migrations; apply them so EVERY suite sees the full schema (idempotent —
 # IF NOT EXISTS throughout). Suites keep their own guarded application for
 # standalone runs.
-for m in 0099_recommendation_event_contract 0100_experience_profiles 0101_order_profile_stitching 0102_commercial_costs 0103_refund_ledger 0104_product_cost_entries 0105_commercial_indexes 0106_account_recovery_and_social_identity 0107_hero_slides 0108_hero_events; do
+# The snapshot (2026-09-12) also predates 0130 onwards (AI visibility, ad
+# destinations, measurement 0140+, fulfilment alerts, battery links, media
+# slots 0148/0149 …); every migration from 0130 is layered too, so a new one
+# is picked up without editing this list. Refresh the snapshot to shrink it.
+LATER=$(ls apps/api/src/infrastructure/db/migrations | grep -E '^0(1[3-9]|[2-9][0-9])[0-9]_.*\.sql$' | sed 's/\.sql$//')
+for m in 0099_recommendation_event_contract 0100_experience_profiles 0101_order_profile_stitching 0102_commercial_costs 0103_refund_ledger 0104_product_cost_entries 0105_commercial_indexes 0106_account_recovery_and_social_identity 0107_hero_slides 0108_hero_events $LATER; do
   sed 's/--> statement-breakpoint//' "apps/api/src/infrastructure/db/migrations/${m}.sql" | psql -q goldplus_test_commerce >/dev/null
 done
 

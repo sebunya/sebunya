@@ -18,6 +18,8 @@ describeIf('cart abandonment lifecycle (real PostgreSQL)', () => {
   let raw: any; let repo: any; let uc: any; const cartIds: string[] = []; let productId: string;
   const H = 3600_000;
 
+  let ownCategoryId = '';
+
   beforeAll(async () => {
     process.env.DATABASE_URL = URL!;
     const require = createRequire(import.meta.url);
@@ -25,8 +27,9 @@ describeIf('cart abandonment lifecycle (real PostgreSQL)', () => {
     raw = postgres(URL!, { max: 4, prepare: false });
     // The snapshot predates 0129; apply it here so this suite is honest on its own.
     await raw.unsafe(readFileSync(resolve(__dirname, '../../apps/api/src/infrastructure/db/migrations/0129_cart_abandonment_open_uq_partial.sql'), 'utf8').replace(/--> statement-breakpoint/g, ''));
-    const [cat] = await raw`select id from categories limit 1`;
-    const catId = cat?.id ?? (await raw`insert into categories (name, slug) values ('T', ${'t-' + Date.now()}) returning id`)[0].id;
+    // Its own category, removed afterwards: borrowing "the first category" left a stray row on an empty database.
+    const catId = (await raw`insert into categories (name, slug) values ('T', ${'t-' + Date.now()}) returning id`)[0].id;
+    ownCategoryId = catId;
     const sku = `AB-${Date.now().toString(36)}`;
     productId = (await raw`insert into products (sku, model_number, name, slug, category_id, price_ugx, active, approval_status) values (${sku}, ${sku}, 'Abandon Test', ${sku.toLowerCase()}, ${catId}, 10000, true, 'approved') returning id`)[0].id;
     const { DrizzleAbandonmentRepository } = await import('../../apps/api/src/infrastructure/db/repositories/DrizzleAbandonmentRepository');
@@ -39,6 +42,7 @@ describeIf('cart abandonment lifecycle (real PostgreSQL)', () => {
     if (!raw) return;
     if (cartIds.length) { await raw`delete from cart_abandonments where cart_id = any(${cartIds})`; await raw`delete from cart_items where cart_id = any(${cartIds})`; await raw`delete from carts where id = any(${cartIds})`; }
     if (productId) await raw`delete from products where id = ${productId}`;
+    if (ownCategoryId) await raw`delete from categories where id = ${ownCategoryId}`;
     await raw.end();
   });
 

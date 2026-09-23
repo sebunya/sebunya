@@ -229,6 +229,7 @@ suite('Pesapal payment journey (real PostgreSQL)', () => {
         markFulfilmentPaid: async () => void effects.push('fulfilment'),
         settleLoyalty: async () => void effects.push('loyalty'),
         enqueueAdminEmail: async () => void effects.push('email'),
+        notifyFulfilmentOfPaidOrder: async () => void effects.push('fulfilment_alert'),
         recordMeasurement: async () => void effects.push('measurement'),
         enqueueCustomerMessage: async () => void effects.push('customer_message'),
         // Surfaced, not swallowed: a silent double drifting out of step with
@@ -247,7 +248,7 @@ suite('Pesapal payment journey (real PostgreSQL)', () => {
     expect(result.confirmed).toBeGreaterThanOrEqual(1);
     expect((await orderRow(orderId)).payment_status).toBe('paid');
     expect((await orderRow(orderId)).status).toBe('processing');
-    expect(effects).toEqual(expect.arrayContaining(['fulfilment', 'loyalty', 'email', 'measurement', 'customer_message']));
+    expect(effects).toEqual(expect.arrayContaining(['fulfilment', 'loyalty', 'email', 'fulfilment_alert', 'measurement', 'customer_message']));
     expect(effects.filter((e) => e.startsWith('FAILED:'))).toEqual([]);
   });
 

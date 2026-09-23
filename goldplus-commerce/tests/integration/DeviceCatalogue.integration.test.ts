@@ -30,8 +30,14 @@ suite('device catalogue (real PostgreSQL, U2)', () => {
     skus[key] = s;
     return p.id as string;
   };
-  const linkCompat = async (productKey: string, deviceId: string, fit: string, confidence = 'declared') => {
-    await raw`insert into product_device_compatibility (product_id, device_id, fit_type, confidence) values (${productIds[productKey]}, ${deviceId}, ${fit}, ${confidence})`;
+  // Customer-facing reads show only PUBLISHED claims (reviewed, ACTIVE, with checked
+  // evidence — see PUBLISHED_FIT). These fixtures are published claims; the staged
+  // (DRAFT) path is asserted separately in AC1 and AC5.
+  const linkCompat = async (productKey: string, deviceId: string, fit: string, confidence = 'declared', workflow = 'ACTIVE') => {
+    const published = workflow === 'ACTIVE';
+    await raw`insert into product_device_compatibility (product_id, device_id, fit_type, confidence, workflow_status, evidence_status, published_by, published_at)
+              values (${productIds[productKey]}, ${deviceId}, ${fit}, ${confidence}, ${workflow}, ${published ? 'VERIFIED_EXACT' : 'SUPPLIER_LISTED'},
+                      ${published ? '00000000-0000-4000-8000-000000000000' : null}, ${published ? new Date() : null})`;
   };
 
   beforeAll(async () => {
@@ -76,14 +82,16 @@ suite('device catalogue (real PostgreSQL, U2)', () => {
     await mkProduct('adapter');
     await mkProduct('inactive', { active: false });
     await mkProduct('unapproved', { approval: 'draft' });
+    await mkProduct('staged');
     await linkCompat('adapter', device.id, 'adapter_required');
     await linkCompat('universal', device.id, 'universal');
     await linkCompat('exact', device.id, 'exact');
     await linkCompat('inactive', device.id, 'exact');
     await linkCompat('unapproved', device.id, 'exact');
+    await linkCompat('staged', device.id, 'exact', 'declared', 'DRAFT');
 
     const compatible = await repo.compatibleProducts(device.id);
-    // Ordered exact -> universal -> adapter_required; inactive & unapproved excluded.
+    // Ordered exact -> universal -> adapter_required; inactive, unapproved and staged (DRAFT) claims excluded.
     expect(compatible.map((c) => c.fitType)).toEqual(['exact', 'universal', 'adapter_required']);
     expect(compatible.map((c) => c.productId)).toEqual([productIds.exact, productIds.universal, productIds.adapter]);
   });
@@ -134,7 +142,11 @@ suite('device catalogue (real PostgreSQL, U2)', () => {
     );
     expect(ok.committed).toBe(2);
     expect(ok.errors).toHaveLength(0);
-    expect((await repo.compatibleProducts(device.id)).length).toBe(2);
+    const committed = await raw`select workflow_status from product_device_compatibility where device_id = ${device.id}`;
+    expect(committed).toHaveLength(2);
+    // An import STAGES claims; nothing reaches a customer until a reviewer publishes it.
+    expect(committed.every((r: { workflow_status: string }) => r.workflow_status === 'DRAFT')).toBe(true);
+    expect(await repo.compatibleProducts(device.id)).toEqual([]);
 
     // Verified rows without an evidence source are rejected up front (AC5 + schema).
     const verifiedNoEvidence = await repo.importCompatibility(

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { Fixtures } from './helpers/fixtures';
 
 /**
  * The personalisation rebuild against a REAL PostgreSQL (disposable clone,
@@ -15,18 +16,23 @@ suite('personalisation reads (real PostgreSQL)', () => {
   const hex = (n: number) => `itest${n}${Date.now()}`.padEnd(64, '0').slice(0, 64);
   let userId: string | null = null;
   let product: { id: string; category_id: string };
+  let fx: Fixtures;
 
   beforeAll(async () => {
     const { createRequire } = await import('node:module');
     raw = createRequire(import.meta.url)('postgres')(URL as string, { max: 2, onnotice: () => undefined });
-    product = (await raw`select id, category_id from products where category_id is not null limit 1`)[0];
-    userId = (await raw`select id from users limit 1`)[0]?.id ?? null;
+    fx = new Fixtures(raw);
+    const p = await fx.product();
+    product = { id: p.id, category_id: p.categoryId };
+    userId = await fx.user();
   });
 
   afterAll(async () => {
     await raw`delete from recommendation_events where profile_id in (select id from experience_profiles where token_hash = any(${hashes}))`;
     await raw`delete from experience_profiles where token_hash = any(${hashes})`;
     await raw`delete from recommendation_serving_hourly where placement like 'itest_%'`;
+    await raw`delete from recommendation_events where product_id = ${product.id}`;
+    await fx?.cleanup();
     await raw.end();
   });
 

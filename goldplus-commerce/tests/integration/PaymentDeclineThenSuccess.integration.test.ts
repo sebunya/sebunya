@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { Fixtures } from './helpers/fixtures';
 
 /**
  * One provider transaction, a decline and then the payment that followed it.
@@ -20,6 +21,7 @@ suite('a decline followed by a real payment (real PostgreSQL)', () => {
   let repo: any;
   let productId: string;
   const orders: string[] = [];
+  let fx: Fixtures;
 
   beforeAll(async () => {
     const { createRequire } = await import('node:module');
@@ -27,7 +29,8 @@ suite('a decline followed by a real payment (real PostgreSQL)', () => {
     raw = postgres(URL as string, { max: 2, onnotice: () => undefined });
     const { DrizzlePaymentAttemptRepository } = await import('../../apps/api/src/infrastructure/db/repositories/DrizzlePaymentAttemptRepository');
     repo = new DrizzlePaymentAttemptRepository();
-    productId = (await raw`select id from products limit 1`)[0].id;
+    fx = new Fixtures(raw);
+    productId = (await fx.product()).id;
   });
 
   afterAll(async () => {
@@ -38,6 +41,7 @@ suite('a decline followed by a real payment (real PostgreSQL)', () => {
       await raw`delete from order_events where order_id = any(${orders})`;
       await raw`delete from orders where id = any(${orders})`;
     }
+    await fx?.cleanup();
     await raw.end();
   });
 

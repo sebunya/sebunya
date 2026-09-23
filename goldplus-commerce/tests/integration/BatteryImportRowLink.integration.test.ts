@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { Fixtures } from './helpers/fixtures';
 
 /**
  * Link a code-less research row to a catalogue battery, on REAL PostgreSQL
@@ -12,14 +13,17 @@ const suite = URL && process.env.DATABASE_URL ? describe : describe.skip;
 suite('battery import: link a row to a catalogue battery (real PostgreSQL)', () => {
   let raw: any; let uc: any; let actor: string; let battery: { canonical_code: string; product_id: string };
   let sessionId = '';
+  let fx: Fixtures;
 
   beforeAll(async () => {
     const { createRequire } = await import('node:module');
     raw = createRequire(import.meta.url)('postgres')(URL as string, { max: 2, onnotice: () => undefined });
     const { Registry } = await import('../../apps/api/src/infrastructure/Registry');
     uc = Registry.getInstance().batteryImportUseCases;
-    actor = (await raw`select id from users limit 1`)[0].id;
-    battery = (await raw`select canonical_code, product_id from battery_profiles order by canonical_code limit 1`)[0];
+    fx = new Fixtures(raw);
+    actor = await fx.user();
+    const b = await fx.battery();
+    battery = { canonical_code: b.canonicalCode, product_id: b.productId };
   });
 
   afterAll(async () => {
@@ -28,6 +32,7 @@ suite('battery import: link a row to a catalogue battery (real PostgreSQL)', () 
       await raw`delete from battery_import_rows where session_id = ${sessionId}`;
       await raw`delete from battery_import_sessions where id = ${sessionId}`;
     }
+    await fx?.cleanup();
     await raw.end();
   });
 

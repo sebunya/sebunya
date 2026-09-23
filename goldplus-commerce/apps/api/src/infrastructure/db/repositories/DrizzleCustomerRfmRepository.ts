@@ -4,17 +4,19 @@ import { ICustomerRfmRepository } from '../../../application/ports/ICustomerRfmR
 import { RfmInput } from '../../../domain/customer-dna/Rfm';
 
 export class DrizzleCustomerRfmRepository implements ICustomerRfmRepository {
-  async aggregateCustomers(limit: number): Promise<RfmInput[]> {
+  async aggregateCustomers(limit: number, asOf: Date): Promise<RfmInput[]> {
     // Monetary and recency are computed from PAID orders only — an unpaid or
     // failed order is intent, not revenue, and must not inflate a customer's M
-    // score or reset their recency.
+    // score or reset their recency. Orders after `asOf` are excluded: scoring
+    // "as of" an instant with later orders in it gives negative recency and
+    // shifts every quintile boundary.
     const rows = (await db.execute(sql`
       select o.user_id as customer_id,
              max(o.created_at) as last_order_at,
              count(*)::int as order_count,
              coalesce(sum(o.total_amount), 0) as total_spend
       from orders o
-      where o.user_id is not null and o.payment_status = 'paid'
+      where o.user_id is not null and o.payment_status = 'paid' and o.created_at <= ${asOf.toISOString()}::timestamptz
       group by o.user_id
       order by total_spend desc
       limit ${limit}

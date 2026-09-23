@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { Fixtures } from './helpers/fixtures';
 /**
  * Focus 4 — the gallery mutation service on REAL PostgreSQL (disposable
  * production copy or the local integration database). Proves what unit tests
@@ -13,6 +14,7 @@ const suite = URL && process.env.DATABASE_URL ? describe : describe.skip;
 suite('product media slots (real PostgreSQL)', () => {
   let raw: any; let uc: any; let repo: any; let actor: string;
   let productId = ''; const assetIds: string[] = [];
+  let fx: Fixtures; let categoryId = '';
 
   beforeAll(async () => {
     const { createRequire } = await import('node:module');
@@ -20,8 +22,10 @@ suite('product media slots (real PostgreSQL)', () => {
     const { Registry } = await import('../../apps/api/src/infrastructure/Registry');
     uc = Registry.getInstance().productMediaUseCases;
     repo = Registry.getInstance().productMediaRepo;
-    actor = (await raw`select id from users limit 1`)[0].id;
-    const cat = (await raw`select id from categories limit 1`)[0].id;
+    fx = new Fixtures(raw);
+    actor = await fx.user();
+    categoryId = await fx.category();
+    const cat = categoryId;
     const tag = Date.now();
     productId = (await raw`insert into products (sku, model_number, name, slug, category_id, approval_status, active) values (${`ITEST-F4-${tag}`}, ${`ITEST-F4-${tag}`}, ${'itest focus4'}, ${`itest-focus4-${tag}`}, ${cat}, 'approved', true) returning id`)[0].id;
     for (let i = 0; i < 5; i++) {
@@ -39,7 +43,11 @@ suite('product media slots (real PostgreSQL)', () => {
       await raw`delete from product_images where product_id = ${productId}::uuid`;
       await raw`delete from products where id = ${productId}::uuid`;
     }
-    if (assetIds.length) await raw`delete from media_assets where id = any(${assetIds}::uuid[])`;
+    if (assetIds.length) {
+      await raw`delete from media_asset_variants where asset_id = any(${assetIds}::uuid[])`;
+      await raw`delete from media_assets where id = any(${assetIds}::uuid[])`;
+    }
+    await fx?.cleanup();
     await raw.end();
   });
 
@@ -103,7 +111,7 @@ suite('product media slots (real PostgreSQL)', () => {
 
   it('concurrent insertion into an EMPTY gallery yields one cover, never two primaries', async () => {
     const tag = Date.now();
-    const cat = (await raw`select id from categories limit 1`)[0].id;
+    const cat = categoryId;
     const pid = (await raw`insert into products (sku, model_number, name, slug, category_id, approval_status, active) values (${`ITEST-F4E-${tag}`}, ${`ITEST-F4E-${tag}`}, 'itest empty', ${`itest-f4e-${tag}`}, ${cat}, 'approved', true) returning id`)[0].id;
     try {
       const [a, b] = await Promise.all([

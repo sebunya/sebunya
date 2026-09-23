@@ -17,7 +17,7 @@ export class ScoreCustomerRfmUseCase {
 
   async execute(opts: { limit?: number; now?: Date } = {}): Promise<RfmReport> {
     const now = opts.now ?? new Date();
-    const customers = await this.repo.aggregateCustomers(opts.limit ?? 5000);
+    const customers = await this.repo.aggregateCustomers(opts.limit ?? 5000, now);
     const scores = scoreRfm(customers, now);
     const segmentCounts: Record<string, number> = {};
     for (const s of scores) segmentCounts[s.segment] = (segmentCounts[s.segment] ?? 0) + 1;

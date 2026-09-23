@@ -25,8 +25,8 @@ d('recommendation reader × compatibility mappings (real PostgreSQL)', () => {
     process.env.DATABASE_URL = URL!;
     const require = createRequire(import.meta.url);
     raw = require('../../apps/api/node_modules/postgres')(URL!, { max: 3, prepare: false });
-    const [c] = await raw`select id from categories limit 1`;
-    catId = c?.id ?? (await raw`insert into categories (name, slug) values ('Compat', ${'compat-' + Date.now()}) returning id`)[0].id;
+    // Its own category, removed afterwards (borrowing "the first category" left a stray row on an empty database).
+    catId = (await raw`insert into categories (name, slug) values ('Compat', ${'compat-' + Date.now()}) returning id`)[0].id;
     const { DrizzleProductRecommendationReader } = await import('../../apps/api/src/infrastructure/db/repositories/DrizzleProductRecommendationReader');
     reader = new DrizzleProductRecommendationReader();
   });
@@ -34,6 +34,7 @@ d('recommendation reader × compatibility mappings (real PostgreSQL)', () => {
     if (!raw) return;
     await raw`delete from product_compatibility_mappings where product_id = any(${ids}) or target_product_id = any(${ids})`;
     await raw`delete from products where id = any(${ids})`;
+    if (catId) await raw`delete from categories where id = ${catId}`;
     await raw.end();
   });
 

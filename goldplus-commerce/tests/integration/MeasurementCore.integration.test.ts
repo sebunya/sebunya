@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { Fixtures } from './helpers/fixtures';
 
 /**
  * Measurement core (0140) against a REAL PostgreSQL (dossier GP-EVT / GP-DLV).
@@ -21,6 +22,7 @@ suite('measurement core (real PostgreSQL)', () => {
   let W: any; // BusinessEventWriter
   let dbc: any;
   const orders: string[] = [];
+  let fx: Fixtures;
   let productId: string;
 
   beforeAll(async () => {
@@ -33,7 +35,8 @@ suite('measurement core (real PostgreSQL)', () => {
     M = await import('../../apps/api/src/infrastructure/measurement/DeliveryService');
     W = await import('../../apps/api/src/infrastructure/measurement/BusinessEventWriter');
     ({ db: dbc } = await import('../../apps/api/src/infrastructure/db/client'));
-    productId = (await raw`select id from products limit 1`)[0].id;
+    fx = new Fixtures(raw);
+    productId = (await fx.product()).id;
     await raw`delete from measurement.control where key = 'kill_switch'`;
   });
 
@@ -59,6 +62,7 @@ suite('measurement core (real PostgreSQL)', () => {
       await raw`delete from order_items where order_id = any(${orders})`;
       await raw`delete from orders where id = any(${orders})`;
     }
+    await fx?.cleanup();
     await raw.end();
   });
 
