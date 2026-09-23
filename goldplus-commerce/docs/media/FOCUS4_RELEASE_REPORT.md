@@ -73,7 +73,8 @@ Open, honestly:
 - The recently-viewed rail requests the cover again as a card (pre-existing behaviour, unrelated to the gallery; visible in the trace as `coverImgsOutsideGallery = 1`).
 - Firefox/WebKit/real devices, zoom/reflow, screen-reader spot check, five-run performance medians: not done.
 - Analytics event for gallery interaction: deliberately not added (shared telemetry vocabulary; out of "picture only" scope).
-- Image sitemap, hero-slide re-resolution, cart `limit=100`, unbounded SW image cache: pre-existing, unchanged.
+- Image sitemap, hero-slide re-resolution, cart `limit=100`: pre-existing, unchanged. (Correction 2026-09-23: the "unbounded SW image cache" listed here did not exist — sw.js never writes to its cache at runtime.)
+- Update 2026-09-23: Chromium + Firefox (phone and desktop), keyboard, 320 px reflow and the admin gallery/queue/imports/media pages were walked on a local full stack; a focus-loss bug at the first/last image was fixed (7ff2bfd8) and the upload pixel cap shipped (8c643cf2). WebKit/Safari, real devices and a manual screen-reader pass remain.
 
 Bounded rollout (when authorised): `migrate-prod.sh` with 0148+0149 (backup → clone rehearsal → live, as the house does) → deploy api+web → `backfill-product-media-slots.ts` dry run → review report → apply → check `/admin/media/gallery-queue` shows every imaged product `migrated` → observe PDP for one hour. Rollback: previous images (`rollback-*` tags); the projection keeps the correct cover; `PRODUCT_GALLERY_ENRICHMENT=false` as the containment switch. Schema stays.
 
