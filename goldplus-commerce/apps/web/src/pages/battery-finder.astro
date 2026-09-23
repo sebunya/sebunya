@@ -114,15 +114,15 @@ const shownDevice: FinderDeviceDto | null = device?.device ?? (search?.kind === 
 
         {brands.length > 0 && !q && !brandSlug && !deviceSlug && (
           <section class="mt-8" aria-labelledby="brands-heading">
-            <h2 id="brands-heading" class="text-sm font-black uppercase tracking-widest text-gray-500">{cfg?.findByPhoneLabel ?? 'Find by phone'}</h2>
+            <h2 id="brands-heading" class="text-sm font-black uppercase tracking-widest text-gray-600">{cfg?.findByPhoneLabel ?? 'Find by phone'}</h2>
             <ul class="mt-3 flex flex-wrap gap-2">
               {brands.map((b) => (
                 <li><a href={`/battery-finder?brand=${encodeURIComponent(b.slug)}`} class="inline-block rounded-full border border-gray-300 px-4 py-2 text-sm font-bold text-brand-dark hover:border-brand-primary">
-                  {b.name}<span class="text-gray-500 font-normal"> · {b.verifiedFits}</span>
+                  {b.name}<span class="text-gray-600 font-normal"> · {b.verifiedFits}</span>
                 </a></li>
               ))}
             </ul>
-            <p class="mt-2 text-xs text-gray-500">The number is how many batteries we have checked for that brand.</p>
+            <p class="mt-2 text-xs text-gray-600">The number is how many batteries we have checked for that brand.</p>
           </section>
         )}
 
@@ -142,7 +142,7 @@ const shownDevice: FinderDeviceDto | null = device?.device ?? (search?.kind === 
             ) : (
               <p class="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">We have not listed any {brand.brand.name} phone yet. Tell us your model below and we will check it.</p>
             )}
-            <p class="mt-3 text-xs text-gray-500">{cfg?.modelNumberHelp}</p>
+            <p class="mt-3 text-xs text-gray-600">{cfg?.modelNumberHelp}</p>
           </section>
         )}
 
@@ -218,7 +218,7 @@ const shownDevice: FinderDeviceDto | null = device?.device ?? (search?.kind === 
                   </article>
                 ))}
                 <CheckYourPhoneNote />
-                <p class="text-xs text-gray-500">
+                <p class="text-xs text-gray-600">
                   "Verified fit" means we checked this battery against this phone ourselves. Anything else is labelled for
                   what it is. Ask us before you buy if you are unsure.
                 </p>

@@ -1146,7 +1146,7 @@ const checkoutOnSale = campaignRunning && checkoutSavings > 0;
       if (promoMsg) {
         promoMsg.textContent = message ?? '';
         promoMsg.className = 'text-[11px] font-semibold ' +
-          (tone === 'ok' ? 'text-emerald-700' : tone === 'error' ? 'text-red-600' : 'text-slate-500');
+          (tone === 'ok' ? 'text-emerald-700' : tone === 'error' ? 'text-red-600' : 'text-slate-600');
       }
       renderEstimate(lastEstimate);
     }
@@ -1157,7 +1157,7 @@ const checkoutOnSale = campaignRunning && checkoutSavings > 0;
       if (!code) { setPromo(0, null, 'muted'); return; }
       if (!API_BASE || promoItems.length === 0) { setPromo(0, 'The code will be applied when you place the order.', 'muted'); return; }
       promoApply.disabled = true;
-      if (promoMsg) { promoMsg.textContent = 'Checking\u2026'; promoMsg.className = 'text-[11px] font-semibold text-slate-500'; }
+      if (promoMsg) { promoMsg.textContent = 'Checking\u2026'; promoMsg.className = 'text-[11px] font-semibold text-slate-600'; }
       try {
         const res = await fetch(`${API_BASE}/commerce/pricing-preview`, {
           method: 'POST',

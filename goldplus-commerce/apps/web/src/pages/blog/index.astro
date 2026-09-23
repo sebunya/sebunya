@@ -84,7 +84,7 @@ const breadcrumbs = serializeJsonLd(
         {page > 1
           ? <a class="rounded-full border border-slate-300 px-5 py-2.5 hover:border-slate-900" href={page === 2 ? '/blog' : `/blog?page=${page - 1}`}>← Newer</a>
           : <span></span>}
-        <span class="text-slate-500">Page {page} of {totalPages}</span>
+        <span class="text-slate-600">Page {page} of {totalPages}</span>
         {page < totalPages
           ? <a class="rounded-full border border-slate-300 px-5 py-2.5 hover:border-slate-900" href={`/blog?page=${page + 1}`}>Older →</a>
           : <span></span>}
