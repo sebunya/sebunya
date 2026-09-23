@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { describeUploadRejection } from './MediaLibraryUseCase';
 import { BLOCKING_STATUSES, buildImportPlan, parseManifest, type ImportPlan, type ManifestRow, type ProductGalleryContext, type StagedFile } from '../../../domain/media/MediaImportPlanner';
 import type { MatchableProduct } from '../../../domain/media/PhotoCodeMatcher';
 import type { GallerySlot } from '@goldplus/shared';
@@ -83,11 +84,11 @@ export class MediaImportUseCases {
       const sha256 = createHash('sha256').update(f.buffer).digest('hex');
       const [outcome] = await this.library.upload({ files: [f], altText: null, caption: null, actorId: input.actorId });
       if (outcome.kind === 'STORED') staged.push({ filename: f.filename, sha256: outcome.asset.checksum || sha256, assetId: outcome.asset.id, ready: true });
-      else staged.push({ filename: f.filename, sha256, assetId: null, ready: false, rejectReason: outcome.reason });
+      else staged.push({ filename: f.filename, sha256, assetId: null, ready: false, rejectReason: describeUploadRejection(outcome.reason) });
     }
     // Readiness is what the gallery service will check at apply; confirm it now so the plan is honest.
     const ready = new Set((await this.galleryRepo.findReadyAssets(staged.map((s) => s.assetId).filter((a): a is string => !!a))).map((a) => a.id));
-    for (const s of staged) if (s.assetId && !ready.has(s.assetId)) { s.ready = false; s.rejectReason = s.rejectReason ?? 'NO_RENDITION'; }
+    for (const s of staged) if (s.assetId && !ready.has(s.assetId)) { s.ready = false; s.rejectReason = s.rejectReason ?? 'no display size could be made from this file'; }
 
     // 2. Resolve products and read each candidate gallery once.
     const products = await this.catalogue.listCodeIndex();

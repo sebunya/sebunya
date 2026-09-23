@@ -41,6 +41,7 @@ export interface StagedFile {
   assetId: string | null;
   /** ACTIVE + rendition generated. */
   ready: boolean;
+  /** Why the library refused the file, in plain words (worded by the application layer). */
   rejectReason?: string | null;
 }
 
@@ -201,7 +202,7 @@ export function buildImportPlan(input: {
     if (!isSafeFilename(f.filename)) { row.status = 'INVALID_FILE'; row.issues.push('Unsafe filename (path characters or control characters).'); return; }
     if (seenFile.has(f.filename)) { row.status = 'INVALID_FILE'; row.issues.push('Duplicate filename in this batch.'); return; }
     seenFile.add(f.filename);
-    if (!f.assetId || !f.ready) { row.status = 'INVALID_FILE'; row.issues.push(f.rejectReason ? `Rejected by the media library (${f.rejectReason}).` : 'The file could not be stored or has no rendition.'); return; }
+    if (!f.assetId || !f.ready) { row.status = 'INVALID_FILE'; row.issues.push(f.rejectReason ? `Not accepted: ${f.rejectReason}.` : 'The file could not be stored or has no rendition.'); return; }
 
     const fromName = parseImportFilename(f.filename);
     const manifest = manifestByFile.get(f.filename);

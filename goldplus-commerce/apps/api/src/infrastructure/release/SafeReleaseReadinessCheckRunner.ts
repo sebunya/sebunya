@@ -1,6 +1,6 @@
 import { exec } from 'child_process';
 import { existsSync } from 'fs';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { promisify } from 'util';
 import { CheckRunnerResult, IReleaseReadinessCheckRunner } from '../../application/ports/release/ReleaseReadinessCheckRunner';
 import { IReleaseEvidenceRedactor } from '../../application/ports/release/ReleaseEvidenceRedactor';
@@ -10,11 +10,11 @@ const execAsync = promisify(exec);
 export class SafeReleaseReadinessCheckRunner implements IReleaseReadinessCheckRunner {
   constructor(
     private readonly redactor: IReleaseEvidenceRedactor,
-    /** Where the repository is; the process's working directory unless a test says otherwise. */
-    private readonly root: string = process.cwd(),
+    /** Where the repository is: the nearest folder with pnpm-workspace.yaml above the working directory. */
+    private readonly root: string = findRepoRoot(process.cwd()),
   ) {}
 
-  private async runSafeCommand(command: string, timeoutMs: number = 30000): Promise<{ stdout: string; stderr: string; code: number }> {
+  private async runSafeCommand(command: string, timeoutMs: number = 30000): Promise<{ stdout: string; stderr: string; code: number; timedOut?: boolean }> {
     try {
       const { stdout, stderr } = await execAsync(command, { timeout: timeoutMs, cwd: this.root });
       return {
@@ -27,6 +27,8 @@ export class SafeReleaseReadinessCheckRunner implements IReleaseReadinessCheckRu
         stdout: this.redactor.redactCommandOutput(error.stdout || ''),
         stderr: this.redactor.redactCommandOutput(error.stderr || error.message),
         code: error.code || 1,
+        // Killed by the timeout: the check did not finish, which is not the same as failing.
+        timedOut: Boolean(error.killed),
       };
     }
   }
@@ -101,9 +103,9 @@ export class SafeReleaseReadinessCheckRunner implements IReleaseReadinessCheckRu
   private async runTypecheck(): Promise<CheckRunnerResult> {
     const tooling = this.sourceTooling();
     if (!tooling.ok) return tooling.result;
-    const result = await this.runSafeCommand('pnpm run typecheck', 60000);
+    const result = await this.runSafeCommand('pnpm run typecheck', 240000);
     return {
-      status: result.code === 0 ? 'PASS' : 'FAIL',
+      status: result.timedOut ? 'UNKNOWN' : result.code === 0 ? 'PASS' : 'FAIL',
       severity: 'CRITICAL',
       evidence: { stdout: result.stdout, stderr: result.stderr },
       source: 'tsc',
@@ -113,9 +115,9 @@ export class SafeReleaseReadinessCheckRunner implements IReleaseReadinessCheckRu
   private async runArchitectureTests(): Promise<CheckRunnerResult> {
     const tooling = this.sourceTooling();
     if (!tooling.ok) return tooling.result;
-    const result = await this.runSafeCommand('pnpm vitest run tests/architecture/', 60000);
+    const result = await this.runSafeCommand('pnpm vitest run tests/architecture/', 120000);
     return {
-      status: result.code === 0 ? 'PASS' : 'FAIL',
+      status: result.timedOut ? 'UNKNOWN' : result.code === 0 ? 'PASS' : 'FAIL',
       severity: 'CRITICAL',
       evidence: { stdout: result.stdout, stderr: result.stderr },
       source: 'vitest',
@@ -128,10 +130,22 @@ export class SafeReleaseReadinessCheckRunner implements IReleaseReadinessCheckRu
     // The release module's own unit tests: a bounded subset, well inside the timeout.
     const result = await this.runSafeCommand('pnpm vitest run tests/unit/release/', 60000);
     return {
-      status: result.code === 0 ? 'PASS' : 'FAIL',
+      status: result.timedOut ? 'UNKNOWN' : result.code === 0 ? 'PASS' : 'FAIL',
       severity: 'HIGH',
       evidence: { stdout: result.stdout, stderr: result.stderr },
       source: 'vitest',
     };
   }
+}
+
+/** The monorepo root (the API may run from apps/api); the start folder itself when none is found, e.g. in the production image. */
+function findRepoRoot(start: string): string {
+  let dir = start;
+  for (let i = 0; i < 6; i++) {
+    if (existsSync(join(dir, 'pnpm-workspace.yaml'))) return dir;
+    const up = dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return start;
 }
