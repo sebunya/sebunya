@@ -7,14 +7,45 @@ import { apiBase } from '../../../lib/api';
  * Product discovery taxonomy editor (0113). Categories and their subcategories,
  * the homepage "Shop by category" tiles, inference keywords and URL aliases —
  * the storefront reads these from the DB, so an edit here goes live with no
- * deploy. The whole tree is serialised client-side and PUT to /admin/taxonomy,
- * which validates and sanitises every field.
+ * deploy. The whole tree is serialised client-side into a form field; this page
+ * PUTs it to /admin/taxonomy server-side, which validates and sanitises every field.
  */
 const token = readSessionToken(Astro.request);
 if (!token) return Astro.redirect('/admin/login?returnTo=/admin/categories', 303);
 
 let cfg: any[] = [];
 let loadError = '';
+
+// Saving happens HERE, server-side, with the session token. It used to be a
+// browser PUT to `apiBase` with the token written into the page: on the server
+// apiBase is the INTERNAL origin (http://api:3000), which a browser cannot reach
+// (and an https page may not call over http), so Save could never work in
+// production — and any script on the page could read the admin's session.
+let saveError = '';
+let submitted: any[] | null = null;
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const raw = String(form.get('config') ?? '');
+  try {
+    if (raw.length > 512 * 1024) throw new Error('too large');
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) throw new Error('not a list');
+    submitted = parsed;
+    const res = await fetch(`${apiBase}/admin/taxonomy`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      body: JSON.stringify({ config: parsed }),
+    });
+    if (res.status === 401 || res.status === 403) return Astro.redirect('/admin/login?returnTo=/admin/categories', 303);
+    const json: any = await res.json().catch(() => null);
+    if (res.ok && json?.success) return Astro.redirect(`/admin/categories?saved=${encodeURIComponent(String(json.data?.version ?? ''))}`, 303);
+    saveError = json?.error?.message ?? `Could not save (HTTP ${res.status}).`;
+  } catch (e) {
+    saveError = (e as Error).message === 'too large' ? 'The taxonomy is too large to save in one go.' : 'Could not read the edited taxonomy. Nothing was saved.';
+  }
+}
+const savedVersion = Astro.url.searchParams.get('saved');
+
 try {
   const res = await fetch(`${apiBase}/admin/taxonomy`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
   if (res.status === 401 || res.status === 403) return Astro.redirect('/admin/login?returnTo=/admin/categories', 303);
@@ -24,6 +55,8 @@ try {
 } catch {
   loadError = 'The service is unreachable right now.';
 }
+// A failed save keeps the person's edits on screen instead of reloading the stored tree.
+if (submitted) cfg = submitted;
 ---
 <AdminLayout title="Categories & taxonomy">
   <div class="mx-auto max-w-4xl px-4 py-8">
@@ -31,6 +64,9 @@ try {
     <p class="mt-2 text-sm text-slate-600">The shop categories and subcategories, the homepage tiles, the search-inference keywords and URL aliases. Changes go live within a minute, no deploy.</p>
 
     <div id="notice" class="mt-6 hidden rounded-xl border p-4 text-sm"></div>
+    {saveError && <div class="mt-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900" role="alert">{saveError} Your edits are still below.</div>}
+    {savedVersion && !saveError && <div class="mt-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900" role="status">Saved (version {savedVersion}). Live within a minute.</div>}
+    <form id="save-form" method="POST" class="hidden"><input type="hidden" name="config" id="config-json" /></form>
     {loadError && <div class="mt-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{loadError}</div>}
 
     <div id="categories" class="mt-8 space-y-6"></div>
@@ -142,19 +178,9 @@ try {
     if (!(initial ?? []).length) addCategory();
 
     document.getElementById('add-category').addEventListener('click', () => addCategory());
-    document.getElementById('save').addEventListener('click', async () => {
-      try {
-        const res = await fetch(`${apiBase}/admin/taxonomy`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, Accept: 'application/json' },
-          body: JSON.stringify({ config: serialize() }),
-        });
-        const json = await res.json().catch(() => null);
-        if (res.ok && json?.success) notify('ok', `Saved (version ${json.data.version}). Live within a minute.`);
-        else notify('error', json?.error?.message ?? 'Could not save.');
-      } catch {
-        notify('error', 'The service is unreachable right now.');
-      }
+    document.getElementById('save').addEventListener('click', () => {
+      document.getElementById('config-json').value = JSON.stringify(serialize());
+      document.getElementById('save-form').submit();
     });
   </script>
 </AdminLayout>
