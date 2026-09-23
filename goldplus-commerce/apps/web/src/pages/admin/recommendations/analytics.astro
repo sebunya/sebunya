@@ -206,7 +206,7 @@ const placements = [
           {((res as any).code === "END_BEFORE_START" || (res as any).code === "INVALID_DATE_RANGE" || (res as any).message?.toLowerCase().includes("date")) ? (
             <a href="/admin/recommendations/analytics" class="inline-block bg-red-700 text-white px-6 py-2 rounded-xl font-bold text-xs hover:bg-red-800 transition-colors">Reset Date Filter</a>
           ) : (
-            <button onclick="window.location.reload()" class="bg-red-700 text-white px-6 py-2 rounded-xl font-bold text-xs hover:bg-red-800 transition-colors">Retry Connection</button>
+            <button type="button" data-action="reload" class="bg-red-700 text-white px-6 py-2 rounded-xl font-bold text-xs hover:bg-red-800 transition-colors">Retry Connection</button>
           )}
         </div>
       </div>

@@ -123,7 +123,7 @@ const lastChecked = new Date().toLocaleTimeString('en-GB', { timeZone: 'Africa/K
           <span class="w-1.5 h-1.5 rounded-full bg-gray-400 animate-pulse"></span>
           Last Probe: {lastChecked}
         </span>
-        <button onclick="window.location.reload();" class="bg-white border border-gray-200 hover:border-brand-dark text-brand-dark hover:bg-gray-50 text-xs font-bold px-4 py-2 rounded-xl transition-all shadow-xs cursor-pointer font-black uppercase tracking-wider">
+        <button type="button" data-action="reload" class="bg-white border border-gray-200 hover:border-brand-dark text-brand-dark hover:bg-gray-50 text-xs font-bold px-4 py-2 rounded-xl transition-all shadow-xs cursor-pointer font-black uppercase tracking-wider">
           Refresh
         </button>
       </div>

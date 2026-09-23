@@ -204,7 +204,7 @@ const totalCodes = catalogue.length;
                   <input type="hidden" name="action" value="delete-role" />
                   <input type="hidden" name="id" value={r.id} />
                   <span class="text-[10px] text-gray-500">Nobody holds this role, so it can be deleted.</span>
-                  <button type="submit" class="text-[10px] font-black uppercase tracking-widest text-red-700 hover:text-red-900" onclick={`return confirm('Delete the role ${r.name}? This is audited and cannot be undone.')`}>Delete role</button>
+                  <button type="submit" class="text-[10px] font-black uppercase tracking-widest text-red-700 hover:text-red-900" data-confirm={`Delete the role ${r.name}? This is audited and cannot be undone.`}>Delete role</button>
                 </form>
               )}
             </details>

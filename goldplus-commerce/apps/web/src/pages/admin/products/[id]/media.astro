@@ -211,7 +211,7 @@ const kb = (n: number | null) => (n == null ? '' : `${Math.round(n / 1024)} kB`)
           <ul class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3">
             {candidates.map((a) => (
               <li class="border border-gray-200 rounded-xl p-2 flex flex-col gap-2">
-                <img src={thumbOf(a.url)} alt="" width="160" height="160" loading="lazy" class="w-full aspect-square object-contain bg-gray-50 rounded-lg" onerror={`this.src=${JSON.stringify(a.url)}`} />
+                <img src={thumbOf(a.url)} alt="" width="160" height="160" loading="lazy" class="w-full aspect-square object-contain bg-gray-50 rounded-lg" data-fallback-src={a.url} />
                 <p class="text-[10px] text-gray-500 truncate" title={a.filename}>{a.filename}</p>
                 {inGallery.has(a.id) ? <span class="text-[10px] text-gray-400">In this gallery</span> : (
                   <form method="POST"><input type="hidden" name="kind" value="action" /><input type="hidden" name="expectedRevision" value={gallery.mediaRevision} /><input type="hidden" name="assetId" value={a.id} />

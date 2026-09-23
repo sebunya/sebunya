@@ -1,24 +1,54 @@
 ---
-import ExecutionPlanPanel from './ExecutionPlanPanel.astro';
-import DryRunControlPanel from './DryRunControlPanel.astro';
-import PayloadPreviewPanel from './PayloadPreviewPanel.astro';
-import EvidencePackPanel from './EvidencePackPanel.astro';
+/**
+ * The dry-run orchestrator has an API (POST /admin/controlled-activation-dry-run/*)
+ * but no client on this page yet. This page used to show invented values
+ * (REQ-12345, "GTM", "Facebook CAPI · PREVIEW_READY", READY_FOR_DRY_RUN) and
+ * buttons whose only effect was an alert claiming the work was done. Nothing was
+ * called and nothing happened. It now says what is true: not connected.
+ * Building the client is deferred until the first measurement destination goes
+ * live (the trigger recorded in the Phase III estate review).
+ */
+const endpoints = [
+  ['POST', '/execution-plans', 'Create an execution plan for an approved activation request'],
+  ['POST', '/dry-runs', 'Start a dry run of a plan (nothing is dispatched)'],
+  ['POST', '/dry-runs/:id/previews', 'Generate redacted payload previews'],
+  ['POST', '/canary-plans/validate', 'Validate a canary plan'],
+  ['POST', '/dry-runs/:id/evidence', 'Build the evidence pack'],
+  ['POST', '/execution-plans/:id/ready-for-review', 'Mark a plan ready for live review'],
+  ['POST', '/dry-runs/:id/cancel', 'Cancel a dry run'],
+];
 ---
-<div class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 space-y-6">
-  <div class="bg-indigo-50 border-l-4 border-indigo-400 p-4 mb-6">
-    <div class="flex">
-      <div class="ml-3">
-        <p class="text-sm text-indigo-700">
-          <strong>DRY-RUN ENVIRONMENT:</strong> Live activation is blocked. All payloads generated here are strictly for review and will not be dispatched to external systems.
-        </p>
-      </div>
-    </div>
+<div class="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8 space-y-6">
+  <div class="bg-amber-50 border border-amber-200 rounded-2xl p-5" role="status">
+    <p class="text-sm font-black text-amber-900">Not configured</p>
+    <p class="mt-1 text-sm text-amber-900">
+      This page is not connected to the dry-run service. No plan, dry run, preview or evidence pack is read or created from here,
+      and no status is shown because none is read. Live activation stays blocked either way.
+    </p>
   </div>
 
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-    <ExecutionPlanPanel />
-    <DryRunControlPanel />
-    <PayloadPreviewPanel />
-    <EvidencePackPanel />
-  </div>
+  <section class="bg-white border border-gray-200 rounded-2xl p-6">
+    <h2 class="text-sm font-black text-gray-900">What exists</h2>
+    <p class="mt-1 text-sm text-gray-600">
+      The orchestration API is deployed under <code class="font-mono text-xs">/admin/controlled-activation-dry-run</code> and needs the
+      settings-management permission. It is write-only: there is no endpoint to list plans or runs, so a page cannot show their state yet.
+    </p>
+    <table class="mt-4 w-full text-left text-sm">
+      <thead>
+        <tr class="text-[10px] uppercase tracking-widest text-gray-500">
+          <th class="py-2 pr-3 font-black">Method</th><th class="py-2 pr-3 font-black">Path</th><th class="py-2 font-black">Does</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        {endpoints.map(([method, path, does]) => (
+          <tr><td class="py-2 pr-3 font-mono text-xs">{method}</td><td class="py-2 pr-3 font-mono text-xs">{path}</td><td class="py-2 text-gray-700">{does}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  </section>
+
+  <p class="text-xs text-gray-500">
+    A client for this page is deferred until the first measurement destination goes live. Until then the per-activation review
+    lives under Measurement → Control tower → Controlled activation.
+  </p>
 </div>

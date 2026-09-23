@@ -214,7 +214,7 @@ try {
                             <input type="hidden" name="id" value={u.id} />
                             <input type="hidden" name="roleName" value={name} />
                             <span>{name}</span>
-                            <button type="submit" class="text-gray-400 hover:text-red-700" aria-label={`Revoke ${name}`} title={`Revoke ${name}`} onclick={`return confirm('Revoke ${name} from this account? It stops applying on their next request.')`}>&times;</button>
+                            <button type="submit" class="text-gray-400 hover:text-red-700" aria-label={`Revoke ${name}`} title={`Revoke ${name}`} data-confirm={`Revoke ${name} from this account? It stops applying on their next request.`}>&times;</button>
                           </form>
                         ))}
                       </div>
@@ -241,7 +241,7 @@ try {
                       <input type="hidden" name="id" value={u.id} />
                       <input type="hidden" name="active" value={u.isActive ? 'false' : 'true'} />
                       {u.isActive && <input name="reason" required minlength="5" maxlength="300" placeholder="Reason (required, audited)" class="w-40 rounded border px-2 py-1 text-[10px]" />}
-                      <button type="submit" class="text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-gray-900" onclick={u.isActive ? "return confirm('Deactivate this account? Their sessions end immediately.')" : undefined}>{u.isActive ? 'Deactivate' : 'Reactivate'}</button>
+                      <button type="submit" class="text-[10px] font-black uppercase tracking-widest text-gray-500 hover:text-gray-900" data-confirm={u.isActive ? 'Deactivate this account? Their sessions end immediately.' : undefined}>{u.isActive ? 'Deactivate' : 'Reactivate'}</button>
                     </form>
                     <a href={`/admin/audit?entity=user&entityId=${encodeURIComponent(u.id)}`} class="mt-1 inline-block text-[10px] font-bold text-gray-400 hover:text-gray-800 underline underline-offset-2">History</a>
                   </td>

@@ -8,6 +8,7 @@ import { getHomepageContent } from '../lib/homepageContent';
 import { DEFAULT_HOMEPAGE_CONTENT } from '@goldplus/shared';
 import { SITE_ORIGIN } from '../lib/sitemap';
 import { resolveMeasurementConfig } from '../lib/measurement';
+import DeclarativeActions from '../components/DeclarativeActions.astro';
 
 // Business/contact info — admin-editable, DB-backed (falls back to DEFAULT).
 const biz = await getBusinessInfo();
@@ -487,5 +488,6 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
         });
       }
     </script>
+    <DeclarativeActions />
   </body>
 </html>

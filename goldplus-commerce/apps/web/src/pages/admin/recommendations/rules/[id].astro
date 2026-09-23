@@ -265,7 +265,7 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
                   </form>
                 )}
                 
-                <form method="POST" onsubmit="return confirm('Archive this rule permanently?');" class="pt-3 border-t border-dashed border-gray-200">
+                <form method="POST" data-confirm="Archive this rule permanently?" class="pt-3 border-t border-dashed border-gray-200">
                    <input type="hidden" name="_action" value="archive" />
                    <button class="w-full bg-red-50 text-red-700 font-black text-[10px] tracking-wide py-2 rounded-xl uppercase border border-red-100 hover:bg-red-100 transition-colors">Archive rule</button>
                 </form>

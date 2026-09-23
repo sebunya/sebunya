@@ -6,6 +6,7 @@ import { resolveAuthenticatedUserId } from "./lib/customerAuth";
 import { isSignedVisitToken, mintSignedVisitToken } from "./lib/visitToken";
 import { apiBase } from "./lib/api";
 import { SESSION_COOKIE_NAME } from "./lib/session";
+import { makeNonce, nonceScriptStream, strictPolicyMode, strictReportOnlyPolicy } from "./lib/contentSecurityPolicy";
 
 /**
  * The opaque visit locator (R2, 2026-08-06).
@@ -188,5 +189,28 @@ export const onRequest = defineMiddleware(async (context, next) => {
     response.headers.append('Link', `<${context.url.origin}${path}>; rel="alternate"; type="text/markdown"`);
     response.headers.append('Vary', 'Accept');
   }
-  return response;
+  return withStrictScriptPolicyReport(response);
 });
+
+/**
+ * Every HTML page carries a fresh nonce on its <script> tags and the strict
+ * script policy (lib/contentSecurityPolicy). CSP_STRICT_MODE decides how it is sent:
+ *   report  (default) Content-Security-Policy-Report-Only — nothing is blocked
+ *   enforce           Content-Security-Policy — alongside Caddy's policy; a script must pass both
+ *   off               no nonce, no header
+ */
+function withStrictScriptPolicyReport(response: Response): Response {
+  const mode = strictPolicyMode(process.env.CSP_STRICT_MODE);
+  if (mode === 'off') return response;
+  const type = response.headers.get('content-type') ?? '';
+  if (!type.toLowerCase().startsWith('text/html') || !response.body) return response;
+  const nonce = makeNonce();
+  const headers = new Headers(response.headers);
+  headers.delete('content-length'); // the body grows by the nonce attributes
+  headers.set(mode === 'enforce' ? 'Content-Security-Policy' : 'Content-Security-Policy-Report-Only', strictReportOnlyPolicy(nonce));
+  return new Response(response.body.pipeThrough(nonceScriptStream(nonce)), {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}

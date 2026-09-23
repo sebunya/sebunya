@@ -265,6 +265,9 @@ services:
       # that receives product floors (Price A). MUST match between api and web.
       - INTERNAL_API_KEY=${INTERNAL_API_KEY}
       - CHECKOUT_INTENT_SECRET=${CHECKOUT_INTENT_SECRET}
+      # Strict script policy: report (default: observe only) | enforce | off.
+      # See docs/hardening/strict-csp.md before changing it.
+      - CSP_STRICT_MODE=${CSP_STRICT_MODE:-report}
       - NODE_OPTIONS=--max-old-space-size=400
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:4321').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]

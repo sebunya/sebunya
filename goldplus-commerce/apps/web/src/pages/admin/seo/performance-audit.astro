@@ -162,7 +162,7 @@ const canRequest = Boolean(ov?.configured) && !ov?.inFlight && (ov?.runsRequeste
           <h2 class="text-lg font-semibold text-gray-900">Run {detail.runId} <span class={`text-sm ${outcomeClass(detail.outcome)}`}>{detail.outcome}</span>{detail.label ? <span class="text-sm text-gray-500"> · {detail.label}</span> : null}</h2>
           <form method="GET" class="text-xs">
             <label class="text-gray-600">Show run
-              <select name="run" class="ml-1 rounded border border-gray-300 px-2 py-1 text-gray-900" onchange="this.form.submit()">
+              <select name="run" class="ml-1 rounded border border-gray-300 px-2 py-1 text-gray-900" data-submit-on-change>
                 {ov!.runs.map((r) => <option value={r.runId} selected={r.runId === detail.runId}>{r.runId} · {r.kind}{r.label ? ` · ${r.label}` : ""} · {r.outcome ?? "?"}</option>)}
               </select>
             </label>

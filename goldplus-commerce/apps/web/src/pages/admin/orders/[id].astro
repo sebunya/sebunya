@@ -729,7 +729,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
                 <select 
                   name="template" 
                   id="template-select" 
-                  onchange="this.form.submit()"
+                  data-submit-on-change
                   class="bg-white border border-gray-200 rounded-lg px-2.5 py-1 text-[10px] font-black text-brand-dark outline-none focus:border-brand-gold"
                 >
                   <option value="ORDER_RECEIVED_UNPAID" selected={previewData.template === 'ORDER_RECEIVED_UNPAID' || previewData.template === ''}>Received & Unpaid</option>
@@ -751,14 +751,14 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
               <button 
                 id="btn-tab-email" 
                 class="px-4 py-2 text-xs font-black border-b-2 border-brand-gold text-brand-dark focus:outline-none transition-all duration-200"
-                onclick="switchTab('email')"
+                type="button"
               >
                 HTML Email Receipt
               </button>
               <button 
                 id="btn-tab-whatsapp" 
                 class="px-4 py-2 text-xs font-black border-b-2 border-transparent text-gray-400 hover:text-brand-dark focus:outline-none transition-all duration-200"
-                onclick="switchTab('whatsapp')"
+                type="button"
               >
                 WhatsApp Handoff
               </button>
@@ -827,7 +827,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
                  <button 
                    id="btn-copy-wa" 
                    class="flex-1 bg-gray-100 hover:bg-gray-200 text-brand-dark text-xs font-black py-3 rounded-xl transition-all flex items-center justify-center gap-2 border border-gray-200"
-                   onclick="copyWhatsAppText()"
+                   type="button"
                  >
                    <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 002 2h2a2 2 0 002-2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path></svg>
                    Copy Template Text
@@ -902,6 +902,11 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
                   btn.innerHTML = originalHtml;
                 }, 2000);
               }
+
+              // Bound here rather than in onclick attributes: a strict Content-Security-Policy blocks inline handlers.
+              document.getElementById('btn-tab-email')?.addEventListener('click', () => switchTab('email'));
+              document.getElementById('btn-tab-whatsapp')?.addEventListener('click', () => switchTab('whatsapp'));
+              document.getElementById('btn-copy-wa')?.addEventListener('click', () => copyWhatsAppText());
             </script>
 
           </div>

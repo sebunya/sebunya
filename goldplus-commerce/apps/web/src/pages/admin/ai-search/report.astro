@@ -32,7 +32,7 @@ const MOVE: Record<string, string> = { CITATION_LOST: "Citation lost", CITATION_
           <p class="text-gray-600">{r.project.domains.join(", ")} · last {r.periodDays} days · generated {when(r.generatedAt)}</p>
           <p class="no-print mt-2 flex flex-wrap gap-3">
             <a class="underline font-bold" href={`/admin/ai-search/report.json?days=${days}${q}`}>Download JSON</a>
-            <button type="button" onclick="window.print()" class="underline font-bold">Print / save as PDF</button>
+            <button type="button" data-action="print" class="underline font-bold">Print / save as PDF</button>
             {[7, 28, 90].map((d) => <a class:list={["underline", d === days && "font-black"]} href={`?days=${d}${q}`}>{d} days</a>)}
           </p>
         </header>
