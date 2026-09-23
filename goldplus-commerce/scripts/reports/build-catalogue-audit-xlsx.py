@@ -24,7 +24,29 @@ rows = list(csv.DictReader(open(f'{S}/catalogue.csv')))
 
 def n(r, k):
     v = (r.get(k) or '').strip()
-    return int(v) if v else None
+    return int(float(v)) if v else None
+
+def is_live(r):
+    return r['active'] == 't' and r['approval_status'] == 'approved'
+
+# Every finding stated in the workbook is computed here from the export, never typed in:
+# the generator is re-run as the catalogue changes, and a hand-written count goes stale silently.
+EXPORTED = datetime.datetime.fromtimestamp(os.path.getmtime(f'{S}/catalogue.csv'))
+live_rows = [x for x in rows if is_live(x)]
+not_live = [x for x in rows if not is_live(x)]
+demo_rows = [x for x in not_live if x['approval_status'] == 'rejected']
+priced = [x for x in rows if n(x, 'retail_price')]
+band_violations = [x for x in priced if any(
+    lo is not None and hi is not None and lo > hi
+    for lo, hi in zip([n(x, k) for k in ('floor_price', 'tier_b_price', 'tier_c_price')],
+                      [n(x, k) for k in ('tier_b_price', 'tier_c_price', 'retail_price')]))]
+costed = [x for x in priced if n(x, 'cost_price')]
+half_cost = [x for x in costed if n(x, 'cost_price') * 2 == n(x, 'retail_price')]
+cost_is_formula = bool(costed) and len(half_cost) == len(costed)
+dealer_set = [x for x in rows if n(x, 'dealer_price')]
+
+def plural(k, one, many=None):
+    return f'{k} {one if k == 1 else (many or one + "s")}'
 
 INK = '0A0A0A'; LIME = '93D500'; GREY = 'F2F2F2'; AMBER = 'FFF4CE'; RED = 'FDE7E9'; GREEN = 'E8F5E0'
 hdr_fill = PatternFill('solid', fgColor=INK)
@@ -59,7 +81,7 @@ ws.column_dimensions['C'].width = 96
 r = 2
 ws.cell(r, 2, 'GoldPlus — catalogue price and image audit').font = title_font
 r += 1
-ws.cell(r, 2, f'Prepared {datetime.date.today():%d %B %Y} · read directly from the live production database (read-only) · shopgoldplus.com').font = sub_font
+ws.cell(r, 2, f'Prepared {datetime.date.today():%d %B %Y} from an export taken {EXPORTED:%d %B %Y %H:%M} · read directly from the live production database (read-only) · shopgoldplus.com').font = sub_font
 r += 2
 
 def block(title, lines):
@@ -87,7 +109,9 @@ block('The four price bands', [
     ('Price C', 'Intermediate band held in the price workbook. No website surface reads it today.'),
     ('Price B', 'Intermediate band held in the price workbook. No website surface reads it today.'),
     ('Price A — Floor', 'The lowest price any discount may ever reach, set per product. A campaign that would go below it is capped at it.'),
-    ('Rule enforced in code', 'A ≤ B ≤ C ≤ D. Verified across all 184 priced products: no violations.'),
+    ('Rule enforced in code', f'A ≤ B ≤ C ≤ D. Checked across {plural(len(priced), "priced product")}: '
+        + ('no violations.' if not band_violations else
+           f'{plural(len(band_violations), "violation")} — ' + ', '.join(x['sku'] for x in band_violations) + '.')),
 ])
 
 block('What to check when auditing', [
@@ -98,16 +122,26 @@ block('What to check when auditing', [
     ('5. Photo status', 'Products marked "placeholder" or "sample" have no real photography on the site yet.'),
 ])
 
-block('Two findings you should read before auditing', [
-    ('Cost looks formula-derived', 'Every cost is exactly half the retail price — all 184, to the shilling. That is a formula, not measured supplier cost. Margin at retail therefore reads exactly 50% everywhere and should not be trusted as real.'),
-    ('Nine products are not on sale', 'Shaded grey. Eight are demonstration records that were never published (they carry no bands B, C or cost). The ninth, the BENCO 23011 battery, is a real product retired from sale by decision and kept for history. Listed so the count reconciles to 192.'),
-])
+findings = []
+if cost_is_formula:
+    findings.append(('Cost looks formula-derived', f'Every recorded cost is exactly half the retail price — all {len(costed)}, to the shilling. That is a formula, not measured supplier cost. Margin at retail therefore reads exactly 50% everywhere and should not be trusted as real.'))
+elif half_cost:
+    findings.append(('Some costs look formula-derived', f'{len(half_cost)} of {len(costed)} recorded costs are exactly half the retail price. Check those before trusting their margin.'))
+if not_live:
+    others = len(not_live) - len(demo_rows)
+    findings.append((f'{plural(len(not_live), "product is", "products are")} not on sale',
+        f'Shaded grey. {plural(len(demo_rows), "is a demonstration record", "are demonstration records")} never published'
+        + (f'; {plural(others, "other is", "others are")} inactive or unapproved and kept for history' if others else '')
+        + f'. Listed so the count reconciles to {len(rows)}.'))
+block('Findings to read before auditing', findings or [('None', 'Nothing unusual was found in this export.')])
 
 block('Provenance', [
-    ('Source', 'Live production database, read-only query, 23 September 2026.'),
-    ('Scope', '192 product records. 183 are on sale (active and approved); the other 9 are shaded grey on every sheet.'),
+    ('Source', f'Live production database, read-only query, exported {EXPORTED:%d %B %Y}.'),
+    ('Scope', f'{plural(len(rows), "product record")}. {len(live_rows)} on sale (active and approved); the other {len(not_live)} shaded grey on every sheet.'),
     ('Currency', 'Ugandan shillings (UGX), whole shillings, no decimals.'),
-    ('Dealer price', 'The database has a dealer price column. It is empty for every product, so no dealer band exists to audit.'),
+    ('Dealer price', 'The database has a dealer price column. ' + (
+        'It is empty for every product, so no dealer band exists to audit.' if not dealer_set
+        else f'{plural(len(dealer_set), "product has", "products have")} one; it is not audited here.')),
 ])
 
 # ─────────────────────────────── 2. Price audit ───────────────────────────────
@@ -129,14 +163,16 @@ for rec in rows:
     flags = []
     if not live:
         flags.append('Not on sale — demonstration record, never published' if rec['approval_status'] == 'rejected'
-                     else 'Retired from sale by decision; kept for history')
+                     else 'Not on sale — inactive or awaiting approval; kept for history')
+    if rec in band_violations:
+        flags.append('Bands out of order: A ≤ B ≤ C ≤ D does not hold')
     if A and D and A == D:
         flags.append('No discount headroom: floor equals retail')
     if B is None and live:
         flags.append('Bands B and C not set')
     if D and A and D > 0 and (D - A) / D > 0.5:
         flags.append('Headroom over 50% of retail — confirm the floor is intended')
-    status = 'On sale' if live else ('Demo record' if rec['approval_status'] == 'rejected' else 'Retired')
+    status = 'On sale' if live else ('Demo record' if rec['approval_status'] == 'rejected' else 'Not on sale')
     vals = [rec['category_name'] or '—', rec['sku'], rec['model_number'], rec['name'], status,
             n(rec, 'stock_quantity'), A, B, C, D,
             (D - A) if (A and D) else None,
@@ -200,7 +236,7 @@ for rec in rows:
     else:
         need = f'{4 - real} more real photograph(s): ' + ', '.join(['alternate angle', 'fit detail', 'box contents or scale'][: 4 - real])
     vals = [rec['category_name'] or '—', rec['sku'], rec['name'],
-            'On sale' if live else ('Demo record' if rec['approval_status'] == 'rejected' else 'Retired'), slots, real, samples, need]
+            'On sale' if live else ('Demo record' if rec['approval_status'] == 'rejected' else 'Not on sale'), slots, real, samples, need]
     for i, v in enumerate(vals, start=1):
         c = ws.cell(row, i, v); c.border = box; c.font = Font(size=10)
         if i in (3, 8):
@@ -260,7 +296,8 @@ for d, w, b in [('Hero images', '1600 px', '60 KB per generated file'), ('Naviga
 ws = wb.create_sheet('Confidential — cost')
 ws.cell(1, 1, 'CONFIDENTIAL — cost and margin').font = Font(bold=True, size=16, color='9C0006')
 ws.cell(2, 1, 'Delete this sheet before sending the workbook outside the business. Cost and margin must never reach a customer, a dealer or a supplier.').font = Font(size=10, bold=True, color='9C0006')
-ws.cell(3, 1, 'IMPORTANT: every cost below is exactly half the retail price, for all 184 products, to the shilling. That is a placeholder formula, not measured supplier cost. Margin at retail therefore reads exactly 50% everywhere and must not be used for decisions until real costs are entered.').font = Font(size=10, color='9C0006')
+ws.cell(3, 1, f'IMPORTANT: every cost below is exactly half the retail price, for all {len(costed)} costed products, to the shilling. That is a placeholder formula, not measured supplier cost. Margin at retail therefore reads exactly 50% everywhere and must not be used for decisions until real costs are entered.'
+         if cost_is_formula else 'Costs are as recorded in the database. Margin is only as good as the cost entered.').font = Font(size=10, color='9C0006')
 ws.row_dimensions[3].height = 28
 ws.cell(3, 1).alignment = Alignment(wrap_text=True, vertical='top')
 headers = ['Category', 'SKU', 'Product name', 'Recorded cost (UGX)', 'Price A — Floor (UGX)', 'Price D — Retail (UGX)', 'Margin at retail', 'Margin at floor']
