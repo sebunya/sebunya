@@ -93,7 +93,13 @@ const noVariants: IMediaVariantGenerator = {
 
 // Real PNG magic bytes: the use case now types an upload by what the bytes are,
 // not by the MIME the client declared.
-const PNG_HEADER = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
+// A minimal but VALID PNG header (signature + IHDR declaring 1 x 1): uploads with an
+// unreadable size are refused (UNREADABLE), so the fixture must carry a real one.
+const PNG_HEADER = Buffer.concat([
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]),
+  Buffer.from('IHDR', 'ascii'),
+  Buffer.from([0, 0, 0, 1, 0, 0, 0, 1, 8, 2, 0, 0, 0, 0, 0, 0, 0]),
+]);
 const png = (content: string) => ({ filename: 'photo.png', mime: 'image/png', buffer: Buffer.concat([PNG_HEADER, Buffer.from(content)]) });
 
 describe('MediaLibraryUseCase', () => {
@@ -149,6 +155,12 @@ describe('MediaLibraryUseCase', () => {
     expect(outcomes[0]).toMatchObject({ kind: 'REJECTED', reason: 'UNSUPPORTED_TYPE' });
     expect(outcomes[1]).toMatchObject({ kind: 'REJECTED', reason: 'TOO_LARGE' });
     expect(outcomes[2]).toMatchObject({ kind: 'STORED' });
+  });
+
+  it('refuses a file whose image size cannot be read (magic bytes alone are not an image)', async () => {
+    const useCase = new MediaLibraryUseCase(new FakeRepo(), storage, noVariants, gallery);
+    const [outcome] = await useCase.upload({ files: [{ filename: 'fake.png', mime: 'image/png', buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0, 1, 2, 3]) }], actorId: null });
+    expect(outcome).toMatchObject({ kind: 'REJECTED', reason: 'UNREADABLE' });
   });
 
   it('safeDelete refuses while usages exist and deletes when the graph is clear', async () => {

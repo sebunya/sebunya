@@ -87,8 +87,24 @@ describe('checkImagePixelBudget', () => {
     expect(checkImagePixelBudget(pngClaiming(MAX_IMAGE_EDGE + 1, 10), 'image/png')).toMatchObject({ ok: false });
   });
 
-  it('leaves an unreadable header to the decoder cap rather than refusing it', () => {
-    expect(checkImagePixelBudget(Buffer.alloc(40), 'image/png')).toEqual({ ok: true, dimensions: null });
+  it('refuses an unreadable PNG/JPEG/GIF/WebP header (an unknown size cannot be proven safe); AVIF is left to the decoder cap', () => {
+    for (const mime of ['image/png', 'image/jpeg', 'image/webp']) {
+      expect(checkImagePixelBudget(Buffer.alloc(40), mime)).toEqual({ ok: false, dimensions: null, reason: 'UNREADABLE' });
+    }
+    expect(checkImagePixelBudget(Buffer.alloc(40), 'image/avif')).toEqual({ ok: true, dimensions: null });
+  });
+
+  it('sees through junk bytes before a JPEG marker, as libjpeg does (a 60,000 x 60,000 frame cannot hide behind them)', async () => {
+    const jpg = await encode(64, 48, 'jpeg');
+    let i = 2; while (!(jpg[i] === 0xff && jpg[i + 1] >= 0xc0 && jpg[i + 1] <= 0xc2)) i++;
+    jpg.writeUInt16BE(60000, i + 5); jpg.writeUInt16BE(60000, i + 7);
+    const cut = 4 + jpg.readUInt16BE(4);
+    const crafted = Buffer.concat([jpg.subarray(0, cut), Buffer.from([0x00, 0x12, 0x34]), jpg.subarray(cut)]);
+    // The decoder really does read it that big…
+    expect((await sharp(crafted, { limitInputPixels: false }).metadata()).width).toBe(60000);
+    // …so the header check must too.
+    expect(readImageDimensions(crafted, 'image/jpeg')).toEqual({ width: 60000, height: 60000 });
+    expect(checkImagePixelBudget(crafted, 'image/jpeg')).toMatchObject({ ok: false, reason: 'TOO_MANY_PIXELS' });
   });
 });
 

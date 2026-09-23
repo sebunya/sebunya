@@ -18,17 +18,29 @@ export interface ImageDimensions {
 
 /** 50 megapixels: well above any product photograph (a 12 MP phone shot, a 45 MP studio frame), far below a bomb. */
 export const MAX_IMAGE_PIXELS = 50_000_000;
-/** Longest edge. Stops a 100,000 × 400 strip that is under the pixel cap but still absurd to decode and lay out. */
-export const MAX_IMAGE_EDGE = 12_000;
+/**
+ * Longest edge. Stops a 100,000 × 400 strip that is under the pixel cap but absurd
+ * to decode and lay out. 20,000 leaves room for a full-page phone screenshot
+ * (1170 × 18,132 was refused at the first cap of 12,000).
+ */
+export const MAX_IMAGE_EDGE = 20_000;
 
 export type ImageSizeVerdict =
   | { ok: true; dimensions: ImageDimensions | null }
-  | { ok: false; dimensions: ImageDimensions; reason: 'TOO_MANY_PIXELS' };
+  | { ok: false; dimensions: ImageDimensions; reason: 'TOO_MANY_PIXELS' }
+  | { ok: false; dimensions: null; reason: 'UNREADABLE' };
 
-/** Refuses only what is PROVEN oversized; an unreadable header is left to the decoder's own cap. */
+/**
+ * PNG, JPEG, GIF and WebP headers are strictly defined: every real image in
+ * those formats has a readable size, so one without is refused — an unknown
+ * size cannot be proven safe. AVIF (a box format whose size property can sit
+ * anywhere in the metadata) is left to the decoder's own pixel cap.
+ */
+const STRICT_HEADER = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+
 export function checkImagePixelBudget(buffer: Buffer, mime: string): ImageSizeVerdict {
   const dimensions = readImageDimensions(buffer, mime);
-  if (!dimensions) return { ok: true, dimensions: null };
+  if (!dimensions) return STRICT_HEADER.has(mime) ? { ok: false, dimensions: null, reason: 'UNREADABLE' } : { ok: true, dimensions: null };
   const { width, height } = dimensions;
   if (width > MAX_IMAGE_EDGE || height > MAX_IMAGE_EDGE || width * height > MAX_IMAGE_PIXELS) {
     return { ok: false, dimensions, reason: 'TOO_MANY_PIXELS' };
@@ -59,11 +71,16 @@ function gif(b: Buffer): ImageDimensions | null {
   return { width: b.readUInt16LE(6), height: b.readUInt16LE(8) };
 }
 
-/** Walks the marker segments to the first frame header (SOF0–SOF15 except DHT/JPG/DAC). */
+/**
+ * Walks the marker segments to the first frame header (SOF0–SOF15 except
+ * DHT/JPG/DAC). Bytes that are not a marker are SKIPPED, as libjpeg does
+ * ("extraneous bytes before marker"): stopping there let a file hide a
+ * 60,000 × 60,000 frame from this check while every decoder still read it.
+ */
 function jpeg(b: Buffer): ImageDimensions | null {
   let i = 2;
   while (i + 9 < b.length) {
-    if (b[i] !== 0xff) return null;
+    if (b[i] !== 0xff) { i += 1; continue; }
     const marker = b[i + 1];
     if (marker === 0xff) { i += 1; continue; } // fill byte
     if (marker === 0xd8 || marker === 0x01 || (marker >= 0xd0 && marker <= 0xd7)) { i += 2; continue; } // no length
@@ -102,7 +119,7 @@ function webp(b: Buffer): ImageDimensions | null {
  */
 function avif(b: Buffer): ImageDimensions | null {
   let best: ImageDimensions | null = null;
-  const limit = Math.min(b.length, 64 * 1024); // the meta box sits at the front
+  const limit = Math.min(b.length, 1024 * 1024); // the meta box sits near the front; bounded
   for (let i = 4; i + 16 <= limit; i++) {
     if (b[i] === 0x69 && b.toString('ascii', i, i + 4) === 'ispe') {
       const width = b.readUInt32BE(i + 8); // after version/flags

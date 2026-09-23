@@ -45,7 +45,7 @@ export function sniffImageMime(buffer: Buffer): string | null {
 }
 const MAX_BYTES = 15 * 1024 * 1024;
 
-export type UploadRejectReason = 'UNSUPPORTED_TYPE' | 'TOO_LARGE' | 'TOO_MANY_PIXELS' | 'EMPTY';
+export type UploadRejectReason = 'UNSUPPORTED_TYPE' | 'TOO_LARGE' | 'TOO_MANY_PIXELS' | 'UNREADABLE' | 'EMPTY';
 
 /** One plain-language sentence per refusal, shared by every upload surface so none of them shows a bare code. */
 export function describeUploadRejection(reason: string): string {
@@ -53,6 +53,7 @@ export function describeUploadRejection(reason: string): string {
     case 'UNSUPPORTED_TYPE': return 'not a PNG, JPEG, WebP, AVIF or GIF image (checked from the file itself, not its name)';
     case 'TOO_LARGE': return `larger than ${MAX_BYTES / (1024 * 1024)} MB`;
     case 'TOO_MANY_PIXELS': return `more than ${MAX_IMAGE_PIXELS / 1_000_000} megapixels or wider/taller than ${MAX_IMAGE_EDGE.toLocaleString('en-GB')} px — resize it first`;
+    case 'UNREADABLE': return 'the image size could not be read — the file is damaged or not a real image';
     case 'EMPTY': return 'the file is empty';
     default: return reason;
   }
@@ -104,8 +105,9 @@ export class MediaLibraryUseCase {
       }
       // A small file can declare a gigantic canvas (a decompression bomb). The header
       // says so before anything decodes it — here, in sharp, or in a customer's browser.
-      if (!checkImagePixelBudget(file.buffer, file.mime).ok) {
-        outcomes.push({ kind: 'REJECTED', filename: file.filename, reason: 'TOO_MANY_PIXELS' });
+      const budget = checkImagePixelBudget(file.buffer, file.mime);
+      if (!budget.ok) {
+        outcomes.push({ kind: 'REJECTED', filename: file.filename, reason: budget.reason });
         continue;
       }
 
