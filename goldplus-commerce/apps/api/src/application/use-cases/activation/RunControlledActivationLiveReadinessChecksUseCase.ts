@@ -1,4 +1,5 @@
 import { ControlledActivationExecutionPlanRepository } from '../../ports/activation/ControlledActivationExecutionPlanRepository.js';
+import { LIVE_REVIEW_CHECKABLE_STATUSES, liveReviewHasBlockers } from '@goldplus/shared';
 import { randomUUID } from 'crypto';
 import { ControlledActivationLiveReviewRepository, LiveReadinessCheck } from '../../ports/activation/ControlledActivationLiveReviewRepository';
 import { ControlledActivationDryRunRepository } from '../../ports/activation/ControlledActivationDryRunRepository';
@@ -39,7 +40,7 @@ export class RunControlledActivationLiveReadinessChecksUseCase {
       throw new DomainError('LIVE_REVIEW_NOT_FOUND', 'NOT_FOUND', `Candidate ${command.candidateId} not found.`);
     }
 
-    if (candidate.status !== 'READY_FOR_REVIEW' && candidate.status !== 'BLOCKED') {
+    if (!LIVE_REVIEW_CHECKABLE_STATUSES.includes(candidate.status)) {
       throw new DomainError('LIVE_REVIEW_STATE_CONFLICT', 'CONFLICT', `Cannot run checks on a candidate in status: ${candidate.status}`);
     }
 
@@ -69,7 +70,7 @@ export class RunControlledActivationLiveReadinessChecksUseCase {
 
     await this.liveReviewRepository.saveReadinessChecks(checks);
 
-    const hasBlockers = checks.some(c => c.status === 'BLOCKED' || c.status === 'EXPIRED' || c.status === 'NOT_CONFIGURED' || c.status === 'CONSENT_BLOCKED');
+    const hasBlockers = liveReviewHasBlockers(checks);
     
     if (hasBlockers && candidate.status !== 'BLOCKED') {
       await this.liveReviewRepository.updateCandidateStatus(candidate.id, 'BLOCKED');

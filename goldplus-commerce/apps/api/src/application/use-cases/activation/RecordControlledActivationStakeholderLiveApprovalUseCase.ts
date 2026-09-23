@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { liveReviewHasBlockers } from '@goldplus/shared';
 import { ControlledActivationLiveReviewRepository } from '../../ports/activation/ControlledActivationLiveReviewRepository';
 import { ControlledActivationStakeholderLiveApprovalRepository } from '../../ports/activation/ControlledActivationStakeholderLiveApprovalRepository';
 import { ControlledActivationAccessPolicy } from '../../ports/activation/ControlledActivationAccessPolicy';
@@ -52,7 +53,7 @@ export class RecordControlledActivationStakeholderLiveApprovalUseCase {
       throw new DomainError('LIVE_REVIEW_STATE_CONFLICT', 'CONFLICT', 'Cannot approve candidate without readiness checks.');
     }
     
-    const hasBlockers = checks.some(c => c.status === 'BLOCKED' || c.status === 'EXPIRED' || c.status === 'NOT_CONFIGURED' || c.status === 'CONSENT_BLOCKED');
+    const hasBlockers = liveReviewHasBlockers(checks);
     if (hasBlockers) {
       throw new DomainError('LIVE_REVIEW_STATE_CONFLICT', 'CONFLICT', 'Cannot approve candidate with BLOCKED readiness checks.');
     }

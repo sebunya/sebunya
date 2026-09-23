@@ -1,54 +1,40 @@
 import { Hono } from 'hono';
+import { Registry } from '../../infrastructure/Registry.js';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 import { db } from '../../infrastructure/db/client.js';
-import { DrizzleControlledActivationExecutionPlanRepository } from '../../infrastructure/activation/DrizzleControlledActivationExecutionPlanRepository.js';
-import { DrizzleControlledActivationDryRunRepository } from '../../infrastructure/activation/DrizzleControlledActivationDryRunRepository.js';
-import { DefaultControlledActivationPayloadPreviewer } from '../../infrastructure/activation/DefaultControlledActivationPayloadPreviewer.js';
-import { DefaultControlledActivationCanaryPlanner } from '../../infrastructure/activation/DefaultControlledActivationCanaryPlanner.js';
-import { DefaultControlledActivationEvidencePackBuilder } from '../../infrastructure/activation/DefaultControlledActivationEvidencePackBuilder.js';
-import { DrizzleControlledActivationAuditRepository } from '../../infrastructure/activation/DrizzleControlledActivationAuditRepository.js';
-import { SafeControlledActivationReadinessChecker } from '../../infrastructure/activation/SafeControlledActivationReadinessChecker.js';
-import { DefaultControlledActivationAccessPolicy } from '../../infrastructure/activation/DefaultControlledActivationAccessPolicy.js';
-import { DrizzleControlledActivationRepository } from '../../infrastructure/activation/DrizzleControlledActivationRepository.js';
-import { DrizzleRoleRepository } from '../../infrastructure/db/repositories/DrizzleRoleRepository.js';
 import { authMiddleware } from '../../interfaces/http/middleware/auth.js';
 import { requirePermissions } from '../../interfaces/http/middleware/permissions.js';
 import { PERMISSIONS } from '@goldplus/shared';
 
-import { CreateControlledActivationExecutionPlanUseCase } from '../../application/use-cases/activation/CreateControlledActivationExecutionPlanUseCase.js';
-import { RunControlledActivationDryRunUseCase } from '../../application/use-cases/activation/RunControlledActivationDryRunUseCase.js';
-import { GenerateDestinationPayloadPreviewsUseCase } from '../../application/use-cases/activation/GenerateDestinationPayloadPreviewsUseCase.js';
-import { ValidateControlledActivationCanaryPlanUseCase } from '../../application/use-cases/activation/ValidateControlledActivationCanaryPlanUseCase.js';
-import { BuildControlledActivationEvidencePackUseCase } from '../../application/use-cases/activation/BuildControlledActivationEvidencePackUseCase.js';
 import { MarkActivationReadyForLiveReviewUseCase } from '../../application/use-cases/activation/MarkActivationReadyForLiveReviewUseCase.js';
-import { CancelControlledActivationDryRunUseCase } from '../../application/use-cases/activation/CancelControlledActivationDryRunUseCase.js';
 
-const executionPlanRepo = new DrizzleControlledActivationExecutionPlanRepository();
-const dryRunRepo = new DrizzleControlledActivationDryRunRepository();
-const payloadPreviewer = new DefaultControlledActivationPayloadPreviewer();
-const canaryPlanner = new DefaultControlledActivationCanaryPlanner();
-const evidencePackBuilder = new DefaultControlledActivationEvidencePackBuilder();
-const auditRepo = new DrizzleControlledActivationAuditRepository();
-const readinessChecker = new SafeControlledActivationReadinessChecker();
-// The access policy must resolve real per-user permissions. A stub that returns a fixed
-// permission set would grant every caller settings.manage and reports.read.
-const accessPolicy = new DefaultControlledActivationAccessPolicy(new DrizzleRoleRepository());
-
-const activationRepo = new DrizzleControlledActivationRepository();
-const createExecutionPlanUseCase = new CreateControlledActivationExecutionPlanUseCase(executionPlanRepo, activationRepo, readinessChecker, accessPolicy, auditRepo);
-const runDryRunUseCase = new RunControlledActivationDryRunUseCase(dryRunRepo, executionPlanRepo, accessPolicy, auditRepo, payloadPreviewer);
-const generatePreviewsUseCase = new GenerateDestinationPayloadPreviewsUseCase(payloadPreviewer);
-const validateCanaryPlanUseCase = new ValidateControlledActivationCanaryPlanUseCase(canaryPlanner);
-const buildEvidencePackUseCase = new BuildControlledActivationEvidencePackUseCase(evidencePackBuilder, dryRunRepo);
-const markReadyUseCase = new MarkActivationReadyForLiveReviewUseCase(
-  executionPlanRepo,
-  dryRunRepo,
-  evidencePackBuilder,
-  payloadPreviewer,
-  readinessChecker
-);
-const cancelDryRunUseCase = new CancelControlledActivationDryRunUseCase(dryRunRepo, executionPlanRepo, auditRepo);
+// ONE set of activation services per process: the Registry's. This route used to
+// build private copies, and the in-memory canary planner it created was a different
+// object from the one live review reads — a canary plan validated here could never
+// be found there, so readiness checks and runbooks always failed with "Canary plan is
+// missing" (found by driving the live-review page end to end, 2026-09-23).
+// Resolved lazily, like the other routes, so importing this module builds nothing.
+let services: ReturnType<typeof buildServices> | null = null;
+function buildServices() {
+  const r = Registry.getInstance();
+  return {
+    createExecutionPlanUseCase: r.createControlledActivationExecutionPlanUseCase,
+    runDryRunUseCase: r.runControlledActivationDryRunUseCase,
+    generatePreviewsUseCase: r.generateDestinationPayloadPreviewsUseCase,
+    validateCanaryPlanUseCase: r.validateControlledActivationCanaryPlanUseCase,
+    buildEvidencePackUseCase: r.buildControlledActivationEvidencePackUseCase,
+    cancelDryRunUseCase: r.cancelControlledActivationDryRunUseCase,
+    markReadyUseCase: new MarkActivationReadyForLiveReviewUseCase(
+      r.controlledActivationExecutionPlanRepo,
+      r.controlledActivationDryRunRepo,
+      r.controlledActivationEvidencePackBuilder,
+      r.controlledActivationPayloadPreviewer,
+      r.controlledActivationReadinessChecker,
+    ),
+  };
+}
+const svc = () => (services ??= buildServices());
 
 const router = new Hono<{ Variables: { user?: { id: string; email: string; permissions: string[] } } }>();
 
@@ -91,7 +77,7 @@ router.post(
     };
 
     try {
-      const planId = await createExecutionPlanUseCase.execute(command);
+      const planId = await svc().createExecutionPlanUseCase.execute(command);
       return c.json({ success: true, executionPlanId: planId });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -115,7 +101,7 @@ router.post(
     const admin = actingAdminId(c);
     if (!admin) return c.json({ success: false, error: 'UNAUTHENTICATED' }, 401);
     try {
-      const dryRunId = await runDryRunUseCase.execute({ ...data, adminId: admin });
+      const dryRunId = await svc().runDryRunUseCase.execute({ ...data, adminId: admin });
       return c.json({ success: true, dryRunId });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -137,7 +123,7 @@ router.post(
     const dryRunId = c.req.param('id');
     const data = c.req.valid('json');
     try {
-      const previews = await generatePreviewsUseCase.execute(dryRunId, data.activationRequestId);
+      const previews = await svc().generatePreviewsUseCase.execute(dryRunId, data.activationRequestId);
       return c.json({ success: true, previews });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -160,7 +146,7 @@ router.post(
   async (c) => {
     const data = c.req.valid('json');
     try {
-      const result = await validateCanaryPlanUseCase.execute(data);
+      const result = await svc().validateCanaryPlanUseCase.execute(data);
       return c.json(result);
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -182,7 +168,7 @@ router.post(
     const dryRunId = c.req.param('id');
     const data = c.req.valid('json');
     try {
-      const evidencePack = await buildEvidencePackUseCase.execute(dryRunId, data.activationRequestId);
+      const evidencePack = await svc().buildEvidencePackUseCase.execute(dryRunId, data.activationRequestId);
       return c.json({ success: true, evidencePack });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -206,7 +192,7 @@ router.post(
     const admin = actingAdminId(c);
     if (!admin) return c.json({ success: false, error: 'UNAUTHENTICATED' }, 401);
     try {
-      await markReadyUseCase.execute({ adminId: admin, executionPlanId });
+      await svc().markReadyUseCase.execute({ adminId: admin, executionPlanId });
       return c.json({ success: true });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -231,7 +217,7 @@ router.post(
     const admin = actingAdminId(c);
     if (!admin) return c.json({ success: false, error: 'UNAUTHENTICATED' }, 401);
     try {
-      await cancelDryRunUseCase.execute({
+      await svc().cancelDryRunUseCase.execute({
         adminId: admin,
         dryRunId,
         reason: data.reason

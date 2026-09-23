@@ -3,6 +3,7 @@ import { formatDisplayDateTime } from '../../../../../../utils/date-format';
 import AdminLayout from '../../../../../../layouts/AdminLayout.astro';
 import { readSessionToken } from '../../../../../../lib/session';
 import { liveReviewAct, liveReviewGet } from '../../../../../../lib/liveReviewApi';
+import { liveReviewNextActions, LIVE_REVIEW_BLOCKING_CHECK_STATUSES } from '@goldplus/shared';
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -37,6 +38,12 @@ if (!result.ok && result.error.startsWith('That candidate')) {
 const error = result.ok ? null : result.error;
 const details = result.ok ? result.data : null;
 const { candidate, runbook, approvals, incidentPlan } = details ?? {};
+const checks: Array<{ gateId: string; status: string; severity: string; evidenceSummary: string; blockerReason?: string }> = details?.checks ?? [];
+// The same rules the API enforces (@goldplus/shared liveReviewRules): a button is
+// offered only when pressing it can succeed.
+const next = candidate
+  ? liveReviewNextActions({ status: candidate.status, checks, hasRunbook: Boolean(runbook), activationWindowEnd: candidate.activationWindowEnd ?? null })
+  : null;
 ---
 
 <AdminLayout title={`Live Review Candidate | Controlled Activation | Control Tower`}>
@@ -64,25 +71,44 @@ const { candidate, runbook, approvals, incidentPlan } = details ?? {};
             </div>
           </div>
           <div class="flex flex-col items-end gap-2">
-            {candidate.status === 'DRAFT' && (
+            {next?.canRunChecks && (
               <form method="POST"><input type="hidden" name="action" value="checks" />
-                <button type="submit" class="btn bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-sm">Run Readiness Checks</button></form>
+                <button type="submit" class="btn bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-sm">{checks.length ? 'Run readiness checks again' : 'Run readiness checks'}</button></form>
             )}
-            {candidate.status === 'READY_FOR_REVIEW' && !runbook && (
+            {next?.canBuildRunbook && (
               <form method="POST"><input type="hidden" name="action" value="runbook" />
-                <button type="submit" class="btn bg-indigo-500 hover:bg-indigo-600 text-white px-4 py-2 rounded-sm">Build Runbook</button></form>
+                <button type="submit" class="btn bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-sm">Build runbook</button></form>
             )}
-            {candidate.status === 'READY_FOR_REVIEW' && runbook && (
+            {next?.canDecide ? (
               <form method="POST" class="flex flex-col items-end gap-2">
                 <label class="text-xs text-slate-600">Note (optional)
                   <textarea name="note" maxlength="1000" rows="2" class="mt-1 block w-72 border border-slate-300 rounded-sm p-2 text-sm"></textarea></label>
                 <div class="flex gap-2">
-                  <button type="submit" name="action" value="APPROVED" class="btn bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-sm" data-confirm="Record your approval of this candidate?">Approve</button>
-                  <button type="submit" name="action" value="REJECTED" class="btn bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-sm" data-confirm="Record a rejection of this candidate?">Reject</button>
+                  <button type="submit" name="action" value="APPROVED" class="btn bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 rounded-sm" data-confirm="Record your approval of this candidate?">Approve</button>
+                  <button type="submit" name="action" value="REJECTED" class="btn bg-red-700 hover:bg-red-800 text-white px-4 py-2 rounded-sm" data-confirm="Record a rejection of this candidate?">Reject</button>
                 </div>
               </form>
+            ) : next?.decideBlockedBecause && (
+              <p class="max-w-xs text-right text-xs text-slate-600">{next.decideBlockedBecause}</p>
             )}
           </div>
+        </div>
+
+        {/* Readiness checks: the results a decision rests on (the page used to hide them). */}
+        <div class="bg-white p-6 shadow-sm rounded-sm border border-slate-200">
+          <h3 class="text-lg font-bold text-slate-800 mb-4">Readiness checks</h3>
+          {checks.length === 0 ? (
+            <p class="text-sm text-slate-600 italic">No checks have been run yet.</p>
+          ) : (
+            <ul class="divide-y divide-slate-100 text-sm">
+              {checks.map((c) => (
+                <li class="py-2 flex items-start justify-between gap-4">
+                  <div><p class="font-medium text-slate-800">{c.gateId}</p><p class="text-slate-600">{c.blockerReason || c.evidenceSummary}</p></div>
+                  <span class={`shrink-0 rounded px-2 py-0.5 text-xs font-bold ${LIVE_REVIEW_BLOCKING_CHECK_STATUSES.includes(c.status) ? 'bg-red-50 text-red-800' : c.status === 'PASSED' || c.status === 'PASS' ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-700'}`}>{c.status}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
