@@ -61,3 +61,34 @@ describe('service worker never caches sensitive routes (CLAUDE.md)', () => {
     expect(SW).toMatch(/SENSITIVE_ROUTES\.some\(\(route\) => url\.pathname\.startsWith\(route\)\)[\s\S]{0,40}return;/);
   });
 });
+
+describe('service worker fetch routing', () => {
+  /** Runs sw.js against a fake worker scope and reports whether it took over a request. */
+  function handles(url: string, init: { method?: string; mode?: string } = {}): boolean {
+    const listeners: Record<string, (e: unknown) => void> = {};
+    const scope = {
+      location: { origin: 'https://shopgoldplus.com' },
+      addEventListener: (type: string, fn: (e: unknown) => void) => { listeners[type] = fn; },
+      skipWaiting: () => undefined,
+      clients: { claim: () => undefined },
+    };
+    // eslint-disable-next-line no-new-func
+    new Function('self', 'caches', 'fetch', SW)(scope, { match: async () => undefined }, async () => new Response(''));
+    let took = false;
+    listeners.fetch({ request: { url, method: init.method ?? 'GET', mode: init.mode ?? 'no-cors' }, respondWith: () => { took = true; } });
+    return took;
+  }
+
+  it('answers same-site GETs and page navigations', () => {
+    expect(handles('https://shopgoldplus.com/icon-192.svg')).toBe(true);
+    expect(handles('https://shopgoldplus.com/shop', { mode: 'navigate' })).toBe(true);
+  });
+
+  it('never touches a POST, a cross-origin request, or a sensitive route', () => {
+    expect(handles('https://shopgoldplus.com/api/rec/events', { method: 'POST' })).toBe(false);
+    expect(handles('https://metrics.shopgoldplus.com/g/collect?v=2', { method: 'POST' })).toBe(false);
+    expect(handles('https://cloudflareinsights.com/cdn-cgi/rum', { method: 'POST' })).toBe(false);
+    expect(handles('https://www.googletagmanager.com/gtm.js?id=GTM-X')).toBe(false);
+    expect(handles('https://shopgoldplus.com/checkout', { mode: 'navigate' })).toBe(false);
+  });
+});

@@ -59,6 +59,15 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
+  // 0. Only same-site GETs are ours to answer. Everything else (analytics beacons
+  //    to metrics.shopgoldplus.com / Cloudflare / Clarity, any POST) goes straight to
+  //    the network: proxying it through this worker added a hop to every beacon,
+  //    could lose one sent as the page unloads, and turned a blocked third-party
+  //    request into a worker error in the console (seen in Firefox, 2026-09-23).
+  if (event.request.method !== 'GET' || url.origin !== self.location.origin) {
+    return;
+  }
+
   // 1. Sensitive routes: always go to the network, never cache.
   if (SENSITIVE_ROUTES.some((route) => url.pathname.startsWith(route))) {
     return; // Let the browser handle it without our intervention.
