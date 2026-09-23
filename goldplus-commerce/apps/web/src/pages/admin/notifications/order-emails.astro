@@ -113,9 +113,9 @@ const replayable = (s: string) => s === "DEAD_LETTER" || s === "RETRYING" || s =
               <span class="font-mono text-xs text-gray-500">order {it.orderId?.slice(0, 8)}…</span>
               <span class="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border bg-slate-50 text-slate-600 border-slate-200">{it.event}</span>
               <span class={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border ${stateChip(it.deliveryState)}`}>{it.deliveryState.replace(/_/g, " ")}</span>
-              {it.preparationState && <span class="text-[10px] font-bold text-gray-400">{it.preparationState.replace(/_/g, " ")}</span>}
+              {it.preparationState && <span class="text-[10px] font-bold text-gray-500">{it.preparationState.replace(/_/g, " ")}</span>}
             </div>
-            <p class="text-[11px] text-gray-400 mt-1">
+            <p class="text-[11px] text-gray-500 mt-1">
               attempts {it.attemptCount} · created {new Date(it.createdAt).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}{it.lastError ? ` · ${it.lastError}` : ""}
             </p>
           </div>

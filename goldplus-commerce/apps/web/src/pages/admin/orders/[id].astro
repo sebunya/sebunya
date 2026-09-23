@@ -464,7 +464,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
     
     <div class="mb-8 pb-6 border-b border-gray-200 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
       <div>
-        <a href="/admin/orders" class="text-xs font-bold text-gray-400 hover:text-brand-dark transition-colors mb-2 inline-block">
+        <a href="/admin/orders" class="text-xs font-bold text-gray-500 hover:text-brand-dark transition-colors mb-2 inline-block">
           &larr; Back to Order Registry
         </a>
         <h2 class="text-2xl font-black text-brand-dark tracking-tight flex items-center gap-3">
@@ -475,7 +475,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
         </h2>
       </div>
       <div class="flex items-center gap-2">
-        <span class="text-xs text-gray-400 font-medium font-mono">ID: {order.id}</span>
+        <span class="text-xs text-gray-500 font-medium font-mono">ID: {order.id}</span>
         <nav aria-label="Related records" class="mt-2 flex flex-wrap gap-2 text-[11px] font-bold">
           <a href={orderHistoryHref} class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">History</a>
           <a href={orderPaymentsHref} class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">Payments</a>
@@ -515,16 +515,16 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
           </div>
           <div class="p-6 grid grid-cols-1 sm:grid-cols-2 gap-6">
             <div>
-              <span class="text-[9px] font-black text-gray-400 uppercase tracking-wider block mb-1">Buyer Name</span>
+              <span class="text-[9px] font-black text-gray-500 uppercase tracking-wider block mb-1">Buyer Name</span>
               <p class="text-sm font-bold text-brand-dark">{order.customerName}</p>
             </div>
             <div>
-              <span class="text-[9px] font-black text-gray-400 uppercase tracking-wider block mb-1">Buyer Coordinates</span>
+              <span class="text-[9px] font-black text-gray-500 uppercase tracking-wider block mb-1">Buyer Coordinates</span>
               <p class="text-sm font-bold text-brand-dark">{order.customerPhone}</p>
-              {order.customerEmail && <p class="text-xs font-medium text-gray-400 mt-0.5">{order.customerEmail}</p>}
+              {order.customerEmail && <p class="text-xs font-medium text-gray-500 mt-0.5">{order.customerEmail}</p>}
             </div>
             <div class="sm:col-span-2 border-t border-gray-100 pt-4">
-              <span class="text-[9px] font-black text-gray-400 uppercase tracking-wider block mb-1">Delivery Destination</span>
+              <span class="text-[9px] font-black text-gray-500 uppercase tracking-wider block mb-1">Delivery Destination</span>
               <p class="text-xs font-black text-brand-dark">{order.deliveryArea}</p>
               <p class="text-xs font-medium text-gray-500 mt-1">{order.deliveryAddress}</p>
             </div>
@@ -566,7 +566,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
                 ? 'Payment: PAID — collect nothing'
                 : `COLLECT ON DELIVERY: UGX ${Number(order.totalUgx ?? order.totalAmount ?? 0).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}`,
             ].filter(Boolean).join('\n')}</pre>
-            <p class="text-[10px] text-gray-400 mt-2 print:hidden">The copy button places this block on the clipboard, formatted for WhatsApp.</p>
+            <p class="text-[10px] text-gray-500 mt-2 print:hidden">The copy button places this block on the clipboard, formatted for WhatsApp.</p>
           </div>
         </div>
 
@@ -582,7 +582,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
             <div class="border border-gray-100 rounded-xl overflow-hidden mb-6">
               <table class="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr class="bg-gray-50 font-black uppercase text-[9px] text-gray-400 border-b border-gray-100">
+                  <tr class="bg-gray-50 font-black uppercase text-[9px] text-gray-500 border-b border-gray-100">
                     <th class="px-4 py-3">Product Name</th>
                     <th class="px-4 py-3 text-center">SKU</th>
                     <th class="px-4 py-3 text-center">Qty</th>
@@ -663,7 +663,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
                   <div class="bg-gray-50 border border-gray-200 rounded-xl p-5 relative overflow-hidden">
                     <div class="flex justify-between items-start mb-4">
                       <div>
-                        <span class="text-[8px] font-bold text-gray-400 uppercase tracking-widest block mb-0.5">ATTEMPT #{paymentAttempts.length - index}</span>
+                        <span class="text-[8px] font-bold text-gray-500 uppercase tracking-widest block mb-0.5">ATTEMPT #{paymentAttempts.length - index}</span>
                         <h4 class="text-xs font-black text-brand-dark">Merchant Reference: {attempt.merchantReference}</h4>
                       </div>
                       <span class={`px-2 py-0.5 border font-black text-[9px] uppercase rounded-lg ${
@@ -678,24 +678,24 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
 
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
                       <div>
-                        <span class="text-[8px] font-bold text-gray-400 uppercase block mb-0.5">Tracking ID</span>
+                        <span class="text-[8px] font-bold text-gray-500 uppercase block mb-0.5">Tracking ID</span>
                         <span class="font-mono font-bold text-brand-dark break-all">{attempt.orderTrackingId || 'None'}</span>
                       </div>
                       <div>
-                        <span class="text-[8px] font-bold text-gray-400 uppercase block mb-0.5">Provider</span>
+                        <span class="text-[8px] font-bold text-gray-500 uppercase block mb-0.5">Provider</span>
                         <span class="font-black uppercase text-[10px] tracking-wide text-brand-dark">{attempt.provider}</span>
                       </div>
                       <div>
-                        <span class="text-[8px] font-bold text-gray-400 uppercase block mb-0.5">Authorized Sum</span>
+                        <span class="text-[8px] font-bold text-gray-500 uppercase block mb-0.5">Authorized Sum</span>
                         <span class="font-black text-brand-dark">{formatter.format(attempt.amount)}</span>
                       </div>
                       <div>
-                        <span class="text-[8px] font-bold text-gray-400 uppercase block mb-0.5">Created At</span>
+                        <span class="text-[8px] font-bold text-gray-500 uppercase block mb-0.5">Created At</span>
                         <span class="font-medium text-gray-500">{new Date(attempt.createdAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala',  day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
                     </div>
 
-                    <div class="border-t border-gray-200/50 pt-3 mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 text-[10px] font-medium text-gray-400">
+                    <div class="border-t border-gray-200/50 pt-3 mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 text-[10px] font-medium text-gray-500">
                       <div>
                         <span class="font-bold">IPN Callback Registered:</span> {attempt.ipnReceivedAt ? new Date(attempt.ipnReceivedAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala' }) : 'No IPN received'}
                       </div>
@@ -707,7 +707,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
                 ))}
               </div>
             ) : (
-              <div class="p-8 text-center text-gray-400 italic bg-gray-50 border border-gray-100 rounded-xl">
+              <div class="p-8 text-center text-gray-500 italic bg-gray-50 border border-gray-100 rounded-xl">
                 No active PesaPal transactional records associated with this order.
               </div>
             )}
@@ -719,13 +719,13 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
           <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center flex-wrap gap-2">
             <div>
               <h3 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Customer Communication Hub</h3>
-              <p class="text-[9px] text-gray-400 mt-0.5">Real-time preview of transactional receipts and WhatsApp message builders.</p>
+              <p class="text-[9px] text-gray-500 mt-0.5">Real-time preview of transactional receipts and WhatsApp message builders.</p>
             </div>
             
             <!-- Template Toggle Select -->
             <div>
               <form method="GET" class="flex items-center gap-2">
-                <label for="template" class="text-[8px] font-black uppercase tracking-wider text-gray-400">Template:</label>
+                <label for="template" class="text-[8px] font-black uppercase tracking-wider text-gray-500">Template:</label>
                 <select 
                   name="template" 
                   id="template-select" 
@@ -757,7 +757,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
               </button>
               <button 
                 id="btn-tab-whatsapp" 
-                class="px-4 py-2 text-xs font-black border-b-2 border-transparent text-gray-400 hover:text-brand-dark focus:outline-none transition-all duration-200"
+                class="px-4 py-2 text-xs font-black border-b-2 border-transparent text-gray-500 hover:text-brand-dark focus:outline-none transition-all duration-200"
                 type="button"
               >
                 WhatsApp Handoff
@@ -795,7 +795,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
                  </div>
                </div>
 
-               <div class="flex justify-between items-center text-[10px] font-medium text-gray-400">
+               <div class="flex justify-between items-center text-[10px] font-medium text-gray-500">
                  <span>Transactional HTML Receipt (Auto-Generated per Order Status)</span>
                  <span class="text-green-500 font-bold">✓ Responsive & Mobile Optimized</span>
                </div>
@@ -805,11 +805,11 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
              <div id="tab-panel-whatsapp" class="hidden space-y-4">
                <div class="grid grid-cols-2 gap-4 text-xs">
                  <div class="bg-gray-50 border border-gray-200 rounded-xl p-3">
-                   <div class="text-[10px] font-bold uppercase tracking-wider text-gray-400">Support Number Configured</div>
+                   <div class="text-[10px] font-bold uppercase tracking-wider text-gray-500">Support Number Configured</div>
                    <div class="font-mono mt-1 font-bold text-gray-700">{whatsappSupportNumber === '256705004545' ? 'Yes (256705004545)' : whatsappSupportNumber}</div>
                  </div>
                  <div class="bg-gray-50 border border-gray-200 rounded-xl p-3">
-                   <div class="text-[10px] font-bold uppercase tracking-wider text-gray-400">System Dispatch Mode</div>
+                   <div class="text-[10px] font-bold uppercase tracking-wider text-gray-500">System Dispatch Mode</div>
                    <div class="font-mono mt-1 font-bold text-amber-600">Preview Only, Not Sent</div>
                  </div>
                </div>
@@ -862,9 +862,9 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
                 
                 if (activeTab === 'email') {
                   btnEmail.classList.add('border-brand-gold', 'text-brand-dark');
-                  btnEmail.classList.remove('border-transparent', 'text-gray-400');
+                  btnEmail.classList.remove('border-transparent', 'text-gray-500');
                   
-                  btnWa.classList.add('border-transparent', 'text-gray-400');
+                  btnWa.classList.add('border-transparent', 'text-gray-500');
                   btnWa.classList.remove('border-brand-gold', 'text-brand-dark');
                   
                   panelEmail.classList.remove('hidden');
@@ -874,9 +874,9 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
                   panelWa.classList.remove('block');
                 } else {
                   btnWa.classList.add('border-brand-gold', 'text-brand-dark');
-                  btnWa.classList.remove('border-transparent', 'text-gray-400');
+                  btnWa.classList.remove('border-transparent', 'text-gray-500');
                   
-                  btnEmail.classList.add('border-transparent', 'text-gray-400');
+                  btnEmail.classList.add('border-transparent', 'text-gray-500');
                   btnEmail.classList.remove('border-brand-gold', 'text-brand-dark');
                   
                   panelWa.classList.remove('hidden');
@@ -935,7 +935,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
             {/* Status Grid */}
             <div class="grid grid-cols-2 gap-4">
               <div class="bg-gray-50 border border-gray-100 rounded-xl p-4">
-                <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Payment Status</span>
+                <span class="text-[8px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Payment Status</span>
                 <span class={`inline-block px-2 py-0.5 font-black text-[9px] uppercase tracking-wide border rounded ${
                   order.paymentStatus === 'paid' ? 'bg-green-50 text-green-700 border-green-100' :
                   order.paymentStatus === 'failed' ? 'bg-red-50 text-red-700 border-red-100' :
@@ -946,7 +946,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
                 </span>
               </div>
               <div class="bg-gray-50 border border-gray-100 rounded-xl p-4">
-                <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Fulfillment State</span>
+                <span class="text-[8px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Fulfillment State</span>
                 <span class={`inline-block px-2 py-0.5 font-black text-[9px] uppercase tracking-wide border rounded ${getStatusColor(order.orderStatus)}`}>
                   {order.orderStatus.replace(/_/g, ' ')}
                 </span>
@@ -957,7 +957,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
             {transitionOptions.length > 0 ? (
               <form method="POST" class="space-y-4">
                 <div>
-                  <label for="status" class="block text-[10px] font-black uppercase tracking-wide text-gray-400 mb-2">
+                  <label for="status" class="block text-[10px] font-black uppercase tracking-wide text-gray-500 mb-2">
                     Select Logistical Transition
                   </label>
                   <select 
@@ -987,7 +987,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
 
             {/* Wave 2E-2: order LIFECYCLE transition (state-machine governed) */}
             <div class="border-t border-gray-100 pt-4">
-              <p class="text-[10px] font-black uppercase tracking-wide text-gray-400 mb-2">Order lifecycle</p>
+              <p class="text-[10px] font-black uppercase tracking-wide text-gray-500 mb-2">Order lifecycle</p>
               <form method="POST" class="space-y-3">
                 <input type="hidden" name="action" value="lifecycle" />
                 <select name="toStatus" aria-label="Move order to status" required class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold appearance-none">
@@ -1011,7 +1011,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
               </form>
             </div>
 
-            <div class="border-t border-gray-100 pt-4 text-[9px] leading-relaxed text-gray-400 font-medium">
+            <div class="border-t border-gray-100 pt-4 text-[9px] leading-relaxed text-gray-500 font-medium">
               <strong>Control Rule:</strong> Logistical operations are completely decoupled from payment settlement workflows. Manual override of payment status is strictly blocked to maintain system data truthfulness.
             </div>
 

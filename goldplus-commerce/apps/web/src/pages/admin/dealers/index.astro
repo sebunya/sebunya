@@ -44,7 +44,7 @@ const dealers = result.items;
       <div class="overflow-x-auto">
         <table class="w-full text-left border-collapse">
           <thead>
-            <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100">
+            <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-500 tracking-widest border-b border-gray-100">
               <th class="p-6">Business Entity</th>
               <th class="p-6">Regional Hub</th>
               <th class="p-6 text-center">Evaluation</th>
@@ -55,7 +55,7 @@ const dealers = result.items;
               <tr class="hover:bg-gray-50 transition-colors">
                 <td class="p-6">
                   <div class="font-bold text-brand-dark text-sm">{d.businessName || d.biz}</div>
-                  <div class="text-[10px] font-mono text-gray-400 mt-1">{d.email || 'No contact details'}</div>
+                  <div class="text-[10px] font-mono text-gray-500 mt-1">{d.email || 'No contact details'}</div>
                 </td>
                 <td class="p-6 text-gray-600 font-medium">
                   {d.location || 'Undisclosed District'}
@@ -69,7 +69,7 @@ const dealers = result.items;
             ))}
             {dealers.length === 0 && (
               <tr>
-                <td colspan="3" class="p-20 text-center text-gray-400 italic text-xs leading-relaxed">
+                <td colspan="3" class="p-20 text-center text-gray-500 italic text-xs leading-relaxed">
                   Zero dealer applicants tracked in query store.
                 </td>
               </tr>

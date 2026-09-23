@@ -78,7 +78,7 @@ const HUB_CARDS = hub?.counts
         <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {HUB_CARDS.map((card) => (
             <a href={card.href} class={`block rounded-xl border p-3 transition hover:shadow-sm ${card.state === "INCOMPLETE_INTERNAL_GAP" ? "border-amber-300 bg-amber-50" : "border-slate-200 bg-slate-50 hover:bg-white"}`}>
-              <p class="text-[10px] font-black uppercase tracking-widest text-slate-400">{card.title}</p>
+              <p class="text-[10px] font-black uppercase tracking-widest text-slate-500">{card.title}</p>
               <p class="mt-1 text-sm font-black text-slate-800">{card.metric}</p>
               <p class="mt-1 text-[11px] leading-snug text-slate-500">{card.note}</p>
             </a>
@@ -108,7 +108,7 @@ const HUB_CARDS = hub?.counts
             {(reviews.items || []).map((r: any) => (
               <tr class="border-t border-slate-100">
                 <td class="py-2">{"★".repeat(r.rating)}</td>
-                <td>{r.title || <span class="text-slate-400">(no title)</span>}</td>
+                <td>{r.title || <span class="text-slate-600">(no title)</span>}</td>
                 <td>{r.isVerifiedPurchase ? "✓" : "—"}</td>
                 <td class="text-rose-600">{r.flagReason || ""}</td>
                 <td>

@@ -59,13 +59,13 @@ const statusClass = (s: string) => s === 'NEW' ? 'text-green-700' : s === 'WOULD
 
     <section class="grid grid-cols-2 sm:grid-cols-5 gap-3">
       {(['NEW', 'WOULD_REPLACE', 'EXACT_DUPLICATE', 'UNCHANGED'] as const).map((k) => (
-        <div class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm"><p class="text-[10px] font-black uppercase tracking-wider text-gray-400">{k.replace('_', ' ')}</p><p class="text-2xl font-black text-brand-dark">{session.totals[k] ?? 0}</p></div>
+        <div class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm"><p class="text-[10px] font-black uppercase tracking-wider text-gray-500">{k.replace('_', ' ')}</p><p class="text-2xl font-black text-brand-dark">{session.totals[k] ?? 0}</p></div>
       ))}
-      <div class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm"><p class="text-[10px] font-black uppercase tracking-wider text-gray-400">Blocking</p><p class="text-2xl font-black" class:list={[blocking.length ? 'text-red-700' : 'text-green-700']}>{blocking.length}</p></div>
+      <div class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm"><p class="text-[10px] font-black uppercase tracking-wider text-gray-500">Blocking</p><p class="text-2xl font-black" class:list={[blocking.length ? 'text-red-700' : 'text-green-700']}>{blocking.length}</p></div>
     </section>
 
     <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-3">
-      <h3 class="text-xs font-black uppercase tracking-wider text-gray-400">Decision</h3>
+      <h3 class="text-xs font-black uppercase tracking-wider text-gray-500">Decision</h3>
       {session.status === 'PLANNED' && (
         <div class="flex flex-wrap gap-3 items-end">
           <form method="POST" class="flex items-end gap-2">
@@ -109,7 +109,7 @@ const statusClass = (s: string) => s === 'NEW' ? 'text-green-700' : s === 'WOULD
           {rows.map((r) => (
             <tr>
               <td class="px-3 py-2 text-xs text-gray-500 tabular-nums">{r.rowNumber}</td>
-              <td class="px-3 py-2 font-mono text-xs truncate max-w-[16rem]" title={r.filename}>{r.filename}{r.source === 'MANIFEST' && <span class="ml-1 text-[10px] text-gray-400">(manifest)</span>}</td>
+              <td class="px-3 py-2 font-mono text-xs truncate max-w-[16rem]" title={r.filename}>{r.filename}{r.source === 'MANIFEST' && <span class="ml-1 text-[10px] text-gray-500">(manifest)</span>}</td>
               <td class="px-3 py-2 text-xs">{r.productSku ?? r.skuToken ?? '—'}</td>
               <td class="px-3 py-2 text-xs">{r.slot ?? '—'}{r.role ? ` · ${r.role}` : ''}</td>
               <td class="px-3 py-2 text-xs font-black" class:list={[statusClass(r.status)]}>{r.status.replace(/_/g, ' ')}</td>

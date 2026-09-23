@@ -139,8 +139,8 @@ const viewLabel = (v: string) => (v === "NEEDS_SETUP" ? "NEEDS SETUP" : v);
             )}
 
             <div class="text-xs text-gray-500 grid grid-cols-2 gap-2 mb-4">
-              <span><strong class="uppercase tracking-widest text-[10px] text-gray-400 block">Auth</strong>{Array.isArray(p.auth_types) ? p.auth_types.join(", ") : "—"}</span>
-              <span><strong class="uppercase tracking-widest text-[10px] text-gray-400 block">Last sync</strong>{lastSync ? fmtWhen(lastSync) : "Never — no data has been synced."}</span>
+              <span><strong class="uppercase tracking-widest text-[10px] text-gray-500 block">Auth</strong>{Array.isArray(p.auth_types) ? p.auth_types.join(", ") : "—"}</span>
+              <span><strong class="uppercase tracking-widest text-[10px] text-gray-500 block">Last sync</strong>{lastSync ? fmtWhen(lastSync) : "Never — no data has been synced."}</span>
             </div>
 
             <div class="mt-auto flex gap-2">

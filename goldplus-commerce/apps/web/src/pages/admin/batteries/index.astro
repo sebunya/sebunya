@@ -43,7 +43,7 @@ const tiles: Array<{ label: string; value: number; href: string; tone: 'plain' |
 ] : [];
 
 const toneClass = (tone: string, value: number) =>
-  value === 0 ? 'border-slate-200 bg-white text-slate-400'
+  value === 0 ? 'border-slate-200 bg-white text-slate-500'
     : tone === 'block' ? 'border-amber-200 bg-amber-50 text-amber-900'
     : tone === 'work' ? 'border-blue-200 bg-blue-50 text-blue-900'
     : 'border-slate-200 bg-white text-brand-dark';
@@ -94,7 +94,7 @@ const when = (iso: string) => new Date(iso).toLocaleString('en-UG', { dateStyle:
             {demand.data && demand.data.noResultQueries.length > 0 ? (
               <table class="w-full text-left border-collapse">
                 <thead>
-                  <tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest">
+                  <tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-500 tracking-widest">
                     <th class="px-5 py-3">What a customer typed</th>
                     <th class="px-5 py-3 text-right">Times</th>
                   </tr>
@@ -109,7 +109,7 @@ const when = (iso: string) => new Date(iso).toLocaleString('en-UG', { dateStyle:
                 </tbody>
               </table>
             ) : (
-              <p class="px-5 py-8 text-center text-sm text-gray-400 italic">
+              <p class="px-5 py-8 text-center text-sm text-gray-500 italic">
                 {demand.ok ? 'No unanswered searches recorded yet.' : 'Demand figures could not be loaded.'}
               </p>
             )}
@@ -124,12 +124,12 @@ const when = (iso: string) => new Date(iso).toLocaleString('en-UG', { dateStyle:
                   <li class="px-5 py-3 flex items-center justify-between gap-3">
                     <span class="font-bold text-brand-dark">{c.action.replace(/_/g, ' ').toLowerCase()}</span>
                     <span class="text-gray-500 truncate max-w-[45%]">{c.label ?? c.entity}</span>
-                    <span class="text-gray-400 whitespace-nowrap">{when(c.at)}</span>
+                    <span class="text-gray-500 whitespace-nowrap">{when(c.at)}</span>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p class="px-5 py-8 text-center text-sm text-gray-400 italic">Nothing has been changed yet.</p>
+              <p class="px-5 py-8 text-center text-sm text-gray-500 italic">Nothing has been changed yet.</p>
             )}
             <div class="px-5 py-3 border-t border-gray-100"><a href="/admin/audit" class="text-[10px] font-black uppercase tracking-widest text-brand-primaryInk">Open the full audit log</a></div>
           </section>

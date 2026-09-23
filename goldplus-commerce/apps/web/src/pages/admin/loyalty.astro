@@ -98,11 +98,11 @@ const levelClass = (value: string) => value === "High"
       {ledgerConfig ? (
         <form method="POST" class="mt-5 grid gap-4 sm:grid-cols-3 items-end">
           <label class="block">
-            <span class="text-[10px] uppercase font-black text-slate-400 tracking-widest">Points per 1,000 UGX</span>
+            <span class="text-[10px] uppercase font-black text-slate-500 tracking-widest">Points per 1,000 UGX</span>
             <input name="earnRatePer1000Ugx" inputmode="numeric" value={String(ledgerConfig.earnRatePer1000Ugx)} class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
           </label>
           <label class="block">
-            <span class="text-[10px] uppercase font-black text-slate-400 tracking-widest">Expiry (days, 0 = never)</span>
+            <span class="text-[10px] uppercase font-black text-slate-500 tracking-widest">Expiry (days, 0 = never)</span>
             <input name="expiryDays" inputmode="numeric" value={String(ledgerConfig.expiryDays)} class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
           </label>
           <div class="flex items-center gap-3">
@@ -188,7 +188,7 @@ const levelClass = (value: string) => value === "High"
       <section aria-labelledby="launch-readiness" class="rounded-2xl border border-slate-200 bg-white p-6">
         <h2 id="launch-readiness" class="text-xl font-black text-brand-dark">Launch readiness checklist</h2>
         <p class="mt-2 text-sm text-slate-600">Evidence and accountable approvals are required; checking this page changes nothing.</p>
-        <ol class="mt-5 space-y-3">{LAUNCH_READINESS_CHECKLIST.map((item, index) => <li class="flex gap-3 text-sm leading-relaxed text-slate-700"><span class="font-black text-slate-400">{String(index + 1).padStart(2, "0")}</span><span>{item}</span></li>)}</ol>
+        <ol class="mt-5 space-y-3">{LAUNCH_READINESS_CHECKLIST.map((item, index) => <li class="flex gap-3 text-sm leading-relaxed text-slate-700"><span class="font-black text-slate-500">{String(index + 1).padStart(2, "0")}</span><span>{item}</span></li>)}</ol>
       </section>
       <section aria-labelledby="risk-controls" class="rounded-2xl border border-amber-200 bg-amber-50 p-6">
         <h2 id="risk-controls" class="text-xl font-black text-amber-950">Risk controls checklist</h2>

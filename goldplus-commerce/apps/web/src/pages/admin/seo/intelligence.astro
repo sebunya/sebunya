@@ -98,7 +98,7 @@ const stateClass = (s: string) =>
     ) : tab === "clusters" ? (
       <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
         <table class="w-full text-xs">
-          <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+          <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-500 border-b border-gray-100">
             <th class="p-3">Cluster</th><th>Members</th><th>Intent</th>
             <th>Current owner</th><th>Preferred owner</th><th>Decision / blocker</th>
             <th>Demand</th><th class="p-3">Queries</th>
@@ -108,14 +108,14 @@ const stateClass = (s: string) =>
               <tr class="border-b border-gray-50">
                 <td class="p-3">
                   <strong class="text-brand-dark">{str(r.label)}</strong>
-                  <div class="text-gray-400 font-mono text-[11px]">{str(r.cluster_key)}</div>
+                  <div class="text-gray-500 font-mono text-[11px]">{str(r.cluster_key)}</div>
                 </td>
                 <td>{num(r.member_count)}</td>
                 <td>
                   <span class={r.primary_intent === "UNKNOWN" ? "text-amber-800 font-bold" : ""}>{str(r.primary_intent)}</span>
                   {/* Provenance matters: intent read from recorded evidence is a
                       different kind of claim from intent guessed from wording. */}
-                  <div class="text-gray-400 text-[10px]">
+                  <div class="text-gray-500 text-[10px]">
                     {str(r.intent_method)}{r.intent_confidence === null ? "" : ` · ${Number(r.intent_confidence).toFixed(2)}`}
                   </div>
                 </td>
@@ -123,7 +123,7 @@ const stateClass = (s: string) =>
                   {r.current_owner_url ? (
                     <>
                       {str(r.current_owner_url)}
-                      <div class="text-gray-400 text-[10px]">{str(r.current_owner_type)}</div>
+                      <div class="text-gray-500 text-[10px]">{str(r.current_owner_type)}</div>
                     </>
                   ) : (
                     /* Not "no page" — nobody has told us which page wins this. */
@@ -132,7 +132,7 @@ const stateClass = (s: string) =>
                 </td>
                 <td class="font-mono text-[11px]">
                   {r.preferred_owner_url ? str(r.preferred_owner_url) : "—"}
-                  <div class="text-gray-400 text-[10px]">{str(r.preferred_owner_type)}</div>
+                  <div class="text-gray-500 text-[10px]">{str(r.preferred_owner_type)}</div>
                 </td>
                 <td>
                   <span class={r.ownership_decision === "NO_PAGE_REQUIRED" ? "font-bold text-gray-700" : ""}>
@@ -153,7 +153,7 @@ const stateClass = (s: string) =>
     ) : tab === "cannibalisation" ? (
       <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
         <table class="w-full text-xs">
-          <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+          <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-500 border-b border-gray-100">
             <th class="p-3">Classification</th><th>Cluster</th><th>Affected URLs</th><th>Seen</th><th>Status</th><th class="p-3">Why</th>
           </tr></thead>
           <tbody>
@@ -175,7 +175,7 @@ const stateClass = (s: string) =>
     ) : tab === "content" ? (
       <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
         <table class="w-full text-xs">
-          <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+          <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-500 border-b border-gray-100">
             <th class="p-3">URL</th><th>Classification</th><th>Intent</th><th>Completeness</th><th class="p-3">Last change</th>
           </tr></thead>
           <tbody>
@@ -199,7 +199,7 @@ const stateClass = (s: string) =>
     ) : tab === "gaps" ? (
       <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
         <table class="w-full text-xs">
-          <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+          <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-500 border-b border-gray-100">
             <th class="p-3">Entity</th><th>Priority</th><th>Score</th><th>Confidence</th><th class="p-3">Blocked by</th>
           </tr></thead>
           <tbody>
@@ -207,7 +207,7 @@ const stateClass = (s: string) =>
               <tr class="border-b border-gray-50">
                 <td class="p-3">
                   <strong class="text-brand-dark">{str(r.entity_label ?? r.entity_id)}</strong>
-                  <div class="text-gray-400 font-mono text-[11px]">{str(r.entity_type)}</div>
+                  <div class="text-gray-500 font-mono text-[11px]">{str(r.entity_type)}</div>
                 </td>
                 <td>{str(r.priority_bucket)}</td>
                 <td>{r.adjusted_score === null ? "—" : Number(r.adjusted_score).toFixed(1)}</td>
@@ -228,7 +228,7 @@ const stateClass = (s: string) =>
         </p>
         <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
           <table class="w-full text-xs">
-            <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+            <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-500 border-b border-gray-100">
               <th class="p-3">Action</th><th>Entity</th><th>State</th><th>Blast radius</th><th>Rollback</th><th class="p-3">Why not authorised</th>
             </tr></thead>
             <tbody>
@@ -256,7 +256,7 @@ const stateClass = (s: string) =>
           <p class="mt-4 text-xs text-gray-500">No query is currently placed in this cluster.</p>
         ) : (
           <table class="w-full text-xs mt-4">
-            <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+            <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-500 border-b border-gray-100">
               <th class="py-1">Query</th><th>Method</th><th>Source</th><th>Observed</th><th>Impressions</th>
             </tr></thead>
             <tbody>

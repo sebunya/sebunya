@@ -92,7 +92,7 @@ const checkedKind = values.kind || initialKind;
   <div class="bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 text-white py-14 border-b border-slate-950">
     <div class="container mx-auto px-4 lg:px-8">
       <h1 class="text-3xl md:text-4xl font-black tracking-tight text-white mb-4">Request a quote</h1>
-      <p class="text-slate-400 max-w-2xl text-sm sm:text-base leading-relaxed font-medium">
+      <p class="text-slate-500 max-w-2xl text-sm sm:text-base leading-relaxed font-medium">
         Tell us what you are after and roughly how many. Our team comes back with a real price and a realistic delivery time, whether it is a bulk retail order, wholesale, or a corporate fit-out.
       </p>
     </div>
@@ -107,7 +107,7 @@ const checkedKind = values.kind || initialKind;
         <form method="POST" action="/quote-request" novalidate id="quoteForm" class="space-y-8">
 
           <fieldset class="space-y-3">
-            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Buyer type</legend>
+            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Buyer type</legend>
             <div class="grid grid-cols-3 gap-3" id="buyerTypeSelector">
               {buyerOptions.map((opt) => {
                 const isSelected = checkedKind === opt.v;
@@ -126,7 +126,7 @@ const checkedKind = values.kind || initialKind;
           </fieldset>
 
           <fieldset class="space-y-5 pt-4 border-t border-slate-100">
-            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Your Details</legend>
+            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Your Details</legend>
             <FormField id="customerName" name="customerName" label="Your name" required defaultValue={values.customerName} autocomplete="name" errorMessage={errors.customerName} />
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <FormField id="email" name="email" label="Email" type="email" required defaultValue={values.email} autocomplete="email" errorMessage={errors.email} />
@@ -135,7 +135,7 @@ const checkedKind = values.kind || initialKind;
           </fieldset>
 
           <fieldset class="space-y-5 pt-4 border-t border-slate-100">
-            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Request Details</legend>
+            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Request Details</legend>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
               <FormField id="productName" name="productName" label="Product or category" required defaultValue={values.productName} placeholder="e.g. Fast chargers, USB-C cables" errorMessage={errors.productName} />
               <FormField id="quantity" name="quantity" label="Quantity needed" required defaultValue={values.quantity} placeholder="e.g. 50 units" errorMessage={errors.quantity} />

@@ -131,10 +131,10 @@ if (Astro.request.method === 'POST') {
         >
           Sign in
         </button>
-        <p class="text-xs text-slate-400 text-center leading-relaxed">
+        <p class="text-xs text-slate-500 text-center leading-relaxed">
           <a href="/forgot-password" class="font-bold text-slate-600 underline hover:text-gray-900">Forgot your password?</a>
         </p>
-        <p class="text-xs text-slate-400 text-center leading-relaxed">
+        <p class="text-xs text-slate-500 text-center leading-relaxed">
           New to GoldPlus?
           <a href={`/register${Astro.url.searchParams.get('returnTo') ? `?returnTo=${encodeURIComponent(Astro.url.searchParams.get('returnTo') ?? '')}` : ''}`} class="font-bold text-slate-600 underline hover:text-gray-900">Create your account</a>
         </p>

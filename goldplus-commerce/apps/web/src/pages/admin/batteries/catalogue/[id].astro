@@ -90,12 +90,12 @@ const d = detail.data;
 const p = d?.profile;
 const voltage = p?.nominalVoltageMv ? (p.nominalVoltageMv / 1000).toFixed(2) : '';
 const when = (iso: string) => new Date(iso).toLocaleString('en-UG', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Africa/Kampala' });
-const CLAIM_BADGE: Record<string, string> = { ACTIVE: 'bg-green-50 text-green-800 border-green-200', READY: 'bg-blue-50 text-blue-800 border-blue-200', REVIEW: 'bg-amber-50 text-amber-900 border-amber-200', DRAFT: 'bg-slate-100 text-slate-700 border-slate-200', ARCHIVED: 'bg-slate-50 text-slate-500 border-slate-200' };
+const CLAIM_BADGE: Record<string, string> = { ACTIVE: 'bg-green-50 text-green-800 border-green-200', READY: 'bg-blue-50 text-blue-800 border-blue-200', REVIEW: 'bg-amber-50 text-amber-900 border-amber-200', DRAFT: 'bg-slate-100 text-slate-700 border-slate-200', ARCHIVED: 'bg-slate-50 text-slate-600 border-slate-200' };
 ---
 
 <AdminLayout title={p ? `Battery ${p.canonicalCode}` : 'Battery'} description="One battery: its identity, evidence, fits, price and stock." activePath="/admin/batteries">
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
-    <p class="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-1">
+    <p class="text-[10px] uppercase font-black tracking-widest text-gray-500 mb-1">
       <a href="/admin/batteries" class="hover:text-brand-primary">Batteries</a> / <a href="/admin/batteries/catalogue" class="hover:text-brand-primary">Catalogue</a> / {p?.canonicalCode ?? id}
     </p>
 
@@ -126,54 +126,54 @@ const CLAIM_BADGE: Record<string, string> = { ACTIVE: 'bg-green-50 text-green-80
               <p class="text-xs text-gray-500 mb-4">Read every figure off the physical pack. A blank field is honest; a guessed one is not.</p>
               <form method="POST" class="grid gap-3 md:grid-cols-3">
                 <input type="hidden" name="intent" value="profile" />
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Battery code</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Battery code</span>
                   <input name="canonicalCode" value={p.canonicalCode} maxlength="80" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Code status</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Code status</span>
                   <select name="codeStatus" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                     {['CONFIRMED', 'PROVISIONAL', 'DEVICE_NAMED', 'MISSING'].map((s) => <option value={s} selected={s === p.codeStatus}>{s === 'CONFIRMED' ? 'Confirmed from the pack' : s === 'PROVISIONAL' ? 'Provisional' : s === 'DEVICE_NAMED' ? 'A phone name, not a code' : 'Missing'}</option>)}
                   </select></label>
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Battery type</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Battery type</span>
                   <select name="batteryCategory" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                     {[['PHONE', 'Phone Battery'], ['MIFI_ROUTER', 'MiFi & Router Battery'], ['OTHER', 'Other']].map(([v, l]) => <option value={v} selected={v === p.batteryCategory}>{l}</option>)}
                   </select></label>
-                <label class="block md:col-span-3"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Product name</span>
+                <label class="block md:col-span-3"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Product name</span>
                   <input name="name" value={d.product.name} maxlength="255" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Capacity mAh</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Capacity mAh</span>
                   <input name="capacityMah" type="number" min="1" value={p.capacityMah ?? ''} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Voltage V</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Voltage V</span>
                   <input name="voltageV" type="number" step="0.01" min="0.01" value={voltage} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Chemistry</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Chemistry</span>
                   <select name="chemistry" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                     <option value="" selected={!p.chemistry}>Not recorded</option>
                     {[['LI_ION', 'Li-ion'], ['LI_POLYMER', 'Li-polymer'], ['NIMH', 'NiMH'], ['OTHER', 'Other']].map(([v, l]) => <option value={v} selected={v === p.chemistry}>{l}</option>)}
                   </select></label>
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Barcode</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Barcode</span>
                   <input name="barcode" value={p.barcode ?? ''} maxlength="14" inputmode="numeric" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Supplier code</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Supplier code</span>
                   <input name="supplierCode" value={p.supplierCode ?? ''} maxlength="120" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Warranty months</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Warranty months</span>
                   <input name="warrantyMonths" type="number" min="0" value={p.warrantyMonths ?? ''} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Supplier</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Supplier</span>
                   <input name="supplierName" value={p.supplierName ?? ''} maxlength="160" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Supplier reference</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Supplier reference</span>
                   <input name="supplierReference" value={p.supplierReference ?? ''} maxlength="160" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Retail price UGX</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Retail price UGX</span>
                   <input name="priceUgx" type="number" min="0" value={d.product.priceUgx || ''} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-                <label class="block md:col-span-3"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Connector or flex notes</span>
+                <label class="block md:col-span-3"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Connector or flex notes</span>
                   <input name="connectorNotes" value={p.connectorNotes ?? ''} maxlength="300" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-                <label class="block md:col-span-3"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Short description (customer facing)</span>
+                <label class="block md:col-span-3"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Short description (customer facing)</span>
                   <input name="shortDescription" value={d.product.shortDescription} maxlength="500" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-                <label class="block md:col-span-3"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Full description (customer facing)</span>
+                <label class="block md:col-span-3"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Full description (customer facing)</span>
                   <textarea name="longDescription" rows="3" maxlength="5000" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">{d.product.longDescription}</textarea></label>
-                <label class="block md:col-span-3"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Customer notes shown on the page</span>
+                <label class="block md:col-span-3"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Customer notes shown on the page</span>
                   <input name="publicNotes" value={p.publicNotes ?? ''} maxlength="5000" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-                <label class="block md:col-span-3"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Internal notes (never shown to a customer)</span>
+                <label class="block md:col-span-3"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Internal notes (never shown to a customer)</span>
                   <textarea name="internalNotes" rows="2" maxlength="5000" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">{p.internalNotes ?? ''}</textarea></label>
-                <label class="block md:col-span-2"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Packaging notes</span>
+                <label class="block md:col-span-2"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Packaging notes</span>
                   <input name="packagingNotes" value={p.packagingNotes ?? ''} maxlength="5000" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Safety notes</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Safety notes</span>
                   <input name="safetyNotes" value={p.safetyNotes ?? ''} maxlength="5000" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-                <div class="md:col-span-3"><button type="submit" class="bg-brand-primary text-white text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Save battery</button></div>
+                <div class="md:col-span-3"><button type="submit" class="bg-brand-primary text-brand-black text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Save battery</button></div>
               </form>
             </section>
 
@@ -182,9 +182,9 @@ const CLAIM_BADGE: Record<string, string> = { ACTIVE: 'bg-green-50 text-green-80
               <p class="text-xs text-gray-500 mb-4">A code resolves to one battery only. If a code already points elsewhere, the save is refused and says where.</p>
               <ul class="mb-4 flex flex-wrap gap-2">
                 {d.aliases.map((a) => (
-                  <li class={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${a.isActive ? 'border-gray-200 bg-gray-50' : 'border-gray-100 bg-white text-gray-400 line-through'}`}>
+                  <li class={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs ${a.isActive ? 'border-gray-200 bg-gray-50' : 'border-gray-100 bg-white text-gray-500 line-through'}`}>
                     <span class="font-mono font-bold">{a.alias}</span>
-                    <span class="text-[9px] uppercase tracking-widest text-gray-400">{a.aliasType.toLowerCase()}</span>
+                    <span class="text-[9px] uppercase tracking-widest text-gray-500">{a.aliasType.toLowerCase()}</span>
                     {a.aliasType !== 'CANONICAL' && (
                       <form method="POST" class="inline">
                         <input type="hidden" name="intent" value={a.isActive ? 'alias-archive' : 'alias-restore'} />
@@ -197,13 +197,13 @@ const CLAIM_BADGE: Record<string, string> = { ACTIVE: 'bg-green-50 text-green-80
               </ul>
               <form method="POST" class="flex flex-wrap gap-3 items-end">
                 <input type="hidden" name="intent" value="alias" />
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Code</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Code</span>
                   <input name="alias" required maxlength="120" placeholder="49FT" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Kind</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Kind</span>
                   <select name="aliasType" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm">
                     {[['SEARCH', 'What customers type'], ['SUPPLIER', 'Supplier code'], ['LEGACY', 'Old code'], ['DEVICE_NAME', 'Phone name'], ['BARCODE', 'Barcode']].map(([v, l]) => <option value={v}>{l}</option>)}
                   </select></label>
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Where it came from</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Where it came from</span>
                   <input name="source" maxlength="200" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
                 <button type="submit" class="bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg">Add code</button>
               </form>
@@ -226,7 +226,7 @@ const CLAIM_BADGE: Record<string, string> = { ACTIVE: 'bg-green-50 text-green-80
                     </li>
                   ))}
                 </ul>
-              ) : <p class="text-sm text-gray-400 italic">No phone has been connected to this battery yet.</p>}
+              ) : <p class="text-sm text-gray-500 italic">No phone has been connected to this battery yet.</p>}
             </section>
 
             <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
@@ -234,25 +234,25 @@ const CLAIM_BADGE: Record<string, string> = { ACTIVE: 'bg-green-50 text-green-80
               <p class="text-xs text-gray-500 mb-4">On hand {d.inventory.stock} · reserved for open orders {d.inventory.reserved} · available {d.inventory.available}. Every change is a movement with a reason.</p>
               <form method="POST" class="grid gap-3 md:grid-cols-3 mb-5">
                 <input type="hidden" name="intent" value="stock" />
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Movement</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Movement</span>
                   <select name="movementType" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                     {[['OPENING', 'Opening stock'], ['RECEIPT', 'Received from a supplier'], ['COUNT', 'Counted (set the balance)'], ['DAMAGED', 'Damaged'], ['LOST', 'Lost'], ['RETURN', 'Returned by a customer'], ['CORRECTION', 'Correction (set the balance)']].map(([v, l]) => <option value={v}>{l}</option>)}
                   </select></label>
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Quantity</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Quantity</span>
                   <input name="quantity" type="number" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Reason (required)</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Reason (required)</span>
                   <input name="reason" required maxlength="500" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Supplier (for a receipt)</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Supplier (for a receipt)</span>
                   <input name="supplierName" maxlength="160" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Reference</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Reference</span>
                   <input name="referenceNumber" maxlength="120" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Unit cost UGX</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Unit cost UGX</span>
                   <input name="unitCostUgx" type="number" min="0" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
                 <div class="md:col-span-3"><button type="submit" class="bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg">Record movement</button></div>
               </form>
               {d.inventory.movements.length > 0 ? (
                 <table class="w-full text-left border-collapse text-xs">
-                  <thead><tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest"><th class="p-3">When</th><th class="p-3">Movement</th><th class="p-3 text-right">Change</th><th class="p-3 text-right">Balance</th><th class="p-3">Reason</th></tr></thead>
+                  <thead><tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-500 tracking-widest"><th class="p-3">When</th><th class="p-3">Movement</th><th class="p-3 text-right">Change</th><th class="p-3 text-right">Balance</th><th class="p-3">Reason</th></tr></thead>
                   <tbody>
                     {d.inventory.movements.map((m) => (
                       <tr class="border-b border-gray-50">
@@ -265,7 +265,7 @@ const CLAIM_BADGE: Record<string, string> = { ACTIVE: 'bg-green-50 text-green-80
                     ))}
                   </tbody>
                 </table>
-              ) : <p class="text-sm text-gray-400 italic">No stock has ever been recorded for this battery.</p>}
+              ) : <p class="text-sm text-gray-500 italic">No stock has ever been recorded for this battery.</p>}
             </section>
 
             <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
@@ -273,13 +273,13 @@ const CLAIM_BADGE: Record<string, string> = { ACTIVE: 'bg-green-50 text-green-80
               <p class="text-xs text-gray-500 mb-4">Front, back, the printed label, the connector, the packaging and the barcode. One of them can become the product photo.</p>
               <form method="POST" enctype="multipart/form-data" class="flex flex-wrap gap-3 items-end mb-5">
                 <input type="hidden" name="intent" value="evidence" />
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Photos</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Photos</span>
                   <input type="file" name="files" multiple accept="image/*" capture="environment" class="mt-1 block text-xs" /></label>
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">What it shows</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">What it shows</span>
                   <select name="kind" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm">
                     {['FRONT', 'BACK', 'LABEL', 'CONNECTOR', 'PACKAGING', 'BARCODE', 'FIT_TEST', 'DOCUMENT', 'OTHER'].map((k) => <option value={k}>{k.replace(/_/g, ' ').toLowerCase()}</option>)}
                   </select></label>
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Note</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Note</span>
                   <input name="note" maxlength="300" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
                 <label class="inline-flex items-center gap-2 text-xs font-bold text-gray-600 py-3"><input type="checkbox" name="setPrimaryImage" class="w-4 h-4 border-gray-300 rounded" /> Use the first as the product photo</label>
                 <button type="submit" class="bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg">Upload</button>
@@ -345,11 +345,11 @@ const CLAIM_BADGE: Record<string, string> = { ACTIVE: 'bg-green-50 text-green-80
                   {d.timeline.map((t) => (
                     <li class="px-5 py-3">
                       <p class="font-bold text-brand-dark">{t.action.replace(/_/g, ' ').toLowerCase()}</p>
-                      <p class="text-gray-400 mt-0.5">{when(t.createdAt)}</p>
+                      <p class="text-gray-500 mt-0.5">{when(t.createdAt)}</p>
                     </li>
                   ))}
                 </ul>
-              ) : <p class="px-5 py-8 text-center text-sm text-gray-400 italic">Nothing recorded yet.</p>}
+              ) : <p class="px-5 py-8 text-center text-sm text-gray-500 italic">Nothing recorded yet.</p>}
             </section>
           </div>
         </div>

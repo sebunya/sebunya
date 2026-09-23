@@ -42,15 +42,15 @@ const checkedAt = new Date(module.lastCheckedAt);
 
   <dl class="mt-3 flex flex-wrap gap-1.5 text-[11px] font-black">
     <div class={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 ${toneClass(serviceTone(module.serviceStatus))}`}>
-      <dt class="font-bold uppercase tracking-wide opacity-70">Service</dt>
+      <dt class="font-bold uppercase tracking-wide">Service</dt>
       <dd data-cc-service>{module.serviceStatus}</dd>
     </div>
     <div class={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 ${toneClass(accessTone(module.accessStatus))}`}>
-      <dt class="font-bold uppercase tracking-wide opacity-70">Access</dt>
+      <dt class="font-bold uppercase tracking-wide">Access</dt>
       <dd data-cc-access>{module.accessStatus}</dd>
     </div>
     <div class={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 ${toneClass(activationTone(module.activationStatus))}`}>
-      <dt class="font-bold uppercase tracking-wide opacity-70">Activation</dt>
+      <dt class="font-bold uppercase tracking-wide">Activation</dt>
       <dd data-cc-activation>{module.activationStatus}</dd>
     </div>
   </dl>
@@ -117,5 +117,5 @@ const checkedAt = new Date(module.lastCheckedAt);
     </a>
   </div>
 
-  <p class="mt-3 font-mono text-[10px] text-slate-400" data-cc-trace>trace {module.traceId}</p>
+  <p class="mt-3 font-mono text-[10px] text-slate-500" data-cc-trace>trace {module.traceId}</p>
 </article>

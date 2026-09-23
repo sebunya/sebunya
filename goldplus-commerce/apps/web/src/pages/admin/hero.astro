@@ -139,7 +139,7 @@ const jsonPretty = (v: unknown) => { try { return JSON.stringify(v ?? {}, null, 
     {!denied && report.length > 0 && (
       <section class="bg-white border border-gray-200 rounded-2xl p-6 mb-8 overflow-x-auto">
         <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-1">Performance — last 30 days</h3>
-        <p class="text-[11px] text-gray-400 mb-4">Per-slide impressions, clicks and click-through. CTR is withheld until a slide has enough impressions to be more than noise. A slide sitting near the bottom is a candidate to rewrite or cut.</p>
+        <p class="text-[11px] text-gray-500 mb-4">Per-slide impressions, clicks and click-through. CTR is withheld until a slide has enough impressions to be more than noise. A slide sitting near the bottom is a candidate to rewrite or cut.</p>
         <table class="min-w-[520px] w-full text-left text-xs">
           <caption class="sr-only">Hero slide performance over the last 30 days</caption>
           <thead class="bg-slate-950 text-white"><tr>
@@ -154,7 +154,7 @@ const jsonPretty = (v: unknown) => { try { return JSON.stringify(v ?? {}, null, 
                 <th scope="row" class="px-4 py-2 font-bold text-brand-dark text-left">{r.slideKey}</th>
                 <td class="px-4 py-2 text-right">{r.impressions.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}</td>
                 <td class="px-4 py-2 text-right">{r.clicks.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}</td>
-                <td class="px-4 py-2 text-right font-black">{r.ctr === null ? <span class="text-gray-300">not enough data</span> : `${r.ctr}%`}</td>
+                <td class="px-4 py-2 text-right font-black">{r.ctr === null ? <span class="text-slate-500">not enough data</span> : `${r.ctr}%`}</td>
               </tr>
             ))}
           </tbody>
@@ -168,11 +168,11 @@ const jsonPretty = (v: unknown) => { try { return JSON.stringify(v ?? {}, null, 
         <form method="POST" class="grid sm:grid-cols-4 gap-4 items-end">
           <input type="hidden" name="intent" value="save-settings" />
           <label class="block">
-            <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">Slides per visit</span>
+            <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Slides per visit</span>
             <input type="number" name="slidesShown" min="1" max="8" value={settings.slidesShown} class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm" />
           </label>
           <label class="block">
-            <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">Dwell (ms)</span>
+            <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Dwell (ms)</span>
             <input type="number" name="dwellMs" min="2000" max="20000" step="500" value={settings.dwellMs} class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm" />
           </label>
           <label class="flex items-center gap-2 pb-2">
@@ -193,7 +193,7 @@ const jsonPretty = (v: unknown) => { try { return JSON.stringify(v ?? {}, null, 
           <div class="flex items-center justify-between gap-3 flex-wrap">
             <div class="flex items-center gap-3">
               <h3 class="text-base font-black text-brand-dark">{s.slideKey}</h3>
-              <span class="text-[10px] font-bold uppercase tracking-widest text-gray-400">{s.theme} · {s.media}</span>
+              <span class="text-[10px] font-bold uppercase tracking-widest text-gray-500">{s.theme} · {s.media}</span>
             </div>
             <label class="flex items-center gap-2">
               <input type="checkbox" name="enabled" checked={s.enabled} class="h-4 w-4" />
@@ -213,60 +213,60 @@ const jsonPretty = (v: unknown) => { try { return JSON.stringify(v ?? {}, null, 
           )}
 
           <label class="block">
-            <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">Kicker <span data-counter data-limit={HERO_LIMITS.kicker} class="text-gray-300"></span></span>
+            <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Kicker <span data-counter data-limit={HERO_LIMITS.kicker} class="text-slate-500"></span></span>
             <input type="text" name="kicker" value={s.kicker} data-count-input class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm" />
           </label>
 
           <label class="block">
-            <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">Headline <span data-counter data-limit={HERO_LIMITS.headline} data-strip-em class="text-gray-300"></span></span>
+            <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Headline <span data-counter data-limit={HERO_LIMITS.headline} data-strip-em class="text-slate-500"></span></span>
             <input type="text" name="headline" value={s.headline} data-count-input data-strip-em class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm" />
-            <span class="text-[11px] text-gray-400">Wrap the words you want in green with <code>&lt;em&gt;</code> and <code>&lt;/em&gt;</code>. Two or three words maximum — the green is an accent, not a highlighter.</span>
+            <span class="text-[11px] text-gray-500">Wrap the words you want in green with <code>&lt;em&gt;</code> and <code>&lt;/em&gt;</code>. Two or three words maximum — the green is an accent, not a highlighter.</span>
           </label>
 
           <label class="block">
-            <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">Subcopy <span data-counter data-limit={HERO_LIMITS.subcopy} class="text-gray-300"></span></span>
+            <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Subcopy <span data-counter data-limit={HERO_LIMITS.subcopy} class="text-slate-500"></span></span>
             <textarea name="subcopy" rows="2" data-count-input class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm">{s.subcopy}</textarea>
           </label>
 
           <div class="grid sm:grid-cols-2 gap-4">
             <label class="block">
-              <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">CTA label <span data-counter data-limit={HERO_LIMITS.ctaLabel} class="text-gray-300"></span></span>
+              <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">CTA label <span data-counter data-limit={HERO_LIMITS.ctaLabel} class="text-slate-500"></span></span>
               <input type="text" name="ctaLabel" value={s.ctaLabel} data-count-input class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm" />
             </label>
             <label class="block">
-              <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">CTA link</span>
+              <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">CTA link</span>
               <input type="text" name="ctaUrl" value={s.ctaUrl} class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm font-mono" placeholder="/shop" />
             </label>
           </div>
 
           <label class="block">
-            <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">Fine print <span data-counter data-limit={HERO_LIMITS.finePrint} class="text-gray-300"></span></span>
+            <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Fine print <span data-counter data-limit={HERO_LIMITS.finePrint} class="text-slate-500"></span></span>
             <input type="text" name="finePrint" value={s.finePrint} data-count-input class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm" />
           </label>
 
           <div class="grid sm:grid-cols-2 gap-4">
             <label class="block">
-              <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">Image URL</span>
+              <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Image URL</span>
               <input type="text" name="imageUrl" value={s.imageUrl} class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm font-mono" placeholder="/hero/… , /media/… or /products/….webp" />
-              <span class="text-[11px] text-gray-400">Stage slides: a product on a plain white background, square, exported JPEG q80–85. Bleed slides: landscape lifestyle photo, 2000px+, JPEG q80–85. Never upload a PNG photo.</span>
+              <span class="text-[11px] text-gray-500">Stage slides: a product on a plain white background, square, exported JPEG q80–85. Bleed slides: landscape lifestyle photo, 2000px+, JPEG q80–85. Never upload a PNG photo.</span>
             </label>
             <label class="block">
-              <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">Image alt text</span>
+              <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Image alt text</span>
               <input type="text" name="imageAlt" value={s.imageAlt} class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm" />
             </label>
           </div>
 
           <div class="grid sm:grid-cols-3 gap-4">
             <label class="block">
-              <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">Theme</span>
+              <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Theme</span>
               <select name="theme" class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm">{THEMES.map((t) => <option value={t} selected={s.theme === t}>{t}</option>)}</select>
             </label>
             <label class="block">
-              <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">Tint</span>
+              <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Tint</span>
               <select name="tint" class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm">{TINTS.map((t) => <option value={t} selected={s.tint === t}>{t}</option>)}</select>
             </label>
             <label class="block">
-              <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">Priority (0–100)</span>
+              <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">Priority (0–100)</span>
               <input type="number" name="priority" min="0" max="100" value={s.priority} class="mt-1 w-full border border-gray-300 rounded-lg p-2 text-sm" />
             </label>
           </div>
@@ -274,8 +274,8 @@ const jsonPretty = (v: unknown) => { try { return JSON.stringify(v ?? {}, null, 
           <input type="hidden" name="media" value={s.media} />
 
           <details class="rounded-lg border border-gray-200 p-3">
-            <summary class="text-[10px] font-black uppercase tracking-widest text-gray-400 cursor-pointer">Campaign data (advanced)</summary>
-            <p class="text-[11px] text-gray-400 mt-2">JSON for this campaign's extras — e.g. flash: saleEndsIso, originalPriceUgx, salePriceUgx, savePct · welcome: promoCode · sameday: cutoffHour · fees: fees[] · scratch: prizes[] · loyalty: points, goalLabel.</p>
+            <summary class="text-[10px] font-black uppercase tracking-widest text-gray-500 cursor-pointer">Campaign data (advanced)</summary>
+            <p class="text-[11px] text-gray-500 mt-2">JSON for this campaign's extras — e.g. flash: saleEndsIso, originalPriceUgx, salePriceUgx, savePct · welcome: promoCode · sameday: cutoffHour · fees: fees[] · scratch: prizes[] · loyalty: points, goalLabel.</p>
             <textarea name="extras" rows="4" class="mt-2 w-full border border-gray-300 rounded-lg p-2 text-xs font-mono">{jsonPretty(s.extras)}</textarea>
           </details>
 
@@ -300,7 +300,7 @@ const jsonPretty = (v: unknown) => { try { return JSON.stringify(v ?? {}, null, 
     const paint = () => {
       const len = (strip ? stripEm(input.value) : input.value).length;
       counter.textContent = `${len}/${limit}`;
-      counter.style.color = len > limit ? '#dc2626' : '#cbd5e1';
+      counter.style.color = len > limit ? '#b91c1c' : '#64748b';
     };
     input.addEventListener('input', paint);
     paint();

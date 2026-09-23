@@ -104,7 +104,7 @@ const usesGoogleOAuth = Array.isArray(manifest.oauthScopes) && manifest.oauthSco
               <label class="block text-sm text-gray-700">Connection name <span class="text-red-600">*</span>
                 <input name="name" required value={str(provider.canonical_name) === "—" ? "" : String(provider.canonical_name)}
                   class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-                <span class="block mt-1 text-xs text-gray-400">How this connection is labelled in the control plane.</span>
+                <span class="block mt-1 text-xs text-gray-500">How this connection is labelled in the control plane.</span>
               </label>
 
               {configFields.map((f) => {
@@ -121,7 +121,7 @@ const usesGoogleOAuth = Array.isArray(manifest.oauthScopes) && manifest.oauthSco
                     ) : (
                       <input name={`cfg_${f.key}`} type={plan.inputType} required={f.required} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
                     )}
-                    {f.help && <span class="block mt-1 text-xs text-gray-400">{f.help}</span>}
+                    {f.help && <span class="block mt-1 text-xs text-gray-500">{f.help}</span>}
                   </label>
                 );
               })}

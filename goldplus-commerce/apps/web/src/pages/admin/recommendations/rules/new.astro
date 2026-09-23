@@ -129,7 +129,7 @@ const item = (c: { productId: string; name: string; score?: number }) => c;
 <AdminLayout title="New rule" description="Influence a placement's default ranking — by name, with a preview.">
   <div class="container mx-auto px-6 lg:px-8 max-w-4xl pb-16">
     <div class="mb-8 pb-6 border-b border-gray-200">
-      <a href="/admin/recommendations/rules" class="text-xs font-black uppercase tracking-widest text-gray-400 hover:text-gray-700">← Rules</a>
+      <a href="/admin/recommendations/rules" class="text-xs font-black uppercase tracking-widest text-gray-500 hover:text-gray-700">← Rules</a>
       <h2 class="text-2xl font-black text-brand-dark tracking-tight mt-2">Create a rule</h2>
       <p class="text-sm text-gray-500 mt-1 max-w-2xl">
         Recommendations already run on safe defaults. A rule is a business override on top of them — it can
@@ -159,13 +159,13 @@ const item = (c: { productId: string; name: string; score?: number }) => c;
         <h3 class="text-sm font-black uppercase tracking-widest text-gray-500">2 · Where and what</h3>
         <div class="grid sm:grid-cols-2 gap-4">
           <label class="block">
-            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Placement</span>
+            <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Placement</span>
             <select name="placement" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
               {PLACEMENTS.map((p) => <option value={p.id} selected={val("placement") === p.id}>{p.label}</option>)}
             </select>
           </label>
           <label class="block">
-            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Target</span>
+            <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Target</span>
             <select name="targetKind" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
               <option value="PRODUCT" selected={val("targetKind", "PRODUCT") === "PRODUCT"}>A specific product</option>
               <option value="CATEGORY" selected={val("targetKind") === "CATEGORY"}>A whole category</option>
@@ -173,14 +173,14 @@ const item = (c: { productId: string; name: string; score?: number }) => c;
             </select>
           </label>
           <label class="block">
-            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Product (by name)</span>
+            <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Product (by name)</span>
             <select name="targetProduct" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
               {products.length === 0 && <option value="">Catalogue unreachable — try again</option>}
               {products.map((p) => <option value={p.id} selected={val("targetProduct") === p.id}>{p.name}</option>)}
             </select>
           </label>
           <label class="block">
-            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Category</span>
+            <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Category</span>
             <select name="targetCategory" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
               {categoryNames.map((c) => <option value={c} selected={val("targetCategory") === c}>{c}</option>)}
             </select>
@@ -196,24 +196,24 @@ const item = (c: { productId: string; name: string; score?: number }) => c;
         <h3 class="text-sm font-black uppercase tracking-widest text-gray-500">3 · Strength, order and schedule</h3>
         <div class="grid sm:grid-cols-4 gap-4">
           <label class="block">
-            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Boost (−100…100)</span>
+            <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Boost (−100…100)</span>
             <input name="boostScore" type="number" min="-100" max="100" value={val("boostScore", "25")} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
           </label>
           <label class="block">
-            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Pin position (1–20)</span>
+            <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Pin position (1–20)</span>
             <input name="pinPosition" type="number" min="1" max="20" value={val("pinPosition", "1")} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
           </label>
           <label class="block">
-            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Priority (1 runs first)</span>
+            <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Priority (1 runs first)</span>
             <input name="priority" type="number" min="1" max="1000" value={val("priority", "100")} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
           </label>
           <div></div>
           <label class="block">
-            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Starts (optional)</span>
+            <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Starts (optional)</span>
             <input name="startsAt" type="datetime-local" value={val("startsAt")} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
           </label>
           <label class="block">
-            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Ends (optional)</span>
+            <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Ends (optional)</span>
             <input name="endsAt" type="datetime-local" value={val("endsAt")} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
           </label>
         </div>
@@ -223,18 +223,18 @@ const item = (c: { productId: string; name: string; score?: number }) => c;
         <h3 class="text-sm font-black uppercase tracking-widest text-gray-500">4 · Name it, preview it, save it</h3>
         <div class="grid sm:grid-cols-2 gap-4">
           <label class="block">
-            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Rule name</span>
+            <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Rule name</span>
             <input name="name" value={val("name")} placeholder="e.g. Promote power banks on the homepage" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
           </label>
           <label class="block">
-            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Context product for preview (PDP placements)</span>
+            <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Context product for preview (PDP placements)</span>
             <select name="contextProduct" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
               {products.map((p) => <option value={p.id} selected={val("contextProduct") === p.id}>{p.name}</option>)}
             </select>
           </label>
         </div>
         <label class="block">
-          <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Notes (optional)</span>
+          <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Notes (optional)</span>
           <textarea name="description" rows="2" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">{val("description")}</textarea>
         </label>
         <div class="flex flex-wrap gap-3 pt-2">
@@ -269,18 +269,18 @@ const item = (c: { productId: string; name: string; score?: number }) => c;
 
         <div class="grid md:grid-cols-2 gap-6">
           <div>
-            <h4 class="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-2">Before rules</h4>
+            <h4 class="text-[10px] uppercase font-black tracking-widest text-gray-500 mb-2">Before rules</h4>
             <ol class="space-y-1">
               {preview.before.map((c, i) => (
                 <li class="text-sm text-gray-700 flex justify-between border-b border-gray-100 py-1">
                   <span>{i + 1}. {item(c).name}</span>
                 </li>
               ))}
-              {preview.before.length === 0 && <li class="text-sm text-gray-400">Empty.</li>}
+              {preview.before.length === 0 && <li class="text-sm text-gray-500">Empty.</li>}
             </ol>
           </div>
           <div>
-            <h4 class="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-2">After this rule</h4>
+            <h4 class="text-[10px] uppercase font-black tracking-widest text-gray-500 mb-2">After this rule</h4>
             <ol class="space-y-1">
               {preview.after.map((c, i) => {
                 const move = preview!.guardrails?.rankMoves.find((m) => m.productId === item(c).productId);
@@ -288,7 +288,7 @@ const item = (c: { productId: string; name: string; score?: number }) => c;
                 return (
                   <li class="text-sm text-gray-700 flex justify-between border-b border-gray-100 py-1">
                     <span>{i + 1}. {item(c).name}</span>
-                    <span class="text-[10px] font-black uppercase text-gray-400">
+                    <span class="text-[10px] font-black uppercase text-gray-500">
                       {added ? "added" : move ? (move.from > move.to ? `↑ from ${move.from + 1}` : `↓ from ${move.from + 1}`) : ""}
                     </span>
                   </li>

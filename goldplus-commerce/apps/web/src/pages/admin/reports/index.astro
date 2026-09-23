@@ -100,7 +100,7 @@ const freshnessClass = (s: string) =>
           showing zero — a measured zero and an unreadable source are different facts.
         </p>
         {period && (
-          <p class="text-xs text-gray-400 mt-2 font-mono">
+          <p class="text-xs text-gray-500 mt-2 font-mono">
             {period.startDay} → {period.endDay} · compared with {period.previousStart?.slice(0, 10)} → {period.previousEnd?.slice(0, 10)}
           </p>
         )}
@@ -148,7 +148,7 @@ const freshnessClass = (s: string) =>
               )}
               <p class="mt-3 text-[11px] leading-relaxed text-gray-500">{m.definition}</p>
               {m.sampleSize !== null && (
-                <p class="mt-1 text-[11px] text-gray-400">Sample: {Number(m.sampleSize).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}</p>
+                <p class="mt-1 text-[11px] text-gray-500">Sample: {Number(m.sampleSize).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}</p>
               )}
               {m.drilldownRoute && (
                 <a href={m.drilldownRoute} class="mt-3 inline-block text-[11px] font-bold text-brand-dark hover:underline">Open detail →</a>
@@ -167,7 +167,7 @@ const freshnessClass = (s: string) =>
           {paymentsRes.ok ? (
             <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
               <table class="w-full text-xs">
-                <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+                <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-500 border-b border-gray-100">
                   <th class="p-3">Provider</th><th>Attempts</th><th>Succeeded</th><th>Failed</th><th class="p-3">Success rate</th>
                 </tr></thead>
                 <tbody>
@@ -197,7 +197,7 @@ const freshnessClass = (s: string) =>
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
               {Object.entries(catalogueRes.data ?? {}).filter(([, v]) => typeof v === "number").map(([k, v]) => (
                 <div class="rounded-2xl border border-gray-200 bg-white p-4">
-                  <p class="text-[10px] font-black uppercase tracking-widest text-gray-400">{k.replace(/([A-Z])/g, " $1")}</p>
+                  <p class="text-[10px] font-black uppercase tracking-widest text-gray-500">{k.replace(/([A-Z])/g, " $1")}</p>
                   <p class="mt-1 text-xl font-black text-brand-dark">{Number(v).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}</p>
                 </div>
               ))}

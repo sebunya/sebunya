@@ -163,18 +163,18 @@ const fmt = new Intl.NumberFormat("en-UG");
     <section class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
       <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
         <h2 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Unresolved searches ({misses.length} groups)</h2>
-        <p class="text-[10px] text-gray-400 mt-0.5">One click promotes a query into a living alias — this is how Kalerwe and Najjera entered the system properly.</p>
+        <p class="text-[10px] text-gray-500 mt-0.5">One click promotes a query into a living alias — this is how Kalerwe and Najjera entered the system properly.</p>
       </div>
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
-          <thead><tr class="text-left text-[10px] font-black uppercase tracking-wider text-gray-400 border-b border-gray-100">
+          <thead><tr class="text-left text-[10px] font-black uppercase tracking-wider text-gray-500 border-b border-gray-100">
             <th class="px-6 py-2">Query</th><th class="px-2 py-2">Seen</th><th class="px-2 py-2">Outcomes</th><th class="px-6 py-2">Promote to alias</th>
           </tr></thead>
           <tbody>
-            {misses.length === 0 && <tr><td colspan="4" class="px-6 py-6 text-xs text-gray-400">No unresolved searches recorded yet.</td></tr>}
+            {misses.length === 0 && <tr><td colspan="4" class="px-6 py-6 text-xs text-gray-500">No unresolved searches recorded yet.</td></tr>}
             {misses.map((m: any) => (
               <tr class="border-b border-gray-50">
-                <td class="px-6 py-3 font-bold">{m.rawSamples?.[0] ?? m.normalisedQuery}<span class="block text-[10px] font-normal text-gray-400">{m.normalisedQuery}</span></td>
+                <td class="px-6 py-3 font-bold">{m.rawSamples?.[0] ?? m.normalisedQuery}<span class="block text-[10px] font-normal text-gray-500">{m.normalisedQuery}</span></td>
                 <td class="px-2 py-3">{fmt.format(m.frequency)}×</td>
                 <td class="px-2 py-3 text-[11px] text-gray-500">{Object.entries(m.resolvedVia ?? {}).map(([k, v]) => `${k}:${v}`).join(" ")}</td>
                 <td class="px-6 py-3">
@@ -199,16 +199,16 @@ const fmt = new Intl.NumberFormat("en-UG");
     <section class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
       <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
         <h2 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Address review queue ({reviewQueue.length})</h2>
-        <p class="text-[10px] text-gray-400 mt-0.5">Manual-path addresses awaiting an area. The original text is preserved — resolution adds the link, never rewrites. Every view of this queue is audit-logged.</p>
+        <p class="text-[10px] text-gray-500 mt-0.5">Manual-path addresses awaiting an area. The original text is preserved — resolution adds the link, never rewrites. Every view of this queue is audit-logged.</p>
       </div>
       <div class="divide-y divide-gray-50">
-        {reviewQueue.length === 0 && <p class="px-6 py-6 text-xs text-gray-400">Queue is empty — every address is resolved.</p>}
+        {reviewQueue.length === 0 && <p class="px-6 py-6 text-xs text-gray-500">Queue is empty — every address is resolved.</p>}
         {reviewQueue.map((a: any) => (
           <div class="px-6 py-4 flex flex-wrap items-start justify-between gap-4">
             <div class="text-sm">
               <p class="font-bold">{a.recipientName} · {a.phone}</p>
               <p class="text-xs text-gray-600 mt-1">{a.rawAddressText ?? a.areaDetails}</p>
-              <p class="text-[10px] text-gray-400 mt-0.5">district: {a.district || "—"} {a.hasPin && <span class="text-green-700 font-bold">· 📍 pin: {a.gpsLat},{a.gpsLng}</span>}</p>
+              <p class="text-[10px] text-gray-500 mt-0.5">district: {a.district || "—"} {a.hasPin && <span class="text-green-700 font-bold">· 📍 pin: {a.gpsLat},{a.gpsLng}</span>}</p>
             </div>
             <form method="POST" class="flex items-center gap-2">
               <input type="hidden" name="intent" value="resolve" />
@@ -228,7 +228,7 @@ const fmt = new Intl.NumberFormat("en-UG");
       <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
         <div>
           <h2 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Landmarks ({landmarks.length})</h2>
-          <p class="text-[10px] text-gray-400 mt-0.5">Customer-entered landmarks arrive unverified; ops verification promotes them into suggestions.</p>
+          <p class="text-[10px] text-gray-500 mt-0.5">Customer-entered landmarks arrive unverified; ops verification promotes them into suggestions.</p>
         </div>
         <form method="POST" class="flex items-center gap-2">
           <input type="hidden" name="intent" value="landmark" />
@@ -243,7 +243,7 @@ const fmt = new Intl.NumberFormat("en-UG");
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <tbody>
-            {landmarks.length === 0 && <tr><td class="px-6 py-6 text-xs text-gray-400">No landmarks yet — they accumulate from real orders.</td></tr>}
+            {landmarks.length === 0 && <tr><td class="px-6 py-6 text-xs text-gray-500">No landmarks yet — they accumulate from real orders.</td></tr>}
             {landmarks.slice(0, 50).map((l: any) => (
               <tr class="border-b border-gray-50">
                 <td class="px-6 py-2 font-bold">{l.name}</td>
@@ -266,7 +266,7 @@ const fmt = new Intl.NumberFormat("en-UG");
     <section class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
       <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
         <h2 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Pickup points ({pickupPoints.length})</h2>
-        <p class="text-[10px] text-gray-400 mt-0.5">Bus parcel offices and agents are how upcountry actually works. New points are created INACTIVE.</p>
+        <p class="text-[10px] text-gray-500 mt-0.5">Bus parcel offices and agents are how upcountry actually works. New points are created INACTIVE.</p>
       </div>
       <div class="p-6 space-y-4">
         <form method="POST" class="grid grid-cols-2 md:grid-cols-4 gap-2 items-end">
@@ -286,7 +286,7 @@ const fmt = new Intl.NumberFormat("en-UG");
             <div class="py-3 flex items-center justify-between gap-3">
               <div class="text-sm"><span class="font-bold">{p.name}</span> <span class="text-xs text-gray-500">({p.operator}{p.areaSlug ? ` · ${p.areaSlug}` : ""})</span></div>
               <form method="POST"><input type="hidden" name="intent" value="pickup-active" /><input type="hidden" name="id" value={p.id} /><input type="hidden" name="active" value={p.active ? "false" : "true"} />
-                <button class={`text-[10px] font-black uppercase rounded px-3 py-1.5 ${p.active ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-500"}`}>{p.active ? "Active — turn off" : "Inactive — turn on"}</button>
+                <button class={`text-[10px] font-black uppercase rounded px-3 py-1.5 ${p.active ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"}`}>{p.active ? "Active — turn off" : "Inactive — turn on"}</button>
               </form>
             </div>
           ))}
@@ -298,14 +298,14 @@ const fmt = new Intl.NumberFormat("en-UG");
     <section class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
       <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
         <h2 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Zone policy (Z1–Z4)</h2>
-        <p class="text-[10px] text-gray-400 mt-0.5">SLA, COD and carrier policy per zone. FEES stay with the per-district delivery-zones cockpit (decision #7). A zone cannot activate until every value is set — unset means unset.</p>
+        <p class="text-[10px] text-gray-500 mt-0.5">SLA, COD and carrier policy per zone. FEES stay with the per-district delivery-zones cockpit (decision #7). A zone cannot activate until every value is set — unset means unset.</p>
       </div>
       <div class="p-6 grid gap-6 md:grid-cols-2">
         {zones.map((z: any) => (
           <form method="POST" class="border border-gray-200 rounded-xl p-4 space-y-2">
             <input type="hidden" name="intent" value="zone" />
             <input type="hidden" name="zoneCode" value={z.zoneCode} />
-            <p class="font-black text-sm">{z.zoneCode} {z.active ? <span class="text-green-700 text-[10px] uppercase">active</span> : <span class="text-gray-400 text-[10px] uppercase">inactive</span>}</p>
+            <p class="font-black text-sm">{z.zoneCode} {z.active ? <span class="text-green-700 text-[10px] uppercase">active</span> : <span class="text-gray-500 text-[10px] uppercase">inactive</span>}</p>
             <input name="zoneName" value={z.zoneName} class="w-full border border-gray-300 rounded px-2 py-1 text-xs" placeholder="zone name" />
             <div class="grid grid-cols-2 gap-2">
               <input name="slaHoursMin" value={z.slaHoursMin ?? ""} placeholder="SLA min (h)" class="border border-gray-300 rounded px-2 py-1 text-xs" />
@@ -335,12 +335,12 @@ const fmt = new Intl.NumberFormat("en-UG");
     <section class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
       <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
         <h2 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Known data defects ({exceptions.length})</h2>
-        <p class="text-[10px] text-gray-400 mt-0.5">Read-only: every defect documented in the source data, so ops sees what is already known instead of rediscovering it. Empty until the gazetteer import runs.</p>
+        <p class="text-[10px] text-gray-500 mt-0.5">Read-only: every defect documented in the source data, so ops sees what is already known instead of rediscovering it. Empty until the gazetteer import runs.</p>
       </div>
       <div class="overflow-x-auto max-h-80 overflow-y-auto">
         <table class="w-full text-xs">
           <tbody>
-            {exceptions.length === 0 && <tr><td class="px-6 py-6 text-gray-400">No exceptions loaded — the v1 data import populates this view.</td></tr>}
+            {exceptions.length === 0 && <tr><td class="px-6 py-6 text-gray-500">No exceptions loaded — the v1 data import populates this view.</td></tr>}
             {exceptions.map((e: any) => (
               <tr class="border-b border-gray-50">
                 <td class="px-6 py-2 font-bold whitespace-nowrap">{e.exceptionType}</td>

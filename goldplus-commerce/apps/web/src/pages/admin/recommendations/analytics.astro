@@ -138,15 +138,15 @@ const placements = [
           {/* `for`/`id` pairs: these labels were visually present but not
               programmatically associated, so a screen reader announced four
               unnamed controls. */}
-          <label for="filter-start-date" class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Start Date</label>
+          <label for="filter-start-date" class="block text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Start Date</label>
           <input id="filter-start-date" type="date" name="startDate" value={startDate} class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-brand-primary" />
         </div>
         <div>
-          <label for="filter-end-date" class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">End Date</label>
+          <label for="filter-end-date" class="block text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">End Date</label>
           <input id="filter-end-date" type="date" name="endDate" value={endDate} class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-brand-primary" />
         </div>
         <div>
-          <label for="filter-placement" class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Placement</label>
+          <label for="filter-placement" class="block text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Placement</label>
           <select id="filter-placement" name="placement" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-brand-primary appearance-none">
             <option value="">All Placements</option>
             {placements.map(p => (
@@ -155,7 +155,7 @@ const placements = [
           </select>
         </div>
         <div>
-          <label for="filter-rule" class="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Rule</label>
+          <label for="filter-rule" class="block text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Rule</label>
           <select id="filter-rule" name="ruleId" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-brand-primary appearance-none">
             <option value="">All Rules</option>
             {allRules.map((r: any) => (
@@ -171,7 +171,7 @@ const placements = [
             everything. It does not, and a filter that silently applies to some
             panels is worse than one that says where it stops. */}
         <div class="sm:col-span-2 lg:col-span-5">
-          <p class="text-[11px] text-gray-400 leading-relaxed">
+          <p class="text-[11px] text-gray-500 leading-relaxed">
             These filters apply to the <strong>event summary and its three tables</strong> only. Serving truth
             (7 days), search intelligence (10 days), model readiness and every commercial panel (30 days) each
             read their own fixed window, stated on the panel.
@@ -226,39 +226,39 @@ const placements = [
         {/* Summary Grid */}
         <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Impressions</p>
+            <p class="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Impressions</p>
             <h4 class="text-2xl font-black text-brand-dark">{fmtNum(data!.summary.impressions)}</h4>
           </div>
           <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Clicks</p>
+            <p class="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Clicks</p>
             <h4 class="text-2xl font-black text-brand-dark">{fmtNum(data!.summary.clicks)}</h4>
           </div>
           <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">CTR</p>
+            <p class="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">CTR</p>
             <h4 class={`text-2xl font-black ${data!.summary.ctr && data!.summary.ctr > 0.05 ? 'text-brand-primaryInk' : 'text-brand-dark'}`}>
               {fmtPct(data!.summary.ctr)}
             </h4>
           </div>
           <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Items added to cart</p>
+            <p class="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Items added to cart</p>
             <h4 class="text-2xl font-black text-brand-dark">{fmtNum(data!.summary.addToCart)}</h4>
           </div>
           <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Add-to-cart Rate</p>
+            <p class="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Add-to-cart Rate</p>
             <h4 class="text-2xl font-black text-brand-dark">{fmtPct(data!.summary.addToCartRate)}</h4>
           </div>
           <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Share of events rule-attributed</p>
+            <p class="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Share of events rule-attributed</p>
             <h4 class="text-2xl font-black text-brand-dark">
               {data!.summary.totalEvents > 0 ? fmtPct(data!.summary.attributedEvents / data!.summary.totalEvents) : '—'}
             </h4>
           </div>
           <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Organic / No Rule</p>
+            <p class="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Organic / No Rule</p>
             <h4 class="text-2xl font-black text-gray-500">{fmtNum(data!.summary.organicEvents)}</h4>
           </div>
           <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-            <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Rule Influenced</p>
+            <p class="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Rule Influenced</p>
             <h4 class="text-2xl font-black text-blue-600">{fmtNum(data!.summary.ruleAssistedEvents)}</h4>
           </div>
         </div>
@@ -287,11 +287,11 @@ const placements = [
                 </div>
                 <div class="pt-4 border-t border-gray-100 grid grid-cols-2 gap-4 text-center">
                   <div>
-                    <p class="text-[9px] font-black text-gray-400 uppercase tracking-wider">Missing Attr.</p>
+                    <p class="text-[9px] font-black text-gray-500 uppercase tracking-wider">Missing Attr.</p>
                     <p class="text-sm font-black text-brand-dark mt-0.5">{fmtNum(data!.eventHealth.missingAttributionId)}</p>
                   </div>
                   <div>
-                    <p class="text-[9px] font-black text-gray-400 uppercase tracking-wider">Missing Product</p>
+                    <p class="text-[9px] font-black text-gray-500 uppercase tracking-wider">Missing Product</p>
                     <p class="text-sm font-black text-brand-dark mt-0.5">{fmtNum(data!.eventHealth.missingProductId)}</p>
                   </div>
                 </div>
@@ -323,15 +323,15 @@ const placements = [
                 </p>
                 <div class="grid grid-cols-2 gap-y-3 pt-2">
                   <div>
-                    <p class="text-[9px] font-black text-gray-400 uppercase tracking-wider">Lead Links</p>
+                    <p class="text-[9px] font-black text-gray-500 uppercase tracking-wider">Lead Links</p>
                     <p class="text-sm font-black text-brand-dark">{fmtNum(data!.identityHealth.anonymousToLeadLinks)}</p>
                   </div>
                   <div>
-                    <p class="text-[9px] font-black text-gray-400 uppercase tracking-wider">Cust. Links</p>
+                    <p class="text-[9px] font-black text-gray-500 uppercase tracking-wider">Cust. Links</p>
                     <p class="text-sm font-black text-brand-dark">{fmtNum(data!.identityHealth.anonymousToCustomerLinks)}</p>
                   </div>
                   <div>
-                    <p class="text-[9px] font-black text-gray-400 uppercase tracking-wider">Total Links</p>
+                    <p class="text-[9px] font-black text-gray-500 uppercase tracking-wider">Total Links</p>
                     <p class="text-sm font-black text-brand-dark">{fmtNum(data!.identityHealth.identityLinks)}</p>
                   </div>
                 </div>
@@ -349,17 +349,17 @@ const placements = [
                 <table class="w-full text-left">
                   <thead class="bg-gray-50/50 border-b border-gray-100">
                     <tr>
-                      <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest">Placement</th>
-                      <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">Impressions</th>
-                      <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">Clicks</th>
-                      <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">CTR</th>
-                      <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">ATC</th>
+                      <th class="px-6 py-3 text-[9px] font-black text-gray-500 uppercase tracking-widest">Placement</th>
+                      <th class="px-6 py-3 text-[9px] font-black text-gray-500 uppercase tracking-widest text-right">Impressions</th>
+                      <th class="px-6 py-3 text-[9px] font-black text-gray-500 uppercase tracking-widest text-right">Clicks</th>
+                      <th class="px-6 py-3 text-[9px] font-black text-gray-500 uppercase tracking-widest text-right">CTR</th>
+                      <th class="px-6 py-3 text-[9px] font-black text-gray-500 uppercase tracking-widest text-right">ATC</th>
                     </tr>
                   </thead>
                   <tbody class="divide-y divide-gray-100">
                     {data!.placementPerformance.length === 0 ? (
                       <tr>
-                        <td colspan="5" class="px-6 py-8 text-center text-xs font-medium text-gray-400">
+                        <td colspan="5" class="px-6 py-8 text-center text-xs font-medium text-gray-500">
                           No placement performance data found for this period.
                         </td>
                       </tr>
@@ -392,18 +392,18 @@ const placements = [
             <table class="w-full text-left">
               <thead class="bg-gray-50/50 border-b border-gray-100">
                 <tr>
-                  <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest">Rule / Bucket</th>
-                  <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">Impressions</th>
-                  <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">Clicks</th>
-                  <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">CTR</th>
-                  <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">ATC</th>
-                  <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest">Placements</th>
+                  <th class="px-6 py-3 text-[9px] font-black text-gray-500 uppercase tracking-widest">Rule / Bucket</th>
+                  <th class="px-6 py-3 text-[9px] font-black text-gray-500 uppercase tracking-widest text-right">Impressions</th>
+                  <th class="px-6 py-3 text-[9px] font-black text-gray-500 uppercase tracking-widest text-right">Clicks</th>
+                  <th class="px-6 py-3 text-[9px] font-black text-gray-500 uppercase tracking-widest text-right">CTR</th>
+                  <th class="px-6 py-3 text-[9px] font-black text-gray-500 uppercase tracking-widest text-right">ATC</th>
+                  <th class="px-6 py-3 text-[9px] font-black text-gray-500 uppercase tracking-widest">Placements</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-100">
                 {data!.rulePerformance.length === 0 ? (
                   <tr>
-                    <td colspan="6" class="px-6 py-8 text-center text-xs font-medium text-gray-400">
+                    <td colspan="6" class="px-6 py-8 text-center text-xs font-medium text-gray-500">
                       No rule performance data found for this period.
                     </td>
                   </tr>
@@ -412,7 +412,7 @@ const placements = [
                     <tr class="hover:bg-gray-50/50 transition-colors">
                       <td class="px-6 py-4">
                         <div class="text-xs font-black text-brand-dark">{r.label}</div>
-                        {r.ruleId && <div class="text-[9px] font-mono text-gray-400 mt-0.5">{r.ruleId.slice(0,8)}</div>}
+                        {r.ruleId && <div class="text-[9px] font-mono text-gray-500 mt-0.5">{r.ruleId.slice(0,8)}</div>}
                       </td>
                       <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(r.impressions)}</td>
                       <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(r.clicks)}</td>
@@ -421,7 +421,7 @@ const placements = [
                       <td class="px-6 py-4">
                         <div class="flex flex-wrap gap-1">
                           {r.placementsTouched.map(p => (
-                            <span class="text-[8px] font-black bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded uppercase">{p}</span>
+                            <span class="text-[8px] font-black bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded uppercase">{p}</span>
                           ))}
                         </div>
                       </td>
@@ -447,18 +447,18 @@ const placements = [
             <table class="w-full text-left">
               <thead class="bg-gray-50/50 border-b border-gray-100">
                 <tr>
-                  <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest">Product</th>
-                  <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest">SKU</th>
-                  <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">Impressions</th>
-                  <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">Clicks</th>
-                  <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">CTR</th>
-                  <th class="px-6 py-3 text-[9px] font-black text-gray-400 uppercase tracking-widest text-right">ATC</th>
+                  <th class="px-6 py-3 text-[9px] font-black text-gray-500 uppercase tracking-widest">Product</th>
+                  <th class="px-6 py-3 text-[9px] font-black text-gray-500 uppercase tracking-widest">SKU</th>
+                  <th class="px-6 py-3 text-[9px] font-black text-gray-500 uppercase tracking-widest text-right">Impressions</th>
+                  <th class="px-6 py-3 text-[9px] font-black text-gray-500 uppercase tracking-widest text-right">Clicks</th>
+                  <th class="px-6 py-3 text-[9px] font-black text-gray-500 uppercase tracking-widest text-right">CTR</th>
+                  <th class="px-6 py-3 text-[9px] font-black text-gray-500 uppercase tracking-widest text-right">ATC</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-100">
                 {data!.productPerformance.length === 0 ? (
                   <tr>
-                    <td colspan="6" class="px-6 py-8 text-center text-xs font-medium text-gray-400">
+                    <td colspan="6" class="px-6 py-8 text-center text-xs font-medium text-gray-500">
                       No product performance data found for this period.
                     </td>
                   </tr>
@@ -468,7 +468,7 @@ const placements = [
                       <td class="px-6 py-4">
                         <div class="text-xs font-black text-brand-dark truncate max-w-xs">{p.productName || (p.productId ? p.productId.slice(0,8) : 'Unknown Product')}</div>
                       </td>
-                      <td class="px-6 py-4 text-xs font-mono text-gray-400">{p.sku || '—'}</td>
+                      <td class="px-6 py-4 text-xs font-mono text-gray-500">{p.sku || '—'}</td>
                       <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(p.impressions)}</td>
                       <td class="px-6 py-4 text-right text-xs font-bold text-gray-500">{fmtNum(p.clicks)}</td>
                       <td class="px-6 py-4 text-right text-xs font-black text-brand-dark">{fmtPct(p.ctr)}</td>
@@ -486,7 +486,7 @@ const placements = [
           <div class="bg-white border-2 border-brand-dark/15 rounded-2xl shadow-sm overflow-hidden mb-8" id="revenue">
             <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex flex-wrap items-baseline justify-between gap-2">
               <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Revenue &amp; orders (30 days)</h3>
-              <span class="text-[10px] text-gray-400 font-bold">
+              <span class="text-[10px] text-gray-500 font-bold">
                 model: {commercial.attributionModel.name} · ATC/click {commercial.attributionModel.atcWindowDays}d · view-through {commercial.attributionModel.viewThroughWindowDays}d (assist only)
               </span>
             </div>
@@ -499,8 +499,8 @@ const placements = [
                   ["Incremental", commercial.revenue.incrementalRevenue],
                 ] as const).map(([label, m]) => (
                   <div>
-                    <p class="text-[9px] font-black text-gray-400 uppercase tracking-wider">{label}</p>
-                    <p class={`text-base font-black ${m.state === "OK" || m.state === "PARTIAL" ? "text-brand-dark" : "text-gray-400"}`}>{ugxOrState(m)}</p>
+                    <p class="text-[9px] font-black text-gray-500 uppercase tracking-wider">{label}</p>
+                    <p class={`text-base font-black ${m.state === "OK" || m.state === "PARTIAL" ? "text-brand-dark" : "text-gray-500"}`}>{ugxOrState(m)}</p>
                     {m.reason && <p class="text-[10px] text-gray-500 mt-0.5 leading-snug">{m.reason}</p>}
                   </div>
                 ))}
@@ -514,14 +514,14 @@ const placements = [
                   ["Reversed (excluded)", commercial.totals.reversedOrdersExcluded],
                 ] as const).map(([label, n]) => (
                   <div>
-                    <p class="text-[9px] font-black text-gray-400 uppercase tracking-wider">{label}</p>
+                    <p class="text-[9px] font-black text-gray-500 uppercase tracking-wider">{label}</p>
                     <p class="text-base font-black text-brand-dark">{n}</p>
                   </div>
                 ))}
               </div>
               {commercial.attributedLines.length > 0 && (
                 <div class="mt-4 overflow-x-auto">
-                  <h4 class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Attributed lines (latest)</h4>
+                  <h4 class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Attributed lines (latest)</h4>
                   <table class="w-full text-sm">
                     <thead class="text-[10px] uppercase font-black tracking-widest text-gray-500">
                       <tr><th class="text-left py-1">Order</th><th class="text-left px-2">Product</th><th class="text-right px-2">Qty</th><th class="text-right px-2">Net</th><th class="text-left px-2">Mechanism</th><th class="text-left px-2">Placement</th></tr>
@@ -562,7 +562,7 @@ const placements = [
                   ["Completed", commercial.funnel.raw.completedOrdersFromTouchedProfiles],
                 ] as const).map(([label, n]) => (
                   <div>
-                    <p class="text-[9px] font-black text-gray-400 uppercase tracking-wider">{label}</p>
+                    <p class="text-[9px] font-black text-gray-500 uppercase tracking-wider">{label}</p>
                     <p class="text-lg font-black text-brand-dark">{n}</p>
                   </div>
                 ))}
@@ -575,8 +575,8 @@ const placements = [
                   ["Paid → completed", commercial.funnel.paidToCompletedRate],
                 ] as const).map(([label, m]) => (
                   <div>
-                    <p class="text-[9px] font-black text-gray-400 uppercase tracking-wider">{label}</p>
-                    <p class={`text-base font-black ${m.state === "OK" ? "text-brand-dark" : "text-gray-400"}`}>{pctOrState(m)}</p>
+                    <p class="text-[9px] font-black text-gray-500 uppercase tracking-wider">{label}</p>
+                    <p class={`text-base font-black ${m.state === "OK" ? "text-brand-dark" : "text-gray-500"}`}>{pctOrState(m)}</p>
                     {m.state === "NOT_ENOUGH_DATA" && <p class="text-[10px] text-gray-500">{m.denominator}/{m.minSample} minimum</p>}
                   </div>
                 ))}
@@ -599,8 +599,8 @@ const placements = [
                 ["Contribution ROAS", commercial.roas.contributionRoas, "Unavailable"],
               ] as const).map(([label, m, display]) => (
                 <div>
-                  <p class="text-[9px] font-black text-gray-400 uppercase tracking-wider">{label}{m.state === "PARTIAL" && <span class="ml-1 text-amber-700">partial</span>}</p>
-                  <p class={`text-base font-black ${m.state === "OK" || m.state === "PARTIAL" ? "text-brand-dark" : "text-gray-400"}`}>{display}</p>
+                  <p class="text-[9px] font-black text-gray-500 uppercase tracking-wider">{label}{m.state === "PARTIAL" && <span class="ml-1 text-amber-700">partial</span>}</p>
+                  <p class={`text-base font-black ${m.state === "OK" || m.state === "PARTIAL" ? "text-brand-dark" : "text-gray-500"}`}>{display}</p>
                   {m.reason && <p class="text-[10px] text-gray-500 mt-0.5 leading-snug">{m.reason}</p>}
                   {m.missingComponents && m.missingComponents.length > 0 && (
                     <ul class="mt-1 text-[10px] text-amber-800 list-disc pl-4">
@@ -654,7 +654,7 @@ const placements = [
         <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mb-8">
           <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex items-baseline justify-between">
             <h3 class="text-xs font-black uppercase tracking-widest text-brand-dark">Serving truth (7 days)</h3>
-            <span class="text-[10px] text-gray-400 font-bold">source: engine response events</span>
+            <span class="text-[10px] text-gray-500 font-bold">source: engine response events</span>
           </div>
           <div class="p-6 overflow-x-auto">
             {servingFailed ? (
@@ -701,7 +701,7 @@ const placements = [
                   ["No identity at all", lineage.identityUnavailable, false],
                 ].map(([label, n, warn]) => (
                   <div>
-                    <p class="text-[9px] font-black text-gray-400 uppercase tracking-wider">{label}</p>
+                    <p class="text-[9px] font-black text-gray-500 uppercase tracking-wider">{label}</p>
                     <p class={`text-lg font-black ${warn ? "text-red-600" : "text-brand-dark"}`}>{n}</p>
                   </div>
                 ))}
@@ -724,34 +724,34 @@ const placements = [
           </div>
           <div class="p-6 grid md:grid-cols-3 gap-6">
             <div>
-              <h4 class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Top queries</h4>
+              <h4 class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Top queries</h4>
               {searchIntelFailed ? (
                 <p class="text-xs text-amber-700">Unavailable — not measured. {failureNote(searchIntelRes)}</p>
               ) : searchIntel && searchIntel.topQueries.length > 0 ? (
                 <ul class="space-y-1">{searchIntel.topQueries.map((q) => (
                   <li class="text-xs text-gray-700 flex justify-between border-b border-gray-100 py-1"><span>{q.query}</span><span class="font-black">{q.searchCount}</span></li>
                 ))}</ul>
-              ) : <p class="text-xs text-gray-400">Not enough data yet.</p>}
+              ) : <p class="text-xs text-gray-500">Not enough data yet.</p>}
             </div>
             <div>
-              <h4 class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Zero-result searches</h4>
+              <h4 class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Zero-result searches</h4>
               {searchIntelFailed ? (
                 <p class="text-xs text-amber-700">Unavailable — not measured. {failureNote(searchIntelRes)}</p>
               ) : searchIntel && searchIntel.zeroResultQueries.length > 0 ? (
                 <ul class="space-y-1">{searchIntel.zeroResultQueries.map((q) => (
                   <li class="text-xs text-gray-700 flex justify-between border-b border-gray-100 py-1"><span>{q.query}</span><span class="font-black text-red-600">{q.zeroResultCount}</span></li>
                 ))}</ul>
-              ) : <p class="text-xs text-gray-400">None recorded — no catalogue gap is wearing a customer's words.</p>}
+              ) : <p class="text-xs text-gray-500">None recorded — no catalogue gap is wearing a customer's words.</p>}
             </div>
             <div>
-              <h4 class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Clicked, never bought</h4>
+              <h4 class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-2">Clicked, never bought</h4>
               {searchIntelFailed ? (
                 <p class="text-xs text-amber-700">Unavailable — not measured. {failureNote(searchIntelRes)}</p>
               ) : searchIntel && searchIntel.clickedNeverConverted.length > 0 ? (
                 <ul class="space-y-1">{searchIntel.clickedNeverConverted.map((q) => (
                   <li class="text-xs text-gray-700 flex justify-between border-b border-gray-100 py-1"><span>{q.query}</span><span class="font-black">{q.clickCount}</span></li>
                 ))}</ul>
-              ) : <p class="text-xs text-gray-400">Not enough data yet.</p>}
+              ) : <p class="text-xs text-gray-500">Not enough data yet.</p>}
             </div>
           </div>
         </div>
@@ -776,7 +776,7 @@ const placements = [
                         <td class="py-2 text-xs font-bold text-gray-700">{g.gate.replace(/_/g, ' ')}</td>
                         <td class="text-right px-3 font-black text-brand-dark">{g.required.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}</td>
                         <td class="text-right px-3 font-black text-brand-dark">{g.actual.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}</td>
-                        <td class="text-right px-3 text-[10px] font-black uppercase">{g.met ? <span class="text-green-700">met</span> : <span class="text-gray-400">not yet</span>}</td>
+                        <td class="text-right px-3 text-[10px] font-black uppercase">{g.met ? <span class="text-green-700">met</span> : <span class="text-gray-600">not yet</span>}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -784,7 +784,7 @@ const placements = [
               </div>
               {readiness.recommendationExperiments.length > 0 ? (
                 <div class="mt-4">
-                  <h4 class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Recommendation experiments</h4>
+                  <h4 class="text-[10px] font-black uppercase tracking-widest text-gray-600 mb-2">Recommendation experiments</h4>
                   {readiness.recommendationExperiments.map((e) => (
                     <p class={`text-xs ${e.srm?.srmSuspected ? "text-red-700 font-bold" : "text-gray-600"}`}>
                       {e.key} · {e.status}{e.srm ? ` · ${e.srm.total} assignment(s) · ${e.srm.note}` : ""}
@@ -792,7 +792,7 @@ const placements = [
                   ))}
                 </div>
               ) : (
-                <p class="text-[11px] text-gray-400 mt-4">No recommendation experiments exist. One is created and RUN only by explicit admin action — never automatically.</p>
+                <p class="text-[11px] text-gray-500 mt-4">No recommendation experiments exist. One is created and RUN only by explicit admin action — never automatically.</p>
               )}
             </div>
           </div>
@@ -800,12 +800,12 @@ const placements = [
 
         {/* Unavailable Metrics Section */}
         <div class="bg-gray-100 border border-gray-200 rounded-2xl p-6 mb-10">
-          <h3 class="text-xs font-black uppercase tracking-widest text-gray-400 mb-4">Unavailable Metrics</h3>
+          <h3 class="text-xs font-black uppercase tracking-widest text-gray-600 mb-4">Unavailable Metrics</h3>
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {data!.unavailableMetrics.map(m => (
               <div class="bg-white/50 border border-gray-200 rounded-xl p-4">
                 <h4 class="text-xs font-black text-gray-500 uppercase">{m.metric.replace(/([A-Z])/g, ' $1').trim()}</h4>
-                <p class="text-[10px] text-gray-400 mt-1 leading-relaxed">{m.reason}</p>
+                <p class="text-[10px] text-gray-500 mt-1 leading-relaxed">{m.reason}</p>
               </div>
             ))}
           </div>

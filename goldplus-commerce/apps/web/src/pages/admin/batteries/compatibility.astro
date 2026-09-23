@@ -71,13 +71,13 @@ const claims = claimsRes.data ?? [];
 const batteries = batteriesRes.data ?? [];
 const devices = (devicesRes.data ?? []).filter((d) => d.status === 'ACTIVE');
 const EVIDENCE = [['SUPPLIER_LISTED', 'A supplier lists it (not checked by us)'], ['PACKAGE_VERIFIED', 'The GoldPlus pack says so'], ['FIT_TESTED', 'We fitted it to the phone'], ['VERIFIED_EXACT', 'Confirmed exact for this model number'], ['CONDITIONAL', 'Fits with a condition']];
-const STATUS_BADGE: Record<string, string> = { ACTIVE: 'bg-green-50 text-green-800 border-green-200', READY: 'bg-blue-50 text-blue-800 border-blue-200', REVIEW: 'bg-amber-50 text-amber-900 border-amber-200', DRAFT: 'bg-slate-100 text-slate-700 border-slate-200', ARCHIVED: 'bg-slate-50 text-slate-500 border-slate-200' };
+const STATUS_BADGE: Record<string, string> = { ACTIVE: 'bg-green-50 text-green-800 border-green-200', READY: 'bg-blue-50 text-blue-800 border-blue-200', REVIEW: 'bg-amber-50 text-amber-900 border-amber-200', DRAFT: 'bg-slate-100 text-slate-700 border-slate-200', ARCHIVED: 'bg-slate-50 text-slate-600 border-slate-200' };
 const TABS = [['REVIEW', 'Waiting for a checker'], ['DRAFT', 'Drafts'], ['READY', 'Verified, not published'], ['ACTIVE', 'Live'], ['ARCHIVED', 'Archived'], ['ALL', 'Everything']];
 ---
 
 <AdminLayout title="Battery compatibility" description="Connect a battery to an exact phone, check the evidence, then publish." activePath="/admin/batteries">
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
-    <p class="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-1"><a href="/admin/batteries" class="hover:text-brand-primary">Batteries</a> / Compatibility</p>
+    <p class="text-[10px] uppercase font-black tracking-widest text-gray-500 mb-1"><a href="/admin/batteries" class="hover:text-brand-primary">Batteries</a> / Compatibility</p>
     <div class="mb-6 pb-6 border-b border-gray-200">
       <h2 class="text-2xl font-black text-brand-dark tracking-tight">Compatibility</h2>
       <p class="text-sm text-gray-500 mt-1 max-w-3xl">
@@ -95,26 +95,26 @@ const TABS = [['REVIEW', 'Waiting for a checker'], ['DRAFT', 'Drafts'], ['READY'
       <p class="text-xs text-gray-500 mb-4">Pick several phones to save typing. Each one still becomes its own claim and is reviewed on its own.</p>
       <form method="POST" class="grid gap-3 md:grid-cols-2">
         <input type="hidden" name="intent" value="create" />
-        <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Battery</span>
+        <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Battery</span>
           <select name="productId" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
             <option value="">Choose a battery</option>
             {batteries.map((b) => <option value={b.product.productId} selected={b.product.productId === productId}>{b.profile.canonicalCode} · {b.product.name}</option>)}
           </select></label>
-        <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Phones (hold to pick several)</span>
+        <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Phones (hold to pick several)</span>
           <select name="deviceIds" multiple size="6" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
             {devices.map((d) => <option value={d.id}>{d.brandName} {d.model}{d.modelNumber ? ` (${d.modelNumber})` : ''}{d.variant ? ` ${d.variant}` : ''}</option>)}
           </select></label>
-        <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">What proves it</span>
+        <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">What proves it</span>
           <select name="evidenceStatus" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
             {EVIDENCE.map(([v, l]) => <option value={v}>{l}</option>)}
           </select></label>
-        <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Evidence source (needed for anything above a supplier listing)</span>
+        <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Evidence source (needed for anything above a supplier listing)</span>
           <input name="evidenceSource" maxlength="300" placeholder="Fitted on the bench, 26 Aug, by ..." class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-        <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Condition shown to the customer (needed for a conditional fit)</span>
+        <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Condition shown to the customer (needed for a conditional fit)</span>
           <input name="publicCondition" maxlength="300" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-        <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Internal note</span>
+        <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Internal note</span>
           <input name="notes" maxlength="1000" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-        <div class="md:col-span-2"><button type="submit" class="bg-brand-primary text-white text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Create draft claims</button></div>
+        <div class="md:col-span-2"><button type="submit" class="bg-brand-primary text-brand-black text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Create draft claims</button></div>
       </form>
     </section>
 
@@ -144,7 +144,7 @@ const TABS = [['REVIEW', 'Waiting for a checker'], ['DRAFT', 'Drafts'], ['READY'
                 {c.battery.lifecycleStatus !== 'ACTIVE' ? ` · the battery is ${c.battery.lifecycleStatus.toLowerCase()}, so this fit is not public yet` : ''}
               </p>
               {c.publicCondition && <p class="text-xs text-amber-900 mt-1">Condition shown to the customer: {c.publicCondition}</p>}
-              {c.notes && <p class="text-xs text-gray-400 mt-1">{c.notes}</p>}
+              {c.notes && <p class="text-xs text-gray-500 mt-1">{c.notes}</p>}
             </div>
             <span class={`text-[9px] font-black px-2.5 py-1 rounded uppercase tracking-widest border ${STATUS_BADGE[c.workflowStatus]}`}>{c.workflowStatus}</span>
           </div>
@@ -197,7 +197,7 @@ const TABS = [['REVIEW', 'Waiting for a checker'], ['DRAFT', 'Drafts'], ['READY'
         </article>
       ))}
       {claims.length === 0 && claimsRes.ok && (
-        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-12 text-center text-gray-400 italic">Nothing in this queue.</div>
+        <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-12 text-center text-gray-500 italic">Nothing in this queue.</div>
       )}
     </div>
   </div>

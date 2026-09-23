@@ -65,7 +65,7 @@ if (Astro.request.method === 'POST') {
         Authorised dealership
       </span>
       <h1 class="text-3xl md:text-4xl font-black tracking-tight mb-4">Become a GoldPlus dealer</h1>
-      <p class="text-slate-400 max-w-2xl mx-auto text-sm sm:text-base leading-relaxed font-medium">
+      <p class="text-slate-500 max-w-2xl mx-auto text-sm sm:text-base leading-relaxed font-medium">
         Partner with a trusted electronics brand. Verified stock, marketing support and protected pricing.
       </p>
     </div>
@@ -98,13 +98,13 @@ if (Astro.request.method === 'POST') {
 
           <form method="POST" action="/dealers/apply" novalidate id="dealerForm" class="space-y-8">
             <fieldset class="space-y-5">
-              <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Business details</legend>
+              <legend class="text-[10px] font-black uppercase tracking-widest text-slate-600 mb-1.5">Business details</legend>
               <FormField id="businessName" name="businessName" label="Business legal name" required defaultValue={values.businessName} autocomplete="organization" errorMessage={errors.businessName} />
               <FormField id="tinNumber" name="tinNumber" label="TIN number (URA)" required defaultValue={values.tinNumber} placeholder="100XXXXXXXX" errorMessage={errors.tinNumber} />
             </fieldset>
 
             <fieldset class="space-y-5 pt-4 border-t border-slate-100">
-              <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Contact details</legend>
+              <legend class="text-[10px] font-black uppercase tracking-widest text-slate-600 mb-1.5">Contact details</legend>
               <FormField id="contactName" name="contactName" label="Contact person" required defaultValue={values.contactName} autocomplete="name" errorMessage={errors.contactName} />
               <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <FormField id="email" name="email" label="Business email" type="email" required defaultValue={values.email} autocomplete="email" errorMessage={errors.email} />
@@ -113,7 +113,7 @@ if (Astro.request.method === 'POST') {
             </fieldset>
 
             <fieldset class="space-y-5 pt-4 border-t border-slate-100">
-              <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Business location</legend>
+              <legend class="text-[10px] font-black uppercase tracking-widest text-slate-600 mb-1.5">Business location</legend>
               <div class="bg-slate-50 p-5 rounded-xl border border-slate-200/60 space-y-4">
                 <UgandaLocationPicker 
                   name="locationJson" 
@@ -151,7 +151,7 @@ if (Astro.request.method === 'POST') {
           </form>
         </div>
 
-        <p class="text-xs text-slate-400 text-center mt-2 leading-relaxed max-w-md mx-auto font-medium">
+        <p class="text-xs text-slate-600 text-center mt-2 leading-relaxed max-w-md mx-auto font-medium">
           A dealer success team member will get in touch to finalize setup once the application passes initial operational review.
         </p>
       </div>

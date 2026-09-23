@@ -162,7 +162,7 @@ const credFields = (manifest.credentialSchema ?? []) as ManifestField[];
           <div>
             <h2 class="text-2xl font-black text-brand-dark tracking-tight">{str(provider.canonical_name)}</h2>
             <p class="text-sm text-gray-500 mt-1 max-w-3xl">{str(provider.description)}</p>
-            <p class="text-xs text-gray-400 mt-2 font-mono">{providerId} · {str(provider.family)}</p>
+            <p class="text-xs text-gray-500 mt-2 font-mono">{providerId} · {str(provider.family)}</p>
           </div>
           <span class={`rounded-full border px-3 py-1 text-xs font-bold ${statusBadgeClass(derivedStatus)}`}>{derivedStatus}</span>
         </div>
@@ -194,7 +194,7 @@ const credFields = (manifest.credentialSchema ?? []) as ManifestField[];
         {/* Capability + quota facts from the manifest */}
         <section class="mb-8 grid grid-cols-1 md:grid-cols-3 gap-4">
           <div class="rounded-2xl border border-gray-200 bg-white p-5">
-            <h3 class="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Capabilities</h3>
+            <h3 class="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2">Capabilities</h3>
             <div class="flex flex-wrap gap-1">
               {(provider.capabilities ?? []).map((cap) => (
                 <span class="rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-mono text-gray-600">{cap}</span>
@@ -203,12 +203,12 @@ const credFields = (manifest.credentialSchema ?? []) as ManifestField[];
             </div>
           </div>
           <div class="rounded-2xl border border-gray-200 bg-white p-5">
-            <h3 class="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Authentication</h3>
+            <h3 class="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2">Authentication</h3>
             <p class="text-sm text-gray-700">{(provider.auth_types ?? []).join(", ") || "—"}</p>
             {usesGoogleOAuth && <p class="text-xs text-gray-500 mt-1">Google OAuth 2.0 with PKCE. Scopes: {(manifest.oauthScopes ?? []).length}.</p>}
           </div>
           <div class="rounded-2xl border border-gray-200 bg-white p-5">
-            <h3 class="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Daily request cap</h3>
+            <h3 class="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2">Daily request cap</h3>
             <p class="text-sm text-gray-700">{dailyCap === null ? "No cap declared by this provider." : `${num(dailyCap)} requests/day`}</p>
             {manifest.quota?.notes && <p class="text-xs text-gray-500 mt-1">{manifest.quota.notes}</p>}
           </div>
@@ -232,7 +232,7 @@ const credFields = (manifest.credentialSchema ?? []) as ManifestField[];
                 <div class="flex flex-wrap items-start justify-between gap-3 pb-4 border-b border-gray-100">
                   <div>
                     <h3 class="font-black text-brand-dark">{str(conn.name)}</h3>
-                    <p class="text-xs text-gray-400 font-mono mt-1">{str(conn.id)}</p>
+                    <p class="text-xs text-gray-500 font-mono mt-1">{str(conn.id)}</p>
                   </div>
                   <div class="flex flex-wrap items-center gap-2">
                     <span class={`rounded-full border px-3 py-1 text-xs font-bold ${statusBadgeClass(String(conn.status ?? ""))}`}>{str(conn.status)}</span>
@@ -243,11 +243,11 @@ const credFields = (manifest.credentialSchema ?? []) as ManifestField[];
                 </div>
 
                 <dl class="grid grid-cols-2 md:grid-cols-4 gap-4 py-4 text-xs">
-                  <div><dt class="uppercase tracking-widest text-[10px] text-gray-400">Account</dt><dd class="text-gray-700 break-all">{str(conn.account_ref)}</dd></div>
-                  <div><dt class="uppercase tracking-widest text-[10px] text-gray-400">Property</dt><dd class="text-gray-700 break-all">{str(conn.property_ref)}</dd></div>
-                  <div><dt class="uppercase tracking-widest text-[10px] text-gray-400">Last attempt</dt><dd class="text-gray-700">{fmtWhen(conn.last_attempt_at)}</dd></div>
+                  <div><dt class="uppercase tracking-widest text-[10px] text-gray-500">Account</dt><dd class="text-gray-700 break-all">{str(conn.account_ref)}</dd></div>
+                  <div><dt class="uppercase tracking-widest text-[10px] text-gray-500">Property</dt><dd class="text-gray-700 break-all">{str(conn.property_ref)}</dd></div>
+                  <div><dt class="uppercase tracking-widest text-[10px] text-gray-500">Last attempt</dt><dd class="text-gray-700">{fmtWhen(conn.last_attempt_at)}</dd></div>
                   <div>
-                    <dt class="uppercase tracking-widest text-[10px] text-gray-400">Last success</dt>
+                    <dt class="uppercase tracking-widest text-[10px] text-gray-500">Last success</dt>
                     <dd class="text-gray-700">{conn.last_success_at ? fmtWhen(conn.last_success_at) : "Never — nothing has been synced."}</dd>
                   </div>
                 </dl>
@@ -332,7 +332,7 @@ const credFields = (manifest.credentialSchema ?? []) as ManifestField[];
                     </p>
                   ) : (
                     <table class="w-full text-xs">
-                      <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400">
+                      <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-500">
                         <th class="py-1">Version</th><th>Auth type</th><th>Mask</th><th>Status</th><th>Added</th><th>Expires</th><th></th>
                       </tr></thead>
                       <tbody>
@@ -358,7 +358,7 @@ const credFields = (manifest.credentialSchema ?? []) as ManifestField[];
                       </tbody>
                     </table>
                   )}
-                  <p class="mt-2 text-[11px] text-gray-400">
+                  <p class="mt-2 text-[11px] text-gray-500">
                     Stored secrets are encrypted in the vault and are never displayed again after they are saved —
                     only the mask above. To change one, add a new version below; the old version is superseded.
                   </p>
@@ -392,7 +392,7 @@ const credFields = (manifest.credentialSchema ?? []) as ManifestField[];
                               <input name={`cred_${f.key}`} type={plan.inputType} autocomplete="off"
                                 class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
                             )}
-                            {f.help && <span class="block mt-1 text-[11px] text-gray-400">{f.help}</span>}
+                            {f.help && <span class="block mt-1 text-[11px] text-gray-500">{f.help}</span>}
                           </label>
                         );
                       })}
@@ -428,7 +428,7 @@ const credFields = (manifest.credentialSchema ?? []) as ManifestField[];
                     <dl class="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
                       {configFields.map((f) => (
                         <div class="rounded-lg border border-gray-100 bg-gray-50 p-2">
-                          <dt class="text-[10px] uppercase tracking-widest text-gray-400">{f.label}</dt>
+                          <dt class="text-[10px] uppercase tracking-widest text-gray-500">{f.label}</dt>
                           <dd class="text-gray-700 break-all">{str((conn.config ?? {})[f.key])}</dd>
                         </div>
                       ))}
@@ -453,7 +453,7 @@ const credFields = (manifest.credentialSchema ?? []) as ManifestField[];
             <p class="text-sm text-gray-600">No sync has ever been run for this provider.</p>
           ) : (
             <table class="w-full text-xs">
-              <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400">
+              <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-500">
                 <th class="py-1">Type</th><th>Status</th><th>Started</th><th>Duration</th><th>Read</th><th>Inserted</th><th>Updated</th><th>Rejected</th><th>Error</th>
               </tr></thead>
               <tbody>
@@ -482,7 +482,7 @@ const credFields = (manifest.credentialSchema ?? []) as ManifestField[];
             <p class="text-sm text-gray-600">No requests have been recorded for this provider.</p>
           ) : (
             <table class="w-full text-xs">
-              <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400"><th class="py-1">Day</th><th>Requests</th><th>Cap</th></tr></thead>
+              <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-500"><th class="py-1">Day</th><th>Requests</th><th>Cap</th></tr></thead>
               <tbody>
                 {(usage as any[]).map((u) => (
                   <tr class="border-t border-gray-100">
@@ -506,7 +506,7 @@ const credFields = (manifest.credentialSchema ?? []) as ManifestField[];
               {audit.map((a) => (
                 <li class="border-t border-gray-100 pt-2 text-xs">
                   <span class="font-mono font-bold text-brand-dark">{str(a.action)}</span>
-                  <span class="text-gray-400"> · {fmtWhen(a.created_at)}</span>
+                  <span class="text-gray-500"> · {fmtWhen(a.created_at)}</span>
                   <div class="text-gray-600 break-all">{a.detail ? JSON.stringify(a.detail) : "—"}</div>
                 </li>
               ))}

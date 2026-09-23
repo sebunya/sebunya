@@ -70,7 +70,7 @@ const breadcrumbs = serializeJsonLd(
                 <a href={`/blog/${post.slug}`} class="hover:underline">{post.title}</a>
               </h2>
               {post.excerpt && <p class="mt-2 flex-1 text-sm leading-relaxed text-slate-600">{post.excerpt}</p>}
-              <p class="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">
+              <p class="mt-4 text-xs font-semibold uppercase tracking-wide text-slate-600">
                 {formatArticleDate(post.publishedAt)} · {post.readingMinutes} min read
               </p>
             </div>

@@ -86,7 +86,7 @@ const stageBadge: Record<string, string> = {
           <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
               <thead>
-                <tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest">
+                <tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-500 tracking-widest">
                   <th class="p-5">Customer</th>
                   <th class="p-5 text-right">Orders</th>
                   <th class="p-5">Last order</th>
@@ -106,16 +106,16 @@ const stageBadge: Record<string, string> = {
                       </span>
                     </td>
                     <td class="p-5">
-                      <div class={`font-bold ${r.nba.suppressed ? "text-gray-400" : "text-brand-dark"}`}>
+                      <div class={`font-bold ${r.nba.suppressed ? "text-gray-500" : "text-brand-dark"}`}>
                         {r.nba.suppressed ? "Suppressed" : r.nba.action.replaceAll("_", " ")}
                       </div>
-                      <div class="text-[10px] text-gray-400 mt-0.5">{r.nba.explanation}</div>
+                      <div class="text-[10px] text-gray-500 mt-0.5">{r.nba.explanation}</div>
                     </td>
                   </tr>
                 ))}
                 {report.customers.length === 0 && (
                   <tr>
-                    <td colspan="5" class="p-12 text-center text-gray-400 italic">
+                    <td colspan="5" class="p-12 text-center text-gray-500 italic">
                       No registered-customer order history yet. Rows appear as signed-in customers place orders.
                     </td>
                   </tr>

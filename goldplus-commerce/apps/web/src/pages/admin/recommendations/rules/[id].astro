@@ -107,13 +107,13 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
         <div>
           <h2 class="text-2xl font-black text-brand-dark tracking-tight flex items-center gap-3 flex-wrap">
             {rule.name}
-            <span class="text-xs font-black border border-gray-200 bg-gray-100 text-gray-500 px-2 py-0.5 rounded uppercase font-mono">ID: {rule.id.substring(0,8)}</span>
+            <span class="text-xs font-black border border-gray-200 bg-gray-100 text-gray-600 px-2 py-0.5 rounded uppercase font-mono">ID: {rule.id.substring(0,8)}</span>
           </h2>
           <p class="text-sm text-gray-500 mt-1">Modify recommendation rule parameters.</p>
         </div>
         <div class="flex items-center gap-3">
           <RuleStatusBadge status={rule.status} />
-          <a href="/admin/recommendations/rules" class="text-xs font-bold text-gray-400 hover:text-brand-dark border border-gray-200 px-3 py-1.5 rounded-lg bg-white transition-colors">
+          <a href="/admin/recommendations/rules" class="text-xs font-bold text-gray-600 hover:text-brand-dark border border-gray-200 px-3 py-1.5 rounded-lg bg-white transition-colors">
             &larr; View rules
           </a>
         </div>
@@ -156,7 +156,7 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
                    </div>
                  </FormField>
                  <div>
-                    <label class="block text-xs font-black uppercase tracking-wide text-gray-400 mb-2">Placement</label>
+                    <label class="block text-xs font-black uppercase tracking-wide text-gray-500 mb-2">Placement</label>
                     <select name="placement" required class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-brand-dark outline-none">
                       <option value="home_trending" selected={rule.placement==='home_trending'}>Home Trending</option>
                       <option value="product_related" selected={rule.placement==='product_related'}>Product Related</option>
@@ -169,12 +169,12 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
 
                <div class="bg-gray-50 p-5 rounded-2xl border border-gray-100 flex flex-col sm:flex-row sm:items-center gap-6">
                  <div>
-                    <span class="text-[9px] font-black text-gray-400 uppercase tracking-widest">Rule Type</span>
+                    <span class="text-[9px] font-black text-gray-500 uppercase tracking-widest">Rule Type</span>
                     <div class="font-black text-blue-700 text-sm mt-1 uppercase">{rule.type}</div>
                     <input type="hidden" name="type" value={rule.type} />
                  </div>
                  <div class="flex-grow border-t sm:border-t-0 sm:border-l border-gray-200 sm:pl-6 pt-4 sm:pt-0">
-                    <div class="text-[9px] font-black text-gray-400 uppercase tracking-widest">Action Parameters</div>
+                    <div class="text-[9px] font-black text-gray-500 uppercase tracking-widest">Action Parameters</div>
                     <div class="mt-3">
                       {rule.type === 'BOOST' && <FormField id="boost" name="boostScore" type="number" label="Score adjustment" defaultValue={String(rule.action.boostScore || 0)} />}
                       {rule.type === 'PIN' && <FormField id="pin" name="pinPosition" type="number" label="Position" defaultValue={String(rule.action.pinPosition || 1)} />}
@@ -191,7 +191,7 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
 
                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                  <div>
-                    <label class="block text-xs font-black uppercase tracking-wide text-gray-400 mb-2 flex items-center gap-2">
+                    <label class="block text-xs font-black uppercase tracking-wide text-gray-500 mb-2 flex items-center gap-2">
                       Target scope
                       <InfoTooltip text="The level of product coverage this rule should apply to." align="left" />
                     </label>
@@ -249,7 +249,7 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
           {/* Operations Controls */}
           {rule.status !== 'ARCHIVED' && (
             <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
-              <h3 class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">Status</h3>
+              <h3 class="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2">Status</h3>
               <div class="flex flex-col gap-3">
                 {rule.status === 'ACTIVE' ? (
                   <form method="POST">
@@ -276,20 +276,20 @@ const fmtDate = (iso?: string) => iso ? iso.split('T')[0] : '';
           {/* Rule Transition History */}
           <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
              <div class="px-5 py-4 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
-                <span class="text-[10px] font-black text-gray-400 tracking-widest uppercase">History</span>
+                <span class="text-[10px] font-black text-gray-500 tracking-widest uppercase">History</span>
                 <span class="text-[8px] font-mono font-bold border border-gray-200 bg-white px-1.5 py-0.5 rounded text-gray-600">{auditLogs.length} Logs</span>
              </div>
              <div class="divide-y divide-gray-100 max-h-[300px] overflow-y-auto text-xs">
                 {auditLogs.length === 0 ? (
-                   <div class="p-10 text-center text-gray-400 italic font-medium">No historical events.</div>
+                   <div class="p-10 text-center text-gray-500 italic font-medium">No historical events.</div>
                 ) : (
                   auditLogs.map(l => (
                     <div class="p-4 hover:bg-gray-50/80 transition-colors">
                        <div class="flex items-center justify-between mb-1 font-bold">
                           <span class={`${l.action==='CREATED'?'text-green-700':l.action==='UPDATED'?'text-blue-700':'text-gray-600'} uppercase tracking-wide text-[9px]`}>{l.action}</span>
-                          <span class="text-gray-400 text-[9px] font-medium">{new Date(l.performedAt).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala', month:'short', day:'numeric'})}</span>
+                          <span class="text-gray-500 text-[9px] font-medium">{new Date(l.performedAt).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala', month:'short', day:'numeric'})}</span>
                        </div>
-                       <div class="text-gray-400 truncate font-mono text-[8px] mt-1">ACTOR: {l.performedBy || 'System'}</div>
+                       <div class="text-gray-500 truncate font-mono text-[8px] mt-1">ACTOR: {l.performedBy || 'System'}</div>
                        {(l.action === 'UPDATED' || l.action === 'ROLLED_BACK') && l.before && rule.status !== 'ARCHIVED' && (
                          <form method="POST" class="mt-2">
                            <input type="hidden" name="_action" value="rollback" />

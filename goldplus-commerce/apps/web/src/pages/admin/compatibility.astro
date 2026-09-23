@@ -88,21 +88,21 @@ const nameOf = (id: string) => productNames.get(id) ?? `${id.slice(0, 8)}…`;
     <form method="POST" class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8 grid gap-4 md:grid-cols-2">
       <input type="hidden" name="intent" value="save" />
       <label class="block">
-        <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Product ID (anchor)</span>
+        <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Product ID (anchor)</span>
         <input name="productId" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-xs font-mono" placeholder="uuid" />
       </label>
       <label class="block">
-        <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Target product ID</span>
+        <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Target product ID</span>
         <input name="targetProductId" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-xs font-mono" placeholder="uuid" />
       </label>
       <label class="block">
-        <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Verdict</span>
+        <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Verdict</span>
         <select name="verdict" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
           {VERDICTS.map((v) => <option value={v}>{v}</option>)}
         </select>
       </label>
       <label class="block">
-        <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Note (required for conditional)</span>
+        <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Note (required for conditional)</span>
         <input name="note" maxlength="300" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="e.g. Requires USB-C to Lightning cable" />
       </label>
       <div class="flex items-center gap-3 md:col-span-2">
@@ -110,7 +110,7 @@ const nameOf = (id: string) => productNames.get(id) ?? `${id.slice(0, 8)}…`;
           <input type="checkbox" name="enabled" checked class="w-4 h-4 text-brand-primary border-gray-300 rounded" />
           Enabled
         </label>
-        <button type="submit" class="bg-brand-primary text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:opacity-90">Save mapping</button>
+        <button type="submit" class="bg-brand-primary text-brand-black text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:opacity-90">Save mapping</button>
       </div>
     </form>
 
@@ -118,7 +118,7 @@ const nameOf = (id: string) => productNames.get(id) ?? `${id.slice(0, 8)}…`;
       <div class="overflow-x-auto">
         <table class="w-full text-left border-collapse">
           <thead>
-            <tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest">
+            <tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-500 tracking-widest">
               <th class="p-5">Product</th>
               <th class="p-5">Target</th>
               <th class="p-5 text-center">Verdict</th>
@@ -147,7 +147,7 @@ const nameOf = (id: string) => productNames.get(id) ?? `${id.slice(0, 8)}…`;
               </tr>
             ))}
             {mappings.length === 0 && !loadFailed && (
-              <tr><td colspan="6" class="p-12 text-center text-gray-400 italic">No compatibility mappings declared yet.</td></tr>
+              <tr><td colspan="6" class="p-12 text-center text-gray-500 italic">No compatibility mappings declared yet.</td></tr>
             )}
             {loadFailed && (
               <tr><td colspan="6" class="p-12 text-center text-red-500 italic">Could not load mappings (service unavailable or permission denied).</td></tr>

@@ -72,7 +72,7 @@ function maskKey(k: string) { return k.length > 8 ? `${k.slice(0, 4)}…${k.slic
 
     <form method="GET" class="flex items-end gap-3 mb-8">
       <div class="flex-1">
-        <label for="q" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Search (canonical id or account id)</label>
+        <label for="q" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Search (canonical id or account id)</label>
         <input id="q" name="q" type="text" value={q} placeholder="paste a customer or account id" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold" />
       </div>
       <button type="submit" class="bg-brand-dark text-white text-xs font-bold px-5 py-2.5 rounded-xl hover:opacity-90">Search</button>
@@ -96,7 +96,7 @@ function maskKey(k: string) { return k.length > 8 ? `${k.slice(0, 4)}…${k.slic
               {p.riskFlags.map((f) => <span class="px-2.5 py-1 rounded-lg border bg-red-50 text-red-700 border-red-200">{f}</span>)}
             </div>
           </div>
-          <p class="text-[11px] text-gray-400 mt-1">{p.accountUserId ? `account ${p.accountUserId.slice(0, 8)}…` : "guest"} · last seen {p.lastSeen ? new Date(p.lastSeen).toLocaleDateString("en-UG", { timeZone: 'Africa/Kampala' }) : "—"}</p>
+          <p class="text-[11px] text-gray-500 mt-1">{p.accountUserId ? `account ${p.accountUserId.slice(0, 8)}…` : "guest"} · last seen {p.lastSeen ? new Date(p.lastSeen).toLocaleDateString("en-UG", { timeZone: 'Africa/Kampala' }) : "—"}</p>
         </a>
       ))}
     </div>

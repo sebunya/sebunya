@@ -163,7 +163,7 @@ const tierLabel: Record<number, string> = { 1: "One approver", 2: "Needs a secon
         <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8">
           <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
             <h3 class="text-sm font-black uppercase tracking-widest text-gray-500">Deliveries waiting for a cost</h3>
-            <span class="text-[10px] font-bold text-gray-400">{queues?.counts?.awaitingCost ?? 0} waiting</span>
+            <span class="text-[10px] font-bold text-gray-500">{queues?.counts?.awaitingCost ?? 0} waiting</span>
           </div>
           <p class="text-xs text-gray-500 mb-4">
             Every delivered order needs what the rider was actually paid. Without it the model cannot
@@ -182,10 +182,10 @@ const tierLabel: Record<number, string> = { 1: "One approver", 2: "Needs a secon
                   <input type="hidden" name="orderId" value={r.orderId} />
                   <div class="flex-1 min-w-[160px]">
                     <span class="block text-xs font-bold text-gray-700">{r.areaSlug ?? "area unknown"}</span>
-                    <span class="block text-[10px] text-gray-400 font-mono">{r.orderId}</span>
+                    <span class="block text-[10px] text-gray-500 font-mono">{r.orderId}</span>
                   </div>
                   <label class="block">
-                    <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Paid the rider</span>
+                    <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Paid the rider</span>
                     <input name="actualRiderCostUgx" inputmode="numeric" required
                       class="mt-0.5 w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
                   </label>
@@ -219,11 +219,11 @@ const tierLabel: Record<number, string> = { 1: "One approver", 2: "Needs a secon
               {versions.versions.map((v: any) => (
                 <div class="flex flex-wrap items-center justify-between gap-3 border border-gray-100 rounded-lg px-3 py-2">
                   <div class="min-w-[240px]">
-                    <span class={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${v.id === versions.publishedVersionId ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
+                    <span class={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${v.id === versions.publishedVersionId ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600"}`}>
                       {v.id === versions.publishedVersionId ? "Live" : v.status}
                     </span>
                     <span class="block text-xs text-gray-700 mt-1">{v.reason ?? "no reason recorded"}</span>
-                    <span class="block text-[10px] text-gray-400">{new Date(v.createdAt).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}</span>
+                    <span class="block text-[10px] text-gray-600">{new Date(v.createdAt).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}</span>
                   </div>
                   {v.id !== versions.publishedVersionId && v.status !== "draft" && (
                     <form method="POST" class="flex items-end gap-2">

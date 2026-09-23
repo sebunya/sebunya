@@ -121,10 +121,10 @@ const shortId = (id: string | null) => (id ? id.slice(0, 8) : '—');
               {rows.map((r) => (
                 <tr class="hover:bg-gray-50 transition-colors">
                   <td class="px-6 py-3 text-gray-500 whitespace-nowrap">{new Date(r.createdAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala',  day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
-                  <td class="px-6 py-3 font-mono text-gray-400" title={r.actorId ?? 'system'}>{shortId(r.actorId)}</td>
+                  <td class="px-6 py-3 font-mono text-gray-500" title={r.actorId ?? 'system'}>{shortId(r.actorId)}</td>
                   <td class="px-6 py-3 font-bold text-brand-dark text-sm">{r.action}</td>
-                  <td class="px-6 py-3 font-mono text-gray-400 uppercase tracking-wider">{r.entity}</td>
-                  <td class="px-6 py-3 font-mono text-gray-400" title={r.entityId}><a href={entityHistoryHref(r.entity, r.entityId)} class="hover:underline">{shortId(r.entityId)}</a></td>
+                  <td class="px-6 py-3 font-mono text-gray-500 uppercase tracking-wider">{r.entity}</td>
+                  <td class="px-6 py-3 font-mono text-gray-500" title={r.entityId}><a href={entityHistoryHref(r.entity, r.entityId)} class="hover:underline">{shortId(r.entityId)}</a></td>
                   <td class="px-6 py-3 text-gray-600">
                     {changeText(r) ? <details><summary class="cursor-pointer text-[11px] font-bold">old → new</summary><pre class="mt-2 max-w-md whitespace-pre-wrap break-words text-[10px] font-mono text-gray-500">{changeText(r)}</pre></details> : <span class="text-gray-300">—</span>}
                   </td>

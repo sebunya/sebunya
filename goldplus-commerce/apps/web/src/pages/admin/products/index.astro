@@ -93,13 +93,13 @@ const isFiltered = q || cat || stock || visible || appr;
 
     {/* ADVANCED BUSINESS FILTERS CONSOLE */}
     <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-5 mb-8">
-      <h3 class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-4 flex items-center gap-2">
+      <h3 class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-4 flex items-center gap-2">
          Advanced Filters
       </h3>
       <form method="GET" action="/admin/products" class="grid grid-cols-1 md:grid-cols-6 gap-4">
         
         <div class="md:col-span-2">
-          <label for="q" class="block text-[9px] font-bold text-gray-400 uppercase mb-1.5">Search Keywords</label>
+          <label for="q" class="block text-[9px] font-bold text-gray-500 uppercase mb-1.5">Search Keywords</label>
           <input 
             type="text" 
             name="q" 
@@ -111,7 +111,7 @@ const isFiltered = q || cat || stock || visible || appr;
         </div>
 
         <div>
-          <label for="cat" class="block text-[9px] font-bold text-gray-400 uppercase mb-1.5">Category</label>
+          <label for="cat" class="block text-[9px] font-bold text-gray-500 uppercase mb-1.5">Category</label>
           <select name="cat" id="cat" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
             <option value="">All</option>
             {categories.map(c => <option value={c} selected={cat === c}>{c}</option>)}
@@ -119,7 +119,7 @@ const isFiltered = q || cat || stock || visible || appr;
         </div>
 
         <div>
-          <label for="stock" class="block text-[9px] font-bold text-gray-400 uppercase mb-1.5">Stock</label>
+          <label for="stock" class="block text-[9px] font-bold text-gray-500 uppercase mb-1.5">Stock</label>
           <select name="stock" id="stock" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
             <option value="">All</option>
             {stockStatuses.map(s => <option value={s} selected={stock === s}>{s.replace('_', ' ')}</option>)}
@@ -127,7 +127,7 @@ const isFiltered = q || cat || stock || visible || appr;
         </div>
 
         <div>
-          <label for="visible" class="block text-[9px] font-bold text-gray-400 uppercase mb-1.5">Visibility</label>
+          <label for="visible" class="block text-[9px] font-bold text-gray-500 uppercase mb-1.5">Visibility</label>
           <select name="visible" id="visible" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
             <option value="">All</option>
             <option value="true" selected={visible === 'true'}>Active</option>
@@ -136,7 +136,7 @@ const isFiltered = q || cat || stock || visible || appr;
         </div>
 
         <div>
-          <label for="appr" class="block text-[9px] font-bold text-gray-400 uppercase mb-1.5">Approval</label>
+          <label for="appr" class="block text-[9px] font-bold text-gray-500 uppercase mb-1.5">Approval</label>
           <select name="appr" id="appr" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
             <option value="">All</option>
             {approvalStatuses.map(s => <option value={s} selected={appr === s}>{s}</option>)}
@@ -161,7 +161,7 @@ const isFiltered = q || cat || stock || visible || appr;
       <div class="overflow-x-auto">
         <table class="w-full text-left border-collapse">
           <thead>
-            <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100">
+            <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-500 tracking-widest border-b border-gray-100">
               <th class="p-5 w-16">Image</th>
               <th class="p-5">Product Details</th>
               <th class="p-5">Category & SKU</th>
@@ -185,13 +185,13 @@ const isFiltered = q || cat || stock || visible || appr;
                 </td>
                 <td class="p-5">
                   <div class="font-bold text-brand-dark text-sm max-w-xs truncate">{p.name}</div>
-                  <div class="text-[9px] text-gray-400 mt-1 flex items-center gap-2">
-                     <span class="font-mono tracking-tighter bg-gray-100 px-1.5 py-0.5 rounded">ID: {p.id.slice(0, 8)}…</span>
+                  <div class="text-[9px] text-gray-500 mt-1 flex items-center gap-2">
+                     <span class="font-mono tracking-tighter bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">ID: {p.id.slice(0, 8)}…</span>
                   </div>
                 </td>
                 <td class="p-5">
                   <div class="text-brand-dark font-bold">{p.category || 'Uncategorized'}</div>
-                  <div class="text-[9px] font-mono font-bold text-gray-400 mt-0.5">SKU: {p.sku}</div>
+                  <div class="text-[9px] font-mono font-bold text-gray-600 mt-0.5">SKU: {p.sku}</div>
                 </td>
                 <td class="p-5">
                    <span class={`inline-block px-2 py-0.5 rounded-full font-black text-[8px] uppercase border tracking-wider ${
@@ -205,10 +205,10 @@ const isFiltered = q || cat || stock || visible || appr;
                 </td>
                 <td class="p-5 text-center">
                   <div class="flex flex-col items-center gap-1">
-                    <span class={`px-2 py-0.5 rounded font-black text-[9px] uppercase border ${p.active ? 'bg-brand-dark text-white border-brand-dark' : 'bg-gray-100 text-gray-400 border-gray-200'}`}>
+                    <span class={`px-2 py-0.5 rounded font-black text-[9px] uppercase border ${p.active ? 'bg-brand-dark text-white border-brand-dark' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>
                       {p.active ? 'Active' : 'Hidden'}
                     </span>
-                    <span class="text-[8px] font-bold text-gray-400 tracking-widest uppercase mt-0.5">
+                    <span class="text-[8px] font-bold text-gray-600 tracking-widest uppercase mt-0.5">
                       {p.approvalStatus || 'Draft'}
                     </span>
                   </div>

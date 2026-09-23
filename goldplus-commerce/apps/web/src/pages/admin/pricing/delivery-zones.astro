@@ -139,7 +139,7 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
       <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8">
         <div class="flex flex-wrap items-baseline justify-between gap-2 mb-1">
           <h3 class="text-sm font-black uppercase tracking-widest text-gray-500">Band pricing policy</h3>
-          <span class="text-[10px] font-bold text-gray-400">{intel.policy.stored ? "Operator-saved" : "Seed defaults — review and save to own these numbers"}</span>
+          <span class="text-[10px] font-bold text-gray-500">{intel.policy.stored ? "Operator-saved" : "Seed defaults — review and save to own these numbers"}</span>
         </div>
         <p class="text-xs text-gray-500 mb-4 max-w-3xl">
           Eight numbers price the whole country as <strong>estimates</strong>: boda rings inside Greater Kampala,
@@ -159,13 +159,13 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
             ["remoteFeeUgx", "Remote 520+ km", intel.policy.remoteFeeUgx],
           ] as Array<[string, string, number]>).map(([name, label, value]) => (
             <label class="block">
-              <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">{label}</span>
+              <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">{label}</span>
               <input name={name} required inputmode="numeric" value={String(value)}
                 class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
             </label>
           ))}
           <label class="block col-span-2">
-            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Note (why these numbers)</span>
+            <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Note (why these numbers)</span>
             <input name="note" maxlength="300" value={intel.policy.note ?? ""}
               class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
           </label>
@@ -183,12 +183,12 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
     <form method="POST" class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8 grid gap-4 md:grid-cols-4 items-end">
       <input type="hidden" name="intent" value="save" />
       <label class="block md:col-span-2">
-        <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">District</span>
+        <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">District</span>
         <input name="district" required maxlength="100" placeholder="e.g. Kampala"
           class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
       </label>
       <label class="block">
-        <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Fee (UGX)</span>
+        <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Fee (UGX)</span>
         <input name="feeUgx" required inputmode="numeric" pattern="[0-9,]*" placeholder="e.g. 10000"
           class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
       </label>
@@ -197,7 +197,7 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
           <input type="checkbox" name="enabled" checked class="w-4 h-4 text-brand-primary border-gray-300 rounded" />
           Enabled
         </label>
-        <button type="submit" class="bg-brand-primary text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:opacity-90">
+        <button type="submit" class="bg-brand-primary text-brand-black text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:opacity-90">
           Save zone
         </button>
       </div>
@@ -206,7 +206,7 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
     <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
       <table class="w-full text-left border-collapse">
         <thead>
-          <tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest">
+          <tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-500 tracking-widest">
             <th class="p-5">District</th>
             <th class="p-5 text-right">Delivery Fee</th>
             <th class="p-5 text-center">Status</th>
@@ -236,7 +236,7 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
           ))}
           {zones.length === 0 && !loadFailed && (
             <tr>
-              <td colspan="4" class="p-12 text-center text-gray-400 italic">
+              <td colspan="4" class="p-12 text-center text-gray-500 italic">
                 No delivery zones configured yet. Checkout will show delivery fees as "confirmed after order".
               </td>
             </tr>
@@ -268,7 +268,7 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
         <div class="overflow-x-auto">
           <table class="w-full text-left border-collapse min-w-[880px]">
             <thead>
-              <tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest">
+              <tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-500 tracking-widest">
                 <th class="px-5 py-3">District</th>
                 <th class="px-5 py-3 text-right">Road km</th>
                 <th class="px-5 py-3">Band</th>
@@ -296,7 +296,7 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
                         {formatter.format(r.effective.feeUgx)} · {r.effective.source}
                       </span>
                     ) : (
-                      <span class="text-gray-400 italic">no quote</span>
+                      <span class="text-gray-500 italic">no quote</span>
                     )}
                   </td>
                   <td class="px-5 py-2.5 text-right">

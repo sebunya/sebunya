@@ -166,7 +166,7 @@ const seed = live?.content ?? "";
           <select name="from" class="rounded-lg border border-gray-300 px-2 py-1.5 text-xs">
             {versions.map((v) => <option value={str(v.id)} selected={v.id === diffFrom}>v{str(v.version)} · {str(v.status)}</option>)}
           </select>
-          <span class="text-xs text-gray-400">→</span>
+          <span class="text-xs text-gray-500">→</span>
           <select name="to" class="rounded-lg border border-gray-300 px-2 py-1.5 text-xs">
             {versions.map((v) => <option value={str(v.id)} selected={v.id === diffTo}>v{str(v.version)} · {str(v.status)}</option>)}
           </select>

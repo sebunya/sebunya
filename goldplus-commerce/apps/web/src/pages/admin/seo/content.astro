@@ -94,7 +94,7 @@ const listText = (v: unknown) => (Array.isArray(v) ? v.join(", ") || "—" : str
       {gaps.length > 0 && (
         <div class="overflow-x-auto mb-6">
           <table class="w-full text-left text-xs">
-            <thead><tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
+            <thead><tr class="text-[10px] font-black uppercase tracking-widest text-gray-500 border-b border-gray-200">
               <th class="py-2 pr-4">Search</th><th class="py-2 pr-4">Our page (position)</th><th class="py-2 pr-4">Page that wins</th><th class="py-2 pr-4">What is missing</th><th class="py-2 pr-4">Action</th><th class="py-2">Status</th>
             </tr></thead>
             <tbody>{gaps.map((g) => (
@@ -150,7 +150,7 @@ const listText = (v: unknown) => (Array.isArray(v) ? v.join(", ") || "—" : str
       {ledger.length > 0 && (
         <div class="overflow-x-auto mb-6">
           <table class="w-full text-left text-xs">
-            <thead><tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
+            <thead><tr class="text-[10px] font-black uppercase tracking-widest text-gray-500 border-b border-gray-200">
               <th class="py-2 pr-4">When</th><th class="py-2 pr-4">Type</th><th class="py-2 pr-4">Target</th><th class="py-2">Why</th>
             </tr></thead>
             <tbody>{ledger.map((l) => (
@@ -190,7 +190,7 @@ const listText = (v: unknown) => (Array.isArray(v) ? v.join(", ") || "—" : str
       {experiments.length > 0 && (
         <div class="overflow-x-auto mb-6">
           <table class="w-full text-left text-xs">
-            <thead><tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
+            <thead><tr class="text-[10px] font-black uppercase tracking-widest text-gray-500 border-b border-gray-200">
               <th class="py-2 pr-4">Name</th><th class="py-2 pr-4">Hypothesis</th><th class="py-2 pr-4">Change</th><th class="py-2 pr-4">Metric</th><th class="py-2 pr-4">Pages</th><th class="py-2">Decision</th>
             </tr></thead>
             <tbody>{experiments.map((e) => (

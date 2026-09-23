@@ -58,7 +58,7 @@ const FIELDS: Array<[keyof Config, string, string, 'input' | 'textarea']> = [
 
 <AdminLayout title="Finder settings" description="The wording, ordering and honesty rules of the public battery finder." activePath="/admin/batteries">
   <div class="container mx-auto px-6 lg:px-8 max-w-4xl">
-    <p class="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-1"><a href="/admin/batteries" class="hover:text-brand-primary">Batteries</a> / Finder settings</p>
+    <p class="text-[10px] uppercase font-black tracking-widest text-gray-500 mb-1"><a href="/admin/batteries" class="hover:text-brand-primary">Batteries</a> / Finder settings</p>
     <div class="mb-6 pb-6 border-b border-gray-200">
       <h2 class="text-2xl font-black text-brand-dark tracking-tight">Finder settings</h2>
       <p class="text-sm text-gray-500 mt-1">
@@ -80,7 +80,7 @@ const FIELDS: Array<[keyof Config, string, string, 'input' | 'textarea']> = [
         <input type="hidden" name="expectedVersion" value={version} />
         {FIELDS.map(([key, label, hint, kind]) => (
           <label class="block">
-            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">{label}</span>
+            <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">{label}</span>
             {hint && <span class="block text-xs text-gray-500 mt-0.5">{hint}</span>}
             {kind === 'textarea'
               ? <textarea name={key} rows="3" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">{String(c[key])}</textarea>
@@ -89,7 +89,7 @@ const FIELDS: Array<[keyof Config, string, string, 'input' | 'textarea']> = [
         ))}
         <div class="grid md:grid-cols-3 gap-4 border-t border-gray-100 pt-4">
           <label class="block">
-            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Brand order</span>
+            <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Brand order</span>
             <select name="brandOrderMode" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
               <option value="FEATURED_THEN_COVERAGE" selected={c.brandOrderMode === 'FEATURED_THEN_COVERAGE'}>Featured first, then coverage and demand</option>
               <option value="MANUAL" selected={c.brandOrderMode === 'MANUAL'}>Exactly the order I set</option>
@@ -97,7 +97,7 @@ const FIELDS: Array<[keyof Config, string, string, 'input' | 'textarea']> = [
             </select>
           </label>
           <label class="block">
-            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Verified fits before the page is indexed</span>
+            <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Verified fits before the page is indexed</span>
             <input name="minVerifiedFitsForIndexing" type="number" min="0" max="1000" value={c.minVerifiedFitsForIndexing} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
           </label>
           <label class="flex items-start gap-2 text-xs font-bold text-gray-600 pt-6">
@@ -105,7 +105,7 @@ const FIELDS: Array<[keyof Config, string, string, 'input' | 'textarea']> = [
             <span>Show fits a supplier lists but we have not checked, labelled as unchecked. Turn this off to show only fits we have verified ourselves.</span>
           </label>
         </div>
-        <button type="submit" class="bg-brand-primary text-white text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Save finder wording</button>
+        <button type="submit" class="bg-brand-primary text-brand-black text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Save finder wording</button>
       </form>
     )}
   </div>

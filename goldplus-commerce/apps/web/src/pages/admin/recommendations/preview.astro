@@ -75,7 +75,7 @@ const why = (c: PreviewItem) =>
 <AdminLayout title="Preview" description="What a visitor would see on any placement — and why each product is there.">
   <div class="container mx-auto px-6 lg:px-8 max-w-4xl pb-16">
     <div class="mb-8 pb-6 border-b border-gray-200">
-      <a href="/admin/recommendations" class="text-xs font-black uppercase tracking-widest text-gray-400 hover:text-gray-700">← Recommendations</a>
+      <a href="/admin/recommendations" class="text-xs font-black uppercase tracking-widest text-gray-500 hover:text-gray-700">← Recommendations</a>
       <h2 class="text-2xl font-black text-brand-dark tracking-tight mt-2">Preview a placement</h2>
       <p class="text-sm text-gray-500 mt-1 max-w-2xl">
         Real catalogue, live rules, nothing saved. Synthetic context is clearly labelled — this is a
@@ -88,26 +88,26 @@ const why = (c: PreviewItem) =>
     <form method="POST" class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-4">
       <div class="grid sm:grid-cols-2 gap-4">
         <label class="block">
-          <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Placement</span>
+          <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Placement</span>
           <select name="placement" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
             {PLACEMENTS.map((p) => <option value={p.id} selected={val("placement") === p.id}>{p.label}</option>)}
           </select>
         </label>
         <label class="block">
-          <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Anchor product (product-page placements)</span>
+          <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Anchor product (product-page placements)</span>
           <select name="anchorProduct" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
             {products.length === 0 && <option value="">Catalogue unreachable</option>}
             {products.map((p) => <option value={p.id} selected={val("anchorProduct") === p.id}>{p.name}</option>)}
           </select>
         </label>
         <label class="block">
-          <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Category (category placement)</span>
+          <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Category (category placement)</span>
           <select name="category" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
             {categoryNames.map((c) => <option value={c} selected={val("category") === c}>{c}</option>)}
           </select>
         </label>
         <label class="block">
-          <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Cart contents (cart placement — pick any)</span>
+          <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Cart contents (cart placement — pick any)</span>
           <select name="cartProducts" multiple size="4" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
             {products.map((p) => <option value={p.id} selected={cartSelection.includes(p.id)}>{p.name}</option>)}
           </select>
@@ -129,7 +129,7 @@ const why = (c: PreviewItem) =>
 
         <div class="grid md:grid-cols-2 gap-6">
           <div>
-            <h4 class="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-2">Default ranking</h4>
+            <h4 class="text-[10px] uppercase font-black tracking-widest text-gray-500 mb-2">Default ranking</h4>
             <ol class="space-y-1">
               {(result.before as PreviewItem[]).map((c, i) => (
                 <li class="border-b border-gray-100 py-1.5">
@@ -137,11 +137,11 @@ const why = (c: PreviewItem) =>
                   <span class="block text-[11px] text-gray-500">{why(c)}</span>
                 </li>
               ))}
-              {result.before.length === 0 && <li class="text-sm text-gray-400">Empty.</li>}
+              {result.before.length === 0 && <li class="text-sm text-gray-500">Empty.</li>}
             </ol>
           </div>
           <div>
-            <h4 class="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-2">With active rules</h4>
+            <h4 class="text-[10px] uppercase font-black tracking-widest text-gray-500 mb-2">With active rules</h4>
             <ol class="space-y-1">
               {(result.after as PreviewItem[]).map((c, i) => {
                 const move = result!.guardrails?.rankMoves.find((m) => m.productId === c.productId);
@@ -149,7 +149,7 @@ const why = (c: PreviewItem) =>
                   <li class="border-b border-gray-100 py-1.5">
                     <div class="flex justify-between">
                       <span class="text-sm text-gray-800">{i + 1}. {c.name}</span>
-                      {move && <span class="text-[10px] font-black uppercase text-gray-400">{move.from > move.to ? `↑ ${move.from + 1}→${move.to + 1}` : `↓ ${move.from + 1}→${move.to + 1}`}</span>}
+                      {move && <span class="text-[10px] font-black uppercase text-gray-500">{move.from > move.to ? `↑ ${move.from + 1}→${move.to + 1}` : `↓ ${move.from + 1}→${move.to + 1}`}</span>}
                     </div>
                     <span class="block text-[11px] text-gray-500">{why(c)}</span>
                   </li>

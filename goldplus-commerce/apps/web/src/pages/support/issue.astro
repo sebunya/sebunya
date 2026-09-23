@@ -96,7 +96,7 @@ if (Astro.request.method === 'POST') {
   <div class="container mx-auto px-4 lg:px-8 py-16">
     <div class="max-w-2xl mx-auto">
       <h1 class="text-2xl sm:text-3xl font-black text-gray-900 mb-2">Report a technical issue</h1>
-      <p class="text-slate-500 mb-8 leading-relaxed font-medium text-sm sm:text-base">
+      <p class="text-slate-600 mb-8 leading-relaxed font-medium text-sm sm:text-base">
         Describe what's happening so our technical team can help you. The more detail, the faster we can resolve it.
       </p>
 
@@ -106,7 +106,7 @@ if (Astro.request.method === 'POST') {
         <div class="bg-white p-8 md:p-10 rounded-2xl border border-slate-200/80 shadow-xs space-y-6">
           
           <fieldset class="space-y-5">
-            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Product & Issue Details</legend>
+            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Product & Issue Details</legend>
             <FormField 
               id="subject" 
               name="subject" 
@@ -141,7 +141,7 @@ if (Astro.request.method === 'POST') {
           </fieldset>
 
           <fieldset class="space-y-4 pt-4 border-t border-slate-100">
-            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">Location Context (Optional)</legend>
+            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Location Context (Optional)</legend>
             <UgandaLocationPicker 
                name="locationJson" 
                label="Location related to this issue" 
@@ -160,7 +160,7 @@ if (Astro.request.method === 'POST') {
           </fieldset>
 
           <fieldset class="pt-4 border-t border-slate-100">
-             <legend class="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Your Contact Details</legend>
+             <legend class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-3">Your Contact Details</legend>
              <div class="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <FormField 
                   id="email" 
@@ -183,7 +183,7 @@ if (Astro.request.method === 'POST') {
                   errorMessage={errors.phone}
                 />
              </div>
-             <p class="text-xs text-slate-400 mt-3 font-medium">We use these only to follow up about your support request.</p>
+             <p class="text-xs text-slate-500 mt-3 font-medium">We use these only to follow up about your support request.</p>
           </fieldset>
         </div>
 
@@ -191,7 +191,7 @@ if (Astro.request.method === 'POST') {
           <button type="submit" id="submitBtn" class="bg-brand-primary text-gray-955 px-8 py-2.5 rounded-full font-bold hover:shadow-lg hover:shadow-brand-primary/20 transition-all text-xs tracking-wider uppercase shadow-xs cursor-pointer active:scale-98">
             Submit issue
           </button>
-          <a href="/support" class="text-xs font-bold text-slate-400 hover:text-gray-900 transition-colors hover:underline">Cancel</a>
+          <a href="/support" class="text-xs font-bold text-slate-600 hover:text-gray-900 transition-colors hover:underline">Cancel</a>
         </div>
       </form>
     </div>

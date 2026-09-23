@@ -222,27 +222,27 @@ const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-
     {summary && (
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
         <div class="bg-white border border-gray-200 rounded-xl p-5">
-          <p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Spend facts</p>
+          <p class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Spend facts</p>
           <p class="text-2xl font-black text-brand-dark">{summary.totalFacts}</p>
         </div>
         <div class="bg-white border border-gray-200 rounded-xl p-5">
-          <p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Campaigns / sources</p>
-          <p class="text-2xl font-black text-brand-dark">{summary.distinctCampaigns} <span class="text-sm text-gray-400">/ {summary.distinctSources}</span></p>
+          <p class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Campaigns / sources</p>
+          <p class="text-2xl font-black text-brand-dark">{summary.distinctCampaigns} <span class="text-sm text-gray-500">/ {summary.distinctSources}</span></p>
         </div>
         <div class="bg-white border border-gray-200 rounded-xl p-5">
-          <p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Newest spend day</p>
+          <p class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Newest spend day</p>
           <p class="text-lg font-black text-brand-dark">{summary.newestSpendDate ?? "—"}</p>
           {summary.spendDataAgeDays !== null && (
-            <p class={`text-xs mt-1 font-bold ${summary.spendDataAgeDays > 7 ? "text-amber-700" : "text-gray-400"}`}>
+            <p class={`text-xs mt-1 font-bold ${summary.spendDataAgeDays > 7 ? "text-amber-700" : "text-gray-500"}`}>
               {summary.spendDataAgeDays === 0 ? "today" : `${summary.spendDataAgeDays} day(s) old`}
               {summary.spendDataAgeDays > 7 && " — a feed that stopped is not a feed of zero"}
             </p>
           )}
         </div>
         <div class="bg-white border border-gray-200 rounded-xl p-5">
-          <p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Last ingested</p>
+          <p class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Last ingested</p>
           <p class="text-lg font-black text-brand-dark">{fmtDate(summary.newestIngestedAt)}</p>
-          {summary.currencies.length > 0 && <p class="text-xs text-gray-400 mt-1">currency: {summary.currencies.join(", ")}</p>}
+          {summary.currencies.length > 0 && <p class="text-xs text-gray-500 mt-1">currency: {summary.currencies.join(", ")}</p>}
         </div>
       </div>
     )}
@@ -251,7 +251,7 @@ const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-
     <section aria-labelledby="import-heading" class="bg-white border border-gray-200 rounded-2xl p-6 lg:p-8 mb-10">
       <h3 id="import-heading" class="text-sm font-black uppercase tracking-widest text-gray-500 mb-1">Import a spend file</h3>
       <p class="text-sm text-gray-500 mb-5 max-w-3xl">
-        One fact per line: <code class="text-xs bg-gray-100 px-1.5 py-0.5 rounded">date,channel,platform,account,campaign,spend,tax,currency,adSet,ad</code>
+        One fact per line: <code class="text-xs bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">date,channel,platform,account,campaign,spend,tax,currency,adSet,ad</code>
         — the first six matter, the rest are optional (tax defaults 0, currency UGX). Spend is whole UGX.
         <strong> Check the file</strong> validates everything and shows exactly what it would do, writing nothing.
         <strong> Apply</strong> writes every row or none — a half-applied spend file would make ROAS a blend of old and new
@@ -359,7 +359,7 @@ const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-
         <div class="overflow-x-auto">
           <table class="w-full text-left text-xs">
             <thead>
-              <tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
+              <tr class="text-[10px] font-black uppercase tracking-widest text-gray-500 border-b border-gray-200">
                 <th class="py-2 pr-4">Date</th>
                 <th class="py-2 pr-4">Platform / account</th>
                 <th class="py-2 pr-4">Campaign</th>
@@ -373,8 +373,8 @@ const fmtDate = (iso: string | null) => (iso ? new Date(iso).toLocaleString("en-
               {summary.recentFacts.map((f) => (
                 <tr class="border-b border-gray-100">
                   <td class="py-2 pr-4 font-mono">{f.spendDate}</td>
-                  <td class="py-2 pr-4">{f.platform} <span class="text-gray-400">/ {f.account}</span></td>
-                  <td class="py-2 pr-4">{f.campaign}{f.adSetOrGroup && <span class="text-gray-400"> · {f.adSetOrGroup}</span>}</td>
+                  <td class="py-2 pr-4">{f.platform} <span class="text-gray-500">/ {f.account}</span></td>
+                  <td class="py-2 pr-4">{f.campaign}{f.adSetOrGroup && <span class="text-gray-500"> · {f.adSetOrGroup}</span>}</td>
                   <td class="py-2 pr-4 text-right font-bold tabular-nums">{money(f.spendMinor, f.currency)}</td>
                   <td class="py-2 pr-4 text-right tabular-nums">{money(f.taxOrFeeMinor, f.currency)}</td>
                   <td class="py-2 pr-4 text-gray-500">{f.source}</td>

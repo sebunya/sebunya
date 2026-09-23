@@ -186,7 +186,7 @@ const counters: Array<[string, keyof NonNullable<typeof funnel>["day"]]> = [
         {paymentQuery && queue && queue.rows.length > 0 && (
           <p class="mb-3 text-xs font-bold text-slate-600">{queue.rows.length} attempt{queue.rows.length === 1 ? '' : 's'} for <span class="font-mono">{paymentQuery}</span></p>
         )}
-        {queue && <span class="text-[10px] font-bold text-gray-400">{queue.counts.total} recent · {queue.counts.disagreements} disagreement(s)</span>}
+        {queue && <span class="text-[10px] font-bold text-gray-500">{queue.counts.total} recent · {queue.counts.disagreements} disagreement(s)</span>}
       </div>
       {queue?.note && <p class={`text-xs mb-3 ${queue.counts.disagreements > 0 ? "text-red-700 font-bold" : "text-gray-500"}`}>{queue.note}</p>}
       {!queue || queue.rows.length === 0 ? (
@@ -272,7 +272,7 @@ const counters: Array<[string, keyof NonNullable<typeof funnel>["day"]]> = [
               <span class="block text-[11px] text-gray-500">{e.help}</span>
             </div>
             <label class="block">
-              <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">{e.unit}</span>
+              <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">{e.unit}</span>
               <input name="value" value={e.value ?? ""} placeholder="unset"
                 class="mt-0.5 w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             </label>

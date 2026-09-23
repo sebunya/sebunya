@@ -62,7 +62,7 @@ const LINES = [0, 1, 2, 3, 4, 5, 6, 7];
 
 <AdminLayout title="Battery stock" description="Receive a delivery, count the shelf, and see every movement." activePath="/admin/batteries">
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
-    <p class="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-1"><a href="/admin/batteries" class="hover:text-brand-primary">Batteries</a> / Stock</p>
+    <p class="text-[10px] uppercase font-black tracking-widest text-gray-500 mb-1"><a href="/admin/batteries" class="hover:text-brand-primary">Batteries</a> / Stock</p>
     <div class="mb-6 pb-6 border-b border-gray-200">
       <h2 class="text-2xl font-black text-brand-dark tracking-tight">Stock</h2>
       <p class="text-sm text-gray-500 mt-1 max-w-3xl">
@@ -80,19 +80,19 @@ const LINES = [0, 1, 2, 3, 4, 5, 6, 7];
       <form method="POST" class="space-y-3">
         <input type="hidden" name="intent" value="receipt-create" />
         <div class="grid gap-3 md:grid-cols-4">
-          <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Supplier</span>
+          <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Supplier</span>
             <input name="supplierName" required maxlength="160" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-          <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Invoice or delivery note</span>
+          <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Invoice or delivery note</span>
             <input name="supplierReference" maxlength="120" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-          <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Location</span>
+          <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Location</span>
             <select name="locationCode" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
               {locations.map((l) => <option value={l.code} selected={l.isDefault}>{l.name}</option>)}
             </select></label>
-          <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Note</span>
+          <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Note</span>
             <input name="notes" maxlength="1000" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
         </div>
         <table class="w-full text-left border-collapse text-xs">
-          <thead><tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest"><th class="p-3">Battery</th><th class="p-3">Or scan a code</th><th class="p-3 w-28">Quantity</th><th class="p-3 w-32">Unit cost UGX</th></tr></thead>
+          <thead><tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-500 tracking-widest"><th class="p-3">Battery</th><th class="p-3">Or scan a code</th><th class="p-3 w-28">Quantity</th><th class="p-3 w-32">Unit cost UGX</th></tr></thead>
           <tbody>
             {LINES.map(() => (
               <tr class="border-b border-gray-50">
@@ -104,7 +104,7 @@ const LINES = [0, 1, 2, 3, 4, 5, 6, 7];
             ))}
           </tbody>
         </table>
-        <button type="submit" class="bg-brand-primary text-white text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Draft the receipt</button>
+        <button type="submit" class="bg-brand-primary text-brand-black text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Draft the receipt</button>
       </form>
     </section>
 
@@ -118,7 +118,7 @@ const LINES = [0, 1, 2, 3, 4, 5, 6, 7];
                 <span class="font-black text-brand-dark">{r.supplierName}{r.supplierReference ? ` · ${r.supplierReference}` : ''}</span>
                 <span class={`text-[9px] font-black px-2 py-1 rounded uppercase tracking-widest border ${r.status === 'APPLIED' ? 'bg-green-50 text-green-800 border-green-200' : r.status === 'CANCELLED' ? 'bg-slate-50 text-slate-500 border-slate-200' : 'bg-amber-50 text-amber-900 border-amber-200'}`}>{r.status}</span>
               </div>
-              <p class="text-gray-400 mt-1">{when(r.createdAt)} · {r.lines.length} line(s)</p>
+              <p class="text-gray-500 mt-1">{when(r.createdAt)} · {r.lines.length} line(s)</p>
               <ul class="mt-2 space-y-1 text-gray-600">
                 {r.lines.map((l) => <li>{l.canonicalCode ?? l.scannedCode ?? 'unmatched'} × {l.quantity}{l.matchKind !== 'EXISTING' ? ` (${l.matchKind.toLowerCase()})` : ''}</li>)}
               </ul>
@@ -143,13 +143,13 @@ const LINES = [0, 1, 2, 3, 4, 5, 6, 7];
         <form method="POST" class="space-y-3">
           <input type="hidden" name="intent" value="count-create" />
           <div class="flex gap-3">
-            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Kind</span>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Kind</span>
               <select name="countType" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"><option value="CYCLE">Cycle count</option><option value="FULL">Full count</option></select></label>
-            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Location</span>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Location</span>
               <select name="locationCode" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm">{locations.map((l) => <option value={l.code} selected={l.isDefault}>{l.name}</option>)}</select></label>
           </div>
           <table class="w-full text-left border-collapse text-xs">
-            <thead><tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest"><th class="p-2">Battery</th><th class="p-2 w-24">Counted</th><th class="p-2">Reason if it differs</th></tr></thead>
+            <thead><tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-500 tracking-widest"><th class="p-2">Battery</th><th class="p-2 w-24">Counted</th><th class="p-2">Reason if it differs</th></tr></thead>
             <tbody>
               {LINES.slice(0, 6).map(() => (
                 <tr class="border-b border-gray-50">
@@ -160,7 +160,7 @@ const LINES = [0, 1, 2, 3, 4, 5, 6, 7];
               ))}
             </tbody>
           </table>
-          <button type="submit" class="bg-brand-primary text-white text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Draft the count</button>
+          <button type="submit" class="bg-brand-primary text-brand-black text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Draft the count</button>
         </form>
         <ul class="divide-y divide-gray-50 mt-4 text-xs">
           {counts.map((c) => (
@@ -169,7 +169,7 @@ const LINES = [0, 1, 2, 3, 4, 5, 6, 7];
                 <span class="font-black text-brand-dark">{c.countType.toLowerCase()} count · {c.lines.length} line(s)</span>
                 <span class={`text-[9px] font-black px-2 py-1 rounded uppercase tracking-widest border ${c.status === 'APPLIED' ? 'bg-green-50 text-green-800 border-green-200' : c.status === 'CANCELLED' ? 'bg-slate-50 text-slate-500 border-slate-200' : 'bg-amber-50 text-amber-900 border-amber-200'}`}>{c.status}</span>
               </div>
-              <p class="text-gray-400 mt-1">{when(c.createdAt)}</p>
+              <p class="text-gray-500 mt-1">{when(c.createdAt)}</p>
               {c.status === 'DRAFT' && (
                 <div class="mt-2 flex gap-2">
                   <form method="POST"><input type="hidden" name="intent" value="count-apply" /><input type="hidden" name="countId" value={c.id} />
@@ -190,7 +190,7 @@ const LINES = [0, 1, 2, 3, 4, 5, 6, 7];
       <h3 class="text-sm font-black text-brand-dark px-5 py-4 border-b border-gray-100">Every recent movement</h3>
       <div class="overflow-x-auto">
         <table class="w-full text-left border-collapse">
-          <thead><tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest">
+          <thead><tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-500 tracking-widest">
             <th class="p-4">When</th><th class="p-4">Battery</th><th class="p-4">Movement</th><th class="p-4 text-right">Change</th><th class="p-4 text-right">Balance</th><th class="p-4">Reason</th>
           </tr></thead>
           <tbody class="text-xs">
@@ -204,7 +204,7 @@ const LINES = [0, 1, 2, 3, 4, 5, 6, 7];
                 <td class="p-4 text-gray-600">{m.reason}</td>
               </tr>
             ))}
-            {movements.length === 0 && movementsRes.ok && <tr><td colspan="6" class="p-12 text-center text-gray-400 italic">No stock has been moved yet.</td></tr>}
+            {movements.length === 0 && movementsRes.ok && <tr><td colspan="6" class="p-12 text-center text-gray-500 italic">No stock has been moved yet.</td></tr>}
           </tbody>
         </table>
       </div>

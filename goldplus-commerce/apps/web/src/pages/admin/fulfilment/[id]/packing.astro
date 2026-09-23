@@ -156,7 +156,7 @@ function derivedChip(d: string) {
 >
   <div class="container mx-auto px-6 lg:px-8 max-w-5xl">
     <div class="mb-6">
-      <a href="/admin/fulfilment" class="text-xs font-bold text-gray-400 hover:text-brand-dark">← Fulfilment queue</a>
+      <a href="/admin/fulfilment" class="text-xs font-bold text-gray-600 hover:text-brand-dark">← Fulfilment queue</a>
     </div>
 
     <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
@@ -241,7 +241,7 @@ function derivedChip(d: string) {
                 <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
                   <div>
                     <span class="font-mono font-black text-brand-dark">{l.sku}</span>
-                    <p class="text-[11px] text-gray-400 mt-1">line version {l.version}</p>
+                    <p class="text-[11px] text-gray-500 mt-1">line version {l.version}</p>
                   </div>
                   <div class="flex flex-wrap gap-2 text-[11px] font-bold">
                     <span class="px-2.5 py-1 rounded-lg border bg-slate-50 text-slate-600 border-slate-200">Ordered {l.orderedQuantity}</span>
@@ -249,7 +249,7 @@ function derivedChip(d: string) {
                     <span class="px-2.5 py-1 rounded-lg border bg-green-50 text-green-700 border-green-200">Packed {l.packedQuantity}</span>
                     {l.backorderedQuantity > 0 && <span class="px-2.5 py-1 rounded-lg border bg-orange-50 text-orange-700 border-orange-200">Backordered {l.backorderedQuantity}</span>}
                     {l.cancelledQuantity > 0 && <span class="px-2.5 py-1 rounded-lg border bg-red-50 text-red-700 border-red-200">Cancelled {l.cancelledQuantity}</span>}
-                    <span class={`px-2.5 py-1 rounded-lg border ${rem > 0 ? "bg-amber-50 text-amber-800 border-amber-200" : "bg-gray-100 text-gray-500 border-gray-200"}`}>Unresolved {rem}</span>
+                    <span class={`px-2.5 py-1 rounded-lg border ${rem > 0 ? "bg-amber-50 text-amber-800 border-amber-200" : "bg-gray-100 text-gray-600 border-gray-200"}`}>Unresolved {rem}</span>
                   </div>
                 </div>
 
@@ -266,7 +266,7 @@ function derivedChip(d: string) {
                       <input type="hidden" name="lineId" value={l.id} />
                       <input type="hidden" name="expectedVersion" value={l.version} />
                       <div class="flex-1">
-                        <label for={`packed-${l.id}`} class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Packed (total, max {maxPack})</label>
+                        <label for={`packed-${l.id}`} class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Packed (total, max {maxPack})</label>
                         <input id={`packed-${l.id}`} name="packed" type="number" min="0" max={maxPack} value={l.packedQuantity} inputmode="numeric"
                           class="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
                       </div>
@@ -279,7 +279,7 @@ function derivedChip(d: string) {
                         <input type="hidden" name="lineId" value={l.id} />
                         <input type="hidden" name="expectedVersion" value={l.version} />
                         <div class="w-20">
-                          <label for={`bo-${l.id}`} class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Backorder</label>
+                          <label for={`bo-${l.id}`} class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Backorder</label>
                           <input id={`bo-${l.id}`} name="quantity" type="number" min="1" max={rem} value={rem} inputmode="numeric"
                             class="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
                         </div>
@@ -292,7 +292,7 @@ function derivedChip(d: string) {
                         <input type="hidden" name="lineId" value={l.id} />
                         <input type="hidden" name="expectedVersion" value={l.version} />
                         <div class="w-20">
-                          <label for={`cx-${l.id}`} class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Cancel</label>
+                          <label for={`cx-${l.id}`} class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Cancel</label>
                           <input id={`cx-${l.id}`} name="quantity" type="number" min="1" max={rem} value={rem} inputmode="numeric"
                             class="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
                         </div>
@@ -303,7 +303,7 @@ function derivedChip(d: string) {
                     </div>
                   </div>
                 ) : (
-                  <p class="text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                  <p class="text-[11px] font-bold uppercase tracking-wider text-gray-500">
                     {rem === 0 ? "Fully resolved" : !packable ? "Not packable in this state" : "Start packing to edit this line"}
                   </p>
                 )}
@@ -326,23 +326,23 @@ function derivedChip(d: string) {
               </p>
               <div class="grid grid-cols-2 gap-3 mb-3">
                 <div>
-                  <label for="pkgcount" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Package count</label>
+                  <label for="pkgcount" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Package count</label>
                   <input id="pkgcount" name="packageCount" type="number" min="1" inputmode="numeric" placeholder="e.g. 2"
                     class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold" />
                 </div>
                 <div>
-                  <label for="pkgref" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Package reference</label>
+                  <label for="pkgref" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Package reference</label>
                   <input id="pkgref" name="packageReference" type="text" maxlength="120" placeholder="optional"
                     class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold" />
                 </div>
               </div>
               <div class="mb-4">
-                <label for="pknotes" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Packing notes</label>
+                <label for="pknotes" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Packing notes</label>
                 <input id="pknotes" name="notes" type="text" maxlength="2000" placeholder="optional"
                   class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold" />
               </div>
               <button type="submit" disabled={anyUnresolved}
-                class={`text-xs font-black px-5 py-2.5 rounded-xl transition-opacity ${anyUnresolved ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "bg-brand-gold text-brand-dark hover:opacity-90"}`}>
+                class={`text-xs font-black px-5 py-2.5 rounded-xl transition-opacity ${anyUnresolved ? "bg-gray-100 text-gray-600 cursor-not-allowed" : "bg-brand-gold text-brand-dark hover:opacity-90"}`}>
                 Complete packing
               </button>
             </form>
@@ -352,7 +352,7 @@ function derivedChip(d: string) {
               <h3 class="text-sm font-black text-brand-dark mb-1">Record a packing exception</h3>
               <p class="text-[11px] text-gray-500 mb-4">Log a shortage, damage or other issue. Optionally place the session on hold.</p>
               <div class="mb-3">
-                <label for="exreason" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Reason</label>
+                <label for="exreason" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Reason</label>
                 <input id="exreason" name="reason" type="text" required maxlength="500" placeholder="e.g. one unit damaged in store"
                   class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-gold" />
               </div>
@@ -369,7 +369,7 @@ function derivedChip(d: string) {
 
         {detail?.session && (
           <div class="mt-6 bg-gray-50 border border-gray-100 rounded-2xl p-5 text-[11px] text-gray-500">
-            <div class="font-black uppercase tracking-wider text-gray-400 mb-2">Packing session</div>
+            <div class="font-black uppercase tracking-wider text-gray-500 mb-2">Packing session</div>
             <div class="flex flex-wrap gap-x-6 gap-y-1">
               <span>Status: <strong class="text-brand-dark">{detail.session.status}</strong></span>
               {detail.session.startedAt && <span>Started: {new Date(detail.session.startedAt).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}</span>}

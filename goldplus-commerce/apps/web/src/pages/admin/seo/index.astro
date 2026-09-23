@@ -92,16 +92,16 @@ const subPages = [
       ) : (
         <>
           <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <div class="rounded-xl border border-gray-200 p-4"><p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Clicks</p><p class="text-3xl font-black text-brand-dark tabular-nums">{num(perf.totals.clicks)}</p></div>
-            <div class="rounded-xl border border-gray-200 p-4"><p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Impressions</p><p class="text-3xl font-black text-brand-dark tabular-nums">{num(perf.totals.impressions)}</p></div>
-            <div class="rounded-xl border border-gray-200 p-4"><p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Click rate</p><p class="text-3xl font-black text-brand-dark tabular-nums">{ctrFmt(perf.totals.ctr)}</p></div>
-            <div class="rounded-xl border border-gray-200 p-4"><p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Avg position</p><p class="text-3xl font-black text-brand-dark tabular-nums">{posFmt(perf.totals.position)}</p></div>
+            <div class="rounded-xl border border-gray-200 p-4"><p class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Clicks</p><p class="text-3xl font-black text-brand-dark tabular-nums">{num(perf.totals.clicks)}</p></div>
+            <div class="rounded-xl border border-gray-200 p-4"><p class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Impressions</p><p class="text-3xl font-black text-brand-dark tabular-nums">{num(perf.totals.impressions)}</p></div>
+            <div class="rounded-xl border border-gray-200 p-4"><p class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Click rate</p><p class="text-3xl font-black text-brand-dark tabular-nums">{ctrFmt(perf.totals.ctr)}</p></div>
+            <div class="rounded-xl border border-gray-200 p-4"><p class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Avg position</p><p class="text-3xl font-black text-brand-dark tabular-nums">{posFmt(perf.totals.position)}</p></div>
           </div>
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div class="overflow-x-auto">
               <h4 class="text-xs font-black uppercase tracking-widest text-gray-500 mb-2">What people searched</h4>
               <table class="w-full text-sm tabular-nums">
-                <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400"><th class="py-1 pr-2">Search</th><th class="py-1 px-2 text-right">Impr.</th><th class="py-1 px-2 text-right">Clicks</th><th class="py-1 pl-2 text-right">Pos.</th></tr></thead>
+                <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-500"><th class="py-1 pr-2">Search</th><th class="py-1 px-2 text-right">Impr.</th><th class="py-1 px-2 text-right">Clicks</th><th class="py-1 pl-2 text-right">Pos.</th></tr></thead>
                 <tbody>
                   {perf.queries.map((r) => (
                     <tr class="border-t border-gray-100"><td class="py-1.5 pr-2 text-gray-800">{r.query}</td><td class="py-1.5 px-2 text-right">{num(r.impressions)}</td><td class="py-1.5 px-2 text-right">{num(r.clicks)}</td><td class="py-1.5 pl-2 text-right">{posFmt(r.position)}</td></tr>
@@ -112,7 +112,7 @@ const subPages = [
             <div class="overflow-x-auto">
               <h4 class="text-xs font-black uppercase tracking-widest text-gray-500 mb-2">Pages Google showed</h4>
               <table class="w-full text-sm tabular-nums">
-                <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400"><th class="py-1 pr-2">Page</th><th class="py-1 px-2 text-right">Impr.</th><th class="py-1 px-2 text-right">Clicks</th><th class="py-1 pl-2 text-right">Pos.</th></tr></thead>
+                <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-500"><th class="py-1 pr-2">Page</th><th class="py-1 px-2 text-right">Impr.</th><th class="py-1 px-2 text-right">Clicks</th><th class="py-1 pl-2 text-right">Pos.</th></tr></thead>
                 <tbody>
                   {perf.pages.map((r) => (
                     <tr class="border-t border-gray-100"><td class="py-1.5 pr-2 text-gray-800 break-all">{pagePath(r.page)}</td><td class="py-1.5 px-2 text-right">{num(r.impressions)}</td><td class="py-1.5 px-2 text-right">{num(r.clicks)}</td><td class="py-1.5 pl-2 text-right">{posFmt(r.position)}</td></tr>
@@ -132,25 +132,25 @@ const subPages = [
         <>
           <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div class="rounded-xl border border-gray-200 p-5">
-              <p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Top 1 share</p>
+              <p class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Top 1 share</p>
               <p class="text-3xl font-black text-brand-dark tabular-nums">{pct(share.top1Share)}</p>
             </div>
             <div class="rounded-xl border border-gray-200 p-5">
-              <p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Top 3 share</p>
+              <p class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Top 3 share</p>
               <p class="text-3xl font-black text-brand-dark tabular-nums">{pct(share.top3Share)}</p>
             </div>
             <div class="rounded-xl border border-gray-200 p-5">
-              <p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Top 10 share</p>
+              <p class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Top 10 share</p>
               <p class="text-3xl font-black text-brand-dark tabular-nums">{pct(share.top10Share)}</p>
             </div>
             <div class="rounded-xl border border-gray-200 p-5">
-              <p class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Outrank rate</p>
+              <p class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-1">Outrank rate</p>
               <p class="text-3xl font-black text-brand-dark tabular-nums">{pct(share.outrankRate)}</p>
             </div>
           </div>
           {share.methodology && (
             <p class="mt-4 text-xs text-gray-500 border-l-4 border-gray-200 pl-3 max-w-3xl">
-              <strong class="uppercase tracking-widest text-[10px] text-gray-400 block mb-0.5">Methodology</strong>
+              <strong class="uppercase tracking-widest text-[10px] text-gray-500 block mb-0.5">Methodology</strong>
               {share.methodology}
             </p>
           )}
@@ -246,10 +246,10 @@ const subPages = [
       </h3>
       {crawl ? (
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-          <div><p class="text-[10px] font-black uppercase tracking-widest text-gray-400">Status</p><p class="font-bold text-brand-dark">{str(crawl.status)}</p></div>
-          <div><p class="text-[10px] font-black uppercase tracking-widest text-gray-400">Pages</p><p class="font-bold text-brand-dark tabular-nums">{num(crawl.pagesCrawled ?? crawl.pageCount)}</p></div>
-          <div><p class="text-[10px] font-black uppercase tracking-widest text-gray-400">Issues</p><p class="font-bold text-brand-dark tabular-nums">{num(crawl.issueCount ?? crawl.issues)}</p></div>
-          <div><p class="text-[10px] font-black uppercase tracking-widest text-gray-400">Started</p><p class="font-bold text-brand-dark">{fmtWhen(crawl.startedAt)}</p></div>
+          <div><p class="text-[10px] font-black uppercase tracking-widest text-gray-500">Status</p><p class="font-bold text-brand-dark">{str(crawl.status)}</p></div>
+          <div><p class="text-[10px] font-black uppercase tracking-widest text-gray-500">Pages</p><p class="font-bold text-brand-dark tabular-nums">{num(crawl.pagesCrawled ?? crawl.pageCount)}</p></div>
+          <div><p class="text-[10px] font-black uppercase tracking-widest text-gray-500">Issues</p><p class="font-bold text-brand-dark tabular-nums">{num(crawl.issueCount ?? crawl.issues)}</p></div>
+          <div><p class="text-[10px] font-black uppercase tracking-widest text-gray-500">Started</p><p class="font-bold text-brand-dark">{fmtWhen(crawl.startedAt)}</p></div>
         </div>
       ) : (
         <p class="text-sm text-gray-500">Awaiting first crawl. Start one from the Technical SEO page.</p>

@@ -98,7 +98,7 @@ const MISSING = [['', 'Anything'], ['price', 'No price'], ['image', 'No image'],
 <AdminLayout title="Battery catalogue" description="Every physical battery SKU, its aliases, stock and verified fits." activePath="/admin/batteries">
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
     <div class="mb-6 pb-6 border-b border-gray-200">
-      <p class="text-[10px] uppercase font-black tracking-widest text-gray-400"><a href="/admin/batteries" class="hover:text-brand-primary">Batteries</a> / Catalogue</p>
+      <p class="text-[10px] uppercase font-black tracking-widest text-gray-500"><a href="/admin/batteries" class="hover:text-brand-primary">Batteries</a> / Catalogue</p>
       <h2 class="text-2xl font-black text-brand-dark tracking-tight mt-1">Battery catalogue</h2>
       <p class="text-sm text-gray-500 mt-1 max-w-3xl">Search by battery code, alias, barcode, supplier code, SKU or a phone that fits.</p>
     </div>
@@ -113,10 +113,10 @@ const MISSING = [['', 'Anything'], ['price', 'No price'], ['image', 'No image'],
       <form method="POST" class="flex flex-wrap gap-3 items-end">
         <input type="hidden" name="intent" value="lookup" />
         <label class="flex-1 min-w-[240px] block">
-          <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Battery code or barcode</span>
+          <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Battery code or barcode</span>
           <input name="query" value={lookupQuery} required maxlength="120" inputmode="text" autocomplete="off" placeholder="BL-49FT, GP-49FT, 49FT or a scanned barcode" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm font-mono" />
         </label>
-        <button type="submit" class="bg-brand-primary text-white text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Check</button>
+        <button type="submit" class="bg-brand-primary text-brand-black text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Check</button>
       </form>
 
       {lookup?.kind === 'FOUND' && lookup.battery && (
@@ -143,42 +143,42 @@ const MISSING = [['', 'Anything'], ['price', 'No price'], ['image', 'No image'],
           )}
           <form method="POST" class="mt-4 grid gap-3 md:grid-cols-3">
             <input type="hidden" name="intent" value="create" />
-            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Battery code</span>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Battery code</span>
               <input name="canonicalCode" required maxlength="80" value={lookupQuery} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
-            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Code confirmed from the pack?</span>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Code confirmed from the pack?</span>
               <select name="codeStatus" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                 <option value="PROVISIONAL">Not yet, provisional</option>
                 <option value="CONFIRMED">Yes, read from the pack</option>
                 <option value="DEVICE_NAMED">This is a phone name, not a code</option>
               </select></label>
-            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Battery type</span>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Battery type</span>
               <select name="batteryCategory" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
                 <option value="PHONE">Phone Battery</option>
                 <option value="MIFI_ROUTER">MiFi &amp; Router Battery</option>
                 <option value="OTHER">Other</option>
               </select></label>
-            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Phone brand it is sold for</span>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Phone brand it is sold for</span>
               <input name="brand" maxlength="60" placeholder="TECNO" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-            <label class="block md:col-span-2"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Product name (optional)</span>
+            <label class="block md:col-span-2"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Product name (optional)</span>
               <input name="name" maxlength="255" placeholder="Leave blank to name it from the brand and code" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Capacity mAh (from the pack)</span>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Capacity mAh (from the pack)</span>
               <input name="capacityMah" type="number" min="1" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Voltage V (from the pack)</span>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Voltage V (from the pack)</span>
               <input name="voltageV" type="number" step="0.01" min="0.01" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Barcode</span>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Barcode</span>
               <input name="barcode" maxlength="14" inputmode="numeric" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
-            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Supplier</span>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Supplier</span>
               <input name="supplierName" maxlength="160" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Supplier reference</span>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Supplier reference</span>
               <input name="supplierReference" maxlength="160" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Warranty months</span>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Warranty months</span>
               <input name="warrantyMonths" type="number" min="0" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-            <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Retail price UGX (optional now)</span>
+            <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Retail price UGX (optional now)</span>
               <input name="priceUgx" type="number" min="0" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-            <label class="block md:col-span-2"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Other codes customers or suppliers use (comma separated)</span>
+            <label class="block md:col-span-2"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Other codes customers or suppliers use (comma separated)</span>
               <input name="aliases" maxlength="500" placeholder="GP-49FT, 49FT" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
             <div class="md:col-span-3">
-              <button type="submit" class="bg-brand-primary text-white text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Create draft battery</button>
+              <button type="submit" class="bg-brand-primary text-brand-black text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Create draft battery</button>
               <span class="ml-3 text-xs text-gray-500">Leave a field blank if you do not know it. Nothing is guessed for you.</span>
             </div>
           </form>
@@ -187,20 +187,20 @@ const MISSING = [['', 'Anything'], ['price', 'No price'], ['image', 'No image'],
     </section>
 
     <form method="GET" class="bg-white border border-gray-200 rounded-2xl shadow-sm p-4 mb-6 flex flex-wrap gap-3 items-end">
-      <label class="flex-1 min-w-[220px] block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Search</span>
+      <label class="flex-1 min-w-[220px] block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Search</span>
         <input name="q" value={q} maxlength="120" placeholder="Code, alias, barcode, SKU or a phone" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
-      <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Status</span>
+      <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Status</span>
         <select name="status" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm">
           {STATUSES.map((s) => <option value={s} selected={s === status}>{s === '' ? 'Not archived' : s === 'ALL' ? 'Everything' : s}</option>)}
         </select></label>
-      <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Type</span>
+      <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Type</span>
         <select name="category" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm">
           <option value="" selected={category === ''}>All types</option>
           <option value="PHONE" selected={category === 'PHONE'}>Phone</option>
           <option value="MIFI_ROUTER" selected={category === 'MIFI_ROUTER'}>MiFi and router</option>
           <option value="OTHER" selected={category === 'OTHER'}>Other</option>
         </select></label>
-      <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Missing</span>
+      <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Missing</span>
         <select name="missing" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm">
           {MISSING.map(([v, l]) => <option value={v} selected={v === missing}>{l}</option>)}
         </select></label>
@@ -218,7 +218,7 @@ const MISSING = [['', 'Anything'], ['price', 'No price'], ['image', 'No image'],
         <div class="overflow-x-auto">
           <table class="w-full text-left border-collapse">
             <thead>
-              <tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest">
+              <tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-500 tracking-widest">
                 <th class="p-4"><span class="sr-only">Select</span></th>
                 <th class="p-4">Battery</th>
                 <th class="p-4">Type</th>
@@ -236,25 +236,25 @@ const MISSING = [['', 'Anything'], ['price', 'No price'], ['image', 'No image'],
                   <td class="p-4">
                     <a href={`/admin/batteries/catalogue/${r.product.productId}`} class="font-black text-brand-dark hover:text-brand-primary font-mono">{r.profile.canonicalCode}</a>
                     <p class="text-gray-500 mt-0.5">{r.product.name}</p>
-                    <p class="text-gray-400 mt-0.5">{r.product.sku}{r.aliasCount > 1 ? ` · ${r.aliasCount - 1} other code${r.aliasCount === 2 ? '' : 's'}` : ''}{r.profile.codeStatus !== 'CONFIRMED' ? ' · code unconfirmed' : ''}</p>
+                    <p class="text-gray-500 mt-0.5">{r.product.sku}{r.aliasCount > 1 ? ` · ${r.aliasCount - 1} other code${r.aliasCount === 2 ? '' : 's'}` : ''}{r.profile.codeStatus !== 'CONFIRMED' ? ' · code unconfirmed' : ''}</p>
                   </td>
                   <td class="p-4 text-gray-600">{r.profile.batteryCategory === 'MIFI_ROUTER' ? 'MiFi / router' : r.profile.batteryCategory === 'PHONE' ? 'Phone' : 'Other'}</td>
                   <td class="p-4 text-center"><span class={`text-[9px] font-black px-2.5 py-1 rounded uppercase tracking-widest border ${LIFECYCLE_BADGE[r.profile.lifecycleStatus] ?? 'bg-gray-50 text-gray-600 border-gray-200'}`}>{r.profile.lifecycleStatus}</span></td>
                   <td class="p-4 text-right tabular-nums">{r.product.priceUgx > 0 ? ugx(r.product.priceUgx) : <span class="text-amber-700">Not set</span>}</td>
                   <td class="p-4 text-right tabular-nums">{r.product.movementCount === 0 ? <span class="text-amber-700">Not counted</span> : r.product.stockQuantity}</td>
-                  <td class="p-4 text-center tabular-nums">{r.compatibility.verified} verified<span class="text-gray-400"> / {r.compatibility.total}</span></td>
+                  <td class="p-4 text-center tabular-nums">{r.compatibility.verified} verified<span class="text-gray-500"> / {r.compatibility.total}</span></td>
                   <td class="p-4 text-gray-600">{r.profile.capacityMah ? `${r.profile.capacityMah} mAh` : <span class="text-amber-700">No capacity</span>}{r.profile.nominalVoltageMv ? ` · ${(r.profile.nominalVoltageMv / 1000).toFixed(2)} V` : ''}</td>
                 </tr>
               ))}
               {rows.length === 0 && list.ok && (
-                <tr><td colspan="8" class="p-12 text-center text-gray-400 italic">No battery matches these filters. Use Quick add above to create the first one.</td></tr>
+                <tr><td colspan="8" class="p-12 text-center text-gray-500 italic">No battery matches these filters. Use Quick add above to create the first one.</td></tr>
               )}
             </tbody>
           </table>
         </div>
         {rows.length > 0 && (
           <div class="flex flex-wrap items-center gap-3 border-t border-gray-100 bg-gray-50 px-4 py-3">
-            <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">With the selected batteries</span>
+            <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">With the selected batteries</span>
             <select name="action" class="rounded-lg border border-gray-300 px-3 py-2 text-xs">
               <option value="SUBMIT_REVIEW">Submit for review</option>
               <option value="MARK_READY">Mark ready</option>

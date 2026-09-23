@@ -80,7 +80,7 @@ const stateBadge = (s: string) =>
   s === "DONE" ? "border-emerald-300 bg-emerald-50 text-emerald-900"
   : s === "BLOCKED" ? "border-red-300 bg-red-50 text-red-900"
   : s === "IN_PROGRESS" || s === "VALIDATING" ? "border-blue-300 bg-blue-50 text-blue-900"
-  : s === "ABANDONED" ? "border-gray-300 bg-gray-100 text-gray-500"
+  : s === "ABANDONED" ? "border-gray-300 bg-gray-100 text-gray-600"
   : "border-gray-300 bg-gray-50 text-gray-600";
 const outcomeBadge = (o: string) =>
   o === "IMPROVED" ? "text-emerald-800"
@@ -106,28 +106,28 @@ const outcomeBadge = (o: string) =>
     {summary && (
       <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-10">
         <div class="rounded-2xl border border-gray-200 bg-white p-4">
-          <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Items</p>
+          <p class="text-[10px] font-bold uppercase tracking-widest text-gray-500">Items</p>
           <p class="text-xl font-black text-brand-dark">{num(summary.total)}</p>
         </div>
         <div class="rounded-2xl border border-gray-200 bg-white p-4">
-          <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Awaiting validation</p>
+          <p class="text-[10px] font-bold uppercase tracking-widest text-gray-500">Awaiting validation</p>
           <p class="text-xl font-black text-amber-800">{num(summary.awaitingValidation)}</p>
-          <p class="text-[10px] text-gray-400 mt-1">Shipped, effect not yet measured.</p>
+          <p class="text-[10px] text-gray-500 mt-1">Shipped, effect not yet measured.</p>
         </div>
         <div class="rounded-2xl border border-gray-200 bg-white p-4">
-          <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Completed</p>
+          <p class="text-[10px] font-bold uppercase tracking-widest text-gray-500">Completed</p>
           <p class="text-xl font-black text-brand-dark">{num(summary.completed)}</p>
         </div>
         <div class="rounded-2xl border border-gray-200 bg-white p-4">
-          <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Improved</p>
+          <p class="text-[10px] font-bold uppercase tracking-widest text-gray-500">Improved</p>
           <p class="text-xl font-black text-emerald-800">{num(summary.improved)}</p>
         </div>
         <div class="rounded-2xl border border-gray-200 bg-white p-4">
-          <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Improvement rate</p>
+          <p class="text-[10px] font-bold uppercase tracking-widest text-gray-500">Improvement rate</p>
           <p class="text-xl font-black text-brand-dark">
             {summary.improvementRate === null ? "Unknown" : pct(summary.improvementRate)}
           </p>
-          <p class="text-[10px] text-gray-400 mt-1">
+          <p class="text-[10px] text-gray-500 mt-1">
             {summary.improvementRate === null ? "Nothing completed yet — not 0%." : "Of completed items."}
           </p>
         </div>
@@ -226,7 +226,7 @@ const outcomeBadge = (o: string) =>
       ) : (
         <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
           <table class="w-full text-xs">
-            <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+            <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-500 border-b border-gray-100">
               <th class="p-3">Title</th><th>State</th><th>Priority</th><th>Evidence</th><th>Outcome</th><th>Measured</th><th class="p-3">Advance</th>
             </tr></thead>
             <tbody>
@@ -234,7 +234,7 @@ const outcomeBadge = (o: string) =>
                 <tr class="border-b border-gray-50">
                   <td class="p-3">
                     <strong class="text-brand-dark">{str(i.title)}</strong>
-                    {i.target_url && <div class="text-gray-400 font-mono text-[11px]">{i.target_url}</div>}
+                    {i.target_url && <div class="text-gray-500 font-mono text-[11px]">{i.target_url}</div>}
                   </td>
                   <td><span class={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${stateBadge(String(i.state))}`}>{str(i.state)}</span></td>
                   <td class="font-mono text-[11px]">{str(i.priority)}</td>
@@ -242,12 +242,12 @@ const outcomeBadge = (o: string) =>
                     {i.opportunity_id || i.gap_id || i.observation_id ? "linked" : <span class="text-amber-800 font-bold">unlinked</span>}
                   </td>
                   <td class={`font-bold ${outcomeBadge(String(i.outcome ?? ""))}`}>
-                    {i.outcome ? str(i.outcome) : <span class="text-gray-400 font-normal">not measured yet</span>}
+                    {i.outcome ? str(i.outcome) : <span class="text-gray-500 font-normal">not measured yet</span>}
                   </td>
                   <td>{i.outcome_measured_at ? fmtWhen(i.outcome_measured_at) : "—"}</td>
                   <td class="p-3">
                     {(ALLOWED[String(i.state)] ?? []).length === 0 ? (
-                      <span class="text-[11px] text-gray-400">terminal</span>
+                      <span class="text-[11px] text-gray-500">terminal</span>
                     ) : (
                       <form method="POST" class="flex flex-wrap items-center gap-1">
                         <input type="hidden" name="intent" value="advance" />

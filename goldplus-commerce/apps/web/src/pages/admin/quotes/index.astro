@@ -63,7 +63,7 @@ const statusToBadge: Record<SampleQuote['status'], { variant: 'pending' | 'info'
         <div class="overflow-x-auto">
           <table class="w-full text-left border-collapse">
             <thead>
-              <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100">
+              <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-500 tracking-widest border-b border-gray-100">
                 <th class="p-6">Customer / Org</th>
                 <th class="p-6">Product Enquired</th>
                 <th class="p-6">Qty</th>
@@ -76,7 +76,7 @@ const statusToBadge: Record<SampleQuote['status'], { variant: 'pending' | 'info'
                 <tr class="hover:bg-gray-50 transition-colors">
                   <td class="p-6">
                     <div class="font-bold text-brand-dark text-sm">{q.customerName}</div>
-                    <div class="text-[10px] text-gray-400 mt-0.5 font-mono">{q.email}</div>
+                    <div class="text-[10px] text-gray-500 mt-0.5 font-mono">{q.email}</div>
                   </td>
                   <td class="p-6 text-gray-600 font-medium">
                     {q.productName}

@@ -111,7 +111,7 @@ const product = productRes.data;
         </h2>
         <p class="text-sm text-gray-500 mt-1">Mutate structural specifications and syndication media assets.</p>
       </div>
-      <a href="/admin/products" class="text-xs font-bold text-gray-400 hover:text-brand-dark border border-gray-200 px-3 py-1.5 rounded-lg bg-white transition-colors">
+      <a href="/admin/products" class="text-xs font-bold text-gray-500 hover:text-brand-dark border border-gray-200 px-3 py-1.5 rounded-lg bg-white transition-colors">
         &larr; Product List
       </a>
     </div>
@@ -123,10 +123,10 @@ const product = productRes.data;
         <FormFeedback status={status} message={message} />
 
         <section class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-          <h2 class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-6">Syndication Images ({product.images.length})</h2>
+          <h2 class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-6">Syndication Images ({product.images.length})</h2>
 
           {product.images.length === 0 ? (
-            <p class="text-xs text-gray-400 italic mb-6 font-medium">No binary media attached. Establish primary links below.</p>
+            <p class="text-xs text-gray-500 italic mb-6 font-medium">No binary media attached. Establish primary links below.</p>
           ) : (
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8 border-b border-gray-100 pb-8">
               {product.images.map((img, idx) => (
@@ -134,7 +134,7 @@ const product = productRes.data;
                   <div class="aspect-square bg-white flex items-center justify-center p-3">
                     <img src={img.url} alt={img.alt ?? ''} class="max-w-full max-h-full object-contain mix-blend-multiply" />
                   </div>
-                  <div class="p-3 text-[8px] font-mono text-gray-400 break-all border-t border-gray-100 bg-white flex-grow">
+                  <div class="p-3 text-[8px] font-mono text-gray-500 break-all border-t border-gray-100 bg-white flex-grow">
                     {idx === 0 && <span class="inline-block px-1.5 py-0.5 mr-1.5 rounded bg-brand-green text-brand-dark font-black text-[7px] uppercase tracking-wide">Primary</span>}
                     {img.url.length > 50 ? img.url.slice(0, 50) + '…' : img.url}
                   </div>
@@ -159,9 +159,9 @@ const product = productRes.data;
                     required
                   />
                   <div class="pointer-events-none">
-                    <div class="text-xs font-black text-gray-400 mb-3 uppercase tracking-widest">Upload Area</div>
+                    <div class="text-xs font-black text-gray-500 mb-3 uppercase tracking-widest">Upload Area</div>
                     <p class="text-xs font-black text-brand-dark">Click or Drag File Binaries</p>
-                    <p class="text-[9px] text-gray-400 mt-1 leading-relaxed">JPG, PNG, or WebP. Up to 4 files (a gallery holds four images).</p>
+                    <p class="text-[9px] text-gray-500 mt-1 leading-relaxed">JPG, PNG, or WebP. Up to 4 files (a gallery holds four images).</p>
                   </div>
                 </div>
 
@@ -194,15 +194,15 @@ const product = productRes.data;
         </section>
 
         <section class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
-          <h2 class="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-6">Attribute Specification Logs ({product.attributeValues.length})</h2>
+          <h2 class="text-[10px] font-black uppercase tracking-widest text-gray-500 mb-6">Attribute Specification Logs ({product.attributeValues.length})</h2>
 
           {product.attributeValues.length === 0 ? (
-            <p class="text-xs text-gray-400 italic mb-6 font-medium">No specific metadata rows bound.</p>
+            <p class="text-xs text-gray-500 italic mb-6 font-medium">No specific metadata rows bound.</p>
           ) : (
             <div class="border border-gray-100 rounded-2xl overflow-hidden mb-6 text-xs">
               <table class="w-full border-collapse text-left">
                 <thead>
-                  <tr class="bg-gray-50 text-[9px] uppercase font-black text-gray-400 border-b border-gray-100">
+                  <tr class="bg-gray-50 text-[9px] uppercase font-black text-gray-500 border-b border-gray-100">
                     <th class="p-4">Label</th>
                     <th class="p-4">Registered Specification</th>
                     <th class="p-4 text-right">Origin Status</th>

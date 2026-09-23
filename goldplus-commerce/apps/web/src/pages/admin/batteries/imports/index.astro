@@ -62,7 +62,7 @@ const when = (iso: string) => new Date(iso).toLocaleString('en-UG', { dateStyle:
 
 <AdminLayout title="Battery imports" description="Stage a spreadsheet, check it, have it approved, then apply it." activePath="/admin/batteries">
   <div class="container mx-auto px-6 lg:px-8 max-w-6xl">
-    <p class="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-1"><a href="/admin/batteries" class="hover:text-brand-primary">Batteries</a> / Imports</p>
+    <p class="text-[10px] uppercase font-black tracking-widest text-gray-600 mb-1"><a href="/admin/batteries" class="hover:text-brand-primary">Batteries</a> / Imports</p>
     <div class="mb-6 pb-6 border-b border-gray-200">
       <h2 class="text-2xl font-black text-brand-dark tracking-tight">Spreadsheet imports</h2>
       <p class="text-sm text-gray-500 mt-1 max-w-3xl">
@@ -77,21 +77,21 @@ const when = (iso: string) => new Date(iso).toLocaleString('en-UG', { dateStyle:
     <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-6">
       <h3 class="text-sm font-black text-brand-dark mb-4">Upload a file</h3>
       <form method="POST" enctype="multipart/form-data" class="grid gap-3 md:grid-cols-4 items-end">
-        <label class="block md:col-span-2"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">File (.xlsx or .csv, up to 5 MB)</span>
+        <label class="block md:col-span-2"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">File (.xlsx or .csv, up to 5 MB)</span>
           <input type="file" name="file" required accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="mt-1 block w-full text-xs" /></label>
-        <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">What it contains</span>
+        <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">What it contains</span>
           <select name="importType" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
             {TYPES.map(([v, l]) => <option value={v}>{l}</option>)}
           </select></label>
-        <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Name this import</span>
+        <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Name this import</span>
           <input name="name" maxlength="160" placeholder="Defaults to the file name" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
         {sheets.length > 0 && (
-          <label class="block md:col-span-2"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Sheet</span>
+          <label class="block md:col-span-2"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Sheet</span>
             <select name="sheet" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">{sheets.map((s) => <option value={s}>{s}</option>)}</select></label>
         )}
         <div class="md:col-span-4 flex flex-wrap gap-3">
           <button type="submit" name="intent" value="sheets" class="rounded-lg border border-gray-300 px-4 py-2.5 text-xs font-black uppercase tracking-widest text-gray-700">List the sheets first</button>
-          <button type="submit" name="intent" value="upload" class="bg-brand-primary text-white text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Stage this file</button>
+          <button type="submit" name="intent" value="upload" class="bg-brand-primary text-brand-black text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Stage this file</button>
         </div>
       </form>
     </section>
@@ -107,13 +107,13 @@ const when = (iso: string) => new Date(iso).toLocaleString('en-UG', { dateStyle:
               <span>
                 <span class="font-black text-brand-dark">{s.name}</span>
                 <span class="block text-xs text-gray-500 mt-0.5">{s.sourceFilename}{s.sourceSheet ? ` · ${s.sourceSheet}` : ''} · {TYPES.find(([v]) => v === s.importType)?.[1] ?? s.importType} · {when(s.createdAt)}</span>
-                <span class="block text-xs text-gray-400 mt-0.5">{s.totalRows} rows · {s.validRows} ready · {s.heldRows} held · {s.invalidRows} with errors{s.appliedRows ? ` · ${s.appliedRows} applied` : ''}{s.failedRows ? ` · ${s.failedRows} failed` : ''}</span>
+                <span class="block text-xs text-gray-500 mt-0.5">{s.totalRows} rows · {s.validRows} ready · {s.heldRows} held · {s.invalidRows} with errors{s.appliedRows ? ` · ${s.appliedRows} applied` : ''}{s.failedRows ? ` · ${s.failedRows} failed` : ''}</span>
               </span>
               <span class={`text-[9px] font-black px-2.5 py-1 rounded uppercase tracking-widest border ${tone(s.status)}`}>{s.status.replace(/_/g, ' ')}</span>
             </a>
           </li>
         ))}
-        {sessions.length === 0 && list.ok && <li class="px-5 py-12 text-center text-gray-400 italic">No import staged yet.</li>}
+        {sessions.length === 0 && list.ok && <li class="px-5 py-12 text-center text-gray-500 italic">No import staged yet.</li>}
       </ul>
     </section>
   </div>

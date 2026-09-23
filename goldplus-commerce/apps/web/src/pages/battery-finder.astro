@@ -118,7 +118,7 @@ const shownDevice: FinderDeviceDto | null = device?.device ?? (search?.kind === 
             <ul class="mt-3 flex flex-wrap gap-2">
               {brands.map((b) => (
                 <li><a href={`/battery-finder?brand=${encodeURIComponent(b.slug)}`} class="inline-block rounded-full border border-gray-300 px-4 py-2 text-sm font-bold text-brand-dark hover:border-brand-primary">
-                  {b.name}<span class="text-gray-400 font-normal"> · {b.verifiedFits}</span>
+                  {b.name}<span class="text-gray-500 font-normal"> · {b.verifiedFits}</span>
                 </a></li>
               ))}
             </ul>

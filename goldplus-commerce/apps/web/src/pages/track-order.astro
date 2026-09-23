@@ -163,7 +163,7 @@ const paymentCopy = order ? paymentStatusCopy(order.paymentStatus) : null;
             <div class="mt-6 rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Order</p>
+                  <p class="text-xs font-bold uppercase tracking-wider text-slate-500">Order</p>
                   <p class="text-lg font-black text-gray-900">{order.orderNumber}</p>
                 </div>
                 <div class="flex flex-wrap gap-2">
@@ -232,11 +232,11 @@ const paymentCopy = order ? paymentStatusCopy(order.paymentStatus) : null;
 
               {Array.isArray(order.items) && order.items.length > 0 && (
                 <div class="mt-3 border-t border-slate-200 pt-3">
-                  <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Items</p>
+                  <p class="text-xs font-bold uppercase tracking-wider text-slate-500">Items</p>
                   <ul class="mt-2 space-y-1.5 text-sm">
                     {order.items.map((it: any) => (
                       <li class="flex items-center justify-between gap-3">
-                        <span class="text-gray-800">{it.name ?? it.productName ?? 'Item'} <span class="text-slate-400">× {it.quantity ?? it.qty ?? 1}</span></span>
+                        <span class="text-gray-800">{it.name ?? it.productName ?? 'Item'} <span class="text-slate-500">× {it.quantity ?? it.qty ?? 1}</span></span>
                         {typeof (it.lineTotalUgx ?? it.unitPriceUgx) === 'number' && (
                           <span class="font-semibold text-gray-900 tabular-nums">{formatUgx(it.lineTotalUgx ?? (it.unitPriceUgx * (it.quantity ?? 1)))}</span>
                         )}

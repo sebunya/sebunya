@@ -197,7 +197,7 @@ const availabilityLabel: Record<ProductPublicDto['availability']['kind'], string
 
 const availabilityClass: Record<ProductPublicDto['availability']['kind'], string> = {
   in_stock: 'bg-green-50/70 text-green-700 border-green-200/70 shadow-xs',
-  out_of_stock: 'bg-red-50/70 text-red-600 border-red-200/70 shadow-xs',
+  out_of_stock: 'bg-red-50/70 text-red-700 border-red-200/70 shadow-xs',
   pre_order: 'bg-blue-50/70 text-blue-700 border-blue-200/70 shadow-xs',
   unknown: 'bg-slate-50 text-slate-500 border-slate-200 shadow-xs',
 };
@@ -442,7 +442,7 @@ if (product) {
                 )}
                 </>
               ) : (
-                <p class="text-base text-slate-400 italic">Price on request.</p>
+                <p class="text-base text-slate-600 italic">Price on request.</p>
               )}
               <span class={`inline-flex items-center px-2.5 py-1 rounded-full border text-[9px] font-black uppercase tracking-wider ${availabilityClass[product.availability.kind]}`}>
                 {availabilityLabel[product.availability.kind]}
@@ -504,7 +504,7 @@ if (product) {
             <button
               type="submit"
               disabled={!canBuy}
-              class={`flex-1 py-3 px-6 rounded-full font-bold text-xs tracking-wider uppercase transition-all duration-300 outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30 active:scale-[0.98] cursor-pointer shadow-xs ${canBuy ? 'bg-brand-primary text-gray-950 hover:shadow-md hover:shadow-brand-primary/25' : 'bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+              class={`flex-1 py-3 px-6 rounded-full font-bold text-xs tracking-wider uppercase transition-all duration-300 outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30 active:scale-[0.98] cursor-pointer shadow-xs ${canBuy ? 'bg-brand-primary text-gray-950 hover:shadow-md hover:shadow-brand-primary/25' : 'bg-slate-100 text-slate-600 cursor-not-allowed'}`}
             >
               {canBuy ? 'Add to cart' : availabilityLabel[product.availability.kind]}
             </button>
@@ -649,10 +649,10 @@ if (product) {
             </div>
             {(battery.battery.capacityMah || battery.battery.nominalVoltageMv || battery.battery.warrantyMonths || battery.battery.chemistry) && (
               <dl class="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-                {battery.battery.capacityMah && <div class="rounded-xl border border-slate-200 bg-white p-3"><dt class="text-[10px] uppercase font-black tracking-widest text-slate-400">Capacity</dt><dd class="font-bold text-slate-900 mt-1">{battery.battery.capacityMah} mAh</dd></div>}
-                {battery.battery.nominalVoltageMv && <div class="rounded-xl border border-slate-200 bg-white p-3"><dt class="text-[10px] uppercase font-black tracking-widest text-slate-400">Voltage</dt><dd class="font-bold text-slate-900 mt-1">{(battery.battery.nominalVoltageMv / 1000).toFixed(2)} V</dd></div>}
-                {battery.battery.chemistry && <div class="rounded-xl border border-slate-200 bg-white p-3"><dt class="text-[10px] uppercase font-black tracking-widest text-slate-400">Chemistry</dt><dd class="font-bold text-slate-900 mt-1">{CHEMISTRY_LABEL[battery.battery.chemistry] ?? battery.battery.chemistry}</dd></div>}
-                {battery.battery.warrantyMonths != null && <div class="rounded-xl border border-slate-200 bg-white p-3"><dt class="text-[10px] uppercase font-black tracking-widest text-slate-400">Warranty</dt><dd class="font-bold text-slate-900 mt-1">{battery.battery.warrantyMonths} months</dd></div>}
+                {battery.battery.capacityMah && <div class="rounded-xl border border-slate-200 bg-white p-3"><dt class="text-[10px] uppercase font-black tracking-widest text-slate-500">Capacity</dt><dd class="font-bold text-slate-900 mt-1">{battery.battery.capacityMah} mAh</dd></div>}
+                {battery.battery.nominalVoltageMv && <div class="rounded-xl border border-slate-200 bg-white p-3"><dt class="text-[10px] uppercase font-black tracking-widest text-slate-500">Voltage</dt><dd class="font-bold text-slate-900 mt-1">{(battery.battery.nominalVoltageMv / 1000).toFixed(2)} V</dd></div>}
+                {battery.battery.chemistry && <div class="rounded-xl border border-slate-200 bg-white p-3"><dt class="text-[10px] uppercase font-black tracking-widest text-slate-500">Chemistry</dt><dd class="font-bold text-slate-900 mt-1">{CHEMISTRY_LABEL[battery.battery.chemistry] ?? battery.battery.chemistry}</dd></div>}
+                {battery.battery.warrantyMonths != null && <div class="rounded-xl border border-slate-200 bg-white p-3"><dt class="text-[10px] uppercase font-black tracking-widest text-slate-500">Warranty</dt><dd class="font-bold text-slate-900 mt-1">{battery.battery.warrantyMonths} months</dd></div>}
               </dl>
             )}
             {battery.battery.publicNotes && <p class="mt-4 text-sm text-slate-600">{battery.battery.publicNotes}</p>}

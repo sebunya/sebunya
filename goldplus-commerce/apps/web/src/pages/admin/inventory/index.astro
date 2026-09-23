@@ -102,15 +102,15 @@ try {
     {/* Statistics */}
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
       <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-        <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest">Total Skus tracked</p>
+        <p class="text-[9px] font-black text-gray-500 uppercase tracking-widest">Total Skus tracked</p>
         <p class="text-2xl font-black text-brand-dark mt-1">{products.length}</p>
       </div>
       <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-        <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest">In-Stock</p>
+        <p class="text-[9px] font-black text-gray-500 uppercase tracking-widest">In-Stock</p>
         <p class="text-2xl font-black text-brand-primaryInk mt-1">{products.filter(p => p.stockStatus === 'in_stock').length}</p>
       </div>
       <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-        <p class="text-[9px] font-black text-gray-400 uppercase tracking-widest">Out-of-Stock</p>
+        <p class="text-[9px] font-black text-gray-500 uppercase tracking-widest">Out-of-Stock</p>
         <p class="text-2xl font-black text-red-600 mt-1">{products.filter(p => p.stockStatus !== 'in_stock').length}</p>
       </div>
     </div>
@@ -119,7 +119,7 @@ try {
     <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
       <table class="w-full text-left border-collapse">
         <thead>
-          <tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest">
+          <tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-500 tracking-widest">
             <th class="p-5">Product Identifier</th>
             <th class="p-5">SKU</th>
             <th class="p-5 text-right">On hand</th>
@@ -136,9 +136,9 @@ try {
             <tr class={`border-b border-gray-50 hover:bg-gray-50/50 transition-colors ${led?.lowStock ? 'bg-red-50/40' : ''}`}>
               <td class="p-5">
                 <div class="font-bold text-brand-dark">{p.name}</div>
-                <div class="text-[10px] text-gray-400 mt-0.5">{p.categoryName || 'General'}</div>
+                <div class="text-[10px] text-gray-500 mt-0.5">{p.categoryName || 'General'}</div>
               </td>
-              <td class="p-5 font-mono text-gray-500">{p.sku}<a href={`/admin/audit?entity=product&entityId=${encodeURIComponent(p.id)}&action=STOCK_ADJUSTED`} class="ml-2 text-[10px] font-bold text-gray-400 hover:text-gray-800 underline underline-offset-2" title="Stock adjustment history (who, when, why, before/after)">History</a></td>
+              <td class="p-5 font-mono text-gray-500">{p.sku}<a href={`/admin/audit?entity=product&entityId=${encodeURIComponent(p.id)}&action=STOCK_ADJUSTED`} class="ml-2 text-[10px] font-bold text-gray-500 hover:text-gray-800 underline underline-offset-2" title="Stock adjustment history (who, when, why, before/after)">History</a></td>
               <td class="p-5 text-right">{led ? led.stockOnHand : '—'}</td>
               <td class="p-5 text-right">{led ? led.reserved : '—'}</td>
               <td class={`p-5 text-right font-black ${led && led.available <= 0 ? 'text-red-600' : 'text-brand-dark'}`}>{led ? led.available : '—'}</td>
@@ -152,7 +152,7 @@ try {
           )})}
           {products.length === 0 && (
             <tr>
-              <td colspan="7" class="p-12 text-center text-gray-400 italic">No SKUs registered in database.</td>
+              <td colspan="7" class="p-12 text-center text-gray-500 italic">No SKUs registered in database.</td>
             </tr>
           )}
         </tbody>

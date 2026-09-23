@@ -72,21 +72,21 @@ const STATUSES = ["OPEN","ACKNOWLEDGED","ASSIGNED","IN_PROGRESS","RESOLVED","DIS
 
     {overview && (
       <div class="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
-        <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-brand-dark">{overview.open}</div><div class="text-[11px] text-gray-400 font-bold uppercase tracking-wider">Open</div></div>
-        <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-red-700">{overview.criticalHigh}</div><div class="text-[11px] text-gray-400 font-bold uppercase tracking-wider">Critical/High</div></div>
-        <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-gray-500">{overview.stale}</div><div class="text-[11px] text-gray-400 font-bold uppercase tracking-wider">Stale</div></div>
-        <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-brand-dark">{overview.unassigned}</div><div class="text-[11px] text-gray-400 font-bold uppercase tracking-wider">Unassigned</div></div>
-        <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-green-700">{overview.resolvedToday}</div><div class="text-[11px] text-gray-400 font-bold uppercase tracking-wider">Resolved today</div></div>
+        <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-brand-dark">{overview.open}</div><div class="text-[11px] text-gray-500 font-bold uppercase tracking-wider">Open</div></div>
+        <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-red-700">{overview.criticalHigh}</div><div class="text-[11px] text-gray-500 font-bold uppercase tracking-wider">Critical/High</div></div>
+        <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-gray-500">{overview.stale}</div><div class="text-[11px] text-gray-500 font-bold uppercase tracking-wider">Stale</div></div>
+        <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-brand-dark">{overview.unassigned}</div><div class="text-[11px] text-gray-500 font-bold uppercase tracking-wider">Unassigned</div></div>
+        <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-green-700">{overview.resolvedToday}</div><div class="text-[11px] text-gray-500 font-bold uppercase tracking-wider">Resolved today</div></div>
       </div>
     )}
     {overview && (
-      <p class="text-[11px] text-gray-400 mb-6">Avg acknowledgement {overview.avgAcknowledgementHours ?? "NO_DATA"}h · avg resolution {overview.avgResolutionHours ?? "NO_DATA"}h</p>
+      <p class="text-[11px] text-gray-500 mb-6">Avg acknowledgement {overview.avgAcknowledgementHours ?? "NO_DATA"}h · avg resolution {overview.avgResolutionHours ?? "NO_DATA"}h</p>
     )}
 
     <form method="GET" class="flex flex-wrap items-end gap-3 mb-6">
       {[["category", CATS, f.category], ["severity", SEVS, f.severity], ["status", STATUSES, f.status]].map(([name, opts, val]) => (
         <div>
-          <label class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">{name}</label>
+          <label class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">{name}</label>
           <select name={name as string} class="bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
             <option value="">any</option>
             {(opts as string[]).map((o) => <option value={o} selected={o === val}>{o.replace(/_/g, " ")}</option>)}
@@ -111,10 +111,10 @@ const STATUSES = ["OPEN","ACKNOWLEDGED","ASSIGNED","IN_PROGRESS","RESOLVED","DIS
             </div>
           </div>
           <p class="text-xs text-gray-500">{i.summary}</p>
-          <p class="text-[11px] text-gray-400 mt-1">{i.category} · rec: {i.recommendation.replace(/_/g, " ")} · {i.assignedTo ? "assigned" : "unassigned"} · {new Date(i.generatedAt).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}</p>
+          <p class="text-[11px] text-gray-600 mt-1">{i.category} · rec: {i.recommendation.replace(/_/g, " ")} · {i.assignedTo ? "assigned" : "unassigned"} · {new Date(i.generatedAt).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}</p>
         </a>
       ))}
     </div>
-    {total > insights.length && <p class="text-[11px] text-gray-400 text-center mt-4">Showing {insights.length} of {total}.</p>}
+    {total > insights.length && <p class="text-[11px] text-gray-600 text-center mt-4">Showing {insights.length} of {total}.</p>}
   </div>
 </AdminLayout>

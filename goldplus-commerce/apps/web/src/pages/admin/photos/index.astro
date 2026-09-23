@@ -106,9 +106,9 @@ for (const m of plan?.matched ?? []) byProduct.set(m.productId, [...(byProduct.g
         {(plan.unmatched.length > 0 || plan.ambiguous.length > 0 || plan.refused.length > 0) && (
           <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-5 space-y-4 text-sm">
             <h3 class="text-sm font-black text-brand-dark">Not attached — rename and preview again</h3>
-            {plan.unmatched.length > 0 && <div><div class="text-xs font-black uppercase tracking-wider text-gray-400 mb-1">No product has this code</div><ul class="font-mono text-xs text-gray-700 space-y-0.5">{plan.unmatched.map((f) => <li>{f}</li>)}</ul></div>}
-            {plan.ambiguous.length > 0 && <div><div class="text-xs font-black uppercase tracking-wider text-gray-400 mb-1">Could be more than one product — use the full code</div><ul class="text-xs text-gray-700 space-y-0.5">{plan.ambiguous.map((a) => <li><span class="font-mono">{a.file}</span> → {a.candidates.join(' or ')}</li>)}</ul></div>}
-            {plan.refused.length > 0 && <div><div class="text-xs font-black uppercase tracking-wider text-gray-400 mb-1">Refused</div><ul class="text-xs text-gray-700 space-y-0.5">{plan.refused.map((r) => <li><span class="font-mono">{r.file}</span>{r.productName ? ` ↛ ${r.productName}` : ''} — {r.reason}</li>)}</ul></div>}
+            {plan.unmatched.length > 0 && <div><div class="text-xs font-black uppercase tracking-wider text-gray-500 mb-1">No product has this code</div><ul class="font-mono text-xs text-gray-700 space-y-0.5">{plan.unmatched.map((f) => <li>{f}</li>)}</ul></div>}
+            {plan.ambiguous.length > 0 && <div><div class="text-xs font-black uppercase tracking-wider text-gray-500 mb-1">Could be more than one product — use the full code</div><ul class="text-xs text-gray-700 space-y-0.5">{plan.ambiguous.map((a) => <li><span class="font-mono">{a.file}</span> → {a.candidates.join(' or ')}</li>)}</ul></div>}
+            {plan.refused.length > 0 && <div><div class="text-xs font-black uppercase tracking-wider text-gray-500 mb-1">Refused</div><ul class="text-xs text-gray-700 space-y-0.5">{plan.refused.map((r) => <li><span class="font-mono">{r.file}</span>{r.productName ? ` ↛ ${r.productName}` : ''} — {r.reason}</li>)}</ul></div>}
             <p class="text-xs text-gray-500">Previewed files are kept in the <a href="/admin/media" class="underline underline-offset-2">media library</a>, where any of them can also be assigned by hand.</p>
           </div>
         )}

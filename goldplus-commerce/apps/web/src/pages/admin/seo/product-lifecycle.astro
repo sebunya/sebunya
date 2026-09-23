@@ -83,7 +83,7 @@ const badge = (d: string) =>
       ) : (
         <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
           <table class="w-full text-xs">
-            <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+            <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-500 border-b border-gray-100">
               <th class="p-3">Product</th><th>Stock</th><th>Active</th><th class="p-3">Product ID</th>
             </tr></thead>
             <tbody>
@@ -124,7 +124,7 @@ const badge = (d: string) =>
         </label>
         <label class="text-sm text-gray-700 md:col-span-2">Rationale <span class="text-red-600">*</span>
           <textarea name="rationale" rows="2" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"></textarea>
-          <span class="block mt-1 text-xs text-gray-400">Why this outcome is right for this product. A decision without a reason is rejected.</span>
+          <span class="block mt-1 text-xs text-gray-500">Why this outcome is right for this product. A decision without a reason is rejected.</span>
         </label>
       </div>
 
@@ -135,11 +135,11 @@ const badge = (d: string) =>
             {STATES.map((s) => (
               <li>
                 <strong class="font-mono text-brand-dark">{s}</strong> → {(allowed[s] ?? []).join(", ")}
-                {suggested[s] && <span class="text-gray-400"> (suggested: {suggested[s]})</span>}
+                {suggested[s] && <span class="text-gray-500"> (suggested: {suggested[s]})</span>}
               </li>
             ))}
           </ul>
-          <p class="mt-2 text-[11px] text-gray-400">
+          <p class="mt-2 text-[11px] text-gray-500">
             Suggestions are never applied automatically. Anything outside the list is rejected with
             <code class="font-mono"> DISPOSITION_NOT_DEFENSIBLE</code>.
           </p>
@@ -168,7 +168,7 @@ const badge = (d: string) =>
       ) : (
         <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
           <table class="w-full text-xs">
-            <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+            <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-500 border-b border-gray-100">
               <th class="p-3">Product</th><th>State</th><th>Disposition</th><th>Successor</th><th>Rationale</th><th class="p-3">Decided</th>
             </tr></thead>
             <tbody>

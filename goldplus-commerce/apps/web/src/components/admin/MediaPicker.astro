@@ -19,7 +19,7 @@ const browseHref = `/admin/media?picker=1&return=${encodeURIComponent(Astro.url.
 ---
 
 <div class="block">
-  <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">{label}</span>
+  <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">{label}</span>
   <div class="mt-1 flex items-start gap-3">
     {value ? (
       <img
@@ -30,7 +30,7 @@ const browseHref = `/admin/media?picker=1&return=${encodeURIComponent(Astro.url.
         style="aspect-ratio: 1 / 1;"
       />
     ) : (
-      <div class="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 text-center text-[9px] font-bold uppercase tracking-widest text-gray-400">
+      <div class="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 text-center text-[9px] font-bold uppercase tracking-widest text-gray-500">
         No image
       </div>
     )}

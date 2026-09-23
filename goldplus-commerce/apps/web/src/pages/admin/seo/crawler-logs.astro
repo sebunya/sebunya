@@ -161,7 +161,7 @@ const verifClass = (v: unknown): string => {
     {budget && (
       <section class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
         <div class="bg-white border border-gray-200 rounded-2xl p-5">
-          <h3 class="text-xs font-black uppercase tracking-widest text-gray-400 mb-3">Hits per crawler</h3>
+          <h3 class="text-xs font-black uppercase tracking-widest text-gray-500 mb-3">Hits per crawler</h3>
           {(budget.perCrawler ?? []).length === 0 && <p class="text-sm text-gray-500">No hits in this window.</p>}
           <ul class="space-y-1 text-sm">
             {(budget.perCrawler ?? []).map((r: any) => (
@@ -173,7 +173,7 @@ const verifClass = (v: unknown): string => {
           </ul>
         </div>
         <div class="bg-white border border-gray-200 rounded-2xl p-5">
-          <h3 class="text-xs font-black uppercase tracking-widest text-gray-400 mb-3">Most-crawled paths</h3>
+          <h3 class="text-xs font-black uppercase tracking-widest text-gray-500 mb-3">Most-crawled paths</h3>
           {(budget.perPath ?? []).length === 0 && <p class="text-sm text-gray-500">No hits in this window.</p>}
           <ul class="space-y-1 text-xs">
             {(budget.perPath ?? []).slice(0, 15).map((r: any) => (
@@ -185,7 +185,7 @@ const verifClass = (v: unknown): string => {
           </ul>
         </div>
         <div class="bg-white border border-gray-200 rounded-2xl p-5">
-          <h3 class="text-xs font-black uppercase tracking-widest text-gray-400 mb-3">Status codes served to crawlers</h3>
+          <h3 class="text-xs font-black uppercase tracking-widest text-gray-500 mb-3">Status codes served to crawlers</h3>
           {(budget.perStatus ?? []).length === 0 && <p class="text-sm text-gray-500">No hits in this window.</p>}
           <ul class="space-y-1 text-sm">
             {(budget.perStatus ?? []).map((r: any) => (
@@ -225,7 +225,7 @@ const verifClass = (v: unknown): string => {
         <div class="overflow-x-auto">
           <table class="w-full text-left text-xs">
             <thead>
-              <tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
+              <tr class="text-[10px] font-black uppercase tracking-widest text-gray-500 border-b border-gray-200">
                 <th class="py-2 pr-4">When</th><th class="py-2 pr-4">Crawler</th><th class="py-2 pr-4">Verification</th>
                 <th class="py-2 pr-4">Path</th><th class="py-2 pr-4">Status</th><th class="py-2">Source</th>
               </tr>
@@ -255,7 +255,7 @@ const verifClass = (v: unknown): string => {
         <div class="overflow-x-auto">
           <table class="w-full text-left text-xs">
             <thead>
-              <tr class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-200">
+              <tr class="text-[10px] font-black uppercase tracking-widest text-gray-500 border-b border-gray-200">
                 <th class="py-2 pr-4">Source</th><th class="py-2 pr-4">Format</th><th class="py-2 pr-4">Read</th>
                 <th class="py-2 pr-4">Parsed</th><th class="py-2 pr-4">Rejected</th><th class="py-2 pr-4">Crawler hits</th>
                 <th class="py-2 pr-4">Window covered</th><th class="py-2">Ingested</th>

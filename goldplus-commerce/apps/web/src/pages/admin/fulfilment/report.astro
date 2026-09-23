@@ -44,7 +44,7 @@ const empty = report && report.queue.total === 0;
 
 <AdminLayout title="Fulfilment Report" description="Operational report across the whole fulfilment pipeline: queue, SLA, packing, dispatch, delivery, cycle time and workload.">
   <div class="container mx-auto px-6 lg:px-8 max-w-5xl">
-    <div class="mb-6 flex items-center gap-4 text-xs font-bold text-gray-400">
+    <div class="mb-6 flex items-center gap-4 text-xs font-bold text-gray-500">
       <a href="/admin/fulfilment" class="hover:text-brand-dark">← Fulfilment queue</a>
     </div>
     <div class="mb-8 pb-6 border-b border-gray-200 flex items-end justify-between">
@@ -52,7 +52,7 @@ const empty = report && report.queue.total === 0;
         <h2 class="text-2xl font-black text-brand-dark tracking-tight">Fulfilment report</h2>
         <p class="text-sm text-gray-500 mt-1">Live pipeline health across queue, SLA, packing, dispatch and delivery.</p>
       </div>
-      {report && <span class="text-[11px] text-gray-400">Generated {new Date(report.generatedAt).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}</span>}
+      {report && <span class="text-[11px] text-gray-500">Generated {new Date(report.generatedAt).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}</span>}
     </div>
 
     {permissionDenied && <div class="bg-red-50 border border-red-200 text-red-800 px-6 py-4 rounded-2xl text-sm"><strong>Not permitted.</strong> Your account cannot view fulfilment reports.</div>}
@@ -62,10 +62,10 @@ const empty = report && report.queue.total === 0;
     {report && !empty && (
       <div class="space-y-6">
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-          <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-brand-dark">{report.queue.total}</div><div class="text-[11px] text-gray-400 font-bold uppercase tracking-wider">Total tasks</div></div>
-          <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-brand-dark">{report.queue.active}</div><div class="text-[11px] text-gray-400 font-bold uppercase tracking-wider">Active</div></div>
-          <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-brand-dark">{report.queue.unassigned}</div><div class="text-[11px] text-gray-400 font-bold uppercase tracking-wider">Unassigned</div></div>
-          <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-brand-dark">{report.cycleTime.avgHoursCreatedToDelivered ?? "—"}<span class="text-sm">h</span></div><div class="text-[11px] text-gray-400 font-bold uppercase tracking-wider">Avg cycle ({report.cycleTime.deliveredCount})</div></div>
+          <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-brand-dark">{report.queue.total}</div><div class="text-[11px] text-gray-500 font-bold uppercase tracking-wider">Total tasks</div></div>
+          <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-brand-dark">{report.queue.active}</div><div class="text-[11px] text-gray-500 font-bold uppercase tracking-wider">Active</div></div>
+          <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-brand-dark">{report.queue.unassigned}</div><div class="text-[11px] text-gray-500 font-bold uppercase tracking-wider">Unassigned</div></div>
+          <div class="bg-white border border-gray-200 rounded-2xl p-5"><div class="text-2xl font-black text-brand-dark">{report.cycleTime.avgHoursCreatedToDelivered ?? "—"}<span class="text-sm">h</span></div><div class="text-[11px] text-gray-500 font-bold uppercase tracking-wider">Avg cycle ({report.cycleTime.deliveredCount})</div></div>
         </div>
 
         <div class="grid gap-6 md:grid-cols-2">
@@ -93,19 +93,19 @@ const empty = report && report.queue.total === 0;
         <div class="bg-white border border-gray-200 rounded-2xl p-6">
           <h3 class="text-sm font-black text-brand-dark mb-4">Dispatch &amp; delivery</h3>
           <div class="grid grid-cols-2 sm:grid-cols-6 gap-4 text-center">
-            <div><div class="text-xl font-black text-brand-dark">{report.dispatch.dispatched}</div><div class="text-[10px] text-gray-400 uppercase tracking-wider">Dispatched</div></div>
-            <div><div class="text-xl font-black text-green-700">{report.delivery.delivered}</div><div class="text-[10px] text-gray-400 uppercase tracking-wider">Delivered</div></div>
-            <div><div class="text-xl font-black text-amber-700">{report.delivery.partiallyDelivered}</div><div class="text-[10px] text-gray-400 uppercase tracking-wider">Partial</div></div>
-            <div><div class="text-xl font-black text-red-700">{report.delivery.failed}</div><div class="text-[10px] text-gray-400 uppercase tracking-wider">Failed</div></div>
-            <div><div class="text-xl font-black text-blue-700">{report.delivery.rescheduled}</div><div class="text-[10px] text-gray-400 uppercase tracking-wider">Rescheduled</div></div>
-            <div><div class="text-xl font-black text-orange-700">{report.delivery.returnToOrigin}</div><div class="text-[10px] text-gray-400 uppercase tracking-wider">RTO</div></div>
+            <div><div class="text-xl font-black text-brand-dark">{report.dispatch.dispatched}</div><div class="text-[10px] text-gray-500 uppercase tracking-wider">Dispatched</div></div>
+            <div><div class="text-xl font-black text-green-700">{report.delivery.delivered}</div><div class="text-[10px] text-gray-500 uppercase tracking-wider">Delivered</div></div>
+            <div><div class="text-xl font-black text-amber-700">{report.delivery.partiallyDelivered}</div><div class="text-[10px] text-gray-500 uppercase tracking-wider">Partial</div></div>
+            <div><div class="text-xl font-black text-red-700">{report.delivery.failed}</div><div class="text-[10px] text-gray-500 uppercase tracking-wider">Failed</div></div>
+            <div><div class="text-xl font-black text-blue-700">{report.delivery.rescheduled}</div><div class="text-[10px] text-gray-500 uppercase tracking-wider">Rescheduled</div></div>
+            <div><div class="text-xl font-black text-orange-700">{report.delivery.returnToOrigin}</div><div class="text-[10px] text-gray-500 uppercase tracking-wider">RTO</div></div>
           </div>
         </div>
 
         <div class="grid gap-6 md:grid-cols-2">
           <div class="bg-white border border-gray-200 rounded-2xl p-6">
             <h3 class="text-sm font-black text-brand-dark mb-4">Active by team</h3>
-            {report.byTeam.length === 0 ? <p class="text-xs text-gray-400">No active tasks.</p> : (
+            {report.byTeam.length === 0 ? <p class="text-xs text-gray-500">No active tasks.</p> : (
               <div class="space-y-2">{report.byTeam.map((t) => (
                 <div class="flex items-center justify-between text-xs"><span class="text-gray-500 font-mono">{t.teamId ? t.teamId.slice(0, 8) : "unassigned team"}</span><span class="font-bold text-brand-dark">{t.active}</span></div>
               ))}</div>
@@ -113,7 +113,7 @@ const empty = report && report.queue.total === 0;
           </div>
           <div class="bg-white border border-gray-200 rounded-2xl p-6">
             <h3 class="text-sm font-black text-brand-dark mb-4">Active by assignee</h3>
-            {report.byAssignee.length === 0 ? <p class="text-xs text-gray-400">No active tasks.</p> : (
+            {report.byAssignee.length === 0 ? <p class="text-xs text-gray-500">No active tasks.</p> : (
               <div class="space-y-2">{report.byAssignee.map((a) => (
                 <div class="flex items-center justify-between text-xs"><span class="text-gray-500 font-mono">{a.assignedTo ? a.assignedTo.slice(0, 8) : "unassigned"}</span><span class="font-bold text-brand-dark">{a.active}</span></div>
               ))}</div>

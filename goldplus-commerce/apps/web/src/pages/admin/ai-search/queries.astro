@@ -68,7 +68,7 @@ const SOURCE: Record<string, string> = { MANUAL: "Added by hand", SEARCH_CONSOLE
             <table class="w-full text-sm">
               <thead><tr class="text-left text-xs font-bold uppercase tracking-wider text-gray-500 border-b border-gray-200"><th class="p-3">Question</th><th class="p-3">Intent</th><th class="p-3">Branded</th><th class="p-3">Priority</th><th class="p-3">Source</th><th class="p-3"></th></tr></thead>
               <tbody>{list.data.rows.map((r) => (
-                <tr class:list={["border-b border-gray-100 align-top", !r.active && "text-gray-400"]}>
+                <tr class:list={["border-b border-gray-100 align-top", !r.active && "text-gray-500"]}>
                   <td class="p-3 max-w-lg"><span class="font-bold">{r.text}</span>{r.category && <span class="block text-xs text-gray-500">{r.category}</span>}</td>
                   <td class="p-3 text-xs">{r.intent.toLowerCase()}</td>
                   <td class="p-3 text-xs">{r.branded ? "yes" : "no"}</td>

@@ -40,7 +40,7 @@ const STATE: Record<string, [string, string]> = {
   LIVE: ["Live — sending conversions", "bg-emerald-100 text-emerald-900"],
   READY_OFF: ["Configured, switched off", "bg-amber-100 text-amber-900"],
   NOT_CONFIGURED: ["Not configured", "bg-gray-100 text-gray-700"],
-  NOT_AVAILABLE: ["Needs an outside account first", "bg-gray-100 text-gray-500"],
+  NOT_AVAILABLE: ["Needs an outside account first", "bg-gray-100 text-gray-600"],
 };
 const when = (iso: unknown) => (typeof iso === "string" && iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Kampala" }) : "—");
 ---

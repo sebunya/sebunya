@@ -103,19 +103,19 @@ const statusToBadgeKind = {
       <>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
           <div class="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
-            <p class="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Successfully Dispatched</p>
+            <p class="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-1">Successfully Dispatched</p>
             <h3 class="text-2xl font-black text-green-600">{sentCount}</h3>
-            <p class="text-[10px] text-gray-400 mt-1 font-medium">Handed over to gateway.</p>
+            <p class="text-[10px] text-gray-500 mt-1 font-medium">Handed over to gateway.</p>
           </div>
           <div class="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
-            <p class="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Halted / Muted</p>
+            <p class="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-1">Halted / Muted</p>
             <h3 class="text-2xl font-black text-amber-600">{notConfigCount}</h3>
-            <p class="text-[10px] text-gray-400 mt-1 font-medium">Credentials pending setup.</p>
+            <p class="text-[10px] text-gray-500 mt-1 font-medium">Credentials pending setup.</p>
           </div>
           <div class="bg-white rounded-2xl p-6 border border-gray-200 shadow-sm">
-            <p class="text-[9px] font-black uppercase tracking-widest text-gray-400 mb-1">Provider Failures</p>
+            <p class="text-[9px] font-black uppercase tracking-widest text-gray-500 mb-1">Provider Failures</p>
             <h3 class="text-2xl font-black text-red-600">{failedCount}</h3>
-            <p class="text-[10px] text-gray-400 mt-1 font-medium">Returned upstream errors.</p>
+            <p class="text-[10px] text-gray-500 mt-1 font-medium">Returned upstream errors.</p>
           </div>
         </div>
 
@@ -123,7 +123,7 @@ const statusToBadgeKind = {
           <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
               <thead>
-                <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100">
+                <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-500 tracking-widest border-b border-gray-100">
                   <th class="p-6">Transmission</th>
                   <th class="p-6">Channel</th>
                   <th class="p-6">Template Ref</th>
@@ -135,7 +135,7 @@ const statusToBadgeKind = {
               <tbody class="text-xs divide-y divide-gray-50">
                 {attempts.length === 0 ? (
                   <tr>
-                    <td colspan="6" class="p-12 text-center text-gray-400 font-medium italic">
+                    <td colspan="6" class="p-12 text-center text-gray-500 font-medium italic">
                       No historical logs logged in queue.
                     </td>
                   </tr>
@@ -172,7 +172,7 @@ const statusToBadgeKind = {
             </table>
           </div>
         </div>
-        <div class="mt-4 text-[10px] font-mono text-gray-400 text-right">
+        <div class="mt-4 text-[10px] font-mono text-gray-500 text-right">
           EXPOSING TOP {attempts.length} RELATIONAL TRIES
         </div>
       </>

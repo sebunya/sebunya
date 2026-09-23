@@ -151,7 +151,7 @@ const rules = [
           <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse text-xs font-medium">
               <thead>
-                <tr class="bg-gray-50/50 border-b border-gray-100 text-[9px] uppercase font-black text-gray-400 tracking-wider">
+                <tr class="bg-gray-50/50 border-b border-gray-100 text-[9px] uppercase font-black text-gray-500 tracking-wider">
                   <th class="p-4 pl-6">Homepage Section</th>
                   <th class="p-4 text-center">Status</th>
                   <th class="p-4">Product Source</th>
@@ -172,9 +172,9 @@ const rules = [
                     </td>
                     <td class="p-4 text-[11px]">{s.source}</td>
                     <td class="p-4 text-center font-mono font-bold text-brand-dark">{s.maxItems}</td>
-                    <td class="p-4 text-[10px] italic text-gray-400">{s.dedupe}</td>
+                    <td class="p-4 text-[10px] italic text-gray-500">{s.dedupe}</td>
                     <td class="p-4 text-center">
-                      <span class={`font-black text-[10px] uppercase ${s.editable === 'Yes' ? 'text-brand-dark' : 'text-gray-300'}`}>
+                      <span class={`font-black text-[10px] uppercase ${s.editable === 'Yes' ? 'text-brand-dark' : 'text-gray-500'}`}>
                         {s.editable}
                       </span>
                     </td>
@@ -225,28 +225,28 @@ const rules = [
       <div class="lg:col-span-3 space-y-6">
         
         <div class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-4">
-           <h3 class="text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-100 pb-3">Direct Shortcuts</h3>
+           <h3 class="text-[10px] font-black uppercase tracking-widest text-gray-500 border-b border-gray-100 pb-3">Direct Shortcuts</h3>
            <div class="space-y-2.5">
              <a href="/admin/products?visible=true" class="block p-3 border border-gray-100 hover:border-brand-gold rounded-xl hover:bg-gray-50 transition-all text-xs">
                 <div class="flex justify-between font-bold text-brand-dark mb-0.5">
                    <span>Products Manager</span>
                    <span>&rarr;</span>
                 </div>
-                <p class="text-[10px] text-gray-400">Toggle featured tags or active inventory visibility.</p>
+                <p class="text-[10px] text-gray-500">Toggle featured tags or active inventory visibility.</p>
              </a>
              <a href="/admin/recommendations/rules" class="block p-3 border border-gray-100 hover:border-brand-gold rounded-xl hover:bg-gray-50 transition-all text-xs">
                 <div class="flex justify-between font-bold text-brand-dark mb-0.5">
                    <span>Recommendation Rules</span>
                    <span>&rarr;</span>
                 </div>
-                <p class="text-[10px] text-gray-400">Configure Boosting, Pinning, or Suppressing.</p>
+                <p class="text-[10px] text-gray-500">Configure Boosting, Pinning, or Suppressing.</p>
              </a>
              <a href="/admin/recommendations/preview" class="block p-3 border border-gray-100 hover:border-brand-gold rounded-xl hover:bg-gray-50 transition-all text-xs">
                 <div class="flex justify-between font-bold text-brand-dark mb-0.5">
                     <span>Rule Preview</span>
                    <span>&rarr;</span>
                 </div>
-                 <p class="text-[10px] text-gray-400">Test placement outcomes before activating rules.</p>
+                 <p class="text-[10px] text-gray-500">Test placement outcomes before activating rules.</p>
              </a>
            </div>
         </div>

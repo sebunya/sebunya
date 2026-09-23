@@ -32,19 +32,19 @@ const whatsappSupportNumber = '256705004545';
     
     <div class="p-6 flex-1 space-y-4">
       <div>
-        <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Gateway Provider</span>
+        <span class="text-[8px] font-bold text-gray-500 uppercase tracking-wider block mb-0.5">Gateway Provider</span>
         <span class="text-xs font-black text-brand-dark">ZeptoMail (Official HTML Gateway)</span>
       </div>
 
       <div>
-        <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Dispatch State</span>
+        <span class="text-[8px] font-bold text-gray-500 uppercase tracking-wider block mb-0.5">Dispatch State</span>
         <span class={`inline-block px-2.5 py-0.5 rounded-lg font-black text-[9px] uppercase tracking-wide border ${
           latestEmail ? (
             latestEmail.status === 'sent' ? 'bg-green-50 text-green-700 border-green-100' :
             latestEmail.status === 'dry_run' ? 'bg-amber-50 text-amber-700 border-amber-100' :
             latestEmail.status === 'failed' ? 'bg-red-50 text-red-700 border-red-100' :
             'bg-gray-50 text-gray-700 border-gray-100'
-          ) : 'bg-gray-50 text-gray-400 border-gray-100'
+          ) : 'bg-gray-50 text-gray-500 border-gray-100'
         }`}>
           {latestEmail ? latestEmail.status.replace(/_/g, ' ') : 'No attempts enqueued'}
         </span>
@@ -53,16 +53,16 @@ const whatsappSupportNumber = '256705004545';
       {latestEmail && (
         <div class="space-y-3 pt-2 border-t border-gray-100">
           <div>
-            <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Masked Recipient</span>
+            <span class="text-[8px] font-bold text-gray-500 uppercase tracking-wider block mb-0.5">Masked Recipient</span>
             <span class="text-xs font-mono font-bold text-brand-dark">{latestEmail.recipient}</span>
           </div>
           <div>
-            <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Template Selected</span>
+            <span class="text-[8px] font-bold text-gray-500 uppercase tracking-wider block mb-0.5">Template Selected</span>
             <span class="text-xs font-mono font-bold text-brand-dark">{latestEmail.template}</span>
           </div>
           {latestEmail.providerMessage && (
             <div>
-              <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Provider Response</span>
+              <span class="text-[8px] font-bold text-gray-500 uppercase tracking-wider block mb-0.5">Provider Response</span>
               <span class="text-[10px] font-mono text-gray-500 block bg-gray-50 border border-gray-100 rounded-lg p-2 leading-relaxed max-h-20 overflow-y-auto break-all">
                 {latestEmail.providerMessage}
               </span>
@@ -95,19 +95,19 @@ const whatsappSupportNumber = '256705004545';
     
     <div class="p-6 flex-1 space-y-4">
       <div>
-        <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Gateway Provider</span>
+        <span class="text-[8px] font-bold text-gray-500 uppercase tracking-wider block mb-0.5">Gateway Provider</span>
         <span class="text-xs font-black text-brand-dark">Pahappa / EgoSMS (Text Gateway)</span>
       </div>
 
       <div>
-        <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Dispatch State</span>
+        <span class="text-[8px] font-bold text-gray-500 uppercase tracking-wider block mb-0.5">Dispatch State</span>
         <span class={`inline-block px-2.5 py-0.5 rounded-lg font-black text-[9px] uppercase tracking-wide border ${
           latestSms ? (
             latestSms.status === 'sent' ? 'bg-green-50 text-green-700 border-green-100' :
             latestSms.status === 'dry_run' ? 'bg-amber-50 text-amber-700 border-amber-100' :
             latestSms.status === 'failed' ? 'bg-red-50 text-red-700 border-red-100' :
             'bg-gray-50 text-gray-700 border-gray-100'
-          ) : 'bg-gray-50 text-gray-400 border-gray-100'
+          ) : 'bg-gray-50 text-gray-500 border-gray-100'
         }`}>
           {latestSms ? latestSms.status.replace(/_/g, ' ') : 'No attempts enqueued'}
         </span>
@@ -116,16 +116,16 @@ const whatsappSupportNumber = '256705004545';
       {latestSms && (
         <div class="space-y-3 pt-2 border-t border-gray-100">
           <div>
-            <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Masked Recipient</span>
+            <span class="text-[8px] font-bold text-gray-500 uppercase tracking-wider block mb-0.5">Masked Recipient</span>
             <span class="text-xs font-mono font-bold text-brand-dark">{latestSms.recipient}</span>
           </div>
           <div>
-            <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Template Selected</span>
+            <span class="text-[8px] font-bold text-gray-500 uppercase tracking-wider block mb-0.5">Template Selected</span>
             <span class="text-xs font-mono font-bold text-brand-dark">{latestSms.template}</span>
           </div>
           {latestSms.providerMessage && (
             <div>
-              <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Provider Response</span>
+              <span class="text-[8px] font-bold text-gray-500 uppercase tracking-wider block mb-0.5">Provider Response</span>
               <span class="text-[10px] font-mono text-gray-500 block bg-gray-50 border border-gray-100 rounded-lg p-2 leading-relaxed max-h-20 overflow-y-auto break-all">
                 {latestSms.providerMessage}
               </span>
@@ -158,12 +158,12 @@ const whatsappSupportNumber = '256705004545';
     
     <div class="p-6 flex-1 space-y-4">
       <div>
-        <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Integration Mode</span>
+        <span class="text-[8px] font-bold text-gray-500 uppercase tracking-wider block mb-0.5">Integration Mode</span>
         <span class="text-xs font-black text-brand-dark">Manual Client-Side Handoff (wa.me)</span>
       </div>
 
       <div>
-        <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">WhatsApp Cloud API</span>
+        <span class="text-[8px] font-bold text-gray-500 uppercase tracking-wider block mb-0.5">WhatsApp Cloud API</span>
         <span class="inline-block px-2.5 py-0.5 rounded-lg font-black text-[9px] uppercase tracking-wide border bg-yellow-50 text-yellow-700 border-yellow-100">
           Paused / Stubbed
         </span>
@@ -171,11 +171,11 @@ const whatsappSupportNumber = '256705004545';
 
       <div class="space-y-3 pt-2 border-t border-gray-100">
         <div>
-          <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Support Desk Number</span>
+          <span class="text-[8px] font-bold text-gray-500 uppercase tracking-wider block mb-0.5">Support Desk Number</span>
           <span class="text-xs font-mono font-bold text-brand-dark">+{whatsappSupportNumber}</span>
         </div>
         <div>
-          <span class="text-[8px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Handoff Validation</span>
+          <span class="text-[8px] font-bold text-gray-500 uppercase tracking-wider block mb-0.5">Handoff Validation</span>
           <span class="text-xs font-semibold text-green-600">✓ Config-Driven Link Safe</span>
         </div>
       </div>

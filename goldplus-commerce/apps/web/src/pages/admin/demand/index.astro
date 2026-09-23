@@ -131,7 +131,7 @@ const percent = (rate: number) => `${(rate * 100).toFixed(1)}%`;
       <div class="overflow-x-auto">
         <table class="w-full text-left border-collapse">
           <thead>
-            <tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-400 tracking-widest">
+            <tr class="bg-gray-50 border-b border-gray-100 text-[10px] uppercase font-black text-gray-500 tracking-widest">
               <th class="p-5">Query</th>
               <th class="p-5 text-right">Searches</th>
               <th class="p-5 text-right">Zero results</th>
@@ -145,7 +145,7 @@ const percent = (rate: number) => `${(rate * 100).toFixed(1)}%`;
               <tr class="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
                 <td class="p-5 font-bold text-brand-dark">{s.query}</td>
                 <td class="p-5 text-right font-mono">{s.searchCount}</td>
-                <td class={`p-5 text-right font-mono font-black ${s.zeroResultCount > 0 ? "text-red-600" : "text-gray-400"}`}>{s.zeroResultCount}</td>
+                <td class={`p-5 text-right font-mono font-black ${s.zeroResultCount > 0 ? "text-red-600" : "text-gray-500"}`}>{s.zeroResultCount}</td>
                 <td class="p-5 text-center">
                   <span class="text-[9px] font-black px-2.5 py-1 rounded uppercase tracking-widest border border-gray-200 bg-gray-50 text-gray-600">{s.status}</span>
                 </td>
@@ -166,7 +166,7 @@ const percent = (rate: number) => `${(rate * 100).toFixed(1)}%`;
             ))}
             {signals.length === 0 && !loadFailed && (
               <tr>
-                <td colspan="6" class="p-12 text-center text-gray-400 italic">
+                <td colspan="6" class="p-12 text-center text-gray-500 italic">
                   No search demand recorded yet. Rows appear as customers search the shop.
                 </td>
               </tr>

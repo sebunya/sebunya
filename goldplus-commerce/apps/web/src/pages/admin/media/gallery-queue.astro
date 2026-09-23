@@ -40,13 +40,13 @@ const filters: Array<[string, string]> = [['incomplete', 'Fewer than 4'], ['0', 
         <section class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
           {data.summary.byCount.map((n, i) => (
             <a href={`?filter=${i}`} class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm" class:list={[filter === String(i) ? 'ring-2 ring-brand-green/60' : '']}>
-              <p class="text-[10px] font-black uppercase tracking-wider text-gray-400">{i}/4</p>
+              <p class="text-[10px] font-black uppercase tracking-wider text-gray-500">{i}/4</p>
               <p class="text-2xl font-black text-brand-dark">{n}</p>
             </a>
           ))}
-          <a href="?filter=missing-cover" class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm"><p class="text-[10px] font-black uppercase tracking-wider text-gray-400">Missing cover</p><p class="text-2xl font-black text-amber-700">{data.summary.missingCover}</p></a>
-          <a href="?filter=unready" class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm"><p class="text-[10px] font-black uppercase tracking-wider text-gray-400">Unready</p><p class="text-2xl font-black text-amber-700">{data.summary.unready}</p></a>
-          <a href="?filter=legacy" class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm"><p class="text-[10px] font-black uppercase tracking-wider text-gray-400">Legacy rows</p><p class="text-2xl font-black text-gray-700">{data.summary.legacy}</p></a>
+          <a href="?filter=missing-cover" class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm"><p class="text-[10px] font-black uppercase tracking-wider text-gray-500">Missing cover</p><p class="text-2xl font-black text-amber-700">{data.summary.missingCover}</p></a>
+          <a href="?filter=unready" class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm"><p class="text-[10px] font-black uppercase tracking-wider text-gray-500">Unready</p><p class="text-2xl font-black text-amber-700">{data.summary.unready}</p></a>
+          <a href="?filter=legacy" class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm"><p class="text-[10px] font-black uppercase tracking-wider text-gray-500">Legacy rows</p><p class="text-2xl font-black text-gray-700">{data.summary.legacy}</p></a>
         </section>
 
         <form method="GET" class="flex flex-wrap items-center gap-2">
@@ -71,8 +71,8 @@ const filters: Array<[string, string]> = [['incomplete', 'Fewer than 4'], ['0', 
                 <tr>
                   <td class="px-4 py-3"><p class="font-bold text-brand-dark">{p.name}</p><p class="text-xs text-gray-500 font-mono">{p.sku}</p></td>
                   <td class="px-4 py-3 font-black tabular-nums">{p.assigned}/4</td>
-                  <td class="px-4 py-3">{p.hasCover ? <span class="text-green-700 font-bold text-xs">Valid</span> : p.assigned > 0 ? <span class="text-amber-700 font-bold text-xs">Missing</span> : <span class="text-gray-400 text-xs">—</span>}</td>
-                  <td class="px-4 py-3 text-xs">{p.unreadyRows > 0 && <span class="text-amber-700 font-bold">{p.unreadyRows} unready</span>}{p.legacyRows > 0 && <span class="text-gray-600"> · {p.legacyRows} legacy</span>}{p.unreadyRows === 0 && p.legacyRows === 0 && <span class="text-gray-400">ok</span>}</td>
+                  <td class="px-4 py-3">{p.hasCover ? <span class="text-green-700 font-bold text-xs">Valid</span> : p.assigned > 0 ? <span class="text-amber-700 font-bold text-xs">Missing</span> : <span class="text-gray-500 text-xs">—</span>}</td>
+                  <td class="px-4 py-3 text-xs">{p.unreadyRows > 0 && <span class="text-amber-700 font-bold">{p.unreadyRows} unready</span>}{p.legacyRows > 0 && <span class="text-gray-600"> · {p.legacyRows} legacy</span>}{p.unreadyRows === 0 && p.legacyRows === 0 && <span class="text-gray-500">ok</span>}</td>
                   <td class="px-4 py-3 text-xs text-gray-600">{p.approvalStatus}{!p.active && ' · inactive'}</td>
                   <td class="px-4 py-3 text-right"><a href={`/admin/products/${p.productId}/media`} class="text-xs font-black uppercase tracking-wider px-3 py-1.5 rounded-xl border border-gray-300 bg-white">Edit gallery</a></td>
                 </tr>

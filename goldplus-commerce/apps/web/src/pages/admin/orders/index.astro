@@ -114,7 +114,7 @@ function getStatusColor(status: string) {
     <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm mb-8">
       <form method="GET" class="grid grid-cols-1 sm:grid-cols-4 gap-4 items-end">
         <div class="sm:col-span-2">
-          <label for="search" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Search Query</label>
+          <label for="search" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Search Query</label>
           <input 
             type="text" 
             name="search" 
@@ -126,7 +126,7 @@ function getStatusColor(status: string) {
         </div>
 
         <div>
-          <label for="status" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Fulfillment State</label>
+          <label for="status" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Fulfillment State</label>
           <select 
             name="status" 
             id="status"
@@ -147,7 +147,7 @@ function getStatusColor(status: string) {
         </div>
 
         <div>
-          <label for="paymentStatus" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Payment State</label>
+          <label for="paymentStatus" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Payment State</label>
           <select 
             name="paymentStatus" 
             id="paymentStatus"
@@ -192,7 +192,7 @@ function getStatusColor(status: string) {
       <div class="overflow-x-auto">
         <table class="w-full text-left border-collapse">
           <thead>
-            <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-400 tracking-widest border-b border-gray-100">
+            <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-500 tracking-widest border-b border-gray-100">
               <th class="p-6">Order Key</th>
               <th class="p-6">Submission</th>
               <th class="p-6">Customer / Type</th>
@@ -215,7 +215,7 @@ function getStatusColor(status: string) {
                 </td>
                 <td class="p-6">
                   <div class="font-bold text-brand-dark text-sm">{order.customerName}</div>
-                  <div class="text-[10px] text-gray-400 mt-0.5 flex items-center gap-2">
+                  <div class="text-[10px] text-gray-500 mt-0.5 flex items-center gap-2">
                     <span>{order.customerPhone}</span>
                     <span class="uppercase font-black tracking-wide border border-gray-200 bg-gray-50 text-gray-500 px-1.5 py-0.5 rounded text-[8px]">
                       {order.buyerType}
@@ -252,7 +252,7 @@ function getStatusColor(status: string) {
             ))}
             {orders.length === 0 && (
               <tr>
-                <td colspan="7" class="p-20 text-center text-gray-400 italic text-xs leading-relaxed">
+                <td colspan="7" class="p-20 text-center text-gray-500 italic text-xs leading-relaxed">
                   Zero active orders matched your filtering criteria.
                 </td>
               </tr>

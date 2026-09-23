@@ -59,7 +59,7 @@ const STATUSES = ['OPEN', 'MAPPED_DEVICE', 'ALIAS_ADDED', 'BATTERY_MAPPED', 'DRA
 
 <AdminLayout title="Battery demand" description="What customers searched for, what we could not answer, and the requests they left." activePath="/admin/batteries">
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
-    <p class="text-[10px] uppercase font-black tracking-widest text-gray-400 mb-1"><a href="/admin/batteries" class="hover:text-brand-primary">Batteries</a> / Demand</p>
+    <p class="text-[10px] uppercase font-black tracking-widest text-gray-500 mb-1"><a href="/admin/batteries" class="hover:text-brand-primary">Batteries</a> / Demand</p>
     <div class="mb-6 pb-6 border-b border-gray-200 flex flex-wrap items-end justify-between gap-3">
       <div>
         <h2 class="text-2xl font-black text-brand-dark tracking-tight">Customer demand</h2>
@@ -67,7 +67,7 @@ const STATUSES = ['OPEN', 'MAPPED_DEVICE', 'ALIAS_ADDED', 'BATTERY_MAPPED', 'DRA
       </div>
       <form method="GET" class="flex gap-2 items-end">
         <input type="hidden" name="status" value={status} />
-        <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Period</span>
+        <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Period</span>
           <select name="days" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-sm">
             {[7, 30, 90, 365].map((d) => <option value={d} selected={d === days}>Last {d} days</option>)}
           </select></label>
@@ -81,9 +81,9 @@ const STATUSES = ['OPEN', 'MAPPED_DEVICE', 'ALIAS_ADDED', 'BATTERY_MAPPED', 'DRA
     {o && (
       <>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-          <div class="rounded-2xl border border-gray-200 bg-white p-4"><p class="text-3xl font-black tabular-nums text-brand-dark">{o.searchToProduct.searches}</p><p class="text-[10px] uppercase font-black tracking-widest text-gray-400 mt-1">People who searched</p></div>
-          <div class="rounded-2xl border border-gray-200 bg-white p-4"><p class="text-3xl font-black tabular-nums text-brand-dark">{o.searchToProduct.rate}%</p><p class="text-[10px] uppercase font-black tracking-widest text-gray-400 mt-1">Went on to a battery page</p></div>
-          <div class="rounded-2xl border border-gray-200 bg-white p-4"><p class="text-3xl font-black tabular-nums text-brand-dark">{o.searchToCart.rate}%</p><p class="text-[10px] uppercase font-black tracking-widest text-gray-400 mt-1">Added one to the cart</p></div>
+          <div class="rounded-2xl border border-gray-200 bg-white p-4"><p class="text-3xl font-black tabular-nums text-brand-dark">{o.searchToProduct.searches}</p><p class="text-[10px] uppercase font-black tracking-widest text-gray-500 mt-1">People who searched</p></div>
+          <div class="rounded-2xl border border-gray-200 bg-white p-4"><p class="text-3xl font-black tabular-nums text-brand-dark">{o.searchToProduct.rate}%</p><p class="text-[10px] uppercase font-black tracking-widest text-gray-500 mt-1">Went on to a battery page</p></div>
+          <div class="rounded-2xl border border-gray-200 bg-white p-4"><p class="text-3xl font-black tabular-nums text-brand-dark">{o.searchToCart.rate}%</p><p class="text-[10px] uppercase font-black tracking-widest text-gray-500 mt-1">Added one to the cart</p></div>
           <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4"><p class="text-3xl font-black tabular-nums text-amber-900">{o.noResultQueries.length}</p><p class="text-[10px] uppercase font-black tracking-widest text-amber-900 mt-1">Distinct unanswered searches</p></div>
         </div>
 
@@ -106,7 +106,7 @@ const STATUSES = ['OPEN', 'MAPPED_DEVICE', 'ALIAS_ADDED', 'BATTERY_MAPPED', 'DRA
                     <li class="px-4 py-2.5 flex justify-between gap-3"><span class="text-brand-dark truncate">{label}</span><span class="text-gray-500 tabular-nums whitespace-nowrap">{value}</span></li>
                   ))}
                 </ul>
-              ) : <p class="px-4 py-8 text-center text-gray-400 italic text-xs">Nothing recorded in this period.</p>}
+              ) : <p class="px-4 py-8 text-center text-gray-500 italic text-xs">Nothing recorded in this period.</p>}
             </section>
           ))}
         </div>
@@ -131,7 +131,7 @@ const STATUSES = ['OPEN', 'MAPPED_DEVICE', 'ALIAS_ADDED', 'BATTERY_MAPPED', 'DRA
                   {r.brandText ? `${r.brandText} · ` : ''}{r.modelNumberText ? `model ${r.modelNumberText} · ` : ''}{r.batteryCodeText ? `code ${r.batteryCodeText} · ` : ''}{when(r.createdAt)}
                 </p>
                 {(r.contactName || r.contactPhone) && <p class="text-gray-600 mt-1">Contact: {[r.contactName, r.contactPhone].filter(Boolean).join(' · ')}</p>}
-                {r.notes && <p class="text-gray-400 mt-1">{r.notes}</p>}
+                {r.notes && <p class="text-gray-500 mt-1">{r.notes}</p>}
                 {r.resolutionNote && <p class="text-green-700 mt-1">Resolved: {r.resolutionNote}</p>}
               </div>
               <span class="text-[9px] font-black px-2 py-1 rounded uppercase tracking-widest border border-gray-200 bg-gray-50 text-gray-600">{r.status.replace(/_/g, ' ').toLowerCase()}</span>
@@ -139,7 +139,7 @@ const STATUSES = ['OPEN', 'MAPPED_DEVICE', 'ALIAS_ADDED', 'BATTERY_MAPPED', 'DRA
             {r.status === 'OPEN' && (
               <form method="POST" class="mt-3 flex flex-wrap gap-2 items-end border-t border-gray-100 pt-3">
                 <input type="hidden" name="requestId" value={r.id} />
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">What to do</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">What to do</span>
                   <select name="action" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-xs">
                     <option value="MAP_DEVICE">This is a phone we have</option>
                     <option value="MAP_BATTERY">We have a battery for it</option>
@@ -147,11 +147,11 @@ const STATUSES = ['OPEN', 'MAPPED_DEVICE', 'ALIAS_ADDED', 'BATTERY_MAPPED', 'DRA
                     <option value="INVALID">Not a real request</option>
                     <option value="RESOLVED">Answered the customer</option>
                   </select></label>
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Phone</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Phone</span>
                   <select name="deviceId" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-xs max-w-[220px]"><option value="">None</option>{devices.map((d) => <option value={d.id}>{d.brandName} {d.model} {d.modelNumber ?? ''}</option>)}</select></label>
-                <label class="block"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Battery</span>
+                <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Battery</span>
                   <select name="batteryProductId" class="mt-1 rounded-lg border border-gray-300 px-3 py-2 text-xs max-w-[220px]"><option value="">None</option>{batteries.map((b) => <option value={b.product.productId}>{b.profile.canonicalCode}</option>)}</select></label>
-                <label class="block flex-1 min-w-[160px]"><span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Note</span>
+                <label class="block flex-1 min-w-[160px]"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Note</span>
                   <input name="note" maxlength="500" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-xs" /></label>
                 <button type="submit" class="rounded-lg bg-brand-dark px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white">Record</button>
               </form>

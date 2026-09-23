@@ -267,7 +267,7 @@ const step = published ? "done" : preview ? "preview" : derived.length > 0 ? "de
                   <tr class="border-t border-gray-100">
                     <td class="px-3 py-2 font-mono text-xs text-gray-600">{o.orderNumber}</td>
                     <td class="px-3 py-2 text-gray-700">{o.areaLabel}</td>
-                    <td class="px-3 py-2 text-right text-gray-500">{o.beforeFeeUgx === null ? <span class="text-[10px] font-bold text-gray-400">{o.beforeReason}</span> : ugx(o.beforeFeeUgx)}</td>
+                    <td class="px-3 py-2 text-right text-gray-500">{o.beforeFeeUgx === null ? <span class="text-[10px] font-bold text-gray-500">{o.beforeReason}</span> : ugx(o.beforeFeeUgx)}</td>
                     <td class="px-3 py-2 text-right font-bold">{o.afterFeeUgx === null ? <span class="text-[10px] font-bold text-amber-700">{o.afterReason}</span> : ugx(o.afterFeeUgx)}</td>
                     <td class="px-3 py-2 text-right text-gray-600">{o.differenceUgx === null ? "—" : o.differenceUgx === 0 ? "no change" : ugx(o.differenceUgx)}</td>
                   </tr>
@@ -313,7 +313,7 @@ const step = published ? "done" : preview ? "preview" : derived.length > 0 ? "de
           </div>
           {areas.length > 0 && (
             <fieldset class="mt-4">
-              <legend class="text-[10px] uppercase font-black text-gray-400 tracking-widest mb-2">Which one?</legend>
+              <legend class="text-[10px] uppercase font-black text-gray-500 tracking-widest mb-2">Which one?</legend>
               <div class="space-y-2">
                 {areas.map((a) => (
                   <label class="flex items-center gap-3 text-sm border border-gray-200 rounded-lg px-3 py-2 hover:bg-gray-50">
@@ -464,10 +464,10 @@ const step = published ? "done" : preview ? "preview" : derived.length > 0 ? "de
             ["free_delivery_threshold_ugx", "Free delivery threshold (optional)", "UGX"],
           ] as Array<[string, string, string]>).map(([name, label, unit]) => (
             <label class="block">
-              <span class="text-[10px] uppercase font-black text-gray-400 tracking-widest">{label}</span>
+              <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">{label}</span>
               <input name={name} inputmode="decimal"
                 class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-brand-primary focus:border-brand-primary" />
-              <span class="text-[10px] text-gray-400">{unit}</span>
+              <span class="text-[10px] text-gray-500">{unit}</span>
             </label>
           ))}
           <div class="sm:col-span-2">

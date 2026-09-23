@@ -95,7 +95,7 @@ const titleHint = 'Brand + model + the fact a shopper searches for: "GoldPlus GP
     <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-4">
       <div class="flex items-start justify-between gap-4">
         <div>
-          <h3 class="text-xs font-black uppercase tracking-wider text-gray-400">Photos</h3>
+          <h3 class="text-xs font-black uppercase tracking-wider text-gray-500">Photos</h3>
           <p class="text-sm text-gray-600 mt-1">First photo: the product alone on a white or light background, filling most of the frame, at least 1000 × 1000, no text or spec panels on it. Box, ports and spec panels go after it.</p>
         </div>
         <span class="text-xs font-black px-2.5 py-1 rounded-full border whitespace-nowrap" class:list={[listing.images.length === 0 ? 'text-amber-700 bg-amber-50 border-amber-200' : listing.images.length === 1 ? 'text-gray-700 bg-gray-100 border-gray-200' : 'text-green-700 bg-green-50 border-green-200']}>
@@ -128,30 +128,30 @@ const titleHint = 'Brand + model + the fact a shopper searches for: "GoldPlus GP
     <form method="POST" class="space-y-8" id="listing-form">
       <input type="hidden" name="action" value="save" />
       <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-5">
-        <h3 class="text-xs font-black uppercase tracking-wider text-gray-400">Title and descriptions</h3>
+        <h3 class="text-xs font-black uppercase tracking-wider text-gray-500">Title and descriptions</h3>
         <div>
           <label for="name" class="block text-xs font-bold text-gray-700 mb-1">Title</label>
           <input id="name" name="name" value={listing.name} maxlength="150" required class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm font-bold text-brand-dark focus:ring-2 focus:ring-brand-green focus:border-brand-green" />
           <p class="text-xs text-gray-500 mt-1">{titleHint}</p>
         </div>
         <div>
-          <label for="shortDescription" class="block text-xs font-bold text-gray-700 mb-1">Short description <span class="font-normal text-gray-400">(cards and search results, up to 500)</span></label>
+          <label for="shortDescription" class="block text-xs font-bold text-gray-700 mb-1">Short description <span class="font-normal text-gray-500">(cards and search results, up to 500)</span></label>
           <textarea id="shortDescription" name="shortDescription" rows="2" maxlength="500" class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-green focus:border-brand-green">{listing.shortDescription}</textarea>
         </div>
         <div>
-          <label for="longDescription" class="block text-xs font-bold text-gray-700 mb-1">Long description <span class="font-normal text-gray-400">(product page and Google, up to 5000)</span></label>
+          <label for="longDescription" class="block text-xs font-bold text-gray-700 mb-1">Long description <span class="font-normal text-gray-500">(product page and Google, up to 5000)</span></label>
           <textarea id="longDescription" name="longDescription" rows="7" maxlength="5000" placeholder="What it is, what it does, what is in the box, what it works with. Plain sentences; the specifications below carry the numbers." class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-brand-green focus:border-brand-green">{listing.longDescription}</textarea>
         </div>
       </section>
 
       <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-4">
         <div>
-          <h3 class="text-xs font-black uppercase tracking-wider text-gray-400">Specifications</h3>
+          <h3 class="text-xs font-black uppercase tracking-wider text-gray-500">Specifications</h3>
           <p class="text-sm text-gray-600 mt-1">Copy them from the maker's spec panel or the box. Tick <em>verified</em> only for a value you checked against the maker's own specification — only verified values reach Google and the product page's structured data.</p>
         </div>
         <div class="overflow-x-auto">
           <table class="w-full text-sm" id="spec-table">
-            <thead class="text-[10px] uppercase tracking-widest text-gray-400 font-black"><tr><th class="text-left py-2 pr-3">Name</th><th class="text-left py-2 pr-3">Value</th><th class="text-left py-2 pr-3 w-24">Unit</th><th class="text-left py-2 w-24">Verified</th></tr></thead>
+            <thead class="text-[10px] uppercase tracking-widest text-gray-500 font-black"><tr><th class="text-left py-2 pr-3">Name</th><th class="text-left py-2 pr-3">Value</th><th class="text-left py-2 pr-3 w-24">Unit</th><th class="text-left py-2 w-24">Verified</th></tr></thead>
             <tbody>
               {rows.map((s, i) => (
                 <tr class="spec-row">

@@ -84,7 +84,7 @@ const lastRun = runs[0] ?? null;
     ) : (
       <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white mb-10">
         <table class="w-full text-xs">
-          <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+          <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-500 border-b border-gray-100">
             <th class="p-3">Priority</th><th>Entity</th><th>Recommended action</th><th>Score</th>
             <th>Commercial</th><th>Confidence</th><th>Evidence</th><th class="p-3">Why</th>
           </tr></thead>
@@ -94,13 +94,13 @@ const lastRun = runs[0] ?? null;
                 <td class="p-3"><span class={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${bucketClass(String(o.priority_bucket))}`}>{str(o.priority_bucket)}</span></td>
                 <td>
                   <strong class="text-brand-dark">{str(o.entity_label ?? o.entity_id)}</strong>
-                  <div class="text-gray-400 font-mono text-[11px]">{str(o.entity_type)} · {str(o.entity_id)}</div>
+                  <div class="text-gray-500 font-mono text-[11px]">{str(o.entity_type)} · {str(o.entity_id)}</div>
                 </td>
                 <td class="font-mono text-[11px]">{str(o.recommended_action_class)}</td>
                 <td>
                   <strong>{o.adjusted_score === null ? "—" : Number(o.adjusted_score).toFixed(1)}</strong>
                   {o.unscored_weight_share !== null && (
-                    <div class="text-gray-400 text-[10px]">{pct(Number(o.unscored_weight_share))} unscored</div>
+                    <div class="text-gray-500 text-[10px]">{pct(Number(o.unscored_weight_share))} unscored</div>
                   )}
                 </td>
                 <td class="font-mono text-[11px]">{str(o.commercial_readiness)}</td>
@@ -125,15 +125,15 @@ const lastRun = runs[0] ?? null;
         <p class="text-xs text-gray-500 mt-1 font-mono">{str(detail.opportunity?.opportunity_key)}</p>
 
         <dl class="grid grid-cols-2 md:grid-cols-4 gap-4 my-6 text-xs">
-          <div><dt class="uppercase tracking-widest text-[10px] text-gray-400">Policy in force</dt><dd class="font-mono">{str(detail.opportunity?.policy_version)}</dd></div>
-          <div><dt class="uppercase tracking-widest text-[10px] text-gray-400">First seen</dt><dd>{fmtWhen(detail.opportunity?.first_seen_at)}</dd></div>
-          <div><dt class="uppercase tracking-widest text-[10px] text-gray-400">Last material change</dt><dd>{fmtWhen(detail.opportunity?.last_material_change_at)}</dd></div>
-          <div><dt class="uppercase tracking-widest text-[10px] text-gray-400">Root cause</dt><dd class="font-mono">{str(detail.opportunity?.root_cause_key)}</dd></div>
+          <div><dt class="uppercase tracking-widest text-[10px] text-gray-500">Policy in force</dt><dd class="font-mono">{str(detail.opportunity?.policy_version)}</dd></div>
+          <div><dt class="uppercase tracking-widest text-[10px] text-gray-500">First seen</dt><dd>{fmtWhen(detail.opportunity?.first_seen_at)}</dd></div>
+          <div><dt class="uppercase tracking-widest text-[10px] text-gray-500">Last material change</dt><dd>{fmtWhen(detail.opportunity?.last_material_change_at)}</dd></div>
+          <div><dt class="uppercase tracking-widest text-[10px] text-gray-500">Root cause</dt><dd class="font-mono">{str(detail.opportunity?.root_cause_key)}</dd></div>
         </dl>
 
         <h4 class="text-xs font-bold uppercase tracking-widest text-gray-500 mb-2">What drove the score</h4>
         <table class="w-full text-xs mb-6">
-          <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+          <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-500 border-b border-gray-100">
             <th class="py-1">Component</th><th>Evidence</th><th>State</th><th>Normalised</th><th>Weight</th><th>Contribution</th><th>Reason</th>
           </tr></thead>
           <tbody>
@@ -158,7 +158,7 @@ const lastRun = runs[0] ?? null;
             </h4>
             <ul class="mb-6 text-xs text-gray-700 space-y-1">
               {detail.rootCauseSiblings.map((s: any) => (
-                <li>· {str(s.entity_label ?? s.opportunity_key)} <span class="text-gray-400">({Number(s.adjusted_score ?? 0).toFixed(1)})</span></li>
+                <li>· {str(s.entity_label ?? s.opportunity_key)} <span class="text-gray-500">({Number(s.adjusted_score ?? 0).toFixed(1)})</span></li>
               ))}
             </ul>
           </>
@@ -172,7 +172,7 @@ const lastRun = runs[0] ?? null;
             {detail.history.map((h: any) => (
               <li class="border-t border-gray-100 pt-2">
                 <span class="font-mono font-bold text-brand-dark">{str(h.event_type)}</span>
-                <span class="text-gray-400"> · {fmtWhen(h.occurred_at)} · policy {str(h.policy_version)}</span>
+                <span class="text-gray-500"> · {fmtWhen(h.occurred_at)} · policy {str(h.policy_version)}</span>
                 <div class="text-gray-600">{str(h.reason)}</div>
               </li>
             ))}

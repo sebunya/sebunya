@@ -101,7 +101,7 @@ function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG", 
 
 <AdminLayout title="Dispatch" description="Record and track the dispatch of a fulfilment task — carrier, rider, safe contact, tracking status.">
   <div class="container mx-auto px-6 lg:px-8 max-w-3xl">
-    <div class="mb-6 flex items-center gap-4 text-xs font-bold text-gray-400">
+    <div class="mb-6 flex items-center gap-4 text-xs font-bold text-gray-500">
       <a href="/admin/fulfilment" class="hover:text-brand-dark">← Fulfilment queue</a>
       <a href={`/admin/fulfilment/${taskId}/packing`} class="hover:text-brand-dark">Packing</a>
       <a href={`/admin/fulfilment/${taskId}/delivery`} class="hover:text-brand-dark">Delivery →</a>
@@ -132,13 +132,13 @@ function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG", 
           <span class="text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border bg-violet-50 text-violet-700 border-violet-200">{dispatch.trackingStatus}</span>
         </div>
         <dl class="grid grid-cols-2 gap-x-6 gap-y-2 text-xs text-gray-600">
-          <div><dt class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Method</dt><dd>{dispatch.method}</dd></div>
-          <div><dt class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Payment policy</dt><dd>{dispatch.paymentPolicy}</dd></div>
-          <div><dt class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Carrier / rider</dt><dd>{dispatch.carrierName || "—"} {dispatch.riderName ? `· ${dispatch.riderName}` : ""}</dd></div>
-          <div><dt class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Contact</dt><dd>{dispatch.contactMasked || "—"}</dd></div>
-          <div><dt class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Dispatched</dt><dd>{fmt(dispatch.dispatchTime)}</dd></div>
-          <div><dt class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Est. delivery</dt><dd>{fmt(dispatch.estimatedDeliveryAt)}</dd></div>
-          <div><dt class="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Stock consumed</dt><dd>{dispatch.stockConsumed ? "Yes (once, at ready-for-dispatch)" : "No"}</dd></div>
+          <div><dt class="text-gray-500 font-bold uppercase tracking-wider text-[10px]">Method</dt><dd>{dispatch.method}</dd></div>
+          <div><dt class="text-gray-500 font-bold uppercase tracking-wider text-[10px]">Payment policy</dt><dd>{dispatch.paymentPolicy}</dd></div>
+          <div><dt class="text-gray-500 font-bold uppercase tracking-wider text-[10px]">Carrier / rider</dt><dd>{dispatch.carrierName || "—"} {dispatch.riderName ? `· ${dispatch.riderName}` : ""}</dd></div>
+          <div><dt class="text-gray-500 font-bold uppercase tracking-wider text-[10px]">Contact</dt><dd>{dispatch.contactMasked || "—"}</dd></div>
+          <div><dt class="text-gray-500 font-bold uppercase tracking-wider text-[10px]">Dispatched</dt><dd>{fmt(dispatch.dispatchTime)}</dd></div>
+          <div><dt class="text-gray-500 font-bold uppercase tracking-wider text-[10px]">Est. delivery</dt><dd>{fmt(dispatch.estimatedDeliveryAt)}</dd></div>
+          <div><dt class="text-gray-500 font-bold uppercase tracking-wider text-[10px]">Stock consumed</dt><dd>{dispatch.stockConsumed ? "Yes (once, at ready-for-dispatch)" : "No"}</dd></div>
         </dl>
         {dispatch.notes && <p class="mt-3 text-xs text-gray-500">Notes: {dispatch.notes}</p>}
 
@@ -146,13 +146,13 @@ function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG", 
           <input type="hidden" name="action" value="tracking" />
           <input type="hidden" name="expectedVersion" value={dispatch.version} />
           <div>
-            <label for="trackingStatus" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Tracking status</label>
+            <label for="trackingStatus" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Tracking status</label>
             <select id="trackingStatus" name="trackingStatus" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
               {TRACKING.map((t) => <option value={t} selected={t === dispatch!.trackingStatus}>{t}</option>)}
             </select>
           </div>
           <div>
-            <label for="eta2" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Est. delivery</label>
+            <label for="eta2" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Est. delivery</label>
             <input id="eta2" name="estimatedDeliveryAt" type="datetime-local" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
           </div>
           <div class="sm:col-span-2 flex justify-end">
@@ -167,29 +167,29 @@ function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG", 
         <form method="POST" class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm grid gap-4 sm:grid-cols-2">
           <input type="hidden" name="action" value="record" />
           <div>
-            <label for="method" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Method</label>
+            <label for="method" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Method</label>
             <select id="method" name="method" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
               {METHODS.map((m) => <option value={m}>{m}</option>)}
             </select>
           </div>
           <div>
-            <label for="eta" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Est. delivery (optional)</label>
+            <label for="eta" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Est. delivery (optional)</label>
             <input id="eta" name="estimatedDeliveryAt" type="datetime-local" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
           </div>
           <div>
-            <label for="carrierName" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Carrier (optional)</label>
+            <label for="carrierName" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Carrier (optional)</label>
             <input id="carrierName" name="carrierName" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
           </div>
           <div>
-            <label for="riderName" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Rider (optional)</label>
+            <label for="riderName" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Rider (optional)</label>
             <input id="riderName" name="riderName" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
           </div>
           <div>
-            <label for="contact" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Rider contact (stored masked)</label>
+            <label for="contact" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Rider contact (stored masked)</label>
             <input id="contact" name="contact" type="text" maxlength="40" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
           </div>
           <div>
-            <label for="notes" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Notes (optional)</label>
+            <label for="notes" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Notes (optional)</label>
             <input id="notes" name="notes" type="text" maxlength="2000" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
           </div>
           <label class="sm:col-span-2 flex items-center gap-2 text-xs font-bold text-brand-dark">

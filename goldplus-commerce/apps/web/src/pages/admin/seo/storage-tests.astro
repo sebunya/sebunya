@@ -67,17 +67,17 @@ const stateLabel = (s: string) => (s === "NOT_TESTED" ? "NOT TESTED" : s);
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10">
       <div class="rounded-2xl border border-gray-200 bg-white p-5">
-        <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Tests recorded</p>
+        <p class="text-[10px] font-bold uppercase tracking-widest text-gray-500">Tests recorded</p>
         <p class="text-2xl font-black text-brand-dark">{num(tests.length)}</p>
       </div>
       <div class="rounded-2xl border border-gray-200 bg-white p-5">
-        <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Storage products</p>
+        <p class="text-[10px] font-bold uppercase tracking-widest text-gray-500">Storage products</p>
         <p class="text-2xl font-black text-brand-dark">{num(coverage.length)}</p>
       </div>
       <div class="rounded-2xl border border-gray-200 bg-white p-5">
-        <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400">Not tested</p>
+        <p class="text-[10px] font-bold uppercase tracking-widest text-gray-500">Not tested</p>
         <p class="text-2xl font-black text-gray-500">{notTested === null ? "—" : num(notTested)}</p>
-        <p class="text-[11px] text-gray-400 mt-1">Unknown quality — not a claim either way.</p>
+        <p class="text-[11px] text-gray-500 mt-1">Unknown quality — not a claim either way.</p>
       </div>
     </div>
 
@@ -93,7 +93,7 @@ const stateLabel = (s: string) => (s === "NOT_TESTED" ? "NOT TESTED" : s);
         </label>
         <label class="text-sm text-gray-700">Measured usable capacity (GB)
           <input name="testedCapacityGb" type="number" step="any" min="0" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
-          <span class="block mt-1 text-[11px] text-gray-400">Leave blank if not measured — the test is then INCONCLUSIVE, never PASS.</span>
+          <span class="block mt-1 text-[11px] text-gray-500">Leave blank if not measured — the test is then INCONCLUSIVE, never PASS.</span>
         </label>
         <label class="text-sm text-gray-700">Method <span class="text-red-600">*</span>
           <select name="method" required class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
@@ -131,7 +131,7 @@ const stateLabel = (s: string) => (s === "NOT_TESTED" ? "NOT TESTED" : s);
       ) : (
         <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
           <table class="w-full text-xs">
-            <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+            <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-500 border-b border-gray-100">
               <th class="p-3">Product</th><th>Evidence state</th><th>Tests</th><th>Pass</th><th>Fail</th><th>Inconclusive</th><th class="p-3">Last tested</th>
             </tr></thead>
             <tbody>
@@ -159,7 +159,7 @@ const stateLabel = (s: string) => (s === "NOT_TESTED" ? "NOT TESTED" : s);
       ) : (
         <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
           <table class="w-full text-xs">
-            <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400 border-b border-gray-100">
+            <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-500 border-b border-gray-100">
               <th class="p-3">Product</th><th>Claimed</th><th>Measured</th><th>Result</th><th>Method</th><th>Read</th><th>Write</th><th>Tester</th><th class="p-3">Tested</th>
             </tr></thead>
             <tbody>

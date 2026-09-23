@@ -165,18 +165,18 @@ const corrections = importResult?.plan.filter((p) => p.isCorrection).length ?? 0
     {coverage && (
       <section class="grid sm:grid-cols-3 gap-4 mb-8">
         <div class="bg-white border border-gray-200 rounded-2xl p-5">
-          <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Active products</p>
+          <p class="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Active products</p>
           <p class="text-2xl font-black text-brand-dark">{coverage.totalActiveProducts}</p>
         </div>
         <div class="bg-white border border-gray-200 rounded-2xl p-5">
-          <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">With a cost</p>
+          <p class="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">With a cost</p>
           <p class="text-2xl font-black text-brand-dark">
             {coverage.withCost}
-            {coverage.coveragePercent !== null && <span class="text-sm text-gray-400 ml-2">{coverage.coveragePercent}%</span>}
+            {coverage.coveragePercent !== null && <span class="text-sm text-gray-500 ml-2">{coverage.coveragePercent}%</span>}
           </p>
         </div>
         <div class="bg-white border border-gray-200 rounded-2xl p-5">
-          <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Still missing</p>
+          <p class="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">Still missing</p>
           <p class={`text-2xl font-black ${coverage.withoutCost > 0 ? "text-red-600" : "text-brand-dark"}`}>{coverage.withoutCost}</p>
         </div>
       </section>
@@ -193,7 +193,7 @@ const corrections = importResult?.plan.filter((p) => p.isCorrection).length ?? 0
 
       <form method="POST" class="space-y-4">
         <div>
-          <label for="cost-source" class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
+          <label for="cost-source" class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">
             Where these numbers came from
           </label>
           <input
@@ -206,7 +206,7 @@ const corrections = importResult?.plan.filter((p) => p.isCorrection).length ?? 0
         </div>
 
         <div>
-          <label for="cost-rows" class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
+          <label for="cost-rows" class="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1">
             Rows — sku,cost,effectiveFrom (one per line)
           </label>
           <textarea
@@ -218,7 +218,7 @@ const corrections = importResult?.plan.filter((p) => p.isCorrection).length ?? 0
             placeholder={`GP-101,45000,${today}`}
             class="w-full border border-gray-300 rounded-lg p-3 text-sm font-mono outline-none focus-visible:ring-4 focus-visible:ring-brand-primary/30"
           >{submittedRows}</textarea>
-          <p id="cost-rows-help" class="text-[11px] text-gray-400 mt-1">
+          <p id="cost-rows-help" class="text-[11px] text-gray-500 mt-1">
             Costs are UGX only. A second currency needs a conversion source before margin can mean anything,
             so a non-UGX row is refused rather than silently treated as shillings.
           </p>

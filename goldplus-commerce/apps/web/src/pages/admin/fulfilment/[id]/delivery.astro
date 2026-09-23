@@ -92,7 +92,7 @@ function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG", 
 
 <AdminLayout title="Delivery" description="Record delivery attempts and outcomes for a fulfilment task and view the full delivery history.">
   <div class="container mx-auto px-6 lg:px-8 max-w-3xl">
-    <div class="mb-6 flex items-center gap-4 text-xs font-bold text-gray-400">
+    <div class="mb-6 flex items-center gap-4 text-xs font-bold text-gray-600">
       <a href="/admin/fulfilment" class="hover:text-brand-dark">← Fulfilment queue</a>
       <a href={`/admin/fulfilment/${taskId}/dispatch`} class="hover:text-brand-dark">Dispatch</a>
       <a href="/admin/fulfilment/report" class="hover:text-brand-dark">Report →</a>
@@ -117,41 +117,41 @@ function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG", 
       canRecord ? (
         <form method="POST" class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm grid gap-4 sm:grid-cols-2 mb-8">
           <div class="sm:col-span-2">
-            <label for="outcome" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Outcome</label>
+            <label for="outcome" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Outcome</label>
             <select id="outcome" name="outcome" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold">
               {OUTCOMES.map((o) => <option value={o}>{o.replace(/_/g, " ")}</option>)}
             </select>
           </div>
           <div>
-            <label for="deliveredQuantity" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Delivered qty (partial)</label>
+            <label for="deliveredQuantity" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Delivered qty (partial)</label>
             <input id="deliveredQuantity" name="deliveredQuantity" type="number" min="0" inputmode="numeric" placeholder="auto" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
           </div>
           <div>
-            <label for="returnedQuantity" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Returned qty</label>
+            <label for="returnedQuantity" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Returned qty</label>
             <input id="returnedQuantity" name="returnedQuantity" type="number" min="0" inputmode="numeric" placeholder="0" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
           </div>
           <div>
-            <label for="recipientName" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Recipient (stored masked)</label>
+            <label for="recipientName" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Recipient (stored masked)</label>
             <input id="recipientName" name="recipientName" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
           </div>
           <div>
-            <label for="proofReference" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Proof reference</label>
+            <label for="proofReference" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Proof reference</label>
             <input id="proofReference" name="proofReference" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
           </div>
           <div>
-            <label for="recipientConfirmation" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Confirmation (OTP/signature ref)</label>
+            <label for="recipientConfirmation" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Confirmation (OTP/signature ref)</label>
             <input id="recipientConfirmation" name="recipientConfirmation" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
           </div>
           <div>
-            <label for="rescheduledFor" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Reschedule date (RESCHEDULED)</label>
+            <label for="rescheduledFor" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Reschedule date (RESCHEDULED)</label>
             <input id="rescheduledFor" name="rescheduledFor" type="datetime-local" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
           </div>
           <div class="sm:col-span-2">
-            <label for="failedReason" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Failure reason (DELIVERY FAILED)</label>
+            <label for="failedReason" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Failure reason (DELIVERY FAILED)</label>
             <input id="failedReason" name="failedReason" type="text" maxlength="500" placeholder="e.g. customer not home" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
           </div>
           <div class="sm:col-span-2">
-            <label for="notes" class="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Notes (optional)</label>
+            <label for="notes" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Notes (optional)</label>
             <input id="notes" name="notes" type="text" maxlength="2000" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-gold" />
           </div>
           <div class="sm:col-span-2 flex justify-end">
@@ -180,12 +180,12 @@ function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG", 
                 <span class={`text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border ${outcomeChip(d.outcome)}`}>{d.outcome.replace(/_/g, " ")}</span>
               </div>
               <dl class="grid grid-cols-2 gap-x-6 gap-y-1 text-[11px] text-gray-600">
-                <div><dt class="text-gray-400">Recorded</dt><dd>{fmt(d.createdAt)}</dd></div>
-                {d.deliveredAt && <div><dt class="text-gray-400">Delivered</dt><dd>{fmt(d.deliveredAt)}</dd></div>}
-                <div><dt class="text-gray-400">Delivered / returned</dt><dd>{d.deliveredQuantity} / {d.returnedQuantity}</dd></div>
-                {d.recipientNameMasked && <div><dt class="text-gray-400">Recipient</dt><dd>{d.recipientNameMasked}</dd></div>}
-                {d.proofReference && <div><dt class="text-gray-400">Proof</dt><dd>{d.proofReference}</dd></div>}
-                {d.rescheduledFor && <div><dt class="text-gray-400">Rescheduled</dt><dd>{fmt(d.rescheduledFor)}</dd></div>}
+                <div><dt class="text-gray-500">Recorded</dt><dd>{fmt(d.createdAt)}</dd></div>
+                {d.deliveredAt && <div><dt class="text-gray-500">Delivered</dt><dd>{fmt(d.deliveredAt)}</dd></div>}
+                <div><dt class="text-gray-500">Delivered / returned</dt><dd>{d.deliveredQuantity} / {d.returnedQuantity}</dd></div>
+                {d.recipientNameMasked && <div><dt class="text-gray-500">Recipient</dt><dd>{d.recipientNameMasked}</dd></div>}
+                {d.proofReference && <div><dt class="text-gray-500">Proof</dt><dd>{d.proofReference}</dd></div>}
+                {d.rescheduledFor && <div><dt class="text-gray-500">Rescheduled</dt><dd>{fmt(d.rescheduledFor)}</dd></div>}
               </dl>
               {d.failedReason && <p class="mt-2 text-[11px] text-red-700">Reason: {d.failedReason}</p>}
               {d.notes && <p class="mt-1 text-[11px] text-gray-500">Notes: {d.notes}</p>}
@@ -196,7 +196,7 @@ function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG", 
     )}
 
     {deliveries.length === 0 && !notFound && !permissionDenied && !loadFailed && (
-      <p class="text-xs text-gray-400 text-center">No delivery attempts recorded yet.</p>
+      <p class="text-xs text-gray-500 text-center">No delivery attempts recorded yet.</p>
     )}
   </div>
 </AdminLayout>

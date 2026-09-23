@@ -77,7 +77,7 @@ const phoneLabel = ws ? (ws.user.phone ? ws.user.phone + (ws.user.phoneVerified 
                     <span class="uppercase font-bold text-[10px]">{e.type}</span>
                     <span class={'font-black ' + (e.points < 0 ? 'text-red-700' : 'text-emerald-700')}>{e.points > 0 ? '+' : ''}{e.points}</span>
                     <span class="text-gray-600">{e.reason}</span>
-                    {e.orderId && <a href={'/admin/orders/' + e.orderId} class="text-gray-400 hover:underline">order</a>}
+                    {e.orderId && <a href={'/admin/orders/' + e.orderId} class="text-gray-500 hover:underline">order</a>}
                   </li>
                 ))}
               </ul>
@@ -96,7 +96,7 @@ const phoneLabel = ws ? (ws.user.phone ? ws.user.phone + (ws.user.phoneVerified 
                   <span class="uppercase text-[10px] font-bold">{t.status}</span>
                   <span class="uppercase text-[10px]">{t.priority}</span>
                   {t.overdue && <span class="text-[10px] font-black text-red-700">OVERDUE</span>}
-                  <span class="text-gray-400">{t.assignedTo ? 'assigned to ' + t.assignedTo : 'unassigned'}</span>
+                  <span class="text-gray-500">{t.assignedTo ? 'assigned to ' + t.assignedTo : 'unassigned'}</span>
                 </li>
               ))}
             </ul>

@@ -112,7 +112,7 @@ const kb = (n: number | null) => (n == null ? '' : `${Math.round(n / 1024)} kB`)
         <article class="bg-white border border-gray-200 rounded-2xl shadow-sm p-4 flex flex-col gap-3" class:list={[s.slot === 1 ? 'ring-2 ring-brand-green/60' : '']}>
           <header class="flex items-start justify-between gap-2">
             <div>
-              <p class="text-[10px] font-black uppercase tracking-wider text-gray-400">Slot {s.slot}</p>
+              <p class="text-[10px] font-black uppercase tracking-wider text-gray-500">Slot {s.slot}</p>
               <h3 class="text-sm font-black text-brand-dark">{GALLERY_SLOT_ROLES[s.slot].name}</h3>
               <p class="text-[11px] text-gray-500">{GALLERY_SLOT_ROLES[s.slot].question}</p>
             </div>
@@ -120,7 +120,7 @@ const kb = (n: number | null) => (n == null ? '' : `${Math.round(n / 1024)} kB`)
           </header>
           {s.slot === 1 && <p class="text-[11px] text-gray-600 -mt-1">Used on product cards, search, the cart and social previews.</p>}
           <div class="aspect-square bg-gray-50 border border-gray-200 rounded-xl overflow-hidden flex items-center justify-center">
-            {s.assetId ? <img src={s.thumbUrl ?? s.displayUrl ?? s.url ?? ''} alt={s.altText ?? ''} width="160" height="160" loading="lazy" class="w-full h-full object-contain p-2" /> : <span class="text-xs text-gray-400">No image</span>}
+            {s.assetId ? <img src={s.thumbUrl ?? s.displayUrl ?? s.url ?? ''} alt={s.altText ?? ''} width="160" height="160" loading="lazy" class="w-full h-full object-contain p-2" /> : <span class="text-xs text-gray-500">No image</span>}
           </div>
           {s.assetId && (
             <p class="text-[11px] text-gray-500 truncate" title={s.filename ?? ''}>{s.filename} · {s.width && s.height ? `${s.width}×${s.height}` : 'size unknown'} · {kb(s.byteSize)}</p>
@@ -166,7 +166,7 @@ const kb = (n: number | null) => (n == null ? '' : `${Math.round(n / 1024)} kB`)
     <!-- Multi-image intake -->
     <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-4">
       <div>
-        <h3 class="text-xs font-black uppercase tracking-wider text-gray-400">Add images</h3>
+        <h3 class="text-xs font-black uppercase tracking-wider text-gray-500">Add images</h3>
         <p class="text-sm text-gray-600 mt-1">Up to four files at once. Each file goes into the slot you choose (or the next empty slot). The product alone, unclipped, on a plain background; masters of about 2000 × 2000 are ideal, but a valid smaller file is not refused.</p>
       </div>
       <form method="POST" enctype="multipart/form-data" class="space-y-3">
@@ -195,7 +195,7 @@ const kb = (n: number | null) => (n == null ? '' : `${Math.round(n / 1024)} kB`)
     <section id="choose" class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-4">
       <div class="flex flex-wrap items-end gap-3 justify-between">
         <div>
-          <h3 class="text-xs font-black uppercase tracking-wider text-gray-400">Choose an existing image{pickSlot ? ` for slot ${pickSlot}` : ''}</h3>
+          <h3 class="text-xs font-black uppercase tracking-wider text-gray-500">Choose an existing image{pickSlot ? ` for slot ${pickSlot}` : ''}</h3>
           <p class="text-sm text-gray-600 mt-1">Search the media library by SKU, model or filename. Thumbnails only; nothing is re-uploaded.</p>
         </div>
         <form method="GET" class="flex items-center gap-2">
@@ -213,7 +213,7 @@ const kb = (n: number | null) => (n == null ? '' : `${Math.round(n / 1024)} kB`)
               <li class="border border-gray-200 rounded-xl p-2 flex flex-col gap-2">
                 <img src={thumbOf(a.url)} alt="" width="160" height="160" loading="lazy" class="w-full aspect-square object-contain bg-gray-50 rounded-lg" data-fallback-src={a.url} />
                 <p class="text-[10px] text-gray-500 truncate" title={a.filename}>{a.filename}</p>
-                {inGallery.has(a.id) ? <span class="text-[10px] text-gray-400">In this gallery</span> : (
+                {inGallery.has(a.id) ? <span class="text-[10px] text-gray-500">In this gallery</span> : (
                   <form method="POST"><input type="hidden" name="kind" value="action" /><input type="hidden" name="expectedRevision" value={gallery.mediaRevision} /><input type="hidden" name="assetId" value={a.id} />
                     {pickSlot > 0 ? (<><input type="hidden" name="type" value={url.searchParams.get('replace') ? 'REPLACE' : 'ASSIGN'} /><input type="hidden" name="slot" value={pickSlot} /></>) : (<><input type="hidden" name="type" value="ASSIGN" /><input type="hidden" name="slot" value={emptySlots[0]?.slot ?? 1} /></>)}
                     <button type="submit" class="w-full text-[10px] font-black uppercase tracking-wider px-2 py-1.5 rounded-lg border border-gray-300 bg-white">Use{pickSlot ? ` in slot ${pickSlot}` : ''}</button></form>
@@ -228,7 +228,7 @@ const kb = (n: number | null) => (n == null ? '' : `${Math.round(n / 1024)} kB`)
 
     {gallery.legacyRows.length > 0 && (
       <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-2">
-        <h3 class="text-xs font-black uppercase tracking-wider text-gray-400">Not in the gallery</h3>
+        <h3 class="text-xs font-black uppercase tracking-wider text-gray-500">Not in the gallery</h3>
         <ul class="text-sm text-gray-600 space-y-1">
           {gallery.legacyRows.map((r) => <li class="flex items-center gap-3"><img src={r.url} alt="" width="40" height="40" loading="lazy" class="w-10 h-10 object-contain bg-gray-50 border border-gray-200 rounded-lg" /><span>{r.reason}</span></li>)}
         </ul>
@@ -237,7 +237,7 @@ const kb = (n: number | null) => (n == null ? '' : `${Math.round(n / 1024)} kB`)
 
     {gallery.history.length > 0 && (
       <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-3">
-        <h3 class="text-xs font-black uppercase tracking-wider text-gray-400">Recent changes</h3>
+        <h3 class="text-xs font-black uppercase tracking-wider text-gray-500">Recent changes</h3>
         <ul class="text-sm text-gray-600 space-y-2">
           {gallery.history.map((h) => (
             <li class="flex items-center justify-between gap-3">

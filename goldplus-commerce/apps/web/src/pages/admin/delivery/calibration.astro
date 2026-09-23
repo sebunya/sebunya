@@ -116,7 +116,7 @@ const ugx = (n: number | null | undefined) => (n === null || n === undefined ? "
             <div class="border border-gray-200 rounded-lg p-4">
               <div class="flex flex-wrap items-baseline justify-between gap-2">
                 <span class="text-sm font-bold text-gray-800">{p.factorKind} · {p.scopeKey}</span>
-                <span class="text-[10px] font-black uppercase tracking-widest text-gray-400">{p.sampleSize} deliveries</span>
+                <span class="text-[10px] font-black uppercase tracking-widest text-gray-500">{p.sampleSize} deliveries</span>
               </div>
               <p class="text-xs text-gray-600 mt-1">
                 {/* Unlearned is never shown as a number. */}
@@ -166,7 +166,7 @@ const ugx = (n: number | null | undefined) => (n === null || n === undefined ? "
         <table class="w-full text-sm">
           <thead class="text-[10px] uppercase font-black tracking-widest text-gray-500"><tr><th class="text-left py-2">Area</th><th class="text-right">Deliveries</th><th class="text-right">Charged</th><th class="text-right">Cost</th><th class="text-right">Margin</th></tr></thead>
           <tbody>{margin.rows.map((r: any) => (
-            <tr class="border-t border-gray-100"><td class="py-2">{r.areaSlug ?? "—"}</td><td class="text-right">{r.deliveries}</td><td class="text-right">{ugx(r.chargedUgx)}</td><td class="text-right">{ugx(r.costUgx)}</td><td class="text-right font-bold">{ugx(r.marginUgx)}{r.marginPct !== null && <span class="text-[10px] text-gray-400"> ({r.marginPct.toFixed(0)}%)</span>}</td></tr>
+            <tr class="border-t border-gray-100"><td class="py-2">{r.areaSlug ?? "—"}</td><td class="text-right">{r.deliveries}</td><td class="text-right">{ugx(r.chargedUgx)}</td><td class="text-right">{ugx(r.costUgx)}</td><td class="text-right font-bold">{ugx(r.marginUgx)}{r.marginPct !== null && <span class="text-[10px] text-gray-500"> ({r.marginPct.toFixed(0)}%)</span>}</td></tr>
           ))}</tbody>
         </table>
       )}

@@ -57,7 +57,7 @@ const STATE: Record<string, [string, string]> = {
   PENDING: ["Pending", "bg-gray-100 text-gray-800"], LEASED: ["Sending", "bg-blue-100 text-blue-900"], RETRY_WAIT: ["Waiting to retry", "bg-amber-100 text-amber-900"],
   ACCEPTED: ["Accepted", "bg-emerald-100 text-emerald-900"], PROCESSED: ["Processed", "bg-emerald-100 text-emerald-900"],
   UNKNOWN_OUTCOME: ["Unknown outcome", "bg-orange-100 text-orange-900"], SUPPRESSED: ["Suppressed", "bg-gray-100 text-gray-600"],
-  QUARANTINED: ["Quarantined", "bg-purple-100 text-purple-900"], DEAD_LETTER: ["Failed", "bg-red-100 text-red-900"], CANCELLED: ["Cancelled", "bg-gray-100 text-gray-500"],
+  QUARANTINED: ["Quarantined", "bg-purple-100 text-purple-900"], DEAD_LETTER: ["Failed", "bg-red-100 text-red-900"], CANCELLED: ["Cancelled", "bg-gray-100 text-gray-600"],
 };
 const when = (iso: unknown) => (typeof iso === "string" && iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Kampala" }) : "—");
 const s = summary.ok ? summary.data : null;

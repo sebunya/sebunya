@@ -179,14 +179,14 @@ const BENEFIT_LABELS: Record<string, string> = {
 
               <dl class="mt-10 grid gap-4 sm:grid-cols-3">
                 <div class="rounded-2xl border border-white/10 bg-white/5 p-5">
-                  <dt class="text-xs font-black uppercase tracking-wider text-slate-400">Earning</dt>
+                  <dt class="text-xs font-black uppercase tracking-wider text-slate-500">Earning</dt>
                   <dd class="mt-2 text-sm leading-relaxed text-slate-200">
                     <strong class="text-white">{programme.earnRatePer1000Ugx} points per 1,000 UGX</strong> of the order total, on every order placed while signed in.
                     Points become available when the order is <strong class="text-white">delivered</strong>.
                   </dd>
                 </div>
                 <div class="rounded-2xl border border-white/10 bg-white/5 p-5">
-                  <dt class="text-xs font-black uppercase tracking-wider text-slate-400">What a point is worth</dt>
+                  <dt class="text-xs font-black uppercase tracking-wider text-slate-500">What a point is worth</dt>
                   <dd class="mt-2 text-sm leading-relaxed text-slate-200">
                     {programme.redemption.configured ? (
                       <>
@@ -199,7 +199,7 @@ const BENEFIT_LABELS: Record<string, string> = {
                   </dd>
                 </div>
                 <div class="rounded-2xl border border-white/10 bg-white/5 p-5">
-                  <dt class="text-xs font-black uppercase tracking-wider text-slate-400">Validity</dt>
+                  <dt class="text-xs font-black uppercase tracking-wider text-slate-500">Validity</dt>
                   <dd class="mt-2 text-sm leading-relaxed text-slate-200">
                     Points stay valid for <strong class="text-white">{programme.expiryDays} days</strong> from the day they are earned.
                     We warn you before anything expires. Oldest points are always spent first.
