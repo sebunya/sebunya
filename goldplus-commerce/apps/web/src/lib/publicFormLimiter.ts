@@ -33,6 +33,12 @@ export const PUBLIC_FORM_BUDGETS: Readonly<Record<string, FormBudget>> = {
   '/support/issue': { limit: 5, windowMs: TEN_MINUTES },
   '/support/fake': { limit: 5, windowMs: TEN_MINUTES },
   '/track-order': { limit: 20, windowMs: TEN_MINUTES },
+  // Bulk builder (docs/bulk-buying/DESIGN.md): the quote texts the phone typed on it;
+  // the status lookup is an enumeration surface like /track-order; the basket
+  // add is several cart writes per POST.
+  '/api/bulk/quote': { limit: 5, windowMs: TEN_MINUTES },
+  '/bulk/status': { limit: 20, windowMs: TEN_MINUTES },
+  '/api/bulk/cart': { limit: 30, windowMs: TEN_MINUTES },
 };
 
 /** Trailing slash and case are not a way around the budget. */

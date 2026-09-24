@@ -10,16 +10,30 @@ export interface FraudAssigneeDirectoryPort {
   isEligibleReviewer(userId: string): Promise<boolean>;
 }
 
+/**
+ * Does the record a signal points at exist? A case opened against an order,
+ * payment, checkout or account that was never there is noise a reviewer
+ * cannot act on, and a typo'd reference used to open one silently.
+ */
+export interface FraudSourceDirectoryPort {
+  exists(sourceType: FraudSignalInput['sourceType'], sourceRef: string): Promise<boolean>;
+}
+
 export class FraudTriageOperationsUseCase {
   constructor(
     private readonly repo: IFraudTriageRepository,
     /** Optional so existing callers construct unchanged; production wires it. */
     private readonly assignees?: FraudAssigneeDirectoryPort,
+    /** Optional for the same reason; production wires it. */
+    private readonly sources?: FraudSourceDirectoryPort,
   ) {}
 
   async recordSignal(input: FraudSignalInput & { actorId: string }) {
     const errors = validateFraudSignal(input);
     if (errors.length) throw new FraudTriageOperationError('INVALID_SIGNAL', errors[0]);
+    if (this.sources && !(await this.sources.exists(input.sourceType, input.sourceRef))) {
+      throw new FraudTriageOperationError('SOURCE_NOT_FOUND', `No ${input.sourceType.toLowerCase()} matches that source reference. Check the reference.`);
+    }
     try { return await this.repo.recordSignal(input, input.actorId); }
     catch (error) {
       if (error instanceof FraudTriageRepositoryError) throw new FraudTriageOperationError(error.code, error.message);

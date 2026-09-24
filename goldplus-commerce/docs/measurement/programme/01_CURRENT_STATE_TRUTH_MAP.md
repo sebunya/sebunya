@@ -27,7 +27,7 @@ ACCOUNT_REQUIRED, EXTERNAL_DEPENDENCY, CAPABILITY_VERIFICATION_REQUIRED.
 | Checkout / COD placement | `routes/commerce.ts` → `executeCheckoutIntentUseCase` | POST /commerce/orders | orders, order_attribution (0111/0136/0137/0139) | side-effect outbox | storefront | many | KEEP |
 | Browser behavioural events | `web/lib/telemetry.ts` → `/telemetry/collect(/batch)` → `TrackBrowserTelemetryEventUseCase` | beacon | `outbox_events` (TELEMETRY_DISPATCH) | `TelemetryDispatchService` (ticker + BullMQ) | — | MeasurementServerSide tests | HARDEN (no batch receipt/idempotency contract, dossier §7.1) |
 | GA4 server-side | `TelemetryDispatchService.dispatch` → `Ga4CollectHit` → sGTM `/g/collect` | outbox | outbox_events | ticker/worker | — | Ga4CollectHit tests | KEEP, VERIFIED_PRODUCTION (realtime 2026-09-19) |
-| Purchase / refund to GA4 + ads | `infrastructure/telemetry/PurchaseTelemetry.ts` (`queuePurchaseTelemetry`, `queueRefundTelemetry`) | settlement effect, COD placement, cancel subscriber | outbox_events keyed `purchase:<order#>` | as above | — | tests | REPLACE_WITH_PROOF → authoritative business events + delivery intents (GP-EVT/GP-DLV) |
+| Purchase / refund to GA4 + ads | authoritative `order_confirmed` event appended by the order transition (0140) → delivery intents (`PurchaseTelemetry.ts` and `queuePurchaseTelemetry`/`queueRefundTelemetry` are REMOVED) | order transition | business events + delivery intents | delivery workers | — | MeasurementServerSide, PlatformSecuritySweepLow | DONE (GP-EVT/GP-DLV) |
 | Ad conversion dispatch | `infrastructure/advertising/AdConversionDispatch.ts`, `AdPlatforms.ts` | fan-out from telemetry dispatch | outbox_events AD_CONVERSION, `ad_destinations` (0138) | OutboxTicker | /admin/advertising | AdPlatforms tests (22) | HARDEN: no STARTED marker / UNKNOWN_OUTCOME / generations / attempt history (dossier §5) |
 | Legacy paid-social mappers, ConversionRouter, BullMQMeasurementQueueAdapter | `infrastructure/measurement/destinations/*`, `ConversionRouter.ts`, `BullMQMeasurementQueueAdapter.ts` | none (unreachable) | — | mock queue | Paid social readiness panel | mapper unit tests | DEPRECATE_WITH_PROOF (dead code; mock queue returns fake job ids) |
 | `EnvPaidSocialCredentialStatusRepository` | always returns configured/valid | wired, unread | — | — | — | — | DEPRECATE_WITH_PROOF (fake readiness) |
@@ -48,5 +48,6 @@ PesaPal IPN → `routes/commerce` IPN handler → `SettlePaymentUseCase.execute`
 {paymentStatus:'paid', idempotencyKey:'pesapal:completed:<tracking>'})` → `OrderTransitionService.apply` (row lock,
 `canTransitionOrder`, `orders` update, `order_events` insert; replay returns the existing event) → commit →
 post-commit subscribers → `ReconcileOrderPaymentUseCase` → settlement effects (fulfilment, loyalty, admin email,
-`recordMeasurement` → `queuePurchaseTelemetry`, customer message). Measurement is written AFTER commit, in a
-separate step — not atomic with the business transition (gap closed by GP-EVT).
+`recordMeasurement` (PesaPal measurement reconciliation only), customer message). The GA4/ad purchase is no
+longer queued here: the order transition appends the authoritative `order_confirmed` event in the same transaction
+(GP-EVT, 0140), so it is atomic with the business transition.

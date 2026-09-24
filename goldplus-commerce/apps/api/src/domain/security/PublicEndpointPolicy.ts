@@ -171,6 +171,10 @@ export function classifyPublicEndpoint(method: string, rawPath: string): RouteFa
   // Public human forms (governance).
   if (path === '/governance/dealers/apply') return 'dealer-application';
   if (path === '/governance/quotes/request') return 'quote-request';
+  // Bulk quote requests (docs/bulk-buying/DESIGN.md): the list is a human form;
+  // the reference + phone lookup is an enumeration surface like order lookup.
+  if (path === '/quotes/bulk') return 'quote-request';
+  if (path === '/quotes/lookup') return 'order-lookup';
   if (path === '/governance/support/report-issue') return 'issue-report';
   if (path === '/governance/support/report-fake') return 'fake-product-report';
   if (isUnder(path, '/governance/verification')) return 'verification';

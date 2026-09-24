@@ -27,6 +27,7 @@ export const STATIC_SITEMAP_PATHS: readonly string[] = [
   '/loyalty',
   '/dealers/apply',
   '/quote-request',
+  '/bulk',
   '/returns',
   '/warranty',
   '/terms',

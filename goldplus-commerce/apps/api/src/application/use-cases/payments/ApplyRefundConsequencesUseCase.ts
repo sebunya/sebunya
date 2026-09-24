@@ -11,6 +11,14 @@ export interface RefundLoyaltyPort {
   execute(input: { orderId: string; refundedShareBps: number; reason: string }): Promise<void>;
 }
 
+/**
+ * Closes the order's fulfilment task once a total refund has cancelled the
+ * order (CancelFulfilmentTaskForCancelledOrderUseCase). Idempotent.
+ */
+export interface RefundFulfilmentPort {
+  execute(input: { orderId: string; actorId: string | null; reason: string }): Promise<unknown>;
+}
+
 export type RefundReading = 'partial' | 'total';
 
 /**
@@ -57,7 +65,23 @@ export class ApplyRefundConsequencesUseCase {
     /** Optional so hermetic suites need no database: absent, every reversal reads total. */
     private readonly refundLedger?: Pick<IRefundLedgerRepository, 'getRefundedTotalUgx'>,
     private readonly refundLoyalty?: RefundLoyaltyPort,
+    /** Optional so hermetic suites construct unchanged; production wires it. */
+    private readonly refundFulfilment?: RefundFulfilmentPort,
   ) {}
+
+  /**
+   * Never lets a task failure fail the money path: the order is already
+   * cancelled and its stock released; a task left open is visible in the
+   * queue as a task on a cancelled order and can be closed by hand.
+   */
+  private async closeFulfilmentTask(orderId: string, actorId: string | null): Promise<void> {
+    if (!this.refundFulfilment) return;
+    try {
+      await this.refundFulfilment.execute({ orderId, actorId, reason: 'Order cancelled: payment refunded in full.' });
+    } catch {
+      // Isolated, as the loyalty follow-up is.
+    }
+  }
 
   /** Never lets a loyalty failure fail the money path. */
   private async applyRefundToLoyalty(orderId: string, refundedShareBps: number, reason: string): Promise<void> {
@@ -122,6 +146,9 @@ export class ApplyRefundConsequencesUseCase {
       }
       throw err;
     }
+    // The order is cancelled: take its task out of the work queue too, so no
+    // one packs goods for an order whose money has gone back.
+    await this.closeFulfilmentTask(attempt.orderId, ctx.actorId ?? null);
     return { reading, refundedUgx };
   }
 }

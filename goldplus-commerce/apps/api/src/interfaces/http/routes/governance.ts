@@ -14,7 +14,6 @@ import { canTransitionOrder } from '../../../domain/commerce/OrderStateMachine';
 import type { OrderStatus } from '../../../domain/commerce/Order';
 import { DealerApplicationValidationError } from '../../../application/use-cases/DealerApplicationUseCase';
 import { logger } from '../../../infrastructure/logging/logger';
-import { acknowledgementIdempotencyKey } from '../../../application/use-cases/notifications/AcknowledgementIdempotency';
 
 
 const routes = new Hono();
@@ -54,15 +53,15 @@ routes.post('/dealers/apply', async (c) => {
 
   // Tell the customer we have it. SMS first (the channel that delivers), email
   // as the fallback. The body comes from CustomerMessages; never a template key.
-  await registry.customerOutboxNotifier.enqueue({
+  await registry.sendPublicFormAcknowledgementUseCase.execute({
+    kind: 'dealer_application',
     eventType: 'DEALER_APPLICATION_RECEIVED',
     template: 'DEALER_APPLICATION_RECEIVED',
-    customerPhone: typeof body?.phone === 'string' ? body.phone : null,
-    customerEmail: typeof body?.email === 'string' ? body.email : null,
+    phone: body?.phone,
+    email: body?.email,
     data: { customerName: typeof body?.customerName === 'string' ? body.customerName : (typeof body?.contactName === 'string' ? body.contactName : null), reference: dealerId },
-    idempotencyKey: acknowledgementIdempotencyKey({ kind: 'dealer_application', phone: body?.phone, email: body?.email, entityId: dealerId }),
+    entityId: dealerId,
     relatedEntity: 'dealer_application',
-    relatedEntityId: dealerId,
   }).catch(() => undefined);
   const res: ApiResponse<{ dealerId: string }> = { success: true, data: { dealerId } };
   return c.json(res, 201);
@@ -95,15 +94,15 @@ routes.post('/quotes/request', async (c) => {
 
   // Tell the customer we have it. SMS first (the channel that delivers), email
   // as the fallback. The body comes from CustomerMessages; never a template key.
-  await registry.customerOutboxNotifier.enqueue({
+  await registry.sendPublicFormAcknowledgementUseCase.execute({
+    kind: 'quote_request',
     eventType: 'QUOTE_REQUEST_RECEIVED',
     template: 'QUOTE_REQUEST_RECEIVED',
-    customerPhone: typeof body?.phone === 'string' ? body.phone : null,
-    customerEmail: typeof body?.email === 'string' ? body.email : null,
+    phone: body?.phone,
+    email: body?.email,
     data: { customerName: typeof body?.customerName === 'string' ? body.customerName : (typeof body?.contactName === 'string' ? body.contactName : null), reference: result.quoteId },
-    idempotencyKey: acknowledgementIdempotencyKey({ kind: 'quote_request', phone: body?.phone, email: body?.email, entityId: result.quoteId }),
+    entityId: result.quoteId,
     relatedEntity: 'quote_request',
-    relatedEntityId: result.quoteId,
   }).catch(() => undefined);
   const res: ApiResponse<{ quoteId: string }> = { success: true, data: { quoteId: result.quoteId } };
   return c.json(res, 201);
@@ -136,15 +135,15 @@ routes.post('/support/report-issue', async (c) => {
 
   // Tell the customer we have it. SMS first (the channel that delivers), email
   // as the fallback. The body comes from CustomerMessages; never a template key.
-  await registry.customerOutboxNotifier.enqueue({
+  await registry.sendPublicFormAcknowledgementUseCase.execute({
+    kind: 'support_ticket',
     eventType: 'SUPPORT_REQUEST_RECEIVED',
     template: 'SUPPORT_REQUEST_RECEIVED',
-    customerPhone: typeof body?.phone === 'string' ? body.phone : null,
-    customerEmail: typeof body?.email === 'string' ? body.email : null,
+    phone: body?.phone,
+    email: body?.email,
     data: { customerName: typeof body?.customerName === 'string' ? body.customerName : (typeof body?.contactName === 'string' ? body.contactName : null), reference: result.ticketId },
-    idempotencyKey: acknowledgementIdempotencyKey({ kind: 'support_ticket', phone: body?.phone, email: body?.email, entityId: result.ticketId }),
+    entityId: result.ticketId,
     relatedEntity: 'support_ticket',
-    relatedEntityId: result.ticketId,
   }).catch(() => undefined);
   const res: ApiResponse<{ ticketId: string }> = { success: true, data: { ticketId: result.ticketId } };
   return c.json(res, 201);
@@ -187,15 +186,15 @@ routes.post('/support/report-fake', async (c) => {
 
   // Tell the customer we have it. SMS first (the channel that delivers), email
   // as the fallback. The body comes from CustomerMessages; never a template key.
-  await registry.customerOutboxNotifier.enqueue({
+  await registry.sendPublicFormAcknowledgementUseCase.execute({
+    kind: 'fake_product_report',
     eventType: 'FAKE_REPORT_RECEIVED',
     template: 'FAKE_REPORT_RECEIVED',
-    customerPhone: typeof body?.reporterPhone === 'string' ? body.reporterPhone : null,
-    customerEmail: typeof body?.reporterEmail === 'string' ? body.reporterEmail : null,
+    phone: body?.reporterPhone,
+    email: body?.reporterEmail,
     data: { customerName: typeof body?.reporterName === 'string' ? body.reporterName : null, reference: result.reportId },
-    idempotencyKey: acknowledgementIdempotencyKey({ kind: 'fake_product_report', phone: body?.reporterPhone, email: body?.reporterEmail, entityId: result.reportId }),
+    entityId: result.reportId,
     relatedEntity: 'fake_product_report',
-    relatedEntityId: result.reportId,
   }).catch(() => undefined);
   const res: ApiResponse<{ reportId: string }> = { success: true, data: { reportId: result.reportId } };
   return c.json(res, 201);

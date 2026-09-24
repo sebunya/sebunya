@@ -69,7 +69,16 @@ export interface ILoyaltyCompletionRepository {
   /** Earns nearing expiry across all accounts (for warning notices). */
   listEarnsNearingExpiry(withinDays: number, now: Date): Promise<Array<{ entry: LoyaltyLedgerEntry; userId: string }>>;
   noticeAlreadySent(earnEntryId: string, kind: string): Promise<boolean>;
+  /**
+   * channel: 'queued' when the warning was put on the outbox, 'notification'
+   * once dispatch has confirmed it, 'suppressed' when it never left.
+   */
   recordNotice(input: { accountId: string; earnEntryId: string; kind: string; channel: string }): Promise<void>;
+  /**
+   * Promote 'queued' warnings whose outbox event was delivered to
+   * 'notification'. Optional so existing fakes construct unchanged.
+   */
+  confirmQueuedNotices?(): Promise<number>;
 
   ledgerTotals(): Promise<{
     issued: number;

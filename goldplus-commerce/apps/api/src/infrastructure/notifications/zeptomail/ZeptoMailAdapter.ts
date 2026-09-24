@@ -67,9 +67,9 @@ export class ZeptoMailAdapter implements INotificationProvider {
         <table width="600" border="0" cellspacing="0" cellpadding="0" style="background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
           <!-- Header -->
           <tr>
-            <td style="background-color: #111827; padding: 32px; text-align: center;">
-              <h1 style="margin: 0; font-size: 24px; font-weight: 900; color: #f59e0b; letter-spacing: -0.025em; text-transform: uppercase;">GoldPlus</h1>
-              <p style="margin: 4px 0 0 0; font-size: 11px; font-weight: bold; color: #9ca3af; letter-spacing: 0.05em; text-transform: uppercase;">System Operations Alert</p>
+            <td style="background-color: #93d500; padding: 28px 32px; text-align: center;">
+              <img src="https://shopgoldplus.com/email/goldplus-logo-email-300x86.png" width="150" height="43" alt="GoldPlus" style="display: block; margin: 0 auto; width: 150px; height: 43px; border: 0; color: #10140a; font-size: 24px; font-weight: 900;">
+              <p style="margin: 8px 0 0 0; font-size: 11px; font-weight: bold; color: #10140a; letter-spacing: 0.05em; text-transform: uppercase;">System Operations Alert</p>
             </td>
           </tr>
           <!-- Message Body -->

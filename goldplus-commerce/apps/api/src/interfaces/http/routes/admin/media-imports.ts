@@ -38,10 +38,13 @@ routes.post('/', requirePermissions([PERMISSIONS.MEDIA_MANAGE]), adminUploadLimi
   if (notImages.length) return c.json({ success: false, error: { code: 'BAD_INPUT', message: `Not an image: ${notImages.map((f) => f.name).join(', ')}` } }, 400);
   const manifestFile = body['manifest'] instanceof File && (body['manifest'] as File).size > 0 ? (body['manifest'] as File) : null;
   const manifest = manifestFile ? { filename: manifestFile.name, text: await manifestFile.text() } : null;
+  // Sequential reads: Promise.all held a second in-memory copy of every file at once.
+  const buffers: Array<{ filename: string; mime: string; buffer: Buffer }> = [];
+  for (const f of files) buffers.push({ filename: f.name, mime: f.type, buffer: Buffer.from(await f.arrayBuffer()) });
   const uc = Registry.getInstance().mediaImportUseCases;
   const result = await uc.stage({
     name: typeof body['name'] === 'string' ? body['name'] : '',
-    files: await Promise.all(files.map(async (f) => ({ filename: f.name, mime: f.type, buffer: Buffer.from(await f.arrayBuffer()) }))),
+    files: buffers,
     manifest,
     actorId: actor(c),
   });

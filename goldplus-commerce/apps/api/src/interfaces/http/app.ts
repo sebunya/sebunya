@@ -14,6 +14,8 @@ import authRoutes from './routes/auth';
 import productRoutes from './routes/products';
 import commerceRoutes from './routes/commerce';
 import governanceRoutes from './routes/governance';
+import quoteRoutes from './routes/quotes';
+import adminQuoteRequestRoutes from './routes/admin/quote-requests';
 import webhookRoutes from './routes/webhooks';
 import internalLighthouseRoutes from './routes/internal/lighthouse';
 import accountRoutes from './routes/account';
@@ -220,6 +222,8 @@ app.route('/auth/social', authSocialRoutes);
 app.route('/products', productRoutes);
 app.route('/commerce', commerceRoutes);
 app.route('/governance', governanceRoutes);
+app.route('/quotes', quoteRoutes);
+app.route('/admin/quote-requests', adminQuoteRequestRoutes);
 app.route('/webhooks', webhookRoutes);
 // Lighthouse Watch ingest: machine token, not an admin session (see the route file).
 app.route('/internal/lighthouse', internalLighthouseRoutes);
@@ -441,6 +445,8 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/commerce',
   '/consent',
   '/governance',
+  '/quotes',
+  '/admin/quote-requests',
   '/health',
   '/legal',
   '/measurement',

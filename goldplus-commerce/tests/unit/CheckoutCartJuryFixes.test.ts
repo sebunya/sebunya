@@ -256,8 +256,9 @@ describe('checkout polish', () => {
   });
 
   it('the directions link says what it is and that it opens a new tab', () => {
-    const dq = read('apps/web/src/components/DeliveryQuote.astro');
-    expect(dq).not.toMatch(/Collect free from our shop\s*\n\s*<span aria-hidden/);
-    expect(dq).toMatch(/opens Google Maps in a new tab/);
+    // The panel markup lives in the one renderer the server and checkout share.
+    const dq = read('apps/web/src/lib/deliveryQuotePanel.ts');
+    expect(dq).not.toMatch(/Collect free from our shop/);
+    expect(dq).toMatch(/Directions to our shop <span aria-hidden="true">&#8599;<\/span><span class="sr-only">\(opens Google Maps in a new tab\)<\/span>/);
   });
 });

@@ -1,6 +1,6 @@
 import { db } from '../db/client';
 import { attributionTouchpoints } from '../db/schema/measurement';
-import { eq, gte } from 'drizzle-orm';
+import { eq, gte, sql } from 'drizzle-orm';
 import type { AttributionRepository, AttributionTouchpointRow, MatchQualitySummary } from '../../application/ports/measurement/AttributionRepository';
 
 export class DrizzleAttributionRepository implements AttributionRepository {
@@ -28,28 +28,41 @@ export class DrizzleAttributionRepository implements AttributionRepository {
     }));
   }
 
+  /**
+   * Aggregated in SQL (#19): it used to load every touchpoint row in the window
+   * into memory to average one column. No rows -> null rates, never 0%.
+   */
   async getMatchQualitySummary(days: number): Promise<MatchQualitySummary> {
     const since = new Date(Date.now() - days * 86_400_000);
 
-    const rows = await db
-      .select({ matchScore: attributionTouchpoints.matchScore })
+    const [row] = await db
+      .select({
+        total: sql<number>`count(*)::int`,
+        avg: sql<string | null>`avg(${attributionTouchpoints.matchScore})`,
+        below40: sql<number>`count(*) filter (where ${attributionTouchpoints.matchScore} < 40)::int`,
+        above80: sql<number>`count(*) filter (where ${attributionTouchpoints.matchScore} >= 80)::int`,
+      })
       .from(attributionTouchpoints)
       .where(gte(attributionTouchpoints.eventTime, since));
 
-    if (rows.length === 0) {
-      return { avgScore: 0, below40Pct: 0, above80Pct: 0, totalEvents: 0 };
-    }
-
-    const total = rows.length;
-    const avg = rows.reduce((sum, r) => sum + r.matchScore, 0) / total;
-    const below40 = rows.filter(r => r.matchScore < 40).length;
-    const above80 = rows.filter(r => r.matchScore >= 80).length;
-
-    return {
-      avgScore: Math.round(avg * 10) / 10,
-      below40Pct: Math.round((below40 / total) * 100),
-      above80Pct: Math.round((above80 / total) * 100),
-      totalEvents: total,
-    };
+    return summariseMatchQuality({
+      total: Number(row?.total ?? 0),
+      avg: row?.avg === null || row?.avg === undefined ? null : Number(row.avg),
+      below40: Number(row?.below40 ?? 0),
+      above80: Number(row?.above80 ?? 0),
+    });
   }
+}
+
+/** Pure shaping of the SQL aggregate; exported for tests. */
+export function summariseMatchQuality(agg: { total: number; avg: number | null; below40: number; above80: number }): MatchQualitySummary {
+  if (!agg.total || agg.avg === null || !Number.isFinite(agg.avg)) {
+    return { avgScore: null, below40Pct: null, above80Pct: null, totalEvents: 0 };
+  }
+  return {
+    avgScore: Math.round(agg.avg * 10) / 10,
+    below40Pct: Math.round((agg.below40 / agg.total) * 100),
+    above80Pct: Math.round((agg.above80 / agg.total) * 100),
+    totalEvents: agg.total,
+  };
 }

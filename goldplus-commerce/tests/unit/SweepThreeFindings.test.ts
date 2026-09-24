@@ -127,7 +127,9 @@ describe('points and cards survive a failure', () => {
 
   it('a suppressed expiry warning is retried, not counted as sent', () => {
     expect(read('apps/api/src/infrastructure/db/repositories/DrizzleLoyaltyCompletionRepository.ts'))
-      .toMatch(/eq\(loyaltyExpiryNotices\.channel, 'notification'\)/);
+      // 'queued' (enqueued, awaiting dispatch) and 'notification' (delivered)
+      // count as sent; 'suppressed' still does not, so it is retried.
+      .toMatch(/inArray\(loyaltyExpiryNotices\.channel, \['notification', 'queued'\]\)/);
   });
 });
 

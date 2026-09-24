@@ -253,10 +253,32 @@ export class DrizzleLoyaltyCompletionRepository implements ILoyaltyCompletionRep
       where: and(
         eq(loyaltyExpiryNotices.earnEntryId, earnEntryId),
         eq(loyaltyExpiryNotices.noticeKind, kind),
-        eq(loyaltyExpiryNotices.channel, 'notification'),
+        // Queued counts as sent: the outbox holds it under a unique key, so a
+        // second enqueue would be dropped anyway, and re-recording it every
+        // day would only churn the row.
+        inArray(loyaltyExpiryNotices.channel, ['notification', 'queued']),
       ),
     });
     return Boolean(row);
+  }
+
+  /**
+   * 'queued' -> 'notification' once the warning's outbox event (key
+   * `loyexp:<earn>:<kind>`, Registry) was processed without an error. A
+   * dead-lettered or still-pending one stays 'queued'.
+   */
+  async confirmQueuedNotices(): Promise<number> {
+    const result: any = await db.execute(sql`
+      update loyalty_expiry_notices n
+         set channel = 'notification'
+        from outbox_events o
+       where n.channel = 'queued'
+         and o.idempotency_key = 'loyexp:' || n.earn_entry_id::text || ':' || n.notice_kind
+         and o.status = 'processed'
+         and o.last_error is null
+      returning n.id`);
+    const rows = Array.isArray(result) ? result : result?.rows ?? [];
+    return rows.length;
   }
 
   async recordNotice(input: { accountId: string; earnEntryId: string; kind: string; channel: string }): Promise<void> {

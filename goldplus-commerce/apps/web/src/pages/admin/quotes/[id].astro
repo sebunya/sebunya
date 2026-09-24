@@ -1,0 +1,165 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { apiBase } from '../../../lib/api';
+import { readSessionToken } from '../../../lib/session';
+import { formatUgx } from '../../../lib/money';
+import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../../../lib/requestOrigin';
+import {
+  BUYER_TYPE_LABEL,
+  NEXT_QUOTE_STATUSES,
+  QUOTE_STATUS_CLASS,
+  QUOTE_STATUS_LABEL,
+  formatCount,
+  kampalaDateTime,
+  type AdminQuoteRequest,
+} from '../../../lib/adminQuoteRequests';
+
+/**
+ * One quote request: every line with its list-price snapshot, the business
+ * details, the notes, and the status move (audited on the API).
+ */
+const id = String(Astro.params.id ?? '');
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect(`/admin/login?returnTo=${encodeURIComponent(`/admin/quotes/${id}`)}`, 303);
+
+const authed = (path: string, init?: RequestInit) =>
+  fetch(`${apiBase}${path}`, { ...init, headers: { ...init?.headers, Authorization: `Bearer ${token}`, Accept: 'application/json' } });
+
+let notice: { kind: 'ok' | 'error'; message: string } | null = null;
+
+if (Astro.request.method === 'POST') {
+  const origin = checkRequestOrigin(Astro.request, import.meta.env as unknown as Record<string, string | undefined>);
+  if (!origin.allowed) {
+    notice = { kind: 'error', message: CROSS_SITE_MESSAGE };
+  } else {
+    const form = await Astro.request.formData();
+    const status = String(form.get('status') ?? '');
+    try {
+      const res = await authed(`/admin/quote-requests/${encodeURIComponent(id)}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      const json: any = await res.json().catch(() => null);
+      notice = res.ok && json?.success
+        ? { kind: 'ok', message: `Status changed to ${QUOTE_STATUS_LABEL[status] ?? status}.` }
+        : { kind: 'error', message: json?.error?.message ?? 'The status could not be changed.' };
+    } catch {
+      notice = { kind: 'error', message: 'The quote service did not answer. Try again.' };
+    }
+  }
+}
+
+let quote: AdminQuoteRequest | null = null;
+let loadError: string | null = null;
+try {
+  const res = await authed(`/admin/quote-requests/${encodeURIComponent(id)}`);
+  const json: any = await res.json().catch(() => null);
+  if (res.ok && json?.success) quote = json.data as AdminQuoteRequest;
+  else loadError = res.status === 404 ? 'This quote request does not exist.' : (json?.error?.message ?? `The quote request could not be loaded (API ${res.status}).`);
+} catch {
+  loadError = 'The quote service is unreachable right now.';
+}
+const nextStatuses = quote ? NEXT_QUOTE_STATUSES[quote.status] ?? [] : [];
+const unpriced = quote ? quote.totals.lineCount - quote.totals.pricedLineCount : 0;
+---
+
+<AdminLayout title={quote?.reference ? `Quote ${quote.reference}` : 'Quote request'} description="One quote request and its lines.">
+  <div class="container mx-auto max-w-5xl px-4 lg:px-8">
+    <p class="mb-4 text-sm"><a href="/admin/quotes" class="font-bold underline underline-offset-4">All quote requests</a></p>
+
+    {notice && (
+      <p role="status" class={`mb-4 rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === 'ok' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-800'}`}>{notice.message}</p>
+    )}
+    {loadError && <p role="alert" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-800">{loadError}</p>}
+
+    {quote && (
+      <>
+        <div class="mb-6 flex flex-col gap-3 border-b border-gray-200 pb-6 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 class="font-mono text-2xl font-black tracking-wide text-brand-dark">{quote.reference ?? 'Form request'}</h2>
+            <p class="mt-1 text-sm text-gray-600">Sent {kampalaDateTime(quote.createdAt)}{quote.updatedAt ? ` · status changed ${kampalaDateTime(quote.updatedAt)}` : ''}</p>
+          </div>
+          <span class={`inline-block self-start rounded-lg border px-3 py-1 text-xs font-black uppercase tracking-wide ${QUOTE_STATUS_CLASS[quote.status] ?? QUOTE_STATUS_CLASS.lost}`}>{QUOTE_STATUS_LABEL[quote.status] ?? quote.status}</span>
+        </div>
+
+        <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <section class="rounded-2xl border border-gray-200 bg-white p-5 lg:col-span-1" aria-labelledby="buyer-heading">
+            <h3 id="buyer-heading" class="text-sm font-black uppercase tracking-widest text-gray-500">Buyer</h3>
+            <dl class="mt-3 space-y-2 text-sm">
+              <div><dt class="font-bold text-gray-600">Name</dt><dd class="break-words text-brand-dark">{quote.customerName}</dd></div>
+              {quote.businessName && <div><dt class="font-bold text-gray-600">Business</dt><dd class="break-words">{quote.businessName}</dd></div>}
+              <div><dt class="font-bold text-gray-600">Phone</dt><dd><a class="font-mono underline" href={`tel:${quote.phone.replace(/[^0-9+]/g, '')}`}>{quote.phone}</a></dd></div>
+              {quote.email && <div><dt class="font-bold text-gray-600">Email</dt><dd class="break-all font-mono">{quote.email}</dd></div>}
+              {quote.buyerType && <div><dt class="font-bold text-gray-600">Buyer type</dt><dd>{BUYER_TYPE_LABEL[quote.buyerType] ?? quote.buyerType}</dd></div>}
+              <div><dt class="font-bold text-gray-600">Delivery district</dt><dd>{quote.deliveryDistrict ?? 'Not given'}</dd></div>
+              <div><dt class="font-bold text-gray-600">Needed by</dt><dd>{quote.neededBy ?? 'Not given'}</dd></div>
+            </dl>
+            {quote.notes && (
+              <>
+                <h3 class="mt-5 text-sm font-black uppercase tracking-widest text-gray-500">Notes</h3>
+                <p class="mt-2 whitespace-pre-wrap break-words text-sm text-gray-800">{quote.notes}</p>
+              </>
+            )}
+
+            <h3 class="mt-5 text-sm font-black uppercase tracking-widest text-gray-500">Status</h3>
+            {nextStatuses.length === 0 ? (
+              <p class="mt-2 text-sm text-gray-600">{QUOTE_STATUS_LABEL[quote.status] ?? quote.status} is final.</p>
+            ) : (
+              <form method="POST" class="mt-2 flex flex-wrap gap-2">
+                {nextStatuses.map((s) => (
+                  <button type="submit" name="status" value={s} class="min-h-11 rounded-full border border-gray-300 bg-white px-4 text-sm font-bold text-brand-dark hover:border-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900">Mark {QUOTE_STATUS_LABEL[s] ?? s}</button>
+                ))}
+              </form>
+            )}
+            <p class="mt-2 text-xs text-gray-500">The buyer sees the status at /bulk/status with their reference and phone. Changing it sends no message.</p>
+          </section>
+
+          <section class="rounded-2xl border border-gray-200 bg-white p-5 lg:col-span-2" aria-labelledby="lines-heading">
+            <h3 id="lines-heading" class="text-sm font-black uppercase tracking-widest text-gray-500">
+              {quote.source === 'bulk_builder' ? `${quote.totals.lineCount} products, ${formatCount(quote.totals.totalUnits)} units` : 'Request'}
+            </h3>
+            {quote.source === 'bulk_builder' ? (
+              <>
+                <div class="mt-3 overflow-x-auto">
+                  <table class="w-full border-collapse text-left text-sm">
+                    <thead>
+                      <tr class="border-b border-gray-200 text-[10px] font-black uppercase tracking-widest text-gray-500">
+                        <th scope="col" class="py-2 pr-3">#</th>
+                        <th scope="col" class="py-2 pr-3">Product</th>
+                        <th scope="col" class="py-2 pr-3 text-right">Qty</th>
+                        <th scope="col" class="py-2 pr-3 text-right">List price</th>
+                        <th scope="col" class="py-2 text-right">Line</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                      {quote.lines.map((l) => (
+                        <tr class="align-top">
+                          <td class="py-2 pr-3 text-gray-500">{l.lineNo}</td>
+                          <td class="py-2 pr-3">
+                            <div class="font-bold text-brand-dark">{l.productName}</div>
+                            <div class="text-xs text-gray-500">{l.productCode && <span class="font-mono">{l.productCode}</span>}{l.productCode && ' · '}{l.availability.replace('_', ' ')} when asked{!l.productId && ' · product since removed'}</div>
+                          </td>
+                          <td class="py-2 pr-3 text-right font-mono font-black">{formatCount(l.quantity)}</td>
+                          <td class="py-2 pr-3 text-right font-mono">{l.unitPriceUgx === null ? '—' : formatUgx(l.unitPriceUgx)}</td>
+                          <td class="py-2 text-right font-mono">{l.lineTotalUgx === null ? '—' : formatUgx(l.lineTotalUgx)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p class="mt-4 text-sm font-bold text-brand-dark">Estimated total at list price: {formatUgx(quote.totals.estimatedTotalUgx)}</p>
+                <p class="text-xs text-gray-500">Snapshot of public list prices when the buyer asked. {unpriced > 0 ? `${unpriced} line(s) had no listed price.` : ''} The buyer was told volume pricing is confirmed by the team.</p>
+              </>
+            ) : (
+              <dl class="mt-3 space-y-2 text-sm">
+                <div><dt class="font-bold text-gray-600">Product or category</dt><dd class="break-words">{quote.productName}</dd></div>
+                <div><dt class="font-bold text-gray-600">Quantity</dt><dd>{quote.quantity}</dd></div>
+              </dl>
+            )}
+          </section>
+        </div>
+      </>
+    )}
+  </div>
+</AdminLayout>

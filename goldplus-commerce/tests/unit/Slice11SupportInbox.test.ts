@@ -35,6 +35,9 @@ function fakeRepo(rows: SupportTicket[]): ISupportRepository & { rows: SupportTi
     get rows() { return store; },
     async save(t) { store.push(t); },
     async findAll() { return store; },
+    async findForCustomer(q) {
+      return store.filter((t) => t.customerId === q.customerId || (q.email && String(t.metadata?.email ?? '').toLowerCase() === q.email));
+    },
     async findById(id) { return store.find((t) => t.id === id) ?? null; },
     async update(id, patch) {
       const cur = store.find((t) => t.id === id);
@@ -73,6 +76,28 @@ describe('Support inbox domain (Slice 11)', () => {
 });
 
 describe('Support inbox use cases (Slice 11)', () => {
+  it('one customer\'s tickets come from the scoped query, never the whole inbox', async () => {
+    const repo = fakeRepo([
+      new SupportTicket('mine', null, 's', 'd', 'open', 'medium', 'issue', hoursAgo(1), { email: 'amina@example.com' }),
+      new SupportTicket('signed-in', 'u1', 's', 'd', 'open', 'medium', 'issue', hoursAgo(2), {}),
+      new SupportTicket('theirs', null, 's', 'd', 'open', 'medium', 'issue', hoursAgo(1), { email: 'other@example.com' }),
+    ]);
+    let wholeInboxReads = 0;
+    const findAll = repo.findAll.bind(repo);
+    repo.findAll = async () => { wholeInboxReads += 1; return findAll(); };
+    const got = await new GetSupportInboxUseCase(repo).executeForCustomer({ customerId: 'u1', email: 'amina@example.com' }, now);
+    expect(got.map((t) => t.ticket.id).sort()).toEqual(['mine', 'signed-in']);
+    expect(wholeInboxReads).toBe(0);
+  });
+
+  it('the Drizzle query is scoped by customer_id OR metadata email', async () => {
+    const src = (await import('node:fs')).readFileSync(require('node:path').resolve(__dirname, '../../apps/api/src/infrastructure/db/repositories/DrizzleSupportRepository.ts'), 'utf8');
+    const body = src.slice(src.indexOf('async findForCustomer'), src.indexOf('async findAll'));
+    expect(body).toMatch(/eq\(supportIssues\.customerId/);
+    expect(body).toMatch(/metadata\}->>'email'/);
+    expect(body).not.toMatch(/findMany\(\)/);
+  });
+
   it('sorts overdue tickets first', async () => {
     const repo = fakeRepo([
       ticket({ id: 'fresh', priority: 'low', createdAt: hoursAgo(1) }),

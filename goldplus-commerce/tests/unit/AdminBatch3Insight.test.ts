@@ -99,12 +99,14 @@ describe('customer workspace support tickets', () => {
       orders: { listForUser: async () => [] },
       loyalty: { findAccountByUserId: async () => null, listEntries: async () => [] },
       staff: { isStaff: async () => false },
+      // The matching (customer id OR submitted email, case-insensitive) is the
+      // repository query now; this stand-in applies the same rule to its rows.
       support: {
-        execute: async () => [
+        forCustomer: async (q: { customerId: string; email: string | null }) => [
           { ticket: { id: 't1', email: 'other@x.ug', customerId: ID, status: 'open', priority: 'normal', createdAt: created } },
           { ticket: { id: 't2', email: 'A@x.ug', customerId: null, status: 'open', priority: 'normal', createdAt: created } },
           { ticket: { id: 't3', email: 'stranger@x.ug', customerId: null, status: 'open', priority: 'normal', createdAt: created } },
-        ],
+        ].filter(({ ticket }) => ticket.customerId === q.customerId || ticket.email.toLowerCase() === q.email),
       },
     });
     const ws = await uc.execute(ID, created, { includeSupport: true });

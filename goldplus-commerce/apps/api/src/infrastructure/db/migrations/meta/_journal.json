@@ -1072,6 +1072,13 @@
       "when": 1790140000011,
       "tag": "0152_delivery_learning_inputs",
       "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "5",
+      "when": 1790140000012,
+      "tag": "0153_bulk_quote_lines",
+      "breakpoints": true
     }
   ]
 }

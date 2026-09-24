@@ -26,9 +26,11 @@ The `StitchBrowserIdentityUseCase.ts` combines frontend cookie identifiers with 
 ---
 
 ## 3. Signal Quality Scoring
-To verify telemetry reliability, `EnqueuePurchaseEventUseCase.ts` evaluates telemetry payloads and issues warnings for low quality scores:
-- **Email present**: +40 points
-- **Phone present**: +30 points
-- **IP Address + User Agent present**: +20 points
-- **First/Last name present**: +10 points
-- **Threshold Warning**: If the event score is below 60, a warnings gauge is incremented, alerting marketing SREs that conversion match rates are degraded.
+The purchase-time scorer this section used to describe (`EnqueuePurchaseEventUseCase.ts` and
+`infrastructure/telemetry/PurchaseTelemetry.ts`) has been removed. Purchases now come from ONE
+source: the authoritative `order_confirmed` event that the order transition appends in the same
+transaction (migration 0140), carried out by durable delivery intents.
+
+Match quality is read from `attribution_touchpoints.match_score` and summarised for the admin
+Measurement pages by `GET /admin/measurement/match-quality` (aggregated in SQL). With no
+conversion events in the window the summary is "no data" (null), never 0%.

@@ -103,6 +103,11 @@ const checkedKind = values.kind || initialKind;
     <div class="max-w-2xl mx-auto space-y-6">
       <FormFeedback status={status} message={message} reference={reference} />
       <Notice kind="info" title="How quotes work" message="Prices for large orders depend on the quantity and where you are. Send this form and our sales team will prepare a quote for you. A quote is an estimate, not a final bill." />
+      <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+        <p class="text-sm font-bold text-gray-900">Need several different products?</p>
+        <p class="mt-1 text-sm leading-relaxed text-slate-700">Use the bulk order builder: pick a quantity for every product you need across all categories, see an estimate at our listed prices, and send the whole list at once.</p>
+        <a href="/bulk" class="mt-3 inline-flex min-h-11 items-center rounded-full bg-slate-900 px-5 text-sm font-bold text-white outline-none hover:bg-black focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2">Open the bulk order builder</a>
+      </div>
 
       <div class="bg-white p-8 md:p-10 rounded-2xl border border-slate-200/80 shadow-xs">
         <form method="POST" action="/quote-request" novalidate id="quoteForm" class="space-y-8">

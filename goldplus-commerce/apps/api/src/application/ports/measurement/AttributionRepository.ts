@@ -14,10 +14,15 @@ export interface AttributionTouchpointRow {
   hasIpAddress: number;
 }
 
+/**
+ * Match quality over a window. With no conversion events there is no score:
+ * the three rates are NULL ("no data"), never 0%, which read as a measured
+ * total failure.
+ */
 export interface MatchQualitySummary {
-  avgScore: number;
-  below40Pct: number;
-  above80Pct: number;
+  avgScore: number | null;
+  below40Pct: number | null;
+  above80Pct: number | null;
   totalEvents: number;
 }
 

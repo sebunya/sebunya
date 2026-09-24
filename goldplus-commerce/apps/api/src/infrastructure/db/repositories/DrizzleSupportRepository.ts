@@ -1,9 +1,27 @@
 import { db } from '../client';
 import { supportIssues } from '../schema/governance';
-import { eq } from 'drizzle-orm';
+import { eq, or, sql } from 'drizzle-orm';
 import { SupportTicket } from '../../../domain/support/SupportTicket';
 
-export class DrizzleSupportRepository {
+import type { ISupportRepository } from '../../../application/ports/ISupportRepository';
+
+function toTicket(r: typeof supportIssues.$inferSelect): SupportTicket {
+  return new SupportTicket(
+    r.id,
+    r.customerId,
+    r.subject,
+    r.description,
+    r.status as any,
+    r.priority as any,
+    r.type as any,
+    r.createdAt,
+    r.metadata as Record<string, any>,
+    r.assignedTo ?? null,
+    r.updatedAt ?? null
+  );
+}
+
+export class DrizzleSupportRepository implements ISupportRepository {
   async save(ticket: SupportTicket): Promise<void> {
     await db.insert(supportIssues).values({
       id: ticket.id,
@@ -54,6 +72,16 @@ export class DrizzleSupportRepository {
     const [row] = await db.update(supportIssues).set(set).where(eq(supportIssues.id, id)).returning();
     if (!row) return null;
     return this.findById(row.id);
+  }
+
+  async findForCustomer(query: { customerId: string; email: string | null }): Promise<SupportTicket[]> {
+    const email = (query.email ?? '').trim().toLowerCase();
+    const byCustomer = eq(supportIssues.customerId, query.customerId);
+    const rows = await db
+      .select()
+      .from(supportIssues)
+      .where(email ? or(byCustomer, sql`lower(${supportIssues.metadata}->>'email') = ${email}`) : byCustomer);
+    return rows.map(toTicket);
   }
 
   async findAll(): Promise<SupportTicket[]> {

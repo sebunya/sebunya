@@ -1084,7 +1084,7 @@ const checkoutSavingLabel = basketSavingLabel(
                   interstitial. Every sentence resolved from the registry. */}
               <div class="pt-3">
                 <dt class="sr-only">Delivery commitment</dt>
-                <dd>
+                <dd id="checkout-delivery-quote" data-subtotal={cart.subtotalUgx} aria-live="polite">
                   <DeliveryQuote
                     stage={2}
                     areaSlug={initialAreaSlug}
@@ -1236,6 +1236,7 @@ const checkoutSavingLabel = basketSavingLabel(
   import { track, captureClickIdsServerSide } from '../lib/telemetry';
   import { getCheckoutAttribution } from '../lib/attribution';
   import { publicApiBase } from '../lib/api';
+  import { buildDeliveryQuoteRequest, renderDeliveryQuotePanel, DELIVERY_QUOTE_UNREACHABLE_HTML } from '../lib/deliveryQuotePanel';
 
   document.addEventListener('DOMContentLoaded', () => {
     const dataEl  = document.getElementById('checkout-telemetry-data');
@@ -1358,8 +1359,46 @@ const checkoutSavingLabel = basketSavingLabel(
         return list.map((i) => `${i.productId}:${i.quantity}`).join(',');
       } catch { return ''; }
     })();
+    // ── the delivery commitment panel, re-quoted after a location pick ─────────
+    // The server rendered it for the saved address (or for no place at all).
+    // A guest who picks a location used to keep that first answer; now the
+    // panel is asked again from the SAME endpoint the server used (POST
+    // /delivery/quote, the one quoting service) and drawn by the SAME renderer,
+    // so it cannot disagree with the first paint or with the order's charge.
+    const quotePanelEl = document.getElementById('checkout-delivery-quote');
+    const quoteItems: Array<{ productId: string; quantity: number }> = (() => {
+      try { return JSON.parse(document.getElementById('promo-code-block')?.getAttribute('data-items') || '[]'); }
+      catch { return []; }
+    })();
+    let quoteSeq = 0;
+    async function refreshQuotePanel(district: string | null, area: string | null, areaSlug: string | null) {
+      if (!quotePanelEl || !API_BASE) return;
+      const seq = ++quoteSeq;
+      const body = buildDeliveryQuoteRequest({
+        district,
+        areaSlug,
+        deliveryArea: area,
+        items: quoteItems,
+        subtotalUgx: Number(quotePanelEl.dataset.subtotal) || 0,
+      });
+      let html = DELIVERY_QUOTE_UNREACHABLE_HTML;
+      try {
+        const res = await fetch(`${API_BASE}/delivery/quote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(6000),
+        });
+        const json = await res.json().catch(() => null);
+        if (json?.success) html = renderDeliveryQuotePanel(json.data, { stage: 2 });
+      } catch { /* the unreachable line, as on the server */ }
+      if (seq !== quoteSeq) return; // a newer destination superseded this quote
+      quotePanelEl.innerHTML = html;
+    }
+
     async function refreshEstimate(district: string | null, area: string | null, areaSlug: string | null = null) {
       setCutoffFor(district);
+      void refreshQuotePanel(district, area, areaSlug);
       const seq = ++estimateSeq;
       if (!district) { renderEstimate(null, false); return; }
       if (!API_BASE) { renderEstimate(null, true); return; }
@@ -1388,7 +1427,7 @@ const checkoutSavingLabel = basketSavingLabel(
     const pickerPayload = document.querySelector<HTMLInputElement>('form[action="/checkout"] .js-final-payload');
     function onPickerChange() {
       const raw = pickerPayload?.value ?? '';
-      if (!raw) { ++estimateSeq; setCutoffFor(null); renderEstimate(null, false); return; }
+      if (!raw) { ++estimateSeq; setCutoffFor(null); renderEstimate(null, false); void refreshQuotePanel(null, null, null); return; }
       try {
         const loc = JSON.parse(raw);
         if (loc?.district) { refreshEstimate(String(loc.district), loc.area ?? null, loc.areaSlug ? String(loc.areaSlug) : null); return; }
@@ -1396,6 +1435,7 @@ const checkoutSavingLabel = basketSavingLabel(
         ++estimateSeq;
         setCutoffFor(null);
         renderEstimate(null, true);
+        void refreshQuotePanel(null, null, null);
       } catch {
         ++estimateSeq;
         setCutoffFor(null);

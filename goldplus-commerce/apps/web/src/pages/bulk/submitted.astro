@@ -1,0 +1,54 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import BulkRequestSummary from '../../components/bulk/BulkRequestSummary.astro';
+import { lookupBulkQuote, type BulkQuoteBuyerView } from '../../lib/bulkQuoteView';
+import { BULK_RECEIPT_COOKIE, decodeBulkReceipt } from '../../lib/bulkReceipt';
+import { whatsappSupportNumber } from '../../lib/api';
+
+/**
+ * Confirmation after a bulk quote request (docs/bulk-buying/DESIGN.md). The
+ * request is looked up with the reference and phone the relay kept in an
+ * httpOnly cookie for an hour: nothing about the buyer is in the URL.
+ */
+Astro.response.headers.set('Cache-Control', 'no-store');
+
+const receipt = decodeBulkReceipt(Astro.cookies.get(BULK_RECEIPT_COOKIE)?.value);
+let request: BulkQuoteBuyerView | null = null;
+let problem: string | null = null;
+if (receipt) {
+  const found = await lookupBulkQuote(receipt.reference, receipt.phone);
+  if (found.ok) request = found.request;
+  else problem = found.unreachable
+    ? `We have your request (reference ${receipt.reference}) but cannot show it just now. Check it later at Bulk request status.`
+    : 'We could not show that request. Check it at Bulk request status with your reference and phone number.';
+}
+const whatsappUrl = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComponent(
+  request ? `Hello GoldPlus, about my bulk quote request ${request.reference}.` : 'Hello GoldPlus, about my bulk quote request.',
+)}`;
+---
+
+<BaseLayout title="Bulk request sent | GoldPlus" description="Your bulk quote request." robotsMeta="noindex,nofollow">
+  <div class="container mx-auto max-w-3xl px-4 py-10 lg:px-8">
+    {request ? (
+      <>
+        <h1 class="text-2xl font-black tracking-tight text-gray-950 sm:text-3xl">We have your bulk list</h1>
+        <p class="mt-3 text-base leading-relaxed text-slate-700">
+          Keep the reference below. Our sales team will call you on the number you gave to confirm the list, the price and delivery. We have sent you a text with the reference.
+        </p>
+        <div class="mt-6"><BulkRequestSummary request={request} /></div>
+      </>
+    ) : (
+      <>
+        <h1 class="text-2xl font-black tracking-tight text-gray-950 sm:text-3xl">Bulk request</h1>
+        <p class="mt-3 text-base leading-relaxed text-slate-700" role={problem ? 'alert' : undefined}>
+          {problem ?? 'There is no recent bulk request on this device. If you sent one, look it up with your reference and phone number.'}
+        </p>
+      </>
+    )}
+    <div class="mt-8 flex flex-col gap-3 sm:flex-row">
+      <a href="/bulk/status" class="inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-6 py-3 text-sm font-bold text-white outline-none hover:bg-black focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2">Bulk request status</a>
+      <a href="/bulk" class="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 bg-white px-6 py-3 text-sm font-bold text-slate-900 outline-none hover:border-slate-500 focus-visible:ring-2 focus-visible:ring-brand-primaryInk">Back to the bulk builder</a>
+      <a href={whatsappUrl} class="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 bg-white px-6 py-3 text-sm font-bold text-slate-900 outline-none hover:border-slate-500 focus-visible:ring-2 focus-visible:ring-brand-primaryInk">Ask on WhatsApp</a>
+    </div>
+  </div>
+</BaseLayout>

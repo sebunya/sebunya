@@ -63,7 +63,8 @@ export class TransitionFulfilmentTaskUseCase {
   async execute(input: {
     taskId: string;
     toStatus: string;
-    actorId: string;
+    /** Null for a system actor (e.g. a provider-confirmed refund closing the task). */
+    actorId: string | null;
     assignedTo?: string | null;
     notes?: string | null;
   }): Promise<TransitionFulfilmentResult> {

@@ -69,31 +69,25 @@ routes.get('/sitemap/products', async (c) => {
 /**
  * Google Merchant Center product feed — live, credential-free (Merchant Center
  * fetches this URL on a schedule). Real catalogue data only; inclusion rules
- * and XML shape live in MerchantFeedUseCase. Cached in-process for 15 minutes.
+ * and XML shape live in MerchantFeedUseCase. Cached in-process
+ * (MerchantFeedCache): rebuilt when inventory changes, at most 15 minutes old.
  */
-let feedCache: { xml: string; builtAt: number } | null = null;
-const FEED_TTL_MS = 15 * 60 * 1000;
-
 routes.get('/merchant-feed.xml', async (c) => {
-  const now = Date.now();
-  if (!feedCache || now - feedCache.builtAt > FEED_TTL_MS) {
-    const registry = Registry.getInstance();
+  const registry = Registry.getInstance();
+  const xml = await registry.merchantFeedCache.get(async () => {
     const products = await registry.seoGrowthRepo.feedProducts();
     // The same one campaign the storefront reads, so the feed quotes the price
     // the shopper is actually charged.
     const campaign = await resolveStorefrontDiscount(registry.pricingRepo);
-    feedCache = {
-      xml: buildMerchantFeedXml(
-        products,
-        STOREFRONT_BASE_URL,
-        campaign.active ? { percentBps: campaign.percentBps, priceFloorUgx: campaign.priceFloorUgx, saleStartIso: campaign.startsIso, saleEndIso: campaign.endsIso } : null,
-      ),
-      builtAt: now,
-    };
-  }
+    return buildMerchantFeedXml(
+      products,
+      STOREFRONT_BASE_URL,
+      campaign.active ? { percentBps: campaign.percentBps, priceFloorUgx: campaign.priceFloorUgx, saleStartIso: campaign.startsIso, saleEndIso: campaign.endsIso } : null,
+    );
+  });
   c.header('Content-Type', 'application/xml; charset=utf-8');
   c.header('Cache-Control', 'public, max-age=900');
-  return c.body(feedCache.xml);
+  return c.body(xml);
 });
 
 /**

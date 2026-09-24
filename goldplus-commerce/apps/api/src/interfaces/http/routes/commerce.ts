@@ -29,7 +29,6 @@ import { GetMyOrderUseCase } from '../../../application/use-cases/orders/Custome
 import { RequestOrderFollowUpUseCase } from '../../../application/use-cases/orders/RequestOrderFollowUpUseCase';
 import { OpenSupportTicketUseCase } from '../../../application/use-cases/governance/OpenSupportTicketUseCase';
 import { CreateAuditLogUseCase } from '../../../application/use-cases/audit/CreateAuditLogUseCase';
-import { acknowledgementIdempotencyKey } from '../../../application/use-cases/notifications/AcknowledgementIdempotency';
 
 // Slice 3B: server-authoritative checkout input. Client prices/sku/names are
 // deliberately absent — only productId + quantity are trusted; extra fields
@@ -933,15 +932,15 @@ routes.post('/orders/lookup/followup', async (c) => {
     entityId: result.ticketId,
     newState: { source: 'track_order_followup', orderNumber: order.orderNumber },
   });
-  await registry.customerOutboxNotifier.enqueue({
+  await registry.sendPublicFormAcknowledgementUseCase.execute({
+    kind: 'support_ticket',
     eventType: 'SUPPORT_REQUEST_RECEIVED',
     template: 'SUPPORT_REQUEST_RECEIVED',
-    customerPhone: order.customerPhone ?? null,
-    customerEmail: order.customerEmail ?? null,
+    phone: order.customerPhone,
+    email: order.customerEmail,
     data: { customerName: order.customerName ?? null, reference: result.ticketId },
-    idempotencyKey: acknowledgementIdempotencyKey({ kind: 'support_ticket', phone: order.customerPhone, email: order.customerEmail, entityId: result.ticketId }),
+    entityId: result.ticketId,
     relatedEntity: 'support_ticket',
-    relatedEntityId: result.ticketId,
   }).catch(() => undefined);
   return c.json({ success: true, data: { ticketId: result.ticketId } } satisfies ApiResponse<{ ticketId: string }>, 201);
 });

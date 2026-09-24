@@ -51,6 +51,12 @@ export const POST: APIRoute = async ({ request, params, cookies, clientAddress }
   // header, and the API's signature check does the real verification.
   const visit = cookies.get(VISIT_COOKIE_NAME)?.value;
   if (visit && VISIT_TOKEN_SHAPE.test(visit)) headers["x-gp-visit"] = visit;
+  // The browser's user agent travels too (#4): the API screens these events
+  // with botDetectionMiddleware, which reads a missing user agent as a bot, so
+  // a relay that sent none had every real event dropped. Length-capped; the
+  // value is only ever matched against patterns upstream.
+  const ua = request.headers.get("user-agent");
+  if (ua) headers["User-Agent"] = ua.slice(0, 512);
   // The real client address travels with the request so abuse control can
   // attribute per-visitor rather than per-web-container.
   try {

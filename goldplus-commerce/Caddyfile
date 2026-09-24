@@ -58,6 +58,16 @@ shopgoldplus.com, www.shopgoldplus.com {
 
   encode gzip
 
+  # Body cap on the PUBLIC beacon relays only (#8/#12). Each relay already
+  # caps what it reads (hero/nav 2 KiB, rec 8 KiB, CSP reports 16 KiB), but
+  # only after the web container has accepted the connection; this refuses an
+  # oversized body at the edge. Every other path (checkout, admin uploads,
+  # forms) keeps the default, so a legitimate large upload is never cut here.
+  @publicBeacons path /api/rec/* /api/hero/events /api/nav/events /api/csp-report
+  request_body @publicBeacons {
+    max_size 16KiB
+  }
+
   # Media library assets (Wave 2B): the api container writes into the shared media
   # volume; the edge serves it directly so image delivery never hops through SSR.
   # Same-origin, so the existing img-src 'self' CSP already permits it.
@@ -152,6 +162,20 @@ api.shopgoldplus.com {
   # (Rate limiting shifted to Hono middleware)
 
   encode gzip
+
+  # Body caps on the PUBLIC beacon/telemetry paths only (#8/#12), matching the
+  # API's own bodyLimit ceilings so the edge never refuses what the app would
+  # accept: /telemetry/collect/batch is 512,000 B (the largest; /collect is
+  # 102,400 B and /identity 4,096 B, still enforced in Hono), and the
+  # recommendation/hero/nav events are small JSON. Other paths are untouched.
+  @telemetryBeacons path /telemetry/collect /telemetry/collect/batch /telemetry/identity
+  request_body @telemetryBeacons {
+    max_size 512KB
+  }
+  @eventBeacons path /recommendations/events /hero/events /nav/events
+  request_body @eventBeacons {
+    max_size 16KiB
+  }
 
   reverse_proxy api:3000 {
     header_up Host              {host}

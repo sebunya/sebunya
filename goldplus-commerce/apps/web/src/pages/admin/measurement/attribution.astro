@@ -340,12 +340,14 @@ if (!token) {
       if (!json.success) return;
       const d = json.data;
 
-      (document.getElementById('avg-score') as HTMLElement).textContent = `${d.avgScore.toFixed(1)}%`;
-      (document.getElementById('below-40-pct') as HTMLElement).textContent = `${d.below40Pct}%`;
-      (document.getElementById('above-80-pct') as HTMLElement).textContent = `${d.above80Pct}%`;
+      // No conversion events in the window is "no data", never 0% (#19).
+      const pct = (v: number | null | undefined, digits = 0) => (typeof v === 'number' ? `${v.toFixed(digits)}%` : 'No data');
+      (document.getElementById('avg-score') as HTMLElement).textContent = pct(d.avgScore, 1);
+      (document.getElementById('below-40-pct') as HTMLElement).textContent = pct(d.below40Pct);
+      (document.getElementById('above-80-pct') as HTMLElement).textContent = pct(d.above80Pct);
       (document.getElementById('total-events') as HTMLElement).textContent = d.totalEvents.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' });
       const bar = document.getElementById('avg-score-bar') as HTMLElement | null;
-      if (bar) bar.style.width = `${d.avgScore}%`;
+      if (bar) bar.style.width = `${typeof d.avgScore === 'number' ? d.avgScore : 0}%`;
     } catch (err) {
       console.error('[Attribution] Load error:', err);
     }

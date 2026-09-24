@@ -26,7 +26,7 @@ routes.get('/:userId', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) 
       listEntries: (accountId) => registry.loyaltyRepo.listEntries(accountId),
     },
     staff: { isStaff: async (id) => (await registry.roleRepo.findPermissionsForUser(id)).length > 0 },
-    support: { execute: () => registry.getSupportInboxUseCase.execute() as never },
+    support: { forCustomer: (query, now) => registry.getSupportInboxUseCase.executeForCustomer(query, now) },
   });
   // Tickets only for a caller who may read the support inbox itself.
   const caller = c.get('user') as { permissions?: string[] } | undefined;

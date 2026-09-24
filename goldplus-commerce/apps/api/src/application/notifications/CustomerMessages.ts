@@ -52,6 +52,10 @@ export interface CustomerMessageData {
   tierName?: string | null;
   balance?: number | null;
   valueUgx?: number | null;
+  /** Bulk quote request: how many different products the list holds. */
+  lineCount?: number | null;
+  /** Bulk quote request: units across every line. */
+  totalUnits?: number | null;
 }
 
 export interface EmailCopy {
@@ -111,6 +115,13 @@ function forOrder(d: CustomerMessageData): string {
 function pointsWord(n: number | null | undefined): string {
   const v = Math.max(0, Math.round(Number(n) || 0));
   return `${v.toLocaleString('en-UG')} point${v === 1 ? '' : 's'}`;
+}
+
+/** " for 12 products" on a bulk quote request; nothing when the count is not known. */
+function productsWord(n: number | null | undefined): string {
+  const v = Math.round(Number(n) || 0);
+  if (v < 1) return '';
+  return ` for ${v.toLocaleString('en-UG')} product${v === 1 ? '' : 's'}`;
 }
 
 function dateWord(iso: string | null | undefined): string {
@@ -183,7 +194,7 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
     case 'SUPPORT_REQUEST_RECEIVED':
       return `${SHOP_NAME}: we have your request${d.reference ? ` (ref ${d.reference})` : ''}. Our team will call you on this number. Need us sooner? Call ${phone}.`;
     case 'QUOTE_REQUEST_RECEIVED':
-      return `${SHOP_NAME}: we have your quote request${d.reference ? ` (ref ${d.reference})` : ''}. Our sales team will call you to confirm what you need and give you a price. Call ${phone} anytime.`;
+      return `${SHOP_NAME}: we have your quote request${d.reference ? ` (ref ${d.reference})` : ''}${productsWord(d.lineCount)}. Our sales team will call you to confirm what you need and give you a price. Call ${phone} anytime.`;
     case 'DEALER_APPLICATION_RECEIVED':
       return `${SHOP_NAME}: we have your dealer application${d.reference ? ` (ref ${d.reference})` : ''}. Our team will review it and call you. Questions? Call ${phone}.`;
     case 'FAKE_REPORT_RECEIVED':

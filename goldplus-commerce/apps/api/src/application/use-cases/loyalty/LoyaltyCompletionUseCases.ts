@@ -478,6 +478,11 @@ export class RunLoyaltyDailySweepUseCase {
     //    original earn told customers with a zero balance to "use them before
     //    they expire" — urgency about points that no longer existed.
     let noticesSent = 0;
+    // Earlier runs' warnings the outbox has since delivered become
+    // 'notification'; until then they stay 'queued' (Held 7).
+    if (this.completion.confirmQueuedNotices) {
+      await this.completion.confirmQueuedNotices().catch(() => 0);
+    }
     const nearing = redemptionHalted ? [] : await this.completion.listEarnsNearingExpiry(30, now);
     const remaindersByAccount = new Map<string, Map<string, number>>();
     const remainderOf = async (accountId: string, earnId: string): Promise<number> => {
@@ -508,7 +513,9 @@ export class RunLoyaltyDailySweepUseCase {
           accountId: entry.accountId,
           earnEntryId: entry.id,
           kind,
-          channel: outcome === 'sent' ? 'notification' : 'suppressed',
+          // 'sent' from the notifier means an outbox intent was ENQUEUED, not
+          // delivered: it is recorded as 'queued' until dispatch confirms it.
+          channel: outcome === 'sent' ? 'queued' : 'suppressed',
         });
         if (outcome === 'sent') noticesSent++;
       }

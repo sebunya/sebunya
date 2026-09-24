@@ -4,7 +4,7 @@ import { IPesaPalClient } from '../../ports/IPesaPalClient';
 import { IOrderTransitionPort } from '../../ports/IOrderTransitionPort';
 import { OrderStatus } from '../../../domain/commerce/Order';
 import { DomainError } from '../../../domain/errors/DomainError';
-import { ApplyRefundConsequencesUseCase, RefundLoyaltyPort } from './ApplyRefundConsequencesUseCase';
+import { ApplyRefundConsequencesUseCase, RefundFulfilmentPort, RefundLoyaltyPort } from './ApplyRefundConsequencesUseCase';
 
 export interface VerifyPesaPalPaymentInput {
   orderTrackingId: string;
@@ -73,12 +73,14 @@ export class VerifyPesaPalPaymentUseCase {
      * refund (no transition), so the payment fact does.
      */
     refundLoyalty?: RefundLoyaltyPort,
+    /** Optional. Closes the fulfilment task of an order a total reversal cancelled. */
+    refundFulfilment?: RefundFulfilmentPort,
   ) {
     this.paymentRepo = paymentRepo;
     this.pesapalClient = pesapalClient;
     this.orderTransition = orderTransition;
     this.refundLedger = refundLedger;
-    this.refundConsequences = new ApplyRefundConsequencesUseCase(paymentRepo, orderTransition, refundLedger, refundLoyalty);
+    this.refundConsequences = new ApplyRefundConsequencesUseCase(paymentRepo, orderTransition, refundLedger, refundLoyalty, refundFulfilment);
   }
 
   async execute(input: VerifyPesaPalPaymentInput): Promise<VerifyPesaPalPaymentOutput> {

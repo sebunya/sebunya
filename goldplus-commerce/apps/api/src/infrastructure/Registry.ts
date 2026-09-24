@@ -53,6 +53,14 @@ import { DrizzlePricingOperationsRepository } from './db/repositories/DrizzlePri
 import { DrizzleDealerRepository } from './db/repositories/DrizzleDealerRepository';
 import { DrizzleSupportRepository } from './db/repositories/DrizzleSupportRepository';
 import { DrizzleQuoteRepository } from './db/repositories/DrizzleQuoteRepository';
+import { DrizzleBulkQuoteRepository } from './db/repositories/DrizzleBulkQuoteRepository';
+import {
+  GetQuoteRequestUseCase,
+  ListQuoteRequestsUseCase,
+  LookupBulkQuoteUseCase,
+  SubmitBulkQuoteUseCase,
+  UpdateQuoteRequestStatusUseCase,
+} from '../application/use-cases/quotes/BulkQuoteUseCases';
 import { DrizzleVerificationRepository } from './db/repositories/DrizzleVerificationRepository';
 import { DrizzleAuditRepository } from './db/repositories/DrizzleAuditRepository';
 import { DrizzlePaymentRepository } from './db/repositories/DrizzlePaymentRepository';
@@ -248,6 +256,12 @@ import { CodPolicyReader, CheckoutVelocitySignal } from './locations/CodPolicyRe
 import { DrizzleLoyaltyCompletionRepository } from './db/repositories/DrizzleLoyaltyCompletionRepository';
 import { LoyaltyOutboxNotifier } from './loyalty/LoyaltyOutboxNotifier';
 import { CustomerOutboxNotifier } from './notifications/CustomerOutboxNotifier';
+import { CancelFulfilmentTaskForCancelledOrderUseCase } from '../application/use-cases/fulfilment/CancelFulfilmentTaskForCancelledOrderUseCase';
+import { MerchantFeedCache } from '../application/use-cases/seo-growth/MerchantFeedCache';
+import { DrizzleFeedInventoryVersion } from './db/repositories/DrizzleFeedInventoryVersion';
+import { DrizzleFraudSourceDirectory } from './db/repositories/DrizzleFraudSourceDirectory';
+import { DrizzleAcknowledgementLedger } from './notifications/DrizzleAcknowledgementLedger';
+import { SendPublicFormAcknowledgementUseCase } from '../application/use-cases/notifications/SendPublicFormAcknowledgementUseCase';
 import { RequestPhoneVerificationUseCase, VerifyPhoneUseCase, GetPhoneVerificationStateUseCase, BackfillGuestOrdersUseCase, MergeLoyaltyAccountsUseCase } from '../application/use-cases/loyalty/LoyaltyIdentityUseCases';
 import { EarnForVerificationScanUseCase, ManualAdjustLoyaltyUseCase, EvaluateTiersUseCase } from '../application/use-cases/loyalty/LoyaltyProgrammeUseCases';
 import {
@@ -1343,7 +1357,7 @@ export class Registry {
       if (!user?.isActive) return false;
       return (await this.roleRepo.findPermissionsForUser(userId)).includes(SHARED_PERMISSIONS.FRAUD_READ);
     },
-  });
+  }, new DrizzleFraudSourceDirectory());
   public readonly pimImportOperationsUseCase = new PimImportOperationsUseCase(this.pimImportRepo);
   public readonly surveyOperationsUseCase = new SurveyOperationsUseCase(this.surveyRepo);
   public readonly getCopyQualityReportUseCase = new GetCopyQualityReportUseCase(this.copyQualityCatalog);
@@ -1377,6 +1391,24 @@ export class Registry {
   public readonly loyaltyOutboxNotifier = new LoyaltyOutboxNotifier();
   /** Every non-loyalty, non-OTP customer message goes through this. */
   public readonly customerOutboxNotifier = new CustomerOutboxNotifier();
+  /** The Merchant feed's in-process cache; an inventory change rebuilds it (#10). */
+  public readonly merchantFeedCache = new MerchantFeedCache(new DrizzleFeedInventoryVersion());
+  /** Public-form acknowledgements: one per recipient per hour, three a day (SMS and email). */
+  public readonly sendPublicFormAcknowledgementUseCase = new SendPublicFormAcknowledgementUseCase(
+    this.customerOutboxNotifier,
+    new DrizzleAcknowledgementLedger(),
+  );
+  /** Bulk quote requests (0153, docs/bulk-buying/DESIGN.md). */
+  public readonly bulkQuoteRepo = new DrizzleBulkQuoteRepository();
+  public readonly submitBulkQuoteUseCase = new SubmitBulkQuoteUseCase(
+    this.bulkQuoteRepo,
+    this.productRepo,
+    this.sendPublicFormAcknowledgementUseCase,
+  );
+  public readonly lookupBulkQuoteUseCase = new LookupBulkQuoteUseCase(this.bulkQuoteRepo);
+  public readonly listQuoteRequestsUseCase = new ListQuoteRequestsUseCase(this.bulkQuoteRepo);
+  public readonly getQuoteRequestUseCase = new GetQuoteRequestUseCase(this.bulkQuoteRepo);
+  public readonly updateQuoteRequestStatusUseCase = new UpdateQuoteRequestStatusUseCase(this.bulkQuoteRepo);
   public readonly vestLoyaltyOnDeliveryUseCase = new VestLoyaltyOnDeliveryUseCase(
     this.earnLoyaltyPointsUseCase,
     this.orderRepo,
@@ -2086,6 +2118,8 @@ export class Registry {
     this.refundLedgerRepo,
     // Points follow the money back even when the order cannot move (delivered, partial refund).
     new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase),
+    // A total refund cancels the order; its fulfilment task leaves the work queue with it.
+    new CancelFulfilmentTaskForCancelledOrderUseCase(this.fulfilmentRepo, this.transitionFulfilmentTaskUseCase),
   );
 
   /**
@@ -2097,6 +2131,8 @@ export class Registry {
     this.orderTransitionService,
     this.refundLedgerRepo,
     new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase),
+    // A total refund cancels the order; its fulfilment task leaves the work queue with it.
+    new CancelFulfilmentTaskForCancelledOrderUseCase(this.fulfilmentRepo, this.transitionFulfilmentTaskUseCase),
   );
 
   /**

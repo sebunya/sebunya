@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { SYSTEM_EXPOSURE_EVENT_TYPES } from '@goldplus/shared';
 import { Registry } from '../../../infrastructure/Registry';
 import { customerSessionMiddleware, optionalCustomerSessionMiddleware } from '../middleware/customerSession';
+import { botDetectionMiddleware } from '../middleware/botDetection';
 import type { ApiResponse, GetRecommendationsInput } from '@goldplus/shared';
 import {
   isRecommendationPlacement,
@@ -12,9 +13,13 @@ import {
 const routes = new Hono();
 const registry = Registry.getInstance();
 
-routes.post('/events', optionalCustomerSessionMiddleware, async (c) => {
+// #4: the same bot/velocity/replay screen as /telemetry/collect. The /api/rec
+// relay forwards the browser's user agent (it used to send none, which this
+// screen reads as a bot), and the visitor's own address.
+routes.post('/events', botDetectionMiddleware, optionalCustomerSessionMiddleware, async (c) => {
   try {
-    const rawBody = await c.req.json().catch(() => null);
+    // botDetectionMiddleware has already parsed the body once.
+    const rawBody = (c as unknown as { _parsedBody?: unknown })._parsedBody ?? await c.req.json().catch(() => null);
     if (!rawBody) {
       const res: ApiResponse<never> = {
         success: false,
@@ -181,34 +186,11 @@ routes.get('/', async (c) => {
   }
 });
 
-routes.get('/recently-viewed', async (c) => {
-  try {
-    const q = c.req.query();
-
-    const data = await registry.getRecentlyViewedUseCase.execute({
-      anonymousId: q.anonymousId,
-      limit: q.limit ? Number(q.limit) : undefined,
-    });
-
-    const res: ApiResponse<typeof data> = {
-      success: true,
-      data,
-    };
-    return c.json(res);
-  } catch {
-    // Suppress recently-viewed logic errors to fail closed/empty elegantly
-    const res: ApiResponse<any> = {
-      success: true,
-      data: {
-        placement: 'recently_viewed',
-        items: [],
-        generatedAt: new Date().toISOString(),
-        strategy: 'rule_based_v1',
-      },
-    };
-    return c.json(res);
-  }
-});
+// GET /recently-viewed was removed (2026-09-25, #32). Nothing called it — the
+// storefront rail reads the browser's own history plus a server-rendered
+// fallback — and it answered any caller who held an anon id with that
+// visitor's product history. A public read of one visitor's history would
+// need the visitor's own signed credential; with no caller, no route is safer.
 
 /**
  * Login merge (R2): after a successful sign-in the web server calls this with

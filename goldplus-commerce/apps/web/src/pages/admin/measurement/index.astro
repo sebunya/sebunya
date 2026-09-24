@@ -571,8 +571,12 @@ if (!token) {
 
       // Match Quality KPI
       const mq = d.matchQuality;
-      setEl('kpi-match-quality', `${mq.avgScore.toFixed(0)}%`);
-      setEl('kpi-match-sub', `${mq.below40Pct}% below threshold · ${mq.totalEvents.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })} events`);
+      // No conversion events in the window is "no data", never 0% (#19).
+      const mqHasData = typeof mq.avgScore === 'number';
+      setEl('kpi-match-quality', mqHasData ? `${mq.avgScore.toFixed(0)}%` : 'No data');
+      setEl('kpi-match-sub', mqHasData
+        ? `${mq.below40Pct}% below threshold · ${mq.totalEvents.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })} events`
+        : 'No conversion events in the last 7 days');
 
       // DLQ
       const dlqCount = d.dlq.unresolvedCount;
@@ -611,14 +615,20 @@ if (!token) {
       setEl('pct-poor',      `${below40}%`);
 
       // Status
-      const allOk = dlqCount === 0 && d.outbox.pendingTelemetryEvents < 50 && mq.avgScore >= 40;
+      // No data is not low quality: only a measured score below 40 degrades the status.
+      const matchLow = mqHasData && mq.avgScore < 40;
+      const allOk = dlqCount === 0 && d.outbox.pendingTelemetryEvents < 50 && !matchLow;
       if (statusPill && statusText) {
         statusPill.className = `status-pill ${allOk ? 'status-ok' : dlqCount > 5 ? 'status-error' : 'status-warn'}`;
         statusText.textContent = allOk
-          ? 'All measurement systems operational'
+          ? (mqHasData ? 'All measurement systems operational' : 'Operational — no conversion events to score yet')
           : dlqCount > 5
           ? `${dlqCount} unresolved DLQ entries — action required`
-          : `Measurement system degraded — match quality low`;
+          : matchLow
+          ? `Measurement system degraded — match quality low`
+          : dlqCount > 0
+          ? `Measurement system degraded — ${dlqCount} unresolved DLQ entries`
+          : `Measurement system degraded — events waiting to be sent`;
       }
 
       if (refreshedEl) {

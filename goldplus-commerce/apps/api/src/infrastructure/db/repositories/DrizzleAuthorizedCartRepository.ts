@@ -26,6 +26,20 @@ import type { IAccountCartRepository } from '../../../application/use-cases/comm
  * and the caller is told, rather than the write landing on whatever state it finds.
  */
 
+/**
+ * The ONE pricing rule for a basket line, the same as the public product DTO
+ * (DrizzleProductRepository + toProductPublicDto): a product has a price only
+ * when `has_retail_price` is true AND `product_prices` holds a positive whole
+ * retail price. `products.price_ugx` is never a fallback: the storefront shows
+ * such a product as "Price on request" and checkout refuses it
+ * (PRICE_UNAVAILABLE), so pricing its cart line from price_ugx put a number in
+ * the subtotal that the order would never charge.
+ */
+export function confirmedRetailPrice(hasRetailPrice: boolean | null | undefined, retailPrice: number | null | undefined): number | null {
+  if (!hasRetailPrice) return null;
+  return typeof retailPrice === 'number' && Number.isInteger(retailPrice) && retailPrice > 0 ? retailPrice : null;
+}
+
 // Same constant the credential cookie uses — cookie lifetime and row expiry move together.
 const CART_TTL_DAYS = CART_RETENTION_DAYS;
 
@@ -54,7 +68,7 @@ export class DrizzleAuthorizedCartRepository implements ICartAuthorizedRepositor
         name: products.name,
         slug: products.slug,
         retailPrice: productPrices.retailPrice,
-        fallbackPrice: products.priceUgx,
+        hasRetailPrice: products.hasRetailPrice,
       })
       .from(cartItems)
       .innerJoin(products, eq(products.id, cartItems.productId))
@@ -66,13 +80,19 @@ export class DrizzleAuthorizedCartRepository implements ICartAuthorizedRepositor
       version: cart.version,
       ownerKind: (cart.ownerKind as CartOwnerKind | null) ?? null,
       ownerId: cart.ownerId ?? null,
-      items: lines.map((line) => ({
-        productId: line.productId,
-        name: line.name,
-        slug: line.slug,
-        unitPriceUgx: line.retailPrice ?? line.fallbackPrice,
-        quantity: line.quantity,
-      })),
+      items: lines.map((line) => {
+        const price = confirmedRetailPrice(line.hasRetailPrice, line.retailPrice);
+        return {
+          productId: line.productId,
+          name: line.name,
+          slug: line.slug,
+          unitPriceUgx: price ?? 0,
+          quantity: line.quantity,
+          // No confirmed price: out of the subtotal and named, as an
+          // unpurchasable line is, instead of a price checkout will refuse.
+          ...(price === null ? { unavailable: true } : {}),
+        };
+      }),
     };
   }
 
@@ -180,7 +200,7 @@ export class DrizzleCartProductReader implements CartProductReader {
         id: products.id,
         name: products.name,
         retailPrice: productPrices.retailPrice,
-        fallbackPrice: products.priceUgx,
+        hasRetailPrice: products.hasRetailPrice,
       })
       .from(products)
       .leftJoin(productPrices, eq(productPrices.productId, products.id))
@@ -191,11 +211,12 @@ export class DrizzleCartProductReader implements CartProductReader {
           eq(products.approvalStatus, 'approved'),
         ),
       );
-    return rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      unitPriceUgx: row.retailPrice ?? row.fallbackPrice,
-    }));
+    // A product with no confirmed retail price cannot be bought (checkout
+    // answers PRICE_UNAVAILABLE), so it is not purchasable here either.
+    return rows.flatMap((row) => {
+      const price = confirmedRetailPrice(row.hasRetailPrice, row.retailPrice);
+      return price === null ? [] : [{ id: row.id, name: row.name, unitPriceUgx: price }];
+    });
   }
 }
 

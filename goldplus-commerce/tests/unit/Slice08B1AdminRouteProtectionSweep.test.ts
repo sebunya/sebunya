@@ -93,7 +93,9 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
     // 160: +2 (2026-09-24): admin/not-permitted (where a 403 lands instead of a
     // sign-out loop) and admin/security/mfa (two-step verification, which
     // refunds and pricing approval require).
-    expect(adminPages).toHaveLength(160);
+    // 161: +1 for one quote request's detail page (admin/quotes/[id], bulk
+    // buying, docs/bulk-buying/DESIGN.md, 2026-09-25).
+    expect(adminPages).toHaveLength(161);
     expect(adminPages[0]).toBe('apps/web/src/pages/admin/advertising.astro');
     expect(adminPages.at(-1)).toBe('apps/web/src/pages/admin/verification/index.astro');
   });
@@ -111,7 +113,7 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
 
   it('fails closed for every non-allowlisted admin Astro page', () => {
     const protectedPages = adminPages.filter((page) => !publicAllowlist.includes(page as typeof publicAllowlist[number]));
-    expect(protectedPages).toHaveLength(159);
+    expect(protectedPages).toHaveLength(160);
     for (const page of protectedPages) {
       const source = read(page);
       expect(source, `${page} must use the server-side session contract`).toContain('readSessionToken(Astro.request)');
@@ -155,7 +157,8 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
     // 23: +2 for one battery's detail page and one staged import's detail page.
     // 25: +1 for the product listing editor.
     // 26: +1 for the customer workspace detail page.
-    expect(dynamicPages).toHaveLength(28); // +2 Focus 4: products/[id]/media, media/imports/[id]
+    // 29: +1 for one quote request's detail page (admin/quotes/[id]).
+    expect(dynamicPages).toHaveLength(29); // +2 Focus 4: products/[id]/media, media/imports/[id]
     for (const page of dynamicPages) {
       expect(read(page), `${page} requires source-level protection`).toContain('readSessionToken(Astro.request)');
     }

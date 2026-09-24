@@ -5,6 +5,7 @@ import FormFeedback from '../../../../components/FormFeedback.astro';
 import { apiBase } from '../../../../lib/api';
 import { formatUgx } from '../../../../lib/money';
 import { readSessionToken } from '../../../../lib/session';
+import { canEditProductPrices } from '../../../../lib/adminPricingAccess';
 const { id } = Astro.params;
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -50,7 +51,7 @@ const productCategoryId = matchingCat?.id || '';
 // fields are shown read-only and resubmitted unchanged.
 const sessionRes = await authedJson<{ permissions?: string[] }>('/auth/admin-session');
 const viewerPermissions = sessionRes.data?.permissions ?? [];
-const canEditPrices = viewerPermissions.includes('pricing.manage') || viewerPermissions.includes('pricing.approve');
+const canEditPrices = canEditProductPrices(viewerPermissions);
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();

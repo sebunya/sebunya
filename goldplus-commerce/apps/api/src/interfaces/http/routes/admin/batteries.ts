@@ -164,7 +164,9 @@ async function evidenceUpload(c: Ctx, subjectType: 'BATTERY' | 'COMPATIBILITY') 
   const kind = typeof form['kind'] === 'string' && (EVIDENCE_KINDS as readonly string[]).includes(form['kind']) ? (form['kind'] as (typeof EVIDENCE_KINDS)[number]) : 'OTHER';
   const note = typeof form['note'] === 'string' ? form['note'].slice(0, 300) : null;
   const setPrimaryImage = form['setPrimaryImage'] === 'true' || form['setPrimaryImage'] === 'on';
-  const buffers = await Promise.all(files.map(async (f) => ({ filename: f.name, mime: f.type, buffer: Buffer.from(await f.arrayBuffer()) })));
+  // Sequential reads: Promise.all held a second in-memory copy of every file at once.
+  const buffers: Array<{ filename: string; mime: string; buffer: Buffer }> = [];
+  for (const f of files) buffers.push({ filename: f.name, mime: f.type, buffer: Buffer.from(await f.arrayBuffer()) });
   return run(c, () => registry().batteryCatalogueUseCases.attachEvidence({ subjectType, subjectId: param(c, 'id'), kind, note, files: buffers, actorId: actor(c), setPrimaryImage }), 201);
 }
 routes.post('/catalogue/:id/evidence', requirePermissions([PERMISSIONS.BATTERIES_CATALOGUE_MANAGE]), adminUploadLimit, (c) => evidenceUpload(c, 'BATTERY'));

@@ -21,14 +21,22 @@ export class GetSupportInboxUseCase {
    * clock here made the ordering depend on how long ago the fixtures were written.
    */
   async execute(now: Date = new Date()): Promise<InboxTicket[]> {
-    const tickets = await this.repo.findAll();
+    return annotate(await this.repo.findAll(), now);
+  }
+
+  /** One customer's tickets (signed-in id or submitted email), same SLA ordering. */
+  async executeForCustomer(query: { customerId: string; email: string | null }, now: Date = new Date()): Promise<InboxTicket[]> {
+    return annotate(await this.repo.findForCustomer(query), now);
+  }
+}
+
+function annotate(tickets: SupportTicket[], now: Date): InboxTicket[] {
     return tickets
       .map((ticket) => ({ ticket, sla: ticketSlaState(ticket.priority, ticket.status, ticket.createdAt, now) }))
       .sort((a, b) => {
         if (a.sla.overdue !== b.sla.overdue) return a.sla.overdue ? -1 : 1;
         return b.ticket.createdAt.getTime() - a.ticket.createdAt.getTime();
       });
-  }
 }
 
 export type UpdateTicketResult =

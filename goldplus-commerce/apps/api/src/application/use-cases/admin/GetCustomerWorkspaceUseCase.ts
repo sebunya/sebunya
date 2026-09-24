@@ -22,8 +22,14 @@ export interface CustomerWorkspaceDeps {
    * anyone with orders.read.
    */
   staff: { isStaff(userId: string): Promise<boolean> };
-  /** The support inbox reader; tickets carry the email given at submission. */
-  support: { execute(): Promise<Array<{ ticket: { id: string; email?: string | null; customerId?: string | null; subject?: string | null; status: string; priority: string; createdAt: Date; assignedTo?: string | null }; sla?: unknown }>> };
+  /**
+   * One customer's support tickets, queried for THIS customer only (signed-in
+   * id, or the email given at submission, which public tickets keep in
+   * metadata.email). It used to read the whole inbox and filter in memory on a
+   * `ticket.email` field that tickets do not have, so emailed tickets never
+   * showed.
+   */
+  support: { forCustomer(query: { customerId: string; email: string | null }, now: Date): Promise<Array<{ ticket: { id: string; subject?: string | null; status: string; priority: string; createdAt: Date; assignedTo?: string | null }; sla?: unknown }>> };
 }
 
 export interface CustomerWorkspace {
@@ -66,12 +72,11 @@ export class GetCustomerWorkspaceUseCase {
           .map((e) => ({ id: e.id, type: e.type, points: e.points, reason: e.reason, orderId: e.orderId, createdAt: e.createdAt.toISOString(), expiresAt: e.expiresAt ? e.expiresAt.toISOString() : null })),
       };
     }
-    const email = user.email.trim().toLowerCase();
-    const inbox = options.includeSupport ? await this.deps.support.execute() : [];
-    const support = inbox
-      // A ticket filed while signed in carries the customer's id even when it
-      // was sent with another email (or a phone number) — match either.
-      .filter(({ ticket }) => ticket.customerId === user.id || (ticket.email ?? '').trim().toLowerCase() === email)
+    const email = user.email.trim().toLowerCase() || null;
+    // A ticket filed while signed in carries the customer's id even when it
+    // was sent with another email (or a phone number) — the query matches either.
+    const tickets = options.includeSupport ? await this.deps.support.forCustomer({ customerId: user.id, email }, now) : [];
+    const support = tickets
       .map(({ ticket, sla }) => ({
         id: ticket.id, subject: ticket.subject ?? null, status: ticket.status, priority: ticket.priority,
         assignedTo: ticket.assignedTo ?? null, createdAt: ticket.createdAt.toISOString(),

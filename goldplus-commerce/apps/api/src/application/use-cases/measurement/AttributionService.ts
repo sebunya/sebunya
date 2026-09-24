@@ -1,4 +1,4 @@
-import type { AttributionRepository } from '../../ports/measurement/AttributionRepository';
+import type { AttributionRepository, MatchQualitySummary } from '../../ports/measurement/AttributionRepository';
 import type { MeasurementLogger } from '../../ports/measurement/MeasurementLogger';
 import type { CanonicalTelemetryEvent } from '@goldplus/shared';
 
@@ -104,12 +104,7 @@ export class AttributionService {
    * Get match quality metrics across all conversion events in a time window.
    * Used by the admin measurement dashboard.
    */
-  async getMatchQualitySummary(days = 7): Promise<{
-    avgScore:    number;
-    below40Pct:  number;
-    above80Pct:  number;
-    totalEvents: number;
-  }> {
+  async getMatchQualitySummary(days = 7): Promise<MatchQualitySummary> {
     return await this.attributionRepo.getMatchQualitySummary(days);
   }
 }
