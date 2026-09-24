@@ -142,7 +142,8 @@ describe('portrait renditions', () => {
       { purpose: 'card', format: 'jpeg', width: 480, height: 800, url: '/card.jpg' },
       { purpose: 'zoom', format: 'webp', width: 2048, height: 3413, url: '/zoom.webp' },
     ]);
-    expect(r).toEqual({ src: '/card.webp', srcset: '/card.webp 480w, /pdp.webp 1024w, /zoom.webp 2048w', width: 3000, height: 5000 });
+    // No 2048 zoom: a card is never shown wider than ~950 device px, and every URL costs home-page bytes.
+    expect(r).toEqual({ src: '/card.webp', srcset: '/card.webp 480w, /pdp.webp 1024w', width: 3000, height: 5000 });
   });
   it('falls back to the original only when no rendition exists', () => {
     expect(portraitRenditions({ url: '/o.gif', width: 400, height: 600 }, [])).toEqual({ src: '/o.gif', srcset: null, width: 400, height: 600 });
@@ -444,9 +445,11 @@ describe('placement and weight on the home page', () => {
   });
   it('its CSS ships only when the section renders (the home document has a one-round-trip byte budget)', () => {
     const rail = fs.readFileSync(path.resolve(__dirname, '../../apps/web/src/components/home/AmbassadorsRail.astro'), 'utf8');
-    expect(rail).not.toMatch(/^\s*<style>/m); // a scoped style is inlined into EVERY home page (inlineStylesheets: 'always')
-    const inline = rail.indexOf('<style is:inline>');
-    expect(inline).toBeGreaterThan(rail.indexOf('{section && people.length > 0 && ('));
-    expect(rail.slice(inline, rail.indexOf('</style>'))).not.toMatch(/\/\*/); // no comments shipped to customers
+    // A scoped or inline <style> would put the rules in the document; a scoped one in EVERY home page (inlineStylesheets: 'always').
+    expect(rail).not.toMatch(/^\s*<style/m);
+    expect(rail).toMatch(/import cssHref from '\.\/ambassadors\.css\?url';/);
+    expect(rail.indexOf('<link rel="stylesheet" href={cssHref} />')).toBeGreaterThan(rail.indexOf('{section && people.length > 0 && ('));
+    const css = fs.readFileSync(path.resolve(__dirname, '../../apps/web/src/components/home/ambassadors.css'), 'utf8');
+    expect(css).not.toMatch(/\/\*/); // shipped as-is: no comments
   });
 });

@@ -243,13 +243,16 @@ export interface RenditionCandidate { purpose: string; format: string; width: nu
 
 /**
  * The src/srcset the storefront serves for a portrait: the media library's WebP
- * renditions (card 480, pdp 1024, zoom 2048 — whichever exist; small originals
+ * renditions (card 480, pdp 1024 — whichever exist; small originals
  * are never upscaled), never the original upload, which is often a multi-megabyte
  * phone photo. Falls back to the original only when no rendition was made.
  */
 export function portraitRenditions(original: { url: string; width: number | null; height: number | null }, variants: RenditionCandidate[]): Omit<HomeAmbassadorImage, 'assetId'> {
   const webp = variants
-    .filter((v) => v.format === 'webp' && v.width && ['card', 'pdp', 'zoom'].includes(v.purpose))
+    // Card and pdp only: the largest card is ~19vw on a 1920 px screen (~730 px at 2x) and
+    // ~74vw on a phone (~950 px at 3x), so the 2048 px zoom is never chosen — listing it
+    // only adds bytes to a home page with a one-round-trip budget.
+    .filter((v) => v.format === 'webp' && v.width && ['card', 'pdp'].includes(v.purpose))
     .sort((a, b) => (a.width ?? 0) - (b.width ?? 0));
   if (webp.length === 0) return { src: original.url, srcset: null, width: original.width, height: original.height };
   const src = (webp.find((v) => v.purpose === 'card') ?? webp[0]).url;

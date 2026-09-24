@@ -14,6 +14,7 @@
  * A card links to the product in the photo when that product is on sale.
  */
 import { HOME_AMBASSADOR_ROLE_LABEL, type HomeAmbassadorsPublic, type ProductPublicDto } from '@goldplus/shared';
+import cssHref from './ambassadors.css?url';
 
 interface Props {
   section: HomeAmbassadorsPublic | undefined;
@@ -37,45 +38,19 @@ const SIZES = '(min-width: 1024px) 19vw, (min-width: 768px) 31vw, (min-width: 64
 ---
 {section && people.length > 0 && (
   <>
-  {/* Inline and INSIDE the condition: emitted only when the section renders. As a
-      scoped <style> it was inlined into every home page (build.inlineStylesheets:
-      'always') even with no one published — ~0.7 KB brotli on a document that must
-      stay within one round trip. The gp-amb__ prefix keeps it from leaking. */}
+  {/* A hashed stylesheet linked INSIDE the condition: nothing reaches the home page
+      unless the section renders, and even then the document carries one short tag,
+      not the rules. A scoped <style> is inlined into every home page by
+      build.inlineStylesheets: 'always' — rendered or not — on a document that must
+      stay within one round trip (live home ~41.5 KB of a ~41.8 KB budget). Below the
+      fold, so the extra request never delays first paint. */}
   {/* Design notes (kept out of the shipped CSS):
       - The row is native horizontal scroll with snap: swipe, trackpad or arrows; no script is needed to reach every person.
       - Legibility: the dark band belongs to the TEXT BLOCK (solid ink behind every word however long the name runs), not a
         fixed-height scrim — a fixed scrim lost to long names on narrow cards (1024 px: role label 1.71:1 over a white photo).
       - Names scale with the CARD (container query units), so a 180 px card at 1024 px never wraps a name to three lines.
       - Arrows sit at 34% height, over the photo and never the words; phones swipe, so arrows hide under 640 px. */}
-  <style is:inline>
-    .gp-amb { position: relative; }
-    .gp-amb__track { display: flex; gap: 1rem; margin: 0; padding: 0 0 0.25rem; list-style: none; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none; outline: none; }
-    .gp-amb__track::-webkit-scrollbar { display: none; }
-    .gp-amb__item { flex: 0 0 74%; scroll-snap-align: start; }
-    @media (min-width: 640px) { .gp-amb__item { flex-basis: calc((100% - 1rem) / 2.2); } }
-    @media (min-width: 768px) { .gp-amb__item { flex-basis: calc((100% - 2rem) / 3); } }
-    @media (min-width: 1024px) { .gp-amb__item { flex-basis: calc((100% - 4rem) / 5); } }
-    .gp-amb__card { position: relative; display: block; overflow: hidden; aspect-ratio: 3 / 5; border-radius: 1rem; background: #1C1C1C; color: #fff; container-type: inline-size; }
-    .gp-amb__img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 25%; }
-    @media (prefers-reduced-motion: no-preference) {
-    .gp-amb__img { transition: transform 600ms cubic-bezier(.2,.7,.2,1); }
-    a.gp-amb__card:hover .gp-amb__img, a.gp-amb__card:focus-visible .gp-amb__img { transform: scale(1.035); }
-    }
-    .gp-amb__scrim { position: absolute; inset: auto 0 0 0; height: 60%; background: linear-gradient(to top, rgba(10,10,10,.55) 0%, rgba(10,10,10,0) 100%); }
-    .gp-amb__text { position: absolute; inset: auto 0 0 0; display: flex; flex-direction: column; gap: 0.35rem; padding: 3.25rem 1.25rem 1.25rem; background: linear-gradient(to top, rgba(10,10,10,.9) 0%, rgba(10,10,10,.86) calc(100% - 3.25rem), rgba(10,10,10,0) 100%); text-shadow: 0 1px 2px rgba(0,0,0,.35); }
-    .gp-amb__role { font-size: 0.625rem; font-weight: 900; letter-spacing: 0.18em; text-transform: uppercase; color: #93D500; }
-    .gp-amb__name { font-size: clamp(1.25rem, 11.5cqw, 1.75rem); font-weight: 900; line-height: 1.02; letter-spacing: -0.02em; overflow-wrap: anywhere; }
-    .gp-amb__line { font-size: 0.875rem; font-weight: 500; line-height: 1.35; color: rgba(255,255,255,.92); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-    a.gp-amb__card:focus-visible { outline: 3px solid #456B00; outline-offset: 3px; }
-    .gp-amb__arrow { position: absolute; top: 34%; z-index: 2; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin-top: -22px; border-radius: 9999px; border: 1px solid rgba(10,10,10,.1); background: rgba(255,255,255,.96); color: #0A0A0A; box-shadow: 0 4px 14px rgba(10,10,10,.14); cursor: pointer; transition: opacity 150ms ease; }
-    .gp-amb__arrow--prev { left: -0.75rem; }
-    .gp-amb__arrow--next { right: -0.75rem; }
-    .gp-amb__arrow:hover { border-color: #0A0A0A; }
-    .gp-amb__arrow:focus-visible { outline: none; box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 4px #456B00; }
-    .gp-amb__arrow:disabled { opacity: 0; pointer-events: none; }
-    .gp-amb__arrow[hidden] { display: none; }
-    @media (max-width: 639px) { .gp-amb__arrow { display: none; } }
-  </style>
+  <link rel="stylesheet" href={cssHref} />
   <section class="bg-white py-14 border-t border-zinc-200/85" aria-labelledby="ambassadors-heading" data-ambassadors>
     <div class="container mx-auto px-4 lg:px-8">
       <div class="mb-8 max-w-2xl">
