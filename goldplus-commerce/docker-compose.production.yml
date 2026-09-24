@@ -69,6 +69,12 @@ services:
       context: .
       dockerfile: Dockerfile.api
     restart: always
+    # Signals reach node through an init process, and the stop budget covers the
+    # whole graceful shutdown (server.ts: HTTP close, outbox wait up to 10s, queue
+    # workers, then the pool). Docker's default 10s SIGKILLed it part way through.
+    # `deploy.update_config` below is a Swarm setting plain `docker compose` ignores.
+    init: true
+    stop_grace_period: 30s
     # The API connects to postgres directly (DATABASE_URL=postgres:5432), so it gates
     # its startup on postgres + redis — the services it actually uses — not on
     # pgbouncer. Gating on an unused pooler is what let a pgbouncer image drift take
@@ -198,6 +204,9 @@ services:
       - MEDIA_STORAGE_ROOT=/data/media
       - SHADOW_TRAFFIC_URL=${SHADOW_TRAFFIC_URL:-}
       - SHADOW_TRAFFIC_RATIO=${SHADOW_TRAFFIC_RATIO:-0}
+      # Nothing polls /health/ready in this topology (Caddy has no active health
+      # checks), so a readiness drain pause only delays shutdown past the grace period.
+      - SHUTDOWN_DRAIN_MS=${SHUTDOWN_DRAIN_MS:-0}
       - NODE_OPTIONS=--max-old-space-size=400
       # Continuous Performance Assurance: the API READS the host audit's data directory
       # and writes run requests into its queue; the audit itself runs on the host.
@@ -248,6 +257,11 @@ services:
         - PUBLIC_METRICS_URL=${PUBLIC_METRICS_URL:-}
         - PUBLIC_CLARITY_ID=${PUBLIC_CLARITY_ID:-}
     restart: always
+    # node as PID 1 ignores SIGTERM (the Astro node adapter registers no handler),
+    # so every stop waited the full grace period and was then SIGKILLed. With an
+    # init process SIGTERM ends it promptly.
+    init: true
+    stop_grace_period: 30s
     environment:
       - NODE_ENV=production
       - PORT=4321
