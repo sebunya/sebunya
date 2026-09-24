@@ -2,6 +2,8 @@
 import RecommendationRail from "./RecommendationRail.astro";
 import { getRecommendations } from "../../lib/recommendations";
 import { filterDisplayableRecommendations } from "../../lib/recommendation-display";
+import { getProductSubcategory, subcategoryNameForSlug } from "../../lib/product-discovery";
+import { getTaxonomy } from "../../lib/taxonomy";
 
 /**
  * R7 (2026-08-06): the rail trusts the engine. The old frontmatter re-fetched
@@ -10,6 +12,14 @@ import { filterDisplayableRecommendations } from "../../lib/recommendation-displ
  * fallback ladder (R3) now owns, with sources and typed emptiness. The
  * display boundary still normalises every candidate (safe slug, truthful
  * price/availability) and the title matches the evidence that actually served.
+ *
+ * 2026-09-24: the engine's same-category step filters by category only, and one
+ * category holds most of the catalogue, so a wall charger, a power bank and a
+ * battery all showed the same four phone batteries. The rail now asks for a
+ * wider slice and hands the display boundary the product's SUBCATEGORY — its
+ * existing same_subcategory rule puts same-family items first. Nothing is
+ * invented or dropped: the engine's candidates and reason codes are kept, only
+ * their display order changes.
  */
 
 interface Props {
@@ -19,19 +29,33 @@ interface Props {
   subcategoryName?: string;
 }
 
-const { productId, productSlug, categoryName } = Astro.props;
+const { productId, productSlug, categoryName, subcategoryName = "" } = Astro.props;
 
 const response = await getRecommendations({
   placement: "product_related",
   productId,
-  limit: 8,
+  limit: 16,
 }, { visitToken: Astro.locals.gpVisit });
 
-const finalItems = filterDisplayableRecommendations(response.items, {
+const taxonomy = await getTaxonomy();
+// The same keyword inference the PDP used for its own subcategory (name +
+// category), so both sides of the comparison speak one vocabulary.
+const withSubcategory = response.items.map((item) => ({
+  ...item,
+  subcategoryName: getProductSubcategory({ name: item.name, categoryName } as Parameters<typeof getProductSubcategory>[0], taxonomy),
+}));
+
+const finalItems = filterDisplayableRecommendations(withSubcategory, {
   currentProductId: productId,
   currentProductSlug: productSlug,
+  currentSubcategory: subcategoryName || undefined,
+  minimumSameSubcategoryCandidates: 1,
   limit: 4,
 });
+
+const subcategoryLabel = subcategoryName ? subcategoryNameForSlug(subcategoryName as Parameters<typeof subcategoryNameForSlug>[0], taxonomy) : "";
+const allSameFamily = Boolean(subcategoryLabel) && finalItems.length > 0
+  && finalItems.every((item) => (item as { subcategoryName?: string }).subcategoryName === subcategoryName);
 
 const evidenceBased = finalItems.some((item) =>
   ["EXACT_PRODUCT_COMPATIBILITY", "SAME_CATEGORY_ATTRIBUTE_MATCH", "CATEGORY_BESTSELLER"].includes(
@@ -43,7 +67,7 @@ const evidenceBased = finalItems.some((item) =>
 <RecommendationRail
     title={evidenceBased ? "Similar products" : "Also in the shop"}
     subtitle={evidenceBased
-      ? `More products listed in ${categoryName}.`
+      ? (allSameFamily ? `More in ${subcategoryLabel}.` : `More products listed in ${categoryName}.`)
       : "More from what's on the shelf right now."}
     placement="product_related"
     items={finalItems}

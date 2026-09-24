@@ -56,6 +56,7 @@ const uid = `gallery-${Math.random().toString(36).slice(2, 8)}`;
         data-gallery-image
         data-media-id={cover.id}
       />
+      <button type="button" class="gp-gallery__zoom-open sr-only" data-gallery-zoom-open hidden>Enlarge image</button>
       <div class="gp-gallery__pending" data-gallery-pending hidden aria-hidden="true"></div>
       <p class="gp-gallery__error" data-gallery-error hidden>
         <span>That image did not load.</span>
@@ -89,9 +90,20 @@ const uid = `gallery-${Math.random().toString(36).slice(2, 8)}`;
     )}
 
     <p class="sr-only" data-gallery-status role="status" aria-live="polite"></p>
+
+    {/* Zoom: packaging shots carry printed spec panels that are unreadable at
+        stage size. Opened by the zoom controller below (click/tap on the stage
+        image, or the "Enlarge image" button); Esc, the close button or a click
+        outside the image closes it. */}
+    <dialog class="gp-gallery__zoom" data-gallery-zoom aria-label={`${productName}, enlarged image`}>
+      <img class="gp-gallery__zoom-image" data-gallery-zoom-image alt="" decoding="async" />
+      <button type="button" class="gp-gallery__zoom-close" data-gallery-zoom-close aria-label="Close enlarged image">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </dialog>
   </section>
 ) : (
-  <div class="bg-white aspect-square rounded-2xl flex items-center justify-center relative overflow-hidden border border-slate-200/80 shadow-xs">
+  <div class="bg-white aspect-square rounded-2xl flex items-center justify-center relative overflow-hidden border border-slate-200/80">
     <div class="absolute inset-0 flex flex-col items-center justify-center bg-slate-50 p-6 text-center select-none">
       <svg class="w-12 h-12 mb-3 text-brand-mutedGrey/20" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
       <span class="text-sm font-semibold text-slate-600">No photo of this one yet.</span>
@@ -109,6 +121,15 @@ const uid = `gallery-${Math.random().toString(36).slice(2, 8)}`;
      (no layout shift), capped so it and the previews share the first screen on a laptop. */
   .gp-gallery__stage { grid-area: stage; position: relative; overflow: hidden; aspect-ratio: 1 / 1; width: 100%; max-height: min(72vh, 680px); margin-inline: auto; background: #fff; border-radius: 1.25rem; border: 1px solid #ECECEC; }
   .gp-gallery__image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; padding: 0.75rem; background: #fff; }
+  .gp-gallery[data-zoom-ready] .gp-gallery__image { cursor: zoom-in; }
+  /* The keyboard route to zoom: visually hidden until focused, then a pill on the stage. */
+  .gp-gallery .gp-gallery__zoom-open:focus { position: absolute; right: 0.75rem; top: 0.75rem; z-index: 3; width: auto; height: auto; padding: 0.5rem 0.875rem; margin: 0; overflow: visible; clip: auto; white-space: nowrap; border-radius: 9999px; background: #fff; color: #0A0A0A; font-size: 0.8125rem; font-weight: 700; border: 1px solid rgba(10,10,10,0.08); outline: 2px solid #0A0A0A; outline-offset: 2px; }
+  /* The enlarged view: the whole viewport, the image contained, pinch-zoom left to the browser. */
+  .gp-gallery__zoom { width: 100vw; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0; background: #fff; overflow: auto; }
+  .gp-gallery__zoom::backdrop { background: rgba(10,10,10,0.6); }
+  .gp-gallery__zoom-image { display: block; width: 100%; height: 100%; object-fit: contain; padding: 1rem; touch-action: pinch-zoom; cursor: zoom-out; }
+  .gp-gallery__zoom-close { position: fixed; top: max(0.75rem, env(safe-area-inset-top)); right: 0.75rem; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 9999px; border: 1px solid rgba(10,10,10,0.12); background: #fff; color: #0A0A0A; cursor: pointer; box-shadow: 0 2px 10px rgba(10,10,10,0.10); }
+  .gp-gallery__zoom-close:focus-visible { outline: none; box-shadow: 0 0 0 2px #FFFFFF, 0 0 0 4px #456B00; }
   .gp-gallery__pending { position: absolute; inset: 0; background: rgba(255,255,255,0.35); }
   .gp-gallery__pending::after { content: ''; position: absolute; left: 50%; top: 50%; width: 28px; height: 28px; margin: -14px 0 0 -14px; border-radius: 50%; border: 3px solid #E5E5E5; border-top-color: #93D500; animation: gp-gallery-spin 0.8s linear infinite; }
   @keyframes gp-gallery-spin { to { transform: rotate(360deg); } }
@@ -151,6 +172,7 @@ const uid = `gallery-${Math.random().toString(36).slice(2, 8)}`;
 <script>
   import { createGalleryState, reduce, previews as previewsOf, canGoNext, canGoPrev, ordinalOf, type GalleryMedia, type GalleryState, type GalleryIntent } from '../../lib/productGalleryState';
   import { PDP_STAGE_SIZES } from '../../lib/imageSrcset';
+  import { isZoomTap, zoomSourceOf } from './galleryZoom';
 
   type Effect = ReturnType<typeof reduce>[1];
 
@@ -315,6 +337,8 @@ const uid = `gallery-${Math.random().toString(36).slice(2, 8)}`;
       // Local keys only, and never inside an unrelated input.
       const t = e.target as HTMLElement;
       if (t.matches('input, textarea, select, [contenteditable]')) return;
+      // Keys inside the enlarged view must not change the image behind it.
+      if (t.closest('[data-gallery-zoom]')) return;
       const map: Record<string, GalleryIntent | undefined> = { ArrowLeft: { type: 'PREV' }, ArrowRight: { type: 'NEXT' }, Home: { type: 'FIRST' }, End: { type: 'LAST' } };
       const intent = map[e.key];
       if (intent) { e.preventDefault(); lastActivation = 'keyboard'; dispatch(intent); return; }
@@ -352,4 +376,61 @@ const uid = `gallery-${Math.random().toString(36).slice(2, 8)}`;
   }
 
   document.querySelectorAll<HTMLElement>('[data-gallery]').forEach(mount);
+
+  // ── Zoom ─────────────────────────────────────────────────────────────────
+  // Independent of the multi-image controller: a single-cover product needs it
+  // most. It reads whatever the stage image shows now (the controller swaps it).
+  function mountZoom(root: HTMLElement) {
+    if (root.dataset.zoomMounted === '1') return;
+    const dialog = root.querySelector<HTMLDialogElement>('[data-gallery-zoom]');
+    const stageImage = root.querySelector<HTMLImageElement>('[data-gallery-image]');
+    const zoomImage = root.querySelector<HTMLImageElement>('[data-gallery-zoom-image]');
+    const closeBtn = root.querySelector<HTMLButtonElement>('[data-gallery-zoom-close]');
+    const openBtn = root.querySelector<HTMLButtonElement>('[data-gallery-zoom-open]');
+    if (!dialog || !stageImage || !zoomImage || typeof dialog.showModal !== 'function') return;
+    root.dataset.zoomMounted = '1';
+    root.dataset.zoomReady = '';
+    openBtn?.removeAttribute('hidden');
+
+    let returnFocus: HTMLElement | null = null;
+    const open = (trigger: HTMLElement | null) => {
+      const src = zoomSourceOf(stageImage.getAttribute('src'));
+      if (!src || dialog.open) return;
+      zoomImage.src = src;
+      zoomImage.alt = stageImage.alt;
+      returnFocus = trigger;
+      dialog.showModal();
+      closeBtn?.focus();
+    };
+    dialog.addEventListener('close', () => {
+      zoomImage.removeAttribute('src');
+      if (returnFocus && document.contains(returnFocus)) returnFocus.focus({ preventScroll: true });
+      returnFocus = null;
+    });
+    closeBtn?.addEventListener('click', () => dialog.close());
+    // A click on the dialog's own box (outside the image and the button) closes it.
+    dialog.addEventListener('click', (e) => { if (e.target === dialog || e.target === zoomImage) dialog.close(); });
+    openBtn?.addEventListener('click', () => open(openBtn));
+
+    // A touch sequence that moved is a swipe (the controller changes image) or
+    // a scroll — never a zoom request.
+    let touchStart: { x: number; y: number } | null = null;
+    let lastTouchWasTap = true;
+    stageImage.addEventListener('touchstart', (e) => { touchStart = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null; lastTouchWasTap = e.touches.length === 1; }, { passive: true });
+    stageImage.addEventListener('touchend', (e) => {
+      const t = e.changedTouches[0];
+      lastTouchWasTap = lastTouchWasTap && !!t && isZoomTap(touchStart, { x: t.clientX, y: t.clientY });
+      touchStart = null;
+    }, { passive: true });
+    stageImage.addEventListener('click', (e) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const wasTap = lastTouchWasTap;
+      lastTouchWasTap = true;
+      if (!wasTap) return;
+      // A pointer opened it: the browser returns focus where it was on close.
+      open(null);
+    });
+  }
+
+  document.querySelectorAll<HTMLElement>('[data-gallery]').forEach(mountZoom);
 </script>

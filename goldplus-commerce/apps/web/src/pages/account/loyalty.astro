@@ -59,7 +59,8 @@ const typeTone: Record<string, string> = {
   expiry: 'text-gray-600',
   adjustment: 'text-brand-charcoal',
 };
-const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB');
+const formatDate = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Kampala' });
 ---
 
 <BaseLayout robotsMeta="noindex,follow" title="GoldPlus points">
@@ -74,12 +75,14 @@ const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB');
     {loadError && <Notice kind="not-configured" title="Points unavailable" message={loadError} />}
 
     {history && !history.programmeActive && (
-      <Notice kind="not-configured" title="Programme not active" message="The loyalty programme is not running right now. Any points shown below keep their history and become usable if it is reactivated." />
+      <div class="mb-6">
+        <Notice kind="not-configured" title="Programme not active" message="The loyalty programme is not running right now. Any points shown below keep their history and become usable if it is reactivated." />
+      </div>
     )}
 
     {history && (
       <div class="space-y-6">
-        <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
           <div class="bg-white border border-brand-borderGrey rounded-2xl p-5">
             <p class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Available</p>
             <p class="text-2xl font-black text-brand-charcoal mt-1">{history.balance.available.toLocaleString('en-UG')}</p>
@@ -97,14 +100,15 @@ const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB');
             <p class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Lifetime redeemed</p>
             <p class="text-2xl font-black text-brand-charcoal mt-1">{history.balance.lifetimeRedeemed.toLocaleString('en-UG')}</p>
           </div>
-          <div class="bg-white border border-brand-borderGrey rounded-2xl p-5">
+          {/* Five cards in two columns left this one alone on its row: it spans the row on phones. */}
+          <div class="col-span-2 lg:col-span-1 bg-white border border-brand-borderGrey rounded-2xl p-5">
             <p class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Pending expiry</p>
             <p class="text-2xl font-black text-brand-charcoal mt-1">{history.balance.pendingExpiry.toLocaleString('en-UG')}</p>
           </div>
         </div>
 
         {programme?.active && (
-          <div class="rounded-2xl border border-amber-200/70 bg-amber-50 px-5 py-4">
+          <div class="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
             <p class="text-sm font-bold text-amber-900">How earning works</p>
             <p class="text-xs text-amber-800 mt-1 leading-relaxed">
               Every order earns <strong>{programme.earnRatePer1000Ugx} points per 1,000 UGX</strong> of the order total. Points move from pending to available when the order is delivered.
@@ -149,7 +153,7 @@ const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB');
         <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
           <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Points history</h2>
           {history.entries.length === 0 ? (
-            <EmptyState title="No points activity yet" message="Place an order while signed in. Points are credited when the order is paid." />
+            <EmptyState title="No points activity yet" message="Place an order while signed in. Its points become available when the order is delivered." />
           ) : (
             <div class="overflow-x-auto">
               <table class="w-full text-sm">

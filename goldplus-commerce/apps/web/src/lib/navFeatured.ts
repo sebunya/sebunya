@@ -1,5 +1,6 @@
 import { apiBase } from './api';
 import { fetchApprovedCatalogue } from './catalogue';
+import { hasRealCover } from './productCover';
 
 /**
  * The header's featured cross-sell cards ("Most carried"), served by REAL data
@@ -42,7 +43,11 @@ async function fetchCards(): Promise<NavFeaturedCard[]> {
     // The whole approved catalogue, paged, so the featured pick is made from
     // everything the shop sells rather than whichever 50 came first.
     const products: any[] = await fetchApprovedCatalogue(apiBase);
-    const imaged = products.filter((p) => p.primaryImageUrl && p.availability?.kind === 'in_stock');
+    // A feature card is a photograph of the product or nothing: the generated
+    // sample frame ("Sample image (no photo of this product yet)") shrunk inside
+    // the arch frame is not a reason to open a product. No real cover in stock
+    // means no card, and the panel simply renders without one.
+    const imaged = products.filter((p) => hasRealCover(p) && p.availability?.kind === 'in_stock');
     if (imaged.length === 0) return [];
 
     const bySlug = new Map(imaged.map((p) => [p.slug, p]));

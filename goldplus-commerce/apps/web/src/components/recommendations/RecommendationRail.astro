@@ -13,6 +13,8 @@ interface Props {
   variant?: "default" | "cart-compact";
   showEmptyState?: boolean;
   emptyMessage?: string;
+  /** The list's grid. Defaults to the shared 2/3/4 grid every rail uses. */
+  gridClass?: string;
 }
 
 const {
@@ -23,6 +25,7 @@ const {
   variant = "default",
   showEmptyState = false,
   emptyMessage = "No eligible products are currently available to show.",
+  gridClass = "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6",
 } = Astro.props;
 
 const productIdsString = items.map((item) => item.productId).join(",");
@@ -45,7 +48,7 @@ const productIdsString = items.map((item) => item.productId).join(",");
   </div>
 
   {items.length > 0 ? (
-    <ul class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+    <ul class={gridClass}>
       {items.map((item) => (
         <RecommendationCard item={item} placement={placement} variant={variant} />
       ))}

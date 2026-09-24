@@ -19,9 +19,11 @@ const fail = (code: string, message: string): Fail => ({ ok: false, code, messag
  * Vest points on DELIVERY confirmation, not payment (brief PART F).
  *
  * The earn ledger entry is written only when the order reaches
- * delivered/completed while paid — so a refused COD order simply never earns
- * (the hole closes structurally, no clawback needed), and "pending" points are
- * an honest projection over paid-undelivered orders, not ledger rows.
+ * delivered/completed while paid online, or as cash on delivery (the delivery
+ * IS the payment — domain/loyalty/LoyaltyEarnEligibility). A refused COD order
+ * never reaches delivered, so it simply never earns (the hole closes
+ * structurally, no clawback needed), and "pending" points are an honest
+ * projection over qualifying undelivered orders, not ledger rows.
  */
 export class VestLoyaltyOnDeliveryUseCase {
   constructor(

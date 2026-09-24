@@ -82,7 +82,8 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
   async setStockQuantity(
     productId: string,
     newStock: number,
-  ): Promise<{ applied: boolean; reserved: number; stock: number } | null> {
+    expectedStock: number | null = null,
+  ): Promise<{ applied: boolean; reserved: number; stock: number; stale?: boolean } | null> {
     return withTransactionRetry(async () =>
       db.transaction(async (tx) => {
         const updated = await tx
@@ -91,7 +92,13 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
           // quantity of 0 left stock_status 'in_stock' and the in-stock filter
           // kept listing a product its own card showed as out of stock.
           .set({ stockQuantity: newStock, stockStatus: sql`case when ${newStock} <= 0 then 'out_of_stock' else 'in_stock' end` })
-          .where(and(eq(products.id, productId), sql`${products.reservedQuantity} <= ${newStock}`))
+          .where(and(
+            eq(products.id, productId),
+            sql`${products.reservedQuantity} <= ${newStock}`,
+            // Compare-and-set: a caller that says what it loaded never
+            // overwrites a movement made since (dispatch, adjustment).
+            expectedStock === null ? undefined : eq(products.stockQuantity, expectedStock),
+          ))
           .returning({ stock: products.stockQuantity, reserved: products.reservedQuantity });
 
         if (updated.length === 1) {
@@ -106,7 +113,8 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
           .from(products)
           .where(eq(products.id, productId));
         if (current.length === 0) return null;
-        return { applied: false, reserved: current[0].reserved, stock: current[0].stock };
+        const stale = expectedStock !== null && current[0].stock !== expectedStock;
+        return { applied: false, reserved: current[0].reserved, stock: current[0].stock, ...(stale ? { stale: true } : {}) };
       }),
     );
   }

@@ -287,6 +287,7 @@ const nbaJson = escNav(JSON.stringify(nba));
         <a class={cat.key === 'flash' ? 'gp-nav__cat gp-nav__cat--flash' : 'gp-nav__cat'} href={cat.href} data-cat={cat.key}>{cat.label}{cat.tag && <span class="gp-nav__cat-tag">{cat.tag}</span>}</a>
       ))}
       <span class="gp-nav__spark" id="gpNavSpark" aria-hidden="true"></span>
+      <span id="gpNavHint" hidden>Down arrow opens more links</span>
     </div>
   </nav>
 
@@ -305,9 +306,7 @@ const nbaJson = escNav(JSON.stringify(nba));
         <div class="gp-nav__feat-col">
           <h3>Start here</h3>
           <ul>
-            <li><a href="/shop">New this month</a></li>
-            <li><a href="/shop">Best sellers</a></li>
-            <li><a href="/shop">Best value picks</a></li>
+            <li><a href="/shop?sort=price-low-high">Lowest prices first</a></li>
             <li><a href="/verification">How we verify stock</a></li>
           </ul>
         </div>
@@ -363,11 +362,13 @@ const nbaJson = escNav(JSON.stringify(nba));
           <a class="gp-nav__tile" href="/shop?category=sound&q=headphones"><b>Headphones</b><span>On-ear, for everyday listening</span></a>
           <a class="gp-nav__tile" href="/shop?category=sound&q=over-ear"><b>Over-ear headphones</b><span>Full cups, for studio and travel</span></a>
         </div>
-        <!-- Cross-sell slot. Every card must name the product actually in the
+        {/* Cross-sell slot. Every card must name the product actually in the
              photo, the only GoldPlus photography available is the power range,
              so non-power panels feature a power product deliberately rather than
              captioning a power bank as an earbud. Swap in real category
-             photography when it exists and restore the category product. -->
+             photography when it exists and restore the category product.
+             A JSX comment, not an HTML one: an HTML comment ships to every
+             visitor on every page (~330 bytes of the home document). */}
         {featAt(1) && (
           <a class="gp-nav__feat" href={`/products/${featAt(1)!.slug}`}>
             <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featAt(1)!.imageUrl} srcset={productSrcset(featAt(1)!.imageUrl) ?? undefined} sizes={productSrcset(featAt(1)!.imageUrl) ? "200px" : undefined} alt={featAt(1)!.name} loading="lazy" decoding="async"></div>
@@ -859,6 +860,13 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 
 /* ---------- mobile ---------- */
 @media (max-width:980px){
+  /* Sticky on phones (owner decision 2026-09-24): the strip above the bar
+     scrolls away and the 60px bar stays, so the menu (search is inside it)
+     and the cart are always one tap away. It never moves on its own (nothing to reduce for reduced
+     motion), and scroll-padding keeps a focused field or an #anchor clear of
+     it (WCAG 2.4.11). --gpn-stick is the strip's real height, set by script. */
+  .gp-nav{position:sticky;top:calc(0px - var(--gpn-stick,34px));}
+  html{scroll-padding-top:72px;}
   .gp-nav__top-in{height:34px;justify-content:center;}
   .gp-nav__nba{font-size:11px;justify-content:center;}
   .gp-nav__nba-x{display:none!important;}
@@ -874,12 +882,12 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   .gp-nav__mega{
     display:block;grid-template-rows:none;
     position:fixed;inset:0;max-height:none;height:100dvh;background:var(--gpn-ink);
-    border:0;box-shadow:none;transform:translateY(-100%);
-    transition:transform .46s var(--gpn-ease);overflow-y:auto;-webkit-overflow-scrolling:touch;
+    border:0;box-shadow:none;transform:translateY(-100%);visibility:hidden;
+    transition:transform .46s var(--gpn-ease),visibility 0s linear .46s;overflow-y:auto;-webkit-overflow-scrolling:touch;
   }
   /* the desktop clamp is (0,3,0); a bare .gp-nav__mega rule cannot beat it
      inside a media query, so match its specificity or the overlay stays 420px */
-  .gp-nav[data-open] .gp-nav__mega{transform:none;max-height:none;grid-template-rows:none;}
+  .gp-nav[data-open] .gp-nav__mega{transform:none;max-height:none;grid-template-rows:none;visibility:visible;transition-delay:0s;}
   .gp-nav__mega-in{padding-block:calc(var(--gpn-head,94px) + 16px) 36px;max-height:none;overflow:visible;}
   .gp-nav__panel{display:none!important;}
   .gp-nav__mob{display:block;}
@@ -888,10 +896,10 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   .gp-nav__msearch input{
     width:100%;height:50px;padding:0 16px 0 44px;border-radius:14px;
     background:rgba(243,239,228,.06);border:1px solid var(--gpn-line);
-    color:var(--gpn-cream);font:400 15px 'Poppins',sans-serif;
+    color:var(--gpn-cream);font:400 16px 'Poppins',sans-serif;
   }
   .gp-nav__msearch input:focus{outline:none;border-color:rgba(147,213,0,.5);}
-  .gp-nav__msearch > svg{position:absolute;left:16px;top:50%;transform:translateY(-50%);width:17px;height:17px;color:rgba(243,239,228,.45);}
+  .gp-nav__msearch > svg{position:absolute;left:16px;top:25px;transform:translateY(-50%);width:17px;height:17px;color:rgba(243,239,228,.45);}
 
   .gp-nav__quick{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:20px;}
   .gp-nav__quick a{
@@ -915,9 +923,11 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   .gp-nav__acc-tog{width:58px;display:grid;place-items:center;color:var(--gpn-green);font-size:22px;line-height:1;
     transition:transform .35s var(--gpn-ease);}
   .gp-nav__acc[data-exp] .gp-nav__acc-tog{transform:rotate(45deg);}
-  .gp-nav__acc ul{list-style:none;margin:0;padding:0;max-height:0;overflow:hidden;
-    transition:max-height .42s var(--gpn-ease);}
-  .gp-nav__acc[data-exp] ul{max-height:360px;}
+  /* visibility, not just max-height:0: a collapsed list's links must leave the
+     tab order and the accessibility tree, and flip back only after the close */
+  .gp-nav__acc ul{list-style:none;margin:0;padding:0;max-height:0;overflow:hidden;visibility:hidden;
+    transition:max-height .42s var(--gpn-ease),visibility 0s linear .42s;}
+  .gp-nav__acc[data-exp] ul{max-height:360px;visibility:visible;transition-delay:0s;}
   /* :where() zero-weights the accordion default (0,0,1) so component classes
      like .gp-nav__ask keep their own colour. (0,2,1) beat them before. */
   :where(.gp-nav__acc li) a{display:block;padding:13px 0 13px 15px;font-size:14.5px;color:var(--gpn-muted);}
@@ -1016,7 +1026,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 .gp-nav__hold span{display:block;margin-top:5px;font-size:11.5px;color:var(--gpn-muted);line-height:1.45;}
 .gp-nav__hold em{font-style:normal;color:var(--gpn-green);font-weight:600;}
 
-/* one field: a phone number IS the account here */
+/* one field to start: the phone carries over to /register, which asks for the rest */
 .gp-nav__join{display:flex;flex-direction:column;gap:8px;margin-bottom:9px;}
 .gp-nav__join input{
   height:44px;padding:0 14px;border-radius:11px;
@@ -1049,12 +1059,12 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 .gp-nav__mhi-row a:first-child{background:var(--gpn-green);color:var(--gpn-ink);}
 .gp-nav__mhi-row a:last-child{border:1px solid var(--gpn-line);color:var(--gpn-cream);}
 /* one-field sign-up, mobile. Same rules as the desktop popover but sized for
-   thumbs: 52px row, and 15px type because iOS zooms the page on focus below 16 */
+   thumbs: 52px row, and 16px type because iOS zooms the page on focus below 16 */
 .gp-nav__mjoin{display:flex;gap:9px;margin-top:14px;}
 .gp-nav__mjoin input{
   flex:1;min-width:0;height:52px;padding:0 15px;border-radius:12px;
   background:rgba(243,239,228,.05);border:1px solid var(--gpn-line);
-  color:var(--gpn-cream);font:400 15px 'Poppins',system-ui,sans-serif;
+  color:var(--gpn-cream);font:400 16px 'Poppins',system-ui,sans-serif;
 }
 .gp-nav__mjoin input::placeholder{color:rgba(243,239,228,.34);}
 .gp-nav__mjoin input:focus{outline:none;border-color:rgba(147,213,0,.55);background:rgba(243,239,228,.07);}
@@ -1316,13 +1326,23 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   var qs = function(k){ var m = location.search.match(new RegExp('[?&]' + k + '=([^&]+)')); return m && decodeURIComponent(m[1]); };
 
   /* ---- open / close ---- */
+  /* the phone drawer covers the page, so the page leaves the tab order and the
+     accessibility tree while it is open; cleared on every close */
+  var behind = [document.querySelector('main'), document.querySelector('footer')];
+  function inert(on){ for (var j=0;j<behind.length;j++) if (behind[j]) behind[j].inert = on; }
+  /* a phone drawer left open while the window grows past 980px is closed, so
+     the page is never stranded inert under the desktop menu */
+  window.addEventListener('resize', function(){ if (!mq() && behind[0] && behind[0].inert) close(); }, { passive:true });
+  var measure = function(){};
   function open(){
+    measure();
     nav.setAttribute('data-open','');
     burger.setAttribute('aria-expanded','true');
     burger.setAttribute('aria-label','Close menu');
-    if (mq()) document.body.style.overflow = 'hidden';
+    if (mq()){ document.body.style.overflow = 'hidden'; inert(true); }
   }
   function close(){
+    inert(false);
     nav.removeAttribute('data-open');
     nav.removeAttribute('data-cat');
     burger.setAttribute('aria-expanded','false');
@@ -1338,7 +1358,10 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   });
   scrim.addEventListener('click', close);
   document.addEventListener('keydown', function(e){
-    if (e.key === 'Escape' && nav.hasAttribute('data-open')){ close(); burger.focus(); }
+    if (e.key !== 'Escape' || !nav.hasAttribute('data-open')) return;
+    var back = rail.querySelector('.gp-nav__cat[data-on]'), inNav = nav.contains(document.activeElement);
+    close();
+    if (mq()) burger.focus(); else if (inNav && back) back.focus();
   });
 
   /* ---- the spark ---- */
@@ -1371,17 +1394,30 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   for (var i=0;i<cats.length;i++){
     (function(el){
       var id = el.getAttribute('data-cat');
-      if (id){ el.setAttribute('aria-haspopup','true'); el.setAttribute('aria-expanded','false'); }
+      /* ArrowDown is the only key that opens a panel, and a screen reader in
+         browse mode never says so on its own: the link carries the hint. */
+      if (id){ el.setAttribute('aria-haspopup','true'); el.setAttribute('aria-expanded','false'); if (mega.querySelector('.gp-nav__panel[data-panel="' + id + '"]')) el.setAttribute('aria-describedby','gpNavHint'); }
       el.addEventListener('mouseenter', function(){
         if (mq()) return;
         clearTimeout(closeT);
         if (id) show(id, el); else { close(); moveSpark(el); }
       });
-      el.addEventListener('focus', function(){
-        if (mq()) return;
-        if (id) show(id, el); else moveSpark(el);
+      /* Focus only moves the spark. Opening every panel on focus made Tab
+         flash five panels and left only the LAST one reachable; the panel
+         behind a link opens with ArrowDown, which also moves focus into it. */
+      el.addEventListener('focus', function(){ if (!mq()) moveSpark(el); });
+      el.addEventListener('keydown', function(e){
+        if (mq() || !id || e.key !== 'ArrowDown') return;
+        var p = mega.querySelector('.gp-nav__panel[data-panel="' + id + '"]');
+        if (!p) return;
+        e.preventDefault(); clearTimeout(closeT); show(id, el);
+        var f = p.querySelector('a[href],input,button'); if (f) f.focus();
       });
-      if (location.pathname && el.getAttribute('href') === location.pathname){
+      /* the rail marks the category the shopper is IN: ?category=power-devices
+         belongs to "Power" (/shop?category=power), and "Shop All" only when no
+         category is chosen */
+      var h = el.getAttribute('href') || '', hc = (h.match(/[?&]category=([^&]+)/) || [])[1], cq = qs('category') || '';
+      if (id !== 'flash' && location.pathname === h.split('?')[0] && (hc ? cq === hc || cq.indexOf(hc + '-') === 0 : !cq)){
         el.setAttribute('aria-current','page'); current = el;
       }
     })(cats[i]);
@@ -1394,6 +1430,19 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
     closeT = setTimeout(close, 260);
   });
   nav.addEventListener('mouseenter', function(){ clearTimeout(closeT); });
+  /* the scrim is INSIDE the header, so resting on it never fires the header's
+     mouseleave: treat reaching the scrim as leaving, and coming back as return */
+  scrim.addEventListener('mouseenter', function(){ if (mq()) return; clearTimeout(closeT); closeT = setTimeout(close, 260); });
+  mega.addEventListener('mouseenter', function(){ clearTimeout(closeT); });
+  rail.addEventListener('mouseenter', function(){ clearTimeout(closeT); });
+  /* keyboard focus leaving the header must not leave a panel over the page
+     (WCAG 2.4.11). No relatedTarget is a click that does not move focus
+     (Safari links), so a pointer still over the header keeps the panel open. */
+  nav.addEventListener('focusout', function(e){
+    if (mq() || !nav.hasAttribute('data-open')) return;
+    var r = e.relatedTarget;
+    if (r ? !nav.contains(r) : !nav.matches(':hover')) close();
+  });
 
   /* ---- mobile: accordions, with the label staying a real link ---- */
   mega.addEventListener('click', function(e){
@@ -1408,10 +1457,12 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   /* ---- overlay clears the real header height ---- */
   (function(){
     var bar = nav.querySelector('.gp-nav__bar');
-    function measure(){
-      nav.style.setProperty('--gpn-head',
-        Math.round(bar.getBoundingClientRect().bottom - nav.getBoundingClientRect().top) + 'px');
-    }
+    /* The overlay is fixed to the viewport and the header is sticky on phones,
+       so the bar's bottom is read against the viewport, again on every open. */
+    measure = function(){
+      nav.style.setProperty('--gpn-head', Math.round(Math.max(0, bar.getBoundingClientRect().bottom)) + 'px');
+      nav.style.setProperty('--gpn-stick', bar.offsetTop + 'px');
+    };
     measure();
     window.addEventListener('resize', measure, { passive:true });
     if (window.ResizeObserver) new ResizeObserver(measure).observe(bar);
@@ -1442,7 +1493,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
       if (h >= cutoffHour){ cut.innerHTML = "Today's run has left. This order goes out <b>tomorrow morning</b>"; return; }
       var mins = (cutoffHour - h) * 60 - m;
       var left = mins >= 60 ? Math.floor(mins/60) + 'h ' + (mins%60) + 'm' : mins + ' minutes';
-      cut.innerHTML = 'Check out in <b>' + left + '</b> and we deliver <b>today</b>.';
+      cut.innerHTML = 'Kampala &amp; Wakiso: check out in <b>' + left + '</b> for <b>same-day</b> delivery.';
     }
     tick(); setInterval(tick, 60000);
   })();
@@ -1526,6 +1577,10 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
           h += '<div class="gp-nav__sh-sec"><p class="gp-nav__sh-h">Trending in Kampala</p><div class="gp-nav__trend">';
           h += TREND.map(function(t,i){ return '<a href="' + esc(t[1]) + '" data-opt><i>' + (i+1) + '</i>' + esc(t[0]) + '</a>'; }).join('');
           h += '</div></div>';
+        } else if (!r.length){
+          /* nothing searched yet and no trend list: plain ways in, no ranking claimed */
+          h += '<div class="gp-nav__sh-sec"><p class="gp-nav__sh-h">Start with</p><div class="gp-nav__trend">' +
+            '<a href="/battery-finder" data-opt>Phone batteries</a><a href="/shop?category=power&amp;q=power+bank" data-opt>Power banks</a><a href="/shop?category=storage&amp;q=memory+card" data-opt>Memory cards</a></div></div>';
         }
         h += foot();
         sheet.innerHTML = h;
@@ -1619,6 +1674,13 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
       });
       form.addEventListener('submit', function(){ remember(input.value.trim()); });
       document.addEventListener('click', function(e){ if (!form.contains(e.target)) hide(); });
+      /* desktop only: the phone sheet sits in the drawer, where hiding it on a
+         tap would move the suggestion out from under the finger */
+      form.addEventListener('focusout', function(e){
+        if (mq()) return;
+        var r = e.relatedTarget;
+        if (r ? !form.contains(r) : !form.matches(':hover')) hide();
+      });
     }
     wire(nav.querySelector('.gp-nav__search'));
     wire(nav.querySelector('.gp-nav__msearch'));
@@ -1692,7 +1754,9 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
             'placeholder="07XX XXX XXX" aria-label="Your phone number" required>' +
           '<button class="gp-nav__acct-cta" type="submit">Join free</button>' +
         '</form>' +
-        '<p class="gp-nav__join-note">Your number is your account. Nothing else to fill in.</p>' +
+        /* Registration also asks for an email and a password, and signing in is
+           by email: the note says so instead of "your number is your account". */
+        '<p class="gp-nav__join-note">Next, an email and a password. You sign in with your email.</p>' +
         '<a class="gp-nav__acct-alt" href="/account">I already have an account</a>';
     }
 
@@ -1713,7 +1777,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
           '<a class="gp-nav__mhi-alt" href="/account">Sign in instead</a>';
       }
       return '<h2>' + partOfDay() + '</h2>' +
-        '<p>' + saleLine + 'Your phone number is your account.</p>' +
+        '<p>' + saleLine + 'Join free with your phone, an email and a password.</p>' +
         '<form class="gp-nav__mjoin" action="/register" method="get">' +
           '<input type="tel" name="phone" inputmode="tel" autocomplete="tel" placeholder="07XX XXX XXX" aria-label="Your phone number" required>' +
           '<button type="submit">Join free</button>' +
@@ -1836,19 +1900,28 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
       /* Cart beats sign-in status: an anonymous visitor with items in the
          basket is the highest-intent person on the site, and gating this on
          being signed in left them with a generic delivery line. */
-      if (CTX.cart > 0 && CTX.beforeCutoff) c.push({ id:'cart-cutoff', score:96,
+      /* on /cart and /checkout the basket IS the page: pointing back at the
+         cart from checkout is a step backwards, and from /cart a self-link */
+      var inFunnel = /^\/(cart|checkout)(\/|$)/.test(location.pathname);
+      /* Same-day is for Kampala & Wakiso only, so every same-day line names the
+         area, in the same words as cart and checkout (lib/checkout.ts
+         sameDayCutoffCopy().scoped). Up-country orders are confirmed by phone. */
+      var SD = 'Kampala & Wakiso: ';
+      var hm = Math.floor(CTX.minsToCutoff/60) + 'h ' + (CTX.minsToCutoff%60) + 'm';
+      if (CTX.cart > 0 && CTX.beforeCutoff && !inFunnel) c.push({ id:'cart-cutoff', score:96,
         text: CTX.minsToCutoff <= 60
-          ? 'Only <em>' + CTX.minsToCutoff + ' minutes</em> left. Check out now and we deliver today'
-          : 'Check out in <b>' + Math.floor(CTX.minsToCutoff/60) + 'h ' + (CTX.minsToCutoff%60) + 'm</b> and it arrives today',
+          ? SD + 'only <em>' + CTX.minsToCutoff + ' minutes</em> left for same-day delivery'
+          : SD + 'check out in <b>' + hm + '</b> for same-day delivery',
         short: CTX.minsToCutoff <= 60
-          ? '<em>' + CTX.minsToCutoff + ' min</em> left to get it today'
-          : 'Order in <b>' + Math.floor(CTX.minsToCutoff/60) + 'h ' + (CTX.minsToCutoff%60) + 'm</b>, arrives today',
+          ? SD + '<em>' + CTX.minsToCutoff + ' min</em> left for same-day'
+          : SD + '<b>' + hm + '</b> left for same-day',
         cta:'Finish order', href:'/cart' });
 
-      /* same cart, past the cut-off: still worth finishing, honest promise */
-      if (CTX.cart > 0 && !CTX.beforeCutoff) c.push({ id:'cart-later', score:94,
-        text:'Your basket is waiting. Order now and we deliver <b>' + (CTX.sunday ? 'on the next working day' : 'tomorrow morning') + '</b>',
-        short:'Basket saved. We deliver <b>' + (CTX.sunday ? 'next working day' : 'tomorrow') + '</b>',
+      /* same cart, past the cut-off: still worth finishing, honest promise
+         (it GOES OUT then; when it arrives depends on where it is going) */
+      if (CTX.cart > 0 && !CTX.beforeCutoff && !inFunnel) c.push({ id:'cart-later', score:94,
+        text:'Your basket is waiting. Order now and it goes out <b>' + (CTX.sunday ? 'on the next working day' : 'tomorrow morning') + '</b>',
+        short:'Basket saved. It goes out <b>' + (CTX.sunday ? 'next working day' : 'tomorrow') + '</b>',
         cta:'Finish order', href:'/cart' });
 
       if (CTX.signedIn && CTX.points >= 1000 && RATE_PTS > 0) c.push({ id:'points', score:88,
@@ -1868,12 +1941,12 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 
       /* ---- not signed in: the useful, honest defaults (mirrors nba.ts) ---- */
       if (!CTX.signedIn && CTX.visits <= 1) c.push({ id:'welcome', score:60,
-        text:'Your phone number is your account. Join free and earn <em>points</em> on every paid order',
+        text:'Join free and earn <em>points</em> on every delivered order',
         short:'Join free and earn <em>points</em> on every order',
         cta:'Join free', href:'/register' });
 
       if (!CTX.signedIn && CTX.visits > 1) c.push({ id:'signup', score:55,
-        text:'Join free. Your phone number is the account, and points start with your next order',
+        text:'Join free, and points start with your next delivered order',
         short:'Join free. Points start with your next order',
         cta:'Join free', href:'/register' });
 
@@ -1889,14 +1962,14 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
         short:'Delivery resumes <b>next working day</b>', href:'/support' });
       else if (CTX.beforeCutoff) c.push({ id:'cutoff', score:CTX.minsToCutoff <= 60 ? 90 : 50, urgent:CTX.minsToCutoff <= 60,
         text: CTX.minsToCutoff <= 60
-          ? 'Only <em>' + CTX.minsToCutoff + ' minutes</em> left to order for delivery today'
+          ? SD + 'only <em>' + CTX.minsToCutoff + ' minutes</em> left to order for delivery today'
           : 'Order before <b>' + (nav.getAttribute('data-cutoff-label') || '5:00pm') + '</b> and we deliver today in Kampala and Wakiso',
         short: CTX.minsToCutoff <= 60
-          ? '<em>' + CTX.minsToCutoff + ' min</em> left for delivery today'
-          : 'Order by <b>5:00pm</b> for delivery today',
+          ? SD + '<em>' + CTX.minsToCutoff + ' min</em> left for same-day'
+          : SD + 'order by <b>' + (nav.getAttribute('data-cutoff-label') || '5:00pm') + '</b> for same-day',
         href:'/support' });
       else c.push({ id:'aftercutoff', score:44,
-        text:"Today's run has left. Order now and we deliver <b>tomorrow morning</b>",
+        text:"Today's run has left. Order now and it goes out <b>tomorrow morning</b>",
         short:'Next delivery run is <b>tomorrow</b>', href:'/support' });
 
       c.push({ id:'verify', score:30,

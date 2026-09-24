@@ -154,10 +154,11 @@ describe('the storefront recovers without the customer noticing', () => {
     expect(page).toMatch(/result\.code === 'CHECKOUT_ALREADY_ORDERED'/);
     // The existing order is PAID FOR, not merely linked to: a "Pay now" resubmit
     // starts payment for that order id (2026-09-12 — the old link led guests to a
-    // login wall). The basket is cleared because it became that order.
+    // login wall). The basket is KEPT: the API answers this code only when the
+    // basket's fingerprint differs from the order's, so it is a new basket.
     const already = page.slice(page.indexOf("CHECKOUT_ALREADY_ORDERED"), page.indexOf("STOCK_NOT_RESERVED"));
     expect(already).toMatch(/startPayment\(\{\s*orderId: existing\.orderId/);
-    expect(already).toMatch(/await clearBasketAfterOrder\(\)/);
+    expect(already).not.toMatch(/clearBasketAfterOrder\(\)/);
     expect(already).not.toMatch(/clearCheckoutIntent/);
     // The already-ordered branch must NOT be a place we re-mint an intent.
     const branch = page.slice(page.indexOf("CHECKOUT_ALREADY_ORDERED"));

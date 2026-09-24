@@ -52,11 +52,13 @@ describe('promo-code entry at checkout', () => {
 });
 
 describe('product-card commercial signals', () => {
-  it('shows the REAL stock count whenever a product is in stock, amber only when low', () => {
-    expect(card).toContain('Only ${stockCount} left in stock');
-    expect(card).toContain('${stockCount} in stock');
-    // the count comes from tracked availability, never invented
-    expect(card).toContain("product.availability.kind === 'in_stock' && product.availability.quantity > 0");
+  it('shows the stock STATE, never a count (owner decision 2026-09-24)', () => {
+    // 180 of 183 products carried the same imported 200, which read as test
+    // data. In/out of stock stays; the number returns only with real figures.
+    expect(card).toContain("const inStock = product.availability.kind === 'in_stock';");
+    expect(card).toContain('In stock</p>');
+    expect(card).not.toMatch(/availability\.quantity/);
+    expect(card).not.toContain('left in stock');
   });
 
   it('counts down to the sale end and says plainly when the regular price returns', () => {
@@ -70,12 +72,12 @@ describe('product-card commercial signals', () => {
   it('EVERY module renders the same commercial signals — rails are uniform with the card', () => {
     // The shared RecommendationCard (PopularNow / CompleteSetup / Related /
     // CartAddon / CategoryPopular rails and the cart page) carries sale price,
-    // % pill, countdown chip and the honest stock count.
+    // % pill, countdown chip and the stock state (no count).
     const rec = read('apps/web/src/components/recommendations/RecommendationCard.astro');
     expect(rec).toContain('salePriceUgx(item.price!, discount.percentBps, effectiveFloorUgx(discount.priceFloorUgx, item.floorPriceUgx, item.price!))');
     expect(rec).toContain('data-card-sale-ends={discount.endsIso}');
-    expect(rec).toContain('Only ${stockCount} left in stock');
-    expect(rec).toContain('${stockCount} in stock');
+    expect(rec).toContain('? "In stock"');
+    expect(rec).not.toMatch(/availability\.quantity|left in stock/);
 
     // The client-built RecentlyViewedRail shows the SAME campaign price, computed
     // on the server by /api/catalogue-live with the shared helper (the product
@@ -84,7 +86,8 @@ describe('product-card commercial signals', () => {
     expect(rv).toContain('getStorefrontDiscount');
     expect(read('apps/web/src/pages/api/catalogue-live.ts')).toContain('salePriceUgx(price, discount.percentBps, effectiveFloorUgx(discount.priceFloorUgx, floor, price))');
     expect(rv).toContain('data-card-sale-ends=');
-    expect(rv).toContain('Only ${qty} left in stock');
+    expect(rv).toContain('? "In stock"');
+    expect(rv).not.toMatch(/availability\.quantity|left in stock/);
 
     // The spec-speak rail subtitle is gone from the PDP.
     const pdp = read('apps/web/src/pages/products/[slug].astro');

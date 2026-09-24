@@ -66,10 +66,10 @@ if (Astro.request.method === 'POST') {
 <BaseLayout title="Report counterfeit product | GoldPlus">
   <div class="container mx-auto px-4 lg:px-8 py-16">
     <div class="max-w-2xl mx-auto">
-      <div class="bg-red-50/45 border border-red-200/60 rounded-2xl p-6 md:p-8 mb-8 flex gap-5 items-start shadow-xs">
-        <div aria-hidden="true" class="w-12 h-12 bg-red-100 text-red-650 rounded-xl flex items-center justify-center flex-shrink-0 font-black text-xl border border-red-200/70 shadow-xs">!</div>
+      <div class="bg-red-50/45 border border-red-200/60 rounded-2xl p-6 md:p-8 mb-8 flex gap-5 items-start">
+        <div aria-hidden="true" class="w-12 h-12 bg-red-100 text-red-700 rounded-xl flex items-center justify-center flex-shrink-0 font-black text-xl border border-red-200/70">!</div>
         <div>
-          <h1 class="text-lg md:text-xl font-black text-red-650 mb-1">Report a counterfeit product</h1>
+          <h1 class="text-lg md:text-xl font-black text-red-700 mb-1">Report a counterfeit product</h1>
           <p class="text-red-700 text-sm leading-relaxed font-medium">
             Your report helps us eliminate fake electronics in Uganda. We investigate every submission and refer serious cases to the relevant authorities.
           </p>
@@ -79,7 +79,7 @@ if (Astro.request.method === 'POST') {
       <FormFeedback status={status} message={message} reference={reference} />
 
       <form method="POST" action="/support/fake" novalidate id="fakeForm" class="space-y-6">
-        <div class="bg-white p-8 md:p-10 rounded-2xl border border-slate-200/80 shadow-xs space-y-6">
+        <div class="bg-white p-8 md:p-10 rounded-2xl border border-slate-200/80 space-y-6">
           
           <fieldset class="space-y-5">
             <legend class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Discovery Location</legend>
@@ -155,7 +155,7 @@ if (Astro.request.method === 'POST') {
         </div>
 
         <div class="flex items-center gap-4">
-          <button type="submit" id="submitBtn" class="bg-red-600 text-white px-8 py-2.5 rounded-full font-bold hover:bg-red-750 transition-all text-xs tracking-wider uppercase shadow-xs cursor-pointer active:scale-98">
+          <button type="submit" id="submitBtn" class="min-h-12 bg-red-600 text-white px-8 py-3 rounded-full font-bold hover:bg-red-700 transition-all text-sm cursor-pointer active:scale-[0.98]">
             Submit report
           </button>
           <a href="/support" class="text-xs font-bold text-slate-600 hover:text-gray-900 transition-colors hover:underline">Cancel</a>

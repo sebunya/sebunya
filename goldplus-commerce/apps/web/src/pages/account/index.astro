@@ -40,7 +40,12 @@ if (unauthorised) {
   return Astro.redirect('/login?returnTo=/account', 303);
 }
 
-const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB');
+// "24 Sep 2026", in Kampala time — the same form /track-order uses.
+const formatDate = (iso: string) =>
+  new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Kampala' });
+// A brand-new account has nothing to count yet: lead with what to do next
+// (recent orders, with Start shopping) instead of three zero cards.
+const isNewAccount = overview ? overview.orderCount === 0 : false;
 
 ---
 
@@ -59,8 +64,8 @@ const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB');
     {loadError && <Notice kind="not-configured" title="Account unavailable" message={loadError} />}
 
     {overview && (
-      <div class="space-y-6">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="flex flex-col gap-6">
+        <div class={`grid grid-cols-1 md:grid-cols-3 gap-4${isNewAccount ? ' order-last' : ''}`}>
           <a href="/account/loyalty" class="block bg-white border border-brand-borderGrey rounded-2xl p-6 hover:border-brand-charcoal transition-all">
             <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-2">GoldPlus points</h2>
             {overview.loyalty.programmeActive ? (
@@ -69,7 +74,7 @@ const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB');
                 <p class="text-xs text-brand-mutedGrey mt-1.5">
                   {overview.loyalty.soonestExpiry
                     ? `Earliest points expire ${formatDate(overview.loyalty.soonestExpiry)}.`
-                    : 'Earn points on every paid order.'}
+                    : 'Earn points on every delivered order.'}
                 </p>
               </>
             ) : (
@@ -102,7 +107,7 @@ const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB');
               {overview.orderCount > 0 && <a href="/account/orders" class="text-xs font-bold text-brand-mutedGrey hover:text-brand-charcoal">View all &rarr;</a>}
             </div>
             {overview.recentOrders.length === 0 ? (
-              <EmptyState title="No orders yet" message="Orders placed while signed in appear here, and earn GoldPlus points when paid. Ordered as a guest? Look it up with your order reference.">
+              <EmptyState title="No orders yet" message="Orders placed while signed in appear here, and earn GoldPlus points once delivered. Ordered as a guest? Look it up with your order reference.">
                 <div class="flex flex-col sm:flex-row gap-3 justify-center">
                   <a href="/shop" class="inline-flex items-center justify-center rounded-full bg-brand-charcoal px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-black">Start shopping</a>
                   <a href="/track-order" class="inline-flex items-center justify-center rounded-full border border-brand-borderGrey px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-brand-charcoal hover:bg-brand-softGrey">Find a guest order</a>
@@ -140,7 +145,9 @@ const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB');
                 <p class="text-[11px] text-brand-mutedGrey mt-3 leading-relaxed">Checkout opens pre-filled with this address.</p>
               </div>
             ) : (
-              <EmptyState title="No addresses saved" message="Save a delivery address and checkout fills itself in." />
+              <EmptyState title="No addresses saved" message="Save a delivery address and checkout fills itself in.">
+                <a href="/account/addresses" class="inline-flex items-center justify-center rounded-full border border-brand-borderGrey px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-brand-charcoal hover:bg-brand-softGrey">Add an address</a>
+              </EmptyState>
             )}
             <p class="text-xs text-brand-mutedGrey mt-4 pt-4 border-t border-brand-borderGrey">
               Member since {formatDate(overview.profile.createdAt)}{overview.profile.phone ? ` · ${overview.profile.phone}` : ''}

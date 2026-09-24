@@ -78,6 +78,27 @@ describe('Pricing P4 authoritative checkout and payment integrity', () => {
     expect(calls).toEqual({ reserve: 0, release: 0, save: 0 });
   });
 
+  it('a preview priced without delivery does not read as a changed promotion once the fee is added', async () => {
+    // The "Apply" button's /commerce/pricing-preview has no delivery fee
+    // (shipping 0). Checkout re-prices with the destination's fee, so a
+    // grand-total comparison threw PROMOTION_CHANGED on every priced delivery.
+    const current = quote();
+    const preview = quote({ id: '33333333-3333-4333-8333-333333333333', shippingUgx: 0, finalTotalUgx: 180_000 });
+    const { useCase, saved } = harness(current);
+    (useCase as any).authoritativePricing.quotes.findQuote = vi.fn().mockResolvedValue(preview);
+    const result = await useCase.execute({ customerDetails: customer, buyerType: 'retail', items: [{ productId: 'product-1', quantity: 2 }], previewQuoteId: preview.id, clientOrderKey: 'pricing-checkout-shipping' });
+    expect(result.order.totalUgx).toBe(185_000);
+    expect(saved).toHaveLength(1);
+  });
+
+  it('still refuses when the GOODS total moved between preview and checkout', async () => {
+    const current = quote();
+    const preview = quote({ id: '44444444-4444-4444-8444-444444444444', shippingUgx: 0, finalTotalUgx: 170_000 });
+    const { useCase } = harness(current);
+    (useCase as any).authoritativePricing.quotes.findQuote = vi.fn().mockResolvedValue(preview);
+    await expect(useCase.execute({ customerDetails: customer, buyerType: 'retail', items: [{ productId: 'product-1', quantity: 2 }], previewQuoteId: preview.id })).rejects.toThrow('PROMOTION_CHANGED');
+  });
+
   it('releases capacity when atomic order persistence fails before an order exists', async () => {
     const { useCase, orders, calls } = harness();
     orders.savePricedOrder = vi.fn().mockRejectedValue(new Error('ORDER_PERSISTENCE_FAILED'));

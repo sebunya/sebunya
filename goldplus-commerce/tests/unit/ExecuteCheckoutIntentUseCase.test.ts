@@ -487,13 +487,41 @@ describe('an existing record is answered without doing commerce work', () => {
     expect(outcome.kind).toBe('INTENT_SPENT');
   });
 
-  it('still protects a PAID earlier order from duplication on a different basket', async () => {
+  // UPDATED 2026-09-24: a PAID earlier order used to supersede a different
+  // basket too. Nothing clears the intent after a PesaPal payment, so for 12 h
+  // every later purchase in that browser was answered "you have already paid for
+  // this order", pointed at the OLD order, and the new basket was emptied with no
+  // order placed. A paid order is finished business: a DIFFERENT basket after it
+  // is a new purchase (the SAME basket still replays through RETURN_EXISTING, and
+  // the basket is cleared before the payment handoff, so a stale re-submit has
+  // nothing to buy). The spent intent lets the caller mint a fresh one.
+  it('lets a new basket through after the earlier order was PAID', async () => {
     const { useCase, trace } = build({
       ...notClaimed(record({ fingerprint: 'DIFFERENT', state: 'COMPLETED', orderId: 'order-1' })),
       existingOrder: order({ paymentStatus: 'paid' }),
     });
     const outcome = await useCase.execute(command);
+    expect(outcome.kind).toBe('INTENT_SPENT');
+    expect(trace.ordersCreated).toBe(0);
+  });
+
+  it('still protects a live UNPAID earlier order from duplication on a different basket', async () => {
+    const { useCase, trace } = build({
+      ...notClaimed(record({ fingerprint: 'DIFFERENT', state: 'COMPLETED', orderId: 'order-1' })),
+      existingOrder: order({ paymentStatus: 'unpaid' }),
+    });
+    const outcome = await useCase.execute(command);
     expect(outcome.kind).toBe('SUPERSEDED_BY_ORDER');
+    expect(trace.ordersCreated).toBe(0);
+  });
+
+  it('a paid order still replays as itself for the SAME basket', async () => {
+    const { useCase, trace } = build({
+      ...notClaimed(record({ state: 'COMPLETED', orderId: 'order-1' })),
+      existingOrder: order({ paymentStatus: 'paid' }),
+    });
+    const outcome = await useCase.execute(command);
+    expect(outcome.kind).toBe('ORDER_CONFIRMED');
     expect(trace.ordersCreated).toBe(0);
   });
 

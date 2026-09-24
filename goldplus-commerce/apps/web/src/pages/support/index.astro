@@ -2,16 +2,20 @@
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { whatsappSupportNumber } from '../../lib/api';
 import { getStorefrontCopy } from '../../lib/storefrontCopy';
+import { getBusinessInfo } from '../../lib/businessInfo';
+import { RETURNS_POLICY } from '../../lib/returnsPolicy';
 
 const whatsappSupportUrl = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComponent(
   'Hello GoldPlus, I need customer support.'
 )}`;
 // Support landing heading + intro — operator-editable (admin/storefront-copy).
-const copy = await getStorefrontCopy();
+// Contact details come from business_info, the one owner of them (the footer
+// reads the same document), so this page can never show a stale number.
+const [copy, biz] = await Promise.all([getStorefrontCopy(), getBusinessInfo()]);
 ---
 
 <BaseLayout title="Customer support and order help | GoldPlus">
-  <main>
+  <div>
     <section class="border-b border-slate-100 bg-gradient-to-b from-slate-50 to-white py-12 sm:py-16">
       <div class="container mx-auto px-4 text-center lg:px-8">
         <p class="mb-3 text-xs font-black uppercase tracking-[0.18em] text-brand-primaryInk">GoldPlus support</p>
@@ -25,7 +29,7 @@ const copy = await getStorefrontCopy();
     <section aria-labelledby="support-options" class="container mx-auto px-4 py-10 sm:py-14 lg:px-8">
       <h2 id="support-options" class="sr-only">Support options</h2>
       <div class="grid grid-cols-1 gap-5 md:grid-cols-3">
-        <article class="flex flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-xs sm:p-8">
+        <article class="flex flex-col rounded-2xl border border-slate-200 bg-white p-6 sm:p-8">
           <p class="text-xs font-black uppercase tracking-wider text-brand-primaryInk">Existing orders</p>
           <h3 class="mt-3 text-xl font-black text-gray-900">Need help with an order?</h3>
           <p class="mt-3 flex-1 text-sm leading-relaxed text-slate-600">
@@ -40,7 +44,7 @@ const copy = await getStorefrontCopy();
           </a>
         </article>
 
-        <article class="flex flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-xs sm:p-8">
+        <article class="flex flex-col rounded-2xl border border-slate-200 bg-white p-6 sm:p-8">
           <p class="text-xs font-black uppercase tracking-wider text-emerald-700">Direct support</p>
           <h3 class="mt-3 text-xl font-black text-gray-900">Ask on WhatsApp</h3>
           <p class="mt-3 flex-1 text-sm leading-relaxed text-slate-600">
@@ -57,7 +61,7 @@ const copy = await getStorefrontCopy();
           </a>
         </article>
 
-        <article class="flex flex-col rounded-2xl border border-slate-200 bg-white p-6 shadow-xs sm:p-8">
+        <article class="flex flex-col rounded-2xl border border-slate-200 bg-white p-6 sm:p-8">
           <p class="text-xs font-black uppercase tracking-wider text-slate-500">Product concerns</p>
           <h3 class="mt-3 text-xl font-black text-gray-900">Report a product issue</h3>
           <p class="mt-3 flex-1 text-sm leading-relaxed text-slate-600">
@@ -76,7 +80,7 @@ const copy = await getStorefrontCopy();
         <div class="mx-auto max-w-4xl">
           <h2 id="policy-help" class="text-2xl font-black text-gray-900">Returns, warranty and terms</h2>
           <p class="mt-3 max-w-3xl text-sm leading-relaxed text-slate-600">
-            Warranty and returns depend on the product, order details and the applicable GoldPlus policy. Ask support to confirm what applies before purchase or before returning an item.
+            Changed your mind? Return it unused and complete within {RETURNS_POLICY.windowDays} days of delivery or collection. Faulty? We replace it or refund you, and GoldPlus pays to get it back to us. Warranty cover for each product is on its listing, your receipt or the maker's documents.
           </p>
           <nav aria-label="Customer policy help" class="mt-6 flex flex-wrap gap-3">
             <a href="/returns" class="inline-flex min-h-11 items-center rounded-full border border-slate-300 bg-white px-5 py-3 text-xs font-bold text-slate-800 outline-none hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primaryInk">Returns</a>
@@ -87,7 +91,7 @@ const copy = await getStorefrontCopy();
           <div class="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
             <article id="terms-guidance" class="scroll-mt-24 rounded-xl border border-slate-200 bg-white p-5">
               <h3 class="font-black text-gray-900">Terms guidance</h3>
-              <p class="mt-2 text-sm leading-relaxed text-slate-600">Ask support to confirm the terms that apply to your product and order before you buy, return or request warranty help.</p>
+              <p class="mt-2 text-sm leading-relaxed text-slate-600">Our <a href="/terms" class="font-bold text-slate-800 underline underline-offset-4">terms of sale</a> cover ordering, payment and delivery. If you are unsure what applies to your order, ask us before you buy or return.</p>
             </article>
             <article id="privacy-guidance" class="scroll-mt-24 rounded-xl border border-slate-200 bg-white p-5">
               <h3 class="font-black text-gray-900">Privacy guidance</h3>
@@ -98,13 +102,30 @@ const copy = await getStorefrontCopy();
       </div>
     </section>
 
-    <section aria-labelledby="support-expectations" class="container mx-auto px-4 py-10 sm:py-14 lg:px-8">
-      <div class="mx-auto max-w-4xl rounded-2xl border border-amber-200 bg-amber-50/60 p-6 sm:p-8">
+    <section aria-labelledby="support-contact" class="container mx-auto px-4 py-10 sm:py-14 lg:px-8">
+      <div class="mx-auto max-w-4xl rounded-2xl border border-slate-200 bg-white p-6 sm:p-8">
+        <h2 id="support-contact" class="text-lg font-black text-gray-900">Call or visit us</h2>
+        <dl class="mt-4 grid grid-cols-1 gap-4 text-sm sm:grid-cols-3">
+          <div>
+            <dt class="text-xs font-black uppercase tracking-wider text-slate-500">Phone</dt>
+            <dd class="mt-1"><a href={biz.phoneDial} class="font-bold text-gray-900 underline underline-offset-4">{biz.phoneDisplay}</a></dd>
+          </div>
+          <div>
+            <dt class="text-xs font-black uppercase tracking-wider text-slate-500">Shop hours</dt>
+            <dd class="mt-1 text-slate-700">{biz.openDays}, {biz.shopHours}</dd>
+          </div>
+          <div>
+            <dt class="text-xs font-black uppercase tracking-wider text-slate-500">Shop</dt>
+            <dd class="mt-1 text-slate-700">{biz.addressLine1.replace(/\.$/, '')}. <a href={biz.mapUrl} target="_blank" rel="noopener noreferrer" class="font-bold text-gray-900 underline underline-offset-4">Open the map</a></dd>
+          </div>
+        </dl>
+      </div>
+      <div class="mx-auto mt-6 max-w-4xl rounded-2xl border border-amber-200 bg-amber-50/60 p-6 sm:p-8">
         <h2 id="support-expectations" class="text-lg font-black text-amber-950">What support can confirm</h2>
         <p class="mt-3 text-sm leading-relaxed text-amber-900">
           Give us your order reference and we will check where it is and whether payment has reached us. We check payment against our records, so please have the phone number or email from your order ready.
         </p>
       </div>
     </section>
-  </main>
+  </div>
 </BaseLayout>

@@ -109,16 +109,22 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
     c.push({ id: 'transit', urgent: true, score: 100, text: 'Your order is <b>out for delivery</b> today', cta: 'Track it', href: R.account });
   }
 
+  // Same-day is for Kampala & Wakiso only, so every same-day line names the
+  // area, in the same words as the GpNav fallback list. This server list wins
+  // over that fallback, so the two must say the same thing.
+  const SD = 'Kampala & Wakiso: ';
+  const hm = Math.floor(ctx.minsToCutoff / 60) + 'h ' + (ctx.minsToCutoff % 60) + 'm';
+
   // Cart beats sign-in status — an anonymous visitor with items is the highest-intent person here.
   if (ctx.cart > 0 && ctx.beforeCutoff) {
     c.push({
       id: 'cart-cutoff', score: 96,
       text: ctx.minsToCutoff <= 60
-        ? 'Only <em>' + ctx.minsToCutoff + ' minutes</em> left. Check out now and we deliver today'
-        : 'Check out in <b>' + Math.floor(ctx.minsToCutoff / 60) + 'h ' + (ctx.minsToCutoff % 60) + 'm</b> and it arrives today',
+        ? SD + 'only <em>' + ctx.minsToCutoff + ' minutes</em> left for same-day delivery'
+        : SD + 'check out in <b>' + hm + '</b> for same-day delivery',
       short: ctx.minsToCutoff <= 60
-        ? '<em>' + ctx.minsToCutoff + ' min</em> left to get it today'
-        : 'Order in <b>' + Math.floor(ctx.minsToCutoff / 60) + 'h ' + (ctx.minsToCutoff % 60) + 'm</b>, arrives today',
+        ? SD + '<em>' + ctx.minsToCutoff + ' min</em> left for same-day'
+        : SD + '<b>' + hm + '</b> left for same-day',
       cta: 'Finish order', href: R.cart,
     });
   }
@@ -128,8 +134,9 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
       // Naming Monday assumed Sunday was the only closed day. The operator sets
       // which days are closed, so the copy states the rule rather than a weekday
       // that may not be the right one.
-      text: 'Your basket is waiting. Order now and we deliver <b>' + (ctx.sunday ? 'on the next working day' : 'tomorrow morning') + '</b>',
-      short: 'Basket saved. We deliver <b>' + (ctx.sunday ? 'next working day' : 'tomorrow') + '</b>',
+      // It GOES OUT then; when it arrives depends on where it is going.
+      text: 'Your basket is waiting. Order now and it goes out <b>' + (ctx.sunday ? 'on the next working day' : 'tomorrow morning') + '</b>',
+      short: 'Basket saved. It goes out <b>' + (ctx.sunday ? 'next working day' : 'tomorrow') + '</b>',
       cta: 'Finish order', href: R.cart,
     });
   }
@@ -164,10 +171,10 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
   // numbers with no pricing rule behind them. The only discount that exists
   // is the live storewide sale, and it is named below when it runs.
   if (!ctx.signedIn && ctx.visits <= 1) {
-    c.push({ id: 'welcome', score: 60, text: 'Your phone number is your account. Join free and earn <em>points</em> on every paid order', short: 'Join free and earn <em>points</em> on every order', cta: 'Join free', href: R.register });
+    c.push({ id: 'welcome', score: 60, text: 'Join free and earn <em>points</em> on every delivered order', short: 'Join free and earn <em>points</em> on every order', cta: 'Join free', href: R.register });
   }
   if (!ctx.signedIn && ctx.visits > 1) {
-    c.push({ id: 'signup', score: 55, text: 'Join free. Your phone number is the account, and points start with your next order', short: 'Join free. Points start with your next order', cta: 'Join free', href: R.register });
+    c.push({ id: 'signup', score: 55, text: 'Join free, and points start with your next delivered order', short: 'Join free. Points start with your next order', cta: 'Join free', href: R.register });
   }
 
   // The live sale, with its real percentage. Never a typed figure: the old
@@ -185,13 +192,13 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
     c.push({
       id: 'cutoff', score: ctx.minsToCutoff <= 60 ? 90 : 50, urgent: ctx.minsToCutoff <= 60,
       text: ctx.minsToCutoff <= 60
-        ? 'Only <em>' + ctx.minsToCutoff + ' minutes</em> left to order for delivery today'
+        ? SD + 'only <em>' + ctx.minsToCutoff + ' minutes</em> left to order for delivery today'
         : 'Order before <b>' + cutoffLabel + '</b> and we deliver today in Kampala and Wakiso',
-      short: ctx.minsToCutoff <= 60 ? '<em>' + ctx.minsToCutoff + ' min</em> left for delivery today' : 'Order by <b>' + cutoffLabel + '</b> for delivery today',
+      short: ctx.minsToCutoff <= 60 ? SD + '<em>' + ctx.minsToCutoff + ' min</em> left for same-day' : SD + 'order by <b>' + cutoffLabel + '</b> for same-day',
       href: R.delivery,
     });
   } else {
-    c.push({ id: 'aftercutoff', score: 44, text: "Today's run has left. Order now and we deliver <b>tomorrow morning</b>", short: 'Next delivery run is <b>tomorrow</b>', href: R.delivery });
+    c.push({ id: 'aftercutoff', score: 44, text: "Today's run has left. Order now and it goes out <b>tomorrow morning</b>", short: 'Next delivery run is <b>tomorrow</b>', href: R.delivery });
   }
 
   c.push({ id: 'verify', score: 30, text: 'Every unit is tested before it is sold', cta: 'How we verify', href: R.verify });

@@ -221,6 +221,30 @@ export function validateStockAdjustment(
   return { allowed: true };
 }
 
+/**
+ * What a whole-product editor save may do to on-hand stock.
+ *
+ * The editor posts the ABSOLUTE quantity it rendered, even when the operator
+ * only changed a price or a description. Written unconditionally, that
+ * reverted any stock movement made after the page loaded (a dispatch, a
+ * governed adjustment, a colleague's save): phantom stock the shop then
+ * oversold (found 2026-09-24). The editor now also posts the quantity it
+ * loaded (`expected`):
+ *  - unchanged (submitted === expected) → the save does not touch stock;
+ *  - changed → the write applies only while stock still equals `expected`,
+ *    otherwise it is refused as stale (compare-and-set, in the repository);
+ *  - no `expected` (an older client) → today's unconditional write.
+ */
+export type EditorStockWritePlan =
+  | { kind: 'SKIP' }
+  | { kind: 'WRITE'; expectedStock: number | null };
+
+export function planEditorStockWrite(submitted: number, expected: number | null | undefined): EditorStockWritePlan {
+  if (expected === null || expected === undefined) return { kind: 'WRITE', expectedStock: null };
+  if (submitted === expected) return { kind: 'SKIP' };
+  return { kind: 'WRITE', expectedStock: expected };
+}
+
 export interface ReservationLineRequest {
   productId: string;
   quantity: number;

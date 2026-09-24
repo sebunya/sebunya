@@ -9,14 +9,14 @@ const { preferences } = Astro.props;
 
 <form method="POST" class="max-w-2xl">
   <div class="mb-10">
-    <h2 class="text-lg font-black text-brand-charcoal mb-4 tracking-tight">Privacy & Consent</h2>
+    <h2 class="text-lg font-black text-brand-charcoal mb-4 tracking-tight">Privacy and consent</h2>
     <p class="text-sm text-brand-mutedGrey mb-6">Choose how we use your data. Some cookies are needed for the site to work, like your cart and staying signed in.</p>
     
     <ConsentToggle 
       id="consent_essential" 
       name="consent.essential" 
-      label="Essential Operations" 
-      description="Required for checkout, security, and basic functionality. Cannot be disabled." 
+      label="Essential" 
+      description="Needed for checkout, security and signing in. These cannot be switched off." 
       checked={true} 
       required={true} 
     />
@@ -30,15 +30,15 @@ const { preferences } = Astro.props;
     <ConsentToggle 
       id="consent_advertising" 
       name="consent.advertising" 
-      label="Advertising & Paid Social" 
+      label="Advertising and paid social" 
       description="Allow us to measure the effectiveness of our marketing campaigns on social platforms." 
       checked={preferences.consent?.advertising ?? true} 
     />
     <ConsentToggle 
       id="consent_personalization" 
       name="consent.personalization" 
-      label="Personalization" 
-      description="Get product recommendations tailored to your shopping behavior." 
+      label="Personalisation" 
+      description="Product suggestions based on what you browse and buy." 
       checked={preferences.consent?.personalization ?? true} 
     />
   </div>
@@ -50,50 +50,29 @@ const { preferences } = Astro.props;
     <ConsentToggle 
       id="channel_email" 
       name="channels.email" 
-      label="Email Updates" 
-      description="Receive receipts, shipping updates, and occasional offers via email." 
+      label="Email updates" 
+      description="Order receipts and delivery updates by email." 
       checked={preferences.channels?.email ?? true} 
     />
     <ConsentToggle 
       id="channel_sms" 
       name="channels.sms" 
-      label="SMS Messages" 
-      description="Get instant alerts for deliveries and critical order updates." 
+      label="SMS messages" 
+      description="Delivery alerts and important order updates by SMS." 
       checked={preferences.channels?.sms ?? true} 
     />
     <ConsentToggle 
       id="channel_whatsapp" 
       name="channels.whatsapp" 
       label="WhatsApp" 
-      description="Chat with support and receive rich media updates via WhatsApp." 
+      description="Chat with support and get order updates on WhatsApp." 
       checked={preferences.channels?.whatsapp ?? true} 
     />
   </div>
 
-  <div class="mb-10">
-    <h2 class="text-lg font-black text-brand-charcoal mb-4 tracking-tight">Product Interests</h2>
-    <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
-      {['Laptops', 'Phones', 'Accessories', 'Gaming', 'Audio', 'Home Office'].map(topic => {
-        const id = `interest_${topic.toLowerCase().replace(' ', '_')}`;
-        return (
-          <label class="flex items-center gap-2 p-3 border border-brand-borderGrey rounded-xl hover:bg-gray-50 cursor-pointer">
-            <input 
-              type="checkbox" 
-              name={`interests.${topic.toLowerCase().replace(' ', '_')}`} 
-              value="true"
-              checked={preferences.interests?.[topic.toLowerCase().replace(' ', '_')] ?? true}
-              class="text-brand-primaryInk focus:ring-brand-primaryInk" 
-            />
-            <span class="text-sm font-bold text-brand-charcoal">{topic}</span>
-          </label>
-        );
-      })}
-    </div>
-  </div>
-
-  <div class="border-t border-brand-borderGrey pt-6 flex justify-end">
+  <div class="border-t border-brand-borderGrey pt-6">
     <button type="submit" class="bg-brand-charcoal text-white font-bold px-6 py-3 rounded-xl hover:bg-black transition-colors">
-      Save Preferences
+      Save preferences
     </button>
   </div>
 </form>

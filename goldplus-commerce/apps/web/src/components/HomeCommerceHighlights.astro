@@ -7,7 +7,9 @@ import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from "../lib/s
 /**
  * HomeCommerceHighlights.astro
  * A compact, responsive two-card product-led merchandising row for the homepage.
- * Uses genuine product candidates with native price formatting and zero fake urgency tags.
+ * Both cards show photographed products (homepage-merchandising.ts), labelled
+ * for what they are. They are not curated, verified or daily picks, so they
+ * never say so, and nothing on them pulses as if it were live.
  */
 interface Props {
   promoProduct: ProductPublicDto | null;
@@ -77,17 +79,12 @@ function getProductType(p: ProductPublicDto) {
             </div>
 
             <div class="flex-grow min-w-0">
-              <span class="inline-block text-brand-primary font-black uppercase tracking-widest text-[10px] mb-2">
-                Verified GoldPlus Pick
-              </span>
-              <h3 class="text-xl lg:text-2xl font-black tracking-tight mb-2 leading-tight text-white line-clamp-2 group-hover:text-brand-primary transition-colors">
+              <span class="inline-block text-brand-primary font-black uppercase tracking-widest text-[10px] mb-2">From the GoldPlus range</span>
+              <h3 class="text-lg lg:text-xl font-bold tracking-tight mb-2 leading-tight text-white line-clamp-2 group-hover:text-brand-primary transition-colors">
                 <a href={`/products/${promoProduct.slug}`} class="outline-none focus:underline">
                   {promoProduct.name}
                 </a>
               </h3>
-              <p class="text-slate-300 text-xs sm:text-sm leading-relaxed mb-3 font-medium">
-                Authentic GoldPlus electronics, verified before you buy.
-              </p>
               <p class={`font-black text-lg ${promoProduct.retailPriceUgx ? 'text-brand-primary' : 'text-brand-mutedGrey font-bold text-sm'}`}>
                 {getFormattedPrice(promoProduct)}
               </p>
@@ -105,7 +102,7 @@ function getProductType(p: ProductPublicDto) {
         </div>
       )}
 
-      {/* Card 2: Today's GoldPlus Picks Product Card */}
+      {/* Card 2: a second photographed product */}
       {todaysPickProduct && (
         <div class="bg-white text-brand-charcoal rounded-2xl p-6 sm:p-8 flex flex-col justify-between border-2 border-brand-primary/10 min-h-[280px] shadow-sm relative overflow-hidden group hover:border-brand-primary/60 transition-all">
           {/* Subtle decorative background motif */}
@@ -133,18 +130,12 @@ function getProductType(p: ProductPublicDto) {
             </div>
 
             <div class="flex-grow min-w-0">
-              <div class="flex items-center gap-2 mb-2">
-                <span class="w-1.5 h-1.5 rounded-full bg-brand-primary animate-pulse"></span>
-                <span class="text-brand-mutedGrey font-bold tracking-wider text-[10px] uppercase">Today's GoldPlus Pick</span>
-              </div>
-              <h3 class="text-xl lg:text-2xl font-black tracking-tight mb-2 leading-tight text-brand-charcoal line-clamp-2 group-hover:text-brand-primaryInk transition-colors">
+              <span class="inline-block text-brand-mutedGrey font-bold tracking-wider text-[10px] uppercase mb-2">Also in the range</span>
+              <h3 class="text-lg lg:text-xl font-bold tracking-tight mb-2 leading-tight text-brand-charcoal line-clamp-2 group-hover:text-brand-primaryInk transition-colors">
                 <a href={`/products/${todaysPickProduct.slug}`} class="outline-none focus:underline">
                   {todaysPickProduct.name}
                 </a>
               </h3>
-              <p class="text-slate-600 text-xs sm:text-sm leading-relaxed mb-3 font-medium">
-                Selected product worth checking out.
-              </p>
               <p class={`font-black text-lg ${todaysPickProduct.retailPriceUgx ? 'text-brand-charcoal' : 'text-brand-mutedGrey font-bold text-sm'}`}>
                 {getFormattedPrice(todaysPickProduct)}
               </p>
@@ -153,7 +144,7 @@ function getProductType(p: ProductPublicDto) {
 
           <div class="mt-6 pt-4 border-t border-brand-borderGrey flex items-center relative z-10">
             <a href={`/products/${todaysPickProduct.slug}`} class="inline-flex items-center justify-center bg-brand-charcoal text-white px-6 py-2.5 rounded-lg font-bold text-sm hover:bg-black transition-colors group-hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-charcoal focus:ring-offset-2">
-              Explore pick
+              View product
               <svg class="w-4 h-4 ml-2 transform group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
             </a>
           </div>

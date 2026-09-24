@@ -526,14 +526,23 @@ export class ExecuteCheckoutIntentUseCase {
         // startPayment for it returned NOT_PAYABLE — a total dead end with no
         // new order creatable until the intent's 12h expiry. Degrading to a
         // spent intent lets the caller mint a fresh one and place the order.
-        // A paid order is never treated as dead; a merely unpaid-but-live order
-        // (pending payment) is still protected from duplication.
+        // A merely unpaid-but-live order (pending payment) is still protected
+        // from duplication.
         const uncollectable =
           existing.paymentStatus !== 'paid' &&
           (existing.paymentStatus === 'failed' ||
             existing.orderStatus === 'cancelled' ||
             existing.orderStatus === 'failed');
         if (uncollectable) return { kind: 'INTENT_SPENT', reason: 'INTENT_SPENT' };
+        // A PAID order is finished business, so it spends the intent too. This
+        // branch is reached only when the request's fingerprint DIFFERS from the
+        // one that produced the order (the same basket replays through
+        // RETURN_EXISTING), so a different basket after a completed payment is
+        // a new purchase, not a duplicate. Nothing cleared the intent after a
+        // PesaPal payment, so for 12 h every later checkout in that browser was
+        // answered "you have already paid for this order", pointed at the OLD
+        // order, and the new basket was emptied with no order placed.
+        if (existing.paymentStatus === 'paid') return { kind: 'INTENT_SPENT', reason: 'INTENT_SPENT' };
         return {
           kind: 'SUPERSEDED_BY_ORDER',
           reason: 'INTENT_ALREADY_ORDERED',

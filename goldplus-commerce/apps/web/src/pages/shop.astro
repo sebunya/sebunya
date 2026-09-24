@@ -28,6 +28,7 @@ import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../lib/s
 import { fetchApprovedCatalogue } from '../lib/catalogue';
 import { isListableProduct } from '../lib/product-discovery';
 import { isLikelyHuman } from '../lib/humanTraffic';
+import { getBusinessInfo } from '../lib/businessInfo';
 
 // Operator-editable discovery taxonomy (admin/categories); drives filters + labels.
 const taxonomy = await getTaxonomy();
@@ -184,12 +185,40 @@ const pageDescription = search
     ? `Browse ${titleScope.replace(' | ', ' in ')} at GoldPlus. Every unit tested before it is sold, same day delivery in Kampala and Wakiso.`
     : 'Search and browse GoldPlus products by category and subcategory.';
 
+// A search that found nothing: the category chips must not carry the failed
+// query (every tap would be another zero), and the first way forward is a
+// person, on the channel the shop uses everywhere else — not a bulk quote form.
+const zeroResults = !catalogueNotice && products.length === 0;
+const chipSearch = zeroResults ? '' : search;
+const biz = await getBusinessInfo();
+const askOnWhatsApp = search
+  ? `${biz.whatsappUrl}?text=${encodeURIComponent(`Hello GoldPlus, do you have "${search}"?`)}`
+  : biz.whatsappUrl;
+
+// The page says where the shopper is: the category (or subcategory) name, in
+// the shop's own words, rather than one heading for every shelf.
+const heading = search ? '' : subcategoryLabel || categoryLabel || 'Find a GoldPlus product';
+const intro = search
+  ? filteredProducts.length === 0
+    ? `Nothing matched “${search}”.`
+    : filteredProducts.length === 1
+      ? '1 product matches your search.'
+      : `${filteredProducts.length} products match your search. Browse the categories below to narrow it further.`
+  : selectedCategory?.description || (categoryLabel ? `Everything we sell in ${categoryLabel}.` : 'Search everything we sell, or browse by category.');
+
+// Numbered pages (first, last, and the neighbours of this one), so 141
+// products are not only "Page 1 of 6 · Next".
+const pageNumbers = Array.from(new Set([1, page - 1, page, page + 1, totalPages]))
+  .filter((n) => n >= 1 && n <= totalPages)
+  .sort((a, b) => a - b);
+
 const activeFilters = [
   search ? { label: `Search: “${search}”`, href: shopUrl({ search: '' }) } : null,
   category ? { label: categoryLabel, href: shopUrl({ category: '', subcategory: '' }) } : null,
   subcategory ? { label: subcategoryLabel, href: shopUrl({ subcategory: '' }) } : null,
   sort !== 'default' ? { label: 'Custom sort', href: shopUrl({ sort: 'default' }) } : null,
 ].filter((item): item is { label: string; href: string } => Boolean(item));
+const onlyCategoryFilter = Boolean(category) && !search && !subcategory && sort === 'default';
 
 // The same campaign the cards render, so the ItemList offer says what the card says.
 const shopDiscount = await getStorefrontDiscount();
@@ -227,27 +256,26 @@ const shopBreadcrumb = breadcrumbJsonLd([
     <script type="application/ld+json" is:inline set:html={serializeJsonLd(shopItemList)} />
     <script type="application/ld+json" is:inline set:html={serializeJsonLd(shopBreadcrumb)} />
   </Fragment>
-  <header class="border-b border-slate-800 bg-slate-950 py-10 text-white sm:py-12">
+  <header class="border-b border-slate-800 bg-slate-950 py-6 text-white sm:py-10">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
       {/* A customer arriving on a search result should see their own words, not
           a generic shop heading — especially when the link came from outside the
           site and they have no other confirmation of what was searched. */}
       <h1 class="text-3xl font-black tracking-tight sm:text-4xl">
-        {search ? <>Search results for “{search}”</> : 'Find a GoldPlus product'}
+        {search ? <>Search results for “{search}”</> : heading}
       </h1>
-      <p class="mt-3 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">
-        {search
-          ? `${filteredProducts.length} ${filteredProducts.length === 1 ? 'product matches' : 'products match'} your search. Browse the categories below to narrow it further.`
-          : 'Search the current catalogue or browse the approved product categories.'}
-      </p>
+      <p class="mt-2 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">{intro}</p>
     </div>
   </header>
 
   <main class="mx-auto w-full min-w-0 max-w-7xl overflow-hidden px-4 py-7 sm:px-6 sm:py-10 lg:px-8">
     {catalogueNotice && <Notice kind="info" title="Catalogue notice" message={catalogueNotice} />}
 
-    <form action="/shop" method="get" role="search" class="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-xs sm:p-5">
-      <label for="shop-search" class="mb-2 block text-sm font-bold text-slate-900">Search products</label>
+    {/* The header search is on screen from 981px, so a second search box is
+        only shown below that (the scoped style at the foot of this page; lg:
+        starts at 1024px and showed both between 981 and 1023px). */}
+    <form action="/shop" method="get" role="search" class="shop-search rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+      <label for="shop-search" class="sr-only">Search products</label>
       <div class="flex flex-col gap-3 sm:flex-row">
         <input
           id="shop-search"
@@ -263,35 +291,37 @@ const shopBreadcrumb = breadcrumbJsonLd([
         <datalist id="shop-suggest"></datalist>
         {category && <input type="hidden" name="category" value={category} />}
         {subcategory && <input type="hidden" name="subcategory" value={subcategory} />}
-        <button type="submit" class="rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white hover:bg-brand-primary hover:text-slate-950 focus-visible:ring-4 focus-visible:ring-brand-primaryInk">Search</button>
+        <button type="submit" class="rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white outline-none hover:bg-brand-primary hover:text-slate-950 focus-visible:ring-4 focus-visible:ring-brand-primaryInk">Search</button>
       </div>
     </form>
 
-    <section aria-labelledby="category-filters-heading" class="mt-7">
+    <section aria-labelledby="category-filters-heading" class="mt-5">
       <div class="flex items-center justify-between gap-4">
         <h2 id="category-filters-heading" class="text-base font-black text-slate-900">Browse categories</h2>
         {hasFilters && <a href="/shop" class="text-sm font-bold text-slate-700 underline hover:text-slate-950">Clear all filters</a>}
       </div>
       <div class="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-2 sm:mx-0 sm:flex-wrap sm:px-0" aria-label="Product categories">
-        <a href={shopUrl({ category: '', subcategory: '' })} aria-current={!category ? 'page' : undefined} class={`shrink-0 rounded-full border px-4 py-2 text-sm font-bold ${!category ? 'border-brand-primary bg-brand-primary text-slate-950' : 'border-slate-300 bg-white text-slate-700'}`}>All products</a>
+        <a href={shopUrl({ search: chipSearch, category: '', subcategory: '' })} aria-current={!category ? 'page' : undefined} class={`shrink-0 inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-bold ${!category ? 'border-brand-primary bg-brand-primary text-slate-950' : 'border-slate-300 bg-white text-slate-700'}`}>All products</a>
         {taxonomy.map((item) => (
-          <a href={shopUrl({ category: item.slug, subcategory: '' })} aria-current={category === item.slug ? 'page' : undefined} aria-label={`Filter by ${item.name}`} class={`shrink-0 rounded-full border px-4 py-2 text-sm font-bold ${category === item.slug ? 'border-brand-primary bg-brand-primary text-slate-950' : 'border-slate-300 bg-white text-slate-700'}`}>{item.name}</a>
+          <a href={shopUrl({ search: chipSearch, category: item.slug, subcategory: '' })} aria-current={category === item.slug ? 'page' : undefined} aria-label={`Filter by ${item.name}`} class={`shrink-0 inline-flex min-h-11 items-center rounded-full border px-4 text-sm font-bold ${category === item.slug ? 'border-brand-primary bg-brand-primary text-slate-950' : 'border-slate-300 bg-white text-slate-700'}`}>{item.name}</a>
         ))}
       </div>
 
+      {/* One row of subcategory chips, not a panel: it scrolls sideways on a
+          phone instead of pushing the products further down. */}
       {selectedCategory && (
-        <div class="mt-4 rounded-xl bg-slate-50 p-4" aria-labelledby="subcategory-filters-heading">
-          <h3 id="subcategory-filters-heading" class="text-sm font-bold text-slate-900">{selectedCategory.name} subcategories</h3>
-          <div class="mt-3 flex flex-wrap gap-2">
+        <div class="mt-2" aria-labelledby="subcategory-filters-heading">
+          <h3 id="subcategory-filters-heading" class="sr-only">{selectedCategory.name} subcategories</h3>
+          <div class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-2 sm:mx-0 sm:flex-wrap sm:px-0">
             {selectedCategory.subcategories.map((item) => (
-              <a href={shopUrl({ subcategory: item.slug })} aria-current={subcategory === item.slug ? 'page' : undefined} aria-label={`Filter by ${item.name}`} class={`rounded-lg border px-3 py-2 text-sm font-semibold ${subcategory === item.slug ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-300 bg-white text-slate-700'}`}>{item.name}</a>
+              <a href={shopUrl({ search: chipSearch, subcategory: item.slug })} aria-current={subcategory === item.slug ? 'page' : undefined} aria-label={`Filter by ${item.name}`} class={`shrink-0 inline-flex min-h-11 items-center rounded-lg border px-3 text-sm font-semibold ${subcategory === item.slug ? 'border-slate-950 bg-slate-950 text-white' : 'border-slate-300 bg-white text-slate-700'}`}>{item.name}</a>
             ))}
           </div>
         </div>
       )}
     </section>
 
-    {activeFilters.length > 0 && (
+    {activeFilters.length > 0 && !onlyCategoryFilter && (
       <section aria-label="Active filters" class="mt-5 flex flex-wrap items-center gap-2">
         <span class="text-xs font-bold uppercase tracking-wide text-slate-600">Active filters</span>
         {activeFilters.map((item) => <a href={item.href} aria-label={`Remove filter ${item.label}`} class="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700">{item.label} <span aria-hidden="true">×</span></a>)}
@@ -305,12 +335,12 @@ const shopBreadcrumb = breadcrumbJsonLd([
       </p>
     )}
 
-    <div class="mt-7 flex flex-col gap-3 border-b border-slate-200 pb-5 sm:flex-row sm:items-center sm:justify-between">
+    <div class="mt-5 flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
       <p aria-live="polite" class="text-sm font-semibold text-slate-700">{catalogueNotice ? 'Products could not be loaded' : `${products.length} matching product${products.length === 1 ? '' : 's'}${totalPages > 1 ? ` · showing ${pageStart}–${pageEnd}` : ''}`}</p>
-      {products.length > 0 && (
+      {products.length > 1 && (
         <label class="flex items-center gap-2 text-sm font-bold text-slate-700">
           Sort products
-          <select data-navigate-on-change class="rounded-lg border border-slate-300 bg-white px-3 py-2" aria-label="Sort products">
+          <select data-navigate-on-change class="min-h-11 rounded-lg border border-slate-300 bg-white px-3" aria-label="Sort products">
             <option value={shopUrl({ sort: 'default' })} selected={sort === 'default'}>Default order</option>
             <option value={shopUrl({ sort: 'price-low-high' })} selected={sort === 'price-low-high'}>Price: low to high</option>
             <option value={shopUrl({ sort: 'price-high-low' })} selected={sort === 'price-high-low'}>Price: high to low</option>
@@ -320,8 +350,9 @@ const shopBreadcrumb = breadcrumbJsonLd([
       )}
     </div>
 
+    {/* Two compact cards per row on a phone (owner decision 2026-09-24). */}
     {products.length > 0 ? (
-      <section aria-label="Product results" class="mt-7 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <section aria-label="Product results" class="mt-6 grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4">
         {pageProducts.map((product, index) => <ProductCard product={product} subcategory={subcategoryNameForSlug(getProductSubcategory(product, taxonomy), taxonomy)} searchQuery={search} searchRank={(page - 1) * PAGE_SIZE + index + 1} eager={index < 4} />)}
       </section>
     ) : (
@@ -331,6 +362,7 @@ const shopBreadcrumb = breadcrumbJsonLd([
           {search ? <>No products matched “{search}”. </> : null}
           {subcategoryLabel || categoryLabel ? <>The selected {subcategoryLabel || categoryLabel} filter has no matching products. </> : null}
           Try another search or browse the categories.
+          {search && <> For a battery, check the spelling or try the code printed on your old one.</>}
         </p>
         {/*
           One obvious next step. Four equal pills used to compete, with the
@@ -340,23 +372,35 @@ const shopBreadcrumb = breadcrumbJsonLd([
         */}
         <div class="mt-5 flex flex-col justify-center gap-3 sm:flex-row">
           {search ? (
-            <a href={`/quote-request?requested=${encodeURIComponent(search)}`} class="rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white hover:bg-brand-primary hover:text-slate-950">Ask us for “{search}”</a>
+            <a href={askOnWhatsApp} class="rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white hover:bg-brand-primary hover:text-slate-950">Ask us on WhatsApp</a>
           ) : (
             <a href="/shop" class="rounded-full bg-slate-950 px-6 py-3 text-sm font-bold text-white hover:bg-brand-primary hover:text-slate-950">Clear filters</a>
           )}
+          {search && <a href={`/battery-finder?q=${encodeURIComponent(search)}`} class="rounded-full border border-slate-300 px-6 py-3 text-sm font-bold text-slate-800">Find a battery by phone</a>}
           {search && <a href="/shop" class="rounded-full border border-slate-300 px-6 py-3 text-sm font-bold text-slate-800">Clear search</a>}
           {browseFallback.length > 0 && (
             <a href="#browse-available-products" class="rounded-full border border-slate-300 px-6 py-3 text-sm font-bold text-slate-800">See what is in stock</a>
           )}
         </div>
+        {search && <p class="mt-4 text-xs text-slate-600">Buying in bulk? <a href={`/quote-request?requested=${encodeURIComponent(search)}`} class="font-bold underline">Request a quote</a></p>}
       </section>
     )}
 
     {totalPages > 1 && (
-      <nav class="mt-10 flex items-center justify-between text-sm font-bold" aria-label="Product pages">
-        {page > 1 ? <a class="rounded-full border border-slate-300 px-5 py-2.5 hover:border-slate-900" href={shopUrl({ page: page - 1 })}>← Previous</a> : <span></span>}
-        <span class="text-slate-600">Page {page} of {totalPages}</span>
-        {page < totalPages ? <a class="rounded-full border border-slate-300 px-5 py-2.5 hover:border-slate-900" href={shopUrl({ page: page + 1 })}>Next →</a> : <span></span>}
+      <nav class="mt-10 flex flex-wrap items-center justify-center gap-2 text-sm font-bold" aria-label="Product pages">
+        {page > 1 && <a class="rounded-full border border-slate-300 px-5 py-2.5 hover:border-slate-900" href={shopUrl({ page: page - 1 })}>← Previous</a>}
+        <span class="sr-only">Page {page} of {totalPages}</span>
+        <ol class="flex items-center gap-1">
+          {pageNumbers.map((n, i) => (
+            <>
+              {i > 0 && n - pageNumbers[i - 1] > 1 && <li aria-hidden="true" class="text-slate-500">…</li>}
+              <li>{n === page
+                ? <span aria-current="page" class="inline-flex h-11 w-11 items-center justify-center rounded-full bg-slate-950 text-white">{n}</span>
+                : <a href={shopUrl({ page: n })} aria-label={`Page ${n}`} class="inline-flex h-11 w-11 items-center justify-center rounded-full border border-slate-300 hover:border-slate-900">{n}</a>}</li>
+            </>
+          ))}
+        </ol>
+        {page < totalPages && <a class="rounded-full border border-slate-300 px-5 py-2.5 hover:border-slate-900" href={shopUrl({ page: page + 1 })}>Next →</a>}
       </nav>
     )}
 
@@ -364,12 +408,16 @@ const shopBreadcrumb = breadcrumbJsonLd([
       <section id="browse-available-products" class="mt-10" aria-labelledby="browse-available-heading">
         <h2 id="browse-available-heading" class="text-xl font-black text-slate-900">Browse available products</h2>
         <p class="mt-1 text-sm text-slate-600">These are currently listed products, not personalised recommendations.</p>
-        <div class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div class="mt-5 grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3">
           {browseFallback.map((product) => <ProductCard product={product} subcategory={subcategoryNameForSlug(getProductSubcategory(product, taxonomy), taxonomy)} />)}
         </div>
       </section>
     )}
   </main>
+
+  <style>
+    @media (min-width: 981px) { .shop-search { display: none; } }
+  </style>
 
   <script nonce={Astro.locals.cspNonce} is:inline define:vars={{ apiBase: publicApiBase }}>
     // Progressive autocomplete. The form works without JavaScript; this only

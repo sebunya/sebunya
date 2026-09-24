@@ -1,5 +1,6 @@
 import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '../client';
+import { LOYALTY_PAYMENT_QUALIFIES_SQL } from '../LoyaltyEarnEligibilitySql';
 import { customerBadges, gamificationBadges, gamificationMissions } from '../schema/gamification';
 import { orders } from '../schema/commerce';
 import { reviews } from '../schema/reviews';
@@ -35,7 +36,8 @@ export class DrizzleGamificationRepository implements IGamificationLiveRepositor
   }
 
   /**
-   * Verified progress only. Delivered+paid retail orders for PURCHASE_COUNT
+   * Verified progress only. Delivered retail orders (paid online, or cash on
+   * delivery — LoyaltyEarnEligibility) for PURCHASE_COUNT
    * and STREAK_ORDERS; successful attributed scans for VERIFICATION_COUNT;
    * awarded referrals for REFERRAL_COUNT. REVIEW_COUNT stays unattributable
    * (separate identity space) and returns null, never a fake zero.
@@ -44,7 +46,7 @@ export class DrizzleGamificationRepository implements IGamificationLiveRepositor
     if (mission.kind === 'PURCHASE_COUNT') {
       const rows = (await db.execute(sql`
         select count(*)::int as n from orders
-        where user_id = ${userId} and payment_status = 'paid'
+        where user_id = ${userId} and ${LOYALTY_PAYMENT_QUALIFIES_SQL}
           and status in ('delivered','completed') and buyer_type = 'retail'`)) as unknown as Array<{ n: number }>;
       return Number(rows[0]?.n ?? 0);
     }
@@ -59,7 +61,7 @@ export class DrizzleGamificationRepository implements IGamificationLiveRepositor
       if (windowDays === null) return null; // streak window unset = streaks off
       const rows = (await db.execute(sql`
         select created_at from orders
-        where user_id = ${userId} and payment_status = 'paid'
+        where user_id = ${userId} and ${LOYALTY_PAYMENT_QUALIFIES_SQL}
           and status in ('delivered','completed') and buyer_type = 'retail'
         order by created_at asc`)) as unknown as Array<{ created_at: string | Date }>;
       const dates = rows.map((r) => new Date(r.created_at).getTime());

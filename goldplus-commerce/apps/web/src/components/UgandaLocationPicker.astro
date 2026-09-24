@@ -53,6 +53,10 @@ const {
 } = Astro.props;
 
 const helperId = helperText ? `${id}_helper` : undefined;
+// The error is part of the input's description, so a screen reader hears WHY
+// the field is invalid, not only that it is.
+const errorId = errorMessage ? `${id}_error` : undefined;
+const describedBy = [helperId, errorId].filter(Boolean).join(' ') || undefined;
 
 let initialPrimary = '';
 let initialSecondary = '';
@@ -79,19 +83,23 @@ if (defaultValue && defaultValue.startsWith('{')) {
 
   {helperText && <p id={helperId} class="text-xs text-brand-mutedGrey">{helperText}</p>}
 
+  {/* Right under the label, beside the input it is about (it used to render
+      after the pin box, ~300px away). Hidden by the script once a place is chosen. */}
+  {errorMessage && <p id={errorId} class="text-xs text-red-600 font-bold js-err-box">{errorMessage}</p>}
+
   {/* Confirmed selection card */}
   <div class={`js-selected-card bg-green-50 border border-green-200 rounded-xl p-4 flex items-start justify-between gap-4 ${initialPrimary ? '' : 'hidden'}`}>
-    <div class="flex gap-3">
+    <div class="flex items-start gap-3 min-w-0">
       <div class="mt-1 bg-green-100 text-green-700 rounded-full p-1 flex-shrink-0">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
       </div>
-      <div>
-        <p class="font-bold text-brand-charcoal text-base leading-tight js-card-primary">{initialPrimary}</p>
+      <div class="min-w-0">
+        <p class="font-bold text-brand-charcoal text-base leading-tight break-words js-card-primary">{initialPrimary}</p>
         <p class="text-sm text-gray-700 js-card-secondary">{initialSecondary}</p>
         <p class="text-xs text-green-700 mt-0.5 hidden js-card-pin">📍 Location pin attached</p>
       </div>
     </div>
-    <button type="button" class="text-xs font-black text-brand-charcoal uppercase tracking-wider hover:bg-white px-3 py-1.5 rounded-lg border border-green-200 transition-colors js-change-btn">
+    <button type="button" class="inline-flex min-h-11 flex-shrink-0 items-center text-xs font-black text-brand-charcoal uppercase tracking-wider hover:bg-white px-4 rounded-lg border border-green-200 transition-colors outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk js-change-btn">
       Change
     </button>
   </div>
@@ -102,7 +110,7 @@ if (defaultValue && defaultValue.startsWith('{')) {
       <input
         type="text"
         id={`${id}_input`}
-        class="w-full px-4 py-4 bg-white border border-brand-borderGrey rounded-xl shadow-sm focus:ring-2 focus:ring-brand-primaryInk focus:border-transparent outline-none transition-all font-medium"
+        class={`w-full px-4 py-4 bg-white border ${errorMessage ? 'border-red-600 ring-2 ring-red-100' : 'border-brand-borderGrey'} rounded-xl shadow-sm focus:ring-2 focus:ring-brand-primaryInk focus:border-transparent outline-none transition-all font-medium`}
         placeholder={placeholder}
         autocomplete="off"
         inputmode="search"
@@ -110,10 +118,10 @@ if (defaultValue && defaultValue.startsWith('{')) {
         aria-autocomplete="list"
         aria-haspopup="listbox"
         role="combobox"
-        aria-describedby={helperId}
+        aria-describedby={describedBy}
         aria-expanded="false"
         aria-controls={`${id}_results`}
-        aria-invalid={!!errorMessage}
+        aria-invalid={errorMessage ? 'true' : undefined}
       />
       <ul
         id={`${id}_results`}
@@ -125,11 +133,13 @@ if (defaultValue && defaultValue.startsWith('{')) {
       <p class="sr-only js-result-announce" role="status" aria-live="polite"></p>
     </div>
 
-    <div class="flex items-center gap-3">
+    {/* Stacked on phones: beside a nowrap label, the select kept the width of
+        its longest district and ran out of the card at 360px. */}
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
       <span class="text-[11px] font-bold uppercase tracking-widest text-brand-mutedGrey whitespace-nowrap">Browse by district</span>
       <select
         aria-label="Pick your district from the official list"
-        class="js-district-select flex-1 bg-white border border-brand-borderGrey px-3 py-2.5 rounded-lg text-sm font-medium outline-none focus:ring-2 focus:ring-brand-primaryInk"
+        class="js-district-select w-full min-w-0 flex-1 bg-white border border-brand-borderGrey px-3 py-2.5 rounded-lg text-base sm:text-sm font-medium outline-none focus:ring-2 focus:ring-brand-primaryInk"
       >
         <option value="">Pick your district…</option>
         {UGANDA_DISTRICTS.map((d) => <option value={d}>{d}</option>)}
@@ -149,7 +159,7 @@ if (defaultValue && defaultValue.startsWith('{')) {
         id={`${id}_manual`}
         rows="2"
         maxlength="400"
-        class="js-manual-text w-full px-3 py-2.5 bg-white border border-brand-borderGrey rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-primaryInk"
+        class="js-manual-text w-full px-3 py-2.5 bg-white border border-brand-borderGrey rounded-lg text-base sm:text-sm outline-none focus:ring-2 focus:ring-brand-primaryInk"
         placeholder="e.g. Kyanamukaaka trading centre, past the mosque, ask for Ssalongo's shop"></textarea>
       <p class="text-xs text-amber-800">Our team will confirm the delivery details with a phone call before dispatch.</p>
       <button type="button" class="js-manual-commit bg-brand-charcoal text-white text-sm font-bold px-4 py-2 rounded-lg">
@@ -166,9 +176,11 @@ if (defaultValue && defaultValue.startsWith('{')) {
           📍 Use my current location
         </button>
       </div>
+      <label for={`${id}_pin`} class="sr-only">Location link from WhatsApp or Google Maps (optional)</label>
       <input
         type="text"
-        class="js-pin-link w-full px-3 py-2.5 bg-white border border-brand-borderGrey rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-primaryInk"
+        id={`${id}_pin`}
+        class="js-pin-link w-full px-3 py-2.5 bg-white border border-brand-borderGrey rounded-lg text-base sm:text-sm outline-none focus:ring-2 focus:ring-brand-primaryInk"
         placeholder="…or paste a WhatsApp / Google Maps location link"
         autocomplete="off"
       />
@@ -176,7 +188,9 @@ if (defaultValue && defaultValue.startsWith('{')) {
     </div>
   )}
 
-  {errorMessage && <p class="text-xs text-red-600 mt-1 font-bold js-err-box">{errorMessage}</p>}
+  {/* Announces the chosen place once the search box is replaced by the card
+      (focus moves to "Change", which alone would say nothing about what was chosen). */}
+  <p class="sr-only js-commit-announce" role="status" aria-live="polite"></p>
 
   <input type="hidden" name={name} id={id} class="js-final-payload" value={defaultValue} required={required} />
 </div>

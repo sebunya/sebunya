@@ -17,26 +17,35 @@ interface Props {
   errorMessage?: string;
   /** Optional numeric bound, forwarded to the input for type="number". */
   min?: number;
+  /** Move focus here on load: a form that came back with errors focuses the first one. */
+  autofocus?: boolean;
 }
 
 const {
   id, name, label, type = 'text', required, placeholder,
-  helperText, defaultValue, rows = 4, pattern, inputmode, autocomplete, errorMessage, min,
+  helperText, defaultValue, rows = 4, pattern, inputmode, autocomplete, errorMessage, min, autofocus,
 } = Astro.props;
 
-const baseClass = 'w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-primaryInk focus:border-brand-primaryInk outline-none transition-colors';
-const errorClass = errorMessage ? 'border-red-300 ring-2 ring-red-100' : '';
+// The field's edge must be visible against the white card (WCAG 1.4.11, 3:1):
+// gray-200 on white was 1.24:1 and the gray-50 fill 1.05:1. gray-500 is ~4.8:1,
+// and the placeholder is gray-500 too (gray-400 was 2.5:1).
+const baseClass = 'w-full px-4 py-3 bg-white border rounded-lg placeholder:text-gray-500 focus:ring-2 focus:ring-brand-primaryInk focus:border-brand-primaryInk outline-none transition-colors';
+const errorClass = errorMessage ? 'border-red-600 ring-2 ring-red-100' : 'border-gray-500';
 // The error is associated with the field, not just the helper text: a screen
 // reader used to hear "invalid entry" with no reason, because the error <p>
 // had no id and was never referenced.
+// A plain-text label is a block with the asterisk inline, so when a long
+// label wraps the asterisk stays after the last word instead of floating to
+// the far right of a flex row. Custom label markup (the slot, used by a few
+// admin forms with their own inline row) keeps the flex row it was built for.
+const labelClass = Astro.slots.has('label')
+  ? 'text-sm font-bold text-brand-dark mb-2 flex items-center gap-1'
+  : 'block text-sm font-bold text-brand-dark mb-2';
 const describedBy = [helperText ? `${id}-help` : null, errorMessage ? `${id}-error` : null].filter(Boolean).join(' ') || undefined;
 ---
 <div>
-  <label for={id} class="block text-sm font-bold text-brand-dark mb-2 flex items-center gap-1">
-    <slot name="label">
-      {label}
-    </slot>
-    {required && <span class="text-red-600 ml-1" aria-hidden="true">*</span>}
+  <label for={id} class={labelClass}>
+    <slot name="label">{label}</slot>{required && <span class="text-red-600 ml-1" aria-hidden="true">*</span>}
   </label>
   {type === 'textarea' ? (
     <textarea
@@ -48,6 +57,7 @@ const describedBy = [helperText ? `${id}-help` : null, errorMessage ? `${id}-err
       class={`${baseClass} ${errorClass}`}
       aria-describedby={describedBy}
       aria-invalid={errorMessage ? 'true' : undefined}
+      autofocus={autofocus || undefined}
     >{defaultValue}</textarea>
   ) : (
     <input
@@ -64,6 +74,7 @@ const describedBy = [helperText ? `${id}-help` : null, errorMessage ? `${id}-err
       class={`${baseClass} ${errorClass}`}
       aria-describedby={describedBy}
       aria-invalid={errorMessage ? 'true' : undefined}
+      autofocus={autofocus || undefined}
     />
   )}
   {helperText && <p id={`${id}-help`} class="text-xs text-gray-500 mt-1">{helperText}</p>}

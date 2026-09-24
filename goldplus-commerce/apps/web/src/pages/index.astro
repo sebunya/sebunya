@@ -15,6 +15,7 @@ const heroLead = heroLeadPreload(await fetchHeroPersonalised(Astro, heroContextF
 import HomeCommerceHighlights from '../components/HomeCommerceHighlights.astro';
 import SiteJsonLd from '../components/SiteJsonLd.astro';
 import { buildHomepageProductAllocation } from '../lib/homepage-merchandising';
+import { hasRealCover } from '../lib/productCover';
 import { getCleanCatalog } from '../lib/catalog/catalog';
 import { getTaxonomy } from '../lib/taxonomy';
 import { getHomepageContent } from '../lib/homepageContent';
@@ -91,6 +92,10 @@ const usedProductIds = [
   promoProduct?.id,
   todaysPickProduct?.id,
 ].filter((id): id is string => typeof id === 'string');
+
+// Products photographed for real (not the generated sample frame), so the
+// browse rail below can lead with them too. Ids only; nothing reaches the HTML.
+const realCoverIds = allProducts.filter(hasRealCover).map((p) => p.id);
 ---
 
 <BaseLayout title="Premium electronics in Uganda">
@@ -124,9 +129,9 @@ const usedProductIds = [
   <style is:global>html.gp-seen #homepage-trust-strip{display:none}</style>
   <section id="homepage-trust-strip" class="bg-white py-10 border-b border-slate-100">
     <div class="container mx-auto px-4 lg:px-8">
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-center md:text-left">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         {homepageContent.trustItems.map((item) => (
-          <div class="flex flex-col md:flex-row items-center md:items-start gap-4 p-2">
+          <div class="flex items-start gap-4 p-2">
             <div class="p-3 rounded-full bg-slate-50 border border-slate-100 text-brand-charcoal shrink-0">
               <svg class="w-5 h-5 text-gray-800" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d={trustIconPath(item.iconKey)}></path></svg>
             </div>
@@ -150,11 +155,11 @@ const usedProductIds = [
   <section class="py-14" style="background:#0A0A0A">
     <div class="container mx-auto px-4 lg:px-8">
       <h2 class="text-2xl font-black tracking-tight mb-8" style="color:#F3EFE8">Shop by category</h2>
-      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+      <div class="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
         {homepageCategories.map((cat) => (
           <a
             href={`/shop?category=${cat.slug}`}
-            class="gp-cat-tile flex flex-col rounded-2xl outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk min-h-[168px] max-lg:[&:last-child:nth-child(odd)]:col-span-2 sm:max-lg:[&:last-child:nth-child(odd)]:col-span-1"
+            class="gp-cat-tile flex flex-col rounded-2xl outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk min-h-[168px] max-lg:[&:last-child:nth-child(odd)]:col-span-2"
             style="background:#101010;border:1px solid rgba(243,239,232,.1);padding:26px 18px 20px;transition:border-color .25s,background .25s"
           >
             {cat.imageUrl ? (
@@ -191,7 +196,7 @@ const usedProductIds = [
            <a href="/shop" class="inline-block mt-4 text-gray-900 font-bold underline">Go to the shop</a>
         </div>
       ) : featuredProducts.length > 0 ? (
-        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
           {featuredProducts.map((p) => (
             <ProductCard product={p} />
           ))}
@@ -214,7 +219,7 @@ const usedProductIds = [
   </div>
 
   {/* 7. Trending Now (with Cross-Section Deduplication) */}
-  <PopularNowRail excludeProductIds={usedProductIds} useContainerWrapper={true} />
+  <PopularNowRail excludeProductIds={usedProductIds} realCoverIds={realCoverIds} homeBand={true} />
 
   {/* 8. Business pathways */}
   <section class="bg-zinc-50 border-t border-zinc-200/85 py-16">
@@ -228,8 +233,8 @@ const usedProductIds = [
             </div>
             <div>
               <a href={card.href} class={i === 0
-                ? 'inline-block px-6 py-2.5 bg-brand-primary text-gray-950 font-bold rounded-full hover:shadow-lg hover:shadow-brand-primary/20 hover:scale-[1.015] active:scale-95 transition-all text-sm'
-                : 'inline-block px-6 py-2.5 bg-zinc-900 text-white font-bold rounded-full hover:bg-zinc-800 hover:shadow-md active:scale-95 transition-all text-sm'}>{card.ctaLabel}</a>
+                ? 'inline-flex items-center min-h-11 px-6 bg-brand-primary text-gray-950 font-bold rounded-full hover:shadow-lg hover:shadow-brand-primary/20 hover:scale-[1.015] active:scale-95 transition-all text-sm'
+                : 'inline-flex items-center min-h-11 px-6 bg-zinc-900 text-white font-bold rounded-full hover:bg-zinc-800 hover:shadow-md active:scale-95 transition-all text-sm'}>{card.ctaLabel}</a>
             </div>
           </div>
         ))}

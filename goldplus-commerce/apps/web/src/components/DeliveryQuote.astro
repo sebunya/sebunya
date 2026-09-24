@@ -133,17 +133,20 @@ const toneClass: Record<string, string> = {
     {/* Cut-off countdown, in East Africa Time. Absent when no cutoff is set. */}
     {q.cutoff && <p class="text-[11px] text-gray-600 mt-2">{q.cutoff.sentence}</p>}
 
-    {/* Collect free — a focusable control (opens directions to the real shop),
-        not the middle of three grey paragraphs. */}
+    {/* Directions to the shop, named as what it is. It read "Collect free from
+        our shop →" and looked like the way to CHOOSE collection, but it opens
+        Google Maps in a new tab; collection itself is arranged with the team.
+        The new tab is announced, and the arrow says "leaves this page". */}
     {q.pickup && (
       <a
         href="https://www.google.com/maps/search/?api=1&query=GoldPlus%20Wilson%20Road%20Kampala"
         target="_blank"
         rel="noopener noreferrer"
-        class="mt-2 inline-flex items-center gap-1.5 rounded-full border-2 border-brand-primary px-3.5 py-1.5 text-[11px] font-bold text-gray-900 hover:bg-brand-primary/10 outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk transition-colors"
+        class="mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-full border-2 border-brand-primary px-3.5 py-1.5 text-[11px] font-bold text-gray-900 hover:bg-brand-primary/10 outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk transition-colors"
       >
-        Collect free from our shop
-        <span aria-hidden="true">&rarr;</span>
+        Directions to our shop
+        <span aria-hidden="true">&#8599;</span>
+        <span class="sr-only">(opens Google Maps in a new tab)</span>
       </a>
     )}
 

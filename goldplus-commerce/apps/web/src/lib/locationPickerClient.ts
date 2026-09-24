@@ -107,6 +107,7 @@
     const pinGps = el.querySelector('.js-pin-gps') as HTMLButtonElement | null;
     const pinLink = el.querySelector('.js-pin-link') as HTMLInputElement | null;
     const pinStatus = el.querySelector('.js-pin-status') as HTMLElement | null;
+    const commitAnnounce = el.querySelector('.js-commit-announce') as HTMLElement | null;
     if (!input || !dropdown || !payloadInput || !selectedCard || !searchContainer) return;
 
     let current: PlaceOption[] = [];
@@ -160,12 +161,25 @@
     }
 
     function finishCommit() {
+      // Hiding the search box takes the focused combobox with it, and focus
+      // used to fall to the page body. If the customer was working in this
+      // picker, it moves to "Change" and the choice is announced.
+      const hadFocus = el.contains(document.activeElement);
       dropdown!.classList.add('hidden');
       input!.setAttribute('aria-expanded', 'false');
+      input!.removeAttribute('aria-activedescendant');
       searchContainer!.classList.add('hidden');
       selectedCard!.classList.remove('hidden');
       errBox?.classList.add('hidden');
+      // The error is answered: the field is no longer invalid.
+      input!.removeAttribute('aria-invalid');
+      input!.classList.remove('border-red-600', 'ring-2', 'ring-red-100');
       cardPin?.classList.toggle('hidden', !pin);
+      if (commitAnnounce) {
+        const chosen = [cardPrimary?.textContent, cardSecondary?.textContent].filter(Boolean).join(', ');
+        commitAnnounce.textContent = chosen ? `Delivery location set: ${chosen}` : '';
+      }
+      if (hadFocus) changeBtn?.focus();
       payloadInput!.dispatchEvent(new Event('change', { bubbles: true }));
     }
 

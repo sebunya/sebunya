@@ -1,5 +1,5 @@
 import { IInventoryRepository } from '../../ports/IInventoryRepository';
-import { validateStockAdjustment } from '../../../domain/inventory/Inventory';
+import { planEditorStockWrite, validateStockAdjustment } from '../../../domain/inventory/Inventory';
 
 /**
  * Sets a product's on-hand stock atomically.
@@ -16,11 +16,31 @@ export class SetProductStockUseCase {
   async execute(
     productId: string,
     newStock: number,
-  ): Promise<{ applied: boolean; reserved: number; stock: number } | null> {
+    opts: { expectedStock?: number | null } = {},
+  ): Promise<{ applied: boolean; reserved: number; stock: number; stale?: boolean } | null> {
     const shape = validateStockAdjustment(0, newStock);
     if (!shape.allowed) {
       throw new Error(`INVALID_STOCK_QUANTITY: ${shape.message}`);
     }
-    return this.repo.setStockQuantity(productId, newStock);
+    const expected = opts.expectedStock ?? null;
+    return expected === null
+      ? this.repo.setStockQuantity(productId, newStock)
+      : this.repo.setStockQuantity(productId, newStock, expected);
+  }
+
+  /**
+   * The whole-product editor's save. `loadedStock` is the quantity the editor
+   * rendered; see planEditorStockWrite. SKIPPED means stock was left alone
+   * because the operator did not change it — a movement made since the page
+   * loaded stands.
+   */
+  async executeFromEditor(
+    productId: string,
+    submittedStock: number,
+    loadedStock: number | null,
+  ): Promise<{ kind: 'SKIPPED' } | { kind: 'WRITE'; result: { applied: boolean; reserved: number; stock: number; stale?: boolean } | null }> {
+    const plan = planEditorStockWrite(submittedStock, loadedStock);
+    if (plan.kind === 'SKIP') return { kind: 'SKIPPED' };
+    return { kind: 'WRITE', result: await this.execute(productId, submittedStock, { expectedStock: plan.expectedStock }) };
   }
 }

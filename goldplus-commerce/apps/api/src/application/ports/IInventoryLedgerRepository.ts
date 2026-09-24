@@ -35,6 +35,13 @@ export interface MovementWrite {
   movementType: MovementType;
   /** Signed delta the row-locked adjuster applies. */
   delta: number;
+  /**
+   * COUNT/CORRECTION set a BALANCE, not a difference. When present, the adjuster
+   * works the delta out as `targetQuantity - stock` from the row it has LOCKED,
+   * so a sale or a second apply between the caller's read and the write can
+   * never be double-counted. `delta` is then only the caller's estimate.
+   */
+  targetQuantity?: number | null;
   reason: string;
   supplierName: string | null;
   referenceNumber: string | null;
@@ -126,6 +133,15 @@ export interface IInventoryLedgerRepository {
    * HTML form) both passed it and both posted every line.
    */
   claimReceiptForApply(id: string, actorId: string): Promise<boolean>;
+  /** The same claim for a stock count: exactly one caller may apply a DRAFT count. */
+  claimCountForApply(id: string, actorId: string): Promise<boolean>;
+  /**
+   * Give a claim back after an apply that failed part-way, so the draft can be
+   * applied again or cancelled. Only the caller that holds the claim can release
+   * it, and only while the row is still DRAFT.
+   */
+  releaseReceiptClaim(id: string, actorId: string): Promise<void>;
+  releaseCountClaim(id: string, actorId: string): Promise<void>;
   markReceipt(id: string, status: 'APPLIED' | 'CANCELLED', actorId: string, lineMovements: Array<{ lineId: string; movementId: string }>): Promise<ReceiptRecord | null>;
 
   createCount(input: { countType: 'CYCLE' | 'FULL'; locationId: string | null; notes: string | null; createdBy: string; lines: Array<{ productId: string; systemQuantity: number; countedQuantity: number; reason: string | null }> }): Promise<CountRecord>;

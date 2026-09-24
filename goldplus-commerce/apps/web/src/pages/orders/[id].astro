@@ -8,8 +8,9 @@ import { getBusinessInfo } from '../../lib/businessInfo';
 import { orderStatusCopy, STATUS_TONE_CLASS } from '../../lib/orderStatusCopy';
 import { resolveCheckoutIntent } from '../../lib/checkoutIntent';
 import { resolveAuthenticatedUserId } from '../../lib/customerAuth';
-import { startPayment, paymentStartMessageFor } from '../../lib/checkoutClient';
+import { startPayment, paymentStartMessageFor, orderAwaitsPayment } from '../../lib/checkoutClient';
 import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../../lib/requestOrigin';
+import { offersOnlinePayment } from '@goldplus/shared';
 import type { OrderDetailDto, ApiResponse } from '@goldplus/shared';
 
 const { id } = Astro.params;
@@ -48,7 +49,17 @@ try {
 
 const biz = await getBusinessInfo();
 const status = order ? orderStatusCopy(order.status) : null;
-const isUnpaid = order?.status === 'PENDING_PAYMENT';
+/*
+ * Unpaid is read from the PAYMENT status. Nothing ever writes the order status
+ * 'pending_payment': every order is created 'received' and a declined online
+ * payment only sets paymentStatus 'failed'. Gating on the order status meant a
+ * failed-payment order showed the dispatch ladder ("Order placed", next
+ * "Confirmed & preparing") as if it were moving, and never offered Pay now.
+ * Cash-on-delivery orders are not "unpaid" in this sense: the rider collects,
+ * so they keep the ladder (the shared rule excludes them).
+ */
+const isUnpaid = order ? offersOnlinePayment(order) : false;
+const paymentFailed = String(order?.paymentStatus ?? '').toLowerCase() === 'failed';
 
 /**
  * Pay now (B6). An unpaid order used to be a dead end: the page said "not
@@ -77,6 +88,38 @@ if (Astro.request.method === 'POST' && order && isUnpaid) {
     }
   }
 }
+
+// "24 Sep 2026, 14:05" in Kampala time. toLocaleString('en-GB') printed
+// seconds, in the SERVER's timezone.
+const placedLabel = order
+  ? new Date(order.createdAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Kampala' })
+  : '';
+
+/**
+ * Dispatch progress for the signed-in owner (the same four stages as
+ * /track-order). "Track this order" used to send them to /track-order, which
+ * asks for the phone or email again — this page already knows the order is
+ * theirs. Fulfilment stages, not a live map. Unpaid, failed and cancelled
+ * orders are not moving, so they get no ladder.
+ */
+const PROGRESS_STAGES = [
+  { title: 'Order placed', desc: 'We have your order.' },
+  { title: 'Confirmed & preparing', desc: 'Your items are being packed at our shop.' },
+  { title: 'Dispatched', desc: 'Handed to our rider and on the way to you.' },
+  { title: 'Delivered', desc: 'Order completed.' },
+];
+const statusKey = String(order?.status ?? '').toLowerCase();
+const progressStage =
+  ['delivered', 'completed'].includes(statusKey) ? 3
+  : ['shipped', 'dispatched', 'delivery_failed'].includes(statusKey) ? 2
+  : ['paid', 'processing', 'pending_owner_review'].includes(statusKey) ? 1
+  : 0;
+// Waiting for money is read from the payment status with the SAME rule as
+// /track-order (orderAwaitsPayment), not from order statuses nothing writes.
+const awaitingPayment = order
+  ? isUnpaid || orderAwaitsPayment({ status: order.status, paymentStatus: order.paymentStatus, paymentMethod: order.paymentMethod })
+  : false;
+const showProgress = Boolean(order) && !awaitingPayment && !['cancelled', 'failed', 'refunded'].includes(statusKey);
 
 const helpHref = order
   ? `${biz.whatsappUrl}?text=${encodeURIComponent(`Hello GoldPlus, I have a question about order ${order.orderNumber}.`)}`
@@ -109,17 +152,44 @@ const helpHref = order
 
             {order && status && (
             <div class="max-w-3xl">
-                <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6 pb-6 border-b border-brand-borderGrey">
+                <div class="flex flex-col sm:flex-row sm:justify-between gap-3 mb-6 pb-6 border-b border-brand-borderGrey">
                 <div>
                     <p class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-1">Order</p>
                     <h1 class="text-2xl md:text-3xl font-black text-brand-charcoal tracking-tight">{order.orderNumber}</h1>
-                    <p class="text-sm text-brand-mutedGrey mt-1">Placed {new Date(order.createdAt).toLocaleString('en-GB')}</p>
+                    <p class="text-sm text-brand-mutedGrey mt-1">Placed {placedLabel}</p>
                 </div>
                 <div class="sm:text-right">
                   <span class={`inline-flex items-center px-3 py-1 rounded border text-[10px] font-bold uppercase tracking-widest ${STATUS_TONE_CLASS[status.tone]}`}>{status.label}</span>
-                  <p class="text-xs text-brand-mutedGrey mt-2 max-w-xs">{status.meaning}</p>
+                  <p class="text-xs text-brand-mutedGrey mt-2 max-w-sm">{status.meaning}</p>
                 </div>
                 </div>
+
+                {showProgress && (
+                <div class="bg-white border border-brand-borderGrey rounded-2xl p-5 mb-6">
+                  <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-4">Progress</h2>
+                  <ol class="space-y-0" aria-label="Dispatch progress">
+                    {PROGRESS_STAGES.map((stage, i) => {
+                      const done = i < progressStage || (i === progressStage && i === PROGRESS_STAGES.length - 1);
+                      const active = i === progressStage && !done;
+                      const last = i === PROGRESS_STAGES.length - 1;
+                      return (
+                        <li class="relative flex gap-4 pb-6 last:pb-0" aria-current={active ? 'step' : undefined}>
+                          {!last && <span aria-hidden="true" class={`absolute left-[11px] top-6 h-full w-0.5 ${i < progressStage ? 'bg-brand-primary' : 'bg-slate-200'}`}></span>}
+                          <span aria-hidden="true" class={`relative z-10 mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-[11px] font-black ${done ? 'border-brand-primary bg-brand-primary text-gray-950' : active ? 'border-brand-primary bg-white text-brand-primaryInk' : 'border-slate-300 bg-white text-slate-300'}`}>
+                            {done ? '✓' : i + 1}
+                          </span>
+                          <div class={active || done ? '' : 'opacity-55'}>
+                            <p class={`text-sm font-black ${active ? 'text-brand-primaryInk' : 'text-gray-900'}`}>{stage.title}{active && <span class="ml-2 rounded-full bg-brand-primary/15 px-2 py-0.5 text-[10px] font-bold text-brand-primaryInk align-middle">Now</span>}</p>
+                            <p class="mt-0.5 text-xs leading-relaxed text-slate-600">{stage.desc}</p>
+                            {active && statusKey === 'delivery_failed' && <p class="mt-1 text-xs font-semibold text-amber-800">A delivery attempt did not succeed. Our team will try again or contact you.</p>}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                  <p class="mt-4 text-xs text-brand-mutedGrey">Dispatch progress, not a live map. We call or message you when the rider is close.</p>
+                </div>
+                )}
 
                 <div class="bg-white border border-brand-borderGrey rounded-2xl overflow-hidden mb-6">
                 <ul class="divide-y divide-brand-borderGrey" aria-label="Order items">
@@ -146,9 +216,15 @@ const helpHref = order
                 {isUnpaid && (
                 <div id="pay">
                 <Notice kind="info" title="This order is not paid yet">
-                  <p class="text-xs mt-1 leading-relaxed">
-                    You have not been charged. Pay for this order and we get it moving as soon as the payment clears. If you started paying online and it has not cleared, please do not pay again. Send us the order number and we will check.
-                  </p>
+                  {paymentFailed ? (
+                    <p class="text-xs mt-1 leading-relaxed">
+                      Your online payment did not go through, so the order is not paid. If money left your phone or card, it will come back. Tell us if it does not. Your order is still saved: pay for it here and we get it moving as soon as the payment clears.
+                    </p>
+                  ) : (
+                    <p class="text-xs mt-1 leading-relaxed">
+                      Pay for this order and we get it moving as soon as the payment clears. If you started paying online and it has not cleared, please do not pay again. Send us the order number and we will check.
+                    </p>
+                  )}
                   {payMessage && <p class="mt-3 text-xs font-bold" role="alert">{payMessage}</p>}
                   <form method="POST" action={Astro.url.pathname} class="mt-4">
                     <button type="submit" class="inline-flex items-center justify-center rounded-full bg-brand-charcoal px-6 py-3 text-sm font-bold text-white hover:bg-black">Pay for this order</button>
@@ -159,8 +235,8 @@ const helpHref = order
                 )}
 
                 <div class="mt-6 flex flex-col sm:flex-row gap-3">
-                  <a href={`/track-order?reference=${encodeURIComponent(order.orderNumber)}`} class="inline-flex items-center justify-center rounded-full bg-brand-charcoal px-6 py-3 text-sm font-bold text-white hover:bg-black">Track this order</a>
-                  <a href={helpHref} class="inline-flex items-center justify-center rounded-full border border-brand-borderGrey px-6 py-3 text-sm font-bold text-brand-charcoal hover:bg-brand-softGrey">Ask about this order</a>
+                  <a href={helpHref} class="inline-flex items-center justify-center rounded-full bg-brand-charcoal px-6 py-3 text-sm font-bold text-white hover:bg-black">Ask about this order</a>
+                  <a href="/account/orders" class="inline-flex items-center justify-center rounded-full border border-brand-borderGrey px-6 py-3 text-sm font-bold text-brand-charcoal hover:bg-brand-softGrey">All my orders</a>
                 </div>
 
                 {(order.customer.email || order.customer.phone) && (

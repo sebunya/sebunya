@@ -1,6 +1,7 @@
 import { createHash, randomInt } from 'node:crypto';
 import { and, eq, gte, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client';
+import { LOYALTY_PAYMENT_QUALIFIES_SQL } from '../db/LoyaltyEarnEligibilitySql';
 import { users } from '../db/schema/identity';
 import { loyaltyAccountMerges, phoneVerificationCodes } from '../db/schema/loyalty';
 import { outboxEvents } from '../db/schema/system';
@@ -77,7 +78,7 @@ export class DrizzleLoyaltyIdentityRepository implements ILoyaltyIdentityReposit
     const rows = (await db.execute(sql`
       select id, total_amount, buyer_type from orders
       where user_id is null
-        and payment_status = 'paid'
+        and ${LOYALTY_PAYMENT_QUALIFIES_SQL}
         and status in ('delivered', 'completed')
         and created_at > now() - (${lookbackDays} || ' days')::interval
         and (customer_phone = ${phoneE164} or customer_phone = ${local})`)) as unknown as Array<{

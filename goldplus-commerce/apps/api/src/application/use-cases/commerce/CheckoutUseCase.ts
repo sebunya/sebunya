@@ -258,9 +258,23 @@ export class CheckoutUseCase {
       });
       if (dto.previewQuoteId) {
         const preview = await this.authoritativePricing.quotes.findQuote(dto.previewQuoteId);
-        if (!preview || preview.expiresAt <= quote.evaluatedAt) throw new Error('PRICE_CHANGED: The preview quote expired or is unavailable. Review the current price.');
+        // A missing preview cannot be compared, so it is refused. An EXPIRED one
+        // is not: its content is still on record, and it is compared below on
+        // what matters (lines, discount, goods total, applied versions). The
+        // quote TTL is five minutes, so refusing on age alone rejected any coupon
+        // applied more than five minutes before "Place order" — a slow phone, a
+        // long form — with a false "a price changed", and the retry went through
+        // without the code. The customer is always charged THIS quote; the
+        // preview only guards against a surprise, and an unchanged one is none.
+        if (!preview) throw new Error('PRICE_CHANGED: The preview quote expired or is unavailable. Review the current price.');
         const baseChanged = preview.baseSubtotalUgx !== quote.baseSubtotalUgx || preview.lines.some((line, index) => line.canonicalUnitPriceUgx !== quote.lines[index]?.canonicalUnitPriceUgx || line.quantity !== quote.lines[index]?.quantity);
-        const promotionChanged = preview.discountTotalUgx !== quote.discountTotalUgx || preview.finalTotalUgx !== quote.finalTotalUgx || preview.appliedPromotionVersions.map((item) => item.versionId).join(',') !== quote.appliedPromotionVersions.map((item) => item.versionId).join(',');
+        // Compare GOODS totals, not grand totals. The preview (the "Apply"
+        // button, /commerce/pricing-preview) is priced with no delivery fee,
+        // while this quote carries the destination's fee — so a grand-total
+        // comparison failed every priced delivery with a false "an offer on
+        // your basket ended". Shipping and tax are not promotion facts.
+        const goodsTotal = (q: { finalTotalUgx: number; shippingUgx: number; taxUgx: number }) => q.finalTotalUgx - q.shippingUgx - q.taxUgx;
+        const promotionChanged = preview.discountTotalUgx !== quote.discountTotalUgx || goodsTotal(preview) !== goodsTotal(quote) || preview.appliedPromotionVersions.map((item) => item.versionId).join(',') !== quote.appliedPromotionVersions.map((item) => item.versionId).join(',');
         if (!dto.acceptPriceChange && (baseChanged || promotionChanged)) throw new Error(`${baseChanged ? 'PRICE_CHANGED' : 'PROMOTION_CHANGED'}: The authoritative checkout total differs from the preview. Review and confirm the revised breakdown.`);
       }
       const checkoutKey = clientOrderKey ?? `quote:${quote.id}`;

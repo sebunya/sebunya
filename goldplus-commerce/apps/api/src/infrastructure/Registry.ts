@@ -573,6 +573,7 @@ import { MutateCartUseCase } from '../application/use-cases/commerce/MutateCartU
 import { ExecuteCheckoutIntentUseCase } from '../application/use-cases/commerce/ExecuteCheckoutIntentUseCase';
 import { StartOrderPaymentUseCase } from '../application/use-cases/commerce/StartOrderPaymentUseCase';
 import { ReconcileOrderPaymentUseCase } from '../application/use-cases/commerce/ReconcileOrderPaymentUseCase';
+import { ReleaseCancelledOrderHoldsUseCase } from '../application/use-cases/commerce/ReleaseCancelledOrderHoldsUseCase';
 import { ProcessCheckoutSideEffectBatchUseCase } from '../application/use-cases/outbox/ProcessCheckoutSideEffectBatchUseCase';
 import { SetProductStockUseCase } from '../application/use-cases/inventory/SetProductStockUseCase';
 import {
@@ -1093,6 +1094,7 @@ export class Registry {
     // class field initialiser may not read a field that has not run yet.
     dispatches: { getByTask: (taskId: string) => this.fulfilmentDispatchRepo.getByTask(taskId) },
     packingSessions: { getByTask: (taskId: string) => this.packingSessionRepo.getByTask(taskId) },
+    deliveries: { listByTask: (taskId: string) => this.fulfilmentDeliveryRepo.listByTask(taskId) },
   }, {
     // The task's order: forward moves are refused once the order is terminal.
     findById: (id: string) => this.orderRepo.findById(id),
@@ -1341,6 +1343,18 @@ export class Registry {
   public readonly reserveRedemptionUseCase = new ReserveRedemptionUseCase(this.loyaltyRepo, this.loyaltyCompletionRepo, this.loyaltyGate);
   public readonly consumeRedemptionUseCase = new ConsumeRedemptionUseCase(this.loyaltyRepo, this.loyaltyCompletionRepo);
   public readonly releaseRedemptionUseCase = new ReleaseRedemptionUseCase(this.loyaltyCompletionRepo);
+  // A lifecycle cancel (admin order page, provider reversal) gives back the
+  // stock AND the points. Only the fulfilment route and the sweeps released
+  // stock before, so an order cancelled from the order page held its units forever.
+  public readonly releaseCancelledOrderHoldsUseCase = new ReleaseCancelledOrderHoldsUseCase({
+    releaseInventory: this.releaseInventoryForOrderUseCase,
+    releaseRedemption: this.releaseRedemptionUseCase,
+    onFailed: (hold, orderId, error) =>
+      logger.error(
+        { orderId, hold, err: error instanceof Error ? error.message : String(error) },
+        'ORDER_CANCEL_HOLD_RELEASE_FAILED',
+      ),
+  });
   public readonly reverseRedemptionUseCase = new ReverseRedemptionUseCase(this.loyaltyRepo, this.loyaltyCompletionRepo);
   public readonly loyaltyIdentityRepo = new DrizzleLoyaltyIdentityRepository();
   public readonly loyaltyTierRepo = new DrizzleLoyaltyTierRepository();
@@ -2644,9 +2658,11 @@ export class Registry {
   /**
    * Loyalty ↔ order lifecycle wiring (loyalty brief PARTs F–G), registered
    * once at construction. Post-commit, isolated, idempotent:
-   *  - delivered/completed → vest points (paid + signed-in orders only) and
+   *  - delivered/completed → vest points (signed-in retail orders paid online or cash on delivery —
+   *    domain/loyalty/LoyaltyEarnEligibility) and
    *    consume any COD redemption reservation attached to the order
-   *  - cancelled → release any open reservation (points never eaten)
+   *  - cancelled → release any open points reservation (points never eaten)
+   *    and any stock the order still holds
    *  - payment reversed (chargeback/refund) → claw back the earn in full and
    *    reverse an applied redemption, points returning with original expiry.
    */
@@ -2687,7 +2703,8 @@ export class Registry {
         }
       }
       if (toStatus === 'cancelled') {
-        await this.releaseRedemptionUseCase.execute({ orderId }).catch(() => undefined);
+        // Stock as well as points: idempotent, isolated, never fails the transition.
+        await this.releaseCancelledOrderHoldsUseCase.execute(orderId);
       }
       if (ctx.paymentStatus === 'reversed') {
         await this.clawbackOrderEarnUseCase

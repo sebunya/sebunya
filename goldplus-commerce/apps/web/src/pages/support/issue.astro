@@ -103,7 +103,7 @@ if (Astro.request.method === 'POST') {
       <FormFeedback status={status} message={message} reference={reference} />
 
       <form method="POST" action="/support/issue" novalidate id="supportForm" class="space-y-6">
-        <div class="bg-white p-8 md:p-10 rounded-2xl border border-slate-200/80 shadow-xs space-y-6">
+        <div class="bg-white p-8 md:p-10 rounded-2xl border border-slate-200/80 space-y-6">
           
           <fieldset class="space-y-5">
             <legend class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Product & Issue Details</legend>
@@ -188,7 +188,7 @@ if (Astro.request.method === 'POST') {
         </div>
 
         <div class="flex items-center gap-4">
-          <button type="submit" id="submitBtn" class="bg-brand-primary text-gray-955 px-8 py-2.5 rounded-full font-bold hover:shadow-lg hover:shadow-brand-primary/20 transition-all text-xs tracking-wider uppercase shadow-xs cursor-pointer active:scale-98">
+          <button type="submit" id="submitBtn" class="min-h-12 bg-brand-primary text-gray-950 px-8 py-3 rounded-full font-bold hover:shadow-lg hover:shadow-brand-primary/20 transition-all text-sm cursor-pointer active:scale-[0.98]">
             Submit issue
           </button>
           <a href="/support" class="text-xs font-bold text-slate-600 hover:text-gray-900 transition-colors hover:underline">Cancel</a>

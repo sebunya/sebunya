@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { redirects, gscPerformance } from '../schema/seo';
 import { products } from '../schema/products';
@@ -12,11 +12,23 @@ export interface SitemapProduct { slug: string; updatedAt: Date; }
 export class DrizzleSeoRepository {
   /** AC6 — a slug change creates a 301 from the old product URL to the new one.
    * Idempotent: repeating updates the target. Any redirect whose from_path now
-   * equals the new path (a rename back) is removed to avoid a self-loop. */
+   * equals the new path (a rename back) is removed to avoid a self-loop.
+   * Chains collapse: every earlier redirect that pointed at the old path now
+   * points straight at the new one, so A→B then B→C sends A to C in one hop
+   * instead of two (crawlers give up on long chains; every hop is a round trip). */
   async recordSlugChange(input: { oldSlug: string; newSlug: string; createdBy: string | null; now: Date }): Promise<{ fromPath: string; toPath: string }> {
     const fromPath = `/p/${input.oldSlug}`;
     const toPath = `/p/${input.newSlug}`;
-    await db.delete(redirects).where(eq(redirects.fromPath, toPath)); // clear any loop for the new path
+    // Clear any loop for the new path, in either stored form (the resolver
+    // answers /products/<slug> from a row under either name).
+    await db.delete(redirects).where(inArray(redirects.fromPath, [toPath, `/products/${input.newSlug}`]));
+    // Runs after the loop clear, so it can never produce a row from toPath to toPath.
+    // A manually entered row may name the public form (/products/<old>), which
+    // the resolver treats as the same page, so it is collapsed too.
+    await db
+      .update(redirects)
+      .set({ toPath })
+      .where(inArray(redirects.toPath, [fromPath, `/products/${input.oldSlug}`]));
     await db
       .insert(redirects)
       .values({ fromPath, toPath, statusCode: 301, reason: 'product_slug_change', createdBy: input.createdBy })

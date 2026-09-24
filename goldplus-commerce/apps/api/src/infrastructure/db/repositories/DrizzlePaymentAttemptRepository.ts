@@ -96,7 +96,7 @@ export class DrizzlePaymentAttemptRepository implements IPesaPalPaymentRepositor
   async updateOrderPaymentStatusSafely(
     orderId: string,
     status: 'paid' | 'failed' | 'reversed' | 'unpaid'
-  ): Promise<void> {
+  ): Promise<boolean> {
     // Payment status ONLY. The lifecycle `status` is never written here — that is
     // the exclusive job of OrderTransitionService, which records an order_event.
     //
@@ -115,7 +115,7 @@ export class DrizzlePaymentAttemptRepository implements IPesaPalPaymentRepositor
         { orderId, from: current?.paymentStatus, to: status, reason: decision.reason },
         '[payments] order payment status write refused: a later fact about the money already stands',
       );
-      return;
+      return false;
     }
     await db
       .update(orders)
@@ -124,6 +124,7 @@ export class DrizzlePaymentAttemptRepository implements IPesaPalPaymentRepositor
         updatedAt: new Date(),
       })
       .where(eq(orders.id, orderId));
+    return true;
   }
 
   async findAttemptsByOrderId(orderId: string): Promise<RecordedPaymentAttempt[]> {

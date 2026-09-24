@@ -48,8 +48,13 @@ shopgoldplus.com, www.shopgoldplus.com {
     # tagging server); region1.google-analytics.com and googletagmanager.com
     # are only reached by Tag Assistant preview. tagassistant frame for preview.
     Content-Security-Policy    "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.clarity.ms https://scripts.clarity.ms https://metrics.shopgoldplus.com https://www.googletagmanager.com https://pay.pesapal.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.clarity.ms https://c.bing.com https://metrics.shopgoldplus.com https://www.googletagmanager.com; connect-src 'self' https://*.clarity.ms https://c.bing.com https://api.shopgoldplus.com https://metrics.shopgoldplus.com https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://cloudflareinsights.com; frame-src 'self' https://pay.pesapal.com https://metrics.shopgoldplus.com https://tagassistant.google.com;"
-    -Server
   }
+  # The Server delete lives on its own line on purpose. Any delete inside a
+  # header block makes the WHOLE block deferred (written at WriteHeader time),
+  # and a deferred site-wide Content-Security-Policy would overwrite the
+  # /uploads sandbox policy below. Kept apart, the block above applies
+  # immediately and the /uploads handle's own set replaces it (2026-09-24).
+  header -Server
 
   encode gzip
 
@@ -58,6 +63,14 @@ shopgoldplus.com, www.shopgoldplus.com {
   # Same-origin, so the existing img-src 'self' CSP already permits it.
   handle /uploads/* {
     root * /srv/media
+    # Uploads are images, never documents. Stored names now carry the extension
+    # the bytes earned (MediaLibraryUseCase.storedImageFilename), and this policy
+    # neutralises anything already on the volume: a file served as a document
+    # here gets no script, no plugin, no form and an opaque origin (sandbox), so
+    # a GIF/HTML polyglot cannot act as the shop (2026-09-24). <img> rendering
+    # of real images is unaffected — a page's image ignores the image's own CSP.
+    header Content-Security-Policy "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox"
+    header X-Content-Type-Options "nosniff"
     # Only a file that EXISTS is immutable. A miss must never carry the year-long
     # header: Cloudflare cached six 404s for a year on 2026-09-01 after the files
     # were requested before they were on the volume, and the photos stayed

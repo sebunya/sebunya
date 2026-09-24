@@ -12,7 +12,8 @@ import { kampalaCutoff } from '@goldplus/shared';
 import { getBusinessInfo } from '../lib/businessInfo';
 import CartAddonRail from '../components/recommendations/CartAddonRail.astro';
 import PopularNowRail from '../components/recommendations/PopularNowRail.astro';
-import { parseLocalCartCookie } from '../lib/cart';
+import { parseLocalCartCookie, cartLineHref, isCartProductId, chunkIds } from '../lib/cart';
+import { sameDayCutoffCopy } from '../lib/checkout';
 import { cartClient, cartMessageFor } from '../lib/cartClient';
 import { resolveCartCredential } from '../lib/cartCredential';
 import { resolveAuthenticatedUserId } from '../lib/customerAuth';
@@ -35,6 +36,40 @@ interface CartResponse {
   items: CartItem[];
   subtotalUgx: number;
 }
+
+/**
+ * The line a customer just removed, kept for one Undo. Held in an httpOnly
+ * cookie on this device, scoped to /cart, so the notice and the Undo never
+ * echo anything from the URL: the query only says WHICH id was removed.
+ */
+const REMOVED_COOKIE = 'gp_cart_removed';
+interface RemovedLine {
+  productId: string;
+  name: string;
+  quantity: number;
+  slug: string;
+  categoryName: string | null;
+  unitPriceUgx: number;
+}
+function readRemovedLine(raw: string | undefined): RemovedLine | null {
+  if (!raw) return null;
+  try {
+    const r = JSON.parse(raw);
+    if (!r || !isCartProductId(r.productId)) return null;
+    return {
+      productId: r.productId,
+      name: String(r.name ?? '').slice(0, 160),
+      quantity: Math.min(99, Math.max(1, Math.trunc(Number(r.quantity) || 1))),
+      slug: String(r.slug ?? ''),
+      categoryName: r.categoryName ? String(r.categoryName) : null,
+      unitPriceUgx: Math.max(0, Number(r.unitPriceUgx) || 0),
+    };
+  } catch {
+    return null;
+  }
+}
+/** After a +/−, land back on the same line rather than at the top of the page. */
+const lineAnchor = (id: string | undefined) => (isCartProductId(id) ? `/cart#line-${id}` : '/cart');
 
 let sessionId = readCartSessionId(Astro.request);
 let isNewSession = false;
@@ -144,6 +179,17 @@ if (Astro.request.method === 'POST' && cartOrigin.allowed) {
         }
 
       } else if (action === 'remove') {
+        // Keep what is being removed, for one Undo. The device's copy of the
+        // line first; the server's basket when this device never held it.
+        let snapshot: RemovedLine | null = null;
+        const local = localItems.find(i => i.productId === productId);
+        if (local && isCartProductId(productId)) {
+          snapshot = readRemovedLine(JSON.stringify({ ...local, productId }));
+        } else if (cartCredential && isCartProductId(productId)) {
+          const before = await cartClient.read(cartCredential.token, Astro.cookies.get('goldplus_session')?.value ?? null);
+          const line = before.ok ? before.cart.items.find((l) => l.productId === productId) : undefined;
+          if (line) snapshot = readRemovedLine(JSON.stringify({ ...line, slug: line.slug ?? '', categoryName: null }));
+        }
         localItems = localItems.filter(i => i.productId !== productId);
 
         if (cartCredential) {
@@ -153,6 +199,30 @@ if (Astro.request.method === 'POST' && cartOrigin.allowed) {
             Astro.cookies.get('goldplus_session')?.value ?? null,
           );
           if (!result.ok) cartNotice = cartMessageFor(result.code);
+        }
+        if (snapshot && !cartNotice) {
+          Astro.cookies.set(REMOVED_COOKIE, JSON.stringify(snapshot), {
+            path: '/cart', maxAge: 60 * 10, sameSite: 'lax', httpOnly: true, secure: import.meta.env.PROD,
+          });
+        }
+
+      } else if (action === 'restore') {
+        // Undo a removal: only the line this device just removed, at the
+        // quantity it had. The quantity comes from our cookie, not the form.
+        const removed = readRemovedLine(Astro.cookies.get(REMOVED_COOKIE)?.value);
+        if (removed && removed.productId === productId) {
+          const existing = localItems.find(i => i.productId === productId);
+          if (existing) existing.quantity += removed.quantity;
+          else localItems.push({ ...removed, categoryName: removed.categoryName });
+          if (cartCredential) {
+            const result = await cartClient.add(
+              cartCredential.token,
+              { productId, quantity: removed.quantity },
+              Astro.cookies.get('goldplus_session')?.value ?? null,
+            );
+            if (!result.ok) cartNotice = cartMessageFor(result.code);
+          }
+          Astro.cookies.delete(REMOVED_COOKIE, { path: '/cart' });
         }
       }
 
@@ -177,7 +247,18 @@ if (Astro.request.method === 'POST' && cartOrigin.allowed) {
       // customer has already decided. Only for a successful add: on a failed
       // server write the cart page is where the problem is explained.
       const buyNow = action === 'add' && formData.get('buyNow')?.toString() === '1' && !cartNotice;
-      return Astro.redirect(buyNow ? '/checkout' : '/cart', 303);
+      // A refused write is NOT redirected: a redirect dropped cartNotice, so
+      // the customer never saw why their change did not stick. This response
+      // renders the basket with the notice instead.
+      if (!cartNotice) {
+        if (buyNow) return Astro.redirect('/checkout', 303);
+        // Add: say what was added (the page looks the id up in the basket; the
+        // name is never read from the URL). Remove: offer one Undo. +/−: come
+        // back to the same line instead of the top of the page.
+        if (action === 'add' && isCartProductId(productId)) return Astro.redirect(`/cart?added=${productId}`, 303);
+        if (action === 'remove' && isCartProductId(productId)) return Astro.redirect(`/cart?removed=${productId}`, 303);
+        return Astro.redirect(lineAnchor(productId), 303);
+      }
     }
   } catch (err) {
     console.error('[CART_POST_ERROR] Failed to handle cart post:', err);
@@ -200,7 +281,9 @@ if (cartCredential) {
       id: result.cart.id,
       items: result.cart.items.map((line) => ({
         productId: line.productId,
-        slug: '',
+        // The API returns each line's slug; an empty one renders the line
+        // without a link (cartLineHref), never as a link to /products/.
+        slug: line.slug ?? '',
         name: line.name,
         categoryName: null,
         quantity: line.quantity,
@@ -244,24 +327,62 @@ if (selectedDevice && cartProductIds.length) {
 const checkedLines = Object.values(deviceFits).filter((f) => f.fitState !== null).length;
 const uncheckedBatteryLines = selectedDevice ? Object.entries(deviceFits).filter(([, f]) => f.fitState === null).length : 0;
 
-// R9 (m9): line images come from the live catalogue in ONE request — the
-// retired seed-catalogue lookup is not replaced with per-line fetches.
-let productImageById = new Map<string, string>();
+// Line details (image, product page, category) come from the live catalogue,
+// asked for BY ID. The old single `?limit=100` read could never see past the
+// first 100 products (live has more), so those lines always showed the grey
+// box; and the server basket used to carry no slug, so every line linked to
+// `/products/` (a 404). It carries one now; this read still fills older lines. The public list clamps `ids` to three, so the basket's
+// ids go in batches of three, in parallel: one round-trip in time.
+interface LineProduct { slug: string | null; categoryName: string | null; imageUrl: string | null }
+const productInfoById = new Map<string, LineProduct>();
 if (items.length > 0) {
-  try {
-    const imgRes = await fetch(`${apiBase}/products?limit=100`, { signal: AbortSignal.timeout(3000) });
-    const imgJson = await imgRes.json();
-    if (imgJson?.success && Array.isArray(imgJson.data)) {
-      productImageById = new Map(
-        imgJson.data
-          .filter((p: { id?: string; primaryImageUrl?: string | null }) => p?.id && p?.primaryImageUrl)
-          .map((p: { id: string; primaryImageUrl: string }) => [p.id, p.primaryImageUrl]),
-      );
+  const batches = chunkIds(items.map((i) => i.productId).filter((id) => isCartProductId(id)));
+  await Promise.all(batches.map(async (ids) => {
+    try {
+      const res = await fetch(`${apiBase}/products?ids=${ids.join(',')}`, { signal: AbortSignal.timeout(3000) });
+      const json: any = res.ok ? await res.json().catch(() => null) : null;
+      if (json?.success && Array.isArray(json.data)) {
+        for (const p of json.data as Array<{ id?: string; slug?: string; categoryName?: string | null; primaryImageUrl?: string | null }>) {
+          if (!p?.id) continue;
+          productInfoById.set(p.id, {
+            slug: p.slug ?? null,
+            categoryName: p.categoryName ?? null,
+            imageUrl: p.primaryImageUrl ?? null,
+          });
+        }
+      }
+    } catch {
+      // The labelled no-image box and a plain-text name remain the honest fallback.
     }
-  } catch {
-    // The labelled no-image box remains the honest fallback.
-  }
+  }));
 }
+// The device's copy of the basket still knows each line's slug and category
+// (the add form sent them), so it fills whatever the catalogue did not answer.
+const deviceLines = new Map(
+  parseLocalCartCookie(Astro.cookies.get('goldplus_cart_data')?.value).map((l) => [l.productId, l]),
+);
+const lineView = (item: CartItem) => {
+  const info = productInfoById.get(item.productId);
+  const device = deviceLines.get(item.productId);
+  return {
+    href: cartLineHref(info?.slug || item.slug || device?.slug),
+    categoryName: info?.categoryName || item.categoryName || device?.categoryName || null,
+    imageUrl: info?.imageUrl ?? null,
+  };
+};
+
+// "Added to your cart": the id in the URL is only looked up in THIS basket;
+// the name shown is the basket's own, never text from the query.
+const addedParam = Astro.url.searchParams.get('added');
+const addedLine = isCartProductId(addedParam) ? items.find((i) => i.productId === addedParam) ?? null : null;
+const addedHref = addedLine ? lineView(addedLine).href : null;
+// "Removed X · Undo": only when the id in the URL is the line our cookie holds.
+const removedParam = Astro.url.searchParams.get('removed');
+const removedCandidate = readRemovedLine(Astro.cookies.get(REMOVED_COOKIE)?.value);
+const removedLine = removedCandidate && removedCandidate.productId === removedParam
+  && !items.some((i) => i.productId === removedCandidate.productId)
+  ? removedCandidate
+  : null;
 const subtotal = items.reduce((acc, item) => acc + (item.unitPriceUgx * item.quantity), 0);
 
 // Active campaign discount (display; per-line to match the checkout evaluator).
@@ -296,18 +417,15 @@ const cartPotentialPoints = cartLoyaltyRate > 0 ? Math.floor(saleSubtotal / 1000
 // header uses, rendered where the decision is actually made.
 const bizCart = await getBusinessInfo();
 const cut = kampalaCutoff(new Date(), { cutoffHour: bizCart.sameDayCutoffHour, closedDays: bizCart.closedDays });
-const cutoffLine = cut.closed
-  ? 'Closed today. This goes out on the next working day'
-  : !cut.beforeCutoff
-    ? "Today's run has left. This goes out tomorrow morning"
-    : cut.minsToCutoff <= 60
-      ? `Only ${cut.minsToCutoff} minutes left to get this today`
-      : `Order in ${Math.floor(cut.minsToCutoff / 60)}h ${cut.minsToCutoff % 60}m and this arrives today`;
+// No area is known on the cart, so the same-day line names where it applies
+// ("Kampala & Wakiso: order in 3h 5m for same-day delivery") instead of
+// promising "arrives today" to a basket bound for Arua.
+const cutoffLine = sameDayCutoffCopy(cut).scoped;
 ---
 
 <BaseLayout robotsMeta="noindex,follow" title="Your cart">
   <div class="container mx-auto px-4 lg:px-8 py-10 lg:py-14">
-    <h1 class="text-2xl md:text-3xl font-black text-gray-900 mb-8 tracking-tight">Your cart</h1>
+    <h1 class="text-3xl md:text-4xl font-black tracking-tight text-gray-900 mb-8">Your cart</h1>
 
     {cartNotice && (
       <div class="mb-6">
@@ -323,6 +441,23 @@ const cutoffLine = cut.closed
     {fetchError && (
       <div class="mb-6">
         <Notice kind="not-configured" title="Cart service unavailable" message={fetchError} />
+      </div>
+    )}
+
+    {addedLine && (
+      <div role="status" class="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-2xl border border-brand-primary/40 bg-brand-primary/5 px-5 py-3 text-sm">
+        <p class="font-semibold text-gray-900">Added to your cart: <span class="font-bold">{addedLine.name}</span></p>
+        <a href={addedHref ?? '/shop'} class="inline-flex min-h-11 items-center font-bold underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-brand-primaryInk rounded" style="color:#456B00">{addedHref ? 'Back to the product' : 'Keep shopping'}</a>
+      </div>
+    )}
+    {removedLine && (
+      <div role="status" class="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm">
+        <p class="text-slate-700">Removed <span class="font-bold text-gray-900">{removedLine.name}</span> from your cart.</p>
+        <form method="POST" action="/cart">
+          <input type="hidden" name="action" value="restore" />
+          <input type="hidden" name="productId" value={removedLine.productId} />
+          <button type="submit" class="inline-flex min-h-11 items-center rounded-full border-2 border-brand-primary px-4 text-sm font-bold text-gray-900 outline-none hover:bg-brand-primary/10 focus-visible:ring-4 focus-visible:ring-brand-primaryInk cursor-pointer">Undo</button>
+        </form>
       </div>
     )}
 
@@ -356,36 +491,49 @@ const cutoffLine = cut.closed
               </p>
             </div>
           )}
-          <div class="bg-white rounded-2xl border border-slate-200/80 overflow-hidden shadow-xs">
+          <div class="bg-white rounded-2xl border border-slate-200/80 overflow-hidden">
             <ul class="divide-y divide-slate-100" aria-label="Cart items">
               {items.map((item) => {
-                const imageUrl = productImageById.get(item.productId) ?? null;
-                
+                const view = lineView(item);
+                const imageUrl = view.imageUrl;
+                const thumb = imageUrl ? (
+                  <img
+                    src={imageUrl}
+                    alt=""
+                    class="w-[72px] h-[72px] sm:w-24 sm:h-24 object-cover bg-slate-50/50 rounded-2xl border border-slate-200/60 p-1 hover:border-brand-primary transition-colors"
+                  />
+                ) : (
+                  <div
+                    class="w-[72px] h-[72px] sm:w-24 sm:h-24 rounded-2xl border border-slate-200/60 hover:border-brand-primary transition-colors"
+                    style="background:#F0EFED;background-image:repeating-linear-gradient(135deg,transparent 0,transparent 10px,rgba(0,0,0,0.03) 10px,rgba(0,0,0,0.03) 11px);"
+                    role="img"
+                    aria-label={`${item.name}: no photo yet`}
+                  ></div>
+                );
+
                 return (
-                  <li class="p-5 md:p-6 flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
-                    <a href={`/products/${item.slug}`} class="flex-shrink-0 outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk rounded-2xl block">
-                      {imageUrl ? (
-                        <img 
-                          src={imageUrl} 
-                          alt={item.name} 
-                          class="w-24 h-24 object-cover bg-slate-50/50 rounded-2xl border border-slate-200/60 p-1 hover:border-brand-primary transition-colors"
-                        />
-                      ) : (
-                        <div
-                          class="w-24 h-24 rounded-2xl border border-slate-200/60 hover:border-brand-primary transition-colors"
-                          style="background:#F0EFED;background-image:repeating-linear-gradient(135deg,transparent 0,transparent 10px,rgba(0,0,0,0.03) 10px,rgba(0,0,0,0.03) 11px);"
-                          role="img"
-                          aria-label={item.name}
-                        ></div>
-                      )}
-                    </a>
-                    
+                  <li id={isCartProductId(item.productId) ? `line-${item.productId}` : undefined} class="scroll-mt-28 p-4 sm:p-6 flex items-start sm:items-center gap-4 sm:gap-6">
+                    {view.href ? (
+                      <a href={view.href} tabindex="-1" aria-hidden="true" class="flex-shrink-0 outline-none rounded-2xl block">{thumb}</a>
+                    ) : (
+                      <div class="flex-shrink-0">{thumb}</div>
+                    )}
+
+                    <div class="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
                     <div class="flex-grow min-w-0 flex flex-col justify-center">
-                      {item.categoryName && (
-                        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">{item.categoryName}</p>
+                      {view.categoryName && (
+                        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">{view.categoryName}</p>
                       )}
-                      <a href={`/products/${item.slug}`} class="font-bold text-gray-900 hover:text-brand-primaryInk transition-colors line-clamp-2 outline-none focus-visible:ring-2 focus-visible:ring-brand-primaryInk rounded leading-snug">{item.name}</a>
+                      {view.href ? (
+                        <a href={view.href} class="font-bold text-gray-900 hover:text-brand-primaryInk transition-colors line-clamp-2 outline-none focus-visible:ring-2 focus-visible:ring-brand-primaryInk rounded leading-snug">{item.name}</a>
+                      ) : (
+                        <p class="font-bold text-gray-900 line-clamp-2 leading-snug">{item.name}</p>
+                      )}
                       <p class="text-sm font-bold text-brand-primaryInk mt-1.5">{formatUgx(item.unitPriceUgx)} <span class="text-xs font-normal text-slate-600 ml-1">each</span></p>
+                      {/* Phones: the line total lives here (the controls row has no room for it). */}
+                      {item.quantity > 1 && (
+                        <p class="sm:hidden mt-0.5 text-xs font-semibold text-slate-700 tabular-nums">{formatUgx(item.unitPriceUgx * item.quantity)} for {item.quantity}</p>
+                      )}
                       {selectedDevice && deviceFits[item.productId] && (
                         deviceFits[item.productId].fitState ? (
                           <span class={`inline-block mt-2 self-start rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${FIT_BADGE[deviceFits[item.productId].fitState!] ?? ''}`}>
@@ -398,10 +546,16 @@ const cutoffLine = cut.closed
                         )
                       )}
                     </div>
-                    
+
+                    {/* Phones: quantity and remove share ONE row under the name,
+                        beside a 72px photo, instead of four stacked rows (a
+                        single line used to be ~300px tall and pushed "Continue
+                        to checkout" below the fold). From sm up, sm:contents
+                        dissolves the wrapper into the row. */}
+                    <div class="flex items-center justify-between gap-3 sm:contents">
                     {/* Quantity Selector controls */}
-                    <div class="flex items-center gap-3">
-                      <form method="POST" action="/cart" class="flex items-center gap-2">
+                    <div class="flex shrink-0 items-center gap-1 sm:gap-3">
+                      <form method="POST" action="/cart" class="flex items-center gap-1 sm:gap-2">
                         <input type="hidden" name="action" value="update" />
                         <input type="hidden" name="productId" value={item.productId} />
                         
@@ -431,7 +585,7 @@ const cutoffLine = cut.closed
                         </button>
                       </form>
                       
-                      <form method="POST" action="/cart" class="ml-auto sm:ml-0">
+                      <form method="POST" action="/cart">
                         <input type="hidden" name="action" value="remove" />
                         <input type="hidden" name="productId" value={item.productId} />
                         <button 
@@ -446,7 +600,9 @@ const cutoffLine = cut.closed
                       </form>
                     </div>
 
-                    <p class="font-bold text-gray-900 whitespace-nowrap text-right min-w-[80px] text-sm md:text-base">{formatUgx(item.unitPriceUgx * item.quantity)}</p>
+                    <p class="hidden sm:block shrink-0 font-bold text-gray-900 whitespace-nowrap text-right min-w-[80px] text-sm md:text-base tabular-nums">{formatUgx(item.unitPriceUgx * item.quantity)}</p>
+                    </div>
+                    </div>
                   </li>
                 );
               })}
@@ -470,19 +626,7 @@ const cutoffLine = cut.closed
               )}
               <div class="flex items-center justify-between">
                 <dt class="text-slate-500 font-medium">Delivery</dt>
-                <dd class="text-slate-500">Added at checkout</dd>
-              </div>
-              {/* Stage 1: the same quote the product page showed, so one
-                  basket cannot show two different answers. */}
-              <div class="pt-2">
-                <dt class="sr-only">Delivery estimate</dt>
-                <dd>
-                  <DeliveryQuote
-                    stage={1}
-                    items={items.map((i) => ({ productId: i.productId, quantity: i.quantity }))}
-                    subtotalUgx={subtotal}
-                  />
-                </dd>
+                <dd class="text-slate-500">Not included yet</dd>
               </div>
               <div class="flex items-center justify-between pt-4 border-t border-slate-100">
                 <dt class="font-black text-gray-900 text-base">Estimated total</dt>
@@ -490,13 +634,18 @@ const cutoffLine = cut.closed
               </div>
             </dl>
             {/* Notes are not definition terms: they follow the list (axe definition-list, 2026-09-13). */}
-            <div class="mb-8 space-y-1">
-              <p class="text-[11px] text-slate-500">Delivery is added at checkout, once you choose your area.</p>
+            <div class="mb-6 space-y-1">
+              {/* One sentence about the fee, the same one checkout keeps: shown
+                  there once you choose your area, or confirmed by phone when
+                  we cannot price it yet. */}
+              <p class="text-[11px] text-slate-500">Choose your area at checkout to see the delivery fee. If we cannot price it there, we confirm it by phone before dispatch.</p>
               {cartPotentialPoints > 0 && (
-                <p class="text-[11px] font-bold" style="color:#456B00">Earn {cartPotentialPoints.toLocaleString('en-UG')} GoldPlus points on this order.</p>
+                <p class="text-[11px] font-bold" style="color:#456B00">Earn {cartPotentialPoints.toLocaleString('en-UG')} GoldPlus points on this order once it is delivered.</p>
               )}
             </div>
 
+            {/* The decision comes before the delivery detail: on a phone the
+                button used to start ~1,000px down, under the quote panel. */}
             <a
               href="/checkout"
               class="flex items-center justify-center w-full h-[52px] px-6 rounded-full font-semibold outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk transition-all shadow-md active:scale-95 text-[15px] cursor-pointer"
@@ -506,6 +655,18 @@ const cutoffLine = cut.closed
             </a>
             <p class="mt-3 text-center text-xs font-semibold" style="color:#456B00">{cutoffLine}</p>
             <p class="mt-1.5 text-center text-[11px] font-semibold text-slate-500">Have a promo code? You can enter it at checkout.</p>
+
+            {/* Stage 1: the same quote the product page showed, so one
+                basket cannot show two different answers. */}
+            <div class="mt-5">
+              <h3 class="sr-only">Delivery estimate</h3>
+              <DeliveryQuote
+                stage={1}
+                items={items.map((i) => ({ productId: i.productId, quantity: i.quantity }))}
+                subtotalUgx={subtotal}
+              />
+            </div>
+
             <a
               href="/shop"
               class="flex items-center justify-center w-full h-12 mt-3 text-sm font-bold text-slate-500 hover:text-gray-900 hover:bg-slate-50 rounded-full transition-colors outline-none focus-visible:ring-4 focus-visible:ring-slate-200 cursor-pointer"

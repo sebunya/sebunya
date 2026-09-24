@@ -13,6 +13,8 @@ export interface CartItem {
    */
   unitPriceUgx?: number;
   slug?: string;
+  /** The cart page writes the category display name under this key. */
+  categoryName?: string | null;
 }
 
 export function calculateLineTotal(priceUgx: number, quantity: number): number {
@@ -70,6 +72,9 @@ export function parseLocalCartCookie(cookieValue: string | undefined): CartItem[
           category: item.category ? String(item.category) : undefined,
           // Preserved so the fallback line still links to its product page.
           slug: item.slug ? String(item.slug) : undefined,
+          // Written by the cart page on add; dropping it here lost the category
+          // eyebrow on every line rendered from the device.
+          categoryName: item.categoryName ? String(item.categoryName) : null,
         };
       });
     }
@@ -77,4 +82,29 @@ export function parseLocalCartCookie(cookieValue: string | undefined): CartItem[
     // Ignore invalid JSON parsing errors
   }
   return [];
+}
+
+/**
+ * Where a cart line's product page is, or null when we do not know.
+ *
+ * The server basket carries no slug, so every line used to link to
+ * `/products/` with an empty slug, which is a 404. A line with no known slug
+ * is rendered as plain text rather than as a link that goes nowhere.
+ */
+export function cartLineHref(slug: string | null | undefined): string | null {
+  const s = String(slug ?? '').trim();
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/i.test(s) ? `/products/${s}` : null;
+}
+
+/** Product ids are UUIDs; anything else never reaches a URL or an element id. */
+export function isCartProductId(id: string | null | undefined): id is string {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id ?? ''));
+}
+
+/** Split ids into the batches the public product list accepts (it clamps `ids` to 3). */
+export function chunkIds(ids: string[], size = 3): string[][] {
+  const unique = Array.from(new Set(ids.filter(Boolean)));
+  const out: string[][] = [];
+  for (let i = 0; i < unique.length; i += size) out.push(unique.slice(i, i + size));
+  return out;
 }

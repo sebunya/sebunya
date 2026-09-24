@@ -35,11 +35,16 @@ export interface IInventoryRepository {
    * invariant blocked the write, and `null` when the product does not exist.
    * The caller must not pre-read and decide for itself: a reservation committed
    * between that read and the write would slip straight through.
+   *
+   * `expectedStock` (optional) makes the write a compare-and-set: it applies
+   * only while on-hand stock still equals it, and otherwise returns
+   * `applied: false, stale: true` with the current figures.
    */
   setStockQuantity(
     productId: string,
     newStock: number,
-  ): Promise<{ applied: boolean; reserved: number; stock: number } | null>;
+    expectedStock?: number | null,
+  ): Promise<{ applied: boolean; reserved: number; stock: number; stale?: boolean } | null>;
   /** Release an order's active reservations back to available stock. Idempotent. */
   releaseForOrder(orderId: string): Promise<{ released: boolean }>;
   /** Deduct reserved stock from on-hand at dispatch and mark consumed. Idempotent. */

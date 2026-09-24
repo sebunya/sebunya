@@ -1,7 +1,7 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { postJson, whatsappSupportNumber } from '../lib/api';
-import { startPaymentByReference, paymentStartMessageFor } from '../lib/checkoutClient';
+import { startPaymentByReference, paymentStartMessageFor, orderAwaitsPayment } from '../lib/checkoutClient';
 import { formatUgx } from '../lib/money';
 import { orderStatusCopy, paymentStatusCopy, STATUS_TONE_CLASS } from '../lib/orderStatusCopy';
 
@@ -111,16 +111,26 @@ const isDeliveryFailed = order && orderStatusKey === 'delivery_failed';
 // An unpaid order used to get the same optimistic four-stage ladder as a paid
 // one, with "Payment reviewed" as the next step. It is not being prepared; it
 // is waiting for money — say so instead of implying progress.
-const isUnpaid = order && orderStatusKey === 'pending_payment';
+//
+// Read from the PAYMENT status: nothing writes the order status
+// 'pending_payment' (orders are created 'received', a declined payment only
+// sets paymentStatus 'failed'), so the old status-only check never matched.
+// A failed online payment is unpaid whatever the method. 'unpaid'/'pending'
+// alone also describes a cash-on-delivery order, which keeps its ladder, so
+// that case needs the payment method, and the lookup only sends it sometimes.
+// The rule lives in lib/checkoutClient.ts so /orders/[id] applies the same one.
+const isUnpaid = Boolean(order) && orderAwaitsPayment({ status: order?.orderStatus, paymentStatus: order?.paymentStatus, paymentMethod: order?.paymentMethod });
 const orderCopy = order ? orderStatusCopy(order.orderStatus) : null;
 const paymentCopy = order ? paymentStatusCopy(order.paymentStatus) : null;
 ---
 
 <BaseLayout robotsMeta="noindex,follow" title="Track your order | GoldPlus">
-  <main>
+  {/* A div, not a second main element: BaseLayout already provides the page's main
+      landmark, and two of them is what screen-reader landmark lists showed. */}
+  <div>
     <section class="border-b border-slate-100 bg-gradient-to-b from-slate-50 to-white py-12 sm:py-16">
       <div class="container mx-auto px-4 lg:px-8">
-        <a href="/support" class="text-xs font-bold text-slate-600 underline decoration-slate-300 underline-offset-4 hover:text-gray-900 focus-visible:ring-2 focus-visible:ring-brand-primaryInk">&larr; Customer support</a>
+        <a href="/support" class="text-xs font-bold text-slate-600 underline decoration-slate-300 underline-offset-4 hover:text-gray-900 outline-none focus-visible:ring-2 focus-visible:ring-brand-primaryInk">&larr; Customer support</a>
         <p class="mt-8 text-xs font-black uppercase tracking-[0.18em] text-brand-primaryInk">Track your order</p>
         <h1 class="mt-3 text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">Where's my order?</h1>
         <p class="mt-4 max-w-2xl text-sm leading-relaxed text-slate-600 sm:text-base">
@@ -131,21 +141,32 @@ const paymentCopy = order ? paymentStatusCopy(order.paymentStatus) : null;
 
     <section class="container mx-auto px-4 py-10 sm:py-14 lg:px-8">
       <div class="mx-auto grid max-w-5xl grid-cols-1 gap-6 lg:grid-cols-[1fr_0.9fr]">
-        <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs sm:p-8">
+        <div class="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8">
           <h2 class="text-xl font-black text-gray-900">Look up your order</h2>
+          {/* Above the form, where it is seen: below it, on a phone, only its
+              first line showed at the bottom edge of the screen. */}
+          {errorMsg && (
+            <div id="lookup-error" role="alert" class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{errorMsg}</div>
+          )}
           <form method="POST" action="/track-order" class="mt-5 space-y-4">
             <input type="hidden" name="intent" value="lookup" />
             <label class="block">
               <span class="text-xs font-bold text-slate-700">Order reference</span>
               <input name="reference" required maxlength="80" value={submittedRef}
                 placeholder="e.g. GP-202608-3F7A"
-                class="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-brand-primaryInk" />
+                autocapitalize="characters" spellcheck="false"
+                aria-invalid={errorMsg ? 'true' : undefined} aria-describedby={errorMsg ? 'lookup-error' : undefined}
+                class="mt-1 w-full rounded-xl border border-gray-500 px-4 py-3 text-base sm:text-sm placeholder:text-gray-500 outline-none focus:ring-2 focus:ring-brand-primaryInk" />
             </label>
             <label class="block">
               <span class="text-xs font-bold text-slate-700">Phone or email used at checkout</span>
-              <input name="contact" required maxlength="120" inputmode="email"
+              {/* Kept after a failed lookup (it used to come back empty), and no
+                  email keyboard: most customers check out with a phone number. */}
+              <input name="contact" required maxlength="120" value={submittedContact}
                 placeholder="07XX XXX XXX or you@example.com"
-                class="mt-1 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-brand-primaryInk" />
+                autocomplete="on" spellcheck="false"
+                aria-invalid={errorMsg ? 'true' : undefined} aria-describedby={errorMsg ? 'lookup-error' : undefined}
+                class="mt-1 w-full rounded-xl border border-gray-500 px-4 py-3 text-base sm:text-sm placeholder:text-gray-500 outline-none focus:ring-2 focus:ring-brand-primaryInk" />
             </label>
             <button type="submit"
               class="inline-flex min-h-12 w-full items-center justify-center rounded-full px-6 text-sm font-bold outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk transition active:scale-[0.99]"
@@ -155,16 +176,13 @@ const paymentCopy = order ? paymentStatusCopy(order.paymentStatus) : null;
             <p class="text-center text-xs text-slate-500">We only show order details when the reference and contact match. That is for your privacy.</p>
           </form>
 
-          {errorMsg && (
-            <div role="alert" class="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{errorMsg}</div>
-          )}
 
           {order && (
             <div class="mt-6 rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p class="text-xs font-bold uppercase tracking-wider text-slate-500">Order</p>
-                  <p class="text-lg font-black text-gray-900">{order.orderNumber}</p>
+                  <p class="text-lg font-black text-gray-900 whitespace-nowrap">{order.orderNumber}</p>
                 </div>
                 <div class="flex flex-wrap gap-2">
                   <span class={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold ${STATUS_TONE_CLASS[orderCopy!.tone]}`}>{orderCopy!.label}</span>
@@ -182,7 +200,10 @@ const paymentCopy = order ? paymentStatusCopy(order.paymentStatus) : null;
                 <div class="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                   {order.paymentStatus === 'failed' ? (
                     <>
-                      <p class="font-semibold">Your online payment did not go through — nothing was taken.</p>
+                      {/* The payment-return page's words, deliberately: FAILED also
+                          covers a reversal, where money DID leave and is coming
+                          back, so saying nothing left could be false. */}
+                      <p class="font-semibold">Your online payment did not go through, so the order is not paid. If money left your phone or card, it will come back. Tell us if it does not.</p>
                       <p class="mt-1 text-xs">Your order is still saved. Pay online now, or pay on delivery or at our shop.</p>
                     </>
                   ) : (
@@ -264,15 +285,16 @@ const paymentCopy = order ? paymentStatusCopy(order.paymentStatus) : null;
                       {/* contact is re-entered so the follow-up re-verifies the order */}
                       <label class="block">
                         <span class="text-xs font-bold text-slate-700">Confirm the phone or email used at checkout</span>
-                        <input name="contact" required maxlength="120" inputmode="email"
+                        <input name="contact" required maxlength="120"
                           placeholder="07XX XXX XXX or you@example.com"
-                          class="mt-1 w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-brand-primaryInk" />
+                          spellcheck="false"
+                          class="mt-1 w-full rounded-xl border border-gray-500 px-4 py-2.5 text-base sm:text-sm placeholder:text-gray-500 outline-none focus:ring-2 focus:ring-brand-primaryInk" />
                       </label>
                       <label class="block">
                         <span class="text-xs font-bold text-slate-700">Anything you'd like us to check? (optional)</span>
                         <textarea name="note" rows="3" maxlength="800"
                           placeholder="e.g. Please confirm dispatch date."
-                          class="mt-1 w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-brand-primaryInk"></textarea>
+                          class="mt-1 w-full rounded-xl border border-gray-500 px-4 py-2.5 text-base sm:text-sm placeholder:text-gray-500 outline-none focus:ring-2 focus:ring-brand-primaryInk"></textarea>
                       </label>
                       {followupError && <p role="alert" class="text-xs font-semibold text-red-700">{followupError}</p>}
                       <button type="submit" class="inline-flex min-h-11 items-center justify-center rounded-full border-2 border-brand-primary px-5 text-sm font-bold text-gray-900 outline-none hover:bg-brand-primary/10 focus-visible:ring-4 focus-visible:ring-brand-primaryInk">Request a follow-up</button>
@@ -287,7 +309,7 @@ const paymentCopy = order ? paymentStatusCopy(order.paymentStatus) : null;
           )}
         </div>
 
-        <aside class="rounded-2xl border border-slate-200 bg-white p-6 shadow-xs sm:p-8">
+        <aside class="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8">
           <h2 class="text-lg font-black text-gray-900">Before you look up</h2>
           <ol class="mt-5 space-y-4" aria-label="What you need">
             <li class="flex gap-3">
@@ -315,13 +337,13 @@ const paymentCopy = order ? paymentStatusCopy(order.paymentStatus) : null;
             Warranty and returns are subject to the applicable GoldPlus policy and your order details. Contact support before returning an item so the relevant policy can be confirmed.
           </p>
           <nav aria-label="Order policy help" class="mt-6 flex flex-wrap gap-3">
-            <a href="/support#returns-warranty" class="inline-flex min-h-11 items-center rounded-full border border-slate-300 bg-white px-5 py-3 text-xs font-bold text-slate-800 outline-none hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primaryInk">Returns help</a>
-            <a href="/support#returns-warranty" class="inline-flex min-h-11 items-center rounded-full border border-slate-300 bg-white px-5 py-3 text-xs font-bold text-slate-800 outline-none hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primaryInk">Warranty help</a>
+            <a href="/returns" class="inline-flex min-h-11 items-center rounded-full border border-slate-300 bg-white px-5 py-3 text-xs font-bold text-slate-800 outline-none hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primaryInk">Returns help</a>
+            <a href="/warranty" class="inline-flex min-h-11 items-center rounded-full border border-slate-300 bg-white px-5 py-3 text-xs font-bold text-slate-800 outline-none hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primaryInk">Warranty help</a>
             <a href="/support#terms-guidance" class="inline-flex min-h-11 items-center rounded-full border border-slate-300 bg-white px-5 py-3 text-xs font-bold text-slate-800 outline-none hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primaryInk">Terms guidance</a>
             <a href="/support#privacy-guidance" class="inline-flex min-h-11 items-center rounded-full border border-slate-300 bg-white px-5 py-3 text-xs font-bold text-slate-800 outline-none hover:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primaryInk">Privacy guidance</a>
           </nav>
         </div>
       </div>
     </section>
-  </main>
+  </div>
 </BaseLayout>

@@ -32,6 +32,7 @@ interface Deps {
    */
   quoting?: {
     quote(input: {
+      areaSlug?: string | null;
       district?: string | null;
       deliveryArea?: string | null;
       items: ReadonlyArray<{ productId: string; quantity: number }>;
@@ -49,7 +50,18 @@ async function effectivePolicy(repo: IDeliveryPricingPolicyRepository): Promise<
 export class GetDeliveryEstimateUseCase {
   constructor(private readonly deps: Deps) {}
 
-  async execute(input: { district: string; area?: string | null }): Promise<
+  async execute(input: {
+    district: string;
+    area?: string | null;
+    /** The gazetteer slug of the picked or saved area — the same key checkout charges on. */
+    areaSlug?: string | null;
+    /**
+     * The basket, when the caller has one (checkout does). With it the quote is
+     * asked EXACTLY the question CheckoutUseCase will ask when it charges the
+     * order, so the page's figure and the order's fee cannot disagree.
+     */
+    items?: ReadonlyArray<{ productId: string; quantity: number }> | null;
+  }): Promise<
     | { ok: true; district: string; area: string | null; estimate: DeliveryEstimate }
     | { ok: false; code: 'UNKNOWN_DISTRICT'; message: string }
   > {
@@ -58,9 +70,12 @@ export class GetDeliveryEstimateUseCase {
       return { ok: false, code: 'UNKNOWN_DISTRICT', message: `"${input.district}" is not a Uganda district.` };
     }
     const area = input.area?.trim() || null;
+    const areaSlug = input.areaSlug?.trim() || null;
+    const items = (input.items ?? []).filter((i) => i && i.productId && i.quantity > 0);
 
     // THE quoting service answers first, under exactly the rule CheckoutUseCase
-    // applies: the legacy zone/band model is consulted only on CONFIG_INCOMPLETE.
+    // applies: the legacy zone/band model is consulted only on CONFIG_INCOMPLETE
+    // (mayFallBackToLegacy). There is no other door into the legacy model.
     //
     // This endpoint drives the checkout page's "Delivery" row and its grand
     // total, and it answered from the legacy model alone while the order was
@@ -69,18 +84,17 @@ export class GetDeliveryEstimateUseCase {
     // service resolved it to a bus parcel with no rate card and the order was
     // created with fee 0, unconfirmed. Two quoting paths, two answers, one page.
     // The customer saw a total the order did not charge.
+    //
+    // A later "basket-derived" escape handed NO_RATE_CARD / PARCEL_CLASS_UNKNOWN
+    // back to the legacy model because this endpoint had no basket — and so
+    // brought the Gulu case straight back: the zone fee (or the seed band
+    // defaults, which CONTRACT #4 forbids) was shown CONFIRMED while the order
+    // was charged 0. That escape is gone. With a basket, the service's answer is
+    // the charge. Without one, a per-parcel refusal is shown as UNAVAILABLE —
+    // honest "not priced yet" beats a figure the order will not charge.
     if (this.deps.quoting) {
-      const quoted = await this.deps.quoting.quote({ district, deliveryArea: area, items: [] });
-      // THIS ENDPOINT HAS NO BASKET, and a bus-parcel quote is priced per parcel.
-      // With an empty item list planParcels answers EMPTY_BASKET, which the quote
-      // service reports as NO_RATE_CARD — so every upcountry district came back
-      // UNAVAILABLE even where a real rate card exists. That refusal is a fact
-      // about the question, not about the destination, so the legacy model
-      // answers it as it did before. A refusal we CAN trust (outside the service
-      // area, no origin) still stands.
-      const basketDerived = quoted.feeUgx === null
-        && (quoted.unavailableReason === 'NO_RATE_CARD' || quoted.unavailableReason === 'PARCEL_CLASS_UNKNOWN');
-      if (!quoted.mayFallBackToLegacy && !basketDerived) {
+      const quoted = await this.deps.quoting.quote({ areaSlug, district, deliveryArea: area, items });
+      if (!quoted.mayFallBackToLegacy) {
         const estimate: DeliveryEstimate = quoted.feeUgx === null
           ? { kind: 'UNAVAILABLE', feeUgx: null, source: null, band: null, km: null, sampleSize: 0, observedDisagreesWithModel: false }
           : { kind: quoted.confirmed ? 'CONFIRMED' : 'ESTIMATED', feeUgx: quoted.feeUgx, source: 'MODEL', band: null, km: null, sampleSize: 0, observedDisagreesWithModel: false };

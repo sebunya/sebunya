@@ -69,6 +69,12 @@ export interface PaymentVerificationResult {
    * settled by a person rather than confirmed automatically.
    */
   lifecycleConflict?: boolean;
+  /**
+   * The attempt failed, but the order already holds a later fact about its
+   * money (it was paid by another attempt), so the failure was not recorded on
+   * the order. Nothing here may treat the ORDER as failed.
+   */
+  superseded?: boolean;
 }
 
 export interface ReconcileOrderPaymentDeps {
@@ -142,17 +148,36 @@ export class ReconcileOrderPaymentUseCase {
 
     const status = (verification.status || '').trim().toLowerCase();
 
-    // Verification itself failing outranks whatever status came with it: if we could not
-    // establish the result, the status is not evidence of anything.
-    if (!verification.ok) {
-      return this.review(orderId, checkout.stage, traceId, 'VERIFICATION_FAILED');
-    }
-
     // The provider answered, but the order's own state machine refused the move.
     // Confirming here would mark fulfilment paid, settle loyalty and tell the
     // customer "payment received" for an order that could not accept the payment.
     if (verification.lifecycleConflict) {
       return this.review(orderId, checkout.stage, traceId, 'LIFECYCLE_CONFLICT');
+    }
+
+    // Classified by STATUS before the `ok` gate, and deliberately so.
+    //
+    // The verifier's `ok` means "money arrived", not "we established the result":
+    // it answers ok:false for a decline (2), a final unpaid (0 → invalid), a
+    // reversal (3), a young unpaid attempt inside the grace window ('pending') and
+    // a status API that could not be reached ('verification_pending'). Gating on
+    // `ok` first sent every one of those to PAYMENT_REVIEW — which is outside the
+    // payable trunk, so the order could never be paid online again, and the
+    // FAILED and PENDING branches below were unreachable from production. Only an
+    // answer we could NOT establish ('verification_failed', an integrity
+    // mismatch) or do not recognise is a question for a person.
+    if (FAILED_STATUSES.has(status) && verification.superseded) {
+      // A late decline for ANOTHER attempt on an order whose money already
+      // arrived. It must not release a review (the order may be parked because
+      // money landed on an order that could not accept it — a person still owns
+      // that), and it is not a FAILED settlement: the customer must not be told
+      // "payment did not go through" when they have paid. Nothing moves.
+      return {
+        kind: checkout.stage === 'PAYMENT_REVIEW' ? 'REVIEW_REQUIRED' : 'ALREADY_SETTLED',
+        orderId,
+        stage: checkout.stage as CheckoutSagaStage,
+        reason: 'ORDER_ALREADY_PAID',
+      };
     }
 
     if (FAILED_STATUSES.has(status)) {
@@ -194,6 +219,12 @@ export class ReconcileOrderPaymentUseCase {
         stage: applied ? 'PAYMENT_PENDING' : (checkout.stage as CheckoutSagaStage),
         reason: 'PAYMENT_PENDING',
       };
+    }
+
+    // Verification itself failing outranks a confirmed-looking status: if we could
+    // not establish the result, 'completed' is not evidence of anything.
+    if (!verification.ok) {
+      return this.review(orderId, checkout.stage, traceId, 'VERIFICATION_FAILED');
     }
 
     if (!CONFIRMED_STATUSES.has(status)) {

@@ -25,6 +25,8 @@ const API_BASE = apiBase;
 export interface CartLineView {
   productId: string;
   name: string;
+  /** The product page's slug; absent from an older API, so never assumed. */
+  slug?: string;
   unitPriceUgx: number;
   quantity: number;
 }

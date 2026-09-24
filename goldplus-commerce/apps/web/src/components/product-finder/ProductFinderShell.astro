@@ -3,20 +3,20 @@ interface Props { apiBase: string; compatibleWith?: string | null }
 const { apiBase, compatibleWith = null } = Astro.props;
 ---
 
-<div id="product-finder-shell" data-api-base={apiBase} data-compatible-with={compatibleWith ?? ''} class="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-  <div id="pf-status" class="mb-4 text-sm text-gray-600" aria-live="polite">Starting a private finder session…</div>
+<div id="product-finder-shell" data-api-base={apiBase} data-compatible-with={compatibleWith ?? ''} class="bg-white rounded-2xl border border-brand-borderGrey p-5 sm:p-6">
+  <div id="pf-status" class="mb-4 text-sm text-slate-600" aria-live="polite">Starting a private finder session…</div>
   <div id="pf-progress" class="mb-6 hidden">
-    <div class="flex justify-between text-sm text-gray-500 mb-2"><span id="pf-step-text">Step 1 of 4</span></div>
-    <div class="w-full bg-gray-200 rounded-full h-2"><div id="pf-progress-bar" class="bg-[#96cc06] h-2 rounded-full transition-all" style="width:25%"></div></div>
+    <div class="flex justify-between text-sm font-semibold text-slate-600 mb-2"><span id="pf-step-text">Step 1 of 4</span></div>
+    <div class="w-full bg-slate-100 rounded-full h-2"><div id="pf-progress-bar" class="bg-brand-primary h-2 rounded-full transition-all" style="width:25%"></div></div>
   </div>
   <div id="pf-questions"></div>
   <div id="pf-results" class="hidden"></div>
   <div id="pf-actions" class="mt-8 flex justify-between hidden">
-    <button id="pf-back" class="px-4 py-2 text-gray-600 border border-gray-300 rounded hidden">Back</button>
-    <button id="pf-next" class="px-6 py-2 bg-[#96cc06] text-white rounded font-medium ml-auto">Next</button>
-    <button id="pf-submit" class="px-6 py-2 bg-[#96cc06] text-white rounded font-medium ml-auto hidden">See recommendations</button>
+    <button id="pf-back" type="button" class="px-5 min-h-11 rounded-full border-2 border-brand-charcoal text-sm font-bold text-brand-charcoal hover:bg-slate-50 active:scale-[0.98] hidden">Back</button>
+    <button id="pf-next" type="button" class="px-6 min-h-11 rounded-full bg-brand-primary text-sm font-bold text-brand-black hover:shadow-md hover:shadow-brand-primary/25 active:scale-[0.98] ml-auto">Next</button>
+    <button id="pf-submit" type="button" class="px-6 min-h-11 rounded-full bg-brand-primary text-sm font-bold text-brand-black hover:shadow-md hover:shadow-brand-primary/25 active:scale-[0.98] disabled:opacity-50 ml-auto hidden">See recommendations</button>
   </div>
-  <div class="mt-8 pt-4 border-t border-gray-100 text-xs text-gray-500 text-center">
+  <div class="mt-8 pt-4 border-t border-slate-100 text-xs text-slate-500 text-center">
     <p>Answers are limited to this finder. Advertising consent is never inferred. Interest buttons do not add to cart or send WhatsApp messages.</p>
   </div>
 </div>
@@ -79,13 +79,13 @@ const { apiBase, compatibleWith = null } = Astro.props;
 
   function renderQuestion() {
     const q = questions[currentStep];
-    qContainer.replaceChildren(text('h2', q.title, 'text-xl font-medium text-gray-900 mb-4'));
+    qContainer.replaceChildren(text('h2', q.title, 'text-xl font-black tracking-tight text-gray-900 mb-4'));
     const list = document.createElement('div'); list.className = 'space-y-3';
     for (const option of q.options) {
-      const label = document.createElement('label'); label.className = 'flex items-center p-4 border rounded-lg cursor-pointer';
+      const label = document.createElement('label'); label.className = `flex items-center min-h-11 p-4 border rounded-xl cursor-pointer transition-colors hover:border-brand-primary ${answers[q.id] === option ? 'border-brand-primaryInk bg-brand-primary/5' : 'border-slate-200'}`;
       const input = document.createElement('input'); input.type = 'radio'; input.name = q.id; input.value = option; input.checked = answers[q.id] === option;
       input.addEventListener('change', () => { answers[q.id] = option; renderQuestion(); });
-      label.append(input, text('span', option, 'ml-3 text-gray-700')); list.append(label);
+      label.append(input, text('span', option, 'ml-3 font-medium text-gray-900')); list.append(label);
     }
     qContainer.append(list);
     stepText.textContent = `Step ${currentStep + 1} of ${questions.length}`;
@@ -119,14 +119,14 @@ const { apiBase, compatibleWith = null } = Astro.props;
   function renderResults(resultStatus: string, recommendations: Recommendation[]) {
     qContainer.classList.add('hidden'); actions.classList.add('hidden'); progress.classList.add('hidden'); rContainer.classList.remove('hidden'); rContainer.replaceChildren();
     if (resultStatus === 'NO_MATCH' || resultStatus === 'NO_EXACT_MATCH') {
-      rContainer.append(text('h2', 'No exact match found', 'text-2xl font-bold mb-4'), text('p', 'No eligible product satisfied the answers and current safety gates. Browse the catalogue without an invented recommendation.', 'text-gray-600 mb-6'));
-      const link = text('a', 'Browse all products', 'inline-block bg-[#96cc06] text-white px-6 py-3 rounded font-medium') as HTMLAnchorElement; link.href = '/shop'; rContainer.append(link); status.textContent = 'No match yet. We would rather say so than guess. Browse the shop or ask us.'; return;
+      rContainer.append(text('h2', 'No exact match found', 'text-2xl font-black tracking-tight text-gray-900 mb-4'), text('p', 'No eligible product satisfied the answers and current safety gates. Browse the catalogue without an invented recommendation.', 'text-slate-600 mb-6'));
+      const link = text('a', 'Browse all products', 'inline-flex items-center min-h-11 px-6 rounded-full bg-brand-primary text-sm font-bold text-brand-black') as HTMLAnchorElement; link.href = '/shop'; rContainer.append(link); status.textContent = 'No match yet. We would rather say so than guess. Browse the shop or ask us.'; return;
     }
-    rContainer.append(text('h2', 'Your GoldPlus matches', 'text-2xl font-bold mb-6'));
+    rContainer.append(text('h2', 'Your GoldPlus matches', 'text-2xl font-black tracking-tight text-gray-900 mb-6'));
     for (const rec of recommendations) {
-      const card = document.createElement('article'); card.className = 'border rounded-lg p-6 mb-5';
-      card.append(text('div', rec.category, 'text-sm text-[#659000] font-medium'), text('h3', rec.name, 'text-xl font-bold'), text('div', `UGX ${rec.price.toLocaleString()}`, 'text-lg my-2'));
-      const evidence = text('ul', '', 'text-sm text-gray-600 my-3 list-disc list-inside');
+      const card = document.createElement('article'); card.className = 'border border-slate-200 rounded-2xl p-5 sm:p-6 mb-5';
+      card.append(text('div', rec.category, 'text-xs font-bold uppercase tracking-widest text-brand-primaryInk'), text('h3', rec.name, 'text-xl font-bold'), text('div', `UGX ${rec.price.toLocaleString()}`, 'text-lg font-black tabular-nums my-2'));
+      const evidence = text('ul', '', 'text-sm text-slate-600 my-3 list-disc list-inside');
       // Machine evidence codes → honest shopper copy. NOT_REQUESTED is omitted
       // (compatibility was not part of this session — nothing to claim).
       const humanEvidence = (value: string): string | null => {
@@ -141,8 +141,8 @@ const { apiBase, compatibleWith = null } = Astro.props;
         if (line) evidence.append(text('li', line));
       }
       card.append(evidence);
-      const view = text('a', rec.primaryCta, 'inline-block px-5 py-2 bg-gray-900 text-white rounded mr-3') as HTMLAnchorElement; view.href = rec.productUrl; view.addEventListener('click', () => void recordIntent('recommendation_clicked', rec.productId));
-      const interest = text('button', rec.secondaryCta, 'px-5 py-2 border rounded') as HTMLButtonElement; interest.addEventListener('click', () => void recordIntent('add_to_cart_intent', rec.productId));
+      const view = text('a', rec.primaryCta, 'inline-flex items-center min-h-11 px-5 mr-3 rounded-full bg-brand-charcoal text-sm font-bold text-white') as HTMLAnchorElement; view.href = rec.productUrl; view.addEventListener('click', () => void recordIntent('recommendation_clicked', rec.productId));
+      const interest = text('button', rec.secondaryCta, 'min-h-11 px-5 rounded-full border-2 border-brand-charcoal text-sm font-bold text-brand-charcoal') as HTMLButtonElement; interest.addEventListener('click', () => void recordIntent('add_to_cart_intent', rec.productId));
       card.append(view, interest); rContainer.append(card);
     }
     status.textContent = 'Recommendations use current persisted catalogue evidence. Revalidate price and stock at checkout.';

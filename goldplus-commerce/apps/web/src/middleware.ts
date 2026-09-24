@@ -7,6 +7,11 @@ import { isSignedVisitToken, mintSignedVisitToken } from "./lib/visitToken";
 import { apiBase } from "./lib/api";
 import { SESSION_COOKIE_NAME } from "./lib/session";
 import { makeNonce, nonceScriptStream, strictPolicyMode, strictReportOnlyPolicy } from "./lib/contentSecurityPolicy";
+import { PublicFormLimiter, budgetedFormPath, tooManySubmissionsResponse, visitorKey } from "./lib/publicFormLimiter";
+
+// Public forms reach the API server side, where its per-visitor budgets cannot
+// see the visitor (lib/publicFormLimiter.ts). The budget is applied here.
+const publicFormLimiter = new PublicFormLimiter();
 
 /**
  * The opaque visit locator (R2, 2026-08-06).
@@ -76,6 +81,13 @@ async function holderIsAdmin(request: Request): Promise<boolean> {
 }
 
 export const onRequest = defineMiddleware(async (context, next) => {
+  if (context.request.method === 'POST') {
+    const formPath = budgetedFormPath(context.url.pathname);
+    if (formPath && !publicFormLimiter.allow(formPath, visitorKey(context.request.headers, () => context.clientAddress))) {
+      return tooManySubmissionsResponse();
+    }
+  }
+
   // Markdown for agents. An assistant that asks for text/markdown gets the
   // page's facts without the navigation, scripts and styling an HTML fetch
   // spends its context on. GET only, never for /admin or /api, and only for

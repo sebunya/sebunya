@@ -9,6 +9,7 @@ import type { ITransactionalPricedOrderRepository } from '../../../application/u
 import { PricingQuote } from '../../../domain/pricing/PricingEvaluator';
 import { decodePricingJsonb, encodePricingJsonb } from '../PricingJsonbCodec';
 import { ICustomerOrderRepository } from '../../../application/ports/ICustomerOrderRepository';
+import { loyaltyEarnSourceFromOrder } from '../../../domain/loyalty/LoyaltyEarnEligibility';
 import { OrderDetailDto, OrderSummaryDto, OrderStatus } from '@goldplus/shared';
 
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -47,15 +48,13 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
       userId: orders.userId,
       totalUgx: orders.totalAmount,
       paymentStatus: orders.paymentStatus,
+      paymentMethod: orders.paymentMethod,
+      status: orders.status,
       buyerType: orders.buyerType,
     }).from(orders).where(eq(orders.id, id)).limit(1);
-    // Wholesale/corporate volume is EXCLUDED from consumer earning pending the
-    // PART V #10 dealer decision — consumer points on wholesale volume would
-    // blow the liability model (loyalty brief PART K). Conservative default,
-    // recorded in the decisions file; flips by config when Rob decides.
-    return row?.userId && row.paymentStatus === 'paid' && row.buyerType === 'retail'
-      ? { userId: row.userId, totalUgx: row.totalUgx }
-      : null;
+    // Paid online, or cash on delivery that reached delivered/completed; retail
+    // only (PART K). The rule lives in the domain so it is tested once.
+    return loyaltyEarnSourceFromOrder(row);
   }
 
 
@@ -248,6 +247,10 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
       totalAmountUgx: row.totalAmount,
       itemCount: (row as any).items?.length ?? 0,
       createdAt: row.createdAt.toISOString(),
+      // So the account pages can offer "Pay now" after a declined payment
+      // (offersOnlinePayment, @goldplus/shared). Additive.
+      paymentStatus: row.paymentStatus ?? null,
+      paymentMethod: row.paymentMethod ?? null,
     }));
   }
 
@@ -273,6 +276,8 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
       status: row.status as OrderStatus,
       totalAmountUgx: row.totalAmount,
       createdAt: row.createdAt.toISOString(),
+      paymentStatus: row.paymentStatus ?? null,
+      paymentMethod: row.paymentMethod ?? null,
       items: ((row as any).items ?? []).map((i: any) => {
         const product = productById.get(i.productId);
         return {

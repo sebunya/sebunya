@@ -6,6 +6,7 @@ import EmptyState from '../../components/EmptyState.astro';
 import Notice from '../../components/Notice.astro';
 import { apiBase } from '../../lib/api';
 import { readSessionToken, SESSION_COOKIE_NAME } from '../../lib/session';
+import { offersOnlinePayment } from '@goldplus/shared';
 import type { OrderSummaryDto } from '@goldplus/shared';
 import { orderStatusCopy, STATUS_TONE_CLASS } from '../../lib/orderStatusCopy';
 
@@ -14,6 +15,10 @@ if (!token) {
   return Astro.redirect('/login?returnTo=/account/orders', 303);
 }
 
+// "Pay for this order" follows the same rule as the order page's Pay button
+// (offersOnlinePayment): nothing writes a pending-payment order status, so the
+// old check never showed it, not even for a received order whose online
+// payment failed.
 let orders: OrderSummaryDto[] = [];
 let loadError = '';
 try {
@@ -47,7 +52,12 @@ try {
 
     {!loadError && (
       orders.length === 0 ? (
-        <EmptyState title="No orders yet" message="Orders placed while signed in appear here. Guest orders can be followed on the track-order page with the order reference." />
+        <EmptyState title="No orders yet" message="Orders placed while signed in appear here. Ordered as a guest? Look it up with your order reference.">
+          <div class="flex flex-col sm:flex-row gap-3 justify-center">
+            <a href="/shop" class="inline-flex items-center justify-center rounded-full bg-brand-charcoal px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-black">Start shopping</a>
+            <a href="/track-order" class="inline-flex items-center justify-center rounded-full border border-brand-borderGrey px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-brand-charcoal hover:bg-brand-softGrey">Find a guest order</a>
+          </div>
+        </EmptyState>
       ) : (
         <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
           <ul class="divide-y divide-brand-borderGrey">
@@ -56,13 +66,13 @@ try {
                 <div class="min-w-0">
                   <a href={`/orders/${o.id}`} class="font-bold text-brand-charcoal hover:underline">{o.orderNumber}</a>
                   <p class="text-xs text-brand-mutedGrey mt-1">
-                    {new Date(o.createdAt).toLocaleDateString('en-GB')} · {o.itemCount} item{o.itemCount === 1 ? '' : 's'}
+                    {new Date(o.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Kampala' })} · {o.itemCount} item{o.itemCount === 1 ? '' : 's'}
                   </p>
                 </div>
                 <div class="flex items-center gap-3">
                   <span class={`inline-flex items-center px-2 py-1 rounded border text-[10px] font-bold uppercase tracking-widest ${STATUS_TONE_CLASS[orderStatusCopy(o.status).tone]}`}>{orderStatusCopy(o.status).label}</span>
                   <span class="font-bold text-brand-charcoal whitespace-nowrap">{formatUgx(o.totalAmountUgx)}</span>
-                  {o.status === 'PENDING_PAYMENT' ? (
+                  {offersOnlinePayment(o) ? (
                     <a href={`/orders/${o.id}#pay`} class="inline-flex items-center rounded-full bg-brand-charcoal px-3 py-1.5 text-xs font-bold text-white hover:bg-black whitespace-nowrap">Pay for this order</a>
                   ) : (
                     <a href={`/orders/${o.id}`} class="text-xs font-bold text-brand-mutedGrey hover:text-brand-charcoal whitespace-nowrap">Details &rarr;</a>

@@ -3,6 +3,7 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 import { formatUgx } from "../lib/money";
 import { apiBase } from "../lib/api";
 import { resolveAuthenticatedUserId } from "../lib/customerAuth";
+import { loyaltyWorkedExample } from "../lib/loyaltyWorkedExample";
 
 /**
  * GoldPlus Rewards (loyalty brief PART Q rebuild).
@@ -67,10 +68,27 @@ if (userId && sessionToken && programme) {
 const fmtUgx = (n: number) => formatUgx(n);
 const pointValue = programme?.redemption.configured ? programme.redemption.pointValueUgx ?? null : null;
 
+// One order worked through, every figure computed from the live config above
+// (owner decision 2026-09-24: state the real value, 20% back, honestly).
+const example = programme
+  ? loyaltyWorkedExample({
+      earnRatePer1000Ugx: programme.earnRatePer1000Ugx,
+      pointValueUgx: pointValue,
+      minPoints: programme.redemption.minPoints ?? null,
+      maxShareBps: programme.redemption.maxShareBps ?? null,
+    })
+  : null;
+
 // Ways to earn: built from the LIVE config only. A source whose value is unset
 // is simply absent — the page never lists a mechanic that would not pay out.
 const src = programme?.earnSources ?? null;
-const earnWays: Array<{ label: string; detail: string; points: string }> = [];
+const earnWays: Array<{
+  label: string;
+  detail: string;
+  points: string;
+  /** An inline link that continues the detail sentence, then the rest of it. */
+  link?: { text: string; href: string; after: string };
+}> = [];
 if (programme) {
   earnWays.push({
     label: "Every delivered order",
@@ -134,7 +152,8 @@ try {
 if (drawInfo) {
   earnWays.push({
     label: "A scratch card with every delivery",
-    detail: `Free, on top of the points the order already earned. Every card wins, only the amount varies, and the odds are published. Cards expire after ${drawInfo.tokenExpiryDays} days.`,
+    detail: "Free, on top of the points the order already earned. Every card wins, only the amount varies, and",
+    link: { text: "the odds are published", href: "/loyalty-terms#scratch-cards", after: `. Cards expire after ${drawInfo.tokenExpiryDays} days.` },
     points: "Bonus points",
   });
 }
@@ -153,7 +172,8 @@ const BENEFIT_LABELS: Record<string, string> = {
     ? `GoldPlus Rewards is live: earn ${programme.earnRatePer1000Ugx} points per 1,000 UGX on every delivered order placed while signed in.`
     : "GoldPlus Rewards is being prepared. Nothing is live yet."}
 >
-  <main>
+  {/* A div, not a second main element: BaseLayout already provides the page's main landmark. */}
+  <div>
     <section class="relative overflow-hidden border-b border-slate-200 bg-slate-950 text-white">
       <div class="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(150,204,6,0.18),transparent_38%)]"></div>
       <div class="container relative mx-auto px-4 py-16 sm:py-20 lg:px-8">
@@ -207,6 +227,24 @@ const BENEFIT_LABELS: Record<string, string> = {
                 </div>
               </dl>
 
+              {example && (
+                <div class="mt-6 rounded-2xl border border-brand-primary/40 bg-brand-primary/15 p-5">
+                  <h2 class="text-xs font-black uppercase tracking-wider text-brand-primary">Worked example</h2>
+                  <p class="mt-2 text-sm leading-relaxed text-slate-200">
+                    An order totalling <strong class="text-white">{fmtUgx(example.orderTotalUgx)}</strong> earns
+                    <strong class="text-white">{example.pointsEarned.toLocaleString("en-UG")} points</strong> when it is delivered.
+                    At {fmtUgx(example.pointValueUgx)} a point, that is <strong class="text-white">{fmtUgx(example.valueUgx)}</strong> off a later order:
+                    <strong class="text-white">{example.returnPercent}% back</strong> on what you spent.
+                  </p>
+                  {example.maxSharePct !== null && example.goodsToUseAllUgx !== null && (
+                    <p class="mt-2 text-sm leading-relaxed text-slate-300">
+                      Points can pay for up to {example.maxSharePct}% of an order's goods, so using all {example.pointsEarned.toLocaleString("en-UG")} points
+                      in one go needs an order with at least {fmtUgx(example.goodsToUseAllUgx)} of goods. Points are a discount, never cash.
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div class="mt-8 flex flex-wrap gap-3">
                 {!userId && (
                   <a href="/register?returnTo=/account/loyalty" class="inline-flex min-h-11 items-center rounded-full bg-brand-primary px-6 py-3 text-xs font-black uppercase tracking-wider text-slate-950">Create your account</a>
@@ -241,7 +279,9 @@ const BENEFIT_LABELS: Record<string, string> = {
                 <li class="flex flex-col gap-2 p-5 sm:flex-row sm:items-center sm:justify-between">
                   <div class="sm:pr-6">
                     <p class="text-sm font-black text-slate-900">{way.label}</p>
-                    <p class="mt-1 text-sm leading-relaxed text-gray-600">{way.detail}</p>
+                    <p class="mt-1 text-sm leading-relaxed text-gray-600">
+                      {way.detail}{way.link && <> <a href={way.link.href} class="font-bold underline underline-offset-2">{way.link.text}</a>{way.link.after}</>}
+                    </p>
                   </div>
                   <span class="inline-flex shrink-0 items-center self-start rounded-full bg-brand-primary/15 px-4 py-2 text-xs font-black uppercase tracking-wider text-slate-900 sm:self-center">
                     {way.points}
@@ -333,5 +373,5 @@ const BENEFIT_LABELS: Record<string, string> = {
         </p>
       </div>
     </section>
-  </main>
+  </div>
 </BaseLayout>

@@ -459,8 +459,17 @@ routes.put('/:id', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) =
   const active = body.active !== false;
   const approvalStatus = String(body.approvalStatus ?? 'draft');
   const stockQuantity = Number(body.stockQuantity ?? 0);
+  // The quantity the editor LOADED. Present → the save only writes stock when
+  // the operator changed it, and only while stock still equals what they saw.
+  const rawExpectedStock = body.expectedStockQuantity;
+  const expectedStockQuantity = rawExpectedStock === undefined || rawExpectedStock === null || rawExpectedStock === ''
+    ? null
+    : Number(rawExpectedStock);
 
   // Validation
+  if (expectedStockQuantity !== null && (!Number.isInteger(expectedStockQuantity) || expectedStockQuantity < 0)) {
+    return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Expected stock quantity must be a non-negative integer.' } }, 400);
+  }
   if (name.length < 2 || name.length > 255) {
     return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Product name must be between 2 and 255 characters.' } }, 400);
   }
@@ -531,9 +540,22 @@ routes.put('/:id', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) =
       }, 400);
     }
 
-    const stockResult = await registry.setProductStockUseCase.execute(productId, stockQuantity);
+    const stockWrite = await registry.setProductStockUseCase.executeFromEditor(productId, stockQuantity, expectedStockQuantity);
+    const stockResult = stockWrite.kind === 'WRITE' ? stockWrite.result : { applied: true, reserved: 0, stock: existingProduct.stockQuantity };
     if (stockResult === null) {
       return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Product not found.' } }, 404);
+    }
+    if (!stockResult.applied && 'stale' in stockResult && stockResult.stale) {
+      // Someone (a dispatch, an adjustment, a colleague) moved stock after this
+      // editor loaded. Writing the absolute figure now would silently undo it.
+      return c.json({
+        success: false,
+        error: {
+          code: 'STALE_STOCK',
+          message: `Stock changed to ${stockResult.stock} since this page was opened (it showed ${expectedStockQuantity}). Nothing was saved. Reload the editor, check the quantity and save again.`,
+          details: { currentStock: stockResult.stock, expectedStock: expectedStockQuantity, requestedStock: stockQuantity },
+        },
+      }, 409);
     }
     if (!stockResult.applied) {
       // Authoritative: these figures come from the same transaction that
@@ -617,7 +639,19 @@ routes.put('/:id', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) =
       action: 'PRODUCT_UPDATED',
       entity: 'product',
       entityId: productId,
-      newState: { name, sku, slug, priceUgx, stockQuantity },
+      previousState: {
+        name: existingProduct.name,
+        sku: existingProduct.sku,
+        slug: existingProduct.slug,
+        priceUgx: existingProduct.priceUgx,
+        stockQuantity: existingProduct.stockQuantity,
+      },
+      newState: {
+        name, sku, slug, priceUgx,
+        // What stock IS after the save: unchanged when the editor left it alone.
+        stockQuantity: stockWrite.kind === 'SKIPPED' ? existingProduct.stockQuantity : stockResult.stock,
+        stockWritten: stockWrite.kind === 'WRITE',
+      },
     });
 
     return c.json({ success: true, message: 'Product properties saved.' });

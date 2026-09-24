@@ -20,6 +20,7 @@ import {
 import { dedupeProductsById, isApprovedDiscoveryProduct, getProductSubcategory, subcategoryNameForSlug } from '../../lib/product-discovery';
 import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
 import { fetchApprovedCatalogue } from '../../lib/catalogue';
+import { findRecordedRedirect } from '../../lib/recordedRedirect';
 
 /**
  * CATEGORY AUTHORITY ENGINE — one dynamic route serves every registered hub
@@ -33,6 +34,11 @@ const hub = getHub(hubSlug);
 const child = hub && childParam ? getHubChild(hub, childParam) : undefined;
 
 if (!hub || (childParam && !child) || childParam.includes('/')) {
+  // A recorded redirect (manual row, retired page) is answered HERE. Handing
+  // over to 404.astro cannot redirect: Astro keeps this 404 status and merges
+  // the 404 page's Location into it, so the shopper got a blank 404.
+  const recorded = await findRecordedRedirect(Astro.url.pathname);
+  if (recorded) return Astro.redirect(recorded.target, recorded.status);
   // Same pattern as products/[slug].astro — an unregistered path is a 404.
   return Astro.redirect('/404', 404);
 }
@@ -145,7 +151,7 @@ const intro = child ? [child.intro] : hub.intro;
     {products.length > 0 ? (
       <section aria-label="Products" class="mt-7">
         <p class="text-sm font-semibold text-slate-700">{products.length} product{products.length === 1 ? '' : 's'} in this range</p>
-        <div class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div class="mt-5 grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4">
           {products.map((product, index) => (
             <ProductCard product={product} subcategory={subcategoryNameForSlug(getProductSubcategory(product, taxonomy), taxonomy)} eager={index < 4} />
           ))}

@@ -43,6 +43,37 @@ export function sniffImageMime(buffer: Buffer): string | null {
   }
   return null;
 }
+
+const EXTENSION_FOR_MIME: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/avif': 'avif',
+  'image/gif': 'gif',
+};
+
+/**
+ * The name an upload is stored (and served) under: the client's base name,
+ * character-cleaned, with the extension the BYTES earned — never the one the
+ * client typed.
+ *
+ * The edge serves /uploads/* with a plain file server that types a response by
+ * its extension. Keeping the client's extension let `promo.html` whose bytes
+ * start `GIF89a` pass the magic-byte sniff and then be served as text/html on
+ * the shop's own origin (stored XSS, found 2026-09-24). Forcing the extension
+ * from the sniffed type makes the served type match what was checked.
+ */
+export function storedImageFilename(clientName: string, sniffedMime: string): string {
+  const ext = EXTENSION_FOR_MIME[sniffedMime];
+  if (!ext) throw new Error(`No stored extension for ${sniffedMime}`);
+  const cleaned = (clientName ?? '').replace(/[^A-Za-z0-9._-]/g, '_');
+  const dot = cleaned.lastIndexOf('.');
+  const base = (dot > 0 ? cleaned.slice(0, dot) : cleaned)
+    .replace(/^\.+/, '')
+    .replace(/\.+$/, '')
+    .slice(0, 200 - ext.length - 1) || 'upload';
+  return `${base}.${ext}`;
+}
 const MAX_BYTES = 15 * 1024 * 1024;
 
 export type UploadRejectReason = 'UNSUPPORTED_TYPE' | 'TOO_LARGE' | 'TOO_MANY_PIXELS' | 'UNREADABLE' | 'EMPTY';
@@ -130,7 +161,7 @@ export class MediaLibraryUseCase {
         continue;
       }
 
-      const safeName = file.filename.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 200) || 'upload';
+      const safeName = storedImageFilename(file.filename, file.mime);
       const dir = `uploads/assets/${checksum.slice(0, 2)}/${checksum.slice(0, 12)}`;
       const stored = await this.storage.saveAsset(dir, safeName, file.buffer);
 

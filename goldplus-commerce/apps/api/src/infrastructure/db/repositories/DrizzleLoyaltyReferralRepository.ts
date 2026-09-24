@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '../client';
+import { LOYALTY_PAYMENT_QUALIFIES_SQL } from '../LoyaltyEarnEligibilitySql';
 import { users } from '../schema/identity';
 import { loyaltyReferrals } from '../schema/loyalty';
 import { ILoyaltyReferralRepository } from '../../../application/use-cases/loyalty/LoyaltyGamificationUseCases';
@@ -90,7 +91,7 @@ export class DrizzleLoyaltyReferralRepository implements ILoyaltyReferralReposit
   async countDeliveredRetailOrders(userId: string): Promise<number> {
     const rows = (await db.execute(sql`
       select count(*)::int as n from orders
-      where user_id = ${userId} and payment_status = 'paid'
+      where user_id = ${userId} and ${LOYALTY_PAYMENT_QUALIFIES_SQL}
         and status in ('delivered','completed') and buyer_type = 'retail'`)) as unknown as Array<{ n: number }>;
     return Number(rows[0]?.n ?? 0);
   }

@@ -17,15 +17,16 @@ import { GetDeliveryEstimateUseCase } from '../../apps/api/src/application/use-c
  * checkout applies: the legacy model is consulted only on CONFIG_INCOMPLETE.
  */
 
-function build(quote: { feeUgx: number | null; confirmed: boolean; mayFallBackToLegacy: boolean } | null) {
+function build(quote: { feeUgx: number | null; confirmed: boolean; mayFallBackToLegacy: boolean; unavailableReason?: string | null } | null) {
   let legacyAsked = false;
+  const asked: unknown[] = [];
   const useCase = new GetDeliveryEstimateUseCase({
     zones: { findByDistrict: async () => { legacyAsked = true; return { enabled: true, feeUgx: 15_000 }; } } as never,
     policy: { get: async () => null } as never,
     observations: { summarizeByDistrict: async () => new Map() } as never,
-    quoting: quote ? { quote: async () => quote } : null,
+    quoting: quote ? { quote: async (input: unknown) => { asked.push(input); return quote; } } : null,
   });
-  return { useCase, wasLegacyAsked: () => legacyAsked };
+  return { useCase, wasLegacyAsked: () => legacyAsked, asked };
 }
 
 describe('the estimate is the quoting service’s answer', () => {
@@ -58,5 +59,36 @@ describe('the estimate is the quoting service’s answer', () => {
     const r = await useCase.execute({ district: 'Atlantis' });
     expect(r.ok).toBe(false);
     expect(wasLegacyAsked()).toBe(false);
+  });
+
+  it('a per-parcel refusal (NO_RATE_CARD) is UNAVAILABLE, never the zone row or the seed band defaults', async () => {
+    // The "basket-derived" escape handed this to the legacy model, which showed
+    // the Gulu zone's 15,000 as CONFIRMED (or an invented 'about 20,000' from
+    // DEFAULT_DELIVERY_BAND_POLICY) while CheckoutUseCase — same destination,
+    // same refusal, mayFallBackToLegacy false — charged 0, unconfirmed.
+    for (const unavailableReason of ['NO_RATE_CARD', 'PARCEL_CLASS_UNKNOWN']) {
+      const { useCase, wasLegacyAsked } = build({ feeUgx: null, confirmed: false, mayFallBackToLegacy: false, unavailableReason });
+      const r = await useCase.execute({ district: 'Gulu', area: 'Laroo' });
+      expect(r.ok && r.estimate.kind).toBe('UNAVAILABLE');
+      expect(r.ok && r.estimate.feeUgx).toBeNull();
+      expect(wasLegacyAsked()).toBe(false);
+    }
+  });
+
+  it('asks the quoting service the same question checkout charges on: basket and area slug included', async () => {
+    const { useCase, asked } = build({ feeUgx: 12_000, confirmed: true, mayFallBackToLegacy: false });
+    const r = await useCase.execute({
+      district: 'Gulu',
+      area: 'Laroo, Gulu',
+      areaSlug: 'gulu-laroo',
+      items: [{ productId: 'p1', quantity: 2 }],
+    });
+    expect(r.ok && r.estimate.feeUgx).toBe(12_000);
+    expect(asked[0]).toEqual({
+      areaSlug: 'gulu-laroo',
+      district: 'Gulu',
+      deliveryArea: 'Laroo, Gulu',
+      items: [{ productId: 'p1', quantity: 2 }],
+    });
   });
 });

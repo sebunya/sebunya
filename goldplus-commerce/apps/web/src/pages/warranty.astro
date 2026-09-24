@@ -7,20 +7,25 @@ import { fetchPublishedPolicy } from '../lib/legalCms';
 // Wave 2C: a PUBLISHED CMS version replaces the wording below; until one
 // exists this page is the authoritative published policy.
 const cms = await fetchPublishedPolicy('warranty');
+// "13 August 2026", not the raw ISO date.
+const effectiveMs = Date.parse(policy.effectiveDate);
+const effectiveDateLabel = Number.isFinite(effectiveMs)
+  ? new Date(effectiveMs).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Kampala' })
+  : policy.effectiveDate;
 ---
 
 <BaseLayout title="Warranty policy | GoldPlus">
-  <main id="main-content">
+  <div>
     {cms ? <CmsPolicyDocument policy={cms} /> : <>
     <header class="border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white py-12 sm:py-16">
       <div class="container mx-auto max-w-4xl px-4 lg:px-8">
         <p class="text-xs font-black uppercase tracking-[0.18em] text-brand-primaryInk">Customer policy</p>
         <h1 class="mt-3 text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">Warranty policy</h1>
-        <p class="mt-4 max-w-3xl text-sm leading-relaxed text-slate-600 sm:text-base">This draft explains how warranty claims are handled. Product-specific coverage always comes from the product listing, your receipt or the manufacturer.</p>
+        <p class="mt-4 max-w-3xl text-sm leading-relaxed text-slate-600 sm:text-base">How warranty claims work at GoldPlus. Product-specific coverage always comes from the product listing, your receipt or the manufacturer.</p>
         <p class="mt-4 inline-flex flex-wrap items-center gap-2 text-xs font-bold text-slate-600">
           <span class="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-emerald-900">{POLICY_STATUS_LABEL[policy.status]}</span>
           <span class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Version {policy.version}</span>
-          <span class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Effective date: {policy.effectiveDate}</span>
+          <span class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">Effective {effectiveDateLabel}</span>
         </p>
       </div>
     </header>
@@ -47,5 +52,5 @@ const cms = await fetchPublishedPolicy('warranty');
       </div>
     </div>
   </>}
-  </main>
+  </div>
 </BaseLayout>

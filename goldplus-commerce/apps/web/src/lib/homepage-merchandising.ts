@@ -1,4 +1,5 @@
 import type { ProductPublicDto } from "@goldplus/shared";
+import { hasRealCover, realCoversFirst } from "./productCover";
 
 export interface HomepageProductAllocation {
   featuredProducts: ProductPublicDto[];
@@ -19,8 +20,8 @@ export interface HomepageProductAllocation {
  * 
  * Priority Order:
  * 1. Featured Products (Exactly 4, or as many as available if < 4)
- * 2. Promo / Campaign Card (1 unique product)
- * 3. Today's GoldPlus Picks Card (1 unique product)
+ * 2. First highlight card (1 unique product with a real photo, or hidden)
+ * 3. Second highlight card (1 unique product with a real photo, or hidden)
  * 4. Trending Now (Residual pool: max 4, minimum 2 unique products required to render)
  */
 export function buildHomepageProductAllocation(
@@ -44,18 +45,27 @@ export function buildHomepageProductAllocation(
     return allocated;
   }
 
+  // The shop window is filled from real photography first. Products whose
+  // cover is still the generated sample frame fill whatever is left, so the
+  // owner's "show the placeholder" policy holds and no slot goes empty.
+  allProducts = realCoversFirst(allProducts);
+
   // 1. Featured Products (Takes up to 4)
   const featured = getUniqueProducts(allProducts, 4);
   if (featured.length < 4) {
     warnings.push(`Featured section has fewer than 4 products (found: ${featured.length})`);
   }
 
-  // 2. Promo Product (Takes next 1)
-  const promoPool = getUniqueProducts(allProducts, 1);
+  // 2 & 3. The two highlight cards. They are not curated, verified or daily,
+  // and nothing on them claims to be: they are simply the next photographed
+  // products. A product still on its generated sample frame never fills one
+  // (owner decision 2026-09-24); with no photographed product left, the card
+  // is hidden rather than filled with a placeholder.
+  const photographed = allProducts.filter(hasRealCover);
+  const promoPool = getUniqueProducts(photographed, 1);
   const promo = promoPool.length > 0 ? promoPool[0] : null;
 
-  // 3. Today's GoldPlus Pick (Takes next 1)
-  const picksPool = getUniqueProducts(allProducts, 1);
+  const picksPool = getUniqueProducts(photographed, 1);
   const pick = picksPool.length > 0 ? picksPool[0] : null;
 
   // 4. Trending Now (residual pool, pulls from either trendingCandidates or remaining allProducts)

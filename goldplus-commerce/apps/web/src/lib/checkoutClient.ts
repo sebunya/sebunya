@@ -16,7 +16,7 @@ import type {
   PaymentStartRequestDto,
   PaymentStartResponseDto,
 } from '@goldplus/shared';
-import { CHECKOUT_INTENT_HEADER } from '@goldplus/shared';
+import { CHECKOUT_INTENT_HEADER, offersOnlinePayment } from '@goldplus/shared';
 import { apiBase } from './api';
 
 /**
@@ -381,9 +381,12 @@ export function customerMessageFor(result: CheckoutCallResult): {
         message: 'Checkout is temporarily unavailable. Please try again in a few minutes. Your basket is saved and you have not been charged.',
       };
     case 'INVALID_CHECKOUT':
+      // Only a refusal the page can pin to a field is called "highlighted"
+      // (see invalidCheckoutField). This fallback highlights nothing, so it
+      // must not say it does.
       return {
         status: 'error',
-        message: 'Some details are missing or do not look right. Please check the highlighted fields and try again.',
+        message: 'Some of your details do not look right. Please check them and try again. You have not been charged.',
       };
     case 'ORDER_FAILED':
     case 'CHECKOUT_FAILED':
@@ -393,4 +396,55 @@ export function customerMessageFor(result: CheckoutCallResult): {
         message: 'We could not place your order. Please try again. You have not been charged. If it keeps failing, message us and we will take the order by phone.',
       };
   }
+}
+
+/**
+ * The form field an INVALID_CHECKOUT refusal is about, with words for it.
+ *
+ * The API names the failing path first ("customerDetails.email: Invalid
+ * email"). The page used to say "check the highlighted fields" while nothing was
+ * highlighted, because the path was never read. The API's own text is never
+ * shown: only the path is used, to pick the field and the sentence.
+ */
+export type CheckoutFormField = 'name' | 'email' | 'phone' | 'locationJson' | 'deliveryAddress';
+
+export function invalidCheckoutField(apiMessage: string | null | undefined): { field: CheckoutFormField; message: string } | null {
+  const path = String(apiMessage ?? '').split(':')[0].trim();
+  if (!path.startsWith('customerDetails.')) return null;
+  const key = path.slice('customerDetails.'.length);
+  if (key === 'name') return { field: 'name', message: 'Enter your full name.' };
+  if (key === 'email') return { field: 'email', message: 'Enter a full email address, like name@example.com, or leave it empty.' };
+  if (key === 'phone') return { field: 'phone', message: 'Enter a mobile number we can call, for example 0772 123 456 (10 digits starting 07), or +256 772 123 456.' };
+  if (key === 'deliveryArea' || key.startsWith('deliveryLocation')) {
+    return { field: 'locationJson', message: 'Choose your delivery location again: type your area and pick it from the list, or pick your district.' };
+  }
+  if (key === 'deliveryAddress') return { field: 'deliveryAddress', message: 'Add the estate, road, building or landmark our rider should look for, in a few words.' };
+  return null;
+}
+
+/**
+ * Is this order waiting for money rather than moving? One rule for
+ * /track-order and the signed-in /orders/[id], so the two never disagree
+ * about whether to show the dispatch ladder.
+ *
+ * Read from the PAYMENT status: nothing writes the order status
+ * 'pending_payment' (orders are created 'received', and a declined online
+ * payment only sets paymentStatus 'failed'), so a status-only check never
+ * matched and a failed-payment order showed "Order placed, next: Confirmed &
+ * preparing" as if it were moving. A failed payment on a received order is
+ * unpaid whatever the method. 'unpaid'/'pending' alone also describes a
+ * cash-on-delivery order, which the rider collects and which keeps its ladder,
+ * so that case needs the payment method; when the method is not known the
+ * answer is "not waiting" rather than hiding a COD order's progress.
+ */
+export function orderAwaitsPayment(order: {
+  status?: string | null;
+  paymentStatus?: string | null;
+  paymentMethod?: string | null;
+}): boolean {
+  const status = String(order.status ?? '').toLowerCase();
+  const payment = String(order.paymentStatus ?? '').toLowerCase();
+  if (status === 'pending_payment') return true;
+  if (status === 'received' && payment === 'failed') return true;
+  return order.paymentMethod != null && offersOnlinePayment(order);
 }

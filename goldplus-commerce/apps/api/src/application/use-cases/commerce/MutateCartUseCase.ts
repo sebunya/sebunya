@@ -48,6 +48,13 @@ export type CartOutcomeKind =
 export interface CartLine {
   productId: string;
   name: string;
+  /**
+   * The product page this line links to. Without it every server-held basket
+   * line linked to `/products/` — a 404 — because the storefront had nothing to
+   * build the link from. Optional: a line being added has no slug until it is
+   * read back from the catalogue.
+   */
+  slug?: string;
   unitPriceUgx: number;
   quantity: number;
 }

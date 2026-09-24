@@ -131,6 +131,31 @@ export function isApprovedDiscoveryProduct(product: ProductPublicDto, taxonomy: 
   return taxonomy.some((category) => category.name === product.categoryName);
 }
 
+/**
+ * A shopper knows their PHONE, not the battery's pack code, and a listing often
+ * names only the phone line ("fits the Spark 4") without the maker. So a brand
+ * word in the query is also satisfied by that brand's own phone lines. Only
+ * lines that belong to one maker are listed: "Note" (Infinix, Redmi, Galaxy)
+ * and bare letters (itel's A-series, Oppo's A-series) would match the wrong
+ * brand's batteries, so they are left out. This widens search only; nothing is
+ * displayed from it, and a word that is not there still excludes the product.
+ */
+export const PHONE_BRAND_LINES: Readonly<Record<string, RegExp>> = {
+  tecno: /\b(?:spark|camon|pova|phantom|pop\s?\d)/,
+  infinix: /\b(?:hot|zero|smart)\s?\d/,
+  samsung: /\bgalaxy\b/,
+  xiaomi: /\b(?:redmi|poco)\b/,
+  apple: /\biphone/,
+  huawei: /\b(?:mate|nova)\s?\d/,
+  oppo: /\breno\s?\d/,
+};
+
+function termMatches(term: string, haystack: string): boolean {
+  if (haystack.includes(term)) return true;
+  // Own keys only: a query word like "constructor" must not reach the prototype.
+  return Object.prototype.hasOwnProperty.call(PHONE_BRAND_LINES, term) && PHONE_BRAND_LINES[term].test(haystack);
+}
+
 export function matchesDiscoveryQuery(product: ProductPublicDto, query: string, taxonomy: Taxonomy = DEFAULT_TAXONOMY): boolean {
   if (!query) return true;
   const subcategory = subcategoryNameForSlug(getProductSubcategory(product, taxonomy), taxonomy);
@@ -143,7 +168,7 @@ export function matchesDiscoveryQuery(product: ProductPublicDto, query: string, 
   // only match MORE than before, never less. Kept in step with the API's
   // searchTerms so the header suggestions and this page agree.
   const terms = query.toLocaleLowerCase('en').split(/\s+/).filter(Boolean).slice(0, 6);
-  return terms.every((term) => haystack.includes(term));
+  return terms.every((term) => termMatches(term, haystack));
 }
 
 export function filterDiscoveryProducts(

@@ -34,6 +34,14 @@ export interface VerifyPesaPalPaymentOutput {
    * state machine had just refused the move.
    */
   lifecycleConflict?: boolean;
+  /**
+   * This attempt failed, but the ORDER refused to record it: a later fact about
+   * the money already stands (another attempt paid it). A late decline on a
+   * sibling attempt says nothing about the order, so the caller must not release
+   * a review, and must not tell the customer "payment did not go through" for an
+   * order whose money arrived.
+   */
+  superseded?: boolean;
 }
 
 /** How long an unpaid (PesaPal status 0) attempt stays open before 0 is taken as final. */
@@ -335,10 +343,13 @@ export class VerifyPesaPalPaymentUseCase {
     }
 
     // Failed/invalid payment: record the payment status only; the order lifecycle
-    // is unchanged and no order_event is written.
-    await this.paymentRepo.updateOrderPaymentStatusSafely(attempt.orderId, orderPaymentStatus);
+    // is unchanged and no order_event is written. A refused write means the
+    // order already holds a later fact about its money (paid by another
+    // attempt): this attempt's failure no longer speaks for the order.
+    const written = await this.paymentRepo.updateOrderPaymentStatusSafely(attempt.orderId, orderPaymentStatus);
     return {
       ok: false,
+      ...(written === false ? { superseded: true } : {}),
       status: mappedStatus,
       amount: attempt.amount,
       currency: attempt.currency,

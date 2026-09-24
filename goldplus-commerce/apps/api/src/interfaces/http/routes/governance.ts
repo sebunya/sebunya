@@ -14,6 +14,7 @@ import { canTransitionOrder } from '../../../domain/commerce/OrderStateMachine';
 import type { OrderStatus } from '../../../domain/commerce/Order';
 import { DealerApplicationValidationError } from '../../../application/use-cases/DealerApplicationUseCase';
 import { logger } from '../../../infrastructure/logging/logger';
+import { acknowledgementIdempotencyKey } from '../../../application/use-cases/notifications/AcknowledgementIdempotency';
 
 
 const routes = new Hono();
@@ -59,7 +60,7 @@ routes.post('/dealers/apply', async (c) => {
     customerPhone: typeof body?.phone === 'string' ? body.phone : null,
     customerEmail: typeof body?.email === 'string' ? body.email : null,
     data: { customerName: typeof body?.customerName === 'string' ? body.customerName : (typeof body?.contactName === 'string' ? body.contactName : null), reference: dealerId },
-    idempotencyKey: `ack:dealer_application:${dealerId}`,
+    idempotencyKey: acknowledgementIdempotencyKey({ kind: 'dealer_application', phone: body?.phone, email: body?.email, entityId: dealerId }),
     relatedEntity: 'dealer_application',
     relatedEntityId: dealerId,
   }).catch(() => undefined);
@@ -100,7 +101,7 @@ routes.post('/quotes/request', async (c) => {
     customerPhone: typeof body?.phone === 'string' ? body.phone : null,
     customerEmail: typeof body?.email === 'string' ? body.email : null,
     data: { customerName: typeof body?.customerName === 'string' ? body.customerName : (typeof body?.contactName === 'string' ? body.contactName : null), reference: result.quoteId },
-    idempotencyKey: `ack:quote_request:${result.quoteId}`,
+    idempotencyKey: acknowledgementIdempotencyKey({ kind: 'quote_request', phone: body?.phone, email: body?.email, entityId: result.quoteId }),
     relatedEntity: 'quote_request',
     relatedEntityId: result.quoteId,
   }).catch(() => undefined);
@@ -141,7 +142,7 @@ routes.post('/support/report-issue', async (c) => {
     customerPhone: typeof body?.phone === 'string' ? body.phone : null,
     customerEmail: typeof body?.email === 'string' ? body.email : null,
     data: { customerName: typeof body?.customerName === 'string' ? body.customerName : (typeof body?.contactName === 'string' ? body.contactName : null), reference: result.ticketId },
-    idempotencyKey: `ack:support_ticket:${result.ticketId}`,
+    idempotencyKey: acknowledgementIdempotencyKey({ kind: 'support_ticket', phone: body?.phone, email: body?.email, entityId: result.ticketId }),
     relatedEntity: 'support_ticket',
     relatedEntityId: result.ticketId,
   }).catch(() => undefined);
@@ -192,7 +193,7 @@ routes.post('/support/report-fake', async (c) => {
     customerPhone: typeof body?.reporterPhone === 'string' ? body.reporterPhone : null,
     customerEmail: typeof body?.reporterEmail === 'string' ? body.reporterEmail : null,
     data: { customerName: typeof body?.reporterName === 'string' ? body.reporterName : null, reference: result.reportId },
-    idempotencyKey: `ack:fake_product_report:${result.reportId}`,
+    idempotencyKey: acknowledgementIdempotencyKey({ kind: 'fake_product_report', phone: body?.reporterPhone, email: body?.reporterEmail, entityId: result.reportId }),
     relatedEntity: 'fake_product_report',
     relatedEntityId: result.reportId,
   }).catch(() => undefined);

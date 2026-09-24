@@ -48,7 +48,7 @@ Every item is a CONFIGURATION value; nothing activates until set, nothing needs
 a deploy.
 
 **1. Point value in UGX.** Options 10/20/50 per point → at the live 10 pts/1,000
-UGX rate that is a 1%/2%/5% return. RECOMMEND **20 UGX (2%)**. Wrong-high:
+UGX rate that is a 10%/20%/50% return. RECOMMEND **20 UGX (20%)**. Wrong-high:
 points already promised become retroactively expensive (cutting later is a
 communication event). Wrong-low: programme reads as worthless, liability sits
 unredeemed.
@@ -118,6 +118,17 @@ the preference-centre distinction is explicitly wired.
 
 ---
 
+> **Correction, 2026-09-24.** Items #1 above and in the table below originally
+> read "2% return". That was an arithmetic error in this log, not the live
+> configuration: 10 points per 1,000 UGX, each worth 20 UGX, returns 200 UGX per
+> 1,000 UGX spent, which is **20%**. The owner confirmed on 2026-09-24 that the
+> LIVE rates are the intended ones (rates unchanged); only this log was wrong.
+> Redemption is still bounded per order by the minimum (500 points) and the
+> max-share ceiling (50% of the goods total), so the 20% is value returned as
+> a discount on later orders, never cash. The /loyalty page now shows a worked
+> example computed from the live programme config, so the published figure
+> cannot drift from the engine.
+
 # PART V RESOLVED — Rob's activation instruction, 2026-08-05
 
 Rob: *"proceed to implement they are gamification modules you refused to build
@@ -128,7 +139,7 @@ none of them is now a code change.
 
 | # | Decision | Applied value |
 |---|---|---|
-| 1 | Point value | **20 UGX** (2% return) |
+| 1 | Point value | **20 UGX** (20% return: 10 points per 1,000 UGX × 20 UGX a point = 200 UGX back per 1,000 UGX spent) |
 | 2 | Redemption min / max share | **500 points / 5,000 bps (50%)** |
 | 3 | Promo stacking | **Allowed** (redemption applies after the promo-priced quote) |
 | 4 | First-cohort expiry | Moot — clock never started |

@@ -2,15 +2,15 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 ---
 <BaseLayout title="You are offline">
-  <div class="container mx-auto px-4 lg:px-8 py-20 md:py-28">
+  <div class="container mx-auto px-4 lg:px-8 py-20 md:py-24">
     <div class="max-w-xl mx-auto text-center">
-      <div aria-hidden="true" class="w-16 h-16 mx-auto mb-6 rounded-full bg-brand-primary/15 text-brand-charcoal flex items-center justify-center font-black text-2xl">
-        ⌁
+      <div aria-hidden="true" class="w-16 h-16 mx-auto mb-6 rounded-full bg-brand-primary/15 text-brand-charcoal flex items-center justify-center">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M2 2l20 20"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><path d="M5 12.9a10 10 0 0 1 5.2-2.8"/><path d="M19 12.9a10 10 0 0 0-2.1-1.6"/><path d="M2 8.8a15 15 0 0 1 4.2-2.6"/><path d="M22 8.8A15 15 0 0 0 11 4.9"/><path d="M12 20h.01"/></svg>
       </div>
       <h1 class="text-3xl md:text-4xl font-black text-brand-charcoal mb-3 tracking-tight">You are offline</h1>
       <p class="text-brand-mutedGrey leading-relaxed mb-8">
         We could not reach the GoldPlus servers. This usually means your device is offline.
-        Your cart and account are safe. They will sync as soon as you are back online.
+        Your cart and account are saved on our side, so nothing is lost. Tap Retry when you are back online.
       </p>
       <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
         <button
@@ -22,7 +22,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
         </button>
         <a
           href="/"
-          class="w-full sm:w-auto bg-white text-brand-charcoal border-2 border-brand-borderGrey px-6 py-3 rounded-lg font-bold hover:border-brand-charcoal focus-visible:ring-4 focus-visible:ring-brand-charcoal/10 outline-none text-center"
+          class="w-full sm:w-auto bg-white text-brand-charcoal border-2 border-brand-borderGrey px-6 py-3 rounded-lg font-bold hover:border-brand-charcoal focus-visible:ring-4 focus-visible:ring-brand-primaryInk outline-none text-center"
         >
           Go to home
         </a>

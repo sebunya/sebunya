@@ -31,11 +31,21 @@ export class TransitionFulfilmentTaskUseCase {
      * accept OUT_FOR_DELIVERY with no dispatch record (so no cash-on-delivery
      * acknowledgement and no PAYMENT_NOT_CLEARED refusal) and READY_FOR_DISPATCH
      * with the packing never completed. Optional so existing callers and tests
-     * construct unchanged; when wired, both are refused.
+     * construct unchanged; when wired, both are refused (and DELIVERED without
+     * a delivery record, below).
      */
     private readonly guards?: {
       dispatches?: { getByTask(taskId: string): Promise<unknown | null> };
       packingSessions?: { getByTask(taskId: string): Promise<{ status: string } | null> };
+      /**
+       * Delivery attempts (fulfilment_deliveries). DELIVERED belongs to
+       * RecordDeliveryUseCase, which writes the attempt AND moves the order to
+       * `delivered`. The generic path used to accept DELIVERED with neither, so
+       * the order sat at `dispatched` forever: no loyalty vesting, no delivery
+       * calibration, "On its way" on the customer's tracking page — and the
+       * task, now terminal, could no longer take the proper record.
+       */
+      deliveries?: { listByTask(taskId: string): Promise<ReadonlyArray<{ deliveredAt: Date | null }>> };
     },
     /**
      * The task's ORDER. A cancelled/completed/refunded order must never be
@@ -69,16 +79,27 @@ export class TransitionFulfilmentTaskUseCase {
 
     const from = snapshot.status;
 
-    if (to !== 'CANCELLED' && this.orders) {
+    if (this.orders) {
       const order = await this.orders.findById(snapshot.orderId);
       // Fail closed: a status the state machine does not know is not a live
       // order either, and must not become a 500 on the operator's screen.
       const orderIsClosed = (status: OrderStatus): boolean => { try { return isTerminalOrderStatus(status); } catch { return true; } };
-      if (order && orderIsClosed(order.orderStatus)) {
+      if (to !== 'CANCELLED' && order && orderIsClosed(order.orderStatus)) {
         return {
           ok: false,
           code: 'INVALID_TRANSITION',
           message: `Order is ${order.orderStatus} — its fulfilment task cannot be moved to ${to}. Cancel the task instead.`,
+        };
+      }
+      // The mirror image: cancelling the TASK of a LIVE order. The route then
+      // puts the order's stock back on sale and emails "Order cancelled", while
+      // the order itself stays open — paid, "being prepared" to the customer.
+      // The order is the authority; cancel it first, then close its task.
+      if (to === 'CANCELLED' && order && !orderIsClosed(order.orderStatus)) {
+        return {
+          ok: false,
+          code: 'INVALID_TRANSITION',
+          message: `Order is still ${order.orderStatus}. Cancel the order first — cancelling only its fulfilment task would put the stock back on sale while the customer's order stays open.`,
         };
       }
     }
@@ -87,6 +108,12 @@ export class TransitionFulfilmentTaskUseCase {
       const dispatch = await this.guards.dispatches.getByTask(input.taskId);
       if (!dispatch) {
         return { ok: false, code: 'INVALID_TRANSITION', message: 'Record the dispatch first. Marking a task out for delivery without a dispatch record skips the payment check.' };
+      }
+    }
+    if (to === 'DELIVERED' && this.guards?.deliveries) {
+      const attempts = await this.guards.deliveries.listByTask(input.taskId);
+      if (!attempts.some((a) => a.deliveredAt !== null)) {
+        return { ok: false, code: 'INVALID_TRANSITION', message: 'Record the delivery first (the task\'s Delivery page). Marking a task delivered without a delivery record never completes the order.' };
       }
     }
     if (to === 'READY_FOR_DISPATCH' && this.guards?.packingSessions) {
@@ -109,7 +136,24 @@ export class TransitionFulfilmentTaskUseCase {
 
     await this.repo.update(task);
 
-    let orderMirror: 'dispatched' | 'skipped' | 'not_wired' = 'not_wired';
+    let orderMirror: 'dispatched' | 'delivered' | 'skipped' | 'not_wired' = 'not_wired';
+    if (this.orderTransitions && to === 'DELIVERED') {
+      // Reached only with a recorded delivery (guard above): the recovery for a
+      // RecordDelivery whose own task move did not land. Best-effort, as there:
+      // an order already delivered refuses, and that refusal is not an error.
+      try {
+        await this.orderTransitions.transition(snapshot.orderId, 'delivered', {
+          actorId: input.actorId,
+          actorType: 'administrator',
+          source: 'fulfilment',
+          reasonCode: 'delivery_outcome',
+          note: `Fulfilment task ${task.id} delivered`,
+        });
+        orderMirror = 'delivered';
+      } catch {
+        orderMirror = 'skipped';
+      }
+    }
     if (this.orderTransitions && to === 'OUT_FOR_DELIVERY') {
       try {
         await this.orderTransitions.transition(snapshot.orderId, 'dispatched', {

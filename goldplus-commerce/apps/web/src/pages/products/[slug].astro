@@ -24,6 +24,9 @@ const galleryEnrichment = process.env.PRODUCT_GALLERY_ENRICHMENT !== 'false';
 import { publicBattery, parseDeviceCookie, serialiseDeviceCookie, DEVICE_COOKIE, FIT_BADGE } from '../../lib/batteries';
 import { SITE_ORIGIN } from '../../lib/sitemap';
 import { fetchApprovedCatalogue } from '../../lib/catalogue';
+import { RETURNS_POLICY } from '../../lib/returnsPolicy';
+import { getStorefrontCopy } from '../../lib/storefrontCopy';
+import { findRecordedRedirect } from '../../lib/recordedRedirect';
 
 const { slug } = Astro.params;
 const searchQuery = Astro.url.searchParams.get('searchQuery') ?? '';
@@ -48,8 +51,14 @@ try {
   } else if (res.status === 404) {
     // R1: the seed-catalogue rescue is retired. It rendered a fully
     // fabricated PDP — invented price, working Add-to-cart — for products the
-    // database has never contained. A product the API does not know is a 404.
-    return Astro.redirect('/404', 404);
+    // database has never contained. A product the API does not know is a 404,
+    // unless the path has a recorded redirect (a changed slug): handing over
+    // to 404.astro cannot redirect, because Astro keeps this 404 status.
+    {
+      const recorded = await findRecordedRedirect(Astro.url.pathname);
+      if (recorded) return Astro.redirect(recorded.target, recorded.status);
+      return Astro.redirect('/404', 404);
+    }
   } else {
     fetchError = 'We could not load this product right now.';
   }
@@ -82,7 +91,12 @@ if (!product) {
       },
     );
   }
-  return Astro.redirect('/404', 404);
+  // Not the 503 above: an unreachable API is not a missing product.
+  {
+    const recorded = await findRecordedRedirect(Astro.url.pathname);
+    if (recorded) return Astro.redirect(recorded.target, recorded.status);
+    return Astro.redirect('/404', 404);
+  }
 }
 
 if (searchQuery && Number.isInteger(searchRank) && searchRank >= 1 && searchRank <= 50) {
@@ -196,10 +210,10 @@ const availabilityLabel: Record<ProductPublicDto['availability']['kind'], string
 };
 
 const availabilityClass: Record<ProductPublicDto['availability']['kind'], string> = {
-  in_stock: 'bg-green-50/70 text-green-700 border-green-200/70 shadow-xs',
-  out_of_stock: 'bg-red-50/70 text-red-700 border-red-200/70 shadow-xs',
-  pre_order: 'bg-blue-50/70 text-blue-700 border-blue-200/70 shadow-xs',
-  unknown: 'bg-slate-50 text-slate-500 border-slate-200 shadow-xs',
+  in_stock: 'bg-green-50/70 text-green-700 border-green-200/70',
+  out_of_stock: 'bg-red-50/70 text-red-700 border-red-200/70',
+  pre_order: 'bg-blue-50/70 text-blue-700 border-blue-200/70',
+  unknown: 'bg-slate-50 text-slate-600 border-slate-200',
 };
 
 const whyYoullLikeIt = (() => {
@@ -239,6 +253,20 @@ const whyYoullLikeIt = (() => {
   }
   return [];
 })();
+
+/**
+ * What sits above the buying actions: up to three VERIFIED specifications (the
+ * same rows as the table below), so the facts a shopper compares are next to
+ * the button. Only when a product has none do the per-category lines above
+ * show, and they are labelled as highlights, not facts.
+ */
+const keySpecs = verifiedAttributes.slice(0, 3).map((v) => ({ name: v.name, value: `${v.value}${v.unit ? ` ${v.unit}` : ''}` }));
+
+// Returns and payment, beside the buy button, from their single sources: the
+// returns window the JSON-LD already publishes, and the checkout's own
+// admin-editable payment labels (both methods are offered at checkout).
+const storefrontCopy = await getStorefrontCopy();
+const lowerFirst = (value: string) => value.charAt(0).toLowerCase() + value.slice(1);
 
 const pdpDescriptions: Record<string, { intro: string; description: string }> = {
   'goldplus-16gb-usb-flash-drive': {
@@ -388,15 +416,15 @@ if (product) {
     <div class="container mx-auto px-4 lg:px-8">
       <nav class="flex text-sm text-slate-500 font-medium" aria-label="Breadcrumb">
         <a href="/" class="whitespace-nowrap hover:text-brand-primaryInk transition-colors">Home</a>
-        <span class="mx-2 text-slate-350" aria-hidden="true">/</span>
+        <span class="mx-2 text-slate-300" aria-hidden="true">/</span>
         <a href="/shop" class="whitespace-nowrap hover:text-brand-primaryInk transition-colors">Shop</a>
         {crumbCategory && (
           <>
-            <span class="mx-2 text-slate-350" aria-hidden="true">/</span>
+            <span class="mx-2 text-slate-300" aria-hidden="true">/</span>
             <a href={`/shop?category=${encodeURIComponent(crumbCategory.slug)}`} class="whitespace-nowrap hover:text-brand-primaryInk transition-colors">{crumbCategory.name}</a>
           </>
         )}
-        <span class="mx-2 text-slate-350" aria-hidden="true">/</span>
+        <span class="mx-2 text-slate-300" aria-hidden="true">/</span>
         <span class="text-gray-900 truncate" aria-current="page">{product?.name ?? slug}</span>
       </nav>
     </div>
@@ -412,8 +440,10 @@ if (product) {
     {product && (
       <div class="flex flex-col lg:flex-row gap-10 lg:gap-14">
 
-        {/* Focus 4: ~56% media / ~44% decision column on desktop; one column below lg. */}
-        <div class="w-full lg:w-[calc(56%-1.75rem)] lg:shrink-0">
+        {/* Focus 4: ~56% media / ~44% decision column on desktop; one column below lg.
+            Desktop: the gallery stays in view while the (much longer) details column
+            scrolls, instead of leaving an empty half beside the specifications. */}
+        <div class="w-full lg:w-[calc(56%-1.75rem)] lg:shrink-0 lg:sticky lg:top-6 lg:self-start">
           <ProductGallery productName={product.name} images={product.images} enrichment={galleryEnrichment} />
         </div>
 
@@ -444,14 +474,15 @@ if (product) {
               ) : (
                 <p class="text-base text-slate-600 italic">Price on request.</p>
               )}
-              <span class={`inline-flex items-center px-2.5 py-1 rounded-full border text-[9px] font-black uppercase tracking-wider ${availabilityClass[product.availability.kind]}`}>
+              <span class={`inline-flex items-center px-2.5 py-1 rounded-full border text-xs font-bold ${availabilityClass[product.availability.kind]}`}>
+                {/* State only, never a count (owner decision 2026-09-24): almost
+                    every product carried the same imported 200. */}
                 {availabilityLabel[product.availability.kind]}
-                {product.availability.kind === 'in_stock' && product.availability.quantity > 0 && ` · ${product.availability.quantity} available`}
               </span>
             </div>
 
             {product.modelNumber && product.modelNumber !== 'Needs Business Confirmation' && !product.modelNumber.toLowerCase().includes('pending') && (
-              <p class="text-[10px] text-slate-500 font-mono bg-slate-50 px-2.5 py-1 rounded-md border border-slate-200/70 inline-block">Model: {product.modelNumber}</p>
+              <p class="text-xs text-slate-600 font-mono bg-slate-50 px-2.5 py-1 rounded-md border border-slate-200/70 inline-block">Model: {product.modelNumber}</p>
             )}
           </div>
 
@@ -477,8 +508,17 @@ if (product) {
           {descIntro && (
             <p class="mb-4 font-bold text-gray-900 text-base leading-relaxed">{descIntro}</p>
           )}
-          {whyYoullLikeIt.length > 0 && (
-            <ul class="mb-6 space-y-1.5" aria-label="Key facts">
+          {keySpecs.length > 0 ? (
+            <ul class="mb-6 space-y-1.5" aria-label="Key specifications">
+              {keySpecs.map((spec) => (
+                <li class="flex items-start gap-2 text-sm text-slate-600">
+                  <svg class="w-5 h-5 text-brand-primaryInk shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                  <span><span class="font-semibold text-gray-900">{spec.name}:</span> {spec.value}</span>
+                </li>
+              ))}
+            </ul>
+          ) : whyYoullLikeIt.length > 0 && (
+            <ul class="mb-6 space-y-1.5" aria-label="Highlights">
               {whyYoullLikeIt.slice(0, 3).map(item => (
                 <li class="flex items-start gap-2 text-sm text-slate-600">
                   <svg class="w-5 h-5 text-brand-primaryInk shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
@@ -488,7 +528,7 @@ if (product) {
             </ul>
           )}
 
-          <form method="POST" action="/cart" class="flex flex-col sm:flex-row gap-3 mb-6">
+          <form id="pdp-buy" method="POST" action="/cart" class="flex flex-col sm:flex-row gap-3 mb-6">
             <input type="hidden" name="action" value="add" />
             <input type="hidden" name="productId" value={product.id} />
             <input type="hidden" name="slug" value={product.slug} />
@@ -504,7 +544,7 @@ if (product) {
             <button
               type="submit"
               disabled={!canBuy}
-              class={`flex-1 py-3 px-6 rounded-full font-bold text-xs tracking-wider uppercase transition-all duration-300 outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk active:scale-[0.98] cursor-pointer shadow-xs ${canBuy ? 'bg-brand-primary text-gray-950 hover:shadow-md hover:shadow-brand-primary/25' : 'bg-slate-100 text-slate-600 cursor-not-allowed'}`}
+              class={`flex-1 min-h-12 px-6 rounded-full font-bold text-xs tracking-wider uppercase transition-all duration-300 outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk active:scale-[0.98] cursor-pointer ${canBuy ? 'bg-brand-primary text-brand-black hover:shadow-md hover:shadow-brand-primary/25' : 'bg-slate-100 text-slate-600 cursor-not-allowed'}`}
             >
               {canBuy ? 'Add to cart' : availabilityLabel[product.availability.kind]}
             </button>
@@ -513,37 +553,75 @@ if (product) {
                 type="submit"
                 name="buyNow"
                 value="1"
-                class="flex-1 py-3 px-6 rounded-full font-bold text-xs tracking-wider uppercase transition-all duration-300 outline-none focus-visible:ring-4 focus-visible:ring-gray-900/20 active:scale-[0.98] cursor-pointer shadow-xs bg-gray-900 text-white hover:bg-black"
+                class="flex-1 min-h-12 px-6 rounded-full font-bold text-xs tracking-wider uppercase transition-all duration-300 outline-none focus-visible:ring-2 focus-visible:ring-brand-primaryInk focus-visible:ring-offset-2 active:scale-[0.98] cursor-pointer bg-brand-charcoal text-white hover:bg-brand-black"
               >
                 Buy now
               </button>
             )}
           </form>
 
-          {/* Delivery, stage 1 — AFTER the buying actions (brief: title/price → summary →
-              actions → delivery → details). Same endpoint and copy as cart and checkout. */}
-          <div class="mb-8">
-            <DeliveryQuote
-              stage={1}
-              compact={true}
-              items={[{ productId: product.id, quantity: 1 }]}
-              subtotalUgx={product.retailPriceUgx ?? 0}
-            />
-          </div>
-
           {!canBuy && (
-            <p class="mt-3 text-sm text-slate-600">
-              {/* An out-of-stock product used to end at a greyed button and nothing else — the strongest-intent visitor on the site, with nowhere to go. */}
+            <p class="-mt-3 mb-6 text-sm text-slate-600">
+              {/* An out-of-stock product used to end at a greyed button and nothing else — the strongest-intent visitor on the site, with nowhere to go. It sits directly under the disabled button, not below the delivery quote. */}
               Want this one? <a href={askAboutHref} class="font-bold text-gray-900 underline">Ask us on WhatsApp</a> and we will tell you what we have.
             </p>
           )}
+
+          {/* Phones and tablets: the buy button sits a screen or more below the
+              gallery. While the form (and the footer) are out of view, a slim
+              bar keeps the SAME form's Add to cart in reach (form="pdp-buy", so
+              it is the same submit, the same telemetry). Hidden by default:
+              nothing shows until the observer below decides. */}
+          {canBuy && (
+            <div data-pdp-buybar hidden class="lg:hidden fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white px-4 pt-2" style="padding-bottom:max(0.5rem, env(safe-area-inset-bottom))">
+              <div class="mx-auto flex max-w-3xl items-center gap-3">
+                <div class="min-w-0 flex-1">
+                  <p class="truncate text-sm font-bold text-gray-900">{product.name}</p>
+                  {product.retailPriceUgx !== null && <p class="text-sm font-black tabular-nums text-gray-900">{formatUgx(pdpSaleUgx ?? product.retailPriceUgx)}</p>}
+                </div>
+                <button type="submit" form="pdp-buy" class="shrink-0 min-h-11 px-5 rounded-full bg-brand-primary text-xs font-bold uppercase tracking-wider text-brand-black outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk active:scale-[0.98]">Add to cart</button>
+              </div>
+            </div>
+          )}
+
+          {/* Delivery, stage 1 — AFTER the buying actions (brief: title/price → summary →
+              actions → delivery → details). Same endpoint and copy as cart and checkout.
+              Only for a product that can be bought: quoting delivery for one that
+              is out of stock answers a question nobody can act on. */}
+          {canBuy && (
+            <div class="mb-8">
+              <DeliveryQuote
+                stage={1}
+                compact={true}
+                items={[{ productId: product.id, quantity: 1 }]}
+                subtotalUgx={product.retailPriceUgx ?? 0}
+              />
+            </div>
+          )}
+
+          {/* Returns and payment, next to the decision. Both lines come from their
+              single sources (returnsPolicy.ts, the checkout's payment copy). */}
+          <ul class="mb-8 space-y-3">
+            <li class="flex items-center gap-3 text-sm text-slate-600">
+              <span class="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-brand-charcoal shrink-0" aria-hidden="true">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a5 5 0 010 10H9m-6-10l4-4m-4 4l4 4" /></svg>
+              </span>
+              <span>{RETURNS_POLICY.windowDays}-day returns if unused and complete. <a href="/returns" class="font-semibold text-gray-900 underline underline-offset-2 hover:text-brand-primaryInk">How returns work</a></span>
+            </li>
+            <li class="flex items-center gap-3 text-sm text-slate-600">
+              <span class="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-brand-charcoal shrink-0" aria-hidden="true">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+              </span>
+              <span>{storefrontCopy.payment.pesapal.label}, or {lowerFirst(storefrontCopy.payment.offline.label)}.</span>
+            </li>
+          </ul>
 
           {/* Full details, after the buying actions. Nothing material is removed:
               the whole description, every benefit and the complete specification
               table, with its table semantics intact. */}
           {(descBody || whyYoullLikeIt.length > 3) && (
             <div class="mb-6 prose prose-sm max-w-none text-slate-600 leading-relaxed">
-              <h2 class="text-sm font-bold text-gray-900 mb-2 not-prose">About this product</h2>
+              <h2 class="text-lg font-black tracking-tight text-gray-900 mb-2 not-prose">About this product</h2>
               {descBody && descBody.split('\n\n').map(p => <p class="mb-3">{p}</p>)}
               {whyYoullLikeIt.length > 3 && (
                 <ul class="space-y-2 not-prose">
@@ -558,19 +636,20 @@ if (product) {
             </div>
           )}
 
-          <div class="border border-slate-200/80 rounded-xl overflow-hidden mb-6 bg-white shadow-xs">
+          <h2 class="text-lg font-black tracking-tight text-gray-900 mb-3">Specifications</h2>
+          <div class="border border-slate-200/80 rounded-xl overflow-hidden mb-6 bg-white">
             <table class="w-full text-sm text-left">
               <caption class="sr-only">Specifications for {product.name}</caption>
               <tbody>
                 {hasValidSku && (
                   <tr class="border-b border-slate-100">
-                    <th scope="row" class="px-5 py-3.5 bg-slate-50/60 font-bold text-gray-800 w-1/3 text-[10px] uppercase tracking-wider">SKU</th>
+                    <th scope="row" class="px-5 py-3.5 bg-slate-50/60 font-semibold text-slate-700 w-2/5 text-xs">SKU</th>
                     <td class="px-5 py-3.5 text-slate-700 font-mono text-sm">{product.sku}</td>
                   </tr>
                 )}
                 {verifiedAttributes.map((v) => (
                   <tr class="border-b border-slate-100 last:border-b-0">
-                    <th scope="row" class="px-5 py-3.5 bg-slate-50/60 font-bold text-gray-800 w-1/3 text-[10px] uppercase tracking-wider">{v.name}</th>
+                    <th scope="row" class="px-5 py-3.5 bg-slate-50/60 font-semibold text-slate-700 w-2/5 text-xs">{v.name}</th>
                     <td class="px-5 py-3.5 text-slate-700 text-sm flex items-center gap-2">
                       <span>{v.value}{v.unit ? ` ${v.unit}` : ''}</span>
                     </td>
@@ -578,13 +657,16 @@ if (product) {
                 ))}
                 {!hasValidSku && verifiedAttributes.length === 0 && (
                   <tr>
-                    <td class="px-5 py-6 text-slate-450 italic text-center text-sm" colspan="2">No specifications published yet.</td>
+                    <td class="px-5 py-6 text-slate-500 italic text-center text-sm" colspan="2">No specifications published yet.</td>
                   </tr>
                 )}
               </tbody>
             </table>
           </div>
 
+          {/* Non-battery products: with verified pairings the link jumps to them;
+              without any, it says what it opens (the general finder) instead of
+              promising a list that does not exist. */}
           {battery ? (
             <>
             {!selectedDevice && <ThisPhoneSuggestion lead="Is this for the phone you are using?" class="mb-4" />}
@@ -592,9 +674,13 @@ if (product) {
               Not sure this is your battery? Find it by your phone
             </a>
             </>
+          ) : compatibilityEntries.length > 0 ? (
+            <a href="#compat-heading" class="block mb-8 rounded-xl border border-brand-primary/40 bg-brand-primary/5 px-5 py-4 text-sm font-semibold text-gray-900 hover:border-brand-primary">
+              See what it works with ({compatibilityEntries.length})
+            </a>
           ) : (
             <a href={`/product-finder?compatibleWith=${encodeURIComponent(product.id)}`} class="block mb-8 rounded-xl border border-brand-primary/40 bg-brand-primary/5 px-5 py-4 text-sm font-semibold text-gray-900 hover:border-brand-primary">
-              See what works with this
+              Not sure what you need? Answer 4 quick questions
             </a>
           )}
 
@@ -696,8 +782,9 @@ if (product) {
           <RecentlyViewedRail 
             title="Browse available products"
             subtitle="A few more from the GoldPlus shelf."
-            alwaysRender={true} 
-            fallbackProducts={pdpFallbackProducts} 
+            alwaysRender={true}
+            excludeProductId={product.id}
+            fallbackProducts={pdpFallbackProducts}
           />
         </div>
       </div>
@@ -791,8 +878,30 @@ if (product) {
       });
     }
 
-    // ── 4. Add-to-Cart telemetry + recommendation attribution ────────────────
-    const form = document.querySelector<HTMLFormElement>('form[action="/cart"]');
+    // ── 4. Sticky buy bar (phones/tablets) ───────────────────────────────────
+    // Shown only while BOTH the buy form and the footer are out of view; it is
+    // `hidden` in the markup, so without this observer nothing ever shows.
+    const buyBar = document.querySelector<HTMLElement>('[data-pdp-buybar]');
+    const buyForm = document.getElementById('pdp-buy');
+    if (buyBar && buyForm && 'IntersectionObserver' in window) {
+      const footer = document.querySelector('footer');
+      let formInView = true;
+      let footerInView = false;
+      const observer = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.target === buyForm) formInView = entry.isIntersecting;
+          else footerInView = entry.isIntersecting;
+        }
+        buyBar.hidden = formInView || footerInView;
+      });
+      observer.observe(buyForm);
+      if (footer) observer.observe(footer);
+    }
+
+    // ── 5. Add-to-Cart telemetry + recommendation attribution ────────────────
+    // By id: "the first /cart form on the page" was an accident of DOM order.
+    // The sticky bar's button submits this same form (form="pdp-buy").
+    const form = document.getElementById('pdp-buy') as HTMLFormElement | null;
     if (form && id) {
       form.addEventListener('submit', () => {
         // GA4-compatible add_to_cart event (fires before page navigation)

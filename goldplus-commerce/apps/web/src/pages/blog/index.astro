@@ -18,6 +18,11 @@ const canonical = page > 1 ? `${SITE_ORIGIN}/blog?page=${page}` : `${SITE_ORIGIN
 const title = page > 1 ? `Guides & advice — page ${page} | GoldPlus` : 'Guides & advice | GoldPlus';
 const description = 'Straight answers about chargers, power banks, cables, storage and sound — written for Uganda, by the shop that sells them.';
 
+// Nothing published yet: the page is a signpost, not content. It stays
+// reachable (the footer's admin-managed "Guides & advice" link) but asks not
+// to be indexed, and carries no breadcrumb markup, until there is an article.
+// The blog sitemap already leaves /blog out while it is empty.
+const empty = posts.length === 0;
 const breadcrumbs = serializeJsonLd(
   breadcrumbJsonLd([
     { name: 'Home', url: `${SITE_ORIGIN}/` },
@@ -25,9 +30,9 @@ const breadcrumbs = serializeJsonLd(
   ]),
 );
 ---
-<BaseLayout title={title} description={description} canonicalUrl={canonical}>
+<BaseLayout title={title} description={description} canonicalUrl={canonical} robotsMeta={empty ? 'noindex,follow' : undefined}>
   <Fragment slot="head">
-    <script type="application/ld+json" set:html={breadcrumbs} />
+    {!empty && <script type="application/ld+json" set:html={breadcrumbs} />}
     {page > 1 && <link rel="prev" href={page === 2 ? `${SITE_ORIGIN}/blog` : `${SITE_ORIGIN}/blog?page=${page - 1}`} />}
     {page < totalPages && <link rel="next" href={`${SITE_ORIGIN}/blog?page=${page + 1}`} />}
   </Fragment>
@@ -44,13 +49,17 @@ const breadcrumbs = serializeJsonLd(
   </header>
 
   <div class="mx-auto max-w-5xl px-4 py-12">
-    {posts.length === 0 ? (
-      <div class="rounded-2xl border border-slate-200 bg-white p-10 text-center">
-        <h2 class="text-lg font-bold text-slate-900">No articles published yet</h2>
-        <p class="mx-auto mt-2 max-w-md text-sm text-slate-600">
-          Nothing has been published here yet. In the meantime the catalogue is the fastest way to find what you need.
+    {empty ? (
+      <div class="rounded-2xl border border-slate-200 bg-white p-6 text-center sm:p-10">
+        <h2 class="text-lg font-bold text-slate-900">No guides yet</h2>
+        <p class="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-600">
+          We have not published a guide here yet. Until we do, these answer most questions:
         </p>
-        <a href="/shop" class="mt-6 inline-block rounded-full bg-brand-dark px-6 py-3 text-sm font-bold text-white">Browse the shop</a>
+        <div class="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+          <a href="/product-finder" class="inline-flex min-h-11 items-center justify-center rounded-full bg-brand-dark px-6 text-sm font-bold text-white">Find the right product</a>
+          <a href="/faq" class="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-6 text-sm font-bold text-slate-800 hover:border-slate-900">Read the FAQ</a>
+          <a href="/shop" class="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 px-6 text-sm font-bold text-slate-800 hover:border-slate-900">Browse the shop</a>
+        </div>
       </div>
     ) : (
       <div class="grid gap-8 sm:grid-cols-2">

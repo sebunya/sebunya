@@ -84,6 +84,7 @@ export class SettlePaymentUseCase {
         orderId: verification.orderId,
         status: verification.status,
         lifecycleConflict: verification.lifecycleConflict,
+        superseded: verification.superseded,
       },
       traceId: input.traceId,
     });
@@ -104,9 +105,11 @@ export class SettlePaymentUseCase {
         this.effects.recordMeasurement({ verification, trackingId: input.orderTrackingId, reference: input.merchantReference }));
       await this.runEffect('customer_message', verification.orderId, () =>
         this.effects.enqueueCustomerMessage(verification.orderId, 'ORDER_PAYMENT_SUCCESS'));
-    } else if (settlement.kind === 'FAILED' && settlement.orderId) {
+    } else if (settlement.kind === 'FAILED' && settlement.orderId && !verification.superseded) {
       // A decline or reversal is the moment the customer most needs to hear
-      // from us. Nothing else runs on this branch.
+      // from us. Nothing else runs on this branch. Never for a superseded
+      // attempt: that order is paid (reconcile does not return FAILED for it
+      // either; this guard keeps the two decisions from drifting apart).
       await this.runEffect('customer_message', settlement.orderId, () =>
         this.effects.enqueueCustomerMessage(settlement.orderId!, 'ORDER_PAYMENT_FAILED'));
     }

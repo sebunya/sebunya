@@ -301,16 +301,18 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
       <div class="container mx-auto px-4 lg:px-8 py-16 md:py-20">
         
         {/* TOP GRID: brand + visit/hours | Shop | Buying | Help */}
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-[1.6fr_1fr_1fr_1fr_1.05fr] gap-10 lg:gap-8">
+        <div class="grid grid-cols-2 lg:grid-cols-[1.6fr_1fr_1fr_1fr_1.05fr] gap-10 lg:gap-8">
 
-          <div class="flex flex-col">
-            <h3 class="text-white text-base font-black tracking-tight">{whatsappChannel.heading}</h3>
+          {/* Two link columns side by side on a phone (the brand block spans
+              both), not 28 links stacked in one ~2,000px column. */}
+          <div class="flex flex-col max-lg:col-span-2">
+            <h2 class="text-white text-base font-black tracking-tight">{whatsappChannel.heading}</h2>
             <p class="text-xs text-slate-400 leading-relaxed mt-2 mb-4">{whatsappChannel.body}</p>
             <a href={biz.whatsappChannelUrl} target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-2 rounded-full px-4 py-2.5 text-xs font-bold w-fit outline-none focus-visible:ring-4 focus-visible:ring-brand-primary transition-colors" style="background:#93D500;color:#0A0A0A">
               <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 004.79 1.22h.01c5.46 0 9.9-4.45 9.9-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0012.04 2z"/></svg>
               Follow on WhatsApp
             </a>
-            <div class="mt-7 grid grid-cols-1 sm:grid-cols-2 gap-6 text-xs">
+            <div class="mt-7 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-6 text-xs">
               <div>
                 <p class="font-bold text-white mb-1.5">{footer.visitHeading}</p>
                 {biz.addressLine1 && <p class="text-slate-400 leading-relaxed">{biz.addressLine1}</p>}
@@ -329,7 +331,7 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
 
           {footer.columns.map((col) => (
             <div class="flex flex-col">
-              <h4 class="font-bold text-xs uppercase tracking-wider mb-5 text-white">{col.heading}</h4>
+              <h3 class="font-bold text-xs uppercase tracking-wider mb-5 text-white">{col.heading}</h3>
               <ul class="space-y-3.5 text-xs">
                 {col.links.map((l) => (
                   <li><a href={l.href} class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">{l.label}</a></li>
@@ -364,7 +366,7 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
         {/* LOWER BRAND & LEGAL ROW */}
         <div class="border-t border-zinc-900 mt-10 pt-10 pb-8 flex flex-col md:flex-row md:items-end justify-between gap-8 text-xs text-slate-400">
           <div class="max-w-sm">
-            <h4 class="font-bold text-xs uppercase tracking-wider mb-4 text-white">{footer.paymentHeading}</h4>
+            <h3 class="font-bold text-xs uppercase tracking-wider mb-4 text-white">{footer.paymentHeading}</h3>
             <div class="flex flex-wrap items-center gap-2.5 mb-6">
               {/* Sized and lazy: they sit below the fold on every page. The MTN mark was a 120 KB SVG wrapping a bitmap; it is now a 2 KB WebP. */}
               <span class="inline-flex items-center justify-center h-12 min-w-[76px] px-4 rounded-xl bg-white shadow-sm" title="MTN Mobile Money"><img src="/payment/mtn-momo.webp" alt="MTN Mobile Money" width="36" height="36" loading="lazy" decoding="async" class="h-9 w-auto object-contain" /></span>

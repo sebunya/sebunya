@@ -51,6 +51,7 @@ export class DrizzleAuthorizedCartRepository implements ICartAuthorizedRepositor
         productId: cartItems.productId,
         quantity: cartItems.quantity,
         name: products.name,
+        slug: products.slug,
         retailPrice: productPrices.retailPrice,
         fallbackPrice: products.priceUgx,
       })
@@ -67,6 +68,7 @@ export class DrizzleAuthorizedCartRepository implements ICartAuthorizedRepositor
       items: lines.map((line) => ({
         productId: line.productId,
         name: line.name,
+        slug: line.slug,
         unitPriceUgx: line.retailPrice ?? line.fallbackPrice,
         quantity: line.quantity,
       })),

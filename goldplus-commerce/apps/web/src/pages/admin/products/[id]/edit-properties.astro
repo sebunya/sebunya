@@ -59,6 +59,11 @@ if (Astro.request.method === 'POST') {
   const floorPriceUgx = tier('floorPriceUgx'); const tierBPriceUgx = tier('tierBPriceUgx'); const tierCPriceUgx = tier('tierCPriceUgx');
   const stockStatus = String(form.get('stockStatus') ?? 'in_stock');
   const stockQuantity = Number(form.get('stockQuantity') ?? 0);
+  // The quantity this form was rendered with. The API writes stock only when
+  // the operator changed it, and refuses (409 STALE_STOCK) if stock moved since
+  // — a price or description save never reverts a dispatch or an adjustment.
+  const loadedStockRaw = String(form.get('expectedStockQuantity') ?? '').trim();
+  const expectedStockQuantity = loadedStockRaw === '' ? null : Number(loadedStockRaw);
   const imageUrl = String(form.get('imageUrl') ?? '').trim() || undefined;
   const active = form.get('active') === 'on' || form.get('active') === 'true';
   const isFeedEligible = form.get('isFeedEligible') === 'on' || form.get('isFeedEligible') === 'true';
@@ -69,7 +74,7 @@ if (Astro.request.method === 'POST') {
     body: JSON.stringify({
       name, sku, modelNumber, slug, categoryId, subcategory,
       shortDescription, longDescription, priceUgx, floorPriceUgx, tierBPriceUgx, tierCPriceUgx, stockStatus,
-      stockQuantity, imageUrl, active, approvalStatus, isFeedEligible
+      stockQuantity, expectedStockQuantity, imageUrl, active, approvalStatus, isFeedEligible
     }),
   });
 
@@ -220,6 +225,7 @@ if (Astro.request.method === 'POST') {
             defaultValue={String(product.stockQuantity)}
             required
           />
+          <input type="hidden" name="expectedStockQuantity" value={String(product.stockQuantity)} />
         </div>
 
         <FormField

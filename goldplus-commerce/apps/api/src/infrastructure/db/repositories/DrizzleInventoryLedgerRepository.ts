@@ -65,7 +65,9 @@ export class DrizzleInventoryLedgerRepository implements IInventoryLedgerReposit
     return db.transaction(async (tx) => {
       const [row] = await tx.select({ stock: products.stockQuantity, reserved: products.reservedQuantity }).from(products).where(eq(products.id, write.productId)).for('update');
       if (!row) return { ok: false, code: 'NOT_FOUND', message: 'Product not found.' };
-      const after = row.stock + write.delta;
+      // A balance-setting movement measures its difference HERE, under the lock.
+      const delta = write.targetQuantity != null ? write.targetQuantity - row.stock : write.delta;
+      const after = row.stock + delta;
       if (after < 0) return { ok: false, code: 'NEGATIVE_STOCK', message: `Refused: would take stock to ${after}.` };
       if (after < row.reserved) return { ok: false, code: 'BELOW_RESERVED', message: `Refused: ${row.reserved} unit(s) are reserved for open orders; stock cannot drop below that.` };
       if (after !== row.stock) {
@@ -79,7 +81,7 @@ export class DrizzleInventoryLedgerRepository implements IInventoryLedgerReposit
         productId: write.productId,
         locationId: write.locationId,
         movementType: write.movementType,
-        quantityDelta: write.delta,
+        quantityDelta: delta,
         quantityBefore: row.stock,
         quantityAfter: after,
         reason: write.reason.slice(0, 500),
@@ -182,12 +184,24 @@ export class DrizzleInventoryLedgerRepository implements IInventoryLedgerReposit
     return claimed.length === 1;
   }
 
+  async releaseReceiptClaim(id: string, actorId: string): Promise<void> {
+    await db
+      .update(stockReceipts)
+      .set({ appliedBy: null, updatedAt: new Date() })
+      .where(and(eq(stockReceipts.id, id), eq(stockReceipts.status, 'DRAFT'), eq(stockReceipts.appliedBy, actorId)));
+  }
+
   async markReceipt(id: string, status: 'APPLIED' | 'CANCELLED', actorId: string, lineMovements: Array<{ lineId: string; movementId: string }>) {
     await db.transaction(async (tx) => {
       for (const lm of lineMovements) await tx.update(stockReceiptLines).set({ movementId: lm.movementId }).where(eq(stockReceiptLines.id, lm.lineId));
       // Conditional on DRAFT: a late duplicate matches nothing and changes
-      // nothing, rather than restamping a receipt that already settled.
-      await tx.update(stockReceipts).set(status === 'APPLIED' ? { status, appliedBy: actorId, appliedAt: new Date(), updatedAt: new Date() } : { status, cancelledBy: actorId, cancelledAt: new Date(), updatedAt: new Date() }).where(and(eq(stockReceipts.id, id), eq(stockReceipts.status, 'DRAFT')));
+      // nothing, rather than restamping a receipt that already settled. A
+      // cancel also needs the receipt unclaimed, so it cannot land on an apply
+      // in progress (or on one that posted stock and then failed).
+      await tx.update(stockReceipts).set(status === 'APPLIED' ? { status, appliedBy: actorId, appliedAt: new Date(), updatedAt: new Date() } : { status, cancelledBy: actorId, cancelledAt: new Date(), updatedAt: new Date() })
+        .where(status === 'APPLIED'
+          ? and(eq(stockReceipts.id, id), eq(stockReceipts.status, 'DRAFT'))
+          : and(eq(stockReceipts.id, id), eq(stockReceipts.status, 'DRAFT'), isNull(stockReceipts.appliedBy)));
     });
     return this.receiptById(id);
   }
@@ -224,10 +238,37 @@ export class DrizzleInventoryLedgerRepository implements IInventoryLedgerReposit
     return (await Promise.all(rows.map((r) => this.countById(r.id)))).filter((r): r is CountRecord => !!r);
   }
 
+  /**
+   * Take exclusive ownership of a DRAFT count before any stock moves — the
+   * receipt claim, for counts. Without it a double-click on the plain Apply
+   * form posted every line's difference twice (a count of 8 against 10 left 6).
+   * `applied_by` is the claim marker, as for receipts (no migration).
+   */
+  async claimCountForApply(id: string, actorId: string): Promise<boolean> {
+    const claimed = await db
+      .update(stockCounts)
+      .set({ appliedBy: actorId, updatedAt: new Date() })
+      .where(and(eq(stockCounts.id, id), eq(stockCounts.status, 'DRAFT'), isNull(stockCounts.appliedBy)))
+      .returning({ id: stockCounts.id });
+    return claimed.length === 1;
+  }
+
+  async releaseCountClaim(id: string, actorId: string): Promise<void> {
+    await db
+      .update(stockCounts)
+      .set({ appliedBy: null, updatedAt: new Date() })
+      .where(and(eq(stockCounts.id, id), eq(stockCounts.status, 'DRAFT'), eq(stockCounts.appliedBy, actorId)));
+  }
+
   async markCount(id: string, status: 'APPLIED' | 'CANCELLED', actorId: string, lineMovements: Array<{ lineId: string; movementId: string }>) {
     await db.transaction(async (tx) => {
       for (const lm of lineMovements) await tx.update(stockCountLines).set({ movementId: lm.movementId }).where(eq(stockCountLines.id, lm.lineId));
-      await tx.update(stockCounts).set(status === 'APPLIED' ? { status, appliedBy: actorId, appliedAt: new Date(), updatedAt: new Date() } : { status, cancelledBy: actorId, cancelledAt: new Date(), updatedAt: new Date() }).where(eq(stockCounts.id, id));
+      // Conditional on DRAFT: a late duplicate settles nothing. A cancel also
+      // needs the count unclaimed, so it cannot land on an apply in progress.
+      await tx.update(stockCounts).set(status === 'APPLIED' ? { status, appliedBy: actorId, appliedAt: new Date(), updatedAt: new Date() } : { status, cancelledBy: actorId, cancelledAt: new Date(), updatedAt: new Date() })
+        .where(status === 'APPLIED'
+          ? and(eq(stockCounts.id, id), eq(stockCounts.status, 'DRAFT'))
+          : and(eq(stockCounts.id, id), eq(stockCounts.status, 'DRAFT'), isNull(stockCounts.appliedBy)));
     });
     return this.countById(id);
   }

@@ -2,6 +2,7 @@
 import RecommendationRail from "./RecommendationRail.astro";
 import { getRecommendations } from "../../lib/recommendations";
 import { filterDisplayableRecommendations } from "../../lib/recommendation-display";
+import { preferIds } from "../../lib/productCover";
 
 /**
  * R7 (2026-08-06): the homepage rail trusts the engine. "Popular" is only
@@ -14,16 +15,41 @@ interface Props {
   useContainerWrapper?: boolean;
   /** Products already shown by adjacent homepage sections — §14: no duplicate across adjacent surfaces. */
   excludeProductIds?: string[];
+  /** Products whose cover is a real photograph (lib/productCover). Only used to order a plain browse list. */
+  realCoverIds?: string[];
+  /**
+   * The home page's own band: white, on the home column (px-4 lg:px-8) like
+   * every other home section. The flex column keeps the rail's my-12 inside the
+   * band (flex items do not collapse margins through their parent) instead of
+   * collapsing through it and leaving a grey strip. Other pages keep
+   * the plain wrapper they sit inside.
+   */
+  homeBand?: boolean;
 }
 
-const { useContainerWrapper = true, excludeProductIds = [] } = Astro.props;
+const { useContainerWrapper = true, excludeProductIds = [], realCoverIds = [], homeBand = false } = Astro.props;
 
 const response = await getRecommendations({
   placement: "home_trending",
   limit: 12,
 }, { visitToken: Astro.locals.gpVisit });
 
-const finalItems = filterDisplayableRecommendations(response.items, { excludeIds: excludeProductIds, limit: 6 });
+let finalItems = filterDisplayableRecommendations(response.items, { excludeIds: excludeProductIds, limit: 6 });
+
+// A plain catalogue browse (no popularity evidence) has no order worth
+// defending, so it leads with real photography rather than sample frames. An
+// evidence-backed "Popular right now" list keeps the engine's order untouched.
+const claimsPopularity = (items: typeof finalItems) =>
+  items.some((item) => ((item as { reasonCodes?: string[] }).reasonCodes ?? []).includes("POPULAR_NOW"));
+if (realCoverIds.length > 0 && !claimsPopularity(finalItems)) {
+  const photographed = new Set(realCoverIds);
+  const photoFirst = filterDisplayableRecommendations(
+    preferIds(response.items, photographed, (item) => item.productId),
+    { excludeIds: excludeProductIds, limit: 6 },
+  );
+  // Reordering must never be what turns a browse list into a popularity claim.
+  if (!claimsPopularity(photoFirst)) finalItems = photoFirst;
+}
 
 // R9: the title claims popularity only when an item carries the CLAIM-grade
 // POPULAR_NOW reason — which the engine now emits only past its evidence
@@ -37,10 +63,19 @@ const title = evidenceBased ? "Popular right now" : "Browse available products";
 const subtitle = evidenceBased
   ? "What people are actually buying and engaging with."
   : "A look at what's on the shelf right now.";
+// Six cards on the home band: 2, 3 and 6 per row divide six evenly, so no
+// width leaves an orphan row (the shared 4-up grid left 4 + 2 from 1024px).
+const HOME_GRID = "grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 sm:gap-6";
 ---
 
 {finalItems.length > 0 && (
-  useContainerWrapper ? (
+  homeBand ? (
+    <div class="bg-white border-b border-slate-100 flex flex-col">
+      <div class="container mx-auto px-4 lg:px-8">
+        <RecommendationRail title={title} subtitle={subtitle} placement="home_trending" items={finalItems} gridClass={HOME_GRID} />
+      </div>
+    </div>
+  ) : useContainerWrapper ? (
     <div class="container mx-auto px-4 sm:px-6">
       <RecommendationRail title={title} subtitle={subtitle} placement="home_trending" items={finalItems} />
     </div>

@@ -72,6 +72,8 @@ export class InventoryLedgerUseCases {
       locationId: location?.id ?? null,
       movementType: type,
       delta: plan.delta,
+      // COUNT/CORRECTION set a balance: the adjuster measures it under the lock.
+      targetQuantity: type === 'COUNT' || type === 'CORRECTION' ? input.quantity : null,
       reason: plan.reason,
       supplierName: input.supplierName?.trim() || null,
       referenceNumber: input.referenceNumber?.trim() || null,
@@ -88,7 +90,7 @@ export class InventoryLedgerUseCases {
       entity: 'product',
       entityId: input.productId,
       previousState: { stockQuantity: outcome.before },
-      newState: { stockQuantity: outcome.after, movementType: type, delta: plan.delta, reason: plan.reason, reference: input.referenceNumber ?? null, supplier: input.supplierName ?? null, location: location?.code ?? null, movementId: outcome.movement.id },
+      newState: { stockQuantity: outcome.after, movementType: type, delta: outcome.after - outcome.before, reason: plan.reason, reference: input.referenceNumber ?? null, supplier: input.supplierName ?? null, location: location?.code ?? null, movementId: outcome.movement.id },
     });
     return { movement: outcome.movement, before: outcome.before, after: outcome.after };
   }
@@ -190,23 +192,34 @@ export class InventoryLedgerUseCases {
 
     const location = receipt.locationId ? (await this.repo.listLocations()).find((l) => l.id === receipt.locationId) ?? null : await this.repo.defaultLocation();
     const lineMovements: Array<{ lineId: string; movementId: string }> = [];
-    for (const line of receipt.lines) {
-      const outcome = await this.repo.applyMovement({
-        productId: line.productId!,
-        locationId: location?.id ?? null,
-        movementType: 'RECEIPT',
-        delta: line.quantity,
-        reason: `Receipt from ${receipt.supplierName}${receipt.supplierReference ? ` (${receipt.supplierReference})` : ''}`,
-        supplierName: receipt.supplierName,
-        referenceNumber: receipt.supplierReference,
-        unitCostUgx: canRecordCost ? line.unitCostUgx : null,
-        receiptId: receipt.id,
-        countId: null,
-        importSessionId: null,
-        actorId,
-      });
-      if (!outcome.ok) throw unprocessable(outcome.code, `Line "${line.scannedCode ?? line.canonicalCode}": ${outcome.message}`);
-      lineMovements.push({ lineId: line.id, movementId: outcome.movement.id });
+    try {
+      for (const line of receipt.lines) {
+        const outcome = await this.repo.applyMovement({
+          productId: line.productId!,
+          locationId: location?.id ?? null,
+          movementType: 'RECEIPT',
+          delta: line.quantity,
+          reason: `Receipt from ${receipt.supplierName}${receipt.supplierReference ? ` (${receipt.supplierReference})` : ''}`,
+          supplierName: receipt.supplierName,
+          referenceNumber: receipt.supplierReference,
+          unitCostUgx: canRecordCost ? line.unitCostUgx : null,
+          receiptId: receipt.id,
+          countId: null,
+          importSessionId: null,
+          actorId,
+        });
+        if (!outcome.ok) throw unprocessable(outcome.code, `Line "${line.scannedCode ?? line.canonicalCode}": ${outcome.message}`);
+        lineMovements.push({ lineId: line.id, movementId: outcome.movement.id });
+      }
+    } catch (err) {
+      // Nothing posted yet: give the claim back so the draft can be fixed and
+      // applied again, or cancelled. Once a RECEIPT movement has posted, the
+      // claim stays: a receipt ADDS stock, so a second apply would add those
+      // lines again, and cancelling would hide stock that really moved. That
+      // receipt needs a person (2026-09-24).
+      // A failed release must not hide the refusal that caused it.
+      if (lineMovements.length === 0) await this.repo.releaseReceiptClaim(id, actorId).catch(() => undefined);
+      throw err;
     }
     const applied = await this.repo.markReceipt(id, 'APPLIED', actorId, lineMovements);
     await this.audit.execute({ actorId, action: 'STOCK_RECEIPT_APPLIED', entity: 'stock_receipt', entityId: id, previousState: { status: 'DRAFT' }, newState: { status: 'APPLIED', movements: lineMovements.length, supplier: receipt.supplierName, reference: receipt.supplierReference } });
@@ -219,6 +232,9 @@ export class InventoryLedgerUseCases {
     if (receipt.status !== 'DRAFT') throw unprocessable('RECEIPT_NOT_DRAFT', 'Only a draft receipt can be cancelled.');
     if (!reason.trim()) throw invalid('A reason is required.');
     const updated = await this.repo.markReceipt(id, 'CANCELLED', actorId, []);
+    // markReceipt cancels only an unclaimed DRAFT: an apply in progress (or one
+    // that posted stock and then failed) is refused rather than audited.
+    if (updated && updated.status !== 'CANCELLED') throw unprocessable('RECEIPT_NOT_DRAFT', 'This receipt is being applied and can no longer be cancelled.');
     await this.audit.execute({ actorId, action: 'STOCK_RECEIPT_CANCELLED', entity: 'stock_receipt', entityId: id, newState: { reason } });
     return updated;
   }
@@ -272,27 +288,46 @@ export class InventoryLedgerUseCases {
     }
     const liveBlockers = countBlockers(count.lines.filter((l) => liveByProduct.has(l.productId)).map((l) => ({ productId: l.productId, systemQuantity: liveByProduct.get(l.productId)!, countedQuantity: l.countedQuantity, reason: l.reason })));
     if (liveBlockers.length) throw unprocessable('COUNT_STALE', `Stock moved since this count was drafted. ${liveBlockers.join(' ')} Re-count or add a reason.`, liveBlockers);
+
+    // Claim it before ANY stock moves — the receipt rule. Two applies (a
+    // double-click on the plain form) both passed the DRAFT check above and
+    // each posted the difference again: a count of 8 against 10 left 6, then 4.
+    if (!(await this.repo.claimCountForApply(id, actorId))) {
+      throw unprocessable('COUNT_NOT_DRAFT', 'This count is already being applied.');
+    }
+
     const lineMovements: Array<{ lineId: string; movementId: string }> = [];
-    for (const line of count.lines) {
-      const live = await this.repo.currentStock(line.productId);
-      if (!live) continue;
-      const delta = line.countedQuantity - live.stock;
-      const outcome = await this.repo.applyMovement({
-        productId: line.productId,
-        locationId: count.locationId,
-        movementType: 'COUNT',
-        delta,
-        reason: delta === 0 ? `${count.countType.toLowerCase()} count confirmed ${line.countedQuantity}` : `${count.countType.toLowerCase()} count: ${line.reason ?? 'difference found'}`,
-        supplierName: null,
-        referenceNumber: null,
-        unitCostUgx: null,
-        receiptId: null,
-        countId: count.id,
-        importSessionId: null,
-        actorId,
-      });
-      if (!outcome.ok) throw unprocessable(outcome.code, `${line.canonicalCode ?? line.productId}: ${outcome.message}`);
-      lineMovements.push({ lineId: line.id, movementId: outcome.movement.id });
+    try {
+      for (const line of count.lines) {
+        const live = await this.repo.currentStock(line.productId);
+        if (!live) continue;
+        const delta = line.countedQuantity - live.stock;
+        const outcome = await this.repo.applyMovement({
+          productId: line.productId,
+          locationId: count.locationId,
+          movementType: 'COUNT',
+          delta,
+          // A count sets the balance; the difference is measured under the lock.
+          targetQuantity: line.countedQuantity,
+          reason: delta === 0 ? `${count.countType.toLowerCase()} count confirmed ${line.countedQuantity}` : `${count.countType.toLowerCase()} count: ${line.reason ?? 'difference found'}`,
+          supplierName: null,
+          referenceNumber: null,
+          unitCostUgx: null,
+          receiptId: null,
+          countId: count.id,
+          importSessionId: null,
+          actorId,
+        });
+        if (!outcome.ok) throw unprocessable(outcome.code, `${line.canonicalCode ?? line.productId}: ${outcome.message}`);
+        lineMovements.push({ lineId: line.id, movementId: outcome.movement.id });
+      }
+    } catch (err) {
+      // A refused line (BELOW_RESERVED, say) left the count DRAFT and claimed:
+      // it could be neither applied again nor cancelled. Give the claim back.
+      // Re-applying is safe even after some lines posted, because a COUNT sets
+      // the balance (targetQuantity) rather than adding a difference.
+      await this.repo.releaseCountClaim(id, actorId).catch(() => undefined);
+      throw err;
     }
     const applied = await this.repo.markCount(id, 'APPLIED', actorId, lineMovements);
     await this.audit.execute({ actorId, action: 'STOCK_COUNT_APPLIED', entity: 'stock_count', entityId: id, previousState: { status: 'DRAFT' }, newState: { status: 'APPLIED', movements: lineMovements.length } });
@@ -305,6 +340,9 @@ export class InventoryLedgerUseCases {
     if (count.status !== 'DRAFT') throw unprocessable('COUNT_NOT_DRAFT', 'Only a draft count can be cancelled.');
     if (!reason.trim()) throw invalid('A reason is required.');
     const updated = await this.repo.markCount(id, 'CANCELLED', actorId, []);
+    // markCount cancels only an unclaimed DRAFT: an apply that started after
+    // the read above wins, and the cancel is refused rather than audited.
+    if (updated && updated.status !== 'CANCELLED') throw unprocessable('COUNT_NOT_DRAFT', 'This count is being applied and can no longer be cancelled.');
     await this.audit.execute({ actorId, action: 'STOCK_COUNT_CANCELLED', entity: 'stock_count', entityId: id, newState: { reason } });
     return updated;
   }

@@ -8,6 +8,16 @@ import Notice from '../components/Notice.astro';
 import { apiBase } from '../lib/api';
 import SocialSignIn from '../components/auth/SocialSignIn.astro';
 import { SESSION_COOKIE_NAME } from '../lib/session';
+import {
+  validateRegistration,
+  fieldErrorsFromBadInput,
+  firstErrorField,
+  registerBannerMessage,
+  sanitiseJoinPhone,
+  registerUrlWithoutPhone,
+  JOIN_PHONE_COOKIE,
+  type RegisterFieldErrors,
+} from '../lib/registerForm';
 
 /**
  * The visitor's address, forwarded so abuse control counts THEM and not this
@@ -27,10 +37,35 @@ if (Astro.cookies.get('goldplus_session')?.value && Astro.request.method !== 'PO
   return Astro.redirect('/account', 303);
 }
 
+// The header's "Join free" form is a GET with the number in ?phone=. Carry the
+// number into the phone field, but never leave it in the address bar: the page
+// URL is recorded by analytics, and a phone number is personal data. The
+// redirect happens here, server-side, before any tag on the page can run.
+if (Astro.request.method === 'GET' && Astro.url.searchParams.has('phone')) {
+  const joinPhone = sanitiseJoinPhone(Astro.url.searchParams.get('phone'));
+  if (joinPhone) {
+    Astro.cookies.set(JOIN_PHONE_COOKIE, joinPhone, {
+      path: '/register',
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 600,
+      secure: import.meta.env.PROD,
+    });
+  }
+  return Astro.redirect(registerUrlWithoutPhone(Astro.url), 303);
+}
+
 let status: 'success' | 'error' | null = null;
 let message: string | undefined;
 let values: { email?: string; phone?: string } = {};
+let fieldErrors: RegisterFieldErrors = {};
 let notConfigured = false;
+
+if (Astro.request.method === 'GET') {
+  const carried = sanitiseJoinPhone(Astro.cookies.get(JOIN_PHONE_COOKIE)?.value);
+  if (carried) values.phone = carried;
+  if (Astro.cookies.has(JOIN_PHONE_COOKIE)) Astro.cookies.delete(JOIN_PHONE_COOKIE, { path: '/register' });
+}
 
 const returnToParam = Astro.url.searchParams.get('returnTo');
 const returnTo =
@@ -52,12 +87,12 @@ if (Astro.request.method === 'POST') {
   const referralCode = /^[A-Z0-9]{4,12}$/.test(referralCodeRaw) ? referralCodeRaw : '';
   values = { email, phone };
 
-  if (!email || !phone || !password) {
+  // The same checks the API makes, before the round trip, so each problem is
+  // marked on its own field. Only the passwords are cleared on a retry.
+  fieldErrors = validateRegistration({ email, phone, password, confirmPassword: confirm });
+  if (firstErrorField(fieldErrors)) {
     status = 'error';
-    message = 'Email, phone and password are all required.';
-  } else if (password !== confirm) {
-    status = 'error';
-    message = 'Passwords do not match.';
+    message = registerBannerMessage(fieldErrors);
   } else {
     try {
       const res = await fetch(`${apiBase}/auth/register`, {
@@ -108,12 +143,16 @@ if (Astro.request.method === 'POST') {
         message = json.error.message;
       } else {
         status = 'error';
-        // Never the API's own text, and never an HTTP number.
-        message = res.status === 409
-          ? 'There is already an account with that email. Try signing in, or reset your password.'
-          : res.status === 400
-            ? 'Some details do not look right. Check the highlighted fields and try again.'
+        // Never the API's own text, and never an HTTP number. A 400's message is
+        // read only to decide which field to mark; the words are the page's own.
+        if (res.status === 400) {
+          fieldErrors = fieldErrorsFromBadInput(json?.error?.message);
+          message = registerBannerMessage(fieldErrors);
+        } else {
+          message = res.status === 409
+            ? 'There is already an account with that email. Try signing in, or reset your password.'
             : 'We could not create your account right now. Please try again in a moment.';
+        }
       }
     } catch {
       status = 'error';
@@ -121,13 +160,15 @@ if (Astro.request.method === 'POST') {
     }
   }
 }
+
+const focusField = firstErrorField(fieldErrors);
 ---
 
 <BaseLayout robotsMeta="noindex,follow" title="Create your account" description="Create a free GoldPlus account to track orders, save addresses and earn loyalty points.">
   <div class="container mx-auto px-4 lg:px-8 py-12 md:py-20">
     <div class="max-w-md mx-auto">
       <h1 class="text-2xl md:text-3xl font-black text-gray-900 mb-2 tracking-tight">Create your account</h1>
-      <p class="text-slate-600 mb-6 text-sm leading-relaxed">Track orders in one place, check out faster with saved addresses, and earn GoldPlus points on every paid order.</p>
+      <p class="text-slate-600 mb-6 text-sm leading-relaxed">Track orders in one place, check out faster with saved addresses, and earn GoldPlus points on every delivered order.</p>
 
       {notConfigured && (
         <div class="mb-6">
@@ -138,11 +179,11 @@ if (Astro.request.method === 'POST') {
 
       <SocialSignIn returnTo={Astro.url.searchParams.get('returnTo') ?? '/account'} intent="signup" />
 
-      <form method="POST" novalidate class="bg-white p-8 rounded-2xl border border-slate-200/80 shadow-xs space-y-5">
-        <FormField id="email" name="email" label="Email" type="email" required autocomplete="email" defaultValue={values.email} />
-        <FormField id="phone" name="phone" label="Phone (MTN / Airtel)" type="tel" required inputmode="tel" placeholder="07XX XXX XXX" autocomplete="tel" defaultValue={values.phone} />
-        <FormField id="password" name="password" label="Password (at least 8 characters)" type="password" required autocomplete="new-password" />
-        <FormField id="confirmPassword" name="confirmPassword" label="Confirm password" type="password" required autocomplete="new-password" />
+      <form method="POST" novalidate class="bg-white p-8 rounded-2xl border border-slate-200/80 space-y-5">
+        <FormField id="email" name="email" label="Email" type="email" required autocomplete="email" helperText="You sign in with this email address and your password." defaultValue={values.email} errorMessage={fieldErrors.email} autofocus={focusField === 'email'} />
+        <FormField id="phone" name="phone" label="Phone (MTN / Airtel)" type="tel" required inputmode="tel" placeholder="07XX XXX XXX" autocomplete="tel" helperText="For delivery calls, and an SMS code if you ever forget your password. It is not used to sign in." defaultValue={values.phone} errorMessage={fieldErrors.phone} autofocus={focusField === 'phone'} />
+        <FormField id="password" name="password" label="Password (at least 8 characters)" type="password" required autocomplete="new-password" errorMessage={fieldErrors.password} autofocus={focusField === 'password'} />
+        <FormField id="confirmPassword" name="confirmPassword" label="Confirm password" type="password" required autocomplete="new-password" errorMessage={fieldErrors.confirmPassword} autofocus={focusField === 'confirmPassword'} />
         <FormField
           id="referralCode"
           name="referralCode"
@@ -154,7 +195,7 @@ if (Astro.request.method === 'POST') {
         />
         <button
           type="submit"
-          class="w-full bg-brand-primary text-gray-955 py-2.5 rounded-full font-bold text-xs tracking-wider uppercase hover:shadow-lg hover:shadow-brand-primary/20 transition-all outline-none cursor-pointer hover:scale-[1.005] active:scale-[0.985]"
+          class="w-full min-h-12 bg-brand-primary text-gray-950 py-3 rounded-full font-bold text-sm hover:shadow-lg hover:shadow-brand-primary/20 transition-all outline-none cursor-pointer hover:scale-[1.005] active:scale-[0.985]"
         >
           Create account
         </button>

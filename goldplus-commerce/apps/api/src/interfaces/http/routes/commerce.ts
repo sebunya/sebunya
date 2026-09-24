@@ -131,14 +131,32 @@ const registry = Registry.getInstance();
 // into SettlePaymentUseCase with the rest of the confirmation effects, so the
 // callback, the IPN, the reconciliation poller and ops re-verify cannot drift.
 
-// Public delivery-fee estimate for a destination. Returns CONFIRMED only when
-// an enabled zone exists (the operator's standing promise); otherwise a
-// clearly-labelled ESTIMATE from the geographic band model / observed medians,
-// or UNAVAILABLE — never a guess dressed as a price.
+// Public delivery-fee estimate for a destination: THE quoting service's answer,
+// under the same rule checkout charges by (the legacy zone/band model only on
+// CONFIG_INCOMPLETE), or UNAVAILABLE — never a guess dressed as a price.
+/** Parses the estimate's optional basket; malformed entries are dropped, never guessed. */
+function parseEstimateItems(raw: string | undefined | null): Array<{ productId: string; quantity: number }> {
+  if (!raw) return [];
+  const out: Array<{ productId: string; quantity: number }> = [];
+  for (const part of raw.split(',').slice(0, 50)) {
+    const [productId, qty] = part.split(':');
+    const quantity = Number(qty);
+    if (!productId || !/^[A-Za-z0-9_-]{1,64}$/.test(productId.trim())) continue;
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) continue;
+    out.push({ productId: productId.trim(), quantity });
+  }
+  return out;
+}
+
 routes.get('/delivery-estimate', async (c) => {
   const district = c.req.query('district') ?? '';
   const area = c.req.query('area') ?? null;
-  const result = await registry.getDeliveryEstimateUseCase.execute({ district, area });
+  const areaSlug = c.req.query('areaSlug') ?? null;
+  // Optional basket, `items=<productId>:<qty>,<productId>:<qty>`. With it the
+  // estimate asks the quoting service exactly what checkout will ask when it
+  // charges the order (a bus parcel is priced per parcel, so it needs one).
+  const items = parseEstimateItems(c.req.query('items'));
+  const result = await registry.getDeliveryEstimateUseCase.execute({ district, area, areaSlug, items });
   if (!result.ok) {
     return c.json({ success: false, error: { code: result.code, message: result.message } }, 400);
   }

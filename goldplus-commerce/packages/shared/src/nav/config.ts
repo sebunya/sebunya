@@ -242,9 +242,9 @@ export const DEFAULT_NAV_CONFIG: NavConfig = {
       formAction: '/register',
       formInputPlaceholder: '07XX XXX XXX',
       submit: 'Claim it',
-      joinNote: 'Your number is your account. Nothing else to fill in.',
+      joinNote: 'Next, an email and a password. You sign in with your email.',
       altLink: { label: 'I already have an account', href: '/account' },
-      mobileSub: '<b>Up to {discountPct}% off</b> right now. It comes off at checkout. Your phone number is your account.',
+      mobileSub: '<b>Up to {discountPct}% off</b> right now. It comes off at checkout.',
     },
   },
   miniCart: {

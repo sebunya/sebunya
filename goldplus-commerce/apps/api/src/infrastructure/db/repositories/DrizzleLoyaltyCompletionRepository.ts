@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 
 import { db } from '../client';
+import { LOYALTY_PAYMENT_QUALIFIES_SQL } from '../LoyaltyEarnEligibilitySql';
 import {
   loyaltyAccounts,
   loyaltyConfig,
@@ -349,7 +350,7 @@ export class DrizzleLoyaltyCompletionRepository implements ILoyaltyCompletionRep
       select id, total_amount
       from orders
       where user_id = ${userId}
-        and payment_status = 'paid'
+        and ${LOYALTY_PAYMENT_QUALIFIES_SQL}
         and status in ('received', 'processing', 'dispatched', 'delivery_failed')`)) as unknown as Array<{ id: string; total_amount: string | number }>;
     return rows.map((r) => ({ orderId: r.id, totalUgx: Number(r.total_amount) }));
   }

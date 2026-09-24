@@ -1,0 +1,138 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { formatUgx } from '../../lib/money';
+import { getBusinessInfo } from '../../lib/businessInfo';
+import { resolveAuthenticatedUserId } from '../../lib/customerAuth';
+import {
+  openOrderReceipt,
+  orderReceiptSigner,
+  ORDER_NUMBER_PATTERN,
+  ORDER_RECEIPT_COOKIE,
+} from '../../lib/checkout';
+
+/**
+ * The order confirmation, as its own page (Post/Redirect/Get).
+ *
+ * It used to be rendered inside the checkout POST's response, so a refresh
+ * re-POSTed into an empty basket and the customer landed on "Your cart is
+ * empty" with their order number gone; the page was still titled "Checkout"
+ * and recapped nothing, so a mistyped phone number could not be caught.
+ *
+ * What is recapped comes from a sealed, httpOnly cookie the checkout set on
+ * THIS device when the order was placed (see lib/checkout.ts). The URL only
+ * carries the order number, and a number alone shows nothing but itself and
+ * the way to track it, so a shared link reveals no one's details.
+ */
+const refParam = (Astro.url.searchParams.get('ref') ?? '').trim().toUpperCase();
+const sign = orderReceiptSigner({
+  CHECKOUT_INTENT_SECRET: import.meta.env.CHECKOUT_INTENT_SECRET || process.env.CHECKOUT_INTENT_SECRET,
+  JWT_SECRET: import.meta.env.JWT_SECRET || process.env.JWT_SECRET,
+});
+const opened = sign ? openOrderReceipt(Astro.cookies.get(ORDER_RECEIPT_COOKIE)?.value, sign, Date.now()) : null;
+const receipt = opened && opened.ref.toUpperCase() === refParam ? opened : null;
+const reference = receipt?.ref ?? (ORDER_NUMBER_PATTERN.test(refParam) ? refParam : null);
+if (!reference) {
+  return Astro.redirect('/track-order', 303);
+}
+
+const userId = await resolveAuthenticatedUserId(Astro.cookies);
+const orderHref = userId && receipt?.orderId
+  ? `/orders/${receipt.orderId}`
+  : `/track-order?reference=${encodeURIComponent(reference)}`;
+const orderLabel = receipt?.actionLabel || 'Track this order';
+/*
+ * The recap names what was ordered and the ONE total the server recorded.
+ * It used to price each line from the basket's list price, which ignores the
+ * sale price, a promo code and points, while the total below it was the
+ * server's figure with all of those (and any delivery fee) in it: with a sale
+ * running the lines added up to more than the total, with no row to explain
+ * the gap. So no per-line prices, and the total says what it includes.
+ */
+const feeConfirmed = receipt?.deliveryFeeConfirmed === true;
+
+const biz = await getBusinessInfo();
+const helpHref = biz.whatsappUrl
+  ? `${biz.whatsappUrl}?text=${encodeURIComponent(`Hello GoldPlus, I need to correct a detail on order ${reference}.`)}`
+  : null;
+---
+
+<BaseLayout robotsMeta="noindex,nofollow" title="Order received">
+  <div class="bg-gradient-to-b from-slate-50 to-white py-10 border-b border-slate-100">
+    <div class="container mx-auto px-4 lg:px-8 text-center">
+      <div class="w-14 h-14 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-5 border border-emerald-100">
+        <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg>
+      </div>
+      <h1 class="text-2xl md:text-3xl font-black tracking-tight text-gray-900">We have your order</h1>
+      <p class="mt-3 text-slate-600">
+        Order number <strong class="font-mono text-gray-900 bg-white px-2 py-0.5 rounded border border-slate-200 whitespace-nowrap">{reference}</strong>
+      </p>
+    </div>
+  </div>
+
+  <div class="container mx-auto px-4 lg:px-8 py-10">
+    <div class="max-w-2xl mx-auto space-y-6">
+      {receipt?.message && (
+        <p class="text-center text-base text-slate-700 leading-relaxed" role="status">{receipt.message}</p>
+      )}
+
+      {receipt ? (
+        <section aria-labelledby="recap-heading" class="bg-white border border-slate-200/80 rounded-2xl shadow-sm p-6">
+          <h2 id="recap-heading" class="text-base font-black text-gray-900">What you ordered</h2>
+          <ul class="mt-4 space-y-3 text-sm" aria-label="Order items">
+            {receipt.items.map((item) => (
+              <li class="flex items-start justify-between gap-3">
+                <span class="min-w-0 text-gray-900"><span class="font-bold">{item.name}</span> <span class="text-slate-600 whitespace-nowrap">× {item.quantity}</span></span>
+              </li>
+            ))}
+          </ul>
+          <dl class="mt-4 space-y-2 border-t border-slate-100 pt-4 text-sm">
+            <div class="flex items-baseline justify-between gap-3">
+              <dt class="text-slate-600">Delivery</dt>
+              <dd class="text-right text-slate-700">{feeConfirmed ? 'Included in the total' : 'Fee confirmed by phone before dispatch'}</dd>
+            </div>
+            {receipt.totalUgx !== null && (
+              <div class="flex items-baseline justify-between gap-3">
+                <dt class="font-bold text-gray-900">{feeConfirmed ? 'Total to pay' : 'Total (delivery fee confirmed by phone)'}</dt>
+                <dd class="font-black text-gray-900 text-lg tabular-nums">{formatUgx(receipt.totalUgx)}</dd>
+              </div>
+            )}
+            {receipt.deliveryPlace && (
+              <div class="flex items-baseline justify-between gap-3">
+                <dt class="text-slate-600">Delivering to</dt>
+                <dd class="text-right font-semibold text-gray-900 break-words min-w-0">{receipt.deliveryPlace}</dd>
+              </div>
+            )}
+            {receipt.phoneMasked && (
+              <div class="flex items-baseline justify-between gap-3">
+                <dt class="text-slate-600">Phone on the order</dt>
+                <dd class="text-right font-semibold text-gray-900 tabular-nums">{receipt.phoneMasked}</dd>
+              </div>
+            )}
+          </dl>
+          {helpHref && (
+            <p class="mt-4 text-xs text-slate-600">
+              Something wrong, like the phone number? <a href={helpHref} class="font-bold underline underline-offset-2 text-gray-900">Message us on WhatsApp</a>{biz.phoneDisplay && <> or call {biz.phoneDisplay}</>} and quote the order number.
+            </p>
+          )}
+        </section>
+      ) : (
+        <p class="text-center text-sm text-slate-600 leading-relaxed">
+          Keep this order number. You can check the order at any time with it and the phone number or email you used at checkout.
+        </p>
+      )}
+
+      <div class="flex flex-col sm:flex-row items-stretch sm:justify-center gap-3">
+        <a href={orderHref} class="inline-flex h-12 items-center justify-center rounded-full px-8 text-[15px] font-semibold outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk transition-all active:scale-[0.985]" style="background:#93D500;color:#0A0A0A">{orderLabel}</a>
+        <a href="/shop" class="inline-flex h-12 items-center justify-center rounded-full bg-slate-900 px-8 text-[15px] font-semibold text-white outline-none hover:bg-black focus-visible:ring-4 focus-visible:ring-brand-primaryInk transition-all">Continue shopping</a>
+      </div>
+
+      {!userId && (
+        <div class="mx-auto max-w-md rounded-xl border border-amber-200/60 bg-amber-50 px-5 py-4">
+          <p class="text-sm font-bold text-amber-900">Create a free account to get more from GoldPlus</p>
+          <p class="text-xs text-amber-800 mt-1.5 leading-relaxed">Track orders in one place, check out faster with saved addresses, and earn GoldPlus points on every delivered order.</p>
+          <a href="/register?returnTo=/account" class="inline-flex min-h-11 items-center mt-3 rounded-full bg-brand-dark px-5 text-sm font-bold text-white hover:bg-black outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk">Create account</a>
+        </div>
+      )}
+    </div>
+  </div>
+</BaseLayout>

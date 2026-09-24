@@ -3,11 +3,14 @@ interface Props {
   title: string;
   message?: string;
   hint?: string;
+  /** The title's element. A paragraph by default; a page whose empty state IS
+      the page (a 404) passes 'h1', a section passes 'h2'. Same look either way. */
+  as?: 'p' | 'h1' | 'h2';
 }
-const { title, message, hint } = Astro.props;
+const { title, message, hint, as: Title = 'p' } = Astro.props;
 ---
 <div class="border border-dashed border-gray-300 rounded-2xl p-10 md:p-12 text-center bg-white">
-  <p class="text-lg font-bold text-brand-dark mb-2">{title}</p>
+  <Title class="text-lg font-bold text-brand-dark mb-2">{title}</Title>
   {message && <p class="text-sm text-gray-600 max-w-md mx-auto leading-relaxed">{message}</p>}
   {hint && <p class="mt-3 text-xs text-gray-600 italic">{hint}</p>}
   <div class="mt-6"><slot /></div>
