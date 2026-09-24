@@ -34,6 +34,21 @@ export class DrizzleHomepageContentRepository implements IHomepageContentReposit
     return toStored(rows[0]);
   }
 
+  async replaceIfVersion(config: HomepageContent, actorId: string, expectedVersion: number): Promise<StoredHomepageContent | null> {
+    const rows = rowsOf(
+      await db.execute(sql`
+        update homepage_content
+           set config = ${pgJsonb(config)},
+               version = version + 1,
+               updated_by = ${actorId}::uuid,
+               updated_at = now()
+         where id = true and version = ${expectedVersion}
+         returning config, version, updated_at
+      `),
+    );
+    return rows[0] ? toStored(rows[0]) : null;
+  }
+
   async seedMissing(defaultConfig: HomepageContent): Promise<{ inserted: number }> {
     const rows = rowsOf(
       await db.execute(sql`

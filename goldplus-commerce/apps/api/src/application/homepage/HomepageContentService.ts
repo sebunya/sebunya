@@ -1,5 +1,5 @@
 import { DEFAULT_HOMEPAGE_CONTENT, DEFAULT_PUBLIC_HOMEPAGE_CONTENT, type HomeAmbassador, type HomepageContent, type PublicHomepageContent } from '@goldplus/shared';
-import type { IHomepageContentRepository } from '../ports/IHomepageContentRepository';
+import type { IHomepageContentRepository, StoredHomepageContent } from '../ports/IHomepageContentRepository';
 import type { IAmbassadorMedia } from '../ports/IAmbassadorMedia';
 import {
   portraitRenditions,
@@ -8,8 +8,11 @@ import {
   ambassadorsRevision,
   readStoredAmbassadors,
   validateAmbassadorsEdit,
+  imageHasAddress,
+  isLiveAmbassador,
   type AmbassadorFieldError,
 } from '../../domain/homepage/Ambassadors';
+import { isSafeLinkHref } from '../../domain/homepage/Links';
 
 /**
  * Homepage marketing content for the storefront and the editor. Public reads
@@ -25,14 +28,15 @@ function sanitize(input: any): HomepageContent {
     .slice(0, 6);
   const pathwayCards = (Array.isArray(input?.pathwayCards) ? input.pathwayCards : [])
     .map((c: any) => ({ title: s(c?.title, 120), body: s(c?.body, 400), ctaLabel: s(c?.ctaLabel, 40), href: s(c?.href, 300) }))
-    .filter((c: any) => c.title && c.body && c.ctaLabel && c.href)
+    // A javascript:/data: href would run for whoever clicks the card: refused like a missing one.
+    .filter((c: any) => c.title && c.body && c.ctaLabel && isSafeLinkHref(c.href))
     .slice(0, 6);
   const whatsappChannel = {
     heading: s(input?.whatsappChannel?.heading, 80) || DEFAULT_HOMEPAGE_CONTENT.whatsappChannel.heading,
     body: s(input?.whatsappChannel?.body, 200) || DEFAULT_HOMEPAGE_CONTENT.whatsappChannel.body,
   };
   const link = (l: any): { label: string; href: string } => ({ label: s(l?.label, 60), href: s(l?.href, 300) });
-  const validLink = (l: { label: string; href: string }) => Boolean(l.label && l.href);
+  const validLink = (l: { label: string; href: string }) => Boolean(l.label && isSafeLinkHref(l.href));
   const df = DEFAULT_HOMEPAGE_CONTENT.footer;
   const columns = (Array.isArray(input?.footer?.columns) ? input.footer.columns : [])
     .map((c: any) => ({ heading: s(c?.heading, 40), links: (Array.isArray(c?.links) ? c.links : []).map(link).filter(validLink).slice(0, 12) }))
@@ -56,6 +60,49 @@ function sanitize(input: any): HomepageContent {
     footer,
     ambassadors: readStoredAmbassadors(input?.ambassadors),
   };
+}
+
+/** A person as the consent audit records them — by name, not only an opaque id. */
+export interface AmbassadorSnapshot {
+  id: string;
+  name: string;
+  live: boolean;
+  releaseOnFile: boolean;
+  releaseConfirmedBy: string | null;
+  releaseConfirmedAt: string | null;
+}
+type PersonRef = { id: string; name: string };
+export interface AmbassadorSaveChanges {
+  releasesConfirmed: PersonRef[];
+  releasesWithdrawn: PersonRef[];
+  wentLive: PersonRef[];
+  leftLive: PersonRef[];
+  /** People taken out of the section altogether, with what was on record for them. */
+  removed: AmbassadorSnapshot[];
+}
+
+const CAS_ATTEMPTS = 3;
+const ref = (p: HomeAmbassador): PersonRef => ({ id: p.id, name: p.name });
+const snapshot = (p: HomeAmbassador): AmbassadorSnapshot => ({
+  id: p.id, name: p.name, live: isLiveAmbassador(p), releaseOnFile: p.releaseOnFile, releaseConfirmedBy: p.releaseConfirmedBy, releaseConfirmedAt: p.releaseConfirmedAt,
+});
+
+function describeChanges(before: HomeAmbassador[], after: HomeAmbassador[]): AmbassadorSaveChanges {
+  const prior = new Map(before.map((p) => [p.id, p]));
+  const kept = new Set(after.map((p) => p.id));
+  const changes: AmbassadorSaveChanges = { releasesConfirmed: [], releasesWithdrawn: [], wentLive: [], leftLive: [], removed: [] };
+  for (const p of after) {
+    const was = prior.get(p.id);
+    // Exactly the people stamped by THIS save — the stamp and the record agree.
+    if (p.releaseConfirmedAt && p.releaseConfirmedAt !== was?.releaseConfirmedAt) changes.releasesConfirmed.push(ref(p));
+    if (!p.releaseOnFile && was?.releaseOnFile) changes.releasesWithdrawn.push(ref(p));
+    const liveNow = isLiveAmbassador(p);
+    const liveBefore = was ? isLiveAmbassador(was) : false;
+    if (liveNow && !liveBefore) changes.wentLive.push(ref(p));
+    if (!liveNow && liveBefore) changes.leftLive.push(ref(p));
+  }
+  for (const p of before) if (!kept.has(p.id)) changes.removed.push(snapshot(p));
+  return changes;
 }
 
 export class HomepageContentService {
@@ -91,34 +138,41 @@ export class HomepageContentService {
   /**
    * The whole-document editor (/admin/homepage) knows nothing of the ambassadors
    * section, and sends the whole document. Its save must never wipe the people
-   * the ambassadors editor manages, so the STORED section is always kept here.
+   * the ambassadors editor manages, so the STORED section is always kept — and the
+   * write is a compare-and-swap, so an ambassadors save that lands while this one
+   * is in flight is never overwritten by the copy read here (a withdrawn release
+   * must stay withdrawn).
    */
   async updateConfig(input: unknown, actorId: string): Promise<{ ok: true; version: number }> {
-    const current = await this.repo.getConfig();
-    const kept = readStoredAmbassadors((current?.config as any)?.ambassadors);
-    const clean = { ...sanitize(input), ambassadors: kept };
-    const stored = await this.repo.updateConfig(clean, actorId);
-    return { ok: true, version: stored.version };
+    for (let attempt = 0; attempt < CAS_ATTEMPTS; attempt++) {
+      const current = await this.repo.getConfig();
+      const kept = readStoredAmbassadors((current?.config as any)?.ambassadors);
+      const clean = { ...sanitize(input), ambassadors: kept };
+      const stored = current ? await this.repo.replaceIfVersion(clean, actorId, current.version) : await this.repo.updateConfig(clean, actorId);
+      if (stored) return { ok: true, version: stored.version };
+    }
+    throw new Error('The homepage content kept changing while saving. Try again.');
   }
 
   /**
-   * Replaces the ambassadors section. Every photo must be a media-library image;
-   * it is stored as its renditions, and the library records the usage so the
-   * image cannot be deleted while it is on the page. Nothing is saved if any
-   * entry has a problem — the editor shows each one next to its field.
+   * Replaces the ambassadors section. Every newly chosen photo must be an active
+   * media-library image; it is stored as its renditions, and the library records
+   * the usage so the image cannot be deleted while it is on the page. Nothing is
+   * saved if any entry has a problem — the editor shows each one next to its field.
    *
-   * `expectedRevision` (the section fingerprint the editor loaded) stops two people
-   * editing it at once from silently overwriting each other: a mismatch saves nothing.
+   * `expectedRevision` (the section fingerprint the editor loaded) is REQUIRED: a
+   * save that cannot say which version it replaces — an editor whose load failed,
+   * a script — must not replace anything. A mismatch saves nothing either.
    * Release provenance — who ticked "signed release on file", and when — is
    * recorded here, never taken from the request.
    */
   async updateAmbassadors(
     input: unknown,
     actorId: string,
-    expectedRevision?: string,
+    expectedRevision: string | undefined,
     now: Date = new Date(),
   ): Promise<
-    | { ok: true; version: number; releasesConfirmed: string[]; releasesWithdrawn: string[] }
+    | { ok: true; version: number; changes: AmbassadorSaveChanges; previous: AmbassadorSnapshot[]; usagesPending: boolean }
     | { ok: false; errors: AmbassadorFieldError[] }
     | { ok: false; conflict: true; currentRevision: string }
   > {
@@ -126,17 +180,21 @@ export class HomepageContentService {
     const current = await this.repo.getConfig();
     const stored = readStoredAmbassadors((current?.config as any)?.ambassadors);
     const currentRevision = ambassadorsRevision(stored);
-    if (typeof expectedRevision === 'string' && expectedRevision && expectedRevision !== currentRevision) {
+    if (typeof expectedRevision !== 'string' || expectedRevision !== currentRevision) {
       return { ok: false, conflict: true, currentRevision };
     }
     const { section, people, errors } = validateAmbassadorsEdit(input);
     const before = new Map(stored.people.map((p) => [p.id, p]));
     const resolved: HomeAmbassador[] = [];
-    const releasesConfirmed: string[] = [];
-    const releasesWithdrawn: string[] = [];
     for (const [index, p] of people.entries()) {
+      const prior = before.get(p.id);
       let image: HomeAmbassador['image'] = null;
-      if (p.imageUrl) {
+      if (p.imageUrl && prior?.image && imageHasAddress(prior.image, p.imageUrl)) {
+        // The photo already on this entry is kept exactly as stored. Re-checking it
+        // would let one portrait archived in the library block every save —
+        // including the unpublish or release withdrawal that must never wait.
+        image = prior.image;
+      } else if (p.imageUrl) {
         const found = await this.ambassadorMedia.resolveByUrl(p.imageUrl);
         if (!found) {
           errors.push({ index, field: 'imageUrl', message: 'That photo is not in the media library. Upload it here or pick it from the library.' });
@@ -146,17 +204,39 @@ export class HomepageContentService {
           image = { assetId: found.assetId, ...portraitRenditions(found.original, found.variants) };
         }
       }
-      const prior = before.get(p.id);
-      const provenance = releaseProvenance(p, prior, actorId, now);
-      // The audit names exactly the people stamped by THIS save — the stamp and the record agree.
-      if (provenance.releaseConfirmedAt && provenance.releaseConfirmedAt !== prior?.releaseConfirmedAt) releasesConfirmed.push(p.id);
-      if (!p.releaseOnFile && prior?.releaseOnFile) releasesWithdrawn.push(p.id);
+      const provenance = releaseProvenance({ releaseOnFile: p.releaseOnFile, name: p.name, assetId: image?.assetId ?? null }, prior, actorId, now);
       resolved.push({ id: p.id, name: p.name, role: p.role, tagline: p.tagline, image, imageAlt: p.imageAlt, productSlug: p.productSlug, releaseOnFile: p.releaseOnFile, ...provenance, published: p.published });
     }
     if (errors.length > 0) return { ok: false, errors };
-    const base = current?.config ? sanitize(current.config) : DEFAULT_HOMEPAGE_CONTENT;
-    const saved = await this.repo.updateConfig({ ...base, ambassadors: { ...section, people: resolved } }, actorId);
-    await this.ambassadorMedia.syncUsages(resolved.filter((p) => p.image).map((p) => ({ personId: p.id, assetId: p.image!.assetId })));
-    return { ok: true, version: saved.version, releasesConfirmed, releasesWithdrawn };
+
+    const portraits = resolved.filter((p) => p.image).map((p) => ({ personId: p.id, assetId: p.image!.assetId }));
+    // Protect first: recorded before the write, a usage only over-protects until the
+    // sync below; recorded after, a failure would leave a live portrait deletable.
+    await this.ambassadorMedia.protect(portraits);
+    let saved: StoredHomepageContent | null = null;
+    for (let attempt = 0, latest = current; attempt < CAS_ATTEMPTS; attempt++) {
+      if (attempt > 0) {
+        latest = await this.repo.getConfig();
+        const revision = ambassadorsRevision(readStoredAmbassadors((latest?.config as any)?.ambassadors));
+        // Someone saved THIS section meanwhile: theirs stands, the editor is told.
+        if (revision !== currentRevision) return { ok: false, conflict: true, currentRevision: revision };
+        // Otherwise it was the other editor (trust strip, footer): write onto their version.
+      }
+      const base = latest?.config ? sanitize(latest.config) : DEFAULT_HOMEPAGE_CONTENT;
+      const doc = { ...base, ambassadors: { ...section, people: resolved } };
+      saved = latest ? await this.repo.replaceIfVersion(doc, actorId, latest.version) : await this.repo.updateConfig(doc, actorId);
+      if (saved) break;
+    }
+    if (!saved) throw new Error('The homepage content kept changing while saving. Try again.');
+
+    // The save is live. Removing stale usages is housekeeping: if it fails, stale
+    // rows only over-protect, so report it rather than fail a save that happened.
+    let usagesPending = false;
+    try {
+      await this.ambassadorMedia.syncUsages(portraits);
+    } catch {
+      usagesPending = true;
+    }
+    return { ok: true, version: saved.version, changes: describeChanges(stored.people, resolved), previous: stored.people.map(snapshot), usagesPending };
   }
 }

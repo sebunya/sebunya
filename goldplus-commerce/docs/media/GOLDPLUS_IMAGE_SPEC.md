@@ -74,6 +74,7 @@ Four slots per product. This is the most valuable work after the hero.
 | Category tile | Homepage category grid | **1200 × 1200** JPEG, white background | 1:1; renders 120–190 px; multiply blend, so pure white |
 | Mega-menu featured card | Header dropdown | **1200 × 1200** JPEG, white background | Renders in a 132 px arch; current default is 600 × 600 |
 | Mega-menu category icon | Header dropdown matrix | **204 × 204** PNG or WebP | Renders 34 × 34; current files are 102 × 102 |
+| Ambassador portrait | Homepage, the row above the footer (5 across on a computer) | **1200 × 2000** JPEG or larger, the person holding the GoldPlus product, no text on the photo | **3:5 portrait**, cropped to fill (top of the head kept). A **signed photo release** must be on file before it is published. We make the 480 / 1024 / 2048 px WebP renditions; phone photos may be sent as shot (orientation is honoured) |
 | Blog cover | Blog index and post | **1920 × 1080** JPEG | **16:9**, cropped to fill |
 | Blog related product | Blog post footer | uses the product cover | — |
 | Cart line, compare, battery finder | Cart, compare, finder | uses the product cover | Renders 72–96 px |
@@ -83,7 +84,9 @@ Four slots per product. This is the most valuable work after the hero.
 | App icons | Installed app, browser tab | **512 × 512** PNG plus a **512 × 512 maskable** version (keep content inside the central 80 %) | We derive 192 px and the 180 px Apple icon |
 | Favicon | Browser tab | **SVG** plus a 32 × 32 ICO | — |
 
-*Source: `apps/web/src/pages/index.astro`, `GpNav.astro`, `blog/*.astro`, `BaseLayout.astro`, `public/manifest.json`.*
+*Source: `apps/web/src/pages/index.astro`, `GpNav.astro`, `components/home/AmbassadorsRail.astro`, `blog/*.astro`, `BaseLayout.astro`, `public/manifest.json`.*
+
+**When someone withdraws consent for their portrait:** in `/admin/homepage/ambassadors` tick *Remove this person* and save (they leave the homepage within a minute); then delete the photo in `/admin/media` — it can be deleted once no page uses it. Copies already cached by browsers or search engines can take time to expire. Archiving a photo is refused while a page still uses it, because archiving never took a photo off the site.
 
 ---
 

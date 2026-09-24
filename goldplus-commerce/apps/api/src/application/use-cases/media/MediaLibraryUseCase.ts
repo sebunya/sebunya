@@ -171,7 +171,15 @@ export class MediaLibraryUseCase {
     return this.repo.updateMetadata(id, patch);
   }
 
-  async archive(id: string): Promise<MediaAssetRecord | null> {
+  /**
+   * Refuses while usages exist, like delete: archiving never takes a photo off the
+   * site (pages keep their stored addresses), so archiving one in use only hid it
+   * from the library while it stayed live — and a person asking to be taken down
+   * would still be on the home page.
+   */
+  async archive(id: string): Promise<MediaAssetRecord | { kind: 'IN_USE'; usages: number } | null> {
+    const usages = await this.repo.usages(id);
+    if (usages.length > 0) return { kind: 'IN_USE', usages: usages.length };
     return this.repo.setStatus(id, 'ARCHIVED');
   }
 

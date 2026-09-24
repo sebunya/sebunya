@@ -2,9 +2,9 @@
 import AdminLayout from '../../../layouts/AdminLayout.astro';
 import { readSessionToken } from '../../../lib/session';
 import { apiBase } from '../../../lib/api';
-import { fetchApprovedCatalogue } from '../../../lib/catalogue';
+import { fetchApprovedCatalogueWithStatus } from '../../../lib/catalogue';
+import { readRow, isBlankNewRow, orderRows, rowFromStored, mergeAfterConflict, type AmbassadorRow, type StoredAmbassador } from '../../../lib/ambassadorsForm';
 import {
-  DEFAULT_HOMEPAGE_CONTENT,
   HOME_AMBASSADORS_MAX,
   HOME_AMBASSADOR_ROLES,
   HOME_AMBASSADOR_ROLE_LABEL,
@@ -19,33 +19,61 @@ import {
  * renditions and records the usage so a live portrait can't be deleted.
  *
  * Saving is all-or-nothing: if anything is wrong nothing is saved, every problem
- * is shown next to its field, and what was typed (and any photo already
- * uploaded) stays on the page.
+ * is listed at the top and shown next to its field, and what was typed (and any
+ * photo already uploaded) stays on the page.
+ *
+ * The form is only ever drawn over a section that LOADED: an empty form drawn
+ * after a failed load would, once saved, replace every stored person (the API
+ * also refuses a save that does not name the version it replaces).
  */
+const RETURN = '/admin/homepage/ambassadors';
 const token = readSessionToken(Astro.request);
-if (!token) return Astro.redirect('/admin/login?returnTo=/admin/homepage/ambassadors', 303);
+if (!token) return Astro.redirect(`/admin/login?returnTo=${RETURN}`, 303);
 
 const authed = (path: string, init?: RequestInit) =>
   fetch(`${apiBase}${path}`, { ...init, headers: { ...init?.headers, Authorization: `Bearer ${token}`, Accept: 'application/json' } });
 
-type Row = {
-  id: string; name: string; role: string; tagline: string; imageUrl: string; imageAlt: string;
-  productSlug: string; releaseOnFile: boolean; published: boolean; position: number; preview: string | null;
-  releaseConfirmedAt: string | null;
-};
-type FieldErrors = Record<string, string>; // key `${row}.${field}` or `section.${field}`
+type Section = Omit<HomeAmbassadors, 'people'>;
+type Loaded = { section: Section; people: StoredAmbassador[]; revision: string };
 
-let notice: { kind: 'ok' | 'error'; message: string } | null = null;
-let errors: FieldErrors = {};
-let rows: Row[] | null = null;
-let sectionDraft: Omit<HomeAmbassadors, 'people'> | null = null;
+/** 401 is a session problem (sign in again); 403 is a permission to grant — never a login loop. */
+async function loadStored(): Promise<{ kind: 'ok'; data: Loaded } | { kind: 'unauthenticated' } | { kind: 'denied' } | { kind: 'error'; message: string }> {
+  try {
+    const res = await authed('/admin/homepage/ambassadors');
+    if (res.status === 401) return { kind: 'unauthenticated' };
+    if (res.status === 403) return { kind: 'denied' };
+    const json: any = await res.json().catch(() => null);
+    if (!json?.success || !json.data?.revision) return { kind: 'error', message: json?.error?.message ?? `The section could not be loaded (HTTP ${res.status}).` };
+    const a = json.data.ambassadors;
+    return { kind: 'ok', data: { section: { heading: a.heading, intro: a.intro, ctaLabel: a.ctaLabel, ctaHref: a.ctaHref }, people: a.people, revision: String(json.data.revision) } };
+  } catch {
+    return { kind: 'error', message: 'The service is unreachable right now.' };
+  }
+}
+
+// Who is editing — only so "confirmed by you" is said to the admin who actually did.
+let meId = '';
+try {
+  const res = await authed('/auth/admin-session');
+  if (res.status === 401) return Astro.redirect(`/admin/login?returnTo=${RETURN}`, 303);
+  const json: any = await res.json().catch(() => null);
+  meId = String(json?.data?.id ?? '');
+} catch { /* unknown: every confirmation is then described neutrally */ }
+
+let notice: { kind: 'ok' | 'error'; message: string; details?: string[] } | null = null;
+/** Keyed `${rowId}.${field}` or `section.${field}`. */
+const errors: Record<string, string> = {};
+let rows: AmbassadorRow[] | null = null;
+let sectionDraft: Section | null = null;
 let revision: string | null = null;
-
-const bool = (v: FormDataEntryValue | null) => v === 'on' || v === 'true';
+let stored: Loaded | null = null;
+let denied = false;
+let loadError = '';
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
-  const count = Math.min(Number(form.get('rowCount') ?? 0) || 0, HOME_AMBASSADORS_MAX + 1);
+  // Room for a conflict merge that appended the other admin's additions.
+  const count = Math.min(Number(form.get('rowCount') ?? 0) || 0, HOME_AMBASSADORS_MAX * 2 + 1);
   revision = String(form.get('revision') ?? '').trim() || null;
   sectionDraft = {
     heading: String(form.get('heading') ?? ''),
@@ -53,26 +81,16 @@ if (Astro.request.method === 'POST') {
     ctaLabel: String(form.get('ctaLabel') ?? ''),
     ctaHref: String(form.get('ctaHref') ?? ''),
   };
-  const submitted: Row[] = [];
   // Upload problems are keyed by the row's id, not its position: rows are re-sorted
   // by their typed position below, and a message must stay next to its own photo.
   const uploadErrors = new Map<string, string>();
+  const drafted: AmbassadorRow[] = [];
   for (let i = 0; i < count; i++) {
-    const f = (k: string) => String(form.get(`p.${i}.${k}`) ?? '').trim();
-    const photo = form.get(`p.${i}.photo`);
-    const hasPhoto = photo instanceof File && photo.size > 0;
-    const row: Row = {
-      id: f('id') || crypto.randomUUID(),
-      name: f('name'), role: f('role') || 'AMBASSADOR', tagline: f('tagline'), imageUrl: f('imageUrl'), imageAlt: f('imageAlt'),
-      productSlug: f('productSlug'), releaseOnFile: bool(form.get(`p.${i}.releaseOnFile`)), published: bool(form.get(`p.${i}.published`)),
-      position: Number(f('position')) || i + 1, preview: f('preview') || null, releaseConfirmedAt: f('releaseConfirmedAt') || null,
-    };
-    if (bool(form.get(`p.${i}.remove`))) continue;
-    // The blank "add a person" row, left blank.
-    if (!f('id') && !row.name && !row.imageUrl && !hasPhoto && !row.tagline) continue;
-    if (hasPhoto) {
+    const { row, photo } = readRow(form, i, () => crypto.randomUUID());
+    if (isBlankNewRow(row, photo !== null)) continue;
+    if (photo && !row.remove) {
       const body = new FormData();
-      body.append('files', photo as File, (photo as File).name);
+      body.append('files', photo, photo.name);
       if (row.imageAlt) body.append('altText', row.imageAlt);
       try {
         const res = await authed('/admin/media/upload', { method: 'POST', body });
@@ -80,86 +98,127 @@ if (Astro.request.method === 'POST') {
         const up = json?.data?.uploaded?.[0];
         const rej = json?.data?.rejected?.[0];
         if (up?.url) { row.imageUrl = up.url; row.preview = up.url; }
-        else if (res.status === 403) uploadErrors.set(row.id, 'Your account cannot upload to the media library. Ask an owner for media permission, or use an address of a photo already in the library.');
+        else if (res.status === 403) uploadErrors.set(row.id, 'Your account cannot upload to the media library (it needs media permission). Ask an owner, or use the address of a photo already in the library.');
         else uploadErrors.set(row.id, rej ? `The photo was not accepted: ${rej.message ?? rej.reason}.` : (json?.error?.message ?? 'The photo could not be uploaded.'));
       } catch {
         uploadErrors.set(row.id, 'The photo could not be uploaded right now.');
       }
     }
-    submitted.push(row);
+    drafted.push(row);
   }
-  // Keep the typed order even when errors send the page back.
-  submitted.sort((a, b) => a.position - b.position);
-  rows = submitted.map((r, i) => ({ ...r, position: i + 1 }));
-  rows.forEach((r, i) => { const m = uploadErrors.get(r.id); if (m) errors[`${i}.imageUrl`] = m; });
+  rows = orderRows(drafted);
+  for (const r of rows) { const m = uploadErrors.get(r.id); if (m) errors[`${r.id}.photo`] = m; }
+  const toSave = rows.filter((r) => !r.remove);
 
-  if (Object.keys(errors).length === 0) {
+  if (!revision) {
+    notice = { kind: 'error', message: 'This page was not fully loaded, so nothing was saved. Reload the page and make the change again.' };
+  } else if (Object.keys(errors).length > 0) {
+    notice = { kind: 'error', message: 'Nothing was saved. Fix the entries listed here:' };
+  } else {
     const payload = {
-      ...(revision ? { expectedRevision: revision } : {}),
+      expectedRevision: revision,
       ambassadors: {
         ...sectionDraft,
-        people: rows.map((r) => ({ id: r.id, name: r.name, role: r.role, tagline: r.tagline, imageUrl: r.imageUrl, imageAlt: r.imageAlt, productSlug: r.productSlug, releaseOnFile: r.releaseOnFile, published: r.published })),
+        people: toSave.map((r) => ({ id: r.id, name: r.name, role: r.role, tagline: r.tagline, imageUrl: r.imageUrl, imageAlt: r.imageAlt, productSlug: r.productSlug, releaseOnFile: r.releaseOnFile, published: r.published })),
       },
     };
     try {
       const res = await authed('/admin/homepage/ambassadors', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      if (res.status === 401 || res.status === 403) return Astro.redirect('/admin/login?returnTo=/admin/homepage/ambassadors', 303);
+      if (res.status === 401) return Astro.redirect(`/admin/login?returnTo=${RETURN}`, 303);
       const json: any = await res.json().catch(() => null);
-      if (res.ok && json?.success) return Astro.redirect(`/admin/homepage/ambassadors?saved=${encodeURIComponent(String(json.data?.version ?? ''))}`, 303);
-      if (res.status === 409) {
-        // Someone else saved since this page was opened. Keep these edits; saving again
-        // (now against their version) replaces theirs deliberately.
-        revision = String(json?.error?.currentRevision ?? revision ?? '') || null;
-        notice = { kind: 'error', message: 'Someone else saved this section after you opened the page. Your edits are still below — save again to replace their version with yours, or reload the page to see theirs first.' };
+      if (res.ok && json?.success) return Astro.redirect(`${RETURN}?saved=${encodeURIComponent(String(json.data?.version ?? ''))}`, 303);
+      if (res.status === 403) {
+        notice = { kind: 'error', message: 'Your account cannot edit this section (it needs the settings.manage permission). Nothing was saved — an owner can grant it in Roles.' };
+      } else if (res.status === 409) {
+        // Someone else saved since this page was drawn. Fold their version in so saving
+        // again can never quietly undo it — above all a withdrawn release.
+        const latest = await loadStored();
+        if (latest.kind === 'ok') {
+          stored = latest.data;
+          revision = latest.data.revision;
+          const merged = mergeAfterConflict(rows, latest.data.people);
+          rows = merged.rows;
+          notice = {
+            kind: 'error',
+            message: merged.changes.length > 0
+              ? 'Nothing was saved: someone else saved this section after you opened it. Their changes are now included below — check them, then save again:'
+              : 'Nothing was saved: someone else saved this section after you opened it (no one’s release or visibility changed). Your edits are still below — save again to apply them over theirs, or reload to start from theirs.',
+            details: merged.changes,
+          };
+        } else {
+          revision = null;
+          notice = { kind: 'error', message: 'Nothing was saved: someone else saved this section after you opened it, and their version could not be loaded. Reload the page before editing again.' };
+        }
       } else {
-        for (const e of json?.error?.fields ?? []) errors[e.index === -1 ? `section.${e.field}` : `${e.index}.${e.field}`] = e.message;
-        notice = { kind: 'error', message: json?.error?.fields?.length ? 'Nothing was saved. Fix the entries marked below.' : (json?.error?.message ?? `Nothing was saved (HTTP ${res.status}).`) };
+        for (const e of json?.error?.fields ?? []) {
+          const key = e.index === -1 ? `section.${e.field}` : `${toSave[e.index]?.id ?? 'unknown'}.${e.field}`;
+          errors[key] = e.message;
+        }
+        notice = { kind: 'error', message: json?.error?.fields?.length ? 'Nothing was saved. Fix the entries listed here:' : (json?.error?.message ?? `Nothing was saved (HTTP ${res.status}).`) };
       }
     } catch {
       notice = { kind: 'error', message: 'The service is unreachable right now. Nothing was saved.' };
     }
-  } else {
-    notice = { kind: 'error', message: 'Nothing was saved. Fix the entries marked below.' };
+  }
+  // What is LIVE comes from the stored section, never from the unsaved draft.
+  if (!stored) {
+    const latest = await loadStored();
+    if (latest.kind === 'ok') stored = latest.data;
   }
 }
 
-let loadError = '';
 if (!rows) {
-  try {
-    const res = await authed('/admin/homepage/ambassadors');
-    if (res.status === 401 || res.status === 403) return Astro.redirect('/admin/login?returnTo=/admin/homepage/ambassadors', 303);
-    const json: any = await res.json().catch(() => null);
-    const a: HomeAmbassadors = json?.success ? json.data.ambassadors : DEFAULT_HOMEPAGE_CONTENT.ambassadors;
-    if (!json?.success) loadError = json?.error?.message ?? 'Could not load the section.';
-    sectionDraft = { heading: a.heading, intro: a.intro, ctaLabel: a.ctaLabel, ctaHref: a.ctaHref };
-    revision = json?.success ? String(json.data.revision ?? '') || null : null;
-    rows = a.people.map((p, i) => ({
-      id: p.id, name: p.name, role: p.role, tagline: p.tagline, imageUrl: p.image?.src ?? '', imageAlt: p.imageAlt,
-      productSlug: p.productSlug, releaseOnFile: p.releaseOnFile, published: p.published, position: i + 1, preview: p.image?.src ?? null,
-      releaseConfirmedAt: p.releaseConfirmedAt ?? null,
-    }));
-  } catch {
-    loadError = 'The service is unreachable right now.';
-    sectionDraft = { ...DEFAULT_HOMEPAGE_CONTENT.ambassadors };
-    rows = [];
+  const latest = await loadStored();
+  if (latest.kind === 'unauthenticated') return Astro.redirect(`/admin/login?returnTo=${RETURN}`, 303);
+  if (latest.kind === 'denied') denied = true;
+  else if (latest.kind === 'error') loadError = latest.message;
+  else {
+    stored = latest.data;
+    sectionDraft = latest.data.section;
+    revision = latest.data.revision;
+    rows = latest.data.people.map(rowFromStored);
   }
 }
 const saved = Astro.url.searchParams.get('saved');
 if (saved && !notice) notice = { kind: 'ok', message: `Saved (version ${saved}). Live on the homepage within a minute.` };
 
 let products: Array<{ slug: string; name: string }> = [];
-try {
-  products = (await fetchApprovedCatalogue(apiBase)).map((p) => ({ slug: p.slug, name: p.name })).sort((a, b) => a.name.localeCompare(b.name));
-} catch { /* the product list is a convenience; a person can still be saved without one */ }
+let catalogueComplete = false;
+if (rows) {
+  const catalogue = await fetchApprovedCatalogueWithStatus(apiBase);
+  products = catalogue.products.map((p) => ({ slug: p.slug, name: p.name })).sort((a, b) => a.name.localeCompare(b.name));
+  catalogueComplete = catalogue.complete;
+}
 
 const list = rows ?? [];
-const canAdd = list.length < HOME_AMBASSADORS_MAX;
-const all: Row[] = canAdd
-  ? [...list, { id: '', name: '', role: 'AMBASSADOR', tagline: '', imageUrl: '', imageAlt: '', productSlug: '', releaseOnFile: false, published: false, position: list.length + 1, preview: null, releaseConfirmedAt: null }]
-  : list;
-const live = list.filter((r) => r.published && r.releaseOnFile && r.imageUrl && r.imageAlt).length;
-const err = (i: number, f: string) => errors[`${i}.${f}`];
+const active = list.filter((r) => !r.remove);
+const canAdd = rows !== null && active.length < HOME_AMBASSADORS_MAX;
+const blank: AmbassadorRow = {
+  id: '', isNew: true, name: '', role: 'AMBASSADOR', tagline: '', imageUrl: '', imageAlt: '', productSlug: '', releaseOnFile: false, published: false,
+  position: list.length + 1, was: list.length + 1, preview: null, releaseConfirmedAt: null, releaseConfirmedBy: null, remove: false,
+};
+const all: AmbassadorRow[] = canAdd ? [...list, blank] : list;
+
+const isLive = (p: StoredAmbassador) => p.published && p.releaseOnFile && p.image !== null && p.imageAlt.length > 0;
+const storedById = new Map((stored?.people ?? []).map((p) => [p.id, p]));
+const liveCount = stored ? stored.people.filter(isLive).length : null;
+
+// Fields with their own control (and error slot); anything else is listed at the foot of its row.
+const KNOWN_FIELDS = ['name', 'role', 'tagline', 'productSlug', 'photo', 'imageUrl', 'imageAlt', 'releaseOnFile'];
+const err = (r: AmbassadorRow, f: string) => (r.id ? errors[`${r.id}.${f}`] : undefined);
+const ctl = (i: number, f: string) => `amb-${i}-${f}`;
+const described = (i: number, r: AmbassadorRow, f: string) => (err(r, f) ? { 'aria-invalid': 'true', 'aria-describedby': `${ctl(i, f)}-err` } : {});
+const summary: Array<{ href: string; text: string }> = [];
+for (const [key, message] of Object.entries(errors)) {
+  if (key.startsWith('section.')) { summary.push({ href: `#amb-section-${key.slice(8)}`, text: `Section: ${message}` }); continue; }
+  const i = all.findIndex((r) => r.id && key.startsWith(`${r.id}.`));
+  if (i === -1) { summary.push({ href: '#amb-rows', text: message }); continue; }
+  const field = key.slice(all[i].id.length + 1);
+  summary.push({ href: `#${KNOWN_FIELDS.includes(field) ? ctl(i, field) : `amb-${i}-title`}`, text: `${all[i].name || `Person ${i + 1}`}: ${message}` });
+}
+const date = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Kampala' });
 const input = 'mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm';
+const errText = 'mt-1 block text-xs font-bold text-red-700';
 ---
 <AdminLayout title="Ambassadors & models">
   <div class="mx-auto max-w-4xl px-4 py-8">
@@ -168,117 +227,179 @@ const input = 'mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm';
     <p class="mt-2 text-sm text-slate-600">
       Portraits of real people with GoldPlus products, shown above the footer on the homepage — five across on a computer, with arrows for the rest.
       Only people you publish <strong>and</strong> hold a signed photo release for are shown; with no one published the section stays hidden.
-      Up to {HOME_AMBASSADORS_MAX} people. Best photo: portrait (about 3:5), the person holding the product, at least 1000 px wide.
+      Up to {HOME_AMBASSADORS_MAX} people. Best photo: portrait (about 3:5), the person holding the product, at least 1200 px wide, no text on the photo.
     </p>
-    <p class="mt-2 text-sm font-bold text-slate-800">{live} of {list.length} shown on the homepage now.</p>
+    <details class="mt-2 text-sm text-slate-700">
+      <summary class="cursor-pointer font-bold text-slate-800">If someone withdraws their consent</summary>
+      <ol class="mt-2 list-decimal space-y-1 pl-5">
+        <li>Tick <strong>Remove this person</strong> on their entry and save. They leave the homepage within a minute.</li>
+        <li>Then delete their photo in <a href="/admin/media" class="underline">the media library</a> (it can be deleted once no page uses it).</li>
+        <li>Copies already cached by browsers or search engines can take time to expire; the site itself stops showing them at once.</li>
+      </ol>
+    </details>
+    {liveCount !== null && <p class="mt-2 text-sm font-bold text-slate-800">{liveCount} of {stored!.people.length} shown on the homepage now.</p>}
 
     {notice && (
-      <div role={notice.kind === 'ok' ? 'status' : 'alert'} class:list={['mt-6 rounded-xl border p-4 text-sm', notice.kind === 'ok' ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-red-300 bg-red-50 text-red-900']}>
+      <div
+        id={notice.kind === 'error' ? 'amb-error-summary' : undefined}
+        role={notice.kind === 'ok' ? 'status' : 'alert'}
+        tabindex={notice.kind === 'error' ? '-1' : undefined}
+        autofocus={notice.kind === 'error'}
+        class:list={['mt-6 rounded-xl border p-4 text-sm', notice.kind === 'ok' ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-red-300 bg-red-50 text-red-900']}
+      >
         <p class="font-bold">{notice.message}</p>
+        {notice.details && notice.details.length > 0 && <ul class="mt-2 list-disc space-y-1 pl-5">{notice.details.map((d) => <li>{d}</li>)}</ul>}
+        {summary.length > 0 && <ul class="mt-2 list-disc space-y-1 pl-5">{summary.map((s) => <li><a href={s.href} class="underline">{s.text}</a></li>)}</ul>}
       </div>
     )}
-    {loadError && <div role="alert" class="mt-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{loadError}</div>}
 
-    <form method="POST" enctype="multipart/form-data" class="mt-8 space-y-8">
-      <input type="hidden" name="rowCount" value={all.length} />
-      {revision && <input type="hidden" name="revision" value={revision} />}
-      <section class="rounded-xl border border-slate-200 bg-white p-5">
-        <h2 class="text-sm font-black uppercase tracking-wider text-slate-600">Section</h2>
-        <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label class="text-xs block">Heading
-            <input name="heading" maxlength="60" value={sectionDraft?.heading} class={input} />
-          </label>
-          <label class="text-xs block">Line under the heading (optional)
-            <input name="intro" maxlength="160" value={sectionDraft?.intro} class={input} />
-          </label>
-          <label class="text-xs block">Button label
-            <input name="ctaLabel" maxlength="30" value={sectionDraft?.ctaLabel} class={input} />
-          </label>
-          <label class="text-xs block">Button link (a page on this site)
-            <input name="ctaHref" maxlength="300" value={sectionDraft?.ctaHref} class={input} />
-            {errors['section.ctaHref'] && <span class="mt-1 block text-xs font-bold text-red-700">{errors['section.ctaHref']}</span>}
-          </label>
-        </div>
-        {errors['section.people'] && <p class="mt-2 text-xs font-bold text-red-700">{errors['section.people']}</p>}
-      </section>
+    {denied && (
+      <div role="alert" class="mt-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
+        <strong class="font-black">Permission needed.</strong>
+        <p class="mt-1 text-sm">Your account cannot edit this section (<code>settings.manage</code>). The API declined — a permission to grant in Roles, not an outage.</p>
+      </div>
+    )}
+    {loadError && (
+      <div role="alert" class="mt-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">
+        <p class="font-bold">{loadError}</p>
+        <p class="mt-1">The editor is not shown, because saving over a section that did not load could replace everyone on it. <a href={RETURN} class="font-bold underline">Reload</a> to try again.</p>
+      </div>
+    )}
 
-      {all.map((r, i) => {
-        const isNew = !r.id;
-        return (
-          <section class:list={['rounded-xl border bg-white p-5', Object.keys(errors).some((k) => k.startsWith(`${i}.`)) ? 'border-red-300' : 'border-slate-200']} aria-labelledby={`amb-${i}-title`}>
-            <input type="hidden" name={`p.${i}.id`} value={r.id} />
-            <input type="hidden" name={`p.${i}.preview`} value={r.preview ?? ''} />
-            <input type="hidden" name={`p.${i}.releaseConfirmedAt`} value={r.releaseConfirmedAt ?? ''} />
-            <div class="flex items-start justify-between gap-4">
-              <h2 id={`amb-${i}-title`} class="text-sm font-black text-slate-900">{isNew ? 'Add a person' : (r.name || `Person ${i + 1}`)}</h2>
-              {!isNew && (
-                <span class:list={['rounded-full px-2 py-0.5 text-xs font-bold', r.published && r.releaseOnFile && r.imageUrl ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-700']}>
-                  {r.published && r.releaseOnFile && r.imageUrl ? 'On the homepage' : 'Not shown'}
-                </span>
-              )}
-            </div>
-            <div class="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-[140px_1fr]">
-              <div>
-                <div class="aspect-[3/5] w-full overflow-hidden rounded-lg bg-slate-100">
-                  {r.preview ? <img src={r.preview} alt="" class="h-full w-full object-cover" loading="lazy" /> : <span class="flex h-full items-center justify-center p-2 text-center text-xs text-slate-600">No photo yet</span>}
-                </div>
-              </div>
-              <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <label class="text-xs block">Name
-                  <input name={`p.${i}.name`} maxlength="60" value={r.name} class={input} />
-                  {err(i, 'name') && <span class="mt-1 block text-xs font-bold text-red-700">{err(i, 'name')}</span>}
-                </label>
-                <label class="text-xs block">Role
-                  <select name={`p.${i}.role`} class={input}>
-                    {HOME_AMBASSADOR_ROLES.map((role) => <option value={role} selected={r.role === role}>{HOME_AMBASSADOR_ROLE_LABEL[role]}</option>)}
-                  </select>
-                </label>
-                <label class="text-xs block sm:col-span-2">One short line (optional — their words, not ours; empty shows the product they hold)
-                  <input name={`p.${i}.tagline`} maxlength="90" value={r.tagline} class={input} />
-                  {err(i, 'tagline') && <span class="mt-1 block text-xs font-bold text-red-700">{err(i, 'tagline')}</span>}
-                </label>
-                <label class="text-xs block">Product in the photo (the card links to it)
-                  <select name={`p.${i}.productSlug`} class={input}>
-                    <option value="">No product link</option>
-                    {r.productSlug && !products.some((p) => p.slug === r.productSlug) && <option value={r.productSlug} selected>{r.productSlug} (not on sale now)</option>}
-                    {products.map((p) => <option value={p.slug} selected={r.productSlug === p.slug}>{p.name}</option>)}
-                  </select>
-                  {err(i, 'productSlug') && <span class="mt-1 block text-xs font-bold text-red-700">{err(i, 'productSlug')}</span>}
-                </label>
-                <label class="text-xs block">Upload a photo
-                  <input type="file" name={`p.${i}.photo`} accept="image/jpeg,image/png,image/webp,image/avif" class="mt-1 block w-full text-sm" />
-                </label>
-                <label class="text-xs block sm:col-span-2">…or a media-library photo address
-                  <input name={`p.${i}.imageUrl`} maxlength="500" value={r.imageUrl} placeholder="/uploads/assets/…" class={input} />
-                  {err(i, 'imageUrl') && <span class="mt-1 block text-xs font-bold text-red-700">{err(i, 'imageUrl')}</span>}
-                </label>
-                <label class="text-xs block sm:col-span-2">Photo description for people who can't see it
-                  <input name={`p.${i}.imageAlt`} maxlength="160" value={r.imageAlt} placeholder="Grace holding the GP-C08 charger" class={input} />
-                  {err(i, 'imageAlt') && <span class="mt-1 block text-xs font-bold text-red-700">{err(i, 'imageAlt')}</span>}
-                </label>
-                <label class="flex items-start gap-2 text-sm text-slate-800 sm:col-span-2">
-                  <input type="checkbox" name={`p.${i}.releaseOnFile`} checked={r.releaseOnFile} class="mt-0.5 h-4 w-4" />
-                  <span>I hold a <strong>signed photo release</strong> from this person allowing GoldPlus to show their photo.
-                    {r.releaseOnFile && r.releaseConfirmedAt && <span class="block text-xs text-slate-600">Confirmed {new Date(r.releaseConfirmedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Kampala' })} — recorded with your account in the audit log.</span>}
+    {rows && (
+      <form method="POST" enctype="multipart/form-data" class="mt-8 space-y-8">
+        <input type="hidden" name="rowCount" value={all.length} />
+        {revision && <input type="hidden" name="revision" value={revision} />}
+        <section class="rounded-xl border border-slate-200 bg-white p-5">
+          <h2 class="text-sm font-black uppercase tracking-wider text-slate-600">Section</h2>
+          <div class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label class="text-xs block">Heading
+              <input id="amb-section-heading" name="heading" maxlength="60" value={sectionDraft?.heading} class={input} />
+            </label>
+            <label class="text-xs block">Line under the heading (optional)
+              <input id="amb-section-intro" name="intro" maxlength="160" value={sectionDraft?.intro} class={input} />
+            </label>
+            <label class="text-xs block">Button label
+              <input id="amb-section-ctaLabel" name="ctaLabel" maxlength="30" value={sectionDraft?.ctaLabel} class={input} />
+            </label>
+            <label class="text-xs block">Button link (a page on this site)
+              <input
+                id="amb-section-ctaHref" name="ctaHref" maxlength="300" value={sectionDraft?.ctaHref} class={input}
+                aria-invalid={errors['section.ctaHref'] ? 'true' : undefined} aria-describedby={errors['section.ctaHref'] ? 'amb-section-ctaHref-err' : undefined}
+              />
+              {errors['section.ctaHref'] && <span id="amb-section-ctaHref-err" class={errText}>{errors['section.ctaHref']}</span>}
+            </label>
+          </div>
+          {errors['section.people'] && <p id="amb-section-people" class="mt-2 text-xs font-bold text-red-700">{errors['section.people']}</p>}
+        </section>
+
+        {!catalogueComplete && (
+          <p class="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">The product list could not be loaded in full, so some products may be missing from the lists below. Saved product choices are kept as they are.</p>
+        )}
+
+        <div id="amb-rows" class="space-y-8">
+        {all.map((r, i) => {
+          const blankRow = r.isNew && !r.id;
+          const was = storedById.get(r.id);
+          const rowErrors = Object.keys(errors).filter((k) => r.id && k.startsWith(`${r.id}.`));
+          const other = rowErrors.map((k) => k.slice(r.id.length + 1)).filter((f) => !KNOWN_FIELDS.includes(f));
+          const by = r.releaseConfirmedBy ? (r.releaseConfirmedBy === meId ? ' by you' : ' by another admin') : '';
+          return (
+            <section class:list={['rounded-xl border bg-white p-5', rowErrors.length > 0 ? 'border-red-300' : r.remove ? 'border-red-200 bg-red-50/40' : 'border-slate-200']} aria-labelledby={`amb-${i}-title`}>
+              <input type="hidden" name={`p.${i}.id`} value={r.id} />
+              <input type="hidden" name={`p.${i}.isNew`} value={r.isNew ? '1' : '0'} />
+              <input type="hidden" name={`p.${i}.was`} value={r.position} />
+              <input type="hidden" name={`p.${i}.preview`} value={r.preview ?? ''} />
+              <input type="hidden" name={`p.${i}.releaseConfirmedAt`} value={r.releaseConfirmedAt ?? ''} />
+              <input type="hidden" name={`p.${i}.releaseConfirmedBy`} value={r.releaseConfirmedBy ?? ''} />
+              <div class="flex items-start justify-between gap-4">
+                <h2 id={`amb-${i}-title`} tabindex="-1" class="text-sm font-black text-slate-900">
+                  {blankRow ? 'Add a person' : r.isNew ? `${r.name || 'New person'} (not saved yet)` : (r.name || `Person ${i + 1}`)}
+                </h2>
+                {!blankRow && (stored || r.isNew) && (
+                  <span class:list={['rounded-full px-2 py-0.5 text-xs font-bold', was && isLive(was) ? 'bg-emerald-50 text-emerald-800' : 'bg-slate-100 text-slate-700']}>
+                    {was ? (isLive(was) ? 'On the homepage now' : 'Not shown now') : 'Not saved yet'}
                   </span>
-                </label>
-                {err(i, 'releaseOnFile') && <p class="-mt-2 text-xs font-bold text-red-700 sm:col-span-2">{err(i, 'releaseOnFile')}</p>}
-                <div class="flex flex-wrap items-center gap-5 sm:col-span-2">
-                  <label class="flex items-center gap-2 text-sm text-slate-800"><input type="checkbox" name={`p.${i}.published`} checked={r.published} class="h-4 w-4" /> Show on the homepage</label>
-                  <label class="flex items-center gap-2 text-sm text-slate-800">Position
-                    <input type="number" name={`p.${i}.position`} min="1" max={HOME_AMBASSADORS_MAX + 1} value={r.position} class="w-16 rounded border border-slate-300 px-2 py-1 text-sm" />
-                  </label>
-                  {!isNew && <label class="flex items-center gap-2 text-sm text-red-800"><input type="checkbox" name={`p.${i}.remove`} class="h-4 w-4" /> Remove this person</label>}
-                </div>
-                {err(i, 'id') && <p class="text-xs font-bold text-red-700 sm:col-span-2">{err(i, 'id')}</p>}
+                )}
               </div>
-            </div>
-          </section>
-        );
-      })}
-      {!canAdd && <p class="text-sm text-slate-600">The section is full ({HOME_AMBASSADORS_MAX} people). Remove someone to add another.</p>}
+              {r.remove && <p class="mt-2 text-sm font-bold text-red-800">Will be removed when you save.</p>}
+              <div class="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-[140px_1fr]">
+                <div>
+                  <div class="aspect-[3/5] w-full overflow-hidden rounded-lg bg-slate-100">
+                    {r.preview ? <img src={r.preview} alt="" class="h-full w-full object-cover" loading="lazy" /> : <span class="flex h-full items-center justify-center p-2 text-center text-xs text-slate-600">No photo yet</span>}
+                  </div>
+                </div>
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <label class="text-xs block">Name
+                    <input id={ctl(i, 'name')} name={`p.${i}.name`} maxlength="60" value={r.name} class={input} {...described(i, r, 'name')} />
+                    {err(r, 'name') && <span id={`${ctl(i, 'name')}-err`} class={errText}>{err(r, 'name')}</span>}
+                  </label>
+                  <label class="text-xs block">Role
+                    <select id={ctl(i, 'role')} name={`p.${i}.role`} class={input} {...described(i, r, 'role')}>
+                      {HOME_AMBASSADOR_ROLES.map((role) => <option value={role} selected={r.role === role}>{HOME_AMBASSADOR_ROLE_LABEL[role]}</option>)}
+                    </select>
+                    {err(r, 'role') && <span id={`${ctl(i, 'role')}-err`} class={errText}>{err(r, 'role')}</span>}
+                  </label>
+                  <label class="text-xs block sm:col-span-2">One short line (optional — their words, not ours; empty shows the product they hold)
+                    <input id={ctl(i, 'tagline')} name={`p.${i}.tagline`} maxlength="90" value={r.tagline} class={input} {...described(i, r, 'tagline')} />
+                    {err(r, 'tagline') && <span id={`${ctl(i, 'tagline')}-err`} class={errText}>{err(r, 'tagline')}</span>}
+                  </label>
+                  <label class="text-xs block">Product in the photo (the card links to it)
+                    <select id={ctl(i, 'productSlug')} name={`p.${i}.productSlug`} class={input} {...described(i, r, 'productSlug')}>
+                      <option value="">No product link</option>
+                      {r.productSlug && !products.some((p) => p.slug === r.productSlug) && (
+                        <option value={r.productSlug} selected>{r.productSlug} {catalogueComplete ? '(not on sale now)' : '(not in the loaded list)'}</option>
+                      )}
+                      {products.map((p) => <option value={p.slug} selected={r.productSlug === p.slug}>{p.name}</option>)}
+                    </select>
+                    {err(r, 'productSlug') && <span id={`${ctl(i, 'productSlug')}-err`} class={errText}>{err(r, 'productSlug')}</span>}
+                  </label>
+                  <label class="text-xs block">Upload a photo
+                    <input type="file" id={ctl(i, 'photo')} name={`p.${i}.photo`} accept="image/jpeg,image/png,image/webp,image/avif" class="mt-1 block w-full text-sm" {...described(i, r, 'photo')} />
+                    {err(r, 'photo') && <span id={`${ctl(i, 'photo')}-err`} class={errText}>{err(r, 'photo')}</span>}
+                  </label>
+                  <label class="text-xs block sm:col-span-2">…or a media-library photo address
+                    <input id={ctl(i, 'imageUrl')} name={`p.${i}.imageUrl`} maxlength="500" value={r.imageUrl} placeholder="/uploads/assets/…" class={input} {...described(i, r, 'imageUrl')} />
+                    {err(r, 'imageUrl') && <span id={`${ctl(i, 'imageUrl')}-err`} class={errText}>{err(r, 'imageUrl')}</span>}
+                  </label>
+                  <label class="text-xs block sm:col-span-2">Photo description for people who can't see it
+                    <input id={ctl(i, 'imageAlt')} name={`p.${i}.imageAlt`} maxlength="160" value={r.imageAlt} placeholder="Grace holding the GP-C08 charger" class={input} {...described(i, r, 'imageAlt')} />
+                    {err(r, 'imageAlt') && <span id={`${ctl(i, 'imageAlt')}-err`} class={errText}>{err(r, 'imageAlt')}</span>}
+                  </label>
+                  <div class="sm:col-span-2">
+                    <label class="flex items-start gap-2 text-sm text-slate-800">
+                      <input
+                        type="checkbox" id={ctl(i, 'releaseOnFile')} name={`p.${i}.releaseOnFile`} checked={r.releaseOnFile} class="mt-0.5 h-4 w-4"
+                        aria-invalid={err(r, 'releaseOnFile') ? 'true' : undefined}
+                        aria-describedby={[err(r, 'releaseOnFile') && `${ctl(i, 'releaseOnFile')}-err`, r.releaseOnFile && r.releaseConfirmedAt && `${ctl(i, 'releaseOnFile')}-note`].filter(Boolean).join(' ') || undefined}
+                      />
+                      <span>I hold a <strong>signed photo release</strong> from this person allowing GoldPlus to show their photo.</span>
+                    </label>
+                    {r.releaseOnFile && r.releaseConfirmedAt && (
+                      <p id={`${ctl(i, 'releaseOnFile')}-note`} class="ml-6 mt-1 text-xs text-slate-600">Confirmed {date(r.releaseConfirmedAt)}{by}; the audit log records who and when.</p>
+                    )}
+                    {err(r, 'releaseOnFile') && <p id={`${ctl(i, 'releaseOnFile')}-err`} class="ml-6 mt-1 text-xs font-bold text-red-700">{err(r, 'releaseOnFile')}</p>}
+                  </div>
+                  <div class="flex flex-wrap items-center gap-5 sm:col-span-2">
+                    <label class="flex items-center gap-2 text-sm text-slate-800"><input type="checkbox" name={`p.${i}.published`} checked={r.published} class="h-4 w-4" /> Show on the homepage</label>
+                    <label class="flex items-center gap-2 text-sm text-slate-800">Position
+                      <input type="number" name={`p.${i}.position`} min="1" max={HOME_AMBASSADORS_MAX + 1} value={r.position} class="w-16 rounded border border-slate-300 px-2 py-1 text-sm" />
+                    </label>
+                    {!r.isNew && <label class="flex items-center gap-2 text-sm text-red-800"><input type="checkbox" name={`p.${i}.remove`} checked={r.remove} class="h-4 w-4" /> Remove this person</label>}
+                  </div>
+                  {other.length > 0 && (
+                    <ul class="list-disc pl-5 text-xs font-bold text-red-700 sm:col-span-2">{other.map((f) => <li>{errors[`${r.id}.${f}`]}</li>)}</ul>
+                  )}
+                </div>
+              </div>
+            </section>
+          );
+        })}
+        </div>
+        {!canAdd && <p class="text-sm text-slate-600">The section is full ({HOME_AMBASSADORS_MAX} people). Remove someone to add another.</p>}
 
-      <button type="submit" class="rounded-full bg-slate-900 px-6 py-3 text-sm font-bold text-white">Save</button>
-    </form>
+        <button type="submit" class="rounded-full bg-slate-900 px-6 py-3 text-sm font-bold text-white">Save</button>
+      </form>
+    )}
   </div>
 </AdminLayout>

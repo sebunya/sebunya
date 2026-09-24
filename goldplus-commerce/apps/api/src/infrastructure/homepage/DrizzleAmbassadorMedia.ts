@@ -27,6 +27,11 @@ export class DrizzleAmbassadorMedia implements IAmbassadorMedia {
     };
   }
 
+  async protect(current: Array<{ personId: string; assetId: string }>): Promise<void> {
+    if (current.length === 0) return;
+    await db.insert(mediaUsages).values(current.map((c) => ({ assetId: c.assetId, entity: ENTITY, entityId: c.personId, field: FIELD }))).onConflictDoNothing();
+  }
+
   async syncUsages(current: Array<{ personId: string; assetId: string }>): Promise<void> {
     await db.transaction(async (tx) => {
       const keep = current.map((c) => `${c.personId}:${c.assetId}`);

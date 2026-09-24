@@ -50,15 +50,20 @@ export class SharpVariantGenerator implements IMediaVariantGenerator {
 
     try {
       const meta = await sharp(args.buffer, DECODE_LIMITS).metadata();
-      const sourceWidth = meta.width ?? null;
-      const sourceHeight = meta.height ?? null;
+      // Phones and cameras store a portrait shot as landscape pixels plus an EXIF
+      // Orientation tag (5–8 mean rotated by 90°). Browsers honour the tag on the
+      // original; our renditions strip EXIF, so each one is auto-oriented below and
+      // the recorded size is the UPRIGHT one — or portraits come out sideways.
+      const quarterTurn = (meta.orientation ?? 1) >= 5;
+      const sourceWidth = (quarterTurn ? meta.height : meta.width) ?? null;
+      const sourceHeight = (quarterTurn ? meta.width : meta.height) ?? null;
       const variants: MediaVariantRecord[] = [];
 
       for (const { purpose, width } of PURPOSE_WIDTHS) {
         // Never upscale: a 500px original gets thumb+card only.
         if (sourceWidth !== null && width > sourceWidth) continue;
         for (const { format, ext } of FORMATS) {
-          const pipeline = sharp(args.buffer, DECODE_LIMITS).resize({ width, withoutEnlargement: true });
+          const pipeline = sharp(args.buffer, DECODE_LIMITS).rotate().resize({ width, withoutEnlargement: true });
           const output =
             format === 'avif'
               ? await pipeline.avif({ quality: 55 }).toBuffer({ resolveWithObject: true })

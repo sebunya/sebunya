@@ -14,6 +14,11 @@ export interface ResolvedPortrait {
 export interface IAmbassadorMedia {
   /** The asset whose original OR one of whose renditions has this address; null if the library has no such image. */
   resolveByUrl(url: string): Promise<ResolvedPortrait | null>;
+  /**
+   * Records these usages (adds only; never removes). Called BEFORE the section is
+   * written, so a new portrait is protected from deletion the moment it can go live.
+   */
+  protect(current: Array<{ personId: string; assetId: string }>): Promise<void>;
   /** Makes the recorded usages exactly `current` (person id → asset id), removing stale ones. */
   syncUsages(current: Array<{ personId: string; assetId: string }>): Promise<void>;
 }

@@ -112,6 +112,9 @@ routes.post('/:id/metadata', requirePermissions([PERMISSIONS.MEDIA_MANAGE]), asy
 routes.post('/:id/archive', requirePermissions([PERMISSIONS.MEDIA_MANAGE]), async (c) => {
   const updated = await Registry.getInstance().mediaLibraryUseCase.archive((c.req.param('id') ?? ''));
   if (!updated) return bad(c, 'NOT_FOUND', 'Asset not found.', 404);
+  if ('kind' in updated) {
+    return bad(c, 'ASSET_IN_USE', `Refused: this photo is used in ${updated.usages} place(s) on the site. Remove it there first — archiving would not take it off the site.`, 409);
+  }
   await audit(c, 'MEDIA_ASSET_ARCHIVED', updated.id, { status: 'ARCHIVED' });
   return ok(c, updated);
 });

@@ -18,7 +18,17 @@ export const CATALOGUE_PAGE_SIZE = 100;
 export const CATALOGUE_MAX_PAGES = 8;
 
 export async function fetchApprovedCatalogue(apiBase: string, timeoutMs = 3000): Promise<ProductPublicDto[]> {
+  return (await fetchApprovedCatalogueWithStatus(apiBase, timeoutMs)).products;
+}
+
+/**
+ * The same list, plus whether it is the WHOLE list. A caller that states a fact
+ * about a product being absent ("not on sale now") must know the list ended on
+ * its own rather than on a timeout, an error or the page cap.
+ */
+export async function fetchApprovedCatalogueWithStatus(apiBase: string, timeoutMs = 3000): Promise<{ products: ProductPublicDto[]; complete: boolean }> {
   const all: ProductPublicDto[] = [];
+  let complete = false;
   try {
     for (let page = 0; page < CATALOGUE_MAX_PAGES; page += 1) {
       const response = await fetch(
@@ -27,12 +37,15 @@ export async function fetchApprovedCatalogue(apiBase: string, timeoutMs = 3000):
       );
       if (!response.ok) break;
       const body = (await response.json()) as ApiResponse<ProductPublicDto[]>;
-      if (!body.success || !Array.isArray(body.data) || body.data.length === 0) break;
+      if (!body.success || !Array.isArray(body.data)) break;
       all.push(...body.data);
+      // A short (or empty) page is the natural end: only then is the list whole.
+      complete = body.data.length < CATALOGUE_PAGE_SIZE;
       if (body.data.length < CATALOGUE_PAGE_SIZE) break;
     }
   } catch {
     // Callers treat an empty or partial catalogue honestly; none invent stock.
+    complete = false;
   }
-  return all;
+  return { products: all, complete };
 }

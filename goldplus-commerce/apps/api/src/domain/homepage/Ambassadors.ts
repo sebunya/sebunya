@@ -8,6 +8,8 @@ import {
   type HomeAmbassadorRole,
   type HomeAmbassadors,
 } from '@goldplus/shared';
+// A same-site path only, checked the way a browser resolves it (so `/\evil.com` is refused).
+import { isSitePath } from './Links';
 
 /**
  * Ambassadors & models — the home-page section of real people photographed with
@@ -25,8 +27,6 @@ const s = (v: unknown, max: number): string => String(v ?? '').replace(/\s+/g, '
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
-/** A same-site path only: no other origins, no protocol-relative URLs, no schemes. */
-const isSitePath = (v: string) => v.startsWith('/') && !v.startsWith('//') && !/[\s<>"'`]/.test(v);
 
 export const AMBASSADOR_LIMITS = { name: 60, tagline: 90, imageAlt: 160, heading: 60, intro: 160, ctaLabel: 30, ctaHref: 300 } as const;
 
@@ -93,7 +93,7 @@ export function readStoredAmbassadors(input: unknown): HomeAmbassadors {
  */
 export function publicAmbassadors(a: HomeAmbassadors): Omit<HomeAmbassadors, 'people'> & { people: HomeAmbassadorPublic[] } {
   const people = a.people
-    .filter((p) => p.published && p.releaseOnFile && p.image !== null && p.imageAlt.length > 0)
+    .filter(isLiveAmbassador)
     .map((p): HomeAmbassadorPublic => ({
       id: p.id, name: p.name, role: p.role, tagline: p.tagline, imageAlt: p.imageAlt, productSlug: p.productSlug,
       image: { src: p.image!.src, srcset: p.image!.srcset, width: p.image!.width, height: p.image!.height },
@@ -101,20 +101,45 @@ export function publicAmbassadors(a: HomeAmbassadors): Omit<HomeAmbassadors, 'pe
   return { heading: a.heading, intro: a.intro, ctaLabel: a.ctaLabel, ctaHref: a.ctaHref, people };
 }
 
+/** Whether this person is on the live storefront — the one rule the public read and the audit share. */
+export function isLiveAmbassador(p: HomeAmbassador): boolean {
+  return p.published && p.releaseOnFile && p.image !== null && p.imageAlt.length > 0;
+}
+
+/** Is `url` the stored portrait itself — its src or any of its renditions? */
+export function imageHasAddress(image: HomeAmbassadorImage | null, url: string): boolean {
+  if (!image || !url) return false;
+  if (image.src === url) return true;
+  return (image.srcset ?? '').split(',').some((c) => c.trim().split(/\s+/)[0] === url);
+}
+
 /**
  * Release provenance: the moment the box goes from unticked to ticked, record who
- * and when; while it stays ticked, keep the original confirmation; unticked, clear it.
+ * and when; while it stays ticked FOR THE SAME PERSON, keep the original
+ * confirmation; unticked, clear it.
+ *
+ * "The same person" is the name and the photo, not the row: an entry rewritten
+ * for someone else (new name, or a different portrait) with the box left ticked
+ * is a NEW confirmation by whoever saves it — otherwise the new person's likeness
+ * would go live under the previous person's signed-release record.
  */
 export function releaseProvenance(
-  now: { releaseOnFile: boolean },
-  before: { releaseOnFile: boolean; releaseConfirmedBy: string | null; releaseConfirmedAt: string | null } | undefined,
+  now: { releaseOnFile: boolean; name: string; assetId: string | null },
+  before:
+    | { releaseOnFile: boolean; releaseConfirmedBy: string | null; releaseConfirmedAt: string | null; name: string; image: { assetId: string } | null }
+    | undefined,
   actorId: string,
   at: Date,
 ): { releaseConfirmedBy: string | null; releaseConfirmedAt: string | null } {
   if (!now.releaseOnFile) return { releaseConfirmedBy: null, releaseConfirmedAt: null };
-  if (before?.releaseOnFile && before.releaseConfirmedAt) return { releaseConfirmedBy: before.releaseConfirmedBy, releaseConfirmedAt: before.releaseConfirmedAt };
+  const samePerson = before !== undefined && sameName(before.name, now.name) && (before.image?.assetId ?? null) === now.assetId;
+  if (samePerson && before!.releaseOnFile && before!.releaseConfirmedAt) {
+    return { releaseConfirmedBy: before!.releaseConfirmedBy, releaseConfirmedAt: before!.releaseConfirmedAt };
+  }
   return { releaseConfirmedBy: UUID.test(actorId) ? actorId : null, releaseConfirmedAt: at.toISOString() };
 }
+
+const sameName = (a: string, b: string) => a.replace(/\s+/g, ' ').trim().toLowerCase() === b.replace(/\s+/g, ' ').trim().toLowerCase();
 
 /**
  * A fingerprint of the stored section, so two people editing it at once can't
@@ -173,6 +198,8 @@ export function validateAmbassadorsEdit(input: any): {
   errors: AmbassadorFieldError[];
 } {
   const errors: AmbassadorFieldError[] = [];
+  // A missing list is not "nobody": reading it as [] would silently remove every person.
+  if (!Array.isArray(input?.people)) errors.push({ index: -1, field: 'people', message: 'The list of people is missing, so nothing was saved.' });
   const rawPeople: any[] = Array.isArray(input?.people) ? input.people : [];
   if (rawPeople.length > HOME_AMBASSADORS_MAX) {
     errors.push({ index: -1, field: 'people', message: `The section holds at most ${HOME_AMBASSADORS_MAX} people.` });

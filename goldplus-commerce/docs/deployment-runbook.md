@@ -142,4 +142,12 @@ If the release fails:
    ```
 
 4. Redeploy the last stable version during the approved rollback window.
+
+   **Rolling the API back past `c58612a2` (homepage Ambassadors section):** older
+   images rewrite the whole `homepage_content` document without the `ambassadors`
+   key, so the first save in `/admin/homepage` while on them erases every
+   ambassador and their release records. Before rolling back, copy the section out
+   (`select config->'ambassadors' from homepage_content;`), do not save
+   `/admin/homepage` while on the old image, and restore the section after rolling
+   forward. Images from `c58612a2` onwards keep the section on every save.
 5. Verify `shopgoldplus.com`, `api.shopgoldplus.com/health/live`, `api.shopgoldplus.com/health/ready`, `/metrics`, and TLS validity.
