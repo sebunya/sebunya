@@ -52,7 +52,8 @@ describe('the next version keeps everything the form does not show', () => {
   });
 
   it('takes the schedule, priority and extra floor from the form', () => {
-    expect(next.schedule).toEqual({ startsAt: extend.startsAt, endsAt: extend.endsAt });
+    // The form's wall-clock times are Kampala time, sent with their offset.
+    expect(next.schedule).toEqual({ startsAt: `${extend.startsAt}+03:00`, endsAt: `${extend.endsAt}+03:00` });
     const other = buildNextVersionDraft(GOLD10, { ...extend, priority: 9, priceFloorUgx: 145000 });
     expect(other.priority).toBe(9);
     expect(other.priceFloorUgx).toBe(145000);

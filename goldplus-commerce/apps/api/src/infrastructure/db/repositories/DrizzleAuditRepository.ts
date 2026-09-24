@@ -19,8 +19,9 @@ export class DrizzleAuditRepository implements IAuditRepository {
     });
   }
 
-  async findAll(opts?: { limit?: number; actorId?: string; action?: string }): Promise<AuditLogEntity[]> {
+  async findAll(opts?: { limit?: number; actorId?: string; action?: string; entity?: string }): Promise<AuditLogEntity[]> {
     const conditions = [];
+    if (opts?.entity) conditions.push(eq(auditLogs.entity, opts.entity));
     if (opts?.actorId) conditions.push(eq(auditLogs.actorId, opts.actorId));
     if (opts?.action) conditions.push(ilike(auditLogs.action, `%${opts.action}%`));
     const results = await db.query.auditLogs.findMany({

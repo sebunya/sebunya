@@ -18,11 +18,12 @@ export class ScanCommerceIntegrityUseCase {
   constructor(private readonly repo: ICommerceReconciliationRepository) {}
 
   async execute(limit = 1000): Promise<CommerceIntegrityReport> {
-    const [orders, inventory] = await Promise.all([
+    const [orders, inventory, orderStock] = await Promise.all([
       this.repo.scanOrderMoney(limit),
       this.repo.scanInventory(limit),
+      this.repo.scanOrderStock ? this.repo.scanOrderStock(limit) : Promise.resolve([]),
     ]);
-    const exceptions = reconcileCommerce({ orders, inventory });
+    const exceptions = reconcileCommerce({ orders, inventory, orderStock });
     return {
       scannedOrders: orders.length,
       scannedProducts: inventory.length,

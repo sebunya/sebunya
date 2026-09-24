@@ -38,7 +38,8 @@ if (Astro.request.method === 'POST') {
       body.append('makeFirstPrimary', form.get('makeFirstPrimary') === 'on' ? 'true' : 'false');
       const res = await fetch(`${apiBase}/admin/products/${encodeURIComponent(id ?? '')}/images/upload`, { method: 'POST', headers, body });
       const json = await res.json().catch(() => null);
-      if (json?.success) return Astro.redirect(`/admin/products/${encodeURIComponent(id ?? '')}/listing?saved=photos&n=${files.length}`, 303);
+      // n = photos actually STORED (the API counts ASSIGNED/COVER), never files sent.
+      if (json?.success) return Astro.redirect(`/admin/products/${encodeURIComponent(id ?? '')}/listing?saved=photos&n=${Number(json.stored ?? files.length)}`, 303);
       status = 'error'; message = json?.error?.message ?? `The photos were not saved (HTTP ${res.status}).`;
     }
   } else {

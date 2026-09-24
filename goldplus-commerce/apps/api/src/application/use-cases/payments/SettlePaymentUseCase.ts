@@ -57,6 +57,37 @@ export interface SettlePaymentResult {
   confirmed: boolean;
 }
 
+/**
+ * What the CUSTOMER returning from the provider should be told.
+ *
+ * The browser callback settles first, and the return page then asks again
+ * (return-state), and the IPN usually lands before either. By the second ask
+ * the checkout is ORDER_CONFIRMED, so the settlement is ALREADY_SETTLED —
+ * which, read naively, told every customer who had just paid that "this order
+ * was paid earlier; this attempt did not take a second payment".
+ *
+ * ALREADY_SETTLED means "success" when THIS tracking id is the attempt the
+ * provider says completed and nothing conflicted. It stays 'already_settled'
+ * only when a different attempt paid (this one did not complete, or it was
+ * superseded, or its money met an order that could not take it).
+ */
+export function customerReturnKind(
+  result: Pick<SettlePaymentResult, 'verification' | 'settlement'>,
+): { kind: string; code: string } {
+  const { verification, settlement } = result;
+  if (paymentDidConfirm(settlement)) return { kind: 'success', code: settlement.reason };
+  if (
+    settlement.kind === 'ALREADY_SETTLED' &&
+    verification.ok &&
+    (verification.status || '').trim().toLowerCase() === 'completed' &&
+    !verification.superseded &&
+    !verification.lifecycleConflict
+  ) {
+    return { kind: 'success', code: settlement.reason };
+  }
+  return { kind: settlement.kind.toLowerCase(), code: settlement.reason };
+}
+
 export class SettlePaymentUseCase {
   constructor(
     private readonly verify: VerifyPesaPalPaymentUseCase,
@@ -115,6 +146,25 @@ export class SettlePaymentUseCase {
     }
 
     return { verification, settlement, confirmed: paymentDidConfirm(settlement) };
+  }
+
+  /**
+   * Re-run the confirmed-payment effects that are safe to run twice, for an
+   * order whose payment is already confirmed but whose fulfilment task never
+   * learned it (ReconcilePendingPaymentsUseCase's catch-up).
+   *
+   * Those effects run inline, once. A replayed IPN answers ALREADY_SETTLED
+   * and runs nothing, the confirmation's outbox events are retired as
+   * RECORDED_ONLY, so one DB blip or a container replaced mid-request after
+   * the stage advance left a paid order nobody was told to prepare — for good.
+   * Only effects that are idempotent per order run here: marking the task paid
+   * (no-op when already paid), the paid-order alert (one outbox row per
+   * order and recipient) and the customer's receipt (one per order/template).
+   */
+  async redoConfirmedEffects(orderId: string): Promise<void> {
+    await this.runEffect('fulfilment_payment_confirmed', orderId, () => this.effects.markFulfilmentPaid(orderId));
+    await this.runEffect('fulfilment_alert', orderId, () => this.effects.notifyFulfilmentOfPaidOrder(orderId));
+    await this.runEffect('customer_message', orderId, () => this.effects.enqueueCustomerMessage(orderId, 'ORDER_PAYMENT_SUCCESS'));
   }
 
   /**

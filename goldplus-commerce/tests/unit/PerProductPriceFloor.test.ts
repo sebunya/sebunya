@@ -134,13 +134,16 @@ describe('no storefront surface reads only the first 50 products', () => {
   it('every catalogue-wide surface pages through the whole catalogue', () => {
     for (const f of [
       'apps/web/src/pages/index.astro',
-      'apps/web/src/pages/products/[slug].astro',
+      // The PDP is not catalogue-wide any more: its 4-card fallback rail reads
+      // its own category plus one general page, in parallel, instead of
+      // serialising the whole catalogue on every product render.
       // the rail's live price/stock overlay moved to a same-origin endpoint (2026-09-13)
       'apps/web/src/pages/api/catalogue-live.ts',
       'apps/web/src/lib/navFeatured.ts',
     ]) {
       expect(read(f), f).not.toMatch(/products\?limit=50/);
-      expect(read(f), f).toMatch(/fetchApprovedCatalogue\(apiBase\)/);
+      // (WithStatus where a partial read must be refused rather than published.)
+      expect(read(f), f).toMatch(/fetchApprovedCatalogue(WithStatus)?\(apiBase\)/);
     }
   });
 });

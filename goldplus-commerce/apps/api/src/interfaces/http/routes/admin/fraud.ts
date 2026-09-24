@@ -25,26 +25,36 @@ const decisionBody = z.object({ expectedVersion: z.number().int().positive(), de
 function invalid(c: any, issues: any) { return c.json({ success: false, error: { code: 'INVALID_BODY', message: issues[0]?.message ?? 'Invalid body.' } } satisfies ApiResponse<never>, 400); }
 function failure(c: any, error: unknown) {
   const known = error instanceof FraudTriageOperationError;
-  const code = known ? error.code : 'FRAUD_OPERATION_FAILED';
+  if (!known) {
+    // Never hand database internals (e.g. a Postgres cast error) to the client.
+    console.error('[admin/fraud] operation failed:', error);
+    return c.json({ success: false, error: { code: 'FRAUD_OPERATION_FAILED', message: 'Fraud triage operation failed.' } } satisfies ApiResponse<never>, 500);
+  }
+  const code = error.code;
   const status = code === 'FRAUD_CASE_NOT_FOUND' ? 404 : ['STALE_VERSION', 'CASE_RESOLVED'].includes(code) ? 409 : 400;
-  return c.json({ success: false, error: { code, message: error instanceof Error ? error.message : 'Fraud triage operation failed.' } } satisfies ApiResponse<never>, status);
+  return c.json({ success: false, error: { code, message: error.message } } satisfies ApiResponse<never>, status);
 }
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const notFound = (c: any) => c.json({ success: false, error: { code: 'FRAUD_CASE_NOT_FOUND', message: 'Fraud case was not found.' } } satisfies ApiResponse<never>, 404);
 
 routes.get('/overview', requirePermissions([PERMISSIONS.FRAUD_READ], 'PERMISSION_DENIED'), async (c) => c.json({ success: true, data: await Registry.getInstance().fraudTriageOperationsUseCase.overview() }));
 routes.get('/cases', requirePermissions([PERMISSIONS.FRAUD_READ], 'PERMISSION_DENIED'), async (c) => {
   const status = c.req.query('status') as any; const assignedTo = c.req.query('assignedTo');
+  if (assignedTo && !UUID.test(assignedTo)) return c.json({ success: false, error: { code: 'INVALID_FILTER', message: 'assignedTo must be a reviewer id (uuid).' } } satisfies ApiResponse<never>, 400);
   try { return c.json({ success: true, data: await Registry.getInstance().fraudTriageOperationsUseCase.list({ status, assignedTo }) }); } catch (error) { return failure(c, error); }
 });
-routes.get('/cases/:id', requirePermissions([PERMISSIONS.FRAUD_READ], 'PERMISSION_DENIED'), async (c) => { try { return c.json({ success: true, data: await Registry.getInstance().fraudTriageOperationsUseCase.detail(String(c.req.param('id') ?? '')) }); } catch (error) { return failure(c, error); } });
+routes.get('/cases/:id', requirePermissions([PERMISSIONS.FRAUD_READ], 'PERMISSION_DENIED'), async (c) => { if (!UUID.test(String(c.req.param('id') ?? ''))) return notFound(c); try { return c.json({ success: true, data: await Registry.getInstance().fraudTriageOperationsUseCase.detail(String(c.req.param('id') ?? '')) }); } catch (error) { return failure(c, error); } });
 routes.post('/signals', requirePermissions([PERMISSIONS.FRAUD_SIGNAL], 'PERMISSION_DENIED'), async (c) => {
   const body = signalBody.safeParse(await c.req.json().catch(() => null)); if (!body.success) return invalid(c, body.error.issues);
   try { return c.json({ success: true, data: await Registry.getInstance().fraudTriageOperationsUseCase.recordSignal({ ...body.data, actorId: actor(c) }) }, 201); } catch (error) { return failure(c, error); }
 });
 routes.post('/cases/:id/assign', requirePermissions([PERMISSIONS.FRAUD_ASSIGN], 'PERMISSION_DENIED'), async (c) => {
+  if (!UUID.test(String(c.req.param('id') ?? ''))) return notFound(c);
   const body = assignBody.safeParse(await c.req.json().catch(() => null)); if (!body.success) return invalid(c, body.error.issues);
   try { return c.json({ success: true, data: await Registry.getInstance().fraudTriageOperationsUseCase.assign({ id: String(c.req.param('id') ?? ''), actorId: actor(c), ...body.data }) }); } catch (error) { return failure(c, error); }
 });
 routes.post('/cases/:id/decision', requirePermissions([PERMISSIONS.FRAUD_DECIDE], 'PERMISSION_DENIED'), async (c) => {
+  if (!UUID.test(String(c.req.param('id') ?? ''))) return notFound(c);
   const body = decisionBody.safeParse(await c.req.json().catch(() => null)); if (!body.success) return invalid(c, body.error.issues);
   try { return c.json({ success: true, data: await Registry.getInstance().fraudTriageOperationsUseCase.decide({ id: String(c.req.param('id') ?? ''), actorId: actor(c), ...body.data }) }); } catch (error) { return failure(c, error); }
 });

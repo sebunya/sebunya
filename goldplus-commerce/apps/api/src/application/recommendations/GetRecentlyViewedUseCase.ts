@@ -33,7 +33,10 @@ export class GetRecentlyViewedUseCase {
     if (viewed.length === 0) return this.empty();
 
     const productIds = viewed.map((item) => item.productId);
-    const products = await this.products.findProductsByIds(productIds);
+    // PUBLIC products only (approved, active, available, not retired). A view
+    // of a draft product's id, recorded by anyone, used to come back here with
+    // the unreleased product's name, price and image.
+    const products = await this.products.findPublicProducts({ productIds, limit: productIds.length });
 
     const productOrder = new Map(productIds.map((id, index) => [id, index]));
 

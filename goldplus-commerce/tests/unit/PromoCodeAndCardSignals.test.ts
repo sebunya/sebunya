@@ -170,7 +170,7 @@ describe('product-card commercial signals', () => {
     // the evaluator's own figure (a dry-run pricing preview) and never recompute.
     for (const f of ['apps/web/src/pages/cart.astro', 'apps/web/src/pages/checkout.astro']) {
       const src = read(f);
-      expect(src, f).toContain('quotedGoodsTotalUgx(');
+      expect(src, f).toContain('basketSavingUgx(');
       expect(src, f).not.toMatch(/salePriceUgx\(/);
     }
   });

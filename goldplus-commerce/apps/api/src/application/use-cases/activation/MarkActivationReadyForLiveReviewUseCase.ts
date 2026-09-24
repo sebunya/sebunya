@@ -34,6 +34,11 @@ export class MarkActivationReadyForLiveReviewUseCase {
     }
 
     const previews = await this.previewer.getPreviewsForDryRun(passedDryRun.id);
+    // Closed on nothing: an empty list (previews made on the other replica, or
+    // never made) used to pass the check below with nothing checked.
+    if (previews.length === 0) {
+      throw new Error('Payload previews are required before marking ready for live review.');
+    }
     if (previews.some(p => p.status === 'BLOCKED' || p.status === 'INVALID')) {
       throw new Error('Cannot mark ready for live review while there are BLOCKED destination previews.');
     }

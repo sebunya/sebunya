@@ -25,17 +25,29 @@ import type { IExperimentRepository } from "../ports/IExperimentRepository";
  * Failure never blocks serving: any error returns null.
  */
 export class AssignRecommendationExperimentUseCase {
+  /** The running rec_ experiment, read at most once a minute: every personalised rail request asked for ALL experiments. */
+  private cached: { at: number; experiment: { id: string; key: string } | null } | null = null;
+  private static readonly CACHE_MS = 60_000;
+
   constructor(
     private readonly experiments: IExperimentRepository,
     private readonly operations: ExperimentOperationsUseCase,
+    private readonly now: () => number = Date.now,
   ) {}
+
+  private async runningExperiment(): Promise<{ id: string; key: string } | null> {
+    if (this.cached && this.now() - this.cached.at < AssignRecommendationExperimentUseCase.CACHE_MS) return this.cached.experiment;
+    const running = (await this.experiments.list())
+      .filter((e) => e.key.startsWith("rec_") && e.status === "RUNNING")
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    const experiment = running[0] ? { id: running[0].id, key: running[0].key } : null;
+    this.cached = { at: this.now(), experiment };
+    return experiment;
+  }
 
   async execute(profileId: string): Promise<{ experimentKey: string; variantKey: string } | null> {
     try {
-      const running = (await this.experiments.list())
-        .filter((e) => e.key.startsWith("rec_") && e.status === "RUNNING")
-        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-      const experiment = running[0];
+      const experiment = await this.runningExperiment();
       if (!experiment) return null;
 
       const { assignment } = await this.operations.assignAndExpose({

@@ -222,7 +222,12 @@ export class InventoryLedgerUseCases {
       throw err;
     }
     const applied = await this.repo.markReceipt(id, 'APPLIED', actorId, lineMovements);
-    await this.audit.execute({ actorId, action: 'STOCK_RECEIPT_APPLIED', entity: 'stock_receipt', entityId: id, previousState: { status: 'DRAFT' }, newState: { status: 'APPLIED', movements: lineMovements.length, supplier: receipt.supplierName, reference: receipt.supplierReference } });
+    await this.audit.execute({ actorId, action: 'STOCK_RECEIPT_APPLIED', entity: 'stock_receipt', entityId: id, previousState: { status: 'DRAFT' }, newState: { status: applied?.status ?? 'UNKNOWN', movements: lineMovements.length, supplier: receipt.supplierName, reference: receipt.supplierReference } });
+    // The stock HAS moved. If the receipt did not end up APPLIED, that is not a
+    // success to report: someone must reconcile the receipt with the ledger.
+    if (!applied || applied.status !== 'APPLIED') {
+      throw unprocessable('RECEIPT_STATE_CONFLICT', `${lineMovements.length} line(s) were posted to stock, but the receipt now reads ${applied?.status ?? 'missing'}. Check the stock history for this receipt before doing anything else.`);
+    }
     return applied;
   }
 
@@ -230,6 +235,7 @@ export class InventoryLedgerUseCases {
     const receipt = await this.repo.findReceipt(id);
     if (!receipt) throw notFound('Receipt');
     if (receipt.status !== 'DRAFT') throw unprocessable('RECEIPT_NOT_DRAFT', 'Only a draft receipt can be cancelled.');
+    if (receipt.appliedBy) throw unprocessable('RECEIPT_NOT_DRAFT', 'This receipt is being applied and can no longer be cancelled.');
     if (!reason.trim()) throw invalid('A reason is required.');
     const updated = await this.repo.markReceipt(id, 'CANCELLED', actorId, []);
     // markReceipt cancels only an unclaimed DRAFT: an apply in progress (or one

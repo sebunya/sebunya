@@ -39,6 +39,8 @@ function toRow(r: Row): DeliveryCaptureRow {
     perParcelFeeUgx: r.perParcelFeeUgx ?? null,
     parcelOfficeId: r.parcelOfficeId ?? null,
     pricedBy: r.pricedBy ?? null,
+    eatHourOfWeek: r.eatHourOfWeek ?? null,
+    straightLineKm: num(r.straightLineKm),
   };
 }
 
@@ -87,6 +89,15 @@ export class DrizzleDeliveryCaptureRepository implements IDeliveryCaptureReposit
       perParcelFeeUgx: input.perParcelFeeUgx ?? null,
       parcelOfficeId: input.parcelOfficeId ?? null,
       pricedBy: input.pricedBy ?? null,
+      eatHourOfWeek:
+        typeof input.eatHourOfWeek === 'number' && Number.isInteger(input.eatHourOfWeek) &&
+        input.eatHourOfWeek >= 0 && input.eatHourOfWeek <= 167
+          ? input.eatHourOfWeek
+          : null,
+      straightLineKm:
+        typeof input.straightLineKm === 'number' && Number.isFinite(input.straightLineKm) && input.straightLineKm > 0
+          ? String(Math.round(input.straightLineKm * 100) / 100)
+          : null,
     };
     // Only overwrite what the caller actually supplied: a cost entry must not
     // wipe the quote explanation written when the order was placed.

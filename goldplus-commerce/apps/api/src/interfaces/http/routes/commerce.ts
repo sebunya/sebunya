@@ -10,9 +10,10 @@ import { RedisFailureLockout } from '../../../infrastructure/security/RedisFailu
 import { CHECKOUT_POLICY_VERSION } from '../../../domain/commerce/CheckoutPrincipal';
 import { isCheckoutSuccess } from '../../../application/use-cases/commerce/ExecuteCheckoutIntentUseCase';
 import { isRedirectReady } from '../../../application/use-cases/commerce/StartOrderPaymentUseCase';
-import { paymentDidConfirm } from '../../../application/use-cases/commerce/ReconcileOrderPaymentUseCase';
-import { isCartApplied, type CartOutcome } from '../../../application/use-cases/commerce/MutateCartUseCase';
-import { resolveCartCredential, cartRefusalStatus } from '../middleware/cartCredential';
+import { customerReturnKind } from '../../../application/use-cases/payments/SettlePaymentUseCase';
+import { isCartApplied, MAX_LINE_QUANTITY, type CartOutcome } from '../../../application/use-cases/commerce/MutateCartUseCase';
+import { resolveCartCredential, cartRefusalStatus, cartKeys } from '../middleware/cartCredential';
+import { verifyCartCredential } from '@goldplus/shared';
 import { resolveStorefrontDiscount } from '../../../application/pricing/StorefrontDiscountQuery';
 
 import {
@@ -25,6 +26,10 @@ import { logger } from '../../../infrastructure/logging/logger';
 import { PricingEvaluationError } from '../../../application/use-cases/pricing/EvaluateCartPricingUseCase';
 import { toCheckoutResponseDto } from '../../../application/mappers/toCheckoutResponseDto';
 import { GetMyOrderUseCase } from '../../../application/use-cases/orders/CustomerOrderUseCases';
+import { RequestOrderFollowUpUseCase } from '../../../application/use-cases/orders/RequestOrderFollowUpUseCase';
+import { OpenSupportTicketUseCase } from '../../../application/use-cases/governance/OpenSupportTicketUseCase';
+import { CreateAuditLogUseCase } from '../../../application/use-cases/audit/CreateAuditLogUseCase';
+import { acknowledgementIdempotencyKey } from '../../../application/use-cases/notifications/AcknowledgementIdempotency';
 
 // Slice 3B: server-authoritative checkout input. Client prices/sku/names are
 // deliberately absent — only productId + quantity are trusted; extra fields
@@ -294,9 +299,15 @@ routes.get('/storefront-discount', async (c) => {
 routes.post('/pricing-preview', async (c) => {
   const body = await c.req.json().catch(() => null);
   const rawItems = Array.isArray(body?.items) ? body.items.slice(0, 50) : [];
-  const items = rawItems
-    .map((i: any) => ({ productId: String(i?.productId ?? ''), quantity: Number(i?.quantity) }))
-    .filter((i: any) => /^[0-9a-f-]{36}$/i.test(i.productId) && Number.isInteger(i.quantity) && i.quantity >= 1 && i.quantity <= 99);
+  const mapped = rawItems
+    .map((i: any) => ({ productId: String(i?.productId ?? ''), quantity: Number(i?.quantity) }));
+  const items = mapped
+    .filter((i: any) => /^[0-9a-f-]{36}$/i.test(i.productId) && Number.isInteger(i.quantity) && i.quantity >= 1 && i.quantity <= MAX_LINE_QUANTITY);
+  // A line outside the bounds is refused, never dropped: pricing the rest
+  // showed the dropped line's value as a discount.
+  if (items.length !== mapped.length) {
+    return c.json({ success: false, error: { code: 'INVALID_BASKET', message: `Each product can be ordered in quantities of 1 to ${MAX_LINE_QUANTITY}.` } }, 400);
+  }
   if (items.length === 0) {
     return c.json({ success: false, error: { code: 'INVALID_BASKET', message: 'Pricing preview needs the basket items.' } }, 400);
   }
@@ -389,7 +400,7 @@ routes.get('/reward-draw', async (c) => {
 /** Bounded so an oversized or malformed payload is refused before any work. */
 const cartMutationSchema = z.object({
   productId: z.string().uuid(),
-  quantity: z.number().int().min(0).max(999).optional(),
+  quantity: z.number().int().min(0).max(MAX_LINE_QUANTITY).optional(),
   /** The version the caller believes it is changing. Optional on a first write. */
   expectedVersion: z.number().int().min(1).optional(),
 });
@@ -419,7 +430,7 @@ const CART_REFUSAL_MESSAGE: Record<string, string> = {
   NOT_OWNED: 'This basket is no longer available. Please start a new one.',
   VERSION_CONFLICT: 'Your basket changed in another tab. It has been refreshed, so please try again.',
   PRODUCT_UNAVAILABLE: 'One or more items are no longer available. Please review your basket.',
-  QUANTITY_OUT_OF_BOUNDS: 'That quantity is not allowed.',
+  QUANTITY_OUT_OF_BOUNDS: `You can order 1 to ${MAX_LINE_QUANTITY} of one product at a time.`,
   CART_LIMIT_EXCEEDED: 'Your basket has too many different products.',
   RETRYABLE_FAILURE: 'The basket service is temporarily unavailable. Please try again.',
 };
@@ -583,6 +594,46 @@ routes.post('/cart/clear', async (c) => {
     traceId: gate.traceId,
   });
   return cartResponse(c, outcome);
+});
+
+/**
+ * Which basket a signed-in customer's NEW cart credential should name.
+ *
+ * Called by the storefront only when it is about to mint a USER credential (sign-in,
+ * a new device, a lapsed credential). The answer is the customer's newest basket, so
+ * signing in again no longer strands it, with the guest basket they arrived with
+ * merged in. The guest credential is verified HERE and only a GUEST credential is
+ * honoured, so a caller cannot fold someone else's basket into their own.
+ */
+const accountCartSchema = z.object({
+  guestCredential: z.string().min(1).max(2048).optional(),
+});
+
+routes.post('/cart/account', async (c) => {
+  await applyOptionalCustomerSession(c);
+  const userId = (c as Context).get('userId') as string | undefined;
+  if (!userId) {
+    return c.json({ success: false, error: { code: 'UNAUTHENTICATED', message: 'Sign in required.' } }, 401);
+  }
+  const parsed = accountCartSchema.safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) {
+    return c.json({ success: false, error: { code: 'INVALID_CART_REQUEST', message: 'Invalid basket request.' } }, 400);
+  }
+  let guest: { cartId: string; ownerId: string } | null = null;
+  const keys = cartKeys();
+  if (parsed.data.guestCredential && keys) {
+    const verified = verifyCartCredential(keys, parsed.data.guestCredential);
+    if (verified.valid && verified.claims.ownerKind === 'GUEST') {
+      guest = { cartId: verified.claims.cartId, ownerId: verified.claims.ownerId };
+    }
+  }
+  try {
+    const result = await registry.resolveAccountCartUseCase.execute({ userId, guest });
+    return c.json({ success: true, data: result });
+  } catch (err) {
+    logger.error({ err }, 'ACCOUNT_CART_RESOLVE_FAILED');
+    return c.json({ success: false, error: { code: 'RETRYABLE_FAILURE', message: CART_REFUSAL_MESSAGE.RETRYABLE_FAILURE } }, 503);
+  }
 });
 
 routes.post('/orders/create', async (c) => {
@@ -821,7 +872,15 @@ routes.post('/orders/lookup', async (c) => {
       customerPhone: maskPhone(order.customerPhone),
       customerEmail: order.customerEmail ? maskEmail(order.customerEmail) : undefined,
       deliveryArea: order.deliveryArea,
-      items: order.items,
+      // An explicit public shape: the domain items carried internal pricing
+      // fields (canonicalUnitPrice, baseSubtotal…) and none of the names the
+      // page reads, so no line ever showed a price.
+      items: (order.items ?? []).map((it) => ({
+        name: it.name,
+        quantity: it.quantity,
+        unitPriceUgx: it.price,
+        lineTotalUgx: it.finalLineTotal ?? it.price * it.quantity,
+      })),
       subtotalUgx: order.subtotalUgx,
       deliveryFeeUgx: order.deliveryFeeUgx,
       totalUgx: order.totalUgx,
@@ -841,6 +900,50 @@ routes.post('/orders/lookup', async (c) => {
     }
     return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred.' } }, 500);
   }
+});
+
+/**
+ * "Ask our team to follow up on this order" (Track Order). The same proof as
+ * the lookup, then a ticket answered on the order's OWN phone — so a customer
+ * who verified with their email is not refused for a phone they were never
+ * asked for. The lockout counts a wrong contact here exactly as on lookup.
+ */
+routes.post('/orders/lookup/followup', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const verified = await verifyOrderByContact(
+    { reference: body?.reference, contact: body?.contact, now: Date.now() },
+    { lockout: orderContactLockout, findOrder: (reference: string) => registry.getOrderByIdUseCase.execute(reference) },
+  );
+  if (!verified.ok) {
+    return c.json({ success: false, error: { code: verified.code, message: verified.message } }, verified.status);
+  }
+  const order = verified.order;
+  const result = await new RequestOrderFollowUpUseCase(new OpenSupportTicketUseCase(registry.supportRepo)).execute({
+    order,
+    verifiedContact: String(body?.contact ?? ''),
+    note: body?.note,
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: 'We could not raise the follow-up for this order. Please ask us on WhatsApp instead.' } }, 400);
+  }
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId: null,
+    action: 'SUPPORT_ISSUE_OPENED',
+    entity: 'support_ticket',
+    entityId: result.ticketId,
+    newState: { source: 'track_order_followup', orderNumber: order.orderNumber },
+  });
+  await registry.customerOutboxNotifier.enqueue({
+    eventType: 'SUPPORT_REQUEST_RECEIVED',
+    template: 'SUPPORT_REQUEST_RECEIVED',
+    customerPhone: order.customerPhone ?? null,
+    customerEmail: order.customerEmail ?? null,
+    data: { customerName: order.customerName ?? null, reference: result.ticketId },
+    idempotencyKey: acknowledgementIdempotencyKey({ kind: 'support_ticket', phone: order.customerPhone, email: order.customerEmail, entityId: result.ticketId }),
+    relatedEntity: 'support_ticket',
+    relatedEntityId: result.ticketId,
+  }).catch(() => undefined);
+  return c.json({ success: true, data: { ticketId: result.ticketId } } satisfies ApiResponse<{ ticketId: string }>, 201);
 });
 
 /**
@@ -1004,15 +1107,16 @@ routes.post('/payments/pesapal/start', async (c) => {
 async function describeSettlement(trackingId: string, reference: string, traceId: string): Promise<{ kind: string; code: string }> {
   if (!trackingId || !reference) return { kind: 'unknown_attempt', code: 'MISSING_IDS' };
   try {
-    const { settlement } = await registry.settlePaymentUseCase.execute({
+    const result = await registry.settlePaymentUseCase.execute({
       orderTrackingId: trackingId,
       merchantReference: reference,
       source: 'callback',
       traceId,
     });
-    return paymentDidConfirm(settlement)
-      ? { kind: 'success', code: settlement.reason }
-      : { kind: settlement.kind.toLowerCase(), code: settlement.reason };
+    // ALREADY_SETTLED by THIS attempt's own money is still "your payment went
+    // through" — the second door (and an IPN that beat the browser) always
+    // finds the order already confirmed.
+    return customerReturnKind(result);
   } catch (err) {
     // We do not know what happened to the money, and must not guess either way.
     console.error('[API_ERROR] PesaPal settlement failed:', err);

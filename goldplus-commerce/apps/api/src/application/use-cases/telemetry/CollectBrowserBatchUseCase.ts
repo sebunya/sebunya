@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { BrowserTelemetryEventSchema } from '@goldplus/shared';
 import { canonicalJson } from '../../../domain/measurement/BusinessEvents';
 import { classifyChannel } from '../../../domain/measurement/Channels';
+import { BROWSER_FORBIDDEN_USER_FIELDS, exceedsBrowserValueCeiling } from './BrowserTelemetryAuthority';
 
 /**
  * Browser collector contract v2 (dossier §7.1):
@@ -35,7 +36,11 @@ export const BatchEnvelope = z.object({
   events: z.array(z.unknown()).min(1).max(MAX_EVENTS),
 }).strict();
 
-const FORBIDDEN_USER_FIELDS = ['user_id', 'ip_address', 'user_agent', 'hashed_email', 'hashed_phone'];
+// One list for v1 and v2. This copy used to omit hashed_phone_plus and
+// hashed_email_google, both of which the event schema accepts.
+const FORBIDDEN_USER_FIELDS: readonly string[] = BROWSER_FORBIDDEN_USER_FIELDS;
+/** A browser event older or newer than this is not a live observation. */
+const EVENT_TIME_SKEW_MS = 7 * 24 * 3600_000;
 
 /** What we can honestly say about the caller; 'customer' only when nothing says otherwise. */
 export type TrafficClass = 'customer' | 'automated';
@@ -87,7 +92,7 @@ export class CollectBrowserBatchUseCase {
         const t = LandingTouch.safeParse(item);
         if (!t.success) { rejected.push({ eventId: id, reason: 'SCHEMA_VIOLATION' }); continue; }
         const at = new Date(t.data.event_time * 1000);
-        const skewOk = Math.abs(this.now().getTime() - at.getTime()) < 7 * 24 * 3600_000;
+        const skewOk = Math.abs(this.now().getTime() - at.getTime()) < EVENT_TIME_SKEW_MS;
         if (!skewOk) { rejected.push({ eventId: id, reason: 'EVENT_TIME_OUT_OF_RANGE' }); continue; }
         await this.store.saveTouch({ touchId: randomUUID(), anonymousId: serverVisitorId || t.data.user_data.fp_client_id, clientEventId: t.data.event_id, occurredAt: at,
           channel: classifyChannel({ source: t.data.touch.source, medium: t.data.touch.medium, referrerHost: t.data.touch.referrer_host, clickIdTypes: t.data.touch.click_id_types }),
@@ -98,6 +103,10 @@ export class CollectBrowserBatchUseCase {
       }
       const parsed = BrowserTelemetryEventSchema.safeParse(item);
       if (!parsed.success) { rejected.push({ eventId: id, reason: 'SCHEMA_VIOLATION' }); continue; }
+      if (Math.abs(this.now().getTime() - parsed.data.event_time * 1000) >= EVENT_TIME_SKEW_MS) {
+        rejected.push({ eventId: id, reason: 'EVENT_TIME_OUT_OF_RANGE' }); continue;
+      }
+      if (exceedsBrowserValueCeiling(parsed.data)) { rejected.push({ eventId: id, reason: 'VALUE_OUT_OF_RANGE' }); continue; }
       await this.trackEvent(parsed.data);
       accepted.push(parsed.data.event_id);
     }

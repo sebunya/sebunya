@@ -26,7 +26,20 @@ export const REDACT_PATHS = REDACT_KEYS.flatMap((k) => [
   // Hyphenated secret HEADERS need bracket paths. The storefront's internal key
   // was logged in clear on every SSR request for an hour after it shipped
   // (2026-09-18) because only dotted keys were listed.
-  ['x-goldplus-internal-key', 'x-api-key'].flatMap((h) => [
+  // The storefront's bearer credentials go the same way: the signed cart credential
+  // (full authority over a guest basket), the checkout intent, the HttpOnly visit
+  // token, and the machine tokens and signatures (2026-09-24).
+  [
+    'x-goldplus-internal-key',
+    'x-api-key',
+    'x-goldplus-cart',
+    'x-goldplus-checkout-intent',
+    'x-gp-visit',
+    'x-lighthouse-watch-token',
+    'x-product-finder-access-token',
+    'x-goldplus-signature',
+    'x-goog-api-key',
+  ].flatMap((h) => [
     `req.headers["${h}"]`,
     `headers["${h}"]`,
     `*.headers["${h}"]`,

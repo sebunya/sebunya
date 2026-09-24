@@ -167,7 +167,10 @@ describe('the rider card is backed by the order total', () => {
   it('keeps the delivery fee INSIDE the total, which is what makes the promise true', () => {
     // fee -> pricing quote shippingUgx -> finalTotalUgx -> grossTotal -> total.
     // If this chain ever breaks, the rider under-collects by the delivery fee.
-    expect(checkout).toContain('shippingUgx: fee.feeUgx');
+    // The fee is priced in through evaluate(); a free-delivery waiver re-prices
+    // with the fee it decided, so the chain holds on both passes.
+    expect(checkout).toContain('let quote = await evaluate(fee.feeUgx);');
+    expect(checkout).toContain('quote = await evaluate(due);');
     expect(order).toContain('pricingSnapshot?.finalTotalUgx ?? subtotal + deliveryFeeUgx');
     expect(order).toContain('const total = grossTotal - loyaltyDiscount');
   });

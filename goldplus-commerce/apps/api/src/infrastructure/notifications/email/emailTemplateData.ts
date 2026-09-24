@@ -105,6 +105,13 @@ export interface CustomerEmailSource {
   refundUpdate?: string | null;
 }
 
+function receiptTotal(grossUgx: number, chargedUgx: number | null | undefined): string {
+  const charged = Number(chargedUgx);
+  if (!Number.isFinite(charged) || charged <= 0) return ugx(grossUgx);
+  const reductions = grossUgx - charged;
+  return reductions > 0 ? `${ugx(charged)} (after ${ugx(reductions)} in points and discounts)` : ugx(charged);
+}
+
 const firstName = (full?: string | null) => String(full ?? '').trim().split(/\s+/)[0] || 'there';
 const asDate = (v: Date | string | null | undefined) => (v ? new Date(v) : new Date());
 
@@ -139,7 +146,12 @@ export function customerEmailData(template: string, src: CustomerEmailSource): T
       items,
       subtotal: ugx(subtotal),
       delivery_fee: deliveryFee > 0 ? ugx(deliveryFee) : 'To be confirmed',
-      total: ugx(subtotal + deliveryFee),
+      // The order's OWN total, which is what was charged. Items + delivery
+      // ignored points redeemed and order-level offers, so the receipt read
+      // "Order total 190,000 / Payment received 170,000" — an apparent
+      // underpayment. The template has no discount row, so the reduction is
+      // named beside the total instead of left unexplained.
+      total: receiptTotal(subtotal + deliveryFee, src.totalUgx),
       // A delivery fee nobody has agreed yet is not part of a settled total,
       // and the template shows the subtotal alone rather than a figure the
       // customer never accepted.

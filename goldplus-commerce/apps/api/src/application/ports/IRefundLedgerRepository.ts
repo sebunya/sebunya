@@ -34,7 +34,9 @@ export type ReserveRefundOutcome =
   /** The amount exceeds what remains refundable on this attempt. */
   | { outcome: 'EXCEEDS_REFUNDABLE_BALANCE'; collectedUgx: number; alreadyRefundedUgx: number; refundableUgx: number }
   /** A line allocation did not belong to this order, or over-allocated a line. */
-  | { outcome: 'INVALID_LINE_ALLOCATION'; message: string };
+  | { outcome: 'INVALID_LINE_ALLOCATION'; message: string }
+  /** This idempotency key already belongs to a refund on a DIFFERENT payment. Nothing reserved. */
+  | { outcome: 'KEY_CONFLICT' };
 
 export interface IRefundLedgerRepository {
   /**
@@ -68,6 +70,13 @@ export interface IRefundLedgerRepository {
   getRefundedTotalUgx(paymentAttemptId: string): Promise<number>;
 
   /**
+   * The share of the ORDER's collected money given back so far, in basis
+   * points (0 when nothing was collected or refunded). Same reading as
+   * getRefundedTotalUgx, over every attempt that collected money.
+   */
+  getRefundedShareBpsForOrder(orderId: string): Promise<number>;
+
+  /**
    * Is there a refund on this attempt still waiting on the provider?
    *
    * Verification returns early for an already-completed attempt, which is
@@ -79,18 +88,13 @@ export interface IRefundLedgerRepository {
   hasOutstandingRefunds(paymentAttemptId: string): Promise<boolean>;
 
   /**
-   * The provider has confirmed the reversal: move every outstanding
-   * 'requested' refund on this attempt to 'settled'.
-   *
-   * Nothing wrote 'settled' before this existed — the completed→reversed edge
-   * had no writer at all, so a refund that actually landed left the ledger
-   * saying it was still in flight forever. Returns how many rows settled.
+   * The provider reports the transaction REVERSED. Settle the outstanding
+   * accepted refund only when that status can be about nothing else: exactly
+   * one accepted row outstanding and none settled before on the attempt.
+   * Otherwise nothing settles and a person resolves the rows against the
+   * provider. Returns how many rows settled.
    */
-  /**
-   * Mark outstanding refunds settled, oldest first, up to `settledTotalUgx`.
-   * Omit the amount only when the provider has confirmed the whole set.
-   */
-  settleRefundsForAttempt(paymentAttemptId: string, settledTotalUgx?: number): Promise<number>;
+  settleRefundsForAttempt(paymentAttemptId: string): Promise<number>;
 
   listRefundsForOrder(orderId: string): Promise<RecordedRefund[]>;
 }

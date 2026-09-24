@@ -192,6 +192,8 @@ export interface ModelReadinessPayload {
   gates: Array<{ gate: string; required: number; actual: number; met: boolean }>;
   blockedBy: string[];
   recommendationExperiments: Array<{ key: string; status: string; srm: { total: number; chiSquare: number | null; srmSuspected: boolean; note: string } | null }>;
+  /** Present from 2026-09-24: rec_ experiments do not change serving yet. */
+  experimentsNote?: string;
   statement: string;
 }
 

@@ -1,6 +1,6 @@
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../client';
-import { roles, userRoles, users } from '../schema/identity';
+import { permissions, rolePermissions, roles, userRoles, users } from '../schema/identity';
 import { roleGrantRequests } from '../schema/roleGrants';
 import { IAdminUserWriteRepository } from '../../../application/use-cases/identity/AdminUserManagementUseCase';
 
@@ -119,6 +119,28 @@ export class DrizzleAdminUserWriteRepository implements IAdminUserWriteRepositor
 
   async listGrantRequests() {
     const rows = await db.select().from(roleGrantRequests).orderBy(desc(roleGrantRequests.requestedAt)).limit(50);
-    return rows.map((r) => ({ id: r.id, userId: r.userId, roleName: r.roleName, status: r.status, requestedBy: r.requestedBy, requestedAt: r.requestedAt }));
+    return rows.map((r) => ({ id: r.id, userId: r.userId, roleName: r.roleName, status: r.status, requestedBy: r.requestedBy, requestedAt: r.requestedAt, reason: r.reason ?? null }));
+  }
+
+  async rolePermissionCodes(roleName: string): Promise<string[]> {
+    const roleId = await this.roleId(roleName);
+    if (!roleId) return [];
+    const grants = await db
+      .select({ action: permissions.action, resource: permissions.resource })
+      .from(rolePermissions)
+      .innerJoin(permissions, eq(permissions.id, rolePermissions.permissionId))
+      .where(eq(rolePermissions.roleId, roleId));
+    return Array.from(new Set(grants.map((g) => `${g.action}.${g.resource}`)));
+  }
+
+  async countActiveUsersWithAnyRole(roleNames: readonly string[]): Promise<number> {
+    if (roleNames.length === 0) return 0;
+    const [row] = await db
+      .select({ n: sql<number>`count(distinct ${userRoles.userId})::int` })
+      .from(userRoles)
+      .innerJoin(users, eq(users.id, userRoles.userId))
+      .innerJoin(roles, eq(roles.id, userRoles.roleId))
+      .where(and(inArray(roles.name, [...roleNames]), eq(users.isActive, true)));
+    return Number(row?.n ?? 0);
   }
 }

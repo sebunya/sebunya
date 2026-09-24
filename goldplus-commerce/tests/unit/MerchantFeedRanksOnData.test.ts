@@ -86,9 +86,16 @@ describe('the merchant feed carries what Shopping ranks on', () => {
     expect(dateless).not.toContain('sale_price_effective_date');
   });
 
-  it('the long description wins when written; availability knows preorder', () => {
+  it('the long description wins when written; a pre-order goes to Google only with its date', () => {
     expect(feedDescription({ shortDescription: 'short', longDescription: '  long text  ' })).toBe('long text');
     expect(feedDescription({ shortDescription: 'short', longDescription: '' })).toBe('short');
-    expect(buildMerchantFeedXml([base({ stockStatus: 'pre_order' })])).toContain('<g:availability>preorder</g:availability>');
+    // Owner decision 2026-09-24: Google requires g:availability_date with
+    // preorder. No date known = out of stock, never an invented date.
+    const dateless = buildMerchantFeedXml([base({ stockStatus: 'pre_order' })]);
+    expect(dateless).toContain('<g:availability>out of stock</g:availability>');
+    expect(dateless).not.toContain('availability_date');
+    const dated = buildMerchantFeedXml([base({ stockStatus: 'pre_order', availabilityDate: '2026-10-15T00:00:00+03:00' })]);
+    expect(dated).toContain('<g:availability>preorder</g:availability>');
+    expect(dated).toContain('<g:availability_date>2026-10-15T00:00:00+03:00</g:availability_date>');
   });
 });

@@ -14,7 +14,8 @@ try {
     headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     signal: AbortSignal.timeout(5000),
   });
-  if (res.status === 401 || res.status === 403) return Astro.redirect('/admin/login?returnTo=/admin/blog', 303);
+  if (res.status === 401) return Astro.redirect('/admin/login?returnTo=/admin/blog', 303);
+  if (res.status === 403) return Astro.redirect(`/admin/not-permitted?from=${encodeURIComponent('/admin/blog')}`, 303);
   const json: any = await res.json().catch(() => null);
   if (res.ok && json?.success) posts = Array.isArray(json.data) ? json.data : [];
   else loadError = json?.error?.message ?? 'Could not load the articles.';

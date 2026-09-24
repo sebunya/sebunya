@@ -216,27 +216,31 @@ routes.post('/verification/check', async (c) => {
   const ip = clientIp(c);
   const ua = c.req.header('user-agent') || '';
 
-  const result = await registry.verificationCheckUseCase.execute(code, ip, ua);
-
   // Loyalty PART J: a signed-in scan is attributable and may earn — through
   // the versioned 'verification_scan' rule, which is INACTIVE until activated.
   // Anonymous scans stay anonymous; a loyalty failure never fails the check.
-  let loyaltyPoints = 0;
   const header = c.req.header('Authorization');
-  if (header?.startsWith('Bearer ')) {
-    const verified = await registry.tokenSigner.verify(header.slice(7).trim()).catch(() => null);
-    if (verified?.subject) {
-      const successful = Boolean((result as { isSuccessful?: boolean }).isSuccessful);
-      const earn = await registry.earnForVerificationScanUseCase
-        .execute({ userId: verified.subject, code, successful })
-        .catch(() => null);
-      if (earn?.ok) loyaltyPoints = earn.points;
-      // Gamification (0087): first successful scan = Authenticator badge;
-      // scan-count missions progress. Failures never fail the check.
-      if (successful) {
-        await registry.gamificationRepo.awardBadgeByKey(verified.subject, 'authenticator').catch(() => undefined);
-        await registry.evaluateGamificationForUserUseCase.execute({ userId: verified.subject }).catch(() => undefined);
-      }
+  const verified = header?.startsWith('Bearer ')
+    ? await registry.tokenSigner.verify(header.slice(7).trim()).catch(() => null)
+    : null;
+
+  // The scanner is written on the attempt, which the "verify ten" mission counts.
+  const result = await registry.verificationCheckUseCase.execute(code, ip, ua, verified?.subject ?? null);
+
+  let loyaltyPoints = 0;
+  if (verified?.subject) {
+    // The use case answers { success }; reading a non-existent isSuccessful
+    // made every scan "failed", so nothing ever earned.
+    const successful = result.success === true;
+    const earn = await registry.earnForVerificationScanUseCase
+      .execute({ userId: verified.subject, code, successful })
+      .catch(() => null);
+    if (earn?.ok) loyaltyPoints = earn.points;
+    // Gamification (0087): first successful scan = Authenticator badge;
+    // scan-count missions progress. Failures never fail the check.
+    if (successful) {
+      await registry.gamificationRepo.awardBadgeByKey(verified.subject, 'authenticator').catch(() => undefined);
+      await registry.evaluateGamificationForUserUseCase.execute({ userId: verified.subject }).catch(() => undefined);
     }
   }
 

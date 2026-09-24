@@ -23,6 +23,20 @@ export interface FeedProduct {
   /** The product's own floor (Price A); null = not discountable. */
   floorPriceUgx?: number | null;
   stockStatus: string;
+  /**
+   * On-hand and reserved units, and the pre-order flag. When present, they are
+   * the authority for g:availability (see feedAvailability); stockStatus is
+   * only the fallback for a caller that has no quantities.
+   */
+  stockQuantity?: number;
+  reservedQuantity?: number;
+  isPreOrderEnabled?: boolean;
+  /**
+   * The date a pre-order becomes available (ISO 8601), when the catalogue has
+   * one. No such field exists yet, so today every pre-order goes to Google as
+   * out of stock rather than as a preorder with an invented date.
+   */
+  availabilityDate?: string | null;
   imageUrl: string | null;
   modelNumber: string | null;
   isFeedEligible: boolean;
@@ -69,8 +83,17 @@ export interface FeedDiscount {
   saleEndIso?: string;
 }
 
+/**
+ * XML 1.0 forbids most C0 control characters (all but tab, LF and CR) and
+ * U+FFFE/U+FFFF. One of them in a description pasted from Excel (a vertical
+ * tab, a stray NUL) made the whole RSS document non-well-formed, and Merchant
+ * Center then rejects the entire fetch, not just that item. They are dropped.
+ */
+const XML_ILLEGAL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g;
+
 export function escapeXml(value: string): string {
   return value
+    .replace(XML_ILLEGAL, '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -85,12 +108,47 @@ export function isFeedIncluded(p: FeedProduct): boolean {
     p.approvalStatus === 'approved' &&
     typeof p.imageUrl === 'string' &&
     p.imageUrl.trim() !== '' &&
-    p.priceUgx > 0
+    p.priceUgx > 0 &&
+    // Google disapproves an item with an empty description; the feed-quality
+    // report still lists it (missing_description) so the owner sees why.
+    feedDescription(p) !== ''
   );
 }
 
-const availability = (stockStatus: string): string =>
-  stockStatus === 'in_stock' ? 'in stock' : stockStatus === 'pre_order' ? 'preorder' : 'out of stock';
+const availabilityFromStatus = (stockStatus: string): string =>
+  stockStatus === 'in_stock' || stockStatus === 'low_stock' ? 'in stock' : stockStatus === 'pre_order' ? 'preorder' : 'out of stock';
+
+/**
+ * g:availability, derived the way the product page derives it
+ * (toProductPublicDto.deriveAvailability): pre-order flag → preorder; units
+ * available to a NEW order (stock − reserved) → in stock; otherwise out of stock.
+ *
+ * It used to read products.stock_status alone. That column is a projection of
+ * stock_quantity that ignores reservations and that the admin form can set by
+ * hand, so the feed told Google 'in stock' for a last unit held by a pending
+ * order (the page said OutOfStock), 'in stock' for an admin-set status with 0
+ * units, and 'out of stock' for a buyable 'low_stock' item. Merchant Center
+ * treats that disagreement as an availability mismatch.
+ */
+export function feedAvailability(p: Pick<FeedProduct, 'stockStatus' | 'stockQuantity' | 'reservedQuantity' | 'isPreOrderEnabled'>): string {
+  if (typeof p.stockQuantity !== 'number') return availabilityFromStatus(p.stockStatus);
+  if (p.isPreOrderEnabled) return 'preorder';
+  const available = Math.max(0, p.stockQuantity - (p.reservedQuantity ?? 0));
+  return available > 0 ? 'in stock' : 'out of stock';
+}
+
+/**
+ * g:availability as Google must receive it (owner decision 2026-09-24).
+ * Google requires g:availability_date with 'preorder'. The date is sent when
+ * the catalogue knows it; otherwise the item is sent as out of stock, never
+ * with an invented date. (feedAvailability stays the page-matching truth.)
+ */
+export function googleAvailability(p: Pick<FeedProduct, 'stockStatus' | 'stockQuantity' | 'reservedQuantity' | 'isPreOrderEnabled' | 'availabilityDate'>): { availability: string; availabilityDate: string | null } {
+  const availability = feedAvailability(p);
+  if (availability !== 'preorder') return { availability, availabilityDate: null };
+  const date = (p.availabilityDate ?? '').trim();
+  return date && !Number.isNaN(Date.parse(date)) ? { availability, availabilityDate: date } : { availability: 'out of stock', availabilityDate: null };
+}
 
 const absolute = (baseUrl: string, url: string): string =>
   /^https?:\/\//i.test(url) ? url : `${baseUrl}${url.startsWith('/') ? '' : '/'}${url}`;
@@ -114,6 +172,7 @@ export function buildMerchantFeedXml(
       ? salePriceUgx(p.priceUgx, discount.percentBps, effectiveFloorUgx(discount.priceFloorUgx, p.floorPriceUgx, p.priceUgx))
       : null;
     const saleUgx = campaignUgx !== null && campaignUgx < p.priceUgx ? campaignUgx : null;
+    const google = googleAvailability(p);
     const lines = [
       '    <item>',
       `      <g:id>${escapeXml(p.sku)}</g:id>`,
@@ -124,7 +183,8 @@ export function buildMerchantFeedXml(
       `      <g:image_link>${escapeXml(absolute(baseUrl, p.imageUrl!))}</g:image_link>`,
       // The rest of the gallery, primary excluded, at most ten — Google shows them on the listing.
       ...(p.imageUrls ?? []).filter((u) => u && u !== p.imageUrl).slice(0, MAX_ADDITIONAL_IMAGES).map((u) => `      <g:additional_image_link>${escapeXml(absolute(baseUrl, u))}</g:additional_image_link>`),
-      `      <g:availability>${availability(p.stockStatus)}</g:availability>`,
+      `      <g:availability>${google.availability}</g:availability>`,
+      ...(google.availabilityDate ? [`      <g:availability_date>${escapeXml(google.availabilityDate)}</g:availability_date>`] : []),
       `      <g:price>${p.priceUgx} UGX</g:price>`,
       // Merchant Center wants the campaign price as g:sale_price alongside the
       // regular g:price. Publishing only the base price advertised a figure
@@ -140,6 +200,10 @@ export function buildMerchantFeedXml(
     ];
     if (p.modelNumber && p.modelNumber.trim() !== '') {
       lines.push(`      <g:mpn>${escapeXml(p.modelNumber)}</g:mpn>`);
+    } else {
+      // No GTIN and no MPN: say so, rather than let Google treat the item as
+      // missing its identifiers (limited performance).
+      lines.push('      <g:identifier_exists>no</g:identifier_exists>');
     }
     // Where the product sits in Google's taxonomy (only when the mapping is
     // sure) and in ours (always, for grouping and bidding).
@@ -212,9 +276,11 @@ export class FeedQualityUseCase {
       if (p.approvalStatus !== 'approved') issues.push('not_approved');
       if (!p.imageUrl || p.imageUrl.trim() === '') issues.push('missing_image');
       if (!(p.priceUgx > 0)) issues.push('missing_price');
-      if (!p.shortDescription || p.shortDescription.trim() === '') issues.push('missing_description');
-      else if (p.shortDescription.trim().length < 50) issues.push('description_under_50_chars');
+      // The description the FEED sends (long, else short): empty keeps the item out.
+      if (feedDescription(p) === '') issues.push('missing_description');
+      else if ((p.shortDescription ?? '').trim().length < 50) issues.push('description_under_50_chars');
       if (!p.modelNumber || p.modelNumber.trim() === '') issues.push('missing_mpn');
+      if (feedAvailability(p) === 'preorder' && googleAvailability(p).availability !== 'preorder') issues.push('preorder_without_date');
       if (p.name.length > 150) issues.push('title_over_150_chars');
       // What still holds the listing back once it is in the feed.
       if (!googleProductCategoryFor(p)) issues.push('no_google_category');

@@ -259,7 +259,11 @@ describe('both provider paths settle through the same use case', () => {
     // paymentDidConfirm there. What remains in the route is what the CUSTOMER
     // is told on the callback redirect — which mattered: reading the raw status
     // could show "success" for a payment the settlement parked for review.
-    expect((code.match(/paymentDidConfirm\(settlement\)/g) ?? []).length).toBe(1);
+    // UPDATED 2026-09-24: that mapping is customerReturnKind (in
+    // SettlePaymentUseCase), so both doors share it and a customer whose own
+    // attempt paid is told "success", not "already paid earlier".
+    expect(code).toContain('return customerReturnKind(result);');
+    expect(code).not.toMatch(/result\.verification\.status/);
     const settleSource = readFileSync(
       join(__dirname, '../../apps/api/src/application/use-cases/payments/SettlePaymentUseCase.ts'),
       'utf8',

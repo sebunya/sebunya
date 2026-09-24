@@ -1,23 +1,30 @@
 import { Hono } from 'hono';
 import { SYSTEM_EXPOSURE_EVENT_TYPES } from '@goldplus/shared';
 import { Registry } from '../../../infrastructure/Registry';
-import { customerSessionMiddleware } from '../middleware/customerSession';
+import { customerSessionMiddleware, optionalCustomerSessionMiddleware } from '../middleware/customerSession';
 import type { ApiResponse, GetRecommendationsInput } from '@goldplus/shared';
-import { isRecommendationPlacement, RecommendationEventValidationError } from '../../../application/recommendations/RecommendationValidation';
+import {
+  isRecommendationPlacement,
+  RecommendationEventValidationError,
+  toPublicRecommendationEventInput,
+} from '../../../application/recommendations/RecommendationValidation';
 
 const routes = new Hono();
 const registry = Registry.getInstance();
 
-routes.post('/events', async (c) => {
+routes.post('/events', optionalCustomerSessionMiddleware, async (c) => {
   try {
-    const body = await c.req.json().catch(() => null);
-    if (!body) {
+    const rawBody = await c.req.json().catch(() => null);
+    if (!rawBody) {
       const res: ApiResponse<never> = {
         success: false,
         error: { code: 'BAD_JSON', message: 'Invalid JSON body.' },
       };
       return c.json(res, 400);
     }
+    // Public route: only browser-reportable event types and fields survive, and
+    // the customer is whoever the verified session says — never the body.
+    const body = toPublicRecommendationEventInput(rawBody, c.get('userId') ?? null);
 
     // R2: the same-origin relay forwards the HttpOnly visit token as a
     // header. When present and well-formed, the event is stamped with the

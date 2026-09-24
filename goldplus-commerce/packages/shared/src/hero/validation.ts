@@ -102,6 +102,12 @@ export const validateHeroSlide = (slide: Partial<HeroSlideSeed>): HeroSlideField
   }
 
   if (enabled) {
+    // The scratch card dealt percentage codes (GP5..GP20) that no promotion
+    // honours — a fake offer. It stays off: a scratch card pays points and
+    // lives on the rewards page, not in the hero.
+    if (slide.slideKey === 'scratch' || slide.media === 'card') {
+      add(slide.media === 'card' ? 'media' : 'enabled', 'The scratch card cannot be enabled in the hero: its discount codes are honoured by no promotion. Scratch rewards pay points on the rewards page.');
+    }
     if (!slide.headline || headlineVisibleText(slide.headline).trim().length === 0) {
       add('headline', 'An enabled slide needs a headline.');
     }

@@ -4,6 +4,7 @@ import { ApiResponse, BATTERY_CATEGORIES, BATTERY_CHEMISTRIES, BATTERY_ALIAS_TYP
 import { Registry } from '../../../../infrastructure/Registry';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
+import { adminUploadLimit } from '../../middleware/uploadLimit';
 import { BatteryOperationError } from '../../../../application/use-cases/batteries/BatteryOperationError';
 
 /**
@@ -166,7 +167,7 @@ async function evidenceUpload(c: Ctx, subjectType: 'BATTERY' | 'COMPATIBILITY') 
   const buffers = await Promise.all(files.map(async (f) => ({ filename: f.name, mime: f.type, buffer: Buffer.from(await f.arrayBuffer()) })));
   return run(c, () => registry().batteryCatalogueUseCases.attachEvidence({ subjectType, subjectId: param(c, 'id'), kind, note, files: buffers, actorId: actor(c), setPrimaryImage }), 201);
 }
-routes.post('/catalogue/:id/evidence', requirePermissions([PERMISSIONS.BATTERIES_CATALOGUE_MANAGE]), (c) => evidenceUpload(c, 'BATTERY'));
+routes.post('/catalogue/:id/evidence', requirePermissions([PERMISSIONS.BATTERIES_CATALOGUE_MANAGE]), adminUploadLimit, (c) => evidenceUpload(c, 'BATTERY'));
 
 // ------------------------------------------------------------------ devices
 const brandBody = z.object({ name: z.string().trim().min(1).max(60), searchAliases: z.array(z.string().trim().max(60)).max(20).optional(), isFeatured: z.boolean().optional(), displayOrder: z.number().int().min(0).optional(), logoAssetId: uuid.nullable().optional() });
@@ -280,7 +281,7 @@ routes.post('/compatibility/:id/transition', requirePermissions([PERMISSIONS.BAT
   if (!has(c, needs)) return bad(c, 'FORBIDDEN', 'You do not have the right to perform this action.', 403);
   return run(c, () => registry().batteryCompatibilityUseCases.transition(param(c, 'id'), b.data.action, actor(c), { evidenceStatus: b.data.evidenceStatus, publicCondition: b.data.publicCondition, reason: b.data.reason ?? undefined }));
 });
-routes.post('/compatibility/:id/evidence', requirePermissions([PERMISSIONS.BATTERIES_COMPAT_PROPOSE]), (c) => evidenceUpload(c, 'COMPATIBILITY'));
+routes.post('/compatibility/:id/evidence', requirePermissions([PERMISSIONS.BATTERIES_COMPAT_PROPOSE]), adminUploadLimit, (c) => evidenceUpload(c, 'COMPATIBILITY'));
 
 // -------------------------------------------------------------------- stock
 const canRecordCost = (c: Ctx) => has(c, PERMISSIONS.PRODUCT_COSTS_MANAGE);

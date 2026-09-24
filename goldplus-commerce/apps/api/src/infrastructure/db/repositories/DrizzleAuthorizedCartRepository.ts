@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import { CartOwnerKind, CART_RETENTION_DAYS } from '@goldplus/shared';
 import { db } from '../client';
 import { carts, cartItems } from '../schema/commerce';
@@ -9,6 +9,7 @@ import {
   CartProductReader,
   ICartAuthorizedRepository,
 } from '../../../application/use-cases/commerce/MutateCartUseCase';
+import type { IAccountCartRepository } from '../../../application/use-cases/commerce/ResolveAccountCartUseCase';
 
 /**
  * Cart persistence with ownership and optimistic concurrency.
@@ -195,5 +196,104 @@ export class DrizzleCartProductReader implements CartProductReader {
       name: row.name,
       unitPriceUgx: row.retailPrice ?? row.fallbackPrice,
     }));
+  }
+}
+
+/** Thrown inside a merge transaction to roll it back; never escapes the repository. */
+class MergeRaceLost extends Error {}
+
+/**
+ * The account basket and the guest-basket merge (ResolveAccountCartUseCase).
+ *
+ * Both halves of the merge commit together: emptying the guest basket and
+ * writing the account basket are one transaction, each guarded by its version,
+ * so a second tab or a retry can never fold the same guest lines in twice.
+ */
+export class DrizzleAccountCartRepository implements IAccountCartRepository {
+  async findLatestFor(owner: CartOwner, now: Date): Promise<{ id: string } | null> {
+    const [row] = await db
+      .select({ id: carts.id })
+      .from(carts)
+      .where(
+        and(
+          eq(carts.ownerKind, owner.kind),
+          eq(carts.ownerId, owner.id),
+          or(isNull(carts.expiresAt), gt(carts.expiresAt, now)),
+        ),
+      )
+      .orderBy(desc(carts.updatedAt))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async mergeInto(args: {
+    guestCartId: string;
+    guestVersion: number;
+    targetCartId: string;
+    targetOwner: CartOwner;
+    targetExpectedVersion: number | null;
+    items: Array<{ productId: string; quantity: number }>;
+  }): Promise<boolean> {
+    const now = new Date();
+    try {
+      await db.transaction(async (tx) => {
+        const guest = await tx
+          .update(carts)
+          .set({ version: sql`${carts.version} + 1`, updatedAt: now })
+          .where(and(eq(carts.id, args.guestCartId), eq(carts.version, args.guestVersion)))
+          .returning({ id: carts.id });
+        if (guest.length !== 1) throw new MergeRaceLost();
+
+        if (args.targetExpectedVersion === null) {
+          const created = await tx
+            .insert(carts)
+            .values({
+              id: args.targetCartId,
+              ownerKind: args.targetOwner.kind,
+              ownerId: args.targetOwner.id,
+              version: 1,
+              updatedAt: now,
+              expiresAt: new Date(now.getTime() + CART_TTL_DAYS * 24 * 60 * 60 * 1000),
+            })
+            .onConflictDoNothing()
+            .returning({ id: carts.id });
+          if (created.length !== 1) throw new MergeRaceLost();
+        } else {
+          const target = await tx
+            .update(carts)
+            .set({
+              version: sql`${carts.version} + 1`,
+              updatedAt: now,
+              expiresAt: new Date(now.getTime() + CART_TTL_DAYS * 24 * 60 * 60 * 1000),
+            })
+            .where(
+              and(
+                eq(carts.id, args.targetCartId),
+                eq(carts.version, args.targetExpectedVersion),
+                eq(carts.ownerKind, args.targetOwner.kind),
+                eq(carts.ownerId, args.targetOwner.id),
+              ),
+            )
+            .returning({ id: carts.id });
+          if (target.length !== 1) throw new MergeRaceLost();
+        }
+
+        await tx.delete(cartItems).where(eq(cartItems.cartId, args.guestCartId));
+        await tx.delete(cartItems).where(eq(cartItems.cartId, args.targetCartId));
+        if (args.items.length > 0) {
+          await tx.insert(cartItems).values(
+            args.items.map((item) => ({
+              cartId: args.targetCartId,
+              productId: item.productId,
+              quantity: item.quantity,
+            })),
+          );
+        }
+      });
+      return true;
+    } catch (err) {
+      if (err instanceof MergeRaceLost) return false;
+      throw err;
+    }
   }
 }

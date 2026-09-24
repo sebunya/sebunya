@@ -18,13 +18,18 @@ const sameAs = biz.socials
   .map((s) => s.href);
 
 const ORG_ID = `${SITE_ORIGIN}/#organization`;
+// Square 512 px: Google's logo rule wants at least 112 x 112, and the header
+// banner (150 x 43) never qualified. alternateName ties 'ShopGoldPlus' (the
+// site name) to 'GoldPlus' (the Store, articles and every page's copy).
+const LOGO = `${SITE_ORIGIN}/icon-512.png`;
 const organization = {
   '@context': 'https://schema.org',
   '@type': 'Organization',
   '@id': ORG_ID,
   name: 'ShopGoldPlus',
+  alternateName: 'GoldPlus',
   url: SITE_ORIGIN,
-  logo: `${SITE_ORIGIN}/goldplus-logo-header-desktop-150x43.png`,
+  logo: LOGO,
   sameAs,
 };
 
@@ -54,7 +59,7 @@ const store: Record<string, unknown> = {
   '@id': `${SITE_ORIGIN}/#store`,
   name: 'GoldPlus',
   url: SITE_ORIGIN,
-  image: `${SITE_ORIGIN}/goldplus-logo-header-desktop-150x43.png`,
+  image: LOGO,
   telephone: biz.phoneDial.replace(/^tel:/, ''),
   address: {
     '@type': 'PostalAddress',
@@ -68,7 +73,8 @@ const store: Record<string, unknown> = {
 };
 if (openingHours) store.openingHours = openingHours;
 if (biz.mapUrl) store.hasMap = biz.mapUrl;
-if (biz.addressLine2) store.description = biz.addressLine2;
+// addressLine2 is directions ("next to ..."), not a description of the shop,
+// so it is no longer published as one.
 if (sameAs.length > 0) store.sameAs = sameAs;
 
 const website = {
@@ -76,6 +82,7 @@ const website = {
   '@type': 'WebSite',
   '@id': `${SITE_ORIGIN}/#website`,
   name: 'ShopGoldPlus',
+  alternateName: 'GoldPlus',
   url: SITE_ORIGIN,
   publisher: { '@id': ORG_ID },
   potentialAction: {

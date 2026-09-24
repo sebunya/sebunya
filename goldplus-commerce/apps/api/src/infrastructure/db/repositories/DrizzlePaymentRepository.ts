@@ -146,7 +146,10 @@ export class DrizzlePaymentRepository implements IPaymentRepository {
 
       if (inserted.outboxId) {
         const { QueueService, QUEUES } = await import('../../queues/QueueService');
-        await QueueService.getInstance().enqueue(
+        // Not awaited: the outbox row committed with the payment, and a Redis
+        // outage must not hold the provider's webhook open (enqueue is bounded,
+        // but the webhook answer does not depend on it at all).
+        void QueueService.getInstance().enqueue(
           QUEUES.EMAIL_JOBS,
           `payment-notification:${inserted.outboxId}`,
           { outboxId: inserted.outboxId },

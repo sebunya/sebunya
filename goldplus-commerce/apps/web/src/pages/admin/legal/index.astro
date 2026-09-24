@@ -2,6 +2,7 @@
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { apiBase } from "../../../lib/api";
 import { readSessionToken } from "../../../lib/session";
+import { formatKampala, parseKampalaLocal } from "../../../lib/kampalaTime";
 
 const token = readSessionToken(Astro.request);
 if (!token) return Astro.redirect("/admin/login?returnTo=/admin/legal", 303);
@@ -11,8 +12,9 @@ const jsonHeaders = { ...headers, "Content-Type": "application/json" };
 
 type VersionStatus = "DRAFT" | "IN_REVIEW" | "APPROVED" | "SCHEDULED" | "PUBLISHED" | "ARCHIVED";
 
-const fmt = (iso: string | null | undefined) =>
-  iso ? String(iso).slice(0, 16).replace("T", " ") : "—";
+// Times are shown in Kampala time: slicing the UTC ISO string printed 21:00
+// for a midnight-in-Kampala publication.
+const fmt = (iso: string | null | undefined) => formatKampala(iso);
 
 // ---------------------------------------------------------------------------
 // Mutations: POST → API call → 303 redirect back to /admin/legal (PRG).
@@ -117,8 +119,9 @@ if (Astro.request.method === "POST") {
       const effectiveAtRaw = text("effectiveAt");
       let body = "{}";
       if (effectiveAtRaw) {
-        const parsed = new Date(effectiveAtRaw);
-        if (Number.isNaN(parsed.getTime())) {
+        // The input is Kampala wall-clock time (the server runs in UTC).
+        const parsed = parseKampalaLocal(effectiveAtRaw);
+        if (!parsed) {
           return finish("error", "The go-live date/time could not be parsed.");
         }
         body = JSON.stringify({ effectiveAt: parsed.toISOString() });
@@ -416,8 +419,8 @@ const linkButtonClass = "text-[10px] font-black uppercase tracking-widest text-g
                     <input type="hidden" name="action" value="publish" />
                     <input type="hidden" name="id" value={detail.id} />
                     <label class="block">
-                      <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Go-live date &amp; time</span>
-                      <input type="datetime-local" name="effectiveAt" required aria-label="Effective date and time for scheduled publication" class="mt-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs" />
+                      <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Go-live date &amp; time (Kampala)</span>
+                      <input type="datetime-local" name="effectiveAt" required aria-label="Effective date and time for scheduled publication (Kampala time)" title="Kampala time" class="mt-1 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs" />
                     </label>
                     <button type="submit" class={buttonClass}>Schedule</button>
                   </form>
@@ -599,7 +602,7 @@ const linkButtonClass = "text-[10px] font-black uppercase tracking-widest text-g
                               <form method="POST" class="flex items-center justify-end gap-1.5">
                                 <input type="hidden" name="action" value="publish" />
                                 <input type="hidden" name="id" value={v.id} />
-                                <input type="datetime-local" name="effectiveAt" required aria-label="Effective date and time for scheduled publication" class="rounded-lg border border-gray-300 px-2 py-1 text-[10px]" />
+                                <input type="datetime-local" name="effectiveAt" required aria-label="Effective date and time for scheduled publication (Kampala time)" title="Kampala time" class="rounded-lg border border-gray-300 px-2 py-1 text-[10px]" />
                                 <button type="submit" class={linkButtonClass}>Schedule</button>
                               </form>
                             </>

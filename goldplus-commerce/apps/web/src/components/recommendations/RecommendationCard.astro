@@ -30,6 +30,8 @@ const candidateSaleUgx = campaignApplies
   : null;
 const onSale = candidateSaleUgx !== null && candidateSaleUgx < item.price!;
 const saleUgx = onSale ? candidateSaleUgx : null;
+// What a screen reader hears is what the card shows: the sale price first.
+const spokenPrice = saleUgx !== null ? `${formatUgx(saleUgx)}, reduced from ${formattedPrice}` : formattedPrice;
 
 // Stock STATE only, never a number (owner decision 2026-09-24): the same
 // imported 200 on almost every product read as test data. Same rule as
@@ -58,7 +60,7 @@ const productType = lowerName.includes("charger") ? "Charger"
   >
     <a
       href={`/products/${item.slug}`}
-      aria-label={`View ${item.name}. ${formattedPrice}. ${availabilityLabel}.`}
+      aria-label={`View ${item.name}. ${spokenPrice}. ${availabilityLabel}.`}
       data-recommendation-click
       data-placement={placement}
       data-product-id={item.productId}

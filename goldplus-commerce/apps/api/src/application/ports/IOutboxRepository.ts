@@ -47,7 +47,13 @@ export interface IOutboxRepository {
    * into a pending one and sending it twice.
    */
   markProcessed(eventId: string, opts?: { lastError?: string }): Promise<boolean | void>;
-  recordFailure(eventId: string, error: string, nextAttemptAt: Date): Promise<boolean | void>;
+  /**
+   * `sentTargets`: the targets of a multi-target event that WERE delivered on
+   * this or an earlier attempt. Kept on the event (payload `_sentTargets`), so
+   * the retry sends only to the targets that failed rather than again to
+   * everyone who already has the message.
+   */
+  recordFailure(eventId: string, error: string, nextAttemptAt: Date, opts?: { sentTargets?: string[] }): Promise<boolean | void>;
   /**
    * Terminal failure after the retry bound. Distinct from markProcessed because
    * the event was never delivered, and recording it as processed made it

@@ -18,10 +18,32 @@ if (!token) {
 // Slice 8: real dormant-ledger configuration (preparation only). Customer
 // activation additionally requires the LOYALTY_PROGRAMME_ENABLED env flag.
 import { apiBase } from "../../lib/api";
+import { PROGRAMME_BOOLEAN_FIELDS, PROGRAMME_INTEGER_FIELDS, buildProgrammePatch } from "../../lib/loyaltyProgrammeForm";
 const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 let configNotice: { kind: "success" | "error"; text: string } | null = null;
-if (Astro.request.method === "POST") {
-  const form = await Astro.request.formData();
+let programmeNotice: { kind: "success" | "error"; text: string } | null = null;
+const postedForm = Astro.request.method === "POST" ? await Astro.request.formData() : null;
+if (postedForm && postedForm.get("intent") === "programme") {
+  // Programme values: only the keys the operator changed are sent (the API
+  // applies PATCH semantics), compared with the values this form was rendered with.
+  try {
+    let original: Record<string, unknown> = {};
+    try { original = JSON.parse(String(postedForm.get("original") || "{}")); } catch { original = {}; }
+    const patch = buildProgrammePatch(postedForm, original);
+    if (Object.keys(patch).length === 0) {
+      programmeNotice = { kind: "success", text: "Nothing changed." };
+    } else {
+      const res = await fetch(`${apiBase}/admin/loyalty/programme-config`, { method: "PUT", headers, body: JSON.stringify(patch) });
+      const json = await res.json().catch(() => null);
+      programmeNotice = json?.success
+        ? { kind: "success", text: `Saved: ${Object.keys(patch).join(", ")}.` }
+        : { kind: "error", text: json?.error?.message || `Could not save (HTTP ${res.status}).` };
+    }
+  } catch {
+    programmeNotice = { kind: "error", text: "Loyalty configuration service is unreachable right now." };
+  }
+} else if (postedForm) {
+  const form = postedForm;
   try {
     const res = await fetch(`${apiBase}/admin/loyalty/config`, {
       method: "PUT",
@@ -48,6 +70,12 @@ try {
   const json = await res.json().catch(() => null);
   if (json?.success) ledgerConfig = json.data;
 } catch { /* section shows unavailable state */ }
+let programmeConfig: Record<string, unknown> | null = null;
+try {
+  const res = await fetch(`${apiBase}/admin/loyalty/programme-config`, { headers });
+  const json = await res.json().catch(() => null);
+  if (json?.success) programmeConfig = json.data;
+} catch { /* section shows unavailable state */ }
 try {
   const res = await fetch(`${apiBase}/admin/loyalty/operations?limit=50`, { headers });
   const json = await res.json().catch(() => null);
@@ -61,27 +89,42 @@ const levelClass = (value: string) => value === "High"
     : "border-slate-200 bg-slate-100 text-slate-700";
 ---
 
-<AdminLayout title="Loyalty foundation preview" description="Read-only readiness planning for future GoldPlus loyalty mechanics.">
+<AdminLayout title="Loyalty programme" description="The loyalty programme's live state, its earn and money settings, and readiness notes for mechanics not yet built.">
   <div class="container mx-auto max-w-7xl px-4 sm:px-6 lg:px-8" data-admin-loyalty-preview>
     <header class="flex flex-col gap-5 border-b border-slate-200 pb-7 lg:flex-row lg:items-end lg:justify-between">
       <div class="max-w-3xl">
         <a href="/admin" class="text-xs font-black text-brand-primaryInk hover:underline">← Admin Trust Centre</a>
         <p class="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-brand-primaryInk">Protected operator preview</p>
         <h1 class="mt-2 text-3xl font-black tracking-tight text-brand-dark">Loyalty and gamification foundation</h1>
-        <p class="mt-3 text-sm leading-relaxed text-slate-600">Review mechanics, blockers and commercial safeguards. This page reads static foundation rules only and cannot activate a programme.</p>
+        <p class="mt-3 text-sm leading-relaxed text-slate-600">Review mechanics, blockers and commercial safeguards. The programme's real state is read from the ledger configuration below; the environment flag is set by operations, not on this page.</p>
       </div>
       <div class="flex flex-wrap gap-2">
-        <span class="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-800">Foundation ready</span>
-        <span class="rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-800">Programme not active</span>
-        <span class="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-blue-800">Read-only</span>
+        {ledgerConfig ? (
+          ledgerConfig.active
+            ? <span class="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-emerald-800">Programme active</span>
+            : <span class="rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-800">Programme not active</span>
+        ) : (
+          <span class="rounded-full border border-slate-200 bg-slate-100 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-slate-700">State unknown</span>
+        )}
+        {programmeConfig?.killSwitch === true && <span class="rounded-full border border-red-300 bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-800">Kill switch on</span>}
       </div>
     </header>
 
-    <section aria-labelledby="activation-state" class="mt-7 rounded-2xl border border-amber-200 bg-amber-50 p-6">
-      <h2 id="activation-state" class="text-lg font-black text-amber-950">Activation status: {LOYALTY_ADMIN_PREVIEW.activationStatus}</h2>
-      <p class="mt-2 text-sm leading-relaxed text-amber-900"><strong>Why disabled:</strong> {LOYALTY_ADMIN_PREVIEW.activationBlocker}</p>
-      <button type="button" disabled aria-describedby="activation-disabled-reason" class="mt-5 cursor-not-allowed rounded-xl border border-amber-300 bg-amber-100 px-5 py-3 text-xs font-black text-amber-800">Activation unavailable</button>
-      <p id="activation-disabled-reason" class="mt-2 text-xs text-amber-800">No toggle, mutation or provider action exists in this foundation.</p>
+    <section aria-labelledby="activation-state" class={`mt-7 rounded-2xl border p-6 ${ledgerConfig?.active ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+      {ledgerConfig ? (
+        <>
+          <h2 id="activation-state" class="text-lg font-black text-slate-950">Activation status: {ledgerConfig.active ? "Active — customers earn points" : "Dormant — customers earn nothing"}</h2>
+          <p class="mt-2 text-sm leading-relaxed text-slate-800">
+            Environment flag <code class="font-mono text-xs">LOYALTY_PROGRAMME_ENABLED</code>: <strong>{ledgerConfig.envFlag ? "on" : "off"}</strong> ·
+            config switch: <strong>{ledgerConfig.enabled ? "on" : "off"}</strong>. Both must be on for the programme to run; the config switch is saved below.
+          </p>
+        </>
+      ) : (
+        <>
+          <h2 id="activation-state" class="text-lg font-black text-amber-950">Activation status: {LOYALTY_ADMIN_PREVIEW.activationStatus}</h2>
+          <p class="mt-2 text-sm leading-relaxed text-amber-900">The live configuration could not be read, so the state below is the static foundation default. <strong>Why disabled:</strong> {LOYALTY_ADMIN_PREVIEW.activationBlocker}</p>
+        </>
+      )}
     </section>
 
     <section aria-labelledby="ledger-config" class="mt-7 rounded-2xl border border-slate-200 bg-white p-6">
@@ -119,6 +162,45 @@ const levelClass = (value: string) => value === "High"
         </form>
       ) : (
         <p class="mt-4 text-sm text-slate-500 italic">Configuration is unavailable right now (service unreachable or permission denied).</p>
+      )}
+    </section>
+
+    <section id="programme-values" aria-labelledby="programme-values-title" class="mt-7 rounded-2xl border border-slate-200 bg-white p-6">
+      <h2 id="programme-values-title" class="text-lg font-black text-brand-dark">Programme values</h2>
+      <p class="mt-2 text-sm leading-relaxed text-slate-600">
+        The money settings: what a point is worth, redemption limits, the budget cap, bonus points and the kill switch.
+        Only the values you change are sent; every save is audited with the values before and after.
+      </p>
+      {programmeNotice && (
+        <div class={`mt-4 rounded-xl border px-4 py-3 text-sm font-bold ${programmeNotice.kind === "success" ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"}`} role="status">
+          {programmeNotice.text}
+        </div>
+      )}
+      {programmeConfig ? (
+        <form method="POST" class="mt-5 space-y-4">
+          <input type="hidden" name="intent" value="programme" />
+          <input type="hidden" name="original" value={JSON.stringify(programmeConfig)} />
+          <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {PROGRAMME_INTEGER_FIELDS.map((f) => (
+              <label class="block">
+                <span class="text-[10px] uppercase font-black text-slate-500 tracking-widest">{f.label}</span>
+                <input name={f.key} inputmode="numeric" value={programmeConfig![f.key] === null || programmeConfig![f.key] === undefined ? "" : String(programmeConfig![f.key])} placeholder="not set" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+                {f.hint && <span class="mt-1 block text-[10px] text-slate-500">{f.hint}</span>}
+              </label>
+            ))}
+          </div>
+          <div class="flex flex-wrap gap-5">
+            {PROGRAMME_BOOLEAN_FIELDS.map((f) => (
+              <label class="inline-flex items-center gap-2 text-xs font-bold text-slate-700">
+                <input type="checkbox" name={f.key} checked={programmeConfig![f.key] === true} class="w-4 h-4 rounded border-slate-300" />
+                {f.label}
+              </label>
+            ))}
+          </div>
+          <button type="submit" class="rounded-lg bg-brand-dark px-4 py-2.5 text-xs font-black uppercase tracking-widest text-white hover:opacity-90">Save programme values</button>
+        </form>
+      ) : (
+        <p class="mt-4 text-sm text-slate-500 italic">Programme values are unavailable right now (service unreachable or permission denied).</p>
       )}
     </section>
 

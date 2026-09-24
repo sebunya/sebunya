@@ -110,13 +110,30 @@ describe('Pricing P4 authoritative checkout and payment integrity', () => {
 
   it('submits every PesaPal retry from the immutable recorded attempt amount', async () => {
     process.env.PESAPAL_IPN_ID = 'proof-ipn';
-    const order = new Order('order-1', 'GP-1001', 'Pricing Customer', '0700000000', 'pricing@example.com', 'Kampala', 'Plot 1', 'retail', [], 1, 0, 1, 'unpaid', 'received', now, now);
-    const attempt = { id: 'attempt-1', orderId: order.id, merchantReference: 'GP-GP-1001-order-1', amount: 185_000, currency: 'UGX', status: 'pending' };
+    const order = new Order('order-1', 'GP-1001', 'Pricing Customer', '0700000000', 'pricing@example.com', 'Kampala', 'Plot 1', 'retail', [], 185_000, 0, 185_000, 'unpaid', 'received', now, now);
+    const attempt = { id: 'attempt-1', orderId: order.id, merchantReference: 'GP-GP-1001-order-1', amount: 185_000, currency: 'UGX', status: 'not_started', orderTrackingId: null };
     const paymentRepo: any = { findByMerchantReference: vi.fn().mockResolvedValue(attempt), createPaymentAttempt: vi.fn(), updatePaymentAttemptStatus: vi.fn() };
     const provider: any = { submitOrderRequest: vi.fn().mockResolvedValue({ order_tracking_id: 'tracking-1', merchant_reference: attempt.merchantReference, redirect_url: 'https://example.invalid/payment' }) };
     const useCase = new StartPesaPalPaymentUseCase(paymentRepo, { findById: vi.fn().mockResolvedValue(order) } as any, provider);
     await useCase.execute({ orderId: order.id });
     expect(provider.submitOrderRequest).toHaveBeenCalledWith(expect.objectContaining({ amount: 185_000, currency: 'UGX' }));
     expect(paymentRepo.createPaymentAttempt).not.toHaveBeenCalled();
+  });
+
+  it('never rewrites a recorded attempt whose amount no longer matches the order; a fresh attempt carries the new total', async () => {
+    process.env.PESAPAL_IPN_ID = 'proof-ipn';
+    const order = new Order('order-1', 'GP-1001', 'Pricing Customer', '0700000000', 'pricing@example.com', 'Kampala', 'Plot 1', 'retail', [], 190_000, 0, 190_000, 'unpaid', 'received', now, now);
+    const attempt = { id: 'attempt-1', orderId: order.id, merchantReference: 'GP-GP-1001-order-1', amount: 185_000, currency: 'UGX', status: 'not_started', orderTrackingId: null };
+    const paymentRepo: any = {
+      findByMerchantReference: vi.fn().mockResolvedValue(attempt),
+      createPaymentAttempt: vi.fn().mockImplementation(async (input: any) => ({ id: 'attempt-2', ...input })),
+      updatePaymentAttemptStatus: vi.fn(),
+    };
+    const provider: any = { submitOrderRequest: vi.fn().mockResolvedValue({ order_tracking_id: 'tracking-2', redirect_url: 'https://example.invalid/payment' }) };
+    const useCase = new StartPesaPalPaymentUseCase(paymentRepo, { findById: vi.fn().mockResolvedValue(order) } as any, provider);
+    await useCase.execute({ orderId: order.id });
+    expect(provider.submitOrderRequest).toHaveBeenCalledWith(expect.objectContaining({ amount: 190_000, currency: 'UGX' }));
+    expect(paymentRepo.updatePaymentAttemptStatus).toHaveBeenCalledWith('attempt-2', expect.anything());
+    expect(paymentRepo.updatePaymentAttemptStatus).not.toHaveBeenCalledWith('attempt-1', expect.anything());
   });
 });

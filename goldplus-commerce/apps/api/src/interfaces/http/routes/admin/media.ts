@@ -8,6 +8,8 @@ import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
 import { planPhotoAttachments, IMAGE_EXTENSIONS } from '../../../../domain/media/PhotoCodeMatcher';
 import { csvCell } from '../../csv';
 import { describeUploadRejection } from '../../../../application/use-cases/media/MediaLibraryUseCase';
+import { MAX_FILES as ATTACH_BY_CODE_MAX_FILES } from '../../../../application/use-cases/media/MediaImportUseCases';
+import { adminUploadLimit } from '../../middleware/uploadLimit';
 
 /**
  * Media library admin surface (Wave 2B DAM). Thin transport over
@@ -57,7 +59,7 @@ routes.get('/:id/usages', requirePermissions([PERMISSIONS.MEDIA_READ]), async (c
   return ok(c, { usages });
 });
 
-routes.post('/upload', requirePermissions([PERMISSIONS.MEDIA_MANAGE]), async (c) => {
+routes.post('/upload', requirePermissions([PERMISSIONS.MEDIA_MANAGE]), adminUploadLimit, async (c) => {
   const body = await c.req.parseBody({ all: true }).catch(() => null);
   if (!body) return bad(c, 'BAD_INPUT', 'Expected multipart form data.');
   const raw = body['files'];
@@ -65,9 +67,9 @@ routes.post('/upload', requirePermissions([PERMISSIONS.MEDIA_MANAGE]), async (c)
   if (fileList.length === 0) return bad(c, 'BAD_INPUT', 'At least one image file is required.');
   if (fileList.length > 20) return bad(c, 'BAD_INPUT', 'At most 20 files per upload.');
 
-  const files = await Promise.all(
-    fileList.map(async (f) => ({ filename: f.name, mime: f.type, buffer: Buffer.from(await f.arrayBuffer()) })),
-  );
+  // Sequential copies: Promise.all held a second in-memory copy of every file at once.
+  const files: Array<{ filename: string; mime: string; buffer: Buffer }> = [];
+  for (const f of fileList) files.push({ filename: f.name, mime: f.type, buffer: Buffer.from(await f.arrayBuffer()) });
   const altText = typeof body['altText'] === 'string' ? (body['altText'] as string) : null;
   const caption = typeof body['caption'] === 'string' ? (body['caption'] as string) : null;
 
@@ -160,11 +162,13 @@ routes.post('/:id/assign-product', requirePermissions([PERMISSIONS.MEDIA_MANAGE]
 // which file goes to which product, what matched nothing, what is ambiguous,
 // what was refused. APPLY assigns the listed asset→product pairs — the first
 // photo of a product with no photo becomes its primary, the rest its gallery.
-routes.post('/attach-by-code/preview', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) => {
+routes.post('/attach-by-code/preview', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), adminUploadLimit, async (c) => {
   const body = await c.req.parseBody({ all: true });
   const raw = body['files'];
   const files = (Array.isArray(raw) ? raw : raw ? [raw] : []).filter((f): f is File => f instanceof File && f.size > 0);
   if (files.length === 0) return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'Choose at least one photo.' } }, 400);
+  // The same file-count cap as a media import (it had none).
+  if (files.length > ATTACH_BY_CODE_MAX_FILES) return c.json({ success: false, error: { code: 'BAD_INPUT', message: `At most ${ATTACH_BY_CODE_MAX_FILES} photos per preview; ${files.length} were chosen.` } }, 400);
   const bad = files.filter((f) => !IMAGE_EXTENSIONS.has(('.' + f.name.split('.').pop()).toLowerCase()));
   if (bad.length) return c.json({ success: false, error: { code: 'BAD_INPUT', message: `Not an image: ${bad.map((f) => f.name).join(', ')}` } }, 400);
   const registry = Registry.getInstance();

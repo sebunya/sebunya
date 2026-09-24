@@ -33,14 +33,14 @@ describe('the floor can swallow a discount entirely', () => {
 describe('no surface claims a sale it does not give', () => {
   it('gates the checkout summary row on a real saving', () => {
     const src = read('apps/web/src/pages/checkout.astro');
-    expect(src).toMatch(/const checkoutOnSale = campaignRunning && checkoutSavings > 0/);
+    expect(src).toMatch(/const checkoutOnSale = checkoutSavings > 0/);
     // The row itself must still be driven by that gate.
     expect(src).toMatch(/\{checkoutOnSale && \(/);
   });
 
   it('gates the cart summary row on a real saving', () => {
     const src = read('apps/web/src/pages/cart.astro');
-    expect(src).toMatch(/const cartOnSale = cartCampaignRunning && cartSavings > 0/);
+    expect(src).toMatch(/const cartOnSale = cartSavings > 0/);
   });
 
   it('gates the product page on a price that actually drops', () => {

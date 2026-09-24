@@ -89,6 +89,8 @@ export class RecommendationModelReadinessUseCase {
       status: string;
       srm: ReturnType<typeof computeSrm> | null;
     }>;
+    /** rec_* experiments assign and log exposures, but no arm changes what is served. */
+    experimentsNote: string;
     statement: string;
   }> {
     const [lineage, serving, catalogue, allExperiments] = await Promise.all([
@@ -152,6 +154,8 @@ export class RecommendationModelReadinessUseCase {
       gates,
       blockedBy,
       recommendationExperiments,
+      experimentsNote:
+        "Recommendation experiments are not configured: no variant changes what the rails serve, so every arm gets the same treatment (an A/A test). A difference between arms is noise, not the effect of recommendations. Starting a rec_ experiment is refused until variants can change serving.",
       statement:
         stage === "DETERMINISTIC_POLICY"
           ? `Ranking is a versioned deterministic policy. A learned ranker is blocked by ${blockedBy.length} evidence gate(s) — the numbers are beside each gate, not a judgement call.`

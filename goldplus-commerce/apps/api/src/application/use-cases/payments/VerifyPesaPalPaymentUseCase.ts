@@ -4,6 +4,7 @@ import { IPesaPalClient } from '../../ports/IPesaPalClient';
 import { IOrderTransitionPort } from '../../ports/IOrderTransitionPort';
 import { OrderStatus } from '../../../domain/commerce/Order';
 import { DomainError } from '../../../domain/errors/DomainError';
+import { ApplyRefundConsequencesUseCase, RefundLoyaltyPort } from './ApplyRefundConsequencesUseCase';
 
 export interface VerifyPesaPalPaymentInput {
   orderTrackingId: string;
@@ -44,6 +45,8 @@ export interface VerifyPesaPalPaymentOutput {
   superseded?: boolean;
 }
 
+export type { RefundLoyaltyPort };
+
 /** How long an unpaid (PesaPal status 0) attempt stays open before 0 is taken as final. */
 const UNPAID_GRACE_MS = (Number(process.env.PESAPAL_UNPAID_GRACE_HOURS) > 0 ? Number(process.env.PESAPAL_UNPAID_GRACE_HOURS) : 24) * 3_600_000;
 
@@ -52,6 +55,7 @@ export class VerifyPesaPalPaymentUseCase {
   private pesapalClient: IPesaPalClient;
   private orderTransition: IOrderTransitionPort;
   private refundLedger?: IRefundLedgerRepository;
+  private refundConsequences: ApplyRefundConsequencesUseCase;
 
   constructor(
     paymentRepo: IPesaPalPaymentRepository,
@@ -63,11 +67,18 @@ export class VerifyPesaPalPaymentUseCase {
      * reading, and exactly what happened before the ledger existed.
      */
     refundLedger?: IRefundLedgerRepository,
+    /**
+     * Optional. Points earned on (or spent against) refunded money. The order
+     * lifecycle cannot carry this for a delivered order (terminal) or a partial
+     * refund (no transition), so the payment fact does.
+     */
+    refundLoyalty?: RefundLoyaltyPort,
   ) {
     this.paymentRepo = paymentRepo;
     this.pesapalClient = pesapalClient;
     this.orderTransition = orderTransition;
     this.refundLedger = refundLedger;
+    this.refundConsequences = new ApplyRefundConsequencesUseCase(paymentRepo, orderTransition, refundLedger, refundLoyalty);
   }
 
   async execute(input: VerifyPesaPalPaymentInput): Promise<VerifyPesaPalPaymentOutput> {
@@ -218,38 +229,51 @@ export class VerifyPesaPalPaymentUseCase {
         // cancelled a 500,000 UGX order that had already been paid and
         // fulfilled. Only a reversal the ledger PROVES is partial diverges;
         // with no ledger rows we cannot tell, so the safe total reading stands.
-        const refunded = this.refundLedger ? await this.refundLedger.getRefundedTotalUgx(attempt.id) : 0;
-        const provenPartial = refunded > 0 && refunded < attempt.amount;
-
-        if (provenPartial) {
-          // Money WAS collected and only part of it returned: the attempt stays
-          // completed, the order stays paid, and nothing is cancelled. How much
-          // came back lives in the ledger, which the commercial projection
-          // subtracts line by line.
-          mappedStatus = 'completed';
-          orderPaymentStatus = 'paid';
-          lifecycleTarget = null;
-          reasonCode = 'pesapal_payment_partially_refunded';
-        } else {
-          mappedStatus = 'reversed';
-          orderPaymentStatus = 'reversed';
-          lifecycleTarget = 'cancelled';
-          reasonCode = 'pesapal_payment_reversed';
-        }
-
-        // The provider confirms that a reversal happened; it does NOT say which
-        // of our outstanding refund rows it corresponds to. So the ceiling here
-        // is the only figure we can actually stand behind: the money that was
-        // COLLECTED on this attempt. Outstanding refunds settle oldest first
-        // until that is exhausted, and we can never mark more money returned
-        // than was ever taken.
         //
-        // Passing `refunded` here instead would be circular — that total is the
-        // sum of these very rows, so it always covers them all and caps nothing.
+        // The status names no refund, so it settles one only when it cannot
+        // be about anything else (see settleRefundsForAttempt); any other
+        // outstanding row waits for a person to resolve it.
         if (this.refundLedger) {
-          await this.refundLedger.settleRefundsForAttempt(attempt.id, attempt.amount);
+          await this.refundLedger.settleRefundsForAttempt(attempt.id);
         }
-        break;
+        const refund = await this.refundConsequences.execute(attempt, {
+          actorType: 'payment_provider',
+          source: 'payment',
+          providerConfirmed: true,
+        });
+        if (refund.reading === 'partial') {
+          // Money WAS collected and only part of it returned: the attempt stays
+          // completed and the order stays paid. This is a paid payment, not
+          // an unpaid one — it used to fall through to "PAYMENT_UNPAID" and
+          // the sweep counted it as a failure.
+          return {
+            ok: true,
+            status: 'completed',
+            amount: attempt.amount,
+            currency: attempt.currency,
+            orderId: attempt.orderId,
+            message: `PAYMENT_PARTIALLY_REFUNDED: ${refund.refundedUgx} of ${attempt.amount} ${attempt.currency} returned (PesaPal: ${statusResponse.payment_status_description}).`,
+          };
+        }
+        if (refund.lifecycleConflict) {
+          return {
+            ok: false,
+            lifecycleConflict: true,
+            status: 'reversed',
+            amount: attempt.amount,
+            currency: attempt.currency,
+            orderId: attempt.orderId,
+            message: `LIFECYCLE_CONFLICT: payment resolved to "reversed" but the order could not transition (${refund.conflictMessage ?? ''}); payment status recorded for manual review.`,
+          };
+        }
+        return {
+          ok: false,
+          status: 'reversed',
+          amount: attempt.amount,
+          currency: attempt.currency,
+          orderId: attempt.orderId,
+          message: `PAYMENT_REVERSED: Transaction resolved to state "reversed" (PesaPal: ${statusResponse.payment_status_description}).`,
+        };
       }
       case 2:
         mappedStatus = 'failed';
@@ -308,6 +332,7 @@ export class VerifyPesaPalPaymentUseCase {
         // surface it for manual reconciliation.
         if (err instanceof DomainError) {
           await this.paymentRepo.updateOrderPaymentStatusSafely(attempt.orderId, orderPaymentStatus);
+          // (A reversal's conflict, and its loyalty, is ApplyRefundConsequencesUseCase's.)
           return {
             ok: mappedStatus === 'completed',
             // Named, not merely described in a message nobody reads. This is what

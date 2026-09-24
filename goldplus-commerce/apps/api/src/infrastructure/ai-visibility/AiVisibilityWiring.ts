@@ -25,14 +25,16 @@ export function vaultCipher(): CredentialCipher | null {
 /** Runs execute on their own queue ('ai-visibility'), job name 'aiv-run'. */
 export const bullRunQueue: RunQueue = {
   async enqueueRun(runId: string) {
-    const q = QueueService.getInstance().getQueue(QUEUES.AI_VISIBILITY);
+    // getReadyQueue: with Redis down, add() waited with no limit and the admin's
+    // request hung; now it is refused as unavailable.
+    const q = QueueService.getInstance().getReadyQueue(QUEUES.AI_VISIBILITY);
     if (!q) return false;
     // jobId = run id: BullMQ will not enqueue the same run twice.
     await q.add('aiv-run', { runId }, { jobId: `aiv-run-${runId}`, attempts: 1, removeOnComplete: 100, removeOnFail: 200 });
     return true;
   },
   async enqueueReclassify(projectId: string) {
-    const q = QueueService.getInstance().getQueue(QUEUES.AI_VISIBILITY);
+    const q = QueueService.getInstance().getReadyQueue(QUEUES.AI_VISIBILITY);
     if (!q) return false;
     // No fixed jobId: BullMQ silently ignores add() while a job with that id
     // exists in ANY state, so one failed (or still-active) job swallowed every

@@ -254,7 +254,7 @@ function fillHeroTokens(text: string): string {
                 <span class="gp-hero__count-unit"><b class="gp-hero__count-n" data-cd="s">00</b><span class="gp-hero__count-l">Sec</span></span>
               </div>
             )}
-            {s.subcopy && <p class="gp-hero__sub" id={s.slideKey === 'scratch' ? 'gpScratchSub' : undefined}>{s.subcopy}</p>}
+            {s.subcopy && <p class="gp-hero__sub" id={s.slideKey === 'scratch' ? 'gpScratchSub' : undefined}>{fillHeroTokens(s.subcopy)}</p>}
 
             {s.slideKey === 'welcome' && ex.promoCode && (
               <button class="gp-hero__chip" type="button" id="gpCode" data-code={ex.promoCode}>{ex.promoCode} <small id="gpCodeState">Copy</small></button>
@@ -270,10 +270,12 @@ function fillHeroTokens(text: string): string {
               </div>
             )}
 
-            {s.slideKey === 'loyalty' && (
+            {/* A signed-in balance only, and the bar only with a real tier goal:
+                it used to fill to a fixed 68% for everyone, even signed out. */}
+            {s.slideKey === 'loyalty' && typeof ex.points === 'number' && (
               <div class="gp-hero__meter">
-                <div class="gp-hero__meter-top"><span class="gp-hero__meter-pts">{ex.points ? `${Number(ex.points).toLocaleString('en-UG')} pts` : ''}</span><span class="gp-hero__meter-goal">{ex.goalLabel || ''}</span></div>
-                <span class="gp-hero__meter-rail"><span class="gp-hero__meter-fill"></span></span>
+                <div class="gp-hero__meter-top"><span class="gp-hero__meter-pts">{`${ex.points.toLocaleString('en-UG')} pts`}</span><span class="gp-hero__meter-goal">{ex.goalLabel || ''}</span></div>
+                {typeof ex.progress === 'number' && <span class="gp-hero__meter-rail"><span class="gp-hero__meter-fill" style={`--gph-progress:${Math.min(1, Math.max(0, ex.progress))}`}></span></span>}
               </div>
             )}
 
@@ -283,7 +285,7 @@ function fillHeroTokens(text: string): string {
                 ? <div><a class="gp-hero__cta" href={s.ctaUrl}>{s.ctaLabel} <span aria-hidden="true">→</span></a></div>
                 : (s.ctaUrl && <a class="gp-hero__cta" href={s.ctaUrl}>{s.ctaLabel} <span aria-hidden="true">→</span></a>))}
 
-            {s.finePrint && <div class="gp-hero__fine">{s.finePrint}</div>}
+            {s.finePrint && <div class="gp-hero__fine">{fillHeroTokens(s.finePrint)}</div>}
           </div>
 
           {s.media === 'stage' && (
@@ -294,9 +296,9 @@ function fillHeroTokens(text: string): string {
             <div class="gp-hero__media">
               <div class="gp-hero__scratch" id="gpScratch" role="button" tabindex="0" aria-label="Scratch card. Press Enter to reveal your discount.">
                 <div class="gp-hero__prize" aria-hidden="true">
-                  <span class="gp-hero__prize-n" id="gpPrizeN">15%</span>
+                  <span class="gp-hero__prize-n" id="gpPrizeN"></span>
                   <span class="gp-hero__prize-l">member discount</span>
-                  <span class="gp-hero__prize-c" id="gpPrizeC">CODE GP15</span>
+                  <span class="gp-hero__prize-c" id="gpPrizeC"></span>
                 </div>
                 <canvas class="gp-hero__foil" id="gpFoil" aria-hidden="true"></canvas>
                 <span class="gp-hero__hint">Scratch here · or press Enter</span>
@@ -435,7 +437,7 @@ function fillHeroTokens(text: string): string {
 .gp-hero__meter-rail{display:block;height:6px;border-radius:999px;background:rgba(243,239,232,.14);overflow:hidden;}
 .gp-hero__meter-fill{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#4E7A00,var(--gph-green));transform:scaleX(0);transform-origin:left center;}
 .gp-hero__slide[data-active] .gp-hero__meter-fill{animation:gph-meter 1.2s var(--gph-ease) .3s both;}
-@keyframes gph-meter{to{transform:scaleX(.68);}}
+@keyframes gph-meter{to{transform:scaleX(var(--gph-progress,0));}}
 
 .gp-hero__chip{
   display:inline-flex;align-items:center;gap:11px;margin:0 0 20px;padding:9px 9px 9px 15px;
@@ -933,7 +935,7 @@ function fillHeroTokens(text: string): string {
 @media (prefers-reduced-motion:reduce){
   .gp-hero *{animation:none !important;transition:none !important;}
   .gp-hero__slide[data-active]{opacity:1;visibility:visible;}
-  .gp-hero__meter-fill{transform:scaleX(.68);}
+  .gp-hero__meter-fill{transform:scaleX(var(--gph-progress,0));}
   .gp-hero__tail::after{display:none;}
 }
 
@@ -965,11 +967,11 @@ function fillHeroTokens(text: string): string {
     dwell: CMS.dwell || 6000,
     autoplay: CMS.autoplay !== false,
     flashSaleEnds: CMS.flashSaleEnds || null,
-    // A slide may still override it; otherwise the shop-wide value applies.
-    cutoffHour: (typeof CMS.cutoffHour === 'number') ? CMS.cutoffHour : heroShopCutoffHour(),
+    // business_info (data-cutoff-hour), the one authority the headline uses.
+    cutoffHour: heroShopCutoffHour(),
     closedDays: heroShopClosedDays(),
     keys: { visits:'gp_visits', last:'gp_last', scratch:'gp_scratch', cats:'gp_cats' },
-    prizes: (CMS.prizes && CMS.prizes.length) ? CMS.prizes : [ {pct:5,code:'GP5',w:45},{pct:10,code:'GP10',w:32},{pct:15,code:'GP15',w:18},{pct:20,code:'GP20',w:5} ],
+    prizes: CMS.prizes || [],
     themeCap: { offer:2, logistics:1, loyalty:1, product:1, brand:1, trust:1 },
     funnel:   { offer:1, product:2, logistics:3, loyalty:4, brand:5, trust:6 },
     priorityWeight: 0.5
@@ -1341,12 +1343,13 @@ function fillHeroTokens(text: string): string {
   /* ---------------- same-day cut-off ---------------- */
   var cut = document.getElementById('gpCutoffText');
   if (cut){
-    var end = new Date(); end.setHours(CONFIG.cutoffHour,0,0,0);
-    var mins = Math.floor((end - Date.now())/60000);
-    if (CTX.day === 0) cut.textContent = 'Closed Sunday. Order now and it goes out Monday';
+    /* Both ends on the Kampala clock (now), not the device's. */
+    var end = new Date(now); end.setHours(CONFIG.cutoffHour,0,0,0);
+    var mins = Math.floor((end - now)/60000), shut = function(d){ return CONFIG.closedDays.indexOf(d % 7) > -1; };
+    if (shut(CTX.day)) cut.textContent = 'Closed today. Order now and it goes out when we reopen';
     else if (mins > 90) cut.textContent = Math.floor(mins/60) + 'h ' + (mins%60) + 'm left to order for delivery today';
     else if (mins > 0)  cut.textContent = mins + ' minutes left to order for delivery today';
-    else cut.textContent = 'Today\u2019s run has left. Order now and we deliver tomorrow';
+    else cut.textContent = 'Today\u2019s run has left. Order now and ' + (shut(CTX.day + 1) ? 'it goes out when we reopen' : 'we deliver tomorrow');
   }
 
   /* ---------------- copy code ---------------- */
@@ -1364,7 +1367,7 @@ function fillHeroTokens(text: string): string {
   setTimeout(function(){
   /* ---------------- scratch card ---------------- */
   (function(){
-    var card = document.getElementById('gpScratch'); if (!card) return;
+    var card = document.getElementById('gpScratch'); if (!card || !CONFIG.prizes.length) return;
     var cv = document.getElementById('gpFoil'), ctx = cv.getContext('2d');
     var cta = document.getElementById('gpScratchCta'), sub = document.getElementById('gpScratchSub');
     var liveP = document.getElementById('gpPrizeLive');

@@ -188,14 +188,21 @@
       activeIndex = -1;
       if (announce) announce.textContent = `${list.length} matching place${list.length === 1 ? '' : 's'}`;
       if (list.length === 0) {
+        // A listbox may only own options: a bare <li> here is an invalid
+        // listbox (axe: aria-required-children). It is an option that cannot
+        // be chosen, so highlight() and Enter skip it.
         const li = document.createElement('li');
-        li.className = 'px-4 py-3 text-sm text-gray-500';
+        li.setAttribute('role', 'option');
+        li.setAttribute('aria-disabled', 'true');
+        li.setAttribute('aria-selected', 'false');
+        li.className = 'px-4 py-3 text-sm text-gray-600';
         li.textContent = 'No match. Pick your district below, or write directions instead.';
         dropdown!.appendChild(li);
       } else {
         list.forEach((opt, i) => {
           const li = document.createElement('li');
           li.setAttribute('role', 'option');
+          li.setAttribute('aria-selected', 'false');
           li.setAttribute('id', `${el.dataset.id}_opt_${i}`);
           li.className = 'px-4 py-3 cursor-pointer hover:bg-amber-50 flex items-baseline justify-between gap-3 min-h-[44px]';
           const nameSpan = document.createElement('span');
@@ -267,11 +274,12 @@
     });
 
     function highlight(delta: number) {
-      const items = Array.from(dropdown!.querySelectorAll('[role="option"]')) as HTMLElement[];
+      const items = Array.from(dropdown!.querySelectorAll('[role="option"]:not([aria-disabled="true"])')) as HTMLElement[];
       if (items.length === 0) return;
       activeIndex = (activeIndex + delta + items.length) % items.length;
       items.forEach((item, i) => {
         item.classList.toggle('bg-amber-50', i === activeIndex);
+        item.setAttribute('aria-selected', i === activeIndex ? 'true' : 'false');
         if (i === activeIndex) {
           input!.setAttribute('aria-activedescendant', item.id);
           item.scrollIntoView({ block: 'nearest' });
@@ -280,12 +288,26 @@
     }
 
     input.addEventListener('keydown', (e) => {
-      if (dropdown.classList.contains('hidden')) return;
+      if (dropdown.classList.contains('hidden')) {
+        // Typed, nothing chosen, suggestions not open yet (the debounce had
+        // not fired): Enter searches now rather than submitting no location.
+        if (e.key === 'Enter' && !payloadInput.value && input.value.trim().length >= 2) {
+          e.preventDefault();
+          if (debounceTimer) window.clearTimeout(debounceTimer);
+          void runSearch(input.value.trim());
+        }
+        return;
+      }
       if (e.key === 'ArrowDown') { e.preventDefault(); highlight(1); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); highlight(-1); }
       else if (e.key === 'Enter') {
-        if (activeIndex >= 0 && current[activeIndex]) { e.preventDefault(); commit(current[activeIndex]); }
-        else if (current.length === 1) { e.preventDefault(); commit(current[0]); }
+        // Never let Enter (or the phone keyboard's Search key) fall through
+        // while suggestions are open: it implicitly submitted the enclosing
+        // novalidate checkout form with no location, and the typed search and
+        // promo code were lost on the re-render. It chooses, or it does nothing.
+        e.preventDefault();
+        if (activeIndex >= 0 && current[activeIndex]) commit(current[activeIndex]);
+        else if (current.length === 1) commit(current[0]);
       } else if (e.key === 'Escape') {
         dropdown.classList.add('hidden');
         input.setAttribute('aria-expanded', 'false');

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { FailureLockoutStore } from '../ports/FailureLockoutStore';
+import { normalizeUgandanPhone } from '@goldplus/shared';
 
 /**
  * The one way a customer without an account proves an order is theirs: the
@@ -39,6 +40,31 @@ const FAILED_MESSAGE = 'We could not verify that order. Please check your refere
 export const CONTACT_LOCKOUT_WINDOW_MS = 10 * 60 * 1000;
 export const CONTACT_LOCKOUT_MAX_FAILURES = 5;
 
+/**
+ * One comparable form for a phone number, applied to BOTH the stored and the
+ * typed value. Checkout stores the number exactly as typed, so 0772123456,
+ * +256772123456, 256772123456, 772123456 and 0772-123-456 are the same phone
+ * and must verify as one — each honest mismatch used to count toward the
+ * lockout. Anything that is not a recognisable Ugandan number compares on its
+ * digits alone.
+ */
+export function comparablePhone(raw: string | null | undefined): string {
+  const text = String(raw ?? '').trim();
+  if (!text) return '';
+  const digits = text.replace(/\D/g, '');
+  const ugandan = normalizeUgandanPhone(text) ?? (/^7\d{8}$/.test(digits) ? normalizeUgandanPhone(`0${digits}`) : null);
+  return ugandan ? ugandan.e164 : digits;
+}
+
+/**
+ * Order numbers are minted upper-case (GP-202609-2B3E4D39) and matched
+ * exactly; a phone keyboard that lower-cases the hex part is still the same
+ * reference. UUID references pass through untouched.
+ */
+function canonicalReference(reference: string): string {
+  return /^gp-/i.test(reference) ? reference.toUpperCase() : reference;
+}
+
 export async function verifyOrderByContact<O extends VerifiableOrder>(
   input: { reference: unknown; contact: unknown; now: number },
   deps: ContactVerificationDeps<O>,
@@ -59,14 +85,17 @@ export async function verifyOrderByContact<O extends VerifiableOrder>(
     return { ok: false, status: 401, code: 'VERIFICATION_FAILED', message: FAILED_MESSAGE };
   };
 
-  const order = await deps.findOrder(reference);
+  const order = await deps.findOrder(canonicalReference(reference));
   if (!order) return await registerFailure();
   const normalizedContact = contact.toLowerCase();
   const storedEmail = (order.customerEmail ?? '').trim().toLowerCase();
-  const storedPhone = (order.customerPhone ?? '').trim();
+  const storedPhone = comparablePhone(order.customerPhone);
+  const typedPhone = contact.includes('@') ? '' : comparablePhone(contact);
   const contactMatch =
     (storedEmail !== '' && normalizedContact === storedEmail) ||
-    (storedPhone !== '' && normalizedContact.replace(/\s+/g, '') === storedPhone.replace(/\s+/g, ''));
+    // Never an empty-vs-empty or a trivially short match: a phone is proven
+    // only by at least seven matching digits.
+    (storedPhone.replace(/\D/g, '').length >= 7 && typedPhone === storedPhone);
   if (!contactMatch) return await registerFailure();
   await deps.lockout.clear(fingerprint);
   return { ok: true, order };

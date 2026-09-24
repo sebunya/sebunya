@@ -33,19 +33,24 @@ export interface BlogArticle extends BlogCard {
 /**
  * The blog is additive: if the service is unreachable the page says so and the
  * rest of the site is unaffected. It never invents an article.
+ *
+ * `error: true` marks "could not ask", which is NOT "nothing published": the
+ * index used to turn noindex and the blog sitemap used to empty itself on any
+ * API timeout, so a slow moment could drop the published blog from Google.
  */
-export async function fetchPublishedPosts(limit = 20, offset = 0): Promise<{ posts: BlogCard[]; total: number }> {
+export async function fetchPublishedPosts(limit = 20, offset = 0): Promise<{ posts: BlogCard[]; total: number; error?: true }> {
+  const unavailable = { posts: [] as BlogCard[], total: 0, error: true as const };
   try {
     const res = await fetch(`${apiBase}/blog?limit=${limit}&offset=${offset}`, {
       headers: { Accept: 'application/json' },
       signal: AbortSignal.timeout(3000),
     });
-    if (!res.ok) return { posts: [], total: 0 };
+    if (!res.ok) return unavailable;
     const body = (await res.json()) as ApiResponse<{ posts: BlogCard[]; total: number }>;
-    if (!body.success || !body.data) return { posts: [], total: 0 };
+    if (!body.success || !body.data) return unavailable;
     return { posts: Array.isArray(body.data.posts) ? body.data.posts : [], total: Number(body.data.total ?? 0) };
   } catch {
-    return { posts: [], total: 0 };
+    return unavailable;
   }
 }
 

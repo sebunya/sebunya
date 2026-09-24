@@ -3,6 +3,7 @@ import { db } from '../db/client';
 import { VISITOR_ACTION_EVENT_TYPES } from '@goldplus/shared';
 import { pgInTextList } from '../db/PgParams';
 import { logger } from '../logging/logger';
+import { heroTierMeter } from '../../application/hero/HeroContentService';
 
 /**
  * Per-visitor hero signals.
@@ -35,8 +36,14 @@ export interface HeroSignals {
   categoryAffinity: Array<{ categorySlug: string; score: number }>;
   /** The best in-stock product to show in the arch for this visitor, or null. */
   preferredProduct: { imageUrl: string; alt: string; categorySlug: string } | null;
-  /** Real loyalty state — only when the profile is a logged-in customer. */
-  loyalty: { points: number; tierLabel: string; goalRemaining: number } | null;
+  /**
+   * Real loyalty state — only when the profile is a logged-in customer.
+   * `tierLabel` names the NEXT active tier while one remains (else the current
+   * one), `goalRemaining` is the lifetime points still needed to reach it, and
+   * `progress` (0..1) is how far along that step the customer really is. With
+   * no active tiers configured there is no goal: '' / 0 / null.
+   */
+  loyalty: { points: number; tierLabel: string; goalRemaining: number; progress: number | null } | null;
   /** in-stock flag per product slug the slides reference, so E can gate. */
   stockBySlug: Record<string, boolean>;
   /**
@@ -236,7 +243,8 @@ export class HeroSignalsService {
     // same derivation the loyalty repository uses. Only for a logged-in profile.
     const rows = rowsOf(
       await db.execute(sql`
-        select coalesce(sum(le.points), 0)::int as points
+        select coalesce(sum(le.points), 0)::int as points,
+               coalesce(sum(le.points) filter (where le.type = 'earn'), 0)::int as lifetime
         from experience_profiles ep
         join loyalty_accounts la on la.user_id = ep.customer_id
         left join loyalty_ledger_entries le on le.account_id = la.id
@@ -247,11 +255,18 @@ export class HeroSignalsService {
     );
     if (!rows.length) return null;
     const points = Number(rows[0].points ?? 0);
-    // Tier thresholds are illustrative until the loyalty tier table is wired;
-    // the meter shows the REAL balance, and the goal is derived from it.
-    const nextGoal = points < 1000 ? 1000 : points < 2500 ? 2500 : points < 5000 ? 5000 : points + 1;
-    const tierLabel = points >= 5000 ? 'Platinum' : points >= 2500 ? 'Gold' : points >= 1000 ? 'Silver' : 'Member';
-    return { points, tierLabel, goalRemaining: Math.max(0, nextGoal - points) };
+    // The goal comes from the operator's ACTIVE tiers and the customer's
+    // lifetime earned points, the same rule EvaluateTiersUseCase assigns tiers
+    // by. It used to come from hand-typed thresholds (1,000 / 2,500 / 5,000)
+    // that no tier used, and the bar always filled to 68%.
+    const tiers = rowsOf(
+      await db.execute(sql`
+        select name, threshold_lifetime_points as threshold
+        from loyalty_tiers
+        where active = true and threshold_lifetime_points is not null
+      `).catch(() => []), // no tiers readable = no goal, never a broken hero
+    ).map((t) => ({ name: String(t.name ?? ''), threshold: Number(t.threshold) }));
+    return { points, ...heroTierMeter(Number(rows[0].lifetime ?? 0), tiers) };
   }
 
   private async preferredProduct(categorySlug: string): Promise<HeroSignals['preferredProduct']> {
@@ -261,9 +276,12 @@ export class HeroSignalsService {
         from products p
         join categories c on c.id = p.category_id
         where c.slug = ${categorySlug} and p.active and p.approval_status = 'approved'
-          and p.stock_status = 'in_stock'
+          -- AVAILABLE stock (on hand minus held for open orders), the figure
+          -- the product page and the Merchant feed use; the label alone left
+          -- out 'low_stock' products with units and kept fully reserved ones.
+          and p.stock_quantity - p.reserved_quantity > 0
           and p.image_url is not null and p.image_url <> ''
-        order by p.stock_quantity desc
+        order by p.stock_quantity - p.reserved_quantity desc
         limit 1
       `),
     );
@@ -276,7 +294,7 @@ export class HeroSignalsService {
     if (clean.length === 0) return {};
     const rows = rowsOf(
       await db.execute(sql`
-        select slug, (active and stock_status = 'in_stock' and stock_quantity > 0) as in_stock
+        select slug, (active and stock_quantity - reserved_quantity > 0) as in_stock
         from products
         where slug = any(${sql`ARRAY[${sql.join(clean.map((s) => sql`${s}`), sql`, `)}]::text[]`})
       `),

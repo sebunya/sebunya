@@ -1,5 +1,5 @@
 import type { ProductPublicDto } from '@goldplus/shared';
-import { DEFAULT_TAXONOMY, type Taxonomy } from '@goldplus/shared';
+import { DEFAULT_TAXONOMY, includesSearchTerm, inferSubcategory, type Taxonomy } from '@goldplus/shared';
 
 /**
  * Product discovery. The taxonomy (categories, subcategories, inference keywords,
@@ -79,30 +79,12 @@ export function subcategoryNameForSlug(slug: DiscoverySubcategorySlug | '', taxo
   return '';
 }
 
-/** Escape a keyword and match it as a word-boundary phrase (spaces → flexible whitespace). */
-function keywordMatches(keyword: string, haystack: string): boolean {
-  const escaped = keyword.trim().toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
-  if (!escaped) return false;
-  return new RegExp('\\b' + escaped).test(haystack);
-}
-
+/**
+ * Keyword inference lives in @goldplus/shared (inferSubcategory) so the header
+ * dropdown infers exactly the subcategory this page does.
+ */
 export function getProductSubcategory(product: ProductPublicDto, taxonomy: Taxonomy = DEFAULT_TAXONOMY): DiscoverySubcategorySlug | '' {
-  const searchable = `${product.name} ${product.categoryName}`.toLowerCase();
-  // Longest matching keyword wins, so a specific phrase ("car charger") beats a
-  // generic one ("charger") regardless of category order.
-  let best = '';
-  let bestLen = 0;
-  for (const category of taxonomy) {
-    for (const sub of category.subcategories) {
-      for (const keyword of sub.keywords ?? []) {
-        if (keyword.length > bestLen && keywordMatches(keyword, searchable)) {
-          best = sub.slug;
-          bestLen = keyword.length;
-        }
-      }
-    }
-  }
-  return best;
+  return inferSubcategory(product, taxonomy)?.slug ?? '';
 }
 
 export function dedupeProductsById(products: ProductPublicDto[]): ProductPublicDto[] {
@@ -151,7 +133,8 @@ export const PHONE_BRAND_LINES: Readonly<Record<string, RegExp>> = {
 };
 
 function termMatches(term: string, haystack: string): boolean {
-  if (haystack.includes(term)) return true;
+  // Shared with the API so "2gb" never finds 32GB in either engine.
+  if (includesSearchTerm(haystack, term)) return true;
   // Own keys only: a query word like "constructor" must not reach the prototype.
   return Object.prototype.hasOwnProperty.call(PHONE_BRAND_LINES, term) && PHONE_BRAND_LINES[term].test(haystack);
 }

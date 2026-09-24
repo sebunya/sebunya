@@ -308,9 +308,10 @@ const fmt = new Intl.NumberFormat("en-UG");
             <p class="font-black text-sm">{z.zoneCode} {z.active ? <span class="text-green-700 text-[10px] uppercase">active</span> : <span class="text-gray-500 text-[10px] uppercase">inactive</span>}</p>
             <input name="zoneName" value={z.zoneName} class="w-full border border-gray-300 rounded px-2 py-1 text-xs" placeholder="zone name" />
             <div class="grid grid-cols-2 gap-2">
-              <input name="slaHoursMin" value={z.slaHoursMin ?? ""} placeholder="SLA min (h)" class="border border-gray-300 rounded px-2 py-1 text-xs" />
-              <input name="slaHoursMax" value={z.slaHoursMax ?? ""} placeholder="SLA max (h)" class="border border-gray-300 rounded px-2 py-1 text-xs" />
-              <input name="fallbackFeeUgx" value={z.fallbackFeeUgx ?? ""} placeholder="fallback fee UGX" class="border border-gray-300 rounded px-2 py-1 text-xs" />
+              <input name="slaHoursMin" value={z.slaHoursMin ?? ""} placeholder="SLA min (h) — recorded only" title="Recorded policy — not used by delivery quoting. Customer windows come from the quoting engine's expected minutes." class="border border-gray-300 rounded px-2 py-1 text-xs" />
+              <input name="slaHoursMax" value={z.slaHoursMax ?? ""} placeholder="SLA max (h) — recorded only" title="Recorded policy — not used by delivery quoting. Customer windows come from the quoting engine's expected minutes." class="border border-gray-300 rounded px-2 py-1 text-xs" />
+              <input name="fallbackFeeUgx" value={z.fallbackFeeUgx ?? ""} placeholder="fallback fee UGX — recorded only" title="Recorded policy — not used by delivery quoting. Fees come from the quoting engine." class="border border-gray-300 rounded px-2 py-1 text-xs" />
+              <p class="col-span-2 text-[10px] text-amber-800">SLA hours and the fallback fee are recorded policy only — delivery quoting does not read them. Customers are charged and shown what the quoting engine computes.</p>
               <input name="freeDeliveryThresholdUgx" value={z.freeDeliveryThresholdUgx ?? ""} placeholder="free-delivery ≥ UGX" title="Applies to orders delivered in this zone, and only while the zone is ACTIVE. Left blank, the shop-wide free-delivery threshold in the delivery configuration applies." class="border border-gray-300 rounded px-2 py-1 text-xs" />
               <select name="codAllowed" class="border border-gray-300 rounded px-2 py-1 text-xs">
                 <option value="" selected={z.codAllowed === null}>COD: unset</option>

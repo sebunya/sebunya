@@ -26,6 +26,7 @@ import type { BatteryCompatibilityUseCases } from './BatteryCompatibilityUseCase
 import type { DeviceCatalogueUseCases } from './DeviceCatalogueUseCases';
 import type { InventoryLedgerUseCases } from './InventoryLedgerUseCases';
 import { BatteryOperationError, forbidden, invalid, notFound, unprocessable } from './BatteryOperationError';
+import { stockCountApplyRefusal, stockReceiptApplyRefusal } from '../../../domain/batteries/StockImportApplyGuard';
 
 /** Parsed spreadsheet: one sheet, header row + data rows as string maps. */
 export interface ParsedSheet {
@@ -63,6 +64,9 @@ function hasUsableValue(row: { normalizedData: Record<string, unknown> | null })
   );
 }
 
+/** What a caller without the cost permission sees in place of a supplier cost. */
+export const COST_WITHHELD = '(withheld: needs cost permission)';
+
 export class BatteryImportUseCases {
   constructor(
     private readonly repo: IBatteryImportRepository,
@@ -86,10 +90,30 @@ export class BatteryImportUseCases {
     return this.repo.list(Math.min(limit, 500));
   }
 
-  async detail(id: string) {
+  /**
+   * Supplier cost is secured data. An import row keeps the raw sheet (with its
+   * unit-cost column) and the normalised unitCostUgx, and both were served to
+   * anyone with PIM_READ. Without the cost permission they are withheld.
+   */
+  private costColumns(session: ImportSessionRecord): Set<string> {
+    const mapped = session.mapping?.unitCostUgx;
+    return new Set(session.sourceColumns.filter((c) => c === mapped || /cost/i.test(c)));
+  }
+
+  private redactCost(session: ImportSessionRecord, rows: ImportRowRecord[]): ImportRowRecord[] {
+    const columns = this.costColumns(session);
+    return rows.map((r) => {
+      const sourceData = Object.fromEntries(Object.entries(r.sourceData).map(([k, v]) => [k, columns.has(k) && v !== null && v !== '' ? COST_WITHHELD : v]));
+      const normalizedData = r.normalizedData && 'unitCostUgx' in r.normalizedData ? { ...r.normalizedData, unitCostUgx: null } : r.normalizedData;
+      return { ...r, sourceData, normalizedData };
+    });
+  }
+
+  async detail(id: string, canSeeCost = false) {
     const session = await this.repo.find(id);
     if (!session) throw notFound('Import');
-    const [rows, events, templates] = await Promise.all([this.repo.rows(id), this.repo.events(id), this.repo.listTemplates(session.importType)]);
+    const [allRows, events, templates] = await Promise.all([this.repo.rows(id), this.repo.events(id), this.repo.listTemplates(session.importType)]);
+    const rows = canSeeCost ? allRows : this.redactCost(session, allRows);
     return { session, rows, events, templates, fields: IMPORT_FIELDS[session.importType], suggestedMapping: session.mapping ?? suggestMapping(session.importType, session.sourceColumns) };
   }
 
@@ -210,7 +234,9 @@ export class BatteryImportUseCases {
     // Type-specific context that needs the database.
     if (session.importType === 'COMPATIBILITY') {
       const findClaimCache = new Map<string, { id: string; workflowStatus: string } | null>();
+      const archivedDevices = new Set<string>();
       ctx.findClaim = (productId, device) => findClaimCache.get(`${productId}|${normaliseDeviceToken(device.brand)}|${normaliseDeviceToken(device.model)}|${normaliseOptional(device.modelNumber) ?? ''}|${normaliseOptional(device.variant) ?? ''}`) ?? null;
+      ctx.deviceArchived = (productId, device) => archivedDevices.has(`${productId}|${normaliseDeviceToken(device.brand)}|${normaliseDeviceToken(device.model)}|${normaliseOptional(device.modelNumber) ?? ''}|${normaliseOptional(device.variant) ?? ''}`);
       for (const r of rows) {
         const code = mapping.batteryCode ? String(r.sourceData[mapping.batteryCode] ?? '').trim() : '';
         const battery = ctx.resolveBattery(code);
@@ -219,7 +245,10 @@ export class BatteryImportUseCases {
         const model = mapping.deviceModel ? String(r.sourceData[mapping.deviceModel] ?? '').trim() : '';
         const modelNumber = mapping.modelNumber ? String(r.sourceData[mapping.modelNumber] ?? '').trim() : '';
         const variant = mapping.variant ? String(r.sourceData[mapping.variant] ?? '').trim() : '';
-        const device = await this.deviceRepo.findDeviceByIdentity({ brandNormalised: normaliseDeviceToken(brand), modelNormalised: normaliseDeviceToken(model || modelNumber), modelNumberNormalised: normaliseOptional(modelNumber), variantNormalised: normaliseOptional(variant) });
+        const found = await this.deviceRepo.findDeviceByIdentity({ brandNormalised: normaliseDeviceToken(brand), modelNormalised: normaliseDeviceToken(model || modelNumber), modelNumberNormalised: normaliseOptional(modelNumber), variantNormalised: normaliseOptional(variant) });
+        // The same device apply will use: a merged device answers as its target.
+        const device = found?.status === 'MERGED' && found.mergedIntoDeviceId ? await this.deviceRepo.findDevice(found.mergedIntoDeviceId) : found;
+        if (device?.status === 'ARCHIVED') archivedDevices.add(`${battery.productId}|${normaliseDeviceToken(brand)}|${normaliseDeviceToken(model || modelNumber)}|${normaliseOptional(modelNumber) ?? ''}|${normaliseOptional(variant) ?? ''}`);
         const claim = device ? await this.compatRepo.findPair(battery.productId, device.id) : null;
         findClaimCache.set(`${battery.productId}|${normaliseDeviceToken(brand)}|${normaliseDeviceToken(model || modelNumber)}|${normaliseOptional(modelNumber) ?? ''}|${normaliseOptional(variant) ?? ''}`, claim ? { id: claim.id, workflowStatus: claim.workflowStatus } : null);
       }
@@ -283,6 +312,7 @@ export class BatteryImportUseCases {
       code = battery.canonicalCode;
     }
     const result = await this.repo.linkRowBattery(input.id, input.rowId, code, input.note.trim(), input.actorId);
+    if (result === 'NOT_EDITABLE') throw unprocessable('INVALID_STATE', 'This import was approved or applied while you were deciding; the row was not changed.');
     if (!result) throw notFound('Import row');
     return result;
   }
@@ -293,6 +323,19 @@ export class BatteryImportUseCases {
     if (!['READY_FOR_APPROVAL', 'MAPPED'].includes(session.status)) throw unprocessable('INVALID_STATE', 'Rows can be resolved after the dry run and before approval.');
     const row = (await this.repo.rows(input.id)).find((r) => r.id === input.rowId);
     if (!row) throw notFound('Import row');
+    // An override is NOT a free-form edit of an approved row. Only a battery
+    // catalogue row takes one, and only its canonical code: the API used to
+    // merge any key (productId, quantity, price, evidenceStatus) straight into
+    // what apply trusts, unvalidated, while the preview digest still described
+    // the original row.
+    let override: Record<string, unknown> | null = null;
+    if (input.override && Object.keys(input.override).length > 0) {
+      if (session.importType !== 'BATTERY_CATALOGUE') throw invalid('Only a battery catalogue row can be corrected here, and only its canonical code. Fix other rows in the spreadsheet and upload again.');
+      const extra = Object.keys(input.override).filter((k) => k !== 'canonicalCode');
+      if (extra.length) throw invalid(`Only the canonical code can be overridden (not ${extra.join(', ')}).`);
+      if (typeof input.override.canonicalCode !== 'string' || !input.override.canonicalCode.trim()) throw invalid('State the canonical code.');
+      override = { canonicalCode: input.override.canonicalCode.trim() };
+    }
     if (input.resolution === 'INCLUDE') {
       // THE GUARD RUNS WHETHER OR NOT AN OVERRIDE WAS SENT.
       //
@@ -301,7 +344,7 @@ export class BatteryImportUseCases {
       // admin page offers "Include it (I have resolved it)" for every held row
       // but only shows the canonical-code box for BATTERY_CATALOGUE, so that is
       // the ordinary path, not an unusual one.
-      const code = typeof input.override?.canonicalCode === 'string' ? input.override.canonicalCode.trim() : '';
+      const code = typeof override?.canonicalCode === 'string' ? override.canonicalCode : '';
       if (code && (/\//.test(code) || /\bAND\b/i.test(code))) throw invalid('The canonical code must be one battery reference.');
 
       if (row.status === 'HELD') {
@@ -322,7 +365,8 @@ export class BatteryImportUseCases {
       }
     }
     if ((input.resolution === 'EXCLUDE' || input.resolution === 'HOLD') && !(input.note ?? '').trim()) throw invalid('A note is required when excluding or holding a row.');
-    const result = await this.repo.resolveRow(input.id, input.rowId, input.resolution, input.note, input.override, input.actorId);
+    const result = await this.repo.resolveRow(input.id, input.rowId, input.resolution, input.note, override, input.actorId);
+    if (result === 'NOT_EDITABLE') throw unprocessable('INVALID_STATE', 'This import was approved or applied while you were deciding; the row was not changed.');
     if (!result) throw notFound('Import row');
     return result;
   }
@@ -332,6 +376,10 @@ export class BatteryImportUseCases {
     const session = await this.repo.find(input.id);
     if (!session) throw notFound('Import');
     if (session.createdBy === input.actorId) throw forbidden('FOUR_EYES_REQUIRED', 'The person who uploaded an import cannot approve it. A second person must review the preview.');
+    // Whoever rewrote a row (an override) is an author of what would be applied.
+    if (input.decision === 'APPROVED' && (await this.repo.events(input.id)).some((e) => e.action === 'ROW_RESOLVED' && e.actorId === input.actorId && e.evidence?.override)) {
+      throw forbidden('FOUR_EYES_REQUIRED', 'You changed a row of this import, so a second person must approve it.');
+    }
     if (!input.reason.trim()) throw invalid('A reason is required.');
     if (input.decision === 'APPROVED' && session.validRows < 1) throw unprocessable('NO_VALID_ROWS', 'Nothing valid to apply.');
     const updated = await this.repo.approve({ ...input, reason: input.reason.trim() });
@@ -340,7 +388,16 @@ export class BatteryImportUseCases {
   }
 
   // ----------------------------------------------------------------- apply
-  async apply(input: { id: string; expectedVersion: number; actorId: string; canRecordCost: boolean }) {
+  async apply(input: { id: string; expectedVersion: number; actorId: string; canRecordCost: boolean; canPrice?: boolean }) {
+    // A price import reprices live products: it needs a pricing permission,
+    // as the product editor and the PIM importer do. Checked before anything
+    // is applied (undefined = caller predates the rule; the route passes it).
+    if (input.canPrice === false) {
+      const pending = await this.repo.find(input.id);
+      if (pending?.importType === 'PRICE_UPDATE') {
+        throw forbidden('PRICING_PERMISSION_REQUIRED', 'Applying a price import changes selling prices. It needs a pricing permission (pricing.manage). Nothing was applied.');
+      }
+    }
     const session = await this.repo.beginApply(input.id, input.expectedVersion, input.actorId);
     if (!session) throw unprocessable('STALE_VERSION', 'The import changed or is not approved for apply.');
     const rows = (await this.repo.rows(input.id)).filter((r) => r.status === 'VALID' && r.normalizedData);
@@ -349,7 +406,10 @@ export class BatteryImportUseCases {
         const outcome = await this.applyRow(session, row, input.actorId, input.canRecordCost);
         await this.repo.markRowApplied(row.id, outcome);
       } catch (error) {
-        await this.repo.markRowApplied(row.id, { status: 'FAILED', appliedRecordIds: null, beforeSnapshot: null, afterSnapshot: null, error: error instanceof Error ? error.message : 'Row apply failed.' });
+        // Records a failing row had already created (a brand, a series, a
+        // device) are kept on the row so rollback can find and archive them.
+        const partial = (error as { partialRecordIds?: Record<string, string[]> } | null)?.partialRecordIds ?? null;
+        await this.repo.markRowApplied(row.id, { status: 'FAILED', appliedRecordIds: partial, beforeSnapshot: null, afterSnapshot: null, error: error instanceof Error ? error.message : 'Row apply failed.' });
       }
     }
     return this.repo.finishApply(input.id, input.actorId);
@@ -400,6 +460,8 @@ export class BatteryImportUseCases {
             lifecycleStatus: data.lifecycleStatus === 'REVIEW' ? 'REVIEW' : 'DRAFT',
             sourceReference: ref,
             sourceImportSessionId: session.id,
+            // The uploader wrote the research; the applier only carried it out.
+            createdBy: session.createdBy,
           });
           return { status: 'APPLIED', appliedRecordIds: { products: [created.productId], profiles: [created.profileId] }, beforeSnapshot: null, afterSnapshot: { canonicalCode: code, productId: created.productId }, error: null };
         }
@@ -407,28 +469,65 @@ export class BatteryImportUseCases {
       }
       case 'COMPATIBILITY': {
         if (row.proposedAction === 'SKIP_CLAIM') return { status: 'SKIPPED', appliedRecordIds: null, beforeSnapshot: null, afterSnapshot: null, error: null };
-        const brand = await this.devices.ensureBrand(String(data.deviceBrand), actorId);
-        const series = data.deviceSeries ? await this.devices.ensureSeries(brand.id, String(data.deviceSeries), actorId) : null;
-        const { device, created: deviceCreated } = await this.devices.ensureDevice({ brandId: brand.id, seriesId: series?.id ?? null, model: String(data.deviceModel), modelNumber: data.modelNumber ?? null, variant: data.variant ?? null, sourceReference: ref }, actorId);
-        const productId = String(data.batteryProductId);
-        const existing = await this.compatRepo.findPair(productId, device.id);
-        if (existing) {
-          // A replayed research file never outranks a person: a verified or live
-          // claim, a fit someone SUSPENDED (archived), and a claim whose evidence a
-          // reviewer has already judged are all left exactly as they are.
-          if (['READY', 'ACTIVE', 'ARCHIVED'].includes(existing.workflowStatus) || existing.evidenceStatus !== 'SUPPLIER_LISTED') return { status: 'SKIPPED', appliedRecordIds: null, beforeSnapshot: null, afterSnapshot: null, error: null };
-          const updated = await this.compatibility.update(existing.id, { evidenceSource: data.evidenceSource ?? existing.evidenceSource, notes: [existing.notes, data.notes].filter(Boolean).join('\n') || null }, actorId);
-          return { status: 'APPLIED', appliedRecordIds: { claims: [existing.id], devices: deviceCreated ? [device.id] : [] }, beforeSnapshot: { evidenceSource: existing.evidenceSource, notes: existing.notes }, afterSnapshot: { evidenceSource: updated?.evidenceSource ?? null }, error: null };
+        const partial: Record<string, string[]> = { brands: [], series: [], devices: [] };
+        const withPartial = (error: unknown) => {
+          if (error && typeof error === 'object' && (partial.brands.length || partial.series.length || partial.devices.length)) (error as { partialRecordIds?: Record<string, string[]> }).partialRecordIds = partial;
+          return error;
+        };
+        let brand: Awaited<ReturnType<DeviceCatalogueUseCases['ensureBrand']>>;
+        let series: Awaited<ReturnType<DeviceCatalogueUseCases['ensureSeries']>> | null;
+        let device: Awaited<ReturnType<DeviceCatalogueUseCases['ensureDevice']>>['device'];
+        let deviceCreated: boolean;
+        try {
+          brand = await this.devices.ensureBrand(String(data.deviceBrand), actorId);
+          if (brand.created) partial.brands.push(brand.id);
+          series = data.deviceSeries ? await this.devices.ensureSeries(brand.id, String(data.deviceSeries), actorId) : null;
+          if (series?.created) partial.series.push(series.id);
+          ({ device, created: deviceCreated } = await this.devices.ensureDevice({ brandId: brand.id, seriesId: series?.id ?? null, model: String(data.deviceModel), modelNumber: data.modelNumber ?? null, variant: data.variant ?? null, sourceReference: ref }, actorId));
+          if (deviceCreated) partial.devices.push(device.id);
+        } catch (error) {
+          throw withPartial(error);
         }
-        const { created, skipped } = await this.compatibility.create({ productId, deviceIds: [device.id], actorId, evidenceStatus: data.evidenceStatus ?? 'SUPPLIER_LISTED', evidenceSource: data.evidenceSource ?? null, notes: data.notes ?? null, sourceImportSessionId: session.id, sourceReference: ref });
-        if (!created.length) throw new BatteryOperationError('CLAIM_SKIPPED', skipped[0]?.reason ?? 'Claim not created.');
-        return { status: 'APPLIED', appliedRecordIds: { claims: created.map((c) => c.id), devices: deviceCreated ? [device.id] : [], brands: brand.created ? [brand.id] : [], series: series?.created ? [series.id] : [] }, beforeSnapshot: null, afterSnapshot: { claimId: created[0].id, device: device.slug }, error: null };
+        try {
+          const productId = String(data.batteryProductId);
+          const existing = await this.compatRepo.findPair(productId, device.id);
+          if (existing) {
+            // A replayed research file never outranks a person: a verified or live
+            // claim, a fit someone SUSPENDED (archived), and a claim whose evidence a
+            // reviewer has already judged are all left exactly as they are.
+            if (['READY', 'ACTIVE', 'ARCHIVED'].includes(existing.workflowStatus) || existing.evidenceStatus !== 'SUPPLIER_LISTED') return { status: 'SKIPPED', appliedRecordIds: null, beforeSnapshot: null, afterSnapshot: null, error: null };
+            const updated = await this.compatibility.update(existing.id, { evidenceSource: data.evidenceSource ?? existing.evidenceSource, notes: [existing.notes, data.notes].filter(Boolean).join('\n') || null }, actorId);
+            return { status: 'APPLIED', appliedRecordIds: { claims: [existing.id], devices: deviceCreated ? [device.id] : [], brands: partial.brands, series: partial.series }, beforeSnapshot: { evidenceSource: existing.evidenceSource, notes: existing.notes }, afterSnapshot: { evidenceSource: updated?.evidenceSource ?? null }, error: null };
+          }
+          // createdBy = the uploader who authored the research, so they cannot verify their own claims.
+          const { created, skipped } = await this.compatibility.create({ productId, deviceIds: [device.id], actorId, createdBy: session.createdBy, evidenceStatus: data.evidenceStatus ?? 'SUPPLIER_LISTED', evidenceSource: data.evidenceSource ?? null, notes: data.notes ?? null, sourceImportSessionId: session.id, sourceReference: ref });
+          if (!created.length) throw new BatteryOperationError('CLAIM_SKIPPED', skipped[0]?.reason ?? 'Claim not created.');
+          return { status: 'APPLIED', appliedRecordIds: { claims: created.map((c) => c.id), devices: deviceCreated ? [device.id] : [], brands: brand.created ? [brand.id] : [], series: series?.created ? [series.id] : [] }, beforeSnapshot: null, afterSnapshot: { claimId: created[0].id, device: device.slug }, error: null };
+        } catch (error) {
+          // Claim creation failed after the brand/series/device were made.
+          throw withPartial(error);
+        }
       }
       case 'STOCK_RECEIPT': {
+        // Re-checked at apply: another session for the same delivery may have
+        // been applied after this one was previewed.
+        const receiptRefusal = stockReceiptApplyRefusal({
+          alreadyApplied: await this.ledgerRepo.receiptAlreadyApplied(String(data.productId), data.supplierReference ?? null, Number(data.quantity)),
+          quantity: Number(data.quantity),
+          reference: data.supplierReference ?? null,
+        });
+        if (receiptRefusal) throw new BatteryOperationError(receiptRefusal.code, receiptRefusal.message, 409);
         const result = await this.ledger.recordMovement({ productId: String(data.productId), movementType: 'RECEIPT', quantity: Number(data.quantity), reason: `Receipt import ${ref}`, locationCode: data.locationCode ?? null, supplierName: data.supplierName ?? null, referenceNumber: data.supplierReference ?? null, unitCostUgx: data.unitCostUgx ?? null, importSessionId: session.id, actorId, canRecordCost });
         return { status: 'APPLIED', appliedRecordIds: { movements: [result.movement.id] }, beforeSnapshot: { stockQuantity: result.before }, afterSnapshot: { stockQuantity: result.after }, error: null };
       }
       case 'STOCK_COUNT': {
+        // The count was judged against the stock at PREVIEW; if it moved since
+        // (sales, receipts), posting the counted figure would undo those moves.
+        const countRefusal = stockCountApplyRefusal({
+          systemQuantityAtPreview: data.systemQuantity ?? null,
+          liveStock: (await this.ledgerRepo.currentStock(String(data.productId)))?.stock ?? null,
+        });
+        if (countRefusal) throw new BatteryOperationError(countRefusal.code, countRefusal.message, 409);
         const result = await this.ledger.recordMovement({ productId: String(data.productId), movementType: 'COUNT', quantity: Number(data.countedQuantity), reason: data.reason ?? `Count import ${ref}`, locationCode: data.locationCode ?? null, importSessionId: session.id, actorId, canRecordCost: false });
         return { status: 'APPLIED', appliedRecordIds: { movements: [result.movement.id] }, beforeSnapshot: { stockQuantity: result.before }, afterSnapshot: { stockQuantity: result.after }, error: null };
       }
@@ -452,11 +551,14 @@ export class BatteryImportUseCases {
     if (!input.reason.trim()) throw invalid('A reason is required.');
     const session = await this.repo.beginRollback(input.id, input.expectedVersion, input.actorId, input.reason);
     if (!session) throw unprocessable('STALE_VERSION', 'The import changed or is not rollback eligible.');
-    const rows = (await this.repo.rows(input.id)).filter((r) => r.status === 'APPLIED');
+    // A FAILED compatibility row may still have created a brand, series or
+    // device before it failed; those are cleaned up too (and not counted).
+    const rows = (await this.repo.rows(input.id)).filter((r) => r.status === 'APPLIED' || (session.importType === 'COMPATIBILITY' && r.status === 'FAILED' && !!r.appliedRecordIds));
     let rolledBack = 0;
     let failed = 0;
     const notes: string[] = [];
     for (const row of rows.reverse()) {
+      const cleanupOnly = row.status === 'FAILED';
       try {
         const ids = row.appliedRecordIds ?? {};
         switch (session.importType) {
@@ -481,9 +583,22 @@ export class BatteryImportUseCases {
               if (claim.workflowStatus === 'ACTIVE') throw new Error(`Claim for ${claim.device.label} was published since import; not rolled back.`);
               if (claim.workflowStatus !== 'ARCHIVED') await this.compatibility.transition(claimId, 'ARCHIVE', input.actorId, { reason: `Import rollback: ${input.reason}` });
             }
+            // What the import created goes too, unless something else now uses
+            // it. Counting archived claims (which rollback just made) kept every
+            // created device, and brands/series were never archived, so a
+            // rolled-back research file stayed live in the public finder.
             for (const deviceId of ids.devices ?? []) {
-              const products = await this.deviceRepo.deviceMappingProducts(deviceId);
-              if (products.length === 0) await this.devices.setDeviceStatus(deviceId, 'ARCHIVED', input.actorId).catch(() => undefined);
+              const live = await this.deviceRepo.liveClaimCount(deviceId);
+              if (live === 0) await this.devices.setDeviceStatus(deviceId, 'ARCHIVED', input.actorId).catch((e) => notes.push(`Device ${deviceId} not archived: ${(e as Error).message}`));
+              else notes.push(`Device ${deviceId} kept: ${live} other claim(s) use it.`);
+            }
+            for (const seriesId of ids.series ?? []) {
+              if ((await this.deviceRepo.activeDeviceCount({ seriesId })) === 0) await this.devices.setSeriesStatus(seriesId, 'ARCHIVED', input.actorId).catch((e) => notes.push(`Series ${seriesId} not archived: ${(e as Error).message}`));
+              else notes.push(`Series ${seriesId} kept: it still has active devices.`);
+            }
+            for (const brandId of ids.brands ?? []) {
+              if ((await this.deviceRepo.activeDeviceCount({ brandId })) === 0) await this.devices.setBrandStatus(brandId, 'ARCHIVED', input.actorId).catch((e) => notes.push(`Brand ${brandId} not archived: ${(e as Error).message}`));
+              else notes.push(`Brand ${brandId} kept: it still has active devices.`);
             }
             break;
           case 'STOCK_RECEIPT':
@@ -512,8 +627,10 @@ export class BatteryImportUseCases {
             break;
           }
         }
-        await this.repo.markRowRolledBack(row.id);
-        rolledBack += 1;
+        if (!cleanupOnly) {
+          await this.repo.markRowRolledBack(row.id);
+          rolledBack += 1;
+        }
       } catch (error) {
         failed += 1;
         notes.push(`Row ${row.rowNumber}: ${error instanceof Error ? error.message : 'failed'}`);
@@ -524,10 +641,11 @@ export class BatteryImportUseCases {
   }
 
   // ---------------------------------------------------------- error report
-  async errorReport(id: string): Promise<{ filename: string; csv: string }> {
+  async errorReport(id: string, canSeeCost = false): Promise<{ filename: string; csv: string }> {
     const session = await this.repo.find(id);
     if (!session) throw notFound('Import');
-    const rows = await this.repo.rows(id);
+    const allRows = await this.repo.rows(id);
+    const rows = canSeeCost ? allRows : this.redactCost(session, allRows);
     const bad = rows.filter((r) => r.validationErrors.length || r.error || r.status === 'HELD');
     const header = ['row_number', 'status', 'proposed_action', 'errors', 'warnings', 'hold_reason', ...session.sourceColumns];
     const body = bad.map((r) => [

@@ -9,7 +9,7 @@ import { fetchPublishedPolicy } from '../lib/legalCms';
 const cms = await fetchPublishedPolicy('returns');
 ---
 
-<BaseLayout title="Returns policy | GoldPlus">
+<BaseLayout title={cms?.seoTitle || 'Returns policy | GoldPlus'} description={cms?.seoDescription || policy.summary}>
   <div>
     {cms ? <CmsPolicyDocument policy={cms} /> : <>
     <header class="border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white py-12 sm:py-16">

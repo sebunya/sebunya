@@ -77,7 +77,8 @@ describe('what the shop records', () => {
   });
 
   it('stock status follows quantity on both write paths', () => {
-    expect(read('apps/api/src/infrastructure/db/repositories/DrizzleInventoryRepository.ts')).toMatch(/stockStatus: sql`case when \$\{newStock\} <= 0 then 'out_of_stock' else 'in_stock' end`/);
+    // One shared rule (StockStatusSql) that also keeps pre-order / low-stock labels.
+    expect(read('apps/api/src/infrastructure/db/repositories/DrizzleInventoryRepository.ts')).toMatch(/stockStatus: stockStatusAfter\(newStock\)/);
   });
 
   it('expired reservations do not count as consumed capacity', () => {

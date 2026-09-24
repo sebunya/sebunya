@@ -123,11 +123,16 @@ const maxTrendValue = Math.max(1, ...(analytics?.trend ?? []).map((point) => poi
           <label for="analytics-end" class="block text-[10px] font-black uppercase tracking-wider text-slate-500">End date</label>
           <input id="analytics-end" type="date" name="endDate" value={period.endDay} class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
         </div>
+        {/* Quick ranges are LINKS: inside this form the date inputs are always
+            submitted too, and explicit dates win over days — so a select here
+            never changed the period. The form is for custom dates only. */}
         <div>
-          <label for="analytics-days" class="block text-[10px] font-black uppercase tracking-wider text-slate-500">Quick range</label>
-          <select id="analytics-days" name="days" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm">
-            {[7, 30, 90, 180, 365].map((days) => <option value={days} selected={period.days === days}>{days} days</option>)}
-          </select>
+          <span class="block text-[10px] font-black uppercase tracking-wider text-slate-500">Quick range</span>
+          <nav aria-label="Quick range" class="mt-1 flex flex-wrap gap-1">
+            {[7, 30, 90, 180, 365].map((days) => (
+              <a href={`/admin/analytics?days=${days}`} aria-current={period.days === days && !startDate ? "page" : undefined} class={`rounded-lg border px-2 py-1.5 text-xs font-bold ${period.days === days && !startDate ? "border-brand-dark bg-brand-dark text-white" : "border-slate-300 text-slate-700"}`}>{days}d</a>
+            ))}
+          </nav>
         </div>
         <div class="flex items-end">
           <button class="w-full rounded-lg bg-brand-dark px-4 py-2.5 text-xs font-black text-white">Apply period</button>

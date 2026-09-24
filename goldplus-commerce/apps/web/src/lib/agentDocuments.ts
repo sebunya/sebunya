@@ -1,6 +1,8 @@
 import type { ProductPublicDto } from '@goldplus/shared';
 import { apiBase } from './api';
-import { fetchApprovedCatalogue } from './catalogue';
+import { fetchApprovedCatalogueWithStatus } from './catalogue';
+import { getStorefrontDiscount, type StorefrontDiscount } from './storefrontDiscount';
+import { chargedPriceUgx, realProductImageUrls } from './productStructuredData';
 import { getBusinessInfo } from './businessInfo';
 import { getTaxonomy } from './taxonomy';
 import { SITE_ORIGIN } from './sitemap';
@@ -33,15 +35,27 @@ const schemaAvailability = (kind: string): string =>
 
 /** One catalogue read serves every list document for a minute. */
 const CATALOGUE_TTL_MS = 60_000;
-let catalogueCache: { at: number; products: ProductPublicDto[] } | null = null;
-let catalogueInflight: Promise<ProductPublicDto[]> | null = null;
-async function catalogue(): Promise<ProductPublicDto[]> {
+type CatalogueRead = { products: ProductPublicDto[]; complete: boolean };
+let catalogueCache: { at: number } & CatalogueRead | null = null;
+let catalogueInflight: Promise<CatalogueRead> | null = null;
+/**
+ * The catalogue AND whether it is the whole of it. A page-2 timeout returns
+ * the first page only; a document that states "N products are listed" must
+ * know that, or it publishes a false count. Only a complete read is cached as
+ * the good copy.
+ */
+async function catalogueRead(): Promise<CatalogueRead> {
   const now = Date.now();
-  if (catalogueCache && now - catalogueCache.at < CATALOGUE_TTL_MS) return catalogueCache.products;
+  if (catalogueCache && now - catalogueCache.at < CATALOGUE_TTL_MS) return catalogueCache;
   if (catalogueInflight) return catalogueInflight;
-  catalogueInflight = fetchApprovedCatalogue(apiBase)
-    .then((products) => { catalogueCache = { at: Date.now(), products }; catalogueInflight = null; return products; })
-    .catch(() => { catalogueInflight = null; return catalogueCache?.products ?? []; });
+  catalogueInflight = fetchApprovedCatalogueWithStatus(apiBase)
+    .then((read) => {
+      catalogueInflight = null;
+      if (read.complete) { catalogueCache = { at: Date.now(), ...read }; return read; }
+      // Partial: a recent complete copy is the better answer; otherwise say so.
+      return catalogueCache ? { products: catalogueCache.products, complete: catalogueCache.complete } : read;
+    })
+    .catch(() => { catalogueInflight = null; return catalogueCache ?? { products: [], complete: false }; });
   return catalogueInflight;
 }
 
@@ -61,7 +75,7 @@ function termsBlock(): string[] {
 }
 
 /** The Product node the HTML page publishes, so the Markdown carries the same structured data. */
-function productJsonLd(p: ProductPublicDto): Record<string, unknown> {
+function productJsonLd(p: ProductPublicDto, discount: StorefrontDiscount | null): Record<string, unknown> {
   const node: Record<string, unknown> = {
     '@context': 'https://schema.org',
     '@type': 'Product',
@@ -72,18 +86,25 @@ function productJsonLd(p: ProductPublicDto): Record<string, unknown> {
   };
   if (p.sku) node.sku = p.sku;
   if (p.modelNumber) node.mpn = p.modelNumber;
-  if (p.primaryImageUrl) node.image = absolute(p.primaryImageUrl);
+  // Real photographs only, as ProductJsonLd.astro publishes them: the cover of
+  // a photo-less product is the 'SAMPLE IMAGE · REAL PHOTO COMING' card, and a
+  // placeholder is not a picture of the product. None real → no image at all.
+  const images = realProductImageUrls(p).map(absolute);
+  if (images.length > 0) node.image = images.length === 1 ? images[0] : images;
   const description = (p.longDescription ?? '').trim() || (p.shortDescription ?? '').trim();
   if (description) node.description = description;
   const specs = Object.entries(p.verifiedSpecs ?? {});
   if (specs.length > 0) {
     node.additionalProperty = specs.map(([name, value]) => ({ '@type': 'PropertyValue', name, value: String(value) }));
   }
-  if (p.retailPriceUgx != null) {
+  const price = chargedPriceUgx(p, discount);
+  if (price != null) {
     node.offers = {
       '@type': 'Offer',
       priceCurrency: 'UGX',
-      price: p.retailPriceUgx,
+      // The price the shop charges (the campaign price while one runs), as the
+      // HTML page's Offer states it — never the pre-sale figure.
+      price,
       url: productUrl(p),
       itemCondition: 'https://schema.org/NewCondition',
       availability: schemaAvailability(p.availability?.kind ?? 'unknown'),
@@ -93,10 +114,12 @@ function productJsonLd(p: ProductPublicDto): Record<string, unknown> {
   return node;
 }
 
-function productDocument(p: ProductPublicDto): AgentDocument {
+function productDocument(p: ProductPublicDto, discount: StorefrontDiscount | null, notice: string | null = null): AgentDocument {
   const lines: string[] = [`# ${p.name}`, ''];
+  if (notice) lines.push(`_${notice}_`, '');
   const facts: string[] = [];
-  if (p.retailPriceUgx != null) facts.push(`- **Price:** ${ugx(p.retailPriceUgx)}`);
+  const price = chargedPriceUgx(p, discount);
+  if (price != null) facts.push(`- **Price:** ${ugx(price)}`);
   facts.push(`- **Availability:** ${availabilityWord(p.availability?.kind ?? 'unknown')}`);
   if (p.categoryName) facts.push(`- **Category:** ${p.categoryName}`);
   if (p.sku) facts.push(`- **SKU:** ${p.sku}`);
@@ -113,8 +136,9 @@ function productDocument(p: ProductPublicDto): AgentDocument {
     for (const [k, v] of specs) lines.push(`| ${k} | ${String(v)} |`);
     lines.push('', "_Taken from the manufacturer's own specification for this model._", '');
   }
-  if (p.images && p.images.length > 0) {
-    lines.push('## Images', '', ...p.images.slice(0, 10).map((img) => `- ${absolute(img.url)}`), '');
+  const photos = realProductImageUrls(p);
+  if (photos.length > 0) {
+    lines.push('## Images', '', ...photos.slice(0, 10).map((url) => `- ${absolute(url)}`), '');
   }
   lines.push(...termsBlock(), `Product page: ${productUrl(p)}`, '');
 
@@ -122,41 +146,47 @@ function productDocument(p: ProductPublicDto): AgentDocument {
     title: p.name,
     description: (p.shortDescription ?? '').trim() || null,
     body: lines.join('\n'),
-    jsonLd: [productJsonLd(p)],
+    jsonLd: [productJsonLd(p, discount)],
   };
 }
 
-/** A product table — the densest honest form for a list of things to buy. */
-function productTable(products: ProductPublicDto[]): string[] {
+/** A product table — the densest honest form for a list of things to buy. Prices are what the shop charges. */
+function productTable(products: ProductPublicDto[], discount: StorefrontDiscount | null): string[] {
   return [
     '| Product | Price | Availability | Page |',
     '| --- | --- | --- | --- |',
-    ...products.map((p) => `| ${p.name} | ${p.retailPriceUgx != null ? ugx(p.retailPriceUgx) : '—'} | ${availabilityWord(p.availability?.kind ?? 'unknown')} | ${productUrl(p)} |`),
+    ...products.map((p) => {
+      const price = chargedPriceUgx(p, discount);
+      return `| ${p.name} | ${price != null ? ugx(price) : '—'} | ${availabilityWord(p.availability?.kind ?? 'unknown')} | ${productUrl(p)} |`;
+    }),
   ];
 }
 
-function listJsonLd(products: ProductPublicDto[], name: string): Record<string, unknown> {
+function listJsonLd(products: ProductPublicDto[], name: string, discount: StorefrontDiscount | null): Record<string, unknown> {
   return {
     '@context': 'https://schema.org',
     '@type': 'ItemList',
     name,
     numberOfItems: products.length,
-    itemListElement: products.slice(0, 60).map((p, i) => ({
-      '@type': 'ListItem',
-      position: i + 1,
-      item: {
-        '@type': 'Product',
-        name: p.name,
-        url: productUrl(p),
-        ...(p.retailPriceUgx != null
-          ? { offers: { '@type': 'Offer', priceCurrency: 'UGX', price: p.retailPriceUgx, availability: schemaAvailability(p.availability?.kind ?? 'unknown') } }
-          : {}),
-      },
-    })),
+    itemListElement: products.slice(0, 60).map((p, i) => {
+      const price = chargedPriceUgx(p, discount);
+      return {
+        '@type': 'ListItem',
+        position: i + 1,
+        item: {
+          '@type': 'Product',
+          name: p.name,
+          url: productUrl(p),
+          ...(price != null
+            ? { offers: { '@type': 'Offer', priceCurrency: 'UGX', price, availability: schemaAvailability(p.availability?.kind ?? 'unknown') } }
+            : {}),
+        },
+      };
+    }),
   };
 }
 
-function groupedCatalogue(products: ProductPublicDto[], title: string, intro: string): AgentDocument {
+function groupedCatalogue(products: ProductPublicDto[], title: string, intro: string, discount: StorefrontDiscount | null): AgentDocument {
   const byCategory = new Map<string, ProductPublicDto[]>();
   for (const p of products) {
     const key = p.categoryName || 'Other';
@@ -164,18 +194,20 @@ function groupedCatalogue(products: ProductPublicDto[], title: string, intro: st
   }
   const lines: string[] = [`# ${title}`, '', intro, ''];
   for (const [category, items] of [...byCategory.entries()].sort((a, b) => b[1].length - a[1].length)) {
-    lines.push(`## ${category} (${items.length})`, '', ...productTable(items), '');
+    lines.push(`## ${category} (${items.length})`, '', ...productTable(items, discount), '');
   }
   lines.push(...termsBlock());
-  return { title, description: intro, body: lines.join('\n'), jsonLd: [listJsonLd(products, title)] };
+  return { title, description: intro, body: lines.join('\n'), jsonLd: [listJsonLd(products, title, discount)] };
 }
 
 /** /shop, honouring the same filters the HTML page reads. */
 async function shopDocument(url: URL): Promise<AgentDocument | null> {
-  const [all, taxonomy] = await Promise.all([catalogue(), getTaxonomy().catch(() => DISCOVERY_TAXONOMY)]);
-  // No catalogue means the API did not answer; the HTML page has its own
-  // fallbacks, so defer to it rather than publishing an empty shop.
-  if (all.length === 0) return null;
+  const [read, taxonomy, discount] = await Promise.all([catalogueRead(), getTaxonomy().catch(() => DISCOVERY_TAXONOMY), getStorefrontDiscount()]);
+  // No catalogue means the API did not answer; a PARTIAL one would state wrong
+  // counts and "nothing matches" for products that exist. The HTML page has its
+  // own fallbacks, so defer to it rather than publishing either.
+  if (read.products.length === 0 || !read.complete) return null;
+  const all = read.products;
   const search = normalizeSearchParam(url.searchParams.get('search') ?? url.searchParams.get('q'));
   const category = normalizeCategoryParam(url.searchParams.get('category'), taxonomy);
   const subcategory = normalizeSubcategoryParam(url.searchParams.get('subcategory'), category, taxonomy);
@@ -206,8 +238,8 @@ async function shopDocument(url: URL): Promise<AgentDocument | null> {
     return {
       title: `${title} — page ${page}`,
       description: pagedIntro,
-      body: [`# ${title}`, '', pagedIntro, '', ...productTable(slice), '', ...nav, '', ...termsBlock()].join('\n'),
-      jsonLd: [listJsonLd(slice, title)],
+      body: [`# ${title}`, '', pagedIntro, '', ...productTable(slice, discount), '', ...nav, '', ...termsBlock()].join('\n'),
+      jsonLd: [listJsonLd(slice, title, discount)],
     };
   }
 
@@ -216,9 +248,9 @@ async function shopDocument(url: URL): Promise<AgentDocument | null> {
   }
   // A filtered view is one list; the unfiltered catalogue reads better grouped.
   if (search || named) {
-    return { title, description: intro, body: [`# ${title}`, '', intro, '', ...productTable(filtered), '', ...termsBlock()].join('\n'), jsonLd: [listJsonLd(filtered, title)] };
+    return { title, description: intro, body: [`# ${title}`, '', intro, '', ...productTable(filtered, discount), '', ...termsBlock()].join('\n'), jsonLd: [listJsonLd(filtered, title, discount)] };
   }
-  return groupedCatalogue(filtered, 'GoldPlus catalogue', intro);
+  return groupedCatalogue(filtered, 'GoldPlus catalogue', intro, discount);
 }
 
 /** Category hub pages (/power, /power/chargers …) — the same products the page lists. */
@@ -230,14 +262,17 @@ async function hubDocument(pathname: string): Promise<AgentDocument | null> {
   const child = segments[1] ? hub.children?.find((c) => c.slug === segments[1]) : undefined;
   if (segments[1] && !child) return null;
 
-  const [all, taxonomy] = await Promise.all([catalogue(), getTaxonomy().catch(() => DISCOVERY_TAXONOMY)]);
+  const [read, taxonomy, discount] = await Promise.all([catalogueRead(), getTaxonomy().catch(() => DISCOVERY_TAXONOMY), getStorefrontDiscount()]);
+  // A partial read would publish a short list and a wrong count; the HTML hub decides instead.
+  if (!read.complete) return null;
+  const all = read.products;
   const products = child ? productsForHubChild(hub, child, all, taxonomy) : productsForHub(hub, all, taxonomy);
   const title = child ? child.h1 : hub.h1;
   const intro = (child ? [child.intro] : hub.intro).join(' ');
   const lines = [`# ${title}`, '', intro, ''];
-  if (products.length > 0) lines.push(`${products.length} product${products.length === 1 ? '' : 's'}.`, '', ...productTable(products), '');
+  if (products.length > 0) lines.push(`${products.length} product${products.length === 1 ? '' : 's'}.`, '', ...productTable(products, discount), '');
   lines.push(...termsBlock(), `Page: ${SITE_ORIGIN}${hubPath(hub.slug, child?.slug)}`, '');
-  return { title, description: intro, body: lines.join('\n'), jsonLd: products.length > 0 ? [listJsonLd(products, title)] : [] };
+  return { title, description: intro, body: lines.join('\n'), jsonLd: products.length > 0 ? [listJsonLd(products, title, discount)] : [] };
 }
 
 async function faqDocument(): Promise<AgentDocument> {
@@ -269,14 +304,21 @@ async function faqDocument(): Promise<AgentDocument> {
 }
 
 async function homeDocument(): Promise<AgentDocument> {
-  const [biz, products] = await Promise.all([getBusinessInfo(), catalogue()]);
+  const [biz, read, discount] = await Promise.all([getBusinessInfo(), catalogueRead(), getStorefrontDiscount()]);
+  // Counts, categories and the price range are stated as FACTS, so they are
+  // stated only from a complete catalogue read. A partial or failed read used
+  // to publish "100 products" (page 2 timed out) or "0 products are listed".
+  const products = read.complete ? read.products : [];
   const byCategory = new Map<string, number>();
   for (const p of products) byCategory.set(p.categoryName || 'Other', (byCategory.get(p.categoryName || 'Other') ?? 0) + 1);
-  const prices = products.map((p) => p.retailPriceUgx).filter((v): v is number => typeof v === 'number' && v > 0);
+  const prices = products.map((p) => chargedPriceUgx(p, discount)).filter((v): v is number => typeof v === 'number' && v > 0);
+  const catalogueSentence = products.length > 0
+    ? ` ${products.length} products are listed online${prices.length ? `, from ${ugx(Math.min(...prices))} to ${ugx(Math.max(...prices))}` : ''}.`
+    : '';
   const body = [
     '# GoldPlus — phone accessories and replacement batteries in Kampala',
     '',
-    `GoldPlus sells and delivers phone accessories and replacement phone batteries in Kampala, Uganda. ${products.length} products are listed online${prices.length ? `, from ${ugx(Math.min(...prices))} to ${ugx(Math.max(...prices))}` : ''}. GoldPlus is both the shop and the brand; every unit is tested before it is sold.`,
+    `GoldPlus sells and delivers phone accessories and replacement phone batteries in Kampala, Uganda.${catalogueSentence} GoldPlus is both the shop and the brand; every unit is tested before it is sold.`,
     '',
     '## The shop',
     '',
@@ -284,10 +326,9 @@ async function homeDocument(): Promise<AgentDocument> {
     `- **Open:** ${biz.openDays}, ${biz.shopHours}`,
     `- **Phone and WhatsApp:** ${biz.phoneDisplay}`,
     '',
-    '## What GoldPlus sells',
-    '',
-    ...[...byCategory.entries()].sort((a, b) => b[1] - a[1]).map(([name, count]) => `- ${name}: ${count} products`),
-    '',
+    ...(byCategory.size > 0
+      ? ['## What GoldPlus sells', '', ...[...byCategory.entries()].sort((a, b) => b[1] - a[1]).map(([name, count]) => `- ${name}: ${count} products`), '']
+      : []),
     '## Where to look',
     '',
     `- Every product: ${SITE_ORIGIN}/shop`,
@@ -335,7 +376,11 @@ async function blogPostDocument(slug: string): Promise<AgentDocument | null> {
     post.body.trim(), '',
   ];
   if (post.relatedProducts?.length) {
-    lines.push('## Products mentioned', '', ...post.relatedProducts.map((p) => `- ${p.name}${p.retailPriceUgx != null ? ` — ${ugx(p.retailPriceUgx)}` : ''}: ${SITE_ORIGIN}/products/${p.slug}`), '');
+    const discount = await getStorefrontDiscount();
+    lines.push('## Products mentioned', '', ...post.relatedProducts.map((p) => {
+      const price = chargedPriceUgx(p, discount);
+      return `- ${p.name}${price != null ? ` — ${ugx(price)}` : ''}: ${SITE_ORIGIN}/products/${p.slug}`;
+    }), '');
   }
   lines.push(`Article: ${SITE_ORIGIN}/blog/${post.slug}`, '');
   return {
@@ -390,8 +435,11 @@ async function policyDocument(kind: 'returns' | 'warranty' | 'delivery'): Promis
 }
 
 /** The battery finder — the question agents are asked most about this shop. */
-async function batteryFinderDocument(): Promise<AgentDocument> {
-  const products = await catalogue();
+async function batteryFinderDocument(): Promise<AgentDocument | null> {
+  const [read, discount] = await Promise.all([catalogueRead(), getStorefrontDiscount()]);
+  // "GoldPlus stocks N batteries" is a count; a partial read would understate it.
+  if (!read.complete) return null;
+  const products = read.products;
   const batteries = products.filter((p) => /batter/i.test(`${p.name} ${p.categoryName ?? ''}`));
   const named = batteries.filter((p) => /for |fits /i.test(p.name));
   const body = [
@@ -402,11 +450,11 @@ async function batteryFinderDocument(): Promise<AgentDocument> {
     '2. Open the phone and read the code printed on the battery inside, then match it to the code in the product name.',
     '3. Send the phone model on WhatsApp and GoldPlus confirms which pack fits.', '',
     ...(named.length > 0
-      ? ['## Batteries listed by the phone they fit', '', ...productTable(named), '']
+      ? ['## Batteries listed by the phone they fit', '', ...productTable(named, discount), '']
       : []),
     '## Batteries listed by pack code', '',
     'These are matched by the code printed on the battery inside the phone.', '',
-    ...productTable(batteries.filter((p) => !named.includes(p))),
+    ...productTable(batteries.filter((p) => !named.includes(p)), discount),
     '',
     ...termsBlock(),
   ].join('\n');
@@ -446,7 +494,32 @@ async function productDocument2(slug: string): Promise<AgentDocument | null> {
   if (!res.ok) return null;
   const json: any = await res.json().catch(() => null);
   const product: ProductPublicDto | null = json?.success ? json.data : null;
-  return product ? productDocument(product) : null;
+  if (!product) return null;
+  // The operator's lifecycle decision applies to agents exactly as it does to
+  // the HTML page. A retired page (301 to a successor, 410 gone, unpublished /
+  // noindex) returns null, so the request falls through to the HTML route,
+  // which answers with the redirect, the 410 or the notice. It used to publish
+  // a full purchasable document ("Price … In stock") for a product withdrawn.
+  const lifecycle = await productLifecycle(product.id);
+  if (lifecycle.retired) return null;
+  return productDocument(product, await getStorefrontDiscount(), lifecycle.notice);
+}
+
+/** The same advisory lookup the product page makes; unreachable = no decision. */
+async function productLifecycle(productId: string): Promise<{ retired: boolean; notice: string | null }> {
+  try {
+    const res = await fetch(`${apiBase}/seo/product-lifecycle?productId=${encodeURIComponent(productId)}`, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(700),
+    });
+    const json: any = await res.json().catch(() => null);
+    const outcome = json?.success && json.data?.decided ? json.data.outcome : null;
+    if (!outcome) return { retired: false, notice: null };
+    const retired = outcome.httpStatus === 301 || outcome.httpStatus === 410 || outcome.indexable === false;
+    return { retired, notice: typeof outcome.notice === 'string' ? outcome.notice : null };
+  } catch {
+    return { retired: false, notice: null };
+  }
 }
 
 const normalisePath = (pathname: string): string => pathname.replace(/\/+$/, '') || '/';

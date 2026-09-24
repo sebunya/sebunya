@@ -196,6 +196,9 @@ export class VerifyPhoneUseCase {
  * (the ledger's earn:orderId idempotency key), refunded orders ineligible
  * (only delivered/completed paid orders are returned by the reader).
  */
+/** Every backfill earn's reason starts with this; the per-customer cap is summed from it. */
+export const GUEST_BACKFILL_REASON = 'Guest order backfill';
+
 export class BackfillGuestOrdersUseCase {
   constructor(
     private readonly identity: ILoyaltyIdentityRepository,
@@ -214,13 +217,21 @@ export class BackfillGuestOrdersUseCase {
     if (!verified) return fail('PHONE_NOT_VERIFIED', 'Verify the phone first — never an unverified match.');
     const orders = await this.identity.guestOrdersForPhone(input.phoneE164, config.guestBackfillLookbackDays);
     const account = await this.loyalty.getOrCreateAccount(input.userId);
+    // The cap is per CUSTOMER, not per run: every verification runs the
+    // backfill again, so what earlier runs credited counts against it.
+    // Otherwise a second verification credited the orders the first one
+    // skipped at the cap.
+    const alreadyBackfilled = (await this.loyalty.listEntries(account.id))
+      .filter((e) => e.type === 'earn' && e.points > 0 && e.reason.startsWith(GUEST_BACKFILL_REASON))
+      .reduce((sum, e) => sum + e.points, 0);
+    const capRemaining = Math.max(0, config.guestBackfillCapPoints - alreadyBackfilled);
     let pointsTotal = 0;
     let credited = 0;
     for (const order of orders) {
       if (order.buyerType !== 'retail') continue; // PART K exclusion holds here too
       const points = Math.min(
         Math.floor(order.totalUgx / 1000) * config.earnRatePer1000Ugx,
-        config.guestBackfillCapPoints - pointsTotal,
+        capRemaining - pointsTotal,
       );
       if (points <= 0) break; // per-customer cap reached
       const earnedOn = new Date();
@@ -233,7 +244,7 @@ export class BackfillGuestOrdersUseCase {
           type: 'earn',
           points,
           orderId: order.orderId,
-          reason: `Guest order backfill on verified phone (${config.earnRatePer1000Ugx}/1000 UGX)`,
+          reason: `${GUEST_BACKFILL_REASON} on verified phone (${config.earnRatePer1000Ugx}/1000 UGX)`,
           idempotencyKey: `earn:${order.orderId}`, // one credit per order, ever
           expiresAt,
           reversedEntryId: null,

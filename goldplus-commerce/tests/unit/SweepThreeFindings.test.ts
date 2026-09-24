@@ -97,7 +97,8 @@ describe('a price is the price', () => {
     // Price A. Both the create and the update route validate the tiers against
     // the retail price; no route enforces the historical 145,000 minimum.
     const src = read('apps/api/src/interfaces/http/routes/admin/products.ts');
-    expect(src.match(/const tiers = parsePriceTiers\(body, priceUgx\);/g)?.length).toBe(2);
+    // 2026-09-24: the update route merges stored tiers for keys it was not sent.
+    expect(src.match(/const tiers = parsePriceTiers\((body|tiersWithStoredDefaults\(body, tiersBefore\)), priceUgx\);/g)?.length).toBe(2);
     expect(src).not.toMatch(/STOREFRONT_PRICE_FLOOR_UGX/);
   });
 });
@@ -117,7 +118,9 @@ describe('points and cards survive a failure', () => {
 
   it('capacity is enforced where the reservation is written', () => {
     expect(read('apps/api/src/application/use-cases/loyalty/LoyaltyCompletionUseCases.ts'))
-      .toMatch(/maxTotalReservedPoints: balance\.available/);
+      // What the customer can spend: available minus points already past expiry
+      // (the expiry sweep has not written them yet), held inside the same lock.
+      .toMatch(/maxTotalReservedPoints: spendable/);
     expect(read('apps/api/src/infrastructure/db/repositories/DrizzleLoyaltyCompletionRepository.ts'))
       .toMatch(/from loyalty_accounts where id = \$\{input\.accountId\} for update/);
   });
@@ -159,9 +162,12 @@ describe('a job runs once, and keeps running', () => {
 });
 
 describe('what the admin sees is what the shop has', () => {
-  it('a product page reached by id resolves the slug it needs', () => {
-    expect(read('apps/web/src/pages/admin/products/[id].astro')).toMatch(/async function resolveSlug/);
-    expect(read('apps/web/src/pages/admin/products/[id]/edit.astro')).toMatch(/const productSlug = adminProductRes\.data\?\.slug \?\? '';/);
+  it('a product page reached by id reads it by id (drafts and inactive included)', () => {
+    // 2026-09-24: resolving the slug and reading the PUBLIC route hid every
+    // draft, rejected or inactive product. Both pages now read the admin view
+    // by id (GET /admin/products/:id/view), which has no approved/active gate.
+    expect(read('apps/web/src/pages/admin/products/[id].astro')).toMatch(/\/admin\/products\/\$\{encodeURIComponent\(productId\)\}\/view/);
+    expect(read('apps/web/src/pages/admin/products/[id]/edit.astro')).toMatch(/\/admin\/products\/\$\{encodeURIComponent\(id \?\? ''\)\}\/view/);
   });
 
   it('saving properties cannot silently recategorise a product', () => {

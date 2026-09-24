@@ -5,7 +5,7 @@ import EmptyState from '../components/EmptyState.astro';
 import Notice from '../components/Notice.astro';
 import { apiBase } from '../lib/api';
 import { formatUgx } from '../lib/money';
-import { getStorefrontDiscount, quotedGoodsTotalUgx } from '../lib/storefrontDiscount';
+import { getStorefrontDiscount, basketSavingUgx, basketSavingLabel } from '../lib/storefrontDiscount';
 import { readCartSessionId } from '../lib/cart-session';
 import type { ApiEnvelope } from '@goldplus/shared';
 import { kampalaCutoff } from '@goldplus/shared';
@@ -16,7 +16,7 @@ import { parseLocalCartCookie, cartLineHref, isCartProductId, chunkIds } from '.
 import { sameDayCutoffCopy } from '../lib/checkout';
 import { cartClient, cartMessageFor } from '../lib/cartClient';
 import { resolveCartCredential } from '../lib/cartCredential';
-import { resolveAuthenticatedUserId } from '../lib/customerAuth';
+import { requestSession } from '../lib/customerAuth';
 import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../lib/requestOrigin';
 import { publicBattery, parseDeviceCookie, DEVICE_COOKIE, FIT_BADGE } from '../lib/batteries';
 
@@ -29,6 +29,8 @@ interface CartItem {
   categoryName: string | null;
   quantity: number;
   unitPriceUgx: number;
+  /** The product can no longer be bought (the server's read flags it). */
+  unavailable?: boolean;
 }
 
 interface CartResponse {
@@ -92,9 +94,13 @@ if (!cartOrigin.allowed) {
 
 // The signed basket credential. The cart id lives inside the signed claims, so the
 // browser never names a cart and knowing an id is no longer authority over it.
-const cartUserId = cartOrigin.allowed ? await resolveAuthenticatedUserId(Astro.cookies) : null;
+// UNKNOWN (the session check could not answer) reuses whatever credential is
+// there and replaces nothing: treating it as "guest" swapped a signed-in
+// customer's basket for an empty one.
+const cartSession = cartOrigin.allowed ? await requestSession(Astro.locals, Astro.cookies) : ({ state: 'GUEST' } as const);
+const cartUserId = cartSession.state === 'USER' ? cartSession.userId : null;
 const cartCredential = cartOrigin.allowed
-  ? resolveCartCredential(Astro.cookies, cartUserId)
+  ? resolveCartCredential(Astro.cookies, cartUserId, { sessionUnknown: cartSession.state === 'UNKNOWN' })
   : null;
 
 // Handle Add, Update, and Remove POST submissions
@@ -124,7 +130,7 @@ if (Astro.request.method === 'POST' && cartOrigin.allowed) {
       if (action === 'add') {
         const existing = localItems.find(i => i.productId === productId);
         if (existing) {
-          existing.quantity += 1;
+          existing.quantity = Math.min(99, existing.quantity + 1);
         } else {
           localItems.push({
             productId,
@@ -162,7 +168,9 @@ if (Astro.request.method === 'POST' && cartOrigin.allowed) {
 
       } else if (action === 'update') {
         const qty = Number(formData.get('quantity') || 1);
-        const validatedQty = qty < 1 ? 1 : qty;
+        // 99 per product, the bound checkout enforces (the server refuses more).
+        const validatedQty = Math.min(99, qty < 1 ? 1 : qty);
+        if (qty > 99) cartNotice = cartMessageFor('QUANTITY_OUT_OF_BOUNDS');
         
         const existing = localItems.find(i => i.productId === productId);
         if (existing) {
@@ -226,13 +234,18 @@ if (Astro.request.method === 'POST' && cartOrigin.allowed) {
         }
       }
 
-      // 3. Save synchronized list to cookie
-      Astro.cookies.set('goldplus_cart_data', JSON.stringify(localItems), {
-        path: '/',
-        maxAge: 60 * 60 * 24 * 365, // 1 year
-        sameSite: 'lax',
-        httpOnly: false
-      });
+      // 3. Save synchronized list to cookie — only when the server took the
+      // change, or there is no server basket to disagree with. Written after a
+      // refusal, the device copy kept the refused line (at the price the form
+      // posted), and the page later showed it from the cookie as if added.
+      if (!cartCredential || !cartNotice) {
+        Astro.cookies.set('goldplus_cart_data', JSON.stringify(localItems), {
+          path: '/',
+          maxAge: 60 * 60 * 24 * 365, // 1 year
+          sameSite: 'lax',
+          httpOnly: false
+        });
+      }
 
       if (isNewSession) {
         Astro.cookies.set('goldplus_cart_id', sessionId, {
@@ -288,6 +301,7 @@ if (cartCredential) {
         categoryName: null,
         quantity: line.quantity,
         unitPriceUgx: line.unitPriceUgx,
+        unavailable: line.unavailable === true,
       })),
       subtotalUgx: result.cart.subtotalUgx,
     };
@@ -299,15 +313,22 @@ if (cartCredential) {
   }
 }
 
-// Fallback to local cookie state if API failed or returned empty while cookie has items!
+// Fallback to local cookie state if API failed or returned empty while cookie has items.
+// The device copy holds the name and price the add form posted, possibly months
+// ago, so it is SAID to be the device's copy (as checkout does) and a failed
+// read keeps its notice: clearing it presented year-old figures as the basket.
 let items: CartItem[] = cart?.items ?? [];
+let pricedFromDevice = false;
 if (items.length === 0) {
   const localDataCookie = Astro.cookies.get('goldplus_cart_data')?.value;
   items = parseLocalCartCookie(localDataCookie) as any[];
-  if (items.length > 0) {
-    fetchError = null; // Clear fetchError since we successfully recovered from fallback!
-  }
+  pricedFromDevice = items.length > 0;
 }
+// A product withdrawn while it sat in the basket: named, excluded from every
+// total, and removable. The server refuses every other change to the basket
+// until it is gone, so the customer must be able to see which line it is.
+const unavailableItems = items.filter((i) => i.unavailable);
+const purchasableItems = items.filter((i) => !i.unavailable);
 
 const cartProductIds = items.map(i => i.productId);
 
@@ -383,21 +404,23 @@ const removedLine = removedCandidate && removedCandidate.productId === removedPa
   && !items.some((i) => i.productId === removedCandidate.productId)
   ? removedCandidate
   : null;
-const subtotal = items.reduce((acc, item) => acc + (item.unitPriceUgx * item.quantity), 0);
+const subtotal = purchasableItems.reduce((acc, item) => acc + (item.unitPriceUgx * item.quantity), 0);
 
-// Active campaign discount (display; per-line to match the checkout evaluator).
+// The site-wide campaign, for the label only.
 const cartDiscount = await getStorefrontDiscount();
-const cartCampaignRunning = cartDiscount.active && cartDiscount.percentBps > 0 && subtotal > 0;
-// The evaluator's own figure, per-product floors included (0127). A local
-// recomputation cannot know each product's floor; the API can. Falls back to
-// the undiscounted subtotal, never to an invented saving.
-const saleSubtotal = cartCampaignRunning
-  ? await quotedGoodsTotalUgx(items.map((i) => ({ productId: i.productId, quantity: i.quantity })), subtotal)
-  : subtotal;
-const cartSavings = subtotal - saleSubtotal;
-// A running campaign that saves this basket nothing (every line already at the
-// price floor) must not be announced as a discount. See checkout.astro.
-const cartOnSale = cartCampaignRunning && cartSavings > 0;
+// The evaluator's own saving, per-product floors included (0127), asked for
+// EVERY basket: an automatic promotion that is not a simple site-wide campaign
+// (a minimum spend, a cap, an exclusion) is still charged at checkout, and
+// gating on the campaign hid it here. 0 on any failure, never an invented saving.
+const cartSavings = await basketSavingUgx(
+  purchasableItems.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+  subtotal,
+);
+const saleSubtotal = subtotal - cartSavings;
+// A basket the evaluator saves nothing on (every line already at its price
+// floor) must not be announced as a discount. See checkout.astro.
+const cartOnSale = cartSavings > 0;
+const cartSavingLabel = basketSavingLabel(cartDiscount, purchasableItems, cartSavings);
 
 // Loyalty earn preview at the point of decision (loyalty brief PART G).
 let cartLoyaltyRate = 0;
@@ -420,7 +443,7 @@ const cut = kampalaCutoff(new Date(), { cutoffHour: bizCart.sameDayCutoffHour, c
 // No area is known on the cart, so the same-day line names where it applies
 // ("Kampala & Wakiso: order in 3h 5m for same-day delivery") instead of
 // promising "arrives today" to a basket bound for Arua.
-const cutoffLine = sameDayCutoffCopy(cut).scoped;
+const cutoffLine = sameDayCutoffCopy(cut, { now: new Date(), closedDays: bizCart.closedDays }).scoped;
 ---
 
 <BaseLayout robotsMeta="noindex,follow" title="Your cart">
@@ -441,6 +464,12 @@ const cutoffLine = sameDayCutoffCopy(cut).scoped;
     {fetchError && (
       <div class="mb-6">
         <Notice kind="not-configured" title="Cart service unavailable" message={fetchError} />
+      </div>
+    )}
+
+    {unavailableItems.length > 0 && (
+      <div class="mb-6">
+        <Notice kind="not-configured" title="No longer available" message={`${unavailableItems.map((i) => i.name).join(', ')} can no longer be bought. Remove ${unavailableItems.length === 1 ? 'it' : 'them'} to change your basket or check out.`} />
       </div>
     )}
 
@@ -529,10 +558,17 @@ const cutoffLine = sameDayCutoffCopy(cut).scoped;
                       ) : (
                         <p class="font-bold text-gray-900 line-clamp-2 leading-snug">{item.name}</p>
                       )}
-                      <p class="text-sm font-bold text-brand-primaryInk mt-1.5">{formatUgx(item.unitPriceUgx)} <span class="text-xs font-normal text-slate-600 ml-1">each</span></p>
+                      {item.unavailable ? (
+                        <p class="mt-1.5 self-start rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-900">No longer available</p>
+                      ) : (
+                        <p class="text-sm font-bold text-brand-primaryInk mt-1.5">{formatUgx(item.unitPriceUgx)} <span class="text-xs font-normal text-slate-600 ml-1">each</span></p>
+                      )}
                       {/* Phones: the line total lives here (the controls row has no room for it). */}
-                      {item.quantity > 1 && (
+                      {item.quantity > 1 && !item.unavailable && (
                         <p class="sm:hidden mt-0.5 text-xs font-semibold text-slate-700 tabular-nums">{formatUgx(item.unitPriceUgx * item.quantity)} for {item.quantity}</p>
+                      )}
+                      {item.quantity >= 99 && !item.unavailable && (
+                        <p class="mt-0.5 text-xs text-slate-600">99 is the most of one product per order.</p>
                       )}
                       {selectedDevice && deviceFits[item.productId] && (
                         deviceFits[item.productId].fitState ? (
@@ -555,7 +591,7 @@ const cutoffLine = sameDayCutoffCopy(cut).scoped;
                     <div class="flex items-center justify-between gap-3 sm:contents">
                     {/* Quantity Selector controls */}
                     <div class="flex shrink-0 items-center gap-1 sm:gap-3">
-                      <form method="POST" action="/cart" class="flex items-center gap-1 sm:gap-2">
+                      {!item.unavailable && <form method="POST" action="/cart" class="flex items-center gap-1 sm:gap-2">
                         <input type="hidden" name="action" value="update" />
                         <input type="hidden" name="productId" value={item.productId} />
                         
@@ -578,12 +614,14 @@ const cutoffLine = sameDayCutoffCopy(cut).scoped;
                           type="submit" 
                           name="quantity" 
                           value={item.quantity + 1} 
-                          aria-label={`Increase quantity of ${item.name}`}
-                          class="w-11 h-11 rounded-full border border-slate-200 flex items-center justify-center font-bold text-gray-700 hover:bg-slate-50 hover:border-slate-300 transition-colors outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk active:scale-95 cursor-pointer"
+                          aria-label={item.quantity >= 99 ? `${item.name}: 99 is the most per order` : `Increase quantity of ${item.name}`}
+                          title={item.quantity >= 99 ? '99 is the most per order' : undefined}
+                          class="w-11 h-11 rounded-full border border-slate-200 flex items-center justify-center font-bold text-gray-700 hover:bg-slate-50 hover:border-slate-300 transition-colors outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk active:scale-95 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          disabled={item.quantity >= 99}
                         >
                           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                         </button>
-                      </form>
+                      </form>}
                       
                       <form method="POST" action="/cart">
                         <input type="hidden" name="action" value="remove" />
@@ -600,7 +638,7 @@ const cutoffLine = sameDayCutoffCopy(cut).scoped;
                       </form>
                     </div>
 
-                    <p class="hidden sm:block shrink-0 font-bold text-gray-900 whitespace-nowrap text-right min-w-[80px] text-sm md:text-base tabular-nums">{formatUgx(item.unitPriceUgx * item.quantity)}</p>
+                    <p class="hidden sm:block shrink-0 font-bold text-gray-900 whitespace-nowrap text-right min-w-[80px] text-sm md:text-base tabular-nums">{item.unavailable ? '' : formatUgx(item.unitPriceUgx * item.quantity)}</p>
                     </div>
                     </div>
                   </li>
@@ -620,7 +658,7 @@ const cutoffLine = sameDayCutoffCopy(cut).scoped;
               </div>
               {cartOnSale && (
                 <div class="flex items-center justify-between">
-                  <dt class="font-medium" style="color:#456B00">{cartDiscount.percent}% discount {cartDiscount.name ? `(${cartDiscount.name})` : ''}</dt>
+                  <dt class="font-medium" style="color:#456B00">{cartSavingLabel}</dt>
                   <dd class="font-bold tabular-nums" style="color:#456B00">&minus;{formatUgx(cartSavings)}</dd>
                 </div>
               )}
@@ -639,8 +677,15 @@ const cutoffLine = sameDayCutoffCopy(cut).scoped;
                   there once you choose your area, or confirmed by phone when
                   we cannot price it yet. */}
               <p class="text-[11px] text-slate-500">Choose your area at checkout to see the delivery fee. If we cannot price it there, we confirm it by phone before dispatch.</p>
-              {cartPotentialPoints > 0 && (
-                <p class="text-[11px] font-bold" style="color:#456B00">Earn {cartPotentialPoints.toLocaleString('en-UG')} GoldPlus points on this order once it is delivered.</p>
+              {/* Same split as checkout: a guest order earns nothing unless the
+                  customer signs in, and delivery only ever adds to the basis. */}
+              {cartPotentialPoints > 0 && (cartUserId ? (
+                <p class="text-[11px] font-bold" style="color:#456B00">Earn at least {cartPotentialPoints.toLocaleString('en-UG')} GoldPlus points on this order once it is delivered.</p>
+              ) : (
+                <p class="text-[11px] font-bold" style="color:#456B00"><a href="/login?returnTo=/cart" class="underline">Sign in</a> or <a href="/register?returnTo=/cart" class="underline">create an account</a> to earn at least {cartPotentialPoints.toLocaleString('en-UG')} GoldPlus points on this order.</p>
+              ))}
+              {pricedFromDevice && (
+                <p class="text-[11px] font-semibold text-amber-900">These prices were saved on this device when you added the items. Checkout confirms the current price before you pay.</p>
               )}
             </div>
 
@@ -662,7 +707,7 @@ const cutoffLine = sameDayCutoffCopy(cut).scoped;
               <h3 class="sr-only">Delivery estimate</h3>
               <DeliveryQuote
                 stage={1}
-                items={items.map((i) => ({ productId: i.productId, quantity: i.quantity }))}
+                items={purchasableItems.map((i) => ({ productId: i.productId, quantity: i.quantity }))}
                 subtotalUgx={subtotal}
               />
             </div>

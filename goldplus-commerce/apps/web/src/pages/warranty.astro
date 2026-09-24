@@ -14,7 +14,7 @@ const effectiveDateLabel = Number.isFinite(effectiveMs)
   : policy.effectiveDate;
 ---
 
-<BaseLayout title="Warranty policy | GoldPlus">
+<BaseLayout title={cms?.seoTitle || 'Warranty policy | GoldPlus'} description={cms?.seoDescription || policy.summary}>
   <div>
     {cms ? <CmsPolicyDocument policy={cms} /> : <>
     <header class="border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white py-12 sm:py-16">

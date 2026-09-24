@@ -2,6 +2,7 @@
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../lib/session";
 import { apiBase } from "../../../lib/api";
+import { readPaging, pagingLabel, pagingHrefs } from "../../../lib/adminPaging";
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -168,6 +169,8 @@ if (Astro.request.method === "POST") {
 }
 
 const statusFilter = Astro.url.searchParams.get("status") || "";
+// The API pages at 50 by default; without offset the rest of the queue was unreachable.
+const paging = readPaging(Astro.url.searchParams);
 
 interface ItemLine { sku: string; name: string; quantity: number; unitPriceUgx: number; lineTotalUgx: number; }
 interface Task {
@@ -184,9 +187,10 @@ let overdueBadge = 0;
 let loadFailed = false;
 let apiError = "";
 try {
+  const pageQuery = `limit=${paging.limit}&offset=${paging.offset}`;
   const listUrl = statusFilter
-    ? `${apiBase}/admin/fulfilment?status=${encodeURIComponent(statusFilter)}`
-    : `${apiBase}/admin/fulfilment?activeOnly=true`;
+    ? `${apiBase}/admin/fulfilment?status=${encodeURIComponent(statusFilter)}&${pageQuery}`
+    : `${apiBase}/admin/fulfilment?activeOnly=true&${pageQuery}`;
   const [listRes, badgeRes] = await Promise.all([
     fetch(listUrl, { headers }),
     fetch(`${apiBase}/admin/fulfilment/badge`, { headers }),
@@ -231,6 +235,7 @@ try {
 } catch { /* non-fatal */ }
 
 import { formatUgx } from "../../../lib/money";
+const pageHrefs = pagingHrefs(Astro.url, paging, tasks.length, total);
 // UGX code format via the single money source (en-UG's currency symbol is "USh").
 const ugx = { format: (n: unknown) => formatUgx(n) };
 
@@ -313,7 +318,7 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
           {overdueBadge} late
         </span>
         <span class="bg-gray-100 text-gray-600 border border-gray-200 text-xs font-bold px-3 py-1.5 rounded-lg">
-          showing {total}
+          {pagingLabel(paging, tasks.length, total)}
         </span>
       </div>
     </div>
@@ -355,6 +360,16 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
       <div class="bg-white border border-gray-200 rounded-2xl p-10 text-center text-gray-500 text-sm">
         No orders in this stage yet. New orders appear here the moment a customer checks out.
       </div>
+    )}
+
+    {(pageHrefs.prev || pageHrefs.next) && (
+      <nav aria-label="Queue pages" class="flex items-center justify-between gap-3 mb-4 text-xs font-bold">
+        <span class="text-gray-500">{pagingLabel(paging, tasks.length, total)}</span>
+        <span class="flex gap-2">
+          {pageHrefs.prev && <a href={pageHrefs.prev} class="rounded-lg border border-gray-200 bg-white px-3 py-1.5 hover:border-gray-900">← Previous</a>}
+          {pageHrefs.next && <a href={pageHrefs.next} class="rounded-lg border border-gray-200 bg-white px-3 py-1.5 hover:border-gray-900">Next →</a>}
+        </span>
+      </nav>
     )}
 
     <div class="space-y-4">

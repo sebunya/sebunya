@@ -16,7 +16,9 @@ export type ReconciliationExceptionType =
   | 'ORDER_TOTAL_MISMATCH' // total_amount != subtotal_amount + delivery_fee - loyalty_discount
   | 'ORDER_LINES_MISMATCH' // subtotal_amount != sum(order_items.final_line_total)
   | 'RESERVED_LEDGER_MISMATCH' // product.reserved_quantity != sum(active reservations)
-  | 'RESERVED_EXCEEDS_STOCK'; // reserved_quantity > stock_quantity (available < 0)
+  | 'RESERVED_EXCEEDS_STOCK' // reserved_quantity > stock_quantity (available < 0)
+  | 'DISPATCHED_WITH_RESERVATION' // goods left (order dispatched/delivered/completed, or task past packing) yet a reservation is still 'reserved'
+  | 'CANCELLED_AFTER_CONSUME'; // a cancelled order whose stock was already taken off: the units may be back on the shelf
 
 export interface ReconciliationException {
   type: ReconciliationExceptionType;
@@ -49,6 +51,48 @@ export interface InventoryRow {
   reservedQuantity: number;
   /** SUM(inventory_reservations.reserved_quantity WHERE status='reserved'). */
   ledgerReservedSum: number;
+}
+
+/** An order's reservation ledger read against where the order is. */
+export interface OrderStockRow {
+  orderId: string;
+  orderStatus: string;
+  /** The fulfilment task status, or null when the order has no task. */
+  taskStatus: string | null;
+  /** inventory_reservations rows still 'reserved' / already 'consumed'. */
+  reservedRows: number;
+  consumedRows: number;
+}
+
+const GOODS_LEFT_ORDER = new Set(['dispatched', 'delivered', 'completed']);
+const TASK_PAST_PACKING = new Set(['READY_FOR_DISPATCH', 'OUT_FOR_DELIVERY', 'DELIVERED']);
+
+/**
+ * Stock that should have moved and did not. Both shapes are invisible to the
+ * product checks: the reserved figures still agree with each other.
+ */
+export function checkOrderStock(row: OrderStockRow): ReconciliationException[] {
+  const out: ReconciliationException[] = [];
+  const goodsLeft = GOODS_LEFT_ORDER.has(row.orderStatus) || (row.taskStatus !== null && TASK_PAST_PACKING.has(row.taskStatus));
+  if (goodsLeft && row.reservedRows > 0) {
+    out.push({
+      type: 'DISPATCHED_WITH_RESERVATION',
+      entityKind: 'order',
+      entityId: row.orderId,
+      detail: { reservedRows: row.reservedRows },
+      message: `Order is ${row.orderStatus}${row.taskStatus ? ` (task ${row.taskStatus})` : ''} but still holds ${row.reservedRows} reservation(s): on-hand stock still counts goods that have left.`,
+    });
+  }
+  if (row.orderStatus === 'cancelled' && row.consumedRows > 0) {
+    out.push({
+      type: 'CANCELLED_AFTER_CONSUME',
+      entityKind: 'order',
+      entityId: row.orderId,
+      detail: { consumedRows: row.consumedRows },
+      message: `Cancelled after its stock was taken off (${row.consumedRows} line(s)). If the goods came back, record them with a stock adjustment; nothing restocks automatically.`,
+    });
+  }
+  return out;
 }
 
 /** Money integrity inside a single order. */
@@ -104,9 +148,11 @@ export function checkInventory(row: InventoryRow): ReconciliationException[] {
 export function reconcileCommerce(input: {
   orders: OrderMoneyRow[];
   inventory: InventoryRow[];
+  orderStock?: OrderStockRow[];
 }): ReconciliationException[] {
   return [
     ...input.orders.flatMap(checkOrderMoney),
     ...input.inventory.flatMap(checkInventory),
+    ...(input.orderStock ?? []).flatMap(checkOrderStock),
   ];
 }

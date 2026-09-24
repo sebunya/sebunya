@@ -79,16 +79,31 @@ export class DrizzleDeliveryQuotingRepository implements IDeliveryQuotingReposit
       from delivery_quote_capture
       where delivered_at is not null and area_slug = ${input.areaSlug}`)) as unknown as Array<{ n: number }>;
 
+    // The nightly job's per-area percentiles (0152). No row = nothing observed
+    // enough to promise hours, and the model keeps its day-level promise.
+    // A failed read (the table or a column not there yet, if code ever rolls
+    // before 0152) is the same position: no observed window, never a failed
+    // quote on the checkout path.
+    const [window] = input.areaSlug
+      ? ((await db
+          .execute(sql`
+          select p10_minutes, p90_minutes from delivery_window_percentile
+          where scope_key = ${input.areaSlug} limit 1`)
+          .catch(() => [])) as unknown as Array<{ p10_minutes: string | number; p90_minutes: string | number }>)
+      : [];
+    const p10 = window ? Number(window.p10_minutes) : NaN;
+    const p90 = window ? Number(window.p90_minutes) : NaN;
+
     return {
       corridor,
       hour: pick('hour_factor', input.eatHourOfWeek === null ? null : String(input.eatHourOfWeek)),
       detour: pick('detour_factor', input.corridor),
       lastMile: pick('last_mile_minutes', input.areaSlug),
       areaSampleSize: sample?.n ?? 0,
-      // Percentiles are computed by the nightly job and stored; with zero
-      // observations there is nothing to take a percentile OF, and a fabricated
-      // window is never widened to look cautious.
-      observedMinutes: null,
+      // Percentiles are computed by the nightly job and stored; with no stored
+      // row there is nothing to take a percentile OF, and a fabricated window is
+      // never widened to look cautious.
+      observedMinutes: Number.isFinite(p10) && Number.isFinite(p90) && p10 > 0 && p90 >= p10 ? { p10, p90 } : null,
     };
   }
 

@@ -1,7 +1,9 @@
 import { db } from '../client';
+import { stockStatusForLabel } from '../StockStatusSql';
 import { products, productPrices, categories } from '../schema/products';
 import { productImages, productAttributeValues, attributes as attributesTable } from '../schema/phase11';
-import { eq, inArray, and, or, ilike, gt, SQL, asc, desc, sql } from 'drizzle-orm';
+import { eq, inArray, and, or, ilike, gt, SQL, asc, desc, sql, type AnyColumn } from 'drizzle-orm';
+import { numericSearchTermPattern } from '@goldplus/shared';
 import { ProductEntity, StockStatus } from '../../../domain/products/ProductEntity';
 import { IProductRepository, ProductWithPrice } from '../../../application/ports/IProductRepository';
 import { likeContains } from '../like';
@@ -162,7 +164,8 @@ export class DrizzleProductRepository implements IProductRepository {
         longDescription: product.longDescription,
         priceUgx: product.priceUgx,
         compareAtPriceUgx: product.compareAtPriceUgx,
-        stockStatus: product.stockStatus,
+        // Against the live quantity, not the request's earlier read of it.
+        stockStatus: stockStatusForLabel(product.stockStatus),
         imageUrl: product.imageUrl,
         features: product.features,
         warrantyPeriod: product.warrantyPeriod,
@@ -215,7 +218,23 @@ export class DrizzleProductRepository implements IProductRepository {
     // all treat active = false as discontinued; the public readers ignored it,
     // so a deactivated product stayed listed, searchable and purchasable.
     if (!row || row.approvalStatus !== 'approved' || !row.active) return null;
+    return this.buildView(row);
+  }
 
+  /**
+   * The same view WITHOUT the approved/active gate — admin only. Drafts,
+   * rejected and inactive products are exactly the ones an operator needs to
+   * review and edit; the public gate made the admin detail page call them
+   * "not found". Never wire this to a public route.
+   */
+  async findAdminViewById(id: string): Promise<ProductWithPrice | null> {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null;
+    const row = await db.query.products.findFirst({ where: eq(products.id, id) });
+    if (!row) return null;
+    return this.buildView(row);
+  }
+
+  private async buildView(row: NonNullable<Awaited<ReturnType<typeof db.query.products.findFirst>>>): Promise<ProductWithPrice> {
     const [priceRow, categoryRow, imageRows, valueRows] = await Promise.all([
       db.query.productPrices.findFirst({ where: eq(productPrices.productId, row.id) }),
       db.query.categories.findFirst({ where: eq(categories.id, row.categoryId) }),
@@ -313,7 +332,8 @@ export class DrizzleProductRepository implements IProductRepository {
     }
 
     if (opts.inStock) {
-      conditions.push(eq(products.stockStatus, 'in_stock'));
+      // Available units, as the product page and the feed count them.
+      conditions.push(sql`${products.stockQuantity} - ${products.reservedQuantity} > 0`);
     }
 
     if (opts.search) {
@@ -326,21 +346,27 @@ export class DrizzleProductRepository implements IProductRepository {
       const terms = searchTerms(opts.search);
       for (const term of terms) {
         const needle = likeContains(term);
+        // A word that starts with a digit must not be the tail of a longer
+        // number ("2gb" must not match 32GB): the shared includesSearchTerm
+        // rule, stated as a Postgres regex so the SQL and /shop agree.
+        const numeric = numericSearchTermPattern(term);
+        const matches = (column: AnyColumn): SQL =>
+          numeric ? sql`${column} ~* ${numeric}` : ilike(column, needle);
         conditions.push(
           or(
-            ilike(products.name, needle),
-            ilike(products.categoryName, needle),
+            matches(products.name),
+            matches(products.categoryName),
             // ...and the joined category, which is what the storefront DTO
             // actually shows. products.category_name is a denormalised copy;
             // matching only the copy would silently reopen the dropdown /
             // results-page divergence the moment the two drift.
             inArray(
               products.categoryId,
-              db.select({ id: categories.id }).from(categories).where(ilike(categories.name, needle)),
+              db.select({ id: categories.id }).from(categories).where(matches(categories.name)),
             ),
-            ilike(products.subcategory, needle),
-            ilike(products.modelNumber, needle),
-            ilike(products.sku, needle)
+            matches(products.subcategory),
+            matches(products.modelNumber),
+            matches(products.sku)
           )
         );
       }
@@ -541,9 +567,26 @@ export class DrizzleProductRepository implements IProductRepository {
     // An import creates products with no stock recorded. Publishing those puts
     // "out of stock" listings on the shop by accident, so approval can be
     // limited to products that have stock — the default from the import page.
-    const where = opts.requireStock ? and(inArray(products.id, ids), gt(products.stockQuantity, 0)) : inArray(products.id, ids);
+    const byId = opts.requireStock ? and(inArray(products.id, ids), gt(products.stockQuantity, 0)) : inArray(products.id, ids);
+    // Approving never publishes a product without a selling price: priced at 0
+    // it rendered "Price on request" with an Add-to-cart that dead-ended at
+    // checkout. Mirrors requireStock; drafts and rejections are unaffected.
+    const where = approvalStatus === 'approved' ? and(byId, gt(products.priceUgx, 0)) : byId;
     const rows = await db.update(products).set(patch).where(where).returning({ id: products.id });
     return rows.map((r) => r.id);
+  }
+
+  /**
+   * Explicitly clears optional fields an operator emptied. The upsert in
+   * save() skips undefined keys, so an emptied subcategory or compare-at price
+   * used to report "saved" and stay.
+   */
+  async clearProductFields(productId: string, fields: { subcategory?: boolean; compareAtPrice?: boolean }): Promise<void> {
+    const patch: Partial<typeof products.$inferInsert> = {};
+    if (fields.subcategory) patch.subcategory = null;
+    if (fields.compareAtPrice) patch.compareAtPriceUgx = null;
+    if (Object.keys(patch).length === 0) return;
+    await db.update(products).set({ ...patch, updatedAt: new Date() }).where(eq(products.id, productId));
   }
 
   async getPriceTiers(productId: string): Promise<{ floorPriceUgx: number | null; tierBPriceUgx: number | null; tierCPriceUgx: number | null }> {

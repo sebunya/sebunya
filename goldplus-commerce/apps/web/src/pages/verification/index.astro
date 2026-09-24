@@ -15,7 +15,9 @@ if (Astro.request.method === 'POST') {
     status = 'error';
     message = 'Please enter a verification code.';
   } else {
-    const result = await postJson('/governance/verification/check', { code });
+    // A signed-in scan is attributable: it earns the verification points and
+    // counts toward the "verify ten" mission. Anonymous scans stay anonymous.
+    const result = await postJson('/governance/verification/check', { code }, Astro.cookies.get('goldplus_session')?.value ?? null);
     reference = result.ok ? result.reference : undefined;
     if (!result.ok) {
       status = 'error';
@@ -23,10 +25,11 @@ if (Astro.request.method === 'POST') {
         ? 'Cannot reach the verification service right now. Please try again shortly.'
         : result.message;
     } else {
-      const data = result.data as { success?: boolean } | undefined;
+      const data = result.data as { success?: boolean; loyaltyPoints?: number } | undefined;
       if (data?.success) {
         status = 'success';
-        message = 'Verification code recognised. This product is registered with GoldPlus.';
+        const points = typeof data.loyaltyPoints === 'number' && data.loyaltyPoints > 0 ? data.loyaltyPoints : 0;
+        message = `Verification code recognised. This product is registered with GoldPlus.${points ? ` You earned ${points.toLocaleString('en-UG')} points.` : ''}`;
       } else {
         status = 'received';
         message = 'Code not recognised, or already used. If you believe this is wrong, please report a fake product.';

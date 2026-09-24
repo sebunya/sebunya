@@ -8,6 +8,7 @@ import type {
 import { recommendationEvents } from "../schema/recommendations";
 import { db } from "../client";
 import { pgJsonb } from '../PgParams';
+import { fitColumn } from './RecommendationEventColumnWidths';
 
 export class DrizzleRecommendationEventRepository implements IRecommendationEventRepository {
   /**
@@ -21,9 +22,11 @@ export class DrizzleRecommendationEventRepository implements IRecommendationEven
     const inserted = await db.insert(recommendationEvents).values([{
       id: event.id,
       eventType: event.eventType,
-      anonymousId: event.anonymousId,
-      browserId: event.browserId,
-      sessionId: event.sessionId,
+      // Every browser-supplied string is cut to its column (fitColumn): one
+      // over-long value used to fail the whole insert and lose the event.
+      anonymousId: fitColumn('anonymousId', event.anonymousId),
+      browserId: fitColumn('browserId', event.browserId),
+      sessionId: fitColumn('sessionId', event.sessionId),
       cartId: event.cartId,
       customerId: event.customerId,
       leadId: event.leadId,
@@ -45,33 +48,33 @@ export class DrizzleRecommendationEventRepository implements IRecommendationEven
       placement: event.placement,
       recommendationProductId: event.recommendationProductId,
       sourceProductId: event.sourceProductId,
-      source: event.source,
-      pagePath: event.pagePath,
-      referrer: event.referrer,
+      source: fitColumn('source', event.source),
+      pagePath: fitColumn('pagePath', event.pagePath),
+      referrer: fitColumn('referrer', event.referrer),
 
       // Flatten UTM
-      utmSource: event.utm?.source,
-      utmMedium: event.utm?.medium,
-      utmCampaign: event.utm?.campaign,
-      utmContent: event.utm?.content,
-      utmTerm: event.utm?.term,
+      utmSource: fitColumn('utmSource', event.utm?.source),
+      utmMedium: fitColumn('utmMedium', event.utm?.medium),
+      utmCampaign: fitColumn('utmCampaign', event.utm?.campaign),
+      utmContent: fitColumn('utmContent', event.utm?.content),
+      utmTerm: fitColumn('utmTerm', event.utm?.term),
 
       // Flatten Device
-      deviceType: event.device?.deviceType,
-      browserFamily: event.device?.browserFamily,
-      osFamily: event.device?.osFamily,
+      deviceType: fitColumn('deviceType', event.device?.deviceType),
+      browserFamily: fitColumn('browserFamily', event.device?.browserFamily),
+      osFamily: fitColumn('osFamily', event.device?.osFamily),
       screenWidth: event.device?.screenWidth,
       screenHeight: event.device?.screenHeight,
       viewportWidth: event.device?.viewportWidth,
       viewportHeight: event.device?.viewportHeight,
-      language: event.device?.language,
-      timezone: event.device?.timezone,
+      language: fitColumn('language', event.device?.language),
+      timezone: fitColumn('timezone', event.device?.timezone),
 
       // Flatten Location
-      locationSource: event.location?.locationSource,
-      district: event.location?.district,
-      town: event.location?.town,
-      gpsGeohash: event.location?.gpsGeohash,
+      locationSource: fitColumn('locationSource', event.location?.locationSource),
+      district: fitColumn('district', event.location?.district),
+      town: fitColumn('town', event.location?.town),
+      gpsGeohash: fitColumn('gpsGeohash', event.location?.gpsGeohash),
       gpsAccuracyMeters: event.location?.gpsAccuracyMeters,
 
       // R3.1 (AC21): canonical JSONB at the serialization boundary. Drizzle
@@ -222,11 +225,17 @@ export class DrizzleRecommendationEventRepository implements IRecommendationEven
     // product_id, so grouping on bare product_id silently dropped exactly the
     // engagement the copy claims — the aggregate groups on the coalesce.
     const productKey = sql<string>`coalesce(${recommendationEvents.recommendationProductId}, ${recommendationEvents.productId})`;
+    // (3) 2026-09-24: counts DISTINCT server-resolved visitors, not rows. The
+    // public route takes a caller-chosen anonymousId, so 7 unauthenticated
+    // POSTs with fresh ids made any product "Popular right now". profile_id
+    // comes from the HttpOnly visit token and customer_id from the verified
+    // session, never from the body; an event with neither does not count.
+    const visitors = sql`count(distinct coalesce(${recommendationEvents.profileId}::text, 'c:' || ${recommendationEvents.customerId}::text))`;
     const rows = await db
       .select({
         productId: productKey,
         eventType: recommendationEvents.eventType,
-        count: sql<number>`count(*)::int`,
+        count: sql<number>`${visitors}::int`,
         lastSeenAt: sql<Date>`max(${recommendationEvents.createdAt})`,
       })
       .from(recommendationEvents)
@@ -240,6 +249,7 @@ export class DrizzleRecommendationEventRepository implements IRecommendationEven
             "RECOMMENDATION_CLICKED",
             "RECOMMENDATION_ADD_TO_CART",
           ]),
+          sql`(${recommendationEvents.profileId} is not null or ${recommendationEvents.customerId} is not null)`,
         ),
       )
       .groupBy(productKey, recommendationEvents.eventType)
@@ -251,7 +261,7 @@ export class DrizzleRecommendationEventRepository implements IRecommendationEven
       // the GROUP BY, so Postgres rejected the statement outright — every call
       // threw and the engine logged RECOMMENDATION_ENGINE_DEGRADED and fell
       // down the ladder. The trending rung had not returned a row since.
-      .orderBy(desc(sql`count(*)`), asc(productKey), asc(recommendationEvents.eventType))
+      .orderBy(desc(visitors), asc(productKey), asc(recommendationEvents.eventType))
       .limit(input.limit ?? 500);
 
     return rows

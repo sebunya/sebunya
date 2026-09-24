@@ -2,6 +2,16 @@ import { Registry } from '../Registry';
 import { logger } from '../logging/logger';
 import { checkCallbackSilence } from '../../application/use-cases/payments/PaymentSilenceUseCases';
 import { describeSkippedSweeps } from '../../domain/payments/PaymentOpsSilence';
+import { tryAcquireSessionLock, type HeldSessionLock } from '../db/sessionLock';
+
+/**
+ * Both API replicas run this ticker, started together at deploy. The sweeps above
+ * the lock are idempotent; the alerts and the PesaPal synthetic probe are not —
+ * the probe read "last probe" and then submitted a REAL order, so both replicas
+ * submitted one each interval, and every ALERT line appeared twice. Only the
+ * replica holding this lock runs them on a given tick.
+ */
+const PAYMENT_OPS_LOCK_ID = 887_401_311;
 
 /**
  * Runs the payment reconciliation poller on a schedule.
@@ -45,7 +55,7 @@ async function runOnce(): Promise<void> {
   const registry = Registry.getInstance();
   try {
     const result = await registry.reconcilePendingPaymentsUseCase.execute(new Date());
-    if (result.polled > 0 || result.abandoned > 0 || result.errors.length > 0) {
+    if (result.polled > 0 || result.abandoned > 0 || result.caughtUp > 0 || result.errors.length > 0) {
       logger.info({ ...result }, '[payment-reconcile] sweep complete');
     }
     if (result.confirmed > 0) {
@@ -80,6 +90,30 @@ async function runOnce(): Promise<void> {
   } catch (error) {
     logger.error({ err: error }, '[payment-ops] abandonment failed');
   }
+  let opsLock: HeldSessionLock | null = null;
+  try {
+    opsLock = await tryAcquireSessionLock(PAYMENT_OPS_LOCK_ID);
+  } catch (error) {
+    logger.error({ err: error }, '[payment-ops] could not take the alerts/probe lock');
+  }
+  if (!opsLock) {
+    // The other replica is running the alerts and the probe this tick.
+    running = false;
+    return;
+  }
+  try {
+    await runAlertsAndProbe(registry, reservationsSkipped, abandonmentSkipped);
+  } finally {
+    await opsLock.release().catch((error) => logger.error({ err: error }, '[payment-ops] lock release failed'));
+    running = false;
+  }
+}
+
+async function runAlertsAndProbe(
+  registry: Registry,
+  reservationsSkipped: 'ttl_not_configured' | null,
+  abandonmentSkipped: 'window_not_configured' | null,
+): Promise<void> {
   // Once an hour, not every ten minutes: loud enough to be seen, quiet enough to be read.
   const sweepsOff = describeSkippedSweeps({ reservations: { skipped: reservationsSkipped }, abandonment: { skipped: abandonmentSkipped } });
   if (sweepsOff && Date.now() - lastSweepsOffAlertAt > 3_600_000) {
@@ -150,7 +184,6 @@ async function runOnce(): Promise<void> {
   } catch (error) {
     logger.error({ err: error }, '[payment-ops] synthetic probe errored');
   }
-  running = false;
 }
 
 export function startPaymentReconcileTicker(): void {

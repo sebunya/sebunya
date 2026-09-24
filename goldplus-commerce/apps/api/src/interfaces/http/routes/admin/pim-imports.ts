@@ -64,6 +64,8 @@ function failure(c: any, error: unknown) {
   const status =
     code === "IMPORT_NOT_FOUND"
       ? 404
+      : code === "PRICING_PERMISSION_REQUIRED"
+        ? 403
       : ["STALE_VERSION", "INVALID_STATE"].includes(code)
         ? 409
         : 400;
@@ -209,6 +211,7 @@ routes.post(
         data: await Registry.getInstance().pimImportOperationsUseCase.apply({
           id: String(c.req.param("id") ?? ""),
           actorId: actor(c),
+          actorPermissions: ((c.get("user") as { permissions?: string[] } | undefined)?.permissions ?? []),
           ...body.data,
         }),
       });

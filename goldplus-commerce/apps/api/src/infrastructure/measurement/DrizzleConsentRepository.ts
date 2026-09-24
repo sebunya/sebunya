@@ -75,6 +75,9 @@ export class DrizzleConsentRepository implements ConsentRepository {
       lastNoticeVersion:      'v1.0',
       lastConsentRecordId:    inserted.id,
       updatedAt:              new Date(),
+      // A withdrawal never lapses. It used to keep the old grant's expiry (and
+      // so could lapse days later) or get none, depending on what came before.
+      expiresAt:              null,
     }).onConflictDoUpdate({
       target: withdrawal.user_id ? consentCurrentState.userId : consentCurrentState.fpClientId,
       set: {
@@ -84,6 +87,7 @@ export class DrizzleConsentRepository implements ConsentRepository {
         lastGrantType:          'withdrawn',
         lastConsentRecordId:    inserted.id,
         updatedAt:              new Date(),
+        expiresAt:              null,
       },
     });
 

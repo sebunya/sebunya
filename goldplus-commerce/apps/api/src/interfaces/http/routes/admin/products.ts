@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
+import { adminUploadLimit } from '../../middleware/uploadLimit';
 import { Registry } from '../../../../infrastructure/Registry';
 import { CreateAuditLogUseCase } from '../../../../application/use-cases/audit/CreateAuditLogUseCase';
 import { RemoveProductImageUseCase } from '../../../../application/use-cases/products/RemoveProductImageUseCase';
@@ -9,8 +10,11 @@ import { DefineAttributeUseCase } from '../../../../application/use-cases/produc
 import { RecordProductSlugChangeUseCase } from '../../../../application/use-cases/products/RecordProductSlugChangeUseCase';
 import { validateStockAdjustment } from '../../../../domain/inventory/Inventory';
 import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
-import { parsePriceTiers } from '../../../../domain/products/PriceTiers';
+import { changedPricingFields, parsePriceTiers, tiersWithStoredDefaults } from '../../../../domain/products/PriceTiers';
+import { checkPublicationChange, effectiveStockStatus } from '../../../../domain/products/ProductPublication';
 import { UpdateProductListingUseCase } from '../../../../application/use-cases/products/UpdateProductListingUseCase';
+import { GetAdminProductViewUseCase } from '../../../../application/use-cases/products/GetAdminProductViewUseCase';
+import { ProductUploadError, summariseProductUpload } from '../../../../application/use-cases/products/UploadProductImagesUseCase';
 import { FeedQualityUseCase } from '../../../../application/use-cases/seo-growth/MerchantFeedUseCase';
 import { describeUploadRejection } from '../../../../application/use-cases/media/MediaLibraryUseCase';
 
@@ -32,7 +36,7 @@ routes.post('/:id/images', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), asy
   return c.json(res, 410);
 });
 
-routes.post('/:id/images/upload', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) => {
+routes.post('/:id/images/upload', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), adminUploadLimit, async (c) => {
   const productId = c.req.param('id') ?? '';
   
   // Fetch body supporting multipart arrays
@@ -48,13 +52,10 @@ routes.post('/:id/images/upload', requirePermissions([PERMISSIONS.PRODUCTS_WRITE
     return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'At least one image file is required.' } }, 400);
   }
 
-  // Transform web API Files to logical RawFilePayloads including raw Buffer
-  const logicalFiles = await Promise.all(filesInput.map(async (f) => ({
-    name: f.name,
-    type: f.type,
-    size: f.size,
-    buffer: Buffer.from(await f.arrayBuffer())
-  })));
+  // Transform web API Files to logical RawFilePayloads, one at a time (no
+  // second in-memory copy of the whole batch at once).
+  const logicalFiles: Array<{ name: string; type: string; size: number; buffer: Buffer }> = [];
+  for (const f of filesInput) logicalFiles.push({ name: f.name, type: f.type, size: f.size, buffer: Buffer.from(await f.arrayBuffer()) });
 
   const registry = Registry.getInstance();
   try {
@@ -66,7 +67,14 @@ routes.post('/:id/images/upload', requirePermissions([PERMISSIONS.PRODUCTS_WRITE
       actorId: (c.get('user') as any).id as string,
     });
 
-    // Bulk audit record
+    const summary = summariseProductUpload(savedImages);
+    if (summary.stored === 0) {
+      // Nothing reached the gallery: say so, with each file's reason. The
+      // per-file outcomes stay in `data` exactly as before.
+      return c.json({ success: false, error: { code: 'NOTHING_STORED', message: summary.message }, data: savedImages }, 422);
+    }
+
+    // Bulk audit record — the count is what was STORED, not what was attempted.
     const auditUc = new CreateAuditLogUseCase(registry.auditRepo);
     await auditUc.execute({
       actorId: (c.get('user') as any).id,
@@ -74,14 +82,17 @@ routes.post('/:id/images/upload', requirePermissions([PERMISSIONS.PRODUCTS_WRITE
       entity: 'product',
       entityId: productId,
       newState: {
-        count: savedImages.length,
+        count: summary.stored,
+        attempted: savedImages.length,
         outcomes: savedImages.map((i) => ({ assetId: i.assetId, slot: i.slot, outcome: i.outcome })),
       },
     });
 
     return c.json({
       success: true,
-      data: savedImages
+      data: savedImages,
+      stored: summary.stored,
+      ...(summary.stored < savedImages.length ? { message: summary.message } : {}),
     });
 
   } catch (err: any) {
@@ -90,7 +101,8 @@ routes.post('/:id/images/upload', requirePermissions([PERMISSIONS.PRODUCTS_WRITE
       success: false,
       error: {
         code: 'BAD_INPUT',
-        message: 'Failed to upload images.'
+        // Operator-facing refusals from the use case are shown as written.
+        message: err instanceof ProductUploadError ? err.message : 'Failed to upload images.'
       }
     }, 400);
   }
@@ -293,6 +305,16 @@ routes.post('/bulk-approval', requirePermissions([PERMISSIONS.PRODUCTS_PUBLISH])
 });
 
 // Get raw product details for administration editing
+// Admin detail/editor view: the public product shape WITHOUT the
+// approved/active gate, so drafts and inactive products can be reviewed.
+routes.get('/:id/view', requirePermissions([PERMISSIONS.PRODUCTS_READ]), async (c) => {
+  const result = await new GetAdminProductViewUseCase(Registry.getInstance().productRepo).execute(c.req.param('id') ?? '');
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Product not found.' } }, 404);
+  }
+  return c.json({ success: true, data: result.dto });
+});
+
 routes.get('/:id', requirePermissions([PERMISSIONS.PRODUCTS_READ]), async (c) => {
   const productId = c.req.param('id') ?? '';
   const registry = Registry.getInstance();
@@ -323,11 +345,18 @@ routes.post('/', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) => 
   const longDescription = String(body.longDescription ?? '').trim();
   const priceUgx = Number(body.priceUgx ?? 0);
   const compareAtPriceUgx = body.compareAtPriceUgx ? Number(body.compareAtPriceUgx) : undefined;
-  const stockStatus = String(body.stockStatus ?? 'in_stock');
-  const imageUrl = body.imageUrl ? String(body.imageUrl).trim() : undefined;
+  const formStockStatus = String(body.stockStatus ?? 'in_stock');
+  // The legacy free-text image URL is retired: photos enter through the
+  // gallery (renditions, a slot). A pasted URL fed Google Shopping a picture
+  // the product page never showed, so body.imageUrl is ignored.
+  const imageUrl: string | undefined = undefined;
   const active = body.active !== false;
   const approvalStatus = String(body.approvalStatus ?? 'draft');
   const stockQuantity = Number(body.stockQuantity ?? 0);
+  // The status follows the quantity (0 units is never "in stock").
+  const stockStatus = ['in_stock', 'low_stock', 'out_of_stock', 'pre_order'].includes(formStockStatus)
+    ? effectiveStockStatus(formStockStatus as any, stockQuantity)
+    : formStockStatus;
 
   // Validation
   if (name.length < 2 || name.length > 255) {
@@ -363,6 +392,19 @@ routes.post('/', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) => 
   }
   if (!['draft', 'approved', 'rejected'].includes(approvalStatus)) {
     return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid approval status.' } }, 400);
+  }
+  // Creating a product already approved is publishing it: PRODUCTS_PUBLISH and stock, as on the bulk path.
+  const publication = checkPublicationChange({
+    before: null,
+    after: { approvalStatus: approvalStatus as 'draft' | 'approved' | 'rejected', active },
+    canPublish: ((c.get('user') as any)?.permissions ?? []).includes(PERMISSIONS.PRODUCTS_PUBLISH),
+    stockQuantity,
+    stockStatus: stockStatus as any,
+    requireStock: body.requireStock !== false,
+    priceUgx,
+  });
+  if (!publication.ok) {
+    return c.json({ success: false, error: { code: publication.code, message: publication.message } }, publication.status);
   }
 
   try {
@@ -421,7 +463,7 @@ routes.post('/', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) => 
       action: 'PRODUCT_CREATED',
       entity: 'product',
       entityId: productId,
-      newState: { name, sku, slug, priceUgx, stockQuantity },
+      newState: { name, sku, slug, priceUgx, stockQuantity, stockStatus, approvalStatus, active, priceTiers: tiers.value },
     });
 
     return c.json({ success: true, data: { id: productId } }, 201);
@@ -449,13 +491,25 @@ routes.put('/:id', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) =
   const modelNumber = String(body.modelNumber ?? '').trim();
   const slug = String(body.slug ?? '').trim().toLowerCase();
   const categoryId = String(body.categoryId ?? '').trim();
-  const subcategory = body.subcategory ? String(body.subcategory).trim() : undefined;
+  // An explicitly sent empty subcategory / compare-at price CLEARS the value
+  // (it used to arrive as undefined, which the upsert skips, so "saved" kept
+  // the old one). A key left out keeps what is stored.
+  const hasKey = (k: string) => Object.prototype.hasOwnProperty.call(body, k);
+  const subcategoryInput = hasKey('subcategory') ? String(body.subcategory ?? '').trim() : null;
+  const subcategory = subcategoryInput === null ? existingProduct.subcategory : (subcategoryInput || undefined);
+  const clearSubcategory = subcategoryInput === '';
   const shortDescription = String(body.shortDescription ?? '').trim();
   const longDescription = String(body.longDescription ?? '').trim();
   const priceUgx = Number(body.priceUgx ?? 0);
-  const compareAtPriceUgx = body.compareAtPriceUgx ? Number(body.compareAtPriceUgx) : undefined;
-  const stockStatus = String(body.stockStatus ?? 'in_stock');
-  const imageUrl = body.imageUrl ? String(body.imageUrl).trim() : undefined;
+  const compareAtInput = hasKey('compareAtPriceUgx') ? body.compareAtPriceUgx : undefined;
+  const clearCompareAt = hasKey('compareAtPriceUgx') && (compareAtInput === '' || compareAtInput === null);
+  const compareAtPriceUgx = !hasKey('compareAtPriceUgx')
+    ? existingProduct.compareAtPriceUgx
+    : clearCompareAt ? undefined : Number(compareAtInput);
+  const formStockStatus = String(body.stockStatus ?? 'in_stock');
+  // body.imageUrl is ignored: the legacy free-text image field is retired and
+  // the stored value (legacy imports) is kept, never overwritten or wiped here.
+  const imageUrl = existingProduct.imageUrl;
   const active = body.active !== false;
   const approvalStatus = String(body.approvalStatus ?? 'draft');
   const stockQuantity = Number(body.stockQuantity ?? 0);
@@ -488,9 +542,27 @@ routes.put('/:id', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) =
   // The owner's rule: the site sells at the retail price (Price D) and no
   // discount may take the product below its own floor (Price A). The floor is
   // optional; a product without one is simply not discountable.
-  const tiers = parsePriceTiers(body, priceUgx);
+  // A tier key left out of the request keeps its stored value; omission
+  // never wipes Price A/B/C.
+  const tiersBefore = await registry.productRepo.getPriceTiers(productId).catch(() => null);
+  const tiers = parsePriceTiers(tiersWithStoredDefaults(body, tiersBefore), priceUgx);
   if (!tiers.ok) {
     return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: tiers.message } }, 400);
+  }
+  // Repricing is a pricing decision: the retail price and the floor (which
+  // caps every discount) need a pricing permission, as rule changes under
+  // /admin/pricing do. Saves that leave the money alone need only
+  // products.write — the form resubmits unchanged values.
+  const pricingChanges = changedPricingFields(
+    { retailPriceUgx: existingProduct.priceUgx, tiers: tiersBefore },
+    { retailPriceUgx: priceUgx, tiers: tiers.value },
+  );
+  const actorPermissions: string[] = ((c.get('user') as any)?.permissions ?? []) as string[];
+  if (pricingChanges.length > 0 && !actorPermissions.includes(PERMISSIONS.PRICING_MANAGE) && !actorPermissions.includes(PERMISSIONS.PRICING_APPROVE)) {
+    return c.json({
+      success: false,
+      error: { code: 'PRICING_PERMISSION_REQUIRED', message: `Changing the ${pricingChanges.join(', ')} needs a pricing permission (pricing.manage). Nothing was saved.` },
+    }, 403);
   }
   if (compareAtPriceUgx !== undefined && (!Number.isInteger(compareAtPriceUgx) || compareAtPriceUgx < 0 || compareAtPriceUgx > MAX_PRICE_UGX)) {
     return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Compare-at price must be a whole number of shillings, or left empty.' } }, 400);
@@ -498,11 +570,30 @@ routes.put('/:id', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) =
   if (stockQuantity < 0 || !Number.isInteger(stockQuantity)) {
     return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Stock quantity must be a non-negative integer.' } }, 400);
   }
-  if (!['in_stock', 'low_stock', 'out_of_stock', 'pre_order'].includes(stockStatus)) {
+  if (!['in_stock', 'low_stock', 'out_of_stock', 'pre_order'].includes(formStockStatus)) {
     return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid stock status.' } }, 400);
   }
   if (!['draft', 'approved', 'rejected'].includes(approvalStatus)) {
     return c.json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid approval status.' } }, 400);
+  }
+  // The stock the product will hold after this save: unchanged when the editor
+  // left the quantity alone.
+  const resultingStock = expectedStockQuantity !== null && stockQuantity === expectedStockQuantity ? existingProduct.stockQuantity : stockQuantity;
+  // save() writes stock_status after the stock write; the form's dropdown used
+  // to overwrite the derived value, so 0 units stayed "in stock".
+  const stockStatus = effectiveStockStatus(formStockStatus as any, resultingStock);
+  // Approving or making live is publishing: PRODUCTS_PUBLISH and stock, as on the bulk path.
+  const publication = checkPublicationChange({
+    before: { approvalStatus: existingProduct.approvalStatus, active: existingProduct.active },
+    after: { approvalStatus: approvalStatus as 'draft' | 'approved' | 'rejected', active },
+    canPublish: ((c.get('user') as any)?.permissions ?? []).includes(PERMISSIONS.PRODUCTS_PUBLISH),
+    stockQuantity: resultingStock,
+    stockStatus,
+    requireStock: body.requireStock !== false,
+    priceUgx,
+  });
+  if (!publication.ok) {
+    return c.json({ success: false, error: { code: publication.code, message: publication.message } }, publication.status);
   }
 
   try {
@@ -591,7 +682,7 @@ routes.put('/:id', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) =
       priceUgx,
       compareAtPriceUgx,
       stockStatus as any,
-      imageUrl || existingProduct.imageUrl,
+      imageUrl,
       existingProduct.features,
       existingProduct.warrantyPeriod,
       existingProduct.verificationEligible,
@@ -599,13 +690,16 @@ routes.put('/:id', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) =
       approvalStatus as any,
       stockStatus === 'pre_order',
       priceUgx > 0,
-      !!(imageUrl || existingProduct.imageUrl),
+      !!imageUrl,
       stockQuantity,
       existingProduct.specifications
     );
 
     // Save entity through repository orchestration
     await registry.productRepo.updateProductProperties(productEntity, categoryId, tiers.value);
+    if (clearSubcategory || clearCompareAt) {
+      await registry.productRepo.clearProductFields(productId, { subcategory: clearSubcategory, compareAtPrice: clearCompareAt });
+    }
     // Merchant-feed listing is opt-out; only an explicit boolean changes it.
     if (typeof body.isFeedEligible === 'boolean') await registry.productRepo.setFeedEligibility(productId, body.isFeedEligible);
 
@@ -645,9 +739,17 @@ routes.put('/:id', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) =
         slug: existingProduct.slug,
         priceUgx: existingProduct.priceUgx,
         stockQuantity: existingProduct.stockQuantity,
+        // Publication, availability and the discount floor: who approved,
+        // deactivated or lowered Price A must be answerable from the trail.
+        approvalStatus: existingProduct.approvalStatus,
+        active: existingProduct.active,
+        stockStatus: existingProduct.stockStatus,
+        priceTiers: tiersBefore,
       },
       newState: {
         name, sku, slug, priceUgx,
+        approvalStatus, active, stockStatus,
+        priceTiers: tiers.value,
         // What stock IS after the save: unchanged when the editor left it alone.
         stockQuantity: stockWrite.kind === 'SKIPPED' ? existingProduct.stockQuantity : stockResult.stock,
         stockWritten: stockWrite.kind === 'WRITE',
@@ -696,7 +798,7 @@ routes.put('/:id/media', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async
 // Files go through the media library first (type sniffed, deduplicated, renditions),
 // then ONE revision-checked slot-map write places them. A fifth file is refused
 // up front; a slot that is already occupied is refused unless `replace` is set.
-routes.post('/:id/media/upload', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), async (c) => {
+routes.post('/:id/media/upload', requirePermissions([PERMISSIONS.PRODUCTS_WRITE]), adminUploadLimit, async (c) => {
   const body = await c.req.parseBody({ all: true });
   const raw = body['files'];
   const files = (Array.isArray(raw) ? raw : raw ? [raw] : []).filter((f): f is File => f instanceof File && f.size > 0);

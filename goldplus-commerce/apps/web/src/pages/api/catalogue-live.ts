@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 import { apiBase } from '../../lib/api';
-import { fetchApprovedCatalogue } from '../../lib/catalogue';
+import { fetchApprovedCatalogueWithStatus } from '../../lib/catalogue';
 import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../../lib/storefrontDiscount';
 
 /**
@@ -21,8 +21,12 @@ import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../../li
 type Live = { price?: number; sale: number | null; availability?: unknown; imageUrl?: string };
 
 export const GET: APIRoute = async () => {
-  const catalogue = await fetchApprovedCatalogue(apiBase);
-  if (catalogue.length === 0) {
+  // Only a COMPLETE read is an answer. A page-2 timeout returned a partial list
+  // marked success:true (cached 60 s), and the rail's id filter then hid every
+  // history item missing from it. Partial or failed = success:false, no-store.
+  const read = await fetchApprovedCatalogueWithStatus(apiBase);
+  const catalogue = read.products;
+  if (!read.complete || catalogue.length === 0) {
     return new Response(JSON.stringify({ success: false, data: {} }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },

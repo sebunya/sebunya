@@ -6,7 +6,9 @@ export class VerificationAttempt {
     public readonly isSuccessful: boolean,
     public readonly ipAddress: string | null,
     public readonly userAgent: string | null,
-    public readonly createdAt: Date
+    public readonly createdAt: Date,
+    /** The signed-in customer who scanned, when there is one (0085). Anonymous scans stay null. */
+    public readonly userId: string | null = null,
   ) {}
 
   public static record(
@@ -15,7 +17,8 @@ export class VerificationAttempt {
     productId: string | null,
     isSuccessful: boolean,
     ipAddress: string | null,
-    userAgent: string | null
+    userAgent: string | null,
+    userId: string | null = null,
   ): VerificationAttempt {
     return new VerificationAttempt(
       id,
@@ -24,7 +27,8 @@ export class VerificationAttempt {
       isSuccessful,
       ipAddress,
       userAgent,
-      new Date()
+      new Date(),
+      userId,
     );
   }
 }

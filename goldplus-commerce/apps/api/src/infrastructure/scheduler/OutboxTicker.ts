@@ -11,11 +11,23 @@ import { deliverOne, recoverExpiredLeases, routeBusinessEvents, scheduleDueDeliv
 async function runMeasurementDelivery() {
   const routed = await routeBusinessEvents();
   const leases = await recoverExpiredLeases();
-  const { QueueService, QUEUES } = await import('../queues/QueueService');
+  const { QueueService, QUEUES, QueueUnavailableError } = await import('../queues/QueueService');
   const qs = QueueService.getInstance();
-  const queueUp = !!qs.getQueue(QUEUES.MEASUREMENT_DELIVERY);
+  // isReady, not getQueue: getQueue returns a queue whenever the connection object
+  // exists, so the inline path below could never run and a Redis outage hung the
+  // whole tick (and with it notifications and checkout side effects).
+  let queueUp = qs.isReady();
   const scheduled = await scheduleDueDeliveries(async (jobId, data) => {
-    if (queueUp) { await qs.enqueue(QUEUES.MEASUREMENT_DELIVERY, 'deliver', data, jobId); return true; }
+    if (queueUp) {
+      try {
+        await qs.enqueue(QUEUES.MEASUREMENT_DELIVERY, 'deliver', data, jobId);
+        return true;
+      } catch (err) {
+        if (!(err instanceof QueueUnavailableError)) throw err;
+        queueUp = false; // Redis went away mid-cycle: the rest go inline too.
+        logger.warn({ jobId }, '[OutboxTicker] measurement queue unavailable; delivering inline');
+      }
+    }
     await deliverOne(data.deliveryId, data.enqueueGeneration);
     return true;
   });

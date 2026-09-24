@@ -11,8 +11,12 @@ if (!token) {
 // Wave 2E-2: governed stock adjustment — the first write on this surface. Reason
 // mandatory; the backend refuses negatives and anything below reserved holds, and
 // its exact refusal is shown.
+// POST → redirect → GET: the result travels in the query string, so refreshing
+// the result page never re-sends the form (an "adjust by +10" used to be
+// applied again, and audited as a second deliberate adjustment).
 let adjustNotice: { kind: "success" | "error"; text: string } | null = null;
 if (Astro.request.method === 'POST') {
+  let target = '/admin/inventory';
   try {
     const form = await Astro.request.formData();
     const res = await fetch(`${apiBase}/admin/inventory/adjust`, {
@@ -26,12 +30,24 @@ if (Astro.request.method === 'POST') {
       }),
     });
     const json = await res.json().catch(() => null);
-    adjustNotice = res.ok && json?.success
-      ? { kind: 'success', text: `Stock adjusted: ${json.data.before} → ${json.data.after} (reserved ${json.data.reserved}). Audited.` }
-      : { kind: 'error', text: json?.error?.message || 'Adjustment refused.' };
+    const q = new URLSearchParams();
+    if (res.ok && json?.success) {
+      q.set('adjusted', `${Number(json.data.before)}-${Number(json.data.after)}-${Number(json.data.reserved)}`);
+    } else {
+      q.set('adjustError', String(json?.error?.message || 'Adjustment refused.').slice(0, 300));
+    }
+    target = `/admin/inventory?${q.toString()}`;
   } catch {
-    adjustNotice = { kind: 'error', text: 'Inventory service is unreachable right now.' };
+    target = `/admin/inventory?${new URLSearchParams({ adjustError: 'Inventory service is unreachable right now.' }).toString()}`;
   }
+  return Astro.redirect(target, 303);
+}
+{
+  const adjusted = Astro.url.searchParams.get('adjusted');
+  const adjustError = Astro.url.searchParams.get('adjustError');
+  const m = adjusted ? /^(-?\d+)-(-?\d+)-(-?\d+)$/.exec(adjusted) : null;
+  if (m) adjustNotice = { kind: 'success', text: `Stock adjusted: ${m[1]} → ${m[2]} (reserved ${m[3]}). Audited.` };
+  else if (adjustError) adjustNotice = { kind: 'error', text: adjustError.slice(0, 300) };
 }
 
 // Fetch authentic system data to render real inventory status
@@ -43,6 +59,8 @@ const products = result.items;
 interface Availability { productId: string; sku: string; name: string; stockOnHand: number; reserved: number; available: number; reorderPoint: number; lowStock: boolean; }
 const ledger = new Map<string, Availability>();
 let lowStock: Availability[] = [];
+// A failed low-stock read must never render the green "nothing below reorder point".
+let lowStockLoaded = false;
 const headers = { Authorization: `Bearer ${token}` };
 try {
   const ids = products.map((p: any) => p.id).filter(Boolean).slice(0, 200);
@@ -53,7 +71,7 @@ try {
   }
   const lowRes = await fetch(`${apiBase}/admin/inventory/low-stock?limit=200`, { headers });
   const lowJson = await lowRes.json().catch(() => null);
-  if (lowJson?.success) lowStock = lowJson.data;
+  if (lowJson?.success) { lowStock = lowJson.data; lowStockLoaded = true; }
 } catch { /* ledger enrichment is best-effort; base view still renders */ }
 ---
 
@@ -84,12 +102,8 @@ try {
       <div>
         <h2 class="text-2xl font-black text-brand-dark tracking-tight">Stock & Availability</h2>
         <p class="text-sm text-gray-500 mt-1 max-w-2xl">
-          Audit live item counts extracted directly from the product repository. This view is read-only; stock adjustments are made in the product editor.
+          Live item counts from the product repository. Adjust stock with the form above (or in the product editor); every change is audited with its reason.
         </p>
-      </div>
-
-      <div class="flex items-center gap-2">
-        <span class="text-[8px] border border-yellow-200 bg-yellow-50 text-yellow-700 font-black px-2.5 py-1 rounded uppercase tracking-widest">Read-Only View</span>
       </div>
     </div>
 
@@ -159,6 +173,7 @@ try {
       </table>
     </div>
 
+    {lowStockLoaded ? (
     <div class={`mt-6 rounded-xl p-4 text-center border ${lowStock.length > 0 ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
       <p class={`text-xs font-bold flex items-center justify-center gap-2 ${lowStock.length > 0 ? 'text-red-700' : 'text-green-700'}`}>
         {lowStock.length > 0
@@ -166,6 +181,11 @@ try {
           : 'No products below their reorder point. Available-to-promise is derived from the live inventory ledger (on hand − reserved).'}
       </p>
     </div>
+    ) : (
+    <div class="mt-6 rounded-xl p-4 text-center border bg-amber-50 border-amber-200" role="status">
+      <p class="text-xs font-bold text-amber-800">Low-stock list unavailable — the inventory ledger could not be read, so nothing is known about reorder points right now.</p>
+    </div>
+    )}
 
   </div>
 </AdminLayout>

@@ -135,6 +135,10 @@ export interface IDeviceCatalogueRepository {
   setDeviceStatus(id: string, status: 'ACTIVE' | 'ARCHIVED', actorId: string): Promise<DeviceRecord | null>;
   /** Compatibility product ids on a device (for the merge preview). */
   deviceMappingProducts(deviceId: string): Promise<string[]>;
+  /** Claims on a device that are not ARCHIVED (an archived claim does not keep a device alive). */
+  liveClaimCount(deviceId: string): Promise<number>;
+  /** ACTIVE devices under a brand or a series. */
+  activeDeviceCount(scope: { brandId: string } | { seriesId: string }): Promise<number>;
   openRequestsForDevice(deviceId: string): Promise<number>;
   /** Move mappings, carry aliases, mark source MERGED, repoint requests. One transaction. */
   merge(sourceId: string, targetId: string, actorId: string, carryAliases: string[]): Promise<{ moved: number; archivedDuplicates: number }>;

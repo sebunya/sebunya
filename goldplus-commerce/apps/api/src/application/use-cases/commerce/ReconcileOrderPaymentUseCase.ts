@@ -240,9 +240,22 @@ export class ReconcileOrderPaymentUseCase {
     );
 
     if (!advanced) {
+      // The callback and the IPN routinely arrive together: both read
+      // PAYMENT_STARTED, one advances, and the loser lands here. That is the
+      // normal duplicate, not a question for a person — so look again before
+      // raising PAYMENT_REVIEW_REQUIRED (an error-level log on a correctly
+      // paid order trains operators to ignore the one line about money).
+      const now = await this.deps.idempotency.findByOrderId(orderId).catch(() => null);
+      if (now && (now.stage === 'ORDER_CONFIRMED' || now.stage === 'COMPLETED')) {
+        return {
+          kind: 'ALREADY_SETTLED',
+          orderId,
+          stage: now.stage as CheckoutSagaStage,
+          reason: 'ALREADY_CONFIRMED',
+        };
+      }
       // The stage was not one a settlement may leave — a callback for a checkout that
-      // never reached payment, or one another process settled between the read and here.
-      // Either way this process must not claim the settlement.
+      // never reached payment. This process must not claim the settlement.
       this.deps.observer?.onReviewRequired(orderId, traceId, 'STAGE_NOT_SETTLEABLE');
       return {
         kind: 'REVIEW_REQUIRED',

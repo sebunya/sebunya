@@ -93,8 +93,11 @@ export class DrizzleLoyaltyCompletionRepository implements ILoyaltyCompletionRep
   }
 
   async lifetimeIssuedPoints(): Promise<number> {
+    // Every point minted, not only order earns: referral, birthday, scan,
+    // mission and draw credits are 'adjustment' rows and are liability too.
     const [row] = (await db.execute(sql`
-      select coalesce(sum(points), 0)::bigint as issued from loyalty_ledger_entries where type = 'earn'`)) as unknown as Array<{ issued: string | number }>;
+      select coalesce(sum(points), 0)::bigint as issued from loyalty_ledger_entries
+      where points > 0 and type in ('earn', 'adjustment')`)) as unknown as Array<{ issued: string | number }>;
     return Number(row?.issued ?? 0);
   }
 
@@ -219,7 +222,9 @@ export class DrizzleLoyaltyCompletionRepository implements ILoyaltyCompletionRep
       join loyalty_accounts a on a.id = e.account_id
       where e.type = 'earn' and e.expires_at is not null
         and e.expires_at > ${now} and e.expires_at <= ${horizon}
-        and not exists (select 1 from loyalty_ledger_entries r where r.type in ('reversal','expiry') and r.reversed_entry_id = e.id)`)) as unknown as Array<
+        -- A partly clawed-back earn still holds points that will expire; the
+        -- sweep warns about its FIFO remainder (zero for a full clawback).
+        and not exists (select 1 from loyalty_ledger_entries r where r.type = 'expiry' and r.reversed_entry_id = e.id)`)) as unknown as Array<
       Record<string, unknown> & { user_id: string }
     >;
     return rows.map((r) => ({
@@ -269,7 +274,7 @@ export class DrizzleLoyaltyCompletionRepository implements ILoyaltyCompletionRep
   async ledgerTotals() {
     const [row] = (await db.execute(sql`
       select
-        coalesce(sum(points) filter (where type = 'earn'), 0)::bigint as issued,
+        coalesce(sum(points) filter (where points > 0 and type in ('earn', 'adjustment')), 0)::bigint as issued,
         coalesce(sum(-points) filter (where type = 'redeem'), 0)::bigint as redeemed,
         coalesce(sum(-points) filter (where type = 'expiry'), 0)::bigint as expired,
         coalesce(sum(-points) filter (where type = 'reversal' and points < 0), 0)::bigint as clawed,

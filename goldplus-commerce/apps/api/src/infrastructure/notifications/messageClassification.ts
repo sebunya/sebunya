@@ -92,6 +92,18 @@ const TRANSACTIONAL_TEMPLATES = new Set([
   // customer asked for this code seconds ago; its lawful basis is that request,
   // not a marketing opt-in.
   'PHONE_VERIFICATION',
+  // Loyalty account notices (owner, 2026-09-24; docs/loyalty-decisions.md:
+  // "warnings are transactional", decision #15). They report the customer's
+  // own balance: points their delivered order earned, points about to expire,
+  // a redemption on their order, their tier. Left unclassified they fell to
+  // MARKETING and were refused without a marketing opt-in, so points expired
+  // with no warning while the sweep recorded the warning as sent. Genuine
+  // promotions stay MARKETING and stay consent-gated.
+  'LOYALTY_POINTS_EARNED',
+  'LOYALTY_EXPIRY_WARNING',
+  'LOYALTY_REDEMPTION_CONFIRMED',
+  'LOYALTY_REDEMPTION_REVERSED',
+  'LOYALTY_TIER_CHANGED',
 ]);
 
 /**

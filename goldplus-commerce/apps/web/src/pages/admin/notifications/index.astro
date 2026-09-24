@@ -34,7 +34,11 @@ try {
     }
   });
 
-  if (res.status === 401 || res.status === 403) {
+  // Only an expired session signs out. The nav lists Notifications for every
+  // operator, and five baseline roles lack notifications.read: clearing the
+  // cookie on 403 signed them out, and signing back in returned them here.
+  if (res.status === 403) return Astro.redirect(`/admin/not-permitted?from=${encodeURIComponent(Astro.url.pathname)}&need=notifications.read`, 303);
+  if (res.status === 401) {
     Astro.response.headers.set('Set-Cookie', clearSessionCookie());
     return Astro.redirect(`/admin/login?returnTo=${encodeURIComponent(Astro.url.pathname)}`, 303);
   }

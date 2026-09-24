@@ -4,6 +4,7 @@ import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
 import { Registry } from '../../../../infrastructure/Registry';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
+import { adminUploadLimit } from '../../middleware/uploadLimit';
 import { BatteryOperationError } from '../../../../application/use-cases/batteries/BatteryOperationError';
 
 /**
@@ -61,19 +62,20 @@ async function readUpload(c: Ctx) {
   };
 }
 
-routes.post('/sheets', requirePermissions([PERMISSIONS.PIM_CREATE]), async (c) => {
+routes.post('/sheets', requirePermissions([PERMISSIONS.PIM_CREATE]), adminUploadLimit, async (c) => {
   const upload = await readUpload(c);
   if (!upload) return bad(c, 'BAD_INPUT', 'Attach a .xlsx or .csv file as "file".');
   return run(c, async () => ({ sheets: uc().listSheetNames(upload.buffer, upload.file.name) }));
 });
 
-routes.post('/', requirePermissions([PERMISSIONS.PIM_CREATE]), async (c) => {
+routes.post('/', requirePermissions([PERMISSIONS.PIM_CREATE]), adminUploadLimit, async (c) => {
   const upload = await readUpload(c);
   if (!upload) return bad(c, 'BAD_INPUT', 'Attach a .xlsx or .csv file as "file" with importType and name.');
   return run(c, () => uc().upload({ importType: upload.importType, name: upload.name, filename: upload.file.name, mime: upload.file.type, buffer: upload.buffer, sheetName: upload.sheetName, actorId: actor(c) }), 201);
 });
 
-routes.get('/:id', requirePermissions([PERMISSIONS.PIM_READ]), (c) => run(c, () => uc().detail(param(c, 'id'))));
+// Supplier cost in the rows is withheld unless the caller may read costs.
+routes.get('/:id', requirePermissions([PERMISSIONS.PIM_READ]), (c) => run(c, () => uc().detail(param(c, 'id'), has(c, PERMISSIONS.PRODUCT_COSTS_READ))));
 
 routes.post('/:id/mapping', requirePermissions([PERMISSIONS.PIM_MAP]), async (c) => {
   const b = await body(c, version.extend({ mapping: z.record(z.string(), z.string().max(120)), templateId: z.string().uuid().nullable().optional(), saveAsTemplate: z.string().trim().max(120).nullable().optional() }));
@@ -108,7 +110,7 @@ routes.post('/:id/approval', requirePermissions([PERMISSIONS.PIM_APPROVE]), asyn
 routes.post('/:id/apply', requirePermissions([PERMISSIONS.PIM_APPLY]), async (c) => {
   const b = await body(c, version);
   if (!b.ok) return b.response;
-  return run(c, () => uc().apply({ id: param(c, 'id'), expectedVersion: b.data.expectedVersion, actorId: actor(c), canRecordCost: has(c, PERMISSIONS.PRODUCT_COSTS_MANAGE) }));
+  return run(c, () => uc().apply({ id: param(c, 'id'), expectedVersion: b.data.expectedVersion, actorId: actor(c), canRecordCost: has(c, PERMISSIONS.PRODUCT_COSTS_MANAGE), canPrice: has(c, PERMISSIONS.PRICING_MANAGE) || has(c, PERMISSIONS.PRICING_APPROVE) }));
 });
 
 routes.post('/:id/rollback', requirePermissions([PERMISSIONS.PIM_ROLLBACK]), async (c) => {
@@ -119,7 +121,7 @@ routes.post('/:id/rollback', requirePermissions([PERMISSIONS.PIM_ROLLBACK]), asy
 
 routes.get('/:id/error-report', requirePermissions([PERMISSIONS.PIM_READ]), async (c) => {
   try {
-    const report = await uc().errorReport(param(c, 'id'));
+    const report = await uc().errorReport(param(c, 'id'), has(c, PERMISSIONS.PRODUCT_COSTS_READ));
     c.header('Content-Type', 'text/csv; charset=utf-8');
     c.header('Content-Disposition', `attachment; filename="${report.filename}"`);
     return c.body(report.csv);

@@ -117,7 +117,9 @@ describe('a placed fee cannot change for a reason outside the list — the test 
 });
 
 describe('absorption below the threshold is silent to the customer, never to us', () => {
-  it('applies the fee immediately and contacts nobody', async () => {
+  it('an absorbed INCREASE is paid by GoldPlus: the order total does not move and nobody is contacted', async () => {
+    // Owner decision 2026-09-24: "absorbed" means we pay. It used to raise the
+    // customer's delivery fee and total silently, and the rider collected it.
     const r = await apply().execute({
       orderId: 'order-1',
       newFeeUgx: 8000,
@@ -129,9 +131,19 @@ describe('absorption below the threshold is silent to the customer, never to us'
     if (!r.ok) return;
     expect(r.variance.disposition).toBe('absorbed');
     expect(r.variance.agreement).toBe('not_required');
-    expect(repo.feeApplications).toEqual([{ orderId: 'order-1', newFeeUgx: 8000 }]);
+    expect(r.variance.deltaUgx).toBe(500);
+    expect(repo.feeApplications).toEqual([]);
+    expect(repo.order.deliveryFeeUgx).toBe(7500);
     const entry = audit.entries[0];
     expect(entry.newState.customerContacted).toBe(false);
+    expect(entry.newState.feeApplied).toBe(false);
+    expect(entry.newState.absorbedByGoldPlusUgx).toBe(500);
+  });
+
+  it('a REDUCTION is applied to the order at once', async () => {
+    await apply().execute({ orderId: 'order-1', newFeeUgx: 6000, reason: 'AREA_MISMATCH_ON_RESOLUTION', note: null, actorId: 'ops-1' });
+    expect(repo.feeApplications).toEqual([{ orderId: 'order-1', newFeeUgx: 6000 }]);
+    expect(audit.entries[0].newState.feeApplied).toBe(true);
   });
 
   it('writes old, new, reason, actor, timestamp and agreement to the audit', async () => {
@@ -145,16 +157,18 @@ describe('absorption below the threshold is silent to the customer, never to us'
     const e = audit.entries[0];
     expect(e.action).toBe('DELIVERY_VARIANCE_APPLIED');
     expect(e.previousState.deliveryFeeUgx).toBe(7500); // old
-    expect(e.newState.deliveryFeeUgx).toBe(8000); // new
+    expect(e.newState.varianceFeeUgx).toBe(8000); // new
+    expect(e.newState.deliveryFeeUgx).toBe(7500); // what the order carries: absorbed, so unchanged
     expect(e.newState.reason).toBe('ADDRESS_CHANGED_BY_CUSTOMER'); // reason
     expect(e.actorId).toBe('ops-7'); // actor
     expect(typeof e.newState.appliedAt).toBe('string'); // timestamp
     expect(e.newState.agreement).toBe('not_required'); // agreement
   });
 
-  it('records the final fee on the capture, so calibration sees what was charged', async () => {
+  it('records the fee actually charged on the capture, so calibration sees what was charged', async () => {
     await apply().execute({ orderId: 'order-1', newFeeUgx: 8000, reason: 'ACCESS_MODE_DIFFERENT', note: null, actorId: 'o' });
-    expect(captures.rows[0]).toMatchObject({ orderId: 'order-1', finalFeeUgx: 8000, varianceReason: 'ACCESS_MODE_DIFFERENT' });
+    // Absorbed: the customer is still charged the fee they agreed at checkout.
+    expect(captures.rows[0]).toMatchObject({ orderId: 'order-1', finalFeeUgx: 7500, varianceReason: 'ACCESS_MODE_DIFFERENT' });
   });
 });
 

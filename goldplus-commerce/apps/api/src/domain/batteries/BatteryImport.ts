@@ -197,6 +197,8 @@ export interface CatalogueContext {
   resolveBattery(code: string): { productId: string; canonicalCode: string; lifecycle: string } | { ambiguous: string[] } | null;
   /** Existing compatibility for (product, device identity) if any. */
   findClaim(productId: string, device: { brand: string; model: string; modelNumber: string | null; variant: string | null }): { id: string; workflowStatus: string } | null;
+  /** True when the row names a device someone ARCHIVED: apply would refuse a claim on it. */
+  deviceArchived?(productId: string, device: { brand: string; model: string; modelNumber: string | null; variant: string | null }): boolean;
   locationExists(code: string): boolean;
   /** movement already applied with this reference for this product */
   receiptAlreadyApplied(productId: string, reference: string | null, quantity: number): boolean;
@@ -384,6 +386,13 @@ export function normaliseImportRow(
       const modelPending = PENDING.test(deviceModelRaw) || /device code|marketing name pending/i.test(deviceModelRaw) || /device code/i.test(deviceSeries ?? '');
       const deviceModel = modelPending ? null : deviceModelRaw || null;
       if (!deviceModel && !modelNumber) errors.push('A marketing name or an exact model number is required.');
+      // The device catalogue's own limits, checked here so the dry run refuses
+      // what apply would refuse (after creating the brand, which then stayed live).
+      if (deviceBrand.length > 60) errors.push('Device brand must be 60 characters or fewer.');
+      if (deviceSeries && deviceSeries.length > 80) errors.push('Series must be 80 characters or fewer.');
+      if ((deviceModel ?? modelNumber ?? '').length > 120) errors.push('Marketing name must be 120 characters or fewer.');
+      if (modelNumber && modelNumber.length > 80) errors.push('Model number must be 80 characters or fewer.');
+      if (variant && variant.length > 80) errors.push('Variant must be 80 characters or fewer.');
 
       // "A20/A30/A50" is ONE battery in the catalogue — its own code contains the
       // slash. A reference is a compound line only when it does NOT name exactly
@@ -416,7 +425,9 @@ export function normaliseImportRow(
       let action: ProposedAction = 'CREATE_CLAIM';
       if (battery && !('ambiguous' in battery)) {
         const existing = ctx.findClaim(battery.productId, { brand: deviceBrand, model: deviceModel ?? modelNumber ?? '', modelNumber, variant });
-        if (existing && existing.workflowStatus === 'ARCHIVED') {
+        if (ctx.deviceArchived?.(battery.productId, { brand: deviceBrand, model: deviceModel ?? modelNumber ?? '', modelNumber, variant })) {
+          errors.push('This phone was archived in the device catalogue; restore it there first, or correct the row.');
+        } else if (existing && existing.workflowStatus === 'ARCHIVED') {
           action = 'SKIP_CLAIM';
           warnings.push('This fit was withdrawn by a person; the import does not bring it back. Restore it from the compatibility screen if that was a mistake.');
         } else if (existing && (existing.workflowStatus === 'READY' || existing.workflowStatus === 'ACTIVE')) {
@@ -424,7 +435,9 @@ export function normaliseImportRow(
           warnings.push('A verified or live claim already exists for this battery and device; the import does not change it.');
         } else if (existing) action = 'UPDATE_CLAIM';
       }
-      const rowKey = `${normaliseBatteryCode(batteryCode)}|${normaliseDeviceToken(deviceBrand)}|${normaliseDeviceToken(deviceModel ?? '')}|${normaliseDeviceToken(modelNumber ?? '')}|${normaliseDeviceToken(variant ?? '')}`;
+      // Keyed on the BATTERY (its product), not on how the cell spelled it, so
+      // the same pack written two ways ('GP-49FT', 'BL-49FT') is one duplicate.
+      const rowKey = `${batteryKey(battery, batteryCode)}|${normaliseDeviceToken(deviceBrand)}|${normaliseDeviceToken(deviceModel ?? '')}|${normaliseDeviceToken(modelNumber ?? '')}|${normaliseDeviceToken(variant ?? '')}`;
       const value = {
         batteryProductId: battery && !('ambiguous' in battery) ? battery.productId : null,
         batteryCode,
@@ -461,7 +474,7 @@ export function normaliseImportRow(
       if (productId && quantity && ctx.receiptAlreadyApplied(productId, supplierReference, quantity)) {
         hold = `A receipt of ${quantity} for this battery with reference "${supplierReference ?? 'none'}" was already applied; excluded to avoid a duplicate.`;
       }
-      const rowKey = `${normaliseBatteryCode(code)}|${(supplierReference ?? '').toUpperCase()}|${quantity ?? ''}`;
+      const rowKey = `${batteryKey(battery, code)}|${(supplierReference ?? '').toUpperCase()}|${quantity ?? ''}`;
       const value = { productId, code, quantity, unitCostUgx, supplierName, supplierReference, locationCode, notes: get('notes') || null };
       return { rowKey, action: errors.length ? 'INVALID' : hold ? 'HOLD_REVIEW' : 'RECEIPT', value: errors.length ? null : value, warnings, errors, hold };
     }
@@ -481,7 +494,7 @@ export function normaliseImportRow(
       const system = productId ? ctx.currentStock(productId) : null;
       if (productId && system != null && counted != null && counted !== system && !reason) errors.push(`Count ${counted} differs from the system ${system}; a reason is required.`);
       if (productId && system != null && counted === system) warnings.push('Count matches the system; a zero-difference count movement will be recorded.');
-      const rowKey = `${normaliseBatteryCode(code)}|COUNT`;
+      const rowKey = `${batteryKey(battery, code)}|COUNT`;
       const value = { productId, code, countedQuantity: counted, systemQuantity: system, reason, locationCode };
       return { rowKey, action: errors.length ? 'INVALID' : 'COUNT', value: errors.length ? null : value, warnings, errors, hold: null };
     }
@@ -495,9 +508,14 @@ export function normaliseImportRow(
       if (code && !battery) errors.push(`No battery for "${code}".`);
       if (battery && 'ambiguous' in battery) errors.push(`"${code}" matches more than one battery.`);
       const productId = battery && !('ambiguous' in battery) ? battery.productId : null;
-      return { rowKey: `${normaliseBatteryCode(code)}|PRICE`, action: errors.length ? 'INVALID' : 'PRICE', value: errors.length ? null : { productId, code, retailPriceUgx: price }, warnings, errors, hold: null };
+      return { rowKey: `${batteryKey(battery, code)}|PRICE`, action: errors.length ? 'INVALID' : 'PRICE', value: errors.length ? null : { productId, code, retailPriceUgx: price }, warnings, errors, hold: null };
     }
   }
+}
+
+/** The duplicate-detection identity of a row's battery: its product when it resolves, else the normalised cell. */
+function batteryKey(battery: ReturnType<CatalogueContext['resolveBattery']> | null, raw: string): string {
+  return battery && !('ambiguous' in battery) ? `P:${battery.productId}` : normaliseBatteryCode(raw);
 }
 
 /** Duplicate row keys inside one file are reported on every duplicate after the first. */

@@ -73,8 +73,9 @@ describe('the same-day line is true for where the order is going', () => {
   it('names the area until a district is chosen, and never promises "today" outside it', () => {
     const copy = sameDayCutoffCopy(open);
     expect(sameDayLineFor(copy, null)).toBe('Kampala & Wakiso: order in 3h 5m for same-day delivery');
-    expect(sameDayLineFor(copy, 'Kampala')).toBe('Order in 3h 5m and this arrives today');
-    expect(sameDayLineFor(copy, 'wakiso')).toBe('Order in 3h 5m and this arrives today');
+    // When it goes OUT: no area has observed data behind a same-day arrival.
+    expect(sameDayLineFor(copy, 'Kampala')).toBe('Order in 3h 5m and this goes out today');
+    expect(sameDayLineFor(copy, 'wakiso')).toBe('Order in 3h 5m and this goes out today');
     const arua = sameDayLineFor(copy, 'Arua');
     expect(arua).not.toMatch(/today/i);
     expect(arua).toMatch(/Kampala & Wakiso/);
@@ -95,7 +96,7 @@ describe('the same-day line is true for where the order is going', () => {
   it('the cart and checkout both use it, and the checkout switches it on the chosen district', () => {
     const cart = read('apps/web/src/pages/cart.astro');
     const checkout = read('apps/web/src/pages/checkout.astro');
-    expect(cart).toMatch(/sameDayCutoffCopy\(cut\)\.scoped/);
+    expect(cart).toMatch(/sameDayCutoffCopy\(cut, \{ now: new Date\(\), closedDays: bizCart\.closedDays \}\)\.scoped/);
     expect(cart).not.toMatch(/and this arrives today`/);
     expect(checkout).toMatch(/data-in-area=\{sameDayCopy\.inArea\}/);
     expect(checkout).toMatch(/setCutoffFor\(district\)/);
@@ -119,7 +120,9 @@ describe('validation points at the field it is about', () => {
   it('the page renders a focusable summary that links to each field', () => {
     const checkout = read('apps/web/src/pages/checkout.astro');
     expect(checkout).toMatch(/id="checkout-error-summary" role="alert" tabindex="-1"/);
-    expect(checkout).toMatch(/getElementById\('checkout-error-summary'\)\?\.focus\(\)/);
+    // The summary first; a refusal with no field (price changed, service down)
+    // focuses its feedback box instead of leaving focus on the body.
+    expect(checkout).toMatch(/\(document\.getElementById\('checkout-error-summary'\) \?\? document\.querySelector<HTMLElement>\('#checkout-feedback\[data-error\]'\)\)\?\.focus\(\)/);
     expect(checkout).toMatch(/errors\.phone = PHONE_FORMAT_MESSAGE/);
     expect(checkout).toMatch(/errorMessage=\{errors\.email\}/);
   });

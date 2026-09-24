@@ -6,6 +6,8 @@ import { ApiResponse, ProductPublicDto } from '@goldplus/shared';
 
 const routes = new Hono<{ Variables: { requestId: string } }>();
 
+const PRODUCT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 routes.get('/', async (c) => {
   const registry = Registry.getInstance();
   const useCase = new ListPublicProductsUseCase(registry.productRepo);
@@ -19,7 +21,13 @@ routes.get('/', async (c) => {
 
   const limit = limitParam ? Number.parseInt(limitParam, 10) : undefined;
   const offset = offsetParam ? Number.parseInt(offsetParam, 10) : undefined;
-  const ids = idsParam ? idsParam.split(',').map((i) => i.trim()).filter(Boolean) : undefined;
+  // Product ids are UUIDs. Anything else reached a uuid-typed column and the
+  // database answered 500 (/compare?ids=abc). Asked for ids, none valid: an
+  // empty list, never the unfiltered catalogue.
+  const ids = idsParam ? idsParam.split(',').map((i) => i.trim()).filter((i) => PRODUCT_ID.test(i)) : undefined;
+  if (idsParam !== undefined && ids !== undefined && ids.length === 0) {
+    return c.json({ success: true, data: [], meta: { requestId: c.get('requestId') as string | undefined } } satisfies ApiResponse<ProductPublicDto[]>);
+  }
 
   const dtos = await useCase.execute({
     limit: Number.isFinite(limit) ? (limit as number) : undefined,

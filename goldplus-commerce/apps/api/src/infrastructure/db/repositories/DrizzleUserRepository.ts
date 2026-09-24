@@ -43,6 +43,15 @@ export class DrizzleUserRepository implements IUserRepository {
     return rowToUser(rows[0]);
   }
 
+  async phoneInUse(phoneE164: string): Promise<boolean> {
+    const e164 = (phoneE164 ?? '').trim();
+    if (!/^\+256\d{9}$/.test(e164)) return false;
+    const national = e164.slice(4);
+    const candidates = [e164, `256${national}`, `0${national}`, national];
+    const row = await db.query.users.findFirst({ where: inArray(users.phone, candidates), columns: { id: true } });
+    return !!row;
+  }
+
   async invalidateSessionsAfter(userId: string, at: Date): Promise<void> {
     if (!userId) return;
     await db.update(users).set({ sessionsInvalidatedAfter: at }).where(eq(users.id, userId));

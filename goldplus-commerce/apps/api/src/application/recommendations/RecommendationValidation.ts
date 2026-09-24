@@ -97,6 +97,82 @@ export function validateMetadata(metadata: unknown): Record<string, unknown> {
   return record;
 }
 
+/**
+ * What an anonymous browser may report through the PUBLIC event route.
+ *
+ * The route used to accept every RECOMMENDATION_EVENT_TYPES value and return
+ * the caller's body as-is, so an anonymous script could file PRODUCT_PURCHASED
+ * (trending weight 10) under any customerId with its own dedupeKey, and three
+ * requests switched on the 'Recently popular' badge for a product nobody had
+ * bought. Purchases, checkouts, quotes, support, identity and location facts
+ * are the SERVER's to record; the storefront never sends them.
+ */
+export const PUBLIC_RECOMMENDATION_EVENT_TYPES = [
+  "PAGE_VIEW",
+  "PRODUCT_VIEWED",
+  "CATEGORY_VIEWED",
+  "PRODUCT_SEARCHED",
+  "PRODUCT_ADDED_TO_CART",
+  "RECOMMENDATION_VIEWED",
+  "RECOMMENDATION_IMPRESSION",
+  "RECOMMENDATION_CLICKED",
+  "RECOMMENDATION_ADD_TO_CART",
+  "RECOMMENDATION_DISMISSED",
+] as const;
+
+/** Fields a public caller may supply. Identity, dedupe and schema are the server's. */
+const PUBLIC_EVENT_FIELDS = [
+  "eventType",
+  "anonymousId",
+  "browserId",
+  "sessionId",
+  "cartId",
+  "attributionId",
+  "impressionId",
+  "railRenderId",
+  "ruleId",
+  "appliedRuleIds",
+  "reasonCode",
+  "productId",
+  "categoryId",
+  "searchQuery",
+  "placement",
+  "recommendationProductId",
+  "sourceProductId",
+  "source",
+  "pagePath",
+  "referrer",
+  "utm",
+  "device",
+  "metadata",
+] as const;
+
+/**
+ * Reduces a public request body to what a browser may claim.
+ *
+ * customerId comes ONLY from a verified session (never the body); dedupeKey and
+ * schemaVersion are never accepted, because the database's dedupe key is the
+ * idempotency authority and a caller-chosen one defeats it.
+ */
+export function toPublicRecommendationEventInput(
+  input: unknown,
+  sessionCustomerId?: string | null,
+): Record<string, unknown> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new RecommendationEventValidationError("Invalid recommendation event payload.");
+  }
+  const body = input as Record<string, unknown>;
+  if (!(PUBLIC_RECOMMENDATION_EVENT_TYPES as readonly string[]).includes(String(body.eventType ?? ""))) {
+    throw new RecommendationEventValidationError("Invalid recommendation event type.");
+  }
+  const out: Record<string, unknown> = {};
+  for (const field of PUBLIC_EVENT_FIELDS) {
+    if (body[field] !== undefined) out[field] = body[field];
+  }
+  if (sessionCustomerId) out.customerId = sessionCustomerId;
+  return out;
+}
+
 export function validateTrackRecommendationEventInput(
   input: unknown,
   options?: {

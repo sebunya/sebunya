@@ -115,7 +115,7 @@ export class RecordPaymentWebhookUseCase {
       return {
         ok: false,
         code: 'MISSING_IDEMPOTENCY',
-        message: 'Either Idempotency-Key header or providerReference body field is required.',
+        message: 'The signed body must carry an idempotencyKey or a providerReference.',
       };
     }
 

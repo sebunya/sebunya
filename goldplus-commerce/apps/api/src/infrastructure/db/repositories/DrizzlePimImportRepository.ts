@@ -40,9 +40,16 @@ const rowRecord = (
   beforeSnapshot: row.beforeSnapshot as Record<string, unknown> | null,
   afterSnapshot: row.afterSnapshot as Record<string, unknown> | null,
 });
+type PriceTierSnapshot = { floorPrice: number | null; tierBPrice: number | null; tierCPrice: number | null } | null;
+/**
+ * `tiers` records the floor (Price A) and tiers B/C the import may overwrite,
+ * so a rollback can put them back. Sessions snapshotted before this carry no
+ * tier keys, and sameSnapshot / rollback only look at keys that are present.
+ */
 const snapshot = (
   product: typeof products.$inferSelect,
   retailPriceUgx: number | null,
+  tiers?: PriceTierSnapshot,
 ) => ({
   productId: product.id,
   sku: product.sku,
@@ -59,11 +66,26 @@ const snapshot = (
   approvalStatus: product.approvalStatus,
   stockQuantity: product.stockQuantity,
   retailPriceUgx,
+  ...(tiers !== undefined
+    ? { floorPriceUgx: tiers?.floorPrice ?? null, tierBPriceUgx: tiers?.tierBPrice ?? null, tierCPriceUgx: tiers?.tierCPrice ?? null }
+    : {}),
 });
 const sameSnapshot = (
   current: Record<string, unknown>,
   expected: Record<string, unknown>,
 ) => Object.keys(expected).every((key) => current[key] === expected[key]);
+
+/**
+ * The same comparison for the catalogue facts an import writes, ignoring
+ * stock: an import never writes stock, so a sale, receipt or count between
+ * preview and apply (or after apply) is not a conflict. It used to be one —
+ * any sale failed the apply, and afterwards blocked rolling back exactly the
+ * products customers were buying. The stored snapshots are unchanged.
+ */
+export const sameCatalogueSnapshot = (
+  current: Record<string, unknown>,
+  expected: Record<string, unknown>,
+) => Object.keys(expected).every((key) => key === "stockQuantity" || current[key] === expected[key]);
 
 export class DrizzlePimImportRepository implements IPimImportRepository {
   private async event(
@@ -163,9 +185,7 @@ export class DrizzlePimImportRepository implements IPimImportRepository {
   async catalogueLookup() {
     const productRows = await db.select().from(products);
     const priceRows = await db.select().from(productPrices);
-    const priceByProduct = new Map(
-      priceRows.map((row) => [row.productId, row.retailPrice]),
-    );
+    const priceByProduct = new Map(priceRows.map((row) => [row.productId, row]));
     return {
       categories: await db
         .select({
@@ -178,7 +198,7 @@ export class DrizzlePimImportRepository implements IPimImportRepository {
         id: row.id,
         sku: row.sku,
         slug: row.slug,
-        catalogueSnapshot: snapshot(row, priceByProduct.get(row.id) ?? null),
+        catalogueSnapshot: snapshot(row, priceByProduct.get(row.id)?.retailPrice ?? null, priceByProduct.get(row.id) ?? null),
       })),
     };
   }
@@ -450,7 +470,7 @@ export class DrizzlePimImportRepository implements IPimImportRepository {
             tierBPrice: data.tierBPriceUgx,
             tierCPrice: data.tierCPriceUgx,
           });
-          const after = snapshot(created, data.retailPriceUgx);
+          const after = snapshot(created, data.retailPriceUgx, { floorPrice: data.floorPriceUgx, tierBPrice: data.tierBPriceUgx, tierCPrice: data.tierCPriceUgx });
           await tx
             .update(pimImportRows)
             .set({
@@ -474,8 +494,8 @@ export class DrizzlePimImportRepository implements IPimImportRepository {
             existing.id !== row.targetProductId ||
             (slugOwner && slugOwner.id !== existing.id) ||
             !row.beforeSnapshot ||
-            !sameSnapshot(
-              snapshot(existing, price?.retailPrice ?? null),
+            !sameCatalogueSnapshot(
+              snapshot(existing, price?.retailPrice ?? null, price ?? null),
               row.beforeSnapshot,
             )
           )
@@ -526,7 +546,11 @@ export class DrizzlePimImportRepository implements IPimImportRepository {
               status: "APPLIED",
               beforeSnapshot: jsonb(before) as any,
               afterSnapshot: jsonb(
-                snapshot(updated, data.retailPriceUgx),
+                snapshot(updated, data.retailPriceUgx, {
+                  floorPrice: data.floorPriceUgx ?? price?.floorPrice ?? null,
+                  tierBPrice: data.tierBPriceUgx ?? price?.tierBPrice ?? null,
+                  tierCPrice: data.tierCPriceUgx ?? price?.tierCPrice ?? null,
+                }),
               ) as any,
               error: null,
             })
@@ -626,6 +650,7 @@ export class DrizzlePimImportRepository implements IPimImportRepository {
       (row) => row.status === "APPLIED",
     );
     let failed = 0;
+    const failedRowIds: string[] = [];
     for (const row of applied.reverse())
       try {
         await db.transaction(async (tx) => {
@@ -641,9 +666,13 @@ export class DrizzlePimImportRepository implements IPimImportRepository {
             .from(productPrices)
             .where(eq(productPrices.productId, productId))
             .limit(1);
+          // Rolling back a CREATE deletes the product, so a product that has
+          // since taken stock or sales must still refuse (stock compared);
+          // rolling back an UPDATE only restores catalogue facts.
+          const unchanged = row.action === "CREATE" ? sameSnapshot : sameCatalogueSnapshot;
           if (
             !current ||
-            !sameSnapshot(snapshot(current, price?.retailPrice ?? null), after)
+            !unchanged(snapshot(current, price?.retailPrice ?? null, price ?? null), after)
           )
             throw new Error("Product changed after import.");
           if (row.action === "CREATE") {
@@ -671,24 +700,43 @@ export class DrizzlePimImportRepository implements IPimImportRepository {
               await tx
                 .delete(productPrices)
                 .where(eq(productPrices.productId, productId));
-            else if (price)
-              await tx
-                .update(productPrices)
-                .set({ retailPrice: Number(before.retailPriceUgx) })
-                .where(eq(productPrices.productId, productId));
-            else
-              await tx.insert(productPrices).values({
-                productId,
-                retailPrice: Number(before.retailPriceUgx),
-              });
+            else {
+              // The tiers the import overwrote go back WITH the price, in one
+              // statement: restoring the price alone could leave the imported
+              // floor above it (the floor CHECK refused that) or leave a lower
+              // discount floor than the owner's own Price A.
+              const tiersBack = {
+                ...("floorPriceUgx" in before ? { floorPrice: before.floorPriceUgx as number | null } : {}),
+                ...("tierBPriceUgx" in before ? { tierBPrice: before.tierBPriceUgx as number | null } : {}),
+                ...("tierCPriceUgx" in before ? { tierCPrice: before.tierCPriceUgx as number | null } : {}),
+              };
+              if (price)
+                await tx
+                  .update(productPrices)
+                  .set({ retailPrice: Number(before.retailPriceUgx), ...tiersBack })
+                  .where(eq(productPrices.productId, productId));
+              else
+                await tx.insert(productPrices).values({
+                  productId,
+                  retailPrice: Number(before.retailPriceUgx),
+                  ...tiersBack,
+                });
+            }
           }
           await tx
             .update(pimImportRows)
             .set({ status: "ROLLED_BACK", error: null })
             .where(eq(pimImportRows.id, row.id));
         });
-      } catch {
+      } catch (error) {
         failed += 1;
+        failedRowIds.push(row.id);
+        // Say WHICH row did not roll back and why; the row stays APPLIED.
+        await db
+          .update(pimImportRows)
+          .set({ error: `Rollback failed: ${(error as Error).message}`.slice(0, 500) })
+          .where(eq(pimImportRows.id, row.id))
+          .catch(() => undefined);
       }
     return db.transaction(async (tx) => {
       const status = failed ? "ROLLBACK_PARTIAL" : "ROLLED_BACK";
@@ -711,6 +759,7 @@ export class DrizzlePimImportRepository implements IPimImportRepository {
         status,
         rolledBackRows: applied.length - failed,
         failedRows: failed,
+        failedRowIds,
       });
       return sessionRecord(row);
     });

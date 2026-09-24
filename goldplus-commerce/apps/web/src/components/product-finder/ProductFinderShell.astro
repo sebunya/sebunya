@@ -77,17 +77,28 @@ const { apiBase, compatibleWith = null } = Astro.props;
     }
   }
 
+  const optionClass = (selected: boolean) => `flex items-center min-h-11 p-4 border rounded-xl cursor-pointer transition-colors hover:border-brand-primary ${selected ? 'border-brand-primaryInk bg-brand-primary/5' : 'border-slate-200'}`;
+
   function renderQuestion() {
     const q = questions[currentStep];
-    qContainer.replaceChildren(text('h2', q.title, 'text-xl font-black tracking-tight text-gray-900 mb-4'));
+    // A fieldset whose legend is the question, so the radio group has a name.
+    const group = document.createElement('fieldset');
+    group.append(text('legend', q.title, 'text-xl font-black tracking-tight text-gray-900 mb-4'));
     const list = document.createElement('div'); list.className = 'space-y-3';
+    const labels: HTMLLabelElement[] = [];
     for (const option of q.options) {
-      const label = document.createElement('label'); label.className = `flex items-center min-h-11 p-4 border rounded-xl cursor-pointer transition-colors hover:border-brand-primary ${answers[q.id] === option ? 'border-brand-primaryInk bg-brand-primary/5' : 'border-slate-200'}`;
+      const label = document.createElement('label'); label.className = optionClass(answers[q.id] === option);
       const input = document.createElement('input'); input.type = 'radio'; input.name = q.id; input.value = option; input.checked = answers[q.id] === option;
-      input.addEventListener('change', () => { answers[q.id] = option; renderQuestion(); });
-      label.append(input, text('span', option, 'ml-3 font-medium text-gray-900')); list.append(label);
+      // Restyle in place. Re-rendering here destroyed the focused radio, so one
+      // arrow key dropped focus to <body> and the next did nothing.
+      input.addEventListener('change', () => {
+        answers[q.id] = option;
+        labels.forEach((l, i) => { l.className = optionClass(q.options[i] === option); });
+      });
+      label.append(input, text('span', option, 'ml-3 font-medium text-gray-900')); list.append(label); labels.push(label);
     }
-    qContainer.append(list);
+    group.append(list);
+    qContainer.replaceChildren(group);
     stepText.textContent = `Step ${currentStep + 1} of ${questions.length}`;
     progressBar.style.width = `${((currentStep + 1) / questions.length) * 100}%`;
     btnBack.classList.toggle('hidden', currentStep === 0);

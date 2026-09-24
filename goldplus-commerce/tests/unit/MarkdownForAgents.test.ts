@@ -91,13 +91,15 @@ describe('markdown content negotiation', () => {
     expect(docs).toContain('CATALOGUE_TTL_MS');
     expect(docs).toContain('catalogueInflight');
     // Every list document goes through the cache, never straight to the fetch.
-    const direct = docs.split('\n').filter((l) => l.includes('fetchApprovedCatalogue(apiBase)'));
+    // (WithStatus: a partial read must be known as partial before counts are stated.)
+    const direct = docs.split('\n').filter((l) => l.includes('fetchApprovedCatalogueWithStatus(apiBase)'));
     expect(direct.length).toBe(1);
   });
 
   it('carries the page\'s structured data and honours /shop filters', () => {
     const docs = read('apps/web/src/lib/agentDocuments.ts');
-    expect(docs).toContain('jsonLd: [productJsonLd(p)]');
+    // With the storefront discount, so the Offer quotes what the shop charges.
+    expect(docs).toContain('jsonLd: [productJsonLd(p, discount)]');
     expect(docs).toContain('hasMerchantReturnPolicy: merchantReturnPolicyJsonLd()');
     expect(docs).toContain('filterDiscoveryProducts(all, { search, category, subcategory }, taxonomy)');
     expect(docs).toContain('normalizeSortParam');
@@ -124,7 +126,8 @@ describe('markdown content negotiation', () => {
     expect(docs).toContain('async function blogIndexDocument(): Promise<AgentDocument> {');
     // Falling through is reserved for an outage or a record that does not
     // exist — never for "this page has no content today".
-    expect(docs).toContain('if (all.length === 0) return null;');
+    // A failed OR partial catalogue read falls through; an empty blog does not.
+    expect(docs).toContain('if (read.products.length === 0 || !read.complete) return null;');
     expect(docs).toContain('the API did not answer');
   });
 

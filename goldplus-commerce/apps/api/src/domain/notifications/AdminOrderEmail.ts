@@ -190,3 +190,30 @@ export function renderAdminOrderEmail(input: AdminOrderEmailInput): RenderedAdmi
 
   return { subject, text, html };
 }
+
+/**
+ * What the admin order-email screen says about one outbox row.
+ *
+ * The status column is read FIRST: ProcessOutboxBatchUseCase dead-letters a
+ * non-retryable provider failure ("Not retryable: HTTP 401 | class=unauthorized
+ * …") at once — status DEAD_LETTER, processed — but the old text sniffing only
+ * recognised 'exhausted', so those rows showed an amber RETRYING chip for an
+ * email that would never be retried. A processed failure that matches nothing
+ * is FAILED, never RETRYING.
+ */
+export function adminEmailDeliveryState(row: {
+  isProcessed: boolean;
+  status: string;
+  attemptCount: number;
+  lastError?: string | null;
+  deadLetteredAt?: Date | string | null;
+}): 'PENDING' | 'RETRYING' | 'SENT' | 'MISSING_CONFIG' | 'DELIVERY_DISABLED' | 'DEAD_LETTER' | 'FAILED' {
+  if (!row.isProcessed) return row.attemptCount > 0 ? 'RETRYING' : 'PENDING';
+  const deadLettered = row.status === 'DEAD_LETTER' || Boolean(row.deadLetteredAt);
+  const e = (row.lastError ?? '').toLowerCase();
+  if (!e && !deadLettered) return 'SENT';
+  if (e.includes('not_configured') || e.includes('no channel')) return 'MISSING_CONFIG';
+  if (e.includes('disabled')) return 'DELIVERY_DISABLED';
+  if (deadLettered || e.includes('exhausted')) return 'DEAD_LETTER';
+  return 'FAILED';
+}

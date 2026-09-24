@@ -29,7 +29,14 @@ export function staticAvifSrcset(sourceUrl: string | null | undefined): string |
   return sourceUrl ? AVIF_BY_SOURCE.get(sourceUrl) ?? null : null;
 }
 
-export const CARD_SIZES = '(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px';
+/**
+ * Card grids are two columns up to 1023px (the owner's phone layout, kept on
+ * tablets) and 3–4 columns of about 300px above. "33vw" from 641px told a
+ * tablet each card was a third of the screen while it was half, so the browser
+ * picked a rendition too small and the photo was upscaled. Shorter than before:
+ * this string repeats on every card of the home document.
+ */
+export const CARD_SIZES = '(max-width: 1023px) 50vw, 320px';
 export const STAGE_SIZES = '(max-width: 640px) 160px, 320px';
 /**
  * Focus 4 — the product page's main stage: near-full width on phones, then a

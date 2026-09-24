@@ -57,6 +57,13 @@ export interface CartLine {
   slug?: string;
   unitPriceUgx: number;
   quantity: number;
+  /**
+   * Set by read() when the product can no longer be bought (withdrawn,
+   * unapproved) while it sat in the basket. Such a line is excluded from the
+   * subtotal, and every other change is refused until it is removed, so the
+   * storefront must be able to say WHICH line that is.
+   */
+  unavailable?: boolean;
 }
 
 export interface CartView {
@@ -79,7 +86,14 @@ export function isCartApplied(outcome: CartOutcome): outcome is { kind: 'APPLIED
  * Bounds. Enforced here AND by a database constraint (migration 0060): validation in
  * one route protects that route, a constraint protects the column from every writer.
  */
-export const MAX_LINE_QUANTITY = 999;
+/**
+ * 99, the same bound pricing and checkout enforce (owner, 2026-09-24). At 999
+ * the basket accepted lines checkout could never place: the pricing preview
+ * silently dropped them, which read as a huge discount during a campaign, and
+ * checkout then refused with a field error nobody could fix. The column
+ * constraint (0060) is looser and stays; this is the tighter rule.
+ */
+export const MAX_LINE_QUANTITY = 99;
 export const MAX_DISTINCT_LINES = 50;
 
 export interface CartOwner {
@@ -147,7 +161,10 @@ function view(record: CartRecord): CartView {
     id: record.id,
     version: record.version,
     items: record.items,
-    subtotalUgx: record.items.reduce((sum, line) => sum + line.unitPriceUgx * line.quantity, 0),
+    subtotalUgx: record.items.reduce(
+      (sum, line) => (line.unavailable ? sum : sum + line.unitPriceUgx * line.quantity),
+      0,
+    ),
   };
 }
 
@@ -163,7 +180,36 @@ export class MutateCartUseCase {
   async read(args: { cartId: string; owner: CartOwner; traceId: string }): Promise<CartOutcome> {
     const authorized = await this.authorize(args.cartId, args.owner, args.traceId);
     if ('refusal' in authorized) return authorized.refusal;
-    return { kind: 'APPLIED', cart: view(authorized.record) };
+    return { kind: 'APPLIED', cart: view(await this.flagUnpurchasable(authorized.record)) };
+  }
+
+  /**
+   * Marks lines whose product can no longer be bought.
+   *
+   * The stored lines used to come back as they were: a product withdrawn while
+   * it sat in the basket showed at its old price, counted in the subtotal, and
+   * silently blocked every other add or update (mutate validates the whole
+   * resulting cart). Flagged, the storefront can name the line and offer its
+   * removal. Same purchasability source as mutate(). If the catalogue read
+   * fails the lines are returned unflagged, as before, rather than failing the
+   * read of the whole basket.
+   */
+  private async flagUnpurchasable(record: CartRecord): Promise<CartRecord> {
+    if (record.items.length === 0) return record;
+    let purchasable: Set<string>;
+    try {
+      const found = await this.deps.products.findPurchasable(record.items.map((line) => line.productId));
+      purchasable = new Set(found.map((product) => product.id));
+    } catch {
+      return record;
+    }
+    if (record.items.every((line) => purchasable.has(line.productId))) return record;
+    return {
+      ...record,
+      items: record.items.map((line) =>
+        purchasable.has(line.productId) ? line : { ...line, unavailable: true },
+      ),
+    };
   }
 
   async mutate(args: {

@@ -182,7 +182,22 @@ export class GetCustomerDnaUseCase {
   async search(query: string, limit: number) {
     return this.profiles.search(query, Math.min(Math.max(1, limit), 50));
   }
+  /**
+   * Identity conflicts, masked on the SERVER like the detail view: the raw
+   * identifier (an anonymous id or account id) never leaves the API — the page
+   * used to receive it and mask it only in the browser.
+   */
   async listConflicts(limit: number) {
-    return this.identities.listConflicts(Math.min(Math.max(1, limit), 100));
+    const rows = await this.identities.listConflicts(Math.min(Math.max(1, limit), 100));
+    return rows.map((row: any) => {
+      const { identifierKey, ...rest } = row;
+      const key = String(identifierKey ?? '');
+      return { ...rest, identifierMasked: maskIdentifier(key) };
+    });
   }
+}
+
+/** First and last four characters of an identifier; short ones are fully hidden. */
+export function maskIdentifier(key: string): string {
+  return key.length > 8 ? `${key.slice(0, 4)}…${key.slice(-4)}` : '••••';
 }

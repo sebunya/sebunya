@@ -23,10 +23,10 @@ import ProductGallery from '../../components/product/ProductGallery.astro';
 const galleryEnrichment = process.env.PRODUCT_GALLERY_ENRICHMENT !== 'false';
 import { publicBattery, parseDeviceCookie, serialiseDeviceCookie, DEVICE_COOKIE, FIT_BADGE } from '../../lib/batteries';
 import { SITE_ORIGIN } from '../../lib/sitemap';
-import { fetchApprovedCatalogue } from '../../lib/catalogue';
 import { RETURNS_POLICY } from '../../lib/returnsPolicy';
 import { getStorefrontCopy } from '../../lib/storefrontCopy';
 import { findRecordedRedirect } from '../../lib/recordedRedirect';
+import { isLikelyHuman } from '../../lib/humanTraffic';
 
 const { slug } = Astro.params;
 const searchQuery = Astro.url.searchParams.get('searchQuery') ?? '';
@@ -99,8 +99,12 @@ if (!product) {
   }
 }
 
-if (searchQuery && Number.isInteger(searchRank) && searchRank >= 1 && searchRank <= 50) {
-  await fetch(`${apiBase}/products/search-interactions`, {
+// A search click is a PERSON choosing a result: a crawler following every
+// result link counted a click for each, so the ranking report showed near-100%
+// CTR whatever people chose. Fire-and-forget, as shop.astro does: awaiting it
+// held every search click-through up to half a second before rendering.
+if (searchQuery && Number.isInteger(searchRank) && searchRank >= 1 && searchRank <= 50 && isLikelyHuman(Astro.request.headers.get('user-agent'))) {
+  fetch(`${apiBase}/products/search-interactions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query: searchQuery, productId: product.id, rank: searchRank, type: 'click' }),
@@ -133,7 +137,26 @@ try {
     if (o.httpStatus === 301 && lcJson.data.successorSlug) {
       return Astro.redirect(`/products/${lcJson.data.successorSlug}`, 301);
     }
-    if (o.httpStatus === 410) return Astro.redirect('/404', 410);
+    // A real 410 page. Astro.redirect('/404', 410) is not a redirect Astro can
+    // reroute (only 404/500 are), so it answered 410 with `location: /404` and
+    // an EMPTY body: a blank screen for a person, and for an ad click a
+    // "landing page not working". Gone is said in words, with a way on.
+    if (o.httpStatus === 410) {
+      const esc = (v: string) => v.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
+      return new Response(
+        `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+          `<meta name="viewport" content="width=device-width,initial-scale=1">` +
+          `<meta name="robots" content="noindex,follow">` +
+          `<title>No longer available | GoldPlus</title></head>` +
+          `<body style="font-family:system-ui,sans-serif;margin:0;padding:3rem 1.5rem;color:#0A0A0A">` +
+          `<main style="max-width:32rem;margin:0 auto">` +
+          `<h1 style="font-size:1.5rem;font-weight:800">${esc(product.name)} is no longer available</h1>` +
+          `<p style="line-height:1.6">${esc(o.notice ?? 'This page is no longer available.')} GoldPlus no longer sells this item.</p>` +
+          `<p><a href="/shop" style="font-weight:700">See what GoldPlus sells now</a></p>` +
+          `</main></body></html>`,
+        { status: 410, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'public, max-age=300' } },
+      );
+    }
     lifecycleNotice = o.notice ?? null;
     lifecycleNoindex = o.indexable === false;
     lifecycleAlternatives = o.showAlternatives === true;
@@ -143,10 +166,60 @@ try {
   // behaves exactly as it always did rather than failing or redirecting.
 }
 
+/**
+ * Every read below depends only on the product, so they all start NOW and each
+ * is awaited where it is used. They ran one after another: with the API slow
+ * but up, each waited close to its own timeout and the page's first byte took
+ * the sum (about 30 s), not the slowest one. Each keeps its own timeout and its
+ * own fallback. The lifecycle decision above stays first: it can answer 301/410.
+ * `settle` only stops an early rejection from being reported as unhandled while
+ * the page is still awaiting something else; the later await still sees it.
+ */
+const settle = <T,>(p: Promise<T>): Promise<T> => { p.catch(() => undefined); return p; };
+const taxonomyP = settle(getTaxonomy());
+const bizP = settle(getBusinessInfo());
+const storefrontCopyP = settle(getStorefrontCopy());
+const discountP = settle(getStorefrontDiscount());
+// The browse-rail fallback needs a handful of candidates, not the whole
+// catalogue: the product's own category plus one general page (the rail caps
+// any one category at two), never every page of every product.
+const crumbCategoryP = taxonomyP.then((tax) => tax.find((cat) => cat.name === product!.categoryName)).catch(() => undefined);
+const fetchProductList = async (query: string): Promise<ProductPublicDto[]> => {
+  const res = await fetch(`${apiBase}/products?${query}`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(3000) });
+  if (!res.ok) return [];
+  const body = (await res.json()) as ApiResponse<ProductPublicDto[]>;
+  return body.success && Array.isArray(body.data) ? body.data : [];
+};
+const fallbackCandidatesP: Promise<ProductPublicDto[]> = (async () => {
+  const cat = await crumbCategoryP;
+  const [sameCategory, general] = await Promise.all([
+    cat ? fetchProductList(`category=${encodeURIComponent(cat.slug)}&limit=12`).catch(() => []) : Promise.resolve([] as ProductPublicDto[]),
+    fetchProductList('limit=24').catch(() => []),
+  ]);
+  const seen = new Set<string>();
+  return [...sameCategory, ...general].filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true)));
+})().catch(() => []);
+const loyaltyRateP: Promise<number> = (async () => {
+  const lpRes = await fetch(`${apiBase}/commerce/loyalty-programme`, { signal: AbortSignal.timeout(2000) });
+  const lpJson: any = lpRes.ok ? await lpRes.json().catch(() => null) : null;
+  return lpJson?.success && lpJson.data?.active ? Number(lpJson.data.earnRatePer1000Ugx) || 0 : 0;
+})().catch(() => 0);
+const compatibilityP: Promise<unknown> = (async () => {
+  const compatRes = await fetch(`${apiBase}/products/${encodeURIComponent(product!.slug)}/compatibility`, { signal: AbortSignal.timeout(2000) });
+  return compatRes.json().catch(() => null);
+})().catch(() => null);
+const batteryP = publicBattery<BatteryPublic>(`/products/${encodeURIComponent(product.slug)}`);
+const selectedDeviceParam = (Astro.url.searchParams.get('device') ?? '').trim().slice(0, 160);
+// record=0: the finder already counted this phone when the customer chose it;
+// resolving the link here is not a second choice (nor is a reload or a crawl).
+const chosenDeviceP = selectedDeviceParam && /^[a-z0-9-]{1,160}$/.test(selectedDeviceParam)
+  ? publicBattery<{ device: { slug: string; label: string } }>(`/finder/devices/${encodeURIComponent(selectedDeviceParam)}?record=0`)
+  : null;
+
 const hasValidSku = product.sku && product.sku !== 'Needs Business Confirmation' && !product.sku.toLowerCase().includes('pending');
 const verifiedAttributes = product.attributeValues.filter((v) => v.isVerified && v.name !== 'Badge' && v.name !== 'CardShortDescription');
 
-const productSubcategory = getProductSubcategory(product, await getTaxonomy());
+const productSubcategory = getProductSubcategory(product, await taxonomyP);
 
 // Honest catalogue fallback for the non-personalised PDP browse rail.
 let pdpFallbackProducts: Array<{
@@ -178,13 +251,10 @@ const selectPdpFallbackProducts = (products: ProductPublicDto[]) => previewRecom
 }));
 
 try {
-  // The whole approved catalogue, paged — a fixed 50 would leave the fallback
-  // rail blind to most of a real catalogue.
-  const allProducts: ProductPublicDto[] = await fetchApprovedCatalogue(apiBase);
   // R1: fabricated seed products no longer pad the fallback rail — an
   // unreachable catalogue yields an empty rail, which renders its honest
   // empty state.
-  pdpFallbackProducts = selectPdpFallbackProducts(allProducts);
+  pdpFallbackProducts = selectPdpFallbackProducts(await fallbackCandidatesP);
 } catch {
   pdpFallbackProducts = [];
 }
@@ -192,14 +262,9 @@ try {
 
 // Loyalty earn preview (loyalty brief PART G: visibility at the point of
 // decision). Lower bound, vests on delivery — absent when the programme is off.
-let loyaltyRate = 0;
-try {
-  const lpRes = await fetch(`${apiBase}/commerce/loyalty-programme`, { signal: AbortSignal.timeout(2000) });
-  const lpJson: any = lpRes.ok ? await lpRes.json().catch(() => null) : null;
-  if (lpJson?.success && lpJson.data?.active) loyaltyRate = Number(lpJson.data.earnRatePer1000Ugx) || 0;
-} catch { /* preview only */ }
+const loyaltyRate = await loyaltyRateP; // preview only: 0 when unavailable
 
-const bizForPdp = await getBusinessInfo();
+const bizForPdp = await bizP;
 const askAboutHref = `${bizForPdp.whatsappUrl}?text=${encodeURIComponent(`Hello GoldPlus, is the ${product.name} available?`)}`;
 
 const availabilityLabel: Record<ProductPublicDto['availability']['kind'], string> = {
@@ -265,7 +330,7 @@ const keySpecs = verifiedAttributes.slice(0, 3).map((v) => ({ name: v.name, valu
 // Returns and payment, beside the buy button, from their single sources: the
 // returns window the JSON-LD already publishes, and the checkout's own
 // admin-editable payment labels (both methods are offered at checkout).
-const storefrontCopy = await getStorefrontCopy();
+const storefrontCopy = await storefrontCopyP;
 const lowerFirst = (value: string) => value.charAt(0).toLowerCase() + value.slice(1);
 
 const pdpDescriptions: Record<string, { intro: string; description: string }> = {
@@ -302,7 +367,7 @@ if (product?.categoryName === 'Sound Devices') {
 
 // Active campaign discount (display only; mirrors the checkout charge).
 const pdpHasPrice = product && typeof product.retailPriceUgx === 'number' && product.retailPriceUgx > 0;
-const pdpDiscount = await getStorefrontDiscount();
+const pdpDiscount = await discountP;
 const pdpCampaignRunning = pdpHasPrice && pdpDiscount.active && pdpDiscount.percentBps > 0;
 // The floor is a required argument: without it the page would advertise a price
 // the checkout refuses to honour.
@@ -319,9 +384,8 @@ const pdpOnSale = pdpCampaignRunning && pdpSaleUgx !== null && pdpSaleUgx < prod
  * and, when the customer came from the finder, whether it fits the phone they
  * picked. A mismatch is stated; it is never silently dropped.
  */
-const selectedDeviceParam = (Astro.url.searchParams.get('device') ?? '').trim().slice(0, 160);
-if (selectedDeviceParam && /^[a-z0-9-]{1,160}$/.test(selectedDeviceParam)) {
-  const chosen = await publicBattery<{ device: { slug: string; label: string } }>(`/finder/devices/${encodeURIComponent(selectedDeviceParam)}`);
+if (chosenDeviceP) {
+  const chosen = await chosenDeviceP;
   if (chosen.ok) {
     Astro.cookies.set(DEVICE_COOKIE, serialiseDeviceCookie(chosen.data.device), {
       path: '/', httpOnly: false, sameSite: 'lax', secure: Astro.url.protocol === 'https:', maxAge: 60 * 60 * 24 * 30,
@@ -336,7 +400,7 @@ interface BatteryPublic {
   config: { modelNumberHelp: string; requestCta: string; awaitingVerificationNote: string; conditionalNote: string; whatsappPrefill: string };
   isPublished: boolean;
 }
-const batteryRes = product ? await publicBattery<BatteryPublic>(`/products/${encodeURIComponent(product.slug)}`) : null;
+const batteryRes = await batteryP;
 const battery = batteryRes && batteryRes.ok && batteryRes.data.isPublished ? batteryRes.data : null;
 const fitForSelected = battery && selectedDevice ? battery.devices.find((dv) => dv.slug === selectedDevice.slug) ?? null : null;
 const CHEMISTRY_LABEL: Record<string, string> = { LI_ION: 'Li-ion', LI_POLYMER: 'Li-polymer', NIMH: 'NiMH', OTHER: 'Other' };
@@ -351,12 +415,10 @@ const descBody = product?.longDescription?.trim() || pdpCopy?.description || nul
 // unverified pairs are simply absent; unknown is never shown as compatible).
 interface CompatEntry { productId: string; name: string; slug: string; verdict: string; label: string; note: string | null }
 let compatibilityEntries: CompatEntry[] = [];
-if (product) {
-  try {
-    const compatRes = await fetch(`${apiBase}/products/${encodeURIComponent(product.slug)}/compatibility`, { signal: AbortSignal.timeout(2000) });
-    const compatJson = await compatRes.json().catch(() => null);
-    if (compatJson?.success && Array.isArray(compatJson.data)) compatibilityEntries = compatJson.data;
-  } catch { /* section is hidden when unavailable */ }
+{
+  // The section is hidden when the read is unavailable.
+  const compatJson = (await compatibilityP) as { success?: boolean; data?: unknown } | null;
+  if (compatJson?.success && Array.isArray(compatJson.data)) compatibilityEntries = compatJson.data as CompatEntry[];
 }
 const verdictBadge: Record<string, string> = {
   exact: 'border-green-300 bg-green-50 text-green-800',
@@ -365,7 +427,8 @@ const verdictBadge: Record<string, string> = {
   incompatible: 'border-red-300 bg-red-50 text-red-700',
 };
 
-const canBuy = product?.availability.kind === 'in_stock';
+// No selling price = nothing to buy: checkout refuses a priceless line (PRICE_UNAVAILABLE).
+const canBuy = product?.availability.kind === 'in_stock' && pdpHasPrice;
 const pageTitle = product ? product.name : 'Product unavailable';
 const description = product
   ? `${product.name}, ${product.categoryName} from GoldPlus Uganda.`
@@ -384,8 +447,7 @@ let breadcrumbJson: string | null = null;
 // Hoisted: the visible breadcrumb renders the same category the JSON-LD names.
 let crumbCategory: { name: string; slug: string } | undefined;
 if (product) {
-  const taxonomyForCrumbs = await getTaxonomy();
-  crumbCategory = taxonomyForCrumbs.find((cat) => cat.name === product!.categoryName);
+  crumbCategory = await crumbCategoryP;
   // The breadcrumb JSON-LD names the same one host as the canonical above.
   const origin = SITE_ORIGIN;
   const crumbs = [{ name: 'Home', url: `${origin}/` }];
@@ -546,7 +608,7 @@ if (product) {
               disabled={!canBuy}
               class={`flex-1 min-h-12 px-6 rounded-full font-bold text-xs tracking-wider uppercase transition-all duration-300 outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk active:scale-[0.98] cursor-pointer ${canBuy ? 'bg-brand-primary text-brand-black hover:shadow-md hover:shadow-brand-primary/25' : 'bg-slate-100 text-slate-600 cursor-not-allowed'}`}
             >
-              {canBuy ? 'Add to cart' : availabilityLabel[product.availability.kind]}
+              {canBuy ? 'Add to cart' : pdpHasPrice ? availabilityLabel[product.availability.kind] : 'Price on request'}
             </button>
             {canBuy && (
               <button

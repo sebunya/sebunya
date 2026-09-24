@@ -49,3 +49,38 @@ export function parsePriceTiers(
 export function floorFor(retailPriceUgx: number, floorPriceUgx: number | null | undefined): number {
   return floorPriceUgx == null || floorPriceUgx <= 0 ? retailPriceUgx : Math.min(floorPriceUgx, retailPriceUgx);
 }
+
+type TierBody = { floorPriceUgx?: unknown; tierBPriceUgx?: unknown; tierCPriceUgx?: unknown };
+const TIER_KEYS = ['floorPriceUgx', 'tierBPriceUgx', 'tierCPriceUgx'] as const;
+
+/**
+ * An edit only changes the tiers it SENDS. A request that leaves a tier key
+ * out keeps the stored value — before 2026-09-24 an omitted key parsed as
+ * "empty" and silently wiped Price A/B/C. An explicitly empty value ('' or
+ * null) still clears the tier.
+ */
+export function tiersWithStoredDefaults(body: TierBody | null | undefined, stored: PriceTiers | null | undefined): TierBody {
+  const out: TierBody = {};
+  for (const key of TIER_KEYS) {
+    out[key] = body && Object.prototype.hasOwnProperty.call(body, key) ? body[key] : stored?.[key] ?? null;
+  }
+  return out;
+}
+
+/**
+ * Which money fields an edit changes: the retail price (Price D) or any tier,
+ * the floor (Price A) above all — it caps every discount. A change here is a
+ * pricing decision, not a catalogue edit.
+ */
+export function changedPricingFields(
+  before: { retailPriceUgx: number; tiers: PriceTiers | null | undefined },
+  after: { retailPriceUgx: number; tiers: PriceTiers },
+): string[] {
+  const changed: string[] = [];
+  if (Number(before.retailPriceUgx) !== Number(after.retailPriceUgx)) changed.push('retail price (Price D)');
+  const labels: Record<(typeof TIER_KEYS)[number], string> = { floorPriceUgx: 'floor (Price A)', tierBPriceUgx: 'Price B', tierCPriceUgx: 'Price C' };
+  for (const key of TIER_KEYS) {
+    if ((before.tiers?.[key] ?? null) !== (after.tiers[key] ?? null)) changed.push(labels[key]);
+  }
+  return changed;
+}

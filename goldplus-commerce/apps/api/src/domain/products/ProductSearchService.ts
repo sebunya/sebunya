@@ -1,3 +1,5 @@
+import { includesSearchTerm } from '@goldplus/shared';
+
 /**
  * Product search domain rules (Slice 4). Pure — no Hono, Drizzle, or adapters.
  * The repository performs the SQL matching; this service owns query
@@ -67,11 +69,12 @@ export function rankSuggestions<T extends SuggestionCandidate>(query: string, ca
     let score = 0;
     if (name.startsWith(q)) score = 5;
     else if (name.split(/\s+/).some((w) => w.startsWith(q))) score = 4;
-    else if (identifiers.includes(q)) score = 3;
-    else if (name.includes(q)) score = 2;
+    // includesSearchTerm, not includes: "2gb" must not rank the 32GB card.
+    else if (includesSearchTerm(identifiers, q)) score = 3;
+    else if (includesSearchTerm(name, q)) score = 2;
     // Every word present somewhere: the multi-word and category matches that
     // the whole-phrase tiers above cannot see.
-    else if (terms.length > 0 && terms.every((t) => haystack.includes(t))) score = 1;
+    else if (terms.length > 0 && terms.every((t) => includesSearchTerm(haystack, t))) score = 1;
     return { c, score };
   });
   return scored

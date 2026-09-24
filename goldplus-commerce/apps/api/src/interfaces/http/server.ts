@@ -19,6 +19,7 @@ import { startOutboxTicker, gracefulStopOutboxTicker } from '../../infrastructur
 import { startLoyaltyDailyTicker, stopLoyaltyDailyTicker } from '../../infrastructure/scheduler/LoyaltyDailyTicker';
 import { startPaymentReconcileTicker, stopPaymentReconcileTicker } from '../../infrastructure/scheduler/PaymentReconcileTicker';
 import { startLighthouseWatchTicker, stopLighthouseWatchTicker } from '../../infrastructure/scheduler/LighthouseWatchTicker';
+import { startProductCostTicker, stopProductCostTicker } from '../../infrastructure/scheduler/ProductCostTicker';
 import { Registry } from '../../infrastructure/Registry';
 import { runPermissionRegistrySyncAtBoot } from '../../infrastructure/security/PermissionRegistrySync';
 import { runHeroSlideSeedAtBoot } from '../../infrastructure/hero/HeroSlideSeeder';
@@ -47,11 +48,13 @@ const server = serve({
   if (process.env.NODE_ENV !== 'test') {
     startOutboxTicker();
     startLoyaltyDailyTicker();
-  // The payment safety net: polls the provider for every attempt still
-  // non-terminal past the threshold. Must run even when callbacks work.
-  startPaymentReconcileTicker();
-  // Lighthouse Watch: keeps the storefront's Lighthouse scores measured and alerted.
-  startLighthouseWatchTicker();
+    // The payment safety net: polls the provider for every attempt still
+    // non-terminal past the threshold. Must run even when callbacks work.
+    startPaymentReconcileTicker();
+    // Lighthouse Watch: keeps the storefront's Lighthouse scores measured and alerted.
+    startLighthouseWatchTicker();
+    // A cost dated for a future day becomes the COGS figure on that day.
+    startProductCostTicker();
     registerAllWorkers();
     // Converge DB permissions on the code registry (advisory-locked, add-only).
     void runPermissionRegistrySyncAtBoot();
@@ -82,7 +85,9 @@ async function gracefulShutdown(signal: string) {
 
   // Slice 3F: flip readiness to false FIRST, then pause briefly so at least one
   // load-balancer health poll observes 503 and drains this instance before we
-  // start closing sockets. Liveness stays true throughout.
+  // start closing sockets. Liveness stays true throughout. Nothing polls /ready in
+  // the compose topology (Caddy has no active health checks), so production sets
+  // SHUTDOWN_DRAIN_MS=0 and the whole sequence fits the container's grace period.
   beginDraining();
   const drainMs = Number(process.env.SHUTDOWN_DRAIN_MS ?? 3000);
   if (drainMs > 0) {
@@ -111,16 +116,21 @@ async function gracefulShutdown(signal: string) {
 
     logger.info('[Process] Waiting for background tasks to finish...');
     stopLoyaltyDailyTicker();
-  stopPaymentReconcileTicker();
-  stopLighthouseWatchTicker();
+    stopPaymentReconcileTicker();
+    stopLighthouseWatchTicker();
+    stopProductCostTicker();
     await gracefulStopOutboxTicker(10000);
     await Registry.getInstance().recommendationServingStats?.stop(3000);
 
-    logger.info('[Process] Closing database connections...');
-    await endDbConnection();
-
+    // Workers BEFORE the database. closeAll pauses the workers and waits for their
+    // active jobs; ending the pool first failed every job still running (a
+    // telemetry dispatch already sent to GA4 was left 'processing' and sent again
+    // when its lease expired).
     logger.info('[Process] Closing message queue connections...');
     await QueueService.getInstance().closeAll();
+
+    logger.info('[Process] Closing database connections...');
+    await endDbConnection();
 
     logger.info('[Process] Shutdown complete.');
     clearTimeout(timeoutId);

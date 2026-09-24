@@ -92,7 +92,7 @@ import adminDeliveryRoutes from './routes/admin/delivery';
 import adminPaymentsRoutes from './routes/admin/payments';
 import deliveryQuoteRoutes from './routes/delivery';
 import { maintenanceMode } from './middleware/maintenance';
-import { deploymentService } from '../../infrastructure/deployment/DeploymentService';
+import { deploymentService, isShadowablePath } from '../../infrastructure/deployment/DeploymentService';
 import { controlledActivationDryRunRouter } from '../../presentation/routes/controlled-activation-dry-run.js';
 import { liveReview } from '../../presentation/routes/controlled-activation-live-review';
 import { controlledLiveCanaryRouter } from '../../presentation/routes/controlled-live-canary.js';
@@ -193,31 +193,19 @@ app.use('*', maintenanceMode);
 // Shadow Traffic Middleware
 app.use('*', async (c, next) => {
   const shadowRatio = deploymentService.getShadowTrafficRatio();
-  if (shadowRatio > 0 && c.req.header('X-Shadow-Request') !== 'true') {
-    const method = c.req.method.toUpperCase();
-    const isExempted =
-      c.req.path.startsWith('/health') ||
-      c.req.path.startsWith('/metrics') ||
-      c.req.path.includes('/admin/deployment') ||
-      c.req.path.includes('/admin/queues');
-
-    if (!isExempted) {
+  // Reads only, never money/auth/admin/webhook paths, never credentials
+  // (DeploymentService.mirrorTrafficIfSelected): mirroring used to replay every
+  // checkout, IPN and admin write, with the caller's session, to the shadow.
+  const method = c.req.method.toUpperCase();
+  if (shadowRatio > 0 && c.req.header('X-Shadow-Request') !== 'true' && (method === 'GET' || method === 'HEAD')) {
+    if (isShadowablePath(c.req.path)) {
       try {
-        const bodyStr = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)
-          ? await c.req.raw.clone().text()
-          : null;
-
         const headers: Record<string, string> = {};
         c.req.raw.headers.forEach((value, key) => {
           headers[key] = value;
         });
 
-        deploymentService.mirrorTrafficIfSelected(
-          c.req.url,
-          c.req.method,
-          headers,
-          bodyStr
-        );
+        void deploymentService.mirrorTrafficIfSelected(c.req.url, c.req.method, headers, null);
       } catch (err) {
         logger.debug({ err }, '[ShadowTraffic] Failed to clone request for mirroring');
       }

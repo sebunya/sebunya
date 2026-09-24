@@ -252,8 +252,9 @@ if (Astro.request.method === 'POST') {
         setError('description', 'Description must be at least 20 characters.');
       }
 
-      if (!isValidEmail(emailInput.value)) {
-        setError('email', 'Enter a valid email address.');
+      // Optional, as on the server: only a mistyped address is an error.
+      if (emailInput.value.trim() && !isValidEmail(emailInput.value)) {
+        setError('email', 'Check the email, or leave it blank.');
       }
 
       if (!isValidUgandanPhone(phoneInput.value)) {

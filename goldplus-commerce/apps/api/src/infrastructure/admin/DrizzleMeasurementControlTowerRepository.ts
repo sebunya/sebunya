@@ -1,5 +1,8 @@
-import { eq, count, sql, isNotNull, desc, isNull, max } from 'drizzle-orm';
+import { eq, count, sql, isNotNull, desc, isNull, max, and } from 'drizzle-orm';
 import { db } from '../db/client';
+import { env } from '../../config/env';
+import { outboxEvents } from '../db/schema/system';
+import { DrizzleAdDestinationRepository } from '../db/repositories/DrizzleAdDestinationRepository';
 import {
   IMeasurementControlTowerRepository,
   MeasurementHealthSummary,
@@ -42,14 +45,18 @@ import {
   purchaseMeasurementEvents,
 } from '../db/schema/measurement';
 
+const rowsOf = (r: unknown): any[] => (Array.isArray(r) ? r : ((r as { rows?: any[] })?.rows ?? []));
+
 export class DrizzleMeasurementControlTowerRepository implements IMeasurementControlTowerRepository {
   async getMeasurementHealthSummary(): Promise<MeasurementHealthSummary> {
     const [auditCountResult] = await db.select({ value: count() }).from(measurementAuditLogs);
     const [dlqCountResult] = await db.select({ value: count() }).from(measurementDeadLetterEvents).where(eq(measurementDeadLetterEvents.isResolved, false));
-    
-    const [failedCount] = await db.select({ value: count() })
-      .from(measurementDeadLetterEvents)
-      .where(eq(measurementDeadLetterEvents.isResolved, false));
+    // Queued = browser events waiting in the outbox to be dispatched. This card
+    // used to show the dead-letter count (the same query as "failed"), so the
+    // page reported failures as a queue and counted them twice in its total.
+    const [queuedCount] = await db.select({ value: count() })
+      .from(outboxEvents)
+      .where(and(eq(outboxEvents.eventType, 'TELEMETRY_DISPATCH'), eq(outboxEvents.isProcessed, false)));
 
     const [blockedCount] = await db.select({ value: count() })
       .from(measurementAuditLogs)
@@ -65,8 +72,8 @@ export class DrizzleMeasurementControlTowerRepository implements IMeasurementCon
     const status = dlqCountResult.value > 0 ? 'DEGRADED' : auditCountResult.value === 0 ? 'NO_DATA' : 'HEALTHY';
     return {
       totalSafeEvents: auditCountResult.value,
-      eventsQueued: dlqCountResult.value,
-      eventsFailed: failedCount.value,
+      eventsQueued: queuedCount.value,
+      eventsFailed: dlqCountResult.value,
       eventsBlockedByConsent: blockedCount.value,
       dryRunEvents: dryRunCount.value,
       lastEventReceived: last?.at ?? null,
@@ -127,23 +134,38 @@ export class DrizzleMeasurementControlTowerRepository implements IMeasurementCon
     };
   }
 
+  /**
+   * The REAL GA4 purchase delivery (0140 delivery_intent), not the legacy
+   * reconciliation table. That table was counted on statuses nothing writes
+   * ('VERIFIED', 'PENDING'), so "verified purchase conversions" stayed 0 after
+   * the first real paid order.
+   */
   async getPaymentReconciliationSummary(): Promise<PaymentReconciliationSummary> {
-    const [verified] = await db.select({ value: count() }).from(paymentMeasurementReconciliations).where(eq(paymentMeasurementReconciliations.status, 'VERIFIED'));
-    const [pending] = await db.select({ value: count() }).from(paymentMeasurementReconciliations).where(eq(paymentMeasurementReconciliations.status, 'PENDING'));
-    const [failed] = await db.select({ value: count() }).from(paymentMeasurementReconciliations).where(eq(paymentMeasurementReconciliations.status, 'FAILED'));
+    const r = rowsOf(await db.execute(sql`select
+        count(*) filter (where state in ('ACCEPTED','PROCESSED'))::int as verified,
+        count(*) filter (where state in ('PENDING','LEASED','RETRY_WAIT','UNKNOWN_OUTCOME'))::int as pending,
+        count(*) filter (where state in ('DEAD_LETTER','QUARANTINED'))::int as failed,
+        count(*) filter (where state = 'RETRY_WAIT' and attempt_count > 0)::int as retryable,
+        max(accepted_at) as last_accepted
+      from measurement.delivery_intent where sink_key = 'ga4:purchase'`))[0] ?? {};
+    const lastError = rowsOf(await db.execute(sql`select state_reason from measurement.delivery_intent
+      where sink_key = 'ga4:purchase' and state in ('DEAD_LETTER','QUARANTINED') order by updated_at desc limit 1`))[0];
 
     return {
-      verifiedPurchaseConversions: verified.value,
-      pendingReconciliations: pending.value,
-      failedReconciliations: failed.value,
+      verifiedPurchaseConversions: Number(r.verified ?? 0),
+      pendingReconciliations: Number(r.pending ?? 0),
+      failedReconciliations: Number(r.failed ?? 0),
       duplicateCallbacksHandled: 0,
-      retryableFailures: 0,
-      lastVerifiedPayment: null,
-      lastReconciliationError: null,
+      retryableFailures: Number(r.retryable ?? 0),
+      lastVerifiedPayment: r.last_accepted ? new Date(r.last_accepted) : null,
+      lastReconciliationError: lastError?.state_reason ?? null,
     };
   }
 
+  /** Readiness is read from the live ad_destinations table (0138), never assumed. */
   async getPaidSocialReadinessSummary(): Promise<PaidSocialReadinessSummary> {
+    const live = new Set((await new DrizzleAdDestinationRepository().active()).map((d) => d.platform));
+    const readiness = (platform: string) => (live.has(platform) ? 'LIVE' : 'NOT_CONFIGURED');
     const [eligible] = await db.select({ value: count() }).from(measurementPaidSocialDeliveryLogs);
     const [failures] = await db.select({ value: count() }).from(measurementPaidSocialDeliveryLogs).where(eq(measurementPaidSocialDeliveryLogs.deliveryStatus, 'failed'));
     const [dryRuns] = await db.select({ value: count() }).from(measurementPaidSocialDeliveryLogs).where(eq(measurementPaidSocialDeliveryLogs.deliveryStatus, 'dry_run'));
@@ -155,14 +177,15 @@ export class DrizzleMeasurementControlTowerRepository implements IMeasurementCon
       dryRunRoutedEvents: dryRuns.value,
       destinationPayloadsPrepared: eligible.value,
       destinationFailures: failures.value,
-      metaReadiness: 'NOT_CONFIGURED',
-      googleAdsReadiness: 'NOT_CONFIGURED',
-      tiktokReadiness: 'NOT_CONFIGURED',
-      pinterestReadiness: 'NOT_CONFIGURED',
-      linkedInReadiness: 'NOT_CONFIGURED',
-      snapchatReadiness: 'NOT_CONFIGURED',
-      xReadiness: 'NOT_CONFIGURED',
-      postHogReadiness: 'NOT_CONFIGURED',
+      metaReadiness: readiness('meta'),
+      googleAdsReadiness: readiness('google_ads'),
+      tiktokReadiness: readiness('tiktok'),
+      pinterestReadiness: readiness('pinterest'),
+      linkedInReadiness: readiness('linkedin'),
+      snapchatReadiness: readiness('snapchat'),
+      xReadiness: readiness('x'),
+      // PostHog is not an ad destination; its key is set in the environment.
+      postHogReadiness: env.posthogProjectApiKey ? 'CONFIGURED' : 'NOT_CONFIGURED',
     };
   }
 

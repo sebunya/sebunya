@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client';
+import { tryAcquireSessionLock, type HeldSessionLock } from '../db/sessionLock';
 import { logger } from '../logging/logger';
 import { pgJsonb, pgInTextList } from '../db/PgParams';
 import {
@@ -122,13 +123,14 @@ const STALE_RUN_MINUTES = 45;
 
 export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREMENTAL'): Promise<MaterialisationResult> {
   const conn = db as unknown as { execute: (q: unknown) => Promise<unknown> };
-  let lockHeld = false;
+  // Held on one reserved connection (db/sessionLock): through the pool, the
+  // unlock ran on another backend and the lock leaked.
+  let lock: HeldSessionLock | null = null;
 
   const ports: MaterialiserPorts = {
     async startRun(i) {
-      const got = rowsOf(await conn.execute(sql`select pg_try_advisory_lock(${INTEL_LOCK_ID}) as ok`));
-      if (got[0]?.ok !== true) return null;
-      lockHeld = true;
+      lock = await tryAcquireSessionLock(INTEL_LOCK_ID);
+      if (!lock) return null;
 
       // Reap an abandoned predecessor so a crash cannot block for ever.
       await conn.execute(sql`
@@ -1165,6 +1167,6 @@ export async function runOrganicIntelligence(mode: MaterialisationMode = 'INCREM
     logger.error({ err: String(err?.message ?? err) }, '[OrganicIntelligence] run threw');
     throw err;
   } finally {
-    if (lockHeld) await conn.execute(sql`select pg_advisory_unlock(${INTEL_LOCK_ID})`).catch(() => undefined);
+    if (lock) await (lock as HeldSessionLock).release().catch(() => undefined);
   }
 }

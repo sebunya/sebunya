@@ -38,11 +38,15 @@ async function get<T>(path: string): Promise<{ ok: boolean; data: T | null; erro
   }
 }
 
-const [overviewRes, paymentsRes, catalogueRes] = await Promise.all([
+// No catalogue section: /admin/analytics/catalogue is the metric-definition
+// list, not catalogue figures, so the section always rendered empty.
+const [overviewRes, paymentsRes] = await Promise.all([
   get<any>(`/admin/analytics/overview?days=${days}`),
   get<any>(`/admin/analytics/payments?days=${days}`),
-  get<any>(`/admin/analytics/catalogue?days=${days}`),
 ]);
+// The payments API answers byProvider {provider, attempts, confirmed, successRate}.
+const paymentProviders: Array<{ provider: string; attempts: number; confirmed: number; successRate: number | null }> =
+  Array.isArray(paymentsRes.data?.byProvider) ? paymentsRes.data.byProvider : [];
 
 const overview = overviewRes.data;
 const metrics: any[] = Array.isArray(overview?.metrics) ? overview.metrics : [];
@@ -101,7 +105,7 @@ const freshnessClass = (s: string) =>
         </p>
         {period && (
           <p class="text-xs text-gray-500 mt-2 font-mono">
-            {period.startDay} → {period.endDay} · compared with {period.previousStart?.slice(0, 10)} → {period.previousEnd?.slice(0, 10)}
+            {period.startDay} → {period.endDay} · compared with {period.previousStartDay} → {period.previousEndDay}
           </p>
         )}
       </div>
@@ -168,19 +172,19 @@ const freshnessClass = (s: string) =>
             <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
               <table class="w-full text-xs">
                 <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-500 border-b border-gray-100">
-                  <th class="p-3">Provider</th><th>Attempts</th><th>Succeeded</th><th>Failed</th><th class="p-3">Success rate</th>
+                  <th class="p-3">Provider</th><th>Attempts</th><th>Confirmed</th><th>Not confirmed</th><th class="p-3">Success rate</th>
                 </tr></thead>
                 <tbody>
-                  {(paymentsRes.data?.providers ?? []).map((p: any) => (
+                  {paymentProviders.map((p) => (
                     <tr class="border-b border-gray-50">
-                      <td class="p-3 font-bold text-brand-dark">{p.provider ?? p.key ?? "—"}</td>
+                      <td class="p-3 font-bold text-brand-dark">{p.provider ?? "—"}</td>
                       <td>{p.attempts ?? "—"}</td>
-                      <td class="text-emerald-800">{p.succeeded ?? "—"}</td>
-                      <td class="text-red-800">{p.failed ?? "—"}</td>
+                      <td class="text-emerald-800">{p.confirmed ?? "—"}</td>
+                      <td class="text-gray-700">{Number.isFinite(p.attempts) && Number.isFinite(p.confirmed) ? p.attempts - p.confirmed : "—"}</td>
                       <td class="p-3">{p.successRate === null || p.successRate === undefined ? "—" : `${(Number(p.successRate) * 100).toFixed(1)}%`}</td>
                     </tr>
                   ))}
-                  {(paymentsRes.data?.providers ?? []).length === 0 && (
+                  {paymentProviders.length === 0 && (
                     <tr><td colspan="5" class="p-4 text-gray-500">No payment attempts in this period.</td></tr>
                   )}
                 </tbody>
@@ -188,22 +192,6 @@ const freshnessClass = (s: string) =>
             </div>
           ) : (
             <p class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-4 text-xs text-gray-600">{paymentsRes.error}</p>
-          )}
-        </section>
-
-        <section class="mb-10">
-          <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-3">Catalogue</h3>
-          {catalogueRes.ok ? (
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {Object.entries(catalogueRes.data ?? {}).filter(([, v]) => typeof v === "number").map(([k, v]) => (
-                <div class="rounded-2xl border border-gray-200 bg-white p-4">
-                  <p class="text-[10px] font-black uppercase tracking-widest text-gray-500">{k.replace(/([A-Z])/g, " $1")}</p>
-                  <p class="mt-1 text-xl font-black text-brand-dark">{Number(v).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}</p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p class="rounded-2xl border border-dashed border-gray-300 bg-gray-50 p-4 text-xs text-gray-600">{catalogueRes.error}</p>
           )}
         </section>
 

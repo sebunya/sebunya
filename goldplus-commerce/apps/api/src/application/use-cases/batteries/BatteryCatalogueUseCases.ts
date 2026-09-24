@@ -45,6 +45,9 @@ export interface BatteryProfilePatch {
   publicNotes?: string | null;
 }
 
+/** The facts a verifier reads off the physical pack. Editing one re-opens verification. */
+export const PACK_FACTS = ['canonicalCode', 'codeStatus', 'capacityMah', 'nominalVoltageMv', 'chemistry', 'barcode', 'lengthMm', 'widthMm', 'thicknessMm'] as const;
+
 export interface CreateBatteryInput extends BatteryProfilePatch {
   actorId: string;
   canonicalCode: string;
@@ -57,6 +60,12 @@ export interface CreateBatteryInput extends BatteryProfilePatch {
   lifecycleStatus?: 'DRAFT' | 'REVIEW';
   sourceReference?: string | null;
   sourceImportSessionId?: string | null;
+  /**
+   * Who AUTHORED the battery, when that is not the person saving it: an import
+   * records its uploader, not whoever clicked Apply, so the maker-checker rule
+   * keeps the research author from verifying their own work.
+   */
+  createdBy?: string;
 }
 
 export class BatteryCatalogueUseCases {
@@ -245,7 +254,7 @@ export class BatteryCatalogueUseCases {
         verificationStatus: 'UNVERIFIED',
         sourceReference: input.sourceReference ?? null,
         sourceImportSessionId: input.sourceImportSessionId ?? null,
-        createdBy: input.actorId,
+        createdBy: input.createdBy ?? input.actorId,
         updatedBy: input.actorId,
       },
       aliases: [{ alias: canonicalCode, aliasNormalised: normalised, aliasType: 'CANONICAL', source: 'canonical' }, ...uniqueAliases],
@@ -286,6 +295,24 @@ export class BatteryCatalogueUseCases {
     }
     if (profilePatch.capacityMah != null && profilePatch.capacityMah <= 0) throw invalid('Capacity must be greater than zero.');
     if (profilePatch.nominalVoltageMv != null && profilePatch.nominalVoltageMv <= 0) throw invalid('Voltage must be greater than zero.');
+
+    // Pack facts are what the second person checked when they verified the
+    // battery. Changing one after that left it VERIFIED with facts nobody had
+    // checked (and on a live battery, straight onto the storefront). As with a
+    // compatibility claim, a material edit clears the verification; a live
+    // battery must be unpublished first.
+    const packFactsChanged = changed.filter((k) => (PACK_FACTS as readonly string[]).includes(k));
+    if (packFactsChanged.length) {
+      if (before.lifecycleStatus === 'ACTIVE') {
+        throw unprocessable('LIVE_PACK_FACT_CHANGE', `Unpublish the battery before changing pack facts (${packFactsChanged.join(', ')}); a second person then checks them again.`);
+      }
+      if (before.verificationStatus === 'VERIFIED') {
+        profilePatch.verificationStatus = 'UNVERIFIED';
+        profilePatch.verifiedBy = null;
+        profilePatch.verifiedAt = null;
+        changed.push('verificationStatus');
+      }
+    }
 
     const productPatch: { name?: string; shortDescription?: string; longDescription?: string; subcategory?: string } = {};
     if (patch.name !== undefined && patch.name.trim() && patch.name.trim() !== found.product.name) { productPatch.name = patch.name.trim().slice(0, 255); changed.push('name'); }

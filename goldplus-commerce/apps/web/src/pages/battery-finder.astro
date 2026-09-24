@@ -180,7 +180,8 @@ const shownDevice: FinderDeviceDto | null = device?.device ?? (search?.kind === 
                 <span class={`inline-block mt-2 rounded-full border px-3 py-1 text-[11px] font-bold ${FIT_BADGE[search.battery.fitState] ?? ''}`}>{search.battery.fitLabel}</span>
               </div>
               <div class="text-right">
-                <p class="font-black text-brand-dark">{ugx(search.battery.priceUgx)}</p>
+                {search.battery.regularPriceUgx != null && <p class="text-xs font-semibold text-slate-600 line-through tabular-nums"><span class="sr-only">Was </span>{ugx(search.battery.regularPriceUgx)}</p>}
+                <p class="font-black text-brand-dark">{search.battery.regularPriceUgx != null && <span class="sr-only">Now </span>}{ugx(search.battery.priceUgx)}</p>
                 <a href={`/products/${search.battery.slug}`} class="mt-2 inline-block rounded-xl bg-brand-dark px-4 py-2 text-sm font-bold text-white hover:opacity-90">View</a>
               </div>
             </article>
@@ -212,7 +213,8 @@ const shownDevice: FinderDeviceDto | null = device?.device ?? (search?.kind === 
                       {r.fitState === 'VERIFIED_OUT_OF_STOCK' && <p class="mt-2 text-xs text-gray-600">{cfg?.outOfStockNote}</p>}
                     </div>
                     <div class="text-right">
-                      <p class="font-black text-brand-dark">{ugx(r.priceUgx)}</p>
+                      {r.regularPriceUgx != null && <p class="text-xs font-semibold text-slate-600 line-through tabular-nums"><span class="sr-only">Was </span>{ugx(r.regularPriceUgx)}</p>}
+                      <p class="font-black text-brand-dark">{r.regularPriceUgx != null && <span class="sr-only">Now </span>}{ugx(r.priceUgx)}</p>
                       <a href={`/products/${r.slug}?device=${encodeURIComponent(shownDevice.slug)}`} class="mt-2 inline-block rounded-xl bg-brand-dark px-4 py-2 text-sm font-bold text-white hover:opacity-90">View</a>
                     </div>
                   </article>

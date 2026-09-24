@@ -28,7 +28,7 @@ import {
 } from '../lib/checkout';
 import { parseLocalCartCookie } from '../lib/cart';
 import { resolveCheckoutIntent, issueFreshCheckoutIntent, clearCheckoutIntent } from '../lib/checkoutIntent';
-import { resolveAuthenticatedUserId } from '../lib/customerAuth';
+import { requestSession } from '../lib/customerAuth';
 import { cartClient } from '../lib/cartClient';
 import { resolveCartCredential, clearCartCredential } from '../lib/cartCredential';
 import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../lib/requestOrigin';
@@ -40,7 +40,7 @@ import {
   paymentStartMessageFor,
 } from '../lib/checkoutClient';
 import { mayStartPayment, kampalaCutoff } from '@goldplus/shared';
-import { getStorefrontDiscount, quotedGoodsTotalUgx } from '../lib/storefrontDiscount';
+import { getStorefrontDiscount, basketSavingUgx, basketSavingLabel } from '../lib/storefrontDiscount';
 import { getBusinessInfo } from '../lib/businessInfo';
 import { getStorefrontCopy } from '../lib/storefrontCopy';
 import type { ApiEnvelope } from '@goldplus/shared';
@@ -64,12 +64,17 @@ interface CartResponse {
 // Resolved ONCE for the whole render: the cart credential, the account-context
 // prefill and the POST branch all need the same answer, and this call costs a
 // round-trip to the API.
-const authenticatedUserId = await resolveAuthenticatedUserId(Astro.cookies);
+// UNKNOWN (the check timed out or failed) is neither: a signed-in customer must
+// never be checked out as a guest, and their basket credential must not be
+// replaced, so on UNKNOWN nothing is placed and nothing is minted.
+const checkoutSession = await requestSession(Astro.locals, Astro.cookies);
+const sessionUnknown = checkoutSession.state === 'UNKNOWN';
+const authenticatedUserId = checkoutSession.state === 'USER' ? checkoutSession.userId : null;
 
 // The basket is read through the SIGNED CREDENTIAL, not a cart id in the URL. The
 // credential also names the owner, so a signed-in customer cannot be served a guest
 // basket and vice versa.
-const cartCredential = resolveCartCredential(Astro.cookies, authenticatedUserId);
+const cartCredential = resolveCartCredential(Astro.cookies, authenticatedUserId, { sessionUnknown });
 if (!cartCredential) {
   return Astro.redirect('/cart', 303);
 }
@@ -170,6 +175,11 @@ let receiptPlace = '';
 // through without the code the customer had typed.
 let couponCodeValue = '';
 let previewQuoteIdValue = '';
+// The payment method and points the customer chose, carried back the same way.
+// The offline radio used to carry a literal `checked`, so any refusal quietly
+// turned "Pay securely now" into a pay-on-delivery order on the next submit.
+let paymentMethodValue: 'offline' | 'pesapal' = 'offline';
+let redeemPointsValue = '';
 
 // The checkout intent is resolved on EVERY render, including the initial GET.
 //
@@ -309,10 +319,18 @@ if (!originDecision.allowed) {
 
 // Not resolved at all on a refused request: resolving MINTS, and a cross-site POST
 // has no business being issued a checkout identity.
-const checkoutIntent = originDecision.allowed
+// Nor on an UNKNOWN session: minting here would issue a GUEST intent to a
+// customer who may be signed in, and the POST below would place their order as a
+// guest. The page says so and the customer retries in a moment. Only on a POST:
+// a plain view places nothing, so an error there reads as a failed order.
+if (originDecision.allowed && sessionUnknown && Astro.request.method === 'POST') {
+  status = 'error';
+  message = 'We could not confirm your sign-in just now, so nothing has been placed. Please wait a moment and try again.';
+}
+const checkoutIntent = originDecision.allowed && !sessionUnknown
   ? resolveCheckoutIntent(Astro.cookies, authenticatedUserId)
   : null;
-if (originDecision.allowed && !checkoutIntent) {
+if (originDecision.allowed && !sessionUnknown && !checkoutIntent) {
   // Refuse rather than fall back to an unsigned identity, which would make every
   // retry a new operation and therefore a new order.
   throw new Error('CHECKOUT_INTENT_SECRET is not configured');
@@ -336,6 +354,11 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
   {
     const q = String(formData.get('previewQuoteId') || '').trim();
     previewQuoteIdValue = /^[0-9a-f-]{36}$/i.test(q) ? q : '';
+  }
+  paymentMethodValue = String(formData.get('paymentMethod') || '').trim() === 'pesapal' ? 'pesapal' : 'offline';
+  {
+    const rp = parseInt(String(formData.get('redeemPoints') || ''), 10);
+    redeemPointsValue = Number.isInteger(rp) && rp > 0 ? String(rp) : '';
   }
 
   // Collection from a pickup point (rendered only when pickup points exist).
@@ -778,7 +801,7 @@ const cut = kampalaCutoff(new Date(), { cutoffHour: bizCheckout.sameDayCutoffHou
 // button used to be printed to a customer who had just chosen Arua; the line
 // now names Kampala & Wakiso until a district is known, and the page script
 // switches it when the customer picks one (data-* below).
-const sameDayCopy = sameDayCutoffCopy(cut);
+const sameDayCopy = sameDayCutoffCopy(cut, { now: new Date(), closedDays: bizCheckout.closedDays });
 const initialLineDistrict: string | null = (() => {
   if (initialDistrict) return initialDistrict;
   try {
@@ -790,15 +813,19 @@ const initialLineDistrict: string | null = (() => {
 })();
 const cutoffLine = sameDayLineFor(sameDayCopy, initialLineDistrict);
 
-// Active campaign discount (display; per-line to match what the evaluator charges).
+// The site-wide campaign, for the label only.
 const checkoutDiscount = await getStorefrontDiscount();
-const campaignRunning = checkoutDiscount.active && checkoutDiscount.percentBps > 0 && cart.subtotalUgx > 0;
-// The evaluator's own figure, per-product floors included (0127); the order is
-// priced server-side by the same evaluator, so this is the number it will charge.
-const checkoutSaleSubtotal = campaignRunning
-  ? await quotedGoodsTotalUgx(cart.items.map((i: any) => ({ productId: i.productId, quantity: i.quantity })), cart.subtotalUgx)
-  : cart.subtotalUgx;
-const checkoutSavings = cart.subtotalUgx - checkoutSaleSubtotal;
+// The evaluator's own saving, per-product floors included (0127); the order is
+// priced server-side by the same evaluator, so this is what it will charge.
+// Asked for EVERY basket: an automatic promotion that is not a simple
+// site-wide campaign (a minimum spend, a cap, an exclusion) is still charged,
+// and gating on the campaign showed the undiscounted total while PesaPal
+// asked for less.
+const checkoutSavings = await basketSavingUgx(
+  cart.items.map((i: any) => ({ productId: i.productId, quantity: i.quantity })),
+  cart.subtotalUgx,
+);
+const checkoutSaleSubtotal = cart.subtotalUgx - checkoutSavings;
 
 // Same deterministic rule the ledger applies (floor per 1,000 UGX × rate).
 // The ledger's basis is the ORDER TOTAL, which is the DISCOUNTED subtotal plus
@@ -818,7 +845,12 @@ const potentialPoints = loyaltyProgramme.active
  * "10% discount ... -UGX 0": a claim the checkout does not honour. The row
  * appears only when the customer actually saves something.
  */
-const checkoutOnSale = campaignRunning && checkoutSavings > 0;
+const checkoutOnSale = checkoutSavings > 0;
+const checkoutSavingLabel = basketSavingLabel(
+  checkoutDiscount,
+  cart.items.map((i: any) => ({ unitPriceUgx: Number(i.unitPriceUgx ?? i.priceUgx) || 0, quantity: Number(i.quantity) || 0 })),
+  checkoutSavings,
+);
 ---
 
 <BaseLayout robotsMeta="noindex,follow" title="Checkout">
@@ -866,7 +898,12 @@ const checkoutOnSale = campaignRunning && checkoutSavings > 0;
               </ul>
             </div>
           ) : (
+            /* A refusal with no field to point at (price changed, service
+               unavailable) takes focus too, so the page script can move the
+               customer to it instead of leaving them at the top of the body. */
+            <div id="checkout-feedback" tabindex="-1" class="outline-none" data-error={status === 'error' ? 'true' : undefined}>
             <FormFeedback status={status} message={message} reference={status === 'error' ? reference : undefined} actionHref={feedbackAction?.href} actionLabel={feedbackAction?.label} helpHref={bizCheckout.whatsappUrl ? `${bizCheckout.whatsappUrl}?text=${encodeURIComponent(`Hi GoldPlus, I need help with my checkout${reference ? ` (order ${reference})` : ''}.`)}` : undefined} helpPhone={bizCheckout.phoneDisplay} />
+            </div>
           )}
 
           <form id="checkout-form" method="POST" action="/checkout" novalidate class="space-y-6 mt-4">
@@ -977,14 +1014,14 @@ const checkoutOnSale = campaignRunning && checkoutSavings > 0;
               <fieldset class="space-y-4">
                 <legend class="sr-only">Choose how to pay</legend>
                 <label class="flex items-start gap-3 p-4 border border-slate-200/70 rounded-xl hover:border-brand-primary cursor-pointer select-none bg-slate-50/30 transition-all has-[:checked]:border-brand-primary has-[:checked]:bg-brand-primary/5 has-[:checked]:ring-1 has-[:checked]:ring-brand-primary">
-                  <input type="radio" name="paymentMethod" value="offline" checked class="mt-0.5 w-5 h-5 shrink-0 accent-[#456B00] cursor-pointer" />
+                  <input type="radio" name="paymentMethod" value="offline" checked={paymentMethodValue !== 'pesapal'} class="mt-0.5 w-5 h-5 shrink-0 accent-[#456B00] cursor-pointer" />
                   <div>
                     <span class="font-bold text-gray-900 text-sm">{paymentCopy.offline.label}</span>
                     <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">{paymentCopy.offline.description}</p>
                   </div>
                 </label>
                 <label class="flex items-start gap-3 p-4 border border-slate-200/70 rounded-xl hover:border-brand-primary cursor-pointer select-none bg-slate-50/30 transition-all has-[:checked]:border-brand-primary has-[:checked]:bg-brand-primary/5 has-[:checked]:ring-1 has-[:checked]:ring-brand-primary">
-                  <input type="radio" name="paymentMethod" value="pesapal" class="mt-0.5 w-5 h-5 shrink-0 accent-[#456B00] cursor-pointer" />
+                  <input type="radio" name="paymentMethod" value="pesapal" checked={paymentMethodValue === 'pesapal'} class="mt-0.5 w-5 h-5 shrink-0 accent-[#456B00] cursor-pointer" />
                   <div>
                     <span class="font-bold text-gray-900 text-sm">{paymentCopy.pesapal.label}</span>
                     <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">{paymentCopy.pesapal.description}</p>
@@ -1020,7 +1057,7 @@ const checkoutOnSale = campaignRunning && checkoutSavings > 0;
               </div>
               {checkoutOnSale && (
                 <div class="flex items-center justify-between">
-                  <dt class="font-medium" style="color:#456B00">{checkoutDiscount.percent}% discount{checkoutDiscount.name ? ` · ${checkoutDiscount.name}` : ''}</dt>
+                  <dt class="font-medium" style="color:#456B00">{checkoutSavingLabel}</dt>
                   <dd class="font-bold tabular-nums" style="color:#456B00">&minus;{formatUgx(checkoutSavings)}</dd>
                 </div>
               )}
@@ -1083,6 +1120,7 @@ const checkoutOnSale = campaignRunning && checkoutSavings > 0;
                     step="1"
                     inputmode="numeric"
                     placeholder={`min ${loyaltyProgramme.redemption.minPoints}`}
+                    value={redeemPointsValue}
                     class="w-32 px-3 py-2 bg-white border border-brand-borderGrey rounded-lg text-base sm:text-sm font-bold outline-none focus:ring-2 focus:ring-brand-primaryInk"
                     data-point-value={loyaltyProgramme.redemption.pointValueUgx}
                   />
@@ -1164,7 +1202,7 @@ const checkoutOnSale = campaignRunning && checkoutSavings > 0;
               class="w-full sm:w-auto px-8 h-[52px] rounded-full font-semibold text-[15px] hover:shadow-lg hover:shadow-brand-primary/20 transition-all outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk cursor-pointer hover:scale-[1.005] active:scale-[0.985] shadow-sm"
               style="background:#93D500;color:#0A0A0A"
             >
-              Place order
+              {paymentMethodValue === 'pesapal' ? 'Pay securely now' : 'Place order'}
             </button>
             <p id="cutoff-line" class="text-xs font-semibold" style="color:#456B00" data-scoped={sameDayCopy.scoped} data-in-area={sameDayCopy.inArea} data-outside={sameDayCopy.outside}>{cutoffLine}</p>
           </div>
@@ -1558,7 +1596,7 @@ const checkoutOnSale = campaignRunning && checkoutSavings > 0;
 
     // A form that came back with field errors: take the customer to the
     // summary that links to each one (focus used to stay on the page body).
-    document.getElementById('checkout-error-summary')?.focus();
+    (document.getElementById('checkout-error-summary') ?? document.querySelector<HTMLElement>('#checkout-feedback[data-error]'))?.focus();
     form?.addEventListener('submit', () => {
       const paymentMethod = (
         form.querySelector<HTMLInputElement>('input[name="paymentMethod"]:checked')?.value ?? 'unknown'

@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
+import { adminUploadLimit } from '../../middleware/uploadLimit';
 import { Registry } from '../../../../infrastructure/Registry';
 import { CreateAuditLogUseCase } from '../../../../application/use-cases/audit/CreateAuditLogUseCase';
 import { PERMISSIONS } from '@goldplus/shared';
@@ -28,7 +29,7 @@ routes.get('/', requirePermissions([PERMISSIONS.MEDIA_READ]), async (c) => {
   return c.json({ success: true, data: { sessions } });
 });
 
-routes.post('/', requirePermissions([PERMISSIONS.MEDIA_MANAGE]), async (c) => {
+routes.post('/', requirePermissions([PERMISSIONS.MEDIA_MANAGE]), adminUploadLimit, async (c) => {
   const body = await c.req.parseBody({ all: true });
   const raw = body['files'];
   const files = (Array.isArray(raw) ? raw : raw ? [raw] : []).filter((f): f is File => f instanceof File && f.size > 0);

@@ -370,6 +370,7 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
   { label: 'Users', href: '/admin/users', group: 'System', status: 'working', description: 'Operator accounts.' },
   { label: 'Roles & permissions', href: '/admin/roles', group: 'System', status: 'working', description: 'Role definitions and their permission grants.' },
   { label: 'Audit log', href: '/admin/audit', group: 'System', status: 'working', description: 'Every governed mutation, actor and before/after.' },
+  { label: 'Two-step verification', href: '/admin/security/mfa', group: 'System', status: 'working', description: 'Set up and verify your authenticator — refunds and pricing approval ask for it.' },
   { label: 'Release readiness', href: '/admin/release-readiness', group: 'System', status: 'diagnostic', description: 'Release gates and evidence.' },
   // ── Organic Growth OS (Search Growth) — every figure measured, none invented.
   { label: 'SEO Overview', href: '/admin/seo', group: 'Search Growth', status: 'working', description: 'Organic market share, open opportunities, alerts and integration status.' },

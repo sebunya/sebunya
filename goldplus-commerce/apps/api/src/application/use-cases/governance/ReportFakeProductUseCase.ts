@@ -32,8 +32,10 @@ export class ReportFakeProductUseCase {
     if (locationFound.length > 255) return { ok: false, code: 'BAD_INPUT', message: 'Location is too long.' };
     if (productDescription.length > 5000) return { ok: false, code: 'BAD_INPUT', message: 'Description is too long.' };
     
-    if (!isValidEmail(email)) {
-      return { ok: false, code: 'BAD_INPUT', message: 'A valid reporter email is required.' };
+    // Email is optional (owner decision 2026-09-24): the phone is how we
+    // follow up, and a report must never be refused for a missing email.
+    if (email && !isValidEmail(email)) {
+      return { ok: false, code: 'BAD_INPUT', message: 'That email address does not look right. Check it, or leave it blank.' };
     }
     if (!isValidUgandanPhone(phone)) {
       return { ok: false, code: 'BAD_INPUT', message: 'A valid Ugandan phone number is required.' };
@@ -41,7 +43,7 @@ export class ReportFakeProductUseCase {
 
     const id = randomUUID();
     // Pack combined contact information as per decision highlight
-    const combinedContact = `Email: ${email} | Phone: ${phone}`;
+    const combinedContact = email ? `Email: ${email} | Phone: ${phone}` : `Phone: ${phone}`;
 
     const report = FakeReport.report(id, locationFound, productDescription, {
       hologramCode: input.hologramCode ?? null,

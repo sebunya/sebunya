@@ -82,33 +82,40 @@ suite("refund ledger on real PostgreSQL", () => {
       lines,
     });
 
+  // What the double-payout guard counts: every reservation that is not rejected.
+  // (getRefundedTotalUgx deliberately counts only money the provider ACCEPTED or
+  // settled, so a reservation that was never sent never reads as a refund.)
+  const reservedUgx = async () =>
+    Number((await pg`select coalesce(sum(amount_ugx),0)::bigint as t from payment_refunds where payment_attempt_id = ${attemptId}::uuid and status <> 'rejected'`)[0].t);
+
   it("CONCURRENCY: two simultaneous refunds cannot both take the same headroom", async () => {
     // 60k + 60k = 120k against 100k collected. Exactly one must win.
     const [a, b] = await Promise.all([reserve(60_000, "race-a"), reserve(60_000, "race-b")]);
     const outcomes = [a.outcome, b.outcome].sort();
     expect(outcomes).toEqual(["EXCEEDS_REFUNDABLE_BALANCE", "RESERVED"]);
-    expect(await repo.getRefundedTotalUgx(attemptId)).toBe(60_000);
+    expect(await reservedUgx()).toBe(60_000);
+    expect(await repo.getRefundedTotalUgx(attemptId)).toBe(0); // reserved, not yet accepted by the provider
   });
 
   it("the remaining balance is exactly what is left, and one shilling more is refused", async () => {
     expect((await reserve(40_001, "over")).outcome).toBe("EXCEEDS_REFUNDABLE_BALANCE");
     expect((await reserve(40_000, "exact")).outcome).toBe("RESERVED");
-    expect(await repo.getRefundedTotalUgx(attemptId)).toBe(COLLECTED);
+    expect(await reservedUgx()).toBe(COLLECTED);
     // Fully refunded now: nothing further, not even 1 UGX.
     expect((await reserve(1, "after-full")).outcome).toBe("EXCEEDS_REFUNDABLE_BALANCE");
   });
 
   it("IDEMPOTENCY: the same key returns the original row and reserves nothing new", async () => {
-    const before = await repo.getRefundedTotalUgx(attemptId);
+    const before = await reservedUgx();
     const replay = await reserve(60_000, "race-a");
     expect(replay.outcome).toBe("ALREADY_PROCESSED");
-    expect(await repo.getRefundedTotalUgx(attemptId)).toBe(before);
+    expect(await reservedUgx()).toBe(before);
   });
 
   it("a rejected refund releases its balance again", async () => {
     const rows = await pg`select id from payment_refunds where order_id = ${orderId}::uuid order by created_at limit 1`;
     await repo.recordProviderOutcome(String(rows[0].id), { status: "rejected", providerStatus: "REJECTED" });
-    expect(await repo.getRefundedTotalUgx(attemptId)).toBe(40_000);
+    expect(await reservedUgx()).toBe(40_000);
     expect((await reserve(60_000, "reclaimed")).outcome).toBe("RESERVED");
   });
 

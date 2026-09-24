@@ -21,6 +21,13 @@ export interface ListAuditLogsOptions {
   action?: string;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/**
+ * actor_id is a uuid column: anything else would be a Postgres cast error (a
+ * 500). The route refuses a non-uuid actor filter with a 400 before this runs.
+ */
+export const isAuditActorId = (value: string): boolean => UUID.test(value);
+
 export class ListAuditLogsUseCase {
   constructor(private readonly audit: IAuditRepository) {}
 
@@ -37,7 +44,9 @@ export class ListAuditLogsUseCase {
       ? (await this.audit.findByEntity(entity, entityId))
           .filter((r) => (!actorId || r.actorId === actorId) && (!action || r.action.toUpperCase().includes(action.toUpperCase())))
           .slice(0, limit)
-      : await this.audit.findAll({ limit, actorId, action });
+      // The entity alone narrows the feed too ("Role history" = entity=role):
+      // it used to be dropped, so the page showed every event under that label.
+      : await this.audit.findAll({ limit, actorId, action, entity: entity || undefined });
     return rows.map((r) => ({
       id: r.id,
       actorId: r.actorId,

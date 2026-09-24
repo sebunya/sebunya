@@ -146,9 +146,14 @@ export class GetRecommendationsUseCase {
     let candidates: RecommendationCandidate[] | null = null;
     let sourceReports: RecommendationSourceReport[] = [];
     const cacheKey = input.productId || input.categoryId || "global";
+    // A cart add-on rail for a REAL cart is built live. Its cache entry is
+    // cart-agnostic ('global', materialized with no cart), so serving it meant
+    // every basket got the same bestsellers and catalogue fallback, and the
+    // complementary rung never saw the cart. An empty cart still uses it.
+    const cartAware = input.placement === "cart_addon" && (input.cartProductIds?.length ?? 0) > 0;
 
     try {
-      const cached = await this.products.findCachedRecommendations(input.placement, cacheKey);
+      const cached = cartAware ? null : await this.products.findCachedRecommendations(input.placement, cacheKey);
       if (cached && cached.items.length > 0) {
         const age = Date.now() - new Date(cached.updatedAt).getTime();
         // A future timestamp (clock skew) is treated as stale, not as fresh

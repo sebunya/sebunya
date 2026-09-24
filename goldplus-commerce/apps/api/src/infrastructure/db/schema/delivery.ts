@@ -4,6 +4,7 @@ import {
   varchar,
   text,
   integer,
+  smallint,
   bigint,
   boolean,
   numeric,
@@ -177,6 +178,11 @@ export const deliveryQuoteCapture = pgTable('delivery_quote_capture', {
   // 0094 — per PARCEL, because a bus office charges per parcel.
   parcelCount: integer('parcel_count'),
   perParcelFeeUgx: bigint('per_parcel_fee_ugx', { mode: 'number' }),
+  // 0152 — the inputs the hour and detour fits need, recorded when the quote is
+  // given. Hour of week in EAT (0–167); straight-line distance is the ROUND trip
+  // before any detour, comparable to distance_travelled_km.
+  eatHourOfWeek: smallint('eat_hour_of_week'),
+  straightLineKm: numeric('straight_line_km', { precision: 8, scale: 2 }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
@@ -184,6 +190,18 @@ export const deliveryQuoteCapture = pgTable('delivery_quote_capture', {
   areaIdx: index('delivery_quote_capture_area_idx').on(t.areaSlug),
   deliveredIdx: index('delivery_quote_capture_delivered_idx').on(t.deliveredAt),
 }));
+
+/**
+ * Observed delivery minutes per area (0152), replaced wholesale by the nightly
+ * calibration from real deliveries. The quote reads it for the hour window.
+ */
+export const deliveryWindowPercentile = pgTable('delivery_window_percentile', {
+  scopeKey: varchar('scope_key', { length: 160 }).primaryKey(),
+  p10Minutes: numeric('p10_minutes', { precision: 8, scale: 2 }).notNull(),
+  p90Minutes: numeric('p90_minutes', { precision: 8, scale: 2 }).notNull(),
+  sampleSize: integer('sample_size').notNull(),
+  computedAt: timestamp('computed_at', { withTimezone: true }).defaultNow().notNull(),
+});
 
 /**
  * Bus destinations (0093) — the skeleton, without a single price.

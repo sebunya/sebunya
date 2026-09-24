@@ -33,11 +33,13 @@ routes.post('/', requirePermissions([PERMISSIONS.ROLES_MANAGE]), async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'Expected a JSON body.' } }, 400);
   const registry = Registry.getInstance();
-  const actorId = (c.get('user') as { id: string }).id;
+  const actor = c.get('user') as { id: string; permissions?: string[] };
+  const actorId = actor.id;
   const outcome = await registry.roleManagementUseCase.createRole({
     name: String(body.name ?? ''),
     permissionCodes: Array.isArray(body.permissionCodes) ? body.permissionCodes : [],
     actorId,
+    actorPermissions: actor.permissions ?? [],
   });
   if (!outcome.ok) return c.json({ success: false, error: { code: outcome.code, message: outcome.message } }, outcome.status as any);
   await new CreateAuditLogUseCase(registry.auditRepo).execute({
@@ -51,11 +53,13 @@ routes.put('/:id/permissions', requirePermissions([PERMISSIONS.ROLES_MANAGE]), a
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'Expected a JSON body.' } }, 400);
   const registry = Registry.getInstance();
-  const actorId = (c.get('user') as { id: string }).id;
+  const actor = c.get('user') as { id: string; permissions?: string[] };
+  const actorId = actor.id;
   const outcome = await registry.roleManagementUseCase.replacePermissions({
     roleId: c.req.param('id') ?? '',
     permissionCodes: Array.isArray(body.permissionCodes) ? body.permissionCodes : [],
     actorId,
+    actorPermissions: actor.permissions ?? [],
   });
   if (!outcome.ok) return c.json({ success: false, error: { code: outcome.code, message: outcome.message } }, outcome.status as any);
   const added = outcome.value.nextCodes.filter((x) => !outcome.value.previousCodes.includes(x));

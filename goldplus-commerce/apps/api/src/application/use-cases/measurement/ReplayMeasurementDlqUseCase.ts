@@ -23,8 +23,9 @@ export class ReplayMeasurementDlqUseCase {
       throw new Error('ALREADY_RESOLVED');
     }
 
-    // Re-enqueue the payload into the outbox
-    await this.adminRepo.enqueueTelemetryDispatch(dlqEntry.payload, dlqEntry.eventId);
+    // Re-enqueue the payload into the outbox, keyed on THIS entry: a second
+    // replay of it (double click, two operators) cannot enqueue it twice.
+    await this.adminRepo.enqueueTelemetryDispatch(dlqEntry.payload, dlqEntry.eventId, id);
 
     // Mark DLQ entry resolved
     await this.dlqRepo.markResolved(id, 'Manual replay via admin');

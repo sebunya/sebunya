@@ -36,7 +36,8 @@ if (Astro.request.method === 'POST') {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, Accept: 'application/json' },
       body: JSON.stringify({ config: parsed }),
     });
-    if (res.status === 401 || res.status === 403) return Astro.redirect('/admin/login?returnTo=/admin/categories', 303);
+    if (res.status === 401) return Astro.redirect('/admin/login?returnTo=/admin/categories', 303);
+    if (res.status === 403) return Astro.redirect(`/admin/not-permitted?from=${encodeURIComponent('/admin/categories')}`, 303);
     const json: any = await res.json().catch(() => null);
     if (res.ok && json?.success) return Astro.redirect(`/admin/categories?saved=${encodeURIComponent(String(json.data?.version ?? ''))}`, 303);
     saveError = json?.error?.message ?? `Could not save (HTTP ${res.status}).`;
@@ -48,7 +49,8 @@ const savedVersion = Astro.url.searchParams.get('saved');
 
 try {
   const res = await fetch(`${apiBase}/admin/taxonomy`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } });
-  if (res.status === 401 || res.status === 403) return Astro.redirect('/admin/login?returnTo=/admin/categories', 303);
+  if (res.status === 401) return Astro.redirect('/admin/login?returnTo=/admin/categories', 303);
+  if (res.status === 403) return Astro.redirect(`/admin/not-permitted?from=${encodeURIComponent('/admin/categories')}`, 303);
   const json: any = await res.json().catch(() => null);
   if (res.ok && json?.success) cfg = Array.isArray(json.data.config) ? json.data.config : [];
   else loadError = json?.error?.message ?? 'Could not load the taxonomy.';

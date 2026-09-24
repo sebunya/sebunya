@@ -55,7 +55,7 @@ routes.post('/import/preview', requirePermissions([PERMISSIONS.PRODUCT_COSTS_MAN
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ success: false, error: { code: 'INVALID_JSON', message: 'Invalid body' } }, 400);
 
-  const result = await Registry.getInstance().productCostRepo.importCosts({
+  const result = await Registry.getInstance().importProductCostsUseCase.execute({
     rows: parseRows(body),
     source: String(body.source ?? 'admin-preview').slice(0, 120),
     enteredBy: (c.get('user') as { id: string }).id,
@@ -76,7 +76,7 @@ routes.post('/import', requirePermissions([PERMISSIONS.PRODUCT_COSTS_MANAGE]), a
   const source = String(body.source ?? 'admin-import').slice(0, 120);
   const actorId = (c.get('user') as { id: string }).id;
 
-  const result = await Registry.getInstance().productCostRepo.importCosts({ rows, source, enteredBy: actorId, dryRun: false });
+  const result = await Registry.getInstance().importProductCostsUseCase.execute({ rows, source, enteredBy: actorId, dryRun: false });
 
   await Registry.getInstance().createAuditLogUseCase.execute({
     actorId,

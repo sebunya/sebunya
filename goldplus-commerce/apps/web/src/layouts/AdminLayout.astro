@@ -36,8 +36,11 @@ let fulfilmentAlert: { newOrders: number; overdue: number; unworkable: number } 
 const alertToken = readSessionToken(Astro.request);
 if (alertToken && currentPath.startsWith('/admin') && !currentPath.startsWith('/admin/login')) {
   try {
+    // Bounded: this runs on EVERY admin page, and a stalled API must cost the
+    // page a missing bar, not a render held open for minutes.
     const res = await fetch(`${apiBase}/admin/fulfilment/badge`, {
       headers: { Accept: 'application/json', Authorization: `Bearer ${alertToken}` },
+      signal: AbortSignal.timeout(2000),
     });
     const json = await res.json().catch(() => null);
     const d = json?.data ?? json;
@@ -152,9 +155,35 @@ const isPathActive = (href: string) => {
       <header class="relative z-10 flex flex-shrink-0 h-16 bg-black border-b border-gray-800">
         
         {/* Left: Responsive Header Elements / Title */}
-        <div class="flex-1 flex items-center justify-between px-6 lg:px-8">
-          <div class="flex items-center gap-4">
-            <h1 class="text-lg font-black tracking-tight text-white">
+        <div class="flex-1 flex items-center justify-between gap-3 min-w-0 px-4 sm:px-6 lg:px-8">
+          <div class="flex items-center gap-3 sm:gap-4 min-w-0">
+            {/*
+              Below 1024px the sidebar is hidden, and there was no other way to
+              reach another section. A native disclosure: no script, so it works
+              under the strict CSP, and it lists exactly what the sidebar lists.
+            */}
+            <details class="lg:hidden relative flex-shrink-0">
+              <summary class="list-none cursor-pointer select-none inline-flex min-h-9 items-center rounded-lg border border-gray-700 px-3 text-xs font-bold text-gray-200 hover:border-brand-primary" aria-label="Admin menu">
+                Menu
+              </summary>
+              <nav class="absolute left-0 top-full mt-2 w-72 max-w-[calc(100vw-2rem)] max-h-[75vh] overflow-y-auto rounded-xl border border-gray-800 bg-black p-3 space-y-4 shadow-xl" aria-label="Admin sections">
+                <a href="/admin" class="block px-3 py-2 text-xs font-bold text-brand-primary">Admin home</a>
+                {ADMIN_NAVIGATION.map((group) => (
+                  <div class="space-y-1">
+                    <p class="px-3 text-[10px] font-black text-gray-400 uppercase tracking-widest">{group.title}</p>
+                    {group.items.map((item) => (
+                      <a
+                        href={item.href}
+                        aria-current={isPathActive(item.href) ? 'page' : undefined}
+                        class={`block px-3 py-2 text-xs font-bold rounded-lg ${isPathActive(item.href) ? 'bg-brand-primary text-brand-charcoal' : 'text-gray-300 hover:bg-gray-800/50'}`}
+                      >{item.label}</a>
+                    ))}
+                  </div>
+                ))}
+                <a href="/" class="block px-3 py-2 text-[10px] font-bold uppercase text-gray-400">View store &rarr;</a>
+              </nav>
+            </details>
+            <h1 class="text-base sm:text-lg font-black tracking-tight text-white truncate min-w-0" title={title}>
               {title}
             </h1>
             {description && (
@@ -165,9 +194,9 @@ const isPathActive = (href: string) => {
           </div>
 
           {/* Right: Session Status & Utilities */}
-          <div class="flex items-center gap-4">
+          <div class="flex items-center gap-4 flex-shrink-0">
             
-            <div class="flex items-center gap-2.5 bg-gray-900/80 px-3.5 py-1.5 rounded-full border border-gray-800 shadow-sm select-none">
+            <div class="hidden sm:flex items-center gap-2.5 bg-gray-900/80 px-3.5 py-1.5 rounded-full border border-gray-800 shadow-sm select-none">
               <div class="w-5 h-5 rounded-full bg-brand-primary/10 border border-brand-primary/20 flex items-center justify-center text-brand-primary font-black text-[10px] uppercase tracking-wider">
                 A
               </div>

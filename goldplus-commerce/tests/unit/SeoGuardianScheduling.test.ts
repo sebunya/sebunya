@@ -39,8 +39,10 @@ describe('exactly one six-hourly Guardian schedule exists', () => {
 
 describe('the runner protects itself and the shared queue', () => {
   it('takes a distributed advisory lock and releases it', () => {
-    expect(runner).toContain('pg_try_advisory_lock');
-    expect(runner).toContain('pg_advisory_unlock');
+    // Taken and released on ONE reserved connection (db/sessionLock.ts); through
+    // the pool the unlock ran on another backend and the lock leaked.
+    expect(runner).toContain('tryAcquireSessionLock(GUARDIAN_LOCK_ID)');
+    expect(runner).toContain('.release()');
     expect(runner).toContain('finally');
   });
 

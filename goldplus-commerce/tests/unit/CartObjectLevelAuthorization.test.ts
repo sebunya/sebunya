@@ -494,11 +494,23 @@ describe('the cart routes are thin and take no cart id from the caller', () => {
   });
 
   it('requires a verified credential on every cart route', () => {
-    const handlers = code.match(/routes\.(get|post)\('\/cart/g) ?? [];
+    // '/cart/account' is the one exception: it holds no cart credential of its own.
+    // It requires a verified SESSION and honours only a verified GUEST credential
+    // (asserted below), then answers which account basket to mint for.
+    const handlers = (code.match(/routes\.(get|post)\('\/cart[^']*'/g) ?? []).filter(
+      (h) => !h.endsWith("'/cart/account'"),
+    );
     const gates = code.match(/await requireCart\(c\)/g) ?? [];
     expect(handlers.length).toBeGreaterThanOrEqual(5);
     // One gate per handler. A route added without one is the original failure.
     expect(gates.length).toBe(handlers.length);
+  });
+
+  it('the account-basket route requires a session and adopts only a verified GUEST basket', () => {
+    const route = code.slice(code.indexOf("routes.post('/cart/account'"));
+    expect(route).toContain('await applyOptionalCustomerSession(c)');
+    expect(route).toContain("if (!userId)");
+    expect(route).toContain("verified.valid && verified.claims.ownerKind === 'GUEST'");
   });
 
   it('resolves the session before the credential, so a USER cart can be cross-checked', () => {

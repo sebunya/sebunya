@@ -1,6 +1,7 @@
 import { eq, lte, and, asc, desc, inArray, notInArray, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { db } from '../client';
+import { pgJsonb } from '../PgParams';
 import { outboxEvents } from '../schema/system';
 import {
   IOutboxRepository,
@@ -161,7 +162,8 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
     return updated.length === 1;
   }
 
-  async recordFailure(eventId: string, error: string, nextAttemptAt: Date): Promise<boolean> {
+  async recordFailure(eventId: string, error: string, nextAttemptAt: Date, opts?: { sentTargets?: string[] }): Promise<boolean> {
+    const sent = opts?.sentTargets?.length ? { _sentTargets: opts.sentTargets } : null;
     const updated = await db
       .update(outboxEvents)
       .set({
@@ -171,6 +173,8 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
         attemptCount: sql`${outboxEvents.attemptCount} + 1`,
         workerId: null,
         leaseExpiresAt: null,
+        // Merged into the jsonb payload; no schema change.
+        ...(sent ? { payload: sql`coalesce(${outboxEvents.payload}, '{}'::jsonb) || ${pgJsonb(sent)}` } : {}),
       })
       .where(and(eq(outboxEvents.id, eventId), eq(outboxEvents.workerId, this.workerId)))
       .returning({ id: outboxEvents.id });

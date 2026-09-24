@@ -12,7 +12,7 @@ const cms = await fetchPublishedPolicy('privacy');
 const adRecipients = await fetchAdRecipients();
 ---
 
-<BaseLayout title="Privacy policy | GoldPlus">
+<BaseLayout title={cms?.seoTitle || 'Privacy policy | GoldPlus'} description={cms?.seoDescription || policy.summary}>
   <div>
     {cms ? <CmsPolicyDocument policy={cms} /> : <>
     <header class="border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white py-12 sm:py-16">

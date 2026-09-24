@@ -148,6 +148,12 @@ export class AbandonStaleUnpaidOrdersUseCase {
   }
 }
 
+const ALERTING_STOCK_EXCEPTIONS: ReadonlySet<string> = new Set([
+  'RESERVED_LEDGER_MISMATCH',
+  'DISPATCHED_WITH_RESERVATION',
+  'CANCELLED_AFTER_CONSUME',
+]);
+
 /**
  * RESERVED_LEDGER_MISMATCH becomes an ALERT, not a report line.
  *
@@ -158,14 +164,21 @@ export class AbandonStaleUnpaidOrdersUseCase {
 export class AlertOnLedgerMismatchUseCase {
   constructor(
     private readonly scan: { execute(limit: number): Promise<{ exceptions: Array<{ type: string; entityId: string }> }> },
-    private readonly alert: (input: { count: number; entityIds: string[] }) => void,
+    private readonly alert: (input: { count: number; entityIds: string[]; types?: string[] }) => void,
   ) {}
 
   async execute(): Promise<{ mismatches: number }> {
     const report = await this.scan.execute(1000);
-    const mismatches = report.exceptions.filter((e) => e.type === 'RESERVED_LEDGER_MISMATCH');
+    // Stock that should have moved and did not shouts the same way: an order
+    // whose goods left still holding a reservation, or a cancelled order whose
+    // stock was already taken off.
+    const mismatches = report.exceptions.filter((e) => ALERTING_STOCK_EXCEPTIONS.has(e.type));
     if (mismatches.length > 0) {
-      this.alert({ count: mismatches.length, entityIds: mismatches.map((m) => m.entityId).slice(0, 20) });
+      this.alert({
+        count: mismatches.length,
+        entityIds: mismatches.map((m) => m.entityId).slice(0, 20),
+        types: [...new Set(mismatches.map((m) => m.type))],
+      });
     }
     return { mismatches: mismatches.length };
   }

@@ -238,12 +238,6 @@ export class DefaultNotificationRouter implements INotificationRouter {
         break;
       }
 
-      // ── Customer acknowledgements and order messages ─────────────────────
-      // Everything a customer receives about their own request or order. The
-      // body was attached at enqueue (CustomerOutboxNotifier), so the SMS
-      // adapter never has to invent one. SMS first, email as the fallback.
-      case 'SUPPORT_REQUEST_RECEIVED':
-      case 'QUOTE_REQUEST_RECEIVED':
       /**
        * The paid-order alert (0143). Internal: it goes to the shop's own
        * fulfilment phone, never to a customer, and carries no customer name or
@@ -273,6 +267,17 @@ export class DefaultNotificationRouter implements INotificationRouter {
         break;
       }
 
+      // ── Customer acknowledgements and order messages ─────────────────────
+      // Everything a customer receives about their own request or order. The
+      // body was attached at enqueue (CustomerOutboxNotifier), so the SMS
+      // adapter never has to invent one. SMS first, email as the fallback.
+      //
+      // SUPPORT and QUOTE belong HERE. A paid-order alert case was once
+      // inserted between their labels and this block, so both fell through
+      // into it, found no `recipient`, produced zero targets, and the outbox
+      // marked every acknowledgement "processed" having sent nothing.
+      case 'SUPPORT_REQUEST_RECEIVED':
+      case 'QUOTE_REQUEST_RECEIVED':
       case 'DEALER_APPLICATION_RECEIVED':
       case 'FAKE_REPORT_RECEIVED':
       case 'CUSTOMER_ORDER_MESSAGE': {

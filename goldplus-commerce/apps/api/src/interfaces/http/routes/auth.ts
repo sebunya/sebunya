@@ -391,6 +391,13 @@ routes.post('/mfa/confirm', async (c) => {
     body = {};
   }
   const result = await Registry.getInstance().mfaService.confirmEnrolment(user.id, String(body?.code ?? ''));
+  if (result.locked) {
+    c.header('Retry-After', String(Math.ceil(MfaService.LOCK_WINDOW_MS / 1000)));
+    return c.json(
+      { success: false, error: { code: 'MFA_LOCKED', message: 'Too many wrong codes. Wait fifteen minutes and try again.' } },
+      429,
+    );
+  }
   if (!result.ok) {
     return c.json({ success: false, error: { code: 'MFA_CODE_INVALID', message: 'That code was not valid.' } }, 400);
   }

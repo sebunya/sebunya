@@ -22,6 +22,12 @@ export interface IUserRepository {
    * null: a reset code must never go to "one of" two accounts.
    */
   findByPhone(phoneE164: string): Promise<PersistedUser | null>;
+  /**
+   * Whether ANY account already holds this number, in any stored shape
+   * (+256…, 256…, 0…, bare national). Unlike findByPhone, one-or-more is true:
+   * registration must refuse a second shape of a number that is already taken.
+   */
+  phoneInUse(phoneE164: string): Promise<boolean>;
   create(input: {
     email: string;
     phone: string | null;

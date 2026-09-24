@@ -2,6 +2,7 @@
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { apiBase } from "../../../lib/api";
 import { readSessionToken } from "../../../lib/session";
+import { kampalaLocalToIso } from "../../../lib/kampalaTime";
 
 const token = readSessionToken(Astro.request);
 const id = Astro.params.id!;
@@ -32,8 +33,9 @@ if (Astro.request.method === "POST" && definition) {
   let body: Record<string, unknown> = { expectedVersion: version };
   try {
     if (operation === "version") { endpoint = "versions"; body.config = JSON.parse(String(form.get("config") || "")); }
-    else if (operation === "submit") body.expiresAt = form.get("expiresAt") || null;
-    else if (operation === "approve" || operation === "reject") body = { ...body, versionId: form.get("versionId"), reason: form.get("reason") || null, expiresAt: form.get("expiresAt") || null };
+    // Expiry inputs are Kampala wall-clock time; sent as an explicit instant.
+    else if (operation === "submit") body.expiresAt = kampalaLocalToIso(String(form.get("expiresAt") || ""));
+    else if (operation === "approve" || operation === "reject") body = { ...body, versionId: form.get("versionId"), reason: form.get("reason") || null, expiresAt: kampalaLocalToIso(String(form.get("expiresAt") || "")) };
     else if (["activate", "pause", "resume", "archive"].includes(operation)) body.reason = form.get("reason") || null;
     else if (operation === "dry-run") body = { subjectId: form.get("subjectId") || null };
     else if (operation === "execute") body = { subjectId: form.get("subjectId") };
@@ -82,7 +84,7 @@ const chip = (state: string) => ["ACTIVE", "APPROVED", "SENT", "INTERNAL_SUCCESS
       <section class="bg-white border rounded-2xl p-5 mb-8"><h3 class="font-black mb-4">Governed operations</h3>
         <div class="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
           <form method="POST" class="border rounded-xl p-4"><input type="hidden" name="operation" value="version"/><input type="hidden" name="expectedVersion" value={definition.currentVersion}/><label class="text-xs font-bold">New immutable configuration (JSON)</label><textarea name="config" required class="w-full border rounded-lg p-2 text-[11px] h-32 mt-2" placeholder='{"triggerFamily":"MANUAL_ADMIN",...}'></textarea><button class="mt-2 bg-brand-dark text-white rounded-lg px-3 py-2 text-xs font-bold">Create new version</button></form>
-          <form method="POST" class="border rounded-xl p-4"><input type="hidden" name="operation" value="submit"/><input type="hidden" name="expectedVersion" value={definition.currentVersion}/><label class="text-xs font-bold">Approval expiry (optional)</label><input name="expiresAt" type="datetime-local" class="w-full border rounded-lg p-2 mt-2"/><button class="mt-2 bg-brand-dark text-white rounded-lg px-3 py-2 text-xs font-bold">Submit version</button></form>
+          <form method="POST" class="border rounded-xl p-4"><input type="hidden" name="operation" value="submit"/><input type="hidden" name="expectedVersion" value={definition.currentVersion}/><label class="text-xs font-bold">Approval expiry (optional, Kampala time)</label><input name="expiresAt" type="datetime-local" class="w-full border rounded-lg p-2 mt-2"/><button class="mt-2 bg-brand-dark text-white rounded-lg px-3 py-2 text-xs font-bold">Submit version</button></form>
           <form method="POST" class="border rounded-xl p-4"><input type="hidden" name="expectedVersion" value={definition.currentVersion}/><input type="hidden" name="versionId" value={current?.id}/><label class="text-xs font-bold">Approval decision</label><input name="reason" required placeholder="Reason" class="w-full border rounded-lg p-2 mt-2"/><div class="flex gap-2 mt-2"><button name="operation" value="approve" class="bg-emerald-700 text-white rounded-lg px-3 py-2 text-xs font-bold">Approve</button><button name="operation" value="reject" class="bg-red-700 text-white rounded-lg px-3 py-2 text-xs font-bold">Reject</button></div></form>
           <form method="POST" class="border rounded-xl p-4"><input type="hidden" name="expectedVersion" value={definition.currentVersion}/><input name="reason" placeholder="Reason" class="w-full border rounded-lg p-2"/><div class="flex flex-wrap gap-2 mt-2">{["activate","pause","resume","archive"].map((operation) => <button name="operation" value={operation} class="bg-slate-800 text-white rounded-lg px-3 py-2 text-xs font-bold">{operation}</button>)}</div></form>
           <form method="POST" class="border rounded-xl p-4"><label class="text-xs font-bold">Dry-run subject (optional)</label><input name="subjectId" class="w-full border rounded-lg p-2 mt-2"/><button name="operation" value="dry-run" class="mt-2 bg-blue-700 text-white rounded-lg px-3 py-2 text-xs font-bold">Dry run — zero provider calls</button></form>

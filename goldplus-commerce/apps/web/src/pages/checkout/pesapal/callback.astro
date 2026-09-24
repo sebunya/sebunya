@@ -34,7 +34,10 @@ if (trackingId && reference) {
   try {
     const res = await fetch(
       `${apiBase}/commerce/payments/pesapal/return-state?OrderTrackingId=${encodeURIComponent(trackingId)}&OrderMerchantReference=${encodeURIComponent(reference)}`,
-      { headers: { Accept: 'application/json' } },
+      // Bounded: the API may ask PesaPal before answering, and a customer who has
+      // just paid must not wait on a spinner for minutes. The URL's status is the
+      // fallback when this does not answer in time.
+      { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(4000) },
     );
     const json = await res.json().catch(() => null);
     if (res.ok && json?.success && typeof json.data?.kind === 'string') {

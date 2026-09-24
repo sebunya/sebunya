@@ -1051,6 +1051,27 @@
       "when": 1790140000008,
       "tag": "0149_media_import_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "5",
+      "when": 1790140000009,
+      "tag": "0150_hero_copy_honesty",
+      "breakpoints": true
+    },
+    {
+      "idx": 151,
+      "version": "5",
+      "when": 1790140000010,
+      "tag": "0151_loyalty_ledger_multi_settlement",
+      "breakpoints": true
+    },
+    {
+      "idx": 152,
+      "version": "5",
+      "when": 1790140000011,
+      "tag": "0152_delivery_learning_inputs",
+      "breakpoints": true
     }
   ]
 }

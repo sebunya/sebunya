@@ -26,7 +26,16 @@ if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   const intent = String(form.get("intent") || "");
   try {
-    if (intent === "config") {
+    if (intent === "config" && form.get("turnOff") === "1") {
+      // "Unset means OFF" is how every mechanism here is switched off; a blank
+      // value fails validation, so it has its own action.
+      const key = String(form.get("key") || "");
+      const res = await fetch(`${apiBase}/admin/payments/ops-config/${encodeURIComponent(key)}`, { method: "DELETE", headers });
+      const json = await res.json().catch(() => null);
+      notice = json?.success
+        ? { kind: "success", text: `Turned off ${key}. The mechanism it governs no longer runs.` }
+        : { kind: "error", text: json?.error?.message || "Could not turn it off." };
+    } else if (intent === "config") {
       const key = String(form.get("key") || "");
       const res = await fetch(`${apiBase}/admin/payments/ops-config/${encodeURIComponent(key)}`, {
         method: "PUT",
@@ -65,14 +74,18 @@ if (Astro.request.method === "POST") {
       const json = await res.json().catch(() => null);
       notice = json?.success
         ? { kind: "success", text: json.data.alreadyProcessed
-            ? `That refund was already recorded (${json.data.refundId}) — nothing was sent twice.`
+            ? (json.data.providerStatus === "200" || json.data.providerStatus === "settled" || json.data.providerStatus === "OPERATOR_CONFIRMED"
+              ? `That refund was already recorded (${json.data.refundId}) — nothing was sent twice.`
+              : `That refund was already recorded (${json.data.refundId}) and nothing was sent twice, but the first request's outcome is unknown. Check PesaPal, then record the outcome on the order page.`)
             : `Refund requested for ${ref}: provider says "${json.data.providerStatus}". It is recorded in the ledger; settlement follows the provider.` }
-        : { kind: "error", text: res.status === 403 ? "Not permitted: your account cannot request refunds." : (json?.error?.message || "Refund could not be requested. Nothing was sent.") };
+        : { kind: "error", text: String(json?.error?.code ?? "").startsWith("MFA_")
+            ? `${json.error.message} Verify on Two-step verification (/admin/security/mfa), then refund again. Nothing was sent.`
+            : res.status === 403 ? "Not permitted: your account cannot request refunds." : (json?.error?.message || "Refund could not be requested. Nothing was sent.") };
     } else if (intent === "sweep") {
       const res = await fetch(`${apiBase}/admin/payments/reconcile/run`, { method: "POST", headers, body: "{}" });
       const json = await res.json().catch(() => null);
       notice = json?.success
-        ? { kind: "success", text: `Sweep complete: polled ${json.data.polled}, confirmed ${json.data.confirmed}, still pending ${json.data.stillPending}.` }
+        ? { kind: "success", text: `Sweep complete: polled ${json.data.polled}, confirmed ${json.data.confirmed}, still pending ${json.data.stillPending}${json.data.alreadySettled ? `, already paid (refund checked) ${json.data.alreadySettled}` : ""}.` }
         : { kind: "error", text: "Sweep failed." };
     }
   } catch {
@@ -189,10 +202,19 @@ const counters: Array<[string, keyof NonNullable<typeof funnel>["day"]]> = [
         {queue && <span class="text-[10px] font-bold text-gray-500">{queue.counts.total} recent · {queue.counts.disagreements} disagreement(s)</span>}
       </div>
       {queue?.note && <p class={`text-xs mb-3 ${queue.counts.disagreements > 0 ? "text-red-700 font-bold" : "text-gray-500"}`}>{queue.note}</p>}
-      {!queue || queue.rows.length === 0 ? (
-        <p class="text-sm text-gray-500 border border-dashed border-gray-300 rounded-lg px-4 py-3">
-          No payment attempt has ever been made.
+      {/* Three different facts, never one sentence: a failed load, a search
+          miss (explained above), and a truly empty recent window. "Ever" is
+          said only when the all-time funnel counter says so. */}
+      {!queue ? (
+        <p role="alert" class="text-sm text-red-800 border border-dashed border-red-300 bg-red-50 rounded-lg px-4 py-3">
+          The attempt queue could not be loaded — reload to retry.
         </p>
+      ) : queue.rows.length === 0 ? (
+        paymentQuery ? null : (
+          <p class="text-sm text-gray-500 border border-dashed border-gray-300 rounded-lg px-4 py-3">
+            {funnel?.ever?.paymentRequested === 0 ? 'No payment attempt has ever been made.' : 'No payment attempts in the recent window.'}
+          </p>
+        )
       ) : (
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
@@ -241,8 +263,8 @@ const counters: Array<[string, keyof NonNullable<typeof funnel>["day"]]> = [
               <label class="text-xs block">Amount (UGX)
                 <input name="amountUgx" type="number" inputmode="numeric" min="1" max={refundTarget.remainingUgx} step="1" value={refundTarget.remainingUgx} required class="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-mono" />
               </label>
-              <label class="text-xs block sm:col-span-2">Reason (recorded in the ledger)
-                <input name="reason" required minlength="5" maxlength="300" placeholder="e.g. Item out of stock — full refund agreed with customer" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" />
+              <label class="text-xs block sm:col-span-2">Reason (recorded in the ledger, at least 10 characters)
+                <input name="reason" required minlength="10" maxlength="300" placeholder="e.g. Item out of stock — full refund agreed with customer" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm" />
               </label>
               <div class="flex flex-col gap-2">
                 <label class="text-[11px] flex items-start gap-2"><input type="checkbox" required class="mt-0.5" /> I confirm this sends money back to the customer and cannot be undone here.</label>
@@ -277,6 +299,9 @@ const counters: Array<[string, keyof NonNullable<typeof funnel>["day"]]> = [
                 class="mt-0.5 w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm" />
             </label>
             <button type="submit" class="bg-brand-dark text-white text-[10px] font-black uppercase tracking-widest px-3 py-2.5 rounded-lg hover:bg-black">Save</button>
+            {e.set && (
+              <button type="submit" name="turnOff" value="1" class="border border-gray-300 text-gray-800 text-[10px] font-black uppercase tracking-widest px-3 py-2.5 rounded-lg hover:border-gray-900">Turn off</button>
+            )}
             <span class={`text-[10px] font-black uppercase ${e.set ? "text-green-700" : "text-amber-700"}`}>{e.set ? "active" : "off"}</span>
           </form>
         ))}

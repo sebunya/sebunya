@@ -15,9 +15,13 @@ const configGroups = [
     id: 'grp-store-setup',
     title: 'Store setup',
     items: [
-      { label: 'Public API Connection', key: 'PUBLIC_API_BASE_URL', value: apiBase || 'UNCONFIGURED', desc: 'The core connection address resolving backend API queries.', source: 'Deployment setting' },
-      { label: 'Primary Currency', key: 'CURRENCY_DEFAULT', value: 'UGX', desc: 'The presentation monetary unit utilized on storefront layouts.', source: 'Deployment setting' },
-      { label: 'Default Language / Locale', key: 'DEFAULT_LOCALE', value: 'en-UG', desc: 'Language format determining number presentation.', source: 'Deployment setting' },
+      // The web server's own API address (INTERNAL_API_ORIGIN during SSR, e.g.
+      // http://api:3000) — not the public URL browsers use. The currency and
+      // locale are code constants: no CURRENCY_DEFAULT / DEFAULT_LOCALE
+      // variable exists anywhere to change.
+      { label: 'Internal API origin (SSR)', key: 'INTERNAL_API_ORIGIN', value: apiBase || 'UNCONFIGURED', desc: 'The address this web server uses to reach the API from inside the deployment. Browsers never use it.', source: 'Host environment' },
+      { label: 'Primary Currency', key: 'Money formatter (apps/web/src/lib/money.ts)', value: 'UGX', desc: 'Every price is formatted as whole Uganda shillings (UGX + grouped digits) by the single money formatter.', source: 'Code constant' },
+      { label: 'Language / Locale', key: 'No locale setting', value: 'English, Kampala time', desc: 'Copy is English; dates and times are shown in Africa/Kampala. Formatting is fixed per formatter in code — there is no locale variable.', source: 'Code' },
       { label: 'Maintenance Status', key: 'MAINTENANCE_MODE', value: 'Not shown in the console', desc: 'A runtime flag held by the API deployment service; when on, write operations are frozen except health, metrics, deployment and queue routes. No admin page reads it yet; it is exposed only by the deployment API.', source: 'API runtime' }
     ]
   },
@@ -40,7 +44,7 @@ const configGroups = [
     id: 'grp-admin-access',
     title: 'Admin access',
     items: [
-      { label: 'Session Cookie Security', key: 'SESSION_SECURITY', value: 'HttpOnly; SameSite=Lax', desc: 'The admin session cookie is HttpOnly and SameSite=Lax (apps/web/src/lib/session.ts), so scripts cannot read it and cross-site POSTs do not carry it.', source: 'Deployment setting' },
+      { label: 'Session Cookie Security', key: 'SESSION_SECURITY', value: 'HttpOnly; SameSite=Lax', desc: 'The admin session cookie is HttpOnly and SameSite=Lax (apps/web/src/lib/session.ts), so scripts cannot read it and cross-site POSTs do not carry it.', source: 'Web code' },
       { label: 'Session Lifetime', key: 'SESSION_TTL', value: '7 days', desc: 'Sessions issued at sign-in live for 7 days from issue (AuthenticateUserUseCase); deactivating an account invalidates its sessions immediately.', source: 'API code constant' }
     ]
   },
@@ -128,13 +132,13 @@ const configGroups = [
        <div class="lg:col-span-4">
           <div class="bg-brand-dark text-white rounded-2xl p-6 sticky top-8 flex flex-col gap-4 shadow-md">
              <div class="flex items-center gap-3 border-b border-white/10 pb-3">
-                <h4 class="font-black text-xs text-brand-gold uppercase tracking-widest">Deployment settings</h4>
+                <h4 class="font-black text-xs text-brand-gold uppercase tracking-widest">Where these come from</h4>
              </div>
              <p class="text-[11px] leading-relaxed text-gray-300 font-medium">
-                These configurations reside inside core deployment configurations to ensure global stability.
+                Each row names its source: a code constant, the host environment, or an admin module. None can be changed from this page.
              </p>
              <p class="text-[11px] leading-relaxed text-gray-400 font-medium bg-black/20 p-3 rounded-xl border border-white/5">
-                Modifications must be pushed via deployment pipelines and verified in continuous testing stages. Contact operations engineering to adjust these variables.
+                A code constant changes only with a code release; a host-environment value changes only when the deployment's environment file is edited and the service restarted.
              </p>
           </div>
        </div>

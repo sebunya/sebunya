@@ -9,6 +9,34 @@ import type {
 } from '../../../application/ports/IRefundLedgerRepository';
 import { pgUuidArray } from '../PgParams';
 
+/**
+ * The provider's own word that it ACCEPTED a refund request (RefundRequest
+ * answers `status: "200"`). Only such a row is money the provider is moving.
+ * A row whose call threw (PROVIDER_CALL_FAILED) or that was never sent is
+ * still reserved against the balance, but a later REVERSED poll proves
+ * nothing about it — PesaPal reports REVERSED per transaction, and keeps
+ * reporting it after the first reversal lands.
+ */
+export const PROVIDER_ACCEPTED_STATUS = '200';
+
+/** Rejections where provably nothing reached the provider, so the same key may try again. */
+export const NOTHING_SENT_PROVIDER_STATUSES = ['STATUS_LOOKUP_FAILED', 'NO_CONFIRMATION_CODE'] as const;
+
+/**
+ * Which outstanding accepted refunds a REVERSED status proves landed: the one
+ * outstanding row, and only on the first observation (nothing settled yet).
+ * Anything else is ambiguous and is left for a person.
+ */
+export function refundsProvenByReversal(outstandingAcceptedIds: string[], alreadySettledCount: number): string[] {
+  return outstandingAcceptedIds.length === 1 && alreadySettledCount === 0 ? [...outstandingAcceptedIds] : [];
+}
+
+/** Refunded share in basis points, floored and capped at the whole. */
+export function refundedShareBps(refundedUgx: number, collectedUgx: number): number {
+  if (!(collectedUgx > 0) || !(refundedUgx > 0)) return 0;
+  return Math.min(10_000, Math.floor((refundedUgx * 10_000) / collectedUgx));
+}
+
 const toRecordedRefund = (row: any): RecordedRefund => ({
   id: String(row.id),
   paymentAttemptId: String(row.payment_attempt_id),
@@ -58,7 +86,21 @@ export class DrizzleRefundLedgerRepository implements IRefundLedgerRepository {
         sql`select * from payment_refunds where idempotency_key = ${input.idempotencyKey} limit 1`,
       );
       const existingRow = Array.isArray(existing) ? existing[0] : existing?.rows?.[0];
-      if (existingRow) {
+      // The key index is global, but a key only ever speaks for ITS payment.
+      // Reused on another order it used to answer ALREADY_PROCESSED with the
+      // other order's refund: ok:true, nothing sent, nothing recorded here.
+      if (existingRow && String(existingRow.payment_attempt_id) !== input.paymentAttemptId) {
+        return { outcome: 'KEY_CONFLICT' } as const;
+      }
+      // A rejection where nothing ever reached the provider ("Nothing was
+      // sent; try again shortly") is not a payout. An identical retry on the
+      // derived key used to answer ALREADY_PROCESSED — ok:true, no refund sent.
+      // Such a row is re-armed below, after the balance is re-checked.
+      const rearm =
+        existingRow &&
+        String(existingRow.status) === 'rejected' &&
+        (NOTHING_SENT_PROVIDER_STATUSES as readonly string[]).includes(String(existingRow.provider_status ?? ''));
+      if (existingRow && !rearm) {
         return { outcome: 'ALREADY_PROCESSED', refund: toRecordedRefund(existingRow) } as const;
       }
 
@@ -125,7 +167,15 @@ export class DrizzleRefundLedgerRepository implements IRefundLedgerRepository {
         }
       }
 
-      const inserted: any = await tx.execute(sql`
+      const inserted: any = rearm
+        ? await tx.execute(sql`
+            update payment_refunds
+            set status = 'requested', provider_status = null, provider_message = null,
+                amount_ugx = ${input.amountUgx}, reason = ${input.reason}, requested_by = ${input.requestedBy}::uuid
+            where id = ${String(existingRow.id)}::uuid and status = 'rejected'
+            returning *
+          `)
+        : await tx.execute(sql`
         insert into payment_refunds
           (payment_attempt_id, order_id, idempotency_key, amount_ugx, reason, status, requested_by)
         values
@@ -133,6 +183,10 @@ export class DrizzleRefundLedgerRepository implements IRefundLedgerRepository {
            ${input.amountUgx}, ${input.reason}, 'requested', ${input.requestedBy}::uuid)
         returning *
       `);
+      if (rearm) {
+        // The re-armed request carries THIS call's line allocation.
+        await tx.execute(sql`delete from payment_refund_lines where refund_id = ${String(existingRow.id)}::uuid`);
+      }
       const insertedRow = Array.isArray(inserted) ? inserted[0] : inserted?.rows?.[0];
       const refund = toRecordedRefund(insertedRow);
 
@@ -153,88 +207,120 @@ export class DrizzleRefundLedgerRepository implements IRefundLedgerRepository {
     providerMessage?: string | null;
   }): Promise<void> {
     await db.transaction(async (tx) => {
-      const changed: any = await tx.execute(sql`
+      const current: any = await tx.execute(sql`
+        select status from payment_refunds where id = ${refundId}::uuid for update
+      `);
+      const currentRow = Array.isArray(current) ? current[0] : current?.rows?.[0];
+      if (!currentRow) return;
+      const wasSettled = String(currentRow.status) === 'settled';
+      // Never downgrade a settled row. The reconcile poller can settle a row in
+      // the gap between the reservation committing and RequestRefund being
+      // answered; writing 'requested' back over it moved settled→requested and
+      // then settled again, with a second REFUND entry. A settled row is final:
+      // nothing is written at all, not even the late answer's provider status
+      // and message, which would otherwise overwrite the settling answer's.
+      if (wasSettled) return;
+      const nextStatus = update.status;
+      await tx.execute(sql`
         update payment_refunds
-        set status = ${update.status},
+        set status = ${nextStatus},
             provider_status = ${update.providerStatus ?? null},
             provider_message = ${update.providerMessage ?? null},
-            settled_at = case when ${update.status} = 'settled' then now() else settled_at end
+            settled_at = case when ${nextStatus} = 'settled' and settled_at is null then now() else settled_at end
         where id = ${refundId}::uuid
-        returning id
       `);
-      // refund_confirmed + REFUND ledger entry in the same transaction (0140);
-      // guarded so measurement can never block recording a refund (D-008).
-      if (update.status === 'settled' && (Array.isArray(changed) ? changed : changed?.rows ?? []).length) {
+      // refund_confirmed + REFUND ledger entry in the same transaction (0140),
+      // only when the row actually BECAME settled here; guarded so measurement
+      // can never block recording a refund (D-008).
+      if (nextStatus === 'settled' && !wasSettled) {
         await guardedMeasurementWrite(tx as never, refundId, 'refund_settled', (sp) => recordRefundSettled(sp, refundId, new Date()));
       }
     });
   }
 
+  /**
+   * Money the provider has returned or accepted to return — the reading of a
+   * REVERSED status as partial or total. A reservation the provider never
+   * accepted (its call failed, or it was never sent) is not counted: with it,
+   * a partial reversal plus an unsent refund summing to the collected amount
+   * read as TOTAL, cancelled the order and clawed back all its loyalty.
+   * (reserveRefund keeps counting every non-rejected row: that is the
+   * double-payout guard, and it is deliberately stricter.)
+   */
   async getRefundedTotalUgx(paymentAttemptId: string): Promise<number> {
     const rows: any = await db.execute(sql`
       select coalesce(sum(amount_ugx), 0)::bigint as refunded
       from payment_refunds
-      where payment_attempt_id = ${paymentAttemptId}::uuid and status <> 'rejected'
+      where payment_attempt_id = ${paymentAttemptId}::uuid
+        and (status = 'settled' or (status = 'requested' and provider_status = ${PROVIDER_ACCEPTED_STATUS}))
     `);
     const row = Array.isArray(rows) ? rows[0] : rows?.rows?.[0];
     return Number(row?.refunded ?? 0);
+  }
+
+  async getRefundedShareBpsForOrder(orderId: string): Promise<number> {
+    const rows: any = await db.execute(sql`
+      select
+        coalesce(sum(pa.amount), 0)::bigint as collected,
+        coalesce(sum((
+          select coalesce(sum(pr.amount_ugx), 0)
+          from payment_refunds pr
+          where pr.payment_attempt_id = pa.id
+            and (pr.status = 'settled' or (pr.status = 'requested' and pr.provider_status = ${PROVIDER_ACCEPTED_STATUS}))
+        )), 0)::bigint as refunded
+      from payment_attempts pa
+      where pa.order_id = ${orderId}::uuid and pa.status in ('completed', 'reversed')
+    `);
+    const row = Array.isArray(rows) ? rows[0] : rows?.rows?.[0];
+    return refundedShareBps(Number(row?.refunded ?? 0), Number(row?.collected ?? 0));
   }
 
   async hasOutstandingRefunds(paymentAttemptId: string): Promise<boolean> {
     const rows: any = await db.execute(sql`
       select 1 from payment_refunds
       where payment_attempt_id = ${paymentAttemptId}::uuid and status = 'requested'
+        and provider_status = ${PROVIDER_ACCEPTED_STATUS}
       limit 1
     `);
     return (Array.isArray(rows) ? rows : rows?.rows ?? []).length > 0;
   }
 
   /**
-   * Settle outstanding refunds against the amount the provider has actually
-   * returned, oldest first.
+   * Settle the outstanding refund a REVERSED status can only be reporting.
    *
-   * This used to settle EVERY 'requested' row on the attempt on a single
-   * provider confirmation. With two refunds outstanding and only one really
-   * processed, both were marked settled, so the ledger's refunded total then
-   * counted money that never left, which in turn skewed the partial-versus-
-   * total reversal reading and the revenue projection.
+   * PesaPal reports REVERSED per TRANSACTION and keeps reporting it after the
+   * first reversal lands, so the status names no refund. It is proof about a
+   * refund only when exactly one provider-accepted row is outstanding and
+   * nothing on the attempt has settled before (this is the first REVERSED
+   * observation). Any other shape is ambiguous: the rows stay 'requested'
+   * for a person to resolve against the provider (ResolveRefundUseCase).
+   *
+   * This used to settle oldest first against a "collected minus settled"
+   * budget. reserveRefund already keeps every non-rejected row inside the
+   * collected amount, so that budget always covered every accepted row and
+   * capped nothing: one REVERSED reading settled refunds nobody saw land.
    */
-  async settleRefundsForAttempt(paymentAttemptId: string, settledTotalUgx?: number): Promise<number> {
+  async settleRefundsForAttempt(paymentAttemptId: string): Promise<number> {
     return db.transaction(async (tx) => {
+      // Only refunds the provider ACCEPTED can be what a REVERSED status is
+      // reporting. A row whose provider call threw, that the provider refused,
+      // or that is still between reservation and request stays 'requested'
+      // for a person to resolve (or for its own acceptance to be recorded).
       const pending: any = await tx.execute(sql`
-        select id, amount_ugx from payment_refunds
+        select id from payment_refunds
         where payment_attempt_id = ${paymentAttemptId}::uuid and status = 'requested'
+          and provider_status = ${PROVIDER_ACCEPTED_STATUS}
         order by created_at asc
         for update
       `);
       const rows = Array.isArray(pending) ? pending : pending?.rows ?? [];
-      if (rows.length === 0) return 0;
-
-      // `settledTotalUgx` is the money COLLECTED on this attempt — the most that
-      // can ever have come back. Anything settled on an earlier confirmation has
-      // already spent part of it, so the budget for this round is what remains.
-      // Never pass a figure derived from the outstanding rows themselves: it
-      // would always cover them and cap nothing.
-      let budget: number;
-      if (settledTotalUgx === undefined) {
-        // No figure given means the provider confirmed the whole outstanding set.
-        budget = Number.POSITIVE_INFINITY;
-      } else {
-        const settledSoFar: any = await tx.execute(sql`
-          select coalesce(sum(amount_ugx), 0)::bigint as settled
-          from payment_refunds
-          where payment_attempt_id = ${paymentAttemptId}::uuid and status = 'settled'
-        `);
-        const settledRows = Array.isArray(settledSoFar) ? settledSoFar : settledSoFar?.rows ?? [];
-        budget = Math.max(0, settledTotalUgx - Number(settledRows[0]?.settled ?? 0));
-      }
-      const settleIds: string[] = [];
-      for (const r of rows) {
-        const amount = Number(r.amount_ugx ?? 0);
-        if (amount > budget) break;
-        budget -= amount;
-        settleIds.push(String(r.id));
-      }
+      const settledBefore: any = await tx.execute(sql`
+        select count(*)::int as settled
+        from payment_refunds
+        where payment_attempt_id = ${paymentAttemptId}::uuid and status = 'settled'
+      `);
+      const settledRows = Array.isArray(settledBefore) ? settledBefore : settledBefore?.rows ?? [];
+      const settleIds = refundsProvenByReversal(rows.map((r: any) => String(r.id)), Number(settledRows[0]?.settled ?? 0));
       if (settleIds.length === 0) return 0;
 
       await tx.execute(sql`

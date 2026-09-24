@@ -648,20 +648,28 @@ export class SyntheticMonitor {
           .where(eq(orders.id, orderId))
           .limit(1);
 
-        const telemetryRecord = await db
-          .select()
-          .from(outboxEvents)
-          .where(eq(outboxEvents.idempotencyKey, `purchase:${webhookPayload.providerReference}`))
-          .limit(1);
+        // The purchase is measured from the authoritative commerce event
+        // (measurement.business_event 'order_confirmed', written in the same
+        // transaction as the paid transition; DeliveryService routes it to GA4
+        // and the ad platforms). This used to wait for an outbox row keyed
+        // `purchase:<providerReference>`, which only the retired
+        // PurchaseTelemetry path wrote, so the stage could only ever time out.
+        const confirmedEvent = await db.execute(sql`
+          select 1 from measurement.business_event
+          where aggregate_type = 'order' and aggregate_id = ${String(orderId)} and event_name = 'order_confirmed'
+          limit 1`);
+        const confirmedRows = Array.isArray(confirmedEvent)
+          ? confirmedEvent
+          : ((confirmedEvent as { rows?: unknown[] }).rows ?? []);
 
-        if (orderRecord?.status === 'paid' && telemetryRecord.length > 0) {
+        if (orderRecord?.status === 'paid' && confirmedRows.length > 0) {
           verified = true;
           break;
         }
       }
 
       if (!verified) {
-        throw new Error('Synthetic purchase verification timed out: order status or telemetry outbox missing');
+        throw new Error('Synthetic purchase verification timed out: order not paid or order_confirmed business event missing');
       }
 
       // Stage 5b: Verify Notification Outbox Generation

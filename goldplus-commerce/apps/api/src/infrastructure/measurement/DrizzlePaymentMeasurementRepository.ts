@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { count, desc, eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { 
   IPaymentMeasurementRepository, 
@@ -9,6 +9,16 @@ import {
 } from '../../application/ports/measurement/PaymentMeasurementRepository';
 import { paymentMeasurementReconciliations, purchaseMeasurementEvents } from '../db/schema/measurement';
 import { db } from '../db/client';
+
+/** One page of an admin list: limit 1..100 (default 50), offset >= 0, whatever the query string said. */
+export function reconciliationPage(options?: { offset?: number; limit?: number }): { offset: number; limit: number } {
+  const rawLimit = Math.trunc(Number(options?.limit));
+  const rawOffset = Math.trunc(Number(options?.offset));
+  return {
+    limit: Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(100, rawLimit) : 50,
+    offset: Number.isFinite(rawOffset) && rawOffset > 0 ? rawOffset : 0,
+  };
+}
 
 export class DrizzlePaymentMeasurementRepository implements IPaymentMeasurementRepository {
   constructor() {}
@@ -57,19 +67,19 @@ export class DrizzlePaymentMeasurementRepository implements IPaymentMeasurementR
   }
 
   async listReconciliations(options?: { offset?: number; limit?: number }): Promise<{ items: PaymentMeasurementReconciliation[]; total: number }> {
-    const limit = options?.limit || 50;
-    const offset = options?.offset || 0;
-    
-    // Simplistic total count for now
-    const all = await db.select().from(paymentMeasurementReconciliations);
+    const { limit, offset } = reconciliationPage(options);
+    // A count, not the whole table pulled into memory to take its length; and
+    // a stable order, so rows do not shift or repeat between pages.
+    const [total] = await db.select({ value: count() }).from(paymentMeasurementReconciliations);
     const records = await db.select()
       .from(paymentMeasurementReconciliations)
+      .orderBy(desc(paymentMeasurementReconciliations.createdAt), desc(paymentMeasurementReconciliations.id))
       .limit(limit)
       .offset(offset);
-      
+
     return {
       items: records.map((r: any) => this.mapReconciliationRow(r)),
-      total: all.length
+      total: Number(total?.value ?? 0),
     };
   }
 

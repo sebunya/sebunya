@@ -16,13 +16,12 @@ let lookupResult: any = null;
 let lookupError: string | null = null;
 let apiLive = false;
 
+// Liveness from the unauthenticated health probe. The old probe hit
+// /governance/admin/stats (reports.read), so a support user WITH orders.read —
+// the permission the cart route needs — was told the API was offline.
 try {
-  const probe = await fetch(`${apiBase}/governance/admin/stats`, {
-    headers: { 'Authorization': `Bearer ${token}` }
-  });
-  if (probe.ok) {
-    apiLive = true;
-  }
+  const probe = await fetch(`${apiBase}/health`, { signal: AbortSignal.timeout(4000) });
+  apiLive = probe.ok;
 } catch {
   apiLive = false;
 }
@@ -32,14 +31,12 @@ const uuidRegex = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-
 if (lookupId) {
   if (!uuidRegex.test(lookupId)) {
     lookupError = 'Format Violation: Cart IDs must be 36-character UUID strings.';
-  } else if (!apiLive) {
-    lookupError = 'Connectivity Alert: The commerce API backend is offline and cannot process lookups.';
   } else {
     try {
       // The guarded admin route. The customer-facing read is now credential-scoped and
       // cannot serve an arbitrary id — and the route this used to call had no
       // permission guard at all, so the bearer token below was decorative.
-      const res = await fetch(`${apiBase}/commerce/admin/carts/${lookupId}`, {
+      const res = await fetch(`${apiBase}/governance/admin/carts/${lookupId}`, {
         headers: { 
           'Accept': 'application/json',
           'Authorization': `Bearer ${token}`
@@ -55,7 +52,11 @@ if (lookupId) {
         }
       } else {
         const errJson = await res.json().catch(() => null);
-        lookupError = errJson?.error?.message || `Connection error: Server responded with ${res.status}.`;
+        lookupError = res.status === 404
+          ? 'No cart exists with this id.'
+          : res.status === 401 || res.status === 403
+            ? 'Your role cannot read carts (orders.read required).'
+            : errJson?.error?.message || `The API answered HTTP ${res.status}.`;
       }
     } catch {
       apiLive = false;

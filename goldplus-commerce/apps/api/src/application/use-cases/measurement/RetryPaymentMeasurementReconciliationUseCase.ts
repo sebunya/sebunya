@@ -31,6 +31,13 @@ export class RetryPaymentMeasurementReconciliationUseCase {
       throw new Error('RETRY_NOT_ALLOWED: No purchase event captured yet. Cannot retry queueing.');
     }
 
+    // No queue configured: say so instead of reporting RETRY_QUEUED for a send
+    // that will never happen.
+    const queueStatus = await Promise.resolve().then(() => this.queue.getQueueStatus()).catch(() => null);
+    if (queueStatus && !queueStatus.isConfigured) {
+      return await this.paymentRepo.updateReconciliationStatus(reconciliation.id, 'NOT_CONFIGURED');
+    }
+
     // Attempt to queue
     const enqueued = await this.queue.enqueuePurchaseRetry({
       orderId: purchaseEvent.orderId,

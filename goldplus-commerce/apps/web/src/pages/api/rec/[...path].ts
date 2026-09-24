@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { isDeclaredAutomation } from "../../../lib/declaredAutomation";
 import { VISIT_COOKIE_NAME } from "../../../middleware";
+import { readBodyCapped } from "../../../lib/boundedBody";
 
 /**
  * Same-origin relay for storefront recommendation events (R2, 2026-08-06).
@@ -36,18 +37,14 @@ export const POST: APIRoute = async ({ request, params, cookies, clientAddress }
     return json(404, { success: false, error: { code: "NOT_PROXIED", message: "This endpoint is not proxied." } });
   }
 
-  // R9 (M7): the declared length is refused BEFORE the body is buffered — the
-  // old order materialised an arbitrarily large body into this SSR process
-  // first and measured it after (and measured UTF-16 code units, not bytes).
-  const declaredLength = Number(request.headers.get("content-length"));
-  if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_BYTES) {
+  // R9 (M7): the cap is enforced WHILE the body streams in. Checking only the
+  // declared Content-Length let a chunked upload (which declares nothing)
+  // buffer tens of megabytes into this SSR process before the byte check ran.
+  const read = await readBodyCapped(request, MAX_BODY_BYTES);
+  if (!read.ok) {
     return json(413, { success: false, error: { code: "EVENT_TOO_LARGE", message: "Event payload too large." } });
   }
-
-  const raw = await request.text();
-  if (Buffer.byteLength(raw, "utf8") > MAX_BODY_BYTES) {
-    return json(413, { success: false, error: { code: "EVENT_TOO_LARGE", message: "Event payload too large." } });
-  }
+  const raw = read.text;
 
   const headers: Record<string, string> = { "Content-Type": "application/json", Accept: "application/json" };
   // Shape-checked before forwarding: junk cookies never ride into an upstream

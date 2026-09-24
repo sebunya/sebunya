@@ -14,12 +14,12 @@ const sections = [
     name: "Hero banner",
     status: "Active",
     statusColor: "text-green-700 bg-green-50 border-green-100",
-    source: "Storefront theme / Static",
-    maxItems: "1",
+    source: "Hero slider CMS (personalised slides)",
+    maxItems: "Per slider config",
     dedupe: "None",
-    editable: "No",
-    actionLabel: "Deployment Config",
-    actionLink: "/admin/settings"
+    editable: "Yes",
+    actionLabel: "Hero editor",
+    actionLink: "/admin/hero"
   },
   {
     id: "pickup",
@@ -36,26 +36,26 @@ const sections = [
   {
     id: "promo",
     name: "Promo / Campaign Cards",
-    status: "Rule-driven",
-    statusColor: "text-purple-700 bg-purple-50 border-purple-100",
-    source: "Campaign scheduling API",
-    maxItems: "2",
-    dedupe: "Manual priority stack",
-    editable: "Yes",
-    actionLabel: "Manage Rules",
-    actionLink: "/admin/recommendations/rules?type=CAMPAIGN"
+    status: "Automatic",
+    statusColor: "text-green-700 bg-green-50 border-green-100",
+    source: "Next photographed product (not curated; no rule affects it)",
+    maxItems: "1",
+    dedupe: "Skips products already shown above",
+    editable: "No",
+    actionLabel: "Upload photos",
+    actionLink: "/admin/photos"
   },
   {
     id: "picks",
     name: "Today's Picks",
-    status: "Rule-driven",
-    statusColor: "text-purple-700 bg-purple-50 border-purple-100",
-    source: "Complete setup placement",
-    maxItems: "6",
-    dedupe: "Suppress 'Featured' items",
-    editable: "Yes",
-    actionLabel: "Manage Rules",
-    actionLink: "/admin/recommendations/rules?placement=complete_setup"
+    status: "Automatic",
+    statusColor: "text-green-700 bg-green-50 border-green-100",
+    source: "Next photographed product (not curated; no rule affects it)",
+    maxItems: "1",
+    dedupe: "Skips products already shown above",
+    editable: "No",
+    actionLabel: "Upload photos",
+    actionLink: "/admin/photos"
   },
   {
     id: "categories",
@@ -74,24 +74,24 @@ const sections = [
     name: "Featured",
     status: "Active",
     statusColor: "text-green-700 bg-green-50 border-green-100",
-    source: "Database ('isFeatured' flag)",
-    maxItems: "6",
+    source: "First 4 live products, photographed first (not curated; there is no 'featured' flag)",
+    maxItems: "4",
     dedupe: "None",
-    editable: "Yes",
+    editable: "No",
     actionLabel: "View Products",
     actionLink: "/admin/products?visible=true"
   },
   {
     id: "trending",
     name: "Trending Now",
-    status: "Rule-driven",
-    statusColor: "text-purple-700 bg-purple-50 border-purple-100",
-    source: "Home trending placement",
+    status: "Automatic",
+    statusColor: "text-green-700 bg-green-50 border-green-100",
+    source: "Next 4 live products not already shown (not curated; no rule affects it)",
     maxItems: "4",
-    dedupe: "Trending Max 4 enforced",
-    editable: "Yes",
-    actionLabel: "Manage Rules",
-    actionLink: "/admin/recommendations/rules?placement=home_trending"
+    dedupe: "Skips products already shown above",
+    editable: "No",
+    actionLabel: "View Products",
+    actionLink: "/admin/products?visible=true"
   },
   {
     id: "footer",
@@ -107,9 +107,12 @@ const sections = [
   }
 ];
 
+// Facts about the home page, matched to lib/homepage-merchandising.ts. None
+// of the product rails is curated today: they fill in catalogue order,
+// photographed products first.
 const rules = [
-  { name: "Trending Max 4 Constraint", desc: "Limits Trending rails to 4 units to match responsive storefront styling." },
-  { name: "Cross-Rail Deduplication", desc: "Hides items already showcased in today's picks from standard carousel views." }
+  { name: "Photographed first", desc: "Rails fill from products with a real photo before any product still on its sample frame; the two highlight cards take photographed products only and hide when none is left." },
+  { name: "Cross-rail deduplication", desc: "A product shown in one home rail is skipped by the rails below it." }
 ];
 ---
 
@@ -194,7 +197,7 @@ const rules = [
                 <span class="w-1.5 h-1.5 bg-amber-500 rounded-full"></span>
                 Disclaimer:
              </p>
-             <p>This matrix is a read-only view of the mechanical source behind all 8 major rails. Slot structure is defined in code so it stays reviewable and versioned; the editable inputs that drive each rail — recommendation criteria and product flags — are linked directly from each row.</p>
+             <p>This matrix is a read-only view of where each home section comes from. Slot structure is defined in code. Only the hero is edited here in the admin; the product rails are not curated — they fill automatically from live products, photographed products first.</p>
           </div>
         </div>
 

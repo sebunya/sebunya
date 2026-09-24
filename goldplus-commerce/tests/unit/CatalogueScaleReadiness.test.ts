@@ -27,7 +27,8 @@ describe('every surface that filters in the page sees the whole catalogue', () =
       'apps/web/src/pages/[hub]/[...child].astro',
       'apps/web/src/pages/sitemaps/hubs.xml.ts',
     ]) {
-      expect(read(f), f).toMatch(/fetchApprovedCatalogue\(apiBase\)/);
+      // (WithStatus where a partial read must be said, not shown as complete.)
+      expect(read(f), f).toMatch(/fetchApprovedCatalogue(WithStatus)?\(apiBase\)/);
       // The unpaged call is what truncated them; it must not come back.
       expect(read(f), f).not.toMatch(/fetch\(`\$\{apiBase\}\/products`/);
     }

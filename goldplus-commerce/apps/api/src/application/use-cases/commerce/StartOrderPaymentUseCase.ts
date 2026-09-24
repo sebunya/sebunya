@@ -4,6 +4,7 @@ import {
 } from '../../ports/ICheckoutIdempotencyRepository';
 import { ICheckoutSideEffectRecorder } from '../../ports/ICheckoutSideEffectRecorder';
 import { CHECKOUT_POLICY_VERSION } from '../../../domain/commerce/CheckoutPrincipal';
+import { mayProgressToPayment, OrderReservationState } from '../../../domain/inventory/Inventory';
 
 /**
  * Starts payment for an order the caller is entitled to pay for.
@@ -112,6 +113,12 @@ export interface StartOrderPaymentDeps {
   attempts: PaymentAttemptReader;
   provider: PaymentProviderStarter;
   sideEffectRecorder: ICheckoutSideEffectRecorder;
+  /**
+   * Optional: the order's stock position. When present, an order whose hold
+   * was RELEASED (the TTL sweep put its units back on sale) is not payable:
+   * paying it shipped goods nobody was holding, with no stock deducted.
+   */
+  reservationState?: { getReservationState(orderId: string): Promise<OrderReservationState | null> };
   observer?: {
     onForbidden(orderId: string, traceId: string): void;
     onNotPayable(orderId: string, traceId: string, stage: string): void;
@@ -205,6 +212,18 @@ export class StartOrderPaymentUseCase {
       // the storefront, and the diagnostic detail belongs in the log line.
       this.deps.observer?.onNotPayable(orderId, command.traceId, checkout.stage);
       return { kind: 'NOT_PAYABLE', reason: 'ORDER_NOT_PAYABLE' };
+    }
+
+    // Inventory.ts: RELEASED must not progress to payment. Fail closed: the
+    // customer is told the hold expired and to order again (the stock may
+    // since have been sold to someone else), and nothing is charged. Only
+    // RELEASED is refused here: a CONSUMED order has its goods (a dispatched
+    // cash-on-delivery order may still be paid online), and a state nobody
+    // recorded (legacy orders) is left to the checkout stage check above.
+    const reservation = this.deps.reservationState ? await this.deps.reservationState.getReservationState(orderId) : null;
+    if (reservation === 'RELEASED' && !mayProgressToPayment(reservation)) {
+      this.deps.observer?.onNotPayable(orderId, command.traceId, `reservation:${reservation}`);
+      return { kind: 'NOT_PAYABLE', reason: 'ORDER_HOLD_EXPIRED' };
     }
 
     // A live attempt is reused rather than re-submitted. Submitting again gave one

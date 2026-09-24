@@ -191,6 +191,38 @@ export function cutoffCountdown(input: { now: Date; cutoffClock: string | null }
 }
 
 /**
+ * The quote panel's countdown from BUSINESS INFO — the one authority for the
+ * same-day cutoff hour and the closed days that the header, basket and checkout
+ * already read (contract #7: one place per value).
+ *
+ * It used to read the delivery-config key `same_day_cutoff_eat`, a second
+ * authority: once set, one page could show two different cutoffs, and on a
+ * closed day the panel still said "dispatch today" under a "Closed today" line.
+ * `closedDays` uses getUTCDay numbering in Kampala time (0 = Sunday).
+ */
+export function businessCutoffCountdown(input: {
+  now: Date;
+  cutoffHour: number | null;
+  closedDays: readonly number[];
+}): CutoffCountdown | null {
+  if (input.cutoffHour === null || !Number.isInteger(input.cutoffHour) || input.cutoffHour < 0 || input.cutoffHour > 23) {
+    return null;
+  }
+  const cutoffClock = `${String(input.cutoffHour).padStart(2, '0')}:00`;
+  const kampalaDay = new Date(input.now.getTime() + 3 * 60 * 60 * 1000).getUTCDay();
+  if (input.closedDays.includes(kampalaDay)) {
+    return {
+      cutoffClock,
+      zoneLabel: EAT_LABEL,
+      beforeCutoff: false,
+      minutesRemaining: 0,
+      sentence: 'We do not dispatch today. This goes out on the next dispatch day.',
+    };
+  }
+  return cutoffCountdown({ now: input.now, cutoffClock });
+}
+
+/**
  * Free-delivery progress: the EXACT remaining amount, never a rounded nudge.
  *
  * Null when no threshold is configured, because the mechanic is off rather than
@@ -221,7 +253,25 @@ export function freeDeliveryProgress(input: {
 export function windowSentence(window: DeliveryWindow | null): string | null {
   if (!window) return null;
   if (window.kind === 'day') return 'We will confirm your delivery day when your order is dispatched.';
-  const low = Math.round(window.lowMinutes / 60);
-  const high = Math.round(window.highMinutes / 60);
-  return `Most deliveries to your area arrive within ${low} to ${high} hours of dispatch, measured over ${window.sampleSize} deliveries.`;
+  return `Most deliveries to your area arrive within ${windowSpan(window.lowMinutes, window.highMinutes)} of dispatch, measured over ${window.sampleSize} deliveries.`;
+}
+
+/**
+ * The span in words. Below two hours it is minutes (to the nearest 5): rounding
+ * 25–80 minutes to hours read "within 0 to 1 hours", and 50–70 read "1 to 1 hours".
+ * Equal bounds collapse to one figure.
+ */
+function windowSpan(lowMinutes: number, highMinutes: number): string {
+  const part = (m: number) =>
+    m < 120
+      ? { n: Math.max(5, Math.round(m / 5) * 5), unit: 'minute' }
+      : { n: Math.max(1, Math.round(m / 60)), unit: 'hour' };
+  const word = (p: { n: number; unit: string }) => `${p.n} ${p.unit}${p.n === 1 ? '' : 's'}`;
+  const low = part(lowMinutes);
+  const high = part(highMinutes);
+  if (low.unit === high.unit) {
+    if (low.n >= high.n) return `about ${word(high)}`;
+    return `${low.n} to ${word(high)}`;
+  }
+  return `${word(low)} to ${word(high)}`;
 }

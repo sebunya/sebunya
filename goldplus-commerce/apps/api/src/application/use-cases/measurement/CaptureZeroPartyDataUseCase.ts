@@ -29,19 +29,23 @@ export class CaptureZeroPartyDataUseCase {
     private readonly consentService: ConsentService
   ) {}
 
+  /**
+   * `sessionUserId` is the ONLY source of the account a signal belongs to. The
+   * route is public, and it used to take user_id from the request body: anyone
+   * holding a customer UUID could read that account's personalisation consent
+   * (captured true/false) and file "declarations" against it. consent.ts was
+   * fixed for exactly this; the same rule applies here. A body user_id is
+   * discarded; with no session, the signal is anonymous (fp_client_id only).
+   */
   async execute(
-    signal: ZeroPartySignal,
+    rawSignal: ZeroPartySignal,
     ipAddress?: string,
     userAgent?: string,
+    sessionUserId?: string | null,
   ): Promise<{ captured: boolean; id?: string }> {
-    // Consent check — personalization purpose required
-    const consentCheck = await this.consentService.checkDestinationPermission(
-      'ga4', // GA4 uses 'analytics' purpose — ZPD needs 'personalization'
-      signal.fp_client_id,
-      signal.user_id,
-    );
+    const signal: ZeroPartySignal = { ...rawSignal, user_id: sessionUserId || undefined };
 
-    // Actually check personalization directly
+    // Personalization consent is required
     const state = await this.consentService.getCurrentState(signal.fp_client_id, signal.user_id);
     if (!state.personalization) {
       this.logger.warn({

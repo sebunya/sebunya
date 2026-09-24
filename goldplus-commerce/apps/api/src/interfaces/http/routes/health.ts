@@ -3,7 +3,8 @@ import { Registry } from '../../../infrastructure/Registry';
 import { env } from '../../../config/env';
 import { ApiResponse } from '@goldplus/shared';
 import { QueueService } from '../../../infrastructure/queues/QueueService';
-import { proxyConfig } from '../clientAddress';
+import { isInternalCall, proxyConfig } from '../clientAddress';
+import { logger } from '../../../infrastructure/logging/logger';
 import { abuseControlStore } from '../../../infrastructure/security/RedisAbuseControlStore';
 import { isDraining } from '../lifecycle';
 
@@ -19,7 +20,16 @@ type HealthSubsystem = {
   has_pending_events?: boolean;
 };
 
-const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+/**
+ * Health answers are read by anyone who can reach api.shopgoldplus.com, so they
+ * carry fixed codes, never raw driver or fetch text (which named hosts, ports and
+ * database users during an incident). The detail goes to the server log only.
+ */
+const DB_UNREACHABLE = 'DB_UNREACHABLE';
+function logged(code: string, detail: unknown): string {
+  logger.warn({ code, detail: detail instanceof Error ? detail.message : String(detail) }, 'HEALTH_PROBE_FAILED');
+  return code;
+}
 
 function livenessResponse(): ApiResponse<{ status: string; timestamp: string }> {
   return {
@@ -46,9 +56,15 @@ routes.get('/ready', async (c) => {
   // Slice 3F: once draining, this instance is NOT ready — answered before any
   // subsystem probe so the load balancer stops routing immediately, and without
   // a database round-trip that is about to be torn down anyway.
+  // The 200/503 answer stays public (release scripts and the drain contract read
+  // it); the subsystem detail — provider configuration, proxy topology — is for
+  // internal callers only, as /metrics is.
+  const internal = isInternalCall(c);
   if (isDraining()) {
     return c.json(
-      { status: 'draining', ready: false, subsystems: { lifecycle: { status: 'draining' } } },
+      internal
+        ? { status: 'draining', ready: false, subsystems: { lifecycle: { status: 'draining' } } }
+        : { status: 'draining' },
       503,
     );
   }
@@ -67,7 +83,7 @@ routes.get('/ready', async (c) => {
     overallHealthy = false;
     subsystems.postgres = {
       status: 'unhealthy',
-      error: healthMetrics.postgresError,
+      error: logged(DB_UNREACHABLE, healthMetrics.postgresError),
     };
   } else {
     subsystems.postgres = {
@@ -143,6 +159,7 @@ routes.get('/ready', async (c) => {
     },
   };
 
+  if (!internal) return c.json({ status: res.data!.status }, overallHealthy ? 200 : 503);
   return c.json(res, overallHealthy ? 200 : 503);
 });
 
@@ -150,6 +167,9 @@ routes.get('/ready', async (c) => {
 // 3. DEEP HEALTH — /health/deep
 // ------------------------------------------------------------------------------
 routes.get('/deep', async (c) => {
+  // Internal only, like /metrics: it reports database saturation and outbox backlog
+  // and costs several catalogue queries per call.
+  if (!isInternalCall(c)) return c.notFound();
   const subsystems: Record<string, HealthSubsystem> = {};
   let overallStatus: 'healthy' | 'degraded' | 'unhealthy' = 'healthy';
   const start = Date.now();
@@ -160,7 +180,7 @@ routes.get('/deep', async (c) => {
   // 1. Database Connection and Latency
   if (healthMetrics.postgresError) {
     overallStatus = 'unhealthy';
-    subsystems.postgres = { status: 'unhealthy', error: healthMetrics.postgresError };
+    subsystems.postgres = { status: 'unhealthy', error: logged(DB_UNREACHABLE, healthMetrics.postgresError) };
   } else {
     subsystems.postgres = { status: 'healthy', latency_ms: healthMetrics.postgresLatencyMs };
   }
@@ -176,7 +196,7 @@ routes.get('/deep', async (c) => {
       overallStatus = 'degraded';
     }
   } else if (healthMetrics.postgresError) {
-    subsystems.db_saturation = { status: 'unknown', error: healthMetrics.postgresError };
+    subsystems.db_saturation = { status: 'unknown', error: DB_UNREACHABLE };
   }
 
   // 3. Outbox Lag Analysis
@@ -191,7 +211,7 @@ routes.get('/deep', async (c) => {
       overallStatus = 'degraded';
     }
   } else if (healthMetrics.postgresError) {
-    subsystems.outbox_queue = { status: 'unknown', error: healthMetrics.postgresError };
+    subsystems.outbox_queue = { status: 'unknown', error: DB_UNREACHABLE };
   }
 
   // 3b. Outbox operating state.
@@ -219,7 +239,7 @@ routes.get('/deep', async (c) => {
         }
       }
     } catch (err) {
-      subsystems.outbox_operations = { status: 'unknown', error: errorMessage(err) };
+      subsystems.outbox_operations = { status: 'unknown', error: logged('OUTBOX_METRICS_UNAVAILABLE', err) };
     }
   }
 
@@ -276,7 +296,7 @@ routes.get('/deep', async (c) => {
       if (overallStatus === 'healthy') overallStatus = 'degraded';
       subsystems.external_sgtm = {
         status: 'offline',
-        error: err instanceof Error && err.name === 'AbortError' ? 'Timeout' : errorMessage(err),
+        error: err instanceof Error && err.name === 'AbortError' ? 'Timeout' : logged('SGTM_UNREACHABLE', err),
       };
     }
   }

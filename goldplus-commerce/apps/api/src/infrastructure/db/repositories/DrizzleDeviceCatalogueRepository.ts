@@ -259,6 +259,18 @@ export class DrizzleDeviceCatalogueRepository implements IDeviceCatalogueReposit
     return rows.map((r) => r.productId);
   }
 
+  async liveClaimCount(deviceId: string) {
+    const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(productDeviceCompatibility)
+      .where(and(eq(productDeviceCompatibility.deviceId, deviceId), sql`${productDeviceCompatibility.workflowStatus} <> 'ARCHIVED'`));
+    return row?.n ?? 0;
+  }
+
+  async activeDeviceCount(scope: { brandId: string } | { seriesId: string }) {
+    const where = 'brandId' in scope ? eq(devices.brandId, scope.brandId) : eq(devices.seriesId, scope.seriesId);
+    const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(devices).where(and(where, eq(devices.status, 'ACTIVE')));
+    return row?.n ?? 0;
+  }
+
   async openRequestsForDevice(deviceId: string) {
     const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(batteryRequests).where(and(eq(batteryRequests.resolvedDeviceId, deviceId), eq(batteryRequests.status, 'OPEN')));
     return row?.n ?? 0;

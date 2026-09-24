@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { adminEmailDeliveryState } from '../../../../domain/notifications/AdminOrderEmail';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
 import { Registry } from '../../../../infrastructure/Registry';
@@ -71,6 +72,9 @@ routes.get('/', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ]), async (c) 
 
 routes.get('/order/:orderId/timeline', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ]), async (c) => {
   const orderId = c.req.param('orderId');
+  if (orderId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId)) {
+    return c.json({ success: false, error: { code: 'ORDER_NOT_FOUND', message: 'No order has this id.' } }, 404);
+  }
   if (!orderId) {
     return c.json({
       success: false,
@@ -99,14 +103,15 @@ routes.get('/order/:orderId/timeline', requirePermissions([PERMISSIONS.NOTIFICAT
 
     return c.json(response);
   } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
+    // Database internals stay in the server log, never in the response.
+    console.error('[admin/notifications] timeline query failed:', err);
     return c.json({
       success: false,
       error: {
         code: 'TIMELINE_QUERY_FAILED',
-        message: errorMsg
+        message: 'The notification timeline could not be read.'
       }
-    }, 400);
+    }, 500);
   }
 });
 
@@ -129,14 +134,10 @@ routes.get('/health-check', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ])
 // delegates to ReplayAdminOrderEmailUseCase, which writes the outbox_event audit
 // entry via CreateAuditLogUseCase — a dedicated audit channel.
 
-function deliveryStateOf(row: { isProcessed: boolean; status: string; attemptCount: number; lastError?: string | null; dryRunOnly: boolean }): string {
-  if (!row.isProcessed) return row.attemptCount > 0 ? 'RETRYING' : 'PENDING';
-  if (!row.lastError) return 'SENT';
-  const e = row.lastError.toLowerCase();
-  if (e.includes('exhausted')) return 'DEAD_LETTER';
-  if (e.includes('not_configured') || e.includes('no channel')) return 'MISSING_CONFIG';
-  if (e.includes('disabled')) return row.dryRunOnly ? 'DELIVERY_DISABLED' : 'DELIVERY_DISABLED';
-  return 'RETRYING';
+// The state logic lives in the domain (adminEmailDeliveryState): the status
+// column first, so a dead-lettered email never reads as RETRYING.
+function deliveryStateOf(row: { isProcessed: boolean; status: string; attemptCount: number; lastError?: string | null; deadLetteredAt?: Date | string | null }): string {
+  return adminEmailDeliveryState(row);
 }
 
 routes.get('/admin-order-emails', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ]), async (c) => {

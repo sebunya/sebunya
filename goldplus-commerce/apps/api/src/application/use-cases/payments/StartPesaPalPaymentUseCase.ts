@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import { IPesaPalPaymentRepository } from '../../ports/IPesaPalPaymentRepository';
 import { IOrderRepository } from '../commerce/CheckoutUseCase';
 import { IPesaPalClient } from '../../ports/IPesaPalClient';
-import { TERMINAL_ATTEMPT_STATUSES } from '../../../domain/payments/PaymentAttemptState';
 
 export interface StartPesaPalPaymentInput {
   orderId: string;
@@ -31,6 +30,12 @@ export function providerCallbackUrl(env: NodeJS.ProcessEnv = process.env): strin
   if (apiOrigin) return `${apiOrigin}${PESAPAL_CALLBACK_PATH}`;
 
   return `http://localhost:3000${PESAPAL_CALLBACK_PATH}`;
+}
+
+/** Appends `reference=<merchantReference>` to the provider's cancel destination. */
+export function withMerchantReference(url: string, merchantReference: string): string {
+  const separator = url.includes('?') ? '&' : '?';
+  return `${url}${separator}reference=${encodeURIComponent(merchantReference)}`;
 }
 
 export class StartPesaPalPaymentUseCase {
@@ -92,7 +97,35 @@ export class StartPesaPalPaymentUseCase {
     let merchantReference = baseReference;
     let attempt = await this.paymentRepo.findByMerchantReference(merchantReference);
 
-    if (attempt && (TERMINAL_ATTEMPT_STATUSES as readonly string[]).includes(attempt.status)) {
+    // Money the provider already reported collected on this reference: opening
+    // another payable page could take it twice. Refused BEFORE the provider is
+    // asked for anything, so no orphan transaction is created.
+    if (attempt && attempt.status === 'completed') {
+      throw new Error('PAYMENT_ALREADY_COLLECTED: This order has a completed payment attempt awaiting review.');
+    }
+
+    // Only an attempt that never reached the provider, at the order's CURRENT
+    // total, may be submitted again. Anything else gets a fresh attempt:
+    //  - a TERMINAL attempt is history (above);
+    //  - a `pending` / `verification_*` attempt already holds a live provider
+    //    transaction. Re-submitting it overwrote its tracking id, so a payment
+    //    made on that first page matched nothing on our side (UNKNOWN_ATTEMPT,
+    //    money collected against an unpaid order) and the poller could no
+    //    longer see it. `verification_failed` also threw on the pending write
+    //    AFTER the provider transaction had been opened;
+    //  - an attempt at a different amount (a delivery variance changed the
+    //    total after it was recorded) would quote the stale figure, and
+    //    verification compares against the attempt, so the order settled as
+    //    fully paid at the wrong total. StartOrderPaymentUseCase declines to
+    //    reuse such an attempt; this is where that decision is honoured.
+    // The old attempt is left exactly as it is, tracking id included, so the
+    // poller and IPN still match anything paid on its page.
+    const resubmittable =
+      attempt &&
+      attempt.status === 'not_started' &&
+      !attempt.orderTrackingId &&
+      attempt.amount === order.totalUgx;
+    if (attempt && !resubmittable) {
       merchantReference = `${baseReference}-${randomUUID().replace(/-/g, '').slice(0, 6)}`;
       attempt = null;
     }
@@ -144,7 +177,13 @@ export class StartPesaPalPaymentUseCase {
     // from the API's own public origin so a deployment that never sets it still
     // returns to the right place.
     const callbackUrl = providerCallbackUrl();
-    const cancellationUrl = process.env.PESAPAL_CANCELLATION_URL || 'http://localhost:3000/checkout/pesapal/cancelled';
+    // The cancelled page names the order from `reference` (it reads it through
+    // orderNumberFromMerchantReference); without it, a guest who cancels on a
+    // new device has no order number to pay or track by.
+    const cancellationUrl = withMerchantReference(
+      process.env.PESAPAL_CANCELLATION_URL || 'http://localhost:3000/checkout/pesapal/cancelled',
+      attempt.merchantReference,
+    );
 
     const pesapalResponse = await this.pesapalClient.submitOrderRequest({
       // The reference this attempt was created under, so the provider

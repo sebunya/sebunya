@@ -23,6 +23,10 @@ export const MFA_REQUIRED_ACTIONS = [
   'user_admin',
   'role_admin',
   'pricing_approval',
+  // Owner decision 2026-09-24: money leaving the business needs the same fresh
+  // second factor as pricing approval (a hijacked or unattended session could
+  // otherwise refund every completed payment with a ten-character reason).
+  'payment_refund',
   'catalogue_publication',
   'credential_management',
   'controlled_activation',

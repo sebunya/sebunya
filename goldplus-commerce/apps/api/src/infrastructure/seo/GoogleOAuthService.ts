@@ -1,13 +1,22 @@
-import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 
 /**
  * GoogleOAuthService — CSRF-safe OAuth2 authorization-code flow with PKCE
  * (S256) for Google providers (currently Google Business Profile).
  *
- * State: a random 32-byte token, HMAC-signed (key derived from JWT_SECRET /
- * SEO_CREDENTIAL_VAULT_KEY) and stored SERVER-SIDE with a 10-minute TTL, tied
- * to the connection AND the initiating actor. A state that is expired, unknown,
- * tampered with, or presented by a different actor is rejected.
+ * State: {connectionId, actorId, PKCE verifier, issued-at, nonce} SEALED with
+ * AES-256-GCM (key derived from SEO_CREDENTIAL_VAULT_KEY / JWT_SECRET) and carried
+ * in the state parameter itself, with a 10-minute TTL, tied to the connection AND
+ * the initiating actor. A state that is expired, tampered with, or presented by a
+ * different actor is rejected.
+ *
+ * Why sealed rather than stored: the API runs two replicas behind Caddy, and the
+ * state used to live in the Map of whichever replica served /start. Google's
+ * callback reached the other replica about half the time, found nothing, and the
+ * one-time authorization code was thrown away as invalid_state; any deploy between
+ * start and callback lost every pending state. Google's code is single-use and
+ * PKCE-bound, so a replayed state yields nothing; a per-process consumed-nonce
+ * list still refuses an immediate replay on the same replica.
  *
  * OAuth client app resolution: an operator-supplied {clientId, clientSecret}
  * held in the connection's vault credential, falling back to the
@@ -35,8 +44,9 @@ export interface OAuthTokenSet {
 }
 
 export class GoogleOAuthService {
-  private readonly states = new Map<string, OAuthStateRecord>();
-  private readonly hmacKey: Buffer;
+  /** nonce -> expiry, best-effort single use on this replica. */
+  private readonly consumed = new Map<string, number>();
+  private readonly sealKey: Buffer;
 
   constructor(
     secret?: string,
@@ -46,19 +56,40 @@ export class GoogleOAuthService {
   ) {
     const material = (secret ?? env.SEO_CREDENTIAL_VAULT_KEY ?? env.JWT_SECRET ?? '').trim();
     if (material === '') throw new Error('GoogleOAuthService requires SEO_CREDENTIAL_VAULT_KEY or JWT_SECRET.');
-    this.hmacKey = createHash('sha256').update(`goldplus:seo-oauth-state:v1:${material}`).digest();
+    // A new context label: the sealing key is unrelated to every other key drawn
+    // from the same material.
+    this.sealKey = createHash('sha256').update(`goldplus:seo-oauth-state-seal:v2:${material}`).digest();
   }
 
-  private sign(token: string): string {
-    return createHmac('sha256', this.hmacKey).update(token).digest('base64url');
-  }
-
-  /** Issue a signed state bound to connection + actor; PKCE verifier stored server-side. */
+  /** Issue a sealed state bound to connection + actor, carrying its PKCE verifier. */
   createState(connectionId: string, actorId: string): { state: string; verifier: string } {
-    const token = randomBytes(32).toString('base64url');
     const verifier = randomBytes(48).toString('base64url');
-    this.states.set(token, { connectionId, actorId, verifier, createdAt: this.now() });
-    return { state: `${token}.${this.sign(token)}`, verifier };
+    const nonce = randomBytes(12).toString('base64url');
+    const iv = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', this.sealKey, iv);
+    const plain = JSON.stringify({ c: connectionId, a: actorId, v: verifier, t: this.now(), n: nonce });
+    const sealed = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final(), cipher.getAuthTag()]);
+    return { state: `v2.${iv.toString('base64url')}.${sealed.toString('base64url')}`, verifier };
+  }
+
+  private unseal(state: string): (OAuthStateRecord & { nonce: string }) | null {
+    const parts = state.split('.');
+    if (parts.length !== 3 || parts[0] !== 'v2') return null;
+    try {
+      const iv = Buffer.from(parts[1], 'base64url');
+      const sealed = Buffer.from(parts[2], 'base64url');
+      if (iv.length !== 12 || sealed.length <= 16) return null;
+      const decipher = createDecipheriv('aes-256-gcm', this.sealKey, iv);
+      decipher.setAuthTag(sealed.subarray(sealed.length - 16));
+      const plain = Buffer.concat([decipher.update(sealed.subarray(0, sealed.length - 16)), decipher.final()]).toString('utf8');
+      const body = JSON.parse(plain) as { c?: unknown; a?: unknown; v?: unknown; t?: unknown; n?: unknown };
+      if (typeof body.c !== 'string' || typeof body.a !== 'string' || typeof body.v !== 'string'
+        || typeof body.t !== 'number' || typeof body.n !== 'string') return null;
+      return { connectionId: body.c, actorId: body.a, verifier: body.v, createdAt: body.t, nonce: body.n };
+    } catch {
+      // Tampered, truncated, or sealed under another key: all the same answer.
+      return null;
+    }
   }
 
   /**
@@ -67,28 +98,21 @@ export class GoogleOAuthService {
    * One-shot: consumed on success.
    */
   consumeState(state: string, actorId?: string): OAuthStateRecord | null {
-    const dot = state.lastIndexOf('.');
-    if (dot <= 0) return null;
-    const token = state.slice(0, dot);
-    const sig = state.slice(dot + 1);
-    const expected = this.sign(token);
-    const a = Buffer.from(sig);
-    const b = Buffer.from(expected);
-    if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-    const record = this.states.get(token);
-    if (!record) return null;
-    if (this.now() - record.createdAt > STATE_TTL_MS) {
-      this.states.delete(token);
-      return null;
-    }
+    const unsealed = this.unseal(state);
+    if (!unsealed) return null;
+    const now = this.now();
+    for (const [nonce, expires] of this.consumed) if (expires <= now) this.consumed.delete(nonce);
+    if (now - unsealed.createdAt > STATE_TTL_MS || unsealed.createdAt - now > 60_000) return null;
+    if (this.consumed.has(unsealed.nonce)) return null;
     // The provider's redirect is a plain browser navigation carrying no
     // Authorization header, so the callback has no session to compare against.
     // Omitting actorId is therefore allowed: the state is still HMAC-signed,
     // single-use and TTL-bound, and it CARRIES the actor it was issued to
     // (callers use record.actorId). When a caller does supply an actor, the
     // stricter binding is enforced as before.
-    if (actorId !== undefined && record.actorId !== actorId) return null;
-    this.states.delete(token);
+    if (actorId !== undefined && unsealed.actorId !== actorId) return null;
+    this.consumed.set(unsealed.nonce, unsealed.createdAt + STATE_TTL_MS);
+    const { nonce: _nonce, ...record } = unsealed;
     return record;
   }
 

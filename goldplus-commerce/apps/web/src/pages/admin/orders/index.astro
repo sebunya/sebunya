@@ -13,23 +13,10 @@ const search = url.searchParams.get('search')?.trim() || '';
 const statusFilter = url.searchParams.get('status')?.trim() || '';
 const paymentStatusFilter = url.searchParams.get('paymentStatus')?.trim() || '';
 
-const fallbackOrders = [
-  {
-    id: "fallback-1",
-    orderNumber: "GP-FALLBACK-1",
-    customerName: "Sample John",
-    customerPhone: "0788000000",
-    customerEmail: "john@example.com",
-    buyerType: "retail",
-    totalUgx: 150000,
-    paymentStatus: "unpaid",
-    orderStatus: "received",
-    createdAt: new Date().toISOString()
-  }
-];
-
-let orders = [];
-let isSample = false;
+// Live data only: no invented order is ever listed (a 'Sample John' fallback
+// used to render here whenever the API did not answer 200).
+let orders: any[] = [];
+let loadFailed = false;
 let apiError = '';
 
 try {
@@ -52,19 +39,18 @@ try {
     if (json && json.success && Array.isArray(json.data)) {
       orders = json.data;
     } else {
-      orders = fallbackOrders;
-      isSample = true;
-      apiError = 'Unexpected schema returned from active API route.';
+      loadFailed = true;
+      apiError = 'The API answered with an unexpected response.';
     }
   } else {
-    orders = fallbackOrders;
-    isSample = true;
-    apiError = `API query responded with HTTP ${res.status}.`;
+    loadFailed = true;
+    apiError = res.status === 401 || res.status === 403
+      ? 'Your role cannot read orders (orders.read required).'
+      : `The API answered HTTP ${res.status}.`;
   }
 } catch {
-  orders = fallbackOrders;
-  isSample = true;
-  apiError = 'Commerce API is currently unreachable.';
+  loadFailed = true;
+  apiError = 'The orders service is unreachable.';
 }
 
 import { formatUgx } from '../../../lib/money';
@@ -103,10 +89,10 @@ function getStatusColor(status: string) {
       </div>
     </div>
 
-    {isSample && (
-      <div class="bg-blue-50 border border-blue-200 text-blue-800 px-6 py-4 rounded-2xl mb-8 flex flex-col gap-1">
-        <div class="text-xs font-black uppercase tracking-wider">Interactive Fallback Mode</div>
-        <div class="text-xs leading-relaxed"><strong>System note:</strong> {apiError} Displaying fallback data.</div>
+    {loadFailed && (
+      <div role="alert" class="bg-red-50 border border-red-200 text-red-800 px-6 py-4 rounded-2xl mb-8 flex flex-col gap-1">
+        <div class="text-xs font-black uppercase tracking-wider">Orders could not be loaded</div>
+        <div class="text-xs leading-relaxed">{apiError} No sample data is shown.</div>
       </div>
     )}
 
@@ -253,7 +239,7 @@ function getStatusColor(status: string) {
             {orders.length === 0 && (
               <tr>
                 <td colspan="7" class="p-20 text-center text-gray-500 italic text-xs leading-relaxed">
-                  Zero active orders matched your filtering criteria.
+                  {loadFailed ? 'Orders could not be loaded — see the notice above.' : 'Zero active orders matched your filtering criteria.'}
                 </td>
               </tr>
             )}

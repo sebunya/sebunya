@@ -47,7 +47,7 @@ export class DrizzleSurveyRepository implements ISurveyRepository {
   }
   async eligible(userId: string) {
     const profileRows = await db.select().from(customerProfiles).where(and(eq(customerProfiles.accountUserId, userId), eq(customerProfiles.consentEligible, true))).limit(1);
-    const consentRows = await db.select().from(consentCurrentState).where(and(eq(consentCurrentState.userId, userId), eq(consentCurrentState.personalizationGranted, true), sql`${consentCurrentState.expiresAt} is null or ${consentCurrentState.expiresAt} > now()`)).limit(1);
+    const consentRows = await db.select().from(consentCurrentState).where(and(eq(consentCurrentState.userId, userId), eq(consentCurrentState.personalizationGranted, true), sql`(${consentCurrentState.expiresAt} is null or ${consentCurrentState.expiresAt} > now())`)).limit(1);
     if (!profileRows[0] || !consentRows[0]) return [];
     const rows = await db.select({ definition: surveyDefinitions, version: surveyVersions }).from(surveyDefinitions).innerJoin(surveyVersions, eq(surveyVersions.id, surveyDefinitions.currentVersionId)).where(eq(surveyDefinitions.status, 'ACTIVE'));
     return rows.filter((row) => { const audience = row.version.audience as SurveyAudience; return audience.lifecycleStages.length === 0 || audience.lifecycleStages.includes(profileRows[0].primaryLifecycleStage); }).map((row) => ({ definition: definitionRecord(row.definition), version: versionRecord(row.version), lifecycleStage: profileRows[0].primaryLifecycleStage, consentRecordId: consentRows[0].lastConsentRecordId ?? consentRows[0].id }));

@@ -98,12 +98,15 @@ const railDiscount = await getStorefrontDiscount();
     // Nothing to show and nothing to fetch: the returning-visitor rail with no history.
     if (!alwaysRender && getRecentlyViewedHistory().length === 0) return;
     let liveByProduct: Record<string, { price?: number; sale?: number | null; availability?: { kind: string; quantity?: number }; imageUrl?: string }> = {};
+    // Without the live read, a stored price is last week's price: the cards
+    // then show no price, no stock and no buy button, only "View product".
+    let liveOk = false;
     try {
       const res = await fetch("/api/catalogue-live", { credentials: "same-origin" });
       const body = await res.json();
-      if (body && body.success && body.data && typeof body.data === "object") liveByProduct = body.data;
+      if (body && body.success && body.data && typeof body.data === "object") { liveByProduct = body.data; liveOk = true; }
     } catch {
-      // Same as an empty catalogue before: no overlay and no id filter.
+      // No overlay and no id filter; prices and stock are withheld below.
     }
     // The live map's keys ARE the approved catalogue; a separate id list was the same
     // 184 ids stamped a second time into every page.
@@ -112,6 +115,7 @@ const railDiscount = await getStorefrontDiscount();
     // 160–320 px wide, the master is 1024 px.
     const srcsetOf = (url: string) => { const m = url.match(/^(\/uploads\/assets\/[^?#]+\/)pdp\.webp$/); return m ? ` srcset="${m[1]}thumb.webp 160w, ${m[1]}card.webp 480w, ${url} 1024w" sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 320px"` : ""; };
     const overlay = (item: any) => {
+      if (!liveOk) return { ...item, price: undefined, sale: null, availability: undefined };
       const live = liveByProduct[item.productId];
       return live ? { ...item, price: live.price ?? item.price, sale: live.sale ?? null, availability: live.availability ?? item.availability, imageUrl: live.imageUrl ?? item.imageUrl } : { ...item, sale: null };
     };
@@ -153,7 +157,7 @@ const railDiscount = await getStorefrontDiscount();
       .map(({ item, source }) => {
         const priceLabel = (typeof item.price === "number" && item.price > 0) 
           ? `UGX ${item.price.toLocaleString("en-US")}`
-          : "Price on request";
+          : liveOk ? "Price on request" : "See today's price";
         
         const itemName = String(item.name ?? "Product");
         const escapedName = escapeHtml(itemName);
@@ -188,6 +192,9 @@ const railDiscount = await getStorefrontDiscount();
         // drops. At the floor the cut is nothing, and "145,000 was 145,000,
         // 10% discount" is a claim the basket does not honour.
         const onSale = saleActive && hasPrice && typeof item.sale === "number" && item.sale > 0 && item.sale < item.price;
+        // The link's label replaces its content for assistive technology, so
+        // it must say the price the card shows: the sale price when there is one.
+        const spokenPrice = onSale ? `UGX ${item.sale.toLocaleString("en-US")}, reduced from ${priceLabel}` : priceLabel;
         const priceHtml = onSale
           ? `<span class="flex flex-col min-w-0">
                <span class="flex flex-wrap items-baseline gap-x-2">
@@ -223,7 +230,7 @@ const railDiscount = await getStorefrontDiscount();
           <li class="group list-none h-full">
             <div class="flex flex-col h-full border border-slate-200/80 rounded-2xl p-3 sm:p-5 hover:border-brand-primary hover:-translate-y-0.5 transition-[transform,border-color] duration-200 bg-white">
               <a href="/products/${escapedSlug}"
-                 aria-label="View ${escapedName}. ${priceLabel}. ${availabilityLabel}."
+                 aria-label="View ${escapedName}. ${spokenPrice}. ${availabilityLabel}."
                  data-recommendation-click 
                  data-placement="recently_viewed" 
                  data-product-id="${escapedProductId}"

@@ -52,7 +52,7 @@ const statusClass = (s: string) => s === 'NEW' ? 'text-green-700' : s === 'WOULD
         <h2 class="text-2xl font-black text-brand-dark tracking-tight truncate">{session.name}</h2>
         <p class="text-sm text-gray-500 mt-1"><span class="font-black">{session.status}</span> · version {session.version} · {session.totals.TOTAL ?? rows.length} rows · plan {session.planHash.slice(0, 12)} · {session.importerVersion}{session.manifestFilename ? ` · manifest ${session.manifestFilename}` : ''}</p>
       </div>
-      <a href={`${apiBase}/admin/media-imports/${session.id}/results.csv`} class="bg-white border border-gray-200 hover:bg-gray-50 text-brand-dark font-bold text-xs px-4 py-2 rounded-xl shadow-xs">Results CSV</a>
+      <a href={`/api/admin/media-imports/${encodeURIComponent(session.id)}/results.csv`} class="bg-white border border-gray-200 hover:bg-gray-50 text-brand-dark font-bold text-xs px-4 py-2 rounded-xl shadow-xs">Results CSV</a>
     </div>
 
     {status && <FormFeedback status={status} message={message} />}

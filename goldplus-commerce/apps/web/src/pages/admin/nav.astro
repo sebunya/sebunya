@@ -5,8 +5,8 @@ import { apiBase } from '../../lib/api';
 import { NAV_LIMITS } from '@goldplus/shared';
 
 /**
- * Header (nav) editor (0109/0110). Marketing edits the rail, contact, featured
- * cards, flash sale, search copy, the first-order estimate and trending terms —
+ * Header (nav) editor (0109/0110). Marketing edits the rail, the sale panel's
+ * CTA, search copy and trending terms —
  * no code, no deploy. Every save validates the WHOLE config server-side; a save
  * that would break the header is refused with the reasons. The deep structural
  * bodies (tile descriptions, the capacity matrix, the battery brand chips) are
@@ -43,16 +43,21 @@ if (Astro.request.method === 'POST') {
     const cfg = curJson.data.config;
 
     // Scalar dotted fields (settings, contact, search, flash notes/cta/stock).
+    // settings.firstOrderEstimateUgx / firstOrderDiscountPct / referralPct are
+    // no longer written: nothing on the site reads them (nba.ts marks the
+    // first-order pair unused; no copy is built from referralPct). The stored
+    // values stay so existing configs still validate.
     const scalarStr = [
-      'settings.firstOrderEstimateUgx', 'settings.cutoffTimeLabel',
+      // settings.cutoffTimeLabel and flash.noteFinalHours are no longer written:
+      // the header never read them (the cutoff comes from business_info).
       // contact.* is NOT edited here: business_info owns it (/admin/business-info)
       // and the header renders from that. Two editors for one phone number is
       // how the header and the footer came to disagree.
       'search.placeholderDesktop', 'search.placeholderMobile', 'search.zeroResultCopy',
-      'flash.noteDefault', 'flash.noteFinalHours', 'flash.cta.label', 'flash.cta.href',
+      'flash.noteDefault', 'flash.cta.label', 'flash.cta.href',
     ];
     for (const p of scalarStr) { const v = form.get(p); if (v != null) deepSet(cfg, p, String(v)); }
-    const scalarNum = ['settings.firstOrderDiscountPct', 'settings.referralPct', 'settings.pointsToUgxRate'];
+    const scalarNum = ['settings.pointsToUgxRate'];
     for (const p of scalarNum) { const v = form.get(p); const n = Number(v); if (v != null && v !== '' && Number.isFinite(n)) deepSet(cfg, p, n); }
 
     // Rail (by key).
@@ -62,15 +67,10 @@ if (Astro.request.method === 'POST') {
       const tag = form.get(`rail.${r.key}.tag`); if (tag != null) { const t = String(tag).trim(); if (t) r.tag = t; else delete r.tag; }
     });
 
-    // Featured cards (by panel key + flash).
-    const setFeat = (f: any, key: string) => {
-      if (!f) return;
-      for (const field of ['name', 'line', 'href', 'alt', 'eyebrow'] as const) {
-        const v = form.get(`feat.${key}.${field}`); if (v != null) f[field] = String(v);
-      }
-    };
-    (cfg.panels ?? []).forEach((p: any) => setFeat(p.featured, p.key));
-    setFeat(cfg.flash?.featured, 'flash');
+    // Featured cards are NOT edited here. The header picks them from the
+    // catalogue (lib/navFeatured.ts) and never read panels[].featured or
+    // flash.featured, so the old editor saved text nobody saw. The stored
+    // values are left untouched.
 
     // Trending terms (one "label | href" per line).
     const trendingRaw = form.get('trending');
@@ -101,7 +101,8 @@ if (Astro.request.method === 'POST') {
 let config: any = null; let errors: any[] = []; let warnings: any[] = []; let version = 0; let report: any = null; let loadError = '';
 try {
   const [cfgRes, repRes] = await Promise.all([authed('/admin/nav'), authed('/admin/nav/report?windowDays=30')]);
-  if (cfgRes.status === 401 || cfgRes.status === 403) return Astro.redirect('/admin/login?returnTo=/admin/nav', 303);
+  if (cfgRes.status === 401) return Astro.redirect('/admin/login?returnTo=/admin/nav', 303);
+  if (cfgRes.status === 403) return Astro.redirect(`/admin/not-permitted?from=${encodeURIComponent('/admin/nav')}`, 303);
   const cfgJson: any = await cfgRes.json().catch(() => null);
   if (cfgRes.ok && cfgJson?.success) { config = cfgJson.data.config; errors = cfgJson.data.errors ?? []; warnings = cfgJson.data.warnings ?? []; version = cfgJson.data.version ?? 0; }
   else loadError = cfgJson?.error?.message ?? 'Could not load the header configuration.';
@@ -109,9 +110,6 @@ try {
   if (repRes.ok && repJson?.success) report = repJson.data;
 } catch { loadError = 'The header service is unreachable right now.'; }
 
-const featPanels = config
-  ? [...config.panels.filter((p: any) => p.featured), { key: 'flash', featured: config.flash?.featured }].filter((p: any) => p.featured)
-  : [];
 const trendingText = config ? (config.search.trendingTerms ?? []).map((t: any) => `${t.label} | ${t.href}`).join('\n') : '';
 const rate = (n: number | null) => (n == null ? '— (below sample floor)' : `${n}%`);
 ---
@@ -162,21 +160,15 @@ const rate = (n: number | null) => (n == null ? '— (below sample floor)' : `${
 
         <section>
           <h2 class="text-sm font-black uppercase tracking-wider text-slate-500">Featured cards</h2>
-          <p class="text-xs text-slate-500">Every card must name the product in its photo. Name ≤{NAV_LIMITS.featuredName}, line ≤{NAV_LIMITS.featuredLine}. Alt is required.</p>
-          <div class="mt-3 space-y-3">
-            {featPanels.map((p: any) => (
-              <div class="rounded-lg border border-slate-200 p-3">
-                <p class="text-xs font-mono text-slate-500">{p.key}</p>
-                <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <label class="text-xs">Eyebrow<input class="mt-1 w-full rounded border px-2 py-1" name={`feat.${p.key}.eyebrow`} value={p.featured.eyebrow} /></label>
-                  <label class="text-xs">Name<input class="mt-1 w-full rounded border px-2 py-1" name={`feat.${p.key}.name`} value={p.featured.name} data-limit={NAV_LIMITS.featuredName} /></label>
-                  <label class="text-xs sm:col-span-2">Line<input class="mt-1 w-full rounded border px-2 py-1" name={`feat.${p.key}.line`} value={p.featured.line} data-limit={NAV_LIMITS.featuredLine} /></label>
-                  <label class="text-xs">Link<input class="mt-1 w-full rounded border px-2 py-1" name={`feat.${p.key}.href`} value={p.featured.href} /></label>
-                  <label class="text-xs">Alt text<input class="mt-1 w-full rounded border px-2 py-1" name={`feat.${p.key}.alt`} value={p.featured.alt} /></label>
-                </div>
-              </div>
-            ))}
-          </div>
+          <p class="mt-2 rounded-lg bg-slate-50 border p-3 text-xs text-slate-600">
+            The card in each menu panel is picked automatically from photographed,
+            in-stock products in the catalogue, so it always shows something a
+            customer can buy. There is nothing to type here: the header never read
+            the card text this page used to save. To change what a card shows, add
+            photos or stock in <a class="font-bold underline" href="/admin/products">Products</a>.
+            The same-day cutoff is set in
+            <a class="font-bold underline" href="/admin/business-info">Business info</a>.
+          </p>
         </section>
 
         <section class="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -194,10 +186,11 @@ const rate = (n: number | null) => (n == null ? '— (below sample floor)' : `${
           </div>
           <div>
             <h2 class="text-sm font-black uppercase tracking-wider text-slate-500">Settings & offers</h2>
-            <label class="mt-2 block text-xs">First-order estimate<input class="mt-1 w-full rounded border px-2 py-1" name="settings.firstOrderEstimateUgx" value={config.settings.firstOrderEstimateUgx} /></label>
-            <label class="mt-2 block text-xs">First-order discount %<input type="number" class="mt-1 w-full rounded border px-2 py-1" name="settings.firstOrderDiscountPct" value={config.settings.firstOrderDiscountPct} /></label>
-            <label class="mt-2 block text-xs">Referral %<input type="number" class="mt-1 w-full rounded border px-2 py-1" name="settings.referralPct" value={config.settings.referralPct} /></label>
-            <label class="mt-2 block text-xs">Points → UGX rate<input type="number" class="mt-1 w-full rounded border px-2 py-1 bg-gray-100 text-gray-600" name="settings.pointsToUgxRate" value={config.settings.pointsToUgxRate} readonly title="Shown for reference only. The header uses the LOYALTY PROGRAMME's redemption value, because this figure is a money claim and must come from the ledger's own settings. Edit it under Loyalty." /><span class="mt-1 block text-[10px] text-gray-500">Read only. The header uses the loyalty programme's redemption value; edit it under Loyalty.</span></label>
+            <p class="mt-2 rounded-lg bg-slate-50 border p-3 text-xs text-slate-600">
+              First-order estimate, first-order discount % and referral % are not edited here: the header shows none of them, so a
+              value saved here would change nothing on the site.
+            </p>
+            <label class="mt-2 block text-xs">Points → UGX rate<input type="number" class="mt-1 w-full rounded border px-2 py-1 bg-gray-100 text-gray-600" name="settings.pointsToUgxRate" value={config.settings.pointsToUgxRate} readonly title="Shown for reference only. The header uses the LOYALTY PROGRAMME's redemption value, because this figure is a money claim and must come from the ledger's own settings. Edit it under Loyalty → Programme values." /><span class="mt-1 block text-[10px] text-gray-500">Read only. The header uses the loyalty programme's redemption value; edit it under <a class="font-bold underline" href="/admin/loyalty#programme-values">Loyalty → Programme values</a>.</span></label>
           </div>
         </section>
 

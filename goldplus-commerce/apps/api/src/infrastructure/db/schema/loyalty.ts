@@ -38,9 +38,12 @@ export const loyaltyLedgerEntries = pgTable('loyalty_ledger_entries', {
   idemIdx: uniqueIndex('loyalty_ledger_idem_idx').on(table.idempotencyKey),
   accountIdx: index('loyalty_ledger_account_idx').on(table.accountId),
   orderIdx: index('loyalty_ledger_order_idx').on(table.orderId),
-  reversalSourceIdx: uniqueIndex('loyalty_ledger_reversal_source_idx').on(table.reversedEntryId)
+  // 0151: no longer unique. An earn can take several pro-rata clawbacks and
+  // can expire again after a refund returns points to it; each write is
+  // deduplicated by its idempotency key instead.
+  reversalSourceIdx: index('loyalty_ledger_reversal_source_idx').on(table.reversedEntryId)
     .where(sql`${table.type} = 'reversal'`),
-  expirySourceIdx: uniqueIndex('loyalty_ledger_expiry_source_idx').on(table.reversedEntryId)
+  expirySourceIdx: index('loyalty_ledger_expiry_source_idx').on(table.reversedEntryId)
     .where(sql`${table.type} = 'expiry'`),
   typeCheck: check('loyalty_ledger_type_check', sql`${table.type} in ('earn', 'redeem', 'reversal', 'expiry', 'adjustment')`),
   shapeCheck: check('loyalty_ledger_shape_check', sql`

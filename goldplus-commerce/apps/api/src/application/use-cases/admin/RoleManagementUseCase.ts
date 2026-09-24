@@ -14,7 +14,12 @@ import type { AdminRoleDetail, IAdminRoleWriteRepository } from '../../ports/IAd
  *    refused when no ACTIVE user would still hold that code through another
  *    role — otherwise one save could lock every operator out of access
  *    management;
- *  - a role held by anyone cannot be deleted; revoke it from them first.
+ *  - a role held by anyone cannot be deleted; revoke it from them first;
+ *  - nobody hands out a permission they do not hold themselves: a new role,
+ *    or codes ADDED to an existing role, must be a subset of the actor's own
+ *    permissions (full-access holders carry every code, so they are never
+ *    blocked). Without this a roles.manage holder could mint a role with
+ *    every permission and escape the two-person rule.
  */
 export type RmOutcome<T> = { ok: true; value: T } | { ok: false; code: string; message: string; status: number };
 const refuse = (code: string, message: string, status = 400): RmOutcome<never> => ({ ok: false, code, message, status });
@@ -47,7 +52,7 @@ export class RoleManagementUseCase {
     return (FULL_ACCESS_ROLES as readonly string[]).includes(roleName);
   }
 
-  async createRole(args: { name: string; permissionCodes: string[]; actorId: string }): Promise<RmOutcome<{ id: string; name: string; permissionCodes: string[] }>> {
+  async createRole(args: { name: string; permissionCodes: string[]; actorId: string; actorPermissions?: readonly string[] }): Promise<RmOutcome<{ id: string; name: string; permissionCodes: string[] }>> {
     const name = args.name.trim();
     if (!ROLE_NAME_PATTERN.test(name)) {
       return refuse('BAD_NAME', 'A role name is 3 to 50 characters of capitals, digits and underscores, starting with a letter (for example SUPPORT_LEAD).');
@@ -56,11 +61,13 @@ export class RoleManagementUseCase {
     if (await this.repo.findRoleByName(name)) return refuse('DUPLICATE', `A role named ${name} already exists.`, 409);
     const codes = this.normaliseCodes(args.permissionCodes);
     if (!codes.ok) return codes;
+    const beyond = this.beyondActor(codes.value, args.actorPermissions);
+    if (beyond) return beyond;
     const created = await this.repo.createRole(name, codes.value);
     return { ok: true, value: { id: created.id, name, permissionCodes: codes.value } };
   }
 
-  async replacePermissions(args: { roleId: string; permissionCodes: string[]; actorId: string }): Promise<RmOutcome<{ role: AdminRoleDetail; previousCodes: string[]; nextCodes: string[] }>> {
+  async replacePermissions(args: { roleId: string; permissionCodes: string[]; actorId: string; actorPermissions?: readonly string[] }): Promise<RmOutcome<{ role: AdminRoleDetail; previousCodes: string[]; nextCodes: string[] }>> {
     const role = await this.repo.findRoleById(args.roleId);
     if (!role) return refuse('NOT_FOUND', 'Role not found.', 404);
     if (this.isSystemRole(role.name)) {
@@ -69,6 +76,8 @@ export class RoleManagementUseCase {
     const codes = this.normaliseCodes(args.permissionCodes);
     if (!codes.ok) return codes;
     const previousCodes = [...role.permissionCodes];
+    const beyond = this.beyondActor(codes.value.filter((c) => !previousCodes.includes(c)), args.actorPermissions);
+    if (beyond) return beyond;
     const next = new Set(codes.value);
     for (const guarded of ACCESS_MANAGEMENT_CODES) {
       if (previousCodes.includes(guarded) && !next.has(guarded)) {
@@ -95,6 +104,19 @@ export class RoleManagementUseCase {
     }
     await this.repo.deleteRole(role.id);
     return { ok: true, value: { role } };
+  }
+
+  /** Refusal when `codes` includes one the actor does not hold; null when all are held (or no actor set was supplied). */
+  private beyondActor(codes: readonly string[], actorPermissions: readonly string[] | undefined): RmOutcome<never> | null {
+    if (!actorPermissions) return null;
+    const held = new Set(actorPermissions);
+    const missing = codes.filter((c) => !held.has(c));
+    if (missing.length === 0) return null;
+    return refuse(
+      'BEYOND_OWN_PERMISSIONS',
+      `You can only grant permissions you hold yourself. Not held: ${missing.slice(0, 5).join(', ')}${missing.length > 5 ? '…' : ''}.`,
+      403,
+    );
   }
 
   private normaliseCodes(input: string[]): RmOutcome<string[]> {

@@ -2,6 +2,7 @@
 import AdminLayout from "../../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../../lib/session";
 import { apiBase } from "../../../../lib/api";
+import { kampalaLocalToIso } from "../../../../lib/kampalaTime";
 import {
   createRecommendationRule,
   previewRecommendationRules,
@@ -83,8 +84,9 @@ function buildRule(f: FormData) {
       ...(type === "BOOST" ? { boostScore: Number(f.get("boostScore")) || 25 } : {}),
       ...(type === "PIN" ? { pinPosition: Number(f.get("pinPosition")) || 1 } : {}),
     },
-    startsAt: String(f.get("startsAt") || "") || undefined,
-    endsAt: String(f.get("endsAt") || "") || undefined,
+    // Kampala wall-clock → an explicit instant (a zone-less value was read as UTC: 3 h late).
+    startsAt: kampalaLocalToIso(String(f.get("startsAt") || "")) ?? undefined,
+    endsAt: kampalaLocalToIso(String(f.get("endsAt") || "")) ?? undefined,
   };
 }
 
@@ -209,11 +211,11 @@ const item = (c: { productId: string; name: string; score?: number }) => c;
           </label>
           <div></div>
           <label class="block">
-            <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Starts (optional)</span>
+            <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Starts (optional, Kampala time)</span>
             <input name="startsAt" type="datetime-local" value={val("startsAt")} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
           </label>
           <label class="block">
-            <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Ends (optional)</span>
+            <span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Ends (optional, Kampala time)</span>
             <input name="endsAt" type="datetime-local" value={val("endsAt")} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" />
           </label>
         </div>

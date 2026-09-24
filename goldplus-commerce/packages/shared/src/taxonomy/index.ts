@@ -105,3 +105,36 @@ export const DEFAULT_TAXONOMY: Taxonomy = [
     ],
   },
 ];
+
+/** A keyword matched as a word-boundary phrase (spaces match any whitespace). */
+function taxonomyKeywordMatches(keyword: string, haystack: string): boolean {
+  const escaped = keyword.trim().toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+  if (!escaped) return false;
+  return new RegExp('\\b' + escaped).test(haystack);
+}
+
+/**
+ * The subcategory a product browses under, inferred from its name and category
+ * by keyword — the longest matching keyword wins, so "car charger" beats
+ * "charger". The ONE inference both the /shop page and the header dropdown use,
+ * so a subcategory word ("memory cards") finds the same products in both.
+ */
+export function inferSubcategory(
+  product: { name: string; categoryName?: string | null },
+  taxonomy: Taxonomy = DEFAULT_TAXONOMY,
+): TaxonomySubcategory | null {
+  const searchable = `${product.name} ${product.categoryName ?? ''}`.toLowerCase();
+  let best: TaxonomySubcategory | null = null;
+  let bestLen = 0;
+  for (const category of taxonomy) {
+    for (const sub of category.subcategories) {
+      for (const keyword of sub.keywords ?? []) {
+        if (keyword.length > bestLen && taxonomyKeywordMatches(keyword, searchable)) {
+          best = sub;
+          bestLen = keyword.length;
+        }
+      }
+    }
+  }
+  return best;
+}

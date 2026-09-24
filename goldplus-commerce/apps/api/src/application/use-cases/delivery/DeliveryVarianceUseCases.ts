@@ -58,7 +58,7 @@ export interface IDeliveryVarianceRepository {
   } | null>;
   insert(record: Omit<VarianceRecord, 'id'>): Promise<VarianceRecord>;
   findById(varianceId: string): Promise<VarianceRecord | null>;
-  /** Only applied on `absorbed`, or on `agreed`. Never on `pending`. */
+  /** Only applied on an `absorbed` REDUCTION, or on `agreed`. Never on `pending`, never an absorbed increase. */
   applyFeeToOrder(input: { orderId: string; newFeeUgx: number }): Promise<void>;
   /** Null when the variance was no longer awaiting an answer (someone else answered first). */
   setAgreement(input: {
@@ -129,9 +129,20 @@ export class ApplyDeliveryVarianceUseCase {
       cancelledOrder: false,
     });
 
-    if (!needsAgreement) {
+    // "Absorbed" means GoldPlus pays (owner, 2026-09-24; CONFIGURATION.md
+    // "Fee difference we absorb"). An absorbed INCREASE used to be written to
+    // the order anyway — delivery fee and total raised, the customer never
+    // contacted, and the rider collecting more at the door than checkout
+    // promised. Now the customer's fee moves only DOWN without their
+    // agreement; an absorbed increase is recorded on the variance row (the
+    // cost is ours) and the order keeps the fee the customer agreed to.
+    const feeApplied = !needsAgreement && decision.disposition.deltaUgx < 0;
+    if (feeApplied) {
       await this.repo.applyFeeToOrder({ orderId: order.id, newFeeUgx: input.newFeeUgx });
       await this.captures.upsert({ orderId: order.id, finalFeeUgx: input.newFeeUgx, varianceReason: decision.reason });
+    } else if (!needsAgreement) {
+      // What the customer is charged is unchanged; the reason is still learned from.
+      await this.captures.upsert({ orderId: order.id, finalFeeUgx: order.deliveryFeeUgx, varianceReason: decision.reason });
     }
 
     // Old, new, reason, actor, timestamp and agreement. Every field the brief
@@ -143,7 +154,10 @@ export class ApplyDeliveryVarianceUseCase {
       entityId: order.id,
       previousState: { deliveryFeeUgx: order.deliveryFeeUgx },
       newState: {
-        deliveryFeeUgx: input.newFeeUgx,
+        // The fee the ORDER carries after this: unchanged for an absorbed
+        // increase or while agreement is pending.
+        deliveryFeeUgx: feeApplied ? input.newFeeUgx : order.deliveryFeeUgx,
+        varianceFeeUgx: input.newFeeUgx,
         deltaUgx: decision.disposition.deltaUgx,
         reason: decision.reason,
         note: input.note,
@@ -153,7 +167,8 @@ export class ApplyDeliveryVarianceUseCase {
         appliedAt: now.toISOString(),
         // Explicit, so a reader never has to infer it from a missing field.
         customerContacted: needsAgreement,
-        feeApplied: !needsAgreement,
+        feeApplied,
+        absorbedByGoldPlusUgx: !needsAgreement && decision.disposition.deltaUgx > 0 ? decision.disposition.deltaUgx : 0,
       },
     });
     return { ok: true, variance: record };

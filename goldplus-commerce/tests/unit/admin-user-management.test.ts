@@ -51,6 +51,15 @@ class FakeRepo implements IAdminUserWriteRepository {
   async countActiveUsersWithRole(roleName: string) {
     return [...this.roles.entries()].filter(([id, set]) => set.has(roleName) && !this.inactive.has(id)).length;
   }
+  // 2026-09-24: distinct count across both full-access roles, and role codes
+  // (the governance fakes carry none unless a test sets them).
+  async countActiveUsersWithAnyRole(roleNames: readonly string[]) {
+    return [...this.roles.entries()].filter(([id, set]) => roleNames.some((r) => set.has(r)) && !this.inactive.has(id)).length;
+  }
+  roleCodes = new Map<string, string[]>();
+  async rolePermissionCodes(roleName: string) {
+    return this.roleCodes.get(roleName) ?? [];
+  }
   async setUserActive(userId: string, active: boolean) {
     if (!this.roles.has(userId) && !this.inactive.has(userId)) return false;
     if (active) this.inactive.delete(userId); else this.inactive.add(userId);

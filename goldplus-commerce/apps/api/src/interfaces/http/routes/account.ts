@@ -11,6 +11,7 @@ import {
 } from '../../../application/use-cases/addresses/AddressUseCases';
 import { ApiResponse, MeDto, OrderSummaryDto, OrderDetailDto, AddressDto } from '@goldplus/shared';
 import { clientIp } from '../clientAddress';
+import { soonestUnspentExpiry } from '../../../domain/loyalty/LoyaltyLedger';
 
 const routes = new Hono<{ Variables: { userId: string; userEmail: string } }>();
 routes.use('*', customerSessionMiddleware);
@@ -51,11 +52,10 @@ routes.get('/overview', async (c) => {
     const res: ApiResponse<never> = { success: false, error: { code: 'NOT_FOUND', message: 'User not found.' } };
     return c.json(res, 404);
   }
-  const now = Date.now();
-  const soonestExpiry = loyalty.entries
-    .filter((e) => e.type === 'earn' && e.expiresAt && new Date(e.expiresAt).getTime() > now)
-    .map((e) => new Date(e.expiresAt as unknown as string).getTime())
-    .sort((a, b) => a - b)[0];
+  // Only points the customer still holds: an earn already spent does not
+  // "expire soon" (that was urgency about points that no longer existed).
+  const soonest = soonestUnspentExpiry(loyalty.entries, new Date());
+  const soonestExpiry = soonest ? soonest.getTime() : undefined;
   return c.json({
     success: true,
     data: {

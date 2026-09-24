@@ -2,6 +2,7 @@ import { IProductRepository } from '../../ports/IProductRepository';
 import { ISearchDemandRepository } from '../../ports/ISearchDemandRepository';
 import {
   normalizeSearchQuery,
+  searchTerms,
   isMeaningfulQuery,
   rankSuggestions,
   isValidDemandStatus,
@@ -12,7 +13,7 @@ import {
 } from '../../../domain/products/ProductSearchService';
 import type { IPricingRepository } from '../../ports/IPricingRepository';
 import { resolveStorefrontDiscount, INACTIVE_DISCOUNT } from '../../pricing/StorefrontDiscountQuery';
-import { salePriceUgx, effectiveFloorUgx, resolveGallery } from '@goldplus/shared';
+import { salePriceUgx, effectiveFloorUgx, resolveGallery, includesSearchTerm, inferSubcategory, DEFAULT_TAXONOMY, type Taxonomy } from '@goldplus/shared';
 
 /** The image the card and the product page lead with, or none — the ONE cover resolver (Focus 4). */
 function primaryImageUrl(images: Array<{ url: string; displayOrder: number; isPrimary: boolean; slot?: number | null }>): string | null {
@@ -35,14 +36,49 @@ export class SuggestProductsUseCase {
     private readonly products: IProductRepository,
     /** Optional: without it the suggestions fall back to the catalogue price. */
     private readonly pricing?: Pick<IPricingRepository, 'listActiveVersions'>,
+    /**
+     * Optional: the storefront taxonomy. /shop matches the subcategory it INFERS
+     * from the product name ("Memory Cards"), and products.subcategory is empty
+     * for every imported product, so without this "memory cards" found nothing
+     * here while /shop listed every card.
+     */
+    private readonly taxonomy?: () => Promise<Taxonomy>,
   ) {}
+
+  private async loadTaxonomy(): Promise<Taxonomy | null> {
+    if (!this.taxonomy) return null;
+    try {
+      return await this.taxonomy();
+    } catch {
+      return DEFAULT_TAXONOMY;
+    }
+  }
 
   async execute(input: { query: string; limit?: number }): Promise<ProductSuggestionDto[]> {
     const q = normalizeSearchQuery(input.query ?? '');
     if (!isMeaningfulQuery(q)) return [];
     const limit = Math.max(1, Math.min(input.limit ?? 8, 12));
 
-    const rows = await this.products.findPublicViewList({ search: q, limit: 24 });
+    const [first, taxonomy] = await Promise.all([this.products.findPublicViewList({ search: q, limit: 24 }), this.loadTaxonomy()]);
+    let rows = first;
+    if (taxonomy && rows.length < limit) {
+      // A query word that names a subcategory ("cards", "chargers") also looks
+      // for that subcategory's inference keywords, the same keywords /shop uses
+      // to file the product. The ranking below still requires EVERY query word
+      // to appear, so this only widens the candidates, never what matches.
+      const terms = searchTerms(q).filter((t) => t.length >= 3);
+      const keywords = [...new Set(
+        taxonomy
+          .flatMap((c) => c.subcategories)
+          .filter((sub) => terms.some((t) => includesSearchTerm(sub.name.toLowerCase(), t)))
+          .flatMap((sub) => sub.keywords ?? []),
+      )].slice(0, 6);
+      if (keywords.length > 0) {
+        const extra = await Promise.all(keywords.map((k) => this.products.findPublicViewList({ search: k, limit: 24 })));
+        const seen = new Set(rows.map((r) => r.entity.id));
+        rows = [...rows, ...extra.flat().filter((r) => !seen.has(r.entity.id) && seen.add(r.entity.id))];
+      }
+    }
     const ranked = rankSuggestions(
       q,
       rows.map((r) => ({
@@ -51,7 +87,11 @@ export class SuggestProductsUseCase {
         sku: r.entity.sku,
         modelNumber: r.entity.modelNumber,
         categoryName: r.categoryName,
-        subcategory: r.entity.subcategory ?? null,
+        // The stored subcategory AND the one /shop infers, so both engines
+        // answer a subcategory word the same way.
+        subcategory: [r.entity.subcategory, taxonomy ? inferSubcategory({ name: r.entity.name, categoryName: r.categoryName }, taxonomy)?.name : null]
+          .filter((v): v is string => !!v)
+          .join(' ') || null,
         row: r,
       }))
     );

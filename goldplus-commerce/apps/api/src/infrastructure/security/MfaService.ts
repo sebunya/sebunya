@@ -71,15 +71,25 @@ export class MfaService {
   /**
    * Confirm enrolment by proving the first code. Returns the one-time recovery
    * codes; from here MFA is active.
+   *
+   * Confirmation is a one-shot for an UNCONFIRMED secret, and it counts wrong
+   * codes against the same lock as step-up. It used to accept unlimited guesses
+   * against an already-confirmed enrolment, and a hit stamped step-up freshness
+   * and replaced the owner's recovery codes, so the five-strike lock on
+   * /mfa/verify could simply be routed around from a stolen bearer token.
+   * Re-enrolment goes through beginEnrolment (step-up gated), which clears
+   * confirmedAt, so nothing legitimate confirms a confirmed secret.
    */
   async confirmEnrolment(
     userId: string,
     code: string,
     now = new Date(),
-  ): Promise<{ ok: boolean; recoveryCodes?: string[] }> {
+  ): Promise<{ ok: boolean; recoveryCodes?: string[]; locked?: true }> {
     const record = await this.repo.get(userId);
-    if (!record) return { ok: false };
+    if (!record || record.confirmedAt) return { ok: false };
+    if (this.isLocked(record, now)) return { ok: false, locked: true };
     if (!verifyTotp(decryptSecret(record.secretCiphertext), code, now.getTime())) {
+      await this.repo.recordFailure(userId, now);
       return { ok: false };
     }
     await this.repo.confirm(userId, now);

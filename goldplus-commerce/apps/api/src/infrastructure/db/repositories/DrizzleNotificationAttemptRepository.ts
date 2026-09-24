@@ -3,6 +3,11 @@ import { db } from '../client';
 import { notificationAttempts } from '../schema/phase11';
 import { INotificationAttemptRepository, PersistedNotificationAttempt } from '../../../application/ports/INotificationAttemptRepository';
 import { NotificationStatus } from '../../../application/ports/INotificationProvider';
+import { toRelatedEntityId } from '../../../domain/notifications/RelatedEntityId';
+
+/** Fitted to the columns: an over-long value made the insert throw AFTER the message was sent. */
+const fit = (value: string | null | undefined, max: number): string | null =>
+  value == null ? null : value.length > max ? value.slice(0, max) : value;
 
 function rowToPersisted(row: typeof notificationAttempts.$inferSelect): PersistedNotificationAttempt {
   return {
@@ -24,14 +29,16 @@ export class DrizzleNotificationAttemptRepository implements INotificationAttemp
     const [row] = await db
       .insert(notificationAttempts)
       .values({
-        channel: input.channel,
-        recipient: input.recipient,
-        template: input.template,
-        status: input.status,
-        providerCode: input.providerCode,
+        channel: fit(input.channel, 20) ?? '',
+        recipient: fit(input.recipient, 255) ?? '',
+        template: fit(input.template, 100) ?? '',
+        status: fit(input.status, 30) ?? 'PENDING',
+        providerCode: fit(input.providerCode, 50),
         providerMessage: input.providerMessage,
-        relatedEntity: input.relatedEntity,
-        relatedEntityId: input.relatedEntityId,
+        relatedEntity: fit(input.relatedEntity, 50),
+        // The column is a uuid: a non-UUID reference (an order number) made the
+        // insert throw after a delivered send, which re-sent it on every retry.
+        relatedEntityId: toRelatedEntityId(input.relatedEntityId),
       })
       .returning();
     return rowToPersisted(row);

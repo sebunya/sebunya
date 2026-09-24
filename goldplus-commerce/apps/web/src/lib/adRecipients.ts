@@ -7,7 +7,9 @@ import { apiBase } from './api';
  */
 export async function fetchAdRecipients(): Promise<string[] | null> {
   try {
-    const r = await fetch(`${apiBase}/advertising/recipients`, { headers: { Accept: 'application/json' } });
+    // Bounded: a stalled API must not hang the privacy page; an abort lands in
+    // the catch below and the page says nothing, as documented above.
+    const r = await fetch(`${apiBase}/advertising/recipients`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(3000) });
     const j = r.ok ? await r.json() : null;
     return Array.isArray(j?.data) ? j.data.map(String) : null;
   } catch {

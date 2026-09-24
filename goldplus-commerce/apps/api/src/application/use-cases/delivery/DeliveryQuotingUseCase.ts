@@ -7,7 +7,7 @@ import {
 } from '../../../domain/delivery/DeliveryModel';
 import { LearnedFactorState } from '../../../domain/delivery/DeliveryLearnedFactor';
 import { resolveFulfilmentMode } from '../../../domain/delivery/DeliveryFulfilmentMode';
-import { FulfilmentQuote, quoteFulfilment } from '../../../domain/delivery/DeliveryQuoteService';
+import { FulfilmentQuote, applyFreeDeliveryThreshold, quoteFulfilment } from '../../../domain/delivery/DeliveryQuoteService';
 import { BusRateCard, ParcelOffice } from '../../../domain/delivery/DeliveryBusRateCard';
 import { BasketLine, capacitiesFromConfig, planParcels } from '../../../domain/delivery/DeliveryParcelClass';
 import { minOrderValuesFromConfig } from '../../../domain/delivery/DeliveryProportionality';
@@ -106,6 +106,16 @@ export type QuoteOutcome = {
   pricedBy: 'delivery_model' | 'bus_rate_card' | 'manual';
   /** True only for CONFIG_INCOMPLETE. The caller may then use the legacy path. */
   mayFallBackToLegacy: boolean;
+  /**
+   * The free-delivery threshold that governs this destination (the zone's own
+   * when its policy is active, else the shop-wide one), or null when the
+   * mechanic is off. Returned so every surface shows progress against the SAME
+   * figure the waiver was decided on, and so checkout can re-decide it on the
+   * post-promotion goods total it only learns after pricing.
+   */
+  freeDeliveryThresholdUgx: number | null;
+  /** The basis the waiver (if any) was decided on. */
+  thresholdBasisUgx: number;
 };
 
 export class DeliveryQuotingUseCase {
@@ -198,7 +208,8 @@ export class DeliveryQuotingUseCase {
       ? await this.repo.zoneFreeDeliveryThresholdUgx(resolved.input.areaSlug)
       : null;
 
-    const quote = quoteFulfilment({
+    const freeDeliveryThresholdUgx = zoneFreeDeliveryThreshold ?? numeric.free_delivery_threshold_ugx ?? null;
+    const unwaived = quoteFulfilment({
       area: resolved?.input ?? null,
       mode,
       rider,
@@ -217,9 +228,12 @@ export class DeliveryQuotingUseCase {
         minOrderValueUgx: minOrderValuesFromConfig(numeric),
         // The zone's own threshold wins when its zone is active and sets one;
         // otherwise the shop-wide figure, exactly as before.
-        freeDeliveryThresholdUgx: zoneFreeDeliveryThreshold ?? numeric.free_delivery_threshold_ugx ?? null,
+        freeDeliveryThresholdUgx,
       },
     });
+    // The threshold WAIVES the fee here, in the one quoting service, so the
+    // panel that says "qualifies for free delivery" and the order agree.
+    const quote = applyFreeDeliveryThreshold(unwaived, { thresholdUgx: freeDeliveryThresholdUgx, basisUgx: subtotalUgx });
 
     return {
       quote,
@@ -229,6 +243,11 @@ export class DeliveryQuotingUseCase {
       // handing a correct answer to the legacy path would replace it with a
       // wrong one — the legacy model would happily price a lake island.
       mayFallBackToLegacy: quote.kind === 'unavailable' && quote.reason === 'CONFIG_INCOMPLETE',
+      freeDeliveryThresholdUgx:
+        freeDeliveryThresholdUgx !== null && Number.isFinite(freeDeliveryThresholdUgx) && freeDeliveryThresholdUgx > 0
+          ? freeDeliveryThresholdUgx
+          : null,
+      thresholdBasisUgx: subtotalUgx,
     };
   }
 }

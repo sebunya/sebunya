@@ -140,8 +140,14 @@ describe("Slice 8-A protected operator preview and discoverability", () => {
   });
   it("keeps the admin preview read-only and activation disabled", () => {
     expect(LOYALTY_ADMIN_PREVIEW).toMatchObject({ readOnly: true, activationStatus: "Disabled", activeFinancialMechanics: 0 });
-    expect(adminPage).toContain("Activation unavailable");
-    expect(adminPage).toContain("disabled");
+    // 2026-09-24: the header no longer hard-codes "not active / Activation
+    // unavailable" over a page that can save the config switch. It reads the
+    // real ledger state and falls back to the static preview only when that
+    // state cannot be read. Activation itself stays an env flag: no button here.
+    expect(adminPage).toContain("Activation status:");
+    expect(adminPage).toContain("ledgerConfig.active");
+    expect(adminPage).toContain("LOYALTY_ADMIN_PREVIEW.activationStatus");
+    expect(adminPage).not.toMatch(/>\s*Activate programme\s*</i);
   });
   it("ranks mechanics rather than customers", () => {
     expect(GAMIFICATION_READINESS_LEADERBOARD.map((row) => row.rank)).toEqual([...GAMIFICATION_READINESS_LEADERBOARD.keys()].map((index) => index + 1));

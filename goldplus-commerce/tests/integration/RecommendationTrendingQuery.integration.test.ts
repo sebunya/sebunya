@@ -47,18 +47,33 @@ suite("trending aggregate on real PostgreSQL", () => {
     await mkProduct(viewedProduct, `tr-view-${suffix}`);
     await mkProduct(clickedProduct, `tr-click-${suffix}`);
 
-    // A browse event carries product_id. Two of them.
+    // A browse event carries product_id. Two visitors (server profiles).
     for (let i = 0; i < 2; i += 1) {
       await pg`
+        insert into recommendation_events (id, event_type, anonymous_id, product_id, producer, schema_version, profile_id)
+        values (${crypto.randomUUID()}::uuid, 'PRODUCT_VIEWED', ${anonId}, ${viewedProduct}::uuid, 'integration-test', 2, ${crypto.randomUUID()}::uuid)
+      `;
+    }
+    // The same visitor again, and five identity-less rows (caller-chosen
+    // anonymous ids only): neither may inflate the count.
+    const repeat = crypto.randomUUID();
+    for (let i = 0; i < 2; i += 1) {
+      await pg`
+        insert into recommendation_events (id, event_type, anonymous_id, product_id, producer, schema_version, profile_id)
+        values (${crypto.randomUUID()}::uuid, 'PRODUCT_VIEWED', ${anonId}, ${clickedProduct}::uuid, 'integration-test', 2, ${repeat}::uuid)
+      `;
+    }
+    for (let i = 0; i < 5; i += 1) {
+      await pg`
         insert into recommendation_events (id, event_type, anonymous_id, product_id, producer, schema_version)
-        values (${crypto.randomUUID()}::uuid, 'PRODUCT_VIEWED', ${anonId}, ${viewedProduct}::uuid, 'integration-test', 2)
+        values (${crypto.randomUUID()}::uuid, 'PRODUCT_VIEWED', ${anonId}, ${clickedProduct}::uuid, 'integration-test', 2)
       `;
     }
     // A recommendation click carries recommendation_product_id with a NULL
     // product_id — the exact shape the coalesce exists to rescue.
     await pg`
-      insert into recommendation_events (id, event_type, anonymous_id, recommendation_product_id, placement, producer, schema_version)
-      values (${crypto.randomUUID()}::uuid, 'RECOMMENDATION_CLICKED', ${anonId}, ${clickedProduct}::uuid, 'home_trending', 'integration-test', 2)
+      insert into recommendation_events (id, event_type, anonymous_id, recommendation_product_id, placement, producer, schema_version, profile_id)
+      values (${crypto.randomUUID()}::uuid, 'RECOMMENDATION_CLICKED', ${anonId}, ${clickedProduct}::uuid, 'home_trending', 'integration-test', 2, ${crypto.randomUUID()}::uuid)
     `;
   });
 
@@ -84,6 +99,14 @@ suite("trending aggregate on real PostgreSQL", () => {
     // The row that a bare product_id grouping would have silently dropped.
     const clicked = rows.find((r) => r.productId === clickedProduct && r.eventType === "RECOMMENDATION_CLICKED");
     expect(clicked?.count).toBe(1);
+  });
+
+  it("counts distinct server-resolved visitors, never rows or caller-chosen ids", async () => {
+    const since = new Date(Date.now() - 60 * 60 * 1000);
+    const rows = await repo.getTrendingEvents({ since, limit: 500 });
+    // 2 rows from one profile + 5 identity-less rows = 1 visitor.
+    const views = rows.find((r) => r.productId === clickedProduct && r.eventType === "PRODUCT_VIEWED");
+    expect(views?.count).toBe(1);
   });
 
   it("orders deterministically, so the LIMIT cannot truncate arbitrarily", async () => {

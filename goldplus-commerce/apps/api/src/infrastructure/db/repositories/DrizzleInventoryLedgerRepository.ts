@@ -1,6 +1,7 @@
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { products } from '../schema/products';
+import { stockStatusAfter } from '../StockStatusSql';
 import { batteryProfiles, inventoryMovements, stockCountLines, stockCounts, stockLocations, stockReceiptLines, stockReceipts } from '../schema/batteries';
 import type { CountRecord, IInventoryLedgerRepository, MovementOutcome, MovementRecord, MovementWrite, ReceiptRecord, StockLocationRecord } from '../../../application/ports/IInventoryLedgerRepository';
 import type { MovementType } from '@goldplus/shared';
@@ -73,7 +74,7 @@ export class DrizzleInventoryLedgerRepository implements IInventoryLedgerReposit
       if (after !== row.stock) {
         await tx.update(products).set({
           stockQuantity: after,
-          stockStatus: sql`case when ${after} <= 0 then 'out_of_stock' else 'in_stock' end`,
+          stockStatus: stockStatusAfter(after),
           updatedAt: new Date(),
         }).where(eq(products.id, write.productId));
       }

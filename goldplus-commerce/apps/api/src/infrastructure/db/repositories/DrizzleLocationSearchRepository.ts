@@ -152,22 +152,46 @@ export class DrizzleLocationSearchRepository implements ILocationSearchRepositor
   }
 }
 
+/** How long one replica reuses the density map. Ranking, not money: minutes of staleness are fine. */
+export const DENSITY_CACHE_MS = 10 * 60 * 1000;
+
 export class DrizzleLocationOrderDensityReader implements ILocationOrderDensityReader {
+  private cached: { at: number; value: ReadonlyMap<string, number> } | null = null;
+  private inflight: Promise<ReadonlyMap<string, number>> | null = null;
+
+  constructor(private readonly now: () => number = Date.now) {}
+
   /**
-   * Order density per area. Live aggregate while volumes are tiny (18 orders);
-   * becomes a nightly-refreshed materialised view when volume justifies —
-   * recorded in the decisions log. Orders link areas through
-   * addresses.area_slug (new module) — legacy orders without a link count 0.
+   * Orders per area, from the STRUCTURED link every quoted order carries
+   * (delivery_quote_capture.area_slug: one row per order, indexed on area_slug).
+   *
+   * It used to join every order to every saved address with a leading-wildcard
+   * LIKE on the free-text label, on every keystroke: a nested loop no index could
+   * help (34 s at 20k orders x 3k addresses), counting each order once per
+   * matching address across all customers, with substrings matching other areas
+   * ('Kira' in 'Kirabo'). Now: one grouped index-assisted query, cached per replica.
+   * Orders quoted before the delivery module (no capture row) count 0, as before.
    */
   async densityByArea(): Promise<ReadonlyMap<string, number>> {
-    const rows = (await db.execute(sql`
-      select ad.area_slug, count(*)::int as n
-      from orders o
-      join addresses ad on ad.snapshot_district is not null and ad.area_slug is not null
-        and lower(o.delivery_area) like '%' || lower(ad.snapshot_area_label) || '%'
-      where o.status not in ('cancelled', 'failed')
-      group by ad.area_slug`)) as unknown as Array<{ area_slug: string; n: number }>;
-    return new Map(rows.map((r) => [r.area_slug, Number(r.n)]));
+    const now = this.now();
+    if (this.cached && now - this.cached.at < DENSITY_CACHE_MS) return this.cached.value;
+    if (this.inflight) return this.inflight;
+    this.inflight = (async () => {
+      try {
+        const rows = (await db.execute(sql`
+          select q.area_slug, count(*)::int as n
+          from delivery_quote_capture q
+          join orders o on o.id = q.order_id
+          where q.area_slug is not null and o.status not in ('cancelled', 'failed')
+          group by q.area_slug`)) as unknown as Array<{ area_slug: string; n: number }>;
+        const value: ReadonlyMap<string, number> = new Map(rows.map((r) => [r.area_slug, Number(r.n)]));
+        this.cached = { at: this.now(), value };
+        return value;
+      } finally {
+        this.inflight = null;
+      }
+    })();
+    return this.inflight;
   }
 }
 

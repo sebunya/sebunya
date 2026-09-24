@@ -58,13 +58,14 @@ function stateChip(s: string) {
   switch (s) {
     case "SENT": return "bg-green-50 text-green-700 border-green-200";
     case "DEAD_LETTER": return "bg-red-50 text-red-700 border-red-200";
+    case "FAILED": return "bg-red-50 text-red-700 border-red-200";
     case "RETRYING": return "bg-amber-50 text-amber-800 border-amber-200";
     case "MISSING_CONFIG": return "bg-orange-50 text-orange-700 border-orange-200";
     case "DELIVERY_DISABLED": return "bg-gray-100 text-gray-600 border-gray-200";
     default: return "bg-slate-50 text-slate-600 border-slate-200";
   }
 }
-const replayable = (s: string) => s === "DEAD_LETTER" || s === "RETRYING" || s === "MISSING_CONFIG" || s === "DELIVERY_DISABLED";
+const replayable = (s: string) => s === "DEAD_LETTER" || s === "FAILED" || s === "RETRYING" || s === "MISSING_CONFIG" || s === "DELIVERY_DISABLED";
 ---
 
 <AdminLayout

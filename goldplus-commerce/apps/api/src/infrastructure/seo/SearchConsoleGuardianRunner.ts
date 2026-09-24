@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client';
+import { tryAcquireSessionLock, type HeldSessionLock } from '../db/sessionLock';
 import { logger } from '../logging/logger';
 import {
   SearchConsoleGuardianUseCase,
@@ -43,7 +44,9 @@ export interface GuardianRunnerOutcome {
 
 export async function runSearchConsoleGuardian(): Promise<GuardianRunnerOutcome> {
   const conn = db as unknown as { execute: (q: unknown) => Promise<unknown> };
-  let lockHeld = false;
+  // Held on one reserved connection (db/sessionLock): through the pool, the
+  // unlock ran on another backend and the lock leaked.
+  let lock: HeldSessionLock | null = null;
 
   const ports: GuardianPorts = {
     async providerStatus() {
@@ -256,9 +259,8 @@ export async function runSearchConsoleGuardian(): Promise<GuardianRunnerOutcome>
 
     async startRun(agent) {
       // Distributed lease. A lost lock means another replica holds the run.
-      const got = rowsOf(await conn.execute(sql`select pg_try_advisory_lock(${GUARDIAN_LOCK_ID}) as ok`));
-      if (got[0]?.ok !== true) return null;
-      lockHeld = true;
+      lock = await tryAcquireSessionLock(GUARDIAN_LOCK_ID);
+      if (!lock) return null;
 
       // Recover a crashed predecessor rather than blocking forever.
       await conn.execute(sql`
@@ -345,8 +347,8 @@ export async function runSearchConsoleGuardian(): Promise<GuardianRunnerOutcome>
       materialChanges: 0, incidentsOpened: 0, summary: 'Guardian run threw and was contained.',
     };
   } finally {
-    if (lockHeld) {
-      await conn.execute(sql`select pg_advisory_unlock(${GUARDIAN_LOCK_ID})`).catch(() => undefined);
+    if (lock) {
+      await (lock as HeldSessionLock).release().catch(() => undefined);
     }
   }
 }

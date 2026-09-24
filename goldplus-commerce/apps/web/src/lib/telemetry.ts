@@ -24,6 +24,10 @@
 // Configuration — resolved at SDK load time from Astro env injection
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { isDeclaredAutomation, PROBE_COOKIE } from './declaredAutomation';
+import { isInternalReferrerHost } from './internalReferrer';
+import { visitorCookieDomain } from './visitorCookieDomain';
+
 declare const __GP_API_BASE__: string;
 
 // Resolved at build time by Astro (vite define). Falls back to window.origin
@@ -61,7 +65,26 @@ function setCookie(name: string, value: string, days: number): void {
   // SameSite=Lax (NOT Strict) — Strict breaks attribution for users arriving from
   // Google Ads, Meta, TikTok ads since the browser won't send Strict cookies on
   // top-level cross-site navigations. Lax allows the cookie on safe navigations.
-  document.cookie = `${name}=${value}; expires=${expires}; path=/; SameSite=Lax; Secure`;
+  // Same Domain scope as the server-set id, so the collector on api. gets it.
+  const domain = visitorCookieDomain(location.hostname);
+  document.cookie = `${name}=${value}; expires=${expires}; path=/; SameSite=Lax; Secure${domain ? `; Domain=${domain}` : ''}`;
+}
+
+/**
+ * Our own robots: Playwright (webdriver), the audits' `gp_probe` cookie, and
+ * the lab tools that name themselves in the user agent. Their journeys were
+ * recorded as shopper behaviour and forwarded to GA4 and the ad platforms,
+ * because only the web relays checked. The collector checks the user agent
+ * too; the cookie never reaches api., so this is where it is honoured.
+ */
+function isOwnAutomation(): boolean {
+  try {
+    return !!(navigator as { webdriver?: boolean }).webdriver
+      || new RegExp(`(^|;\\s*)${PROBE_COOKIE}=`).test(document.cookie)
+      || isDeclaredAutomation(navigator.userAgent);
+  } catch {
+    return false;
+  }
 }
 
 export function getFpClientId(): string {
@@ -193,6 +216,7 @@ function scheduleFlush(): void {
 function flushQueue(): void {
   flushTimer = null;
   if (queue.length === 0) return;
+  if (isOwnAutomation()) { queue.splice(0, queue.length); return; }
 
   const batch = queue.splice(0, queue.length);
 
@@ -249,6 +273,9 @@ function flushQueue(): void {
 export function track(eventName: EventName, opts: TrackOptions = {}): string {
   const eventId   = crypto.randomUUID();
   const eventTime = Math.floor(Date.now() / 1000);
+  // Not a shopper: no dataLayer push, no beacon. The id is still returned so
+  // callers that link a click to a view keep working.
+  if (isOwnAutomation()) return eventId;
 
   const payload: Record<string, unknown> = {
     event_name:             eventName,
@@ -402,11 +429,12 @@ if (typeof window !== 'undefined') {
 const TOUCH_CLICK_KEYS = ['gclid', 'gbraid', 'wbraid', 'msclkid', 'fbclid', 'ttclid', 'twclid', 'ScCid', 'li_fat_id', 'epik', 'clickid', 'click_id'];
 export function recordLandingTouch(): void {
   try {
-    if ((navigator as { webdriver?: boolean }).webdriver) return;
+    if (isOwnAutomation()) return;
     const q = new URLSearchParams(location.search);
     const clickTypes = TOUCH_CLICK_KEYS.filter((k) => q.get(k));
     let refHost: string | null = null;
-    try { const h = document.referrer ? new URL(document.referrer).host : ''; refHost = h && h !== location.host ? h.slice(0, 253) : null; } catch { /* no referrer */ }
+    // A return from the payment gateway (or our own subdomain) is not an arrival.
+    try { const h = document.referrer ? new URL(document.referrer).host : ''; refHost = h && !isInternalReferrerHost(h, location.host) ? h.slice(0, 253) : null; } catch { /* no referrer */ }
     const hasCampaign = !!(q.get('utm_source') || q.get('utm_medium') || clickTypes.length || refHost);
     let seen = false;
     try { seen = sessionStorage.getItem('_gp_touch') === '1'; sessionStorage.setItem('_gp_touch', '1'); } catch { /* storage off */ }

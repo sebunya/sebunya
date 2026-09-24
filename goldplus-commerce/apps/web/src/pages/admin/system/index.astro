@@ -15,11 +15,14 @@ const checks = [
   { id: 'api-server', name: 'API server', desc: 'Main transactional API gateway for commerce logic.', status: 'Not checked', details: 'Checking node...' },
   { id: 'database', name: 'Database', desc: 'Core PostgreSQL persistence housing users, orders, and settings.', status: 'Not checked', details: 'Awaiting API connection...' },
   { id: 'product-catalog', name: 'Product catalog', desc: 'Active reading of dynamic storefront inventory.', status: 'Not checked', details: 'Verifying products array...' },
-  { id: 'cart-lookup', name: 'Cart lookup', desc: 'Temporary session storage lookup engine.', status: 'Configured', details: 'Active session matching enabled.' },
+  { id: 'cart-lookup', name: 'Cart lookup', desc: 'Admin cart diagnostics (GET /governance/admin/carts/:id).', status: 'Not checked', details: 'This page does not probe cart lookup; use Cart diagnostics with a cart id.' },
   { id: 'recommendation-rules', name: 'Recommendation rules', desc: 'Evaluator determining boost and pinning priorities.', status: 'Not checked', details: 'Reaching recommendation storage...' },
-  { id: 'admin-auth', name: 'Admin authentication', desc: 'Signer verifying Hs256 console session payloads.', status: 'Configured', details: 'Current session validated.' },
+  { id: 'admin-auth', name: 'Admin authentication', desc: 'Every admin page is gated by the API session check.', status: 'Not checked', details: 'Set from the API probe below.' },
   { id: 'build-mode', name: 'Build mode', desc: 'Current execution bundle optimization context.', status: 'Configured', details: import.meta.env.PROD ? 'Production Optimized' : 'Development Environment' }
 ];
+
+// A 401/403 is the viewer's permission, not the system's health.
+const notPermitted = (status: number) => status === 401 || status === 403;
 
 // 1. Real API Server Connection Probe
 let responseTime = 0;
@@ -40,6 +43,12 @@ try {
     
     db.status = 'Online';
     db.details = 'PostgreSQL connection verified via stats aggregation query.';
+  } else if (notPermitted(res.status)) {
+    // The API answered — it is up; this role just cannot read the stats.
+    api.status = 'Online';
+    api.details = `The API answered (HTTP ${res.status}) in ${responseTime}ms. Your role cannot read the stats probe (reports.read), so nothing more is checked.`;
+    db.status = 'Not permitted to check';
+    db.details = 'The database check reads the stats probe, which needs reports.read.';
   } else {
     api.status = 'Offline';
     api.details = `The API returned HTTP status ${res.status}.`;
@@ -55,6 +64,21 @@ try {
   db.details = 'Database unreachable via API server.';
 }
 
+// The session gate (GET /auth/admin-session) lets admin pages open while the
+// API is unreachable, so "this session was verified" is true only when the API
+// answered.
+{
+  const api = checks.find(c => c.id === 'api-server')!;
+  const auth = checks.find(c => c.id === 'admin-auth')!;
+  if (api.status === 'Online') {
+    auth.status = 'Online';
+    auth.details = 'This request passed the admin session gate (GET /auth/admin-session) before the page rendered.';
+  } else {
+    auth.status = 'Not checked';
+    auth.details = 'The API did not answer, and the session gate lets admin pages open during an API outage, so this session could not be verified.';
+  }
+}
+
 // 2. Real Catalog Reading Probe
 try {
   const res = await fetch(`${apiBase}/governance/admin/products`, {
@@ -63,9 +87,13 @@ try {
   const cat = checks.find(c => c.id === 'product-catalog')!;
   if (res.ok) {
     const data = await res.json().catch(() => null);
-    const count = data?.data?.items?.length || 0;
+    // The route answers a bare array of products.
+    const count = Array.isArray(data?.data) ? data.data.length : 0;
     cat.status = 'Online';
     cat.details = `Successfully retrieved catalog. Loaded ${count} items.`;
+  } else if (notPermitted(res.status)) {
+    cat.status = 'Not permitted to check';
+    cat.details = `Your role cannot read the catalogue (HTTP ${res.status}).`;
   } else {
     cat.status = 'Offline';
     cat.details = `Failed fetching catalog items. Status ${res.status}.`;
@@ -84,9 +112,13 @@ try {
   const recs = checks.find(c => c.id === 'recommendation-rules')!;
   if (res.ok) {
     const data = await res.json().catch(() => null);
-    const count = data?.data?.rules?.length || 0;
+    // The route answers { items, page, pageSize, total }.
+    const count = Number(data?.data?.total ?? data?.data?.items?.length ?? 0);
     recs.status = 'Online';
-    recs.details = `Repository connected. Registered ${count} active rules.`;
+    recs.details = `Repository connected. ${count} rule${count === 1 ? '' : 's'} recorded.`;
+  } else if (notPermitted(res.status)) {
+    recs.status = 'Not permitted to check';
+    recs.details = `Your role cannot read recommendation rules (HTTP ${res.status}).`;
   } else {
     recs.status = 'Offline';
     recs.details = `Failed communicating with rules endpoint. Status ${res.status}.`;

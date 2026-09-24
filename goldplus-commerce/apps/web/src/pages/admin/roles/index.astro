@@ -75,7 +75,9 @@ try {
     fetch(`${apiBase}/admin/roles`, { headers: { Authorization: `Bearer ${token}` } }),
     fetch(`${apiBase}/admin/roles/permissions`, { headers: { Authorization: `Bearer ${token}` } }),
   ]);
-  if (res.status === 401 || res.status === 403) {
+  // Only an expired session signs out; a 403 is a permission gap (no login loop).
+  if (res.status === 403) return Astro.redirect(`/admin/not-permitted?from=${encodeURIComponent('/admin/roles')}&need=roles.manage`, 303);
+  if (res.status === 401) {
     Astro.response.headers.set('Set-Cookie', clearSessionCookie());
     return Astro.redirect('/admin/login?returnTo=/admin/roles', 303);
   }

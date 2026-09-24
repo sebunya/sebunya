@@ -217,6 +217,12 @@ export class DeviceCatalogueUseCases {
     if (!brand) throw notFound('Brand');
     const identity = { brandNormalised: brand.nameNormalised, modelNormalised: normaliseDeviceToken(input.model), modelNumberNormalised: normaliseOptional(input.modelNumber ?? null), variantNormalised: normaliseOptional(input.variant ?? null) };
     const existing = await this.repo.findDeviceByIdentity(identity);
+    // A merged device answers as its target, as it does in the finder; the
+    // importer used to resolve to the dead device and then fail the claim.
+    if (existing?.status === 'MERGED' && existing.mergedIntoDeviceId) {
+      const target = await this.repo.findDevice(existing.mergedIntoDeviceId);
+      if (target) return { device: target, created: false };
+    }
     if (existing) return { device: existing, created: false };
     return { device: await this.createDevice(input, actorId), created: true };
   }

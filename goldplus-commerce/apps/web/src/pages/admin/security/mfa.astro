@@ -1,0 +1,119 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { apiBase } from "../../../lib/api";
+
+/**
+ * Two-step verification for the signed-in operator (2026-09-24).
+ *
+ * Pricing approval and refunds need a FRESH second factor (requireStepUp), but
+ * the admin had no screen to set one up or to prove it — the API endpoints
+ * (/auth/mfa/*) existed with no client. This page is that client: set up an
+ * authenticator, confirm it, and verify before a protected action.
+ * Secrets and recovery codes are shown once, on the response to the action
+ * that created them, and never stored by the web server.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/security/mfa", 303);
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+type Notice = { kind: "success" | "error"; text: string };
+let notice: Notice | null = null;
+let enrolment: { secret: string; otpauthUri: string } | null = null;
+let recoveryCodes: string[] | null = null;
+
+const call = async (path: string, body: unknown) => {
+  const res = await fetch(`${apiBase}/auth/mfa/${path}`, { method: "POST", headers, body: JSON.stringify(body) });
+  const json = await res.json().catch(() => null);
+  return { res, json };
+};
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") ?? "");
+  const code = String(form.get("code") ?? "").replace(/\s+/g, "").slice(0, 32);
+  try {
+    if (intent === "enrol") {
+      const { json } = await call("enrol", {});
+      if (json?.success) enrolment = json.data;
+      else notice = { kind: "error", text: json?.error?.message ?? "Could not start set-up." };
+    } else if (intent === "confirm") {
+      const { json } = await call("confirm", { code });
+      if (json?.success) {
+        recoveryCodes = Array.isArray(json.data?.recoveryCodes) ? json.data.recoveryCodes : [];
+        notice = { kind: "success", text: "Authenticator confirmed. Save the recovery codes below — they are shown once." };
+      } else notice = { kind: "error", text: json?.error?.message ?? "That code was not accepted." };
+    } else if (intent === "verify") {
+      const { json } = await call("verify", { code, recovery: form.get("recovery") === "on" });
+      notice = json?.success
+        ? { kind: "success", text: "Verified. Protected actions (refunds, pricing approval) are open for the next few minutes." }
+        : { kind: "error", text: json?.error?.message ?? "That code was not accepted." };
+    }
+  } catch {
+    notice = { kind: "error", text: "The sign-in service is unreachable right now." };
+  }
+}
+
+let status: { enrolled?: boolean; confirmed?: boolean; lastVerifiedAt?: string | null } | null = null;
+try {
+  const res = await fetch(`${apiBase}/auth/mfa/status`, { headers });
+  const json = await res.json().catch(() => null);
+  if (json?.success) status = json.data;
+} catch { /* shown as unknown */ }
+const confirmed = Boolean(status?.confirmed);
+---
+<AdminLayout title="Two-step verification" description="Set up and verify your authenticator for protected actions.">
+  <div class="container mx-auto max-w-2xl px-6 py-8 space-y-6">
+    <header>
+      <h1 class="text-2xl font-black text-brand-dark">Two-step verification</h1>
+      <p class="mt-1 text-sm text-slate-600">Refunds and pricing approval ask for a code from your authenticator app, checked within the last few minutes.</p>
+    </header>
+
+    {notice && (
+      <div role="status" class={`rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === "success" ? "border-green-200 bg-green-50 text-green-800" : "border-red-200 bg-red-50 text-red-800"}`}>{notice.text}</div>
+    )}
+
+    <section class="rounded-2xl border border-slate-200 bg-white p-5">
+      <p class="text-sm">Status: <strong>{status === null ? "unknown (could not be read)" : confirmed ? "authenticator set up" : status?.enrolled ? "set-up started, not confirmed" : "not set up"}</strong></p>
+    </section>
+
+    {recoveryCodes && recoveryCodes.length > 0 && (
+      <section class="rounded-2xl border border-amber-300 bg-amber-50 p-5">
+        <h2 class="text-sm font-black text-amber-950">Recovery codes — shown once</h2>
+        <p class="mt-1 text-xs text-amber-900">Each works once if you lose your phone. Store them somewhere safe now; they cannot be shown again.</p>
+        <ul class="mt-3 grid grid-cols-2 gap-2 font-mono text-sm">{recoveryCodes.map((c) => <li>{c}</li>)}</ul>
+      </section>
+    )}
+
+    {enrolment ? (
+      <section class="rounded-2xl border border-slate-200 bg-white p-5 space-y-3">
+        <h2 class="text-sm font-black">Add this account to your authenticator app</h2>
+        <p class="text-xs text-slate-600">In the app choose "enter a setup key" and type this key (time-based):</p>
+        <p class="rounded-lg bg-slate-100 p-3 font-mono text-sm break-all select-all">{enrolment.secret}</p>
+        <p class="text-[11px] text-slate-500 break-all">Or open this link on the phone: <span class="font-mono select-all">{enrolment.otpauthUri}</span></p>
+        <form method="POST" class="flex flex-wrap items-end gap-2">
+          <input type="hidden" name="intent" value="confirm" />
+          <label class="text-xs font-bold">Code from the app<input name="code" required inputmode="numeric" autocomplete="one-time-code" class="mt-1 block rounded-lg border px-3 py-2 font-mono" /></label>
+          <button class="rounded-lg bg-brand-dark px-4 py-2 text-xs font-black text-white">Confirm</button>
+        </form>
+      </section>
+    ) : confirmed ? (
+      <section class="rounded-2xl border border-slate-200 bg-white p-5 space-y-3">
+        <h2 class="text-sm font-black">Verify now</h2>
+        <form method="POST" class="flex flex-wrap items-end gap-2">
+          <input type="hidden" name="intent" value="verify" />
+          <label class="text-xs font-bold">Code<input name="code" required autocomplete="one-time-code" class="mt-1 block rounded-lg border px-3 py-2 font-mono" /></label>
+          <label class="flex items-center gap-2 text-xs"><input type="checkbox" name="recovery" /> This is a recovery code</label>
+          <button class="rounded-lg bg-brand-dark px-4 py-2 text-xs font-black text-white">Verify</button>
+        </form>
+        <form method="POST"><input type="hidden" name="intent" value="enrol" /><button class="text-xs font-bold underline">Replace my authenticator (needs a fresh verification first)</button></form>
+      </section>
+    ) : (
+      <form method="POST" class="rounded-2xl border border-slate-200 bg-white p-5">
+        <input type="hidden" name="intent" value="enrol" />
+        <p class="text-sm text-slate-600">No authenticator is set up for your account.</p>
+        <button class="mt-3 rounded-lg bg-brand-dark px-4 py-2 text-xs font-black text-white">Set up an authenticator</button>
+      </form>
+    )}
+  </div>
+</AdminLayout>

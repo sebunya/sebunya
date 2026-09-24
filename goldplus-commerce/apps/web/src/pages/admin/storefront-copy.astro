@@ -47,7 +47,8 @@ if (Astro.request.method === 'POST') {
 let cfg: any = null; let loadError = '';
 try {
   const res = await authed('/admin/storefront-copy');
-  if (res.status === 401 || res.status === 403) return Astro.redirect('/admin/login?returnTo=/admin/storefront-copy', 303);
+  if (res.status === 401) return Astro.redirect('/admin/login?returnTo=/admin/storefront-copy', 303);
+  if (res.status === 403) return Astro.redirect(`/admin/not-permitted?from=${encodeURIComponent('/admin/storefront-copy')}`, 303);
   const json: any = await res.json().catch(() => null);
   if (res.ok && json?.success) cfg = json.data.config;
   else loadError = json?.error?.message ?? 'Could not load storefront copy.';

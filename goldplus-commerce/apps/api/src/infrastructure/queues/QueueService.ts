@@ -60,6 +60,52 @@ export interface QueueRuntimeStatus {
 
 const errorMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
+/**
+ * Enqueue could not reach Redis. The connection is built with
+ * maxRetriesPerRequest:null and the offline queue on (BullMQ needs that for its
+ * workers), so a command sent while Redis is down used to wait with no limit —
+ * and the outbox ticker, every telemetry beacon and the mobile-money webhook
+ * waited with it. The caller decides: deliver inline, or leave the durable
+ * outbox row for the sweep.
+ */
+export class QueueUnavailableError extends Error {
+  readonly code = 'QUEUE_UNAVAILABLE';
+  constructor(queueName: string, reason: string) {
+    super(`Queue ${queueName} unavailable: ${reason}`);
+    this.name = 'QueueUnavailableError';
+  }
+}
+
+export const ENQUEUE_TIMEOUT_MS = 2000;
+
+/** Concurrency the backpressure monitor wants, capped by an operator's override. */
+export function effectiveConcurrency(pressureTarget: number, override: number | undefined): number {
+  return override === undefined ? pressureTarget : Math.min(override, pressureTarget);
+}
+
+/**
+ * Which retained failed jobs a replay may retry. A job created by a repeatable
+ * schedule is skipped: the next cron tick supersedes it, and replaying a queue
+ * used to re-run up to 200 stale synthetic-monitor passes and every old crawl at once.
+ */
+export function selectReplayableJobs<T extends { name: string; repeatJobKey?: string | null; opts?: { repeat?: unknown } }>(
+  failed: readonly T[],
+  options: { jobName?: string; limit?: number } = {},
+): { replay: T[]; skippedRepeatable: number } {
+  const limit = Math.max(1, Math.min(options.limit ?? 50, 500));
+  let skippedRepeatable = 0;
+  const replay: T[] = [];
+  for (const job of failed) {
+    if (job.repeatJobKey || job.opts?.repeat) {
+      skippedRepeatable += 1;
+      continue;
+    }
+    if (options.jobName && job.name !== options.jobName) continue;
+    if (replay.length < limit) replay.push(job);
+  }
+  return { replay, skippedRepeatable };
+}
+
 export class QueueService {
   private static _instance: QueueService;
   private redisConnection: Redis | null = null;
@@ -67,6 +113,12 @@ export class QueueService {
   private workers: Map<string, Worker> = new Map();
 
   private backpressureTimer: NodeJS.Timeout | null = null;
+  /**
+   * Operator ceilings set through /admin/queues/concurrency. The 10s backpressure
+   * tick used to overwrite a manual value within one tick; it now only lowers
+   * below it. Per replica: each API process has its own workers.
+   */
+  private manualOverrides: Map<string, number> = new Map();
 
   private constructor() {
     const isTest = process.env.NODE_ENV === 'test';
@@ -120,6 +172,7 @@ export class QueueService {
         );
       }
       
+      targetConcurrency = effectiveConcurrency(targetConcurrency, this.manualOverrides.get(name));
       if (worker.concurrency !== targetConcurrency) {
         worker.concurrency = targetConcurrency;
         logger.info({ queueName: name, concurrency: targetConcurrency }, '[QueueService] Adjusted worker concurrency');
@@ -156,6 +209,21 @@ export class QueueService {
     return this.queues.get(queueName) || null;
   }
 
+  /** True only while the Redis connection is actually up (not merely constructed). */
+  public isReady(): boolean {
+    if (process.env.NODE_ENV === 'test') return false;
+    return this.redisConnection?.status === 'ready';
+  }
+
+  /**
+   * The queue, or null when Redis is not up right now. getQueue() returns a queue
+   * whenever the connection OBJECT exists, so every `if (!queue)` fallback built on
+   * it was unreachable while Redis was down.
+   */
+  public getReadyQueue(queueName: string): Queue | null {
+    return this.isReady() ? this.getQueue(queueName) : null;
+  }
+
   public async enqueue(queueName: string, jobName: string, data: any, jobId?: string): Promise<void> {
     const context = traceLocalStorage.getStore();
     const payload = {
@@ -171,12 +239,26 @@ export class QueueService {
       return;
     }
     const queue = this.getQueue(queueName);
-    if (queue) {
-      await queue.add(jobName, payload, { jobId });
-      logger.info({ queueName, jobName, jobId }, '[QueueService] Job enqueued successfully');
-    } else {
+    if (!queue) {
       logger.warn({ queueName, jobName }, '[QueueService] Failed to enqueue: Queue is not initialized');
+      return;
     }
+    if (!this.isReady()) {
+      throw new QueueUnavailableError(queueName, `redis ${this.redisConnection?.status ?? 'absent'}`);
+    }
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        queue.add(jobName, payload, { jobId }),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new QueueUnavailableError(queueName, 'enqueue timed out')), ENQUEUE_TIMEOUT_MS);
+          timer.unref?.();
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    logger.info({ queueName, jobName, jobId }, '[QueueService] Job enqueued successfully');
   }
 
   public registerWorker(queueName: string, processor: (job: Job) => Promise<any>): void {
@@ -226,14 +308,18 @@ export class QueueService {
     this.workers.set(queueName, worker);
   }
 
-  public async replayFailedJobs(queueName: string): Promise<number> {
+  public async replayFailedJobs(
+    queueName: string,
+    options: { jobName?: string; limit?: number } = {},
+  ): Promise<{ replayed: number; skippedRepeatable: number }> {
     const queue = this.getQueue(queueName);
-    if (!queue) return 0;
+    if (!queue) return { replayed: 0, skippedRepeatable: 0 };
     const failed = await queue.getFailed();
-    for (const job of failed) {
+    const { replay, skippedRepeatable } = selectReplayableJobs(failed, options);
+    for (const job of replay) {
       await job.retry();
     }
-    return failed.length;
+    return { replayed: replay.length, skippedRepeatable };
   }
 
   public setWorkerConcurrency(queueName: string, concurrency: number): number | null {
@@ -242,6 +328,7 @@ export class QueueService {
       return null;
     }
 
+    this.manualOverrides.set(queueName, concurrency);
     worker.concurrency = concurrency;
     logger.warn({ queueName, concurrency }, '[QueueService] Worker concurrency updated manually');
     return worker.concurrency;

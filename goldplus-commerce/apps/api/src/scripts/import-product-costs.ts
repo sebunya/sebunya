@@ -5,7 +5,7 @@ import { endDbConnection } from '../infrastructure/db/client';
 
 /**
  * Loads supplier costs through the same path as /admin/product-costs: the
- * repository's all-or-nothing importCosts (preview first, then commit) and the
+ * all-or-nothing ImportProductCostsUseCase (preview first, then commit) and the
  * PRODUCT_COSTS_IMPORTED / _REJECTED audit row the admin route writes.
  *
  * Rows: [{ identifier (sku or product id), costPriceUgx, effectiveFrom
@@ -23,12 +23,12 @@ async function main(): Promise<void> {
   const dryRun = process.env.DRY_RUN === '1';
   const registry = Registry.getInstance();
 
-  const preview = await registry.productCostRepo.importCosts({ rows, source, enteredBy: actorId, dryRun: true });
+  const preview = await registry.importProductCostsUseCase.execute({ rows, source, enteredBy: actorId, dryRun: true });
   console.log(`preview: ${preview.totalRows} rows, accepted=${preview.accepted}, corrections=${preview.plan.filter((p) => p.isCorrection).length}, errors=${preview.errors.length}`);
   for (const e of preview.errors) console.log(`  row ${e.rowNumber} ${e.identifier}: ${e.message}`);
   if (dryRun || !preview.accepted) { console.log(dryRun ? 'DRY RUN — nothing written.' : 'Refused — nothing written.'); return; }
 
-  const result = await registry.productCostRepo.importCosts({ rows, source, enteredBy: actorId, dryRun: false });
+  const result = await registry.importProductCostsUseCase.execute({ rows, source, enteredBy: actorId, dryRun: false });
   await registry.createAuditLogUseCase.execute({
     actorId,
     action: result.accepted ? 'PRODUCT_COSTS_IMPORTED' : 'PRODUCT_COSTS_IMPORT_REJECTED',

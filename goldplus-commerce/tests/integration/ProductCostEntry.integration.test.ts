@@ -53,8 +53,11 @@ suite("product cost entry on real PostgreSQL", () => {
     await pg`delete from categories where id = ${categoryId}::uuid`;
   });
 
-  const importRows = (rows: any[], dryRun = false) =>
-    repo.importCosts({ rows, source: `test-${suffix}`, enteredBy: operator, dryRun });
+  // The rules live in the use case since the import left the repository.
+  const importRows = async (rows: any[], dryRun = false) => {
+    const { ImportProductCostsUseCase } = await import("../../apps/api/src/application/use-cases/products/ProductCostUseCases");
+    return new ImportProductCostsUseCase(repo).execute({ rows, source: `test-${suffix}`, enteredBy: operator, dryRun });
+  };
 
   it("a DRY RUN validates and plans but writes absolutely nothing", async () => {
     const result = await importRows([{ identifier: skuA, costPriceUgx: 40_000, effectiveFrom: today }], true);

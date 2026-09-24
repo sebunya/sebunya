@@ -28,7 +28,7 @@ const initialCount = items.reduce((acc, item) => acc + item.quantity, 0);
           Still thinking it over?
         </h3>
         <p class="text-gray-350 text-xs sm:text-sm font-medium leading-relaxed">
-          You have <span class="text-brand-primaryInk font-black font-mono" data-cart-count-label>{initialCount}</span> item{initialCount === 1 ? '' : 's'} saved and ready to continue.
+          You have <span class="text-brand-primaryInk font-black font-mono" data-cart-count-label>{initialCount}</span> <span data-cart-count-suffix>{initialCount === 1 ? 'item' : 'items'}</span> saved and ready to continue.
         </p>
       </div>
     </div>
@@ -69,6 +69,9 @@ const initialCount = items.reduce((acc, item) => acc + item.quantity, 0);
 
       if (totalCount > 0) {
         countLabel.textContent = String(totalCount);
+        // The noun follows the number; it used to stay as rendered ("3 item").
+        const suffix = document.querySelector("[data-cart-count-suffix]");
+        if (suffix) suffix.textContent = totalCount === 1 ? "item" : "items";
         el.style.display = "block";
       } else {
         el.style.display = "none";

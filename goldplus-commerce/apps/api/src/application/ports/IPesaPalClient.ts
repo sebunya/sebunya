@@ -36,7 +36,8 @@ export interface PesaPalTransactionStatusResponse {
 
 export interface IPesaPalClient {
   submitOrderRequest(input: PesaPalSubmitOrderInput): Promise<PesaPalSubmitOrderResponse>;
-  getTransactionStatus(orderTrackingId: string): Promise<PesaPalTransactionStatusResponse>;
+  /** `breakerName` isolates a read-only caller from the checkout breaker. */
+  getTransactionStatus(orderTrackingId: string, options?: { breakerName?: string }): Promise<PesaPalTransactionStatusResponse>;
   /** Async at the provider: acceptance here, REVERSED later on status reads. */
   requestRefund(input: {
     confirmationCode: string;

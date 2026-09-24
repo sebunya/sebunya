@@ -15,7 +15,7 @@ interface Profile {
   canonicalCustomerId: string; accountUserId: string | null; identityConfidence: string;
   primaryLifecycleStage: string; valueFlags: string[]; riskFlags: string[]; lastSeen: string | null;
 }
-interface Conflict { signalType: string; identifierKey: string; status: string; createdAt: string; }
+interface Conflict { signalType: string; identifierMasked: string; status: string; createdAt: string; }
 let results: Profile[] = [];
 let conflicts: Conflict[] = [];
 let loadFailed = false;
@@ -48,7 +48,6 @@ function confChip(c: string) {
     default: return "bg-gray-100 text-gray-600 border-gray-200";
   }
 }
-function maskKey(k: string) { return k.length > 8 ? `${k.slice(0, 4)}…${k.slice(-4)}` : "••••"; }
 ---
 
 <AdminLayout title="Customer DNA" description="Canonical customer profiles, identity confidence, lifecycle and next-best action — a projection over the authoritative systems.">
@@ -65,7 +64,7 @@ function maskKey(k: string) { return k.length > 8 ? `${k.slice(0, 4)}…${k.slic
       <div class="bg-red-50 border border-red-200 rounded-2xl p-5 mb-6">
         <h3 class="text-sm font-black text-red-800 mb-2">Identity conflicts for review ({conflicts.length})</h3>
         <div class="space-y-1 text-[11px] text-red-700">
-          {conflicts.map((c) => <div class="font-mono">{c.signalType} · {maskKey(c.identifierKey)} · {new Date(c.createdAt).toLocaleDateString("en-UG", { timeZone: 'Africa/Kampala' })}</div>)}
+          {conflicts.map((c) => <div class="font-mono">{c.signalType} · {c.identifierMasked} · {new Date(c.createdAt).toLocaleDateString("en-UG", { timeZone: 'Africa/Kampala' })}</div>)}
         </div>
       </div>
     )}
@@ -80,7 +79,7 @@ function maskKey(k: string) { return k.length > 8 ? `${k.slice(0, 4)}…${k.slic
 
     {!loadFailed && !permissionDenied && results.length === 0 && (
       <div class="bg-white border border-gray-200 rounded-2xl p-10 text-center text-gray-500 text-sm">
-        {q ? "No profiles match that search." : "Profiles appear as customers are observed. Search by canonical or account id."}
+        {q ? "No profiles match that search." : "Not connected: no profile pipeline runs, so no customer profiles are created. Lifecycle, at-risk and next-best-action figures stay empty until one does."}
       </div>
     )}
 

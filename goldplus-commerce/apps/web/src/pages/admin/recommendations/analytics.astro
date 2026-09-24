@@ -794,6 +794,7 @@ const placements = [
               ) : (
                 <p class="text-[11px] text-gray-500 mt-4">No recommendation experiments exist. One is created and RUN only by explicit admin action — never automatically.</p>
               )}
+              {readiness.experimentsNote && <p class="text-[11px] font-bold text-amber-800 mt-2">{readiness.experimentsNote}</p>}
             </div>
           </div>
         )}

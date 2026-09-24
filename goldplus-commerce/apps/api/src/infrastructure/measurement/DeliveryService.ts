@@ -9,6 +9,7 @@ import { ga4CollectHit } from '../telemetry/Ga4CollectHit';
 import { adPlatform, buildAdRequest, hashEmail, hashEmailGoogle, hashPhone, hashPhonePlus } from '../advertising/AdPlatforms';
 import { DrizzleAdDestinationRepository } from '../db/repositories/DrizzleAdDestinationRepository';
 import { IntegrationCredentialVault } from '../seo/IntegrationCredentialVault';
+import { advertisingRefused } from './AdvertisingConsentGate';
 
 /**
  * Durable delivery of authoritative commerce events (dossier §4.4, §5; GP-DLV).
@@ -39,7 +40,11 @@ export type SinkKey = `ga4:${'purchase' | 'refund'}` | `ad:${string}:purchase`;
 
 /** Sinks whose provider dedupes on our provider_event_id, so a retry after an unknown outcome is safe. */
 export function retryIsSafeAfterUnknown(sink: string): boolean {
-  if (sink.startsWith('ga4:')) return true; // GA4 dedupes purchases on transaction_id
+  // GA4 dedupes PURCHASES on transaction_id; it does not dedupe refunds, so a
+  // refund whose outcome is unknown goes to an operator, not a blind re-send
+  // that could count it twice.
+  if (sink === 'ga4:refund') return false;
+  if (sink.startsWith('ga4:')) return true;
   const p = sink.split(':')[1];
   return ['meta', 'tiktok', 'pinterest', 'snapchat', 'microsoft_ads', 'google_ads', 'x'].includes(p);
 }
@@ -70,6 +75,51 @@ export function classifyResponse(status: number | null, replyError: string | nul
 
 // ─── Router ──────────────────────────────────────────────────────────────────
 
+const GA4_PURCHASE_REACHED = ['ACCEPTED', 'PROCESSED'];
+
+/**
+ * GA4 hears ONE net refund per order, whichever order the events route in.
+ *
+ * Money refunds are carried by their own refund_confirmed events, each with
+ * its own amount. A cancellation refunds the whole order in GA4 only when no
+ * money refund exists for the order: the settle step writes refund_confirmed
+ * BEFORE the reversal cancels the order, so the cancellation used to add the
+ * full order value on top of every refund row already sent (a 200k order
+ * refunded 50k + 50k + 100k reached GA4 as 400k).
+ */
+export function cancellationCarriesGa4Refund(purchaseState: string | null | undefined, orderHasRefundConfirmed: boolean): boolean {
+  return !!purchaseState && GA4_PURCHASE_REACHED.includes(purchaseState) && !orderHasRefundConfirmed;
+}
+
+/** A money refund reaches GA4 when its purchase did, unless a cancellation already refunded the whole order there. */
+export function refundCarriesGa4Refund(purchaseState: string | null | undefined, cancellationRefundedInGa4: boolean): boolean {
+  return !!purchaseState && GA4_PURCHASE_REACHED.includes(purchaseState) && !cancellationRefundedInGa4;
+}
+
+/**
+ * The GA4 purchase may still reach (or may already have reached) GA4: its send
+ * is in progress, its outcome is unknown, or it is waiting to retry after an
+ * attempt. A cancellation routed now would cancel it or miss the refund, and
+ * the router never looks at the event again, so routing waits for it to settle.
+ */
+export function ga4PurchaseInFlight(intent: { state?: string | null; attempt_count?: number | string | null } | null | undefined): boolean {
+  if (!intent?.state) return false;
+  if (intent.state === 'LEASED' || intent.state === 'UNKNOWN_OUTCOME') return true;
+  return intent.state === 'RETRY_WAIT' && Number(intent.attempt_count ?? 0) > 0;
+}
+
+/**
+ * A cancellation's GA4 refund carries the ORDER's value. The order_cancelled
+ * payload is a status change (no money fields), so its refund used to go out
+ * with value 0 and every cancelled sale stayed in GA4 revenue. The value comes
+ * from the confirmation; the event id, time and transaction id stay the
+ * cancellation's. Null when there is no confirmation to take it from.
+ */
+export function cancellationRefundEvent<T extends { payload: any }>(cancellation: T, confirmedPayload: Record<string, unknown> | null | undefined): T | null {
+  if (!confirmedPayload || typeof confirmedPayload !== 'object') return null;
+  return { ...cancellation, payload: { ...confirmedPayload, ...(cancellation.payload ?? {}) } };
+}
+
 export async function routeBusinessEvents(): Promise<{ routed: number; intents: number }> {
   const token = randomUUID();
   const claimed = rows(await db.execute(sql`
@@ -80,7 +130,10 @@ export async function routeBusinessEvents(): Promise<{ routed: number; intents: 
       order by next_attempt_at limit ${ROUTE_BATCH} for update skip locked)
     returning event_id`));
   let intents = 0;
-  const live = await adRepo.active().catch(() => []);
+  // No catch: a failed read must not route a confirmation with only the GA4
+  // sink and mark it ROUTED (its ad conversions would be lost for good). A
+  // throw leaves the claimed rows LEASED; they are reclaimed after the lease.
+  const live = await adRepo.active();
   for (const { event_id: eventId } of claimed) {
     try {
       intents += await db.transaction(async (tx) => {
@@ -97,10 +150,17 @@ export async function routeBusinessEvents(): Promise<{ routed: number; intents: 
           const conf = rows(await tx.execute(sql`select event_id from measurement.business_event
             where aggregate_type = 'order' and aggregate_id = ${ev.aggregate_id} and event_name = 'order_confirmed' and environment = ${ev.environment}`))[0];
           if (conf) {
+            // A purchase mid-send (or maybe sent) is waited for: the catch below
+            // puts this event back to PENDING and routing runs again once it settles.
+            const purchase = rows(await tx.execute(sql`select state, attempt_count from measurement.delivery_intent where event_id = ${conf.event_id}::uuid and sink_key = 'ga4:purchase'`))[0];
+            if (ga4PurchaseInFlight(purchase)) throw new Error('PURCHASE_IN_FLIGHT');
             await tx.execute(sql`update measurement.delivery_intent set state = 'CANCELLED', state_reason = 'ORDER_CANCELLED', updated_at = now()
               where event_id = ${conf.event_id}::uuid and state in ('PENDING','RETRY_WAIT')`);
             const ga = rows(await tx.execute(sql`select state from measurement.delivery_intent where event_id = ${conf.event_id}::uuid and sink_key = 'ga4:purchase'`))[0];
-            if (ga && ['ACCEPTED', 'PROCESSED'].includes(ga.state)) sinks.push({ sink: 'ga4:refund', providerEventId: `refund:${orderNumber}` });
+            // The EVENT, not its intent: a refund written moments earlier may not be routed yet.
+            const moneyRefunded = rows(await tx.execute(sql`select 1 from measurement.business_event
+              where aggregate_type = 'order' and aggregate_id = ${ev.aggregate_id} and event_name = 'refund_confirmed' and environment = ${ev.environment} limit 1`)).length > 0;
+            if (cancellationCarriesGa4Refund(ga?.state, moneyRefunded)) sinks.push({ sink: 'ga4:refund', providerEventId: `refund:${orderNumber}` });
           }
         }
         if (ev?.event_name === 'refund_confirmed') {
@@ -112,7 +172,7 @@ export async function routeBusinessEvents(): Promise<{ routed: number; intents: 
           const cancel = orderEvents.find((e: any) => e.event_name === 'order_cancelled');
           const ga = conf ? rows(await tx.execute(sql`select state from measurement.delivery_intent where event_id = ${conf.event_id}::uuid and sink_key = 'ga4:purchase'`))[0] : null;
           const fullRefund = cancel ? rows(await tx.execute(sql`select 1 from measurement.delivery_intent where event_id = ${cancel.event_id}::uuid and sink_key = 'ga4:refund' and state not in ('CANCELLED','SUPPRESSED')`)).length > 0 : false;
-          if (ga && ['ACCEPTED', 'PROCESSED'].includes(ga.state) && !fullRefund) sinks.push({ sink: 'ga4:refund', providerEventId: `refund:${ev.payload?.refundId}` });
+          if (refundCarriesGa4Refund(ga?.state, fullRefund)) sinks.push({ sink: 'ga4:refund', providerEventId: `refund:${ev.payload?.refundId}` });
         }
         let n = 0;
         for (const s of sinks) {
@@ -271,14 +331,26 @@ export async function deliverOne(deliveryId: string, generation: number, fetchIm
   if (attemptsSince >= MAX_ATTEMPTS || Date.now() - horizonFrom > HORIZON_MS) { await finish(deliveryId, token, 'DEAD_LETTER', 'RETRY_BUDGET_EXHAUSTED'); return 'DEAD_LETTER'; }
   const identity = await loadIdentity(String(ev.aggregate_id));
   if (sink.startsWith('ad:')) {
-    const refusal = rows(await db.execute(sql`select advertising_granted, last_grant_type, expires_at from consent_current_state
-      where (user_id = ${identity.user_id ?? null}::uuid and ${identity.user_id ?? null}::uuid is not null) or fp_client_id = ${identity.fp_client_id ?? ''} limit 1`).catch(() => []))[0];
-    if (refusal && refusal.advertising_granted === false && refusal.last_grant_type !== 'unknown' && !(refusal.expires_at && new Date(refusal.expires_at) < new Date())) {
-      await finish(deliveryId, token, 'SUPPRESSED', 'CONSENT_DENIED'); return 'SUPPRESSED';
+    // The shared D-002 gate (no expiry on a refusal). An unreadable consent
+    // state defers the send; it used to count as "no refusal" and send.
+    let refused: boolean;
+    try { refused = await advertisingRefused({ userId: identity.user_id, fpClientId: identity.fp_client_id }); } catch {
+      await finish(deliveryId, token, 'RETRY_WAIT', 'CONSENT_LOOKUP_FAILED', { nextAt: new Date(Date.now() + 5 * 60_000) }); return 'DEFERRED';
     }
+    if (refused) { await finish(deliveryId, token, 'SUPPRESSED', 'CONSENT_DENIED'); return 'SUPPRESSED'; }
   }
 
-  const canonical = toCanonical(ev, sink, identity);
+  let source = ev;
+  if (sink === 'ga4:refund' && ev.event_name === 'order_cancelled') {
+    const confirmed = rows(await db.execute(sql`select payload from measurement.business_event
+      where aggregate_type = 'order' and aggregate_id = ${ev.aggregate_id} and event_name = 'order_confirmed' and environment = ${ev.environment} limit 1`))[0];
+    const withValue = cancellationRefundEvent(ev, typeof confirmed?.payload === 'string' ? JSON.parse(confirmed.payload) : confirmed?.payload);
+    // Never a refund of 0: without the confirmed totals there is nothing true to send.
+    if (!withValue) { await finish(deliveryId, token, 'SUPPRESSED', 'NO_CONFIRMED_VALUE'); return 'SUPPRESSED'; }
+    source = withValue;
+  }
+
+  const canonical = toCanonical(source, sink, identity);
   let built: Awaited<ReturnType<typeof buildRequest>>;
   try { built = await buildRequest(sink, canonical); } catch (err) {
     const status = (err as { status?: number }).status;

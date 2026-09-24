@@ -31,8 +31,13 @@ declare namespace App {
      * minting one sets a cookie and a component renders too late to do that.
      */
     gpCart?: { token: string; cartId: string; fresh: boolean } | null;
-    /** The signed-in customer for this request, resolved once per render. */
+    /**
+     * The signed-in customer for this request, resolved once per render.
+     * undefined = not resolved, including when the check could not answer.
+     */
     gpUserId?: string | null;
+    /** The session check timed out or failed: identity is UNKNOWN, not guest. */
+    gpSessionUnknown?: boolean;
     /**
      * This response's script nonce (lib/contentSecurityPolicy). Every INLINE
      * executable script a template writes carries nonce={Astro.locals.cspNonce};

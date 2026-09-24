@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { isDeclaredAutomation } from "../../../lib/declaredAutomation";
 import { VISIT_COOKIE_NAME } from "../../../middleware";
+import { readBodyCapped } from "../../../lib/boundedBody";
 
 /**
  * Same-origin relay for header/nav telemetry (§10). One path, POST only, small
@@ -19,17 +20,25 @@ const VISIT_TOKEN_SHAPE = /^[A-Za-z0-9_-]{44}$/;
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
 
-export const POST: APIRoute = async ({ request, cookies }) => {
+export const POST: APIRoute = async ({ request, cookies, clientAddress }) => {
   // Declared automation runs our scripts; what it "does" is not shopping.
   if (isDeclaredAutomation(request.headers)) return new Response(null, { status: 204 });
-  const declared = Number(request.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return json(413, { success: false });
-  const raw = await request.text();
-  if (Buffer.byteLength(raw, "utf8") > MAX_BODY_BYTES) return json(413, { success: false });
+  // Capped while it streams: a chunked body declares no length at all.
+  const read = await readBodyCapped(request, MAX_BODY_BYTES);
+  if (!read.ok) return json(413, { success: false });
+  const raw = read.text;
 
   const headers: Record<string, string> = { "Content-Type": "application/json", Accept: "application/json" };
   const visit = cookies.get(VISIT_COOKIE_NAME)?.value;
   if (visit && VISIT_TOKEN_SHAPE.test(visit)) headers["x-gp-visit"] = visit;
+  // The visitor's address, so the API's abuse control budgets THEM. A request
+  // with no client address is treated as an internal service call and skips
+  // the limit entirely, which left this public write path unthrottled.
+  try {
+    if (clientAddress) headers["X-Forwarded-For"] = clientAddress;
+  } catch {
+    // clientAddress can throw in prerender contexts; the relay works without it.
+  }
   try {
     const res = await fetch(`${API_BASE}/nav/events`, { method: "POST", headers, body: raw, signal: AbortSignal.timeout(5000) });
     const body = await res.text();

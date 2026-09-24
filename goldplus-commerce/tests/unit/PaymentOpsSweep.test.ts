@@ -191,7 +191,7 @@ describe('RESERVED_LEDGER_MISMATCH is an alert, not a report line', () => {
     );
     const r = await useCase.execute();
     expect(r.mismatches).toBe(2);
-    expect(alerts).toEqual([{ count: 2, entityIds: ['o1', 'o3'] }]);
+    expect(alerts).toEqual([{ count: 2, entityIds: ['o1', 'o3'], types: ['RESERVED_LEDGER_MISMATCH'] }]);
   });
 
   it('stays silent when there is nothing to shout about', async () => {

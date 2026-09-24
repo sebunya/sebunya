@@ -33,6 +33,46 @@ async function audit(auditRepo: IAuditRepository, actorId: string, action: strin
   await new CreateAuditLogUseCase(auditRepo).execute({ actorId, action, entity: 'fulfilment_dispatch', entityId, previousState, newState });
 }
 
+/**
+ * Mirror a dispatch onto the order: `dispatched`, reached the legal way.
+ *
+ * A cash-on-delivery order is created 'received' and stays there — only a
+ * confirmed ONLINE payment moves an order to 'processing' by itself — and the
+ * state machine allows 'received' only into processing or cancelled. So every
+ * COD dispatch mirror was refused and recorded 'skipped', the later delivered
+ * mirror was refused too, and a delivered COD order read "Order placed"
+ * forever: no loyalty vesting, no calibration observation.
+ *
+ * When the dispatch passed the COD policy (the operator confirmed cash on
+ * delivery), the order is first confirmed into 'processing' and then
+ * dispatched. Two ledgered, legal hops; the state machine is not widened.
+ * Returns what happened, so the operator can be told.
+ */
+export async function mirrorOrderDispatched(
+  orderTransitions: IOrderTransitionPort,
+  orderId: string,
+  ctx: { actorId: string; note: string; cashOnDelivery: boolean },
+): Promise<'dispatched' | 'skipped'> {
+  const base = { actorId: ctx.actorId, actorType: 'administrator' as const, source: 'fulfilment' as const };
+  try {
+    await orderTransitions.transition(orderId, 'dispatched', { ...base, reasonCode: 'dispatch_recorded', note: ctx.note });
+    return 'dispatched';
+  } catch {
+    if (!ctx.cashOnDelivery) return 'skipped';
+  }
+  try {
+    await orderTransitions.transition(orderId, 'processing', {
+      ...base,
+      reasonCode: 'cod_dispatch_confirmed',
+      note: `Cash on delivery confirmed at dispatch. ${ctx.note}`,
+    });
+    await orderTransitions.transition(orderId, 'dispatched', { ...base, reasonCode: 'dispatch_recorded', note: ctx.note });
+    return 'dispatched';
+  } catch {
+    return 'skipped';
+  }
+}
+
 export class GetDispatchUseCase {
   constructor(
     private readonly tasks: IFulfilmentRepository,
@@ -83,7 +123,16 @@ export class RecordDispatchUseCase {
     notes?: string | null;
     allowCashOnDelivery?: boolean;
     now?: Date;
-  }): Promise<{ ok: true; dispatch: FulfilmentDispatchSnapshot; created: boolean } | Fail> {
+  }): Promise<
+    | {
+        ok: true;
+        dispatch: FulfilmentDispatchSnapshot;
+        created: boolean;
+        /** Whether the ORDER followed the task. 'skipped' is shown to the operator, never swallowed. */
+        orderMirror?: 'dispatched' | 'skipped' | 'not_wired';
+      }
+    | Fail
+  > {
     const now = input.now ?? new Date();
     const snapshot = await this.tasks.findById(input.taskId);
     if (!snapshot) return fail('NOT_FOUND', 'Fulfilment task not found.');
@@ -158,18 +207,11 @@ export class RecordDispatchUseCase {
     // awaiting-cost queue filled with skipped mirrors.
     let orderMirror: 'dispatched' | 'skipped' | 'not_wired' = 'not_wired';
     if (this.orderTransitions && taskAdvanced) {
-      try {
-        await this.orderTransitions.transition(snapshot.orderId, 'dispatched', {
-          actorId: input.actorId,
-          actorType: 'administrator',
-          source: 'fulfilment',
-          reasonCode: 'dispatch_recorded',
-          note: `Dispatch ${dispatch.dispatchReference} recorded`,
-        });
-        orderMirror = 'dispatched';
-      } catch {
-        orderMirror = 'skipped';
-      }
+      orderMirror = await mirrorOrderDispatched(this.orderTransitions, snapshot.orderId, {
+        actorId: input.actorId,
+        note: `Dispatch ${dispatch.dispatchReference} recorded`,
+        cashOnDelivery: guard.paymentPolicy === 'CASH_ON_DELIVERY',
+      });
     }
 
     await audit(this.audit, input.actorId, 'FULFILMENT_DISPATCHED', input.taskId, {
@@ -179,7 +221,7 @@ export class RecordDispatchUseCase {
       stockConsumed: dispatch.stockConsumed,
       orderMirror,
     });
-    return { ok: true, dispatch, created: true };
+    return { ok: true, dispatch, created: true, orderMirror };
   }
 }
 

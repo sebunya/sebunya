@@ -48,12 +48,25 @@ describe('UploadProductImagesUseCase — Focus 4: library + gallery, no second s
     expect(gallery.assignNextFree).not.toHaveBeenCalled();
   });
 
-  it('refuses more than four files and an unsupported type before touching storage', async () => {
+  it('refuses more than four files before touching storage', async () => {
     const library = { upload: vi.fn() };
     const gallery = { assignAsCover: vi.fn(), assignNextFree: vi.fn() };
     const uc = new UploadProductImagesUseCase(library, gallery);
     await expect(uc.execute({ productId: 'p3', files: [1, 2, 3, 4, 5].map((n) => file(`${n}.jpg`)), actorId: 'a' })).rejects.toThrow(/at most four/);
-    await expect(uc.execute({ productId: 'p3', files: [file('evil.exe', 'application/x-msdownload')], actorId: 'a' })).rejects.toThrow(/unsupported format/);
     expect(library.upload).not.toHaveBeenCalled();
+  });
+
+  // 2026-09-24: the type/size judgement is the media library's (content sniff,
+  // 15 MB) — the old 5 MB / declared-MIME pre-check refused ordinary phone
+  // photos with no reason. A bad file now comes back REJECTED with the reason.
+  it('lets the media library judge a file by content and reports its reason per file', async () => {
+    const library = { upload: vi.fn(async () => [{ kind: 'REJECTED' as const, filename: 'evil.exe', reason: 'UNSUPPORTED_TYPE' }]) };
+    const gallery = { assignAsCover: vi.fn(), assignNextFree: vi.fn() };
+    const uc = new UploadProductImagesUseCase(library, gallery);
+    const big = { ...file('phone.jpg'), size: 7 * 1024 * 1024 };
+    const result = await uc.execute({ productId: 'p3', files: [file('evil.exe', 'application/x-msdownload'), big], actorId: 'a' });
+    expect(library.upload).toHaveBeenCalledTimes(2);
+    expect(result.every((r) => r.outcome === 'REJECTED' && /Rejected:/.test(r.message ?? ''))).toBe(true);
+    expect(gallery.assignNextFree).not.toHaveBeenCalled();
   });
 });

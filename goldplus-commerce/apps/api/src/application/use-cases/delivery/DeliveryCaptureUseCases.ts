@@ -19,6 +19,10 @@ const fail = (code: string, message: string): Fail => ({ ok: false, code, messag
 
 export interface DeliveryCaptureRow {
   orderId: string;
+  /** 0152: EAT hour of week (0–167) when quoted; null on rows captured before it. */
+  eatHourOfWeek?: number | null;
+  /** 0152: round-trip straight-line km before detour; null when unknown. */
+  straightLineKm?: number | null;
   areaSlug: string | null;
   aliasUsed: string | null;
   corridor: string | null;

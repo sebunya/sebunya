@@ -22,6 +22,16 @@ export interface CrawlDirective {
   robots: string; // "index,follow" | "noindex,follow" | …
 }
 
+/**
+ * A category landing page (/shop?category=x) has unique copy only when the
+ * operator wrote a description for it. The shop's robots directive and the
+ * categories sitemap both use THIS rule, so the sitemap never submits a URL
+ * the page itself marks noindex.
+ */
+export function categoryHasUniqueCopy(category: { description?: string | null }): boolean {
+  return (category.description ?? '').trim() !== '';
+}
+
 export function evaluateCrawlPolicy(input: { params: Record<string, string>; hasUniqueCopy?: boolean }): CrawlDirective {
   const entries = Object.entries(input.params).filter(([, v]) => v !== '' && v != null);
   const contentFilters = entries.filter(([k]) => !NON_INDEXABLE_PARAMS.has(k) && !PAGINATION_PARAMS.has(k));

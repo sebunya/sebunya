@@ -85,6 +85,8 @@ routes.get('/reviews', requirePermissions([PERMISSIONS.REVIEWS_MODERATE]), async
 });
 routes.post('/reviews/:id/moderate', requirePermissions([PERMISSIONS.REVIEWS_MODERATE]), async (c) => {
   const id = String(c.req.param('id'));
+  // A malformed id is simply not a review — never a Postgres cast error.
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return bad(c, 'NOT_FOUND', 'Review not found.', 404);
   const body = await c.req.json().catch(() => null);
   const status = body?.status;
   if (!['published', 'rejected', 'flagged'].includes(status)) return bad(c, 'BAD_STATUS', 'status must be published|rejected|flagged.');

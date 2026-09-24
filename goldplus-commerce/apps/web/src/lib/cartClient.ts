@@ -29,6 +29,8 @@ export interface CartLineView {
   slug?: string;
   unitPriceUgx: number;
   quantity: number;
+  /** The product can no longer be bought; excluded from the server's subtotal. */
+  unavailable?: boolean;
 }
 
 export interface CartView {
@@ -146,6 +148,32 @@ export const cartClient = {
 
   clear: (credential: string, body: { expectedVersion?: number }, sessionToken?: string | null) =>
     call({ path: '/commerce/cart/clear', method: 'POST', body }, credential, sessionToken),
+
+  /**
+   * The basket a signed-in customer's new credential should name: their newest
+   * account basket, with the guest basket they arrived with merged in. Null on any
+   * failure, and the caller mints a fresh basket exactly as it did before.
+   */
+  accountCart: async (sessionToken: string, guestCredential?: string | null): Promise<string | null> => {
+    try {
+      const res = await fetch(`${API_BASE}/commerce/cart/account`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${sessionToken}`,
+        },
+        body: JSON.stringify(guestCredential ? { guestCredential } : {}),
+        signal: AbortSignal.timeout(2500),
+      });
+      if (!res.ok) return null;
+      const json = (await res.json().catch(() => null)) as { success?: boolean; data?: { cartId?: unknown } } | null;
+      const cartId = json?.success ? json.data?.cartId : undefined;
+      return typeof cartId === 'string' && /^[0-9a-f-]{36}$/i.test(cartId) ? cartId : null;
+    } catch {
+      return null;
+    }
+  },
 };
 
 /**
@@ -159,7 +187,7 @@ export function cartMessageFor(code: CartErrorCode): string {
     case 'PRODUCT_UNAVAILABLE':
       return 'One or more items are no longer available. Please review your basket.';
     case 'QUANTITY_OUT_OF_BOUNDS':
-      return 'That quantity is not allowed.';
+      return 'You can order 1 to 99 of one product at a time.';
     case 'CART_LIMIT_EXCEEDED':
       return 'Your basket has too many different products. Please remove some before adding more.';
     case 'CART_NOT_FOUND':

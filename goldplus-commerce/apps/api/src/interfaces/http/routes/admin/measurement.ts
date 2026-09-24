@@ -105,7 +105,11 @@ routes.get('/consent-audit', requirePermissions([PERMISSIONS.REPORTS_READ]), asy
 // ─────────────────────────────────────────────────────────────────────────────
 
 routes.get('/match-quality', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
-  const days = parseInt(c.req.query('days') || '7', 10);
+  // parseInt('abc') is NaN, which reached the query as an invalid date (a 500).
+  const days = Number(c.req.query('days') || '7');
+  if (!Number.isInteger(days) || days < 1 || days > 90) {
+    return c.json({ success: false, error: 'INVALID_DAYS' }, 400);
+  }
 
   try {
     const summary = await getMatchQualityUseCase.execute(days);

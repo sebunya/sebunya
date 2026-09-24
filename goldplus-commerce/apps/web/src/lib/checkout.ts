@@ -304,20 +304,46 @@ export interface SameDayCopy {
   outside: string;
 }
 
-export function sameDayCutoffCopy(cut: CutoffState): SameDayCopy {
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
+
+/**
+ * The next day the shop dispatches, named. "Tomorrow" only when tomorrow is
+ * open: after Saturday's cutoff with Sunday closed, "this goes out tomorrow
+ * morning" was false. Null when the caller gave no calendar (the old wording
+ * is then kept, generic and true).
+ */
+export function nextDispatchDayLabel(now: Date | undefined, closedDays: readonly number[] | undefined): string | null {
+  if (!now || !Array.isArray(closedDays)) return null;
+  const today = new Date(now.getTime() + 3 * 60 * 60 * 1000).getUTCDay(); // EAT, UTC+3, no DST
+  for (let d = 1; d <= 7; d += 1) {
+    const day = (today + d) % 7;
+    if (!closedDays.includes(day)) return d === 1 ? 'tomorrow' : `on ${WEEKDAY_NAMES[day]}`;
+  }
+  return null; // every day closed: name nothing rather than guess
+}
+
+export function sameDayCutoffCopy(
+  cut: CutoffState,
+  calendar?: { now?: Date; closedDays?: readonly number[] },
+): SameDayCopy {
+  const next = nextDispatchDayLabel(calendar?.now, calendar?.closedDays);
   if (cut.closed) {
-    const s = 'Closed today. This goes out on the next working day';
+    const s = next ? `Closed today. This goes out ${next} morning` : 'Closed today. This goes out on the next working day';
     return { scoped: s, inArea: s, outside: s };
   }
   if (!cut.beforeCutoff) {
-    const s = "Today's run has left. This goes out tomorrow morning";
+    const s = next
+      ? `Today's run has left. This goes out ${next} morning`
+      : "Today's run has left. This goes out on the next working day";
     return { scoped: s, inArea: s, outside: s };
   }
   const outside = `Same-day delivery is for ${SAME_DAY_AREA_LABEL}. We confirm your delivery day by phone`;
   if (cut.minsToCutoff <= 60) {
     return {
       scoped: `${SAME_DAY_AREA_LABEL}: only ${cut.minsToCutoff} minutes left for same-day delivery`,
-      inArea: `Only ${cut.minsToCutoff} minutes left to get this today`,
+      // When it goes OUT, never when it arrives: no area has observed data
+      // behind a same-day arrival (delivery contract #10).
+      inArea: `Only ${cut.minsToCutoff} minutes left for this to go out today`,
       outside,
     };
   }
@@ -325,7 +351,7 @@ export function sameDayCutoffCopy(cut: CutoffState): SameDayCopy {
   const m = cut.minsToCutoff % 60;
   return {
     scoped: `${SAME_DAY_AREA_LABEL}: order in ${h}h ${m}m for same-day delivery`,
-    inArea: `Order in ${h}h ${m}m and this arrives today`,
+    inArea: `Order in ${h}h ${m}m and this goes out today`,
     outside,
   };
 }

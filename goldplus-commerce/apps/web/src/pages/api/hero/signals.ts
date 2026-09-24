@@ -18,10 +18,17 @@ const API_BASE = (
 const VISIT_TOKEN_SHAPE = /^[A-Za-z0-9_-]{44}$/;
 const noStore = { "Content-Type": "application/json", "Cache-Control": "private, no-store" };
 
-export const GET: APIRoute = async ({ cookies }) => {
+export const GET: APIRoute = async ({ cookies, clientAddress }) => {
   const headers: Record<string, string> = { Accept: "application/json" };
   const visit = cookies.get(VISIT_COOKIE_NAME)?.value;
   if (visit && VISIT_TOKEN_SHAPE.test(visit)) headers["x-gp-visit"] = visit;
+  // Without a client address the API treats this as an internal call and
+  // applies no abuse budget at all; forward the visitor's, as the rec relay does.
+  try {
+    if (clientAddress) headers["X-Forwarded-For"] = clientAddress;
+  } catch {
+    // clientAddress can throw in prerender contexts; the relay works without it.
+  }
   try {
     const res = await fetch(`${API_BASE}/hero/signals`, { headers, signal: AbortSignal.timeout(4000) });
     const body = await res.text();

@@ -3,6 +3,7 @@ import { PERMISSIONS, ApiResponse } from '@goldplus/shared';
 import { Registry } from '../../../../infrastructure/Registry';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
+import { requireStepUp } from '../../middleware/requireStepUp';
 
 /**
  * The ops payment queue (payments brief, 2026-08-06).
@@ -45,13 +46,16 @@ routes.get('/queue', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) 
         findAttemptsByOrderId: (id) => registry.pesapalPaymentRepo.findAttemptsByOrderId(id),
       }).execute(q)
     : await registry.pesapalPaymentRepo.listRecent(50);
-  const rows = await Promise.all(
-    attempts.map(async (a) => {
+  // At most four lookups in flight, on their OWN breaker: fifty at once on the
+  // shared 'pesapal' breaker meant one page view during a provider slowdown
+  // opened the breaker checkout and payment callbacks use, for 30 seconds.
+  const QUEUE_CONCURRENCY = 4;
+  const describe = async (a: (typeof attempts)[number]) => {
       let provider: { status: string; code: number | null; method: string | null; confirmation: string | null } | null = null;
       let providerError: string | null = null;
       if (a.orderTrackingId) {
         try {
-          const s = await registry.pesapalClient.getTransactionStatus(a.orderTrackingId);
+          const s = await registry.pesapalClient.getTransactionStatus(a.orderTrackingId, { breakerName: 'pesapal-ops' });
           provider = {
             status: s.payment_status_description || 'UNKNOWN',
             code: Number.isFinite(s.status_code) ? s.status_code : null,
@@ -78,8 +82,11 @@ routes.get('/queue', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) 
         callbackReceivedAt: a.callbackReceivedAt,
         createdAt: a.createdAt,
       };
-    }),
-  );
+  };
+  const rows: Array<Awaited<ReturnType<typeof describe>>> = [];
+  for (let i = 0; i < attempts.length; i += QUEUE_CONCURRENCY) {
+    rows.push(...(await Promise.all(attempts.slice(i, i + QUEUE_CONCURRENCY).map(describe))));
+  }
   const disagreements = rows.filter((r) => r.disagreement);
   return c.json({
     success: true,
@@ -143,7 +150,7 @@ routes.post('/reconcile/run', requirePermissions([PERMISSIONS.PAYMENTS_CONFIRM])
  * completed payment has ever existed, so this path is UNEXERCISED AGAINST REAL
  * MONEY and proven synthetically only.
  */
-routes.post('/attempts/:merchantReference/refund', requirePermissions([PERMISSIONS.PAYMENTS_REFUND]), async (c) => {
+routes.post('/attempts/:merchantReference/refund', requirePermissions([PERMISSIONS.PAYMENTS_REFUND]), requireStepUp('payment_refund'), async (c) => {
   const body = await c.req.json().catch(() => null);
   const raw = Number(String(body?.amountUgx ?? '').replace(/[,\s]/g, ''));
   const user = c.get('user') as { id: string; email?: string };
@@ -178,6 +185,34 @@ routes.post('/attempts/:merchantReference/refund', requirePermissions([PERMISSIO
       providerMessage: result.providerMessage,
     },
   });
+});
+
+/**
+ * Resolve a refund left 'requested' (the provider call failed, so nobody knows
+ * whether money moved until someone checks the provider). Refund permission,
+ * a written reason, audited in ResolveRefundUseCase.
+ */
+routes.post('/orders/:orderId/refunds/:refundId/resolve', requirePermissions([PERMISSIONS.PAYMENTS_REFUND]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const registry = Registry.getInstance();
+  const { ResolveRefundUseCase } = await import('../../../../application/use-cases/payments/RefundPesaPalPaymentUseCase');
+  const result = await new ResolveRefundUseCase(
+    registry.refundLedgerRepo,
+    registry.auditRepo,
+    registry.pesapalPaymentRepo,
+    registry.refundConsequencesUseCase,
+  ).execute({
+    orderId: String(c.req.param('orderId') ?? ''),
+    refundId: String(c.req.param('refundId') ?? ''),
+    resolution: body?.resolution === 'settled' ? 'settled' : body?.resolution === 'rejected' ? 'rejected' : (String(body?.resolution ?? '') as never),
+    reason: typeof body?.reason === 'string' ? body.reason : '',
+    actorId: (c.get('user') as { id: string }).id,
+  });
+  if (!result.ok) {
+    const status = result.code === 'REFUND_NOT_FOUND' ? 404 : result.code === 'ALREADY_RESOLVED' ? 409 : 400;
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, status);
+  }
+  return c.json({ success: true, data: result });
 });
 
 /** What has already been given back on an order — the ledger, read directly. */
@@ -234,6 +269,18 @@ routes.put('/ops-config/:key', requirePermissions([PERMISSIONS.SETTINGS_MANAGE])
     return c.json({ success: false, error: { code: 'INVALID_CONFIG', message: result.message } } satisfies ApiResponse<never>, 400);
   }
   return c.json({ success: true, data: { saved: true } });
+});
+
+/** Unset a setting — which is how that mechanism is switched OFF. Audited. */
+routes.delete('/ops-config/:key', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const result = await Registry.getInstance().paymentsOpsConfig.unset({
+    key: String(c.req.param('key') ?? ''),
+    actorId: (c.get('user') as { id: string }).id,
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: 'INVALID_CONFIG', message: result.message } } satisfies ApiResponse<never>, 400);
+  }
+  return c.json({ success: true, data: { unset: true, wasSet: result.wasSet } });
 });
 
 export default routes;

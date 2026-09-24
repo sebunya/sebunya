@@ -69,7 +69,8 @@ if (Astro.request.method === 'POST') {
 let cfg: any = null; let loadError = '';
 try {
   const res = await authed('/admin/business-info');
-  if (res.status === 401 || res.status === 403) return Astro.redirect('/admin/login?returnTo=/admin/business-info', 303);
+  if (res.status === 401) return Astro.redirect('/admin/login?returnTo=/admin/business-info', 303);
+  if (res.status === 403) return Astro.redirect(`/admin/not-permitted?from=${encodeURIComponent('/admin/business-info')}`, 303);
   const json: any = await res.json().catch(() => null);
   if (res.ok && json?.success) cfg = json.data.config;
   else loadError = json?.error?.message ?? 'Could not load business info.';

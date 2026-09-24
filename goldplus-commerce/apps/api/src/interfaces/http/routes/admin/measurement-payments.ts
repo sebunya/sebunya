@@ -12,8 +12,9 @@ routes.use('*', authMiddleware);
 // GET /admin/measurement/payments
 routes.get('/', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
   try {
-    const offset = parseInt(c.req.query('offset') || '0', 10);
-    const limit = parseInt(c.req.query('limit') || '50', 10);
+    // Bounded here too (1..100, offset >= 0): the query string is not trusted.
+    const offset = Math.max(0, parseInt(c.req.query('offset') || '0', 10) || 0);
+    const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '50', 10) || 50));
 
     const result = await registry.listPaymentMeasurementReconciliationsUseCase.execute({ offset, limit });
     

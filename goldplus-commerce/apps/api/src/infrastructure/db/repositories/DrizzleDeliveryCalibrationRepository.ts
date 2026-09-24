@@ -23,18 +23,18 @@ export class DrizzleDeliveryCalibrationRepository implements ICalibrationReposit
     const rows = (await db.execute(sql`
       select area_slug, corridor, expected_minutes, actual_minutes, distance_travelled_km,
              had_pin, quoted_fee_ugx, final_fee_ugx, actual_rider_cost_ugx, variance_reason,
-             dispatched_at
+             dispatched_at, eat_hour_of_week, straight_line_km
       from delivery_quote_capture
       where delivered_at is not null`)) as unknown as Array<Record<string, unknown>>;
     return rows.map((r) => ({
       areaSlug: r.area_slug === null ? null : String(r.area_slug),
       corridor: r.corridor === null ? null : String(r.corridor),
-      // Hour of week is derived at capture time from the EAT clock, not
-      // recomputed here from a UTC timestamp.
-      eatHourOfWeek: null,
+      // Hour of week is recorded at capture time from the EAT clock (0152), not
+      // recomputed here from a UTC timestamp. Rows captured before it are null.
+      eatHourOfWeek: r.eat_hour_of_week === null || r.eat_hour_of_week === undefined ? null : Number(r.eat_hour_of_week),
       predictedMinutes: r.expected_minutes === null ? null : Number(r.expected_minutes),
       actualMinutes: r.actual_minutes === null ? null : Number(r.actual_minutes),
-      straightLineKm: null,
+      straightLineKm: r.straight_line_km === null || r.straight_line_km === undefined ? null : Number(r.straight_line_km),
       distanceTravelledKm: r.distance_travelled_km === null ? null : Number(r.distance_travelled_km),
       hadPin: r.had_pin === null ? null : Boolean(r.had_pin),
       quotedFeeUgx: r.quoted_fee_ugx === null ? null : Number(r.quoted_fee_ugx),
@@ -67,15 +67,40 @@ export class DrizzleDeliveryCalibrationRepository implements ICalibrationReposit
 
   async scopes() {
     const rows = (await db.execute(sql`
-      select distinct corridor, area_slug from delivery_quote_capture where delivered_at is not null`)) as unknown as Array<{
+      select distinct corridor, area_slug, eat_hour_of_week
+      from delivery_quote_capture where delivered_at is not null`)) as unknown as Array<{
       corridor: string | null;
       area_slug: string | null;
+      eat_hour_of_week: number | null;
     }>;
     return {
       corridors: [...new Set(rows.map((r) => r.corridor).filter((v): v is string => Boolean(v)))],
       areas: [...new Set(rows.map((r) => r.area_slug).filter((v): v is string => Boolean(v)))],
-      hours: [],
+      // Was hard-coded empty, so no hour factor could ever be fitted.
+      hours: [
+        ...new Set(
+          rows
+            .map((r) => (r.eat_hour_of_week === null ? null : Number(r.eat_hour_of_week)))
+            .filter((h): h is number => h !== null && Number.isInteger(h) && h >= 0 && h <= 167),
+        ),
+      ].sort((a, b) => a - b),
     };
+  }
+
+  /**
+   * Replace every stored window percentile wholesale (stateless, like the
+   * proposals): an area that no longer clears the minimum sample loses its row,
+   * and with it the hour window, rather than keeping a stale one.
+   */
+  async replaceWindowPercentiles(rows: Array<{ scopeKey: string; p10: number; p90: number; sampleSize: number }>): Promise<void> {
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`delete from delivery_window_percentile`);
+      for (const r of rows) {
+        await tx.execute(sql`
+          insert into delivery_window_percentile (scope_key, p10_minutes, p90_minutes, sample_size, computed_at)
+          values (${r.scopeKey}, ${r.p10}, ${r.p90}, ${r.sampleSize}, now())`);
+      }
+    });
   }
 
   async currentFactor(kind: FactorKind, scopeKey: string) {

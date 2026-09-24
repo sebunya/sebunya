@@ -5,6 +5,7 @@ import { logger } from '../../../../infrastructure/logging/logger';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
 import { Registry } from '../../../../infrastructure/Registry';
+import { hostname } from 'node:os';
 
 // Replaying failed jobs and changing worker concurrency are mutating
 // operations. They used to carry an exemption note that was not true:
@@ -71,20 +72,27 @@ routes.post('/replay', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async 
     return c.json(res, 400);
   }
 
+  // Optional and backwards compatible: a job name narrows the replay, and the
+  // limit (default 50) bounds it. Jobs made by a repeatable schedule are never
+  // replayed; the next tick supersedes them.
+  const jobName = typeof body?.jobName === 'string' && body.jobName.length <= 100 ? body.jobName : undefined;
+  const rawLimit = Number(body?.limit);
+  const limit = Number.isInteger(rawLimit) && rawLimit >= 1 && rawLimit <= 500 ? rawLimit : undefined;
+
   try {
     const queueService = QueueService.getInstance();
-    const replayedCount = await queueService.replayFailedJobs(queueName);
+    const outcome = await queueService.replayFailedJobs(queueName, { jobName, limit });
     await Registry.getInstance().createAuditLogUseCase.execute({
       actorId: (c.get('user') as { id?: string } | undefined)?.id ?? 'unknown',
       action: 'QUEUE_FAILED_JOBS_REPLAYED',
       entity: 'queue',
       entityId: queueName,
-      newState: { replayed: replayedCount },
+      newState: { ...outcome, jobName: jobName ?? null, limit: limit ?? 50 },
     }).catch((err: unknown) => logger.error({ err, queueName }, '[AdminQueueRoute] audit write failed'));
     
-    const res: ApiResponse<{ replayed: number }> = {
+    const res: ApiResponse<{ replayed: number; skippedRepeatable: number }> = {
       success: true,
-      data: { replayed: replayedCount },
+      data: outcome,
     };
     return c.json(res, 200);
   } catch (err: unknown) {
@@ -138,11 +146,19 @@ routes.post('/concurrency', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), a
       action: 'QUEUE_CONCURRENCY_CHANGED',
       entity: 'queue',
       entityId: queueName,
-      newState: { concurrency: updatedConcurrency },
+      // Honest about scope: this changes the workers of the ONE replica that
+      // served the request, as a ceiling the backpressure monitor may go below.
+      newState: { concurrency: updatedConcurrency, scope: 'this-replica', replica: hostname() },
     }).catch((err: unknown) => logger.error({ err, queueName }, '[AdminQueueRoute] audit write failed'));
-    const res: ApiResponse<{ queueName: string; concurrency: number }> = {
+    const res: ApiResponse<{ queueName: string; concurrency: number; scope: 'this-replica'; replica: string; note: string }> = {
       success: true,
-      data: { queueName, concurrency: updatedConcurrency },
+      data: {
+        queueName,
+        concurrency: updatedConcurrency,
+        scope: 'this-replica',
+        replica: hostname(),
+        note: 'A ceiling on this replica only; resource-pressure throttling can still lower it, and a restart clears it.',
+      },
     };
     return c.json(res, 200);
   } catch (err: unknown) {

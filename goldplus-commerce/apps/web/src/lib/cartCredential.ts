@@ -76,6 +76,17 @@ export interface ResolvedCart {
 export function resolveCartCredential(
   cookies: AstroCookies,
   authenticatedUserId?: string | null,
+  options: {
+    /**
+     * The session check could not answer (timeout, network error, 5xx). Reuse ANY
+     * credential that verifies, whoever it names, and never mint or overwrite: a
+     * slow /account/me used to replace a signed-in customer's USER credential with
+     * a GUEST one, and their basket was never reachable again.
+     */
+    sessionUnknown?: boolean;
+    /** The account basket to name when minting a USER credential (from the API). */
+    cartId?: string | null;
+  } = {},
 ): ResolvedCart | null {
   const keyList = keys();
   if (!keyList) return null;
@@ -87,17 +98,25 @@ export function resolveCartCredential(
     const verified = verifyCartCredential(keyList, existing);
     if (verified.valid) {
       const claims = verified.claims;
-      const matches = authenticatedUserId
-        ? claims.ownerKind === 'USER' && claims.ownerId === authenticatedUserId
-        : claims.ownerKind === 'GUEST';
+      const matches = options.sessionUnknown
+        ? true
+        : authenticatedUserId
+          ? claims.ownerKind === 'USER' && claims.ownerId === authenticatedUserId
+          : claims.ownerKind === 'GUEST';
       if (matches) return { token: existing, cartId: claims.cartId, fresh: false };
     }
   }
 
+  // Unknown identity with nothing reusable: no basket this render, rather than a
+  // guess the API would refuse (a GUEST credential alongside a live session) or
+  // one that would strand the customer's real basket.
+  if (options.sessionUnknown) return null;
+
   // A new basket. The guest owner id is random and unguessable rather than derived
   // from anything about the request: deriving it from an IP or a user agent would make
-  // two shoppers behind one NAT share a basket.
-  const cartId = randomUUID();
+  // two shoppers behind one NAT share a basket. A signed-in customer's credential
+  // names their ACCOUNT basket when the API supplied one (see accountCartNeed).
+  const cartId = authenticatedUserId && options.cartId ? options.cartId : randomUUID();
   const issued = issueCartCredential({
     key: keyList[0],
     cartId,
@@ -119,6 +138,28 @@ export function resolveCartCredential(
   });
 
   return { token: issued.token, cartId, fresh: true };
+}
+
+/**
+ * Whether resolving a credential for this signed-in customer would MINT one, and
+ * if so the verified guest credential they arrived with. The caller asks the API
+ * for the account basket (merging that guest basket in) before minting, so
+ * signing in no longer empties the basket. Null: nothing to ask (a matching
+ * credential is reused, or no keys are configured).
+ */
+export function accountCartNeed(
+  cookies: AstroCookies,
+  authenticatedUserId: string,
+): { guestToken: string | null } | null {
+  const keyList = keys();
+  if (!keyList) return null;
+  const existing = cookies.get(cartCredentialCookieName(isProduction()))?.value;
+  if (!existing) return { guestToken: null };
+  const verified = verifyCartCredential(keyList, existing);
+  if (!verified.valid) return { guestToken: null };
+  const claims = verified.claims;
+  if (claims.ownerKind === 'USER' && claims.ownerId === authenticatedUserId) return null;
+  return { guestToken: claims.ownerKind === 'GUEST' ? existing : null };
 }
 
 /** Discards the basket credential, e.g. after a completed order. */

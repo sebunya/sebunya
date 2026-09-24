@@ -90,6 +90,32 @@ describe('eligibility responds to real signals', () => {
     expect(k({ ...returning, scratched: true })).not.toContain('scratch');
   });
 
+  // Referral and loyalty share the one loyalty slot, so these read the whole
+  // eligible pool (show = every slide) rather than the four-slide rail.
+  const all = (ctx: HeroSelectionContext) =>
+    selectHeroSlides(LIB, ctx, { ...HERO_SELECTION_TUNING, show: LIB.length }).map((s) => s.slideKey);
+
+  it('points slides stay out of the rail while the loyalty programme is off', () => {
+    const keys = all;
+    const customer: HeroSelectionContext = { ...base, isNew: false, isReturning: true, isRegular: true, hasOrdered: true, saleLive: false };
+    expect(keys(customer)).toContain('loyalty');
+    expect(keys(customer)).toContain('referral');
+    expect(keys({ ...customer, loyaltyActive: false })).not.toContain('loyalty');
+    expect(keys({ ...customer, loyaltyActive: false })).not.toContain('referral');
+  });
+
+  it('the referral slide needs referral points to be configured, not just a live programme', () => {
+    const keys = all;
+    const customer: HeroSelectionContext = { ...base, isNew: false, isReturning: true, isRegular: true, hasOrdered: true, saleLive: false };
+    expect(keys({ ...customer, loyaltyActive: true, referralEarns: false })).not.toContain('referral');
+    expect(keys({ ...customer, loyaltyActive: true, referralEarns: true })).toContain('referral');
+  });
+
+  it('an unknown programme state (failed read) keeps the rail as it was', () => {
+    const customer: HeroSelectionContext = { ...base, isNew: false, isReturning: true, isRegular: true, hasOrdered: true, saleLive: false };
+    expect(keys({ ...customer, loyaltyActive: undefined, referralEarns: undefined })).toEqual(keys(customer));
+  });
+
   it('always fills to `show` even when eligibility is restrictive', () => {
     // Everything that can be gated off, gated off: still a full, coherent rail.
     const restrictive: HeroSelectionContext = {

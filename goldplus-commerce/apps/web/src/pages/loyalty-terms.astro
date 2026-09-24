@@ -93,7 +93,8 @@ const tiers = (programme?.tiers ?? []).slice().sort((a, b) => a.threshold - b.th
             <p class="mt-2">
               You earn <strong>{programme.earnRatePer1000Ugx} points for every 1,000 UGX</strong> of an order's total.
               Points are <strong>earned when the order is delivered</strong>, not when it is placed or paid for. An order that is
-              never delivered. Cancelled, refused at the door, or returned. Does not earn points.
+              never delivered (cancelled, or refused at the door) does not earn points. If an order is refunded, before or
+              after delivery, the points it earned are taken back in proportion to the refund.
             </p>
             {(src?.verificationScan || src?.counterfeitReport || src?.phoneVerification || src?.referral?.referrer || src?.birthday || src?.streak) && (
               <>
@@ -153,9 +154,10 @@ const tiers = (programme?.tiers ?? []).slice().sort((a, b) => a.threshold - b.th
           <section>
             <h2 class="text-lg font-black text-slate-900">4. Expiry</h2>
             <p class="mt-2">
-              Points expire <strong>{programme.expiryDays} days</strong> after the day they are earned. When you redeem, your
-              oldest points are always used first. We notify you 30 days, 7 days and 1 day before a batch of points expires.
-              Expired points cannot be reinstated except through support where we have made an error.
+              Points earned on orders expire <strong>{programme.expiryDays} days</strong> after the day they are earned. Points
+              from any other source do not expire. When you redeem, points that can expire are used first,
+              oldest first. We notify you 30 days, 7 days and 1 day before a batch of points expires. While redemption is
+              paused, no points expire. Expired points cannot be reinstated except through support where we have made an error.
             </p>
           </section>
 

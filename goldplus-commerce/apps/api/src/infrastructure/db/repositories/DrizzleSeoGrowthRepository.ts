@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../client';
 import { pgJsonb } from '../PgParams';
 import { displayImageUrlSql, galleryOrderSql, galleryVisibleSql } from '../mediaDisplayUrl';
+import { notRetiredByLifecycle } from '../LifecycleVisibilitySql';
 
 /**
  * Organic Growth OS data access (migration 0116). Raw-SQL via db.execute with
@@ -577,24 +578,33 @@ export class DrizzleSeoGrowthRepository {
   async feedProducts(): Promise<Array<{
     sku: string; slug: string; name: string; shortDescription: string;
     priceUgx: number; floorPriceUgx: number | null; stockStatus: string; imageUrl: string | null;
+    stockQuantity: number; reservedQuantity: number; isPreOrderEnabled: boolean;
     modelNumber: string | null; isFeedEligible: boolean; active: boolean; approvalStatus: string;
     categoryName: string | null; subcategory: string | null; longDescription: string; imageUrls: string[];
     id: string; verifiedSpecCount: number; verifiedSpecs: Array<{ name: string; value: string; unit: string | null }>;
   }>> {
+    // Quantities, not just stock_status: availability is derived the way the
+    // product page derives it (stock − reserved), so the feed and the page agree.
+    // A product whose page the operator retired (301/410/unpublish) is left out.
+    // The legacy products.image_url fallback feeds only LOCAL uploads: a pasted
+    // external URL (the retired free-text field) showed Google a picture the
+    // product page never did.
     const rows = rowsOf(await db.execute(sql`
       select p.id, p.sku, p.slug, p.name, p.short_description, p.long_description, p.price_ugx, p.stock_status,
+             p.stock_quantity, p.reserved_quantity, p.is_pre_order_enabled,
              (select count(*) from product_attribute_values v where v.product_id = p.id and v.is_verified = true)::int as verified_spec_count,
              (select coalesce(json_agg(json_build_object('name', a.name, 'value', v.value, 'unit', a.unit) order by a.display_order), '[]'::json)
                 from product_attribute_values v join attributes a on a.id = v.attribute_id
                 where v.product_id = p.id and v.is_verified = true) as verified_specs,
              p.category_name, p.subcategory,
-             coalesce((select ${displayImageUrlSql('i')} from product_images i where i.product_id = p.id and ${galleryVisibleSql('i', sql.raw('p.id'))} and coalesce(i.alt_text, '') not like 'Sample %' order by ${galleryOrderSql('i')} limit 1), case when exists (select 1 from product_images s where s.product_id = p.id and s.slot is not null) then null else p.image_url end) as image_url,
+             coalesce((select ${displayImageUrlSql('i')} from product_images i where i.product_id = p.id and ${galleryVisibleSql('i', sql.raw('p.id'))} and coalesce(i.alt_text, '') not like 'Sample %' order by ${galleryOrderSql('i')} limit 1), case when exists (select 1 from product_images s where s.product_id = p.id and s.slot is not null) then null when p.image_url like '/uploads/%' then p.image_url end) as image_url,
              coalesce((select array_agg(u order by ord) from (select ${displayImageUrlSql('i')} as u, row_number() over (order by ${galleryOrderSql('i')}) as ord from product_images i where i.product_id = p.id and ${galleryVisibleSql('i', sql.raw('p.id'))} and coalesce(i.alt_text, '') not like 'Sample %') g), '{}') as image_urls,
              p.model_number, p.is_feed_eligible, p.active, p.approval_status,
              pp.floor_price
       from products p
       left join product_prices pp on pp.product_id = p.id
       where p.active = true and p.approval_status = 'approved'
+        and ${notRetiredByLifecycle(sql.raw('p.id'))}
       order by p.sku asc
       limit 50000
     `));
@@ -606,6 +616,9 @@ export class DrizzleSeoGrowthRepository {
       priceUgx: Number(r.price_ugx ?? 0),
       floorPriceUgx: r.floor_price == null ? null : Number(r.floor_price),
       stockStatus: String(r.stock_status ?? ''),
+      stockQuantity: Number(r.stock_quantity ?? 0),
+      reservedQuantity: Number(r.reserved_quantity ?? 0),
+      isPreOrderEnabled: Boolean(r.is_pre_order_enabled),
       imageUrl: r.image_url == null ? null : String(r.image_url),
       modelNumber: r.model_number == null ? null : String(r.model_number),
       isFeedEligible: Boolean(r.is_feed_eligible),

@@ -20,12 +20,12 @@ import {
   subcategoryNameForSlug,
 } from '../lib/product-discovery';
 import { getTaxonomy } from '../lib/taxonomy';
-import { shopCrawlDirective } from '../lib/crawlPolicy';
+import { categoryHasUniqueCopy, shopCrawlDirective } from '../lib/crawlPolicy';
 import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
 import { SITE_ORIGIN } from '../lib/sitemap';
 import { offerPriceUgx } from '../lib/offerPrice';
 import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../lib/storefrontDiscount';
-import { fetchApprovedCatalogue } from '../lib/catalogue';
+import { fetchApprovedCatalogueWithStatus } from '../lib/catalogue';
 import { isListableProduct } from '../lib/product-discovery';
 import { isLikelyHuman } from '../lib/humanTraffic';
 import { getBusinessInfo } from '../lib/businessInfo';
@@ -56,7 +56,7 @@ const { robotsMeta, canonicalUrl } = shopCrawlDirective({
   params: crawlParams,
   // Search results never have unique editorial copy; a category page has it
   // only when the operator wrote a description in the taxonomy.
-  hasUniqueCopy: search ? false : selectedCategory ? Boolean(selectedCategory.description) : undefined,
+  hasUniqueCopy: search ? false : selectedCategory ? categoryHasUniqueCopy(selectedCategory) : undefined,
   // One canonical host, not whichever host this request arrived on.
   origin: SITE_ORIGIN,
 });
@@ -79,7 +79,14 @@ function shopUrl(overrides: Partial<{ search: string; category: string; subcateg
 
 let rawProducts: ProductPublicDto[] = [];
 let catalogueNotice = '';
-rawProducts = await fetchApprovedCatalogue(apiBase);
+// Whether the list is WHOLE: a page that timed out mid-way used to leave a
+// truncated catalogue that looked complete, so a search answered "nothing
+// matched" (and recorded zero-result demand) for a product on the shelf.
+const catalogueFetch = await fetchApprovedCatalogueWithStatus(apiBase);
+rawProducts = catalogueFetch.products;
+const cataloguePartial = rawProducts.length > 0 && !catalogueFetch.complete;
+const partialNotice = cataloguePartial ? 'Some products could not be loaded just now, so this list may be incomplete. Please refresh the page.' : '';
+if (cataloguePartial) Astro.response.headers.set('Cache-Control', 'no-store');
 
 if (rawProducts.length === 0) {
   // R1: the fabricated LOCAL_SEED_PRODUCTS fallback is retired — an
@@ -156,7 +163,7 @@ if (search && Astro.locals.gpVisit && !isDeclaredAutomation(Astro.request.header
 // Only people are counted: this feeds the admin demand queue that decides what
 // stock to buy, and a crawler or a curl loop is not a customer who wanted
 // something. See lib/humanTraffic.ts.
-if (search && isLikelyHuman(Astro.request.headers.get('user-agent'))) {
+if (search && !cataloguePartial && isLikelyHuman(Astro.request.headers.get('user-agent'))) {
   // Fire-and-forget, like the profile event above it: awaiting this made every
   // search wait up to half a second on telemetry before rendering results.
   fetch(`${apiBase}/products/search-events`, {
@@ -188,7 +195,7 @@ const pageDescription = search
 // A search that found nothing: the category chips must not carry the failed
 // query (every tap would be another zero), and the first way forward is a
 // person, on the channel the shop uses everywhere else — not a bulk quote form.
-const zeroResults = !catalogueNotice && products.length === 0;
+const zeroResults = !catalogueNotice && !cataloguePartial && products.length === 0;
 const chipSearch = zeroResults ? '' : search;
 const biz = await getBusinessInfo();
 const askOnWhatsApp = search
@@ -270,6 +277,7 @@ const shopBreadcrumb = breadcrumbJsonLd([
 
   <main class="mx-auto w-full min-w-0 max-w-7xl overflow-hidden px-4 py-7 sm:px-6 sm:py-10 lg:px-8">
     {catalogueNotice && <Notice kind="info" title="Catalogue notice" message={catalogueNotice} />}
+    {partialNotice && <Notice kind="info" title="Catalogue notice" message={partialNotice} />}
 
     {/* The header search is on screen from 981px, so a second search box is
         only shown below that (the scoped style at the foot of this page; lg:

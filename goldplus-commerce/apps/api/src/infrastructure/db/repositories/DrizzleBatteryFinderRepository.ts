@@ -15,6 +15,15 @@ const jsonb = (value: unknown) => sql`${client.json(value as never)}::jsonb`;
 const PUBLIC_CLAIM = sql`${productDeviceCompatibility.workflowStatus} = 'ACTIVE' AND ${productDeviceCompatibility.evidenceStatus} <> 'REJECTED'`;
 const VERIFIED_PUBLIC = sql`c.workflow_status = 'ACTIVE' AND c.evidence_status IN ('PACKAGE_VERIFIED','FIT_TESTED','VERIFIED_EXACT','CONDITIONAL') AND bp.lifecycle_status = 'ACTIVE' AND p.approval_status = 'approved' AND p.active`;
 
+/**
+ * Units a customer can still buy: on hand minus what open orders already hold.
+ * The storefront DTO uses the same figure (availableQuantity), so the finder
+ * never says "in stock" for units committed to someone else's order.
+ */
+const AVAILABLE_QUANTITY = sql<number>`GREATEST(${products.stockQuantity} - ${products.reservedQuantity}, 0)::int`;
+/** The product's own Price A — internal, used only to price a campaign; never sent to the page. */
+const FLOOR_PRICE = sql<number | null>`(SELECT pp.floor_price FROM product_prices pp WHERE pp.product_id = ${products.id} LIMIT 1)`;
+
 const PRIMARY_IMAGE = sql<string | null>`COALESCE((SELECT ${displayImageUrlSql('i')} FROM product_images i WHERE i.product_id = ${products.id} AND ${galleryVisibleSql('i', sql`${products.id}`)} ORDER BY ${galleryOrderSql('i')} LIMIT 1), ${products.imageUrl})`;
 
 function deviceDto(d: typeof devices.$inferSelect, seriesName: string | null, verifiedFits: number): FinderDeviceDto {
@@ -126,7 +135,8 @@ export class DrizzleBatteryFinderRepository implements IBatteryFinderRepository 
       batteryLifecycle: batteryProfiles.lifecycleStatus,
       approvalStatus: products.approvalStatus,
       active: products.active,
-      stockQuantity: products.stockQuantity,
+      stockQuantity: AVAILABLE_QUANTITY,
+      floorPriceUgx: FLOOR_PRICE,
       product: publicProduct,
       d: devices,
       seriesName: deviceSeries.name,
@@ -149,7 +159,8 @@ export class DrizzleBatteryFinderRepository implements IBatteryFinderRepository 
       batteryLifecycle: r.batteryLifecycle,
       productApproved: r.approvalStatus === 'approved',
       productActive: r.active,
-      stockQuantity: r.stockQuantity,
+      stockQuantity: Number(r.stockQuantity),
+      floorPriceUgx: r.floorPriceUgx == null ? null : Number(r.floorPriceUgx),
       product: { ...r.product, imageUrl: r.product.imageUrl ?? null, priceUgx: r.product.priceUgx == null ? null : Number(r.product.priceUgx) },
       device: deviceDto(r.d, r.seriesName, 0),
     };
@@ -166,17 +177,17 @@ export class DrizzleBatteryFinderRepository implements IBatteryFinderRepository 
   }
 
   async batteryPublic(productId: string) {
-    const [row] = await db.select({ product: publicProduct, lifecycleStatus: batteryProfiles.lifecycleStatus, stockQuantity: products.stockQuantity, approvalStatus: products.approvalStatus, active: products.active })
+    const [row] = await db.select({ product: publicProduct, lifecycleStatus: batteryProfiles.lifecycleStatus, stockQuantity: AVAILABLE_QUANTITY, floorPriceUgx: FLOOR_PRICE, approvalStatus: products.approvalStatus, active: products.active })
       .from(batteryProfiles).innerJoin(products, eq(products.id, batteryProfiles.productId)).where(eq(batteryProfiles.productId, productId)).limit(1);
     if (!row) return null;
-    return { ...row.product, imageUrl: row.product.imageUrl ?? null, priceUgx: row.product.priceUgx == null ? null : Number(row.product.priceUgx), lifecycleStatus: row.lifecycleStatus, stockQuantity: row.stockQuantity, productApproved: row.approvalStatus === 'approved', productActive: row.active };
+    return { ...row.product, imageUrl: row.product.imageUrl ?? null, priceUgx: row.product.priceUgx == null ? null : Number(row.product.priceUgx), lifecycleStatus: row.lifecycleStatus, stockQuantity: Number(row.stockQuantity), floorPriceUgx: row.floorPriceUgx == null ? null : Number(row.floorPriceUgx), productApproved: row.approvalStatus === 'approved', productActive: row.active };
   }
 
   async batteryPublicBySlug(slug: string) {
-    const [row] = await db.select({ product: publicProduct, lifecycleStatus: batteryProfiles.lifecycleStatus, publicNotes: batteryProfiles.publicNotes, warrantyMonths: batteryProfiles.warrantyMonths, chemistry: batteryProfiles.chemistry })
+    const [row] = await db.select({ product: publicProduct, lifecycleStatus: batteryProfiles.lifecycleStatus, publicNotes: batteryProfiles.publicNotes, warrantyMonths: batteryProfiles.warrantyMonths, chemistry: batteryProfiles.chemistry, floorPriceUgx: FLOOR_PRICE })
       .from(batteryProfiles).innerJoin(products, eq(products.id, batteryProfiles.productId)).where(eq(products.slug, slug)).limit(1);
     if (!row) return null;
-    return { ...row.product, imageUrl: row.product.imageUrl ?? null, priceUgx: row.product.priceUgx == null ? null : Number(row.product.priceUgx), lifecycleStatus: row.lifecycleStatus, publicNotes: row.publicNotes, warrantyMonths: row.warrantyMonths, chemistry: row.chemistry };
+    return { ...row.product, imageUrl: row.product.imageUrl ?? null, priceUgx: row.product.priceUgx == null ? null : Number(row.product.priceUgx), lifecycleStatus: row.lifecycleStatus, publicNotes: row.publicNotes, warrantyMonths: row.warrantyMonths, chemistry: row.chemistry, floorPriceUgx: row.floorPriceUgx == null ? null : Number(row.floorPriceUgx) };
   }
 
   // ---------------------------------------------------------------- search

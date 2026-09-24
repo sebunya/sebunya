@@ -172,6 +172,8 @@ export type PaymentStartErrorCode =
   | 'ORDER_NOT_PAYABLE'
   /** The shop closed this order (cancelled or failed); nothing can be collected for it. */
   | 'ORDER_CANCELLED'
+  /** The order's stock hold expired and its units went back on sale; it must be placed again. */
+  | 'ORDER_HOLD_EXPIRED'
   | 'OFFLINE_DRAFT_NOT_PAYABLE'
   | 'PAYMENT_NOT_CONFIGURED'
   | 'PAYMENT_PROVIDER_UNAVAILABLE'

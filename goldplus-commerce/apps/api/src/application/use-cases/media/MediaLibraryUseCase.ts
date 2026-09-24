@@ -142,7 +142,10 @@ export class MediaLibraryUseCase {
         continue;
       }
 
+      // The checksum is of the RECEIVED bytes, so dedupe is unchanged; what is
+      // stored and served is a metadata-stripped copy (no GPS, no camera serial).
       const checksum = createHash('sha256').update(file.buffer).digest('hex');
+      file = { ...file, buffer: await this.withoutMetadata(file.buffer, file.mime) };
       const existing = await this.repo.findByChecksum(checksum);
       if (existing) {
         // The record can outlive the file (a container that stored into its own
@@ -193,6 +196,15 @@ export class MediaLibraryUseCase {
       outcomes.push({ kind: 'STORED', asset: complete, deduplicated: false });
     }
     return outcomes;
+  }
+
+  private async withoutMetadata(buffer: Buffer, mime: string): Promise<Buffer> {
+    if (!this.variants.stripMetadata) return buffer;
+    try {
+      return (await this.variants.stripMetadata(buffer, mime)) ?? buffer;
+    } catch {
+      return buffer;
+    }
   }
 
   async updateMetadata(

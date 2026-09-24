@@ -34,12 +34,16 @@ const OTP_SENDER = "apps/api/src/infrastructure/loyalty/LoyaltyIdentityInfrastru
 /** Templates carrying a security/authentication purpose. */
 const SECURITY_TEMPLATES = ["PHONE_VERIFICATION", "PASSWORD_RESET", "PASSWORD_RESET_CODE"];
 
-/** Templates that are genuinely marketing and must stay consent-gated. */
+/**
+ * Templates that are genuinely marketing and must stay consent-gated. The
+ * loyalty account notices used to stand in here; the owner decided on
+ * 2026-09-24 (docs/loyalty-decisions.md #15) that they are transactional, so
+ * the stand-ins are campaign names, which fail closed to MARKETING.
+ */
 const MARKETING_TEMPLATES = [
-  "LOYALTY_EXPIRY_WARNING",
-  "LOYALTY_POINTS_EARNED",
-  "LOYALTY_REDEMPTION_CONFIRMED",
-  "LOYALTY_TIER_CHANGED",
+  "SOME_NEW_CAMPAIGN_BLAST",
+  "SPRING_SALE_ANNOUNCEMENT",
+  "WEEKEND_OFFER_BLAST",
 ];
 
 describe("security traffic is never governed as marketing", () => {
@@ -162,13 +166,13 @@ describe("governance outcome, both directions", () => {
   });
 
   it("still blocks genuine marketing to that same customer", () => {
-    const decision = decide("LOYALTY_EXPIRY_WARNING");
+    const decision = decide("SOME_NEW_CAMPAIGN_BLAST");
     expect(decision.kind).toBe("BLOCK_CONSENT");
     expect(decision.guard).toBe("NO_CONSENT_FOR_MARKETING");
   });
 
   it("still blocks marketing when the customer HAS refused explicitly", () => {
-    expect(decide("LOYALTY_EXPIRY_WARNING", { consentGranted: false }).kind).toBe("BLOCK_CONSENT");
+    expect(decide("SOME_NEW_CAMPAIGN_BLAST", { consentGranted: false }).kind).toBe("BLOCK_CONSENT");
   });
 
   it("does not make the OTP a general bypass of the other controls", () => {

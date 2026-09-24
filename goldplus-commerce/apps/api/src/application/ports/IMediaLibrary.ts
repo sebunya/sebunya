@@ -90,4 +90,11 @@ export interface IMediaVariantGenerator {
     checksum: string;
     saveVariant: (key: string, buffer: Buffer) => Promise<{ url: string; storageKey: string }>;
   }): Promise<{ width: number | null; height: number | null; variants: MediaVariantRecord[] }>;
+  /**
+   * A copy of the ORIGINAL with its metadata removed (EXIF GPS position,
+   * camera serial, timestamps), upright and with its colour profile kept.
+   * null = cannot strip (engine unavailable, unsupported type): the caller
+   * keeps the received bytes. Optional so an engine without it still works.
+   */
+  stripMetadata?(buffer: Buffer, mime: string): Promise<Buffer | null>;
 }

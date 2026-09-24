@@ -154,7 +154,13 @@ describe('battery readiness: every blocker says why', () => {
   });
 
   it("holds a compound code and enforces the battery's OWN floor (0127), not a shop-wide one", () => {
-    expect(assessReadiness({ ...ready, canonicalCode: 'BL-49CI/CT' }).blockers.map((b) => b.code)).toContain('UNRESOLVED_COMPOUND_CODE');
+    // Owner decision 2026-09-24: a slash code confirmed from the pack AND verified
+    // against it is one printed code and publishes; until then it blocks.
+    const codes = (over: Partial<typeof ready>) => assessReadiness({ ...ready, ...over }).blockers.map((b) => b.code);
+    expect(codes({ canonicalCode: 'BL-49CI/CT', verificationStatus: 'UNVERIFIED' })).toContain('UNRESOLVED_COMPOUND_CODE');
+    expect(codes({ canonicalCode: 'BL-49CI/CT', codeStatus: 'PROVISIONAL' })).toContain('UNRESOLVED_COMPOUND_CODE');
+    expect(codes({ canonicalCode: 'A20/A30/A50' })).not.toContain('UNRESOLVED_COMPOUND_CODE');
+    expect(codes({ canonicalCode: 'BL-49CI AND BL-49CT' })).toContain('UNRESOLVED_COMPOUND_CODE');
     // Priced below its own Price A: blocked, and the message names the floor.
     const below = assessReadiness({ ...ready, priceUgx: 40_000, floorPriceUgx: 45_000 });
     expect(below.blockers.map((b) => b.code)).toContain('PRICE_BELOW_FLOOR');

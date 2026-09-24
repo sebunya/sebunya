@@ -45,7 +45,7 @@ const phoneLabel = ws ? (ws.user.phone ? ws.user.phone + (ws.user.phoneVerified 
         </header>
 
         <section aria-labelledby="c-orders">
-          <h3 id="c-orders" class="text-xs font-black uppercase tracking-widest text-brand-dark">Orders ({ws.orders.length})</h3>
+          <h3 id="c-orders" class="text-xs font-black uppercase tracking-widest text-brand-dark">Orders ({ws.orders.length >= 50 ? `latest ${ws.orders.length}` : ws.orders.length})</h3>
           {ws.orders.length === 0 ? <p class="mt-2 text-sm text-gray-500">This customer has not placed an order yet.</p> : (
             <table class="mt-3 w-full text-xs">
               <thead class="text-[10px] uppercase font-black tracking-widest text-gray-500"><tr><th class="text-left py-2">Order</th><th class="text-left">Status</th><th class="text-right">Total</th><th class="text-right">Items</th><th class="text-right">Placed</th></tr></thead>
@@ -87,7 +87,7 @@ const phoneLabel = ws ? (ws.user.phone ? ws.user.phone + (ws.user.phoneVerified 
 
         <section aria-labelledby="c-support">
           <h3 id="c-support" class="text-xs font-black uppercase tracking-widest text-brand-dark">Support tickets ({ws.support.length})</h3>
-          {ws.support.length === 0 ? <p class="mt-2 text-sm text-gray-500">No support tickets from this customer's email.</p> : (
+          {ws.supportIncluded === false ? <p class="mt-2 text-sm text-gray-500">Support tickets need the reports permission, so they are not shown here.</p> : ws.support.length === 0 ? <p class="mt-2 text-sm text-gray-500">No support tickets from this customer's email.</p> : (
             <ul class="mt-3 space-y-1 text-xs">
               {ws.support.map((t: any) => (
                 <li class="flex flex-wrap gap-x-3 border-b border-gray-50 pb-1">

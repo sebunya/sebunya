@@ -365,7 +365,7 @@ routes.post('/connections/:id/sync', requirePermissions([PERMISSIONS.SEO_INTEGRA
 
   const jobType = ['BACKFILL', 'INCREMENTAL', 'MANUAL'].includes(body.jobType) ? body.jobType : 'MANUAL';
   const job = await repo().createSyncJob({ connectionId: connection.id, jobType, requestedBy: actorId(c) });
-  const queue = QueueService.getInstance().getQueue(QUEUES.ANALYTICS_FANOUT);
+  const queue = QueueService.getInstance().getReadyQueue(QUEUES.ANALYTICS_FANOUT);
   if (!queue) {
     await repo().updateSyncJob(job.id, { status: 'FAILED', completedAt: new Date(), error: 'Queue unavailable — sync never started.' });
     return bad(c, 'QUEUE_UNAVAILABLE', 'Background queue is not available; sync not started.', 503);

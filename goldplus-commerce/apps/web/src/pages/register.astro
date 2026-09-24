@@ -8,6 +8,7 @@ import Notice from '../components/Notice.astro';
 import { apiBase } from '../lib/api';
 import SocialSignIn from '../components/auth/SocialSignIn.astro';
 import { SESSION_COOKIE_NAME } from '../lib/session';
+import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../lib/requestOrigin';
 import {
   validateRegistration,
   fieldErrorsFromBadInput,
@@ -90,7 +91,13 @@ if (Astro.request.method === 'POST') {
   // The same checks the API makes, before the round trip, so each problem is
   // marked on its own field. Only the passwords are cleared on a retry.
   fieldErrors = validateRegistration({ email, phone, password, confirmPassword: confirm });
-  if (firstErrorField(fieldErrors)) {
+  // Login CSRF (registration IS a sign-in): a cross-site auto-submitted form
+  // must never create an account and sign this browser into it.
+  const origin = checkRequestOrigin(Astro.request, import.meta.env as unknown as Record<string, string | undefined>);
+  if (!origin.allowed) {
+    status = 'error';
+    message = CROSS_SITE_MESSAGE;
+  } else if (firstErrorField(fieldErrors)) {
     status = 'error';
     message = registerBannerMessage(fieldErrors);
   } else {

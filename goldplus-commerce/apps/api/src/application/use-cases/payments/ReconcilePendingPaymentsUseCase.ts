@@ -40,7 +40,15 @@ export interface ReconcilePendingPaymentsResult {
   confirmed: number;
   failed: number;
   stillPending: number;
+  /**
+   * Attempts on an order that was already settled, re-asked because a refund
+   * was outstanding. A paid, partly refunded payment is neither confirmed
+   * again nor a failure; it used to be counted as `failed`.
+   */
+  alreadySettled: number;
   abandoned: number;
+  /** Paid orders whose owed fulfilment effects were re-run (see catch-up below). */
+  caughtUp: number;
   errors: Array<{ merchantReference: string; message: string }>;
 }
 
@@ -61,6 +69,15 @@ export class ReconcilePendingPaymentsUseCase {
       abandonStartFailuresAfterHours: number;
       batchLimit: number;
     },
+    /**
+     * Optional. Orders whose payment is CONFIRMED (a completed attempt) but
+     * whose fulfilment task was never marked paid, changed within the window.
+     * Without it a lost post-settlement effect is lost for good.
+     */
+    private readonly catchUp?: {
+      listPaidOrdersAwaitingFulfilmentPayment(since: Date, limit: number): Promise<string[]>;
+      windowHours: number;
+    },
   ) {}
 
   async execute(now: Date = new Date()): Promise<ReconcilePendingPaymentsResult> {
@@ -69,7 +86,9 @@ export class ReconcilePendingPaymentsUseCase {
       confirmed: 0,
       failed: 0,
       stillPending: 0,
+      alreadySettled: 0,
       abandoned: 0,
+      caughtUp: 0,
       errors: [],
     };
 
@@ -97,6 +116,8 @@ export class ReconcilePendingPaymentsUseCase {
         if (outcome.confirmed) result.confirmed++;
         else if (outcome.verification.status === 'pending' || outcome.verification.status === 'verification_pending') {
           result.stillPending++;
+        } else if (outcome.settlement.kind === 'ALREADY_SETTLED') {
+          result.alreadySettled++;
         } else {
           result.failed++;
         }
@@ -119,6 +140,22 @@ export class ReconcilePendingPaymentsUseCase {
           merchantReference: attempt.merchantReference,
           message: e instanceof Error ? e.message.slice(0, 200) : String(e),
         });
+      }
+    }
+
+    // The catch-up: work owed after a confirmed payment runs inline exactly
+    // once, and nothing else ever retried it. Every effect re-run here is
+    // idempotent per order, so a second pass costs nothing.
+    if (this.catchUp) {
+      const since = new Date(now.getTime() - this.catchUp.windowHours * 3_600_000);
+      try {
+        const owed = await this.catchUp.listPaidOrdersAwaitingFulfilmentPayment(since, this.config.batchLimit);
+        for (const orderId of owed) {
+          await this.settle.redoConfirmedEffects(orderId);
+          result.caughtUp++;
+        }
+      } catch (e) {
+        result.errors.push({ merchantReference: 'catch-up', message: e instanceof Error ? e.message.slice(0, 200) : String(e) });
       }
     }
 

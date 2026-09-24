@@ -16,9 +16,12 @@ export class BullMqPurchaseMeasurementQueue implements IPurchaseMeasurementQueue
   }
 
   async enqueuePurchaseMeasurement(data: PurchaseMeasurementJobData): Promise<boolean> {
+    // No queue = nothing was queued. The fallback used to answer true, so
+    // every settled payment was recorded PURCHASE_EVENT_QUEUED into a queue
+    // that does not exist (and nothing consumes 'route-purchase-event').
     if (this.isLocalFallback) {
-      this.logger.info({ data }, '[PurchaseMeasurementQueue] (Fallback) Queued purchase measurement event');
-      return true;
+      this.logger.info({ orderId: data.orderId }, '[PurchaseMeasurementQueue] Not configured; nothing queued');
+      return false;
     }
 
     try {
@@ -36,8 +39,8 @@ export class BullMqPurchaseMeasurementQueue implements IPurchaseMeasurementQueue
 
   async enqueuePurchaseRetry(data: PurchaseMeasurementJobData): Promise<boolean> {
     if (this.isLocalFallback) {
-      this.logger.info({ data }, '[PurchaseMeasurementQueue] (Fallback) Queued purchase retry event');
-      return true;
+      this.logger.info({ orderId: data.orderId }, '[PurchaseMeasurementQueue] Not configured; retry not queued');
+      return false;
     }
 
     try {

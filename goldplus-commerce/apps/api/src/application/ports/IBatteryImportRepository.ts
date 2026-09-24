@@ -81,9 +81,14 @@ export interface IBatteryImportRepository {
   events(id: string): Promise<Array<{ id: string; action: string; actorId: string; reason: string; evidence: Record<string, unknown>; createdAt: Date }>>;
   saveMapping(id: string, expectedVersion: number, mapping: ImportMapping, templateId: string | null, actorId: string): Promise<ImportSessionRecord | null>;
   savePreview(id: string, expectedVersion: number, digest: string, rows: PreviewRowWrite[], actorId: string): Promise<ImportSessionRecord | null>;
-  resolveRow(sessionId: string, rowId: string, resolution: 'INCLUDE' | 'EXCLUDE' | 'HOLD', note: string | null, override: Record<string, unknown> | null, actorId: string): Promise<{ session: ImportSessionRecord; row: ImportRowRecord } | null>;
+  /**
+   * 'NOT_EDITABLE': the session left MAPPED / READY_FOR_APPROVAL (approved,
+   * applying) before the row write; nothing was written. Checked under a lock.
+   * An override also sends the session back to MAPPED: approval needs a fresh dry run.
+   */
+  resolveRow(sessionId: string, rowId: string, resolution: 'INCLUDE' | 'EXCLUDE' | 'HOLD', note: string | null, override: Record<string, unknown> | null, actorId: string): Promise<{ session: ImportSessionRecord; row: ImportRowRecord } | 'NOT_EDITABLE' | null>;
   /** Record which catalogue battery a row is about. Forces a fresh dry run before approval. */
-  linkRowBattery(sessionId: string, rowId: string, canonicalCode: string | null, note: string, actorId: string): Promise<{ session: ImportSessionRecord; row: ImportRowRecord } | null>;
+  linkRowBattery(sessionId: string, rowId: string, canonicalCode: string | null, note: string, actorId: string): Promise<{ session: ImportSessionRecord; row: ImportRowRecord } | 'NOT_EDITABLE' | null>;
   approve(input: { id: string; expectedVersion: number; actorId: string; decision: 'APPROVED' | 'REJECTED'; reason: string }): Promise<ImportSessionRecord | null>;
   beginApply(id: string, expectedVersion: number, actorId: string): Promise<ImportSessionRecord | null>;
   markRowApplied(rowId: string, result: { status: 'APPLIED' | 'SKIPPED' | 'FAILED'; appliedRecordIds: Record<string, string[]> | null; beforeSnapshot: Record<string, unknown> | null; afterSnapshot: Record<string, unknown> | null; error: string | null }): Promise<void>;

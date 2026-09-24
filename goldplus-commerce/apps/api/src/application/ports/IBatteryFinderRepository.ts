@@ -16,8 +16,11 @@ export interface PublicFitRow {
   batteryLifecycle: string;
   productApproved: boolean;
   productActive: boolean;
+  /** Units a customer can buy: on hand minus reserved for open orders (never negative). */
   stockQuantity: number;
-  product: Omit<FinderBatteryResultDto, 'fitState' | 'fitLabel' | 'condition' | 'inStock'>;
+  /** The product's own Price A, used only to price a campaign. Internal: never copied into a DTO. */
+  floorPriceUgx: number | null;
+  product: Omit<FinderBatteryResultDto, 'fitState' | 'fitLabel' | 'condition' | 'inStock' | 'regularPriceUgx'>;
   device: FinderDeviceDto;
 }
 
@@ -84,8 +87,8 @@ export interface IBatteryFinderRepository {
   /** Every public fit row for a device (workflow ACTIVE only; the caller derives the state). */
   fitsForDevice(deviceId: string): Promise<PublicFitRow[]>;
   fitsForBattery(productId: string): Promise<PublicFitRow[]>;
-  batteryPublic(productId: string): Promise<(PublicFitRow['product'] & { lifecycleStatus: string; stockQuantity: number; productApproved: boolean; productActive: boolean }) | null>;
-  batteryPublicBySlug(slug: string): Promise<(PublicFitRow['product'] & { lifecycleStatus: string; publicNotes: string | null; warrantyMonths: number | null; chemistry: string | null }) | null>;
+  batteryPublic(productId: string): Promise<(PublicFitRow['product'] & { lifecycleStatus: string; stockQuantity: number; floorPriceUgx: number | null; productApproved: boolean; productActive: boolean }) | null>;
+  batteryPublicBySlug(slug: string): Promise<(PublicFitRow['product'] & { lifecycleStatus: string; publicNotes: string | null; warrantyMonths: number | null; chemistry: string | null; floorPriceUgx: number | null }) | null>;
 
   /** Candidate sets for ranking (active devices and non-archived batteries). */
   deviceCandidates(): Promise<DeviceCandidate[]>;

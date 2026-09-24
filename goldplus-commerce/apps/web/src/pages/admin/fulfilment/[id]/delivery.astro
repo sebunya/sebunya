@@ -2,6 +2,7 @@
 import AdminLayout from "../../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../../lib/session";
 import { apiBase } from "../../../../lib/api";
+import { kampalaLocalToIso } from "../../../../lib/kampalaTime";
 
 const taskId = String(Astro.params.id ?? "");
 const returnTo = `/admin/fulfilment/${taskId}/delivery`;
@@ -31,7 +32,7 @@ if (Astro.request.method === "POST") {
       recipientConfirmation: String(form.get("recipientConfirmation") || "").trim() || undefined,
       proofReference: String(form.get("proofReference") || "").trim() || undefined,
       failedReason: String(form.get("failedReason") || "").trim() || undefined,
-      rescheduledFor: resched ? new Date(resched).toISOString() : undefined,
+      rescheduledFor: kampalaLocalToIso(resched) ?? undefined, // Kampala wall-clock, not UTC
       notes: String(form.get("notes") || "").trim() || undefined,
     };
     const res = await fetch(`${apiBase}/admin/fulfilment/${encodeURIComponent(taskId)}/delivery`, { method: "POST", headers, body: JSON.stringify(payload) });

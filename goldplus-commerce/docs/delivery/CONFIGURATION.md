@@ -32,7 +32,7 @@ promise rather than a default.
 | `implausible_rider_cost_ugx` | ugx | UGX | `5000000` | 1000 to 100000000 | Reject a rider cost above |
 | `plausible_speed_min_kmh` | number | km/h | `8` | 1 to 120 | Warn if a derived speed is below |
 | `plausible_speed_max_kmh` | number | km/h | `45` | 1 to 120 | Warn if a derived speed is above |
-| `same_day_cutoff_eat` | string | HH:MM East Africa Time | **unset** | — | Same-day dispatch cutoff |
+| `same_day_cutoff_eat` | string | HH:MM East Africa Time | **unset** | — | Same-day dispatch cutoff (not used) |
 | `window_min_sample_size` | integer | deliveries | **unset** | 1 to 10000 | Deliveries needed before we promise an hour window |
 | `calibration_min_sample_size` | integer | deliveries | **unset** | 1 to 10000 | Deliveries needed before the model may propose a change |
 | `on_time_target_bps` | integer | basis points | **unset** | 1 to 10000 | How often a delivery must land inside its window |
@@ -82,7 +82,7 @@ promise rather than a default.
 - **Reject a rider cost above** (`implausible_rider_cost_ugx`) — A single delivery costing more than this is a typo, not a delivery. Raise it if a genuine long-haul run ever costs more.
 - **Warn if a derived speed is below** (`plausible_speed_min_kmh`) — Only a warning on the setup wizard. It never changes a fee and never blocks a publish.
 - **Warn if a derived speed is above** (`plausible_speed_max_kmh`) — Only a warning on the setup wizard. It never changes a fee and never blocks a publish.
-- **Same-day dispatch cutoff** (`same_day_cutoff_eat`) — Orders placed before this time in Kampala go out the same day. Unset means no same-day promise is made at all.
+- **Same-day dispatch cutoff (not used)** (`same_day_cutoff_eat`) — Not read by any quote. The same-day cutoff hour and the closed days come from Business info, the one place the header, basket, checkout and delivery quote all read, so two cutoffs can never show on one page.
 - **Deliveries needed before we promise an hour window** (`window_min_sample_size`) — Until an area has this many completed deliveries we promise at day level — today, tomorrow — rather than inventing an hour range. Unset means day level everywhere.
 - **Deliveries needed before the model may propose a change** (`calibration_min_sample_size`) — Below this the nightly job reports "not enough data" instead of a proposal, and the queue refuses to accept one. Unset means no proposals are made at all.
 - **How often a delivery must land inside its window** (`on_time_target_bps`) — The window widens by itself until it hits this. Unset means no hour window is offered at all, because there is nothing to tune against.

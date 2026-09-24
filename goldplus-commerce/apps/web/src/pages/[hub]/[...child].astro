@@ -21,6 +21,8 @@ import { dedupeProductsById, isApprovedDiscoveryProduct, getProductSubcategory, 
 import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
 import { fetchApprovedCatalogue } from '../../lib/catalogue';
 import { findRecordedRedirect } from '../../lib/recordedRedirect';
+import { offerPriceUgx } from '../../lib/offerPrice';
+import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../../lib/storefrontDiscount';
 
 /**
  * CATEGORY AUTHORITY ENGINE — one dynamic route serves every registered hub
@@ -83,6 +85,11 @@ const faqs = hub.faqs
 // JSON-LD: breadcrumbs + an ItemList carrying the same product facts the shop
 // page publishes — an engine reading a category page should not have to open 24
 // product pages to learn what is sold and for how much.
+// The same campaign the cards render, so the ItemList offer says what the card
+// says (the shop.astro pattern). The regular price here told Google a higher
+// price than the page and the checkout during every campaign.
+const hubDiscount = await getStorefrontDiscount();
+const hubCampaignRunning = hubDiscount.active && hubDiscount.percentBps > 0;
 const crumbs = [
   { name: 'Home', url: `${SITE_ORIGIN}/` },
   { name: hub.h1, url: `${SITE_ORIGIN}${hubPath(hub.slug)}` },
@@ -102,11 +109,23 @@ const itemListJsonLd = {
       url: `${SITE_ORIGIN}/products/${p.slug}`,
       ...(p.primaryImageUrl ? { image: /^https?:\/\//i.test(p.primaryImageUrl) ? p.primaryImageUrl : `${SITE_ORIGIN}${p.primaryImageUrl}` } : {}),
       ...(p.retailPriceUgx != null
-        ? { offers: { '@type': 'Offer', priceCurrency: 'UGX', price: p.retailPriceUgx, availability: p.availability?.kind === 'in_stock' ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock', url: `${SITE_ORIGIN}/products/${p.slug}` } }
+        ? { offers: { '@type': 'Offer', priceCurrency: 'UGX', price: offerPriceUgx(p.retailPriceUgx, hubCampaignRunning ? salePriceUgx(p.retailPriceUgx, hubDiscount.percentBps, effectiveFloorUgx(hubDiscount.priceFloorUgx, p.floorPriceUgx, p.retailPriceUgx)) : null), availability: p.availability?.kind === 'in_stock' ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock', url: `${SITE_ORIGIN}/products/${p.slug}` } }
         : {}),
     },
   })),
 };
+
+// A hub shows its first 24 products and hands the rest to the paginated shop:
+// /power rendered every power product (~130 cards, about half a megabyte of
+// HTML) on one page. The release gate still counts the full list.
+const HUB_CARD_LIMIT = 24;
+const shownProducts = products.slice(0, HUB_CARD_LIMIT);
+const shopParams = new URLSearchParams();
+if (hub.categorySlug) shopParams.set('category', hub.categorySlug);
+if (child?.subcategorySlug && hub.categorySlug) shopParams.set('subcategory', child.subcategorySlug);
+else if (child?.keywordFilter?.[0]) shopParams.set('q', child.keywordFilter[0]);
+else if (!child && !hub.categorySlug && hub.keywordFilter?.[0]) shopParams.set('q', hub.keywordFilter[0]);
+const seeAllHref = shopParams.toString() ? `/shop?${shopParams.toString()}` : '/shop';
 
 const relatedHubs = CATEGORY_HUBS.filter((h) => h.slug !== hub.slug).slice(0, 5);
 const intro = child ? [child.intro] : hub.intro;
@@ -152,10 +171,13 @@ const intro = child ? [child.intro] : hub.intro;
       <section aria-label="Products" class="mt-7">
         <p class="text-sm font-semibold text-slate-700">{products.length} product{products.length === 1 ? '' : 's'} in this range</p>
         <div class="mt-5 grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4">
-          {products.map((product, index) => (
+          {shownProducts.map((product, index) => (
             <ProductCard product={product} subcategory={subcategoryNameForSlug(getProductSubcategory(product, taxonomy), taxonomy)} eager={index < 4} />
           ))}
         </div>
+        {products.length > shownProducts.length && (
+          <a href={seeAllHref} class="mt-6 inline-flex min-h-11 items-center rounded-full bg-slate-950 px-6 text-sm font-bold text-white hover:bg-brand-primary hover:text-slate-950">See all {products.length} in the shop</a>
+        )}
       </section>
     ) : (
       <section class="mt-7 rounded-2xl border border-slate-200 bg-white p-6 text-center sm:p-10">

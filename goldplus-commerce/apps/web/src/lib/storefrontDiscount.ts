@@ -69,20 +69,24 @@ export async function getStorefrontDiscount(): Promise<StorefrontDiscount> {
 // relative import sidesteps package resolution altogether.
 export { salePriceUgx, effectiveFloorUgx } from '../../../../packages/shared/src/pricing/salePrice';
 
+/** The evaluator's own figures for a basket (a dry-run pricing preview). */
+export interface BasketQuote {
+  /** The basket at today's catalogue prices, before any promotion. */
+  baseSubtotalUgx: number;
+  /** Every automatic promotion the evaluator applies, floors and caps included. */
+  discountUgx: number;
+  /** What the goods will be charged: base less discount. */
+  goodsTotalUgx: number;
+}
+
 /**
- * The goods total the evaluator would charge for these lines, from the API's
- * own pricing preview (a dry run: no quote row is written). This is what the
- * cart and checkout pages show, because every product now carries its own
- * floor and only the evaluator holds all of them. On any failure it returns
- * `fallbackUgx` — the undiscounted subtotal — so the page can never advertise a
- * saving the basket will not honour; it can only under-promise.
+ * Asks the API's pricing preview (a dry run: no quote row is written) what the
+ * evaluator would charge for these lines. Null on any failure, so a caller can
+ * only ever under-promise.
  */
-export async function quotedGoodsTotalUgx(
-  items: Array<{ productId: string; quantity: number }>,
-  fallbackUgx: number,
-): Promise<number> {
+export async function quoteBasket(items: Array<{ productId: string; quantity: number }>): Promise<BasketQuote | null> {
   const lines = items.filter((i) => /^[0-9a-f-]{36}$/i.test(i.productId) && Number.isInteger(i.quantity) && i.quantity > 0);
-  if (lines.length === 0) return fallbackUgx;
+  if (lines.length === 0) return null;
   try {
     const res = await fetch(`${apiBase}/commerce/pricing-preview`, {
       method: 'POST',
@@ -90,11 +94,69 @@ export async function quotedGoodsTotalUgx(
       body: JSON.stringify({ items: lines, dryRun: true }),
       signal: AbortSignal.timeout(2500),
     });
-    if (!res.ok) return fallbackUgx;
+    if (!res.ok) return null;
     const json: any = await res.json().catch(() => null);
-    const total = Number(json?.data?.goodsTotalUgx);
-    return json?.success && Number.isFinite(total) && total >= 0 && total <= fallbackUgx ? total : fallbackUgx;
+    if (!json?.success) return null;
+    const baseSubtotalUgx = Number(json.data?.baseSubtotalUgx);
+    const discountUgx = Number(json.data?.discountTotalUgx);
+    const goodsTotalUgx = Number(json.data?.goodsTotalUgx);
+    if (![baseSubtotalUgx, discountUgx, goodsTotalUgx].every((n) => Number.isFinite(n) && n >= 0)) return null;
+    return { baseSubtotalUgx, discountUgx, goodsTotalUgx };
   } catch {
-    return fallbackUgx;
+    return null;
   }
+}
+
+/**
+ * The goods total the evaluator would charge for these lines. On any failure it
+ * returns `fallbackUgx` (the undiscounted subtotal), so the page can never
+ * advertise a saving the basket will not honour; it can only under-promise.
+ */
+export async function quotedGoodsTotalUgx(
+  items: Array<{ productId: string; quantity: number }>,
+  fallbackUgx: number,
+): Promise<number> {
+  const quote = await quoteBasket(items);
+  return quote && quote.goodsTotalUgx <= fallbackUgx ? quote.goodsTotalUgx : fallbackUgx;
+}
+
+/**
+ * The saving the evaluator gives this basket, for the cart and checkout
+ * summaries. Asked for EVERY basket, not only while a simple site-wide
+ * campaign runs: an automatic promotion with a condition ("UGX 20,000 off
+ * above 500,000"), a cap, an exclusion or product targets is not advertised
+ * as a storefront campaign, yet the evaluator still charges it, so the pages
+ * showed the undiscounted total while PesaPal asked for less. Clamped to the
+ * subtotal the page shows; 0 on any failure.
+ */
+export async function basketSavingUgx(
+  items: Array<{ productId: string; quantity: number }>,
+  subtotalUgx: number,
+): Promise<number> {
+  if (subtotalUgx <= 0) return 0;
+  const quote = await quoteBasket(items);
+  if (!quote) return 0;
+  return Math.min(subtotalUgx, Math.max(0, Math.floor(quote.discountUgx)));
+}
+
+/**
+ * The words beside that saving. The campaign's percentage is named only when
+ * the saving IS that percentage of every line; per-product floors (Price A)
+ * cut it line by line, and "10% discount -UGX 18,500" on a 330,000 basket
+ * (5.6%) reads as short-changing. Otherwise it is a plain "Sale saving".
+ */
+export function basketSavingLabel(
+  campaign: StorefrontDiscount,
+  lines: Array<{ unitPriceUgx: number; quantity: number }>,
+  savingUgx: number,
+): string {
+  const named = campaign.active && campaign.name ? ` · ${campaign.name}` : '';
+  if (campaign.active && campaign.percentBps > 0 && savingUgx > 0) {
+    const fullPercent = lines.reduce(
+      (sum, l) => sum + Math.floor((l.unitPriceUgx * l.quantity * campaign.percentBps) / 10_000),
+      0,
+    );
+    if (fullPercent === savingUgx) return `${campaign.percent}% off${named}`;
+  }
+  return `Sale saving${named}`;
 }

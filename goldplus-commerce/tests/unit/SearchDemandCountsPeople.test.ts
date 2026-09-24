@@ -54,7 +54,8 @@ describe('only people register demand', () => {
 
   it('the shop records demand only for people', () => {
     const shop = readFileSync(resolve(__dirname, '../../apps/web/src/pages/shop.astro'), 'utf8');
-    expect(shop).toMatch(/if \(search && isLikelyHuman\(Astro\.request\.headers\.get\('user-agent'\)\)\)/);
+    // (and only from a WHOLE catalogue: a partial read is not zero-result demand)
+    expect(shop).toMatch(/if \(search && (!cataloguePartial && )?isLikelyHuman\(Astro\.request\.headers\.get\('user-agent'\)\)\)/);
   });
 
   it('the storefront search itself still works for everyone, human or not', () => {

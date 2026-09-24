@@ -18,6 +18,10 @@ import { numericFeature } from '../../../../domain/customer-dna/CustomerFeatures
 const routes = new Hono();
 routes.use('*', authMiddleware);
 
+// A malformed customer id is a 404, never a Postgres cast error (a 500).
+const CUSTOMER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const notFound = (c: any) => c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Customer profile not found.' } } satisfies ApiResponse<never>, 404);
+
 routes.get('/', requirePermissions([PERMISSIONS.CUSTOMER_DNA_READ]), async (c) => {
   const q = c.req.query('q') ?? '';
   const limit = Number(c.req.query('limit') ?? '25');
@@ -32,6 +36,7 @@ routes.get('/conflicts', requirePermissions([PERMISSIONS.IDENTITY_REVIEW]), asyn
 
 routes.get('/:id', requirePermissions([PERMISSIONS.CUSTOMER_DNA_READ]), async (c) => {
   const id = String(c.req.param('id') ?? '');
+  if (!CUSTOMER_ID.test(id)) return notFound(c);
   const result = await Registry.getInstance().getCustomerDnaUseCase.execute(id);
   if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 404);
   return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
@@ -39,6 +44,7 @@ routes.get('/:id', requirePermissions([PERMISSIONS.CUSTOMER_DNA_READ]), async (c
 
 routes.post('/:id/recompute', requirePermissions([PERMISSIONS.CUSTOMER_DNA_MANAGE]), async (c) => {
   const id = String(c.req.param('id') ?? '');
+  if (!CUSTOMER_ID.test(id)) return notFound(c);
   const actorId = (c.get('user') as any).id as string;
   const result = await Registry.getInstance().projectCustomerProfileUseCase.execute({ canonicalCustomerId: id, actorId });
   if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 404);
@@ -48,6 +54,7 @@ routes.post('/:id/recompute', requirePermissions([PERMISSIONS.CUSTOMER_DNA_MANAG
 const nbaBody = z.object({ activationChannel: z.string().max(40).optional() }).optional();
 routes.post('/:id/nba', requirePermissions([PERMISSIONS.NBA_RECOMPUTE]), async (c) => {
   const id = String(c.req.param('id') ?? '');
+  if (!CUSTOMER_ID.test(id)) return notFound(c);
   const actorId = (c.get('user') as any).id as string;
   const parsed = nbaBody.safeParse(await c.req.json().catch(() => ({})));
   const reg = Registry.getInstance();

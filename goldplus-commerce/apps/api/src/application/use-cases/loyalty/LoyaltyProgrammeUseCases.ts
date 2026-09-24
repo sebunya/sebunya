@@ -153,6 +153,9 @@ export class EvaluateTiersUseCase {
     const accounts = await this.completion.listAccountIds();
     let changed = 0;
     for (const { accountId, userId } of accounts) {
+      // A merged account's earns count on its survivor; tiering it separately
+      // gave one customer two tiers and two tier messages.
+      if (await this.loyalty.mergedInto(accountId)) continue;
       const entries = await this.loyalty.listEntries(accountId);
       const lifetime = entries.filter((e) => e.type === 'earn').reduce((s, e) => s + e.points, 0);
       const target = ranked.find((t) => lifetime >= t.thresholdLifetimePoints);

@@ -96,7 +96,11 @@ routes.post('/payment/:provider', async (c) => {
       providerReference: parsed.providerReference ? String(parsed.providerReference) : null,
       amount: Number(parsed.amount),
       outcome: String(parsed.outcome ?? '').toUpperCase() as 'SUCCESS' | 'FAILED',
-      idempotencyKey: c.req.header('idempotency-key') ?? (parsed.idempotencyKey as string | undefined) ?? null,
+      // The dedupe key comes from SIGNED content only (the body's own
+      // idempotencyKey, else provider:providerReference). The Idempotency-Key
+      // HEADER is outside the signature: preferring it let a captured signed
+      // webhook be replayed under a fresh header as a "new" payment.
+      idempotencyKey: typeof parsed.idempotencyKey === 'string' ? parsed.idempotencyKey : null,
       signatureVerified,
       secretConfigured,
       graceEnabled: graceEnabledFor(provider, process.env),
@@ -159,8 +163,10 @@ routes.post('/payment/:provider', async (c) => {
       res.meta = { ...res.meta, requiresReview: true };
     }
 
-    // The GA4 purchase is sent by payment settlement (PesaPal) and COD placement
-    // only (infrastructure/telemetry/PurchaseTelemetry). This route used to
+    // The GA4 purchase comes from the authoritative commerce event: the paid
+    // transition (and COD placement) appends measurement.business_event
+    // 'order_confirmed' in the same transaction, and DeliveryService
+    // (infrastructure/measurement) routes it to GA4 and the ad platforms. This route used to
     // enqueue one too, keyed differently and without a visitor, which wrote
     // misleading `sent` rows and would have double-counted once given one.
 

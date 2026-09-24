@@ -7,6 +7,7 @@ import { DEAD_LETTER_STATE } from '../../domain/outbox/TerminalState';
 import { DrizzleAdDestinationRepository } from '../db/repositories/DrizzleAdDestinationRepository';
 import { IntegrationCredentialVault } from '../seo/IntegrationCredentialVault';
 import { adPlatform, buildAdRequest } from './AdPlatforms';
+import { advertisingRefused } from '../measurement/AdvertisingConsentGate';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 
@@ -59,6 +60,12 @@ async function activePlatforms() {
   return activeCache.list;
 }
 
+/**
+ * THROWS on a failed destination read or insert. It used to log and return 0,
+ * and the caller then marked the telemetry row sent, so that event's ad
+ * conversions were never retried. The caller's retry is safe: the inserts are
+ * idempotent on `ad:<platform>:<event id>`, and it runs before any GA4 send.
+ */
 export async function fanOutAdConversions(event: CanonicalTelemetryEvent): Promise<number> {
   try {
     const live = await activePlatforms();
@@ -74,8 +81,8 @@ export async function fanOutAdConversions(event: CanonicalTelemetryEvent): Promi
     }
     return queued;
   } catch (err) {
-    logger.warn({ err, eventId: event.event_id }, '[Ads] fan-out failed');
-    return 0;
+    logger.warn({ err, eventId: event.event_id }, '[Ads] fan-out failed; the telemetry row will retry');
+    throw err;
   }
 }
 
@@ -112,6 +119,17 @@ export async function processAdConversionBatch(): Promise<{ claimed: number; sen
       await repo.recordResult(platform, false, 'The stored token could not be decrypted (the server key changed). Re-enter the token.').catch(() => undefined);
       out.skipped++; continue;
     }
+    // D-002, the same gate as purchases: an explicit advertising refusal stops
+    // browsing conversions too. An unreadable consent state defers the row
+    // (no attempt counted); it never sends on an unknown answer.
+    let refused: boolean;
+    try {
+      refused = await advertisingRefused({ userId: event?.user_data?.user_id, fpClientId: event?.user_data?.fp_client_id });
+    } catch {
+      await db.update(outboxEvents).set({ status: 'retrying', lastError: 'CONSENT_LOOKUP_FAILED', nextAttemptAt: new Date(Date.now() + 5 * 60_000) }).where(eq(outboxEvents.id, row.id));
+      out.retried++; continue;
+    }
+    if (refused) { await finish('suppressed', { lastError: 'CONSENT_DENIED' }); out.skipped++; continue; }
     const req = buildAdRequest(platform, event, dest.config, secret);
     if (!req) { await finish('skipped', { lastError: 'no equivalent event or required identifier' }); out.skipped++; continue; }
     const attempt = row.attemptCount + 1;

@@ -9,10 +9,14 @@ import {
   type FinderDeviceDto,
   type FinderResolution,
   type PublicFitState,
+  salePriceUgx,
+  effectiveFloorUgx,
 } from '@goldplus/shared';
 import type { IBatteryFinderRepository, PublicFitRow, FinderEventWrite } from '../../ports/IBatteryFinderRepository';
 import type { IBatteryCatalogueRepository } from '../../ports/IBatteryCatalogueRepository';
 import type { IAuditRepository } from '../../ports/IAuditRepository';
+import type { IPricingRepository } from '../../ports/IPricingRepository';
+import { resolveStorefrontDiscount, INACTIVE_DISCOUNT, type StorefrontDiscount } from '../../pricing/StorefrontDiscountQuery';
 import { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
 import { orderBrands, orderModels } from '../../../domain/batteries/DeviceHierarchy';
 import { publicFitLabel, publicFitRank, publicFitState } from '../../../domain/batteries/CompatibilityWorkflow';
@@ -31,8 +35,30 @@ export class BatteryFinderUseCases {
     private readonly batteries: IBatteryCatalogueRepository,
     auditRepo: IAuditRepository,
     private readonly pepper: string,
+    /**
+     * Optional: the live storefront campaign. Without it the finder quotes the
+     * catalogue price. With it, the finder quotes the same campaign price as the
+     * card, the search dropdown and the product page it links to.
+     */
+    private readonly pricing?: Pick<IPricingRepository, 'listActiveVersions'>,
   ) {
     this.audit = new CreateAuditLogUseCase(auditRepo);
+  }
+
+  private campaign(): Promise<StorefrontDiscount> {
+    return this.pricing ? resolveStorefrontDiscount(this.pricing) : Promise.resolve(INACTIVE_DISCOUNT);
+  }
+
+  /**
+   * The price the customer pays today, by the one shared formula (product floor
+   * included). regularPriceUgx is set only when the campaign actually lowers the
+   * price, so the page never strikes through a price that did not move.
+   */
+  private priced<T extends { priceUgx: number | null }>(product: T, floorPriceUgx: number | null, campaign: StorefrontDiscount): T & { regularPriceUgx: number | null } {
+    const retail = product.priceUgx;
+    if (retail === null || !campaign.active || campaign.percentBps <= 0) return { ...product, regularPriceUgx: null };
+    const sale = salePriceUgx(retail, campaign.percentBps, effectiveFloorUgx(campaign.priceFloorUgx, floorPriceUgx, retail));
+    return sale < retail ? { ...product, priceUgx: sale, regularPriceUgx: retail } : { ...product, regularPriceUgx: null };
   }
 
   // ---------------------------------------------------------------- config
@@ -84,9 +110,9 @@ export class BatteryFinderUseCases {
     return { brand: found.brand, series: found.series, devices };
   }
 
-  private toResult(row: PublicFitRow, state: PublicFitState): FinderBatteryResultDto {
+  private toResult(row: PublicFitRow, state: PublicFitState, campaign: StorefrontDiscount): FinderBatteryResultDto {
     return {
-      ...row.product,
+      ...this.priced(row.product, row.floorPriceUgx, campaign),
       inStock: row.stockQuantity > 0,
       fitState: state,
       fitLabel: publicFitLabel(state),
@@ -95,30 +121,39 @@ export class BatteryFinderUseCases {
   }
 
   private async resultsForDevice(deviceId: string, cfg: BatteryFinderConfig): Promise<FinderBatteryResultDto[]> {
-    const rows = await this.repo.fitsForDevice(deviceId);
+    const [rows, campaign] = await Promise.all([this.repo.fitsForDevice(deviceId), this.campaign()]);
     const out: Array<{ r: FinderBatteryResultDto; rank: number }> = [];
     for (const row of rows) {
       const state = publicFitState({ workflowStatus: row.workflowStatus as never, evidenceStatus: row.evidenceStatus as never, batteryLifecycle: row.batteryLifecycle, productApproved: row.productApproved, productActive: row.productActive, stockQuantity: row.stockQuantity, showAwaitingVerification: cfg.showAwaitingVerification });
       if (!state) continue;
-      out.push({ r: this.toResult(row, state), rank: publicFitRank(state) });
+      out.push({ r: this.toResult(row, state, campaign), rank: publicFitRank(state) });
     }
     return out.sort((a, b) => a.rank - b.rank || a.r.name.localeCompare(b.r.name)).map((x) => x.r);
   }
 
-  async device(slug: string, sessionId?: string | null) {
+  /**
+   * `record` is false for a lookup that is not a customer choosing a phone: the
+   * product page resolves ?device= only to remember it, and counting that too
+   * put a second (and, on every reload or crawl, a third) DEVICE_SELECTED on
+   * the demand list the owner stocks from.
+   */
+  async device(slug: string, sessionId?: string | null, record = true) {
     const cfg = await this.config();
     const device = await this.repo.deviceBySlug(slug);
     if (!device) throw notFound('Device');
     const results = await this.resultsForDevice(device.id, cfg);
-    void this.repo.recordEvent({ eventType: 'DEVICE_SELECTED', mode: 'FIND_BY_PHONE', queryNormalised: null, outcome: results.length ? outcomeFor(results[0].fitState) : 'NO_RESULT', brandId: null, seriesId: null, deviceId: device.id, batteryProductId: null, resultCount: results.length, aliasHit: false, sessionHash: this.sessionHash(sessionId) }).catch(() => undefined);
+    if (record) void this.repo.recordEvent({ eventType: 'DEVICE_SELECTED', mode: 'FIND_BY_PHONE', queryNormalised: null, outcome: results.length ? outcomeFor(results[0].fitState) : 'NO_RESULT', brandId: null, seriesId: null, deviceId: device.id, batteryProductId: null, resultCount: results.length, aliasHit: false, sessionHash: this.sessionHash(sessionId) }).catch(() => undefined);
     return { device, results, config: cfg };
   }
 
   /** Everything the product page needs about a battery. */
   async battery(slug: string) {
     const cfg = await this.config();
-    const product = await this.repo.batteryPublicBySlug(slug);
-    if (!product) return null;
+    const found = await this.repo.batteryPublicBySlug(slug);
+    if (!found) return null;
+    // Price A is internal: it prices the campaign and never leaves this method.
+    const { floorPriceUgx, ...unpriced } = found;
+    const product = this.priced(unpriced, floorPriceUgx, await this.campaign());
     const rows = await this.repo.fitsForBattery(product.productId);
     const devices: Array<FinderDeviceDto & { fitState: PublicFitState; fitLabel: string; condition: string | null }> = [];
     for (const row of rows) {
@@ -176,7 +211,8 @@ export class BatteryFinderUseCases {
         .filter((x) => x.state)
         .map((x) => x.row.device);
       if (product && product.lifecycleStatus === 'ACTIVE' && product.productApproved && product.productActive) {
-        const { lifecycleStatus: _l, stockQuantity, productApproved: _a, productActive: _p, ...publicProduct } = product;
+        const { lifecycleStatus: _l, stockQuantity, floorPriceUgx, productApproved: _a, productActive: _p, ...unpriced } = product;
+        const publicProduct = this.priced(unpriced, floorPriceUgx, await this.campaign());
         const state: PublicFitState = stockQuantity > 0 ? 'VERIFIED_IN_STOCK' : 'VERIFIED_OUT_OF_STOCK';
         void event('RESOLVED', { mode: 'SEARCH_CODE', batteryProductId: productId, resultCount: publicDevices.length, aliasHit: exactBatteries[0].tier === 5 });
         return { kind: 'BATTERY', battery: { ...publicProduct, inStock: stockQuantity > 0, fitState: state, fitLabel: publicFitLabel(state), condition: null }, devices: publicDevices, query, config: cfg };

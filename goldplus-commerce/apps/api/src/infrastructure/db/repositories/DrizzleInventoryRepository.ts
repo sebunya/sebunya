@@ -1,5 +1,6 @@
 import { db } from '../client';
 import { products } from '../schema/products';
+import { stockStatusAfter } from '../StockStatusSql';
 import { orders } from '../schema/commerce';
 import { inventoryReservations } from '../schema/inventory';
 import { and, eq, inArray, sql } from 'drizzle-orm';
@@ -91,7 +92,7 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
           // The same rule the adjust path applies; the two had diverged, so a
           // quantity of 0 left stock_status 'in_stock' and the in-stock filter
           // kept listing a product its own card showed as out of stock.
-          .set({ stockQuantity: newStock, stockStatus: sql`case when ${newStock} <= 0 then 'out_of_stock' else 'in_stock' end` })
+          .set({ stockQuantity: newStock, stockStatus: stockStatusAfter(newStock) })
           .where(and(
             eq(products.id, productId),
             sql`${products.reservedQuantity} <= ${newStock}`,
@@ -148,13 +149,22 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
           .from(products)
           .where(inArray(products.id, existing.map((r) => r.productId)));
         const policyById = new Map(policyRows.map((r) => [r.id, parseInventoryPolicy(r.policy)]));
-        const outcomeLines: ReservationLineOutcome[] = existing.map((r) => ({
-          productId: r.productId,
-          requested: r.requestedQuantity,
-          reserved: r.reservedQuantity,
-          shortfall: Math.max(0, r.requestedQuantity - r.reservedQuantity),
-          policy: policyById.get(r.productId) ?? DEFAULT_INVENTORY_POLICY,
-        }));
+        // A RELEASED row holds nothing: its units are back on sale (the TTL
+        // sweep, a cancel). Counted as held, a resumed checkout replayed
+        // ALREADY_RESERVED and the order was marked RESERVED — and went on to
+        // payment — while holding no stock. It now reads as a shortfall, so
+        // the order cannot progress on stock it does not have. (A consumed
+        // row did receive its units.)
+        const outcomeLines: ReservationLineOutcome[] = existing.map((r) => {
+          const held = r.status === 'released' ? 0 : r.reservedQuantity;
+          return {
+            productId: r.productId,
+            requested: r.requestedQuantity,
+            reserved: held,
+            shortfall: Math.max(0, r.requestedQuantity - held),
+            policy: policyById.get(r.productId) ?? DEFAULT_INVENTORY_POLICY,
+          };
+        });
         return summariseReservation(orderId, outcomeLines, true);
       }
 
@@ -232,8 +242,11 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
     });
   }
 
+  // Release and consume retry a lost race like reserve does: each moves only
+  // 'reserved' rows under FOR UPDATE, so a retry after an unseen commit finds
+  // nothing left to move.
   async releaseForOrder(orderId: string): Promise<{ released: boolean }> {
-    return db.transaction(async (tx) => {
+    return withTransactionRetry(() => db.transaction(async (tx) => {
       const active = await tx
         .select()
         .from(inventoryReservations)
@@ -257,11 +270,11 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
       // RESERVED forever — on the field payment and fulfilment fail closed on.
       await this.mirrorOrderReservationState(tx, orderId, 'RELEASED');
       return { released: true };
-    });
+    }));
   }
 
   async consumeForOrder(orderId: string): Promise<{ consumed: boolean }> {
-    return db.transaction(async (tx) => {
+    return withTransactionRetry(() => db.transaction(async (tx) => {
       const active = await tx
         .select()
         .from(inventoryReservations)
@@ -275,6 +288,10 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
             .set({
               stockQuantity: sql`greatest(0, ${products.stockQuantity} - ${r.reservedQuantity})`,
               reservedQuantity: sql`greatest(0, ${products.reservedQuantity} - ${r.reservedQuantity})`,
+              // Selling the last unit is what usually takes a product out of
+              // stock; without this the in-stock filter and the Merchant feed
+              // kept saying "in stock" for a product nobody could buy.
+              stockStatus: stockStatusAfter(sql`greatest(0, ${products.stockQuantity} - ${r.reservedQuantity})`),
             })
             .where(eq(products.id, r.productId));
         }
@@ -285,7 +302,7 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
       }
       await this.mirrorOrderReservationState(tx, orderId, 'CONSUMED');
       return { consumed: true };
-    });
+    }));
   }
 
   async summariseReservations(orderId: string): Promise<ReservationStatusSummary> {

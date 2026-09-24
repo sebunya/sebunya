@@ -2,6 +2,7 @@
 import AdminLayout from "../../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../../lib/session";
 import { apiBase } from "../../../../lib/api";
+import { kampalaLocalToIso } from "../../../../lib/kampalaTime";
 
 const taskId = String(Astro.params.id ?? "");
 const returnTo = `/admin/fulfilment/${taskId}/dispatch`;
@@ -33,7 +34,7 @@ if (Astro.request.method === "POST") {
         riderName: String(form.get("riderName") || "").trim() || undefined,
         contact: String(form.get("contact") || "").trim() || undefined,
         notes: String(form.get("notes") || "").trim() || undefined,
-        estimatedDeliveryAt: eta ? new Date(eta).toISOString() : undefined,
+        estimatedDeliveryAt: kampalaLocalToIso(eta) ?? undefined, // Kampala wall-clock, not UTC
         allowCashOnDelivery: form.get("allowCashOnDelivery") === "on",
       };
       okText = "Dispatch recorded — order is out for delivery.";
@@ -45,7 +46,7 @@ if (Astro.request.method === "POST") {
         expectedVersion: Number(form.get("expectedVersion") || 0),
         trackingStatus: String(form.get("trackingStatus") || "") || undefined,
         notes: String(form.get("notes") || "").trim() || undefined,
-        estimatedDeliveryAt: eta ? new Date(eta).toISOString() : undefined,
+        estimatedDeliveryAt: kampalaLocalToIso(eta) ?? undefined, // Kampala wall-clock, not UTC
       };
       okText = "Tracking updated.";
     }
@@ -53,6 +54,9 @@ if (Astro.request.method === "POST") {
       const res = await fetch(endpoint, { method, headers, body: JSON.stringify(payload) });
       const json = await res.json().catch(() => null);
       if (res.status === 403) notice = { kind: "error", text: "You do not have permission to manage dispatch." };
+      // The task moved, but the ORDER did not follow (a cancelled or otherwise
+      // closed order): said here, not only in the audit row nobody reads.
+      else if (json?.success && json?.data?.orderMirror === "skipped") notice = { kind: "conflict", text: "Dispatch recorded, but the order's own status could not move to dispatched. Open the order and check its status." };
       else if (json?.success) notice = { kind: "success", text: okText };
       else if (json?.error?.code === "STALE_DISPATCH_VERSION") notice = { kind: "conflict", text: "This dispatch changed since the page loaded — the latest values are shown below. Try again." };
       else notice = { kind: "error", text: json?.error?.message || "The dispatch service rejected that change." };

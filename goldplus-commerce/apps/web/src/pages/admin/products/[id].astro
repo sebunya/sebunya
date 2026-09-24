@@ -10,33 +10,22 @@ if (!token) {
   return Astro.redirect(`/admin/login?returnTo=/admin/products/${encodeURIComponent(id ?? '')}`, 303);
 }
 
-// The products list links by id, but /products/:slug matches on SLUG ONLY, so
-// passing the uuid always returned NOT_FOUND and this page rendered empty.
-// Resolve the id to its slug on the admin route first, then read the same
-// public view the page has always rendered.
-async function resolveSlug(productId: string): Promise<string | null> {
-  try {
-    const res = await fetch(`${apiBase}/admin/products/${encodeURIComponent(productId)}`, {
-      headers: { 'Authorization': `Bearer ${token}` }
-    });
-    const json = await res.json().catch(() => null);
-    return json?.success ? (json.data?.slug ?? null) : null;
-  } catch {
-    return null;
-  }
-}
-
+// Admin view by id (GET /admin/products/:id/view): the public product shape
+// WITHOUT the approved/active gate. Reading the public /products/:slug route
+// made every draft, rejected or inactive product — the ones that need editing
+// — show "Product Not Found".
+let loadStatus = 0;
 async function fetchProduct(productId: string) {
   try {
-    const slug = await resolveSlug(productId);
-    if (!slug) return null;
-    const res = await fetch(`${apiBase}/products/${encodeURIComponent(slug)}`, {
+    const res = await fetch(`${apiBase}/admin/products/${encodeURIComponent(productId)}/view`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
+    loadStatus = res.status;
+    if (res.status === 401) return { authError: true };
     const json = await res.json().catch(() => null);
-    if (res.status === 401 || res.status === 403) return { authError: true };
     return json?.success ? json.data : null;
   } catch {
+    loadStatus = 0;
     return null;
   }
 }
@@ -72,6 +61,7 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
       
       {product && (
         <div class="flex items-center gap-3">
+          {product.liveOnStorefront ? (
           <a 
             href={`/products/${product.slug}`} 
             target="_blank" 
@@ -79,6 +69,9 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
           >
             Public Storefront &rarr;
           </a>
+          ) : (
+          <span class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-900">Not on the storefront ({product.approvalStatus}{product.active ? '' : ', inactive'})</span>
+          )}
           <a 
             href={`/admin/products/${product.id}/listing`} 
             class="bg-white hover:bg-gray-50 text-brand-dark font-black text-xs px-4 py-2 rounded-xl transition-colors shadow-xs uppercase tracking-wider border border-gray-300"
@@ -103,7 +96,7 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
     </div>
 
     {!product ? (
-      <Notice kind="not-configured" title="Product Not Found" message="The requested product could not be located in the central database. It may have been removed or archived." />
+      <Notice kind="not-configured" title={loadStatus === 404 ? 'Product not found' : loadStatus === 403 ? 'Not permitted' : 'Product could not be loaded'} message={loadStatus === 404 ? 'No product exists with this id.' : loadStatus === 403 ? 'Your role cannot read products (products.read required).' : 'The products API did not answer. Reload to retry.'} />
     ) : (
       <div class="space-y-8 mb-12">
         

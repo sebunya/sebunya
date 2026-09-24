@@ -66,8 +66,16 @@ export function assessReadiness(input: ReadinessInput): ReadinessReport {
   if (!input.canonicalCode.trim() || input.codeStatus !== 'CONFIRMED') {
     blockers.push({ code: 'NO_CANONICAL_CODE', message: CODE_STATUS_MESSAGE[input.codeStatus] ?? 'Missing canonical battery code.' });
   }
-  if (/[/]/.test(input.canonicalCode) || /\bAND\b/i.test(input.canonicalCode)) {
-    blockers.push({ code: 'UNRESOLVED_COMPOUND_CODE', message: `"${input.canonicalCode}" combines more than one battery reference. Split it or confirm it is one packaged cross-reference.` });
+  // A slash code can be the ONE code printed on the pack (A20/A30/A50 is a single
+  // catalogue battery; the import already treats it so). The recorded
+  // confirmation is the one the message asks for: the code confirmed from the
+  // pack AND the battery verified against it by a second person — verification
+  // is reset whenever a pack fact, the code included, changes afterwards. Only
+  // then does a slash code publish. "AND" is never a printed code.
+  const slashConfirmed =
+    input.codeStatus === 'CONFIRMED' && input.verificationStatus === 'VERIFIED' && !/\bAND\b/i.test(input.canonicalCode);
+  if ((/[/]/.test(input.canonicalCode) && !slashConfirmed) || /\bAND\b/i.test(input.canonicalCode)) {
+    blockers.push({ code: 'UNRESOLVED_COMPOUND_CODE', message: `"${input.canonicalCode}" combines more than one battery reference. Split it, or, if this is the one code printed on the pack, confirm the code from the pack and verify the battery against it.` });
   }
   if (input.aliasConflicts.length) {
     blockers.push({ code: 'ALIAS_CONFLICT', message: `Alias conflict: ${input.aliasConflicts.join(', ')} also resolve(s) to another active battery.` });

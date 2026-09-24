@@ -95,6 +95,11 @@ describe('security and sessions', () => {
     const src = read('apps/api/src/interfaces/http/routes/delivery.ts');
     expect(src).toMatch(/const CACHE_MAX = 5_000;/);
     expect(src).toMatch(/function cacheSet\(/);
+    // The bounded writer must be the ONE writer: it was dead code while the
+    // handler kept calling CACHE.set directly, so the bound never applied.
+    expect(src).toMatch(/cacheSet\(fullKey,/);
+    const bareSets = src.match(/CACHE\.set\(/g) ?? [];
+    expect(bareSets.length).toBe(1); // the one inside cacheSet itself
   });
 
   it('a second SUCCESS webhook for a paid order is held for review, not crashed', () => {

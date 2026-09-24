@@ -37,8 +37,10 @@ export class DealerApplicationUseCase {
     if (!contactName) throw new DealerApplicationValidationError('Contact person name is required.');
     if (!location) throw new DealerApplicationValidationError('Business location is required.');
 
-    if (!isValidEmail(email)) {
-      throw new DealerApplicationValidationError('A valid email address is required.');
+    // Email is optional (owner decision 2026-09-24): the team calls the number
+    // given. Stored as '' when absent (the column is NOT NULL).
+    if (email && !isValidEmail(email)) {
+      throw new DealerApplicationValidationError('That email address does not look right. Check it, or leave it blank.');
     }
     if (!isValidUgandanPhone(phone)) {
       throw new DealerApplicationValidationError('A valid Ugandan phone number is required.');

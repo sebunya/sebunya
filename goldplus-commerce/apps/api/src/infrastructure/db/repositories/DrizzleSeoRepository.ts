@@ -2,6 +2,7 @@ import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { redirects, gscPerformance } from '../schema/seo';
 import { products } from '../schema/products';
+import { notRetiredByLifecycle } from '../LifecycleVisibilitySql';
 
 export interface SitemapProduct { slug: string; updatedAt: Date; }
 
@@ -45,12 +46,13 @@ export class DrizzleSeoRepository {
   }
 
   /** AC1/AC2 — every APPROVED, ACTIVE product for the sitemap, with real lastmod
-   * (updated_at), paginated. Not capped at the product-listing default of 60. */
+   * (updated_at), paginated. Not capped at the product-listing default of 60.
+   * A page the operator retired (301/410/unpublish) is not submitted. */
   async sitemapProducts(offset: number, limit: number): Promise<SitemapProduct[]> {
     const rows = await db
       .select({ slug: products.slug, updatedAt: products.updatedAt })
       .from(products)
-      .where(and(eq(products.active, true), eq(products.approvalStatus, 'approved')))
+      .where(and(eq(products.active, true), eq(products.approvalStatus, 'approved'), notRetiredByLifecycle(sql`${products.id}`)))
       .orderBy(products.slug)
       .limit(Math.min(limit, 50_000))
       .offset(offset);
@@ -62,7 +64,7 @@ export class DrizzleSeoRepository {
   }
 
   async countSitemapProducts(): Promise<number> {
-    const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(products).where(and(eq(products.active, true), eq(products.approvalStatus, 'approved')));
+    const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(products).where(and(eq(products.active, true), eq(products.approvalStatus, 'approved'), notRetiredByLifecycle(sql`${products.id}`)));
     return row?.n ?? 0;
   }
 

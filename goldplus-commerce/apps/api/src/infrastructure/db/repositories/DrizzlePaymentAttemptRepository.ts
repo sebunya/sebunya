@@ -145,7 +145,10 @@ export class DrizzlePaymentAttemptRepository implements IPesaPalPaymentRepositor
       .select({ attempt: paymentAttempts })
       .from(paymentAttempts)
       .innerJoin(paymentRefunds, eq(paymentRefunds.paymentAttemptId, paymentAttempts.id))
-      .where(and(eq(paymentAttempts.status, 'completed'), eq(paymentRefunds.status, 'requested'), isNotNull(paymentAttempts.orderTrackingId)))
+      // Only a refund the provider ACCEPTED is something to watch land; one
+      // whose call failed waits for a person, and polling it forever would
+      // only (wrongly) settle it on the next REVERSED status.
+      .where(and(eq(paymentAttempts.status, 'completed'), eq(paymentRefunds.status, 'requested'), eq(paymentRefunds.providerStatus, '200'), isNotNull(paymentAttempts.orderTrackingId)))
       .orderBy(desc(paymentAttempts.createdAt))
       .limit(Math.max(1, Math.min(limit, 200)));
     const seen = new Set<string>();

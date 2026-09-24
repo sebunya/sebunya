@@ -30,7 +30,7 @@ const filters: Array<[string, string]> = [['incomplete', 'Fewer than 4'], ['0', 
         <p class="text-sm text-gray-500 mt-1">Completeness by slot count. Assigned count, valid cover, asset readiness and editorial quality are four different things.</p>
       </div>
       <div class="flex gap-2">
-        <a href={`${apiBase}/admin/media/gallery-queue/reconciliation.csv`} class="bg-white border border-gray-200 hover:bg-gray-50 text-brand-dark font-bold text-xs px-4 py-2 rounded-xl shadow-xs" title="Needs the API session; open from an admin browser session">Reconciliation CSV</a>
+        <a href="/api/admin/media/gallery-reconciliation.csv" class="bg-white border border-gray-200 hover:bg-gray-50 text-brand-dark font-bold text-xs px-4 py-2 rounded-xl shadow-xs">Reconciliation CSV</a>
         <a href="/admin/media/imports" class="bg-brand-dark text-white font-bold text-xs px-4 py-2 rounded-xl shadow-xs">Bulk import</a>
       </div>
     </div>

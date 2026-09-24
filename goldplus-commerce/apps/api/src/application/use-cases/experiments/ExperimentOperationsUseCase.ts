@@ -26,6 +26,12 @@ export class ExperimentOperationsUseCase {
     const current = await this.repo.find(input.id);
     if (!current) throw new ExperimentOperationError('EXPERIMENT_NOT_FOUND', 'Experiment was not found.');
     if (!canTransitionExperiment(current.status, input.to)) throw new ExperimentOperationError('INVALID_TRANSITION', `${current.status} cannot transition to ${input.to}.`);
+    // A rec_ experiment would be assigned and logged while every variant is
+    // served the same rails: an A/A test reported as a real one. Not started
+    // until variants can change serving.
+    if (input.to === 'RUNNING' && current.key.startsWith('rec_')) {
+      throw new ExperimentOperationError('NOT_CONFIGURED', 'Recommendation experiments are not configured: no variant changes what the rails serve yet, so this test would measure nothing. It was not started.');
+    }
     const updated = await this.repo.transition(input.id, input.expectedVersion, current.status, input.to);
     if (!updated) throw new ExperimentOperationError('STALE_VERSION', 'Experiment changed after it was loaded.');
     await this.audit.execute({ actorId: input.actorId, action: `EXPERIMENT_${input.to}`, entity: 'experiment', entityId: input.id, previousState: { status: current.status, version: current.version }, newState: { status: input.to, version: updated.version, reason: input.reason } });

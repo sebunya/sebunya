@@ -65,8 +65,16 @@ describe('every template a producer can emit', () => {
   });
 
   it('still refuses a genuine promotional send without consent', () => {
-    for (const t of ['LOYALTY_EXPIRY_WARNING', 'LOYALTY_POINTS_EARNED', 'SOME_NEW_CAMPAIGN_BLAST']) {
+    for (const t of ['SOME_NEW_CAMPAIGN_BLAST', 'SPRING_SALE_ANNOUNCEMENT']) {
       expect(classifyTemplate(t)).toBe('MARKETING');
+    }
+  });
+
+  it('treats loyalty account notices as transactional (owner, 2026-09-24)', () => {
+    // docs/loyalty-decisions.md: "warnings are transactional" (#15). As
+    // MARKETING they were refused without an opt-in and points expired unwarned.
+    for (const t of ['LOYALTY_EXPIRY_WARNING', 'LOYALTY_POINTS_EARNED', 'LOYALTY_REDEMPTION_CONFIRMED', 'LOYALTY_REDEMPTION_REVERSED', 'LOYALTY_TIER_CHANGED']) {
+      expect(classifyTemplate(t)).toBe('TRANSACTIONAL');
     }
   });
 });

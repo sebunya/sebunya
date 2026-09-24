@@ -175,7 +175,10 @@ export class PesaPalClient implements IPesaPalClient {
     return data;
   }
 
-  public async getTransactionStatus(orderTrackingId: string): Promise<PesaPalTransactionStatusResponse> {
+  public async getTransactionStatus(
+    orderTrackingId: string,
+    options?: { breakerName?: string },
+  ): Promise<PesaPalTransactionStatusResponse> {
     const token = await this.getToken();
     const url = `${this.getBaseUrl()}/api/Transactions/GetTransactionStatus?orderTrackingId=${encodeURIComponent(orderTrackingId)}`;
 
@@ -185,7 +188,10 @@ export class PesaPalClient implements IPesaPalClient {
         'Accept': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-      breakerName: 'pesapal',
+      // Read-only callers (the admin queue) pass their own breaker, so a page
+      // of status lookups during a provider slowdown cannot open the breaker
+      // that checkout, callbacks and refunds depend on.
+      breakerName: options?.breakerName ?? 'pesapal',
       timeoutMs: 3000,
     });
 
@@ -240,7 +246,10 @@ export class PesaPalClient implements IPesaPalClient {
         remarks: input.remarks,
       }),
       breakerName: 'pesapal',
-      timeoutMs: 5000,
+      // A single, never-retried call that moves money. At 5 s a slow
+      // acceptance became PROVIDER_CALL_FAILED ("unknown whether money
+      // moved"), a row nobody could see resolve. Waiting longer is safe.
+      timeoutMs: 30_000,
     });
     if (!response.ok) {
       const errBody = await response.text().catch(() => 'No details');

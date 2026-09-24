@@ -42,7 +42,8 @@ const issueCounts: Record<string, number> = r?.issueCounts ?? {};
 const rows: any[] = Array.isArray(r?.products) ? r.products : [];
 
 /** Issues that keep a product OUT of the feed, versus quality warnings that do not. */
-const BLOCKING = new Set(["not_feed_eligible", "inactive", "not_approved", "missing_image", "missing_price"]);
+// An empty description keeps an item out of the feed (Google disapproves it).
+const BLOCKING = new Set(["not_feed_eligible", "inactive", "not_approved", "missing_image", "missing_price", "missing_description"]);
 const ISSUE_LABEL: Record<string, string> = {
   not_feed_eligible: "Not marked feed-eligible",
   inactive: "Product is inactive",
@@ -52,6 +53,7 @@ const ISSUE_LABEL: Record<string, string> = {
   missing_description: "No description",
   description_under_50_chars: "Description under 50 characters",
   missing_mpn: "No model number (MPN)",
+  preorder_without_date: "Pre-order with no date: sent to Google as out of stock",
   title_over_150_chars: "Title over 150 characters",
 };
 

@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { readSessionToken } from '../../../../lib/session';
 import { apiBase } from '../../../../lib/api';
+import { readBodyCapped } from '../../../../lib/boundedBody';
 
 /**
  * Same-origin proxy for the article editor's writes.
@@ -46,12 +47,17 @@ async function proxy(request: Request, params: Record<string, string | undefined
     return json(404, { success: false, error: { code: 'NOT_PROXIED', message: 'This endpoint is not proxied.' } });
   }
 
+  // Read with a streaming byte cap. readSessionToken only checks that A cookie
+  // is present (the API does the real authentication), so the old
+  // request.text()-then-measure let anyone with `goldplus_session=x` make this
+  // process buffer a body of any size before the check ran.
   let body: string | undefined;
   if (method !== 'DELETE') {
-    body = await request.text();
-    if (body.length > MAX_BODY_BYTES) {
+    const read = await readBodyCapped(request, MAX_BODY_BYTES);
+    if (!read.ok) {
       return json(413, { success: false, error: { code: 'TOO_LARGE', message: 'That article is too long to save.' } });
     }
+    body = read.text;
   }
 
   try {

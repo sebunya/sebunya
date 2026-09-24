@@ -40,12 +40,17 @@ try {
   const res = await fetch(`${apiBase}/admin/audit?${auditQuery}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (res.status === 401 || res.status === 403) {
+  // Only an expired session signs out. A 403 is a permission gap: signing the
+  // user out sent them round a login loop back to the same refusal.
+  if (res.status === 401) {
     Astro.response.headers.set('Set-Cookie', clearSessionCookie());
     return Astro.redirect('/admin/login?returnTo=/admin/audit', 303);
   }
-  if (!res.ok) {
-    fetchError = `Audit service responded with HTTP ${res.status}.`;
+  if (res.status === 403) {
+    fetchError = 'Your role cannot read the audit log (audit.read required).';
+  } else if (!res.ok) {
+    const errJson = (await res.json().catch(() => null)) as { error?: { message?: string } } | null;
+    fetchError = errJson?.error?.message ?? `Audit service responded with HTTP ${res.status}.`;
   } else {
     const json = (await res.json()) as ApiResponse<AuditRow[]>;
     if (json.success && Array.isArray(json.data)) rows = json.data;
@@ -84,7 +89,7 @@ const shortId = (id: string | null) => (id ? id.slice(0, 8) : '—');
         <input name="action" value={filters.action} placeholder="STOCK_ADJUSTED" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-mono" />
       </label>
       <label class="text-xs block">Actor id
-        <input name="actorId" value={filters.actorId} placeholder="uuid" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-mono" />
+        <input name="actorId" value={filters.actorId} placeholder="full actor id (click one in the table)" class="mt-1 w-full rounded-lg border px-3 py-2 text-sm font-mono" />
       </label>
       <div class="flex gap-2">
         <button type="submit" class="rounded-full bg-slate-900 px-5 py-2 text-sm font-bold text-white">Filter</button>
@@ -121,7 +126,7 @@ const shortId = (id: string | null) => (id ? id.slice(0, 8) : '—');
               {rows.map((r) => (
                 <tr class="hover:bg-gray-50 transition-colors">
                   <td class="px-6 py-3 text-gray-500 whitespace-nowrap">{new Date(r.createdAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala',  day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
-                  <td class="px-6 py-3 font-mono text-gray-500" title={r.actorId ?? 'system'}>{shortId(r.actorId)}</td>
+                  <td class="px-6 py-3 font-mono text-gray-500" title={r.actorId ?? 'system'}>{r.actorId ? <a class="underline" href={`/admin/audit?actorId=${encodeURIComponent(r.actorId)}`}>{shortId(r.actorId)}</a> : shortId(r.actorId)}</td>
                   <td class="px-6 py-3 font-bold text-brand-dark text-sm">{r.action}</td>
                   <td class="px-6 py-3 font-mono text-gray-500 uppercase tracking-wider">{r.entity}</td>
                   <td class="px-6 py-3 font-mono text-gray-500" title={r.entityId}><a href={entityHistoryHref(r.entity, r.entityId)} class="hover:underline">{shortId(r.entityId)}</a></td>

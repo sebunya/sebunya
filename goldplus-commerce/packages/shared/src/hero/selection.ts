@@ -35,6 +35,14 @@ export interface HeroSelectionContext {
   referred: boolean;
   /** category-affinity slugs the profile actually browsed, strongest first */
   serverCats: string[];
+  /**
+   * The loyalty programme is running (server read). Only an explicit `false`
+   * hides the points slides: a failed read leaves it undefined and keeps the
+   * rail as it was, so an outage never reshuffles the hero.
+   */
+  loyaltyActive?: boolean;
+  /** Referral points are configured, so "you both earn points" is true. Same undefined rule. */
+  referralEarns?: boolean;
 }
 
 export interface HeroSelectionTuning {
@@ -63,7 +71,8 @@ export const HERO_SELECTION_RULES: Record<string, HeroSelectionRule> = {
   // A confirmed customer does not need a first-visit welcome.
   welcome: { when: (c) => c.isNew && c.cartItems === 0 && !c.hasOrdered, score: () => 96 },
   // Referral resonates with anyone who has already bought, even on a fresh device.
-  referral: { when: (c) => c.isReturning || c.hasOrdered, score: (c) => (c.isRegular || c.hasOrdered ? 88 : 74) },
+  // Never promise points the programme will not credit.
+  referral: { when: (c) => (c.isReturning || c.hasOrdered) && c.loyaltyActive !== false && c.referralEarns !== false, score: (c) => (c.isRegular || c.hasOrdered ? 88 : 74) },
   sameday: { score: (c) => (c.beforeCutoff ? 92 : 46) },
   fees: { score: (c) => (c.isNew ? 80 : 62) },
   ambassador: { score: (c) => (c.isNew ? 70 : 58) },
@@ -71,7 +80,7 @@ export const HERO_SELECTION_RULES: Record<string, HeroSelectionRule> = {
   newarrivals: { score: (c) => (c.isRegular ? 90 : 60) + (c.serverCats.length ? 8 : 0) },
   range: { score: (c) => (c.isNew ? 78 : 50) + (c.serverCats.length ? 6 : 0) },
   // Loyalty is the natural lead for someone who has ordered before.
-  loyalty: { when: (c) => !c.isNew || c.hasOrdered, score: (c) => (c.hasOrdered ? 92 : c.isRegular ? 86 : 66) },
+  loyalty: { when: (c) => (!c.isNew || c.hasOrdered) && c.loyaltyActive !== false, score: (c) => (c.hasOrdered ? 92 : c.isRegular ? 86 : 66) },
   scratch: { when: (c) => !c.scratched, score: (c) => (c.isReturning ? 84 : 72) },
   nostories: { score: (c) => (c.isNew ? 82 : 56) },
   authentic: { score: (c) => (c.isNew ? 76 : 44) },

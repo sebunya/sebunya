@@ -57,7 +57,6 @@ describe("Architecture boundaries", () => {
       if (
         file.includes("DealerApplicationUseCase.ts") ||
         file.includes("VerificationCheckUseCase.ts") ||
-        file.includes("EnqueuePurchaseEventUseCase.ts") ||
         file.includes("TrackBrowserTelemetryEventUseCase.ts") ||
         file.includes("StitchBrowserIdentityUseCase.ts")
       ) {

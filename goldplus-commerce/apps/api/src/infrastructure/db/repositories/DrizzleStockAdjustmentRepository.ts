@@ -1,6 +1,7 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../client';
 import { products } from '../schema/products';
+import { stockStatusAfter } from '../StockStatusSql';
 import { IStockAdjustmentRepository, StockAdjustment } from '../../../application/use-cases/inventory/AdjustStockUseCase';
 
 /**
@@ -28,7 +29,7 @@ export class DrizzleStockAdjustmentRepository implements IStockAdjustmentReposit
           .set({
             stockQuantity: after,
             // Keep the coarse display status coherent with the number the shopper sees.
-            stockStatus: sql`case when ${after} <= 0 then 'out_of_stock' else 'in_stock' end`,
+            stockStatus: stockStatusAfter(after),
           })
           .where(eq(products.id, productId));
       }

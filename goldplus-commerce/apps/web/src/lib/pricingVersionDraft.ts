@@ -40,6 +40,21 @@ export interface NextVersionOverrides {
   priceFloorUgx: number;
 }
 
+/**
+ * A `<input type="datetime-local">` value is a wall-clock time with no zone
+ * ("2026-09-25T00:00"). The API parsed it as UTC (the container sets no TZ),
+ * so every schedule the owner typed in Kampala time started and ended three
+ * hours late: a sale meant to end at midnight kept discounting until 03:00.
+ * The owner types Kampala time, so the offset is stated here, once, before the
+ * value leaves the admin. A value that already carries an offset is untouched.
+ * Kampala has no daylight saving; +03:00 holds all year.
+ */
+export const KAMPALA_OFFSET = '+03:00';
+export function kampalaWallTimeToIso(value: string): string {
+  const v = value.trim();
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?$/.test(v) ? `${v}${KAMPALA_OFFSET}` : v;
+}
+
 const DEFAULT_USAGE_POLICY = { globalLimit: null, perCustomerLimit: null, perCouponLimit: null, reservationTtlSeconds: 900 };
 
 export function buildNextVersionDraft(base: PricingVersionLike, overrides: NextVersionOverrides) {
@@ -55,7 +70,7 @@ export function buildNextVersionDraft(base: PricingVersionLike, overrides: NextV
     conditions: Array.isArray(base.conditions) ? base.conditions.map((c) => ({ ...c })) : [],
     benefits: [firstBenefit, ...rest.map((b) => ({ ...b }))],
     exclusions: Array.isArray(base.exclusions) ? base.exclusions.map((e) => ({ ...e })) : [],
-    schedule: { startsAt: overrides.startsAt, endsAt: overrides.endsAt },
+    schedule: { startsAt: kampalaWallTimeToIso(overrides.startsAt), endsAt: kampalaWallTimeToIso(overrides.endsAt) },
     usagePolicy: { ...DEFAULT_USAGE_POLICY, ...(base.usagePolicy ?? {}) },
     priority: overrides.priority,
     stackable: base.stackable === true,

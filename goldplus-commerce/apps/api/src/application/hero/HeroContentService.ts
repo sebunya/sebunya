@@ -9,6 +9,7 @@ import {
   type HeroSelectionContext,
 } from '../../domain/hero/HeroSlideLibrary';
 import { flashSaleHasEnded, validateHeroSlide, type HeroSlideFieldErrors } from '../../domain/hero/HeroSlideValidation';
+import { kampalaCutoff } from '@goldplus/shared';
 
 /**
  * Hero content, composed for the two audiences that read it.
@@ -72,7 +73,7 @@ export interface HeroPersonalisationSignals {
   hasOrdered: boolean;
   categoryAffinity: Array<{ categorySlug: string; score: number }>;
   preferredProduct: { imageUrl: string; alt: string; categorySlug: string } | null;
-  loyalty: { points: number; tierLabel: string; goalRemaining: number } | null;
+  loyalty: { points: number; tierLabel: string; goalRemaining: number; progress?: number | null } | null;
   stockBySlug: Record<string, boolean>;
   /** First-party identity for a signed-in customer (null when anonymous). */
   customer?: { firstName: string | null; area: string | null } | null;
@@ -101,6 +102,34 @@ export interface HeroAdminSlide extends StoredHeroSlide {
 
 const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 
+/**
+ * The loyalty meter, from the operator's ACTIVE tiers and the customer's
+ * lifetime earned points (the rule tiers are assigned by). Pure, so the bar
+ * can never again be a fixed fill: `progress` is how far along the current
+ * step to the next tier the customer really is, 1 at the top tier, and null
+ * when no tier is configured (no goal is shown at all).
+ */
+export function heroTierMeter(
+  lifetimePoints: number,
+  tiers: ReadonlyArray<{ name: string; threshold: number }>,
+): { tierLabel: string; goalRemaining: number; progress: number | null } {
+  const lifetime = Math.max(0, Number.isFinite(lifetimePoints) ? lifetimePoints : 0);
+  const sorted = tiers.filter((t) => Number.isFinite(t.threshold) && t.name).slice().sort((a, b) => a.threshold - b.threshold);
+  if (sorted.length === 0) return { tierLabel: '', goalRemaining: 0, progress: null };
+  const current = sorted.filter((t) => lifetime >= t.threshold).pop() ?? null;
+  const next = sorted.find((t) => t.threshold > lifetime) ?? null;
+  if (!next) return { tierLabel: current!.name, goalRemaining: 0, progress: 1 };
+  const floor = current ? current.threshold : 0;
+  const span = next.threshold - floor;
+  const progress = span > 0 ? Math.min(1, Math.max(0, (lifetime - floor) / span)) : 0;
+  return { tierLabel: next.name, goalRemaining: next.threshold - lifetime, progress: Math.round(progress * 100) / 100 };
+}
+
+/** The shop's own same-day cutoff and closed days (business_info, the one authority). */
+export type HeroShopHoursSource = () => Promise<{ cutoffHour: number; closedDays: number[] }>;
+/** Whether the points slides can keep their promises. */
+export type HeroProgrammeSource = () => Promise<{ loyaltyActive: boolean; referralEarns: boolean }>;
+
 /** Shape of the live storefront discount the sale slide is driven by. */
 export type HeroDiscountSource = () => Promise<
   { active: false } | { active: true; percent: number; endsIso: string }
@@ -111,7 +140,35 @@ export class HeroContentService {
     private readonly repo: IHeroRepository,
     /** Optional so tests and tools without pricing still get a hero. */
     private readonly discount: HeroDiscountSource = async () => ({ active: false }),
+    /**
+     * business_info's cutoff and closed days. The slide row's extras.cutoffHour
+     * used to be a second authority that always won, so the pill counted down
+     * to 5pm while the headline (and the nav) said the operator's hour.
+     */
+    private readonly shopHours?: HeroShopHoursSource,
+    /** The loyalty programme state; the points slides are withheld when it is off. */
+    private readonly programme?: HeroProgrammeSource,
   ) {}
+
+  private async readShopHours(): Promise<{ cutoffHour: number; closedDays: number[] } | null> {
+    if (!this.shopHours) return null;
+    try {
+      const h = await this.shopHours();
+      return Number.isFinite(h?.cutoffHour) && Array.isArray(h?.closedDays) ? h : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Unknown (no source, or a failed read) = undefined, which keeps the rail as it was. */
+  private async readProgramme(): Promise<{ loyaltyActive?: boolean; referralEarns?: boolean }> {
+    if (!this.programme) return {};
+    try {
+      return await this.programme();
+    } catch {
+      return {};
+    }
+  }
 
   /** The sale, or nothing — an outage must never invent one. */
   private async liveDiscount(): Promise<{ active: false } | { active: true; percent: number; endsIso: string }> {
@@ -136,7 +193,11 @@ export class HeroContentService {
     };
   }
 
-  private async deriveConfig(slides: StoredHeroSlide[], settings: HeroSettingsSeed): Promise<HeroEngineConfig> {
+  private async deriveConfig(
+    slides: StoredHeroSlide[],
+    settings: HeroSettingsSeed,
+    shop?: { cutoffHour: number } | null,
+  ): Promise<HeroEngineConfig> {
     const sameday = slides.find((s) => s.slideKey === 'sameday');
     const scratch = slides.find((s) => s.slideKey === 'scratch');
     const prizes = Array.isArray(scratch?.extras?.prizes) ? (scratch!.extras.prizes as HeroEngineConfig['prizes']) : [];
@@ -147,7 +208,8 @@ export class HeroContentService {
       autoplay: settings.autoplay,
       flashSaleEnds: sale.active ? sale.endsIso : null,
       flashPercent: sale.active ? sale.percent : null,
-      cutoffHour: num(sameday?.extras?.cutoffHour, 17),
+      // business_info first; the slide's own value only if that read failed.
+      cutoffHour: shop ? shop.cutoffHour : num(sameday?.extras?.cutoffHour, 17),
       prizes,
     };
   }
@@ -162,17 +224,18 @@ export class HeroContentService {
       // The hero must never be a database outage. Fall back to the library.
       return this.libraryFallback();
     }
+    const shop = await this.readShopHours();
 
     if (slides.length === 0) {
       // Everything disabled → the evergreen slide, never an empty box (§2.5).
       const authentic = HERO_SLIDE_LIBRARY.find((s) => s.slideKey === HERO_FALLBACK_KEY)!;
       return {
         slides: [this.toPublic({ ...authentic, id: 'fallback', updatedAt: new Date() })],
-        config: await this.deriveConfig([], settings),
+        config: await this.deriveConfig([], settings, shop),
       };
     }
 
-    return { slides: slides.map((s) => this.toPublic(s)), config: await this.deriveConfig(slides, settings) };
+    return { slides: slides.map((s) => this.toPublic(s)), config: await this.deriveConfig(slides, settings, shop) };
   }
 
   /** Enabled slides + settings, falling back to the library if the DB is unreachable. */
@@ -205,16 +268,16 @@ export class HeroContentService {
     input: HeroPersonalisationInput,
   ): Promise<HeroPersonalisedPayload> {
     const { slides: stored, settings } = await this.loadStored();
-    const config = await this.deriveConfig(stored, settings);
+    const [shop, programme] = await Promise.all([this.readShopHours(), this.readProgramme()]);
+    const config = await this.deriveConfig(stored, settings, shop);
 
     // Visitor tier mirrors the old client counter; hasOrdered stays a separate
     // flag (the rules use both). Regular does NOT fold in hasOrdered, to avoid
     // double-counting a customer who is also a frequent visitor.
     const visits = Math.max(1, signals.visits || 1);
-    const KAMPALA_OFFSET_MS = 3 * 60 * 60 * 1000;
-    const kampala = new Date(input.now.getTime() + KAMPALA_OFFSET_MS);
-    const hour = kampala.getUTCHours();
-    const day = kampala.getUTCDay(); // 0 = Sunday
+    // The operator's closed days, not a hardcoded Sunday. A failed read keeps
+    // the old Sunday default.
+    const cutoff = kampalaCutoff(input.now, { cutoffHour: config.cutoffHour, closedDays: shop ? shop.closedDays : [0] });
     const saleLive = config.flashSaleEnds ? input.now.getTime() < new Date(config.flashSaleEnds).getTime() : false;
 
     const ctx: HeroSelectionContext = {
@@ -223,13 +286,15 @@ export class HeroContentService {
       isRegular: visits >= 4,
       hasOrdered: signals.hasOrdered,
       saleLive,
-      beforeCutoff: hour < config.cutoffHour && day !== 0,
+      beforeCutoff: cutoff.beforeCutoff,
       cartItems: Math.max(0, input.cartItems || 0),
       // Scratch state lives in the browser; the client still shows an already
       // revealed prize. Server-side the slide stays eligible.
       scratched: false,
       referred: input.referred,
       serverCats: signals.categoryAffinity.map((a) => a.categorySlug).filter(Boolean),
+      loyaltyActive: programme.loyaltyActive,
+      referralEarns: programme.referralEarns,
     };
 
     // QA overrides (?gp=…) — the same set the client used, now applied server-side.
@@ -261,6 +326,8 @@ export class HeroContentService {
           signals.loyalty.goalRemaining > 0
             ? `${signals.loyalty.goalRemaining} to ${signals.loyalty.tierLabel}`
             : signals.loyalty.tierLabel;
+        // The bar's fill is the customer's real progress, or no bar at all.
+        if (typeof signals.loyalty.progress === 'number') extras.progress = signals.loyalty.progress;
       }
       if ((s.slideKey === 'range' || s.slideKey === 'newarrivals') && affinityCat && ctaUrl.startsWith('/shop')) {
         ctaUrl = `/shop?category=${encodeURIComponent(affinityCat)}`;

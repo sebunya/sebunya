@@ -206,7 +206,10 @@ export interface FinderBatteryResultDto {
   name: string;
   canonicalCode: string;
   imageUrl: string | null;
+  /** What the customer pays today: the campaign price when a storefront campaign lowers it. */
   priceUgx: number | null;
+  /** The regular price, set ONLY when the campaign actually brings the price down (to strike through). */
+  regularPriceUgx?: number | null;
   inStock: boolean;
   fitState: PublicFitState;
   fitLabel: string;

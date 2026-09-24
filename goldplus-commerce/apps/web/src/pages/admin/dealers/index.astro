@@ -11,8 +11,16 @@ if (!token) {
 // Live data only. A fabricated fallback list (two invented businesses) used to
 // sit here; tryFetchAdminList never rendered it, but invented records do not
 // belong in an admin page — removed 2026-09-12.
-const result = await tryFetchAdminList('/governance/admin/dealers', [], undefined, token);
-const dealers = result.items;
+const result = await tryFetchAdminList<any>('/governance/admin/dealers', [], undefined, token);
+// Oldest first: applicants are promised a call, so the longest wait leads.
+const dealers = [...result.items].sort((a: any, b: any) => String(a.appliedAt ?? '').localeCompare(String(b.appliedAt ?? '')));
+const telHref = (phone: string) => `tel:${String(phone).replace(/[^0-9+]/g, '')}`;
+const submitted = (at: unknown) => {
+  const d = at ? new Date(String(at)) : null;
+  return d && !Number.isNaN(d.getTime())
+    ? d.toLocaleString('en-GB', { timeZone: 'Africa/Kampala', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : '—';
+};
 ---
 
 <AdminLayout 
@@ -24,7 +32,7 @@ const dealers = result.items;
     <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
       <div>
         <h2 class="text-2xl font-black text-brand-dark tracking-tight">B2B Dealer Applications</h2>
-        <p class="text-sm text-gray-500 mt-1">Review business credentials for authorized GoldPlus dealership credentials in Uganda.</p>
+        <p class="text-sm text-gray-500 mt-1">Applicants are told the team will call them on the number they gave — oldest first below. The admin has no approve/reject action, so every application reads as pending.</p>
       </div>
       <div class="flex items-center gap-2">
         <span class="bg-gray-100 text-gray-600 border border-gray-200 text-xs font-bold px-3 py-1.5 rounded-lg font-mono">
@@ -45,21 +53,29 @@ const dealers = result.items;
         <table class="w-full text-left border-collapse">
           <thead>
             <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-500 tracking-widest border-b border-gray-100">
-              <th class="p-6">Business Entity</th>
-              <th class="p-6">Regional Hub</th>
-              <th class="p-6 text-center">Evaluation</th>
+              <th class="p-6">Business</th>
+              <th class="p-6">Contact (call them)</th>
+              <th class="p-6">Location · TIN</th>
+              <th class="p-6">Submitted (Kampala)</th>
+              <th class="p-6 text-center">Status</th>
             </tr>
           </thead>
           <tbody class="text-xs divide-y divide-gray-50">
             {dealers.map(d => (
               <tr class="hover:bg-gray-50 transition-colors">
                 <td class="p-6">
-                  <div class="font-bold text-brand-dark text-sm">{d.businessName || d.biz}</div>
-                  <div class="text-[10px] font-mono text-gray-500 mt-1">{d.email || 'No contact details'}</div>
+                  <div class="font-bold text-brand-dark text-sm">{d.businessName}</div>
+                </td>
+                <td class="p-6">
+                  <div class="font-bold text-brand-dark">{d.contactName || '—'}</div>
+                  {d.phone ? <a href={telHref(d.phone)} class="font-mono font-bold text-brand-primaryInk underline">{d.phone}</a> : <span class="text-gray-500">No phone given</span>}
+                  {d.email && <div class="text-[10px] font-mono text-gray-500 mt-1">{d.email}</div>}
                 </td>
                 <td class="p-6 text-gray-600 font-medium">
-                  {d.location || 'Undisclosed District'}
+                  <div>{d.location || '—'}</div>
+                  <div class="text-[10px] font-mono text-gray-500 mt-1">TIN {d.tinNumber || '—'}</div>
                 </td>
+                <td class="p-6 text-gray-600 font-mono text-[11px]">{submitted(d.appliedAt)}</td>
                 <td class="p-6 text-center">
                   <span class="inline-block px-2.5 py-1 rounded-lg font-black text-[9px] uppercase tracking-wide border border-yellow-200 bg-yellow-50 text-yellow-700">
                     {d.status}
@@ -69,8 +85,8 @@ const dealers = result.items;
             ))}
             {dealers.length === 0 && (
               <tr>
-                <td colspan="3" class="p-20 text-center text-gray-500 italic text-xs leading-relaxed">
-                  Zero dealer applicants tracked in query store.
+                <td colspan="5" class="p-20 text-center text-gray-500 italic text-xs leading-relaxed">
+                  {result.isSample ? 'Dealer applications could not be loaded — see the notice above.' : 'No dealer applications yet.'}
                 </td>
               </tr>
             )}

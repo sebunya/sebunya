@@ -127,9 +127,34 @@ routes.get('/report', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) =
   return c.json({ success: true, data: report } satisfies ApiResponse<typeof report>);
 });
 
-routes.get('/:id', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+// F1 teams list — registered before '/:id' too. After it, GET /teams reached
+// the task-by-id handler, 'teams' went to Postgres as a uuid, and every call
+// answered 500.
+routes.get('/teams', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+  const teams = await Registry.getInstance().listFulfilmentTeamsUseCase.execute();
+  return c.json({ success: true, data: teams } satisfies ApiResponse<typeof teams>);
+});
+
+const TASK_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// The order page links dispatch/delivery to the order's fulfilment task —
+// the one place those moves are recorded (the governance fulfillment PATCH
+// deliberately refuses them).
+routes.get('/by-order/:orderId', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+  const orderId = String(c.req.param('orderId') ?? '');
+  const task = TASK_ID.test(orderId) ? await Registry.getInstance().getFulfilmentOverviewUseCase.byOrderId(orderId) : null;
+  if (!task) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'No fulfilment task for this order.' } } satisfies ApiResponse<never>, 404);
+  }
+  const res: ApiResponse<typeof task> = { success: true, data: task };
+  return c.json(res);
+});
+
+routes.get('/:id',requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
   const id = String(c.req.param('id') ?? '');
-  const task = await Registry.getInstance().getFulfilmentOverviewUseCase.byId(id);
+  // A task id is a uuid; anything else is simply not a task (404), never a
+  // Postgres cast error surfacing as a 500.
+  const task = TASK_ID.test(id) ? await Registry.getInstance().getFulfilmentOverviewUseCase.byId(id) : null;
   if (!task) {
     return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Fulfilment task not found.' } } satisfies ApiResponse<never>, 404);
   }
@@ -166,28 +191,9 @@ routes.patch('/:id/status', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), asy
     return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, status);
   }
 
-  // Section 12 inventory effects (idempotent, best-effort — never fail the
-  // transition): deduct on-hand stock when the order is dispatched-ready, and
-  // release held stock when the order is cancelled.
-  try {
-    const registry = Registry.getInstance();
-    if (result.to === 'READY_FOR_DISPATCH') {
-      await registry.consumeInventoryForOrderUseCase.execute(result.orderId);
-    } else if (result.to === 'CANCELLED') {
-      await registry.releaseInventoryForOrderUseCase.execute(result.orderId);
-      // Transactional admin email (OrderCancelled). Idempotent per order.
-      const cancelledOrder = await registry.orderRepo.findById(result.orderId);
-      if (cancelledOrder) {
-        await registry.enqueueAdminOrderEmailUseCase.execute({
-          order: cancelledOrder,
-          event: 'cancelled',
-          stockConfirmed: false,
-        });
-      }
-    }
-  } catch (invErr: any) {
-    console.error('[API_ERROR] Inventory/email effect after fulfilment transition failed:', invErr?.message);
-  }
+  // Section 12 stock effects (idempotent, never fail the transition, a
+  // failure is reported): ApplyFulfilmentStockEffectUseCase.
+  await Registry.getInstance().applyFulfilmentStockEffectUseCase.afterTaskTransition(result.orderId, result.to);
 
   const res: ApiResponse<typeof result> = { success: true, data: result };
   return c.json(res);
@@ -278,11 +284,6 @@ routes.patch('/:id/priority', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), a
 });
 
 // --- F1: teams, membership, ownership (orders.manage; audited in use cases) ---
-
-routes.get('/teams', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
-  const teams = await Registry.getInstance().listFulfilmentTeamsUseCase.execute();
-  return c.json({ success: true, data: teams } satisfies ApiResponse<typeof teams>);
-});
 
 routes.post('/teams', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   const body = await c.req.json().catch(() => null);

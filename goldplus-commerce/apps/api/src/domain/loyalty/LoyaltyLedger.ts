@@ -71,41 +71,89 @@ export interface LoyaltyBalance {
 export interface ExpirableEarn {
   entry: LoyaltyLedgerEntry;
   points: number;
+  /** Points of this earn already expired by earlier `expiry` entries. */
+  alreadyExpired: number;
 }
 
-/** FIFO liability allocation used to expire only the unspent remainder of an earn. */
-export function computeExpirableEarns(entries: LoyaltyLedgerEntry[], now: Date): ExpirableEarn[] {
-  const reversedSources = new Set(
-    entries.filter((entry) => entry.type === 'reversal' && entry.reversedEntryId).map((entry) => entry.reversedEntryId as string),
-  );
-  const expiryByEarn = new Map(
-    entries
-      .filter((entry) => entry.type === 'expiry' && entry.reversedEntryId)
-      .map((entry) => [entry.reversedEntryId as string, entry] as const),
-  );
-  let unallocatedRedemptions = entries
-    .filter((entry) => entry.type === 'redeem' && !reversedSources.has(entry.id))
-    .reduce((sum, entry) => sum + -entry.points, 0);
+/**
+ * FIFO liability allocation: what is still unspent of every live earn, oldest
+ * first.
+ *
+ * Each earn is a LOT: its points less what was taken off it directly — its
+ * clawbacks (reversals pointing at it, full or pro-rata, possibly several)
+ * and its expiries. Every other debit is spent from the lots oldest first:
+ * redemptions and negative adjustments, each net of any reversal of it (a
+ * refunded redemption gives its points back to the lots they came from, with
+ * their ORIGINAL expiry dates), plus `reservedPoints` (points held by open
+ * redemption reservations, which are not ledger entries yet). Positive
+ * adjustments are credits that never expire and are not lots, so debits fall
+ * on the expiring earns first — never the reverse, which would expire more.
+ *
+ * This used to skip any earn with ANY reversal pointing at it (a 50% clawback
+ * left the other half immortal), allocate only redemptions (a manual -300
+ * debit left the full earn to expire, so the balance went negative) and
+ * never re-expire points a later refund returned to an already-expired earn.
+ * Expiring every remainder can never take the balance below zero.
+ */
+export function computeEarnRemainders(entries: LoyaltyLedgerEntry[], reservedPoints = 0): ExpirableEarn[] {
+  const byId = new Map(entries.map((entry) => [entry.id, entry] as const));
+  const takenOffEarn = new Map<string, number>();
+  const expiredOfEarn = new Map<string, number>();
+  const undone = new Map<string, number>();
+  for (const entry of entries) {
+    if (!entry.reversedEntryId) continue;
+    const target = byId.get(entry.reversedEntryId);
+    if (entry.type === 'expiry') {
+      takenOffEarn.set(entry.reversedEntryId, (takenOffEarn.get(entry.reversedEntryId) ?? 0) - entry.points);
+      expiredOfEarn.set(entry.reversedEntryId, (expiredOfEarn.get(entry.reversedEntryId) ?? 0) - entry.points);
+    } else if (entry.type === 'reversal' && target?.type === 'earn') {
+      takenOffEarn.set(entry.reversedEntryId, (takenOffEarn.get(entry.reversedEntryId) ?? 0) - entry.points);
+    } else if (entry.type === 'reversal' && target) {
+      undone.set(target.id, (undone.get(target.id) ?? 0) + entry.points);
+    }
+  }
+  let debit = Math.max(0, Math.floor(reservedPoints) || 0);
+  for (const entry of entries) {
+    const poolEntry =
+      entry.type === 'redeem' ||
+      entry.type === 'adjustment' ||
+      // A reversal of something this ledger slice does not hold still moves the pool.
+      (entry.type === 'reversal' && !!entry.reversedEntryId && !byId.has(entry.reversedEntryId));
+    if (!poolEntry) continue;
+    const net = entry.points + (undone.get(entry.id) ?? 0);
+    if (net < 0) debit += -net;
+  }
   const earns = entries
     .filter((entry) => entry.type === 'earn')
     .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime() || left.id.localeCompare(right.id));
-  const due: ExpirableEarn[] = [];
+  const out: ExpirableEarn[] = [];
   for (const earn of earns) {
-    if (reversedSources.has(earn.id)) continue;
-    const expiry = expiryByEarn.get(earn.id);
-    if (expiry) {
-      const consumedBeforeExpiry = Math.max(0, earn.points + expiry.points);
-      unallocatedRedemptions -= Math.min(consumedBeforeExpiry, unallocatedRedemptions);
-      continue;
-    }
-    const consumed = Math.min(earn.points, unallocatedRedemptions);
-    unallocatedRedemptions -= consumed;
-    const remaining = earn.points - consumed;
-    if (remaining > 0 && earn.expiresAt && earn.expiresAt.getTime() <= now.getTime()) {
-      due.push({ entry: earn, points: remaining });
-    }
+    const lot = earn.points - (takenOffEarn.get(earn.id) ?? 0);
+    if (lot <= 0) continue;
+    const consumed = Math.min(lot, debit);
+    debit -= consumed;
+    out.push({ entry: earn, points: lot - consumed, alreadyExpired: expiredOfEarn.get(earn.id) ?? 0 });
   }
-  return due;
+  return out;
+}
+
+/**
+ * The unspent remainder of every earn that is past its expiry. Points held by
+ * an open reservation are NOT expired: the customer committed them to an order
+ * before the date, and expiring them made the redemption fail at delivery.
+ */
+export function computeExpirableEarns(entries: LoyaltyLedgerEntry[], now: Date, reservedPoints = 0): ExpirableEarn[] {
+  return computeEarnRemainders(entries, reservedPoints).filter(
+    (earn) => earn.points > 0 && earn.entry.expiresAt !== null && earn.entry.expiresAt.getTime() <= now.getTime(),
+  );
+}
+
+/** The earliest future date on which points the customer still HOLDS expire, or null. */
+export function soonestUnspentExpiry(entries: LoyaltyLedgerEntry[], now: Date, reservedPoints = 0): Date | null {
+  const dates = computeEarnRemainders(entries, reservedPoints)
+    .filter((earn) => earn.points > 0 && earn.entry.expiresAt !== null && earn.entry.expiresAt.getTime() > now.getTime())
+    .map((earn) => (earn.entry.expiresAt as Date).getTime());
+  return dates.length ? new Date(Math.min(...dates)) : null;
 }
 
 /**

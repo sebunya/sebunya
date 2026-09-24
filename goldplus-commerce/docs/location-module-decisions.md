@@ -115,3 +115,12 @@ zero-result rate stays high after the gazetteer import + one month of promotion.
 unresolved-searches view ranks candidates by real frequency. RECOMMEND promoting
 any locality that clears ~25 orders/month; promotion is an ops action in the
 workspace, not a release.
+
+**7. Order density for ranking (2026-09-24, owner-approved).** Density is counted
+from `delivery_quote_capture.area_slug` (one row per quoted order, indexed), not
+by LIKE-matching order text against saved-address labels. The old join ran on
+every keystroke, could not use an index, counted one order once per matching
+saved address and matched substrings ("Kira" in "Kirabo"). The map is cached
+per replica for 10 minutes, which meets F.3's intent (no per-keystroke
+aggregate) without a materialised view. Orders quoted before the delivery
+module have no capture row and count 0, as they did before.

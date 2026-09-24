@@ -81,7 +81,9 @@ describe('Admin queue operations', () => {
     expect(res.status).toBe(200);
     expect(update).toHaveBeenCalledWith(QUEUES.TELEMETRY_DISPATCH, 7);
     const body = await res.json() as any;
-    expect(body.data).toEqual({ queueName: QUEUES.TELEMETRY_DISPATCH, concurrency: 7 });
+    // Honest about scope: one replica's workers, as a ceiling (2026-09-24).
+    expect(body.data).toMatchObject({ queueName: QUEUES.TELEMETRY_DISPATCH, concurrency: 7, scope: 'this-replica' });
+    expect(typeof body.data.replica).toBe('string');
   });
 
   test('POST /admin/queues/concurrency returns 404 when no worker is registered', async () => {

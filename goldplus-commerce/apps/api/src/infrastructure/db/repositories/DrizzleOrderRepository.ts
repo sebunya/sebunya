@@ -42,6 +42,12 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
     return this.hydrate(result as typeof orders.$inferSelect & { items: Array<typeof orderItems.$inferSelect> });
   }
 
+  /** How the customer chose to pay ('pesapal' | 'offline'), or null for a legacy/admin order. */
+  async findPaymentMethod(id: string): Promise<string | null> {
+    const [row] = await db.select({ paymentMethod: orders.paymentMethod }).from(orders).where(eq(orders.id, id)).limit(1);
+    return row?.paymentMethod ?? null;
+  }
+
   /** Server-owned paid-order facts used by the dormant Loyalty earn boundary. */
   async findLoyaltyEarnSource(id: string): Promise<{ userId: string; totalUgx: number } | null> {
     const [row] = await db.select({

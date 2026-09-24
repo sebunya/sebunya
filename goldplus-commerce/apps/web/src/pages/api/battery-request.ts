@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { apiBase } from '../../lib/api';
+import { readBodyCapped } from '../../lib/boundedBody';
 
 /**
  * Same-origin relay for a customer's battery request, so the browser never
@@ -12,8 +13,18 @@ const MAX: Record<(typeof FIELDS)[number], number> = {
   queryText: 200, brandText: 80, deviceText: 120, modelNumberText: 80, batteryCodeText: 120, contactName: 120, contactPhone: 32, notes: 1000,
 };
 
+/** Every field at its cap is well under this; anything larger is not a request from the finder. */
+const MAX_BODY_BYTES = 8 * 1024;
+
 export const POST: APIRoute = async ({ request }) => {
-  const raw = await request.json().catch(() => null);
+  // Read with a streaming cap: request.json() buffered any size of body, and a
+  // chunked upload declares no length for a header check to refuse.
+  const read = await readBodyCapped(request, MAX_BODY_BYTES);
+  if (!read.ok) {
+    return new Response(JSON.stringify({ success: false, error: { code: 'TOO_LARGE', message: 'That request is too long.' } }), { status: 413, headers: { 'Content-Type': 'application/json' } });
+  }
+  let raw: unknown = null;
+  try { raw = JSON.parse(read.text); } catch { raw = null; }
   if (!raw || typeof raw !== 'object') {
     return new Response(JSON.stringify({ success: false, error: { code: 'INVALID_BODY', message: 'Tell us the phone model or the battery code.' } }), { status: 400, headers: { 'Content-Type': 'application/json' } });
   }

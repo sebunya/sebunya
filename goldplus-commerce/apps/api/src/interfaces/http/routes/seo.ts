@@ -354,7 +354,12 @@ routes.get('/battery-finder', async (c) => {
           : null,
       })),
     countVerified: () => repo.countVerifiedBatteryCompat(),
-    recordEvent: (e) => repo.recordFinderEvent(e),
+    // Records nothing. No storefront surface calls this route any more (the
+    // /battery-finder page uses the battery module), so every query reaching it
+    // is a probe, scanner or crawler — and each one used to become a
+    // seo_battery_finder_events row that the admin 'unmatched queries' report
+    // presents as customer demand. The response is unchanged.
+    recordEvent: async () => undefined,
   });
   const result = await useCase.execute(query);
   const res: ApiResponse<typeof result> = { success: true, data: result };

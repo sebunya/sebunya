@@ -1,4 +1,4 @@
-import { FULL_ACCESS_ROLES, PLATFORM_ADMINISTRATOR_ROLE } from '@goldplus/shared';
+import { FULL_ACCESS_ROLES, PERMISSIONS } from '@goldplus/shared';
 
 /**
  * Governed admin-user creation and role assignment (§6 completion).
@@ -11,9 +11,20 @@ import { FULL_ACCESS_ROLES, PLATFORM_ADMINISTRATOR_ROLE } from '@goldplus/shared
  *  - PLATFORM_ADMINISTRATOR is NEVER granted directly: a grant becomes a PENDING
  *    request that a DIFFERENT administrator must approve (maker/checker) — the
  *    requester deciding their own request is refused;
- *  - lockout guard: an administrator cannot revoke their own PLATFORM_ADMINISTRATOR;
+ *  - a custom role that carries access management (auth.manage, roles.manage,
+ *    permissions.manage) or every permission is full access in all but name,
+ *    so it takes the same two-person path;
+ *  - nobody grants a role to themselves (SELF_GRANT) — a full-access request
+ *    for yourself still needs a different approver, direct grants never;
+ *  - lockout guards cover BOTH full-access roles (PLATFORM_ADMINISTRATOR and
+ *    the founding accounts' Owner): no self-revoke, and never strip or
+ *    deactivate the last active holder of either;
  *  - only the governance vocabulary is assignable.
  */
+
+/** Codes that let a role holder change who can do what. */
+export const ELEVATED_ROLE_CODES: readonly string[] = [PERMISSIONS.AUTH_MANAGE, PERMISSIONS.ROLES_MANAGE, PERMISSIONS.PERMISSIONS_MANAGE];
+const FULL_ACCESS: readonly string[] = FULL_ACCESS_ROLES as readonly string[];
 
 export interface IAdminUserWriteRepository {
   findUserByEmail(email: string): Promise<{ id: string } | null>;
@@ -31,7 +42,11 @@ export interface IAdminUserWriteRepository {
   findUserById(id: string): Promise<{ id: string; isActive: boolean } | null>;
   /** false = user unknown. */
   setUserActive(userId: string, active: boolean): Promise<boolean>;
-  listGrantRequests(): Promise<Array<{ id: string; userId: string; roleName: string; status: string; requestedBy: string; requestedAt: Date }>>;
+  listGrantRequests(): Promise<Array<{ id: string; userId: string; roleName: string; status: string; requestedBy: string; requestedAt: Date; reason?: string | null }>>;
+  /** Permission codes the named role carries (empty when the role is unknown). */
+  rolePermissionCodes(roleName: string): Promise<string[]>;
+  /** DISTINCT active users holding ANY of the roles — a user holding both counts once. */
+  countActiveUsersWithAnyRole(roleNames: readonly string[]): Promise<number>;
 }
 
 export interface PasswordHasherPort {
@@ -83,7 +98,7 @@ export class AdminUserManagementUseCase {
     const passwordHash = await this.hasher.hash(password);
     const user = await this.repo.createUser({ email, phone: args.phone?.trim() || null, passwordHash });
 
-    if ((FULL_ACCESS_ROLES as readonly string[]).includes(args.roleName)) {
+    if (await this.needsSecondApprover(args.roleName)) {
       // Never direct — the two-person rule starts at creation time.
       await this.repo.createGrantRequest({ userId: user.id, roleName: args.roleName, requestedBy: args.actorId, reason: 'Requested at user creation' });
       return { ok: true, value: { userId: user.id, email: user.email, roleOutcome: 'PENDING_APPROVAL' } };
@@ -97,8 +112,13 @@ export class AdminUserManagementUseCase {
     if (!(await this.repo.roleExists(args.roleName))) {
       return refuse('UNKNOWN_ROLE', `No role named ${args.roleName} exists. Roles are managed in the Back Office.`);
     }
-    if ((FULL_ACCESS_ROLES as readonly string[]).includes(args.roleName)) {
-      // Both full-access roles go through the two-person rule.
+    const twoPerson = await this.needsSecondApprover(args.roleName);
+    if (args.userId === args.actorId && !twoPerson) {
+      return refuse('SELF_GRANT', 'You cannot grant a role to yourself. Ask another administrator.', 403);
+    }
+    if (twoPerson) {
+      // Both full-access roles — and any custom role that is full access in
+      // all but name — go through the two-person rule.
       const request = await this.repo.createGrantRequest({ userId: args.userId, roleName: args.roleName, requestedBy: args.actorId, reason: args.reason ?? null });
       if (!request) return refuse('DUPLICATE_PENDING', 'A pending request for this grant already exists.', 409);
       return { ok: true, value: { outcome: 'PENDING_APPROVAL' } };
@@ -108,7 +128,7 @@ export class AdminUserManagementUseCase {
     return { ok: true, value: { outcome: 'ASSIGNED' } };
   }
 
-  async decideGrant(args: { requestId: string; decision: 'APPROVED' | 'REJECTED'; actorId: string; reason?: string | null }): Promise<UmOutcome<{ decided: string }>> {
+  async decideGrant(args: { requestId: string; decision: 'APPROVED' | 'REJECTED'; actorId: string; reason?: string | null }): Promise<UmOutcome<{ decided: string; userId: string; roleName: string }>> {
     const request = await this.repo.findGrantRequest(args.requestId);
     if (!request) return refuse('NOT_FOUND', 'Grant request not found.', 404);
     if (request.status !== 'PENDING') return refuse('ALREADY_DECIDED', `Request is already ${request.status}.`, 409);
@@ -122,23 +142,23 @@ export class AdminUserManagementUseCase {
     if (args.decision === 'APPROVED') {
       await this.repo.assignRole(request.userId, request.roleName);
     }
-    return { ok: true, value: { decided: args.decision } };
+    return { ok: true, value: { decided: args.decision, userId: request.userId, roleName: request.roleName } };
   }
 
   async revokeRole(args: { userId: string; roleName: string; actorId: string }): Promise<UmOutcome<{ revoked: boolean }>> {
-    if (args.roleName === PLATFORM_ADMINISTRATOR_ROLE && args.userId === args.actorId) {
-      // Lockout guard: removing your own full-admin role can strand the platform.
-      return refuse('SELF_LOCKOUT', 'You cannot revoke your own PLATFORM_ADMINISTRATOR role.', 403);
+    const fullAccess = FULL_ACCESS.includes(args.roleName);
+    if (fullAccess && args.userId === args.actorId) {
+      // Lockout guard: removing your own full-access role can strand the platform.
+      return refuse('SELF_LOCKOUT', `You cannot revoke your own ${args.roleName} role.`, 403);
     }
-    if (args.roleName === PLATFORM_ADMINISTRATOR_ROLE) {
-      // Platform guard (pre-live audit, 2026-09-12): the self check above did not
-      // stop ANOTHER administrator from stripping the last remaining full admin,
-      // leaving nobody able to manage access. Refuse if the target is an active
-      // holder and no other active holder would remain.
+    if (fullAccess) {
+      // Platform guard (pre-live audit, 2026-09-12; widened to Owner 2026-09-24):
+      // never strip the last active full-access administrator, whichever of the
+      // two full-access roles they hold.
       const target = await this.repo.findUserById(args.userId);
-      const holds = await this.repo.userHasRole(args.userId, PLATFORM_ADMINISTRATOR_ROLE);
-      if (target?.isActive && holds && (await this.repo.countActiveUsersWithRole(PLATFORM_ADMINISTRATOR_ROLE)) <= 1) {
-        return refuse('LAST_ADMIN', 'This is the last active PLATFORM_ADMINISTRATOR. Grant the role to someone else before revoking it.', 409);
+      const holds = await this.repo.userHasRole(args.userId, args.roleName);
+      if (target?.isActive && holds && (await this.remainingFullAccessAfterRevoke(args.userId, args.roleName)) === 0) {
+        return refuse('LAST_ADMIN', `This is the last active full-access administrator (${FULL_ACCESS.join(' / ')}). Grant full access to someone else before revoking it.`, 409);
       }
     }
     const revoked = await this.repo.revokeRole(args.userId, args.roleName);
@@ -160,9 +180,8 @@ export class AdminUserManagementUseCase {
     if (!target) return refuse('NOT_FOUND', 'User not found.', 404);
     if (!args.active) {
       if ((args.reason ?? '').trim().length < 5) return refuse('REASON_REQUIRED', 'Give a reason for deactivating this account (at least 5 characters).');
-      const holds = await this.repo.userHasRole(args.userId, PLATFORM_ADMINISTRATOR_ROLE);
-      if (target.isActive && holds && (await this.repo.countActiveUsersWithRole(PLATFORM_ADMINISTRATOR_ROLE)) <= 1) {
-        return refuse('LAST_ADMIN', 'This is the last active PLATFORM_ADMINISTRATOR and cannot be deactivated.', 409);
+      if (target.isActive && (await this.holdsFullAccess(args.userId)) && (await this.repo.countActiveUsersWithAnyRole(FULL_ACCESS)) <= 1) {
+        return refuse('LAST_ADMIN', 'This is the last active full-access administrator and cannot be deactivated.', 409);
       }
     }
     if (target.isActive === args.active) return { ok: true, value: { changed: false, active: args.active } };
@@ -181,6 +200,38 @@ export class AdminUserManagementUseCase {
     }
     await this.repo.decideGrantRequest(args.requestId, { status: 'REJECTED', decidedBy: args.actorId, reason: 'WITHDRAWN_BY_REQUESTER' });
     return { ok: true, value: { withdrawn: true } };
+  }
+
+  /**
+   * True for the two system full-access roles and for any custom role that
+   * carries access management or every registry permission.
+   */
+  async needsSecondApprover(roleName: string): Promise<boolean> {
+    if (FULL_ACCESS.includes(roleName)) return true;
+    const codes = new Set(await this.repo.rolePermissionCodes(roleName));
+    if (ELEVATED_ROLE_CODES.some((c) => codes.has(c))) return true;
+    const registry = Object.values(PERMISSIONS) as string[];
+    return registry.length > 0 && registry.every((c) => codes.has(c));
+  }
+
+  private async holdsFullAccess(userId: string): Promise<boolean> {
+    for (const role of FULL_ACCESS) {
+      if (await this.repo.userHasRole(userId, role)) return true;
+    }
+    return false;
+  }
+
+  /** Active full-access holders left once `roleName` is taken from `userId`. */
+  private async remainingFullAccessAfterRevoke(userId: string, roleName: string): Promise<number> {
+    const total = await this.repo.countActiveUsersWithAnyRole(FULL_ACCESS);
+    // The target still counts if they keep the OTHER full-access role.
+    const keepsOther = await (async () => {
+      for (const role of FULL_ACCESS) {
+        if (role !== roleName && (await this.repo.userHasRole(userId, role))) return true;
+      }
+      return false;
+    })();
+    return keepsOther ? total : total - 1;
   }
 
 }

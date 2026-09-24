@@ -119,8 +119,12 @@ describe('after a failed or abandoned payment', () => {
 });
 
 describe('what must NOT change', () => {
-  it('still reuses a live attempt rather than opening a second transaction', async () => {
-    const { useCase, created, submitted } = build('pending');
+  // An attempt that never reached the provider is resubmitted under its own
+  // reference. A `pending` one is NOT: it already holds a live provider
+  // transaction whose tracking id must never be overwritten
+  // (StartPaymentNeverOrphansAPage.test.ts).
+  it('still reuses an attempt that never reached the provider', async () => {
+    const { useCase, created, submitted } = build('not_started');
     await useCase.execute({ orderId: ORDER.id });
     expect(created).toHaveLength(0);
     expect(submitted).toEqual([`GP-${ORDER.orderNumber}-${ORDER.id.slice(0, 8)}`.slice(0, 43)]);

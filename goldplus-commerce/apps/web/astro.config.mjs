@@ -25,8 +25,12 @@ export default defineConfig({
       : []),
   ],
   build: {
-    // Every page stylesheet is a few KB; inlining them removes three
-    // render-blocking requests from the first paint of every page.
+    // Inlining removes the render-blocking stylesheet requests from the first
+    // paint of every page. The cost (measured 2026-09-24): the stylesheets are
+    // no longer "a few KB" — about 88 KB of CSS (15 KB gzipped) on most pages and
+    // 118 KB (21 KB gzipped) on home, re-sent with every document and never
+    // cached. Moving to 'auto' (a hashed, cacheable external stylesheet) is a
+    // first-paint trade-off: change it only with a Lighthouse Watch before/after.
     inlineStylesheets: 'always',
   },
   server: {

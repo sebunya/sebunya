@@ -41,7 +41,8 @@ if (Astro.request.method === 'POST') {
   };
 
   if (!values.customerName) errors.customerName = 'Your name is required.';
-  if (!isValidEmail(values.email)) errors.email = 'A valid email is required.';
+  // Email is optional: sales calls the phone number back.
+  if (values.email && !isValidEmail(values.email)) errors.email = 'That email address does not look right. Check it, or leave it blank.';
   if (!isValidUgandanPhone(values.phone)) errors.phone = 'A valid Ugandan phone number is required.';
   if (!values.productName) errors.productName = 'Please state the product you need.';
   if (!values.quantity) errors.quantity = 'Required.';
@@ -129,7 +130,7 @@ const checkedKind = values.kind || initialKind;
             <legend class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Your Details</legend>
             <FormField id="customerName" name="customerName" label="Your name" required defaultValue={values.customerName} autocomplete="name" errorMessage={errors.customerName} />
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <FormField id="email" name="email" label="Email" type="email" required defaultValue={values.email} autocomplete="email" errorMessage={errors.email} />
+              <FormField id="email" name="email" label="Email (optional)" type="email" defaultValue={values.email} autocomplete="email" errorMessage={errors.email} />
               <FormField id="phone" name="phone" label="Phone" type="tel" required defaultValue={values.phone} autocomplete="tel" inputmode="tel" placeholder="07XX XXX XXX" errorMessage={errors.phone} />
             </div>
           </fieldset>
@@ -229,7 +230,7 @@ const checkedKind = values.kind || initialKind;
       const qIn = form.querySelector('[name="quantity"]') as HTMLInputElement;
 
       if (!nameIn.value.trim()) setError('customerName', 'Required.');
-      if (!isValidEmail(emailIn.value)) setError('email', 'Enter a valid email.');
+      if (emailIn.value.trim() && !isValidEmail(emailIn.value)) setError('email', 'Check the email, or leave it blank.');
       if (!isValidUgandanPhone(phoneIn.value)) setError('phone', 'Enter a valid Ugandan phone.');
       if (!prodIn.value.trim()) setError('productName', 'Required.');
       if (!qIn.value.trim()) setError('quantity', 'Required.');

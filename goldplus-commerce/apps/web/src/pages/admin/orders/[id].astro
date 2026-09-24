@@ -38,6 +38,28 @@ if (Astro.request.method === 'POST') {
       } else {
         actionError = json?.error?.message || 'Transition refused by backend validation.';
       }
+    } else if (action === 'resolve_refund') {
+      // A refund left 'requested' (the provider call failed, or PesaPal's
+      // REVERSED status could not say which refund landed) is closed by a
+      // person who checked PesaPal. The API re-checks that the refund belongs
+      // to this order, needs the refund permission and a written reason.
+      const orderId = formData.get('orderId')?.toString().trim() || '';
+      const refundId = formData.get('refundId')?.toString().trim() || '';
+      const resolution = formData.get('resolution')?.toString().trim() || '';
+      const reason = formData.get('reason')?.toString().trim() || '';
+      const res = await fetch(`${apiBase}/admin/payments/orders/${encodeURIComponent(orderId)}/refunds/${encodeURIComponent(refundId)}/resolve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ resolution, reason }),
+      });
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.success) {
+        actionSuccess = json.data?.status === 'settled'
+          ? 'Refund recorded as paid out. The order and loyalty points were updated to match.'
+          : 'Refund recorded as not paid. Its amount can be refunded again.';
+      } else {
+        actionError = json?.error?.message || 'The refund could not be resolved.';
+      }
     } else if (action === 'note') {
       const note = formData.get('note')?.toString().trim() || '';
       const res = await fetch(`${apiBase}/admin/orders/${id}/note`, {
@@ -77,29 +99,15 @@ let order: any = null;
 let paymentAttempts: any[] = [];
 let refunds: any[] = [];
 let refundsLoaded = false;
-let isSample = false;
-let apiError = '';
-
-const fallbackOrder = {
-  id: id || "fallback-1",
-  orderNumber: "GP-FALLBACK-1",
-  customerName: "Sample John",
-  customerPhone: "0788000000",
-  customerEmail: "john@example.com",
-  buyerType: "retail",
-  totalUgx: 150000,
-  deliveryArea: "Kampala Central",
-  deliveryAddress: "Plot 12, Kampala Road",
-  paymentStatus: "unpaid",
-  orderStatus: "received",
-  createdAt: new Date().toISOString(),
-  items: [
-    { sku: "GP-CHARGER-SAMPLE", productName: "GoldPlus Fast Charger", quantity: 1, unitPrice: 150000 }
-  ]
-};
+// No invented order is ever shown. A missing, forbidden or unreachable order
+// renders an error panel with no forms, no WhatsApp/tel links and no preview —
+// a made-up "Sample John" once sat here with live action forms and a wa.me
+// link to a real-format stranger's number.
+let loadError: { title: string; detail: string } | null = null;
+let fulfilmentTaskId: string | null = null;
 
 try {
-  const res = await fetch(`${apiBase}/governance/admin/orders/${id}`, {
+  const res = await fetch(`${apiBase}/governance/admin/orders/${encodeURIComponent(String(id ?? ''))}`, {
     headers: { 
       'Accept': 'application/json',
       'Authorization': `Bearer ${token}` 
@@ -108,7 +116,7 @@ try {
 
   if (res.ok) {
     const json = await res.json().catch(() => null);
-    if (json && json.success && json.data) {
+    if (json && json.success && json.data?.order) {
       order = json.data.order;
       paymentAttempts = json.data.paymentAttempts || [];
       // Refund ledger for this order (existing payments endpoint). Hidden if the
@@ -118,20 +126,20 @@ try {
         const rj = rr.ok ? await rr.json().catch(() => null) : null;
         if (rj?.success && Array.isArray(rj.data?.refunds)) { refunds = rj.data.refunds; refundsLoaded = true; }
       } catch { /* refunds are context, not the order */ }
+      // Dispatch and delivery are recorded on the fulfilment task, not here.
+      try {
+        const fr = await fetch(`${apiBase}/admin/fulfilment/by-order/${encodeURIComponent(order.id)}`, { headers: { Authorization: `Bearer ${token}` } });
+        const fj = fr.ok ? await fr.json().catch(() => null) : null;
+        if (fj?.success && typeof fj.data?.id === 'string') fulfilmentTaskId = fj.data.id;
+      } catch { /* the link is a convenience */ }
     } else {
-      order = fallbackOrder;
-      isSample = true;
-      apiError = 'Unexpected schema returned from active API route.';
+      loadError = orderLoadError(0);
     }
   } else {
-    order = fallbackOrder;
-    isSample = true;
-    apiError = `API query responded with HTTP ${res.status}.`;
+    loadError = orderLoadError(res.status);
   }
 } catch {
-  order = fallbackOrder;
-  isSample = true;
-  apiError = 'Commerce API is currently unreachable.';
+  loadError = orderLoadError(null);
 }
 
 // Fetch dynamic notification preview
@@ -141,7 +149,7 @@ let previewData = {
   whatsappText: ''
 };
 
-try {
+if (order) try {
   const selectedTemplate = previewData.template;
   const previewRes = await fetch(`${apiBase}/governance/admin/orders/${id}/communication-preview${selectedTemplate ? `?template=${selectedTemplate}` : ''}`, {
     headers: {
@@ -163,7 +171,7 @@ try {
 // Fetch actual outbox events and attempts for this order
 let timelineItems: any[] = [];
 try {
-  if (id) {
+  if (id && order) {
     const timelineRes = await getOrderNotificationTimeline(id, token);
     timelineItems = timelineRes.items;
   }
@@ -183,10 +191,11 @@ function escapeHtml(str: string | null | undefined): string {
 }
 
 import { formatUgx } from '../../../lib/money';
+import { orderLoadError, orderFulfilmentTransitionOptions, DISPATCH_ON_TASK_STATUSES } from '../../../lib/adminOrderPage';
 // UGX code format via the single money source (en-UG's currency symbol is "USh").
 const formatter = { format: (n: unknown) => formatUgx(n) };
 
-if (!previewData.emailHtml) {
+if (order && !previewData.emailHtml) {
   const formattedTotal = formatter.format(order.totalUgx);
   const itemsHtml = (order.items || []).map((item: any) => `
     <tr>
@@ -395,7 +404,7 @@ if (!previewData.emailHtml) {
 </html>`;
 }
 
-if (!previewData.whatsappText) {
+if (order && !previewData.whatsappText) {
   let fallbackWaText = `Hello ${order.customerName}, regarding your GoldPlus order *${order.orderNumber}*:\n\nWe have received your order! Placed status is currently *Awaiting Payment*.\n\nTotal Amount: *${formatter.format(order.totalUgx || 0)}*\n\nTo complete your checkout securely, please review your Mobile Money window or use our tracking URL: https://shopgoldplus.com/track-order?ref=${order.orderNumber}`;
   
   if (previewData.template === 'ORDER_PAYMENT_PENDING') {
@@ -425,41 +434,38 @@ function getStatusColor(status: string) {
   }
 }
 
-// Compute allowed transition options
-const currentStatus = order.orderStatus;
-const transitionOptions: string[] = [];
-
-if (currentStatus === 'received') {
-  transitionOptions.push('processing', 'cancelled');
-} else if (currentStatus === 'pending_payment') {
-  transitionOptions.push('cancelled');
-  if (order.paymentStatus === 'paid') {
-    transitionOptions.push('processing');
-  }
-} else if (currentStatus === 'pending_owner_review') {
-  transitionOptions.push('processing', 'cancelled');
-} else if (currentStatus === 'processing') {
-  transitionOptions.push('dispatched', 'completed', 'cancelled');
-} else if (currentStatus === 'dispatched') {
-  transitionOptions.push('delivered', 'delivery_failed');
-} else if (currentStatus === 'delivery_failed') {
-  transitionOptions.push('dispatched', 'completed', 'cancelled');
-}
+// Only moves the governance fulfillment route accepts. Dispatch and delivery
+// are recorded on the fulfilment task (the route refuses them as INVALID_STATUS).
+const currentStatus = order?.orderStatus ?? '';
+const transitionOptions: string[] = order ? orderFulfilmentTransitionOptions(currentStatus, order.paymentStatus) : [];
+const dispatchOnTask = order ? DISPATCH_ON_TASK_STATUSES.includes(currentStatus) : false;
 // Money already collected vs given back — what an operator must know before a refund.
-const collectedUgx = paymentAttempts.filter((a: any) => a.status === 'completed').reduce((n: number, a: any) => n + (Number(a.amount) || 0), 0);
+// A fully refunded attempt moves to 'reversed'; its money WAS collected.
+const collectedUgx = paymentAttempts.filter((a: any) => a.status === 'completed' || a.status === 'reversed').reduce((n: number, a: any) => n + (Number(a.amount) || 0), 0);
 const refundedUgx = refunds.filter((r: any) => r.status === 'requested' || r.status === 'settled').reduce((n: number, r: any) => n + (Number(r.amountUgx) || 0), 0);
 const remainingRefundableUgx = Math.max(0, collectedUgx - refundedUgx);
 const completedAttempt = paymentAttempts.find((a: any) => a.status === 'completed');
-const orderHistoryHref = `/admin/audit?entity=order&entityId=${encodeURIComponent(order.id)}`;
-const orderPaymentsHref = `/admin/payments?q=${encodeURIComponent(order.orderNumber || order.id)}`;
-const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order.userId)}` : null;
+const orderHistoryHref = order ? `/admin/audit?entity=order&entityId=${encodeURIComponent(order.id)}` : '';
+const orderPaymentsHref = order ? `/admin/payments?q=${encodeURIComponent(order.orderNumber || order.id)}` : '';
+const customerHref = order?.userId ? `/admin/customers/${encodeURIComponent(order.userId)}` : null;
 
 ---
 
 <AdminLayout 
-  title={`Order Control — ${order.orderNumber}`} 
+  title={order ? `Order Control — ${order.orderNumber}` : 'Order unavailable'} 
   description="Admin operations workspace for customer order fulfillment stages and transactional history lookup."
 >
+  {!order ? (
+  <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
+    <a href="/admin/orders" class="text-xs font-bold text-gray-500 hover:text-brand-dark transition-colors mb-4 inline-block">&larr; Back to Order Registry</a>
+    {actionError && <div class="bg-red-50 border border-red-200 text-red-800 px-6 py-4 rounded-2xl mb-6 text-xs font-bold">{actionError}</div>}
+    <div role="alert" class="bg-red-50 border border-red-200 text-red-900 px-6 py-5 rounded-2xl">
+      <h2 class="text-base font-black">{loadError?.title ?? 'Order unavailable'}</h2>
+      <p class="text-xs mt-1 leading-relaxed">{loadError?.detail}</p>
+      <p class="text-[11px] mt-2 font-mono text-red-700">Order id: {id}</p>
+    </div>
+  </div>
+  ) : (
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
     
     <div class="mb-8 pb-6 border-b border-gray-200 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
@@ -483,13 +489,6 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
         </nav>
       </div>
     </div>
-
-    {isSample && (
-      <div class="bg-blue-50 border border-blue-200 text-blue-800 px-6 py-4 rounded-2xl mb-8 flex flex-col gap-1">
-        <div class="text-xs font-black uppercase tracking-wider">Interactive Fallback Mode</div>
-        <div class="text-xs leading-relaxed"><strong>System note:</strong> {apiError} Displaying fallback data.</div>
-      </div>
-    )}
 
     {actionSuccess && (
       <div class="bg-green-50 border border-green-200 text-green-800 px-6 py-4 rounded-2xl mb-8 flex items-center gap-3">
@@ -640,6 +639,34 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
                       <span class="font-black">{formatter.format(Number(r.amountUgx) || 0)}</span>
                       <span class="uppercase font-bold text-[10px]">{r.status}</span>
                       <span class="text-gray-500 basis-full">{r.reason}</span>
+                      {(r.providerStatus || r.providerMessage) && (
+                        <span class="text-gray-500 basis-full">PesaPal: {r.providerStatus ?? 'no answer'}{r.providerMessage ? ` · ${r.providerMessage}` : ''}</span>
+                      )}
+                      {r.status === 'requested' && (
+                        <form method="POST" class="basis-full mt-1 rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+                          <p class="font-bold text-amber-900">
+                            {r.providerStatus === '200'
+                              ? 'PesaPal accepted this refund, but has not confirmed paying it out. Check PesaPal, then record what happened.'
+                              : 'It is not known whether this refund was paid: the request to PesaPal did not get an answer. Check PesaPal, then record what happened.'}
+                          </p>
+                          <input type="hidden" name="action" value="resolve_refund" />
+                          <input type="hidden" name="orderId" value={order.id} />
+                          <input type="hidden" name="refundId" value={r.id} />
+                          <label class="block">
+                            <span class="font-bold">What PesaPal shows</span>
+                            <select name="resolution" required class="mt-1 block w-full rounded border border-gray-300 px-2 py-1">
+                              <option value="">Choose…</option>
+                              <option value="settled">Paid out to the customer</option>
+                              <option value="rejected">Not paid (the amount becomes refundable again)</option>
+                            </select>
+                          </label>
+                          <label class="block">
+                            <span class="font-bold">Reason (at least 10 characters)</span>
+                            <input name="reason" required minlength="10" maxlength="500" class="mt-1 block w-full rounded border border-gray-300 px-2 py-1" />
+                          </label>
+                          <button type="submit" class="rounded-full bg-slate-900 px-4 py-1.5 font-bold text-white">Record outcome</button>
+                        </form>
+                      )}
                     </li>
                   ))}
                 </ul>
@@ -647,7 +674,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
               <p class="mt-4">
                 {completedAttempt && remainingRefundableUgx > 0
                   ? <a href={`/admin/payments?q=${encodeURIComponent(completedAttempt.merchantReference)}`} class="inline-flex rounded-full bg-slate-900 px-4 py-2 font-bold text-white">Refund on the payments page →</a>
-                  : <span class="font-bold text-gray-600">{collectedUgx === 0 ? 'Nothing has been collected on this order, so there is nothing to refund.' : 'No refundable balance remains.'}</span>}
+                  : <span class="font-bold text-gray-600">{collectedUgx === 0 ? 'Nothing has been collected on this order, so there is nothing to refund.' : refundedUgx >= collectedUgx ? 'Fully refunded. No refundable balance remains.' : 'No refundable balance remains.'}</span>}
               </p>
             </div>
           </div>
@@ -714,7 +741,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
           </div>
         </div>
 
-        <!-- Customer Communication Preview Workspace (Tabbed) -->
+        {/* Customer Communication Preview Workspace (Tabbed) */}
         <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden mt-8">
           <div class="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center flex-wrap gap-2">
             <div>
@@ -722,7 +749,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
               <p class="text-[9px] text-gray-500 mt-0.5">Real-time preview of transactional receipts and WhatsApp message builders.</p>
             </div>
             
-            <!-- Template Toggle Select -->
+            {/* Template Toggle Select */}
             <div>
               <form method="GET" class="flex items-center gap-2">
                 <label for="template" class="text-[8px] font-black uppercase tracking-wider text-gray-500">Template:</label>
@@ -746,7 +773,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
           
           <div class="p-6">
             
-            <!-- Tabs Controls -->
+            {/* Tabs Controls */}
             <div class="flex border-b border-gray-200 mb-6">
               <button 
                 id="btn-tab-email" 
@@ -764,7 +791,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
               </button>
             </div>
 
-             <!-- TAB 1: HTML Email Preview -->
+             {/* TAB 1: HTML Email Preview */}
              <div id="tab-panel-email" class="block space-y-4">
                <div class="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden relative shadow-inner" style="height: 380px;">
                  <iframe 
@@ -775,7 +802,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
                  ></iframe>
                </div>
                
-               <!-- Design & Safety Status Badges -->
+               {/* Design & Safety Status Badges */}
                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-gray-50 border border-gray-200 rounded-xl p-4">
                  <div class="flex items-center gap-2">
                    <span class="w-2 h-2 rounded-full bg-blue-500"></span>
@@ -801,7 +828,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
                </div>
              </div>
 
-             <!-- TAB 2: WhatsApp Handoff Preview -->
+             {/* TAB 2: WhatsApp Handoff Preview */}
              <div id="tab-panel-whatsapp" class="hidden space-y-4">
                <div class="grid grid-cols-2 gap-4 text-xs">
                  <div class="bg-gray-50 border border-gray-200 rounded-xl p-3">
@@ -852,7 +879,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
                </div>
              </div>
 
-            <!-- Client Script for UI Controls -->
+            {/* Client Script for UI Controls */}
             <script nonce={Astro.locals.cspNonce} is:inline>
               function switchTab(activeTab) {
                 const btnEmail = document.getElementById('btn-tab-email');
@@ -912,12 +939,12 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
           </div>
         </div>
 
-        <!-- Notification Channel Status Panels -->
+        {/* Notification Channel Status Panels */}
         <div class="mt-8">
           <NotificationChannelPanel items={timelineItems} />
         </div>
 
-        <!-- Chronological Audit Timeline Log -->
+        {/* Chronological Audit Timeline Log */}
         <NotificationTimeline items={timelineItems} />
 
       </div>
@@ -954,6 +981,14 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
             </div>
 
             {/* Transition Controls Form */}
+            {dispatchOnTask && (
+              <div class="bg-blue-50 border border-blue-100 p-4 rounded-xl text-xs font-medium text-blue-900">
+                Dispatch and delivery are recorded on the fulfilment task.{' '}
+                {fulfilmentTaskId
+                  ? <a class="font-black underline" href={`/admin/fulfilment/${fulfilmentTaskId}/dispatch`}>Open the fulfilment task →</a>
+                  : <a class="font-black underline" href="/admin/fulfilment">Open the fulfilment queue →</a>}
+              </div>
+            )}
             {transitionOptions.length > 0 ? (
               <form method="POST" class="space-y-4">
                 <div>
@@ -979,7 +1014,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
                   Commit Logistical Update
                 </button>
               </form>
-            ) : (
+            ) : dispatchOnTask ? null : (
               <div class="bg-gray-50 border border-gray-100 p-4 rounded-xl text-center text-xs font-medium text-gray-500">
                 Fulfillment workflow completed, failed, or cancelled. Operational status cannot be updated in this phase.
               </div>
@@ -1023,6 +1058,7 @@ const customerHref = order.userId ? `/admin/customers/${encodeURIComponent(order
     </div>
 
   </div>
+  )}
 <script>
   document.getElementById('rider-copy')?.addEventListener('click', async () => {
     const text = document.getElementById('rider-card-text')?.textContent ?? '';

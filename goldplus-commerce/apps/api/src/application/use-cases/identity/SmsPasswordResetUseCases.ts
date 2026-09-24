@@ -132,6 +132,49 @@ export class RequestSmsPasswordResetUseCase {
   }
 }
 
+/**
+ * Counts wrong guesses against a number that has NO live reset code (unknown
+ * number, inactive account, nothing outstanding, expired). Without it the
+ * attempt limit itself was an existence oracle: a registered number with a code
+ * outstanding turned 400 → 429 on the sixth guess, an unregistered one stayed
+ * 400 forever. With it, every number follows the same 400×5-then-429 sequence.
+ *
+ * Keys are hashes, never raw phone numbers. In-memory and bounded: this is a
+ * uniformity guard, not the brute-force defence (the live code's own attempt
+ * counter and the per-client auth-recovery budget are).
+ */
+export interface MissedResetAttemptCounter {
+  /** Records one miss for `key` and returns the count inside the current window. */
+  bump(key: string, now: Date): number;
+}
+
+export class InMemoryMissedResetAttemptCounter implements MissedResetAttemptCounter {
+  private readonly entries = new Map<string, { count: number; windowStart: number }>();
+  constructor(
+    private readonly windowMs = SMS_RESET_CODE_TTL_MINUTES * 60_000,
+    private readonly maxKeys = 10_000,
+  ) {}
+
+  bump(key: string, now: Date): number {
+    const t = now.getTime();
+    const current = this.entries.get(key);
+    if (current && t - current.windowStart < this.windowMs) {
+      current.count += 1;
+      return current.count;
+    }
+    if (!current && this.entries.size >= this.maxKeys) {
+      // Drop expired windows first; if still full, the oldest insertion goes.
+      for (const [k, v] of this.entries) if (t - v.windowStart >= this.windowMs) this.entries.delete(k);
+      if (this.entries.size >= this.maxKeys) {
+        const oldest = this.entries.keys().next().value;
+        if (oldest !== undefined) this.entries.delete(oldest);
+      }
+    }
+    this.entries.set(key, { count: 1, windowStart: t });
+    return 1;
+  }
+}
+
 export type ResetPasswordWithSmsCodeResult =
   | { ok: true; userId: string }
   | { ok: false; code: 'WEAK_PASSWORD' | 'CODE_INVALID' | 'TOO_MANY_ATTEMPTS'; message: string };
@@ -144,6 +187,7 @@ export class ResetPasswordWithSmsCodeUseCase {
     private readonly hasher: IPasswordHasher,
     private readonly hash: (v: string) => string,
     private readonly now: () => Date = () => new Date(),
+    private readonly misses: MissedResetAttemptCounter = new InMemoryMissedResetAttemptCounter(),
   ) {}
 
   async execute(input: { phone: string; code: string; newPassword: string }): Promise<ResetPasswordWithSmsCodeResult> {
@@ -165,12 +209,22 @@ export class ResetPasswordWithSmsCodeUseCase {
     // Unknown phone, no code outstanding, a code for a different number, a
     // consumed code and an expired code all get ONE answer. The differences
     // between them are exactly what an attacker would like to learn.
+    // No live code for this number: counted per number all the same, so the
+    // 429 arrives on the same guess whether or not an account exists.
+    const noLiveCode = (): ResetPasswordWithSmsCodeResult => {
+      const misses = this.misses.bump(this.hash(`password-reset-miss:${phone.e164}`), this.now());
+      if (misses > SMS_RESET_MAX_ATTEMPTS) {
+        return { ok: false, code: 'TOO_MANY_ATTEMPTS', message: TOO_MANY_ATTEMPTS_MESSAGE };
+      }
+      return invalid();
+    };
+
     const user = await this.users.findByPhone(phone.e164);
-    if (!user || !user.isActive) return invalid();
+    if (!user || !user.isActive) return noLiveCode();
 
     const otp = await this.identity.latestOtp(user.id);
-    if (!otp || otp.consumedAt || otp.phoneE164 !== phone.e164) return invalid();
-    if (otp.expiresAt.getTime() <= this.now().getTime()) return invalid();
+    if (!otp || otp.consumedAt || otp.phoneE164 !== phone.e164) return noLiveCode();
+    if (otp.expiresAt.getTime() <= this.now().getTime()) return noLiveCode();
 
     const attempts = await this.identity.bumpOtpAttempts(otp.id);
     if (attempts > SMS_RESET_MAX_ATTEMPTS) {

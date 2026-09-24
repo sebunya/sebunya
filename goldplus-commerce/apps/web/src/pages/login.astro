@@ -8,6 +8,7 @@ import Notice from '../components/Notice.astro';
 import { apiBase } from '../lib/api';
 import SocialSignIn from '../components/auth/SocialSignIn.astro';
 import { SESSION_COOKIE_NAME } from '../lib/session';
+import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../lib/requestOrigin';
 
 /**
  * The visitor's address, forwarded so abuse control counts THEM and not this
@@ -33,7 +34,14 @@ if (Astro.request.method === 'POST') {
   const password = String(form.get('password') ?? '');
   values = { email };
 
-  if (!email || !password) {
+  // Login CSRF: the credentials ride in the form body, so SameSite does not
+  // stop a cross-site page from auto-submitting its OWN account here and
+  // signing this browser into it. Refused before the API is ever called.
+  const origin = checkRequestOrigin(Astro.request, import.meta.env as unknown as Record<string, string | undefined>);
+  if (!origin.allowed) {
+    status = 'error';
+    message = CROSS_SITE_MESSAGE;
+  } else if (!email || !password) {
     status = 'error';
     message = 'Email and password are required.';
   } else {

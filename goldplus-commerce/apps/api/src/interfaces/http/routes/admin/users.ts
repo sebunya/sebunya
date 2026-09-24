@@ -59,10 +59,19 @@ routes.post('/grant-requests/:id/decide', requirePermissions([PERMISSIONS.AUTH_M
   });
   if (!outcome.ok) return c.json({ success: false, error: { code: outcome.code, message: outcome.message } }, outcome.status as any);
   const { CreateAuditLogUseCase } = await import('../../../../application/use-cases/audit/CreateAuditLogUseCase');
-  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+  const audit = new CreateAuditLogUseCase(registry.auditRepo);
+  await audit.execute({
     actorId, action: 'ADMIN_ROLE_GRANT_DECIDED', entity: 'role_grant_request', entityId: c.req.param('id') ?? '',
-    newState: { decision },
+    newState: { decision, userId: outcome.value.userId, roleName: outcome.value.roleName },
   });
+  if (decision === 'APPROVED') {
+    // The receiving user's own History (entity=user) must show they were given
+    // full access — the request row alone never reached it.
+    await audit.execute({
+      actorId, action: 'ADMIN_ROLE_GRANT_APPROVED', entity: 'user', entityId: outcome.value.userId,
+      newState: { roleName: outcome.value.roleName, requestId: c.req.param('id') ?? '' },
+    });
+  }
   return c.json({ success: true, data: outcome.value });
 });
 

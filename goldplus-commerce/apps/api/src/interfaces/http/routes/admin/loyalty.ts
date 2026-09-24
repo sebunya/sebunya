@@ -167,44 +167,22 @@ routes.post('/adjust', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async 
   return c.json({ success: true, data: { entryId: result.entryId } });
 });
 
+// The programme's money settings as stored, so the admin form can show them
+// and send back only what the operator changed.
+routes.get('/programme-config', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const config = await Registry.getInstance().loyaltyCompletionRepo.getProgrammeConfig();
+  return c.json({ success: true, data: config });
+});
+
 routes.put('/programme-config', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ success: false, error: { code: 'BAD_JSON', message: 'Body must be JSON.' } } satisfies ApiResponse<never>, 400);
-  const num = (v: unknown) => (v === null || v === undefined || v === '' ? null : Number(v));
-  const values = {
-    pointValueUgx: num(body.pointValueUgx),
-    redemptionMinPoints: num(body.redemptionMinPoints),
-    redemptionMaxShareBps: num(body.redemptionMaxShareBps),
-    budgetCapPoints: num(body.budgetCapPoints),
-    killSwitch: Boolean(body.killSwitch),
-    guestBackfillLookbackDays: num(body.guestBackfillLookbackDays),
-    guestBackfillCapPoints: num(body.guestBackfillCapPoints),
-    // 0087 gamification values — null switches that earn source off.
-    referralReferrerPoints: num(body.referralReferrerPoints),
-    referralRefereePoints: num(body.referralRefereePoints),
-    birthdayPoints: num(body.birthdayPoints),
-    streakTargetOrders: num(body.streakTargetOrders),
-    streakWindowDays: num(body.streakWindowDays),
-    streakRewardPoints: num(body.streakRewardPoints),
-    // 0088: the master switch for chance mechanics. Independent of any
-    // individual campaign's active flag — either one off means no draws.
-    chanceEnabled: Boolean(body.chanceEnabled),
-  };
-  for (const [k, v] of Object.entries(values)) {
-    if (v !== null && typeof v === 'number' && (!Number.isInteger(v) || v < 0 || (k === 'redemptionMaxShareBps' && v > 10_000))) {
-      return c.json({ success: false, error: { code: 'INVALID_VALUE', message: `"${k}" is out of range.` } } satisfies ApiResponse<never>, 400);
-    }
+  // PATCH semantics: only the keys in the body change (SaveLoyaltyProgrammeConfigUseCase).
+  const result = await Registry.getInstance().saveLoyaltyProgrammeConfigUseCase.execute(body, (c.get('user') as any).id);
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
   }
-  const registry = Registry.getInstance();
-  await registry.loyaltyProgrammeConfigWriter.save(values);
-  await new CreateAuditLogUseCase(registry.auditRepo).execute({
-    actorId: (c.get('user') as any).id,
-    action: 'LOYALTY_PROGRAMME_CONFIG_SAVED',
-    entity: 'loyalty_config',
-    entityId: 'config',
-    newState: values,
-  });
-  return c.json({ success: true, data: values });
+  return c.json({ success: true, data: result.config });
 });
 
 // 0088: reward-draw oversight. Campaigns, live prize table with published

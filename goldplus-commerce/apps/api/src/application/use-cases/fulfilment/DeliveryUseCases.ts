@@ -13,6 +13,7 @@ import { IFulfilmentReportRepository, FulfilmentReport } from '../../ports/IFulf
 import { IAuditRepository } from '../../ports/IAuditRepository';
 import { IOrderTransitionPort } from '../../ports/IOrderTransitionPort';
 import { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
+import { mirrorOrderDispatched } from './DispatchUseCases';
 
 export type DeliveryError =
   | 'NOT_FOUND'
@@ -71,7 +72,16 @@ export class RecordDeliveryUseCase {
     rescheduledFor?: Date | null;
     notes?: string | null;
     now?: Date;
-  }): Promise<{ ok: true; delivery: FulfilmentDeliverySnapshot; completed: boolean } | Fail> {
+  }): Promise<
+    | {
+        ok: true;
+        delivery: FulfilmentDeliverySnapshot;
+        completed: boolean;
+        /** Whether the ORDER followed the outcome; 'skipped' is for the operator to see. */
+        orderTransition?: 'delivered' | 'delivery_failed' | 'skipped' | 'not_wired';
+      }
+    | Fail
+  > {
     const now = input.now ?? new Date();
     const snapshot = await this.tasks.findById(input.taskId);
     if (!snapshot) return fail('NOT_FOUND', 'Fulfilment task not found.');
@@ -146,17 +156,37 @@ export class RecordDeliveryUseCase {
         : null; // RESCHEDULED and partials leave the order dispatched
       orderTransition = 'skipped';
       if (target) {
-        try {
-          await this.orderTransitions.transition(snapshot.orderId, target, {
+        const record = () =>
+          this.orderTransitions!.transition(snapshot.orderId, target, {
             actorId: input.actorId,
             actorType: 'administrator',
             source: 'fulfilment',
             reasonCode: 'delivery_outcome',
             note: `Fulfilment attempt ${attempt}: ${input.outcome}`,
           });
+        try {
+          await record();
           orderTransition = target;
         } catch {
-          orderTransition = 'skipped';
+          // The order never followed the task to 'dispatched' — every COD
+          // order dispatched before the dispatch mirror learned the legal
+          // route. Catch it up the same way (confirm, then dispatch) and try
+          // once more; each hop is legal and ledgered or commits nothing.
+          const caughtUp = await mirrorOrderDispatched(this.orderTransitions, snapshot.orderId, {
+            actorId: input.actorId,
+            note: `Catch-up before recording attempt ${attempt}`,
+            cashOnDelivery: snapshot.paymentStatus !== 'paid',
+          });
+          if (caughtUp === 'dispatched') {
+            try {
+              await record();
+              orderTransition = target;
+            } catch {
+              orderTransition = 'skipped';
+            }
+          } else {
+            orderTransition = 'skipped';
+          }
         }
       }
     }
@@ -168,7 +198,7 @@ export class RecordDeliveryUseCase {
       entityId: input.taskId,
       newState: { attempt, outcome: input.outcome, completed, deliveredQuantity, returnedQuantity, orderTransition },
     });
-    return { ok: true, delivery, completed };
+    return { ok: true, delivery, completed, orderTransition };
   }
 }
 

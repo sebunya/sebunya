@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../client';
 import { ICommerceReconciliationRepository } from '../../../application/ports/ICommerceReconciliationRepository';
-import { OrderMoneyRow, InventoryRow } from '../../../domain/commerce/CommerceIntegrity';
+import { OrderMoneyRow, InventoryRow, OrderStockRow } from '../../../domain/commerce/CommerceIntegrity';
 
 /** bigint/numeric come back from the driver as strings; money stays exact to 2^53. */
 const num = (v: unknown): number => Number(v ?? 0);
@@ -28,6 +28,41 @@ export class DrizzleCommerceReconciliationRepository implements ICommerceReconci
       deliveryFee: num(r.delivery_fee),
       loyaltyDiscount: num(r.loyalty_discount),
       lineItemsSum: num(r.line_items_sum),
+    }));
+  }
+
+  async scanOrderStock(limit: number): Promise<OrderStockRow[]> {
+    // Only orders that could be an exception: goods left (or the task is past
+    // packing) while a row is still reserved, or cancelled with a consumed row.
+    // A cancelled-after-consume order is reported for 7 days only: nothing
+    // can clear it (a return is recorded as a stock adjustment, which names no
+    // order), and the alert runs every tick, so an unbounded report would shout
+    // about the same finished case forever. The cancel itself also writes an
+    // INVENTORY_RETURN_NEEDED audit row, which stays.
+    const rows = (await db.execute(sql`
+      select o.id as order_id,
+             o.status as order_status,
+             t.status as task_status,
+             count(*) filter (where r.status = 'reserved') as reserved_rows,
+             count(*) filter (where r.status = 'consumed') as consumed_rows
+      from orders o
+      join inventory_reservations r on r.order_id = o.id
+      left join fulfilment_tasks t on t.order_id = o.id
+      where o.status in ('dispatched', 'delivered', 'completed', 'cancelled')
+         or t.status in ('READY_FOR_DISPATCH', 'OUT_FOR_DELIVERY', 'DELIVERED')
+      group by o.id, o.status, t.status
+      having count(*) filter (where r.status = 'reserved') > 0
+          or (o.status = 'cancelled' and max(o.updated_at) > now() - interval '7 days'
+              and count(*) filter (where r.status = 'consumed') > 0)
+      order by max(o.updated_at) desc
+      limit ${limit}
+    `)) as unknown as any[];
+    return rows.map((r) => ({
+      orderId: String(r.order_id),
+      orderStatus: String(r.order_status),
+      taskStatus: r.task_status === null || r.task_status === undefined ? null : String(r.task_status),
+      reservedRows: num(r.reserved_rows),
+      consumedRows: num(r.consumed_rows),
     }));
   }
 

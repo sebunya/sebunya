@@ -1,7 +1,9 @@
 import type { APIRoute } from 'astro';
 import { apiBase } from '../lib/api';
 import { getBusinessInfo } from '../lib/businessInfo';
-import { fetchApprovedCatalogue } from '../lib/catalogue';
+import { fetchApprovedCatalogueWithStatus } from '../lib/catalogue';
+import { getStorefrontDiscount } from '../lib/storefrontDiscount';
+import { chargedPriceUgx } from '../lib/productStructuredData';
 import { SITE_ORIGIN } from '../lib/sitemap';
 
 /**
@@ -21,10 +23,17 @@ const esc = (s: string): string => s.replace(/\s+/g, ' ').trim();
 const noDot = (s: string): string => esc(s).replace(/\.$/, '');
 
 export const GET: APIRoute = async () => {
-  const [biz, products] = await Promise.all([
+  const [biz, read, discount] = await Promise.all([
     getBusinessInfo(),
-    fetchApprovedCatalogue(apiBase).catch(() => []),
+    fetchApprovedCatalogueWithStatus(apiBase).catch(() => ({ products: [], complete: false })),
+    getStorefrontDiscount(),
   ]);
+  // The count, the category counts and the price range are stated as facts and
+  // cached publicly, so they come only from a COMPLETE catalogue read. A page-2
+  // timeout used to publish "100 products are listed online" for an hour, and
+  // an empty read "GoldPlus sells …: . 0 products are listed online".
+  const complete = read.complete && read.products.length > 0;
+  const products = complete ? read.products : [];
 
   const byCategory = new Map<string, number>();
   for (const p of products) {
@@ -32,13 +41,15 @@ export const GET: APIRoute = async () => {
     byCategory.set(key, (byCategory.get(key) ?? 0) + 1);
   }
   const categories = [...byCategory.entries()].sort((a, b) => b[1] - a[1]);
-  const prices = products.map((p) => p.retailPriceUgx).filter((v): v is number => typeof v === 'number' && v > 0);
+  // What the shop charges (the campaign price while one runs): the line below
+  // says "Prices on the site are what is charged".
+  const prices = products.map((p) => chargedPriceUgx(p, discount)).filter((v): v is number => typeof v === 'number' && v > 0);
   const range = prices.length > 0 ? `UGX ${Math.min(...prices).toLocaleString('en-UG')} to UGX ${Math.max(...prices).toLocaleString('en-UG')}` : null;
 
   const lines = [
     '# GoldPlus',
     '',
-    `> GoldPlus sells phone accessories and replacement phone batteries in Kampala, Uganda: ${categories.map(([n, c]) => `${n.toLowerCase()} (${c})`).join(', ')}. ${products.length} products are listed online${range ? `, priced ${range}` : ''}. The shop is at ${noDot(biz.addressLine1)}${biz.addressLine2 ? ` (${noDot(biz.addressLine2)})` : ''}, open ${noDot(biz.openDays)}, ${noDot(biz.shopHours)}.`,
+    `> GoldPlus sells phone accessories and replacement phone batteries in Kampala, Uganda${complete ? `: ${categories.map(([n, c]) => `${n.toLowerCase()} (${c})`).join(', ')}. ${products.length} products are listed online${range ? `, priced ${range}` : ''}` : ''}. The shop is at ${noDot(biz.addressLine1)}${biz.addressLine2 ? ` (${noDot(biz.addressLine2)})` : ''}, open ${noDot(biz.openDays)}, ${noDot(biz.shopHours)}.`,
     '',
     '## Facts',
     '',
@@ -49,10 +60,14 @@ export const GET: APIRoute = async () => {
     '- Currency: Ugandan shilling (UGX). Prices on the site are what is charged.',
     '- Every unit is tested before it is sold.',
     '',
-    '## What GoldPlus sells',
-    '',
-    ...categories.map(([name, count]) => `- ${name}: ${count} products — ${SITE_ORIGIN}/shop?category=${encodeURIComponent(name.toLowerCase().replace(/\s+/g, '-'))}`),
-    '',
+    ...(complete
+      ? [
+          '## What GoldPlus sells',
+          '',
+          ...categories.map(([name, count]) => `- ${name}: ${count} products — ${SITE_ORIGIN}/shop?category=${encodeURIComponent(name.toLowerCase().replace(/\s+/g, '-'))}`),
+          '',
+        ]
+      : []),
     '## Pages',
     '',
     `- Shop, all products: ${SITE_ORIGIN}/shop`,
@@ -74,6 +89,7 @@ export const GET: APIRoute = async () => {
   ];
 
   return new Response(lines.join('\n'), {
-    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
+    // A document written without the catalogue is not cached for an hour.
+    headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': complete ? 'public, max-age=3600' : 'public, max-age=60' },
   });
 };

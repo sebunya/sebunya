@@ -81,6 +81,18 @@ export class RegisterCustomerUseCase {
       return { ok: false, code: 'ALREADY_REGISTERED', message: 'An account with this email already exists. Sign in instead.' };
     }
 
+    // One number, one account — whatever shape it was typed in. The unique
+    // index is on the exact string, so 0759…, 256759… and 759… used to insert
+    // as three accounts; findByPhone then (correctly) refused to pick one, and
+    // SMS reset — the only recovery channel that delivers — went silent for
+    // that number for good. Anyone could induce it by registering a victim's
+    // number in another shape. The 23505 branch below already says a phone is
+    // taken, so this adds no new existence oracle.
+    const national = normalisedPhone.slice(-9);
+    if (await this.users.phoneInUse(`+256${national}`)) {
+      return { ok: false, code: 'ALREADY_REGISTERED', message: 'An account with this email or phone already exists. Sign in instead.' };
+    }
+
     const passwordHash = await this.hasher.hash(password);
     let user;
     try {

@@ -66,6 +66,13 @@ export interface FulfilmentQuoteInputs {
   proportionality: ProportionalityConfig;
 }
 
+/** The fee the threshold waived, and the basis that crossed it. */
+export interface FreeDeliveryWaiver {
+  thresholdUgx: number;
+  basisUgx: number;
+  waivedFeeUgx: number;
+}
+
 export type FulfilmentQuote =
   | {
       kind: 'rider_delivery';
@@ -75,6 +82,8 @@ export type FulfilmentQuote =
       window: DeliveryWindow;
       explanation: QuoteExplanation;
       proportionality: ProportionalityResult;
+      /** Set when the free-delivery threshold waived the fee (feeUgx is then 0). */
+      freeDelivery?: FreeDeliveryWaiver;
     }
   | {
       kind: 'bus_shipment';
@@ -89,6 +98,8 @@ export type FulfilmentQuote =
       shipment: ShipmentQuote;
       explanation: QuoteExplanation;
       proportionality: ProportionalityResult;
+      /** Set when the free-delivery threshold waived the fee (feeUgx is then 0). */
+      freeDelivery?: FreeDeliveryWaiver;
     }
   | {
       kind: 'unavailable';
@@ -245,6 +256,74 @@ export function quoteFulfilment(inputs: FulfilmentQuoteInputs): FulfilmentQuote 
       config: inputs.proportionality,
     }),
   };
+}
+
+/**
+ * The free-delivery threshold, applied to a produced fee.
+ *
+ * The wizard asks "orders worth UGX X or more pay no delivery fee", a zone
+ * policy can carry its own figure, and every surface announced "your order
+ * qualifies for free delivery" — while nothing ever waived the fee, so the
+ * panel said free and checkout charged it. This is the one place the waiver
+ * happens, inside the quoting service, so every surface and the order inherit
+ * the same answer.
+ *
+ * `basisUgx` is the merchandise subtotal after promotions and before loyalty
+ * (DEFAULT_THRESHOLD_ORDERING). An unset threshold means the mechanic is off.
+ * A refusal is returned untouched: waiving a fee we could not produce would be
+ * a confirmed zero nobody decided.
+ */
+export function applyFreeDeliveryThreshold(
+  quote: FulfilmentQuote,
+  input: { thresholdUgx: number | null; basisUgx: number },
+): FulfilmentQuote {
+  if (quote.kind === 'unavailable') return quote;
+  const threshold = input.thresholdUgx;
+  if (threshold === null || !Number.isFinite(threshold) || threshold <= 0) return quote;
+  if (!(input.basisUgx >= threshold) || quote.feeUgx === 0) return quote;
+  // A zero fee is proportionate to anything, so the acknowledgement goes too.
+  const proportionality: ProportionalityResult = {
+    findings: quote.proportionality.findings.filter((f) => f.kind !== 'fee_exceeds_value'),
+    requiresAcknowledgement: false,
+  };
+  const freeDelivery = { thresholdUgx: threshold, basisUgx: input.basisUgx, waivedFeeUgx: quote.feeUgx };
+  if (quote.kind === 'bus_shipment') {
+    return {
+      ...quote,
+      feeUgx: 0,
+      perParcelFeeUgx: 0,
+      parcelSentence:
+        quote.parcelCount > 1
+          ? `Your order is too big for one parcel, so it ships as ${quote.parcelCount} parcels. Delivery is free.`
+          : quote.parcelSentence,
+      proportionality,
+      freeDelivery,
+    };
+  }
+  return { ...quote, feeUgx: 0, proportionality, freeDelivery };
+}
+
+/**
+ * What the ORDER charges for delivery, which is not always the fee shown.
+ *
+ * A rate card with `chargedAt: 'collection'` is paid to the carrier at the
+ * parcel office — the customer is told exactly that — so charging it in the
+ * order as well would take the shipping twice. The carrier fee stays on the
+ * quote for display; the order charges nothing for it. A refusal charges
+ * nothing now and is confirmed by the team (null).
+ */
+export function orderChargeUgx(quote: FulfilmentQuote): number | null {
+  if (quote.kind === 'unavailable') return null;
+  if (quote.kind === 'bus_shipment' && quote.shipment.chargedAt === 'collection') return 0;
+  return quote.feeUgx;
+}
+
+/** The order charge had the free-delivery threshold not waived it. */
+export function orderChargeBeforeFreeDeliveryUgx(quote: FulfilmentQuote): number | null {
+  const charge = orderChargeUgx(quote);
+  if (charge === null || quote.kind === 'unavailable') return charge;
+  if (quote.kind === 'bus_shipment' && quote.shipment.chargedAt === 'collection') return 0;
+  return quote.freeDelivery ? quote.freeDelivery.waivedFeeUgx : charge;
 }
 
 /**

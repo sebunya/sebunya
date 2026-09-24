@@ -21,7 +21,10 @@ const fmtDate = (iso: unknown) => {
 // Dispatch stages the customer cares about — fulfilment progress, NOT live GPS.
 const STAGES = [
   { key: 'placed', title: 'Order placed', desc: 'We have your order.' },
-  { key: 'preparing', title: 'Confirmed & preparing', desc: 'We have checked your payment. Your items are being packed at our shop.' },
+  // Neutral about money: a cash-on-delivery order is 'processing' and unpaid,
+  // so "we have checked your payment" was untrue for it. The payment badge on
+  // the same card says what is true about the money.
+  { key: 'preparing', title: 'Confirmed & preparing', desc: 'Confirmed. Your items are being packed at our shop.' },
   { key: 'dispatched', title: 'Dispatched', desc: 'Handed to our rider and on the way to you.' },
   { key: 'delivered', title: 'Delivered', desc: 'Order completed.' },
 ];
@@ -29,8 +32,10 @@ const stageIndexOf = (orderStatus: unknown): number => {
   const s = String(orderStatus ?? '').toLowerCase();
   if (['delivered', 'completed'].includes(s)) return 3;
   if (['dispatched', 'delivery_failed'].includes(s)) return 2;
-  if (['processing', 'pending_owner_review'].includes(s)) return 1;
-  return 0; // received, pending_payment, failed, cancelled (pre-dispatch)
+  if (s === 'processing') return 1;
+  // pending_owner_review is a wholesale/corporate order our team has NOT yet
+  // confirmed (its own badge says "being checked"): it is still at "placed".
+  return 0; // received, pending_owner_review, pending_payment, failed, cancelled (pre-dispatch)
 };
 
 async function lookupOrder(reference: string, contact: string) {
@@ -79,24 +84,11 @@ if (Astro.request.method === 'POST') {
       order = result.data;
       if (intent === 'followup') {
         const note = String(form.get('note') ?? '').trim().slice(0, 800);
-        const isEmail = contact.includes('@');
-        const ticket = await postJson('/governance/support/report-issue', {
-          subject: `Order follow-up requested: ${order.orderNumber}`,
-          description:
-            `A customer asked our team to follow up on their order.\n` +
-            `Order: ${order.orderNumber}\n` +
-            // label() never existed. .astro frontmatter is not typechecked, so
-            // this shipped green and threw a ReferenceError the moment a customer
-            // asked for a follow-up: the POST 500'd and no ticket was raised.
-            `Order status: ${orderStatusCopy(order.orderStatus).label} · Payment: ${paymentStatusCopy(order.paymentStatus).label}\n` +
-            `Delivery area: ${order.deliveryArea ?? 'not given'}\n` +
-            (note ? `\nCustomer note:\n${note}\n` : '') +
-            `\nRaised from the Track Order page.`,
-          productModel: 'Order follow-up',
-          email: isEmail ? contact : '',
-          phone: isEmail ? '' : contact,
-          metadata: { source: 'track-order', orderReference: order.orderNumber },
-        });
+        // The API re-verifies and answers on the phone ON THE ORDER. Raising
+        // it through the public support form sent phone '' for a customer who
+        // verified with their email, and the ticket was refused for a phone
+        // number they were never asked for.
+        const ticket = await postJson('/commerce/orders/lookup/followup', { reference, contact, note });
         if (ticket.ok) followupOk = true;
         else followupError = ticket.message ?? 'We could not send your follow-up request. Please try WhatsApp instead.';
       }
@@ -234,8 +226,11 @@ const paymentCopy = order ? paymentStatusCopy(order.paymentStatus) : null;
                         <span aria-hidden="true" class={`relative z-10 mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-[11px] font-black ${done ? 'border-brand-primary bg-brand-primary text-gray-950' : active ? 'border-brand-primary bg-white text-brand-primaryInk' : 'border-slate-300 bg-white text-slate-300'}`}>
                           {done ? '✓' : i + 1}
                         </span>
-                        <div class={active ? '' : done ? '' : 'opacity-55'}>
-                          <p class={`text-sm font-black ${active ? 'text-brand-primaryInk' : 'text-gray-900'}`}>{stage.title}{active && <span class="ml-2 rounded-full bg-brand-primary/15 px-2 py-0.5 text-[10px] font-bold text-brand-primaryInk align-middle">Now</span>}</p>
+                        {/* Upcoming steps are what the customer reads to see what
+                            happens next: dimmed with opacity they fell to 2.6:1.
+                            The grey step circle is the "not yet" cue instead. */}
+                        <div>
+                          <p class={`text-sm font-black ${active ? 'text-brand-primaryInk' : done ? 'text-gray-900' : 'text-slate-700'}`}>{stage.title}{active && <span class="ml-2 rounded-full bg-brand-primary/15 px-2 py-0.5 text-[10px] font-bold text-brand-primaryInk align-middle">Now</span>}</p>
                           <p class="mt-0.5 text-xs leading-relaxed text-slate-600">{stage.desc}</p>
                           {active && isDeliveryFailed && <p class="mt-1 text-xs font-semibold text-amber-800">A delivery attempt did not succeed. Our team will try again or contact you.</p>}
                         </div>
@@ -248,6 +243,9 @@ const paymentCopy = order ? paymentStatusCopy(order.paymentStatus) : null;
               <dl class="mt-5 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-slate-200 pt-4 text-sm">
                 {order.deliveryArea && (<><dt class="text-slate-500">Delivery area</dt><dd class="text-right font-semibold text-gray-900">{order.deliveryArea}</dd></>)}
                 {order.createdAt && (<><dt class="text-slate-500">Placed</dt><dd class="text-right font-semibold text-gray-900">{fmtDate(order.createdAt)}</dd></>)}
+                {typeof order.subtotalUgx === 'number' && (<><dt class="text-slate-500">Items</dt><dd class="text-right font-semibold text-gray-900 tabular-nums">{formatUgx(order.subtotalUgx)}</dd></>)}
+                {typeof order.deliveryFeeUgx === 'number' && (<><dt class="text-slate-500">Delivery</dt><dd class="text-right font-semibold text-gray-900 tabular-nums">{formatUgx(order.deliveryFeeUgx)}</dd></>)}
+                {typeof order.subtotalUgx === 'number' && typeof order.deliveryFeeUgx === 'number' && typeof order.totalUgx === 'number' && order.subtotalUgx + order.deliveryFeeUgx - order.totalUgx > 0 && (<><dt class="text-slate-500">Points and discounts</dt><dd class="text-right font-semibold text-gray-900 tabular-nums">−{formatUgx(order.subtotalUgx + order.deliveryFeeUgx - order.totalUgx)}</dd></>)}
                 {typeof order.totalUgx === 'number' && (<><dt class="text-slate-500">Total</dt><dd class="text-right font-black text-brand-primaryInk tabular-nums">{formatUgx(order.totalUgx)}</dd></>)}
               </dl>
 

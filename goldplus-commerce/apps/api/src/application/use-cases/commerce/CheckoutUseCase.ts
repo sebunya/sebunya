@@ -6,6 +6,7 @@ import { EvaluateCartPricingUseCase } from '../pricing/EvaluateCartPricingUseCas
 import { ManagePromotionCapacityUseCase } from '../pricing/ManagePromotionCapacityUseCase';
 import { IPricingQuoteRepository } from '../../ports/IPricingQuoteRepository';
 import { PricingQuote } from '../../../domain/pricing/PricingEvaluator';
+import { pricingCustomerScopeKey } from '../../../domain/pricing/CustomerIdentity';
 import { normalizeUgandaDistrict } from '@goldplus/shared';
 
 export interface IOrderRepository {
@@ -160,6 +161,10 @@ export class CheckoutUseCase {
         pricedBy: 'delivery_model' | 'bus_rate_card' | 'manual';
         mayFallBackToLegacy: boolean;
         capture: Record<string, unknown>;
+        /** The threshold that governs this destination; null when the mechanic is off. */
+        freeDeliveryThresholdUgx?: number | null;
+        /** The charge had the threshold not waived it. */
+        feeBeforeFreeDeliveryUgx?: number | null;
       }>;
       recordQuote(orderId: string, capture: Record<string, unknown>): Promise<void>;
       /** Called when a capture write fails, so the loss is observable. */
@@ -186,9 +191,13 @@ export class CheckoutUseCase {
     //
     // The single authoritative mechanism is the fenced checkout_idempotency
     // claim, taken before this use case is invoked. The customer scope below is
-    // used only for pricing, never for ownership.
-    const customerScopeKey =
-      dto.customerDetails.email?.trim().toLowerCase() || dto.customerDetails.phone.trim();
+    // used only for pricing, never for ownership. It is the signed-in account,
+    // else the phone in canonical form — never the optional email, which let
+    // one person pass a per-customer promotion limit by leaving it out.
+    const customerScopeKey = pricingCustomerScopeKey({
+      principal: dto.principal ?? null,
+      phone: dto.customerDetails.phone,
+    });
     const clientOrderKey = dto.clientOrderKey?.trim() || null;
 
     for (const item of dto.items) {
@@ -214,6 +223,10 @@ export class CheckoutUseCase {
     // CONFIG_INCOMPLETE and nothing else.
     let fee = resolveDeliveryFee(zone);
     let deliveryCapture: Record<string, unknown> | null = null;
+    // The free-delivery threshold is decided on the goods total AFTER
+    // promotions and BEFORE loyalty (DEFAULT_THRESHOLD_ORDERING). The quote
+    // only has list prices, so it is re-decided once pricing has run.
+    let freeDelivery: { thresholdUgx: number; feeBeforeUgx: number } | null = null;
     if (this.deliveryQuoting) {
       const quoted = await this.deliveryQuoting.quote({
         areaSlug: dto.customerDetails.deliveryLocation?.areaSlug ?? null,
@@ -229,6 +242,11 @@ export class CheckoutUseCase {
         // Config incomplete: the legacy path answers THIS request only, and the
         // capture records that it did so the fallback rate is measurable.
         deliveryCapture = { ...deliveryCapture, pricedBy: 'legacy_fallback' };
+      }
+      const threshold = quoted.freeDeliveryThresholdUgx ?? null;
+      if (threshold !== null && fee.confirmed) {
+        const before = quoted.mayFallBackToLegacy ? fee.feeUgx : (quoted.feeBeforeFreeDeliveryUgx ?? fee.feeUgx);
+        freeDelivery = { thresholdUgx: threshold, feeBeforeUgx: before };
       }
     }
 
@@ -246,16 +264,34 @@ export class CheckoutUseCase {
     }
 
     if (this.authoritativePricing) {
-      const quote = await this.authoritativePricing.evaluator.execute({
-        items: dto.items,
-        couponCode: dto.couponCode,
-        customerScopeKey,
-        customerDnaSegments: [],
-        experimentEvidence: [],
-        shippingUgx: fee.feeUgx,
-        taxUgx: 0,
-        persist: true,
-      });
+      const evaluate = (shippingUgx: number) =>
+        this.authoritativePricing!.evaluator.execute({
+          items: dto.items,
+          couponCode: dto.couponCode,
+          customerScopeKey,
+          customerDnaSegments: [],
+          experimentEvidence: [],
+          shippingUgx,
+          taxUgx: 0,
+          persist: true,
+        });
+      let quote = await evaluate(fee.feeUgx);
+      if (freeDelivery) {
+        // Re-decide the waiver on the real goods total. Only when it changes
+        // the fee is the basket priced again (a promotion carried it across
+        // the threshold, or took it back under), so the charge, the snapshot
+        // and the panel's "qualifies for free delivery" all agree. In that
+        // (rare) case the first saved quote is left unused: it is never
+        // reserved or charged, and pricing every basket twice to avoid one
+        // idle row is the worse trade.
+        const goodsTotalUgx = quote.finalTotalUgx - quote.shippingUgx - quote.taxUgx;
+        const due = goodsTotalUgx >= freeDelivery.thresholdUgx ? 0 : freeDelivery.feeBeforeUgx;
+        if (due !== fee.feeUgx) {
+          fee = { ...fee, feeUgx: due };
+          if (deliveryCapture) deliveryCapture = { ...deliveryCapture, quotedFeeUgx: due };
+          quote = await evaluate(due);
+        }
+      }
       if (dto.previewQuoteId) {
         const preview = await this.authoritativePricing.quotes.findQuote(dto.previewQuoteId);
         // A missing preview cannot be compared, so it is refused. An EXPIRED one

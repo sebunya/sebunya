@@ -275,7 +275,7 @@ describe('round 2 deferred items in the shop window', () => {
   it('an empty /blog is noindex, carries no breadcrumb markup, and offers ways on', () => {
     const blog = read(`${WEB}pages/blog/index.astro`);
     expect(blog).toContain("robotsMeta={empty ? 'noindex,follow' : undefined}");
-    expect(blog).toContain('{!empty && <script type="application/ld+json" set:html={breadcrumbs} />}');
+    expect(blog).toContain('{!empty && !unavailable && <script type="application/ld+json" set:html={breadcrumbs} />}');
     for (const href of ['/product-finder', '/faq', '/shop']) expect(blog).toContain(`href="${href}"`);
   });
 

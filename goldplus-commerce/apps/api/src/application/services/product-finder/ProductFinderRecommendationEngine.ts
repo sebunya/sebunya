@@ -34,6 +34,26 @@ export interface RecommendationResult {
   pricingEvidence: string;
 }
 
+/**
+ * What each "What are you shopping for?" answer means in the real catalogue.
+ * The answers are shopper words ("Personal audio"), the categories are the
+ * shop's ("Sound Devices"), so a plain substring test could never match three
+ * of the six answers. null means no category filter ("Not sure yet").
+ */
+function categoryMatcher(answer: string): ((p: ProductFinderCatalogItem) => boolean) | null {
+  const lower = answer.trim().toLowerCase();
+  if (lower === "not sure yet" || lower === "not sure") return null;
+  const category = (p: ProductFinderCatalogItem) => (p.categoryName ?? "").toLowerCase();
+  if (lower === "phone battery") {
+    // Batteries are filed under Power Devices; the NAME says it is a battery.
+    return (p) => category(p).includes("power") && `${p.name} ${p.subcategory ?? ""}`.toLowerCase().includes("batter");
+  }
+  if (lower === "personal audio") {
+    return (p) => category(p).includes("sound") || category(p).includes("audio");
+  }
+  return (p) => category(p).includes(lower);
+}
+
 export class ProductFinderRecommendationEngine {
   public static evaluate(
     answers: Record<string, string | string[]>,
@@ -42,7 +62,9 @@ export class ProductFinderRecommendationEngine {
     recommendedProducts: RecommendationResult[];
     fallbackCategories: string[];
   } {
-    const categoryFilter = this.parseAnswer(answers.category);
+    const categoryAnswer = this.parseAnswer(answers.category);
+    const matchesCategory = categoryAnswer ? categoryMatcher(categoryAnswer) : null;
+    const categoryFilter = matchesCategory ? categoryAnswer : null;
     const problemFit = this.parseAnswer(answers.problem);
     const priorityFit = this.parseAnswer(answers.priority);
     const budgetRange = this.parseAnswer(answers.budget);
@@ -68,11 +90,7 @@ export class ProductFinderRecommendationEngine {
         }
 
         // Category matching
-        if (
-          categoryFilter &&
-          p.categoryName &&
-          p.categoryName.toLowerCase().includes(categoryFilter.toLowerCase())
-        ) {
+        if (categoryFilter && matchesCategory && matchesCategory(p)) {
           score += 50;
           reasons.push(`Matches your need for ${categoryFilter}`);
         } else if (categoryFilter) {
@@ -110,21 +128,19 @@ export class ProductFinderRecommendationEngine {
           }
         }
 
-        // Priority matching
+        // Priority matching. Reasons state only what the catalogue shows (the
+        // price); "value", "quality" and "warranty" were claims nobody checked.
         if (priorityFit) {
           const priorityLower = priorityFit.toLowerCase();
           if (priorityLower.includes("value") && p.priceUgx <= 50000) {
             score += 15;
-            reasons.push("Excellent value for money");
+            reasons.push("Priced under UGX 50,000");
           } else if (
             priorityLower.includes("premium") &&
             p.priceUgx >= 150000
           ) {
             score += 15;
-            reasons.push("Premium quality pick");
-          } else if (priorityLower.includes("warranty")) {
-            score += 10;
-            reasons.push("Backed by standard warranty");
+            reasons.push("Priced from UGX 150,000");
           } else {
             score += 5;
           }
@@ -145,7 +161,7 @@ export class ProductFinderRecommendationEngine {
             reasons.push("Fits your mid-range budget");
           } else if (budgetLower.includes("premium") && p.priceUgx > 150000) {
             score += 20;
-            reasons.push("Premium option");
+            reasons.push("Priced over UGX 150,000");
           }
         }
 
@@ -183,14 +199,14 @@ export class ProductFinderRecommendationEngine {
           imageUrl: match.product.imageUrl || "/placeholder.png",
           productUrl: `/products/${match.product.slug}`,
           matchScore: match.score,
-          reasons:
-            match.reasons.length > 0
-              ? Array.from(new Set(match.reasons))
-              : ["A great overall match"],
+          // No invented filler ("A great overall match"): an empty list is honest,
+          // and availabilityEvidence already says it is in stock.
+          reasons: Array.from(new Set(match.reasons)),
           stockStatus: match.product.stockStatus,
           primaryCta: "View Product",
           secondaryCta: "Tell us you are interested",
-          availabilityEvidence: `${match.product.availableQuantity} available after reservations`,
+          // Stock counts are not shown to shoppers (owner decision); only that it is available.
+          availabilityEvidence: "In stock now",
           compatibilityEvidence: match.product.compatibilityVerdict
             ? `DECLARED_${match.product.compatibilityVerdict.toUpperCase()}`
             : "NOT_REQUESTED",

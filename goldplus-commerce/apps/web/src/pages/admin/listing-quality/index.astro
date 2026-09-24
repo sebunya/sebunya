@@ -25,6 +25,7 @@ const LABEL: Record<string, string> = {
   missing_description: 'No description',
   no_google_category: 'No Google category',
   missing_mpn: 'No model number',
+  preorder_without_date: 'Pre-order with no date (sent as out of stock)',
   missing_price: 'No price',
   not_feed_eligible: 'Excluded from feed',
   not_approved: 'Not approved',
@@ -32,7 +33,7 @@ const LABEL: Record<string, string> = {
   title_over_150_chars: 'Title over 150 characters',
 };
 /** The order the owner should fix things in: what blocks the feed first, then what ranks. */
-const ORDER = ['missing_image', 'missing_price', 'not_approved', 'inactive', 'not_feed_eligible', 'title_is_code_only', 'no_long_description', 'no_verified_specs', 'single_image', 'no_google_category', 'description_under_50_chars', 'missing_description', 'missing_mpn', 'title_over_150_chars'];
+const ORDER = ['missing_image', 'missing_price', 'not_approved', 'inactive', 'not_feed_eligible', 'title_is_code_only', 'no_long_description', 'no_verified_specs', 'single_image', 'no_google_category', 'description_under_50_chars', 'missing_description', 'missing_mpn', 'preorder_without_date', 'title_over_150_chars'];
 
 const url = new URL(Astro.request.url);
 const issueFilter = url.searchParams.get('issue') ?? '';

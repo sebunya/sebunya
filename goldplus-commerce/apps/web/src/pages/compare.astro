@@ -3,10 +3,14 @@ import BaseLayout from "../layouts/BaseLayout.astro";
 import { formatUgx } from "../lib/money";
 import { apiBase } from "../lib/api";
 import Notice from "../components/Notice.astro";
+import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from "../lib/storefrontDiscount";
 import type { ApiResponse, ProductPublicDto } from "@goldplus/shared";
 
+// Product ids only: a mangled link (?ids=abc) is simply nothing to compare,
+// not an API error and a "Service Unavailable" notice.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const idsParam = Astro.url.searchParams.get('ids');
-const itemIds = idsParam ? idsParam.split(',').map(id => id.trim()).filter(Boolean).slice(0, 3) : [];
+const itemIds = idsParam ? idsParam.split(',').map(id => id.trim()).filter((id) => UUID.test(id)).slice(0, 3) : [];
 
 let compareItems: ProductPublicDto[] = [];
 let fetchError: string | null = null;
@@ -28,6 +32,17 @@ if (itemIds.length > 0) {
 }
 
 const formatter = { format: (n: number) => formatUgx(n) };
+
+// The price the product page and the checkout charge: the campaign price while
+// a campaign actually lowers it (the ProductCard rule), the regular one otherwise.
+const discount = await getStorefrontDiscount();
+const campaignRunning = discount.active && discount.percentBps > 0;
+const chargedPrice = (item: ProductPublicDto): { now: number; was: number | null } | null => {
+  const retail = item.retailPriceUgx;
+  if (!retail || retail <= 0) return null;
+  const sale = campaignRunning ? salePriceUgx(retail, discount.percentBps, effectiveFloorUgx(discount.priceFloorUgx, item.floorPriceUgx, retail)) : null;
+  return sale !== null && sale < retail ? { now: sale, was: retail } : { now: retail, was: null };
+};
 
 // Derive list of comparison keys across all items dynamically from their verified specs
 const specKeys = Array.from(
@@ -75,7 +90,7 @@ const generateRemoveLink = (idToRemove: string) => {
               </th>
               {compareItems.map(item => (
                 <th class="w-1/4 p-6 border-b border-brand-borderGrey bg-white align-top relative group">
-                  <a href={generateRemoveLink(item.id)} class="absolute top-4 right-4 text-brand-mutedGrey hover:text-brand-error transition-colors" aria-label="Remove from comparison">
+                  <a href={generateRemoveLink(item.id)} class="absolute top-4 right-4 text-brand-mutedGrey hover:text-brand-error transition-colors" aria-label={`Remove ${item.name} from comparison`}>
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                   </a>
                   <div class="w-32 h-32 bg-brand-softGrey rounded-xl mb-4 mx-auto flex items-center justify-center overflow-hidden relative">
@@ -86,9 +101,16 @@ const generateRemoveLink = (idToRemove: string) => {
                     )}
                   </div>
                   <h4 class="font-bold text-brand-charcoal text-center leading-tight mb-2">{item.name}</h4>
-                  <p class="text-center font-black text-brand-charcoal">
-                     {item.retailPriceUgx ? formatter.format(item.retailPriceUgx) : 'Price on Request'}
-                  </p>
+                  {(() => {
+                    const price = chargedPrice(item);
+                    if (!price) return <p class="text-center font-black text-brand-charcoal">Price on Request</p>;
+                    return (
+                      <p class="text-center font-black text-brand-charcoal">
+                        {price.was !== null && <span class="sr-only">Now </span>}{formatter.format(price.now)}
+                        {price.was !== null && <span class="ml-2 text-xs font-semibold text-slate-600 line-through"><span class="sr-only">was </span>{formatter.format(price.was)}</span>}
+                      </p>
+                    );
+                  })()}
                 </th>
               ))}
               {compareItems.length < 3 && (
@@ -106,7 +128,7 @@ const generateRemoveLink = (idToRemove: string) => {
           <tbody class="text-sm">
             <tr class="border-b border-brand-borderGrey hover:bg-brand-softGrey/50">
               <td class="p-4 border-r border-brand-borderGrey font-bold text-brand-charcoal bg-brand-softGrey">Identifier / SKU</td>
-              {compareItems.map(item => <td class="p-4 text-center font-mono text-xs">{item.sku || <span class="text-red-500 italic">Pending review</span>}</td>)}
+              {compareItems.map(item => <td class="p-4 text-center font-mono text-xs">{item.sku || <span class="text-brand-mutedGrey" aria-label="Not recorded">—</span>}</td>)}
               {compareItems.length < 3 && <td class="p-4 bg-brand-softGrey"></td>}
             </tr>
             

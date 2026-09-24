@@ -11,7 +11,13 @@ import { serializeJsonLd, breadcrumbJsonLd } from '../../lib/jsonld';
 const pageParam = Number.parseInt(Astro.url.searchParams.get('page') ?? '1', 10);
 const page = Number.isFinite(pageParam) && pageParam > 0 ? Math.min(pageParam, 50) : 1;
 const PER_PAGE = 12;
-const { posts, total } = await fetchPublishedPosts(PER_PAGE, (page - 1) * PER_PAGE);
+const { posts, total, error: unavailable } = await fetchPublishedPosts(PER_PAGE, (page - 1) * PER_PAGE);
+// Could not ask the blog service: a temporary 503, never "nothing published".
+// A crawler that met a noindex here during a slow moment would drop the index.
+if (unavailable) {
+  Astro.response.status = 503;
+  Astro.response.headers.set('Retry-After', '300');
+}
 const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
 
 const canonical = page > 1 ? `${SITE_ORIGIN}/blog?page=${page}` : `${SITE_ORIGIN}/blog`;
@@ -22,7 +28,7 @@ const description = 'Straight answers about chargers, power banks, cables, stora
 // reachable (the footer's admin-managed "Guides & advice" link) but asks not
 // to be indexed, and carries no breadcrumb markup, until there is an article.
 // The blog sitemap already leaves /blog out while it is empty.
-const empty = posts.length === 0;
+const empty = !unavailable && posts.length === 0;
 const breadcrumbs = serializeJsonLd(
   breadcrumbJsonLd([
     { name: 'Home', url: `${SITE_ORIGIN}/` },
@@ -32,7 +38,7 @@ const breadcrumbs = serializeJsonLd(
 ---
 <BaseLayout title={title} description={description} canonicalUrl={canonical} robotsMeta={empty ? 'noindex,follow' : undefined}>
   <Fragment slot="head">
-    {!empty && <script type="application/ld+json" set:html={breadcrumbs} />}
+    {!empty && !unavailable && <script type="application/ld+json" set:html={breadcrumbs} />}
     {page > 1 && <link rel="prev" href={page === 2 ? `${SITE_ORIGIN}/blog` : `${SITE_ORIGIN}/blog?page=${page - 1}`} />}
     {page < totalPages && <link rel="next" href={`${SITE_ORIGIN}/blog?page=${page + 1}`} />}
   </Fragment>
@@ -49,7 +55,14 @@ const breadcrumbs = serializeJsonLd(
   </header>
 
   <div class="mx-auto max-w-5xl px-4 py-12">
-    {empty ? (
+    {unavailable ? (
+      <div class="rounded-2xl border border-slate-200 bg-white p-6 text-center sm:p-10">
+        <h2 class="text-lg font-bold text-slate-900">Guides could not be loaded</h2>
+        <p class="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-600">
+          Please try again in a few minutes. The <a href="/faq" class="font-bold underline">FAQ</a> answers most questions in the meantime.
+        </p>
+      </div>
+    ) : empty ? (
       <div class="rounded-2xl border border-slate-200 bg-white p-6 text-center sm:p-10">
         <h2 class="text-lg font-bold text-slate-900">No guides yet</h2>
         <p class="mx-auto mt-2 max-w-md text-sm leading-relaxed text-slate-600">

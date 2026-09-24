@@ -287,8 +287,8 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     unit: 'HH:MM East Africa Time',
     mandatory: false,
     defaultValue: null,
-    label: 'Same-day dispatch cutoff',
-    help: 'Orders placed before this time in Kampala go out the same day. Unset means no same-day promise is made at all.',
+    label: 'Same-day dispatch cutoff (not used)',
+    help: 'Not read by any quote. The same-day cutoff hour and the closed days come from Business info, the one place the header, basket, checkout and delivery quote all read, so two cutoffs can never show on one page.',
   },
 
   // ── Absent by design: their absence produces an honest weaker promise ────

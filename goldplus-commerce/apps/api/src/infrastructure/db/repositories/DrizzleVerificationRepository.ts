@@ -25,6 +25,8 @@ export class DrizzleVerificationRepository {
       isSuccessful: attempt.isSuccessful,
       ipAddress: attempt.ipAddress,
       userAgent: attempt.userAgent,
+      // The "verify ten products" mission counts attempts by user_id.
+      userId: attempt.userId,
       createdAt: attempt.createdAt,
     });
   }

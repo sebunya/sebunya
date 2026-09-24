@@ -93,7 +93,10 @@ export class DrizzleBatteryImportRepository implements IBatteryImportRepository 
         .where(and(eq(batteryImportSessions.id, id), eq(batteryImportSessions.version, expectedVersion), inArray(batteryImportSessions.status, ['UPLOADED', 'MAPPED', 'READY_FOR_APPROVAL'])))
         .returning();
       if (!row) return null;
-      await tx.update(batteryImportRows).set({ normalizedData: null, validationErrors: jsonb([]) as never, validationWarnings: jsonb([]) as never, proposedAction: 'PENDING', status: 'PENDING', rowKey: null })
+      // A new mapping re-reads every row, so the per-row decisions made against
+      // the old reading go too. Keeping INCLUDE while dropping its override made
+      // a held row count as valid and then be silently SKIPPED at apply.
+      await tx.update(batteryImportRows).set({ normalizedData: null, validationErrors: jsonb([]) as never, validationWarnings: jsonb([]) as never, proposedAction: 'PENDING', status: 'PENDING', rowKey: null, resolution: null, resolutionNote: null, resolvedBy: null, resolvedAt: null })
         .where(and(eq(batteryImportRows.sessionId, id), inArray(batteryImportRows.status, ['PENDING', 'VALID', 'INVALID', 'HELD'])));
       await tx.insert(batteryImportEvents).values({ sessionId: id, actorId, action: 'MAPPING_SAVED', reason: 'Source-to-field mapping saved.', evidence: jsonb({ fields: Object.keys(mapping).sort(), templateId, version: row.version }) as never });
       return session(row);
@@ -118,6 +121,11 @@ export class DrizzleBatteryImportRepository implements IBatteryImportRepository 
         else if (resolution === 'EXCLUDE') { status = 'EXCLUDED'; excluded += 1; }
         else if (r.hold && resolution !== 'INCLUDE') { status = 'HELD'; held += 1; }
         else if (resolution === 'HOLD') { status = 'HELD'; held += 1; }
+        else if (r.hold && !overridden.has(r.rowId) && (r.proposedAction === 'HOLD_COMPOUND' || r.proposedAction === 'HOLD_CONFLICT')) {
+          // Included, but nothing says which single battery it becomes: apply
+          // would skip it. It stays held rather than count as valid.
+          status = 'HELD'; held += 1;
+        }
         else { status = 'VALID'; valid += 1; }
         const kept = overridden.get(r.rowId);
         await tx.update(batteryImportRows).set({
@@ -140,8 +148,17 @@ export class DrizzleBatteryImportRepository implements IBatteryImportRepository 
     });
   }
 
+  /** Locks the session and says whether its rows may still change (before approval). */
+  private async lockEditableSession(tx: any, sessionId: string): Promise<boolean> {
+    const [locked] = await tx.select({ status: batteryImportSessions.status }).from(batteryImportSessions).where(eq(batteryImportSessions.id, sessionId)).for('update');
+    return !!locked && ['MAPPED', 'READY_FOR_APPROVAL'].includes(locked.status);
+  }
+
   async resolveRow(sessionId: string, rowId: string, resolution: 'INCLUDE' | 'EXCLUDE' | 'HOLD', note: string | null, override: Record<string, unknown> | null, actorId: string) {
     return db.transaction(async (tx) => {
+      // Under the session lock: an approval that landed first wins, and this
+      // row write never lands under an approved session.
+      if (!(await this.lockEditableSession(tx, sessionId))) return 'NOT_EDITABLE' as const;
       const [row] = await tx.select().from(batteryImportRows).where(and(eq(batteryImportRows.id, rowId), eq(batteryImportRows.sessionId, sessionId))).limit(1);
       if (!row) return null;
       const current = (row.normalizedData as Record<string, unknown> | null) ?? {};
@@ -149,7 +166,7 @@ export class DrizzleBatteryImportRepository implements IBatteryImportRepository 
       const status: ImportRowRecord['status'] = resolution === 'EXCLUDE' ? 'EXCLUDED' : resolution === 'HOLD' ? 'HELD' : (row.validationErrors as string[]).length ? 'INVALID' : 'VALID';
       let action = row.proposedAction;
       if (resolution === 'INCLUDE' && (action === 'HOLD_COMPOUND' || action === 'HOLD_CONFLICT' || action === 'HOLD_REVIEW')) {
-        action = override && typeof override.proposedAction === 'string' ? String(override.proposedAction) : action === 'HOLD_REVIEW' ? 'RECEIPT' : 'CREATE_BATTERY';
+        action = action === 'HOLD_REVIEW' ? 'RECEIPT' : 'CREATE_BATTERY';
       }
       const [updated] = await tx.update(batteryImportRows).set({
         resolution, resolutionNote: note, resolvedBy: actorId, resolvedAt: new Date(), status, proposedAction: action,
@@ -161,7 +178,13 @@ export class DrizzleBatteryImportRepository implements IBatteryImportRepository 
         held: sql<number>`count(*) FILTER (WHERE status = 'HELD')::int`,
         excluded: sql<number>`count(*) FILTER (WHERE status = 'EXCLUDED')::int`,
       }).from(batteryImportRows).where(eq(batteryImportRows.sessionId, sessionId));
-      const [s] = await tx.update(batteryImportSessions).set({ validRows: counts[0].valid, invalidRows: counts[0].invalid, heldRows: counts[0].held, excludedRows: counts[0].excluded, version: sql`${batteryImportSessions.version} + 1`, updatedAt: new Date() }).where(eq(batteryImportSessions.id, sessionId)).returning();
+      const [s] = await tx.update(batteryImportSessions).set({
+        validRows: counts[0].valid, invalidRows: counts[0].invalid, heldRows: counts[0].held, excludedRows: counts[0].excluded,
+        // An override changes what apply would write, so the stored preview no
+        // longer describes the session: approval waits for a fresh dry run.
+        ...(override ? { status: 'MAPPED', previewDigest: null } : {}),
+        version: sql`${batteryImportSessions.version} + 1`, updatedAt: new Date(),
+      }).where(eq(batteryImportSessions.id, sessionId)).returning();
       await tx.insert(batteryImportEvents).values({ sessionId, actorId, action: 'ROW_RESOLVED', reason: note ?? resolution, evidence: jsonb({ rowNumber: row.rowNumber, resolution, override }) as never });
       return { session: session(s), row: rowRecord(updated) };
     });
@@ -169,6 +192,9 @@ export class DrizzleBatteryImportRepository implements IBatteryImportRepository 
 
   async linkRowBattery(sessionId: string, rowId: string, canonicalCode: string | null, note: string, actorId: string) {
     return db.transaction(async (tx) => {
+      // Checked BEFORE the row write: the old order wrote the row, found the
+      // session approved, returned null and committed the row change anyway.
+      if (!(await this.lockEditableSession(tx, sessionId))) return 'NOT_EDITABLE' as const;
       const [row] = await tx.select().from(batteryImportRows).where(and(eq(batteryImportRows.id, rowId), eq(batteryImportRows.sessionId, sessionId))).limit(1);
       if (!row) return null;
       const [updated] = await tx.update(batteryImportRows).set({
@@ -180,7 +206,7 @@ export class DrizzleBatteryImportRepository implements IBatteryImportRepository 
         .set({ status: 'MAPPED', previewDigest: null, version: sql`${batteryImportSessions.version} + 1`, updatedAt: new Date() })
         .where(and(eq(batteryImportSessions.id, sessionId), inArray(batteryImportSessions.status, ['MAPPED', 'READY_FOR_APPROVAL'])))
         .returning();
-      if (!s) return null;
+      if (!s) throw new Error('IMPORT_NOT_EDITABLE'); // unreachable under the lock; never commit the row alone
       await tx.insert(batteryImportEvents).values({
         sessionId, actorId, action: canonicalCode ? 'ROW_BATTERY_LINKED' : 'ROW_BATTERY_UNLINKED', reason: note,
         evidence: jsonb({ rowNumber: row.rowNumber, previousLink: row.linkedBatteryCode ?? null, linkedBatteryCode: canonicalCode }) as never,

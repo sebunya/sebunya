@@ -106,9 +106,12 @@ export const HERO_SLIDE_LIBRARY: readonly HeroSlideSeed[] = [
     slideKey: 'sameday', position: 4, enabled: true, theme: 'logistics', tint: 'b', media: 'stage',
     kicker: 'Same-day delivery',
     headline: 'Order before {cutoff} and we <em>deliver today</em>',
-    subcopy: 'Same day delivery in Kampala and Wakiso. Next day everywhere else.',
+    // Upcountry goes by bus to a parcel office (docs/delivery/MODEL.md 3.6a);
+    // "next day everywhere else" was a promise nothing kept. The cutoff is a
+    // token filled from business_info, so it can never disagree with the nav.
+    subcopy: 'Same day delivery in Kampala and Wakiso. Upcountry orders go by bus to a parcel office for collection.',
     ctaLabel: 'Order for today', ctaUrl: '/shop',
-    finePrint: 'Cut-off 5:00pm, Monday to Saturday',
+    finePrint: 'Cut-off {cutoff} on days the shop is open',
     imageUrl: P('goldplus-power-bank-with-handle-gp-x03'),
     imageAlt: 'GoldPlus power bank with carry handle',
     priority: 0,
@@ -148,10 +151,12 @@ export const HERO_SLIDE_LIBRARY: readonly HeroSlideSeed[] = [
   {
     slideKey: 'newarrivals', position: 7, enabled: true, theme: 'product', tint: 'b', media: 'bleed',
     kicker: 'Just landed',
-    headline: 'New this month, <em>verified on arrival</em>',
+    // No freshness claim the data does not check ("new this month",
+    // "restocked weekly" were asserted with nothing behind them).
+    headline: 'New lines, <em>verified on arrival</em>',
     subcopy: 'Every new line is opened, tested and coded before it reaches the shelf.',
     ctaLabel: "See what's new", ctaUrl: '/shop',
-    finePrint: 'Restocked weekly',
+    finePrint: '',
     imageUrl: '/hero/new-arrivals.jpg',
     imageAlt: 'GoldPlus power bank charging a phone and laptop on a train table',
     priority: 0,
@@ -173,7 +178,9 @@ export const HERO_SLIDE_LIBRARY: readonly HeroSlideSeed[] = [
     slideKey: 'loyalty', position: 9, enabled: true, theme: 'loyalty', tint: 'b', media: 'stage',
     kicker: 'GoldPlus rewards',
     headline: 'Every shilling <em>earns its way back</em>',
-    subcopy: 'Points on every order, member pricing, and every warranty you own in one place.',
+    // No member pricing exists and no account page lists warranties; the
+    // balance and history do.
+    subcopy: 'Points on every delivered order, and your balance and history in one place.',
     ctaLabel: 'Join free', ctaUrl: '/loyalty',
     finePrint: 'Free to join · Use your points before they expire',
     imageUrl: P('goldplus-100w-portable-power-station-gp-09'),

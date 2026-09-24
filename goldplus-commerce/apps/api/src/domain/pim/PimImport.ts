@@ -83,7 +83,9 @@ export function normalizePimRow(
     categorySlug: text("categorySlug").toLowerCase(),
     shortDescription: text("shortDescription"),
     longDescription: text("longDescription"),
-    retailPriceUgx: Number(row[mapping.retailPriceUgx]),
+    // Same normalisation as the tiers: the owner's workbook writes grouped
+    // thousands ('185,000'), which Number() alone turned into NaN.
+    retailPriceUgx: Number(String(row[mapping.retailPriceUgx] ?? "").trim().replace(/[,\s]/g, "")),
     floorPriceUgx: optionalTier(row, mapping.floorPriceUgx),
     tierBPriceUgx: optionalTier(row, mapping.tierBPriceUgx),
     tierCPriceUgx: optionalTier(row, mapping.tierCPriceUgx),
@@ -126,4 +128,27 @@ export function pimPreviewDigest(
   }>,
 ): string {
   return createHash("sha256").update(JSON.stringify(rows)).digest("hex");
+}
+
+/**
+ * Does applying this row reprice an EXISTING product? Retail (Price D) and the
+ * tiers — the floor above all, which caps every discount — are pricing
+ * decisions; the admin editor needs pricing.manage for them, so an import
+ * must too. A tier the sheet leaves blank (null) is kept, so it changes nothing.
+ */
+export function pimRowChangesPricing(row: {
+  action: string;
+  normalizedData: Pick<NormalizedPimProduct, "retailPriceUgx" | "floorPriceUgx" | "tierBPriceUgx" | "tierCPriceUgx"> | null;
+  beforeSnapshot: Record<string, unknown> | null;
+}): boolean {
+  if (row.action !== "UPDATE" || !row.normalizedData) return false;
+  const before = row.beforeSnapshot ?? {};
+  const num = (v: unknown): number | null => (v === null || v === undefined || v === "" ? null : Number(v));
+  const beforeRetail = num(before.retailPriceUgx) ?? num(before.priceUgx);
+  if (beforeRetail !== row.normalizedData.retailPriceUgx) return true;
+  for (const key of ["floorPriceUgx", "tierBPriceUgx", "tierCPriceUgx"] as const) {
+    const next = row.normalizedData[key];
+    if (next !== null && next !== num(before[key])) return true;
+  }
+  return false;
 }

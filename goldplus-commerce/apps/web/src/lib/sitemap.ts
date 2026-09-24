@@ -31,6 +31,10 @@ export const STATIC_SITEMAP_PATHS: readonly string[] = [
   '/warranty',
   '/terms',
   '/privacy',
+  // Indexable, footer-linked policy pages that were never submitted.
+  // /battery-finder stays out until its indexable flag can be read here.
+  '/cookies',
+  '/loyalty-terms',
 ];
 
 /** Path prefixes that are noindex and therefore banned from every sitemap. */

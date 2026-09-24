@@ -6,6 +6,14 @@
 export const CHANNELS = ['paid_search', 'paid_social', 'display', 'affiliate', 'email', 'sms', 'whatsapp', 'organic_search', 'organic_social', 'referral', 'direct', 'other_paid', 'other'] as const;
 export type Channel = typeof CHANNELS[number];
 
+/**
+ * A referrer from the payment gateway (the shopper coming back after paying)
+ * or from our own hosts is not an acquisition source. The storefront already
+ * drops these (apps/web/src/lib/internalReferrer.ts); this is the server-side
+ * safety net so an older page or another client cannot file them as referral.
+ */
+const PAYMENT_OR_SELF_HOST = /(^|\.)(pesapal\.com|shopgoldplus\.com)$/i;
+
 const SEARCH = /(^|\.)(google|bing|yahoo|duckduckgo|yandex|baidu|ecosia|brave)\./i;
 const SOCIAL = /(^|\.)(facebook|fb|instagram|tiktok|twitter|x|t|linkedin|lnkd|pinterest|snapchat|youtube|reddit|threads)\.(com|co|net|in|me)$/i;
 
@@ -28,7 +36,7 @@ export function classifyChannel(t: { source?: string | null; medium?: string | n
   if (clicks.has('clickid') || clicks.has('click_id')) return 'other_paid';
   if (src || med) return 'other';
   const ref = (t.referrerHost ?? '').toLowerCase();
-  if (!ref) return 'direct';
+  if (!ref || PAYMENT_OR_SELF_HOST.test(ref)) return 'direct';
   if (SEARCH.test(ref)) return 'organic_search';
   if (SOCIAL.test(ref) || /(^|\.)(l\.facebook|lm\.facebook|m\.facebook)\.com$/.test(ref)) return 'organic_social';
   if (/(^|\.)(wa\.me|whatsapp\.com)$/.test(ref)) return 'whatsapp';

@@ -1,4 +1,5 @@
 import './logging/appLoggerBinding';
+import { PERMISSIONS as SHARED_PERMISSIONS, toEatParts } from '@goldplus/shared';
 import { MeasurementOperationsUseCases } from '../application/use-cases/measurement/MeasurementOperationsUseCases';
 import { CollectBrowserBatchUseCase } from '../application/use-cases/telemetry/CollectBrowserBatchUseCase';
 import { DrizzleCollectorStore } from './db/repositories/DrizzleCollectorStore';
@@ -123,6 +124,7 @@ import { RequestPasswordResetUseCase, ResetPasswordUseCase } from '../applicatio
 import { SmsResetCodeDelivery } from './identity/SmsResetCodeDelivery';
 import { RequestSmsPasswordResetUseCase, ResetPasswordWithSmsCodeUseCase } from '../application/use-cases/identity/SmsPasswordResetUseCases';
 import { DrizzleProductCostRepository } from './db/repositories/DrizzleProductCostRepository';
+import { ImportProductCostsUseCase, RefreshCurrentProductCostsUseCase } from '../application/use-cases/products/ProductCostUseCases';
 import { DrizzleHeroRepository } from './db/repositories/DrizzleHeroRepository';
 import { HeroContentService } from '../application/hero/HeroContentService';
 import { HeroSignalsService } from './hero/HeroSignalsService';
@@ -194,6 +196,9 @@ import {
   DeletePostUseCase,
 } from '../application/use-cases/blog/BlogUseCases';
 import { VerifyPesaPalPaymentUseCase } from '../application/use-cases/payments/VerifyPesaPalPaymentUseCase';
+import { ApplyRefundConsequencesUseCase } from '../application/use-cases/payments/ApplyRefundConsequencesUseCase';
+import { confirmationForPlacedOrder, customerMessageForTransition } from '../application/notifications/OrderLifecycleMessages';
+import { ApplyFulfilmentStockEffectUseCase } from '../application/use-cases/inventory/ApplyFulfilmentStockEffectUseCase';
 import { env } from '../config/env';
 import { DrizzleSystemHealthRepository } from './db/repositories/DrizzleSystemHealthRepository';
 import { CheckSystemHealthUseCase } from '../application/use-cases/system/CheckSystemHealthUseCase';
@@ -283,6 +288,7 @@ import {
   DeliveryVarianceReportUseCase,
 } from '../application/use-cases/delivery/DeliveryReportUseCases';
 import { BAND_EDGES_KM } from '../domain/delivery/DeliveryModel';
+import { orderChargeBeforeFreeDeliveryUgx, orderChargeUgx } from '../domain/delivery/DeliveryQuoteService';
 import {
   ApplyDeliveryVarianceUseCase,
   ListOrderVariancesUseCase,
@@ -302,7 +308,10 @@ import {
   DraftLaunchValuesUseCase,
 } from '../application/use-cases/delivery/DeliveryWizardUseCases';
 import { DrizzleLoyaltyIdentityRepository, DrizzleLoyaltyTierRepository, LoyaltyProgrammeConfigWriter, OutboxOtpSender, otpHash, otpRandom } from './loyalty/LoyaltyIdentityInfrastructure';
-import { VestLoyaltyOnDeliveryUseCase, ClawbackOrderEarnUseCase, ReserveRedemptionUseCase, ConsumeRedemptionUseCase, ReleaseRedemptionUseCase, ReverseRedemptionUseCase, RunLoyaltyDailySweepUseCase } from '../application/use-cases/loyalty/LoyaltyCompletionUseCases';
+import { SaveLoyaltyProgrammeConfigUseCase } from '../application/use-cases/loyalty/SaveLoyaltyProgrammeConfigUseCase';
+import { ReconcileLoyaltyControlTotalsUseCase } from '../application/use-cases/loyalty/ReconcileLoyaltyControlTotalsUseCase';
+import { DrizzleLoyaltyControlTotalsRepository } from './db/repositories/DrizzleLoyaltyControlTotalsRepository';
+import { VestLoyaltyOnDeliveryUseCase, ClawbackOrderEarnUseCase, ReserveRedemptionUseCase, ConsumeRedemptionUseCase, ReleaseRedemptionUseCase, ReverseRedemptionUseCase, RunLoyaltyDailySweepUseCase, ApplyRefundToLoyaltyUseCase, guardLoyaltyIssuance } from '../application/use-cases/loyalty/LoyaltyCompletionUseCases';
 import { ListSearchMissesUseCase, PromoteSearchMissToAliasUseCase, ListAddressReviewQueueUseCase, ResolveAddressUseCase, ManageLandmarksUseCase, ManagePickupPointsUseCase, GetZonePoliciesUseCase, SaveZonePolicyUseCase, ListDataExceptionsUseCase } from '../application/use-cases/locations/LocationAdminUseCases';
 import {
   ListDeliveryZonesUseCase,
@@ -566,10 +575,12 @@ import { DrizzleOrderReservationState } from './db/repositories/DrizzleOrderRese
 import { DrizzleCheckoutIdempotencyRepository } from './db/repositories/DrizzleCheckoutIdempotencyRepository';
 import { DrizzleCheckoutSideEffectRecorder } from './db/repositories/DrizzleCheckoutSideEffectRecorder';
 import {
+  DrizzleAccountCartRepository,
   DrizzleAuthorizedCartRepository,
   DrizzleCartProductReader,
 } from './db/repositories/DrizzleAuthorizedCartRepository';
 import { MutateCartUseCase } from '../application/use-cases/commerce/MutateCartUseCase';
+import { ResolveAccountCartUseCase } from '../application/use-cases/commerce/ResolveAccountCartUseCase';
 import { ExecuteCheckoutIntentUseCase } from '../application/use-cases/commerce/ExecuteCheckoutIntentUseCase';
 import { StartOrderPaymentUseCase } from '../application/use-cases/commerce/StartOrderPaymentUseCase';
 import { ReconcileOrderPaymentUseCase } from '../application/use-cases/commerce/ReconcileOrderPaymentUseCase';
@@ -889,7 +900,7 @@ export class Registry {
   public readonly deviceCatalogueUseCases = new DeviceCatalogueUseCases(this.deviceCatalogueRepo, this.auditRepo);
   public readonly batteryCompatibilityUseCases = new BatteryCompatibilityUseCases(this.batteryCompatibilityRepo, this.batteryCatalogueRepo, this.deviceCatalogueRepo, this.auditRepo);
   public readonly inventoryLedgerUseCases = new InventoryLedgerUseCases(this.inventoryLedgerRepo, this.batteryCatalogueRepo, this.auditRepo);
-  public readonly batteryFinderUseCases = new BatteryFinderUseCases(this.batteryFinderRepo, this.batteryCatalogueRepo, this.auditRepo, process.env.IDENTITY_HASH_PEPPER ?? '');
+  public readonly batteryFinderUseCases = new BatteryFinderUseCases(this.batteryFinderRepo, this.batteryCatalogueRepo, this.auditRepo, process.env.IDENTITY_HASH_PEPPER ?? '', this.pricingRepo);
   public readonly batteryImportUseCases = new BatteryImportUseCases(
     this.batteryImportRepo,
     new XlsxSpreadsheetParser(),
@@ -985,7 +996,7 @@ export class Registry {
   public readonly deliveryZoneRepo = new DrizzleDeliveryZoneRepository();
   public readonly getPaymentReconciliationUseCase = new GetPaymentReconciliationUseCase(this.orderRepo, this.paymentRepo, this.pesapalPaymentRepo);
   public readonly searchDemandRepo = new DrizzleSearchDemandRepository();
-  public readonly suggestProductsUseCase = new SuggestProductsUseCase(this.productRepo, this.pricingRepo);
+  public readonly suggestProductsUseCase = new SuggestProductsUseCase(this.productRepo, this.pricingRepo, () => this.taxonomyService.getPublicConfig());
   public readonly listPublishedPostsUseCase = new ListPublishedPostsUseCase(this.blogRepo);
   public readonly getPublishedPostUseCase = new GetPublishedPostUseCase(this.blogRepo);
   public readonly getPostForAdminUseCase = new GetPostForAdminUseCase(this.blogRepo);
@@ -1164,6 +1175,13 @@ export class Registry {
     },
   });
 
+  /** The account basket a signed-in customer's new cart credential names, with any guest basket merged in. */
+  public readonly resolveAccountCartUseCase = new ResolveAccountCartUseCase({
+    carts: this.authorizedCartRepo,
+    accounts: new DrizzleAccountCartRepository(),
+    products: this.cartProductReader,
+  });
+
   public readonly executeCheckoutIntentUseCase = new ExecuteCheckoutIntentUseCase({
     idempotency: this.checkoutIdempotencyRepo,
     sideEffectRecorder: this.checkoutSideEffectRecorder,
@@ -1218,6 +1236,25 @@ export class Registry {
   });
   public readonly releaseInventoryForOrderUseCase = new ReleaseInventoryForOrderUseCase(this.inventoryRepo);
   public readonly consumeInventoryForOrderUseCase = new ConsumeInventoryForOrderUseCase(this.inventoryRepo);
+  /** Stock effects of fulfilment moves and closed orders — reported, never silent. */
+  public readonly applyFulfilmentStockEffectUseCase = new ApplyFulfilmentStockEffectUseCase({
+    inventory: this.inventoryRepo,
+    orders: { findStatus: async (orderId) => (await this.orderRepo.findById(orderId))?.orderStatus ?? null },
+    // Lazy: the email use case is declared further down this class.
+    notifyCancelled: async (orderId) => {
+      const cancelledOrder = await this.orderRepo.findById(orderId);
+      if (cancelledOrder) {
+        await this.enqueueAdminOrderEmailUseCase.execute({ order: cancelledOrder, event: 'cancelled', stockConfirmed: false });
+      }
+    },
+    report: async ({ orderId, effect, error }) => {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error({ orderId, effect, err: message }, 'INVENTORY_EFFECT_FAILED — stock for this order did not move; the integrity scan will flag it');
+      await new CreateAuditLogUseCase(this.auditRepo)
+        .execute({ actorId: null, action: 'INVENTORY_EFFECT_FAILED', entity: 'order', entityId: orderId, newState: { effect, error: message.slice(0, 300) } })
+        .catch(() => undefined);
+    },
+  });
   public readonly getInventoryAvailabilityUseCase = new GetInventoryAvailabilityUseCase(this.inventoryRepo);
   public readonly listLowStockUseCase = new ListLowStockUseCase(this.inventoryRepo);
 
@@ -1300,7 +1337,13 @@ export class Registry {
     this.createAuditLogUseCase,
   );
   public readonly experimentOperationsUseCase = new ExperimentOperationsUseCase(this.experimentRepo, this.createAuditLogUseCase);
-  public readonly fraudTriageOperationsUseCase = new FraudTriageOperationsUseCase(this.fraudTriageRepo);
+  public readonly fraudTriageOperationsUseCase = new FraudTriageOperationsUseCase(this.fraudTriageRepo, {
+    isEligibleReviewer: async (userId: string) => {
+      const user = await this.adminUserWriteRepo.findUserById(userId);
+      if (!user?.isActive) return false;
+      return (await this.roleRepo.findPermissionsForUser(userId)).includes(SHARED_PERMISSIONS.FRAUD_READ);
+    },
+  });
   public readonly pimImportOperationsUseCase = new PimImportOperationsUseCase(this.pimImportRepo);
   public readonly surveyOperationsUseCase = new SurveyOperationsUseCase(this.surveyRepo);
   public readonly getCopyQualityReportUseCase = new GetCopyQualityReportUseCase(this.copyQualityCatalog);
@@ -1338,10 +1381,13 @@ export class Registry {
     this.earnLoyaltyPointsUseCase,
     this.orderRepo,
     this.loyaltyCompletionRepo,
+    // Lazy: both are declared further down this class.
+    { getRefundedShareBpsForOrder: (orderId) => this.refundLedgerRepo.getRefundedShareBpsForOrder(orderId) },
+    { execute: (input) => new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase).execute(input) },
   );
   public readonly clawbackOrderEarnUseCase = new ClawbackOrderEarnUseCase(this.loyaltyRepo, this.loyaltyCompletionRepo, this.auditRepo);
   public readonly reserveRedemptionUseCase = new ReserveRedemptionUseCase(this.loyaltyRepo, this.loyaltyCompletionRepo, this.loyaltyGate);
-  public readonly consumeRedemptionUseCase = new ConsumeRedemptionUseCase(this.loyaltyRepo, this.loyaltyCompletionRepo);
+  public readonly consumeRedemptionUseCase = new ConsumeRedemptionUseCase(this.loyaltyRepo, this.loyaltyCompletionRepo, this.loyaltyGate);
   public readonly releaseRedemptionUseCase = new ReleaseRedemptionUseCase(this.loyaltyCompletionRepo);
   // A lifecycle cancel (admin order page, provider reversal) gives back the
   // stock AND the points. Only the fulfilment route and the sweeps released
@@ -1349,20 +1395,39 @@ export class Registry {
   public readonly releaseCancelledOrderHoldsUseCase = new ReleaseCancelledOrderHoldsUseCase({
     releaseInventory: this.releaseInventoryForOrderUseCase,
     releaseRedemption: this.releaseRedemptionUseCase,
+    // An APPLIED redemption (points already spent) cannot be released; a
+    // cancelled order gives them back instead, with their original expiry.
+    reverseRedemption: { execute: (input) => this.reverseRedemptionUseCase.execute(input) },
     onFailed: (hold, orderId, error) =>
       logger.error(
         { orderId, hold, err: error instanceof Error ? error.message : String(error) },
         'ORDER_CANCEL_HOLD_RELEASE_FAILED',
       ),
+    reservations: this.inventoryRepo,
+    onStockAlreadyTaken: async (orderId, consumedLines) => {
+      logger.warn({ orderId, consumedLines }, 'INVENTORY_RETURN_NEEDED — a cancelled order had already had its stock taken off; record the return with a stock adjustment once the goods are back');
+      await new CreateAuditLogUseCase(this.auditRepo)
+        .execute({ actorId: null, action: 'INVENTORY_RETURN_NEEDED', entity: 'order', entityId: orderId, newState: { consumedLines } })
+        .catch(() => undefined);
+    },
   });
   public readonly reverseRedemptionUseCase = new ReverseRedemptionUseCase(this.loyaltyRepo, this.loyaltyCompletionRepo);
   public readonly loyaltyIdentityRepo = new DrizzleLoyaltyIdentityRepository();
   public readonly loyaltyTierRepo = new DrizzleLoyaltyTierRepository();
   public readonly loyaltyProgrammeConfigWriter = new LoyaltyProgrammeConfigWriter();
+  /** DoD #1: frozen daily control totals, re-derived and compared by the daily sweep. */
+  public readonly reconcileLoyaltyControlTotalsUseCase = new ReconcileLoyaltyControlTotalsUseCase(new DrizzleLoyaltyControlTotalsRepository());
+  public readonly saveLoyaltyProgrammeConfigUseCase = new SaveLoyaltyProgrammeConfigUseCase(
+    this.loyaltyProgrammeConfigWriter,
+    () => this.loyaltyCompletionRepo.getProgrammeConfig(),
+    this.auditRepo,
+  );
+  /** Non-order credits share one gate: deployment key + kill switch + budget cap. */
+  public readonly loyaltyIssuanceCompletion = guardLoyaltyIssuance(this.loyaltyCompletionRepo, this.loyaltyGate);
   public readonly backfillGuestOrdersUseCase = new BackfillGuestOrdersUseCase(
     this.loyaltyIdentityRepo,
     this.loyaltyRepo,
-    this.loyaltyCompletionRepo,
+    this.loyaltyIssuanceCompletion,
     this.auditRepo,
   );
   public readonly requestPhoneVerificationUseCase = new RequestPhoneVerificationUseCase(
@@ -1381,7 +1446,7 @@ export class Registry {
     this.auditRepo,
   );
   public readonly mergeLoyaltyAccountsUseCase = new MergeLoyaltyAccountsUseCase(this.loyaltyIdentityRepo, this.auditRepo);
-  public readonly earnForVerificationScanUseCase = new EarnForVerificationScanUseCase(this.loyaltyRepo, this.loyaltyCompletionRepo);
+  public readonly earnForVerificationScanUseCase = new EarnForVerificationScanUseCase(this.loyaltyRepo, this.loyaltyIssuanceCompletion);
   public readonly manualAdjustLoyaltyUseCase = new ManualAdjustLoyaltyUseCase(this.loyaltyRepo, this.auditRepo);
 
   // ── Gamification LIVE (0087, activated 2026-08-05) ────────────────────────
@@ -1389,13 +1454,13 @@ export class Registry {
   public readonly birthdayUserSource = new DrizzleBirthdayUserSource();
   public readonly evaluateGamificationForUserUseCase = new EvaluateGamificationForUserUseCase(
     this.loyaltyRepo,
-    this.loyaltyCompletionRepo,
+    this.loyaltyIssuanceCompletion,
     this.gamificationRepo,
   );
   public readonly recordReferralUseCase = new RecordReferralUseCase(this.loyaltyCompletionRepo, this.loyaltyReferralRepo);
   public readonly qualifyReferralOnDeliveryUseCase = new QualifyReferralOnDeliveryUseCase(
     this.loyaltyRepo,
-    this.loyaltyCompletionRepo,
+    this.loyaltyIssuanceCompletion,
     this.loyaltyReferralRepo,
     this.gamificationRepo,
     async ({ userId, points, kind }) =>
@@ -1408,17 +1473,17 @@ export class Registry {
   );
   public readonly awardBirthdayPointsUseCase = new AwardBirthdayPointsUseCase(
     this.loyaltyRepo,
-    this.loyaltyCompletionRepo,
+    this.loyaltyIssuanceCompletion,
     this.birthdayUserSource,
   );
   public readonly earnForCounterfeitConfirmationUseCase = new EarnForCounterfeitConfirmationUseCase(
     this.loyaltyRepo,
-    this.loyaltyCompletionRepo,
+    this.loyaltyIssuanceCompletion,
     this.gamificationRepo,
   );
   public readonly earnForPhoneVerificationUseCase = new EarnForPhoneVerificationUseCase(
     this.loyaltyRepo,
-    this.loyaltyCompletionRepo,
+    this.loyaltyIssuanceCompletion,
     this.gamificationRepo,
   );
 
@@ -1576,10 +1641,22 @@ export class Registry {
       district?: string | null;
       items: ReadonlyArray<{ productId: string; quantity: number }>;
     }) => {
-      const outcome = await this.deliveryQuotingUseCase.execute(input);
+      // One instant for the quote AND its capture, so the recorded hour of week is
+      // the one the hour factor was applied at (the use case derives it the same way).
+      const at = new Date();
+      const eatParts = toEatParts(at);
+      const outcome = await this.deliveryQuotingUseCase.execute({ ...input, at });
       const q = outcome.quote;
+      // What the ORDER charges: a pay-on-collection rate card is paid to the
+      // carrier at the parcel office, never in the order as well.
+      const charge = orderChargeUgx(q);
       return {
-        feeUgx: q.kind === 'unavailable' ? null : q.feeUgx,
+        feeUgx: charge,
+        // Checkout re-decides the free-delivery waiver on the post-promotion
+        // goods total, which it only knows after pricing; these let it do that
+        // without a second quote.
+        freeDeliveryThresholdUgx: outcome.freeDeliveryThresholdUgx,
+        feeBeforeFreeDeliveryUgx: orderChargeBeforeFreeDeliveryUgx(q),
         // A quote we produced is CONFIRMED. A refusal is not a zero fee that
         // happens to be right — it is an unconfirmed fee the team will settle.
         confirmed: q.kind !== 'unavailable',
@@ -1595,11 +1672,15 @@ export class Registry {
           areaSlug: q.explanation.areaSlug || null,
           corridor: q.explanation.corridor,
           distanceBand: q.explanation.band,
-          quotedFeeUgx: q.kind === 'unavailable' ? null : q.feeUgx,
+          quotedFeeUgx: charge,
           expectedMinutes: q.kind === 'rider_delivery' ? q.expectedMinutes : null,
           centroidSource: q.explanation.centroidSource,
           configVersionId: q.explanation.configVersionId,
           aliasUsed: outcome.resolved?.aliasUsed ?? null,
+          // 0152: what the hour and detour fits learn from. The straight line is
+          // the round trip before detour, comparable to the distance a rider records.
+          eatHourOfWeek: eatParts.weekday * 24 + eatParts.hour,
+          straightLineKm: q.explanation.oneWayKm !== null ? q.explanation.oneWayKm * 2 : null,
           fulfilmentMode: q.mode ?? null,
           carrier: q.kind === 'bus_shipment' ? q.shipment.carrier : null,
           rateCardId: q.kind === 'bus_shipment' ? q.shipment.rateCardId : null,
@@ -1634,7 +1715,7 @@ export class Registry {
     this.loyaltyRepo,
   );
   public readonly playDrawTokenUseCase = new PlayDrawTokenUseCase(
-    this.loyaltyCompletionRepo,
+    this.loyaltyIssuanceCompletion,
     this.loyaltyDrawRepo,
     this.loyaltyRepo,
     (maxExclusive: number) => nodeRandomInt(maxExclusive),
@@ -1669,6 +1750,7 @@ export class Registry {
         idempotencyKey: `loyexp:${earnEntryId}:${kind}`,
         data: { kind, pointsExpiring, expiresAt: expiresAt.toISOString() },
       }),
+    this.loyaltyGate,
   );
   // Delivery intelligence: geography prior + order-book posterior; zones stay
   // the only source of CONFIRMED fees.
@@ -1754,6 +1836,11 @@ export class Registry {
               event: 'placed',
               stockConfirmed: event.payload.stockConfirmed === true,
             });
+            // The customer's own copy of a pay-on-delivery order: its reference
+            // is what /track-order needs. Online payers are told when the money
+            // lands (ORDER_PAYMENT_SUCCESS). Once per order (outbox key).
+            const confirmation = confirmationForPlacedOrder(await this.orderRepo.findPaymentMethod(order.id));
+            if (confirmation) await this.enqueueCustomerOrderMessage(order.id, confirmation);
             return { status: 'HANDLED' };
           },
         },
@@ -1945,8 +2032,27 @@ export class Registry {
   public readonly heroRepo = new DrizzleHeroRepository();
   // The hero's sale slide reads the SAME live promotion as the header and the
   // card prices — never a hand-typed deadline or figure in the slide row.
-  public readonly heroContentService = new HeroContentService(this.heroRepo, () =>
-    resolveStorefrontDiscount(this.pricingRepo),
+  public readonly heroContentService = new HeroContentService(
+    this.heroRepo,
+    () => resolveStorefrontDiscount(this.pricingRepo),
+    // Same-day cutoff and closed days: business_info, the one authority the nav
+    // and checkout read. Lazy, so declaration order does not matter.
+    async () => {
+      const biz = await this.businessInfoService.getPublicConfig();
+      return { cutoffHour: biz.sameDayCutoffHour, closedDays: biz.closedDays };
+    },
+    // The points slides only run while the programme can honour them — the
+    // same terms /commerce/loyalty-programme publishes.
+    async () => {
+      const [active, programme] = await Promise.all([
+        this.loyaltyGate.isActive(),
+        this.loyaltyCompletionRepo.getProgrammeConfig(),
+      ]);
+      return {
+        loyaltyActive: active,
+        referralEarns: active && !programme.killSwitch && programme.referralReferrerPoints !== null && programme.referralRefereePoints !== null,
+      };
+    },
   );
   public readonly heroSignalsService = new HeroSignalsService();
   public readonly heroTelemetryService = new HeroTelemetryService();
@@ -1966,6 +2072,8 @@ export class Registry {
 
   /** The ONE product-cost owner: what a product cost, from when, on whose authority. */
   public readonly productCostRepo = new DrizzleProductCostRepository();
+  public readonly importProductCostsUseCase = new ImportProductCostsUseCase(this.productCostRepo);
+  public readonly refreshCurrentProductCostsUseCase = new RefreshCurrentProductCostsUseCase(this.productCostRepo);
 
   /** The ONE refund ledger: how much of a payment has already been given back. */
   public readonly refundLedgerRepo = new DrizzleRefundLedgerRepository();
@@ -1976,6 +2084,19 @@ export class Registry {
     this.orderTransitionService,
     // The ledger decides whether a provider reversal was total or partial.
     this.refundLedgerRepo,
+    // Points follow the money back even when the order cannot move (delivered, partial refund).
+    new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase),
+  );
+
+  /**
+   * What a refund that landed means for the order, for the one path the
+   * provider poll cannot see: an operator confirming a refund by hand.
+   */
+  public readonly refundConsequencesUseCase = new ApplyRefundConsequencesUseCase(
+    this.pesapalPaymentRepo,
+    this.orderTransitionService,
+    this.refundLedgerRepo,
+    new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase),
   );
 
   /**
@@ -2016,46 +2137,7 @@ export class Registry {
           throw new Error(`redemption consume failed: ${result.code}`);
         }
       },
-      enqueueCustomerMessage: async (orderId, template) => {
-        const order = await this.orderRepo.findById(orderId);
-        if (!order) return;
-        await this.customerOutboxNotifier.enqueue({
-          eventType: 'CUSTOMER_ORDER_MESSAGE',
-          template,
-          customerPhone: order.customerPhone,
-          customerEmail: order.customerEmail ?? null,
-          data: {
-            template,
-            customerName: order.customerName,
-            orderNumber: order.orderNumber,
-            totalUgx: order.totalUgx,
-            // What the reviewed email templates need to render a real receipt:
-            // the lines, the money and where it is going. Without these the
-            // adapter cannot fill the design and falls back to the older body.
-            orderCreatedAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : order.createdAt,
-            deliveryFeeUgx: order.deliveryFeeUgx ?? 0,
-            deliveryLocation: order.deliveryLocation?.displayLabel || order.deliveryArea || '',
-            paymentStatus: order.paymentStatus,
-            orderUrl: `${(process.env.PUBLIC_WEB_BASE_URL || 'https://shopgoldplus.com').replace(/\/$/, '')}/orders/${encodeURIComponent(order.orderNumber)}`,
-            items: (order.items ?? []).map((i) => ({
-              name: i.name,
-              quantity: i.quantity,
-              unitPriceUgx: i.price,
-              lineTotalUgx: i.finalLineTotal ?? i.price * i.quantity,
-            })),
-          },
-          idempotencyKey: `customer-order-message:${orderId}:${template}`,
-          relatedEntity: 'order',
-          relatedEntityId: orderId,
-          // These messages have been reaching customers all along: the router
-          // never consulted this flag, so "deferred until the owner switches it
-          // on" was not true — a payment-success SMS went to a real customer on
-          // 2026-09-20 while the switch was unset. The flag is now honoured, so
-          // the default states what actually happens: customer order messages
-          // are LIVE, and CUSTOMER_ORDER_MESSAGES_LIVE=false stops them.
-          dryRunOnly: process.env.CUSTOMER_ORDER_MESSAGES_LIVE === 'false',
-        });
-      },
+      enqueueCustomerMessage: (orderId, template) => this.enqueueCustomerOrderMessage(orderId, template),
       notifyFulfilmentOfPaidOrder: async (orderId: string) => {
         const r = await this.fulfilmentAlertConfig.enqueuePaidOrderAlert(orderId);
         if (!r.queued && r.reason !== 'NO_RECIPIENT_OR_DISABLED') {
@@ -2122,6 +2204,29 @@ export class Registry {
       abandonStartFailuresAfterHours: Number(process.env.PAYMENT_ABANDON_START_FAILURES_HOURS) > 0 ? Number(process.env.PAYMENT_ABANDON_START_FAILURES_HOURS) : 24,
       batchLimit: 100,
     },
+    {
+      // Paid through a COMPLETED attempt (never a hand-marked COD order), task
+      // still unpaid and still live. Idempotent effects only; see
+      // SettlePaymentUseCase.redoConfirmedEffects.
+      windowHours: 48,
+      listPaidOrdersAwaitingFulfilmentPayment: async (since: Date, limit: number) => {
+        const { db } = await import('./db/client');
+        const { sql } = await import('drizzle-orm');
+        const rows = (await db.execute(sql`
+          select o.id
+          from orders o
+          join fulfilment_tasks t on t.order_id = o.id
+          where o.payment_status = 'paid'
+            and t.payment_status <> 'paid'
+            and t.status not in ('CANCELLED', 'DELIVERED')
+            and o.updated_at >= ${since}
+            and exists (select 1 from payment_attempts pa where pa.order_id = o.id and pa.status = 'completed')
+          order by o.updated_at desc
+          limit ${Math.max(1, Math.min(limit, 200))}
+        `)) as unknown as Array<{ id: string }>;
+        return rows.map((r) => String(r.id));
+      },
+    },
   );
 
   /** Payments ops config: closed registry, ships empty, audited writes. */
@@ -2158,6 +2263,30 @@ export class Registry {
         newState: { value: String(check.value) },
       });
       return { ok: true as const };
+    },
+    /**
+     * Unset — the documented way each mechanism is switched OFF. There was no
+     * way to do it from the admin: a blank value fails validation (it reads as
+     * 0, below the minimum), so once the synthetic probe or abandonment was on
+     * it could only be turned off in SQL.
+     */
+    unset: async (input: { key: string; actorId: string }) => {
+      if (!isPaymentsOpsConfigKey(input.key)) {
+        return { ok: false as const, message: `"${input.key}" is not a payments operational setting.` };
+      }
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      const before = await this.paymentsOpsConfig.values();
+      await db.execute(sql`delete from payments_ops_config where config_key = ${input.key}`);
+      await this.createAuditLogUseCase.execute({
+        actorId: input.actorId,
+        action: 'PAYMENTS_OPS_CONFIG_UNSET',
+        entity: 'payments_ops_config',
+        entityId: input.key,
+        previousState: { value: before[input.key] ?? null },
+        newState: { value: null },
+      });
+      return { ok: true as const, wasSet: before[input.key] !== undefined };
     },
   };
 
@@ -2231,10 +2360,10 @@ export class Registry {
 
   public readonly alertOnLedgerMismatchUseCase = new AlertOnLedgerMismatchUseCase(
     { execute: (limit) => Registry.getInstance().scanCommerceIntegrityUseCase.execute(limit) },
-    ({ count, entityIds }) =>
+    ({ count, entityIds, types }) =>
       logger.error(
-        { count, entityIds },
-        'ALERT RESERVED_LEDGER_MISMATCH — the order reservation state and the reservation ledger disagree. This was a report line nobody read; now it shouts.',
+        { count, entityIds, types },
+        'ALERT STOCK INTEGRITY — the reservation ledger disagrees with stock or with where the order is (RESERVED_LEDGER_MISMATCH / DISPATCHED_WITH_RESERVATION / CANCELLED_AFTER_CONSUME). This was a report line nobody read; now it shouts.',
       ),
   );
 
@@ -2363,6 +2492,7 @@ export class Registry {
       execute: (input) => this.startPesaPalPaymentUseCase.execute(input),
     },
     sideEffectRecorder: this.checkoutSideEffectRecorder,
+    reservationState: this.orderReservationState,
     observer: {
       // Order ids and codes only. A refused payment start is a security-relevant
       // event and these lines outlive the request; no customer data belongs in them.
@@ -2656,6 +2786,55 @@ export class Registry {
   }
 
   /**
+   * One customer order message through the outbox: at most once per order and
+   * template (the idempotency key), governed by the TRANSACTIONAL gates, and
+   * stopped without a deploy by CUSTOMER_ORDER_MESSAGES_LIVE=false.
+   */
+  private async enqueueCustomerOrderMessage(orderId: string, template: string): Promise<void> {
+    const order = await this.orderRepo.findById(orderId);
+    if (!order) return;
+    await this.customerOutboxNotifier.enqueue({
+      eventType: 'CUSTOMER_ORDER_MESSAGE',
+      template,
+      customerPhone: order.customerPhone,
+      customerEmail: order.customerEmail ?? null,
+      data: {
+        template,
+        customerName: order.customerName,
+        orderNumber: order.orderNumber,
+        totalUgx: order.totalUgx,
+        // What the reviewed email templates need to render a real receipt:
+        // the lines, the money and where it is going. Without these the
+        // adapter cannot fill the design and falls back to the older body.
+        orderCreatedAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : order.createdAt,
+        deliveryFeeUgx: order.deliveryFeeUgx ?? 0,
+        deliveryLocation: order.deliveryLocation?.displayLabel || order.deliveryArea || '',
+        paymentStatus: order.paymentStatus,
+        // Track Order, pre-filled: it works for guests (no account) and takes
+        // an order NUMBER. /orders/{number} could never resolve — that page
+        // reads /account/orders/:id, which answers only a UUID, behind a login.
+        orderUrl: `${(process.env.PUBLIC_WEB_BASE_URL || 'https://shopgoldplus.com').replace(/\/$/, '')}/track-order?reference=${encodeURIComponent(order.orderNumber)}`,
+        items: (order.items ?? []).map((i) => ({
+          name: i.name,
+          quantity: i.quantity,
+          unitPriceUgx: i.price,
+          lineTotalUgx: i.finalLineTotal ?? i.price * i.quantity,
+        })),
+      },
+      idempotencyKey: `customer-order-message:${orderId}:${template}`,
+      relatedEntity: 'order',
+      relatedEntityId: orderId,
+      // These messages have been reaching customers all along: the router
+      // never consulted this flag, so "deferred until the owner switches it
+      // on" was not true — a payment-success SMS went to a real customer on
+      // 2026-09-20 while the switch was unset. The flag is now honoured, so
+      // the default states what actually happens: customer order messages
+      // are LIVE, and CUSTOMER_ORDER_MESSAGES_LIVE=false stops them.
+      dryRunOnly: process.env.CUSTOMER_ORDER_MESSAGES_LIVE === 'false',
+    });
+  }
+
+  /**
    * Loyalty ↔ order lifecycle wiring (loyalty brief PARTs F–G), registered
    * once at construction. Post-commit, isolated, idempotent:
    *  - delivered/completed → vest points (signed-in retail orders paid online or cash on delivery —
@@ -2671,8 +2850,14 @@ export class Registry {
     // business event routes them (0140), in the delivery layer.
     this.orderTransitionService.onTransition(async ({ orderId, toStatus, ctx }) => {
       if (toStatus === 'delivered' || toStatus === 'completed') {
-        await this.vestLoyaltyOnDeliveryUseCase.execute(orderId);
-        await this.consumeRedemptionUseCase.execute({ orderId }).catch(() => undefined);
+        // Isolated like every step after it. Un-caught, one transient DB error
+        // here skipped redemption settlement, the earned SMS, badges, referral
+        // qualification and the scratch card for this order, permanently —
+        // this subscriber runs once, after commit, and nothing re-runs it.
+        await this.vestLoyaltyOnDeliveryUseCase.execute(orderId).catch((err: unknown) =>
+          logger.error({ orderId, err }, 'LOYALTY_VEST_FAILED — points for this delivered order did not vest'));
+        // A failure is reported and the stuck reservation released (settleOnDelivery).
+        await this.consumeRedemptionUseCase.settleOnDelivery(orderId).catch(() => undefined);
         // PART M: earn confirmation when points VEST, not when the order is
         // placed. Enqueued only when an earn actually landed for this order.
         const earn = await this.loyaltyCompletionRepo.findEarnEntryForOrder(orderId).catch(() => null);
@@ -2702,9 +2887,24 @@ export class Registry {
             .catch(() => undefined);
         }
       }
+      if (toStatus === 'delivered' || toStatus === 'completed') {
+        // Goods that left the shop use up their reservation. Dispatch consumes
+        // at READY_FOR_DISPATCH, but an order closed without dispatch (a
+        // counter collection, processing → completed) never did: its units
+        // stayed reserved for good, and cancelling the stranded task later
+        // put goods already gone back on sale. A no-op once consumed.
+        await this.applyFulfilmentStockEffectUseCase.consumeForClosedOrder(orderId);
+      }
       if (toStatus === 'cancelled') {
         // Stock as well as points: idempotent, isolated, never fails the transition.
         await this.releaseCancelledOrderHoldsUseCase.execute(orderId);
+      }
+      // The customer hears about the moves that change what they should
+      // expect (owner, 2026-09-24): dispatched, delivered, cancelled.
+      const lifecycleMessage = customerMessageForTransition(toStatus, ctx.actorType);
+      if (lifecycleMessage) {
+        await this.enqueueCustomerOrderMessage(orderId, lifecycleMessage).catch((err: unknown) =>
+          logger.error({ orderId, template: lifecycleMessage, err: err instanceof Error ? err.message : String(err) }, 'CUSTOMER_ORDER_MESSAGE_ENQUEUE_FAILED'));
       }
       if (ctx.paymentStatus === 'reversed') {
         await this.clawbackOrderEarnUseCase

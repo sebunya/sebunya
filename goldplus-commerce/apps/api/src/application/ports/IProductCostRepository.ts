@@ -87,21 +87,27 @@ export interface ProductCostCoverage {
   rows: ProductCostCoverageRow[];
 }
 
+/** Today in Kampala decides which effective-dated cost is current. */
 export interface IProductCostRepository {
+  /** Every product whose id or SKU (case-insensitive) is among `identifiers`, with its current cost. */
+  resolveProducts(identifiers: string[]): Promise<Array<{ id: string; sku: string; name: string; costPriceUgx: number | null }>>;
+
+  /** `${productId}:${YYYY-MM-DD}` for every LIVE (not superseded) entry of these products. */
+  liveEntryKeys(productIds: string[]): Promise<string[]>;
+
   /**
-   * Validate every row, then write ALL of them or NONE. `dryRun` runs the same
-   * validation and returns the same plan without writing — an operator can see
-   * exactly what a file would do before it does it.
-   *
-   * Identifiers may be a product id or a SKU; both resolve to one product or
-   * the row fails.
+   * Writes a validated plan in ONE transaction: each row supersedes the live
+   * entry for its product+date (a correction points back at it), then the
+   * touched products' current cost is refreshed. Returns rows written.
    */
-  importCosts(input: {
-    rows: Array<{ identifier: string; costPriceUgx: unknown; effectiveFrom: unknown; currency?: unknown; note?: unknown }>;
-    source: string;
-    enteredBy: string;
-    dryRun: boolean;
-  }): Promise<ProductCostImportResult>;
+  applyCostPlan(input: { plan: ProductCostImportPlanRow[]; source: string; enteredBy: string }): Promise<number>;
+
+  /**
+   * Sets product_prices.cost_price to the newest live entry whose day has
+   * arrived (Kampala), for every product that has entries, where it differs.
+   * Returns the number of products changed.
+   */
+  refreshCurrentCosts(): Promise<number>;
 
   /** History for one product, newest first, including superseded rows. */
   listEntriesForProduct(productId: string): Promise<RecordedProductCostEntry[]>;

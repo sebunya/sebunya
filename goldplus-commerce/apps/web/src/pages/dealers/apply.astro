@@ -28,7 +28,8 @@ if (Astro.request.method === 'POST') {
 
   if (!businessName) errors.businessName = 'Business name is required.';
   if (!contactName) errors.contactName = 'Contact person is required.';
-  if (!isValidEmail(email)) errors.email = 'Valid business email is required.';
+  // Email is optional: the team calls the number given.
+  if (email && !isValidEmail(email)) errors.email = 'That email address does not look right. Check it, or leave it blank.';
   if (!isValidUgandanPhone(phone)) errors.phone = 'Valid Ugandan phone required.';
   if (!tinNumber) errors.tinNumber = 'TIN is required.';
   if (!locationJson) errors.locationJson = 'Please select location.';
@@ -107,7 +108,7 @@ if (Astro.request.method === 'POST') {
               <legend class="text-[10px] font-black uppercase tracking-widest text-slate-600 mb-1.5">Contact details</legend>
               <FormField id="contactName" name="contactName" label="Contact person" required defaultValue={values.contactName} autocomplete="name" errorMessage={errors.contactName} />
               <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <FormField id="email" name="email" label="Business email" type="email" required defaultValue={values.email} autocomplete="email" errorMessage={errors.email} />
+                <FormField id="email" name="email" label="Business email (optional)" type="email" defaultValue={values.email} autocomplete="email" errorMessage={errors.email} />
                 <FormField id="phone" name="phone" label="Business phone" type="tel" required defaultValue={values.phone} autocomplete="tel" inputmode="tel" placeholder="07XX XXX XXX" errorMessage={errors.phone} />
               </div>
             </fieldset>
@@ -200,7 +201,7 @@ if (Astro.request.method === 'POST') {
       if (!bName.value.trim()) setError('businessName', 'Required.');
       if (!cName.value.trim()) setError('contactName', 'Required.');
       if (!tin.value.trim()) setError('tinNumber', 'Required.');
-      if (!isValidEmail(em.value)) setError('email', 'Enter a valid email.');
+      if (em.value.trim() && !isValidEmail(em.value)) setError('email', 'Check the email, or leave it blank.');
       if (!isValidUgandanPhone(ph.value)) setError('phone', 'Enter valid Ugandan phone.');
       if (!ag.checked) {
         valid = false;

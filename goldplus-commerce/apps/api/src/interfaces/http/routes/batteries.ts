@@ -34,7 +34,9 @@ async function run<T>(c: Ctx, fn: () => Promise<T>, maxAge = 60) {
 routes.get('/finder/config', (c) => run(c, async () => ({ config: await uc().config(), indexable: await uc().indexable() })));
 routes.get('/finder/brands', (c) => run(c, () => uc().brands()));
 routes.get('/finder/brands/:slug', (c) => run(c, () => uc().brand(param(c, 'slug'))));
-routes.get('/finder/devices/:slug', (c) => run(c, () => uc().device(param(c, 'slug'), session(c)), 30));
+// ?record=0: a lookup that is not a customer's choice (the product page
+// resolving ?device=) is answered without counting as demand.
+routes.get('/finder/devices/:slug', (c) => run(c, () => uc().device(param(c, 'slug'), session(c), c.req.query('record') !== '0'), 30));
 routes.get('/finder/search', (c) => {
   const q = (c.req.query('q') ?? '').slice(0, 120);
   return run(c, () => uc().search(q, session(c)), 0);

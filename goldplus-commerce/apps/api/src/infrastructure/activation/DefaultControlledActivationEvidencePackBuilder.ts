@@ -1,6 +1,17 @@
 import { randomUUID } from 'crypto';
 import { ControlledActivationEvidencePackBuilder, EvidencePack } from '../../application/ports/activation/ControlledActivationEvidencePackBuilder.js';
 
+const NOT_VERIFIED = 'Not verified: evidence collection is not built yet.';
+
+/**
+ * Evidence collection is NOT BUILT. Every summary used to be a fixed claim —
+ * "No PII leaks detected", "Rollback procedures verified", "Monitoring dashboards
+ * provisioned" — that no code computed. Each now says it was not verified.
+ *
+ * KNOWN LIMITATION (2026-09-24): packs live in THIS process's memory (two API
+ * containers; lost on restart), as the canary planner documents. Persistence is
+ * deferred with the rest of the controlled-activation clients.
+ */
 export class DefaultControlledActivationEvidencePackBuilder implements ControlledActivationEvidencePackBuilder {
   private packs: Map<string, EvidencePack> = new Map();
 
@@ -9,13 +20,13 @@ export class DefaultControlledActivationEvidencePackBuilder implements Controlle
       id: randomUUID(),
       dryRunId,
       activationRequestId,
-      summary: 'Dry-run execution verified successfully.',
-      gateSummary: 'All pre-flight gates passed.',
-      payloadPreviewSummary: 'Payload previews generated. No PII leaks detected.',
-      consentSummary: 'Consent routing rules upheld.',
-      canarySummary: 'Canary plan attached and validated.',
-      rollbackSummary: 'Rollback procedures verified.',
-      monitoringSummary: 'Monitoring dashboards provisioned.',
+      summary: NOT_VERIFIED,
+      gateSummary: NOT_VERIFIED,
+      payloadPreviewSummary: NOT_VERIFIED,
+      consentSummary: NOT_VERIFIED,
+      canarySummary: NOT_VERIFIED,
+      rollbackSummary: NOT_VERIFIED,
+      monitoringSummary: NOT_VERIFIED,
       redactedBy: 'SYSTEM',
       createdAt: new Date()
     };

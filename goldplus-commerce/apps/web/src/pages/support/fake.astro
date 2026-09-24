@@ -26,7 +26,8 @@ if (Astro.request.method === 'POST') {
 
   if (!locationDetails) errors.locationFound = 'Shop/location details required.';
   if (!productDescription) errors.productDescription = 'Detailed product description is required.';
-  if (!isValidEmail(reporterEmail)) errors.reporterEmail = 'A valid reporter email is required.';
+  // Email is optional: the phone is how we follow up on a report.
+  if (reporterEmail && !isValidEmail(reporterEmail)) errors.reporterEmail = 'That email address does not look right. Check it, or leave it blank.';
   if (!isValidUgandanPhone(reporterPhone)) errors.reporterPhone = 'A valid Ugandan reporter phone is required.';
 
   if (Object.keys(errors).length === 0) {
@@ -131,9 +132,8 @@ if (Astro.request.method === 'POST') {
                 <FormField 
                   id="reporterEmail" 
                   name="reporterEmail" 
-                  label="Email address" 
+                  label="Email address (optional)" 
                   type="email"
-                  required 
                   defaultValue={values.reporterEmail} 
                   autocomplete="email"
                   errorMessage={errors.reporterEmail}
@@ -212,8 +212,8 @@ if (Astro.request.method === 'POST') {
       if (!descInput.value.trim()) {
         setError('productDescription', 'Detailed product description is required.');
       }
-      if (!isValidEmail(emailInput.value)) {
-        setError('reporterEmail', 'Enter a valid reporter email.');
+      if (emailInput.value.trim() && !isValidEmail(emailInput.value)) {
+        setError('reporterEmail', 'Check the email, or leave it blank.');
       }
       if (!isValidUgandanPhone(phoneInput.value)) {
         setError('reporterPhone', 'Enter a valid Ugandan phone number.');

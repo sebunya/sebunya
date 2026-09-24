@@ -46,7 +46,8 @@ export class BatteryCompatibilityUseCases {
    * own DRAFT claim that must be reviewed on its own: the quick action saves
    * typing, not scrutiny.
    */
-  async create(input: { productId: string; deviceIds: string[]; actorId: string; sourceImportSessionId?: string | null; sourceReference?: string | null } & ClaimWrite) {
+  /** `createdBy`: the claim's author when not the saver (an import records its uploader). */
+  async create(input: { productId: string; deviceIds: string[]; actorId: string; createdBy?: string; sourceImportSessionId?: string | null; sourceReference?: string | null } & ClaimWrite) {
     const battery = await this.batteries.findByProductId(input.productId);
     if (!battery) throw notFound('Battery');
     const deviceIds = Array.from(new Set(input.deviceIds.filter(Boolean)));
@@ -76,7 +77,7 @@ export class BatteryCompatibilityUseCases {
         publicCondition: input.publicCondition?.trim() || null,
         fitType: 'exact',
         confidence: 'declared',
-        createdBy: input.actorId,
+        createdBy: input.createdBy ?? input.actorId,
         sourceImportSessionId: input.sourceImportSessionId ?? null,
         sourceReference: input.sourceReference ?? null,
       });

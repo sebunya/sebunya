@@ -44,6 +44,12 @@ try {
 }
 
 const shareUrl = referral ? `https://shopgoldplus.com/register?ref=${referral.code}` : '';
+// Balance and its value in UGX together (loyalty DoD #26) — only when the
+// point value is configured; never an invented rate.
+const pointValueUgx: number | null =
+  programme?.redemption?.configured && Number.isFinite(Number(programme.redemption.pointValueUgx)) && Number(programme.redemption.pointValueUgx) > 0
+    ? Number(programme.redemption.pointValueUgx)
+    : null;
 
 const typeLabel: Record<string, string> = {
   earn: 'Earned',
@@ -86,6 +92,9 @@ const formatDate = (iso: string) =>
           <div class="bg-white border border-brand-borderGrey rounded-2xl p-5">
             <p class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Available</p>
             <p class="text-2xl font-black text-brand-charcoal mt-1">{history.balance.available.toLocaleString('en-UG')}</p>
+            {pointValueUgx !== null && history.balance.available > 0 && (
+              <p class="text-[10px] text-brand-mutedGrey mt-0.5">worth UGX {(history.balance.available * pointValueUgx).toLocaleString('en-UG')} off an order</p>
+            )}
           </div>
           <div class="bg-white border border-brand-borderGrey rounded-2xl p-5">
             <p class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey">Pending</p>

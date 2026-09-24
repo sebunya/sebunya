@@ -39,7 +39,7 @@ export interface MediaImportCataloguePort {
 
 export type MediaImportError = { ok: false; code: 'NOT_FOUND' | 'STALE_VERSION' | 'FOUR_EYES_REQUIRED' | 'PLAN_BLOCKED' | 'INVALID_STATE' | 'BAD_INPUT'; message: string };
 
-const MAX_FILES = 250;
+export const MAX_FILES = 250;
 
 export class MediaImportUseCases {
   constructor(

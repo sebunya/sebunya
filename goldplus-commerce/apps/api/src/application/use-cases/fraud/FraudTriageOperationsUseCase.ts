@@ -5,8 +5,17 @@ export class FraudTriageOperationError extends Error {
   constructor(public readonly code: string, message: string) { super(message); }
 }
 
+/** Who may be handed a fraud case: an ACTIVE account that can read fraud cases. */
+export interface FraudAssigneeDirectoryPort {
+  isEligibleReviewer(userId: string): Promise<boolean>;
+}
+
 export class FraudTriageOperationsUseCase {
-  constructor(private readonly repo: IFraudTriageRepository) {}
+  constructor(
+    private readonly repo: IFraudTriageRepository,
+    /** Optional so existing callers construct unchanged; production wires it. */
+    private readonly assignees?: FraudAssigneeDirectoryPort,
+  ) {}
 
   async recordSignal(input: FraudSignalInput & { actorId: string }) {
     const errors = validateFraudSignal(input);
@@ -29,6 +38,11 @@ export class FraudTriageOperationsUseCase {
   overview() { return this.repo.overview(); }
   async assign(input: { id: string; expectedVersion: number; assigneeId: string; actorId: string; reason: string }) {
     if (!input.reason.trim()) throw new FraudTriageOperationError('REASON_REQUIRED', 'Assignment reason is required.');
+    // A typo'd or foreign id used to park the case IN_REVIEW with nobody and
+    // drop it out of "Unassigned" for good.
+    if (this.assignees && !(await this.assignees.isEligibleReviewer(input.assigneeId))) {
+      throw new FraudTriageOperationError('ASSIGNEE_NOT_ELIGIBLE', 'That reviewer is not an active account that can read fraud cases (fraud.read). Check the id.');
+    }
     const updated = await this.repo.assign({ ...input, reason: input.reason.trim() });
     if (!updated) throw new FraudTriageOperationError('STALE_VERSION', 'Fraud case changed after it was loaded.');
     return updated;

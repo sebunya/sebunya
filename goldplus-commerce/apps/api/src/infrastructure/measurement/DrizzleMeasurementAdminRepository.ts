@@ -22,13 +22,24 @@ export class DrizzleMeasurementAdminRepository implements MeasurementAdminReposi
     return pendingOutbox?.count ?? 0;
   }
 
-  async enqueueTelemetryDispatch(payload: any, eventId: string): Promise<void> {
+  /**
+   * The key used to carry Date.now(), which defeated the unique index: two
+   * replays of one entry (a double click, two operators) made two outbox rows
+   * and GA4 counted the event twice. One key per DLQ entry, and a conflict is
+   * absorbed. A later dead-letter of the same event is a NEW entry, so it can
+   * still be replayed.
+   */
+  dlqReplayKey(eventId: string, replayKey?: string): string {
+    return `dlq-replay:${replayKey ?? eventId}`;
+  }
+
+  async enqueueTelemetryDispatch(payload: any, eventId: string, replayKey?: string): Promise<void> {
     await db.insert(outboxEvents).values({
       eventType: 'TELEMETRY_DISPATCH',
       payload,
-      idempotencyKey: `dlq-replay:${eventId}:${Date.now()}`,
+      idempotencyKey: this.dlqReplayKey(eventId, replayKey),
       status: 'pending',
       dryRunOnly: false,
-    });
+    }).onConflictDoNothing({ target: outboxEvents.idempotencyKey });
   }
 }

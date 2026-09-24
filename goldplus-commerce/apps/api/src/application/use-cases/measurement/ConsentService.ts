@@ -137,8 +137,11 @@ export class ConsentService {
    * by default. `analytics` and `advertising` stay DENIED by default because EVERY
    * measurement destination is third-party (ga4/gtm_web = Google, meta/tiktok/
    * linkedin/pinterest = ad platforms — see DESTINATION_PURPOSE_MAP), and the
-   * owner's rule is that data is never shared with a third party. The
-   * ConversionRouter therefore still dispatches nothing off-site by default.
+   * owner's rule is that data is never shared with a third party.
+   *
+   * NOTE: this default is NOT what the ad-conversion path does. Delivery
+   * follows D-002 (no stored refusal = allowed); see
+   * advertisingConversionsSent(), which is what the preference centre shows.
    */
   private defaultConsentState(): ConsentState {
     return ConsentStateSchema.parse({
@@ -185,6 +188,19 @@ export class ConsentService {
    * never chose (the owner default then applies). Used where "chose to refuse"
    * must be told apart from "never asked".
    */
+  /**
+   * What the ad-conversion gate (D-002, infrastructure/measurement/
+   * AdvertisingConsentGate) actually does for this identity: conversions are
+   * sent unless an explicit advertising refusal is stored, and a refusal never
+   * lapses. The preference centre shows THIS: it used to show the owner
+   * default (off) to customers whose purchases were being sent. Throws on a
+   * read failure; the caller decides what to show.
+   */
+  async advertisingConversionsSent(fpClientId?: string, userId?: string): Promise<boolean> {
+    const { row } = await this.consentRepo.getCurrentState(fpClientId, userId);
+    return !(row && row.advertisingGranted === false && row.lastGrantType !== 'unknown');
+  }
+
   async getExplicitState(fpClientId?: string, userId?: string): Promise<ConsentState | null> {
     try {
       const { row } = await this.consentRepo.getCurrentState(fpClientId, userId);

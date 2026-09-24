@@ -15,6 +15,7 @@ function build(opts: { users: Record<string, { isActive: boolean; roles: string[
     findUserById: async (id: string) => (users[id] ? { id, isActive: users[id].isActive } : null),
     userHasRole: async (id: string, role: string) => Boolean(users[id]?.roles.includes(role)),
     countActiveUsersWithRole: async (role: string) => Object.values(users).filter((u) => u.isActive && u.roles.includes(role)).length,
+    countActiveUsersWithAnyRole: async (roles: readonly string[]) => Object.values(users).filter((u) => u.isActive && roles.some((r) => u.roles.includes(r))).length,
     revokeRole: async (id: string, role: string) => { const u = users[id]; if (!u) return false; const had = u.roles.includes(role); u.roles = u.roles.filter((r) => r !== role); return had; },
     setUserActive: async (id: string, active: boolean) => { if (!users[id]) return false; users[id].isActive = active; return true; },
   } as unknown as IAdminUserWriteRepository;

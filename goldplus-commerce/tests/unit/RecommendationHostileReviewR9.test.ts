@@ -445,11 +445,11 @@ describe("the evidence stream cannot be quietly poisoned", () => {
 
   it("the relay refuses oversized bodies BEFORE buffering and forwards the client address", () => {
     const relay = read("apps/web/src/pages/api/rec/[...path].ts");
-    const declaredIdx = relay.indexOf("content-length");
-    const bufferIdx = relay.indexOf("await request.text()");
-    expect(declaredIdx).toBeGreaterThan(-1);
-    expect(declaredIdx).toBeLessThan(bufferIdx);
-    expect(relay).toContain("Buffer.byteLength(raw");
+    // The cap is enforced WHILE the body streams (lib/boundedBody): a declared
+    // Content-Length check alone let a chunked upload, which declares nothing,
+    // be buffered in full first.
+    expect(relay).toContain("readBodyCapped(request, MAX_BODY_BYTES)");
+    expect(relay).not.toContain("await request.text()");
     expect(relay).toContain('headers["X-Forwarded-For"]');
   });
 

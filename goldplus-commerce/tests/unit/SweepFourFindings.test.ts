@@ -14,7 +14,10 @@ describe('the page renders what the code defines', () => {
   it('the track-order follow-up calls a function that exists', () => {
     const src = read('apps/web/src/pages/track-order.astro');
     expect(src).not.toMatch(/\$\{label\(order\./);
-    expect(src).toMatch(/orderStatusCopy\(order\.orderStatus\)\.label/);
+    // The ticket text is now composed by the API (RequestOrderFollowUpUseCase,
+    // typechecked), so the page has no frontmatter call left to get wrong.
+    expect(src).toMatch(/postJson\('\/commerce\/orders\/lookup\/followup'/);
+    expect(src).toMatch(/orderStatusCopy\(order\.orderStatus\)/);
   });
 
   it('no .astro frontmatter calls an identifier that appears nowhere else in it', () => {
@@ -109,13 +112,13 @@ describe('money moves once, and for the right amount', () => {
   });
 
   it('a reversal settles only what actually came back', () => {
+    // Any money ceiling (the refunded total, or the collected amount) always
+    // covered every accepted row and capped nothing. A REVERSED status now
+    // settles a refund only when it can be about nothing else.
     expect(read('apps/api/src/infrastructure/db/repositories/DrizzleRefundLedgerRepository.ts'))
-      .toMatch(/settleRefundsForAttempt\(paymentAttemptId: string, settledTotalUgx\?: number\)/);
-    // The ceiling is the money COLLECTED. It was briefly `provenPartial ?
-    // refunded : attempt.amount`, which is circular: `refunded` is the sum of
-    // the very rows being settled, so it always covered them and capped nothing.
+      .toMatch(/settleRefundsForAttempt\(paymentAttemptId: string\): Promise<number>/);
     expect(read('apps/api/src/application/use-cases/payments/VerifyPesaPalPaymentUseCase.ts'))
-      .toMatch(/settleRefundsForAttempt\(attempt\.id, attempt\.amount\)/);
+      .toMatch(/settleRefundsForAttempt\(attempt\.id\)/);
   });
 
   it('two identical refund requests still collapse into one', () => {
@@ -261,14 +264,12 @@ describe('the parameter-boundary rule can actually see array casts', () => {
 });
 
 describe('what the self-review of this session caught', () => {
-  it('the settle budget excludes refunds already settled', () => {
+  it('a reversal settles nothing once a refund on the attempt has already settled', () => {
     const src = read('apps/api/src/infrastructure/db/repositories/DrizzleRefundLedgerRepository.ts');
     expect(src).toMatch(/where payment_attempt_id = \$\{paymentAttemptId\}::uuid and status = 'settled'/);
-    expect(src).toMatch(/Math\.max\(0, settledTotalUgx - Number\(settledRows\[0\]\?\.settled \?\? 0\)\)/);
-    // The ceiling must be the money COLLECTED, never a total derived from the
-    // outstanding rows themselves — that is circular and caps nothing.
+    expect(src).toMatch(/outstandingAcceptedIds\.length === 1 && alreadySettledCount === 0/);
     const caller = read('apps/api/src/application/use-cases/payments/VerifyPesaPalPaymentUseCase.ts');
-    expect(caller).toMatch(/settleRefundsForAttempt\(attempt\.id, attempt\.amount\)/);
+    expect(caller).not.toMatch(/settleRefundsForAttempt\(attempt\.id, attempt\.amount\)/);
     expect(caller).not.toMatch(/provenPartial \? refunded : attempt\.amount/);
   });
 

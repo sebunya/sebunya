@@ -399,7 +399,8 @@ routes.post('/integrations/gsc/sync', requirePermissions([PERMISSIONS.SEO_INTEGR
       message: 'GSC is not configured. Add a Google Search Console connection with a credential in the Integrations control plane (or set GSC_SERVICE_ACCOUNT_JSON and GSC_SITE_URL) to enable syncing.',
     });
   }
-  const queue = QueueService.getInstance().getQueue(QUEUES.ANALYTICS_FANOUT);
+  // getReadyQueue: null while Redis is down, so this refusal is reachable (getQueue never was).
+  const queue = QueueService.getInstance().getReadyQueue(QUEUES.ANALYTICS_FANOUT);
   if (!queue) return bad(c, 'QUEUE_UNAVAILABLE', 'Background queue is not available; sync not started.', 503);
   await queue.add('seo-gsc-sync', { requestedBy: actorId(c) });
   await audit(c, 'SEO_GSC_SYNC_ENQUEUED', 'seo_integration', 'GSC');
@@ -546,7 +547,7 @@ routes.post('/crawl/start', requirePermissions([PERMISSIONS.SEO_AUDIT_RUN]), asy
     notes: body.notes ? String(body.notes) : null,
   });
 
-  const queue = QueueService.getInstance().getQueue(QUEUES.ANALYTICS_FANOUT);
+  const queue = QueueService.getInstance().getReadyQueue(QUEUES.ANALYTICS_FANOUT);
   if (!queue) {
     await repo.finishCrawlRun(run.id, { status: 'FAILED', pagesCrawled: 0, notes: 'Queue unavailable — crawl never started.' });
     return bad(c, 'QUEUE_UNAVAILABLE', 'Background queue is not available; crawl not started.', 503);

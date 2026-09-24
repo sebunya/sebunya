@@ -6,6 +6,7 @@ import { users } from '../db/schema/identity';
 import { loyaltyAccountMerges, phoneVerificationCodes } from '../db/schema/loyalty';
 import { outboxEvents } from '../db/schema/system';
 import { ILoyaltyIdentityRepository, IOtpSender } from '../../application/use-cases/loyalty/LoyaltyIdentityUseCases';
+import type { LoyaltyProgrammeConfigPatch, LoyaltyProgrammeConfigWriterPort } from '../../application/use-cases/loyalty/SaveLoyaltyProgrammeConfigUseCase';
 
 export class DrizzleLoyaltyIdentityRepository implements ILoyaltyIdentityRepository {
   async createOtp(input: { userId: string; phoneE164: string; codeHash: string; expiresAt: Date }): Promise<void> {
@@ -81,7 +82,9 @@ export class DrizzleLoyaltyIdentityRepository implements ILoyaltyIdentityReposit
         and ${LOYALTY_PAYMENT_QUALIFIES_SQL}
         and status in ('delivered', 'completed')
         and created_at > now() - (${lookbackDays} || ' days')::interval
-        and (customer_phone = ${phoneE164} or customer_phone = ${local})`)) as unknown as Array<{
+        and (customer_phone = ${phoneE164} or customer_phone = ${local})
+      -- Oldest first, so which orders fill the per-customer cap is deterministic.
+      order by created_at asc, id asc`)) as unknown as Array<{
       id: string;
       total_amount: string | number;
       buyer_type: string;
@@ -230,39 +233,13 @@ export class DrizzleLoyaltyTierRepository implements ILoyaltyTierRepository {
 /* ── Programme-config writer (nulls preserved; nothing defaults) ─────────── */
 import { loyaltyConfig } from '../db/schema/loyalty';
 
-export class LoyaltyProgrammeConfigWriter {
-  async save(input: {
-    pointValueUgx: number | null;
-    redemptionMinPoints: number | null;
-    redemptionMaxShareBps: number | null;
-    budgetCapPoints: number | null;
-    killSwitch: boolean;
-    guestBackfillLookbackDays: number | null;
-    guestBackfillCapPoints: number | null;
-    referralReferrerPoints?: number | null;
-    referralRefereePoints?: number | null;
-    birthdayPoints?: number | null;
-    streakTargetOrders?: number | null;
-    streakWindowDays?: number | null;
-    streakRewardPoints?: number | null;
-    chanceEnabled?: boolean;
-  }): Promise<void> {
-    await db.update(loyaltyConfig).set({
-      pointValueUgx: input.pointValueUgx,
-      redemptionMinPoints: input.redemptionMinPoints,
-      redemptionMaxShareBps: input.redemptionMaxShareBps,
-      budgetCapPoints: input.budgetCapPoints,
-      killSwitch: input.killSwitch,
-      guestBackfillLookbackDays: input.guestBackfillLookbackDays,
-      guestBackfillCapPoints: input.guestBackfillCapPoints,
-      ...(input.referralReferrerPoints !== undefined ? { referralReferrerPoints: input.referralReferrerPoints } : {}),
-      ...(input.referralRefereePoints !== undefined ? { referralRefereePoints: input.referralRefereePoints } : {}),
-      ...(input.birthdayPoints !== undefined ? { birthdayPoints: input.birthdayPoints } : {}),
-      ...(input.streakTargetOrders !== undefined ? { streakTargetOrders: input.streakTargetOrders } : {}),
-      ...(input.streakWindowDays !== undefined ? { streakWindowDays: input.streakWindowDays } : {}),
-      ...(input.streakRewardPoints !== undefined ? { streakRewardPoints: input.streakRewardPoints } : {}),
-      ...(input.chanceEnabled !== undefined ? { chanceEnabled: input.chanceEnabled } : {}),
-      updatedAt: new Date(),
-    });
+export class LoyaltyProgrammeConfigWriter implements LoyaltyProgrammeConfigWriterPort {
+  /** PATCH: a key that is absent is left exactly as it is; null clears a nullable field. */
+  async save(input: LoyaltyProgrammeConfigPatch): Promise<void> {
+    const set: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(input)) {
+      if (value !== undefined) set[key] = value;
+    }
+    await db.update(loyaltyConfig).set({ ...(set as Partial<typeof loyaltyConfig.$inferInsert>), updatedAt: new Date() });
   }
 }

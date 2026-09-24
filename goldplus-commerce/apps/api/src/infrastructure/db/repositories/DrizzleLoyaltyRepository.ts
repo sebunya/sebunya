@@ -17,6 +17,7 @@ import {
   computeExpirableEarns,
   sameLedgerCommand,
 } from '../../../domain/loyalty/LoyaltyLedger';
+import { pgUuidArray } from '../PgParams';
 
 function toDomain(row: typeof loyaltyLedgerEntries.$inferSelect): LoyaltyLedgerEntry {
   return {
@@ -51,24 +52,52 @@ async function insertEntry(tx: any, input: AppendEntryInput): Promise<{ entry: L
   return { entry: toDomain(existing), replay: true };
 }
 
+/**
+ * Expire the FIFO remainder of every due earn in ONE balance: the account and
+ * every account merged into it. A merged-away account is expired by its
+ * survivor, never on its own — read alone it ignored the survivor's
+ * redemptions and expired points already spent, taking the survivor negative.
+ */
 async function expireDueInTransaction(tx: any, accountId: string, now: Date): Promise<LoyaltyLedgerEntry[]> {
+  const [mergedAway] = (await tx.execute(
+    sql`select survivor_account_id from loyalty_account_merges where merged_account_id = ${accountId} limit 1`,
+  )) as unknown as Array<{ survivor_account_id: string }>;
+  if (mergedAway) return [];
+  const mergedRows = (await tx.execute(
+    sql`select merged_account_id from loyalty_account_merges where survivor_account_id = ${accountId}`,
+  )) as unknown as Array<{ merged_account_id: string }>;
+  const accountIds = [
+    accountId,
+    ...(Array.isArray(mergedRows) ? mergedRows : (mergedRows as any)?.rows ?? []).map((m: any) => String(m.merged_account_id)),
+  ];
   const rows = await tx
     .select()
     .from(loyaltyLedgerEntries)
-    .where(eq(loyaltyLedgerEntries.accountId, accountId))
+    .where(inArray(loyaltyLedgerEntries.accountId, accountIds))
     .orderBy(asc(loyaltyLedgerEntries.createdAt))
     .for('update');
-  const due = computeExpirableEarns(rows.map(toDomain), now);
+  // Points held by an open reservation are committed to an order: expiring
+  // them made the redemption fail at delivery while the customer kept the discount.
+  const [held] = (await tx.execute(sql`
+    select coalesce(sum(points_reserved), 0)::bigint as reserved
+    from loyalty_redemptions where account_id = any(${pgUuidArray(accountIds)}) and status = 'reserved'`)) as unknown as Array<{ reserved: string | number }>;
+  const due = computeExpirableEarns(rows.map(toDomain), now, Number(held?.reserved ?? 0));
   const expired: LoyaltyLedgerEntry[] = [];
   for (const dueEarn of due) {
     const source = dueEarn.entry;
     const result = await insertEntry(tx, {
-      accountId,
+      // The expiry belongs to the earn's own account (entries never move on a merge).
+      accountId: source.accountId,
       type: 'expiry',
       points: -dueEarn.points,
       orderId: source.orderId,
       reason: `Expired ${dueEarn.points} unspent points from earn ${source.id}`,
-      idempotencyKey: `expiry:${source.id}`,
+      // The first expiry keeps its historical key. Points a refund later
+      // returned to an already-expired earn expire again, keyed on the
+      // running total so a replay is still deduplicated.
+      idempotencyKey: dueEarn.alreadyExpired > 0
+        ? `expiry:${source.id}:${dueEarn.alreadyExpired + dueEarn.points}`
+        : `expiry:${source.id}`,
       expiresAt: null,
       reversedEntryId: source.id,
     });
@@ -111,6 +140,13 @@ export class DrizzleLoyaltyRepository implements ILoyaltyRepository {
     return rows.map(toDomain);
   }
 
+  async mergedInto(accountId: string): Promise<string | null> {
+    const [row] = (await db.execute(
+      sql`select survivor_account_id from loyalty_account_merges where merged_account_id = ${accountId} limit 1`,
+    )) as unknown as Array<{ survivor_account_id: string }>;
+    return row?.survivor_account_id ?? null;
+  }
+
   async findEntryById(entryId: string): Promise<LoyaltyLedgerEntry | null> {
     const row = await db.query.loyaltyLedgerEntries.findFirst({ where: eq(loyaltyLedgerEntries.id, entryId) });
     return row ? toDomain(row) : null;
@@ -128,7 +164,7 @@ export class DrizzleLoyaltyRepository implements ILoyaltyRepository {
     });
   }
 
-  async appendDebitIfAvailable(input: AppendEntryInput, now: Date): Promise<DebitResult> {
+  async appendDebitIfAvailable(input: AppendEntryInput, now: Date, options?: { expireDue?: boolean }): Promise<DebitResult> {
     return db.transaction(async (tx) => {
       await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`loyalty:${input.accountId}`}, 0))`);
       const [existing] = await tx.select().from(loyaltyLedgerEntries)
@@ -137,7 +173,14 @@ export class DrizzleLoyaltyRepository implements ILoyaltyRepository {
         if (!sameLedgerCommand(toDomain(existing), input)) return { ok: false, code: 'IDEMPOTENCY_CONFLICT' };
         return { ok: true, entry: toDomain(existing), replay: true, expired: [] };
       }
-      const expired = await expireDueInTransaction(tx, input.accountId, now);
+      // A merged account's entries are already aggregated onto its survivor.
+      // Letting it spend as well spent the same points twice, once per login.
+      const [mergedAway] = (await tx.execute(
+        sql`select survivor_account_id from loyalty_account_merges where merged_account_id = ${input.accountId} limit 1`,
+      )) as unknown as Array<{ survivor_account_id: string }>;
+      if (mergedAway) return { ok: false, code: 'ACCOUNT_MERGED' };
+      // Skipped while redemption is paused: no points expire during a pause.
+      const expired = options?.expireDue === false ? [] : await expireDueInTransaction(tx, input.accountId, now);
       // The SAME set of accounts listEntries reads. A merge leaves the source
       // account's entries where they are and aggregates them onto the survivor,
       // so a balance check that looked at the survivor alone refused to spend
@@ -180,11 +223,18 @@ export class DrizzleLoyaltyRepository implements ILoyaltyRepository {
         .where(eq(loyaltyLedgerEntries.id, entryId)).limit(1).for('update');
       if (!target) return { ok: false, code: 'NOT_FOUND' };
       if (target.type === 'reversal' || target.type === 'expiry') return { ok: false, code: 'NON_REVERSIBLE' };
-      const [settlement] = await tx.select().from(loyaltyLedgerEntries).where(and(
+      const settlements = await tx.select().from(loyaltyLedgerEntries).where(and(
         eq(loyaltyLedgerEntries.reversedEntryId, target.id),
         sql`${loyaltyLedgerEntries.type} in ('expiry', 'reversal')`,
-      )).limit(1);
-      if (settlement?.type === 'expiry') return { ok: false, code: 'ALREADY_REVERSED' };
+      ));
+      if (settlements.some((row) => row.type === 'expiry')) return { ok: false, code: 'ALREADY_REVERSED' };
+      // A clawback (pro-rata, keyed on its running total) already took points
+      // off this entry: a full reversal on top would take them twice. (The
+      // one-reversal-per-entry index that used to refuse it is gone, so
+      // several partial clawbacks can exist.)
+      if (settlements.some((row) => row.type === 'reversal' && row.idempotencyKey !== `reversal:${target.id}`)) {
+        return { ok: false, code: 'ALREADY_REVERSED' };
+      }
       const input: AppendEntryInput = {
         accountId: target.accountId,
         type: 'reversal',

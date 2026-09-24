@@ -1,4 +1,4 @@
-import { OrderMoneyRow, InventoryRow } from '../../domain/commerce/CommerceIntegrity';
+import { OrderMoneyRow, InventoryRow, OrderStockRow } from '../../domain/commerce/CommerceIntegrity';
 
 /**
  * Read-only scans for commerce integrity reconciliation. Returns the aggregated
@@ -9,4 +9,10 @@ export interface ICommerceReconciliationRepository {
   scanOrderMoney(limit: number): Promise<OrderMoneyRow[]>;
   /** Per-product inventory facts: stored reserved vs the active reservation ledger. */
   scanInventory(limit: number): Promise<InventoryRow[]>;
+  /**
+   * Per-order reservation facts for orders whose stock should have moved
+   * (goods left, or cancelled after consume). Optional: an adapter without it
+   * simply scans nothing here.
+   */
+  scanOrderStock?(limit: number): Promise<OrderStockRow[]>;
 }

@@ -30,6 +30,12 @@ export class GetCustomerPreferenceCentreUseCase {
     const prefs = await this.preferenceRepo.getPreferences(userId);
     const consent = await this.consentService.getCurrentState(undefined, userId);
     const explicit = (await this.consentService.getExplicitState(undefined, userId)) !== null;
+    // The advertising switch shows what is really sent to ad platforms (D-002),
+    // not the owner default, which said "off" while purchases went out.
+    // Any failure (including an older ConsentService) falls back to the stored state.
+    const advertising = await Promise.resolve()
+      .then(() => this.consentService.advertisingConversionsSent(undefined, userId))
+      .catch(() => consent.advertising);
 
     return {
       channels: prefs?.channels || { email: false, sms: false, whatsapp: false },
@@ -38,7 +44,7 @@ export class GetCustomerPreferenceCentreUseCase {
       intent: prefs?.intent || {},
       consent: {
         analytics: consent.analytics,
-        advertising: consent.advertising,
+        advertising,
         personalization: consent.personalization,
         essential: true, // Always true for strictly necessary
         explicit,

@@ -17,6 +17,8 @@ export interface ProductWithPrice {
 
 export interface IProductRepository {
   findPublicViewBySlug(slug: string): Promise<ProductWithPrice | null>;
+  /** Admin only: the same view without the approved/active gate (drafts, rejected, inactive). */
+  findAdminViewById(id: string): Promise<ProductWithPrice | null>;
   findPublicViewList(opts?: {
     limit?: number;
     offset?: number;

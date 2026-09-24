@@ -186,7 +186,8 @@ describe('a product editor save never reverts stock moved since the page loaded'
     expect(repo).toContain('eq(products.stockQuantity, expectedStock)');
     const editor = read('apps/web/src/pages/admin/products/[id]/edit-properties.astro');
     expect(editor).toContain('<input type="hidden" name="expectedStockQuantity" value={String(product.stockQuantity)} />');
-    expect(editor).toMatch(/stockQuantity, expectedStockQuantity, imageUrl/);
+    // imageUrl left the body on 2026-09-24 (the free-text image field is retired).
+    expect(editor).toMatch(/stockQuantity, expectedStockQuantity, active/);
   });
 });
 

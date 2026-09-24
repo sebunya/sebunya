@@ -1,4 +1,5 @@
 import { db } from '../client';
+import { kampalaDayOf, kampalaDayStartUtc } from '@goldplus/shared';
 import { decisionInsights, decisionEvidence, decisionRecommendations, decisionAssignments, decisionEvents } from '../schema/decision_intelligence';
 import { users } from '../schema/identity';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
@@ -127,7 +128,8 @@ export class DrizzleDecisionInsightRepository implements IDecisionInsightReposit
     const active = (s: string) => !TERMINAL.includes(s);
     const ownerMap = new Map<string | null, number>();
     let ackSum = 0, ackN = 0, resSum = 0, resN = 0;
-    const startOfToday = new Date(now); startOfToday.setHours(0, 0, 0, 0);
+    // Kampala midnight, not the container's (UTC) midnight: 'today' used to start at 03:00 Kampala.
+    const startOfToday = kampalaDayStartUtc(kampalaDayOf(now));
     for (const r of rows) {
       if (active(r.status)) o.open += 1;
       if (['CRITICAL', 'HIGH'].includes(r.severity) && active(r.status)) o.criticalHigh += 1;

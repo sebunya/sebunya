@@ -1,17 +1,55 @@
 ---
-import LiveCanaryEligibilityPanel from './LiveCanaryEligibilityPanel.astro';
-import LiveCanaryStartPanel from './LiveCanaryStartPanel.astro';
-import LiveCanaryRollbackPanel from './LiveCanaryRollbackPanel.astro';
-import LiveCanaryEvidencePanel from './LiveCanaryEvidencePanel.astro';
-import LiveCanarySafetyNotice from './LiveCanarySafetyNotice.astro';
+/**
+ * The live-canary service has an API (/admin/controlled-activation/live-canaries)
+ * but no client on this page. It used to show invented gate states ("Dry-Run
+ * Passed: PASSED", "Rollback Plan: VERIFIED", "[GATE_STATUS] CONSENT_SAFETY:
+ * PASS"), made-up owners (admin-devops, admin-sre) and buttons no script ever
+ * bound — an operator deciding whether to start a canary read that every gate
+ * had passed when no run, pack or owner existed. It now says what is true: not
+ * connected, nothing read, nothing shown.
+ */
+const endpoints = [
+  ['POST', '/', 'Create a live canary for an approved activation request'],
+  ['GET', '/', 'List canaries'],
+  ['GET', '/:id', 'Read one canary'],
+  ['POST', '/:id/eligibility', 'Evaluate eligibility (dry run, evidence, kill switch, owners)'],
+  ['POST', '/:id/start', 'Start the canary'],
+  ['POST', '/:id/pause', 'Pause it'],
+  ['POST', '/:id/rollback', 'Roll it back'],
+  ['POST', '/:id/evidence-pack', 'Build the evidence pack'],
+  ['POST', '/:id/complete', 'Complete it'],
+];
 ---
-<div class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 space-y-6">
-  <LiveCanarySafetyNotice />
-
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-    <LiveCanaryEligibilityPanel />
-    <LiveCanaryStartPanel />
-    <LiveCanaryRollbackPanel />
-    <LiveCanaryEvidencePanel />
+<div class="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8 space-y-6">
+  <div class="bg-amber-50 border border-amber-200 rounded-2xl p-5" role="status">
+    <p class="text-sm font-black text-amber-900">Not configured</p>
+    <p class="mt-1 text-sm text-amber-900">
+      This page is not connected to the live-canary service. It reads no canary, gate, owner or evidence pack, so it shows
+      no status — none is known here. Nothing can be started or rolled back from this page.
+    </p>
   </div>
+
+  <section class="bg-white border border-gray-200 rounded-2xl p-6">
+    <h2 class="text-sm font-black text-gray-900">What exists</h2>
+    <p class="mt-1 text-sm text-gray-600">
+      The API is deployed under <code class="font-mono text-xs">/admin/controlled-activation/live-canaries</code>. Reads,
+      eligibility evaluation and the evidence pack need reports.read; create, start, pause, roll back and complete need settings.manage.
+    </p>
+    <table class="mt-4 w-full text-left text-sm">
+      <thead>
+        <tr class="text-[10px] uppercase tracking-widest text-gray-500">
+          <th class="py-2 pr-3 font-black">Method</th><th class="py-2 pr-3 font-black">Path</th><th class="py-2 font-black">Does</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        {endpoints.map(([method, path, does]) => (
+          <tr><td class="py-2 pr-3 font-mono text-xs">{method}</td><td class="py-2 pr-3 font-mono text-xs">{path}</td><td class="py-2 text-gray-700">{does}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  </section>
+
+  <p class="text-xs text-gray-500">
+    Per-activation review lives under Measurement → Control tower → Controlled activation.
+  </p>
 </div>

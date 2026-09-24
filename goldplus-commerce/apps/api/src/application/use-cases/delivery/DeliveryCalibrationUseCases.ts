@@ -62,6 +62,11 @@ export interface ICalibrationRepository {
   firstObservationAlertFired(): Promise<boolean>;
   markFirstObservationAlertFired(input: { orderId: string; at: Date }): Promise<void>;
   firstObservation(): Promise<{ orderId: string; areaSlug: string | null; at: Date } | null>;
+  /**
+   * 0152: stores the per-area observed windows the quote reads. Optional so a
+   * repository without the table keeps working (the quote then stays day level).
+   */
+  replaceWindowPercentiles?(rows: Array<{ scopeKey: string; p10: number; p90: number; sampleSize: number }>): Promise<void>;
 }
 
 export interface CalibrationRunResult {
@@ -147,12 +152,28 @@ export class RunNightlyCalibrationUseCase {
       minSample,
     });
 
+    const windowMinSample = Number.isFinite(numeric.window_min_sample_size) ? numeric.window_min_sample_size : null;
     const windowPercentiles = fitWindowPercentiles({
       observations,
-      minSample: Number.isFinite(numeric.window_min_sample_size) ? numeric.window_min_sample_size : null,
+      minSample: windowMinSample,
       lowPct: 10,
       highPct: 90,
     });
+
+    // Per AREA, because the quote earns an hour window per area (its sample size
+    // is the area's). These used to be computed and thrown away, so the quote read
+    // a hard-coded null and no window could ever be earned (contract #10).
+    const areaWindows: Array<{ scopeKey: string; p10: number; p90: number; sampleSize: number }> = [];
+    for (const areaSlug of scopes.areas) {
+      const fit = fitWindowPercentiles({
+        observations: observations.filter((o) => o.areaSlug === areaSlug),
+        minSample: windowMinSample,
+        lowPct: 10,
+        highPct: 90,
+      });
+      if (fit) areaWindows.push({ scopeKey: areaSlug, ...fit });
+    }
+    if (this.repo.replaceWindowPercentiles) await this.repo.replaceWindowPercentiles(areaWindows);
 
     // The first real observation. One alert, ever. The day an order completes
     // with a recorded rider cost is the day this module stops being

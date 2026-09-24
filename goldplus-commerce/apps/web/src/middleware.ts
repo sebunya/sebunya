@@ -1,10 +1,10 @@
 import { defineMiddleware } from "astro:middleware";
 import { prefersMarkdown, markdownResponse } from "./lib/agentMarkdown";
 import { agentDocumentFor, agentRepresentablePath } from "./lib/agentDocuments";
-import { resolveCartCredential } from "./lib/cartCredential";
-import { resolveAuthenticatedUserId } from "./lib/customerAuth";
+import { resolveRequestIdentity } from "./lib/requestIdentity";
 import { isSignedVisitToken, mintSignedVisitToken } from "./lib/visitToken";
 import { apiBase } from "./lib/api";
+import { visitorCookieDomain } from "./lib/visitorCookieDomain";
 import { SESSION_COOKIE_NAME } from "./lib/session";
 import { makeNonce, nonceScriptStream, strictPolicyMode, strictReportOnlyPolicy } from "./lib/contentSecurityPolicy";
 import { PublicFormLimiter, budgetedFormPath, tooManySubmissionsResponse, visitorKey } from "./lib/publicFormLimiter";
@@ -147,7 +147,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
     const valid = !!fp && /^fp\.\d+\.[0-9a-f-]{36}$/.test(fp);
     if (!valid || !context.cookies.get('_fp_r')) {
       const id = valid ? fp! : `fp.${Date.now()}.${crypto.randomUUID()}`;
-      context.cookies.set('_fp_cid', id, { path: '/', maxAge: 60 * 60 * 24 * 395, sameSite: 'lax', secure: true, httpOnly: false });
+      // Domain-scoped so the collector on api. receives it (lib/visitorCookieDomain).
+      context.cookies.set('_fp_cid', id, { path: '/', domain: visitorCookieDomain(context.url.hostname), maxAge: 60 * 60 * 24 * 395, sameSite: 'lax', secure: true, httpOnly: false });
       context.cookies.set('_fp_r', '1', { path: '/', maxAge: 60 * 60 * 24, sameSite: 'lax', secure: true, httpOnly: true });
     }
   }
@@ -183,10 +184,13 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // page — 343 such warnings per container in six hours before this moved
   // (2026-09-02). Documents only: an asset request has no basket.
   if (isDocument) {
+    // A session check that cannot answer is UNKNOWN, never "guest": it reuses the
+    // credential it finds and replaces nothing (lib/requestIdentity).
     try {
-      const userId = await resolveAuthenticatedUserId(context.cookies);
-      context.locals.gpUserId = userId;
-      context.locals.gpCart = resolveCartCredential(context.cookies, userId);
+      const identity = await resolveRequestIdentity(context.cookies);
+      context.locals.gpUserId = identity.gpUserId;
+      context.locals.gpSessionUnknown = identity.gpSessionUnknown;
+      context.locals.gpCart = identity.gpCart;
     } catch {
       // A basket is not worth failing a page render for; the component falls
       // back to resolving one itself.

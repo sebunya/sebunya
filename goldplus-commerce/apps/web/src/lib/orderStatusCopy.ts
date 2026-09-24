@@ -139,7 +139,9 @@ const PAYMENT: Record<string, StatusCopy> = {
   },
   unpaid: {
     label: 'Not paid',
-    meaning: 'This order is paid on delivery or by invoice.',
+    // True for every unpaid order: an online order waiting for its payment is
+    // unpaid too, and "paid on delivery or by invoice" was false for it.
+    meaning: 'We have not received payment for this order yet.',
     tone: 'neutral',
   },
   offline: {

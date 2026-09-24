@@ -7,6 +7,8 @@
  * last-touch is sent with the order and stored server-side for reporting. No
  * third party, no cookies beyond first-party storage.
  */
+import { isInternalReferrerHost } from './internalReferrer';
+
 const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'] as const;
 const FIRST = 'gp_attr_first';
 const LAST = 'gp_attr_last';
@@ -15,7 +17,10 @@ function externalReferrer(): string {
   try {
     const r = document.referrer || '';
     if (!r) return '';
-    return new URL(r).host && new URL(r).host !== location.host ? r.slice(0, 500) : '';
+    const host = new URL(r).host;
+    // The payment gateway returning the shopper, or our own subdomain, is not
+    // a new arrival: it must not replace the real last touch.
+    return host && !isInternalReferrerHost(host, location.host) ? r.slice(0, 500) : '';
   } catch {
     return '';
   }

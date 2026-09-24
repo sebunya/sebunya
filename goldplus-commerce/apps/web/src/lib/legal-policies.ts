@@ -37,14 +37,26 @@ export const POLICY_STATUS_LABEL: Record<PolicyStatus, string> = {
 /** The date the owner approved every policy below for production. */
 export const POLICY_EFFECTIVE_DATE = '2026-08-13';
 
+/*
+ * A MATERIAL change to a policy's text gets a new version and the date it took
+ * effect; the pages tell readers to watch these two fields, so a changed
+ * policy that still said "1.0, 13 August" told them nothing had changed.
+ *  - returns 1.1, 2026-09-01: the 14-day change-of-mind window and the
+ *    faulty-goods promise (e84c1eb4).
+ *  - privacy 1.1 and cookies 1.1, 2026-09-19: server-side analytics always on,
+ *    IP and user agent kept server-side, ad-platform conversion APIs and
+ *    Microsoft Clarity (9b8ea680, 689f8c3e).
+ * Terms and warranty have had wording and styling changes only.
+ */
+
 export const LEGAL_POLICIES: LegalPolicy[] = [
   {
     slug: 'privacy',
     path: '/privacy',
     title: 'Privacy policy',
-    version: '1.0',
+    version: '1.1',
     status: 'in_force',
-    effectiveDate: POLICY_EFFECTIVE_DATE,
+    effectiveDate: '2026-09-19',
     summary: 'How GoldPlus handles customer information, and how connected Google account data is used and protected.',
   },
   {
@@ -60,9 +72,9 @@ export const LEGAL_POLICIES: LegalPolicy[] = [
     slug: 'returns',
     path: '/returns',
     title: 'Returns policy',
-    version: '1.0',
+    version: '1.1',
     status: 'in_force',
-    effectiveDate: POLICY_EFFECTIVE_DATE,
+    effectiveDate: '2026-09-01',
     summary: 'How to start a return and what to expect.',
   },
   {
@@ -78,10 +90,10 @@ export const LEGAL_POLICIES: LegalPolicy[] = [
     slug: 'cookies',
     path: '/cookies',
     title: 'Cookies & consent',
-    version: '1.0',
+    version: '1.1',
     status: 'in_force',
-    effectiveDate: POLICY_EFFECTIVE_DATE,
-    summary: 'Which first-party cookies the site uses and how to control preferences.',
+    effectiveDate: '2026-09-19',
+    summary: 'Which cookies the site uses, including analytics, and how to control your preferences.',
   },
 ];
 

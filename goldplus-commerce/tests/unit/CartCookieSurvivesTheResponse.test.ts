@@ -15,11 +15,15 @@ const read = (f: string) => readFileSync(resolve(ROOT, f), 'utf8');
 describe('the cart credential survives the response', () => {
   it('is minted in middleware, where a cookie can still be set', () => {
     const mw = read('apps/web/src/middleware.ts');
-    expect(mw).toContain('resolveCartCredential(context.cookies, userId)');
+    // Minted through the three-way identity resolver (lib/requestIdentity.ts),
+    // which calls resolveCartCredential; see SessionUnknownKeepsTheBasket.test.ts.
+    expect(mw).toContain('await resolveRequestIdentity(context.cookies)');
+    expect(read('apps/web/src/lib/requestIdentity.ts')).toContain('resolveCartCredential(cookies, userId, { cartId: accountCartId })');
     expect(mw).toContain('context.locals.gpCart');
     // Documents only: an asset request has no basket to mint.
-    const block = mw.slice(mw.indexOf('const userId = await resolveAuthenticatedUserId'));
-    expect(mw.slice(0, mw.indexOf('const userId = await resolveAuthenticatedUserId'))).toContain('if (isDocument) {');
+    const at = mw.indexOf('const identity = await resolveRequestIdentity');
+    const block = mw.slice(at);
+    expect(mw.slice(0, at)).toContain('if (isDocument) {');
     expect(block).toContain('} catch {');
   });
 

@@ -38,6 +38,31 @@ async function loadSharp(): Promise<typeof import('sharp') | null> {
 }
 
 export class SharpVariantGenerator implements IMediaVariantGenerator {
+  /**
+   * Originals are served publicly (and are the storefront/feed image when no
+   * rendition fits), so they must not carry a phone's GPS fix or serial. sharp
+   * drops all metadata on output by default; .rotate() bakes the EXIF
+   * orientation into the pixels first, and the ICC profile is kept so colours
+   * do not shift. GIF (animation) and AVIF pass through unchanged.
+   */
+  async stripMetadata(buffer: Buffer, mime: string): Promise<Buffer | null> {
+    const format = mime === 'image/jpeg' ? 'jpeg' : mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : null;
+    if (!format) return null;
+    const sharp = await loadSharp();
+    if (!sharp) return null;
+    try {
+      const pipeline = sharp(buffer, DECODE_LIMITS).rotate().keepIccProfile();
+      return format === 'jpeg'
+        ? await pipeline.jpeg({ quality: 95, mozjpeg: true }).toBuffer()
+        : format === 'webp'
+          ? await pipeline.webp({ quality: 95 }).toBuffer()
+          : await pipeline.png().toBuffer();
+    } catch (err) {
+      logger.warn({ err: (err as Error).message }, '[SharpVariantGenerator] metadata strip failed — keeping the received bytes');
+      return null;
+    }
+  }
+
   async generate(args: {
     buffer: Buffer;
     mime: string;
@@ -59,9 +84,17 @@ export class SharpVariantGenerator implements IMediaVariantGenerator {
       const sourceHeight = (quarterTurn ? meta.width : meta.height) ?? null;
       const variants: MediaVariantRecord[] = [];
 
-      for (const { purpose, width } of PURPOSE_WIDTHS) {
-        // Never upscale: a 500px original gets thumb+card only.
-        if (sourceWidth !== null && width > sourceWidth) continue;
+      for (const { purpose, width: purposeWidth } of PURPOSE_WIDTHS) {
+        let width = purposeWidth;
+        // Never upscale. But the pdp rendition is the one every storefront
+        // surface resolves (mediaDisplayUrl, productSrcset): without it a 480–1023px
+        // upload — an exactly-1000px photo meets the owner's spec — served its
+        // full original everywhere, card.webp and thumb.webp unused. So pdp is
+        // written at the source's own width when the source is at least card size.
+        if (sourceWidth !== null && width > sourceWidth) {
+          if (purpose === 'pdp' && sourceWidth >= 480) width = sourceWidth;
+          else continue;
+        }
         for (const { format, ext } of FORMATS) {
           const pipeline = sharp(args.buffer, DECODE_LIMITS).rotate().resize({ width, withoutEnlargement: true });
           const output =

@@ -12,6 +12,7 @@ import { productImages } from "../schema/phase11";
 import { recommendationMaterializedCache } from "../schema/recommendations";
 import { displayUrlMap } from '../mediaDisplayUrl';
 import { resolveGallery } from '@goldplus/shared';
+import { notRetiredByLifecycle } from '../LifecycleVisibilitySql';
 
 export class DrizzleProductRecommendationReader implements IProductRecommendationReader {
   async findProductById(productId: string): Promise<RecommendationProductRecord | null> {
@@ -91,6 +92,11 @@ export class DrizzleProductRecommendationReader implements IProductRecommendatio
     // zero. The old in-memory check inferred stock from text and defaulted to
     // "in stock" when it knew nothing.
     conditions.push(gt(sql`${products.stockQuantity} - ${products.reservedQuantity}`, 0));
+    // The operator's lifecycle decision (410 / unpublish / 301) retires a
+    // product from rails too, as it already does from the feed and the
+    // sitemap: rails kept offering Buy now on products the PDP answered 410.
+    // The materialized-cache revalidation reads here, so it follows.
+    conditions.push(notRetiredByLifecycle(sql`${products.id}`));
 
     const rows = await db
       .select({
