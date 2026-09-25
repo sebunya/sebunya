@@ -1,7 +1,7 @@
 import { CHECKOUT_SIDE_EFFECT_EVENT_TYPES } from '../../ports/ICheckoutSideEffectRecorder';
 import { IOutboxRepository } from '../../ports/IOutboxRepository';
 import { INotificationProvider, NotificationDispatchPayload, NotificationStatus } from '../../ports/INotificationProvider';
-import type { NotificationDispatchResult } from '../../ports/INotificationProvider';
+import { OUTCOME_UNKNOWN_PROVIDER_CODE, type NotificationDispatchResult } from '../../ports/INotificationProvider';
 import { RecordNotificationAttemptUseCase } from '../notifications/RecordNotificationAttemptUseCase';
 
 export interface NotificationRoutingTarget {
@@ -190,6 +190,8 @@ export class ProcessOutboxBatchUseCase {
               s === 'NOT_CONFIGURED' ||
               s === 'DISABLED' ||
               (s === 'FAILED' &&
+                // A primary that may already have delivered must not be doubled.
+                dispatchResult.providerCode !== OUTCOME_UNKNOWN_PROVIDER_CODE &&
                 (dispatchResult.retryable === false || event.attemptCount >= PRIMARY_RETRIES_BEFORE_FALLBACK));
             if (primaryGaveUp) {
               dispatchResult = await dispatchAndRecord(target.fallback);

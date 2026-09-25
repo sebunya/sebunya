@@ -61,6 +61,14 @@ describe('Zoho CPaaS WhatsApp', () => {
   const send = (template = 'ORDER_PAYMENT_SUCCESS', data: Record<string, unknown> = ORDER_DATA, recipient = '0772123456') =>
     adapter.dispatch({ recipient, template, data, relatedEntity: 'order', relatedEntityId: null });
 
+  it('timeout after send -> outcome unknown, not retryable', async () => {
+    fetchMock.mockRejectedValue(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+    const res = await send();
+    expect(res.status).toBe('FAILED');
+    expect(res.providerCode).toBe('PROVIDER_TIMEOUT_AMBIGUOUS');
+    expect(res.retryable).toBe(false);
+  });
+
   describe('adapter: not configured', () => {
     it('missing API key -> NOT_CONFIGURED and no fetch', async () => {
       delete process.env.ZOHO_WHATSAPP_API_KEY;
@@ -411,6 +419,13 @@ describe('outbox: WhatsApp fallback to SMS, never both', () => {
     const { outbox } = await run(provider({ status: 'FAILED', retryable: true }), sms, 2);
     expect((sms as any).calls).toBe(1);
     expect(outbox.state).toBe('processed');
+  });
+
+  it('WhatsApp outcome unknown (timeout after send) -> no SMS, no retry, even late', async () => {
+    const sms = provider({ status: 'SENT' });
+    const { outbox } = await run(provider({ status: 'FAILED', retryable: false, providerCode: 'PROVIDER_TIMEOUT_AMBIGUOUS' }), sms, 5);
+    expect((sms as any).calls).toBe(0);
+    expect(outbox.state).not.toBe('retry');
   });
 
   it('WhatsApp not configured -> SMS', async () => {

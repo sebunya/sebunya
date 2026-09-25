@@ -1,3 +1,4 @@
+import { OUTCOME_UNKNOWN_PROVIDER_CODE } from '../../../application/ports/INotificationProvider';
 import { outboundGovernance } from '../OutboundGovernanceService';
 import { failsReleaseReadiness } from '../../../domain/notifications/OutboundGovernancePolicy';
 import { classifyMessage, classifyTemplate } from '../messageClassification';
@@ -252,10 +253,21 @@ export class ZohoWhatsAppAdapter implements INotificationProvider {
       };
     } catch (err: any) {
       const isTimeout = err?.name === 'AbortError';
+      if (isTimeout) {
+        // The request left us; Zoho may have queued it and only the reply was
+        // slow. The outcome is unknown, so neither re-send nor fall back to
+        // SMS — either could put the same message on the phone twice.
+        return {
+          status: 'FAILED' as NotificationStatus,
+          providerCode: OUTCOME_UNKNOWN_PROVIDER_CODE,
+          retryable: false,
+          providerMessage: this.sanitize('Request timed out after sending; delivery outcome unknown. Not retried, no SMS fallback.'),
+        };
+      }
       return {
         status: 'FAILED' as NotificationStatus,
         providerCode: 'PROVIDER_ERROR',
-        providerMessage: this.sanitize(isTimeout ? 'Request timed out.' : String(err?.message || 'Unknown network error.')),
+        providerMessage: this.sanitize(String(err?.message || 'Unknown network error.')),
       };
     }
   }

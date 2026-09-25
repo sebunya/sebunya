@@ -42,3 +42,9 @@ export interface INotificationProvider {
    */
   canCarry?(template: string, recipient: string, data: Record<string, unknown>): boolean;
 }
+
+/**
+ * The request was sent but no answer came back: the provider may have
+ * delivered it. Never retried and never followed by a fallback channel.
+ */
+export const OUTCOME_UNKNOWN_PROVIDER_CODE = 'PROVIDER_TIMEOUT_AMBIGUOUS';
