@@ -95,7 +95,16 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
     // refunds and pricing approval require).
     // 161: +1 for one quote request's detail page (admin/quotes/[id], bulk
     // buying, docs/bulk-buying/DESIGN.md, 2026-09-25).
-    expect(adminPages).toHaveLength(161);
+    // 162: +1 for the weekly Channel report (admin/measurement/channel-report,
+    // attribution module, docs/measurement/ATTRIBUTION.md, 2026-09-25).
+    // 165: +3 for first-party data (admin/segments, admin/customer-value,
+    // admin/identity-conflicts, docs/first-party/README.md, 2026-09-25).
+    // 168: +3 for advertising operations (admin/advertising/audiences,
+    // admin/advertising/offline, admin/advertising/spend,
+    // docs/advertising/README.md, 2026-09-25).
+    // 170: +2 for first-party data part two (admin/customer-360/[id], the audited
+    // one-customer profile, and admin/privacy-requests, docs/first-party/README.md, 2026-09-25).
+    expect(adminPages).toHaveLength(170);
     expect(adminPages[0]).toBe('apps/web/src/pages/admin/advertising.astro');
     expect(adminPages.at(-1)).toBe('apps/web/src/pages/admin/verification/index.astro');
   });
@@ -113,7 +122,7 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
 
   it('fails closed for every non-allowlisted admin Astro page', () => {
     const protectedPages = adminPages.filter((page) => !publicAllowlist.includes(page as typeof publicAllowlist[number]));
-    expect(protectedPages).toHaveLength(160);
+    expect(protectedPages).toHaveLength(169);
     for (const page of protectedPages) {
       const source = read(page);
       expect(source, `${page} must use the server-side session contract`).toContain('readSessionToken(Astro.request)');
@@ -158,7 +167,8 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
     // 25: +1 for the product listing editor.
     // 26: +1 for the customer workspace detail page.
     // 29: +1 for one quote request's detail page (admin/quotes/[id]).
-    expect(dynamicPages).toHaveLength(29); // +2 Focus 4: products/[id]/media, media/imports/[id]
+    // 30: +1 for the Customer 360 (admin/customer-360/[id], first-party data).
+    expect(dynamicPages).toHaveLength(30); // +2 Focus 4: products/[id]/media, media/imports/[id]
     for (const page of dynamicPages) {
       expect(read(page), `${page} requires source-level protection`).toContain('readSessionToken(Astro.request)');
     }

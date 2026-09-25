@@ -33,4 +33,12 @@ export interface NotificationDispatchResult {
 
 export interface INotificationProvider {
   dispatch(payload: NotificationDispatchPayload): Promise<NotificationDispatchResult>;
+  /**
+   * Optional, for a channel that is offered AHEAD of another (WhatsApp before
+   * SMS): can this provider carry this template to this recipient right now —
+   * channel switched on, provider configured, template mapped and every value
+   * the template needs present? A router uses it to decide whether to offer the
+   * channel at all. It never sends and never touches the network.
+   */
+  canCarry?(template: string, recipient: string, data: Record<string, unknown>): boolean;
 }

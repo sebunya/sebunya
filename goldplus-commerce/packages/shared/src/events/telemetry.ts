@@ -101,6 +101,9 @@ export const CANONICAL_EVENT_NAMES = [
   'begin_checkout',
   'add_shipping_info',
   'add_payment_info',
+  // A WhatsApp click or a quote request (GA4's recommended lead event). Sent
+  // to ad platforms as their lead/contact event where the owner selected it.
+  'generate_lead',
   'purchase',  // SERVER-SIDE ONLY — guarded in router-level middleware
   'refund',    // SERVER-SIDE ONLY — a sent purchase whose order was cancelled
 ] as const;
@@ -129,6 +132,8 @@ export const CanonicalTelemetryEventSchema = z.object({
   user_data:              TelemetryUserDataSchema.optional(),
   ecommerce:              TelemetryEcommerceSchema.optional(),
   recommendation_context: TelemetryRecommendationContextSchema.optional(),
+  /** generate_lead only: how the shopper reached out. */
+  lead: z.object({ method: z.enum(['whatsapp', 'quote_request']) }).optional(),
 
   // Observability & Attribution Metadata
   page_location:  z.string().max(2048).optional(),

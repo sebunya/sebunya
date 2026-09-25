@@ -15,6 +15,7 @@ import { recommendationEvents, recommendationRules } from "../schema/recommendat
 import { identityLinks } from "../schema/identity";
 import { products } from "../schema/products";
 import { db } from "../client";
+import { humanTrafficOnly } from "../../first-party/AnalysisExclusion";
 
 /** postgres-js returns an array; some drivers wrap it in `.rows`. */
 const rowsOf = (r: unknown): any[] => (Array.isArray(r) ? r : (r as any)?.rows ?? []);
@@ -369,7 +370,10 @@ export class DrizzleRecommendationAnalyticsRepository implements IRecommendation
   private buildFilters(query: Omit<RecommendationAnalyticsQuery, "startDate" | "endDate"> & { startDate: Date; endDate: Date }) {
     const conditions = [
       gte(recommendationEvents.createdAt, query.startDate),
-      lte(recommendationEvents.createdAt, query.endDate)
+      lte(recommendationEvents.createdAt, query.endDate),
+      // 0155: rows marked as our own monitor / SSR / probe exhaust are left out
+      // of behaviour analysis (reversible; ANALYSIS_EXCLUSIONS=off restores them).
+      humanTrafficOnly('recommendation_events', recommendationEvents.id),
     ];
 
     if (query.placement) conditions.push(eq(recommendationEvents.placement, query.placement));

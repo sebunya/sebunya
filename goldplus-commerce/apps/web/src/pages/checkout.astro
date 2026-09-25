@@ -1,5 +1,6 @@
 ---
 import { gaSessionFromCookieHeader } from '../lib/gaSession';
+import { HEARD_ABOUT_OPTIONS, parseHeardAbout } from '@goldplus/shared';
 import DeliveryQuote from "../components/DeliveryQuote.astro";
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Notice from '../components/Notice.astro';
@@ -174,6 +175,8 @@ let receiptPlace = '';
 // form when the page re-renders after a refusal. Without them a retry went
 // through without the code the customer had typed.
 let couponCodeValue = '';
+// "How did you hear about us?" (optional), carried back the same way.
+let heardAboutValue = '';
 let previewQuoteIdValue = '';
 // The payment method and points the customer chose, carried back the same way.
 // The offline radio used to carry a literal `checked`, so any refusal quietly
@@ -351,6 +354,7 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
     pickupPointId: String(formData.get('pickupPointId') || '').trim(),
   };
   couponCodeValue = String(formData.get('couponCode') || '').trim().slice(0, 40);
+  heardAboutValue = parseHeardAbout(formData.get('heardAbout')) ?? '';
   {
     const q = String(formData.get('previewQuoteId') || '').trim();
     previewQuoteIdValue = /^[0-9a-f-]{36}$/i.test(q) ? q : '';
@@ -448,6 +452,8 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
            // preview; an empty field is simply no code. previewQuoteId (set by
            // the Apply button) arms the PRICE_CHANGED consistency gate.
            ...( (() => { const cc = String(formData.get('couponCode') || '').trim(); return cc ? { couponCode: cc } : {}; })() ),
+           // Optional, reporting only: an unknown value is simply not sent.
+           ...(heardAboutValue ? { heardAbout: heardAboutValue } : {}),
            ...( (() => { const q = String(formData.get('previewQuoteId') || '').trim(); return /^[0-9a-f-]{36}$/i.test(q) ? { previewQuoteId: q } : {}; })() ),
            // Marketing attribution captured client-side; recorded best-effort, never priced.
            // Plus the visitor as the browser tag knows it (the `_fp_cid` cookie is
@@ -1028,6 +1034,16 @@ const checkoutSavingLabel = basketSavingLabel(
                   </div>
                 </label>
               </fieldset>
+            </div>
+
+            {/* One optional question, for attribution only: never required, no
+                default answer, and "prefer not to say" sends nothing. */}
+            <div class="bg-white p-6 md:p-8 rounded-2xl border border-slate-200/80">
+              <label for="heardAbout" class="block text-sm font-bold text-gray-900">How did you hear about us? <span class="font-normal text-slate-500">(optional)</span></label>
+              <select id="heardAbout" name="heardAbout" class="mt-2 w-full min-h-11 bg-white border border-brand-borderGrey px-3 py-2.5 rounded-lg text-base sm:text-sm font-medium outline-none focus:ring-2 focus:ring-brand-primaryInk">
+                <option value="" selected={heardAboutValue === ''}>Prefer not to say</option>
+                {HEARD_ABOUT_OPTIONS.map((o) => <option value={o.value} selected={heardAboutValue === o.value}>{o.label}</option>)}
+              </select>
             </div>
 
           </form>

@@ -1,0 +1,221 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { apiBase } from "../../../lib/api";
+
+/**
+ * Customer 360 (0157, docs/first-party/README.md): ONE customer across their
+ * account, the contacts they checked out with, their browsers and orders.
+ * Needs customer_data.view; the API records every view in the audit log BEFORE
+ * returning anything. Traits say how they were obtained: an ESTIMATE is shown
+ * as an estimate, and an empty measure says "No data", never 0.
+ */
+const id = String(Astro.params.id ?? "");
+const returnTo = `/admin/customer-360/${encodeURIComponent(id)}`;
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect(`/admin/login?returnTo=${returnTo}`, 303);
+const headers = { Accept: "application/json", Authorization: `Bearer ${token}` };
+
+// Opened from an account (admin/customers/[id]): find that account's profile first.
+if (Astro.url.searchParams.get("by") === "account") {
+  try {
+    const res = await fetch(`${apiBase}/admin/first-party/customers/by-account/${encodeURIComponent(id)}`, { headers });
+    const json = await res.json().catch(() => null);
+    if (res.ok && json?.success && json.data?.canonicalCustomerId) {
+      return Astro.redirect(`/admin/customer-360/${encodeURIComponent(json.data.canonicalCustomerId)}`, 303);
+    }
+  } catch { /* falls through to the not-found state below */ }
+}
+
+let data: any = null;
+let error: string | null = null;
+let notFound = false;
+try {
+  const res = await fetch(`${apiBase}/admin/first-party/customers/${encodeURIComponent(id)}/360`, { headers });
+  const json = await res.json().catch(() => null);
+  if (res.status === 403) error = "Your account is not permitted to view customer data (customer_data.view).";
+  else if (res.status === 404) notFound = true;
+  else if (res.ok && json?.success) data = json.data;
+  else error = json?.error?.message ?? "The profile could not be loaded.";
+} catch {
+  error = "Could not reach the API.";
+}
+
+const NO_DATA = "No data";
+const UGX_FORMAT = new Intl.NumberFormat("en-UG", { maximumFractionDigits: 0 });
+const ugx = (n: unknown) => (typeof n === "number" ? `UGX ${UGX_FORMAT.format(n)}` : NO_DATA);
+const num = (n: unknown) => (typeof n === "number" ? String(n) : NO_DATA);
+const pct = (n: number) => `${Math.round(n * 100)}%`;
+const when = (iso: unknown) => (typeof iso === "string" && iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Kampala" }) : "—");
+const day = (iso: unknown) => (typeof iso === "string" && iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Africa/Kampala" }) : "—");
+const words = (v: unknown) => String(v ?? "").replace(/_/g, " ").toLowerCase();
+const BASIS: Record<string, { label: string; cls: string }> = {
+  OBSERVED: { label: "Recorded", cls: "bg-blue-50 text-blue-800 border-blue-200" },
+  DERIVED: { label: "Calculated", cls: "bg-violet-50 text-violet-800 border-violet-200" },
+  DECLARED: { label: "Customer said", cls: "bg-green-50 text-green-800 border-green-200" },
+  ESTIMATE: { label: "Estimate", cls: "bg-amber-50 text-amber-900 border-amber-300" },
+};
+
+function traitValue(t: any): string {
+  if (t.value === null || t.value === undefined) return NO_DATA;
+  switch (t.key) {
+    case "rfm": return `${t.value.segment} · R${t.value.r} F${t.value.f} M${t.value.m}${t.value.recencyDays !== null ? ` · last order ${t.value.recencyDays} days ago` : ""}`;
+    case "category_affinity": case "categories_browsed": case "brand_affinity":
+      return t.value.length ? t.value.map((a: any) => `${a.name} ${pct(a.share)}`).join(" · ") : NO_DATA;
+    case "device_owned": return t.value.map((d: any) => `${d.label} (${d.confidence === "LIKELY" ? "likely" : "possible"}: ${d.evidence.join("; ")})`).join(" · ");
+    case "preferred_channel": return `${words(t.value.channel)} (${t.value.orders} of ${t.value.of} orders)`;
+    case "payment_habit": return `${t.value.habit === "CASH_ON_DELIVERY" ? "Cash on delivery" : t.value.habit === "ONLINE" ? "Online" : "Both"} (${t.value.cashOnDelivery} cash, ${t.value.online} online)`;
+    case "bulk_buyer": return t.value ? "Yes" : "No";
+    case "marketing_opt_ins": return t.value.join(", ");
+    case "stated_needs": return Object.entries(t.value).map(([k, v]) => `${k}: ${v}`).join(" · ");
+    default: return typeof t.value === "object" ? JSON.stringify(t.value) : String(t.value);
+  }
+}
+const traits: any[] = data ? Object.values(data.traits) : [];
+const KIND_CHIP: Record<string, string> = {
+  ORDER: "bg-amber-50 text-amber-900", VISIT: "bg-slate-100 text-slate-700", CART: "bg-orange-50 text-orange-800", QUOTE: "bg-indigo-50 text-indigo-800",
+  MESSAGE: "bg-teal-50 text-teal-800", SUPPORT: "bg-rose-50 text-rose-800", CONSENT: "bg-green-50 text-green-800", FINDER: "bg-cyan-50 text-cyan-800",
+  PRIVACY: "bg-red-50 text-red-800", ACCOUNT: "bg-gray-100 text-gray-700",
+};
+---
+<AdminLayout title="Customer 360" description="One customer's identity, timeline, value, traits, segments, consents and attribution.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-6xl">
+    <div class="mb-4 flex flex-wrap gap-4 text-xs font-bold text-gray-600">
+      <a href="/admin/customer-dna" class="hover:text-brand-dark">← Customer DNA</a>
+      {data && <a href={`/admin/customer-dna/${encodeURIComponent(data.identity.canonicalCustomerId)}`} class="hover:text-brand-dark">Features and next-best action</a>}
+    </div>
+    <p class="mb-6 text-xs text-gray-500">Opening this page is recorded in the audit log with your name.</p>
+    {error && <p role="alert" class="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{error}</p>}
+    {notFound && <p class="rounded-2xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-600">No customer profile here. An account gets one at its next sign-in or order; past guest orders are linked by the nightly run.</p>}
+
+    {data && (
+      <>
+        <header class="mb-8 pb-6 border-b border-gray-200">
+          <h2 class="text-2xl font-black text-brand-dark tracking-tight">
+            {data.identity.account?.email ?? data.identity.guestContacts[0]?.name ?? "Guest customer"}
+          </h2>
+          <p class="text-xs text-gray-500 mt-1 font-mono">{data.identity.canonicalCustomerId}</p>
+          <div class="flex flex-wrap gap-2 mt-3 text-[11px] font-bold">
+            <span class="px-2.5 py-1 rounded-lg border bg-gray-100 text-gray-700 border-gray-200">{data.identity.account ? "Account holder" : "Guest (no account)"}</span>
+            <span class="px-2.5 py-1 rounded-lg border bg-gray-100 text-gray-700 border-gray-200">Identity confidence {words(data.identity.identityConfidence)}</span>
+            <span class="px-2.5 py-1 rounded-lg border bg-slate-50 text-slate-700 border-slate-200">Lifecycle {words(data.identity.lifecycleStage)}</span>
+            {data.identity.openConflicts > 0 && <a href="/admin/identity-conflicts" class="px-2.5 py-1 rounded-lg border bg-red-50 text-red-800 border-red-200">{data.identity.openConflicts} open identity conflict{data.identity.openConflicts === 1 ? "" : "s"}</a>}
+            {data.identity.account && !data.identity.account.isActive && <span class="px-2.5 py-1 rounded-lg border bg-red-50 text-red-800 border-red-200">Account closed</span>}
+          </div>
+        </header>
+
+        <section aria-labelledby="h-value" class="mb-8">
+          <h3 id="h-value" class="text-lg font-black text-brand-dark mb-3">Value</h3>
+          <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div class="rounded-2xl border border-gray-200 bg-white p-4"><p class="text-xs font-bold text-gray-500">Lifetime value</p><p class="text-xl font-black">{ugx(data.value.lifetimeValueUgx)}</p><p class="text-[11px] text-gray-500">paid or delivered orders</p></div>
+            <div class="rounded-2xl border border-gray-200 bg-white p-4"><p class="text-xs font-bold text-gray-500">Orders</p><p class="text-xl font-black">{data.value.orderCount === 0 ? NO_DATA : data.value.orderCount}</p><p class="text-[11px] text-gray-500">{data.value.realisedOrderCount} paid or delivered</p></div>
+            <div class="rounded-2xl border border-gray-200 bg-white p-4"><p class="text-xs font-bold text-gray-500">Average order value</p><p class="text-xl font-black">{ugx(data.value.averageOrderValueUgx)}</p></div>
+            <div class="rounded-2xl border border-gray-200 bg-white p-4"><p class="text-xs font-bold text-gray-500">Time to second order</p><p class="text-xl font-black">{typeof data.value.daysToSecondOrder === "number" ? `${data.value.daysToSecondOrder} days` : NO_DATA}</p></div>
+            <div class="rounded-2xl border border-gray-200 bg-white p-4"><p class="text-xs font-bold text-gray-500">Points balance</p><p class="text-xl font-black">{data.loyalty ? num(data.loyalty.balance) : NO_DATA}</p></div>
+          </div>
+          <p class="text-xs text-gray-500 mt-2">First order {day(data.value.firstOrderAt)} · last order {day(data.value.lastOrderAt)} · last seen {day(data.identity.lastSeenAt)}</p>
+        </section>
+
+        <div class="grid gap-6 lg:grid-cols-2 mb-8">
+          <section aria-labelledby="h-identity" class="rounded-2xl border border-gray-200 bg-white p-6">
+            <h3 id="h-identity" class="text-sm font-black text-brand-dark mb-3">Identity</h3>
+            {data.identity.account ? (
+              <dl class="text-sm grid grid-cols-[auto,1fr] gap-x-4 gap-y-1">
+                <dt class="text-gray-500">Email</dt><dd>{data.identity.account.email ?? "—"}</dd>
+                <dt class="text-gray-500">Phone</dt><dd>{data.identity.account.phone ?? "—"} {data.identity.account.phoneVerified ? "(verified)" : "(not verified)"}</dd>
+                <dt class="text-gray-500">Account since</dt><dd>{day(data.identity.account.createdAt)}</dd>
+              </dl>
+            ) : (
+              <ul class="text-sm space-y-1">{data.identity.guestContacts.length === 0 ? <li class="text-gray-500">No contact recorded.</li> : data.identity.guestContacts.map((g: any) => <li>{g.name ?? "—"} · {g.phone ?? "—"} · {g.email ?? "—"}</li>)}</ul>
+            )}
+            <p class="text-xs text-gray-500 mt-3">{data.identity.links.length} identity link{data.identity.links.length === 1 ? "" : "s"} · {data.identity.visitorIds} browser/visitor id{data.identity.visitorIds === 1 ? "" : "s"} · {data.identity.foldedProfiles} guest profile{data.identity.foldedProfiles === 1 ? "" : "s"} folded in</p>
+            <details class="mt-2 text-xs"><summary class="cursor-pointer font-bold text-gray-600">Links (masked)</summary>
+              <ul class="mt-2 space-y-1 font-mono">{data.identity.links.map((l: any) => <li>{l.kind} · {l.identifierMasked} · {words(l.confidence)} · {words(l.status)} · {day(l.linkedAt)}</li>)}</ul>
+            </details>
+          </section>
+
+          <section aria-labelledby="h-consent" class="rounded-2xl border border-gray-200 bg-white p-6">
+            <h3 id="h-consent" class="text-sm font-black text-brand-dark mb-3">Consents</h3>
+            {data.consents.tracking.length === 0 && data.consents.purposes.length === 0 ? <p class="text-sm text-gray-500">No choice recorded. Offers stay off until the customer turns them on.</p> : (
+              <ul class="text-sm space-y-1">
+                {data.consents.tracking.map((t: any) => <li>{t.scope === "account" ? "Account" : "Browser"}: analytics {t.analytics ? "on" : "off"}, advertising {t.advertising ? "on" : "off"}, personalisation {t.personalisation ? "on" : "off"} <span class="text-gray-500">({words(t.grantType)}, {day(t.updatedAt)})</span></li>)}
+                {data.consents.purposes.map((p: any) => <li>{words(p.purposeKey)} by {p.channelKey}: <strong>{words(p.state)}</strong> <span class="text-gray-500">since {day(p.effectiveAt)}</span></li>)}
+              </ul>
+            )}
+          </section>
+        </div>
+
+        <section aria-labelledby="h-traits" class="mb-8">
+          <h3 id="h-traits" class="text-lg font-black text-brand-dark mb-1">Traits</h3>
+          <p class="text-xs text-gray-500 mb-3">Each trait says how it was obtained. An estimate is a guess from indirect evidence, not a fact about the customer.</p>
+          <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+            <table class="w-full text-sm">
+              <thead class="text-xs text-gray-500"><tr><th class="text-left p-3">Trait</th><th class="text-left p-3">Value</th><th class="text-left p-3">How</th><th class="text-left p-3">Evidence</th></tr></thead>
+              <tbody>{traits.map((t) => (
+                <tr class="border-t border-gray-100 align-top">
+                  <td class="p-3 font-bold text-brand-dark">{t.label}</td>
+                  <td class="p-3">{traitValue(t)}</td>
+                  <td class="p-3"><span class={`text-[10px] font-bold px-2 py-0.5 rounded border ${BASIS[t.basis]?.cls ?? ""}`}>{BASIS[t.basis]?.label ?? t.basis}</span></td>
+                  <td class="p-3 text-xs text-gray-600">{t.evidence}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </section>
+
+        <div class="grid gap-6 lg:grid-cols-2 mb-8">
+          <section aria-labelledby="h-segments" class="rounded-2xl border border-gray-200 bg-white p-6">
+            <h3 id="h-segments" class="text-sm font-black text-brand-dark mb-3">Segments</h3>
+            {data.segments.length === 0 ? <p class="text-sm text-gray-500">In no segment at the last nightly run.</p> : (
+              <ul class="text-sm space-y-1">{data.segments.map((s: any) => <li><a class="underline" href="/admin/segments">{s.name}</a> <span class="text-gray-500">since {day(s.firstMatchedAt)}</span></li>)}</ul>
+            )}
+          </section>
+          <section aria-labelledby="h-attribution" class="rounded-2xl border border-gray-200 bg-white p-6">
+            <h3 id="h-attribution" class="text-sm font-black text-brand-dark mb-3">Where their orders came from</h3>
+            {data.attribution.credits.length === 0 && data.attribution.selfReported.length === 0 ? <p class="text-sm text-gray-500">No data: no order has a recorded source.</p> : (
+              <ul class="text-sm space-y-1">
+                {data.attribution.credits.map((a: any) => <li>{a.orderNumber}: {words(a.model)} → <strong>{words(a.channel)}</strong>{a.detail ? ` (${a.detail})` : ""} <span class="text-gray-500">{a.basis === "declared" ? "customer's answer" : "recorded visits"}</span></li>)}
+                {data.attribution.selfReported.filter((r: any) => r.whatsappRef).map((r: any) => <li>{r.orderNumber}: WhatsApp reference {r.whatsappRef}</li>)}
+              </ul>
+            )}
+          </section>
+        </div>
+
+        <section aria-labelledby="h-timeline" class="mb-8">
+          <h3 id="h-timeline" class="text-lg font-black text-brand-dark mb-3">Timeline</h3>
+          {data.timeline.length === 0 ? <p class="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-500">Nothing recorded yet.</p> : (
+            <ol class="rounded-2xl border border-gray-200 bg-white divide-y divide-gray-100">
+              {data.timeline.map((e: any) => (
+                <li class="p-3 flex flex-wrap items-baseline gap-3 text-sm">
+                  <span class="text-xs text-gray-500 w-40 shrink-0">{when(e.at)}</span>
+                  <span class={`text-[10px] font-bold px-2 py-0.5 rounded ${KIND_CHIP[e.kind] ?? ""}`}>{words(e.kind)}</span>
+                  <span class="font-semibold text-brand-dark">{e.title}</span>
+                  {e.detail && <span class="text-gray-600">{e.detail}</span>}
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
+
+        {data.quotes.length > 0 && (
+          <section aria-labelledby="h-quotes" class="mb-8 rounded-2xl border border-gray-200 bg-white p-6">
+            <h3 id="h-quotes" class="text-sm font-black text-brand-dark mb-3">Quote requests</h3>
+            <ul class="text-sm space-y-2">{data.quotes.map((q: any) => (
+              <li><strong>{q.reference ?? "Enquiry"}</strong> · {day(q.createdAt)} · {words(q.status)}{q.estimatedTotalUgx !== null ? ` · about ${ugx(q.estimatedTotalUgx)}` : ""}
+                {q.lines.length > 0 && <span class="block text-xs text-gray-600">{q.lines.map((l: any) => `${l.quantity} × ${l.productName}`).join(", ")}</span>}
+              </li>
+            ))}</ul>
+          </section>
+        )}
+
+        {data.privacyRequests.length > 0 && (
+          <section aria-labelledby="h-privacy" class="mb-8 rounded-2xl border border-red-200 bg-white p-6">
+            <h3 id="h-privacy" class="text-sm font-black text-brand-dark mb-3">Privacy requests</h3>
+            <ul class="text-sm space-y-1">{data.privacyRequests.map((p: any) => <li>{p.reference} · {words(p.kind)} · {words(p.status)} · {day(p.requestedAt)}</li>)}</ul>
+            <a href="/admin/privacy-requests" class="text-xs font-bold underline mt-2 inline-block">Privacy requests queue</a>
+          </section>
+        )}
+      </>
+    )}
+  </div>
+</AdminLayout>

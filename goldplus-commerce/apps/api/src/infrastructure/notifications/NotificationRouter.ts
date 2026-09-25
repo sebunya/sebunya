@@ -43,6 +43,22 @@ export class DefaultNotificationRouter implements INotificationRouter {
           }
         : provider;
 
+    /**
+     * WhatsApp ahead of SMS, for one customer message to one phone.
+     *
+     * WhatsApp is offered only when its provider says it can carry THIS template
+     * to THIS number with THIS data (channel on, Zoho configured, template mapped
+     * and keyed, transactional). Otherwise the SMS target is returned exactly as
+     * before. When it is offered, the SMS target rides along as the fallback, so
+     * the event still has ONE target and the customer gets ONE message.
+     */
+    const whatsappFirst = (sms: NotificationRoutingTarget): NotificationRoutingTarget => {
+      const p = sms.payload;
+      const can = this.whatsappProvider.canCarry?.(p.template, p.recipient, (p.data || {}) as Record<string, unknown>) === true;
+      if (!can) return sms;
+      return { channel: 'whatsapp', provider: this.whatsappProvider, payload: p, fallback: sms };
+    };
+
     switch (eventType) {
       case 'AUTOMATION_ACTION_REQUESTED': {
         if (!this.automationOutcomes) break;
@@ -186,7 +202,9 @@ export class DefaultNotificationRouter implements INotificationRouter {
       case 'PHONE_VERIFICATION_REQUESTED': {
         const customerPhone = typeof payload.customerPhone === 'string' ? payload.customerPhone : '';
         if (!customerPhone) break;
-        targets.push({
+        // WhatsApp on the same number proves control of it just as well, and
+        // SMS is the fallback when WhatsApp cannot carry it.
+        targets.push(whatsappFirst({
           channel: 'sms',
           provider: this.smsProvider,
           payload: {
@@ -196,7 +214,7 @@ export class DefaultNotificationRouter implements INotificationRouter {
             relatedEntity: 'user_phone',
             relatedEntityId,
           },
-        });
+        }));
         break;
       }
 
@@ -289,11 +307,14 @@ export class DefaultNotificationRouter implements INotificationRouter {
         const entity = eventType === 'CUSTOMER_ORDER_MESSAGE' ? 'order' : relatedEntity || 'customer_request';
         const dryRun = payload.dryRunOnly === true;
         if (customerPhone) {
-          targets.push({
+          const sms: NotificationRoutingTarget = {
             channel: 'sms',
             provider: honourDryRun(this.smsProvider, dryRun),
             payload: { recipient: customerPhone, template, data: payload, relatedEntity: entity, relatedEntityId },
-          });
+          };
+          // A dry-run-only event stays on its SMS dry run: nothing is offered to
+          // a live channel for a message that must not leave the system.
+          targets.push(dryRun ? sms : whatsappFirst(sms));
         } else if (customerEmail) {
           targets.push({
             channel: 'email',

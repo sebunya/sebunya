@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { z } from 'zod';
+import { zohoWhatsAppStartupWarnings } from './zohoWhatsApp';
 
 // Load .env in non-test/non-production environments with a zero-dependency robust loader using bulletproof __dirname path resolution
 if (process.env.NODE_ENV !== 'production' && process.env.NODE_ENV !== 'test') {
@@ -282,6 +283,12 @@ export function validateEnv(): Config {
     errors.forEach(err => console.error(`  - ${err}`));
     console.error('\nPlease verify your deployment settings or .env file values.\n');
     throw new Error('Environment variable validation failed');
+  }
+
+  // Zoho CPaaS WhatsApp: warn on a half-configured channel, never fail the boot.
+  // The messages name the variable, never its value.
+  for (const warning of zohoWhatsAppStartupWarnings(process.env)) {
+    console.warn(`[config] WhatsApp (Zoho CPaaS): ${warning}`);
   }
 
   return configSchema.parse({

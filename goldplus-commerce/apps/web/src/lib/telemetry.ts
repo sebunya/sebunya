@@ -166,7 +166,9 @@ export function assembleUserData(extra?: {
 export type EventName =
   | 'view_item_list' | 'select_item' | 'view_item'
   | 'add_to_cart'    | 'remove_from_cart' | 'begin_checkout'
-  | 'add_shipping_info' | 'add_payment_info';
+  | 'add_shipping_info' | 'add_payment_info'
+  // A WhatsApp chat opened with us, or a quote request sent (advertising 0154).
+  | 'generate_lead';
 
 export interface TelemetryItem {
   item_id:       string;
@@ -194,6 +196,8 @@ export interface TrackOptions {
   };
   recommendation_context?: RecommendationContext;
   user_id?: string;
+  /** generate_lead only: how the shopper reached out. */
+  lead?: { method: 'whatsapp' | 'quote_request' };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -285,6 +289,7 @@ export function track(eventName: EventName, opts: TrackOptions = {}): string {
     user_data:              assembleUserData({ user_id: opts.user_id }),
     ecommerce:              opts.ecommerce,
     recommendation_context: opts.recommendation_context,
+    lead:                   opts.lead,
     page_location:          window.location.href,
     page_referrer:          document.referrer || undefined,
     page_title:             document.title,
@@ -427,6 +432,16 @@ if (typeof window !== 'undefined') {
 // to GA4 or an ad platform. Automation (webdriver) is not a visit.
 // ─────────────────────────────────────────────────────────────────────────────
 const TOUCH_CLICK_KEYS = ['gclid', 'gbraid', 'wbraid', 'msclkid', 'fbclid', 'ttclid', 'twclid', 'ScCid', 'li_fat_id', 'epik', 'clickid', 'click_id'];
+
+/**
+ * For lib/whatsappClicks, the WhatsApp tap handler. It is registered by the
+ * pages that render WhatsApp chat links (product page, bulk request sent),
+ * never from this every-page script.
+ */
+export const flushTelemetry = (): void => flushQueue();
+export const telemetryBatchUrl = (): string => `${TELEMETRY_ENDPOINT}/batch`;
+export { isOwnAutomation };
+
 export function recordLandingTouch(): void {
   try {
     if (isOwnAutomation()) return;

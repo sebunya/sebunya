@@ -26,4 +26,10 @@ export class DrizzleCollectorStore implements CollectorStore {
         ${t.source}, ${t.medium}, ${t.campaign}, ${t.referrerHost}, ${t.landingPath}, ${`{${t.clickIdTypes.map((c) => c.replace(/[^A-Za-z_]/g, '')).join(',')}}`}::text[], ${t.trafficClass})
       on conflict (environment, anonymous_id, client_event_id) do nothing`);
   }
+  /** WhatsApp reference (0156). The first visitor a code was issued to keeps it. */
+  async saveWhatsAppRef(r: Parameters<NonNullable<CollectorStore['saveWhatsAppRef']>>[0]) {
+    await db.execute(sql`insert into measurement.whatsapp_ref (code, environment, anonymous_id, client_event_id, issued_at, page_path, traffic_class)
+      values (${r.code}, ${environmentOf(process.env.NODE_ENV)}, ${r.anonymousId}, ${r.clientEventId}::uuid, ${r.issuedAt.toISOString()}::timestamptz, ${r.pagePath}, ${r.trafficClass})
+      on conflict (code) do nothing`);
+  }
 }

@@ -97,6 +97,11 @@ routes.get('/ready', async (c) => {
   const smsApiKey = process.env.SMS_API_KEY;
   subsystems.zeptomail_config = { status: zeptoMailToken ? 'configured' : 'not_configured' };
   subsystems.sms_config = { status: smsApiKey ? 'configured' : 'not_configured' };
+  subsystems.whatsapp_config = {
+    status: (process.env.ZOHO_WHATSAPP_API_KEY || '').trim() && (process.env.ZOHO_WHATSAPP_FROM_NUMBER || '').trim()
+      ? 'configured'
+      : 'not_configured',
+  };
 
   // Redis: DEGRADED, not unready.
   //

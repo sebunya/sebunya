@@ -7,6 +7,7 @@ import { logger } from '../logging/logger';
 import { environmentOf } from '../../domain/measurement/BusinessEvents';
 import { collapseConsecutive as collapse, RULE_METHODS, DEFAULT_RULE_POLICY, allocateInteger, ruleWeights, markovRemovalEffects, exactShapley, SHAPLEY_EXACT_LIMIT, type Journey, type Touch } from '../../domain/measurement/Attribution';
 import type { AttributionPort, AttributionRunView, BatchRunView } from '../../application/ports/MeasurementOperations';
+import { channelAttribution } from './createChannelAttribution';
 
 /**
  * Attribution batch (dossier §9, addendum 17 §2/§6). Single host: one bounded
@@ -160,6 +161,12 @@ export async function runAttributionBatch(trigger: string): Promise<{ state: str
   try {
     await db.execute(sql`insert into measurement.batch_run (run_id, job, state, resources, stats) values (${batchRunId}::uuid, ${JOB}, 'RUNNING', ${pgJsonb(adm.resources)}, ${pgJsonb({ trigger })})`);
     await compute(environmentOf(process.env.NODE_ENV), stats);
+    // Per-order channel credit (0156) for the weekly channel report: recomputed
+    // under the same lease, so a late self-report, a reversed code or a status
+    // change is reflected by the next morning. Bounded inside the use case.
+    // Its failure is recorded, never allowed to fail the models above.
+    stats.orderCredit = await channelAttribution().backfill.execute({ days: ORDER_WINDOW_DAYS + LOOKBACK_DAYS })
+      .catch((err: unknown) => ({ error: String((err as Error)?.message ?? err).slice(0, 200) }));
     // A receipt exists to answer a client's retry, not to be kept for ever.
     // Touchpoints are evidence and are never pruned here.
     const pruned = rows(await db.execute(sql`delete from measurement.collector_batch where received_at < now() - make_interval(days => ${RECEIPT_RETENTION_DAYS}) returning batch_id`));

@@ -41,6 +41,7 @@ const phoneLabel = ws ? (ws.user.phone ? ws.user.phone + (ws.user.phoneVerified 
             <a href={ordersHref} class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">All orders</a>
             <a href={supportHref} class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">Support tickets</a>
             <a href={historyHref} class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">Account history</a>
+            <a href={'/admin/customer-360/' + encodeURIComponent(id) + '?by=account'} class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">Customer 360</a>
           </nav>
         </header>
 

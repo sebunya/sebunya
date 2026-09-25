@@ -875,6 +875,9 @@ if (product) {
 </script>
 
 <script>
+  // WhatsApp chat taps on this page: reference code + lead (lib/whatsappClicks).
+  import { installWhatsAppClicks } from '../../lib/whatsappClicks';
+  installWhatsAppClicks();
   import {
     trackProductView,
     saveRecentlyViewedLocal,

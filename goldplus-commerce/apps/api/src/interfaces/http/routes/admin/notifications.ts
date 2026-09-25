@@ -119,14 +119,25 @@ routes.get('/health-check', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ])
   const registry = Registry.getInstance();
   const sms = await (registry.smsAdapter as any).getBalance();
   const email = await (registry.zeptoMailAdapter as any).getBalance();
+  const whatsapp = await registry.whatsappAdapter.getBalance();
 
   return c.json({
     success: true,
     data: {
       sms,
       email,
+      whatsapp,
     }
   });
+});
+
+// Channel status for the admin: Not configured / switched off / dry run / live,
+// derived from the real flags through the governance policy. Presence only —
+// no credential value is read into the response.
+routes.get('/channel-status', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ]), async (c) => {
+  const { customerChannelStatuses } = await import('../../../../infrastructure/notifications/channelStatus');
+  const data = customerChannelStatuses();
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
 });
 
 // --- Transactional admin order email (outbox intents + manual replay) ---

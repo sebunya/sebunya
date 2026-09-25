@@ -113,14 +113,61 @@ export function buildProfileDrivenCandidates(input: {
   backorderExposure: number;
   riskFlags: string[];
   daysSinceLastOrder: number | null;
+  /** 0157: open support tickets on the customer's account. */
+  openSupportCases?: number;
+  /** 0157: loyalty points balance (null = no loyalty account). */
+  loyaltyBalance?: number | null;
 }): NbaCandidate[] {
   const c: NbaCandidate[] = [];
+  if ((input.openSupportCases ?? 0) > 0) c.push({ actionType: 'SUPPORT_FOLLOW_UP', targetRef: null, baseScore: 90, reasonCodes: ['OPEN_SUPPORT_CASE'] });
   if (input.cartAbandonments > 0) c.push({ actionType: 'RESUME_CART', targetRef: null, baseScore: 80, reasonCodes: ['ABANDONED_CART'] });
   if (input.backorderExposure > 0) c.push({ actionType: 'BACK_IN_STOCK', targetRef: null, baseScore: 70, reasonCodes: ['BACKORDER_EXPOSED'] });
   if (input.riskFlags.includes('DELIVERY_RISK')) c.push({ actionType: 'DELIVERY_FOLLOW_UP', targetRef: null, baseScore: 75, reasonCodes: ['DELIVERY_RISK'] });
   if (input.lifecycleStage === 'WIN_BACK') c.push({ actionType: 'WIN_BACK', targetRef: null, baseScore: 60, reasonCodes: ['RETURNED_AFTER_GAP'] });
   else if (input.lifecycleStage === 'LAPSED' || input.lifecycleStage === 'AT_RISK') c.push({ actionType: 'RETENTION', targetRef: null, baseScore: 55, reasonCodes: [input.lifecycleStage] });
+  if ((input.loyaltyBalance ?? 0) > 0) c.push({ actionType: 'LOYALTY_ACTION', targetRef: null, baseScore: 40, reasonCodes: ['POINTS_TO_SPEND'] });
   return c;
+}
+
+/**
+ * 0157: the NBA context read from the customer's REAL records — consent per
+ * channel, open support tickets, open fraud cases, what they bought recently
+ * and how many messages they were sent — instead of placeholder defaults.
+ * An unknown input fails CLOSED: consent unknown is "not eligible", and a
+ * frequency count that could not be read counts as capped.
+ */
+export const NBA_POLICY_VERSION = 2;
+/** At most this many customer messages in the last 7 days before marketing actions stop. */
+export const NBA_MAX_MESSAGES_PER_7_DAYS = 3;
+
+export interface NbaProfileFacts {
+  /** Marketing consent per channel, from the consent system; a missing channel is not eligible. */
+  marketingChannels: Record<string, boolean>;
+  openSupportCases: number;
+  openFraudCases: number;
+  recentPurchaseProductIds: string[];
+  outOfStockProductIds: string[];
+  /** null = could not be read. */
+  messagesSentLast7Days: number | null;
+  activationChannel: string | null;
+}
+
+export function buildNbaContextFromProfile(f: NbaProfileFacts): NbaContext {
+  const channelEligible: Record<string, boolean> = {};
+  for (const [k, v] of Object.entries(f.marketingChannels)) channelEligible[k] = v === true;
+  return {
+    consentEligible: Object.values(channelEligible).some(Boolean),
+    channelEligible,
+    activationChannel: f.activationChannel,
+    openSupportCase: f.openSupportCases > 0,
+    fraudHold: f.openFraudCases > 0,
+    frequencyCapReached: f.messagesSentLast7Days === null || f.messagesSentLast7Days >= NBA_MAX_MESSAGES_PER_7_DAYS,
+    recentPurchaseRefs: [...new Set(f.recentPurchaseProductIds)],
+    outOfStockRefs: [...new Set(f.outOfStockProductIds)],
+    incompatibleRefs: [],
+    invalidPromotionRefs: [],
+    policyVersion: NBA_POLICY_VERSION,
+  };
 }
 
 /** Deterministic action priority for tie-breaking (lower = preferred). */

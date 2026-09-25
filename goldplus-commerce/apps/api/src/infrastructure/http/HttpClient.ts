@@ -39,6 +39,20 @@ const circuitBreakerFailures = new client.Counter({
 
 export type CircuitBreakerState = 'CLOSED' | 'OPEN' | 'HALF_OPEN';
 
+
+/**
+ * An error message can echo a request URL or header, so a credential could
+ * reach the logs through it. Mask the value of every secret-looking setting,
+ * plus bearer and Zoho key patterns, before anything is logged.
+ */
+export function redactSecrets(message: unknown): string {
+  let out = String(message ?? '');
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value && value.length >= 8 && /(KEY|TOKEN|SECRET|PASSWORD|PEPPER)/i.test(name)) out = out.split(value).join('******');
+  }
+  return out.replace(/(Bearer|Zoho-enczapikey)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 ******');
+}
+
 export class CircuitBreakerError extends Error {
   constructor(message: string) {
     super(message);
@@ -84,7 +98,7 @@ export class CircuitBreaker {
     } catch (err: any) {
       this.onFailure(err);
       if (fallback) {
-        logger.warn({ breaker: this.name, err: err.message }, `[CircuitBreaker] Request failed. Executing fallback.`);
+        logger.warn({ breaker: this.name, err: redactSecrets(err?.message) }, `[CircuitBreaker] Request failed. Executing fallback.`);
         return fallback();
       }
       throw err;
@@ -104,7 +118,7 @@ export class CircuitBreaker {
     this.failureCount++;
     circuitBreakerFailures.inc({ breaker_name: this.name });
     logger.warn(
-      { breaker: this.name, failures: this.failureCount, err: err.message },
+      { breaker: this.name, failures: this.failureCount, err: redactSecrets(err?.message) },
       `[CircuitBreaker] Execution failed`
     );
 
@@ -157,7 +171,7 @@ export async function resilientFetch(
       const { address } = await dnsLookup(parsed.hostname);
       if (isPrivateIp(address)) {
         const ssrfErr = new Error(`SSRF Block: Hostname ${parsed.hostname} resolved to private IP: ${address}`);
-        logger.error({ url, err: ssrfErr.message }, '[SSRF] Outbound request blocked');
+        logger.error({ url: redactSecrets(url), err: redactSecrets(ssrfErr.message) }, '[SSRF] Outbound request blocked');
         throw ssrfErr;
       }
     } catch (dnsErr: any) {

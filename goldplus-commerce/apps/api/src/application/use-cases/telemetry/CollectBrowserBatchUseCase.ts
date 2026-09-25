@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'crypto';
 import { z } from 'zod';
-import { BrowserTelemetryEventSchema } from '@goldplus/shared';
+import { BrowserTelemetryEventSchema, WHATSAPP_REF_PATTERN } from '@goldplus/shared';
 import { canonicalJson } from '../../../domain/measurement/BusinessEvents';
 import { classifyChannel } from '../../../domain/measurement/Channels';
 import { BROWSER_FORBIDDEN_USER_FIELDS, exceedsBrowserValueCeiling } from './BrowserTelemetryAuthority';
@@ -29,6 +29,21 @@ const LandingTouch = z.object({
   }).strict(),
 }).strict();
 
+/**
+ * A click-to-chat on one of our WhatsApp links (attribution module, 0156). The
+ * page put `Ref GP-XXXXXX` into the prefilled message; this files which visitor
+ * that code was given to, so a sale closed in the chat can be linked back to the
+ * visits that led to it. Not an arrival, so not a touch; never forwarded.
+ */
+const WhatsAppRefEvent = z.object({
+  event_name: z.literal('whatsapp_ref'),
+  event_id: z.string().uuid(),
+  event_time: z.number().int().positive(),
+  source: z.literal('browser'),
+  user_data: z.object({ fp_client_id: z.string().min(1).max(255) }).strict(),
+  ref: z.object({ code: z.string().regex(WHATSAPP_REF_PATTERN), page_path: z.string().max(300).nullable() }).strict(),
+}).strict();
+
 export const BatchEnvelope = z.object({
   batchId: z.string().uuid(),
   schemaVersion: z.literal(1),
@@ -50,6 +65,8 @@ export interface CollectorStore {
   saveBatch(batchId: string, contentSha256: string, pageInstanceId: string | null, receipt: BatchReceipt): Promise<'SAVED' | 'EXISTS'>;
   saveTouch(t: { touchId: string; anonymousId: string; clientEventId: string; occurredAt: Date; channel: string; source: string | null; medium: string | null;
     campaign: string | null; referrerHost: string | null; landingPath: string | null; clickIdTypes: string[]; trafficClass: TrafficClass }): Promise<void>;
+  /** First writer wins: a code already issued keeps its visitor. Optional so older stores still compile. */
+  saveWhatsAppRef?(r: { code: string; anonymousId: string; clientEventId: string; issuedAt: Date; pagePath: string | null; trafficClass: TrafficClass }): Promise<void>;
 }
 export interface BatchReceipt { receiptId: string; accepted: string[]; rejected: Array<{ eventId: string; reason: string }> }
 export type CollectResult =
@@ -99,6 +116,17 @@ export class CollectBrowserBatchUseCase {
           source: t.data.touch.source, medium: t.data.touch.medium, campaign: t.data.touch.campaign, referrerHost: t.data.touch.referrer_host,
           landingPath: t.data.touch.landing_path, clickIdTypes: t.data.touch.click_id_types, trafficClass });
         accepted.push(t.data.event_id);
+        continue;
+      }
+      if (name === 'whatsapp_ref') {
+        const w = WhatsAppRefEvent.safeParse(item);
+        if (!w.success) { rejected.push({ eventId: id, reason: 'SCHEMA_VIOLATION' }); continue; }
+        if (!this.store.saveWhatsAppRef) { rejected.push({ eventId: id, reason: 'UNSUPPORTED_EVENT' }); continue; }
+        const at = new Date(w.data.event_time * 1000);
+        if (Math.abs(this.now().getTime() - at.getTime()) >= EVENT_TIME_SKEW_MS) { rejected.push({ eventId: id, reason: 'EVENT_TIME_OUT_OF_RANGE' }); continue; }
+        await this.store.saveWhatsAppRef({ code: w.data.ref.code, anonymousId: serverVisitorId || w.data.user_data.fp_client_id, clientEventId: w.data.event_id,
+          issuedAt: at, pagePath: w.data.ref.page_path, trafficClass });
+        accepted.push(w.data.event_id);
         continue;
       }
       const parsed = BrowserTelemetryEventSchema.safeParse(item);

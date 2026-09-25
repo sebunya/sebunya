@@ -1,0 +1,101 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../lib/session";
+import { apiBase } from "../../lib/api";
+
+/**
+ * Customer value (0155): lifetime value, repeat purchase, time to second order
+ * and cohort retention by first-order month. Every empty measure says "No
+ * data" — a rate over nobody is not 0%, and a month that has not happened yet
+ * is not 0% either.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/customer-value", 303);
+
+let report: any = null;
+let error: string | null = null;
+try {
+  const res = await fetch(`${apiBase}/admin/first-party/customer-value?months=12`, { headers: { Accept: "application/json", Authorization: `Bearer ${token}` } });
+  const json = await res.json().catch(() => null);
+  if (res.status === 403) error = "Your account is not permitted to view this report.";
+  else if (res.ok && json?.success) report = json.data;
+  else error = json?.error?.message ?? `The report could not be loaded (HTTP ${res.status}).`;
+} catch {
+  error = "Could not reach the API.";
+}
+
+const NO_DATA = "No data";
+const UGX_FORMAT = new Intl.NumberFormat("en-UG", { maximumFractionDigits: 0 });
+const ugx = (n: number | null | undefined) => (typeof n === "number" ? `UGX ${UGX_FORMAT.format(n)}` : NO_DATA);
+const pct = (n: number | null | undefined) => (typeof n === "number" ? `${Math.round(n * 1000) / 10}%` : NO_DATA);
+const days = (n: number | null | undefined) => (typeof n === "number" ? `${n} day${n === 1 ? "" : "s"}` : NO_DATA);
+const when = (iso: unknown) => (typeof iso === "string" && iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Africa/Kampala" }) : "—");
+const maxOffset = report ? Math.max(0, ...report.cohorts.map((c: any) => c.retention.length - 1)) : 0;
+---
+<AdminLayout title="Customer value" description="Lifetime value, repeat purchase and cohort retention, computed from real orders.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-6xl">
+    <h2 class="text-2xl font-black text-brand-dark tracking-tight mb-2">Customer value</h2>
+    <p class="text-sm text-gray-600 mb-6 max-w-3xl">Computed from orders linked to a customer. Lifetime value counts orders that were paid online or delivered (cash is collected at the door); order counts include every order not cancelled or failed. A customer is one person across their account, the phone and email they check out with, and their orders.</p>
+    {error && <p role="alert" class="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{error}</p>}
+    {report && (
+      <>
+        <p class="mb-6 text-sm text-gray-700">
+          Orders linked to a customer: <strong>{report.identityCoverage.linkedOrders} of {report.identityCoverage.orders}</strong> ({pct(report.identityCoverage.share)}).
+          {report.lastLinkRunAt ? ` Last linking run ${when(report.lastLinkRunAt)}.` : " The nightly linking run has not completed yet, so past guest orders are not counted until it does."}
+        </p>
+        {report.status === "NO_DATA" ? (
+          <p class="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-600">No data yet: no order is linked to a customer. Figures appear once customers sign in or order, and after the nightly run links past orders.</p>
+        ) : (
+          <>
+            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+              <div class="rounded-2xl border border-gray-200 bg-white p-4"><p class="text-xs font-bold text-gray-500">Customers with an order</p><p class="text-2xl font-black">{report.summary.customers}</p></div>
+              <div class="rounded-2xl border border-gray-200 bg-white p-4"><p class="text-xs font-bold text-gray-500">Repeat customers</p><p class="text-2xl font-black">{report.summary.repeatCustomers}</p><p class="text-xs text-gray-500">{pct(report.summary.repeatRate)} of customers</p></div>
+              <div class="rounded-2xl border border-gray-200 bg-white p-4"><p class="text-xs font-bold text-gray-500">Average lifetime value</p><p class="text-2xl font-black">{ugx(report.summary.averageLifetimeValueUgx)}</p><p class="text-xs text-gray-500">median {ugx(report.summary.medianLifetimeValueUgx)} · {report.summary.customersWithRealisedOrder} with a paid or delivered order</p></div>
+              <div class="rounded-2xl border border-gray-200 bg-white p-4"><p class="text-xs font-bold text-gray-500">Median time to second order</p><p class="text-2xl font-black">{days(report.summary.medianDaysToSecondOrder)}</p></div>
+            </div>
+            <p class="mb-8 text-sm text-gray-700">Orders per customer: one order {report.distribution.oneOrder} · two orders {report.distribution.twoOrders} · three or more {report.distribution.threeOrMore}.</p>
+
+            <section class="mb-10" aria-labelledby="h-cohorts">
+              <h3 id="h-cohorts" class="text-lg font-black text-brand-dark mb-2">Retention by first-order month</h3>
+              <p class="text-xs text-gray-500 mb-3">Share of each month's new customers who placed an order again 1, 2, 3… months later. A blank cell is a month that has not happened yet.</p>
+              <div class="overflow-x-auto">
+                <table class="text-left text-xs">
+                  <thead><tr class="text-gray-500"><th class="py-2 pr-4">First order</th><th class="pr-4">Customers</th>{Array.from({ length: maxOffset }, (_, k) => <th class="pr-3">+{k + 1}</th>)}</tr></thead>
+                  <tbody>
+                    {report.cohorts.map((c: any) => (
+                      <tr class="border-t border-gray-100">
+                        <td class="py-2 pr-4 font-bold">{c.cohortMonth}</td><td class="pr-4">{c.size}</td>
+                        {Array.from({ length: maxOffset }, (_, k) => {
+                          const v = c.retention[k + 1];
+                          return <td class="pr-3">{v === null || v === undefined ? "" : `${Math.round(v * 100)}% (${c.active[k + 1]})`}</td>;
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="mb-12" aria-labelledby="h-top">
+              <h3 id="h-top" class="text-lg font-black text-brand-dark mb-2">Highest lifetime value</h3>
+              <div class="overflow-x-auto">
+                <table class="w-full text-left text-sm">
+                  <thead><tr class="text-xs uppercase text-gray-500"><th class="py-2">Customer</th><th>Type</th><th>Orders</th><th>Lifetime value</th><th>First order</th><th>Second order after</th><th>Last order</th></tr></thead>
+                  <tbody>
+                    {report.top.map((r: any) => (
+                      <tr class="border-t border-gray-100">
+                        <td class="py-2 font-mono text-xs"><a class="underline" href={`/admin/customer-dna/${r.canonicalCustomerId}`}>{r.customer}</a></td>
+                        <td>{r.isAccount ? "Account" : "Guest"}</td><td>{r.orderCount}</td><td>{r.realisedOrderCount ? ugx(r.lifetimeValueUgx) : NO_DATA}</td>
+                        <td>{when(r.firstOrderAt)}</td><td>{days(r.daysToSecondOrder)}</td><td>{when(r.lastOrderAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </>
+        )}
+      </>
+    )}
+  </div>
+</AdminLayout>

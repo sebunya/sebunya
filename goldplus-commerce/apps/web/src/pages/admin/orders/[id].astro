@@ -4,6 +4,7 @@ import { readSessionToken } from "../../../lib/session";
 import { apiBase, whatsappSupportNumber, getOrderNotificationTimeline } from "../../../lib/api";
 import NotificationChannelPanel from "../../../components/admin/NotificationChannelPanel.astro";
 import NotificationTimeline from "../../../components/admin/NotificationTimeline.astro";
+import OrderSourcePanel from "../../../components/admin/OrderSourcePanel.astro";
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -946,6 +947,9 @@ const customerHref = order?.userId ? `/admin/customers/${encodeURIComponent(orde
 
         {/* Chronological Audit Timeline Log */}
         <NotificationTimeline items={timelineItems} />
+
+        {/* Attribution (0156): recorded visits, codes, answers; staff record the source / WhatsApp ref. */}
+        {order?.id && <OrderSourcePanel orderId={String(order.id)} token={token} />}
 
       </div>
 

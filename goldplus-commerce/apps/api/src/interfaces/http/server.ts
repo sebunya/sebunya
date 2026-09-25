@@ -20,6 +20,8 @@ import { startLoyaltyDailyTicker, stopLoyaltyDailyTicker } from '../../infrastru
 import { startPaymentReconcileTicker, stopPaymentReconcileTicker } from '../../infrastructure/scheduler/PaymentReconcileTicker';
 import { startLighthouseWatchTicker, stopLighthouseWatchTicker } from '../../infrastructure/scheduler/LighthouseWatchTicker';
 import { startProductCostTicker, stopProductCostTicker } from '../../infrastructure/scheduler/ProductCostTicker';
+import { startAdvertisingTicker, stopAdvertisingTicker } from '../../infrastructure/scheduler/AdvertisingTicker';
+import { startFirstPartyNightlyTicker, stopFirstPartyNightlyTicker } from '../../infrastructure/scheduler/FirstPartyNightlyTicker';
 import { Registry } from '../../infrastructure/Registry';
 import { runPermissionRegistrySyncAtBoot } from '../../infrastructure/security/PermissionRegistrySync';
 import { runHeroSlideSeedAtBoot } from '../../infrastructure/hero/HeroSlideSeeder';
@@ -55,6 +57,10 @@ const server = serve({
     startLighthouseWatchTicker();
     // A cost dated for a future day becomes the COGS figure on that day.
     startProductCostTicker();
+    // Advertising operations (0154): offline conversions every 5 min; audiences + spend daily. Inert until a capability is LIVE.
+    startAdvertisingTicker();
+    // First-party data (0155): nightly order→customer linking + segment materialisation.
+    startFirstPartyNightlyTicker();
     registerAllWorkers();
     // Converge DB permissions on the code registry (advisory-locked, add-only).
     void runPermissionRegistrySyncAtBoot();
@@ -119,6 +125,8 @@ async function gracefulShutdown(signal: string) {
     stopPaymentReconcileTicker();
     stopLighthouseWatchTicker();
     stopProductCostTicker();
+    stopAdvertisingTicker();
+    stopFirstPartyNightlyTicker();
     await gracefulStopOutboxTicker(10000);
     await Registry.getInstance().recommendationServingStats?.stop(3000);
 

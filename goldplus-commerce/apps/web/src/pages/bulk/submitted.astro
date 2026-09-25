@@ -36,6 +36,7 @@ const whatsappUrl = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComp
           Keep the reference below. Our sales team will call you on the number you gave to confirm the list, the price and delivery. We have sent you a text with the reference.
         </p>
         <div class="mt-6"><BulkRequestSummary request={request} /></div>
+        <span hidden data-lead-ref={request.reference}></span>
       </>
     ) : (
       <>
@@ -52,3 +53,13 @@ const whatsappUrl = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComp
     </div>
   </div>
 </BaseLayout>
+
+<script>
+  // A sent quote request is a lead (advertising 0154): one generate_lead per
+  // reference on this device, forwarded server-side like every shop event.
+  import { recordQuoteLead } from '../../lib/leadSignals';
+  recordQuoteLead();
+  // WhatsApp chat taps on this page: reference code + lead (lib/whatsappClicks).
+  import { installWhatsAppClicks } from '../../lib/whatsappClicks';
+  installWhatsAppClicks();
+</script>

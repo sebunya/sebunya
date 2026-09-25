@@ -1,0 +1,100 @@
+---
+import AdminLayout from "../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../lib/session";
+import { apiBase } from "../../lib/api";
+
+/**
+ * Privacy requests (0157, docs/first-party/README.md): customers' requests to
+ * remove their details from past orders or to delete their account. A person
+ * carries each one out (typing its reference to confirm) or declines it with a
+ * reason the customer sees. Needs privacy_requests.manage; every step audited.
+ * Downloads ("Download my data") are served to the customer at once and are
+ * listed under "Completed" only.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/privacy-requests", 303);
+
+async function call(method: string, path: string, body?: unknown) {
+  try {
+    const res = await fetch(`${apiBase}/admin/first-party${path}`, { method, headers: { Accept: "application/json", Authorization: `Bearer ${token}`, ...(body !== undefined ? { "Content-Type": "application/json" } : {}) }, body: body !== undefined ? JSON.stringify(body) : undefined });
+    const json = await res.json().catch(() => null);
+    if (res.status === 403) return { ok: false as const, message: "Your account is not permitted to handle privacy requests (privacy_requests.manage)." };
+    return res.ok && json?.success ? { ok: true as const, data: json.data } : { ok: false as const, message: json?.error?.message ?? "The request was not accepted." };
+  } catch { return { ok: false as const, message: "Could not reach the API." }; }
+}
+
+let notice: string | null = null;
+let formError: string | null = null;
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const id = encodeURIComponent(String(f.get("id") ?? ""));
+  const action = String(f.get("action") ?? "");
+  const r = action === "fulfil"
+    ? await call("POST", `/privacy-requests/${id}/fulfil`, { confirmation: String(f.get("confirmation") ?? ""), reason: String(f.get("reason") ?? "") })
+    : await call("POST", `/privacy-requests/${id}/decline`, { reason: String(f.get("reason") ?? "") });
+  if (r.ok) {
+    notice = action === "fulfil"
+      ? `Done. Records changed: ${Object.entries(r.data.counts ?? {}).filter(([, n]) => Number(n) > 0).map(([k, n]) => `${k} ${n}`).join(", ") || "none held"}.`
+      : "Declined. The customer sees your reason on their Your data page.";
+  } else formError = r.message;
+}
+
+const status = Astro.url.searchParams.get("status") ?? "RECEIVED";
+const list = await call("GET", `/privacy-requests?status=${encodeURIComponent(status)}`);
+const requests: any[] = list.ok ? list.data.requests : [];
+const KIND: Record<string, string> = { ANONYMISE_HISTORY: "Remove details from past orders", DELETE_ACCOUNT: "Delete account", EXPORT: "Download (served)" };
+const when = (iso: unknown) => (typeof iso === "string" && iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Kampala" }) : "—");
+const TABS = [["RECEIVED", "Waiting"], ["COMPLETED", "Completed"], ["DECLINED", "Declined"], ["WITHDRAWN", "Withdrawn"]];
+---
+<AdminLayout title="Privacy requests" description="Customers' requests to anonymise their history or delete their account.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-5xl">
+    <h2 class="text-2xl font-black text-brand-dark tracking-tight mb-2">Privacy requests</h2>
+    <p class="text-sm text-gray-600 mb-4 max-w-3xl">
+      Before carrying a request out, check it came from the customer (it was sent from their signed-in account; if in doubt, call the number on the account).
+      Orders still on their way block it: the delivery needs the contact. Order amounts are kept without personal details; consent records are kept as evidence.
+    </p>
+    <nav class="flex gap-2 mb-6 text-xs font-bold" aria-label="Request status">
+      {TABS.map(([key, label]) => <a href={`/admin/privacy-requests?status=${key}`} aria-current={status === key ? "page" : undefined} class={`px-3 py-1.5 rounded-full border ${status === key ? "bg-brand-dark text-white border-brand-dark" : "bg-white text-gray-700 border-gray-300"}`}>{label}</a>)}
+    </nav>
+    {notice && <p role="status" class="mb-4 rounded-xl border border-green-300 bg-green-50 p-4 text-sm text-green-900">{notice}</p>}
+    {formError && <p role="alert" class="mb-4 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</p>}
+    {!list.ok && <p role="alert" class="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{list.message}</p>}
+    {list.ok && requests.length === 0 && <p class="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-600">No requests here.</p>}
+    <ul class="space-y-4">
+      {requests.map((r) => (
+        <li class="rounded-2xl border border-gray-200 bg-white p-5">
+          <div class="flex flex-wrap items-baseline justify-between gap-2">
+            <p class="font-black text-brand-dark">{r.reference} · {KIND[r.kind] ?? r.kind}</p>
+            <p class="text-xs text-gray-500">Received {when(r.requestedAt)}{r.decidedAt ? ` · decided ${when(r.decidedAt)}` : ""}</p>
+          </div>
+          <p class="text-xs text-gray-600 mt-1">Account {r.userId} · <a class="underline" href={`/admin/customer-360/${encodeURIComponent(r.userId)}?by=account`}>Customer 360</a></p>
+          {r.customerNote && <p class="text-sm mt-2">Customer's note: {r.customerNote}</p>}
+          {r.decisionReason && <p class="text-sm mt-2 text-gray-700">Reason recorded: {r.decisionReason}</p>}
+          {r.result?.counts && <p class="text-xs text-gray-500 mt-2">Records changed: {Object.entries(r.result.counts).map(([k, n]) => `${k} ${n}`).join(", ")}</p>}
+          {r.status === "RECEIVED" && (
+            <>
+              {typeof r.openOrders === "number" && r.openOrders > 0 && <p class="text-sm font-bold text-amber-900 mt-2">{r.openOrders} order{r.openOrders === 1 ? " is" : "s are"} still open. Finish or cancel {r.openOrders === 1 ? "it" : "them"} first.</p>}
+              {r.openOrders === null && <p class="text-sm text-amber-900 mt-2">Open orders could not be checked just now.</p>}
+              <div class="grid gap-4 md:grid-cols-2 mt-4">
+                <form method="POST" class="space-y-2">
+                  <input type="hidden" name="action" value="fulfil" /><input type="hidden" name="id" value={r.id} />
+                  <label class="block text-xs font-bold" for={`c-${r.id}`}>Type {r.reference} to confirm</label>
+                  <input id={`c-${r.id}`} name="confirmation" required maxlength="20" autocomplete="off" class="w-full border border-gray-300 rounded-lg p-2 text-sm font-mono" />
+                  <label class="block text-xs font-bold" for={`r-${r.id}`}>How it was checked</label>
+                  <input id={`r-${r.id}`} name="reason" required minlength="5" maxlength="1000" class="w-full border border-gray-300 rounded-lg p-2 text-sm" />
+                  <button class="bg-red-700 text-white text-xs font-bold px-4 py-2 rounded-lg">Carry it out</button>
+                </form>
+                <form method="POST" class="space-y-2">
+                  <input type="hidden" name="action" value="decline" /><input type="hidden" name="id" value={r.id} />
+                  <label class="block text-xs font-bold" for={`d-${r.id}`}>Reason for declining (the customer sees this)</label>
+                  <textarea id={`d-${r.id}`} name="reason" required minlength="10" maxlength="1000" rows="3" class="w-full border border-gray-300 rounded-lg p-2 text-sm"></textarea>
+                  <button class="bg-white border border-gray-400 text-xs font-bold px-4 py-2 rounded-lg">Decline</button>
+                </form>
+              </div>
+            </>
+          )}
+        </li>
+      ))}
+    </ul>
+  </div>
+</AdminLayout>

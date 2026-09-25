@@ -9,10 +9,12 @@ import { DrizzleMeasurementOperationsRepository } from './db/repositories/Drizzl
 import { AdDestinationUseCases } from '../application/use-cases/advertising/AdDestinationUseCases';
 import { DrizzleAdDestinationRepository } from './db/repositories/DrizzleAdDestinationRepository';
 import { AD_PLATFORMS } from './advertising/AdPlatforms';
+import { createAdvertisingOperations } from './advertising/AdvertisingWiring';
 import { vaultCipher } from './ai-visibility/AiVisibilityWiring';
 import { createHmac, randomInt as nodeRandomInt } from 'node:crypto';
 import { db } from './db/client';
 import { createAiVisibility } from './ai-visibility/AiVisibilityWiring';
+import { channelAttribution } from './measurement/createChannelAttribution';
 import { DrizzleCartRepository } from './db/repositories/DrizzleCartRepository';
 import { DrizzleCartQueryRepository } from './db/repositories/DrizzleCartQueryRepository';
 import { DrizzleOrderRepository } from './db/repositories/DrizzleOrderRepository';
@@ -213,7 +215,7 @@ import { CheckSystemHealthUseCase } from '../application/use-cases/system/CheckS
 import { SyntheticMonitor } from './scheduler/SyntheticMonitor';
 import { RecommendationMaterializer } from './scheduler/RecommendationMaterializer';
 
-import { WhatsAppAdapter } from './notifications/whatsapp/WhatsAppAdapter';
+import { ZohoWhatsAppAdapter } from './notifications/whatsapp/ZohoWhatsAppAdapter';
 import { ZeptoMailAdapter } from './notifications/zeptomail/ZeptoMailAdapter';
 import { DisabledSmsAdapter } from './notifications/sms/DisabledSmsAdapter';
 import { PahappaCommsSmsAdapter } from './notifications/sms/PahappaCommsSmsAdapter';
@@ -677,6 +679,26 @@ import { ReconcileAutomationOutcomeUseCase } from '../application/use-cases/auto
 import { AutomationInternalActionExecutor } from './automation/AutomationInternalActionExecutor';
 import { DrizzleAutomationOperationsRepository } from './db/repositories/DrizzleAutomationOperationsRepository';
 import { AutomationOperationsUseCase } from '../application/use-cases/automation/AutomationOperationsUseCase';
+// First-party data (0155): identity stitching, segments, LTV, WhatsApp marketing consent.
+import { StitchCustomerIdentityUseCase } from '../application/use-cases/first-party/StitchCustomerIdentityUseCase';
+import { ListIdentityConflictsUseCase, ResolveIdentityConflictUseCase } from '../application/use-cases/first-party/IdentityConflictUseCases';
+import { ManageSegmentsUseCase, MaterialiseSegmentsUseCase } from '../application/use-cases/first-party/SegmentUseCases';
+import { GetCustomerValueReportUseCase } from '../application/use-cases/first-party/GetCustomerValueReportUseCase';
+import { SegmentAudienceService } from '../application/use-cases/first-party/SegmentAudienceService';
+import { WhatsAppMarketingConsentUseCases } from '../application/use-cases/first-party/WhatsAppMarketingConsentUseCases';
+import { HmacIdentifierHasher, DrizzleAccountIdentityReader, PersonalisationConsentReader, AdvertisingRefusalReader, DrizzleConsentEvidenceRepository } from './first-party/FirstPartyAdapters';
+import { DrizzleIdentityConflictRepository, DrizzleIdentityMergeRepository, DrizzleOrderIdentityBackfillReader, orderLinkCoverage } from './first-party/DrizzleIdentityRepositories';
+import { DrizzleCustomerFactsReader, DrizzleCustomerContactReader } from './first-party/DrizzleCustomerFactsReader';
+import { DrizzleSegmentRepository } from './first-party/DrizzleSegmentRepository';
+import { TrafficExclusionStore } from './first-party/TrafficExclusionStore';
+// First-party data, part two (0157): Customer 360, next-best action from the real profile, privacy requests.
+import { GetCustomer360UseCase } from '../application/use-cases/first-party/Customer360UseCases';
+import { DecideNextBestActionUseCase } from '../application/use-cases/first-party/DecideNextBestActionUseCase';
+import { PrivacyRequestUseCases } from '../application/use-cases/first-party/PrivacyRequestUseCases';
+import { DrizzleCustomer360Reader } from './first-party/DrizzleCustomer360Reader';
+import { DrizzleNbaContextReader } from './first-party/DrizzleNbaContextReader';
+import { DrizzleConsentAnchorRepository, DrizzlePersonalDataEraser, DrizzlePersonalDataExporter, DrizzlePrivacyRequestRepository } from './first-party/DrizzlePrivacyRepositories';
+import { DrizzleConsentOperatingRepository as FirstPartyConsentRepository } from './consent/DrizzleConsentOperatingRepository';
 
 /**
  * Payment-attempt statuses the provider has already given a final answer for.
@@ -742,6 +764,8 @@ export class Registry {
   public readonly createAuditLogUseCase = new CreateAuditLogUseCase(this.auditRepo);
   /** AI Search Visibility (AEO/GEO) — migration 0131; see docs/ai-visibility/README.md. */
   public readonly aiVisibility = createAiVisibility(this.createAuditLogUseCase);
+  /** Attribution module (0156): order ↔ visit links, per-order channel credit, weekly channel report. */
+  public get channelAttribution() { return channelAttribution(); }
   // Advertising destinations (0138): server-side conversion APIs, token vault-encrypted.
   // Measurement delivery operations (0140/0141): queue, replay, quarantine, kill switch.
   /** Collector contract v2 (0141); the per-event durable write is the caller's tracking path. */
@@ -820,6 +844,13 @@ export class Registry {
 
   public readonly measurementOperations = new MeasurementOperationsUseCases(new DrizzleMeasurementOperationsRepository(), this.createAuditLogUseCase, new PgAttributionPort());
   public readonly advertising = new AdDestinationUseCases(new DrizzleAdDestinationRepository(), AD_PLATFORMS, vaultCipher(), this.createAuditLogUseCase);
+  // Advertising operations (0154): audiences, spend import, offline conversions, catalogue feeds, checklist.
+  public readonly advertisingOps = createAdvertisingOperations({
+    audit: this.createAuditLogUseCase, destinations: this.advertising, feedProducts: () => this.seoGrowthRepo.feedProducts(),
+    pricingRepo: this.pricingRepo, publicApiOrigin: env.publicApiBaseUrl,
+    // Owner-defined segments reach ad platforms only through the first-party port (consent per member, hashes only).
+    customSegments: () => ({ source: this.segmentAudienceSource, list: () => this.segmentRepo.list(false) }),
+  });
   public readonly paymentRepo = new DrizzlePaymentRepository();
   public readonly userRepo = new DrizzleUserRepository();
   public readonly addressRepo = new DrizzleAddressRepository();
@@ -975,7 +1006,7 @@ export class Registry {
   public readonly pesapalMeasurementMapper = new PesapalMeasurementMapper(this.paymentMeasurementRedactor);
 
   // Infrastructure Adapters
-  public readonly whatsappAdapter = new WhatsAppAdapter();
+  public readonly whatsappAdapter = new ZohoWhatsAppAdapter();
   public readonly zeptoMailAdapter = new ZeptoMailAdapter();
   public readonly smsAdapter = process.env.SMS_PROVIDER === 'pahappa_comms'
     ? new PahappaCommsSmsAdapter()
@@ -1292,10 +1323,45 @@ export class Registry {
   public readonly customerLifecycleRepo = new DrizzleCustomerLifecycleRepository();
   public readonly nbaDecisionRepo = new DrizzleNbaDecisionRepository();
   public readonly customerSignalReader = new DrizzleCustomerSignalReader();
-  public readonly resolveCustomerIdentityUseCase = new ResolveCustomerIdentityUseCase(this.customerProfileRepo, this.customerIdentityRepo, this.auditRepo);
+  public readonly identityConflictRepo = new DrizzleIdentityConflictRepository();
+  public readonly resolveCustomerIdentityUseCase = new ResolveCustomerIdentityUseCase(this.customerProfileRepo, this.customerIdentityRepo, this.auditRepo, this.identityConflictRepo);
   public readonly projectCustomerProfileUseCase = new ProjectCustomerProfileUseCase(this.customerProfileRepo, this.customerIdentityRepo, this.customerFeatureRepo, this.customerLifecycleRepo, this.customerSignalReader, this.auditRepo);
   public readonly generateNextBestActionUseCase = new GenerateNextBestActionUseCase(this.customerProfileRepo, this.nbaDecisionRepo, this.auditRepo);
   public readonly getCustomerDnaUseCase = new GetCustomerDnaUseCase(this.customerProfileRepo, this.customerIdentityRepo, this.customerFeatureRepo, this.customerLifecycleRepo, this.nbaDecisionRepo);
+
+  // First-party data (0155, docs/first-party/README.md). Identity resolution is
+  // switched ON: sign-in, registration, checkout and the nightly backfill call
+  // stitchCustomerIdentityUseCase (best-effort; never fails the caller).
+  public readonly identifierHasher = new HmacIdentifierHasher(env.identityHashPepper);
+  public readonly accountIdentityReader = new DrizzleAccountIdentityReader();
+  public readonly identityMergeRepo = new DrizzleIdentityMergeRepository();
+  public readonly stitchCustomerIdentityUseCase = new StitchCustomerIdentityUseCase(
+    this.resolveCustomerIdentityUseCase, this.customerProfileRepo, this.customerIdentityRepo, this.identityMergeRepo,
+    this.accountIdentityReader, this.identifierHasher, new PersonalisationConsentReader(), this.auditRepo,
+    new DrizzleConsentAnchorRepository(),
+  );
+  public readonly listIdentityConflictsUseCase = new ListIdentityConflictsUseCase(this.identityConflictRepo);
+  public readonly resolveIdentityConflictUseCase = new ResolveIdentityConflictUseCase(this.identityConflictRepo, this.customerIdentityRepo, this.identityMergeRepo, this.auditRepo);
+  public readonly segmentRepo = new DrizzleSegmentRepository();
+  public readonly customerFactsReader = new DrizzleCustomerFactsReader(this.identifierHasher);
+  public readonly manageSegmentsUseCase = new ManageSegmentsUseCase(this.segmentRepo, this.customerFactsReader, this.auditRepo);
+  public readonly materialiseSegmentsUseCase = new MaterialiseSegmentsUseCase(this.segmentRepo, this.customerFactsReader, new DrizzleOrderIdentityBackfillReader(), this.stitchCustomerIdentityUseCase);
+  public readonly getCustomerValueReportUseCase = new GetCustomerValueReportUseCase(this.customerFactsReader, this.segmentRepo, { orderLinkCoverage });
+  public readonly whatsAppMarketingConsentUseCases = new WhatsAppMarketingConsentUseCases(new FirstPartyConsentRepository(), new DrizzleConsentEvidenceRepository(), this.accountIdentityReader, this.identifierHasher);
+  /** THE segment → audience port (advertising audience sync, future messaging). */
+  public readonly segmentAudienceSource = new SegmentAudienceService(this.segmentRepo, new DrizzleCustomerContactReader(), new AdvertisingRefusalReader(), this.whatsAppMarketingConsentUseCases);
+  public readonly trafficExclusionStore = new TrafficExclusionStore();
+  /** 0157: ONE customer's unified profile (audited on every view). */
+  public readonly getCustomer360UseCase = new GetCustomer360UseCase(new DrizzleCustomer360Reader(this.identifierHasher), this.customerFactsReader, this.auditRepo);
+  /** 0157: next-best action from the real profile (replaces the placeholder context). */
+  public readonly decideNextBestActionUseCase = new DecideNextBestActionUseCase(
+    this.customerProfileRepo, this.customerFeatureRepo, this.customerLifecycleRepo, this.projectCustomerProfileUseCase,
+    new DrizzleNbaContextReader(this.whatsAppMarketingConsentUseCases), this.generateNextBestActionUseCase,
+  );
+  /** 0157: a customer's export / anonymise / delete requests. */
+  public readonly privacyRequestUseCases = new PrivacyRequestUseCases(
+    new DrizzlePrivacyRequestRepository(), new DrizzlePersonalDataExporter(this.identifierHasher), new DrizzlePersonalDataEraser(this.identifierHasher), this.auditRepo,
+  );
 
   // Decision Intelligence: evidence-first explainable operational insights.
   public readonly decisionEvidenceReader = new DrizzleDecisionEvidenceReader();

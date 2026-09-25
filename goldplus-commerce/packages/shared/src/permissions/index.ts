@@ -58,6 +58,12 @@ export const PERMISSIONS = {
   NBA_READ: 'nba.read',
   NBA_RECOMPUTE: 'nba.recompute',
   IDENTITY_REVIEW: 'identity.review',
+  // First-party data (0157). Seeing ONE customer's full profile (contact
+  // details, timeline, consents) is its own right, separate from reading
+  // aggregate customer intelligence, and every view is audited. Carrying out a
+  // customer's deletion or anonymisation request is a third, rarer right.
+  CUSTOMER_DATA_VIEW: 'customer_data.view',
+  PRIVACY_REQUESTS_MANAGE: 'privacy_requests.manage',
   DECISION_INTELLIGENCE_READ: 'decision_intelligence.read',
   DECISION_INTELLIGENCE_EVALUATE: 'decision_intelligence.evaluate',
   DECISION_INTELLIGENCE_ASSIGN: 'decision_intelligence.assign',
@@ -288,12 +294,13 @@ export const ROLE_PERMISSION_BASELINES: Record<GovernanceRole, readonly Permissi
   SUPPORT_OPERATOR: [
     P.ORDERS_READ, P.ORDERS_MANAGE, P.PAYMENTS_READ, P.PRODUCTS_READ, P.INVENTORY_READ, P.NOTIFICATIONS_READ,
     P.QUOTES_MANAGE, P.BATTERIES_READ, P.BATTERIES_DEMAND_MANAGE, P.IDENTITY_REVIEW, P.DELIVERY_CONFIG_READ,
-    P.REVIEWS_MODERATE, P.SURVEYS_READ, P.CUSTOMER_DNA_READ,
+    P.REVIEWS_MODERATE, P.SURVEYS_READ, P.CUSTOMER_DNA_READ, P.CUSTOMER_DATA_VIEW,
   ],
   LEGAL_REVIEWER: [P.LEGAL_READ, P.LEGAL_APPROVE],
   SECURITY_ADMIN: [
     P.AUTH_MANAGE, P.ROLES_MANAGE, P.PERMISSIONS_MANAGE, P.AUDIT_READ, P.AUDIT_EXPORT,
     P.FRAUD_READ, P.FRAUD_SIGNAL, P.FRAUD_ASSIGN, P.FRAUD_DECIDE, P.IDENTITY_REVIEW, P.SETTINGS_MANAGE,
+    P.CUSTOMER_DATA_VIEW, P.PRIVACY_REQUESTS_MANAGE,
   ],
   READ_ONLY_AUDITOR: READ_ONLY_SET,
 };

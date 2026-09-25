@@ -163,6 +163,10 @@ export class OutboxOtpSender implements IOtpSender {
         payload: {
           kind: 'phone_verification',
           message: `Your GoldPlus verification code is ${code}. It expires in 10 minutes.`,
+          // The same code the message already carries, as a value, so a WhatsApp
+          // authentication template can fill {{code}} without parsing the text.
+          code,
+          expiresInMinutes: 10,
           customerPhone: phoneE164,
           customerEmail: null,
         } as never,

@@ -1079,6 +1079,48 @@
       "when": 1790140000012,
       "tag": "0153_bulk_quote_lines",
       "breakpoints": true
+    },
+    {
+      "idx": 154,
+      "version": "5",
+      "when": 1790140000013,
+      "tag": "0154_advertising_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 155,
+      "version": "5",
+      "when": 1790140000014,
+      "tag": "0155_first_party_data",
+      "breakpoints": true
+    },
+    {
+      "idx": 156,
+      "version": "5",
+      "when": 1790140000015,
+      "tag": "0156_order_channel_attribution",
+      "breakpoints": true
+    },
+    {
+      "idx": 157,
+      "version": "5",
+      "when": 1790140000016,
+      "tag": "0157_first_party_privacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 158,
+      "version": "5",
+      "when": 1790140000017,
+      "tag": "0158_ad_audience_custom_segments",
+      "breakpoints": true
+    },
+    {
+      "idx": 159,
+      "version": "5",
+      "when": 1790140000018,
+      "tag": "0159_ad_audience_confirmation",
+      "breakpoints": true
     }
   ]
 }

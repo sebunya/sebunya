@@ -102,6 +102,7 @@ const checkedKind = values.kind || initialKind;
   <div class="container mx-auto px-4 lg:px-8 py-14">
     <div class="max-w-2xl mx-auto space-y-6">
       <FormFeedback status={status} message={message} reference={reference} />
+      {status === 'received' && reference && <span hidden data-lead-ref={reference}></span>}
       <Notice kind="info" title="How quotes work" message="Prices for large orders depend on the quantity and where you are. Send this form and our sales team will prepare a quote for you. A quote is an estimate, not a final bill." />
       <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
         <p class="text-sm font-bold text-gray-900">Need several different products?</p>
@@ -176,6 +177,12 @@ const checkedKind = values.kind || initialKind;
     </div>
   </div>
 </BaseLayout>
+
+<script>
+  // A sent quote request is a lead (advertising 0154).
+  import { recordQuoteLead } from '../lib/leadSignals';
+  recordQuoteLead();
+</script>
 
 <script>
   import { isValidEmail, isValidUgandanPhone } from '../lib/formValidation';

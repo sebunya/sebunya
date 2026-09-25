@@ -1,12 +1,19 @@
 import { CHECKOUT_SIDE_EFFECT_EVENT_TYPES } from '../../ports/ICheckoutSideEffectRecorder';
 import { IOutboxRepository } from '../../ports/IOutboxRepository';
 import { INotificationProvider, NotificationDispatchPayload, NotificationStatus } from '../../ports/INotificationProvider';
+import type { NotificationDispatchResult } from '../../ports/INotificationProvider';
 import { RecordNotificationAttemptUseCase } from '../notifications/RecordNotificationAttemptUseCase';
 
 export interface NotificationRoutingTarget {
   channel: string;
   provider: INotificationProvider;
   payload: NotificationDispatchPayload;
+  /**
+   * The channel to use INSTEAD when this one cannot deliver — WhatsApp first,
+   * SMS as the fallback. Tried only when the primary did not send and will not
+   * be retried usefully, so a customer never receives the same message on both.
+   */
+  fallback?: NotificationRoutingTarget;
 }
 
 export interface INotificationRouter {
@@ -25,6 +32,13 @@ export interface ProcessOutboxBatchResult {
 
 const BATCH_SIZE = 25;
 const MAX_ATTEMPTS = 8;
+/**
+ * A primary that keeps failing with a RETRYABLE error (rate limit, provider
+ * down) is retried this many times before the fallback is used, so a WhatsApp
+ * outage delays the message by minutes rather than dead-lettering it after
+ * eight attempts on a channel that never worked.
+ */
+const PRIMARY_RETRIES_BEFORE_FALLBACK = 2;
 const BACKOFF_BASE_SECONDS = 60;
 const MAX_BACKOFF_SECONDS = 3600; // Capped at 1 hour
 
@@ -128,43 +142,64 @@ export class ProcessOutboxBatchUseCase {
         sentNow = new Set(alreadySent);
         for (const target of targets) {
           const targetKey = outboxTargetKey(target);
-          if (alreadySent.has(targetKey)) {
+          if (alreadySent.has(targetKey) || (target.fallback && alreadySent.has(outboxTargetKey(target.fallback)))) {
             // Delivered on an earlier attempt: counts as sent, is not re-sent.
             hasSent = true;
             allTerminalNonRetryable = false;
             continue;
           }
-          let dispatchResult;
-          try {
-            dispatchResult = await target.provider.dispatch(target.payload);
-          } catch (err: any) {
-            dispatchResult = {
-              status: 'FAILED' as NotificationStatus,
-              providerCode: 'ADAPTER_THREW',
-              providerMessage: err.message || 'Unknown error during adapter dispatch.',
-            };
-          }
+          const dispatchAndRecord = async (t: NotificationRoutingTarget) => {
+            let r: NotificationDispatchResult;
+            try {
+              r = await t.provider.dispatch(t.payload);
+            } catch (err: any) {
+              r = {
+                status: 'FAILED' as NotificationStatus,
+                providerCode: 'ADAPTER_THREW',
+                providerMessage: err.message || 'Unknown error during adapter dispatch.',
+              };
+            }
+            // A failed attempt WRITE must never turn a delivered message into a
+            // retry: that is how one SMS was re-sent 299 times over nine days.
+            try {
+              await this.recordAttempt.execute({
+                channel: t.channel,
+                recipient: t.payload.recipient,
+                template: t.payload.template,
+                status: r.status,
+                providerCode: r.providerCode,
+                providerMessage: r.providerMessage,
+                relatedEntity: t.payload.relatedEntity,
+                relatedEntityId: t.payload.relatedEntityId,
+              });
+            } catch {
+              result.unrecordedAttempts = (result.unrecordedAttempts ?? 0) + 1;
+            }
+            return r;
+          };
 
-          // A failed attempt WRITE must never turn a delivered message into a
-          // retry: that is how one SMS was re-sent 299 times over nine days.
-          try {
-            await this.recordAttempt.execute({
-              channel: target.channel,
-              recipient: target.payload.recipient,
-              template: target.payload.template,
-              status: dispatchResult.status,
-              providerCode: dispatchResult.providerCode,
-              providerMessage: dispatchResult.providerMessage,
-              relatedEntity: target.payload.relatedEntity,
-              relatedEntityId: target.payload.relatedEntityId,
-            });
-          } catch {
-            result.unrecordedAttempts = (result.unrecordedAttempts ?? 0) + 1;
+          let dispatchResult = await dispatchAndRecord(target);
+          let deliveredKey = targetKey;
+
+          // Fall back only when the primary did NOT send (SENT and DRY_RUN are
+          // both outcomes: a second channel would duplicate the message) and
+          // retrying it cannot help, or has already been tried enough.
+          if (target.fallback) {
+            const s = dispatchResult.status;
+            const primaryGaveUp =
+              s === 'NOT_CONFIGURED' ||
+              s === 'DISABLED' ||
+              (s === 'FAILED' &&
+                (dispatchResult.retryable === false || event.attemptCount >= PRIMARY_RETRIES_BEFORE_FALLBACK));
+            if (primaryGaveUp) {
+              dispatchResult = await dispatchAndRecord(target.fallback);
+              deliveredKey = outboxTargetKey(target.fallback);
+            }
           }
 
           if (dispatchResult.status === 'SENT') {
             hasSent = true;
-            sentNow.add(targetKey);
+            sentNow.add(deliveredKey);
             allTerminalNonRetryable = false;
           } else if (dispatchResult.status === 'FAILED') {
             hasFailed = true;

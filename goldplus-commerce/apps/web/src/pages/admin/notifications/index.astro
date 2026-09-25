@@ -57,6 +57,49 @@ try {
   fetchError = `Network failure loading notifications.`;
 }
 
+interface ChannelStatusDto {
+  channel: 'email' | 'sms' | 'whatsapp';
+  provider: string;
+  state: 'NOT_CONFIGURED' | 'CONFIGURED_OFF' | 'CONFIGURED_DRY_RUN' | 'LIVE' | 'UNSAFE';
+  guard: string;
+  keyedTemplates?: string[];
+  mappedTemplates?: string[];
+}
+
+// Read from the API, which derives each state from the real flags. Never
+// hand-written here: if the read fails, the panel says so instead of guessing.
+let channels: ChannelStatusDto[] = [];
+let channelError: string | null = null;
+try {
+  const res = await fetch(`${apiBase}/admin/notifications/channel-status`, {
+    headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' },
+  });
+  if (!res.ok) {
+    channelError = `API returned HTTP ${res.status}`;
+  } else {
+    const json = await res.json() as ApiEnvelope<ChannelStatusDto[]>;
+    if (json.success && Array.isArray(json.data)) channels = json.data;
+    else channelError = json.error?.message ?? 'Invalid channel status.';
+  }
+} catch {
+  channelError = 'Network failure loading channel status.';
+}
+
+const channelStateLabel: Record<ChannelStatusDto['state'], string> = {
+  NOT_CONFIGURED: 'Not configured',
+  CONFIGURED_OFF: 'Configured (switched off)',
+  CONFIGURED_DRY_RUN: 'Configured (dry run)',
+  LIVE: 'Live',
+  UNSAFE: 'Unsafe configuration',
+};
+const channelStateClass: Record<ChannelStatusDto['state'], string> = {
+  NOT_CONFIGURED: 'bg-yellow-50 text-yellow-700 border-yellow-100',
+  CONFIGURED_OFF: 'bg-gray-50 text-gray-700 border-gray-100',
+  CONFIGURED_DRY_RUN: 'bg-blue-50 text-blue-700 border-blue-100',
+  LIVE: 'bg-green-50 text-green-700 border-green-100',
+  UNSAFE: 'bg-red-50 text-red-700 border-red-100',
+};
+
 const sentCount = attempts.filter(a => a.status === 'SENT').length;
 const notConfigCount = attempts.filter(a => a.status === 'NOT_CONFIGURED' || a.status === 'DISABLED').length;
 const failedCount = attempts.filter(a => a.status === 'FAILED').length;
@@ -93,9 +136,34 @@ const statusToBadgeKind = {
     <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
       <div>
         <h2 class="text-2xl font-black text-brand-dark tracking-tight">Message Deliverability</h2>
-        <p class="text-sm text-gray-500 mt-1">Truthful ledger of triggered SMS and transactional email deliveries.</p>
+        <p class="text-sm text-gray-500 mt-1">Truthful ledger of triggered SMS, WhatsApp and transactional email deliveries.</p>
       </div>
     </div>
+
+    <section class="mb-8" aria-labelledby="channel-status-heading">
+      <h3 id="channel-status-heading" class="text-sm font-black text-brand-dark mb-3">Channels</h3>
+      {channelError ? (
+        <Notice kind="not-configured" title="Channel status could not be read" message={channelError} />
+      ) : (
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {channels.map((ch) => (
+            <div class="bg-white rounded-2xl p-5 border border-gray-200 shadow-sm">
+              <p class="text-[10px] font-black uppercase tracking-widest text-gray-500">{ch.channel}</p>
+              <p class="text-sm font-bold text-brand-dark mt-1">{ch.provider}</p>
+              <span class={`inline-block mt-2 px-2 py-0.5 rounded text-[10px] font-black border ${channelStateClass[ch.state]}`}>
+                {channelStateLabel[ch.state]}
+              </span>
+              <p class="text-[10px] text-gray-500 mt-2 font-mono">Decided by: {ch.guard}</p>
+              {ch.channel === 'whatsapp' && ch.mappedTemplates && (
+                <p class="text-[11px] text-gray-600 mt-1">
+                  {(ch.keyedTemplates ?? []).length} of {ch.mappedTemplates.length} WhatsApp templates have a Zoho template key.
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
 
     {fetchError && (
       <div class="mb-8">

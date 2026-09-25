@@ -12,6 +12,7 @@ import {
 import { ApiResponse, MeDto, OrderSummaryDto, OrderDetailDto, AddressDto } from '@goldplus/shared';
 import { clientIp } from '../clientAddress';
 import { soonestUnspentExpiry } from '../../../domain/loyalty/LoyaltyLedger';
+import { stitchInBackground } from '../../../infrastructure/first-party/stitchInBackground';
 
 const routes = new Hono<{ Variables: { userId: string; userEmail: string } }>();
 routes.use('*', customerSessionMiddleware);
@@ -288,6 +289,9 @@ routes.post('/phone/verify', async (c) => {
   // Gamification (0087): a verified phone earns once (rule-gated) and awards
   // the Verified Buyer badge. Never fails the verification itself.
   const phoneEarn = await registry.earnForPhoneVerificationUseCase.execute({ userId }).catch(() => null);
+  // First-party identity (0157): a freshly verified phone is the proof that
+  // links this account to guest orders placed with the same number. Never blocks.
+  stitchInBackground({ moment: 'PHONE_VERIFIED', accountUserId: userId });
   return c.json({
     success: true,
     data: {

@@ -15,6 +15,7 @@ import {
   verifyIdToken,
 } from '../../../infrastructure/identity/OidcProviders';
 import { ResolveSocialIdentityUseCase } from '../../../application/use-cases/identity/ResolveSocialIdentityUseCase';
+import { stitchInBackground } from '../../../infrastructure/first-party/stitchInBackground';
 
 /**
  * Social sign-in — the cryptographic half (0106).
@@ -222,6 +223,8 @@ routes.post('/:provider/exchange', async (c) => {
 
   const ttlSeconds = 60 * 60 * 24 * 7;
   const token = await registry.tokenSigner.sign({ subject: user.id, email: user.email, ttlSeconds });
+  // 0155: the provider verified this email only when it says so.
+  stitchInBackground({ moment: 'SOCIAL_SIGN_IN', accountUserId: user.id, accountEmailVerified: verified.identity.emailVerified === true });
 
   await registry.createAuditLogUseCase
     .execute({

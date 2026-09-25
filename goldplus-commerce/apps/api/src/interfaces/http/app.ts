@@ -28,6 +28,7 @@ import adminMediaImportsRoutes from './routes/admin/media-imports';
 import adminProductCostsRoutes from './routes/admin/product-costs';
 import adminAiVisibilityRoutes from './routes/admin/ai-visibility';
 import adminAdvertisingRoutes from './routes/admin/advertising';
+import adminAttributionRoutes from './routes/admin/attribution';
 import adminMeasurementDeliveryRoutes from './routes/admin/measurement-delivery';
 import advertisingRoutes from './routes/advertising';
 import adminHeroRoutes from './routes/admin/hero';
@@ -53,6 +54,9 @@ import authSocialRoutes from './routes/auth-social';
 import adminNotificationsRoutes from './routes/admin/notifications';
 import adminRecommendationsRoutes from './routes/admin/recommendations';
 import adminCustomerDnaRoutes from './routes/admin/customer-dna';
+import adminFirstPartyRoutes from './routes/admin/first-party';
+import accountMarketingConsentRoutes from './routes/account-marketing-consent';
+import accountPrivacyRoutes from './routes/account-privacy';
 import adminDecisionIntelligenceRoutes from './routes/admin/decision-intelligence';
 import adminQueuesRoutes from './routes/admin/queues';
 import adminDeploymentRoutes from './routes/admin/deployment';
@@ -238,6 +242,7 @@ app.route('/admin/media-imports', adminMediaImportsRoutes);
 app.route('/admin/product-costs', adminProductCostsRoutes);
 app.route('/admin/ai-visibility', adminAiVisibilityRoutes);
 app.route('/admin/advertising', adminAdvertisingRoutes);
+app.route('/admin/attribution', adminAttributionRoutes);
 app.route('/admin/measurement-delivery', adminMeasurementDeliveryRoutes);
 app.route('/advertising', advertisingRoutes);
 app.route('/admin/hero', adminHeroRoutes);
@@ -251,6 +256,7 @@ app.route('/admin/storefront-copy', adminStorefrontCopyRoutes);
 app.route('/admin/notifications', adminNotificationsRoutes);
 app.route('/admin/recommendations', adminRecommendationsRoutes);
 app.route('/admin/customer-dna', adminCustomerDnaRoutes);
+app.route('/admin/first-party', adminFirstPartyRoutes);
 app.route('/admin/decision-intelligence', adminDecisionIntelligenceRoutes);
 app.route('/admin/queues', adminQueuesRoutes);
 app.route('/admin/deployment', adminDeploymentRoutes);
@@ -307,6 +313,8 @@ app.route('/admin/locations', adminLocationRoutes);
 app.route('/admin/delivery', adminDeliveryRoutes);
 app.route('/admin/payments', adminPaymentsRoutes);
 app.route('/account/consent-operating', consentOperatingRoutes);
+app.route('/account/marketing-consent', accountMarketingConsentRoutes);
+app.route('/account/privacy', accountPrivacyRoutes);
 app.route('/admin/consent-operating', adminConsentOperatingRoutes);
 app.route('/api/admin/consent/operations', adminConsentOperationsRoutes);
 app.route('/admin/automation', adminAutomationRoutes);
@@ -377,6 +385,7 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/admin/product-costs',
   '/admin/ai-visibility',
   '/admin/advertising',
+  '/admin/attribution',
   '/admin/measurement-delivery',
   '/advertising',
   '/account',
@@ -398,6 +407,9 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/admin/controlled-activation/live-canaries',
   '/admin/copy-quality',
   '/admin/customer-dna',
+  '/admin/first-party',
+  '/account/marketing-consent',
+  '/account/privacy',
   '/admin/decision-intelligence',
   '/admin/delivery-zones',
   '/admin/deployment',

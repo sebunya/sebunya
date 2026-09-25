@@ -1,10 +1,13 @@
 import type { AdDestinationRepository, AdDestinationRow, SecretCipher } from '../../ports/Advertising';
 import type { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
+import { cleanSelection } from '../../../domain/advertising/OptimisationEvents';
 
 export interface AdPlatformInfo {
   key: string; name: string; secretLabel: string; secretHint?: string; unavailable?: string;
   fields: Array<{ key: string; label: string; pattern: RegExp; hint: string; optional?: boolean }>;
   events: Record<string, string>;
+  /** Documents a test channel (0154 Test mode). */
+  testable?: boolean;
 }
 type R<T> = { ok: true; value: T } | { ok: false; code: 'NOT_FOUND' | 'BAD_INPUT' | 'NOT_CONFIGURED'; message: string };
 
@@ -21,22 +24,23 @@ export class AdDestinationUseCases {
     private readonly audit: CreateAuditLogUseCase,
   ) {}
 
-  async list(): Promise<Array<AdPlatformInfo & { state: 'LIVE' | 'READY_OFF' | 'NOT_CONFIGURED' | 'NOT_AVAILABLE'; row: AdDestinationRow | null }>> {
+  async list(): Promise<Array<AdPlatformInfo & { state: 'LIVE' | 'TEST' | 'READY_OFF' | 'NOT_CONFIGURED' | 'NOT_AVAILABLE'; row: AdDestinationRow | null }>> {
     const rows = new Map((await this.repo.list()).map((r) => [r.platform, r]));
     return this.platforms.map((p) => {
       const row = rows.get(p.key) ?? null;
       const complete = !p.unavailable && (!p.secretLabel || !!row?.hasSecret) && p.fields.every((f) => (f.optional && !row?.config?.[f.key]) || f.pattern.test(row?.config?.[f.key] ?? ''));
-      const state = p.unavailable ? 'NOT_AVAILABLE' : !complete ? 'NOT_CONFIGURED' : row?.enabled ? 'LIVE' : 'READY_OFF';
-      return { ...p, state, row };
+      const state = p.unavailable ? 'NOT_AVAILABLE' : !complete ? 'NOT_CONFIGURED' : row?.enabled ? (row.mode === 'test' ? 'TEST' : 'LIVE') : 'READY_OFF';
+      return { ...p, state, row } as AdPlatformInfo & { state: 'LIVE' | 'TEST' | 'READY_OFF' | 'NOT_CONFIGURED' | 'NOT_AVAILABLE'; row: AdDestinationRow | null };
     });
   }
 
   /** Names of platforms actually receiving data (for the privacy page). */
   async recipients(): Promise<string[]> {
-    return (await this.list()).filter((p) => p.state === 'LIVE').map((p) => p.name);
+    // Test mode sends real shoppers' (hashed) data too: a recipient all the same.
+    return (await this.list()).filter((p) => p.state === 'LIVE' || p.state === 'TEST').map((p) => p.name);
   }
 
-  async configure(actorId: string | null, key: string, input: { config?: Record<string, unknown>; secret?: string; enabled?: boolean; removeSecret?: boolean }): Promise<R<AdDestinationRow>> {
+  async configure(actorId: string | null, key: string, input: { config?: Record<string, unknown>; secret?: string; enabled?: boolean; removeSecret?: boolean; mode?: 'live' | 'test'; eventSelection?: unknown }): Promise<R<AdDestinationRow>> {
     const p = this.platforms.find((x) => x.key === key);
     if (!p) return { ok: false, code: 'NOT_FOUND', message: 'Unknown advertising platform.' };
     if (p.unavailable) return { ok: false, code: 'NOT_CONFIGURED', message: `Not configured: ${p.unavailable}` };
@@ -74,10 +78,16 @@ export class AdDestinationUseCases {
       return { ok: true, value: row };
     }
     const willBeComplete = p.fields.every((f) => (f.optional && !config[f.key]) || f.pattern.test(config[f.key] ?? '')) && (!p.secretLabel || !!secretEnc || !!current?.hasSecret);
+    // 0154: Test mode only where the platform documents a test channel, and
+    // with the code it needs; otherwise a "test" would count as a real sale.
+    if (input.mode !== undefined && input.mode !== 'live' && input.mode !== 'test') return { ok: false, code: 'BAD_INPUT', message: 'Mode is live or test.' };
+    if (input.mode === 'test' && !p.testable) return { ok: false, code: 'BAD_INPUT', message: `${p.name} has no documented test channel here; it can only be live or off.` };
+    if (input.mode === 'test' && p.fields.some((f) => f.key === 'testEventCode') && !config.testEventCode) return { ok: false, code: 'BAD_INPUT', message: 'Enter the test event code from the platform\'s Test events screen before switching to Test mode.' };
+    const eventSelection = input.eventSelection === undefined ? undefined : input.eventSelection === null ? null : cleanSelection(input.eventSelection, Object.keys(p.events));
     if (input.enabled === true && !willBeComplete) return { ok: false, code: 'BAD_INPUT', message: `Enter the ${p.fields.filter((f) => !f.optional).map((f) => f.label).join(', ')}${p.secretLabel ? ` and the ${p.secretLabel}` : ''} before switching ${p.name} on.` };
-    const row = await this.repo.save(key, { enabled: input.enabled, config, secretEnc, secretMask, updatedBy: actorId });
+    const row = await this.repo.save(key, { enabled: input.enabled, config, secretEnc, secretMask, updatedBy: actorId, mode: input.mode, eventSelection });
     await this.audit.execute({ actorId, action: 'AD_DESTINATION_CONFIGURED', entity: 'ad_destination', entityId: key,
-      newState: { enabled: row.enabled, config, secretChanged: secretEnc !== undefined } } as never);
+      newState: { enabled: row.enabled, config, secretChanged: secretEnc !== undefined, mode: row.mode, eventSelection: row.eventSelection } } as never);
     return { ok: true, value: row };
   }
 }

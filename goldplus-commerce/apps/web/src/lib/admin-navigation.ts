@@ -169,6 +169,34 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Canonical customer profiles, lifecycle and next-best action.'
   },
   {
+    label: 'Customer segments',
+    href: '/admin/segments',
+    group: 'Merchandising',
+    status: 'working',
+    description: 'Rule-based customer groups, recalculated nightly; consent applied by whoever uses them.'
+  },
+  {
+    label: 'Customer value',
+    href: '/admin/customer-value',
+    group: 'Merchandising',
+    status: 'read_only',
+    description: 'Lifetime value, repeat purchase, time to second order and cohort retention.'
+  },
+  {
+    label: 'Identity conflicts',
+    href: '/admin/identity-conflicts',
+    group: 'Merchandising',
+    status: 'working',
+    description: 'Phones, emails or browsers two customer profiles both claim, for a person to resolve.'
+  },
+  {
+    label: 'Privacy requests',
+    href: '/admin/privacy-requests',
+    group: 'Merchandising',
+    status: 'working',
+    description: 'Customers\' requests to remove their details from past orders or delete their account, carried out or declined by a person.'
+  },
+  {
     label: 'Decision Intelligence',
     href: '/admin/decision-intelligence',
     group: 'Merchandising',
@@ -213,11 +241,39 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Where confirmed sales came from: rule-based, Markov and Shapley side by side, computed nightly, with plain "not enough data" states.',
   },
   {
+    label: 'Channel report',
+    href: '/admin/measurement/channel-report',
+    group: 'Measurement',
+    status: 'working',
+    description: 'Weekly sales, revenue, spend, ROAS and cost per order by channel (ads, creators, promo codes, WhatsApp, what customers said), with a model switcher and CSV.',
+  },
+  {
     label: 'Advertising platforms',
     href: '/admin/advertising',
     group: 'Measurement',
     status: 'working',
-    description: 'Server-side conversions to Meta, TikTok, Pinterest, Snapchat and LinkedIn: status, IDs and write-only tokens.'
+    description: 'Connection checklist per platform, server-side conversions (Test or Live), optimisation events, catalogue feed URLs, write-only tokens.'
+  },
+  {
+    label: 'Ad audiences',
+    href: '/admin/advertising/audiences',
+    group: 'Measurement',
+    status: 'working',
+    description: 'Past buyers, recent buyers (exclusion) and a high-value seed for Google, Meta and TikTok: consent-gated, hashed, dry-run counts.'
+  },
+  {
+    label: 'Ad spend',
+    href: '/admin/advertising/spend',
+    group: 'Measurement',
+    status: 'working',
+    description: 'Daily spend, clicks and impressions per campaign from the Google Ads and Meta APIs, or a CSV upload.'
+  },
+  {
+    label: 'Offline sales for ads',
+    href: '/admin/advertising/offline',
+    group: 'Measurement',
+    status: 'working',
+    description: 'COD deliveries and phone/WhatsApp sales sent as offline conversions, deduplicated against online purchases.'
   },
   {
     label: 'Consent Audit',

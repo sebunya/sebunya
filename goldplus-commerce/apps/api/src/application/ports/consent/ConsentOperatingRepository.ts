@@ -18,6 +18,8 @@ export const CONSENT_PURPOSE_KEYS = [
   'utilisation_aware_offers',
   'research_feedback_surveys',
   'account_security_notifications',
+  // 0155: WhatsApp offers — its own purpose, never implied by any other.
+  'whatsapp_marketing',
 ] as const;
 
 export const CONSENT_CHANNEL_KEYS = [

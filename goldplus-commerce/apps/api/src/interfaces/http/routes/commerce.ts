@@ -29,6 +29,7 @@ import { GetMyOrderUseCase } from '../../../application/use-cases/orders/Custome
 import { RequestOrderFollowUpUseCase } from '../../../application/use-cases/orders/RequestOrderFollowUpUseCase';
 import { OpenSupportTicketUseCase } from '../../../application/use-cases/governance/OpenSupportTicketUseCase';
 import { CreateAuditLogUseCase } from '../../../application/use-cases/audit/CreateAuditLogUseCase';
+import { stitchInBackground } from '../../../infrastructure/first-party/stitchInBackground';
 
 // Slice 3B: server-authoritative checkout input. Client prices/sku/names are
 // deliberately absent — only productId + quantity are trusted; extra fields
@@ -99,6 +100,9 @@ const checkoutBodySchema = z.object({
   paymentMethod: z.enum(['pesapal', 'offline']).nullish(),
   cartId: z.string().uuid().nullish(),
   cartVersion: z.number().int().min(1).nullish(),
+  // "How did you hear about us?" (optional). A string, not an enum: an unknown or
+  // stale answer is dropped by the attribution module, never a refused checkout.
+  heardAbout: z.string().trim().max(40).nullish(),
   // Marketing attribution (last-touch UTM + referrer). Optional, never trusted for
   // pricing — recorded best-effort after the order for reporting only.
   attribution: z
@@ -714,10 +718,33 @@ routes.post('/orders/create', async (c) => {
     });
 
     // Best-effort marketing attribution — recorded AFTER the order, never affects it.
-    if (body.attribution && (outcome.order as any)?.id) {
-      void registry.orderAttributionRepo
-        .record({ orderId: (outcome.order as any).id, orderNumber: (outcome.order as any).orderNumber ?? null, ...body.attribution })
-        .catch(() => undefined);
+    // Then the attribution module (0156) links the order to its visitor's recorded
+    // visits, files the optional "How did you hear about us?" answer, and credits
+    // the order under each model. Same contract: a failure never reaches the order.
+    const createdOrderId = (outcome.order as any)?.id as string | undefined;
+    if (createdOrderId) {
+      const recorded = body.attribution
+        ? registry.orderAttributionRepo
+          .record({ orderId: createdOrderId, orderNumber: (outcome.order as any).orderNumber ?? null, ...body.attribution })
+          .catch(() => undefined)
+        : Promise.resolve();
+      void recorded
+        .then(() => registry.channelAttribution.recordCheckout.execute({ orderId: createdOrderId, heardAbout: body.heardAbout ?? null }))
+        .catch((err: unknown) => logger.warn({ err, orderId: createdOrderId }, 'ORDER_CHANNEL_ATTRIBUTION_FAILED'));
+    }
+
+    // 0155: identity resolution at checkout — the order, its account (if signed
+    // in), the contact typed here and the visitor ids. Fire-and-forget.
+    if ((outcome.order as any)?.id && !outcome.idempotentReplay) {
+      stitchInBackground({
+        moment: 'ORDER_PLACED',
+        accountUserId: (outcome.order as any).userId ?? null,
+        orderId: (outcome.order as any).id,
+        contactEmail: body.customerDetails.email ?? null,
+        contactPhone: body.customerDetails.phone ?? null,
+        experienceProfileId: checkoutProfileId,
+        fpClientId: body.attribution?.fpClientId ?? null,
+      });
     }
 
     // COD purchases: order_confirmed (approved_cod) is appended in the order's own

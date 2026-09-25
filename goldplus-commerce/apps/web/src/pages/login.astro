@@ -80,7 +80,9 @@ if (Astro.request.method === 'POST') {
           try {
             await fetch(`${apiBase}/recommendations/profile/link`, {
               method: 'POST',
-              headers: { Authorization: `Bearer ${json.data.token}`, 'x-gp-visit': rotatedToken },
+              // 0155: the analytics visitor id this server set, so the API can
+              // link it to the customer (within their personalisation choice).
+              headers: { Authorization: `Bearer ${json.data.token}`, 'x-gp-visit': rotatedToken, ...((() => { const fp = Astro.cookies.get('_fp_cid')?.value; return fp && /^fp\.\d+\.[0-9a-f-]{36}$/.test(fp) ? { 'x-gp-fpcid': fp } : {}; })()) },
               signal: AbortSignal.timeout(3000),
             });
           } catch {

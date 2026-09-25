@@ -11,7 +11,7 @@ import type { CanonicalTelemetryEvent } from '@goldplus/shared';
  * The rest are listed with the honest reason they are not (never simulated).
  */
 
-export type AdEventName = 'view_item' | 'add_to_cart' | 'begin_checkout' | 'add_payment_info' | 'purchase';
+export type AdEventName = 'view_item' | 'add_to_cart' | 'begin_checkout' | 'add_payment_info' | 'generate_lead' | 'purchase';
 export interface AdRequest { url: string; headers: Record<string, string>; body?: unknown; method?: 'POST' | 'GET' }
 export interface AdPlatformDef {
   key: string;
@@ -30,7 +30,19 @@ export interface AdPlatformDef {
   build?: (e: CanonicalTelemetryEvent, cfg: Record<string, string>, secret: string) => AdRequest | null;
   /** When not implementable yet: why (shown as-is in admin). */
   unavailable?: string;
+  /** The platform documents a test channel (test event code / validate-only) and the builder uses it. */
+  testable?: boolean;
 }
+
+/**
+ * 0154 test mode: the repository puts `_test: '1'` in the config of a
+ * destination in Test mode. A platform whose test channel needs a code sends
+ * nothing without one (a "test" that counted as real would not be a test).
+ */
+const inTest = (cfg: Record<string, string>) => cfg._test === '1';
+const TEST_CODE_FIELD = (where: string) => ({ key: 'testEventCode', label: 'Test event code (Test mode only)', pattern: /^[A-Za-z0-9]{4,40}$/, hint: where, optional: true });
+/** Lead method carried by a generate_lead event (WhatsApp click or quote request). */
+const leadMethod = (e: CanonicalTelemetryEvent) => (e as { lead?: { method?: string } }).lead?.method;
 
 /**
  * API versions. Meta supports a Graph version ~2 years (v23.0: May 2025).
@@ -152,17 +164,23 @@ function postback(key: string, name: string, where: string): AdPlatformDef {
 
 export const AD_PLATFORMS: AdPlatformDef[] = [
   {
-    key: 'meta', name: 'Meta (Facebook, Instagram, WhatsApp ads)',
-    fields: [{ key: 'datasetId', label: 'Dataset (pixel) ID', pattern: /^\d{10,20}$/, hint: 'Events Manager > Datasets' }],
+    key: 'meta', name: 'Meta (Facebook, Instagram, WhatsApp ads)', testable: true,
+    fields: [{ key: 'datasetId', label: 'Dataset (pixel) ID', pattern: /^\d{10,20}$/, hint: 'Events Manager > Datasets' },
+      TEST_CODE_FIELD('Events Manager > your dataset > Test events: the TEST… code')],
     secretLabel: 'Conversions API access token',
-    events: { view_item: 'ViewContent', add_to_cart: 'AddToCart', begin_checkout: 'InitiateCheckout', add_payment_info: 'AddPaymentInfo', purchase: 'Purchase' },
+    // generate_lead: a quote request (the customer submitted their details) is a
+    // Lead; a WhatsApp chat tap is a Contact (Meta standard events).
+    events: { view_item: 'ViewContent', add_to_cart: 'AddToCart', begin_checkout: 'InitiateCheckout', add_payment_info: 'AddPaymentInfo', generate_lead: 'Lead', purchase: 'Purchase' },
     build(e, cfg, token) {
-      const name = this.events[e.event_name as AdEventName]; if (!name) return null;
+      const mapped = this.events[e.event_name as AdEventName]; if (!mapped) return null;
+      const name = e.event_name === 'generate_lead' ? (leadMethod(e) === 'quote_request' ? 'Lead' : 'Contact') : mapped;
+      if (inTest(cfg) && !cfg.testEventCode) return null;
       const ud = u(e);
       return {
-        url: `https://graph.facebook.com/${META_GRAPH_VERSION}/${cfg.datasetId}/events?access_token=${encodeURIComponent(token)}`,
-        headers: { 'content-type': 'application/json' },
-        body: { data: [{
+        // The token travels in the Authorization header, never in the URL (proxy and access logs keep URLs).
+        url: `https://graph.facebook.com/${META_GRAPH_VERSION}/${cfg.datasetId}/events`,
+        headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+        body: { ...(inTest(cfg) ? { test_event_code: cfg.testEventCode } : {}), data: [{
           event_name: name, event_time: e.event_time, event_id: e.event_id, action_source: 'website',
           event_source_url: e.page_location,
           user_data: { em: ud.hashed_email ? [ud.hashed_email] : undefined, ph: ud.hashed_phone ? [ud.hashed_phone] : undefined,
@@ -174,17 +192,21 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
     },
   },
   {
-    key: 'tiktok', name: 'TikTok',
-    fields: [{ key: 'pixelCode', label: 'Pixel code', pattern: /^[A-Z0-9]{10,30}$/, hint: 'TikTok Events Manager > Web events' }],
+    key: 'tiktok', name: 'TikTok', testable: true,
+    fields: [{ key: 'pixelCode', label: 'Pixel code', pattern: /^[A-Z0-9]{10,30}$/, hint: 'TikTok Events Manager > Web events' },
+      TEST_CODE_FIELD('TikTok Events Manager > your pixel > Test events: the test event code')],
     secretLabel: 'Events API access token',
-    events: { view_item: 'ViewContent', add_to_cart: 'AddToCart', begin_checkout: 'InitiateCheckout', add_payment_info: 'AddPaymentInfo', purchase: 'CompletePayment' },
+    // generate_lead: a WhatsApp click is a Contact, a quote request a SubmitForm (TikTok standard events).
+    events: { view_item: 'ViewContent', add_to_cart: 'AddToCart', begin_checkout: 'InitiateCheckout', add_payment_info: 'AddPaymentInfo', generate_lead: 'Contact', purchase: 'CompletePayment' },
     build(e, cfg, token) {
-      const name = this.events[e.event_name as AdEventName]; if (!name) return null;
+      const mapped = this.events[e.event_name as AdEventName]; if (!mapped) return null;
+      const name = e.event_name === 'generate_lead' && leadMethod(e) === 'quote_request' ? 'SubmitForm' : mapped;
+      if (inTest(cfg) && !cfg.testEventCode) return null;
       const ud = u(e);
       return {
         url: 'https://business-api.tiktok.com/open_api/v1.3/event/track/',
         headers: { 'content-type': 'application/json', 'Access-Token': token },
-        body: { event_source: 'web', event_source_id: cfg.pixelCode, data: [{
+        body: { event_source: 'web', event_source_id: cfg.pixelCode, ...(inTest(cfg) ? { test_event_code: cfg.testEventCode } : {}), data: [{
           event: name, event_time: e.event_time, event_id: e.event_id,
           user: { email: ud.hashed_email, phone: ud.hashed_phone_plus, external_id: extId(e), ip: ud.ip_address, user_agent: ud.user_agent, ttclid: ud.ttclid },
           page: { url: e.page_location, referrer: e.page_referrer },
@@ -195,15 +217,16 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
     },
   },
   {
-    key: 'pinterest', name: 'Pinterest',
+    key: 'pinterest', name: 'Pinterest', testable: true,
     fields: [{ key: 'adAccountId', label: 'Ad account ID', pattern: /^\d{6,20}$/, hint: 'Pinterest Ads > account settings' }],
     secretLabel: 'Conversions access token',
-    events: { view_item: 'page_visit', add_to_cart: 'add_to_cart', purchase: 'checkout' },
+    events: { view_item: 'page_visit', add_to_cart: 'add_to_cart', generate_lead: 'lead', purchase: 'checkout' },
     build(e, cfg, token) {
       const name = this.events[e.event_name as AdEventName]; if (!name) return null;
       const ud = u(e);
       return {
-        url: `https://api.pinterest.com/v5/ad_accounts/${cfg.adAccountId}/events`,
+        // test=true: Pinterest validates the events and does not record them.
+        url: `https://api.pinterest.com/v5/ad_accounts/${cfg.adAccountId}/events${inTest(cfg) ? '?test=true' : ''}`,
         headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
         body: { data: [{
           event_name: name, action_source: 'web', event_time: e.event_time, event_id: e.event_id, event_source_url: e.page_location,
@@ -254,7 +277,7 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
     },
   },
   {
-    key: 'google_ads', name: 'Google Ads (Search, Shopping, YouTube, PMax)',
+    key: 'google_ads', name: 'Google Ads (Search, Shopping, YouTube, PMax)', testable: true,
     fields: [
       { key: 'customerId', label: 'Customer ID (10 digits, no dashes)', pattern: /^\d{10}$/, hint: 'Google Ads, top right' },
       { key: 'conversionActionId', label: 'Conversion action ID', pattern: /^\d{4,20}$/, hint: 'Must be an IMPORT action: Goals > Conversions > New > Import > "Conversions from clicks" (ctId in its URL). A website-tag action is refused. For sales without a click id, turn on "Enhanced conversions for leads".' },
@@ -282,7 +305,8 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
       return {
         url: `https://googleads.googleapis.com/${v}/customers/${cfg.customerId}:uploadClickConversions`,
         headers: { 'content-type': 'application/json', ...(cfg.loginCustomerId ? { 'login-customer-id': cfg.loginCustomerId } : {}) },
-        body: { partialFailure: true, conversions: [{
+        // validateOnly: Google checks the upload and records nothing (Test mode).
+        body: { partialFailure: true, ...(inTest(cfg) ? { validateOnly: true } : {}), conversions: [{
           ...(ud.gclid ? { gclid: ud.gclid } : ud.gbraid ? { gbraid: ud.gbraid } : ud.wbraid ? { wbraid: ud.wbraid } : {}),
           conversionAction: `customers/${cfg.customerId}/conversionActions/${cfg.conversionActionId}`,
           conversionDateTime: t, conversionValue: value(e), currencyCode: e.ecommerce?.currency ?? 'UGX', orderId: e.ecommerce?.transaction_id,
@@ -295,7 +319,7 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
     key: 'microsoft_ads', name: 'Microsoft Advertising (Bing)',
     fields: [{ key: 'tagId', label: 'UET tag ID', pattern: /^\d{6,12}$/, hint: 'Microsoft Advertising > Tools > UET tag' }],
     secretLabel: 'UET Conversions API token',
-    events: { view_item: 'view_item', add_to_cart: 'add_to_cart', begin_checkout: 'begin_checkout', purchase: 'purchase' },
+    events: { view_item: 'view_item', add_to_cart: 'add_to_cart', begin_checkout: 'begin_checkout', generate_lead: 'generate_lead', purchase: 'purchase' },
     build(e, cfg, token) {
       const name = this.events[e.event_name as AdEventName]; if (!name) return null;
       const ud = u(e);

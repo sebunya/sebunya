@@ -4,6 +4,7 @@ import { Registry } from '../../../infrastructure/Registry';
 import { customerSessionMiddleware, optionalCustomerSessionMiddleware } from '../middleware/customerSession';
 import { botDetectionMiddleware } from '../middleware/botDetection';
 import type { ApiResponse, GetRecommendationsInput } from '@goldplus/shared';
+import { stitchInBackground } from '../../../infrastructure/first-party/stitchInBackground';
 import {
   isRecommendationPlacement,
   RecommendationEventValidationError,
@@ -220,6 +221,19 @@ routes.post('/profile/link', customerSessionMiddleware, async (c) => {
       error: { code: 'VISIT_TOKEN_INVALID', message: 'The visit token is malformed.' },
     };
     return c.json(res, 400);
+  }
+
+  // 0155: the signed-in customer's visitor ids (this browser's experience
+  // profile and its `_fp_cid`) join their customer profile — only the profile
+  // this customer holds, and only within the personalisation consent rule.
+  if (result.status === 'linked' || result.status === 'already_linked') {
+    const profile = await registry.resolveExperienceProfileUseCase.execute(rawToken, 'read').catch(() => null);
+    stitchInBackground({
+      moment: 'VISITOR_LINK',
+      accountUserId: c.get('userId'),
+      experienceProfileId: profile?.customerId === c.get('userId') ? profile.id : null,
+      fpClientId: c.req.header('x-gp-fpcid') ?? null,
+    });
   }
 
   const res: ApiResponse<{ status: string }> = { success: true, data: { status: result.status } };

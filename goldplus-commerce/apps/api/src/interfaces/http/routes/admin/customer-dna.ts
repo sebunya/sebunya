@@ -4,8 +4,6 @@ import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
 import { Registry } from '../../../../infrastructure/Registry';
 import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
-import { buildProfileDrivenCandidates, NbaContext } from '../../../../domain/customer-dna/NextBestAction';
-import { numericFeature } from '../../../../domain/customer-dna/CustomerFeatures';
 
 /**
  * Customer DNA & NBA admin surface. Read is customer_dna.read / nba.read; profile
@@ -13,7 +11,8 @@ import { numericFeature } from '../../../../domain/customer-dna/CustomerFeatures
  * review is identity.review. Deny-by-default; every write audits in its use case.
  *
  * audit-exempt: the recompute and NBA-generate mutations delegate auditing to
- * their use cases (CreateAuditLogUseCase), a dedicated audit channel.
+ * their use cases (CreateAuditLogUseCase), a dedicated audit channel. Viewing
+ * one profile is audited too (0157): no audit row, no profile.
  */
 const routes = new Hono();
 routes.use('*', authMiddleware);
@@ -37,8 +36,11 @@ routes.get('/conflicts', requirePermissions([PERMISSIONS.IDENTITY_REVIEW]), asyn
 routes.get('/:id', requirePermissions([PERMISSIONS.CUSTOMER_DNA_READ]), async (c) => {
   const id = String(c.req.param('id') ?? '');
   if (!CUSTOMER_ID.test(id)) return notFound(c);
-  const result = await Registry.getInstance().getCustomerDnaUseCase.execute(id);
+  const reg = Registry.getInstance();
+  const result = await reg.getCustomerDnaUseCase.execute(id);
   if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 404);
+  const recorded = await reg.getCustomer360UseCase.recordView({ canonicalCustomerId: id, viewerId: String((c.get('user') as any)?.id ?? ''), surface: 'customer_dna' });
+  if (!recorded) return c.json({ success: false, error: { code: 'AUDIT_UNAVAILABLE', message: 'This profile cannot be shown right now because the view could not be recorded.' } } satisfies ApiResponse<never>, 503);
   return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
 });
 
@@ -52,42 +54,17 @@ routes.post('/:id/recompute', requirePermissions([PERMISSIONS.CUSTOMER_DNA_MANAG
 });
 
 const nbaBody = z.object({ activationChannel: z.string().max(40).optional() }).optional();
+// 0157: the context is read from the customer's real records (consent per
+// channel, open support tickets, fraud cases, recent purchases, messages sent)
+// by DecideNextBestActionUseCase — no placeholder defaults here.
 routes.post('/:id/nba', requirePermissions([PERMISSIONS.NBA_RECOMPUTE]), async (c) => {
   const id = String(c.req.param('id') ?? '');
   if (!CUSTOMER_ID.test(id)) return notFound(c);
   const actorId = (c.get('user') as any).id as string;
   const parsed = nbaBody.safeParse(await c.req.json().catch(() => ({})));
-  const reg = Registry.getInstance();
-
-  const dna = await reg.getCustomerDnaUseCase.execute(id);
-  if (!dna.ok) return c.json({ success: false, error: { code: dna.code, message: dna.message } } satisfies ApiResponse<never>, 404);
-
-  const feats = dna.features?.features ?? [];
-  const candidates = buildProfileDrivenCandidates({
-    lifecycleStage: dna.lifecycle?.stage ?? dna.profile.primaryLifecycleStage,
-    cartAbandonments: numericFeature(feats as any, 'cart_abandonments') ?? 0,
-    backorderExposure: numericFeature(feats as any, 'backorder_exposure') ?? 0,
-    riskFlags: dna.profile.riskFlags,
-    daysSinceLastOrder: numericFeature(feats as any, 'days_since_last_order'),
+  const result = await Registry.getInstance().decideNextBestActionUseCase.execute({
+    canonicalCustomerId: id, actorId, activationChannel: parsed.success ? (parsed.data?.activationChannel ?? null) : null,
   });
-
-  // Consent-gated: consent-requiring actions only fire when consent is truthfully
-  // known-eligible; operational actions (resume cart, delivery follow-up) do not.
-  const context: NbaContext = {
-    consentEligible: dna.profile.consentEligible === true,
-    channelEligible: {},
-    activationChannel: parsed.success ? (parsed.data?.activationChannel ?? null) : null,
-    openSupportCase: false,
-    fraudHold: dna.profile.riskFlags.includes('FRAUD_HOLD'),
-    frequencyCapReached: false,
-    recentPurchaseRefs: [],
-    outOfStockRefs: [],
-    incompatibleRefs: [],
-    invalidPromotionRefs: [],
-    policyVersion: 1,
-  };
-
-  const result = await reg.generateNextBestActionUseCase.execute({ canonicalCustomerId: id, actorId, candidates, context });
   if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 404);
   return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
 });

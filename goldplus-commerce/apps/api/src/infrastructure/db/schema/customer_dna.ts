@@ -26,6 +26,10 @@ export const customerProfiles = pgTable(
     computedAt: timestamp('computed_at', { withTimezone: true }).defaultNow().notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    // 0155: a guest profile folded into an account's profile (verified phone
+    // proof). The row is kept; readers skip it.
+    mergedInto: uuid('merged_into'),
+    mergedAt: timestamp('merged_at', { withTimezone: true }),
   },
   (table) => ({
     accountIdx: index('customer_profiles_account_idx').on(table.accountUserId),

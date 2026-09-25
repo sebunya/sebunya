@@ -11,12 +11,19 @@ const map = (r: any): AdDestinationRow => ({
   hasSecret: !!r.secret_enc, secretMask: r.secret_mask ?? null, updatedAt: iso(r.updated_at),
   lastSuccessAt: iso(r.last_success_at), lastError: r.last_error ?? null, lastErrorAt: iso(r.last_error_at),
   sentCount: Number(r.sent_count ?? 0), failedCount: Number(r.failed_count ?? 0),
+  // 0154 columns; absent before the migration runs (read as the old behaviour).
+  mode: r.mode === 'test' ? 'test' : 'live',
+  eventSelection: parseSelection(r.event_selection),
 });
+function parseSelection(v: unknown): string[] | null {
+  const a = typeof v === 'string' ? (() => { try { return JSON.parse(v); } catch { return null; } })() : v;
+  return Array.isArray(a) ? a.map(String) : null;
+}
 
 export class DrizzleAdDestinationRepository implements AdDestinationRepository {
   async list() { return rowsOf(await db.execute(sql`select * from ad_destinations order by platform`)).map(map); }
   async get(platform: string) { const r = rowsOf(await db.execute(sql`select * from ad_destinations where platform = ${platform}`))[0]; return r ? map(r) : null; }
-  async save(platform: string, p: { enabled?: boolean; config?: Record<string, string>; secretEnc?: string | null; secretMask?: string | null; updatedBy: string | null }) {
+  async save(platform: string, p: { enabled?: boolean; config?: Record<string, string>; secretEnc?: string | null; secretMask?: string | null; updatedBy: string | null; mode?: 'live' | 'test'; eventSelection?: string[] | null }) {
     const by = p.updatedBy && UUID.test(p.updatedBy) ? sql`${p.updatedBy}::uuid` : sql`null`;
     const r = rowsOf(await db.execute(sql`
       insert into ad_destinations (platform, enabled, config, secret_enc, secret_mask, updated_by, updated_at)
@@ -28,12 +35,31 @@ export class DrizzleAdDestinationRepository implements AdDestinationRepository {
         secret_mask = ${p.secretMask === undefined ? sql`ad_destinations.secret_mask` : sql`${p.secretMask}`},
         updated_by = ${by}, updated_at = now()
       returning *`))[0];
+    // 0154 settings in their own statement, only when given: a save before the
+    // migration (or one that does not touch them) never references the columns.
+    if (p.mode !== undefined || p.eventSelection !== undefined) {
+      const r2 = rowsOf(await db.execute(sql`update ad_destinations set
+          mode = ${p.mode === undefined ? sql`mode` : sql`${p.mode}`},
+          event_selection = ${p.eventSelection === undefined ? sql`event_selection` : p.eventSelection === null ? sql`null` : pgJsonb(p.eventSelection)}
+        where platform = ${platform} returning *`))[0];
+      return map(r2 ?? r);
+    }
     return map(r);
   }
   async active() {
     // Postback platforms carry no token; completeness is enforced when switched on.
-    return rowsOf(await db.execute(sql`select platform, config, secret_enc from ad_destinations where enabled`))
-      .map((r) => ({ platform: r.platform, config: (typeof r.config === 'string' ? JSON.parse(r.config) : r.config) ?? {}, secretEnc: r.secret_enc }));
+    // select *: before 0154 the mode/event_selection columns do not exist yet.
+    return rowsOf(await db.execute(sql`select * from ad_destinations where enabled`))
+      .map((r) => {
+        const config = (typeof r.config === 'string' ? JSON.parse(r.config) : r.config) ?? {};
+        // Test mode reaches every builder through the config it already takes.
+        return { platform: r.platform, config: r.mode === 'test' ? { ...config, _test: '1' } : config, secretEnc: r.secret_enc, eventSelection: parseSelection(r.event_selection) };
+      });
+  }
+  /** The encrypted token of one destination, whether or not it is switched on (0154 capabilities borrow it). */
+  async secretEnc(platform: string): Promise<string | null> {
+    const r = rowsOf(await db.execute(sql`select secret_enc from ad_destinations where platform = ${platform}`))[0];
+    return r?.secret_enc ?? null;
   }
   async recordResult(platform: string, ok: boolean, error?: string) {
     await db.execute(ok

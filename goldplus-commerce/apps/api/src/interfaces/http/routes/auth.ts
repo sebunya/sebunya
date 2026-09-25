@@ -12,6 +12,7 @@ import { CreateAuditLogUseCase } from '../../../application/use-cases/audit/Crea
 import { bearerTokenFrom, resolveLiveSession } from '../middleware/liveSession';
 import { MfaService } from '../../../infrastructure/security/MfaService';
 import { authMiddleware } from '../middleware/auth';
+import { stitchInBackground } from '../../../infrastructure/first-party/stitchInBackground';
 
 const routes = new Hono();
 
@@ -87,6 +88,8 @@ routes.post('/login', async (c) => {
   }
 
   const refresh = await issueSessionSafely(registry, result.user.id, c);
+  // 0155: link the account to its customer profile (never blocks the login).
+  stitchInBackground({ moment: 'SIGN_IN', accountUserId: result.user.id });
 
   const res: ApiResponse<{
     token: string;
@@ -147,6 +150,8 @@ routes.post('/register', async (c) => {
   // Registration IS a login: same durable session, same response shape, so the
   // storefront handles both flows with one code path.
   const refresh = await issueSessionSafely(registry, result.user.id, c);
+  // 0155: a new account gets its customer profile (never blocks registration).
+  stitchInBackground({ moment: 'REGISTRATION', accountUserId: result.user.id });
 
   const res: ApiResponse<{
     token: string;

@@ -124,6 +124,8 @@ export interface CheckoutRequestDto {
   cartVersion?: number | null;
   /** Loyalty redemption (PART G): points to convert to a discount, server-validated. */
   redeemPoints?: number;
+  /** Optional "How did you hear about us?" answer (HEARD_ABOUT_ANSWERS); reporting only. */
+  heardAbout?: string | null;
   /**
    * Marketing attribution (last-touch UTM + referrer), captured client-side.
    * Recorded best-effort after the order for reporting only — never influences

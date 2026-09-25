@@ -1,0 +1,78 @@
+---
+import { STATE_BADGE, PLATFORM_NAME, whenKampala } from "../../lib/adminAdvertising";
+
+/**
+ * One advertising capability's settings form (0154): the owner's ids, the
+ * write-only token (shown only as a mask), and the on/off switch. Posts to
+ * the page it sits on, which hands the form to saveCapabilityFromForm.
+ */
+interface Props { cap: any; segments?: Array<{ key: string; label: string }>; customSegments?: Array<{ key: string; name: string; memberCount: number | null }> }
+const { cap, segments, customSegments } = Astro.props;
+const badge = STATE_BADGE[cap.state] ?? [cap.state, "bg-gray-100 text-gray-700"];
+const chosen = new Set(String(cap.fields.find((f: any) => f.key === "segments")?.value ?? "").split(",").filter(Boolean));
+const chosenCustom = new Set(String(cap.fields.find((f: any) => f.key === "customSegments")?.value ?? "").split(",").filter(Boolean));
+const hasCustomField = cap.fields.some((f: any) => f.key === "customSegments");
+---
+<section class="rounded-2xl border border-gray-200 bg-white p-5" aria-labelledby={`cap-${cap.platform}-${cap.capability}`}>
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <h3 id={`cap-${cap.platform}-${cap.capability}`} class="text-lg font-black text-brand-dark">{PLATFORM_NAME[cap.platform] ?? cap.platform}: {cap.name}</h3>
+    <span class={`rounded-full px-3 py-1 text-xs font-bold ${badge[1]}`}>{badge[0]}</span>
+  </div>
+  <p class="mt-1 text-sm text-gray-600">{cap.what}</p>
+  {cap.gap && <p class="mt-2 text-sm text-amber-900">Not configured: {cap.gap}.</p>}
+  {cap.lastRunAt && <p class="mt-1 text-xs text-gray-500">Last run {whenKampala(cap.lastRunAt)}: {cap.lastStatus}</p>}
+  <form method="POST" class="mt-4 grid gap-3 sm:grid-cols-2">
+    <input type="hidden" name="platform" value={cap.platform} />
+    <input type="hidden" name="capability" value={cap.capability} />
+    {cap.fields.filter((f: any) => f.confirm).map((f: any) => (
+      <div class="text-xs font-bold text-gray-700 sm:col-span-2">
+        <input type="hidden" name={`cfg.${f.key}`} value="" />
+        <label class="inline-flex min-h-11 items-center gap-2"><input type="checkbox" name={`cfg.${f.key}`} value="accepted" checked={f.value === "accepted"} class="h-5 w-5" />{f.label}</label>
+        <span class="block font-normal text-gray-500">{f.where}</span>
+      </div>
+    ))}
+    {cap.fields.filter((f: any) => f.key !== "segments" && f.key !== "customSegments" && !f.confirm).map((f: any) => (
+      <label class="text-xs font-bold text-gray-700">{f.label}{f.optional && <span class="font-normal text-gray-500"> (optional)</span>}
+        <input name={`cfg.${f.key}`} value={f.value} autocomplete="off" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal" />
+        <span class="font-normal text-gray-500">{f.where}</span>
+      </label>
+    ))}
+    {segments && cap.fields.some((f: any) => f.key === "segments") && (
+      <fieldset class="text-xs font-bold text-gray-700 sm:col-span-2">
+        <legend>Lists to sync (tick at least one; all three when none is chosen)</legend>
+        <input type="hidden" name="segments-present" value="1" />
+        <div class="mt-1 flex flex-wrap gap-4 font-normal">
+          {segments.map((s) => (
+            <label class="inline-flex min-h-11 items-center gap-2"><input type="checkbox" name="segment" value={s.key} checked={chosen.size === 0 || chosen.has(s.key)} class="h-5 w-5" />{s.label}</label>
+          ))}
+        </div>
+      </fieldset>
+    )}
+    {hasCustomField && customSegments && (
+      <fieldset class="text-xs font-bold text-gray-700 sm:col-span-2">
+        <legend>Your segments to sync (each becomes its own list)</legend>
+        <input type="hidden" name="custom-segments-present" value="1" />
+        {customSegments.length === 0
+          ? <p class="mt-1 font-normal text-gray-500">No data: no segment is defined yet. Define one under <a class="underline" href="/admin/segments">Segments</a>.</p>
+          : <div class="mt-1 flex flex-wrap gap-4 font-normal">
+              {customSegments.map((s) => (
+                <label class="inline-flex min-h-11 items-center gap-2"><input type="checkbox" name="customSegment" value={s.key} checked={chosenCustom.has(s.key)} class="h-5 w-5" />{s.name}{s.memberCount == null ? " (not computed yet)" : ""}</label>
+              ))}
+            </div>}
+      </fieldset>
+    )}
+    {cap.secretLabel && (
+      <label class="text-xs font-bold text-gray-700 sm:col-span-2">{cap.secretLabel}{cap.secretOptional && <span class="font-normal text-gray-500"> (optional)</span>}
+        <input name="secret" type="password" autocomplete="new-password" placeholder={cap.secretMask ? `Stored: ${cap.secretMask} (leave blank to keep)` : "Paste the token"} class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal" />
+        <span class="font-normal text-gray-500">{cap.secretWhere} Write-only: stored encrypted, never shown again.</span>
+      </label>
+    )}
+    <div class="flex flex-wrap gap-2 sm:col-span-2">
+      <button name="intent" value="capability-save" class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-5 text-sm font-bold">Save</button>
+      {cap.enabled
+        ? <button name="intent" value="capability-disable" class="inline-flex min-h-11 items-center rounded-full border border-red-300 px-5 text-sm font-bold text-red-800">Switch off</button>
+        : <button name="intent" value="capability-enable" class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Save and switch on</button>}
+      {cap.secretMask && <button name="intent" value="capability-remove-token" class="inline-flex min-h-11 items-center px-2 text-sm font-bold text-red-800 underline">Remove token</button>}
+    </div>
+  </form>
+</section>

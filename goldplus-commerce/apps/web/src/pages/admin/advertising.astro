@@ -2,6 +2,7 @@
 import AdminLayout from "../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../lib/session";
 import { apiBase } from "../../lib/api";
+import { STATE_BADGE } from "../../lib/adminAdvertising";
 
 /**
  * Advertising platforms (0138): server-side conversion APIs. Each platform goes
@@ -31,13 +32,19 @@ if (Astro.request.method === "POST") {
   const secret = String(f.get("secret") ?? "").trim() || undefined;
   const intent = String(f.get("intent") ?? "save");
   const enabled = intent === "enable" ? true : intent === "disable" ? false : undefined;
-  const r = await call("PUT", `/${encodeURIComponent(key)}`, intent === "remove-token" ? { removeSecret: true } : { config, secret, enabled });
+  // 0154: Test/Live mode and the optimisation events (early signals) this platform receives.
+  const mode = f.get("mode") === "test" ? "test" : f.get("mode") === "live" ? "live" : undefined;
+  const eventSelection = f.has("events-present") ? f.getAll("event").map(String) : undefined;
+  const r = await call("PUT", `/${encodeURIComponent(key)}`, intent === "remove-token" ? { removeSecret: true } : { config, secret, enabled, mode, eventSelection });
   if (r.ok) notice = "Saved."; else formError = r.message;
 }
 
 const list = await call("GET", "/");
+const checklist = await call("GET", "/checklist");
+const EVENT_LABEL: Record<string, string> = { view_item: "Product view", add_to_cart: "Add to cart", begin_checkout: "Checkout started", add_payment_info: "Payment method chosen", generate_lead: "Lead (WhatsApp click or quote request)" };
 const STATE: Record<string, [string, string]> = {
   LIVE: ["Live — sending conversions", "bg-emerald-100 text-emerald-900"],
+  TEST: ["Test — sending to the platform's test channel", "bg-sky-100 text-sky-900"],
   READY_OFF: ["Configured, switched off", "bg-amber-100 text-amber-900"],
   NOT_CONFIGURED: ["Not configured", "bg-gray-100 text-gray-700"],
   NOT_AVAILABLE: ["Needs an outside account first", "bg-gray-100 text-gray-600"],
@@ -48,8 +55,44 @@ const when = (iso: unknown) => (typeof iso === "string" && iso ? new Date(iso).t
   <div class="container mx-auto px-6 lg:px-8 max-w-5xl">
     <h2 class="text-2xl font-black text-brand-dark tracking-tight mb-2">Advertising platforms</h2>
     <p class="text-sm text-gray-600 mb-6 max-w-3xl">Conversions (product views, add to cart, checkout, purchases) are sent to each platform from our server, with hashed email and phone and the ad click id (kept 30 days) for matching. Network postbacks (Opera, Eagllwin, Boomplay, others) fire for purchases that came from that network's link. A platform receives nothing until its IDs and token are entered and it is switched on. The privacy page lists the platforms that are live.</p>
+    <nav aria-label="Advertising sections" class="mb-6 flex flex-wrap gap-2 text-sm">
+      <a class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-4 font-bold" href="#checklist">Connection checklist</a>
+      <a class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-4 font-bold" href="/admin/advertising/audiences">Audiences</a>
+      <a class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-4 font-bold" href="/admin/advertising/spend">Spend</a>
+      <a class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-4 font-bold" href="/admin/advertising/offline">Offline sales</a>
+    </nav>
     {notice && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</div>}
     {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+    <section id="checklist" aria-labelledby="checklist-h" class="mb-10">
+      <h3 id="checklist-h" class="text-lg font-black text-brand-dark mb-1">Connection checklist</h3>
+      <p class="text-sm text-gray-600 mb-4 max-w-3xl">Every field each platform needs, where to find it in that platform, and what is true today. A step is ticked only when the stored value passes its check; steps done inside the platform itself (such as scheduling a feed) cannot be seen from here and are never ticked.</p>
+      {!checklist.ok ? <p role="alert" class="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{checklist.message}</p> : (
+        <div class="grid gap-3">
+          {(checklist.data as any[]).filter((p) => p.status !== "NOT_AVAILABLE").map((p) => (
+            <details class="rounded-2xl border border-gray-200 bg-white p-4">
+              <summary class="flex min-h-11 cursor-pointer flex-wrap items-center justify-between gap-2">
+                <span class="font-black text-brand-dark">{p.name}</span>
+                <span class="flex flex-wrap gap-1">{p.items.map((i: any) => <span class={`rounded-full px-2 py-0.5 text-xs font-bold ${STATE_BADGE[i.status]?.[1] ?? "bg-gray-100"}`}>{i.title}: {STATE_BADGE[i.status]?.[0] ?? i.status}</span>)}</span>
+              </summary>
+              {p.items.map((i: any) => (
+                <div class="mt-4 border-t border-gray-100 pt-3">
+                  <p class="text-sm font-bold">{i.title} <span class={`ml-1 rounded-full px-2 py-0.5 text-xs ${STATE_BADGE[i.status]?.[1] ?? "bg-gray-100"}`}>{STATE_BADGE[i.status]?.[0] ?? i.status}</span></p>
+                  <p class="text-xs text-gray-600 mt-1">{i.detail}</p>
+                  {i.url && <p class="text-xs mt-1 break-all">Feed URL: <code>{i.url}</code></p>}
+                  {i.steps.length > 0 && (
+                    <ul class="mt-2 space-y-1 text-xs">
+                      {i.steps.map((s: any) => (
+                        <li class="flex gap-2"><span aria-hidden="true" class="font-bold">{s.unverifiable ? "○" : s.done ? "✓" : "✗"}</span><span><strong>{s.label}</strong>{s.optional && " (optional)"}{s.secret && " (write-only)"}{s.unverifiable ? " (set in the platform; not visible from here)" : s.done ? " (done)" : " (to do)"}: {s.where}</span></li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </details>
+          ))}
+        </div>
+      )}
+    </section>
     {!list.ok ? <p role="alert" class="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{list.message}</p> : (
       <div class="grid gap-5 mb-12">
         {(list.data as any[]).map((p) => (
@@ -67,6 +110,25 @@ const when = (iso: unknown) => (typeof iso === "string" && iso ? new Date(iso).t
                   {p.fields.map((f: any) => (
                     <label class="text-xs font-bold text-gray-700">{f.label}{f.optional && <span class="font-normal text-gray-500"> (optional)</span>}<input name={`cfg.${f.key}`} value={f.value} autocomplete="off" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal" /><span class="font-normal text-gray-500">{f.hint}</span></label>
                   ))}
+                  {p.testable && (
+                    <label class="text-xs font-bold text-gray-700">Mode
+                      <select name="mode" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal">
+                        <option value="live" selected={p.mode !== "test"}>Live: counted by the platform</option>
+                        <option value="test" selected={p.mode === "test"}>Test: {p.key === "google_ads" ? "validated only, nothing recorded" : "shown under Test events, not counted"}</option>
+                      </select>
+                    </label>
+                  )}
+                  {Object.keys(p.events).some((e) => e !== "purchase") && (
+                    <fieldset class="text-xs font-bold text-gray-700 sm:col-span-2">
+                      <legend>Optimisation events sent (purchases are always sent)</legend>
+                      <input type="hidden" name="events-present" value="1" />
+                      <div class="mt-1 flex flex-wrap gap-x-5 font-normal">
+                        {Object.keys(p.events).filter((e) => e !== "purchase").map((e) => (
+                          <label class="inline-flex min-h-11 items-center gap-2"><input type="checkbox" name="event" value={e} checked={p.eventSelection == null || p.eventSelection.includes(e)} class="h-5 w-5" />{EVENT_LABEL[e] ?? e} → {p.events[e]}</label>
+                        ))}
+                      </div>
+                    </fieldset>
+                  )}
                   {p.secretLabel && (p.secretHint
                     ? <label class="text-xs font-bold text-gray-700 sm:col-span-2">{p.secretLabel}<textarea name="secret" rows="3" autocomplete="off" spellcheck="false" placeholder={p.secretMask ? `Stored: ${p.secretMask} (leave blank to keep)` : p.secretHint} class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs font-normal"></textarea><span class="font-normal text-gray-500">Write-only: stored encrypted, never shown again. Format: {p.secretHint}</span></label>
                     : <label class="text-xs font-bold text-gray-700">{p.secretLabel}<input name="secret" type="password" autocomplete="new-password" placeholder={p.secretMask ? `Stored: ${p.secretMask} (leave blank to keep)` : "Paste the token"} class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal" /><span class="font-normal text-gray-500">Write-only: stored encrypted, never shown again.</span></label>)}

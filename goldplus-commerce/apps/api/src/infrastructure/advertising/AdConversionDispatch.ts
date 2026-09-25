@@ -8,6 +8,7 @@ import { DrizzleAdDestinationRepository } from '../db/repositories/DrizzleAdDest
 import { IntegrationCredentialVault } from '../seo/IntegrationCredentialVault';
 import { adPlatform, buildAdRequest } from './AdPlatforms';
 import { advertisingRefused } from '../measurement/AdvertisingConsentGate';
+import { eventSelected } from '../../domain/advertising/OptimisationEvents';
 import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 
@@ -54,7 +55,7 @@ const MAX_ATTEMPTS = 5;
 const BACKOFF_MS = [30_000, 5 * 60_000, 15 * 60_000, 60 * 60_000, 6 * 60 * 60_000];
 const repo = new DrizzleAdDestinationRepository();
 
-let activeCache: { at: number; list: Array<{ platform: string; config: Record<string, string>; secretEnc: string | null }> } | null = null;
+let activeCache: { at: number; list: Array<{ platform: string; config: Record<string, string>; secretEnc: string | null; eventSelection?: string[] | null }> } | null = null;
 async function activePlatforms() {
   if (!activeCache || Date.now() - activeCache.at > 60_000) activeCache = { at: Date.now(), list: await repo.active() };
   return activeCache.list;
@@ -73,6 +74,8 @@ export async function fanOutAdConversions(event: CanonicalTelemetryEvent): Promi
     for (const p of live) {
       const def = adPlatform(p.platform);
       if (!def?.build || !def.events[event.event_name as keyof typeof def.events]) continue;
+      // 0154: the owner chooses which early signals each destination optimises on.
+      if (!eventSelected(p.eventSelection, event.event_name)) continue;
       const r = await db.insert(outboxEvents).values({
         eventType: EVENT_TYPE, payload: { platform: p.platform, event } as any, idempotencyKey: `ad:${p.platform}:${event.event_id}`,
         status: 'pending', dryRunOnly: false, relatedEntity: 'ad_destination', relatedEntityId: p.platform,

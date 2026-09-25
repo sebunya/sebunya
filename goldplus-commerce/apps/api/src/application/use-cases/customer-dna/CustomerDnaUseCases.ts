@@ -9,13 +9,18 @@ import {
   ICustomerLifecycleRepository, INbaDecisionRepository, ICustomerSignalReader,
 } from '../../ports/ICustomerDnaRepository';
 import { IAuditRepository } from '../../ports/IAuditRepository';
+import type { IIdentityConflictRepository } from '../../ports/first-party/FirstPartyPorts';
 import { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
 
 type Fail = { ok: false; code: string; message: string };
 const fail = (code: string, message: string): Fail => ({ ok: false, code, message });
 
+const UUID_ACTOR = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function audit(repo: IAuditRepository, actorId: string, action: string, entity: string, entityId: string, newState: unknown, previousState?: unknown) {
-  await new CreateAuditLogUseCase(repo).execute({ actorId, action, entity, entityId, previousState, newState });
+  // audit_logs.actor_id is a uuid: a system actor ('system:identity-stitch')
+  // is recorded as null (system), never as a failed insert.
+  await new CreateAuditLogUseCase(repo).execute({ actorId: UUID_ACTOR.test(actorId) ? actorId : null, action, entity, entityId, previousState, newState });
 }
 
 const DAY = 86_400_000;
@@ -29,9 +34,16 @@ export class ResolveCustomerIdentityUseCase {
   constructor(
     private readonly profiles: ICustomerProfileRepository,
     private readonly identities: ICustomerIdentityRepository,
-    private readonly audit: IAuditRepository
+    private readonly audit: IAuditRepository,
+    /** 0155: conflicts become reviewable rows (idempotent), not only audit lines. */
+    private readonly conflicts?: IIdentityConflictRepository
   ) {}
-  async execute(input: { signalType: string; identifierKey: string; accountUserId?: string | null; actorId: string }):
+  async execute(input: {
+    signalType: string; identifierKey: string; accountUserId?: string | null; actorId: string;
+    /** 0155: the customer the caller already resolved for this moment (stitching anchor). */
+    proposedCanonicalCustomerId?: string | null;
+    moment?: string | null;
+  }):
     Promise<{ ok: true; canonicalCustomerId: string; outcome: 'CREATE' | 'IDEMPOTENT' | 'CONFLICT' } | Fail> {
     const gate = canLinkIdentity({ signalType: input.signalType, identifierKey: input.identifierKey });
     if (!gate.ok) return fail(gate.reason, `Identity signal rejected: ${gate.reason}.`);
@@ -40,7 +52,9 @@ export class ResolveCustomerIdentityUseCase {
 
     // Determine the proposed canonical: an existing account profile, else a new one.
     let proposedCanonical: string;
-    if (input.accountUserId) {
+    if (input.proposedCanonicalCustomerId) {
+      proposedCanonical = input.proposedCanonicalCustomerId;
+    } else if (input.accountUserId) {
       const acct = await this.profiles.findByAccountUserId(input.accountUserId);
       proposedCanonical = acct ? acct.canonicalCustomerId : (await this.profiles.create({ accountUserId: input.accountUserId })).canonicalCustomerId;
     } else if (existing) {
@@ -52,9 +66,19 @@ export class ResolveCustomerIdentityUseCase {
     const target = resolveLinkTarget({ existingCanonicalForIdentifier: existing?.canonicalCustomerId ?? null, proposedCanonical });
 
     if (target.outcome === 'CONFLICT') {
-      if (existing) await this.identities.setStatus(existing.id, 'CONFLICT');
-      await audit(this.audit, input.actorId, 'CUSTOMER_IDENTITY_CONFLICT', 'customer_identity', existing?.id ?? input.identifierKey,
-        { signalType: gate.signalType, existing: existing?.canonicalCustomerId, proposed: proposedCanonical });
+      if (existing && existing.status !== 'CONFLICT') await this.identities.setStatus(existing.id, 'CONFLICT');
+      // A repeat of the same clash (every sign-in on a shared phone) is one
+      // conflict with a higher count, not a new audit line each time.
+      const recorded = this.conflicts && existing
+        ? await this.conflicts.record({
+          linkId: existing.id, signalType: gate.signalType, identifierKey: input.identifierKey,
+          existingCanonicalId: existing.canonicalCustomerId, proposedCanonicalId: proposedCanonical, moment: input.moment ?? null,
+        })
+        : { created: true };
+      if (recorded.created) {
+        await audit(this.audit, input.actorId, 'CUSTOMER_IDENTITY_CONFLICT', 'customer_identity', existing?.id ?? input.identifierKey,
+          { signalType: gate.signalType, existing: existing?.canonicalCustomerId, proposed: proposedCanonical });
+      }
       return { ok: true, canonicalCustomerId: target.canonicalCustomerId, outcome: 'CONFLICT' };
     }
 
@@ -88,7 +112,7 @@ export class ProjectCustomerProfileUseCase {
     if (!profile) return fail('NOT_FOUND', 'Customer profile not found.');
 
     const links = await this.identities.listLinks(input.canonicalCustomerId);
-    const identifierKeys = links.filter((l) => l.status === 'ACTIVE' && (l.signalType === 'STABLE_ANONYMOUS_ID' || l.signalType === 'AUTHENTICATED_CUSTOMER_ID')).map((l) => l.identifierKey);
+    const identifierKeys = links.filter((l) => l.status === 'ACTIVE' && (l.signalType === 'STABLE_ANONYMOUS_ID' || l.signalType === 'AUTHENTICATED_CUSTOMER_ID' || l.signalType === 'ORDER_CUSTOMER_RELATIONSHIP')).map((l) => l.identifierKey);
     const raw = await this.signals.readSignals({ accountUserId: profile.accountUserId, identifierKeys });
 
     const feats = computeFeatures(raw, now);

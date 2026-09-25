@@ -18,9 +18,11 @@ describe('advertising platforms: request builders', () => {
     expect(hashEmail(' Buyer@Example.com ')).toBe(hashEmail('buyer@example.com'));
     expect(hashEmail('not-an-email')).toBeUndefined();
   });
-  it('Meta: Purchase to the dataset with hashed ids, IP/UA, value and order id; the token only in the URL', () => {
+  it('Meta: Purchase to the dataset with hashed ids, IP/UA, value and order id; the token only in the Authorization header', () => {
     const r = buildAdRequest('meta', purchase, { datasetId: '1234567890123' }, 'TOKEN_x')!;
-    expect(r.url).toBe('https://graph.facebook.com/v23.0/1234567890123/events?access_token=TOKEN_x');
+    expect(r.url).toBe('https://graph.facebook.com/v23.0/1234567890123/events');
+    expect(r.url).not.toContain('TOKEN_x');
+    expect(r.headers.Authorization).toBe('Bearer TOKEN_x');
     const d = (r.body as any).data[0];
     expect([d.event_name, d.action_source, d.event_id, d.custom_data.value, d.custom_data.order_id, d.custom_data.currency]).toEqual(['Purchase', 'website', purchase.event_id, 145000, 'GP-1', 'UGX']);
     expect(d.user_data.em[0]).toMatch(/^[0-9a-f]{64}$/);

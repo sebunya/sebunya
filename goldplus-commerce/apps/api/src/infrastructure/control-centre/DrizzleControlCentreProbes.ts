@@ -81,7 +81,7 @@ export const envProviderConfigProbe: ProviderConfigProbe = {
       meta: ['META_CAPI_ACCESS_TOKEN'],
       google: ['GOOGLE_ADS_DEVELOPER_TOKEN', 'GOOGLE_OAUTH_CLIENT_ID'],
       tiktok: ['TIKTOK_EVENTS_ACCESS_TOKEN'],
-      whatsapp: ['WHATSAPP_ACCESS_TOKEN'],
+      whatsapp: ['ZOHO_WHATSAPP_API_KEY', 'WHATSAPP_ACCESS_TOKEN'],
       // Customer and admin messaging. Absent from this map, an unknown provider
       // fell through to "not configured" by accident rather than by
       // measurement, and notifications had no module asking the question at all.

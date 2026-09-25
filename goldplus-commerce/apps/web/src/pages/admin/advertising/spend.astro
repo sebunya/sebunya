@@ -1,0 +1,121 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import AdCapabilityForm from "../../../components/admin/AdCapabilityForm.astro";
+import { readSessionToken } from "../../../lib/session";
+import { advertisingApi, saveCapabilityFromForm, PLATFORM_NAME, whenKampala, money, fmtInt } from "../../../lib/adminAdvertising";
+
+/**
+ * Ad spend per day, channel and campaign (0154) in the one spend table
+ * (media_cost_facts). Pulled daily from the Google Ads API and the Meta
+ * Marketing API when their spend import is LIVE; otherwise uploaded here as a
+ * CSV, which is checked in full before anything is written.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/advertising/spend", 303);
+
+const url = new URL(Astro.request.url);
+const from = url.searchParams.get("from") ?? "";
+const to = url.searchParams.get("to") ?? "";
+let notice: string | null = null;
+let formError: string | null = null;
+let csvResult: any = null;
+let submittedCsv = "";
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const intent = String(f.get("intent") ?? "");
+  if (intent.startsWith("capability-")) {
+    const r = await saveCapabilityFromForm(token, f);
+    if (r.ok) notice = "Saved."; else formError = r.message;
+  } else if (intent === "import") {
+    const r = await advertisingApi(token, "POST", `/spend/import/${encodeURIComponent(String(f.get("platform") ?? ""))}`, { from: String(f.get("from") ?? "") || undefined, to: String(f.get("to") ?? "") || undefined });
+    if (r.ok) notice = `${PLATFORM_NAME[r.data.platform] ?? r.data.platform}: ${r.data.status}${r.data.rowsWritten ? `, ${r.data.rowsWritten} rows written` : ""}${r.data.message ? `: ${r.data.message}` : ""}`;
+    else formError = r.message;
+  } else if (intent === "csv-check" || intent === "csv-apply") {
+    const file = f.get("file");
+    submittedCsv = file && typeof file === "object" && "text" in file && (file as File).size > 0 ? await (file as File).text() : String(f.get("csv") ?? "");
+    if (submittedCsv.length > 2_000_000) formError = "The file is larger than 2 MB.";
+    else {
+      const r = await advertisingApi(token, "POST", "/spend/csv", { csv: submittedCsv, dryRun: intent !== "csv-apply" });
+      csvResult = r.data ?? null;
+      if (!r.ok && !csvResult) formError = r.message;
+    }
+  }
+}
+
+const res = await advertisingApi(token, "GET", `/spend?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+const data: any = res.ok ? res.data : null;
+const report = data?.report;
+const n = (v: number | null | undefined) => (v == null ? "—" : fmtInt(v));
+---
+<AdminLayout title="Advertising spend" description="Daily spend, clicks and impressions per campaign from Google Ads and Meta, or a CSV upload.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-6xl">
+    <p class="text-sm mb-2"><a class="underline" href="/admin/advertising">Advertising</a> / Spend</p>
+    <h2 class="text-2xl font-black text-brand-dark tracking-tight mb-2">Spend</h2>
+    <p class="text-sm text-gray-600 mb-6 max-w-3xl">Spend is stored per day, channel and campaign in the same table as <a class="underline" href="/admin/media-costs">Media costs</a>, so ROAS reads one set of numbers. An unknown click or impression count is shown as a dash, never as zero. Amounts are in each account's own currency; currencies are never added together.</p>
+    {notice && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</div>}
+    {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+    {!res.ok ? <p role="alert" class="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{res.message}</p> : (
+      <>
+        <form method="GET" class="flex flex-wrap items-end gap-3 mb-4">
+          <label class="text-xs font-bold text-gray-700">From<input type="date" name="from" value={report.from} class="mt-1 block rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <label class="text-xs font-bold text-gray-700">To<input type="date" name="to" value={report.to} class="mt-1 block rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <button class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-5 text-sm font-bold">Show</button>
+        </form>
+        {report.rows.length === 0 ? <p class="mb-8 rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-700">No data for {report.from} to {report.to}.</p> : (
+          <>
+            <ul class="mb-3 flex flex-wrap gap-4 text-sm">{report.totals.map((t: any) => <li class="rounded-xl border border-gray-200 bg-white px-4 py-2"><strong>{money(t.spendMinor, t.currency)}</strong> · clicks {n(t.clicks)} · impressions {n(t.impressions)}</li>)}</ul>
+            <div class="overflow-x-auto rounded-xl border border-gray-200 bg-white mb-10">
+              <table class="min-w-full text-sm">
+                <caption class="sr-only">Spend per day and campaign</caption>
+                <thead class="bg-gray-50 text-left text-xs uppercase text-gray-600"><tr><th class="px-3 py-2">Day</th><th class="px-3 py-2">Platform</th><th class="px-3 py-2">Channel</th><th class="px-3 py-2">Campaign</th><th class="px-3 py-2">Spend</th><th class="px-3 py-2">Clicks</th><th class="px-3 py-2">Impressions</th><th class="px-3 py-2">Source</th></tr></thead>
+                <tbody>{report.rows.map((r: any) => (
+                  <tr class="border-t border-gray-100"><td class="px-3 py-2 whitespace-nowrap">{r.spendDate}</td><td class="px-3 py-2">{r.platform}</td><td class="px-3 py-2">{r.channel}</td><td class="px-3 py-2">{r.campaignLabel ?? r.campaign}</td><td class="px-3 py-2 whitespace-nowrap">{money(r.spendMinor, r.currency)}</td><td class="px-3 py-2">{n(r.clicks)}</td><td class="px-3 py-2">{n(r.impressions)}</td><td class="px-3 py-2 text-gray-600">{r.source}</td></tr>
+                ))}</tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        <h3 class="text-lg font-black text-brand-dark mb-3">Import by API</h3>
+        <div class="grid gap-5 mb-4">{(data.capabilities ?? []).map((cap: any) => <AdCapabilityForm cap={cap} />)}</div>
+        <form method="POST" class="flex flex-wrap items-end gap-3 mb-10">
+          <label class="text-xs font-bold text-gray-700">Platform
+            <select name="platform" class="mt-1 block rounded-lg border border-gray-300 px-3 py-2 text-sm"><option value="google_ads">Google Ads</option><option value="meta">Meta</option></select>
+          </label>
+          <label class="text-xs font-bold text-gray-700">From<input type="date" name="from" class="mt-1 block rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <label class="text-xs font-bold text-gray-700">To<input type="date" name="to" class="mt-1 block rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <button name="intent" value="import" class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Import now</button>
+          <span class="text-xs text-gray-500">Blank dates = the last 7 full days. At most 90 days.</span>
+        </form>
+
+        <h3 class="text-lg font-black text-brand-dark mb-2">Upload a CSV (no API)</h3>
+        <p class="text-sm text-gray-600 mb-3 max-w-3xl">Header row required. Columns: <code>date</code> (YYYY-MM-DD), <code>platform</code>, <code>campaign</code>, <code>spend</code> (e.g. 150000 or 12.50), <code>currency</code>; optional <code>channel</code>, <code>account</code>, <code>campaign_id</code>, <code>clicks</code>, <code>impressions</code>. Quoted names with commas are fine. The whole file is checked first; nothing is written unless every row is valid. Uploading the same day and campaign again replaces its figures.</p>
+        <form method="POST" enctype="multipart/form-data" class="space-y-3 mb-6">
+          <label class="block text-xs font-bold text-gray-700">CSV file<input type="file" name="file" accept=".csv,text/csv" class="mt-1 block text-sm" /></label>
+          <label class="block text-xs font-bold text-gray-700">or paste it
+            <textarea name="csv" rows="6" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs" placeholder={"date,platform,campaign,spend,currency,clicks,impressions\n2026-09-20,Opera Ads,September chargers,85000,UGX,412,19040"}>{submittedCsv.length < 20000 ? submittedCsv : ""}</textarea>
+          </label>
+          <div class="flex flex-wrap gap-2">
+            <button name="intent" value="csv-check" class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-5 text-sm font-bold">Check the file</button>
+            <button name="intent" value="csv-apply" class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Apply</button>
+          </div>
+        </form>
+        {csvResult && (csvResult.errors?.length ? (
+          <div role="alert" class="mb-8 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+            <p class="font-bold mb-2">{csvResult.errors.length} problem(s). Nothing was written.</p>
+            <ul class="list-disc pl-5 text-xs space-y-1">{csvResult.errors.slice(0, 50).map((e: any) => <li>{e.rowNumber === 0 ? "File" : `Row ${e.rowNumber}`}: {e.errors.join("; ")}</li>)}</ul>
+          </div>
+        ) : (
+          <div role="status" class="mb-8 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">
+            {csvResult.dryRun ? "Checked, nothing written yet:" : "Applied:"} {csvResult.rows} rows ({csvResult.added} new, {csvResult.changed} changed, {csvResult.unchanged} unchanged).
+          </div>
+        ))}
+
+        <h3 class="text-lg font-black text-brand-dark mb-3">Recent imports</h3>
+        {(data.imports ?? []).length === 0 ? <p class="text-sm text-gray-600 mb-12">No data: nothing has been imported yet.</p> : (
+          <ul class="text-sm space-y-1 mb-12">{data.imports.map((i: any) => <li>{whenKampala(i.finishedAt)} · {i.platform} ({i.trigger}) · {i.dateFrom ?? ""}–{i.dateTo ?? ""} · <strong>{i.status}</strong> · {i.rowsWritten} rows{i.message ? ` · ${i.message}` : ""}</li>)}</ul>
+        )}
+      </>
+    )}
+  </div>
+</AdminLayout>

@@ -1,0 +1,99 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import AdCapabilityForm from "../../../components/admin/AdCapabilityForm.astro";
+import { readSessionToken } from "../../../lib/session";
+import { advertisingApi, audienceRunMessage, audienceRunStatus, saveCapabilityFromForm, PLATFORM_NAME, whenKampala } from "../../../lib/adminAdvertising";
+
+/**
+ * Audience sync (0154): past buyers, recent buyers (exclusion) and a
+ * high-value seed, built from real orders, consent-gated, hashed per platform
+ * and replaced daily on each LIVE platform. Counts below are a dry run: no
+ * platform is called until a person presses "Sync now" or the daily run does.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/advertising/audiences", 303);
+
+let notice: string | null = null;
+let formError: string | null = null;
+let runResult: any[] | null = null;
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  const intent = String(f.get("intent") ?? "");
+  if (intent.startsWith("capability-")) {
+    const r = await saveCapabilityFromForm(token, f);
+    if (r.ok) notice = "Saved."; else formError = r.message;
+  } else if (intent === "dry-run" || intent === "sync") {
+    const r = await advertisingApi(token, "POST", `/audiences/${encodeURIComponent(String(f.get("platform") ?? ""))}/run`, { mode: intent === "sync" ? "SYNC" : "DRY_RUN" });
+    if (r.ok) runResult = r.data; else formError = r.message;
+  }
+}
+
+const res = await advertisingApi(token, "GET", "/audiences");
+const data: any = res.ok ? res.data : null;
+const SEGMENTS = [
+  { key: "past_buyers", label: "Past buyers" },
+  { key: "recent_buyers", label: "Recent buyers (exclusion)" },
+  { key: "high_value", label: "High-value seed" },
+];
+const byPlatform = (p: string) => (data?.preview ?? []).filter((r: any) => r.platform === p);
+---
+<AdminLayout title="Advertising audiences" description="Customer lists for Google Customer Match, Meta Custom Audiences and TikTok, from real orders, consent-gated and hashed.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-5xl">
+    <p class="text-sm mb-2"><a class="underline" href="/admin/advertising">Advertising</a> / Audiences</p>
+    <h2 class="text-2xl font-black text-brand-dark tracking-tight mb-2">Audiences</h2>
+    <p class="text-sm text-gray-600 mb-6 max-w-3xl">
+      Three lists are built from orders that became sales: everyone who bought, those who bought recently (add it as an exclusion so they are not shown ads they no longer need), and the highest spenders (a seed for lookalikes).
+      Segments you define under <a class="underline" href="/admin/segments">Segments</a> can be synced too, each as its own list.
+      Anyone with a stored advertising refusal, on their account or any browser linked to them (including a guest's browser that placed an order), is left out. Email and phone are hashed (SHA-256) the way each platform documents before they leave the server.
+      A LIVE list is replaced daily after 03:00 Kampala time; a list with nobody eligible left is emptied. Switching sync off leaves the platform's lists as they were: delete them in the platform if you no longer use them.
+    </p>
+    {notice && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</div>}
+    {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+    {runResult && (
+      <div role="status" class="mb-6 rounded-xl border border-gray-300 bg-white p-4 text-sm">
+        <p class="font-bold mb-2">Run result</p>
+        <ul class="list-disc pl-5 space-y-1">{runResult.map((r) => <li>{PLATFORM_NAME[r.platform] ?? r.platform} / {r.segment}: {audienceRunStatus(r)}{r.uploadedCount != null ? `, ${r.uploadedCount} uploaded` : ""} ({r.eligibleCount} eligible){r.message ? `: ${r.message}` : ""}</li>)}</ul>
+      </div>
+    )}
+    {!res.ok ? <p role="alert" class="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{res.message}</p> : (
+      <>
+        {["google_ads", "meta", "tiktok"].map((p) => (
+          <section class="mb-10" aria-labelledby={`aud-${p}`}>
+            <h3 id={`aud-${p}`} class="text-lg font-black text-brand-dark mb-3">{PLATFORM_NAME[p]}</h3>
+            <div class="overflow-x-auto rounded-xl border border-gray-200 bg-white mb-3">
+              <table class="min-w-full text-sm">
+                <caption class="sr-only">Who each {PLATFORM_NAME[p]} list would hold today</caption>
+                <thead class="bg-gray-50 text-left text-xs uppercase text-gray-600"><tr><th class="px-3 py-2">List</th><th class="px-3 py-2">In segment</th><th class="px-3 py-2">Refused ads</th><th class="px-3 py-2">No email/phone</th><th class="px-3 py-2">Would upload</th><th class="px-3 py-2">Note</th></tr></thead>
+                <tbody>
+                  {byPlatform(p).map((r: any) => (
+                    <tr class="border-t border-gray-100"><td class="px-3 py-2 font-bold">{r.label}</td><td class="px-3 py-2">{r.inSegment}</td><td class="px-3 py-2">{r.excludedConsent}</td><td class="px-3 py-2">{r.excludedNoIdentifier}</td><td class="px-3 py-2">{r.eligible}</td><td class="px-3 py-2 text-gray-600">{r.inSegment === 0 ? "No data" : r.blocker ?? ""}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <form method="POST" class="flex flex-wrap gap-2 mb-4">
+              <input type="hidden" name="platform" value={p} />
+              <button name="intent" value="dry-run" class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-5 text-sm font-bold">Dry run (no platform call)</button>
+              <button name="intent" value="sync" class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Sync now</button>
+            </form>
+            {(data.capabilities ?? []).filter((c: any) => c.platform === p).map((cap: any) => <AdCapabilityForm cap={cap} segments={SEGMENTS} customSegments={data.customSegments ?? []} />)}
+          </section>
+        ))}
+        <section aria-labelledby="aud-runs" class="mb-12">
+          <h3 id="aud-runs" class="text-lg font-black text-brand-dark mb-3">Recent runs</h3>
+          {(data.runs ?? []).length === 0 ? <p class="text-sm text-gray-600">No data: no dry run or sync has been made yet.</p> : (
+            <div class="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+              <table class="min-w-full text-sm">
+                <caption class="sr-only">Audience runs, newest first</caption>
+                <thead class="bg-gray-50 text-left text-xs uppercase text-gray-600"><tr><th class="px-3 py-2">When</th><th class="px-3 py-2">Platform / list</th><th class="px-3 py-2">Mode</th><th class="px-3 py-2">Status</th><th class="px-3 py-2">Eligible</th><th class="px-3 py-2">Uploaded</th><th class="px-3 py-2">Message</th></tr></thead>
+                <tbody>{data.runs.map((r: any) => (
+                  <tr class="border-t border-gray-100"><td class="px-3 py-2 whitespace-nowrap">{whenKampala(r.finishedAt)}</td><td class="px-3 py-2">{PLATFORM_NAME[r.platform] ?? r.platform} / {r.segment}</td><td class="px-3 py-2">{r.mode} ({r.trigger})</td><td class="px-3 py-2 font-bold">{audienceRunStatus(r)}</td><td class="px-3 py-2">{r.eligibleCount}</td><td class="px-3 py-2">{r.uploadedCount ?? "—"}</td><td class="px-3 py-2 text-gray-600">{audienceRunMessage(r)}</td></tr>
+                ))}</tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </>
+    )}
+  </div>
+</AdminLayout>
