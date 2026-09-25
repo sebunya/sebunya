@@ -459,7 +459,7 @@ export class DrizzlePersonalDataEraser implements IPersonalDataEraser {
           update auth_sessions set revoked_at = coalesce(revoked_at, now()) where user_id = ${input.userId}::uuid`));
       }
 
-      await exec.execute(sql`update privacy_requests set result = ${JSON.stringify({ counts })}::jsonb where id = ${input.requestId}::uuid`);
+      await exec.execute(sql`update privacy_requests set result = ${JSON.stringify({ counts })}::text::jsonb where id = ${input.requestId}::uuid`);
       return { completed: true, counts };
     });
   }

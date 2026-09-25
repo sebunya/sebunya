@@ -57,7 +57,7 @@ export class CheckoutVelocitySignal {
     if (n >= 3) {
       await db.execute(sql`
         insert into loyalty_fraud_signals (signal_type, severity, details)
-        values ('ORDER_VELOCITY_PHONE', ${n >= 6 ? 'high' : 'medium'}, ${JSON.stringify({ orderId: input.orderId, ordersIn24h: n })}::jsonb)`);
+        values ('ORDER_VELOCITY_PHONE', ${n >= 6 ? 'high' : 'medium'}, ${JSON.stringify({ orderId: input.orderId, ordersIn24h: n })}::text::jsonb)`);
     }
   }
 }
