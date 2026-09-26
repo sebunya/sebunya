@@ -45,7 +45,7 @@ try {
   else {
     const j = await res.json().catch(() => null);
     if (j?.success) data = j.data;
-    else { loadFailed = true; apiError = `Profile responded with HTTP ${res.status}.`; }
+    else { loadFailed = true; apiError = j?.error?.message ?? `Profile responded with HTTP ${res.status}.`; }
   }
 } catch {
   loadFailed = true;
