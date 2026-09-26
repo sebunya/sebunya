@@ -9,7 +9,7 @@ import {
   type HeroSelectionContext,
 } from '../../domain/hero/HeroSlideLibrary';
 import { flashSaleHasEnded, validateHeroSlide, type HeroSlideFieldErrors } from '../../domain/hero/HeroSlideValidation';
-import { kampalaCutoff } from '@goldplus/shared';
+import { DEFAULT_TAXONOMY, kampalaCutoff } from '@goldplus/shared';
 
 /**
  * Hero content, composed for the two audiences that read it.
@@ -319,6 +319,7 @@ export class HeroContentService {
     const enriched = safe.map((s) => {
       const extras = { ...(s.extras ?? {}) };
       let ctaUrl = s.ctaUrl;
+      let ctaLabel = s.ctaLabel;
       let kicker = s.kicker;
       if (s.slideKey === 'loyalty' && signals.loyalty) {
         extras.points = signals.loyalty.points;
@@ -331,6 +332,11 @@ export class HeroContentService {
       }
       if ((s.slideKey === 'range' || s.slideKey === 'newarrivals') && affinityCat && ctaUrl.startsWith('/shop')) {
         ctaUrl = `/shop?category=${encodeURIComponent(affinityCat)}`;
+        // The slide's copy promises the whole range; the button now lands in
+        // ONE category, so the button says which ("See what's new in Sound").
+        // A slug the taxonomy does not know keeps the authored label.
+        const catName = categoryShortName(affinityCat);
+        if (catName && !/\bin\b/i.test(ctaLabel)) ctaLabel = `${ctaLabel} in ${catName}`;
       }
       // PII personalisation: greet a returning customer by name; name their area.
       if (firstName && (s.slideKey === 'referral' || s.slideKey === 'loyalty')) {
@@ -339,7 +345,7 @@ export class HeroContentService {
       if (area && s.slideKey === 'sameday') {
         kicker = `${s.kicker} · ${area}`;
       }
-      return this.toPublic({ ...s, ctaUrl, extras, kicker });
+      return this.toPublic({ ...s, ctaUrl, ctaLabel, extras, kicker });
     });
 
     return {
@@ -370,4 +376,11 @@ export class HeroContentService {
       settings,
     };
   }
+}
+
+/** "Sound Devices" → "Sound": the word a shopper uses, not the taxonomy's. */
+export function categoryShortName(slug: string): string | null {
+  const cat = DEFAULT_TAXONOMY.find((c) => c.slug === slug);
+  if (!cat) return null;
+  return cat.name.replace(/\s+(devices|accessories)$/i, '').trim() || cat.name;
 }

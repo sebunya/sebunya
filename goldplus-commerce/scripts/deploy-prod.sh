@@ -39,7 +39,13 @@ if git diff --name-only --relative "$PREV" HEAD | grep -qx Caddyfile; then
   docker compose --env-file .env.production -f docker-compose.production.yml exec -T caddy caddy validate --config /etc/caddy/Caddyfile 2>&1 | grep -q 'Valid configuration' || { echo "STOP: Caddyfile invalid after recreate"; exit 1; }
   echo "Caddy recreated for the new Caddyfile"
 fi
-docker compose --env-file .env.production -f docker-compose.production.yml build $SERVICES 2>&1 | tail -1
+# A failed build used to print only its LAST line — blank — and the roll died
+# silently (38ce4a3b, 2026-09-26: an Astro template error tsc cannot see).
+BUILD_LOG=/var/log/goldplus/build-$HEAD.log; mkdir -p /var/log/goldplus
+if ! docker compose --env-file .env.production -f docker-compose.production.yml build $SERVICES > "$BUILD_LOG" 2>&1; then
+  echo "STOP: image build failed for [$SERVICES] at $HEAD — last 40 lines of $BUILD_LOG:"; tail -40 "$BUILD_LOG"; exit 1
+fi
+tail -1 "$BUILD_LOG"
 docker compose --env-file .env.production -f docker-compose.production.yml up -d $SERVICES 2>&1 | tail -1
 N=$(echo $SERVICES | wc -w); WANT=$((N*2))
 # Bounded wait. This loop had no timeout: a replica that never reports

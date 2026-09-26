@@ -17,7 +17,9 @@ import type { NavConfig } from './types';
  */
 
 const WA = 'https://wa.me/256705004545';
-const WA_BATTERY = 'https://wa.me/256705004545?text=Hi%20GoldPlus%2C%20I%20need%20a%20battery%20for%20my%20';
+// A MESSAGE, not a URL: the header builds the wa.me link around the one
+// admin-owned number. A stored URL is unwrapped by whatsappHref, never nested.
+const WA_BATTERY = 'Hi GoldPlus, I need a battery for my phone. My phone model is: ';
 const FEAT = '/nav/featured-default.png';
 const flashSlide = HERO_SLIDE_LIBRARY.find((s) => s.slideKey === 'flash');
 // No deadline is typed anywhere any more: the header reads the live promotion
@@ -26,17 +28,17 @@ const flashSlide = HERO_SLIDE_LIBRARY.find((s) => s.slideKey === 'flash');
 const SALE_ENDS_ISO = '';
 
 const brandChips = [
-  { label: 'Tecno', href: '/shop?category=power&q=tecno' },
-  { label: 'Infinix', href: '/shop?category=power&q=infinix' },
-  { label: 'itel', href: '/shop?category=power&q=itel' },
-  { label: 'Samsung', href: '/shop?category=power&q=samsung' },
-  { label: 'iPhone', href: '/shop?category=power&q=iphone' },
-  { label: 'Redmi', href: '/shop?category=power&q=redmi' },
-  { label: 'Xiaomi', href: '/shop?category=power&q=xiaomi' },
-  { label: 'Huawei', href: '/shop?category=power&q=huawei' },
-  { label: 'Nokia', href: '/shop?category=power&q=nokia' },
-  { label: 'Oppo', href: '/shop?category=power&q=oppo' },
-  { label: 'All brands →', href: '/shop?category=power&q=battery', style: 'green' as const },
+  { label: 'Tecno', href: '/battery-finder?q=Tecno' },
+  { label: 'Infinix', href: '/battery-finder?q=Infinix' },
+  { label: 'itel', href: '/battery-finder?q=itel' },
+  { label: 'Samsung', href: '/battery-finder?q=Samsung' },
+  { label: 'iPhone', href: '/battery-finder?q=iPhone' },
+  { label: 'Redmi', href: '/battery-finder?q=Redmi' },
+  { label: 'Xiaomi', href: '/battery-finder?q=Xiaomi' },
+  { label: 'Huawei', href: '/battery-finder?q=Huawei' },
+  { label: 'Nokia', href: '/battery-finder?q=Nokia' },
+  { label: 'Oppo', href: '/battery-finder?q=Oppo' },
+  { label: 'All brands →', href: '/battery-finder', style: 'green' as const },
 ];
 
 // The capacity chips search by SIZE within the storage category, exactly as the
@@ -128,7 +130,7 @@ export const DEFAULT_NAV_CONFIG: NavConfig = {
         inputName: 'q',
         inputPlaceholder: 'Type your phone, e.g. Tecno Spark 10',
         brandChips,
-        askAction: { label: "Can't find your model? Send us a photo of the old one", href: WA_BATTERY },
+        askAction: { label: "Can't find your model? Send us a photo of the old one", href: `https://wa.me/256705004545?text=${encodeURIComponent(WA_BATTERY)}` },
       },
       featured: {
         eyebrow: 'Most carried', name: 'Magnetic Power Bank', line: 'Clips to the back of your phone',
