@@ -28,6 +28,10 @@ const CHANNEL: Record<string, string> = { paid_search: 'Paid search', paid_socia
 const label = (c: string) => CHANNEL[c] ?? c;
 const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Kampala' });
 const lastClick = view ? view.credits.filter((c: any) => c.model === 'last_click') : [];
+// Astro parses `<string, string>` inside a template expression as a tag, so the
+// label lookup lives here, not in the markup.
+const heardAboutLabels: Record<string, string> = HEARD_ABOUT_LABELS as Record<string, string>;
+const customerSaid: string = view?.effectiveAnswer ? (heardAboutLabels[view.effectiveAnswer] ?? view.effectiveAnswer) : 'No answer';
 ---
 <section aria-labelledby="order-source-h" class="mt-8 rounded-2xl border border-gray-200 bg-white p-5">
   <h3 id="order-source-h" class="font-black text-brand-dark">Where this order came from</h3>
@@ -41,7 +45,7 @@ const lastClick = view ? view.credits.filter((c: any) => c.model === 'last_click
           ? <p class="text-gray-600">{view.visitorRecorded ? 'None recorded for this visitor.' : 'No visitor was recorded with this order (for example an order entered for a customer).'}</p>
           : <ol class="mt-1 list-decimal pl-5">{view.touches.map((t: any) => <li>{label(t.channel)}{t.detail && <span class="text-gray-600"> · {t.detail}</span>} <span class="text-gray-500">({when(t.at)})</span></li>)}</ol>}
         {view.code && <p class="mt-2">{view.code.kind === 'creator' ? 'Creator' : 'Promo code'}: <strong>{view.code.detail}</strong></p>}
-        <p class="mt-2">Customer said: <strong>{view.effectiveAnswer ? (HEARD_ABOUT_LABELS as Record<string, string>)[view.effectiveAnswer] ?? view.effectiveAnswer : 'No answer'}</strong></p>
+        <p class="mt-2">Customer said: <strong>{customerSaid}</strong></p>
         {view.reports.filter((r: any) => r.whatsappRef).map((r: any) => <p class="text-gray-600">WhatsApp reference {r.whatsappRef} ({when(r.at)})</p>)}
         <p class="mt-2">Last-click credit: {lastClick.length === 0 ? <strong>No recorded source</strong> : lastClick.map((c: any) => <strong>{label(c.channel)}{c.detail && ` · ${c.detail}`} ({formatUgx(c.creditedUGX)})</strong>)}</p>
       </div>
