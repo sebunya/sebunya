@@ -250,6 +250,10 @@ const shownDevice: FinderDeviceDto | null = device?.device ?? (search?.kind === 
           <section class="mt-6 rounded-2xl border border-gray-200 bg-white p-5" aria-labelledby="request-heading">
             <h2 id="request-heading" class="text-sm font-black text-brand-dark">{cfg?.requestCta ?? 'Ask us to find this battery'}</h2>
             <p class="text-xs text-gray-500 mt-1">Tell us the phone and we will confirm the right battery before you buy. Your phone number is only used to answer you.</p>
+            {/* The packs we stock stay one tap away while the fit is unconfirmed:
+                the brand chips used to land on a /shop text search that listed
+                them under "Nothing matched"; now they land here instead. */}
+            <p class="text-xs mt-2"><a href="/shop?category=power&subcategory=phone-batteries" class="font-bold underline text-brand-dark">Or browse every phone battery we stock →</a> <span class="text-gray-500">Check the battery code on the listing against your old battery.</span></p>
             <p class="text-xs text-gray-500 mt-1">The model number is in Settings, under About phone. Please do not open a sealed phone or remove a swollen or damaged battery to find a code, and we never need your IMEI or serial number.</p>
             <form method="POST" class="mt-4 grid gap-3 sm:grid-cols-2">
               <input type="hidden" name="queryText" value={q} />
