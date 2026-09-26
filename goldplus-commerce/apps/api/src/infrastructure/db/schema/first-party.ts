@@ -11,7 +11,7 @@ const jsonbObject = customType<{ data: unknown; driverData: string }>({
     return 'jsonb';
   },
   toDriver(value: unknown) {
-    return sql`${JSON.stringify(value)}::jsonb` as unknown as string;
+    return sql`${JSON.stringify(value)}::text::jsonb` as unknown as string;
   },
 });
 

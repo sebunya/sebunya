@@ -14,6 +14,7 @@ suite('privacy erasure (real PostgreSQL)', () => {
   let raw: any;
   let eraser: any;
   const userIds: string[] = [];
+  const quoteIds: string[] = [];
   const tag = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
   const seedCustomer = async (label: string) => {
@@ -30,6 +31,7 @@ suite('privacy erasure (real PostgreSQL)', () => {
               values ('sms', ${phone}, 'ORDER_PAYMENT_SUCCESS', 'SENT', 'order', ${o.id})`;
     const [q] = await raw`insert into quote_requests (customer_name, email, phone, product_name, quantity)
               values ('Jane', ${email}, ${phone}, 'Battery', '2') returning id`;
+    quoteIds.push(q.id);
     await raw`insert into addresses (user_id, label, recipient_name, phone, district, area_details)
               values (${u.id}, 'Home', 'Jane', ${phone}, 'Kampala', 'Near the market')`;
     await raw`insert into auth_sessions (user_id, family_id, refresh_hash, jti, access_expires_at, refresh_expires_at)
@@ -60,7 +62,7 @@ suite('privacy erasure (real PostgreSQL)', () => {
       await raw`delete from orders where user_id in ${raw(userIds)}`;
       await raw`delete from users where id in ${raw(userIds)}`;
     }
-    await raw`delete from quote_requests where customer_name = ${'[removed]'} and updated_at > now() - interval '1 hour' and email = ''`.catch(() => {});
+    if (quoteIds.length) await raw`delete from quote_requests where id in ${raw(quoteIds)}`;
     await raw.end();
   });
 
