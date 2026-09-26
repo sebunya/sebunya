@@ -61,6 +61,9 @@ const measurement = resolveMeasurementConfig(import.meta.env);
 const CF_BEACON_LOADER = `(function(){function go(){var s=document.createElement('script');s.defer=true;s.src='https://static.cloudflareinsights.com/beacon.min.js';s.setAttribute('data-cf-beacon','{"token":"6288c9e8fae24ebcbc432462132ae7bd"}');document.body.appendChild(s);}function idle(){(window.requestIdleCallback||function(f){setTimeout(f,1500);})(go,{timeout:4000});}if(document.readyState==='complete'){idle();}else{addEventListener('load',idle);}})();`;
 // Returning-visitor flag on <html> before first paint (see the <head> comment).
 const SEEN_FLAG = `try{if(localStorage.getItem('goldplus_seen_before')==='true')document.documentElement.classList.add('gp-seen')}catch(e){}`;
+// Recently-viewed flag, same timing: the homepage trust strip hides only when the
+// "Pick up where you left off" rail will take its place (not for every returner).
+const RV_FLAG = `try{var r=JSON.parse(localStorage.getItem('goldplus_recently_viewed')||'[]');if(Array.isArray(r)&&r.length)document.documentElement.classList.add('gp-rv')}catch(e){}`;
 const FONT_LOADER = `(function(){var d=0;function go(){if(d)return;d=1;var l=document.createElement('link');l.rel='stylesheet';l.href='/fonts/faces.css?v=20260913';document.head.appendChild(l);}try{var o=new PerformanceObserver(function(){o.disconnect();setTimeout(go,0);});o.observe({type:'paint',buffered:true});}catch(e){}addEventListener('load',function(){setTimeout(go,0);});setTimeout(go,3000);})();`;
 const clarityId = /^[a-z0-9]{6,20}$/.test(import.meta.env.PUBLIC_CLARITY_ID ?? '') ? import.meta.env.PUBLIC_CLARITY_ID : null;
 // Clarity records page TEXT, not only inputs: everything is masked except the
@@ -187,7 +190,7 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
         is for new visitors; hiding it at DOMContentLoaded moved everything below it after the
         first paint (Cloudflare RUM: CLS 0.106 on the section under it). Same localStorage
         key as lib/returning-user.ts. */}
-    <script nonce={Astro.locals.cspNonce} is:inline data-cfasync="false" set:html={SEEN_FLAG}></script>
+    <script nonce={Astro.locals.cspNonce} is:inline data-cfasync="false" set:html={SEEN_FLAG + RV_FLAG}></script>
     <noscript><link rel="stylesheet" href="/fonts/faces.css?v=20260913" /></noscript>
     {/* Cloudflare Web Analytics (real-user LCP/INP/CLS), installed manually and loaded after
         window.load when the browser is idle (2026-09-14). Cloudflare's automatic injection

@@ -124,9 +124,11 @@ const realCoverIds = allProducts.filter(hasRealCover).map((p) => p.id);
     <RecentlyViewedRail />
   </div>
 
-  {/* 3. Trust strip (New Visitors Only). Hidden before first paint for a returning visitor
-      by the html.gp-seen flag BaseLayout sets in <head>; hiding it later shifted the page. */}
-  <style is:global>html.gp-seen #homepage-trust-strip{display:none}</style>
+  {/* 3. Trust strip. Hidden before first paint ONLY when the recently-viewed rail
+      above will take its slot (html.gp-rv, set by BaseLayout in <head> from the same
+      localStorage list the rail reads); hiding it later shifted the page. It used to
+      hide for every returning visitor, so returners never saw "Get it today". */}
+  <style is:global>html.gp-rv #homepage-trust-strip{display:none}</style>
   <section id="homepage-trust-strip" class="bg-white py-10 border-b border-slate-100">
     <div class="container mx-auto px-4 lg:px-8">
       <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -248,13 +250,14 @@ const realCoverIds = allProducts.filter(hasRealCover).map((p) => p.id);
 </BaseLayout>
 
 <script>
-  import { hasSeenBefore, handleUserVisitState } from "../lib/returning-user";
+  import { handleUserVisitState } from "../lib/returning-user";
+  import { getRecentlyViewedLocal } from "../lib/recommendations";
 
   document.addEventListener("DOMContentLoaded", () => {
     const trustStrip = document.getElementById("homepage-trust-strip");
-    
-    // First-party lock check: If they are a confirmed returning visitor, hide the Trust Strip
-    if (trustStrip && hasSeenBefore()) {
+
+    // The rail above replaces the strip only when it has something to show.
+    if (trustStrip && getRecentlyViewedLocal().length > 0) {
       trustStrip.style.display = "none";
     }
 

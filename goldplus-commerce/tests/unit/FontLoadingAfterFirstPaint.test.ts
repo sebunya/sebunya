@@ -60,12 +60,15 @@ describe('web fonts load after the first paint', () => {
     expect(layout).not.toMatch(/<script[^>]*src="https:\/\/static\.cloudflareinsights\.com/);
   });
 
-  it('the homepage trust strip is hidden for a returning visitor before first paint, not after', () => {
+  it('the homepage trust strip hides before first paint only when the recently-viewed rail takes its slot', () => {
     const layout = read('apps/web/src/layouts/BaseLayout.astro');
     const home = read('apps/web/src/pages/index.astro');
     expect(layout).toContain("localStorage.getItem('goldplus_seen_before')==='true')document.documentElement.classList.add('gp-seen')");
-    expect(layout).toContain('set:html={SEEN_FLAG}');
-    expect(home).toContain('html.gp-seen #homepage-trust-strip{display:none}');
+    expect(layout).toContain("localStorage.getItem('goldplus_recently_viewed')||'[]');if(Array.isArray(r)&&r.length)document.documentElement.classList.add('gp-rv')");
+    expect(layout).toContain('set:html={SEEN_FLAG + RV_FLAG}');
+    expect(home).toContain('html.gp-rv #homepage-trust-strip{display:none}');
+    // A returning visitor with nothing to resume keeps the strip (it used to hide for every returner).
+    expect(home).not.toContain('gp-seen #homepage-trust-strip');
     expect(read('apps/web/src/lib/returning-user.ts')).toContain('"goldplus_seen_before"');
   });
 });
