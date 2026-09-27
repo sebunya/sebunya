@@ -9,7 +9,7 @@ import {
   canTransitionCampaign,
   validateUtm,
 } from '../../../../application/use-cases/campaigns/CampaignScaffold';
-import { RecomputeCampaignReadinessUseCase } from '../../../../application/use-cases/campaigns/RecomputeCampaignReadinessUseCase';
+import { RecomputeAllCampaignReadinessUseCase, RecomputeCampaignReadinessUseCase } from '../../../../application/use-cases/campaigns/RecomputeCampaignReadinessUseCase';
 
 /**
  * Campaign scaffold admin surface (Wave 2F, NO-SEND). Definitions, UTM links and a
@@ -64,6 +64,17 @@ routes.post('/', requirePermissions([PERMISSIONS.CAMPAIGNS_MANAGE]), async (c) =
     newState: { name, objective, channel, targetUrl, status: row.status },
   });
   return ok(c, row);
+});
+
+// Backfill: recompute and store readiness for every campaign (idempotent).
+routes.post('/readiness/recompute', requirePermissions([PERMISSIONS.CAMPAIGNS_MANAGE]), async (c) => {
+  const registry = Registry.getInstance();
+  const result = await new RecomputeAllCampaignReadinessUseCase(registry.campaignRepo).execute();
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId: actor(c), action: 'CAMPAIGN_READINESS_RECOMPUTED', entity: 'campaign',
+    entityId: '00000000-0000-4000-8000-0000000c4a11', newState: result,
+  });
+  return ok(c, result);
 });
 
 routes.post('/:id/status', requirePermissions([PERMISSIONS.CAMPAIGNS_MANAGE]), async (c) => {

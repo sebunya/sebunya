@@ -167,6 +167,17 @@ routes.post('/adjust', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async 
   return c.json({ success: true, data: { entryId: result.entryId } });
 });
 
+// A member's current balance and recent ledger, read before a manual
+// adjustment so the operator sees what they are changing.
+routes.get('/members/:userId', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const userId = String(c.req.param('userId') ?? '').trim();
+  if (!/^[0-9a-f-]{36}$/i.test(userId)) {
+    return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'userId must be a uuid.' } } satisfies ApiResponse<never>, 400);
+  }
+  const history = await Registry.getInstance().getLoyaltyHistoryUseCase.execute({ userId });
+  return c.json({ success: true, data: { userId, programmeActive: history.programmeActive, balance: history.balance, entries: history.entries.slice(-20).reverse() } });
+});
+
 // The programme's money settings as stored, so the admin form can show them
 // and send back only what the operator changed.
 routes.get('/programme-config', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {

@@ -27,3 +27,30 @@ export class RecomputeCampaignReadinessUseCase {
     return result;
   }
 }
+
+/** Port: listing campaigns with their currently stored score. */
+export interface CampaignReadinessListPort extends CampaignReadinessRepositoryPort {
+  list(): Promise<Array<{ id: string; readinessScore: number | null }>>;
+}
+
+/**
+ * Backfill: campaigns created before the scorer was wired kept readiness 0.
+ * Recomputes every campaign through RecomputeCampaignReadinessUseCase and
+ * reports how many stored scores changed. Idempotent: a second run changes 0.
+ */
+export class RecomputeAllCampaignReadinessUseCase {
+  private readonly single: RecomputeCampaignReadinessUseCase;
+  constructor(private readonly repo: CampaignReadinessListPort) {
+    this.single = new RecomputeCampaignReadinessUseCase(repo);
+  }
+
+  async execute(): Promise<{ total: number; changed: number }> {
+    const rows = await this.repo.list();
+    let changed = 0;
+    for (const row of rows) {
+      const result = await this.single.execute(row.id);
+      if (result && result.score !== Number(row.readinessScore ?? 0)) changed++;
+    }
+    return { total: rows.length, changed };
+  }
+}
