@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { DEFAULT_HOMEPAGE_CONTENT } from '@goldplus/shared';
 import { Fixtures } from './helpers/fixtures';
 
 /**
@@ -22,6 +23,7 @@ suite('ambassadors media + homepage document (real PostgreSQL)', () => {
   let productUsageAsset = '';
   let savedUsages: any[] = [];
   let savedDoc: any = null;
+  let seededDoc = false;
   const person = (n: number) => `00000000-0000-4000-8000-${String(900 + n).padStart(12, '0')}`;
 
   beforeAll(async () => {
@@ -35,6 +37,9 @@ suite('ambassadors media + homepage document (real PostgreSQL)', () => {
     actor = await fx.user();
     savedUsages = await raw`select asset_id, entity, entity_id, field from media_usages where entity = 'homepage_ambassador'`;
     [savedDoc] = await raw`select config, updated_by from homepage_content where id = true`;
+    // The API seeds this singleton at boot (runHomepageContentSeedAtBoot); the
+    // schema-only test database never booted, so seed it the same way here.
+    if (!savedDoc) seededDoc = (await repo.seedMissing(DEFAULT_HOMEPAGE_CONTENT)).inserted > 0;
 
     const tag = Date.now().toString(16).padStart(12, '0');
     for (const [i, status] of (['ACTIVE', 'ACTIVE', 'ARCHIVED'] as const).entries()) {
@@ -61,6 +66,7 @@ suite('ambassadors media + homepage document (real PostgreSQL)', () => {
       await raw`delete from media_asset_variants where asset_id = any(${assetIds}::uuid[])`;
       await raw`delete from media_assets where id = any(${assetIds}::uuid[])`;
     }
+    if (seededDoc) await raw`delete from homepage_content where id = true`;
     if (savedDoc) await raw`update homepage_content set config = ${raw.json(savedDoc.config)}, updated_by = ${savedDoc.updated_by} where id = true`;
     await fx?.cleanup();
     await raw.end();
