@@ -44,6 +44,7 @@ export type CartErrorCode =
   | 'CART_NOT_FOUND'
   | 'VERSION_CONFLICT'
   | 'PRODUCT_UNAVAILABLE'
+  | 'OUT_OF_STOCK'
   | 'QUANTITY_OUT_OF_BOUNDS'
   | 'CART_LIMIT_EXCEEDED'
   | 'RETRYABLE_FAILURE'
@@ -64,6 +65,8 @@ export type CartCallResult =
       cart?: CartView;
       /** Present on PRODUCT_UNAVAILABLE, so the page can name the offending lines. */
       productIds?: string[];
+      /** Present on OUT_OF_STOCK: units still available (0 = none). */
+      available?: number;
     };
 
 type CartAction =
@@ -105,7 +108,7 @@ async function call(
     | {
         success?: boolean;
         data?: CartView;
-        error?: { code?: string; details?: CartView | { productIds?: string[] } };
+        error?: { code?: string; details?: CartView | { productIds?: string[]; available?: number } };
       }
     | null;
 
@@ -120,6 +123,9 @@ async function call(
     ...(code === 'VERSION_CONFLICT' && details && 'version' in details ? { cart: details as CartView } : {}),
     ...(details && 'productIds' in details && Array.isArray(details.productIds)
       ? { productIds: details.productIds }
+      : {}),
+    ...(details && 'available' in details && typeof details.available === 'number'
+      ? { available: details.available }
       : {}),
   };
 }
@@ -180,8 +186,12 @@ export const cartClient = {
  * What to tell the customer. Exhaustive over the typed codes, so no branch can fall
  * through to a passed-through server message.
  */
-export function cartMessageFor(code: CartErrorCode): string {
+export function cartMessageFor(code: CartErrorCode, available?: number): string {
   switch (code) {
+    case 'OUT_OF_STOCK':
+      return typeof available === 'number' && available > 0
+        ? `Only ${available} left. Please lower the quantity.`
+        : 'This item is out of stock.';
     case 'VERSION_CONFLICT':
       return 'Your basket changed in another tab. We have refreshed it. Please check and try again.';
     case 'PRODUCT_UNAVAILABLE':

@@ -7,8 +7,10 @@ import {
   CartOwner,
   CartRecord,
   CartProductReader,
+  CartStockLimit,
   ICartAuthorizedRepository,
 } from '../../../application/use-cases/commerce/MutateCartUseCase';
+import { cartStockLimit } from '../../../domain/inventory/Inventory';
 import type { IAccountCartRepository } from '../../../application/use-cases/commerce/ResolveAccountCartUseCase';
 
 /**
@@ -193,7 +195,7 @@ export class DrizzleAuthorizedCartRepository implements ICartAuthorizedRepositor
 export class DrizzleCartProductReader implements CartProductReader {
   async findPurchasable(
     productIds: readonly string[],
-  ): Promise<Array<{ id: string; name: string; unitPriceUgx: number }>> {
+  ): Promise<Array<{ id: string; name: string; unitPriceUgx: number; stock: CartStockLimit }>> {
     if (productIds.length === 0) return [];
     const rows = await db
       .select({
@@ -201,6 +203,11 @@ export class DrizzleCartProductReader implements CartProductReader {
         name: products.name,
         retailPrice: productPrices.retailPrice,
         hasRetailPrice: products.hasRetailPrice,
+        stockStatus: products.stockStatus,
+        isPreOrderEnabled: products.isPreOrderEnabled,
+        inventoryPolicy: products.inventoryPolicy,
+        stockQuantity: products.stockQuantity,
+        reservedQuantity: products.reservedQuantity,
       })
       .from(products)
       .leftJoin(productPrices, eq(productPrices.productId, products.id))
@@ -215,7 +222,9 @@ export class DrizzleCartProductReader implements CartProductReader {
     // answers PRICE_UNAVAILABLE), so it is not purchasable here either.
     return rows.flatMap((row) => {
       const price = confirmedRetailPrice(row.hasRetailPrice, row.retailPrice);
-      return price === null ? [] : [{ id: row.id, name: row.name, unitPriceUgx: price }];
+      return price === null
+        ? []
+        : [{ id: row.id, name: row.name, unitPriceUgx: price, stock: cartStockLimit(row) }];
     });
   }
 }
