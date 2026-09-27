@@ -46,13 +46,15 @@ if (!token) {
         <div class="kpi-icon">⚠️</div>
         <div class="kpi-info">
           <div class="kpi-val" id="below-40-pct">—</div>
-          <div class="kpi-lbl">Share of events scoring below 40</div>
+          <div class="kpi-lbl">Share of events scoring below 40 (Poor)</div>
+          <div class="kpi-sub" id="below-40-count">—</div>
         </div>
       </div>
       <div class="kpi-box kpi-good">
         <div class="kpi-info">
           <div class="kpi-val" id="above-80-pct">—</div>
-          <div class="kpi-lbl">Share of events scoring 80 or above</div>
+          <div class="kpi-lbl">Share of events scoring 80 or above (Excellent)</div>
+          <div class="kpi-sub" id="above-80-count">—</div>
         </div>
       </div>
       <div class="kpi-box">
@@ -67,39 +69,51 @@ if (!token) {
     <!-- Signal Coverage Breakdown -->
     <div class="section-panel">
       <div class="section-header">
-        <h2>Signal Coverage Guide</h2>
-        <p class="section-desc">Identity signals available for user-graph matching at each destination.</p>
+        <h2>Signal Coverage</h2>
+        <p class="section-desc">Identity signals available for user-graph matching at each destination, with the share of tracked events in the selected window that carried each one.</p>
       </div>
       <div class="signal-grid">
         <div class="signal-card signal-high">
           <div class="signal-name">📧 Hashed Email</div>
           <div class="signal-score">+25 pts</div>
           <div class="signal-desc">SHA-256 normalized email — highest match signal for Meta, Google, TikTok</div>
+          <div class="signal-coverage">Coverage: <strong data-signal="hashedEmail">—</strong></div>
         </div>
         <div class="signal-card signal-high">
           <div class="signal-name">📱 Hashed Phone</div>
           <div class="signal-score">+20 pts</div>
           <div class="signal-desc">SHA-256 E.164 phone — mobile match signal especially for TikTok</div>
+          <div class="signal-coverage">Coverage: <strong data-signal="hashedPhone">—</strong></div>
         </div>
         <div class="signal-card signal-medium">
           <div class="signal-name">🍪 Meta FBP/FBC</div>
           <div class="signal-score">+24 pts</div>
           <div class="signal-desc">_fbp browser cookie + _fbc click cookie — critical for Meta CAPI</div>
+          <div class="signal-coverage">FBP coverage: <strong data-signal="fbp">—</strong> · FBC: <strong data-signal="fbc">—</strong></div>
         </div>
         <div class="signal-card signal-medium">
           <div class="signal-name">🔗 GCLID</div>
           <div class="signal-score">+10 pts</div>
           <div class="signal-desc">Google click ID — essential for Google Ads enhanced conversions</div>
+          <div class="signal-coverage">Coverage: <strong data-signal="gclid">—</strong></div>
+        </div>
+        <div class="signal-card signal-medium">
+          <div class="signal-name">🎵 TTCLID</div>
+          <div class="signal-score">click ID</div>
+          <div class="signal-desc">TikTok click ID — ties a conversion to a TikTok ad click</div>
+          <div class="signal-coverage">Coverage: <strong data-signal="ttclid">—</strong></div>
         </div>
         <div class="signal-card signal-low">
           <div class="signal-name">🌐 IP Address</div>
           <div class="signal-score">+8 pts</div>
           <div class="signal-desc">Server-captured IP — fallback signal for CAPI matching</div>
+          <div class="signal-coverage">Coverage: <strong data-signal="ipAddress">—</strong></div>
         </div>
         <div class="signal-card signal-low">
           <div class="signal-name">🖥️ User Agent</div>
           <div class="signal-score">+5 pts</div>
           <div class="signal-desc">Browser UA string — device fingerprint signal</div>
+          <div class="signal-coverage">Coverage: not recorded per touchpoint</div>
         </div>
       </div>
     </div>
@@ -235,6 +249,9 @@ if (!token) {
   .signal-name { font-size: 0.875rem; font-weight: 600; color: #1e293b; margin-bottom: 0.25rem; }
   .signal-score { font-size: 0.75rem; font-weight: 700; color: #4f46e5; margin-bottom: 0.375rem; }
   .signal-desc { font-size: 0.75rem; color: #475569; line-height: 1.4; }
+  .signal-coverage { margin-top: 0.5rem; font-size: 0.75rem; color: #334155; }
+  .signal-coverage strong { color: #0f172a; }
+  .kpi-sub { font-size: 0.75rem; color: #64748b; margin-top: 0.125rem; }
 
   .order-lookup {
     display: flex;
@@ -293,6 +310,7 @@ if (!token) {
     font-weight: 700;
   }
   .score-high { background: #f0fdf4; color: #15803d; }
+  .score-good { background: #eff6ff; color: #1d4ed8; }
   .score-med  { background: #fffbeb; color: #b45309; }
   .score-low  { background: #fef2f2; color: #dc2626; }
   .attr-tp-list { padding: 0; }
@@ -344,6 +362,16 @@ if (!token) {
       const pct = (v: number | null | undefined, digits = 0) => (typeof v === 'number' ? `${v.toFixed(digits)}%` : 'No data');
       (document.getElementById('avg-score') as HTMLElement).textContent = pct(d.avgScore, 1);
       (document.getElementById('below-40-pct') as HTMLElement).textContent = pct(d.below40Pct);
+      const total = Number(d.totalEvents ?? 0);
+      const countText = (n: unknown) => (total > 0 && typeof n === 'number'
+        ? `${n.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })} of ${total.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })} events`
+        : 'No data');
+      (document.getElementById('below-40-count') as HTMLElement).textContent = countText(d.below40Count);
+      (document.getElementById('above-80-count') as HTMLElement).textContent = countText(d.above80Count);
+      const coverage = (d.signalCoverage ?? {}) as Record<string, number | null>;
+      document.querySelectorAll<HTMLElement>('[data-signal]').forEach((el) => {
+        el.textContent = pct(coverage[el.dataset.signal!]);
+      });
       (document.getElementById('above-80-pct') as HTMLElement).textContent = pct(d.above80Pct);
       (document.getElementById('total-events') as HTMLElement).textContent = d.totalEvents.toLocaleString('en-UG', { timeZone: 'Africa/Kampala' });
       const bar = document.getElementById('avg-score-bar') as HTMLElement | null;
@@ -375,14 +403,17 @@ if (!token) {
     }
   }
 
+  // Same bands as the Control Tower: Excellent >=80, Good 60-79, Fair 40-59, Poor <40.
   function scoreClass(score: number) {
-    if (score >= 70) return 'score-high';
+    if (score >= 80) return 'score-high';
+    if (score >= 60) return 'score-good';
     if (score >= 40) return 'score-med';
     return 'score-low';
   }
 
   function tpScoreClass(score: number) {
-    if (score >= 70) return 'background:#f0fdf4;color:#16a34a';
+    if (score >= 80) return 'background:#f0fdf4;color:#16a34a';
+    if (score >= 60) return 'background:#eff6ff;color:#1d4ed8';
     if (score >= 40) return 'background:#fffbeb;color:#d97706';
     return 'background:#fef2f2;color:#dc2626';
   }

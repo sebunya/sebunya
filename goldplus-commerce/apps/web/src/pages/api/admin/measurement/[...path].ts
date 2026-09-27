@@ -33,6 +33,8 @@ interface AllowedRoute {
   pattern: RegExp;
   /** Query parameters forwarded when present; everything else is dropped. */
   queryAllowlist: string[];
+  /** Forward the JSON request body (small, JSON only). Off for every other route. */
+  forwardBody?: boolean;
 }
 
 const ALLOWED: AllowedRoute[] = [
@@ -43,6 +45,7 @@ const ALLOWED: AllowedRoute[] = [
   { method: 'GET', pattern: /^attribution-summary$/, queryAllowlist: ['windowDays'] },
   { method: 'GET', pattern: /^attribution\/[A-Za-z0-9-]{1,64}$/, queryAllowlist: [] },
   { method: 'POST', pattern: /^dlq\/[A-Za-z0-9-]{1,64}\/replay$/, queryAllowlist: [] },
+  { method: 'POST', pattern: /^dlq\/[A-Za-z0-9-]{1,64}\/dismiss$/, queryAllowlist: [], forwardBody: true },
 ];
 
 const json = (status: number, body: unknown) =>
@@ -67,14 +70,25 @@ async function proxy(request: Request, params: Record<string, string | undefined
     if (value !== null && /^[A-Za-z0-9-]{1,32}$/.test(value)) upstream.searchParams.set(key, value);
   }
 
+  const headers: Record<string, string> = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
+  let body: string | undefined;
+  if (route.forwardBody) {
+    body = await request.text();
+    if (body.length > 4096) {
+      return json(413, { success: false, error: { code: 'BODY_TOO_LARGE', message: 'Request body too large.' } });
+    }
+    headers['Content-Type'] = 'application/json';
+  }
+
   try {
     const response = await fetch(upstream, {
       method,
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+      headers,
+      body,
       signal: AbortSignal.timeout(10_000),
     });
-    const body = await response.text();
-    return new Response(body, {
+    const text = await response.text();
+    return new Response(text, {
       status: response.status,
       headers: { 'Content-Type': 'application/json' },
     });

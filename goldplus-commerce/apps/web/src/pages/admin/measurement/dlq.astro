@@ -222,6 +222,24 @@ if (!token) {
   }
   .btn-replay:hover { background: #4f46e5; }
   .btn-replay:disabled { background: #c7d2fe; cursor: not-allowed; }
+  .row-actions { display: flex; gap: 0.375rem; }
+  .btn-dismiss {
+    padding: 0.375rem 0.75rem;
+    background: #fff;
+    color: #475569;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn-dismiss:disabled { opacity: 0.5; cursor: not-allowed; }
+  .dismiss-form-row td { background: #f8fafc; }
+  .dismiss-form { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+  .dismiss-form label { font-size: 0.75rem; font-weight: 600; color: #334155; }
+  .dismiss-form input { flex: 1 1 240px; padding: 0.375rem 0.5rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.8125rem; }
+  .dismiss-form .dismiss-error { color: #b91c1c; font-size: 0.75rem; width: 100%; }
 </style>
 
 <script>
@@ -240,6 +258,83 @@ if (!token) {
     setTimeout(() => { el.className = 'dlq-alert dlq-alert-hidden'; }, 5000);
   }
 
+  function esc(v: unknown): string {
+    return String(v ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]!));
+  }
+
+  let unresolvedTotal = 0;
+  function setUnresolved(n: number) {
+    unresolvedTotal = Math.max(0, n);
+    (document.getElementById('stat-unresolved') as HTMLElement).textContent = unresolvedTotal.toString();
+  }
+
+  function removeRow(row: Element | null) {
+    if (!row) return;
+    const next = row.nextElementSibling;
+    if (next?.classList.contains('dismiss-form-row')) next.remove();
+    row.remove();
+    setUnresolved(unresolvedTotal - 1);
+  }
+
+  const DISMISS_ERRORS: Record<string, string> = {
+    INVALID_REASON: 'Give a reason of 3 to 500 characters.',
+    ALREADY_RESOLVED: 'This entry was already replayed or dismissed.',
+    NOT_FOUND: 'This entry no longer exists.',
+    FORBIDDEN: 'You do not have permission to dismiss entries.',
+  };
+
+  function openDismissForm(id: string, btn: HTMLButtonElement) {
+    const row = btn.closest('tr');
+    if (!row) return;
+    if (row.nextElementSibling?.classList.contains('dismiss-form-row')) {
+      (row.nextElementSibling.querySelector('input') as HTMLInputElement | null)?.focus();
+      return;
+    }
+    const formRow = document.createElement('tr');
+    formRow.className = 'dismiss-form-row';
+    formRow.innerHTML = `<td colspan="6">
+      <form class="dismiss-form">
+        <label for="dismiss-reason-${esc(id)}">Reason for dismissing (it will not be re-sent)</label>
+        <input id="dismiss-reason-${esc(id)}" name="reason" required minlength="3" maxlength="500" placeholder="e.g. test order, provider rejected permanently" />
+        <button type="submit" class="btn-replay">Confirm dismiss</button>
+        <button type="button" class="btn-dismiss" data-cancel>Cancel</button>
+        <div class="dismiss-error" role="alert" aria-live="polite"></div>
+      </form></td>`;
+    row.after(formRow);
+    const form = formRow.querySelector('form') as HTMLFormElement;
+    const input = form.querySelector('input') as HTMLInputElement;
+    const errEl = form.querySelector('.dismiss-error') as HTMLElement;
+    input.focus();
+    form.querySelector('[data-cancel]')?.addEventListener('click', () => formRow.remove());
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const reason = input.value.trim();
+      if (reason.length < 3) { errEl.textContent = DISMISS_ERRORS.INVALID_REASON!; return; }
+      const submit = form.querySelector('button[type="submit"]') as HTMLButtonElement;
+      submit.disabled = true;
+      errEl.textContent = '';
+      try {
+        const res = await fetch(`/api/admin/measurement/dlq/${encodeURIComponent(id)}/dismiss`, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reason }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (json.success) {
+          showAlert('Entry dismissed. It will not be re-sent.', 'success');
+          removeRow(row);
+          return;
+        }
+        const code = typeof json.error === 'string' ? json.error : json.error?.code;
+        throw new Error(DISMISS_ERRORS[code] ?? code ?? `HTTP ${res.status}`);
+      } catch (err: any) {
+        errEl.textContent = `Dismiss failed: ${err.message}`;
+        submit.disabled = false;
+      }
+    });
+  }
+
   async function replayEntry(id: string, btn: HTMLButtonElement) {
     btn.disabled = true;
     btn.textContent = 'Replaying…';
@@ -251,7 +346,7 @@ if (!token) {
       const json = await res.json();
       if (json.success) {
         showAlert('Event re-enqueued for dispatch successfully.', 'success');
-        btn.closest('tr')?.remove();
+        removeRow(btn.closest('tr'));
       } else {
         throw new Error(json.error);
       }
@@ -274,7 +369,8 @@ if (!token) {
       if (!json.success) throw new Error('API error');
       const rows: any[] = json.data;
 
-      (document.getElementById('stat-unresolved') as HTMLElement).textContent = rows.length.toString();
+      // `data` is capped at 100 rows; `total` is the real unresolved count.
+      setUnresolved(typeof json.total === 'number' ? json.total : rows.length);
       const eventTypes = new Set(rows.map(r => r.eventName)).size;
       (document.getElementById('stat-event-types') as HTMLElement).textContent = eventTypes.toString();
 
@@ -296,16 +392,25 @@ if (!token) {
 
       tbody.innerHTML = rows.map(r => `
         <tr>
-          <td>${new Date(r.failedAt).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}</td>
-          <td><span class="event-badge">${r.eventName}</span></td>
-          <td><span class="event-id-mono" title="${r.eventId}">${r.eventId.slice(0, 16)}…</span></td>
-          <td><span class="attempts-badge">${r.totalAttempts}x</span></td>
-          <td><div class="reason-text" title="${r.failedReason}">${r.failedReason}</div></td>
-          <td><button class="btn-replay" data-id="${r.id}">Replay</button></td>
+          <td>${esc(new Date(r.failedAt).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' }))}</td>
+          <td><span class="event-badge">${esc(r.eventName)}</span></td>
+          <td><span class="event-id-mono" title="${esc(r.eventId)}">${esc(String(r.eventId).slice(0, 16))}…</span></td>
+          <td><span class="attempts-badge">${esc(r.totalAttempts)}x</span></td>
+          <td><div class="reason-text" title="${esc(r.failedReason)}">${esc(r.failedReason)}</div></td>
+          <td><div class="row-actions"><button class="btn-replay" data-id="${esc(r.id)}">Replay</button><button class="btn-dismiss" data-id="${esc(r.id)}">Dismiss</button></div></td>
         </tr>
       `).join('');
 
-      if (meta) meta.textContent = `${rows.length} entries`;
+      if (meta) meta.textContent = unresolvedTotal > rows.length
+        ? `Showing newest ${rows.length} of ${unresolvedTotal} entries`
+        : `${rows.length} entries`;
+
+      tbody.querySelectorAll('.btn-dismiss').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const el = e.currentTarget as HTMLButtonElement;
+          openDismissForm(el.dataset.id!, el);
+        });
+      });
 
       // Attach replay handlers
       tbody.querySelectorAll('.btn-replay').forEach(btn => {

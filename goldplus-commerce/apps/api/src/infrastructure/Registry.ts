@@ -367,6 +367,7 @@ import { DrizzleConsentRepository } from './measurement/DrizzleConsentRepository
 import { GetMeasurementOverviewUseCase } from '../application/use-cases/measurement/GetMeasurementOverviewUseCase';
 import { ListMeasurementDlqUseCase } from '../application/use-cases/measurement/ListMeasurementDlqUseCase';
 import { ReplayMeasurementDlqUseCase } from '../application/use-cases/measurement/ReplayMeasurementDlqUseCase';
+import { DismissMeasurementDlqUseCase } from '../application/use-cases/measurement/DismissMeasurementDlqUseCase';
 import { ListConsentAuditUseCase } from '../application/use-cases/measurement/ListConsentAuditUseCase';
 import { GetMatchQualitySummaryUseCase } from '../application/use-cases/measurement/GetMatchQualitySummaryUseCase';
 import { AttributionService } from '../application/use-cases/measurement/AttributionService';
@@ -2633,6 +2634,11 @@ export class Registry {
   public readonly replayMeasurementDlqUseCase = new ReplayMeasurementDlqUseCase(
     this.dlqRepo,
     this.measurementAdminRepo,
+    this.measurementLogger,
+    this.auditRepo
+  );
+  public readonly dismissMeasurementDlqUseCase = new DismissMeasurementDlqUseCase(
+    this.dlqRepo,
     this.measurementLogger,
     this.auditRepo
   );

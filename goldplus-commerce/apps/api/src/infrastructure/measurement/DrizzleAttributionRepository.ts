@@ -1,7 +1,8 @@
 import { db } from '../db/client';
 import { attributionTouchpoints } from '../db/schema/measurement';
 import { eq, gte, sql } from 'drizzle-orm';
-import type { AttributionRepository, AttributionTouchpointRow, MatchQualitySummary } from '../../application/ports/measurement/AttributionRepository';
+import { MATCH_SIGNALS } from '../../application/ports/measurement/AttributionRepository';
+import type { AttributionRepository, AttributionTouchpointRow, MatchQualitySummary, MatchSignal } from '../../application/ports/measurement/AttributionRepository';
 
 export class DrizzleAttributionRepository implements AttributionRepository {
   async getTouchpointsByOrderId(orderId: string): Promise<AttributionTouchpointRow[]> {
@@ -41,6 +42,13 @@ export class DrizzleAttributionRepository implements AttributionRepository {
         avg: sql<string | null>`avg(${attributionTouchpoints.matchScore})`,
         below40: sql<number>`count(*) filter (where ${attributionTouchpoints.matchScore} < 40)::int`,
         above80: sql<number>`count(*) filter (where ${attributionTouchpoints.matchScore} >= 80)::int`,
+        hashedEmail: sql<number>`count(*) filter (where ${attributionTouchpoints.hasHashedEmail})::int`,
+        hashedPhone: sql<number>`count(*) filter (where ${attributionTouchpoints.hasHashedPhone})::int`,
+        fbp: sql<number>`count(*) filter (where ${attributionTouchpoints.hasFbp})::int`,
+        fbc: sql<number>`count(*) filter (where ${attributionTouchpoints.hasFbc})::int`,
+        gclid: sql<number>`count(*) filter (where ${attributionTouchpoints.hasGclid})::int`,
+        ttclid: sql<number>`count(*) filter (where ${attributionTouchpoints.hasTtclid})::int`,
+        ipAddress: sql<number>`count(*) filter (where ${attributionTouchpoints.hasIpAddress})::int`,
       })
       .from(attributionTouchpoints)
       .where(gte(attributionTouchpoints.eventTime, since));
@@ -50,19 +58,34 @@ export class DrizzleAttributionRepository implements AttributionRepository {
       avg: row?.avg === null || row?.avg === undefined ? null : Number(row.avg),
       below40: Number(row?.below40 ?? 0),
       above80: Number(row?.above80 ?? 0),
+      signals: Object.fromEntries(MATCH_SIGNALS.map((k) => [k, Number(row?.[k] ?? 0)])) as Record<MatchSignal, number>,
     });
   }
 }
 
 /** Pure shaping of the SQL aggregate; exported for tests. */
-export function summariseMatchQuality(agg: { total: number; avg: number | null; below40: number; above80: number }): MatchQualitySummary {
+export function summariseMatchQuality(agg: {
+  total: number;
+  avg: number | null;
+  below40: number;
+  above80: number;
+  signals?: Partial<Record<MatchSignal, number>>;
+}): MatchQualitySummary {
   if (!agg.total || agg.avg === null || !Number.isFinite(agg.avg)) {
-    return { avgScore: null, below40Pct: null, above80Pct: null, totalEvents: 0 };
+    return {
+      avgScore: null, below40Pct: null, above80Pct: null,
+      below40Count: 0, above80Count: 0, totalEvents: 0,
+      signalCoverage: Object.fromEntries(MATCH_SIGNALS.map((k) => [k, null])) as Record<MatchSignal, number | null>,
+    };
   }
+  const pct = (n: number) => Math.round((n / agg.total) * 100);
   return {
     avgScore: Math.round(agg.avg * 10) / 10,
-    below40Pct: Math.round((agg.below40 / agg.total) * 100),
-    above80Pct: Math.round((agg.above80 / agg.total) * 100),
+    below40Pct: pct(agg.below40),
+    above80Pct: pct(agg.above80),
+    below40Count: agg.below40,
+    above80Count: agg.above80,
     totalEvents: agg.total,
+    signalCoverage: Object.fromEntries(MATCH_SIGNALS.map((k) => [k, pct(agg.signals?.[k] ?? 0)])) as Record<MatchSignal, number | null>,
   };
 }
