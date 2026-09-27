@@ -355,6 +355,15 @@ routes.get('/admin/stats', requirePermissions([PERMISSIONS.REPORTS_READ]), async
 });
 
 // Admin List Routes
+function withAdminFacts(facts: { reservationState: string | null; paymentMethod: string | null } | undefined) {
+  const reservationState = facts?.reservationState ?? null;
+  return {
+    reservationState,
+    isBackordered: reservationState === 'BACKORDERED',
+    paymentMethod: facts?.paymentMethod ?? null,
+  };
+}
+
 routes.get('/admin/orders', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
   try {
     let ordersList = await registry.orderRepo.findAll();
@@ -381,7 +390,16 @@ routes.get('/admin/orders', requirePermissions([PERMISSIONS.ORDERS_READ]), async
       ordersList = ordersList.filter(o => o.paymentStatus.toLowerCase() === paymentStatus);
     }
 
-    return c.json({ success: true, data: ordersList });
+    const facts = await registry.orderRepo.findAdminFacts(ordersList.map(o => o.id));
+    let data = ordersList.map(o => ({ ...o, ...withAdminFacts(facts.get(o.id)) }));
+
+    // reservation=backordered narrows to orders waiting on stock.
+    const reservation = c.req.query('reservation')?.trim().toUpperCase();
+    if (reservation) {
+      data = data.filter(o => (o.reservationState ?? '').toUpperCase() === reservation);
+    }
+
+    return c.json({ success: true, data });
   } catch (err: any) {
     if (err.message.includes('DATABASE_URL')) {
       return c.json({ success: false, error: { code: 'DB_NOT_CONFIGURED', message: 'Database not configured.' } }, 503);
@@ -418,7 +436,7 @@ routes.get('/admin/orders/:id', requirePermissions([PERMISSIONS.ORDERS_READ]), a
     return c.json({
       success: true,
       data: {
-        order,
+        order: { ...order, ...withAdminFacts((await registry.orderRepo.findAdminFacts([order.id])).get(order.id)) },
         paymentAttempts: safeAttempts,
       }
     });

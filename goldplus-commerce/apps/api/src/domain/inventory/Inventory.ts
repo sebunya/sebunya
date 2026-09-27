@@ -139,6 +139,21 @@ export interface StockPosition {
   stockOnHand: number;
   reserved: number;
   reorderPoint: number;
+  /** Selling policy; NON_STOCK_ITEM products are not stock-tracked and are never low. */
+  inventoryPolicy?: string | null;
+}
+
+/** Window used for sales velocity (days of cover). */
+export const SALES_VELOCITY_WINDOW_DAYS = 30;
+
+/**
+ * Days of cover = available / average daily units sold over the velocity window.
+ * Null when there is no sales history in the window (never a fake infinity or 0).
+ */
+export function daysOfCover(available: number, unitsSoldInWindow: number, windowDays: number = SALES_VELOCITY_WINDOW_DAYS): number | null {
+  if (!(unitsSoldInWindow > 0) || !(windowDays > 0)) return null;
+  const perDay = unitsSoldInWindow / windowDays;
+  return Math.max(0, available) / perDay;
 }
 
 /** Available-to-promise. Never negative. */
@@ -189,6 +204,7 @@ export function backorderShortfall(requested: number, reserved: number): number 
 /** Low stock when available at or below the reorder point (and a point is set). */
 export function isLowStock(pos: StockPosition): boolean {
   if (pos.reorderPoint <= 0) return false;
+  if (pos.inventoryPolicy !== undefined && parseInventoryPolicy(pos.inventoryPolicy) === 'NON_STOCK_ITEM') return false;
   return computeAvailable(pos.stockOnHand, pos.reserved) <= pos.reorderPoint;
 }
 

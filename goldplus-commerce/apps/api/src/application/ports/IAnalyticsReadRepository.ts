@@ -16,6 +16,10 @@ export interface AnalyticsOrderAggregates {
   failedPayments: number;
   completedOrders: number;
   cancelledOrders: number;
+  /** Online-prepaid (payment_method 'pesapal') orders, excluding cancellations with no payment result. */
+  prepaidOrders: number;
+  /** Of prepaidOrders, those with payment_status 'paid'. */
+  paidPrepaidOrders: number;
 }
 
 export interface AnalyticsDailyBucket {
