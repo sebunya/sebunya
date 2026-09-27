@@ -300,6 +300,38 @@ routes.patch('/admin/fake-reports/:id/status', requirePermissions([PERMISSIONS.S
   return c.json({ success: true, data: { id: report.id, status, loyalty } });
 });
 
+// ---------- Authenticity centre reads (read-only, redacted) ----------
+// Lists carry no reporter name, contact, account, scanner IP or user agent.
+routes.get('/admin/fake-reports', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+  const status = c.req.query('status')?.trim() || null;
+  if (status && !['new', 'investigating', 'verified_fake', 'dismissed'].includes(status)) {
+    return c.json({ success: false, error: { code: 'BAD_STATUS', message: 'Unknown status filter.' } }, 400);
+  }
+  try {
+    const data = await registry.fakeReportRepo.listForAdmin({
+      page: Number(c.req.query('page') ?? 1),
+      pageSize: Number(c.req.query('pageSize') ?? 25),
+      status,
+    });
+    return c.json({ success: true, data });
+  } catch (err) {
+    logger.error({ err }, '[Governance] Fake report list failed');
+    return c.json({ success: false, error: { code: 'READ_FAILED', message: 'Could not read counterfeit reports.' } }, 500);
+  }
+});
+
+routes.get('/admin/verification/summary', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+  const days = Math.min(Math.max(Math.trunc(Number(c.req.query('days') ?? 30)) || 30, 1), 365);
+  try {
+    const since = new Date(Date.now() - days * 86_400_000);
+    const data = await registry.verificationRepo.summarizeAttempts(since);
+    return c.json({ success: true, data: { windowDays: days, ...data } });
+  } catch (err) {
+    logger.error({ err }, '[Governance] Verification summary failed');
+    return c.json({ success: false, error: { code: 'READ_FAILED', message: 'Could not read verification scans.' } }, 500);
+  }
+});
+
 // ---------- Admin dashboard stats ----------
 routes.get('/admin/stats', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
   const [productCount, dealerCount, auditCount, supportCount] = await Promise.all([
