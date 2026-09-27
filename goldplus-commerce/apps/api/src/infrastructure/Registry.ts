@@ -1140,6 +1140,14 @@ export class Registry {
       quote: (input) => Registry.getInstance().checkoutDeliveryQuoting.quote(input),
       recordQuote: (orderId, capture) => Registry.getInstance().checkoutDeliveryQuoting.recordQuote(orderId, capture),
     },
+    // Optional retail owner-review threshold (payments ops config); unset = OFF.
+    {
+      thresholdUgx: async () => {
+        const raw = (await Registry.getInstance().paymentsOpsConfig.values())['owner_review_threshold_ugx'];
+        const n = raw === undefined ? NaN : Number(raw);
+        return Number.isInteger(n) && n > 0 ? n : null;
+      },
+    },
   );
   // Launch Phase 1 (Section 9.3): order-to-admin fulfilment alerts.
   public readonly fulfilmentRepo = new DrizzleFulfilmentRepository();

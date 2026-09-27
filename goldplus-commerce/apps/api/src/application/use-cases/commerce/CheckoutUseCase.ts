@@ -169,8 +169,23 @@ export class CheckoutUseCase {
       recordQuote(orderId: string, capture: Record<string, unknown>): Promise<void>;
       /** Called when a capture write fails, so the loss is observable. */
       onCaptureFailed?(orderId: string, error: unknown): void;
-    } | null = null
+    } | null = null,
+    /**
+     * The optional retail owner-review threshold (UGX), or null when unset.
+     * A failed read is treated as unset: the setting can hold an order for
+     * review, but it must never fail a checkout.
+     */
+    private readonly ownerReviewThreshold: { thresholdUgx(): Promise<number | null> } | null = null
   ) {}
+
+  private async ownerReviewThresholdUgx(): Promise<number | null> {
+    if (!this.ownerReviewThreshold) return null;
+    try {
+      return await this.ownerReviewThreshold.thresholdUgx();
+    } catch {
+      return null;
+    }
+  }
 
   public async execute(dto: CheckoutDto): Promise<CheckoutResult> {
     if (!dto.items || dto.items.length === 0) {
@@ -373,6 +388,7 @@ export class CheckoutUseCase {
         snapshot,
         dto.principal?.kind === 'USER' ? dto.principal.id : null,
         loyaltyReservation ? { discountUgx: loyaltyReservation.valueUgx, redemptionId: loyaltyReservation.reservationId } : null,
+        await this.ownerReviewThresholdUgx(),
       );
       try {
         const saved = await this.authoritativePricing.orders.savePricedOrder({ order, quote, reservationIds: reservation.reservations.map((item) => item.id), clientOrderKey, checkoutLink: dto.checkoutLink, stitching: dto.stitching ?? null, paymentMethod: dto.paymentMethod ?? null });
@@ -446,7 +462,11 @@ export class CheckoutUseCase {
       dto.buyerType,
       orderItems,
       fee.feeUgx,
-      fee.confirmed
+      fee.confirmed,
+      null,
+      null,
+      null,
+      await this.ownerReviewThresholdUgx(),
     );
 
     // A unique index on the client key makes concurrent duplicate

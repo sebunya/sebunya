@@ -146,6 +146,35 @@ export function computeAvailable(stockOnHand: number, reserved: number): number 
   return Math.max(0, stockOnHand - reserved);
 }
 
+/**
+ * What the basket may hold of one product, as far as stock is KNOWN.
+ *
+ * - `outOfStock`: labelled out_of_stock (and not a pre-order), or
+ *   stock-controlled with units on hand but every one already reserved.
+ * - `available`: units a shopper may still add, or null when the quantity is
+ *   not tracked (pre-order, NON_STOCK_ITEM, or zero units against a product
+ *   still labelled in stock — every stock writer flips a counted product to
+ *   out_of_stock at zero, so 0 with an in-stock label means "never counted").
+ *
+ * Checkout's backorder path is separate and unchanged; this only stops the
+ * basket accepting what is known not to exist.
+ */
+export function cartStockLimit(input: {
+  stockStatus: string | null | undefined;
+  isPreOrderEnabled: boolean | null | undefined;
+  inventoryPolicy: string | null | undefined;
+  stockQuantity: number | null | undefined;
+  reservedQuantity: number | null | undefined;
+}): { outOfStock: boolean; available: number | null } {
+  if (input.isPreOrderEnabled || input.stockStatus === 'pre_order') return { outOfStock: false, available: null };
+  if (input.stockStatus === 'out_of_stock') return { outOfStock: true, available: 0 };
+  if (parseInventoryPolicy(input.inventoryPolicy) === 'NON_STOCK_ITEM') return { outOfStock: false, available: null };
+  const onHand = input.stockQuantity ?? 0;
+  if (onHand <= 0) return { outOfStock: false, available: null };
+  const available = computeAvailable(onHand, input.reservedQuantity ?? 0);
+  return { outOfStock: available === 0, available };
+}
+
 /** How much of `requested` can actually be reserved right now (never oversells). */
 export function reservableQuantity(available: number, requested: number): number {
   if (requested <= 0) return 0;

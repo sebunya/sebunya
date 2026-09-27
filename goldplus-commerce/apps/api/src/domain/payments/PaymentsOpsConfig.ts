@@ -66,6 +66,15 @@ export const PAYMENTS_OPS_CONFIG_REGISTRY: readonly PaymentsOpsConfigEntry[] = [
     help: 'Appears on the provider dashboard, so it is yours to choose. Unset means no probe.',
   },
   {
+    key: 'owner_review_threshold_ugx',
+    type: 'integer',
+    unit: 'UGX',
+    min: 1,
+    max: 1_000_000_000,
+    label: 'Send retail orders at or above this total to owner review',
+    help: 'A retail order whose total (after discounts, including delivery) reaches this amount starts in "pending owner review", like wholesale and corporate orders, instead of "received". Unset means retail orders never wait for owner review.',
+  },
+  {
     key: 'trading_hours_start_eat',
     type: 'clock',
     unit: 'HH:MM East Africa Time',

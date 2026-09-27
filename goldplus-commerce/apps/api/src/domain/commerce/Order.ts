@@ -6,6 +6,30 @@ export type OrderStatus = 'received' | 'pending_payment' | 'pending_owner_review
 export type PaymentStatus = 'unpaid' | 'pending' | 'paid' | 'failed';
 export type BuyerType = 'retail' | 'wholesale' | 'corporate';
 
+/**
+ * Where a new order starts. Wholesale/corporate always wait for the owner.
+ * A retail order does too when an operator has set an owner-review threshold
+ * (UGX, payments ops config) and the order total reaches it. No threshold
+ * (null, the default) means retail starts at `received`, as it always did.
+ * Both starting states have the same exits in the state machine.
+ */
+export function initialOrderStatus(
+  buyerType: BuyerType,
+  totalUgx: number,
+  ownerReviewThresholdUgx: number | null | undefined,
+): OrderStatus {
+  if (buyerType === 'wholesale' || buyerType === 'corporate') return 'pending_owner_review';
+  if (
+    typeof ownerReviewThresholdUgx === 'number' &&
+    Number.isInteger(ownerReviewThresholdUgx) &&
+    ownerReviewThresholdUgx > 0 &&
+    totalUgx >= ownerReviewThresholdUgx
+  ) {
+    return 'pending_owner_review';
+  }
+  return 'received';
+}
+
 export interface OrderItem {
   productId: string;
   sku: string;
@@ -113,7 +137,9 @@ export class Order {
     deliveryFeeConfirmed: boolean = false,
     pricingSnapshot: OrderPricingSnapshot | null = null,
     userId: string | null = null,
-    loyaltyRedemption: { discountUgx: number; redemptionId: string } | null = null
+    loyaltyRedemption: { discountUgx: number; redemptionId: string } | null = null,
+    /** payments ops config `owner_review_threshold_ugx`; null = OFF. */
+    ownerReviewThresholdUgx: number | null = null
   ): Order {
     const subtotal = pricingSnapshot?.finalTotalUgx != null
       ? pricingSnapshot.finalTotalUgx - pricingSnapshot.shippingUgx - pricingSnapshot.taxUgx
@@ -123,10 +149,7 @@ export class Order {
     const total = grossTotal - loyaltyDiscount;
     const timestamp = new Date();
     
-    // Business Rule: wholesale/corporate require pending_owner_review
-    const initialStatus: OrderStatus = (buyerType === 'wholesale' || buyerType === 'corporate') 
-      ? 'pending_owner_review' 
-      : 'received';
+    const initialStatus = initialOrderStatus(buyerType, total, ownerReviewThresholdUgx);
 
     return new Order(
       id,

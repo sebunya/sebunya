@@ -74,7 +74,7 @@ export const POST: APIRoute = async ({ request, cookies, locals }) => {
       inBasket.set(line.productId, already + line.quantity);
       results.push({ productId: line.productId, outcome: 'added' });
     } else {
-      results.push({ productId: line.productId, outcome: 'refused', message: cartMessageFor(added.code) });
+      results.push({ productId: line.productId, outcome: 'refused', message: cartMessageFor(added.code, added.available) });
     }
   }
 
