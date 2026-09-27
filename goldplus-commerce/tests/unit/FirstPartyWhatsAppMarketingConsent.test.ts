@@ -82,7 +82,7 @@ describe('WhatsApp marketing consent — use case records evidence', () => {
     const accounts = { async findAccount(id: string) { return id === uid ? account : null; } };
     const hasher = new HmacIdentifierHasher('p'.repeat(40));
     const uc = new WhatsAppMarketingConsentUseCases(consent as any, evidenceRepo as any, accounts as any, hasher);
-    return { uid, uc, events, evidence, account, hasher };
+    return { uid, uc, events, evidence, account, hasher, consent: consent as any };
   }
   const req = (over: Record<string, unknown> = {}) => ({ requested: 'granted' as const, confirmationTicked: true, copyVersionId: WHATSAPP_MARKETING_COPY_VERSION, idempotencyKey: randomUUID(), correlationId: randomUUID(), ipAddress: '41.210.1.1', userAgent: 'Mozilla/5.0', ...over });
 
@@ -98,6 +98,27 @@ describe('WhatsApp marketing consent — use case records evidence', () => {
     const s = await uc.status(uid);
     expect(s).toMatchObject({ status: 'OPTED_IN', covered: true });
     expect((await uc.mayMarket(uid))).toMatchObject({ allowed: true, phoneE164: '+256772123456' });
+  });
+
+  it('an operator-recorded STOP on the account phone stops marketing', async () => {
+    const { uid, uc, consent } = setup();
+    await uc.change({ userId: uid, ...req() });
+    const seen: string[][] = [];
+    consent.hasActiveChannelSuppression = async (refs: string[], channel: string, purpose: string) => {
+      seen.push(refs);
+      return channel === 'whatsapp' && purpose === 'whatsapp_marketing' && refs.includes('phone:+256772123456');
+    };
+    expect(await uc.mayMarket(uid)).toEqual({ allowed: false, reason: 'SUPPRESSED', phoneE164: null });
+    expect(seen[0]).toEqual([`account:${uid}:whatsapp`, 'phone:+256772123456']);
+    consent.hasActiveChannelSuppression = async () => false;
+    expect(await uc.mayMarket(uid)).toMatchObject({ allowed: true, phoneE164: '+256772123456' });
+  });
+
+  it('an unreadable suppression check fails closed for the caller', async () => {
+    const { uid, uc, consent } = setup();
+    await uc.change({ userId: uid, ...req() });
+    consent.hasActiveChannelSuppression = async () => { throw new Error('db down'); };
+    await expect(uc.mayMarket(uid)).rejects.toThrow('db down');
   });
 
   it('a double-submitted form is one event', async () => {

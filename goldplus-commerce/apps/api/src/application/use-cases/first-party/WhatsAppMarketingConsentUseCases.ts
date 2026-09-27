@@ -126,6 +126,15 @@ export class WhatsAppMarketingConsentUseCases implements IWhatsAppMarketingGate 
       ? (await this.evidence.latestFor(row.last_consent_event_id))?.endpointHash ?? null
       : null;
     const gate = mayReceiveWhatsAppMarketing({ state: row?.state ?? null, consentedPhoneHash, currentPhoneHash: phone ? this.hasher.hash(phone) : null });
+    if (gate.allowed && this.consent.hasActiveChannelSuppression) {
+      // A STOP recorded by an operator is keyed by phone number (phone:+256…),
+      // not by account, so check both. A failed read throws: callers treat an
+      // unreadable gate as not allowed.
+      const refs = [keyFor(accountUserId).endpoint_ref, ...(phone ? [`phone:${phone}`] : [])];
+      if (await this.consent.hasActiveChannelSuppression(refs, WHATSAPP_CHANNEL, WHATSAPP_MARKETING_PURPOSE)) {
+        return { allowed: false, reason: 'SUPPRESSED', phoneE164: null };
+      }
+    }
     return { ...gate, phoneE164: gate.allowed ? phone : null };
   }
 }
