@@ -19,8 +19,8 @@ const PAYMENT_OR_SELF_HOST = /(^|\.)(pesapal\.com|shopgoldplus\.com)$/i;
  * utm_source=chatgpt.com; the others arrive by referrer only. Checked before
  * SEARCH, because gemini.google.com would otherwise read as Google search.
  */
-const AI_ASSISTANT_HOST = /(^|\.)(chatgpt\.com|chat\.openai\.com|openai\.com|gemini\.google\.com|bard\.google\.com|perplexity\.ai|copilot\.microsoft\.com|claude\.ai|meta\.ai|deepseek\.com)$/i;
-const AI_ASSISTANT_SOURCE = /^(chatgpt(\.com)?|openai|gemini|perplexity(\.ai)?|copilot|claude(\.ai)?|meta\.ai|deepseek)$/i;
+const AI_ASSISTANT_HOST = /(^|\.)(chatgpt\.com|chat\.openai\.com|gemini\.google\.com|bard\.google\.com|perplexity\.ai|copilot\.microsoft\.com|claude\.ai|meta\.ai|chat\.deepseek\.com)$/i;
+const AI_ASSISTANT_SOURCE = /^(chatgpt\.com|chat\.openai\.com|perplexity(\.ai)?|gemini\.google\.com|copilot\.microsoft\.com|claude\.ai)$/i;
 
 const SEARCH = /(^|\.)(google|bing|yahoo|duckduckgo|yandex|baidu|ecosia|brave)\./i;
 const SOCIAL = /(^|\.)(facebook|fb|instagram|tiktok|twitter|x|t|linkedin|lnkd|pinterest|snapchat|youtube|reddit|threads)\.(com|co|net|in|me)$/i;
@@ -40,9 +40,10 @@ export function classifyChannel(t: { source?: string | null; medium?: string | n
   if (src === 'whatsapp' || med === 'whatsapp') return 'whatsapp';
   if (/^(organic|seo)$/.test(med)) return 'organic_search';
   if (/^(social|social[_-]?organic)$/.test(med)) return 'organic_social';
+  // Assistants tag links with their own source and at most a referral medium.
+  if ((!med || med === 'referral') && (AI_ASSISTANT_SOURCE.test(src) || AI_ASSISTANT_HOST.test(src))) return 'ai_assistant';
   if (/^referral$/.test(med)) return 'referral';
   if (clicks.has('clickid') || clicks.has('click_id')) return 'other_paid';
-  if (AI_ASSISTANT_SOURCE.test(src) || AI_ASSISTANT_HOST.test(src)) return 'ai_assistant';
   if (src || med) return 'other';
   const ref = (t.referrerHost ?? '').toLowerCase();
   if (!ref || PAYMENT_OR_SELF_HOST.test(ref)) return 'direct';

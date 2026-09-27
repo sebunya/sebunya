@@ -42,6 +42,9 @@ const since = status?.since ? new Date(status.since).toLocaleDateString('en-GB',
       {!status.covered && status.coverageReason === 'PHONE_CHANGED_SINCE_OPT_IN' && (
         <p class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Your phone number changed after you said yes, so we will not send offers to the new number unless you switch this on again.</p>
       )}
+      {!status.covered && status.coverageReason === 'SUPPRESSED' && (
+        <p class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">You replied STOP to one of our WhatsApp messages, so we will not send you offers on WhatsApp. Contact us if you want them again.</p>
+      )}
       <form method="POST">
         <input type="hidden" name="formKind" value="whatsapp-marketing" />
         <input type="hidden" name="requested" value="withdrawn" />

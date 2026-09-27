@@ -22,5 +22,9 @@ describe('AI assistant channel', () => {
     expect(classifyChannel({ source: 'chatgpt.com', clickIdTypes: ['gclid'] })).toBe('paid_search');
     expect(classifyChannel({ source: 'newsletter', medium: 'email' })).toBe('email');
     expect(classifyChannel({ source: 'partner' })).toBe('other');
+    expect(classifyChannel({ source: 'chatgpt.com', medium: 'referral' })).toBe('ai_assistant');
+    expect(classifyChannel({ referrerHost: 'platform.openai.com' })).toBe('referral');
+    expect(classifyChannel({ source: 'copilot' })).toBe('other');
+    expect(classifyChannel({ source: 'chatgpt.com', medium: 'email' })).toBe('email');
   });
 });

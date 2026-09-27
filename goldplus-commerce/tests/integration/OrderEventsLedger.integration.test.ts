@@ -68,6 +68,27 @@ suite('order_events ledger (real PostgreSQL, P0-2 AC2/AC3)', () => {
     if (raw) await raw.end();
   });
 
+  // ---- owner review outranks the gateway -------------------------------------
+  it('a verified payment for an order held for owner review records paid but keeps the hold', async () => {
+    const orderId = await seedOrder('pending_owner_review');
+    const r = await service.transition(orderId, 'processing', {
+      actorType: 'payment_provider',
+      source: 'payment',
+      reasonCode: 'pesapal_payment_completed',
+      paymentStatus: 'paid',
+      idempotencyKey: `owner-hold:${orderId}`,
+    });
+    expect(r).toMatchObject({ fromStatus: 'pending_owner_review', toStatus: 'pending_owner_review', heldForOwnerReview: true });
+    expect(await orderRow(orderId)).toEqual({ status: 'pending_owner_review', payment_status: 'paid' });
+    expect(await eventsFor(orderId)).toHaveLength(0);
+
+    // The owner then releases it through the ordinary path: one event.
+    const actorId = (await raw`select gen_random_uuid() as id`)[0].id;
+    await service.transition(orderId, 'processing', { actorId, actorType: 'administrator', source: 'admin_api', reasonCode: 'owner_review_released' });
+    expect(await orderRow(orderId)).toEqual({ status: 'processing', payment_status: 'paid' });
+    expect(await eventsFor(orderId)).toHaveLength(1);
+  });
+
   // ---- AC3 ----------------------------------------------------------------
   it('AC3: each successful transition writes exactly one correct event, atomically', async () => {
     const orderId = await seedOrder('received');

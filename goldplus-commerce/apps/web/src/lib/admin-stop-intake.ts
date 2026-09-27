@@ -25,7 +25,12 @@ export function endpointRefFor(channel: StopChannel, contact: string): string | 
   let digits = raw.replace(/[^0-9]/g, '');
   if (digits.length === 10 && digits.startsWith('0')) digits = `256${digits.slice(1)}`;
   if (digits.length === 9 && digits.startsWith('7')) digits = `256${digits}`;
-  return digits.length >= 9 && digits.length <= 15 ? `phone:+${digits}` : null;
+  // "+256 0772…" — a trunk zero kept after the country code.
+  if (digits.length === 13 && digits.startsWith('2560')) digits = `256${digits.slice(4)}`;
+  // Only a full Ugandan mobile number can match the key the WhatsApp marketing
+  // gate checks (normalisePhoneE164). Anything else would record a STOP that
+  // never suppresses anyone, so it is refused instead.
+  return /^2567\d{8}$/.test(digits) ? `phone:+${digits}` : null;
 }
 
 /** Lists never show a full phone number or email. */
@@ -51,7 +56,7 @@ export function buildStopIntakeRequest(
   const channel = text('channel') as StopChannel;
   if (!STOP_CHANNELS.includes(channel)) errors.push('Choose a channel.');
   const endpointRef = STOP_CHANNELS.includes(channel) ? endpointRefFor(channel, text('contact')) : null;
-  if (!endpointRef) errors.push(channel === 'email' ? 'Enter a valid email address.' : 'Enter a valid phone number.');
+  if (!endpointRef) errors.push(channel === 'email' ? 'Enter a valid email address.' : 'Enter a Ugandan mobile number, for example 0772 123456.');
   const eventType = text('event_type') === 'unsubscribe' ? 'unsubscribe' : 'stop';
   const evidence = text('evidence');
   if (evidence.length < 5) errors.push('Describe the evidence (what the customer sent and where you saw it).');

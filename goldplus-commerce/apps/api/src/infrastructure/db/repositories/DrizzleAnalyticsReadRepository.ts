@@ -33,7 +33,7 @@ export class DrizzleAnalyticsReadRepository implements IAnalyticsReadRepository 
         coalesce(sum(total_amount), 0)::bigint as "grossOrderValueUgx",
         coalesce(sum(pricing_discount_total), 0)::bigint as "discountValueUgx",
         coalesce(sum(delivery_fee), 0)::bigint as "deliveryFeeValueUgx",
-        count(*) filter (where payment_status = 'failed')::int as "failedPayments",
+        count(*) filter (where payment_status in ('failed', 'rejected', 'cancelled'))::int as "failedPayments",
         count(*) filter (where status in ('completed', 'delivered'))::int as "completedOrders",
         count(*) filter (where status = 'cancelled')::int as "cancelledOrders"
       from orders

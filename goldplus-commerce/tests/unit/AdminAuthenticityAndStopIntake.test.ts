@@ -107,6 +107,10 @@ describe('STOP intake form', () => {
 
   it('normalises endpoints and masks them for lists', () => {
     expect(endpointRefFor('whatsapp', '0772 123456')).toBe('phone:+256772123456');
+    expect(endpointRefFor('whatsapp', '+256 0772 123456')).toBe('phone:+256772123456');
+    expect(endpointRefFor('whatsapp', '772123456')).toBe('phone:+256772123456');
+    expect(endpointRefFor('whatsapp', '+44 7700 900123')).toBeNull();
+    expect(endpointRefFor('whatsapp', '0414 123456')).toBeNull();
     expect(endpointRefFor('email', 'Name@Example.com')).toBe('email:name@example.com');
     expect(endpointRefFor('email', 'nope')).toBeNull();
     expect(maskEndpointRef('phone:+256772123456')).not.toContain('772123');

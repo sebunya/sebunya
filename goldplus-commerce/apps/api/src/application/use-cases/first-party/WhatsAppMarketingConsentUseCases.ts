@@ -37,7 +37,8 @@ export class WhatsAppMarketingConsentUseCases implements IWhatsAppMarketingGate 
     const account = await this.accounts.findAccount(userId);
     const phone = normalisePhoneE164(account?.phone);
     const state = await this.consent.getLatestConsentState(keyFor(userId));
-    const gate = await this.mayMarket(userId);
+    // The customer's own page must not fail because the gate could not be read.
+    const gate = await this.mayMarket(userId).catch(() => ({ allowed: false, reason: 'UNREADABLE', phoneE164: null }));
     return {
       status: whatsappMarketingStatus(state?.state ?? null),
       since: state?.effective_at ?? null,
