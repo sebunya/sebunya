@@ -27,7 +27,7 @@ if (Astro.request.method === "POST") {
       });
       const json = await res.json().catch(() => null);
       notice = res.ok && json?.success
-        ? { kind: "success", text: `Campaign “${json.data.name}” created as DRAFT.` }
+        ? { kind: "success", text: `Campaign “${json.data.name}” created as DRAFT (readiness ${json.data.readinessScore ?? 0}/100).` }
         : { kind: "error", text: json?.error?.message || "Create refused." };
     } else if (action === "status") {
       const id = String(form.get("id") || "");
@@ -144,6 +144,7 @@ const STATUS_STYLE: Record<string, string> = {
                 <span class="text-sm font-black text-slate-800">{cmp.name}</span>
                 <span class={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase ${STATUS_STYLE[cmp.status] ?? STATUS_STYLE.DRAFT}`}>{cmp.status}</span>
                 <span class="text-[11px] font-bold text-slate-500">{cmp.channel} · {cmp.objective} · {cmp.utmLinkCount} UTM link(s)</span>
+                <span data-campaign-readiness class={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase ${Number(cmp.readinessScore) >= 100 ? "border-emerald-200 bg-emerald-50 text-emerald-800" : Number(cmp.readinessScore) >= 65 ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-200 bg-slate-100 text-slate-700"}`} title="Name, objective, channel (10 each), shopgoldplus.com target URL (35), at least one UTM link (35). Recomputed on create and when a UTM link is added.">Readiness {Number(cmp.readinessScore ?? 0)}/100</span>
               </div>
               {cmp.targetUrl && <p class="mt-1 text-[11px] font-medium text-slate-500">{cmp.targetUrl}</p>}
               <div class="mt-3 flex flex-wrap items-end gap-3">

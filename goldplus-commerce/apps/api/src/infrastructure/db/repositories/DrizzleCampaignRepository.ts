@@ -47,6 +47,16 @@ export class DrizzleCampaignRepository {
     return row ?? null;
   }
 
+  async countUtmLinks(campaignId: string): Promise<number> {
+    const [row] = await db.select({ count: sql<number>`count(*)::int` }).from(utmLinks).where(eq(utmLinks.campaignId, campaignId));
+    return row?.count ?? 0;
+  }
+
+  async setReadinessScore(id: string, score: number) {
+    const [row] = await db.update(campaigns).set({ readinessScore: score }).where(eq(campaigns.id, id)).returning();
+    return row ?? null;
+  }
+
   async listUtmLinks(campaignId: string) {
     return db.select().from(utmLinks).where(eq(utmLinks.campaignId, campaignId));
   }

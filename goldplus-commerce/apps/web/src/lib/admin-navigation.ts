@@ -421,6 +421,8 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
   { label: 'Surveys', href: '/admin/surveys', group: 'Marketing', status: 'working', description: 'Customer surveys and their responses.' },
   { label: 'Notifications', href: '/admin/notifications', group: 'Marketing', status: 'working', description: 'Notification templates and wording overrides.' },
   { label: 'Loyalty & rewards', href: '/admin/loyalty', group: 'Marketing', status: 'working', description: 'Points programme, tiers, quests and gamification.' },
+  { label: 'Loyalty tiers', href: '/admin/loyalty/tiers', group: 'Marketing', status: 'working', description: 'Tier names, lifetime-point thresholds and activation.' },
+  { label: 'Points liability', href: '/admin/loyalty/liability', group: 'Marketing', status: 'working', description: 'Outstanding points, UGX value, daily snapshots and the finance CSV.' },
   { label: 'Lifecycle', href: '/admin/lifecycle', group: 'Marketing', status: 'working', description: 'Customer lifecycle stages and automations.' },
   { label: 'Behavioural interventions', href: '/admin/behavioural-interventions', group: 'Marketing', status: 'working', description: 'Governed nudges shown to customers, with guardrails.' },
   { label: 'Users', href: '/admin/users', group: 'System', status: 'working', description: 'Operator accounts.' },

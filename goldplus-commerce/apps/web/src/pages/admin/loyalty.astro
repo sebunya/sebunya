@@ -4,7 +4,6 @@ import { readSessionToken } from "../../lib/session";
 import {
   GAMIFICATION_READINESS_LEADERBOARD,
   LAUNCH_READINESS_CHECKLIST,
-  LOYALTY_ADMIN_PREVIEW,
   LOYALTY_FOUNDATION_GUARDRAILS,
   RISK_CONTROLS_CHECKLIST,
   UTILISATION_READINESS_SCORECARD,
@@ -106,7 +105,10 @@ const levelClass = (value: string) => value === "High"
         ) : (
           <span class="rounded-full border border-slate-200 bg-slate-100 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-slate-700">State unknown</span>
         )}
-        {programmeConfig?.killSwitch === true && <span class="rounded-full border border-red-300 bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-800">Kill switch on</span>}
+        <a href="/admin/loyalty/tiers" class="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-slate-800 hover:bg-slate-50">Tiers</a>
+        <a href="/admin/loyalty/liability" class="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-slate-800 hover:bg-slate-50">Points liability</a>
+        <a href="/admin/loyalty/gamification" class="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-slate-800 hover:bg-slate-50">Gamification</a>
+        {programmeConfig?.killSwitch === true &&<span class="rounded-full border border-red-300 bg-red-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-red-800">Kill switch on</span>}
       </div>
     </header>
 
@@ -121,8 +123,8 @@ const levelClass = (value: string) => value === "High"
         </>
       ) : (
         <>
-          <h2 id="activation-state" class="text-lg font-black text-amber-950">Activation status: {LOYALTY_ADMIN_PREVIEW.activationStatus}</h2>
-          <p class="mt-2 text-sm leading-relaxed text-amber-900">The live configuration could not be read, so the state below is the static foundation default. <strong>Why disabled:</strong> {LOYALTY_ADMIN_PREVIEW.activationBlocker}</p>
+          <h2 id="activation-state" class="text-lg font-black text-amber-950" data-loyalty-state-unavailable>Activation status: unavailable</h2>
+          <p class="mt-2 text-sm leading-relaxed text-amber-900" role="alert">The live loyalty configuration could not be read (service unreachable or permission denied). No figures are shown in its place — reload the page or check the API before relying on any loyalty state.</p>
         </>
       )}
     </section>
