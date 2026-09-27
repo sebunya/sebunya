@@ -8,6 +8,7 @@ const registry = Registry.getInstance();
 const getOverviewUseCase = registry.getMeasurementOverviewUseCase;
 const listDlqUseCase = registry.listMeasurementDlqUseCase;
 const replayDlqUseCase = registry.replayMeasurementDlqUseCase;
+const dismissDlqUseCase = registry.dismissMeasurementDlqUseCase;
 const listConsentAuditUseCase = registry.listConsentAuditUseCase;
 const getMatchQualityUseCase = registry.getMatchQualitySummaryUseCase;
 const loggerAdapter = registry.measurementLogger;
@@ -40,8 +41,9 @@ routes.get('/overview', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c
 
 routes.get('/dlq', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
   try {
-    const rows = await listDlqUseCase.execute(100);
-    return c.json({ success: true, data: rows });
+    // `data` is capped at 100 rows; `total` is the true unresolved count.
+    const { items, total } = await listDlqUseCase.executeWithTotal(100);
+    return c.json({ success: true, data: items, total });
   } catch (err) {
     loggerAdapter.error({ err }, '[AdminMeasurement] DLQ list failed');
     return c.json({ success: false, error: 'INTERNAL_ERROR' }, 500);
@@ -79,6 +81,39 @@ routes.post('/dlq/:id/replay', requirePermissions([PERMISSIONS.SETTINGS_MANAGE])
     if (err.message === 'ALREADY_RESOLVED') return c.json({ success: false, error: 'ALREADY_RESOLVED' }, 400);
 
     loggerAdapter.error({ err, dlqId: id }, '[AdminMeasurement] DLQ replay failed');
+    return c.json({ success: false, error: 'INTERNAL_ERROR' }, 500);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /admin/measurement/dlq/:id/dismiss — resolve WITHOUT re-sending
+// Same right as replay (it resolves the row). A reason is required and is
+// kept on the row (resolved_note "DISMISSED: …") and in the audit log.
+// ─────────────────────────────────────────────────────────────────────────────
+
+routes.post('/dlq/:id/dismiss', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const id = c.req.param('id');
+  if (!id) return c.json({ success: false, error: 'MISSING_ID' }, 400);
+
+  const body = await c.req.json().catch(() => null) as { reason?: unknown } | null;
+  const adminUser = c.get('user');
+  const actorId = adminUser?.id || 'system';
+
+  try {
+    const result = await dismissDlqUseCase.execute(id, body?.reason, actorId);
+    await registry.createAuditLogUseCase.execute({
+      actorId,
+      action: 'MEASUREMENT_DLQ_DISMISSED',
+      entity: 'measurement_dlq',
+      entityId: id,
+      newState: { message: result.message, reason: typeof body?.reason === 'string' ? body.reason.trim() : null },
+    }).catch((err: unknown) => loggerAdapter.error({ err, dlqId: id }, '[AdminMeasurement] audit write failed'));
+    return c.json({ success: true, message: result.message });
+  } catch (err: any) {
+    if (err.message === 'INVALID_REASON') return c.json({ success: false, error: 'INVALID_REASON' }, 400);
+    if (err.message === 'NOT_FOUND') return c.json({ success: false, error: 'NOT_FOUND' }, 404);
+    if (err.message === 'ALREADY_RESOLVED') return c.json({ success: false, error: 'ALREADY_RESOLVED' }, 400);
+    loggerAdapter.error({ err, dlqId: id }, '[AdminMeasurement] DLQ dismiss failed');
     return c.json({ success: false, error: 'INTERNAL_ERROR' }, 500);
   }
 });

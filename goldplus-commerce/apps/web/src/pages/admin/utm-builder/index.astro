@@ -1,6 +1,7 @@
 ---
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../lib/session";
+import { apiBase } from "../../../lib/api";
 import { buildUtmUrl, reviewTaxonomy, COMMON_MEDIUMS } from "@goldplus/shared";
 
 /** Campaign URL builder.
@@ -12,24 +13,73 @@ import { buildUtmUrl, reviewTaxonomy, COMMON_MEDIUMS } from "@goldplus/shared";
 const token = readSessionToken(Astro.request);
 if (!token) return Astro.redirect("/admin/login?returnTo=/admin/utm-builder", 303);
 
-let form = { url: "", source: "", medium: "", campaign: "", content: "", term: "", id: "", normalize: true };
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+let form = { url: "", source: "", medium: "", campaign: "", content: "", term: "", id: "", normalize: true, campaignId: "" };
 let result: ReturnType<typeof buildUtmUrl> | null = null;
 let taxonomy: ReturnType<typeof reviewTaxonomy> = [];
+
+let saveNotice: { kind: "success" | "error"; text: string } | null = null;
+
+/** The values actually in the built link, so the saved record matches it exactly. */
+async function saveUtmLink(campaignId: string, builtUrl: string): Promise<{ kind: "success" | "error"; text: string }> {
+  const q = new URL(builtUrl).searchParams;
+  try {
+    const res = await fetch(`${apiBase}/admin/campaigns/${encodeURIComponent(campaignId)}/utm-links`, {
+      method: "POST", headers,
+      signal: AbortSignal.timeout(5000),
+      body: JSON.stringify({
+        source: q.get("utm_source"), medium: q.get("utm_medium"), campaignName: q.get("utm_campaign"),
+        content: q.get("utm_content") || null, term: q.get("utm_term") || null,
+      }),
+    });
+    const json = await res.json().catch(() => null);
+    if (res.ok && json?.success) return { kind: "success", text: `Saved to the campaign (${json.data.shortUrl}).` };
+    return { kind: "error", text: json?.error?.message || `Save refused (HTTP ${res.status}).` };
+  } catch {
+    return { kind: "error", text: "Campaign service is unreachable right now; the link was built but not saved." };
+  }
+}
+
+let campaigns: Array<{ id: string; name: string; status?: string }> = [];
+let campaignsUnavailable = false;
+try {
+  const res = await fetch(`${apiBase}/admin/campaigns`, { headers, signal: AbortSignal.timeout(5000) });
+  const json = await res.json().catch(() => null);
+  if (res.ok && json?.success && Array.isArray(json.data?.campaigns)) campaigns = json.data.campaigns;
+  else campaignsUnavailable = true;
+} catch {
+  campaignsUnavailable = true;
+}
 
 if (Astro.request.method === "POST") {
   const data = await Astro.request.formData();
   const str = (k: string) => String(data.get(k) ?? "").trim();
 
-  if (String(data.get("intent") ?? "") === "reset") {
-    form = { url: "", source: "", medium: "", campaign: "", content: "", term: "", id: "", normalize: true };
+  const intent = String(data.get("intent") ?? "");
+  if (intent === "reset") {
+    form = { url: "", source: "", medium: "", campaign: "", content: "", term: "", id: "", normalize: true, campaignId: "" };
   } else {
     form = {
       url: str("url"), source: str("source"), medium: str("medium"), campaign: str("campaign"),
       content: str("content"), term: str("term"), id: str("id"),
       normalize: data.get("normalize") !== null,
+      campaignId: str("campaignId"),
     };
     result = buildUtmUrl({ ...form, normalizeValues: form.normalize });
     taxonomy = reviewTaxonomy({ source: form.source, medium: form.medium, campaign: form.campaign });
+
+    // Optional: save the built link to a campaign (POST /admin/campaigns/:id/utm-links).
+    // The plain builder above never depends on this.
+    if (intent === "save") {
+      if (!form.campaignId) {
+        saveNotice = { kind: "error", text: "Choose a campaign to save the link to." };
+      } else if (!result.ok || !result.url) {
+        saveNotice = { kind: "error", text: "Fix the link first; nothing was saved." };
+      } else {
+        saveNotice = await saveUtmLink(form.campaignId, result.url);
+      }
+    }
   }
 }
 
@@ -106,13 +156,37 @@ const field = (name: string) => errors.find((e) => e.field === name)?.message ??
           Normalise values to lower-case and hyphens (recommended)
         </label>
 
-        <div class="flex items-center gap-3 pt-2">
+        <div class="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <label for="campaignId" class="block text-xs font-black uppercase tracking-widest text-gray-500 mb-1">Save to campaign (optional)</label>
+          <select id="campaignId" name="campaignId" disabled={campaigns.length === 0}
+            class="w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-dark focus:outline-none">
+            <option value="">No campaign — just build the link</option>
+            {campaigns.map((c) => <option value={c.id} selected={c.id === form.campaignId}>{c.name}{c.status ? ` (${c.status})` : ""}</option>)}
+          </select>
+          <p class="mt-1 text-[11px] text-gray-500">
+            {campaignsUnavailable
+              ? "Campaigns could not be loaded (service unreachable or no permission). The builder still works."
+              : campaigns.length === 0
+                ? "No campaigns yet. Create one under Campaigns to save links to it."
+                : "The campaign stores the source, medium, campaign, content and term of the built link."}
+          </p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3 pt-2">
           <button type="submit" class="rounded-xl bg-brand-dark px-5 py-2.5 text-xs font-black uppercase tracking-widest text-white hover:opacity-90">Build link</button>
+          {campaigns.length > 0 && (
+            <button type="submit" name="intent" value="save" class="rounded-xl border border-brand-dark bg-white px-5 py-2.5 text-xs font-black uppercase tracking-widest text-brand-dark hover:bg-gray-50">Build and save to campaign</button>
+          )}
           <button type="submit" name="intent" value="reset" class="rounded-xl border border-gray-300 bg-white px-5 py-2.5 text-xs font-black uppercase tracking-widest text-gray-600 hover:bg-gray-50">Reset</button>
         </div>
       </form>
 
       <div class="space-y-4">
+        {saveNotice && (
+          <div role="status" class={saveNotice.kind === "success"
+            ? "rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-sm font-bold text-emerald-900"
+            : "rounded-2xl border border-red-300 bg-red-50 p-4 text-sm font-bold text-red-800"}>{saveNotice.text}</div>
+        )}
         {result?.ok && result.url ? (
           <div class="rounded-2xl border border-emerald-300 bg-emerald-50 p-6">
             <h3 class="text-xs font-black uppercase tracking-widest text-emerald-800">Tagged link</h3>

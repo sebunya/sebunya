@@ -24,6 +24,20 @@ export class ListMeasurementDlqUseCase {
 
   async execute(limit: number = 100): Promise<MeasurementDlqListItem[]> {
     const rows = await this.dlqRepo.listUnresolved(limit);
+    return this.toItems(rows);
+  }
+
+  /** The shown page plus the TRUE unresolved total (the page is capped at `limit`). */
+  async executeWithTotal(limit: number = 100): Promise<{ items: MeasurementDlqListItem[]; total: number }> {
+    const [rows, total] = await Promise.all([
+      this.dlqRepo.listUnresolved(limit),
+      this.dlqRepo.getUnresolvedCount(),
+    ]);
+    const items = this.toItems(rows);
+    return { items, total: Math.max(Number(total) || 0, items.length) };
+  }
+
+  private toItems(rows: any[]): MeasurementDlqListItem[] {
     return rows.map((r: Record<string, unknown>) => ({
       id: String(r.id),
       eventName: String(r.eventName ?? ''),

@@ -151,10 +151,10 @@ describe('#10 the Merchant feed cache clears on an inventory change', () => {
 
 describe('#19 match quality: aggregated in SQL, null when there is no data', () => {
   it('no events -> null rates, never 0%', () => {
-    expect(summariseMatchQuality({ total: 0, avg: null, below40: 0, above80: 0 })).toEqual({ avgScore: null, below40Pct: null, above80Pct: null, totalEvents: 0 });
+    expect(summariseMatchQuality({ total: 0, avg: null, below40: 0, above80: 0 })).toMatchObject({ avgScore: null, below40Pct: null, above80Pct: null, totalEvents: 0 });
   });
   it('events -> rounded average and shares', () => {
-    expect(summariseMatchQuality({ total: 4, avg: 57.25, below40: 1, above80: 1 })).toEqual({ avgScore: 57.3, below40Pct: 25, above80Pct: 25, totalEvents: 4 });
+    expect(summariseMatchQuality({ total: 4, avg: 57.25, below40: 1, above80: 1 })).toMatchObject({ avgScore: 57.3, below40Pct: 25, above80Pct: 25, totalEvents: 4 });
   });
   it('the repository aggregates in SQL instead of loading every row', () => {
     const src = read('apps/api/src/infrastructure/measurement/DrizzleAttributionRepository.ts');

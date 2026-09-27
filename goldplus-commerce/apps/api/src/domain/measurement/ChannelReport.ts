@@ -229,6 +229,12 @@ export interface ChannelLine {
   orders: number;
   revenueUGX: string;
   declaredOrders: number;
+  /**
+   * Orders whose recorded journey touched this channel but whose LAST-CLICK
+   * credit went to a different channel. Whole orders, independent of the
+   * selected model. null when journey data was not supplied.
+   */
+  assistedOrders: number | null;
   /** null = no spend recorded for this channel (or no spend data at all). */
   spendUGX: string | null;
   /** Revenue ÷ spend; null when there is no spend to divide by. */
@@ -255,6 +261,34 @@ export interface WeeklyChannelReport {
   creatorsAndCodes: Array<{ channel: string; detail: string; orders: number; revenueUGX: string }>;
 }
 
+/**
+ * Journey membership and last-click winner per order, from stored credits.
+ * The linear model gives every step of the (collapsed) journey a non-zero
+ * weight, so its rows are exactly the channels an order's journey touched.
+ */
+export interface AssistInput { journeyCredits: CreditRow[]; lastClickCredits: CreditRow[] }
+
+/** Per channel: orders it appeared in without winning the last click. Only sales in scope count. */
+export function assistedOrdersByChannel(input: AssistInput, inScope: (orderId: string) => boolean): Map<string, number> {
+  const winner = new Map<string, string>();
+  for (const c of input.lastClickCredits) {
+    if (c.weight > 0) winner.set(c.orderId, c.channel);
+  }
+  const touched = new Map<string, Set<string>>();
+  for (const c of input.journeyCredits) {
+    if (!(c.weight > 0) || c.basis !== 'observed' || !inScope(c.orderId)) continue;
+    if (!touched.has(c.orderId)) touched.set(c.orderId, new Set());
+    touched.get(c.orderId)!.add(c.channel);
+  }
+  const out = new Map<string, number>();
+  for (const [orderId, channels] of touched) {
+    const w = winner.get(orderId);
+    if (w === undefined) continue; // no last-click credit stored: cannot tell who won
+    for (const ch of channels) if (ch !== w) out.set(ch, (out.get(ch) ?? 0) + 1);
+  }
+  return out;
+}
+
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const ratio = (num: bigint, den: bigint): number | null => (den > 0n ? round2(Number(num) / Number(den)) : null);
 const perOrder = (spend: bigint | null, orders: number): string | null =>
@@ -266,10 +300,16 @@ export function buildWeeklyChannelReport(input: {
   sales: SaleRow[];
   credits: CreditRow[];
   spend: SpendInput;
+  /** Stored credits for the journey models used to derive assisted orders. */
+  assist?: AssistInput;
 }): WeeklyChannelReport {
   const { weeks, model } = input;
   const weekSet = new Set(weeks);
   const saleById = new Map(input.sales.map((s) => [s.orderId, s]));
+  const assisted = input.assist ? assistedOrdersByChannel(input.assist, (id) => {
+    const s = saleById.get(id);
+    return !!s && weekSet.has(weekStartKampala(s.orderAt));
+  }) : null;
   type Acc = { orders: number; revenue: bigint; declared: number; byWeek: Map<string, { orders: number; revenue: bigint }> };
   const acc = new Map<string, Acc>();
   const bucket = (ch: string) => {
@@ -305,6 +345,9 @@ export function buildWeeklyChannelReport(input: {
     if (!credited.has(s.orderId)) add('unattributed', week, 1, s.revenueUGX, false);
   }
 
+  // A channel that only assisted (never credited) still gets a row.
+  if (assisted) for (const [ch, n] of assisted) if (n > 0) bucket(ch);
+
   const spendBy = new Map<string, Map<string, bigint>>();
   if (input.spend.status === 'AVAILABLE') {
     for (const r of input.spend.rows) {
@@ -328,6 +371,7 @@ export function buildWeeklyChannelReport(input: {
       orders: round2(a.orders),
       revenueUGX: a.revenue.toString(),
       declaredOrders: round2(a.declared),
+      assistedOrders: assisted === null ? null : (assisted.get(channel) ?? 0),
       spendUGX: spend === null ? null : spend.toString(),
       roas: spend === null ? null : ratio(a.revenue, spend),
       costPerOrderUGX: perOrder(spend, a.orders),
