@@ -83,7 +83,7 @@ if (userId) {
     }
   }
 }
-const n = (v: number) => v.toLocaleString("en-US");
+const n = (v: number) => v.toLocaleString("en-US", { timeZone: "Africa/Kampala" });
 const fmtDate = (v: string) => new Date(v).toLocaleString("en-GB", { timeZone: "Africa/Kampala" });
 ---
 

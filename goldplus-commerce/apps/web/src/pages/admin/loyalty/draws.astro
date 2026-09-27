@@ -89,7 +89,7 @@ if (compliance === null) blockers.push("the compliance basis could not be read")
 else if (!compliance.permittedToRun) blockers.push(compliance.blockedReason === "COMPLIANCE_BASIS_MISSING" ? "no compliance basis (licence or counsel's opinion) is recorded" : `compliance refuses it (${compliance.blockedReason})`);
 const canActivate = blockers.length === 0;
 const pct = (bps: number) => `${(bps / 100).toFixed(2)}%`;
-const n = (v: number | null) => (v === null ? "not set" : v.toLocaleString("en-US"));
+const n = (v: number | null) => (v === null ? "not set" : v.toLocaleString("en-US", { timeZone: "Africa/Kampala" }));
 ---
 
 <AdminLayout title="Reward draws" description="Draw campaigns, published odds, budget and compliance basis.">
