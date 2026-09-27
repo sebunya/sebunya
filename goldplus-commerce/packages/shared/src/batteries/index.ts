@@ -67,11 +67,6 @@ export const BATTERY_REQUEST_STATUSES = ['OPEN', 'MAPPED_DEVICE', 'ALIAS_ADDED',
 export type BatteryRequestStatus = (typeof BATTERY_REQUEST_STATUSES)[number];
 
 /**
- * The owner's storefront price floor (2026-08-17): nothing on the site shows a
- * price below this. A battery priced under it cannot be published. One named
- * constant until an admin module owns the value.
- */
-/**
  * HISTORICAL. The price every product on the ORIGINAL eight-item catalogue was
  * listed at or above, once mistaken for a shop-wide minimum. Since 0127 the
  * rule is per product: the website sells at Price D and no discount may reach

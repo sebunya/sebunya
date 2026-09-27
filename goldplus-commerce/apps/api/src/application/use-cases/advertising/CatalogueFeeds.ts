@@ -21,6 +21,7 @@ import {
 
 /** RFC 4180 cell: quoted when it holds a comma, quote or line break; control characters dropped. */
 export function feedCsvCell(v: unknown): string {
+  // eslint-disable-next-line no-control-regex -- deliberately strips control characters
   const s = String(v ?? '').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/\r?\n|\r/g, ' ');
   return /[",]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }

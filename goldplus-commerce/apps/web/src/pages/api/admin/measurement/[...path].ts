@@ -40,6 +40,7 @@ const ALLOWED: AllowedRoute[] = [
   { method: 'GET', pattern: /^match-quality$/, queryAllowlist: ['days'] },
   { method: 'GET', pattern: /^dlq$/, queryAllowlist: ['limit'] },
   { method: 'GET', pattern: /^consent-audit$/, queryAllowlist: ['limit'] },
+  { method: 'GET', pattern: /^attribution-summary$/, queryAllowlist: ['windowDays'] },
   { method: 'GET', pattern: /^attribution\/[A-Za-z0-9-]{1,64}$/, queryAllowlist: [] },
   { method: 'POST', pattern: /^dlq\/[A-Za-z0-9-]{1,64}\/replay$/, queryAllowlist: [] },
 ];

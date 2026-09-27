@@ -24,7 +24,7 @@ try {
 
 const status = Astro.url.searchParams.get('source');
 const statusMessage = Astro.url.searchParams.get('sourceMessage');
-const CHANNEL: Record<string, string> = { paid_search: 'Paid search', paid_social: 'Paid social', organic_search: 'Organic search', organic_social: 'Organic social', referral: 'Referral', direct: 'Direct', whatsapp: 'WhatsApp', email: 'Email', sms: 'SMS', display: 'Display', affiliate: 'Affiliate', other_paid: 'Other paid', other: 'Other', creator: 'Creator', promo_code: 'Promo code', search_declared: 'Search (customer said)', social_declared: 'Social media (customer said)', word_of_mouth: 'Friends and family (customer said)', offline_media: 'Radio, TV and print (customer said)', returning_customer: 'Returning customer (customer said)' };
+const CHANNEL: Record<string, string> = { paid_search: 'Paid search', paid_social: 'Paid social', organic_search: 'Organic search', organic_social: 'Organic social', ai_assistant: 'AI assistants', referral: 'Referral', direct: 'Direct', whatsapp: 'WhatsApp', email: 'Email', sms: 'SMS', display: 'Display', affiliate: 'Affiliate', other_paid: 'Other paid', other: 'Other', creator: 'Creator', promo_code: 'Promo code', search_declared: 'Search (customer said)', social_declared: 'Social media (customer said)', word_of_mouth: 'Friends and family (customer said)', offline_media: 'Radio, TV and print (customer said)', returning_customer: 'Returning customer (customer said)' };
 const label = (c: string) => CHANNEL[c] ?? c;
 const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Kampala' });
 const lastClick = view ? view.credits.filter((c: any) => c.model === 'last_click') : [];

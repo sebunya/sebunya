@@ -54,6 +54,7 @@ function sortMap(map: readonly SlotAssignment[]): SlotAssignment[] {
 
 export function normaliseAlt(alt: string | null | undefined): string | null {
   if (alt == null) return null;
+  // eslint-disable-next-line no-control-regex -- deliberately strips control characters
   const trimmed = alt.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
   return trimmed ? trimmed.slice(0, ALT_MAX) : null;
 }

@@ -98,6 +98,7 @@ export interface ImportPlan {
 }
 
 const NAME_RE = /^(?<sku>[A-Za-z0-9][A-Za-z0-9 ._-]*?)__(?<slot>\d{1,2})(?:-(?<role>[A-Za-z0-9-]+))?\.(?<ext>[A-Za-z0-9]+)$/;
+// eslint-disable-next-line no-control-regex -- deliberately strips control characters
 const SAFE_NAME_RE = /^[^\\/:*?"<>|\u0000-\u001f]+$/;
 
 export function parseImportFilename(filename: string): { skuToken: string; slot: number; role: string | null } | null {
@@ -124,7 +125,7 @@ export function parseManifest(text: string, kind: 'csv' | 'json'): { rows: Manif
       return { rows: [], errors: ['The JSON manifest could not be parsed.'] };
     }
   }
-  const lines = text.replace(/^﻿/, '').split(/\r?\n/).filter((l) => l.trim().length > 0);
+  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter((l) => l.trim().length > 0);
   if (lines.length === 0) return { rows: [], errors: ['The CSV manifest is empty.'] };
   const header = splitCsvLine(lines[0]).map((h) => h.trim().toLowerCase());
   const need = ['sku', 'slot', 'filename'];

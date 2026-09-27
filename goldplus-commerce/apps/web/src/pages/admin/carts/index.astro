@@ -65,6 +65,25 @@ if (lookupId) {
   }
 }
 
+
+// Abandonment totals from the scheduled evaluator (GET /admin/carts/abandonment,
+// orders.read). Read-only; a failure shows a notice, never invented numbers.
+let abandonment: { summary: { open: number; expired: number; recovered: number; last24h: number }; recent: Array<{ id: string; cartId: string; status: string; itemCount: number; subtotalUgx: number; classifiedAt: string }> } | null = null;
+let abandonmentError: string | null = null;
+try {
+  const res = await fetch(`${apiBase}/admin/carts/abandonment?limit=10`, {
+    headers: { 'Accept': 'application/json', 'Authorization': `Bearer ${token}` },
+    signal: AbortSignal.timeout(5000),
+  });
+  const json = await res.json().catch(() => null);
+  if (res.ok && json?.success) abandonment = json.data;
+  else abandonmentError = res.status === 401 || res.status === 403
+    ? 'Your role cannot read cart abandonment (orders.read required).'
+    : json?.error?.message || `The API answered HTTP ${res.status}.`;
+} catch {
+  abandonmentError = 'The commerce API could not be reached.';
+}
+
 import { formatUgx } from '../../../lib/money';
 // UGX code format via the single money source (en-UG's currency symbol is "USh").
 const formatter = { format: (n: unknown) => formatUgx(n) };
@@ -115,6 +134,47 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
           {apiLive ? "Direct real-time connection verified." : "The commerce API is unreachable."}
         </p>
       </div>
+    </div>
+
+
+    {/* Cart abandonment totals */}
+    <div class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm mb-8">
+      <div class="flex items-center justify-between gap-4 mb-4">
+        <h3 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Cart abandonment</h3>
+        <span class="text-[10px] text-gray-400">A cart with items and no activity, classified hourly</span>
+      </div>
+      {abandonmentError ? (
+        <p class="text-xs text-red-600">{abandonmentError}</p>
+      ) : abandonment ? (
+        <>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div><p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Open</p><p class="text-2xl font-black text-brand-dark mt-1">{abandonment.summary.open}</p></div>
+            <div><p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Recovered</p><p class="text-2xl font-black text-brand-primaryInk mt-1">{abandonment.summary.recovered}</p></div>
+            <div><p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Expired</p><p class="text-2xl font-black text-gray-500 mt-1">{abandonment.summary.expired}</p></div>
+            <div><p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">New in last 24h</p><p class="text-2xl font-black text-brand-dark mt-1">{abandonment.summary.last24h}</p></div>
+          </div>
+          {abandonment.recent.length > 0 ? (
+            <div class="overflow-x-auto mt-5">
+              <table class="w-full text-xs">
+                <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-400"><th class="py-2">Cart</th><th>Status</th><th class="text-right">Items</th><th class="text-right">Subtotal</th><th class="text-right">Classified</th></tr></thead>
+                <tbody>
+                  {abandonment.recent.map((r) => (
+                    <tr class="border-t border-gray-100">
+                      <td class="py-2"><a class="font-mono text-brand-primaryInk hover:underline" href={`/admin/carts?id=${r.cartId}`}>{r.cartId.slice(0, 8)}…</a></td>
+                      <td>{r.status}</td>
+                      <td class="text-right">{r.itemCount}</td>
+                      <td class="text-right">{formatter.format(r.subtotalUgx)}</td>
+                      <td class="text-right text-gray-500">{new Date(r.classifiedAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p class="text-xs text-gray-500 mt-4">No carts have been classified as abandoned yet.</p>
+          )}
+        </>
+      ) : null}
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">

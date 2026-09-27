@@ -80,7 +80,7 @@ export function validateSettingsInput(input: SettingsInput, current: { productio
     for (const [name, path] of Object.entries(input.pages as Record<string, unknown>)) {
       if (!/^[a-z][a-z0-9_]{0,19}$/.test(name)) return bad('pages', `Page name "${name}" must be lower-case letters, digits or _.`);
       const p = String(path ?? '').trim();
-      if (!/^\/[A-Za-z0-9._~\-\/?=&%]*$/.test(p)) return bad('pages', `Path for "${name}" must start with / and contain no spaces.`);
+      if (!/^\/[A-Za-z0-9._~\-/?=&%]*$/.test(p)) return bad('pages', `Path for "${name}" must start with / and contain no spaces.`);
       pages[name] = p;
     }
     if (!pages.home) return bad('pages', 'A "home" page is required.');
@@ -102,7 +102,7 @@ export function validateSettingsInput(input: SettingsInput, current: { productio
     if (input.canary.duration_seconds !== undefined && String(input.canary.duration_seconds).trim() !== '') { const v = num(input.canary.duration_seconds); if (v === null || !Number.isInteger(v) || v < 10 || v > 60) return bad('canary.duration_seconds', 'Canary duration must be 10 to 60 seconds.'); c.duration_seconds = v; }
     if (input.canary.paths !== undefined) {
       const paths = (Array.isArray(input.canary.paths) ? input.canary.paths : String(input.canary.paths).split(',')).map((p) => String(p).trim()).filter(Boolean);
-      if (paths.length === 0 || paths.length > 4 || paths.some((p) => !/^\/[A-Za-z0-9._~\-\/?=&%]*$/.test(p))) return bad('canary.paths', 'Canary paths: 1 to 4 paths starting with /.');
+      if (paths.length === 0 || paths.length > 4 || paths.some((p) => !/^\/[A-Za-z0-9._~\-/?=&%]*$/.test(p))) return bad('canary.paths', 'Canary paths: 1 to 4 paths starting with /.');
       c.paths = paths;
     }
     if (Object.keys(c).length) config.canary = c;
