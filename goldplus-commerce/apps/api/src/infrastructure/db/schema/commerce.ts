@@ -200,6 +200,10 @@ export const paymentAttempts = pgTable('payment_attempts', {
   provider: varchar('provider', { length: 50 }).default('pesapal').notNull(),
   ipnReceivedAt: timestamp('ipn_received_at', { withTimezone: true }),
   callbackReceivedAt: timestamp('callback_received_at', { withTimezone: true }),
+  // Why a non-paid terminal attempt failed, as the provider said (0162).
+  providerStatusCode: integer('provider_status_code'),
+  providerStatusDescription: text('provider_status_description'),
+  failedAt: timestamp('failed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({

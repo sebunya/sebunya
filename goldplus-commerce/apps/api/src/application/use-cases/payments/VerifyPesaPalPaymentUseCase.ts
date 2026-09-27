@@ -1,3 +1,4 @@
+import { failureReasonToRecord } from '../../../domain/payments/PaymentFailureReason';
 import { IRefundLedgerRepository } from '../../ports/IRefundLedgerRepository';
 import { IPesaPalPaymentRepository, RecordedPaymentAttempt } from '../../ports/IPesaPalPaymentRepository';
 import { IPesaPalClient } from '../../ports/IPesaPalClient';
@@ -311,6 +312,18 @@ export class VerifyPesaPalPaymentUseCase {
     // The provider's own answer about the money, so it may record a collection
     // that followed an earlier decline on the same tracking id (2026-09-20).
     await this.paymentRepo.updatePaymentAttemptStatus(attempt.id, { status: mappedStatus, providerConfirmed: true });
+
+    // 5b. Why it failed, as the provider said it (0162). Never on a completed
+    // attempt; the repository's write repeats that guard atomically.
+    const failureReason = failureReasonToRecord({
+      currentStatus: attempt.status,
+      resolvedStatus: mappedStatus,
+      statusCode: statusResponse.status_code,
+      description: statusResponse.payment_status_description,
+    });
+    if (failureReason && this.paymentRepo.recordFailureReason) {
+      await this.paymentRepo.recordFailureReason(attempt.id, failureReason);
+    }
 
     // 6. Apply the order-side effect.
     if (lifecycleTarget) {

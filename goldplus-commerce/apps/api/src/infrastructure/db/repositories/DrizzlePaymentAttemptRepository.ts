@@ -5,6 +5,7 @@ import { paymentRefunds } from '../schema/commerce';
 import { IPesaPalPaymentRepository, RecordedPaymentAttempt } from '../../../application/ports/IPesaPalPaymentRepository';
 import { POLLABLE_ATTEMPT_STATUSES, assertAttemptTransition } from '../../../domain/payments/PaymentAttemptState';
 import { orderPaymentWriteDecision } from '../../../domain/payments/OrderPaymentState';
+import type { AttemptNumbering, FailureReasonRecord } from '../../../domain/payments/PaymentFailureReason';
 import { logger } from '../../logging/logger';
 
 function rowToPaymentAttempt(row: typeof paymentAttempts.$inferSelect): RecordedPaymentAttempt {
@@ -20,6 +21,9 @@ function rowToPaymentAttempt(row: typeof paymentAttempts.$inferSelect): Recorded
     provider: row.provider,
     ipnReceivedAt: row.ipnReceivedAt ?? null,
     callbackReceivedAt: row.callbackReceivedAt ?? null,
+    providerStatusCode: row.providerStatusCode ?? null,
+    providerStatusDescription: row.providerStatusDescription ?? null,
+    failedAt: row.failedAt ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -194,5 +198,38 @@ export class DrizzlePaymentAttemptRepository implements IPesaPalPaymentRepositor
     });
     return rows.map(rowToPaymentAttempt);
   }
-}
 
+  async recordFailureReason(id: string, reason: FailureReasonRecord): Promise<void> {
+    // The WHERE is the guard, not a pre-read: a completed attempt is never
+    // overwritten, even if it completed between our read and this write.
+    await db
+      .update(paymentAttempts)
+      .set({
+        providerStatusCode: reason.providerStatusCode,
+        providerStatusDescription: reason.providerStatusDescription,
+        failedAt: reason.failedAt,
+      })
+      .where(and(eq(paymentAttempts.id, id), sql`${paymentAttempts.status} <> 'completed'`));
+  }
+
+  async numberAttempts(attemptIds: string[]): Promise<AttemptNumbering[]> {
+    if (attemptIds.length === 0) return [];
+    const ids = sql.join(attemptIds.map((a) => sql`${a}::uuid`), sql`, `);
+    const result = await db.execute(sql`
+      SELECT id, attempt_number, attempts_for_order FROM (
+        SELECT id,
+          ROW_NUMBER() OVER (PARTITION BY order_id ORDER BY created_at, id)::int AS attempt_number,
+          COUNT(*) OVER (PARTITION BY order_id)::int AS attempts_for_order
+        FROM payment_attempts
+        WHERE order_id IN (SELECT order_id FROM payment_attempts WHERE id IN (${ids}))
+      ) numbered
+      WHERE id IN (${ids})
+    `);
+    const rows = ((result as unknown as { rows?: unknown[] }).rows ?? (result as unknown as unknown[])) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: String(r.id),
+      attemptNumber: Number(r.attempt_number),
+      attemptsForOrder: Number(r.attempts_for_order),
+    }));
+  }
+}
