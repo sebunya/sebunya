@@ -29,6 +29,12 @@ if (Astro.request.method === "POST") {
       notice = res.ok && json?.success
         ? { kind: "success", text: `Campaign “${json.data.name}” created as DRAFT (readiness ${json.data.readinessScore ?? 0}/100).` }
         : { kind: "error", text: json?.error?.message || "Create refused." };
+    } else if (action === "recompute-readiness") {
+      const res = await fetch(`${apiBase}/admin/campaigns/readiness/recompute`, { method: "POST", headers });
+      const json = await res.json().catch(() => null);
+      notice = res.ok && json?.success
+        ? { kind: "success", text: `Readiness recomputed for ${json.data.total} campaign(s); ${json.data.changed} score(s) changed.` }
+        : { kind: "error", text: json?.error?.message || `Readiness recompute refused (HTTP ${res.status}).` };
     } else if (action === "status") {
       const id = String(form.get("id") || "");
       const res = await fetch(`${apiBase}/admin/campaigns/${encodeURIComponent(id)}/status`, {
@@ -133,7 +139,13 @@ const STATUS_STYLE: Record<string, string> = {
     </section>
 
     <section class="rounded-2xl border border-slate-200 bg-white p-5">
-      <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">Campaigns</h2>
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">Campaigns</h2>
+        <form method="POST" data-recompute-readiness>
+          <input type="hidden" name="action" value="recompute-readiness" />
+          <button type="submit" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-wide text-slate-800 hover:bg-slate-50">Recompute readiness</button>
+        </form>
+      </div>
       {campaigns.length === 0 ? (
         <p class="mt-4 text-sm font-medium text-slate-500">No campaigns defined yet. Create the first draft above — nothing goes live from this workspace.</p>
       ) : (
