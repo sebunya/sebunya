@@ -44,7 +44,10 @@ describe('loyalty operations pages', () => {
     expect(src).toContain('let idempotencyKey = crypto.randomUUID()');
     expect(src).toContain('name="idempotencyKey" value={idempotencyKey}');
     expect(src).toContain('minlength="10"');
-    expect(src).toContain('Adjustments disabled: programme dormant.');
+    // Allowed while dormant, with a notice; refused only when the state is unreadable.
+    expect(src).toContain('Adjustments are allowed and recorded, but customers cannot see or spend points until it is active.');
+    expect(src).toContain('{programme ? (');
+    expect(src).not.toContain('{programme?.active ? (');
     expect(src).toContain('data-adjust-disabled');
   });
   it('member lookup endpoint sits on SETTINGS_MANAGE and reuses the history use case', () => {

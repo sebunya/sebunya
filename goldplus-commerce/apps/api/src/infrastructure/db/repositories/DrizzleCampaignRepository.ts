@@ -35,13 +35,13 @@ export class DrizzleCampaignRepository {
     return row ?? null;
   }
 
-  async addUtmLink(campaignId: string, utm: { source: string; medium: string; campaignName: string; content?: string | null; term?: string | null }) {
+  async addUtmLink(campaignId: string, utm: { source: string; medium: string; campaignName: string; content?: string | null; term?: string | null; destinationUrl?: string | null }) {
     const shortUrl = `gp-${Math.abs(
       [...`${campaignId}${utm.source}${utm.medium}${utm.campaignName}${utm.content ?? ''}`].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) | 0, 7),
     ).toString(36)}`;
     const [row] = await db
       .insert(utmLinks)
-      .values({ campaignId, source: utm.source, medium: utm.medium, campaignName: utm.campaignName, content: utm.content ?? null, term: utm.term ?? null, shortUrl })
+      .values({ campaignId, source: utm.source, medium: utm.medium, campaignName: utm.campaignName, content: utm.content ?? null, term: utm.term ?? null, shortUrl, destinationUrl: utm.destinationUrl ?? null })
       .onConflictDoNothing()
       .returning();
     return row ?? null;

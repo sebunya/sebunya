@@ -31,6 +31,7 @@ async function saveUtmLink(campaignId: string, builtUrl: string): Promise<{ kind
       body: JSON.stringify({
         source: q.get("utm_source"), medium: q.get("utm_medium"), campaignName: q.get("utm_campaign"),
         content: q.get("utm_content") || null, term: q.get("utm_term") || null,
+        destinationUrl: (() => { const u = new URL(builtUrl); for (const k of [...u.searchParams.keys()]) if (k.startsWith("utm_")) u.searchParams.delete(k); return u.toString(); })(),
       }),
     });
     const json = await res.json().catch(() => null);
