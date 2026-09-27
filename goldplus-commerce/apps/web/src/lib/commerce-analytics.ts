@@ -75,6 +75,8 @@ export interface OrderAnalyticsRecord {
   status?: string;
   orderStatus?: string;
   paymentStatus?: string;
+  /** 'pesapal' (online prepaid) | 'offline' (cash on delivery) | null (legacy/admin). */
+  paymentMethod?: string | null;
   totalAmount?: number;
   deliveryFee?: number;
   pricingDiscountTotal?: number;
@@ -182,6 +184,13 @@ function summarizeOrders(orders: OrderAnalyticsRecord[], start: Date, end: Date)
   const failedPayments = periodOrders.filter((order) => FAILED_PAYMENT_STATES.has(normalizedPaymentStatus(order)));
   const completed = periodOrders.filter((order) => normalizedOrderStatus(order) === 'completed');
   const cancelled = periodOrders.filter((order) => normalizedOrderStatus(order) === 'cancelled');
+  // Online-prepaid orders; cancellations with no payment result are excluded
+  // (mirrors DrizzleAnalyticsReadRepository.orderAggregates).
+  const prepaid = periodOrders.filter((order) => {
+    if (String(order.paymentMethod ?? '').trim().toLowerCase() !== 'pesapal') return false;
+    const payment = normalizedPaymentStatus(order);
+    return !(normalizedOrderStatus(order) === 'cancelled' && payment !== 'paid' && !FAILED_PAYMENT_STATES.has(payment));
+  });
   return {
     orders: periodOrders.length,
     paidOrders: paid.length,
@@ -192,6 +201,8 @@ function summarizeOrders(orders: OrderAnalyticsRecord[], start: Date, end: Date)
     failedPayments: failedPayments.length,
     completedOrders: completed.length,
     cancelledOrders: cancelled.length,
+    prepaidOrders: prepaid.length,
+    paidPrepaidOrders: prepaid.filter((order) => normalizedPaymentStatus(order) === 'paid').length,
   };
 }
 
@@ -287,15 +298,21 @@ export function buildCommerceAnalytics(input: {
       previousValue,
     });
 
-  const orderRateMetric = (key: string, numerator: number, prevNumerator: number) => {
+  const orderRateMetric = (
+    key: string,
+    numerator: number,
+    prevNumerator: number,
+    denominator: number = current.orders,
+    prevDenominator: number = previous.orders,
+  ) => {
     const def = requireMetricDefinition(key);
     return buildMetricValue({
       key,
-      state: rateState({ sourceAvailable: ordersOk, denominator: current.orders, minimumSample: def.minimumSample }),
-      value: boundedRate(numerator, current.orders),
-      previousState: rateState({ sourceAvailable: ordersOk, denominator: previous.orders, minimumSample: def.minimumSample }),
-      previousValue: boundedRate(prevNumerator, previous.orders),
-      sampleSize: current.orders,
+      state: rateState({ sourceAvailable: ordersOk, denominator, minimumSample: def.minimumSample }),
+      value: boundedRate(numerator, denominator),
+      previousState: rateState({ sourceAvailable: ordersOk, denominator: prevDenominator, minimumSample: def.minimumSample }),
+      previousValue: boundedRate(prevNumerator, prevDenominator),
+      sampleSize: denominator,
     });
   };
 
@@ -314,7 +331,8 @@ export function buildCommerceAnalytics(input: {
     orderCountMetric('gross_order_value', current.grossOrderValueUgx, previous.grossOrderValueUgx),
     orderCountMetric('discount_value', current.discountValueUgx, previous.discountValueUgx),
     orderCountMetric('delivery_fee_value', current.deliveryFeeValueUgx, previous.deliveryFeeValueUgx),
-    orderRateMetric('payment_success_rate', current.paidOrders, previous.paidOrders),
+    orderRateMetric('payment_success_rate', current.paidPrepaidOrders, previous.paidPrepaidOrders, current.prepaidOrders, previous.prepaidOrders),
+    orderRateMetric('paid_order_share', current.paidOrders, previous.paidOrders),
     orderRateMetric('payment_failure_rate', current.failedPayments, previous.failedPayments),
     orderRateMetric('order_cancellation_rate', current.cancelledOrders, previous.cancelledOrders),
     orderRateMetric('fulfilment_completion_rate', current.completedOrders, previous.completedOrders),

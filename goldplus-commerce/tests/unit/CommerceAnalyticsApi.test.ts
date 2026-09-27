@@ -131,7 +131,7 @@ function stubRepo(overrides: Partial<IAnalyticsReadRepository> = {}): IAnalytics
     orderAggregates: vi.fn().mockResolvedValue({
       orders: 10, paidOrders: 6, paidOrderValueUgx: 600_000, grossOrderValueUgx: 900_000,
       discountValueUgx: 20_000, deliveryFeeValueUgx: 30_000, failedPayments: 2,
-      completedOrders: 5, cancelledOrders: 1,
+      completedOrders: 5, cancelledOrders: 1, prepaidOrders: 7, paidPrepaidOrders: 5,
     }),
     dailyOrderBuckets: vi.fn().mockResolvedValue([
       { day: '2026-08-01', orders: 4, paidOrders: 2, paidOrderValueUgx: 200_000 },
@@ -157,6 +157,12 @@ describe('GetAnalyticsOverviewUseCase', () => {
     const failure = result.metrics.find((m) => m.key === 'payment_failure_rate');
     expect(failure?.value).toBeCloseTo(0.2);
     expect(failure?.assessment).toBe('FLAT');
+    // Headline success rate uses online-prepaid orders only (cash on delivery
+    // is unpaid by design); the all-orders ratio survives as paid_order_share.
+    const success = result.metrics.find((m) => m.key === 'payment_success_rate');
+    expect(success?.value).toBeCloseTo(5 / 7);
+    expect(success?.sampleSize).toBe(7);
+    expect(result.metrics.find((m) => m.key === 'paid_order_share')?.value).toBeCloseTo(0.6);
     // Decision insights become an action through the shared rules.
     expect(result.actions.some((a) => a.source === 'decision_intelligence')).toBe(true);
   });

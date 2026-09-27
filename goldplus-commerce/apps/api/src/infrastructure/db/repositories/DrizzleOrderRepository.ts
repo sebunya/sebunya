@@ -12,6 +12,11 @@ import { ICustomerOrderRepository } from '../../../application/ports/ICustomerOr
 import { loyaltyEarnSourceFromOrder } from '../../../domain/loyalty/LoyaltyEarnEligibility';
 import { OrderDetailDto, OrderSummaryDto, OrderStatus } from '@goldplus/shared';
 
+export interface AdminOrderFacts {
+  reservationState: string | null;
+  paymentMethod: string | null;
+}
+
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransactionalPricedOrderRepository {
@@ -46,6 +51,24 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
   async findPaymentMethod(id: string): Promise<string | null> {
     const [row] = await db.select({ paymentMethod: orders.paymentMethod }).from(orders).where(eq(orders.id, id)).limit(1);
     return row?.paymentMethod ?? null;
+  }
+
+  /**
+   * Admin-only operational facts that the Order entity does not carry:
+   * the stock reservation state (BACKORDERED, RESERVED, ...) and how the
+   * customer chose to pay. Read-only; keyed by order id.
+   */
+  async findAdminFacts(ids: string[]): Promise<Map<string, AdminOrderFacts>> {
+    const out = new Map<string, AdminOrderFacts>();
+    if (!ids.length) return out;
+    const rows = await db
+      .select({ id: orders.id, reservationState: orders.reservationState, paymentMethod: orders.paymentMethod })
+      .from(orders)
+      .where(inArray(orders.id, ids));
+    for (const row of rows) {
+      out.set(row.id, { reservationState: row.reservationState ?? null, paymentMethod: row.paymentMethod ?? null });
+    }
+    return out;
   }
 
   /** Server-owned paid-order facts used by the dormant Loyalty earn boundary. */

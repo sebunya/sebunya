@@ -25,6 +25,7 @@ const orders = GOLDEN_ORDERS.map((order) => ({
   totalAmount: order.totalAmount,
   pricingDiscountTotal: order.pricingDiscountTotal,
   deliveryFee: order.deliveryFee,
+  paymentMethod: order.paymentMethod,
   createdAt: order.createdAtUtc,
 }));
 
@@ -57,6 +58,8 @@ describe('golden dataset — pure model', () => {
     expect(metric('delivery_fee_value').value).toBe(GOLDEN_CURRENT_EXPECTED.deliveryFeeValueUgx);
     expect(metric('average_paid_order_value').value).toBe(GOLDEN_CURRENT_EXPECTED.averagePaidOrderValueUgx);
     expect(metric('payment_success_rate').value).toBeCloseTo(GOLDEN_CURRENT_EXPECTED.paymentSuccessRate, 10);
+    expect(metric('payment_success_rate').sampleSize).toBe(GOLDEN_CURRENT_EXPECTED.prepaidOrders);
+    expect(metric('paid_order_share').value).toBeCloseTo(GOLDEN_CURRENT_EXPECTED.paidOrderShare, 10);
     expect(metric('payment_failure_rate').value).toBeCloseTo(GOLDEN_CURRENT_EXPECTED.paymentFailureRate, 10);
     expect(metric('order_cancellation_rate').value).toBeCloseTo(GOLDEN_CURRENT_EXPECTED.cancellationRate, 10);
     expect(metric('fulfilment_completion_rate').value).toBeCloseTo(GOLDEN_CURRENT_EXPECTED.completionRate, 10);
@@ -94,5 +97,37 @@ describe('golden dataset — pure model', () => {
     const action = result.actions.find((a) => a.source === 'search');
     expect(action?.severity).toBe('HIGH');
     expect(action?.sampleSize).toBe(GOLDEN_SEARCH_EXPECTED.totalSearches);
+  });
+});
+
+describe('payment success rate denominator', () => {
+  it('excludes cash on delivery and cancellations with no payment result, keeps rejected cancellations', () => {
+    const period = resolveAnalyticsPeriod({ startDate: '2026-07-01', endDate: '2026-07-31' });
+    const at = '2026-07-10T10:00:00.000Z';
+    const rows = [
+      { id: 'A', paymentMethod: 'pesapal', paymentStatus: 'paid', orderStatus: 'completed' },
+      { id: 'B', paymentMethod: 'pesapal', paymentStatus: 'failed', orderStatus: 'received' },
+      { id: 'C', paymentMethod: 'pesapal', paymentStatus: 'pending', orderStatus: 'cancelled' },
+      { id: 'D', paymentMethod: 'pesapal', paymentStatus: 'rejected', orderStatus: 'cancelled' },
+      { id: 'E', paymentMethod: 'offline', paymentStatus: 'unpaid', orderStatus: 'received' },
+      { id: 'F', paymentMethod: 'pesapal', paymentStatus: 'paid', orderStatus: 'received' },
+      { id: 'G', paymentMethod: 'pesapal', paymentStatus: 'paid', orderStatus: 'received' },
+      { id: 'H', paymentMethod: null, paymentStatus: 'unpaid', orderStatus: 'received' },
+    ].map((row) => ({ ...row, totalAmount: 1000, createdAt: at }));
+    const result = buildCommerceAnalytics({
+      period,
+      orders: source('orders', rows),
+      recommendations: source('recommendations', { summary: { impressions: 0, clicks: 0, addToCart: 0 } }),
+      search: source('search', { totalSearches: 0, zeroResultSearches: 0 }),
+      inventory: source('inventory', []),
+      decisions: source('decision_intelligence', { criticalHigh: 0 }),
+      measurementSummary: source('measurement_summary', {}),
+      measurementWarnings: source('measurement_warnings', []),
+    });
+    const success = result.metrics.find((m) => m.key === 'payment_success_rate')!;
+    // prepaid: A B D F G (C cancelled unresolved, E cash on delivery, H no method) -> 3 paid / 5
+    expect(success.sampleSize).toBe(5);
+    expect(success.value).toBeCloseTo(3 / 5, 10);
+    expect(result.metrics.find((m) => m.key === 'paid_order_share')!.value).toBeCloseTo(3 / 8, 10);
   });
 });

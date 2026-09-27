@@ -70,6 +70,8 @@ const EMPTY_AGGREGATES: AnalyticsOrderAggregates = {
   failedPayments: 0,
   completedOrders: 0,
   cancelledOrders: 0,
+  prepaidOrders: 0,
+  paidPrepaidOrders: 0,
 };
 
 function countState(available: boolean): MetricState {
@@ -296,15 +298,21 @@ function buildOrderMetrics(
       previousValue,
     });
 
-  const rate = (key: string, numerator: number, prevNumerator: number) => {
+  const rate = (
+    key: string,
+    numerator: number,
+    prevNumerator: number,
+    denominator: number = cur.orders,
+    prevDenominator: number = prev.orders,
+  ) => {
     const def = requireMetricDefinition(key);
     return buildMetricValue({
       key,
-      state: rateState({ sourceAvailable: ordersOk, denominator: cur.orders, minimumSample: def.minimumSample }),
-      value: cur.orders > 0 ? Math.max(0, Math.min(1, numerator / cur.orders)) : null,
-      previousState: rateState({ sourceAvailable: ordersOk, denominator: prev.orders, minimumSample: def.minimumSample }),
-      previousValue: prev.orders > 0 ? Math.max(0, Math.min(1, prevNumerator / prev.orders)) : null,
-      sampleSize: cur.orders,
+      state: rateState({ sourceAvailable: ordersOk, denominator, minimumSample: def.minimumSample }),
+      value: denominator > 0 ? Math.max(0, Math.min(1, numerator / denominator)) : null,
+      previousState: rateState({ sourceAvailable: ordersOk, denominator: prevDenominator, minimumSample: def.minimumSample }),
+      previousValue: prevDenominator > 0 ? Math.max(0, Math.min(1, prevNumerator / prevDenominator)) : null,
+      sampleSize: denominator,
     });
   };
 
@@ -323,7 +331,8 @@ function buildOrderMetrics(
     count('gross_order_value', cur.grossOrderValueUgx, prev.grossOrderValueUgx),
     count('discount_value', cur.discountValueUgx, prev.discountValueUgx),
     count('delivery_fee_value', cur.deliveryFeeValueUgx, prev.deliveryFeeValueUgx),
-    rate('payment_success_rate', cur.paidOrders, prev.paidOrders),
+    rate('payment_success_rate', cur.paidPrepaidOrders, prev.paidPrepaidOrders, cur.prepaidOrders, prev.prepaidOrders),
+    rate('paid_order_share', cur.paidOrders, prev.paidOrders),
     rate('payment_failure_rate', cur.failedPayments, prev.failedPayments),
     rate('order_cancellation_rate', cur.cancelledOrders, prev.cancelledOrders),
     rate('fulfilment_completion_rate', cur.completedOrders, prev.completedOrders),

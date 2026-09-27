@@ -12,6 +12,7 @@ const url = new URL(Astro.request.url);
 const search = url.searchParams.get('search')?.trim() || '';
 const statusFilter = url.searchParams.get('status')?.trim() || '';
 const paymentStatusFilter = url.searchParams.get('paymentStatus')?.trim() || '';
+const reservationFilter = url.searchParams.get('reservation')?.trim().toLowerCase() === 'backordered' ? 'backordered' : '';
 
 // Live data only: no invented order is ever listed (a 'Sample John' fallback
 // used to render here whenever the API did not answer 200).
@@ -24,6 +25,7 @@ try {
   if (search) queryParams.set('search', search);
   if (statusFilter) queryParams.set('status', statusFilter);
   if (paymentStatusFilter) queryParams.set('paymentStatus', paymentStatusFilter);
+  if (reservationFilter) queryParams.set('reservation', reservationFilter);
 
   const fetchUrl = `${apiBase}/governance/admin/orders${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
   
@@ -148,7 +150,8 @@ function getStatusColor(status: string) {
         </div>
 
         <div class="sm:col-span-4 flex justify-end gap-2 mt-2">
-          {(search || statusFilter || paymentStatusFilter) && (
+          {reservationFilter && <input type="hidden" name="reservation" value={reservationFilter} />}
+          {(search || statusFilter || paymentStatusFilter || reservationFilter) && (
             <a 
               href="/admin/orders" 
               class="px-4 py-2.5 border border-gray-200 hover:bg-gray-50 rounded-xl text-xs font-bold text-gray-500 transition-colors uppercase tracking-wider text-center"
@@ -170,6 +173,7 @@ function getStatusColor(status: string) {
         <a href="/admin/orders?paymentStatus=failed" class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">Payment failed</a>
         <a href="/admin/orders?status=delivery_failed" class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">Delivery failed</a>
         <a href="/admin/orders?status=pending_owner_review" class="rounded-full border border-gray-200 px-3 py-1 hover:border-gray-900">Owner review</a>
+        <a href="/admin/orders?reservation=backordered" aria-current={reservationFilter ? 'true' : undefined} class={`rounded-full border px-3 py-1 hover:border-gray-900 ${reservationFilter ? 'border-purple-700 bg-purple-50 text-purple-800' : 'border-gray-200'}`}>Backordered</a>
       </nav>
     </div>
 
@@ -225,6 +229,9 @@ function getStatusColor(status: string) {
                   <span class={`inline-block px-2.5 py-1 rounded-lg font-black text-[9px] uppercase tracking-wide border ${getStatusColor(order.orderStatus)}`}>
                     {order.orderStatus.replace(/_/g, ' ')}
                   </span>
+                  {order.reservationState === 'BACKORDERED' && (
+                    <span class="mt-1 block mx-auto w-fit px-2 py-0.5 rounded-lg font-black text-[9px] uppercase tracking-wide border bg-purple-50 text-purple-800 border-purple-200" title="Placed while stock was short; waiting on stock before it can be fulfilled.">Backordered</span>
+                  )}
                 </td>
                 <td class="p-6 text-right">
                   <a 

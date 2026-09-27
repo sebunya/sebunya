@@ -16,10 +16,11 @@ never as a confident percentage.
 | paid_orders | count | INCREASE_IS_GOOD | — | 0 | orders |
 | paid_order_value | UGX | INCREASE_IS_GOOD | — | 0 | orders |
 | average_paid_order_value | UGX | INCREASE_IS_GOOD | paid orders | 1 | orders |
-| gross_order_value | UGX | DIRECTIONLESS | — | 0 | orders |
+| gross_order_value ("Order value (all orders)": total_amount after discounts) | UGX | DIRECTIONLESS | — | 0 | orders |
 | discount_value | UGX | DIRECTIONLESS | — | 0 | orders |
 | delivery_fee_value | UGX | DIRECTIONLESS | — | 0 | orders |
-| payment_success_rate | rate | INCREASE_IS_GOOD | all orders in period | 5 | orders |
+| payment_success_rate | rate | INCREASE_IS_GOOD | online-prepaid (pesapal) orders, excl. cancelled with no payment result | 5 | orders |
+| paid_order_share | rate | INCREASE_IS_GOOD | all orders in period | 5 | orders |
 | payment_failure_rate | rate | INCREASE_IS_BAD | all orders in period | 5 | orders |
 | order_cancellation_rate | rate | INCREASE_IS_BAD | all orders in period | 5 | fulfilment |
 | fulfilment_completion_rate | rate | INCREASE_IS_GOOD | all orders in period | 5 | fulfilment |
