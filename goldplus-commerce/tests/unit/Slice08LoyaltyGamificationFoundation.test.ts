@@ -146,7 +146,10 @@ describe("Slice 8-A protected operator preview and discoverability", () => {
     // state cannot be read. Activation itself stays an env flag: no button here.
     expect(adminPage).toContain("Activation status:");
     expect(adminPage).toContain("ledgerConfig.active");
-    expect(adminPage).toContain("LOYALTY_ADMIN_PREVIEW.activationStatus");
+    // 2026-09-27: when the state cannot be read the page shows an explicit
+    // unavailable state, never the static preview defaults as if they were real.
+    expect(adminPage).not.toContain("LOYALTY_ADMIN_PREVIEW");
+    expect(adminPage).toContain("Activation status: unavailable");
     expect(adminPage).not.toMatch(/>\s*Activate programme\s*</i);
   });
   it("ranks mechanics rather than customers", () => {

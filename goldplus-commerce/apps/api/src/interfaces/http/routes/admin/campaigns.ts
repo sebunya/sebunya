@@ -9,6 +9,7 @@ import {
   canTransitionCampaign,
   validateUtm,
 } from '../../../../application/use-cases/campaigns/CampaignScaffold';
+import { RecomputeCampaignReadinessUseCase } from '../../../../application/use-cases/campaigns/RecomputeCampaignReadinessUseCase';
 
 /**
  * Campaign scaffold admin surface (Wave 2F, NO-SEND). Definitions, UTM links and a
@@ -55,7 +56,9 @@ routes.post('/', requirePermissions([PERMISSIONS.CAMPAIGNS_MANAGE]), async (c) =
     return bad(c, 'BAD_INPUT', 'targetUrl must be an https://shopgoldplus.com URL.');
   }
   const registry = Registry.getInstance();
-  const row = await registry.campaignRepo.create({ name, objective, channel, targetUrl });
+  const created = await registry.campaignRepo.create({ name, objective, channel, targetUrl });
+  const readiness = await new RecomputeCampaignReadinessUseCase(registry.campaignRepo).execute(created.id);
+  const row = { ...created, readinessScore: readiness?.score ?? created.readinessScore, readinessMissing: readiness?.missing ?? [] };
   await new CreateAuditLogUseCase(registry.auditRepo).execute({
     actorId: actor(c), action: 'CAMPAIGN_CREATED', entity: 'campaign', entityId: row.id,
     newState: { name, objective, channel, targetUrl, status: row.status },
@@ -92,6 +95,7 @@ routes.post('/:id/utm-links', requirePermissions([PERMISSIONS.CAMPAIGNS_MANAGE])
   const term = typeof body?.term === 'string' && body.term.trim() ? body.term.trim().slice(0, 100) : null;
   const row = await registry.campaignRepo.addUtmLink(id, { ...utm, content, term });
   if (!row) return bad(c, 'DUPLICATE', 'An identical UTM link already exists for this campaign.', 409);
+  await new RecomputeCampaignReadinessUseCase(registry.campaignRepo).execute(id);
   await new CreateAuditLogUseCase(registry.auditRepo).execute({
     actorId: actor(c), action: 'CAMPAIGN_UTM_LINK_ADDED', entity: 'campaign', entityId: id,
     newState: { source: utm.source, medium: utm.medium, campaignName: utm.campaignName, shortUrl: row.shortUrl },
