@@ -300,6 +300,38 @@ routes.patch('/admin/fake-reports/:id/status', requirePermissions([PERMISSIONS.S
   return c.json({ success: true, data: { id: report.id, status, loyalty } });
 });
 
+// ---------- Authenticity centre reads (read-only, redacted) ----------
+// Lists carry no reporter name, contact, account, scanner IP or user agent.
+routes.get('/admin/fake-reports', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+  const status = c.req.query('status')?.trim() || null;
+  if (status && !['new', 'investigating', 'verified_fake', 'dismissed'].includes(status)) {
+    return c.json({ success: false, error: { code: 'BAD_STATUS', message: 'Unknown status filter.' } }, 400);
+  }
+  try {
+    const data = await registry.fakeReportRepo.listForAdmin({
+      page: Number(c.req.query('page') ?? 1),
+      pageSize: Number(c.req.query('pageSize') ?? 25),
+      status,
+    });
+    return c.json({ success: true, data });
+  } catch (err) {
+    logger.error({ err }, '[Governance] Fake report list failed');
+    return c.json({ success: false, error: { code: 'READ_FAILED', message: 'Could not read counterfeit reports.' } }, 500);
+  }
+});
+
+routes.get('/admin/verification/summary', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+  const days = Math.min(Math.max(Math.trunc(Number(c.req.query('days') ?? 30)) || 30, 1), 365);
+  try {
+    const since = new Date(Date.now() - days * 86_400_000);
+    const data = await registry.verificationRepo.summarizeAttempts(since);
+    return c.json({ success: true, data: { windowDays: days, ...data } });
+  } catch (err) {
+    logger.error({ err }, '[Governance] Verification summary failed');
+    return c.json({ success: false, error: { code: 'READ_FAILED', message: 'Could not read verification scans.' } }, 500);
+  }
+});
+
 // ---------- Admin dashboard stats ----------
 routes.get('/admin/stats', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
   const [productCount, dealerCount, auditCount, supportCount] = await Promise.all([
@@ -323,6 +355,15 @@ routes.get('/admin/stats', requirePermissions([PERMISSIONS.REPORTS_READ]), async
 });
 
 // Admin List Routes
+function withAdminFacts(facts: { reservationState: string | null; paymentMethod: string | null } | undefined) {
+  const reservationState = facts?.reservationState ?? null;
+  return {
+    reservationState,
+    isBackordered: reservationState === 'BACKORDERED',
+    paymentMethod: facts?.paymentMethod ?? null,
+  };
+}
+
 routes.get('/admin/orders', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
   try {
     let ordersList = await registry.orderRepo.findAll();
@@ -349,7 +390,16 @@ routes.get('/admin/orders', requirePermissions([PERMISSIONS.ORDERS_READ]), async
       ordersList = ordersList.filter(o => o.paymentStatus.toLowerCase() === paymentStatus);
     }
 
-    return c.json({ success: true, data: ordersList });
+    const facts = await registry.orderRepo.findAdminFacts(ordersList.map(o => o.id));
+    let data = ordersList.map(o => ({ ...o, ...withAdminFacts(facts.get(o.id)) }));
+
+    // reservation=backordered narrows to orders waiting on stock.
+    const reservation = c.req.query('reservation')?.trim().toUpperCase();
+    if (reservation) {
+      data = data.filter(o => (o.reservationState ?? '').toUpperCase() === reservation);
+    }
+
+    return c.json({ success: true, data });
   } catch (err: any) {
     if (err.message.includes('DATABASE_URL')) {
       return c.json({ success: false, error: { code: 'DB_NOT_CONFIGURED', message: 'Database not configured.' } }, 503);
@@ -386,7 +436,7 @@ routes.get('/admin/orders/:id', requirePermissions([PERMISSIONS.ORDERS_READ]), a
     return c.json({
       success: true,
       data: {
-        order,
+        order: { ...order, ...withAdminFacts((await registry.orderRepo.findAdminFacts([order.id])).get(order.id)) },
         paymentAttempts: safeAttempts,
       }
     });

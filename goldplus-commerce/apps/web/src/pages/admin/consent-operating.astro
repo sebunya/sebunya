@@ -2,6 +2,7 @@
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import { apiBase } from '../../lib/api';
 import { readSessionToken } from '../../lib/session';
+import { STOP_CHANNELS, buildStopIntakeRequest, maskEndpointRef } from '../../lib/admin-stop-intake';
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -49,6 +50,50 @@ try {
 } catch {
   // The dashboard remains fail-closed when the API is unavailable.
 }
+
+// ---------- STOP / unsubscribe intake (operator-recorded) ----------
+// No inbound webhook exists (Zoho CPaaS does not deliver replies), so the
+// operator records a STOP seen in the provider console through the existing
+// gated POST /admin/consent-operating/provider-suppressions.
+let intakeNotice: { kind: 'ok' | 'error'; messages: string[] } | null = null;
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  if (!readiness.provider_suppression_intake_enabled) {
+    intakeNotice = { kind: 'error', messages: ['Provider suppression intake is disabled (CONSENT_PROVIDER_SUPPRESSION_INTAKE_ENABLED); nothing was recorded.'] };
+  } else {
+    const built = buildStopIntakeRequest(form, crypto.randomUUID());
+    if (!built.ok) {
+      intakeNotice = { kind: 'error', messages: built.errors };
+    } else {
+      try {
+        const res = await fetch(`${apiBase}/admin/consent-operating/provider-suppressions`, {
+          method: 'POST',
+          headers: { ...built.request.headers, Authorization: `Bearer ${token}` },
+          body: JSON.stringify(built.request.body),
+        });
+        const body = await res.json().catch(() => null);
+        intakeNotice = res.ok && body?.ok
+          ? { kind: 'ok', messages: ['Suppression recorded. This contact is now suppressed on that channel.'] }
+          : { kind: 'error', messages: [`Not recorded (HTTP ${res.status}).`, ...((body?.reasons as string[] | undefined) ?? [])] };
+      } catch {
+        intakeNotice = { kind: 'error', messages: ['The consent API did not answer; nothing was recorded.'] };
+      }
+    }
+  }
+}
+
+type SuppressionRead = { state: 'available'; rows: Array<Record<string, unknown>> } | { state: 'disabled' | 'error'; reason: string };
+let suppressions: SuppressionRead = { state: 'error', reason: 'Not read.' };
+try {
+  const res = await fetch(`${apiBase}/admin/consent-operating/suppressions`, { headers: { Authorization: `Bearer ${token}` } });
+  const body = await res.json().catch(() => null);
+  if (res.ok && body?.status === 'available') suppressions = { state: 'available', rows: (body.suppressions ?? []).slice(0, 25) };
+  else if (body?.status === 'disabled') suppressions = { state: 'disabled', reason: (body.reasons ?? []).join(', ') || 'gate disabled' };
+  else suppressions = { state: 'error', reason: res.status === 403 ? 'Your role cannot read suppressions (audit.read required).' : `HTTP ${res.status}` };
+} catch {
+  suppressions = { state: 'error', reason: 'The consent API did not answer.' };
+}
+const intakeIdempotencyKey = crypto.randomUUID();
 
 const gates = [
   ['Persistence commands', readiness.commands_enabled],
@@ -117,6 +162,84 @@ const workflowCards = [
           </article>
         ))}
       </div>
+    </section>
+
+    <section class="mt-10 rounded-2xl border border-slate-200 bg-white p-6" aria-labelledby="stop-title" id="stop-intake" data-testid="stop-intake">
+      <h2 id="stop-title" class="text-xl font-black text-slate-950">Record a STOP or unsubscribe</h2>
+      <p class="mt-2 max-w-3xl text-sm text-slate-600">
+        Inbound replies are not delivered to us by the provider. When a customer sends STOP (or asks to unsubscribe), check the message in the provider console and record it here. The contact is suppressed on that channel; no message is sent.
+      </p>
+      {intakeNotice && (
+        <div role="status" class:list={['mt-4 rounded-xl border p-4 text-sm', intakeNotice.kind === 'ok' ? 'border-emerald-200 bg-emerald-50 text-emerald-900' : 'border-red-200 bg-red-50 text-red-900']}>
+          <ul>{intakeNotice.messages.map(m => <li>{m}</li>)}</ul>
+        </div>
+      )}
+      {!readiness.provider_suppression_intake_enabled ? (
+        <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" data-testid="stop-intake-disabled">
+          <strong>Intake disabled.</strong> The feature gate CONSENT_PROVIDER_SUPPRESSION_INTAKE_ENABLED is off (or the consent service did not answer), so the API would refuse this form. Ask an engineer to enable the gate for this environment; until then, keep the evidence and record it once enabled.
+        </div>
+      ) : null}
+      <form method="POST" action="/admin/consent-operating#stop-intake" class="mt-6 grid gap-4 md:grid-cols-2">
+        <fieldset disabled={!readiness.provider_suppression_intake_enabled} class="contents">
+          <input type="hidden" name="idempotency_key" value={intakeIdempotencyKey} />
+          <label class="grid gap-1 text-sm font-bold text-slate-700">Channel
+            <select name="channel" required class="rounded-lg border border-slate-300 px-3 py-2 font-normal">
+              {STOP_CHANNELS.map(ch => <option value={ch}>{ch === 'whatsapp' ? 'WhatsApp' : ch === 'sms' ? 'SMS' : 'Email'}</option>)}
+            </select>
+          </label>
+          <label class="grid gap-1 text-sm font-bold text-slate-700">Phone number or email
+            <input name="contact" required autocomplete="off" placeholder="0772 123456 or name@example.com" class="rounded-lg border border-slate-300 px-3 py-2 font-normal" />
+          </label>
+          <label class="grid gap-1 text-sm font-bold text-slate-700">Signal
+            <select name="event_type" class="rounded-lg border border-slate-300 px-3 py-2 font-normal">
+              <option value="stop">STOP reply</option>
+              <option value="unsubscribe">Unsubscribe request</option>
+            </select>
+          </label>
+          <label class="grid gap-1 text-sm font-bold text-slate-700">Provider
+            <input name="provider_key" value="zoho_cpaas" required class="rounded-lg border border-slate-300 px-3 py-2 font-normal" />
+          </label>
+          <label class="grid gap-1 text-sm font-bold text-slate-700">Provider message / ticket reference
+            <input name="provider_event_ref" required class="rounded-lg border border-slate-300 px-3 py-2 font-normal" />
+          </label>
+          <label class="grid gap-1 text-sm font-bold text-slate-700">When the customer sent it
+            <input type="datetime-local" name="provider_occurred_at" required class="rounded-lg border border-slate-300 px-3 py-2 font-normal" />
+          </label>
+          <label class="grid gap-1 text-sm font-bold text-slate-700 md:col-span-2">Evidence note
+            <textarea name="evidence" required minlength="5" rows="3" placeholder="Customer replied STOP to the order-update message; seen in Zoho console." class="rounded-lg border border-slate-300 px-3 py-2 font-normal"></textarea>
+          </label>
+          <label class="flex gap-2 text-sm text-slate-700 md:col-span-2"><input type="checkbox" name="authenticity_verified" required /> I saw this message myself in the provider console.</label>
+          <label class="flex gap-2 text-sm text-slate-700 md:col-span-2"><input type="checkbox" name="freshness_verified" required /> The message is recent and the customer has not since opted back in.</label>
+          <div class="md:col-span-2">
+            <button class="rounded-xl bg-slate-950 px-5 py-2 text-sm font-black text-white disabled:opacity-50">Record suppression</button>
+          </div>
+        </fieldset>
+      </form>
+
+      <h3 class="mt-8 text-sm font-black uppercase tracking-wide text-slate-500">Recent active suppressions</h3>
+      {suppressions.state === 'available' ? (
+        suppressions.rows.length === 0 ? (
+          <p class="mt-2 text-sm text-slate-600">No active suppressions recorded.</p>
+        ) : (
+          <div class="mt-2 overflow-x-auto">
+            <table class="w-full text-sm" data-testid="suppression-list">
+              <thead class="text-left text-xs uppercase text-slate-500"><tr><th class="py-2 pr-4">Effective</th><th class="py-2 pr-4">Channel</th><th class="py-2 pr-4">Contact</th><th class="py-2">Source</th></tr></thead>
+              <tbody>
+                {suppressions.rows.map(row => (
+                  <tr class="border-t border-slate-100 align-top">
+                    <td class="py-2 pr-4 whitespace-nowrap">{row.effectiveAt ? new Date(String(row.effectiveAt)).toLocaleString('en-GB', { timeZone: 'Africa/Kampala' }) : '—'}</td>
+                    <td class="py-2 pr-4">{String(row.channelKey ?? '—')}</td>
+                    <td class="py-2 pr-4 font-mono text-xs">{maskEndpointRef(row.endpointRef)}</td>
+                    <td class="py-2 text-xs">{String(row.sourceSurface ?? '—')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      ) : (
+        <p class="mt-2 text-sm text-slate-600" data-testid="suppression-unavailable">Suppression list {suppressions.state === 'disabled' ? 'disabled' : 'unavailable'}: {suppressions.reason}</p>
+      )}
     </section>
 
     <aside class="mt-10 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm leading-relaxed text-amber-950">

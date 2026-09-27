@@ -20,15 +20,19 @@ export class DrizzleHomepageContentRepository implements IHomepageContentReposit
 
   async updateConfig(config: HomepageContent, actorId: string): Promise<StoredHomepageContent> {
     // jsonb: bind the RAW object and cast ::jsonb (never JSON.stringify first).
+    // An upsert: the boot seed is best-effort, so the singleton row may not
+    // exist yet, and the services call this exactly when getConfig() is null.
+    // A plain UPDATE matched nothing there and toStored(undefined) threw.
     const rows = rowsOf(
       await db.execute(sql`
-        update homepage_content
-           set config = ${pgJsonb(config)},
-               version = version + 1,
-               updated_by = ${actorId}::uuid,
+        insert into homepage_content (id, config, version, updated_by, updated_at)
+        values (true, ${pgJsonb(config)}, 1, ${actorId}::uuid, now())
+        on conflict (id) do update
+           set config = excluded.config,
+               version = homepage_content.version + 1,
+               updated_by = excluded.updated_by,
                updated_at = now()
-         where id = true
-         returning config, version, updated_at
+        returning config, version, updated_at
       `),
     );
     return toStored(rows[0]);

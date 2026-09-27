@@ -53,7 +53,8 @@ suite('DrizzleAnalyticsReadRepository (real PostgreSQL)', () => {
       status varchar(30) not null,
       total_amount integer not null,
       pricing_discount_total integer not null default 0,
-      delivery_fee integer not null default 0
+      delivery_fee integer not null default 0,
+      payment_method varchar(20)
     )`;
     await client`create table if not exists products (
       id text primary key,
@@ -81,8 +82,8 @@ suite('DrizzleAnalyticsReadRepository (real PostgreSQL)', () => {
     await client`truncate orders, products, search_demand_signals, payment_attempts`;
 
     for (const order of GOLDEN_ORDERS) {
-      await client`insert into orders (id, order_number, created_at, payment_status, status, total_amount, pricing_discount_total, delivery_fee)
-        values (${order.id}, ${order.id}, ${order.createdAtUtc}, ${order.paymentStatus}, ${order.orderStatus}, ${order.totalAmount}, ${order.pricingDiscountTotal}, ${order.deliveryFee})`;
+      await client`insert into orders (id, order_number, created_at, payment_status, status, total_amount, pricing_discount_total, delivery_fee, payment_method)
+        values (${order.id}, ${order.id}, ${order.createdAtUtc}, ${order.paymentStatus}, ${order.orderStatus}, ${order.totalAmount}, ${order.pricingDiscountTotal}, ${order.deliveryFee}, ${order.paymentMethod})`;
     }
     for (const product of GOLDEN_PRODUCTS) {
       await client`insert into products (id, stock_quantity, reserved_quantity, reorder_point)
@@ -133,6 +134,8 @@ suite('DrizzleAnalyticsReadRepository (real PostgreSQL)', () => {
       failedPayments: GOLDEN_CURRENT_EXPECTED.failedPayments,
       completedOrders: GOLDEN_CURRENT_EXPECTED.completedOrders,
       cancelledOrders: GOLDEN_CURRENT_EXPECTED.cancelledOrders,
+      prepaidOrders: GOLDEN_CURRENT_EXPECTED.prepaidOrders,
+      paidPrepaidOrders: GOLDEN_CURRENT_EXPECTED.paidPrepaidOrders,
     });
   });
 
@@ -142,6 +145,8 @@ suite('DrizzleAnalyticsReadRepository (real PostgreSQL)', () => {
     expect(aggregates.paidOrders).toBe(GOLDEN_PREVIOUS_EXPECTED.paidOrders);
     expect(aggregates.paidOrderValueUgx).toBe(GOLDEN_PREVIOUS_EXPECTED.paidOrderValueUgx);
     expect(aggregates.failedPayments).toBe(GOLDEN_PREVIOUS_EXPECTED.failedPayments);
+    expect(aggregates.prepaidOrders).toBe(GOLDEN_PREVIOUS_EXPECTED.prepaidOrders);
+    expect(aggregates.paidPrepaidOrders).toBe(GOLDEN_PREVIOUS_EXPECTED.paidPrepaidOrders);
   });
 
   it('buckets Kampala midnight boundaries onto the correct local day in SQL', async () => {

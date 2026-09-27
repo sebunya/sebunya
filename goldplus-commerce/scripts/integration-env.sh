@@ -70,6 +70,12 @@ export COMMERCE_TEST_DATABASE_URL="${BASE}/goldplus_test_commerce"
 export AUTH_TEST_DATABASE_URL="${BASE}/goldplus_test_auth"
 export ANALYTICS_TEST_DATABASE_URL="${BASE}/goldplus_test_analytics"
 export REDIS_TEST_URL="redis://127.0.0.1:6379"
+# Same measurement config as scripts/integration-on-clone.sh: delivery routing
+# only creates a GA4 intent when a measurement id is configured, so without it
+# MeasurementCore has nothing to deliver. The collect URL is unroutable (port 9)
+# and the suites stub fetch, so nothing ever leaves the machine.
+export GA4_MEASUREMENT_ID="G-ITEST00001"
+export METRICS_INTERNAL_URL="http://127.0.0.1:9"
 
 # Serial by default: these suites share goldplus_test_commerce, and several
 # assert GLOBAL aggregates (the ROAS denominator, singleton config versions).

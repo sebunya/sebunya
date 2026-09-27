@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto';
-import { and, desc, eq, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm';
 import type {
   ChannelSuppressionWrite,
   ConsentAggregateKey,
+  ConsentChannelKey,
+  ConsentPurposeKey,
   ConsentCurrentState,
   ConsentEventWrite,
   ConsentMutationReceipt,
@@ -375,6 +377,18 @@ export class DrizzleConsentOperatingRepository implements ConsentOperatingReposi
       .where(eq(channelSuppressions.suppressionActive, true))
       .orderBy(desc(channelSuppressions.effectiveAt))
       .limit(Math.min(Math.max(limit, 1), 200));
+  }
+
+  async hasActiveChannelSuppression(endpointRefs: string[], channelKey: ConsentChannelKey, purposeKey: ConsentPurposeKey): Promise<boolean> {
+    const refs = endpointRefs.filter((r) => typeof r === 'string' && r.length > 0);
+    if (refs.length === 0) return false;
+    const [row] = await db.select({ id: channelSuppressions.id }).from(channelSuppressions).where(and(
+      inArray(channelSuppressions.endpointRef, refs),
+      eq(channelSuppressions.channelKey, channelKey),
+      eq(channelSuppressions.suppressionActive, true),
+      or(isNull(channelSuppressions.purposeKey), eq(channelSuppressions.purposeKey, purposeKey)),
+    )).limit(1);
+    return Boolean(row);
   }
 
   async buildDryRunEligibilityInput(key: ConsentAggregateKey): Promise<ConsentProviderEligibilityPreviewInput> {

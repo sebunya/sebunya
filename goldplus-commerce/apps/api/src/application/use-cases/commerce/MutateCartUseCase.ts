@@ -41,6 +41,11 @@ export type CartOutcomeKind =
   /** Someone else owns this cart. Reported to the caller as NOT_FOUND. */
   | 'NOT_OWNED'
   | 'PRODUCT_UNAVAILABLE'
+  /**
+   * An ADD, or an UPDATE that raises a line, asks for more than known stock.
+   * reason = productId; `available` = units left (0 = out of stock).
+   */
+  | 'OUT_OF_STOCK'
   | 'QUANTITY_OUT_OF_BOUNDS'
   | 'CART_LIMIT_EXCEEDED'
   | 'RETRYABLE_FAILURE';
@@ -76,7 +81,8 @@ export interface CartView {
 export type CartOutcome =
   | { kind: 'APPLIED'; cart: CartView }
   | { kind: 'VERSION_CONFLICT'; cart: CartView }
-  | { kind: Exclude<CartOutcomeKind, 'APPLIED' | 'VERSION_CONFLICT'>; reason: string };
+  | { kind: 'OUT_OF_STOCK'; reason: string; available: number }
+  | { kind: Exclude<CartOutcomeKind, 'APPLIED' | 'VERSION_CONFLICT' | 'OUT_OF_STOCK'>; reason: string };
 
 export function isCartApplied(outcome: CartOutcome): outcome is { kind: 'APPLIED'; cart: CartView } {
   return outcome.kind === 'APPLIED';
@@ -140,10 +146,19 @@ export interface ICartAuthorizedRepository {
   }): Promise<boolean>;
 }
 
+/** Known stock for a product (domain/inventory cartStockLimit). `available` null = untracked. */
+export interface CartStockLimit {
+  outOfStock: boolean;
+  available: number | null;
+}
+
 export interface CartProductReader {
-  /** Only products a customer may actually buy. Absent means not purchasable. */
+  /**
+   * Only products a customer may actually buy. Absent means not purchasable.
+   * `stock` absent means stock is unknown and never blocks the basket.
+   */
   findPurchasable(productIds: readonly string[]): Promise<
-    Array<{ id: string; name: string; unitPriceUgx: number }>
+    Array<{ id: string; name: string; unitPriceUgx: number; stock?: CartStockLimit }>
   >;
 }
 
@@ -262,6 +277,21 @@ export class MutateCartUseCase {
       // Named by id, which is public catalogue data, so the storefront can tell the
       // customer which line to remove instead of showing an opaque failure.
       return { kind: 'PRODUCT_UNAVAILABLE', reason: missing.join(',') };
+    }
+
+    // Stock is checked only on the line being ADDED or RAISED. Lowering or
+    // removing a line, or touching another one, is never blocked by stock.
+    if (args.mutation.kind === 'ADD' || args.mutation.kind === 'UPDATE') {
+      const productId = args.mutation.productId;
+      const before = record.items.find((line) => line.productId === productId)?.quantity ?? 0;
+      const after = next.items.find((line) => line.productId === productId)?.quantity ?? 0;
+      const stock = byId.get(productId)?.stock;
+      if (after > before && stock) {
+        if (stock.outOfStock) return { kind: 'OUT_OF_STOCK', reason: productId, available: 0 };
+        if (stock.available !== null && after > stock.available) {
+          return { kind: 'OUT_OF_STOCK', reason: productId, available: stock.available };
+        }
+      }
     }
 
     const applied = await this.deps.carts.replaceItems({

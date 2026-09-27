@@ -1,3 +1,4 @@
+import type { AttemptNumbering, FailureReasonRecord } from '../../domain/payments/PaymentFailureReason';
 export interface RecordedPaymentAttempt {
   id: string;
   orderId: string;
@@ -10,6 +11,10 @@ export interface RecordedPaymentAttempt {
   provider: string;
   ipnReceivedAt: Date | null;
   callbackReceivedAt: Date | null;
+  /** Provider's answer for a non-paid terminal attempt (0162). Optional so older fakes still type. */
+  providerStatusCode?: number | null;
+  providerStatusDescription?: string | null;
+  failedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -74,5 +79,14 @@ export interface IPesaPalPaymentRepository {
 
   /** Most recent attempts across all orders (Slice 3C reconciliation). */
   listRecent(limit: number): Promise<RecordedPaymentAttempt[]>;
+
+  /**
+   * Record why an attempt failed. Must never write a completed attempt.
+   * Optional: hermetic fakes without it simply record nothing.
+   */
+  recordFailureReason?(id: string, reason: FailureReasonRecord): Promise<void>;
+
+  /** Per-order attempt number (1 = first, by created_at) and count, for these attempts. */
+  numberAttempts?(attemptIds: string[]): Promise<AttemptNumbering[]>;
 }
 

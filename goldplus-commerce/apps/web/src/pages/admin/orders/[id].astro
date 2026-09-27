@@ -479,6 +479,9 @@ const customerHref = order?.userId ? `/admin/customers/${encodeURIComponent(orde
           <span class={`inline-block px-2.5 py-0.5 rounded-lg font-black text-[9px] uppercase tracking-wide border ${getStatusColor(order.orderStatus)}`}>
             {order.orderStatus.replace(/_/g, ' ')}
           </span>
+          {order.reservationState === 'BACKORDERED' && (
+            <span class="inline-block px-2.5 py-0.5 rounded-lg font-black text-[9px] uppercase tracking-wide border bg-purple-50 text-purple-800 border-purple-200" title="Placed while stock was short; waiting on stock before it can be fulfilled.">Backordered</span>
+          )}
         </h2>
       </div>
       <div class="flex items-center gap-2">

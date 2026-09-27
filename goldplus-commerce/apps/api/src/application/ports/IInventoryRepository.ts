@@ -8,7 +8,14 @@ export interface AvailabilityRow {
   reserved: number;
   available: number;
   reorderPoint: number;
+  /** Derived: tracked stock with reorder_point > 0 and available <= reorder_point. */
   lowStock: boolean;
+  /** False for NON_STOCK_ITEM products (quantities are not tracked). */
+  tracked?: boolean;
+  /** Units on paid orders created in the last 30 days. */
+  unitsSold30d?: number;
+  /** available / (unitsSold30d / 30); null when there is no sales history. */
+  daysOfCover?: number | null;
 }
 
 export interface ReservationStatusSummary {

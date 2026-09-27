@@ -559,7 +559,7 @@ describe('the storefront refuses cross-site basket mutations before it mints', (
   it('surfaces a refused server write instead of updating silently', () => {
     // The previous page discarded every response and warned to the console while
     // updating the local cookie regardless, so a rejected write looked accepted.
-    expect(code).toContain('cartNotice = cartMessageFor(result.code)');
+    expect(code).toContain('cartNotice = cartMessageFor(result.code, result.available)');
     expect(code).toMatch(/\{cartNotice &&/);
   });
 });

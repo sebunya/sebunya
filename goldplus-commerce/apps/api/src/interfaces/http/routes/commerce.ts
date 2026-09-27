@@ -423,6 +423,7 @@ const CART_REFUSAL_STATUS: Record<string, 404 | 409 | 422 | 503> = {
   NOT_OWNED: 404,
   VERSION_CONFLICT: 409,
   PRODUCT_UNAVAILABLE: 409,
+  OUT_OF_STOCK: 409,
   QUANTITY_OUT_OF_BOUNDS: 422,
   CART_LIMIT_EXCEEDED: 422,
   RETRYABLE_FAILURE: 503,
@@ -495,6 +496,19 @@ function cartResponse(c: Context, outcome: CartOutcome) {
   }
 
   const status = CART_REFUSAL_STATUS[outcome.kind] ?? 400;
+  if (outcome.kind === 'OUT_OF_STOCK') {
+    return c.json(
+      {
+        success: false,
+        error: {
+          code: 'OUT_OF_STOCK',
+          message: outcome.available > 0 ? `Only ${outcome.available} left.` : 'This item is out of stock.',
+          details: { productIds: [outcome.reason], available: outcome.available },
+        },
+      },
+      409,
+    );
+  }
   return c.json(
     {
       success: false,

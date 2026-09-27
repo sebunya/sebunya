@@ -23,24 +23,26 @@ export interface GoldenOrder {
   totalAmount: number;
   pricingDiscountTotal: number;
   deliveryFee: number;
+  /** 'pesapal' = online prepaid, 'offline' = cash on delivery. */
+  paymentMethod: 'pesapal' | 'offline';
 }
 
 export const GOLDEN_PERIOD = { startDate: '2026-07-01', endDate: '2026-07-31' } as const;
 
 export const GOLDEN_ORDERS: GoldenOrder[] = [
-  { id: 'G1', createdAtUtc: '2026-07-05T08:00:00.000Z', paymentStatus: 'paid', orderStatus: 'completed', totalAmount: 150_000, pricingDiscountTotal: 10_000, deliveryFee: 5_000 },
-  { id: 'G2', createdAtUtc: '2026-07-05T09:00:00.000Z', paymentStatus: 'paid', orderStatus: 'completed', totalAmount: 250_000, pricingDiscountTotal: 0, deliveryFee: 10_000 },
-  { id: 'G3', createdAtUtc: '2026-07-10T12:00:00.000Z', paymentStatus: 'failed', orderStatus: 'received', totalAmount: 90_000, pricingDiscountTotal: 0, deliveryFee: 0 },
-  { id: 'G4', createdAtUtc: '2026-07-15T14:30:00.000Z', paymentStatus: 'pending', orderStatus: 'received', totalAmount: 120_000, pricingDiscountTotal: 5_000, deliveryFee: 5_000 },
-  { id: 'G5', createdAtUtc: '2026-07-20T10:00:00.000Z', paymentStatus: 'rejected', orderStatus: 'cancelled', totalAmount: 60_000, pricingDiscountTotal: 0, deliveryFee: 0 },
-  { id: 'G6', createdAtUtc: '2026-06-30T21:30:00.000Z', paymentStatus: 'paid', orderStatus: 'received', totalAmount: 100_000, pricingDiscountTotal: 0, deliveryFee: 0 },
-  { id: 'G7', createdAtUtc: '2026-07-31T20:30:00.000Z', paymentStatus: 'paid', orderStatus: 'received', totalAmount: 50_000, pricingDiscountTotal: 2_000, deliveryFee: 3_000 },
+  { id: 'G1', createdAtUtc: '2026-07-05T08:00:00.000Z', paymentStatus: 'paid', orderStatus: 'completed', totalAmount: 150_000, pricingDiscountTotal: 10_000, deliveryFee: 5_000, paymentMethod: 'pesapal' },
+  { id: 'G2', createdAtUtc: '2026-07-05T09:00:00.000Z', paymentStatus: 'paid', orderStatus: 'completed', totalAmount: 250_000, pricingDiscountTotal: 0, deliveryFee: 10_000, paymentMethod: 'pesapal' },
+  { id: 'G3', createdAtUtc: '2026-07-10T12:00:00.000Z', paymentStatus: 'failed', orderStatus: 'received', totalAmount: 90_000, pricingDiscountTotal: 0, deliveryFee: 0, paymentMethod: 'pesapal' },
+  { id: 'G4', createdAtUtc: '2026-07-15T14:30:00.000Z', paymentStatus: 'pending', orderStatus: 'received', totalAmount: 120_000, pricingDiscountTotal: 5_000, deliveryFee: 5_000, paymentMethod: 'offline' },
+  { id: 'G5', createdAtUtc: '2026-07-20T10:00:00.000Z', paymentStatus: 'rejected', orderStatus: 'cancelled', totalAmount: 60_000, pricingDiscountTotal: 0, deliveryFee: 0, paymentMethod: 'pesapal' },
+  { id: 'G6', createdAtUtc: '2026-06-30T21:30:00.000Z', paymentStatus: 'paid', orderStatus: 'received', totalAmount: 100_000, pricingDiscountTotal: 0, deliveryFee: 0, paymentMethod: 'pesapal' },
+  { id: 'G7', createdAtUtc: '2026-07-31T20:30:00.000Z', paymentStatus: 'paid', orderStatus: 'received', totalAmount: 50_000, pricingDiscountTotal: 2_000, deliveryFee: 3_000, paymentMethod: 'pesapal' },
   // Previous comparison window (2026-05-31 .. 2026-06-30 Kampala):
-  { id: 'GX', createdAtUtc: '2026-06-30T20:30:00.000Z', paymentStatus: 'paid', orderStatus: 'completed', totalAmount: 80_000, pricingDiscountTotal: 0, deliveryFee: 0 },
-  { id: 'G9', createdAtUtc: '2026-06-15T10:00:00.000Z', paymentStatus: 'paid', orderStatus: 'completed', totalAmount: 200_000, pricingDiscountTotal: 0, deliveryFee: 0 },
-  { id: 'G10', createdAtUtc: '2026-06-20T10:00:00.000Z', paymentStatus: 'failed', orderStatus: 'received', totalAmount: 40_000, pricingDiscountTotal: 0, deliveryFee: 0 },
+  { id: 'GX', createdAtUtc: '2026-06-30T20:30:00.000Z', paymentStatus: 'paid', orderStatus: 'completed', totalAmount: 80_000, pricingDiscountTotal: 0, deliveryFee: 0, paymentMethod: 'pesapal' },
+  { id: 'G9', createdAtUtc: '2026-06-15T10:00:00.000Z', paymentStatus: 'paid', orderStatus: 'completed', totalAmount: 200_000, pricingDiscountTotal: 0, deliveryFee: 0, paymentMethod: 'pesapal' },
+  { id: 'G10', createdAtUtc: '2026-06-20T10:00:00.000Z', paymentStatus: 'failed', orderStatus: 'received', totalAmount: 40_000, pricingDiscountTotal: 0, deliveryFee: 0, paymentMethod: 'pesapal' },
   // Far outside both windows; must influence nothing:
-  { id: 'GOLD', createdAtUtc: '2026-01-15T10:00:00.000Z', paymentStatus: 'paid', orderStatus: 'completed', totalAmount: 999_999, pricingDiscountTotal: 0, deliveryFee: 0 },
+  { id: 'GOLD', createdAtUtc: '2026-01-15T10:00:00.000Z', paymentStatus: 'paid', orderStatus: 'completed', totalAmount: 999_999, pricingDiscountTotal: 0, deliveryFee: 0, paymentMethod: 'pesapal' },
 ];
 
 /**
@@ -54,7 +56,12 @@ export const GOLDEN_ORDERS: GoldenOrder[] = [
  *   failed payments       = 2  (G3 failed, G5 rejected)
  *   completed orders      = 2  (G1 G2)
  *   cancelled orders      = 1  (G5)
- *   payment success rate  = 4/7
+ *   prepaid orders        = 6  (all but G4, which is cash on delivery;
+ *                                G5 is cancelled but its payment was rejected,
+ *                                so it had a payment result and stays in)
+ *   paid prepaid orders   = 4  (G1 G2 G6 G7)
+ *   payment success rate  = 4/6  (paid prepaid / prepaid)
+ *   paid order share      = 4/7  (paid / all orders; the pre-2026-09 definition)
  *   payment failure rate  = 2/7
  *   cancellation rate     = 1/7
  *   completion rate       = 2/7
@@ -70,7 +77,10 @@ export const GOLDEN_CURRENT_EXPECTED = {
   failedPayments: 2,
   completedOrders: 2,
   cancelledOrders: 1,
-  paymentSuccessRate: 4 / 7,
+  prepaidOrders: 6,
+  paidPrepaidOrders: 4,
+  paymentSuccessRate: 4 / 6,
+  paidOrderShare: 4 / 7,
   paymentFailureRate: 2 / 7,
   cancellationRate: 1 / 7,
   completionRate: 2 / 7,
@@ -80,11 +90,13 @@ export const GOLDEN_CURRENT_EXPECTED = {
 /**
  * Hand calculation, previous window (GX G9 G10):
  *   orders = 3, paid = 2 (GX G9), paid value = 80000+200000 = 280000,
- *   failed = 1 (G10).
+ *   failed = 1 (G10). All three prepaid: prepaid = 3, paid prepaid = 2.
  */
 export const GOLDEN_PREVIOUS_EXPECTED = {
   orders: 3,
   paidOrders: 2,
+  prepaidOrders: 3,
+  paidPrepaidOrders: 2,
   paidOrderValueUgx: 280_000,
   failedPayments: 1,
 } as const;

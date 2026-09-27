@@ -168,5 +168,11 @@ export interface ConsentOperatingRepository {
   queryAuditTimeline(customerIdentityRef: string, limit?: number): Promise<Array<Record<string, unknown>>>;
   listSupportAssistedRequests(limit?: number): Promise<Array<Record<string, unknown>>>;
   listChannelSuppressions(limit?: number): Promise<Array<Record<string, unknown>>>;
+  /**
+   * True when any of the endpoint refs has an active suppression for the channel
+   * (and purpose, or channel-wide). Optional so older fakes still compile; the
+   * WhatsApp marketing gate treats a missing method as "no suppression known".
+   */
+  hasActiveChannelSuppression?(endpointRefs: string[], channelKey: ConsentChannelKey, purposeKey: ConsentPurposeKey): Promise<boolean>;
   buildDryRunEligibilityInput(key: ConsentAggregateKey): Promise<ConsentProviderEligibilityPreviewInput>;
 }

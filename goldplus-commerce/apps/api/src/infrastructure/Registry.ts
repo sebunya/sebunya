@@ -367,6 +367,7 @@ import { DrizzleConsentRepository } from './measurement/DrizzleConsentRepository
 import { GetMeasurementOverviewUseCase } from '../application/use-cases/measurement/GetMeasurementOverviewUseCase';
 import { ListMeasurementDlqUseCase } from '../application/use-cases/measurement/ListMeasurementDlqUseCase';
 import { ReplayMeasurementDlqUseCase } from '../application/use-cases/measurement/ReplayMeasurementDlqUseCase';
+import { DismissMeasurementDlqUseCase } from '../application/use-cases/measurement/DismissMeasurementDlqUseCase';
 import { ListConsentAuditUseCase } from '../application/use-cases/measurement/ListConsentAuditUseCase';
 import { GetMatchQualitySummaryUseCase } from '../application/use-cases/measurement/GetMatchQualitySummaryUseCase';
 import { AttributionService } from '../application/use-cases/measurement/AttributionService';
@@ -1139,6 +1140,14 @@ export class Registry {
     {
       quote: (input) => Registry.getInstance().checkoutDeliveryQuoting.quote(input),
       recordQuote: (orderId, capture) => Registry.getInstance().checkoutDeliveryQuoting.recordQuote(orderId, capture),
+    },
+    // Optional retail owner-review threshold (payments ops config); unset = OFF.
+    {
+      thresholdUgx: async () => {
+        const raw = (await Registry.getInstance().paymentsOpsConfig.values())['owner_review_threshold_ugx'];
+        const n = raw === undefined ? NaN : Number(raw);
+        return Number.isInteger(n) && n > 0 ? n : null;
+      },
     },
   );
   // Launch Phase 1 (Section 9.3): order-to-admin fulfilment alerts.
@@ -2625,6 +2634,11 @@ export class Registry {
   public readonly replayMeasurementDlqUseCase = new ReplayMeasurementDlqUseCase(
     this.dlqRepo,
     this.measurementAdminRepo,
+    this.measurementLogger,
+    this.auditRepo
+  );
+  public readonly dismissMeasurementDlqUseCase = new DismissMeasurementDlqUseCase(
+    this.dlqRepo,
     this.measurementLogger,
     this.auditRepo
   );

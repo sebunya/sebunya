@@ -4,6 +4,7 @@ import { Registry } from '../../../../infrastructure/Registry';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
 import { requireStepUp } from '../../middleware/requireStepUp';
+import { failureFields, summariseFailureReasons, withAttemptNumbers } from '../../../../domain/payments/PaymentFailureReason';
 
 /**
  * The ops payment queue (payments brief, 2026-08-06).
@@ -46,11 +47,16 @@ routes.get('/queue', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) 
         findAttemptsByOrderId: (id) => registry.pesapalPaymentRepo.findAttemptsByOrderId(id),
       }).execute(q)
     : await registry.pesapalPaymentRepo.listRecent(50);
+  // Attempt N of M per order, computed in SQL at read time (not stored).
+  const numbering = registry.pesapalPaymentRepo.numberAttempts
+    ? await registry.pesapalPaymentRepo.numberAttempts(attempts.map((a) => a.id))
+    : [];
+  const numbered = withAttemptNumbers(attempts, numbering);
   // At most four lookups in flight, on their OWN breaker: fifty at once on the
   // shared 'pesapal' breaker meant one page view during a provider slowdown
   // opened the breaker checkout and payment callbacks use, for 30 seconds.
   const QUEUE_CONCURRENCY = 4;
-  const describe = async (a: (typeof attempts)[number]) => {
+  const describe = async (a: (typeof numbered)[number]) => {
       let provider: { status: string; code: number | null; method: string | null; confirmation: string | null } | null = null;
       let providerError: string | null = null;
       if (a.orderTrackingId) {
@@ -75,6 +81,9 @@ routes.get('/queue', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) 
         orderId: a.orderId,
         amountUgx: a.amount,
         ourStatus: a.status,
+        ...failureFields(a),
+        attemptNumber: a.attemptNumber,
+        attemptsForOrder: a.attemptsForOrder,
         provider,
         providerError,
         disagreement: a.orderTrackingId ? providerSaysPaid !== weSayPaid : false,
@@ -84,8 +93,8 @@ routes.get('/queue', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) 
       };
   };
   const rows: Array<Awaited<ReturnType<typeof describe>>> = [];
-  for (let i = 0; i < attempts.length; i += QUEUE_CONCURRENCY) {
-    rows.push(...(await Promise.all(attempts.slice(i, i + QUEUE_CONCURRENCY).map(describe))));
+  for (let i = 0; i < numbered.length; i += QUEUE_CONCURRENCY) {
+    rows.push(...(await Promise.all(numbered.slice(i, i + QUEUE_CONCURRENCY).map(describe))));
   }
   const disagreements = rows.filter((r) => r.disagreement);
   return c.json({
@@ -93,6 +102,8 @@ routes.get('/queue', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) 
     data: {
       rows,
       query: q || null,
+      // The page has no period filter, so this covers the attempts listed.
+      failureReasons: summariseFailureReasons(attempts),
       counts: { total: rows.length, disagreements: disagreements.length },
       note:
         rows.length === 0

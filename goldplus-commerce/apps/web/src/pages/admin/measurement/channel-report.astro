@@ -99,6 +99,7 @@ const current = CHANNEL_REPORT_MODELS.find((m) => m.value === model)!;
               <table class="mt-2 w-full min-w-[760px] text-sm">
                 <thead><tr class="border-b border-gray-100 text-left text-xs uppercase tracking-wider text-gray-500">
                   <th scope="col" class="px-4 py-2">Channel</th><th scope="col" class="px-4 py-2 text-right">Orders</th><th scope="col" class="px-4 py-2 text-right">Revenue</th>
+                  <th scope="col" class="px-4 py-2 text-right">Assisted orders</th>
                   <th scope="col" class="px-4 py-2 text-right">Spend</th><th scope="col" class="px-4 py-2 text-right">ROAS</th><th scope="col" class="px-4 py-2 text-right">Cost per order</th><th scope="col" class="px-4 py-2">Weekly revenue</th>
                 </tr></thead>
                 <tbody>
@@ -109,6 +110,7 @@ const current = CHANNEL_REPORT_MODELS.find((m) => m.value === model)!;
                         <th scope="row" class="px-4 py-2 text-left font-bold">{c.label}{c.declaredOrders > 0 && <span class="block text-xs font-normal text-gray-600">{formatOrders(c.declaredOrders)} from the customer's own answer</span>}</th>
                         <td class="px-4 py-2 text-right">{formatOrders(c.orders)}</td>
                         <td class="px-4 py-2 text-right">{formatUgx(c.revenueUGX)}</td>
+                        <td class="px-4 py-2 text-right">{typeof c.assistedOrders === "number" ? c.assistedOrders.toLocaleString("en-UG", { timeZone: "Africa/Kampala" }) : "No data"}</td>
                         <td class="px-4 py-2 text-right">{money(c.spendUGX, noSpendText)}</td>
                         <td class="px-4 py-2 text-right">{roasText(c.roas)}</td>
                         <td class="px-4 py-2 text-right">{money(c.costPerOrderUGX, "No data")}</td>
@@ -120,7 +122,7 @@ const current = CHANNEL_REPORT_MODELS.find((m) => m.value === model)!;
                   })}
                 </tbody>
               </table>
-              <p class="px-4 pb-4 pt-2 text-xs text-gray-600">Orders are credited orders: a model that shares one sale across three channels gives each a part. Revenue is the goods, without the delivery fee. "No recorded source" is sales with no recorded visit, no code and no answer; they are not spread over the other channels.</p>
+              <p class="px-4 pb-4 pt-2 text-xs text-gray-600">Orders are credited orders: a model that shares one sale across three channels gives each a part. Revenue is the goods, without the delivery fee. "No recorded source" is sales with no recorded visit, no code and no answer; they are not spread over the other channels. Assisted orders are whole orders whose recorded visits included the channel while the last click went to another channel; they do not change with the model and are not added to Orders.</p>
             </section>
 
             <section aria-labelledby="weeks-h" class="mb-8 overflow-x-auto rounded-2xl border border-gray-200 bg-white">

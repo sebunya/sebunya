@@ -127,6 +127,25 @@ export class OrderTransitionService implements IOrderTransitionPort {
       }
 
       const from = row.status as OrderStatus;
+
+      // Owner review outranks the gateway. A verified payment for an order
+      // held for owner review (wholesale, corporate, or a retail order over
+      // the owner-review threshold) records that the money arrived, but does
+      // not move the order to processing: that is the owner's decision. No
+      // status change and no order_event, so post-commit hooks do not fire
+      // (reported as a replay); they run when the owner releases the order.
+      if (from === 'pending_owner_review' && toStatus === 'processing' && ctx.actorType === 'payment_provider') {
+        if (ctx.paymentStatus && ctx.paymentStatus !== row.paymentStatus) {
+          const money = orderPaymentWriteDecision(String(row.paymentStatus ?? ''), ctx.paymentStatus);
+          if (!money.write) {
+            throw new DomainError('ORDER_PAYMENT_STATUS_CONFLICT', 'CONFLICT',
+              `The order's payment is already "${row.paymentStatus}" and cannot become "${ctx.paymentStatus}" (${money.reason}).`,
+              { clientSafe: true });
+          }
+          await tx.update(orders).set({ paymentStatus: ctx.paymentStatus, updatedAt: new Date() }).where(eq(orders.id, orderId));
+        }
+        return { orderId, fromStatus: from, toStatus: from, eventId: '', idempotentReplay: true, heldForOwnerReview: true };
+      }
       // The verified payment result (when supplied) is authoritative for the gate,
       // not the stale stored value.
       const effectivePaymentStatus = (ctx.paymentStatus ?? row.paymentStatus) as PaymentStatus;

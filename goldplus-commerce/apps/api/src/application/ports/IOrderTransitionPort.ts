@@ -44,6 +44,12 @@ export interface OrderTransitionResult {
   toStatus: OrderStatus;
   eventId: string;
   idempotentReplay: boolean;
+  /**
+   * A verified payment arrived for an order waiting for owner review. The
+   * payment status was recorded, but the order stayed in pending_owner_review
+   * (no status change, no event): the owner releases it, not the gateway.
+   */
+  heldForOwnerReview?: boolean;
 }
 
 export interface OrderEventRecord {

@@ -34,8 +34,11 @@ export class DrizzleAnalyticsReadRepository implements IAnalyticsReadRepository 
         coalesce(sum(pricing_discount_total), 0)::bigint as "discountValueUgx",
         coalesce(sum(delivery_fee), 0)::bigint as "deliveryFeeValueUgx",
         count(*) filter (where payment_status in ('failed', 'rejected', 'cancelled'))::int as "failedPayments",
-        count(*) filter (where status = 'completed')::int as "completedOrders",
-        count(*) filter (where status = 'cancelled')::int as "cancelledOrders"
+        count(*) filter (where status in ('completed', 'delivered'))::int as "completedOrders",
+        count(*) filter (where status = 'cancelled')::int as "cancelledOrders",
+        count(*) filter (where payment_method = 'pesapal'
+          and not (status = 'cancelled' and payment_status not in ('paid', 'failed', 'rejected', 'cancelled')))::int as "prepaidOrders",
+        count(*) filter (where payment_method = 'pesapal' and payment_status = 'paid')::int as "paidPrepaidOrders"
       from orders
       where created_at >= ${start} and created_at <= ${end}
     `);
@@ -50,6 +53,8 @@ export class DrizzleAnalyticsReadRepository implements IAnalyticsReadRepository 
       failedPayments: Number(row.failedPayments ?? 0),
       completedOrders: Number(row.completedOrders ?? 0),
       cancelledOrders: Number(row.cancelledOrders ?? 0),
+      prepaidOrders: Number(row.prepaidOrders ?? 0),
+      paidPrepaidOrders: Number(row.paidPrepaidOrders ?? 0),
     };
   }
 
@@ -187,7 +192,7 @@ export class DrizzleAnalyticsReadRepository implements IAnalyticsReadRepository 
       from orders
       where created_at >= ${start} and created_at <= ${end}
         and payment_status = 'paid'
-        and status in ('received', 'pending')
+        and status in ('received', 'pending_payment', 'pending_owner_review')
       order by created_at asc
       limit ${bounded}
     `);

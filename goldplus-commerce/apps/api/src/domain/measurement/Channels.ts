@@ -3,7 +3,7 @@
  * utm medium/source, then the referrer. Deterministic and pure; the same
  * inputs always give the same channel. "direct" means no evidence, not "no ad".
  */
-export const CHANNELS = ['paid_search', 'paid_social', 'display', 'affiliate', 'email', 'sms', 'whatsapp', 'organic_search', 'organic_social', 'referral', 'direct', 'other_paid', 'other'] as const;
+export const CHANNELS = ['paid_search', 'paid_social', 'display', 'affiliate', 'email', 'sms', 'whatsapp', 'organic_search', 'organic_social', 'ai_assistant', 'referral', 'direct', 'other_paid', 'other'] as const;
 export type Channel = typeof CHANNELS[number];
 
 /**
@@ -13,6 +13,14 @@ export type Channel = typeof CHANNELS[number];
  * safety net so an older page or another client cannot file them as referral.
  */
 const PAYMENT_OR_SELF_HOST = /(^|\.)(pesapal\.com|shopgoldplus\.com)$/i;
+
+/**
+ * AI assistants that link shoppers to the store. ChatGPT tags its links with
+ * utm_source=chatgpt.com; the others arrive by referrer only. Checked before
+ * SEARCH, because gemini.google.com would otherwise read as Google search.
+ */
+const AI_ASSISTANT_HOST = /(^|\.)(chatgpt\.com|chat\.openai\.com|gemini\.google\.com|bard\.google\.com|perplexity\.ai|copilot\.microsoft\.com|claude\.ai|meta\.ai|chat\.deepseek\.com)$/i;
+const AI_ASSISTANT_SOURCE = /^(chatgpt\.com|chat\.openai\.com|perplexity(\.ai)?|gemini\.google\.com|copilot\.microsoft\.com|claude\.ai)$/i;
 
 const SEARCH = /(^|\.)(google|bing|yahoo|duckduckgo|yandex|baidu|ecosia|brave)\./i;
 const SOCIAL = /(^|\.)(facebook|fb|instagram|tiktok|twitter|x|t|linkedin|lnkd|pinterest|snapchat|youtube|reddit|threads)\.(com|co|net|in|me)$/i;
@@ -32,11 +40,14 @@ export function classifyChannel(t: { source?: string | null; medium?: string | n
   if (src === 'whatsapp' || med === 'whatsapp') return 'whatsapp';
   if (/^(organic|seo)$/.test(med)) return 'organic_search';
   if (/^(social|social[_-]?organic)$/.test(med)) return 'organic_social';
+  // Assistants tag links with their own source and at most a referral medium.
+  if ((!med || med === 'referral') && (AI_ASSISTANT_SOURCE.test(src) || AI_ASSISTANT_HOST.test(src))) return 'ai_assistant';
   if (/^referral$/.test(med)) return 'referral';
   if (clicks.has('clickid') || clicks.has('click_id')) return 'other_paid';
   if (src || med) return 'other';
   const ref = (t.referrerHost ?? '').toLowerCase();
   if (!ref || PAYMENT_OR_SELF_HOST.test(ref)) return 'direct';
+  if (AI_ASSISTANT_HOST.test(ref)) return 'ai_assistant';
   if (SEARCH.test(ref)) return 'organic_search';
   if (SOCIAL.test(ref) || /(^|\.)(l\.facebook|lm\.facebook|m\.facebook)\.com$/.test(ref)) return 'organic_social';
   if (/(^|\.)(wa\.me|whatsapp\.com)$/.test(ref)) return 'whatsapp';

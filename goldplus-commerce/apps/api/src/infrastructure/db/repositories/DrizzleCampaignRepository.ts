@@ -35,15 +35,25 @@ export class DrizzleCampaignRepository {
     return row ?? null;
   }
 
-  async addUtmLink(campaignId: string, utm: { source: string; medium: string; campaignName: string; content?: string | null; term?: string | null }) {
+  async addUtmLink(campaignId: string, utm: { source: string; medium: string; campaignName: string; content?: string | null; term?: string | null; destinationUrl?: string | null }) {
     const shortUrl = `gp-${Math.abs(
       [...`${campaignId}${utm.source}${utm.medium}${utm.campaignName}${utm.content ?? ''}`].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) | 0, 7),
     ).toString(36)}`;
     const [row] = await db
       .insert(utmLinks)
-      .values({ campaignId, source: utm.source, medium: utm.medium, campaignName: utm.campaignName, content: utm.content ?? null, term: utm.term ?? null, shortUrl })
+      .values({ campaignId, source: utm.source, medium: utm.medium, campaignName: utm.campaignName, content: utm.content ?? null, term: utm.term ?? null, shortUrl, destinationUrl: utm.destinationUrl ?? null })
       .onConflictDoNothing()
       .returning();
+    return row ?? null;
+  }
+
+  async countUtmLinks(campaignId: string): Promise<number> {
+    const [row] = await db.select({ count: sql<number>`count(*)::int` }).from(utmLinks).where(eq(utmLinks.campaignId, campaignId));
+    return row?.count ?? 0;
+  }
+
+  async setReadinessScore(id: string, score: number) {
+    const [row] = await db.update(campaigns).set({ readinessScore: score }).where(eq(campaigns.id, id)).returning();
     return row ?? null;
   }
 

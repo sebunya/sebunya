@@ -134,13 +134,17 @@ export class GetWeeklyChannelReportUseCase {
   async execute(input: { model: ReportModel; weeks: number }): Promise<WeeklyChannelReport> {
     const weeks = reportWeeks(this.now(), input.weeks);
     const { from, to } = weeksRange(weeks);
-    const [sales, credits, spend] = await Promise.all([
+    const creditsFor = (m: ReportModel) => (m === input.model ? null : this.store.creditsBetween(m, from, to));
+    const [sales, credits, spend, linear, lastClick] = await Promise.all([
       this.store.salesBetween(from, to),
       this.store.creditsBetween(input.model, from, to),
       this.spend.weeklySpend(from, to),
+      creditsFor('linear'),
+      creditsFor('last_click'),
     ]);
     const counted = sales.filter(countsAsSale).map((s) => ({ orderId: s.orderId, orderAt: s.orderAt, revenueUGX: goodsValueUGX(s.totalUGX, s.deliveryFeeUGX) }));
-    return buildWeeklyChannelReport({ model: input.model, weeks, sales: counted, credits, spend });
+    const assist = { journeyCredits: linear ?? credits, lastClickCredits: lastClick ?? credits };
+    return buildWeeklyChannelReport({ model: input.model, weeks, sales: counted, credits, spend, assist });
   }
 }
 

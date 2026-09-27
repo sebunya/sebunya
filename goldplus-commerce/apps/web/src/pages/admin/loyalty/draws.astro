@@ -1,0 +1,193 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { apiBase } from "../../../lib/api";
+
+const token = readSessionToken(Astro.request);
+if (!token) {
+  return Astro.redirect("/admin/login?returnTo=/admin/loyalty/draws", 303);
+}
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+// Reward-draw oversight. GET /admin/loyalty/draws lists campaigns with published
+// odds, spend and outstanding-card liability; GET /admin/loyalty/draws/compliance
+// reports the recorded legal basis. Activating a campaign lets it award prizes
+// to real customers, so activation is offered only while the programme is
+// active, chance mechanics are enabled and a compliance basis permits it — and
+// always behind an explicit inline confirmation step. Pausing is always offered.
+type Odds = { prizeId: string; label: string; pointsAwarded: number; oddsBps: number; soldOut: boolean };
+type Campaign = {
+  id: string; code: string; name: string; active: boolean; triggerEvent: string | null;
+  budgetCapPoints: number | null; pointsAwarded: number; outstandingTokens: number;
+  outstandingLiabilityPoints: number; odds: Odds[];
+};
+type Draws = { chanceEnabled: boolean; programmeEnabled: boolean; campaigns: Campaign[] };
+type Compliance = { basis?: string; licenceReference?: string | null; licenceExpiresAt?: string | null; counselReference?: string | null; permittedToRun: boolean; blockedReason: string | null };
+type ProgrammeState = { enabled: boolean; envFlag: boolean; active: boolean };
+
+async function getJson(path: string) {
+  const res = await fetch(`${apiBase}${path}`, { headers, signal: AbortSignal.timeout(5000) });
+  const json = await res.json().catch(() => null);
+  return { res, json };
+}
+
+let programme: ProgrammeState | null = null;
+try {
+  const { json } = await getJson("/admin/loyalty/config");
+  if (json?.success) programme = json.data;
+} catch { /* unknown state below */ }
+
+let notice: { kind: "success" | "error"; text: string } | null = null;
+let pendingConfirm: string | null = null; // campaign id awaiting explicit confirmation
+if (Astro.request.method === "POST") {
+  try {
+    const form = await Astro.request.formData();
+    const action = String(form.get("action") || "");
+    const id = String(form.get("id") || "");
+    if (action === "request-activate") {
+      pendingConfirm = id;
+    } else if (action === "activate" || action === "pause") {
+      const activating = action === "activate";
+      if (activating && form.get("confirm") !== "yes") {
+        notice = { kind: "error", text: "Activation needs the explicit confirmation step." };
+      } else if (activating && !programme?.active) {
+        notice = { kind: "error", text: "Draws can only be activated while the loyalty programme is active." };
+      } else {
+        const res = await fetch(`${apiBase}/admin/loyalty/draws/${encodeURIComponent(id)}/activation`, {
+          method: "POST", headers, body: JSON.stringify({ active: activating }),
+        });
+        const json = await res.json().catch(() => null);
+        notice = res.ok && json?.success
+          ? { kind: "success", text: `Draw ${json.data.code} is now ${json.data.active ? "active" : "paused"}.` }
+          : { kind: "error", text: json?.error?.message || `Could not change the draw (HTTP ${res.status}).` };
+      }
+    }
+  } catch {
+    notice = { kind: "error", text: "Loyalty service is unreachable right now." };
+  }
+}
+
+let draws: Draws | null = null;
+let compliance: Compliance | null = null;
+let loadError = "";
+try {
+  const [d, comp] = await Promise.all([getJson("/admin/loyalty/draws"), getJson("/admin/loyalty/draws/compliance")]);
+  if (d.json?.success) draws = d.json.data;
+  else loadError = d.json?.error?.message || `Could not load draws (HTTP ${d.res.status}).`;
+  if (comp.json?.success) compliance = comp.json.data;
+} catch {
+  loadError = "Loyalty service is unreachable right now.";
+}
+
+// Why activation is unavailable, in plain words. Empty = activation allowed.
+const blockers: string[] = [];
+if (programme === null) blockers.push("the programme state could not be read");
+else if (!programme.active) blockers.push(`the loyalty programme is dormant (environment flag ${programme.envFlag ? "on" : "off"}, config switch ${programme.enabled ? "on" : "off"})`);
+if (draws && !draws.programmeEnabled) blockers.push("the programme config is disabled or its kill switch is on");
+if (draws && !draws.chanceEnabled) blockers.push("chance mechanics are not enabled on the programme config");
+if (compliance === null) blockers.push("the compliance basis could not be read");
+else if (!compliance.permittedToRun) blockers.push(compliance.blockedReason === "COMPLIANCE_BASIS_MISSING" ? "no compliance basis (licence or counsel's opinion) is recorded" : `compliance refuses it (${compliance.blockedReason})`);
+const canActivate = blockers.length === 0;
+const pct = (bps: number) => `${(bps / 100).toFixed(2)}%`;
+const n = (v: number | null) => (v === null ? "not set" : v.toLocaleString("en-US", { timeZone: "Africa/Kampala" }));
+---
+
+<AdminLayout title="Reward draws" description="Draw campaigns, published odds, budget and compliance basis.">
+  <div class="container mx-auto max-w-5xl space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-admin-loyalty-draws>
+    <header>
+      <a href="/admin/loyalty" class="text-xs font-black text-brand-primaryInk hover:underline">← Loyalty programme</a>
+      <h1 class="mt-3 text-3xl font-black tracking-tight text-brand-dark">Reward draws</h1>
+      <p class="mt-2 text-sm text-slate-600">An active draw campaign awards prizes to real customers when its trigger fires. Activation and pausing are audited.</p>
+    </header>
+
+    {notice && (
+      <div class={`rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === "success" ? "border-green-200 bg-green-50 text-green-700" : "border-red-200 bg-red-50 text-red-700"}`} role="status">{notice.text}</div>
+    )}
+
+    <section class="rounded-2xl border border-slate-200 bg-white p-5" data-compliance>
+      <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">Compliance basis</h2>
+      {compliance === null ? (
+        <p class="mt-2 text-sm font-bold text-red-700" role="alert">Compliance record unavailable.</p>
+      ) : (
+        <p class="mt-2 text-sm text-slate-700">
+          Basis: <strong>{compliance.basis ?? "none"}</strong>
+          {compliance.licenceReference && <> · licence {compliance.licenceReference}{compliance.licenceExpiresAt ? ` (expires ${compliance.licenceExpiresAt})` : ""}</>}
+          {compliance.counselReference && <> · counsel {compliance.counselReference}</>}
+          {" · "}<strong class={compliance.permittedToRun ? "text-emerald-700" : "text-amber-700"}>{compliance.permittedToRun ? "draws permitted" : "draws not permitted"}</strong>
+        </p>
+      )}
+    </section>
+
+    {!canActivate && (
+      <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950" data-activation-blocked>
+        <strong>Activation unavailable</strong> because {blockers.join("; ")}. Pausing an active draw is still available.
+      </div>
+    )}
+
+    {draws === null ? (
+      <p class="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-800" role="alert">{loadError}</p>
+    ) : draws.campaigns.length === 0 ? (
+      <p class="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-500" data-empty>No draw campaigns are defined.</p>
+    ) : (
+      <div class="space-y-4">
+        {draws.campaigns.map((camp) => (
+          <article class="rounded-2xl border border-slate-200 bg-white p-5">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="font-mono text-xs font-black text-slate-500">{camp.code}</span>
+              <h2 class="text-lg font-black text-brand-dark">{camp.name}</h2>
+              <span class={`rounded-full border px-2 py-0.5 text-[10px] font-black uppercase ${camp.active ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-slate-100 text-slate-700"}`}>{camp.active ? "Active" : "Paused"}</span>
+            </div>
+            <dl class="mt-3 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
+              <div><dt class="font-black uppercase text-slate-500">Trigger</dt><dd>{camp.triggerEvent ?? "—"}</dd></div>
+              <div><dt class="font-black uppercase text-slate-500">Awarded / cap (pts)</dt><dd>{n(camp.pointsAwarded)} / {n(camp.budgetCapPoints)}</dd></div>
+              <div><dt class="font-black uppercase text-slate-500">Outstanding cards</dt><dd>{n(camp.outstandingTokens)}</dd></div>
+              <div><dt class="font-black uppercase text-slate-500">Worst-case liability (pts)</dt><dd>{n(camp.outstandingLiabilityPoints)}</dd></div>
+            </dl>
+            {camp.odds.length === 0 ? (
+              <p class="mt-3 text-xs text-slate-500">No prizes defined.</p>
+            ) : (
+              <table class="mt-3 w-full text-left text-xs">
+                <thead class="text-[10px] font-black uppercase tracking-widest text-slate-500"><tr><th class="py-1">Prize</th><th>Points</th><th>Published odds</th></tr></thead>
+                <tbody>
+                  {camp.odds.map((o) => (
+                    <tr class="border-t border-slate-100"><td class="py-1">{o.label}</td><td>{n(o.pointsAwarded)}</td><td>{o.soldOut ? "sold out" : pct(o.oddsBps)}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <div class="mt-4">
+              {camp.active ? (
+                <form method="POST">
+                  <input type="hidden" name="action" value="pause" />
+                  <input type="hidden" name="id" value={camp.id} />
+                  <button type="submit" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-widest text-slate-800 hover:bg-slate-50">Pause draw</button>
+                </form>
+              ) : !canActivate ? (
+                <p class="text-xs font-bold text-slate-500">Activation unavailable (see above).</p>
+              ) : pendingConfirm === camp.id ? (
+                <form method="POST" class="rounded-xl border border-amber-300 bg-amber-50 p-4" data-confirm-activation>
+                  <input type="hidden" name="action" value="activate" />
+                  <input type="hidden" name="id" value={camp.id} />
+                  <p class="text-sm text-amber-950">Activating <strong>{camp.code}</strong> lets it award up to {n(camp.budgetCapPoints)} points to real customers at the odds shown.</p>
+                  <label class="mt-3 flex items-center gap-2 text-xs font-bold text-amber-950">
+                    <input type="checkbox" name="confirm" value="yes" required class="h-4 w-4" /> I confirm this draw should start awarding prizes.
+                  </label>
+                  <div class="mt-3 flex gap-2">
+                    <button type="submit" class="rounded-lg bg-brand-dark px-4 py-2 text-xs font-black uppercase tracking-widest text-white">Confirm activation</button>
+                    <a href="/admin/loyalty/draws" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-widest text-slate-800">Cancel</a>
+                  </div>
+                </form>
+              ) : (
+                <form method="POST">
+                  <input type="hidden" name="action" value="request-activate" />
+                  <input type="hidden" name="id" value={camp.id} />
+                  <button type="submit" class="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-widest text-slate-800 hover:bg-slate-50">Activate draw…</button>
+                </form>
+              )}
+            </div>
+          </article>
+        ))}
+      </div>
+    )}
+  </div>
+</AdminLayout>

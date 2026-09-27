@@ -89,6 +89,7 @@ export interface FeedDiscount {
  * tab, a stray NUL) made the whole RSS document non-well-formed, and Merchant
  * Center then rejects the entire fetch, not just that item. They are dropped.
  */
+// eslint-disable-next-line no-control-regex -- deliberately strips control characters
 const XML_ILLEGAL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g;
 
 export function escapeXml(value: string): string {

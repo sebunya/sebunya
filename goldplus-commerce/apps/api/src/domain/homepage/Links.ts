@@ -12,6 +12,7 @@ const PROBE_ORIGIN = 'https://goldplus.invalid';
 // Backslashes, whitespace (incl. tab/newline), control characters and markup quotes.
 // Browsers treat `/\host` and `/\t/host` as protocol-relative, so `startsWith('/')`
 // alone "looks like same-site only and is not" (see apps/web/src/lib/safeReturnTo.ts).
+// eslint-disable-next-line no-control-regex -- deliberately strips control characters
 const UNSAFE_CHARS = /[\\\s<>"'`\u0000-\u001f\u007f]/;
 
 /** A path on THIS site: resolves to our own origin however a browser parses it. */

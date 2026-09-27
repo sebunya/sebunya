@@ -1,7 +1,7 @@
 import { db } from '../client';
 import { products } from '../schema/products';
 import { stockStatusAfter } from '../StockStatusSql';
-import { orders } from '../schema/commerce';
+import { orders, orderItems } from '../schema/commerce';
 import { inventoryReservations } from '../schema/inventory';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import {
@@ -15,6 +15,8 @@ import {
   summariseReservation,
   computeAvailable,
   isLowStock,
+  daysOfCover,
+  SALES_VELOCITY_WINDOW_DAYS,
 } from '../../../domain/inventory/Inventory';
 import { IInventoryRepository, AvailabilityRow, ReservationStatusSummary } from '../../../application/ports/IInventoryRepository';
 
@@ -329,10 +331,32 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
         stock: products.stockQuantity,
         reserved: products.reservedQuantity,
         reorder: products.reorderPoint,
+        policy: products.inventoryPolicy,
       })
       .from(products)
       .where(inArray(products.id, productIds));
-    return rows.map((r) => this.toAvailability(r));
+    const sold = await this.unitsSoldLast30Days(rows.map((r) => r.id));
+    return rows.map((r) => this.toAvailability(r, sold.get(r.id) ?? 0));
+  }
+
+  /** Units on PAID orders created in the last 30 days, per product (read-only). */
+  private async unitsSoldLast30Days(productIds: string[]): Promise<Map<string, number>> {
+    const out = new Map<string, number>();
+    if (productIds.length === 0) return out;
+    const rows = await db
+      .select({ productId: orderItems.productId, units: sql<number>`coalesce(sum(${orderItems.quantity}), 0)::int` })
+      .from(orderItems)
+      .innerJoin(orders, eq(orders.id, orderItems.orderId))
+      .where(
+        and(
+          inArray(orderItems.productId, productIds),
+          eq(orders.paymentStatus, 'paid'),
+          sql`${orders.createdAt} >= now() - (${sql.raw(String(SALES_VELOCITY_WINDOW_DAYS))} * interval '1 day')`
+        )
+      )
+      .groupBy(orderItems.productId);
+    for (const row of rows) out.set(row.productId, Number(row.units ?? 0));
+    return out;
   }
 
   async listLowStock(limit: number): Promise<AvailabilityRow[]> {
@@ -344,20 +368,27 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
         stock: products.stockQuantity,
         reserved: products.reservedQuantity,
         reorder: products.reorderPoint,
+        policy: products.inventoryPolicy,
       })
       .from(products)
       .where(
         and(
           sql`${products.reorderPoint} > 0`,
+          sql`coalesce(${products.inventoryPolicy}, 'STOCK_CONTROLLED') <> 'NON_STOCK_ITEM'`,
           sql`${products.stockQuantity} - ${products.reservedQuantity} <= ${products.reorderPoint}`
         )
       )
       .orderBy(sql`${products.stockQuantity} - ${products.reservedQuantity} asc`)
       .limit(limit);
-    return rows.map((r) => this.toAvailability(r));
+    const sold = await this.unitsSoldLast30Days(rows.map((r) => r.id));
+    return rows.map((r) => this.toAvailability(r, sold.get(r.id) ?? 0));
   }
 
-  private toAvailability(r: { id: string; sku: string; name: string; stock: number; reserved: number; reorder: number }): AvailabilityRow {
+  private toAvailability(
+    r: { id: string; sku: string; name: string; stock: number; reserved: number; reorder: number; policy?: string | null },
+    unitsSold30d = 0,
+  ): AvailabilityRow {
+    const available = computeAvailable(r.stock, r.reserved);
     return {
       productId: r.id,
       sku: r.sku,
@@ -366,7 +397,10 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
       reserved: r.reserved,
       available: computeAvailable(r.stock, r.reserved),
       reorderPoint: r.reorder,
-      lowStock: isLowStock({ stockOnHand: r.stock, reserved: r.reserved, reorderPoint: r.reorder }),
+      lowStock: isLowStock({ stockOnHand: r.stock, reserved: r.reserved, reorderPoint: r.reorder, inventoryPolicy: r.policy ?? null }),
+      tracked: parseInventoryPolicy(r.policy) !== 'NON_STOCK_ITEM',
+      unitsSold30d,
+      daysOfCover: parseInventoryPolicy(r.policy) === 'NON_STOCK_ITEM' ? null : daysOfCover(available, unitsSold30d),
     };
   }
   /**

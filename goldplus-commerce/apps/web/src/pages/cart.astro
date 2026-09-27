@@ -154,7 +154,7 @@ if (Astro.request.method === 'POST' && cartOrigin.allowed) {
             { productId, quantity: 1 },
             Astro.cookies.get('goldplus_session')?.value ?? null,
           );
-          if (!result.ok) cartNotice = cartMessageFor(result.code);
+          if (!result.ok) cartNotice = cartMessageFor(result.code, result.available);
         }
 
         if (searchQuery && Number.isInteger(searchRank) && searchRank >= 1 && searchRank <= 50) {
@@ -183,7 +183,7 @@ if (Astro.request.method === 'POST' && cartOrigin.allowed) {
             { productId, quantity: validatedQty },
             Astro.cookies.get('goldplus_session')?.value ?? null,
           );
-          if (!result.ok) cartNotice = cartMessageFor(result.code);
+          if (!result.ok) cartNotice = cartMessageFor(result.code, result.available);
         }
 
       } else if (action === 'remove') {
@@ -206,7 +206,7 @@ if (Astro.request.method === 'POST' && cartOrigin.allowed) {
             { productId },
             Astro.cookies.get('goldplus_session')?.value ?? null,
           );
-          if (!result.ok) cartNotice = cartMessageFor(result.code);
+          if (!result.ok) cartNotice = cartMessageFor(result.code, result.available);
         }
         if (snapshot && !cartNotice) {
           Astro.cookies.set(REMOVED_COOKIE, JSON.stringify(snapshot), {
@@ -228,7 +228,7 @@ if (Astro.request.method === 'POST' && cartOrigin.allowed) {
               { productId, quantity: removed.quantity },
               Astro.cookies.get('goldplus_session')?.value ?? null,
             );
-            if (!result.ok) cartNotice = cartMessageFor(result.code);
+            if (!result.ok) cartNotice = cartMessageFor(result.code, result.available);
           }
           Astro.cookies.delete(REMOVED_COOKIE, { path: '/cart' });
         }
@@ -309,7 +309,7 @@ if (cartCredential) {
     // A missing basket is not an error to show: a first visit has none. Anything else
     // is, and it is named through the exhaustive mapper rather than by passing the
     // server's own message to the customer.
-    fetchError = cartMessageFor(result.code);
+    fetchError = cartMessageFor(result.code, result.available);
   }
 }
 
