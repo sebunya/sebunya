@@ -37,16 +37,7 @@ routes.use('*', authMiddleware);
  */
 routes.get('/setup', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
   const registry = Registry.getInstance();
-  const [origins] = (await (await import('../../../../infrastructure/db/client')).db.execute(
-    (await import('drizzle-orm')).sql`select count(*) filter (where active)::int as active, count(*)::int as total from delivery_origin`,
-  )) as unknown as Array<{ active: number; total: number }>;
-  const [corridors] = (await (await import('../../../../infrastructure/db/client')).db.execute(
-    (await import('drizzle-orm')).sql`
-      select count(*)::int as areas,
-             count(*) filter (where access_mode = 'water')::int as water,
-             count(*) filter (where not serviceable)::int as unserviceable
-      from delivery_corridor`,
-  )) as unknown as Array<{ areas: number; water: number; unserviceable: number }>;
+  const { origins, corridors } = await registry.deliveryConfigRepo.setupCounts();
 
   // The launch values live in the config tables; none are set yet, so this
   // reports every one as missing rather than inventing a value to show.
@@ -503,12 +494,7 @@ routes.get('/orders/:orderId/quote-explanation', requirePermissions([PERMISSIONS
 
 /** Export exactly the shape the importer accepts. */
 routes.get('/corridors/export.csv', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_READ]), async (c) => {
-  const { db } = await import('../../../../infrastructure/db/client');
-  const { sql } = await import('drizzle-orm');
-  const rows = (await db.execute(sql`
-    select area_slug, postcode, delivery_zone, district, sub_county_or_division, area,
-           corridor, distance_band, access_mode, serviceable, fulfilment_mode
-    from delivery_corridor order by area_slug`)) as unknown as Array<Record<string, unknown>>;
+  const rows = await Registry.getInstance().deliveryConfigRepo.corridorExportRows();
   const header = [
     'area_slug', 'postcode', 'delivery_zone', 'district', 'sub_county_or_division', 'area',
     'corridor', 'distance_band', 'access_mode', 'serviceable', 'fulfilment_mode',

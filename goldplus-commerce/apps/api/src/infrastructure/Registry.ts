@@ -702,6 +702,7 @@ import { DrizzleNbaContextReader } from './first-party/DrizzleNbaContextReader';
 import { DrizzleConsentAnchorRepository, DrizzlePersonalDataEraser, DrizzlePersonalDataExporter, DrizzlePrivacyRequestRepository } from './first-party/DrizzlePrivacyRepositories';
 import { DrizzleConsentOperatingRepository as FirstPartyConsentRepository } from './consent/DrizzleConsentOperatingRepository';
 import { outboundGovernance } from './notifications/OutboundGovernanceService';
+import { DrizzleCapabilityHubReader } from './db/repositories/DrizzleCapabilityHubReader';
 import { buildMarketingSuppressionReader } from './notifications/marketingSuppressionReader';
 
 /**
@@ -1155,6 +1156,8 @@ export class Registry {
   );
   // Launch Phase 1 (Section 9.3): order-to-admin fulfilment alerts.
   public readonly fulfilmentRepo = new DrizzleFulfilmentRepository();
+  /** Row counts for the admin capability hub. */
+  public readonly capabilityHubReader = new DrizzleCapabilityHubReader();
   public readonly createFulfilmentTaskOnOrderPlacedUseCase = new CreateFulfilmentTaskOnOrderPlacedUseCase(this.fulfilmentRepo);
   public readonly markFulfilmentPaymentConfirmedUseCase = new MarkFulfilmentPaymentConfirmedUseCase(this.fulfilmentRepo);
   public readonly transitionFulfilmentTaskUseCase = new TransitionFulfilmentTaskUseCase(this.fulfilmentRepo, this.auditRepo, this.orderTransitionService, {

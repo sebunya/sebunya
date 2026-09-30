@@ -7,7 +7,7 @@
 # This script then creates a throwaway admin, starts the API (from source) and
 # the built web app on their own ports, and drives real pages in Chromium:
 # change password, STOP intake and lift, tier threshold input, the finance
-# export, and a render pass over the admin pages. Nothing leaves the machine:
+# export, and a render pass over the admin pages (including those whose reads moved from routes into repositories). Nothing leaves the machine:
 # every outbound notification flag is off.
 #
 # Exit: 0 all checks passed | 1 a check failed | 2 the services did not start
@@ -17,7 +17,8 @@ API_PORT="${BROWSER_CHECK_API_PORT:-3598}"; WEB_PORT="${BROWSER_CHECK_WEB_PORT:-
 [ -f apps/web/dist/server/entry.mjs ] || { echo "Build the web app first: pnpm build"; exit 2; }
 SECRET=$(node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("hex"))')
 export JWT_SECRET=$SECRET CHECKOUT_INTENT_SECRET=$SECRET CART_CREDENTIAL_SECRET=$SECRET IDENTITY_HASH_PEPPER=$SECRET
-export REDIS_URL=redis://127.0.0.1:6379
+# Its own Redis database index: the integration suites assert on rate-limit keys in db 0.
+export REDIS_URL=redis://127.0.0.1:6379/9
 export BOOTSTRAP_ADMIN_EMAIL=browser-check@goldplus.test BOOTSTRAP_ADMIN_PASSWORD='Initial-Password-1'
 NODE_ENV=test npx tsx scripts/bootstrap-admin.ts > $S/bc-bootstrap.log 2>&1 || { tail -20 $S/bc-bootstrap.log; exit 2; }
 psql -q "$DATABASE_URL" -c "insert into loyalty_tiers (code, name, threshold_lifetime_points, rank, active) values ('silver', 'Silver', 5000, 1, false) on conflict do nothing" >/dev/null

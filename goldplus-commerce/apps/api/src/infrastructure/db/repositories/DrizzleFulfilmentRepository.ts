@@ -232,4 +232,11 @@ export class DrizzleFulfilmentRepository implements IFulfilmentRepository {
       );
     return Number(value);
   }
+
+  /** The newest paid order, for the "send a test alert" action; null when there is none. */
+  async latestPaidOrderId(): Promise<string | null> {
+    const result = await db.execute(sql`select id from orders where payment_status = 'paid' order by created_at desc limit 1`);
+    const rows = (result as unknown as { rows?: Array<{ id: string }> }).rows ?? (result as unknown as Array<{ id: string }>);
+    return Array.isArray(rows) && rows.length ? rows[0].id : null;
+  }
 }

@@ -35,6 +35,10 @@ try {
   check('unchanged password is refused', /must be different/.test(await text()), (await text()).slice(0, 300));
   await submit(OLD, NEW, NEW);
   check('success lands on sign-in with the confirmation', /\/login\?passwordChanged=1/.test(page.url()) && /signed out everywhere/.test(await text()), `${page.url()} ${(await text()).slice(0, 200)}`);
+  // Token issue times are whole seconds and the session cutoff is not, so a
+  // token minted in the same second as the cutoff is treated as issued before
+  // it. A person types for longer than that; a script must wait it out.
+  await page.waitForTimeout(1500);
   await page.goto('/account/password');
   check('this device was signed out', /\/login/.test(page.url()), page.url());
   await signIn('/login', OLD);
@@ -91,7 +95,7 @@ try {
     check('"5k" is refused and the stored threshold is untouched', /whole number of points/.test(await text()) && after === before, `before=${before} after=${after} ${(await text()).slice(0, 200)}`);
   } else { check('tiers exist to test the threshold form', false, (await text()).slice(0, 500)); }
 
-  for (const path of ['/admin/measurement/dlq', '/admin/utm-builder', '/admin/payments', '/admin/verification', '/admin/measurement/channel-report', '/admin/loyalty/liability', '/admin/loyalty/adjustments', '/admin/campaigns', '/admin/inventory', '/admin/orders', '/admin/carts']) {
+  for (const path of ['/admin/measurement/dlq', '/admin/utm-builder', '/admin/payments', '/admin/verification', '/admin/measurement/channel-report', '/admin/loyalty/liability', '/admin/loyalty/adjustments', '/admin/campaigns', '/admin/inventory', '/admin/orders', '/admin/carts', '/admin/loyalty/referrals', '/admin/loyalty/fraud', '/admin/fulfilment', '/admin/delivery', '/admin/delivery/launch']) {
     r = await page.goto(path); await page.waitForLoadState('networkidle').catch(() => {});
     check(`${path} renders`, r.status() === 200, String(r.status()));
   }

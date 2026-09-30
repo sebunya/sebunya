@@ -394,22 +394,12 @@ routes.put('/draws/:id/budget', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]
 
 // 0087: referral oversight — the ring/self-referral fraud surface.
 routes.get('/referrals', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
-  const rows = (await (await import('../../../../infrastructure/db/client')).db.execute(
-    (await import('drizzle-orm')).sql`
-      select r.id, r.code, r.status, r.rejection_reason, r.created_at, r.updated_at,
-             ref.email as referrer_email, ree.email as referee_email
-      from loyalty_referrals r
-      left join users ref on ref.id = r.referrer_user_id
-      left join users ree on ree.id = r.referee_user_id
-      order by r.created_at desc limit 200`,
-  )) as unknown as unknown[];
+  const rows = await Registry.getInstance().loyaltyCompletionRepo.adminReferrals();
   return c.json({ success: true, data: rows });
 });
 
 routes.get('/fraud-signals', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
-  const rows = (await (await import('../../../../infrastructure/db/client')).db.execute(
-    (await import('drizzle-orm')).sql`select * from loyalty_fraud_signals order by created_at desc limit 100`,
-  )) as unknown as unknown[];
+  const rows = await Registry.getInstance().loyaltyCompletionRepo.adminFraudSignals();
   return c.json({ success: true, data: rows });
 });
 
@@ -419,9 +409,7 @@ routes.get('/liability', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), asyn
     registry.loyaltyCompletionRepo.ledgerTotals(),
     registry.loyaltyCompletionRepo.getProgrammeConfig(),
   ]);
-  const snapshots = (await (await import('../../../../infrastructure/db/client')).db.execute(
-    (await import('drizzle-orm')).sql`select * from loyalty_liability_snapshots order by snapshot_date desc limit 30`,
-  )) as unknown as unknown[];
+  const snapshots = await registry.loyaltyCompletionRepo.recentLiabilitySnapshots();
   return c.json({
     success: true,
     data: {
@@ -437,9 +425,7 @@ routes.get('/liability', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), asyn
 
 // Finance export (PART O): CSV of the daily snapshots.
 routes.get('/finance-export.csv', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
-  const rows = (await (await import('../../../../infrastructure/db/client')).db.execute(
-    (await import('drizzle-orm')).sql`select snapshot_date, points_outstanding, points_issued, points_redeemed, points_expired, points_clawed_back, pending_points, point_value_ugx, liability_ugx, breakage_estimate_bps, redemption_rate_bps from loyalty_liability_snapshots order by snapshot_date`,
-  )) as unknown as Array<Record<string, unknown>>;
+  const rows = await Registry.getInstance().loyaltyCompletionRepo.liabilitySnapshotsForExport();
   const header = 'snapshot_date,points_outstanding,points_issued,points_redeemed,points_expired,points_clawed_back,pending_points,point_value_ugx,liability_ugx,breakage_estimate_bps,redemption_rate_bps';
   const lines = rows.map((r) => header.split(',').map((k) => r[k] ?? '').join(','));
   return c.text([header, ...lines].join('\n'), 200, { 'Content-Type': 'text/csv' });
@@ -465,9 +451,7 @@ routes.post('/accounts/merge', requirePermissions([PERMISSIONS.SETTINGS_MANAGE])
 routes.post('/accounts/:id/dealer-flag', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const isDealer = Boolean(body?.isDealer);
-  const { db } = await import('../../../../infrastructure/db/client');
-  const { sql } = await import('drizzle-orm');
-  await db.execute(sql`update loyalty_accounts set is_dealer = ${isDealer} where id = ${String(c.req.param('id'))}`);
+  await Registry.getInstance().loyaltyCompletionRepo.setDealerFlag(String(c.req.param('id')), isDealer);
   await new CreateAuditLogUseCase(Registry.getInstance().auditRepo).execute({
     actorId: (c.get('user') as any).id,
     action: 'LOYALTY_DEALER_FLAGGED',

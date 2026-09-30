@@ -104,14 +104,11 @@ routes.put('/alerts/:key', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), asyn
 /** Sends one alert for the most recent paid order, so the number can be proven. */
 routes.post('/alerts/test', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   const registry = Registry.getInstance();
-  const { db } = await import('../../../../infrastructure/db/client');
-  const { sql } = await import('drizzle-orm');
-  const rows = (await db.execute(sql`select id from orders where payment_status = 'paid' order by created_at desc limit 1`)) as unknown as Array<{ id: string }>;
-  const list = Array.isArray(rows) ? rows : ((rows as { rows?: Array<{ id: string }> }).rows ?? []);
-  if (!list.length) {
+  const paidOrderId = await registry.fulfilmentRepo.latestPaidOrderId();
+  if (!paidOrderId) {
     return c.json({ success: false, error: { code: 'NO_PAID_ORDER', message: 'There is no paid order to base a test alert on yet.' } }, 400);
   }
-  const out = await registry.fulfilmentAlertConfig.enqueuePaidOrderAlert(list[0].id, { test: true });
+  const out = await registry.fulfilmentAlertConfig.enqueuePaidOrderAlert(paidOrderId, { test: true });
   if (!out.queued) {
     const message = out.reason === 'NO_RECIPIENT_OR_DISABLED'
       ? 'Save a number and switch the alert on first.'

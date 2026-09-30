@@ -190,4 +190,34 @@ export class DrizzleDeliveryConfigRepository implements IDeliveryConfigRepositor
     }
     return out;
   }
+
+  // ── Read-only reporting, moved out of routes/admin/delivery.ts ──────────
+
+  /** How much of the origin and corridor tables is filled in, for the setup panel. */
+  async setupCounts(): Promise<{
+    origins: { active: number; total: number };
+    corridors: { areas: number; water: number; unserviceable: number };
+  }> {
+    const [origins] = (await db.execute(
+      sql`select count(*) filter (where active)::int as active, count(*)::int as total from delivery_origin`,
+    )) as unknown as Array<{ active: number; total: number }>;
+    const [corridors] = (await db.execute(sql`
+      select count(*)::int as areas,
+             count(*) filter (where access_mode = 'water')::int as water,
+             count(*) filter (where not serviceable)::int as unserviceable
+      from delivery_corridor`)) as unknown as Array<{ areas: number; water: number; unserviceable: number }>;
+    // An aggregate without GROUP BY always returns one row; the fallbacks only satisfy the type.
+    return {
+      origins: origins ?? { active: 0, total: 0 },
+      corridors: corridors ?? { areas: 0, water: 0, unserviceable: 0 },
+    };
+  }
+
+  /** The corridor table in exactly the shape the CSV importer accepts. */
+  async corridorExportRows(): Promise<Array<Record<string, unknown>>> {
+    return (await db.execute(sql`
+      select area_slug, postcode, delivery_zone, district, sub_county_or_division, area,
+             corridor, distance_band, access_mode, serviceable, fulfilment_mode
+      from delivery_corridor order by area_slug`)) as unknown as Array<Record<string, unknown>>;
+  }
 }
