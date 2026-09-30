@@ -21,23 +21,37 @@ export const client = postgres(connectionString || 'postgres://localhost:5432/go
 
 import * as clientMetric from 'prom-client';
 
-const dbQueriesActive = new clientMetric.Gauge({
+/**
+ * One metric per name per process. `new Gauge(...)` registers itself and throws
+ * when the name is taken, which happens whenever this module is evaluated a
+ * second time: run from source, a dynamic `import()` of it from a route yields
+ * a second module instance, and the request died with "A metric with the name
+ * goldplus_db_queries_active has already been registered" (the loyalty finance
+ * export, fraud-signal and liability routes, found in a browser check). The
+ * compiled build resolves those imports from the module cache and was never
+ * affected.
+ */
+function metricOnce<T extends clientMetric.Metric, C>(Kind: new (config: C) => T, config: C & { name: string }): T {
+  return (clientMetric.register.getSingleMetric(config.name) as T | undefined) ?? new Kind(config);
+}
+
+const dbQueriesActive = metricOnce(clientMetric.Gauge, {
   name: 'goldplus_db_queries_active',
   help: 'Number of active database queries',
 });
 
-const dbQueryDuration = new clientMetric.Histogram({
+const dbQueryDuration = metricOnce(clientMetric.Histogram, {
   name: 'goldplus_db_query_duration_seconds',
   help: 'Database query duration in seconds',
   buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5],
 });
 
-const dbTransactionsActive = new clientMetric.Gauge({
+const dbTransactionsActive = metricOnce(clientMetric.Gauge, {
   name: 'goldplus_db_transactions_active',
   help: 'Number of active database transactions',
 });
 
-const dbTransactionDuration = new clientMetric.Histogram({
+const dbTransactionDuration = metricOnce(clientMetric.Histogram, {
   name: 'goldplus_db_transaction_duration_seconds',
   help: 'Database transaction duration in seconds',
   buckets: [0.01, 0.05, 0.1, 0.5, 1, 2.5, 5, 10],
