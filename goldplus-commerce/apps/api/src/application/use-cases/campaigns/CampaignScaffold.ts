@@ -76,3 +76,22 @@ export function utmLinkDedupeKey(
   const text = `${campaignId}${utm.source}${utm.medium}${utm.campaignName}${utm.content ?? ''}${extra}`;
   return `gp-${Math.abs([...text].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) | 0, 7)).toString(36)}`;
 }
+
+/**
+ * The optional landing page saved with a UTM link: an absolute http(s) URL of
+ * at most 2,048 characters, stored without any utm_* parameters of its own
+ * (the link's tags are stored separately). Empty means "none".
+ */
+export function normaliseUtmDestination(raw: unknown):
+  | { ok: true; destinationUrl: string | null }
+  | { ok: false; message: string } {
+  if (typeof raw !== 'string' || !raw.trim()) return { ok: true, destinationUrl: null };
+  const text = raw.trim();
+  let parsed: URL | null = null;
+  try { parsed = new URL(text); } catch { parsed = null; }
+  if (!parsed || !/^https?:$/.test(parsed.protocol) || text.length > 2048) {
+    return { ok: false, message: 'Destination must be a full http(s) link of at most 2,048 characters.' };
+  }
+  for (const k of [...parsed.searchParams.keys()]) if (k.toLowerCase().startsWith('utm_')) parsed.searchParams.delete(k);
+  return { ok: true, destinationUrl: parsed.toString() };
+}

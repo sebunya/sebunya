@@ -701,7 +701,7 @@ import { DrizzleNbaContextReader } from './first-party/DrizzleNbaContextReader';
 import { DrizzleConsentAnchorRepository, DrizzlePersonalDataEraser, DrizzlePersonalDataExporter, DrizzlePrivacyRequestRepository } from './first-party/DrizzlePrivacyRepositories';
 import { DrizzleConsentOperatingRepository as FirstPartyConsentRepository } from './consent/DrizzleConsentOperatingRepository';
 import { outboundGovernance } from './notifications/OutboundGovernanceService';
-import { WHATSAPP_MARKETING_PURPOSE } from '../domain/consent/WhatsAppMarketingConsent';
+import { buildMarketingSuppressionReader } from './notifications/marketingSuppressionReader';
 
 /**
  * Payment-attempt statuses the provider has already given a final answer for.
@@ -2968,14 +2968,7 @@ export class Registry {
    * adapter shares. Transactional messages never reach this read.
    */
   private registerMarketingSuppressionReader(): void {
-    const consent = new FirstPartyConsentRepository();
-    const channelKey = { EMAIL: 'email', SMS: 'sms', WHATSAPP: 'whatsapp' } as const;
-    outboundGovernance.setMarketingSuppressionReader(async (channel, endpointRef) => {
-      if (channel === 'PUSH') return false; // no suppression is recorded for push
-      if (await consent.hasActiveChannelSuppression([endpointRef], channelKey[channel], 'marketing_offers_campaigns')) return true;
-      // WhatsApp marketing has its own purpose key; a suppression scoped to it must block here too.
-      return channel === 'WHATSAPP' && consent.hasActiveChannelSuppression([endpointRef], 'whatsapp', WHATSAPP_MARKETING_PURPOSE);
-    });
+    outboundGovernance.setMarketingSuppressionReader(buildMarketingSuppressionReader(new FirstPartyConsentRepository()));
   }
 
   private registerOrderTransitionSubscribers(): void {

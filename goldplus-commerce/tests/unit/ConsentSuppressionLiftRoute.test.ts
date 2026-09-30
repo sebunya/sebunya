@@ -37,6 +37,8 @@ vi.mock('../../apps/api/src/infrastructure/Registry', () => ({
 
 import { PERMISSIONS } from '@goldplus/shared';
 import routes from '../../apps/api/src/interfaces/http/routes/admin/consent-operating';
+import { LiftChannelSuppressionUseCase } from '../../apps/api/src/application/use-cases/consent/LiftChannelSuppressionUseCase';
+import { buildMarketingSuppressionReader } from '../../apps/api/src/infrastructure/notifications/marketingSuppressionReader';
 
 const ID = '11111111-2222-4333-8444-555555555555';
 const post = (id: string, body: unknown, auth: string | null = 'Bearer admin') =>
@@ -105,5 +107,44 @@ describe('lift a channel suppression', () => {
     const res = await post(ID, { reason: 'wrong number' });
     expect(res.status).toBe(200);
     expect((await res.json()).status).toBe('lifted');
+  });
+});
+
+describe('LiftChannelSuppressionUseCase (the rules, without HTTP)', () => {
+  const gates = (on: boolean) => ({ CONSENT_PROVIDER_SUPPRESSION_INTAKE_ENABLED: on }) as never;
+  const lifted = { endpoint_ref: 'phone:+256772123456', channel_key: 'sms', lifted: 1 };
+
+  it('reports a failed audit write instead of throwing after the lift', async () => {
+    const repo = { liftChannelSuppression: vi.fn(async () => lifted) };
+    const out = await new LiftChannelSuppressionUseCase(repo, gates(true), async () => { throw new Error('down'); })
+      .execute({ suppressionId: ID, reason: 'wrong contact', actorId: 'admin-7' });
+    expect(out).toEqual({ status: 'lifted', channel_key: 'sms', rows_lifted: 1, audit_recorded: false });
+  });
+
+  it('never reaches the repository when the gate is off, the actor is missing, or the repository cannot lift', async () => {
+    const repo = { liftChannelSuppression: vi.fn(async () => lifted) };
+    const audit = vi.fn(async () => undefined);
+    expect((await new LiftChannelSuppressionUseCase(repo, gates(false), audit).execute({ suppressionId: ID, reason: 'wrong contact', actorId: 'a' })).status).toBe('disabled');
+    expect((await new LiftChannelSuppressionUseCase(repo, gates(true), audit).execute({ suppressionId: ID, reason: 'wrong contact', actorId: '' })).status).toBe('invalid');
+    expect((await new LiftChannelSuppressionUseCase({}, gates(true), audit).execute({ suppressionId: ID, reason: 'wrong contact', actorId: 'a' })).status).toBe('unsupported');
+    expect(repo.liftChannelSuppression).not.toHaveBeenCalled();
+    expect(audit).not.toHaveBeenCalled();
+  });
+});
+
+describe('the marketing suppression reader', () => {
+  it('checks the general marketing purpose, and the WhatsApp purpose on WhatsApp only', async () => {
+    const has = vi.fn(async (_refs: string[], _ch: string, purpose: string) => purpose === 'whatsapp_marketing');
+    const reader = buildMarketingSuppressionReader({ hasActiveChannelSuppression: has } as never);
+    expect(await reader('WHATSAPP', 'phone:+256772123456')).toBe(true);
+    expect(await reader('SMS', 'phone:+256772123456')).toBe(false);
+    expect(has.mock.calls.map((c) => [c[1], c[2]])).toEqual([
+      ['whatsapp', 'marketing_offers_campaigns'], ['whatsapp', 'whatsapp_marketing'], ['sms', 'marketing_offers_campaigns'],
+    ]);
+  });
+
+  it('push has no suppression record; a repository without the lookup is an error, so the caller fails closed', async () => {
+    expect(await buildMarketingSuppressionReader({ hasActiveChannelSuppression: vi.fn() } as never)('PUSH', 'x')).toBe(false);
+    await expect(buildMarketingSuppressionReader({} as never)('EMAIL', 'email:a@b.com')).rejects.toThrow('suppression_lookup_unavailable');
   });
 });

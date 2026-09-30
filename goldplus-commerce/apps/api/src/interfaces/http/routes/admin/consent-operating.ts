@@ -7,6 +7,7 @@ import {
   type ConsentChannelKey,
   type ConsentPurposeKey,
 } from '../../../../application/ports/consent/ConsentOperatingRepository';
+import { LiftChannelSuppressionUseCase } from '../../../../application/use-cases/consent/LiftChannelSuppressionUseCase';
 import { getConsentOperatingRuntime } from '../../../../infrastructure/consent/ConsentOperatingRuntime';
 import { Registry } from '../../../../infrastructure/Registry';
 import { logger } from '../../../../infrastructure/logging/logger';
@@ -204,47 +205,24 @@ routes.get('/suppressions', requirePermissions([PERMISSIONS.AUDIT_READ]), async 
   return c.json({ status: 'available', suppressions: await runtime.repository.listChannelSuppressions() });
 });
 
-// Lift a suppression: a STOP recorded against the wrong contact, or a customer
-// who asks to hear from us again. Same right and gate as recording one. A
-// reason is required and the signed-in admin is recorded; the rows are
-// deactivated, never deleted. The lift is channel-wide: it ends every active
-// row for that contact on that channel, whatever purpose each was scoped to.
-// Lifting a suppression grants nothing: marketing still needs consent.
-const SUPPRESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-export const LIFT_REASON_MIN = 5;
-export const LIFT_REASON_MAX = 500;
+// Lift a suppression (LiftChannelSuppressionUseCase holds the rules). Same right
+// as recording one.
+const LIFT_HTTP_STATUS = { lifted: 200, disabled: 503, invalid: 400, unsupported: 501, not_found: 404 } as const;
 
 routes.post('/suppressions/:id/lift', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async c => {
   const runtime = getConsentOperatingRuntime();
-  if (!runtime.gates.CONSENT_PROVIDER_SUPPRESSION_INTAKE_ENABLED) {
-    return c.json({ ok: false, status: 'disabled', reasons: ['consent_provider_suppression_intake_enabled_is_disabled'] }, 503);
-  }
-  const id = String(c.req.param('id') ?? '');
-  if (!SUPPRESSION_ID.test(id)) return c.json({ ok: false, status: 'rejected', reasons: ['invalid_suppression_id'] }, 400);
   const body = asRecord(await c.req.json().catch(() => null));
-  const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
-  if (reason.length < LIFT_REASON_MIN || reason.length > LIFT_REASON_MAX) {
-    return c.json({ ok: false, status: 'rejected', reasons: ['reason_required_5_to_500_characters'] }, 400);
+  const suppressionId = c.req.param('id');
+  const result = await new LiftChannelSuppressionUseCase(
+    runtime.repository,
+    runtime.gates,
+    entry => Registry.getInstance().createAuditLogUseCase.execute(entry),
+  ).execute({ suppressionId, reason: body.reason, actorId: c.get('user').id });
+  if (result.status !== 'lifted') {
+    return c.json({ ok: false, status: result.status === 'disabled' ? 'disabled' : 'rejected', reasons: result.reasons }, LIFT_HTTP_STATUS[result.status]);
   }
-  if (!runtime.repository.liftChannelSuppression) {
-    return c.json({ ok: false, status: 'rejected', reasons: ['lift_not_supported'] }, 501);
-  }
-  const user = c.get('user');
-  // Who, when and why are written on the suppression rows in the same
-  // transaction that ends them (0164), so that record cannot be missing.
-  const result = await runtime.repository.liftChannelSuppression(id, { actorId: user.id, reason });
-  if (!result) return c.json({ ok: false, status: 'rejected', reasons: ['suppression_not_found_or_not_active'] }, 404);
-  // The audit log row is the searchable copy. The contact is not written to
-  // it: channel and count only, with the suppression id to find the row. The
-  // reason is the operator's own words.
-  await Registry.getInstance().createAuditLogUseCase.execute({
-    actorId: user.id,
-    action: 'CONSENT_SUPPRESSION_LIFTED',
-    entity: 'channel_suppression',
-    entityId: id,
-    newState: { channel_key: result.channel_key, rows_lifted: result.lifted, reason },
-  }).catch((err: unknown) => logger.error({ err: err instanceof Error ? err.message : String(err), suppressionId: id }, 'CONSENT_SUPPRESSION_LIFT_AUDIT_FAILED'));
-  return c.json({ ok: true, status: 'lifted', channel_key: result.channel_key, rows_lifted: result.lifted });
+  if (!result.audit_recorded) logger.error({ suppressionId }, 'CONSENT_SUPPRESSION_LIFT_AUDIT_FAILED');
+  return c.json({ ok: true, status: 'lifted', channel_key: result.channel_key, rows_lifted: result.rows_lifted });
 });
 
 routes.post('/provider-suppressions', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async c => {

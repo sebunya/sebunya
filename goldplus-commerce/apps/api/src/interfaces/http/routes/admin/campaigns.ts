@@ -8,6 +8,7 @@ import {
   CAMPAIGN_CHANNELS,
   canTransitionCampaign,
   validateUtm,
+  normaliseUtmDestination,
 } from '../../../../application/use-cases/campaigns/CampaignScaffold';
 import { RecomputeAllCampaignReadinessUseCase, RecomputeCampaignReadinessUseCase } from '../../../../application/use-cases/campaigns/RecomputeCampaignReadinessUseCase';
 
@@ -104,18 +105,10 @@ routes.post('/:id/utm-links', requirePermissions([PERMISSIONS.CAMPAIGNS_MANAGE])
   if (!campaign) return bad(c, 'NOT_FOUND', 'Campaign not found.', 404);
   const content = typeof body?.content === 'string' && body.content.trim() ? body.content.trim().slice(0, 100) : null;
   const term = typeof body?.term === 'string' && body.term.trim() ? body.term.trim().slice(0, 100) : null;
-  // Optional landing page (0163): an absolute http(s) URL, no utm_* of its own.
-  let destinationUrl: string | null = null;
-  if (typeof body?.destinationUrl === 'string' && body.destinationUrl.trim()) {
-    const raw = body.destinationUrl.trim();
-    let parsed: URL | null = null;
-    try { parsed = new URL(raw); } catch { parsed = null; }
-    if (!parsed || !/^https?:$/.test(parsed.protocol) || raw.length > 2048) {
-      return bad(c, 'BAD_INPUT', 'Destination must be a full http(s) link of at most 2,048 characters.');
-    }
-    for (const k of [...parsed.searchParams.keys()]) if (k.toLowerCase().startsWith('utm_')) parsed.searchParams.delete(k);
-    destinationUrl = parsed.toString();
-  }
+  // Optional landing page (0163).
+  const destination = normaliseUtmDestination(body?.destinationUrl);
+  if (!destination.ok) return bad(c, 'BAD_INPUT', destination.message);
+  const destinationUrl = destination.destinationUrl;
   const row = await registry.campaignRepo.addUtmLink(id, { ...utm, content, term, destinationUrl });
   if (!row) return bad(c, 'DUPLICATE', 'An identical UTM link already exists for this campaign.', 409);
   await new RecomputeCampaignReadinessUseCase(registry.campaignRepo).execute(id);
