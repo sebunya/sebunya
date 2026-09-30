@@ -1,7 +1,8 @@
-import { eq, inArray } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { users } from '../schema/identity';
 import { IUserRepository, PersistedUser } from '../../../application/ports/IUserRepository';
+import { IPasswordChangeRepository } from '../../../application/ports/IPasswordChangeRepository';
 
 function rowToUser(row: typeof users.$inferSelect): PersistedUser {
   return {
@@ -16,7 +17,25 @@ function rowToUser(row: typeof users.$inferSelect): PersistedUser {
   };
 }
 
-export class DrizzleUserRepository implements IUserRepository {
+export class DrizzleUserRepository implements IUserRepository, IPasswordChangeRepository {
+  async setPasswordAndRevoke(userId: string, newPasswordHash: string): Promise<void> {
+    await db.transaction(async (tx) => {
+      // The database clock, as the reset flow uses: every token issued before
+      // this instant stops verifying.
+      await tx.execute(sql`
+        update users
+        set password_hash = ${newPasswordHash}, sessions_invalidated_after = now()
+        where id = ${userId}::uuid
+      `);
+      // An unused reset link must not outlive the password it was issued against.
+      await tx.execute(sql`
+        update password_reset_tokens
+        set consumed_at = now()
+        where user_id = ${userId}::uuid and consumed_at is null
+      `);
+    });
+  }
+
   async findByPhone(phoneE164: string): Promise<PersistedUser | null> {
     const e164 = (phoneE164 ?? '').trim();
     if (!/^\+256\d{9}$/.test(e164)) return null;

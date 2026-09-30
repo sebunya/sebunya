@@ -28,6 +28,12 @@ let message: string | undefined;
 let values: { email?: string } = {};
 let notConfigured = false;
 
+// Arriving from /account/password: that change signed this device out too.
+if (Astro.request.method === 'GET' && Astro.url.searchParams.get('passwordChanged') === '1') {
+  status = 'success';
+  message = 'Your password was changed and you were signed out everywhere. Sign in with the new password.';
+}
+
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const email = String(form.get('email') ?? '').trim();

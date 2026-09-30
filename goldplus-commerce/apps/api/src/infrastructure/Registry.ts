@@ -131,6 +131,7 @@ import { DrizzleAccountRecoveryRepository } from './db/repositories/DrizzleAccou
 import { DrizzleSocialIdentityRepository } from './db/repositories/DrizzleSocialIdentityRepository';
 import { NotificationResetDelivery } from './identity/NotificationResetDelivery';
 import { RequestPasswordResetUseCase, ResetPasswordUseCase } from '../application/use-cases/identity/PasswordResetUseCases';
+import { ChangePasswordUseCase } from '../application/use-cases/identity/ChangePasswordUseCase';
 import { SmsResetCodeDelivery } from './identity/SmsResetCodeDelivery';
 import { RequestSmsPasswordResetUseCase, ResetPasswordWithSmsCodeUseCase } from '../application/use-cases/identity/SmsPasswordResetUseCases';
 import { DrizzleProductCostRepository } from './db/repositories/DrizzleProductCostRepository';
@@ -2117,6 +2118,13 @@ export class Registry {
   public readonly resetPasswordUseCase = new ResetPasswordUseCase(
     this.accountRecoveryRepo,
     this.passwordHasher,
+  );
+  /** A signed-in customer changing their own password (current password required). */
+  public readonly changePasswordUseCase = new ChangePasswordUseCase(
+    this.userRepo,
+    this.passwordHasher,
+    this.userRepo,
+    this.loginAttemptStore,
   );
 
   // Reset by SMS code: the channel that actually reaches customers. The code
