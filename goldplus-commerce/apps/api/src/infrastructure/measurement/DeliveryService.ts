@@ -31,6 +31,11 @@ export const ADAPTER_VERSION = 'delivery-v1';
 const LEASE = '60 seconds';
 const ROUTE_BATCH = 50;
 const MAX_ATTEMPTS = 8;
+/** Send attempts allowed for a sink: the house ceiling, or a platform's own lower one. */
+export function attemptBudgetFor(sink: string): number {
+  if (!sink.startsWith('ad:')) return MAX_ATTEMPTS;
+  return Math.min(MAX_ATTEMPTS, adPlatform(sink.split(':')[1])?.maxAttempts ?? MAX_ATTEMPTS);
+}
 const HORIZON_MS = 24 * 3600_000;
 /** Ad platforms reject website events older than ~7 days (Meta); GA4 hits are near-real-time. */
 const MAX_EVENT_AGE_MS = 7 * 24 * 3600_000;
@@ -298,7 +303,8 @@ async function buildRequest(sink: string, canonical: CanonicalTelemetryEvent): P
     try { secret = String(vault.decrypt<{ apiKey: string }>(dest.secretEnc).apiKey ?? ''); } catch { return { req: null, defer: 'CREDENTIALS_UNVERIFIED' }; }
   }
   const r = buildAdRequest(platform, canonical, dest.config, secret);
-  if (!r) return { req: null, suppress: 'IDENTITY_UNAVAILABLE' };
+  // For X this is the normal case, not a fault: the order did not come from an X click.
+  if (!r) return { req: null, suppress: platform === 'x' && !canonical.user_data?.twclid ? 'NO_X_CLICK' : 'IDENTITY_UNAVAILABLE' };
   const auth = def.authorize ? await def.authorize(r, dest.config, secret) : {};
   return { req: { url: r.url, method: r.method ?? 'POST', headers: { ...r.headers, ...auth }, body: r.method === 'GET' ? undefined : JSON.stringify(r.body),
     replyError: def.replyError ? (t) => { try { return def.replyError!(JSON.parse(t)); } catch { return null; } } : undefined } };
@@ -328,7 +334,9 @@ export async function deliverOne(deliveryId: string, generation: number, fetchIm
   // Budget and horizon count from the last operator replay (0141), if any.
   const attemptsSince = Number(claimed.attempt_count) - Number(claimed.attempts_at_replay ?? 0);
   const horizonFrom = new Date(claimed.replayed_at ?? claimed.created_at).getTime();
-  if (attemptsSince >= MAX_ATTEMPTS || Date.now() - horizonFrom > HORIZON_MS) { await finish(deliveryId, token, 'DEAD_LETTER', 'RETRY_BUDGET_EXHAUSTED'); return 'DEAD_LETTER'; }
+  // A platform whose API is paid per call sets a lower ceiling (AdPlatformDef.maxAttempts).
+  const attemptBudget = attemptBudgetFor(sink);
+  if (attemptsSince >= attemptBudget || Date.now() - horizonFrom > HORIZON_MS) { await finish(deliveryId, token, 'DEAD_LETTER', 'RETRY_BUDGET_EXHAUSTED'); return 'DEAD_LETTER'; }
   const identity = await loadIdentity(String(ev.aggregate_id));
   if (sink.startsWith('ad:')) {
     // The shared D-002 gate (no expiry on a refusal). An unreadable consent
@@ -395,7 +403,7 @@ export async function deliverOne(deliveryId: string, generation: number, fetchIm
   if (c.kind === 'accepted') { await finish(deliveryId, token, 'ACCEPTED', 'OK', { accepted: true }); if (platform) await adRepo.recordResult(platform, true).catch(() => undefined); return 'ACCEPTED'; }
   if (platform) await adRepo.recordResult(platform, false, `${c.code}${status ? ` (HTTP ${status})` : ''}`).catch(() => undefined);
   if (c.kind === 'unknown') { await finish(deliveryId, token, 'UNKNOWN_OUTCOME', c.code); return 'UNKNOWN_OUTCOME'; }
-  if (c.kind === 'retry' && attemptNo - Number(claimed.attempts_at_replay ?? 0) < MAX_ATTEMPTS) { await finish(deliveryId, token, 'RETRY_WAIT', c.code, { nextAt: new Date(Date.now() + nextAttemptDelayMs(attemptNo, retryAfter)) }); return 'RETRY_WAIT'; }
+  if (c.kind === 'retry' && attemptNo - Number(claimed.attempts_at_replay ?? 0) < attemptBudget) { await finish(deliveryId, token, 'RETRY_WAIT', c.code, { nextAt: new Date(Date.now() + nextAttemptDelayMs(attemptNo, retryAfter)) }); return 'RETRY_WAIT'; }
   await finish(deliveryId, token, 'DEAD_LETTER', c.code);
   logger.warn({ deliveryId, sink, code: c.code, status }, '[Delivery] dead-lettered');
   return 'DEAD_LETTER';

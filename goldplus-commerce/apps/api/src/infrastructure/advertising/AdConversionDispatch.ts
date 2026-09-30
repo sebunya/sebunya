@@ -134,7 +134,7 @@ export async function processAdConversionBatch(): Promise<{ claimed: number; sen
     }
     if (refused) { await finish('suppressed', { lastError: 'CONSENT_DENIED' }); out.skipped++; continue; }
     const req = buildAdRequest(platform, event, dest.config, secret);
-    if (!req) { await finish('skipped', { lastError: 'no equivalent event or required identifier' }); out.skipped++; continue; }
+    if (!req) { await finish('skipped', { lastError: platform === 'x' && !event?.user_data?.twclid ? 'not an X click: nothing sent' : 'no equivalent event or required identifier' }); out.skipped++; continue; }
     const attempt = row.attemptCount + 1;
     try {
       const auth = def?.authorize ? await def.authorize(req, dest.config, secret) : {};
@@ -154,7 +154,7 @@ export async function processAdConversionBatch(): Promise<{ claimed: number; sen
       const status = (err as { status?: number }).status;
       await repo.recordResult(platform, false, msg).catch(() => undefined);
       const permanent = status != null && status >= 400 && status < 500 && status !== 429;
-      if (permanent || attempt >= MAX_ATTEMPTS) {
+      if (permanent || attempt >= Math.min(MAX_ATTEMPTS, def?.maxAttempts ?? MAX_ATTEMPTS)) {
         await db.update(outboxEvents).set({ isProcessed: true, processedAt: new Date(), deadLetteredAt: new Date(), status: DEAD_LETTER_STATE, lastError: msg, attemptCount: attempt }).where(eq(outboxEvents.id, row.id));
         out.deadLettered++;
       } else {

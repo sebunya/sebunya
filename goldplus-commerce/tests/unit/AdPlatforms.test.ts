@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { AD_PLATFORMS, buildAdRequest, hashEmail, hashPhone, hashPhonePlus, normalisePhoneUg, linkedInVersion, META_GRAPH_VERSION } from '../../apps/api/src/infrastructure/advertising/AdPlatforms';
 import { AdDestinationUseCases } from '../../apps/api/src/application/use-cases/advertising/AdDestinationUseCases';
+import { attemptBudgetFor } from '../../apps/api/src/infrastructure/measurement/DeliveryService';
 
 const purchase: any = {
   event_name: 'purchase', event_id: '11111111-1111-4111-8111-111111111111', event_time: 1790000000, source: 'server',
@@ -208,9 +209,27 @@ describe('advertising: third-review fixes', () => {
     // No add-to-cart event configured: that event is simply not sent.
     expect(buildAdRequest('x', { ...purchase, event_name: 'add_to_cart', user_data: { twclid: 'tw123' } }, { pixelId: 'o8z6j', purchaseEventId: 'tw-o8z6j-o8z6k' }, '{}')).toBeNull();
   });
-  it('X sends the +E.164 phone hash', () => {
-    const x = buildAdRequest('x', { ...purchase, user_data: { hashed_phone_plus: hashPhonePlus('0772123456') } }, { pixelId: 'o8z6j', purchaseEventId: 'tw-o8z6j-o8z6k' }, '{}')!;
-    expect((x.body as any).conversions[0].identifiers).toEqual([{ hashed_phone_number: hashPhonePlus('0772123456') }]);
+  it('X sends the +E.164 phone hash, alongside the click id', () => {
+    const x = buildAdRequest('x', { ...purchase, user_data: { twclid: 'tw123', hashed_phone_plus: hashPhonePlus('0772123456') } }, { pixelId: 'o8z6j', purchaseEventId: 'tw-o8z6j-o8z6k' }, '{}')!;
+    expect((x.body as any).conversions[0].identifiers).toEqual([{ twclid: 'tw123' }, { hashed_phone_number: hashPhonePlus('0772123456') }]);
+  });
+  it('X: a paid call is spent only on a conversion that came from an X click', () => {
+    const cfg = { pixelId: 'o8z6j', purchaseEventId: 'tw-o8z6j-o8z6k', addToCartEventId: 'tw-o8z6j-o8z6m' };
+    // A buyer we could match by email and phone, but who never clicked an X ad: nothing is sent.
+    expect(buildAdRequest('x', purchase, cfg, '{}')).toBeNull();
+    // A click from another network is not X's conversion either.
+    expect(buildAdRequest('x', { ...purchase, user_data: { ...purchase.user_data, gclid: 'Cj0KCQ', ttclid: 'tt1' } }, cfg, '{}')).toBeNull();
+    // With the X click id the purchase goes, and so does a configured add-to-cart.
+    expect(buildAdRequest('x', { ...purchase, user_data: { ...purchase.user_data, twclid: 'tw123' } }, cfg, '{}')).not.toBeNull();
+    expect(buildAdRequest('x', { ...purchase, event_name: 'add_to_cart', user_data: { twclid: 'tw123' } }, cfg, '{}')).not.toBeNull();
+    expect(buildAdRequest('x', { ...purchase, event_name: 'add_to_cart', user_data: { hashed_email: hashEmail('buyer@example.com') } }, cfg, '{}')).toBeNull();
+  });
+  it('X is retried once at most; other platforms keep the dispatchers\' own ceiling', () => {
+    expect(AD_PLATFORMS.find((p) => p.key === 'x')!.maxAttempts).toBe(2);
+    expect(attemptBudgetFor('ad:x:purchase')).toBe(2);
+    expect(attemptBudgetFor('ad:meta:purchase')).toBe(8);
+    expect(attemptBudgetFor('ga4:purchase')).toBe(8);
+    expect(attemptBudgetFor('ad:unknown:purchase')).toBe(8);
   });
   it('postback hosts must resolve to public addresses', () => {
     for (const ip of ['127.0.0.1', '10.1.2.3', '172.18.0.3', '192.168.1.1', '169.254.169.254', '100.64.0.1', '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1', '0.0.0.0'])
