@@ -343,15 +343,17 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
   {
     key: 'x', name: 'X (Twitter) Ads',
     fields: [
-      { key: 'pixelId', label: 'Pixel ID', pattern: /^[a-z0-9]{4,10}$/, hint: 'X Ads > Events Manager. X is called only for an order or basket that arrived on an X ad click within the last 30 days; nothing is sent, and no API credit is used, for any other sale.' },
+      { key: 'pixelId', label: 'Pixel ID', pattern: /^[a-z0-9]{4,10}$/, hint: 'X Ads > Events Manager. X is called only for a paid order that arrived on an X ad click within the last 30 days; nothing is sent, and no API credit is used, for any other sale or for basket activity.' },
       // Events Manager shows an event as tw-<pixel>-<event>; the Conversion API
       // documentation uses the short id on its own. Both are accepted.
       { key: 'purchaseEventId', label: 'Purchase event ID', pattern: /^(tw-[a-z0-9]+-[a-z0-9]+|[a-z0-9]{4,12})$/, hint: 'The purchase event you created in Events Manager with "Conversion API" as the install method, for example tw-o8z6j-o8z6k' },
-      { key: 'addToCartEventId', label: 'Add-to-cart event ID', pattern: /^(tw-[a-z0-9]+-[a-z0-9]+|[a-z0-9]{4,12})?$/, hint: 'Optional', optional: true },
     ],
     secretLabel: 'API keys (JSON)',
     secretHint: '{"consumerKey":"…","consumerSecret":"…","accessToken":"…","accessTokenSecret":"…"}',
-    events: { add_to_cart: 'add_to_cart', purchase: 'purchase' },
+    // Purchases only. A purchase needs a verified payment; a basket add is
+    // something any visitor or bot can do with a made-up twclid in the URL, and
+    // each one would have spent a paid call.
+    events: { purchase: 'purchase' },
     // X's API is paid per call (owner, 2026-09-30: use the credit sparingly).
     // One retry for a transient failure, then the row is dead-lettered.
     maxAttempts: 2,
@@ -360,7 +362,7 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
       return { Authorization: oauth1Header(req.method ?? 'POST', req.url, c) };
     },
     build(e, cfg) {
-      const eventId = e.event_name === 'purchase' ? cfg.purchaseEventId : e.event_name === 'add_to_cart' ? cfg.addToCartEventId : '';
+      const eventId = e.event_name === 'purchase' ? cfg.purchaseEventId : '';
       if (!eventId) return null;
       const ud = u(e);
       // A call is spent ONLY on a conversion that came from X: the shopper

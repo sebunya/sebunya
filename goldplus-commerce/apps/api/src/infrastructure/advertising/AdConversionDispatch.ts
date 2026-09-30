@@ -139,7 +139,7 @@ export async function processAdConversionBatch(): Promise<{ claimed: number; sen
     }
     if (refused) { await finish('suppressed', { lastError: 'CONSENT_DENIED' }); out.skipped++; continue; }
     const req = buildAdRequest(platform, event, dest.config, secret);
-    if (!req) { await finish('skipped', { lastError: platform === 'x' && !event?.user_data?.twclid ? 'not an X click: nothing sent' : 'no equivalent event or required identifier' }); out.skipped++; continue; }
+    if (!req) { await finish('skipped', { lastError: 'no equivalent event or required identifier' }); out.skipped++; continue; }
     const attempt = row.attemptCount + 1;
     try {
       const auth = def?.authorize ? await def.authorize(req, dest.config, secret) : {};
