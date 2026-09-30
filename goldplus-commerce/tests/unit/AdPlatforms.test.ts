@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { AD_PLATFORMS, buildAdRequest, hashEmail, hashPhone, hashPhonePlus, normalisePhoneUg, linkedInVersion, META_GRAPH_VERSION } from '../../apps/api/src/infrastructure/advertising/AdPlatforms';
+import { AD_PLATFORMS, buildAdRequest, xSendScope, hashEmail, hashPhone, hashPhonePlus, normalisePhoneUg, linkedInVersion, META_GRAPH_VERSION } from '../../apps/api/src/infrastructure/advertising/AdPlatforms';
 import { AdDestinationUseCases } from '../../apps/api/src/application/use-cases/advertising/AdDestinationUseCases';
-import { attemptBudgetFor } from '../../apps/api/src/infrastructure/measurement/DeliveryService';
 
 const purchase: any = {
   event_name: 'purchase', event_id: '11111111-1111-4111-8111-111111111111', event_time: 1790000000, source: 'server',
@@ -206,21 +205,45 @@ describe('advertising: third-review fixes', () => {
     for (const ok of ['tw-o8z6j-o8z6k', 'ol288']) expect(purchaseField.pattern.test(ok), ok).toBe(true);
     for (const bad of ['', 'TW-O8Z6J', 'tw-o8z6j', 'https://x.com', 'abc']) expect(purchaseField.pattern.test(bad), bad).toBe(false);
   });
-  it('X: purchases only. A basket add is never sent, whatever is configured or claimed', () => {
+  it('X, default scope: purchases from an X click only, whatever else is configured or claimed', () => {
     const x = AD_PLATFORMS.find((p) => p.key === 'x')!;
-    expect(Object.keys(x.events)).toEqual(['purchase']);
-    expect(x.fields.map((f) => f.key)).toEqual(['pixelId', 'purchaseEventId']);
-    // Even with a stale add-to-cart id left in a saved config and an X click id on the event.
-    const stale = { pixelId: 'o8z6j', purchaseEventId: 'tw-o8z6j-o8z6k', addToCartEventId: 'tw-o8z6j-o8z6m' };
+    expect(x.fields.map((f) => f.key)).toEqual(['pixelId', 'purchaseEventId', 'sendScope', 'addToCartEventId']);
+    const scope = x.fields.find((f) => f.key === 'sendScope')!;
+    for (const ok of ['', 'x_clicks', 'all']) expect(scope.pattern.test(ok), ok).toBe(true);
+    for (const bad of ['ALL', 'everything', 'x clicks']) expect(scope.pattern.test(bad), bad).toBe(false);
+    expect(xSendScope({})).toBe('x_clicks');
+    expect(xSendScope({ sendScope: 'x_clicks' })).toBe('x_clicks');
+    expect(xSendScope({ sendScope: 'nonsense' })).toBe('x_clicks');
+    expect(xSendScope(null)).toBe('x_clicks');
+    // A basket add is never sent in the default scope, even with an event id saved and an X click id on the event.
+    const cfg = { pixelId: 'o8z6j', purchaseEventId: 'tw-o8z6j-o8z6k', addToCartEventId: 'tw-o8z6j-o8z6m' };
     for (const name of ['add_to_cart', 'view_item', 'begin_checkout', 'generate_lead']) {
-      expect(buildAdRequest('x', { ...purchase, event_name: name, user_data: { twclid: 'tw123' } }, stale, '{}'), name).toBeNull();
+      expect(buildAdRequest('x', { ...purchase, event_name: name, user_data: { twclid: 'tw123' } }, cfg, '{}'), name).toBeNull();
     }
+  });
+  it('X, scope "all": every matchable purchase, and basket adds when an event id is set', () => {
+    const cfg = { pixelId: 'o8z6j', purchaseEventId: 'tw-o8z6j-o8z6k', sendScope: 'all' };
+    expect(xSendScope(cfg)).toBe('all');
+    // No X click, but an email and phone X can match on.
+    const byContact = buildAdRequest('x', purchase, cfg, '{}')!;
+    expect((byContact.body as any).conversions[0].identifiers).toEqual([
+      { hashed_email: hashEmail('buyer@example.com') },
+      { hashed_phone_number: hashPhonePlus('0772123456') },
+      { ip_address: '41.84.203.125', user_agent: 'UA' },
+    ]);
+    // Nothing X can match on: still nothing to send.
+    expect(buildAdRequest('x', { ...purchase, user_data: { ip_address: '41.84.203.125', user_agent: 'UA' } }, cfg, '{}')).toBeNull();
+    // Basket adds need their own event id.
+    const basket = { ...purchase, event_name: 'add_to_cart', user_data: { twclid: 'tw123' } };
+    expect(buildAdRequest('x', basket, cfg, '{}')).toBeNull();
+    const withId = buildAdRequest('x', basket, { ...cfg, addToCartEventId: 'tw-o8z6j-o8z6m' }, '{}')!;
+    expect((withId.body as any).conversions[0].event_id).toBe('tw-o8z6j-o8z6m');
   });
   it('X sends the +E.164 phone hash, alongside the click id', () => {
     const x = buildAdRequest('x', { ...purchase, user_data: { twclid: 'tw123', hashed_phone_plus: hashPhonePlus('0772123456') } }, { pixelId: 'o8z6j', purchaseEventId: 'tw-o8z6j-o8z6k' }, '{}')!;
     expect((x.body as any).conversions[0].identifiers).toEqual([{ twclid: 'tw123' }, { hashed_phone_number: hashPhonePlus('0772123456') }]);
   });
-  it('X: a paid call is spent only on a conversion that came from an X click', () => {
+  it('X, default scope: only a conversion that came from an X click is sent', () => {
     const cfg = { pixelId: 'o8z6j', purchaseEventId: 'tw-o8z6j-o8z6k' };
     // A buyer we could match by email and phone, but who never clicked an X ad: nothing is sent.
     expect(buildAdRequest('x', purchase, cfg, '{}')).toBeNull();
@@ -229,7 +252,7 @@ describe('advertising: third-review fixes', () => {
     // With the X click id the purchase goes.
     expect(buildAdRequest('x', { ...purchase, user_data: { ...purchase.user_data, twclid: 'tw123' } }, cfg, '{}')).not.toBeNull();
   });
-  it('X is reachable from exactly one place, so no second path can spend a call without the click rule', () => {
+  it('X is reachable from exactly one place, so no second path can send without the scope rule', () => {
     const fs = require('node:fs'); const path = require('node:path');
     const hits: string[] = [];
     const walk = (dir: string) => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -239,13 +262,6 @@ describe('advertising: third-review fixes', () => {
     } };
     walk(path.resolve(__dirname, '../../apps/api/src')); walk(path.resolve(__dirname, '../../apps/web/src'));
     expect(hits).toEqual(['apps/api/src/infrastructure/advertising/AdPlatforms.ts']);
-  });
-  it('X is retried once at most; other platforms keep the dispatchers\' own ceiling', () => {
-    expect(AD_PLATFORMS.find((p) => p.key === 'x')!.maxAttempts).toBe(2);
-    expect(attemptBudgetFor('ad:x:purchase')).toBe(2);
-    expect(attemptBudgetFor('ad:meta:purchase')).toBe(8);
-    expect(attemptBudgetFor('ga4:purchase')).toBe(8);
-    expect(attemptBudgetFor('ad:unknown:purchase')).toBe(8);
   });
   it('postback hosts must resolve to public addresses', () => {
     for (const ip of ['127.0.0.1', '10.1.2.3', '172.18.0.3', '192.168.1.1', '169.254.169.254', '100.64.0.1', '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1', '0.0.0.0'])

@@ -159,7 +159,7 @@ export async function processAdConversionBatch(): Promise<{ claimed: number; sen
       const status = (err as { status?: number }).status;
       await repo.recordResult(platform, false, msg).catch(() => undefined);
       const permanent = status != null && status >= 400 && status < 500 && status !== 429;
-      if (permanent || attempt >= Math.min(MAX_ATTEMPTS, def?.maxAttempts ?? MAX_ATTEMPTS)) {
+      if (permanent || attempt >= MAX_ATTEMPTS) {
         await db.update(outboxEvents).set({ isProcessed: true, processedAt: new Date(), deadLetteredAt: new Date(), status: DEAD_LETTER_STATE, lastError: msg, attemptCount: attempt }).where(eq(outboxEvents.id, row.id));
         out.deadLettered++;
       } else {
