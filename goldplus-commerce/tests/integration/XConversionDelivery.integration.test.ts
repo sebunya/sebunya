@@ -2,13 +2,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Fixtures } from './helpers/fixtures';
 
 /**
- * X's API is paid per call. This runs the REAL purchase delivery path against
- * PostgreSQL with only the provider's HTTP endpoint stubbed, and counts the
- * calls:
+ * What X receives, counted. This runs the REAL purchase delivery path against
+ * PostgreSQL with only the provider's HTTP endpoint stubbed. In the default
+ * scope (X clicks only):
  *
- *   - an order that did not come from an X click makes none;
+ *   - an order that did not come from an X click makes no call;
  *   - an order that did makes exactly one, shaped as X documents it;
- *   - a failing X is tried twice in total, never more.
+ *   - a failing X is retried, and a refusal is not.
  */
 const URL_ = process.env.COMMERCE_TEST_DATABASE_URL;
 const suite = URL_ && process.env.DATABASE_URL ? describe : describe.skip;
@@ -142,24 +142,40 @@ suite('X conversions: a call is spent only on an X-click purchase (real PostgreS
     expect(calls).toHaveLength(1);
   });
 
-  it('X failing: two calls in total, then the delivery is parked', async () => {
+  it('X failing: the delivery waits and is retried, and the retry succeeds', async () => {
     const o = await paidOrder({ twclid: 'tw-click-2', src: 'x' });
-    const { calls, fetchImpl } = recorder(503);
+    const down = recorder(503);
     let i = await o.due();
-    expect(await M.deliverOne(i.delivery_id, i.enqueue_generation, fetchImpl)).toBe('RETRY_WAIT');
+    expect(await M.deliverOne(i.delivery_id, i.enqueue_generation, down.fetchImpl)).toBe('RETRY_WAIT');
     i = await o.due();
-    expect(await M.deliverOne(i.delivery_id, i.enqueue_generation, fetchImpl)).toBe('DEAD_LETTER');
-    expect(calls).toHaveLength(2);
-    // However often the scheduler offers it again, no third call is made.
-    for (let n = 0; n < 3; n += 1) {
-      i = await o.due();
-      await M.deliverOne(i.delivery_id, i.enqueue_generation, fetchImpl);
-    }
-    expect(calls).toHaveLength(2);
-    expect((await o.intent()).state).toBe('DEAD_LETTER');
+    expect(await M.deliverOne(i.delivery_id, i.enqueue_generation, down.fetchImpl)).toBe('RETRY_WAIT');
+    const up = recorder(200);
+    i = await o.due();
+    expect(await M.deliverOne(i.delivery_id, i.enqueue_generation, up.fetchImpl)).toBe('ACCEPTED');
+    expect(down.calls).toHaveLength(2);
+    expect(up.calls).toHaveLength(1);
+    // The same conversion id on every attempt, so X counts the sale once.
+    const ids = [...down.calls, ...up.calls].map((c) => JSON.parse(c.init.body).conversions[0].conversion_id);
+    expect(new Set(ids).size).toBe(1);
   });
 
-  it('basket events: never sent to X, even with an X click id; another live platform still gets them', async () => {
+  it('scope "all": an order with no X click is sent, matched by hashed contact', async () => {
+    await raw`update ad_destinations set config = config || '{"sendScope":"all"}'::jsonb where platform = 'x'`;
+    try {
+      const o = await paidOrder(null);
+      const i = await o.due();
+      const { calls, fetchImpl } = recorder(200);
+      expect(await M.deliverOne(i.delivery_id, i.enqueue_generation, fetchImpl)).toBe('ACCEPTED');
+      expect(calls).toHaveLength(1);
+      const ids = JSON.parse(calls[0].init.body).conversions[0].identifiers;
+      expect(ids.some((x: any) => 'twclid' in x)).toBe(false);
+      expect(ids.some((x: any) => /^[0-9a-f]{64}$/.test(x.hashed_email ?? ''))).toBe(true);
+    } finally {
+      await raw`update ad_destinations set config = config - 'sendScope' where platform = 'x'`;
+    }
+  });
+
+  it('basket events, default scope: never sent to X, even with an X click id; another live platform still gets them', async () => {
     const { fanOutAdConversions, processAdConversionBatch } = await import('../../apps/api/src/infrastructure/advertising/AdConversionDispatch');
     const { IntegrationCredentialVault } = await import('../../apps/api/src/infrastructure/seo/IntegrationCredentialVault');
     const { DrizzleAdDestinationRepository } = await import('../../apps/api/src/infrastructure/db/repositories/DrizzleAdDestinationRepository');
@@ -179,9 +195,8 @@ suite('X conversions: a call is spent only on an X-click purchase (real PostgreS
     const realFetch = globalThis.fetch;
     try {
       // Each process caches the live platform list for a minute; this test's process has not read it yet.
-      expect(await fanOutAdConversions(event)).toBe(1);
-      const queued = await raw`select idempotency_key from outbox_events where idempotency_key like ${'ad:%:' + (event as any).event_id}`;
-      expect(queued.map((r: any) => r.idempotency_key)).toEqual([`ad:meta:${(event as any).event_id}`]);
+      // Both platforms map the event, so both get a queue row (the insert that used to fail).
+      expect(await fanOutAdConversions(event)).toBe(2);
 
       globalThis.fetch = (async (url: string) => { hosts.push(new URL(String(url)).hostname); return new Response('{"events_received":1}', { status: 200 }); }) as never;
       // Under vitest a Date bound as a query parameter loses its milliseconds
@@ -190,7 +205,8 @@ suite('X conversions: a call is spent only on an X-click purchase (real PostgreS
       // affected; the dispatcher runs on a timer long after the row is queued.
       await new Promise((r) => setTimeout(r, 1100));
       const outcome = await processAdConversionBatch();
-      expect(outcome).toMatchObject({ claimed: 1, sent: 1 });
+      // Meta's goes out; X's is skipped without a call.
+      expect(outcome).toMatchObject({ claimed: 2, sent: 1, skipped: 1 });
     } finally {
       globalThis.fetch = realFetch;
       await raw`delete from outbox_events where idempotency_key like ${'ad:%:' + (event as any).event_id}`;

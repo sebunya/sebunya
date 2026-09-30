@@ -32,12 +32,6 @@ export interface AdPlatformDef {
   unavailable?: string;
   /** The platform documents a test channel (test event code / validate-only) and the builder uses it. */
   testable?: boolean;
-  /**
-   * A lower ceiling on send attempts than the dispatchers' own, for a platform
-   * whose API is paid per call: a transient failure is retried this many times
-   * in total and then dead-lettered, instead of spending five calls on it.
-   */
-  maxAttempts?: number;
 }
 
 /**
@@ -343,37 +337,44 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
   {
     key: 'x', name: 'X (Twitter) Ads',
     fields: [
-      { key: 'pixelId', label: 'Pixel ID', pattern: /^[a-z0-9]{4,10}$/, hint: 'X Ads > Events Manager. X is called only for a paid order that arrived on an X ad click within the last 30 days; nothing is sent, and no API credit is used, for any other sale or for basket activity.' },
+      { key: 'pixelId', label: 'Pixel ID', pattern: /^[a-z0-9]{4,10}$/, hint: 'X Ads > Events Manager' },
       // Events Manager shows an event as tw-<pixel>-<event>; the Conversion API
       // documentation uses the short id on its own. Both are accepted.
       { key: 'purchaseEventId', label: 'Purchase event ID', pattern: /^(tw-[a-z0-9]+-[a-z0-9]+|[a-z0-9]{4,12})$/, hint: 'The purchase event you created in Events Manager with "Conversion API" as the install method, for example tw-o8z6j-o8z6k' },
+      { key: 'sendScope', label: 'What to send (x_clicks or all)', pattern: /^(x_clicks|all)?$/, optional: true,
+        hint: 'x_clicks (the default when empty): only paid orders that arrived on an X ad click in the last 30 days. all: every paid order, matched by hashed email or phone as well, plus basket adds if an add-to-cart event ID is set below. X\'s Conversion API is part of the Ads API, which X does not bill per call; "all" gives X more to match on but shares hashed contact details for customers who never clicked an X ad.' },
+      { key: 'addToCartEventId', label: 'Add-to-cart event ID', pattern: /^(tw-[a-z0-9]+-[a-z0-9]+|[a-z0-9]{4,12})?$/, optional: true, hint: 'Optional, and used only when "What to send" is all' },
     ],
     secretLabel: 'API keys (JSON)',
     secretHint: '{"consumerKey":"…","consumerSecret":"…","accessToken":"…","accessTokenSecret":"…"}',
-    // Purchases only. A purchase needs a verified payment; a basket add is
-    // something any visitor or bot can do with a made-up twclid in the URL, and
-    // each one would have spent a paid call.
-    events: { purchase: 'purchase' },
-    // X's API is paid per call (owner, 2026-09-30: use the credit sparingly).
-    // One retry for a transient failure, then the row is dead-lettered.
-    maxAttempts: 2,
+    // add_to_cart is mapped so it CAN be queued; the builder sends it only in
+    // the "all" scope with an event id configured.
+    events: { add_to_cart: 'add_to_cart', purchase: 'purchase' },
     async authorize(req, _cfg, secret) {
       const c = parseJsonSecret(secret, ['consumerKey', 'consumerSecret', 'accessToken', 'accessTokenSecret']);
       return { Authorization: oauth1Header(req.method ?? 'POST', req.url, c) };
     },
     build(e, cfg) {
-      const eventId = e.event_name === 'purchase' ? cfg.purchaseEventId : '';
+      // Two scopes, chosen by the owner (xSendScope):
+      //  - x_clicks (default): a paid order that arrived on an X click (twclid,
+      //    kept 30 days from the click). Nothing else is sent, so no hashed
+      //    contact of a customer who never touched an X ad leaves the shop, and
+      //    a basket add (which any visitor can make with a made-up twclid) is
+      //    never reported.
+      //  - all: every paid order X could match by click id, hashed email or
+      //    hashed phone, and basket adds when an event id is configured.
+      const scope = xSendScope(cfg);
+      const eventId = e.event_name === 'purchase' ? cfg.purchaseEventId
+        : e.event_name === 'add_to_cart' && scope === 'all' ? cfg.addToCartEventId : '';
       if (!eventId) return null;
       const ud = u(e);
-      // A call is spent ONLY on a conversion that came from X: the shopper
-      // arrived on an X click (twclid, kept 30 days from the click). A sale
-      // with no X click is not X's conversion, and matching it by email or
-      // phone alone would spend a paid call on every order in the shop.
-      if (!ud.twclid) return null;
+      if (scope === 'x_clicks' && !ud.twclid) return null;
       const identifiers: Array<Record<string, string>> = [];
-      identifiers.push({ twclid: ud.twclid });
+      if (ud.twclid) identifiers.push({ twclid: ud.twclid });
       if (ud.hashed_email) identifiers.push({ hashed_email: ud.hashed_email });
       if (ud.hashed_phone_plus) identifiers.push({ hashed_phone_number: ud.hashed_phone_plus });
+      // X matches on a click id, an email or a phone. Without one there is nothing to send.
+      if (identifiers.length === 0) return null;
       // IP address and user agent are secondary: X accepts them only as a pair,
       // and only alongside one of the identifiers above.
       if (ud.ip_address && ud.user_agent) identifiers.push({ ip_address: ud.ip_address, user_agent: ud.user_agent });
@@ -400,6 +401,9 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
   { key: 'sa360', name: 'Search Ads 360 / Campaign Manager 360', fields: [], secretLabel: '', events: {},
     unavailable: 'Enterprise products under a Google/agency contract; once contracted they read conversions from GA4 (already live) or Floodlight.' },
 ];
+
+/** The owner's choice of what X receives; anything but an explicit "all" is the narrow default. */
+export const xSendScope = (cfg: Record<string, string> | null | undefined): 'x_clicks' | 'all' => (cfg?.sendScope === 'all' ? 'all' : 'x_clicks');
 
 export const adPlatform = (key: string) => AD_PLATFORMS.find((p) => p.key === key) ?? null;
 export const buildAdRequest = (key: string, e: CanonicalTelemetryEvent, cfg: Record<string, string>, secret: string): AdRequest | null => {
