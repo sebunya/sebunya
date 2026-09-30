@@ -224,6 +224,17 @@ describe('advertising: third-review fixes', () => {
     expect(buildAdRequest('x', { ...purchase, event_name: 'add_to_cart', user_data: { twclid: 'tw123' } }, cfg, '{}')).not.toBeNull();
     expect(buildAdRequest('x', { ...purchase, event_name: 'add_to_cart', user_data: { hashed_email: hashEmail('buyer@example.com') } }, cfg, '{}')).toBeNull();
   });
+  it('X is reachable from exactly one place, so no second path can spend a call without the click rule', () => {
+    const fs = require('node:fs'); const path = require('node:path');
+    const hits: string[] = [];
+    const walk = (dir: string) => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) { if (e.name !== 'node_modules' && e.name !== 'dist') walk(p); }
+      else if (/\.(ts|astro|mjs|js)$/.test(e.name) && /ads-api\.(x|twitter)\.com|api\.(x|twitter)\.com\/(1\.1|2)\//.test(fs.readFileSync(p, 'utf8'))) hits.push(path.relative(path.resolve(__dirname, '../..'), p));
+    } };
+    walk(path.resolve(__dirname, '../../apps/api/src')); walk(path.resolve(__dirname, '../../apps/web/src'));
+    expect(hits).toEqual(['apps/api/src/infrastructure/advertising/AdPlatforms.ts']);
+  });
   it('X is retried once at most; other platforms keep the dispatchers\' own ceiling', () => {
     expect(AD_PLATFORMS.find((p) => p.key === 'x')!.maxAttempts).toBe(2);
     expect(attemptBudgetFor('ad:x:purchase')).toBe(2);

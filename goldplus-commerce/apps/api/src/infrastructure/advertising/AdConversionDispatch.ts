@@ -78,7 +78,12 @@ export async function fanOutAdConversions(event: CanonicalTelemetryEvent): Promi
       if (!eventSelected(p.eventSelection, event.event_name)) continue;
       const r = await db.insert(outboxEvents).values({
         eventType: EVENT_TYPE, payload: { platform: p.platform, event } as any, idempotencyKey: `ad:${p.platform}:${event.event_id}`,
-        status: 'pending', dryRunOnly: false, relatedEntity: 'ad_destination', relatedEntityId: p.platform,
+        // No relatedEntityId: that column is a uuid and a platform is a key ('x',
+        // 'meta'). Writing the key there made this insert fail for EVERY platform,
+        // so no browsing conversion was ever queued once a platform was live, and
+        // the telemetry row behind it retried for ever. The platform is in the
+        // payload and in the idempotency key.
+        status: 'pending', dryRunOnly: false, relatedEntity: 'ad_destination',
       }).onConflictDoNothing({ target: outboxEvents.idempotencyKey }).returning({ id: outboxEvents.id });
       if (r[0]) queued++;
     }
