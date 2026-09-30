@@ -40,6 +40,7 @@ suite('X conversions: a call is spent only on an X-click purchase (real PostgreS
     [previous] = await raw`select * from ad_destinations where platform = 'x'`;
     await new DrizzleAdDestinationRepository().save('x', {
       enabled: true,
+      // A stale add-to-cart id, as an earlier version of the admin form could have saved.
       config: { pixelId: 'o8z6j', purchaseEventId: 'tw-o8z6j-o8z6k', addToCartEventId: 'tw-o8z6j-o8z6m' },
       secretEnc: IntegrationCredentialVault.fromEnv()!.encrypt({ apiKey: JSON.stringify(KEYS) }),
       secretMask: '••••',
@@ -158,41 +159,47 @@ suite('X conversions: a call is spent only on an X-click purchase (real PostgreS
     expect((await o.intent()).state).toBe('DEAD_LETTER');
   });
 
-  it('basket events take the other dispatcher: the same rule, no X click means no call', async () => {
+  it('basket events: never sent to X, even with an X click id; another live platform still gets them', async () => {
     const { fanOutAdConversions, processAdConversionBatch } = await import('../../apps/api/src/infrastructure/advertising/AdConversionDispatch');
+    const { IntegrationCredentialVault } = await import('../../apps/api/src/infrastructure/seo/IntegrationCredentialVault');
+    const { DrizzleAdDestinationRepository } = await import('../../apps/api/src/infrastructure/db/repositories/DrizzleAdDestinationRepository');
     const { randomUUID } = await import('node:crypto');
-    const event = (userData: Record<string, string>) => ({
-      event_name: 'add_to_cart', event_id: randomUUID(), event_time: Math.floor(Date.now() / 1000), source: 'server',
-      user_data: userData, ecommerce: { value: 45000, currency: 'UGX', items: [{ item_id: productId, item_name: 'IX item', price: 45000, quantity: 1 }] },
-    }) as never;
-    const without = event({ fp_client_id: 'fp.1.ix-a', hashed_email: 'a'.repeat(64) });
-    const withClick = event({ fp_client_id: 'fp.1.ix-b', twclid: 'tw-basket-click' });
-    expect(await fanOutAdConversions(without)).toBe(1);
-    expect(await fanOutAdConversions(withClick)).toBe(1);
-
-    const xCalls: string[] = [];
+    // A second platform that DOES take basket events, so the queue itself is exercised:
+    // its insert used to fail for every platform (a platform key in a uuid column).
+    const [metaBefore] = await raw`select * from ad_destinations where platform = 'meta'`;
+    await new DrizzleAdDestinationRepository().save('meta', {
+      enabled: true, config: { datasetId: '1234567890123' },
+      secretEnc: IntegrationCredentialVault.fromEnv()!.encrypt({ apiKey: 'EAAB' + 'x'.repeat(40) }), secretMask: '••••', updatedBy: null,
+    });
+    const event = { event_name: 'add_to_cart', event_id: randomUUID(), event_time: Math.floor(Date.now() / 1000), source: 'server',
+      page_location: 'https://shopgoldplus.com/products/ix',
+      user_data: { fp_client_id: 'fp.1.ix-b', twclid: 'a-made-up-click-id', hashed_email: 'a'.repeat(64) },
+      ecommerce: { value: 45000, currency: 'UGX', items: [{ item_id: productId, item_name: 'IX item', price: 45000, quantity: 1 }] } } as never;
+    const hosts: string[] = [];
     const realFetch = globalThis.fetch;
-    globalThis.fetch = (async (url: string, init: any) => {
-      if (String(url).includes('ads-api.x.com')) xCalls.push(String(init?.body ?? ''));
-      return new Response('{"data":{"conversions_processed":1}}', { status: 200 });
-    }) as never;
-    // Under vitest a Date bound as a query parameter loses its milliseconds
-    // (it crosses a realm boundary and is sent as its string form), so a row
-    // queued in this same second would not look due yet. Production is not
-    // affected; the dispatcher runs on a timer long after the row is queued.
-    await new Promise((r) => setTimeout(r, 1100));
-    let outcome: { claimed: number; sent: number; skipped: number };
-    try { outcome = await processAdConversionBatch(); } finally { globalThis.fetch = realFetch; }
-    expect(outcome).toMatchObject({ claimed: 2, sent: 1, skipped: 1 });
+    try {
+      // Each process caches the live platform list for a minute; this test's process has not read it yet.
+      expect(await fanOutAdConversions(event)).toBe(1);
+      const queued = await raw`select idempotency_key from outbox_events where idempotency_key like ${'ad:%:' + (event as any).event_id}`;
+      expect(queued.map((r: any) => r.idempotency_key)).toEqual([`ad:meta:${(event as any).event_id}`]);
 
-    expect(xCalls).toHaveLength(1);
-    expect(JSON.parse(xCalls[0]).conversions[0]).toMatchObject({ event_id: 'tw-o8z6j-o8z6m', identifiers: [{ twclid: 'tw-basket-click' }] });
-    const rows = await raw`select status, last_error, idempotency_key from outbox_events where idempotency_key in (${'ad:x:' + (without as any).event_id}, ${'ad:x:' + (withClick as any).event_id})`;
-    const byKey = Object.fromEntries(rows.map((r: any) => [r.idempotency_key, r]));
-    expect(byKey['ad:x:' + (without as any).event_id]).toMatchObject({ status: 'skipped', last_error: 'not an X click: nothing sent' });
-    expect(byKey['ad:x:' + (withClick as any).event_id]).toMatchObject({ status: 'sent' });
-    await raw`delete from outbox_events where idempotency_key in (${'ad:x:' + (without as any).event_id}, ${'ad:x:' + (withClick as any).event_id})`;
-    }, 30_000);
+      globalThis.fetch = (async (url: string) => { hosts.push(new URL(String(url)).hostname); return new Response('{"events_received":1}', { status: 200 }); }) as never;
+      // Under vitest a Date bound as a query parameter loses its milliseconds
+      // (it crosses a realm boundary and is sent as its string form), so a row
+      // queued in this same second would not look due yet. Production is not
+      // affected; the dispatcher runs on a timer long after the row is queued.
+      await new Promise((r) => setTimeout(r, 1100));
+      const outcome = await processAdConversionBatch();
+      expect(outcome).toMatchObject({ claimed: 1, sent: 1 });
+    } finally {
+      globalThis.fetch = realFetch;
+      await raw`delete from outbox_events where idempotency_key like ${'ad:%:' + (event as any).event_id}`;
+      if (!metaBefore) await raw`delete from ad_destinations where platform = 'meta'`;
+      else await raw`update ad_destinations set enabled = ${metaBefore.enabled}, config = ${metaBefore.config}, secret_enc = ${metaBefore.secret_enc}, secret_mask = ${metaBefore.secret_mask} where platform = 'meta'`;
+    }
+    expect(hosts.filter((h) => /(^|\.)x\.com$|twitter\.com$/.test(h))).toEqual([]);
+    expect(hosts).toEqual(['graph.facebook.com']);
+  }, 30_000);
 
   it('X refusing the request (4xx): one call, no retry', async () => {
     const o = await paidOrder({ twclid: 'tw-click-3', src: 'x' });
