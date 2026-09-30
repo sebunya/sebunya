@@ -338,8 +338,10 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
     key: 'x', name: 'X (Twitter) Ads',
     fields: [
       { key: 'pixelId', label: 'Pixel ID', pattern: /^[a-z0-9]{4,10}$/, hint: 'X Ads > Events Manager' },
-      { key: 'purchaseEventId', label: 'Purchase event ID (tw-…)', pattern: /^tw-[a-z0-9]+-[a-z0-9]+$/, hint: 'The purchase event you created in Events Manager' },
-      { key: 'addToCartEventId', label: 'Add-to-cart event ID (tw-…)', pattern: /^(tw-[a-z0-9]+-[a-z0-9]+)?$/, hint: 'Optional', optional: true },
+      // Events Manager shows an event as tw-<pixel>-<event>; the Conversion API
+      // documentation uses the short id on its own. Both are accepted.
+      { key: 'purchaseEventId', label: 'Purchase event ID', pattern: /^(tw-[a-z0-9]+-[a-z0-9]+|[a-z0-9]{4,12})$/, hint: 'The purchase event you created in Events Manager with "Conversion API" as the install method, for example tw-o8z6j-o8z6k' },
+      { key: 'addToCartEventId', label: 'Add-to-cart event ID', pattern: /^(tw-[a-z0-9]+-[a-z0-9]+|[a-z0-9]{4,12})?$/, hint: 'Optional', optional: true },
     ],
     secretLabel: 'API keys (JSON)',
     secretHint: '{"consumerKey":"…","consumerSecret":"…","accessToken":"…","accessTokenSecret":"…"}',
@@ -352,13 +354,26 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
       const eventId = e.event_name === 'purchase' ? cfg.purchaseEventId : e.event_name === 'add_to_cart' ? cfg.addToCartEventId : '';
       if (!eventId) return null;
       const ud = u(e);
-      const identifiers = [ud.twclid ? { twclid: ud.twclid } : null, ud.hashed_email ? { hashed_email: ud.hashed_email } : null, ud.hashed_phone_plus ? { hashed_phone_number: ud.hashed_phone_plus } : null].filter(Boolean);
+      const identifiers: Array<Record<string, string>> = [];
+      if (ud.twclid) identifiers.push({ twclid: ud.twclid });
+      if (ud.hashed_email) identifiers.push({ hashed_email: ud.hashed_email });
+      if (ud.hashed_phone_plus) identifiers.push({ hashed_phone_number: ud.hashed_phone_plus });
+      // X matches on a click id, an email or a phone. Without one there is nothing to send.
       if (identifiers.length === 0) return null;
+      // IP address and user agent are secondary: X accepts them only as a pair,
+      // and only alongside one of the identifiers above.
+      if (ud.ip_address && ud.user_agent) identifiers.push({ ip_address: ud.ip_address, user_agent: ud.user_agent });
+      const contents = items(e).filter((i) => i.item_id).map((i) => ({
+        content_id: String(i.item_id), ...(i.item_name ? { content_name: String(i.item_name) } : {}),
+        ...(typeof i.price === 'number' ? { content_price: i.price } : {}), num_items: i.quantity ?? 1,
+      }));
       return {
         url: `https://ads-api.x.com/12/measurement/conversions/${cfg.pixelId}`,
         headers: { 'content-type': 'application/json' },
         body: { conversions: [{ conversion_time: new Date(e.event_time * 1000).toISOString(), event_id: eventId, identifiers,
-          conversion_id: e.event_id, value: value(e), price_currency: e.ecommerce?.currency ?? 'UGX', number_items: items(e).reduce((s, i) => s + (i.quantity ?? 1), 0) }] },
+          // `value` is a string in X's API ("20.00"); a JSON number is refused.
+          conversion_id: e.event_id, value: String(value(e)), price_currency: e.ecommerce?.currency ?? 'UGX', number_items: items(e).reduce((s, i) => s + (i.quantity ?? 1), 0),
+          ...(contents.length ? { contents } : {}) }] },
       };
     },
   },

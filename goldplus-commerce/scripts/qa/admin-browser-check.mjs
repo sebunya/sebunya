@@ -18,6 +18,14 @@ const signIn = async (path, password) => {
   await Promise.all([page.waitForNavigation(), page.locator('form:has(#password) button[type=submit], form:has(#password) button:not([type])').first().click()]);
 };
 try {
+  // ---- X (Twitter) card tags on a public page ----
+  await page.goto('/');
+  const meta = (sel) => page.locator(sel).first().getAttribute('content').catch(() => null);
+  check('X card: twitter:* are name tags, with the site handle', (await meta('meta[name="twitter:card"]')) === 'summary_large_image' && (await meta('meta[name="twitter:site"]')) === '@shopgoldplus' && (await page.locator('meta[property^="twitter:"]').count()) === 0, `card=${await meta('meta[name="twitter:card"]')} site=${await meta('meta[name="twitter:site"]')}`);
+  const cardImage = await meta('meta[name="twitter:image"]');
+  check('X card: an absolute image with alt text, a title and a description', /^https?:\/\//.test(cardImage ?? '') && !!(await meta('meta[name="twitter:image:alt"]')) && !!(await meta('meta[name="twitter:title"]')) && !!(await meta('meta[name="twitter:description"]')), String(cardImage));
+  check('the footer links to the same X account', (await page.locator('a[href="https://x.com/shopgoldplus"]').count()) > 0);
+
   // ---- change password (customer account area) ----
   await signIn('/login', OLD);
   let r = await page.goto('/account/password');
@@ -95,7 +103,7 @@ try {
     check('"5k" is refused and the stored threshold is untouched', /whole number of points/.test(await text()) && after === before, `before=${before} after=${after} ${(await text()).slice(0, 200)}`);
   } else { check('tiers exist to test the threshold form', false, (await text()).slice(0, 500)); }
 
-  for (const path of ['/admin/measurement/dlq', '/admin/utm-builder', '/admin/payments', '/admin/verification', '/admin/measurement/channel-report', '/admin/loyalty/liability', '/admin/loyalty/adjustments', '/admin/campaigns', '/admin/inventory', '/admin/orders', '/admin/carts', '/admin/loyalty/referrals', '/admin/loyalty/fraud', '/admin/fulfilment', '/admin/delivery', '/admin/delivery/launch']) {
+  for (const path of ['/admin/measurement/dlq', '/admin/utm-builder', '/admin/payments', '/admin/verification', '/admin/measurement/channel-report', '/admin/loyalty/liability', '/admin/loyalty/adjustments', '/admin/campaigns', '/admin/inventory', '/admin/orders', '/admin/carts', '/admin/loyalty/referrals', '/admin/loyalty/fraud', '/admin/fulfilment', '/admin/delivery', '/admin/delivery/launch', '/admin/advertising']) {
     r = await page.goto(path); await page.waitForLoadState('networkidle').catch(() => {});
     check(`${path} renders`, r.status() === 200, String(r.status()));
   }

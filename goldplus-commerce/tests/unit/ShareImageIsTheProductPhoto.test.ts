@@ -15,7 +15,7 @@ describe('share image is the product photo', () => {
     const layout = web('layouts/BaseLayout.astro');
     expect(layout).toMatch(/const shareImage = .*SITE_ORIGIN/);
     expect(layout).toContain('<meta property="og:image" content={shareImage} />');
-    expect(layout).toContain('<meta property="twitter:image" content={shareImage} />');
+    expect(layout).toContain('<meta name="twitter:image" content={shareImage} />');
   });
 
   it('the product page passes its primary photo to the layout', () => {
