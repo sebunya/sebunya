@@ -25,6 +25,9 @@ const AI_ASSISTANT_SOURCE = /^(chatgpt\.com|chat\.openai\.com|perplexity(\.ai)?|
 const SEARCH = /(^|\.)(google|bing|yahoo|duckduckgo|yandex|baidu|ecosia|brave)\./i;
 const SOCIAL = /(^|\.)(facebook|fb|instagram|tiktok|twitter|x|t|linkedin|lnkd|pinterest|snapchat|youtube|reddit|threads)\.(com|co|net|in|me)$/i;
 
+/** utm_source values that name a social network: the bare name, or its domain. */
+const SOCIAL_SOURCE = /^(x|twitter|t\.co|facebook|fb|instagram|ig|tiktok|linkedin|pinterest|snapchat|youtube|threads|reddit)(\.com)?$/i;
+
 export function classifyChannel(t: { source?: string | null; medium?: string | null; referrerHost?: string | null; clickIdTypes?: string[] }): Channel {
   const src = (t.source ?? '').toLowerCase().trim();
   const med = (t.medium ?? '').toLowerCase().trim();
@@ -44,6 +47,10 @@ export function classifyChannel(t: { source?: string | null; medium?: string | n
   if ((!med || med === 'referral') && (AI_ASSISTANT_SOURCE.test(src) || AI_ASSISTANT_HOST.test(src))) return 'ai_assistant';
   if (/^referral$/.test(med)) return 'referral';
   if (clicks.has('clickid') || clicks.has('click_id')) return 'other_paid';
+  // A link tagged with a social network as its source and no medium (the link
+  // in an X or Instagram bio, a post) is that network's organic traffic. It
+  // used to fall through to "other" and vanish from the social rows.
+  if (!med && SOCIAL_SOURCE.test(src)) return 'organic_social';
   if (src || med) return 'other';
   const ref = (t.referrerHost ?? '').toLowerCase();
   if (!ref || PAYMENT_OR_SELF_HOST.test(ref)) return 'direct';

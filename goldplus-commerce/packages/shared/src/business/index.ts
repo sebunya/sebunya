@@ -47,7 +47,7 @@ export const DEFAULT_BUSINESS_INFO: BusinessInfo = {
   closedDays: [0],
   socials: [
     { key: 'instagram', label: 'Instagram', href: 'https://instagram.com/ShopGoldPlus', enabled: true },
-    { key: 'x', label: 'X', href: 'https://x.com/ShopGoldPlus', enabled: true },
+    { key: 'x', label: 'X', href: 'https://x.com/shopgoldplus', enabled: true },
     { key: 'facebook', label: 'Facebook', href: 'https://facebook.com/ShopGoldPlus', enabled: true },
     { key: 'youtube', label: 'YouTube', href: 'https://youtube.com/@ShopGoldPlus', enabled: true },
     { key: 'tiktok', label: 'TikTok', href: 'https://tiktok.com/@ShopGoldPlus', enabled: true },
@@ -76,3 +76,23 @@ export const BUSINESS_SOCIAL_LABELS: Record<(typeof BUSINESS_SOCIAL_KEYS)[number
   threads: 'Threads',
   pinterest: 'Pinterest',
 };
+
+/**
+ * The X (Twitter) handle for card attribution (`twitter:site`), read from the
+ * same admin-editable social link the footer renders, so the card can never
+ * name an account the site does not link to. Null when the X link is switched
+ * off or is not a profile URL: a card without `twitter:site` is valid, a card
+ * naming the wrong account is not.
+ */
+export function xHandleFromSocials(socials: ReadonlyArray<{ key: string; href: string; enabled: boolean }> | null | undefined): string | null {
+  const x = (socials ?? []).find((s) => s.key === 'x' && s.enabled && s.href);
+  if (!x) return null;
+  try {
+    const url = new URL(x.href);
+    if (!/^(www\.|mobile\.)?(x|twitter)\.com$/i.test(url.hostname)) return null;
+    const handle = url.pathname.split('/').filter(Boolean)[0]?.replace(/^@/, '') ?? '';
+    return /^[A-Za-z0-9_]{1,15}$/.test(handle) ? `@${handle}` : null;
+  } catch {
+    return null;
+  }
+}

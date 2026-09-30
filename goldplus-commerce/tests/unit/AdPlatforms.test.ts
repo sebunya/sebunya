@@ -172,6 +172,42 @@ describe('advertising: third-review fixes', () => {
     expect(hashEmailGoogle('J.Doe@Gmail.com')).toBe(hashEmail('jdoe@gmail.com'));
     expect(hashEmailGoogle('j.doe@company.ug')).toBe(hashEmail('j.doe@company.ug'));
   });
+  it('X: the conversion is shaped as X documents it', () => {
+    const x = buildAdRequest('x', { ...purchase, user_data: { ...purchase.user_data, twclid: 'tw123' } }, { pixelId: 'o8z6j', purchaseEventId: 'tw-o8z6j-o8z6k' }, '{}')!;
+    expect(x.url).toBe('https://ads-api.x.com/12/measurement/conversions/o8z6j');
+    const c = (x.body as any).conversions[0];
+    // A string, as in X's own example ("20.00"); a JSON number is refused.
+    expect(c.value).toBe('145000');
+    expect(c.price_currency).toBe('UGX');
+    expect(c.event_id).toBe('tw-o8z6j-o8z6k');
+    expect(c.conversion_id).toBe(purchase.event_id);
+    expect(c.number_items).toBe(1);
+    expect(c.conversion_time).toBe(new Date(1790000000 * 1000).toISOString());
+    expect(c.contents).toEqual([{ content_id: 'p1', content_name: 'Power bank', content_price: 145000, num_items: 1 }]);
+    // Click id first, then hashed contact, then the IP and user agent as ONE pair.
+    expect(c.identifiers).toEqual([
+      { twclid: 'tw123' },
+      { hashed_email: hashEmail('buyer@example.com') },
+      { hashed_phone_number: hashPhonePlus('0772123456') },
+      { ip_address: '41.84.203.125', user_agent: 'UA' },
+    ]);
+    expect(JSON.stringify(x.body)).not.toMatch(/buyer@example\.com|0772|256772/i);
+  });
+  it('X: IP and user agent never go alone, and never as half a pair', () => {
+    const only = buildAdRequest('x', { ...purchase, user_data: { ip_address: '41.84.203.125', user_agent: 'UA' } }, { pixelId: 'o8z6j', purchaseEventId: 'tw-o8z6j-o8z6k' }, '{}');
+    expect(only).toBeNull();
+    const half = buildAdRequest('x', { ...purchase, user_data: { twclid: 'tw123', ip_address: '41.84.203.125' } }, { pixelId: 'o8z6j', purchaseEventId: 'tw-o8z6j-o8z6k' }, '{}')!;
+    expect((half.body as any).conversions[0].identifiers).toEqual([{ twclid: 'tw123' }]);
+  });
+  it('X: accepts the event id as Events Manager shows it or as the API documents it; add-to-cart is optional', () => {
+    const x = AD_PLATFORMS.find((p) => p.key === 'x')!;
+    const purchaseField = x.fields.find((f) => f.key === 'purchaseEventId')!;
+    for (const ok of ['tw-o8z6j-o8z6k', 'ol288']) expect(purchaseField.pattern.test(ok), ok).toBe(true);
+    for (const bad of ['', 'TW-O8Z6J', 'tw-o8z6j', 'https://x.com', 'abc']) expect(purchaseField.pattern.test(bad), bad).toBe(false);
+    expect(x.fields.find((f) => f.key === 'addToCartEventId')!.pattern.test('')).toBe(true);
+    // No add-to-cart event configured: that event is simply not sent.
+    expect(buildAdRequest('x', { ...purchase, event_name: 'add_to_cart', user_data: { twclid: 'tw123' } }, { pixelId: 'o8z6j', purchaseEventId: 'tw-o8z6j-o8z6k' }, '{}')).toBeNull();
+  });
   it('X sends the +E.164 phone hash', () => {
     const x = buildAdRequest('x', { ...purchase, user_data: { hashed_phone_plus: hashPhonePlus('0772123456') } }, { pixelId: 'o8z6j', purchaseEventId: 'tw-o8z6j-o8z6k' }, '{}')!;
     expect((x.body as any).conversions[0].identifiers).toEqual([{ hashed_phone_number: hashPhonePlus('0772123456') }]);
