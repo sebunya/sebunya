@@ -381,4 +381,36 @@ export class DrizzleLoyaltyCompletionRepository implements ILoyaltyCompletionRep
         and status in ('received', 'processing', 'dispatched', 'delivery_failed')`)) as unknown as Array<{ id: string; total_amount: string | number }>;
     return rows.map((r) => ({ orderId: r.id, totalUgx: Number(r.total_amount) }));
   }
+
+  // ── Admin reads and the dealer flag, moved out of the routes ────────────
+  // (routes/admin/loyalty.ts ran this SQL itself through dynamic imports.)
+
+  /** Referral oversight: the newest 200, with both parties' emails. */
+  async adminReferrals(): Promise<unknown[]> {
+    return (await db.execute(sql`
+      select r.id, r.code, r.status, r.rejection_reason, r.created_at, r.updated_at,
+             ref.email as referrer_email, ree.email as referee_email
+      from loyalty_referrals r
+      left join users ref on ref.id = r.referrer_user_id
+      left join users ree on ree.id = r.referee_user_id
+      order by r.created_at desc limit 200`)) as unknown as unknown[];
+  }
+
+  async adminFraudSignals(): Promise<unknown[]> {
+    return (await db.execute(sql`select * from loyalty_fraud_signals order by created_at desc limit 100`)) as unknown as unknown[];
+  }
+
+  /** The most recent daily liability snapshots, newest first. */
+  async recentLiabilitySnapshots(): Promise<unknown[]> {
+    return (await db.execute(sql`select * from loyalty_liability_snapshots order by snapshot_date desc limit 30`)) as unknown as unknown[];
+  }
+
+  /** Every daily snapshot, oldest first, in the finance export's columns. */
+  async liabilitySnapshotsForExport(): Promise<Array<Record<string, unknown>>> {
+    return (await db.execute(sql`select snapshot_date, points_outstanding, points_issued, points_redeemed, points_expired, points_clawed_back, pending_points, point_value_ugx, liability_ugx, breakage_estimate_bps, redemption_rate_bps from loyalty_liability_snapshots order by snapshot_date`)) as unknown as Array<Record<string, unknown>>;
+  }
+
+  async setDealerFlag(accountId: string, isDealer: boolean): Promise<void> {
+    await db.execute(sql`update loyalty_accounts set is_dealer = ${isDealer} where id = ${accountId}`);
+  }
 }

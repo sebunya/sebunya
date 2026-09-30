@@ -57,6 +57,10 @@ describe('Clean Architecture Boundaries', () => {
       const content = fs.readFileSync(file, 'utf-8');
       expect(content).not.toMatch(/from\s+['"].*\/infrastructure\/db\/.*['"]/);
       expect(content).not.toMatch(/from\s+['"].*\/infrastructure\/repositories\/.*['"]/);
+      // A dynamic import is the same import. Four admin route files ran SQL
+      // through `await import('.../infrastructure/db/client')`, which the
+      // `from` patterns above never saw.
+      expect(content, file).not.toMatch(/import\(\s*['"].*\/infrastructure\/(db|repositories)\/.*['"]\s*\)/);
     });
   });
 });
