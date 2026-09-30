@@ -377,9 +377,8 @@ describe('a double-clicked DLQ replay dispatches once', () => {
       { async findById() { return { id: 'd1', eventId: 'ev1', payload: {}, isResolved: false }; }, async markResolved() {} } as never,
       { async enqueueTelemetryDispatch(...a: unknown[]) { calls.push(a); } } as never,
       silentLogger,
-      { async create() { return { id: 'a1' }; }, async save() {} } as never,
     );
-    await uc.execute('d1', 'admin-1').catch(() => undefined);
+    await uc.execute('d1', 'admin-1');
     expect(calls[0]).toEqual([{}, 'ev1', 'd1']);
     const repo = read('apps/api/src/infrastructure/measurement/DrizzleMeasurementAdminRepository.ts');
     expect(repo).toContain('return `dlq-replay:${replayKey ?? eventId}`;');

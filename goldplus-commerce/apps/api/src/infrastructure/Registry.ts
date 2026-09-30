@@ -700,6 +700,8 @@ import { DrizzleCustomer360Reader } from './first-party/DrizzleCustomer360Reader
 import { DrizzleNbaContextReader } from './first-party/DrizzleNbaContextReader';
 import { DrizzleConsentAnchorRepository, DrizzlePersonalDataEraser, DrizzlePersonalDataExporter, DrizzlePrivacyRequestRepository } from './first-party/DrizzlePrivacyRepositories';
 import { DrizzleConsentOperatingRepository as FirstPartyConsentRepository } from './consent/DrizzleConsentOperatingRepository';
+import { outboundGovernance } from './notifications/OutboundGovernanceService';
+import { WHATSAPP_MARKETING_PURPOSE } from '../domain/consent/WhatsAppMarketingConsent';
 
 /**
  * Payment-attempt statuses the provider has already given a final answer for.
@@ -2634,13 +2636,11 @@ export class Registry {
   public readonly replayMeasurementDlqUseCase = new ReplayMeasurementDlqUseCase(
     this.dlqRepo,
     this.measurementAdminRepo,
-    this.measurementLogger,
-    this.auditRepo
+    this.measurementLogger
   );
   public readonly dismissMeasurementDlqUseCase = new DismissMeasurementDlqUseCase(
     this.dlqRepo,
-    this.measurementLogger,
-    this.auditRepo
+    this.measurementLogger
   );
   public readonly listConsentAuditUseCase = new ListConsentAuditUseCase(this.consentReadRepo);
   public readonly getMatchQualitySummaryUseCase = new GetMatchQualitySummaryUseCase(this.attributionRepo);
@@ -2897,6 +2897,7 @@ export class Registry {
     if (!Registry._instance) {
       Registry._instance = new Registry();
       Registry._instance.registerOrderTransitionSubscribers();
+      Registry._instance.registerMarketingSuppressionReader();
     }
     return Registry._instance;
   }
@@ -2961,6 +2962,22 @@ export class Registry {
    *  - payment reversed (chargeback/refund) → claw back the earn in full and
    *    reverse an applied redemption, points returning with original expiry.
    */
+  /**
+   * A STOP or unsubscribe recorded against a phone number or email address
+   * blocks MARKETING on that channel at the one outbound decision every
+   * adapter shares. Transactional messages never reach this read.
+   */
+  private registerMarketingSuppressionReader(): void {
+    const consent = new FirstPartyConsentRepository();
+    const channelKey = { EMAIL: 'email', SMS: 'sms', WHATSAPP: 'whatsapp' } as const;
+    outboundGovernance.setMarketingSuppressionReader(async (channel, endpointRef) => {
+      if (channel === 'PUSH') return false; // no suppression is recorded for push
+      if (await consent.hasActiveChannelSuppression([endpointRef], channelKey[channel], 'marketing_offers_campaigns')) return true;
+      // WhatsApp marketing has its own purpose key; a suppression scoped to it must block here too.
+      return channel === 'WHATSAPP' && consent.hasActiveChannelSuppression([endpointRef], 'whatsapp', WHATSAPP_MARKETING_PURPOSE);
+    });
+  }
+
   private registerOrderTransitionSubscribers(): void {
     // GA4 refunds / ad withdrawals for a cancelled order: the order_cancelled
     // business event routes them (0140), in the delivery layer.

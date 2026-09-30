@@ -91,8 +91,9 @@ export class DrizzleFakeReportRepository implements IFakeReportRepository {
       db.select({ n: sql<number>`count(*)::int` }).from(fakeProductReports).where(where),
       db.select({ status: fakeProductReports.status, n: sql<number>`count(*)::int` })
         .from(fakeProductReports).groupBy(fakeProductReports.status),
-      db.select({ location: fakeProductReports.locationFound, n: sql<number>`count(*)::int` })
-        .from(fakeProductReports).groupBy(fakeProductReports.locationFound)
+      // "Kikuubo" and "kikuubo " are one place.
+      db.select({ location: sql<string>`lower(trim(${fakeProductReports.locationFound}))`, n: sql<number>`count(*)::int` })
+        .from(fakeProductReports).groupBy(sql`lower(trim(${fakeProductReports.locationFound}))`)
         .orderBy(desc(sql`count(*)`)).limit(5),
     ]);
     return {

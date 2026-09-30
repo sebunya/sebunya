@@ -8,8 +8,8 @@ describe('UTM link destination URL (0163)', () => {
     expect(read('apps/api/src/infrastructure/db/migrations/0163_utm_link_destination_url.sql'))
       .toContain('ALTER TABLE utm_links ADD COLUMN IF NOT EXISTS destination_url text;');
     const journal = JSON.parse(read('apps/api/src/infrastructure/db/migrations/meta/_journal.json'));
-    const last = journal.entries[journal.entries.length - 1];
-    expect(last).toMatchObject({ idx: 163, tag: '0163_utm_link_destination_url' });
+    const entry = journal.entries.find((e: { tag: string }) => e.tag === '0163_utm_link_destination_url');
+    expect(entry).toMatchObject({ idx: 163 });
     expect(read('apps/api/src/infrastructure/db/schema/advertising.ts')).toContain("destinationUrl: text('destination_url')");
   });
   it('the route validates an http(s) destination and strips its own utm_ tags', () => {

@@ -2,6 +2,7 @@
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../lib/session";
 import { apiBase } from "../../../lib/api";
+import { parseTierThreshold } from "../../../lib/admin-loyalty-tiers";
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -24,6 +25,7 @@ try {
 } catch { /* unavailable state below */ }
 
 let notice: { kind: "success" | "error"; text: string } | null = null;
+let inputError = "";
 if (Astro.request.method === "POST") {
   try {
     const form = await Astro.request.formData();
@@ -32,12 +34,16 @@ if (Astro.request.method === "POST") {
       const code = String(form.get("code") || "");
       let benefits: unknown = null;
       try { benefits = JSON.parse(String(form.get("benefits") || "null")); } catch { benefits = null; }
-      const threshold = String(form.get("thresholdLifetimePoints") || "").replace(/[,\s]/g, "");
+      const threshold = parseTierThreshold(form.get("thresholdLifetimePoints"));
+      if (!threshold.ok) {
+        inputError = threshold.message;
+        throw new Error(inputError);
+      }
       const res = await fetch(`${apiBase}/admin/loyalty/tiers/${encodeURIComponent(code)}`, {
         method: "PUT", headers,
         body: JSON.stringify({
           name: String(form.get("name") || "").trim() || undefined,
-          thresholdLifetimePoints: threshold === "" ? null : Number(threshold),
+          thresholdLifetimePoints: threshold.value,
           benefits,
           active: form.get("active") === "on",
         }),
@@ -58,7 +64,7 @@ if (Astro.request.method === "POST") {
       }
     }
   } catch {
-    notice = { kind: "error", text: "Loyalty service is unreachable right now." };
+    notice = { kind: "error", text: inputError || "Loyalty service is unreachable right now." };
   }
 }
 

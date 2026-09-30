@@ -1,7 +1,5 @@
 import type { DlqRepository } from '../../ports/measurement/DlqRepository';
 import type { MeasurementLogger } from '../../ports/measurement/MeasurementLogger';
-import type { IAuditRepository } from '../../ports/IAuditRepository';
-import { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
 
 /**
  * Prefix on telemetry_dlq.resolved_note that marks a row as DISMISSED rather
@@ -19,10 +17,10 @@ export class DismissMeasurementDlqUseCase {
   constructor(
     private readonly dlqRepo: DlqRepository,
     private readonly logger: MeasurementLogger,
-    private readonly auditRepo: IAuditRepository,
   ) {}
 
-  async execute(id: string, reason: unknown, adminUserId: string) {
+  /** The route writes the audit row (one row, and its failure never fails a dismissal already made). */
+  async execute(id: string, reason: unknown, _adminUserId: string) {
     const trimmed = typeof reason === 'string' ? reason.trim() : '';
     if (trimmed.length < DLQ_DISMISS_REASON_MIN || trimmed.length > DLQ_DISMISS_REASON_MAX) {
       throw new Error('INVALID_REASON');
@@ -37,14 +35,6 @@ export class DismissMeasurementDlqUseCase {
     if (!changed) throw new Error('ALREADY_RESOLVED');
 
     this.logger.info({ dlqId: id, eventId: entry.eventId }, '[AdminMeasurement] DLQ entry dismissed');
-
-    await new CreateAuditLogUseCase(this.auditRepo).execute({
-      action: 'DISMISS_DLQ_EVENT',
-      entityId: id,
-      entity: 'MEASUREMENT_DLQ',
-      actorId: adminUserId,
-      newState: { reason: trimmed },
-    });
 
     return { message: 'DLQ entry dismissed' };
   }

@@ -46,6 +46,9 @@ export interface OutboundRequest {
   maskedRecipient?: string;
 }
 
+/** True when the recipient has an active marketing suppression on the channel. */
+export type MarketingSuppressionReader = (channel: OutboundChannel, endpointRef: string) => Promise<boolean>;
+
 export class OutboundGovernanceService {
   /**
    * Reads the flags.
@@ -78,8 +81,33 @@ export class OutboundGovernanceService {
    */
   decide(request: OutboundRequest, env: NodeJS.ProcessEnv = process.env): OutboundDecision {
     const flags = this.flags(request.channel, env);
+    const context = this.contextFor(request);
 
-    const context: OutboundContext = {
+    const decision = decideOutbound(flags, context);
+    const line = {
+      channel: request.channel,
+      messageClass: request.messageClass,
+      recipientClass: request.recipientClass,
+      decision: decision.kind,
+      guard: decision.guard,
+      // Masked by the caller. A raw recipient in a log line is customer data in a store
+      // retained far longer than the request.
+      recipient: request.maskedRecipient,
+    };
+
+    if (failsReleaseReadiness(decision)) {
+      logger.error(line, 'OUTBOUND_UNSAFE_CONFIGURATION');
+    } else if (decision.kind === 'ALLOW_LIVE') {
+      logger.info(line, 'OUTBOUND_LIVE_PERMITTED');
+    } else {
+      logger.info(line, 'OUTBOUND_DECISION');
+    }
+
+    return decision;
+  }
+
+  private contextFor(request: OutboundRequest): OutboundContext {
+    return {
       channel: request.channel,
       messageClass: request.messageClass,
       recipientClass: request.recipientClass,
@@ -108,29 +136,58 @@ export class OutboundGovernanceService {
       suppressed: request.suppressed ?? false,
       frequencyCapReached: request.frequencyCapReached ?? false,
     };
+  }
 
-    const decision = decideOutbound(flags, context);
+  private suppressionReader: MarketingSuppressionReader | null = null;
 
-    const line = {
-      channel: request.channel,
-      messageClass: request.messageClass,
-      recipientClass: request.recipientClass,
-      decision: decision.kind,
-      guard: decision.guard,
-      // Masked by the caller. A raw recipient in a log line is customer data in a store
-      // retained far longer than the request.
-      recipient: request.maskedRecipient,
-    };
+  /** Wired once at start-up (Registry). Without a reader, marketing fails closed. */
+  setMarketingSuppressionReader(reader: MarketingSuppressionReader | null): void {
+    this.suppressionReader = reader;
+  }
 
-    if (failsReleaseReadiness(decision)) {
-      logger.error(line, 'OUTBOUND_UNSAFE_CONFIGURATION');
-    } else if (decision.kind === 'ALLOW_LIVE') {
-      logger.info(line, 'OUTBOUND_LIVE_PERMITTED');
-    } else {
-      logger.info(line, 'OUTBOUND_DECISION');
+  /**
+   * `decide`, plus the recipient's recorded STOP / unsubscribe for MARKETING.
+   *
+   * The adapters never passed `suppressed`, so a STOP recorded against a phone
+   * number or an email address was stored and consulted by nothing on this path.
+   *
+   * What this does today, stated plainly: no adapter supplies `consentGranted`,
+   * so MARKETING to a customer is already refused for want of consent and the
+   * suppression is never read for them. This is the guard for the day a caller
+   * does supply consent: from that moment a recorded STOP outranks it, with no
+   * further change needed here. Until then it is reached only for allowlisted
+   * test recipients.
+   *
+   * The suppression is read only when the message is MARKETING and every other
+   * rule would let it through: a transactional message never waits on this
+   * read and is never blocked by it. An unreadable suppression state counts as
+   * suppressed, because sending marketing to someone who asked us to stop is
+   * the one mistake that cannot be taken back.
+   *
+   * `endpointRef` is the key suppressions are stored under: `phone:+2567…` or
+   * `email:lower@case`.
+   */
+  async decideForRecipient(
+    request: OutboundRequest,
+    endpointRef: string | null,
+    env: NodeJS.ProcessEnv = process.env,
+  ): Promise<OutboundDecision> {
+    if (request.messageClass !== 'MARKETING' || request.recipientClass === 'INTERNAL' || request.suppressed !== undefined) {
+      return this.decide(request, env);
     }
+    const provisional = decideOutbound(this.flags(request.channel, env), this.contextFor(request));
+    if (provisional.kind !== 'ALLOW_LIVE' && provisional.kind !== 'ALLOW_DRY_RUN') return this.decide(request, env);
 
-    return decision;
+    let suppressed = true;
+    if (endpointRef && this.suppressionReader) {
+      try {
+        suppressed = await this.suppressionReader(request.channel, endpointRef);
+      } catch (error) {
+        logger.error({ channel: request.channel, err: error instanceof Error ? error.message : String(error) }, 'OUTBOUND_SUPPRESSION_UNREADABLE');
+        suppressed = true;
+      }
+    }
+    return this.decide({ ...request, suppressed }, env);
   }
 
   /**

@@ -330,7 +330,7 @@ describe('both adapters delegate rather than deciding for themselves', () => {
     const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 
     it('asks the shared policy', () => {
-      expect(code).toContain('outboundGovernance.decide(');
+      expect(code).toContain('outboundGovernance.decideForRecipient(');
     });
 
     it('no longer reads the outbound flags itself', () => {
@@ -348,7 +348,7 @@ describe('both adapters delegate rather than deciding for themselves', () => {
 
     it('decides before any network call', () => {
       const dispatch = code.slice(code.indexOf('async dispatch('));
-      const decideAt = dispatch.indexOf('outboundGovernance.decide(');
+      const decideAt = dispatch.indexOf('outboundGovernance.decideForRecipient(');
       const fetchAt = dispatch.search(/await (resilientFetch|fetch)\(/);
       expect(decideAt).toBeGreaterThan(-1);
       expect(fetchAt).toBeGreaterThan(-1);

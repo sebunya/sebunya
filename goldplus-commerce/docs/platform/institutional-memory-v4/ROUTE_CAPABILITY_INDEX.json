@@ -2638,6 +2638,16 @@
     },
     {
      "method": "POST",
+     "path": "/suppressions/:id/lift",
+     "middleware": [
+      "requirePermissions"
+     ],
+     "permissions": [
+      "settings.manage"
+     ]
+    },
+    {
+     "method": "POST",
      "path": "/provider-suppressions",
      "middleware": [
       "requirePermissions"

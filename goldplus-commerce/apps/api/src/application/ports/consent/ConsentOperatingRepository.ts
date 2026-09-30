@@ -174,5 +174,13 @@ export interface ConsentOperatingRepository {
    * WhatsApp marketing gate treats a missing method as "no suppression known".
    */
   hasActiveChannelSuppression?(endpointRefs: string[], channelKey: ConsentChannelKey, purposeKey: ConsentPurposeKey): Promise<boolean>;
+  /**
+   * Ends a suppression: every ACTIVE row for the same contact and channel as
+   * the row named (a contact may have several recorded STOPs), or null when
+   * that row does not exist or is no longer active. Rows are kept, not deleted,
+   * and each carries who lifted it, when and why (0164), written atomically
+   * with the deactivation.
+   */
+  liftChannelSuppression?(suppressionId: string, by: { actorId: string; reason: string }): Promise<{ endpoint_ref: string; channel_key: string; lifted: number } | null>;
   buildDryRunEligibilityInput(key: ConsentAggregateKey): Promise<ConsentProviderEligibilityPreviewInput>;
 }

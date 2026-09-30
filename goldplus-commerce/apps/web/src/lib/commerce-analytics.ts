@@ -182,7 +182,8 @@ function summarizeOrders(orders: OrderAnalyticsRecord[], start: Date, end: Date)
   const periodOrders = orders.filter((order) => inRange(order.createdAt, start, end));
   const paid = periodOrders.filter((order) => normalizedPaymentStatus(order) === 'paid');
   const failedPayments = periodOrders.filter((order) => FAILED_PAYMENT_STATES.has(normalizedPaymentStatus(order)));
-  const completed = periodOrders.filter((order) => normalizedOrderStatus(order) === 'completed');
+  // Delivered counts as completed (mirrors DrizzleAnalyticsReadRepository.orderAggregates).
+  const completed = periodOrders.filter((order) => ['completed', 'delivered'].includes(normalizedOrderStatus(order)));
   const cancelled = periodOrders.filter((order) => normalizedOrderStatus(order) === 'cancelled');
   // Online-prepaid orders; cancellations with no payment result are excluded
   // (mirrors DrizzleAnalyticsReadRepository.orderAggregates).

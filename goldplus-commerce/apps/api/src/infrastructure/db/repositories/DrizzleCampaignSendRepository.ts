@@ -1,9 +1,11 @@
-import { and, desc, eq, gt, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { campaignSendDecisions, campaignSendRuns } from '../schema/campaignSendRuns';
 import { consentCurrentState } from '../schema/consent';
 import { channelSuppressions } from '../schema/consent-foundation';
 import { cartAbandonments } from '../schema/abandonment';
+import { users } from '../schema/identity';
+import { normalisePhoneE164 } from '../../../domain/customer-dna/IdentityStitching';
 import {
   SendAudienceSubject,
   SendGateReads,
@@ -36,17 +38,36 @@ export class DrizzleCampaignSendRepository implements SendGateReads, SendRunSink
 
   async suppressedUserIds(userIds: string[], channelKey: string): Promise<Set<string>> {
     if (userIds.length === 0) return new Set();
+    // A suppression is keyed by account OR by contact: a STOP an operator
+    // records carries only the phone number or email address it arrived from.
+    const accounts = await db.select({ id: users.id, email: users.email, phone: users.phone }).from(users).where(inArray(users.id, userIds));
+    const userByEndpoint = new Map<string, string[]>();
+    const link = (ref: string, id: string) => userByEndpoint.set(ref, [...(userByEndpoint.get(ref) ?? []), id]);
+    for (const a of accounts) {
+      if (a.email) link(`email:${a.email.trim().toLowerCase()}`, a.id);
+      const phone = normalisePhoneE164(a.phone);
+      if (phone) link(`phone:${phone}`, a.id);
+    }
+    const endpoints = [...userByEndpoint.keys()];
     const rows = await db
-      .select({ ref: channelSuppressions.customerIdentityRef })
+      .select({ ref: channelSuppressions.customerIdentityRef, endpoint: channelSuppressions.endpointRef })
       .from(channelSuppressions)
       .where(
         and(
-          inArray(channelSuppressions.customerIdentityRef, userIds),
+          endpoints.length
+            ? or(inArray(channelSuppressions.customerIdentityRef, userIds), inArray(channelSuppressions.endpointRef, endpoints))
+            : inArray(channelSuppressions.customerIdentityRef, userIds),
           eq(channelSuppressions.channelKey, channelKey),
           eq(channelSuppressions.suppressionActive, true),
         ),
       );
-    return new Set(rows.map((r) => r.ref).filter((v): v is string => !!v));
+    const out = new Set<string>();
+    const wanted = new Set(userIds);
+    for (const r of rows) {
+      if (r.ref && wanted.has(r.ref)) out.add(r.ref);
+      for (const id of userByEndpoint.get(r.endpoint) ?? []) out.add(id);
+    }
+    return out;
   }
 
   async recentlyEligibleSubjects(subjectRefs: string[], sinceDays: number): Promise<Set<string>> {

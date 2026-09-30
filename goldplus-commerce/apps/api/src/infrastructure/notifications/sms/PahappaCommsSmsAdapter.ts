@@ -86,7 +86,7 @@ export class PahappaCommsSmsAdapter implements INotificationProvider {
       return allowedNormalized !== null && allowedNormalized === normalizedNumber;
     });
 
-    const decision = outboundGovernance.decide({
+    const decision = await outboundGovernance.decideForRecipient({
       channel: 'SMS',
       messageClass: classifyMessage(payload),
       recipientClass: recipientAllowlisted ? 'TEST' : 'CUSTOMER',
@@ -96,7 +96,7 @@ export class PahappaCommsSmsAdapter implements INotificationProvider {
       allowlistActive: allowlist.length > 0,
       recipientAllowlisted,
       maskedRecipient: this.maskPhone(normalizedNumber),
-    });
+    }, `phone:+${normalizedNumber}`);
 
     if (decision.kind === 'ALLOW_DRY_RUN') {
       return {

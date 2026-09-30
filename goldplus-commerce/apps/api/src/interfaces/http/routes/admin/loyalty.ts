@@ -174,6 +174,10 @@ routes.get('/members/:userId', requirePermissions([PERMISSIONS.SETTINGS_MANAGE])
   if (!/^[0-9a-f-]{36}$/i.test(userId)) {
     return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'userId must be a uuid.' } } satisfies ApiResponse<never>, 400);
   }
+  // A mistyped id must not look like a real member with a zero balance.
+  if (!(await Registry.getInstance().userRepo.findById(userId))) {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'No customer account has this id.' } } satisfies ApiResponse<never>, 404);
+  }
   const history = await Registry.getInstance().getLoyaltyHistoryUseCase.execute({ userId });
   return c.json({ success: true, data: { userId, programmeActive: history.programmeActive, balance: history.balance, entries: history.entries.slice(-20).reverse() } });
 });
