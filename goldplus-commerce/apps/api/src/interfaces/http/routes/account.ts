@@ -244,6 +244,33 @@ routes.delete('/addresses/:id', async (c) => {
 });
 
 // ── Phone verification (loyalty brief PART I: the identity spine) ─────────
+// Change the password while signed in. The rules (current password required,
+// lockout, sign-out everywhere) are ChangePasswordUseCase's.
+const PASSWORD_CHANGE_STATUS = { BAD_INPUT: 400, WEAK_PASSWORD: 400, SAME_PASSWORD: 400, WRONG_PASSWORD: 403, NO_PASSWORD_SET: 409, LOCKED: 429, ACCOUNT_UNAVAILABLE: 403 } as const;
+
+routes.post('/password', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const registry = Registry.getInstance();
+  const result = await registry.changePasswordUseCase.execute({
+    userId: c.get('userId'),
+    currentPassword: body?.currentPassword,
+    newPassword: body?.newPassword,
+  });
+  if (!result.ok) {
+    if (result.retryAfterSeconds) c.header('Retry-After', String(result.retryAfterSeconds));
+    const res: ApiResponse<never> = { success: false, error: { code: result.code, message: result.message } };
+    return c.json(res, PASSWORD_CHANGE_STATUS[result.code]);
+  }
+  // As the reset flow does: the repository stamped the session cutoff in its
+  // transaction, and this revokes the durable refresh families too.
+  await registry.sessionService.logoutAll(result.userId, 'password_change').catch(() => undefined);
+  await registry.createAuditLogUseCase
+    .execute({ actorId: result.userId, action: 'PASSWORD_CHANGED', entity: 'user', entityId: result.userId, previousState: null, newState: { sessionsRevoked: true } })
+    .catch(() => undefined);
+  const res: ApiResponse<{ message: string }> = { success: true, data: { message: 'Your password was changed. Sign in again with the new one.' } };
+  return c.json(res);
+});
+
 routes.post('/phone/request-verification', async (c) => {
   const userId = c.get('userId') as string;
   const body = await c.req.json().catch(() => null);

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import type {
   ChannelSuppressionWrite,
   ConsentAggregateKey,
@@ -227,6 +227,12 @@ export class DrizzleConsentOperatingRepository implements ConsentOperatingReposi
       suppressionActive: true,
       effectiveAt: asDate(input.effective_at),
     }).onConflictDoNothing({ target: channelSuppressions.id });
+    // The id comes from the idempotency key, so a re-sent request lands on the
+    // same row. If that row has since been lifted, answering "recorded" would
+    // tell the operator the contact is suppressed when it is not.
+    const [row] = await db.select({ active: channelSuppressions.suppressionActive })
+      .from(channelSuppressions).where(eq(channelSuppressions.id, suppressionId)).limit(1);
+    if (row && !row.active) throw new Error('suppression_was_lifted_reload_the_form_and_record_it_again');
     return { suppression_id: suppressionId };
   }
 
@@ -391,6 +397,26 @@ export class DrizzleConsentOperatingRepository implements ConsentOperatingReposi
     return Boolean(row);
   }
 
+  async liftChannelSuppression(suppressionId: string, by: { actorId: string; reason: string }): Promise<{ endpoint_ref: string; channel_key: string; lifted: number } | null> {
+    return db.transaction(async (tx) => {
+      const [target] = await tx.select({ endpointRef: channelSuppressions.endpointRef, channelKey: channelSuppressions.channelKey })
+        .from(channelSuppressions)
+        .where(and(eq(channelSuppressions.id, suppressionId), eq(channelSuppressions.suppressionActive, true)))
+        .limit(1);
+      if (!target) return null;
+      const lifted = await tx.update(channelSuppressions)
+        // The database clock, the same one that stamps provider evidence rows.
+        .set({ suppressionActive: false, liftedAt: sql`now()`, liftedBy: by.actorId, liftReason: by.reason })
+        .where(and(
+          eq(channelSuppressions.endpointRef, target.endpointRef),
+          eq(channelSuppressions.channelKey, target.channelKey),
+          eq(channelSuppressions.suppressionActive, true),
+        ))
+        .returning({ id: channelSuppressions.id });
+      return { endpoint_ref: target.endpointRef, channel_key: target.channelKey, lifted: lifted.length };
+    });
+  }
+
   async buildDryRunEligibilityInput(key: ConsentAggregateKey): Promise<ConsentProviderEligibilityPreviewInput> {
     const current = await this.getLatestConsentState(key);
     const [suppression] = await db.select({ id: channelSuppressions.id }).from(channelSuppressions).where(and(
@@ -399,9 +425,15 @@ export class DrizzleConsentOperatingRepository implements ConsentOperatingReposi
       eq(channelSuppressions.suppressionActive, true),
       or(isNull(channelSuppressions.purposeKey), eq(channelSuppressions.purposeKey, key.purpose_key)),
     )).limit(1);
+    // Provider evidence counts on its own only when it is newer than the last
+    // lift for this contact and channel: a lifted STOP is no longer in force.
     const [providerSuppressionEvidence] = await db.select({ id: providerUnsubscribeEvents.id })
       .from(providerUnsubscribeEvents)
       .where(and(
+        sql`${providerUnsubscribeEvents.createdAt} > coalesce((
+          select max(cs.lifted_at) from channel_suppressions cs
+          where cs.endpoint_ref = ${key.endpoint_ref} and cs.channel_key = ${key.channel_key}
+        ), '-infinity'::timestamptz)`,
         eq(providerUnsubscribeEvents.endpointRef, key.endpoint_ref),
         eq(providerUnsubscribeEvents.channelKey, key.channel_key),
         eq(providerUnsubscribeEvents.authenticityVerified, true),

@@ -86,6 +86,8 @@ describe('VerifyPesaPalPaymentUseCase persists the failure reason', () => {
     const src = readFileSync(join(__dirname, '../../apps/api/src/infrastructure/db/repositories/DrizzlePaymentAttemptRepository.ts'), 'utf8');
     const body = src.slice(src.indexOf('async recordFailureReason'), src.indexOf('async numberAttempts'));
     expect(body).toMatch(/<> 'completed'/);
+    // A re-verified failed attempt keeps its first failure time.
+    expect(body).toMatch(/coalesce\(\$\{paymentAttempts\.failedAt\}/);
   });
 });
 

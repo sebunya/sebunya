@@ -22,10 +22,14 @@ describe('campaign scaffold governance', () => {
     expect(CAMPAIGN_STATUSES).not.toContain('ACTIVE');
   });
 
-  it('normalises UTM parts and refuses empties', () => {
-    expect(validateUtm({ source: ' Face Book! ', medium: 'CPC', campaignName: 'Aug-Recovery_1' })).toEqual({
+  it('lower-cases UTM parts and refuses what it would have to rewrite', () => {
+    expect(validateUtm({ source: ' FaceBook ', medium: 'CPC', campaignName: 'Aug-Recovery_1' })).toEqual({
       ok: true, source: 'facebook', medium: 'cpc', campaignName: 'aug-recovery_1',
     });
+    // Stripping these used to store a record that differed from the built link.
+    expect(validateUtm({ source: 'chatgpt.com', medium: 'cpc', campaignName: 'x' })).toMatchObject({ ok: false });
+    expect(validateUtm({ source: 'face book', medium: 'cpc', campaignName: 'x' })).toMatchObject({ ok: false });
+    expect(validateUtm({ source: 'a'.repeat(101), medium: 'cpc', campaignName: 'x' })).toMatchObject({ ok: false });
     expect(validateUtm({ source: '!!!', medium: 'cpc', campaignName: 'x' })).toMatchObject({ ok: false });
   });
 });

@@ -20,6 +20,13 @@ export const GET: APIRoute = async ({ request }) => {
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(30_000),
     });
+    // A refusal is shown as what it is, not downloaded as a ".csv" of error JSON.
+    if (!upstream.ok) {
+      return new Response(await upstream.text(), {
+        status: upstream.status,
+        headers: { 'Content-Type': upstream.headers.get('Content-Type') ?? 'application/json', 'Cache-Control': 'no-store' },
+      });
+    }
     return new Response(upstream.body, {
       status: upstream.status,
       headers: {

@@ -1220,6 +1220,11 @@
    "file": "apps/api/src/interfaces/http/routes/admin/consent-operating.ts"
   },
   {
+   "route": "POST /admin/consent-operating/suppressions/:id/lift",
+   "permissionCode": "settings.manage",
+   "file": "apps/api/src/interfaces/http/routes/admin/consent-operating.ts"
+  },
+  {
    "route": "POST /admin/consent-operating/provider-suppressions",
    "permissionCode": "settings.manage",
    "file": "apps/api/src/interfaces/http/routes/admin/consent-operating.ts"

@@ -34,7 +34,7 @@ const auditRepo = () => ({ save: vi.fn(async () => undefined) }) as any;
 describe('DLQ dismiss', () => {
   it('requires a reason', async () => {
     const repo = fakeDlq();
-    const uc = new DismissMeasurementDlqUseCase(repo, logger, auditRepo());
+    const uc = new DismissMeasurementDlqUseCase(repo, logger);
     await expect(uc.execute('d1', '  ', 'u1')).rejects.toThrow('INVALID_REASON');
     await expect(uc.execute('d1', undefined, 'u1')).rejects.toThrow('INVALID_REASON');
     expect(repo.markDismissed).not.toHaveBeenCalled();
@@ -42,7 +42,7 @@ describe('DLQ dismiss', () => {
 
   it('stores the dismissal distinctly from a replay and does not re-enqueue', async () => {
     const repo = fakeDlq();
-    const uc = new DismissMeasurementDlqUseCase(repo, logger, auditRepo());
+    const uc = new DismissMeasurementDlqUseCase(repo, logger);
     await uc.execute('d1', ' test order ', 'u1');
     expect(repo.markDismissed).toHaveBeenCalledWith('d1', `${DLQ_DISMISSED_NOTE_PREFIX}test order`);
     expect(repo.markResolved).not.toHaveBeenCalled();
@@ -50,14 +50,14 @@ describe('DLQ dismiss', () => {
 
   it('refuses an already resolved row, including one resolved concurrently', async () => {
     const resolved = fakeDlq({ findById: vi.fn(async () => ({ id: 'd1', eventId: 'e', payload: {}, isResolved: true, failedAt: new Date() })) });
-    await expect(new DismissMeasurementDlqUseCase(resolved, logger, auditRepo()).execute('d1', 'dup', 'u1')).rejects.toThrow('ALREADY_RESOLVED');
+    await expect(new DismissMeasurementDlqUseCase(resolved, logger).execute('d1', 'dup', 'u1')).rejects.toThrow('ALREADY_RESOLVED');
     const raced = fakeDlq({ markDismissed: vi.fn(async () => false) });
-    await expect(new DismissMeasurementDlqUseCase(raced, logger, auditRepo()).execute('d1', 'dup', 'u1')).rejects.toThrow('ALREADY_RESOLVED');
+    await expect(new DismissMeasurementDlqUseCase(raced, logger).execute('d1', 'dup', 'u1')).rejects.toThrow('ALREADY_RESOLVED');
   });
 
   it('404s an unknown row', async () => {
     const repo = fakeDlq({ findById: vi.fn(async () => null) });
-    await expect(new DismissMeasurementDlqUseCase(repo, logger, auditRepo()).execute('x', 'reason', 'u1')).rejects.toThrow('NOT_FOUND');
+    await expect(new DismissMeasurementDlqUseCase(repo, logger).execute('x', 'reason', 'u1')).rejects.toThrow('NOT_FOUND');
   });
 
   it('route uses the replay permission, the proxy allowlists it, the page has an inline form', () => {

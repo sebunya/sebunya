@@ -111,7 +111,7 @@ describe('payment success rate denominator', () => {
       { id: 'D', paymentMethod: 'pesapal', paymentStatus: 'rejected', orderStatus: 'cancelled' },
       { id: 'E', paymentMethod: 'offline', paymentStatus: 'unpaid', orderStatus: 'received' },
       { id: 'F', paymentMethod: 'pesapal', paymentStatus: 'paid', orderStatus: 'received' },
-      { id: 'G', paymentMethod: 'pesapal', paymentStatus: 'paid', orderStatus: 'received' },
+      { id: 'G', paymentMethod: 'pesapal', paymentStatus: 'paid', orderStatus: 'delivered' },
       { id: 'H', paymentMethod: null, paymentStatus: 'unpaid', orderStatus: 'received' },
     ].map((row) => ({ ...row, totalAmount: 1000, createdAt: at }));
     const result = buildCommerceAnalytics({
@@ -129,5 +129,7 @@ describe('payment success rate denominator', () => {
     expect(success.sampleSize).toBe(5);
     expect(success.value).toBeCloseTo(3 / 5, 10);
     expect(result.metrics.find((m) => m.key === 'paid_order_share')!.value).toBeCloseTo(3 / 8, 10);
+    // A is completed and G delivered: both count as fulfilled, as in the API's SQL.
+    expect(result.metrics.find((m) => m.key === 'fulfilment_completion_rate')!.value).toBeCloseTo(2 / 8, 10);
   });
 });

@@ -84,6 +84,22 @@ suite('a decline followed by a real payment (real PostgreSQL)', () => {
     expect((await raw`select payment_status from orders where id = ${orderId}`)[0].payment_status).toBe('reversed');
   });
 
+  it('keeps the first failure time when the same failed attempt is verified again, and never marks a completed one', async () => {
+    const { attemptId } = await seedAttempt('failed');
+    const first = new Date('2026-09-27T08:00:00.000Z');
+    await repo.recordFailureReason(attemptId, { providerStatusCode: 2, providerStatusDescription: 'Insufficient funds', failedAt: first });
+    await repo.recordFailureReason(attemptId, { providerStatusCode: 2, providerStatusDescription: 'Insufficient funds', failedAt: new Date('2026-09-27T09:30:00.000Z') });
+    const [row] = await raw`select failed_at, provider_status_description from payment_attempts where id = ${attemptId}`;
+    expect(new Date(row.failed_at).toISOString()).toBe(first.toISOString());
+    expect(row.provider_status_description).toBe('Insufficient funds');
+
+    const paid = await seedAttempt('completed');
+    await repo.recordFailureReason(paid.attemptId, { providerStatusCode: 2, providerStatusDescription: 'late decline', failedAt: first });
+    const [untouched] = await raw`select failed_at, provider_status_description from payment_attempts where id = ${paid.attemptId}`;
+    expect(untouched.failed_at).toBeNull();
+    expect(untouched.provider_status_description).toBeNull();
+  });
+
   it('lets a later attempt pay an order whose earlier attempt failed', async () => {
     const { orderId } = await seedAttempt('failed');
     await repo.updateOrderPaymentStatusSafely(orderId, 'failed');

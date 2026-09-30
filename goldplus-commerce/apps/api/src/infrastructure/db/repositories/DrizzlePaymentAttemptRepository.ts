@@ -207,7 +207,9 @@ export class DrizzlePaymentAttemptRepository implements IPesaPalPaymentRepositor
       .set({
         providerStatusCode: reason.providerStatusCode,
         providerStatusDescription: reason.providerStatusDescription,
-        failedAt: reason.failedAt,
+        // First failure time stands: a repeated callback, IPN or admin re-verify
+        // of the same failed attempt must not move it forward.
+        failedAt: sql`coalesce(${paymentAttempts.failedAt}, ${reason.failedAt.toISOString()}::timestamptz)`,
       })
       .where(and(eq(paymentAttempts.id, id), sql`${paymentAttempts.status} <> 'completed'`));
   }

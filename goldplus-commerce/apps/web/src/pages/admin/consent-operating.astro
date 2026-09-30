@@ -2,7 +2,7 @@
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import { apiBase } from '../../lib/api';
 import { readSessionToken } from '../../lib/session';
-import { STOP_CHANNELS, buildStopIntakeRequest, maskEndpointRef } from '../../lib/admin-stop-intake';
+import { STOP_CHANNELS, buildLiftRequest, buildStopIntakeRequest, maskEndpointRef } from '../../lib/admin-stop-intake';
 
 const token = readSessionToken(Astro.request);
 if (!token) {
@@ -58,7 +58,27 @@ try {
 let intakeNotice: { kind: 'ok' | 'error'; messages: string[] } | null = null;
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
-  if (!readiness.provider_suppression_intake_enabled) {
+  if (form.get('intent') === 'lift') {
+    // Lift a suppression (POST /admin/consent-operating/suppressions/:id/lift).
+    const lift = buildLiftRequest(form);
+    if (!lift.ok) {
+      intakeNotice = { kind: 'error', messages: lift.errors };
+    } else {
+      try {
+        const res = await fetch(`${apiBase}/admin/consent-operating/suppressions/${encodeURIComponent(lift.suppressionId)}/lift`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ reason: lift.reason }),
+        });
+        const body = await res.json().catch(() => null);
+        intakeNotice = res.ok && body?.ok
+          ? { kind: 'ok', messages: ['Suppression lifted. It grants nothing by itself: marketing on that channel still needs the customer\'s consent.'] }
+          : { kind: 'error', messages: [res.status === 403 ? 'Your role cannot lift suppressions (settings.manage required).' : `Not lifted (HTTP ${res.status}).`, ...((body?.reasons as string[] | undefined) ?? [])] };
+      } catch {
+        intakeNotice = { kind: 'error', messages: ['The consent API did not answer; nothing was changed.'] };
+      }
+    }
+  } else if (!readiness.provider_suppression_intake_enabled) {
     intakeNotice = { kind: 'error', messages: ['Provider suppression intake is disabled (CONSENT_PROVIDER_SUPPRESSION_INTAKE_ENABLED); nothing was recorded.'] };
   } else {
     const built = buildStopIntakeRequest(form, crypto.randomUUID());
@@ -73,7 +93,7 @@ if (Astro.request.method === 'POST') {
         });
         const body = await res.json().catch(() => null);
         intakeNotice = res.ok && body?.ok
-          ? { kind: 'ok', messages: ['Suppression recorded. This contact is now suppressed on that channel.'] }
+          ? { kind: 'ok', messages: ['Suppression recorded. This contact will no longer receive marketing on that channel. Order and account messages are not affected.'] }
           : { kind: 'error', messages: [`Not recorded (HTTP ${res.status}).`, ...((body?.reasons as string[] | undefined) ?? [])] };
       } catch {
         intakeNotice = { kind: 'error', messages: ['The consent API did not answer; nothing was recorded.'] };
@@ -202,7 +222,7 @@ const workflowCards = [
           <label class="grid gap-1 text-sm font-bold text-slate-700">Provider message / ticket reference
             <input name="provider_event_ref" required class="rounded-lg border border-slate-300 px-3 py-2 font-normal" />
           </label>
-          <label class="grid gap-1 text-sm font-bold text-slate-700">When the customer sent it
+          <label class="grid gap-1 text-sm font-bold text-slate-700">When the customer sent it (Kampala time)
             <input type="datetime-local" name="provider_occurred_at" required class="rounded-lg border border-slate-300 px-3 py-2 font-normal" />
           </label>
           <label class="grid gap-1 text-sm font-bold text-slate-700 md:col-span-2">Evidence note
@@ -223,14 +243,22 @@ const workflowCards = [
         ) : (
           <div class="mt-2 overflow-x-auto">
             <table class="w-full text-sm" data-testid="suppression-list">
-              <thead class="text-left text-xs uppercase text-slate-500"><tr><th class="py-2 pr-4">Effective</th><th class="py-2 pr-4">Channel</th><th class="py-2 pr-4">Contact</th><th class="py-2">Source</th></tr></thead>
+              <thead class="text-left text-xs uppercase text-slate-500"><tr><th class="py-2 pr-4">Effective</th><th class="py-2 pr-4">Channel</th><th class="py-2 pr-4">Contact</th><th class="py-2 pr-4">Source</th><th class="py-2">Lift</th></tr></thead>
               <tbody>
                 {suppressions.rows.map(row => (
                   <tr class="border-t border-slate-100 align-top">
                     <td class="py-2 pr-4 whitespace-nowrap">{row.effectiveAt ? new Date(String(row.effectiveAt)).toLocaleString('en-GB', { timeZone: 'Africa/Kampala' }) : '—'}</td>
                     <td class="py-2 pr-4">{String(row.channelKey ?? '—')}</td>
                     <td class="py-2 pr-4 font-mono text-xs">{maskEndpointRef(row.endpointRef)}</td>
-                    <td class="py-2 text-xs">{String(row.sourceSurface ?? '—')}</td>
+                    <td class="py-2 pr-4 text-xs">{String(row.sourceSurface ?? '—')}</td>
+                    <td class="py-2">
+                      <form method="POST" action="/admin/consent-operating#stop-intake" class="flex flex-wrap items-center gap-2" data-testid="suppression-lift-form">
+                        <input type="hidden" name="intent" value="lift" />
+                        <input type="hidden" name="suppression_id" value={String(row.id ?? '')} />
+                        <input name="lift_reason" required minlength="5" maxlength="500" placeholder="Reason (no phone or email)" aria-label="Reason for lifting this suppression" class="w-40 rounded-lg border border-slate-300 px-2 py-1 text-xs font-normal" />
+                        <button class="rounded-lg border border-slate-300 px-3 py-1 text-xs font-black text-slate-700 hover:border-slate-900">Lift</button>
+                      </form>
+                    </td>
                   </tr>
                 ))}
               </tbody>

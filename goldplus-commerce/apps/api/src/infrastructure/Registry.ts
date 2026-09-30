@@ -131,6 +131,7 @@ import { DrizzleAccountRecoveryRepository } from './db/repositories/DrizzleAccou
 import { DrizzleSocialIdentityRepository } from './db/repositories/DrizzleSocialIdentityRepository';
 import { NotificationResetDelivery } from './identity/NotificationResetDelivery';
 import { RequestPasswordResetUseCase, ResetPasswordUseCase } from '../application/use-cases/identity/PasswordResetUseCases';
+import { ChangePasswordUseCase } from '../application/use-cases/identity/ChangePasswordUseCase';
 import { SmsResetCodeDelivery } from './identity/SmsResetCodeDelivery';
 import { RequestSmsPasswordResetUseCase, ResetPasswordWithSmsCodeUseCase } from '../application/use-cases/identity/SmsPasswordResetUseCases';
 import { DrizzleProductCostRepository } from './db/repositories/DrizzleProductCostRepository';
@@ -700,6 +701,8 @@ import { DrizzleCustomer360Reader } from './first-party/DrizzleCustomer360Reader
 import { DrizzleNbaContextReader } from './first-party/DrizzleNbaContextReader';
 import { DrizzleConsentAnchorRepository, DrizzlePersonalDataEraser, DrizzlePersonalDataExporter, DrizzlePrivacyRequestRepository } from './first-party/DrizzlePrivacyRepositories';
 import { DrizzleConsentOperatingRepository as FirstPartyConsentRepository } from './consent/DrizzleConsentOperatingRepository';
+import { outboundGovernance } from './notifications/OutboundGovernanceService';
+import { buildMarketingSuppressionReader } from './notifications/marketingSuppressionReader';
 
 /**
  * Payment-attempt statuses the provider has already given a final answer for.
@@ -2116,6 +2119,13 @@ export class Registry {
     this.accountRecoveryRepo,
     this.passwordHasher,
   );
+  /** A signed-in customer changing their own password (current password required). */
+  public readonly changePasswordUseCase = new ChangePasswordUseCase(
+    this.userRepo,
+    this.passwordHasher,
+    this.userRepo,
+    this.loginAttemptStore,
+  );
 
   // Reset by SMS code: the channel that actually reaches customers. The code
   // shares the phone verification table and bounds, with a domain-separated
@@ -2634,13 +2644,11 @@ export class Registry {
   public readonly replayMeasurementDlqUseCase = new ReplayMeasurementDlqUseCase(
     this.dlqRepo,
     this.measurementAdminRepo,
-    this.measurementLogger,
-    this.auditRepo
+    this.measurementLogger
   );
   public readonly dismissMeasurementDlqUseCase = new DismissMeasurementDlqUseCase(
     this.dlqRepo,
-    this.measurementLogger,
-    this.auditRepo
+    this.measurementLogger
   );
   public readonly listConsentAuditUseCase = new ListConsentAuditUseCase(this.consentReadRepo);
   public readonly getMatchQualitySummaryUseCase = new GetMatchQualitySummaryUseCase(this.attributionRepo);
@@ -2897,6 +2905,7 @@ export class Registry {
     if (!Registry._instance) {
       Registry._instance = new Registry();
       Registry._instance.registerOrderTransitionSubscribers();
+      Registry._instance.registerMarketingSuppressionReader();
     }
     return Registry._instance;
   }
@@ -2961,6 +2970,15 @@ export class Registry {
    *  - payment reversed (chargeback/refund) → claw back the earn in full and
    *    reverse an applied redemption, points returning with original expiry.
    */
+  /**
+   * A STOP or unsubscribe recorded against a phone number or email address
+   * blocks MARKETING on that channel at the one outbound decision every
+   * adapter shares. Transactional messages never reach this read.
+   */
+  private registerMarketingSuppressionReader(): void {
+    outboundGovernance.setMarketingSuppressionReader(buildMarketingSuppressionReader(new FirstPartyConsentRepository()));
+  }
+
   private registerOrderTransitionSubscribers(): void {
     // GA4 refunds / ad withdrawals for a cancelled order: the order_cancelled
     // business event routes them (0140), in the delivery layer.

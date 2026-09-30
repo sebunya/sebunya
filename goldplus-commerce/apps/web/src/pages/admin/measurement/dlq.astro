@@ -272,8 +272,12 @@ if (!token) {
     if (!row) return;
     const next = row.nextElementSibling;
     if (next?.classList.contains('dismiss-form-row')) next.remove();
+    const tbody = row.parentElement;
     row.remove();
     setUnresolved(unresolvedTotal - 1);
+    // The page holds the newest 100. Once they are cleared, fetch what is left
+    // instead of showing an empty table beside a non-zero count.
+    if (tbody && tbody.querySelectorAll('tr').length === 0) void loadDlq();
   }
 
   const DISMISS_ERRORS: Record<string, string> = {

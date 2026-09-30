@@ -121,8 +121,9 @@ export class ZohoWhatsAppAdapter implements INotificationProvider {
 
   canCarry(template: string, recipient: string, data: Record<string, unknown>, env: NodeJS.ProcessEnv = process.env): boolean {
     if (!readFlag(env.NOTIFICATIONS_WHATSAPP_ENABLED)) return false;
-    // Transactional only. Marketing on WhatsApp needs an explicit WhatsApp
-    // opt-in, and this platform records none — so marketing never goes here.
+    // Transactional only. Marketing on WhatsApp needs the customer's WhatsApp
+    // opt-in (WhatsAppMarketingConsentUseCases.mayMarket) and an approved
+    // marketing template; no marketing template is carried by this adapter.
     if (classifyTemplate(template) !== 'TRANSACTIONAL') return false;
     if (!readZohoWhatsAppConfig(env).configured) return false;
     const spec = whatsAppTemplateSpec(template);
@@ -150,7 +151,7 @@ export class ZohoWhatsAppAdapter implements INotificationProvider {
     const recipientAllowlisted = allowlist.includes(to);
     const messageClass = classifyMessage(payload);
 
-    const decision = outboundGovernance.decide({
+    const decision = await outboundGovernance.decideForRecipient({
       channel: 'WHATSAPP',
       messageClass,
       recipientClass: messageClass === 'OPERATIONAL' ? 'INTERNAL' : recipientAllowlisted ? 'TEST' : 'CUSTOMER',
@@ -158,7 +159,7 @@ export class ZohoWhatsAppAdapter implements INotificationProvider {
       allowlistActive: allowlist.length > 0,
       recipientAllowlisted,
       maskedRecipient: this.maskPhone(to),
-    });
+    }, `phone:+${to}`);
 
     if (decision.kind !== 'ALLOW_LIVE' && decision.kind !== 'ALLOW_DRY_RUN') {
       return {

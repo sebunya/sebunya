@@ -7,11 +7,16 @@ import {
   type ConsentChannelKey,
   type ConsentPurposeKey,
 } from '../../../../application/ports/consent/ConsentOperatingRepository';
+import { LiftChannelSuppressionUseCase } from '../../../../application/use-cases/consent/LiftChannelSuppressionUseCase';
 import { getConsentOperatingRuntime } from '../../../../infrastructure/consent/ConsentOperatingRuntime';
+import { Registry } from '../../../../infrastructure/Registry';
+import { logger } from '../../../../infrastructure/logging/logger';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
 
 // audit-exempt: mutations use the dedicated immutable consent audit envelope and transactional event channel.
+// The one exception is the suppression lift below: it writes its evidence on the suppression rows (0164)
+// and a row in the general audit log, and records no consent event.
 type Variables = { user: { id: string; email: string; permissions: string[] } };
 const routes = new Hono<{ Variables: Variables }>();
 routes.use('*', authMiddleware);
@@ -200,6 +205,26 @@ routes.get('/suppressions', requirePermissions([PERMISSIONS.AUDIT_READ]), async 
   return c.json({ status: 'available', suppressions: await runtime.repository.listChannelSuppressions() });
 });
 
+// Lift a suppression (LiftChannelSuppressionUseCase holds the rules). Same right
+// as recording one.
+const LIFT_HTTP_STATUS = { lifted: 200, disabled: 503, invalid: 400, unsupported: 501, not_found: 404 } as const;
+
+routes.post('/suppressions/:id/lift', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async c => {
+  const runtime = getConsentOperatingRuntime();
+  const body = asRecord(await c.req.json().catch(() => null));
+  const suppressionId = c.req.param('id');
+  const result = await new LiftChannelSuppressionUseCase(
+    runtime.repository,
+    runtime.gates,
+    entry => Registry.getInstance().createAuditLogUseCase.execute(entry),
+  ).execute({ suppressionId, reason: body.reason, actorId: c.get('user').id });
+  if (result.status !== 'lifted') {
+    return c.json({ ok: false, status: result.status === 'disabled' ? 'disabled' : 'rejected', reasons: result.reasons }, LIFT_HTTP_STATUS[result.status]);
+  }
+  if (!result.audit_recorded) logger.error({ suppressionId }, 'CONSENT_SUPPRESSION_LIFT_AUDIT_FAILED');
+  return c.json({ ok: true, status: 'lifted', channel_key: result.channel_key, rows_lifted: result.rows_lifted });
+});
+
 routes.post('/provider-suppressions', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async c => {
   const runtime = getConsentOperatingRuntime();
   try {
@@ -225,6 +250,9 @@ routes.post('/provider-suppressions', requirePermissions([PERMISSIONS.SETTINGS_M
         event_type: String(body.event_type ?? 'unsubscribe'),
         scope: String(body.scope ?? 'channel'),
         verification_profile: String(body.verification_profile ?? ''),
+        // The signed-in admin who submitted this; the provider key above is
+        // request data and says nothing about who recorded the signal.
+        recorded_by_user_id: c.get('user')?.id ?? null,
       },
     };
     const result = body.event_type === 'stop'

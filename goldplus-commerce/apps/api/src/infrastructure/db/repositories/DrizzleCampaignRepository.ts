@@ -2,6 +2,7 @@ import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { campaigns, utmLinks } from '../schema/advertising';
 import { cartAbandonments } from '../schema/abandonment';
+import { utmLinkDedupeKey } from '../../../application/use-cases/campaigns/CampaignScaffold';
 
 /**
  * First reader/writer for the campaigns + utm_links tables (Wave 2F, no-send).
@@ -36,9 +37,7 @@ export class DrizzleCampaignRepository {
   }
 
   async addUtmLink(campaignId: string, utm: { source: string; medium: string; campaignName: string; content?: string | null; term?: string | null; destinationUrl?: string | null }) {
-    const shortUrl = `gp-${Math.abs(
-      [...`${campaignId}${utm.source}${utm.medium}${utm.campaignName}${utm.content ?? ''}`].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) | 0, 7),
-    ).toString(36)}`;
+    const shortUrl = utmLinkDedupeKey(campaignId, utm);
     const [row] = await db
       .insert(utmLinks)
       .values({ campaignId, source: utm.source, medium: utm.medium, campaignName: utm.campaignName, content: utm.content ?? null, term: utm.term ?? null, shortUrl, destinationUrl: utm.destinationUrl ?? null })

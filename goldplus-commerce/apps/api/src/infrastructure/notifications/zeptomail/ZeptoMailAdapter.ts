@@ -132,7 +132,7 @@ export class ZeptoMailAdapter implements INotificationProvider {
     const recipientAllowlisted = allowlist.includes(rawRecipient.toLowerCase());
     const messageClass = classifyMessage(payload);
 
-    const decision = outboundGovernance.decide({
+    const decision = await outboundGovernance.decideForRecipient({
       channel: 'EMAIL',
       messageClass,
       // An operational alert goes to staff; anything else is treated as reaching a
@@ -144,7 +144,7 @@ export class ZeptoMailAdapter implements INotificationProvider {
       allowlistActive: allowlist.length > 0,
       recipientAllowlisted,
       maskedRecipient: this.maskEmail(rawRecipient),
-    });
+    }, `email:${rawRecipient.toLowerCase()}`);
 
     if (decision.kind !== 'ALLOW_LIVE' && decision.kind !== 'ALLOW_DRY_RUN') {
       return {

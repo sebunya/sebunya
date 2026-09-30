@@ -5,8 +5,14 @@
  * The endpoint demands provider evidence; the operator supplies it and attests
  * to authenticity and freshness explicitly (two checkboxes, never defaulted).
  */
-export const STOP_CHANNELS = ['whatsapp', 'sms', 'email'] as const;
-export type StopChannel = (typeof STOP_CHANNELS)[number];
+export type StopChannel = 'whatsapp' | 'sms' | 'email';
+/**
+ * Channels the form offers. Each is looked up by contact (`phone:+256…` or
+ * `email:…`, the keys built below) by the WhatsApp marketing gate, the campaign
+ * audience gate, and the shared outbound decision that the SMS, email and
+ * WhatsApp adapters use for marketing.
+ */
+export const STOP_CHANNELS: readonly StopChannel[] = ['whatsapp', 'sms', 'email'];
 
 export const STOP_VERIFICATION_PROFILE = 'operator_console_attestation';
 
@@ -47,6 +53,22 @@ export function maskEndpointRef(ref: unknown): string {
   return value ? `${value.slice(0, 3)}•••` : '—';
 }
 
+export const LIFT_REASON_MIN = 5;
+export const LIFT_REASON_MAX = 500;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The lift form: which suppression, and why. Nothing is sent until both are valid. */
+export function buildLiftRequest(
+  form: { get(name: string): unknown },
+): { ok: true; suppressionId: string; reason: string } | { ok: false; errors: string[] } {
+  const suppressionId = String(form.get('suppression_id') ?? '').trim();
+  const reason = String(form.get('lift_reason') ?? '').trim();
+  const errors: string[] = [];
+  if (!UUID.test(suppressionId)) errors.push('The form is missing the suppression it refers to; reload the page.');
+  if (reason.length < LIFT_REASON_MIN || reason.length > LIFT_REASON_MAX) errors.push('Give a reason of 5 to 500 characters (for example: recorded against the wrong contact). Do not type the phone number or email itself.');
+  return errors.length ? { ok: false, errors } : { ok: true, suppressionId, reason };
+}
+
 export function buildStopIntakeRequest(
   form: { get(name: string): unknown },
   correlationId: string,
@@ -63,7 +85,11 @@ export function buildStopIntakeRequest(
   const providerEventRef = text('provider_event_ref');
   if (!providerEventRef) errors.push('Enter the provider message or ticket reference.');
   const occurred = text('provider_occurred_at');
-  const occurredAt = occurred ? new Date(occurred) : null;
+  // The form's datetime-local value has no zone; the operator reads the
+  // provider console in Kampala time (EAT, UTC+3, no daylight saving).
+  const occurredAt = occurred
+    ? new Date(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(occurred) ? `${occurred}+03:00` : occurred)
+    : null;
   if (!occurredAt || Number.isNaN(occurredAt.getTime())) errors.push('Enter when the customer sent the message.');
   if (form.get('authenticity_verified') !== 'on') errors.push('Confirm you saw the message in the provider console.');
   if (form.get('freshness_verified') !== 'on') errors.push('Confirm the message is recent and has not been superseded.');
