@@ -32,6 +32,12 @@ export interface AdPlatformDef {
   unavailable?: string;
   /** The platform documents a test channel (test event code / validate-only) and the builder uses it. */
   testable?: boolean;
+  /**
+   * A lower ceiling on send attempts than the dispatchers' own, for a platform
+   * whose API is paid per call: a transient failure is retried this many times
+   * in total and then dead-lettered, instead of spending five calls on it.
+   */
+  maxAttempts?: number;
 }
 
 /**
@@ -337,7 +343,7 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
   {
     key: 'x', name: 'X (Twitter) Ads',
     fields: [
-      { key: 'pixelId', label: 'Pixel ID', pattern: /^[a-z0-9]{4,10}$/, hint: 'X Ads > Events Manager' },
+      { key: 'pixelId', label: 'Pixel ID', pattern: /^[a-z0-9]{4,10}$/, hint: 'X Ads > Events Manager. X is called only for an order or basket that arrived on an X ad click within the last 30 days; nothing is sent, and no API credit is used, for any other sale.' },
       // Events Manager shows an event as tw-<pixel>-<event>; the Conversion API
       // documentation uses the short id on its own. Both are accepted.
       { key: 'purchaseEventId', label: 'Purchase event ID', pattern: /^(tw-[a-z0-9]+-[a-z0-9]+|[a-z0-9]{4,12})$/, hint: 'The purchase event you created in Events Manager with "Conversion API" as the install method, for example tw-o8z6j-o8z6k' },
@@ -346,6 +352,9 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
     secretLabel: 'API keys (JSON)',
     secretHint: '{"consumerKey":"…","consumerSecret":"…","accessToken":"…","accessTokenSecret":"…"}',
     events: { add_to_cart: 'add_to_cart', purchase: 'purchase' },
+    // X's API is paid per call (owner, 2026-09-30: use the credit sparingly).
+    // One retry for a transient failure, then the row is dead-lettered.
+    maxAttempts: 2,
     async authorize(req, _cfg, secret) {
       const c = parseJsonSecret(secret, ['consumerKey', 'consumerSecret', 'accessToken', 'accessTokenSecret']);
       return { Authorization: oauth1Header(req.method ?? 'POST', req.url, c) };
@@ -354,12 +363,15 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
       const eventId = e.event_name === 'purchase' ? cfg.purchaseEventId : e.event_name === 'add_to_cart' ? cfg.addToCartEventId : '';
       if (!eventId) return null;
       const ud = u(e);
+      // A call is spent ONLY on a conversion that came from X: the shopper
+      // arrived on an X click (twclid, kept 30 days from the click). A sale
+      // with no X click is not X's conversion, and matching it by email or
+      // phone alone would spend a paid call on every order in the shop.
+      if (!ud.twclid) return null;
       const identifiers: Array<Record<string, string>> = [];
-      if (ud.twclid) identifiers.push({ twclid: ud.twclid });
+      identifiers.push({ twclid: ud.twclid });
       if (ud.hashed_email) identifiers.push({ hashed_email: ud.hashed_email });
       if (ud.hashed_phone_plus) identifiers.push({ hashed_phone_number: ud.hashed_phone_plus });
-      // X matches on a click id, an email or a phone. Without one there is nothing to send.
-      if (identifiers.length === 0) return null;
       // IP address and user agent are secondary: X accepts them only as a pair,
       // and only alongside one of the identifiers above.
       if (ud.ip_address && ud.user_agent) identifiers.push({ ip_address: ud.ip_address, user_agent: ud.user_agent });
