@@ -215,11 +215,17 @@ opened with a search term; once per term per tab, so paging and sorting are not 
 `sign_up` (a new account; the register page sets the five-minute `gp_signed_up` marker cookie, the
 next page reports one event and clears it) and `find_location` (a tap on a Google Maps link, i.e.
 the shop's directions). They go to GA4 like every canonical event and to Meta as `Search`,
-`CompleteRegistration` and `FindLocation`; no other platform has them mapped. The search term is
-not a field of the event (it is in the page address). Meta's setup guide also offers
+`CompleteRegistration` and `FindLocation`; no other platform has them mapped. A search carries
+its term (`search_term`, at most 120 characters): GA4 receives it as `search_term`, Meta as
+`custom_data.search_string`. Meta's setup guide also offers
 `AddToWishlist` and `Schedule`: the shop has no wishlist and takes no appointments, so neither is
 sent. A destination saved before these existed keeps its saved selection: tick the new events on
 `/admin/advertising` and save.
+
+Meta's contract for a website event (Conversions API parameters reference): `event_source_url`
+and `user_data.client_user_agent` are required. An event that has a match key but lacks either is
+not sent to be refused; it is recorded as `NO_BROWSER` (an order whose browser was never recorded,
+or whose record was erased on request) and the activity page says so.
 
 ## 7. Meta Conversions API: match keys without a Pixel
 

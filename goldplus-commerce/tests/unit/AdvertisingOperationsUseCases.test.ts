@@ -470,7 +470,9 @@ describe('destinations: Test / Live and early signals', () => {
   });
   it('builders: lead mapping, test codes, validateOnly, Pinterest test flag', () => {
     // Every real event names its visitor; Meta is sent nothing for an event with no one to match (2026-10-01).
-    const lead: any = { event_name: 'generate_lead', event_id: '11111111-1111-4111-8111-111111111111', event_time: 1790000000, source: 'browser', lead: { method: 'quote_request' }, user_data: { fp_client_id: 'fp.1.x' } };
+    const lead: any = { event_name: 'generate_lead', event_id: '11111111-1111-4111-8111-111111111111', event_time: 1790000000, source: 'browser', lead: { method: 'quote_request' },
+      // As the collector records it: the page, and the browser the request came from (Meta requires both).
+      page_location: 'https://shopgoldplus.com/bulk/submitted', user_data: { fp_client_id: 'fp.1.x', user_agent: 'UA' } };
     expect(buildAdRequest('meta', { ...lead, user_data: {} }, { datasetId: '1' }, 't')).toBeNull();
     expect((buildAdRequest('meta', lead, { datasetId: '1' }, 't')!.body as any).data[0].event_name).toBe('Lead');
     // A WhatsApp chat tap is a Contact on Meta, not a Lead (no details were submitted).

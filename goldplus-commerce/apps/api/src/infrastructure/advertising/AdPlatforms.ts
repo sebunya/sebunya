@@ -20,7 +20,7 @@ export interface AdRequest { url: string; headers: Record<string, string>; body?
  * so "no event ID saved", "the visitor did not come from our ad" and
  * "nothing to match on" could not be told apart afterwards.
  */
-export type AdSkipReason = 'NO_EVENT_ID' | 'NO_X_CLICK' | 'NO_IDENTIFIER' | 'NO_TEST_CODE';
+export type AdSkipReason = 'NO_EVENT_ID' | 'NO_X_CLICK' | 'NO_IDENTIFIER' | 'NO_TEST_CODE' | 'NO_BROWSER';
 
 export interface AdPlatformDef {
   key: string;
@@ -231,6 +231,10 @@ export const META_MATCH_KEYS = ['em', 'ph', 'fbc', 'fbp', 'external_id', 'fn', '
 export const metaMatchable = (userData: Record<string, unknown>): boolean =>
   ['em', 'ph', 'fbc', 'fbp', 'external_id'].some((k) => userData[k] !== undefined);
 
+/** What Meta requires of every website event besides a match key: the page address and the browser's user agent. */
+export const metaWebsiteEventComplete = (e: CanonicalTelemetryEvent, userData: Record<string, unknown>): boolean =>
+  typeof e.page_location === 'string' && /^https?:\/\//.test(e.page_location) && typeof userData.client_user_agent === 'string' && userData.client_user_agent.length > 0;
+
 /**
  * What the event was about. A purchase always states its value, currency and
  * order number; a basket or checkout event states the products; a lead, a
@@ -243,6 +247,8 @@ export function metaCustomData(e: CanonicalTelemetryEvent, metaEventName: string
   const list = items(e).filter((i) => i.item_id);
   const count = list.reduce((s, i) => s + (i.quantity ?? 1), 0);
   const v = value(e);
+  // Meta's Search event names what was searched for (custom_data.search_string).
+  if (metaEventName === 'Search') return e.search_term ? { search_string: e.search_term } : null;
   if (META_EVENTS_WITHOUT_BASKET.has(metaEventName)) {
     return v > 0 ? { currency: e.ecommerce?.currency ?? 'UGX', value: v } : null;
   }
@@ -314,6 +320,10 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
       // Meta needs something to match the event to a person. An IP address and
       // a user agent alone are not that: an event with nothing else is not sent.
       if (!metaMatchable(user_data)) return null;
+      // Meta's contract for a website event (Conversions API parameters): the
+      // page it happened on and the browser's user agent are REQUIRED. An event
+      // without both is refused whole, so it is not sent to be refused.
+      if (!metaWebsiteEventComplete(e, user_data)) return null;
       const custom_data = metaCustomData(e, name);
       return {
         // The token travels in the Authorization header, never in the URL (proxy and access logs keep URLs).
@@ -332,6 +342,8 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
     },
     skipReason(e, cfg) {
       if (inTest(cfg) && !cfg.testEventCode) return 'NO_TEST_CODE';
+      const user_data = metaUserData(e);
+      if (metaMatchable(user_data) && !metaWebsiteEventComplete(e, user_data)) return 'NO_BROWSER';
       return 'NO_IDENTIFIER';
     },
     errorSummary: metaErrorSummary,

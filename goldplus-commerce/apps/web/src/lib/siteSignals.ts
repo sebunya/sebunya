@@ -4,9 +4,8 @@ import { SIGNED_UP_COOKIE, hasSignedUpMarker, isMapLink, searchAlreadyCounted, s
 /**
  * Three things a visitor does besides filling a basket, sent like add_to_cart
  * (beacon → our API → GA4 and, where the owner selected it, an ad platform's
- * own standard event): a product search, a new account, and opening the
- * shop's map. Runs on every page (BaseLayout). The search term itself is not
- * put in the event; it is in the page address, as for any results page.
+ * own standard event): a product search (with the term searched for), a new
+ * account, and opening the shop's map. Runs on every page (BaseLayout).
  */
 export function recordSiteSignals(): void {
   try {
@@ -14,7 +13,7 @@ export function recordSiteSignals(): void {
     if (term) {
       let storage: Storage | null = null;
       try { storage = window.sessionStorage; } catch { storage = null; }
-      if (!searchAlreadyCounted(term, storage)) track('search');
+      if (!searchAlreadyCounted(term, storage)) track('search', { search_term: term });
     }
 
     if (hasSignedUpMarker(document.cookie)) {

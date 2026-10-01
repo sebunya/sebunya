@@ -204,6 +204,8 @@ export interface TrackOptions {
   user_id?: string;
   /** generate_lead only: how the shopper reached out. */
   lead?: { method: 'whatsapp' | 'quote_request' };
+  /** search only: what was searched for. */
+  search_term?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -296,6 +298,7 @@ export function track(eventName: EventName, opts: TrackOptions = {}): string {
     ecommerce:              opts.ecommerce,
     recommendation_context: opts.recommendation_context,
     lead:                   opts.lead,
+    search_term:            opts.search_term,
     page_location:          window.location.href,
     page_referrer:          document.referrer || undefined,
     page_title:             document.title,

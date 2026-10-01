@@ -4,6 +4,7 @@ import path from 'node:path';
 import { hasSignedUpMarker, isMapLink, searchAlreadyCounted, searchTermOf, SIGNED_UP_COOKIE } from '../../apps/web/src/lib/siteSignalRules';
 import { BrowserTelemetryEventSchema } from '../../packages/shared/src/events/telemetry';
 import { cleanSelection, eventSelected } from '../../apps/api/src/domain/advertising/OptimisationEvents';
+import { ga4CollectHit } from '../../apps/api/src/infrastructure/telemetry/Ga4CollectHit';
 
 const read = (p: string) => fs.readFileSync(path.resolve(__dirname, '../..', p), 'utf8');
 
@@ -43,6 +44,14 @@ describe('site signals: search, new account, shop directions', () => {
       expect(eventSelected(null, n)).toBe(true);
     }
     expect(cleanSelection(['search', 'sign_up', 'nonsense'], ['search', 'sign_up', 'find_location'])).toEqual(['search', 'sign_up']);
+  });
+  it('a search carries its term, bounded, to our collector and on to GA4 as search_term', () => {
+    const base = { event_name: 'search', event_id: '11111111-1111-4111-8111-111111111111', event_time: 1790000000, source: 'browser', user_data: { fp_client_id: 'fp.1790841536221.11111111-1111-4111-8111-111111111111' } };
+    expect(BrowserTelemetryEventSchema.safeParse({ ...base, search_term: 'power bank' }).success).toBe(true);
+    expect(BrowserTelemetryEventSchema.safeParse({ ...base, search_term: 'x'.repeat(121) }).success).toBe(false);
+    expect(ga4CollectHit({ ...base, search_term: 'power bank' } as never, 'G-TEST123')!.get('ep.search_term')).toBe('power bank');
+    expect(ga4CollectHit({ ...base, event_name: 'view_item', search_term: 'power bank' } as never, 'G-TEST123')!.has('ep.search_term')).toBe(false);
+    expect(read('apps/web/src/lib/siteSignals.ts')).toContain("track('search', { search_term: term })");
   });
   it('the signals run on every page, from the layout', () => {
     expect(read('apps/web/src/layouts/BaseLayout.astro')).toContain('recordSiteSignals();');

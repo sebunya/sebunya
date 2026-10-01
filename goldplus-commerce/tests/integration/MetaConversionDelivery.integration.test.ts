@@ -255,6 +255,39 @@ suite('Meta conversions: full match keys from our own records (real PostgreSQL)'
     expect(ev.custom_data).toEqual({ currency: 'UGX', value: 45000, content_type: 'product', content_ids: [productId], contents: [{ id: productId, quantity: 1, item_price: 45000 }], num_items: 1 });
   }, 30_000);
 
+  it('a search, a new account and a directions tap reach Meta as Search, CompleteRegistration and FindLocation; a search with no browser on record is not sent', async () => {
+    const { fanOutAdConversions, processAdConversionBatch } = await import('../../apps/api/src/infrastructure/advertising/AdConversionDispatch');
+    const fp = visitorId();
+    const mk = (name: string, extra: Record<string, unknown> = {}) => ({ event_name: name, event_id: randomUUID(), event_time: Math.floor(Date.now() / 1000), source: 'browser',
+      page_location: 'https://shopgoldplus.com/shop?search=power+bank', user_data: { fp_client_id: fp, ip_address: '41.84.203.125', user_agent: 'UA' }, ...extra });
+    const events = [mk('search', { search_term: 'power bank' }), mk('sign_up'), mk('find_location')];
+    const blind = mk('search', { search_term: 'cable', user_data: { fp_client_id: fp, ip_address: '41.84.203.125' } });
+    const all = [...events, blind];
+    const sent: Array<{ url: string; body: any }> = [];
+    const realFetch = globalThis.fetch;
+    let blindRow: any;
+    try {
+      for (const e of all) expect(await fanOutAdConversions(e as never)).toBeGreaterThanOrEqual(1);
+      globalThis.fetch = (async (url: string, init: any) => { sent.push({ url: String(url), body: JSON.parse(init.body) }); return new Response(JSON.stringify(OK.body), { status: 200 }); }) as never;
+      await new Promise((r) => setTimeout(r, 1100));
+      await processAdConversionBatch();
+      [blindRow] = await raw`select status, last_error from outbox_events where idempotency_key = ${'ad:meta:' + blind.event_id}`;
+    } finally {
+      globalThis.fetch = realFetch;
+      for (const e of all) await raw`delete from outbox_events where idempotency_key like ${'ad:%:' + e.event_id}`;
+    }
+    const byId = new Map(sent.filter((s) => s.url === ENDPOINT).map((s) => [s.body.data[0].event_id, s.body.data[0]]));
+    expect([...byId.keys()].sort()).toEqual(events.map((e) => e.event_id).sort());
+    const [search, signUp, directions] = events.map((e) => byId.get(e.event_id));
+    expect(search).toMatchObject({ event_name: 'Search', action_source: 'website', event_source_url: 'https://shopgoldplus.com/shop?search=power+bank', custom_data: { search_string: 'power bank' } });
+    expect(search.user_data).toEqual({ external_id: [sha(fp)], fbp: expect.stringMatching(/^fb\.1\.\d{13}\.[1-9]\d{9}$/), client_ip_address: '41.84.203.125', client_user_agent: 'UA' });
+    expect(signUp.event_name).toBe('CompleteRegistration');
+    expect(directions.event_name).toBe('FindLocation');
+    for (const e of [signUp, directions]) expect(e).not.toHaveProperty('custom_data');
+    // Meta refuses a website event with no user agent: this one was never sent, and the row says why.
+    expect(blindRow).toMatchObject({ status: 'skipped', last_error: 'NO_BROWSER' });
+  }, 30_000);
+
   it('a browsing event Meta rate-limits is kept for a retry, with Meta\'s message, not dead-lettered', async () => {
     const { fanOutAdConversions, processAdConversionBatch } = await import('../../apps/api/src/infrastructure/advertising/AdConversionDispatch');
     const event = { event_name: 'view_item', event_id: randomUUID(), event_time: Math.floor(Date.now() / 1000), source: 'server',

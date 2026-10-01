@@ -54,5 +54,7 @@ export function ga4CollectHit(event: CanonicalTelemetryEvent, measurementId: str
       p.set(`pr${i + 1}`, f.join('~'));
     });
   }
+  // GA4's recommended `search` event names its term `search_term`.
+  if (event.event_name === 'search' && event.search_term) p.set('ep.search_term', event.search_term);
   return p;
 }
