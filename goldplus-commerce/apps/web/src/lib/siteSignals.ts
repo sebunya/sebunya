@@ -9,6 +9,11 @@ import { SIGNED_UP_COOKIE, hasSignedUpMarker, isMapLink, searchAlreadyCounted, s
  */
 export function recordSiteSignals(): void {
   try {
+    // Every storefront page, once per load: without it an ad platform hears of a
+    // visitor only when they open a product, so a visit that ends on the home
+    // page or a category can never be remarketed to.
+    track('page_seen');
+
     const term = searchTermOf(window.location.pathname, window.location.search);
     if (term) {
       let storage: Storage | null = null;

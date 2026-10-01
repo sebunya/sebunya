@@ -260,7 +260,7 @@ suite('Meta conversions: full match keys from our own records (real PostgreSQL)'
     const fp = visitorId();
     const mk = (name: string, extra: Record<string, unknown> = {}) => ({ event_name: name, event_id: randomUUID(), event_time: Math.floor(Date.now() / 1000), source: 'browser',
       page_location: 'https://shopgoldplus.com/shop?search=power+bank', user_data: { fp_client_id: fp, ip_address: '41.84.203.125', user_agent: 'UA' }, ...extra });
-    const events = [mk('search', { search_term: 'power bank' }), mk('sign_up'), mk('find_location')];
+    const events = [mk('search', { search_term: 'power bank' }), mk('sign_up'), mk('find_location'), mk('page_seen')];
     const blind = mk('search', { search_term: 'cable', user_data: { fp_client_id: fp, ip_address: '41.84.203.125' } });
     const all = [...events, blind];
     const sent: Array<{ url: string; body: any }> = [];
@@ -278,7 +278,10 @@ suite('Meta conversions: full match keys from our own records (real PostgreSQL)'
     }
     const byId = new Map(sent.filter((s) => s.url === ENDPOINT).map((s) => [s.body.data[0].event_id, s.body.data[0]]));
     expect([...byId.keys()].sort()).toEqual(events.map((e) => e.event_id).sort());
-    const [search, signUp, directions] = events.map((e) => byId.get(e.event_id));
+    const [search, signUp, directions, pageView] = events.map((e) => byId.get(e.event_id));
+    // Every storefront page: what Meta's site-visitor and page-address audiences are built from.
+    expect(pageView).toMatchObject({ event_name: 'PageView', action_source: 'website', event_source_url: 'https://shopgoldplus.com/shop?search=power+bank' });
+    expect(pageView).not.toHaveProperty('custom_data');
     expect(search).toMatchObject({ event_name: 'Search', action_source: 'website', event_source_url: 'https://shopgoldplus.com/shop?search=power+bank', custom_data: { search_string: 'power bank' } });
     expect(search.user_data).toEqual({ external_id: [sha(fp)], fbp: expect.stringMatching(/^fb\.1\.\d{13}\.[1-9]\d{9}$/), client_ip_address: '41.84.203.125', client_user_agent: 'UA' });
     expect(signUp.event_name).toBe('CompleteRegistration');

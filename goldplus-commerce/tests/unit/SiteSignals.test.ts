@@ -53,6 +53,16 @@ describe('site signals: search, new account, shop directions', () => {
     expect(ga4CollectHit({ ...base, event_name: 'view_item', search_term: 'power bank' } as never, 'G-TEST123')!.has('ep.search_term')).toBe(false);
     expect(read('apps/web/src/lib/siteSignals.ts')).toContain("track('search', { search_term: term })");
   });
+  it('a page view is told to the ad platforms and never forwarded to GA4, which has its own', () => {
+    expect(BrowserTelemetryEventSchema.safeParse({ event_name: 'page_seen', event_id: '11111111-1111-4111-8111-111111111111', event_time: 1790000000, source: 'browser' }).success).toBe(true);
+    expect(read('apps/web/src/lib/siteSignals.ts')).toContain("track('page_seen');");
+    const dispatch = read('apps/api/src/infrastructure/telemetry/TelemetryDispatchService.ts');
+    const fan = dispatch.indexOf('await fanOutAdConversions(event);'), skip = dispatch.indexOf("if (event.event_name === 'page_seen') return;"), ga = dispatch.indexOf('ga4CollectHit(event, measurementId)');
+    expect(fan).toBeGreaterThan(0);
+    expect(skip).toBeGreaterThan(fan);                                   // ad platforms first
+    expect(ga).toBeGreaterThan(skip);                                    // and GA4 is never reached
+    expect(eventSelected(['view_item'], 'page_seen')).toBe(false);       // the owner chooses it per destination
+  });
   it('the signals run on every page, from the layout', () => {
     expect(read('apps/web/src/layouts/BaseLayout.astro')).toContain('recordSiteSignals();');
   });

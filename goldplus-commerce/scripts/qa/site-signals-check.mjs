@@ -39,6 +39,8 @@ try {
   check('a new term is a new search', of('search').length === 2 && of('search')[1].event.search_term === 'cable');
   await page.goto('/shop'); await settle();
   check('the shop without a term is not a search', of('search').length === 2);
+  // Five page loads so far: each told the collector once, with its own address.
+  check('every page load sends ONE page view, accepted', of('page_seen').length === 5 && of('page_seen').every((b) => [200, 202, 207].includes(b.status)) && of('page_seen').some((b) => /\/shop$/.test(b.event.page_location)), String(of('page_seen').length));
 
   // ---- new account ----
   const stamp = Date.now().toString().slice(-7);

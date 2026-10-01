@@ -118,6 +118,12 @@ export const CANONICAL_EVENT_NAMES = [
   'search',
   'sign_up',
   'find_location',
+  // A storefront page was opened. NOT sent to GA4 from the server (the web
+  // container already reports page views there; sending it twice would double
+  // them): it exists so an ad platform that has a page-view event hears about
+  // every visitor, not only those who reach a product. Named apart from GA's
+  // own `page_view` so no tag in the web container reacts to it.
+  'page_seen',
   'purchase',  // SERVER-SIDE ONLY — guarded in router-level middleware
   'refund',    // SERVER-SIDE ONLY — a sent purchase whose order was cancelled
 ] as const;

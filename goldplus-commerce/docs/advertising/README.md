@@ -223,7 +223,10 @@ the shop's directions). They go to GA4 like every canonical event and to Meta as
 its term (`search_term`, at most 120 characters): GA4 receives it as `search_term`, Meta as
 `custom_data.search_string`. Meta's setup guide also offers
 `AddToWishlist` and `Schedule`: the shop has no wishlist and takes no appointments, so neither is
-sent. A destination saved before these existed keeps its saved selection: tick the new events on
+sent. `page_seen` (every storefront page, once per load) is the fourth: Meta receives it as `PageView`, the
+event its "all website visitors" and page-address audiences are built from. It is NOT forwarded to
+GA4 (the web container already reports page views there). Meta events also state `content_name`
+(one product) and `content_category`. A destination saved before these existed keeps its saved selection: tick the new events on
 `/admin/advertising` and save.
 
 Meta's contract for a website event (Conversions API parameters reference): `event_source_url`

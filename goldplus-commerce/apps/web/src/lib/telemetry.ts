@@ -174,7 +174,9 @@ export type EventName =
   // A WhatsApp chat opened with us, or a quote request sent (advertising 0154).
   | 'generate_lead'
   // A product search, a new account, the shop's map opened (lib/siteSignals).
-  | 'search' | 'sign_up' | 'find_location';
+  | 'search' | 'sign_up' | 'find_location'
+  // A storefront page was opened (lib/siteSignals; ad platforms only, never GA4).
+  | 'page_seen';
 
 export interface TelemetryItem {
   item_id:       string;

@@ -228,6 +228,9 @@ export class TelemetryDispatchService {
     // conversions that carry their own identifiers. Idempotent per platform
     // and event, so a retried GA dispatch never queues them twice.
     await fanOutAdConversions(event);
+    // Page views reach GA4 from the web container; forwarding ours as well would
+    // count every page twice. They exist for the ad platforms above only.
+    if (event.event_name === 'page_seen') return;
     // Every ecommerce event goes to GA4 from HERE, server-side (owner decision
     // 2026-09-19): the browser only beacons it to our own API, which survives
     // ad blockers and does not depend on browser cookies. The web container no

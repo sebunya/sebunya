@@ -67,7 +67,12 @@ describe('advertising platforms: request builders', () => {
     const cfg = { datasetId: '1234567890123' };
     const d = (e: unknown) => (buildAdRequest('meta', e as never, cfg, 'T')!.body as any).data[0];
     const p = d(purchase);
-    expect(p.custom_data).toEqual({ currency: 'UGX', value: 145000, content_type: 'product', content_ids: ['p1'], contents: [{ id: 'p1', quantity: 1, item_price: 145000 }], num_items: 1, order_id: 'GP-1' });
+    expect(p.custom_data).toEqual({ currency: 'UGX', value: 145000, content_type: 'product', content_ids: ['p1'], contents: [{ id: 'p1', quantity: 1, item_price: 145000 }], num_items: 1, content_name: 'Power bank', order_id: 'GP-1' });
+    // One product names itself and its category; several products name only their categories.
+    const two = d({ ...purchase, ecommerce: { ...purchase.ecommerce, items: [{ item_id: 'p1', item_name: 'Power bank', item_category: 'Power Devices', price: 1, quantity: 1 }, { item_id: 'p2', item_name: 'Cable', item_category: 'Cables', price: 1, quantity: 1 }] } });
+    expect(two.custom_data.content_name).toBeUndefined();
+    expect(two.custom_data.content_category).toBe('Power Devices, Cables');
+    expect(p.custom_data.delivery_category).toBeUndefined();          // collection is a checkout option: not stated without knowing
     expect(p.event_source_url).toBe('https://shopgoldplus.com/checkout');
     expect(p.data_processing_options).toEqual([]);
     const cart = d({ ...purchase, event_name: 'add_to_cart', ecommerce: { value: 90000, currency: 'UGX', items: [{ item_id: 'p1', price: 45000, quantity: 2 }] } });
@@ -85,7 +90,7 @@ describe('advertising platforms: request builders', () => {
   it('Meta: a search, a new account and a directions tap are its standard events, with no basket; a wishlist or a booking is never invented', () => {
     const cfg = { datasetId: '1234567890123' };
     const d = (name: string) => (buildAdRequest('meta', { ...purchase, event_name: name, source: 'browser', ecommerce: undefined, page_location: 'https://shopgoldplus.com/shop?search=charger' } as never, cfg, 'T')!.body as any).data[0];
-    for (const [ours, metas] of [['search', 'Search'], ['sign_up', 'CompleteRegistration'], ['find_location', 'FindLocation']] as const) {
+    for (const [ours, metas] of [['search', 'Search'], ['sign_up', 'CompleteRegistration'], ['find_location', 'FindLocation'], ['page_seen', 'PageView']] as const) {
       const e = d(ours);
       expect(e.event_name).toBe(metas);
       expect(e.action_source).toBe('website');
@@ -101,7 +106,7 @@ describe('advertising platforms: request builders', () => {
     expect(sent).not.toContain('AddToWishlist');
     expect(sent).not.toContain('Schedule');
     // Only Meta has these three; no other platform is sent an event it has no name for.
-    for (const p of AD_PLATFORMS.filter((x) => x.key !== 'meta')) for (const n of ['search', 'sign_up', 'find_location']) expect((p.events as Record<string, string>)[n]).toBeUndefined();
+    for (const p of AD_PLATFORMS.filter((x) => x.key !== 'meta')) for (const n of ['search', 'sign_up', 'find_location', 'page_seen']) expect((p.events as Record<string, string>)[n]).toBeUndefined();
   });
   it('Meta: a website event without the page or the browser it came from is not sent to be refused, and says why', () => {
     const cfg = { datasetId: '1234567890123' };
