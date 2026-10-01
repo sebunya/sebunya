@@ -141,7 +141,7 @@ suite('Meta conversions: full match keys from our own records (real PostgreSQL)'
       client_ip_address: '41.84.203.125', client_user_agent: 'Mozilla/5.0 IM',
     });
     expect(ev.custom_data).toEqual({ currency: 'UGX', value: 95000, content_type: 'product', content_ids: [productId],
-      contents: [{ id: productId, quantity: 2, item_price: 45000 }], num_items: 2, order_id: o.number });
+      contents: [{ id: productId, quantity: 2, item_price: 45000 }], content_name: 'IM item', num_items: 2, order_id: o.number });
     expect((await o.intent()).state).toBe('ACCEPTED');
   });
 
@@ -252,7 +252,7 @@ suite('Meta conversions: full match keys from our own records (real PostgreSQL)'
     expect(ev.event_name).toBe('AddToCart');
     expect(ev.event_source_url).toBe('https://shopgoldplus.com/products/im');
     expect(ev.user_data).toEqual({ external_id: [sha(fp)], fbc, fbp: expect.stringMatching(/^fb\.1\.1790841536221\.[1-9]\d{9}$/), client_ip_address: '41.84.203.125', client_user_agent: 'UA' });
-    expect(ev.custom_data).toEqual({ currency: 'UGX', value: 45000, content_type: 'product', content_ids: [productId], contents: [{ id: productId, quantity: 1, item_price: 45000 }], num_items: 1 });
+    expect(ev.custom_data).toEqual({ currency: 'UGX', value: 45000, content_type: 'product', content_ids: [productId], contents: [{ id: productId, quantity: 1, item_price: 45000 }], content_name: 'IM item', num_items: 1 });
   }, 30_000);
 
   it('a search, a new account and a directions tap reach Meta as Search, CompleteRegistration and FindLocation; a search with no browser on record is not sent', async () => {
