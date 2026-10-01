@@ -60,6 +60,7 @@ const when = (iso: unknown) => (typeof iso === "string" && iso ? new Date(iso).t
     <p class="text-sm text-gray-600 mb-6 max-w-3xl">Conversions (product views, add to cart, checkout, purchases) are sent to each platform from our server, with hashed email and phone and the ad click id (kept 30 days) for matching. Network postbacks (Opera, Eagllwin, Boomplay, others) fire for purchases that came from that network's link. A platform receives nothing until its IDs and token are entered and it is switched on. The privacy page lists the platforms that are live.</p>
     <nav aria-label="Advertising sections" class="mb-6 flex flex-wrap gap-2 text-sm">
       <a class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-4 font-bold" href="#checklist">Connection checklist</a>
+      <a class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-4 font-bold" href="/admin/advertising/activity">Activity</a>
       <a class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-4 font-bold" href="/admin/advertising/audiences">Audiences</a>
       <a class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-4 font-bold" href="/admin/advertising/spend">Spend</a>
       <a class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-4 font-bold" href="/admin/advertising/offline">Offline sales</a>
@@ -102,7 +103,10 @@ const when = (iso: unknown) => (typeof iso === "string" && iso ? new Date(iso).t
           <section class="rounded-2xl border border-gray-200 bg-white p-5" aria-labelledby={`h-${p.key}`}>
             <div class="flex flex-wrap items-center justify-between gap-3">
               <h3 id={`h-${p.key}`} class="text-lg font-black text-brand-dark">{p.name}</h3>
-              <span class={`rounded-full px-3 py-1 text-xs font-bold ${STATE[p.state]?.[1]}`}>{STATE[p.state]?.[0] ?? p.state}</span>
+              <span class="inline-flex flex-wrap items-center gap-3">
+                {!p.unavailable && <a class="text-sm font-bold underline" href={`/admin/advertising/activity?platform=${encodeURIComponent(p.key)}`}>See activity</a>}
+                <span class={`rounded-full px-3 py-1 text-xs font-bold ${STATE[p.state]?.[1]}`}>{STATE[p.state]?.[0] ?? p.state}</span>
+              </span>
             </div>
             {p.unavailable ? <p class="mt-2 text-sm text-gray-600">{p.unavailable}</p> : (
               <>

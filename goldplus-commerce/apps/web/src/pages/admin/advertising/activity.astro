@@ -1,0 +1,304 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { advertisingApi, whenKampala, fmtInt } from "../../../lib/adminAdvertising";
+
+/**
+ * Advertising activity (2026-10-01): what was raised for one ad platform and
+ * what became of it. The Advertising page shows what is configured; this page
+ * answers "is anything arriving, and if not, where does it stop?" Read-only:
+ * counts, states and stored reasons. No visitor, click id or payload is shown.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/advertising/activity", 303);
+
+const url = new URL(Astro.request.url);
+const wantPlatform = url.searchParams.get("platform") ?? "x";
+const wantDays = url.searchParams.get("days") ?? "30";
+const res = await advertisingApi(token, "GET", `/activity?platform=${encodeURIComponent(wantPlatform)}&days=${encodeURIComponent(wantDays)}`);
+const a: any = res.ok ? res.data : null;
+
+type Outcome = "sent" | "not_sent" | "waiting" | "failed";
+// Status colours, never reused for anything else; each is always paired with a mark and a word.
+const OUTCOME: Record<Outcome, { label: string; mark: string; fill: string; pill: string }> = {
+  sent: { label: "Sent", mark: "✓", fill: "#0ca30c", pill: "bg-emerald-50 text-emerald-900 border-emerald-200" },
+  not_sent: { label: "Not sent", mark: "–", fill: "#8a8a85", pill: "bg-gray-100 text-gray-800 border-gray-200" },
+  waiting: { label: "Waiting", mark: "…", fill: "#fab219", pill: "bg-amber-50 text-amber-900 border-amber-200" },
+  failed: { label: "Failed", mark: "✗", fill: "#d03b3b", pill: "bg-red-50 text-red-900 border-red-200" },
+};
+const STACK: Outcome[] = ["sent", "not_sent", "waiting", "failed"]; // bottom to top
+const STATE_LABEL: Record<string, [string, string]> = {
+  LIVE: ["Live — sending", "bg-emerald-50 text-emerald-900"], TEST: ["Test mode", "bg-amber-50 text-amber-900"],
+  READY_OFF: ["Configured, switched off", "bg-amber-50 text-amber-900"], NOT_CONFIGURED: ["Not configured", "bg-gray-100 text-gray-700"],
+};
+const n = (v: number | null | undefined) => (v == null ? "—" : fmtInt(v));
+const href = (platform: string, days: number | string) => `/admin/advertising/activity?platform=${encodeURIComponent(platform)}&days=${days}`;
+// "X (Twitter) Ads" reads badly inside a sentence or a tile; the parenthetical is dropped there.
+const short = (name: string) => name.replace(/\s*\([^)]*\)/g, "").trim();
+const who = a ? short(a.name) : "";
+const dayLabel = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+
+// ── Where it stops: one sentence, derived from the numbers on this page ──────
+let verdict: { tone: "ok" | "info" | "warn" | "bad"; text: string } | null = null;
+if (a) {
+  const f = a.funnel;
+  const click = f.clickParam ? `a ${who} click` : "this platform";
+  if (!a.enabled) verdict = { tone: "warn", text: `${who} is ${a.state === "NOT_CONFIGURED" ? "not configured" : "switched off"}, so nothing is sent. ${a.state === "NOT_CONFIGURED" ? "Enter its IDs and token" : "Switch it on"} on the Advertising page.` };
+  else if (f.failed > 0 && f.sent === 0) verdict = { tone: "bad", text: `${who} is refusing what we send: ${n(f.failed)} failed and none got through. The reason is in the table below.` };
+  else if (f.sent > 0 && f.failed > 0) verdict = { tone: "warn", text: `${n(f.sent)} sent, but ${n(f.failed)} failed. The reason is in the table below.` };
+  else if (f.sent > 0) verdict = { tone: "ok", text: `Working: ${n(f.sent)} sent to ${who} in the last ${a.days} days.` };
+  else if (f.arrivals === 0 && a.scope === "x_clicks") verdict = { tone: "info", text: `No visitor arrived from an X ad in the last ${a.days} days. With "x_clicks", events are sent only for visitors who did, so there has been nothing to send. This fills in as soon as an X campaign is running and people click it.` };
+  else if (f.arrivals === 0) verdict = { tone: "info", text: `No visitor arrived on ${click} in the last ${a.days} days, so nothing was raised for ${who}.` };
+  else if (f.arrivals > 0 && f.recognised === 0) verdict = { tone: "warn", text: `${n(f.arrivals)} visitors arrived from ${who} but none was recognised afterwards. Their click id did not reach the identity record, so their later events cannot be matched.` };
+  else if (f.raised === 0) verdict = { tone: "info", text: `Visitors arrived from ${who}, but they have not viewed a product, added to basket or bought yet in this period.` };
+  else if (f.waiting > 0) verdict = { tone: "info", text: `${n(f.waiting)} queued and waiting to go out.` };
+  else verdict = { tone: "info", text: `Events were raised but none was sent. The reasons are in the table below.` };
+}
+const TONE: Record<string, string> = {
+  ok: "border-emerald-300 bg-emerald-50 text-emerald-900", info: "border-sky-200 bg-sky-50 text-sky-950",
+  warn: "border-amber-300 bg-amber-50 text-amber-900", bad: "border-red-300 bg-red-50 text-red-900",
+};
+
+// ── Daily chart geometry (server-rendered SVG, no script) ────────────────────
+const W = 880, H = 220, PAD_L = 36, PAD_R = 8, PAD_T = 12, PAD_B = 28, GAP = 2;
+const daily: any[] = a?.daily ?? [];
+const totalOf = (d: any) => STACK.reduce((s, o) => s + (d[o] ?? 0), 0);
+const maxTotal = Math.max(1, ...daily.map(totalOf));
+// A round top for the axis: 1, 2, 5, 10, 20, 50…
+const niceMax = (() => { const p = Math.pow(10, Math.floor(Math.log10(maxTotal))); const m = maxTotal / p; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p; })();
+const plotW = W - PAD_L - PAD_R, plotH = H - PAD_T - PAD_B;
+const slot = daily.length ? plotW / daily.length : plotW;
+const barW = Math.max(2, Math.min(24, slot - (daily.length > 45 ? 1 : 3)));
+const yOf = (v: number) => PAD_T + plotH - (v / niceMax) * plotH;
+const ticks = [0, niceMax / 2, niceMax].filter((v, i, arr) => Number.isInteger(v) && arr.indexOf(v) === i);
+const labelEvery = daily.length <= 10 ? 1 : daily.length <= 31 ? 5 : 15;
+const bars = daily.map((d, i) => {
+  const x = PAD_L + i * slot + (slot - barW) / 2;
+  let acc = 0;
+  const present = STACK.filter((o) => (d[o] ?? 0) > 0);
+  const segs = present.map((o, k) => {
+    const y1 = yOf(acc + d[o]), y0 = yOf(acc);
+    acc += d[o];
+    // A 2px surface gap between stacked segments; the topmost one carries the rounded data-end.
+    const top = k === present.length - 1;
+    const h = Math.max(1, y0 - y1 - (k > 0 ? GAP : 0));
+    const r = top ? Math.min(4, barW / 2, h) : 0;
+    const path = `M${x},${y1 + h} V${y1 + r} Q${x},${y1} ${x + r},${y1} H${x + barW - r} Q${x + barW},${y1} ${x + barW},${y1 + r} V${y1 + h} Z`;
+    return { o, path };
+  });
+  const tip = `${dayLabel(d.day)}: ${totalOf(d) === 0 ? "nothing raised" : STACK.filter((o) => d[o] > 0).map((o) => `${d[o]} ${OUTCOME[o].label.toLowerCase()}`).join(", ")}${a?.funnel?.clickParam ? ` · ${d.arrivals} ad arrival${d.arrivals === 1 ? "" : "s"}` : ""}`;
+  return { x, segs, tip, day: d.day, show: i % labelEvery === 0 || i === daily.length - 1, cx: x + barW / 2, slotX: PAD_L + i * slot };
+});
+const anyActivity = daily.some((d) => totalOf(d) > 0);
+---
+<AdminLayout title="Advertising activity" description="What was sent to each ad platform, what was not, and why.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-6xl">
+    <p class="text-sm mb-2"><a class="underline" href="/admin/advertising">Advertising</a> / Activity</p>
+    {!res.ok || !a ? <p role="alert" class="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{res.ok ? "No advertising platform is available." : res.message}</p> : (
+      <>
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-2">
+          <h2 class="text-2xl font-black text-brand-dark tracking-tight">{a.name} activity</h2>
+          <span class={`rounded-full px-3 py-1 text-xs font-bold ${STATE_LABEL[a.state]?.[1] ?? "bg-gray-100 text-gray-700"}`}>{STATE_LABEL[a.state]?.[0] ?? a.state}</span>
+        </div>
+        <p class="text-sm text-gray-600 mb-5 max-w-3xl">
+          Every event raised for {who} and what became of it.
+          {a.scope === "x_clicks" && <> Your setting is <strong>x_clicks</strong>: only visitors who arrived on an X ad are reported to X.</>}
+          {a.scope === "all" && <> Your setting is <strong>all</strong>: every event X can match is reported, whether or not the visitor clicked an X ad.</>}
+          {" "}Settings are on the <a class="underline" href="/admin/advertising">Advertising page</a>.
+        </p>
+
+        {/* One filter row above everything: platform, then period. */}
+        <div class="mb-6 flex flex-wrap items-center gap-x-6 gap-y-3">
+          <nav aria-label="Platform" class="flex flex-wrap gap-2 text-sm">
+            {a.platforms.map((p: any) => (
+              <a href={href(p.key, a.days)} aria-current={p.key === a.platform ? "page" : undefined}
+                class={`inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 font-bold ${p.key === a.platform ? "border-brand-dark bg-brand-dark text-white" : "border-gray-300 text-gray-700 hover:border-gray-500"}`}>
+                {(p.state === "LIVE" || p.state === "TEST") && <span aria-hidden="true" class={`h-2 w-2 rounded-full ${p.key === a.platform ? "bg-emerald-300" : "bg-emerald-600"}`}></span>}
+                {short(p.name)}{(p.state === "LIVE" || p.state === "TEST") && <span class="sr-only"> (live)</span>}
+              </a>
+            ))}
+          </nav>
+          <nav aria-label="Period" class="flex gap-2 text-sm">
+            {[7, 30, 90].map((d) => (
+              <a href={href(a.platform, d)} aria-current={d === a.days ? "page" : undefined}
+                class={`inline-flex min-h-9 items-center rounded-full border px-3 font-bold ${d === a.days ? "border-brand-dark bg-brand-dark text-white" : "border-gray-300 text-gray-700 hover:border-gray-500"}`}>{d} days</a>
+            ))}
+          </nav>
+        </div>
+
+        {verdict && <div role="status" class={`mb-6 rounded-xl border p-4 text-sm ${TONE[verdict.tone]}`}><strong class="font-black">Where it stands: </strong>{verdict.text}</div>}
+        {a.lastError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900"><strong class="font-black">Last error from {who}</strong> ({whenKampala(a.lastErrorAt)}): {a.lastError}</div>}
+
+        {/* The journey, left to right: where visitors drop out. */}
+        <section aria-labelledby="h-funnel" class="mb-8">
+          <h3 id="h-funnel" class="text-lg font-black text-brand-dark mb-3">From ad click to {who}</h3>
+          <ol class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <li class="rounded-2xl border border-gray-200 bg-white p-4">
+              <p class="text-xs font-bold text-gray-600">1 · Arrived from {who}</p>
+              <p class="mt-1 text-3xl font-black text-brand-dark tabular-nums">{n(a.funnel.arrivals)}</p>
+              <p class="mt-1 text-xs text-gray-600">{a.funnel.clickParam ? <>Landings whose link carried <code>{a.funnel.clickParam}</code>.</> : "This platform has no click id to count arrivals by."}</p>
+            </li>
+            <li class="rounded-2xl border border-gray-200 bg-white p-4">
+              <p class="text-xs font-bold text-gray-600">2 · Recognised</p>
+              <p class="mt-1 text-3xl font-black text-brand-dark tabular-nums">{n(a.funnel.recognised)}</p>
+              <p class="mt-1 text-xs text-gray-600">{a.funnel.recognised == null ? "Not kept for this platform." : "Visitors whose click id is on their record, so later events can be matched."}</p>
+            </li>
+            <li class="rounded-2xl border border-gray-200 bg-white p-4">
+              <p class="text-xs font-bold text-gray-600">3 · Events raised</p>
+              <p class="mt-1 text-3xl font-black text-brand-dark tabular-nums">{n(a.funnel.raised)}</p>
+              <p class="mt-1 text-xs text-gray-600">Product views, basket adds, checkouts, leads and purchases queued for {who}.</p>
+            </li>
+            <li class="rounded-2xl border border-gray-200 bg-white p-4">
+              <p class="text-xs font-bold text-gray-600">4 · Sent to {who}</p>
+              <p class="mt-1 text-3xl font-black text-brand-dark tabular-nums">{n(a.funnel.sent)}</p>
+              <p class="mt-1 text-xs text-gray-600">
+                {n(a.funnel.not_sent)} not sent · {n(a.funnel.failed)} failed · {n(a.funnel.waiting)} waiting.
+                {a.lastSuccessAt && <> Last success {whenKampala(a.lastSuccessAt)}.</>}
+              </p>
+            </li>
+          </ol>
+        </section>
+
+        {/* Each event the platform can receive. */}
+        <section aria-labelledby="h-events" class="mb-8">
+          <h3 id="h-events" class="text-lg font-black text-brand-dark mb-3">By event</h3>
+          <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+            <table class="w-full text-sm">
+              <thead class="text-left text-xs text-gray-600">
+                <tr class="border-b border-gray-200">
+                  <th scope="col" class="p-3 font-bold">Event</th>
+                  <th scope="col" class="p-3 font-bold">In {who}</th>
+                  <th scope="col" class="p-3 font-bold">Status</th>
+                  <th scope="col" class="p-3 font-bold text-right">Sent</th>
+                  <th scope="col" class="p-3 font-bold text-right">Not sent</th>
+                  <th scope="col" class="p-3 font-bold text-right">Failed</th>
+                  <th scope="col" class="p-3 font-bold text-right">Waiting</th>
+                  <th scope="col" class="p-3 font-bold">Last sent</th>
+                </tr>
+              </thead>
+              <tbody>
+                {a.events.map((e: any) => (
+                  <>
+                    <tr class="border-b border-gray-100 align-top">
+                      <th scope="row" class="p-3 text-left font-bold text-brand-dark">{e.label}</th>
+                      <td class="p-3 text-gray-700">{e.platformEvent ?? "—"}{e.eventId && <span class="block font-mono text-xs text-gray-500">{e.eventId}</span>}</td>
+                      <td class="p-3">
+                        {!e.mapped ? <span class="text-gray-500">Not supported</span>
+                          : !a.enabled ? <span class="text-gray-500">Platform off</span>
+                          : !e.configured ? <span class="text-amber-800">No event ID saved</span>
+                          : !e.selected ? <span class="text-gray-600">Switched off</span>
+                          : <span class="text-emerald-800">On</span>}
+                      </td>
+                      <td class="p-3 text-right tabular-nums font-bold">{n(e.sent)}</td>
+                      <td class="p-3 text-right tabular-nums">{n(e.not_sent)}</td>
+                      <td class={`p-3 text-right tabular-nums ${e.failed > 0 ? "font-bold text-red-800" : ""}`}>{n(e.failed)}</td>
+                      <td class="p-3 text-right tabular-nums">{n(e.waiting)}</td>
+                      <td class="p-3 text-gray-700 whitespace-nowrap">{e.lastSentAt ? whenKampala(e.lastSentAt) : "—"}</td>
+                    </tr>
+                    {e.mainReason && (
+                      <tr class="border-b border-gray-100">
+                        <td colspan="8" class="px-3 pb-3 pt-0 text-xs text-gray-600">Main reason ({n(e.mainReason.n)}): {e.mainReason.text}</td>
+                      </tr>
+                    )}
+                  </>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* Day by day. */}
+        <section aria-labelledby="h-daily" class="mb-8">
+          <h3 id="h-daily" class="text-lg font-black text-brand-dark mb-1">Day by day</h3>
+          <p class="text-xs text-gray-600 mb-3">Events raised for {who} each day, by what became of them. Days are Kampala days.</p>
+          <div class="rounded-2xl border border-gray-200 bg-white p-4">
+            <ul class="mb-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-gray-700" aria-label="Legend">
+              {STACK.map((o) => (
+                <li class="inline-flex items-center gap-1.5"><span aria-hidden="true" class="inline-block h-3 w-3 rounded-sm" style={`background:${OUTCOME[o].fill}`}></span><span aria-hidden="true">{OUTCOME[o].mark}</span>{OUTCOME[o].label}</li>
+              ))}
+            </ul>
+            {!anyActivity ? <p class="py-10 text-center text-sm text-gray-600">Nothing was raised for {who} in the last {a.days} days.</p> : (
+              <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-labelledby="t-daily" class="h-auto w-full ad-chart">
+                <title id="t-daily">Events raised for {who} per day over {a.days} days, stacked by outcome. The same numbers are in the table below.</title>
+                {ticks.map((t) => (
+                  <g>
+                    <line x1={PAD_L} x2={W - PAD_R} y1={yOf(t)} y2={yOf(t)} stroke="#e7e7e4" stroke-width="1" />
+                    <text x={PAD_L - 6} y={yOf(t) + 4} text-anchor="end" font-size="11" fill="#6b6b66">{t}</text>
+                  </g>
+                ))}
+                {bars.map((b) => (
+                  <g class="ad-day" tabindex="0">
+                    <title>{b.tip}</title>
+                    {/* The hit target is the whole day column, not the thin bar. */}
+                    <rect class="ad-hit" x={b.slotX} y={PAD_T} width={slot} height={plotH} fill="transparent" />
+                    {b.segs.map((s) => <path d={s.path} fill={OUTCOME[s.o].fill} />)}
+                    {b.show && <text x={b.cx} y={H - 8} text-anchor="middle" font-size="11" fill="#6b6b66">{dayLabel(b.day)}</text>}
+                  </g>
+                ))}
+              </svg>
+            )}
+            <details class="mt-3 text-sm">
+              <summary class="cursor-pointer text-xs font-bold text-gray-700">Show as a table</summary>
+              <div class="mt-2 max-h-72 overflow-auto">
+                <table class="w-full text-xs">
+                  <thead class="text-left text-gray-600"><tr class="border-b border-gray-200">
+                    <th scope="col" class="p-2 font-bold">Day</th>
+                    {a.funnel.clickParam && <th scope="col" class="p-2 font-bold text-right">Ad arrivals</th>}
+                    {STACK.map((o) => <th scope="col" class="p-2 font-bold text-right">{OUTCOME[o].label}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {[...daily].reverse().map((d) => (
+                      <tr class="border-b border-gray-100">
+                        <th scope="row" class="p-2 text-left font-normal">{dayLabel(d.day)}</th>
+                        {a.funnel.clickParam && <td class="p-2 text-right tabular-nums">{n(d.arrivals)}</td>}
+                        {STACK.map((o) => <td class="p-2 text-right tabular-nums">{n(d[o])}</td>)}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          </div>
+        </section>
+
+        {/* The latest deliveries, with the reason in plain words. */}
+        <section aria-labelledby="h-recent" class="mb-12">
+          <h3 id="h-recent" class="text-lg font-black text-brand-dark mb-1">Latest {a.recent.length ? a.recent.length : ""} deliveries</h3>
+          <p class="text-xs text-gray-600 mb-3">Newest first. No visitor, click id or contact detail is shown here or kept in the queue.</p>
+          {a.recent.length === 0 ? <p class="rounded-2xl border border-gray-200 bg-white p-6 text-sm text-gray-600">Nothing yet in this period.</p> : (
+            <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+              <table class="w-full text-sm">
+                <thead class="text-left text-xs text-gray-600"><tr class="border-b border-gray-200">
+                  <th scope="col" class="p-3 font-bold">When</th>
+                  <th scope="col" class="p-3 font-bold">Event</th>
+                  <th scope="col" class="p-3 font-bold">Outcome</th>
+                  <th scope="col" class="p-3 font-bold">What happened</th>
+                  <th scope="col" class="p-3 font-bold text-right">Value</th>
+                  <th scope="col" class="p-3 font-bold text-right">Tries</th>
+                </tr></thead>
+                <tbody>
+                  {a.recent.map((r: any) => (
+                    <tr class="border-b border-gray-100 align-top">
+                      <td class="p-3 whitespace-nowrap text-gray-700">{whenKampala(r.at)}</td>
+                      <td class="p-3 font-bold text-brand-dark">{r.label}</td>
+                      <td class="p-3"><span class={`inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-bold ${OUTCOME[r.outcome as Outcome].pill}`}><span aria-hidden="true">{OUTCOME[r.outcome as Outcome].mark}</span>{OUTCOME[r.outcome as Outcome].label}</span></td>
+                      <td class="p-3 text-gray-700">{r.explanation}</td>
+                      <td class="p-3 text-right tabular-nums whitespace-nowrap">{r.value != null && r.value > 0 ? `${r.currency ?? "UGX"} ${fmtInt(r.value)}` : "—"}</td>
+                      <td class="p-3 text-right tabular-nums">{r.attempts}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </>
+    )}
+  </div>
+</AdminLayout>
+
+<style>
+  /* Hover and keyboard focus light the whole day column; the native tooltip carries the numbers. */
+  .ad-chart .ad-day { outline: none; cursor: default; }
+  .ad-chart .ad-day:hover .ad-hit, .ad-chart .ad-day:focus-visible .ad-hit { fill: rgba(0, 0, 0, 0.05); }
+</style>
