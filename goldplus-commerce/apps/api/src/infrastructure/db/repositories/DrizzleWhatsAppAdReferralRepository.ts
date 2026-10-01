@@ -27,6 +27,10 @@ export class DrizzleWhatsAppAdReferralRepository implements WhatsAppAdReferralRe
     await db.execute(sql`update whatsapp_ad_referrals set attributed_count = attributed_count + 1, last_attributed_at = now() where id = ${id}::uuid`);
   }
 
+  async purgeBefore(cutoff: Date): Promise<number> {
+    return rowsOf(await db.execute(sql`delete from whatsapp_ad_referrals where received_at < ${cutoff.toISOString()}::timestamptz returning id`)).length;
+  }
+
   async stats(since: Date): Promise<{ received: number; attributed: number; lastReceivedAt: string | null; adverts: number }> {
     const r = rowsOf(await db.execute(sql`
       select count(*)::int as received, count(*) filter (where attributed_count > 0)::int as attributed,

@@ -11,4 +11,6 @@ export interface WhatsAppAdReferralRepository {
   /** Notes that a sale was reported to Meta against this referral. */
   markAttributed(id: string): Promise<void>;
   stats(since: Date): Promise<{ received: number; attributed: number; lastReceivedAt: string | null; adverts: number }>;
+  /** Removes referrals received before the given time; returns how many. */
+  purgeBefore(cutoff: Date): Promise<number>;
 }

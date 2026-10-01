@@ -16,3 +16,18 @@ export async function fetchAdRecipients(): Promise<string[] | null> {
     return null;
   }
 }
+
+/**
+ * What else the privacy page must disclose, read live: whether chats begun from
+ * a WhatsApp advert are being recorded. null when it could not be read: the
+ * page then says "may", never "does not".
+ */
+export async function fetchAdDisclosures(): Promise<{ whatsappAdverts: boolean } | null> {
+  try {
+    const r = await fetch(`${apiBase}/advertising/disclosures`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(3000) });
+    const j = r.ok ? await r.json() : null;
+    return j?.success && typeof j?.data?.whatsappAdverts === 'boolean' ? { whatsappAdverts: j.data.whatsappAdverts } : null;
+  } catch {
+    return null;
+  }
+}

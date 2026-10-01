@@ -138,13 +138,15 @@ describe('WhatsApp adverts: the use case', () => {
   const settings = (over: Partial<CtwaSettings> = {}): CtwaSettings => ({ live: true, wabaId: WABA, windowDays: 7, datasetId: null, secrets, ...over });
   const store = () => {
     const rows: Array<StoredWhatsAppReferral & { sender: string; messageId: string; attributed: number }> = [];
+    const purges: Date[] = [];
     const repo: WhatsAppAdReferralRepository = {
       record: async (r) => { if (rows.some((x) => x.messageId === r.messageId)) return false; rows.push({ id: `ref-${rows.length + 1}`, ctwaClid: r.ctwaClid, wabaId: r.wabaId, sourceId: r.sourceId, receivedAt: r.receivedAt, sender: r.senderPhoneSha256, messageId: r.messageId, attributed: 0 }); return true; },
       latestFor: async (s, from, to) => rows.filter((x) => x.sender === s && x.receivedAt >= from && x.receivedAt <= to).sort((a, b) => b.receivedAt.getTime() - a.receivedAt.getTime())[0] ?? null,
       markAttributed: async (id) => { const r = rows.find((x) => x.id === id); if (r) r.attributed += 1; },
+      purgeBefore: async (cutoff) => { const before = rows.length; for (let i = rows.length - 1; i >= 0; i -= 1) if (rows[i].receivedAt < cutoff) rows.splice(i, 1); purges.push(cutoff); return before - rows.length; },
       stats: async () => ({ received: rows.length, attributed: rows.filter((x) => x.attributed > 0).length, lastReceivedAt: rows.length ? rows[rows.length - 1].receivedAt.toISOString() : null, adverts: new Set(rows.map((x) => x.sourceId)).size }),
     };
-    return { rows, repo };
+    return { rows, repo, purges };
   };
   const at = new Date(1_790_000_100_000);
   const body = JSON.stringify(delivery());
@@ -197,6 +199,30 @@ describe('WhatsApp adverts: the use case', () => {
     expect((await uc.attributionFor(phone, new Date(chat + 2 * day)))!.ctwaClid).toBe(`${CLID}2`);
     // Switched off: nothing is credited, whatever is stored.
     expect(await new WhatsAppAdsUseCases(repo, async () => settings({ live: false }), () => at).attributionFor(phone, new Date(chat + day))).toBeNull();
+  });
+  it('a referral is not kept for ever: after 90 days it is deleted, checked at most hourly and never in the way of a delivery', async () => {
+    const { rows, repo, purges } = store();
+    let t = 1_790_000_100_000;
+    const uc = new WhatsAppAdsUseCases(repo, async () => settings(), () => new Date(t));
+    await uc.receive(body, sign(body, APP_SECRET));                                             // chat at 1_790_000_000
+    expect(purges).toHaveLength(1);
+    expect(purges[0].getTime()).toBe(t - 90 * 86_400_000);
+    expect(rows).toHaveLength(1);                                                               // a fresh referral survives its own purge
+    // Twenty minutes later: no second purge.
+    t += 20 * 60_000;
+    const again = JSON.stringify(delivery({ id: 'wamid.LATER', ts: Math.floor(t / 1000) }));
+    await uc.receive(again, sign(again, APP_SECRET));
+    expect(purges).toHaveLength(1);
+    // Ninety-one days on, the next delivery removes the old ones and keeps its own.
+    t += 91 * 86_400_000;
+    const fresh = JSON.stringify(delivery({ id: 'wamid.FRESH', ts: Math.floor(t / 1000) }));
+    await uc.receive(fresh, sign(fresh, APP_SECRET));
+    expect(purges).toHaveLength(2);
+    expect(rows.map((r) => r.messageId)).toEqual(['wamid.FRESH']);
+    // A purge that fails does not fail the delivery.
+    const failing = new WhatsAppAdsUseCases({ ...repo, purgeBefore: async () => { throw new Error('db busy'); } }, async () => settings(), () => new Date(t));
+    const one = JSON.stringify(delivery({ id: 'wamid.ONE', ts: Math.floor(t / 1000) }));
+    expect(await failing.receive(one, sign(one, APP_SECRET))).toMatchObject({ status: 200, stored: 1 });
   });
   it('the admin overview carries counts and the webhook address — no secret and no click id', async () => {
     const { repo } = store();

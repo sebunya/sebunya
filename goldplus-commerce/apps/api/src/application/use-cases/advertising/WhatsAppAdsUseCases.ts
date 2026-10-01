@@ -18,6 +18,13 @@ export interface CtwaSettings {
 export interface CtwaAttribution { referralId: string; ctwaClid: string; wabaId: string; datasetId: string | null; accessToken: string | null }
 
 const MAX_BODY_BYTES = 1_000_000;
+/**
+ * How long a referral is kept. The longest window a sale can be credited in
+ * is 28 days; 90 leaves room to look into "why was this not credited" and no
+ * more. After that the hash and the click id are deleted.
+ */
+export const CTWA_RETENTION_DAYS = 90;
+const PURGE_EVERY_MS = 60 * 60_000;
 
 /**
  * Click-to-WhatsApp advert attribution (2026-10-01).
@@ -38,6 +45,15 @@ export class WhatsAppAdsUseCases {
     private readonly settings: () => Promise<CtwaSettings | null>,
     private readonly now: () => Date = () => new Date(),
   ) {}
+
+  private lastPurgeAt = 0;
+  /** At most hourly, and never in the way of a delivery: old referrals are removed. */
+  private async purgeIfDue(): Promise<void> {
+    const t = this.now().getTime();
+    if (t - this.lastPurgeAt < PURGE_EVERY_MS) return;
+    this.lastPurgeAt = t;
+    await this.repo.purgeBefore(new Date(t - CTWA_RETENTION_DAYS * 86_400_000)).catch(() => undefined);
+  }
 
   /** Meta's subscription check (GET). The challenge to echo, or null to refuse. Works before the capability is switched on: verification is part of setting it up. */
   async verifySubscription(query: { mode?: string | null; token?: string | null; challenge?: string | null }): Promise<string | null> {
@@ -65,6 +81,7 @@ export class WhatsAppAdsUseCases {
     if (!s.live) return { status: 200, stored: 0, duplicates: 0, messages: parsed.messages, withoutClickId: parsed.referralsWithoutClickId };
     let stored = 0, duplicates = 0;
     for (const r of parsed.referrals) (await this.repo.record(r)) ? (stored += 1) : (duplicates += 1);
+    await this.purgeIfDue();
     return { status: 200, stored, duplicates, messages: parsed.messages, withoutClickId: parsed.referralsWithoutClickId };
   }
 
@@ -92,7 +109,7 @@ export class WhatsAppAdsUseCases {
     const stats = await this.repo.stats(since);
     return {
       configured: !!s, live: !!s?.live, wabaId: s?.wabaId ?? null, windowDays: s?.windowDays ?? CTWA_WINDOW_DEFAULT_DAYS,
-      ownDataset: !!s?.datasetId, ownToken: !!s?.secrets.accessToken,
+      ownDataset: !!s?.datasetId, ownToken: !!s?.secrets.accessToken, retentionDays: CTWA_RETENTION_DAYS,
       webhookUrl, last30Days: stats,
     };
   }

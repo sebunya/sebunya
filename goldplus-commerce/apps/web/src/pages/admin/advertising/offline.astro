@@ -87,7 +87,7 @@ const today = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
             <p class="mt-2 text-sm text-gray-700 max-w-3xl">
               When someone taps an advert that opens a WhatsApp chat and messages you, WhatsApp tells this shop which advert it was. If the same number then buys
               (an order on the site, or a WhatsApp sale recorded above) within {data.whatsappAds.windowDays} days, the sale is reported to Meta against that advert.
-              The message itself is never read or stored: only the advert, the time, and a hash of the number.
+              The message itself is never read or stored: only the advert, the time, and a hash of the number, deleted after {data.whatsappAds.retentionDays} days.
             </p>
             <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-4">
               <div><dt class="text-xs font-bold text-gray-600">Advert chats, last 30 days</dt><dd class="text-2xl font-black text-brand-dark tabular-nums">{fmtInt(data.whatsappAds.last30Days.received)}</dd></div>
