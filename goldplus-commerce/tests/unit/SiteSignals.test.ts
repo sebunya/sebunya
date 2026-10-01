@@ -29,6 +29,8 @@ describe('site signals: search, new account, shop directions', () => {
     expect(hasSignedUpMarker(`x${SIGNED_UP_COOKIE}=1`)).toBe(false);
     const register = read('apps/web/src/pages/register.astro');
     expect(register).toMatch(/Astro\.cookies\.set\(SIGNED_UP_COOKIE, '1', \{[^}]*maxAge: 300/);
+    // A first sign-in with Google or Apple is a new account too, and only then.
+    expect(read('apps/web/src/pages/auth/[provider]/callback.ts')).toMatch(/if \(created === true\) headers\.append\('Set-Cookie', `\$\{SIGNED_UP_COOKIE\}=1;/);
   });
   it('a directions tap is a Google Maps link; any other link is not', () => {
     for (const ok of ['https://maps.app.goo.gl/abc', 'https://www.google.com/maps/place/x', 'https://goo.gl/maps/abc', 'https://maps.google.com/?q=1,2', 'https://www.google.co.ug/maps?q=x']) expect(isMapLink(ok)).toBe(true);

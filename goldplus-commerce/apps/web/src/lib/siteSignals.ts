@@ -23,9 +23,14 @@ export function recordSiteSignals(): void {
       track('sign_up');
     }
 
+    // Once per page view: a second tap on the same map link is the same intent.
+    let directionsCounted = false;
     document.addEventListener('click', (ev) => {
+      if (directionsCounted) return;
       const a = (ev.target as Element | null)?.closest?.('a[href]') as HTMLAnchorElement | null;
-      if (a && isMapLink(a.href)) track('find_location');
+      if (!a || !isMapLink(a.href)) return;
+      directionsCounted = true;
+      track('find_location');
     }, { capture: true });
   } catch { /* measurement never breaks a page */ }
 }
