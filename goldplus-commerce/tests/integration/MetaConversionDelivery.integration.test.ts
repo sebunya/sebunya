@@ -159,6 +159,22 @@ suite('Meta conversions: full match keys from our own records (real PostgreSQL)'
     expect(ud.fbp).toMatch(/^fb\.1\.\d{13}\.\d{10}$/);
   });
 
+  it('a buyer abroad ordering for delivery in Uganda is not labelled Ugandan, nor placed in the recipient\'s district', async () => {
+    const o = await paidOrder({ clickIds: null });
+    await raw`update orders set customer_phone = '+44 7700 900123' where id = ${o.id}`;
+    const i = await o.due();
+    const { calls, fetchImpl } = recorder(OK);
+    expect(await M.deliverOne(i.delivery_id, i.enqueue_generation, fetchImpl)).toBe('ACCEPTED');
+    const ud = JSON.parse(calls[0].init.body).data[0].user_data;
+    expect(ud.country).toBeUndefined();
+    expect(ud.ct).toBeUndefined();
+    expect(ud.fn).toEqual([sha('sarah')]);                              // the name is the buyer's wherever they are
+    expect(ud.ph).toEqual([sha('447700900123')]);
+    expect(M.buyerIsInUganda('0772 123 456')).toBe(true);
+    expect(M.buyerIsInUganda('+256772123456')).toBe(true);
+    for (const abroad of ['+44 7700 900123', '+1 650 555 1212', '', null]) expect(M.buyerIsInUganda(abroad), String(abroad)).toBe(false);
+  });
+
   it('a click id of the wrong shape on the order is not passed to Meta as one', async () => {
     const o = await paidOrder({ clickIds: { fbc: 'IwAR-a-raw-fbclid-not-in-metas-format' } });
     // The repository that records an order's click ids refuses it too.

@@ -223,7 +223,7 @@ records (`domain/advertising/MetaIdentifiers.ts`, `AdPlatforms.metaUserData`):
 | `external_id` | SHA-256 of the visitor id. | every event |
 | `client_ip_address`, `client_user_agent` | The request that raised the event. Never hashed. | every event |
 | `em`, `ph` | The order's email and phone, Meta's normalisation, SHA-256. | purchases |
-| `fn`, `ln`, `ct`, `country` | The name typed at checkout (first and last word; one word is a first name only), the delivery district, and `ug`. Lower-cased, punctuation removed, SHA-256. | purchases |
+| `fn`, `ln`, `ct`, `country` | The name typed at checkout (first and last word; one word is a first name only). For a buyer with a Ugandan number only: the delivery district and `ug` (a buyer abroad ordering for family is not labelled Ugandan). Lower-cased, punctuation removed, SHA-256. | purchases |
 
 An event with nothing but an IP address and a user agent is not sent (`NO_IDENTIFIER`). A value
 that is not the shape Meta documents is left out rather than sent to be rejected.

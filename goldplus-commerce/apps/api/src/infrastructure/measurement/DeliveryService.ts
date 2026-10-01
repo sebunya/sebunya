@@ -6,7 +6,7 @@ import { env } from '../../config/env';
 import { logger } from '../logging/logger';
 import { environmentOf } from '../../domain/measurement/BusinessEvents';
 import { ga4CollectHit } from '../telemetry/Ga4CollectHit';
-import { adErrorSummary, adPlatform, adSkipReason, buildAdRequest, hashEmail, hashEmailGoogle, hashPhone, hashPhonePlus } from '../advertising/AdPlatforms';
+import { adErrorSummary, adPlatform, adSkipReason, buildAdRequest, normalisePhoneUg, hashEmail, hashEmailGoogle, hashPhone, hashPhonePlus } from '../advertising/AdPlatforms';
 import { isMetaClickId, metaBrowserIdFromVisitor, metaCustomerHashes } from '../../domain/advertising/MetaIdentifiers';
 import { storefrontOrigin } from '../config/storefrontOrigin';
 import { DrizzleAdDestinationRepository } from '../db/repositories/DrizzleAdDestinationRepository';
@@ -243,6 +243,9 @@ async function killSwitchOn(): Promise<boolean> {
   return r?.value === true || r?.value?.on === true;
 }
 
+/** True when the buyer's own number is Ugandan (+256), in whichever of the usual ways it was typed. */
+export const buyerIsInUganda = (phone: unknown): boolean => (normalisePhoneUg(typeof phone === 'string' ? phone : '') ?? '').startsWith('256');
+
 /** Just-in-time identity: order contact + visitor/click context. Never queued, never logged. */
 async function loadIdentity(orderId: string) {
   const o = rows(await db.execute(sql`select user_id, customer_email, customer_phone, customer_name, delivery_location from orders where id = ${orderId}::uuid`))[0] ?? {};
@@ -259,9 +262,12 @@ async function loadIdentity(orderId: string) {
     // Meta: the click id the browser built from the landing URL's fbclid, and a
     // browser id derived from the visitor id (the shop runs no Pixel).
     fbc: isMetaClickId(ck.fbc) ? ck.fbc : undefined, fbp: metaBrowserIdFromVisitor(a.fp_client_id) ?? undefined,
-    // What the order itself states: the name typed at checkout, the delivery
-    // district, and Uganda (every order is delivered there). Hashed, Meta's rules.
-    ...metaCustomerHashes({ customerName: o.customer_name, city: loc.district, country: 'UG' }),
+    // What the order itself states about the BUYER: the name typed at checkout
+    // and, for a buyer with a Ugandan number, Uganda and the delivery district.
+    // Every order is delivered in Uganda, but not every buyer lives there: for
+    // someone abroad buying for family, the district is the recipient's and the
+    // country is not theirs, and a wrong key matches worse than a missing one.
+    ...metaCustomerHashes({ customerName: o.customer_name, ...(buyerIsInUganda(o.customer_phone) ? { city: loc.district, country: 'UG' } : {}) }),
     ...(netParam ? { network_click_id: ck[netParam], network_click_param: netParam, network_click_source: ck.src } : {}),
   };
 }
