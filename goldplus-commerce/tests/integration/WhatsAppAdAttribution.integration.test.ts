@@ -47,8 +47,12 @@ suite('Click-to-WhatsApp adverts: webhook to credited sale (real app, real Postg
   });
   const post = (body: string, signature: string | null) => app.request('/webhooks/whatsapp', { method: 'POST', headers: { 'content-type': 'application/json', ...(signature ? { 'x-hub-signature-256': signature } : {}) }, body });
 
+  let priorOrigin: string | undefined;
   beforeAll(async () => {
     process.env.MEASUREMENT_ALLOW_NONPROD_DELIVERY = 'true';
+    // The storefront's address, as production resolves it: a website purchase names the page it happened on (Meta requires it).
+    priorOrigin = process.env.PUBLIC_SITE_ORIGIN;
+    process.env.PUBLIC_SITE_ORIGIN = 'https://shopgoldplus.com';
     process.env.SEO_CREDENTIAL_VAULT_KEY = 'it-vault-key-for-whatsapp-ad-attribution-test';
     const { createRequire } = await import('node:module');
     raw = createRequire(import.meta.url)('postgres')(URL_ as string, { max: 3, onnotice: () => undefined });
@@ -75,6 +79,7 @@ suite('Click-to-WhatsApp adverts: webhook to credited sale (real app, real Postg
   }, 90_000);
 
   afterAll(async () => {
+    if (priorOrigin === undefined) delete process.env.PUBLIC_SITE_ORIGIN; else process.env.PUBLIC_SITE_ORIGIN = priorOrigin;
     if (!raw) return;
     await raw`delete from whatsapp_ad_referrals where source_id = ${`ad-${tag}`}`;
     if (sales.length) { await raw`delete from ad_offline_conversions where source_ref = any(${sales})`; await raw`delete from ad_offline_sales where id = any(${sales}::uuid[])`; }
