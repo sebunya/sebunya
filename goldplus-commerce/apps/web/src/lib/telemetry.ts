@@ -27,6 +27,7 @@
 import { isDeclaredAutomation, PROBE_COOKIE } from './declaredAutomation';
 import { isInternalReferrerHost } from './internalReferrer';
 import { visitorCookieDomain } from './visitorCookieDomain';
+import { recentAdClickIds } from './attribution';
 
 declare const __GP_API_BASE__: string;
 
@@ -139,9 +140,12 @@ export function captureAndPersistClickIds(): Record<string, string> {
     sessionStorage.setItem('_gp_click_ids', JSON.stringify(fresh));
   }
   // The 30-day ad-click record is kept by lib/attribution (recordAdClick),
-  // which runs on EVERY page from BaseLayout.
-  const stored = sessionStorage.getItem('_gp_click_ids');
-  return stored ? { ...JSON.parse(stored), ...fresh } : fresh;
+  // which runs on EVERY page from BaseLayout. It is the fallback here: this
+  // session's own capture only exists if a page in this session ran the
+  // stitch, and a landing on the homepage never did (2026-10-01).
+  let stored: Record<string, string> = {};
+  try { stored = JSON.parse(sessionStorage.getItem('_gp_click_ids') ?? '{}'); } catch { /* storage off */ }
+  return { ...recentAdClickIds(), ...stored, ...fresh };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -314,14 +318,23 @@ export function track(eventName: EventName, opts: TrackOptions = {}): string {
 
 /**
  * Call once per page load. Captures URL click IDs and persists them server-side.
- * Only fires if there are actual signals to capture (no noise requests).
+ * Only fires if there are actual signals to capture (no noise requests), and
+ * only once per session for the same signals: it now runs on every page
+ * (BaseLayout), and a visitor with a 30-day ad click would otherwise re-post
+ * the same ids on each page.
  */
 export function captureClickIdsServerSide(opts?: { user_id?: string }): void {
+  if (isOwnAutomation()) return;
   const clickIds    = captureAndPersistClickIds();
   const hasSignals  = Object.keys(clickIds).length > 0 || !!opts?.user_id;
   if (!hasSignals) return;
 
   const fpClientId = getFpClientId();
+  const signature = JSON.stringify({ fpClientId, user_id: opts?.user_id ?? null, ...clickIds });
+  try {
+    if (sessionStorage.getItem('_gp_identity_sent') === signature) return;
+    sessionStorage.setItem('_gp_identity_sent', signature);
+  } catch { /* storage off: post it rather than lose it */ }
   fetch(IDENTITY_ENDPOINT, {
     method:    'POST',
     headers:   { 'Content-Type': 'application/json' },

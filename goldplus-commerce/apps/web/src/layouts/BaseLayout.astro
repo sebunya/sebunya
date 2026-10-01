@@ -341,8 +341,12 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
       import { captureAttribution, recordAdClick } from '../lib/attribution';
       captureAttribution();
       recordAdClick();
-      import { recordLandingTouch } from '../lib/telemetry';
+      import { recordLandingTouch, captureClickIdsServerSide } from '../lib/telemetry';
       recordLandingTouch();
+      // Stitch the ad click id to this visitor on the landing page itself —
+      // not only on product and checkout pages — so the identity graph can
+      // hand it to the ad platforms for every later event (2026-10-01).
+      captureClickIdsServerSide();
     </script>
 
     <script>
