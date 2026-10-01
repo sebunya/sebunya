@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AD_PLATFORMS, buildAdRequest, xSendScope, hashEmail, hashPhone, hashPhonePlus, normalisePhoneUg, linkedInVersion, META_GRAPH_VERSION } from '../../apps/api/src/infrastructure/advertising/AdPlatforms';
+import { AD_PLATFORMS, buildAdRequest, xSendScope, X_EVENT_FIELD, hashEmail, hashPhone, hashPhonePlus, normalisePhoneUg, linkedInVersion, META_GRAPH_VERSION } from '../../apps/api/src/infrastructure/advertising/AdPlatforms';
 import { AdDestinationUseCases } from '../../apps/api/src/application/use-cases/advertising/AdDestinationUseCases';
 
 const purchase: any = {
@@ -205,9 +205,12 @@ describe('advertising: third-review fixes', () => {
     for (const ok of ['tw-o8z6j-o8z6k', 'ol288']) expect(purchaseField.pattern.test(ok), ok).toBe(true);
     for (const bad of ['', 'TW-O8Z6J', 'tw-o8z6j', 'https://x.com', 'abc']) expect(purchaseField.pattern.test(bad), bad).toBe(false);
   });
-  it('X, default scope: purchases from an X click only, whatever else is configured or claimed', () => {
+  it('X, default scope: X-click visitors only; each optimisation event needs its own event id', () => {
     const x = AD_PLATFORMS.find((p) => p.key === 'x')!;
-    expect(x.fields.map((f) => f.key)).toEqual(['pixelId', 'purchaseEventId', 'sendScope', 'addToCartEventId']);
+    expect(x.fields.map((f) => f.key)).toEqual(['pixelId', 'purchaseEventId', 'sendScope', 'addToCartEventId', 'checkoutEventId', 'paymentInfoEventId', 'leadEventId', 'contentViewEventId']);
+    // Every early signal the shop raises can reach X, and each is tied to one config field.
+    expect(Object.keys(x.events).sort()).toEqual(['add_payment_info', 'add_to_cart', 'begin_checkout', 'generate_lead', 'purchase', 'view_item']);
+    expect(Object.keys(X_EVENT_FIELD).sort()).toEqual(Object.keys(x.events).sort());
     const scope = x.fields.find((f) => f.key === 'sendScope')!;
     for (const ok of ['', 'x_clicks', 'all']) expect(scope.pattern.test(ok), ok).toBe(true);
     for (const bad of ['ALL', 'everything', 'x clicks']) expect(scope.pattern.test(bad), bad).toBe(false);
@@ -215,10 +218,17 @@ describe('advertising: third-review fixes', () => {
     expect(xSendScope({ sendScope: 'x_clicks' })).toBe('x_clicks');
     expect(xSendScope({ sendScope: 'nonsense' })).toBe('x_clicks');
     expect(xSendScope(null)).toBe('x_clicks');
-    // A basket add is never sent in the default scope, even with an event id saved and an X click id on the event.
-    const cfg = { pixelId: 'o8z6j', purchaseEventId: 'tw-o8z6j-o8z6k', addToCartEventId: 'tw-o8z6j-o8z6m' };
-    for (const name of ['add_to_cart', 'view_item', 'begin_checkout', 'generate_lead']) {
-      expect(buildAdRequest('x', { ...purchase, event_name: name, user_data: { twclid: 'tw123' } }, cfg, '{}'), name).toBeNull();
+    // With only the purchase id configured, nothing but the purchase goes — even with an X click id on the event.
+    const purchaseOnly = { pixelId: 'o8z6j', purchaseEventId: 'tw-o8z6j-o8z6k' };
+    for (const name of ['add_to_cart', 'view_item', 'begin_checkout', 'add_payment_info', 'generate_lead']) {
+      expect(buildAdRequest('x', { ...purchase, event_name: name, user_data: { twclid: 'tw123' } }, purchaseOnly, '{}'), name).toBeNull();
+    }
+    // With every id configured, each event goes under its own id — but only for an X-click visitor.
+    const full = { ...purchaseOnly, addToCartEventId: 'tw-o8z6j-o8z6m', checkoutEventId: 'tw-o8z6j-o8z6n', paymentInfoEventId: 'tw-o8z6j-o8z6p', leadEventId: 'tw-o8z6j-o8z6q', contentViewEventId: 'tw-o8z6j-o8z6r' };
+    for (const [name, field] of Object.entries(X_EVENT_FIELD)) {
+      const clicked = buildAdRequest('x', { ...purchase, event_name: name, user_data: { twclid: 'tw123', hashed_email: hashEmail('buyer@example.com') } }, full, '{}')!;
+      expect((clicked.body as any).conversions[0].event_id, name).toBe(full[field as keyof typeof full]);
+      expect(buildAdRequest('x', { ...purchase, event_name: name, user_data: { hashed_email: hashEmail('buyer@example.com') } }, full, '{}'), `${name} without a click`).toBeNull();
     }
   });
   it('X, scope "all": every matchable purchase, and basket adds when an event id is set', () => {

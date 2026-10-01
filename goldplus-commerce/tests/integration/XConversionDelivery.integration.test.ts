@@ -175,7 +175,9 @@ suite('X conversions: a call is spent only on an X-click purchase (real PostgreS
     }
   });
 
-  it('basket events, default scope: never sent to X, even with an X click id; another live platform still gets them', async () => {
+  // The visitor carries no X click id: under the default scope X is skipped
+  // without a call, while a platform that matches on contact still gets it.
+  it('basket events, default scope: not sent to X without an X click id; another live platform still gets them', async () => {
     const { fanOutAdConversions, processAdConversionBatch } = await import('../../apps/api/src/infrastructure/advertising/AdConversionDispatch');
     const { IntegrationCredentialVault } = await import('../../apps/api/src/infrastructure/seo/IntegrationCredentialVault');
     const { DrizzleAdDestinationRepository } = await import('../../apps/api/src/infrastructure/db/repositories/DrizzleAdDestinationRepository');
@@ -189,7 +191,7 @@ suite('X conversions: a call is spent only on an X-click purchase (real PostgreS
     });
     const event = { event_name: 'add_to_cart', event_id: randomUUID(), event_time: Math.floor(Date.now() / 1000), source: 'server',
       page_location: 'https://shopgoldplus.com/products/ix',
-      user_data: { fp_client_id: 'fp.1.ix-b', twclid: 'a-made-up-click-id', hashed_email: 'a'.repeat(64) },
+      user_data: { fp_client_id: 'fp.1.ix-b', hashed_email: 'a'.repeat(64) },
       ecommerce: { value: 45000, currency: 'UGX', items: [{ item_id: productId, item_name: 'IX item', price: 45000, quantity: 1 }] } } as never;
     const hosts: string[] = [];
     const realFetch = globalThis.fetch;
@@ -215,6 +217,40 @@ suite('X conversions: a call is spent only on an X-click purchase (real PostgreS
     }
     expect(hosts.filter((h) => /(^|\.)x\.com$|twitter\.com$/.test(h))).toEqual([]);
     expect(hosts).toEqual(['graph.facebook.com']);
+  }, 30_000);
+
+  // Same basket add, but the visitor arrived on an X ad: under the default
+  // scope it now goes to X too, under the add-to-cart event id (2026-10-01:
+  // optimisation events for X-click visitors, not purchases only).
+  it('basket events, default scope: sent to X under the add-to-cart event id when the visitor carries an X click id', async () => {
+    const { fanOutAdConversions, processAdConversionBatch } = await import('../../apps/api/src/infrastructure/advertising/AdConversionDispatch');
+    const { randomUUID } = await import('node:crypto');
+    const event = { event_name: 'add_to_cart', event_id: randomUUID(), event_time: Math.floor(Date.now() / 1000), source: 'server',
+      page_location: 'https://shopgoldplus.com/products/ix',
+      user_data: { fp_client_id: 'fp.1.ix-c', twclid: 'tw-click-basket', hashed_email: 'a'.repeat(64) },
+      ecommerce: { value: 45000, currency: 'UGX', items: [{ item_id: productId, item_name: 'IX item', price: 45000, quantity: 1 }] } } as never;
+    const sent: Array<{ url: string; body: any; auth: string }> = [];
+    const realFetch = globalThis.fetch;
+    try {
+      expect(await fanOutAdConversions(event)).toBeGreaterThanOrEqual(1);
+      globalThis.fetch = (async (url: string, init: any) => {
+        sent.push({ url: String(url), body: JSON.parse(init.body), auth: init.headers.Authorization ?? '' });
+        return new Response('{"conversion_events_received":1}', { status: 200 });
+      }) as never;
+      await new Promise((r) => setTimeout(r, 1100));
+      await processAdConversionBatch();
+    } finally {
+      globalThis.fetch = realFetch;
+      await raw`delete from outbox_events where idempotency_key like ${'ad:%:' + (event as any).event_id}`;
+    }
+    const x = sent.filter((s) => /ads-api\.x\.com/.test(s.url));
+    expect(x).toHaveLength(1);
+    expect(x[0].url).toBe('https://ads-api.x.com/12/measurement/conversions/o8z6j');
+    expect(x[0].auth).toMatch(/^OAuth oauth_consumer_key="ck", /);
+    const c = x[0].body.conversions[0];
+    expect(c.event_id).toBe('tw-o8z6j-o8z6m');
+    expect(c.identifiers.some((i: any) => i.twclid === 'tw-click-basket')).toBe(true);
+    expect(c.value).toBe('45000');
   }, 30_000);
 
   it('X refusing the request (4xx): one call, no retry', async () => {
