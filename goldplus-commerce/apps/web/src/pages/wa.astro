@@ -1,0 +1,62 @@
+---
+/**
+ * /wa — the WhatsApp landing page for adverts (2026-10-01).
+ *
+ * An advert on Facebook or Instagram whose aim is a WhatsApp chat cannot be
+ * credited with the sale it leads to unless the shop is on the WhatsApp
+ * Business Platform. This page gets the same result without it: the advert
+ * links HERE (shopgoldplus.com/wa, or /wa?p=<product slug>), so the visit is an
+ * ordinary landing — the advert's click id is recorded, as on any page — and
+ * the one thing on the page is the WhatsApp button. The tap is reported to the
+ * advert platform as a contact, and the chat opens with a "Ref GP-XXXXXX" line
+ * (lib/whatsappClicks, on every page). Staff record the sale with that code,
+ * and it reaches the platform with the advert's click id.
+ *
+ * Nothing redirects by itself: the visitor chooses to open the chat. A product
+ * that cannot be read is simply not shown; the page still works.
+ */
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { apiBase } from '../lib/api';
+import { getBusinessInfo } from '../lib/businessInfo';
+import { formatUgx } from '../lib/money';
+import type { ApiEnvelope, ProductPublicDto } from '@goldplus/shared';
+
+const biz = await getBusinessInfo();
+const slug = (Astro.url.searchParams.get('p') ?? '').trim().toLowerCase();
+let product: ProductPublicDto | null = null;
+if (/^[a-z0-9][a-z0-9-]{0,150}$/.test(slug)) {
+  try {
+    const res = await fetch(`${apiBase}/products/${encodeURIComponent(slug)}`, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      const json = (await res.json()) as ApiEnvelope<ProductPublicDto>;
+      if (json.success && json.data) product = json.data;
+    }
+  } catch { /* the page works without the product */ }
+}
+const message = product ? `Hello GoldPlus, I would like to order the ${product.name}.` : 'Hello GoldPlus, I saw your advert and would like to order.';
+const chatHref = `${biz.whatsappUrl}?text=${encodeURIComponent(message)}`;
+const photo = product?.images?.find((i) => !(i.alt ?? '').startsWith('Sample '));
+const price = product && typeof product.retailPriceUgx === 'number' && product.retailPriceUgx > 0 ? product.retailPriceUgx : null;
+---
+<BaseLayout title="Chat with GoldPlus on WhatsApp" description="Order from GoldPlus on WhatsApp. Same-day delivery in Kampala and Wakiso." robotsMeta="noindex,follow" image={photo?.url ?? undefined}>
+  <section class="mx-auto max-w-xl px-4 py-10 text-center sm:py-14">
+    {product && (
+      <div class="mb-8 rounded-3xl border border-slate-200 bg-white p-5">
+        {photo && <img src={photo.url} alt={photo.alt || product.name} width="320" height="320" class="mx-auto h-48 w-48 rounded-2xl object-contain" loading="eager" decoding="async" />}
+        <h1 class="mt-4 text-xl font-black tracking-tight text-gray-900">{product.name}</h1>
+        {price !== null && <p class="mt-1 text-lg font-bold text-gray-900">{formatUgx(price)}</p>}
+      </div>
+    )}
+    {!product && <h1 class="text-2xl font-black tracking-tight text-gray-900 sm:text-3xl">Order from GoldPlus on WhatsApp</h1>}
+    <p class="mt-3 text-sm leading-relaxed text-slate-600">Tell us what you need and where you are. We reply on WhatsApp during shop hours ({biz.openDays}, {biz.shopHours}).</p>
+    <a href={chatHref} rel="noopener" target="_blank" data-wa-bridge
+      class="mt-6 inline-flex min-h-12 items-center justify-center rounded-full bg-[#128C7E] px-8 py-3 text-base font-black text-white hover:bg-[#0e6f64] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900">
+      Chat on WhatsApp
+    </a>
+    <p class="mt-6 text-sm text-slate-600">
+      {product
+        ? <a href={`/products/${product.slug}`} class="font-bold text-gray-900 underline underline-offset-4">See the full details and buy on the site</a>
+        : <a href="/shop" class="font-bold text-gray-900 underline underline-offset-4">Browse the shop</a>}
+    </p>
+  </section>
+</BaseLayout>

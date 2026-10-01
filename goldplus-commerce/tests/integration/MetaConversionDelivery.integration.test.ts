@@ -141,7 +141,7 @@ suite('Meta conversions: full match keys from our own records (real PostgreSQL)'
       client_ip_address: '41.84.203.125', client_user_agent: 'Mozilla/5.0 IM',
     });
     expect(ev.custom_data).toEqual({ currency: 'UGX', value: 95000, content_type: 'product', content_ids: [productId],
-      contents: [{ id: productId, quantity: 2, item_price: 45000 }], num_items: 2, order_id: o.number });
+      contents: [{ id: productId, quantity: 2, item_price: 45000 }], content_name: 'IM item', num_items: 2, order_id: o.number });
     expect((await o.intent()).state).toBe('ACCEPTED');
   });
 
@@ -252,7 +252,121 @@ suite('Meta conversions: full match keys from our own records (real PostgreSQL)'
     expect(ev.event_name).toBe('AddToCart');
     expect(ev.event_source_url).toBe('https://shopgoldplus.com/products/im');
     expect(ev.user_data).toEqual({ external_id: [sha(fp)], fbc, fbp: expect.stringMatching(/^fb\.1\.1790841536221\.[1-9]\d{9}$/), client_ip_address: '41.84.203.125', client_user_agent: 'UA' });
-    expect(ev.custom_data).toEqual({ currency: 'UGX', value: 45000, content_type: 'product', content_ids: [productId], contents: [{ id: productId, quantity: 1, item_price: 45000 }], num_items: 1 });
+    expect(ev.custom_data).toEqual({ currency: 'UGX', value: 45000, content_type: 'product', content_ids: [productId], contents: [{ id: productId, quantity: 1, item_price: 45000 }], content_name: 'IM item', num_items: 1 });
+  }, 30_000);
+
+  it('a search, a new account and a directions tap reach Meta as Search, CompleteRegistration and FindLocation; a search with no browser on record is not sent', async () => {
+    const { fanOutAdConversions, processAdConversionBatch } = await import('../../apps/api/src/infrastructure/advertising/AdConversionDispatch');
+    const fp = visitorId();
+    const mk = (name: string, extra: Record<string, unknown> = {}) => ({ event_name: name, event_id: randomUUID(), event_time: Math.floor(Date.now() / 1000), source: 'browser',
+      page_location: 'https://shopgoldplus.com/shop?search=power+bank', user_data: { fp_client_id: fp, ip_address: '41.84.203.125', user_agent: 'UA' }, ...extra });
+    const events = [mk('search', { search_term: 'power bank' }), mk('sign_up'), mk('find_location'), mk('page_seen')];
+    const blind = mk('search', { search_term: 'cable', user_data: { fp_client_id: fp, ip_address: '41.84.203.125' } });
+    const all = [...events, blind];
+    const sent: Array<{ url: string; body: any }> = [];
+    const realFetch = globalThis.fetch;
+    let blindRow: any;
+    try {
+      for (const e of all) expect(await fanOutAdConversions(e as never)).toBeGreaterThanOrEqual(1);
+      globalThis.fetch = (async (url: string, init: any) => { sent.push({ url: String(url), body: JSON.parse(init.body) }); return new Response(JSON.stringify(OK.body), { status: 200 }); }) as never;
+      await new Promise((r) => setTimeout(r, 1100));
+      await processAdConversionBatch();
+      [blindRow] = await raw`select status, last_error from outbox_events where idempotency_key = ${'ad:meta:' + blind.event_id}`;
+    } finally {
+      globalThis.fetch = realFetch;
+      for (const e of all) await raw`delete from outbox_events where idempotency_key like ${'ad:%:' + e.event_id}`;
+    }
+    const byId = new Map(sent.filter((s) => s.url === ENDPOINT).map((s) => [s.body.data[0].event_id, s.body.data[0]]));
+    expect([...byId.keys()].sort()).toEqual(events.map((e) => e.event_id).sort());
+    const [search, signUp, directions, pageView] = events.map((e) => byId.get(e.event_id));
+    // Every storefront page: what Meta's site-visitor and page-address audiences are built from.
+    expect(pageView).toMatchObject({ event_name: 'PageView', action_source: 'website', event_source_url: 'https://shopgoldplus.com/shop?search=power+bank' });
+    expect(pageView).not.toHaveProperty('custom_data');
+    expect(search).toMatchObject({ event_name: 'Search', action_source: 'website', event_source_url: 'https://shopgoldplus.com/shop?search=power+bank', custom_data: { search_string: 'power bank' } });
+    expect(search.user_data).toEqual({ external_id: [sha(fp)], fbp: expect.stringMatching(/^fb\.1\.\d{13}\.[1-9]\d{9}$/), client_ip_address: '41.84.203.125', client_user_agent: 'UA' });
+    expect(signUp.event_name).toBe('CompleteRegistration');
+    expect(directions.event_name).toBe('FindLocation');
+    for (const e of [signUp, directions]) expect(e).not.toHaveProperty('custom_data');
+    // Meta refuses a website event with no user agent: this one was never sent, and the row says why.
+    expect(blindRow).toMatchObject({ status: 'skipped', last_error: 'NO_BROWSER' });
+  }, 30_000);
+
+  it('a signed-in customer\'s browsing event carries their hashed email and phone to Meta, never onto the queued row; an account that refused advertising is not sent', async () => {
+    const { fanOutAdConversions, processAdConversionBatch } = await import('../../apps/api/src/infrastructure/advertising/AdConversionDispatch');
+    const mkUser = async (phone: string) => { const id = await fx.user(); await raw`update users set phone = ${phone} where id = ${id}`; const [u] = await raw`select email from users where id = ${id}`; return { id, email: String(u.email), phone }; };
+    const signedIn = await mkUser('0772 440 011');
+    const refusedUser = await mkUser('0772 440 012');
+    const fpIn = visitorId(), fpRefused = visitorId(), fpAnon = visitorId();
+    await raw`insert into first_party_identities (fp_client_id, user_id) values (${fpIn}, ${signedIn.id}), (${fpRefused}, ${refusedUser.id})`;
+    // The ACCOUNT refused advertising; this browser has no choice of its own on record.
+    await raw`insert into consent_current_state (user_id, advertising_granted, last_grant_type) values (${refusedUser.id}, false, 'explicit')`;
+    const mk = (fp: string) => ({ event_name: 'view_item', event_id: randomUUID(), event_time: Math.floor(Date.now() / 1000), source: 'browser',
+      page_location: 'https://shopgoldplus.com/products/im', user_data: { fp_client_id: fp, ip_address: '41.84.203.125', user_agent: 'UA' },
+      ecommerce: { value: 45000, currency: 'UGX', items: [{ item_id: productId, price: 45000, quantity: 1 }] } });
+    const [eIn, eRefused, eAnon] = [mk(fpIn), mk(fpRefused), mk(fpAnon)];
+    const all = [eIn, eRefused, eAnon];
+    const sent: Array<{ url: string; body: any }> = [];
+    const realFetch = globalThis.fetch;
+    let refusedRow: any, queuedText = '';
+    try {
+      for (const e of all) expect(await fanOutAdConversions(e as never)).toBeGreaterThanOrEqual(1);
+      queuedText = JSON.stringify((await raw`select payload from outbox_events where idempotency_key = ${'ad:meta:' + eIn.event_id}`)[0].payload);
+      globalThis.fetch = (async (url: string, init: any) => { sent.push({ url: String(url), body: JSON.parse(init.body) }); return new Response(JSON.stringify(OK.body), { status: 200 }); }) as never;
+      await new Promise((r) => setTimeout(r, 1100));
+      await processAdConversionBatch();
+      [refusedRow] = await raw`select status, last_error from outbox_events where idempotency_key = ${'ad:meta:' + eRefused.event_id}`;
+    } finally {
+      globalThis.fetch = realFetch;
+      for (const e of all) await raw`delete from outbox_events where idempotency_key like ${'ad:%:' + e.event_id}`;
+      await raw`delete from consent_current_state where user_id = ${refusedUser.id}`;
+      await raw`delete from first_party_identities where fp_client_id = any(${[fpIn, fpRefused]})`;
+    }
+    const byId = new Map(sent.filter((s) => s.url === ENDPOINT).map((s) => [s.body.data[0].event_id, s.body.data[0]]));
+    // Hashed as Meta specifies: email trimmed and lower-cased, phone as E.164 digits.
+    expect(byId.get(eIn.event_id).user_data).toMatchObject({ em: [sha(signedIn.email.trim().toLowerCase())], ph: [sha('256772440011')], external_id: [sha(fpIn)] });
+    // Read at send time: nothing about the customer was written to the queue.
+    expect(queuedText).not.toContain(sha(signedIn.email.trim().toLowerCase()));
+    expect(queuedText).not.toContain(signedIn.id);
+    // A visitor who is not signed in is sent as before, with no contact.
+    expect(byId.get(eAnon.event_id).user_data.em).toBeUndefined();
+    expect(byId.get(eAnon.event_id).user_data.ph).toBeUndefined();
+    // The account's refusal stops the event although the event itself names no account.
+    expect(byId.has(eRefused.event_id)).toBe(false);
+    expect(refusedRow).toMatchObject({ status: 'suppressed', last_error: 'CONSENT_DENIED' });
+  }, 30_000);
+
+  it('a quote request sent without signing in: its Lead reaches Meta with the contact the request gave, read at send time', async () => {
+    const { fanOutAdConversions, processAdConversionBatch } = await import('../../apps/api/src/infrastructure/advertising/AdConversionDispatch');
+    const ref = `BQ-${randomUUID().slice(0, 8).toUpperCase()}`, oldRef = `BQ-${randomUUID().slice(0, 8).toUpperCase()}`;
+    const email = `quote-${randomUUID().slice(0, 8)}@example.test`;
+    await raw`insert into quote_requests (customer_name, email, phone, product_name, quantity, reference) values ('Quote Buyer', ${email}, '0772 440 021', 'Power bank', '20', ${ref})`;
+    await raw`insert into quote_requests (customer_name, email, phone, product_name, quantity, reference, created_at) values ('Old Buyer', ${`old-${email}`}, '0772 440 022', 'Cable', '5', ${oldRef}, now() - interval '3 hours')`;
+    const mk = (r: string) => ({ event_name: 'generate_lead', event_id: randomUUID(), event_time: Math.floor(Date.now() / 1000), source: 'browser', lead: { method: 'quote_request', ref: r },
+      page_location: 'https://shopgoldplus.com/bulk/submitted', user_data: { fp_client_id: visitorId(), ip_address: '41.84.203.125', user_agent: 'UA' } });
+    const fresh = mk(ref), stale = mk(oldRef);
+    const sent: Array<{ url: string; body: any }> = [];
+    const realFetch = globalThis.fetch;
+    let queuedText = '';
+    try {
+      for (const e of [fresh, stale]) expect(await fanOutAdConversions(e as never)).toBeGreaterThanOrEqual(1);
+      queuedText = JSON.stringify((await raw`select payload from outbox_events where idempotency_key = ${'ad:meta:' + fresh.event_id}`)[0].payload);
+      globalThis.fetch = (async (url: string, init: any) => { sent.push({ url: String(url), body: JSON.parse(init.body) }); return new Response(JSON.stringify(OK.body), { status: 200 }); }) as never;
+      await new Promise((r) => setTimeout(r, 1100));
+      await processAdConversionBatch();
+    } finally {
+      globalThis.fetch = realFetch;
+      for (const e of [fresh, stale]) await raw`delete from outbox_events where idempotency_key like ${'ad:%:' + e.event_id}`;
+      await raw`delete from quote_requests where reference = any(${[ref, oldRef]})`;
+    }
+    const byId = new Map(sent.filter((s) => s.url === ENDPOINT).map((s) => [s.body.data[0].event_id, s.body.data[0]]));
+    expect(byId.get(fresh.event_id)).toMatchObject({ event_name: 'Lead', user_data: { em: [sha(email)], ph: [sha('256772440021')] } });
+    // The queue holds the reference, never the contact.
+    expect(queuedText).toContain(ref);
+    expect(queuedText).not.toContain(sha(email));
+    // A reference from a request made hours ago brings no contact with it: the Lead still goes, on the visitor alone.
+    expect(byId.get(stale.event_id).event_name).toBe('Lead');
+    expect(byId.get(stale.event_id).user_data.em).toBeUndefined();
+    expect(byId.get(stale.event_id).user_data.ph).toBeUndefined();
   }, 30_000);
 
   it('a browsing event Meta rate-limits is kept for a retry, with Meta\'s message, not dead-lettered', async () => {

@@ -1,4 +1,4 @@
-import { salePriceUgx, effectiveFloorUgx } from '@goldplus/shared';
+import { salePriceUgx, effectiveFloorUgx, jpegRendition } from '@goldplus/shared';
 import { googleProductCategoryFor, productTypeFor } from '../../../domain/advertising/GoogleProductCategory';
 import {
   STOREFRONT_BASE_URL, feedAvailability, feedDescription, googleAvailability, isFeedIncluded,
@@ -37,11 +37,22 @@ function campaignSale(p: FeedProduct, discount: FeedDiscount | null): number | n
 
 export const META_FEED_COLUMNS = [
   'id', 'title', 'description', 'availability', 'condition', 'price', 'link', 'image_link', 'brand',
-  'additional_image_link', 'sale_price', 'sale_price_effective_date', 'google_product_category', 'product_type', 'mpn',
+  'additional_image_link', 'sale_price', 'sale_price_effective_date', 'google_product_category', 'product_type', 'mpn', 'custom_label_0',
 ] as const;
 
 /**
- * Meta catalogue CSV. Meta's availability here is "in stock" or "out of
+ * The ID Meta knows a product by. It MUST be the id the shop's events name in
+ * `content_ids` (the product id: AdPlatforms.metaCustomData), or Meta cannot
+ * tie a view, a basket or a purchase to the catalogue item, and catalogue
+ * adverts have nothing to retarget with. Until 2026-10-01 the feed gave the
+ * SKU while every event gave the product id: no event matched any item.
+ */
+export const metaCatalogueId = (p: FeedProduct): string => clip(p.id ?? p.sku, 100);
+
+/**
+ * Meta catalogue CSV. Images are the JPEG renditions: Meta's catalogue takes
+ * JPEG and PNG only, and the shop's display rendition is WebP. The SKU, which
+ * staff recognise a product by, travels in custom_label_0. Meta's availability here is "in stock" or "out of
  * stock": a pre-order without a date goes as out of stock, exactly as the
  * Google feed sends it. The sale price is stated only with its real window,
  * so Meta stops showing it when the shop stops charging it.
@@ -52,16 +63,16 @@ export function buildMetaCatalogueCsv(products: FeedProduct[], baseUrl: string =
     const avail = googleAvailability(p).availability === 'in stock' ? 'in stock' : 'out of stock';
     const sale = campaignSale(p, discount);
     const window = sale !== null && discount?.saleStartIso && discount?.saleEndIso ? `${discount.saleStartIso}/${discount.saleEndIso}` : '';
-    const extra = (p.imageUrls ?? []).filter((u) => u && u !== p.imageUrl).slice(0, 20).map((u) => absolute(baseUrl, u));
+    const extra = (p.imageUrls ?? []).filter((u) => u && u !== p.imageUrl).slice(0, 20).map((u) => jpegRendition(absolute(baseUrl, u)));
     const row: Record<(typeof META_FEED_COLUMNS)[number], string> = {
-      id: clip(p.sku, 100),
+      id: metaCatalogueId(p),
       title: clip(p.name, 200),
       description: clip(feedDescription(p), 9999),
       availability: avail,
       condition: 'new',
       price: `${p.priceUgx} UGX`,
       link: `${baseUrl}/products/${encodeURIComponent(p.slug)}`,
-      image_link: absolute(baseUrl, p.imageUrl!),
+      image_link: jpegRendition(absolute(baseUrl, p.imageUrl!)),
       brand: 'GoldPlus',
       additional_image_link: extra.join(','),
       // A sale price without its window would outlive the sale: stated only with it.
@@ -70,6 +81,7 @@ export function buildMetaCatalogueCsv(products: FeedProduct[], baseUrl: string =
       google_product_category: googleProductCategoryFor(p) ?? '',
       product_type: clip(productTypeFor(p) ?? '', 750),
       mpn: clip((p.modelNumber ?? '').trim(), 100),
+      custom_label_0: clip(p.sku, 100),
     };
     lines.push(META_FEED_COLUMNS.map((c) => feedCsvCell(row[c])).join(','));
   }

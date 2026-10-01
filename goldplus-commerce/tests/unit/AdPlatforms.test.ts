@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { META_GRAPH_VERSION_RELEASED, AD_PLATFORMS, buildAdRequest, adPlatformAccepts, adSkipReason, adErrorSummary, metaUserData, metaMatchable, metaCustomData, metaErrorSummary, xSendScope, X_EVENT_FIELD, hashEmail, hashPhone, hashPhonePlus, normalisePhoneUg, linkedInVersion, META_GRAPH_VERSION } from '../../apps/api/src/infrastructure/advertising/AdPlatforms';
+import { META_GRAPH_VERSION_RELEASED, AD_PLATFORMS, buildAdRequest, adPlatformAccepts, adSkipReason, adErrorSummary, metaUserData, metaMatchable, metaCustomData, metaWebsiteEventComplete, metaErrorSummary, xSendScope, X_EVENT_FIELD, hashEmail, hashPhone, hashPhonePlus, normalisePhoneUg, linkedInVersion, META_GRAPH_VERSION } from '../../apps/api/src/infrastructure/advertising/AdPlatforms';
 import { AdDestinationUseCases } from '../../apps/api/src/application/use-cases/advertising/AdDestinationUseCases';
 
 const purchase: any = {
@@ -67,7 +67,12 @@ describe('advertising platforms: request builders', () => {
     const cfg = { datasetId: '1234567890123' };
     const d = (e: unknown) => (buildAdRequest('meta', e as never, cfg, 'T')!.body as any).data[0];
     const p = d(purchase);
-    expect(p.custom_data).toEqual({ currency: 'UGX', value: 145000, content_type: 'product', content_ids: ['p1'], contents: [{ id: 'p1', quantity: 1, item_price: 145000 }], num_items: 1, order_id: 'GP-1' });
+    expect(p.custom_data).toEqual({ currency: 'UGX', value: 145000, content_type: 'product', content_ids: ['p1'], contents: [{ id: 'p1', quantity: 1, item_price: 145000 }], num_items: 1, content_name: 'Power bank', order_id: 'GP-1' });
+    // One product names itself and its category; several products name only their categories.
+    const two = d({ ...purchase, ecommerce: { ...purchase.ecommerce, items: [{ item_id: 'p1', item_name: 'Power bank', item_category: 'Power Devices', price: 1, quantity: 1 }, { item_id: 'p2', item_name: 'Cable', item_category: 'Cables', price: 1, quantity: 1 }] } });
+    expect(two.custom_data.content_name).toBeUndefined();
+    expect(two.custom_data.content_category).toBe('Power Devices, Cables');
+    expect(p.custom_data.delivery_category).toBeUndefined();          // collection is a checkout option: not stated without knowing
     expect(p.event_source_url).toBe('https://shopgoldplus.com/checkout');
     expect(p.data_processing_options).toEqual([]);
     const cart = d({ ...purchase, event_name: 'add_to_cart', ecommerce: { value: 90000, currency: 'UGX', items: [{ item_id: 'p1', price: 45000, quantity: 2 }] } });
@@ -81,6 +86,42 @@ describe('advertising platforms: request builders', () => {
     expect(quote.event_name).toBe('Lead');
     expect(quote.custom_data).toEqual({ currency: 'UGX', value: 500000 });
     expect(metaCustomData(purchase as never, 'Contact')).toEqual({ currency: 'UGX', value: 145000 });
+  });
+  it('Meta: a search, a new account and a directions tap are its standard events, with no basket; a wishlist or a booking is never invented', () => {
+    const cfg = { datasetId: '1234567890123' };
+    const d = (name: string) => (buildAdRequest('meta', { ...purchase, event_name: name, source: 'browser', ecommerce: undefined, page_location: 'https://shopgoldplus.com/shop?search=charger' } as never, cfg, 'T')!.body as any).data[0];
+    for (const [ours, metas] of [['search', 'Search'], ['sign_up', 'CompleteRegistration'], ['find_location', 'FindLocation'], ['page_seen', 'PageView']] as const) {
+      const e = d(ours);
+      expect(e.event_name).toBe(metas);
+      expect(e.action_source).toBe('website');
+      expect(e.event_source_url).toBe('https://shopgoldplus.com/shop?search=charger');   // required by Meta for a website event
+      expect(e.user_data.client_user_agent).toBe('UA');                                    // required by Meta for a website event
+      if (ours !== 'search') expect(e).not.toHaveProperty('custom_data');
+    }
+    // A search says what was searched for, in Meta's own field; with no term it says nothing rather than an empty string.
+    const searched = (buildAdRequest('meta', { ...purchase, event_name: 'search', ecommerce: undefined, search_term: 'power bank' } as never, cfg, 'T')!.body as any).data[0];
+    expect(searched.custom_data).toEqual({ search_string: 'power bank' });
+    expect(d('search')).not.toHaveProperty('custom_data');
+    const sent = Object.values(AD_PLATFORMS.find((p) => p.key === 'meta')!.events);
+    expect(sent).not.toContain('AddToWishlist');
+    expect(sent).not.toContain('Schedule');
+    // Only Meta has these three; no other platform is sent an event it has no name for.
+    for (const p of AD_PLATFORMS.filter((x) => x.key !== 'meta')) for (const n of ['search', 'sign_up', 'find_location', 'page_seen']) expect((p.events as Record<string, string>)[n]).toBeUndefined();
+  });
+  it('Meta: a website event without the page or the browser it came from is not sent to be refused, and says why', () => {
+    const cfg = { datasetId: '1234567890123' };
+    // Meta's parameters reference: event_source_url and client_user_agent are required when action_source is website.
+    const noBrowser = { ...purchase, user_data: { ...purchase.user_data, user_agent: undefined } };
+    const noPage = { ...purchase, page_location: undefined };
+    for (const e of [noBrowser, noPage]) {
+      expect(buildAdRequest('meta', e as never, cfg, 'T')).toBeNull();
+      expect(adSkipReason('meta', e as never, cfg)).toBe('NO_BROWSER');
+    }
+    expect(metaWebsiteEventComplete(purchase as never, metaUserData(purchase as never))).toBe(true);
+    // Nothing to match on is still the first thing said, whatever else is missing.
+    const nobody = { ...purchase, page_location: undefined, user_data: { ip_address: '41.84.203.125', user_agent: 'UA' } };
+    expect(adSkipReason('meta', nobody as never, cfg)).toBe('NO_IDENTIFIER');
+    expect((buildAdRequest('meta', purchase as never, cfg, 'T')!.body as any).data[0].user_data.client_user_agent).toBe('UA');
   });
   it('Meta: its own account of a refusal is kept — code, subcode, message, trace id — and a rate limit is not a final answer', () => {
     const body = (e: object) => JSON.stringify({ error: e });

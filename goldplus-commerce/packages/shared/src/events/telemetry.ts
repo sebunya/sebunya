@@ -111,6 +111,19 @@ export const CANONICAL_EVENT_NAMES = [
   // A WhatsApp click or a quote request (GA4's recommended lead event). Sent
   // to ad platforms as their lead/contact event where the owner selected it.
   'generate_lead',
+  // Three things a visitor does on the site besides shopping the basket: a
+  // product search, a new account, and opening the shop's map for directions.
+  // Sent to an ad platform only where it has a standard event for it and the
+  // owner selected it (Meta: Search, CompleteRegistration, FindLocation).
+  'search',
+  'sign_up',
+  'find_location',
+  // A storefront page was opened. NOT sent to GA4 from the server (the web
+  // container already reports page views there; sending it twice would double
+  // them): it exists so an ad platform that has a page-view event hears about
+  // every visitor, not only those who reach a product. Named apart from GA's
+  // own `page_view` so no tag in the web container reacts to it.
+  'page_seen',
   'purchase',  // SERVER-SIDE ONLY — guarded in router-level middleware
   'refund',    // SERVER-SIDE ONLY — a sent purchase whose order was cancelled
 ] as const;
@@ -140,7 +153,13 @@ export const CanonicalTelemetryEventSchema = z.object({
   ecommerce:              TelemetryEcommerceSchema.optional(),
   recommendation_context: TelemetryRecommendationContextSchema.optional(),
   /** generate_lead only: how the shopper reached out. */
-  lead: z.object({ method: z.enum(['whatsapp', 'quote_request']) }).optional(),
+  lead: z.object({
+    method: z.enum(['whatsapp', 'quote_request']),
+    /** quote_request only: the request's own reference, as its confirmation page shows it. Not a contact detail. */
+    ref: z.string().regex(/^[A-Za-z0-9-]{3,40}$/).optional(),
+  }).optional(),
+  /** search only: what was searched for, as the shop normalised it. */
+  search_term: z.string().min(1).max(120).optional(),
 
   // Observability & Attribution Metadata
   page_location:  z.string().max(2048).optional(),

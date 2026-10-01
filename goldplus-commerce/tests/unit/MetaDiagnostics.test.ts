@@ -66,7 +66,7 @@ describe('Meta diagnostics: the use case', () => {
     expect(v).toMatchObject({ configured: true, datasetId: dest.datasetId, connection: { state: 'ok', value: { name: 'GoldPlus dataset' } } });
     expect(v.quality).toEqual({ state: 'ok', value: { events: [{ event: 'Purchase', score: 7.1, band: 'good', keys: [] }] } });
     expect(JSON.stringify(v)).not.toContain('EAAB');
-    expect(v.keysSent.map((k) => k.on)).toEqual(['Every event', 'When the visitor arrived from a Meta ad (last 30 days)', 'A paid order']);
+    expect(v.keysSent.map((k) => k.on)).toEqual(['Every event', 'When the visitor arrived from a Meta ad (last 30 days)', 'A customer signed in on this browser', 'A paid order']);
     await uc.overview(); t += 9 * 60_000; await uc.overview();
     expect(g.calls).toEqual(['dataset', 'quality']);                   // cached
     t += 2 * 60_000; await uc.overview();
@@ -90,6 +90,21 @@ describe('Meta diagnostics: the use case', () => {
     const uc = new MetaDiagnosticsUseCases(g, async () => ({ ...dest, token }), audit, () => 'https://shopgoldplus.com', () => 1);
     await uc.overview(); token = 'second'; await uc.overview();
     expect(g.calls).toHaveLength(4);
+  });
+
+  it('a token that may send events but not read the dataset is a working connection (as seen live, 2026-10-01); a revoked one never is', async () => {
+    // What production's Events Manager token got back for GET /{dataset}?fields=id,name.
+    const noRead: MetaAnswer<never> = { ok: false, message: 'Meta error 100: (#100) Missing Permission', credentials: false, transient: false };
+    const v = await new MetaDiagnosticsUseCases(gw({ dataset: async () => noRead }), async () => dest, audit, () => null).overview();
+    expect(v.connection).toEqual({ state: 'ok', value: { name: null, named: false } });
+    expect(v.quality?.state).toBe('ok');
+    // Neither call answered for this token: that is still a refusal, with Meta's words.
+    const both = await new MetaDiagnosticsUseCases(gw({ dataset: async () => noRead, quality: async () => noRead }), async () => dest, audit, () => null).overview();
+    expect(both.connection).toEqual({ state: 'refused', message: 'Meta error 100: (#100) Missing Permission', credentials: false });
+    // A revoked token is never called working because another call happened to answer.
+    const revoked: MetaAnswer<never> = { ok: false, message: 'Meta error 190: revoked', credentials: true, transient: false };
+    expect((await new MetaDiagnosticsUseCases(gw({ dataset: async () => revoked }), async () => dest, audit, () => null).overview()).connection).toMatchObject({ state: 'refused', credentials: true });
+    expect((await new MetaDiagnosticsUseCases(gw(), async () => dest, audit, () => null).overview()).connection).toEqual({ state: 'ok', value: { name: 'GoldPlus dataset', named: true } });
   });
 
   it('tells a refusal from a fault on Meta\'s side, and does not remember the fault', async () => {
@@ -132,9 +147,19 @@ describe('Meta diagnostics: the use case', () => {
     expect(audits[0]).toMatchObject({ actorId: 'admin-1', action: 'AD_TEST_EVENT_SENT', entityId: 'meta', newState: { accepted: true, eventsReceived: 1 } });
     expect(JSON.stringify(audits)).not.toContain('EAAB');
 
+    // A test PURCHASE has a real sale's shape, so Meta's validation of a sale is exercised before the first real one.
+    const p = await uc.sendTestEvent('admin-1', 'TEST12345', 'purchase');
+    expect(p).toMatchObject({ ok: true, eventName: 'Purchase' });
+    const pe = sent[sent.length - 1].event;
+    expect(pe).toMatchObject({ event_name: 'Purchase', action_source: 'website', custom_data: { currency: 'UGX', value: 1000, content_type: 'product', num_items: 1 } });
+    expect(pe.event_source_url).toMatch(/\/checkout$/);
+    expect(pe.custom_data.order_id).toMatch(/^TEST-[0-9A-F]{8}$/);
+    expect(pe.user_data.client_user_agent).toMatch(/not a visitor/);
+    expect(sent[sent.length - 1].code).toBe('TEST12345');                  // never without the test code
     const refusing = new MetaDiagnosticsUseCases(gw({ sendTestEvent: async () => ({ ok: false, message: 'Meta error 100/2804003: bad code', credentials: false, transient: false }) }), async () => dest, audit, () => 'https://shopgoldplus.com');
     expect(await refusing.sendTestEvent('admin-1', 'TEST99999')).toEqual({ ok: false, message: 'Meta error 100/2804003: bad code' });
-    expect(audits[1]).toMatchObject({ newState: { accepted: false, refusal: 'Meta error 100/2804003: bad code' } });
+    expect(audits[1]).toMatchObject({ newState: { eventName: "Purchase", accepted: true } });
+    expect(audits[2]).toMatchObject({ newState: { accepted: false, refusal: 'Meta error 100/2804003: bad code' } });
     expect(await new MetaDiagnosticsUseCases(gw(), async () => dest, audit, () => null).sendTestEvent('a', 'TEST1')).toMatchObject({ ok: false, message: expect.stringMatching(/storefront address/) });
   });
 });

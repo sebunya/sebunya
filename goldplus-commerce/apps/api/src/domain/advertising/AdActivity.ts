@@ -83,6 +83,7 @@ export function explainOutcome(input: { platformName: string; outcome: AdOutcome
     if (raw === 'NO_X_CLICK') return 'The visitor did not arrive from an X ad, so it is not X\'s to count (your "x_clicks" setting).';
     if (raw === 'NO_EVENT_ID') return `No event ID is saved for this event, so ${name} is not told about it. Add one on the Advertising page.`;
     if (raw === 'NO_IDENTIFIER' || raw === 'IDENTITY_UNAVAILABLE') return `Nothing ${name} can match on: no click id, and no contact detail it is allowed to use.`;
+    if (raw === 'NO_BROWSER') return `${name} requires the page and the browser a website event came from, and this one has no record of them (the order was not placed in a browser we saw, or that record was erased).`;
     if (raw === 'NO_TEST_CODE') return `${name} is in Test mode but no test event code is saved, so nothing is sent. Add the code on the Advertising page, or switch to Live.`;
     if (raw === 'EXPIRED_EVENT') return `Too old to send: ${name} accepts an event for a limited time after it happened.`;
     // Recorded before the reasons were split: it could have been any of the three above, so it says so.

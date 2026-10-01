@@ -285,13 +285,13 @@ describe('WhatsApp taps', () => {
     for (const h of hrefs) expect(isWhatsAppChatWithUs(h), h).toBe(tagWhatsAppHref(h, 'GP-7K3Q9X') !== null);
     expect(isWhatsAppChatWithUs('https://wa.me/+256700000000')).toBe(false);
   });
-  it('the tap handler is not in the every-page telemetry script: only pages with a WhatsApp call to action register it', () => {
+  it('the tap handler is its own small module, registered once for every page by the layout (2026-10-01: the header and footer links count too)', () => {
     const telemetry = read('apps/web/src/lib/telemetry.ts');
     expect(telemetry).not.toMatch(/from '\.\/whatsappRef'|from '\.\/leadSignalRules'/);
     expect(telemetry).not.toMatch(/export function (tagWhatsAppLinks|trackWhatsAppLeads)/);
-    // Not even a lazy loader: the pages with a WhatsApp call to action register it.
+    // lib/telemetry itself stays free of it; the layout registers it for every page, the header component does not.
     expect(telemetry).not.toMatch(/whatsappClicks'|WA_LINK|loadWhatsAppClicks/);
-    expect(read('apps/web/src/layouts/BaseLayout.astro')).not.toMatch(/whatsappClicks/);
+    expect(read('apps/web/src/layouts/BaseLayout.astro')).toMatch(/import \{ installWhatsAppClicks \} from '\.\.\/lib\/whatsappClicks';\s*installWhatsAppClicks\(\);/);
     expect(read('apps/web/src/components/GpNav.astro')).not.toMatch(/whatsappClicks/);
     for (const page of ['apps/web/src/pages/products/[slug].astro', 'apps/web/src/pages/bulk/submitted.astro']) {
       expect(read(page), page).toMatch(/import \{ installWhatsAppClicks \} from '\.\.\/\.\.\/lib\/whatsappClicks';\s*installWhatsAppClicks\(\);/);

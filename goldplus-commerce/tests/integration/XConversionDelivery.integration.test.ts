@@ -191,7 +191,7 @@ suite('X conversions: a call is spent only on an X-click purchase (real PostgreS
     });
     const event = { event_name: 'add_to_cart', event_id: randomUUID(), event_time: Math.floor(Date.now() / 1000), source: 'server',
       page_location: 'https://shopgoldplus.com/products/ix',
-      user_data: { fp_client_id: 'fp.1.ix-b', hashed_email: 'a'.repeat(64) },
+      user_data: { fp_client_id: 'fp.1.ix-b', hashed_email: 'a'.repeat(64), user_agent: 'UA' },
       ecommerce: { value: 45000, currency: 'UGX', items: [{ item_id: productId, item_name: 'IX item', price: 45000, quantity: 1 }] } } as never;
     const hosts: string[] = [];
     const realFetch = globalThis.fetch;

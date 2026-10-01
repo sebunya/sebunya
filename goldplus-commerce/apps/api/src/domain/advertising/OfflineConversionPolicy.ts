@@ -1,3 +1,4 @@
+import { normaliseWhatsAppRef } from '@goldplus/shared';
 /**
  * Offline conversions (docs/advertising/README.md, "Offline conversions").
  * Pure decisions; the use case applies them and the gateway sends.
@@ -41,6 +42,22 @@ export function metaActionSource(source: OfflineSource, channel: OfflineChannel 
   return channel === 'WHATSAPP' ? 'chat' : 'phone_call';
 }
 
+/** How long before a sale an advert click may be and still be the click that led to it (the networks' own windows). */
+export const REF_CLICK_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * The advert click a referenced WhatsApp sale is credited to: the click ids on
+ * the record of the visitor the code was issued to, when that click happened
+ * BEFORE the sale and no more than 30 days before it. A click made after the
+ * sale did not lead to it; an older one is outside every network's window.
+ */
+export function refClickIds(record: { clickedAt: Date | string | null; ids: Record<string, string | null | undefined> } | null, saleAt: Date): Record<string, string> {
+  if (!record?.clickedAt) return {};
+  const at = new Date(record.clickedAt).getTime();
+  if (!Number.isFinite(at) || at > saleAt.getTime() || saleAt.getTime() - at > REF_CLICK_MAX_AGE_MS) return {};
+  return Object.fromEntries(Object.entries(record.ids).filter(([, v]) => typeof v === 'string' && v.length > 0)) as Record<string, string>;
+}
+
 /** How old an offline conversion may be when it is sent (days). */
 export const SEND_WINDOW_DAYS: Record<OfflinePlatform, number> = {
   // Meta: event_time may be up to 7 days before it is sent.
@@ -73,6 +90,8 @@ export interface OfflineSaleInput {
   email?: string | null;
   phone?: string | null;
   note?: string | null;
+  /** The "Ref GP-XXXXXX" code in the customer's WhatsApp message, as staff typed it. */
+  whatsappRef?: string | null;
 }
 
 /** An admin-recorded sale's validation: the reasons it cannot be recorded, or none. */
@@ -85,7 +104,10 @@ export function offlineSaleErrors(i: OfflineSaleInput, now: Date = new Date()): 
   const v = Number(i.valueUgx);
   if (!Number.isInteger(v) || v <= 0 || v > 1_000_000_000) e.push('Enter the sale value in whole UGX.');
   const hasContact = !!String(i.email ?? '').trim() || !!String(i.phone ?? '').trim();
-  if (!hasContact && !String(i.orderNumber ?? '').trim()) e.push('Enter the customer\'s phone or email, or the order number: without one no platform can match the sale.');
+  const typedRef = String(i.whatsappRef ?? '').trim();
+  const ref = typedRef ? normaliseWhatsAppRef(typedRef) : null;
+  if (typedRef && !ref) e.push('The reference code is "GP-" and six characters, as it appears after "Ref" in the customer\'s first message.');
+  if (!hasContact && !String(i.orderNumber ?? '').trim() && !ref) e.push('Enter the customer\'s phone or email, the order number, or the reference code from their WhatsApp message: without one no platform can match the sale.');
   if (String(i.note ?? '').length > 300) e.push('Keep the note under 300 characters.');
   return e;
 }

@@ -172,7 +172,11 @@ export type EventName =
   | 'add_to_cart'    | 'remove_from_cart' | 'begin_checkout'
   | 'add_shipping_info' | 'add_payment_info'
   // A WhatsApp chat opened with us, or a quote request sent (advertising 0154).
-  | 'generate_lead';
+  | 'generate_lead'
+  // A product search, a new account, the shop's map opened (lib/siteSignals).
+  | 'search' | 'sign_up' | 'find_location'
+  // A storefront page was opened (lib/siteSignals; ad platforms only, never GA4).
+  | 'page_seen';
 
 export interface TelemetryItem {
   item_id:       string;
@@ -201,7 +205,9 @@ export interface TrackOptions {
   recommendation_context?: RecommendationContext;
   user_id?: string;
   /** generate_lead only: how the shopper reached out. */
-  lead?: { method: 'whatsapp' | 'quote_request' };
+  lead?: { method: 'whatsapp' | 'quote_request'; ref?: string };
+  /** search only: what was searched for. */
+  search_term?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -294,6 +300,7 @@ export function track(eventName: EventName, opts: TrackOptions = {}): string {
     ecommerce:              opts.ecommerce,
     recommendation_context: opts.recommendation_context,
     lead:                   opts.lead,
+    search_term:            opts.search_term,
     page_location:          window.location.href,
     page_referrer:          document.referrer || undefined,
     page_title:             document.title,

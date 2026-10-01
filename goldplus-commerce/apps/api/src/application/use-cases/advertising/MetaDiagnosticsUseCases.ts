@@ -13,7 +13,13 @@ export interface MetaDiagnosticsView {
   /** Why nothing was asked of Meta (no dataset ID, no token, the vault cannot be read). */
   notConfigured: string | null;
   datasetId: string | null;
-  connection: Check<{ name: string | null }> | null;
+  /**
+   * `named: false` = Meta accepted the dataset ID and token for another call
+   * but would not show the dataset's own details. A token generated in Events
+   * Manager for the Conversions API is like that: it may send events and read
+   * match quality, not read the dataset. That is a working connection.
+   */
+  connection: Check<{ name: string | null; named: boolean }> | null;
   quality: Check<{ events: MetaEventQuality[] }> | null;
   keysSent: typeof META_KEYS_SENT;
   checkedAt: string | null;
@@ -70,7 +76,11 @@ export class MetaDiagnosticsUseCases {
     ]);
     const view: MetaDiagnosticsView = {
       configured: true, notConfigured: null, datasetId: dest.datasetId,
-      connection: MetaDiagnosticsUseCases.check(dataset, (d) => ({ name: d.name })),
+      // Either answer proves the pair. A credentials refusal (190: expired or
+      // revoked) is never overridden: it is the answer about the token.
+      connection: !dataset.ok && !dataset.transient && !dataset.credentials && quality.ok
+        ? { state: 'ok', value: { name: null, named: false } }
+        : MetaDiagnosticsUseCases.check(dataset, (d) => ({ name: d.name, named: true })),
       quality: MetaDiagnosticsUseCases.check(quality, (q) => ({ events: parseDatasetQuality(q) })),
       keysSent: META_KEYS_SENT, checkedAt: new Date(this.now()).toISOString(),
       graph: (() => {
@@ -88,14 +98,24 @@ export class MetaDiagnosticsUseCases {
    * Events Manager > Test events and does not count it. It describes no real
    * visitor: the identifier is a fixed label, hashed, and the event says so.
    */
-  async sendTestEvent(actorId: string | null, testEventCode: unknown): Promise<{ ok: true; eventsReceived: number; eventId: string; fbtraceId: string | null } | { ok: false; message: string }> {
+  async sendTestEvent(actorId: string | null, testEventCode: unknown, kind: unknown = 'view'): Promise<{ ok: true; eventsReceived: number; eventId: string; fbtraceId: string | null; eventName: string } | { ok: false; message: string }> {
     if (!isMetaTestEventCode(testEventCode)) return { ok: false, message: 'Enter the test event code from Events Manager > your dataset > Test events (it starts with TEST).' };
     let dest: MetaDestination;
     try { dest = await this.destination(); } catch (err) { return { ok: false, message: (err as Error).message }; }
     const origin = this.siteOrigin();
     if (!origin) return { ok: false, message: 'The storefront address is not set on the server (PUBLIC_SITE_ORIGIN), and Meta requires the page a website event came from.' };
     const eventId = `goldplus-connection-test-${randomUUID()}`;
-    const event = {
+    // A test PURCHASE has the shape of a real one (value, currency, order
+    // number, one product) so Meta's own validation of a sale is exercised
+    // before the first real one; like the view, it describes no real person.
+    const purchase = kind === 'purchase';
+    const event = purchase ? {
+      event_name: 'Purchase', event_time: Math.floor(this.now() / 1000), event_id: eventId, action_source: 'website',
+      event_source_url: `${origin}/checkout`,
+      user_data: { external_id: [createHash('sha256').update('goldplus-connection-test').digest('hex')], client_user_agent: 'GoldPlus connection test (not a visitor)' },
+      custom_data: { currency: 'UGX', value: 1000, content_type: 'product', content_ids: ['goldplus-connection-test'], contents: [{ id: 'goldplus-connection-test', quantity: 1, item_price: 1000 }], num_items: 1, order_id: `TEST-${eventId.slice(-8).toUpperCase()}`, content_name: 'Connection test' },
+      data_processing_options: [],
+    } : {
       event_name: 'ViewContent', event_time: Math.floor(this.now() / 1000), event_id: eventId, action_source: 'website',
       event_source_url: `${origin}/`,
       user_data: { external_id: [createHash('sha256').update('goldplus-connection-test').digest('hex')], client_user_agent: 'GoldPlus connection test (not a visitor)' },
@@ -106,8 +126,8 @@ export class MetaDiagnosticsUseCases {
     const answer = await this.gateway.sendTestEvent(dest.datasetId, dest.token, event, code)
       .catch((e): MetaAnswer<never> => ({ ok: false, message: `Meta could not be reached: ${(e as Error).message}`, credentials: false, transient: true }));
     await this.audit.execute({ actorId, action: 'AD_TEST_EVENT_SENT', entity: 'ad_destination', entityId: 'meta',
-      newState: { datasetId: dest.datasetId, eventId, accepted: answer.ok, ...(answer.ok ? { eventsReceived: answer.value.eventsReceived } : { refusal: answer.message.slice(0, 300) }) } } as never);
+      newState: { datasetId: dest.datasetId, eventId, eventName: event.event_name, accepted: answer.ok, ...(answer.ok ? { eventsReceived: answer.value.eventsReceived } : { refusal: answer.message.slice(0, 300) }) } } as never);
     if (!answer.ok) return { ok: false, message: answer.message };
-    return { ok: true, eventsReceived: answer.value.eventsReceived, eventId, fbtraceId: answer.value.fbtraceId };
+    return { ok: true, eventsReceived: answer.value.eventsReceived, eventId, fbtraceId: answer.value.fbtraceId, eventName: event.event_name };
   }
 }

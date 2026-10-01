@@ -47,8 +47,12 @@ suite('Click-to-WhatsApp adverts: webhook to credited sale (real app, real Postg
   });
   const post = (body: string, signature: string | null) => app.request('/webhooks/whatsapp', { method: 'POST', headers: { 'content-type': 'application/json', ...(signature ? { 'x-hub-signature-256': signature } : {}) }, body });
 
+  let priorOrigin: string | undefined;
   beforeAll(async () => {
     process.env.MEASUREMENT_ALLOW_NONPROD_DELIVERY = 'true';
+    // The storefront's address, as production resolves it: a website purchase names the page it happened on (Meta requires it).
+    priorOrigin = process.env.PUBLIC_SITE_ORIGIN;
+    process.env.PUBLIC_SITE_ORIGIN = 'https://shopgoldplus.com';
     process.env.SEO_CREDENTIAL_VAULT_KEY = 'it-vault-key-for-whatsapp-ad-attribution-test';
     const { createRequire } = await import('node:module');
     raw = createRequire(import.meta.url)('postgres')(URL_ as string, { max: 3, onnotice: () => undefined });
@@ -75,6 +79,7 @@ suite('Click-to-WhatsApp adverts: webhook to credited sale (real app, real Postg
   }, 90_000);
 
   afterAll(async () => {
+    if (priorOrigin === undefined) delete process.env.PUBLIC_SITE_ORIGIN; else process.env.PUBLIC_SITE_ORIGIN = priorOrigin;
     if (!raw) return;
     await raw`delete from whatsapp_ad_referrals where source_id = ${`ad-${tag}`}`;
     if (sales.length) { await raw`delete from ad_offline_conversions where source_ref = any(${sales})`; await raw`delete from ad_offline_sales where id = any(${sales}::uuid[])`; }
@@ -259,6 +264,72 @@ suite('Click-to-WhatsApp adverts: webhook to credited sale (real app, real Postg
     expect(rows.find((r: any) => r.source_ref === s2.value.id)).toMatchObject({ state: 'SENT' });
     expect((await raw`select attributed_count from whatsapp_ad_referrals where message_id = ${`wamid.${tag}.5`}`)[0].attributed_count).toBe(1);
     expect((await raw`select attributed_count from whatsapp_ad_referrals where message_id = ${`wamid.${tag}.6`}`)[0].attributed_count).toBe(0);
+  }, 60_000);
+
+  it('without the WhatsApp Business Platform: a sale recorded with the chat\'s reference code carries the advert click of the visitor the code was issued to', async () => {
+    const { OfflineConversionUseCases } = await import('../../apps/api/src/application/use-cases/advertising/OfflineConversionUseCases');
+    const { DrizzleOfflineConversionRepository } = await import('../../apps/api/src/infrastructure/db/repositories/DrizzleAdvertisingOpsRepository');
+    const { HttpOfflineConversionGateway } = await import('../../apps/api/src/infrastructure/advertising/AdvertisingGateways');
+    const { environmentOf } = await import('../../apps/api/src/domain/measurement/BusinessEvents');
+    const envName = environmentOf(process.env.NODE_ENV);
+    const A = '23456789ABCDEFGHJKMNPQRSTVWXYZ';
+    const code = () => `GP-${Array.from({ length: 6 }, () => A[Math.floor(Math.random() * A.length)]).join('')}`;
+    const visitor = () => `fp.1790841536221.${randomUUID()}`;
+    // 1: arrived on a Facebook advert two days ago, tapped the site's WhatsApp link, bought in the chat.
+    const fromAdvert = { fp: visitor(), ref: code(), fbc: 'fb.1.1790841538888.IwAR_ref_bridge_ABCdef123' };
+    // 2: tapped the WhatsApp link, but clicked an advert only AFTER the sale: that click did not lead to it.
+    const clickedLater = { fp: visitor(), ref: code(), fbc: 'fb.1.1790841539999.IwAR_too_late_ABCdef123' };
+    // 3: tapped the WhatsApp link with no advert behind the visit.
+    const organic = { fp: visitor(), ref: code() };
+    const saleAt = new Date(Date.now() - 3600_000);
+    await raw`insert into first_party_identities (fp_client_id, fbc, click_ids_at) values (${fromAdvert.fp}, ${fromAdvert.fbc}, now() - interval '2 days')`;
+    await raw`insert into first_party_identities (fp_client_id, fbc, click_ids_at) values (${clickedLater.fp}, ${clickedLater.fbc}, now())`;
+    for (const v of [fromAdvert, clickedLater, organic]) {
+      await raw`insert into measurement.whatsapp_ref (code, environment, anonymous_id, client_event_id, issued_at, page_path) values (${v.ref}, ${envName}, ${v.fp}, ${randomUUID()}, now() - interval '3 hours', '/wa')`;
+    }
+    const sent: Array<{ url: string; body: any }> = [];
+    const recording = (async (url: string, init: any) => { sent.push({ url: String(url), body: JSON.parse(init.body) }); return new Response(JSON.stringify({ events_received: 1 }), { status: 200 }); }) as never;
+    const offline = new OfflineConversionUseCases(
+      new DrizzleOfflineConversionRepository(), new HttpOfflineConversionGateway(recording),
+      (platform: string) => ops.capabilities.live(platform, 'offline'),
+      async () => ({ config: {}, secret: '', destinationConfig: { datasetId: DATASET }, destinationSecret: TOKEN, testMode: false }),
+      { execute: async () => ({}) } as never, () => new Date(), null);
+    const mine: string[] = [];
+    try {
+      // The code alone is enough to record the sale: no phone, no order number. Typed as staff would, lower case and spaced.
+      const s1 = await offline.recordSale(null, { channel: 'WHATSAPP', occurredAt: saleAt.toISOString(), valueUgx: 210000, whatsappRef: ` ${fromAdvert.ref.toLowerCase()} ` });
+      const s2 = await offline.recordSale(null, { channel: 'WHATSAPP', occurredAt: saleAt.toISOString(), valueUgx: 70000, whatsappRef: clickedLater.ref, phone: '0772 555 010' });
+      const s3 = await offline.recordSale(null, { channel: 'WHATSAPP', occurredAt: saleAt.toISOString(), valueUgx: 50000, whatsappRef: organic.ref });
+      expect(s1.ok && s2.ok && s3.ok).toBe(true);
+      if (!s1.ok || !s2.ok || !s3.ok) return;
+      mine.push(s1.value.id, s2.value.id, s3.value.id); sales.push(...mine);
+      // A code the site never issued is refused, in words staff can act on.
+      const unknown = await offline.recordSale(null, { channel: 'WHATSAPP', occurredAt: saleAt.toISOString(), valueUgx: 1000, whatsappRef: 'GP-222222' });
+      expect(unknown).toMatchObject({ ok: false, code: 'NOT_FOUND' });
+      expect((await raw`select whatsapp_ref, consent_fp_client_ids from ad_offline_sales where id = ${s1.value.id}`)[0]).toMatchObject({ whatsapp_ref: fromAdvert.ref, consent_fp_client_ids: [fromAdvert.fp] });
+
+      await offline.enqueue();
+      await raw`update ad_offline_conversions set next_attempt_at = now() + interval '1 day' where not (source_ref = any(${mine})) and state = 'PENDING'`;
+      try { await offline.dispatch(50); } finally {
+        await raw`update ad_offline_conversions set next_attempt_at = now() where not (source_ref = any(${mine})) and state = 'PENDING' and next_attempt_at > now() + interval '23 hours'`;
+      }
+      const events = sent.filter((s) => s.url === `https://graph.facebook.com/v25.0/${DATASET}/events`).map((s) => s.body.data[0]);
+      const credited = events.find((e: any) => e.custom_data?.value === 210000);
+      // The advert's click id, and the same visitor ids the browsing events carried.
+      expect(credited).toMatchObject({ event_name: 'Purchase', action_source: 'chat' });
+      expect(credited.user_data).toEqual({ fbc: fromAdvert.fbc, external_id: [createHash('sha256').update(fromAdvert.fp).digest('hex')], fbp: expect.stringMatching(/^fb\.1\.1790841536221\.[1-9]\d{9}$/) });
+      const later = events.find((e: any) => e.custom_data?.value === 70000);
+      expect(later.user_data.fbc).toBeUndefined();                       // the click came after the sale
+      expect(later.user_data.ph).toHaveLength(1);
+      // No advert click and no contact: there is nothing Meta could match the sale on, and it says so.
+      expect(events.some((e: any) => e.custom_data?.value === 50000)).toBe(false);
+      const rows = await raw`select source_ref, state, reason from ad_offline_conversions where source_ref = any(${mine}) and platform = 'meta'`;
+      expect(rows.find((r: any) => r.source_ref === s1.value.id)).toMatchObject({ state: 'SENT' });
+      expect(rows.find((r: any) => r.source_ref === s3.value.id)).toMatchObject({ state: 'SKIPPED' });
+    } finally {
+      await raw`delete from measurement.whatsapp_ref where code = any(${[fromAdvert.ref, clickedLater.ref, organic.ref]})`;
+      await raw`delete from first_party_identities where fp_client_id = any(${[fromAdvert.fp, clickedLater.fp]})`;
+    }
   }, 60_000);
 
   it('switched off: deliveries are acknowledged and not kept, and no sale is credited', async () => {

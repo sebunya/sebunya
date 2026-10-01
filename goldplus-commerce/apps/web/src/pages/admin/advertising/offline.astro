@@ -30,6 +30,7 @@ if (Astro.request.method === "POST") {
       channel: String(f.get("channel") ?? ""), occurredAt, valueUgx: Number(String(f.get("valueUgx") ?? "").replace(/[,\s]/g, "")),
       orderNumber: String(f.get("orderNumber") ?? "").trim() || null, email: String(f.get("email") ?? "").trim() || null,
       phone: String(f.get("phone") ?? "").trim() || null, note: String(f.get("note") ?? "").trim() || null,
+      whatsappRef: String(f.get("whatsappRef") ?? "").trim() || null,
     });
     if (r.ok) notice = "Sale recorded. It is sent to each platform whose offline conversions are live, within 5 minutes."; else formError = r.message;
   }
@@ -67,8 +68,9 @@ const today = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
         <label class="text-xs font-bold text-gray-700">Order number (if it has one)<input name="orderNumber" autocomplete="off" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal" /></label>
         <label class="text-xs font-bold text-gray-700">Customer phone<input name="phone" type="tel" autocomplete="off" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal" /></label>
         <label class="text-xs font-bold text-gray-700">Customer email<input name="email" type="email" autocomplete="off" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal" /></label>
+        <label class="text-xs font-bold text-gray-700 sm:col-span-2">WhatsApp reference code (optional)<input name="whatsappRef" autocomplete="off" autocapitalize="characters" placeholder="GP-7K3M9X" maxlength="12" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm font-normal uppercase" /><span class="mt-1 block text-xs font-normal text-gray-500">The "Ref GP-…" line in the customer's first WhatsApp message. With it, the sale is credited to the advert that brought them to the site, even with no order number.</span></label>
         <label class="text-xs font-bold text-gray-700 sm:col-span-2">Note (optional, kept here only)<input name="note" maxlength="300" autocomplete="off" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-normal" /></label>
-        <p class="text-xs text-gray-500 sm:col-span-2">A phone, an email or an order number is needed: without one, no platform can match the sale.</p>
+        <p class="text-xs text-gray-500 sm:col-span-2">A phone, an email, an order number or the WhatsApp reference code is needed: without one, no platform can match the sale.</p>
         <div class="sm:col-span-2"><button class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Record sale</button></div>
       </form>
     </section>

@@ -8,6 +8,7 @@ import { DrizzleAdDestinationRepository } from '../db/repositories/DrizzleAdDest
 import { IntegrationCredentialVault } from '../seo/IntegrationCredentialVault';
 import { adErrorSummary, adPlatform, adPlatformAccepts, adSkipReason, buildAdRequest } from './AdPlatforms';
 import { withVisitorClickIds } from './VisitorClickIds';
+import { quoteLeadContact, visitorAccount, withAccountContact, type VisitorAccount } from './VisitorContact';
 import { advertisingRefused } from '../measurement/AdvertisingConsentGate';
 import { eventSelected } from '../../domain/advertising/OptimisationEvents';
 import { lookup } from 'node:dns/promises';
@@ -135,9 +136,15 @@ export async function processAdConversionBatch(): Promise<{ claimed: number; sen
     // D-002, the same gate as purchases: an explicit advertising refusal stops
     // browsing conversions too. An unreadable consent state defers the row
     // (no attempt counted); it never sends on an unknown answer.
+    // Meta, signed-in visitors (owner decision 2026-10-01): the account behind
+    // the visitor, so its hashed email and phone can travel with the event AND
+    // so the account's own advertising choice is asked, not only the browser's.
+    // A failed lookup costs the extra match keys, never the event.
+    let account: VisitorAccount | null = null;
+    if (platform === 'meta') account = await visitorAccount(event).catch(() => null);
     let refused: boolean;
     try {
-      refused = await advertisingRefused({ userId: event?.user_data?.user_id, fpClientId: event?.user_data?.fp_client_id });
+      refused = await advertisingRefused({ userId: event?.user_data?.user_id ?? account?.userId, fpClientId: event?.user_data?.fp_client_id });
     } catch {
       await db.update(outboxEvents).set({ status: 'retrying', lastError: 'CONSENT_LOOKUP_FAILED', nextAttemptAt: new Date(Date.now() + 5 * 60_000) }).where(eq(outboxEvents.id, row.id));
       out.retried++; continue;
@@ -146,7 +153,10 @@ export async function processAdConversionBatch(): Promise<{ claimed: number; sen
     // Browsing events arrive with only the visitor id; the click id that
     // visitor came in on is read from the identity graph here, at send time,
     // and never stored on the row (VisitorClickIds).
-    const enriched = await withVisitorClickIds(event);
+    // A quote request's own contact, for the Lead that confirms it (Meta only): the
+    // person who is not signed in is matched on what they gave in the request.
+    const quote = platform === 'meta' ? await quoteLeadContact(event).catch(() => null) : null;
+    const enriched = withAccountContact(await withVisitorClickIds(event), quote ?? account);
     const req = buildAdRequest(platform, enriched, dest.config, secret);
     // The reason is a stable code (NO_X_CLICK, NO_EVENT_ID, NO_IDENTIFIER) so
     // the activity page can say which of the three it was.

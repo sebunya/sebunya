@@ -12,7 +12,7 @@ import type { CanonicalTelemetryEvent } from '@goldplus/shared';
  * The rest are listed with the honest reason they are not (never simulated).
  */
 
-export type AdEventName = 'view_item' | 'add_to_cart' | 'begin_checkout' | 'add_payment_info' | 'generate_lead' | 'purchase';
+export type AdEventName = 'view_item' | 'add_to_cart' | 'begin_checkout' | 'add_payment_info' | 'generate_lead' | 'search' | 'sign_up' | 'find_location' | 'page_seen' | 'purchase';
 export interface AdRequest { url: string; headers: Record<string, string>; body?: unknown; method?: 'POST' | 'GET' }
 /**
  * Why nothing was sent, recorded on the queue row. Before 2026-10-01 every
@@ -20,7 +20,7 @@ export interface AdRequest { url: string; headers: Record<string, string>; body?
  * so "no event ID saved", "the visitor did not come from our ad" and
  * "nothing to match on" could not be told apart afterwards.
  */
-export type AdSkipReason = 'NO_EVENT_ID' | 'NO_X_CLICK' | 'NO_IDENTIFIER' | 'NO_TEST_CODE';
+export type AdSkipReason = 'NO_EVENT_ID' | 'NO_X_CLICK' | 'NO_IDENTIFIER' | 'NO_TEST_CODE' | 'NO_BROWSER';
 
 export interface AdPlatformDef {
   key: string;
@@ -231,16 +231,25 @@ export const META_MATCH_KEYS = ['em', 'ph', 'fbc', 'fbp', 'external_id', 'fn', '
 export const metaMatchable = (userData: Record<string, unknown>): boolean =>
   ['em', 'ph', 'fbc', 'fbp', 'external_id'].some((k) => userData[k] !== undefined);
 
+/** What Meta requires of every website event besides a match key: the page address and the browser's user agent. */
+export const metaWebsiteEventComplete = (e: CanonicalTelemetryEvent, userData: Record<string, unknown>): boolean =>
+  typeof e.page_location === 'string' && /^https?:\/\//.test(e.page_location) && typeof userData.client_user_agent === 'string' && userData.client_user_agent.length > 0;
+
 /**
  * What the event was about. A purchase always states its value, currency and
- * order number; a basket or checkout event states the products; a lead or a
- * chat tap has no basket, and is not given an empty one.
+ * order number; a basket or checkout event states the products; a lead, a
+ * chat tap, a search, a new account or a directions tap has no basket, and is
+ * not given an empty one.
  */
+const META_EVENTS_WITHOUT_BASKET = new Set(['Lead', 'Contact', 'Search', 'CompleteRegistration', 'FindLocation', 'PageView']);
+
 export function metaCustomData(e: CanonicalTelemetryEvent, metaEventName: string): Record<string, unknown> | null {
   const list = items(e).filter((i) => i.item_id);
   const count = list.reduce((s, i) => s + (i.quantity ?? 1), 0);
   const v = value(e);
-  if (metaEventName === 'Lead' || metaEventName === 'Contact') {
+  // Meta's Search event names what was searched for (custom_data.search_string).
+  if (metaEventName === 'Search') return e.search_term ? { search_string: e.search_term } : null;
+  if (META_EVENTS_WITHOUT_BASKET.has(metaEventName)) {
     return v > 0 ? { currency: e.ecommerce?.currency ?? 'UGX', value: v } : null;
   }
   const out: Record<string, unknown> = { currency: e.ecommerce?.currency ?? 'UGX', value: v };
@@ -249,8 +258,16 @@ export function metaCustomData(e: CanonicalTelemetryEvent, metaEventName: string
     out.content_ids = list.map((i) => String(i.item_id));
     out.contents = list.map((i) => ({ id: String(i.item_id), quantity: i.quantity ?? 1, ...(typeof i.price === 'number' ? { item_price: i.price } : {}) }));
     out.num_items = count;
+    // What the product is called and where it sits in the catalogue, as the
+    // page or the order states it: one product names itself, several name
+    // their categories.
+    const names = [...new Set(list.map((i) => i.item_name).filter((n): n is string => typeof n === 'string' && n.length > 0))];
+    const cats = [...new Set(list.map((i) => i.item_category).filter((c): c is string => typeof c === 'string' && c.length > 0))];
+    if (names.length === 1) out.content_name = names[0].slice(0, 200);
+    if (cats.length) out.content_category = cats.slice(0, 5).join(', ').slice(0, 200);
   }
   if (metaEventName === 'Purchase' && e.ecommerce?.transaction_id) out.order_id = e.ecommerce.transaction_id;
+
   return out;
 }
 
@@ -298,7 +315,13 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
     secretLabel: 'Conversions API access token',
     // generate_lead: a quote request (the customer submitted their details) is a
     // Lead; a WhatsApp chat tap is a Contact (Meta standard events).
-    events: { view_item: 'ViewContent', add_to_cart: 'AddToCart', begin_checkout: 'InitiateCheckout', add_payment_info: 'AddPaymentInfo', generate_lead: 'Lead', purchase: 'Purchase' },
+    // search / sign_up / find_location: Meta's Search, CompleteRegistration and
+    // FindLocation. AddToWishlist and Schedule are not sent: the shop has no
+    // wishlist and takes no appointments, and an event is never invented.
+    events: { view_item: 'ViewContent', add_to_cart: 'AddToCart', begin_checkout: 'InitiateCheckout', add_payment_info: 'AddPaymentInfo', generate_lead: 'Lead',
+      search: 'Search', sign_up: 'CompleteRegistration', find_location: 'FindLocation',
+      // Every storefront page: the event Meta's "all website visitors" and page-address audiences are built from.
+      page_seen: 'PageView', purchase: 'Purchase' },
     build(e, cfg, token) {
       const mapped = this.events[e.event_name as AdEventName]; if (!mapped) return null;
       const name = e.event_name === 'generate_lead' ? (leadMethod(e) === 'quote_request' ? 'Lead' : 'Contact') : mapped;
@@ -307,6 +330,10 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
       // Meta needs something to match the event to a person. An IP address and
       // a user agent alone are not that: an event with nothing else is not sent.
       if (!metaMatchable(user_data)) return null;
+      // Meta's contract for a website event (Conversions API parameters): the
+      // page it happened on and the browser's user agent are REQUIRED. An event
+      // without both is refused whole, so it is not sent to be refused.
+      if (!metaWebsiteEventComplete(e, user_data)) return null;
       const custom_data = metaCustomData(e, name);
       return {
         // The token travels in the Authorization header, never in the URL (proxy and access logs keep URLs).
@@ -325,6 +352,8 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
     },
     skipReason(e, cfg) {
       if (inTest(cfg) && !cfg.testEventCode) return 'NO_TEST_CODE';
+      const user_data = metaUserData(e);
+      if (metaMatchable(user_data) && !metaWebsiteEventComplete(e, user_data)) return 'NO_BROWSER';
       return 'NO_IDENTIFIER';
     },
     errorSummary: metaErrorSummary,

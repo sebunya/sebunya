@@ -53,7 +53,11 @@ active, approved, priced, described, photographed; sample frames are never in th
 Only the public price; never a dealer price, supplier cost or floor; availability as a word, never a
 unit count (no `quantity_to_sell_on_facebook`).
 
-- Meta CSV columns: `id,title,description,availability,condition,price,link,image_link,brand,additional_image_link,sale_price,sale_price_effective_date,google_product_category,product_type,mpn`.
+- Meta CSV columns: `id,title,description,availability,condition,price,link,image_link,brand,additional_image_link,sale_price,sale_price_effective_date,google_product_category,product_type,mpn,custom_label_0`.
+  `id` is the PRODUCT ID, the id every conversion event names in `content_ids` (2026-10-01: it was the
+  SKU, so no event matched any catalogue item); the SKU travels in `custom_label_0`. Images are the
+  JPEG renditions (`pdp.jpg`): Meta's catalogue takes JPEG and PNG only. Product pages carry the
+  same id in `product:retailer_item_id`, with `og:type=product`, price and availability.
   Availability `in stock` / `out of stock` (a pre-order without a date goes out of stock, as in
   the Google feed). Sale price only with its real window.
 - TikTok CSV columns: the nine required (`sku_id,title,description,availability,condition,price,link,image_link,brand`)
@@ -210,6 +214,29 @@ device), is beaconed like add_to_cart and forwarded server-side with its event i
 `generate_lead`. Each destination's optimisation events (`ad_destinations.event_selection`;
 null = all supported) are chosen in admin; purchases are always sent.
 
+Site signals (2026-10-01, `apps/web/src/lib/siteSignals.ts`, every page): `search` (the shop page
+opened with a search term; once per term per tab, so paging and sorting are not new searches),
+`sign_up` (a new account; the register page sets the five-minute `gp_signed_up` marker cookie, the
+next page reports one event and clears it) and `find_location` (a tap on a Google Maps link, i.e.
+the shop's directions). They go to GA4 like every canonical event and to Meta as `Search`,
+`CompleteRegistration` and `FindLocation`; no other platform has them mapped. A search carries
+its term (`search_term`, at most 120 characters): GA4 receives it as `search_term`, Meta as
+`custom_data.search_string`. Meta's setup guide also offers
+`AddToWishlist` and `Schedule`: the shop has no wishlist and takes no appointments, so neither is
+sent. `page_seen` (every storefront page, once per load) is the fourth: Meta receives it as `PageView`, the
+event its "all website visitors" and page-address audiences are built from. It is NOT forwarded to
+GA4 (the web container already reports page views there). Meta events also state `content_name`
+(one product) and `content_category`. A destination saved before these existed keeps its saved selection: tick the new events on
+`/admin/advertising` and save.
+
+Meta's contract for a website event (Conversions API parameters reference): `event_source_url`
+and `user_data.client_user_agent` are required. An event that has a match key but lacks either is
+not sent to be refused; it is recorded as `NO_BROWSER` (an order whose browser was never recorded,
+or whose record was erased on request) and the activity page says so.
+
+Browser check: `pnpm build && scripts/integration-env.sh scripts/qa/site-signals-check.sh` drives the
+three signals in real Chromium against local services and reads the queue back (13 checks).
+
 ## 7. Meta Conversions API: match keys without a Pixel
 
 The shop sends to Meta server to server and runs **no Meta Pixel** (owner decision 2026-09-19).
@@ -269,6 +296,24 @@ dataset or token exists.
 Not built, by choice: a browser Pixel (and therefore Pixel/server deduplication) is excluded by
 the server-side-only decision.
 
+
+### A quote request's contact on its Lead (2026-10-01)
+
+A quote request's confirmation page reports a `generate_lead` carrying the request's reference
+(`lead.ref`). For Meta, `quoteLeadContact` reads the email and phone the request itself gave, at send
+time, and only for a request made within the 30 minutes before the event; the queue holds the
+reference, never the contact. The diagnostics form can also send a TEST purchase (UGX 1,000, test
+code required) so Meta's validation of a sale is exercised before the first real one.
+
+### A signed-in customer's contact on browsing events (owner decision, 2026-10-01)
+
+Browsing events name only their visitor. When that visitor is signed in on the browser (the identity
+graph links the visitor id to an account), Meta's events also carry the account's email and phone,
+hashed as Meta specifies (`em`, `ph`). `VisitorContact.ts` reads them at SEND time; nothing about the
+customer is written to the queue. Meta only. The consent gate is asked with the account's user id as
+well as the browser's id, so an account that refused advertising is never sent, whatever the browser
+says.
+
 ## 8. Click-to-WhatsApp adverts (migration 0166)
 
 An advert whose button opens a WhatsApp chat is credited with a sale only if the sale is reported
@@ -302,6 +347,28 @@ What the owner must have: the number on the WhatsApp Business Platform (Cloud AP
 app alone sends no webhooks — Meta's coexistence onboarding keeps the app working alongside); a
 Meta app with the webhook above subscribed to `messages`; the WhatsApp account connected to the
 dataset; a token allowed `whatsapp_business_manage_events`.
+
+
+### WhatsApp sales credited to adverts WITHOUT the WhatsApp Business Platform (2026-10-01)
+
+The webhook route above needs the shop's number on the WhatsApp Business Platform. Until then, and
+alongside it afterwards, three pieces give the same result for adverts that send people to the site:
+
+1. **Every WhatsApp link on every page** (`lib/whatsappClicks`, registered by `BaseLayout`) adds
+   `Ref GP-XXXXXX` to the chat's first message, files which visitor the code was issued to
+   (`measurement.whatsapp_ref`) and reports the tap as a contact (Meta `Contact`).
+2. **`/wa`** (and `/wa?p=<product slug>`): the landing page for a Facebook or Instagram advert whose
+   aim is a WhatsApp chat. The advert is an ordinary website advert pointing at this URL, so the
+   visit records the advert's click id like any landing; the page shows one WhatsApp button and
+   never redirects by itself. Optimise the advert for the `Contact` event.
+3. **The reference code on a recorded sale** (`ad_offline_sales.whatsapp_ref`, migration 0167; the
+   "WhatsApp reference code" field on Advertising > Offline sales). The code alone is enough to
+   record a sale. At send time the click ids on that visitor's record (`fbc`, `gclid`, `ttclid` …)
+   travel with the sale when the click happened before the sale and within 30 days of it, with
+   the visitor's `external_id` and derived `fbp` for Meta. The visitor joins the sale's consent
+   subjects, so an advertising refusal still suppresses it. A code the site never issued is refused.
+
+Needs the Meta "Offline conversions" capability switched on (same dataset and token as the website).
 
 ## What the owner fills in
 

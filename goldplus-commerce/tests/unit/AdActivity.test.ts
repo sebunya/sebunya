@@ -21,6 +21,7 @@ describe('ad activity: outcomes and sentences', () => {
   const x = { platformName: 'X (Twitter) Ads' };
   it('says why an event was not sent, in the owner\'s terms — one sentence per stored reason', () => {
     expect(explainOutcome({ ...x, outcome: 'not_sent', raw: 'NO_X_CLICK' })).toMatch(/did not arrive from an X ad.*x_clicks/);
+    expect(explainOutcome({ platformName: 'Meta', outcome: 'not_sent', raw: 'NO_BROWSER' })).toMatch(/requires the page and the browser/);
     expect(explainOutcome({ ...x, outcome: 'not_sent', raw: 'NO_EVENT_ID' })).toMatch(/No event ID is saved.*Advertising page/);
     expect(explainOutcome({ ...x, outcome: 'not_sent', raw: 'NO_IDENTIFIER' })).toMatch(/Nothing X \(Twitter\) Ads can match on/);
     expect(explainOutcome({ platformName: 'Meta', outcome: 'not_sent', raw: 'IDENTITY_UNAVAILABLE' })).toMatch(/Nothing Meta can match on/);

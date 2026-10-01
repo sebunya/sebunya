@@ -14,6 +14,8 @@ export function recordQuoteLead(): void {
     let storage: Storage | null = null;
     try { storage = window.localStorage; } catch { storage = null; }
     if (leadAlreadySent(ref, storage)) return;
-    track('generate_lead', { lead: { method: 'quote_request' } });
+    // The reference travels with the lead so the server can find the request it
+    // confirms; the contact the customer gave stays on the server.
+    track('generate_lead', { lead: { method: 'quote_request', ref } });
   } catch { /* measurement never breaks a page */ }
 }
