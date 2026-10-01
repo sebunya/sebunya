@@ -8,6 +8,7 @@ import Notice from '../components/Notice.astro';
 import { apiBase } from '../lib/api';
 import SocialSignIn from '../components/auth/SocialSignIn.astro';
 import { SESSION_COOKIE_NAME } from '../lib/session';
+import { SIGNED_UP_COOKIE } from '../lib/siteSignalRules';
 import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../lib/requestOrigin';
 import {
   validateRegistration,
@@ -144,6 +145,9 @@ if (Astro.request.method === 'POST') {
             // Continuity, not correctness.
           }
         }
+        // Read and cleared by the next page's script, which reports ONE sign_up
+        // (lib/siteSignals). Five minutes, says nothing about the person.
+        Astro.cookies.set(SIGNED_UP_COOKIE, '1', { path: '/', httpOnly: false, sameSite: 'lax', maxAge: 300, secure: import.meta.env.PROD });
         return Astro.redirect(returnTo, 303);
       }
 

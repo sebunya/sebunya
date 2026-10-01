@@ -18,7 +18,7 @@ type Tally = Record<AdOutcome, number>;
 const zero = (): Tally => ({ sent: 0, not_sent: 0, failed: 0, waiting: 0 });
 const LABEL: Record<string, string> = { ...EARLY_SIGNAL_LABEL, purchase: 'Purchase' };
 // The order a shopper meets them in, so the table reads as a journey.
-const EVENT_ORDER = ['view_item', 'add_to_cart', 'begin_checkout', 'add_payment_info', 'generate_lead', 'purchase'];
+const EVENT_ORDER = ['view_item', 'add_to_cart', 'begin_checkout', 'add_payment_info', 'generate_lead', 'search', 'sign_up', 'find_location', 'purchase'];
 
 /**
  * Advertising activity (2026-10-01): for one platform and one window, where

@@ -210,6 +210,17 @@ device), is beaconed like add_to_cart and forwarded server-side with its event i
 `generate_lead`. Each destination's optimisation events (`ad_destinations.event_selection`;
 null = all supported) are chosen in admin; purchases are always sent.
 
+Site signals (2026-10-01, `apps/web/src/lib/siteSignals.ts`, every page): `search` (the shop page
+opened with a search term; once per term per tab, so paging and sorting are not new searches),
+`sign_up` (a new account; the register page sets the five-minute `gp_signed_up` marker cookie, the
+next page reports one event and clears it) and `find_location` (a tap on a Google Maps link, i.e.
+the shop's directions). They go to GA4 like every canonical event and to Meta as `Search`,
+`CompleteRegistration` and `FindLocation`; no other platform has them mapped. The search term is
+not a field of the event (it is in the page address). Meta's setup guide also offers
+`AddToWishlist` and `Schedule`: the shop has no wishlist and takes no appointments, so neither is
+sent. A destination saved before these existed keeps its saved selection: tick the new events on
+`/admin/advertising` and save.
+
 ## 7. Meta Conversions API: match keys without a Pixel
 
 The shop sends to Meta server to server and runs **no Meta Pixel** (owner decision 2026-09-19).

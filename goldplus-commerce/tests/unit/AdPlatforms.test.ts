@@ -82,6 +82,23 @@ describe('advertising platforms: request builders', () => {
     expect(quote.custom_data).toEqual({ currency: 'UGX', value: 500000 });
     expect(metaCustomData(purchase as never, 'Contact')).toEqual({ currency: 'UGX', value: 145000 });
   });
+  it('Meta: a search, a new account and a directions tap are its standard events, with no basket; a wishlist or a booking is never invented', () => {
+    const cfg = { datasetId: '1234567890123' };
+    const d = (name: string) => (buildAdRequest('meta', { ...purchase, event_name: name, source: 'browser', ecommerce: undefined, page_location: 'https://shopgoldplus.com/shop?search=charger' } as never, cfg, 'T')!.body as any).data[0];
+    for (const [ours, metas] of [['search', 'Search'], ['sign_up', 'CompleteRegistration'], ['find_location', 'FindLocation']] as const) {
+      const e = d(ours);
+      expect(e.event_name).toBe(metas);
+      expect(e.action_source).toBe('website');
+      expect(e.event_source_url).toBe('https://shopgoldplus.com/shop?search=charger');   // required by Meta for a website event
+      expect(e.user_data.client_user_agent).toBe('UA');                                    // required by Meta for a website event
+      expect(e).not.toHaveProperty('custom_data');
+    }
+    const sent = Object.values(AD_PLATFORMS.find((p) => p.key === 'meta')!.events);
+    expect(sent).not.toContain('AddToWishlist');
+    expect(sent).not.toContain('Schedule');
+    // Only Meta has these three; no other platform is sent an event it has no name for.
+    for (const p of AD_PLATFORMS.filter((x) => x.key !== 'meta')) for (const n of ['search', 'sign_up', 'find_location']) expect((p.events as Record<string, string>)[n]).toBeUndefined();
+  });
   it('Meta: its own account of a refusal is kept — code, subcode, message, trace id — and a rate limit is not a final answer', () => {
     const body = (e: object) => JSON.stringify({ error: e });
     const token = metaErrorSummary(400, body({ message: 'Error validating access token: Session has expired', type: 'OAuthException', code: 190, error_subcode: 463, fbtrace_id: 'AbC123' }))!;

@@ -111,6 +111,13 @@ export const CANONICAL_EVENT_NAMES = [
   // A WhatsApp click or a quote request (GA4's recommended lead event). Sent
   // to ad platforms as their lead/contact event where the owner selected it.
   'generate_lead',
+  // Three things a visitor does on the site besides shopping the basket: a
+  // product search, a new account, and opening the shop's map for directions.
+  // Sent to an ad platform only where it has a standard event for it and the
+  // owner selected it (Meta: Search, CompleteRegistration, FindLocation).
+  'search',
+  'sign_up',
+  'find_location',
   'purchase',  // SERVER-SIDE ONLY — guarded in router-level middleware
   'refund',    // SERVER-SIDE ONLY — a sent purchase whose order was cancelled
 ] as const;

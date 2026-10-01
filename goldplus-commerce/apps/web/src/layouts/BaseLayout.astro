@@ -350,6 +350,9 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
       // not only on product and checkout pages — so the identity graph can
       // hand it to the ad platforms for every later event (2026-10-01).
       captureClickIdsServerSide();
+      // A product search, a new account, the shop's map opened (lib/siteSignals).
+      import { recordSiteSignals } from '../lib/siteSignals';
+      recordSiteSignals();
     </script>
 
     <script>

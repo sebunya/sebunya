@@ -44,7 +44,7 @@ if (Astro.request.method === "POST") {
 // rendered the checklist but never the forms).
 const list = await call("GET", "");
 const checklist = await call("GET", "/checklist");
-const EVENT_LABEL: Record<string, string> = { view_item: "Product view", add_to_cart: "Add to cart", begin_checkout: "Checkout started", add_payment_info: "Payment method chosen", generate_lead: "Lead (WhatsApp click or quote request)" };
+const EVENT_LABEL: Record<string, string> = { view_item: "Product view", add_to_cart: "Add to cart", begin_checkout: "Checkout started", add_payment_info: "Payment method chosen", generate_lead: "Lead (WhatsApp click or quote request)", search: "Product search", sign_up: "Account created", find_location: "Shop directions opened" };
 const STATE: Record<string, [string, string]> = {
   LIVE: ["Live — sending conversions", "bg-emerald-100 text-emerald-900"],
   TEST: ["Test — sending to the platform's test channel", "bg-sky-100 text-sky-900"],

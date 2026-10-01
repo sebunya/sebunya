@@ -12,7 +12,7 @@ import type { CanonicalTelemetryEvent } from '@goldplus/shared';
  * The rest are listed with the honest reason they are not (never simulated).
  */
 
-export type AdEventName = 'view_item' | 'add_to_cart' | 'begin_checkout' | 'add_payment_info' | 'generate_lead' | 'purchase';
+export type AdEventName = 'view_item' | 'add_to_cart' | 'begin_checkout' | 'add_payment_info' | 'generate_lead' | 'search' | 'sign_up' | 'find_location' | 'purchase';
 export interface AdRequest { url: string; headers: Record<string, string>; body?: unknown; method?: 'POST' | 'GET' }
 /**
  * Why nothing was sent, recorded on the queue row. Before 2026-10-01 every
@@ -233,14 +233,17 @@ export const metaMatchable = (userData: Record<string, unknown>): boolean =>
 
 /**
  * What the event was about. A purchase always states its value, currency and
- * order number; a basket or checkout event states the products; a lead or a
- * chat tap has no basket, and is not given an empty one.
+ * order number; a basket or checkout event states the products; a lead, a
+ * chat tap, a search, a new account or a directions tap has no basket, and is
+ * not given an empty one.
  */
+const META_EVENTS_WITHOUT_BASKET = new Set(['Lead', 'Contact', 'Search', 'CompleteRegistration', 'FindLocation']);
+
 export function metaCustomData(e: CanonicalTelemetryEvent, metaEventName: string): Record<string, unknown> | null {
   const list = items(e).filter((i) => i.item_id);
   const count = list.reduce((s, i) => s + (i.quantity ?? 1), 0);
   const v = value(e);
-  if (metaEventName === 'Lead' || metaEventName === 'Contact') {
+  if (META_EVENTS_WITHOUT_BASKET.has(metaEventName)) {
     return v > 0 ? { currency: e.ecommerce?.currency ?? 'UGX', value: v } : null;
   }
   const out: Record<string, unknown> = { currency: e.ecommerce?.currency ?? 'UGX', value: v };
@@ -298,7 +301,11 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
     secretLabel: 'Conversions API access token',
     // generate_lead: a quote request (the customer submitted their details) is a
     // Lead; a WhatsApp chat tap is a Contact (Meta standard events).
-    events: { view_item: 'ViewContent', add_to_cart: 'AddToCart', begin_checkout: 'InitiateCheckout', add_payment_info: 'AddPaymentInfo', generate_lead: 'Lead', purchase: 'Purchase' },
+    // search / sign_up / find_location: Meta's Search, CompleteRegistration and
+    // FindLocation. AddToWishlist and Schedule are not sent: the shop has no
+    // wishlist and takes no appointments, and an event is never invented.
+    events: { view_item: 'ViewContent', add_to_cart: 'AddToCart', begin_checkout: 'InitiateCheckout', add_payment_info: 'AddPaymentInfo', generate_lead: 'Lead',
+      search: 'Search', sign_up: 'CompleteRegistration', find_location: 'FindLocation', purchase: 'Purchase' },
     build(e, cfg, token) {
       const mapped = this.events[e.event_name as AdEventName]; if (!mapped) return null;
       const name = e.event_name === 'generate_lead' ? (leadMethod(e) === 'quote_request' ? 'Lead' : 'Contact') : mapped;

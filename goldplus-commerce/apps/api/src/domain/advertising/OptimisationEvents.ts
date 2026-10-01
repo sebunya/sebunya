@@ -3,7 +3,7 @@
  * README, "Early signals"). The purchase is always sent: it is the sale, and
  * it travels through the durable delivery path, not this selection.
  */
-export const EARLY_SIGNAL_EVENTS = ['view_item', 'add_to_cart', 'begin_checkout', 'add_payment_info', 'generate_lead'] as const;
+export const EARLY_SIGNAL_EVENTS = ['view_item', 'add_to_cart', 'begin_checkout', 'add_payment_info', 'generate_lead', 'search', 'sign_up', 'find_location'] as const;
 export type EarlySignalEvent = typeof EARLY_SIGNAL_EVENTS[number];
 
 export const EARLY_SIGNAL_LABEL: Record<EarlySignalEvent, string> = {
@@ -12,6 +12,9 @@ export const EARLY_SIGNAL_LABEL: Record<EarlySignalEvent, string> = {
   begin_checkout: 'Checkout started',
   add_payment_info: 'Payment method chosen',
   generate_lead: 'Lead (WhatsApp click or quote request)',
+  search: 'Product search',
+  sign_up: 'Account created',
+  find_location: 'Shop directions opened',
 };
 
 /**
