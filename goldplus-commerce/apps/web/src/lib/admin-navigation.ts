@@ -255,6 +255,13 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Connection checklist per platform, server-side conversions (Test or Live), optimisation events, catalogue feed URLs, write-only tokens.'
   },
   {
+    label: 'Ad activity',
+    href: '/admin/advertising/activity',
+    group: 'Measurement',
+    status: 'working',
+    description: 'What was sent to each ad platform, what was not and why: arrivals from its ads, events raised, day by day, and the latest deliveries.'
+  },
+  {
     label: 'Ad audiences',
     href: '/admin/advertising/audiences',
     group: 'Measurement',
