@@ -1,3 +1,4 @@
+import { isMetaBrowserId, isMetaClickId } from '../../domain/advertising/MetaIdentifiers';
 import crypto from 'crypto';
 import type { CanonicalTelemetryEvent } from '@goldplus/shared';
 
@@ -19,7 +20,7 @@ export interface AdRequest { url: string; headers: Record<string, string>; body?
  * so "no event ID saved", "the visitor did not come from our ad" and
  * "nothing to match on" could not be told apart afterwards.
  */
-export type AdSkipReason = 'NO_EVENT_ID' | 'NO_X_CLICK' | 'NO_IDENTIFIER';
+export type AdSkipReason = 'NO_EVENT_ID' | 'NO_X_CLICK' | 'NO_IDENTIFIER' | 'NO_TEST_CODE';
 
 export interface AdPlatformDef {
   key: string;
@@ -44,6 +45,12 @@ export interface AdPlatformDef {
   accepts?: (eventName: string, cfg: Record<string, string>) => boolean;
   /** Why build() returned null, as a stable code the activity page can explain. Absent = NO_IDENTIFIER. */
   skipReason?: (e: CanonicalTelemetryEvent, cfg: Record<string, string>) => AdSkipReason;
+  /**
+   * The platform's own account of a refusal, from its response body: a
+   * message safe to store and show, whether it is worth retrying although the
+   * HTTP status says otherwise, and whether it is about the credentials.
+   */
+  errorSummary?: (status: number, body: string) => { message: string; transient: boolean; credentials: boolean } | null;
   /** When not implementable yet: why (shown as-is in admin). */
   unavailable?: string;
   /** The platform documents a test channel (test event code / validate-only) and the builder uses it. */
@@ -178,6 +185,92 @@ function postback(key: string, name: string, where: string): AdPlatformDef {
   };
 }
 
+// ── Meta Conversions API ─────────────────────────────────────────────────────
+
+const HEX64 = /^[0-9a-f]{64}$/;
+const hashed = (v: unknown): string[] | undefined => (typeof v === 'string' && HEX64.test(v) ? [v] : undefined);
+
+/**
+ * Meta's customer information parameters, each in the form Meta documents
+ * (Conversions API > Customer information parameters): em, ph, fn, ln, ct and
+ * country are SHA-256 hashes; the click id (fbc), the browser id (fbp), the
+ * IP address and the user agent are never hashed. A value that is not the
+ * shape Meta expects is left out rather than sent to be rejected.
+ */
+export function metaUserData(e: CanonicalTelemetryEvent): Record<string, unknown> {
+  const ud = u(e) as Record<string, unknown>;
+  const out: Record<string, unknown> = {
+    em: hashed(ud.hashed_email), ph: hashed(ud.hashed_phone),
+    fn: hashed(ud.hashed_first_name), ln: hashed(ud.hashed_last_name), ct: hashed(ud.hashed_city), country: hashed(ud.hashed_country),
+    external_id: extId(e) ? [extId(e)] : undefined,
+    fbc: isMetaClickId(ud.fbc) ? ud.fbc : undefined,
+    fbp: isMetaBrowserId(ud.fbp) ? ud.fbp : undefined,
+    client_ip_address: typeof ud.ip_address === 'string' && ud.ip_address ? ud.ip_address : undefined,
+    client_user_agent: typeof ud.user_agent === 'string' && ud.user_agent ? ud.user_agent : undefined,
+  };
+  return Object.fromEntries(Object.entries(out).filter(([, v]) => v !== undefined));
+}
+
+/** Which of Meta's match keys an event carries, strongest first (shown to the owner; never the values). */
+export const META_MATCH_KEYS = ['em', 'ph', 'fbc', 'fbp', 'external_id', 'fn', 'ln', 'ct', 'country', 'client_ip_address', 'client_user_agent'] as const;
+
+/** True when the event has something Meta can match a person on (more than an IP address and a browser). */
+export const metaMatchable = (userData: Record<string, unknown>): boolean =>
+  ['em', 'ph', 'fbc', 'fbp', 'external_id'].some((k) => userData[k] !== undefined);
+
+/**
+ * What the event was about. A purchase always states its value, currency and
+ * order number; a basket or checkout event states the products; a lead or a
+ * chat tap has no basket, and is not given an empty one.
+ */
+export function metaCustomData(e: CanonicalTelemetryEvent, metaEventName: string): Record<string, unknown> | null {
+  const list = items(e).filter((i) => i.item_id);
+  const count = list.reduce((s, i) => s + (i.quantity ?? 1), 0);
+  const v = value(e);
+  if (metaEventName === 'Lead' || metaEventName === 'Contact') {
+    return v > 0 ? { currency: e.ecommerce?.currency ?? 'UGX', value: v } : null;
+  }
+  const out: Record<string, unknown> = { currency: e.ecommerce?.currency ?? 'UGX', value: v };
+  if (list.length) {
+    out.content_type = 'product';
+    out.content_ids = list.map((i) => String(i.item_id));
+    out.contents = list.map((i) => ({ id: String(i.item_id), quantity: i.quantity ?? 1, ...(typeof i.price === 'number' ? { item_price: i.price } : {}) }));
+    out.num_items = count;
+  }
+  if (metaEventName === 'Purchase' && e.ecommerce?.transaction_id) out.order_id = e.ecommerce.transaction_id;
+  return out;
+}
+
+/**
+ * Graph API error codes that mean "try again later", although Meta answers
+ * them with HTTP 400: 1 and 2 (temporary API problems), 4, 17, 32, 613 and
+ * 80004 (rate limits). Treated as permanent, as every other 4xx is, they
+ * dead-lettered events Meta would have accepted a minute later.
+ */
+const META_TRANSIENT_CODES = new Set([1, 2, 4, 17, 32, 613, 80004]);
+
+/**
+ * Meta's own account of a refusal, kept: code, subcode, the message written
+ * for the advertiser, and the trace id Meta support asks for. The Graph error
+ * body names parameters and limits; it does not echo customer data.
+ */
+export function metaErrorSummary(_status: number, body: string): { message: string; transient: boolean; credentials: boolean } | null {
+  let j: { error?: { message?: unknown; code?: unknown; error_subcode?: unknown; error_user_title?: unknown; error_user_msg?: unknown; fbtrace_id?: unknown; is_transient?: unknown } } | null = null;
+  try { j = JSON.parse(body); } catch { return null; }
+  const er = j?.error;
+  if (!er || typeof er !== 'object') return null;
+  const code = Number(er.code);
+  const sub = er.error_subcode != null ? Number(er.error_subcode) : null;
+  const text = [er.error_user_title, er.error_user_msg].filter((t) => typeof t === 'string' && t).join(': ') || (typeof er.message === 'string' ? er.message : 'no message');
+  const trace = typeof er.fbtrace_id === 'string' && er.fbtrace_id ? ` (fbtrace_id ${er.fbtrace_id})` : '';
+  return {
+    message: `Meta error ${Number.isFinite(code) ? code : '?'}${sub != null && Number.isFinite(sub) ? `/${sub}` : ''}: ${String(text).slice(0, 220)}${trace}`,
+    transient: er.is_transient === true || META_TRANSIENT_CODES.has(code),
+    // 190: the access token is expired, revoked or malformed. 102: the session is no longer valid.
+    credentials: code === 190 || code === 102,
+  };
+}
+
 export const AD_PLATFORMS: AdPlatformDef[] = [
   {
     key: 'meta', name: 'Meta (Facebook, Instagram, WhatsApp ads)', testable: true,
@@ -191,21 +284,31 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
       const mapped = this.events[e.event_name as AdEventName]; if (!mapped) return null;
       const name = e.event_name === 'generate_lead' ? (leadMethod(e) === 'quote_request' ? 'Lead' : 'Contact') : mapped;
       if (inTest(cfg) && !cfg.testEventCode) return null;
-      const ud = u(e);
+      const user_data = metaUserData(e);
+      // Meta needs something to match the event to a person. An IP address and
+      // a user agent alone are not that: an event with nothing else is not sent.
+      if (!metaMatchable(user_data)) return null;
+      const custom_data = metaCustomData(e, name);
       return {
         // The token travels in the Authorization header, never in the URL (proxy and access logs keep URLs).
         url: `https://graph.facebook.com/${META_GRAPH_VERSION}/${cfg.datasetId}/events`,
         headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
         body: { ...(inTest(cfg) ? { test_event_code: cfg.testEventCode } : {}), data: [{
           event_name: name, event_time: e.event_time, event_id: e.event_id, action_source: 'website',
+          // Required by Meta for a website event.
           event_source_url: e.page_location,
-          user_data: { em: ud.hashed_email ? [ud.hashed_email] : undefined, ph: ud.hashed_phone ? [ud.hashed_phone] : undefined,
-            external_id: extId(e) ? [extId(e)] : undefined, client_ip_address: ud.ip_address, client_user_agent: ud.user_agent, fbc: ud.fbc, fbp: ud.fbp },
-          custom_data: { currency: e.ecommerce?.currency ?? 'UGX', value: value(e), content_ids: ids(e), content_type: 'product',
-            contents: items(e).map((i) => ({ id: i.item_id, quantity: i.quantity ?? 1, item_price: i.price })), order_id: e.ecommerce?.transaction_id },
+          user_data,
+          ...(custom_data ? { custom_data } : {}),
+          // Stated, not left to a default: no Limited Data Use restriction applies to these events.
+          data_processing_options: [],
         }] },
       };
     },
+    skipReason(e, cfg) {
+      if (inTest(cfg) && !cfg.testEventCode) return 'NO_TEST_CODE';
+      return 'NO_IDENTIFIER';
+    },
+    errorSummary: metaErrorSummary,
   },
   {
     key: 'tiktok', name: 'TikTok', testable: true,
@@ -462,6 +565,8 @@ export const adPlatformAccepts = (key: string, eventName: string, cfg: Record<st
   const p = adPlatform(key);
   return !!p?.events[eventName as AdEventName] && (p.accepts ? p.accepts(eventName, cfg) : true);
 };
+/** The platform's own account of a refusal, when it gives one (see AdPlatformDef.errorSummary). */
+export const adErrorSummary = (key: string, status: number, body: string) => adPlatform(key)?.errorSummary?.(status, body) ?? null;
 /** The stable code for "built nothing", to record on the row. */
 export const adSkipReason = (key: string, e: CanonicalTelemetryEvent, cfg: Record<string, string>): AdSkipReason =>
   adPlatform(key)?.skipReason?.(e, cfg) ?? 'NO_IDENTIFIER';

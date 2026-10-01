@@ -1,6 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { orderAttribution } from '../schema/orderAttribution';
+import { isMetaClickId } from '../../../domain/advertising/MetaIdentifiers';
 
 const clean = (v: unknown, max: number): string | null => {
   if (v == null) return null;
@@ -9,13 +10,16 @@ const clean = (v: unknown, max: number): string | null => {
 };
 
 // `src`: the utm_source of the click (tells networks sharing `clickid` apart).
-const CLICK_KEYS = new Set(['gclid', 'wbraid', 'gbraid', 'ttclid', 'twclid', 'li_fat_id', 'epik', 'msclkid', 'ScCid', 'clickid', 'click_id', 'src']);
+// `fbc`: Meta's click id, built in the browser from the landing URL's fbclid (lib/attribution).
+const CLICK_KEYS = new Set(['gclid', 'wbraid', 'gbraid', 'ttclid', 'twclid', 'li_fat_id', 'epik', 'msclkid', 'ScCid', 'clickid', 'click_id', 'src', 'fbc']);
 /** Only known click-id keys, short printable values; null when none. */
 function cleanClickIds(v: unknown): Record<string, string> | null {
   if (!v || typeof v !== 'object') return null;
   const out: Record<string, string> = {};
   for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-    if (CLICK_KEYS.has(k) && typeof val === 'string' && /^[\x21-\x7e]{1,512}$/.test(val)) out[k] = val;
+    if (!CLICK_KEYS.has(k) || typeof val !== 'string' || !/^[\x21-\x7e]{1,512}$/.test(val)) continue;
+    if (k === 'fbc' && !isMetaClickId(val)) continue;
+    out[k] = val;
   }
   return Object.keys(out).length ? out : null;
 }

@@ -84,6 +84,8 @@ export interface CheckoutAttribution {
 }
 
 const CLICK_KEYS = ['gclid', 'wbraid', 'gbraid', 'ttclid', 'twclid', 'li_fat_id', 'epik', 'msclkid', 'ScCid', 'clickid', 'click_id'];
+/** What the record holds: the URL parameters above, plus Meta's click id built from `fbclid`. */
+const STORED_CLICK_KEYS = [...CLICK_KEYS, 'fbc'];
 const CLICK_STORE = '_gp_ad_click';
 const CLICK_WINDOW_MS = 30 * 864e5;
 
@@ -101,6 +103,16 @@ export function recordAdClick(): void {
     const p = new URLSearchParams(location.search);
     const ids: Record<string, string> = {};
     for (const k of CLICK_KEYS) { const v = p.get(k); if (v && v.length <= 512) ids[k] = v; }
+    // Meta: the shop runs no Pixel, so nothing else records Meta's click. The
+    // click id is built here, in Meta's format (fb.1.<first observed, ms>.<fbclid>),
+    // from the fbclid on the landing URL — used exactly as received (it is case
+    // sensitive). A reload of the same landing URL keeps the first time.
+    const fbclid = p.get('fbclid');
+    if (fbclid && /^[A-Za-z0-9_-]{8,500}$/.test(fbclid)) {
+      let prior = '';
+      try { prior = String(JSON.parse(localStorage.getItem(CLICK_STORE) || '{}')?.ids?.fbc ?? ''); } catch { /* unreadable: treat as a new click */ }
+      ids.fbc = prior.endsWith(`.${fbclid}`) ? prior : `fb.1.${Date.now()}.${fbclid}`;
+    }
     if (Object.keys(ids).length === 0) return;
     localStorage.setItem(CLICK_STORE, JSON.stringify({ ids, src: (p.get('utm_source') || '').toLowerCase().slice(0, 60), at: Date.now() }));
   } catch { /* storage unavailable */ }
@@ -111,7 +123,7 @@ function recentClickIds(): Record<string, string> {
     const raw = JSON.parse(localStorage.getItem(CLICK_STORE) || '{}');
     if (!raw.at || Date.now() - Number(raw.at) > CLICK_WINDOW_MS) return {};
     const out: Record<string, string> = {};
-    for (const k of CLICK_KEYS) if (typeof raw.ids?.[k] === 'string') out[k] = raw.ids[k];
+    for (const k of STORED_CLICK_KEYS) if (typeof raw.ids?.[k] === 'string') out[k] = raw.ids[k];
     if (Object.keys(out).length && raw.src) out.src = String(raw.src);
     return out;
   } catch {

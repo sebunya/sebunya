@@ -6,7 +6,8 @@ import { env } from '../../config/env';
 import { logger } from '../logging/logger';
 import { environmentOf } from '../../domain/measurement/BusinessEvents';
 import { ga4CollectHit } from '../telemetry/Ga4CollectHit';
-import { adPlatform, buildAdRequest, hashEmail, hashEmailGoogle, hashPhone, hashPhonePlus, xSendScope } from '../advertising/AdPlatforms';
+import { adErrorSummary, adPlatform, adSkipReason, buildAdRequest, hashEmail, hashEmailGoogle, hashPhone, hashPhonePlus } from '../advertising/AdPlatforms';
+import { isMetaClickId, metaBrowserIdFromVisitor, metaCustomerHashes } from '../../domain/advertising/MetaIdentifiers';
 import { DrizzleAdDestinationRepository } from '../db/repositories/DrizzleAdDestinationRepository';
 import { IntegrationCredentialVault } from '../seo/IntegrationCredentialVault';
 import { advertisingRefused } from './AdvertisingConsentGate';
@@ -243,7 +244,8 @@ async function killSwitchOn(): Promise<boolean> {
 
 /** Just-in-time identity: order contact + visitor/click context. Never queued, never logged. */
 async function loadIdentity(orderId: string) {
-  const o = rows(await db.execute(sql`select user_id, customer_email, customer_phone from orders where id = ${orderId}::uuid`))[0] ?? {};
+  const o = rows(await db.execute(sql`select user_id, customer_email, customer_phone, customer_name, delivery_location from orders where id = ${orderId}::uuid`))[0] ?? {};
+  const loc = (typeof o.delivery_location === 'string' ? (() => { try { return JSON.parse(o.delivery_location); } catch { return null; } })() : o.delivery_location) ?? {};
   const a = rows(await db.execute(sql`select fp_client_id, client_ip, user_agent, ga_session_id, ga_session_number, click_ids from order_attribution where order_id = ${orderId}::uuid`))[0] ?? {};
   const ck: Record<string, string> = (typeof a.click_ids === 'string' ? JSON.parse(a.click_ids) : a.click_ids) ?? {};
   const netParam = ck.clickid ? 'clickid' : ck.click_id ? 'click_id' : undefined;
@@ -253,8 +255,26 @@ async function loadIdentity(orderId: string) {
     hashed_email: hashEmail(o.customer_email), hashed_email_google: hashEmailGoogle(o.customer_email),
     hashed_phone: hashPhone(o.customer_phone), hashed_phone_plus: hashPhonePlus(o.customer_phone),
     gclid: ck.gclid, gbraid: ck.gbraid, wbraid: ck.wbraid, ttclid: ck.ttclid, twclid: ck.twclid, msclkid: ck.msclkid, sccid: ck.ScCid, epik: ck.epik,
+    // Meta: the click id the browser built from the landing URL's fbclid, and a
+    // browser id derived from the visitor id (the shop runs no Pixel).
+    fbc: isMetaClickId(ck.fbc) ? ck.fbc : undefined, fbp: metaBrowserIdFromVisitor(a.fp_client_id) ?? undefined,
+    // What the order itself states: the name typed at checkout, the delivery
+    // district, and Uganda (every order is delivered there). Hashed, Meta's rules.
+    ...metaCustomerHashes({ customerName: o.customer_name, city: loc.district, country: 'UG' }),
     ...(netParam ? { network_click_id: ck[netParam], network_click_param: netParam, network_click_source: ck.src } : {}),
   };
+}
+
+/**
+ * The storefront's public origin: PUBLIC_SITE_ORIGIN when set, otherwise the
+ * origin the payment gateway returns the shopper to (always the storefront).
+ * Null when neither is a URL: the event then carries no page, as before.
+ */
+export function storefrontOrigin(): string | null {
+  for (const candidate of [process.env.PUBLIC_SITE_ORIGIN, env.pesapalCallbackUrl]) {
+    try { if (candidate) { const u = new URL(candidate); if (u.protocol === 'https:' || u.protocol === 'http:') return u.origin; } } catch { /* not a URL */ }
+  }
+  return null;
 }
 
 /** The business event as the wire event the GA4/ad builders take. */
@@ -270,6 +290,9 @@ export function toCanonical(ev: { event_id: string; event_name: string; occurred
     event_id: ev.event_id,
     event_time: Math.floor(new Date(ev.occurred_at).getTime() / 1000),
     source: 'server',
+    // Where the sale happened. Meta requires it for a website event; it was
+    // absent from every purchase until 2026-10-01.
+    ...(storefrontOrigin() ? { page_location: `${storefrontOrigin()}/checkout` } : {}),
     user_data: Object.fromEntries(Object.entries(identity).filter(([, v]) => v != null && v !== '')) as never,
     ecommerce: { transaction_id: p.orderNumber, value, currency: 'UGX', ...(isRefund ? {} : { items }), ...(Number(p.collectedDeliveryUGX) > 0 ? { shipping: Number(p.collectedDeliveryUGX) } : {}) },
   } as CanonicalTelemetryEvent;
@@ -298,8 +321,10 @@ async function buildRequest(sink: string, canonical: CanonicalTelemetryEvent): P
     try { secret = String(vault.decrypt<{ apiKey: string }>(dest.secretEnc).apiKey ?? ''); } catch { return { req: null, defer: 'CREDENTIALS_UNVERIFIED' }; }
   }
   const r = buildAdRequest(platform, canonical, dest.config, secret);
-  // For X this is the normal case, not a fault: the order did not come from an X click.
-  if (!r) return { req: null, suppress: platform === 'x' && xSendScope(dest.config) === 'x_clicks' && !canonical.user_data?.twclid ? 'NO_X_CLICK' : 'IDENTITY_UNAVAILABLE' };
+  // For X this is the normal case, not a fault: the order did not come from an
+  // X click. The platform names which reason it was (the same codes the
+  // browsing-event queue records); "nothing to match on" keeps its older name here.
+  if (!r) { const why = adSkipReason(platform, canonical, dest.config); return { req: null, suppress: why === 'NO_IDENTIFIER' ? 'IDENTITY_UNAVAILABLE' : why }; }
   const auth = def.authorize ? await def.authorize(r, dest.config, secret) : {};
   return { req: { url: r.url, method: r.method ?? 'POST', headers: { ...r.headers, ...auth }, body: r.method === 'GET' ? undefined : JSON.stringify(r.body),
     replyError: def.replyError ? (t) => { try { return def.replyError!(JSON.parse(t)); } catch { return null; } } : undefined } };
@@ -385,19 +410,26 @@ export async function deliverOne(deliveryId: string, generation: number, fetchIm
     net = code === 'ECONNREFUSED' || code === 'ENOTFOUND' || code === 'EAI_AGAIN' ? 'before-send' : 'after-send';
   }
   const replyError = status != null && status < 300 && req.replyError ? req.replyError(text) : null;
-  const c = classifyResponse(status, replyError, net);
-  const safeCode = c.code === 'OK' ? null : `${c.code}${replyError ? `: ${replyError.slice(0, 120)}` : ''}`;
+  const platform = sink.startsWith('ad:') ? sink.split(':')[1] : null;
+  // The platform's own account of a refusal (Meta: code, subcode, its message,
+  // its trace id). It used to be discarded here: a refused purchase showed
+  // only "HTTP_400". It also says when a 4xx is really a rate limit.
+  const told = platform && status != null && status >= 300 ? adErrorSummary(platform, status, text) : null;
+  let c: { kind: 'accepted' | 'retry' | 'unknown' | 'permanent'; code: string } = classifyResponse(status, replyError, net);
+  if (told && c.kind === 'permanent') c = told.transient ? { kind: 'retry', code: 'PROVIDER_TRANSIENT' } : told.credentials ? { kind: 'permanent', code: 'CREDENTIALS' } : c;
+  const detail = replyError ?? told?.message ?? null;
+  const why = `${c.code}${detail ? `: ${detail.slice(0, 260)}` : ''}`;
+  const safeCode = c.code === 'OK' ? null : why;
   await db.transaction(async (tx) => {
     await tx.execute(sql`update measurement.delivery_attempt set finished_at = now(), outcome = ${c.kind.toUpperCase()}, http_status = ${status}, provider_code = ${safeCode},
       retry_after_at = ${retryAfter ? sql`now() + ${`${Math.min(86400, Math.max(0, Number(retryAfter) || 60))} seconds`}::interval` : sql`null`}
       where attempt_id = ${attemptId}::uuid`);
   });
-  const platform = sink.startsWith('ad:') ? sink.split(':')[1] : null;
   if (c.kind === 'accepted') { await finish(deliveryId, token, 'ACCEPTED', 'OK', { accepted: true }); if (platform) await adRepo.recordResult(platform, true).catch(() => undefined); return 'ACCEPTED'; }
-  if (platform) await adRepo.recordResult(platform, false, `${c.code}${status ? ` (HTTP ${status})` : ''}`).catch(() => undefined);
+  if (platform) await adRepo.recordResult(platform, false, `${why}${status ? ` (HTTP ${status})` : ''}`).catch(() => undefined);
   if (c.kind === 'unknown') { await finish(deliveryId, token, 'UNKNOWN_OUTCOME', c.code); return 'UNKNOWN_OUTCOME'; }
-  if (c.kind === 'retry' && attemptNo - Number(claimed.attempts_at_replay ?? 0) < MAX_ATTEMPTS) { await finish(deliveryId, token, 'RETRY_WAIT', c.code, { nextAt: new Date(Date.now() + nextAttemptDelayMs(attemptNo, retryAfter)) }); return 'RETRY_WAIT'; }
-  await finish(deliveryId, token, 'DEAD_LETTER', c.code);
+  if (c.kind === 'retry' && attemptNo - Number(claimed.attempts_at_replay ?? 0) < MAX_ATTEMPTS) { await finish(deliveryId, token, 'RETRY_WAIT', why, { nextAt: new Date(Date.now() + nextAttemptDelayMs(attemptNo, retryAfter)) }); return 'RETRY_WAIT'; }
+  await finish(deliveryId, token, 'DEAD_LETTER', why);
   logger.warn({ deliveryId, sink, code: c.code, status }, '[Delivery] dead-lettered');
   return 'DEAD_LETTER';
 }

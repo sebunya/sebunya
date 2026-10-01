@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AD_PLATFORMS, buildAdRequest, adPlatformAccepts, adSkipReason, xSendScope, X_EVENT_FIELD, hashEmail, hashPhone, hashPhonePlus, normalisePhoneUg, linkedInVersion, META_GRAPH_VERSION } from '../../apps/api/src/infrastructure/advertising/AdPlatforms';
+import { AD_PLATFORMS, buildAdRequest, adPlatformAccepts, adSkipReason, adErrorSummary, metaUserData, metaMatchable, metaCustomData, metaErrorSummary, xSendScope, X_EVENT_FIELD, hashEmail, hashPhone, hashPhonePlus, normalisePhoneUg, linkedInVersion, META_GRAPH_VERSION } from '../../apps/api/src/infrastructure/advertising/AdPlatforms';
 import { AdDestinationUseCases } from '../../apps/api/src/application/use-cases/advertising/AdDestinationUseCases';
 
 const purchase: any = {
@@ -27,6 +27,76 @@ describe('advertising platforms: request builders', () => {
     expect([d.event_name, d.action_source, d.event_id, d.custom_data.value, d.custom_data.order_id, d.custom_data.currency]).toEqual(['Purchase', 'website', purchase.event_id, 145000, 'GP-1', 'UGX']);
     expect(d.user_data.em[0]).toMatch(/^[0-9a-f]{64}$/);
     expect(d.user_data.client_ip_address).toBe('41.84.203.125');
+  });
+  it('Meta: every match key the event carries is sent in Meta\'s form; a malformed one is left out, not sent to be rejected', () => {
+    const fbc = 'fb.1.1790841536221.IwAR2xQzAbC_dEf-GhIjKlMnOp';
+    const fbp = 'fb.1.1790841536221.4821093375';
+    const h = (c: string) => c.repeat(64);
+    const r = buildAdRequest('meta', { ...purchase, user_data: { ...purchase.user_data, fbc, fbp,
+      hashed_first_name: h('a'), hashed_last_name: h('b'), hashed_city: h('c'), hashed_country: h('d') } } as never, { datasetId: '1234567890123' }, 'T')!;
+    const ud = (r.body as any).data[0].user_data;
+    expect(Object.keys(ud).sort()).toEqual(['client_ip_address', 'client_user_agent', 'country', 'ct', 'em', 'external_id', 'fbc', 'fbp', 'fn', 'ln', 'ph']);
+    expect([ud.fn, ud.ln, ud.ct, ud.country]).toEqual([[h('a')], [h('b')], [h('c')], [h('d')]]);
+    expect([ud.fbc, ud.fbp]).toEqual([fbc, fbp]);                        // never hashed, never altered
+    expect(ud.external_id[0]).toMatch(/^[0-9a-f]{64}$/);
+    expect(ud.client_user_agent).toBe('UA');
+    // No key is sent as undefined or empty.
+    expect(JSON.stringify(ud)).not.toMatch(/null|undefined|\[\]/);
+    const bad = buildAdRequest('meta', { ...purchase, user_data: { ...purchase.user_data, fbc: 'IwAR-raw-fbclid-not-a-click-id', fbp: 'GA1.2.3.4', hashed_city: 'wakiso' } } as never, { datasetId: '1234567890123' }, 'T')!;
+    const bu = (bad.body as any).data[0].user_data;
+    expect(bu.fbc).toBeUndefined(); expect(bu.fbp).toBeUndefined(); expect(bu.ct).toBeUndefined();
+    expect(metaUserData(purchase as never)).toEqual(bu);
+  });
+  it('Meta: an event with nothing to match a person on is not sent — an IP address and a browser are not a person', () => {
+    const cfg = { datasetId: '1234567890123' };
+    const anon = { ...purchase, event_name: 'view_item', user_data: { ip_address: '41.84.203.125', user_agent: 'UA' } } as never;
+    expect(buildAdRequest('meta', anon, cfg, 'T')).toBeNull();
+    expect(adSkipReason('meta', anon, cfg)).toBe('NO_IDENTIFIER');
+    expect(metaMatchable({ client_ip_address: '41.84.203.125', client_user_agent: 'UA' })).toBe(false);
+    // Any one of: email, phone, click id, browser id, visitor id.
+    for (const key of ['em', 'ph', 'fbc', 'fbp', 'external_id']) expect(metaMatchable({ [key]: 'x' }), key).toBe(true);
+    // A browsing event from a visitor we know only by our own visitor id is still matchable.
+    expect(buildAdRequest('meta', { ...purchase, event_name: 'view_item', user_data: { fp_client_id: 'fp.1.x', ip_address: '41.84.203.125', user_agent: 'UA' } } as never, cfg, 'T')).not.toBeNull();
+    // Test mode with no test code sends nothing, and says why.
+    expect(buildAdRequest('meta', purchase, { ...cfg, _test: '1' }, 'T')).toBeNull();
+    expect(adSkipReason('meta', purchase, { ...cfg, _test: '1' })).toBe('NO_TEST_CODE');
+    // With the code, a test send carries it and is otherwise the same event.
+    expect((buildAdRequest('meta', purchase, { ...cfg, _test: '1', testEventCode: 'TEST12345' }, 'T')!.body as any).test_event_code).toBe('TEST12345');
+  });
+  it('Meta: what the event was about — a purchase states value, currency and order; a lead has no empty basket', () => {
+    const cfg = { datasetId: '1234567890123' };
+    const d = (e: unknown) => (buildAdRequest('meta', e as never, cfg, 'T')!.body as any).data[0];
+    const p = d(purchase);
+    expect(p.custom_data).toEqual({ currency: 'UGX', value: 145000, content_type: 'product', content_ids: ['p1'], contents: [{ id: 'p1', quantity: 1, item_price: 145000 }], num_items: 1, order_id: 'GP-1' });
+    expect(p.event_source_url).toBe('https://shopgoldplus.com/checkout');
+    expect(p.data_processing_options).toEqual([]);
+    const cart = d({ ...purchase, event_name: 'add_to_cart', ecommerce: { value: 90000, currency: 'UGX', items: [{ item_id: 'p1', price: 45000, quantity: 2 }] } });
+    expect(cart.event_name).toBe('AddToCart');
+    expect(cart.custom_data).toEqual({ currency: 'UGX', value: 90000, content_type: 'product', content_ids: ['p1'], contents: [{ id: 'p1', quantity: 2, item_price: 45000 }], num_items: 2 });
+    expect(cart.custom_data.order_id).toBeUndefined();                 // an order number belongs to a purchase
+    const chat = d({ ...purchase, event_name: 'generate_lead', lead: { method: 'whatsapp' }, ecommerce: undefined });
+    expect(chat.event_name).toBe('Contact');
+    expect(chat).not.toHaveProperty('custom_data');
+    const quote = d({ ...purchase, event_name: 'generate_lead', lead: { method: 'quote_request' }, ecommerce: { value: 500000, currency: 'UGX' } });
+    expect(quote.event_name).toBe('Lead');
+    expect(quote.custom_data).toEqual({ currency: 'UGX', value: 500000 });
+    expect(metaCustomData(purchase as never, 'Contact')).toEqual({ currency: 'UGX', value: 145000 });
+  });
+  it('Meta: its own account of a refusal is kept — code, subcode, message, trace id — and a rate limit is not a final answer', () => {
+    const body = (e: object) => JSON.stringify({ error: e });
+    const token = metaErrorSummary(400, body({ message: 'Error validating access token: Session has expired', type: 'OAuthException', code: 190, error_subcode: 463, fbtrace_id: 'AbC123' }))!;
+    expect(token).toEqual({ message: 'Meta error 190/463: Error validating access token: Session has expired (fbtrace_id AbC123)', transient: false, credentials: true });
+    const invalid = metaErrorSummary(400, body({ message: 'Invalid parameter', code: 100, error_subcode: 2804019, error_user_title: 'Server Side Api Parameter Error', error_user_msg: 'The parameter $[\'data\'][0][\'user_data\'] is required', fbtrace_id: 'Zz9' }))!;
+    expect(invalid.message).toBe('Meta error 100/2804019: Server Side Api Parameter Error: The parameter $[\'data\'][0][\'user_data\'] is required (fbtrace_id Zz9)');
+    expect(invalid).toMatchObject({ transient: false, credentials: false });
+    // Rate limits and temporary faults arrive as HTTP 400 too.
+    for (const code of [1, 2, 4, 17, 32, 613, 80004]) expect(metaErrorSummary(400, body({ message: 'limit', code }))!.transient, String(code)).toBe(true);
+    expect(metaErrorSummary(400, body({ message: 'busy', code: 999, is_transient: true }))!.transient).toBe(true);
+    for (const junk of ['', 'not json', '{}', '{"error":"string"}', '[]']) expect(metaErrorSummary(500, junk), junk).toBeNull();
+    expect(adErrorSummary('meta', 400, body({ message: 'x', code: 190 }))!.credentials).toBe(true);
+    expect(adErrorSummary('x', 403, '{"errors":[]}')).toBeNull();        // a platform that gives no account has none
+    // The message is bounded: a long answer cannot fill the row.
+    expect(metaErrorSummary(400, body({ message: 'm'.repeat(5000), code: 100 }))!.message.length).toBeLessThan(260);
   });
   it('TikTok: CompletePayment, token in the Access-Token header', () => {
     const r = buildAdRequest('tiktok', purchase, { pixelCode: 'C0ABCDEFGH12345' }, 'TT')!;

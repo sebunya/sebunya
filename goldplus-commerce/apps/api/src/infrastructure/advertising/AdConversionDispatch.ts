@@ -6,7 +6,7 @@ import { logger } from '../logging/logger';
 import { DEAD_LETTER_STATE } from '../../domain/outbox/TerminalState';
 import { DrizzleAdDestinationRepository } from '../db/repositories/DrizzleAdDestinationRepository';
 import { IntegrationCredentialVault } from '../seo/IntegrationCredentialVault';
-import { adPlatform, adPlatformAccepts, adSkipReason, buildAdRequest } from './AdPlatforms';
+import { adErrorSummary, adPlatform, adPlatformAccepts, adSkipReason, buildAdRequest } from './AdPlatforms';
 import { withVisitorClickIds } from './VisitorClickIds';
 import { advertisingRefused } from '../measurement/AdvertisingConsentGate';
 import { eventSelected } from '../../domain/advertising/OptimisationEvents';
@@ -158,7 +158,12 @@ export async function processAdConversionBatch(): Promise<{ claimed: number; sen
       if (method === 'GET') await assertPublicHost(req.url);
       const res = await fetch(req.url, { method, headers: { ...req.headers, ...auth }, body: method === 'GET' ? undefined : JSON.stringify(req.body), redirect: 'manual', signal: AbortSignal.timeout(10_000) });
       const text = await res.text().catch(() => '');
-      if (!res.ok) throw Object.assign(new Error(`${platform} HTTP ${res.status}: ${text.slice(0, 300)}`), { status: res.status });
+      if (!res.ok) {
+        // The platform's own account of the refusal, when it gives one (Meta:
+        // code, subcode, its message for the advertiser, its trace id).
+        const told = adErrorSummary(platform, res.status, text);
+        throw Object.assign(new Error(`${platform} HTTP ${res.status}: ${told ? told.message : text.slice(0, 300)}`), { status: res.status, transient: told?.transient === true });
+      }
       const replyErr = def?.replyError ? def.replyError((() => { try { return JSON.parse(text); } catch { return null; } })()) : null;
       if (replyErr) throw Object.assign(new Error(`${platform}: ${replyErr}`), { status: 400 });
       await finish('sent');
@@ -169,7 +174,10 @@ export async function processAdConversionBatch(): Promise<{ claimed: number; sen
       const msg = (err as Error).message.replace(/access_token=[^&\s]+/g, 'access_token=[redacted]').slice(0, 500);
       const status = (err as { status?: number }).status;
       await repo.recordResult(platform, false, msg).catch(() => undefined);
-      const permanent = status != null && status >= 400 && status < 500 && status !== 429;
+      // A 4xx is final, unless the platform says it is a rate limit or a
+      // temporary fault (Meta answers those with HTTP 400).
+      const transient = (err as { transient?: boolean }).transient === true;
+      const permanent = !transient && status != null && status >= 400 && status < 500 && status !== 429;
       if (permanent || attempt >= MAX_ATTEMPTS) {
         await db.update(outboxEvents).set({ isProcessed: true, processedAt: new Date(), deadLetteredAt: new Date(), status: DEAD_LETTER_STATE, lastError: msg, attemptCount: attempt }).where(eq(outboxEvents.id, row.id));
         out.deadLettered++;
