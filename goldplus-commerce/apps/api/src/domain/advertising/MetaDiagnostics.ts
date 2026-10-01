@@ -76,5 +76,6 @@ export const isMetaTestEventCode = (v: unknown): v is string => typeof v === 'st
 export const META_KEYS_SENT: ReadonlyArray<{ on: string; keys: string[]; note: string }> = [
   { on: 'Every event', keys: ['Visitor ID', 'Browser ID (fbp)', 'IP address', 'Browser (user agent)'], note: 'The browser ID is derived from the visitor ID: the shop runs no Meta Pixel and sets no Meta cookie.' },
   { on: 'When the visitor arrived from a Meta ad (last 30 days)', keys: ['Click ID (fbc)'], note: 'Built from the fbclid on the landing page link.' },
+  { on: 'A customer signed in on this browser', keys: ['Email', 'Phone'], note: 'Hashed (SHA-256), from their account, on every event while they are signed in. Never for anyone who has refused advertising.' },
   { on: 'A paid order', keys: ['Email', 'Phone', 'First name', 'Last name', 'City', 'Country'], note: 'Hashed (SHA-256) before they leave the shop. City is the delivery district; the email is sent only when the customer gave one.' },
 ];

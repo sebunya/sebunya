@@ -288,6 +288,50 @@ suite('Meta conversions: full match keys from our own records (real PostgreSQL)'
     expect(blindRow).toMatchObject({ status: 'skipped', last_error: 'NO_BROWSER' });
   }, 30_000);
 
+  it('a signed-in customer\'s browsing event carries their hashed email and phone to Meta, never onto the queued row; an account that refused advertising is not sent', async () => {
+    const { fanOutAdConversions, processAdConversionBatch } = await import('../../apps/api/src/infrastructure/advertising/AdConversionDispatch');
+    const mkUser = async (phone: string) => { const id = await fx.user(); await raw`update users set phone = ${phone} where id = ${id}`; const [u] = await raw`select email from users where id = ${id}`; return { id, email: String(u.email), phone }; };
+    const signedIn = await mkUser('0772 440 011');
+    const refusedUser = await mkUser('0772 440 012');
+    const fpIn = visitorId(), fpRefused = visitorId(), fpAnon = visitorId();
+    await raw`insert into first_party_identities (fp_client_id, user_id) values (${fpIn}, ${signedIn.id}), (${fpRefused}, ${refusedUser.id})`;
+    // The ACCOUNT refused advertising; this browser has no choice of its own on record.
+    await raw`insert into consent_current_state (user_id, advertising_granted, last_grant_type) values (${refusedUser.id}, false, 'explicit')`;
+    const mk = (fp: string) => ({ event_name: 'view_item', event_id: randomUUID(), event_time: Math.floor(Date.now() / 1000), source: 'browser',
+      page_location: 'https://shopgoldplus.com/products/im', user_data: { fp_client_id: fp, ip_address: '41.84.203.125', user_agent: 'UA' },
+      ecommerce: { value: 45000, currency: 'UGX', items: [{ item_id: productId, price: 45000, quantity: 1 }] } });
+    const [eIn, eRefused, eAnon] = [mk(fpIn), mk(fpRefused), mk(fpAnon)];
+    const all = [eIn, eRefused, eAnon];
+    const sent: Array<{ url: string; body: any }> = [];
+    const realFetch = globalThis.fetch;
+    let refusedRow: any, queuedText = '';
+    try {
+      for (const e of all) expect(await fanOutAdConversions(e as never)).toBeGreaterThanOrEqual(1);
+      queuedText = JSON.stringify((await raw`select payload from outbox_events where idempotency_key = ${'ad:meta:' + eIn.event_id}`)[0].payload);
+      globalThis.fetch = (async (url: string, init: any) => { sent.push({ url: String(url), body: JSON.parse(init.body) }); return new Response(JSON.stringify(OK.body), { status: 200 }); }) as never;
+      await new Promise((r) => setTimeout(r, 1100));
+      await processAdConversionBatch();
+      [refusedRow] = await raw`select status, last_error from outbox_events where idempotency_key = ${'ad:meta:' + eRefused.event_id}`;
+    } finally {
+      globalThis.fetch = realFetch;
+      for (const e of all) await raw`delete from outbox_events where idempotency_key like ${'ad:%:' + e.event_id}`;
+      await raw`delete from consent_current_state where user_id = ${refusedUser.id}`;
+      await raw`delete from first_party_identities where fp_client_id = any(${[fpIn, fpRefused]})`;
+    }
+    const byId = new Map(sent.filter((s) => s.url === ENDPOINT).map((s) => [s.body.data[0].event_id, s.body.data[0]]));
+    // Hashed as Meta specifies: email trimmed and lower-cased, phone as E.164 digits.
+    expect(byId.get(eIn.event_id).user_data).toMatchObject({ em: [sha(signedIn.email.trim().toLowerCase())], ph: [sha('256772440011')], external_id: [sha(fpIn)] });
+    // Read at send time: nothing about the customer was written to the queue.
+    expect(queuedText).not.toContain(sha(signedIn.email.trim().toLowerCase()));
+    expect(queuedText).not.toContain(signedIn.id);
+    // A visitor who is not signed in is sent as before, with no contact.
+    expect(byId.get(eAnon.event_id).user_data.em).toBeUndefined();
+    expect(byId.get(eAnon.event_id).user_data.ph).toBeUndefined();
+    // The account's refusal stops the event although the event itself names no account.
+    expect(byId.has(eRefused.event_id)).toBe(false);
+    expect(refusedRow).toMatchObject({ status: 'suppressed', last_error: 'CONSENT_DENIED' });
+  }, 30_000);
+
   it('a browsing event Meta rate-limits is kept for a retry, with Meta\'s message, not dead-lettered', async () => {
     const { fanOutAdConversions, processAdConversionBatch } = await import('../../apps/api/src/infrastructure/advertising/AdConversionDispatch');
     const event = { event_name: 'view_item', event_id: randomUUID(), event_time: Math.floor(Date.now() / 1000), source: 'server',

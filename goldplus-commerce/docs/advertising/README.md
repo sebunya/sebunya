@@ -293,6 +293,16 @@ dataset or token exists.
 Not built, by choice: a browser Pixel (and therefore Pixel/server deduplication) is excluded by
 the server-side-only decision.
 
+
+### A signed-in customer's contact on browsing events (owner decision, 2026-10-01)
+
+Browsing events name only their visitor. When that visitor is signed in on the browser (the identity
+graph links the visitor id to an account), Meta's events also carry the account's email and phone,
+hashed as Meta specifies (`em`, `ph`). `VisitorContact.ts` reads them at SEND time; nothing about the
+customer is written to the queue. Meta only. The consent gate is asked with the account's user id as
+well as the browser's id, so an account that refused advertising is never sent, whatever the browser
+says.
+
 ## 8. Click-to-WhatsApp adverts (migration 0166)
 
 An advert whose button opens a WhatsApp chat is credited with a sale only if the sale is reported

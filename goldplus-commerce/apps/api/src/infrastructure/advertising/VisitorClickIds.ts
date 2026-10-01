@@ -20,8 +20,8 @@ import { metaBrowserIdFromVisitor } from '../../domain/advertising/MetaIdentifie
  *
  * The lookup happens at SEND time and the result is never queued or logged,
  * the same rule the order path follows (DeliveryService.loadIdentity). Only
- * click ids are merged: hashed contact details stay with the paths that are
- * entitled to them. A click older than the networks' own windows is of no use
+ * click ids are merged here, for every platform; a signed-in customer's hashed
+ * contact is added for Meta alone, by VisitorContact (owner decision). A click older than the networks' own windows is of no use
  * to them, so a click id that last changed more than 30 days ago is ignored.
  */
 export const CLICK_ID_KEYS = ['gclid', 'wbraid', 'gbraid', 'fbc', 'fbp', 'ttclid', 'twclid', 'li_fat_id', 'epik'] as const;

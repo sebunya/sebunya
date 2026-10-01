@@ -66,7 +66,7 @@ describe('Meta diagnostics: the use case', () => {
     expect(v).toMatchObject({ configured: true, datasetId: dest.datasetId, connection: { state: 'ok', value: { name: 'GoldPlus dataset' } } });
     expect(v.quality).toEqual({ state: 'ok', value: { events: [{ event: 'Purchase', score: 7.1, band: 'good', keys: [] }] } });
     expect(JSON.stringify(v)).not.toContain('EAAB');
-    expect(v.keysSent.map((k) => k.on)).toEqual(['Every event', 'When the visitor arrived from a Meta ad (last 30 days)', 'A paid order']);
+    expect(v.keysSent.map((k) => k.on)).toEqual(['Every event', 'When the visitor arrived from a Meta ad (last 30 days)', 'A customer signed in on this browser', 'A paid order']);
     await uc.overview(); t += 9 * 60_000; await uc.overview();
     expect(g.calls).toEqual(['dataset', 'quality']);                   // cached
     t += 2 * 60_000; await uc.overview();
