@@ -60,7 +60,9 @@ unit count (no `quantity_to_sell_on_facebook`).
   same id in `product:retailer_item_id`, with `og:type=product`, price and availability.
   Availability `in stock` / `out of stock` (a pre-order without a date goes out of stock, as in
   the Google feed). Sale price only with its real window.
-- TikTok CSV columns: the nine required (`sku_id,title,description,availability,condition,price,link,image_link,brand`)
+- TikTok CSV: `sku_id` is the PRODUCT ID (what events send as `contents[].content_id`; it was the SKU,
+  so no event matched any item), pictures are the JPEG renditions, the SKU is in `custom_label_0`.
+  Columns: the nine required (`sku_id,title,description,availability,condition,price,link,image_link,brand`)
   plus images, categories, MPN. `preorder` is a TikTok value and is used. No sale price: TikTok's
   field list has no effective-date field to end it.
 
@@ -236,6 +238,22 @@ or whose record was erased on request) and the activity page says so.
 
 Browser check: `pnpm build && scripts/integration-env.sh scripts/qa/site-signals-check.sh` drives the
 three signals in real Chromium against local services and reads the queue back (13 checks).
+
+## 6b. TikTok Events API (2026-10-01)
+
+- Events: `ViewContent`, `AddToCart`, `InitiateCheckout`, `AddPaymentInfo`, `CompletePayment`,
+  `Contact` (WhatsApp tap), `SubmitForm` (quote request), `Search` (with `properties.query`),
+  `CompleteRegistration`. No TikTok standard event exists for a directions tap or a page view, so
+  neither is sent.
+- `user`: hashed email and `+`E.164 phone when the event has them, hashed `external_id`, `ttclid`
+  (merged from the identity graph at send time), IP and user agent. Absent values are omitted. An
+  event with no email, phone, click id or visitor id is not sent (`NO_IDENTIFIER`).
+- `properties`: products with `content_id` (the product id, as in the feed), name, category, brand,
+  price and quantity; value and currency only when there is one; `order_id` on a purchase.
+- TikTok answers HTTP 200 for a refused event and says so in the body (`code` ≠ 0). The body is read
+  on both delivery paths (`tiktokErrorSummary`): a refusal is not recorded as sent, 40100 and 5xxxx
+  are retried, 40104–40106 are a credentials problem.
+- The shop runs no TikTok Pixel, so there is no `_ttp` cookie to send.
 
 ## 7. Meta Conversions API: match keys without a Pixel
 

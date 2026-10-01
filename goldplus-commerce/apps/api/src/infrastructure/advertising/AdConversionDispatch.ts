@@ -175,7 +175,8 @@ export async function processAdConversionBatch(): Promise<{ claimed: number; sen
         throw Object.assign(new Error(`${platform} HTTP ${res.status}: ${told ? told.message : text.slice(0, 300)}`), { status: res.status, transient: told?.transient === true });
       }
       const replyErr = def?.replyError ? def.replyError((() => { try { return JSON.parse(text); } catch { return null; } })()) : null;
-      if (replyErr) throw Object.assign(new Error(`${platform}: ${replyErr}`), { status: 400 });
+      // A refusal inside a 2xx (TikTok): the platform's own summary says whether it is worth another try.
+      if (replyErr) throw Object.assign(new Error(`${platform}: ${replyErr}`), { status: 400, transient: adErrorSummary(platform, res.status, text)?.transient === true });
       await finish('sent');
       await repo.recordResult(platform, true);
       out.sent++;

@@ -302,6 +302,49 @@ export function metaErrorSummary(_status: number, body: string): { message: stri
   };
 }
 
+// ── TikTok Events API ────────────────────────────────────────────────────────
+
+/**
+ * TikTok answers HTTP 200 for a refused event and says so in the body
+ * (`code` ≠ 0, with a `message` and a `request_id`). Until 2026-10-01 the body
+ * was never read for TikTok, so a refused event was recorded as sent.
+ * 40100: too many requests; 5xxxx: TikTok's own fault — both worth another try.
+ * 40105 / 40104 / 40001-token: the access token is missing, invalid or expired.
+ */
+const TIKTOK_CREDENTIAL_CODES = new Set([40104, 40105, 40106]);
+export function tiktokErrorSummary(_status: number, body: string): { message: string; transient: boolean; credentials: boolean } | null {
+  let j: { code?: unknown; message?: unknown; request_id?: unknown } | null = null;
+  try { j = JSON.parse(body); } catch { return null; }
+  if (!j || typeof j !== 'object' || j.code === undefined) return null;
+  const code = Number(j.code);
+  if (code === 0) return null;
+  const rid = typeof j.request_id === 'string' && j.request_id ? ` (request_id ${j.request_id})` : '';
+  return {
+    message: `TikTok error ${Number.isFinite(code) ? code : '?'}: ${String(typeof j.message === 'string' ? j.message : 'no message').slice(0, 220)}${rid}`,
+    transient: code === 40100 || (code >= 50000 && code < 60000),
+    credentials: TIKTOK_CREDENTIAL_CODES.has(code),
+  };
+}
+
+/** What a TikTok event was about: products where there are any, the search term for a search, nothing invented otherwise. */
+export function tiktokProperties(e: CanonicalTelemetryEvent, tiktokEventName: string): Record<string, unknown> | null {
+  const list = items(e).filter((i) => i.item_id);
+  const v = value(e);
+  const out: Record<string, unknown> = {};
+  if (tiktokEventName === 'Search' && e.search_term) out.query = e.search_term;
+  if (list.length) {
+    out.content_type = 'product';
+    out.contents = list.map((i) => ({
+      content_id: String(i.item_id), ...(i.item_name ? { content_name: i.item_name } : {}), ...(i.item_category ? { content_category: i.item_category } : {}),
+      ...(i.item_brand ? { brand: i.item_brand } : {}), quantity: i.quantity ?? 1, ...(typeof i.price === 'number' ? { price: i.price } : {}),
+    }));
+  }
+  // A value is stated with its currency, and only when there is one: a chat tap is not a sale of 0.
+  if (list.length || v > 0) { out.currency = e.ecommerce?.currency ?? 'UGX'; out.value = v; }
+  if (tiktokEventName === 'CompletePayment' && e.ecommerce?.transaction_id) out.order_id = e.ecommerce.transaction_id;
+  return Object.keys(out).length ? out : null;
+}
+
 export const AD_PLATFORMS: AdPlatformDef[] = [
   {
     key: 'meta', name: 'Meta (Facebook, Instagram, WhatsApp ads)', testable: true,
@@ -364,24 +407,38 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
       TEST_CODE_FIELD('TikTok Events Manager > your pixel > Test events: the test event code')],
     secretLabel: 'Events API access token',
     // generate_lead: a WhatsApp click is a Contact, a quote request a SubmitForm (TikTok standard events).
-    events: { view_item: 'ViewContent', add_to_cart: 'AddToCart', begin_checkout: 'InitiateCheckout', add_payment_info: 'AddPaymentInfo', generate_lead: 'Contact', purchase: 'CompletePayment' },
+    // search / sign_up: TikTok's Search and CompleteRegistration standard events.
+    // find_location and page_seen are not sent: TikTok's Events API lists no
+    // standard event for either, and an event is not sent under a guessed name.
+    events: { view_item: 'ViewContent', add_to_cart: 'AddToCart', begin_checkout: 'InitiateCheckout', add_payment_info: 'AddPaymentInfo', generate_lead: 'Contact',
+      search: 'Search', sign_up: 'CompleteRegistration', purchase: 'CompletePayment' },
     build(e, cfg, token) {
       const mapped = this.events[e.event_name as AdEventName]; if (!mapped) return null;
       const name = e.event_name === 'generate_lead' && leadMethod(e) === 'quote_request' ? 'SubmitForm' : mapped;
       if (inTest(cfg) && !cfg.testEventCode) return null;
       const ud = u(e);
+      // TikTok matches on a hashed email or phone, its own click id, or the
+      // hashed visitor id; an IP address and a browser alone are not a person.
+      if (!ud.hashed_email && !ud.hashed_phone_plus && !ud.ttclid && !extId(e)) return null;
+      const user = Object.fromEntries(Object.entries({
+        email: ud.hashed_email, phone: ud.hashed_phone_plus, external_id: extId(e), ttclid: ud.ttclid, ip: ud.ip_address, user_agent: ud.user_agent,
+      }).filter(([, v]) => typeof v === 'string' && v.length > 0));
+      const page = Object.fromEntries(Object.entries({ url: e.page_location, referrer: e.page_referrer }).filter(([, v]) => typeof v === 'string' && v.length > 0));
+      const properties = tiktokProperties(e, name);
       return {
         url: 'https://business-api.tiktok.com/open_api/v1.3/event/track/',
         headers: { 'content-type': 'application/json', 'Access-Token': token },
         body: { event_source: 'web', event_source_id: cfg.pixelCode, ...(inTest(cfg) ? { test_event_code: cfg.testEventCode } : {}), data: [{
-          event: name, event_time: e.event_time, event_id: e.event_id,
-          user: { email: ud.hashed_email, phone: ud.hashed_phone_plus, external_id: extId(e), ip: ud.ip_address, user_agent: ud.user_agent, ttclid: ud.ttclid },
-          page: { url: e.page_location, referrer: e.page_referrer },
-          properties: { currency: e.ecommerce?.currency ?? 'UGX', value: value(e), content_type: 'product', order_id: e.ecommerce?.transaction_id,
-            contents: items(e).map((i) => ({ content_id: i.item_id, content_name: i.item_name, quantity: i.quantity ?? 1, price: i.price })) },
+          event: name, event_time: e.event_time, event_id: e.event_id, user,
+          ...(Object.keys(page).length ? { page } : {}),
+          ...(properties ? { properties } : {}),
         }] },
       };
     },
+    skipReason(e, cfg) { return inTest(cfg) && !cfg.testEventCode ? 'NO_TEST_CODE' : 'NO_IDENTIFIER'; },
+    // HTTP 200 with a refusal in the body: read on both delivery paths.
+    replyError: (j) => tiktokErrorSummary(200, JSON.stringify(j ?? null))?.message ?? null,
+    errorSummary: tiktokErrorSummary,
   },
   {
     key: 'pinterest', name: 'Pinterest', testable: true,

@@ -450,6 +450,19 @@ describe('catalogue feeds', () => {
     expect(rows[1]).toContain(',preorder,');
     expect(head).not.toContain('sale_price');
   });
+  it('TikTok CSV: sku_id is the id every event names in contents[].content_id; pictures are JPEG; the SKU is a label', () => {
+    const id = '93d2ea22-4d6d-4ba2-9f17-c8941930e306';
+    const p = product({ id, imageUrl: '/uploads/assets/9d/9d993f5ef5a7/pdp.webp', imageUrls: ['/uploads/assets/9d/9d993f5ef5a7/pdp.webp', '/uploads/assets/ab/ab12cd34ef56/pdp.webp'] });
+    const cells = buildTikTokCatalogueCsv([p], 'https://shopgoldplus.com').trim().split('\n')[1].split(',');
+    const col = (name: string) => cells[TIKTOK_FEED_COLUMNS.indexOf(name as never)];
+    expect(col('sku_id')).toBe(id);
+    expect(col('custom_label_0')).toBe('GP-PB10');
+    const event = { event_name: 'view_item', event_id: '11111111-1111-4111-8111-111111111111', event_time: 1790000000, source: 'browser', page_location: 'https://shopgoldplus.com/products/x',
+      user_data: { fp_client_id: 'fp.1.x', user_agent: 'UA' }, ecommerce: { value: 145000, currency: 'UGX', items: [{ item_id: id, price: 145000, quantity: 1 }] } };
+    expect((buildAdRequest('tiktok', event as never, { pixelCode: 'C0ABCDEFGH12345' }, 'T')!.body as any).data[0].properties.contents[0].content_id).toBe(col('sku_id'));
+    expect(col('image_link')).toBe('https://shopgoldplus.com/uploads/assets/9d/9d993f5ef5a7/pdp.jpg');
+    expect(col('additional_image_link')).toBe('https://shopgoldplus.com/uploads/assets/ab/ab12cd34ef56/pdp.jpg');
+  });
   it('cells are RFC 4180 quoted and control characters dropped', () => {
     expect(feedCsvCell('a "b", c')).toBe('"a ""b"", c"');
     expect(feedCsvCell('line\nbreak\u0007')).toBe('line break');

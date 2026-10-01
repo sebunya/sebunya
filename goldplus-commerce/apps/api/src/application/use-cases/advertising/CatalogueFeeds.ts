@@ -90,12 +90,13 @@ export function buildMetaCatalogueCsv(products: FeedProduct[], baseUrl: string =
 
 export const TIKTOK_FEED_COLUMNS = [
   'sku_id', 'title', 'description', 'availability', 'condition', 'price', 'link', 'image_link', 'brand',
-  'additional_image_link', 'google_product_category', 'product_type', 'mpn',
+  'additional_image_link', 'google_product_category', 'product_type', 'mpn', 'custom_label_0',
 ] as const;
 
 /**
  * TikTok catalogue CSV (the nine required fields plus images, categories and
- * MPN). TikTok accepts "preorder", so a pre-order is stated as one. No sale
+ * MPN). `sku_id` is the product id the events name, and pictures are the JPEG
+ * renditions (TikTok's catalogue takes JPG and PNG), as for Meta's feed. TikTok accepts "preorder", so a pre-order is stated as one. No sale
  * price: TikTok's field list has no effective-date field to end it with, and a
  * sale price that outlives the sale would advertise a price the shop no
  * longer charges. The regular price is always true.
@@ -103,21 +104,24 @@ export const TIKTOK_FEED_COLUMNS = [
 export function buildTikTokCatalogueCsv(products: FeedProduct[], baseUrl: string = STOREFRONT_BASE_URL): string {
   const lines = [TIKTOK_FEED_COLUMNS.join(',')];
   for (const p of products.filter(isFeedIncluded)) {
-    const extra = (p.imageUrls ?? []).filter((u) => u && u !== p.imageUrl).slice(0, 10).map((u) => absolute(baseUrl, u));
+    const extra = (p.imageUrls ?? []).filter((u) => u && u !== p.imageUrl).slice(0, 10).map((u) => jpegRendition(absolute(baseUrl, u)));
     const row: Record<(typeof TIKTOK_FEED_COLUMNS)[number], string> = {
-      sku_id: clip(p.sku, 100),
+      // The id every event names in contents[].content_id (the product id), so a
+      // view or a sale can be tied to the catalogue item; the SKU is in custom_label_0.
+      sku_id: metaCatalogueId(p),
       title: clip(p.name, 150),
       description: clip(feedDescription(p), 5000),
       availability: feedAvailability(p),
       condition: 'new',
       price: `${p.priceUgx} UGX`,
       link: `${baseUrl}/products/${encodeURIComponent(p.slug)}`,
-      image_link: absolute(baseUrl, p.imageUrl!),
+      image_link: jpegRendition(absolute(baseUrl, p.imageUrl!)),
       brand: 'GoldPlus',
       additional_image_link: extra.join(','),
       google_product_category: googleProductCategoryFor(p) ?? '',
       product_type: productTypeFor(p) ?? '',
       mpn: (p.modelNumber ?? '').trim(),
+      custom_label_0: clip(p.sku, 100),
     };
     lines.push(TIKTOK_FEED_COLUMNS.map((c) => feedCsvCell(row[c])).join(','));
   }
