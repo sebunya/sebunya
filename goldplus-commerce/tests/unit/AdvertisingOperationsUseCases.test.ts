@@ -385,7 +385,13 @@ describe('platform requests', () => {
 
     const t = offlineRequest(ctxOf(convRow({ platform: 'tiktok' })), creds({ config: { offlineEventSetId: '7001' }, secret: '' }))!;
     expect(t.body).toMatchObject({ event_source: 'offline', event_source_id: '7001' });
-    expect((t.body as any).data[0]).toMatchObject({ event: 'CompletePayment', event_id: '33333333-3333-4333-8333-333333333333' });
+    expect((t.body as any).data[0]).toMatchObject({ event: 'Purchase', event_id: '33333333-3333-4333-8333-333333333333' });
+    // TikTok lists no Uganda shilling: without the owner's rate no amount is stated; with it, US dollars.
+    expect((t.body as any).data[0].properties).not.toHaveProperty('value');
+    expect((t.body as any).data[0].properties).not.toHaveProperty('currency');
+    const tUsd = offlineRequest(ctxOf(convRow({ platform: 'tiktok' })), creds({ config: { offlineEventSetId: '7001' }, secret: '', destinationConfig: { ugxPerUsd: '3700' } }))!;
+    expect((tUsd.body as any).data[0].properties.currency).toBe('USD');
+    expect((tUsd.body as any).data[0].properties.value).toBeGreaterThan(0);
     expect((t.body as any).data[0].user.phone).toBe('p'.repeat(64));
     expect(t.headers['Access-Token']).toBe('DEST_SECRET_TOKEN_456');
   });
@@ -509,7 +515,7 @@ describe('destinations: Test / Live and early signals', () => {
     // A WhatsApp chat tap is a Contact on Meta, not a Lead (no details were submitted).
     expect((buildAdRequest('meta', { ...lead, lead: { method: 'whatsapp' } }, { datasetId: '1' }, 't')!.body as any).data[0].event_name).toBe('Contact');
     expect((buildAdRequest('meta', { ...lead, lead: undefined }, { datasetId: '1' }, 't')!.body as any).data[0].event_name).toBe('Contact');
-    expect((buildAdRequest('tiktok', lead, { pixelCode: 'C0ABCDEFGH12' }, 't')!.body as any).data[0].event).toBe('SubmitForm');
+    expect((buildAdRequest('tiktok', lead, { pixelCode: 'C0ABCDEFGH12' }, 't')!.body as any).data[0].event).toBe('Lead');
     expect((buildAdRequest('tiktok', { ...lead, lead: { method: 'whatsapp' } }, { pixelCode: 'C0ABCDEFGH12' }, 't')!.body as any).data[0].event).toBe('Contact');
     expect((buildAdRequest('pinterest', lead, { adAccountId: '549755885175' }, 't')!.body as any).data[0].event_name).toBe('lead');
     expect(buildAdRequest('meta', lead, { datasetId: '1', _test: '1' }, 't')).toBeNull(); // test without a code sends nothing

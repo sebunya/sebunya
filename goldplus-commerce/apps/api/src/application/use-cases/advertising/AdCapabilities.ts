@@ -113,7 +113,7 @@ export const AD_CAPABILITIES: CapabilityDef[] = [
     fields: [{ key: 'offlineEventSetId', label: 'Offline event set ID', pattern: /^\d{6,25}$/, where: 'TikTok Ads Manager > Tools > Events > Offline events > create or open an event set: the ID under its name.' }],
     secretLabel: 'Events API token for the offline event set', secretOptional: true,
     secretWhere: 'The event set\'s settings > Generate access token. Leave blank to use the web pixel\'s Events API token.',
-    what: 'Sends COD deliveries and phone/WhatsApp sales as CompletePayment events with event_source "offline".',
+    what: 'Sends COD deliveries and phone/WhatsApp sales as Purchase events with event_source "offline".',
   },
 ];
 

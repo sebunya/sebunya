@@ -7,9 +7,10 @@ import { createHash, randomUUID } from 'node:crypto';
  *
  *   - an event carries the hashed visitor id and, from the identity graph at
  *     send time, the TikTok click id the visitor arrived on;
- *   - TikTok answers HTTP 200 for a refused event and says so in the body: the
- *     row is NOT recorded as sent, keeps TikTok's own message, and a rate limit
- *     is kept for another try.
+ *   - TikTok's refusal is read from the body whatever the HTTP status: the row
+ *     is NOT recorded as sent and keeps TikTok's own message; a rate limit,
+ *     which TikTok answers with HTTP 401, is kept for another try and not
+ *     mistaken for a bad token.
  */
 const URL_ = process.env.COMMERCE_TEST_DATABASE_URL;
 const suite = URL_ && process.env.DATABASE_URL ? describe : describe.skip;
@@ -31,7 +32,7 @@ suite('TikTok conversions: browsing events and TikTok\'s own refusals (real Post
     const { DrizzleAdDestinationRepository } = await import('../../apps/api/src/infrastructure/db/repositories/DrizzleAdDestinationRepository');
     [previous] = await raw`select * from ad_destinations where platform = 'tiktok'`;
     await new DrizzleAdDestinationRepository().save('tiktok', {
-      enabled: true, config: { pixelCode: PIXEL },
+      enabled: true, config: { pixelCode: PIXEL, ugxPerUsd: '4000' },
       secretEnc: IntegrationCredentialVault.fromEnv()!.encrypt({ apiKey: 'tt-token-' + 'x'.repeat(30) }), secretMask: '••••', updatedBy: null,
     });
   }, 60_000);
@@ -80,25 +81,32 @@ suite('TikTok conversions: browsing events and TikTok\'s own refusals (real Post
     expect(c.body).toMatchObject({ event_source: 'web', event_source_id: PIXEL });
     expect(c.body.data[0]).toMatchObject({ event: 'AddToCart', user: { external_id: sha(fp), ttclid: 'E.C.P.it-click-123', ip: '41.84.203.125', user_agent: 'UA' },
       page: { url: 'https://shopgoldplus.com/products/it' },
-      properties: { content_type: 'product', currency: 'UGX', value: 45000, contents: [{ content_id: 'prod-1', content_name: 'IT item', content_category: 'Power Devices', quantity: 1, price: 45000 }] } });
-    expect(byId.get(search.event_id)!.body.data[0]).toMatchObject({ event: 'Search', properties: { query: 'power bank' } });
+      properties: { content_type: 'product', content_ids: ['prod-1'], num_items: 1, currency: 'USD', value: 11.25, contents: [{ content_id: 'prod-1', content_name: 'IT item', content_category: 'Power Devices', quantity: 1, price: 11.25 }] } });
+    expect(JSON.stringify(c.body)).not.toContain('UGX');                // not a currency TikTok lists
+    expect(byId.get(search.event_id)!.body.data[0]).toMatchObject({ event: 'Search', properties: { search_string: 'power bank' } });
     expect(byId.get(search.event_id)!.body.data[0].properties.contents).toBeUndefined();
     expect(rows.get(cart.event_id)).toMatchObject({ status: 'sent', is_processed: true });
   }, 30_000);
 
-  it('TikTok refuses inside an HTTP 200: the event is not recorded as sent and keeps TikTok\'s message; a rate limit is kept for another try', async () => {
-    const refused = mk('view_item', visitorId(), { ecommerce: { value: 1000, currency: 'UGX', items: [{ item_id: 'prod-refused', price: 1000, quantity: 1 }] } });
-    const limited = mk('view_item', visitorId(), { ecommerce: { value: 1000, currency: 'UGX', items: [{ item_id: 'prod-limited', price: 1000, quantity: 1 }] } });
-    const { sent, rows } = await run([refused, limited], (body) => {
-      const id = body?.data?.[0]?.properties?.contents?.[0]?.content_id;
-      return new Response(JSON.stringify(id === 'prod-limited' ? { code: 40100, message: 'Too many requests', request_id: 'rl1' } : { code: 40002, message: 'Invalid event_source_id', request_id: 'bad1' }), { status: 200 });
+  it('TikTok\'s refusal is read from the body: a bad payload (HTTP 400) is final with TikTok\'s message; a rate limit (HTTP 401, as TikTok sends it) is retried; a refusal inside a 200 is not "sent"', async () => {
+    const view = (id: string) => mk('view_item', visitorId(), { ecommerce: { value: 1000, currency: 'UGX', items: [{ item_id: id, price: 1000, quantity: 1 }] } });
+    const refused = view('prod-refused'), limited = view('prod-limited'), inside200 = view('prod-200');
+    const { sent, rows } = await run([refused, limited, inside200], (body) => {
+      const id = body?.data?.[0]?.contents?.[0]?.content_id ?? body?.data?.[0]?.properties?.contents?.[0]?.content_id;
+      if (id === 'prod-limited') return new Response(JSON.stringify({ code: 40100, message: 'Too many requests', request_id: 'rl1' }), { status: 401 });
+      if (id === 'prod-200') return new Response(JSON.stringify({ code: 40002, message: 'Refused inside a 200', request_id: 'in200' }), { status: 200 });
+      return new Response(JSON.stringify({ code: 40002, message: 'Invalid event_source_id', request_id: 'bad1' }), { status: 400 });
     });
-    expect(sent).toHaveLength(2);
+    expect(sent).toHaveLength(3);
     const r = rows.get(refused.event_id);
     expect(r.status).not.toBe('sent');
+    expect(r.is_processed).toBe(true);                                   // final: the same payload would be refused again
     expect(String(r.last_error)).toContain('TikTok error 40002: Invalid event_source_id (request_id bad1)');
     const l = rows.get(limited.event_id);
     expect(l).toMatchObject({ status: 'retrying', is_processed: false });
     expect(String(l.last_error)).toContain('TikTok error 40100');
+    const i = rows.get(inside200.event_id);
+    expect(i.status).not.toBe('sent');
+    expect(String(i.last_error)).toContain('Refused inside a 200');
   }, 30_000);
 });

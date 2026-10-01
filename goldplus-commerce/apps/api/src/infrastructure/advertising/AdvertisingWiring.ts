@@ -20,6 +20,8 @@ import { AdActivityUseCases } from '../../application/use-cases/advertising/AdAc
 import { DrizzleAdActivityRepository } from '../db/repositories/DrizzleAdActivityRepository';
 import { MetaDiagnosticsUseCases } from '../../application/use-cases/advertising/MetaDiagnosticsUseCases';
 import { HttpMetaDiagnosticsGateway } from './HttpMetaDiagnosticsGateway';
+import { TikTokDiagnosticsUseCases } from '../../application/use-cases/advertising/TikTokDiagnosticsUseCases';
+import { HttpTikTokDiagnosticsGateway } from './HttpTikTokDiagnosticsGateway';
 import { storefrontOrigin } from '../config/storefrontOrigin';
 import { WhatsAppAdsUseCases } from '../../application/use-cases/advertising/WhatsAppAdsUseCases';
 import { DrizzleWhatsAppAdReferralRepository } from '../db/repositories/DrizzleWhatsAppAdReferralRepository';
@@ -124,8 +126,18 @@ export function createAdvertisingOperations(deps: {
     return { datasetId, token: decrypt(enc), enabled: !!dest?.enabled, mode: dest?.mode === 'test' ? 'test' : 'live' };
   }, deps.audit, storefrontOrigin, () => Date.now(), META_GRAPH_VERSION);
 
+  // The owner's test send to TikTok, built by the same builder as a real event.
+  const tiktokDiagnostics = new TikTokDiagnosticsUseCases(new HttpTikTokDiagnosticsGateway(), async () => {
+    const dest = await destRepo.get('tiktok');
+    const config = Object.fromEntries(Object.entries(dest?.config ?? {}).map(([k, v]) => [k, String(v ?? '')]));
+    if (!/^[A-Z0-9]{10,30}$/.test(config.pixelCode ?? '')) throw new Error('Not configured: enter the TikTok pixel code on the Advertising page.');
+    const enc = await destRepo.secretEnc('tiktok');
+    if (!enc) throw new Error('Not configured: enter the TikTok Events API access token on the Advertising page.');
+    return { config, token: decrypt(enc) };
+  }, deps.audit, storefrontOrigin);
+
   return {
-    capabilities, audiences, spend, offline, feeds, feedUrls, activity, metaDiagnostics, whatsappAds,
+    capabilities, audiences, spend, offline, feeds, feedUrls, activity, metaDiagnostics, tiktokDiagnostics, whatsappAds,
     jobs,
     async checklist() {
       const [destinations, caps, feedProducts] = await Promise.all([deps.destinations.list(), capabilities.list(), feeds.included().catch(() => null)]);

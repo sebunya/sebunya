@@ -7,7 +7,7 @@ import { metaActionSource } from '../../domain/advertising/OfflineConversionPoli
 import { businessMessagingPurchase } from '../../domain/advertising/WhatsAppAdReferrals';
 import { metaBrowserIdFromVisitor } from '../../domain/advertising/MetaIdentifiers';
 import { asRemoteStatus, type RemoteRequestOutcome } from '../../domain/advertising/AudienceConfirmation';
-import { META_GRAPH_VERSION, adPlatform } from './AdPlatforms';
+import { META_GRAPH_VERSION, adPlatform, tiktokMoney } from './AdPlatforms';
 
 /**
  * The platform calls behind audiences, spend import and offline conversions
@@ -471,9 +471,12 @@ export function offlineRequest(ctx: OfflineContext, creds: PlatformCredentials):
     return {
       url: `${TIKTOK}/event/track/`, headers: { 'content-type': 'application/json', 'Access-Token': creds.secret || creds.destinationSecret },
       body: { event_source: 'offline', event_source_id: creds.config.offlineEventSetId, ...(creds.testMode ? { test_event_code: d.testEventCode } : {}),
-        data: [{ event: 'CompletePayment', event_time: t, event_id: ctx.row.eventId,
-          user: { email: h.emailSha256 ?? undefined, phone: h.phonePlusSha256 ?? undefined, ttclid: c.ttclid },
-          properties: { currency: 'UGX', value: ctx.valueUgx, order_id: orderId } }] },
+        // "Purchase" is TikTok's current name for what was CompletePayment. The amount
+        // goes in US dollars at the owner's rate, or not at all: TikTok lists no shilling.
+        data: [{ event: 'Purchase', event_time: t, event_id: ctx.row.eventId,
+          user: { email: h.emailSha256 ?? undefined, phone: h.phonePlusSha256 ?? undefined, ttclid: c.ttclid,
+            ...(ctx.visitorId ? { external_id: createHash('sha256').update(ctx.visitorId).digest('hex') } : {}) },
+          properties: { ...(tiktokMoney(ctx.valueUgx, 'UGX', creds.destinationConfig ?? {}) ?? {}), order_id: orderId } }] },
     };
   }
   return null;
