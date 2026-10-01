@@ -210,6 +210,53 @@ device), is beaconed like add_to_cart and forwarded server-side with its event i
 `generate_lead`. Each destination's optimisation events (`ad_destinations.event_selection`;
 null = all supported) are chosen in admin; purchases are always sent.
 
+## 7. Meta Conversions API: match keys without a Pixel
+
+The shop sends to Meta server to server and runs **no Meta Pixel** (owner decision 2026-09-19).
+Nothing therefore sets Meta's `_fbc` / `_fbp` cookies, and every match key comes from our own
+records (`domain/advertising/MetaIdentifiers.ts`, `AdPlatforms.metaUserData`):
+
+| Key | Where it comes from | Sent on |
+|---|---|---|
+| `fbc` (click id) | The storefront builds `fb.1.<first observed ms>.<fbclid>` from the landing URL (`lib/attribution.recordAdClick`), the fbclid unaltered; kept 30 days with the ad click, stitched to the visitor (`/telemetry/identity`) and stored with the order (`order_attribution.click_ids.fbc`). | every event of a visitor who arrived from a Meta ad |
+| `fbp` (browser id) | Derived from the first-party visitor id (`fp.<ms>.<uuid>`): `fb.1.<that ms>.<10 digits of its hash>`. Never stored; no second cookie. | every event |
+| `external_id` | SHA-256 of the visitor id. | every event |
+| `client_ip_address`, `client_user_agent` | The request that raised the event. Never hashed. | every event |
+| `em`, `ph` | The order's email and phone, Meta's normalisation, SHA-256. | purchases |
+| `fn`, `ln`, `ct`, `country` | The name typed at checkout (first and last word; one word is a first name only), the delivery district, and `ug`. Lower-cased, punctuation removed, SHA-256. | purchases |
+
+An event with nothing but an IP address and a user agent is not sent (`NO_IDENTIFIER`). A value
+that is not the shape Meta documents is left out rather than sent to be rejected.
+
+**Identity graph.** Click ids in `first_party_identities` are last-click-wins (they were
+first-write-wins, so a returning visitor's new ad click was never stored); `click_ids_at` (0165)
+records when one last changed, and a click id older than 30 days is not used. Browsing events
+are queued with the visitor id only; click ids are merged at send time and never written to the
+queue row (`infrastructure/advertising/VisitorClickIds.ts`).
+
+**Purchases** carry `event_source_url` (`<storefront>/checkout`; the origin is
+`PUBLIC_SITE_ORIGIN`, else the origin of `PESAPAL_CALLBACK_URL`), `order_id`, `value`,
+`currency`, `contents` and `num_items`. A lead or a WhatsApp tap carries no empty basket.
+`data_processing_options` is sent as `[]` (no Limited Data Use restriction).
+
+**Errors.** Meta's own account of a refusal is kept on both delivery paths as
+`Meta error <code>[/<subcode>]: <message> (fbtrace_id …)`. Code 190 or 102 is a credentials
+problem (final). Codes 1, 2, 4, 17, 32, 613 and 80004 arrive as HTTP 400 but are rate limits or
+temporary faults: they are retried, not dead-lettered.
+
+**Diagnostics** (`/admin/advertising/activity?platform=meta`, `GET /admin/advertising/meta/diagnostics`):
+Meta is asked whether it recognises the dataset with this token (`GET /{dataset}?fields=id,name`)
+and for its Event Match Quality per event (`GET /dataset_quality?dataset_id=…&fields=web{event_name,event_match_quality}`),
+cached ten minutes. Reading quality needs a token with `ads_read`; a Conversions API token that
+lacks it still sends events, and the page says which is the case. "Send test event"
+(`POST /admin/advertising/meta/test-event`, audited as `AD_TEST_EVENT_SENT`) sends one
+ViewContent with the owner's test event code: it is listed under Events Manager > Test events
+and is not counted. It describes no visitor.
+
+Not built, by choice: Click-to-WhatsApp attribution (`ctwa_clid`, `action_source:
+business_messaging`) needs WhatsApp Cloud API webhooks, which the shop does not run; a browser
+Pixel (and therefore Pixel/server deduplication) is excluded by the server-side-only decision.
+
 ## What the owner fills in
 
 No new environment variable is required. The vault key is `SEO_CREDENTIAL_VAULT_KEY` (falls back
@@ -247,6 +294,9 @@ and TikTok Catalogs (Add products → Data feed), daily.
 - Meta Insights API: https://developers.facebook.com/docs/marketing-api/insights
 - Meta Conversions API server event parameters (action_source, event_id, 7-day event_time): https://developers.facebook.com/docs/marketing-api/conversions-api/parameters/server-event
 - Meta catalogue feed fields: https://developers.facebook.com/docs/commerce-platform/catalog/fields
+- Meta fbc and fbp parameters (format, building fbc from fbclid, case sensitivity): https://developers.facebook.com/docs/marketing-api/conversions-api/parameters/fbp-and-fbc
+- Meta customer information parameters (hashing and normalisation of em, ph, fn, ln, ct, country; "always include country"): https://developers.facebook.com/docs/marketing-api/conversions-api/parameters/customer-information-parameters
+- Meta Dataset Quality API (Event Match Quality, match key coverage; permissions): https://developers.facebook.com/docs/marketing-api/conversions-api/dataset-quality-api
 - TikTok catalogue product parameters: https://ads.tiktok.com/help/article/catalog-product-parameters
 - TikTok customer file requirements (E.164 phone, ≥1,000 entries): https://ads.tiktok.com/help/article/how-to-create-a-custom-audience-with-a-customer-file
 - TikTok audience endpoints (dmp/custom_audience/file/upload, create, update): https://github.com/tiktok/tiktok-business-api-sdk/blob/main/python_sdk/docs/AudienceApi.md and https://business-api.tiktok.com/portal/docs/create-a-customer-file-audience/v1.3

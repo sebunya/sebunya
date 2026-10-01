@@ -66,6 +66,16 @@ routes.get('/activity', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async
   return data ? c.json({ success: true, data }) : c.json({ success: false, error: { code: 'NOT_FOUND', message: 'No advertising platform is available.' } }, 404);
 });
 
+// What Meta itself reports about the dataset (connection, Event Match Quality). `fresh=1` skips the ten-minute cache.
+routes.get('/meta/diagnostics', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) =>
+  c.json({ success: true, data: await ops().metaDiagnostics.overview(c.req.query('fresh') === '1') }));
+// One event with the owner's test event code: listed under Test events in Events Manager, not counted. Audited.
+routes.post('/meta/test-event', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c: Context) => {
+  const b = (await c.req.json().catch(() => null)) as { testEventCode?: unknown } | null;
+  const r = await ops().metaDiagnostics.sendTestEvent(actor(c), b?.testEventCode);
+  return r.ok ? c.json({ success: true, data: r }) : c.json({ success: false, error: { code: 'BAD_INPUT', message: r.message } }, 422);
+});
+
 routes.get('/audiences', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const [preview, runs, capabilities, customSegments] = await Promise.all([ops().audiences.preview(), ops().audiences.recentRuns(30), capView(), ops().audiences.availableCustomSegments().catch(() => [])]);
   return c.json({ success: true, data: { preview, runs, capabilities: capabilities.filter((v) => v.capability === 'audiences'), customSegments } });

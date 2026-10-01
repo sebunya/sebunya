@@ -8,6 +8,7 @@ import { environmentOf } from '../../domain/measurement/BusinessEvents';
 import { ga4CollectHit } from '../telemetry/Ga4CollectHit';
 import { adErrorSummary, adPlatform, adSkipReason, buildAdRequest, hashEmail, hashEmailGoogle, hashPhone, hashPhonePlus } from '../advertising/AdPlatforms';
 import { isMetaClickId, metaBrowserIdFromVisitor, metaCustomerHashes } from '../../domain/advertising/MetaIdentifiers';
+import { storefrontOrigin } from '../config/storefrontOrigin';
 import { DrizzleAdDestinationRepository } from '../db/repositories/DrizzleAdDestinationRepository';
 import { IntegrationCredentialVault } from '../seo/IntegrationCredentialVault';
 import { advertisingRefused } from './AdvertisingConsentGate';
@@ -263,18 +264,6 @@ async function loadIdentity(orderId: string) {
     ...metaCustomerHashes({ customerName: o.customer_name, city: loc.district, country: 'UG' }),
     ...(netParam ? { network_click_id: ck[netParam], network_click_param: netParam, network_click_source: ck.src } : {}),
   };
-}
-
-/**
- * The storefront's public origin: PUBLIC_SITE_ORIGIN when set, otherwise the
- * origin the payment gateway returns the shopper to (always the storefront).
- * Null when neither is a URL: the event then carries no page, as before.
- */
-export function storefrontOrigin(): string | null {
-  for (const candidate of [process.env.PUBLIC_SITE_ORIGIN, env.pesapalCallbackUrl]) {
-    try { if (candidate) { const u = new URL(candidate); if (u.protocol === 'https:' || u.protocol === 'http:') return u.origin; } } catch { /* not a URL */ }
-  }
-  return null;
 }
 
 /** The business event as the wire event the GA4/ad builders take. */

@@ -119,7 +119,7 @@ describe('ad activity: the view', () => {
     const cart = v.events.find((e) => e.event === 'add_to_cart')!;
     expect(cart).toMatchObject({ label: 'Add to cart', eventId: 'tw-rg6ox-rg7rh', configured: true, selected: true, sent: 4, not_sent: 11, failed: 0, lastSentAt: '2026-10-01T08:00:00.000Z' });
     expect(cart.mainReason).toMatchObject({ n: 9 });
-    expect(cart.mainReason!.text).toMatch(/Nothing X \(Twitter\) Ads can match on/);
+    expect(cart.mainReason!.text).toMatch(/Nothing X Ads can match on/);
     const purchase = v.events.find((e) => e.event === 'purchase')!;
     expect(purchase).toMatchObject({ failed: 1, selected: true });           // purchases are never switched off
     expect(purchase.mainReason!.text).toMatch(/refused the request \(403\)/);
@@ -130,7 +130,7 @@ describe('ad activity: the view', () => {
     expect(v.events.map((e) => e.event)).toEqual(['view_item', 'add_to_cart', 'begin_checkout', 'add_payment_info', 'generate_lead', 'purchase']);
     expect(v.daily.find((d) => d.day === '2026-10-01')).toMatchObject({ sent: 1, not_sent: 11, failed: 1, arrivals: 2 });
     expect(v.daily.find((d) => d.day === '2026-09-30')).toMatchObject({ sent: 3, arrivals: 4 });
-    expect(v.recent[0]).toMatchObject({ label: 'Add to cart', explanation: 'Sent to X (Twitter) Ads.' });
+    expect(v.recent[0]).toMatchObject({ label: 'Add to cart', explanation: 'Sent to X Ads.' });   // the title's parenthesis is dropped in a sentence
   });
 
   it('"include everything" widens only the list: the repository is asked for it, the numbers do not move', async () => {

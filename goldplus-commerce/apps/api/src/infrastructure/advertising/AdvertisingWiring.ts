@@ -18,6 +18,9 @@ import { HttpAudienceGateway, HttpOfflineConversionGateway, HttpSpendGateway } f
 import { AD_PLATFORMS, X_EVENT_FIELD } from './AdPlatforms';
 import { AdActivityUseCases } from '../../application/use-cases/advertising/AdActivityUseCases';
 import { DrizzleAdActivityRepository } from '../db/repositories/DrizzleAdActivityRepository';
+import { MetaDiagnosticsUseCases } from '../../application/use-cases/advertising/MetaDiagnosticsUseCases';
+import { HttpMetaDiagnosticsGateway } from './HttpMetaDiagnosticsGateway';
+import { storefrontOrigin } from '../config/storefrontOrigin';
 
 /**
  * Composition of the advertising operations module (0154). Credentials are
@@ -92,8 +95,19 @@ export function createAdvertisingOperations(deps: {
   const activity = new AdActivityUseCases(new DrizzleAdActivityRepository(), () => deps.destinations.list(),
     (platform, config, event) => (platform === 'x' ? (config[X_EVENT_FIELD[event] ?? ''] || null) : undefined));
 
+  // What Meta itself says about the dataset: that the ID and token work, and
+  // how well it can match what it receives. The token is read just in time.
+  const metaDiagnostics = new MetaDiagnosticsUseCases(new HttpMetaDiagnosticsGateway(), async () => {
+    const dest = await destRepo.get('meta');
+    const datasetId = String(dest?.config?.datasetId ?? '');
+    if (!/^\d{10,20}$/.test(datasetId)) throw new Error('Not configured: enter the Meta dataset ID on the Advertising page.');
+    const enc = await destRepo.secretEnc('meta');
+    if (!enc) throw new Error('Not configured: enter the Conversions API access token on the Advertising page.');
+    return { datasetId, token: decrypt(enc), enabled: !!dest?.enabled, mode: dest?.mode === 'test' ? 'test' : 'live' };
+  }, deps.audit, storefrontOrigin);
+
   return {
-    capabilities, audiences, spend, offline, feeds, feedUrls, activity,
+    capabilities, audiences, spend, offline, feeds, feedUrls, activity, metaDiagnostics,
     jobs,
     async checklist() {
       const [destinations, caps, feedProducts] = await Promise.all([deps.destinations.list(), capabilities.list(), feeds.included().catch(() => null)]);
