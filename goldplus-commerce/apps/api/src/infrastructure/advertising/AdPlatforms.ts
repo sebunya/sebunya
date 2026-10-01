@@ -13,6 +13,14 @@ import type { CanonicalTelemetryEvent } from '@goldplus/shared';
 
 export type AdEventName = 'view_item' | 'add_to_cart' | 'begin_checkout' | 'add_payment_info' | 'generate_lead' | 'purchase';
 export interface AdRequest { url: string; headers: Record<string, string>; body?: unknown; method?: 'POST' | 'GET' }
+/**
+ * Why nothing was sent, recorded on the queue row. Before 2026-10-01 every
+ * case shared one sentence ("no equivalent event or required identifier"),
+ * so "no event ID saved", "the visitor did not come from our ad" and
+ * "nothing to match on" could not be told apart afterwards.
+ */
+export type AdSkipReason = 'NO_EVENT_ID' | 'NO_X_CLICK' | 'NO_IDENTIFIER';
+
 export interface AdPlatformDef {
   key: string;
   name: string;
@@ -28,6 +36,14 @@ export interface AdPlatformDef {
   replyError?: (json: unknown) => string | null;
   events: Partial<Record<AdEventName, string>>;
   build?: (e: CanonicalTelemetryEvent, cfg: Record<string, string>, secret: string) => AdRequest | null;
+  /**
+   * Whether the platform can receive this event at all with this config.
+   * Absent = every mapped event. X needs an Events Manager ID per event: an
+   * event without one is not queued, rather than queued and skipped.
+   */
+  accepts?: (eventName: string, cfg: Record<string, string>) => boolean;
+  /** Why build() returned null, as a stable code the activity page can explain. Absent = NO_IDENTIFIER. */
+  skipReason?: (e: CanonicalTelemetryEvent, cfg: Record<string, string>) => AdSkipReason;
   /** When not implementable yet: why (shown as-is in admin). */
   unavailable?: string;
   /** The platform documents a test channel (test event code / validate-only) and the builder uses it. */
@@ -342,30 +358,49 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
       // documentation uses the short id on its own. Both are accepted.
       { key: 'purchaseEventId', label: 'Purchase event ID', pattern: /^(tw-[a-z0-9]+-[a-z0-9]+|[a-z0-9]{4,12})$/, hint: 'The purchase event you created in Events Manager with "Conversion API" as the install method, for example tw-o8z6j-o8z6k' },
       { key: 'sendScope', label: 'What to send (x_clicks or all)', pattern: /^(x_clicks|all)?$/, optional: true,
-        hint: 'x_clicks (the default when empty): only paid orders that arrived on an X ad click in the last 30 days. all: every paid order, matched by hashed email or phone as well, plus basket adds if an add-to-cart event ID is set below. X\'s Conversion API is part of the Ads API, which X does not bill per call; "all" gives X more to match on but shares hashed contact details for customers who never clicked an X ad.' },
-      { key: 'addToCartEventId', label: 'Add-to-cart event ID', pattern: /^(tw-[a-z0-9]+-[a-z0-9]+|[a-z0-9]{4,12})?$/, optional: true, hint: 'Optional, and used only when "What to send" is all' },
+        hint: 'x_clicks (the default when empty): only visitors who arrived on an X ad click in the last 30 days — their paid orders, and any optimisation event below that has an event ID. all: every paid order and selected event, matched by hashed email or phone as well. X\'s Conversion API is part of the Ads API, which X does not bill per call; "all" gives X more to match on but shares hashed contact details for customers who never clicked an X ad.' },
+      // One Events Manager event per optimisation signal. Each is optional: an
+      // event with no ID here is simply never sent to X. The purchase above is
+      // the only one X treats as a standard "Purchase"; checkout and content
+      // view have no standard type in Events Manager and are created as Custom.
+      { key: 'addToCartEventId', label: 'Add-to-cart event ID', pattern: /^(tw-[a-z0-9]+-[a-z0-9]+|[a-z0-9]{4,12})?$/, optional: true, hint: 'Events Manager event of type "Add to cart"' },
+      { key: 'checkoutEventId', label: 'Checkout-started event ID', pattern: /^(tw-[a-z0-9]+-[a-z0-9]+|[a-z0-9]{4,12})?$/, optional: true, hint: 'Events Manager event of type "Custom" named for checkout' },
+      { key: 'paymentInfoEventId', label: 'Payment-info event ID', pattern: /^(tw-[a-z0-9]+-[a-z0-9]+|[a-z0-9]{4,12})?$/, optional: true, hint: 'Events Manager event of type "Added payment info"' },
+      { key: 'leadEventId', label: 'Lead event ID', pattern: /^(tw-[a-z0-9]+-[a-z0-9]+|[a-z0-9]{4,12})?$/, optional: true, hint: 'Events Manager event of type "Lead"' },
+      { key: 'contentViewEventId', label: 'Product-view event ID', pattern: /^(tw-[a-z0-9]+-[a-z0-9]+|[a-z0-9]{4,12})?$/, optional: true, hint: 'Events Manager event of type "Custom" named for content view' },
     ],
     secretLabel: 'API keys (JSON)',
     secretHint: '{"consumerKey":"…","consumerSecret":"…","accessToken":"…","accessTokenSecret":"…"}',
-    // add_to_cart is mapped so it CAN be queued; the builder sends it only in
-    // the "all" scope with an event id configured.
-    events: { add_to_cart: 'add_to_cart', purchase: 'purchase' },
+    // Every early signal is mapped so it CAN be queued; the builder sends one
+    // only when its event ID is configured, and in the default scope only when
+    // the visitor carries an X click id. The value names X's event type.
+    events: { view_item: 'Content view (custom)', add_to_cart: 'Add to cart', begin_checkout: 'Checkout initiated (custom)', add_payment_info: 'Added payment info', generate_lead: 'Lead', purchase: 'Purchase' },
     async authorize(req, _cfg, secret) {
       const c = parseJsonSecret(secret, ['consumerKey', 'consumerSecret', 'accessToken', 'accessTokenSecret']);
       return { Authorization: oauth1Header(req.method ?? 'POST', req.url, c) };
     },
+    accepts: (eventName, cfg) => !!cfg[X_EVENT_FIELD[eventName] ?? ''],
+    // Mirrors build()'s three ways of returning null, in the same order.
+    skipReason(e, cfg) {
+      if (!cfg[X_EVENT_FIELD[e.event_name] ?? '']) return 'NO_EVENT_ID';
+      if (xSendScope(cfg) === 'x_clicks' && !u(e).twclid) return 'NO_X_CLICK';
+      return 'NO_IDENTIFIER';
+    },
     build(e, cfg) {
-      // Two scopes, chosen by the owner (xSendScope):
-      //  - x_clicks (default): a paid order that arrived on an X click (twclid,
-      //    kept 30 days from the click). Nothing else is sent, so no hashed
-      //    contact of a customer who never touched an X ad leaves the shop, and
-      //    a basket add (which any visitor can make with a made-up twclid) is
-      //    never reported.
-      //  - all: every paid order X could match by click id, hashed email or
-      //    hashed phone, and basket adds when an event id is configured.
+      // Two scopes, chosen by the owner (xSendScope). The scope decides WHOSE
+      // events leave the shop; the event IDs and the optimisation-event
+      // selection decide WHICH.
+      //  - x_clicks (default): only a visitor who arrived on an X click
+      //    (twclid, kept 30 days from the click). No hashed contact of a
+      //    customer who never touched an X ad leaves the shop.
+      //  - all: every event X could match by click id, hashed email or hashed
+      //    phone.
+      // Until 2026-10-01 the default scope sent purchases only (PR #19); that
+      // rested on the belief that X billed each call, corrected in ce9178f3.
+      // A basket add can still be fabricated with a made-up twclid, as it can
+      // for every other network's click id; X is told about it, as they are.
       const scope = xSendScope(cfg);
-      const eventId = e.event_name === 'purchase' ? cfg.purchaseEventId
-        : e.event_name === 'add_to_cart' && scope === 'all' ? cfg.addToCartEventId : '';
+      const eventId = cfg[X_EVENT_FIELD[e.event_name] ?? ''] ?? '';
       if (!eventId) return null;
       const ud = u(e);
       if (scope === 'x_clicks' && !ud.twclid) return null;
@@ -382,12 +417,18 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
         content_id: String(i.item_id), ...(i.item_name ? { content_name: String(i.item_name) } : {}),
         ...(typeof i.price === 'number' ? { content_price: i.price } : {}), num_items: i.quantity ?? 1,
       }));
+      const count = items(e).reduce((s, i) => s + (i.quantity ?? 1), 0);
       return {
         url: `https://ads-api.x.com/12/measurement/conversions/${cfg.pixelId}`,
         headers: { 'content-type': 'application/json' },
         body: { conversions: [{ conversion_time: new Date(e.event_time * 1000).toISOString(), event_id: eventId, identifiers,
+          conversion_id: e.event_id,
           // `value` is a string in X's API ("20.00"); a JSON number is refused.
-          conversion_id: e.event_id, value: String(value(e)), price_currency: e.ecommerce?.currency ?? 'UGX', number_items: items(e).reduce((s, i) => s + (i.quantity ?? 1), 0),
+          // X documents neither value nor number_items as required, and a lead
+          // or a product view has no amount: those fields are sent only when
+          // there is something to send, never as "0".
+          ...(value(e) > 0 ? { value: String(value(e)), price_currency: e.ecommerce?.currency ?? 'UGX' } : {}),
+          ...(count > 0 ? { number_items: count } : {}),
           ...(contents.length ? { contents } : {}) }] },
       };
     },
@@ -402,6 +443,12 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
     unavailable: 'Enterprise products under a Google/agency contract; once contracted they read conversions from GA4 (already live) or Floodlight.' },
 ];
 
+/** Which X config field holds the Events Manager ID for each shop event. */
+export const X_EVENT_FIELD: Record<string, string> = {
+  purchase: 'purchaseEventId', add_to_cart: 'addToCartEventId', begin_checkout: 'checkoutEventId',
+  add_payment_info: 'paymentInfoEventId', generate_lead: 'leadEventId', view_item: 'contentViewEventId',
+};
+
 /** The owner's choice of what X receives; anything but an explicit "all" is the narrow default. */
 export const xSendScope = (cfg: Record<string, string> | null | undefined): 'x_clicks' | 'all' => (cfg?.sendScope === 'all' ? 'all' : 'x_clicks');
 
@@ -410,3 +457,11 @@ export const buildAdRequest = (key: string, e: CanonicalTelemetryEvent, cfg: Rec
   const p = adPlatform(key);
   return p?.build ? p.build.call(p, e, cfg, secret) : null;
 };
+/** Whether the platform, as configured, can receive this event at all. */
+export const adPlatformAccepts = (key: string, eventName: string, cfg: Record<string, string>): boolean => {
+  const p = adPlatform(key);
+  return !!p?.events[eventName as AdEventName] && (p.accepts ? p.accepts(eventName, cfg) : true);
+};
+/** The stable code for "built nothing", to record on the row. */
+export const adSkipReason = (key: string, e: CanonicalTelemetryEvent, cfg: Record<string, string>): AdSkipReason =>
+  adPlatform(key)?.skipReason?.(e, cfg) ?? 'NO_IDENTIFIER';

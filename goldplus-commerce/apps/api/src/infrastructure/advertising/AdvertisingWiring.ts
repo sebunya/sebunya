@@ -15,7 +15,9 @@ import { DrizzleAdDestinationRepository } from '../db/repositories/DrizzleAdDest
 import { IntegrationCredentialVault } from '../seo/IntegrationCredentialVault';
 import { vaultCipher } from '../ai-visibility/AiVisibilityWiring';
 import { HttpAudienceGateway, HttpOfflineConversionGateway, HttpSpendGateway } from './AdvertisingGateways';
-import { AD_PLATFORMS } from './AdPlatforms';
+import { AD_PLATFORMS, X_EVENT_FIELD } from './AdPlatforms';
+import { AdActivityUseCases } from '../../application/use-cases/advertising/AdActivityUseCases';
+import { DrizzleAdActivityRepository } from '../db/repositories/DrizzleAdActivityRepository';
 
 /**
  * Composition of the advertising operations module (0154). Credentials are
@@ -85,8 +87,13 @@ export function createAdvertisingOperations(deps: {
   const origin = deps.publicApiOrigin.replace(/\/+$/, '');
   const feedUrls = { google: `${origin}/seo/merchant-feed.xml`, meta: `${origin}/advertising/feeds/meta-catalogue.csv`, tiktok: `${origin}/advertising/feeds/tiktok-catalogue.csv` };
 
+  // What reached each platform and what did not (read-only). X is the one
+  // platform with an Events Manager ID per event; the rest map by name.
+  const activity = new AdActivityUseCases(new DrizzleAdActivityRepository(), () => deps.destinations.list(),
+    (platform, config, event) => (platform === 'x' ? (config[X_EVENT_FIELD[event] ?? ''] || null) : undefined));
+
   return {
-    capabilities, audiences, spend, offline, feeds, feedUrls,
+    capabilities, audiences, spend, offline, feeds, feedUrls, activity,
     jobs,
     async checklist() {
       const [destinations, caps, feedProducts] = await Promise.all([deps.destinations.list(), capabilities.list(), feeds.included().catch(() => null)]);

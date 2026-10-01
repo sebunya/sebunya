@@ -103,7 +103,7 @@ try {
     check('"5k" is refused and the stored threshold is untouched', /whole number of points/.test(await text()) && after === before, `before=${before} after=${after} ${(await text()).slice(0, 200)}`);
   } else { check('tiers exist to test the threshold form', false, (await text()).slice(0, 500)); }
 
-  for (const path of ['/admin/measurement/dlq', '/admin/utm-builder', '/admin/payments', '/admin/verification', '/admin/measurement/channel-report', '/admin/loyalty/liability', '/admin/loyalty/adjustments', '/admin/campaigns', '/admin/inventory', '/admin/orders', '/admin/carts', '/admin/loyalty/referrals', '/admin/loyalty/fraud', '/admin/fulfilment', '/admin/delivery', '/admin/delivery/launch', '/admin/advertising']) {
+  for (const path of ['/admin/measurement/dlq', '/admin/utm-builder', '/admin/payments', '/admin/verification', '/admin/measurement/channel-report', '/admin/loyalty/liability', '/admin/loyalty/adjustments', '/admin/campaigns', '/admin/inventory', '/admin/orders', '/admin/carts', '/admin/loyalty/referrals', '/admin/loyalty/fraud', '/admin/fulfilment', '/admin/delivery', '/admin/delivery/launch', '/admin/advertising', '/admin/advertising/activity', '/admin/advertising/activity?platform=meta&days=7']) {
     r = await page.goto(path); await page.waitForLoadState('networkidle').catch(() => {});
     check(`${path} renders`, r.status() === 200, String(r.status()));
   }

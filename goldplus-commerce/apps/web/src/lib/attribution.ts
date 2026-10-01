@@ -119,6 +119,18 @@ function recentClickIds(): Record<string, string> {
   }
 }
 
+/**
+ * The ad click this browser arrived on within the last 30 days, by click id
+ * only (no utm_source): what the identity graph needs so that a product view
+ * or basket add on a LATER page can still be tied to the ad. Without this the
+ * stitch saw only the current URL, and a visitor who landed on the homepage
+ * from an X ad reached the product page with no click id to report.
+ */
+export function recentAdClickIds(): Record<string, string> {
+  const { src: _src, ...ids } = recentClickIds();
+  return ids;
+}
+
 export function getCheckoutAttribution(): CheckoutAttribution | null {
   try {
     const last = JSON.parse(localStorage.getItem(LAST) || '{}');

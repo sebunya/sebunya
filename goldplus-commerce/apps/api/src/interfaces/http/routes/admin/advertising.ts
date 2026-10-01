@@ -60,6 +60,12 @@ routes.put('/capabilities/:platform/:capability', requirePermissions([PERMISSION
   return c.json({ success: true, data: (await capView()).find((v) => v.platform === c.req.param('platform') && v.capability === c.req.param('capability')) });
 });
 
+// What was raised for, and what reached, one platform (read-only; counts and stored reasons only).
+routes.get('/activity', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const data = await ops().activity.view(c.req.query('platform'), c.req.query('days'), c.req.query('all') === '1');
+  return data ? c.json({ success: true, data }) : c.json({ success: false, error: { code: 'NOT_FOUND', message: 'No advertising platform is available.' } }, 404);
+});
+
 routes.get('/audiences', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const [preview, runs, capabilities, customSegments] = await Promise.all([ops().audiences.preview(), ops().audiences.recentRuns(30), capView(), ops().audiences.availableCustomSegments().catch(() => [])]);
   return c.json({ success: true, data: { preview, runs, capabilities: capabilities.filter((v) => v.capability === 'audiences'), customSegments } });

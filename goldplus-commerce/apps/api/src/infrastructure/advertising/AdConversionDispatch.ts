@@ -6,7 +6,8 @@ import { logger } from '../logging/logger';
 import { DEAD_LETTER_STATE } from '../../domain/outbox/TerminalState';
 import { DrizzleAdDestinationRepository } from '../db/repositories/DrizzleAdDestinationRepository';
 import { IntegrationCredentialVault } from '../seo/IntegrationCredentialVault';
-import { adPlatform, buildAdRequest } from './AdPlatforms';
+import { adPlatform, adPlatformAccepts, adSkipReason, buildAdRequest } from './AdPlatforms';
+import { withVisitorClickIds } from './VisitorClickIds';
 import { advertisingRefused } from '../measurement/AdvertisingConsentGate';
 import { eventSelected } from '../../domain/advertising/OptimisationEvents';
 import { lookup } from 'node:dns/promises';
@@ -74,6 +75,10 @@ export async function fanOutAdConversions(event: CanonicalTelemetryEvent): Promi
     for (const p of live) {
       const def = adPlatform(p.platform);
       if (!def?.build || !def.events[event.event_name as keyof typeof def.events]) continue;
+      // An event the platform cannot receive as configured (X: no Events
+      // Manager ID saved for it) is not queued at all: a row that can only
+      // ever be skipped is noise in the queue and on the activity page.
+      if (!adPlatformAccepts(p.platform, event.event_name, p.config)) continue;
       // 0154: the owner chooses which early signals each destination optimises on.
       if (!eventSelected(p.eventSelection, event.event_name)) continue;
       const r = await db.insert(outboxEvents).values({
@@ -138,8 +143,14 @@ export async function processAdConversionBatch(): Promise<{ claimed: number; sen
       out.retried++; continue;
     }
     if (refused) { await finish('suppressed', { lastError: 'CONSENT_DENIED' }); out.skipped++; continue; }
-    const req = buildAdRequest(platform, event, dest.config, secret);
-    if (!req) { await finish('skipped', { lastError: 'no equivalent event or required identifier' }); out.skipped++; continue; }
+    // Browsing events arrive with only the visitor id; the click id that
+    // visitor came in on is read from the identity graph here, at send time,
+    // and never stored on the row (VisitorClickIds).
+    const enriched = await withVisitorClickIds(event);
+    const req = buildAdRequest(platform, enriched, dest.config, secret);
+    // The reason is a stable code (NO_X_CLICK, NO_EVENT_ID, NO_IDENTIFIER) so
+    // the activity page can say which of the three it was.
+    if (!req) { await finish('skipped', { lastError: adSkipReason(platform, enriched, dest.config) }); out.skipped++; continue; }
     const attempt = row.attemptCount + 1;
     try {
       const auth = def?.authorize ? await def.authorize(req, dest.config, secret) : {};
