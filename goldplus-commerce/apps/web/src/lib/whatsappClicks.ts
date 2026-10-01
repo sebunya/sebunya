@@ -3,11 +3,12 @@ import { newWhatsAppRef, tagWhatsAppHref } from './whatsappRef';
 import { isWhatsAppChatWithUs } from './leadSignalRules';
 
 /**
- * Taps on WhatsApp chat links. Registered ONLY by the pages that render a
- * WhatsApp chat call to action (product page, bulk request sent) — never from
- * BaseLayout, the header or lib/telemetry, so the home page and every other
- * page carry none of it. A tap on the header's WhatsApp link on another page is
- * therefore not counted as a lead (a deliberate trade for page weight).
+ * Taps on WhatsApp chat links, on every page (BaseLayout registers it; since
+ * 2026-10-01). It used to be registered only by the product page and "bulk
+ * request sent", as a trade for page weight, so a tap on the header's or the
+ * footer's WhatsApp link anywhere else opened a chat with no reference code
+ * and was never counted — and WhatsApp is where most sales are closed. The
+ * layout already carries lib/telemetry, so this adds only this small module.
  * ONE click listener does both jobs:
  *
  *  - Click-to-chat reference (attribution module, 0156): a tap on one of our

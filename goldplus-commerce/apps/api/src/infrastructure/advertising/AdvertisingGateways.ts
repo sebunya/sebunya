@@ -5,6 +5,7 @@ import type {
 import { googleChannel, decimalToMinor, microsToMinor, type SpendFact } from '../../domain/advertising/SpendFacts';
 import { metaActionSource } from '../../domain/advertising/OfflineConversionPolicy';
 import { businessMessagingPurchase } from '../../domain/advertising/WhatsAppAdReferrals';
+import { metaBrowserIdFromVisitor } from '../../domain/advertising/MetaIdentifiers';
 import { asRemoteStatus, type RemoteRequestOutcome } from '../../domain/advertising/AudienceConfirmation';
 import { META_GRAPH_VERSION, adPlatform } from './AdPlatforms';
 
@@ -457,7 +458,10 @@ export function offlineRequest(ctx: OfflineContext, creds: PlatformCredentials):
       body: {
         ...(creds.testMode ? { test_event_code: d.testEventCode } : {}),
         data: [{ event_name: 'Purchase', event_time: t, event_id: ctx.row.eventId, action_source: metaActionSource(ctx.row.source, ctx.channel),
-          user_data: { em: h.emailSha256 ? [h.emailSha256] : undefined, ph: h.phoneDigitsSha256 ? [h.phoneDigitsSha256] : undefined, fbc: c.fbc },
+          user_data: { em: h.emailSha256 ? [h.emailSha256] : undefined, ph: h.phoneDigitsSha256 ? [h.phoneDigitsSha256] : undefined, fbc: c.fbc,
+            // A sale recorded with the chat's reference code is that visitor's: the same
+            // ids their browsing events carried, so Meta joins the sale to the visit.
+            ...(ctx.visitorId ? { external_id: [createHash('sha256').update(ctx.visitorId).digest('hex')], fbp: metaBrowserIdFromVisitor(ctx.visitorId) ?? undefined } : {}) },
           custom_data: { currency: 'UGX', value: ctx.valueUgx, order_id: orderId } }],
       },
     };

@@ -2,6 +2,7 @@ import type { CtwaAttribution } from './WhatsAppAdsUseCases';
 import type { OfflineConversionGateway, OfflineConversionRepository, OfflineConversionRow, PlatformCredentials } from '../../ports/Advertising';
 import { OFFLINE_PLATFORMS, afterFailure, hasMatchKey, offlineSaleErrors, onlinePurchaseCoversSale, withinSendWindow, type OfflinePlatform, type OfflineSaleInput } from '../../../domain/advertising/OfflineConversionPolicy';
 import { offlineSaleHashes } from '../../../domain/advertising/ContactNormalisation';
+import { normaliseWhatsAppRef } from '@goldplus/shared';
 import type { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
 import type { CapabilityView } from './AdCapabilities';
 
@@ -43,18 +44,24 @@ export class OfflineConversionUseCases {
       order = await this.repo.findOrder(orderNumber);
       if (!order) return { ok: false, code: 'NOT_FOUND', message: `No order ${orderNumber} was found. Leave the order number blank for a sale that has no order.` };
     }
+    // The code the shop's WhatsApp link put in the customer's first message: it
+    // names the visitor the chat came from, and with them the advert click.
+    const whatsappRef = String(input.whatsappRef ?? '').trim() ? normaliseWhatsAppRef(input.whatsappRef) : null;
+    const refVisitor = whatsappRef ? await this.repo.whatsAppRefVisitor(whatsappRef) : null;
+    if (whatsappRef && !refVisitor) return { ok: false, code: 'NOT_FOUND', message: `No reference code ${whatsappRef} was issued by the site. Check it against the customer's first message, or leave it blank.` };
     const contact = { email: input.email ?? null, phone: input.phone ?? null };
     const found = await this.repo.consentSubjectsForContact(contact);
     const subjects = {
       userIds: [...new Set([...found.userIds, ...(order?.userId ? [order.userId] : []), ...(order?.linkedUserIds ?? [])])],
-      fpClientIds: [...new Set([...found.fpClientIds, ...(order?.fpClientId ? [order.fpClientId] : []), ...(order?.linkedFpClientIds ?? [])])],
+      // The referenced visitor's own advertising choice is checked at send time, like every other subject's.
+      fpClientIds: [...new Set([...found.fpClientIds, ...(order?.fpClientId ? [order.fpClientId] : []), ...(order?.linkedFpClientIds ?? []), ...(refVisitor ? [refVisitor.visitorId] : [])])],
     };
     const id = await this.repo.recordSale({
       channel: input.channel as 'PHONE' | 'WHATSAPP', occurredAt: new Date(input.occurredAt), valueUgx: Number(input.valueUgx), orderId: order?.id ?? null,
-      hashes: offlineSaleHashes(contact), subjects, note: String(input.note ?? '').trim() || null, recordedBy: actorId,
+      hashes: offlineSaleHashes(contact), subjects, note: String(input.note ?? '').trim() || null, recordedBy: actorId, whatsappRef,
     });
     await this.audit.execute({ actorId, action: 'AD_OFFLINE_SALE_RECORDED', entity: 'ad_offline_sale', entityId: id,
-      newState: { channel: input.channel, valueUgx: Number(input.valueUgx), orderNumber: orderNumber || null, hasEmail: !!contact.email, hasPhone: !!contact.phone } });
+      newState: { channel: input.channel, valueUgx: Number(input.valueUgx), orderNumber: orderNumber || null, hasEmail: !!contact.email, hasPhone: !!contact.phone, hasWhatsAppRef: !!whatsappRef } });
     return { ok: true, value: { id } };
   }
 

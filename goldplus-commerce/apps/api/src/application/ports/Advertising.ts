@@ -228,6 +228,8 @@ export interface OfflineSaleRecord {
   orderNumber: string | null;
   hasEmail: boolean;
   hasPhone: boolean;
+  /** The WhatsApp reference code the sale was recorded with, if any. */
+  whatsappRef?: string | null;
   note: string | null;
   recordedAt: string;
 }
@@ -253,6 +255,8 @@ export interface OfflineContext {
   channel: 'PHONE' | 'WHATSAPP' | null;
   hashes: { emailSha256: string | null; emailGoogleSha256: string | null; phoneDigitsSha256: string | null; phonePlusSha256: string | null };
   clickIds: Record<string, string>;
+  /** The visitor a WhatsApp reference code on the sale was issued to: the sale is theirs, so their browser identifiers may travel with it. */
+  visitorId?: string | null;
   subjects: { userIds: string[]; fpClientIds: string[] };
   /**
    * Set when the buyer's chat began from a Click-to-WhatsApp advert inside the
@@ -273,8 +277,10 @@ export interface OfflineConversionRepository {
   consentSubjectsForContact(contact: { email?: string | null; phone?: string | null }): Promise<{ userIds: string[]; fpClientIds: string[] }>;
   recordSale(sale: {
     channel: 'PHONE' | 'WHATSAPP'; occurredAt: Date; valueUgx: number; orderId: string | null;
-    hashes: OfflineContext['hashes']; subjects: OfflineContext['subjects']; note: string | null; recordedBy: string | null;
+    hashes: OfflineContext['hashes']; subjects: OfflineContext['subjects']; note: string | null; recordedBy: string | null; whatsappRef?: string | null;
   }): Promise<string>;
+  /** The visitor a WhatsApp reference code was issued to (measurement.whatsapp_ref), or null when no such code was issued to a shopper. */
+  whatsAppRefVisitor(code: string): Promise<{ visitorId: string; issuedAt: Date } | null>;
   listSales(limit: number): Promise<OfflineSaleRecord[]>;
   /** One PENDING row per platform for every COD delivery and admin sale in the window (idempotent). */
   enqueue(platforms: string[], sinceDays: number): Promise<number>;

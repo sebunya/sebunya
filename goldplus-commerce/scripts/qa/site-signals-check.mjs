@@ -19,7 +19,8 @@ await ctx.route('http://localhost:3000/**', async (route) => {
   const res = await route.fetch({ url: req.url().replace('http://localhost:3000', API) }).catch(() => null);
   if (/\/telemetry\/collect/.test(req.url()) && req.method() === 'POST') {
     let body; try { body = JSON.parse(req.postData() ?? 'null'); } catch { body = null; }
-    for (const ev of Array.isArray(body) ? body : [body]) if (ev?.event_name) beacons.push({ event: ev, status: res?.status() ?? 0 });
+    // A plain array (events), one event, or the collector's envelope ({ batchId, events }).
+    for (const ev of Array.isArray(body) ? body : Array.isArray(body?.events) ? body.events : [body]) if (ev?.event_name) beacons.push({ event: ev, status: res?.status() ?? 0 });
   }
   if (res) await route.fulfill({ response: res }); else await route.abort();
 });
@@ -68,6 +69,25 @@ try {
   await link.click({ noWaitAfter: true }).catch(() => undefined); await settle();
   check('a tap on the map link sends ONE find_location per page view, accepted', of('find_location').length === 1 && [200, 202, 207].includes(of('find_location')[0].status), JSON.stringify(of('find_location').map((b) => b.status)));
   await page.locator('a[href^="/"]').first().click({ noWaitAfter: true, trial: true }).catch(() => undefined);
+  // ---- WhatsApp: the advert landing page, and a link on an ordinary page ----
+  await page.route(/wa\.me|api\.whatsapp\.com/, (r) => r.abort());
+  await page.goto('/wa?fbclid=IwAR_browser_check_click'); await settle();
+  const bridge = page.locator('a[data-wa-bridge]');
+  check('/wa shows one WhatsApp button and does not leave by itself', (await bridge.count()) === 1 && new URL(page.url()).pathname === '/wa', page.url());
+  check('/wa is not for search engines', (await page.locator('meta[name="robots"]').getAttribute('content') ?? '').includes('noindex'));
+  await bridge.click({ noWaitAfter: true }).catch(() => undefined); await settle();
+  const tagged = await bridge.getAttribute('href');
+  const code = (/Ref%20(GP-[23456789A-Z]{6})/.exec(tagged ?? '') ?? [])[1];
+  check('the tap puts a reference code in the chat message', !!code, String(tagged).slice(0, 160));
+  check('the code is filed with the collector against this visitor', of('whatsapp_ref').some((b) => b.event.ref?.code === code && /^fp\./.test(b.event.user_data?.fp_client_id ?? '') && [200, 202, 207].includes(b.status)), JSON.stringify(of('whatsapp_ref').map((b) => [b.event.ref?.code, b.status])));
+  check('the tap is ONE contact, on the landing page', of('generate_lead').length === 1 && of('generate_lead')[0].event.lead?.method === 'whatsapp' && /\/wa\?/.test(of('generate_lead')[0].event.page_location), JSON.stringify(of('generate_lead').map((b) => b.event.page_location)));
+  check('the advert click was kept for this visitor (Meta click id built from fbclid)', await page.evaluate(() => { try { return /fb\.1\.\d+\.IwAR_browser_check_click/.test(localStorage.getItem('_gp_ad_click') ?? ''); } catch { return false; } }));
+  await page.goto('/support'); await settle();
+  const anyWa = page.locator('a[href^="https://wa.me/"]').first();
+  if (await anyWa.count()) {
+    await anyWa.click({ noWaitAfter: true, force: true }).catch(() => undefined); await settle();
+    check('a WhatsApp link on an ordinary page is tagged and counted too', of('generate_lead').length === 2 && of('whatsapp_ref').length === 2, `${of('generate_lead').length} leads, ${of('whatsapp_ref').length} refs`);
+  }
   check('every signal names its page and its visitor, and no contact detail', beacons.filter((b) => ['search', 'sign_up', 'find_location'].includes(b.event.event_name)).every((b) => /^http/.test(b.event.page_location) && /^fp\./.test(b.event.user_data?.fp_client_id ?? '') && !b.event.user_data?.hashed_email && !b.event.user_data?.hashed_phone));
   check('no page error', errors.length === 0, errors.slice(0, 3).join(' | '));
 } catch (e) { check('script ran to the end', false, e.message); }

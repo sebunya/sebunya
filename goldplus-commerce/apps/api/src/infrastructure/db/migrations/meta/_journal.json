@@ -1170,6 +1170,13 @@
       "when": 1790140000043,
       "tag": "0166_whatsapp_ad_referrals",
       "breakpoints": true
+    },
+    {
+      "idx": 167,
+      "version": "5",
+      "when": 1790140000044,
+      "tag": "0167_offline_sale_whatsapp_ref",
+      "breakpoints": true
     }
   ]
 }

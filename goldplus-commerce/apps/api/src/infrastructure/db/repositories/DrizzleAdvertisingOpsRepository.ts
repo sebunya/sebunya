@@ -12,6 +12,7 @@ import type { BuyerOrder } from '../../../domain/advertising/AudienceSegments';
 import type { SpendFact } from '../../../domain/advertising/SpendFacts';
 import { normaliseEmail, offlineSaleHashes, phoneSpellings } from '../../../domain/advertising/ContactNormalisation';
 import { environmentOf } from '../../../domain/measurement/BusinessEvents';
+import { refClickIds } from '../../../domain/advertising/OfflineConversionPolicy';
 import { isStoredAdvertisingRefusal } from '../../measurement/AdvertisingConsentGate';
 import { ORDER_KEY_PREFIX, VISITOR_FP_PREFIX } from '../../../domain/customer-dna/IdentityStitching';
 
@@ -325,16 +326,31 @@ export class DrizzleOfflineConversionRepository implements OfflineConversionRepo
   }
 
   async recordSale(s: Parameters<OfflineConversionRepository['recordSale']>[0]) {
-    const r = rowsOf(await db.execute(sql`insert into ad_offline_sales (channel, occurred_at, value_ugx, order_id, email_sha256, email_google_sha256, phone_digits_sha256, phone_plus_sha256, consent_user_ids, consent_fp_client_ids, note, recorded_by)
+    const r = rowsOf(await db.execute(sql`insert into ad_offline_sales (channel, occurred_at, value_ugx, order_id, email_sha256, email_google_sha256, phone_digits_sha256, phone_plus_sha256, consent_user_ids, consent_fp_client_ids, note, recorded_by, whatsapp_ref)
       values (${s.channel}, ${s.occurredAt.toISOString()}::timestamptz, ${s.valueUgx}, ${uuidOrNull(s.orderId)}, ${s.hashes.emailSha256}, ${s.hashes.emailGoogleSha256}, ${s.hashes.phoneDigitsSha256}, ${s.hashes.phonePlusSha256},
-        ${pgJsonb(s.subjects.userIds)}, ${pgJsonb(s.subjects.fpClientIds)}, ${s.note}, ${uuidOrNull(s.recordedBy)}) returning id`))[0];
+        ${pgJsonb(s.subjects.userIds)}, ${pgJsonb(s.subjects.fpClientIds)}, ${s.note}, ${uuidOrNull(s.recordedBy)}, ${s.whatsappRef ?? null}) returning id`))[0];
     return String(r.id);
+  }
+
+  async whatsAppRefVisitor(code: string): Promise<{ visitorId: string; issuedAt: Date } | null> {
+    const r = rowsOf(await db.execute(sql`select anonymous_id, issued_at from measurement.whatsapp_ref
+      where code = ${code} and environment = ${environmentOf(process.env.NODE_ENV)} and traffic_class = 'customer'`))[0];
+    return r ? { visitorId: String(r.anonymous_id), issuedAt: new Date(r.issued_at) } : null;
+  }
+
+  /** The advert click on the record of the visitor a reference code was issued to, as it stood for a sale at `saleAt`. */
+  private async refVisitorClicks(code: string, saleAt: Date): Promise<{ visitorId: string; clickIds: Record<string, string> } | null> {
+    const v = await this.whatsAppRefVisitor(code);
+    if (!v) return null;
+    const i = rowsOf(await db.execute(sql`select gclid, wbraid, gbraid, fbc, ttclid, twclid, coalesce(click_ids_at, updated_at) as clicked_at
+      from first_party_identities where fp_client_id = ${v.visitorId} order by updated_at desc limit 1`))[0];
+    return { visitorId: v.visitorId, clickIds: i ? refClickIds({ clickedAt: i.clicked_at ?? null, ids: { gclid: i.gclid, wbraid: i.wbraid, gbraid: i.gbraid, fbc: i.fbc, ttclid: i.ttclid, twclid: i.twclid } }, saleAt) : {} };
   }
 
   async listSales(limit: number): Promise<OfflineSaleRecord[]> {
     return rowsOf(await db.execute(sql`select s.*, o.order_number from ad_offline_sales s left join orders o on o.id = s.order_id order by s.recorded_at desc limit ${Math.min(200, Math.max(1, limit))}`)).map((r) => ({
       id: String(r.id), channel: r.channel, occurredAt: iso(r.occurred_at)!, valueUgx: Number(r.value_ugx), orderNumber: r.order_number ?? null,
-      hasEmail: !!r.email_sha256, hasPhone: !!r.phone_digits_sha256, note: r.note ?? null, recordedAt: iso(r.recorded_at)!,
+      hasEmail: !!r.email_sha256, hasPhone: !!r.phone_digits_sha256, whatsappRef: r.whatsapp_ref ?? null, note: r.note ?? null, recordedAt: iso(r.recorded_at)!,
     }));
   }
 
@@ -406,13 +422,20 @@ export class DrizzleOfflineConversionRepository implements OfflineConversionRepo
     const pick = (a: string | null, b: string | null | undefined) => a ?? b ?? null;
     const subjUsers = [...stringsOf(s.consent_user_ids), ...(o ? orderSubjects(o).userIds : [])];
     const subjFps = [...stringsOf(s.consent_fp_client_ids), ...(o ? orderSubjects(o).fpClientIds : [])];
+    // An order's own click ids are what the checkout recorded; a sale with no
+    // order (closed in the chat) takes them from the visitor its reference
+    // code was issued to. A failed lookup costs the attribution, not the sale.
+    const orderClicks = o ? clickIdsOf(o.click_ids) : {};
+    const ref = s.whatsapp_ref && Object.keys(orderClicks).length === 0
+      ? await this.refVisitorClicks(String(s.whatsapp_ref), new Date(s.occurred_at)).catch(() => null) : null;
     return {
       row, valueUgx: Number(s.value_ugx), orderId: s.order_id ? String(s.order_id) : null, orderNumber: o ? String(o.order_number) : null, channel: s.channel,
       hashes: {
         emailSha256: pick(s.email_sha256, orderHashes?.emailSha256), emailGoogleSha256: pick(s.email_google_sha256, orderHashes?.emailGoogleSha256),
         phoneDigitsSha256: pick(s.phone_digits_sha256, orderHashes?.phoneDigitsSha256), phonePlusSha256: pick(s.phone_plus_sha256, orderHashes?.phonePlusSha256),
       },
-      clickIds: o ? clickIdsOf(o.click_ids) : {},
+      clickIds: ref ? ref.clickIds : orderClicks,
+      visitorId: ref?.visitorId ?? null,
       subjects: { userIds: [...new Set(subjUsers)], fpClientIds: [...new Set(subjFps)] },
     };
   }

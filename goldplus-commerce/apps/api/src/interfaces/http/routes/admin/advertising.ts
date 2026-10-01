@@ -116,6 +116,7 @@ routes.post('/offline/sales', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]),
     channel: String(b?.channel ?? ''), occurredAt: String(b?.occurredAt ?? ''), valueUgx: b?.valueUgx,
     orderNumber: typeof b?.orderNumber === 'string' ? b.orderNumber : null, email: typeof b?.email === 'string' ? b.email : null,
     phone: typeof b?.phone === 'string' ? b.phone : null, note: typeof b?.note === 'string' ? b.note : null,
+    whatsappRef: typeof b?.whatsappRef === 'string' ? b.whatsappRef : null,
   });
   if (!r.ok) return c.json({ success: false, error: { code: r.code, message: r.message } }, (STATUS[r.code] ?? 400) as never);
   return c.json({ success: true, data: r.value }, 201);

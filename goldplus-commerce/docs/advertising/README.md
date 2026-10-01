@@ -327,6 +327,28 @@ app alone sends no webhooks — Meta's coexistence onboarding keeps the app work
 Meta app with the webhook above subscribed to `messages`; the WhatsApp account connected to the
 dataset; a token allowed `whatsapp_business_manage_events`.
 
+
+### WhatsApp sales credited to adverts WITHOUT the WhatsApp Business Platform (2026-10-01)
+
+The webhook route above needs the shop's number on the WhatsApp Business Platform. Until then, and
+alongside it afterwards, three pieces give the same result for adverts that send people to the site:
+
+1. **Every WhatsApp link on every page** (`lib/whatsappClicks`, registered by `BaseLayout`) adds
+   `Ref GP-XXXXXX` to the chat's first message, files which visitor the code was issued to
+   (`measurement.whatsapp_ref`) and reports the tap as a contact (Meta `Contact`).
+2. **`/wa`** (and `/wa?p=<product slug>`): the landing page for a Facebook or Instagram advert whose
+   aim is a WhatsApp chat. The advert is an ordinary website advert pointing at this URL, so the
+   visit records the advert's click id like any landing; the page shows one WhatsApp button and
+   never redirects by itself. Optimise the advert for the `Contact` event.
+3. **The reference code on a recorded sale** (`ad_offline_sales.whatsapp_ref`, migration 0167; the
+   "WhatsApp reference code" field on Advertising > Offline sales). The code alone is enough to
+   record a sale. At send time the click ids on that visitor's record (`fbc`, `gclid`, `ttclid` …)
+   travel with the sale when the click happened before the sale and within 30 days of it, with
+   the visitor's `external_id` and derived `fbp` for Meta. The visitor joins the sale's consent
+   subjects, so an advertising refusal still suppresses it. A code the site never issued is refused.
+
+Needs the Meta "Offline conversions" capability switched on (same dataset and token as the website).
+
 ## What the owner fills in
 
 No new environment variable is required. The vault key is `SEO_CREDENTIAL_VAULT_KEY` (falls back
