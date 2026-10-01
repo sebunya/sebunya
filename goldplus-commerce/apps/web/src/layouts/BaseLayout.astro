@@ -6,7 +6,7 @@ import { whatsappSupportNumber } from '../lib/api';
 import { getBusinessInfo } from '../lib/businessInfo';
 import { getSiteVerification } from '../lib/siteVerification';
 import { getHomepageContent } from '../lib/homepageContent';
-import { DEFAULT_HOMEPAGE_CONTENT, xHandleFromSocials } from '@goldplus/shared';
+import { DEFAULT_HOMEPAGE_CONTENT, xHandleFromSocials, jpegRendition } from '@goldplus/shared';
 import { SITE_ORIGIN } from '../lib/sitemap';
 import { resolveMeasurementConfig } from '../lib/measurement';
 import DeclarativeActions from '../components/DeclarativeActions.astro';
@@ -27,6 +27,12 @@ interface Props {
   canonicalUrl?: string;
   /** U6 — optional robots directive (e.g. "noindex,follow"). Omitted = default index,follow. */
   robotsMeta?: string;
+  /**
+   * A product page: what Facebook, Instagram and WhatsApp show for a shared
+   * link, and what Meta's catalogue reads from the page. `id` is the same id
+   * the catalogue feed and the conversion events name.
+   */
+  product?: { id: string; priceUgx: number; inStock: boolean };
 }
 
 const {
@@ -35,6 +41,7 @@ const {
   image = '/og-default.png',
   canonicalUrl,
   robotsMeta,
+  product: ogProduct,
 } = Astro.props;
 
 // Footer social/contact icons live in ONE cached sprite (public/nav/social-v1.svg,
@@ -57,7 +64,8 @@ const footerIconKeys = new Set(['instagram', 'x', 'facebook', 'youtube', 'tiktok
 // canonicalUrl explicitly use.
 const canonical = canonicalUrl ?? `${SITE_ORIGIN}${Astro.url.pathname}`;
 // Share-card crawlers (WhatsApp, Facebook, X) ignore a relative og:image; always emit an absolute URL.
-const shareImage = /^https?:\/\//i.test(image) ? image : `${SITE_ORIGIN}${image.startsWith('/') ? '' : '/'}${image}`;
+// A product photo is shared as its JPEG rendition: every share-card crawler reads JPEG.
+const shareImage = jpegRendition(/^https?:\/\//i.test(image) ? image : `${SITE_ORIGIN}${image.startsWith('/') ? '' : '/'}${image}`);
 const measurement = resolveMeasurementConfig(import.meta.env);
 // Loads /fonts/faces.css right after the first paint (see the <head> comment).
 // Loads Cloudflare Web Analytics after load + idle (see the <head> comment).
@@ -84,7 +92,17 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
     <title>{title.includes('GoldPlus') ? title : `${title} | GoldPlus`}</title>
 
     {/* Open Graph */}
-    <meta property="og:type" content="website" />
+    <meta property="og:type" content={ogProduct ? "product" : "website"} />
+    {ogProduct && (
+      <Fragment>
+        <meta property="product:retailer_item_id" content={ogProduct.id} />
+        <meta property="product:price:amount" content={String(ogProduct.priceUgx)} />
+        <meta property="product:price:currency" content="UGX" />
+        <meta property="product:availability" content={ogProduct.inStock ? "in stock" : "out of stock"} />
+        <meta property="product:condition" content="new" />
+        <meta property="product:brand" content="GoldPlus" />
+      </Fragment>
+    )}
     <meta property="og:url" content={canonical} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />

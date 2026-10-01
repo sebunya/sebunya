@@ -53,7 +53,11 @@ active, approved, priced, described, photographed; sample frames are never in th
 Only the public price; never a dealer price, supplier cost or floor; availability as a word, never a
 unit count (no `quantity_to_sell_on_facebook`).
 
-- Meta CSV columns: `id,title,description,availability,condition,price,link,image_link,brand,additional_image_link,sale_price,sale_price_effective_date,google_product_category,product_type,mpn`.
+- Meta CSV columns: `id,title,description,availability,condition,price,link,image_link,brand,additional_image_link,sale_price,sale_price_effective_date,google_product_category,product_type,mpn,custom_label_0`.
+  `id` is the PRODUCT ID, the id every conversion event names in `content_ids` (2026-10-01: it was the
+  SKU, so no event matched any catalogue item); the SKU travels in `custom_label_0`. Images are the
+  JPEG renditions (`pdp.jpg`): Meta's catalogue takes JPEG and PNG only. Product pages carry the
+  same id in `product:retailer_item_id`, with `og:type=product`, price and availability.
   Availability `in stock` / `out of stock` (a pre-order without a date goes out of stock, as in
   the Google feed). Sale price only with its real window.
 - TikTok CSV columns: the nine required (`sku_id,title,description,availability,condition,price,link,image_link,brand`)

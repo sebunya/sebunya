@@ -9,7 +9,7 @@ import { OfflineConversionUseCases } from '../../apps/api/src/application/use-ca
 import { AdCapabilityUseCases, capabilityGap, capabilityDef } from '../../apps/api/src/application/use-cases/advertising/AdCapabilities';
 import { AdDestinationUseCases } from '../../apps/api/src/application/use-cases/advertising/AdDestinationUseCases';
 import { buildChecklist } from '../../apps/api/src/application/use-cases/advertising/ConnectionChecklist';
-import { buildMetaCatalogueCsv, buildTikTokCatalogueCsv, feedCsvCell, META_FEED_COLUMNS, TIKTOK_FEED_COLUMNS } from '../../apps/api/src/application/use-cases/advertising/CatalogueFeeds';
+import { buildMetaCatalogueCsv, buildTikTokCatalogueCsv, feedCsvCell, metaCatalogueId, META_FEED_COLUMNS, TIKTOK_FEED_COLUMNS } from '../../apps/api/src/application/use-cases/advertising/CatalogueFeeds';
 import {
   HttpAudienceGateway, HttpOfflineConversionGateway, HttpSpendGateway, dataManagerIngestBodies, googleSpendFacts, googleSpendQuery, metaSpendFacts, offlineRequest, scrub, tiktokFile,
 } from '../../apps/api/src/infrastructure/advertising/AdvertisingGateways';
@@ -422,6 +422,24 @@ describe('catalogue feeds', () => {
     expect(rows[1]).toContain('out of stock'); // pre-order without a date
     expect(csv).not.toMatch(/120000/); // the floor never appears
     expect(csv).not.toMatch(/,7,|quantity/); // no stock count
+  });
+  it('Meta CSV: the item id is the id every event names, so Meta can tie a view or a purchase to the item; pictures are JPEG', () => {
+    const id = '93d2ea22-4d6d-4ba2-9f17-c8941930e306';
+    const p = product({ id, imageUrl: '/uploads/assets/9d/9d993f5ef5a7/pdp.webp', imageUrls: ['/uploads/assets/9d/9d993f5ef5a7/pdp.webp', '/uploads/assets/ab/ab12cd34ef56/pdp.webp'] });
+    const cells = buildMetaCatalogueCsv([p], 'https://shopgoldplus.com').trim().split('\n')[1].split(',');
+    const col = (name: string) => cells[META_FEED_COLUMNS.indexOf(name as never)];
+    expect(col('id')).toBe(id);
+    expect(col('custom_label_0')).toBe('GP-PB10');                      // the SKU staff know it by
+    // What the shop's events send as content_ids for the same product (as seen in production's queue, 2026-10-01).
+    const event = { event_name: 'view_item', event_id: '11111111-1111-4111-8111-111111111111', event_time: 1790000000, source: 'browser', page_location: 'https://shopgoldplus.com/products/x',
+      user_data: { fp_client_id: 'fp.1.x', user_agent: 'UA' }, ecommerce: { value: 145000, currency: 'UGX', items: [{ item_id: id, price: 145000, quantity: 1 }] } };
+    const sent = (buildAdRequest('meta', event as never, { datasetId: '1234567890123' }, 'T')!.body as any).data[0].custom_data;
+    expect(sent.content_ids).toEqual([metaCatalogueId(p)]);
+    expect(sent.contents[0].id).toBe(metaCatalogueId(p));
+    // Meta's catalogue takes JPEG and PNG only; the display rendition is WebP.
+    expect(col('image_link')).toBe('https://shopgoldplus.com/uploads/assets/9d/9d993f5ef5a7/pdp.jpg');
+    expect(col('additional_image_link')).toBe('https://shopgoldplus.com/uploads/assets/ab/ab12cd34ef56/pdp.jpg');
+    expect(metaCatalogueId(product())).toBe('GP-PB10');                 // a caller with no id still gets a stable one
   });
   it('TikTok CSV: sku_id, preorder stated as preorder, never a sale price', () => {
     const csv = buildTikTokCatalogueCsv([product(), product({ sku: 'PRE', isPreOrderEnabled: true }), product({ sku: 'NOIMG', imageUrl: null })]);

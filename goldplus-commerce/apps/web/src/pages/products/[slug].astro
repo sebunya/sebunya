@@ -457,7 +457,8 @@ if (product) {
 }
 ---
 
-<BaseLayout title={pageTitle} description={description} canonicalUrl={canonical} image={product?.images?.find((i) => !(i.alt ?? '').startsWith('Sample '))?.url ?? undefined} robotsMeta={lifecycleNoindex ? 'noindex,follow' : undefined}>
+<BaseLayout title={pageTitle} description={description} canonicalUrl={canonical} image={product?.images?.find((i) => !(i.alt ?? '').startsWith('Sample '))?.url ?? undefined} robotsMeta={lifecycleNoindex ? 'noindex,follow' : undefined}
+  product={product && pdpHasPrice ? { id: product.id, priceUgx: pdpOnSale ? pdpSaleUgx! : product.retailPriceUgx!, inStock: product.availability.kind === 'in_stock' } : undefined}>
   {product && (
     <Fragment slot="head">
       <ProductJsonLd product={product} url={canonical} priceUgx={pdpSaleUgx} />
