@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AD_PLATFORMS, buildAdRequest, adPlatformAccepts, adSkipReason, adErrorSummary, metaUserData, metaMatchable, metaCustomData, metaErrorSummary, xSendScope, X_EVENT_FIELD, hashEmail, hashPhone, hashPhonePlus, normalisePhoneUg, linkedInVersion, META_GRAPH_VERSION } from '../../apps/api/src/infrastructure/advertising/AdPlatforms';
+import { META_GRAPH_VERSION_RELEASED, AD_PLATFORMS, buildAdRequest, adPlatformAccepts, adSkipReason, adErrorSummary, metaUserData, metaMatchable, metaCustomData, metaErrorSummary, xSendScope, X_EVENT_FIELD, hashEmail, hashPhone, hashPhonePlus, normalisePhoneUg, linkedInVersion, META_GRAPH_VERSION } from '../../apps/api/src/infrastructure/advertising/AdPlatforms';
 import { AdDestinationUseCases } from '../../apps/api/src/application/use-cases/advertising/AdDestinationUseCases';
 
 const purchase: any = {
@@ -20,7 +20,7 @@ describe('advertising platforms: request builders', () => {
   });
   it('Meta: Purchase to the dataset with hashed ids, IP/UA, value and order id; the token only in the Authorization header', () => {
     const r = buildAdRequest('meta', purchase, { datasetId: '1234567890123' }, 'TOKEN_x')!;
-    expect(r.url).toBe('https://graph.facebook.com/v23.0/1234567890123/events');
+    expect(r.url).toBe('https://graph.facebook.com/v25.0/1234567890123/events');
     expect(r.url).not.toContain('TOKEN_x');
     expect(r.headers.Authorization).toBe('Bearer TOKEN_x');
     const d = (r.body as any).data[0];
@@ -94,6 +94,10 @@ describe('advertising platforms: request builders', () => {
     expect(metaErrorSummary(400, body({ message: 'busy', code: 999, is_transient: true }))!.transient).toBe(true);
     for (const junk of ['', 'not json', '{}', '{"error":"string"}', '[]']) expect(metaErrorSummary(500, junk), junk).toBeNull();
     expect(adErrorSummary('meta', 400, body({ message: 'x', code: 190 }))!.credentials).toBe(true);
+    // The exact bodies the live Graph API returned on 2026-10-01 for a junk token and for none.
+    expect(metaErrorSummary(400, '{"error":{"message":"Invalid OAuth access token - Cannot parse access token","type":"OAuthException","code":190,"fbtrace_id":"AkTjua8CTo5ri1vH6MN6z4e"}}'))
+      .toEqual({ message: 'Meta error 190: Invalid OAuth access token - Cannot parse access token (fbtrace_id AkTjua8CTo5ri1vH6MN6z4e)', transient: false, credentials: true });
+    expect(metaErrorSummary(400, '{"error":{"message":"An access token is required to request this resource.","type":"OAuthException","code":104,"fbtrace_id":"AEQFCJ288tIY9TnoikEGZSq"}}')!.credentials).toBe(true);
     expect(adErrorSummary('x', 403, '{"errors":[]}')).toBeNull();        // a platform that gives no account has none
     // The message is bounded: a long answer cannot fill the row.
     expect(metaErrorSummary(400, body({ message: 'm'.repeat(5000), code: 100 }))!.message.length).toBeLessThan(260);
@@ -153,6 +157,25 @@ describe('advertising destinations: complete before live, tokens write-only', ()
     expect(meta.state).toBe('LIVE');
     expect(await uc.recipients()).toEqual(['Meta (Facebook, Instagram, WhatsApp ads)']);
   });
+  it('Meta domain verification: saved without a token, served publicly, and only as the plain code Meta issues', async () => {
+    const { uc, rows } = mk();
+    expect(await uc.siteVerification()).toEqual({ meta: null });
+    // The code can be saved before the dataset or token exist: verifying the domain comes first.
+    const code = 'a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5';
+    expect((await uc.configure('u', 'meta', { config: { domainVerification: code } })).ok).toBe(true);
+    expect(await uc.siteVerification()).toEqual({ meta: code });
+    expect((await uc.list()).find((p) => p.key === 'meta')!.state).toBe('NOT_CONFIGURED');   // it does not make Meta "configured"
+    // Anything that is not the code is refused at the door, and never printed.
+    for (const bad of ['<script>alert(1)</script>', 'short', 'has spaces in the middle of it xx', '"><meta'])
+      expect(await uc.configure('u', 'meta', { config: { domainVerification: bad } }), bad).toMatchObject({ ok: false, code: 'BAD_INPUT' });
+    rows.set('meta', { ...rows.get('meta'), config: { domainVerification: '"><script>' } });
+    expect(await uc.siteVerification()).toEqual({ meta: null });
+    // The storefront checks again before printing, and prints it in the head of every page.
+    const fs = require('node:fs'); const path = require('node:path');
+    const read = (f: string) => fs.readFileSync(path.resolve(__dirname, '../..', f), 'utf8');
+    expect(read('apps/web/src/lib/siteVerification.ts')).toContain('CODE.test(j.data.meta) ? j.data.meta : null');
+    expect(read('apps/web/src/layouts/BaseLayout.astro')).toContain('{siteVerification.meta && <meta name="facebook-domain-verification" content={siteVerification.meta} />}');
+  });
   it('an unavailable platform cannot be configured', async () => {
     const { uc } = mk();
     expect(await uc.configure('u', 'spotify', { enabled: true })).toMatchObject({ ok: false, code: 'NOT_CONFIGURED' });
@@ -169,7 +192,20 @@ describe('advertising: second-review fixes', () => {
   it('API versions stay supported: LinkedIn header is two months back; Meta pinned to a current Graph version', () => {
     expect(linkedInVersion(new Date('2026-09-19T00:00:00Z'))).toBe('202607');
     expect(linkedInVersion(new Date('2027-01-05T00:00:00Z'))).toBe('202611');
-    expect(META_GRAPH_VERSION).toBe('v23.0');
+    expect(META_GRAPH_VERSION).toBe('v25.0');
+  });
+  it('the pinned Meta version is not left to expire: a Marketing API version lives about a year', () => {
+    expect(META_GRAPH_VERSION).toMatch(/^v\d{2}\.0$/);
+    expect(META_GRAPH_VERSION_RELEASED).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const ageDays = (Date.now() - new Date(`${META_GRAPH_VERSION_RELEASED}T00:00:00Z`).getTime()) / 86_400_000;
+    // THIS TEST FAILING IS THE REMINDER. Meta does not reject a retired version:
+    // it serves the next usable one instead, so nothing else will say the pin
+    // is stale. Read the Marketing API changelog for the endpoints this module uses
+    // (/{dataset}/events, /dataset_quality, customaudiences, usersreplace,
+    // insights), move META_GRAPH_VERSION to the newest version with no breaking
+    // change for them, and set META_GRAPH_VERSION_RELEASED to its release date.
+    expect(ageDays, `Meta Graph ${META_GRAPH_VERSION} was released ${Math.round(ageDays)} days ago; Marketing API versions expire about a year after release`).toBeLessThan(300);
+    expect(ageDays).toBeGreaterThanOrEqual(0);
   });
   it('the notification worker never claims AD_CONVERSION rows (it would discard them as unroutable)', () => {
     const src = require('node:fs').readFileSync(require('node:path').resolve(__dirname, '../../apps/api/src/application/use-cases/outbox/ProcessOutboxBatchUseCase.ts'), 'utf8');

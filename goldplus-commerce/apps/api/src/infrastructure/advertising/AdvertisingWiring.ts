@@ -15,7 +15,7 @@ import { DrizzleAdDestinationRepository } from '../db/repositories/DrizzleAdDest
 import { IntegrationCredentialVault } from '../seo/IntegrationCredentialVault';
 import { vaultCipher } from '../ai-visibility/AiVisibilityWiring';
 import { HttpAudienceGateway, HttpOfflineConversionGateway, HttpSpendGateway } from './AdvertisingGateways';
-import { AD_PLATFORMS, X_EVENT_FIELD } from './AdPlatforms';
+import { AD_PLATFORMS, META_GRAPH_VERSION, X_EVENT_FIELD } from './AdPlatforms';
 import { AdActivityUseCases } from '../../application/use-cases/advertising/AdActivityUseCases';
 import { DrizzleAdActivityRepository } from '../db/repositories/DrizzleAdActivityRepository';
 import { MetaDiagnosticsUseCases } from '../../application/use-cases/advertising/MetaDiagnosticsUseCases';
@@ -104,7 +104,7 @@ export function createAdvertisingOperations(deps: {
     const enc = await destRepo.secretEnc('meta');
     if (!enc) throw new Error('Not configured: enter the Conversions API access token on the Advertising page.');
     return { datasetId, token: decrypt(enc), enabled: !!dest?.enabled, mode: dest?.mode === 'test' ? 'test' : 'live' };
-  }, deps.audit, storefrontOrigin);
+  }, deps.audit, storefrontOrigin, () => Date.now(), META_GRAPH_VERSION);
 
   return {
     capabilities, audiences, spend, offline, feeds, feedUrls, activity, metaDiagnostics,

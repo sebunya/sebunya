@@ -199,8 +199,13 @@ const anyActivity = daily.some((d) => totalOf(d) > 0);
             {!metaRes?.ok ? <p role="alert" class="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{metaRes?.message ?? "Meta's answer could not be read."}</p>
               : !meta.configured ? <p class="rounded-2xl border border-gray-200 bg-white p-4 text-sm text-gray-700">{meta.notConfigured} Nothing has been asked of Meta.</p> : (
               <div class="grid gap-4 lg:grid-cols-3">
+                {meta.graph?.retired && (
+                  <p role="alert" class="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 lg:col-span-3">
+                    <strong class="font-black">Meta has retired the API version this shop asks for.</strong> The code requests {meta.graph.pinned}; Meta answered as {meta.graph.served}. Events are still accepted, on a version nobody chose. Tell your developer to move the pinned Graph API version.
+                  </p>
+                )}
                 <div class="rounded-2xl border border-gray-200 bg-white p-4 lg:col-span-2">
-                  <p class="text-xs font-bold text-gray-600">Connection</p>
+                  <p class="text-xs font-bold text-gray-600">Connection {meta.graph?.served && !meta.graph.retired && <span class="font-normal">· Graph API {meta.graph.served}</span>}</p>
                   {meta.connection.state === "ok"
                     ? <p class="mt-1 text-sm text-emerald-900"><span aria-hidden="true">✓ </span>Meta recognises the dataset{meta.connection.value.name ? <> <strong>{meta.connection.value.name}</strong></> : ""} (<span class="font-mono text-xs">{meta.datasetId}</span>) and accepts this token.</p>
                     : meta.connection.state === "unavailable"

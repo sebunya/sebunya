@@ -356,7 +356,7 @@ describe('Meta tokens never travel in a URL', () => {
   it('Insights: the token is in the Authorization header; a paging next URL has its access_token stripped', async () => {
     const calls: Array<{ url: string; init: any }> = [];
     const replies = [
-      { data: [{ campaign_id: '1', spend: '10.00', account_currency: 'USD', date_start: '2026-09-20' }], paging: { next: 'https://graph.facebook.com/v23.0/act_1010/insights?after=abc&access_token=EAAB_LEAKED_IN_NEXT' } },
+      { data: [{ campaign_id: '1', spend: '10.00', account_currency: 'USD', date_start: '2026-09-20' }], paging: { next: 'https://graph.facebook.com/v25.0/act_1010/insights?after=abc&access_token=EAAB_LEAKED_IN_NEXT' } },
       { data: [] },
     ];
     const f = vi.fn(async (url: string, init: any) => { calls.push({ url, init }); return new Response(JSON.stringify(replies.shift() ?? {}), { status: 200 }); }) as unknown as typeof fetch;
@@ -368,7 +368,7 @@ describe('Meta tokens never travel in a URL', () => {
       expect(c.url).not.toContain('EAAB_');
       expect(c.init.headers.Authorization).toBe('Bearer EAAB_META_SPEND_TOKEN');
     }
-    expect(calls[1].url).toBe('https://graph.facebook.com/v23.0/act_1010/insights?after=abc');
+    expect(calls[1].url).toBe('https://graph.facebook.com/v25.0/act_1010/insights?after=abc');
     expect(withoutAccessToken('https://graph.facebook.com/x?access_token=a&b=1')).toBe('https://graph.facebook.com/x?b=1');
   });
   it('custom audiences and offline conversions: header, not URL or body', async () => {

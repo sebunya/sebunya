@@ -97,7 +97,7 @@ export function explainOutcome(input: { platformName: string; outcome: AdOutcome
   if (meta) {
     const code = Number(meta[1]);
     const said = clip(raw.slice(raw.indexOf('Meta error')), 230);
-    if (code === 190 || code === 102) return `Meta rejected the access token (expired, revoked or wrong). Generate a new one in Events Manager and re-enter it on the Advertising page. ${said}`;
+    if (code === 190 || code === 102 || code === 104) return `Meta rejected the access token (expired, revoked or wrong). Generate a new one in Events Manager and re-enter it on the Advertising page. ${said}`;
     if (code === 10 || code === 200 || code === 294 || code === 3) return `The access token is not allowed to send to this dataset. In Events Manager, generate the token from this dataset's Conversions API settings. ${said}`;
     if (code === 100) return `Meta refused the event as invalid. ${said}`;
     if (code === 803 || code === 2500) return `Meta does not recognise the dataset ID. Check it on the Advertising page. ${said}`;

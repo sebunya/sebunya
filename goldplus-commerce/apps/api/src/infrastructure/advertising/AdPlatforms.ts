@@ -68,11 +68,24 @@ const TEST_CODE_FIELD = (where: string) => ({ key: 'testEventCode', label: 'Test
 const leadMethod = (e: CanonicalTelemetryEvent) => (e as { lead?: { method?: string } }).lead?.method;
 
 /**
- * API versions. Meta supports a Graph version ~2 years (v23.0: May 2025).
+ * API versions. Meta: see META_GRAPH_VERSION_RELEASED below (Marketing API versions live ~1 year).
  * LinkedIn sunsets a monthly version ~12 months after release, so the header
  * is derived: two months back from today is released and well inside support.
  */
-export const META_GRAPH_VERSION = 'v23.0';
+export const META_GRAPH_VERSION = 'v25.0';
+/**
+ * When that version was released. The Conversions API, Custom Audiences and
+ * Insights are MARKETING API endpoints, and Meta retires Marketing API
+ * versions on a shorter schedule than Graph API core's two years: its
+ * changelog lists v24.0 (released 2025-10-08) as available until 2026-10-06.
+ * A retired version is not refused — Meta's versioning guide says such calls
+ * are "defaulted to the next oldest, usable version" — so an expired pin
+ * fails nothing and behaves as a version nobody chose. Two guards: a unit
+ * test fails ~300 days after this date, and the diagnostics compare this pin
+ * with the `facebook-api-version` header Meta returns (checked against the
+ * live API on 2026-10-01: each of v23.0–v26.0 answered as itself).
+ */
+export const META_GRAPH_VERSION_RELEASED = '2026-02-18';
 export function linkedInVersion(now = new Date()): string {
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 2, 1));
   return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
@@ -266,8 +279,9 @@ export function metaErrorSummary(_status: number, body: string): { message: stri
   return {
     message: `Meta error ${Number.isFinite(code) ? code : '?'}${sub != null && Number.isFinite(sub) ? `/${sub}` : ''}: ${String(text).slice(0, 220)}${trace}`,
     transient: er.is_transient === true || META_TRANSIENT_CODES.has(code),
-    // 190: the access token is expired, revoked or malformed. 102: the session is no longer valid.
-    credentials: code === 190 || code === 102,
+    // 190: the access token is expired, revoked or malformed. 102: the session
+    // is no longer valid. 104: no token reached Meta at all.
+    credentials: code === 190 || code === 102 || code === 104,
   };
 }
 
@@ -275,7 +289,12 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
   {
     key: 'meta', name: 'Meta (Facebook, Instagram, WhatsApp ads)', testable: true,
     fields: [{ key: 'datasetId', label: 'Dataset (pixel) ID', pattern: /^\d{10,20}$/, hint: 'Events Manager > Datasets' },
-      TEST_CODE_FIELD('Events Manager > your dataset > Test events: the TEST… code')],
+      TEST_CODE_FIELD('Events Manager > your dataset > Test events: the TEST… code'),
+      // Not a secret: Meta reads it from the home page to confirm the domain is
+      // yours (needed before a domain's events can be prioritised or its links
+      // edited in ads). Served as <meta name="facebook-domain-verification">.
+      { key: 'domainVerification', label: 'Domain verification code', pattern: /^[a-z0-9]{20,64}$/i, optional: true,
+        hint: 'Business settings > Brand safety > Domains > Add > "Add a meta-tag to your HTML source code": paste only the content value. Then press Verify there.' }],
     secretLabel: 'Conversions API access token',
     // generate_lead: a quote request (the customer submitted their details) is a
     // Lead; a WhatsApp chat tap is a Contact (Meta standard events).

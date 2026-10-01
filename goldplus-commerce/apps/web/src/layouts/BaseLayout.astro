@@ -4,6 +4,7 @@ import GpNav from '../components/GpNav.astro';
 
 import { whatsappSupportNumber } from '../lib/api';
 import { getBusinessInfo } from '../lib/businessInfo';
+import { getSiteVerification } from '../lib/siteVerification';
 import { getHomepageContent } from '../lib/homepageContent';
 import { DEFAULT_HOMEPAGE_CONTENT, xHandleFromSocials } from '@goldplus/shared';
 import { SITE_ORIGIN } from '../lib/sitemap';
@@ -12,6 +13,7 @@ import DeclarativeActions from '../components/DeclarativeActions.astro';
 
 // Business/contact info — admin-editable, DB-backed (falls back to DEFAULT).
 const biz = await getBusinessInfo();
+const siteVerification = await getSiteVerification();
 const xHandle = xHandleFromSocials(biz.socials);
 // Footer copy + links — admin-editable via homepage_content (falls back to DEFAULT).
 const homepageContentForFooter = await getHomepageContent();
@@ -95,6 +97,7 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
         tags: X reads twitter:* by name and only falls back to og:* for the
         rest. twitter:site names the account the card belongs to, taken from
         the same X link the footer shows. */}
+    {siteVerification.meta && <meta name="facebook-domain-verification" content={siteVerification.meta} />}
     <meta name="twitter:card" content="summary_large_image" />
     {xHandle && <meta name="twitter:site" content={xHandle} />}
     {xHandle && <meta name="twitter:creator" content={xHandle} />}

@@ -31,7 +31,7 @@ suite('Meta conversions: full match keys from our own records (real PostgreSQL)'
   let previous: any = null;
   const DATASET = '1234567890123456';
   const TOKEN = 'EAAB' + 'x'.repeat(60);
-  const ENDPOINT = `https://graph.facebook.com/v23.0/${DATASET}/events`;
+  const ENDPOINT = `https://graph.facebook.com/v25.0/${DATASET}/events`;
   let priorOrigin: string | undefined;
 
   beforeAll(async () => {
@@ -296,12 +296,15 @@ suite('Meta conversions: full match keys from our own records (real PostgreSQL)'
     expect(new Date(b.click_ids_at).getTime()).toBe(new Date(a.click_ids_at).getTime());
     expect(new Date(b.updated_at).getTime()).toBeGreaterThan(new Date(a.updated_at).getTime());
 
-    // A later ad click replaces the earlier one (it used to be ignored for ever).
+    // A later ad click replaces the earlier one (it used to be ignored for ever)…
     await new Promise((r) => setTimeout(r, 1100));
     await stitch.execute({ fp_client_id: fp, fbc: second } as never, '41.84.203.125', 'UA');
     const c = await row();
     expect(c.fbc).toBe(second);
-    expect(c.twclid).toBe('tw-1');                                      // another network's click is untouched
+    // …ENTIRELY, as the browser's own record does: the stitch carries the
+    // browser's current click, which no longer names X, so X's is cleared and
+    // two networks are not both told about this visitor.
+    expect(c.twclid).toBeNull();
     expect(new Date(c.click_ids_at).getTime()).toBeGreaterThan(new Date(a.click_ids_at).getTime());
 
     // Not Meta's format: not stored as a Meta click id, and the good one stays.

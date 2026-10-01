@@ -75,6 +75,15 @@ describe('Meta diagnostics: the use case', () => {
     expect(g.calls).toHaveLength(6);                                    // "ask again" skips the cache
   });
 
+  it('notices when Meta has retired the pinned version: the call succeeds on a version nobody chose', async () => {
+    const mk = (served: string | null) => new MetaDiagnosticsUseCases(
+      gw({ dataset: async () => ({ ok: true, value: { id: dest.datasetId, name: 'G' }, servedVersion: served }) }), async () => dest, audit, () => null, () => 1, 'v25.0');
+    expect((await mk('v25.0').overview()).graph).toEqual({ pinned: 'v25.0', served: 'v25.0', retired: false });
+    expect((await mk('v26.0').overview()).graph).toEqual({ pinned: 'v25.0', served: 'v26.0', retired: true });
+    // No header is no evidence: it is not reported as retired.
+    expect((await mk(null).overview()).graph).toEqual({ pinned: 'v25.0', served: null, retired: false });
+  });
+
   it('a re-entered token is checked at once, not served from the old token\'s answer', async () => {
     const g = gw();
     let token = 'first';
@@ -132,21 +141,22 @@ describe('Meta diagnostics: the use case', () => {
 
 describe('Meta diagnostics: the Graph gateway', () => {
   const id = '1234567890123456';
-  const stub = (status: number, body: unknown) => {
+  const stub = (status: number, body: unknown, headers: Record<string, string> = {}) => {
     const calls: Array<{ url: string; init: any }> = [];
-    const f = (async (url: string, init: any) => { calls.push({ url: String(url), init }); return new Response(typeof body === 'string' ? body : JSON.stringify(body), { status }); }) as never;
+    const f = (async (url: string, init: any) => { calls.push({ url: String(url), init }); return new Response(typeof body === 'string' ? body : JSON.stringify(body), { status, headers }); }) as never;
     return { calls, f };
   };
   it('keeps the token out of every URL, and asks the documented endpoints', async () => {
-    const d = stub(200, { id, name: 'GoldPlus' });
-    expect(await new HttpMetaDiagnosticsGateway(d.f).dataset(id, 'SECRET')).toEqual({ ok: true, value: { id, name: 'GoldPlus' } });
-    expect(d.calls[0].url).toBe(`https://graph.facebook.com/v23.0/${id}?fields=id,name`);
+    const d = stub(200, { id, name: 'GoldPlus' }, { 'facebook-api-version': 'v25.0' });
+    // The version Meta actually served travels with the answer.
+    expect(await new HttpMetaDiagnosticsGateway(d.f).dataset(id, 'SECRET')).toEqual({ ok: true, value: { id, name: 'GoldPlus' }, servedVersion: 'v25.0' });
+    expect(d.calls[0].url).toBe(`https://graph.facebook.com/v25.0/${id}?fields=id,name`);
     const q = stub(200, { web: [] });
     await new HttpMetaDiagnosticsGateway(q.f).quality(id, 'SECRET');
-    expect(q.calls[0].url).toBe(`https://graph.facebook.com/v23.0/dataset_quality?dataset_id=${id}&fields=web%7Bevent_name%2Cevent_match_quality%7D`);
+    expect(q.calls[0].url).toBe(`https://graph.facebook.com/v25.0/dataset_quality?dataset_id=${id}&fields=web%7Bevent_name%2Cevent_match_quality%7D`);
     const t = stub(200, { events_received: 1, fbtrace_id: 'Tr' });
-    expect(await new HttpMetaDiagnosticsGateway(t.f).sendTestEvent(id, 'SECRET', { event_name: 'ViewContent' }, 'TEST1')).toEqual({ ok: true, value: { eventsReceived: 1, fbtraceId: 'Tr' } });
-    expect(t.calls[0].url).toBe(`https://graph.facebook.com/v23.0/${id}/events`);
+    expect(await new HttpMetaDiagnosticsGateway(t.f).sendTestEvent(id, 'SECRET', { event_name: 'ViewContent' }, 'TEST1')).toEqual({ ok: true, value: { eventsReceived: 1, fbtraceId: 'Tr' }, servedVersion: null });
+    expect(t.calls[0].url).toBe(`https://graph.facebook.com/v25.0/${id}/events`);
     expect(JSON.parse(t.calls[0].init.body)).toEqual({ test_event_code: 'TEST1', data: [{ event_name: 'ViewContent' }] });
     for (const c of [...d.calls, ...q.calls, ...t.calls]) {
       expect(c.url).not.toContain('SECRET');

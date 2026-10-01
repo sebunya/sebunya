@@ -23,6 +23,8 @@ export type IdentityUpsert = {
 
 /** Columns holding an ad click or browser id: replaced by a newer one, and timed by click_ids_at. */
 export const CLICK_ID_COLUMNS = ['gclid', 'wbraid', 'gbraid', 'fbc', 'fbp', 'ttclid', 'twclid', 'li_fat_id', 'epik'] as const;
+/** The subset that names an AD CLICK (everything but Meta's browser id): one click at a time, the latest. */
+export const AD_CLICK_COLUMNS = ['gclid', 'wbraid', 'gbraid', 'fbc', 'ttclid', 'twclid', 'li_fat_id', 'epik'] as const;
 
 /**
  * PHASE 4 — IDENTITY GRAPH REPOSITORY
@@ -59,6 +61,16 @@ export class DrizzleIdentityRepository {
         if (row[k as keyof IdentityRecord] !== v) { patch[k] = v; clickChanged = true; }
       } else if (!row[k as keyof IdentityRecord]) {
         patch[k] = v;
+      }
+    }
+    // …and it replaces the previous click ENTIRELY, as the browser's record
+    // does: the stitch carries the browser's current ad click, so a network
+    // it no longer names is cleared. Otherwise an old Meta click would ride
+    // along with a newer Google one and both networks would be told about
+    // the same visitor's events. (A browser id is not a click: it stays.)
+    if (AD_CLICK_COLUMNS.some((k) => !!incoming[k])) {
+      for (const k of AD_CLICK_COLUMNS) {
+        if (!incoming[k] && row[k as keyof IdentityRecord]) { patch[k] = null; clickChanged = true; }
       }
     }
     if (clickChanged) patch.clickIdsAt = now;

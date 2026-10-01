@@ -32,7 +32,10 @@ export class HttpMetaDiagnosticsGateway implements MetaDiagnosticsGateway {
     }
     let json: unknown;
     try { json = JSON.parse(text); } catch { return { ok: false, message: 'Meta answered with something that is not JSON.', credentials: false, transient: true }; }
-    return { ok: true, value: map(json) };
+    // Meta names the version it actually used. When the pinned one has been
+    // retired it serves a newer one without failing the call; this is the
+    // only place that shows.
+    return { ok: true, value: map(json), servedVersion: res.headers.get('facebook-api-version') };
   }
 
   private static assertId(datasetId: string): void {

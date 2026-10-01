@@ -34,6 +34,18 @@ export class AdDestinationUseCases {
     });
   }
 
+  /**
+   * Codes the storefront must show so a platform can confirm the domain is the
+   * shop's. Public by design (they are printed in the page's HTML), and
+   * independent of whether the platform is switched on: verifying the domain
+   * comes before sending anything.
+   */
+  async siteVerification(): Promise<{ meta: string | null }> {
+    const row = (await this.repo.list()).find((r) => r.platform === 'meta');
+    const code = String(row?.config?.domainVerification ?? '');
+    return { meta: /^[a-z0-9]{20,64}$/i.test(code) ? code : null };
+  }
+
   /** Names of platforms actually receiving data (for the privacy page). */
   async recipients(): Promise<string[]> {
     // Test mode sends real shoppers' (hashed) data too: a recipient all the same.

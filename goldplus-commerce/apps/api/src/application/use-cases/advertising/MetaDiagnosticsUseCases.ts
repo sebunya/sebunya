@@ -17,6 +17,12 @@ export interface MetaDiagnosticsView {
   quality: Check<{ events: MetaEventQuality[] }> | null;
   keysSent: typeof META_KEYS_SENT;
   checkedAt: string | null;
+  /**
+   * The Graph API version the code asks for and the one Meta served. They
+   * differ once Meta has retired the pinned version: calls still succeed, on
+   * a version nobody chose, until the pin is moved.
+   */
+  graph: { pinned: string; served: string | null; retired: boolean };
 }
 
 const CACHE_MS = 10 * 60_000;
@@ -40,6 +46,7 @@ export class MetaDiagnosticsUseCases {
     private readonly audit: CreateAuditLogUseCase,
     private readonly siteOrigin: () => string | null,
     private readonly now: () => number = () => Date.now(),
+    private readonly pinnedVersion: string = 'v25.0',
   ) {}
 
   private static check<T, V>(a: MetaAnswer<T>, map: (v: T) => V): Check<V> {
@@ -51,7 +58,8 @@ export class MetaDiagnosticsUseCases {
   async overview(fresh = false): Promise<MetaDiagnosticsView> {
     let dest: MetaDestination;
     try { dest = await this.destination(); } catch (err) {
-      return { configured: false, notConfigured: (err as Error).message, datasetId: null, connection: null, quality: null, keysSent: META_KEYS_SENT, checkedAt: null };
+      return { configured: false, notConfigured: (err as Error).message, datasetId: null, connection: null, quality: null, keysSent: META_KEYS_SENT, checkedAt: null,
+        graph: { pinned: this.pinnedVersion, served: null, retired: false } };
     }
     // Keyed on the dataset and a digest of the token, so a re-entered token is checked at once.
     const key = `${dest.datasetId}:${createHash('sha256').update(dest.token).digest('hex').slice(0, 16)}`;
@@ -65,6 +73,10 @@ export class MetaDiagnosticsUseCases {
       connection: MetaDiagnosticsUseCases.check(dataset, (d) => ({ name: d.name })),
       quality: MetaDiagnosticsUseCases.check(quality, (q) => ({ events: parseDatasetQuality(q) })),
       keysSent: META_KEYS_SENT, checkedAt: new Date(this.now()).toISOString(),
+      graph: (() => {
+        const served = (dataset.ok ? dataset.servedVersion : null) ?? (quality.ok ? quality.servedVersion : null) ?? null;
+        return { pinned: this.pinnedVersion, served, retired: !!served && served !== this.pinnedVersion };
+      })(),
     };
     // A fault on Meta's side is not remembered: the next look asks again.
     if (view.connection?.state !== 'unavailable' && view.quality?.state !== 'unavailable') this.cache = { key, at: this.now(), view };
