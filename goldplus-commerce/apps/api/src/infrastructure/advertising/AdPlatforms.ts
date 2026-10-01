@@ -394,12 +394,18 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
         content_id: String(i.item_id), ...(i.item_name ? { content_name: String(i.item_name) } : {}),
         ...(typeof i.price === 'number' ? { content_price: i.price } : {}), num_items: i.quantity ?? 1,
       }));
+      const count = items(e).reduce((s, i) => s + (i.quantity ?? 1), 0);
       return {
         url: `https://ads-api.x.com/12/measurement/conversions/${cfg.pixelId}`,
         headers: { 'content-type': 'application/json' },
         body: { conversions: [{ conversion_time: new Date(e.event_time * 1000).toISOString(), event_id: eventId, identifiers,
+          conversion_id: e.event_id,
           // `value` is a string in X's API ("20.00"); a JSON number is refused.
-          conversion_id: e.event_id, value: String(value(e)), price_currency: e.ecommerce?.currency ?? 'UGX', number_items: items(e).reduce((s, i) => s + (i.quantity ?? 1), 0),
+          // X documents neither value nor number_items as required, and a lead
+          // or a product view has no amount: those fields are sent only when
+          // there is something to send, never as "0".
+          ...(value(e) > 0 ? { value: String(value(e)), price_currency: e.ecommerce?.currency ?? 'UGX' } : {}),
+          ...(count > 0 ? { number_items: count } : {}),
           ...(contents.length ? { contents } : {}) }] },
       };
     },

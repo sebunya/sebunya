@@ -230,6 +230,14 @@ describe('advertising: third-review fixes', () => {
       expect((clicked.body as any).conversions[0].event_id, name).toBe(full[field as keyof typeof full]);
       expect(buildAdRequest('x', { ...purchase, event_name: name, user_data: { hashed_email: hashEmail('buyer@example.com') } }, full, '{}'), `${name} without a click`).toBeNull();
     }
+    // A lead carries no basket: X is not told value "0" or number_items 0, only the identifiers and the event.
+    const lead = buildAdRequest('x', { ...purchase, event_name: 'generate_lead', ecommerce: undefined, user_data: { twclid: 'tw123' } }, full, '{}')!;
+    const c = (lead.body as any).conversions[0];
+    expect(c).not.toHaveProperty('value');
+    expect(c).not.toHaveProperty('price_currency');
+    expect(c).not.toHaveProperty('number_items');
+    expect(c).not.toHaveProperty('contents');
+    expect(c.identifiers).toEqual([{ twclid: 'tw123' }]);
   });
   it('X, scope "all": every matchable purchase, and basket adds when an event id is set', () => {
     const cfg = { pixelId: 'o8z6j', purchaseEventId: 'tw-o8z6j-o8z6k', sendScope: 'all' };
