@@ -92,6 +92,21 @@ describe('Meta diagnostics: the use case', () => {
     expect(g.calls).toHaveLength(4);
   });
 
+  it('a token that may send events but not read the dataset is a working connection (as seen live, 2026-10-01); a revoked one never is', async () => {
+    // What production's Events Manager token got back for GET /{dataset}?fields=id,name.
+    const noRead: MetaAnswer<never> = { ok: false, message: 'Meta error 100: (#100) Missing Permission', credentials: false, transient: false };
+    const v = await new MetaDiagnosticsUseCases(gw({ dataset: async () => noRead }), async () => dest, audit, () => null).overview();
+    expect(v.connection).toEqual({ state: 'ok', value: { name: null, named: false } });
+    expect(v.quality?.state).toBe('ok');
+    // Neither call answered for this token: that is still a refusal, with Meta's words.
+    const both = await new MetaDiagnosticsUseCases(gw({ dataset: async () => noRead, quality: async () => noRead }), async () => dest, audit, () => null).overview();
+    expect(both.connection).toEqual({ state: 'refused', message: 'Meta error 100: (#100) Missing Permission', credentials: false });
+    // A revoked token is never called working because another call happened to answer.
+    const revoked: MetaAnswer<never> = { ok: false, message: 'Meta error 190: revoked', credentials: true, transient: false };
+    expect((await new MetaDiagnosticsUseCases(gw({ dataset: async () => revoked }), async () => dest, audit, () => null).overview()).connection).toMatchObject({ state: 'refused', credentials: true });
+    expect((await new MetaDiagnosticsUseCases(gw(), async () => dest, audit, () => null).overview()).connection).toEqual({ state: 'ok', value: { name: 'GoldPlus dataset', named: true } });
+  });
+
   it('tells a refusal from a fault on Meta\'s side, and does not remember the fault', async () => {
     const refused: MetaAnswer<never> = { ok: false, message: 'Meta error 190/463: expired', credentials: true, transient: false };
     const v = await new MetaDiagnosticsUseCases(gw({ dataset: async () => refused, quality: async () => ({ ok: false, message: 'Meta error 200: needs ads_read', credentials: false, transient: false }) }), async () => dest, audit, () => null).overview();

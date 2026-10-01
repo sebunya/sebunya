@@ -72,6 +72,8 @@ if (a) {
   else if (f.sent > 0 && f.failed > 0) verdict = { tone: "warn", text: `${n(f.sent)} sent, but ${n(f.failed)} failed. The reason is in the table below.` };
   else if (f.sent > 0) verdict = { tone: "ok", text: `Working: ${n(f.sent)} sent to ${who} in the last ${a.days} days.` };
   else if (f.arrivals === 0 && a.scope === "x_clicks") verdict = { tone: "info", text: `No visitor arrived from an X ad in the last ${a.days} days. With "x_clicks", events are sent only for visitors who did, so there has been nothing to send. This fills in as soon as an X campaign is running and people click it. X adds its click id to ad links by itself: there is nothing more to set up here.` };
+  // Meta is sent every visitor's events, not only those of visitors who came from its adverts.
+  else if (a.platform === "meta" && f.raised === 0) verdict = { tone: "info", text: `Nothing has been raised for Meta in the last ${a.days} days yet. Every visitor's product views, searches, basket and checkout steps are sent, whether or not they came from a Meta advert, so this fills in as soon as the shop is browsed.` };
   else if (f.arrivals === 0) verdict = { tone: "info", text: `No visitor arrived on ${click} in the last ${a.days} days, so nothing was raised for ${who}.` };
   else if (f.arrivals > 0 && f.recognised === 0) verdict = { tone: "warn", text: `${n(f.arrivals)} visitors arrived from ${who} but none was recognised afterwards. Their click id did not reach the identity record, so their later events cannot be matched.` };
   else if (f.raised === 0) verdict = { tone: "info", text: `Visitors arrived from ${who}, but none of them has viewed a product, added to basket or bought yet in this period.` };
@@ -207,10 +209,12 @@ const anyActivity = daily.some((d) => totalOf(d) > 0);
                 <div class="rounded-2xl border border-gray-200 bg-white p-4 lg:col-span-2">
                   <p class="text-xs font-bold text-gray-600">Connection {meta.graph?.served && !meta.graph.retired && <span class="font-normal">· Graph API {meta.graph.served}</span>}</p>
                   {meta.connection.state === "ok"
-                    ? <p class="mt-1 text-sm text-emerald-900"><span aria-hidden="true">✓ </span>Meta recognises the dataset{meta.connection.value.name ? <> <strong>{meta.connection.value.name}</strong></> : ""} (<span class="font-mono text-xs">{meta.datasetId}</span>) and accepts this token.</p>
+                    ? (meta.connection.value.named === false
+                      ? <p class="mt-1 text-sm text-emerald-900"><span aria-hidden="true">✓ </span>Meta accepts this token for dataset <span class="font-mono text-xs">{meta.datasetId}</span>. The token may send events and read match quality, but not read the dataset's name: that is how a token generated in Events Manager works, and nothing needs changing.</p>
+                      : <p class="mt-1 text-sm text-emerald-900"><span aria-hidden="true">✓ </span>Meta recognises the dataset{meta.connection.value.name ? <> <strong>{meta.connection.value.name}</strong></> : ""} (<span class="font-mono text-xs">{meta.datasetId}</span>) and accepts this token.</p>)
                     : meta.connection.state === "unavailable"
                       ? <p class="mt-1 text-sm text-amber-900"><span aria-hidden="true">… </span>Meta did not answer just now, which says nothing about your setup. {meta.connection.message}</p>
-                      : <p class="mt-1 text-sm text-red-900"><span aria-hidden="true">✗ </span>{meta.connection.credentials ? "Meta rejected the access token. Generate a new one in Events Manager and re-enter it on the Advertising page. " : "Meta refused to show the dataset with this token. "}{meta.connection.message}</p>}
+                      : <p class="mt-1 text-sm text-red-900"><span aria-hidden="true">✗ </span>{meta.connection.credentials ? "Meta rejected the access token. Generate a new one in Events Manager and re-enter it on the Advertising page. " : "Meta refused both to show the dataset and to report its match quality with this token. If events below are being sent, the token works for sending and only lacks permission to read; otherwise check that the token was generated for this dataset. "}{meta.connection.message}</p>}
 
                   <p class="mt-5 text-xs font-bold text-gray-600">Event Match Quality <span class="font-normal">(Meta's score out of 10 for how well it can match each event to a person, over its last 7 days)</span></p>
                   {meta.quality.state === "ok" && meta.quality.value.events.length > 0 ? (

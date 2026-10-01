@@ -13,7 +13,13 @@ export interface MetaDiagnosticsView {
   /** Why nothing was asked of Meta (no dataset ID, no token, the vault cannot be read). */
   notConfigured: string | null;
   datasetId: string | null;
-  connection: Check<{ name: string | null }> | null;
+  /**
+   * `named: false` = Meta accepted the dataset ID and token for another call
+   * but would not show the dataset's own details. A token generated in Events
+   * Manager for the Conversions API is like that: it may send events and read
+   * match quality, not read the dataset. That is a working connection.
+   */
+  connection: Check<{ name: string | null; named: boolean }> | null;
   quality: Check<{ events: MetaEventQuality[] }> | null;
   keysSent: typeof META_KEYS_SENT;
   checkedAt: string | null;
@@ -70,7 +76,11 @@ export class MetaDiagnosticsUseCases {
     ]);
     const view: MetaDiagnosticsView = {
       configured: true, notConfigured: null, datasetId: dest.datasetId,
-      connection: MetaDiagnosticsUseCases.check(dataset, (d) => ({ name: d.name })),
+      // Either answer proves the pair. A credentials refusal (190: expired or
+      // revoked) is never overridden: it is the answer about the token.
+      connection: !dataset.ok && !dataset.transient && !dataset.credentials && quality.ok
+        ? { state: 'ok', value: { name: null, named: false } }
+        : MetaDiagnosticsUseCases.check(dataset, (d) => ({ name: d.name, named: true })),
       quality: MetaDiagnosticsUseCases.check(quality, (q) => ({ events: parseDatasetQuality(q) })),
       keysSent: META_KEYS_SENT, checkedAt: new Date(this.now()).toISOString(),
       graph: (() => {
