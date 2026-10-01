@@ -153,7 +153,11 @@ export const CanonicalTelemetryEventSchema = z.object({
   ecommerce:              TelemetryEcommerceSchema.optional(),
   recommendation_context: TelemetryRecommendationContextSchema.optional(),
   /** generate_lead only: how the shopper reached out. */
-  lead: z.object({ method: z.enum(['whatsapp', 'quote_request']) }).optional(),
+  lead: z.object({
+    method: z.enum(['whatsapp', 'quote_request']),
+    /** quote_request only: the request's own reference, as its confirmation page shows it. Not a contact detail. */
+    ref: z.string().regex(/^[A-Za-z0-9-]{3,40}$/).optional(),
+  }).optional(),
   /** search only: what was searched for, as the shop normalised it. */
   search_term: z.string().min(1).max(120).optional(),
 

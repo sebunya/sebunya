@@ -297,6 +297,14 @@ Not built, by choice: a browser Pixel (and therefore Pixel/server deduplication)
 the server-side-only decision.
 
 
+### A quote request's contact on its Lead (2026-10-01)
+
+A quote request's confirmation page reports a `generate_lead` carrying the request's reference
+(`lead.ref`). For Meta, `quoteLeadContact` reads the email and phone the request itself gave, at send
+time, and only for a request made within the 30 minutes before the event; the queue holds the
+reference, never the contact. The diagnostics form can also send a TEST purchase (UGX 1,000, test
+code required) so Meta's validation of a sale is exercised before the first real one.
+
 ### A signed-in customer's contact on browsing events (owner decision, 2026-10-01)
 
 Browsing events name only their visitor. When that visitor is signed in on the browser (the identity

@@ -72,8 +72,8 @@ routes.get('/meta/diagnostics', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]
   c.json({ success: true, data: await ops().metaDiagnostics.overview(c.req.query('fresh') === '1') }));
 // One event with the owner's test event code: listed under Test events in Events Manager, not counted. Audited.
 routes.post('/meta/test-event', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c: Context) => {
-  const b = (await c.req.json().catch(() => null)) as { testEventCode?: unknown } | null;
-  const r = await ops().metaDiagnostics.sendTestEvent(actor(c), b?.testEventCode);
+  const b = (await c.req.json().catch(() => null)) as { testEventCode?: unknown; kind?: unknown } | null;
+  const r = await ops().metaDiagnostics.sendTestEvent(actor(c), b?.testEventCode, b?.kind === 'purchase' ? 'purchase' : 'view');
   return r.ok ? c.json({ success: true, data: r }) : c.json({ success: false, error: { code: 'BAD_INPUT', message: r.message } }, 422);
 });
 

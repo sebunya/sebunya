@@ -335,6 +335,40 @@ suite('Meta conversions: full match keys from our own records (real PostgreSQL)'
     expect(refusedRow).toMatchObject({ status: 'suppressed', last_error: 'CONSENT_DENIED' });
   }, 30_000);
 
+  it('a quote request sent without signing in: its Lead reaches Meta with the contact the request gave, read at send time', async () => {
+    const { fanOutAdConversions, processAdConversionBatch } = await import('../../apps/api/src/infrastructure/advertising/AdConversionDispatch');
+    const ref = `BQ-${randomUUID().slice(0, 8).toUpperCase()}`, oldRef = `BQ-${randomUUID().slice(0, 8).toUpperCase()}`;
+    const email = `quote-${randomUUID().slice(0, 8)}@example.test`;
+    await raw`insert into quote_requests (customer_name, email, phone, product_name, quantity, reference) values ('Quote Buyer', ${email}, '0772 440 021', 'Power bank', '20', ${ref})`;
+    await raw`insert into quote_requests (customer_name, email, phone, product_name, quantity, reference, created_at) values ('Old Buyer', ${`old-${email}`}, '0772 440 022', 'Cable', '5', ${oldRef}, now() - interval '3 hours')`;
+    const mk = (r: string) => ({ event_name: 'generate_lead', event_id: randomUUID(), event_time: Math.floor(Date.now() / 1000), source: 'browser', lead: { method: 'quote_request', ref: r },
+      page_location: 'https://shopgoldplus.com/bulk/submitted', user_data: { fp_client_id: visitorId(), ip_address: '41.84.203.125', user_agent: 'UA' } });
+    const fresh = mk(ref), stale = mk(oldRef);
+    const sent: Array<{ url: string; body: any }> = [];
+    const realFetch = globalThis.fetch;
+    let queuedText = '';
+    try {
+      for (const e of [fresh, stale]) expect(await fanOutAdConversions(e as never)).toBeGreaterThanOrEqual(1);
+      queuedText = JSON.stringify((await raw`select payload from outbox_events where idempotency_key = ${'ad:meta:' + fresh.event_id}`)[0].payload);
+      globalThis.fetch = (async (url: string, init: any) => { sent.push({ url: String(url), body: JSON.parse(init.body) }); return new Response(JSON.stringify(OK.body), { status: 200 }); }) as never;
+      await new Promise((r) => setTimeout(r, 1100));
+      await processAdConversionBatch();
+    } finally {
+      globalThis.fetch = realFetch;
+      for (const e of [fresh, stale]) await raw`delete from outbox_events where idempotency_key like ${'ad:%:' + e.event_id}`;
+      await raw`delete from quote_requests where reference = any(${[ref, oldRef]})`;
+    }
+    const byId = new Map(sent.filter((s) => s.url === ENDPOINT).map((s) => [s.body.data[0].event_id, s.body.data[0]]));
+    expect(byId.get(fresh.event_id)).toMatchObject({ event_name: 'Lead', user_data: { em: [sha(email)], ph: [sha('256772440021')] } });
+    // The queue holds the reference, never the contact.
+    expect(queuedText).toContain(ref);
+    expect(queuedText).not.toContain(sha(email));
+    // A reference from a request made hours ago brings no contact with it: the Lead still goes, on the visitor alone.
+    expect(byId.get(stale.event_id).event_name).toBe('Lead');
+    expect(byId.get(stale.event_id).user_data.em).toBeUndefined();
+    expect(byId.get(stale.event_id).user_data.ph).toBeUndefined();
+  }, 30_000);
+
   it('a browsing event Meta rate-limits is kept for a retry, with Meta\'s message, not dead-lettered', async () => {
     const { fanOutAdConversions, processAdConversionBatch } = await import('../../apps/api/src/infrastructure/advertising/AdConversionDispatch');
     const event = { event_name: 'view_item', event_id: randomUUID(), event_time: Math.floor(Date.now() / 1000), source: 'server',

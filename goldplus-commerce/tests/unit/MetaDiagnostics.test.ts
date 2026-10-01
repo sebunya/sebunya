@@ -147,9 +147,19 @@ describe('Meta diagnostics: the use case', () => {
     expect(audits[0]).toMatchObject({ actorId: 'admin-1', action: 'AD_TEST_EVENT_SENT', entityId: 'meta', newState: { accepted: true, eventsReceived: 1 } });
     expect(JSON.stringify(audits)).not.toContain('EAAB');
 
+    // A test PURCHASE has a real sale's shape, so Meta's validation of a sale is exercised before the first real one.
+    const p = await uc.sendTestEvent('admin-1', 'TEST12345', 'purchase');
+    expect(p).toMatchObject({ ok: true, eventName: 'Purchase' });
+    const pe = sent[sent.length - 1].event;
+    expect(pe).toMatchObject({ event_name: 'Purchase', action_source: 'website', custom_data: { currency: 'UGX', value: 1000, content_type: 'product', num_items: 1 } });
+    expect(pe.event_source_url).toMatch(/\/checkout$/);
+    expect(pe.custom_data.order_id).toMatch(/^TEST-[0-9A-F]{8}$/);
+    expect(pe.user_data.client_user_agent).toMatch(/not a visitor/);
+    expect(sent[sent.length - 1].code).toBe('TEST12345');                  // never without the test code
     const refusing = new MetaDiagnosticsUseCases(gw({ sendTestEvent: async () => ({ ok: false, message: 'Meta error 100/2804003: bad code', credentials: false, transient: false }) }), async () => dest, audit, () => 'https://shopgoldplus.com');
     expect(await refusing.sendTestEvent('admin-1', 'TEST99999')).toEqual({ ok: false, message: 'Meta error 100/2804003: bad code' });
-    expect(audits[1]).toMatchObject({ newState: { accepted: false, refusal: 'Meta error 100/2804003: bad code' } });
+    expect(audits[1]).toMatchObject({ newState: { eventName: "Purchase", accepted: true } });
+    expect(audits[2]).toMatchObject({ newState: { accepted: false, refusal: 'Meta error 100/2804003: bad code' } });
     expect(await new MetaDiagnosticsUseCases(gw(), async () => dest, audit, () => null).sendTestEvent('a', 'TEST1')).toMatchObject({ ok: false, message: expect.stringMatching(/storefront address/) });
   });
 });

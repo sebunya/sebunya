@@ -19,7 +19,7 @@ import { hashEmail, hashPhone } from './AdPlatforms';
  * returned here, because a browsing event carries no user id for the consent
  * gate to see.
  */
-export type VisitorAccount = { userId: string; email: string | null; phone: string | null };
+export type VisitorAccount = { userId: string | null; email: string | null; phone: string | null };
 export type VisitorAccountLookup = (fpClientId: string) => Promise<VisitorAccount | null>;
 
 const defaultLookup: VisitorAccountLookup = async (fp) => {
@@ -44,4 +44,30 @@ export function withAccountContact(event: CanonicalTelemetryEvent, account: Visi
   if (!hashed_email && !hashed_phone) return event;
   const ud = (event.user_data ?? {}) as Record<string, unknown>;
   return { ...event, user_data: { ...ud, ...(hashed_email ? { hashed_email } : {}), ...(hashed_phone ? { hashed_phone } : {}) } } as CanonicalTelemetryEvent;
+}
+
+/**
+ * The contact a quote request was sent with, for the Lead that confirms it
+ * (2026-10-01). A visitor who is not signed in gives their email and phone in
+ * the request itself; the Lead event names only the request's reference. The
+ * contact is read here, at send time, for Meta alone, and only for a request
+ * made within the half hour before the event: a reference typed or guessed
+ * later attaches nobody's details to anybody's event.
+ */
+export const QUOTE_LEAD_WINDOW_MS = 30 * 60_000;
+export type QuoteContactLookup = (reference: string) => Promise<{ email: string | null; phone: string | null; createdAt: Date | string } | null>;
+
+const defaultQuoteLookup: QuoteContactLookup = async (reference) => {
+  const res = await db.execute(sql`select email, phone, created_at from quote_requests where reference = ${reference} limit 1`);
+  const r = (Array.isArray(res) ? res : (res as { rows?: unknown[] }).rows ?? [])[0] as { email?: unknown; phone?: unknown; created_at?: unknown } | undefined;
+  return r ? { email: typeof r.email === 'string' ? r.email : null, phone: typeof r.phone === 'string' ? r.phone : null, createdAt: r.created_at as Date | string } : null;
+};
+
+export async function quoteLeadContact(event: CanonicalTelemetryEvent, lookup: QuoteContactLookup = defaultQuoteLookup): Promise<VisitorAccount | null> {
+  if (event.event_name !== 'generate_lead' || event.lead?.method !== 'quote_request' || !event.lead.ref) return null;
+  const q = await lookup(event.lead.ref);
+  if (!q) return null;
+  const made = new Date(q.createdAt).getTime(), at = event.event_time * 1000;
+  if (!Number.isFinite(made) || at < made - 60_000 || at - made > QUOTE_LEAD_WINDOW_MS) return null;
+  return { userId: null, email: q.email, phone: q.phone };
 }

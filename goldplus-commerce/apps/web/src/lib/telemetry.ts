@@ -205,7 +205,7 @@ export interface TrackOptions {
   recommendation_context?: RecommendationContext;
   user_id?: string;
   /** generate_lead only: how the shopper reached out. */
-  lead?: { method: 'whatsapp' | 'quote_request' };
+  lead?: { method: 'whatsapp' | 'quote_request'; ref?: string };
   /** search only: what was searched for. */
   search_term?: string;
 }

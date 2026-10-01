@@ -8,7 +8,7 @@ import { DrizzleAdDestinationRepository } from '../db/repositories/DrizzleAdDest
 import { IntegrationCredentialVault } from '../seo/IntegrationCredentialVault';
 import { adErrorSummary, adPlatform, adPlatformAccepts, adSkipReason, buildAdRequest } from './AdPlatforms';
 import { withVisitorClickIds } from './VisitorClickIds';
-import { visitorAccount, withAccountContact, type VisitorAccount } from './VisitorContact';
+import { quoteLeadContact, visitorAccount, withAccountContact, type VisitorAccount } from './VisitorContact';
 import { advertisingRefused } from '../measurement/AdvertisingConsentGate';
 import { eventSelected } from '../../domain/advertising/OptimisationEvents';
 import { lookup } from 'node:dns/promises';
@@ -153,7 +153,10 @@ export async function processAdConversionBatch(): Promise<{ claimed: number; sen
     // Browsing events arrive with only the visitor id; the click id that
     // visitor came in on is read from the identity graph here, at send time,
     // and never stored on the row (VisitorClickIds).
-    const enriched = withAccountContact(await withVisitorClickIds(event), account);
+    // A quote request's own contact, for the Lead that confirms it (Meta only): the
+    // person who is not signed in is matched on what they gave in the request.
+    const quote = platform === 'meta' ? await quoteLeadContact(event).catch(() => null) : null;
+    const enriched = withAccountContact(await withVisitorClickIds(event), quote ?? account);
     const req = buildAdRequest(platform, enriched, dest.config, secret);
     // The reason is a stable code (NO_X_CLICK, NO_EVENT_ID, NO_IDENTIFIER) so
     // the activity page can say which of the three it was.
