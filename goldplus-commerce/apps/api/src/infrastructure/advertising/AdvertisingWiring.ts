@@ -21,6 +21,10 @@ import { DrizzleAdActivityRepository } from '../db/repositories/DrizzleAdActivit
 import { MetaDiagnosticsUseCases } from '../../application/use-cases/advertising/MetaDiagnosticsUseCases';
 import { HttpMetaDiagnosticsGateway } from './HttpMetaDiagnosticsGateway';
 import { storefrontOrigin } from '../config/storefrontOrigin';
+import { WhatsAppAdsUseCases } from '../../application/use-cases/advertising/WhatsAppAdsUseCases';
+import { DrizzleWhatsAppAdReferralRepository } from '../db/repositories/DrizzleWhatsAppAdReferralRepository';
+import { ctwaWindowDays, parseCtwaSecrets } from '../../domain/advertising/WhatsAppAdReferrals';
+import { setWhatsAppAdResolver } from '../measurement/DeliveryService';
 
 /**
  * Composition of the advertising operations module (0154). Credentials are
@@ -79,7 +83,21 @@ export function createAdvertisingOperations(deps: {
     customSegments,
   });
   const spend = new AdSpendUseCases(new DrizzleSpendFactRepository(), new HttpSpendGateway(), liveCap('spend'), credentialsFor('spend'), deps.audit);
-  const offline = new OfflineConversionUseCases(new DrizzleOfflineConversionRepository(), new HttpOfflineConversionGateway(), liveCap('offline'), credentialsFor('offline'), deps.audit);
+  // Click-to-WhatsApp adverts: the webhook's secrets are decrypted here, just in
+  // time, and reach nothing but the use case that checks a signature with them.
+  const whatsappAds = new WhatsAppAdsUseCases(new DrizzleWhatsAppAdReferralRepository(), async () => {
+    const row = await capRepo.get('meta', 'whatsapp_ads');
+    const enc = await capRepo.secretEnc('meta', 'whatsapp_ads');
+    const wabaId = String(row?.config?.wabaId ?? '');
+    if (!row || !enc || !/^\d{10,20}$/.test(wabaId)) return null;
+    const secrets = parseCtwaSecrets(decrypt(enc));
+    if (!secrets) return null;
+    return { live: !!(await capabilities.live('meta', 'whatsapp_ads')), wabaId, windowDays: ctwaWindowDays(row.config?.windowDays), datasetId: row.config?.datasetId || null, secrets };
+  });
+  // The order path (DeliveryService) cannot import this module back; it is handed the resolver.
+  setWhatsAppAdResolver(whatsappAds);
+
+  const offline = new OfflineConversionUseCases(new DrizzleOfflineConversionRepository(), new HttpOfflineConversionGateway(), liveCap('offline'), credentialsFor('offline'), deps.audit, () => new Date(), whatsappAds);
   const feeds = new CatalogueFeedUseCases({
     products: deps.feedProducts,
     discount: async () => {
@@ -107,7 +125,7 @@ export function createAdvertisingOperations(deps: {
   }, deps.audit, storefrontOrigin, () => Date.now(), META_GRAPH_VERSION);
 
   return {
-    capabilities, audiences, spend, offline, feeds, feedUrls, activity, metaDiagnostics,
+    capabilities, audiences, spend, offline, feeds, feedUrls, activity, metaDiagnostics, whatsappAds,
     jobs,
     async checklist() {
       const [destinations, caps, feedProducts] = await Promise.all([deps.destinations.list(), capabilities.list(), feeds.included().catch(() => null)]);

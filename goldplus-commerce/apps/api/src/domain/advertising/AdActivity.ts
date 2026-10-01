@@ -75,7 +75,8 @@ const LEGACY_SKIP = /no equivalent event or required identifier/i;
 export function explainOutcome(input: { platformName: string; outcome: AdOutcome; raw: string | null | undefined }): string {
   const { platformName: name, outcome } = input;
   const raw = (input.raw ?? '').trim();
-  if (outcome === 'sent') return `Sent to ${name}.`;
+  // An order whose buyer's chat began from a Click-to-WhatsApp advert is reported against that advert.
+  if (outcome === 'sent') return raw === 'OK_WHATSAPP_ADVERT' ? `Sent to ${name}, credited to a Click-to-WhatsApp advert.` : `Sent to ${name}.`;
   if (outcome === 'waiting') return raw ? `Waiting to retry. Last answer: ${clip(raw)}` : 'Queued; it goes out within a minute.';
   if (outcome === 'not_sent') {
     if (raw === 'CONSENT_DENIED') return 'The visitor refused advertising, so nothing was sent.';

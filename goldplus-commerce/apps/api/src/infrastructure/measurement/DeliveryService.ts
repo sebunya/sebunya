@@ -6,9 +6,10 @@ import { env } from '../../config/env';
 import { logger } from '../logging/logger';
 import { environmentOf } from '../../domain/measurement/BusinessEvents';
 import { ga4CollectHit } from '../telemetry/Ga4CollectHit';
-import { adErrorSummary, adPlatform, adSkipReason, buildAdRequest, normalisePhoneUg, hashEmail, hashEmailGoogle, hashPhone, hashPhonePlus } from '../advertising/AdPlatforms';
+import { META_GRAPH_VERSION, adErrorSummary, adPlatform, adSkipReason, buildAdRequest, normalisePhoneUg, hashEmail, hashEmailGoogle, hashPhone, hashPhonePlus } from '../advertising/AdPlatforms';
 import { isMetaClickId, metaBrowserIdFromVisitor, metaCustomerHashes } from '../../domain/advertising/MetaIdentifiers';
 import { storefrontOrigin } from '../config/storefrontOrigin';
+import { businessMessagingPurchase } from '../../domain/advertising/WhatsAppAdReferrals';
 import { DrizzleAdDestinationRepository } from '../db/repositories/DrizzleAdDestinationRepository';
 import { IntegrationCredentialVault } from '../seo/IntegrationCredentialVault';
 import { advertisingRefused } from './AdvertisingConsentGate';
@@ -295,7 +296,21 @@ export function toCanonical(ev: { event_id: string; event_name: string; occurred
 
 type Built = { url: string; method: 'GET' | 'POST'; headers: Record<string, string>; body?: string; replyError?: (t: string) => string | null };
 
-async function buildRequest(sink: string, canonical: CanonicalTelemetryEvent): Promise<{ req: Built | null; suppress?: string; defer?: string }> {
+/** What an order needs to be reported against a Click-to-WhatsApp advert (WhatsAppAdsUseCases.attributionFor). */
+type WhatsAppAdAttribution = { referralId: string; ctwaClid: string; wabaId: string; datasetId: string | null; accessToken: string | null };
+type WhatsAppAdResolver = {
+  attributionFor(phoneSha256: string | null | undefined, saleAt: Date, fbc?: unknown): Promise<WhatsAppAdAttribution | null>;
+  markAttributed(referralId: string): Promise<void>;
+};
+/**
+ * Set at composition (AdvertisingWiring): this module is imported by the
+ * Registry's own dependencies and cannot import it back. Unset — a worker or a
+ * test that never composed advertising — an order is reported as before.
+ */
+let whatsappAds: WhatsAppAdResolver | null = null;
+export function setWhatsAppAdResolver(resolver: WhatsAppAdResolver | null): void { whatsappAds = resolver; }
+
+async function buildRequest(sink: string, canonical: CanonicalTelemetryEvent, messaging: WhatsAppAdAttribution | null = null): Promise<{ req: Built | null; suppress?: string; defer?: string }> {
   if (sink.startsWith('ga4:')) {
     const id = (env.ga4MeasurementId ?? '').trim();
     if (!/^G-[A-Z0-9]+$/.test(id)) return { req: null, defer: 'CREDENTIALS_MISSING' };
@@ -314,6 +329,20 @@ async function buildRequest(sink: string, canonical: CanonicalTelemetryEvent): P
     const vault = IntegrationCredentialVault.fromEnv();
     if (!vault || !dest.secretEnc) return { req: null, defer: 'CREDENTIALS_MISSING' };
     try { secret = String(vault.decrypt<{ apiKey: string }>(dest.secretEnc).apiKey ?? ''); } catch { return { req: null, defer: 'CREDENTIALS_UNVERIFIED' }; }
+  }
+  if (messaging && platform === 'meta') {
+    // The buyer's last Meta click was a chat begun from a Click-to-WhatsApp
+    // advert: the sale is reported against that advert (business messaging),
+    // INSTEAD of as a website purchase, so one sale is claimed once.
+    const test = dest.config._test === '1';
+    if (test && !dest.config.testEventCode) return { req: null, suppress: 'NO_TEST_CODE' };
+    return { req: {
+      url: `https://graph.facebook.com/${META_GRAPH_VERSION}/${messaging.datasetId || dest.config.datasetId}/events`, method: 'POST',
+      headers: { 'content-type': 'application/json', Authorization: `Bearer ${messaging.accessToken || secret}` },
+      body: JSON.stringify({ ...(test ? { test_event_code: dest.config.testEventCode } : {}), data: [businessMessagingPurchase({
+        eventId: canonical.event_id, eventTimeSec: canonical.event_time, valueUgx: Number(canonical.ecommerce?.value ?? 0), currency: canonical.ecommerce?.currency,
+        orderNumber: canonical.ecommerce?.transaction_id ?? null, wabaId: messaging.wabaId, ctwaClid: messaging.ctwaClid })] }),
+    } };
   }
   const r = buildAdRequest(platform, canonical, dest.config, secret);
   // For X this is the normal case, not a fault: the order did not come from an
@@ -372,8 +401,14 @@ export async function deliverOne(deliveryId: string, generation: number, fetchIm
   }
 
   const canonical = toCanonical(source, sink, identity);
+  // A Meta purchase by someone whose chat began from a Click-to-WhatsApp advert
+  // (and who has no later Meta web click). A failed lookup is not a reason to
+  // hold the sale: it is then reported as a website purchase, as before.
+  const messaging = sink === 'ad:meta:purchase' && whatsappAds
+    ? await whatsappAds.attributionFor(identity.hashed_phone, new Date(ev.occurred_at), identity.fbc).catch(() => null)
+    : null;
   let built: Awaited<ReturnType<typeof buildRequest>>;
-  try { built = await buildRequest(sink, canonical); } catch (err) {
+  try { built = await buildRequest(sink, canonical, messaging); } catch (err) {
     const status = (err as { status?: number }).status;
     await finish(deliveryId, token, status && status < 500 ? 'DEAD_LETTER' : 'RETRY_WAIT', `BUILD:${String((err as Error).message).slice(0, 80)}`, { nextAt: new Date(Date.now() + 15 * 60_000) });
     return 'BUILD_FAILED';
@@ -420,7 +455,12 @@ export async function deliverOne(deliveryId: string, generation: number, fetchIm
       retry_after_at = ${retryAfter ? sql`now() + ${`${Math.min(86400, Math.max(0, Number(retryAfter) || 60))} seconds`}::interval` : sql`null`}
       where attempt_id = ${attemptId}::uuid`);
   });
-  if (c.kind === 'accepted') { await finish(deliveryId, token, 'ACCEPTED', 'OK', { accepted: true }); if (platform) await adRepo.recordResult(platform, true).catch(() => undefined); return 'ACCEPTED'; }
+  if (c.kind === 'accepted') {
+    await finish(deliveryId, token, 'ACCEPTED', messaging ? 'OK_WHATSAPP_ADVERT' : 'OK', { accepted: true });
+    if (platform) await adRepo.recordResult(platform, true).catch(() => undefined);
+    if (messaging) await whatsappAds?.markAttributed(messaging.referralId).catch(() => undefined);
+    return 'ACCEPTED';
+  }
   if (platform) await adRepo.recordResult(platform, false, `${why}${status ? ` (HTTP ${status})` : ''}`).catch(() => undefined);
   if (c.kind === 'unknown') { await finish(deliveryId, token, 'UNKNOWN_OUTCOME', c.code); return 'UNKNOWN_OUTCOME'; }
   if (c.kind === 'retry' && attemptNo - Number(claimed.attempts_at_replay ?? 0) < MAX_ATTEMPTS) { await finish(deliveryId, token, 'RETRY_WAIT', why, { nextAt: new Date(Date.now() + nextAttemptDelayMs(attemptNo, retryAfter)) }); return 'RETRY_WAIT'; }

@@ -4,6 +4,7 @@ import type {
 } from '../../application/ports/Advertising';
 import { googleChannel, decimalToMinor, microsToMinor, type SpendFact } from '../../domain/advertising/SpendFacts';
 import { metaActionSource } from '../../domain/advertising/OfflineConversionPolicy';
+import { businessMessagingPurchase } from '../../domain/advertising/WhatsAppAdReferrals';
 import { asRemoteStatus, type RemoteRequestOutcome } from '../../domain/advertising/AudienceConfirmation';
 import { META_GRAPH_VERSION, adPlatform } from './AdPlatforms';
 
@@ -440,6 +441,17 @@ export function offlineRequest(ctx: OfflineContext, creds: PlatformCredentials):
   }
   if (ctx.row.platform === 'meta') {
     if (creds.testMode && !d.testEventCode) return null;
+    if (ctx.whatsappReferral) {
+      // A sale from a chat that began at a Click-to-WhatsApp advert: Meta's
+      // business-messaging event, to the dataset linked to the WhatsApp account.
+      return {
+        url: `${GRAPH}/${creds.messaging?.datasetId || d.datasetId}/events`, headers: metaHeaders(creds.messaging?.accessToken || creds.destinationSecret),
+        body: {
+          ...(creds.testMode ? { test_event_code: d.testEventCode } : {}),
+          data: [businessMessagingPurchase({ eventId: ctx.row.eventId, eventTimeSec: t, valueUgx: ctx.valueUgx, orderNumber: orderId, wabaId: ctx.whatsappReferral.wabaId, ctwaClid: ctx.whatsappReferral.ctwaClid })],
+        },
+      };
+    }
     return {
       url: `${GRAPH}/${d.datasetId}/events`, headers: metaHeaders(creds.destinationSecret),
       body: {

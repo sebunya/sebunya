@@ -1,3 +1,4 @@
+import { ctwaSecretProblem } from '../../../domain/advertising/WhatsAppAdReferrals';
 import type { AdCapability, AdCapabilityRepository, AdCapabilityRow, AdDestinationRow, SecretCipher } from '../../ports/Advertising';
 import type { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
 import { AUDIENCE_SEGMENTS } from '../../../domain/advertising/AudienceSegments';
@@ -33,6 +34,8 @@ export interface CapabilityDef {
   secretFallback?: AdCapability;
   /** Needs the platform's conversions destination (ids + token) to be complete. */
   requiresDestination: boolean;
+  /** What is wrong with a submitted secret (null = acceptable), for secrets with a shape of their own. */
+  secretProblem?: (secret: string) => string | null;
   what: string;
 }
 
@@ -85,6 +88,18 @@ export const AD_CAPABILITIES: CapabilityDef[] = [
   {
     platform: 'meta', capability: 'offline', name: 'Offline conversions', requiresDestination: true, secretLabel: '', fields: [],
     what: 'Sends COD sales confirmed on delivery (action_source physical_store) and admin-recorded phone (phone_call) and WhatsApp (chat) sales through the Conversions API, to the same dataset and with the same token as web conversions.',
+  },
+  {
+    platform: 'meta', capability: 'whatsapp_ads', name: 'WhatsApp adverts (Click to WhatsApp)', requiresDestination: true,
+    fields: [
+      { key: 'wabaId', label: 'WhatsApp Business Account ID', pattern: /^\d{10,20}$/, where: 'Business settings > Accounts > WhatsApp accounts: the ID under the account name.' },
+      { key: 'windowDays', label: 'Days a sale is credited after the chat', pattern: /^([1-9]|1\d|2[0-8])$/, where: 'How long after an advert chat a sale by the same number still counts (1 to 28). Blank = 7.', optional: true },
+      { key: 'datasetId', label: 'WhatsApp dataset ID', pattern: /^\d{10,20}$/, where: 'Only if the WhatsApp account is linked to a different dataset from the website\'s. Blank = the website dataset.', optional: true },
+    ],
+    secretLabel: 'Webhook secrets (JSON)',
+    secretWhere: '{"appSecret":"…","verifyToken":"…"} — appSecret: your Meta app > App settings > Basic > App secret. verifyToken: a phrase you choose (16+ characters, no spaces) and also enter under the app\'s WhatsApp > Configuration > Webhook. Add "accessToken" only if the WhatsApp dataset needs a token of its own.',
+    secretProblem: ctwaSecretProblem,
+    what: 'Receives the WhatsApp Business Platform webhook, keeps the advert click id of each chat that began from a Click-to-WhatsApp advert, and reports a later sale by the same number (an order on the site, or a WhatsApp sale recorded here) to Meta against that advert.',
   },
   {
     platform: 'tiktok', capability: 'audiences', name: 'Customer file audiences', requiresDestination: false,
@@ -174,6 +189,8 @@ export class AdCapabilityUseCases {
       if (!this.cipher) return { ok: false, code: 'NOT_CONFIGURED', message: 'Not configured: the credential vault key is not set on the server.' };
       const s = input.secret.trim();
       if (s.length < 20 || s.length > 4000) return { ok: false, code: 'BAD_INPUT', message: `${def.secretLabel} does not look right.` };
+      const problem = def.secretProblem?.(s);
+      if (problem) return { ok: false, code: 'BAD_INPUT', message: problem };
       secretEnc = this.cipher.encrypt(s);
       secretMask = this.cipher.mask(s);
     }

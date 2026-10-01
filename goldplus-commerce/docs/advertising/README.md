@@ -253,9 +253,55 @@ lacks it still sends events, and the page says which is the case. "Send test eve
 ViewContent with the owner's test event code: it is listed under Events Manager > Test events
 and is not counted. It describes no visitor.
 
-Not built, by choice: Click-to-WhatsApp attribution (`ctwa_clid`, `action_source:
-business_messaging`) needs WhatsApp Cloud API webhooks, which the shop does not run; a browser
-Pixel (and therefore Pixel/server deduplication) is excluded by the server-side-only decision.
+**Graph API version.** Pinned to `v25.0` (`META_GRAPH_VERSION`, released 2026-02-18). The
+Conversions API, Custom Audiences and Insights are Marketing API endpoints, and Meta retires
+Marketing API versions sooner than Graph API core's two years (its changelog lists v24.0 as
+available until 2026-10-06). A retired version is not refused: Meta serves the next usable one.
+Two guards: a unit test fails ~300 days after the pinned version's release date, and the
+diagnostics compare the pin with the `facebook-api-version` response header and warn on the
+activity page when they differ.
+
+**Domain verification.** The owner saves Meta's code (Business settings > Brand safety > Domains)
+in the Meta form; the storefront prints `<meta name="facebook-domain-verification">` on every
+page (`GET /advertising/site-verification`, `lib/siteVerification.ts`). It can be saved before a
+dataset or token exists.
+
+Not built, by choice: a browser Pixel (and therefore Pixel/server deduplication) is excluded by
+the server-side-only decision.
+
+## 8. Click-to-WhatsApp adverts (migration 0166)
+
+An advert whose button opens a WhatsApp chat is credited with a sale only if the sale is reported
+to Meta with the click id of that chat. The pieces (`domain/advertising/WhatsAppAdReferrals.ts`,
+`WhatsAppAdsUseCases`):
+
+1. **Webhook** `GET|POST /webhooks/whatsapp`. GET is Meta's subscription check: the challenge is
+   echoed only for the saved verify token. POST is a delivery: accepted only when
+   `X-Hub-Signature-256` is the HMAC-SHA256 of the raw body with the app secret; checked before
+   the body is parsed; never logged.
+2. **What is kept** (`whatsapp_ad_referrals`): for each inbound message with
+   `messages[].referral.ctwa_clid`, the click id, the advert (`source_id`, `source_type`,
+   `source_url`, `headline`), the message id (Meta retries; a message is stored once) and time,
+   and the SHA-256 of the sender's number in E.164 digits. Not kept: the message, the number, the
+   name. A referral without a click id (adverts in WhatsApp Status) cannot be credited and is not
+   stored. Nothing is stored while the capability is switched off.
+3. **Crediting a sale.** A sale by the same number (same hash as Meta's `ph`) within the owner's
+   window (1–28 days, default 7) after the chat is sent as
+   `action_source: business_messaging`, `messaging_channel: whatsapp`,
+   `user_data: { whatsapp_business_account_id, ctwa_clid }`:
+   - an order on the site: the Meta purchase is sent in that form INSTEAD of as a website
+     purchase (`state_reason` `OK_WHATSAPP_ADVERT`);
+   - a WhatsApp sale recorded under Offline sales: instead of the plain `chat` sale.
+   One sale, one claim: if the buyer also has a Meta web click (`fbc`) LATER than the chat, the
+   web advert keeps the sale.
+4. **Settings**: capability `meta` / `whatsapp_ads` (Offline sales page): WhatsApp Business
+   Account ID, window, optional separate dataset ID; secrets as one JSON bundle
+   `{"appSecret","verifyToken"[, "accessToken"]}`, validated for shape, stored encrypted.
+
+What the owner must have: the number on the WhatsApp Business Platform (Cloud API; the Business
+app alone sends no webhooks — Meta's coexistence onboarding keeps the app working alongside); a
+Meta app with the webhook above subscribed to `messages`; the WhatsApp account connected to the
+dataset; a token allowed `whatsapp_business_manage_events`.
 
 ## What the owner fills in
 
@@ -297,6 +343,10 @@ and TikTok Catalogs (Add products → Data feed), daily.
 - Meta fbc and fbp parameters (format, building fbc from fbclid, case sensitivity): https://developers.facebook.com/docs/marketing-api/conversions-api/parameters/fbp-and-fbc
 - Meta customer information parameters (hashing and normalisation of em, ph, fn, ln, ct, country; "always include country"): https://developers.facebook.com/docs/marketing-api/conversions-api/parameters/customer-information-parameters
 - Meta Dataset Quality API (Event Match Quality, match key coverage; permissions): https://developers.facebook.com/docs/marketing-api/conversions-api/dataset-quality-api
+- Meta Conversions API for Business Messaging (action_source business_messaging, messaging_channel whatsapp, ctwa_clid, supported events): https://developers.facebook.com/docs/marketing-api/conversions-api/business-messaging
+- Meta Webhooks (verification requests; X-Hub-Signature-256 signed with the app secret; retries for 36 hours): https://developers.facebook.com/docs/graph-api/webhooks/getting-started
+- Graph API versioning (a retired version is served as the next usable one): https://developers.facebook.com/docs/graph-api/guides/versioning
+- Marketing API changelog v24.0 / v25.0 (availability dates; no breaking change for the endpoints used here): https://developers.facebook.com/docs/marketing-api/marketing-api-changelog
 - TikTok catalogue product parameters: https://ads.tiktok.com/help/article/catalog-product-parameters
 - TikTok customer file requirements (E.164 phone, ≥1,000 entries): https://ads.tiktok.com/help/article/how-to-create-a-custom-audience-with-a-customer-file
 - TikTok audience endpoints (dmp/custom_audience/file/upload, create, update): https://github.com/tiktok/tiktok-business-api-sdk/blob/main/python_sdk/docs/AudienceApi.md and https://business-api.tiktok.com/portal/docs/create-a-customer-file-audience/v1.3

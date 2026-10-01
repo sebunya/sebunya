@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
 import { Registry } from '../../../../infrastructure/Registry';
+import { env } from '../../../../config/env';
 import { PERMISSIONS } from '@goldplus/shared';
 
 /**
@@ -105,7 +106,9 @@ routes.post('/spend/csv', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), asy
 
 routes.get('/offline', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const [overview, capabilities] = await Promise.all([ops().offline.overview(), capView()]);
-  return c.json({ success: true, data: { ...overview, capabilities: capabilities.filter((v) => v.capability === 'offline') } });
+  // WhatsApp adverts are set up beside the WhatsApp sales they credit.
+  const whatsappAds = await ops().whatsappAds.overview(`${env.publicApiBaseUrl.replace(/\/+$/, '')}/webhooks/whatsapp`);
+  return c.json({ success: true, data: { ...overview, whatsappAds, capabilities: capabilities.filter((v) => v.capability === 'offline' || v.capability === 'whatsapp_ads') } });
 });
 routes.post('/offline/sales', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c: Context) => {
   const b = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
