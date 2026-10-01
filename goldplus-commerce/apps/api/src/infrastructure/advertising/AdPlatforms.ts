@@ -13,6 +13,14 @@ import type { CanonicalTelemetryEvent } from '@goldplus/shared';
 
 export type AdEventName = 'view_item' | 'add_to_cart' | 'begin_checkout' | 'add_payment_info' | 'generate_lead' | 'purchase';
 export interface AdRequest { url: string; headers: Record<string, string>; body?: unknown; method?: 'POST' | 'GET' }
+/**
+ * Why nothing was sent, recorded on the queue row. Before 2026-10-01 every
+ * case shared one sentence ("no equivalent event or required identifier"),
+ * so "no event ID saved", "the visitor did not come from our ad" and
+ * "nothing to match on" could not be told apart afterwards.
+ */
+export type AdSkipReason = 'NO_EVENT_ID' | 'NO_X_CLICK' | 'NO_IDENTIFIER';
+
 export interface AdPlatformDef {
   key: string;
   name: string;
@@ -28,6 +36,14 @@ export interface AdPlatformDef {
   replyError?: (json: unknown) => string | null;
   events: Partial<Record<AdEventName, string>>;
   build?: (e: CanonicalTelemetryEvent, cfg: Record<string, string>, secret: string) => AdRequest | null;
+  /**
+   * Whether the platform can receive this event at all with this config.
+   * Absent = every mapped event. X needs an Events Manager ID per event: an
+   * event without one is not queued, rather than queued and skipped.
+   */
+  accepts?: (eventName: string, cfg: Record<string, string>) => boolean;
+  /** Why build() returned null, as a stable code the activity page can explain. Absent = NO_IDENTIFIER. */
+  skipReason?: (e: CanonicalTelemetryEvent, cfg: Record<string, string>) => AdSkipReason;
   /** When not implementable yet: why (shown as-is in admin). */
   unavailable?: string;
   /** The platform documents a test channel (test event code / validate-only) and the builder uses it. */
@@ -363,6 +379,13 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
       const c = parseJsonSecret(secret, ['consumerKey', 'consumerSecret', 'accessToken', 'accessTokenSecret']);
       return { Authorization: oauth1Header(req.method ?? 'POST', req.url, c) };
     },
+    accepts: (eventName, cfg) => !!cfg[X_EVENT_FIELD[eventName] ?? ''],
+    // Mirrors build()'s three ways of returning null, in the same order.
+    skipReason(e, cfg) {
+      if (!cfg[X_EVENT_FIELD[e.event_name] ?? '']) return 'NO_EVENT_ID';
+      if (xSendScope(cfg) === 'x_clicks' && !u(e).twclid) return 'NO_X_CLICK';
+      return 'NO_IDENTIFIER';
+    },
     build(e, cfg) {
       // Two scopes, chosen by the owner (xSendScope). The scope decides WHOSE
       // events leave the shop; the event IDs and the optimisation-event
@@ -434,3 +457,11 @@ export const buildAdRequest = (key: string, e: CanonicalTelemetryEvent, cfg: Rec
   const p = adPlatform(key);
   return p?.build ? p.build.call(p, e, cfg, secret) : null;
 };
+/** Whether the platform, as configured, can receive this event at all. */
+export const adPlatformAccepts = (key: string, eventName: string, cfg: Record<string, string>): boolean => {
+  const p = adPlatform(key);
+  return !!p?.events[eventName as AdEventName] && (p.accepts ? p.accepts(eventName, cfg) : true);
+};
+/** The stable code for "built nothing", to record on the row. */
+export const adSkipReason = (key: string, e: CanonicalTelemetryEvent, cfg: Record<string, string>): AdSkipReason =>
+  adPlatform(key)?.skipReason?.(e, cfg) ?? 'NO_IDENTIFIER';

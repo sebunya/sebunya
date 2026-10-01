@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  activityWindow, daysOfWindow, explainOutcome, outcomeOfIntentState, outcomeOfQueueStatus, topReason, PLATFORM_CLICK,
+  activityWindow, daysOfWindow, explainOutcome, isOutOfScope, outcomeOfIntentState, outcomeOfQueueStatus, topReason, PLATFORM_CLICK,
 } from '../../apps/api/src/domain/advertising/AdActivity';
 import { AdActivityUseCases, type ActivityPlatform } from '../../apps/api/src/application/use-cases/advertising/AdActivityUseCases';
 import type { AdActivityRepository } from '../../apps/api/src/application/ports/AdActivity';
@@ -18,30 +18,36 @@ describe('ad activity: outcomes and sentences', () => {
       .toEqual(['sent', 'sent', 'not_sent', 'not_sent', 'waiting', 'waiting', 'waiting', 'waiting', 'failed', 'failed', 'failed']);
   });
 
-  const x = { platformName: 'X (Twitter) Ads', platform: 'x' };
-  it('says why an event was not sent, in the owner\'s terms', () => {
-    const skip = 'no equivalent event or required identifier';
-    expect(explainOutcome({ ...x, scope: 'x_clicks', outcome: 'not_sent', raw: skip })).toMatch(/did not arrive from an X ad.*x_clicks/);
-    expect(explainOutcome({ ...x, scope: 'x_clicks', outcome: 'not_sent', raw: 'NO_X_CLICK' })).toMatch(/did not arrive from an X ad/);
-    // In the "all" scope the same stored reason means something else: nothing to match on.
-    expect(explainOutcome({ ...x, scope: 'all', outcome: 'not_sent', raw: skip })).toMatch(/Nothing X \(Twitter\) Ads can match on/);
-    expect(explainOutcome({ platformName: 'Meta', platform: 'meta', scope: null, outcome: 'not_sent', raw: skip })).toMatch(/Nothing Meta can match on/);
-    expect(explainOutcome({ ...x, scope: 'x_clicks', outcome: 'not_sent', raw: 'CONSENT_DENIED' })).toMatch(/refused advertising/);
-    expect(explainOutcome({ ...x, scope: 'x_clicks', outcome: 'not_sent', raw: 'platform switched off' })).toMatch(/switched off before/);
-    expect(explainOutcome({ ...x, scope: 'x_clicks', outcome: 'not_sent', raw: 'token could not be decrypted' })).toMatch(/Re-enter them/);
-    expect(explainOutcome({ ...x, scope: 'x_clicks', outcome: 'not_sent', raw: 'ORDER_CANCELLED' })).toMatch(/cancelled before/);
+  const x = { platformName: 'X (Twitter) Ads' };
+  it('says why an event was not sent, in the owner\'s terms — one sentence per stored reason', () => {
+    expect(explainOutcome({ ...x, outcome: 'not_sent', raw: 'NO_X_CLICK' })).toMatch(/did not arrive from an X ad.*x_clicks/);
+    expect(explainOutcome({ ...x, outcome: 'not_sent', raw: 'NO_EVENT_ID' })).toMatch(/No event ID is saved.*Advertising page/);
+    expect(explainOutcome({ ...x, outcome: 'not_sent', raw: 'NO_IDENTIFIER' })).toMatch(/Nothing X \(Twitter\) Ads can match on/);
+    expect(explainOutcome({ platformName: 'Meta', outcome: 'not_sent', raw: 'IDENTITY_UNAVAILABLE' })).toMatch(/Nothing Meta can match on/);
+    expect(explainOutcome({ ...x, outcome: 'not_sent', raw: 'CONSENT_DENIED' })).toMatch(/refused advertising/);
+    expect(explainOutcome({ ...x, outcome: 'not_sent', raw: 'platform switched off' })).toMatch(/switched off before/);
+    expect(explainOutcome({ ...x, outcome: 'not_sent', raw: 'token could not be decrypted' })).toMatch(/Re-enter them/);
+    expect(explainOutcome({ ...x, outcome: 'not_sent', raw: 'ORDER_CANCELLED' })).toMatch(/cancelled before/);
+    // A row recorded before the reasons were split could have been any of three things: the sentence says so, and does not pick one.
+    const legacy = explainOutcome({ ...x, outcome: 'not_sent', raw: 'no equivalent event or required identifier' });
+    expect(legacy).toMatch(/no event ID for it, or nothing to match/);
+    expect(legacy).not.toMatch(/did not arrive/);
+  });
+  it('only "the visitor did not come from our ad" is out of scope; every other reason stays on the page', () => {
+    expect(isOutOfScope('NO_X_CLICK')).toBe(true);
+    for (const r of ['NO_EVENT_ID', 'NO_IDENTIFIER', 'CONSENT_DENIED', 'no equivalent event or required identifier', 'x HTTP 403: nope', '', null, undefined]) expect(isOutOfScope(r), String(r)).toBe(false);
   });
   it('names an access refusal for what it is, and never hides the platform\'s own answer', () => {
-    const s = explainOutcome({ ...x, scope: 'x_clicks', outcome: 'failed', raw: 'x HTTP 403: {"errors":[{"code":"UNAUTHORIZED_CLIENT_APPLICATION"}]}' });
+    const s = explainOutcome({ ...x, outcome: 'failed', raw: 'x HTTP 403: {"errors":[{"code":"UNAUTHORIZED_CLIENT_APPLICATION"}]}' });
     expect(s).toMatch(/refused the request \(403\)/);
     expect(s).toMatch(/API access is not approved/);
     expect(s).toContain('UNAUTHORIZED_CLIENT_APPLICATION');
-    expect(explainOutcome({ ...x, scope: 'x_clicks', outcome: 'failed', raw: 'x HTTP 400: bad event_id' })).toMatch(/refused this event \(400\).*bad event_id/);
-    expect(explainOutcome({ ...x, scope: 'x_clicks', outcome: 'failed', raw: 'x HTTP 503: unavailable' })).toMatch(/Gave up after repeated failures.*503/);
-    expect(explainOutcome({ ...x, scope: 'x_clicks', outcome: 'waiting', raw: null })).toMatch(/Queued/);
-    expect(explainOutcome({ ...x, scope: 'x_clicks', outcome: 'sent', raw: 'ignored' })).toBe('Sent to X (Twitter) Ads.');
+    expect(explainOutcome({ ...x, outcome: 'failed', raw: 'x HTTP 400: bad event_id' })).toMatch(/refused this event \(400\).*bad event_id/);
+    expect(explainOutcome({ ...x, outcome: 'failed', raw: 'x HTTP 503: unavailable' })).toMatch(/Gave up after repeated failures.*503/);
+    expect(explainOutcome({ ...x, outcome: 'waiting', raw: null })).toMatch(/Queued/);
+    expect(explainOutcome({ ...x, outcome: 'sent', raw: 'ignored' })).toBe('Sent to X (Twitter) Ads.');
     // A stored reason nobody has named yet is shown as stored, not replaced with a guess.
-    expect(explainOutcome({ ...x, scope: 'x_clicks', outcome: 'not_sent', raw: 'A_NEW_REASON' })).toBe('Not sent: A_NEW_REASON');
+    expect(explainOutcome({ ...x, outcome: 'not_sent', raw: 'A_NEW_REASON' })).toBe('Not sent: A_NEW_REASON');
   });
   it('clamps the window to the offered periods and lists every day in it, oldest first', () => {
     expect([7, '30', 90, 14, 'x', undefined].map(activityWindow)).toEqual([7, 30, 90, 30, 30, 30]);
@@ -90,21 +96,30 @@ describe('ad activity: the view', () => {
         return [
           { day: '2026-09-30', event: 'add_to_cart', outcome: 'sent', reason: null, n: 3, lastAt: '2026-09-30T10:00:00.000Z' },
           { day: '2026-10-01', event: 'add_to_cart', outcome: 'sent', reason: null, n: 1, lastAt: '2026-10-01T08:00:00.000Z' },
-          { day: '2026-10-01', event: 'add_to_cart', outcome: 'not_sent', reason: 'no equivalent event or required identifier', n: 9, lastAt: null },
+          { day: '2026-10-01', event: 'add_to_cart', outcome: 'not_sent', reason: 'NO_IDENTIFIER', n: 9, lastAt: null },
           { day: '2026-10-01', event: 'add_to_cart', outcome: 'not_sent', reason: 'CONSENT_DENIED', n: 2, lastAt: null },
+          // Most of the shop's traffic: visitors who never saw an X ad. Reported once, counted nowhere else.
+          { day: '2026-10-01', event: 'add_to_cart', outcome: 'not_sent', reason: 'NO_X_CLICK', n: 400, lastAt: null },
+          { day: '2026-09-30', event: 'purchase', outcome: 'not_sent', reason: 'NO_X_CLICK', n: 7, lastAt: null },
           { day: '2026-10-01', event: 'purchase', outcome: 'failed', reason: 'x HTTP 403: nope', n: 1, lastAt: null },
         ];
       },
       arrivals: async (param) => { expect(param).toBe('twclid'); return [{ day: '2026-09-30', n: 4 }, { day: '2026-10-01', n: 2 }]; },
       recognised: async (col) => { expect(col).toBe('twclid'); return 5; },
-      recent: async () => [{ at: '2026-10-01T08:00:00.000Z', event: 'add_to_cart', path: 'browse', outcome: 'sent', reason: null, attempts: 1, value: 45000, currency: 'UGX' }],
+      recent: async (_p, _since, limit, includeOutOfScope) => {
+        expect(limit).toBe(50); expect(includeOutOfScope).toBe(false);
+        return [{ at: '2026-10-01T08:00:00.000Z', event: 'add_to_cart', path: 'browse', outcome: 'sent', reason: null, attempts: 1, value: 45000, currency: 'UGX' }];
+      },
     }), async () => [platformX()], eventIdOf).view('x', 7))!;
+
+    expect(v.outOfScope).toBe(407);
+    expect(v.showingOutOfScope).toBe(false);
 
     expect(v.funnel).toMatchObject({ arrivals: 6, recognised: 5, raised: 16, sent: 4, not_sent: 11, failed: 1, waiting: 0 });
     const cart = v.events.find((e) => e.event === 'add_to_cart')!;
     expect(cart).toMatchObject({ label: 'Add to cart', eventId: 'tw-rg6ox-rg7rh', configured: true, selected: true, sent: 4, not_sent: 11, failed: 0, lastSentAt: '2026-10-01T08:00:00.000Z' });
     expect(cart.mainReason).toMatchObject({ n: 9 });
-    expect(cart.mainReason!.text).toMatch(/did not arrive from an X ad/);
+    expect(cart.mainReason!.text).toMatch(/Nothing X \(Twitter\) Ads can match on/);
     const purchase = v.events.find((e) => e.event === 'purchase')!;
     expect(purchase).toMatchObject({ failed: 1, selected: true });           // purchases are never switched off
     expect(purchase.mainReason!.text).toMatch(/refused the request \(403\)/);
@@ -116,6 +131,24 @@ describe('ad activity: the view', () => {
     expect(v.daily.find((d) => d.day === '2026-10-01')).toMatchObject({ sent: 1, not_sent: 11, failed: 1, arrivals: 2 });
     expect(v.daily.find((d) => d.day === '2026-09-30')).toMatchObject({ sent: 3, arrivals: 4 });
     expect(v.recent[0]).toMatchObject({ label: 'Add to cart', explanation: 'Sent to X (Twitter) Ads.' });
+  });
+
+  it('"include everything" widens only the list: the repository is asked for it, the numbers do not move', async () => {
+    let asked: boolean | null = null;
+    const r = repo({
+      counts: async () => [
+        { day: '2026-10-01', event: 'add_to_cart', outcome: 'sent', reason: null, n: 2, lastAt: null },
+        { day: '2026-10-01', event: 'add_to_cart', outcome: 'not_sent', reason: 'NO_X_CLICK', n: 90, lastAt: null },
+      ],
+      recent: async (_p, _s, _l, all) => { asked = all; return []; },
+    });
+    const uc = new AdActivityUseCases(r, async () => [platformX()], eventIdOf);
+    const wide = (await uc.view('x', 7, true))!;
+    expect(asked).toBe(true);
+    expect(wide.showingOutOfScope).toBe(true);
+    expect(wide.funnel).toMatchObject({ raised: 2, sent: 2, not_sent: 0 });
+    expect(wide.outOfScope).toBe(90);
+    expect(wide.daily.find((d) => d.day === '2026-10-01')).toMatchObject({ sent: 2, not_sent: 0 });
   });
 
   it('defaults to a live platform, falls back to X, and reports the "all" scope', async () => {

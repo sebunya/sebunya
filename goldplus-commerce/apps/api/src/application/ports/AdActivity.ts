@@ -21,8 +21,12 @@ export interface AdActivityRepository {
   today(): Promise<string>;
   /** Browsing events and order purchases for the platform since the given day, counted per day, event, outcome and stored reason. */
   counts(platform: string, sinceDay: string): Promise<ActivityCount[]>;
-  /** The latest deliveries for the platform, newest first. */
-  recent(platform: string, sinceDay: string, limit: number): Promise<AdActivityRecord[]>;
+  /**
+   * The latest deliveries for the platform, newest first. Events that were
+   * never the platform's to count (isOutOfScope) are left out unless asked
+   * for: they are most of the traffic and would fill the list on their own.
+   */
+  recent(platform: string, sinceDay: string, limit: number, includeOutOfScope: boolean): Promise<AdActivityRecord[]>;
   /** Customer landings that carried the platform's click parameter, per day. */
   arrivals(clickParam: string, sinceDay: string): Promise<Array<{ day: string; n: number }>>;
   /** Visitors whose click id is in the identity graph, touched since the given day. */

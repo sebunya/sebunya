@@ -1,6 +1,6 @@
 import type { AdActivityRepository, AdActivityRecord } from '../../ports/AdActivity';
 import {
-  AD_OUTCOMES, PLATFORM_CLICK, activityWindow, daysOfWindow, explainOutcome, topReason, type ActivityCount, type AdOutcome,
+  AD_OUTCOMES, PLATFORM_CLICK, activityWindow, daysOfWindow, explainOutcome, isOutOfScope, topReason, type ActivityCount, type AdOutcome,
 } from '../../../domain/advertising/AdActivity';
 import { EARLY_SIGNAL_LABEL, eventSelected } from '../../../domain/advertising/OptimisationEvents';
 
@@ -37,7 +37,13 @@ export class AdActivityUseCases {
     private readonly eventIdOf: (platform: string, config: Record<string, string>, event: string) => string | null | undefined = () => undefined,
   ) {}
 
-  async view(platformKey: string | undefined, rawDays: unknown) {
+  /**
+   * `includeOutOfScope` only widens the list of latest deliveries. The
+   * headline numbers, the per-event rows and the chart always leave out
+   * events that were never the platform's to count, and report them once
+   * as `outOfScope`.
+   */
+  async view(platformKey: string | undefined, rawDays: unknown, includeOutOfScope = false) {
     const all = (await this.platforms()).filter((p) => !p.unavailable);
     const platform = all.find((p) => p.key === platformKey) ?? all.find((p) => p.state === 'LIVE' || p.state === 'TEST') ?? all.find((p) => p.key === 'x') ?? all[0];
     if (!platform) return null;
@@ -46,15 +52,17 @@ export class AdActivityUseCases {
     const window = daysOfWindow(today, days);
     const since = window[0];
     const click = PLATFORM_CLICK[platform.key] ?? null;
-    const [counts, recent, arrivals, recognised] = await Promise.all([
+    const [allCounts, recent, arrivals, recognised] = await Promise.all([
       this.repo.counts(platform.key, since),
-      this.repo.recent(platform.key, since, 50),
+      this.repo.recent(platform.key, since, 50, includeOutOfScope),
       click ? this.repo.arrivals(click.param, since) : Promise.resolve([]),
       click?.column ? this.repo.recognised(click.column, since) : Promise.resolve(null),
     ]);
     const config = platform.row?.config ?? {};
     const scope = platform.key === 'x' ? (config.sendScope === 'all' ? 'all' : 'x_clicks') : null;
-    const explain = (outcome: AdOutcome, raw: string | null) => explainOutcome({ platformName: platform.name, platform: platform.key, scope, outcome, raw });
+    const explain = (outcome: AdOutcome, raw: string | null) => explainOutcome({ platformName: platform.name, outcome, raw });
+    const counts = allCounts.filter((c) => !isOutOfScope(c.reason));
+    const outOfScope = allCounts.filter((c) => isOutOfScope(c.reason)).reduce((s, c) => s + c.n, 0);
 
     const total = zero();
     for (const c of counts) total[c.outcome] += c.n;
@@ -98,6 +106,8 @@ export class AdActivityUseCases {
         ...total,
       },
       events, daily,
+      /** Events from visitors who did not come from this platform's ad: seen, never sent, and in none of the numbers above. */
+      outOfScope, showingOutOfScope: includeOutOfScope,
       recent: recent.map((r: AdActivityRecord) => ({ ...r, label: LABEL[r.event] ?? r.event, explanation: explain(r.outcome, r.reason) })),
       platforms: all.map((p) => ({ key: p.key, name: p.name, state: p.state })),
     };

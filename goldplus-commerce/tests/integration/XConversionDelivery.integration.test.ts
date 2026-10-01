@@ -209,6 +209,9 @@ suite('X conversions: a call is spent only on an X-click purchase (real PostgreS
       const outcome = await processAdConversionBatch();
       // Meta's goes out; X's is skipped without a call.
       expect(outcome).toMatchObject({ claimed: 2, sent: 1, skipped: 1 });
+      // And the row says which of the three reasons it was, so the activity page need not guess.
+      const [xRow] = await raw`select status, last_error from outbox_events where idempotency_key = ${'ad:x:' + (event as any).event_id}`;
+      expect(xRow).toMatchObject({ status: 'skipped', last_error: 'NO_X_CLICK' });
     } finally {
       globalThis.fetch = realFetch;
       await raw`delete from outbox_events where idempotency_key like ${'ad:%:' + (event as any).event_id}`;
@@ -217,6 +220,22 @@ suite('X conversions: a call is spent only on an X-click purchase (real PostgreS
     }
     expect(hosts.filter((h) => /(^|\.)x\.com$|twitter\.com$/.test(h))).toEqual([]);
     expect(hosts).toEqual(['graph.facebook.com']);
+  }, 30_000);
+
+  // X has no Events Manager ID saved for a product view in this configuration,
+  // so nothing could ever be sent for one: it is not queued for X at all.
+  it('an event X has no event ID for is never queued for X', async () => {
+    const { fanOutAdConversions } = await import('../../apps/api/src/infrastructure/advertising/AdConversionDispatch');
+    const { randomUUID } = await import('node:crypto');
+    const event = { event_name: 'view_item', event_id: randomUUID(), event_time: Math.floor(Date.now() / 1000), source: 'server',
+      user_data: { fp_client_id: 'fp.1.ix-view', twclid: 'tw-click-view' },
+      ecommerce: { value: 45000, currency: 'UGX', items: [{ item_id: productId, item_name: 'IX item', price: 45000, quantity: 1 }] } } as never;
+    try {
+      await fanOutAdConversions(event);
+      expect(await raw`select 1 from outbox_events where idempotency_key = ${'ad:x:' + (event as any).event_id}`).toHaveLength(0);
+    } finally {
+      await raw`delete from outbox_events where idempotency_key like ${'ad:%:' + (event as any).event_id}`;
+    }
   }, 30_000);
 
   // Same basket add, but the visitor arrived on an X ad. As in production, the

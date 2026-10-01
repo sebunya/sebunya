@@ -57,6 +57,10 @@ suite('advertising activity repository (real PostgreSQL)', () => {
     await queue('view_item', 'skipped', { processed: true, lastError: 'no equivalent event or required identifier' });
     await queue('view_item', 'skipped', { processed: true, asString: true, lastError: 'no equivalent event or required identifier' });
     await queue('begin_checkout', 'suppressed', { processed: true, lastError: 'CONSENT_DENIED' });
+    // Visitors who did not come from the platform's ad: most real traffic. One per encoding, plus one more.
+    await queue('view_item', 'skipped', { processed: true, lastError: 'NO_X_CLICK' });
+    await queue('view_item', 'skipped', { processed: true, asString: true, lastError: 'NO_X_CLICK' });
+    await queue('add_to_cart', 'skipped', { processed: true, lastError: 'NO_X_CLICK' });
     await queue('generate_lead', 'dead_letter', { processed: true, lastError: `${platform} HTTP 403: not approved`, attempts: 1 });
     await queue('add_payment_info', 'retrying', { lastError: `${platform} HTTP 503: busy`, attempts: 2 });
     await queue('add_to_cart', 'pending');
@@ -88,14 +92,17 @@ suite('advertising activity repository (real PostgreSQL)', () => {
     expect(counts.every((c) => c.day === today)).toBe(true);
     expect(of('add_to_cart', 'sent')).toBe(2);        // one object payload, one string-encoded
     expect(of('add_to_cart', 'waiting')).toBe(1);
-    expect(of('view_item', 'not_sent')).toBe(2);
+    expect(of('view_item', 'not_sent')).toBe(4);       // two with the old shared reason, two NO_X_CLICK
+    expect(of('add_to_cart', 'not_sent')).toBe(1);
     expect(of('begin_checkout', 'not_sent')).toBe(1);
     expect(of('generate_lead', 'failed')).toBe(1);
     expect(of('add_payment_info', 'waiting')).toBe(1);
     expect(of('purchase', 'sent')).toBe(1);
     expect(of('purchase', 'not_sent')).toBe(1);
-    expect(counts.reduce((s, c) => s + c.n, 0)).toBe(10);
-    expect(counts.find((c) => c.event === 'view_item')!.reason).toBe('no equivalent event or required identifier');
+    expect(counts.reduce((s, c) => s + c.n, 0)).toBe(13);
+    // The stored reason travels with the count, so the use case can set out-of-scope events aside.
+    expect(counts.filter((c) => c.reason === 'NO_X_CLICK').reduce((s, c) => s + c.n, 0)).toBe(4);
+    expect(counts.filter((c) => c.event === 'view_item' && c.reason === 'no equivalent event or required identifier').reduce((s, c) => s + c.n, 0)).toBe(2);
     expect(counts.find((c) => c.event === 'purchase' && c.outcome === 'not_sent')!.reason).toBe('NO_X_CLICK');
     expect(counts.find((c) => c.event === 'add_to_cart' && c.outcome === 'sent')!.lastAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     // Another platform's rows are not this platform's.
@@ -105,16 +112,22 @@ suite('advertising activity repository (real PostgreSQL)', () => {
   });
 
   it('lists the latest deliveries from both paths, newest first, with value and attempts but no identity', async () => {
-    const recent = await repo.recent(platform, today, 50);
-    expect(recent).toHaveLength(10);
+    // By default the list leaves out what was never the platform's to count (3 browsing rows, 1 order).
+    const recent = await repo.recent(platform, today, 50, false);
+    expect(recent).toHaveLength(9);
+    expect(recent.some((r) => r.reason === 'NO_X_CLICK')).toBe(false);
+    const everything = await repo.recent(platform, today, 50, true);
+    expect(everything).toHaveLength(13);
+    expect(everything.filter((r) => r.reason === 'NO_X_CLICK')).toHaveLength(4);
     expect(recent.map((r) => r.at)).toEqual([...recent.map((r) => r.at)].sort().reverse());
-    expect(recent.filter((r) => r.path === 'order').map((r) => r.outcome).sort()).toEqual(['not_sent', 'sent']);
+    expect(recent.filter((r) => r.path === 'order').map((r) => r.outcome)).toEqual(['sent']);
+    expect(everything.filter((r) => r.path === 'order').map((r) => r.outcome).sort()).toEqual(['not_sent', 'sent']);
     const sentCart = recent.filter((r) => r.event === 'add_to_cart' && r.outcome === 'sent');
     expect(sentCart.map((r) => r.value).sort((a, b) => (a ?? 0) - (b ?? 0))).toEqual([12000, 45000]);
     expect(sentCart[0].currency).toBe('UGX');
     expect(recent.find((r) => r.event === 'add_payment_info')).toMatchObject({ outcome: 'waiting', attempts: 2 });
     expect(JSON.stringify(recent)).not.toContain(fp);
-    expect(await repo.recent(platform, today, 3)).toHaveLength(3);
+    expect(await repo.recent(platform, today, 3, false)).toHaveLength(3);
   });
 
   it('counts customer landings that carried the platform\'s click parameter, and recognised visitors', async () => {

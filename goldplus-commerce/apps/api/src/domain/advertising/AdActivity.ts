@@ -60,22 +60,30 @@ export function outcomeOfIntentState(state: string | null | undefined): AdOutcom
 const clip = (s: string, n = 180) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
 /**
- * One sentence for one delivery. `raw` is the stored reason (queue last_error
- * or intent state_reason); `scope` is X's owner setting and null elsewhere.
+ * An event that was never this platform's to count: the visitor did not come
+ * from its ad, and the owner's setting says to report only those who did.
+ * These are most of the shop's traffic. They are kept out of the page's
+ * headline numbers, chart and list (and stated once, as a count), or the few
+ * events that matter would be lost among them.
  */
-export function explainOutcome(input: { platformName: string; platform: string; scope: string | null; outcome: AdOutcome; raw: string | null | undefined }): string {
-  const { platformName: name, platform, scope, outcome } = input;
+export const isOutOfScope = (reason: string | null | undefined): boolean => reason === 'NO_X_CLICK';
+
+/** The single sentence the queue recorded for every skip before the reasons were split (2026-10-01). */
+const LEGACY_SKIP = /no equivalent event or required identifier/i;
+
+/** One sentence for one delivery. `raw` is the stored reason (queue last_error or intent state_reason). */
+export function explainOutcome(input: { platformName: string; outcome: AdOutcome; raw: string | null | undefined }): string {
+  const { platformName: name, outcome } = input;
   const raw = (input.raw ?? '').trim();
   if (outcome === 'sent') return `Sent to ${name}.`;
   if (outcome === 'waiting') return raw ? `Waiting to retry. Last answer: ${clip(raw)}` : 'Queued; it goes out within a minute.';
   if (outcome === 'not_sent') {
     if (raw === 'CONSENT_DENIED') return 'The visitor refused advertising, so nothing was sent.';
-    if (raw === 'NO_X_CLICK' || (platform === 'x' && scope !== 'all' && /no equivalent event or required identifier/i.test(raw))) {
-      return 'The visitor did not arrive from an X ad, so it is not sent (your "x_clicks" setting).';
-    }
-    if (raw === 'IDENTITY_UNAVAILABLE' || /no equivalent event or required identifier/i.test(raw)) {
-      return `Nothing ${name} can match on: no click id, and no contact detail it is allowed to use.`;
-    }
+    if (raw === 'NO_X_CLICK') return 'The visitor did not arrive from an X ad, so it is not X\'s to count (your "x_clicks" setting).';
+    if (raw === 'NO_EVENT_ID') return `No event ID is saved for this event, so ${name} is not told about it. Add one on the Advertising page.`;
+    if (raw === 'NO_IDENTIFIER' || raw === 'IDENTITY_UNAVAILABLE') return `Nothing ${name} can match on: no click id, and no contact detail it is allowed to use.`;
+    // Recorded before the reasons were split: it could have been any of the three above, so it says so.
+    if (LEGACY_SKIP.test(raw)) return `Not sent: ${name} had no event ID for it, or nothing to match the visitor on.`;
     if (raw === 'ORDER_CANCELLED') return 'The order was cancelled before it was sent.';
     if (/switched off/i.test(raw)) return `${name} was switched off before this was sent.`;
     if (/decrypt|vault/i.test(raw)) return 'The stored keys could not be read. Re-enter them on the Advertising page.';

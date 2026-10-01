@@ -62,7 +62,7 @@ routes.put('/capabilities/:platform/:capability', requirePermissions([PERMISSION
 
 // What was raised for, and what reached, one platform (read-only; counts and stored reasons only).
 routes.get('/activity', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
-  const data = await ops().activity.view(c.req.query('platform'), c.req.query('days'));
+  const data = await ops().activity.view(c.req.query('platform'), c.req.query('days'), c.req.query('all') === '1');
   return data ? c.json({ success: true, data }) : c.json({ success: false, error: { code: 'NOT_FOUND', message: 'No advertising platform is available.' } }, 404);
 });
 

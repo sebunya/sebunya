@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AD_PLATFORMS, buildAdRequest, xSendScope, X_EVENT_FIELD, hashEmail, hashPhone, hashPhonePlus, normalisePhoneUg, linkedInVersion, META_GRAPH_VERSION } from '../../apps/api/src/infrastructure/advertising/AdPlatforms';
+import { AD_PLATFORMS, buildAdRequest, adPlatformAccepts, adSkipReason, xSendScope, X_EVENT_FIELD, hashEmail, hashPhone, hashPhonePlus, normalisePhoneUg, linkedInVersion, META_GRAPH_VERSION } from '../../apps/api/src/infrastructure/advertising/AdPlatforms';
 import { AdDestinationUseCases } from '../../apps/api/src/application/use-cases/advertising/AdDestinationUseCases';
 
 const purchase: any = {
@@ -238,6 +238,30 @@ describe('advertising: third-review fixes', () => {
     expect(c).not.toHaveProperty('number_items');
     expect(c).not.toHaveProperty('contents');
     expect(c.identifiers).toEqual([{ twclid: 'tw123' }]);
+  });
+  it('X: an event with no ID is not accepted at all, and a skip names which of three reasons it was', () => {
+    const cfg = { pixelId: 'o8z6j', purchaseEventId: 'tw-o8z6j-o8z6k', addToCartEventId: 'tw-o8z6j-o8z6m' };
+    // Not queued: nothing could ever be sent for it.
+    expect(adPlatformAccepts('x', 'add_to_cart', cfg)).toBe(true);
+    expect(adPlatformAccepts('x', 'purchase', cfg)).toBe(true);
+    expect(adPlatformAccepts('x', 'view_item', cfg)).toBe(false);
+    expect(adPlatformAccepts('x', 'begin_checkout', cfg)).toBe(false);
+    expect(adPlatformAccepts('x', 'refund', cfg)).toBe(false);            // not an event X maps
+    // A platform with no per-event ID accepts whatever it maps.
+    expect(adPlatformAccepts('meta', 'view_item', {})).toBe(true);
+    expect(adPlatformAccepts('linkedin', 'view_item', {})).toBe(false);
+    // The reason matches the builder's own three exits, in its order.
+    const basket = { ...purchase, event_name: 'add_to_cart' };
+    expect(adSkipReason('x', { ...basket, event_name: 'view_item', user_data: { twclid: 'tw1' } }, cfg)).toBe('NO_EVENT_ID');
+    expect(adSkipReason('x', { ...basket, user_data: { hashed_email: hashEmail('buyer@example.com') } }, cfg)).toBe('NO_X_CLICK');
+    expect(adSkipReason('x', { ...basket, user_data: { ip_address: '41.84.203.125', user_agent: 'UA' } }, { ...cfg, sendScope: 'all' })).toBe('NO_IDENTIFIER');
+    for (const [e, c] of [
+      [{ ...basket, event_name: 'view_item', user_data: { twclid: 'tw1' } }, cfg],
+      [{ ...basket, user_data: { hashed_email: hashEmail('buyer@example.com') } }, cfg],
+      [{ ...basket, user_data: { ip_address: '41.84.203.125', user_agent: 'UA' } }, { ...cfg, sendScope: 'all' }],
+    ] as const) expect(buildAdRequest('x', e as never, c as never, '{}')).toBeNull();
+    // Other platforms have one reason: nothing to match on.
+    expect(adSkipReason('meta', basket, {})).toBe('NO_IDENTIFIER');
   });
   it('X, scope "all": every matchable purchase, and basket adds when an event id is set', () => {
     const cfg = { pixelId: 'o8z6j', purchaseEventId: 'tw-o8z6j-o8z6k', sendScope: 'all' };
