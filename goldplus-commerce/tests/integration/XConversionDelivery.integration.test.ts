@@ -219,20 +219,28 @@ suite('X conversions: a call is spent only on an X-click purchase (real PostgreS
     expect(hosts).toEqual(['graph.facebook.com']);
   }, 30_000);
 
-  // Same basket add, but the visitor arrived on an X ad: under the default
-  // scope it now goes to X too, under the add-to-cart event id (2026-10-01:
-  // optimisation events for X-click visitors, not purchases only).
-  it('basket events, default scope: sent to X under the add-to-cart event id when the visitor carries an X click id', async () => {
+  // Same basket add, but the visitor arrived on an X ad. As in production, the
+  // event itself names only the visitor (fp_client_id, IP, UA): the click id
+  // was stitched into the identity graph by /telemetry/identity. Under the
+  // default scope the add now goes to X, under the add-to-cart event id
+  // (2026-10-01: optimisation events for X-click visitors, not purchases only).
+  it('basket events, default scope: sent to X under the add-to-cart event id when the identity graph holds the visitor\'s X click id', async () => {
     const { fanOutAdConversions, processAdConversionBatch } = await import('../../apps/api/src/infrastructure/advertising/AdConversionDispatch');
     const { randomUUID } = await import('node:crypto');
+    const fp = `fp.1.ix-c-${randomUUID().slice(0, 8)}`;
+    await raw`insert into first_party_identities (fp_client_id, twclid) values (${fp}, 'tw-click-basket')`;
     const event = { event_name: 'add_to_cart', event_id: randomUUID(), event_time: Math.floor(Date.now() / 1000), source: 'server',
       page_location: 'https://shopgoldplus.com/products/ix',
-      user_data: { fp_client_id: 'fp.1.ix-c', twclid: 'tw-click-basket', hashed_email: 'a'.repeat(64) },
+      user_data: { fp_client_id: fp, ip_address: '41.84.203.125', user_agent: 'UA' },
       ecommerce: { value: 45000, currency: 'UGX', items: [{ item_id: productId, item_name: 'IX item', price: 45000, quantity: 1 }] } } as never;
     const sent: Array<{ url: string; body: any; auth: string }> = [];
     const realFetch = globalThis.fetch;
     try {
       expect(await fanOutAdConversions(event)).toBeGreaterThanOrEqual(1);
+      // The queued row is exactly the event as received: no click id is persisted.
+      const [queued] = await raw`select payload from outbox_events where idempotency_key = ${'ad:x:' + (event as any).event_id}`;
+      const queuedPayload = typeof queued.payload === 'string' ? JSON.parse(queued.payload) : queued.payload;
+      expect(queuedPayload.event.user_data.twclid).toBeUndefined();
       globalThis.fetch = (async (url: string, init: any) => {
         sent.push({ url: String(url), body: JSON.parse(init.body), auth: init.headers.Authorization ?? '' });
         return new Response('{"conversion_events_received":1}', { status: 200 });
@@ -242,6 +250,7 @@ suite('X conversions: a call is spent only on an X-click purchase (real PostgreS
     } finally {
       globalThis.fetch = realFetch;
       await raw`delete from outbox_events where idempotency_key like ${'ad:%:' + (event as any).event_id}`;
+      await raw`delete from first_party_identities where fp_client_id = ${fp}`;
     }
     const x = sent.filter((s) => /ads-api\.x\.com/.test(s.url));
     expect(x).toHaveLength(1);

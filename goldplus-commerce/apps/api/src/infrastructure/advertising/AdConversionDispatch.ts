@@ -7,6 +7,7 @@ import { DEAD_LETTER_STATE } from '../../domain/outbox/TerminalState';
 import { DrizzleAdDestinationRepository } from '../db/repositories/DrizzleAdDestinationRepository';
 import { IntegrationCredentialVault } from '../seo/IntegrationCredentialVault';
 import { adPlatform, buildAdRequest } from './AdPlatforms';
+import { withVisitorClickIds } from './VisitorClickIds';
 import { advertisingRefused } from '../measurement/AdvertisingConsentGate';
 import { eventSelected } from '../../domain/advertising/OptimisationEvents';
 import { lookup } from 'node:dns/promises';
@@ -138,7 +139,10 @@ export async function processAdConversionBatch(): Promise<{ claimed: number; sen
       out.retried++; continue;
     }
     if (refused) { await finish('suppressed', { lastError: 'CONSENT_DENIED' }); out.skipped++; continue; }
-    const req = buildAdRequest(platform, event, dest.config, secret);
+    // Browsing events arrive with only the visitor id; the click id that
+    // visitor came in on is read from the identity graph here, at send time,
+    // and never stored on the row (VisitorClickIds).
+    const req = buildAdRequest(platform, await withVisitorClickIds(event), dest.config, secret);
     if (!req) { await finish('skipped', { lastError: 'no equivalent event or required identifier' }); out.skipped++; continue; }
     const attempt = row.attemptCount + 1;
     try {
