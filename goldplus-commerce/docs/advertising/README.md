@@ -227,6 +227,9 @@ and `user_data.client_user_agent` are required. An event that has a match key bu
 not sent to be refused; it is recorded as `NO_BROWSER` (an order whose browser was never recorded,
 or whose record was erased on request) and the activity page says so.
 
+Browser check: `pnpm build && scripts/integration-env.sh scripts/qa/site-signals-check.sh` drives the
+three signals in real Chromium against local services and reads the queue back (13 checks).
+
 ## 7. Meta Conversions API: match keys without a Pixel
 
 The shop sends to Meta server to server and runs **no Meta Pixel** (owner decision 2026-09-19).
