@@ -39,7 +39,10 @@ if (Astro.request.method === "POST") {
   if (r.ok) notice = "Saved."; else formError = r.message;
 }
 
-const list = await call("GET", "/");
+// No trailing slash: the API's router is strict, so "/admin/advertising/" is
+// a 404 once authenticated (seen in production 2026-09-30; the page then
+// rendered the checklist but never the forms).
+const list = await call("GET", "");
 const checklist = await call("GET", "/checklist");
 const EVENT_LABEL: Record<string, string> = { view_item: "Product view", add_to_cart: "Add to cart", begin_checkout: "Checkout started", add_payment_info: "Payment method chosen", generate_lead: "Lead (WhatsApp click or quote request)" };
 const STATE: Record<string, [string, string]> = {

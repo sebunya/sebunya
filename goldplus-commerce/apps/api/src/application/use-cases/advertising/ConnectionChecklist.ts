@@ -66,7 +66,7 @@ export function buildChecklist(input: {
       label: f.label, where: where[f.key] ?? f.hint, optional: !!f.optional, done: f.optional ? !cfg[f.key] || f.pattern.test(cfg[f.key]) : f.pattern.test(cfg[f.key] ?? ''),
     }));
     if (d.secretLabel) steps.push({ label: d.secretLabel, where: where.secret ?? (d.secretHint ? `Format: ${d.secretHint}` : 'From the platform\'s conversions settings.'), secret: true, done: !!d.row?.hasSecret });
-    steps.push({ label: 'Switched on', where: 'Below, in this platform\'s card: "Save and switch on".', done: !!d.row?.enabled });
+    steps.push({ label: 'Switched on', where: 'In the Platforms section further down this page, this platform\'s form: "Save and switch on".', done: !!d.row?.enabled });
     const state = STATE_OF_DEST[d.state] ?? 'NOT_CONFIGURED';
     items.push({ key: 'conversions', title: 'Conversions (server-side)', status: state, detail: Object.entries(d.events).map(([k, v]) => `${k} → ${v}`).join(' · '), steps });
     if (d.testable) {

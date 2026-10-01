@@ -52,4 +52,20 @@ describe('web → API route mapping (Wave 2A)', () => {
       .map(([calledPath, files]) => `${calledPath} (${files[0]})`);
     expect(unmounted, `web calls with no mounted API prefix:\n${unmounted.join('\n')}`).toEqual([]);
   });
+
+  // The API router is strict: "/admin/advertising/" is not "/admin/advertising".
+  // The auth middleware answers 401 first, so unauthenticated probes look fine
+  // and the 404 shows only to a signed-in operator (production, 2026-09-30:
+  // /admin/advertising drew its checklist but none of the forms). A page helper
+  // that appends a path must therefore never be handed "/" for the root.
+  it('no web page requests an API root with a trailing slash', () => {
+    const offenders: string[] = [];
+    for (const file of walk(WEB_SRC)) {
+      const text = fs.readFileSync(file, 'utf8');
+      const rel = path.relative(WEB_SRC, file);
+      for (const m of text.matchAll(/\b(?:call|api|request)\(\s*["'](?:GET|PUT|POST|PATCH|DELETE)["']\s*,\s*["']\/["']/g)) offenders.push(`${rel}: ${m[0]}`);
+      for (const m of text.matchAll(/\$\{apiBase\}\/[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)*\/`/g)) offenders.push(`${rel}: ${m[0]}`);
+    }
+    expect(offenders, `root API calls with a trailing slash:\n${offenders.join('\n')}`).toEqual([]);
+  });
 });
