@@ -34,7 +34,7 @@ export interface SecretCipher { encrypt(plain: string): string; decrypt(enc: str
 
 // ── Advertising operations (0154): capabilities, audiences, spend, offline ──
 
-export type AdCapability = 'audiences' | 'spend' | 'offline';
+export type AdCapability = 'audiences' | 'spend' | 'offline' | 'whatsapp_ads';
 
 /** One platform capability's settings; the secret is write-only (mask only). */
 export interface AdCapabilityRow {
@@ -80,6 +80,12 @@ export interface PlatformCredentials {
   /** The conversions destination's token or JSON bundle. */
   destinationSecret: string;
   testMode: boolean;
+  /**
+   * For a sale reported against a WhatsApp advert: the dataset linked to the
+   * WhatsApp Business Account and its token, when they differ from the web
+   * conversions' (null = use the destination's). Read just in time.
+   */
+  messaging?: { datasetId: string | null; accessToken: string | null };
 }
 
 export interface AudienceRunRecord {
@@ -248,6 +254,12 @@ export interface OfflineContext {
   hashes: { emailSha256: string | null; emailGoogleSha256: string | null; phoneDigitsSha256: string | null; phonePlusSha256: string | null };
   clickIds: Record<string, string>;
   subjects: { userIds: string[]; fpClientIds: string[] };
+  /**
+   * Set when the buyer's chat began from a Click-to-WhatsApp advert inside the
+   * owner's window: the sale is then reported to Meta against that advert
+   * (business messaging) instead of as a plain chat sale.
+   */
+  whatsappReferral?: { ctwaClid: string; wabaId: string } | null;
 }
 
 export interface OfflineConversionRepository {

@@ -30,6 +30,26 @@ function verifySignature(signedInput: string, header: string | undefined, secret
   }
 }
 
+/**
+ * WhatsApp Business Platform webhook (Click-to-WhatsApp advert referrals).
+ * Thin: the use case decides. GET is Meta's subscription check; POST is a
+ * delivery, accepted only when Meta's signature over the raw body holds. The
+ * body is never logged: it carries customers' messages.
+ */
+routes.get('/whatsapp', async (c) => {
+  const challenge = await Registry.getInstance().advertisingOps.whatsappAds.verifySubscription({
+    mode: c.req.query('hub.mode'), token: c.req.query('hub.verify_token'), challenge: c.req.query('hub.challenge'),
+  });
+  return challenge ? c.text(challenge, 200) : c.text('Forbidden', 403);
+});
+routes.post('/whatsapp', async (c) => {
+  const rawBody = await c.req.text();
+  const r = await Registry.getInstance().advertisingOps.whatsappAds.receive(rawBody, c.req.header('x-hub-signature-256'));
+  if (r.status !== 200) logger.warn({ status: r.status, ip: clientIp(c) }, '[WhatsApp] webhook delivery not accepted');
+  else if (r.stored > 0 || r.withoutClickId > 0) logger.info({ stored: r.stored, duplicates: r.duplicates, withoutClickId: r.withoutClickId }, '[WhatsApp] advert referrals received');
+  return c.body(null, r.status);
+});
+
 routes.post('/payment/:provider', async (c) => {
   const provider = c.req.param('provider').toLowerCase();
   if (!ALLOWED.has(provider)) {

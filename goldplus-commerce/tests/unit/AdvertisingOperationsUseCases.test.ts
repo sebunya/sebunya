@@ -469,7 +469,9 @@ describe('destinations: Test / Live and early signals', () => {
     expect(m.saved[0].eventSelection).toEqual(['generate_lead']); // Pinterest has no begin_checkout; purchase is not selectable
   });
   it('builders: lead mapping, test codes, validateOnly, Pinterest test flag', () => {
-    const lead: any = { event_name: 'generate_lead', event_id: '11111111-1111-4111-8111-111111111111', event_time: 1790000000, source: 'browser', lead: { method: 'quote_request' }, user_data: {} };
+    // Every real event names its visitor; Meta is sent nothing for an event with no one to match (2026-10-01).
+    const lead: any = { event_name: 'generate_lead', event_id: '11111111-1111-4111-8111-111111111111', event_time: 1790000000, source: 'browser', lead: { method: 'quote_request' }, user_data: { fp_client_id: 'fp.1.x' } };
+    expect(buildAdRequest('meta', { ...lead, user_data: {} }, { datasetId: '1' }, 't')).toBeNull();
     expect((buildAdRequest('meta', lead, { datasetId: '1' }, 't')!.body as any).data[0].event_name).toBe('Lead');
     // A WhatsApp chat tap is a Contact on Meta, not a Lead (no details were submitted).
     expect((buildAdRequest('meta', { ...lead, lead: { method: 'whatsapp' } }, { datasetId: '1' }, 't')!.body as any).data[0].event_name).toBe('Contact');

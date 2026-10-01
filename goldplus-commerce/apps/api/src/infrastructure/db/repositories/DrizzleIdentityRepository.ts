@@ -21,6 +21,11 @@ export type IdentityUpsert = {
   userAgent?: string;
 };
 
+/** Columns holding an ad click or browser id: replaced by a newer one, and timed by click_ids_at. */
+export const CLICK_ID_COLUMNS = ['gclid', 'wbraid', 'gbraid', 'fbc', 'fbp', 'ttclid', 'twclid', 'li_fat_id', 'epik'] as const;
+/** The subset that names an AD CLICK (everything but Meta's browser id): one click at a time, the latest. */
+export const AD_CLICK_COLUMNS = ['gclid', 'wbraid', 'gbraid', 'fbc', 'ttclid', 'twclid', 'li_fat_id', 'epik'] as const;
+
 /**
  * PHASE 4 — IDENTITY GRAPH REPOSITORY
  */
@@ -32,21 +37,43 @@ export class DrizzleIdentityRepository {
       .where(eq(firstPartyIdentities.fpClientId, fpClientId))
       .limit(1);
 
+    const now = new Date();
+    const incoming = this.clean(data);
+    const carriesClick = CLICK_ID_COLUMNS.some((k) => !!incoming[k]);
     if (existing.length === 0) {
       const [inserted] = await db
         .insert(firstPartyIdentities)
-        .values({ fpClientId, ...this.clean(data), updatedAt: new Date() })
+        .values({ fpClientId, ...incoming, updatedAt: now, ...(carriesClick ? { clickIdsAt: now } : {}) })
         .returning();
       return inserted;
     }
 
     const row = existing[0];
-    const patch: Record<string, unknown> = { updatedAt: new Date() };
-    for (const [k, v] of Object.entries(this.clean(data))) {
-      if (v && !row[k as keyof IdentityRecord]) {
+    const patch: Record<string, unknown> = { updatedAt: now };
+    let clickChanged = false;
+    for (const [k, v] of Object.entries(incoming)) {
+      if (!v) continue;
+      // Click ids: the LAST click wins, as it does in the browser's own record
+      // (lib/attribution). They used to be first-write-wins like everything
+      // else here, so a returning visitor's new ad click was never stored and
+      // the first one was reported to the ad platform for ever (2026-10-01).
+      if ((CLICK_ID_COLUMNS as readonly string[]).includes(k)) {
+        if (row[k as keyof IdentityRecord] !== v) { patch[k] = v; clickChanged = true; }
+      } else if (!row[k as keyof IdentityRecord]) {
         patch[k] = v;
       }
     }
+    // …and it replaces the previous click ENTIRELY, as the browser's record
+    // does: the stitch carries the browser's current ad click, so a network
+    // it no longer names is cleared. Otherwise an old Meta click would ride
+    // along with a newer Google one and both networks would be told about
+    // the same visitor's events. (A browser id is not a click: it stays.)
+    if (AD_CLICK_COLUMNS.some((k) => !!incoming[k])) {
+      for (const k of AD_CLICK_COLUMNS) {
+        if (!incoming[k] && row[k as keyof IdentityRecord]) { patch[k] = null; clickChanged = true; }
+      }
+    }
+    if (clickChanged) patch.clickIdsAt = now;
 
     const [updated] = await db
       .update(firstPartyIdentities)

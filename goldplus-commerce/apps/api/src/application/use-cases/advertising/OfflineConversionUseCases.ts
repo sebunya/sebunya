@@ -1,3 +1,4 @@
+import type { CtwaAttribution } from './WhatsAppAdsUseCases';
 import type { OfflineConversionGateway, OfflineConversionRepository, OfflineConversionRow, PlatformCredentials } from '../../ports/Advertising';
 import { OFFLINE_PLATFORMS, afterFailure, hasMatchKey, offlineSaleErrors, onlinePurchaseCoversSale, withinSendWindow, type OfflinePlatform, type OfflineSaleInput } from '../../../domain/advertising/OfflineConversionPolicy';
 import { offlineSaleHashes } from '../../../domain/advertising/ContactNormalisation';
@@ -29,6 +30,8 @@ export class OfflineConversionUseCases {
     private readonly credentials: (platform: string) => Promise<PlatformCredentials>,
     private readonly audit: CreateAuditLogUseCase,
     private readonly now: () => Date = () => new Date(),
+    /** Click-to-WhatsApp attribution, when the shop receives WhatsApp's webhook. */
+    private readonly whatsappAds: { attributionFor(phoneSha256: string | null | undefined, saleAt: Date, fbc?: unknown): Promise<CtwaAttribution | null>; markAttributed(id: string): Promise<void> } | null = null,
   ) {}
 
   async recordSale(actorId: string | null, input: OfflineSaleInput): Promise<R<{ id: string }>> {
@@ -95,16 +98,27 @@ export class OfflineConversionUseCases {
       return 'retried';
     }
     if (refused) { await this.repo.finish(row.id, 'SUPPRESSED', 'CONSENT_DENIED'); return 'suppressed'; }
-    if (!hasMatchKey(platform, ctx)) { await this.repo.finish(row.id, 'SKIPPED', 'No click id, email or phone this platform can match on.'); return 'skipped'; }
+    // A WhatsApp sale whose chat began from a Click-to-WhatsApp advert is
+    // reported to Meta against that advert: the advert's click id is what
+    // credits it, where a plain "chat" sale is matched on phone alone. A
+    // failed lookup costs the attribution, never the sale's own report.
+    let ctwa: CtwaAttribution | null = null;
+    if (platform === 'meta' && ctx.channel === 'WHATSAPP' && this.whatsappAds) {
+      ctwa = await this.whatsappAds.attributionFor(ctx.hashes.phoneDigitsSha256, new Date(row.occurredAt), ctx.clickIds.fbc).catch(() => null);
+      if (ctwa) ctx.whatsappReferral = { ctwaClid: ctwa.ctwaClid, wabaId: ctwa.wabaId };
+    }
+    if (!ctx.whatsappReferral && !hasMatchKey(platform, ctx)) { await this.repo.finish(row.id, 'SKIPPED', 'No click id, email or phone this platform can match on.'); return 'skipped'; }
     const attempt = row.attemptCount + 1;
     let res: { status: number | null; error: string | null };
     try {
-      res = await this.gateway.send(ctx, await this.credentials(platform));
+      const creds = await this.credentials(platform);
+      res = await this.gateway.send(ctx, ctwa ? { ...creds, messaging: { datasetId: ctwa.datasetId, accessToken: ctwa.accessToken } } : creds);
     } catch (err) {
       res = { status: (err as { status?: number }).status ?? null, error: String((err as Error).message ?? err).slice(0, 250) };
     }
     if (res.status != null && res.status >= 200 && res.status < 300 && !res.error) {
-      await this.repo.finish(row.id, 'SENT', null, { attempt, sent: true });
+      await this.repo.finish(row.id, 'SENT', ctwa ? 'Reported against a Click-to-WhatsApp advert.' : null, { attempt, sent: true });
+      if (ctwa) await this.whatsappAds?.markAttributed(ctwa.referralId).catch(() => undefined);
       return 'sent';
     }
     const next = afterFailure(attempt, res.status);

@@ -60,7 +60,9 @@ export class AdActivityUseCases {
     ]);
     const config = platform.row?.config ?? {};
     const scope = platform.key === 'x' ? (config.sendScope === 'all' ? 'all' : 'x_clicks') : null;
-    const explain = (outcome: AdOutcome, raw: string | null) => explainOutcome({ platformName: platform.name, outcome, raw });
+    // "Meta (Facebook, Instagram, WhatsApp ads)" is a title, not a word for a sentence.
+    const spoken = platform.name.replace(/\s*\([^)]*\)/g, '').trim() || platform.name;
+    const explain = (outcome: AdOutcome, raw: string | null) => explainOutcome({ platformName: spoken, outcome, raw });
     const counts = allCounts.filter((c) => !isOutOfScope(c.reason));
     const outOfScope = allCounts.filter((c) => isOutOfScope(c.reason)).reduce((s, c) => s + c.n, 0);
 

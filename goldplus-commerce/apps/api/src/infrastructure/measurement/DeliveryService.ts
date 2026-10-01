@@ -6,7 +6,10 @@ import { env } from '../../config/env';
 import { logger } from '../logging/logger';
 import { environmentOf } from '../../domain/measurement/BusinessEvents';
 import { ga4CollectHit } from '../telemetry/Ga4CollectHit';
-import { adPlatform, buildAdRequest, hashEmail, hashEmailGoogle, hashPhone, hashPhonePlus, xSendScope } from '../advertising/AdPlatforms';
+import { META_GRAPH_VERSION, adErrorSummary, adPlatform, adSkipReason, buildAdRequest, normalisePhoneUg, hashEmail, hashEmailGoogle, hashPhone, hashPhonePlus } from '../advertising/AdPlatforms';
+import { isMetaClickId, metaBrowserIdFromVisitor, metaCustomerHashes } from '../../domain/advertising/MetaIdentifiers';
+import { storefrontOrigin } from '../config/storefrontOrigin';
+import { businessMessagingPurchase } from '../../domain/advertising/WhatsAppAdReferrals';
 import { DrizzleAdDestinationRepository } from '../db/repositories/DrizzleAdDestinationRepository';
 import { IntegrationCredentialVault } from '../seo/IntegrationCredentialVault';
 import { advertisingRefused } from './AdvertisingConsentGate';
@@ -241,9 +244,13 @@ async function killSwitchOn(): Promise<boolean> {
   return r?.value === true || r?.value?.on === true;
 }
 
+/** True when the buyer's own number is Ugandan (+256), in whichever of the usual ways it was typed. */
+export const buyerIsInUganda = (phone: unknown): boolean => (normalisePhoneUg(typeof phone === 'string' ? phone : '') ?? '').startsWith('256');
+
 /** Just-in-time identity: order contact + visitor/click context. Never queued, never logged. */
 async function loadIdentity(orderId: string) {
-  const o = rows(await db.execute(sql`select user_id, customer_email, customer_phone from orders where id = ${orderId}::uuid`))[0] ?? {};
+  const o = rows(await db.execute(sql`select user_id, customer_email, customer_phone, customer_name, delivery_location from orders where id = ${orderId}::uuid`))[0] ?? {};
+  const loc = (typeof o.delivery_location === 'string' ? (() => { try { return JSON.parse(o.delivery_location); } catch { return null; } })() : o.delivery_location) ?? {};
   const a = rows(await db.execute(sql`select fp_client_id, client_ip, user_agent, ga_session_id, ga_session_number, click_ids from order_attribution where order_id = ${orderId}::uuid`))[0] ?? {};
   const ck: Record<string, string> = (typeof a.click_ids === 'string' ? JSON.parse(a.click_ids) : a.click_ids) ?? {};
   const netParam = ck.clickid ? 'clickid' : ck.click_id ? 'click_id' : undefined;
@@ -253,6 +260,15 @@ async function loadIdentity(orderId: string) {
     hashed_email: hashEmail(o.customer_email), hashed_email_google: hashEmailGoogle(o.customer_email),
     hashed_phone: hashPhone(o.customer_phone), hashed_phone_plus: hashPhonePlus(o.customer_phone),
     gclid: ck.gclid, gbraid: ck.gbraid, wbraid: ck.wbraid, ttclid: ck.ttclid, twclid: ck.twclid, msclkid: ck.msclkid, sccid: ck.ScCid, epik: ck.epik,
+    // Meta: the click id the browser built from the landing URL's fbclid, and a
+    // browser id derived from the visitor id (the shop runs no Pixel).
+    fbc: isMetaClickId(ck.fbc) ? ck.fbc : undefined, fbp: metaBrowserIdFromVisitor(a.fp_client_id) ?? undefined,
+    // What the order itself states about the BUYER: the name typed at checkout
+    // and, for a buyer with a Ugandan number, Uganda and the delivery district.
+    // Every order is delivered in Uganda, but not every buyer lives there: for
+    // someone abroad buying for family, the district is the recipient's and the
+    // country is not theirs, and a wrong key matches worse than a missing one.
+    ...metaCustomerHashes({ customerName: o.customer_name, ...(buyerIsInUganda(o.customer_phone) ? { city: loc.district, country: 'UG' } : {}) }),
     ...(netParam ? { network_click_id: ck[netParam], network_click_param: netParam, network_click_source: ck.src } : {}),
   };
 }
@@ -270,6 +286,9 @@ export function toCanonical(ev: { event_id: string; event_name: string; occurred
     event_id: ev.event_id,
     event_time: Math.floor(new Date(ev.occurred_at).getTime() / 1000),
     source: 'server',
+    // Where the sale happened. Meta requires it for a website event; it was
+    // absent from every purchase until 2026-10-01.
+    ...(storefrontOrigin() ? { page_location: `${storefrontOrigin()}/checkout` } : {}),
     user_data: Object.fromEntries(Object.entries(identity).filter(([, v]) => v != null && v !== '')) as never,
     ecommerce: { transaction_id: p.orderNumber, value, currency: 'UGX', ...(isRefund ? {} : { items }), ...(Number(p.collectedDeliveryUGX) > 0 ? { shipping: Number(p.collectedDeliveryUGX) } : {}) },
   } as CanonicalTelemetryEvent;
@@ -277,7 +296,21 @@ export function toCanonical(ev: { event_id: string; event_name: string; occurred
 
 type Built = { url: string; method: 'GET' | 'POST'; headers: Record<string, string>; body?: string; replyError?: (t: string) => string | null };
 
-async function buildRequest(sink: string, canonical: CanonicalTelemetryEvent): Promise<{ req: Built | null; suppress?: string; defer?: string }> {
+/** What an order needs to be reported against a Click-to-WhatsApp advert (WhatsAppAdsUseCases.attributionFor). */
+type WhatsAppAdAttribution = { referralId: string; ctwaClid: string; wabaId: string; datasetId: string | null; accessToken: string | null };
+type WhatsAppAdResolver = {
+  attributionFor(phoneSha256: string | null | undefined, saleAt: Date, fbc?: unknown): Promise<WhatsAppAdAttribution | null>;
+  markAttributed(referralId: string): Promise<void>;
+};
+/**
+ * Set at composition (AdvertisingWiring): this module is imported by the
+ * Registry's own dependencies and cannot import it back. Unset — a worker or a
+ * test that never composed advertising — an order is reported as before.
+ */
+let whatsappAds: WhatsAppAdResolver | null = null;
+export function setWhatsAppAdResolver(resolver: WhatsAppAdResolver | null): void { whatsappAds = resolver; }
+
+async function buildRequest(sink: string, canonical: CanonicalTelemetryEvent, messaging: WhatsAppAdAttribution | null = null): Promise<{ req: Built | null; suppress?: string; defer?: string }> {
   if (sink.startsWith('ga4:')) {
     const id = (env.ga4MeasurementId ?? '').trim();
     if (!/^G-[A-Z0-9]+$/.test(id)) return { req: null, defer: 'CREDENTIALS_MISSING' };
@@ -297,9 +330,25 @@ async function buildRequest(sink: string, canonical: CanonicalTelemetryEvent): P
     if (!vault || !dest.secretEnc) return { req: null, defer: 'CREDENTIALS_MISSING' };
     try { secret = String(vault.decrypt<{ apiKey: string }>(dest.secretEnc).apiKey ?? ''); } catch { return { req: null, defer: 'CREDENTIALS_UNVERIFIED' }; }
   }
+  if (messaging && platform === 'meta') {
+    // The buyer's last Meta click was a chat begun from a Click-to-WhatsApp
+    // advert: the sale is reported against that advert (business messaging),
+    // INSTEAD of as a website purchase, so one sale is claimed once.
+    const test = dest.config._test === '1';
+    if (test && !dest.config.testEventCode) return { req: null, suppress: 'NO_TEST_CODE' };
+    return { req: {
+      url: `https://graph.facebook.com/${META_GRAPH_VERSION}/${messaging.datasetId || dest.config.datasetId}/events`, method: 'POST',
+      headers: { 'content-type': 'application/json', Authorization: `Bearer ${messaging.accessToken || secret}` },
+      body: JSON.stringify({ ...(test ? { test_event_code: dest.config.testEventCode } : {}), data: [businessMessagingPurchase({
+        eventId: canonical.event_id, eventTimeSec: canonical.event_time, valueUgx: Number(canonical.ecommerce?.value ?? 0), currency: canonical.ecommerce?.currency,
+        orderNumber: canonical.ecommerce?.transaction_id ?? null, wabaId: messaging.wabaId, ctwaClid: messaging.ctwaClid })] }),
+    } };
+  }
   const r = buildAdRequest(platform, canonical, dest.config, secret);
-  // For X this is the normal case, not a fault: the order did not come from an X click.
-  if (!r) return { req: null, suppress: platform === 'x' && xSendScope(dest.config) === 'x_clicks' && !canonical.user_data?.twclid ? 'NO_X_CLICK' : 'IDENTITY_UNAVAILABLE' };
+  // For X this is the normal case, not a fault: the order did not come from an
+  // X click. The platform names which reason it was (the same codes the
+  // browsing-event queue records); "nothing to match on" keeps its older name here.
+  if (!r) { const why = adSkipReason(platform, canonical, dest.config); return { req: null, suppress: why === 'NO_IDENTIFIER' ? 'IDENTITY_UNAVAILABLE' : why }; }
   const auth = def.authorize ? await def.authorize(r, dest.config, secret) : {};
   return { req: { url: r.url, method: r.method ?? 'POST', headers: { ...r.headers, ...auth }, body: r.method === 'GET' ? undefined : JSON.stringify(r.body),
     replyError: def.replyError ? (t) => { try { return def.replyError!(JSON.parse(t)); } catch { return null; } } : undefined } };
@@ -352,8 +401,14 @@ export async function deliverOne(deliveryId: string, generation: number, fetchIm
   }
 
   const canonical = toCanonical(source, sink, identity);
+  // A Meta purchase by someone whose chat began from a Click-to-WhatsApp advert
+  // (and who has no later Meta web click). A failed lookup is not a reason to
+  // hold the sale: it is then reported as a website purchase, as before.
+  const messaging = sink === 'ad:meta:purchase' && whatsappAds
+    ? await whatsappAds.attributionFor(identity.hashed_phone, new Date(ev.occurred_at), identity.fbc).catch(() => null)
+    : null;
   let built: Awaited<ReturnType<typeof buildRequest>>;
-  try { built = await buildRequest(sink, canonical); } catch (err) {
+  try { built = await buildRequest(sink, canonical, messaging); } catch (err) {
     const status = (err as { status?: number }).status;
     await finish(deliveryId, token, status && status < 500 ? 'DEAD_LETTER' : 'RETRY_WAIT', `BUILD:${String((err as Error).message).slice(0, 80)}`, { nextAt: new Date(Date.now() + 15 * 60_000) });
     return 'BUILD_FAILED';
@@ -385,19 +440,31 @@ export async function deliverOne(deliveryId: string, generation: number, fetchIm
     net = code === 'ECONNREFUSED' || code === 'ENOTFOUND' || code === 'EAI_AGAIN' ? 'before-send' : 'after-send';
   }
   const replyError = status != null && status < 300 && req.replyError ? req.replyError(text) : null;
-  const c = classifyResponse(status, replyError, net);
-  const safeCode = c.code === 'OK' ? null : `${c.code}${replyError ? `: ${replyError.slice(0, 120)}` : ''}`;
+  const platform = sink.startsWith('ad:') ? sink.split(':')[1] : null;
+  // The platform's own account of a refusal (Meta: code, subcode, its message,
+  // its trace id). It used to be discarded here: a refused purchase showed
+  // only "HTTP_400". It also says when a 4xx is really a rate limit.
+  const told = platform && status != null && status >= 300 ? adErrorSummary(platform, status, text) : null;
+  let c: { kind: 'accepted' | 'retry' | 'unknown' | 'permanent'; code: string } = classifyResponse(status, replyError, net);
+  if (told && c.kind === 'permanent') c = told.transient ? { kind: 'retry', code: 'PROVIDER_TRANSIENT' } : told.credentials ? { kind: 'permanent', code: 'CREDENTIALS' } : c;
+  const detail = replyError ?? told?.message ?? null;
+  const why = `${c.code}${detail ? `: ${detail.slice(0, 260)}` : ''}`;
+  const safeCode = c.code === 'OK' ? null : why;
   await db.transaction(async (tx) => {
     await tx.execute(sql`update measurement.delivery_attempt set finished_at = now(), outcome = ${c.kind.toUpperCase()}, http_status = ${status}, provider_code = ${safeCode},
       retry_after_at = ${retryAfter ? sql`now() + ${`${Math.min(86400, Math.max(0, Number(retryAfter) || 60))} seconds`}::interval` : sql`null`}
       where attempt_id = ${attemptId}::uuid`);
   });
-  const platform = sink.startsWith('ad:') ? sink.split(':')[1] : null;
-  if (c.kind === 'accepted') { await finish(deliveryId, token, 'ACCEPTED', 'OK', { accepted: true }); if (platform) await adRepo.recordResult(platform, true).catch(() => undefined); return 'ACCEPTED'; }
-  if (platform) await adRepo.recordResult(platform, false, `${c.code}${status ? ` (HTTP ${status})` : ''}`).catch(() => undefined);
+  if (c.kind === 'accepted') {
+    await finish(deliveryId, token, 'ACCEPTED', messaging ? 'OK_WHATSAPP_ADVERT' : 'OK', { accepted: true });
+    if (platform) await adRepo.recordResult(platform, true).catch(() => undefined);
+    if (messaging) await whatsappAds?.markAttributed(messaging.referralId).catch(() => undefined);
+    return 'ACCEPTED';
+  }
+  if (platform) await adRepo.recordResult(platform, false, `${why}${status ? ` (HTTP ${status})` : ''}`).catch(() => undefined);
   if (c.kind === 'unknown') { await finish(deliveryId, token, 'UNKNOWN_OUTCOME', c.code); return 'UNKNOWN_OUTCOME'; }
-  if (c.kind === 'retry' && attemptNo - Number(claimed.attempts_at_replay ?? 0) < MAX_ATTEMPTS) { await finish(deliveryId, token, 'RETRY_WAIT', c.code, { nextAt: new Date(Date.now() + nextAttemptDelayMs(attemptNo, retryAfter)) }); return 'RETRY_WAIT'; }
-  await finish(deliveryId, token, 'DEAD_LETTER', c.code);
+  if (c.kind === 'retry' && attemptNo - Number(claimed.attempts_at_replay ?? 0) < MAX_ATTEMPTS) { await finish(deliveryId, token, 'RETRY_WAIT', why, { nextAt: new Date(Date.now() + nextAttemptDelayMs(attemptNo, retryAfter)) }); return 'RETRY_WAIT'; }
+  await finish(deliveryId, token, 'DEAD_LETTER', why);
   logger.warn({ deliveryId, sink, code: c.code, status }, '[Delivery] dead-lettered');
   return 'DEAD_LETTER';
 }

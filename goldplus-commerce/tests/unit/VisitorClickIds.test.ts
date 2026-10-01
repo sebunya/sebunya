@@ -37,6 +37,28 @@ describe('withVisitorClickIds', () => {
     expect(await withVisitorClickIds(base, async () => ({ twclid: '', updatedAt: fresh }), now)).toBe(base);
     expect(await withVisitorClickIds(base, async () => { throw new Error('graph down'); }, now)).toBe(base);
   });
+  it('uses when the click id last CHANGED, not when the row was last touched', async () => {
+    const stale = new Date(now - CLICK_ID_MAX_AGE_MS - 1);
+    // Touched a minute ago (a sign-in), but the click itself is older than the window: not merged.
+    expect(await withVisitorClickIds(base, async () => ({ twclid: 'tw-old', updatedAt: fresh, clickIdsAt: stale }), now)).toBe(base);
+    // A row from before the column existed falls back to its last touch.
+    expect((await withVisitorClickIds(base, async () => ({ twclid: 'tw1', updatedAt: fresh, clickIdsAt: null }), now)).user_data).toMatchObject({ twclid: 'tw1' });
+    expect((await withVisitorClickIds(base, async () => ({ twclid: 'tw2', updatedAt: stale, clickIdsAt: fresh }), now)).user_data).toMatchObject({ twclid: 'tw2' });
+  });
+  it('gives every event from a real visitor id a Meta browser id, derived and stable, with or without a click', async () => {
+    const fp = 'fp.1790841536221.fa7903b5-a629-4083-9121-715539a7c550';
+    const ev = { ...(base as any), user_data: { fp_client_id: fp, ip_address: '41.84.203.125', user_agent: 'UA' } } as never;
+    const noClick = await withVisitorClickIds(ev, async () => null, now);
+    expect((noClick.user_data as any).fbp).toMatch(/^fb\.1\.1790841536221\.[1-9]\d{9}$/);
+    const withClick = await withVisitorClickIds(ev, async () => ({ fbc: 'fb.1.1790841536999.IwAR2xQzAbCdEfGh', updatedAt: fresh, clickIdsAt: fresh }), now);
+    expect(withClick.user_data).toMatchObject({ fbc: 'fb.1.1790841536999.IwAR2xQzAbCdEfGh', fbp: (noClick.user_data as any).fbp });
+    // Even when the graph cannot be read, the browser id needs no lookup.
+    expect(((await withVisitorClickIds(ev, async () => { throw new Error('graph down'); }, now)).user_data as any).fbp).toBe((noClick.user_data as any).fbp);
+    // An event that already carries one keeps it; the queued event is never mutated.
+    const own = { ...(ev as any), user_data: { ...(ev as any).user_data, fbp: 'fb.1.1700000000000.1234567890' } } as never;
+    expect(((await withVisitorClickIds(own, async () => null, now)).user_data as any).fbp).toBe('fb.1.1700000000000.1234567890');
+    expect((ev as any).user_data.fbp).toBeUndefined();
+  });
   it('merges click ids only — a hashed contact in the graph is not copied onto a browsing event', async () => {
     const out = await withVisitorClickIds(base, async () => ({ twclid: 'tw1', hashedEmail: 'a'.repeat(64), hashedPhone: 'b'.repeat(64), updatedAt: fresh } as never), now);
     expect(Object.keys(out.user_data as object).sort()).toEqual(['fp_client_id', 'ip_address', 'twclid', 'user_agent']);

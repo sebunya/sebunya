@@ -1,3 +1,4 @@
+import { isMetaBrowserId, isMetaClickId } from '../../../domain/advertising/MetaIdentifiers';
 import { DrizzleIdentityRepository } from '../../../infrastructure/db/repositories/DrizzleIdentityRepository';
 import { piiHasher } from '../../../infrastructure/security/PiiHashingService';
 
@@ -46,8 +47,10 @@ export class StitchBrowserIdentityUseCase {
       gclid:       body.gclid,
       wbraid:      body.wbraid,
       gbraid:      body.gbraid,
-      fbc:         body.fbc,
-      fbp:         body.fbp,
+      // The browser builds fbc from the landing URL's fbclid; a value of any
+      // other shape is not a Meta click id and is not stored as one.
+      fbc:         isMetaClickId(body.fbc) ? body.fbc : undefined,
+      fbp:         isMetaBrowserId(body.fbp) ? body.fbp : undefined,
       ttclid:      body.ttclid,
       twclid:      body.twclid,
       li_fat_id:   body.li_fat_id,

@@ -20,6 +20,24 @@ const showAll = url.searchParams.get("all") === "1";
 const res = await advertisingApi(token, "GET", `/activity?platform=${encodeURIComponent(wantPlatform)}&days=${encodeURIComponent(wantDays)}${showAll ? "&all=1" : ""}`);
 const a: any = res.ok ? res.data : null;
 
+// ── Meta only: what Meta itself reports, and one owner-triggered test send ────
+let testNotice: { ok: boolean; text: string } | null = null;
+if (Astro.request.method === "POST" && a?.platform === "meta") {
+  const f = await Astro.request.formData();
+  if (String(f.get("intent") ?? "") === "meta-test-event") {
+    const r = await advertisingApi(token, "POST", "/meta/test-event", { testEventCode: String(f.get("testEventCode") ?? "").trim() });
+    testNotice = r.ok
+      ? { ok: true, text: `Meta received ${r.data.eventsReceived} test event. It is listed in Events Manager > your dataset > Test events as ViewContent, with the event ID ${r.data.eventId}. It is not counted.` }
+      : { ok: false, text: r.message };
+  }
+}
+const metaRes = a?.platform === "meta" ? await advertisingApi(token, "GET", `/meta/diagnostics${url.searchParams.get("fresh") === "1" || testNotice ? "?fresh=1" : ""}`) : null;
+const meta: any = metaRes?.ok ? metaRes.data : null;
+const BAND: Record<string, { word: string; fill: string }> = {
+  none: { word: "No score yet", fill: "#8a8a85" }, low: { word: "Low", fill: "#d03b3b" }, fair: { word: "Fair", fill: "#fab219" },
+  good: { word: "Good", fill: "#0ca30c" }, high: { word: "High", fill: "#0ca30c" },
+};
+
 type Outcome = "sent" | "not_sent" | "waiting" | "failed";
 // Status colours, never reused for anything else; each is always paired with a mark and a word.
 const OUTCOME: Record<Outcome, { label: string; mark: string; fill: string; pill: string }> = {
@@ -169,6 +187,98 @@ const anyActivity = daily.some((d) => totalOf(d) > 0);
             </p>
           )}
         </section>
+
+        {/* Meta's own account of the dataset. Shown for Meta only. */}
+        {a.platform === "meta" && (
+          <section aria-labelledby="h-meta" class="mb-8">
+            <div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+              <h3 id="h-meta" class="text-lg font-black text-brand-dark">What Meta says about your data</h3>
+              {meta?.checkedAt && <p class="text-xs text-gray-600">Asked {whenKampala(meta.checkedAt)} · <a class="underline font-bold" href={`${href("meta", a.days)}&fresh=1#h-meta`}>Ask again</a></p>}
+            </div>
+            {testNotice && <div role={testNotice.ok ? "status" : "alert"} class={`mb-4 rounded-xl border p-4 text-sm ${testNotice.ok ? TONE.ok : TONE.bad}`}>{testNotice.text}</div>}
+            {!metaRes?.ok ? <p role="alert" class="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{metaRes?.message ?? "Meta's answer could not be read."}</p>
+              : !meta.configured ? <p class="rounded-2xl border border-gray-200 bg-white p-4 text-sm text-gray-700">{meta.notConfigured} Nothing has been asked of Meta.</p> : (
+              <div class="grid gap-4 lg:grid-cols-3">
+                {meta.graph?.retired && (
+                  <p role="alert" class="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 lg:col-span-3">
+                    <strong class="font-black">Meta has retired the API version this shop asks for.</strong> The code requests {meta.graph.pinned}; Meta answered as {meta.graph.served}. Events are still accepted, on a version nobody chose. Tell your developer to move the pinned Graph API version.
+                  </p>
+                )}
+                <div class="rounded-2xl border border-gray-200 bg-white p-4 lg:col-span-2">
+                  <p class="text-xs font-bold text-gray-600">Connection {meta.graph?.served && !meta.graph.retired && <span class="font-normal">· Graph API {meta.graph.served}</span>}</p>
+                  {meta.connection.state === "ok"
+                    ? <p class="mt-1 text-sm text-emerald-900"><span aria-hidden="true">✓ </span>Meta recognises the dataset{meta.connection.value.name ? <> <strong>{meta.connection.value.name}</strong></> : ""} (<span class="font-mono text-xs">{meta.datasetId}</span>) and accepts this token.</p>
+                    : meta.connection.state === "unavailable"
+                      ? <p class="mt-1 text-sm text-amber-900"><span aria-hidden="true">… </span>Meta did not answer just now, which says nothing about your setup. {meta.connection.message}</p>
+                      : <p class="mt-1 text-sm text-red-900"><span aria-hidden="true">✗ </span>{meta.connection.credentials ? "Meta rejected the access token. Generate a new one in Events Manager and re-enter it on the Advertising page. " : "Meta refused to show the dataset with this token. "}{meta.connection.message}</p>}
+
+                  <p class="mt-5 text-xs font-bold text-gray-600">Event Match Quality <span class="font-normal">(Meta's score out of 10 for how well it can match each event to a person, over its last 7 days)</span></p>
+                  {meta.quality.state === "ok" && meta.quality.value.events.length > 0 ? (
+                    <div class="mt-2 overflow-x-auto">
+                      <table class="w-full text-sm">
+                        <thead class="text-left text-xs text-gray-600"><tr class="border-b border-gray-200">
+                          <th scope="col" class="py-2 pr-3 font-bold">Event</th>
+                          <th scope="col" class="py-2 pr-3 font-bold">Score</th>
+                          <th scope="col" class="py-2 font-bold">Share of events carrying each match key</th>
+                        </tr></thead>
+                        <tbody>
+                          {meta.quality.value.events.map((q: any) => (
+                            <tr class="border-b border-gray-100 align-top">
+                              <th scope="row" class="py-2 pr-3 text-left font-bold text-brand-dark">{q.event}</th>
+                              <td class="py-2 pr-3 whitespace-nowrap">
+                                {q.score == null ? <span class="text-gray-600">No score yet</span> : (
+                                  <span class="inline-flex items-center gap-2">
+                                    <span class="tabular-nums font-black text-brand-dark">{q.score.toFixed(1)}</span>
+                                    <svg width="72" height="8" viewBox="0 0 72 8" role="img" aria-label={`${q.score.toFixed(1)} out of 10`}>
+                                      <rect x="0" y="0" width="72" height="8" rx="4" fill="#e7e7e4" />
+                                      <rect x="0" y="0" width={Math.max(4, (q.score / 10) * 72)} height="8" rx="4" fill={BAND[q.band].fill} />
+                                    </svg>
+                                    <span class="text-xs text-gray-700">{BAND[q.band].word}</span>
+                                  </span>
+                                )}
+                              </td>
+                              <td class="py-2">
+                                {q.keys.length === 0 ? <span class="text-xs text-gray-600">Meta gave no breakdown.</span> : (
+                                  <ul class="flex flex-wrap gap-1.5">
+                                    {q.keys.map((k: any) => <li class="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs text-gray-800">{k.label} <strong class="tabular-nums">{k.percentage == null ? "—" : `${k.percentage}%`}</strong></li>)}
+                                  </ul>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : meta.quality.state === "ok" ? <p class="mt-1 text-sm text-gray-700">Meta has not scored this dataset yet. A score appears once Meta has received events for a day or two.</p>
+                    : meta.quality.state === "unavailable" ? <p class="mt-1 text-sm text-amber-900">Meta did not answer just now. {meta.quality.message}</p>
+                    : meta.quality.credentials ? <p class="mt-1 text-sm text-gray-700">Not available: Meta rejected the access token (above), so it answered nothing about quality either.</p>
+                    : <p class="mt-1 text-sm text-gray-700">This token cannot read the quality figures, which does not stop events being sent: sending needs only the Conversions API token, reading quality needs a token with ads_read. The same figures are in Events Manager > your dataset > Overview. <span class="block mt-1 text-xs text-gray-600">{meta.quality.message}</span></p>}
+                </div>
+
+                <div class="rounded-2xl border border-gray-200 bg-white p-4">
+                  <p class="text-xs font-bold text-gray-600">What the shop sends</p>
+                  <ul class="mt-2 space-y-3 text-sm">
+                    {meta.keysSent.map((g: any) => (
+                      <li>
+                        <span class="font-bold text-brand-dark">{g.on}</span>
+                        <span class="block text-gray-800">{g.keys.join(" · ")}</span>
+                        <span class="block text-xs text-gray-600">{g.note}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <form method="POST" action={`${href("meta", a.days)}#h-meta`} class="mt-5 border-t border-gray-200 pt-4">
+                    <input type="hidden" name="intent" value="meta-test-event" />
+                    <label class="text-xs font-bold text-gray-700">Send one test event
+                      <input name="testEventCode" required autocomplete="off" spellcheck="false" pattern="TEST[A-Za-z0-9]{1,30}" placeholder="TEST12345" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm font-normal" />
+                    </label>
+                    <p class="mt-1 text-xs text-gray-600">The code is in Events Manager > your dataset > Test events. The event appears there within seconds and is not counted or used for ads.</p>
+                    <button class="mt-3 inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Send test event</button>
+                  </form>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
 
         {/* Each event the platform can receive. */}
         <section aria-labelledby="h-events" class="mb-8">

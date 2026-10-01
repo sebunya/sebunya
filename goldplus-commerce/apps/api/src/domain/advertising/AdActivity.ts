@@ -75,13 +75,16 @@ const LEGACY_SKIP = /no equivalent event or required identifier/i;
 export function explainOutcome(input: { platformName: string; outcome: AdOutcome; raw: string | null | undefined }): string {
   const { platformName: name, outcome } = input;
   const raw = (input.raw ?? '').trim();
-  if (outcome === 'sent') return `Sent to ${name}.`;
+  // An order whose buyer's chat began from a Click-to-WhatsApp advert is reported against that advert.
+  if (outcome === 'sent') return raw === 'OK_WHATSAPP_ADVERT' ? `Sent to ${name}, credited to a Click-to-WhatsApp advert.` : `Sent to ${name}.`;
   if (outcome === 'waiting') return raw ? `Waiting to retry. Last answer: ${clip(raw)}` : 'Queued; it goes out within a minute.';
   if (outcome === 'not_sent') {
     if (raw === 'CONSENT_DENIED') return 'The visitor refused advertising, so nothing was sent.';
     if (raw === 'NO_X_CLICK') return 'The visitor did not arrive from an X ad, so it is not X\'s to count (your "x_clicks" setting).';
     if (raw === 'NO_EVENT_ID') return `No event ID is saved for this event, so ${name} is not told about it. Add one on the Advertising page.`;
     if (raw === 'NO_IDENTIFIER' || raw === 'IDENTITY_UNAVAILABLE') return `Nothing ${name} can match on: no click id, and no contact detail it is allowed to use.`;
+    if (raw === 'NO_TEST_CODE') return `${name} is in Test mode but no test event code is saved, so nothing is sent. Add the code on the Advertising page, or switch to Live.`;
+    if (raw === 'EXPIRED_EVENT') return `Too old to send: ${name} accepts an event for a limited time after it happened.`;
     // Recorded before the reasons were split: it could have been any of the three above, so it says so.
     if (LEGACY_SKIP.test(raw)) return `Not sent: ${name} had no event ID for it, or nothing to match the visitor on.`;
     if (raw === 'ORDER_CANCELLED') return 'The order was cancelled before it was sent.';
@@ -90,6 +93,19 @@ export function explainOutcome(input: { platformName: string; outcome: AdOutcome
     return raw ? `Not sent: ${clip(raw)}` : 'Not sent.';
   }
   // failed
+  // Meta names its refusals itself (code/subcode, its message, its trace id): say what the code means, and keep its words.
+  const meta = /Meta error (\d+)(?:\/(\d+))?: /.exec(raw);
+  if (meta) {
+    const code = Number(meta[1]);
+    const said = clip(raw.slice(raw.indexOf('Meta error')), 230);
+    if (code === 190 || code === 102 || code === 104) return `Meta rejected the access token (expired, revoked or wrong). Generate a new one in Events Manager and re-enter it on the Advertising page. ${said}`;
+    if (code === 10 || code === 200 || code === 294 || code === 3) return `The access token is not allowed to send to this dataset. In Events Manager, generate the token from this dataset's Conversions API settings. ${said}`;
+    if (code === 100) return `Meta refused the event as invalid. ${said}`;
+    if (code === 803 || code === 2500) return `Meta does not recognise the dataset ID. Check it on the Advertising page. ${said}`;
+    return `Meta refused it. ${said}`;
+  }
+  if (/^CREDENTIALS\b/.test(raw)) return `${name} rejected the keys. Re-enter them on the Advertising page. ${clip(raw, 160)}`;
+  if (/^RETRY_BUDGET_EXHAUSTED\b/.test(raw)) return 'Gave up after the allowed number of tries.';
   const http = /HTTP (\d{3})/.exec(raw)?.[1];
   if (http === '401' || http === '403') return `${name} refused the request (${http}): the keys were rejected, or the account's API access is not approved yet. ${clip(raw, 140)}`;
   if (http && http.startsWith('4')) return `${name} refused this event (${http}). ${clip(raw, 160)}`;

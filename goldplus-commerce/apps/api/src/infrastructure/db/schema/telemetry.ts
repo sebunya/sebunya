@@ -49,6 +49,10 @@ export const firstPartyIdentities = pgTable('first_party_identities', {
   userAgent:  text('user_agent'),
   createdAt:  timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt:  timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  // 0165: when a click id on this row last CHANGED. updated_at moves on every
+  // stitch (a login, a page with no ad click), so it cannot say how old the
+  // click is; this can.
+  clickIdsAt: timestamp('click_ids_at', { withTimezone: true }),
 });
 
 /**

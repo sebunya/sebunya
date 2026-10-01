@@ -24,6 +24,13 @@ export const TelemetryUserDataSchema = z.object({
   hashed_phone: z.string().length(64).optional(),
   /** SHA-256 of '+'-prefixed E.164 (TikTok's rule). */
   hashed_phone_plus: z.string().length(64).optional(),
+  // Meta customer information parameters (fn, ln, ct, country), SHA-256 of the
+  // value normalised as Meta specifies. Set only on a paid order's purchase,
+  // from what the order itself states; never on a browsing event.
+  hashed_first_name: z.string().length(64).optional(),
+  hashed_last_name:  z.string().length(64).optional(),
+  hashed_city:       z.string().length(64).optional(),
+  hashed_country:    z.string().length(64).optional(),
 
   // First-party identity
   fp_client_id: z.string().max(255).optional(),

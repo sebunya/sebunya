@@ -19,6 +19,30 @@ routes.get('/recipients', async (c) => {
   }
 });
 /**
+ * Public: what the privacy page must disclose beyond the list of platforms.
+ * A failed lookup is an error, never "false": the page would then deny
+ * something that may be happening.
+ */
+routes.get('/disclosures', async (c) => {
+  try {
+    const o = await Registry.getInstance().advertisingOps.whatsappAds.overview('');
+    return c.json({ success: true, data: { whatsappAdverts: o.live } }, 200, { 'Cache-Control': 'public, max-age=300' });
+  } catch {
+    return c.json({ success: false, error: { code: 'UNAVAILABLE', message: 'Disclosures could not be read.' } }, 503, { 'Cache-Control': 'no-store' });
+  }
+});
+/**
+ * Public: the domain verification codes the storefront prints in its <head>
+ * (Meta's facebook-domain-verification). Not secrets; null when none is saved.
+ */
+routes.get('/site-verification', async (c) => {
+  try {
+    return c.json({ success: true, data: await Registry.getInstance().advertising.siteVerification() }, 200, { 'Cache-Control': 'public, max-age=300' });
+  } catch {
+    return c.json({ success: false, error: { code: 'UNAVAILABLE', message: 'Verification codes could not be read.' } }, 503, { 'Cache-Control': 'no-store' });
+  }
+});
+/**
  * Product catalogue feeds (0154) for Meta Commerce Manager and TikTok
  * Catalogs: public, credential-free (the platform fetches the URL on the
  * schedule the owner sets), built from the same public catalogue and rules as

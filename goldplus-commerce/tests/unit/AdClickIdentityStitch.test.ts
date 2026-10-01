@@ -36,6 +36,21 @@ describe('ad click id reaches the identity graph', () => {
     expect(fn).toContain('fetch(IDENTITY_ENDPOINT, {');
   });
 
+  it('Meta\'s click is recorded from the landing URL, in Meta\'s format, without touching a cookie', () => {
+    const record = attribution.slice(attribution.indexOf('export function recordAdClick'), attribution.indexOf('function recentClickIds'));
+    // Built from the fbclid parameter exactly as received (it is case sensitive), stamped when first observed.
+    expect(record).toContain("const fbclid = p.get('fbclid');");
+    expect(record).toContain('`fb.1.${Date.now()}.${fbclid}`');
+    expect(record).not.toMatch(/fbclid\.(toLowerCase|toUpperCase|trim)\(/);
+    // A reload of the same landing URL keeps the first time.
+    expect(record).toContain('prior.endsWith(`.${fbclid}`) ? prior :');
+    // It travels with the other click ids: to the identity graph and with the order.
+    expect(attribution).toContain("const STORED_CLICK_KEYS = [...CLICK_KEYS, 'fbc'];");
+    expect(attribution).toContain('for (const k of STORED_CLICK_KEYS)');
+    // The shop runs no Pixel and sets no Meta cookie; this library reads none.
+    expect(attribution).not.toMatch(/document\.cookie|_fbp|_fbc/);
+  });
+
   it('the recent-click reader strips utm_source: the identity endpoint takes click ids only', () => {
     const fn = attribution.slice(attribution.indexOf('export function recentAdClickIds'), attribution.indexOf('export function getCheckoutAttribution'));
     expect(fn).toContain('const { src: _src, ...ids } = recentClickIds();');

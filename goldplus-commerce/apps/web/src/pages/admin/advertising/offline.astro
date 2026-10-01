@@ -78,6 +78,36 @@ const today = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
         <h3 class="text-lg font-black text-brand-dark mb-3">Platforms</h3>
         <div class="grid gap-5 mb-10">{(data.capabilities ?? []).map((cap: any) => <AdCapabilityForm cap={cap} />)}</div>
 
+        {data.whatsappAds && (
+          <section class="mb-10 rounded-2xl border border-gray-200 bg-white p-5" aria-labelledby="h-ctwa">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <h3 id="h-ctwa" class="text-lg font-black text-brand-dark">WhatsApp adverts: how a sale is credited</h3>
+              <span class={`rounded-full px-3 py-1 text-xs font-bold ${data.whatsappAds.live ? "bg-emerald-50 text-emerald-900" : "bg-gray-100 text-gray-700"}`}>{data.whatsappAds.live ? "Live — receiving" : data.whatsappAds.configured ? "Configured, switched off" : "Not configured"}</span>
+            </div>
+            <p class="mt-2 text-sm text-gray-700 max-w-3xl">
+              When someone taps an advert that opens a WhatsApp chat and messages you, WhatsApp tells this shop which advert it was. If the same number then buys
+              (an order on the site, or a WhatsApp sale recorded above) within {data.whatsappAds.windowDays} days, the sale is reported to Meta against that advert.
+              The message itself is never read or stored: only the advert, the time, and a hash of the number, deleted after {data.whatsappAds.retentionDays} days.
+            </p>
+            <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-4">
+              <div><dt class="text-xs font-bold text-gray-600">Advert chats, last 30 days</dt><dd class="text-2xl font-black text-brand-dark tabular-nums">{fmtInt(data.whatsappAds.last30Days.received)}</dd></div>
+              <div><dt class="text-xs font-bold text-gray-600">From how many adverts</dt><dd class="text-2xl font-black text-brand-dark tabular-nums">{fmtInt(data.whatsappAds.last30Days.adverts)}</dd></div>
+              <div><dt class="text-xs font-bold text-gray-600">Led to a sale reported to Meta</dt><dd class="text-2xl font-black text-brand-dark tabular-nums">{fmtInt(data.whatsappAds.last30Days.attributed)}</dd></div>
+              <div><dt class="text-xs font-bold text-gray-600">Last advert chat</dt><dd class="text-sm text-gray-800">{data.whatsappAds.last30Days.lastReceivedAt ? whenKampala(data.whatsappAds.last30Days.lastReceivedAt) : "None yet"}</dd></div>
+            </dl>
+            <details class="mt-4 text-sm" open={!data.whatsappAds.live}>
+              <summary class="cursor-pointer text-xs font-bold text-gray-700">What it needs (once)</summary>
+              <ol class="mt-2 list-decimal space-y-1.5 pl-5 text-gray-700">
+                <li>Your WhatsApp number must be on the <strong>WhatsApp Business Platform</strong> (Cloud API). A number used only in the WhatsApp Business app sends no webhooks; Meta's "coexistence" onboarding keeps the app working alongside the platform.</li>
+                <li>In your Meta app: <strong>WhatsApp &gt; Configuration &gt; Webhook</strong>. Callback URL: <code class="break-all rounded bg-gray-100 px-1">{data.whatsappAds.webhookUrl}</code>. Verify token: the phrase you save below as <code>verifyToken</code>. Subscribe to the <strong>messages</strong> field.</li>
+                <li>Save the form above this box with the WhatsApp Business Account ID and the JSON secrets (the app secret is how each delivery is proven to come from Meta). Press <em>Verify and save</em> in Meta <strong>after</strong> saving here.</li>
+                <li>In Events Manager, connect the WhatsApp account to your dataset (Settings &gt; "Connect WhatsApp account"), so business-messaging events are accepted. The token used must be allowed <code>whatsapp_business_manage_events</code>.</li>
+                <li>Switch it on. Adverts placed in WhatsApp Status carry no click id and cannot be credited; every other Click-to-WhatsApp placement can.</li>
+              </ol>
+            </details>
+          </section>
+        )}
+
         <h3 class="text-lg font-black text-brand-dark mb-3">Conversions</h3>
         {Object.keys(data.counts ?? {}).length > 0 && <p class="text-sm mb-3">{Object.entries(data.counts).map(([k, v]) => `${STATE_LABEL[k] ?? k}: ${v}`).join(" · ")}</p>}
         {(data.conversions ?? []).length === 0 ? <p class="text-sm text-gray-600 mb-10">No data: nothing has been queued yet. Rows appear once a platform's offline conversions are live and a COD order is delivered or a sale is recorded.</p> : (

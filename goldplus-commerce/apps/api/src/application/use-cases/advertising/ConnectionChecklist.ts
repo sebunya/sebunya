@@ -97,7 +97,7 @@ export function buildChecklist(input: {
       const cSteps: ChecklistStep[] = cap.fields.map((f) => ({ label: f.label, where: f.where, optional: !!f.optional, done: f.optional ? !ccfg[f.key] || f.pattern.test(ccfg[f.key]) : f.pattern.test(ccfg[f.key] ?? '') }));
       if (cap.secretLabel) cSteps.push({ label: cap.secretLabel, where: cap.secretWhere ?? '', secret: true, optional: !!cap.secretOptional, done: !!cap.row?.hasSecret });
       if (cap.requiresDestination) cSteps.push({ label: 'Conversions settings complete', where: 'The conversions steps above (ids and token).', done: state !== 'NOT_CONFIGURED' });
-      cSteps.push({ label: 'Switched on', where: 'The capability\'s own form (Audiences, Spend or Offline sales page).', done: !!cap.row?.enabled });
+      cSteps.push({ label: 'Switched on', where: 'The capability\'s own form (Audiences, Spend or Offline sales page; WhatsApp adverts are on Offline sales).', done: !!cap.row?.enabled });
       items.push({ key: cap.capability, title: cap.name, status: cap.state, detail: cap.gap ? `Not configured: ${cap.gap}.` : cap.what, steps: cSteps });
     }
     return { platform: d.key, name: d.name, status: state, items };
