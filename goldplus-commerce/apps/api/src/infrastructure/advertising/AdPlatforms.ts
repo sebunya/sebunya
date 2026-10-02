@@ -440,7 +440,7 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
       // TikTok's Events API does not list the Uganda shilling. With a rate, amounts
       // go as US dollars; without one, events go with no amount.
       { key: 'ugxPerUsd', label: 'Shillings per US dollar (for sale values)', pattern: /^(\d{3,6})?$/, optional: true,
-        hint: 'TikTok does not accept amounts in Uganda shillings. Enter the rate you want sales reported at, for example 3700, and values are sent in US dollars. Left empty, events are sent without an amount.' }],
+        hint: 'TikTok does not accept amounts in Uganda shillings. Enter the rate you want sales reported at, for example 3700: event values and the catalogue feed prices are then stated in US dollars (set the TikTok catalogue currency to USD). Left empty, events are sent without an amount and the feed stays in shillings, which TikTok will not accept.' }],
     secretLabel: 'Events API access token',
     // Names from TikTok's "Supported events" list for web (read 2026-10-01). Purchase
     // and Lead are its current names for what were CompletePayment and SubmitForm.
