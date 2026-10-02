@@ -265,6 +265,32 @@ errors) on 2026-10-01.
   event code through the same builder (`POST /admin/advertising/tiktok/test-event`, audited).
 - The shop runs no TikTok Pixel, so there is no `_ttp` cookie to send.
 
+## 6c. TikTok advertiser authorisation and spend (2026-10-02)
+
+Checked against business-api.tiktok.com > Marketing API > Authentication and Reporting > "Run a
+synchronous report" on 2026-10-02. The long-term access token does not expire; it stops working
+only if the advertiser cancels the authorisation. The `auth_code` is valid for one hour, once.
+
+1. **Start** `/admin/advertising/tiktok/connect`: saves the app ID (audiences config `appId`), sets
+   a random `state` in an HttpOnly cookie (one hour, path `/admin/advertising/tiktok`) and sends
+   the owner to `https://business-api.tiktok.com/portal/auth?app_id&state&redirect_uri`.
+2. **Return** `/admin/advertising/tiktok/callback` (the app's Advertiser redirect URL, exact). A
+   reply whose `state` is not this browser's is refused. The code is moved from the address bar to
+   an HttpOnly cookie and the page reloads without it (`no-referrer`, `no-store`).
+3. **Exchange** the owner enters the app Secret and the Advertiser ID; `POST
+   /admin/advertising/tiktok/connect` calls `/open_api/v1.3/oauth2/access_token/` and stores the
+   token on the TikTok audiences capability through the usual validated, encrypted, audited path.
+   - The secret is used for that one call and not stored. The token never reaches the browser.
+   - The token is stored only if TikTok's `advertiser_ids` include the Advertiser ID entered.
+   - `advertiser_ids` are read from the reply text, so a 19-digit ID sent as a number keeps its digits.
+
+**Spend import** (capability `tiktok/spend`, token borrowed from audiences): the account currency
+from `GET /advertiser/info/` (`fields=["currency"]`), then `GET /report/integrated/get/` with
+`report_type=BASIC`, `data_level=AUCTION_CAMPAIGN`, dimensions `campaign_id, stat_time_day`,
+metrics `campaign_name, spend, impressions, clicks`, in windows of 30 days, paged. With no
+currency from TikTok, nothing is imported. `/advertiser/info/` and the 30-day window are from
+memory of TikTok's API, not re-read on that date; nothing here has run against a live account.
+
 ## 7. Meta Conversions API: match keys without a Pixel
 
 The shop sends to Meta server to server and runs **no Meta Pixel** (owner decision 2026-09-19).

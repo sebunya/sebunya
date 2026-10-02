@@ -22,6 +22,8 @@ import { MetaDiagnosticsUseCases } from '../../application/use-cases/advertising
 import { HttpMetaDiagnosticsGateway } from './HttpMetaDiagnosticsGateway';
 import { TikTokDiagnosticsUseCases } from '../../application/use-cases/advertising/TikTokDiagnosticsUseCases';
 import { HttpTikTokDiagnosticsGateway } from './HttpTikTokDiagnosticsGateway';
+import { TikTokConnectUseCases } from '../../application/use-cases/advertising/TikTokConnectUseCases';
+import { HttpTikTokOAuthGateway } from './HttpTikTokOAuthGateway';
 import { storefrontOrigin } from '../config/storefrontOrigin';
 import { WhatsAppAdsUseCases } from '../../application/use-cases/advertising/WhatsAppAdsUseCases';
 import { DrizzleWhatsAppAdReferralRepository } from '../db/repositories/DrizzleWhatsAppAdReferralRepository';
@@ -136,8 +138,15 @@ export function createAdvertisingOperations(deps: {
     return { config, token: decrypt(enc) };
   }, deps.audit, storefrontOrigin);
 
+  // TikTok's advertiser authorisation: the code from the redirect becomes the
+  // audiences token, saved through the same validated, encrypted, audited path as a pasted one.
+  const tiktokConnect = new TikTokConnectUseCases(new HttpTikTokOAuthGateway(), async (actorId, advertiserId, token) => {
+    const r = await capabilities.configure(actorId, 'tiktok', 'audiences', { config: { advertiserId }, secret: token });
+    return r.ok ? { ok: true } : { ok: false, message: r.message };
+  }, deps.audit);
+
   return {
-    capabilities, audiences, spend, offline, feeds, feedUrls, activity, metaDiagnostics, tiktokDiagnostics, whatsappAds,
+    capabilities, audiences, spend, offline, feeds, feedUrls, activity, metaDiagnostics, tiktokDiagnostics, tiktokConnect, whatsappAds,
     jobs,
     async checklist() {
       const [destinations, caps, feedProducts] = await Promise.all([deps.destinations.list(), capabilities.list(), feeds.included().catch(() => null)]);

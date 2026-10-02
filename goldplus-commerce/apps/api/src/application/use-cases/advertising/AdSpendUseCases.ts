@@ -12,7 +12,7 @@ import type { CapabilityView } from './AdCapabilities';
  * A platform that is not configured is "Not configured" and is never called.
  * An empty period reports "No data", never zero spend.
  */
-export const SPEND_PLATFORMS = ['google_ads', 'meta'] as const;
+export const SPEND_PLATFORMS = ['google_ads', 'meta', 'tiktok'] as const;
 const DAY = 86_400_000;
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -116,9 +116,10 @@ export function spendTotals(rows: SpendReportRow[]): SpendReport['totals'] {
 }
 
 /** Which API-imported platform a CSV platform name means, if any. */
-export function apiPlatformOf(platform: string): 'google_ads' | 'meta' | null {
+export function apiPlatformOf(platform: string): 'google_ads' | 'meta' | 'tiktok' | null {
   const p = platform.trim().toLowerCase();
   if (/^google( ads)?$|adwords/.test(p)) return 'google_ads';
   if (/^(meta|facebook|instagram)( ads)?$/.test(p)) return 'meta';
+  if (/^tik ?tok( ads)?$/.test(p)) return 'tiktok';
   return null;
 }
