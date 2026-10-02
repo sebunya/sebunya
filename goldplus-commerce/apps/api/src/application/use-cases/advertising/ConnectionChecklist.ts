@@ -85,7 +85,7 @@ export function buildChecklist(input: {
       const whereFeed = d.key === 'meta'
         ? 'Commerce Manager > Catalogue > Data sources > Add items > Data feed > "Use a URL" (scheduled feed): paste this URL, repeat daily, currency UGX.'
         : d.key === 'tiktok'
-          ? 'TikTok Ads Manager > Assets > Catalogs > create or open a catalogue > Add products > Data feed: paste this URL and choose a daily schedule.'
+          ? 'First save "Shillings per US dollar" on the TikTok destination: TikTok has no Uganda shilling, and the feed then states prices in US dollars. Then TikTok Ads Manager > Assets > Catalogs > create a catalogue with default currency USD > Add products > Data feed: paste this URL and choose a daily schedule.'
           : 'Merchant Center > Products > Data sources > Add product source > "Add products from a file" > enter a link: paste this URL, daily.';
       const n = input.feedProducts;
       items.push({ key: 'catalogue', title: 'Product catalogue feed', status: n !== null && n > 0 ? 'READY' : 'NOT_CONFIGURED',
