@@ -329,7 +329,8 @@ describe('daily jobs: a failure is retried the same day, at most 3 times', () =>
     await runDailyAdvertisingJobs('2026-09-25', deps);
     m.advance(30 * 60_000);
     await runDailyAdvertisingJobs('2026-09-25', deps);
-    expect(spend.mock.calls.map((c) => c[0])).toEqual(['google_ads', 'meta', 'meta']);
+    // TikTok spend is a job of its own too (2026-10-02): only the failed platform runs again.
+    expect(spend.mock.calls.map((c) => c[0])).toEqual(['google_ads', 'meta', 'tiktok', 'meta']);
   });
   it('an audience run with a FAILED or BUSY list must be retried; SUBMITTED or EMPTY does not', () => {
     expect(AudienceSyncUseCases.runNeedsRetry([{ status: 'SUBMITTED' }, { status: 'FAILED' }] as AudienceRunRecord[])).toBe(true);

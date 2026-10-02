@@ -80,7 +80,7 @@ const n = (v: number | null | undefined) => (v == null ? "—" : fmtInt(v));
         <div class="grid gap-5 mb-4">{(data.capabilities ?? []).map((cap: any) => <AdCapabilityForm cap={cap} />)}</div>
         <form method="POST" class="flex flex-wrap items-end gap-3 mb-10">
           <label class="text-xs font-bold text-gray-700">Platform
-            <select name="platform" class="mt-1 block rounded-lg border border-gray-300 px-3 py-2 text-sm"><option value="google_ads">Google Ads</option><option value="meta">Meta</option></select>
+            <select name="platform" class="mt-1 block rounded-lg border border-gray-300 px-3 py-2 text-sm"><option value="google_ads">Google Ads</option><option value="meta">Meta</option><option value="tiktok">TikTok</option></select>
           </label>
           <label class="text-xs font-bold text-gray-700">From<input type="date" name="from" class="mt-1 block rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
           <label class="text-xs font-bold text-gray-700">To<input type="date" name="to" class="mt-1 block rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
