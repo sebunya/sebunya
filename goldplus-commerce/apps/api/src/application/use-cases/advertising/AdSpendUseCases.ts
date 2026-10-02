@@ -41,7 +41,7 @@ export class AdSpendUseCases {
     const from = range?.from && /^\d{4}-\d{2}-\d{2}$/.test(range.from) ? range.from : iso(new Date(new Date(`${to}T00:00:00Z`).getTime() - 6 * DAY));
     const rec = (status: string, rowsWritten: number, message: string | null): SpendImportRecord => ({ platform, trigger, status, dateFrom: from, dateTo: to, rowsWritten, message, actorId, startedAt });
     const done = async (r: SpendImportRecord) => { await this.repo.recordImport(r); return r; };
-    if (!(SPEND_PLATFORMS as readonly string[]).includes(platform)) return done(rec('NOT_AVAILABLE', 0, 'Spend import by API is built for Google Ads and Meta; use the CSV upload for other platforms.'));
+    if (!(SPEND_PLATFORMS as readonly string[]).includes(platform)) return done(rec('NOT_AVAILABLE', 0, 'Spend import by API is built for Google Ads, Meta and TikTok; use the CSV upload for other platforms.'));
     if (from > to || new Date(`${to}T00:00:00Z`).getTime() - new Date(`${from}T00:00:00Z`).getTime() > 90 * DAY) return done(rec('BAD_RANGE', 0, 'Choose a range of at most 90 days, start before end.'));
     if (!(await this.capability(platform))) return done(rec('NOT_CONFIGURED', 0, 'Not configured: spend import for this platform is not set up and switched on.'));
     let facts: SpendFact[];

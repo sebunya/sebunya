@@ -236,6 +236,10 @@ describe('advertising platforms: request builders', () => {
     expect(tiktokErrorSummary(401, JSON.stringify({ code: 40100, message: 'Too many requests', request_id: 'r' }))).toMatchObject({ transient: true, credentials: false });
     expect(tiktokErrorSummary(401, JSON.stringify({ code: 40104, message: 'Access token is empty' }))).toMatchObject({ transient: false, credentials: true });
     expect(tiktokErrorSummary(400, JSON.stringify({ code: 40001, message: 'No permission' }))).toMatchObject({ credentials: true });
+    // TikTok's "Appendix - Return codes": every rate limit and every fault of its own is retried; every token or app problem is named as one.
+    for (const code of [40016, 40100, 40132, 40133, 50000, 50002, 51305, 60001]) expect(tiktokErrorSummary(400, JSON.stringify({ code, message: 'm' })), String(code)).toMatchObject({ transient: true, credentials: false, code });
+    for (const code of [40001, 40102, 40104, 40105, 40106, 40113]) expect(tiktokErrorSummary(401, JSON.stringify({ code, message: 'm' })), String(code)).toMatchObject({ transient: false, credentials: true });
+    for (const code of [40000, 40002, 40007]) expect(tiktokErrorSummary(400, JSON.stringify({ code, message: 'm' })), String(code)).toMatchObject({ transient: false, credentials: false });
     expect(tiktokErrorSummary(400, JSON.stringify({ code: 40002, message: 'Invalid value for data.0.event_id: not a valid string.' }))!.message).toContain('data.0.event_id');
   });
   it('Pinterest: checkout with string value; Snapchat: PURCHASE', () => {
