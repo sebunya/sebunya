@@ -77,6 +77,20 @@ routes.post('/meta/test-event', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]
   return r.ok ? c.json({ success: true, data: r }) : c.json({ success: false, error: { code: 'BAD_INPUT', message: r.message } }, 422);
 });
 
+// One TikTok event with the owner's test event code: listed under Test events in TikTok Events Manager, not counted. Audited.
+routes.post('/tiktok/test-event', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c: Context) => {
+  const b = (await c.req.json().catch(() => null)) as { testEventCode?: unknown; kind?: unknown } | null;
+  const r = await ops().tiktokDiagnostics.sendTestEvent(actor(c), b?.testEventCode, b?.kind === 'purchase' ? 'purchase' : 'view');
+  return r.ok ? c.json({ success: true, data: r }) : c.json({ success: false, error: { code: 'BAD_INPUT', message: r.message } }, 422);
+});
+
+// TikTok's advertiser authorisation, completed: the one-time code is exchanged and the token stored (never returned).
+routes.post('/tiktok/connect', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c: Context) => {
+  const b = (await c.req.json().catch(() => null)) as { appId?: unknown; appSecret?: unknown; authCode?: unknown; advertiserId?: unknown } | null;
+  const r = await ops().tiktokConnect.connect(actor(c), b ?? {});
+  return r.ok ? c.json({ success: true, data: { advertiserId: r.advertiserId } }) : c.json({ success: false, error: { code: 'BAD_INPUT', message: r.message } }, 422);
+});
+
 routes.get('/audiences', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const [preview, runs, capabilities, customSegments] = await Promise.all([ops().audiences.preview(), ops().audiences.recentRuns(30), capView(), ops().audiences.availableCustomSegments().catch(() => [])]);
   return c.json({ success: true, data: { preview, runs, capabilities: capabilities.filter((v) => v.capability === 'audiences'), customSegments } });

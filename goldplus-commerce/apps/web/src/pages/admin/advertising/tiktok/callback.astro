@@ -1,0 +1,97 @@
+---
+import AdminLayout from "../../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../../lib/session";
+import { advertisingApi } from "../../../../lib/adminAdvertising";
+import { TIKTOK_CODE_COOKIE, TIKTOK_COOKIE_PATH, TIKTOK_FLOW_SECONDS, TIKTOK_REDIRECT_PATH, TIKTOK_STATE_COOKIE, isTikTokAuthCode, sameState, tiktokField } from "../../../../lib/tiktokConnect";
+
+/**
+ * TikTok's "Advertiser redirect URL" (2026-10-02). After the owner approves
+ * the GoldPlus app, TikTok sends them here with a one-time `auth_code` and the
+ * `state` this browser was given on the Connect page.
+ *
+ *  - A reply whose state is not this browser's is refused: nobody can hand an
+ *    admin a code of their own making.
+ *  - The code is moved out of the address bar into a short-lived HttpOnly
+ *    cookie at once (as the password-reset token is), so it is not left in
+ *    history, logs or a Referer header.
+ *  - The owner confirms the app secret and the advertiser account; the API
+ *    exchanges the code and stores the token. The token never reaches this
+ *    page, and the secret is used once and not kept.
+ */
+const url = new URL(Astro.request.url);
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect(`/admin/login?returnTo=${encodeURIComponent(url.pathname + url.search)}`, 303);
+Astro.response.headers.set("Referrer-Policy", "no-referrer");
+Astro.response.headers.set("Cache-Control", "no-store");
+
+const cookieOpts = { path: TIKTOK_COOKIE_PATH, httpOnly: true, sameSite: "lax" as const, secure: import.meta.env.PROD };
+const keptState = Astro.cookies.get(TIKTOK_STATE_COOKIE)?.value ?? "";
+const queryCode = (url.searchParams.get("auth_code") ?? "").trim();
+let stateRefused = false;
+if (Astro.request.method === "GET" && queryCode) {
+  if (sameState(url.searchParams.get("state"), keptState) && isTikTokAuthCode(queryCode)) {
+    Astro.cookies.set(TIKTOK_CODE_COOKIE, queryCode, { ...cookieOpts, maxAge: TIKTOK_FLOW_SECONDS });
+    return Astro.redirect(TIKTOK_REDIRECT_PATH, 303);
+  }
+  stateRefused = true;
+}
+const authCode = stateRefused ? "" : (Astro.cookies.get(TIKTOK_CODE_COOKIE)?.value ?? "");
+const hasCode = !!keptState && isTikTokAuthCode(authCode);
+
+const res = await advertisingApi(token, "GET", "/audiences");
+const cap: any = res.ok ? (res.data.capabilities ?? []).find((c: any) => c.platform === "tiktok" && c.capability === "audiences") : null;
+const appId = tiktokField(cap, "appId");
+let advertiserId = tiktokField(cap, "advertiserId");
+
+let done: string | null = null;
+let formError: string | null = null;
+if (Astro.request.method === "POST" && hasCode) {
+  const f = await Astro.request.formData();
+  advertiserId = String(f.get("advertiserId") ?? "").trim();
+  const r = await advertisingApi(token, "POST", "/tiktok/connect", { authCode, appId, advertiserId, appSecret: String(f.get("appSecret") ?? "").trim() });
+  if (r.ok) {
+    done = r.data.advertiserId;
+    // One use: neither the code nor the state is good for anything now.
+    Astro.cookies.delete(TIKTOK_CODE_COOKIE, { path: TIKTOK_COOKIE_PATH });
+    Astro.cookies.delete(TIKTOK_STATE_COOKIE, { path: TIKTOK_COOKIE_PATH });
+  } else formError = r.message;
+}
+---
+<AdminLayout title="Connect TikTok" description="Completes TikTok's authorisation of the GoldPlus app for your advertiser account.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-2xl">
+    <p class="text-sm mb-2"><a class="underline" href="/admin/advertising">Advertising</a> / Connect TikTok</p>
+    <h2 class="text-2xl font-black text-brand-dark tracking-tight mb-2">Connect TikTok</h2>
+
+    {done ? (
+      <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">
+        TikTok is connected for advertiser {done}. The access token is stored, encrypted, on the TikTok audiences card, and spend import can use it too. Nothing is switched on yet:
+        open <a class="underline font-bold" href="/admin/advertising/audiences">Audiences</a> and <a class="underline font-bold" href="/admin/advertising/spend">Spend</a> to switch them on.
+      </div>
+    ) : stateRefused ? (
+      <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">
+        This reply from TikTok did not start in this browser, or it is more than an hour old, so it was not accepted and nothing was saved.
+        <a class="underline font-bold" href="/admin/advertising/tiktok/connect">Start again from Connect TikTok.</a>
+      </div>
+    ) : !hasCode ? (
+      <div role="alert" class="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+        This page finishes an authorisation that starts on <a class="underline font-bold" href="/admin/advertising/tiktok/connect">Connect TikTok</a>. Begin there; TikTok brings you back here.
+      </div>
+    ) : (
+      <>
+        <p class="text-sm text-gray-600 mb-6">TikTok approved the app{appId ? ` ${appId}` : ""} and sent you back with a one-time code, good for an hour. Confirm the two details below and the shop exchanges it for its access token. The token is stored encrypted and never shown; the app secret is used once and not kept.</p>
+        {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+        <form method="POST" action={TIKTOK_REDIRECT_PATH} class="grid gap-4 rounded-2xl border border-gray-200 bg-white p-5" autocomplete="off">
+          <label class="text-xs font-bold text-gray-700">App secret
+            <input name="appSecret" type="password" required autocomplete="off" spellcheck="false" class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm font-normal" />
+            <span class="mt-1 block font-normal text-gray-600">TikTok API for Business &gt; My Apps: the Secret column of the app. Used for this one exchange; not stored.</span>
+          </label>
+          <label class="text-xs font-bold text-gray-700">Advertiser ID
+            <input name="advertiserId" required inputmode="numeric" pattern="[0-9]{8,25}" value={advertiserId} class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm font-normal" />
+            <span class="mt-1 block font-normal text-gray-600">TikTok Ads Manager: the account menu at the top right. The token is saved only if TikTok says it covers this account.</span>
+          </label>
+          <div><button class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Connect TikTok</button></div>
+        </form>
+      </>
+    )}
+  </div>
+</AdminLayout>

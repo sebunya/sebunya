@@ -385,7 +385,13 @@ describe('platform requests', () => {
 
     const t = offlineRequest(ctxOf(convRow({ platform: 'tiktok' })), creds({ config: { offlineEventSetId: '7001' }, secret: '' }))!;
     expect(t.body).toMatchObject({ event_source: 'offline', event_source_id: '7001' });
-    expect((t.body as any).data[0]).toMatchObject({ event: 'CompletePayment', event_id: '33333333-3333-4333-8333-333333333333' });
+    expect((t.body as any).data[0]).toMatchObject({ event: 'Purchase', event_id: '33333333-3333-4333-8333-333333333333' });
+    // TikTok lists no Uganda shilling: without the owner's rate no amount is stated; with it, US dollars.
+    expect((t.body as any).data[0].properties).not.toHaveProperty('value');
+    expect((t.body as any).data[0].properties).not.toHaveProperty('currency');
+    const tUsd = offlineRequest(ctxOf(convRow({ platform: 'tiktok' })), creds({ config: { offlineEventSetId: '7001' }, secret: '', destinationConfig: { ugxPerUsd: '3700' } }))!;
+    expect((tUsd.body as any).data[0].properties.currency).toBe('USD');
+    expect((tUsd.body as any).data[0].properties.value).toBeGreaterThan(0);
     expect((t.body as any).data[0].user.phone).toBe('p'.repeat(64));
     expect(t.headers['Access-Token']).toBe('DEST_SECRET_TOKEN_456');
   });
@@ -450,6 +456,19 @@ describe('catalogue feeds', () => {
     expect(rows[1]).toContain(',preorder,');
     expect(head).not.toContain('sale_price');
   });
+  it('TikTok CSV: sku_id is the id every event names in contents[].content_id; pictures are JPEG; the SKU is a label', () => {
+    const id = '93d2ea22-4d6d-4ba2-9f17-c8941930e306';
+    const p = product({ id, imageUrl: '/uploads/assets/9d/9d993f5ef5a7/pdp.webp', imageUrls: ['/uploads/assets/9d/9d993f5ef5a7/pdp.webp', '/uploads/assets/ab/ab12cd34ef56/pdp.webp'] });
+    const cells = buildTikTokCatalogueCsv([p], 'https://shopgoldplus.com').trim().split('\n')[1].split(',');
+    const col = (name: string) => cells[TIKTOK_FEED_COLUMNS.indexOf(name as never)];
+    expect(col('sku_id')).toBe(id);
+    expect(col('custom_label_0')).toBe('GP-PB10');
+    const event = { event_name: 'view_item', event_id: '11111111-1111-4111-8111-111111111111', event_time: 1790000000, source: 'browser', page_location: 'https://shopgoldplus.com/products/x',
+      user_data: { fp_client_id: 'fp.1.x', user_agent: 'UA' }, ecommerce: { value: 145000, currency: 'UGX', items: [{ item_id: id, price: 145000, quantity: 1 }] } };
+    expect((buildAdRequest('tiktok', event as never, { pixelCode: 'C0ABCDEFGH12345' }, 'T')!.body as any).data[0].properties.contents[0].content_id).toBe(col('sku_id'));
+    expect(col('image_link')).toBe('https://shopgoldplus.com/uploads/assets/9d/9d993f5ef5a7/pdp.jpg');
+    expect(col('additional_image_link')).toBe('https://shopgoldplus.com/uploads/assets/ab/ab12cd34ef56/pdp.jpg');
+  });
   it('cells are RFC 4180 quoted and control characters dropped', () => {
     expect(feedCsvCell('a "b", c')).toBe('"a ""b"", c"');
     expect(feedCsvCell('line\nbreak\u0007')).toBe('line break');
@@ -496,7 +515,7 @@ describe('destinations: Test / Live and early signals', () => {
     // A WhatsApp chat tap is a Contact on Meta, not a Lead (no details were submitted).
     expect((buildAdRequest('meta', { ...lead, lead: { method: 'whatsapp' } }, { datasetId: '1' }, 't')!.body as any).data[0].event_name).toBe('Contact');
     expect((buildAdRequest('meta', { ...lead, lead: undefined }, { datasetId: '1' }, 't')!.body as any).data[0].event_name).toBe('Contact');
-    expect((buildAdRequest('tiktok', lead, { pixelCode: 'C0ABCDEFGH12' }, 't')!.body as any).data[0].event).toBe('SubmitForm');
+    expect((buildAdRequest('tiktok', lead, { pixelCode: 'C0ABCDEFGH12' }, 't')!.body as any).data[0].event).toBe('Lead');
     expect((buildAdRequest('tiktok', { ...lead, lead: { method: 'whatsapp' } }, { pixelCode: 'C0ABCDEFGH12' }, 't')!.body as any).data[0].event).toBe('Contact');
     expect((buildAdRequest('pinterest', lead, { adAccountId: '549755885175' }, 't')!.body as any).data[0].event_name).toBe('lead');
     expect(buildAdRequest('meta', lead, { datasetId: '1', _test: '1' }, 't')).toBeNull(); // test without a code sends nothing

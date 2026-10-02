@@ -1,0 +1,54 @@
+---
+import { randomBytes } from "node:crypto";
+import AdminLayout from "../../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../../lib/session";
+import { advertisingApi } from "../../../../lib/adminAdvertising";
+import { SITE_ORIGIN } from "../../../../lib/sitemap";
+import { TIKTOK_COOKIE_PATH, TIKTOK_FLOW_SECONDS, TIKTOK_REDIRECT_PATH, TIKTOK_STATE_COOKIE, isTikTokAppId, tiktokAuthoriseUrl, tiktokField } from "../../../../lib/tiktokConnect";
+
+/**
+ * Starts TikTok's advertiser authorisation (2026-10-02): saves the app ID,
+ * gives this browser a random state, and sends the owner to TikTok to approve
+ * the app. TikTok sends them back to the callback page, which accepts only a
+ * reply carrying that state.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/advertising/tiktok/connect", 303);
+Astro.response.headers.set("Cache-Control", "no-store");
+
+const res = await advertisingApi(token, "GET", "/audiences");
+const cap: any = res.ok ? (res.data.capabilities ?? []).find((c: any) => c.platform === "tiktok" && c.capability === "audiences") : null;
+let appId = tiktokField(cap, "appId");
+let formError: string | null = res.ok ? null : res.message;
+
+if (Astro.request.method === "POST") {
+  const f = await Astro.request.formData();
+  appId = String(f.get("appId") ?? "").trim();
+  if (!isTikTokAppId(appId)) formError = "The App ID does not look right (TikTok API for Business > My Apps: the number in the App ID column).";
+  else {
+    const saved = await advertisingApi(token, "PUT", "/capabilities/tiktok/audiences", { config: { appId } });
+    if (!saved.ok) formError = saved.message;
+    else {
+      const state = randomBytes(24).toString("base64url");
+      Astro.cookies.set(TIKTOK_STATE_COOKIE, state, { path: TIKTOK_COOKIE_PATH, httpOnly: true, sameSite: "lax", secure: import.meta.env.PROD, maxAge: TIKTOK_FLOW_SECONDS });
+      return Astro.redirect(tiktokAuthoriseUrl(appId, state, SITE_ORIGIN), 303);
+    }
+  }
+}
+---
+<AdminLayout title="Connect TikTok" description="Approve the GoldPlus app in TikTok so the shop can upload audiences and read spend.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-2xl">
+    <p class="text-sm mb-2"><a class="underline" href="/admin/advertising">Advertising</a> / Connect TikTok</p>
+    <h2 class="text-2xl font-black text-brand-dark tracking-tight mb-2">Connect TikTok</h2>
+    <p class="text-sm text-gray-600 mb-6">This sends you to TikTok to approve your own app for your advertiser account. TikTok then brings you back here, and the shop fetches and stores the access token for audiences and spend. You will need the app's Secret on the way back.</p>
+    {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+    <form method="POST" class="grid gap-4 rounded-2xl border border-gray-200 bg-white p-5" autocomplete="off">
+      <label class="text-xs font-bold text-gray-700">TikTok app ID
+        <input name="appId" required inputmode="numeric" pattern="[0-9]{10,25}" value={appId} class="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm font-normal" />
+        <span class="mt-1 block font-normal text-gray-600">TikTok API for Business &gt; My Apps: the App ID column. It appears once TikTok has approved the app.</span>
+      </label>
+      <p class="text-xs text-gray-600">The app's Advertiser redirect URL in TikTok must be exactly <span class="font-mono">{SITE_ORIGIN}{TIKTOK_REDIRECT_PATH}</span></p>
+      <div><button class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Continue to TikTok</button></div>
+    </form>
+  </div>
+</AdminLayout>

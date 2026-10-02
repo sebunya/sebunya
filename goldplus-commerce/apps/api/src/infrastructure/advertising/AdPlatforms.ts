@@ -302,6 +302,81 @@ export function metaErrorSummary(_status: number, body: string): { message: stri
   };
 }
 
+// ── TikTok Events API ────────────────────────────────────────────────────────
+
+/**
+ * TikTok's account of a refusal: `code` ≠ 0 with a `message` and a
+ * `request_id`. Its Events API documentation ("Responses and errors") says a
+ * failed call answers 4xx/5xx: 40002 with HTTP 400 (bad payload), 40001 with
+ * 400 (no permission on the advertiser account), 40104 with 401 (no token)
+ * and 40100 with **401** for a rate limit, which read by status alone looks
+ * like a bad token and was never retried. Until 2026-10-01 the body was not
+ * read for TikTok at all. A non-zero code inside a 2xx is treated as the
+ * refusal it is, too: `code: 0` is the only thing TikTok calls success.
+ * 40105 (token incorrect or revoked) is from TikTok's general return-code
+ * list, not the Events API page.
+ */
+const TIKTOK_CREDENTIAL_CODES = new Set([40001, 40104, 40105]);
+export function tiktokErrorSummary(_status: number, body: string): { message: string; transient: boolean; credentials: boolean } | null {
+  let j: { code?: unknown; message?: unknown; request_id?: unknown } | null = null;
+  try { j = JSON.parse(body); } catch { return null; }
+  if (!j || typeof j !== 'object' || j.code === undefined) return null;
+  const code = Number(j.code);
+  if (code === 0) return null;
+  const rid = typeof j.request_id === 'string' && j.request_id ? ` (request_id ${j.request_id})` : '';
+  return {
+    message: `TikTok error ${Number.isFinite(code) ? code : '?'}: ${String(typeof j.message === 'string' ? j.message : 'no message').slice(0, 220)}${rid}`,
+    transient: code === 40100 || (code >= 50000 && code < 60000),
+    credentials: TIKTOK_CREDENTIAL_CODES.has(code),
+  };
+}
+
+/**
+ * The currencies TikTok's Events API lists as supported (Parameters >
+ * properties > currency, read 2026-10-01). The Uganda shilling is not one.
+ */
+export const TIKTOK_CURRENCIES = new Set(('AED ARS AUD BDT BHD BIF BOB BRL CAD CHF CLP CNY COP CRC CZK DKK DZD EGP EUR GBP GTQ HKD HNL HUF IDR ILS INR ISK JPY KES KHR KRW KWD KZT '
+  + 'MAD MOP MXN MYR NGN NIO NOK NZD OMR PEN PHP PKR PLN PYG QAR RON RUB SAR SEK SGD THB TRY TWD UAH USD VES VND ZAR').split(' '));
+
+/**
+ * An amount as TikTok can take it, or null when it cannot be stated truthfully.
+ * A currency TikTok supports goes as it is. Shillings go as US dollars at the
+ * rate the owner entered (`ugxPerUsd`, shillings per dollar). With no rate, no
+ * amount is sent: the event still counts, and a sale is not reported in a
+ * currency TikTok does not list or at a rate nobody chose.
+ */
+export function tiktokMoney(amount: number, currency: string, cfg: Record<string, string>): { value: number; currency: string } | null {
+  if (!Number.isFinite(amount) || amount < 0) return null;
+  if (TIKTOK_CURRENCIES.has(currency)) return { value: amount, currency };
+  const rate = Number(cfg.ugxPerUsd);
+  if (currency !== 'UGX' || !Number.isFinite(rate) || rate < 100) return null;
+  return { value: Math.round((amount / rate) * 100) / 100, currency: 'USD' };
+}
+
+/** What a TikTok event was about: products where there are any, the search term for a search, nothing invented otherwise. */
+export function tiktokProperties(e: CanonicalTelemetryEvent, tiktokEventName: string, cfg: Record<string, string> = {}): Record<string, unknown> | null {
+  const list = items(e).filter((i) => i.item_id);
+  const v = value(e);
+  const currency = e.ecommerce?.currency ?? 'UGX';
+  const out: Record<string, unknown> = {};
+  if (tiktokEventName === 'Search' && e.search_term) out.search_string = e.search_term;
+  if (list.length) {
+    out.content_type = 'product';
+    out.content_ids = list.map((i) => String(i.item_id));
+    out.contents = list.map((i) => {
+      const price = typeof i.price === 'number' ? tiktokMoney(i.price, currency, cfg) : null;
+      return { content_id: String(i.item_id), ...(i.item_name ? { content_name: i.item_name } : {}), ...(i.item_category ? { content_category: i.item_category } : {}),
+        ...(i.item_brand ? { brand: i.item_brand } : {}), quantity: i.quantity ?? 1, ...(price ? { price: price.value } : {}) };
+    });
+    out.num_items = list.reduce((n, i) => n + (i.quantity ?? 1), 0);
+  }
+  // A value is stated with its currency, and only when there is one: a chat tap is not a sale of 0.
+  const money = list.length || v > 0 ? tiktokMoney(v, currency, cfg) : null;
+  if (money) { out.currency = money.currency; out.value = money.value; }
+  if (tiktokEventName === 'Purchase' && e.ecommerce?.transaction_id) out.order_id = e.ecommerce.transaction_id;
+  return Object.keys(out).length ? out : null;
+}
+
 export const AD_PLATFORMS: AdPlatformDef[] = [
   {
     key: 'meta', name: 'Meta (Facebook, Instagram, WhatsApp ads)', testable: true,
@@ -361,27 +436,50 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
   {
     key: 'tiktok', name: 'TikTok', testable: true,
     fields: [{ key: 'pixelCode', label: 'Pixel code', pattern: /^[A-Z0-9]{10,30}$/, hint: 'TikTok Events Manager > Web events' },
-      TEST_CODE_FIELD('TikTok Events Manager > your pixel > Test events: the test event code')],
+      TEST_CODE_FIELD('TikTok Events Manager > your pixel > Test events: the test event code'),
+      // TikTok's Events API does not list the Uganda shilling. With a rate, amounts
+      // go as US dollars; without one, events go with no amount.
+      { key: 'ugxPerUsd', label: 'Shillings per US dollar (for sale values)', pattern: /^(\d{3,6})?$/, optional: true,
+        hint: 'TikTok does not accept amounts in Uganda shillings. Enter the rate you want sales reported at, for example 3700, and values are sent in US dollars. Left empty, events are sent without an amount.' }],
     secretLabel: 'Events API access token',
-    // generate_lead: a WhatsApp click is a Contact, a quote request a SubmitForm (TikTok standard events).
-    events: { view_item: 'ViewContent', add_to_cart: 'AddToCart', begin_checkout: 'InitiateCheckout', add_payment_info: 'AddPaymentInfo', generate_lead: 'Contact', purchase: 'CompletePayment' },
+    // Names from TikTok's "Supported events" list for web (read 2026-10-01). Purchase
+    // and Lead are its current names for what were CompletePayment and SubmitForm.
+    // A WhatsApp tap is a Contact, a quote request a Lead. There is no page-view
+    // event in that list, so page_seen is not sent.
+    events: { view_item: 'ViewContent', add_to_cart: 'AddToCart', begin_checkout: 'InitiateCheckout', add_payment_info: 'AddPaymentInfo', generate_lead: 'Contact',
+      search: 'Search', sign_up: 'CompleteRegistration', find_location: 'FindLocation', purchase: 'Purchase' },
     build(e, cfg, token) {
       const mapped = this.events[e.event_name as AdEventName]; if (!mapped) return null;
-      const name = e.event_name === 'generate_lead' && leadMethod(e) === 'quote_request' ? 'SubmitForm' : mapped;
+      const name = e.event_name === 'generate_lead' && leadMethod(e) === 'quote_request' ? 'Lead' : mapped;
       if (inTest(cfg) && !cfg.testEventCode) return null;
       const ud = u(e);
+      // TikTok matches on a hashed email or phone, its own click id, or the
+      // hashed visitor id; an IP address and a browser alone are not a person.
+      if (!ud.hashed_email && !ud.hashed_phone_plus && !ud.ttclid && !extId(e)) return null;
+      // `page.url` is required for a web event.
+      if (!e.page_location) return null;
+      const user = Object.fromEntries(Object.entries({
+        email: ud.hashed_email, phone: ud.hashed_phone_plus, external_id: extId(e), ttclid: ud.ttclid, ip: ud.ip_address, user_agent: ud.user_agent,
+      }).filter(([, v]) => typeof v === 'string' && v.length > 0));
+      const properties = tiktokProperties(e, name, cfg);
       return {
         url: 'https://business-api.tiktok.com/open_api/v1.3/event/track/',
         headers: { 'content-type': 'application/json', 'Access-Token': token },
         body: { event_source: 'web', event_source_id: cfg.pixelCode, ...(inTest(cfg) ? { test_event_code: cfg.testEventCode } : {}), data: [{
-          event: name, event_time: e.event_time, event_id: e.event_id,
-          user: { email: ud.hashed_email, phone: ud.hashed_phone_plus, external_id: extId(e), ip: ud.ip_address, user_agent: ud.user_agent, ttclid: ud.ttclid },
-          page: { url: e.page_location, referrer: e.page_referrer },
-          properties: { currency: e.ecommerce?.currency ?? 'UGX', value: value(e), content_type: 'product', order_id: e.ecommerce?.transaction_id,
-            contents: items(e).map((i) => ({ content_id: i.item_id, content_name: i.item_name, quantity: i.quantity ?? 1, price: i.price })) },
+          event: name, event_time: e.event_time, event_id: e.event_id, user,
+          page: { url: e.page_location, ...(e.page_referrer ? { referrer: e.page_referrer } : {}) },
+          ...(properties ? { properties } : {}),
         }] },
       };
     },
+    skipReason(e, cfg) {
+      if (inTest(cfg) && !cfg.testEventCode) return 'NO_TEST_CODE';
+      const ud = u(e);
+      return (ud.hashed_email || ud.hashed_phone_plus || ud.ttclid || extId(e)) && !e.page_location ? 'NO_BROWSER' : 'NO_IDENTIFIER';
+    },
+    // `code: 0` is the only success, whatever the HTTP status: read on both delivery paths.
+    replyError: (j) => tiktokErrorSummary(200, JSON.stringify(j ?? null))?.message ?? null,
+    errorSummary: tiktokErrorSummary,
   },
   {
     key: 'pinterest', name: 'Pinterest', testable: true,

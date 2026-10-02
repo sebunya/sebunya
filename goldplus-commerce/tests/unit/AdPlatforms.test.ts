@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { META_GRAPH_VERSION_RELEASED, AD_PLATFORMS, buildAdRequest, adPlatformAccepts, adSkipReason, adErrorSummary, metaUserData, metaMatchable, metaCustomData, metaWebsiteEventComplete, metaErrorSummary, xSendScope, X_EVENT_FIELD, hashEmail, hashPhone, hashPhonePlus, normalisePhoneUg, linkedInVersion, META_GRAPH_VERSION } from '../../apps/api/src/infrastructure/advertising/AdPlatforms';
+import { META_GRAPH_VERSION_RELEASED, AD_PLATFORMS, buildAdRequest, adPlatformAccepts, adSkipReason, adErrorSummary, metaUserData, metaMatchable, metaCustomData, metaWebsiteEventComplete, metaErrorSummary, tiktokErrorSummary, tiktokProperties, tiktokMoney, TIKTOK_CURRENCIES, xSendScope, X_EVENT_FIELD, hashEmail, hashPhone, hashPhonePlus, normalisePhoneUg, linkedInVersion, META_GRAPH_VERSION } from '../../apps/api/src/infrastructure/advertising/AdPlatforms';
 import { AdDestinationUseCases } from '../../apps/api/src/application/use-cases/advertising/AdDestinationUseCases';
 
 const purchase: any = {
@@ -105,8 +105,11 @@ describe('advertising platforms: request builders', () => {
     const sent = Object.values(AD_PLATFORMS.find((p) => p.key === 'meta')!.events);
     expect(sent).not.toContain('AddToWishlist');
     expect(sent).not.toContain('Schedule');
-    // Only Meta has these three; no other platform is sent an event it has no name for.
-    for (const p of AD_PLATFORMS.filter((x) => x.key !== 'meta')) for (const n of ['search', 'sign_up', 'find_location', 'page_seen']) expect((p.events as Record<string, string>)[n]).toBeUndefined();
+    // No platform is sent an event it has no name for. TikTok lists Search, CompleteRegistration and FindLocation; it has no page view.
+    const tiktokNames: Record<string, string | undefined> = { search: 'Search', sign_up: 'CompleteRegistration', find_location: 'FindLocation', page_seen: undefined };
+    for (const p of AD_PLATFORMS.filter((x) => x.key !== 'meta')) for (const n of ['search', 'sign_up', 'find_location', 'page_seen']) {
+      expect((p.events as Record<string, string>)[n], `${p.key}/${n}`).toBe(p.key === 'tiktok' ? tiktokNames[n] : undefined);
+    }
   });
   it('Meta: a website event without the page or the browser it came from is not sent to be refused, and says why', () => {
     const cfg = { datasetId: '1234567890123' };
@@ -143,11 +146,97 @@ describe('advertising platforms: request builders', () => {
     // The message is bounded: a long answer cannot fill the row.
     expect(metaErrorSummary(400, body({ message: 'm'.repeat(5000), code: 100 }))!.message.length).toBeLessThan(260);
   });
-  it('TikTok: CompletePayment, token in the Access-Token header', () => {
+  it('TikTok: Purchase (its current name for CompletePayment), token in the Access-Token header', () => {
     const r = buildAdRequest('tiktok', purchase, { pixelCode: 'C0ABCDEFGH12345' }, 'TT')!;
     expect(r.headers['Access-Token']).toBe('TT');
     expect((r.body as any).event_source_id).toBe('C0ABCDEFGH12345');
-    expect((r.body as any).data[0].event).toBe('CompletePayment');
+    expect((r.body as any).data[0].event).toBe('Purchase');
+  });
+  it('TikTok: every event name is one from TikTok\'s own list of web standard events', () => {
+    // business-api.tiktok.com > Events API 2.0 > Supported events (web), read 2026-10-01.
+    const official = new Set(['AddPaymentInfo', 'AddToCart', 'AddToWishlist', 'ApplicationApproval', 'CompleteRegistration', 'Contact', 'CustomizeProduct', 'Download', 'FindLocation',
+      'InitiateCheckout', 'Lead', 'Purchase', 'Schedule', 'Search', 'StartTrial', 'SubmitApplication', 'Subscribe', 'ViewContent']);
+    const def = AD_PLATFORMS.find((p) => p.key === 'tiktok')!;
+    for (const name of Object.values(def.events)) expect(official.has(name!), name).toBe(true);
+    const quote = buildAdRequest('tiktok', { ...purchase, event_name: 'generate_lead', lead: { method: 'quote_request' }, ecommerce: undefined } as never, { pixelCode: 'C0ABCDEFGH12345' }, 'TT')!;
+    expect(official.has((quote.body as any).data[0].event)).toBe(true);
+  });
+  it('TikTok: amounts — the Uganda shilling is not a currency TikTok lists, so a value goes in US dollars at the owner\'s rate or not at all', () => {
+    expect(TIKTOK_CURRENCIES.has('UGX')).toBe(false);
+    expect(TIKTOK_CURRENCIES.has('USD')).toBe(true);
+    expect(tiktokMoney(145000, 'UGX', {})).toBeNull();
+    expect(tiktokMoney(145000, 'UGX', { ugxPerUsd: '' })).toBeNull();
+    expect(tiktokMoney(145000, 'UGX', { ugxPerUsd: '3700' })).toEqual({ value: 39.19, currency: 'USD' });
+    expect(tiktokMoney(25, 'USD', {})).toEqual({ value: 25, currency: 'USD' });
+    expect(tiktokMoney(145000, 'UGX', { ugxPerUsd: '0' })).toBeNull();      // never a division by nothing
+    const d = (cfg: Record<string, string>) => (buildAdRequest('tiktok', purchase, { pixelCode: 'C0ABCDEFGH12345', ...cfg }, 'TT')!.body as any).data[0].properties;
+    const bare = d({});
+    expect(bare).not.toHaveProperty('value');
+    expect(bare).not.toHaveProperty('currency');
+    for (const c of bare.contents) expect(c).not.toHaveProperty('price');
+    expect(bare.order_id).toBe('GP-1');                                    // the sale is still reported, with what it was of
+    const usd = d({ ugxPerUsd: '3700' });
+    expect(usd.currency).toBe('USD');
+    expect(usd.value).toBeGreaterThan(0);
+    expect(JSON.stringify(usd)).not.toContain('UGX');
+  });
+  it('TikTok: what the event was about — products with their category and brand, a search with its term, a chat tap with no empty basket', () => {
+    const cfg = { pixelCode: 'C0ABCDEFGH12345', ugxPerUsd: '4000' };
+    const d = (e: unknown) => (buildAdRequest('tiktok', e as never, cfg, 'TT')!.body as any).data[0];
+    const cart = d({ ...purchase, event_name: 'add_to_cart', ecommerce: { value: 90000, currency: 'UGX', items: [{ item_id: 'p1', item_name: 'Power bank', item_category: 'Power Devices', item_brand: 'GoldPlus', price: 45000, quantity: 2 }] } });
+    expect(cart.event).toBe('AddToCart');
+    expect(cart.properties).toEqual({ content_type: 'product', content_ids: ['p1'], num_items: 2, currency: 'USD', value: 22.5,
+      contents: [{ content_id: 'p1', content_name: 'Power bank', content_category: 'Power Devices', brand: 'GoldPlus', quantity: 2, price: 11.25 }] });
+    expect(cart.properties.order_id).toBeUndefined();
+    expect(d(purchase).properties.order_id).toBe('GP-1');
+    const search = d({ ...purchase, event_name: 'search', ecommerce: undefined, search_term: 'power bank' });
+    expect(search.event).toBe('Search');
+    expect(search.properties).toEqual({ search_string: 'power bank' });    // TikTok's name for it; `query` was Events API 1.0
+    expect(d({ ...purchase, event_name: 'sign_up', ecommerce: undefined }).event).toBe('CompleteRegistration');
+    expect(d({ ...purchase, event_name: 'find_location', ecommerce: undefined }).event).toBe('FindLocation');
+    const chat = d({ ...purchase, event_name: 'generate_lead', lead: { method: 'whatsapp' }, ecommerce: undefined });
+    expect(chat.event).toBe('Contact');
+    expect(chat).not.toHaveProperty('properties');                       // not a sale of 0 with an empty basket
+    expect(d({ ...purchase, event_name: 'generate_lead', lead: { method: 'quote_request' }, ecommerce: undefined }).event).toBe('Lead');
+    expect(tiktokProperties({ ...purchase, ecommerce: undefined } as never, 'Contact')).toBeNull();
+    // TikTok lists no page-view event: nothing is sent under a guessed name.
+    expect(buildAdRequest('tiktok', { ...purchase, event_name: 'page_seen' } as never, cfg, 'TT')).toBeNull();
+  });
+  it('TikTok: only what the event has is sent, every identifier in TikTok\'s form, and an event with nobody to match is not sent', () => {
+    const cfg = { pixelCode: 'C0ABCDEFGH12345' };
+    const anon = { ...purchase, event_name: 'view_item', page_referrer: undefined, user_data: { fp_client_id: 'fp.1.x', ip_address: '41.84.203.125', user_agent: 'UA', ttclid: 'E.C.P.click' } };
+    const ev = (buildAdRequest('tiktok', anon as never, cfg, 'TT')!.body as any).data[0];
+    expect(Object.keys(ev.user).sort()).toEqual(['external_id', 'ip', 'ttclid', 'user_agent']);
+    expect(ev.user.external_id).toMatch(/^[0-9a-f]{64}$/);              // TikTok requires the external id hashed
+    expect(ev.user.ttclid).toBe('E.C.P.click');                          // the click id is never hashed
+    expect(ev.page).toEqual({ url: 'https://shopgoldplus.com/checkout' });
+    const nobody = { ...anon, user_data: { ip_address: '41.84.203.125', user_agent: 'UA' } };
+    expect(buildAdRequest('tiktok', nobody as never, cfg, 'TT')).toBeNull();
+    expect(adSkipReason('tiktok', nobody as never, cfg)).toBe('NO_IDENTIFIER');
+    // TikTok requires the page a web event came from.
+    const noPage = { ...anon, page_location: undefined };
+    expect(buildAdRequest('tiktok', noPage as never, cfg, 'TT')).toBeNull();
+    expect(adSkipReason('tiktok', noPage as never, cfg)).toBe('NO_BROWSER');
+    expect(buildAdRequest('tiktok', anon as never, { ...cfg, _test: '1' }, 'TT')).toBeNull();
+    expect(adSkipReason('tiktok', anon as never, { ...cfg, _test: '1' })).toBe('NO_TEST_CODE');
+    expect((buildAdRequest('tiktok', anon as never, { ...cfg, _test: '1', testEventCode: 'TEST123' }, 'TT')!.body as any).test_event_code).toBe('TEST123');
+  });
+  it('TikTok: a refusal inside an HTTP 200 is a refusal — it used to be recorded as sent', () => {
+    const def = AD_PLATFORMS.find((p) => p.key === 'tiktok')!;
+    expect(def.replyError!({ code: 0, message: 'OK', request_id: 'r0' })).toBeNull();
+    expect(def.replyError!({ code: 40002, message: 'Invalid event_source_id', request_id: 'r1' })).toBe('TikTok error 40002: Invalid event_source_id (request_id r1)');
+    expect(tiktokErrorSummary(200, JSON.stringify({ code: 40002, message: 'bad' }))).toMatchObject({ transient: false, credentials: false });
+    expect(tiktokErrorSummary(200, JSON.stringify({ code: 40100, message: 'Too many requests' }))).toMatchObject({ transient: true });       // a rate limit is retried
+    expect(tiktokErrorSummary(200, JSON.stringify({ code: 50002, message: 'System error' }))).toMatchObject({ transient: true });
+    expect(tiktokErrorSummary(200, JSON.stringify({ code: 40105, message: 'Access token is incorrect or has been revoked' }))).toMatchObject({ credentials: true, transient: false });
+    expect(tiktokErrorSummary(200, JSON.stringify({ code: 0 }))).toBeNull();
+    expect(tiktokErrorSummary(502, '<html>')).toBeNull();
+    expect(adErrorSummary('tiktok', 200, JSON.stringify({ code: 40100, message: 'x' }))!.transient).toBe(true);
+    // As TikTok documents them: a rate limit arrives as HTTP 401. Read by status alone it is a bad token and never retried.
+    expect(tiktokErrorSummary(401, JSON.stringify({ code: 40100, message: 'Too many requests', request_id: 'r' }))).toMatchObject({ transient: true, credentials: false });
+    expect(tiktokErrorSummary(401, JSON.stringify({ code: 40104, message: 'Access token is empty' }))).toMatchObject({ transient: false, credentials: true });
+    expect(tiktokErrorSummary(400, JSON.stringify({ code: 40001, message: 'No permission' }))).toMatchObject({ credentials: true });
+    expect(tiktokErrorSummary(400, JSON.stringify({ code: 40002, message: 'Invalid value for data.0.event_id: not a valid string.' }))!.message).toContain('data.0.event_id');
   });
   it('Pinterest: checkout with string value; Snapchat: PURCHASE', () => {
     const p = buildAdRequest('pinterest', purchase, { adAccountId: '549755885175' }, 'P')!;

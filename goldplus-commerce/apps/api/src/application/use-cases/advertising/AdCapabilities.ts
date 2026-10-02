@@ -103,17 +103,26 @@ export const AD_CAPABILITIES: CapabilityDef[] = [
   },
   {
     platform: 'tiktok', capability: 'audiences', name: 'Customer file audiences', requiresDestination: false,
-    fields: [{ key: 'advertiserId', label: 'Advertiser ID', pattern: /^\d{8,25}$/, where: 'TikTok Ads Manager: the account menu at the top right shows the advertiser ID; also Business Center > Assets > Advertiser accounts.' }, ...audienceFields],
+    fields: [{ key: 'advertiserId', label: 'Advertiser ID', pattern: /^\d{8,25}$/, where: 'TikTok Ads Manager: the account menu at the top right shows the advertiser ID; also Business Center > Assets > Advertiser accounts.' },
+      { key: 'appId', label: 'TikTok app ID', pattern: /^\d{10,25}$/, optional: true, where: 'TikTok API for Business > My Apps: the App ID of the approved app. Needed only for "Connect TikTok", which fetches the token for you.' },
+      ...audienceFields],
     secretLabel: 'Marketing API access token',
-    secretWhere: 'TikTok API for Business (business-api.tiktok.com/portal) > My Apps > create an app with the Audience Management scope > authorise your advertiser account > the access_token returned by /oauth2/access_token/.',
+    secretWhere: 'Easiest: Advertising > Connect TikTok (/admin/advertising/tiktok/connect) fetches and stores it after you approve the app. Or paste the access_token returned by /oauth2/access_token/.',
     what: 'Uploads a hashed-phone customer file per list and replaces the audience daily. TikTok refuses a file with fewer than 1,000 entries, so a small list is reported, not sent.',
+  },
+  {
+    platform: 'tiktok', capability: 'spend', name: 'Spend import', requiresDestination: false,
+    fields: [{ key: 'advertiserId', label: 'Advertiser ID', pattern: /^\d{8,25}$/, where: 'The same advertiser ID as for audiences.' }],
+    secretLabel: 'Marketing API access token (Reporting)', secretOptional: true, secretFallback: 'audiences',
+    secretWhere: 'Leave blank to use the token stored for Customer file audiences (the app must have the Reporting permission).',
+    what: 'Reads daily spend, clicks and impressions per campaign from the Marketing API basic report (report/integrated/get).',
   },
   {
     platform: 'tiktok', capability: 'offline', name: 'Offline conversions', requiresDestination: true,
     fields: [{ key: 'offlineEventSetId', label: 'Offline event set ID', pattern: /^\d{6,25}$/, where: 'TikTok Ads Manager > Tools > Events > Offline events > create or open an event set: the ID under its name.' }],
     secretLabel: 'Events API token for the offline event set', secretOptional: true,
     secretWhere: 'The event set\'s settings > Generate access token. Leave blank to use the web pixel\'s Events API token.',
-    what: 'Sends COD deliveries and phone/WhatsApp sales as CompletePayment events with event_source "offline".',
+    what: 'Sends COD deliveries and phone/WhatsApp sales as Purchase events with event_source "offline".',
   },
 ];
 

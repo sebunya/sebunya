@@ -444,7 +444,8 @@ export async function deliverOne(deliveryId: string, generation: number, fetchIm
   // The platform's own account of a refusal (Meta: code, subcode, its message,
   // its trace id). It used to be discarded here: a refused purchase showed
   // only "HTTP_400". It also says when a 4xx is really a rate limit.
-  const told = platform && status != null && status >= 300 ? adErrorSummary(platform, status, text) : null;
+  // Also for a refusal inside a 2xx (TikTok answers 200 and refuses in the body).
+  const told = platform && status != null && (status >= 300 || replyError) ? adErrorSummary(platform, status, text) : null;
   let c: { kind: 'accepted' | 'retry' | 'unknown' | 'permanent'; code: string } = classifyResponse(status, replyError, net);
   if (told && c.kind === 'permanent') c = told.transient ? { kind: 'retry', code: 'PROVIDER_TRANSIENT' } : told.credentials ? { kind: 'permanent', code: 'CREDENTIALS' } : c;
   const detail = replyError ?? told?.message ?? null;

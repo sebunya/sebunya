@@ -60,7 +60,9 @@ unit count (no `quantity_to_sell_on_facebook`).
   same id in `product:retailer_item_id`, with `og:type=product`, price and availability.
   Availability `in stock` / `out of stock` (a pre-order without a date goes out of stock, as in
   the Google feed). Sale price only with its real window.
-- TikTok CSV columns: the nine required (`sku_id,title,description,availability,condition,price,link,image_link,brand`)
+- TikTok CSV: `sku_id` is the PRODUCT ID (what events send as `contents[].content_id`; it was the SKU,
+  so no event matched any item), pictures are the JPEG renditions, the SKU is in `custom_label_0`.
+  Columns: the nine required (`sku_id,title,description,availability,condition,price,link,image_link,brand`)
   plus images, categories, MPN. `preorder` is a TikTok value and is used. No sale price: TikTok's
   field list has no effective-date field to end it.
 
@@ -199,7 +201,7 @@ so the platform's own dedupe also catches a race.
   values: COD hand-over `physical_store`, phone sale `phone_call`, WhatsApp chat sale `chat`.
   7-day window.
 - TikTok: Events API `event/track`, `event_source: "offline"`, `event_source_id` = offline event
-  set id, `CompletePayment`. 7-day window.
+  set id, `Purchase` (was CompletePayment); the amount in US dollars at the saved rate, or none. 7-day window.
 
 Non-production never sends (unless `MEASUREMENT_ALLOW_NONPROD_DELIVERY=true`, the DeliveryService rule).
 
@@ -210,7 +212,7 @@ chat link to our number (counted on the pages that register the tap handler: pro
 "bulk request sent"; never loaded by the every-page script, so the header's WhatsApp link on other
 pages is not counted), or a sent quote request (bulk or classic form, once per reference per
 device), is beaconed like add_to_cart and forwarded server-side with its event id. Mapping: Meta
-`Contact` (WhatsApp chat tap) / `Lead` (quote request: details submitted); TikTok `Contact` (WhatsApp) / `SubmitForm` (quote); Pinterest `lead`; Microsoft
+`Contact` (WhatsApp chat tap) / `Lead` (quote request: details submitted); TikTok `Contact` (WhatsApp) / `Lead` (quote); Pinterest `lead`; Microsoft
 `generate_lead`. Each destination's optimisation events (`ad_destinations.event_selection`;
 null = all supported) are chosen in admin; purchases are always sent.
 
@@ -236,6 +238,58 @@ or whose record was erased on request) and the activity page says so.
 
 Browser check: `pnpm build && scripts/integration-env.sh scripts/qa/site-signals-check.sh` drives the
 three signals in real Chromium against local services and reads the queue back (13 checks).
+
+## 6b. TikTok Events API (2026-10-01, checked against TikTok's own pages)
+
+Read from business-api.tiktok.com > Events API 2.0 (Supported events, Parameters, Responses and
+errors) on 2026-10-01.
+
+- Events (all from TikTok's web standard list): `ViewContent`, `AddToCart`, `InitiateCheckout`,
+  `AddPaymentInfo`, `Purchase` (its current name for CompletePayment), `Contact` (WhatsApp tap),
+  `Lead` (quote request; was SubmitForm), `Search`, `CompleteRegistration`, `FindLocation`. The list
+  has no page-view event, so `page_seen` is not sent.
+- `user`: hashed email and `+`E.164 phone when the event has them, hashed `external_id`, `ttclid`
+  (merged from the identity graph at send time), IP and user agent. Absent values are omitted. An
+  event with no email, phone, click id or visitor id is not sent (`NO_IDENTIFIER`).
+- `page.url` is required for a web event: without one the event is not sent (`NO_BROWSER`).
+- `properties`: `content_type`, `content_ids`, `contents` (`content_id` = the product id, as in the
+  feed; name, category, brand, quantity, price), `num_items`, `search_string`, `order_id` on a sale.
+- **Amounts.** TikTok's list of supported currencies has no Uganda shilling. With "Shillings per US
+  dollar" saved on the destination (`ugxPerUsd`), value and prices go in US dollars at that rate.
+  Without it, events go with no amount at all (`tiktokMoney`). The same holds for a recorded
+  offline sale.
+- Refusals: `code` ≠ 0 with a message and a request id, normally with a 4xx. A rate limit is
+  code 40100 **with HTTP 401**, so the body, not the status, decides: 40100 and 5xxxx are retried;
+  40001, 40104, 40105 are a credentials problem; a non-zero code inside a 2xx is a refusal too.
+- Test send: Advertising > Activity > TikTok > "Check with TikTok" sends one event with the test
+  event code through the same builder (`POST /admin/advertising/tiktok/test-event`, audited).
+- The shop runs no TikTok Pixel, so there is no `_ttp` cookie to send.
+
+## 6c. TikTok advertiser authorisation and spend (2026-10-02)
+
+Checked against business-api.tiktok.com > Marketing API > Authentication and Reporting > "Run a
+synchronous report" on 2026-10-02. The long-term access token does not expire; it stops working
+only if the advertiser cancels the authorisation. The `auth_code` is valid for one hour, once.
+
+1. **Start** `/admin/advertising/tiktok/connect`: saves the app ID (audiences config `appId`), sets
+   a random `state` in an HttpOnly cookie (one hour, path `/admin/advertising/tiktok`) and sends
+   the owner to `https://business-api.tiktok.com/portal/auth?app_id&state&redirect_uri`.
+2. **Return** `/admin/advertising/tiktok/callback` (the app's Advertiser redirect URL, exact). A
+   reply whose `state` is not this browser's is refused. The code is moved from the address bar to
+   an HttpOnly cookie and the page reloads without it (`no-referrer`, `no-store`).
+3. **Exchange** the owner enters the app Secret and the Advertiser ID; `POST
+   /admin/advertising/tiktok/connect` calls `/open_api/v1.3/oauth2/access_token/` and stores the
+   token on the TikTok audiences capability through the usual validated, encrypted, audited path.
+   - The secret is used for that one call and not stored. The token never reaches the browser.
+   - The token is stored only if TikTok's `advertiser_ids` include the Advertiser ID entered.
+   - `advertiser_ids` are read from the reply text, so a 19-digit ID sent as a number keeps its digits.
+
+**Spend import** (capability `tiktok/spend`, token borrowed from audiences): the account currency
+from `GET /advertiser/info/` (`fields=["currency"]`), then `GET /report/integrated/get/` with
+`report_type=BASIC`, `data_level=AUCTION_CAMPAIGN`, dimensions `campaign_id, stat_time_day`,
+metrics `campaign_name, spend, impressions, clicks`, in windows of 30 days, paged. With no
+currency from TikTok, nothing is imported. `/advertiser/info/` and the 30-day window are from
+memory of TikTok's API, not re-read on that date; nothing here has run against a live account.
 
 ## 7. Meta Conversions API: match keys without a Pixel
 

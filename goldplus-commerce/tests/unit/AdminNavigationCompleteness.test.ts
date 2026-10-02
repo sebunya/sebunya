@@ -23,6 +23,8 @@ const pagesDir = join(root, 'apps/web/src/pages/admin');
 const EXCLUDED: Record<string, string> = {
   '/admin/login': 'the door, not a room',
   '/admin/not-permitted': 'where a 403 lands (a permission gap, not a room)',
+  '/admin/advertising/tiktok/callback': 'where TikTok sends the owner back after Connect TikTok; it does nothing when opened on its own',
+  '/admin/advertising/tiktok/connect': 'a one-off set-up step, reached from the Advertising page',
   '/admin/ai-search/actions': 'reached from AI Search (its own tab bar)',
   '/admin/ai-search/answers': 'reached from AI Search (its own tab bar)',
   '/admin/ai-search/competitors': 'reached from AI Search (its own tab bar)',

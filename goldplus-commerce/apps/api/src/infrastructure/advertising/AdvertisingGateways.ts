@@ -7,7 +7,7 @@ import { metaActionSource } from '../../domain/advertising/OfflineConversionPoli
 import { businessMessagingPurchase } from '../../domain/advertising/WhatsAppAdReferrals';
 import { metaBrowserIdFromVisitor } from '../../domain/advertising/MetaIdentifiers';
 import { asRemoteStatus, type RemoteRequestOutcome } from '../../domain/advertising/AudienceConfirmation';
-import { META_GRAPH_VERSION, adPlatform } from './AdPlatforms';
+import { META_GRAPH_VERSION, adPlatform, tiktokMoney } from './AdPlatforms';
 
 /**
  * The platform calls behind audiences, spend import and offline conversions
@@ -390,6 +390,36 @@ export function metaSpendFacts(rows: any[], adAccountId: string): SpendFact[] {
   }).filter((f) => DATE.test(f.spendDate));
 }
 
+/**
+ * TikTok basic report rows (campaign × day) → spend facts. `stat_time_day` is
+ * "YYYY-MM-DD 00:00:00" in the ad account's time zone; spend is a decimal
+ * string in the account currency, which the report does not name (it is read
+ * from the advertiser record).
+ */
+export function tiktokSpendFacts(rows: any[], advertiserId: string, currency: string): SpendFact[] {
+  const cur = String(currency ?? '').toUpperCase();
+  const n = (v: unknown) => (v == null || v === '' ? null : /^\d+$/.test(String(v)) ? Number(v) : null);
+  return rows.map((r) => {
+    const d = r?.dimensions ?? {}, m = r?.metrics ?? {};
+    const spend = decimalToMinor(String(m.spend ?? ''), cur);
+    return {
+      spendDate: String(d.stat_time_day ?? '').slice(0, 10), channel: 'paid_social', platform: 'TikTok', account: String(advertiserId),
+      campaign: `id:${d.campaign_id ?? ''}`, campaignLabel: m.campaign_name ? String(m.campaign_name).slice(0, 150) : null,
+      currency: cur, spendMinor: spend ?? -1, clicks: n(m.clicks), impressions: n(m.impressions), source: 'tiktok_marketing_api',
+    };
+  }).filter((f) => DATE.test(f.spendDate));
+}
+
+/** Whole-day windows of at most `size` days covering from..to (TikTok's daily report takes 30 days a call). */
+export function dayWindows(from: string, to: string, size = 30): Array<{ from: string; to: string }> {
+  const out: Array<{ from: string; to: string }> = [];
+  const end = new Date(`${to}T00:00:00Z`).getTime();
+  for (let t = new Date(`${from}T00:00:00Z`).getTime(); t <= end; t += size * 86_400_000) {
+    out.push({ from: new Date(t).toISOString().slice(0, 10), to: new Date(Math.min(end, t + (size - 1) * 86_400_000)).toISOString().slice(0, 10) });
+  }
+  return out;
+}
+
 export class HttpSpendGateway implements SpendGateway {
   constructor(private readonly fetchImpl: Fetch = fetch) {}
 
@@ -414,6 +444,27 @@ export class HttpSpendGateway implements SpendGateway {
         url = typeof next === 'string' && next.startsWith(`${GRAPH}/`) ? withoutAccessToken(next) : null;
       }
       return metaSpendFacts(rows, creds.config.adAccountId);
+    }
+    if (platform === 'tiktok') {
+      const id = creds.config.advertiserId;
+      const headers = { 'Access-Token': creds.secret };
+      const info = tiktokOk(await call(this.fetchImpl, `${TIKTOK}/advertiser/info/?${new URLSearchParams({ advertiser_ids: JSON.stringify([id]), fields: JSON.stringify(['currency']) })}`, { method: 'GET', headers }, [creds.secret]), [creds.secret]);
+      const currency = String(info?.list?.[0]?.currency ?? '').toUpperCase();
+      // Spend is never stated in a guessed currency.
+      if (!/^[A-Z]{3}$/.test(currency)) throw new PlatformError('TikTok did not say which currency the advertiser account is in', null);
+      const rows: any[] = [];
+      for (const w of dayWindows(from, to)) {
+        for (let page = 1; page <= 50; page++) {
+          const q = new URLSearchParams({
+            advertiser_id: id, report_type: 'BASIC', data_level: 'AUCTION_CAMPAIGN', dimensions: JSON.stringify(['campaign_id', 'stat_time_day']),
+            metrics: JSON.stringify(['campaign_name', 'spend', 'impressions', 'clicks']), start_date: w.from, end_date: w.to, page: String(page), page_size: '1000',
+          });
+          const data = tiktokOk(await call(this.fetchImpl, `${TIKTOK}/report/integrated/get/?${q.toString()}`, { method: 'GET', headers }, [creds.secret]), [creds.secret]);
+          rows.push(...(data?.list ?? []));
+          if (page >= Number(data?.page_info?.total_page ?? 1)) break;
+        }
+      }
+      return tiktokSpendFacts(rows, id, currency);
     }
     throw new PlatformError('Not configured: no spend API for this platform', null);
   }
@@ -471,9 +522,12 @@ export function offlineRequest(ctx: OfflineContext, creds: PlatformCredentials):
     return {
       url: `${TIKTOK}/event/track/`, headers: { 'content-type': 'application/json', 'Access-Token': creds.secret || creds.destinationSecret },
       body: { event_source: 'offline', event_source_id: creds.config.offlineEventSetId, ...(creds.testMode ? { test_event_code: d.testEventCode } : {}),
-        data: [{ event: 'CompletePayment', event_time: t, event_id: ctx.row.eventId,
-          user: { email: h.emailSha256 ?? undefined, phone: h.phonePlusSha256 ?? undefined, ttclid: c.ttclid },
-          properties: { currency: 'UGX', value: ctx.valueUgx, order_id: orderId } }] },
+        // "Purchase" is TikTok's current name for what was CompletePayment. The amount
+        // goes in US dollars at the owner's rate, or not at all: TikTok lists no shilling.
+        data: [{ event: 'Purchase', event_time: t, event_id: ctx.row.eventId,
+          user: { email: h.emailSha256 ?? undefined, phone: h.phonePlusSha256 ?? undefined, ttclid: c.ttclid,
+            ...(ctx.visitorId ? { external_id: createHash('sha256').update(ctx.visitorId).digest('hex') } : {}) },
+          properties: { ...(tiktokMoney(ctx.valueUgx, 'UGX', creds.destinationConfig ?? {}) ?? {}), order_id: orderId } }] },
     };
   }
   return null;

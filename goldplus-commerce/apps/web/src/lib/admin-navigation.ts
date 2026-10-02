@@ -273,7 +273,7 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     href: '/admin/advertising/spend',
     group: 'Measurement',
     status: 'working',
-    description: 'Daily spend, clicks and impressions per campaign from the Google Ads and Meta APIs, or a CSV upload.'
+    description: 'Daily spend, clicks and impressions per campaign from the Google Ads, Meta and TikTok APIs, or a CSV upload.'
   },
   {
     label: 'Offline sales for ads',
