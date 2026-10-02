@@ -588,4 +588,27 @@ describe('capabilities', () => {
     expect(feed.steps[0]).toMatchObject({ done: false, unverifiable: true });
     expect(list.find((p) => p.platform === 'spotify')!.status).toBe('NOT_AVAILABLE');
   });
+  it('the TikTok checklist says what an empty dollar rate means: no amounts, and a feed TikTok will not take', () => {
+    const tiktok = AD_PLATFORMS.find((p) => p.key === 'tiktok')!;
+    const build = (config: Record<string, string>) => buildChecklist({
+      destinations: [{ ...tiktok, state: 'READY_OFF', row: { enabled: false, config, hasSecret: true } } as any],
+      capabilities: [], feedProducts: 23, feedUrls: { google: 'g', meta: 'm', tiktok: 'https://api.shopgoldplus.com/advertising/feeds/tiktok-catalogue.csv' },
+    })[0].items;
+    const without = build({ pixelCode: 'C0ABCDEFGH12345' });
+    // The optional field alone would read as done; this line is what tells the owner.
+    expect(without.find((i) => i.key === 'conversions')!.steps.find((s) => /Shillings per US dollar/.test(s.label))!.done).toBe(true);
+    const gap = without.find((i) => i.key === 'sale_values')!;
+    expect(gap.status).toBe('NOT_CONFIGURED');
+    expect(gap.detail).toMatch(/without an amount/);
+    expect(gap.detail).toMatch(/will not accept/);
+    expect(gap.steps[0].done).toBe(false);
+    const withRate = build({ pixelCode: 'C0ABCDEFGH12345', ugxPerUsd: '3700' }).find((i) => i.key === 'sale_values')!;
+    expect(withRate.status).toBe('READY');
+    expect(withRate.detail).toMatch(/3700 shillings to the dollar/);
+    expect(withRate.steps[0].done).toBe(true);
+    expect(without.find((i) => i.key === 'catalogue')!.steps[0].where).toMatch(/default currency USD/);
+    // No other platform gets the line.
+    const meta = AD_PLATFORMS.find((p) => p.key === 'meta')!;
+    expect(buildChecklist({ destinations: [{ ...meta, state: 'NOT_CONFIGURED', row: null } as any], capabilities: [], feedProducts: 1, feedUrls: { google: 'g', meta: 'm', tiktok: 't' } })[0].items.some((i) => i.key === 'sale_values')).toBe(false);
+  });
 });

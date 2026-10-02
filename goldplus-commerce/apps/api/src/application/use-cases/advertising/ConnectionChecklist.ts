@@ -74,6 +74,15 @@ export function buildChecklist(input: {
         detail: d.key === 'google_ads' ? 'Test sends with validateOnly: Google checks each upload and records nothing.' : 'Test sends carry the test event code: the platform shows them under Test events and does not count them.',
         steps: d.key === 'google_ads' ? [] : [{ label: 'Test event code', where: where.testEventCode ?? 'The platform\'s Test events screen.', done: !!cfg.testEventCode, optional: true }] });
     }
+    if (d.key === 'tiktok') {
+      // The rate is optional, so its step above reads as done when empty. What empty MEANS is said here.
+      const rate = /^\d{3,6}$/.test(cfg.ugxPerUsd ?? '') ? cfg.ugxPerUsd : null;
+      items.push({ key: 'sale_values', title: 'Sale values and prices', status: rate ? 'READY' : 'NOT_CONFIGURED',
+        detail: rate
+          ? `Amounts go to TikTok in US dollars at ${rate} shillings to the dollar: event values, offline sales and catalogue prices.`
+          : 'TikTok has no Uganda shilling. Until a rate is saved, events and offline sales go without an amount (TikTok cannot optimise for value or report return on spend) and the catalogue feed stays in shillings, which TikTok will not accept.',
+        steps: [{ label: 'Shillings per US dollar', where: 'This platform\'s form further down the page. Use the rate you want sales reported at, for example 3700.', done: !!rate }] });
+    }
     const early = Object.keys(d.events).filter((e) => e !== 'purchase');
     if (early.length) {
       const sel = d.row?.eventSelection ?? null;
