@@ -60,6 +60,9 @@ unit count (no `quantity_to_sell_on_facebook`).
   same id in `product:retailer_item_id`, with `og:type=product`, price and availability.
   Availability `in stock` / `out of stock` (a pre-order without a date goes out of stock, as in
   the Google feed). Sale price only with its real window.
+- TikTok CSV prices: TikTok's catalogue currencies have no Uganda shilling. With `ugxPerUsd` saved on the
+  TikTok destination the feed states `NN.NN USD` (the catalogue's default currency must be USD);
+  without it the feed stays in shillings and TikTok will not accept it.
 - TikTok CSV: `sku_id` is the PRODUCT ID (what events send as `contents[].content_id`; it was the SKU,
   so no event matched any item), pictures are the JPEG renditions, the SKU is in `custom_label_0`.
   Columns: the nine required (`sku_id,title,description,availability,condition,price,link,image_link,brand`)
@@ -288,8 +291,8 @@ only if the advertiser cancels the authorisation. The `auth_code` is valid for o
 from `GET /advertiser/info/` (`fields=["currency"]`), then `GET /report/integrated/get/` with
 `report_type=BASIC`, `data_level=AUCTION_CAMPAIGN`, dimensions `campaign_id, stat_time_day`,
 metrics `campaign_name, spend, impressions, clicks`, in windows of 30 days, paged. With no
-currency from TikTok, nothing is imported. `/advertiser/info/` and the 30-day window are from
-memory of TikTok's API, not re-read on that date; nothing here has run against a live account.
+currency from TikTok, nothing is imported. `/advertiser/info/` (`advertiser_ids`, `fields` incl. `currency`) and the 30-day limit for
+`stat_time_day` were confirmed against TikTok's pages on 2026-10-02; nothing here has run against a live account.
 
 ## 7. Meta Conversions API: match keys without a Pixel
 

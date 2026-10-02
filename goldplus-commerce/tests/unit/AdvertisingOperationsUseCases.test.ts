@@ -9,11 +9,11 @@ import { OfflineConversionUseCases } from '../../apps/api/src/application/use-ca
 import { AdCapabilityUseCases, capabilityGap, capabilityDef } from '../../apps/api/src/application/use-cases/advertising/AdCapabilities';
 import { AdDestinationUseCases } from '../../apps/api/src/application/use-cases/advertising/AdDestinationUseCases';
 import { buildChecklist } from '../../apps/api/src/application/use-cases/advertising/ConnectionChecklist';
-import { buildMetaCatalogueCsv, buildTikTokCatalogueCsv, feedCsvCell, metaCatalogueId, META_FEED_COLUMNS, TIKTOK_FEED_COLUMNS } from '../../apps/api/src/application/use-cases/advertising/CatalogueFeeds';
+import { buildMetaCatalogueCsv, buildTikTokCatalogueCsv, tiktokFeedPrice, feedCsvCell, metaCatalogueId, META_FEED_COLUMNS, TIKTOK_FEED_COLUMNS, CatalogueFeedUseCases } from '../../apps/api/src/application/use-cases/advertising/CatalogueFeeds';
 import {
   HttpAudienceGateway, HttpOfflineConversionGateway, HttpSpendGateway, dataManagerIngestBodies, googleSpendFacts, googleSpendQuery, metaSpendFacts, offlineRequest, scrub, tiktokFile,
 } from '../../apps/api/src/infrastructure/advertising/AdvertisingGateways';
-import { AD_PLATFORMS, buildAdRequest } from '../../apps/api/src/infrastructure/advertising/AdPlatforms';
+import { AD_PLATFORMS, buildAdRequest, tiktokMoney } from '../../apps/api/src/infrastructure/advertising/AdPlatforms';
 import type { FeedProduct } from '../../apps/api/src/application/use-cases/seo-growth/MerchantFeedUseCase';
 
 const audit = { execute: vi.fn(async () => ({ ok: true, id: 'a' })) } as any;
@@ -468,6 +468,21 @@ describe('catalogue feeds', () => {
     expect((buildAdRequest('tiktok', event as never, { pixelCode: 'C0ABCDEFGH12345' }, 'T')!.body as any).data[0].properties.contents[0].content_id).toBe(col('sku_id'));
     expect(col('image_link')).toBe('https://shopgoldplus.com/uploads/assets/9d/9d993f5ef5a7/pdp.jpg');
     expect(col('additional_image_link')).toBe('https://shopgoldplus.com/uploads/assets/ab/ab12cd34ef56/pdp.jpg');
+  });
+  it('TikTok CSV: prices are in US dollars at the owner\'s rate (TikTok lists no shilling), the same rate the events use; with no rate nothing is converted', async () => {
+    expect(tiktokFeedPrice(145000, 3700)).toBe('39.19 USD');
+    expect(tiktokFeedPrice(145000, null)).toBe('145000 UGX');
+    expect(tiktokFeedPrice(145000, 0)).toBe('145000 UGX');
+    const priceCol = TIKTOK_FEED_COLUMNS.indexOf('price');
+    const p = product();
+    expect(buildTikTokCatalogueCsv([p], 'https://shopgoldplus.com', 4000).trim().split('\n')[1].split(',')[priceCol]).toBe(`${(p.priceUgx / 4000).toFixed(2)} USD`);
+    expect(buildTikTokCatalogueCsv([p], 'https://shopgoldplus.com').trim().split('\n')[1].split(',')[priceCol]).toBe(`${p.priceUgx} UGX`);
+    // The feed and a sale of the same product state the same amount.
+    expect(tiktokMoney(p.priceUgx, 'UGX', { ugxPerUsd: '4000' })!.value.toFixed(2) + ' USD').toBe(tiktokFeedPrice(p.priceUgx, 4000));
+    const feeds = new CatalogueFeedUseCases({ products: async () => [p], discount: async () => null, tiktokUgxPerUsd: async () => 4000 });
+    expect(await feeds.tiktok()).toContain(' USD');
+    const noRate = new CatalogueFeedUseCases({ products: async () => [p], discount: async () => null });
+    expect(await noRate.tiktok()).toContain(' UGX');
   });
   it('cells are RFC 4180 quoted and control characters dropped', () => {
     expect(feedCsvCell('a "b", c')).toBe('"a ""b"", c"');

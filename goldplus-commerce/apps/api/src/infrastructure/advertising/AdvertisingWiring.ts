@@ -108,6 +108,8 @@ export function createAdvertisingOperations(deps: {
       const c = await resolveStorefrontDiscount(deps.pricingRepo);
       return c.active ? { percentBps: c.percentBps, priceFloorUgx: c.priceFloorUgx, saleStartIso: c.startsIso, saleEndIso: c.endsIso } : null;
     },
+    // The same rate the TikTok events use, so a product's price and its sale value agree.
+    tiktokUgxPerUsd: async () => { const r = Number((await destRepo.get('tiktok'))?.config?.ugxPerUsd); return Number.isFinite(r) && r >= 100 ? r : null; },
   });
   const origin = deps.publicApiOrigin.replace(/\/+$/, '');
   const feedUrls = { google: `${origin}/seo/merchant-feed.xml`, meta: `${origin}/advertising/feeds/meta-catalogue.csv`, tiktok: `${origin}/advertising/feeds/tiktok-catalogue.csv` };

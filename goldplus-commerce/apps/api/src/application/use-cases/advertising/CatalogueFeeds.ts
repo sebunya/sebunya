@@ -101,7 +101,20 @@ export const TIKTOK_FEED_COLUMNS = [
  * sale price that outlives the sale would advertise a price the shop no
  * longer charges. The regular price is always true.
  */
-export function buildTikTokCatalogueCsv(products: FeedProduct[], baseUrl: string = STOREFRONT_BASE_URL): string {
+/**
+ * A feed price as TikTok can take it. TikTok's catalogue currencies (the same
+ * list as its events) have no Uganda shilling, so with the owner's rate
+ * (shillings per US dollar, the TikTok destination's `ugxPerUsd`) the price is
+ * stated in US dollars; the catalogue's default currency must then be USD.
+ * Without a rate it stays in shillings, which TikTok will not accept: the
+ * price is not converted at a rate nobody chose.
+ */
+export function tiktokFeedPrice(priceUgx: number, ugxPerUsd?: number | null): string {
+  if (!ugxPerUsd || !Number.isFinite(ugxPerUsd) || ugxPerUsd < 100) return `${priceUgx} UGX`;
+  return `${(Math.round((priceUgx / ugxPerUsd) * 100) / 100).toFixed(2)} USD`;
+}
+
+export function buildTikTokCatalogueCsv(products: FeedProduct[], baseUrl: string = STOREFRONT_BASE_URL, ugxPerUsd?: number | null): string {
   const lines = [TIKTOK_FEED_COLUMNS.join(',')];
   for (const p of products.filter(isFeedIncluded)) {
     const extra = (p.imageUrls ?? []).filter((u) => u && u !== p.imageUrl).slice(0, 10).map((u) => jpegRendition(absolute(baseUrl, u)));
@@ -113,7 +126,7 @@ export function buildTikTokCatalogueCsv(products: FeedProduct[], baseUrl: string
       description: clip(feedDescription(p), 5000),
       availability: feedAvailability(p),
       condition: 'new',
-      price: `${p.priceUgx} UGX`,
+      price: tiktokFeedPrice(p.priceUgx, ugxPerUsd),
       link: `${baseUrl}/products/${encodeURIComponent(p.slug)}`,
       image_link: jpegRendition(absolute(baseUrl, p.imageUrl!)),
       brand: 'GoldPlus',
@@ -131,6 +144,8 @@ export function buildTikTokCatalogueCsv(products: FeedProduct[], baseUrl: string
 export interface CatalogueFeedSource {
   products(): Promise<FeedProduct[]>;
   discount(): Promise<FeedDiscount | null>;
+  /** The owner's shillings-per-dollar rate for TikTok, when one is saved. */
+  tiktokUgxPerUsd?(): Promise<number | null>;
 }
 
 export class CatalogueFeedUseCases {
@@ -146,7 +161,7 @@ export class CatalogueFeedUseCases {
   }
 
   meta() { return this.cached('meta', async () => buildMetaCatalogueCsv(await this.source.products(), STOREFRONT_BASE_URL, await this.source.discount())); }
-  tiktok() { return this.cached('tiktok', async () => buildTikTokCatalogueCsv(await this.source.products(), STOREFRONT_BASE_URL)); }
+  tiktok() { return this.cached('tiktok', async () => buildTikTokCatalogueCsv(await this.source.products(), STOREFRONT_BASE_URL, (await this.source.tiktokUgxPerUsd?.().catch(() => null)) ?? null)); }
 
   /** How many products each feed carries (the checklist's "Feed ready" line). */
   async included(): Promise<number> { return (await this.source.products()).filter(isFeedIncluded).length; }
