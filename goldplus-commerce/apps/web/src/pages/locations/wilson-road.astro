@@ -4,12 +4,14 @@ import { getBusinessInfo } from '../../lib/businessInfo';
 import { serializeJsonLd, breadcrumbJsonLd } from '../../lib/jsonld';
 import { SITE_ORIGIN } from '../../lib/sitemap';
 import { evaluateLocalPageGate } from '../../lib/categoryHubs';
+import { SHOP_LOCATION } from '@goldplus/shared';
 
 /**
  * LOCAL SEARCH — the Wilson Road shop page. Built ONLY from the admin-editable
  * business-info document (same source as the footer). Indexable only when
  * business-info actually returns an address and phone; the LocalBusiness
- * JSON-LD carries verified fields only — no invented coordinates or hours.
+ * JSON-LD carries verified fields only — no invented hours. The coordinates
+ * are SHOP_LOCATION, fixed from the owner's photos on 2026-10-03.
  */
 const biz = await getBusinessInfo();
 const gatePass = evaluateLocalPageGate(biz);
@@ -32,7 +34,8 @@ if (biz.addressLine1) {
   };
 }
 if (telephone) localBusiness.telephone = telephone;
-// No geo: business-info stores no coordinates — none are invented.
+localBusiness.geo = { '@type': 'GeoCoordinates', latitude: SHOP_LOCATION.latitude, longitude: SHOP_LOCATION.longitude };
+if (biz.mapUrl) localBusiness.hasMap = biz.mapUrl;
 // No openingHoursSpecification: hours are stored as free text; shown visibly below.
 
 const crumbs = [
@@ -54,7 +57,7 @@ const crumbs = [
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
       <h1 class="text-3xl font-black tracking-tight sm:text-4xl">The GoldPlus shop on Wilson Road</h1>
       <p class="mt-3 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">
-        GoldPlus sells its house-brand electronics accessories from one shop in central Kampala. Everything on this site ships from the same stock you would find on the shelf.
+        GoldPlus sells its house-brand electronics accessories from one shop in central Kampala: the 4th floor of the New Pioneer Mall Building, on the Burton Street side between Wilson Road and Burton Street. Everything on this site ships from the same stock you would find on the shelf.
       </p>
     </div>
   </header>
@@ -65,6 +68,7 @@ const crumbs = [
         <h2 class="text-base font-black text-slate-900">Find us</h2>
         {biz.addressLine1 && <p class="mt-2 text-sm font-semibold text-slate-800">{biz.addressLine1}</p>}
         {biz.addressLine2 && <p class="mt-1 text-sm text-slate-600">{biz.addressLine2}</p>}
+        <p class="mt-1 text-xs text-slate-500">Plus Code {SHOP_LOCATION.plusCode}</p>
         {biz.mapUrl && (
           <a href={biz.mapUrl} rel="noopener" target="_blank" class="mt-4 inline-block rounded-full bg-slate-950 px-5 py-2.5 text-sm font-bold text-white hover:bg-brand-primary hover:text-slate-950">Open in Google Maps</a>
         )}

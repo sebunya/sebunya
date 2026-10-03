@@ -459,9 +459,9 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     unit: null,
     mandatory: false,
     defaultValue:
-      'Collect free from GoldPlus, Wilson Road, next to Uhuru Restaurant, opposite the Pioneer Mall parking area.',
+      'Collect free from GoldPlus, 4th Floor, New Pioneer Mall Building, Burton Street, next to Uhuru Restaurant, opposite Pioneer Mall.',
     label: 'Pickup offer',
-    help: 'Shown alongside every quote. Uhuru Restaurant first, Pioneer Mall as the wider fallback.',
+    help: 'Shown alongside every quote. Building and floor first, then Uhuru Restaurant, then Pioneer Mall as the wider fallback.',
   },
   {
     key: 'copy_unavailable_area_too_coarse',

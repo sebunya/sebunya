@@ -97,7 +97,7 @@ const WARRANTY_FAQ: HubFaq = { question: 'Is there a warranty on these products?
 const SHOP_FAQ: HubFaq = {
   question: 'Where is the GoldPlus shop?',
   answer:
-    'The GoldPlus shop is on Wilson Road in central Kampala. You can buy online on this site or visit the shop in person. Contact details and directions are in the footer of every page.',
+    'The GoldPlus shop is on the 4th floor of the New Pioneer Mall Building in central Kampala, on the Burton Street side of the block between Wilson Road and Burton Street, opposite Pioneer Mall. You can buy online on this site or visit the shop in person. Contact details and directions are in the footer of every page.',
 };
 
 export const CATEGORY_HUBS: CategoryHubConfig[] = [
