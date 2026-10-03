@@ -225,7 +225,7 @@ const INTENT_RULES: Array<{ intent: Intent; patterns: RegExp[] }> = [
   { intent: 'PRICE', patterns: [/\bprice\b/, /\bcost\b/, /\bhow much\b/, /\bcheap(est)?\b/, /\bugx\b/, /\bshilling/] },
   { intent: 'COMPARISON', patterns: [/\bvs\b/, /\bversus\b/, /\bcompare\b/, /\bdifference between\b/, /\bor\b.*\?/] },
   { intent: 'PROBLEM_SOLUTION', patterns: [/\bnot (charging|working)\b/, /\bhow (to|do i)\b/, /\bfix\b/, /\bproblem\b/, /\bslow\b/, /\bfake\b/, /\bgenuine\b/, /\bverify\b/] },
-  { intent: 'LOCAL', patterns: [/\bnear me\b/, /\bin kampala\b/, /\buganda\b/, /\bwilson road\b/, /\bshop\b.*\baddress\b/, /\bdelivery\b/] },
+  { intent: 'LOCAL', patterns: [/\bnear me\b/, /\bin kampala\b/, /\buganda\b/, /\bwilson road\b/, /\bnew pioneer mall\b/, /\bburton street\b/, /\bshop\b.*\baddress\b/, /\bdelivery\b/] },
   { intent: 'TRANSACTIONAL', patterns: [/\bbuy\b/, /\border\b/, /\bshop\b/, /\bfor sale\b/, /\bonline\b/] },
   { intent: 'INFORMATIONAL', patterns: [/\bwhat is\b/, /\bhow many\b/, /\bguide\b/, /\bmeaning\b/, /\bexplain/] },
 ];

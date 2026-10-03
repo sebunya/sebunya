@@ -43,7 +43,7 @@ describe('SHOP_LOCATION', () => {
   });
 
   it('publishes the point as GeoCoordinates on the Store and the shop page', () => {
-    for (const p of ['apps/web/src/components/SiteJsonLd.astro', 'apps/web/src/pages/locations/wilson-road.astro']) {
+    for (const p of ['apps/web/src/components/SiteJsonLd.astro', 'apps/web/src/pages/locations/new-pioneer-mall.astro']) {
       const src = read(p);
       expect(src).toContain("'@type': 'GeoCoordinates'");
       expect(src).toContain('SHOP_LOCATION.latitude');

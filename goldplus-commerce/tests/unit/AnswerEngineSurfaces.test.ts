@@ -21,7 +21,7 @@ describe('answer-engine surfaces', () => {
     expect(src).toContain('telephone: biz.phoneDial');
     expect(src).toMatch(/if \(openingHours\) store\.openingHours = openingHours;/);
     // Nothing invented: no literal address, phone or hours in the component.
-    expect(src).not.toMatch(/Wilson Road|\+256|8:30am/);
+    expect(src).not.toMatch(/Wilson Road|New Pioneer Mall|\+256|8:30am/);
     expect(src).toContain('serializeJsonLd(store)');
   });
 
@@ -63,7 +63,7 @@ describe('answer-engine surfaces', () => {
     // The catalogue decides the categories and the count.
     expect(src).toContain('byCategory');
     expect(src).toContain('${products.length} products are listed online');
-    expect(src).not.toMatch(/Wilson Road|0705 004545/);
+    expect(src).not.toMatch(/Wilson Road|New Pioneer Mall|0705 004545/);
   });
 });
 
@@ -105,7 +105,7 @@ describe('the FAQ answers from the site\'s own commitments', () => {
     expect(src).toContain('biz.deliveryNote');
     expect(src).toContain('copy.payment.pesapal.description');
     // No hard-coded address, phone, hours, or a returns window the policy page does not state.
-    expect(src).not.toMatch(/Wilson Road|0705 004545|8:30am/);
+    expect(src).not.toMatch(/Wilson Road|New Pioneer Mall|0705 004545|8:30am/);
     // No literal window in the copy: the number comes from the shared constant.
     expect(src).not.toMatch(/\b(7|14|30)[- ]days? of\b/);
   });

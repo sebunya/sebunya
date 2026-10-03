@@ -123,7 +123,7 @@ export const HERO_SLIDE_LIBRARY: readonly HeroSlideSeed[] = [
     headline: 'No haggling with the <em>boda guy</em>',
     subcopy: 'You see the fee before you pay. We settle the rider. You just open the door.',
     ctaLabel: 'How delivery works', ctaUrl: '/delivery/kampala-wakiso',
-    finePrint: 'Exact fee shown at checkout. Or collect free from Wilson Road.',
+    finePrint: 'Exact fee shown at checkout. Or collect free from the New Pioneer Mall, Burton Street.',
     imageUrl: P('goldplus-100w-portable-power-station-gp-09'),
     imageAlt: 'GoldPlus 100W portable power station',
     priority: 0,
