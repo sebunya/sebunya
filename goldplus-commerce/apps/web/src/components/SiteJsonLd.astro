@@ -1,5 +1,6 @@
 ---
 import { getBusinessInfo } from '../lib/businessInfo';
+import { SHOP_LOCATION } from '@goldplus/shared';
 import { serializeJsonLd } from '../lib/jsonld';
 import { SITE_ORIGIN } from '../lib/sitemap';
 
@@ -67,6 +68,9 @@ const store: Record<string, unknown> = {
     addressLocality: 'Kampala',
     addressCountry: 'UG',
   },
+  // The point the Business Profile pin sits on (SHOP_LOCATION): a verified
+  // building face, so an answer engine can place the shop, not just name it.
+  geo: { '@type': 'GeoCoordinates', latitude: SHOP_LOCATION.latitude, longitude: SHOP_LOCATION.longitude },
   areaServed: ['Kampala', 'Wakiso'],
   currenciesAccepted: 'UGX',
   parentOrganization: { '@id': ORG_ID },

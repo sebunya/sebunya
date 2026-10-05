@@ -144,7 +144,7 @@ export function renderDeliveryQuotePanel(q: any, opts: DeliveryQuotePanelOptions
   // tab (announced), it is not the way to CHOOSE collection.
   if (q.pickup) {
     out.push(
-      '<a href="https://www.google.com/maps/search/?api=1&amp;query=GoldPlus%20Wilson%20Road%20Kampala" target="_blank" rel="noopener noreferrer" class="mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-full border-2 border-brand-primary px-3.5 py-1.5 text-[11px] font-bold text-gray-900 hover:bg-brand-primary/10 outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk transition-colors">Directions to our shop <span aria-hidden="true">&#8599;</span><span class="sr-only">(opens Google Maps in a new tab)</span></a>',
+      '<a href="https://maps.google.com/?cid=2567724259551649466" target="_blank" rel="noopener noreferrer" class="mt-2 inline-flex min-h-11 items-center gap-1.5 rounded-full border-2 border-brand-primary px-3.5 py-1.5 text-[11px] font-bold text-gray-900 hover:bg-brand-primary/10 outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk transition-colors">Directions to our shop <span aria-hidden="true">&#8599;</span><span class="sr-only">(opens Google Maps in a new tab)</span></a>',
     );
   }
 

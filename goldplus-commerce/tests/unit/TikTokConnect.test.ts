@@ -26,6 +26,11 @@ describe('TikTok authorisation: the exchange', () => {
     expect(JSON.stringify(refused)).not.toContain(SECRET);
     expect(JSON.stringify(refused)).not.toContain(CODE);
     expect((refused as any).message).toContain('TikTok error 40002');
+    // The refusals this exchange meets say what to do next.
+    const used = await new HttpTikTokOAuthGateway(stub(400, { code: 40110, message: 'The auth_code is canceled.' })).exchange(APP_ID, SECRET, CODE);
+    expect((used as any).message).toContain('start again from Connect TikTok');
+    const mismatch = await new HttpTikTokOAuthGateway(stub(400, { code: 40101, message: 'Invalid auth_code.' })).exchange(APP_ID, SECRET, CODE);
+    expect((mismatch as any).message).toContain('do not belong together');
     expect(await new HttpTikTokOAuthGateway(stub(200, { code: 0, data: {} })).exchange(APP_ID, SECRET, CODE)).toEqual({ ok: false, message: 'TikTok answered without an access token.' });
     expect((await new HttpTikTokOAuthGateway(stub(502, '<html>')).exchange(APP_ID, SECRET, CODE)).ok).toBe(false);
     const down = await new HttpTikTokOAuthGateway((async () => { throw new Error(`boom ${SECRET}`); }) as never).exchange(APP_ID, SECRET, CODE);

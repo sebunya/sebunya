@@ -35,7 +35,7 @@ describe('site signals: search, new account, shop directions', () => {
   });
   it('a directions tap is a Google Maps link; any other link is not', () => {
     for (const ok of ['https://maps.app.goo.gl/abc', 'https://www.google.com/maps/place/x', 'https://goo.gl/maps/abc', 'https://maps.google.com/?q=1,2', 'https://www.google.co.ug/maps?q=x']) expect(isMapLink(ok)).toBe(true);
-    for (const no of ['https://www.google.com/search?q=maps', 'https://wa.me/256700000000', 'http://maps.google.com/', '/locations/wilson-road', 'https://evilgoogle.com/maps']) expect(isMapLink(no)).toBe(false);
+    for (const no of ['https://www.google.com/search?q=maps', 'https://wa.me/256700000000', 'http://maps.google.com/', '/locations/new-pioneer-mall', 'https://evilgoogle.com/maps']) expect(isMapLink(no)).toBe(false);
   });
   it('the collector accepts the three events from a browser, and they can be selected per destination', () => {
     for (const n of ['search', 'sign_up', 'find_location']) {

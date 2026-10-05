@@ -23,7 +23,13 @@ export class HttpTikTokOAuthGateway implements TikTokOAuthGateway {
     }
     const text = await res.text().catch(() => '');
     const told = tiktokErrorSummary(res.status, text);
-    if (told) return { ok: false, message: scrub(told.message) };
+    if (told) {
+      // What the owner can do about it, for the refusals this exchange meets (TikTok's return codes).
+      const advice = told.code === 40110 || told.code === 40115 ? ' The code was already used or is more than an hour old: start again from Connect TikTok.'
+        : told.code === 40101 ? ' The App ID and the Secret do not belong together, or the code is not this app\'s: check both in TikTok API for Business > My Apps.'
+          : told.code === 40113 ? ' TikTok does not know this app, or has blocked it: check the App ID and that the app is approved.' : '';
+      return { ok: false, message: scrub(told.message) + advice };
+    }
     if (!res.ok) return { ok: false, message: `TikTok answered HTTP ${res.status} with no explanation.` };
     let json: { code?: unknown; data?: { access_token?: unknown; advertiser_ids?: unknown } } | null = null;
     try { json = JSON.parse(text); } catch { /* handled below */ }

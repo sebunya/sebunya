@@ -313,11 +313,18 @@ export function metaErrorSummary(_status: number, body: string): { message: stri
  * like a bad token and was never retried. Until 2026-10-01 the body was not
  * read for TikTok at all. A non-zero code inside a 2xx is treated as the
  * refusal it is, too: `code: 0` is the only thing TikTok calls success.
- * 40105 (token incorrect or revoked) is from TikTok's general return-code
- * list, not the Events API page.
+ *
+ * Codes from TikTok's "Appendix - Return codes" (read 2026-10-02):
+ *  - too many requests: 40016 (app level), 40100 (developer account), 40133
+ *    (advertiser), 40132 (one pixel); TikTok's own faults: 50000, 50002,
+ *    51305; maintenance: 60001. All worth another try.
+ *  - 40001 no permission, 40102 token expired, 40104 token empty, 40105 token
+ *    invalid, 40106 its user invalid, 40113 app blocked or unknown: the
+ *    credentials, not the event.
  */
-const TIKTOK_CREDENTIAL_CODES = new Set([40001, 40104, 40105]);
-export function tiktokErrorSummary(_status: number, body: string): { message: string; transient: boolean; credentials: boolean } | null {
+const TIKTOK_RETRY_CODES = new Set([40016, 40100, 40132, 40133, 60001]);
+const TIKTOK_CREDENTIAL_CODES = new Set([40001, 40102, 40104, 40105, 40106, 40113]);
+export function tiktokErrorSummary(_status: number, body: string): { message: string; transient: boolean; credentials: boolean; code: number } | null {
   let j: { code?: unknown; message?: unknown; request_id?: unknown } | null = null;
   try { j = JSON.parse(body); } catch { return null; }
   if (!j || typeof j !== 'object' || j.code === undefined) return null;
@@ -326,8 +333,9 @@ export function tiktokErrorSummary(_status: number, body: string): { message: st
   const rid = typeof j.request_id === 'string' && j.request_id ? ` (request_id ${j.request_id})` : '';
   return {
     message: `TikTok error ${Number.isFinite(code) ? code : '?'}: ${String(typeof j.message === 'string' ? j.message : 'no message').slice(0, 220)}${rid}`,
-    transient: code === 40100 || (code >= 50000 && code < 60000),
+    transient: TIKTOK_RETRY_CODES.has(code) || (code >= 50000 && code < 60000),
     credentials: TIKTOK_CREDENTIAL_CODES.has(code),
+    code,
   };
 }
 

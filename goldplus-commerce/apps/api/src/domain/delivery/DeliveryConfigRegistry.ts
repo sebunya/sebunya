@@ -426,7 +426,7 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     unit: null,
     mandatory: false,
     defaultValue:
-      'We are not able to deliver to this area at the moment. You are welcome to collect from our Wilson Road shop, or choose a different delivery address.',
+      'We are not able to deliver to this area at the moment. You are welcome to collect from our New Pioneer Mall shop, or choose a different delivery address.',
     label: 'Area we do not serve',
     help: 'No quote at any price. Offer pickup and a different address.',
   },
@@ -437,7 +437,7 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     unit: null,
     mandatory: false,
     defaultValue:
-      'This address is reached by boat, so we cannot deliver there yet. You are welcome to collect from our Wilson Road shop, or give us a mainland address.',
+      'This address is reached by boat, so we cannot deliver there yet. You are welcome to collect from our New Pioneer Mall shop, or give us a mainland address.',
     label: 'Lake-access areas',
     help: 'The 12 water areas are pickup-only. No surcharge, no road quote.',
   },
@@ -448,7 +448,7 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     unit: null,
     mandatory: false,
     defaultValue:
-      'Place your order and our team will confirm your delivery fee before the rider leaves. Or collect free from our Wilson Road shop.',
+      'Place your order and our team will confirm your delivery fee before the rider leaves. Or collect free from our New Pioneer Mall shop.',
     label: 'Address did not resolve',
     help: 'A data gap never blocks a sale — the order completes through the manual path.',
   },
@@ -459,9 +459,9 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     unit: null,
     mandatory: false,
     defaultValue:
-      'Collect free from GoldPlus, Wilson Road, next to Uhuru Restaurant, opposite the Pioneer Mall parking area.',
+      'Collect free from GoldPlus, 4th Floor, New Pioneer Mall Building, Burton Street, next to Uhuru Restaurant, opposite Pioneer Mall.',
     label: 'Pickup offer',
-    help: 'Shown alongside every quote. Uhuru Restaurant first, Pioneer Mall as the wider fallback.',
+    help: 'Shown alongside every quote. Building and floor first, then Uhuru Restaurant, then Pioneer Mall as the wider fallback.',
   },
   {
     key: 'copy_unavailable_area_too_coarse',
@@ -519,7 +519,7 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     unit: null,
     mandatory: false,
     defaultValue:
-      'Getting this to you costs more than the items in your basket are worth. You are welcome to go ahead, but it may be worth adding to your order or collecting from our Wilson Road shop instead.',
+      'Getting this to you costs more than the items in your basket are worth. You are welcome to go ahead, but it may be worth adding to your order or collecting from our New Pioneer Mall shop instead.',
     label: 'Delivery costs more than the goods',
     help: 'Shown with the exact basket value that would make it proportionate. Never blocks the sale and never the pre-selected option.',
   },

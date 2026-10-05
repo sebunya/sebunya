@@ -32,7 +32,7 @@ export class HttpTikTokDiagnosticsGateway implements TikTokDiagnosticsGateway {
     }
     const text = await res.text().catch(() => '');
     const told = tiktokErrorSummary(res.status, text);
-    if (told) return { ok: false, ...told };
+    if (told) return { ok: false, message: told.message, credentials: told.credentials, transient: told.transient };
     if (!res.ok) return { ok: false, message: `TikTok answered HTTP ${res.status} with no explanation.`, credentials: res.status === 401 || res.status === 403, transient: res.status >= 500 || res.status === 429 };
     let json: { code?: unknown; request_id?: unknown } | null = null;
     try { json = JSON.parse(text); } catch { /* handled below */ }

@@ -262,8 +262,9 @@ errors) on 2026-10-01.
   Without it, events go with no amount at all (`tiktokMoney`). The same holds for a recorded
   offline sale.
 - Refusals: `code` ≠ 0 with a message and a request id, normally with a 4xx. A rate limit is
-  code 40100 **with HTTP 401**, so the body, not the status, decides: 40100 and 5xxxx are retried;
-  40001, 40104, 40105 are a credentials problem; a non-zero code inside a 2xx is a refusal too.
+  code 40100 **with HTTP 401**, so the body, not the status, decides. From TikTok's return-codes
+  appendix: 40016, 40100, 40132, 40133, 5xxxx and 60001 are retried; 40001, 40102, 40104, 40105,
+  40106 and 40113 are a credentials problem; a non-zero code inside a 2xx is a refusal too.
 - Test send: Advertising > Activity > TikTok > "Check with TikTok" sends one event with the test
   event code through the same builder (`POST /admin/advertising/tiktok/test-event`, audited).
 - The shop runs no TikTok Pixel, so there is no `_ttp` cookie to send.
