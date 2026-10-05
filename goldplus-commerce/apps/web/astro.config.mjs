@@ -12,11 +12,6 @@ const sentryDsn = process.env.PUBLIC_SENTRY_DSN || process.env.SENTRY_DSN;
 
 export default defineConfig({
   output: 'server',
-  // The shop page was named after Wilson Road until 2026-10-03; the shop is in
-  // the New Pioneer Mall Building (Burton Street face). Old links keep working.
-  redirects: {
-    '/locations/wilson-road': { status: 301, destination: '/locations/new-pioneer-mall' },
-  },
   adapter: node({
     mode: 'standalone'
   }),

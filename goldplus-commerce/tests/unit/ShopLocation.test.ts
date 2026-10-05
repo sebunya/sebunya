@@ -55,4 +55,13 @@ describe('SHOP_LOCATION', () => {
     const reg = read('apps/api/src/domain/delivery/DeliveryConfigRegistry.ts');
     expect(reg).toContain("'Collect free from GoldPlus, 4th Floor, New Pioneer Mall Building, Burton Street, next to Uhuru Restaurant, opposite Pioneer Mall.'");
   });
+
+  it('sends the old Wilson Road slug to the new shop page with a 301, in the middleware', () => {
+    // astro.config `redirects` never fired under the node adapter (404 on the
+    // built server, 2026-10-05), so the redirect must be in the middleware.
+    const mw = read('apps/web/src/middleware.ts');
+    expect(mw).toContain("'/locations/wilson-road': '/locations/new-pioneer-mall'");
+    expect(mw).toMatch(/context\.redirect\(`\$\{moved\}\$\{context\.url\.search\}`, 301\)/);
+    expect(read('apps/web/astro.config.mjs')).not.toContain('wilson-road');
+  });
 });
