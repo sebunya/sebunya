@@ -25,6 +25,8 @@ import { HttpTikTokDiagnosticsGateway } from './HttpTikTokDiagnosticsGateway';
 import { TikTokConnectUseCases } from '../../application/use-cases/advertising/TikTokConnectUseCases';
 import { SpotifyConnectUseCases } from '../../application/use-cases/advertising/SpotifyConnectUseCases';
 import { HttpSpotifyAdsGateway } from './HttpSpotifyAdsGateway';
+import { adUsdRate, setAdUsdRate } from './AdUsdRate';
+import { AdUsdRateUseCases } from '../../application/use-cases/advertising/AdUsdRateUseCases';
 import { HttpTikTokOAuthGateway } from './HttpTikTokOAuthGateway';
 import { storefrontOrigin } from '../config/storefrontOrigin';
 import { WhatsAppAdsUseCases } from '../../application/use-cases/advertising/WhatsAppAdsUseCases';
@@ -71,6 +73,7 @@ export function createAdvertisingOperations(deps: {
       destinationConfig: dest?.config ?? {},
       destinationSecret: decrypt(destEnc),
       testMode: !!dest?.enabled && dest.mode === 'test',
+      usdRate: await adUsdRate(),
     };
   };
 
@@ -110,8 +113,8 @@ export function createAdvertisingOperations(deps: {
       const c = await resolveStorefrontDiscount(deps.pricingRepo);
       return c.active ? { percentBps: c.percentBps, priceFloorUgx: c.priceFloorUgx, saleStartIso: c.startsIso, saleEndIso: c.endsIso } : null;
     },
-    // The same rate the TikTok events use, so a product's price and its sale value agree.
-    tiktokUgxPerUsd: async () => { const r = Number((await destRepo.get('tiktok'))?.config?.ugxPerUsd); return Number.isFinite(r) && r >= 100 ? r : null; },
+    // The one ad rate (0172), so a product's feed price and its sale value agree.
+    tiktokUgxPerUsd: adUsdRate,
   });
   const origin = deps.publicApiOrigin.replace(/\/+$/, '');
   const feedUrls = { google: `${origin}/seo/merchant-feed.xml`, meta: `${origin}/advertising/feeds/meta-catalogue.csv`, tiktok: `${origin}/advertising/feeds/tiktok-catalogue.csv` };
@@ -158,8 +161,10 @@ export function createAdvertisingOperations(deps: {
     return r.ok ? { ok: true } : { ok: false, message: r.message };
   }, deps.audit);
 
+  const usdRate = new AdUsdRateUseCases({ get: adUsdRate, set: setAdUsdRate }, deps.audit);
+
   return {
-    capabilities, audiences, spend, offline, feeds, feedUrls, activity, metaDiagnostics, tiktokDiagnostics, tiktokConnect, spotifyConnect, whatsappAds,
+    capabilities, audiences, spend, offline, feeds, feedUrls, activity, metaDiagnostics, tiktokDiagnostics, tiktokConnect, spotifyConnect, usdRate, whatsappAds,
     jobs,
     async checklist() {
       const [destinations, caps, feedProducts] = await Promise.all([deps.destinations.list(), capabilities.list(), feeds.included().catch(() => null)]);

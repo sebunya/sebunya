@@ -81,15 +81,8 @@ export function buildChecklist(input: {
         detail: d.key === 'google_ads' ? 'Test sends with validateOnly: Google checks each upload and records nothing.' : 'Test sends carry the test event code: the platform shows them under Test events and does not count them.',
         steps: d.key === 'google_ads' ? [] : [{ label: 'Test event code', where: where.testEventCode ?? 'The platform\'s Test events screen.', done: !!cfg.testEventCode, optional: true }] });
     }
-    if (d.key === 'tiktok') {
-      // The rate is optional, so its step above reads as done when empty. What empty MEANS is said here.
-      const rate = /^\d{3,6}$/.test(cfg.ugxPerUsd ?? '') ? cfg.ugxPerUsd : null;
-      items.push({ key: 'sale_values', title: 'Sale values and prices', status: rate ? 'READY' : 'NOT_CONFIGURED',
-        detail: rate
-          ? `Amounts go to TikTok in US dollars at ${rate} shillings to the dollar: event values, offline sales and catalogue prices.`
-          : 'TikTok has no Uganda shilling. Until a rate is saved, events and offline sales go without an amount (TikTok cannot optimise for value or report return on spend) and the catalogue feed stays in shillings, which TikTok will not accept.',
-        steps: [{ label: 'Shillings per US dollar', where: 'This platform\'s form further down the page. Use the rate you want sales reported at, for example 3700.', done: !!rate }] });
-    }
+    // TikTok's own "Shillings per US dollar" moved to the one rate for every ad
+    // platform at the top of the Advertising page (0172, 2026-10-06).
     const early = Object.keys(d.events).filter((e) => e !== 'purchase');
     if (early.length) {
       const sel = d.row?.eventSelection ?? null;
@@ -105,7 +98,7 @@ export function buildChecklist(input: {
       const whereFeed = d.key === 'meta'
         ? 'Commerce Manager > Catalogue > Data sources > Add items > Data feed > "Use a URL" (scheduled feed): paste this URL, repeat daily, currency UGX.'
         : d.key === 'tiktok'
-          ? 'First save "Shillings per US dollar" on the TikTok destination: TikTok has no Uganda shilling, and the feed then states prices in US dollars. Then TikTok Ads Manager > Assets > Catalogs > create a catalogue with default currency USD > Add products > Data feed: paste this URL and choose a daily schedule.'
+          ? 'First set "Shillings per US dollar" at the top of the Advertising page: the feed then states prices in US dollars. Then TikTok Ads Manager > Assets > Catalogs > create a catalogue with default currency USD > Add products > Data feed: paste this URL and choose a daily schedule.'
           : 'Merchant Center > Products > Data sources > Add product source > "Add products from a file" > enter a link: paste this URL, daily.';
       const n = input.feedProducts;
       items.push({ key: 'catalogue', title: 'Product catalogue feed', status: n !== null && n > 0 ? 'READY' : 'NOT_CONFIGURED',

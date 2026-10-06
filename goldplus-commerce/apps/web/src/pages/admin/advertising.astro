@@ -24,6 +24,10 @@ let notice: string | null = null;
 let formError: string | null = null;
 if (Astro.request.method === "POST") {
   const f = await Astro.request.formData();
+  if (f.get("intent") === "usd-rate") {
+    const r = await call("PUT", "/usd-rate", { rate: String(f.get("rate") ?? "") });
+    if (r.ok) notice = r.data.rate ? `Saved: ad platforms receive amounts in US dollars at ${r.data.rate} shillings per dollar.` : "Saved: no rate, so ad platforms receive no amounts."; else formError = r.message;
+  } else {
   const key = String(f.get("platform") ?? "");
   const config: Record<string, string> = {};
   // Every field is sent, blanks included: an optional field (Google manager
@@ -37,6 +41,7 @@ if (Astro.request.method === "POST") {
   const eventSelection = f.has("events-present") ? f.getAll("event").map(String) : undefined;
   const r = await call("PUT", `/${encodeURIComponent(key)}`, intent === "remove-token" ? { removeSecret: true } : { config, secret, enabled, mode, eventSelection });
   if (r.ok) notice = "Saved."; else formError = r.message;
+  }
 }
 
 // No trailing slash: the API's router is strict, so "/admin/advertising/" is
@@ -44,6 +49,8 @@ if (Astro.request.method === "POST") {
 // rendered the checklist but never the forms).
 const list = await call("GET", "");
 const checklist = await call("GET", "/checklist");
+const usd = await call("GET", "/usd-rate");
+const usdRate: number | null = usd.ok ? usd.data.rate : null;
 const EVENT_LABEL: Record<string, string> = { view_item: "Product view", add_to_cart: "Add to cart", begin_checkout: "Checkout started", add_payment_info: "Payment method chosen", generate_lead: "Lead (WhatsApp click or quote request)", search: "Product search", sign_up: "Account created", find_location: "Shop directions opened", page_seen: "Page view" };
 const STATE: Record<string, [string, string]> = {
   LIVE: ["Live — sending conversions", "bg-emerald-100 text-emerald-900"],
@@ -69,6 +76,15 @@ const when = (iso: unknown) => (typeof iso === "string" && iso ? new Date(iso).t
     </nav>
     {notice && <div role="status" class="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-sm text-emerald-900">{notice}</div>}
     {formError && <div role="alert" class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{formError}</div>}
+    <form method="POST" class={`mb-8 rounded-2xl border p-5 ${usdRate ? "border-gray-200 bg-white" : "border-amber-300 bg-amber-50"}`}>
+      <input type="hidden" name="intent" value="usd-rate" />
+      <h3 class="text-lg font-black text-brand-dark mb-1">Amounts sent to ad platforms: US dollars</h3>
+      <p class="text-sm text-gray-700 mb-3 max-w-3xl">Every ad platform receives sale values and prices in US dollars only, converted at this one rate. Customers still see and pay in shillings. {usdRate ? <span>Now: <strong>{usdRate}</strong> shillings per dollar.</span> : <strong>No rate is set, so events and offline sales go without an amount (they still count).</strong>}</p>
+      <label class="text-xs font-bold text-gray-700">Shillings per US dollar
+        <input name="rate" inputmode="numeric" pattern="[0-9]{3,6}" value={usdRate ?? ""} placeholder="for example 3700" class="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm font-normal" />
+      </label>
+      <button class="mt-3 inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Save rate</button>
+    </form>
     <section id="checklist" aria-labelledby="checklist-h" class="mb-10">
       <h3 id="checklist-h" class="text-lg font-black text-brand-dark mb-1">Connection checklist</h3>
       <p class="text-sm text-gray-600 mb-4 max-w-3xl">Every field each platform needs, where to find it in that platform, and what is true today. A step is ticked only when the stored value passes its check; steps done inside the platform itself (such as scheduling a feed) cannot be seen from here and are never ticked.</p>

@@ -98,6 +98,14 @@ routes.post('/spotify/connect', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]
   return r.ok ? c.json({ success: true, data: { adAccountId: r.adAccountId, adAccountName: r.adAccountName } }) : c.json({ success: false, error: { code: 'BAD_INPUT', message: r.message } }, 422);
 });
 
+// The one shillings-per-dollar rate for every ad platform (0172): ad networks receive US dollars only.
+routes.get('/usd-rate', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => c.json({ success: true, data: { rate: await ops().usdRate.get() } }));
+routes.put('/usd-rate', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c: Context) => {
+  const b = (await c.req.json().catch(() => null)) as { rate?: unknown } | null;
+  const r = await ops().usdRate.set(actor(c), b?.rate);
+  return r.ok ? c.json({ success: true, data: { rate: r.rate } }) : c.json({ success: false, error: { code: 'BAD_INPUT', message: r.message } }, 422);
+});
+
 routes.get('/audiences', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const [preview, runs, capabilities, customSegments] = await Promise.all([ops().audiences.preview(), ops().audiences.recentRuns(30), capView(), ops().audiences.availableCustomSegments().catch(() => [])]);
   return c.json({ success: true, data: { preview, runs, capabilities: capabilities.filter((v) => v.capability === 'audiences'), customSegments } });
