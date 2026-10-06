@@ -88,6 +88,15 @@ support, extended warranty handling, early access), not discounts. Wrong: low
 thresholds = tier inflation; discount benefits = double liability with
 redemption.
 
+> **2026-10-06 (owner): lifetime points = every point credited.** Orders,
+> referrals, missions, scans, birthday, scratch cards, counterfeit reports,
+> phone verification and manual credits all count toward lifetime points and
+> tiers; reversals of a credit and negative manual corrections take points
+> off; redemption and expiry never do. One rule: `computeLifetimePoints`
+> (SQL twin `LIFETIME_POINTS_SQL` for the hero meter). A tier change is
+> announced only on a move up; a level lowered by a reversal changes quietly.
+> Preview who moves before a deploy with `ops/loyalty/tier-preview.sql`.
+
 **9. Quests/badges.** RECOMMEND none until verification earning is live; then a
 verification badge track (costless recognition). Preview quests already off the
 page.

@@ -59,7 +59,7 @@ if (Astro.request.method === "POST") {
       const json = await res.json().catch(() => null);
       notice = res.ok && json?.success
         ? { kind: "success", text: json.data.evaluable
-            ? `Dry evaluation: ${json.data.wouldQualify} of ${json.data.population} would qualify. ${json.data.note} ${json.data.awardsBlockedReason ? `Awards: blocked (${json.data.awardsBlockedReason}).` : "Nothing was written: an ACTIVE mission awards each customer when their next qualifying event lands."}`
+            ? `Dry evaluation: ${json.data.wouldQualify} of ${json.data.population} would qualify. ${json.data.note} ${json.data.awardsBlockedReason ? `Awards are on hold: ${json.data.awardsBlockedReason}.` : "Nothing was written: an ACTIVE mission awards each customer when their next qualifying event lands."}`
             : `Not evaluable: ${json.data.note}` }
         : { kind: "error", text: json?.error?.message || "Evaluation refused." };
     }
