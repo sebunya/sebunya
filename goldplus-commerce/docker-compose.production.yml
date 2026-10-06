@@ -1,7 +1,17 @@
+# Container logs were unbounded (json-file keeps every line forever); on a
+# 75 GB disk with 12 services that is the quiet filler. 20 MB x 3 files per
+# container, about 720 MB in all, worst case.
+x-goldplus-logging: &goldplus-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "3"
+
 services:
   postgres:
     image: postgres:16-alpine
     restart: always
+    logging: *goldplus-logging
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -20,6 +30,7 @@ services:
   redis:
     image: redis:7-alpine
     restart: always
+    logging: *goldplus-logging
     ports:
       - "127.0.0.1:6379:6379"
     volumes:
@@ -38,6 +49,7 @@ services:
     # 1.25.2 (edoburu has no matching semver tag), re-pointed to 6432 via LISTEN_PORT.
     image: edoburu/pgbouncer@sha256:4c1ca296ef525f108f5d3552cc337c0c09587cf8dae7f0067fd93349e47dc1cd
     restart: always
+    logging: *goldplus-logging
     environment:
       - DB_HOST=postgres
       - DB_PORT=5432
@@ -69,6 +81,7 @@ services:
       context: .
       dockerfile: Dockerfile.api
     restart: always
+    logging: *goldplus-logging
     # Signals reach node through an init process, and the stop budget covers the
     # whole graceful shutdown (server.ts: HTTP close, outbox wait up to 10s, queue
     # workers, then the pool). Docker's default 10s SIGKILLed it part way through.
@@ -279,6 +292,7 @@ services:
         - PUBLIC_METRICS_URL=${PUBLIC_METRICS_URL:-}
         - PUBLIC_CLARITY_ID=${PUBLIC_CLARITY_ID:-}
     restart: always
+    logging: *goldplus-logging
     # node as PID 1 ignores SIGTERM (the Astro node adapter registers no handler),
     # so every stop waited the full grace period and was then SIGKILLed. With an
     # init process SIGTERM ends it promptly.
@@ -342,6 +356,7 @@ services:
   caddy:
     image: caddy:2-alpine
     restart: always
+    logging: *goldplus-logging
     ports:
       - "80:80"
       - "443:443"
@@ -355,6 +370,7 @@ services:
   pghero:
     image: ankane/pghero
     restart: always
+    logging: *goldplus-logging
     ports:
       - "127.0.0.1:8082:8080"
     environment:
@@ -368,6 +384,7 @@ services:
   prometheus:
     image: prom/prometheus:latest
     restart: always
+    logging: *goldplus-logging
     ports:
       - "127.0.0.1:9090:9090"
     volumes:
@@ -375,10 +392,15 @@ services:
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
+      # Explicit retention: the default is 15 days, unbounded in size. 7 days
+      # and 1 GB is more than the Grafana panels look back on a 4 GB host.
+      - '--storage.tsdb.retention.time=7d'
+      - '--storage.tsdb.retention.size=1GB'
 
   grafana:
     image: grafana/grafana:latest
     restart: always
+    logging: *goldplus-logging
     ports:
       - "127.0.0.1:3001:3000"
     environment:
@@ -391,6 +413,7 @@ services:
   node-exporter:
     image: prom/node-exporter:latest
     restart: always
+    logging: *goldplus-logging
     ports:
       - "127.0.0.1:9100:9100"
 
@@ -407,6 +430,7 @@ services:
   sgtm-production:
     image: gcr.io/cloud-tagging-10302018/gtm-cloud-image:stable
     restart: always
+    logging: *goldplus-logging
     environment:
       - CONTAINER_CONFIG=${GTM_CONTAINER_CONFIG}
       - RUN_AS_PREVIEW_SERVER=false
@@ -426,6 +450,7 @@ services:
   sgtm-preview:
     image: gcr.io/cloud-tagging-10302018/gtm-cloud-image:stable
     restart: always
+    logging: *goldplus-logging
     environment:
       - CONTAINER_CONFIG=${GTM_CONTAINER_CONFIG}
       - RUN_AS_PREVIEW_SERVER=true

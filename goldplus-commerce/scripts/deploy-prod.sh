@@ -69,24 +69,27 @@ echo "DEPLOYED $HEAD, $WANT/$WANT healthy, tagged rollback-$HEAD"
 # 2026-09-20 after a day of deploys. Cache older than a day is dropped (the
 # next build is slower, never wrong). Never fails the deploy.
 docker builder prune -f --filter until=24h >/dev/null 2>&1 || true
-# Lighthouse Watch: offer a measurement after the roll, in the background. The
-# runner enforces at most one automatic run per 96 hours (owner decision), so
-# most deploys are skipped by it; a manual run is always available:
-#   ./scripts/lighthouse-watch.sh manual
+# Post-roll measurement, ONE background job, strictly in sequence:
+#   1. compatibility + performance smoke (control + local Lighthouse + the
+#      compatibility programme in smoke mode; ad-hoc label, never moves the
+#      ten-day clock), then
+#   2. Lighthouse Watch (at most one automatic run per 96 hours, owner decision
+#      2026-09-13; most deploys are skipped by it; manual: ./scripts/lighthouse-watch.sh manual).
+# They used to start in the same second. Each container may take 1.5 GB on a
+# 3.7 GB host, and on 2026-10-06 both ran at once (3.5 GB asked, swap used,
+# customers felt it). Sequential costs nothing: both are background anyway.
+# 9>&- : a background job must not inherit the deploy lock. It did, and the
+# next deploy was refused for as long as the smoke ran (2026-09-18).
 # Never blocks or fails the deploy.
-if [ -x scripts/lighthouse-watch.sh ]; then
-  # 9>&- : a background job must not inherit the deploy lock. It did, and the
-  # next deploy was refused for as long as the smoke ran (2026-09-18).
-  nohup scripts/lighthouse-watch.sh deploy >/dev/null 2>&1 9>&- &
-  echo "Lighthouse Watch started in the background (log: /var/log/goldplus/lighthouse-watch.log)"
-fi
-
-# Compatibility + performance smoke after the roll (background, ad-hoc label, never moves the
-# ten-day clock): control + local Lighthouse + the compatibility programme in smoke mode
-# (Chromium low-end/mainstream, Firefox, WebKit journeys, PWA health, one slow profile).
-if [ -x performance-audit/schedule/run-in-container.sh ]; then
-  (PERF_AUDIT_ONLY="control lighthouse compatibility" COMPATIBILITY_AUDIT_MODE=smoke LIGHTHOUSE_RUNS=1 \
-    nohup performance-audit/schedule/run-in-container.sh --ad-hoc --label "post-deploy-smoke-$HEAD" \
-    >> /var/log/goldplus/performance-audit-post-deploy.log 2>&1 </dev/null 9>&- &)
-  echo "post-deploy compatibility/performance smoke started in the background (label post-deploy-smoke-$HEAD; results under /var/lib/goldplus-performance-audit and on /admin/seo/performance-audit)"
-fi
+(
+  if [ -x performance-audit/schedule/run-in-container.sh ]; then
+    PERF_AUDIT_ONLY="control lighthouse compatibility" COMPATIBILITY_AUDIT_MODE=smoke LIGHTHOUSE_RUNS=1 \
+      performance-audit/schedule/run-in-container.sh --ad-hoc --label "post-deploy-smoke-$HEAD" \
+      >> /var/log/goldplus/performance-audit-post-deploy.log 2>&1 </dev/null || true
+  fi
+  if [ -x scripts/lighthouse-watch.sh ]; then
+    scripts/lighthouse-watch.sh deploy >/dev/null 2>&1 </dev/null || true
+  fi
+) 9>&- &
+disown 2>/dev/null || true
+echo "post-deploy smoke (label post-deploy-smoke-$HEAD; results under /var/lib/goldplus-performance-audit and on /admin/seo/performance-audit) then Lighthouse Watch (log: /var/log/goldplus/lighthouse-watch.log) started in the background, one after the other"
