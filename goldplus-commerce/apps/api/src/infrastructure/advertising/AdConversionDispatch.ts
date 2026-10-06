@@ -7,8 +7,6 @@ import { DEAD_LETTER_STATE } from '../../domain/outbox/TerminalState';
 import { DrizzleAdDestinationRepository } from '../db/repositories/DrizzleAdDestinationRepository';
 import { IntegrationCredentialVault } from '../seo/IntegrationCredentialVault';
 import { adErrorSummary, adPlatform, adPlatformAccepts, adSkipReason, buildAdRequest } from './AdPlatforms';
-import { eventInUsd } from '../../domain/advertising/AdMoney';
-import { adUsdRate } from './AdUsdRate';
 import { withVisitorClickIds } from './VisitorClickIds';
 import { quoteLeadContact, visitorAccount, withAccountContact, type VisitorAccount } from './VisitorContact';
 import { advertisingRefused } from '../measurement/AdvertisingConsentGate';
@@ -158,9 +156,7 @@ export async function processAdConversionBatch(): Promise<{ claimed: number; sen
     // A quote request's own contact, for the Lead that confirms it (Meta only): the
     // person who is not signed in is matched on what they gave in the request.
     const quote = platform === 'meta' ? await quoteLeadContact(event).catch(() => null) : null;
-    // Ad platforms get US dollars only (owner decision 2026-10-06): converted at
-    // the owner's one rate, or sent without an amount, never in shillings.
-    const enriched = eventInUsd(withAccountContact(await withVisitorClickIds(event), quote ?? account), await adUsdRate());
+    const enriched = withAccountContact(await withVisitorClickIds(event), quote ?? account);
     const req = buildAdRequest(platform, enriched, dest.config, secret);
     // The reason is a stable code (NO_X_CLICK, NO_EVENT_ID, NO_IDENTIFIER) so
     // the activity page can say which of the three it was.

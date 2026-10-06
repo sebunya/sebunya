@@ -47,10 +47,9 @@ describe('WhatsApp sales credited to the advert without the WhatsApp Business Pl
     const ctx: any = { row: { platform: 'meta', source: 'ADMIN_SALE', sourceRef: '11111111-2222-4333-8444-555555555555', eventId: 'ev-1', occurredAt: '2026-10-01T10:00:00Z' }, valueUgx: 150000, orderId: null, orderNumber: null, channel: 'WHATSAPP',
       hashes: { emailSha256: null, emailGoogleSha256: null, phoneDigitsSha256: null, phonePlusSha256: null }, clickIds: { fbc: 'fb.1.1790841538888.IwAR_x' },
       visitorId: 'fp.1790841536221.11111111-1111-4111-8111-111111111111', subjects: { userIds: [], fpClientIds: [] } };
-    const req: any = offlineRequest(ctx, { config: {}, secret: '', destinationConfig: { datasetId: '1234567890123' }, destinationSecret: 'T', testMode: false, usdRate: 3750 });
+    const req: any = offlineRequest(ctx, { config: {}, secret: '', destinationConfig: { datasetId: '1234567890123' }, destinationSecret: 'T', testMode: false });
     const ev = req.body.data[0];
-    // US dollars only (owner decision 2026-10-06): 150,000 shillings at 3,750 = 40 dollars.
-    expect(ev).toMatchObject({ event_name: 'Purchase', action_source: 'chat', custom_data: { currency: 'USD', value: 40 } });
+    expect(ev).toMatchObject({ event_name: 'Purchase', action_source: 'chat', custom_data: { currency: 'UGX', value: 150000 } });
     expect(ev.user_data.fbc).toBe('fb.1.1790841538888.IwAR_x');
     expect(ev.user_data.external_id).toHaveLength(1);
     expect(ev.user_data.fbp).toMatch(/^fb\.1\.1790841536221\.[1-9]\d{9}$/);
