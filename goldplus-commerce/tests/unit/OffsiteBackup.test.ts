@@ -131,8 +131,11 @@ describe('deploy-prod.sh and compose hygiene', () => {
     // Age alone left a busy day unbounded (21.3 GB on 2026-10-06).
     expect(d).toContain('docker builder prune -f --filter until=24h');
     expect(d).toContain('CACHE_CAP_GB="${BUILD_CACHE_MAX_GB:-2}"');
-    // Docker 29 removed --keep-storage: detect the flag, never assume it.
+    // Docker 29 removed --keep-storage: detect the flag, never assume it, and
+    // never via `--help | grep -q` (SIGPIPE under pipefail makes it look absent).
     expect(d).toMatch(/for f in --max-used-space --keep-storage; do/);
+    expect(d).toContain('CACHE_HELP="$(docker builder prune --help 2>/dev/null || true)"');
+    expect(d).not.toMatch(/prune --help[^\n]*\| *grep -q/);
     expect(d).toContain('docker builder prune -f "$CACHE_FLAG" "$(( CACHE_CAP_GB * 1024 * 1024 * 1024 ))"');
     // A failed cap is said out loud, never swallowed; a "successful" one is re-measured.
     expect(d).toContain('WARN: build cache cap');
@@ -141,6 +144,14 @@ describe('deploy-prod.sh and compose hygiene', () => {
     expect(read('ops/storage-steward/policy.yaml')).toMatch(/build_cache_max_gb: 2\b/);
     // Bounded, never a full wipe: a cold build loads the 2-vCPU host.
     expect(d).not.toMatch(/builder prune -a|builder prune -af|builder prune --all/);
+  });
+
+  it('a migration removes older migrator images, keeping the one it used, and never fails on it', () => {
+    const m = read('scripts/migrate-prod.sh');
+    const tail = m.slice(m.indexOf('echo "MIGRATED live'));
+    expect(tail).toContain('docker images goldplus-migrator');
+    expect(tail).toContain('grep -vxF "$MIG"');
+    expect(tail).toMatch(/xargs -r docker image rm[^\n]*\|\| true/);
   });
 
   it('pghero credentials default to empty instead of warning on every compose command', () => {

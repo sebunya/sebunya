@@ -87,8 +87,12 @@ docker builder prune -f --filter until=24h >/dev/null 2>&1 || true
 # layers this deploy just used stay warm.
 CACHE_CAP_GB="${BUILD_CACHE_MAX_GB:-2}"
 CACHE_FLAG=""
+# Read the help once into a variable. Piping it into `grep -q` is unsafe
+# under `set -o pipefail`: grep can exit on the first match, docker then
+# dies of SIGPIPE, the pipeline reports failure and the flag looks absent.
+CACHE_HELP="$(docker builder prune --help 2>/dev/null || true)"
 for f in --max-used-space --keep-storage; do
-  if docker builder prune --help 2>/dev/null | grep -q -- "$f"; then CACHE_FLAG="$f"; break; fi
+  case "$CACHE_HELP" in *"$f"*) CACHE_FLAG="$f"; break ;; esac
 done
 if [ -n "$CACHE_FLAG" ]; then
   # A plain byte count, exactly as the Steward passes it (proven on this host).
