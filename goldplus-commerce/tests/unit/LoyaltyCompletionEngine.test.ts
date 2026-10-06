@@ -133,7 +133,9 @@ describe('FIFO + reversal-of-redeem (PART G reversal keeps original expiry)', ()
     ];
     const balance = computeBalance(entries, new Date());
     expect(balance.available).toBe(0);
-    expect(balance.lifetimeEarned).toBe(300);
+    // A clawback takes its points off lifetime too (a refunded order cannot
+    // buy a level); the redemption does not (spending never costs a level).
+    expect(balance.lifetimeEarned).toBe(100);
     expect(balance.lifetimeRedeemed).toBe(100);
   });
   it('a spent-then-clawed balance goes negative and the negative is carried', () => {

@@ -2,7 +2,7 @@ import { ILoyaltyRepository } from '../../ports/ILoyaltyRepository';
 import { ILoyaltyCompletionRepository } from '../../ports/ILoyaltyCompletion';
 import { IAuditRepository } from '../../ports/IAuditRepository';
 import { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
-import { countsTowardLifetime } from '../../../domain/loyalty/LoyaltyLedger';
+import { computeLifetimePoints } from '../../../domain/loyalty/LoyaltyLedger';
 
 type Fail = { ok: false; code: string; message: string };
 const fail = (code: string, message: string): Fail => ({ ok: false, code, message });
@@ -129,7 +129,7 @@ export class ManualAdjustLoyaltyUseCase {
 
 /**
  * Tier evaluation (PART L): assigns the highest ACTIVE tier whose threshold
- * the account's lifetime points meet (countsTowardLifetime). Inactive/unset tiers (thresholds
+ * the account's lifetime points meet (computeLifetimePoints). Inactive/unset tiers (thresholds
  * are Rob's PART V #8) assign nothing. Change notifications ride the existing
  * outbox path.
  */
@@ -158,14 +158,21 @@ export class EvaluateTiersUseCase {
       // gave one customer two tiers and two tier messages.
       if (await this.loyalty.mergedInto(accountId)) continue;
       const entries = await this.loyalty.listEntries(accountId);
-      const lifetime = entries.filter(countsTowardLifetime).reduce((s, e) => s + e.points, 0);
+      const lifetime = computeLifetimePoints(entries);
       const target = ranked.find((t) => lifetime >= t.thresholdLifetimePoints);
       if (!target) continue;
       const current = await this.tiers.currentAssignment(accountId);
       if (current?.tierCode === target.code) continue;
       await this.tiers.assign(accountId, target.code);
       changed++;
-      await this.notifyTierChange({ userId, tierCode: target.code, tierName: target.name }).catch(() => undefined);
+      // Only a move UP is announced: the message reads "Welcome to <tier>". A
+      // move down (the points that earned a level were reversed) is applied
+      // quietly and shows on the account page. A current tier that is no longer
+      // active has no rank to compare, so that move is announced as before.
+      const currentRank = current ? tiers.find((t) => t.code === current.tierCode)?.rank : undefined;
+      if (currentRank === undefined || target.rank > currentRank) {
+        await this.notifyTierChange({ userId, tierCode: target.code, tierName: target.name }).catch(() => undefined);
+      }
     }
     return { evaluated: accounts.length, changed };
   }
