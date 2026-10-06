@@ -481,3 +481,18 @@ Not verified against a live account (no credentials exist): the TikTok customer-
 (one hash per line, no header), TikTok's `dmp/custom_audience/delete/` body, and the Data Manager
 API end to end (request shapes follow its REST reference). Both surface a
 platform error in the run log rather than failing silently.
+
+## Spotify Conversions API (2026-10-06)
+
+`spotify` in `AdPlatforms.ts`. Owner enters the **CAPI connection ID** (a UUID) and the long-lived
+**CAPI access token**, both from Spotify Ads Manager > Events > Connect data source > Conversions
+API. That token is not the Ads API sign-in token. Sent: `PRODUCT`, `ADD_TO_CART`, `CHECK_OUT`,
+`LEAD`, `PURCHASE`, with client IP and SHA-256 email (trimmed, lower-cased). Not sent, because
+Spotify's own guide leaves the format open: phone hashes and device IDs. No Test mode: Spotify
+documents no test channel. `content_category` is never sent (a free-form value is a 400).
+Source: Spotify's repository `spotify/ads-agentic-tools`, `skills/measurement-setup/references/
+implementation-guide.md` and `skills/measurement-debug/references/troubleshooting.md` (commit
+65327ac7), and the Spotify Ads help article "Spotify Conversions API".
+
+Reddit is listed as not built: its v3 reference could not be read first-hand, and third-party
+clients disagree on what decides a match.

@@ -573,7 +573,7 @@ describe('capabilities', () => {
   it('the checklist reads real state and never ticks what it cannot see', () => {
     const meta = AD_PLATFORMS.find((p) => p.key === 'meta')!;
     const list = buildChecklist({
-      destinations: [{ ...meta, state: 'NOT_CONFIGURED', row: null }, { ...AD_PLATFORMS.find((p) => p.key === 'spotify')!, state: 'NOT_AVAILABLE', row: null } as any],
+      destinations: [{ ...meta, state: 'NOT_CONFIGURED', row: null }, { ...AD_PLATFORMS.find((p) => p.key === 'sa360')!, state: 'NOT_AVAILABLE', row: null } as any],
       capabilities: [],
       feedProducts: null,
       feedUrls: { google: 'g', meta: 'https://api.shopgoldplus.com/advertising/feeds/meta-catalogue.csv', tiktok: 't' },
@@ -586,7 +586,7 @@ describe('capabilities', () => {
     const feed = m.items.find((i) => i.key === 'catalogue')!;
     expect(feed.detail).toMatch(/could not be read/);
     expect(feed.steps[0]).toMatchObject({ done: false, unverifiable: true });
-    expect(list.find((p) => p.platform === 'spotify')!.status).toBe('NOT_AVAILABLE');
+    expect(list.find((p) => p.platform === 'sa360')!.status).toBe('NOT_AVAILABLE');
   });
   it('the TikTok checklist says what an empty dollar rate means: no amounts, and a feed TikTok will not take', () => {
     const tiktok = AD_PLATFORMS.find((p) => p.key === 'tiktok')!;

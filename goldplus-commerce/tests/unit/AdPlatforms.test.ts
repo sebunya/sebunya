@@ -258,7 +258,7 @@ describe('advertising platforms: request builders', () => {
     expect(buildAdRequest('pinterest', { ...purchase, event_name: 'begin_checkout' }, { adAccountId: '549755885175' }, 'P')).toBeNull();
   });
   it('platforms without an implemented API are listed with a reason, never built', () => {
-    for (const k of ['spotify', 'sa360']) {
+    for (const k of ['reddit', 'sa360']) {
       const p = AD_PLATFORMS.find((x) => x.key === k)!;
       expect(p.unavailable).toBeTruthy();
       expect(buildAdRequest(k, purchase, {}, 't')).toBeNull();
@@ -312,7 +312,7 @@ describe('advertising destinations: complete before live, tokens write-only', ()
   });
   it('an unavailable platform cannot be configured', async () => {
     const { uc } = mk();
-    expect(await uc.configure('u', 'spotify', { enabled: true })).toMatchObject({ ok: false, code: 'NOT_CONFIGURED' });
+    expect(await uc.configure('u', 'sa360', { enabled: true })).toMatchObject({ ok: false, code: 'NOT_CONFIGURED' });
   });
 });
 
@@ -560,3 +560,57 @@ describe('advertising: third-review fixes', () => {
   });
 });
 
+
+describe('Spotify Conversions API, as Spotify documents it', () => {
+  const sp = AD_PLATFORMS.find((p) => p.key === 'spotify')!;
+  const cfg = { connectionId: '1b4e28ba-2fa1-11d2-883f-0016d3cca427' };
+  const ev = (over: Record<string, unknown> = {}) => ({
+    event_name: 'purchase', event_id: 'ord-123-purchase', event_time: 1791331200, page_location: 'https://shopgoldplus.com/checkout/success',
+    user_data: { hashed_email: 'a'.repeat(64), hashed_phone: 'b'.repeat(64), ip_address: '41.210.1.2', user_agent: 'UA' },
+    ecommerce: { currency: 'UGX', value: 450000, transaction_id: 'ord-123', items: [{ item_id: 'p1', item_name: 'Samsung A15', quantity: 1, price: 450000 }] },
+    ...over,
+  }) as any;
+
+  it('is no longer listed as unavailable, and has no Test mode (Spotify documents none)', () => {
+    expect(sp.unavailable).toBeUndefined();
+    expect(sp.testable).toBeFalsy();
+  });
+
+  it('a purchase goes to capi-direct with the bearer token and the conversion_events envelope', () => {
+    const r = sp.build!(ev(), cfg, 'tok')!;
+    expect(r.url).toBe('https://capi.spotify.com/capi-direct/events/');
+    expect(r.headers.Authorization).toBe('Bearer tok');
+    const body = r.body as any;
+    expect(body.conversion_events.capi_connection_id).toBe(cfg.connectionId);
+    const e0 = body.conversion_events.events[0];
+    expect(e0).toMatchObject({ event_name: 'PURCHASE', event_id: 'ord-123-purchase', event_time: '2026-10-07T00:00:00.000Z', action_source: 'WEB',
+      event_source_url: 'https://shopgoldplus.com/checkout/success', opt_out_targeting: false });
+    expect(e0.user_data).toEqual({ ip_address: '41.210.1.2', hashed_emails: ['a'.repeat(64)] });
+    expect(e0.event_details).toEqual({ currency: 'UGX', amount: 450000, content_name: 'Samsung A15' });
+  });
+
+  it("uses Spotify's CAPI spellings, and only the five shopping events", () => {
+    expect(sp.events).toEqual({ view_item: 'PRODUCT', add_to_cart: 'ADD_TO_CART', begin_checkout: 'CHECK_OUT', generate_lead: 'LEAD', purchase: 'PURCHASE' });
+  });
+
+  it('never sends a phone hash or a device id: Spotify does not state their format', () => {
+    const e0 = (sp.build!(ev(), cfg, 't')!.body as any).conversion_events.events[0];
+    expect(JSON.stringify(e0)).not.toMatch(/phone|device_id/);
+  });
+
+  it('nothing to match on, nothing sent', () => {
+    expect(sp.build!(ev({ user_data: { hashed_phone: 'b'.repeat(64) } }), cfg, 't')).toBeNull();
+  });
+
+  it('a lead carries no amount, and never a content_category (a free string is a 400)', () => {
+    const e0 = (sp.build!(ev({ event_name: 'generate_lead', ecommerce: undefined }), cfg, 't')!.body as any).conversion_events.events[0];
+    expect(e0.event_name).toBe('LEAD');
+    expect(e0.event_details).toBeUndefined();
+    expect(JSON.stringify(sp.build!(ev(), cfg, 't')!.body)).not.toContain('content_category');
+  });
+
+  it('the connection id must be a UUID', () => {
+    expect(sp.fields[0].pattern.test(cfg.connectionId)).toBe(true);
+    expect(sp.fields[0].pattern.test('not-a-uuid')).toBe(false);
+  });
+});
