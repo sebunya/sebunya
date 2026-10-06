@@ -2,6 +2,7 @@ import { ILoyaltyRepository } from '../../ports/ILoyaltyRepository';
 import { ILoyaltyCompletionRepository } from '../../ports/ILoyaltyCompletion';
 import { IAuditRepository } from '../../ports/IAuditRepository';
 import { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
+import { computeLifetimePoints } from '../../../domain/loyalty/LoyaltyLedger';
 
 type Fail = { ok: false; code: string; message: string };
 const fail = (code: string, message: string): Fail => ({ ok: false, code, message });
@@ -128,13 +129,14 @@ export class ManualAdjustLoyaltyUseCase {
 
 /**
  * Tier evaluation (PART L): assigns the highest ACTIVE tier whose threshold
- * the account's lifetime earned points meet. Inactive/unset tiers (thresholds
+ * the account's lifetime points meet (computeLifetimePoints). Inactive/unset tiers (thresholds
  * are Rob's PART V #8) assign nothing. Change notifications ride the existing
  * outbox path.
  */
 export interface ILoyaltyTierRepository {
   activeTiers(): Promise<Array<{ code: string; name: string; thresholdLifetimePoints: number; rank: number }>>;
-  currentAssignment(accountId: string): Promise<{ tierCode: string } | null>;
+  /** The account's tier, with that tier's rank even if it has since been deactivated. */
+  currentAssignment(accountId: string): Promise<{ tierCode: string; rank: number | null } | null>;
   assign(accountId: string, tierCode: string): Promise<void>;
 }
 
@@ -143,7 +145,7 @@ export class EvaluateTiersUseCase {
     private readonly loyalty: ILoyaltyRepository,
     private readonly completion: ILoyaltyCompletionRepository,
     private readonly tiers: ILoyaltyTierRepository,
-    private readonly notifyTierChange: (input: { userId: string; tierCode: string; tierName: string }) => Promise<unknown>,
+    private readonly notifyTierChange: (input: { userId: string; tierCode: string; tierName: string; direction: 'up' | 'down' }) => Promise<unknown>,
   ) {}
 
   async execute(): Promise<{ evaluated: number; changed: number }> {
@@ -151,20 +153,27 @@ export class EvaluateTiersUseCase {
     if (tiers.length === 0) return { evaluated: 0, changed: 0 };
     const ranked = [...tiers].sort((a, b) => b.rank - a.rank); // highest first
     const accounts = await this.completion.listAccountIds();
+    const reductionsFrom = await this.loyalty.lifetimeReductionsFrom();
     let changed = 0;
     for (const { accountId, userId } of accounts) {
       // A merged account's earns count on its survivor; tiering it separately
       // gave one customer two tiers and two tier messages.
       if (await this.loyalty.mergedInto(accountId)) continue;
       const entries = await this.loyalty.listEntries(accountId);
-      const lifetime = entries.filter((e) => e.type === 'earn').reduce((s, e) => s + e.points, 0);
+      const lifetime = computeLifetimePoints(entries, reductionsFrom);
       const target = ranked.find((t) => lifetime >= t.thresholdLifetimePoints);
       if (!target) continue;
       const current = await this.tiers.currentAssignment(accountId);
       if (current?.tierCode === target.code) continue;
       await this.tiers.assign(accountId, target.code);
       changed++;
-      await this.notifyTierChange({ userId, tierCode: target.code, tierName: target.name }).catch(() => undefined);
+      // Every change is announced (brief PART M), in its own words: a move up
+      // is a welcome, a move down is told plainly. The current tier's rank is
+      // read even when that tier has been deactivated, so a customer moved
+      // down off a retired tier is never "welcomed" to a lower one.
+      const currentRank = current?.rank ?? null;
+      const direction = currentRank === null || target.rank > currentRank ? 'up' : 'down';
+      await this.notifyTierChange({ userId, tierCode: target.code, tierName: target.name, direction }).catch(() => undefined);
     }
     return { evaluated: accounts.length, changed };
   }

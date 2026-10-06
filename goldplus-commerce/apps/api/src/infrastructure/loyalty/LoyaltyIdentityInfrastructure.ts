@@ -199,7 +199,10 @@ export class DrizzleLoyaltyTierRepository implements ILoyaltyTierRepository {
 
   async currentAssignment(accountId: string) {
     const row = await db.query.loyaltyTierAssignments.findFirst({ where: eq(loyaltyTierAssignments.accountId, accountId) });
-    return row ? { tierCode: row.tierCode } : null;
+    if (!row) return null;
+    // Any tier, active or not: the rank says whether a change is up or down.
+    const tier = await db.query.loyaltyTiers.findFirst({ where: eq(loyaltyTiers.code, row.tierCode) });
+    return { tierCode: row.tierCode, rank: tier?.rank ?? null };
   }
 
   async assign(accountId: string, tierCode: string): Promise<void> {

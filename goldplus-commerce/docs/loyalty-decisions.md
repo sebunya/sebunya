@@ -88,6 +88,20 @@ support, extended warranty handling, early access), not discounts. Wrong: low
 thresholds = tier inflation; discount benefits = double liability with
 redemption.
 
+> **2026-10-06 (owner): lifetime points = every point credited.** Orders,
+> referrals, missions, scans, birthday, scratch cards, counterfeit reports,
+> phone verification and manual credits all count toward lifetime points and
+> tiers; reversals of a credit and negative manual corrections take points
+> off; redemption and expiry never do. One rule: `computeLifetimePoints`
+> (SQL twin `LIFETIME_POINTS_SQL` for the hero meter). Not retroactive
+> against the customer (terms §9): reductions count only from
+> `loyalty_config.lifetime_reductions_from`, which 0174 stamps at deploy, so
+> the switch lowers no one's level for an old refund; the terms print that
+> date. Every tier change is announced (PART M): a move up is a welcome; a
+> move down is told without claiming a cause (it can be a reversal or a
+> raised threshold). Terms move to v2. Preview moves before a deploy with
+> `ops/loyalty/tier-preview.sql`.
+
 **9. Quests/badges.** RECOMMEND none until verification earning is live; then a
 verification badge track (costless recognition). Preview quests already off the
 page.
@@ -147,7 +161,7 @@ none of them is now a code change.
 | 6 | Earning basis | **Rule v1 retained** (order total). A v2 on subtotal is a new rule row whenever Rob wants it; changing it now would split history for zero live entries and no customer benefit. |
 | 7 | Additional earn sources | **verification_scan 25 (cap 5/day), counterfeit_report 250, phone_verification 100** — all ACTIVE |
 | 8 | Tiers | **T1 0 / T2 2,500 / T3 10,000 / T4 30,000**, service benefits only, ACTIVE |
-| 9 | Quests / badges | **3 missions** (five_deliveries, verify_ten, order_streak_3) + **6 badges**. Chance mechanics excluded. |
+| 9 | Quests / badges | **3 missions** (five_deliveries, refer_three, order_streak_3; verify_ten archived in 0174) + **6 badges**. Chance mechanics excluded. |
 | 10 | Dealers | **Excluded** from the consumer programme |
 | 11 | Guest backfill | **90 days / 5,000-point cap** |
 | 12 | Budget cap | **1,000,000 points**; breakage stays observed |

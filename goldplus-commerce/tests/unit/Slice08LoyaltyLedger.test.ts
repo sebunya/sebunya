@@ -75,6 +75,7 @@ function fakeRepo(config: LoyaltyConfig): ILoyaltyRepository & { entries: Loyalt
       return { accountCount: 0, entryCount: entries.length, signedBalance: entries.reduce((sum, row) => sum + row.points, 0), pendingExpiry: 0, byType: { earn: 0, redeem: 0, reversal: 0, expiry: 0, adjustment: 0 }, recentEntries: entries };
     },
     async getConfig() { return config; },
+    async lifetimeReductionsFrom() { return null; },
     async saveConfig(c) { return c; },
   };
 }

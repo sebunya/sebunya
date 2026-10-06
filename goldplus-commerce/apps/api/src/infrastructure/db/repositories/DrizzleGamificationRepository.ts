@@ -1,10 +1,10 @@
-import { desc, eq, sql } from 'drizzle-orm';
+import { desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { LOYALTY_PAYMENT_QUALIFIES_SQL } from '../LoyaltyEarnEligibilitySql';
 import { customerBadges, gamificationBadges, gamificationMissions } from '../schema/gamification';
 import { orders } from '../schema/commerce';
 import { reviews } from '../schema/reviews';
-import { loyaltyConfig } from '../schema/loyalty';
+import { loyaltyConfig, loyaltyLedgerEntries } from '../schema/loyalty';
 import { ActiveMission, IGamificationLiveRepository } from '../../../application/use-cases/loyalty/LoyaltyGamificationUseCases';
 
 /**
@@ -28,6 +28,7 @@ export class DrizzleGamificationRepository implements IGamificationLiveRepositor
       id: m.id,
       key: m.key,
       title: m.title,
+      description: m.description,
       kind: m.kind,
       threshold: m.threshold,
       rewardPoints: m.rewardPoints,
@@ -81,6 +82,21 @@ export class DrizzleGamificationRepository implements IGamificationLiveRepositor
     return null; // REVIEW_COUNT and unknown kinds: no attributable source
   }
 
+  async missionCatchUpCandidates(mission: ActiveMission, limit: number): Promise<string[]> {
+    // Referral missions only (CatchUpMissionAwardsUseCase says why): referrers
+    // at or past the threshold of AWARDED referrals, minus anyone already paid
+    // (the award's ledger key is mission:<key>:<userId>).
+    if (mission.kind !== 'REFERRAL_COUNT') return [];
+    const rows = (await db.execute(sql`
+      select r.referrer_user_id as user_id from loyalty_referrals r
+      where r.status = 'awarded'
+        and not exists (select 1 from loyalty_ledger_entries le
+          where le.idempotency_key = 'mission:' || ${mission.key} || ':' || r.referrer_user_id::text)
+      group by r.referrer_user_id having count(*) >= ${mission.threshold}
+      limit ${limit}`)) as unknown as Array<{ user_id: string }>;
+    return rows.map((r) => String(r.user_id));
+  }
+
   async awardBadgeByKey(userId: string, badgeKey: string): Promise<boolean> {
     const [badge] = await db.select().from(gamificationBadges).where(eq(gamificationBadges.key, badgeKey)).limit(1);
     if (!badge) return false;
@@ -124,6 +140,11 @@ export class DrizzleGamificationRepository implements IGamificationLiveRepositor
 
   async setMissionStatus(id: string, status: string) {
     const [row] = await db.update(gamificationMissions).set({ status }).where(eq(gamificationMissions.id, id)).returning();
+    return row ?? null;
+  }
+
+  async updateMission(id: string, patch: { status?: string; threshold?: number; rewardPoints?: number; description?: string | null }) {
+    const [row] = await db.update(gamificationMissions).set(patch).where(eq(gamificationMissions.id, id)).returning();
     return row ?? null;
   }
 
@@ -243,6 +264,22 @@ export class DrizzleGamificationRepository implements IGamificationLiveRepositor
     const [configRow] = await db.select().from(loyaltyConfig).limit(1);
     const streakWindowDays = (configRow as { streakWindowDays?: number | null } | undefined)?.streakWindowDays ?? null;
     const badgeRows = await db.select().from(gamificationBadges);
+    // A mission is complete once it has PAID this customer (its once-ever ledger
+    // key) or granted its badge, not only while progress happens to meet today's
+    // threshold: a broken streak or a raised threshold must not un-complete a
+    // bonus already paid.
+    const missionKeys = activeMissions.map((m) => `mission:${m.key}:${userId}`);
+    const paidKeys = new Set(
+      missionKeys.length === 0
+        ? []
+        : (
+            await db
+              .select({ key: loyaltyLedgerEntries.idempotencyKey })
+              .from(loyaltyLedgerEntries)
+              .where(inArray(loyaltyLedgerEntries.idempotencyKey, missionKeys))
+          ).map((r) => r.key),
+    );
+    const earnedBadgeKeys = new Set(earned.map((b) => b.key));
 
     const missions = await Promise.all(
       activeMissions.map(async (m) => {
@@ -250,6 +287,7 @@ export class DrizzleGamificationRepository implements IGamificationLiveRepositor
           id: m.id,
           key: m.key,
           title: m.title,
+          description: m.description,
           kind: m.kind,
           threshold: m.threshold,
           rewardPoints: m.rewardPoints,
@@ -271,7 +309,10 @@ export class DrizzleGamificationRepository implements IGamificationLiveRepositor
               : m.kind === 'REVIEW_COUNT'
                 ? 'Reviews are recorded under a separate identity and cannot be counted toward your account yet.'
                 : 'This mission type is not tracked yet.',
-          completed: progress !== null && progress >= m.threshold,
+          completed:
+            paidKeys.has(`mission:${m.key}:${userId}`) ||
+            (mission.badgeKey !== null && m.rewardPoints === 0 && earnedBadgeKeys.has(mission.badgeKey)) ||
+            (progress !== null && progress >= m.threshold),
         };
       }),
     );

@@ -4,6 +4,7 @@ import { formatUgx } from "../lib/money";
 import { apiBase } from "../lib/api";
 import { resolveAuthenticatedUserId } from "../lib/customerAuth";
 import { loyaltyWorkedExample } from "../lib/loyaltyWorkedExample";
+import { ordinalWord } from "../lib/ordinalWord";
 
 /**
  * GoldPlus Rewards (loyalty brief PART Q rebuild).
@@ -25,9 +26,10 @@ interface Programme {
     verificationScan: number | null;
     counterfeitReport: number | null;
     phoneVerification: number | null;
-    referral: { referrer: number | null; referee: number | null } | null;
+    referral: { referrer: number | null; referee: number | null; bonus?: { friends: number; points: number } | null } | null;
     birthday: number | null;
     streak: { orders: number; windowDays: number | null; points: number } | null;
+    milestones?: Array<{ title: string; description: string | null; points: number }>;
   } | null;
   tiers?: Array<{ code: string; name: string; threshold: number; benefits: Record<string, boolean> }>;
   /** 0087: the real admin-defined badge catalogue — empty until configured. */
@@ -123,12 +125,26 @@ if (src?.referral?.referrer) {
     detail: `You earn when their first order is delivered${src.referral.referee ? `, and they start with ${src.referral.referee} points` : ""}. Not before.`,
     points: `${src.referral.referrer} pts`,
   });
+  if (src.referral.bonus) {
+    earnWays.push({
+      label: "Introduce friends and family",
+      detail: `A one-off bonus when the ${ordinalWord(src.referral.bonus.friends)} friend you introduced has their first order delivered, on top of the points for each friend.`,
+      points: `${src.referral.bonus.points} pts bonus`,
+    });
+  }
 }
 if (src?.streak) {
   earnWays.push({
     label: "Keep a delivery streak",
     detail: `${src.streak.orders} delivered orders in a row, each within ${src.streak.windowDays ?? 90} days of the last.`,
     points: `${src.streak.points} pts`,
+  });
+}
+for (const milestone of src?.milestones ?? []) {
+  earnWays.push({
+    label: milestone.title,
+    detail: `${milestone.description ?? "A mission on your rewards page."} A one-off bonus.`,
+    points: `${milestone.points} pts bonus`,
   });
 }
 if (src?.birthday) {
@@ -303,7 +319,7 @@ const BENEFIT_LABELS: Record<string, string> = {
           <div class="max-w-4xl">
             <h2 class="text-2xl font-black tracking-tight text-slate-900">Membership levels</h2>
             <p class="mt-2 text-sm leading-relaxed text-gray-600">
-              Levels are earned on the points you have earned over your lifetime. Spending them never costs you a level.
+              Levels are earned on every point you have earned over your lifetime, whatever earned it. Spending them, or letting them expire, never costs you a level.
               Every benefit is a service benefit: better handling, not a bigger discount.
             </p>
             <div class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

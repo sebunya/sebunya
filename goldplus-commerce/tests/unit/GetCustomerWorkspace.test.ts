@@ -10,7 +10,7 @@ function build(o: { user?: any; orders?: any[]; account?: any; entries?: any[]; 
     loyalty: { findAccountByUserId: async () => o.account === undefined ? { id: 'acc1' } : o.account, listEntries: async () => o.entries ?? [
       { id: 'e1', accountId: 'acc1', type: 'earn', points: 100, orderId: 'o2', reason: 'Order delivered', idempotencyKey: 'k1', expiresAt: null, reversedEntryId: null, createdAt: d('2026-03-05') },
       { id: 'e2', accountId: 'acc1', type: 'redeem', points: -30, orderId: null, reason: 'Redeemed at checkout', idempotencyKey: 'k2', expiresAt: null, reversedEntryId: null, createdAt: d('2026-03-06') },
-    ] },
+    ], lifetimeReductionsFrom: async () => null },
     staff: { isStaff: async () => o.staff ?? false },
     // Stands in for the repository query: it answers only the asked-for customer's tickets.
     support: { forCustomer: async (q: { customerId: string; email: string | null }) => { o.asked?.push(q); return (o.inbox ?? [
@@ -59,7 +59,7 @@ describe('the customer workspace aggregates what already exists', () => {
     const uc = new GetCustomerWorkspaceUseCase({
       users: { findById: async () => ({ id: U1, email: 'amina@example.com', phone: null, isActive: true, createdAt: d('2026-01-01') }) },
       orders: { listForUser: async () => [] },
-      loyalty: { findAccountByUserId: async () => null, listEntries: async () => [] },
+      loyalty: { findAccountByUserId: async () => null, listEntries: async () => [], lifetimeReductionsFrom: async () => null },
       staff: { isStaff: async () => false },
       support: { forCustomer: async () => { inboxReads += 1; return [{ ticket: { id: 't1', email: 'amina@example.com', subject: 'x', status: 'open', priority: 'low', createdAt: d('2026-03-07') } }]; } },
     });

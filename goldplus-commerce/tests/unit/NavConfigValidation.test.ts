@@ -44,7 +44,7 @@ describe('DEFAULT_NAV_CONFIG', () => {
   it('the first-order estimate is one field, and the refer link is not double-account', () => {
     expect(typeof DEFAULT_NAV_CONFIG.settings.firstOrderEstimateUgx).toBe('string');
     const refer = DEFAULT_NAV_CONFIG.popover.signedIn.links.find((l) => l.label === 'Refer a friend');
-    expect(refer?.href).toBe('/account/rewards');
+    expect(refer?.href).toBe('/account/rewards#refer'); // lands on the invite card
     expect(JSON.stringify(DEFAULT_NAV_CONFIG)).not.toContain('/account/account/');
   });
 });

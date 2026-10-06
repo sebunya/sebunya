@@ -1212,6 +1212,13 @@
       "when": 1790140000050,
       "tag": "0173_shop_building_zainab_aziza",
       "breakpoints": true
+    },
+    {
+      "idx": 173,
+      "version": "5",
+      "when": 1790140000051,
+      "tag": "0174_referral_mission",
+      "breakpoints": true
     }
   ]
 }

@@ -275,6 +275,7 @@ import {
   EarnForCounterfeitConfirmationUseCase,
   EarnForPhoneVerificationUseCase,
   EvaluateGamificationForUserUseCase,
+  CatchUpMissionAwardsUseCase,
   QualifyReferralOnDeliveryUseCase,
   RecordReferralUseCase,
 } from '../application/use-cases/loyalty/LoyaltyGamificationUseCases';
@@ -1574,18 +1575,28 @@ export class Registry {
     this.loyaltyRepo,
     this.loyaltyIssuanceCompletion,
     this.gamificationRepo,
+    async ({ userId, missionKey, missionTitle, points }) =>
+      this.loyaltyOutboxNotifier.enqueue({
+        userId,
+        eventType: 'LOYALTY_POINTS_EARNED',
+        idempotencyKey: `mission-notify:${missionKey}:${userId}`, // a mission pays once ever, so it is told once
+        data: { points, source: 'mission', missionTitle },
+      }),
   );
+  public readonly catchUpMissionAwardsUseCase = new CatchUpMissionAwardsUseCase(this.gamificationRepo, this.evaluateGamificationForUserUseCase, this.loyaltyIssuanceCompletion);
   public readonly recordReferralUseCase = new RecordReferralUseCase(this.loyaltyCompletionRepo, this.loyaltyReferralRepo);
   public readonly qualifyReferralOnDeliveryUseCase = new QualifyReferralOnDeliveryUseCase(
     this.loyaltyRepo,
     this.loyaltyIssuanceCompletion,
     this.loyaltyReferralRepo,
     this.gamificationRepo,
-    async ({ userId, points, kind }) =>
+    async ({ userId, points, kind, referralId }) =>
       this.loyaltyOutboxNotifier.enqueue({
         userId,
         eventType: 'LOYALTY_POINTS_EARNED',
-        idempotencyKey: `referral-notify:${userId}:${kind}`,
+        // Per referral: keyed per user, a referrer heard about their first
+        // friend only, and never about the second or third.
+        idempotencyKey: `referral-notify:${referralId}:${kind}`,
         data: { points, source: kind === 'referrer' ? 'referral' : 'referral_welcome' },
       }),
   );
@@ -1850,12 +1861,14 @@ export class Registry {
     this.loyaltyRepo,
     this.loyaltyCompletionRepo,
     this.loyaltyTierRepo,
-    async ({ userId, tierCode, tierName }) =>
+    async ({ userId, tierCode, tierName, direction }) =>
       this.loyaltyOutboxNotifier.enqueue({
         userId,
         eventType: 'LOYALTY_TIER_CHANGED',
-        idempotencyKey: `tier:${userId}:${tierCode}`,
-        data: { tierCode, tierName },
+        // A welcome is once per tier, ever (unchanged key). A move down is
+        // once per tier per day, so a later move down is still told.
+        idempotencyKey: direction === 'up' ? `tier:${userId}:${tierCode}` : `tier-down:${userId}:${tierCode}:${new Date().toISOString().slice(0, 10)}`,
+        data: { tierCode, tierName, direction },
       }),
   );
     public readonly runLoyaltyDailySweepUseCase = new RunLoyaltyDailySweepUseCase(
@@ -3021,7 +3034,11 @@ export class Registry {
         if (source) {
           await this.gamificationRepo.awardBadgeByKey(source.userId, 'first_order').catch(() => undefined);
           await this.evaluateGamificationForUserUseCase.execute({ userId: source.userId }).catch(() => undefined);
-          await this.qualifyReferralOnDeliveryUseCase.execute({ orderId, refereeUserId: source.userId }).catch(() => undefined);
+          const referral = await this.qualifyReferralOnDeliveryUseCase.execute({ orderId, refereeUserId: source.userId }).catch(() => undefined);
+          // An awarded referral is the referrer's completion event (REFERRAL_COUNT, 0174).
+          if (referral?.ok && referral.status === 'awarded' && referral.referrerUserId) {
+            await this.evaluateGamificationForUserUseCase.execute({ userId: referral.referrerUserId }).catch(() => undefined);
+          }
           // 0088: a delivered order grants ONE scratch card. Idempotent on the
           // order id, so a replayed transition never mints a second card.
           await this.grantDrawTokenUseCase

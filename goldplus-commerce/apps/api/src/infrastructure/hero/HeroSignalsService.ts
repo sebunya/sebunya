@@ -4,6 +4,7 @@ import { VISITOR_ACTION_EVENT_TYPES } from '@goldplus/shared';
 import { pgInTextList } from '../db/PgParams';
 import { logger } from '../logging/logger';
 import { heroTierMeter } from '../../application/hero/HeroContentService';
+import { LIFETIME_CUTOFF_SQL, LIFETIME_POINTS_SQL } from '../../domain/loyalty/LoyaltyLedger';
 
 /**
  * Per-visitor hero signals.
@@ -239,24 +240,36 @@ export class HeroSignalsService {
   }
 
   private async loyaltyFor(profileId: string): Promise<HeroSignals['loyalty']> {
-    // Balance is the signed sum of the ledger (earn +, redeem/expiry −), the
-    // same derivation the loyalty repository uses. Only for a logged-in profile.
+    // Balance is the signed sum of the ledger (earn +, redeem/expiry −) and
+    // lifetime is computeLifetimePoints' rule, over the same accounts the
+    // loyalty repository reads: the customer's own plus any merged into it.
+    // Only for a logged-in profile.
     const rows = rowsOf(
       await db.execute(sql`
+        with acct as (
+          select la.id
+          from experience_profiles ep
+          join loyalty_accounts la on la.user_id = ep.customer_id
+          where ep.id = ${profileId}::uuid and ep.customer_id is not null
+          limit 1
+        ), ids as (
+          select id from acct
+          union
+          select m.merged_account_id from loyalty_account_merges m join acct on m.survivor_account_id = acct.id
+        )
         select coalesce(sum(le.points), 0)::int as points,
-               coalesce(sum(le.points) filter (where le.type = 'earn'), 0)::int as lifetime
-        from experience_profiles ep
-        join loyalty_accounts la on la.user_id = ep.customer_id
-        left join loyalty_ledger_entries le on le.account_id = la.id
-        where ep.id = ${profileId}::uuid and ep.customer_id is not null
-        group by la.id
-        limit 1
+               ${sql.raw(LIFETIME_POINTS_SQL)}::int as lifetime
+        from acct
+        cross join ${sql.raw(LIFETIME_CUTOFF_SQL)}
+        left join loyalty_ledger_entries le on le.account_id in (select id from ids)
+        left join loyalty_ledger_entries rt on rt.id = le.reversed_entry_id
+        group by acct.id, cfg.reductions_from
       `),
     );
     if (!rows.length) return null;
     const points = Number(rows[0].points ?? 0);
     // The goal comes from the operator's ACTIVE tiers and the customer's
-    // lifetime earned points, the same rule EvaluateTiersUseCase assigns tiers
+    // lifetime points, the same rule EvaluateTiersUseCase assigns tiers
     // by. It used to come from hand-typed thresholds (1,000 / 2,500 / 5,000)
     // that no tier used, and the bar always filled to 68%.
     const tiers = rowsOf(

@@ -1,0 +1,82 @@
+---
+/**
+ * The customer's invite card: their code, a copyable invite link, WhatsApp
+ * sharing and how their referrals stand. Shown on Points and on Rewards (where
+ * the site banner's "Get your link" lands, next to the Friends & Family
+ * mission). `#refer` is its anchor. Data: GET /account/referral.
+ */
+import { SITE_ORIGIN } from '../lib/sitemap';
+import { ordinalWord } from '../lib/ordinalWord';
+
+interface Props {
+  referral: {
+    code: string;
+    referrerPoints: number;
+    refereePoints: number | null;
+    referred: number;
+    awarded: number;
+    pending: number;
+  };
+  /** The active Friends & Family mission, when one pays a bonus. */
+  bonus?: { friends: number; points: number } | null;
+  /** Whether that mission has already paid this customer (it pays once, ever). */
+  bonusPaid?: boolean;
+}
+
+const { referral, bonus = null, bonusPaid = false } = Astro.props;
+const shareUrl = `${SITE_ORIGIN}/register?ref=${referral.code}`;
+const whatsappText = `Get genuine electronics from GoldPlus. Use my code ${referral.code} when you sign up: ${shareUrl}`;
+const bonusLeft = bonus ? Math.max(0, bonus.friends - referral.awarded) : 0;
+---
+
+<section id="refer" class="scroll-mt-24 bg-white border border-brand-borderGrey rounded-2xl p-6" data-referral-card>
+  <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Introduce a friend</h2>
+  <p class="text-sm text-brand-charcoal leading-relaxed">
+    Share your code. You earn <strong>{referral.referrerPoints.toLocaleString('en-UG')} points</strong> when their first
+    order is delivered{referral.refereePoints ? <>, and they start with <strong>{referral.refereePoints.toLocaleString('en-UG')} points</strong></> : null}.
+    Nothing is paid before that delivery.
+  </p>
+  {bonus && (
+    <p class="mt-2 text-sm text-brand-charcoal leading-relaxed" data-referral-bonus>
+      {bonusPaid ? (
+        <>You have earned the Friends &amp; Family bonus. Every friend you introduce still earns you {referral.referrerPoints.toLocaleString('en-UG')} points.</>
+      ) : bonusLeft > 0 ? (
+        <>When your {ordinalWord(bonus.friends)} friend's first order is delivered, you also get a one-off bonus of <strong>{bonus.points.toLocaleString('en-UG')} points</strong>. {bonusLeft === 1 ? 'One more to go.' : `${bonusLeft} more to go.`}</>
+      ) : (
+        <>You have introduced enough friends for the one-off bonus of <strong>{bonus.points.toLocaleString('en-UG')} points</strong>. It is added to your points automatically.</>
+      )}
+    </p>
+  )}
+  <div class="mt-4 flex flex-wrap items-center gap-3">
+    <code class="rounded-xl border border-brand-borderGrey bg-gray-50 px-4 py-2.5 text-base font-black tracking-widest text-brand-charcoal" data-referral-code>{referral.code}</code>
+    <button type="button" class="min-h-11 rounded-full bg-brand-charcoal px-5 py-2.5 text-xs font-black uppercase tracking-wider text-white" data-copy-referral data-share-url={shareUrl}>Copy invite link</button>
+    <a class="min-h-11 inline-flex items-center rounded-full border border-brand-borderGrey px-5 py-2.5 text-xs font-black uppercase tracking-wider text-brand-charcoal" href={`https://wa.me/?text=${encodeURIComponent(whatsappText)}`} target="_blank" rel="noopener noreferrer">Share on WhatsApp</a>
+    <span class="text-xs text-brand-mutedGrey" data-copy-status role="status" aria-live="polite"></span>
+  </div>
+  <p class="mt-3 text-xs text-brand-mutedGrey">
+    {referral.referred.toLocaleString('en-UG')} signed up with your code · {referral.awarded.toLocaleString('en-UG')} delivered and paid out · {referral.pending.toLocaleString('en-UG')} waiting on a first delivery.
+  </p>
+</section>
+
+{/* Referral copy — plain progressive enhancement, no framework (single-digit KB budget). */}
+<script nonce={Astro.locals.cspNonce} is:inline>
+  (function () {
+    var btn = document.querySelector('[data-copy-referral]');
+    if (!btn) return;
+    var status = document.querySelector('[data-copy-status]');
+    btn.addEventListener('click', function () {
+      var url = btn.getAttribute('data-share-url') || '';
+      var done = function (msg) {
+        if (status) {
+          status.textContent = msg;
+          setTimeout(function () { status.textContent = ''; }, 4000);
+        }
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(function () { done('Invite link copied.'); }, function () { done(url); });
+      } else {
+        done(url);
+      }
+    });
+  })();
+</script>

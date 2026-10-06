@@ -216,7 +216,7 @@ export const DEFAULT_NAV_CONFIG: NavConfig = {
       links: [
         { label: 'Your orders', href: '/account' },
         { label: 'Rewards', value: '{points} pts', href: '/account/rewards' },
-        { label: 'Refer a friend', value: 'Earn points', href: '/account/rewards' },
+        { label: 'Refer a friend', value: 'Earn points', href: '/account/rewards#refer' },
         { label: 'Account settings', href: '/account#settings' },
         { label: 'Sign out', href: '/logout' },
       ],

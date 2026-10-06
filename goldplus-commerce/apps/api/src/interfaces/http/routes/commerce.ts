@@ -181,6 +181,15 @@ routes.get('/loyalty-programme', async (c) => {
   ]);
   const redemptionConfigured =
     programme.pointValueUgx !== null && programme.redemptionMinPoints !== null && programme.redemptionMaxShareBps !== null;
+  // Mission bonuses are advertised from the ACTIVE missions themselves — the
+  // rows that actually pay — so the page cannot promise a number the engine
+  // does not award (the streak used to be read from loyalty_config instead).
+  const earning = active && !programme.killSwitch;
+  const missions = earning
+    ? (await registry.gamificationRepo.listActiveMissions().catch(() => [])).filter((m) => m.rewardPoints > 0)
+    : [];
+  const streakMission = missions.find((m) => m.kind === 'STREAK_ORDERS') ?? null;
+  const referralMission = missions.find((m) => m.kind === 'REFERRAL_COUNT') ?? null;
   return c.json({
     success: true,
     data: {
@@ -201,18 +210,26 @@ routes.get('/loyalty-programme', async (c) => {
       vesting: 'on_delivery' as const,
       // 0087 gamification surface: only ACTIVE earn sources appear, with the
       // real configured values — the page never promises an unshipped mechanic.
-      earnSources: active && !programme.killSwitch
+      earnSources: earning
         ? {
             verificationScan: (await registry.loyaltyCompletionRepo.getActiveRule('verification_scan').catch(() => null))?.rate ?? null,
             counterfeitReport: (await registry.loyaltyCompletionRepo.getActiveRule('counterfeit_report').catch(() => null))?.rate ?? null,
             phoneVerification: (await registry.loyaltyCompletionRepo.getActiveRule('phone_verification').catch(() => null))?.rate ?? null,
             referral: programme.referralReferrerPoints !== null
-              ? { referrer: programme.referralReferrerPoints, referee: programme.referralRefereePoints }
+              ? {
+                  referrer: programme.referralReferrerPoints,
+                  referee: programme.referralRefereePoints,
+                  bonus: referralMission ? { friends: referralMission.threshold, points: referralMission.rewardPoints } : null,
+                }
               : null,
             birthday: programme.birthdayPoints,
-            streak: programme.streakTargetOrders !== null && programme.streakRewardPoints !== null
-              ? { orders: programme.streakTargetOrders, windowDays: programme.streakWindowDays, points: programme.streakRewardPoints }
+            streak: streakMission
+              ? { orders: streakMission.threshold, windowDays: programme.streakWindowDays, points: streakMission.rewardPoints }
               : null,
+            // Every other active mission bonus (Five Deliveries, product checks).
+            milestones: missions
+              .filter((m) => m !== streakMission && m !== referralMission)
+              .map((m) => ({ title: m.title, description: m.description, points: m.rewardPoints })),
           }
         : null,
       // Badge catalogue (0087): the real, admin-defined badges — public-safe
@@ -227,6 +244,9 @@ routes.get('/loyalty-programme', async (c) => {
             .map((t) => ({ code: t.code, name: t.name, threshold: t.thresholdLifetimePoints, benefits: t.benefits ?? {} }))
         : [],
       termsVersion: programme.termsVersion,
+      // When the current level rules took effect (0174 stamps it at deploy):
+      // the terms date their "from this date" clauses with it.
+      termsEffectiveFrom: (await registry.loyaltyRepo.lifetimeReductionsFrom().catch(() => null))?.toISOString() ?? null,
     },
   });
 });

@@ -1766,7 +1766,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
           '<div class="gp-nav__acct-links">' +
             '<a href="/account">Your orders</a>' +
             '<a href="/account/rewards">Rewards <b>' + POINTS.toLocaleString() + ' pts</b></a>' +
-            '<a href="/account/rewards">Refer a friend <b>Earn points</b></a>' +
+            '<a href="/account/rewards#refer">Refer a friend <b>Earn points</b></a>' +
             '<a href="/account#settings">Account settings</a>' +
             '<a href="/logout">Sign out</a>' +
           '</div>';
@@ -1981,7 +1981,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
       if (CTX.signedIn) c.push({ id:'refer', score:62,
         text:'Introduce a friend. You both earn <em>points</em> when their first order is delivered',
         short:'Introduce a friend. You both earn <em>points</em>',
-        cta:'Get your link', href:'/account/rewards' });
+        cta:'Get your link', href:'/account/rewards#refer' });
 
       /* ---- not signed in: the useful, honest defaults (mirrors nba.ts) ---- */
       if (!CTX.signedIn && CTX.visits <= 1) c.push({ id:'welcome', score:60,

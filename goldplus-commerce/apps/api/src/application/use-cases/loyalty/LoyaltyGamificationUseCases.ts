@@ -17,6 +17,7 @@ export interface ActiveMission {
   id: string;
   key: string;
   title: string;
+  description: string | null;
   kind: string; // PURCHASE_COUNT | VERIFICATION_COUNT | STREAK_ORDERS | REVIEW_COUNT | REFERRAL_COUNT
   threshold: number;
   rewardPoints: number;
@@ -31,6 +32,8 @@ export interface IGamificationLiveRepository {
    * (never a fake zero).
    */
   missionProgress(userId: string, mission: ActiveMission, opts: { streakWindowDays: number | null }): Promise<number | null>;
+  /** Users who already meet a mission's threshold but hold no award for it. */
+  missionCatchUpCandidates(mission: ActiveMission, limit: number): Promise<string[]>;
   /** True when newly awarded; false when already held or badge unknown. */
   awardBadgeByKey(userId: string, badgeKey: string): Promise<boolean>;
 }
@@ -48,12 +51,71 @@ export interface ILoyaltyReferralRepository {
   listForReferrer(referrerUserId: string): Promise<Array<{ status: string; createdAt: Date }>>;
 }
 
+/**
+ * Mission kinds with a real, attributable data source (DrizzleGamificationRepository
+ * .missionProgress). REVIEW_COUNT and STREAK_DAYS evaluate to "not evaluable",
+ * so a mission of either kind could never complete: it may exist as a DRAFT
+ * but is never created new or activated.
+ */
+export const EVALUABLE_MISSION_KINDS = ['PURCHASE_COUNT', 'STREAK_ORDERS', 'REFERRAL_COUNT', 'VERIFICATION_COUNT'] as const;
+export const MISSION_STATUSES = ['DRAFT', 'ACTIVE', 'ARCHIVED'] as const;
+/** Ceiling for a single mission bonus, so a typo cannot mint a fortune. */
+export const MISSION_REWARD_MAX_POINTS = 10_000;
+
+/**
+ * Catch-up for REFERRAL missions whose completing event has already passed:
+ * Friends & Family activated after customers qualified, or a referrer who
+ * reached the threshold before referrers were evaluated at all. Candidates are
+ * evaluated by the same once-ever use case, so a re-run never pays twice.
+ *
+ * Referrals only, on purpose. Awarded referrals exist only since the programme
+ * went live, so this pays nothing for history from before it. Order and scan
+ * counts reach back to before the programme: catching those up would pay every
+ * past customer at once (a liability decision for the owner, brief PART S), so
+ * those missions keep paying at the customer's next qualifying event, as they
+ * always have. Badge-only missions are skipped (no ledger row marks them done).
+ */
+export class CatchUpMissionAwardsUseCase {
+  static readonly KINDS = ['REFERRAL_COUNT'];
+  static readonly PER_MISSION_LIMIT = 500;
+
+  constructor(
+    private readonly gamification: IGamificationLiveRepository,
+    private readonly evaluate: { execute(input: { userId: string }): Promise<{ ok: true; awarded: Array<{ missionKey: string; points: number }> } | Fail> },
+    /** The guarded issuance config: off, kill switch, or budget cap reached all read as "stop". */
+    private readonly completion: Pick<ILoyaltyCompletionRepository, 'getProgrammeConfig'>,
+  ) {}
+
+  async execute(): Promise<{ candidates: number; awarded: number; skipped?: 'PROGRAMME_INACTIVE' }> {
+    // Checked ONCE: per-candidate evaluation would re-read the guarded config
+    // for every customer, and at the budget cap each read records a signal.
+    const config = await this.completion.getProgrammeConfig();
+    if (!config.enabled || config.killSwitch) return { candidates: 0, awarded: 0, skipped: 'PROGRAMME_INACTIVE' };
+    const missions = (await this.gamification.listActiveMissions())
+      .filter((m) => m.rewardPoints > 0 && CatchUpMissionAwardsUseCase.KINDS.includes(m.kind));
+    const users = new Set<string>();
+    for (const mission of missions) {
+      for (const userId of await this.gamification.missionCatchUpCandidates(mission, CatchUpMissionAwardsUseCase.PER_MISSION_LIMIT)) {
+        users.add(userId);
+      }
+    }
+    let awarded = 0;
+    for (const userId of users) {
+      const result = await this.evaluate.execute({ userId }).catch(() => null);
+      if (result?.ok) awarded += result.awarded.length;
+    }
+    return { candidates: users.size, awarded };
+  }
+}
+
 /** Evaluate every ACTIVE mission for one user and award completions, once ever. */
 export class EvaluateGamificationForUserUseCase {
   constructor(
     private readonly loyalty: ILoyaltyRepository,
     private readonly completion: ILoyaltyCompletionRepository,
     private readonly gamification: IGamificationLiveRepository,
+    /** Tells the customer about a bonus that just landed. Never fails an award. */
+    private readonly notify: (input: { userId: string; missionKey: string; missionTitle: string; points: number }) => Promise<unknown> = async () => undefined,
   ) {}
 
   async execute(input: { userId: string }): Promise<{ ok: true; awarded: Array<{ missionKey: string; points: number }> } | Fail> {
@@ -92,7 +154,10 @@ export class EvaluateGamificationForUserUseCase {
         newlyAwarded = true;
       }
       if (mission.badgeKey) await this.gamification.awardBadgeByKey(input.userId, mission.badgeKey);
-      if (newlyAwarded && mission.rewardPoints > 0) awarded.push({ missionKey: mission.key, points: mission.rewardPoints });
+      if (newlyAwarded && mission.rewardPoints > 0) {
+        awarded.push({ missionKey: mission.key, points: mission.rewardPoints });
+        await this.notify({ userId: input.userId, missionKey: mission.key, missionTitle: mission.title, points: mission.rewardPoints }).catch(() => undefined);
+      }
     }
     return { ok: true, awarded };
   }
@@ -143,10 +208,10 @@ export class QualifyReferralOnDeliveryUseCase {
     private readonly completion: ILoyaltyCompletionRepository,
     private readonly referrals: ILoyaltyReferralRepository,
     private readonly gamification: IGamificationLiveRepository,
-    private readonly notify: (input: { userId: string; points: number; kind: 'referrer' | 'referee' }) => Promise<unknown>,
+    private readonly notify: (input: { userId: string; points: number; kind: 'referrer' | 'referee'; referralId: string }) => Promise<unknown>,
   ) {}
 
-  async execute(input: { orderId: string; refereeUserId: string }): Promise<{ ok: true; status: 'awarded' | 'held' | 'none' } | Fail> {
+  async execute(input: { orderId: string; refereeUserId: string }): Promise<{ ok: true; status: 'awarded' | 'held' | 'none'; referrerUserId?: string } | Fail> {
     const config = await this.completion.getProgrammeConfig();
     if (!config.enabled || config.killSwitch) return fail('PROGRAMME_DISABLED', 'Programme inactive.');
     if (config.referralReferrerPoints === null || config.referralRefereePoints === null) {
@@ -193,9 +258,9 @@ export class QualifyReferralOnDeliveryUseCase {
     const refereeEntryId = await append(refereeAccount.id, config.referralRefereePoints, 'referee');
     await this.referrals.markAwarded(referral.id, referrerEntryId ?? '', refereeEntryId ?? '', input.orderId);
     await this.gamification.awardBadgeByKey(referral.referrerUserId, 'referrer');
-    await this.notify({ userId: referral.referrerUserId, points: config.referralReferrerPoints, kind: 'referrer' }).catch(() => undefined);
-    await this.notify({ userId: input.refereeUserId, points: config.referralRefereePoints, kind: 'referee' }).catch(() => undefined);
-    return { ok: true, status: 'awarded' };
+    await this.notify({ userId: referral.referrerUserId, points: config.referralReferrerPoints, kind: 'referrer', referralId: referral.id }).catch(() => undefined);
+    await this.notify({ userId: input.refereeUserId, points: config.referralRefereePoints, kind: 'referee', referralId: referral.id }).catch(() => undefined);
+    return { ok: true, status: 'awarded', referrerUserId: referral.referrerUserId };
   }
 }
 

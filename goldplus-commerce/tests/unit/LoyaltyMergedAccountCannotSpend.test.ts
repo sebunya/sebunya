@@ -27,7 +27,7 @@ describe('a merged account cannot spend points already counted on its survivor',
   it('tiers skip merged source accounts', async () => {
     const assign = vi.fn();
     const uc = new EvaluateTiersUseCase(
-      { mergedInto: async (id: string) => (id === 'M' ? 'S' : null), listEntries: async () => [{ type: 'earn', points: 5_000 }] } as never,
+      { mergedInto: async (id: string) => (id === 'M' ? 'S' : null), listEntries: async () => [{ type: 'earn', points: 5_000 }], lifetimeReductionsFrom: async () => null } as never,
       { listAccountIds: async () => [{ accountId: 'M', userId: 'um' }, { accountId: 'S', userId: 'us' }] } as never,
       { activeTiers: async () => [{ code: 'gold', name: 'Gold', rank: 1, thresholdLifetimePoints: 1_000 }], currentAssignment: async () => null, assign } as never,
       async () => undefined,

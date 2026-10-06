@@ -109,8 +109,10 @@ routes.post('/gamification/missions', requirePermissions([PERMISSIONS.SETTINGS_M
   const kind = clean(body?.kind, 30);
   const threshold = Number(body?.threshold);
   const rewardPoints = Number(body?.rewardPoints) || 0;
-  if (!key || !title || !['PURCHASE_COUNT','REVIEW_COUNT','STREAK_DAYS','REFERRAL_COUNT','VERIFICATION_COUNT','STREAK_ORDERS'].includes(kind) || !Number.isInteger(threshold) || threshold < 1) {
-    return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'key, title, valid kind and integer threshold >= 1 are required.' } }, 400);
+  const { EVALUABLE_MISSION_KINDS, MISSION_REWARD_MAX_POINTS } = await import('../../../../application/use-cases/loyalty/LoyaltyGamificationUseCases');
+  if (!key || !title || !(EVALUABLE_MISSION_KINDS as readonly string[]).includes(kind) || !Number.isInteger(threshold) || threshold < 1
+    || !Number.isInteger(rewardPoints) || rewardPoints < 0 || rewardPoints > MISSION_REWARD_MAX_POINTS) {
+    return c.json({ success: false, error: { code: 'BAD_INPUT', message: `key, title, a kind that can complete (${EVALUABLE_MISSION_KINDS.join(', ')}), an integer threshold >= 1 and reward points 0–${MISSION_REWARD_MAX_POINTS} are required.` } }, 400);
   }
   const registry = Registry.getInstance();
   const row = await registry.gamificationRepo.createMission({ key, title, description: clean(body?.description, 500) || null, kind, threshold, rewardPoints, createdBy: (c.get('user') as any).id });
@@ -131,6 +133,62 @@ routes.post('/gamification/badges', requirePermissions([PERMISSIONS.SETTINGS_MAN
   if (!row) return c.json({ success: false, error: { code: 'DUPLICATE', message: 'A badge with this key already exists.' } }, 409);
   const { CreateAuditLogUseCase } = await import('../../../../application/use-cases/audit/CreateAuditLogUseCase');
   await new CreateAuditLogUseCase(registry.auditRepo).execute({ actorId: (c.get('user') as any).id, action: 'GAMIFICATION_BADGE_CREATED', entity: 'gamification_badge', entityId: row.id, newState: { key, missionId: row.missionId } });
+  return c.json({ success: true, data: row });
+});
+
+// Activate, archive or retune a mission. Awards stay once-ever per customer
+// (ledger key mission:<key>:<user>), so archiving and reactivating never pays
+// twice, and a changed reward applies only to customers who complete later.
+routes.patch('/gamification/missions/:id', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const { EVALUABLE_MISSION_KINDS, MISSION_STATUSES, MISSION_REWARD_MAX_POINTS } = await import('../../../../application/use-cases/loyalty/LoyaltyGamificationUseCases');
+  const patch: { status?: string; threshold?: number; rewardPoints?: number; description?: string | null } = {};
+  if (body?.status !== undefined) {
+    if (!(MISSION_STATUSES as readonly string[]).includes(body.status)) {
+      return c.json({ success: false, error: { code: 'BAD_INPUT', message: `status must be one of ${MISSION_STATUSES.join(', ')}.` } }, 400);
+    }
+    patch.status = body.status;
+  }
+  if (body?.threshold !== undefined) {
+    if (!Number.isInteger(body.threshold) || body.threshold < 1 || body.threshold > 1000) {
+      return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'threshold must be a whole number from 1 to 1000.' } }, 400);
+    }
+    patch.threshold = body.threshold;
+  }
+  if (body?.rewardPoints !== undefined) {
+    if (!Number.isInteger(body.rewardPoints) || body.rewardPoints < 0 || body.rewardPoints > MISSION_REWARD_MAX_POINTS) {
+      return c.json({ success: false, error: { code: 'BAD_INPUT', message: `rewardPoints must be a whole number from 0 to ${MISSION_REWARD_MAX_POINTS}.` } }, 400);
+    }
+    patch.rewardPoints = body.rewardPoints;
+  }
+  if (body?.description !== undefined) {
+    // What the customer reads on their rewards page; it should name the same
+    // number as the threshold, so the two are edited together.
+    if (body.description !== null && typeof body.description !== 'string') {
+      return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'description must be text.' } }, 400);
+    }
+    const text = typeof body.description === 'string' ? body.description.trim().slice(0, 500) : '';
+    patch.description = text || null;
+  }
+  if (Object.keys(patch).length === 0) {
+    return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'Nothing to change: send status, threshold, rewardPoints or description.' } }, 400);
+  }
+  const registry = Registry.getInstance();
+  const before = await registry.gamificationRepo.findMission(c.req.param('id') ?? '');
+  if (!before) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Mission not found.' } }, 404);
+  if (patch.status === 'ACTIVE' && !(EVALUABLE_MISSION_KINDS as readonly string[]).includes(before.kind)) {
+    return c.json({ success: false, error: { code: 'NOT_EVALUABLE', message: `A ${before.kind} mission has no data source, so nobody could ever complete it. It cannot be activated.` } }, 400);
+  }
+  const row = await registry.gamificationRepo.updateMission(before.id, patch);
+  const { CreateAuditLogUseCase } = await import('../../../../application/use-cases/audit/CreateAuditLogUseCase');
+  await new CreateAuditLogUseCase(registry.auditRepo).execute({
+    actorId: (c.get('user') as any).id,
+    action: 'GAMIFICATION_MISSION_UPDATED',
+    entity: 'gamification_mission',
+    entityId: before.id,
+    previousState: { status: before.status, threshold: before.threshold, rewardPoints: before.rewardPoints, description: before.description },
+    newState: patch,
+  });
   return c.json({ success: true, data: row });
 });
 

@@ -15,6 +15,7 @@ export interface CustomerWorkspaceDeps {
   loyalty: {
     findAccountByUserId(userId: string): Promise<{ id: string } | null>;
     listEntries(accountId: string): Promise<LoyaltyLedgerEntry[]>;
+    lifetimeReductionsFrom(): Promise<Date | null>;
   };
   /**
    * Whether this account holds ANY staff permission. The workspace is for
@@ -62,7 +63,7 @@ export class GetCustomerWorkspaceUseCase {
     let loyalty: CustomerWorkspace['loyalty'] = null;
     if (account) {
       const entries = await this.deps.loyalty.listEntries(account.id);
-      const balance = computeBalance(entries, now);
+      const balance = computeBalance(entries, now, await this.deps.loyalty.lifetimeReductionsFrom());
       loyalty = {
         ...balance,
         accountId: account.id,

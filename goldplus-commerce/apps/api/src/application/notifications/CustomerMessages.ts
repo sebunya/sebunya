@@ -56,6 +56,12 @@ export interface CustomerMessageData {
   lineCount?: number | null;
   /** Bulk quote request: units across every line. */
   totalUnits?: number | null;
+  /** Points earned: the order they vested on. Only order points can expire. */
+  orderId?: string | null;
+  /** Points earned for completing a mission: its customer-facing title. */
+  missionTitle?: string | null;
+  /** Tier change: 'down' when reversed points took a customer below their level. */
+  direction?: 'up' | 'down' | null;
 }
 
 export interface EmailCopy {
@@ -182,6 +188,9 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
         ? `${SHOP_NAME}: your password reset code is ${d.code}. It works once and expires in ${d.expiresInMinutes ?? 10} minutes. If you did not ask for it, ignore this message and nothing changes. Never share this code.`
         : null;
     case 'LOYALTY_POINTS_EARNED':
+      if (d.missionTitle) {
+        return `${SHOP_NAME}: you completed ${d.missionTitle} and earned a bonus of ${pointsWord(d.points)}. Points come off your next order at checkout. See your balance: ${publicBaseUrl()}/account/loyalty`;
+      }
       return `${SHOP_NAME}: you earned ${pointsWord(d.points)}${ref ? ` on order${ref}` : ''}. Points come off your next order at checkout. See your balance: ${publicBaseUrl()}/account/loyalty`;
     case 'LOYALTY_EXPIRY_WARNING':
       return `${SHOP_NAME}: ${pointsWord(d.pointsExpiring)} of yours expire on ${dateWord(d.expiresAt)}. Use them on your next order before then: ${publicBaseUrl()}/shop`;
@@ -190,6 +199,12 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
     case 'LOYALTY_REDEMPTION_REVERSED':
       return `${SHOP_NAME}: the ${pointsWord(d.points)} you used${ref ? ` on order${ref}` : ''} are back in your balance because the order did not go ahead. See your balance: ${publicBaseUrl()}/account/loyalty`;
     case 'LOYALTY_TIER_CHANGED':
+      if (d.direction === 'down') {
+        // No cause is claimed: a level goes down when reversed points stop
+        // counting OR when the shop raises a threshold, and only the customer's
+        // points page shows which.
+        return `${SHOP_NAME}: your membership level is now ${d.tierName || 'updated'}. Your level follows the lifetime points on your account. See how yours add up: ${publicBaseUrl()}/account/loyalty`;
+      }
       return `${SHOP_NAME}: you are now a ${d.tierName || 'new tier'} member. See what that gets you: ${publicBaseUrl()}/account/loyalty`;
     case 'SUPPORT_REQUEST_RECEIVED':
       return `${SHOP_NAME}: we have your request${d.reference ? ` (ref ${d.reference})` : ''}. Our team will call you on this number. Need us sooner? Call ${phone}.`;
@@ -320,11 +335,23 @@ export function emailCopy(template: string, d: CustomerMessageData = {}): EmailC
           }
         : null;
     case 'LOYALTY_POINTS_EARNED':
+      if (d.missionTitle) {
+        return {
+          subject: `You completed ${d.missionTitle}`,
+          preheader: `A bonus of ${pointsWord(d.points)} is in your balance.`,
+          headline: `You completed ${d.missionTitle}`,
+          body: `You completed ${d.missionTitle} and earned a bonus of ${pointsWord(d.points)}. Points come off your next order at checkout, and they count toward your membership level.`,
+          cta: { label: 'See your rewards', url: `${publicBaseUrl()}/account/rewards` },
+          tone: 'success',
+        };
+      }
       return {
         subject: `You earned ${pointsWord(d.points)}`,
         preheader: 'Points come off your next order at checkout.',
         headline: `You earned ${pointsWord(d.points)}`,
-        body: `You earned ${pointsWord(d.points)}${ref ? ` on order${ref}` : ''}. Points come off your next order at checkout. They expire if unused, so use them on something you need.`,
+        // Only order points expire (loyalty terms §4); a referral or other
+        // reward never does, so it is never told to hurry.
+        body: `You earned ${pointsWord(d.points)}${ref ? ` on order${ref}` : ''}. Points come off your next order at checkout.${d.orderId ? ' They expire if unused, so use them on something you need.' : ''}`,
         cta: { label: 'See your points', url: `${publicBaseUrl()}/account/loyalty` },
         tone: 'success',
       };
@@ -356,6 +383,16 @@ export function emailCopy(template: string, d: CustomerMessageData = {}): EmailC
         tone: 'neutral',
       };
     case 'LOYALTY_TIER_CHANGED':
+      if (d.direction === 'down') {
+        return {
+          subject: `Your membership level is now ${d.tierName || 'updated'}`,
+          preheader: 'Your level follows the lifetime points on your account.',
+          headline: `Your level is now ${d.tierName || 'updated'}`,
+          body: `Your membership level at ${SHOP_NAME} is now ${d.tierName || 'updated'}. Your level follows the lifetime points on your account; your points page shows how yours add up. Spending points never lowers your level, and every point you earn from here counts toward the next one.`,
+          cta: { label: 'See your points', url: `${publicBaseUrl()}/account/loyalty` },
+          tone: 'neutral',
+        };
+      }
       return {
         subject: `You are now a ${d.tierName || 'new tier'} member`,
         preheader: 'See what that gets you.',
