@@ -1,0 +1,10 @@
+[Unit]
+Description=Copy the GoldPlus backups offsite at 02:50 UTC, after the 02:15 nightly dump
+
+[Timer]
+OnCalendar=*-*-* 02:50:00 UTC
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target
