@@ -532,20 +532,47 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
     },
   },
   {
+    // LinkedIn Conversions API (streaming conversionEvents), rewritten
+    // 2026-10-06 against LinkedIn's own reference (learn.microsoft.com/linkedin/
+    // marketing/integrations/ads-reporting/conversions-api and -schema, docs
+    // dated 2026-09-16, version 202609):
+    //  - each conversion rule tracks ONE type, so each shop event that LinkedIn
+    //    should receive has its own rule ID; an event without one is not queued;
+    //  - a match needs at least one of SHA256_EMAIL, LINKEDIN_FIRST_PARTY_ADS_
+    //    TRACKING_UUID (the li_fat_id click id the shop already keeps for 30
+    //    days), PLAINTEXT_IP_ADDRESS (IPv4 only). Until today only the email was
+    //    sent, so a buyer who gave none was never reported;
+    //  - conversionValue is optional: sent only when there is an amount, never "0";
+    //  - userInfo is not sent: if present, LinkedIn requires first AND last name.
+    // Token: Campaign Manager > Data > Signals Manager > Direct API > Generate
+    // access token. It does not expire and needs no developer app.
     key: 'linkedin', name: 'LinkedIn (business buyers)',
-    fields: [{ key: 'conversionId', label: 'Conversion rule ID', pattern: /^\d{4,20}$/, hint: 'Campaign Manager > Conversions (Conversions API rule)' }],
+    fields: [
+      { key: 'conversionId', label: 'Purchase conversion rule ID', pattern: /^\d{4,20}$/, hint: 'Campaign Manager > Data > Signals Manager (or Measurement > Conversion tracking) > a rule of type Purchase with data source Direct API: the number after /conversions/ in its address' },
+      { key: 'leadConversionId', label: 'Quote request / lead rule ID', pattern: /^\d{4,20}$/, optional: true, hint: 'A second rule, type Request quote (or Lead), data source Direct API. Leave empty to send purchases only' },
+      { key: 'checkoutConversionId', label: 'Checkout started rule ID', pattern: /^\d{4,20}$/, optional: true, hint: 'A rule of type Start checkout. Leave empty to skip' },
+      { key: 'addToCartConversionId', label: 'Add to cart rule ID', pattern: /^\d{4,20}$/, optional: true, hint: 'A rule of type Add to cart. Leave empty to skip' },
+    ],
     secretLabel: 'Conversions API access token',
-    events: { purchase: 'purchase' },
+    events: { purchase: 'PURCHASE', generate_lead: 'REQUEST_QUOTE', begin_checkout: 'START_CHECKOUT', add_to_cart: 'ADD_TO_CART' },
+    accepts(eventName, cfg) { return !!cfg[LINKEDIN_RULE_FIELD[eventName] ?? '']; },
+    skipReason(e, cfg) { return cfg[LINKEDIN_RULE_FIELD[e.event_name] ?? ''] ? 'NO_IDENTIFIER' : 'NO_EVENT_ID'; },
     build(e, cfg, token) {
-      // LinkedIn matches only on hashed email (or its own click id): no email, no request.
+      const rule = cfg[LINKEDIN_RULE_FIELD[e.event_name] ?? ''];
+      if (!rule) return null;
       const ud = u(e);
-      if (e.event_name !== 'purchase' || !ud.hashed_email) return null;
+      const userIds: Array<{ idType: string; idValue: string }> = [];
+      if (ud.hashed_email) userIds.push({ idType: 'SHA256_EMAIL', idValue: ud.hashed_email });
+      if (ud.li_fat_id) userIds.push({ idType: 'LINKEDIN_FIRST_PARTY_ADS_TRACKING_UUID', idValue: ud.li_fat_id });
+      if (ud.ip_address && /^(\d{1,3}\.){3}\d{1,3}$/.test(ud.ip_address)) userIds.push({ idType: 'PLAINTEXT_IP_ADDRESS', idValue: ud.ip_address });
+      if (userIds.length === 0) return null;
+      const amount = value(e);
       return {
         url: 'https://api.linkedin.com/rest/conversionEvents',
         headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}`, 'LinkedIn-Version': linkedInVersion(), 'X-Restli-Protocol-Version': '2.0.0' },
-        body: { conversion: `urn:lla:llaPartnerConversion:${cfg.conversionId}`, conversionHappenedAt: e.event_time * 1000, eventId: e.event_id,
-          conversionValue: { currencyCode: e.ecommerce?.currency ?? 'UGX', amount: String(value(e)) },
-          user: { userIds: [{ idType: 'SHA256_EMAIL', idValue: ud.hashed_email }] } },
+        body: { conversion: `urn:lla:llaPartnerConversion:${rule}`, conversionHappenedAt: e.event_time * 1000, eventId: e.event_id,
+          ...(amount > 0 ? { conversionValue: { currencyCode: e.ecommerce?.currency ?? 'UGX', amount: String(amount) } } : {}),
+          user: { userIds } },
       };
     },
   },
@@ -759,6 +786,11 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
   { key: 'sa360', name: 'Search Ads 360 / Campaign Manager 360', fields: [], secretLabel: '', events: {},
     unavailable: 'Enterprise products under a Google/agency contract; once contracted they read conversions from GA4 (already live) or Floodlight.' },
 ];
+
+/** Which LinkedIn config field holds the conversion rule for each shop event (one rule per type). */
+export const LINKEDIN_RULE_FIELD: Record<string, string> = {
+  purchase: 'conversionId', generate_lead: 'leadConversionId', begin_checkout: 'checkoutConversionId', add_to_cart: 'addToCartConversionId',
+};
 
 /** Which X config field holds the Events Manager ID for each shop event. */
 export const X_EVENT_FIELD: Record<string, string> = {

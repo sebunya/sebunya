@@ -249,10 +249,27 @@ describe('advertising platforms: request builders', () => {
     const s = buildAdRequest('snapchat', purchase, { pixelId: '0a1b2c3d-0000-4000-8000-000000000000' }, 'S')!;
     expect((s.body as any).data[0].event_name).toBe('PURCHASE');
   });
-  it('LinkedIn: purchase only, and only with a hashed email', () => {
-    expect(buildAdRequest('linkedin', purchase, { conversionId: '123456' }, 'L')).not.toBeNull();
-    expect(buildAdRequest('linkedin', { ...purchase, user_data: { ...purchase.user_data, hashed_email: undefined } }, { conversionId: '123456' }, 'L')).toBeNull();
-    expect(buildAdRequest('linkedin', { ...purchase, event_name: 'view_item' }, { conversionId: '123456' }, 'L')).toBeNull();
+  it('LinkedIn: one rule per event, matched on email, click id or IPv4, value only when there is one', () => {
+    const cfg = { conversionId: '123456' };
+    const r = buildAdRequest('linkedin', { ...purchase, user_data: { ...purchase.user_data, li_fat_id: 'abc-123', ip_address: '41.210.1.2' } }, cfg, 'L')!;
+    const b = r.body as any;
+    expect(r.url).toBe('https://api.linkedin.com/rest/conversionEvents');
+    expect(r.headers['X-Restli-Protocol-Version']).toBe('2.0.0');
+    expect(b.conversion).toBe('urn:lla:llaPartnerConversion:123456');
+    expect(b.user.userIds.map((x: any) => x.idType)).toEqual(['SHA256_EMAIL', 'LINKEDIN_FIRST_PARTY_ADS_TRACKING_UUID', 'PLAINTEXT_IP_ADDRESS']);
+    expect(b.user.userInfo).toBeUndefined();
+    // no email any more: the click id alone is enough (it used to send nothing)
+    const noEmail = buildAdRequest('linkedin', { ...purchase, user_data: { li_fat_id: 'abc-123' } }, cfg, 'L')!;
+    expect((noEmail.body as any).user.userIds).toEqual([{ idType: 'LINKEDIN_FIRST_PARTY_ADS_TRACKING_UUID', idValue: 'abc-123' }]);
+    // IPv6 is not accepted by LinkedIn; with nothing else, nothing is sent
+    expect(buildAdRequest('linkedin', { ...purchase, user_data: { ip_address: '2c0f:fe38::1' } }, cfg, 'L')).toBeNull();
+    // a lead goes to its own rule, without a "0" value
+    const lead = buildAdRequest('linkedin', { ...purchase, event_name: 'generate_lead', ecommerce: undefined }, { ...cfg, leadConversionId: '777777' }, 'L')!;
+    expect((lead.body as any).conversion).toBe('urn:lla:llaPartnerConversion:777777');
+    expect((lead.body as any).conversionValue).toBeUndefined();
+    // an event with no rule saved is not built (and not queued: see accepts)
+    expect(buildAdRequest('linkedin', { ...purchase, event_name: 'generate_lead' }, cfg, 'L')).toBeNull();
+    expect(buildAdRequest('linkedin', { ...purchase, event_name: 'view_item' }, cfg, 'L')).toBeNull();
   });
   it('an event a platform has no equivalent for is not sent (Pinterest has no begin_checkout)', () => {
     expect(buildAdRequest('pinterest', { ...purchase, event_name: 'begin_checkout' }, { adAccountId: '549755885175' }, 'P')).toBeNull();
@@ -490,6 +507,9 @@ describe('advertising: third-review fixes', () => {
     // A platform with no per-event ID accepts whatever it maps.
     expect(adPlatformAccepts('meta', 'view_item', {})).toBe(true);
     expect(adPlatformAccepts('linkedin', 'view_item', {})).toBe(false);
+    expect(adPlatformAccepts('linkedin', 'purchase', { conversionId: '123456' })).toBe(true);
+    expect(adPlatformAccepts('linkedin', 'generate_lead', { conversionId: '123456' })).toBe(false);
+    expect(adPlatformAccepts('linkedin', 'generate_lead', { conversionId: '1', leadConversionId: '777777' })).toBe(true);
     // The reason matches the builder's own three exits, in its order.
     const basket = { ...purchase, event_name: 'add_to_cart' };
     expect(adSkipReason('x', { ...basket, event_name: 'view_item', user_data: { twclid: 'tw1' } }, cfg)).toBe('NO_EVENT_ID');
