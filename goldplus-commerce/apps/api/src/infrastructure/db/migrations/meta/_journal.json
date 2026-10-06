@@ -1198,6 +1198,13 @@
       "when": 1790140000047,
       "tag": "0170_ad_featured_products",
       "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "5",
+      "when": 1790140000048,
+      "tag": "0171_spotify_ads_api_capability",
+      "breakpoints": true
     }
   ]
 }

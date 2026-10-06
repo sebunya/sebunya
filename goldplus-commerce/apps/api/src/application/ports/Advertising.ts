@@ -34,7 +34,7 @@ export interface SecretCipher { encrypt(plain: string): string; decrypt(enc: str
 
 // ── Advertising operations (0154): capabilities, audiences, spend, offline ──
 
-export type AdCapability = 'audiences' | 'spend' | 'offline' | 'whatsapp_ads';
+export type AdCapability = 'audiences' | 'spend' | 'offline' | 'whatsapp_ads' | 'ads_api';
 
 /** One platform capability's settings; the secret is write-only (mask only). */
 export interface AdCapabilityRow {

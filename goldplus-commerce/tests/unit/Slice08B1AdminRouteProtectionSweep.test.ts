@@ -114,7 +114,9 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
     // and its redirect target admin/advertising/tiktok/callback, 2026-10-02).
     // 180: +1 for the Spotify ad rotation preview (admin/advertising/spotify,
     // read-only, docs/advertising/README.md, 2026-10-06).
-    expect(adminPages).toHaveLength(180);
+    // 182: +2 for Connect Spotify (admin/advertising/spotify/connect and its
+    // redirect target admin/advertising/spotify/callback, 2026-10-06).
+    expect(adminPages).toHaveLength(182);
     expect(adminPages[0]).toBe('apps/web/src/pages/admin/advertising.astro');
     expect(adminPages.at(-1)).toBe('apps/web/src/pages/admin/verification/index.astro');
   });
@@ -132,7 +134,7 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
 
   it('fails closed for every non-allowlisted admin Astro page', () => {
     const protectedPages = adminPages.filter((page) => !publicAllowlist.includes(page as typeof publicAllowlist[number]));
-    expect(protectedPages).toHaveLength(179);
+    expect(protectedPages).toHaveLength(181);
     for (const page of protectedPages) {
       const source = read(page);
       expect(source, `${page} must use the server-side session contract`).toContain('readSessionToken(Astro.request)');

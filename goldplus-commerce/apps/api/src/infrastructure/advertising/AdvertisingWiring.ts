@@ -23,6 +23,8 @@ import { HttpMetaDiagnosticsGateway } from './HttpMetaDiagnosticsGateway';
 import { TikTokDiagnosticsUseCases } from '../../application/use-cases/advertising/TikTokDiagnosticsUseCases';
 import { HttpTikTokDiagnosticsGateway } from './HttpTikTokDiagnosticsGateway';
 import { TikTokConnectUseCases } from '../../application/use-cases/advertising/TikTokConnectUseCases';
+import { SpotifyConnectUseCases } from '../../application/use-cases/advertising/SpotifyConnectUseCases';
+import { HttpSpotifyAdsGateway } from './HttpSpotifyAdsGateway';
 import { HttpTikTokOAuthGateway } from './HttpTikTokOAuthGateway';
 import { storefrontOrigin } from '../config/storefrontOrigin';
 import { WhatsAppAdsUseCases } from '../../application/use-cases/advertising/WhatsAppAdsUseCases';
@@ -147,8 +149,17 @@ export function createAdvertisingOperations(deps: {
     return r.ok ? { ok: true } : { ok: false, message: r.message };
   }, deps.audit);
 
+  const spotifyConnect = new SpotifyConnectUseCases(new HttpSpotifyAdsGateway(), async () => {
+    const row = (await capabilities.list()).find((v: any) => v.platform === 'spotify' && v.capability === 'ads_api') as any;
+    const cfg = row?.row?.config ?? {};
+    return { clientId: String(cfg.clientId ?? ''), adAccountId: String(cfg.adAccountId ?? '') };
+  }, async (actorId, refreshToken) => {
+    const r = await capabilities.configure(actorId, 'spotify', 'ads_api', { secret: refreshToken });
+    return r.ok ? { ok: true } : { ok: false, message: r.message };
+  }, deps.audit);
+
   return {
-    capabilities, audiences, spend, offline, feeds, feedUrls, activity, metaDiagnostics, tiktokDiagnostics, tiktokConnect, whatsappAds,
+    capabilities, audiences, spend, offline, feeds, feedUrls, activity, metaDiagnostics, tiktokDiagnostics, tiktokConnect, spotifyConnect, whatsappAds,
     jobs,
     async checklist() {
       const [destinations, caps, feedProducts] = await Promise.all([deps.destinations.list(), capabilities.list(), feeds.included().catch(() => null)]);
