@@ -142,7 +142,7 @@ routes.post('/gamification/badges', requirePermissions([PERMISSIONS.SETTINGS_MAN
 routes.patch('/gamification/missions/:id', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const body = await c.req.json().catch(() => null);
   const { EVALUABLE_MISSION_KINDS, MISSION_STATUSES, MISSION_REWARD_MAX_POINTS } = await import('../../../../application/use-cases/loyalty/LoyaltyGamificationUseCases');
-  const patch: { status?: string; threshold?: number; rewardPoints?: number } = {};
+  const patch: { status?: string; threshold?: number; rewardPoints?: number; description?: string | null } = {};
   if (body?.status !== undefined) {
     if (!(MISSION_STATUSES as readonly string[]).includes(body.status)) {
       return c.json({ success: false, error: { code: 'BAD_INPUT', message: `status must be one of ${MISSION_STATUSES.join(', ')}.` } }, 400);
@@ -161,8 +161,17 @@ routes.patch('/gamification/missions/:id', requirePermissions([PERMISSIONS.SETTI
     }
     patch.rewardPoints = body.rewardPoints;
   }
+  if (body?.description !== undefined) {
+    // What the customer reads on their rewards page; it should name the same
+    // number as the threshold, so the two are edited together.
+    if (body.description !== null && typeof body.description !== 'string') {
+      return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'description must be text.' } }, 400);
+    }
+    const text = typeof body.description === 'string' ? body.description.trim().slice(0, 500) : '';
+    patch.description = text || null;
+  }
   if (Object.keys(patch).length === 0) {
-    return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'Nothing to change: send status, threshold or rewardPoints.' } }, 400);
+    return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'Nothing to change: send status, threshold, rewardPoints or description.' } }, 400);
   }
   const registry = Registry.getInstance();
   const before = await registry.gamificationRepo.findMission(c.req.param('id') ?? '');
@@ -177,7 +186,7 @@ routes.patch('/gamification/missions/:id', requirePermissions([PERMISSIONS.SETTI
     action: 'GAMIFICATION_MISSION_UPDATED',
     entity: 'gamification_mission',
     entityId: before.id,
-    previousState: { status: before.status, threshold: before.threshold, rewardPoints: before.rewardPoints },
+    previousState: { status: before.status, threshold: before.threshold, rewardPoints: before.rewardPoints, description: before.description },
     newState: patch,
   });
   return c.json({ success: true, data: row });

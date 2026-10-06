@@ -47,6 +47,7 @@ if (Astro.request.method === "POST") {
           status: String(form.get("status") || ""),
           threshold: Number(form.get("threshold")),
           rewardPoints: Number(form.get("rewardPoints")),
+          description: String(form.get("description") ?? ""),
         }),
       });
       const json = await res.json().catch(() => null);
@@ -115,6 +116,11 @@ try {
 
     <section class="rounded-2xl border border-slate-200 bg-white p-5">
       <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">Missions</h2>
+      <p class="mt-2 text-xs font-medium text-slate-600">
+        Each customer can complete a mission once, ever. Lowering the number needed pays everyone who now qualifies at
+        the next loyalty sweep (every 6 hours), or for a delivery streak at their next delivery. Raising it, changing the
+        points or archiving never takes back a bonus already paid. Keep the description's number in step with the number needed.
+      </p>
       {(!data || data.missions.length === 0) ? (
         <p class="mt-4 text-sm font-medium text-slate-500">No missions defined yet — truthfully empty.</p>
       ) : (
@@ -132,6 +138,7 @@ try {
                 </select>
                 <input name="threshold" type="number" min="1" max="1000" step="1" value={m.threshold} aria-label={`Number needed to complete ${m.title}`} class="w-20 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-medium" />
                 <input name="rewardPoints" type="number" min="0" max="10000" step="1" value={m.rewardPoints} aria-label={`Reward points for ${m.title}`} class="w-24 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-medium" />
+                <input name="description" maxlength="500" value={m.description ?? ""} placeholder="What the customer reads" aria-label={`Customer-facing description of ${m.title}`} class="w-full rounded-lg border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] font-medium" />
                 <button type="submit" class="rounded-lg border border-slate-300 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-slate-700 hover:bg-slate-50">Save</button>
               </form>
               <form method="POST">

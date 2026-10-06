@@ -158,7 +158,7 @@ export class DrizzleGamificationRepository implements IGamificationLiveRepositor
     return row ?? null;
   }
 
-  async updateMission(id: string, patch: { status?: string; threshold?: number; rewardPoints?: number }) {
+  async updateMission(id: string, patch: { status?: string; threshold?: number; rewardPoints?: number; description?: string | null }) {
     const [row] = await db.update(gamificationMissions).set(patch).where(eq(gamificationMissions.id, id)).returning();
     return row ?? null;
   }
