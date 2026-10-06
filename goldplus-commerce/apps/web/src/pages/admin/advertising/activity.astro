@@ -83,6 +83,11 @@ if (a) {
   else if (f.arrivals === 0 && a.scope === "x_clicks") verdict = { tone: "info", text: `No visitor arrived from an X ad in the last ${a.days} days. With "x_clicks", events are sent only for visitors who did, so there has been nothing to send. This fills in as soon as an X campaign is running and people click it. X adds its click id to ad links by itself: there is nothing more to set up here.` };
   // Meta is sent every visitor's events, not only those of visitors who came from its adverts.
   else if (a.platform === "meta" && f.raised === 0) verdict = { tone: "info", text: `Nothing has been raised for Meta in the last ${a.days} days yet. Every visitor's product views, searches, basket and checkout steps are sent, whether or not they came from a Meta advert, so this fills in as soon as the shop is browsed.` };
+  // A platform with no click id (Spotify, Snapchat, Pinterest, Microsoft, LinkedIn)
+  // has arrivals = null: it is sent every visitor's events, like Meta. Without
+  // this line it fell through to "Visitors arrived from Spotify Ads…", which no
+  // visitor had done (seen 2026-10-06, before any Spotify ad had run).
+  else if (f.arrivals == null && f.raised === 0) verdict = { tone: "info", text: `Nothing has been raised for ${who} in the last ${a.days} days yet. ${who} is sent every visitor's events it accepts, whether or not they came from its adverts, so this fills in as soon as someone browses the shop.` };
   else if (f.arrivals === 0) verdict = { tone: "info", text: `No visitor arrived on ${click} in the last ${a.days} days, so nothing was raised for ${who}.` };
   else if (f.arrivals > 0 && f.recognised === 0) verdict = { tone: "warn", text: `${n(f.arrivals)} visitors arrived from ${who} but none was recognised afterwards. Their click id did not reach the identity record, so their later events cannot be matched.` };
   else if (f.raised === 0) verdict = { tone: "info", text: `Visitors arrived from ${who}, but none of them has viewed a product, added to basket or bought yet in this period.` };
