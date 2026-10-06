@@ -1363,8 +1363,13 @@ def cmd_deep(args, policy: dict, state: State) -> int:
             # Not "the only copy": Hetzner's daily server images (enabled on this host,
             # seen 2026-10-06) are separate, but go when the server is deleted.
             print(f"  remote repository: NONE — {why}; no verified copy of the dumps outside this server (provider server images, if enabled, are deleted with the server)")
-            state.record_alert("HIGH", "no remote backup repository",
-                               "a local-only copy does not survive the machine")
+            # WATCH, not HIGH (2026-10-06): this host also has Hetzner's daily
+            # server images and delete protection, so a missing verified copy of
+            # the dumps is a gap to close, not an emergency. HIGH reached the
+            # owner's phone every Sunday, and an alert that always fires is one
+            # people learn to ignore.
+            state.record_alert("WATCH", "no verified offsite copy of the dumps",
+                               "no verified copy of the dump files outside this server; provider server images, if enabled, are deleted with the server")
     finally:
         state.release("deep")
     return 0
