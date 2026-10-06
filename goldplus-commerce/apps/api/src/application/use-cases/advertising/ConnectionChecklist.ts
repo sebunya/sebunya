@@ -43,6 +43,10 @@ const WHERE: Record<string, Record<string, string>> = {
     apiVersion: 'Google Ads API release notes (developers.google.com/google-ads/api/docs/release-notes): the newest version, e.g. v25.',
     secret: 'developerToken: manager account > Tools > API Center. clientId / clientSecret: Google Cloud console > APIs & Services > Credentials > Create OAuth client ID (enable the Google Ads API first). refreshToken: one OAuth consent with the scope https://www.googleapis.com/auth/adwords for the Google account that can open the ads account.',
   },
+  spotify: {
+    connectionId: 'Spotify Ads Manager > Events > your Conversions API data source > Setup: the "Connection ID" (a UUID).',
+    secret: 'The same Setup screen > Token > "Generate token". Copy it at once: Spotify shows it only then, and allows 3 per connection. Not the Ads API sign-in token.',
+  },
 };
 
 const STATE_OF_DEST: Record<string, ChecklistStatus> = { LIVE: 'LIVE', TEST: 'TEST', READY_OFF: 'READY_OFF', NOT_CONFIGURED: 'NOT_CONFIGURED', NOT_AVAILABLE: 'NOT_AVAILABLE' };
@@ -86,7 +90,11 @@ export function buildChecklist(input: {
     const early = Object.keys(d.events).filter((e) => e !== 'purchase');
     if (early.length) {
       const sel = d.row?.eventSelection ?? null;
-      items.push({ key: 'early_signals', title: 'Optimisation events', status: state === 'LIVE' || state === 'TEST' ? state : 'READY_OFF',
+      // The same status as the conversions they are a subset of. It used to be
+      // READY_OFF ("Configured, switched off") for anything not Live or Test,
+      // so a platform nobody had touched claimed to be configured (seen on
+      // Spotify, 2026-10-06; true of every platform).
+      items.push({ key: 'early_signals', title: 'Optimisation events', status: state,
         detail: sel == null ? `All supported: ${early.join(', ')}` : sel.length ? `Selected: ${sel.join(', ')}` : 'None selected: only purchases are sent.', steps: [] });
     }
     if (d.key === 'meta' || d.key === 'tiktok' || d.key === 'google_ads') {

@@ -717,7 +717,6 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
     fields: [{ key: 'connectionId', label: 'CAPI connection ID', pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
       hint: 'Spotify Ads Manager > Events > Connect data source > Conversions API' }],
     secretLabel: 'CAPI access token',
-    secretHint: 'The long-lived Conversions API token from the same screen (not the Ads API sign-in token)',
     events: { view_item: 'PRODUCT', add_to_cart: 'ADD_TO_CART', begin_checkout: 'CHECK_OUT', generate_lead: 'LEAD', purchase: 'PURCHASE' },
     build(e, cfg, token) {
       const name = this.events[e.event_name as AdEventName]; if (!name) return null;
