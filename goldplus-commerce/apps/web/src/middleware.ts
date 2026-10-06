@@ -80,7 +80,21 @@ async function holderIsAdmin(request: Request): Promise<boolean> {
   }
 }
 
+/**
+ * Moved pages. The shop page was /locations/wilson-road until 2026-10-03; the
+ * shop is in the New Pioneer Mall Building (Burton Street face). A `redirects`
+ * entry in astro.config.mjs does NOT fire under the node server adapter (the
+ * old slug rendered the 404 page, checked on the built server 2026-10-05), so
+ * the redirect lives here, before anything else looks at the path.
+ */
+export const MOVED_PATHS: Readonly<Record<string, string>> = {
+  '/locations/wilson-road': '/locations/new-pioneer-mall',
+};
+
 export const onRequest = defineMiddleware(async (context, next) => {
+  const moved = MOVED_PATHS[context.url.pathname.replace(/\/+$/, '') || '/'];
+  if (moved) return context.redirect(`${moved}${context.url.search}`, 301);
+
   if (context.request.method === 'POST') {
     const formPath = budgetedFormPath(context.url.pathname);
     if (formPath && !publicFormLimiter.allow(formPath, visitorKey(context.request.headers, () => context.clientAddress))) {
