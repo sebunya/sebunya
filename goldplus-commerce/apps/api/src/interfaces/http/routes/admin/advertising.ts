@@ -110,6 +110,13 @@ routes.get('/audiences', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), asyn
   const [preview, runs, capabilities, customSegments] = await Promise.all([ops().audiences.preview(), ops().audiences.recentRuns(30), capView(), ops().audiences.availableCustomSegments().catch(() => [])]);
   return c.json({ success: true, data: { preview, runs, capabilities: capabilities.filter((v) => v.capability === 'audiences'), customSegments } });
 });
+routes.get('/audiences/linkedin-csv/:segment', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c: Context) => {
+  try {
+    return c.json({ success: true, data: await ops().audiences.linkedinContactCsv((c.req.param('segment') ?? '') as never) });
+  } catch (e) {
+    return c.json({ success: false, error: { message: e instanceof Error ? e.message : 'Could not build the list.' } }, 400);
+  }
+});
 routes.post('/audiences/:platform/run', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c: Context) => {
   const b = (await c.req.json().catch(() => null)) as { mode?: string } | null;
   // The use case logs, audits and records the capability's last run.
