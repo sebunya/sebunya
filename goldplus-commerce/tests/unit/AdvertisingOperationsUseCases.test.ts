@@ -636,3 +636,24 @@ describe('connection checklist tells the truth about an untouched platform', () 
     expect(tok.where).not.toMatch(/^Format:/);
   });
 });
+
+describe('the Spotify Ads API connection on the checklist', () => {
+  const spotify = AD_PLATFORMS.find((p) => p.key === 'spotify')!;
+  const cap = (hasSecret: boolean) => ({ platform: 'spotify', capability: 'ads_api', name: 'Ads API (drafts)', what: 'Reads the account.', state: hasSecret ? 'READY_OFF' : 'NOT_CONFIGURED',
+    gap: hasSecret ? '' : 'the refresh token is not stored', secretLabel: 'Refresh token', secretWhere: 'x', requiresDestination: false,
+    fields: [], row: { enabled: false, config: {}, hasSecret } });
+  const item = (hasSecret: boolean) => buildChecklist({ destinations: [{ ...spotify, state: 'LIVE', row: { enabled: true, config: {}, hasSecret: true } } as any],
+    capabilities: [cap(hasSecret)] as any, feedProducts: 0, feedUrls: { google: 'g', meta: 'm', tiktok: 't' } })[0].items.find((i: any) => i.key === 'ads_api')!;
+
+  it('connected reads Connected (READY), never "switched off", with no switch step', () => {
+    const i = item(true);
+    expect(i.status).toBe('READY');
+    expect(i.detail).toMatch(/^Connected\./);
+    expect(i.steps.map((s: any) => s.label)).not.toContain('Switched on');
+  });
+  it('not connected points at Connect Spotify', () => {
+    const i = item(false);
+    expect(i.status).toBe('NOT_CONFIGURED');
+    expect(i.steps.find((s: any) => s.secret).where).toContain('Connect Spotify');
+  });
+});
