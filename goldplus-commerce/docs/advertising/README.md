@@ -522,3 +522,15 @@ Next:
   ticked): stage the plan as DRAFTS (`POST /ads/{id}/drafts`, `PATCH /drafts/ads/{id}`), run the draft
   campaign's VALIDATE action, and show it in admin. A person publishes. Needs a payment method on the
   Goldplus ad account and an owner-set budget (Spotify minimum $15/day or $250 total).
+
+### Featured products (migration 0170, 2026-10-06)
+
+On launch day the rotation found nothing it could truthfully advertise: no customer sale in 30
+days (every recent order was a test order), nothing added in 21 days, and history only starting.
+The owner can now feature up to 10 catalogue-feed products on `/admin/advertising/spotify`
+(`ad_featured_products`, keyed by platform; every save audited as `AD_FEATURED_PRODUCTS_SET`).
+A featured product is a reason in itself, ranked below news (price drop, restock, new arrival) and
+above "it sold". Its headline is name and current price only, with no claim.
+
+Open: test orders are not marked, so a paid test order counts as a sale here and in other reports.
+Marking them (a flag or a known test phone list) is an owner decision.

@@ -121,6 +121,12 @@ routes.post('/spend/csv', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), asy
 // Spotify ad rotation preview: what the planner would run today, and why. Read-only.
 routes.get('/spotify/rotation', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) =>
   c.json({ success: true, data: await Registry.getInstance().spotifyRotation.preview() }));
+routes.put('/spotify/featured', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c: Context) => {
+  const b = (await c.req.json().catch(() => null)) as { productIds?: unknown } | null;
+  const r = await Registry.getInstance().spotifyRotation.setFeatured(actor(c), b?.productIds);
+  if (!r.ok) return c.json({ success: false, error: { code: r.code, message: r.message } }, 400);
+  return c.json({ success: true, data: r });
+});
 routes.get('/offline', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const [overview, capabilities] = await Promise.all([ops().offline.overview(), capView()]);
   // WhatsApp adverts are set up beside the WhatsApp sales they credit.

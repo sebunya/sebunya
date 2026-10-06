@@ -14,3 +14,11 @@ export interface SpotifyRotationReader {
     historySince: Date | null;
   }>;
 }
+
+/** Products the owner chose to advertise, per ad platform (ad_featured_products, 0170). */
+export interface FeaturedProductsStore {
+  /** Empty when none are chosen, or when 0170 is not applied yet. */
+  list(platform: string): Promise<string[]>;
+  /** Replace the whole choice for the platform. */
+  replace(platform: string, productIds: string[], actorId: string | null): Promise<void>;
+}

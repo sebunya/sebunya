@@ -1191,6 +1191,13 @@
       "when": 1790140000046,
       "tag": "0169_product_market_events",
       "breakpoints": true
+    },
+    {
+      "idx": 170,
+      "version": "5",
+      "when": 1790140000047,
+      "tag": "0170_ad_featured_products",
+      "breakpoints": true
     }
   ]
 }

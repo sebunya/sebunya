@@ -51,8 +51,10 @@ export interface RotationProduct {
   firstPublishedAt: Date | null;
   /** When it last went from out of stock to in stock; null = not recently. */
   restockedAt: Date | null;
-  /** Paid orders of this product in the last 30 days, all channels. */
+  /** Sales of this product in the last 30 days, all channels. */
   orders30d: number;
+  /** The owner chose to advertise it (ad_featured_products, 0170). */
+  featured?: boolean;
 }
 
 export interface RotationAd {
@@ -63,7 +65,7 @@ export interface RotationAd {
   startedAt: Date;
 }
 
-export type RotationReason = 'PRICE_DROP' | 'BACK_IN_STOCK' | 'NEW_ARRIVAL' | 'BEST_SELLER';
+export type RotationReason = 'PRICE_DROP' | 'BACK_IN_STOCK' | 'NEW_ARRIVAL' | 'FEATURED' | 'BEST_SELLER';
 
 export type RotationAction =
   | { kind: 'CREATE'; productId: string; tagline: string; clickthroughUrl: string; imageUrl: string; reason: RotationReason; why: string }
@@ -86,11 +88,14 @@ export function isGenuinePriceDrop(p: Pick<RotationProduct, 'priceUgx' | 'priorL
   return p.priorLowestUgx30d != null && p.priorLowestUgx30d > 0 && p.priceUgx < p.priorLowestUgx30d;
 }
 
-/** Why a product deserves an ad today, strongest reason first; null = only a best seller, or nothing. */
+/** Why a product deserves an ad today, strongest reason first; null = no reason it can prove. */
 export function rotationReason(p: RotationProduct, now: Date): RotationReason | null {
   if (isGenuinePriceDrop(p)) return 'PRICE_DROP';
   if (p.restockedAt && now.getTime() - p.restockedAt.getTime() <= RESTOCK_DAYS * DAY) return 'BACK_IN_STOCK';
   if (p.firstPublishedAt && now.getTime() - p.firstPublishedAt.getTime() <= NEW_ARRIVAL_DAYS * DAY) return 'NEW_ARRIVAL';
+  // The owner's choice is a reason in itself, ranked above "it sold" and below
+  // anything that is news. Its headline claims nothing but name and price.
+  if (p.featured) return 'FEATURED';
   if (p.orders30d > 0) return 'BEST_SELLER';
   return null;
 }
@@ -151,11 +156,12 @@ export function clickthroughUrl(p: Pick<RotationProduct, 'url' | 'productId'>): 
   return u.toString();
 }
 
-const REASON_RANK: Record<RotationReason, number> = { PRICE_DROP: 4, BACK_IN_STOCK: 3, NEW_ARRIVAL: 2, BEST_SELLER: 1 };
+const REASON_RANK: Record<RotationReason, number> = { PRICE_DROP: 5, BACK_IN_STOCK: 4, NEW_ARRIVAL: 3, FEATURED: 2, BEST_SELLER: 1 };
 const REASON_WHY: Record<RotationReason, string> = {
   PRICE_DROP: 'below its lowest price of the previous 30 days',
   BACK_IN_STOCK: `back in stock within the last ${RESTOCK_DAYS} days`,
   NEW_ARRIVAL: `first published within the last ${NEW_ARRIVAL_DAYS} days`,
+  FEATURED: 'chosen by the owner',
   BEST_SELLER: 'sold in the last 30 days',
 };
 
