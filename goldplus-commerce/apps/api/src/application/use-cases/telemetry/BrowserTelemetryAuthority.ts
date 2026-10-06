@@ -21,6 +21,7 @@ export const BROWSER_FORBIDDEN_USER_FIELDS = [
   'hashed_phone',
   'hashed_phone_plus',
   'hashed_email_google',
+  'hashed_email_microsoft',
 ] as const;
 
 /**

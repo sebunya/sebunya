@@ -6,7 +6,7 @@ import { env } from '../../config/env';
 import { logger } from '../logging/logger';
 import { environmentOf } from '../../domain/measurement/BusinessEvents';
 import { ga4CollectHit } from '../telemetry/Ga4CollectHit';
-import { META_GRAPH_VERSION, adErrorSummary, adPlatform, adSkipReason, buildAdRequest, normalisePhoneUg, hashEmail, hashEmailGoogle, hashPhone, hashPhonePlus } from '../advertising/AdPlatforms';
+import { META_GRAPH_VERSION, adErrorSummary, adPlatform, adSkipReason, buildAdRequest, normalisePhoneUg, hashEmail, hashEmailGoogle, hashEmailMicrosoft, hashPhone, hashPhonePlus } from '../advertising/AdPlatforms';
 import { isMetaClickId, metaBrowserIdFromVisitor, metaCustomerHashes } from '../../domain/advertising/MetaIdentifiers';
 import { storefrontOrigin } from '../config/storefrontOrigin';
 import { businessMessagingPurchase } from '../../domain/advertising/WhatsAppAdReferrals';
@@ -257,7 +257,7 @@ async function loadIdentity(orderId: string) {
   return {
     user_id: o.user_id ?? undefined, fp_client_id: a.fp_client_id ?? undefined, ip_address: a.client_ip ?? undefined, user_agent: a.user_agent ?? undefined,
     ga_session_id: a.ga_session_id ?? undefined, ga_session_number: a.ga_session_number ?? undefined,
-    hashed_email: hashEmail(o.customer_email), hashed_email_google: hashEmailGoogle(o.customer_email),
+    hashed_email: hashEmail(o.customer_email), hashed_email_google: hashEmailGoogle(o.customer_email), hashed_email_microsoft: hashEmailMicrosoft(o.customer_email),
     hashed_phone: hashPhone(o.customer_phone), hashed_phone_plus: hashPhonePlus(o.customer_phone),
     gclid: ck.gclid, gbraid: ck.gbraid, wbraid: ck.wbraid, ttclid: ck.ttclid, twclid: ck.twclid, msclkid: ck.msclkid, sccid: ck.ScCid, epik: ck.epik,
     // Meta: the click id the browser built from the landing URL's fbclid, and a

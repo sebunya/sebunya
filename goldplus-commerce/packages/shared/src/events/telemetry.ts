@@ -60,6 +60,7 @@ export const TelemetryUserDataSchema = z.object({
   network_click_source: z.string().max(60).optional(),
   /** SHA-256 of the email under Google's normalisation (gmail dots removed). */
   hashed_email_google: z.string().length(64).optional(),
+  hashed_email_microsoft: z.string().length(64).optional(),
 
   // Forwarded from browser for CAPI IP/UA matching requirements
   ip_address: z.string().max(64).optional(),

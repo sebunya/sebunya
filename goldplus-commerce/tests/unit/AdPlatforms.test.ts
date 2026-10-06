@@ -648,3 +648,28 @@ describe('Spotify Conversions API, as Spotify documents it', () => {
     expect(sp.fields[0].pattern.test('not-a-uuid')).toBe(false);
   });
 });
+
+describe('Microsoft Advertising UET Conversions API contract (learn.microsoft.com, 2026-08-04)', () => {
+  it('email: dots and +alias removed from the local part for every domain', async () => {
+    const { hashEmailMicrosoft } = await import('../../apps/api/src/infrastructure/advertising/AdPlatforms');
+    expect(hashEmailMicrosoft(' John.Doe+shop@Contoso.com ')).toBe(hashEmail('johndoe@contoso.com'));
+    expect(hashEmailMicrosoft('a.b@gmail.com')).toBe(hashEmail('ab@gmail.com'));
+    expect(hashEmailMicrosoft('not-an-email')).toBeUndefined();
+  });
+  it('phone hashed in E.164 WITH "+", Microsoft email hash preferred, no shilling value, page types', () => {
+    const ev = { ...purchase, user_data: { ...purchase.user_data, hashed_email_microsoft: 'f'.repeat(64), msclkid: 'dd4afccc-b1c9-4a4c-ad95-44dd7e5006ab' } };
+    const d = (buildAdRequest('microsoft_ads', ev, { tagId: '12345678' }, 'MS')!.body as any).data[0];
+    expect(d.eventType).toBe('custom');
+    expect(d.userData.ph).toBe(hashPhonePlus('0772 123 456'));
+    expect(d.userData.em).toBe('f'.repeat(64));
+    expect(d.customData.value).toBeUndefined();
+    expect(d.customData.currency).toBeUndefined();
+    expect(d.customData).toMatchObject({ transactionId: 'GP-1', pageType: 'purchase' });
+    const usd = (buildAdRequest('microsoft_ads', { ...ev, ecommerce: { ...purchase.ecommerce, currency: 'USD', value: 40 } }, { tagId: '12345678' }, 'MS')!.body as any).data[0];
+    expect(usd.customData).toMatchObject({ value: 40, currency: 'USD' });
+    const cart = (buildAdRequest('microsoft_ads', { ...ev, event_name: 'add_to_cart' }, { tagId: '12345678' }, 'MS')!.body as any).data[0];
+    expect(cart.customData.pageType).toBe('cart');
+    const lead = (buildAdRequest('microsoft_ads', { ...ev, event_name: 'generate_lead', ecommerce: undefined }, { tagId: '12345678' }, 'MS')!.body as any).data[0];
+    expect(lead.customData.pageType).toBe('other');
+  });
+});

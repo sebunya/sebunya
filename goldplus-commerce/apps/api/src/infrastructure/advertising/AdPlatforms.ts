@@ -104,6 +104,17 @@ export const hashEmailGoogle = (email?: string | null) => {
   const l = domain === 'gmail.com' || domain === 'googlemail.com' ? local.replace(/\./g, '') : local;
   return sha(`${l}@${domain}`);
 };
+/**
+ * Microsoft Advertising's email normalisation (learn.microsoft.com, UET
+ * Conversions API, "To hash an email address", 2026-08-04): trim, remove every
+ * dot and any +alias from the local part, whatever the domain, lower-case.
+ */
+const MS_PAGE_TYPE: Record<string, string> = { view_item: 'product', add_to_cart: 'cart', begin_checkout: 'cart', purchase: 'purchase' };
+export const hashEmailMicrosoft = (email?: string | null) => {
+  if (!email || !email.includes('@')) return undefined;
+  const [local, domain] = email.trim().toLowerCase().split('@');
+  return sha(`${local.replace(/\+.*$/, '').replace(/\./g, '')}@${domain}`);
+};
 /** Ugandan numbers to E.164 digits (07XXXXXXXX -> 2567XXXXXXXX), hashed. */
 export function normalisePhoneUg(phone?: string | null): string | undefined {
   const d = String(phone ?? '').replace(/\D/g, '').replace(/^00/, '');
@@ -630,8 +641,9 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
   },
   {
     key: 'microsoft_ads', name: 'Microsoft Advertising (Bing)',
-    fields: [{ key: 'tagId', label: 'UET tag ID', pattern: /^\d{6,12}$/, hint: 'Microsoft Advertising > Tools > UET tag' }],
+    fields: [{ key: 'tagId', label: 'UET tag ID', pattern: /^\d{6,12}$/, hint: 'Microsoft Advertising > Tools > UET tag. Create a conversion goal of type "Custom events" with Action equals purchase (and one with Action equals generate_lead for quote requests), set to "Don\'t assign a value", on this tag' }],
     secretLabel: 'UET Conversions API token',
+    secretHint: 'Edit the UET tag > Save and next > Set up tagging: Use Conversions API > Copy token. Microsoft enables the Conversions API per account (pilot): if that option is missing, ask Microsoft Advertising support to enable it.',
     events: { view_item: 'view_item', add_to_cart: 'add_to_cart', begin_checkout: 'begin_checkout', generate_lead: 'generate_lead', purchase: 'purchase' },
     build(e, cfg, token) {
       const name = this.events[e.event_name as AdEventName]; if (!name) return null;
@@ -641,8 +653,12 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
         headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
         body: { data: [{
           eventType: 'custom', eventName: name, eventId: e.event_id, eventTime: e.event_time, eventSourceUrl: e.page_location,
-          userData: { em: ud.hashed_email, ph: ud.hashed_phone, clientIpAddress: ud.ip_address, clientUserAgent: ud.user_agent, msclkid: ud.msclkid, anonymousId: extId(e) },
-          customData: { value: value(e), currency: e.ecommerce?.currency ?? 'UGX', transactionId: e.ecommerce?.transaction_id, itemIds: ids(e), pageType: e.event_name === 'purchase' ? 'purchase' : 'product' },
+          userData: { em: ud.hashed_email_microsoft ?? ud.hashed_email, ph: ud.hashed_phone_plus, clientIpAddress: ud.ip_address, clientUserAgent: ud.user_agent, msclkid: ud.msclkid, anonymousId: extId(e) },
+          // An unaccepted currency is dropped as a warning while the number is
+          // kept, so a shilling amount would be read in the account's currency
+          // (UGX 145,000 as 145,000 dollars). No shilling value is sent.
+          customData: { ...(value(e) > 0 && (e.ecommerce?.currency ?? 'UGX') !== 'UGX' ? { value: value(e), currency: e.ecommerce?.currency } : {}),
+            transactionId: e.ecommerce?.transaction_id, itemIds: ids(e), pageType: MS_PAGE_TYPE[e.event_name] ?? 'other' },
         }] },
       };
     },
