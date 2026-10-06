@@ -77,13 +77,11 @@ describe('the host stops filling between deploys', () => {
     expect(compose).toContain("'--storage.tsdb.retention.size=1GB'");
   });
 
-  it('the post-deploy smoke and the Lighthouse watch run one after the other, never together', () => {
+  it('a deploy starts exactly one audit job in the background, the smoke, and no Lighthouse Watch', () => {
     const deploy = read('scripts/deploy-prod.sh');
-    const smoke = deploy.indexOf('run-in-container.sh --ad-hoc');
-    const watch = deploy.indexOf('lighthouse-watch.sh deploy');
-    expect(smoke).toBeGreaterThan(-1);
-    expect(watch).toBeGreaterThan(smoke);
     const block = deploy.slice(deploy.indexOf('# Post-roll measurement'));
+    expect(block).toContain('run-in-container.sh --ad-hoc');
+    expect(block).not.toMatch(/lighthouse-watch\.sh (deploy|cron)/);
     expect(block.match(/\) 9>&- &/g)).toHaveLength(1);
     expect(block).not.toMatch(/nohup/);
   });

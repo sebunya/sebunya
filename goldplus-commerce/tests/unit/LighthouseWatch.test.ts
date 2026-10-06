@@ -157,12 +157,17 @@ describe('RecordLighthouseReportUseCase', () => {
 
 describe('the watch is wired, not just written', () => {
   const read = (p: string) => readFileSync(resolve(__dirname, '../../', p), 'utf8');
-  it('the ingest route is mounted, the ticker starts and stops with the server, and every deploy triggers a run', () => {
+  it('the ingest route is mounted, the ticker starts and stops with the server, and the watch runs weekly on a fixed slot, never from a deploy', () => {
     expect(read('apps/api/src/interfaces/http/app.ts')).toMatch(/app\.route\('\/internal\/lighthouse', internalLighthouseRoutes\)/);
     const server = read('apps/api/src/interfaces/http/server.ts');
     expect(server).toMatch(/startLighthouseWatchTicker\(\)/);
     expect(server).toMatch(/stopLighthouseWatchTicker\(\)/);
-    expect(read('scripts/deploy-prod.sh')).toMatch(/lighthouse-watch\.sh deploy/);
+    // Owner decision 2026-10-06: weekly, Sunday 04:30 UTC. A deploy that started
+    // the watch reset its clock and moved the weekly run to the deploy's hour.
+    expect(read('scripts/deploy-prod.sh')).not.toMatch(/lighthouse-watch\.sh (deploy|cron)/);
+    expect(read('ops/lighthouse-watch/goldplus-lighthouse-watch.cron')).toMatch(/^30 4 \* \* 0 root cd \/opt\/goldplus\/app\/goldplus-commerce && scripts\/lighthouse-watch\.sh cron$/m);
+    expect(read('scripts/lighthouse-watch.sh')).toMatch(/LIGHTHOUSE_WATCH_MIN_INTERVAL_HOURS:-144\}/);
+    expect(read('apps/api/src/infrastructure/scheduler/LighthouseWatchTicker.ts')).toMatch(/'LIGHTHOUSE_WATCH_INTERVAL_MINUTES', 7 \* 24 \* 60\)/);
   });
   it('the ingest refuses without a 32+ character token and compares it in constant time', () => {
     const route = read('apps/api/src/interfaces/http/routes/internal/lighthouse.ts');

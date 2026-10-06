@@ -1,0 +1,11 @@
+# /etc/cron.d/goldplus-lighthouse-watch — install: cp this file there (root:root 0644)
+#
+# Lighthouse Watch, WEEKLY on a fixed slot (owner decision 2026-10-06, was
+# "at most every 96 h", 2026-09-13): Sunday 04:30 UTC = 07:30 EAT, the quietest
+# hour of the week, after the 02:15 backup, the 02:50 offsite copy and the
+# monthly 03:30 restore drill. A fixed day makes week-on-week scores comparable.
+# Deploys no longer trigger it (their own smoke runs Lighthouse after every roll).
+# The runner's 144 h guard stops a duplicate within the week; `manual` bypasses it.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+30 4 * * 0 root cd /opt/goldplus/app/goldplus-commerce && scripts/lighthouse-watch.sh cron

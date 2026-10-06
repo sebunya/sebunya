@@ -8,10 +8,13 @@
 #
 #   ./scripts/lighthouse-watch.sh [reason]        # reason is logged: cron | deploy | manual
 #
-# Scheduling (owner decision 2026-09-13): AT MOST ONE AUTOMATIC RUN EVERY 96 HOURS.
-# Cron checks daily and the deploy hook calls after every roll, but both pass
-# through the interval guard below and are skipped inside the window; only
-# `manual` bypasses it. Chromium comes from the Playwright image already on the
+# Scheduling (owner decision 2026-10-06; was "at most every 96 h", 2026-09-13):
+# WEEKLY, Sunday 04:30 UTC, from ops/lighthouse-watch/goldplus-lighthouse-watch.cron.
+# Deploys no longer call it: they reset the clock and moved the weekly run to
+# whatever hour a deploy happened, often peak traffic; every deploy already
+# runs Lighthouse in its own post-deploy smoke. The 144 h guard below lets the
+# weekly slot through (with room for cron jitter) and refuses a second
+# automatic run inside the week; `manual` always bypasses it. Chromium comes from the Playwright image already on the
 # host; the lighthouse package is cached in a named volume. One run takes
 # ~3 minutes and is CPU-limited to leave room for the site.
 set -euo pipefail
@@ -20,7 +23,7 @@ REASON="${1:-manual}"
 LOG_DIR="${LIGHTHOUSE_WATCH_LOG_DIR:-/var/log/goldplus}"; mkdir -p "$LOG_DIR" 2>/dev/null || LOG_DIR=/tmp
 LOG="$LOG_DIR/lighthouse-watch.log"
 STAMP="$LOG_DIR/lighthouse-watch.last-run"
-MIN_HOURS="${LIGHTHOUSE_WATCH_MIN_INTERVAL_HOURS:-96}"
+MIN_HOURS="${LIGHTHOUSE_WATCH_MIN_INTERVAL_HOURS:-144}"
 exec >>"$LOG" 2>&1
 if [ "$REASON" != "manual" ] && [ -f "$STAMP" ]; then
   AGE=$(( ( $(date +%s) - $(cat "$STAMP") ) / 3600 ))
