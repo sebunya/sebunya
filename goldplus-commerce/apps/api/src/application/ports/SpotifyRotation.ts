@@ -6,7 +6,7 @@ export interface SpotifyRotationReader {
     /** product_market_events (0169) per product: the last 90 days plus the event in force when they began. */
     events: Record<string, MarketEvent[]>;
     createdAt: Record<string, Date>;
-    /** Paid orders containing the product, last 30 days. */
+    /** Sales containing the product, last 30 days: delivered or completed, or paid and not cancelled or failed. */
     orders30d: Record<string, number>;
     /** The same, only orders whose visit came from utm_source=spotify. */
     spotifyOrders30d: Record<string, number>;

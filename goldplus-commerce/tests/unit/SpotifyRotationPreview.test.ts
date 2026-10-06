@@ -52,3 +52,14 @@ describe('Spotify rotation preview from live shop data', () => {
     expect(r.plan.skipped.map((s) => s.productId)).toEqual(['sold']);
   });
 });
+
+describe('the reader counts a sale the way the rest of advertising does', () => {
+  const { readFileSync } = require('node:fs') as typeof import('node:fs');
+  const { join } = require('node:path') as typeof import('node:path');
+  const read = (f: string) => readFileSync(join(__dirname, '../..', f), 'utf8');
+  it('delivered or completed (COD), or paid and not cancelled or failed: never "paid" alone', () => {
+    const PRED = "o.status in ('delivered', 'completed') or (o.payment_status = 'paid' and o.status not in ('cancelled', 'failed'))";
+    expect(read('apps/api/src/infrastructure/db/repositories/DrizzleAdvertisingOpsRepository.ts')).toContain(PRED);
+    expect(read('apps/api/src/infrastructure/db/repositories/DrizzleSpotifyRotationReader.ts')).toContain(PRED);
+  });
+});
