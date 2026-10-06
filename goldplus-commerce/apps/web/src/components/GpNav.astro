@@ -1,6 +1,7 @@
 ---
 import { whatsappHref } from '../lib/whatsappPrefill';
 import { cartClient } from '../lib/cartClient';
+import { chunkIds, isCartProductId } from '../lib/cart';
 import { productSrcset } from '../lib/imageSrcset';
 import { resolveCartCredential } from '../lib/cartCredential';
 import { resolveAuthenticatedUserId } from '../lib/customerAuth';
@@ -58,15 +59,31 @@ const headerCart = Astro.locals.gpCart !== undefined
   ? Astro.locals.gpCart
   : resolveCartCredential(Astro.cookies, headerUserId, { sessionUnknown: true });
 let cartCount = 0;
-let cartItems: Array<{ name: string; qty: number; price: string }> = [];
+let cartItems: Array<{ name: string; qty: number; price: string; productId: string; imageUrl: string | null }> = [];
 let subtotal = '0';
 if (headerCart) {
   const result = await cartClient.read(headerCart.token, Astro.cookies.get('goldplus_session')?.value ?? null);
   if (result.ok) {
     cartCount = result.cart.items.reduce((a, i) => a + i.quantity, 0);
     cartItems = result.cart.items.slice(0, 4).map((i) => ({
-      name: i.name, qty: i.quantity, price: i.unitPriceUgx.toLocaleString('en-UG'),
+      name: i.name, qty: i.quantity, price: i.unitPriceUgx.toLocaleString('en-UG'), productId: i.productId, imageUrl: null as string | null,
     }));
+    // The basket carries no image, so the mini-cart showed the empty box for
+    // every line. The shown lines (at most four) are looked up by id, the same
+    // read the cart page makes, in batches of three in parallel with a short
+    // timeout: a slow catalogue leaves the box, never a slow header.
+    const ids = cartItems.map((c) => c.productId).filter((id) => isCartProductId(id));
+    if (ids.length) {
+      const imgById = new Map<string, string>();
+      await Promise.all(chunkIds(ids).map(async (batch) => {
+        try {
+          const r = await fetch(`${apiBase}/products?ids=${batch.join(',')}`, { signal: AbortSignal.timeout(1500) });
+          const j: any = r.ok ? await r.json().catch(() => null) : null;
+          if (j?.success && Array.isArray(j.data)) for (const p of j.data) if (p?.id && p.primaryImageUrl) imgById.set(p.id, p.primaryImageUrl);
+        } catch { /* the labelled box stays */ }
+      }));
+      cartItems = cartItems.map((c) => ({ ...c, imageUrl: imgById.get(c.productId) ?? null }));
+    }
     subtotal = result.cart.subtotalUgx.toLocaleString('en-UG');
   }
 }
@@ -273,7 +290,7 @@ const nbaJson = escNav(JSON.stringify(nba));
           <div class="gp-nav__mini-list">
             {cartItems.map((it) => (
               <a href="/cart">
-                <span class="gp-nav__sug-img"></span>
+                <span class="gp-nav__sug-img">{it.imageUrl && <img src={it.imageUrl} alt="" width="40" height="40" loading="lazy" decoding="async">}</span>
                 <span class="gp-nav__sug-t"><b>{it.name}</b><span>Qty {it.qty}</span></span>
                 <span class="gp-nav__sug-p">{it.price}</span>
               </a>
@@ -988,7 +1005,9 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 }
 .gp-nav__mini-sum b{font-size:15px;color:var(--gpn-cream);font-variant-numeric:tabular-nums;}
 .gp-nav__mini-cut{
-  display:flex;align-items:center;gap:8px;margin-bottom:12px;padding:9px 12px;border-radius:10px;
+  /* Running text, not flex: as a flex row every text run and <b> became its
+     own column ("Kampala & Wakiso: check out in | 1h 47m | for | same-day"). */
+  display:block;margin-bottom:12px;padding:9px 12px;border-radius:10px;
   background:rgba(147,213,0,.08);border:1px solid rgba(147,213,0,.28);
   font-size:12px;color:var(--gpn-muted);line-height:1.4;
 }
