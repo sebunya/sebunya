@@ -6,6 +6,8 @@ import { env } from '../../config/env';
 import { logger } from '../logging/logger';
 import { environmentOf } from '../../domain/measurement/BusinessEvents';
 import { ga4CollectHit } from '../telemetry/Ga4CollectHit';
+import { eventInUsd } from '../../domain/advertising/AdMoney';
+import { adUsdRate } from '../advertising/AdUsdRate';
 import { META_GRAPH_VERSION, adErrorSummary, adPlatform, adSkipReason, buildAdRequest, normalisePhoneUg, hashEmail, hashEmailGoogle, hashPhone, hashPhonePlus } from '../advertising/AdPlatforms';
 import { isMetaClickId, metaBrowserIdFromVisitor, metaCustomerHashes } from '../../domain/advertising/MetaIdentifiers';
 import { storefrontOrigin } from '../config/storefrontOrigin';
@@ -320,6 +322,8 @@ async function buildRequest(sink: string, canonical: CanonicalTelemetryEvent, me
     return { req: { url: `${env.metricsInternalUrl}/g/collect?${hit.toString()}`, method: 'POST', headers: {
       'X-Telemetry-Source': 'goldplus-delivery', ...(ud.user_agent ? { 'User-Agent': ud.user_agent } : {}), ...(ud.ip_address ? { 'X-Forwarded-For': ud.ip_address } : {}) } } };
   }
+  // Ad platforms get US dollars only (owner decision 2026-10-06); GA4 above keeps shillings.
+  canonical = eventInUsd(canonical, await adUsdRate());
   const platform = sink.split(':')[1];
   const def = adPlatform(platform);
   const dest = (await adRepo.active()).find((d) => d.platform === platform);
@@ -340,7 +344,7 @@ async function buildRequest(sink: string, canonical: CanonicalTelemetryEvent, me
       url: `https://graph.facebook.com/${META_GRAPH_VERSION}/${messaging.datasetId || dest.config.datasetId}/events`, method: 'POST',
       headers: { 'content-type': 'application/json', Authorization: `Bearer ${messaging.accessToken || secret}` },
       body: JSON.stringify({ ...(test ? { test_event_code: dest.config.testEventCode } : {}), data: [businessMessagingPurchase({
-        eventId: canonical.event_id, eventTimeSec: canonical.event_time, valueUgx: Number(canonical.ecommerce?.value ?? 0), currency: canonical.ecommerce?.currency,
+        eventId: canonical.event_id, eventTimeSec: canonical.event_time, valueUgx: canonical.ecommerce?.value ?? null, currency: canonical.ecommerce?.currency,
         orderNumber: canonical.ecommerce?.transaction_id ?? null, wabaId: messaging.wabaId, ctwaClid: messaging.ctwaClid })] }),
     } };
   }

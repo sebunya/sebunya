@@ -1,3 +1,4 @@
+import { ugxToUsd } from '../../domain/advertising/AdMoney';
 import { createHash, randomInt } from 'node:crypto';
 import type {
   AudienceGateway, HashedAudienceMember, OfflineContext, OfflineConversionGateway, PlatformCredentials, SpendGateway,
@@ -479,6 +480,8 @@ export function offlineRequest(ctx: OfflineContext, creds: PlatformCredentials):
   const h = ctx.hashes, c = ctx.clickIds, d = creds.destinationConfig;
   const t = Math.floor(new Date(ctx.row.occurredAt).getTime() / 1000);
   const orderId = ctx.orderNumber ?? `OFFLINE-${ctx.row.sourceRef.slice(0, 8).toUpperCase()}`;
+  // US dollars only (owner decision 2026-10-06); no rate = no amount, never shillings.
+  const usd = ugxToUsd(ctx.valueUgx, creds.usdRate);
   if (ctx.row.platform === 'google_ads') {
     const action = creds.config.offlineConversionActionId || d.conversionActionId;
     const ids = [h.emailGoogleSha256 ? { hashedEmail: h.emailGoogleSha256 } : null, h.phonePlusSha256 ? { hashedPhoneNumber: h.phonePlusSha256 } : null].filter(Boolean);
@@ -487,7 +490,7 @@ export function offlineRequest(ctx: OfflineContext, creds: PlatformCredentials):
       body: { partialFailure: true, ...(creds.testMode ? { validateOnly: true } : {}), conversions: [{
         ...(c.gclid ? { gclid: c.gclid } : c.gbraid ? { gbraid: c.gbraid } : c.wbraid ? { wbraid: c.wbraid } : {}),
         conversionAction: `customers/${d.customerId}/conversionActions/${action}`, conversionDateTime: googleTime(ctx.row.occurredAt),
-        conversionValue: ctx.valueUgx, currencyCode: 'UGX', orderId, ...(ids.length ? { userIdentifiers: ids } : {}),
+        ...(usd !== null ? { conversionValue: usd, currencyCode: 'USD' } : {}), orderId, ...(ids.length ? { userIdentifiers: ids } : {}),
       }] },
     };
   }
@@ -500,7 +503,7 @@ export function offlineRequest(ctx: OfflineContext, creds: PlatformCredentials):
         url: `${GRAPH}/${creds.messaging?.datasetId || d.datasetId}/events`, headers: metaHeaders(creds.messaging?.accessToken || creds.destinationSecret),
         body: {
           ...(creds.testMode ? { test_event_code: d.testEventCode } : {}),
-          data: [businessMessagingPurchase({ eventId: ctx.row.eventId, eventTimeSec: t, valueUgx: ctx.valueUgx, orderNumber: orderId, wabaId: ctx.whatsappReferral.wabaId, ctwaClid: ctx.whatsappReferral.ctwaClid })],
+          data: [businessMessagingPurchase({ eventId: ctx.row.eventId, eventTimeSec: t, valueUgx: usd, currency: 'USD', orderNumber: orderId, wabaId: ctx.whatsappReferral.wabaId, ctwaClid: ctx.whatsappReferral.ctwaClid })],
         },
       };
     }
@@ -513,7 +516,7 @@ export function offlineRequest(ctx: OfflineContext, creds: PlatformCredentials):
             // A sale recorded with the chat's reference code is that visitor's: the same
             // ids their browsing events carried, so Meta joins the sale to the visit.
             ...(ctx.visitorId ? { external_id: [createHash('sha256').update(ctx.visitorId).digest('hex')], fbp: metaBrowserIdFromVisitor(ctx.visitorId) ?? undefined } : {}) },
-          custom_data: { currency: 'UGX', value: ctx.valueUgx, order_id: orderId } }],
+          custom_data: { ...(usd !== null ? { currency: 'USD', value: usd } : {}), order_id: orderId } }],
       },
     };
   }
@@ -527,7 +530,7 @@ export function offlineRequest(ctx: OfflineContext, creds: PlatformCredentials):
         data: [{ event: 'Purchase', event_time: t, event_id: ctx.row.eventId,
           user: { email: h.emailSha256 ?? undefined, phone: h.phonePlusSha256 ?? undefined, ttclid: c.ttclid,
             ...(ctx.visitorId ? { external_id: createHash('sha256').update(ctx.visitorId).digest('hex') } : {}) },
-          properties: { ...(tiktokMoney(ctx.valueUgx, 'UGX', creds.destinationConfig ?? {}) ?? {}), order_id: orderId } }] },
+          properties: { ...((usd !== null ? { currency: 'USD', value: usd } : null) ?? {}), order_id: orderId } }] },
     };
   }
   return null;
