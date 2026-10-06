@@ -78,6 +78,26 @@ echo "DEPLOYED $HEAD, $WANT/$WANT healthy, tagged rollback-$HEAD"
 # 2026-09-20 after a day of deploys. Cache older than a day is dropped (the
 # next build is slower, never wrong). Never fails the deploy.
 docker builder prune -f --filter until=24h >/dev/null 2>&1 || true
+# The age filter alone never bounds a busy day: every layer built today is
+# younger than 24h, so six deploys on 2026-10-06 added 6.2 GB and the cache
+# reached 21.3 GB (disk 68%) before the Steward's nightly trim. Cap it by size
+# too, at the Steward's bound (policy.yaml docker.build_cache_max_gb), with the
+# same flag detection: Docker 29 removed --keep-storage, and an unknown flag
+# fails silently under `|| true`. Least-recently-used cache goes first, so the
+# layers this deploy just used stay warm.
+CACHE_CAP_GB="${BUILD_CACHE_MAX_GB:-2}"
+CACHE_FLAG=""
+for f in --max-used-space --keep-storage; do
+  if docker builder prune --help 2>/dev/null | grep -q -- "$f"; then CACHE_FLAG="$f"; break; fi
+done
+if [ -n "$CACHE_FLAG" ]; then
+  # A plain byte count, exactly as the Steward passes it (proven on this host).
+  docker builder prune -f "$CACHE_FLAG" "$(( CACHE_CAP_GB * 1024 * 1024 * 1024 ))" >/dev/null 2>&1 \
+    && echo "build cache capped at ${CACHE_CAP_GB} GB ($CACHE_FLAG)" \
+    || echo "WARN: build cache cap ($CACHE_FLAG ${CACHE_CAP_GB} GB) failed; the Steward's nightly housekeep will retry"
+else
+  echo "WARN: this docker offers neither --max-used-space nor --keep-storage; build cache is bounded only by the Steward"
+fi
 # Post-roll measurement: the compatibility + performance smoke (control + local
 # Lighthouse + the compatibility programme in smoke mode; ad-hoc label, never
 # moves the ten-day clock), in the background.
