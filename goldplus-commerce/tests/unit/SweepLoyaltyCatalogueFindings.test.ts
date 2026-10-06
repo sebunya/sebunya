@@ -72,8 +72,7 @@ describe('cash-on-delivery orders earn loyalty points on delivery', () => {
     expect(fn).toContain('loyaltyEarnSourceFromOrder(row)');
     for (const [file, n] of [
       ['apps/api/src/infrastructure/db/repositories/DrizzleLoyaltyReferralRepository.ts', 1],
-      // purchase count, streak, and the mission catch-up's purchase candidates
-      ['apps/api/src/infrastructure/db/repositories/DrizzleGamificationRepository.ts', 3],
+      ['apps/api/src/infrastructure/db/repositories/DrizzleGamificationRepository.ts', 2],
       ['apps/api/src/infrastructure/loyalty/LoyaltyIdentityInfrastructure.ts', 1],
       ['apps/api/src/infrastructure/db/repositories/DrizzleLoyaltyCompletionRepository.ts', 1],
     ] as const) {

@@ -127,7 +127,13 @@ const formatDate = (iso: string) =>
           </div>
         )}
 
-        {referral && <ReferralCard referral={referral} bonus={programme?.earnSources?.referral?.bonus ?? null} />}
+        {referral && (
+          <ReferralCard
+            referral={referral}
+            bonus={programme?.earnSources?.referral?.bonus ?? null}
+            bonusPaid={Boolean(gamification?.missions?.find((m: any) => m.kind === 'REFERRAL_COUNT')?.completed)}
+          />
+        )}
 
         {gamification?.badges?.length > 0 && (
           <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">

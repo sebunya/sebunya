@@ -1,4 +1,14 @@
--- 0174: the third mission rewards introducing friends and family, not scanning.
+-- 0174: the third mission rewards introducing friends and family, not scanning;
+-- lifetime points start counting reductions from this deploy; terms v2.
+-- Additive and reversible: one archived row, one new row, one new nullable
+-- column, one version string. No ledger row is written or changed; points
+-- move only through the append-only ledger, as awards happen.
+-- Rollback (comments only; roll the code back first):
+--   UPDATE gamification_missions SET status = 'ACTIVE' WHERE key = 'verify_ten';
+--   UPDATE gamification_missions SET status = 'ARCHIVED' WHERE key = 'refer_three';
+--     (archived, never deleted: paid awards carry its key in the ledger)
+--   UPDATE loyalty_config SET terms_version = 'v1' WHERE terms_version = 'v2';
+--   ALTER TABLE loyalty_config DROP COLUMN lifetime_reductions_from;
 --
 -- 'verify_ten' (Serial Authenticator, 100 pts) paid a bonus for ten successful
 -- product checks. Each scan already earns its own points (verification_scan,

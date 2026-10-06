@@ -83,32 +83,17 @@ export class DrizzleGamificationRepository implements IGamificationLiveRepositor
   }
 
   async missionCatchUpCandidates(mission: ActiveMission, limit: number): Promise<string[]> {
-    // The same counts missionProgress uses, grouped; minus anyone already paid
+    // Referral missions only (CatchUpMissionAwardsUseCase says why): referrers
+    // at or past the threshold of AWARDED referrals, minus anyone already paid
     // (the award's ledger key is mission:<key>:<userId>).
-    const notPaid = (userCol: ReturnType<typeof sql.raw>) => sql`not exists (
-      select 1 from loyalty_ledger_entries le where le.idempotency_key = 'mission:' || ${mission.key} || ':' || ${userCol}::text)`;
-    let rows: Array<{ user_id: string }> = [];
-    if (mission.kind === 'PURCHASE_COUNT') {
-      rows = (await db.execute(sql`
-        select o.user_id from orders o
-        where o.user_id is not null and ${LOYALTY_PAYMENT_QUALIFIES_SQL}
-          and o.status in ('delivered','completed') and o.buyer_type = 'retail'
-          and ${notPaid(sql.raw('o.user_id'))}
-        group by o.user_id having count(*) >= ${mission.threshold}
-        limit ${limit}`)) as unknown as Array<{ user_id: string }>;
-    } else if (mission.kind === 'REFERRAL_COUNT') {
-      rows = (await db.execute(sql`
-        select r.referrer_user_id as user_id from loyalty_referrals r
-        where r.status = 'awarded' and ${notPaid(sql.raw('r.referrer_user_id'))}
-        group by r.referrer_user_id having count(*) >= ${mission.threshold}
-        limit ${limit}`)) as unknown as Array<{ user_id: string }>;
-    } else if (mission.kind === 'VERIFICATION_COUNT') {
-      rows = (await db.execute(sql`
-        select v.user_id from verification_attempts v
-        where v.user_id is not null and v.is_successful = true and ${notPaid(sql.raw('v.user_id'))}
-        group by v.user_id having count(*) >= ${mission.threshold}
-        limit ${limit}`)) as unknown as Array<{ user_id: string }>;
-    }
+    if (mission.kind !== 'REFERRAL_COUNT') return [];
+    const rows = (await db.execute(sql`
+      select r.referrer_user_id as user_id from loyalty_referrals r
+      where r.status = 'awarded'
+        and not exists (select 1 from loyalty_ledger_entries le
+          where le.idempotency_key = 'mission:' || ${mission.key} || ':' || r.referrer_user_id::text)
+      group by r.referrer_user_id having count(*) >= ${mission.threshold}
+      limit ${limit}`)) as unknown as Array<{ user_id: string }>;
     return rows.map((r) => String(r.user_id));
   }
 

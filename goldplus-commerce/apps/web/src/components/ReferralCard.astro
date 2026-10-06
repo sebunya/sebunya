@@ -19,9 +19,11 @@ interface Props {
   };
   /** The active Friends & Family mission, when one pays a bonus. */
   bonus?: { friends: number; points: number } | null;
+  /** Whether that mission has already paid this customer (it pays once, ever). */
+  bonusPaid?: boolean;
 }
 
-const { referral, bonus = null } = Astro.props;
+const { referral, bonus = null, bonusPaid = false } = Astro.props;
 const shareUrl = `${SITE_ORIGIN}/register?ref=${referral.code}`;
 const whatsappText = `Get genuine electronics from GoldPlus. Use my code ${referral.code} when you sign up: ${shareUrl}`;
 const bonusLeft = bonus ? Math.max(0, bonus.friends - referral.awarded) : 0;
@@ -36,10 +38,12 @@ const bonusLeft = bonus ? Math.max(0, bonus.friends - referral.awarded) : 0;
   </p>
   {bonus && (
     <p class="mt-2 text-sm text-brand-charcoal leading-relaxed" data-referral-bonus>
-      {bonusLeft > 0 ? (
+      {bonusPaid ? (
+        <>You have earned the Friends &amp; Family bonus. Every friend you introduce still earns you {referral.referrerPoints.toLocaleString('en-UG')} points.</>
+      ) : bonusLeft > 0 ? (
         <>When your {ordinalWord(bonus.friends)} friend's first order is delivered, you also get a one-off bonus of <strong>{bonus.points.toLocaleString('en-UG')} points</strong>. {bonusLeft === 1 ? 'One more to go.' : `${bonusLeft} more to go.`}</>
       ) : (
-        <>You have earned the Friends &amp; Family bonus. Every friend you introduce still earns you {referral.referrerPoints.toLocaleString('en-UG')} points.</>
+        <>You have introduced enough friends for the one-off bonus of <strong>{bonus.points.toLocaleString('en-UG')} points</strong>. It is added to your points automatically.</>
       )}
     </p>
   )}

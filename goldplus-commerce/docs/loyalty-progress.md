@@ -456,3 +456,45 @@ ledger=0`.
 
 **The scratch card is now live.** The next delivered order from a signed-in
 retail customer grants that customer a card, and any customer can play it.
+
+## Friends & Family, every point counts, missions runnable (2026-10-06) — built, NOT deployed
+
+Owner instructions (2026-10-06): replace Serial Authenticator with a reward for
+referring friends and family; "the points are lifetime points" — every point
+counts toward levels. Branch `feat/referral-mission`, stacked on #43.
+
+**Shipped in code.** Migration 0174 (additive, reversible; rollback in its
+header): `verify_ten` ARCHIVED, `refer_three` Friends & Family (3 awarded
+referrals, 300 pts) ACTIVE, terms v1 → v2, `loyalty_config.lifetime_reductions_from`
+added and stamped at deploy. `computeLifetimePoints` counts every credit;
+reversals and negative corrections only from that stamp (terms §9); redeem and
+expiry never. Every tier change messaged (PART M), level-down without a claimed
+cause. Mission admin (status/threshold/points/description, audited; kinds with
+no data source cannot activate). Referrers evaluated when a referral is awarded;
+catch-up in the sweep for referral missions only. Invite card on Rewards and
+Points (`#refer`); banner and nav land on it. Mission and per-referral messages.
+
+**Bugs found on the way** (all fixed): referral missions could never complete
+for the referrer; referral messages deduplicated per user (only the first
+friend was ever announced); mission bonuses silent; points email told
+non-expiring points they expire; streak copy read config the award ignored;
+hero meter ignored merged accounts; "Get your link" landed on a page with no
+link; paid missions showed incomplete after a broken streak; admin could not
+activate, archive or retune any mission.
+
+**Proof.** Unit 9,935 green (3 failures are date/timezone tests that fail
+identically on the base branch). Fresh PostgreSQL, all migrations, real app:
+26/26 across MissionAdminApi, LoyaltyProgrammePublic, ReferralMission,
+HeroLoyaltyLifetime, HeroSignals, HeroContent.
+
+**Deploy.** Preview level moves first (read-only `ops/loyalty/tier-preview.sql`);
+then the standard path: `scripts/migrate-prod.sh` (backup → restored clone →
+rehearse → live) and `scripts/deploy-prod.sh`. Assertion for migrate-prod.sh's
+third argument (prints 1 when 0174 applied, 0 otherwise; no double quotes, as
+the script requires):
+
+    select (count(*) = 3)::int from (select 1 from gamification_missions where key = 'refer_three' and status = 'ACTIVE' union all select 1 from gamification_missions where key = 'verify_ten' and status = 'ARCHIVED' union all select 1 from loyalty_config where singleton = 'config' and lifetime_reductions_from is not null) t
+
+ After: `/admin/loyalty/gamification`
+shows Five Deliveries, Friends & Family, On A Roll active; `/loyalty-terms`
+shows version v2 and the go-live date.

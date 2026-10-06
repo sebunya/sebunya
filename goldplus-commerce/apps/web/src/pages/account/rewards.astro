@@ -359,7 +359,13 @@ const pct = (progress: number, threshold: number) =>
           )}
         </section>
 
-        {referral && <ReferralCard referral={referral} bonus={src?.referral?.bonus ?? null} />}
+        {referral && (
+          <ReferralCard
+            referral={referral}
+            bonus={src?.referral?.bonus ?? null}
+            bonusPaid={Boolean(data.missions?.find((m: any) => m.kind === 'REFERRAL_COUNT')?.completed)}
+          />
+        )}
 
         <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
           <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Missions</h2>

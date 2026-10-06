@@ -63,16 +63,20 @@ export const MISSION_STATUSES = ['DRAFT', 'ACTIVE', 'ARCHIVED'] as const;
 export const MISSION_REWARD_MAX_POINTS = 10_000;
 
 /**
- * Catch-up for missions whose completing event has already passed: a mission
- * activated after customers qualified (Friends & Family on deploy day), or
- * qualification while the programme was dormant. Candidates are evaluated by
- * the same once-ever use case, so a re-run never pays twice. STREAK_ORDERS is
- * left to the delivery event: its progress is the CURRENT run of orders, which
- * is only meaningful when an order lands. Badge-only missions are skipped
- * (no ledger row marks them done, so they would be re-checked forever).
+ * Catch-up for REFERRAL missions whose completing event has already passed:
+ * Friends & Family activated after customers qualified, or a referrer who
+ * reached the threshold before referrers were evaluated at all. Candidates are
+ * evaluated by the same once-ever use case, so a re-run never pays twice.
+ *
+ * Referrals only, on purpose. Awarded referrals exist only since the programme
+ * went live, so this pays nothing for history from before it. Order and scan
+ * counts reach back to before the programme: catching those up would pay every
+ * past customer at once (a liability decision for the owner, brief PART S), so
+ * those missions keep paying at the customer's next qualifying event, as they
+ * always have. Badge-only missions are skipped (no ledger row marks them done).
  */
 export class CatchUpMissionAwardsUseCase {
-  static readonly KINDS = ['PURCHASE_COUNT', 'REFERRAL_COUNT', 'VERIFICATION_COUNT'];
+  static readonly KINDS = ['REFERRAL_COUNT'];
   static readonly PER_MISSION_LIMIT = 500;
 
   constructor(

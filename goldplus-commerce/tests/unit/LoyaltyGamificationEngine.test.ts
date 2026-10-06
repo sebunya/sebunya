@@ -401,10 +401,11 @@ describe('customers hear about every reward (loose ends, 2026-10-06)', () => {
 describe('mission catch-up (customers who qualified before the mission could see them)', () => {
   const friends: ActiveMission = { id: 'm3', key: 'refer_three', title: 'Friends & Family', description: null, kind: 'REFERRAL_COUNT', threshold: 3, rewardPoints: 300, badgeKey: null };
   const streak: ActiveMission = { id: 'm4', key: 'order_streak_3', title: 'On A Roll', description: null, kind: 'STREAK_ORDERS', threshold: 3, rewardPoints: 300, badgeKey: null };
-  const badgeOnly: ActiveMission = { id: 'm5', key: 'badge_only', title: 'Badge', description: null, kind: 'PURCHASE_COUNT', threshold: 1, rewardPoints: 0, badgeKey: 'x' };
+  const badgeOnly: ActiveMission = { id: 'm5', key: 'badge_only', title: 'Badge', description: null, kind: 'REFERRAL_COUNT', threshold: 1, rewardPoints: 0, badgeKey: 'x' };
+  const deliveries: ActiveMission = { id: 'm6', key: 'five_deliveries', title: 'Five Deliveries', description: null, kind: 'PURCHASE_COUNT', threshold: 5, rewardPoints: 250, badgeKey: null };
 
   it('pays qualifying customers through the same once-ever evaluation, and a re-run pays nothing more', async () => {
-    gamification.missions = [friends, streak, badgeOnly];
+    gamification.missions = [friends, streak, badgeOnly, deliveries];
     gamification.progress.set('u1:refer_three', 4);
     gamification.progress.set('u2:refer_three', 3);
     const asked: string[] = [];
@@ -412,7 +413,7 @@ describe('mission catch-up (customers who qualified before the mission could see
     const evaluate = new EvaluateGamificationForUserUseCase(ledger as any, completion as any, gamification as any);
     const uc = new CatchUpMissionAwardsUseCase(gamification as any, evaluate, completion as any);
     expect(await uc.execute()).toEqual({ candidates: 2, awarded: 2 });
-    expect(asked).toEqual(['refer_three']); // the streak and badge-only missions are left to their events
+    expect(asked).toEqual(['refer_three']); // order/streak history and badge-only missions are left to their events
     expect(ledger.pointsFor('u1')).toBe(300);
     expect(ledger.pointsFor('u2')).toBe(300);
     expect(await uc.execute()).toEqual({ candidates: 2, awarded: 0 });

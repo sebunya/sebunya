@@ -70,10 +70,10 @@ suite('referral mission (0174) on real PostgreSQL', () => {
     expect(snapshot.missions.find((m) => m.key === 'refer_three')).toMatchObject({ progress: 2, completed: true });
   });
 
-  it('the catch-up query is valid SQL for every kind it serves', async () => {
-    for (const kind of ['PURCHASE_COUNT', 'VERIFICATION_COUNT']) {
+  it('catch-up never reaches back into order or scan history (it would pay every past customer at once)', async () => {
+    for (const kind of ['PURCHASE_COUNT', 'VERIFICATION_COUNT', 'STREAK_ORDERS']) {
       const mission = { id: 'x', key: `probe_${kind.toLowerCase()}`, title: 'probe', description: null, kind, threshold: 1, rewardPoints: 1, badgeKey: null };
-      expect(Array.isArray(await repo.missionCatchUpCandidates(mission, 5))).toBe(true);
+      expect(await repo.missionCatchUpCandidates(mission, 5)).toEqual([]);
     }
   });
 
