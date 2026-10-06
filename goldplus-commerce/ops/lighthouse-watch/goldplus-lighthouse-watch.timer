@@ -1,0 +1,16 @@
+[Unit]
+Description=GoldPlus Lighthouse Watch, weekly, Sunday 03:00 Kampala time
+
+[Timer]
+# Owner decisions 2026-10-06. Written in Kampala time, so no UTC arithmetic:
+# systemd converts it (supported since v235; the host runs 255).
+OnCalendar=Sun *-*-* 03:00:00 Africa/Kampala
+# No catch-up: a run missed while the host was down would fire on boot,
+# possibly at peak hours, measuring a loaded site. The API's LIGHTHOUSE_STALE
+# alert (8 days) is the safety net instead.
+Persistent=false
+RandomizedDelaySec=120
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

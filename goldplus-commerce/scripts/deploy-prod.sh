@@ -78,15 +78,15 @@ echo "DEPLOYED $HEAD, $WANT/$WANT healthy, tagged rollback-$HEAD"
 # 2026-09-20 after a day of deploys. Cache older than a day is dropped (the
 # next build is slower, never wrong). Never fails the deploy.
 docker builder prune -f --filter until=24h >/dev/null 2>&1 || true
-# Post-roll measurement, ONE background job, strictly in sequence:
-#   1. compatibility + performance smoke (control + local Lighthouse + the
-#      compatibility programme in smoke mode; ad-hoc label, never moves the
-#      ten-day clock), then
-#   2. Lighthouse Watch (at most one automatic run per 96 hours, owner decision
-#      2026-09-13; most deploys are skipped by it; manual: ./scripts/lighthouse-watch.sh manual).
-# They used to start in the same second. Each container may take 1.5 GB on a
-# 3.7 GB host, and on 2026-10-06 both ran at once (3.5 GB asked, swap used,
-# customers felt it). Sequential costs nothing: both are background anyway.
+# Post-roll measurement: the compatibility + performance smoke (control + local
+# Lighthouse + the compatibility programme in smoke mode; ad-hoc label, never
+# moves the ten-day clock), in the background.
+# Lighthouse Watch is NOT started here any more (owner decision 2026-10-06): it
+# runs weekly from a systemd timer on a fixed slot, and a deploy that started it reset its
+# clock and moved the weekly run to the deploy's hour. The smoke above already
+# runs Lighthouse after every roll. Manual watch: ./scripts/lighthouse-watch.sh manual
+# Before that, the two started in the same second; each container may take
+# 1.5 GB on a 3.7 GB host (2026-10-06: 3.5 GB asked, swap used).
 # 9>&- : a background job must not inherit the deploy lock. It did, and the
 # next deploy was refused for as long as the smoke ran (2026-09-18).
 # Never blocks or fails the deploy.
@@ -96,9 +96,6 @@ docker builder prune -f --filter until=24h >/dev/null 2>&1 || true
       performance-audit/schedule/run-in-container.sh --ad-hoc --label "post-deploy-smoke-$HEAD" \
       >> /var/log/goldplus/performance-audit-post-deploy.log 2>&1 </dev/null || true
   fi
-  if [ -x scripts/lighthouse-watch.sh ]; then
-    scripts/lighthouse-watch.sh deploy >/dev/null 2>&1 </dev/null || true
-  fi
 ) 9>&- &
 disown 2>/dev/null || true
-echo "post-deploy smoke (label post-deploy-smoke-$HEAD; results under /var/lib/goldplus-performance-audit and on /admin/seo/performance-audit) then Lighthouse Watch (log: /var/log/goldplus/lighthouse-watch.log) started in the background, one after the other"
+echo "post-deploy smoke started in the background (label post-deploy-smoke-$HEAD; results under /var/lib/goldplus-performance-audit and on /admin/seo/performance-audit); Lighthouse Watch runs weekly, Sunday 03:00 Kampala time (goldplus-lighthouse-watch.timer)"

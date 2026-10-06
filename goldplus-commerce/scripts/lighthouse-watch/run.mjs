@@ -2,23 +2,37 @@
 // <slug>.<mobile|desktop>.json files into /work. Posts every result to the
 // API ingest endpoint and prints the verdict. Node 20+ (global fetch).
 import { readdirSync, readFileSync } from 'node:fs';
+import { pickMedianRun, runKey } from './median.mjs';
 
 const API = process.env.API;
 const TOKEN = process.env.TOKEN;
 const REASON = process.env.REASON ?? 'manual';
-const files = readdirSync('/work').filter((f) => /\.(mobile|desktop)\.json$/.test(f));
+const files = readdirSync('/work').filter((f) => runKey(f));
 if (files.length === 0) {
   console.log('lighthouse-watch: no results to post (every run failed)');
   process.exit(2);
 }
-const reports = [];
+// group the repeated runs of each URL x form factor, keep the median one
+const groups = new Map();
 for (const f of files) {
-  try {
-    const lhr = JSON.parse(readFileSync(`/work/${f}`, 'utf8'));
-    reports.push({ formFactor: f.endsWith('.desktop.json') ? 'DESKTOP' : 'MOBILE', runner: 'lighthouse-cli', lhr });
-  } catch (e) {
-    console.log(`lighthouse-watch: unreadable ${f}: ${String(e).slice(0, 120)}`);
-  }
+  const k = runKey(f);
+  let lhr = null;
+  try { lhr = JSON.parse(readFileSync(`/work/${f}`, 'utf8')); }
+  catch (e) { console.log(`lighthouse-watch: unreadable ${f}: ${String(e).slice(0, 120)}`); }
+  if (!groups.has(k.key)) groups.set(k.key, { formFactor: k.formFactor, lhrs: [] });
+  groups.get(k.key).lhrs.push(lhr);
+}
+const reports = [];
+for (const [key, g] of groups) {
+  const median = pickMedianRun(g.lhrs);
+  const perfs = g.lhrs.map((l) => l?.categories?.performance?.score).filter((v) => typeof v === 'number').map((v) => Math.round(v * 100));
+  if (!median) { console.log(`lighthouse-watch: ${key}: no usable run of ${g.lhrs.length}`); continue; }
+  console.log(`lighthouse-watch: ${key}: performance runs [${perfs.join(', ')}], median ${Math.round(median.categories.performance.score * 100)} kept`);
+  reports.push({ formFactor: g.formFactor, runner: 'lighthouse-cli', lhr: median });
+}
+if (reports.length === 0) {
+  console.log('lighthouse-watch: no usable run in any group');
+  process.exit(2);
 }
 const res = await fetch(`${API}/internal/lighthouse/report`, {
   method: 'POST',

@@ -8,23 +8,23 @@ import { LIGHTHOUSE_ALERT_KIND, LIGHTHOUSE_CATEGORIES, describeShortfall, evalua
  *
  * Two things, on a schedule:
  *  1. With GOOGLE_PAGESPEED_API_KEY set, pulls fresh PageSpeed Insights results
- *     (all four categories, mobile and desktop) for the watch URLs every 96 h
+ *     (all four categories, mobile and desktop) for the watch URLs once a week
  *     and records them through the same use case the host runner posts to.
  *  2. Always: every 6 h re-reads the latest stored lab rows, publishes them as
  *     Prometheus gauges, and repeats the ALERT line while anything is below
  *     target, so a shortfall cannot go quiet between runs.
  *
  * Without a Google key the measurements come from the host runner
- * (scripts/lighthouse-watch.sh, at most once every 96 h, cron or deploy); the
+ * (scripts/lighthouse-watch.sh, weekly from a systemd timer, Sunday 03:00 Kampala time); the
  * ticker says so once at boot instead of pretending to measure.
  */
 function envInt(name: string, fallback: number): number {
   const v = Number(process.env[name]);
   return Number.isFinite(v) && v > 0 ? v : fallback;
 }
-// Owner decision 2026-09-13: measure at most every 96 hours so the host is never
-// busy with audits. The review only reads stored rows and runs every 6 hours.
-const PULL_INTERVAL_MS = envInt('LIGHTHOUSE_WATCH_INTERVAL_MINUTES', 96 * 60) * 60_000;
+// Owner decision 2026-10-06 (was 96 h, 2026-09-13): measure weekly, matching the
+// host runner. The review only reads stored rows and runs every 6 hours.
+const PULL_INTERVAL_MS = envInt('LIGHTHOUSE_WATCH_INTERVAL_MINUTES', 7 * 24 * 60) * 60_000;
 const REVIEW_INTERVAL_MS = 6 * 60 * 60_000;
 const WATCH_URLS = (process.env.LIGHTHOUSE_WATCH_URLS || 'https://shopgoldplus.com/ https://shopgoldplus.com/shop').split(/[\s,]+/).filter(Boolean); // || : compose passes an empty string when unset
 
@@ -34,6 +34,21 @@ const scoreGauge = new client.Gauge({
   labelNames: ['url', 'form_factor', 'category'],
 });
 try { client.register.registerMetric(scoreGauge); } catch { /* already registered */ }
+
+/**
+ * Is the newest stored measurement too old? The watch runs weekly; a run that
+ * silently failed or a timer that never fired would otherwise leave last
+ * month's scores looking current. Measurements without a fetchTime are unknown,
+ * never fresh. Exported for the unit test.
+ */
+export function lighthouseStaleness(summaries: Array<{ fetchTime: string | null }>, nowMs: number, maxAgeDays = 8): { stale: boolean; newestAt: string | null; ageDays: number | null } {
+  const times = summaries.map((s) => (s.fetchTime ? Date.parse(s.fetchTime) : NaN)).filter((t) => Number.isFinite(t));
+  if (times.length === 0) return { stale: true, newestAt: null, ageDays: null };
+  const newest = Math.max(...times);
+  const ageDays = (nowMs - newest) / 86_400_000;
+  return { stale: ageDays > maxAgeDays, newestAt: new Date(newest).toISOString(), ageDays: Math.round(ageDays * 10) / 10 };
+}
+const STALE_AFTER_DAYS = envInt('LIGHTHOUSE_WATCH_STALE_DAYS', 8);
 
 let pullTimer: NodeJS.Timeout | null = null;
 let reviewTimer: NodeJS.Timeout | null = null;
@@ -73,6 +88,13 @@ async function review(): Promise<void> {
     if (summaries.length === 0) {
       logger.warn('[lighthouse-watch] no lab results stored yet — the host runner has not posted, or GOOGLE_PAGESPEED_API_KEY is unset');
       return;
+    }
+    const staleness = lighthouseStaleness(summaries, Date.now(), STALE_AFTER_DAYS);
+    if (staleness.stale) {
+      logger.error(
+        { newestAt: staleness.newestAt, ageDays: staleness.ageDays, maxAgeDays: STALE_AFTER_DAYS, kind: 'LIGHTHOUSE_STALE' },
+        `ALERT LIGHTHOUSE_STALE — newest Lighthouse measurement is ${staleness.ageDays ?? 'of unknown age'} day(s) old (limit ${STALE_AFTER_DAYS}): the weekly watch has stopped landing results`,
+      );
     }
     const evaluation = evaluateLighthouse(summaries, targetsFromEnv((k) => process.env[k]));
     if (!evaluation.ok) {
