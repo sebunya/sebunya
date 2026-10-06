@@ -543,12 +543,12 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
     //    sent, so a buyer who gave none was never reported;
     //  - conversionValue is optional: sent only when there is an amount, never "0";
     //  - userInfo is not sent: if present, LinkedIn requires first AND last name.
-    // Token: Campaign Manager > Data > Signals Manager > Direct API > Generate
+    // Token: Campaign Manager > Measure > Signals manager > Direct API > Generate
     // access token. It does not expire and needs no developer app.
     key: 'linkedin', name: 'LinkedIn (business buyers)',
     fields: [
-      { key: 'conversionId', label: 'Purchase conversion rule ID', pattern: /^\d{4,20}$/, hint: 'Campaign Manager > Data > Signals Manager (or Measurement > Conversion tracking) > a rule of type Purchase with data source Direct API: the number after /conversions/ in its address' },
-      { key: 'leadConversionId', label: 'Quote request / lead rule ID', pattern: /^\d{4,20}$/, optional: true, hint: 'A second rule, type Request quote (or Lead), data source Direct API. Leave empty to send purchases only' },
+      { key: 'conversionId', label: 'Purchase conversion rule ID', pattern: /^\d{4,20}$/, hint: 'Campaign Manager > Measure > Conversion tracking > Create conversion > Conversions API, category Purchase, value "Use a dynamic value", source Direct API. The ID is shown under the rule name in Measure > Signals manager > Direct API' },
+      { key: 'leadConversionId', label: 'Quote request / lead rule ID', pattern: /^\d{4,20}$/, optional: true, hint: 'A second rule made the same way, category Lead, value "No value", source Direct API. It receives quote requests and WhatsApp taps. Leave empty to send purchases only' },
       { key: 'checkoutConversionId', label: 'Checkout started rule ID', pattern: /^\d{4,20}$/, optional: true, hint: 'A rule of type Start checkout. Leave empty to skip' },
       { key: 'addToCartConversionId', label: 'Add to cart rule ID', pattern: /^\d{4,20}$/, optional: true, hint: 'A rule of type Add to cart. Leave empty to skip' },
     ],
