@@ -114,6 +114,15 @@ export function buildChecklist(input: {
       const cSteps: ChecklistStep[] = cap.fields.map((f) => ({ label: f.label, where: f.where, optional: !!f.optional, done: f.optional ? !ccfg[f.key] || f.pattern.test(ccfg[f.key]) : f.pattern.test(ccfg[f.key] ?? '') }));
       if (cap.secretLabel) cSteps.push({ label: cap.secretLabel, where: cap.secretWhere ?? '', secret: true, optional: !!cap.secretOptional, done: !!cap.row?.hasSecret });
       if (cap.requiresDestination) cSteps.push({ label: 'Conversions settings complete', where: 'The conversions steps above (ids and token).', done: state !== 'NOT_CONFIGURED' });
+      // A connection (Spotify Ads API) has no on/off switch: it is connected once
+      // Connect Spotify stored a token it proved. It showed "Configured, switched
+      // off" with a step pointing at pages that do not list it (2026-10-06).
+      if (cap.capability === 'ads_api') {
+        cSteps.forEach((st) => { if (st.secret) st.where = 'Advertising > Spotify rotation > Connect Spotify.'; });
+        items.push({ key: cap.capability, title: cap.name, status: cap.gap ? 'NOT_CONFIGURED' : 'READY',
+          detail: cap.gap ? `Not connected: ${cap.gap}.` : `Connected. ${cap.what}`, steps: cSteps, url: '/admin/advertising/spotify/connect' });
+        continue;
+      }
       cSteps.push({ label: 'Switched on', where: 'The capability\'s own form (Audiences, Spend or Offline sales page; WhatsApp adverts are on Offline sales).', done: !!cap.row?.enabled });
       items.push({ key: cap.capability, title: cap.name, status: cap.state, detail: cap.gap ? `Not configured: ${cap.gap}.` : cap.what, steps: cSteps });
     }
