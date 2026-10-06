@@ -83,7 +83,7 @@ const cutoffHour: number = typeof cfg?.sameDayCutoffHour === 'number' ? cfg.same
 const field = (name: string, label: string, value: string, ph = '') =>
   ({ name, label, value: value ?? '', ph });
 const scalarFields = cfg ? [
-  field('addressLine1', 'Address line 1', cfg.addressLine1, 'New Pioneer Mall Building, 4th Floor, Burton Street, Kampala'),
+  field('addressLine1', 'Address line 1', cfg.addressLine1, 'Zainab Aziza Building, 4th Floor, Burton Street, Kampala'),
   field('addressLine2', 'Address line 2 (directions)', cfg.addressLine2),
   field('mapUrl', 'Map link', cfg.mapUrl),
   field('phoneDisplay', 'Phone (display)', cfg.phoneDisplay, '0705 004545'),

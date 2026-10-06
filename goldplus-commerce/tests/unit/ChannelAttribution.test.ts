@@ -432,3 +432,18 @@ describe('collector: WhatsApp reference event', () => {
     expect(old.receipt.rejected.map((x: any) => x.reason)).toEqual(['UNSUPPORTED_EVENT']);
   });
 });
+
+describe('organic Snapchat', () => {
+  it('a link opened in Snapchat with no referrer is Snapchat, not direct; a paid click stays paid', async () => {
+    const { inAppReferrerHost } = await import('../../apps/web/src/lib/inAppBrowser');
+    const { classifyChannel: classify } = await import('../../apps/api/src/domain/measurement/Channels');
+    const snapUa = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Snapchat/13.10.0.42 (like Safari/604.1)';
+    expect(inAppReferrerHost(snapUa)).toBe('snapchat.com');
+    expect(inAppReferrerHost('Mozilla/5.0 (Linux; Android 14) Chrome/128 Mobile Safari/537.36')).toBeNull();
+    expect(classify({ referrerHost: inAppReferrerHost(snapUa) })).toBe('organic_social');
+    expect(classify({ referrerHost: 'story.snapchat.com' })).toBe('organic_social');
+    expect(classify({ source: 'snap' })).toBe('organic_social');
+    expect(classify({ source: 'snapchat', medium: 'social' })).toBe('organic_social');
+    expect(classify({ referrerHost: 'snapchat.com', clickIdTypes: ['ScCid'] })).toBe('paid_social');
+  });
+});

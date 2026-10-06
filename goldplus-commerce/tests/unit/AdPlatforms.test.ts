@@ -248,6 +248,16 @@ describe('advertising platforms: request builders', () => {
     expect((p.body as any).data[0].custom_data.value).toBe('145000');
     const s = buildAdRequest('snapchat', purchase, { pixelId: '0a1b2c3d-0000-4000-8000-000000000000' }, 'S')!;
     expect((s.body as any).data[0].event_name).toBe('PURCHASE');
+    // Snapchat's contract: action_source WEB, its click id as sc_click_id, no UGX value
+    const sd = (s.body as any).data[0];
+    expect(sd.action_source).toBe('WEB');
+    expect(sd.custom_data.currency).toBeUndefined();
+    expect(sd.custom_data.value).toBeUndefined();
+    expect(sd.custom_data.order_id).toBe('GP-1');
+    const withClick = buildAdRequest('snapchat', { ...purchase, user_data: { ...purchase.user_data, sccid: 'snap-click-1' } }, { pixelId: '0a1b2c3d-0000-4000-8000-000000000000' }, 'S')!;
+    expect((withClick.body as any).data[0].user_data.sc_click_id).toBe('snap-click-1');
+    const kes = buildAdRequest('snapchat', { ...purchase, ecommerce: { ...purchase.ecommerce, currency: 'KES', value: 900 } }, { pixelId: '0a1b2c3d-0000-4000-8000-000000000000' }, 'S')!;
+    expect((kes.body as any).data[0].custom_data).toMatchObject({ currency: 'KES', value: 900 });
   });
   it('LinkedIn: one rule per event, matched on email, click id or IPv4, value only when there is one', () => {
     const cfg = { conversionId: '123456' };
@@ -258,6 +268,10 @@ describe('advertising platforms: request builders', () => {
     expect(b.conversion).toBe('urn:lla:llaPartnerConversion:123456');
     expect(b.user.userIds.map((x: any) => x.idType)).toEqual(['SHA256_EMAIL', 'LINKEDIN_FIRST_PARTY_ADS_TRACKING_UUID', 'PLAINTEXT_IP_ADDRESS']);
     expect(b.user.userInfo).toBeUndefined();
+    // the ad account bills in USD: a shilling value is never sent, a USD one is
+    expect(b.conversionValue).toBeUndefined();
+    const usd = buildAdRequest('linkedin', { ...purchase, ecommerce: { ...purchase.ecommerce, currency: 'USD', value: 40 } } as any, cfg, 'L')!;
+    expect((usd.body as any).conversionValue).toEqual({ currencyCode: 'USD', amount: '40' });
     // no email any more: the click id alone is enough (it used to send nothing)
     const noEmail = buildAdRequest('linkedin', { ...purchase, user_data: { li_fat_id: 'abc-123' } }, cfg, 'L')!;
     expect((noEmail.body as any).user.userIds).toEqual([{ idType: 'LINKEDIN_FIRST_PARTY_ADS_TRACKING_UUID', idValue: 'abc-123' }]);
@@ -632,5 +646,51 @@ describe('Spotify Conversions API, as Spotify documents it', () => {
   it('the connection id must be a UUID', () => {
     expect(sp.fields[0].pattern.test(cfg.connectionId)).toBe(true);
     expect(sp.fields[0].pattern.test('not-a-uuid')).toBe(false);
+  });
+});
+
+describe('Microsoft Advertising UET Conversions API contract (learn.microsoft.com, 2026-08-04)', () => {
+  it('email: dots and +alias removed from the local part for every domain', async () => {
+    const { hashEmailMicrosoft } = await import('../../apps/api/src/infrastructure/advertising/AdPlatforms');
+    expect(hashEmailMicrosoft(' John.Doe+shop@Contoso.com ')).toBe(hashEmail('johndoe@contoso.com'));
+    expect(hashEmailMicrosoft('a.b@gmail.com')).toBe(hashEmail('ab@gmail.com'));
+    expect(hashEmailMicrosoft('not-an-email')).toBeUndefined();
+  });
+  it('phone hashed in E.164 WITH "+", Microsoft email hash preferred, no shilling value, page types', () => {
+    const ev = { ...purchase, user_data: { ...purchase.user_data, hashed_email_microsoft: 'f'.repeat(64), msclkid: 'dd4afccc-b1c9-4a4c-ad95-44dd7e5006ab' } };
+    const d = (buildAdRequest('microsoft_ads', ev, { tagId: '12345678' }, 'MS')!.body as any).data[0];
+    expect(d.eventType).toBe('custom');
+    expect(d.userData.ph).toBe(hashPhonePlus('0772 123 456'));
+    expect(d.userData.em).toBe('f'.repeat(64));
+    expect(d.customData.value).toBeUndefined();
+    expect(d.customData.currency).toBeUndefined();
+    expect(d.customData).toMatchObject({ transactionId: 'GP-1', pageType: 'purchase' });
+    const usd = (buildAdRequest('microsoft_ads', { ...ev, ecommerce: { ...purchase.ecommerce, currency: 'USD', value: 40 } }, { tagId: '12345678' }, 'MS')!.body as any).data[0];
+    expect(usd.customData).toMatchObject({ value: 40, currency: 'USD' });
+    const cart = (buildAdRequest('microsoft_ads', { ...ev, event_name: 'add_to_cart' }, { tagId: '12345678' }, 'MS')!.body as any).data[0];
+    expect(cart.customData.pageType).toBe('cart');
+    const lead = (buildAdRequest('microsoft_ads', { ...ev, event_name: 'generate_lead', ecommerce: undefined }, { tagId: '12345678' }, 'MS')!.body as any).data[0];
+    expect(lead.customData.pageType).toBe('other');
+  });
+});
+
+describe('Google Ads lead action', () => {
+  const cfg = { customerId: '1234567890', conversionActionId: '987654', apiVersion: 'v24' };
+  const lead = { ...purchase, event_name: 'generate_lead', ecommerce: undefined, user_data: { ...purchase.user_data, gclid: 'Cj0KCQ' } };
+  it('a lead is sent only when a lead action is saved, to that action, without a value', () => {
+    expect(adPlatformAccepts('google_ads', 'generate_lead', cfg)).toBe(false);
+    expect(buildAdRequest('google_ads', lead, cfg, '{}')).toBeNull();
+    const withLead = { ...cfg, leadConversionActionId: '555555' };
+    expect(adPlatformAccepts('google_ads', 'generate_lead', withLead)).toBe(true);
+    const c = (buildAdRequest('google_ads', lead, withLead, '{}')!.body as any).conversions[0];
+    expect(c.conversionAction).toBe('customers/1234567890/conversionActions/555555');
+    expect(c.conversionValue).toBeUndefined();
+    expect(c.currencyCode).toBeUndefined();
+    expect(c.orderId).toBe(lead.event_id);
+  });
+  it('a purchase keeps its shilling value (Google lists UGX) and its own action', () => {
+    const c = (buildAdRequest('google_ads', { ...purchase, user_data: { ...purchase.user_data, gclid: 'g' } }, { ...cfg, leadConversionActionId: '555555' }, '{}')!.body as any).conversions[0];
+    expect(c).toMatchObject({ conversionAction: 'customers/1234567890/conversionActions/987654', conversionValue: 145000, currencyCode: 'UGX', orderId: 'GP-1' });
+    expect(adPlatformAccepts('google_ads', 'add_to_cart', cfg)).toBe(false);
   });
 });

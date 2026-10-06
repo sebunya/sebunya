@@ -154,6 +154,21 @@ export class AudienceSyncUseCases {
     return out;
   }
 
+  /**
+   * One list as LinkedIn's contact-list upload takes it (Campaign Manager >
+   * Plan > Audiences > Matched audience > contact list): a header "email" and
+   * one SHA-256 of the trimmed, lower-cased email per person. LinkedIn's rule
+   * is the same as Meta's, so Meta's hashing is used. Same consent gate as the
+   * synced lists; raw emails never leave; people without an email are counted,
+   * not listed. No platform is called: the owner uploads the file.
+   */
+  async linkedinContactCsv(segment: AudienceSegment): Promise<{ csv: string; eligible: number; excludedConsent: number; excludedNoEmail: number }> {
+    if (!(AUDIENCE_SEGMENTS as readonly string[]).includes(segment)) throw new Error(`Unknown list: ${segment}`);
+    const slot = this.compute('meta', {}, await this.load()).get(segment)!;
+    const emails = [...new Set(slot.members.map((m) => m.email).filter((e): e is string => !!e))];
+    return { csv: ['email', ...emails].join('\n') + '\n', eligible: emails.length, excludedConsent: slot.preview.excludedConsent, excludedNoEmail: slot.preview.inSegment - slot.preview.excludedConsent - emails.length };
+  }
+
   private selectedSegments(cfg: Record<string, string>): AudienceSegment[] {
     const raw = (cfg.segments ?? '').split(',').filter(Boolean) as AudienceSegment[];
     return raw.length ? AUDIENCE_SEGMENTS.filter((s) => raw.includes(s)) : [...AUDIENCE_SEGMENTS];

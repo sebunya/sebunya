@@ -245,6 +245,13 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
         'with no session it answers 401 and reads nothing; with one, the API ' +
         'enforces the AI Search view permission. Sent with Cache-Control: no-store.',
     ],
+    [
+      '[segment].csv.ts',
+      'LinkedIn contact-list download (admin/advertising/linkedin-audience). Returns ' +
+        'a CSV of SHA-256 hashes, not a page: with no session it answers 401 and ' +
+        'reads nothing; with one, the API enforces settings.manage and the audience ' +
+        'consent gate. Sent with Cache-Control: no-store.',
+    ],
   ]);
 
   it('contains no unclassified non-Astro page inside the admin page directory', () => {

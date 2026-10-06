@@ -97,7 +97,7 @@ const WARRANTY_FAQ: HubFaq = { question: 'Is there a warranty on these products?
 const SHOP_FAQ: HubFaq = {
   question: 'Where is the GoldPlus shop?',
   answer:
-    'The GoldPlus shop is on the 4th floor of the New Pioneer Mall Building in central Kampala, on the Burton Street side of the block between Wilson Road and Burton Street, opposite Pioneer Mall. You can buy online on this site or visit the shop in person. Contact details and directions are in the footer of every page.',
+    'The GoldPlus shop is on the 4th floor of the Zainab Aziza Building in central Kampala, on the Burton Street side of the block between Wilson Road and Burton Street, opposite Pioneer Mall. You can buy online on this site or visit the shop in person. Contact details and directions are in the footer of every page.',
 };
 
 export const CATEGORY_HUBS: CategoryHubConfig[] = [
@@ -106,9 +106,9 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
     title: 'Power banks, chargers & charging | GoldPlus Uganda',
     h1: 'Power & charging accessories',
     metaDescription:
-      'GoldPlus power banks, chargers and charging accessories, sold from our New Pioneer Mall shop in Kampala with delivery in Kampala & Wakiso.',
+      'GoldPlus power banks, chargers and charging accessories, sold from our Zainab Aziza shop in Kampala with delivery in Kampala & Wakiso.',
     intro: [
-      'GoldPlus stocks its own house-brand power accessories. Power banks, wall chargers and charging cables. Sold from our shop in the New Pioneer Mall Building, Kampala.',
+      'GoldPlus stocks its own house-brand power accessories. Power banks, wall chargers and charging cables. Sold from our shop in the Zainab Aziza Building, Kampala.',
       'Every item ships from real stock: what you see in stock here is what is on the shelf. Orders can be delivered in Kampala & Wakiso or picked up at the shop, and warranty support is handled directly by us.',
     ],
     categorySlug: 'power-devices',
@@ -135,7 +135,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
         title: 'Power banks | GoldPlus Uganda',
         h1: 'Power banks',
         metaDescription:
-          'GoldPlus power banks in stock at our New Pioneer Mall shop in Kampala, with delivery in Kampala & Wakiso and direct warranty support.',
+          'GoldPlus power banks in stock at our Zainab Aziza shop in Kampala, with delivery in Kampala & Wakiso and direct warranty support.',
         intro:
           'Portable power banks from the GoldPlus house range. Capacities and prices are listed per product from live stock. Nothing shown here is estimated.',
         subcategorySlug: 'power-banks',
@@ -146,7 +146,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
         title: 'Phone chargers | GoldPlus Uganda',
         h1: 'Chargers',
         metaDescription:
-          'GoldPlus wall chargers and adapters, sold from our Kampala shop in the New Pioneer Mall Building with delivery in Kampala & Wakiso.',
+          'GoldPlus wall chargers and adapters, sold from our Kampala shop in the Zainab Aziza Building with delivery in Kampala & Wakiso.',
         intro:
           'Wall chargers and adapters from the GoldPlus range. Check each product page for connector type and output details taken from the verified product record.',
         subcategorySlug: 'chargers',
@@ -172,9 +172,9 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
     title: 'Earbuds & headphones | GoldPlus Uganda',
     h1: 'Audio accessories',
     metaDescription:
-      'GoldPlus wireless earbuds and headphones from our New Pioneer Mall shop in Kampala, with delivery in Kampala & Wakiso and warranty support.',
+      'GoldPlus wireless earbuds and headphones from our Zainab Aziza shop in Kampala, with delivery in Kampala & Wakiso and warranty support.',
     intro: [
-      'Earbuds, headphones and other sound devices from the GoldPlus house range, sold from our shop in the New Pioneer Mall Building, Kampala.',
+      'Earbuds, headphones and other sound devices from the GoldPlus house range, sold from our shop in the Zainab Aziza Building, Kampala.',
       'Stock levels and prices on this page are live. Delivery is available in Kampala & Wakiso, or collect from the shop.',
     ],
     categorySlug: 'sound-devices',
@@ -201,7 +201,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
         title: 'Wireless earbuds | GoldPlus Uganda',
         h1: 'Wireless earbuds',
         metaDescription:
-          'GoldPlus wireless earbuds in stock in Kampala. Live prices and stock from our New Pioneer Mall shop, delivery in Kampala & Wakiso.',
+          'GoldPlus wireless earbuds in stock in Kampala. Live prices and stock from our Zainab Aziza shop, delivery in Kampala & Wakiso.',
         intro: 'Wireless earbuds from the GoldPlus range, listed from live stock.',
         subcategorySlug: 'earbuds',
         taxonomyMapped: true,
@@ -226,9 +226,9 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
     title: 'Flash drives & memory cards | GoldPlus Uganda',
     h1: 'Storage devices',
     metaDescription:
-      'GoldPlus USB flash drives and memory cards from our Kampala shop in the New Pioneer Mall Building, with delivery in Kampala & Wakiso.',
+      'GoldPlus USB flash drives and memory cards from our Kampala shop in the Zainab Aziza Building, with delivery in Kampala & Wakiso.',
     intro: [
-      'USB flash drives and memory cards from the GoldPlus range, sold from our shop in the New Pioneer Mall Building, Kampala with delivery in Kampala & Wakiso.',
+      'USB flash drives and memory cards from the GoldPlus range, sold from our shop in the Zainab Aziza Building, Kampala with delivery in Kampala & Wakiso.',
     ],
     categorySlug: 'storage-devices',
     taxonomyMapped: true,
@@ -254,7 +254,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
         title: 'USB flash drives | GoldPlus Uganda',
         h1: 'USB flash drives',
         metaDescription:
-          'GoldPlus USB flash drives in stock in Kampala. Live capacities and prices from our New Pioneer Mall shop, with local delivery.',
+          'GoldPlus USB flash drives in stock in Kampala. Live capacities and prices from our Zainab Aziza shop, with local delivery.',
         intro: 'USB flash drives from the GoldPlus range, listed from live stock.',
         subcategorySlug: 'flash-drives',
         taxonomyMapped: true,
@@ -264,7 +264,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
         title: 'Memory cards | GoldPlus Uganda',
         h1: 'Memory cards',
         metaDescription:
-          'GoldPlus memory cards in Kampala. Live stock and prices from our New Pioneer Mall shop, with delivery in Kampala & Wakiso.',
+          'GoldPlus memory cards in Kampala. Live stock and prices from our Zainab Aziza shop, with delivery in Kampala & Wakiso.',
         intro: 'Memory cards from the GoldPlus range, listed from live stock.',
         subcategorySlug: 'memory-cards',
         taxonomyMapped: true,
@@ -276,9 +276,9 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
     title: 'Phone batteries | GoldPlus Uganda',
     h1: 'Phone batteries',
     metaDescription:
-      'Replacement phone batteries from GoldPlus in Kampala. Live stock from our New Pioneer Mall shop, with delivery in Kampala & Wakiso.',
+      'Replacement phone batteries from GoldPlus in Kampala. Live stock from our Zainab Aziza shop, with delivery in Kampala & Wakiso.',
     intro: [
-      'Replacement phone batteries from the GoldPlus range, sold from our shop in the New Pioneer Mall Building, Kampala. Everything listed below is live stock.',
+      'Replacement phone batteries from the GoldPlus range, sold from our shop in the Zainab Aziza Building, Kampala. Everything listed below is live stock.',
     ],
     // The live taxonomy has no dedicated batteries category/subcategory; phone
     // batteries sit under Power Devices — keyword-gathered and flagged.
@@ -304,9 +304,9 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
     title: 'Computer accessories | GoldPlus Uganda',
     h1: 'Computer accessories',
     metaDescription:
-      'GoldPlus computer accessories. Mice, sound cards and more from our New Pioneer Mall shop in Kampala, with delivery in Kampala & Wakiso.',
+      'GoldPlus computer accessories. Mice, sound cards and more from our Zainab Aziza shop in Kampala, with delivery in Kampala & Wakiso.',
     intro: [
-      'Computer and PC accessories from the GoldPlus range, sold from our shop in the New Pioneer Mall Building, Kampala with delivery in Kampala & Wakiso.',
+      'Computer and PC accessories from the GoldPlus range, sold from our shop in the Zainab Aziza Building, Kampala with delivery in Kampala & Wakiso.',
     ],
     categorySlug: 'pc-accessories',
     taxonomyMapped: true,
@@ -327,7 +327,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
     metaDescription:
       'GoldPlus car accessories. Car chargers, mounts and Bluetooth kits from our Kampala shop, with delivery in Kampala & Wakiso.',
     intro: [
-      'Car chargers, phone mounts and in-car accessories from the GoldPlus range, sold from our shop in the New Pioneer Mall Building, Kampala.',
+      'Car chargers, phone mounts and in-car accessories from the GoldPlus range, sold from our shop in the Zainab Aziza Building, Kampala.',
     ],
     categorySlug: 'car-accessories',
     taxonomyMapped: true,
@@ -418,7 +418,7 @@ export function evaluateReleaseGate(products: ProductPublicDto[], gate: ReleaseG
 }
 
 /**
- * Local-page gate: the New Pioneer Mall shop / delivery pages are indexable only when
+ * Local-page gate: the Zainab Aziza shop / delivery pages are indexable only when
  * business-info actually returns an address and a phone number.
  */
 export function evaluateLocalPageGate(info: { addressLine1?: string | null; phoneDisplay?: string | null }): boolean {
@@ -459,7 +459,7 @@ export function gatePassingHubPaths(
 
 /** The two local pages, sitemap-listed only when the business-info gate passes. */
 export function localPagePaths(info: { addressLine1?: string | null; phoneDisplay?: string | null }): string[] {
-  return evaluateLocalPageGate(info) ? ['/locations/new-pioneer-mall', '/delivery/kampala-wakiso'] : [];
+  return evaluateLocalPageGate(info) ? ['/locations/zainab-aziza', '/delivery/kampala-wakiso'] : [];
 }
 
 /**

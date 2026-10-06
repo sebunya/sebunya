@@ -303,3 +303,20 @@ describe('WhatsApp taps', () => {
     expect(lazy).toMatch(/generate_lead/);
   });
 });
+
+describe('LinkedIn contact-list file', () => {
+  it('holds only hashed emails, applies the consent gate, and never calls a platform', async () => {
+    const refused = order(1, { fpClientId: 'fp.refused' });
+    const noEmail = order(3, { email: null });
+    const h = harness({ orders: [refused, order(2, { email: ' P2@X.co ' }), noEmail], refusedFps: ['fp.refused'] });
+    const r = await h.uc.linkedinContactCsv('past_buyers');
+    const lines = r.csv.trim().split('\n');
+    expect(lines[0]).toBe('email');
+    expect(lines.slice(1)).toEqual([hashedContactFor('meta', { email: 'p2@x.co' }).email]);
+    expect(lines.slice(1).every((l) => /^[0-9a-f]{64}$/.test(l))).toBe(true);
+    expect(r.csv).not.toContain('@');
+    expect(r).toMatchObject({ eligible: 1, excludedConsent: 1, excludedNoEmail: 1 });
+    expect(h.calls).toEqual([]);
+    await expect(h.uc.linkedinContactCsv('nope' as any)).rejects.toThrow();
+  });
+});

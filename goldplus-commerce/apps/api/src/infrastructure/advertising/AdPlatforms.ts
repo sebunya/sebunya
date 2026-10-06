@@ -104,6 +104,17 @@ export const hashEmailGoogle = (email?: string | null) => {
   const l = domain === 'gmail.com' || domain === 'googlemail.com' ? local.replace(/\./g, '') : local;
   return sha(`${l}@${domain}`);
 };
+/**
+ * Microsoft Advertising's email normalisation (learn.microsoft.com, UET
+ * Conversions API, "To hash an email address", 2026-08-04): trim, remove every
+ * dot and any +alias from the local part, whatever the domain, lower-case.
+ */
+const MS_PAGE_TYPE: Record<string, string> = { view_item: 'product', add_to_cart: 'cart', begin_checkout: 'cart', purchase: 'purchase' };
+export const hashEmailMicrosoft = (email?: string | null) => {
+  if (!email || !email.includes('@')) return undefined;
+  const [local, domain] = email.trim().toLowerCase().split('@');
+  return sha(`${local.replace(/\+.*$/, '').replace(/\./g, '')}@${domain}`);
+};
 /** Ugandan numbers to E.164 digits (07XXXXXXXX -> 2567XXXXXXXX), hashed. */
 export function normalisePhoneUg(phone?: string | null): string | undefined {
   const d = String(phone ?? '').replace(/\D/g, '').replace(/^00/, '');
@@ -112,6 +123,14 @@ export function normalisePhoneUg(phone?: string | null): string | undefined {
   if (/^7\d{8}$/.test(d)) return `256${d}`;
   return d.length >= 10 && d.length <= 15 ? d : undefined;
 }
+/**
+ * Snapchat CAPI v3 (developers.snap.com Conversions-API/Parameters, read
+ * 2026-10-06): action_source is WEB, the click id goes as sc_click_id, and a
+ * value is accepted only in these currencies. The Uganda shilling is not one,
+ * so a shilling sale is sent without value or currency: it still counts, and
+ * no amount is reported at a rate nobody chose.
+ */
+export const SNAP_CURRENCIES = new Set('USD AED AUD BGN BRL CAD CHF CLP CNY COP CZK DKK EGP EUR GBP GIP HKD HRK HUF IDR ILS INR JPY KRW KWD KZT LBP MXN MYR NGN NOK NZD PEN PHP PKR PLN QAR RON RUB SAR SEK SGD THB TRY TWD TZS UAH VND ZAR ALL BHD DZD GHS IQD ISK JOD KES MAD OMR XOF'.split(' '));
 export const hashPhone = (phone?: string | null) => { const n = normalisePhoneUg(phone); return n ? sha(n) : undefined; };
 /** TikTok hashes E.164 WITH the leading '+' (Meta/Pinterest/Snapchat want digits only). */
 export const hashPhonePlus = (phone?: string | null) => { const n = normalisePhoneUg(phone); return n ? sha(`+${n}`) : undefined; };
@@ -189,7 +208,7 @@ function postback(key: string, name: string, where: string): AdPlatformDef {
       const filled = cfg.postbackUrl
         .replace(/\{click_id\}/g, encodeURIComponent(ud.network_click_id))
         .replace(/\{value\}/g, encodeURIComponent(String(value(e))))
-        .replace(/\{currency\}/g, encodeURIComponent(e.ecommerce?.currency ?? 'USD'))
+        .replace(/\{currency\}/g, encodeURIComponent(e.ecommerce?.currency ?? 'UGX'))
         .replace(/\{order_id\}/g, encodeURIComponent(e.ecommerce?.transaction_id ?? ''))
         .replace(/\{event_id\}/g, encodeURIComponent(e.event_id));
       const url = safePostbackUrl(filled);
@@ -250,10 +269,9 @@ export function metaCustomData(e: CanonicalTelemetryEvent, metaEventName: string
   // Meta's Search event names what was searched for (custom_data.search_string).
   if (metaEventName === 'Search') return e.search_term ? { search_string: e.search_term } : null;
   if (META_EVENTS_WITHOUT_BASKET.has(metaEventName)) {
-    return v > 0 ? { currency: e.ecommerce?.currency ?? 'USD', value: v } : null;
+    return v > 0 ? { currency: e.ecommerce?.currency ?? 'UGX', value: v } : null;
   }
-  // Purchase must carry a value for Meta; other events only when there is one (US dollars, AdMoney).
-  const out: Record<string, unknown> = v > 0 || metaEventName === 'Purchase' ? { currency: e.ecommerce?.currency ?? 'USD', value: v } : {};
+  const out: Record<string, unknown> = { currency: e.ecommerce?.currency ?? 'UGX', value: v };
   if (list.length) {
     out.content_type = 'product';
     out.content_ids = list.map((i) => String(i.item_id));
@@ -445,9 +463,11 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
   {
     key: 'tiktok', name: 'TikTok', testable: true,
     fields: [{ key: 'pixelCode', label: 'Pixel code', pattern: /^[A-Z0-9]{10,30}$/, hint: 'TikTok Events Manager > Web events' },
-      TEST_CODE_FIELD('TikTok Events Manager > your pixel > Test events: the test event code')],
-    // Amounts arrive already in US dollars at the one ad rate (AdMoney, 0172);
-    // TikTok's own "Shillings per US dollar" field was retired on 2026-10-06.
+      TEST_CODE_FIELD('TikTok Events Manager > your pixel > Test events: the test event code'),
+      // TikTok's Events API does not list the Uganda shilling. With a rate, amounts
+      // go as US dollars; without one, events go with no amount.
+      { key: 'ugxPerUsd', label: 'Shillings per US dollar (for sale values)', pattern: /^(\d{3,6})?$/, optional: true,
+        hint: 'TikTok does not accept amounts in Uganda shillings. Enter the rate you want sales reported at, for example 3700: event values and the catalogue feed prices are then stated in US dollars (set the TikTok catalogue currency to USD). Left empty, events are sent without an amount and the feed stays in shillings, which TikTok will not accept.' }],
     secretLabel: 'Events API access token',
     // Names from TikTok's "Supported events" list for web (read 2026-10-01). Purchase
     // and Lead are its current names for what were CompletePayment and SubmitForm.
@@ -504,7 +524,7 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
           event_name: name, action_source: 'web', event_time: e.event_time, event_id: e.event_id, event_source_url: e.page_location,
           user_data: { em: ud.hashed_email ? [ud.hashed_email] : undefined, ph: ud.hashed_phone ? [ud.hashed_phone] : undefined,
             external_id: extId(e) ? [extId(e)] : undefined, client_ip_address: ud.ip_address, client_user_agent: ud.user_agent },
-          custom_data: { ...(value(e) > 0 ? { currency: e.ecommerce?.currency ?? 'USD', value: String(value(e)) } : {}), content_ids: ids(e), num_items: items(e).reduce((s, i) => s + (i.quantity ?? 1), 0),
+          custom_data: { currency: e.ecommerce?.currency ?? 'UGX', value: String(value(e)), content_ids: ids(e), num_items: items(e).reduce((s, i) => s + (i.quantity ?? 1), 0),
             order_id: e.ecommerce?.transaction_id, contents: items(e).map((i) => ({ id: i.item_id, item_price: i.price != null ? String(i.price) : undefined, quantity: i.quantity ?? 1 })) },
         }] },
       };
@@ -522,10 +542,11 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
         url: `https://tr.snapchat.com/v3/${cfg.pixelId}/events?access_token=${encodeURIComponent(token)}`,
         headers: { 'content-type': 'application/json' },
         body: { data: [{
-          event_name: name, event_time: e.event_time, event_id: e.event_id, action_source: 'website', event_source_url: e.page_location,
+          event_name: name, event_time: e.event_time, event_id: e.event_id, action_source: 'WEB', event_source_url: e.page_location,
           user_data: { em: ud.hashed_email ? [ud.hashed_email] : undefined, ph: ud.hashed_phone ? [ud.hashed_phone] : undefined,
-            external_id: extId(e) ? [extId(e)] : undefined, client_ip_address: ud.ip_address, client_user_agent: ud.user_agent },
-          custom_data: { ...(value(e) > 0 ? { currency: e.ecommerce?.currency ?? 'USD', value: value(e) } : {}), content_ids: ids(e), order_id: e.ecommerce?.transaction_id, num_items: items(e).length },
+            external_id: extId(e) ? [extId(e)] : undefined, client_ip_address: ud.ip_address, client_user_agent: ud.user_agent,
+            sc_click_id: ud.sccid || undefined },
+          custom_data: { ...(value(e) > 0 && SNAP_CURRENCIES.has(e.ecommerce?.currency ?? 'UGX') ? { currency: e.ecommerce?.currency, value: value(e) } : {}), content_ids: ids(e), order_id: e.ecommerce?.transaction_id, num_items: items(e).length },
         }] },
       };
     },
@@ -541,14 +562,14 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
     //    TRACKING_UUID (the li_fat_id click id the shop already keeps for 30
     //    days), PLAINTEXT_IP_ADDRESS (IPv4 only). Until today only the email was
     //    sent, so a buyer who gave none was never reported;
-    //  - conversionValue is optional: sent only when there is an amount, never "0";
+    //  - conversionValue is optional and never sent in UGX (the account bills in USD);
     //  - userInfo is not sent: if present, LinkedIn requires first AND last name.
-    // Token: Campaign Manager > Data > Signals Manager > Direct API > Generate
+    // Token: Campaign Manager > Measure > Signals manager > Direct API > Generate
     // access token. It does not expire and needs no developer app.
     key: 'linkedin', name: 'LinkedIn (business buyers)',
     fields: [
-      { key: 'conversionId', label: 'Purchase conversion rule ID', pattern: /^\d{4,20}$/, hint: 'Campaign Manager > Data > Signals Manager (or Measurement > Conversion tracking) > a rule of type Purchase with data source Direct API: the number after /conversions/ in its address' },
-      { key: 'leadConversionId', label: 'Quote request / lead rule ID', pattern: /^\d{4,20}$/, optional: true, hint: 'A second rule, type Request quote (or Lead), data source Direct API. Leave empty to send purchases only' },
+      { key: 'conversionId', label: 'Purchase conversion rule ID', pattern: /^\d{4,20}$/, hint: 'Campaign Manager > Measure > Conversion tracking > Create conversion > Conversions API, category Purchase, value "Use a dynamic value", source Direct API. The ID is shown under the rule name in Measure > Signals manager > Direct API' },
+      { key: 'leadConversionId', label: 'Quote request / lead rule ID', pattern: /^\d{4,20}$/, optional: true, hint: 'A second rule made the same way, category Lead, value "No value", source Direct API. It receives quote requests and WhatsApp taps. Leave empty to send purchases only' },
       { key: 'checkoutConversionId', label: 'Checkout started rule ID', pattern: /^\d{4,20}$/, optional: true, hint: 'A rule of type Start checkout. Leave empty to skip' },
       { key: 'addToCartConversionId', label: 'Add to cart rule ID', pattern: /^\d{4,20}$/, optional: true, hint: 'A rule of type Add to cart. Leave empty to skip' },
     ],
@@ -566,11 +587,15 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
       if (ud.ip_address && /^(\d{1,3}\.){3}\d{1,3}$/.test(ud.ip_address)) userIds.push({ idType: 'PLAINTEXT_IP_ADDRESS', idValue: ud.ip_address });
       if (userIds.length === 0) return null;
       const amount = value(e);
+      const currency = e.ecommerce?.currency ?? 'UGX';
       return {
         url: 'https://api.linkedin.com/rest/conversionEvents',
         headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}`, 'LinkedIn-Version': linkedInVersion(), 'X-Restli-Protocol-Version': '2.0.0' },
         body: { conversion: `urn:lla:llaPartnerConversion:${rule}`, conversionHappenedAt: e.event_time * 1000, eventId: e.event_id,
-          ...(amount > 0 ? { conversionValue: { currencyCode: e.ecommerce?.currency ?? 'USD', amount: String(amount) } } : {}),
+          // The ad account bills in US dollars and the shop sells in shillings.
+          // No shilling value is sent: the event still counts, and LinkedIn is
+          // not left to convert UGX at a rate nobody chose.
+          ...(amount > 0 && currency !== 'UGX' ? { conversionValue: { currencyCode: currency, amount: String(amount) } } : {}),
           user: { userIds } },
       };
     },
@@ -580,12 +605,15 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
     fields: [
       { key: 'customerId', label: 'Customer ID (10 digits, no dashes)', pattern: /^\d{10}$/, hint: 'Google Ads, top right' },
       { key: 'conversionActionId', label: 'Conversion action ID', pattern: /^\d{4,20}$/, hint: 'Must be an IMPORT action: Goals > Conversions > New > Import > "Conversions from clicks" (ctId in its URL). A website-tag action is refused. For sales without a click id, turn on "Enhanced conversions for leads".' },
+      { key: 'leadConversionActionId', label: 'Lead conversion action ID (optional)', pattern: /^\d{4,20}$/, optional: true, hint: 'A second IMPORT action ("Conversions from clicks", category Request quote or Contact, value "Don\'t use a value") for quote requests and WhatsApp taps from Google ad clicks. Leave empty to send purchases only' },
       { key: 'loginCustomerId', label: 'Manager account ID (if used)', pattern: /^(\d{10})?$/, hint: 'Only when access goes through an MCC', optional: true },
       { key: 'apiVersion', label: 'Google Ads API version', pattern: /^v\d{2}$/, hint: 'The newest version in Google Ads API release notes (e.g. v24). Versions sunset about a year after release: update it when Google announces a sunset.' },
     ],
     secretLabel: 'API credentials (JSON)',
     secretHint: '{"developerToken":"…","clientId":"….apps.googleusercontent.com","clientSecret":"…","refreshToken":"…"}',
-    events: { purchase: 'uploadClickConversions' },
+    events: { purchase: 'uploadClickConversions', generate_lead: 'uploadClickConversions (lead action)' },
+    // A lead goes only to its own action, and only when one is saved.
+    accepts(eventName, cfg) { return eventName === 'purchase' || (eventName === 'generate_lead' && !!cfg.leadConversionActionId); },
     async authorize(_req, _cfg, secret) {
       const c = parseJsonSecret(secret, ['developerToken', 'clientId', 'clientSecret', 'refreshToken']);
       const token = await googleAccessToken(c.clientId, c.clientSecret, c.refreshToken);
@@ -593,7 +621,9 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
     },
     replyError: (j) => { const e = (j as { partialFailureError?: { message?: string } })?.partialFailureError; return e ? `partial failure: ${String(e.message ?? '').slice(0, 300)}` : null; },
     build(e, cfg) {
-      if (e.event_name !== 'purchase') return null;
+      const isLead = e.event_name === 'generate_lead';
+      if (e.event_name !== 'purchase' && !(isLead && cfg.leadConversionActionId)) return null;
+      const action = isLead ? cfg.leadConversionActionId : cfg.conversionActionId;
       const ud = u(e);
       // A click id, or the hashed email/phone for enhanced conversions; neither = nothing to match.
       const gEmail = ud.hashed_email_google ?? ud.hashed_email;
@@ -607,8 +637,12 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
         // validateOnly: Google checks the upload and records nothing (Test mode).
         body: { partialFailure: true, ...(inTest(cfg) ? { validateOnly: true } : {}), conversions: [{
           ...(ud.gclid ? { gclid: ud.gclid } : ud.gbraid ? { gbraid: ud.gbraid } : ud.wbraid ? { wbraid: ud.wbraid } : {}),
-          conversionAction: `customers/${cfg.customerId}/conversionActions/${cfg.conversionActionId}`,
-          conversionDateTime: t, ...(value(e) > 0 ? { conversionValue: value(e), currencyCode: e.ecommerce?.currency ?? 'USD' } : {}), orderId: e.ecommerce?.transaction_id,
+          conversionAction: `customers/${cfg.customerId}/conversionActions/${action}`,
+          // Google lists UGX (Merchant Center supported currencies), so a sale
+          // keeps its shilling value. A lead states no value; its event id is
+          // the order id, so a retried upload is not counted twice.
+          conversionDateTime: t,
+          ...(isLead ? { orderId: e.event_id } : { conversionValue: value(e), currencyCode: e.ecommerce?.currency ?? 'UGX', orderId: e.ecommerce?.transaction_id }),
           ...(userIdentifiers.length ? { userIdentifiers } : {}),
         }] },
       };
@@ -616,8 +650,9 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
   },
   {
     key: 'microsoft_ads', name: 'Microsoft Advertising (Bing)',
-    fields: [{ key: 'tagId', label: 'UET tag ID', pattern: /^\d{6,12}$/, hint: 'Microsoft Advertising > Tools > UET tag' }],
+    fields: [{ key: 'tagId', label: 'UET tag ID', pattern: /^\d{6,12}$/, hint: 'Microsoft Advertising > Tools > UET tag. Create a conversion goal of type "Custom events" with Action equals purchase (and one with Action equals generate_lead for quote requests), set to "Don\'t assign a value", on this tag' }],
     secretLabel: 'UET Conversions API token',
+    secretHint: 'Edit the UET tag > Save and next > Set up tagging: Use Conversions API > Copy token. Microsoft enables the Conversions API per account (pilot): if that option is missing, ask Microsoft Advertising support to enable it.',
     events: { view_item: 'view_item', add_to_cart: 'add_to_cart', begin_checkout: 'begin_checkout', generate_lead: 'generate_lead', purchase: 'purchase' },
     build(e, cfg, token) {
       const name = this.events[e.event_name as AdEventName]; if (!name) return null;
@@ -627,8 +662,12 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
         headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
         body: { data: [{
           eventType: 'custom', eventName: name, eventId: e.event_id, eventTime: e.event_time, eventSourceUrl: e.page_location,
-          userData: { em: ud.hashed_email, ph: ud.hashed_phone, clientIpAddress: ud.ip_address, clientUserAgent: ud.user_agent, msclkid: ud.msclkid, anonymousId: extId(e) },
-          customData: { ...(value(e) > 0 ? { value: value(e), currency: e.ecommerce?.currency ?? 'USD' } : {}), transactionId: e.ecommerce?.transaction_id, itemIds: ids(e), pageType: e.event_name === 'purchase' ? 'purchase' : 'product' },
+          userData: { em: ud.hashed_email_microsoft ?? ud.hashed_email, ph: ud.hashed_phone_plus, clientIpAddress: ud.ip_address, clientUserAgent: ud.user_agent, msclkid: ud.msclkid, anonymousId: extId(e) },
+          // An unaccepted currency is dropped as a warning while the number is
+          // kept, so a shilling amount would be read in the account's currency
+          // (UGX 145,000 as 145,000 dollars). No shilling value is sent.
+          customData: { ...(value(e) > 0 && (e.ecommerce?.currency ?? 'UGX') !== 'UGX' ? { value: value(e), currency: e.ecommerce?.currency } : {}),
+            transactionId: e.ecommerce?.transaction_id, itemIds: ids(e), pageType: MS_PAGE_TYPE[e.event_name] ?? 'other' },
         }] },
       };
     },
@@ -710,7 +749,7 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
           // X documents neither value nor number_items as required, and a lead
           // or a product view has no amount: those fields are sent only when
           // there is something to send, never as "0".
-          ...(value(e) > 0 ? { value: String(value(e)), price_currency: e.ecommerce?.currency ?? 'USD' } : {}),
+          ...(value(e) > 0 ? { value: String(value(e)), price_currency: e.ecommerce?.currency ?? 'UGX' } : {}),
           ...(count > 0 ? { number_items: count } : {}),
           ...(contents.length ? { contents } : {}) }] },
       };
@@ -755,7 +794,7 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
       const amount = value(e);
       const details: Record<string, unknown> = {};
       // An amount only with its currency, and only when there is one: a lead is not a sale of 0.
-      if (amount > 0) { details.currency = e.ecommerce?.currency ?? 'USD'; details.amount = amount; }
+      if (amount > 0) { details.currency = e.ecommerce?.currency ?? 'UGX'; details.amount = amount; }
       const first = items(e).find((i) => i.item_name);
       if (first?.item_name) details.content_name = String(first.item_name).slice(0, 200);
       const url = typeof e.page_location === 'string' && /^https?:\/\//.test(e.page_location) ? e.page_location : undefined;

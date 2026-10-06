@@ -6,9 +6,7 @@ import { env } from '../../config/env';
 import { logger } from '../logging/logger';
 import { environmentOf } from '../../domain/measurement/BusinessEvents';
 import { ga4CollectHit } from '../telemetry/Ga4CollectHit';
-import { eventInUsd } from '../../domain/advertising/AdMoney';
-import { adUsdRate } from '../advertising/AdUsdRate';
-import { META_GRAPH_VERSION, adErrorSummary, adPlatform, adSkipReason, buildAdRequest, normalisePhoneUg, hashEmail, hashEmailGoogle, hashPhone, hashPhonePlus } from '../advertising/AdPlatforms';
+import { META_GRAPH_VERSION, adErrorSummary, adPlatform, adSkipReason, buildAdRequest, normalisePhoneUg, hashEmail, hashEmailGoogle, hashEmailMicrosoft, hashPhone, hashPhonePlus } from '../advertising/AdPlatforms';
 import { isMetaClickId, metaBrowserIdFromVisitor, metaCustomerHashes } from '../../domain/advertising/MetaIdentifiers';
 import { storefrontOrigin } from '../config/storefrontOrigin';
 import { businessMessagingPurchase } from '../../domain/advertising/WhatsAppAdReferrals';
@@ -259,7 +257,7 @@ async function loadIdentity(orderId: string) {
   return {
     user_id: o.user_id ?? undefined, fp_client_id: a.fp_client_id ?? undefined, ip_address: a.client_ip ?? undefined, user_agent: a.user_agent ?? undefined,
     ga_session_id: a.ga_session_id ?? undefined, ga_session_number: a.ga_session_number ?? undefined,
-    hashed_email: hashEmail(o.customer_email), hashed_email_google: hashEmailGoogle(o.customer_email),
+    hashed_email: hashEmail(o.customer_email), hashed_email_google: hashEmailGoogle(o.customer_email), hashed_email_microsoft: hashEmailMicrosoft(o.customer_email),
     hashed_phone: hashPhone(o.customer_phone), hashed_phone_plus: hashPhonePlus(o.customer_phone),
     gclid: ck.gclid, gbraid: ck.gbraid, wbraid: ck.wbraid, ttclid: ck.ttclid, twclid: ck.twclid, msclkid: ck.msclkid, sccid: ck.ScCid, epik: ck.epik,
     // Meta: the click id the browser built from the landing URL's fbclid, and a
@@ -322,8 +320,6 @@ async function buildRequest(sink: string, canonical: CanonicalTelemetryEvent, me
     return { req: { url: `${env.metricsInternalUrl}/g/collect?${hit.toString()}`, method: 'POST', headers: {
       'X-Telemetry-Source': 'goldplus-delivery', ...(ud.user_agent ? { 'User-Agent': ud.user_agent } : {}), ...(ud.ip_address ? { 'X-Forwarded-For': ud.ip_address } : {}) } } };
   }
-  // Ad platforms get US dollars only (owner decision 2026-10-06); GA4 above keeps shillings.
-  canonical = eventInUsd(canonical, await adUsdRate());
   const platform = sink.split(':')[1];
   const def = adPlatform(platform);
   const dest = (await adRepo.active()).find((d) => d.platform === platform);
@@ -344,7 +340,7 @@ async function buildRequest(sink: string, canonical: CanonicalTelemetryEvent, me
       url: `https://graph.facebook.com/${META_GRAPH_VERSION}/${messaging.datasetId || dest.config.datasetId}/events`, method: 'POST',
       headers: { 'content-type': 'application/json', Authorization: `Bearer ${messaging.accessToken || secret}` },
       body: JSON.stringify({ ...(test ? { test_event_code: dest.config.testEventCode } : {}), data: [businessMessagingPurchase({
-        eventId: canonical.event_id, eventTimeSec: canonical.event_time, valueUgx: canonical.ecommerce?.value ?? null, currency: canonical.ecommerce?.currency,
+        eventId: canonical.event_id, eventTimeSec: canonical.event_time, valueUgx: Number(canonical.ecommerce?.value ?? 0), currency: canonical.ecommerce?.currency,
         orderNumber: canonical.ecommerce?.transaction_id ?? null, wabaId: messaging.wabaId, ctwaClid: messaging.ctwaClid })] }),
     } };
   }

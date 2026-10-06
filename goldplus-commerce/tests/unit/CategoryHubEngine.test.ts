@@ -187,7 +187,7 @@ describe('local page gating (pure)', () => {
 
   it('localPagePaths lists both pages when gated in, none when gated out', () => {
     expect(localPagePaths({ addressLine1: 'Wilson Road', phoneDisplay: '0705' })).toEqual([
-      '/locations/new-pioneer-mall',
+      '/locations/zainab-aziza',
       '/delivery/kampala-wakiso',
     ]);
     expect(localPagePaths({ addressLine1: null, phoneDisplay: '0705' })).toEqual([]);

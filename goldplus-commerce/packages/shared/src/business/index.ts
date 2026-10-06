@@ -34,7 +34,7 @@ export interface BusinessInfo {
  * Where the shop is, as a point. Fixed on 2026-10-03 from the owner's photos
  * taken inside the shop (looking east across Burton Street at the Mapeera
  * building and Amani Mall) against satellite imagery: the Burton Street face
- * of the New Pioneer Mall Building, its southern end, fourth floor. Accuracy is
+ * of the Zainab Aziza Building, its southern end, fourth floor. Accuracy is
  * the building face (about 10 m), not a GPS fix. The Google Business Profile
  * pin was moved to the same point the same day; `mapUrl` opens that listing by
  * its id so the link and the pin can never disagree.
@@ -43,7 +43,7 @@ export const SHOP_LOCATION = {
   latitude: 0.31422,
   longitude: 32.57792,
   plusCode: '8H7H+M5M Kampala',
-  building: 'New Pioneer Mall Building',
+  building: 'Zainab Aziza Building',
   floor: '4th Floor',
   street: 'Burton Street',
   mapUrl: 'https://maps.google.com/?cid=2567724259551649466',
@@ -55,7 +55,7 @@ export const DEFAULT_BUSINESS_INFO: BusinessInfo = {
   whatsappNumber: '256705004545',
   whatsappUrl: 'https://wa.me/256705004545',
   whatsappChannelUrl: 'https://whatsapp.com/channel/0029VbByb56KmCPSiisvMs44',
-  addressLine1: 'New Pioneer Mall Building, 4th Floor, Burton Street, Kampala',
+  addressLine1: 'Zainab Aziza Building, 4th Floor, Burton Street, Kampala',
   addressLine2: 'Opposite Pioneer Mall, next to Uhuru Restaurant.',
   mapUrl: SHOP_LOCATION.mapUrl,
   shopHours: '8:30am to 6:00pm',

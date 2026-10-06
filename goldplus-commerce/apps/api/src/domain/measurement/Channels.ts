@@ -26,7 +26,7 @@ const SEARCH = /(^|\.)(google|bing|yahoo|duckduckgo|yandex|baidu|ecosia|brave)\.
 const SOCIAL = /(^|\.)(facebook|fb|instagram|tiktok|twitter|x|t|linkedin|lnkd|pinterest|snapchat|youtube|reddit|threads)\.(com|co|net|in|me)$/i;
 
 /** utm_source values that name a social network: the bare name, or its domain. */
-const SOCIAL_SOURCE = /^(x|twitter|t\.co|facebook|fb|instagram|ig|tiktok|linkedin|pinterest|snapchat|youtube|threads|reddit)(\.com)?$/i;
+const SOCIAL_SOURCE = /^(x|twitter|t\.co|facebook|fb|instagram|ig|tiktok|linkedin|pinterest|snapchat|snap|youtube|threads|reddit)(\.com)?$/i;
 
 export function classifyChannel(t: { source?: string | null; medium?: string | null; referrerHost?: string | null; clickIdTypes?: string[] }): Channel {
   const src = (t.source ?? '').toLowerCase().trim();

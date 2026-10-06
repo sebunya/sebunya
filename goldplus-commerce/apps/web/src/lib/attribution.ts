@@ -8,6 +8,7 @@
  * third party, no cookies beyond first-party storage.
  */
 import { isInternalReferrerHost } from './internalReferrer';
+import { inAppReferrerHost } from './inAppBrowser';
 
 const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'] as const;
 const FIRST = 'gp_attr_first';
@@ -40,7 +41,9 @@ export function captureAttribution(): void {
   try {
     const utm = readUtm();
     const hasUtm = Object.keys(utm).length > 0;
-    const ref = externalReferrer();
+    let ref = externalReferrer();
+    // No referrer, no campaign, no click id, but opened in Snapchat's own browser: a Snapchat visit.
+    if (!ref && !hasUtm && !/[?&]ScCid=/.test(location.search)) { const h = inAppReferrerHost(navigator.userAgent || ''); if (h) ref = `https://${h}/`; }
     const now = new Date().toISOString();
     const touch = { ...utm, referrer: ref, landingPath: location.pathname.slice(0, 300), at: now };
 
@@ -57,13 +60,22 @@ function sourceFromReferrer(ref: string): string {
   try {
     const host = new URL(ref).host.replace(/^www\./, '');
     if (!host) return '';
-    if (/google\./.test(host)) return 'google';
-    if (/facebook\.|fb\./.test(host)) return 'facebook';
-    if (/instagram\./.test(host)) return 'instagram';
-    if (/t\.co|twitter\.|x\.com/.test(host)) return 'x';
-    if (/tiktok\./.test(host)) return 'tiktok';
-    if (/youtube\.|youtu\.be/.test(host)) return 'youtube';
-    if (/wa\.me|whatsapp\./.test(host)) return 'whatsapp';
+    // Whole domain labels only: a bare substring test made "t.co" match
+    // snapchat.com, reddit.com and chatgpt.com, crediting their orders to X.
+    const is = (re: RegExp) => re.test(host);
+    // AI assistants keep their own host (the server files host + referral as
+    // ai_assistant); gemini.google.com must not read as Google search.
+    if (is(/(^|\.)(chatgpt\.com|chat\.openai\.com|gemini\.google\.com|bard\.google\.com|perplexity\.ai|copilot\.microsoft\.com|claude\.ai|meta\.ai|chat\.deepseek\.com)$/)) return host;
+    if (is(/(^|\.)google\.[a-z.]+$/)) return 'google';
+    if (is(/(^|\.)bing\.com$/)) return 'bing';
+    if (is(/(^|\.)(duckduckgo\.com|search\.yahoo\.com|yahoo\.com|ecosia\.org|search\.brave\.com|yandex\.[a-z.]+)$/)) return host.split('.').slice(-2, -1)[0];
+    if (is(/(^|\.)(facebook\.com|fb\.com|fb\.me)$/)) return 'facebook';
+    if (is(/(^|\.)instagram\.com$/)) return 'instagram';
+    if (is(/(^|\.)(t\.co|x\.com|twitter\.com)$/)) return 'x';
+    if (is(/(^|\.)tiktok\.com$/)) return 'tiktok';
+    if (is(/(^|\.)snapchat\.com$/)) return 'snapchat';
+    if (is(/(^|\.)(youtube\.com|youtu\.be)$/)) return 'youtube';
+    if (is(/(^|\.)(wa\.me|whatsapp\.com)$/)) return 'whatsapp';
     return host;
   } catch {
     return '';
@@ -149,7 +161,10 @@ export function getCheckoutAttribution(): CheckoutAttribution | null {
     const first = JSON.parse(localStorage.getItem(FIRST) || '{}');
     const refSource = last.referrer ? sourceFromReferrer(last.referrer) : '';
     const source = last.utm_source || refSource || null;
-    const medium = last.utm_medium || (last.utm_source ? 'campaign' : last.referrer ? 'referral' : null) || null;
+    // A referral from a social network is organic social and one from a search
+    // engine is organic search (the answers the landing-touch classifier gives),
+    // not a generic referral.
+    const medium = last.utm_medium || (last.utm_source ? 'campaign' : last.referrer ? (/^(facebook|instagram|x|tiktok|youtube|snapchat)$/.test(refSource) ? 'social' : /^(google|bing|duckduckgo|yahoo|ecosia|brave|yandex)$/.test(refSource) ? 'organic' : 'referral') : null) || null;
     return {
       source,
       medium,
