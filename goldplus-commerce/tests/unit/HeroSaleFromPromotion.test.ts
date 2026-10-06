@@ -25,7 +25,8 @@ const code = (p: string) =>
 
 /** Does a storefront route exist for this path? Query strings are ignored. */
 function pageExists(href: string): boolean {
-  const path = href.split('?')[0].replace(/\/$/, '') || '/';
+  // A #fragment (e.g. /account/rewards#refer, the invite card) is not part of the page path.
+  const path = href.split('#')[0].split('?')[0].replace(/\/$/, '') || '/';
   if (path === '/') return true;
   const base = join(ROOT, 'apps/web/src/pages', path);
   return existsSync(`${base}.astro`) || existsSync(join(base, 'index.astro'));
