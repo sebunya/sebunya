@@ -60,14 +60,17 @@ function sourceFromReferrer(ref: string): string {
   try {
     const host = new URL(ref).host.replace(/^www\./, '');
     if (!host) return '';
-    if (/google\./.test(host)) return 'google';
-    if (/facebook\.|fb\./.test(host)) return 'facebook';
-    if (/instagram\./.test(host)) return 'instagram';
-    if (/t\.co|twitter\.|x\.com/.test(host)) return 'x';
-    if (/tiktok\./.test(host)) return 'tiktok';
-    if (/snapchat\./.test(host)) return 'snapchat';
-    if (/youtube\.|youtu\.be/.test(host)) return 'youtube';
-    if (/wa\.me|whatsapp\./.test(host)) return 'whatsapp';
+    // Whole domain labels only: a bare substring test made "t.co" match
+    // snapchat.com, reddit.com and chatgpt.com, crediting their orders to X.
+    const is = (re: RegExp) => re.test(host);
+    if (is(/(^|\.)google\.[a-z.]+$/)) return 'google';
+    if (is(/(^|\.)(facebook\.com|fb\.com|fb\.me)$/)) return 'facebook';
+    if (is(/(^|\.)instagram\.com$/)) return 'instagram';
+    if (is(/(^|\.)(t\.co|x\.com|twitter\.com)$/)) return 'x';
+    if (is(/(^|\.)tiktok\.com$/)) return 'tiktok';
+    if (is(/(^|\.)snapchat\.com$/)) return 'snapchat';
+    if (is(/(^|\.)(youtube\.com|youtu\.be)$/)) return 'youtube';
+    if (is(/(^|\.)(wa\.me|whatsapp\.com)$/)) return 'whatsapp';
     return host;
   } catch {
     return '';
@@ -153,7 +156,9 @@ export function getCheckoutAttribution(): CheckoutAttribution | null {
     const first = JSON.parse(localStorage.getItem(FIRST) || '{}');
     const refSource = last.referrer ? sourceFromReferrer(last.referrer) : '';
     const source = last.utm_source || refSource || null;
-    const medium = last.utm_medium || (last.utm_source ? 'campaign' : last.referrer ? 'referral' : null) || null;
+    // A referral from a social network is organic social (the same answer the
+    // landing-touch classifier gives), not a generic referral.
+    const medium = last.utm_medium || (last.utm_source ? 'campaign' : last.referrer ? (/^(facebook|instagram|x|tiktok|youtube|snapchat)$/.test(refSource) ? 'social' : 'referral') : null) || null;
     return {
       source,
       medium,
