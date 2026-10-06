@@ -78,9 +78,15 @@ export class CatchUpMissionAwardsUseCase {
   constructor(
     private readonly gamification: IGamificationLiveRepository,
     private readonly evaluate: { execute(input: { userId: string }): Promise<{ ok: true; awarded: Array<{ missionKey: string; points: number }> } | Fail> },
+    /** The guarded issuance config: off, kill switch, or budget cap reached all read as "stop". */
+    private readonly completion: Pick<ILoyaltyCompletionRepository, 'getProgrammeConfig'>,
   ) {}
 
-  async execute(): Promise<{ candidates: number; awarded: number }> {
+  async execute(): Promise<{ candidates: number; awarded: number; skipped?: 'PROGRAMME_INACTIVE' }> {
+    // Checked ONCE: per-candidate evaluation would re-read the guarded config
+    // for every customer, and at the budget cap each read records a signal.
+    const config = await this.completion.getProgrammeConfig();
+    if (!config.enabled || config.killSwitch) return { candidates: 0, awarded: 0, skipped: 'PROGRAMME_INACTIVE' };
     const missions = (await this.gamification.listActiveMissions())
       .filter((m) => m.rewardPoints > 0 && CatchUpMissionAwardsUseCase.KINDS.includes(m.kind));
     const users = new Set<string>();

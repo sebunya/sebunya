@@ -3,6 +3,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import AccountNav from '../../components/AccountNav.astro';
 import EmptyState from '../../components/EmptyState.astro';
 import Notice from '../../components/Notice.astro';
+import ReferralCard from '../../components/ReferralCard.astro';
 import { apiBase } from '../../lib/api';
 import { readSessionToken, SESSION_COOKIE_NAME } from '../../lib/session';
 
@@ -43,7 +44,6 @@ try {
   loadError = 'The loyalty service is unreachable right now.';
 }
 
-const shareUrl = referral ? `https://shopgoldplus.com/register?ref=${referral.code}` : '';
 // Balance and its value in UGX together (loyalty DoD #26) — only when the
 // point value is configured; never an invented rate.
 const pointValueUgx: number | null =
@@ -127,25 +127,7 @@ const formatDate = (iso: string) =>
           </div>
         )}
 
-        {referral && (
-          <section class="bg-white border border-brand-borderGrey rounded-2xl p-6" data-referral-card>
-            <h2 class="text-xs font-bold uppercase tracking-widest text-brand-mutedGrey mb-3">Introduce a friend</h2>
-            <p class="text-sm text-brand-charcoal leading-relaxed">
-              Share your code. You earn <strong>{referral.referrerPoints.toLocaleString('en-UG')} points</strong> when their first
-              order is delivered{referral.refereePoints ? <>, and they start with <strong>{referral.refereePoints.toLocaleString('en-UG')} points</strong></> : null}.
-              Nothing is paid before that delivery.
-            </p>
-            <div class="mt-4 flex flex-wrap items-center gap-3">
-              <code class="rounded-xl border border-brand-borderGrey bg-gray-50 px-4 py-2.5 text-base font-black tracking-widest text-brand-charcoal" data-referral-code>{referral.code}</code>
-              <button type="button" class="min-h-11 rounded-full bg-brand-charcoal px-5 py-2.5 text-xs font-black uppercase tracking-wider text-white" data-copy-referral data-share-url={shareUrl}>Copy invite link</button>
-              <a class="min-h-11 inline-flex items-center rounded-full border border-brand-borderGrey px-5 py-2.5 text-xs font-black uppercase tracking-wider text-brand-charcoal" href={`https://wa.me/?text=${encodeURIComponent(`Get genuine electronics from GoldPlus. Use my code ${referral.code} when you sign up: ${shareUrl}`)}`} target="_blank" rel="noopener noreferrer">Share on WhatsApp</a>
-              <span class="text-xs text-brand-mutedGrey" data-copy-status role="status" aria-live="polite"></span>
-            </div>
-            <p class="mt-3 text-xs text-brand-mutedGrey">
-              {referral.referred.toLocaleString('en-UG')} signed up with your code · {referral.awarded.toLocaleString('en-UG')} delivered and paid out · {referral.pending.toLocaleString('en-UG')} waiting on a first delivery.
-            </p>
-          </section>
-        )}
+        {referral && <ReferralCard referral={referral} bonus={programme?.earnSources?.referral?.bonus ?? null} />}
 
         {gamification?.badges?.length > 0 && (
           <section class="bg-white border border-brand-borderGrey rounded-2xl p-6">
@@ -194,26 +176,4 @@ const formatDate = (iso: string) =>
     )}
   </div>
 
-  {/* Referral copy — plain progressive enhancement, no framework (single-digit KB budget). */}
-  <script nonce={Astro.locals.cspNonce} is:inline>
-    (function () {
-      var btn = document.querySelector('[data-copy-referral]');
-      if (!btn) return;
-      var status = document.querySelector('[data-copy-status]');
-      btn.addEventListener('click', function () {
-        var url = btn.getAttribute('data-share-url') || '';
-        var done = function (msg) {
-          if (status) {
-            status.textContent = msg;
-            setTimeout(function () { status.textContent = ''; }, 4000);
-          }
-        };
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(url).then(function () { done('Invite link copied.'); }, function () { done(url); });
-        } else {
-          done(url);
-        }
-      });
-    })();
-  </script>
 </BaseLayout>

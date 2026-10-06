@@ -410,12 +410,25 @@ describe('mission catch-up (customers who qualified before the mission could see
     const asked: string[] = [];
     (gamification as any).missionCatchUpCandidates = async (m: ActiveMission) => { asked.push(m.key); return m.key === 'refer_three' ? ['u1', 'u2'] : ['u9']; };
     const evaluate = new EvaluateGamificationForUserUseCase(ledger as any, completion as any, gamification as any);
-    const uc = new CatchUpMissionAwardsUseCase(gamification as any, evaluate);
+    const uc = new CatchUpMissionAwardsUseCase(gamification as any, evaluate, completion as any);
     expect(await uc.execute()).toEqual({ candidates: 2, awarded: 2 });
     expect(asked).toEqual(['refer_three']); // the streak and badge-only missions are left to their events
     expect(ledger.pointsFor('u1')).toBe(300);
     expect(ledger.pointsFor('u2')).toBe(300);
     expect(await uc.execute()).toEqual({ candidates: 2, awarded: 0 });
     expect(ledger.pointsFor('u1')).toBe(300);
+  });
+
+  it('checks the programme once and asks for no candidates when it is off, killed or capped', async () => {
+    gamification.missions = [friends];
+    let reads = 0;
+    let asked = 0;
+    (gamification as any).missionCatchUpCandidates = async () => { asked++; return ['u1']; };
+    const stopped = { getProgrammeConfig: async () => { reads++; return { ...BASE_CONFIG, killSwitch: true }; } };
+    const evaluate = new EvaluateGamificationForUserUseCase(ledger as any, completion as any, gamification as any);
+    expect(await new CatchUpMissionAwardsUseCase(gamification as any, evaluate, stopped as any).execute())
+      .toEqual({ candidates: 0, awarded: 0, skipped: 'PROGRAMME_INACTIVE' });
+    expect(reads).toBe(1);
+    expect(asked).toBe(0);
   });
 });

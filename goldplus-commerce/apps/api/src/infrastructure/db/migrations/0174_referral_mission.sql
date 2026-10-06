@@ -17,3 +17,10 @@ WHERE "key" = 'verify_ten' AND "status" = 'ACTIVE';
 INSERT INTO "gamification_missions" ("key","title","description","kind","threshold","reward_points","status") VALUES
   ('refer_three', 'Friends & Family', 'Introduce three friends or family members. When the third one''s first order is delivered, you earn this bonus on top of your referral points.', 'REFERRAL_COUNT', 3, 300, 'ACTIVE')
 ON CONFLICT ("key") DO NOTHING;
+--> statement-breakpoint
+-- The published terms change with this release (levels count every point;
+-- the Friends & Family bonus; reversed points stop counting from 7 Oct 2026),
+-- so their version moves on. Only from the version this build replaces: an
+-- operator's own version string is left alone.
+UPDATE "loyalty_config" SET "terms_version" = 'v2', "updated_at" = now()
+WHERE "singleton" = 'config' AND "terms_version" = 'v1';

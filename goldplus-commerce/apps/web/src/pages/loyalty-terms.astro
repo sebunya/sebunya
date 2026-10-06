@@ -178,8 +178,9 @@ const tiers = (programme?.tiers ?? []).slice().sort((a, b) => a.threshold - b.th
               <p class="mt-2">
                 Levels are based on the total points you have <em>earned</em> over the life of your account, not your current balance.
                 Every point counts, whatever earned it: orders, referrals, missions, product checks, birthdays, scratch cards and
-                points we credit to you. Spending points, or points expiring, never reduces your level. Points reversed after a refund,
-                or removed to correct an error, no longer count. Current thresholds:
+                points we credit to you. Spending points, or points expiring, never reduces your level. From 7 October 2026, points
+                reversed after a refund, or removed to correct an error, no longer count; nothing before that date lowers your level.
+                If your level changes, in either direction, we tell you. Current thresholds:
               </p>
               <ul class="mt-2 space-y-1 pl-4">
                 {tiers.map((t) => (
@@ -255,6 +256,11 @@ const tiers = (programme?.tiers ?? []).slice().sort((a, b) => a.threshold - b.th
               We may change the earning rate, point value, expiry period or the ways to earn. Changes apply to points earned after the change.
               Points you have already earned keep the rules that were in force when you earned them, because each entry records the rule version
               that granted it. If we end the programme, we will give at least 30 days' notice so you can redeem your balance.
+            </p>
+            <p class="mt-2">
+              <strong>Changes on 7 October 2026 (version v2).</strong> Every point you earn now counts toward your membership level, not
+              only points from orders. Points reversed after a refund or removed to correct an error from that date no longer count
+              toward it. Introducing friends and family can earn a one-off bonus, shown in section 2 when it is running.
             </p>
           </section>
 

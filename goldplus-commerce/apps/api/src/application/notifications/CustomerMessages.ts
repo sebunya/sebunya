@@ -60,6 +60,8 @@ export interface CustomerMessageData {
   orderId?: string | null;
   /** Points earned for completing a mission: its customer-facing title. */
   missionTitle?: string | null;
+  /** Tier change: 'down' when reversed points took a customer below their level. */
+  direction?: 'up' | 'down' | null;
 }
 
 export interface EmailCopy {
@@ -197,6 +199,9 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
     case 'LOYALTY_REDEMPTION_REVERSED':
       return `${SHOP_NAME}: the ${pointsWord(d.points)} you used${ref ? ` on order${ref}` : ''} are back in your balance because the order did not go ahead. See your balance: ${publicBaseUrl()}/account/loyalty`;
     case 'LOYALTY_TIER_CHANGED':
+      if (d.direction === 'down') {
+        return `${SHOP_NAME}: your membership level is now ${d.tierName || 'updated'}, because points from a refund or correction no longer count toward it. See your points: ${publicBaseUrl()}/account/loyalty`;
+      }
       return `${SHOP_NAME}: you are now a ${d.tierName || 'new tier'} member. See what that gets you: ${publicBaseUrl()}/account/loyalty`;
     case 'SUPPORT_REQUEST_RECEIVED':
       return `${SHOP_NAME}: we have your request${d.reference ? ` (ref ${d.reference})` : ''}. Our team will call you on this number. Need us sooner? Call ${phone}.`;
@@ -375,6 +380,16 @@ export function emailCopy(template: string, d: CustomerMessageData = {}): EmailC
         tone: 'neutral',
       };
     case 'LOYALTY_TIER_CHANGED':
+      if (d.direction === 'down') {
+        return {
+          subject: `Your membership level is now ${d.tierName || 'updated'}`,
+          preheader: 'Points from a refund or correction no longer count toward your level.',
+          headline: `Your level is now ${d.tierName || 'updated'}`,
+          body: `Your membership level at ${SHOP_NAME} is now ${d.tierName || 'updated'}, because points from a refund or correction no longer count toward it. Spending points never lowers your level. Every point you earn from here counts toward the next one.`,
+          cta: { label: 'See your points', url: `${publicBaseUrl()}/account/loyalty` },
+          tone: 'neutral',
+        };
+      }
       return {
         subject: `You are now a ${d.tierName || 'new tier'} member`,
         preheader: 'See what that gets you.',

@@ -144,7 +144,7 @@ export class EvaluateTiersUseCase {
     private readonly loyalty: ILoyaltyRepository,
     private readonly completion: ILoyaltyCompletionRepository,
     private readonly tiers: ILoyaltyTierRepository,
-    private readonly notifyTierChange: (input: { userId: string; tierCode: string; tierName: string }) => Promise<unknown>,
+    private readonly notifyTierChange: (input: { userId: string; tierCode: string; tierName: string; direction: 'up' | 'down' }) => Promise<unknown>,
   ) {}
 
   async execute(): Promise<{ evaluated: number; changed: number }> {
@@ -165,14 +165,13 @@ export class EvaluateTiersUseCase {
       if (current?.tierCode === target.code) continue;
       await this.tiers.assign(accountId, target.code);
       changed++;
-      // Only a move UP is announced: the message reads "Welcome to <tier>". A
-      // move down (the points that earned a level were reversed) is applied
-      // quietly and shows on the account page. A current tier that is no longer
-      // active has no rank to compare, so that move is announced as before.
+      // Every change is announced (brief PART M), in its own words: a move up
+      // is a welcome; a move down says plainly that reversed points no longer
+      // count. A current tier that is no longer active has no rank to compare,
+      // so that move is treated as up, as before.
       const currentRank = current ? tiers.find((t) => t.code === current.tierCode)?.rank : undefined;
-      if (currentRank === undefined || target.rank > currentRank) {
-        await this.notifyTierChange({ userId, tierCode: target.code, tierName: target.name }).catch(() => undefined);
-      }
+      const direction = currentRank === undefined || target.rank > currentRank ? 'up' : 'down';
+      await this.notifyTierChange({ userId, tierCode: target.code, tierName: target.name, direction }).catch(() => undefined);
     }
     return { evaluated: accounts.length, changed };
   }

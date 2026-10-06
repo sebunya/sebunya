@@ -1583,7 +1583,7 @@ export class Registry {
         data: { points, source: 'mission', missionTitle },
       }),
   );
-  public readonly catchUpMissionAwardsUseCase = new CatchUpMissionAwardsUseCase(this.gamificationRepo, this.evaluateGamificationForUserUseCase);
+  public readonly catchUpMissionAwardsUseCase = new CatchUpMissionAwardsUseCase(this.gamificationRepo, this.evaluateGamificationForUserUseCase, this.loyaltyIssuanceCompletion);
   public readonly recordReferralUseCase = new RecordReferralUseCase(this.loyaltyCompletionRepo, this.loyaltyReferralRepo);
   public readonly qualifyReferralOnDeliveryUseCase = new QualifyReferralOnDeliveryUseCase(
     this.loyaltyRepo,
@@ -1861,12 +1861,14 @@ export class Registry {
     this.loyaltyRepo,
     this.loyaltyCompletionRepo,
     this.loyaltyTierRepo,
-    async ({ userId, tierCode, tierName }) =>
+    async ({ userId, tierCode, tierName, direction }) =>
       this.loyaltyOutboxNotifier.enqueue({
         userId,
         eventType: 'LOYALTY_TIER_CHANGED',
-        idempotencyKey: `tier:${userId}:${tierCode}`,
-        data: { tierCode, tierName },
+        // A welcome is once per tier, ever (unchanged key). A move down is
+        // once per tier per day, so a later move down is still told.
+        idempotencyKey: direction === 'up' ? `tier:${userId}:${tierCode}` : `tier-down:${userId}:${tierCode}:${new Date().toISOString().slice(0, 10)}`,
+        data: { tierCode, tierName, direction },
       }),
   );
     public readonly runLoyaltyDailySweepUseCase = new RunLoyaltyDailySweepUseCase(

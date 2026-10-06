@@ -23,6 +23,40 @@ describe('points messages say what is true for that reward', () => {
   });
 });
 
+describe('a level change is always told, in its own words', () => {
+  it('up is a welcome; down says why, on every channel, and never "welcomes"', () => {
+    expect(smsText('LOYALTY_TIER_CHANGED', { tierName: 'Gold' })).toMatch(/you are now a Gold member/i);
+    const down = { tierName: 'Member', direction: 'down' as const };
+    expect(smsText('LOYALTY_TIER_CHANGED', down)).toMatch(/your membership level is now Member, because points from a refund or correction no longer count/i);
+    expect(whatsappText('LOYALTY_TIER_CHANGED', down)).toContain('no longer count');
+    const email = emailCopy('LOYALTY_TIER_CHANGED', down)!;
+    expect(email.subject).toBe('Your membership level is now Member');
+    expect(JSON.stringify(email)).not.toMatch(/welcome/i);
+  });
+});
+
+describe('customers can get their invite link where the site sends them', () => {
+  const card = read('apps/web/src/components/ReferralCard.astro');
+  const rewards = read('apps/web/src/pages/account/rewards.astro');
+
+  it('the rewards page carries the invite card at #refer, and every "refer" link lands on it', () => {
+    expect(card).toContain('id="refer"');
+    expect(card).toContain('SITE_ORIGIN');
+    expect(rewards).toContain('/account/referral');
+    expect(rewards).toContain('<ReferralCard');
+    expect(read('apps/web/src/pages/account/loyalty.astro')).toContain('<ReferralCard');
+    const nav = read('apps/web/src/components/GpNav.astro');
+    expect(nav).toContain('<a href="/account/rewards#refer">Refer a friend');
+    expect(nav).toContain("cta:'Get your link', href:'/account/rewards#refer'");
+  });
+
+  it('a paid mission stays complete even when today\'s progress no longer meets it', () => {
+    const repo = read('apps/api/src/infrastructure/db/repositories/DrizzleGamificationRepository.ts');
+    expect(repo).toContain('paidKeys.has(`mission:${m.key}:${userId}`)');
+    expect(rewards).toContain('m.completed ? 100 : pct(m.progress, m.threshold)');
+  });
+});
+
 describe('missions can be run from admin', () => {
   const routes = read('apps/api/src/interfaces/http/routes/admin/loyalty.ts');
   const page = read('apps/web/src/pages/admin/loyalty/gamification.astro');

@@ -1,10 +1,10 @@
-import { desc, eq, sql } from 'drizzle-orm';
+import { desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { LOYALTY_PAYMENT_QUALIFIES_SQL } from '../LoyaltyEarnEligibilitySql';
 import { customerBadges, gamificationBadges, gamificationMissions } from '../schema/gamification';
 import { orders } from '../schema/commerce';
 import { reviews } from '../schema/reviews';
-import { loyaltyConfig } from '../schema/loyalty';
+import { loyaltyConfig, loyaltyLedgerEntries } from '../schema/loyalty';
 import { ActiveMission, IGamificationLiveRepository } from '../../../application/use-cases/loyalty/LoyaltyGamificationUseCases';
 
 /**
@@ -279,6 +279,22 @@ export class DrizzleGamificationRepository implements IGamificationLiveRepositor
     const [configRow] = await db.select().from(loyaltyConfig).limit(1);
     const streakWindowDays = (configRow as { streakWindowDays?: number | null } | undefined)?.streakWindowDays ?? null;
     const badgeRows = await db.select().from(gamificationBadges);
+    // A mission is complete once it has PAID this customer (its once-ever ledger
+    // key) or granted its badge, not only while progress happens to meet today's
+    // threshold: a broken streak or a raised threshold must not un-complete a
+    // bonus already paid.
+    const missionKeys = activeMissions.map((m) => `mission:${m.key}:${userId}`);
+    const paidKeys = new Set(
+      missionKeys.length === 0
+        ? []
+        : (
+            await db
+              .select({ key: loyaltyLedgerEntries.idempotencyKey })
+              .from(loyaltyLedgerEntries)
+              .where(inArray(loyaltyLedgerEntries.idempotencyKey, missionKeys))
+          ).map((r) => r.key),
+    );
+    const earnedBadgeKeys = new Set(earned.map((b) => b.key));
 
     const missions = await Promise.all(
       activeMissions.map(async (m) => {
@@ -308,7 +324,10 @@ export class DrizzleGamificationRepository implements IGamificationLiveRepositor
               : m.kind === 'REVIEW_COUNT'
                 ? 'Reviews are recorded under a separate identity and cannot be counted toward your account yet.'
                 : 'This mission type is not tracked yet.',
-          completed: progress !== null && progress >= m.threshold,
+          completed:
+            paidKeys.has(`mission:${m.key}:${userId}`) ||
+            (mission.badgeKey !== null && m.rewardPoints === 0 && earnedBadgeKeys.has(mission.badgeKey)) ||
+            (progress !== null && progress >= m.threshold),
         };
       }),
     );

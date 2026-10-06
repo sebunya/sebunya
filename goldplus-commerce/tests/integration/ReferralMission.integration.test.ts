@@ -65,6 +65,9 @@ suite('referral mission (0174) on real PostgreSQL', () => {
     expect(await repo.missionCatchUpCandidates(mission, 1000)).not.toContain(referrer);
     // Restore the fixture for the progress test.
     await pg`update loyalty_referrals set status = 'pending' where referrer_user_id = ${referrer}::uuid and referee_user_id = ${friends[2]}::uuid`;
+    // Paid stays complete on the rewards page even though progress is back to 2 of 3.
+    const snapshot = await repo.customerSnapshot(referrer);
+    expect(snapshot.missions.find((m) => m.key === 'refer_three')).toMatchObject({ progress: 2, completed: true });
   });
 
   it('the catch-up query is valid SQL for every kind it serves', async () => {

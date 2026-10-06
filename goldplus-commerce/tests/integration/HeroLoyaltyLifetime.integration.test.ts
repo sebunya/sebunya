@@ -46,9 +46,13 @@ suite('hero loyalty meter: lifetime points on real PostgreSQL', () => {
     // An order earn must name its order (loyalty_ledger_shape_check).
     await pg`insert into orders (id, order_number, customer_name, customer_phone, delivery_area, delivery_address, subtotal_amount, total_amount)
       values (${orderId}::uuid, ${`HL-${suffix}`}, 'Hero Lifetime', '+256700000000', 'Kampala', 'Test', 100000, 100000)`;
-    const row = (id: string, account: string, type: string, points: number, key: string, reversed: string | null = null, order: string | null = null) =>
-      pg`insert into loyalty_ledger_entries (id, account_id, type, points, reason, idempotency_key, reversed_entry_id, order_id)
-         values (${id}::uuid, ${account}::uuid, ${type}, ${points}, 'hero lifetime test', ${`${key}:${suffix}`}, ${reversed}::uuid, ${order}::uuid)`;
+    // Dated explicitly: reductions count only from LIFETIME_REDUCTIONS_FROM
+    // (7 Oct 2026), so "today" would make the test depend on the clock.
+    const AFTER = '2026-10-10T08:00:00Z';
+    const BEFORE = '2026-09-01T08:00:00Z';
+    const row = (id: string, account: string, type: string, points: number, key: string, reversed: string | null = null, order: string | null = null, at = AFTER) =>
+      pg`insert into loyalty_ledger_entries (id, account_id, type, points, reason, idempotency_key, reversed_entry_id, order_id, created_at)
+         values (${id}::uuid, ${account}::uuid, ${type}, ${points}, 'hero lifetime test', ${`${key}:${suffix}`}, ${reversed}::uuid, ${order}::uuid, ${at}::timestamptz)`;
     await row(ids.earn, survivorAccount, 'earn', 1000, 'earn', null, orderId);
     await row(crypto.randomUUID(), survivorAccount, 'adjustment', 300, 'mission');
     await row(crypto.randomUUID(), survivorAccount, 'adjustment', 25, 'verify');
@@ -58,6 +62,8 @@ suite('hero loyalty meter: lifetime points on real PostgreSQL', () => {
     await row(crypto.randomUUID(), survivorAccount, 'reversal', 100, 'redeem-back', ids.redeem2);
     await row(crypto.randomUUID(), survivorAccount, 'adjustment', -50, 'adjust');
     await row(crypto.randomUUID(), mergedAccount, 'adjustment', 150, 'birthday');
+    // A correction from before the cut-off: off the balance, never off the level.
+    await row(crypto.randomUUID(), survivorAccount, 'adjustment', -75, 'old-fix', null, null, BEFORE);
   });
 
   afterAll(async () => {
@@ -72,12 +78,12 @@ suite('hero loyalty meter: lifetime points on real PostgreSQL', () => {
       from loyalty_ledger_entries where account_id in (${survivorAccount}::uuid, ${mergedAccount}::uuid)`;
     const entries = ledger.map((r) => ({
       id: r.id, accountId: r.account_id, type: r.type, points: r.points, orderId: null, reason: '',
-      idempotencyKey: r.idempotency_key, expiresAt: null, reversedEntryId: r.reversed_entry_id, createdAt: r.created_at,
+      idempotencyKey: r.idempotency_key, expiresAt: null, reversedEntryId: r.reversed_entry_id, createdAt: new Date(r.created_at),
     }));
     const lifetime = domain.computeLifetimePoints(entries);
     expect(lifetime).toBe(1000 + 300 + 25 - 200 - 50 + 150);
     const balance = domain.computeBalance(entries, new Date()).available;
-    expect(balance).toBe(825);
+    expect(balance).toBe(825 - 75);
 
     const tiers = (await pg`select name, threshold_lifetime_points as threshold from loyalty_tiers
       where active = true and threshold_lifetime_points is not null`).map((t) => ({ name: String(t.name), threshold: Number(t.threshold) }));

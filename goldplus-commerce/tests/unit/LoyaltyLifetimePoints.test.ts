@@ -4,6 +4,7 @@ import {
   computeBalance,
   computeLifetimePoints,
   LIFETIME_POINTS_SQL,
+  LIFETIME_REDUCTIONS_FROM,
   type LoyaltyLedgerEntry,
 } from '../../apps/api/src/domain/loyalty/LoyaltyLedger';
 
@@ -13,10 +14,12 @@ const entry = (
   points: number,
   idempotencyKey: string,
   reversedEntryId: string | null = null,
+  createdAt: Date = new Date(Date.UTC(2026, 9, 10, 0, 0, seq + 1)), // after LIFETIME_REDUCTIONS_FROM
 ): LoyaltyLedgerEntry => ({
   id: `e${++seq}`, accountId: 'a', type, points, orderId: null, reason: '', idempotencyKey,
-  expiresAt: null, reversedEntryId, createdAt: new Date(2026, 9, 1, 0, 0, seq),
+  expiresAt: null, reversedEntryId, createdAt,
 });
+const BEFORE = new Date('2026-09-01T00:00:00Z');
 
 describe('lifetime points: every point credited, from any source', () => {
   it('counts orders, referrals, missions, scans, birthday, scratch cards, counterfeit reports, phone verification and manual credits', () => {
@@ -57,6 +60,22 @@ describe('lifetime points: every point credited, from any source', () => {
     expect(computeLifetimePoints(entries)).toBe(1000);
   });
 
+  it('is not retroactive: a refund or correction dated before 7 Oct 2026 lowers nothing (terms §9)', () => {
+    expect(LIFETIME_REDUCTIONS_FROM.toISOString()).toBe('2026-10-06T21:00:00.000Z');
+    const earn = entry('earn', 1000, 'earn:o1', null, BEFORE);
+    const oldFix = entry('adjustment', -100, 'adjust:old-fix-01', null, BEFORE);
+    const entries = [
+      earn,
+      entry('reversal', -400, `reversal:${earn.id}:400`, earn.id, BEFORE),
+      oldFix,
+      // Undoing a correction that never counted must not add points either.
+      entry('reversal', 100, `reversal:${oldFix.id}`, oldFix.id),
+    ];
+    expect(computeLifetimePoints(entries)).toBe(1000);
+    // The same refund after the date does count.
+    expect(computeLifetimePoints([earn, entry('reversal', -400, `reversal:${earn.id}:400b`, earn.id)])).toBe(600);
+  });
+
   it('never goes below zero', () => {
     expect(computeLifetimePoints([entry('adjustment', -50, 'adjust:fix-0002')])).toBe(0);
   });
@@ -68,9 +87,10 @@ describe('lifetime points: every point credited, from any source', () => {
     expect(b.available).toBe(425);
   });
 
-  it('the SQL twin follows the same rule', () => {
+  it('the SQL twin follows the same rule, cut-off included', () => {
     expect(LIFETIME_POINTS_SQL).toContain("le.type in ('earn','adjustment')");
     expect(LIFETIME_POINTS_SQL).toContain("le.type = 'reversal' and rt.type in ('earn','adjustment')");
+    expect(LIFETIME_POINTS_SQL).toContain("timestamptz '2026-10-06T21:00:00.000Z'");
     expect(LIFETIME_POINTS_SQL).toMatch(/^greatest\(0,/);
   });
 });
@@ -90,18 +110,27 @@ describe('tiers follow lifetime points', () => {
       notify,
     );
     await uc.execute();
-    return { assigned: assign.mock.calls.map((c) => c[1]), notified: notify.mock.calls.map((c) => (c as unknown as [{ tierCode: string }])[0].tierCode) };
+    return {
+      assigned: assign.mock.calls.map((c) => c[1]),
+      notified: notify.mock.calls.map((c) => { const n = (c as unknown as [{ tierCode: string; direction: string }])[0]; return `${n.tierCode}:${n.direction}`; }),
+    };
   };
 
   it('referral, mission and other non-order points can lift a customer to the next level, and the move up is announced', async () => {
     const entries = [entry('earn', 2_000, 'earn:o1'), entry('adjustment', 300, 'mission:refer_three:u'), entry('adjustment', 200, 'referral:r:referrer')];
-    expect(await run(entries, 'T1')).toEqual({ assigned: ['T2'], notified: ['T2'] });
+    expect(await run(entries, 'T1')).toEqual({ assigned: ['T2'], notified: ['T2:up'] });
   });
 
-  it('a level whose points were reversed is lowered quietly, never with a "welcome" message', async () => {
+  it('a level whose points were reversed is lowered and the customer is told it went down, never "welcomed"', async () => {
     const earn = entry('earn', 3_000, 'earn:o1');
     const entries = [earn, entry('reversal', -1_000, `reversal:${earn.id}:1000`, earn.id)];
-    expect(await run(entries, 'T2')).toEqual({ assigned: ['T1'], notified: [] });
+    expect(await run(entries, 'T2')).toEqual({ assigned: ['T1'], notified: ['T1:down'] });
+  });
+
+  it('deploy day lowers no one for an old refund', async () => {
+    const earn = entry('earn', 3_000, 'earn:o1', null, BEFORE);
+    const entries = [earn, entry('reversal', -1_000, `reversal:${earn.id}:1000`, earn.id, BEFORE)];
+    expect(await run(entries, 'T2')).toEqual({ assigned: [], notified: [] });
   });
 
   it('spending points never lowers a level', async () => {
