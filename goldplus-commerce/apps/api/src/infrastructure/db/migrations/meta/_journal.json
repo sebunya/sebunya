@@ -1205,6 +1205,13 @@
       "when": 1790140000048,
       "tag": "0171_spotify_ads_api_capability",
       "breakpoints": true
+    },
+    {
+      "idx": 172,
+      "version": "5",
+      "when": 1790140000049,
+      "tag": "0173_shop_building_zainab_aziza",
+      "breakpoints": true
     }
   ]
 }

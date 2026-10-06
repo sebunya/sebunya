@@ -402,7 +402,7 @@ export class NotificationTemplateRenderer {
           We sent this because of an order or request you made with GoldPlus. It is not marketing, so there is nothing to unsubscribe from.
         </p>
         <p style="margin: 0; font-family: sans-serif; font-size: 10px; font-weight: bold; color: #6B7280; text-transform: uppercase; letter-spacing: 0.05em;">
-          &copy; ${new Date().getFullYear()} GoldPlus. New Pioneer Mall Building, Burton Street, Kampala.
+          &copy; ${new Date().getFullYear()} GoldPlus. Zainab Aziza Building, Burton Street, Kampala.
         </p>
       </td>
     </tr>`;
@@ -513,7 +513,7 @@ ${itemsText}Track this order: ${trackUrl}
 
 ${helpLine}
 
-GoldPlus, New Pioneer Mall Building, Burton Street, Kampala
+GoldPlus, Zainab Aziza Building, Burton Street, Kampala
 You are getting this because of order ${order.orderNumber}.`;
   }
 
@@ -584,7 +584,7 @@ You are getting this because of order ${order.orderNumber}.`;
   /** Plain text twin of renderCustomerEmail. */
   public renderCustomerText(copy: EmailCopy, customerName?: string | null): string {
     const first = String(customerName || '').trim().split(/\s+/)[0];
-    return `${first ? `Hello ${first},` : 'Hello,'}\n\n${copy.headline}\n\n${copy.body}\n\n${copy.cta ? `${copy.cta.label}: ${copy.cta.url}\n\n` : ''}Need help? Call ${supportPhoneDisplay()}.\n\nGoldPlus, New Pioneer Mall Building, Burton Street, Kampala`;
+    return `${first ? `Hello ${first},` : 'Hello,'}\n\n${copy.headline}\n\n${copy.body}\n\n${copy.cta ? `${copy.cta.label}: ${copy.cta.url}\n\n` : ''}Need help? Call ${supportPhoneDisplay()}.\n\nGoldPlus, Zainab Aziza Building, Burton Street, Kampala`;
   }
 
   /**

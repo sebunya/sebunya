@@ -7,7 +7,7 @@ import { evaluateLocalPageGate } from '../../lib/categoryHubs';
 import { SHOP_LOCATION } from '@goldplus/shared';
 
 /**
- * LOCAL SEARCH — the New Pioneer Mall shop page (was /locations/wilson-road; 301 in astro.config). Built ONLY from the admin-editable
+ * LOCAL SEARCH — the Zainab Aziza shop page (was /locations/wilson-road; 301 in astro.config). Built ONLY from the admin-editable
  * business-info document (same source as the footer). Indexable only when
  * business-info actually returns an address and phone; the LocalBusiness
  * JSON-LD carries verified fields only — no invented hours. The coordinates
@@ -15,7 +15,7 @@ import { SHOP_LOCATION } from '@goldplus/shared';
  */
 const biz = await getBusinessInfo();
 const gatePass = evaluateLocalPageGate(biz);
-const canonicalUrl = `${SITE_ORIGIN}/locations/new-pioneer-mall`;
+const canonicalUrl = `${SITE_ORIGIN}/locations/zainab-aziza`;
 const robotsMeta = gatePass ? undefined : 'noindex,follow';
 
 const telephone = biz.phoneDial?.replace(/^tel:/, '') || undefined;
@@ -40,13 +40,13 @@ if (biz.mapUrl) localBusiness.hasMap = biz.mapUrl;
 
 const crumbs = [
   { name: 'Home', url: `${SITE_ORIGIN}/` },
-  { name: 'New Pioneer Mall shop', url: canonicalUrl },
+  { name: 'Zainab Aziza shop', url: canonicalUrl },
 ];
 ---
 
 <BaseLayout
-  title="GoldPlus shop, New Pioneer Mall Building, Kampala"
-  description={`Visit the GoldPlus shop on the 4th floor of the New Pioneer Mall Building, Burton Street, Kampala. ${biz.openDays}, ${biz.shopHours}. Phone, directions and what to expect in store.`}
+  title="GoldPlus shop, Zainab Aziza Building, Kampala"
+  description={`Visit the GoldPlus shop on the 4th floor of the Zainab Aziza Building, Burton Street, Kampala. ${biz.openDays}, ${biz.shopHours}. Phone, directions and what to expect in store.`}
   canonicalUrl={canonicalUrl}
   robotsMeta={robotsMeta}
 >
@@ -55,9 +55,9 @@ const crumbs = [
 
   <header class="border-b border-slate-800 bg-slate-950 py-10 text-white sm:py-12">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-      <h1 class="text-3xl font-black tracking-tight sm:text-4xl">The GoldPlus shop in the New Pioneer Mall Building</h1>
+      <h1 class="text-3xl font-black tracking-tight sm:text-4xl">The GoldPlus shop in the Zainab Aziza Building</h1>
       <p class="mt-3 max-w-2xl text-sm leading-relaxed text-slate-300 sm:text-base">
-        GoldPlus sells its house-brand electronics accessories from one shop in central Kampala: the 4th floor of the New Pioneer Mall Building, on the Burton Street side between Wilson Road and Burton Street. Everything on this site ships from the same stock you would find on the shelf.
+        GoldPlus sells its house-brand electronics accessories from one shop in central Kampala: the 4th floor of the Zainab Aziza Building, on the Burton Street side between Wilson Road and Burton Street. Everything on this site ships from the same stock you would find on the shelf.
       </p>
     </div>
   </header>
