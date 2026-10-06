@@ -4,6 +4,7 @@ import {
   EarnForCounterfeitConfirmationUseCase,
   EarnForPhoneVerificationUseCase,
   EvaluateGamificationForUserUseCase,
+  CatchUpMissionAwardsUseCase,
   QualifyReferralOnDeliveryUseCase,
   RecordReferralUseCase,
   ActiveMission,
@@ -177,7 +178,7 @@ beforeEach(() => {
 });
 
 describe('mission evaluation and badge awards', () => {
-  const mission: ActiveMission = { id: 'm1', key: 'five_deliveries', title: 'Five Deliveries', kind: 'PURCHASE_COUNT', threshold: 5, rewardPoints: 250, badgeKey: 'loyal_customer' };
+  const mission: ActiveMission = { id: 'm1', key: 'five_deliveries', title: 'Five Deliveries', description: null, kind: 'PURCHASE_COUNT', threshold: 5, rewardPoints: 250, badgeKey: 'loyal_customer' };
 
   it('awards points and the linked badge when the threshold is met', async () => {
     gamification.missions = [mission];
@@ -357,5 +358,64 @@ describe('phone verification earning', () => {
     completion.config = { ...BASE_CONFIG, enabled: false };
     const uc = new EarnForPhoneVerificationUseCase(ledger as any, completion as any, gamification as any);
     expect(await uc.execute({ userId: 'u1' })).toMatchObject({ ok: false, code: 'PROGRAMME_DISABLED' });
+  });
+});
+
+describe('customers hear about every reward (loose ends, 2026-10-06)', () => {
+  const friends: ActiveMission = { id: 'm3', key: 'refer_three', title: 'Friends & Family', description: null, kind: 'REFERRAL_COUNT', threshold: 3, rewardPoints: 300, badgeKey: null };
+
+  it('a completed mission tells the customer once, with its title and points', async () => {
+    gamification.missions = [friends];
+    gamification.progress.set('u1:refer_three', 3);
+    const told: unknown[] = [];
+    const uc = new EvaluateGamificationForUserUseCase(ledger as any, completion as any, gamification as any, async (n) => { told.push(n); });
+    await uc.execute({ userId: 'u1' });
+    await uc.execute({ userId: 'u1' });
+    expect(told).toEqual([{ userId: 'u1', missionKey: 'refer_three', missionTitle: 'Friends & Family', points: 300 }]);
+  });
+
+  it('a failed message never undoes or blocks the award', async () => {
+    gamification.missions = [friends];
+    gamification.progress.set('u1:refer_three', 3);
+    const uc = new EvaluateGamificationForUserUseCase(ledger as any, completion as any, gamification as any, async () => { throw new Error('sms down'); });
+    expect(await uc.execute({ userId: 'u1' })).toMatchObject({ ok: true, awarded: [{ missionKey: 'refer_three', points: 300 }] });
+    expect(ledger.pointsFor('u1')).toBe(300);
+  });
+
+  it('each referral is announced with its own id, so the second and third friend are not swallowed as duplicates', async () => {
+    const told: Array<{ kind: string; referralId: string }> = [];
+    const code = await referrals.getOrCreateCode('r1');
+    const record = new RecordReferralUseCase(completion as any, referrals as any);
+    const qualify = new QualifyReferralOnDeliveryUseCase(ledger as any, completion as any, referrals as any, gamification as any, async (n) => { told.push(n); });
+    for (const friend of ['f1', 'f2']) {
+      await record.execute({ refereeUserId: friend, code });
+      referrals.deliveredCounts.set(friend, 1);
+      await qualify.execute({ orderId: `o-${friend}`, refereeUserId: friend });
+    }
+    const toReferrer = told.filter((t) => t.kind === 'referrer').map((t) => t.referralId);
+    expect(toReferrer).toHaveLength(2);
+    expect(new Set(toReferrer).size).toBe(2);
+  });
+});
+
+describe('mission catch-up (customers who qualified before the mission could see them)', () => {
+  const friends: ActiveMission = { id: 'm3', key: 'refer_three', title: 'Friends & Family', description: null, kind: 'REFERRAL_COUNT', threshold: 3, rewardPoints: 300, badgeKey: null };
+  const streak: ActiveMission = { id: 'm4', key: 'order_streak_3', title: 'On A Roll', description: null, kind: 'STREAK_ORDERS', threshold: 3, rewardPoints: 300, badgeKey: null };
+  const badgeOnly: ActiveMission = { id: 'm5', key: 'badge_only', title: 'Badge', description: null, kind: 'PURCHASE_COUNT', threshold: 1, rewardPoints: 0, badgeKey: 'x' };
+
+  it('pays qualifying customers through the same once-ever evaluation, and a re-run pays nothing more', async () => {
+    gamification.missions = [friends, streak, badgeOnly];
+    gamification.progress.set('u1:refer_three', 4);
+    gamification.progress.set('u2:refer_three', 3);
+    const asked: string[] = [];
+    (gamification as any).missionCatchUpCandidates = async (m: ActiveMission) => { asked.push(m.key); return m.key === 'refer_three' ? ['u1', 'u2'] : ['u9']; };
+    const evaluate = new EvaluateGamificationForUserUseCase(ledger as any, completion as any, gamification as any);
+    const uc = new CatchUpMissionAwardsUseCase(gamification as any, evaluate);
+    expect(await uc.execute()).toEqual({ candidates: 2, awarded: 2 });
+    expect(asked).toEqual(['refer_three']); // the streak and badge-only missions are left to their events
+    expect(ledger.pointsFor('u1')).toBe(300);
+    expect(ledger.pointsFor('u2')).toBe(300);
+    expect(await uc.execute()).toEqual({ candidates: 2, awarded: 0 });
+    expect(ledger.pointsFor('u1')).toBe(300);
   });
 });

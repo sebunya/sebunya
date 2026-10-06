@@ -48,13 +48,16 @@ async function runOnce(): Promise<void> {
     // 0087: birthday awards (idempotent per user+year) and tier evaluation
     // ride the same sweep — each isolated so one failure never stops the rest.
     const birthdays = await registry.awardBirthdayPointsUseCase.execute(new Date()).catch(() => ({ awarded: -1 }));
+    // Missions completed by events that already passed (a mission activated
+    // after customers qualified). Before tiers, so a bonus counts today.
+    const missions = await registry.catchUpMissionAwardsUseCase.execute().catch(() => ({ candidates: -1, awarded: -1 }));
     const tiers = await registry.evaluateTiersUseCase.execute().catch(() => ({ evaluated: -1, changed: -1 }));
     // 0088: unplayed scratch cards expire on their own clock.
     const drawTokensExpired = await registry.loyaltyDrawRepo.expireTokensDueBefore(new Date()).catch(() => -1);
     // DoD #1: a closed day's ledger position must never change.
     const reconciliation = await reconcileControlTotals(new Date()).catch((error) => ({ checked: -1, discrepancies: [], error: (error as Error).message }));
     // eslint-disable-next-line no-console
-    console.log('[loyalty-sweep]', JSON.stringify({ ...result, birthdays, tiers, drawTokensExpired, reconciliation }));
+    console.log('[loyalty-sweep]', JSON.stringify({ ...result, birthdays, missions, tiers, drawTokensExpired, reconciliation }));
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('[loyalty-sweep] failed', (error as Error).message);

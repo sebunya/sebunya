@@ -28,6 +28,7 @@ export class DrizzleGamificationRepository implements IGamificationLiveRepositor
       id: m.id,
       key: m.key,
       title: m.title,
+      description: m.description,
       kind: m.kind,
       threshold: m.threshold,
       rewardPoints: m.rewardPoints,
@@ -81,6 +82,36 @@ export class DrizzleGamificationRepository implements IGamificationLiveRepositor
     return null; // REVIEW_COUNT and unknown kinds: no attributable source
   }
 
+  async missionCatchUpCandidates(mission: ActiveMission, limit: number): Promise<string[]> {
+    // The same counts missionProgress uses, grouped; minus anyone already paid
+    // (the award's ledger key is mission:<key>:<userId>).
+    const notPaid = (userCol: ReturnType<typeof sql.raw>) => sql`not exists (
+      select 1 from loyalty_ledger_entries le where le.idempotency_key = 'mission:' || ${mission.key} || ':' || ${userCol}::text)`;
+    let rows: Array<{ user_id: string }> = [];
+    if (mission.kind === 'PURCHASE_COUNT') {
+      rows = (await db.execute(sql`
+        select o.user_id from orders o
+        where o.user_id is not null and ${LOYALTY_PAYMENT_QUALIFIES_SQL}
+          and o.status in ('delivered','completed') and o.buyer_type = 'retail'
+          and ${notPaid(sql.raw('o.user_id'))}
+        group by o.user_id having count(*) >= ${mission.threshold}
+        limit ${limit}`)) as unknown as Array<{ user_id: string }>;
+    } else if (mission.kind === 'REFERRAL_COUNT') {
+      rows = (await db.execute(sql`
+        select r.referrer_user_id as user_id from loyalty_referrals r
+        where r.status = 'awarded' and ${notPaid(sql.raw('r.referrer_user_id'))}
+        group by r.referrer_user_id having count(*) >= ${mission.threshold}
+        limit ${limit}`)) as unknown as Array<{ user_id: string }>;
+    } else if (mission.kind === 'VERIFICATION_COUNT') {
+      rows = (await db.execute(sql`
+        select v.user_id from verification_attempts v
+        where v.user_id is not null and v.is_successful = true and ${notPaid(sql.raw('v.user_id'))}
+        group by v.user_id having count(*) >= ${mission.threshold}
+        limit ${limit}`)) as unknown as Array<{ user_id: string }>;
+    }
+    return rows.map((r) => String(r.user_id));
+  }
+
   async awardBadgeByKey(userId: string, badgeKey: string): Promise<boolean> {
     const [badge] = await db.select().from(gamificationBadges).where(eq(gamificationBadges.key, badgeKey)).limit(1);
     if (!badge) return false;
@@ -124,6 +155,11 @@ export class DrizzleGamificationRepository implements IGamificationLiveRepositor
 
   async setMissionStatus(id: string, status: string) {
     const [row] = await db.update(gamificationMissions).set({ status }).where(eq(gamificationMissions.id, id)).returning();
+    return row ?? null;
+  }
+
+  async updateMission(id: string, patch: { status?: string; threshold?: number; rewardPoints?: number }) {
+    const [row] = await db.update(gamificationMissions).set(patch).where(eq(gamificationMissions.id, id)).returning();
     return row ?? null;
   }
 
@@ -250,6 +286,7 @@ export class DrizzleGamificationRepository implements IGamificationLiveRepositor
           id: m.id,
           key: m.key,
           title: m.title,
+          description: m.description,
           kind: m.kind,
           threshold: m.threshold,
           rewardPoints: m.rewardPoints,

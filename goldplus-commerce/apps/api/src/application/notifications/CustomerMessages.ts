@@ -56,6 +56,10 @@ export interface CustomerMessageData {
   lineCount?: number | null;
   /** Bulk quote request: units across every line. */
   totalUnits?: number | null;
+  /** Points earned: the order they vested on. Only order points can expire. */
+  orderId?: string | null;
+  /** Points earned for completing a mission: its customer-facing title. */
+  missionTitle?: string | null;
 }
 
 export interface EmailCopy {
@@ -182,6 +186,9 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
         ? `${SHOP_NAME}: your password reset code is ${d.code}. It works once and expires in ${d.expiresInMinutes ?? 10} minutes. If you did not ask for it, ignore this message and nothing changes. Never share this code.`
         : null;
     case 'LOYALTY_POINTS_EARNED':
+      if (d.missionTitle) {
+        return `${SHOP_NAME}: you completed ${d.missionTitle} and earned a bonus of ${pointsWord(d.points)}. Points come off your next order at checkout. See your balance: ${publicBaseUrl()}/account/loyalty`;
+      }
       return `${SHOP_NAME}: you earned ${pointsWord(d.points)}${ref ? ` on order${ref}` : ''}. Points come off your next order at checkout. See your balance: ${publicBaseUrl()}/account/loyalty`;
     case 'LOYALTY_EXPIRY_WARNING':
       return `${SHOP_NAME}: ${pointsWord(d.pointsExpiring)} of yours expire on ${dateWord(d.expiresAt)}. Use them on your next order before then: ${publicBaseUrl()}/shop`;
@@ -320,11 +327,23 @@ export function emailCopy(template: string, d: CustomerMessageData = {}): EmailC
           }
         : null;
     case 'LOYALTY_POINTS_EARNED':
+      if (d.missionTitle) {
+        return {
+          subject: `You completed ${d.missionTitle}`,
+          preheader: `A bonus of ${pointsWord(d.points)} is in your balance.`,
+          headline: `You completed ${d.missionTitle}`,
+          body: `You completed ${d.missionTitle} and earned a bonus of ${pointsWord(d.points)}. Points come off your next order at checkout, and they count toward your membership level.`,
+          cta: { label: 'See your rewards', url: `${publicBaseUrl()}/account/rewards` },
+          tone: 'success',
+        };
+      }
       return {
         subject: `You earned ${pointsWord(d.points)}`,
         preheader: 'Points come off your next order at checkout.',
         headline: `You earned ${pointsWord(d.points)}`,
-        body: `You earned ${pointsWord(d.points)}${ref ? ` on order${ref}` : ''}. Points come off your next order at checkout. They expire if unused, so use them on something you need.`,
+        // Only order points expire (loyalty terms §4); a referral or other
+        // reward never does, so it is never told to hurry.
+        body: `You earned ${pointsWord(d.points)}${ref ? ` on order${ref}` : ''}. Points come off your next order at checkout.${d.orderId ? ' They expire if unused, so use them on something you need.' : ''}`,
         cta: { label: 'See your points', url: `${publicBaseUrl()}/account/loyalty` },
         tone: 'success',
       };

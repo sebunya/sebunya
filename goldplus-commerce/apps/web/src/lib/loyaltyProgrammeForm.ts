@@ -13,9 +13,9 @@ export const PROGRAMME_INTEGER_FIELDS: ReadonlyArray<{ key: string; label: strin
   { key: 'referralReferrerPoints', label: 'Referral — points to the referrer' },
   { key: 'referralRefereePoints', label: 'Referral — points to the new customer' },
   { key: 'birthdayPoints', label: 'Birthday points' },
-  { key: 'streakTargetOrders', label: 'Streak — orders needed' },
-  { key: 'streakWindowDays', label: 'Streak — window (days)' },
-  { key: 'streakRewardPoints', label: 'Streak — reward points' },
+  // The streak's order count and points live on the "On A Roll" mission
+  // (Loyalty → Gamification), the row that actually pays; only its window is here.
+  { key: 'streakWindowDays', label: 'Streak — window (days)', hint: 'How many days may pass between orders in the delivery streak. The number of orders and the points are set on the On A Roll mission under Gamification.' },
   { key: 'guestBackfillLookbackDays', label: 'Guest backfill — look-back (days)' },
   { key: 'guestBackfillCapPoints', label: 'Guest backfill — cap (points)' },
 ];
