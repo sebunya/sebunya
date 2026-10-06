@@ -541,7 +541,7 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
     //    TRACKING_UUID (the li_fat_id click id the shop already keeps for 30
     //    days), PLAINTEXT_IP_ADDRESS (IPv4 only). Until today only the email was
     //    sent, so a buyer who gave none was never reported;
-    //  - conversionValue is optional: sent only when there is an amount, never "0";
+    //  - conversionValue is optional and never sent in UGX (the account bills in USD);
     //  - userInfo is not sent: if present, LinkedIn requires first AND last name.
     // Token: Campaign Manager > Measure > Signals manager > Direct API > Generate
     // access token. It does not expire and needs no developer app.
@@ -566,11 +566,15 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
       if (ud.ip_address && /^(\d{1,3}\.){3}\d{1,3}$/.test(ud.ip_address)) userIds.push({ idType: 'PLAINTEXT_IP_ADDRESS', idValue: ud.ip_address });
       if (userIds.length === 0) return null;
       const amount = value(e);
+      const currency = e.ecommerce?.currency ?? 'UGX';
       return {
         url: 'https://api.linkedin.com/rest/conversionEvents',
         headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}`, 'LinkedIn-Version': linkedInVersion(), 'X-Restli-Protocol-Version': '2.0.0' },
         body: { conversion: `urn:lla:llaPartnerConversion:${rule}`, conversionHappenedAt: e.event_time * 1000, eventId: e.event_id,
-          ...(amount > 0 ? { conversionValue: { currencyCode: e.ecommerce?.currency ?? 'USD', amount: String(amount) } } : {}),
+          // The ad account bills in US dollars and the shop sells in shillings.
+          // No shilling value is sent: the event still counts, and LinkedIn is
+          // not left to convert UGX at a rate nobody chose.
+          ...(amount > 0 && currency !== 'UGX' ? { conversionValue: { currencyCode: currency, amount: String(amount) } } : {}),
           user: { userIds } },
       };
     },

@@ -258,6 +258,10 @@ describe('advertising platforms: request builders', () => {
     expect(b.conversion).toBe('urn:lla:llaPartnerConversion:123456');
     expect(b.user.userIds.map((x: any) => x.idType)).toEqual(['SHA256_EMAIL', 'LINKEDIN_FIRST_PARTY_ADS_TRACKING_UUID', 'PLAINTEXT_IP_ADDRESS']);
     expect(b.user.userInfo).toBeUndefined();
+    // the ad account bills in USD: a shilling value is never sent, a USD one is
+    expect(b.conversionValue).toBeUndefined();
+    const usd = buildAdRequest('linkedin', { ...purchase, ecommerce: { ...purchase.ecommerce, currency: 'USD', value: 40 } } as any, cfg, 'L')!;
+    expect((usd.body as any).conversionValue).toEqual({ currencyCode: 'USD', amount: '40' });
     // no email any more: the click id alone is enough (it used to send nothing)
     const noEmail = buildAdRequest('linkedin', { ...purchase, user_data: { li_fat_id: 'abc-123' } }, cfg, 'L')!;
     expect((noEmail.body as any).user.userIds).toEqual([{ idType: 'LINKEDIN_FIRST_PARTY_ADS_TRACKING_UUID', idValue: 'abc-123' }]);
