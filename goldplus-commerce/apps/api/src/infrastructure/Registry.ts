@@ -9,6 +9,8 @@ import { DrizzleMeasurementOperationsRepository } from './db/repositories/Drizzl
 import { AdDestinationUseCases } from '../application/use-cases/advertising/AdDestinationUseCases';
 import { DrizzleAdDestinationRepository } from './db/repositories/DrizzleAdDestinationRepository';
 import { AD_PLATFORMS } from './advertising/AdPlatforms';
+import { SpotifyRotationPreviewUseCase } from '../application/use-cases/advertising/SpotifyRotationPreview';
+import { DrizzleSpotifyRotationReader } from './db/repositories/DrizzleSpotifyRotationReader';
 import { createAdvertisingOperations } from './advertising/AdvertisingWiring';
 import { vaultCipher } from './ai-visibility/AiVisibilityWiring';
 import { createHmac, randomInt as nodeRandomInt } from 'node:crypto';
@@ -848,6 +850,8 @@ export class Registry {
   };
 
   public readonly measurementOperations = new MeasurementOperationsUseCases(new DrizzleMeasurementOperationsRepository(), this.createAuditLogUseCase, new PgAttributionPort());
+  /** Spotify ad rotation preview (phase 2): read-only, no Spotify call, no spend. */
+  public readonly spotifyRotation = new SpotifyRotationPreviewUseCase(() => this.seoGrowthRepo.feedProducts(), new DrizzleSpotifyRotationReader());
   public readonly advertising = new AdDestinationUseCases(new DrizzleAdDestinationRepository(), AD_PLATFORMS, vaultCipher(), this.createAuditLogUseCase);
   // Advertising operations (0154): audiences, spend import, offline conversions, catalogue feeds, checklist.
   public readonly advertisingOps = createAdvertisingOperations({

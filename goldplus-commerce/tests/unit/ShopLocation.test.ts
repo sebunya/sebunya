@@ -39,7 +39,8 @@ describe('SHOP_LOCATION', () => {
     expect(sql).toContain("AND latitude = 0.313330 AND longitude = 32.577500");
     expect(sql).toContain("config->>'addressLine1' = 'Wilson Road, Kampala'");
     const journal = JSON.parse(read('apps/api/src/infrastructure/db/migrations/meta/_journal.json'));
-    expect(journal.entries.at(-1).tag).toBe('0168_shop_location_burton_street');
+    // Registered (not necessarily the newest: 0169 followed on 2026-10-06).
+    expect(journal.entries.map((e: { tag: string }) => e.tag)).toContain('0168_shop_location_burton_street');
   });
 
   it('publishes the point as GeoCoordinates on the Store and the shop page', () => {

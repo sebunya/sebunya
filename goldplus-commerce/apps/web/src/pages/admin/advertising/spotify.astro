@@ -1,0 +1,65 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { advertisingApi, whenKampala } from "../../../lib/adminAdvertising";
+
+/**
+ * Spotify ad rotation preview (phase 2): which products the planner would
+ * advertise on Spotify today, what each ad would say, and why. Read-only: no
+ * Spotify call, no write, no spend. Phase 3 stages these as Spotify drafts
+ * that a person publishes.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/advertising/spotify", 303);
+const res = await advertisingApi(token, "GET", "/spotify/rotation");
+const d: any = res.ok ? res.data : null;
+const REASON: Record<string, string> = { PRICE_DROP: "Price drop", BACK_IN_STOCK: "Back in stock", NEW_ARRIVAL: "New in", BEST_SELLER: "Sells" };
+const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Africa/Kampala" }) : null);
+---
+<AdminLayout title="Spotify ad rotation" description="What the Spotify ad rotation would run today, from live shop data, and why.">
+  <div class="container mx-auto px-6 lg:px-8 max-w-6xl">
+    <p class="text-sm mb-2"><a class="underline" href="/admin/advertising">Advertising</a> / Spotify rotation</p>
+    <h2 class="text-2xl font-black text-brand-dark tracking-tight mb-2">Spotify ad rotation</h2>
+    <p class="text-sm text-gray-600 mb-6 max-w-3xl">
+      Which products would get a Spotify ad today, what each ad would say (Spotify allows 40 characters), and why. Built from the same products as the Google and Meta catalogue feeds.
+      This is a preview: nothing is sent to Spotify and nothing is spent. Prices are today's public prices; a "Price drop" is claimed only below the lowest price of the previous 30 days, and nothing ever says how many are left.
+    </p>
+    {!res.ok ? <p role="alert" class="rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-900">{res.message}</p> : (
+      <>
+        <div class="mb-6 rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-700">
+          <p><strong>{d.productsConsidered}</strong> products considered · generated {whenKampala(d.generatedAt)}</p>
+          {d.historySince
+            ? <p class="mt-1">Price and stock history since {day(d.historySince)}. Price drops can be proven from {day(d.priceDropsProvableFrom)}.</p>
+            : <p class="mt-1 text-amber-800">Price and stock history is not recorded yet (migration 0169 not applied), so no price drop or restock is claimed. Only new and selling products qualify.</p>}
+        </div>
+
+        {d.plan.nothingToAdvertise
+          ? <p class="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">No product qualifies for a Spotify ad today: none is new, back in stock, cheaper than in the last 30 days, or selling. That is shown rather than an ad that would not be true.</p>
+          : (
+            <table class="w-full text-sm bg-white rounded-xl overflow-hidden border border-gray-200">
+              <thead class="bg-gray-50 text-left text-xs uppercase text-gray-500">
+                <tr><th class="p-3">Action</th><th class="p-3">Headline (as Spotify would show it)</th><th class="p-3">Why</th><th class="p-3">Link</th></tr>
+              </thead>
+              <tbody>
+                {d.plan.actions.map((a: any) => (
+                  <tr class="border-t border-gray-100 align-top">
+                    <td class="p-3 font-bold">{a.kind === "CREATE" ? `New ad · ${REASON[a.reason] ?? a.reason}` : a.kind}</td>
+                    <td class="p-3"><span class="font-mono">{a.tagline ?? a.to ?? ""}</span><span class="block text-xs text-gray-500">{(a.tagline ?? a.to ?? "").length}/40</span></td>
+                    <td class="p-3 text-gray-700">{a.why}</td>
+                    <td class="p-3">{a.clickthroughUrl ? <a class="underline break-all" href={a.clickthroughUrl} target="_blank" rel="noopener">product page</a> : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+        {d.plan.skipped.length > 0 && (
+          <div class="mt-6">
+            <h3 class="font-bold mb-2">Would qualify, but skipped</h3>
+            <ul class="list-disc pl-6 text-sm text-gray-700">{d.plan.skipped.map((s: any) => <li>{s.why}</li>)}</ul>
+          </div>
+        )}
+      </>
+    )}
+  </div>
+</AdminLayout>

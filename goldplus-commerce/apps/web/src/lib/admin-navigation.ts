@@ -283,6 +283,13 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'COD deliveries and phone/WhatsApp sales sent as offline conversions, deduplicated against online purchases.'
   },
   {
+    label: 'Spotify ad rotation',
+    href: '/admin/advertising/spotify',
+    group: 'Measurement',
+    status: 'working',
+    description: 'Which products the Spotify ad rotation would advertise today, what each ad would say, and why. Preview only: nothing sent, nothing spent.'
+  },
+  {
     label: 'Consent Audit',
     href: '/admin/measurement/consent',
     group: 'Measurement',

@@ -612,3 +612,27 @@ describe('capabilities', () => {
     expect(buildChecklist({ destinations: [{ ...meta, state: 'NOT_CONFIGURED', row: null } as any], capabilities: [], feedProducts: 1, feedUrls: { google: 'g', meta: 'm', tiktok: 't' } })[0].items.some((i) => i.key === 'sale_values')).toBe(false);
   });
 });
+
+describe('connection checklist tells the truth about an untouched platform', () => {
+  const spotify = AD_PLATFORMS.find((p) => p.key === 'spotify')!;
+  const build = (state: string, row: any) => buildChecklist({ destinations: [{ ...spotify, state, row } as any], capabilities: [], feedProducts: 0,
+    feedUrls: { google: 'g', meta: 'm', tiktok: 't' } })[0];
+
+  it('optimisation events are Not configured while conversions are, never "Configured, switched off"', () => {
+    const c = build('NOT_CONFIGURED', null);
+    expect(c.items.find((i: any) => i.key === 'conversions').status).toBe('NOT_CONFIGURED');
+    expect(c.items.find((i: any) => i.key === 'early_signals').status).toBe('NOT_CONFIGURED');
+  });
+
+  it('and follow the conversions status once configured', () => {
+    for (const s of ['READY_OFF', 'LIVE']) expect(build(s, { enabled: s === 'LIVE', config: {}, hasSecret: true }).items.find((i: any) => i.key === 'early_signals').status).toBe(s);
+  });
+
+  it('Spotify says where the connection id and the token are, without a misleading "Format:"', () => {
+    const steps = build('NOT_CONFIGURED', null).items.find((i: any) => i.key === 'conversions').steps;
+    expect(steps.find((s: any) => s.label === 'CAPI connection ID').where).toContain('Connection ID');
+    const tok = steps.find((s: any) => s.label === 'CAPI access token');
+    expect(tok.where).toContain('Generate token');
+    expect(tok.where).not.toMatch(/^Format:/);
+  });
+});

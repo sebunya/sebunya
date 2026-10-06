@@ -496,3 +496,29 @@ implementation-guide.md` and `skills/measurement-debug/references/troubleshootin
 
 Reddit is listed as not built: its v3 reference could not be read first-hand, and third-party
 clients disagree on what decides a match.
+
+## Spotify ad rotation (phase 1 of 3: the planner, 2026-10-06)
+
+Spotify has no product-catalogue ads for a shop like this, so "ads that change" are built here.
+`domain/advertising/SpotifyAdRotation.ts` is a pure planner: from the shop's real data it decides
+which products get a Spotify ad, writes each headline (Spotify: 2-40 characters), and says when a
+running ad must change. Output is a plan of CREATE / RESUME / UPDATE_TAGLINE / PAUSE actions, each
+with a reason the owner can read. Nothing is sent and nothing is spent by phase 1.
+
+Rules it enforces: the current public price only; "Price drop" only below the lowest price of the
+30 days before (a raise-then-lower is not a drop); "New in" 21 days; "Back in stock" 7 days; never a
+stock count or urgency; an ad for an unpublished, out-of-stock, photo-less or priceless product is
+paused even if nothing replaces it; at most `maxActive` ads (default 3); at most one swap per run,
+and only of an ad that has run 7+ days with no Spotify-attributed order (`utm_source=spotify`).
+
+**Data gap found:** the database keeps no price history and no restock time. Until it does, the
+planner gets `priorLowestUgx30d: null` and `restockedAt: null`, so it never claims a price drop or a
+restock: only new arrivals and best sellers qualify. That is the safe default, not a bug.
+
+Next:
+- **Phase 2:** a product price/stock event log (migration), so price drops and restocks can be
+  proven, and the data adapter that feeds the planner from products, orders and attribution.
+- **Phase 3:** the Spotify Ads API adapter (OAuth through a Spotify developer app with "Ads API"
+  ticked): stage the plan as DRAFTS (`POST /ads/{id}/drafts`, `PATCH /drafts/ads/{id}`), run the draft
+  campaign's VALIDATE action, and show it in admin. A person publishes. Needs a payment method on the
+  Goldplus ad account and an owner-set budget (Spotify minimum $15/day or $250 total).
