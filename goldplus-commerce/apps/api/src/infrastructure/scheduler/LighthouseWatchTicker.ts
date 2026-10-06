@@ -15,7 +15,7 @@ import { LIGHTHOUSE_ALERT_KIND, LIGHTHOUSE_CATEGORIES, describeShortfall, evalua
  *     target, so a shortfall cannot go quiet between runs.
  *
  * Without a Google key the measurements come from the host runner
- * (scripts/lighthouse-watch.sh, weekly from cron, Sunday 04:30 UTC); the
+ * (scripts/lighthouse-watch.sh, weekly from cron, Sunday 03:00 Kampala time); the
  * ticker says so once at boot instead of pretending to measure.
  */
 function envInt(name: string, fallback: number): number {

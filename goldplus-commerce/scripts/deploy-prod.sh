@@ -98,4 +98,4 @@ docker builder prune -f --filter until=24h >/dev/null 2>&1 || true
   fi
 ) 9>&- &
 disown 2>/dev/null || true
-echo "post-deploy smoke started in the background (label post-deploy-smoke-$HEAD; results under /var/lib/goldplus-performance-audit and on /admin/seo/performance-audit); Lighthouse Watch runs weekly from cron, Sunday 04:30 UTC"
+echo "post-deploy smoke started in the background (label post-deploy-smoke-$HEAD; results under /var/lib/goldplus-performance-audit and on /admin/seo/performance-audit); Lighthouse Watch runs weekly from cron, Sunday 03:00 Kampala time (00:00 UTC)"

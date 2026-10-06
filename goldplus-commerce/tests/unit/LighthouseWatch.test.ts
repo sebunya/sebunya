@@ -162,11 +162,12 @@ describe('the watch is wired, not just written', () => {
     const server = read('apps/api/src/interfaces/http/server.ts');
     expect(server).toMatch(/startLighthouseWatchTicker\(\)/);
     expect(server).toMatch(/stopLighthouseWatchTicker\(\)/);
-    // Owner decision 2026-10-06: weekly, Sunday 04:30 UTC. A deploy that started
-    // the watch reset its clock and moved the weekly run to the deploy's hour.
+    // Owner decisions 2026-10-06: weekly, Sunday 03:00 Kampala = 00:00 UTC (host
+    // clock is UTC). A deploy that started the watch reset its clock and moved
+    // the weekly run to the deploy's hour.
     expect(read('scripts/deploy-prod.sh')).not.toMatch(/lighthouse-watch\.sh (deploy|cron)/);
-    expect(read('ops/lighthouse-watch/goldplus-lighthouse-watch.cron')).toMatch(/^30 4 \* \* 0 root cd \/opt\/goldplus\/app\/goldplus-commerce && scripts\/lighthouse-watch\.sh cron$/m);
-    expect(read('scripts/lighthouse-watch.sh')).toMatch(/LIGHTHOUSE_WATCH_MIN_INTERVAL_HOURS:-144\}/);
+    expect(read('ops/lighthouse-watch/goldplus-lighthouse-watch.cron')).toMatch(/^0 0 \* \* 0 root cd \/opt\/goldplus\/app\/goldplus-commerce && scripts\/lighthouse-watch\.sh cron$/m);
+    expect(read('scripts/lighthouse-watch.sh')).toMatch(/LIGHTHOUSE_WATCH_MIN_INTERVAL_HOURS:-24\}/);
     expect(read('apps/api/src/infrastructure/scheduler/LighthouseWatchTicker.ts')).toMatch(/'LIGHTHOUSE_WATCH_INTERVAL_MINUTES', 7 \* 24 \* 60\)/);
   });
   it('the ingest refuses without a 32+ character token and compares it in constant time', () => {
@@ -174,5 +175,29 @@ describe('the watch is wired, not just written', () => {
     expect(route).toMatch(/timingSafeEqual/);
     expect(route).toMatch(/length < 32/);
     expect(route).toMatch(/NOT_CONFIGURED/);
+  });
+});
+
+describe('the weekly slot is never skipped by an earlier run', () => {
+  const { spawnSync } = require('node:child_process') as typeof import('node:child_process');
+  const fs = require('node:fs') as typeof import('node:fs');
+  const os = require('node:os') as typeof import('node:os');
+  const path = require('node:path') as typeof import('node:path');
+  const script = path.resolve(__dirname, '../../scripts/lighthouse-watch.sh');
+
+  function runWithStampHoursAgo(hours: number) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gp-lw-'));
+    fs.writeFileSync(path.join(dir, 'lighthouse-watch.last-run'), String(Math.floor(Date.now() / 1000) - hours * 3600));
+    // No token in this environment: a run that passes the guard stops right after "start".
+    spawnSync('bash', [script, 'cron'], { env: { ...process.env, LIGHTHOUSE_WATCH_LOG_DIR: dir }, encoding: 'utf8' });
+    return fs.readFileSync(path.join(dir, 'lighthouse-watch.log'), 'utf8');
+  }
+
+  it('the Sunday after a Tuesday run still measures (116 h later)', () => {
+    expect(runWithStampHoursAgo(116)).toContain('lighthouse-watch start reason=cron');
+  });
+
+  it('a duplicate in the same night is refused', () => {
+    expect(runWithStampHoursAgo(2)).toContain('lighthouse-watch skipped reason=cron');
   });
 });

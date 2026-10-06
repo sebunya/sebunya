@@ -8,22 +8,23 @@
 #
 #   ./scripts/lighthouse-watch.sh [reason]        # reason is logged: cron | deploy | manual
 #
-# Scheduling (owner decision 2026-10-06; was "at most every 96 h", 2026-09-13):
-# WEEKLY, Sunday 04:30 UTC, from ops/lighthouse-watch/goldplus-lighthouse-watch.cron.
-# Deploys no longer call it: they reset the clock and moved the weekly run to
-# whatever hour a deploy happened, often peak traffic; every deploy already
-# runs Lighthouse in its own post-deploy smoke. The 144 h guard below lets the
-# weekly slot through (with room for cron jitter) and refuses a second
-# automatic run inside the week; `manual` always bypasses it. Chromium comes from the Playwright image already on the
-# host; the lighthouse package is cached in a named volume. One run takes
-# ~3 minutes and is CPU-limited to leave room for the site.
+# Scheduling (owner decisions 2026-10-06; was "at most every 96 h", 2026-09-13):
+# WEEKLY, Sunday 03:00 Kampala time = 00:00 UTC, from
+# ops/lighthouse-watch/goldplus-lighthouse-watch.cron. Deploys no longer call
+# it: they reset the clock and moved the weekly run to the deploy's hour; every
+# deploy runs Lighthouse in its own post-deploy smoke anyway.
+# The guard below is 24 h. The weekly cron is now the only automatic caller, so
+# the guard only has to stop a duplicate in the same night. A week-long guard
+# would have skipped the first Sunday after any manual or deploy-era run (the
+# deploy at 2026-10-06 03:50 UTC would have pushed the first weekly run to
+# 2026-10-18). `manual` always bypasses it.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 REASON="${1:-manual}"
 LOG_DIR="${LIGHTHOUSE_WATCH_LOG_DIR:-/var/log/goldplus}"; mkdir -p "$LOG_DIR" 2>/dev/null || LOG_DIR=/tmp
 LOG="$LOG_DIR/lighthouse-watch.log"
 STAMP="$LOG_DIR/lighthouse-watch.last-run"
-MIN_HOURS="${LIGHTHOUSE_WATCH_MIN_INTERVAL_HOURS:-144}"
+MIN_HOURS="${LIGHTHOUSE_WATCH_MIN_INTERVAL_HOURS:-24}"
 exec >>"$LOG" 2>&1
 if [ "$REASON" != "manual" ] && [ -f "$STAMP" ]; then
   AGE=$(( ( $(date +%s) - $(cat "$STAMP") ) / 3600 ))
