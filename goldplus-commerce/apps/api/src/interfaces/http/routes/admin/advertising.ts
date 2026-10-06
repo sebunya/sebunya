@@ -118,6 +118,9 @@ routes.post('/spend/csv', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), asy
   return c.json({ success: r.ok, data: r }, r.ok ? 200 : 422);
 });
 
+// Spotify ad rotation preview: what the planner would run today, and why. Read-only.
+routes.get('/spotify/rotation', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) =>
+  c.json({ success: true, data: await Registry.getInstance().spotifyRotation.preview() }));
 routes.get('/offline', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const [overview, capabilities] = await Promise.all([ops().offline.overview(), capView()]);
   // WhatsApp adverts are set up beside the WhatsApp sales they credit.

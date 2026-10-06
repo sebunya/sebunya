@@ -1184,6 +1184,13 @@
       "when": 1790140000045,
       "tag": "0168_shop_location_burton_street",
       "breakpoints": true
+    },
+    {
+      "idx": 169,
+      "version": "5",
+      "when": 1790140000046,
+      "tag": "0169_product_market_events",
+      "breakpoints": true
     }
   ]
 }
