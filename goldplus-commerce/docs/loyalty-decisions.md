@@ -93,9 +93,13 @@ redemption.
 > phone verification and manual credits all count toward lifetime points and
 > tiers; reversals of a credit and negative manual corrections take points
 > off; redemption and expiry never do. One rule: `computeLifetimePoints`
-> (SQL twin `LIFETIME_POINTS_SQL` for the hero meter). A tier change is
-> announced only on a move up; a level lowered by a reversal changes quietly.
-> Preview who moves before a deploy with `ops/loyalty/tier-preview.sql`.
+> (SQL twin `LIFETIME_POINTS_SQL` for the hero meter). Not retroactive
+> against the customer (terms §9): reductions count only from
+> `LIFETIME_REDUCTIONS_FROM` (7 Oct 2026, Kampala), so the switch lowers no
+> one's level for an old refund. Every tier change is announced (PART M): a
+> move up is a welcome; a move down says reversed points no longer count.
+> Terms move to v2. Preview moves before a deploy with
+> `ops/loyalty/tier-preview.sql`.
 
 **9. Quests/badges.** RECOMMEND none until verification earning is live; then a
 verification badge track (costless recognition). Preview quests already off the
