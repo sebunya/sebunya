@@ -82,7 +82,7 @@ docker builder prune -f --filter until=24h >/dev/null 2>&1 || true
 # Lighthouse + the compatibility programme in smoke mode; ad-hoc label, never
 # moves the ten-day clock), in the background.
 # Lighthouse Watch is NOT started here any more (owner decision 2026-10-06): it
-# runs weekly from cron on a fixed slot, and a deploy that started it reset its
+# runs weekly from a systemd timer on a fixed slot, and a deploy that started it reset its
 # clock and moved the weekly run to the deploy's hour. The smoke above already
 # runs Lighthouse after every roll. Manual watch: ./scripts/lighthouse-watch.sh manual
 # Before that, the two started in the same second; each container may take
@@ -98,4 +98,4 @@ docker builder prune -f --filter until=24h >/dev/null 2>&1 || true
   fi
 ) 9>&- &
 disown 2>/dev/null || true
-echo "post-deploy smoke started in the background (label post-deploy-smoke-$HEAD; results under /var/lib/goldplus-performance-audit and on /admin/seo/performance-audit); Lighthouse Watch runs weekly from cron, Sunday 03:00 Kampala time (00:00 UTC)"
+echo "post-deploy smoke started in the background (label post-deploy-smoke-$HEAD; results under /var/lib/goldplus-performance-audit and on /admin/seo/performance-audit); Lighthouse Watch runs weekly, Sunday 03:00 Kampala time (goldplus-lighthouse-watch.timer)"

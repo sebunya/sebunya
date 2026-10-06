@@ -9,15 +9,15 @@
 #   ./scripts/lighthouse-watch.sh [reason]        # reason is logged: cron | deploy | manual
 #
 # Scheduling (owner decisions 2026-10-06; was "at most every 96 h", 2026-09-13):
-# WEEKLY, Sunday 03:00 Kampala time = 00:00 UTC, from
-# ops/lighthouse-watch/goldplus-lighthouse-watch.cron. Deploys no longer call
-# it: they reset the clock and moved the weekly run to the deploy's hour; every
-# deploy runs Lighthouse in its own post-deploy smoke anyway.
-# The guard below is 24 h. The weekly cron is now the only automatic caller, so
-# the guard only has to stop a duplicate in the same night. A week-long guard
-# would have skipped the first Sunday after any manual or deploy-era run (the
-# deploy at 2026-10-06 03:50 UTC would have pushed the first weekly run to
-# 2026-10-18). `manual` always bypasses it.
+# WEEKLY, Sunday 03:00 Kampala time, from the systemd timer
+# ops/lighthouse-watch/goldplus-lighthouse-watch.timer (OnCalendar in
+# Africa/Kampala, so no UTC arithmetic). A failure posts to the owner through
+# goldplus-alert@; the API raises LIGHTHOUSE_STALE when no run has landed for
+# 8 days. Deploys no longer call it: they reset the clock and moved the weekly
+# run to the deploy's hour; every deploy runs Lighthouse in its own smoke.
+# The 24 h guard below only stops a duplicate in the same night (a week-long
+# guard skipped the first Sunday after any earlier run). `manual` bypasses it.
+# Each URL x form factor is measured RUNS times (default 3) and the median kept.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 REASON="${1:-manual}"
@@ -46,13 +46,15 @@ URLS="${LIGHTHOUSE_WATCH_URLS:-https://shopgoldplus.com/ https://shopgoldplus.co
 IMAGE="${LIGHTHOUSE_WATCH_IMAGE:-mcr.microsoft.com/playwright:v1.61.1-noble}"
 
 WORK="$(mktemp -d /tmp/lighthouse-watch.XXXXXX)"; trap 'rm -rf "$WORK"' EXIT
-cp scripts/lighthouse-watch/run.mjs "$WORK/run.mjs"
+cp scripts/lighthouse-watch/run.mjs scripts/lighthouse-watch/median.mjs "$WORK/"
+# Runs per URL x form factor; run.mjs keeps the median (see median.mjs).
+RUNS="${LIGHTHOUSE_WATCH_RUNS:-3}"
 
 # --cpus keeps a 2-core host responsive for customers while the audit runs.
 # The npm cache volume keeps the lighthouse download to the first run only.
 docker run --rm --cpus=1.5 --memory=1500m --shm-size=512m --network "$NET" \
   -v "$WORK:/work" -v lighthouse-watch-npm:/root/.npm \
-  -e URLS="$URLS" -e API="$API" -e TOKEN="$TOKEN" -e REASON="$REASON" \
+  -e URLS="$URLS" -e API="$API" -e TOKEN="$TOKEN" -e REASON="$REASON" -e RUNS="$RUNS" \
   --entrypoint bash "$IMAGE" -c '
     set -e
     CHROME="$(ls -d /ms-playwright/chromium-*/chrome-linux*/chrome | head -1)"
@@ -72,8 +74,10 @@ docker run --rm --cpus=1.5 --memory=1500m --shm-size=512m --network "$NET" \
         # enters the attribution models. The token is appended to the default
         # Lighthouse agent, so form-factor detection is unchanged.
         UA="$UA_MOBILE"; [ "$FF" = desktop ] && UA="$UA_DESKTOP"
-        npx -y lighthouse@12 "$URL" $FLAGS --emulatedUserAgent="$UA" --chrome-flags="--headless=new --no-sandbox --disable-dev-shm-usage" \
-          --output=json --output-path="/work/$SLUG.$FF.json" --quiet || echo "lighthouse failed for $URL $FF"
+        for N in $(seq 1 "$RUNS"); do
+          npx -y lighthouse@12 "$URL" $FLAGS --emulatedUserAgent="$UA" --chrome-flags="--headless=new --no-sandbox --disable-dev-shm-usage" \
+            --output=json --output-path="/work/$SLUG.$FF.$N.json" --quiet || echo "lighthouse failed for $URL $FF run $N"
+        done
       done
     done
     node /work/run.mjs

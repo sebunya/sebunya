@@ -23,13 +23,16 @@ Everything) and re-run https://pagespeed.web.dev/ for mobile and desktop.
 Shipped 2026-09-13 (`3dbf0121`). Real Lighthouse 12, the engine behind PageSpeed
 Insights, runs against the live site for `/` and `/shop`, mobile and desktop:
 
-* **weekly, Sunday 03:00 Kampala time (00:00 UTC on the host's UTC clock)**
-  (owner decisions 2026-10-06; was "at most once every 96 hours", 2026-09-13):
-  `/etc/cron.d/goldplus-lighthouse-watch`, versioned at
-  `ops/lighthouse-watch/goldplus-lighthouse-watch.cron`, runs
-  `scripts/lighthouse-watch.sh cron`. Deploys no longer start it; each deploy's
-  own smoke runs Lighthouse. The runner refuses a second automatic run within
-  24 h (stamp: `/var/log/goldplus/lighthouse-watch.last-run`).
+* **weekly, Sunday 03:00 Kampala time** (owner decisions 2026-10-06; was "at
+  most once every 96 hours", 2026-09-13), by the systemd timer
+  `goldplus-lighthouse-watch.timer` (`OnCalendar=Sun *-*-* 03:00:00
+  Africa/Kampala`; install steps in `ops/lighthouse-watch/README.md`, which
+  also removes the old `/etc/cron.d/goldplus-lighthouse-watch`). Each URL and
+  form factor is measured three times and the median run kept. A failed run
+  alerts the owner; the API logs `ALERT LIGHTHOUSE_STALE` when the newest
+  measurement is over 8 days old. Deploys no longer start it; each deploy's own
+  smoke runs Lighthouse. A 24 h guard stops a duplicate in the same night
+  (stamp: `/var/log/goldplus/lighthouse-watch.last-run`).
   `./scripts/lighthouse-watch.sh manual` runs now.
   In the Playwright image already on the host, CPU-limited;
 * log: `/var/log/goldplus/lighthouse-watch.log`.

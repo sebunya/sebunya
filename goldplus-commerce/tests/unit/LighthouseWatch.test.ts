@@ -162,11 +162,16 @@ describe('the watch is wired, not just written', () => {
     const server = read('apps/api/src/interfaces/http/server.ts');
     expect(server).toMatch(/startLighthouseWatchTicker\(\)/);
     expect(server).toMatch(/stopLighthouseWatchTicker\(\)/);
-    // Owner decisions 2026-10-06: weekly, Sunday 03:00 Kampala = 00:00 UTC (host
-    // clock is UTC). A deploy that started the watch reset its clock and moved
-    // the weekly run to the deploy's hour.
+    // Owner decisions 2026-10-06: weekly, Sunday 03:00 Kampala. A deploy that
+    // started the watch reset its clock and moved the weekly run to its hour.
     expect(read('scripts/deploy-prod.sh')).not.toMatch(/lighthouse-watch\.sh (deploy|cron)/);
-    expect(read('ops/lighthouse-watch/goldplus-lighthouse-watch.cron')).toMatch(/^0 0 \* \* 0 root cd \/opt\/goldplus\/app\/goldplus-commerce && scripts\/lighthouse-watch\.sh cron$/m);
+    // systemd, in Kampala time: no UTC arithmetic to get wrong.
+    expect(read('ops/lighthouse-watch/goldplus-lighthouse-watch.timer')).toMatch(/^OnCalendar=Sun \*-\*-\* 03:00:00 Africa\/Kampala$/m);
+    const unit = read('ops/lighthouse-watch/goldplus-lighthouse-watch.service');
+    expect(unit).toMatch(/^ExecStart=\/opt\/goldplus\/app\/goldplus-commerce\/scripts\/lighthouse-watch\.sh cron$/m);
+    expect(unit).toContain('OnFailure=goldplus-alert@%n.service');
+    // the old daily cron file must be removed by the install steps, or it keeps firing at 06:17 Kampala
+    expect(read('ops/lighthouse-watch/README.md')).toContain('rm -f /etc/cron.d/goldplus-lighthouse-watch');
     expect(read('scripts/lighthouse-watch.sh')).toMatch(/LIGHTHOUSE_WATCH_MIN_INTERVAL_HOURS:-24\}/);
     expect(read('apps/api/src/infrastructure/scheduler/LighthouseWatchTicker.ts')).toMatch(/'LIGHTHOUSE_WATCH_INTERVAL_MINUTES', 7 \* 24 \* 60\)/);
   });
@@ -199,5 +204,41 @@ describe('the weekly slot is never skipped by an earlier run', () => {
 
   it('a duplicate in the same night is refused', () => {
     expect(runWithStampHoursAgo(2)).toContain('lighthouse-watch skipped reason=cron');
+  });
+});
+
+describe('one weekly measurement is the median of three, and a silent stop is noticed', () => {
+  it('keeps the run whose performance score is the median, ignoring unusable runs', async () => {
+    const { pickMedianRun, runKey } = await import('../../scripts/lighthouse-watch/median.mjs');
+    const r = (p: number) => ({ categories: { performance: { score: p } }, tag: p });
+    expect(pickMedianRun([r(0.71), r(0.93), r(0.82)]).tag).toBe(0.82);
+    expect(pickMedianRun([r(0.9), null, { categories: {} }]).tag).toBe(0.9);
+    expect(pickMedianRun([r(0.6), r(0.8)]).tag).toBe(0.6); // even count: the lower middle, never an optimistic pick
+    expect(pickMedianRun([null])).toBeNull();
+    expect(runKey('shopgoldplus_com_shop.mobile.2.json')).toEqual({ key: 'shopgoldplus_com_shop.mobile', formFactor: 'MOBILE' });
+    expect(runKey('shopgoldplus_com_.desktop.json')).toEqual({ key: 'shopgoldplus_com_.desktop', formFactor: 'DESKTOP' });
+    expect(runKey('notes.txt')).toBeNull();
+  });
+
+  it('the runner measures RUNS times (default 3) per URL and form factor', () => {
+    const sh = readFileSync(resolve(__dirname, '../../scripts/lighthouse-watch.sh'), 'utf8');
+    expect(sh).toMatch(/RUNS="\$\{LIGHTHOUSE_WATCH_RUNS:-3\}"/);
+    expect(sh).toMatch(/for N in \$\(seq 1 "\$RUNS"\)/);
+    expect(sh).toMatch(/--output-path="\/work\/\$SLUG\.\$FF\.\$N\.json"/);
+    expect(sh).toContain('median.mjs');
+  });
+
+  it('flags measurements older than 8 days, and unknown ages, as stale', async () => {
+    const { lighthouseStaleness } = await import('../../apps/api/src/infrastructure/scheduler/LighthouseWatchTicker');
+    const now = Date.parse('2026-10-20T00:00:00Z');
+    expect(lighthouseStaleness([{ fetchTime: '2026-10-18T00:05:00Z' }], now).stale).toBe(false);
+    // the NEWEST measurement decides: one missed Sunday (7 days) is fine, two are not
+    expect(lighthouseStaleness([{ fetchTime: '2026-10-04T00:05:00Z' }, { fetchTime: '2026-10-13T00:03:00Z' }], now).stale).toBe(false);
+    expect(lighthouseStaleness([{ fetchTime: '2026-10-11T00:03:00Z' }], now).stale).toBe(true);
+    const older = lighthouseStaleness([{ fetchTime: '2026-10-10T00:00:00Z' }], now);
+    expect(older.stale).toBe(true);
+    expect(older.ageDays).toBe(10);
+    expect(lighthouseStaleness([{ fetchTime: null }], now).stale).toBe(true);
+    expect(lighthouseStaleness([], now).stale).toBe(true);
   });
 });
