@@ -226,6 +226,8 @@ describe('one weekly measurement is the median of three, and a silent stop is no
     expect(sh).toMatch(/for N in \$\(seq 1 "\$RUNS"\)/);
     expect(sh).toMatch(/--output-path="\/work\/\$SLUG\.\$FF\.\$N\.json"/);
     expect(sh).toContain('median.mjs');
+    // output reaches the journal too, so a failure alert can quote it
+    expect(sh).toContain('exec > >(tee -a "$LOG") 2>&1');
   });
 
   it('flags measurements older than 8 days, and unknown ages, as stale', async () => {
