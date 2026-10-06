@@ -40,7 +40,7 @@ if [ -d "$BACKUPS" ]; then
   fi
   echo "  nightly sets: $(ls "$BACKUPS"/nightly/goldplus-prod-nightly-*.dump 2>/dev/null | wc -l | tr -d ' ')   pre-migration dumps: $(ls "$BACKUPS"/goldplus-prod-pre-*.dump 2>/dev/null | wc -l | tr -d ' ')"
   find "$BACKUPS" -maxdepth 2 -type f -size 0 -mmin +60 2>/dev/null | sed 's/^/  EMPTY file (not a backup): /'
-  echo "  offsite copy: $([ -s "$BACKUPS/.offsite-target" ] && cat "$BACKUPS/.offsite-target" || echo 'NONE — every backup is on the database'"'"'s own disk; the Steward will not expire any until this exists')"
+  echo "  offsite copy: $([ -s "$BACKUPS/.offsite-target" ] && cat "$BACKUPS/.offsite-target" || echo 'NONE verified for the dump files. Hetzner'"'"'s daily server images, if enabled, are a separate copy but are deleted together with the server. The Steward expires no local dump until this exists')"
 fi
 if [ -x "$STEWARD" ]; then
   echo "--- storage steward"; "$STEWARD" status 2>&1 | head -5 || true

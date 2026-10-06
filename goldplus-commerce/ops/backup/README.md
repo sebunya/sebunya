@@ -9,6 +9,14 @@ the owner through `goldplus-alert@.service` → `ops/backup/alert.sh` (ALERT_WEB
     02:50 UTC       goldplus-offsite-sync.timer   ops/backup/offsite-sync.sh    rsync to the Storage Box, then verify
     1st Sun 03:30   goldplus-restore-drill.timer  ops/backup/restore-drill.sh   pull newest dump from the Box, restore, compare with live
 
+## What already exists, and what this adds (corrected 2026-10-06)
+
+Hetzner's own daily **server backups are enabled** on the production server (7 kept, 02:36 UTC), and
+each image contains that night's 02:15 dump. They are stored by Hetzner, not on the server's disk.
+Their gap: Hetzner deletes them **together with the server**, and they live in the same account.
+The Storage Box copy below survives a deleted server; turning on the server's delete protection in
+the Hetzner Console closes most of that gap for free.
+
 ## Install (once)
 
     sudo cp ops/backup/goldplus-{pg-backup,offsite-sync,restore-drill}.{service,timer} ops/backup/goldplus-alert@.service /etc/systemd/system/

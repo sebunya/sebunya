@@ -133,3 +133,12 @@ describe('the rotation plan', () => {
     expect(r.skipped[0].why).toMatch(/first published .* but the product has no usable photo/);
   });
 });
+
+describe('FEATURED in the planner', () => {
+  it('ranks below news and above "it sold", and its headline has no claim', () => {
+    expect(rotationReason(product({ featured: true }), NOW)).toBe('FEATURED');
+    expect(rotationReason(product({ featured: true, firstPublishedAt: daysAgo(1) }), NOW)).toBe('NEW_ARRIVAL');
+    expect(rotationReason(product({ featured: true, orders30d: 5 }), NOW)).toBe('FEATURED');
+    expect(taglineFor(product(), 'FEATURED')).toBe('Samsung Galaxy A15 128GB, UGX 450,000');
+  });
+});
