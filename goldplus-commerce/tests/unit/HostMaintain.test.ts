@@ -41,7 +41,7 @@ describe('host-maintain.sh is a report, the Storage Steward owns reclamation', (
   });
 
   it('says loudly when no offsite copy exists, and when the nightly is stale or missing', () => {
-    expect(run(fixture(1))).toContain("NONE — every backup is on the database's own disk");
+    expect(run(fixture(1))).toContain("NONE verified for the dump files");
     expect(run(fixture(0))).toContain('NO nightly dump found');
     const dir = fixture(1);
     writeFileSync(join(dir, '.offsite-target'), 'u123@u123.your-storagebox.de:goldplus');

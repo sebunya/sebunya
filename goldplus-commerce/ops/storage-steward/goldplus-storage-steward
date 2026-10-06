@@ -1360,7 +1360,9 @@ def cmd_deep(args, policy: dict, state: State) -> int:
         if verified:
             print(f"  remote repository: {why}")
         else:
-            print(f"  remote repository: NONE — {why}; every recovery point lives on the same disk as production")
+            # Not "the only copy": Hetzner's daily server images (enabled on this host,
+            # seen 2026-10-06) are separate, but go when the server is deleted.
+            print(f"  remote repository: NONE — {why}; no verified copy of the dumps outside this server (provider server images, if enabled, are deleted with the server)")
             state.record_alert("HIGH", "no remote backup repository",
                                "a local-only copy does not survive the machine")
     finally:
