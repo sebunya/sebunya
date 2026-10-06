@@ -95,7 +95,7 @@ export const HERO_SLIDE_LIBRARY: readonly HeroSlideSeed[] = [
     kicker: 'Welcome back',
     headline: 'Introduce a friend. <em>You both earn points</em>',
     subcopy: 'Someone you know has been sold a fake. Send them here. They start with points, and you earn more when their first order is delivered.',
-    ctaLabel: 'Get your link', ctaUrl: '/account/rewards',
+    ctaLabel: 'Get your link', ctaUrl: '/account/rewards#refer',
     finePrint: 'Points land when their first order is delivered',
     imageUrl: P('goldplus-digital-display-power-bank-gp-p07'),
     imageAlt: 'GoldPlus digital display power bank',

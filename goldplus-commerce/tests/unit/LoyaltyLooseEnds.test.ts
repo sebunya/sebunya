@@ -50,6 +50,15 @@ describe('customers can get their invite link where the site sends them', () => 
     const nav = read('apps/web/src/components/GpNav.astro');
     expect(nav).toContain('<a href="/account/rewards#refer">Refer a friend');
     expect(nav).toContain("cta:'Get your link', href:'/account/rewards#refer'");
+    // The banner is built from the shared next-best-action list, and the
+    // homepage slide from the hero library; both defaults carry #refer.
+    expect(read('packages/shared/src/nav/nba.ts')).toContain("refer: '/account/rewards#refer'");
+    expect(read('packages/shared/src/hero/library.ts')).toContain("ctaLabel: 'Get your link', ctaUrl: '/account/rewards#refer'");
+    // Saved rows override those defaults, so 0174 moves them too, only from the exact old link.
+    const migration = read('apps/api/src/infrastructure/db/migrations/0174_referral_mission.sql');
+    expect(migration).toContain(`UPDATE "hero_slides" SET "cta_url" = '/account/rewards#refer'`);
+    expect(migration).toContain(`WHERE "slide_key" = 'referral' AND "cta_url" = '/account/rewards';`);
+    expect(migration).toContain(`@> '[{"label": "Refer a friend", "href": "/account/rewards"}]'`);
   });
 
   it('a paid mission stays complete even when today\'s progress no longer meets it', () => {

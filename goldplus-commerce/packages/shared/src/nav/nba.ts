@@ -87,7 +87,7 @@ const R = {
   delivery: '/support',
   cart: '/cart',
   rewards: '/account/rewards',
-  refer: '/account/rewards',
+  refer: '/account/rewards#refer', // the invite card (ReferralCard), not just the page
   register: '/register',
   account: '/account',
   batteries: '/shop?category=power&q=battery',

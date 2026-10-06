@@ -126,8 +126,7 @@ const tiers = (programme?.tiers ?? []).slice().sort((a, b) => a.threshold - b.th
                   )}
                   {src?.referral?.referrer && (
                     <li class="list-disc">
-                      <strong>{src.referral.referrer} points</strong> when someone you referred has their first order delivered
-                      {src.referral.referee ? `, and ${src.referral.referee} points for them` : ""}. You cannot refer yourself,
+                      <strong>{src.referral.referrer} points</strong> when someone you referred has their first order {src.referral.referee ? `delivered, and ${src.referral.referee} points for them` : "delivered"}. You cannot refer yourself,
                       an account can only be referred once, and referral rewards are capped per month.
                       {src.referral.bonus && (
                         <> When the {ordinalWord(src.referral.bonus.friends)} person you referred has their first order delivered, you also receive a one-off

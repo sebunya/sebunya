@@ -9,6 +9,8 @@
 --     (archived, never deleted: paid awards carry its key in the ledger)
 --   UPDATE loyalty_config SET terms_version = 'v1' WHERE terms_version = 'v2';
 --   ALTER TABLE loyalty_config DROP COLUMN lifetime_reductions_from;
+--   (the two link updates below need no rollback: the old link still opens
+--   the same page, only not at the invite card)
 --
 -- 'verify_ten' (Serial Authenticator, 100 pts) paid a bonus for ten successful
 -- product checks. Each scan already earns its own points (verification_scan,
@@ -44,3 +46,22 @@ ALTER TABLE "loyalty_config" ADD COLUMN IF NOT EXISTS "lifetime_reductions_from"
 --> statement-breakpoint
 UPDATE "loyalty_config" SET "lifetime_reductions_from" = now()
 WHERE "singleton" = 'config' AND "lifetime_reductions_from" IS NULL;
+--> statement-breakpoint
+-- "Get your link" must open the invite card (#refer on /account/rewards),
+-- which the old link reached only as a page with no link on it in view. The
+-- code defaults now carry #refer, but the homepage slide and a saved menu are
+-- rows that override them, so those rows move too, and only while they still
+-- hold the exact old link: an operator's own edit is kept.
+UPDATE "hero_slides" SET "cta_url" = '/account/rewards#refer', "updated_at" = now()
+WHERE "slide_key" = 'referral' AND "cta_url" = '/account/rewards';
+--> statement-breakpoint
+UPDATE "nav_config"
+SET "config" = jsonb_set("config", '{popover,signedIn,links}', (
+      SELECT jsonb_agg(
+        CASE WHEN l ->> 'label' = 'Refer a friend' AND l ->> 'href' = '/account/rewards'
+             THEN jsonb_set(l, '{href}', '"/account/rewards#refer"') ELSE l END
+        ORDER BY ord)
+      FROM jsonb_array_elements("config" -> 'popover' -> 'signedIn' -> 'links') WITH ORDINALITY AS t(l, ord))),
+    "version" = "version" + 1,
+    "updated_at" = now()
+WHERE "config" -> 'popover' -> 'signedIn' -> 'links' @> '[{"label": "Refer a friend", "href": "/account/rewards"}]';
