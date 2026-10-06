@@ -112,6 +112,14 @@ export function normalisePhoneUg(phone?: string | null): string | undefined {
   if (/^7\d{8}$/.test(d)) return `256${d}`;
   return d.length >= 10 && d.length <= 15 ? d : undefined;
 }
+/**
+ * Snapchat CAPI v3 (developers.snap.com Conversions-API/Parameters, read
+ * 2026-10-06): action_source is WEB, the click id goes as sc_click_id, and a
+ * value is accepted only in these currencies. The Uganda shilling is not one,
+ * so a shilling sale is sent without value or currency: it still counts, and
+ * no amount is reported at a rate nobody chose.
+ */
+export const SNAP_CURRENCIES = new Set('USD AED AUD BGN BRL CAD CHF CLP CNY COP CZK DKK EGP EUR GBP GIP HKD HRK HUF IDR ILS INR JPY KRW KWD KZT LBP MXN MYR NGN NOK NZD PEN PHP PKR PLN QAR RON RUB SAR SEK SGD THB TRY TWD TZS UAH VND ZAR ALL BHD DZD GHS IQD ISK JOD KES MAD OMR XOF'.split(' '));
 export const hashPhone = (phone?: string | null) => { const n = normalisePhoneUg(phone); return n ? sha(n) : undefined; };
 /** TikTok hashes E.164 WITH the leading '+' (Meta/Pinterest/Snapchat want digits only). */
 export const hashPhonePlus = (phone?: string | null) => { const n = normalisePhoneUg(phone); return n ? sha(`+${n}`) : undefined; };
@@ -522,10 +530,11 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
         url: `https://tr.snapchat.com/v3/${cfg.pixelId}/events?access_token=${encodeURIComponent(token)}`,
         headers: { 'content-type': 'application/json' },
         body: { data: [{
-          event_name: name, event_time: e.event_time, event_id: e.event_id, action_source: 'website', event_source_url: e.page_location,
+          event_name: name, event_time: e.event_time, event_id: e.event_id, action_source: 'WEB', event_source_url: e.page_location,
           user_data: { em: ud.hashed_email ? [ud.hashed_email] : undefined, ph: ud.hashed_phone ? [ud.hashed_phone] : undefined,
-            external_id: extId(e) ? [extId(e)] : undefined, client_ip_address: ud.ip_address, client_user_agent: ud.user_agent },
-          custom_data: { ...(value(e) > 0 ? { currency: e.ecommerce?.currency ?? 'USD', value: value(e) } : {}), content_ids: ids(e), order_id: e.ecommerce?.transaction_id, num_items: items(e).length },
+            external_id: extId(e) ? [extId(e)] : undefined, client_ip_address: ud.ip_address, client_user_agent: ud.user_agent,
+            sc_click_id: ud.sccid || undefined },
+          custom_data: { ...(value(e) > 0 && SNAP_CURRENCIES.has(e.ecommerce?.currency ?? 'UGX') ? { currency: e.ecommerce?.currency, value: value(e) } : {}), content_ids: ids(e), order_id: e.ecommerce?.transaction_id, num_items: items(e).length },
         }] },
       };
     },

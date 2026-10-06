@@ -248,6 +248,16 @@ describe('advertising platforms: request builders', () => {
     expect((p.body as any).data[0].custom_data.value).toBe('145000');
     const s = buildAdRequest('snapchat', purchase, { pixelId: '0a1b2c3d-0000-4000-8000-000000000000' }, 'S')!;
     expect((s.body as any).data[0].event_name).toBe('PURCHASE');
+    // Snapchat's contract: action_source WEB, its click id as sc_click_id, no UGX value
+    const sd = (s.body as any).data[0];
+    expect(sd.action_source).toBe('WEB');
+    expect(sd.custom_data.currency).toBeUndefined();
+    expect(sd.custom_data.value).toBeUndefined();
+    expect(sd.custom_data.order_id).toBe('GP-1');
+    const withClick = buildAdRequest('snapchat', { ...purchase, user_data: { ...purchase.user_data, sccid: 'snap-click-1' } }, { pixelId: '0a1b2c3d-0000-4000-8000-000000000000' }, 'S')!;
+    expect((withClick.body as any).data[0].user_data.sc_click_id).toBe('snap-click-1');
+    const kes = buildAdRequest('snapchat', { ...purchase, ecommerce: { ...purchase.ecommerce, currency: 'KES', value: 900 } }, { pixelId: '0a1b2c3d-0000-4000-8000-000000000000' }, 'S')!;
+    expect((kes.body as any).data[0].custom_data).toMatchObject({ currency: 'KES', value: 900 });
   });
   it('LinkedIn: one rule per event, matched on email, click id or IPv4, value only when there is one', () => {
     const cfg = { conversionId: '123456' };
