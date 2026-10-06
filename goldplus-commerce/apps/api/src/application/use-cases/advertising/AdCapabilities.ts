@@ -102,6 +102,22 @@ export const AD_CAPABILITIES: CapabilityDef[] = [
     what: 'Receives the WhatsApp Business Platform webhook, keeps the advert click id of each chat that began from a Click-to-WhatsApp advert, and reports a later sale by the same number (an order on the site, or a WhatsApp sale recorded here) to Meta against that advert.',
   },
   {
+    // Spotify Ads API (2026-10-06). OAuth with PKCE, exactly as Spotify's own
+    // tooling does it (spotify/ads-agentic-tools, configure/scripts/oauth-flow.py):
+    // the client ID only, never the client secret. "Connect Spotify" fetches the
+    // refresh token and stores it here, encrypted, after proving it can read the
+    // ad account. Nothing is published or spent through it: it reads the
+    // account and, next, stages ad DRAFTS a person publishes in Spotify.
+    platform: 'spotify', capability: 'ads_api', name: 'Ads API (drafts)', requiresDestination: false,
+    fields: [
+      { key: 'clientId', label: 'Spotify app client ID', pattern: /^[0-9a-f]{32}$/, where: 'developer.spotify.com > Dashboard > your app (GoldPlus Ads) > Basic Information: the Client ID. Not the client secret, which is never needed.' },
+      { key: 'adAccountId', label: 'Ad account ID', pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, where: 'Spotify Ads Manager > Manage > Ad accounts > Goldplus: the adAccountId in the address bar.' },
+    ],
+    secretLabel: 'Refresh token',
+    secretWhere: 'Advertising > Connect Spotify (/admin/advertising/spotify/connect) fetches and stores it after you approve the app in Spotify. It is not shown anywhere.',
+    what: 'Reads the Spotify ad account and, next, stages the ad rotation as unpublished drafts. A person publishes in Spotify; nothing here spends.',
+  },
+  {
     platform: 'tiktok', capability: 'audiences', name: 'Customer file audiences', requiresDestination: false,
     fields: [{ key: 'advertiserId', label: 'Advertiser ID', pattern: /^\d{8,25}$/, where: 'TikTok Ads Manager: the account menu at the top right shows the advertiser ID; also Business Center > Assets > Advertiser accounts.' },
       { key: 'appId', label: 'TikTok app ID', pattern: /^\d{10,25}$/, optional: true, where: 'TikTok API for Business > My Apps: the App ID of the approved app. Needed only for "Connect TikTok", which fetches the token for you.' },

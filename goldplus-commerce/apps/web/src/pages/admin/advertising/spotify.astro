@@ -26,6 +26,7 @@ const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-
 <AdminLayout title="Spotify ad rotation" description="What the Spotify ad rotation would run today, from live shop data, and why.">
   <div class="container mx-auto px-6 lg:px-8 max-w-6xl">
     <p class="text-sm mb-2"><a class="underline" href="/admin/advertising">Advertising</a> / Spotify rotation</p>
+    <p class="text-sm mb-4"><a class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-4 font-bold" href="/admin/advertising/spotify/connect">Connect Spotify (Ads API)</a></p>
     <h2 class="text-2xl font-black text-brand-dark tracking-tight mb-2">Spotify ad rotation</h2>
     <p class="text-sm text-gray-600 mb-6 max-w-3xl">
       Which products would get a Spotify ad today, what each ad would say (Spotify allows 40 characters), and why. Built from the same products as the Google and Meta catalogue feeds.
