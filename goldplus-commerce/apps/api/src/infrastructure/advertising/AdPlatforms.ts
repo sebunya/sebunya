@@ -694,8 +694,69 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
   postback('transsion', 'Transsion Eagllwin (Tecno, Infinix, itel) (postback)', 'Eagllwin campaign tracking settings'),
   postback('boomplay', 'Boomplay Ads (postback)', 'Boomplay Ads campaign tracking settings'),
   postback('network', 'Any other ad network (postback)', 'The network\'s server-to-server postback settings'),
-  { key: 'spotify', name: 'Spotify Ads', fields: [], secretLabel: '', events: {},
-    unavailable: 'Spotify Ad Analytics issues its conversions API credentials to each advertiser under its own terms. If Spotify gives you a postback URL, use "Any other ad network (postback)".' },
+  {
+    // Spotify Conversions API (direct), 2026-10-06. Contract read from Spotify's
+    // own repository spotify/ads-agentic-tools (skills/measurement-setup/
+    // references/implementation-guide.md and measurement-debug/references/
+    // troubleshooting.md, commit 65327ac7) and its help page "Spotify
+    // Conversions API". It replaced the "unavailable" entry, written when the
+    // API was not public.
+    //  - POST capi.spotify.com/capi-direct/events/, Bearer = the long-lived CAPI
+    //    token from Ads Manager > Events > Connect data source (NOT the Ads API
+    //    OAuth token), body { conversion_events: { capi_connection_id, events } }.
+    //  - event names are Spotify's CAPI spellings (CHECK_OUT, not CHECKOUT).
+    //  - at least one of IP, device ID, hashed email, hashed phone. Email: trim +
+    //    lower-case + SHA-256, the same normalisation as Meta's hashed_email.
+    //  - Two things Spotify's own guide leaves open are NOT sent: the phone
+    //    format before hashing (only "trim and lower-case" is stated, no country
+    //    code rule), and whether a device ID is raw or hashed (its example and its
+    //    field note disagree). A wrong hash matches nobody and looks like data.
+    //  - no documented test channel, so no Test mode; event_details.content_category
+    //    must be a Google taxonomy value or the call is a 400, so it is omitted.
+    key: 'spotify', name: 'Spotify Ads',
+    fields: [{ key: 'connectionId', label: 'CAPI connection ID', pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+      hint: 'Spotify Ads Manager > Events > Connect data source > Conversions API' }],
+    secretLabel: 'CAPI access token',
+    secretHint: 'The long-lived Conversions API token from the same screen (not the Ads API sign-in token)',
+    events: { view_item: 'PRODUCT', add_to_cart: 'ADD_TO_CART', begin_checkout: 'CHECK_OUT', generate_lead: 'LEAD', purchase: 'PURCHASE' },
+    build(e, cfg, token) {
+      const name = this.events[e.event_name as AdEventName]; if (!name) return null;
+      const ud = u(e);
+      const userData: Record<string, unknown> = {};
+      if (ud.ip_address) userData.ip_address = ud.ip_address;
+      if (ud.hashed_email) userData.hashed_emails = [ud.hashed_email];
+      // Spotify matches on these alone: with neither, there is nothing to send.
+      if (Object.keys(userData).length === 0) return null;
+      const amount = value(e);
+      const details: Record<string, unknown> = {};
+      // An amount only with its currency, and only when there is one: a lead is not a sale of 0.
+      if (amount > 0) { details.currency = e.ecommerce?.currency ?? 'UGX'; details.amount = amount; }
+      const first = items(e).find((i) => i.item_name);
+      if (first?.item_name) details.content_name = String(first.item_name).slice(0, 200);
+      const url = typeof e.page_location === 'string' && /^https?:\/\//.test(e.page_location) ? e.page_location : undefined;
+      return {
+        url: 'https://capi.spotify.com/capi-direct/events/',
+        headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+        body: { conversion_events: { capi_connection_id: cfg.connectionId, events: [{
+          event_name: name,
+          // The shop's own event id: the same id a browser pixel would send, so Spotify can deduplicate.
+          event_id: e.event_id,
+          event_time: new Date(e.event_time * 1000).toISOString(),
+          user_data: userData,
+          ...(Object.keys(details).length ? { event_details: details } : {}),
+          ...(url ? { event_source_url: url } : {}),
+          action_source: 'WEB',
+          opt_out_targeting: false,
+        }] } },
+      };
+    },
+  },
+  // Reddit (2026-10-06): its Conversions API v3 reference lives on ads-api.reddit.com,
+  // which could not be read first-hand, and the third-party clients that call it
+  // disagree on what decides a match (value in cents or not, IP hashed or raw,
+  // email clean-up before hashing). Listed honestly instead of guessed.
+  { key: 'reddit', name: 'Reddit Ads', fields: [], secretLabel: '', events: {},
+    unavailable: 'Not built yet. Reddit\'s Conversions API reference (v3) is published only on its Ads API site, which must be read first-hand before anything is sent. Once you have a Reddit Ads account, ask for Reddit to be added from that reference.' },
   { key: 'sa360', name: 'Search Ads 360 / Campaign Manager 360', fields: [], secretLabel: '', events: {},
     unavailable: 'Enterprise products under a Google/agency contract; once contracted they read conversions from GA4 (already live) or Floodlight.' },
 ];
