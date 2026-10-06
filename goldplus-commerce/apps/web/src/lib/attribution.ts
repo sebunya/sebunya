@@ -63,7 +63,12 @@ function sourceFromReferrer(ref: string): string {
     // Whole domain labels only: a bare substring test made "t.co" match
     // snapchat.com, reddit.com and chatgpt.com, crediting their orders to X.
     const is = (re: RegExp) => re.test(host);
+    // AI assistants keep their own host (the server files host + referral as
+    // ai_assistant); gemini.google.com must not read as Google search.
+    if (is(/(^|\.)(chatgpt\.com|chat\.openai\.com|gemini\.google\.com|bard\.google\.com|perplexity\.ai|copilot\.microsoft\.com|claude\.ai|meta\.ai|chat\.deepseek\.com)$/)) return host;
     if (is(/(^|\.)google\.[a-z.]+$/)) return 'google';
+    if (is(/(^|\.)bing\.com$/)) return 'bing';
+    if (is(/(^|\.)(duckduckgo\.com|search\.yahoo\.com|yahoo\.com|ecosia\.org|search\.brave\.com|yandex\.[a-z.]+)$/)) return host.split('.').slice(-2, -1)[0];
     if (is(/(^|\.)(facebook\.com|fb\.com|fb\.me)$/)) return 'facebook';
     if (is(/(^|\.)instagram\.com$/)) return 'instagram';
     if (is(/(^|\.)(t\.co|x\.com|twitter\.com)$/)) return 'x';
@@ -156,9 +161,10 @@ export function getCheckoutAttribution(): CheckoutAttribution | null {
     const first = JSON.parse(localStorage.getItem(FIRST) || '{}');
     const refSource = last.referrer ? sourceFromReferrer(last.referrer) : '';
     const source = last.utm_source || refSource || null;
-    // A referral from a social network is organic social (the same answer the
-    // landing-touch classifier gives), not a generic referral.
-    const medium = last.utm_medium || (last.utm_source ? 'campaign' : last.referrer ? (/^(facebook|instagram|x|tiktok|youtube|snapchat)$/.test(refSource) ? 'social' : 'referral') : null) || null;
+    // A referral from a social network is organic social and one from a search
+    // engine is organic search (the answers the landing-touch classifier gives),
+    // not a generic referral.
+    const medium = last.utm_medium || (last.utm_source ? 'campaign' : last.referrer ? (/^(facebook|instagram|x|tiktok|youtube|snapchat)$/.test(refSource) ? 'social' : /^(google|bing|duckduckgo|yahoo|ecosia|brave|yandex)$/.test(refSource) ? 'organic' : 'referral') : null) || null;
     return {
       source,
       medium,

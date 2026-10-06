@@ -42,7 +42,10 @@ describe('referrer to source', () => {
       ['https://chatgpt.com/', 'chatgpt.com', 'referral'],
       ['https://t.co/abc', 'x', 'social'],
       ['https://l.instagram.com/?u=x', 'instagram', 'social'],
-      ['https://www.google.co.ug/', 'google', 'referral'],
+      ['https://www.google.co.ug/', 'google', 'organic'],
+      ['https://www.bing.com/search?q=x', 'bing', 'organic'],
+      ['https://duckduckgo.com/', 'duckduckgo', 'organic'],
+      ['https://gemini.google.com/', 'gemini.google.com', 'referral'],
     ];
     for (const [ref, source, medium] of cases) {
       vi.resetModules();
@@ -50,6 +53,10 @@ describe('referrer to source', () => {
       const a = await import('../../apps/web/src/lib/attribution');
       a.captureAttribution();
       expect(a.getCheckoutAttribution(), ref).toMatchObject({ source, medium });
+      const { classifyChannel } = await import('../../apps/api/src/domain/measurement/Channels');
+      const got = a.getCheckoutAttribution()!;
+      const want = { snapchat: 'organic_social', x: 'organic_social', instagram: 'organic_social', google: 'organic_search', bing: 'organic_search', duckduckgo: 'organic_search', 'chatgpt.com': 'ai_assistant', 'gemini.google.com': 'ai_assistant', 'reddit.com': 'referral' } as Record<string, string>;
+      expect(classifyChannel({ source: got.source, medium: got.medium }), ref).toBe(want[source]);
     }
   });
 });
