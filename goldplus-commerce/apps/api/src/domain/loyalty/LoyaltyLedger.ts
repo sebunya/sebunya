@@ -162,6 +162,20 @@ export function soonestUnspentExpiry(entries: LoyaltyLedgerEntry[], now: Date, r
  * references it. This keeps every liability change attributable to one
  * immutable ledger event.
  */
+/**
+ * Lifetime points (what tiers are assigned by): order earns, plus referral and
+ * mission rewards (owner, 2026-10-06). Those two are 'adjustment' rows, told
+ * apart by their ledger idempotency key; LIFETIME_POINTS_SQL is the same rule.
+ */
+export function countsTowardLifetime(entry: Pick<LoyaltyLedgerEntry, 'type' | 'points' | 'idempotencyKey'>): boolean {
+  if (entry.type === 'earn') return true;
+  return entry.type === 'adjustment' && entry.points > 0 && /^(referral|mission):/.test(entry.idempotencyKey);
+}
+
+/** SQL twin of countsTowardLifetime over a ledger row aliased `le`. */
+export const LIFETIME_POINTS_FILTER_SQL =
+  "le.type = 'earn' or (le.type = 'adjustment' and le.points > 0 and (le.idempotency_key like 'referral:%' or le.idempotency_key like 'mission:%'))";
+
 export function computeBalance(entries: LoyaltyLedgerEntry[], now: Date): LoyaltyBalance {
   let signedTotal = 0;
   let pendingExpiry = 0;
@@ -169,7 +183,7 @@ export function computeBalance(entries: LoyaltyLedgerEntry[], now: Date): Loyalt
   let lifetimeRedeemed = 0;
   for (const e of entries) {
     signedTotal += e.points;
-    if (e.type === 'earn') {
+    if (countsTowardLifetime(e)) {
       lifetimeEarned += e.points;
     }
     if (e.type === 'redeem') lifetimeRedeemed += -e.points;

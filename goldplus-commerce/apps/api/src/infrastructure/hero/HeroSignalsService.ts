@@ -4,6 +4,7 @@ import { VISITOR_ACTION_EVENT_TYPES } from '@goldplus/shared';
 import { pgInTextList } from '../db/PgParams';
 import { logger } from '../logging/logger';
 import { heroTierMeter } from '../../application/hero/HeroContentService';
+import { LIFETIME_POINTS_FILTER_SQL } from '../../domain/loyalty/LoyaltyLedger';
 
 /**
  * Per-visitor hero signals.
@@ -244,7 +245,7 @@ export class HeroSignalsService {
     const rows = rowsOf(
       await db.execute(sql`
         select coalesce(sum(le.points), 0)::int as points,
-               coalesce(sum(le.points) filter (where le.type = 'earn'), 0)::int as lifetime
+               coalesce(sum(le.points) filter (where ${sql.raw(LIFETIME_POINTS_FILTER_SQL)}), 0)::int as lifetime
         from experience_profiles ep
         join loyalty_accounts la on la.user_id = ep.customer_id
         left join loyalty_ledger_entries le on le.account_id = la.id

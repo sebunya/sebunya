@@ -2,6 +2,7 @@ import { ILoyaltyRepository } from '../../ports/ILoyaltyRepository';
 import { ILoyaltyCompletionRepository } from '../../ports/ILoyaltyCompletion';
 import { IAuditRepository } from '../../ports/IAuditRepository';
 import { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
+import { countsTowardLifetime } from '../../../domain/loyalty/LoyaltyLedger';
 
 type Fail = { ok: false; code: string; message: string };
 const fail = (code: string, message: string): Fail => ({ ok: false, code, message });
@@ -128,7 +129,7 @@ export class ManualAdjustLoyaltyUseCase {
 
 /**
  * Tier evaluation (PART L): assigns the highest ACTIVE tier whose threshold
- * the account's lifetime earned points meet. Inactive/unset tiers (thresholds
+ * the account's lifetime points meet (countsTowardLifetime). Inactive/unset tiers (thresholds
  * are Rob's PART V #8) assign nothing. Change notifications ride the existing
  * outbox path.
  */
@@ -157,7 +158,7 @@ export class EvaluateTiersUseCase {
       // gave one customer two tiers and two tier messages.
       if (await this.loyalty.mergedInto(accountId)) continue;
       const entries = await this.loyalty.listEntries(accountId);
-      const lifetime = entries.filter((e) => e.type === 'earn').reduce((s, e) => s + e.points, 0);
+      const lifetime = entries.filter(countsTowardLifetime).reduce((s, e) => s + e.points, 0);
       const target = ranked.find((t) => lifetime >= t.thresholdLifetimePoints);
       if (!target) continue;
       const current = await this.tiers.currentAssignment(accountId);
