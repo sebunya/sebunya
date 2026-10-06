@@ -9,7 +9,6 @@ import { OfflineConversionUseCases } from '../../apps/api/src/application/use-ca
 import { AdCapabilityUseCases, capabilityGap, capabilityDef } from '../../apps/api/src/application/use-cases/advertising/AdCapabilities';
 import { AdDestinationUseCases } from '../../apps/api/src/application/use-cases/advertising/AdDestinationUseCases';
 import { buildChecklist } from '../../apps/api/src/application/use-cases/advertising/ConnectionChecklist';
-import { eventInUsd, ugxToUsd } from '../../apps/api/src/domain/advertising/AdMoney';
 import { buildMetaCatalogueCsv, buildTikTokCatalogueCsv, tiktokFeedPrice, feedCsvCell, metaCatalogueId, META_FEED_COLUMNS, TIKTOK_FEED_COLUMNS, CatalogueFeedUseCases } from '../../apps/api/src/application/use-cases/advertising/CatalogueFeeds';
 import {
   HttpAudienceGateway, HttpOfflineConversionGateway, HttpSpendGateway, dataManagerIngestBodies, googleSpendFacts, googleSpendQuery, metaSpendFacts, offlineRequest, scrub, tiktokFile,
@@ -372,14 +371,7 @@ describe('platform requests', () => {
     const gc = (g.body as any).conversions[0];
     expect(g.url).toBe('https://googleads.googleapis.com/v25/customers/1234567890:uploadClickConversions');
     expect((g.body as any).validateOnly).toBe(true);
-    expect(gc).toMatchObject({ gclid: 'GCLID', conversionAction: 'customers/1234567890/conversionActions/888', conversionDateTime: '2026-09-24 10:00:00+00:00', orderId: 'GP-100' });
-    // US dollars only (owner decision 2026-10-06): no rate, no amount; never shillings.
-    expect(gc).not.toHaveProperty('currencyCode');
-    expect(gc).not.toHaveProperty('conversionValue');
-    const gUsd = (offlineRequest(ctxOf(row, { clickIds: { gclid: 'GCLID' } }), creds({ destinationConfig: { customerId: '1234567890', conversionActionId: '777', apiVersion: 'v25' }, config: { offlineConversionActionId: '888' }, usdRate: 3700 }))!.body as any).conversions[0];
-    expect(gUsd.currencyCode).toBe('USD');
-    expect(gUsd.conversionValue).toBeGreaterThan(0);
-    expect(JSON.stringify(gUsd)).not.toContain('UGX');
+    expect(gc).toMatchObject({ gclid: 'GCLID', conversionAction: 'customers/1234567890/conversionActions/888', conversionDateTime: '2026-09-24 10:00:00+00:00', orderId: 'GP-100', currencyCode: 'UGX' });
     expect(gc.userIdentifiers[0].hashedEmail).toBe('g'.repeat(64));
 
     const m = offlineRequest(ctxOf(convRow({ platform: 'meta', source: 'ADMIN_SALE' }), { channel: 'WHATSAPP' }), creds({ destinationConfig: { datasetId: '1234567890123' } }))!;
@@ -394,10 +386,10 @@ describe('platform requests', () => {
     const t = offlineRequest(ctxOf(convRow({ platform: 'tiktok' })), creds({ config: { offlineEventSetId: '7001' }, secret: '' }))!;
     expect(t.body).toMatchObject({ event_source: 'offline', event_source_id: '7001' });
     expect((t.body as any).data[0]).toMatchObject({ event: 'Purchase', event_id: '33333333-3333-4333-8333-333333333333' });
-    // Every ad platform: without the one ad rate no amount is stated; with it, US dollars.
+    // TikTok lists no Uganda shilling: without the owner's rate no amount is stated; with it, US dollars.
     expect((t.body as any).data[0].properties).not.toHaveProperty('value');
     expect((t.body as any).data[0].properties).not.toHaveProperty('currency');
-    const tUsd = offlineRequest(ctxOf(convRow({ platform: 'tiktok' })), creds({ config: { offlineEventSetId: '7001' }, secret: '', usdRate: 3700 }))!;
+    const tUsd = offlineRequest(ctxOf(convRow({ platform: 'tiktok' })), creds({ config: { offlineEventSetId: '7001' }, secret: '', destinationConfig: { ugxPerUsd: '3700' } }))!;
     expect((tUsd.body as any).data[0].properties.currency).toBe('USD');
     expect((tUsd.body as any).data[0].properties.value).toBeGreaterThan(0);
     expect((t.body as any).data[0].user.phone).toBe('p'.repeat(64));
@@ -596,14 +588,28 @@ describe('capabilities', () => {
     expect(feed.steps[0]).toMatchObject({ done: false, unverifiable: true });
     expect(list.find((p) => p.platform === 'sa360')!.status).toBe('NOT_AVAILABLE');
   });
-  it('TikTok no longer has a rate of its own: the one ad rate covers every platform', () => {
+  it('the TikTok checklist says what an empty dollar rate means: no amounts, and a feed TikTok will not take', () => {
     const tiktok = AD_PLATFORMS.find((p) => p.key === 'tiktok')!;
-    expect(tiktok.fields.map((f) => f.key)).not.toContain('ugxPerUsd');
-    const items = buildChecklist({ destinations: [{ ...tiktok, state: 'READY_OFF', row: { enabled: false, config: {}, hasSecret: true } } as any],
-      capabilities: [], feedProducts: 23, feedUrls: { google: 'g', meta: 'm', tiktok: 't' } })[0].items;
-    expect(items.some((i) => i.key === 'sale_values')).toBe(false);
-    expect(items.find((i) => i.key === 'catalogue')!.steps[0].where).toMatch(/default currency USD/);
-    expect(items.find((i) => i.key === 'catalogue')!.steps[0].where).not.toMatch(/on the TikTok destination/);
+    const build = (config: Record<string, string>) => buildChecklist({
+      destinations: [{ ...tiktok, state: 'READY_OFF', row: { enabled: false, config, hasSecret: true } } as any],
+      capabilities: [], feedProducts: 23, feedUrls: { google: 'g', meta: 'm', tiktok: 'https://api.shopgoldplus.com/advertising/feeds/tiktok-catalogue.csv' },
+    })[0].items;
+    const without = build({ pixelCode: 'C0ABCDEFGH12345' });
+    // The optional field alone would read as done; this line is what tells the owner.
+    expect(without.find((i) => i.key === 'conversions')!.steps.find((s) => /Shillings per US dollar/.test(s.label))!.done).toBe(true);
+    const gap = without.find((i) => i.key === 'sale_values')!;
+    expect(gap.status).toBe('NOT_CONFIGURED');
+    expect(gap.detail).toMatch(/without an amount/);
+    expect(gap.detail).toMatch(/will not accept/);
+    expect(gap.steps[0].done).toBe(false);
+    const withRate = build({ pixelCode: 'C0ABCDEFGH12345', ugxPerUsd: '3700' }).find((i) => i.key === 'sale_values')!;
+    expect(withRate.status).toBe('READY');
+    expect(withRate.detail).toMatch(/3700 shillings to the dollar/);
+    expect(withRate.steps[0].done).toBe(true);
+    expect(without.find((i) => i.key === 'catalogue')!.steps[0].where).toMatch(/default currency USD/);
+    // No other platform gets the line.
+    const meta = AD_PLATFORMS.find((p) => p.key === 'meta')!;
+    expect(buildChecklist({ destinations: [{ ...meta, state: 'NOT_CONFIGURED', row: null } as any], capabilities: [], feedProducts: 1, feedUrls: { google: 'g', meta: 'm', tiktok: 't' } })[0].items.some((i) => i.key === 'sale_values')).toBe(false);
   });
 });
 
@@ -649,27 +655,5 @@ describe('the Spotify Ads API connection on the checklist', () => {
     const i = item(false);
     expect(i.status).toBe('NOT_CONFIGURED');
     expect(i.steps.find((s: any) => s.secret).where).toContain('Connect Spotify');
-  });
-});
-
-describe('ad platforms receive US dollars only', () => {
-  const ev = { event_name: 'purchase', event_id: 'e', event_time: 1, ecommerce: { currency: 'UGX', value: 370000, items: [{ item_id: 'p', price: 185000, quantity: 2 }] } } as any;
-  it('converts value and item prices at the one rate, to the cent', () => {
-    const u = eventInUsd(ev, 3700);
-    expect(u.ecommerce).toMatchObject({ currency: 'USD', value: 100, items: [{ item_id: 'p', price: 50, quantity: 2 }] });
-    expect(ugxToUsd(16000, 3700)).toBe(4.32);
-  });
-  it('without a rate, money is removed, never left in shillings; the event still goes', () => {
-    const u = eventInUsd(ev, null);
-    expect(u.ecommerce).not.toHaveProperty('value');
-    expect(u.ecommerce).not.toHaveProperty('currency');
-    expect(u.ecommerce.items[0]).not.toHaveProperty('price');
-    expect(u.ecommerce.items[0].item_id).toBe('p');
-    expect(eventInUsd(ev, 50).ecommerce).not.toHaveProperty('value'); // a rate below 100 is not a rate
-  });
-  it('a builder then states USD (Snapchat as the example; its default currency was UGX)', () => {
-    const r = buildAdRequest('snapchat', { ...eventInUsd(ev, 3700), user_data: { hashed_email: 'a'.repeat(64) } } as any, { pixelId: '0a1b2c3d-0000-4000-8000-000000000000' }, 't')!;
-    expect((r.body as any).data[0].custom_data).toMatchObject({ currency: 'USD', value: 100 });
-    expect(JSON.stringify(r.body)).not.toContain('UGX');
   });
 });

@@ -189,7 +189,7 @@ function postback(key: string, name: string, where: string): AdPlatformDef {
       const filled = cfg.postbackUrl
         .replace(/\{click_id\}/g, encodeURIComponent(ud.network_click_id))
         .replace(/\{value\}/g, encodeURIComponent(String(value(e))))
-        .replace(/\{currency\}/g, encodeURIComponent(e.ecommerce?.currency ?? 'USD'))
+        .replace(/\{currency\}/g, encodeURIComponent(e.ecommerce?.currency ?? 'UGX'))
         .replace(/\{order_id\}/g, encodeURIComponent(e.ecommerce?.transaction_id ?? ''))
         .replace(/\{event_id\}/g, encodeURIComponent(e.event_id));
       const url = safePostbackUrl(filled);
@@ -250,10 +250,9 @@ export function metaCustomData(e: CanonicalTelemetryEvent, metaEventName: string
   // Meta's Search event names what was searched for (custom_data.search_string).
   if (metaEventName === 'Search') return e.search_term ? { search_string: e.search_term } : null;
   if (META_EVENTS_WITHOUT_BASKET.has(metaEventName)) {
-    return v > 0 ? { currency: e.ecommerce?.currency ?? 'USD', value: v } : null;
+    return v > 0 ? { currency: e.ecommerce?.currency ?? 'UGX', value: v } : null;
   }
-  // Purchase must carry a value for Meta; other events only when there is one (US dollars, AdMoney).
-  const out: Record<string, unknown> = v > 0 || metaEventName === 'Purchase' ? { currency: e.ecommerce?.currency ?? 'USD', value: v } : {};
+  const out: Record<string, unknown> = { currency: e.ecommerce?.currency ?? 'UGX', value: v };
   if (list.length) {
     out.content_type = 'product';
     out.content_ids = list.map((i) => String(i.item_id));
@@ -445,9 +444,11 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
   {
     key: 'tiktok', name: 'TikTok', testable: true,
     fields: [{ key: 'pixelCode', label: 'Pixel code', pattern: /^[A-Z0-9]{10,30}$/, hint: 'TikTok Events Manager > Web events' },
-      TEST_CODE_FIELD('TikTok Events Manager > your pixel > Test events: the test event code')],
-    // Amounts arrive already in US dollars at the one ad rate (AdMoney, 0172);
-    // TikTok's own "Shillings per US dollar" field was retired on 2026-10-06.
+      TEST_CODE_FIELD('TikTok Events Manager > your pixel > Test events: the test event code'),
+      // TikTok's Events API does not list the Uganda shilling. With a rate, amounts
+      // go as US dollars; without one, events go with no amount.
+      { key: 'ugxPerUsd', label: 'Shillings per US dollar (for sale values)', pattern: /^(\d{3,6})?$/, optional: true,
+        hint: 'TikTok does not accept amounts in Uganda shillings. Enter the rate you want sales reported at, for example 3700: event values and the catalogue feed prices are then stated in US dollars (set the TikTok catalogue currency to USD). Left empty, events are sent without an amount and the feed stays in shillings, which TikTok will not accept.' }],
     secretLabel: 'Events API access token',
     // Names from TikTok's "Supported events" list for web (read 2026-10-01). Purchase
     // and Lead are its current names for what were CompletePayment and SubmitForm.
@@ -504,7 +505,7 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
           event_name: name, action_source: 'web', event_time: e.event_time, event_id: e.event_id, event_source_url: e.page_location,
           user_data: { em: ud.hashed_email ? [ud.hashed_email] : undefined, ph: ud.hashed_phone ? [ud.hashed_phone] : undefined,
             external_id: extId(e) ? [extId(e)] : undefined, client_ip_address: ud.ip_address, client_user_agent: ud.user_agent },
-          custom_data: { ...(value(e) > 0 ? { currency: e.ecommerce?.currency ?? 'USD', value: String(value(e)) } : {}), content_ids: ids(e), num_items: items(e).reduce((s, i) => s + (i.quantity ?? 1), 0),
+          custom_data: { currency: e.ecommerce?.currency ?? 'UGX', value: String(value(e)), content_ids: ids(e), num_items: items(e).reduce((s, i) => s + (i.quantity ?? 1), 0),
             order_id: e.ecommerce?.transaction_id, contents: items(e).map((i) => ({ id: i.item_id, item_price: i.price != null ? String(i.price) : undefined, quantity: i.quantity ?? 1 })) },
         }] },
       };
@@ -525,7 +526,7 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
           event_name: name, event_time: e.event_time, event_id: e.event_id, action_source: 'website', event_source_url: e.page_location,
           user_data: { em: ud.hashed_email ? [ud.hashed_email] : undefined, ph: ud.hashed_phone ? [ud.hashed_phone] : undefined,
             external_id: extId(e) ? [extId(e)] : undefined, client_ip_address: ud.ip_address, client_user_agent: ud.user_agent },
-          custom_data: { ...(value(e) > 0 ? { currency: e.ecommerce?.currency ?? 'USD', value: value(e) } : {}), content_ids: ids(e), order_id: e.ecommerce?.transaction_id, num_items: items(e).length },
+          custom_data: { currency: e.ecommerce?.currency ?? 'UGX', value: value(e), content_ids: ids(e), order_id: e.ecommerce?.transaction_id, num_items: items(e).length },
         }] },
       };
     },
@@ -570,7 +571,7 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
         url: 'https://api.linkedin.com/rest/conversionEvents',
         headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}`, 'LinkedIn-Version': linkedInVersion(), 'X-Restli-Protocol-Version': '2.0.0' },
         body: { conversion: `urn:lla:llaPartnerConversion:${rule}`, conversionHappenedAt: e.event_time * 1000, eventId: e.event_id,
-          ...(amount > 0 ? { conversionValue: { currencyCode: e.ecommerce?.currency ?? 'USD', amount: String(amount) } } : {}),
+          ...(amount > 0 ? { conversionValue: { currencyCode: e.ecommerce?.currency ?? 'UGX', amount: String(amount) } } : {}),
           user: { userIds } },
       };
     },
@@ -608,7 +609,7 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
         body: { partialFailure: true, ...(inTest(cfg) ? { validateOnly: true } : {}), conversions: [{
           ...(ud.gclid ? { gclid: ud.gclid } : ud.gbraid ? { gbraid: ud.gbraid } : ud.wbraid ? { wbraid: ud.wbraid } : {}),
           conversionAction: `customers/${cfg.customerId}/conversionActions/${cfg.conversionActionId}`,
-          conversionDateTime: t, ...(value(e) > 0 ? { conversionValue: value(e), currencyCode: e.ecommerce?.currency ?? 'USD' } : {}), orderId: e.ecommerce?.transaction_id,
+          conversionDateTime: t, conversionValue: value(e), currencyCode: e.ecommerce?.currency ?? 'UGX', orderId: e.ecommerce?.transaction_id,
           ...(userIdentifiers.length ? { userIdentifiers } : {}),
         }] },
       };
@@ -628,7 +629,7 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
         body: { data: [{
           eventType: 'custom', eventName: name, eventId: e.event_id, eventTime: e.event_time, eventSourceUrl: e.page_location,
           userData: { em: ud.hashed_email, ph: ud.hashed_phone, clientIpAddress: ud.ip_address, clientUserAgent: ud.user_agent, msclkid: ud.msclkid, anonymousId: extId(e) },
-          customData: { ...(value(e) > 0 ? { value: value(e), currency: e.ecommerce?.currency ?? 'USD' } : {}), transactionId: e.ecommerce?.transaction_id, itemIds: ids(e), pageType: e.event_name === 'purchase' ? 'purchase' : 'product' },
+          customData: { value: value(e), currency: e.ecommerce?.currency ?? 'UGX', transactionId: e.ecommerce?.transaction_id, itemIds: ids(e), pageType: e.event_name === 'purchase' ? 'purchase' : 'product' },
         }] },
       };
     },
@@ -710,7 +711,7 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
           // X documents neither value nor number_items as required, and a lead
           // or a product view has no amount: those fields are sent only when
           // there is something to send, never as "0".
-          ...(value(e) > 0 ? { value: String(value(e)), price_currency: e.ecommerce?.currency ?? 'USD' } : {}),
+          ...(value(e) > 0 ? { value: String(value(e)), price_currency: e.ecommerce?.currency ?? 'UGX' } : {}),
           ...(count > 0 ? { number_items: count } : {}),
           ...(contents.length ? { contents } : {}) }] },
       };
@@ -755,7 +756,7 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
       const amount = value(e);
       const details: Record<string, unknown> = {};
       // An amount only with its currency, and only when there is one: a lead is not a sale of 0.
-      if (amount > 0) { details.currency = e.ecommerce?.currency ?? 'USD'; details.amount = amount; }
+      if (amount > 0) { details.currency = e.ecommerce?.currency ?? 'UGX'; details.amount = amount; }
       const first = items(e).find((i) => i.item_name);
       if (first?.item_name) details.content_name = String(first.item_name).slice(0, 200);
       const url = typeof e.page_location === 'string' && /^https?:\/\//.test(e.page_location) ? e.page_location : undefined;

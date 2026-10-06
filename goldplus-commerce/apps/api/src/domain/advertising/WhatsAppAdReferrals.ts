@@ -147,13 +147,12 @@ export const BUSINESS_MESSAGING_EVENTS = ['Purchase', 'LeadSubmitted', 'Initiate
  * user_data carries the two identifiers Meta asks for and nothing else: the
  * click id already names the person to Meta.
  */
-export function businessMessagingPurchase(input: { eventId: string; eventTimeSec: number; valueUgx: number | null; currency?: string; orderNumber?: string | null; wabaId: string; ctwaClid: string }): Record<string, unknown> {
+export function businessMessagingPurchase(input: { eventId: string; eventTimeSec: number; valueUgx: number; currency?: string; orderNumber?: string | null; wabaId: string; ctwaClid: string }): Record<string, unknown> {
   return {
     event_name: 'Purchase', event_time: input.eventTimeSec, event_id: input.eventId,
     action_source: 'business_messaging', messaging_channel: 'whatsapp',
     user_data: { whatsapp_business_account_id: input.wabaId, ctwa_clid: input.ctwaClid },
-    // No amount (no dollar rate yet) means no value and no currency, never a "0" sale.
-    custom_data: { ...(typeof input.valueUgx === 'number' ? { currency: input.currency ?? 'UGX', value: input.valueUgx } : {}), ...(input.orderNumber ? { order_id: input.orderNumber } : {}) },
+    custom_data: { currency: input.currency ?? 'UGX', value: input.valueUgx, ...(input.orderNumber ? { order_id: input.orderNumber } : {}) },
   };
 }
 

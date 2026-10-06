@@ -80,8 +80,6 @@ export interface PlatformCredentials {
   /** The conversions destination's token or JSON bundle. */
   destinationSecret: string;
   testMode: boolean;
-  /** Shillings per US dollar for every ad platform (0172); null = send no amount. */
-  usdRate?: number | null;
   /**
    * For a sale reported against a WhatsApp advert: the dataset linked to the
    * WhatsApp Business Account and its token, when they differ from the web
