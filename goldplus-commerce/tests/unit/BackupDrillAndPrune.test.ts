@@ -110,10 +110,10 @@ describe('a backup job that fails tells someone', () => {
       expect(read(`ops/backup/${unit}`)).toContain('OnFailure=goldplus-alert@%n.service');
     });
 
-  it('the alert unit posts to ALERT_WEBHOOK_URL and says so when there is none', () => {
+  it('the alert unit only calls alert.sh: no shell inside the unit for systemd to mangle', () => {
     const a = read('ops/backup/goldplus-alert@.service');
-    expect(a).toContain('EnvironmentFile=-/etc/goldplus/secrets/alerts.env');
-    expect(a).toContain('nobody was told');
+    expect(a).toMatch(/^ExecStart=\/opt\/goldplus\/app\/goldplus-commerce\/ops\/backup\/alert\.sh %i$/m);
+    expect(a).not.toMatch(/\$\(|\$[A-Z_]/);
   });
 });
 
@@ -122,5 +122,49 @@ describe('offsite-sync.sh reads REAL rsync listings, in tests and in production 
   it('one parser, keyed on the file-type character, used by both modes', () => {
     expect(s).toMatch(/parse_rsync_listing\(\) \{ awk '\/\^-\/ \{ gsub\(",", "", \$2\); print \$2, \$NF \}'/);
     expect(s.match(/--list-only[^\n]*\| parse_rsync_listing/g)).toHaveLength(2);
+  });
+});
+
+describe('ops/backup/alert.sh reaches a person, and says honestly when it did not', () => {
+  const { spawnSync } = require('node:child_process') as typeof import('node:child_process');
+  const http = require('node:http') as typeof import('node:http');
+  const alert = join(root, 'ops/backup/alert.sh');
+  const run = (env: Record<string, string>) =>
+    spawnSync('bash', [alert, 'goldplus-pg-backup.service'], { env: { ...process.env, ALERT_ENV_FILE: '/nonexistent', ...env }, encoding: 'utf8' });
+
+  it('posts the unit name to the webhook', async () => {
+    let body = '';
+    const server = http.createServer((req, res) => { req.on('data', (c) => { body += c; }); req.on('end', () => { res.end('ok'); }); });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
+    const port = (server.address() as any).port;
+    const r = await new Promise<ReturnType<typeof run>>((resolveRun) => {
+      const { spawn } = require('node:child_process') as typeof import('node:child_process');
+      let out = '';
+      const p = spawn('bash', [alert, 'goldplus-pg-backup.service'], { env: { ...process.env, ALERT_ENV_FILE: '/nonexistent', ALERT_WEBHOOK_URL: `http://127.0.0.1:${port}/t` } });
+      p.stdout.on('data', (c) => { out += c; });
+      p.on('close', (code) => resolveRun({ status: code, stdout: out } as any));
+    });
+    server.close();
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('SENT: [goldplus-prod CRITICAL] goldplus-pg-backup.service failed');
+    expect(body).toContain('goldplus-pg-backup.service failed');
+  });
+
+  it('a refused webhook is reported as SEND FAILED, never as "no URL"', () => {
+    const r = run({ ALERT_WEBHOOK_URL: 'http://127.0.0.1:9/nothing-listens' });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('SEND FAILED');
+  });
+
+  it('no webhook: NOT SENT, and why', () => {
+    const r = run({ ALERT_WEBHOOK_URL: '' });
+    expect(r.stdout).toContain('NOT SENT (no ALERT_WEBHOOK_URL');
+  });
+
+  it('reads the URL from the secrets file', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'gp-alert-'));
+    writeFileSync(join(dir, 'alerts.env'), 'ALERT_WEBHOOK_URL="http://127.0.0.1:9/x"\n');
+    const r = spawnSync('bash', [alert, 'u'], { env: { ...process.env, ALERT_WEBHOOK_URL: '', ALERT_ENV_FILE: join(dir, 'alerts.env') }, encoding: 'utf8' });
+    expect(r.stdout).toContain('SEND FAILED');
   });
 });

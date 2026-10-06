@@ -2,7 +2,8 @@
 
 Weekly, **Sunday 03:00 Kampala time**, by systemd (owner decisions 2026-10-06).
 Each of `/` and `/shop`, mobile and desktop, is measured three times and the
-median run is kept. A failed run alerts the owner through `goldplus-alert@`;
+median run is kept; a run takes about 15 minutes. A failed run alerts the owner
+through `goldplus-alert@` (ops/backup/alert.sh), quoting the run's last lines;
 the API raises `LIGHTHOUSE_STALE` if no measurement lands for 8 days.
 
 ## Install (once, replaces the old cron file)
@@ -10,6 +11,7 @@ the API raises `LIGHTHOUSE_STALE` if no measurement lands for 8 days.
     sudo rm -f /etc/cron.d/goldplus-lighthouse-watch
     sudo cp ops/lighthouse-watch/goldplus-lighthouse-watch.{service,timer} ops/backup/goldplus-alert@.service /etc/systemd/system/
     sudo systemctl daemon-reload
+    systemd-analyze calendar 'Sun *-*-* 03:00:00 Africa/Kampala'   # proves this host parses it; "Next elapse" is a Sunday 00:00 UTC
     sudo systemctl enable --now goldplus-lighthouse-watch.timer
     systemctl list-timers goldplus-lighthouse-watch.timer   # NEXT shows Sun 00:00 UTC
 

@@ -25,7 +25,10 @@ LOG_DIR="${LIGHTHOUSE_WATCH_LOG_DIR:-/var/log/goldplus}"; mkdir -p "$LOG_DIR" 2>
 LOG="$LOG_DIR/lighthouse-watch.log"
 STAMP="$LOG_DIR/lighthouse-watch.last-run"
 MIN_HOURS="${LIGHTHOUSE_WATCH_MIN_INTERVAL_HOURS:-24}"
-exec >>"$LOG" 2>&1
+# Both the log file (history) and stdout (the systemd journal, which is what
+# the failure alert quotes). Before, only the file got it and an alert said
+# nothing but the unit name.
+exec > >(tee -a "$LOG") 2>&1
 if [ "$REASON" != "manual" ] && [ -f "$STAMP" ]; then
   AGE=$(( ( $(date +%s) - $(cat "$STAMP") ) / 3600 ))
   if [ "$AGE" -lt "$MIN_HOURS" ]; then
