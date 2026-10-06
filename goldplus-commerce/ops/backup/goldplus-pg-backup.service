@@ -1,6 +1,7 @@
 [Unit]
 Description=GoldPlus nightly PostgreSQL logical backup
 After=docker.service
+OnFailure=goldplus-alert@%n.service
 
 [Service]
 Type=oneshot

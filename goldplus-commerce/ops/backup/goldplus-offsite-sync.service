@@ -1,0 +1,11 @@
+[Unit]
+Description=GoldPlus offsite copy of every backup, then proof of the copy
+After=goldplus-pg-backup.service network-online.target
+Wants=network-online.target
+OnFailure=goldplus-alert@%n.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/goldplus/app/goldplus-commerce/ops/backup/offsite-sync.sh
+Nice=19
+IOSchedulingClass=idle

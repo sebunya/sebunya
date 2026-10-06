@@ -5,6 +5,15 @@
 # happen; this script refuses to build in that case.
 #   ./scripts/deploy-prod.sh <expected-sha> [services...]
 set -euo pipefail
+# bash reads a script as it runs. The ff-merge below replaces THIS file, so a
+# deploy that changes deploy-prod.sh finishes on a mix of old and new lines
+# (2026-10-06: the roll that shipped sequential audits still launched them
+# the old way). Run from a private copy; the next deploy sees the new file.
+if [ -z "${GOLDPLUS_DEPLOY_SELF:-}" ]; then
+  SELF="$(mktemp /tmp/deploy-prod.XXXXXX.sh)"; cp "$0" "$SELF"; chmod +x "$SELF"
+  GOLDPLUS_DEPLOY_SELF=1 exec bash "$SELF" "$@"
+fi
+trap 'rm -f "$0"' EXIT
 EXPECTED="${1:?expected short sha}"; shift; SERVICES="${*:-api web}"
 cd /opt/goldplus/app/goldplus-commerce
 # ONE deploy at a time. On 2026-09-12 two invocations started seven seconds
