@@ -38,6 +38,19 @@ describe('the production containers stop inside their grace period', () => {
   it('the api skips the readiness pause nothing observes', () => {
     expect(service('api', 'web')).toContain('SHUTDOWN_DRAIN_MS=${SHUTDOWN_DRAIN_MS:-0}');
   });
+
+  it.each([
+    ['api', 'web'],
+    ['web', 'caddy'],
+  ])('%s comes back after a host reboot and never gives up restarting', (name, next) => {
+    // deploy.restart_policy overrides `restart: always` under Compose. With
+    // on-failure + max_attempts the live containers were on-failure/3
+    // (2026-10-06): not restarted on reboot, and dead after three crashes.
+    const block = service(name, next);
+    expect(block).toContain('restart: always');
+    expect(block).toMatch(/restart_policy:\n\s+condition: any\n/);
+    expect(block).not.toContain('max_attempts');
+  });
 });
 
 describe('tracing runs only when an exporter is configured', () => {

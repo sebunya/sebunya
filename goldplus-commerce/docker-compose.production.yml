@@ -252,11 +252,13 @@ services:
       rollback_config:
         parallelism: 1
         order: stop-first
+      # `any`, not `on-failure`: Compose lets this block override the service's
+      # `restart: always`. on-failure with a retry cap left web and api created
+      # as on-failure/3 on production: not guaranteed to return after a host
+      # reboot, and permanently down after three crashes (seen 2026-10-06).
       restart_policy:
-        condition: on-failure
+        condition: any
         delay: 5s
-        max_attempts: 3
-        window: 120s
       resources:
         limits:
           cpus: '1.0'
@@ -321,11 +323,13 @@ services:
       rollback_config:
         parallelism: 1
         order: stop-first
+      # `any`, not `on-failure`: Compose lets this block override the service's
+      # `restart: always`. on-failure with a retry cap left web and api created
+      # as on-failure/3 on production: not guaranteed to return after a host
+      # reboot, and permanently down after three crashes (seen 2026-10-06).
       restart_policy:
-        condition: on-failure
+        condition: any
         delay: 5s
-        max_attempts: 3
-        window: 120s
       resources:
         limits:
           cpus: '1.0'
