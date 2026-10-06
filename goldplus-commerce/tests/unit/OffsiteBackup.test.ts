@@ -134,8 +134,9 @@ describe('deploy-prod.sh and compose hygiene', () => {
     // Docker 29 removed --keep-storage: detect the flag, never assume it.
     expect(d).toMatch(/for f in --max-used-space --keep-storage; do/);
     expect(d).toContain('docker builder prune -f "$CACHE_FLAG" "$(( CACHE_CAP_GB * 1024 * 1024 * 1024 ))"');
-    // A failed cap is said out loud, never swallowed.
+    // A failed cap is said out loud, never swallowed; a "successful" one is re-measured.
     expect(d).toContain('WARN: build cache cap');
+    expect(d).toContain('echo "build cache after cap: $(docker system df');
     // Same bound as the Steward's policy.
     expect(read('ops/storage-steward/policy.yaml')).toMatch(/build_cache_max_gb: 2\b/);
     // Bounded, never a full wipe: a cold build loads the 2-vCPU host.

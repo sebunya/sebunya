@@ -92,9 +92,14 @@ for f in --max-used-space --keep-storage; do
 done
 if [ -n "$CACHE_FLAG" ]; then
   # A plain byte count, exactly as the Steward passes it (proven on this host).
-  docker builder prune -f "$CACHE_FLAG" "$(( CACHE_CAP_GB * 1024 * 1024 * 1024 ))" >/dev/null 2>&1 \
-    && echo "build cache capped at ${CACHE_CAP_GB} GB ($CACHE_FLAG)" \
-    || echo "WARN: build cache cap ($CACHE_FLAG ${CACHE_CAP_GB} GB) failed; the Steward's nightly housekeep will retry"
+  if docker builder prune -f "$CACHE_FLAG" "$(( CACHE_CAP_GB * 1024 * 1024 * 1024 ))" >/dev/null 2>&1; then
+    # A zero exit proves nothing about size (2026-10-06: a "successful" trim
+    # left 6.7 GB against a 2 GB bound — cache still used by images stays).
+    # Re-measure and say what is really there.
+    echo "build cache after cap: $(docker system df --format '{{.Type}} {{.Size}}' 2>/dev/null | sed -n 's/^Build Cache //p') (bound ${CACHE_CAP_GB} GB, $CACHE_FLAG)"
+  else
+    echo "WARN: build cache cap ($CACHE_FLAG ${CACHE_CAP_GB} GB) failed; the Steward's nightly housekeep will retry"
+  fi
 else
   echo "WARN: this docker offers neither --max-used-space nor --keep-storage; build cache is bounded only by the Steward"
 fi
