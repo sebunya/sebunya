@@ -51,7 +51,12 @@ export class DrizzleSpotifyRotationReader implements SpotifyRotationReader {
         from orders o
         join order_items oi on oi.order_id = o.id
         left join order_attribution oa on oa.order_id = o.id
-       where o.payment_status = 'paid' and o.created_at >= ${monthAgo} and oi.product_id in (${ids})
+       -- A sale as the rest of advertising counts one (DrizzleAdvertisingOpsRepository):
+       -- delivered or completed (cash on delivery is paid at the door), or paid
+       -- and not cancelled or failed. "paid" alone missed every delivered COD
+       -- order and showed no product as selling (2026-10-06).
+       where (o.status in ('delivered', 'completed') or (o.payment_status = 'paid' and o.status not in ('cancelled', 'failed')))
+         and o.created_at >= ${monthAgo} and oi.product_id in (${ids})
        group by oi.product_id`))) {
       orders30d[String(r.product_id)] = Number(r.orders);
       spotifyOrders30d[String(r.product_id)] = Number(r.spotify);
