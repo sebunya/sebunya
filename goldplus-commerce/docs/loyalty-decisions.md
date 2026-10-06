@@ -95,10 +95,11 @@ redemption.
 > off; redemption and expiry never do. One rule: `computeLifetimePoints`
 > (SQL twin `LIFETIME_POINTS_SQL` for the hero meter). Not retroactive
 > against the customer (terms §9): reductions count only from
-> `LIFETIME_REDUCTIONS_FROM` (7 Oct 2026, Kampala), so the switch lowers no
-> one's level for an old refund. Every tier change is announced (PART M): a
-> move up is a welcome; a move down says reversed points no longer count.
-> Terms move to v2. Preview moves before a deploy with
+> `loyalty_config.lifetime_reductions_from`, which 0174 stamps at deploy, so
+> the switch lowers no one's level for an old refund; the terms print that
+> date. Every tier change is announced (PART M): a move up is a welcome; a
+> move down is told without claiming a cause (it can be a reversal or a
+> raised threshold). Terms move to v2. Preview moves before a deploy with
 > `ops/loyalty/tier-preview.sql`.
 
 **9. Quests/badges.** RECOMMEND none until verification earning is live; then a

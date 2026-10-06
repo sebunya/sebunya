@@ -54,5 +54,7 @@ export interface ILoyaltyRepository {
   reverseEntry(entryId: string, reason: string): Promise<ReverseEntryResult>;
   getOperationsSnapshot(input: { now: Date; limit: number }): Promise<LoyaltyOperationsSnapshot>;
   getConfig(): Promise<LoyaltyConfig>;
+  /** When lifetime points began counting reductions (0174); null = always. */
+  lifetimeReductionsFrom(): Promise<Date | null>;
   saveConfig(config: LoyaltyConfig): Promise<LoyaltyConfig>;
 }

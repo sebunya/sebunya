@@ -2,17 +2,25 @@
 -- "every point counts" ships (computeLifetimePoints, LoyaltyLedger.ts).
 -- Compares each account's CURRENT assigned level with the level its lifetime
 -- points reach under the new rule. Reductions (refund reversals, negative
--- corrections) count only from 2026-10-06T21:00Z (7 Oct, Kampala), as in code.
+-- corrections) count only from loyalty_config.lifetime_reductions_from, which
+-- migration 0174 stamps at deploy. BEFORE the deploy that column does not
+-- exist yet, so the preview uses now(): "if it shipped this minute".
 -- Run:  psql "$DATABASE_URL" -f ops/loyalty/tier-preview.sql
-with per_account as (
+with cfg as (
+  -- Read through to_jsonb so the query also runs before 0174 adds the column.
+  select coalesce(
+    (select (to_jsonb(c) ->> 'lifetime_reductions_from')::timestamptz from loyalty_config c where c.singleton = 'config' limit 1),
+    now()) as reductions_from
+), per_account as (
   select la.id as account_id,
     greatest(0, coalesce(sum(le.points) filter (where
-      (le.type in ('earn','adjustment') and (le.points > 0 or le.created_at >= timestamptz '2026-10-06T21:00:00Z'))
+      (le.type in ('earn','adjustment') and (le.points > 0 or le.created_at >= cfg.reductions_from))
       or (le.type = 'reversal' and rt.type in ('earn','adjustment')
-          and (rt.points > 0 or rt.created_at >= timestamptz '2026-10-06T21:00:00Z')
-          and (le.points > 0 or le.created_at >= timestamptz '2026-10-06T21:00:00Z'))
+          and (rt.points > 0 or rt.created_at >= cfg.reductions_from)
+          and (le.points > 0 or le.created_at >= cfg.reductions_from))
     ), 0)) as new_lifetime
   from loyalty_accounts la
+  cross join cfg
   join loyalty_ledger_entries le on le.account_id = la.id
     or le.account_id in (select m.merged_account_id from loyalty_account_merges m where m.survivor_account_id = la.id)
   left join loyalty_ledger_entries rt on rt.id = le.reversed_entry_id

@@ -79,6 +79,8 @@ export const loyaltyConfig = pgTable('loyalty_config', {
   streakTargetOrders: integer('streak_target_orders'),
   streakWindowDays: integer('streak_window_days'),
   streakRewardPoints: integer('streak_reward_points'),
+  // 0174: lifetime points count reductions only from this moment (terms §9).
+  lifetimeReductionsFrom: timestamp('lifetime_reductions_from', { withTimezone: true }),
   /** Chance mechanics stay OFF pending the PART P legal read — flag reserved. */
   chanceEnabled: boolean('chance_enabled').default(false).notNull(),
   termsVersion: varchar('terms_version', { length: 20 }),

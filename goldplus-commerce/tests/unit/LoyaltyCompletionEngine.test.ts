@@ -133,10 +133,10 @@ describe('FIFO + reversal-of-redeem (PART G reversal keeps original expiry)', ()
     ];
     const balance = computeBalance(entries, new Date());
     expect(balance.available).toBe(0);
-    // This clawback is dated before 7 Oct 2026 (LIFETIME_REDUCTIONS_FROM), when
-    // levels counted order earns gross, so it does not lower lifetime (terms §9);
-    // LoyaltyLifetimePoints.test.ts covers a clawback after that date.
-    expect(balance.lifetimeEarned).toBe(300);
+    // No cut-off passed: every reduction counts, so the clawback comes off
+    // lifetime; spending does not. The deploy-stamped cut-off (terms §9) is
+    // covered in LoyaltyLifetimePoints.test.ts.
+    expect(balance.lifetimeEarned).toBe(100);
     expect(balance.lifetimeRedeemed).toBe(100);
   });
   it('a spent-then-clawed balance goes negative and the negative is carried', () => {

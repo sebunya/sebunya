@@ -24,3 +24,13 @@ ON CONFLICT ("key") DO NOTHING;
 -- operator's own version string is left alone.
 UPDATE "loyalty_config" SET "terms_version" = 'v2', "updated_at" = now()
 WHERE "singleton" = 'config' AND "terms_version" = 'v1';
+--> statement-breakpoint
+-- Lifetime points now count reductions (refund reversals, negative
+-- corrections), but not retroactively (loyalty terms §9): only those dated
+-- from the moment this release goes live. Recorded here, at deploy time,
+-- rather than guessed in code. NULL (a config row created later, with no
+-- history before it) means every reduction counts.
+ALTER TABLE "loyalty_config" ADD COLUMN IF NOT EXISTS "lifetime_reductions_from" timestamp with time zone;
+--> statement-breakpoint
+UPDATE "loyalty_config" SET "lifetime_reductions_from" = now()
+WHERE "singleton" = 'config' AND "lifetime_reductions_from" IS NULL;

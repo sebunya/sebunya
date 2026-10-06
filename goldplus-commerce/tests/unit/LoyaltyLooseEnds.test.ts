@@ -27,8 +27,10 @@ describe('a level change is always told, in its own words', () => {
   it('up is a welcome; down says why, on every channel, and never "welcomes"', () => {
     expect(smsText('LOYALTY_TIER_CHANGED', { tierName: 'Gold' })).toMatch(/you are now a Gold member/i);
     const down = { tierName: 'Member', direction: 'down' as const };
-    expect(smsText('LOYALTY_TIER_CHANGED', down)).toMatch(/your membership level is now Member, because points from a refund or correction no longer count/i);
-    expect(whatsappText('LOYALTY_TIER_CHANGED', down)).toContain('no longer count');
+    expect(smsText('LOYALTY_TIER_CHANGED', down)).toMatch(/your membership level is now Member\. Your level follows the lifetime points on your account/i);
+    // It never claims a cause: a raised threshold lowers a level too.
+    expect(smsText('LOYALTY_TIER_CHANGED', down)).not.toMatch(/refund|correction|because/i);
+    expect(whatsappText('LOYALTY_TIER_CHANGED', down)).toContain('Your level follows');
     const email = emailCopy('LOYALTY_TIER_CHANGED', down)!;
     expect(email.subject).toBe('Your membership level is now Member');
     expect(JSON.stringify(email)).not.toMatch(/welcome/i);
@@ -54,6 +56,25 @@ describe('customers can get their invite link where the site sends them', () => 
     const repo = read('apps/api/src/infrastructure/db/repositories/DrizzleGamificationRepository.ts');
     expect(repo).toContain('paidKeys.has(`mission:${m.key}:${userId}`)');
     expect(rewards).toContain('m.completed ? 100 : pct(m.progress, m.threshold)');
+  });
+});
+
+describe('the level rule starts when this release goes live, and the terms say when', () => {
+  it('0174 adds and stamps the cut-off; the terms print it from the public programme data', () => {
+    const migration = read('apps/api/src/infrastructure/db/migrations/0174_referral_mission.sql');
+    expect(migration).toContain('ADD COLUMN IF NOT EXISTS "lifetime_reductions_from"');
+    expect(migration).toMatch(/SET "lifetime_reductions_from" = now\(\)\s+WHERE "singleton" = 'config' AND "lifetime_reductions_from" IS NULL/);
+    expect(read('apps/api/src/interfaces/http/routes/commerce.ts')).toContain('termsEffectiveFrom: (await registry.loyaltyRepo.lifetimeReductionsFrom()');
+    const terms = read('apps/web/src/pages/loyalty-terms.astro');
+    expect(terms).toContain('{fromWhen}, points');
+    expect(terms).not.toMatch(/7 October 2026/);
+  });
+
+  it('every caller that shows or uses lifetime points passes the stamped cut-off', () => {
+    expect(read('apps/api/src/application/use-cases/loyalty/LoyaltyUseCases.ts')).toContain('computeBalance(entries, new Date(), await this.repo.lifetimeReductionsFrom())');
+    expect(read('apps/api/src/application/use-cases/admin/GetCustomerWorkspaceUseCase.ts')).toContain('await this.deps.loyalty.lifetimeReductionsFrom()');
+    expect(read('apps/api/src/application/use-cases/loyalty/LoyaltyProgrammeUseCases.ts')).toContain('computeLifetimePoints(entries, reductionsFrom)');
+    expect(read('apps/api/src/infrastructure/hero/HeroSignalsService.ts')).toContain('cross join ${sql.raw(LIFETIME_CUTOFF_SQL)}');
   });
 });
 

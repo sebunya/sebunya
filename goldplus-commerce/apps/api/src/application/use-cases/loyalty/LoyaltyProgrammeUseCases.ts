@@ -135,7 +135,8 @@ export class ManualAdjustLoyaltyUseCase {
  */
 export interface ILoyaltyTierRepository {
   activeTiers(): Promise<Array<{ code: string; name: string; thresholdLifetimePoints: number; rank: number }>>;
-  currentAssignment(accountId: string): Promise<{ tierCode: string } | null>;
+  /** The account's tier, with that tier's rank even if it has since been deactivated. */
+  currentAssignment(accountId: string): Promise<{ tierCode: string; rank: number | null } | null>;
   assign(accountId: string, tierCode: string): Promise<void>;
 }
 
@@ -152,13 +153,14 @@ export class EvaluateTiersUseCase {
     if (tiers.length === 0) return { evaluated: 0, changed: 0 };
     const ranked = [...tiers].sort((a, b) => b.rank - a.rank); // highest first
     const accounts = await this.completion.listAccountIds();
+    const reductionsFrom = await this.loyalty.lifetimeReductionsFrom();
     let changed = 0;
     for (const { accountId, userId } of accounts) {
       // A merged account's earns count on its survivor; tiering it separately
       // gave one customer two tiers and two tier messages.
       if (await this.loyalty.mergedInto(accountId)) continue;
       const entries = await this.loyalty.listEntries(accountId);
-      const lifetime = computeLifetimePoints(entries);
+      const lifetime = computeLifetimePoints(entries, reductionsFrom);
       const target = ranked.find((t) => lifetime >= t.thresholdLifetimePoints);
       if (!target) continue;
       const current = await this.tiers.currentAssignment(accountId);
@@ -166,11 +168,11 @@ export class EvaluateTiersUseCase {
       await this.tiers.assign(accountId, target.code);
       changed++;
       // Every change is announced (brief PART M), in its own words: a move up
-      // is a welcome; a move down says plainly that reversed points no longer
-      // count. A current tier that is no longer active has no rank to compare,
-      // so that move is treated as up, as before.
-      const currentRank = current ? tiers.find((t) => t.code === current.tierCode)?.rank : undefined;
-      const direction = currentRank === undefined || target.rank > currentRank ? 'up' : 'down';
+      // is a welcome, a move down is told plainly. The current tier's rank is
+      // read even when that tier has been deactivated, so a customer moved
+      // down off a retired tier is never "welcomed" to a lower one.
+      const currentRank = current?.rank ?? null;
+      const direction = currentRank === null || target.rank > currentRank ? 'up' : 'down';
       await this.notifyTierChange({ userId, tierCode: target.code, tierName: target.name, direction }).catch(() => undefined);
     }
     return { evaluated: accounts.length, changed };

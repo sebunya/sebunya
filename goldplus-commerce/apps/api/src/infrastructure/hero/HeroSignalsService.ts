@@ -4,7 +4,7 @@ import { VISITOR_ACTION_EVENT_TYPES } from '@goldplus/shared';
 import { pgInTextList } from '../db/PgParams';
 import { logger } from '../logging/logger';
 import { heroTierMeter } from '../../application/hero/HeroContentService';
-import { LIFETIME_POINTS_SQL } from '../../domain/loyalty/LoyaltyLedger';
+import { LIFETIME_CUTOFF_SQL, LIFETIME_POINTS_SQL } from '../../domain/loyalty/LoyaltyLedger';
 
 /**
  * Per-visitor hero signals.
@@ -260,9 +260,10 @@ export class HeroSignalsService {
         select coalesce(sum(le.points), 0)::int as points,
                ${sql.raw(LIFETIME_POINTS_SQL)}::int as lifetime
         from acct
+        cross join ${sql.raw(LIFETIME_CUTOFF_SQL)}
         left join loyalty_ledger_entries le on le.account_id in (select id from ids)
         left join loyalty_ledger_entries rt on rt.id = le.reversed_entry_id
-        group by acct.id
+        group by acct.id, cfg.reductions_from
       `),
     );
     if (!rows.length) return null;

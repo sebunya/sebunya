@@ -284,6 +284,11 @@ export class DrizzleLoyaltyRepository implements ILoyaltyRepository {
     return { enabled: row.enabled, earnRatePer1000Ugx: row.earnRatePer1000Ugx, expiryDays: row.expiryDays };
   }
 
+  async lifetimeReductionsFrom(): Promise<Date | null> {
+    const row = await db.query.loyaltyConfig.findFirst();
+    return row?.lifetimeReductionsFrom ?? null;
+  }
+
   async saveConfig(config: LoyaltyConfig): Promise<LoyaltyConfig> {
     const row = await db.query.loyaltyConfig.findFirst();
     if (row) {

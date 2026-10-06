@@ -26,6 +26,8 @@ suite('hero loyalty meter: lifetime points on real PostgreSQL', () => {
   const noAccountProfileId = crypto.randomUUID();
   const orderId = crypto.randomUUID();
   const ids = { earn: crypto.randomUUID(), redeem: crypto.randomUUID(), redeem2: crypto.randomUUID() };
+  const CUTOFF = '2026-10-07T09:00:00Z';
+  let cutoffBefore: Date | null | undefined;
 
   beforeAll(async () => {
     ({ client: pg } = await import('../../apps/api/src/infrastructure/db/client'));
@@ -46,10 +48,15 @@ suite('hero loyalty meter: lifetime points on real PostgreSQL', () => {
     // An order earn must name its order (loyalty_ledger_shape_check).
     await pg`insert into orders (id, order_number, customer_name, customer_phone, delivery_area, delivery_address, subtotal_amount, total_amount)
       values (${orderId}::uuid, ${`HL-${suffix}`}, 'Hero Lifetime', '+256700000000', 'Kampala', 'Test', 100000, 100000)`;
-    // Dated explicitly: reductions count only from LIFETIME_REDUCTIONS_FROM
-    // (7 Oct 2026), so "today" would make the test depend on the clock.
+    // Reductions count only from loyalty_config.lifetime_reductions_from (0174
+    // stamps it at deploy). Set here between BEFORE and AFTER; only this
+    // column is touched and it is restored after, since suites run in parallel.
     const AFTER = '2026-10-10T08:00:00Z';
     const BEFORE = '2026-09-01T08:00:00Z';
+    const [cfg] = await pg`select lifetime_reductions_from from loyalty_config where singleton = 'config'`;
+    cutoffBefore = cfg ? cfg.lifetime_reductions_from : undefined;
+    await pg`insert into loyalty_config (lifetime_reductions_from) values (${CUTOFF}::timestamptz)
+      on conflict (singleton) do update set lifetime_reductions_from = excluded.lifetime_reductions_from`;
     const row = (id: string, account: string, type: string, points: number, key: string, reversed: string | null = null, order: string | null = null, at = AFTER) =>
       pg`insert into loyalty_ledger_entries (id, account_id, type, points, reason, idempotency_key, reversed_entry_id, order_id, created_at)
          values (${id}::uuid, ${account}::uuid, ${type}, ${points}, 'hero lifetime test', ${`${key}:${suffix}`}, ${reversed}::uuid, ${order}::uuid, ${at}::timestamptz)`;
@@ -71,6 +78,7 @@ suite('hero loyalty meter: lifetime points on real PostgreSQL', () => {
     // and the accounts, order and users they reference stay; every key carries
     // this run's suffix and ids are random, so runs never collide.
     await pg`delete from experience_profiles where id in (${profileId}::uuid, ${noAccountProfileId}::uuid)`;
+    await pg`update loyalty_config set lifetime_reductions_from = ${cutoffBefore ?? null} where singleton = 'config'`;
   });
 
   it('matches the domain rule: all credits and merged accounts count; spending and returned redemptions do not; reversals and corrections come off', async () => {
@@ -80,9 +88,9 @@ suite('hero loyalty meter: lifetime points on real PostgreSQL', () => {
       id: r.id, accountId: r.account_id, type: r.type, points: r.points, orderId: null, reason: '',
       idempotencyKey: r.idempotency_key, expiresAt: null, reversedEntryId: r.reversed_entry_id, createdAt: new Date(r.created_at),
     }));
-    const lifetime = domain.computeLifetimePoints(entries);
-    expect(lifetime).toBe(1000 + 300 + 25 - 200 - 50 + 150);
-    const balance = domain.computeBalance(entries, new Date()).available;
+    const lifetime = domain.computeLifetimePoints(entries, new Date(CUTOFF));
+    expect(lifetime).toBe(1000 + 300 + 25 - 200 - 50 + 150); // the -75 from before the cut-off does not count
+    const balance = domain.computeBalance(entries, new Date(), new Date(CUTOFF)).available;
     expect(balance).toBe(825 - 75);
 
     const tiers = (await pg`select name, threshold_lifetime_points as threshold from loyalty_tiers

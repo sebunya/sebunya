@@ -29,9 +29,17 @@ suite('public loyalty programme terms (real PostgreSQL, real app)', () => {
       };
     } else {
       // 7 / 999 in the old streak columns: if the page still read them, the test would see them.
+      // Upsert: a parallel suite may create the row at the same moment.
       await raw`insert into loyalty_config (enabled, earn_rate_per_1000_ugx, referral_referrer_points, referral_referee_points,
-        streak_window_days, streak_target_orders, streak_reward_points) values (true, 10, 200, 100, 90, 7, 999)`;
-      restore = async () => { await raw`delete from loyalty_config where singleton = 'config'`; };
+        streak_window_days, streak_target_orders, streak_reward_points) values (true, 10, 200, 100, 90, 7, 999)
+        on conflict (singleton) do update set enabled = true, kill_switch = false, referral_referrer_points = 200, referral_referee_points = 100,
+          streak_window_days = 90, streak_target_orders = 7, streak_reward_points = 999`;
+      // Restore only this suite's columns (to the defaults of a row that did not
+      // exist); the row stays, so a parallel suite's own columns are untouched.
+      restore = async () => {
+        await raw`update loyalty_config set enabled = false, kill_switch = false, referral_referrer_points = null, referral_referee_points = null,
+          streak_window_days = null, streak_target_orders = null, streak_reward_points = null where singleton = 'config'`;
+      };
     }
     app = (await import('../../apps/api/src/interfaces/http/app')).default;
   }, 60_000);

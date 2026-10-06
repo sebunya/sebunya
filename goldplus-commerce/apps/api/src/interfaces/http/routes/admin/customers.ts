@@ -24,6 +24,7 @@ routes.get('/:userId', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) 
     loyalty: {
       findAccountByUserId: (id) => registry.loyaltyRepo.findAccountByUserId(id),
       listEntries: (accountId) => registry.loyaltyRepo.listEntries(accountId),
+      lifetimeReductionsFrom: () => registry.loyaltyRepo.lifetimeReductionsFrom(),
     },
     staff: { isStaff: async (id) => (await registry.roleRepo.findPermissionsForUser(id)).length > 0 },
     support: { forCustomer: (query, now) => registry.getSupportInboxUseCase.executeForCustomer(query, now) },

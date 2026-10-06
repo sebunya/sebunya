@@ -244,6 +244,9 @@ routes.get('/loyalty-programme', async (c) => {
             .map((t) => ({ code: t.code, name: t.name, threshold: t.thresholdLifetimePoints, benefits: t.benefits ?? {} }))
         : [],
       termsVersion: programme.termsVersion,
+      // When the current level rules took effect (0174 stamps it at deploy):
+      // the terms date their "from this date" clauses with it.
+      termsEffectiveFrom: (await registry.loyaltyRepo.lifetimeReductionsFrom().catch(() => null))?.toISOString() ?? null,
     },
   });
 });

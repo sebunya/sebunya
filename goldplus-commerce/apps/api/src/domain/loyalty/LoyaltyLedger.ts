@@ -175,49 +175,49 @@ export function soonestUnspentExpiry(entries: LoyaltyLedgerEntry[], now: Date, r
  * Not retroactive against the customer (loyalty terms §9: points already
  * earned keep the rules in force when they were earned). Before this rule,
  * levels counted order earns gross, so a reduction dated before
- * LIFETIME_REDUCTIONS_FROM is ignored: deploying it lowers no one's level for
- * a refund or correction that happened under the old rule.
+ * `reductionsFrom` (loyalty_config.lifetime_reductions_from, stamped by
+ * migration 0174 at deploy) is ignored. Null means every reduction counts.
  *
  * LIFETIME_POINTS_SQL is the same rule for queries; keep the two in step.
  */
-export const LIFETIME_REDUCTIONS_FROM = new Date('2026-10-06T21:00:00Z'); // 7 Oct 2026 00:00 Kampala, terms v2
 const LIFETIME_CREDIT_TYPES: ReadonlySet<LoyaltyEntryType> = new Set<LoyaltyEntryType>(['earn', 'adjustment']);
 
-/** A credit-type entry that counts toward lifetime: always if positive; a negative correction only from the cutoff. */
-function countsAsLifetimeCredit(entry: LoyaltyLedgerEntry): boolean {
-  if (!LIFETIME_CREDIT_TYPES.has(entry.type)) return false;
-  return entry.points > 0 || entry.createdAt >= LIFETIME_REDUCTIONS_FROM;
-}
-
-export function computeLifetimePoints(entries: LoyaltyLedgerEntry[]): number {
+export function computeLifetimePoints(entries: LoyaltyLedgerEntry[], reductionsFrom: Date | null): number {
+  const inForce = (entry: LoyaltyLedgerEntry) => entry.points > 0 || reductionsFrom === null || entry.createdAt >= reductionsFrom;
+  const countsAsCredit = (entry: LoyaltyLedgerEntry) => LIFETIME_CREDIT_TYPES.has(entry.type) && inForce(entry);
   const byId = new Map(entries.map((entry) => [entry.id, entry]));
   let total = 0;
   for (const entry of entries) {
-    if (countsAsLifetimeCredit(entry)) {
+    if (countsAsCredit(entry)) {
       total += entry.points;
     } else if (entry.type === 'reversal' && entry.reversedEntryId) {
       const target = byId.get(entry.reversedEntryId);
-      const reductionInForce = entry.points > 0 || entry.createdAt >= LIFETIME_REDUCTIONS_FROM;
-      if (target && countsAsLifetimeCredit(target) && reductionInForce) total += entry.points;
+      if (target && countsAsCredit(target) && inForce(entry)) total += entry.points;
     }
   }
   return Math.max(0, total);
 }
 
 /**
- * SQL twin of computeLifetimePoints. Expects ledger rows aliased `le` and a
- * LEFT JOIN of each row's reversal target aliased `rt`
- * (`rt.id = le.reversed_entry_id`).
+ * SQL twin of computeLifetimePoints. Expects ledger rows aliased `le`, a LEFT
+ * JOIN of each row's reversal target aliased `rt` (`rt.id = le.reversed_entry_id`),
+ * and the cut-off as `cfg.reductions_from` (null = every reduction counts).
  */
-const CUTOFF_SQL = `timestamptz '${LIFETIME_REDUCTIONS_FROM.toISOString()}'`;
+const IN_FORCE = (alias: string) => `(${alias}.points > 0 or cfg.reductions_from is null or ${alias}.created_at >= cfg.reductions_from)`;
 export const LIFETIME_POINTS_SQL =
   `greatest(0, coalesce(sum(le.points) filter (where ` +
-  `(le.type in ('earn','adjustment') and (le.points > 0 or le.created_at >= ${CUTOFF_SQL}))` +
-  ` or (le.type = 'reversal' and rt.type in ('earn','adjustment') and (rt.points > 0 or rt.created_at >= ${CUTOFF_SQL})` +
-  ` and (le.points > 0 or le.created_at >= ${CUTOFF_SQL}))` +
+  `(le.type in ('earn','adjustment') and ${IN_FORCE('le')})` +
+  ` or (le.type = 'reversal' and rt.type in ('earn','adjustment') and ${IN_FORCE('rt')} and ${IN_FORCE('le')})` +
   `), 0))`;
+/** The `cfg` relation LIFETIME_POINTS_SQL reads: one row, the cut-off or null. */
+export const LIFETIME_CUTOFF_SQL =
+  `(select (select lifetime_reductions_from from loyalty_config where singleton = 'config' limit 1) as reductions_from) cfg`;
 
-export function computeBalance(entries: LoyaltyLedgerEntry[], now: Date): LoyaltyBalance {
+/**
+ * `lifetimeReductionsFrom` only shapes `lifetimeEarned` (see
+ * computeLifetimePoints); callers that show it pass the configured cut-off.
+ */
+export function computeBalance(entries: LoyaltyLedgerEntry[], now: Date, lifetimeReductionsFrom: Date | null = null): LoyaltyBalance {
   let signedTotal = 0;
   let pendingExpiry = 0;
   let lifetimeRedeemed = 0;
@@ -225,7 +225,7 @@ export function computeBalance(entries: LoyaltyLedgerEntry[], now: Date): Loyalt
     signedTotal += e.points;
     if (e.type === 'redeem') lifetimeRedeemed += -e.points;
   }
-  const lifetimeEarned = computeLifetimePoints(entries);
+  const lifetimeEarned = computeLifetimePoints(entries, lifetimeReductionsFrom);
   pendingExpiry = computeExpirableEarns(entries, now).reduce((sum, earn) => sum + earn.points, 0);
   return { available: signedTotal, pendingExpiry, lifetimeEarned, lifetimeRedeemed };
 }

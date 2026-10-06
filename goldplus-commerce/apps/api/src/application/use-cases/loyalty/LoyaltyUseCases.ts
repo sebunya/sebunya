@@ -163,7 +163,7 @@ export class GetLoyaltyHistoryUseCase {
     const entries = account ? await this.repo.listEntries(account.id) : [];
     return {
       programmeActive: await this.gate.isActive(),
-      balance: computeBalance(entries, new Date()),
+      balance: computeBalance(entries, new Date(), await this.repo.lifetimeReductionsFrom()),
       entries,
     };
   }
