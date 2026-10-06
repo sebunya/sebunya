@@ -8,6 +8,7 @@
  * third party, no cookies beyond first-party storage.
  */
 import { isInternalReferrerHost } from './internalReferrer';
+import { inAppReferrerHost } from './inAppBrowser';
 
 const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'] as const;
 const FIRST = 'gp_attr_first';
@@ -40,7 +41,9 @@ export function captureAttribution(): void {
   try {
     const utm = readUtm();
     const hasUtm = Object.keys(utm).length > 0;
-    const ref = externalReferrer();
+    let ref = externalReferrer();
+    // No referrer, no campaign, no click id, but opened in Snapchat's own browser: a Snapchat visit.
+    if (!ref && !hasUtm && !/[?&]ScCid=/.test(location.search)) { const h = inAppReferrerHost(navigator.userAgent || ''); if (h) ref = `https://${h}/`; }
     const now = new Date().toISOString();
     const touch = { ...utm, referrer: ref, landingPath: location.pathname.slice(0, 300), at: now };
 
@@ -62,6 +65,7 @@ function sourceFromReferrer(ref: string): string {
     if (/instagram\./.test(host)) return 'instagram';
     if (/t\.co|twitter\.|x\.com/.test(host)) return 'x';
     if (/tiktok\./.test(host)) return 'tiktok';
+    if (/snapchat\./.test(host)) return 'snapchat';
     if (/youtube\.|youtu\.be/.test(host)) return 'youtube';
     if (/wa\.me|whatsapp\./.test(host)) return 'whatsapp';
     return host;
