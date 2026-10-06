@@ -673,3 +673,24 @@ describe('Microsoft Advertising UET Conversions API contract (learn.microsoft.co
     expect(lead.customData.pageType).toBe('other');
   });
 });
+
+describe('Google Ads lead action', () => {
+  const cfg = { customerId: '1234567890', conversionActionId: '987654', apiVersion: 'v24' };
+  const lead = { ...purchase, event_name: 'generate_lead', ecommerce: undefined, user_data: { ...purchase.user_data, gclid: 'Cj0KCQ' } };
+  it('a lead is sent only when a lead action is saved, to that action, without a value', () => {
+    expect(adPlatformAccepts('google_ads', 'generate_lead', cfg)).toBe(false);
+    expect(buildAdRequest('google_ads', lead, cfg, '{}')).toBeNull();
+    const withLead = { ...cfg, leadConversionActionId: '555555' };
+    expect(adPlatformAccepts('google_ads', 'generate_lead', withLead)).toBe(true);
+    const c = (buildAdRequest('google_ads', lead, withLead, '{}')!.body as any).conversions[0];
+    expect(c.conversionAction).toBe('customers/1234567890/conversionActions/555555');
+    expect(c.conversionValue).toBeUndefined();
+    expect(c.currencyCode).toBeUndefined();
+    expect(c.orderId).toBe(lead.event_id);
+  });
+  it('a purchase keeps its shilling value (Google lists UGX) and its own action', () => {
+    const c = (buildAdRequest('google_ads', { ...purchase, user_data: { ...purchase.user_data, gclid: 'g' } }, { ...cfg, leadConversionActionId: '555555' }, '{}')!.body as any).conversions[0];
+    expect(c).toMatchObject({ conversionAction: 'customers/1234567890/conversionActions/987654', conversionValue: 145000, currencyCode: 'UGX', orderId: 'GP-1' });
+    expect(adPlatformAccepts('google_ads', 'add_to_cart', cfg)).toBe(false);
+  });
+});

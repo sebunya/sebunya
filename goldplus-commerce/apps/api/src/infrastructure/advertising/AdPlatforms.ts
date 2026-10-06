@@ -605,12 +605,15 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
     fields: [
       { key: 'customerId', label: 'Customer ID (10 digits, no dashes)', pattern: /^\d{10}$/, hint: 'Google Ads, top right' },
       { key: 'conversionActionId', label: 'Conversion action ID', pattern: /^\d{4,20}$/, hint: 'Must be an IMPORT action: Goals > Conversions > New > Import > "Conversions from clicks" (ctId in its URL). A website-tag action is refused. For sales without a click id, turn on "Enhanced conversions for leads".' },
+      { key: 'leadConversionActionId', label: 'Lead conversion action ID (optional)', pattern: /^\d{4,20}$/, optional: true, hint: 'A second IMPORT action ("Conversions from clicks", category Request quote or Contact, value "Don\'t use a value") for quote requests and WhatsApp taps from Google ad clicks. Leave empty to send purchases only' },
       { key: 'loginCustomerId', label: 'Manager account ID (if used)', pattern: /^(\d{10})?$/, hint: 'Only when access goes through an MCC', optional: true },
       { key: 'apiVersion', label: 'Google Ads API version', pattern: /^v\d{2}$/, hint: 'The newest version in Google Ads API release notes (e.g. v24). Versions sunset about a year after release: update it when Google announces a sunset.' },
     ],
     secretLabel: 'API credentials (JSON)',
     secretHint: '{"developerToken":"…","clientId":"….apps.googleusercontent.com","clientSecret":"…","refreshToken":"…"}',
-    events: { purchase: 'uploadClickConversions' },
+    events: { purchase: 'uploadClickConversions', generate_lead: 'uploadClickConversions (lead action)' },
+    // A lead goes only to its own action, and only when one is saved.
+    accepts(eventName, cfg) { return eventName === 'purchase' || (eventName === 'generate_lead' && !!cfg.leadConversionActionId); },
     async authorize(_req, _cfg, secret) {
       const c = parseJsonSecret(secret, ['developerToken', 'clientId', 'clientSecret', 'refreshToken']);
       const token = await googleAccessToken(c.clientId, c.clientSecret, c.refreshToken);
@@ -618,7 +621,9 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
     },
     replyError: (j) => { const e = (j as { partialFailureError?: { message?: string } })?.partialFailureError; return e ? `partial failure: ${String(e.message ?? '').slice(0, 300)}` : null; },
     build(e, cfg) {
-      if (e.event_name !== 'purchase') return null;
+      const isLead = e.event_name === 'generate_lead';
+      if (e.event_name !== 'purchase' && !(isLead && cfg.leadConversionActionId)) return null;
+      const action = isLead ? cfg.leadConversionActionId : cfg.conversionActionId;
       const ud = u(e);
       // A click id, or the hashed email/phone for enhanced conversions; neither = nothing to match.
       const gEmail = ud.hashed_email_google ?? ud.hashed_email;
@@ -632,8 +637,12 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
         // validateOnly: Google checks the upload and records nothing (Test mode).
         body: { partialFailure: true, ...(inTest(cfg) ? { validateOnly: true } : {}), conversions: [{
           ...(ud.gclid ? { gclid: ud.gclid } : ud.gbraid ? { gbraid: ud.gbraid } : ud.wbraid ? { wbraid: ud.wbraid } : {}),
-          conversionAction: `customers/${cfg.customerId}/conversionActions/${cfg.conversionActionId}`,
-          conversionDateTime: t, conversionValue: value(e), currencyCode: e.ecommerce?.currency ?? 'UGX', orderId: e.ecommerce?.transaction_id,
+          conversionAction: `customers/${cfg.customerId}/conversionActions/${action}`,
+          // Google lists UGX (Merchant Center supported currencies), so a sale
+          // keeps its shilling value. A lead states no value; its event id is
+          // the order id, so a retried upload is not counted twice.
+          conversionDateTime: t,
+          ...(isLead ? { orderId: e.event_id } : { conversionValue: value(e), currencyCode: e.ecommerce?.currency ?? 'UGX', orderId: e.ecommerce?.transaction_id }),
           ...(userIdentifiers.length ? { userIdentifiers } : {}),
         }] },
       };
