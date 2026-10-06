@@ -1,10 +1,11 @@
-# Container logs were unbounded (json-file keeps every line forever); on a
-# 75 GB disk with 12 services that is the quiet filler. 20 MB x 3 files per
-# container, about 720 MB in all, worst case.
+# Container logs were unbounded (json-file keeps every line forever). The
+# bound is the Storage Steward's policy (ops/storage-steward/policy.yaml:
+# log_max_size_mb 50, log_max_files 3); the Steward also writes it into
+# /etc/docker/daemon.json, and this keeps the compose file honest about it.
 x-goldplus-logging: &goldplus-logging
   driver: json-file
   options:
-    max-size: "20m"
+    max-size: "50m"
     max-file: "3"
 
 services:
