@@ -41,19 +41,22 @@ TARGET="$(head -1 "$TARGET_FILE" | tr -d '[:space:]')"
 list_local() { ( cd "$BACKUPS" && find . -type f \( -name '*.dump' -o -name '*.tar.gz' \) -printf '%s %P\n' 2>/dev/null \
   || find . -type f \( -name '*.dump' -o -name '*.tar.gz' \) -exec stat -f '%z %N' {} \; | sed 's# \./# #' ) | sort -k2; }
 
+# rsync --list-only prints "-rw-r--r--  159,799,130 2026/10/06 02:16:01 nightly/x.dump";
+# directories come as "drwx------ ... nightly" with NO trailing slash, so the
+# first character decides, not the name. Sizes may carry thousands separators.
+parse_rsync_listing() { awk '/^-/ { gsub(",", "", $2); print $2, $NF }' | sort -k2; }
+
 if [ -n "$LOCAL_ONLY" ]; then
   RSYNC_DEST="$LOCAL_ONLY/"
-  list_remote() { ( cd "$LOCAL_ONLY" && find . -type f \( -name '*.dump' -o -name '*.tar.gz' \) -printf '%s %P\n' 2>/dev/null \
-    || find . -type f \( -name '*.dump' -o -name '*.tar.gz' \) -exec stat -f '%z %N' {} \; | sed 's# \./# #' ) | sort -k2; }
   RSYNC_E=()
+  list_remote() { rsync -r --list-only --include='*/' --include='*.dump' --include='*.tar.gz' --exclude='*' "$RSYNC_DEST" | parse_rsync_listing; }
 else
   [ -r "$SSH_KEY" ] || { echo "STOP: ssh key $SSH_KEY not readable"; exit 1; }
   RSYNC_DEST="$TARGET/"
   RSYNC_E=(-e "ssh -p $SSH_PORT -i $SSH_KEY -o BatchMode=yes -o StrictHostKeyChecking=accept-new")
   REMOTE_HOST="${TARGET%%:*}"; REMOTE_DIR="${TARGET#*:}"
   # Storage Boxes offer sftp/rsync, not a shell: list through rsync itself.
-  list_remote() { rsync ${RSYNC_E[@]+"${RSYNC_E[@]}"} -r --list-only --include='*/' --include='*.dump' --include='*.tar.gz' --exclude='*' "$RSYNC_DEST" \
-    | awk '$NF != "." && $NF !~ /\/$/ { gsub(",", "", $2); print $2, $NF }' | sort -k2; }
+  list_remote() { rsync ${RSYNC_E[@]+"${RSYNC_E[@]}"} -r --list-only --include='*/' --include='*.dump' --include='*.tar.gz' --exclude='*' "$RSYNC_DEST" | parse_rsync_listing; }
 fi
 
 if [ "$MODE" = "sync" ]; then

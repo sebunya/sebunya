@@ -776,7 +776,7 @@ def docker_log_bounds(policy: dict, apply: bool) -> list[str]:
     return notes
 
 
-def prune_build_cache(policy: dict, apply: bool) -> tuple[int, str]:
+def build_cache_size() -> int:
     code, raw = run(["docker", "system", "df", "--format", "{{json .}}"], timeout=60)
     size = 0
     if code == 0:
@@ -787,13 +787,54 @@ def prune_build_cache(policy: dict, apply: bool) -> tuple[int, str]:
                 continue
             if str(row.get("Type", "")).lower().startswith("build"):
                 size = parse_size(row.get("Size", "0B"))
-    cap = policy["docker"]["build_cache_max_gb"] * GB
+    return size
+
+
+def build_cache_prune_flag() -> str | None:
+    """The flag this Docker understands for 'keep at most N bytes of cache'.
+
+    Docker 29 / buildx 0.19+ removed --keep-storage; its successor is
+    --max-used-space. The host runs 29.5.1. From the day it was upgraded,
+    every nightly prune failed with "unknown flag" and the housekeeper still
+    printed "trimmed towards 2 GB" (found 2026-10-06, 16 GB of cache against
+    a 2 GB bound). Ask the binary; never assume.
+    """
+    code, out = run(["docker", "builder", "prune", "--help"], timeout=30)
+    if code != 0:
+        return None
+    for flag in ("--max-used-space", "--keep-storage"):
+        if flag in out:
+            return flag
+    return None
+
+
+def prune_build_cache(policy: dict, apply: bool, state: "State | None" = None) -> tuple[int, str]:
+    size = build_cache_size()
+    bound_gb = policy["docker"]["build_cache_max_gb"]
+    cap = bound_gb * GB
     if size <= cap:
-        return 0, f"build cache {human(size)} is within its {policy['docker']['build_cache_max_gb']} GB bound"
+        return 0, f"build cache {human(size)} is within its {bound_gb} GB bound"
     if not apply:
         return size - cap, f"build cache {human(size)} exceeds bound; would reclaim to {human(cap)}"
-    run(["docker", "builder", "prune", "-f", "--keep-storage", str(cap)], timeout=600)
-    return size - cap, f"build cache trimmed towards {human(cap)}"
+    flag = build_cache_prune_flag()
+    if not flag:
+        msg = "build cache prune NOT run: this docker offers neither --max-used-space nor --keep-storage"
+        if state:
+            state.record_alert("HIGH", "build cache cannot be pruned", msg)
+        return 0, msg
+    code, out = run(["docker", "builder", "prune", "-f", flag, str(cap)], timeout=600)
+    after = build_cache_size()
+    if code != 0:
+        msg = f"build cache prune FAILED ({flag}): {out[:160]}"
+        if state:
+            state.record_alert("HIGH", "build cache prune failed", msg)
+        return 0, msg
+    if after > cap:
+        msg = f"build cache {human(after)} still above its {bound_gb} GB bound after prune ({flag})"
+        if state:
+            state.record_alert("WATCH", "build cache still over bound after prune", msg)
+        return size - after, msg
+    return size - after, f"build cache {human(size)} → {human(after)} ({flag}, bound {bound_gb} GB)"
 
 
 def backup_retention(state: State, policy: dict, apply: bool) -> list[str]:
@@ -1254,7 +1295,7 @@ def cmd_housekeep(args, policy: dict, state: State) -> int:
         print("")
         for note in docker_log_bounds(policy, apply):
             print(f"  logs      {note}")
-        freed, note = prune_build_cache(policy, apply)
+        freed, note = prune_build_cache(policy, apply, state)
         print(f"  build     {note}")
         for note in temp_ttl(policy, apply):
             print(f"  temp      {note}")

@@ -1,0 +1,11 @@
+# Instantiated by OnFailure=goldplus-alert@%n.service on any GoldPlus job.
+# Posts one line to ALERT_WEBHOOK_URL (an ntfy topic, a Slack or Discord
+# webhook) from /etc/goldplus/secrets/alerts.env. A timer job that fails at
+# 02:15 and tells nobody is a job that never ran.
+[Unit]
+Description=Tell the owner that %i failed
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/goldplus/secrets/alerts.env
+ExecStart=/bin/sh -c 'test -n "$ALERT_WEBHOOK_URL" && curl -fsS -m 10 -H "Title: GoldPlus job failed" -H "Content-Type: text/plain" --data-binary "[goldplus-prod CRITICAL] %i failed: $(journalctl -u %i -n 3 --no-pager -o cat | tail -c 400)" "$ALERT_WEBHOOK_URL" || echo "no ALERT_WEBHOOK_URL: %i failed and nobody was told"'

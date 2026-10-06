@@ -1,0 +1,12 @@
+[Unit]
+Description=GoldPlus restore drill: the offsite copy becomes a working database, compared with live
+After=docker.service network-online.target
+Wants=network-online.target
+OnFailure=goldplus-alert@%n.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/goldplus/app/goldplus-commerce/ops/backup/restore-drill.sh
+Nice=19
+IOSchedulingClass=idle
+CPUWeight=10

@@ -1,16 +1,19 @@
 # Nightly database + media backup, and the offsite copy
 
-Two timers. The first makes the backup, the second moves it off the machine and
-proves it arrived. Both are installed ON the production host (owner action).
+Three timers. The first makes the backup, the second moves it off the machine
+and proves it arrived, the third proves it can become a working database again.
+All are installed ON the production host (owner action). Any failure posts to
+the owner through `goldplus-alert@.service` (ALERT_WEBHOOK_URL).
 
-    02:15 UTC  goldplus-pg-backup.timer     ops/backup/pg-backup.sh      dump + media tar, kept 14 days locally
-    02:50 UTC  goldplus-offsite-sync.timer  ops/backup/offsite-sync.sh   rsync to the Storage Box, then verify
+    02:15 UTC       goldplus-pg-backup.timer      ops/backup/pg-backup.sh       dump + media tar, kept 14 days locally
+    02:50 UTC       goldplus-offsite-sync.timer   ops/backup/offsite-sync.sh    rsync to the Storage Box, then verify
+    1st Sun 03:30   goldplus-restore-drill.timer  ops/backup/restore-drill.sh   pull newest dump from the Box, restore, compare with live
 
 ## Install (once)
 
-    sudo cp ops/backup/goldplus-pg-backup.{service,timer} ops/backup/goldplus-offsite-sync.{service,timer} /etc/systemd/system/
+    sudo cp ops/backup/goldplus-{pg-backup,offsite-sync,restore-drill}.{service,timer} ops/backup/goldplus-alert@.service /etc/systemd/system/
     sudo systemctl daemon-reload
-    sudo systemctl enable --now goldplus-pg-backup.timer goldplus-offsite-sync.timer
+    sudo systemctl enable --now goldplus-pg-backup.timer goldplus-offsite-sync.timer goldplus-restore-drill.timer
     systemctl list-timers | grep goldplus
 
 ## The offsite target (once)
@@ -43,6 +46,16 @@ proves it arrived. Both are installed ON the production host (owner action).
     sudo ops/backup/offsite-sync.sh --verify
     cat /root/goldplus-db-backups/.offsite-verified-at
     journalctl -u goldplus-offsite-sync.service -n 5
+
+## Restore drill (the only proof that counts)
+
+    sudo ops/backup/restore-drill.sh            # from the Storage Box
+    sudo ops/backup/restore-drill.sh --local    # from this disk
+
+Ends with `DRILL OK: … restores to N tables; the five largest tables are within
+0.90 of live`, and writes the result to
+`/var/lib/goldplus-storage-steward/restore-drill.json`. Run it once by hand the
+day the Storage Box is set up.
 
 ## Restore
 
