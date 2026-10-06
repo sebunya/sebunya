@@ -12,7 +12,7 @@
 # (ops/backup/pg-backup.sh) keeps KEEP_DAYS of nightly sets itself.
 #
 # 2026-10-06: a first version of this file deleted backups by its own rule and
-# pruned Docker by another; it would have fought the Steward over the same
+# trimmed Docker by another; it would have fought the Steward over the same
 # directory and broken rule 4. Two cleaners on one folder is worse than none.
 set -euo pipefail
 have() { command -v "$1" >/dev/null 2>&1; }
