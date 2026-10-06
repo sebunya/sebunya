@@ -147,7 +147,7 @@ none of them is now a code change.
 | 6 | Earning basis | **Rule v1 retained** (order total). A v2 on subtotal is a new rule row whenever Rob wants it; changing it now would split history for zero live entries and no customer benefit. |
 | 7 | Additional earn sources | **verification_scan 25 (cap 5/day), counterfeit_report 250, phone_verification 100** — all ACTIVE |
 | 8 | Tiers | **T1 0 / T2 2,500 / T3 10,000 / T4 30,000**, service benefits only, ACTIVE |
-| 9 | Quests / badges | **3 missions** (five_deliveries, verify_ten, order_streak_3) + **6 badges**. Chance mechanics excluded. |
+| 9 | Quests / badges | **3 missions** (five_deliveries, refer_three, order_streak_3; verify_ten archived in 0174) + **6 badges**. Chance mechanics excluded. |
 | 10 | Dealers | **Excluded** from the consumer programme |
 | 11 | Guest backfill | **90 days / 5,000-point cap** |
 | 12 | Budget cap | **1,000,000 points**; breakage stays observed |

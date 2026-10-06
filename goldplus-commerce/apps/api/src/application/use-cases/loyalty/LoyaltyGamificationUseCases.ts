@@ -146,7 +146,7 @@ export class QualifyReferralOnDeliveryUseCase {
     private readonly notify: (input: { userId: string; points: number; kind: 'referrer' | 'referee' }) => Promise<unknown>,
   ) {}
 
-  async execute(input: { orderId: string; refereeUserId: string }): Promise<{ ok: true; status: 'awarded' | 'held' | 'none' } | Fail> {
+  async execute(input: { orderId: string; refereeUserId: string }): Promise<{ ok: true; status: 'awarded' | 'held' | 'none'; referrerUserId?: string } | Fail> {
     const config = await this.completion.getProgrammeConfig();
     if (!config.enabled || config.killSwitch) return fail('PROGRAMME_DISABLED', 'Programme inactive.');
     if (config.referralReferrerPoints === null || config.referralRefereePoints === null) {
@@ -195,7 +195,7 @@ export class QualifyReferralOnDeliveryUseCase {
     await this.gamification.awardBadgeByKey(referral.referrerUserId, 'referrer');
     await this.notify({ userId: referral.referrerUserId, points: config.referralReferrerPoints, kind: 'referrer' }).catch(() => undefined);
     await this.notify({ userId: input.refereeUserId, points: config.referralRefereePoints, kind: 'referee' }).catch(() => undefined);
-    return { ok: true, status: 'awarded' };
+    return { ok: true, status: 'awarded', referrerUserId: referral.referrerUserId };
   }
 }
 

@@ -3021,7 +3021,11 @@ export class Registry {
         if (source) {
           await this.gamificationRepo.awardBadgeByKey(source.userId, 'first_order').catch(() => undefined);
           await this.evaluateGamificationForUserUseCase.execute({ userId: source.userId }).catch(() => undefined);
-          await this.qualifyReferralOnDeliveryUseCase.execute({ orderId, refereeUserId: source.userId }).catch(() => undefined);
+          const referral = await this.qualifyReferralOnDeliveryUseCase.execute({ orderId, refereeUserId: source.userId }).catch(() => undefined);
+          // An awarded referral is the referrer's completion event (REFERRAL_COUNT, 0174).
+          if (referral?.ok && referral.status === 'awarded' && referral.referrerUserId) {
+            await this.evaluateGamificationForUserUseCase.execute({ userId: referral.referrerUserId }).catch(() => undefined);
+          }
           // 0088: a delivered order grants ONE scratch card. Idempotent on the
           // order id, so a replayed transition never mints a second card.
           await this.grantDrawTokenUseCase

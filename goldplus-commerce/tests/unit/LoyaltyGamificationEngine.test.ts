@@ -269,7 +269,7 @@ describe('referrals', () => {
     await new RecordReferralUseCase(completion as any, referrals as any).execute({ refereeUserId: 'newbie', code });
     referrals.deliveredCounts.set('newbie', 1);
     const uc = new QualifyReferralOnDeliveryUseCase(ledger as any, completion as any, referrals as any, gamification as any, async () => undefined);
-    expect(await uc.execute({ orderId: 'o1', refereeUserId: 'newbie' })).toMatchObject({ ok: true, status: 'awarded' });
+    expect(await uc.execute({ orderId: 'o1', refereeUserId: 'newbie' })).toMatchObject({ ok: true, status: 'awarded', referrerUserId: 'r1' });
     expect(ledger.pointsFor('r1')).toBe(200);
     expect(ledger.pointsFor('newbie')).toBe(100);
     expect(gamification.badges).toContainEqual({ userId: 'r1', badgeKey: 'referrer' });
