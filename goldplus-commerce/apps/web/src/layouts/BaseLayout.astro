@@ -161,6 +161,11 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
         runs cookieless. Advertising storage is off: no ad destination exists.
         One visitor id for the tag AND the server (GA client_id = `_fp_cid`,
         set by our server in middleware; written here only as a fallback). */}
+    {/* GTM loads after window load + idle, for every visitor (2026-10-08): the
+        container (gtm.js ~120 KB + gtag ~175 KB) requested in the head shared the
+        link with the hero image and cost mobile LCP. gtm.start keeps the real
+        page-start time and dataLayer queues anything pushed meanwhile, so no event
+        is lost; sales events are sent server-side regardless. */}
     {measurement.configured && (
       <script nonce={Astro.locals.cspNonce} define:vars={{ metricsUrl: measurement.metricsUrl, gtmId: measurement.gtmId, userId: Astro.locals.gpUserId ?? null }}>
         (function () {
@@ -181,11 +186,6 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
           document.cookie = '_fp_cid=' + cid + '; expires=' + new Date(Date.now() + 365 * 864e5).toUTCString() + '; path=/; SameSite=Lax; Secure';
         }
         dataLayer.push(userId ? { fp_client_id: cid, user_id: userId } : { fp_client_id: cid });
-        // The container (gtm.js ~120 KB + gtag ~175 KB) is fetched once the page
-        // has loaded and the main thread is idle, for every visitor: requested in
-        // the head it shared the link with the hero image and cost mobile LCP.
-        // gtm.start keeps the real page-start time and dataLayer queues whatever
-        // is pushed meanwhile, so no event is lost; sales events go server-side.
         window.dataLayer.push({'gtm.start': new Date().getTime(), event: 'gtm.js'});
         var gtmLoaded = false;
         function loadGtm(){
