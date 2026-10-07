@@ -104,8 +104,9 @@ describe('security and sessions', () => {
 
   it('a second SUCCESS webhook for a paid order is held for review, not crashed', () => {
     const src = read('apps/api/src/infrastructure/db/repositories/DrizzlePaymentRepository.ts');
-    expect(src).toMatch(/const alreadyPaid = input\.outcome === 'SUCCESS' && order\.paymentStatus === 'paid';/);
-    expect(src).toMatch(/const requiresReview = requestedReview \|\| alreadyPaid;/);
+    // Read on the locked row since 2026-10-07 (two webhooks race here).
+    expect(src).toMatch(/const alreadyPaid = input\.outcome === 'SUCCESS' && locked\?\.paymentStatus === 'paid';/);
+    expect(src).toMatch(/const requiresReview = requestedReview \|\| alreadyPaid \|\| cannotProcess;/);
   });
 
   it('a public battery page exists only for a published battery', () => {

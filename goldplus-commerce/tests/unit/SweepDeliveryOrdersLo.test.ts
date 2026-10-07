@@ -361,7 +361,7 @@ describe('track order tells the truth about money, contrast and totals', () => {
   });
 
   it('the follow-up goes through the verified endpoint that uses the order\'s own phone', () => {
-    expect(page).toMatch(/postJson\('\/commerce\/orders\/lookup\/followup', \{ reference, contact, note \}\)/);
+    expect(page).toMatch(/postJson\('\/commerce\/orders\/lookup\/followup', \{ reference, contact, note \}, null, readClientAddress\(Astro\)\)/);
     expect(page).not.toMatch(/phone: isEmail \? '' : contact/);
   });
 
