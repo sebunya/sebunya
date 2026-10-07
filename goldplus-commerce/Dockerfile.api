@@ -9,6 +9,8 @@ WORKDIR /app
 FROM base AS builder
 # Copy configuration files
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+# SheetJS ships fixed releases outside npm; the reviewed tarball is vendored (sha256 in vendor/README.md).
+COPY vendor ./vendor
 COPY apps/api/package.json ./apps/api/
 COPY packages/shared/package.json ./packages/shared/
 
