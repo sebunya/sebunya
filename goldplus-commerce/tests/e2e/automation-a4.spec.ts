@@ -5,7 +5,6 @@ import { db, endDbConnection } from '../../apps/api/src/infrastructure/db/client
 import { Hs256TokenSigner } from '../../apps/api/src/infrastructure/security/Hs256TokenSigner';
 import { users, roles, permissions, rolePermissions, userRoles } from '../../apps/api/src/infrastructure/db/schema/identity';
 import { automationDefinitions, automationEvents } from '../../apps/api/src/infrastructure/db/schema/automation';
-import { auditLogs } from '../../apps/api/src/infrastructure/db/schema/system';
 
 const actorId = randomUUID();
 const roleId = randomUUID();
@@ -14,6 +13,10 @@ let definitionId = '';
 let token = '';
 
 test.describe.configure({ mode: 'serial' });
+
+// Unique per run: the desktop and mobile projects run at once, and two
+// fixtures with one name made the visibility check ambiguous.
+const FIXTURE_NAME = `A4 browser persistence proof ${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 test.beforeAll(async () => {
   if (process.env.NODE_ENV === 'production') throw new Error('REFUSING_TO_RUN_IN_PRODUCTION');
@@ -43,7 +46,7 @@ test.beforeAll(async () => {
   token = await new Hs256TokenSigner().sign({ subject: actorId, email: `a4-browser-${actorId}@fixture.local`, ttlSeconds: 600 });
   const response = await fetch('http://127.0.0.1:3000/admin/automation/definitions', {
     method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name: 'A4 browser persistence proof', description: 'Real scratch persistence; removed after browser proof.' }),
+    body: JSON.stringify({ name: FIXTURE_NAME, description: 'Real scratch persistence; removed after browser proof.' }),
   });
   const body = await response.json() as any;
   if (!response.ok || !body.success) throw new Error(`A4 browser fixture API failed: ${response.status}`);
@@ -52,7 +55,7 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   if (definitionId) {
-    await db.delete(auditLogs).where(eq(auditLogs.entityId, definitionId));
+    // audit_logs is append-only (0055): its rows stay, as they would in production.
     await db.delete(automationEvents).where(eq(automationEvents.definitionId, definitionId));
     await db.delete(automationDefinitions).where(eq(automationDefinitions.id, definitionId));
   }
@@ -69,7 +72,7 @@ test('renders the protected control room from real API persistence', async ({ pa
   const response = await page.goto('/admin/automation');
   expect(response?.status()).toBe(200);
   await expect(page.getByRole('heading', { name: 'Automation control room' })).toBeVisible();
-  await expect(page.getByText('A4 browser persistence proof')).toBeVisible();
+  await expect(page.getByText(FIXTURE_NAME)).toBeVisible();
   await expect(page.getByText('Empty — no persisted executions exist.')).toBeVisible();
   await expect(page.getByText(/This is persisted evidence, not provider mock status/)).toBeVisible();
   await page.getByText('Truthful state glossary').click();

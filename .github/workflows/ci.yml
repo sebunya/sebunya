@@ -150,8 +150,41 @@ jobs:
           exit-code: '1'
           ignore-unfixed: true
 
+  # The browser suite needs a running shop. Until 2026-10-07 this job started
+  # nothing, so all ~370 tests failed with "connection refused" and the job
+  # was ignored. Now: real Postgres + Redis, migrated and seeded, the API (tsx,
+  # as in dev: the shared package is TypeScript) and the built website, then
+  # Chromium desktop + mobile. Admin-only specs skip without E2E_ADMIN_*.
   e2e-playwright:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: goldplus_e2e
+        ports: [ '5432:5432' ]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: [ '6379:6379' ]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/goldplus_e2e
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-only-test-jwt-secret-000000000000000000000000
+      IDENTITY_HASH_PEPPER: ci-only-test-identity-pepper-0000000000000000
+      MTN_WEBHOOK_SECRET: ci-only-test-mtn-webhook-secret-0000
+      AIRTEL_WEBHOOK_SECRET: ci-only-test-airtel-webhook-secret-0000
+      PUBLIC_API_BASE_URL: http://127.0.0.1:3000
+      INTERNAL_API_ORIGIN: http://127.0.0.1:3000
+      PROXY_TOPOLOGY_MODE: DIRECT
+      NODE_ENV: development
+      E2E_WEB_BASE: http://127.0.0.1:4321
+      E2E_API_BASE: http://127.0.0.1:3000
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -163,6 +196,21 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: goldplus-commerce/pnpm-lock.yaml
       - run: pnpm install
+      - run: pnpm -F @goldplus/api db:migrate
+      - run: pnpm exec tsx scripts/seed.ts
+      - run: pnpm build
+      - name: Start API and website
+        run: |
+          (cd apps/api && nohup pnpm exec tsx src/interfaces/http/server.ts > /tmp/api.log 2>&1 &)
+          (HOST=127.0.0.1 PORT=4321 nohup node apps/web/dist/server/entry.mjs > /tmp/web.log 2>&1 &)
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:3000/health/live >/dev/null && curl -sf http://127.0.0.1:4321/ >/dev/null && exit 0
+            sleep 2
+          done
+          echo "API or website never came up"; tail -40 /tmp/api.log; tail -40 /tmp/web.log; exit 1
       - run: pnpm exec playwright install --with-deps chromium
       - name: Playwright e2e (isolated data; no real payments/messages/provider events)
-        run: pnpm test:e2e
+        run: pnpm exec playwright test --project=chromium-desktop --project=chromium-mobile
+      - name: Server logs on failure
+        if: failure()
+        run: tail -80 /tmp/api.log; tail -40 /tmp/web.log

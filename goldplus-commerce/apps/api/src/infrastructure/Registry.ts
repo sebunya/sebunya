@@ -1,3 +1,4 @@
+import { ReholdStockOnLatePaymentUseCase } from '../application/use-cases/payments/ReholdStockOnLatePaymentUseCase';
 import './logging/appLoggerBinding';
 import { PERMISSIONS as SHARED_PERMISSIONS, toEatParts } from '@goldplus/shared';
 import { MeasurementOperationsUseCases } from '../application/use-cases/measurement/MeasurementOperationsUseCases';
@@ -1209,6 +1210,7 @@ export class Registry {
   public readonly recordPackingExceptionUseCase = new RecordPackingExceptionUseCase(this.packingSessionRepo, this.auditRepo);
   // Inventory ledger (Section 12): reservation, release, consumption, availability.
   public readonly inventoryRepo = new DrizzleInventoryRepository();
+  public readonly reholdStockOnLatePaymentUseCase = new ReholdStockOnLatePaymentUseCase(this.inventoryRepo, this.auditRepo);
   public readonly orderReservationState = new DrizzleOrderReservationState();
   public readonly checkoutIdempotencyRepo = new DrizzleCheckoutIdempotencyRepository();
 
@@ -3049,6 +3051,11 @@ export class Registry {
             .execute({ trigger: 'order_delivered', userId: source.userId, sourceType: 'order', sourceId: orderId })
             .catch(() => undefined);
         }
+      }
+      if (toStatus === 'processing' && ctx.paymentStatus === 'paid') {
+        // Paid after the stock hold expired: hold it again, or flag it.
+        await this.reholdStockOnLatePaymentUseCase.execute(orderId)
+          .catch((err: unknown) => logger.error({ orderId, err: err instanceof Error ? err.message : String(err) }, 'late-payment stock re-hold failed'));
       }
       if (toStatus === 'delivered' || toStatus === 'completed') {
         // Goods that left the shop use up their reservation. Dispatch consumes

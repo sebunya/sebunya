@@ -306,6 +306,7 @@ export class ReserveRedemptionUseCase {
       // The check above is an early exit; this is the one that actually holds,
       // because it is applied inside the same transaction as the insert.
       maxTotalReservedPoints: spendable,
+      ledgerPointsAtRead: entries.reduce((sum, e) => sum + e.points, 0),
       accountId: account.id,
       orderId: null,
       pointsReserved: plan.points,

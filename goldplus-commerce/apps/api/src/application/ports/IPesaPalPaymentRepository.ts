@@ -35,7 +35,8 @@ export interface IPesaPalPaymentRepository {
   findByTrackingId(orderTrackingId: string): Promise<RecordedPaymentAttempt | null>;
 
   updatePaymentAttemptStatus(id: string, update: {
-    status: string;
+    /** Omitted: only the timestamps are stamped and the current status stands. */
+    status?: string;
     orderTrackingId?: string | null;
     redirectUrl?: string | null;
     ipnReceivedAt?: Date | null;

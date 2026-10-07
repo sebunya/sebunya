@@ -411,10 +411,44 @@ export class DrizzleInventoryRepository implements IInventoryRepository {
    * the guard's inspection window around `.update(orders)` contains nothing
    * but these two fields.
    */
+  /**
+   * Hold again the stock of an order whose holds were RELEASED (expired unpaid)
+   * but which has now been paid. All or nothing: every released line is held
+   * again, or none is and the short lines are returned. Products are locked in
+   * id order, as reserveOnce locks them, so this cannot deadlock against it.
+   */
+  async reacquireReleasedForOrder(orderId: string): Promise<{ ok: true; lines: number } | { ok: false; short: Array<{ productId: string; wanted: number; available: number }> }> {
+    return withTransactionRetry(() => db.transaction(async (tx) => {
+      const released = await tx.select().from(inventoryReservations)
+        .where(and(eq(inventoryReservations.orderId, orderId), eq(inventoryReservations.status, 'released')))
+        .for('update');
+      if (released.length === 0) return { ok: true as const, lines: 0 };
+      const ids = [...new Set(released.map((r) => r.productId))].sort();
+      const stock = await tx.select({ id: products.id, stock: products.stockQuantity, reserved: products.reservedQuantity })
+        .from(products).where(inArray(products.id, ids)).orderBy(products.id).for('update');
+      const byId = new Map(stock.map((p) => [p.id, p]));
+      const short = released
+        .filter((r) => r.reservedQuantity > 0)
+        .map((r) => ({ productId: r.productId, wanted: r.reservedQuantity, available: Math.max(0, (byId.get(r.productId)?.stock ?? 0) - (byId.get(r.productId)?.reserved ?? 0)) }))
+        .filter((l) => l.available < l.wanted);
+      if (short.length > 0) return { ok: false as const, short };
+      for (const r of released) {
+        if (r.reservedQuantity > 0) {
+          await tx.update(products)
+            .set({ reservedQuantity: sql`${products.reservedQuantity} + ${r.reservedQuantity}` })
+            .where(eq(products.id, r.productId));
+        }
+        await tx.update(inventoryReservations).set({ status: 'reserved', updatedAt: new Date() }).where(eq(inventoryReservations.id, r.id));
+      }
+      await this.mirrorOrderReservationState(tx, orderId, 'RESERVED');
+      return { ok: true as const, lines: released.length };
+    }));
+  }
+
   private async mirrorOrderReservationState(
     tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
     orderId: string,
-    state: 'RELEASED' | 'CONSUMED',
+    state: 'RELEASED' | 'CONSUMED' | 'RESERVED',
   ): Promise<void> {
     await tx
       .update(orders)

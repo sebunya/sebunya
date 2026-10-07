@@ -44,6 +44,12 @@ export interface ILoyaltyCompletionRepository {
      * reserve the same points twice.
      */
     maxTotalReservedPoints?: number;
+    /**
+     * Sum of the ledger points the ceiling was computed from (this account and
+     * accounts merged into it). Re-read under the ledger lock: if points were
+     * spent since, the ceiling drops by exactly that much.
+     */
+    ledgerPointsAtRead?: number;
     accountId: string;
     orderId: string | null;
     pointsReserved: number;

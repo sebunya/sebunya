@@ -114,8 +114,9 @@ export class VerifyPesaPalPaymentUseCase {
 
     // Mark attempt webhook/callback received timestamp
     const now = new Date();
+    // Timestamps only: re-stamping the status read above could write it over a
+    // newer one (the IPN completing the attempt between that read and this).
     await this.paymentRepo.updatePaymentAttemptStatus(attempt.id, {
-      status: attempt.status,
       callbackReceivedAt: input.source === 'callback' ? now : undefined,
       ipnReceivedAt: input.source === 'ipn' ? now : undefined,
     });
