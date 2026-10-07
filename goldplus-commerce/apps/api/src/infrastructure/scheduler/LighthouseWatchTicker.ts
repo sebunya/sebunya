@@ -1,7 +1,7 @@
 import * as client from 'prom-client';
 import { Registry } from '../Registry';
 import { logger } from '../logging/logger';
-import { LIGHTHOUSE_ALERT_KIND, LIGHTHOUSE_CATEGORIES, describeShortfall, evaluateLighthouse, targetsFromEnv, type LighthouseLabSummary } from '../../application/use-cases/seo-growth/LighthouseWatchUseCases';
+import { LIGHTHOUSE_ALERT_KIND, LIGHTHOUSE_CATEGORIES, describeShortfall, evaluateLighthouse, lighthouseStaleness, targetsFromEnv, type LighthouseLabSummary } from '../../application/use-cases/seo-growth/LighthouseWatchUseCases';
 
 /**
  * Lighthouse Watch ticker (2026-09-13).
@@ -35,19 +35,6 @@ const scoreGauge = new client.Gauge({
 });
 try { client.register.registerMetric(scoreGauge); } catch { /* already registered */ }
 
-/**
- * Is the newest stored measurement too old? The watch runs weekly; a run that
- * silently failed or a timer that never fired would otherwise leave last
- * month's scores looking current. Measurements without a fetchTime are unknown,
- * never fresh. Exported for the unit test.
- */
-export function lighthouseStaleness(summaries: Array<{ fetchTime: string | null }>, nowMs: number, maxAgeDays = 8): { stale: boolean; newestAt: string | null; ageDays: number | null } {
-  const times = summaries.map((s) => (s.fetchTime ? Date.parse(s.fetchTime) : NaN)).filter((t) => Number.isFinite(t));
-  if (times.length === 0) return { stale: true, newestAt: null, ageDays: null };
-  const newest = Math.max(...times);
-  const ageDays = (nowMs - newest) / 86_400_000;
-  return { stale: ageDays > maxAgeDays, newestAt: new Date(newest).toISOString(), ageDays: Math.round(ageDays * 10) / 10 };
-}
 const STALE_AFTER_DAYS = envInt('LIGHTHOUSE_WATCH_STALE_DAYS', 8);
 
 let pullTimer: NodeJS.Timeout | null = null;

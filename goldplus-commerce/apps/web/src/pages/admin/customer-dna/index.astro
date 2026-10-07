@@ -17,6 +17,7 @@ interface Profile {
 }
 interface Conflict { signalType: string; identifierMasked: string; status: string; createdAt: string; }
 let results: Profile[] = [];
+let stageCounts: Record<string, number> = {};
 let conflicts: Conflict[] = [];
 let loadFailed = false;
 let permissionDenied = false;
@@ -29,7 +30,7 @@ try {
   if (rRes.status === 403) permissionDenied = true;
   else {
     const j = await rRes.json().catch(() => null);
-    if (j?.success) results = j.data.results;
+    if (j?.success) { results = j.data.results; stageCounts = j.data.stageCounts ?? {}; }
     else { loadFailed = true; apiError = `Search responded with HTTP ${rRes.status}.`; }
   }
   const cj = await cRes.json().catch(() => null);
@@ -39,6 +40,19 @@ try {
   apiError = "The Customer DNA API is currently unreachable.";
 }
 
+// Lifecycle stages in the order a customer moves through them, with what each means.
+const STAGES: Array<[string, string]> = [
+  ["PROSPECT", "no purchase yet"],
+  ["NEW_CUSTOMER", "first purchase, last 30 days"],
+  ["ACTIVATING", "2–3 purchases, recent"],
+  ["ACTIVE", "bought in the last 60 days"],
+  ["AT_RISK", "61–120 days since last purchase"],
+  ["LAPSED", "over 120 days"],
+  ["WIN_BACK", "came back after 120+ days away"],
+  ["UNKNOWN", "not computed yet"],
+];
+const totalProfiles = Object.values(stageCounts).reduce((a, b) => a + b, 0);
+const count = new Intl.NumberFormat("en-UG");
 function confChip(c: string) {
   switch (c) {
     case "VERIFIED": return "bg-green-50 text-green-700 border-green-200";
@@ -54,7 +68,7 @@ function confChip(c: string) {
   <div class="container mx-auto px-6 lg:px-8 max-w-5xl">
     <div class="mb-8 pb-6 border-b border-gray-200">
       <h2 class="text-2xl font-black text-brand-dark tracking-tight">Customer DNA</h2>
-      <p class="text-sm text-gray-500 mt-1">Search canonical customer profiles. Every attribute is a truthful projection — never a fabricated value.</p>
+      <p class="text-sm text-gray-500 mt-1">Who your customers are and where each one is in their buying life. Most recently seen first.</p>
     </div>
 
     {permissionDenied && <div class="bg-red-50 border border-red-200 text-red-800 px-6 py-4 rounded-2xl text-sm mb-6"><strong>Not permitted.</strong> Your account cannot view Customer DNA.</div>}
@@ -69,17 +83,32 @@ function confChip(c: string) {
       </div>
     )}
 
+    {totalProfiles > 0 && (
+      <div class="mb-8">
+        <h3 class="text-[10px] font-black uppercase tracking-wider text-gray-500 mb-2">Customers by stage ({count.format(totalProfiles)})</h3>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {STAGES.filter(([k]) => stageCounts[k]).map(([k, meaning]) => (
+            <div class="bg-white border border-gray-200 rounded-xl px-3 py-2.5">
+              <div class="text-lg font-black text-brand-dark tabular-nums">{count.format(stageCounts[k])}</div>
+              <div class="text-[11px] font-bold text-gray-700">{k.replace(/_/g, " ")}</div>
+              <div class="text-[10px] text-gray-500">{meaning}</div>
+            </div>
+          ))}
+        </div>
+        <p class="text-[11px] text-gray-500 mt-2">Counts only paid purchases (online, or cash on delivery once delivered). Stages are recalculated every night.</p>
+      </div>
+    )}
     <form method="GET" class="flex items-end gap-3 mb-8">
       <div class="flex-1">
-        <label for="q" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Search (canonical id or account id)</label>
-        <input id="q" name="q" type="text" value={q} placeholder="paste a customer or account id" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-primaryInk" />
+        <label for="q" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Find a customer (email, phone or id)</label>
+        <input id="q" name="q" type="text" value={q} placeholder="e.g. jane@gmail.com or 0772 123456" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs font-bold text-brand-dark placeholder-gray-300 outline-none focus:border-brand-primaryInk" />
       </div>
       <button type="submit" class="bg-brand-dark text-white text-xs font-bold px-5 py-2.5 rounded-xl hover:opacity-90">Search</button>
     </form>
 
     {!loadFailed && !permissionDenied && results.length === 0 && (
       <div class="bg-white border border-gray-200 rounded-2xl p-10 text-center text-gray-500 text-sm">
-        {q ? "No profiles match that search." : "Not connected: no profile pipeline runs, so no customer profiles are created. Lifecycle, at-risk and next-best-action figures stay empty until one does."}
+        {q ? "No customer matches that email, phone or id." : "No customer profiles yet. They are created each night from orders, and appear here after the first run."}
       </div>
     )}
 

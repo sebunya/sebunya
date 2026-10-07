@@ -248,6 +248,12 @@ metrics.shopgoldplus.com {
     header_up X-Forwarded-For   {client_ip}
     header_up X-Real-IP         {client_ip}
     header_up X-Forwarded-Proto https
+    # Google's tag frames this host from the storefront; the tagging server's
+    # own X-Frame-Options: SAMEORIGIN refused that (a different origin), which
+    # logged a console error on every page and cost Lighthouse Best Practices.
+    # frame-ancestors keeps the protection, naming the two storefront origins.
+    header_down -X-Frame-Options
+    header_down Content-Security-Policy "frame-ancestors https://shopgoldplus.com https://www.shopgoldplus.com"
   }
 }
 

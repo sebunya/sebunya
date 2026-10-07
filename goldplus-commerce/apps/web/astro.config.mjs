@@ -1,5 +1,4 @@
-import { defineConfig } from 'astro/config';
-import tailwind from '@astrojs/tailwind';
+import { defineConfig, passthroughImageService } from 'astro/config';
 import node from '@astrojs/node';
 import sentry from '@sentry/astro';
 
@@ -12,14 +11,17 @@ const sentryDsn = process.env.PUBLIC_SENTRY_DSN || process.env.SENTRY_DSN;
 
 export default defineConfig({
   output: 'server',
+  // The site never uses astro:assets (images come from the API's own pipeline),
+  // so Astro does not decode images at all: no /_image processing, and the
+  // AVIF/libheif path behind GHSA-26w7-cxv4-gfx2 cannot be reached.
+  image: { service: passthroughImageService() },
   adapter: node({
     mode: 'standalone'
   }),
   integrations: [
-    // applyBaseStyles: false — the @tailwind directives live in src/styles/global.css
-    // (storefront config) and src/styles/admin.css (full config); the integration's
-    // injected base would add the full-config utilities to every page again.
-    tailwind({ applyBaseStyles: false }),
+    // Tailwind runs through postcss.config.mjs (Astro 6+ has no Tailwind
+    // integration). The @tailwind directives live in src/styles/global.css
+    // (storefront config) and src/styles/admin.css (full config).
     ...(sentryDsn
       ? [sentry({ dsn: sentryDsn, sourceMapsUploadOptions: { telemetry: false } })]
       : []),

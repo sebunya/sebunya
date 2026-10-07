@@ -69,7 +69,8 @@ export class DrizzlePaymentAttemptRepository implements IPesaPalPaymentRepositor
   }
 
   async updatePaymentAttemptStatus(id: string, update: {
-    status: string;
+    /** Omitted: only the timestamps are stamped and the current status stands. */
+    status?: string;
     orderTrackingId?: string | null;
     redirectUrl?: string | null;
     ipnReceivedAt?: Date | null;
@@ -80,12 +81,18 @@ export class DrizzlePaymentAttemptRepository implements IPesaPalPaymentRepositor
     // production held five attempts trapped in `pending` from May to August.
     // An illegal move throws — a warning on a money path is a log line nobody
     // reads. A self-loop (re-stamping timestamps) is legal.
-    const current = await db.query.paymentAttempts.findFirst({ where: eq(paymentAttempts.id, id) });
-    if (current) assertAttemptTransition(current.status, update.status, { providerConfirmed: update.providerConfirmed });
-    const [row] = await db
+    //
+    // Checked and written under a row lock: the callback and the IPN arrive
+    // within milliseconds, and an unlocked read let one write its decision
+    // over the other's newer status (completed put back to pending).
+    return db.transaction(async (tx) => {
+    const [current] = await tx.select({ status: paymentAttempts.status }).from(paymentAttempts).where(eq(paymentAttempts.id, id)).for('update');
+    const nextStatus = update.status ?? current?.status;
+    if (current && update.status !== undefined) assertAttemptTransition(current.status, update.status, { providerConfirmed: update.providerConfirmed });
+    const [row] = await tx
       .update(paymentAttempts)
       .set({
-        status: update.status,
+        status: nextStatus,
         orderTrackingId: update.orderTrackingId !== undefined ? update.orderTrackingId : undefined,
         redirectUrl: update.redirectUrl !== undefined ? update.redirectUrl : undefined,
         ipnReceivedAt: update.ipnReceivedAt !== undefined ? update.ipnReceivedAt : undefined,
@@ -95,6 +102,7 @@ export class DrizzlePaymentAttemptRepository implements IPesaPalPaymentRepositor
       .where(eq(paymentAttempts.id, id))
       .returning();
     return rowToPaymentAttempt(row);
+    });
   }
 
   async updateOrderPaymentStatusSafely(
@@ -109,26 +117,26 @@ export class DrizzlePaymentAttemptRepository implements IPesaPalPaymentRepositor
     // about the declined sibling used to write `failed` over `paid` and un-pay a
     // paid order. A refused move is normal, not an error — it is logged and
     // skipped, never thrown, so a provider retry cannot become a 500.
-    const current = await db.query.orders.findFirst({
-      where: eq(orders.id, orderId),
-      columns: { paymentStatus: true },
+    // Decided on the LOCKED row (two notifications race here).
+    return db.transaction(async (tx) => {
+      const [current] = await tx.select({ paymentStatus: orders.paymentStatus }).from(orders).where(eq(orders.id, orderId)).for('update');
+      const decision = orderPaymentWriteDecision(String(current?.paymentStatus ?? ''), status);
+      if (!decision.write) {
+        logger.warn(
+          { orderId, from: current?.paymentStatus, to: status, reason: decision.reason },
+          '[payments] order payment status write refused: a later fact about the money already stands',
+        );
+        return false;
+      }
+      await tx
+        .update(orders)
+        .set({
+          paymentStatus: status,
+          updatedAt: new Date(),
+        })
+        .where(eq(orders.id, orderId));
+      return true;
     });
-    const decision = orderPaymentWriteDecision(String(current?.paymentStatus ?? ''), status);
-    if (!decision.write) {
-      logger.warn(
-        { orderId, from: current?.paymentStatus, to: status, reason: decision.reason },
-        '[payments] order payment status write refused: a later fact about the money already stands',
-      );
-      return false;
-    }
-    await db
-      .update(orders)
-      .set({
-        paymentStatus: status,
-        updatedAt: new Date(),
-      })
-      .where(eq(orders.id, orderId));
-    return true;
   }
 
   async findAttemptsByOrderId(orderId: string): Promise<RecordedPaymentAttempt[]> {

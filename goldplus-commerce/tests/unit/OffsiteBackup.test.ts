@@ -70,6 +70,10 @@ describe('ops/backup/offsite-sync.sh', () => {
     const s = read('ops/backup/offsite-sync.sh');
     expect(s).not.toMatch(/--delete/);
     expect(s).toMatch(/--ignore-existing/);
+    // A cut-off transfer must not sit under its final name, or --ignore-existing
+    // skips it forever and the offsite copy stays truncated.
+    expect(s).toMatch(/--partial-dir=/);
+    expect(s).not.toMatch(/^\s*rsync [^\n]*--partial(?!-dir)/m);
   });
 
   it('the timer runs after the nightly dump and both units are installable', () => {
@@ -131,8 +135,11 @@ describe('deploy-prod.sh and compose hygiene', () => {
     // Age alone left a busy day unbounded (21.3 GB on 2026-10-06).
     expect(d).toContain('docker builder prune -f --filter until=24h');
     expect(d).toContain('CACHE_CAP_GB="${BUILD_CACHE_MAX_GB:-2}"');
-    // Docker 29 removed --keep-storage: detect the flag, never assume it.
+    // Docker 29 removed --keep-storage: detect the flag, never assume it, and
+    // never via `--help | grep -q` (SIGPIPE under pipefail makes it look absent).
     expect(d).toMatch(/for f in --max-used-space --keep-storage; do/);
+    expect(d).toContain('CACHE_HELP="$(docker builder prune --help 2>/dev/null || true)"');
+    expect(d).not.toMatch(/prune --help[^\n]*\| *grep -q/);
     expect(d).toContain('docker builder prune -f "$CACHE_FLAG" "$(( CACHE_CAP_GB * 1024 * 1024 * 1024 ))"');
     // A failed cap is said out loud, never swallowed; a "successful" one is re-measured.
     expect(d).toContain('WARN: build cache cap');
@@ -143,9 +150,76 @@ describe('deploy-prod.sh and compose hygiene', () => {
     expect(d).not.toMatch(/builder prune -a|builder prune -af|builder prune --all/);
   });
 
+  it('a migration removes older migrator images, keeping the one it used, and never fails on it', () => {
+    const m = read('scripts/migrate-prod.sh');
+    const tail = m.slice(m.indexOf('echo "MIGRATED live'));
+    expect(tail).toContain('docker images goldplus-migrator');
+    expect(tail).toContain('grep -vxF "$MIG"');
+    expect(tail).toMatch(/xargs -r docker image rm[^\n]*\|\| true/);
+  });
+
   it('pghero credentials default to empty instead of warning on every compose command', () => {
     const c = read('docker-compose.production.yml');
     expect(c).toContain('PGHERO_USERNAME=${PGHERO_USERNAME:-}');
     expect(c).toContain('PGHERO_PASSWORD=${PGHERO_PASSWORD:-}');
+  });
+});
+
+describe('review fixes 2026-10-07', () => {
+  it('the deploy gate counts only "(healthy)" replicas, never "(unhealthy)" ones', () => {
+    const d = read('scripts/deploy-prod.sh');
+    const m = d.match(/grep -cE "\(\$\(echo \$SERVICES \| tr ' ' '\|'\)\)(-\[12\] [^"]*)"/);
+    expect(m).not.toBeNull();
+    const re = new RegExp(`(api|web)${m![1]}`);
+    expect(re.test('goldplus-commerce-api-1 Up 2 minutes (healthy)')).toBe(true);
+    expect(re.test('goldplus-commerce-api-1 Up 45 seconds (unhealthy)')).toBe(false);
+    expect(re.test('goldplus-commerce-api-1 Up 3 seconds (health: starting)')).toBe(false);
+  });
+
+  it('the admin guard refuses a malformed session cookie and any 4xx', () => {
+    const m = read('apps/web/src/middleware.ts');
+    expect(m).toMatch(/try \{ bearer = decodeURIComponent\(token\); \} catch \{ return false; \}/);
+    expect(m).toMatch(/if \(res\.status < 500 && res\.status !== 429\) return false;/);
+  });
+
+  it('a crash exits non-zero and tickers stop before the HTTP drain', () => {
+    const s = read('apps/api/src/interfaces/http/server.ts');
+    expect(s.match(/process\.exitCode = 1;/g)?.length).toBe(2);
+    expect(s).toMatch(/process\.exit\(process\.exitCode \?\? 0\)/);
+    expect(s.indexOf('stopLoyaltyDailyTicker();')).toBeLessThan(s.indexOf("Stopping HTTP server"));
+  });
+
+  it('a session cookie is never cleared through Astro.response before a returned redirect (Astro drops it)', () => {
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of require('node:fs').readdirSync(dir, { withFileTypes: true })) {
+        const p = join(dir, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (/\.(astro|ts)$/.test(e.name) && /Astro\.response\.headers\.set\('Set-Cookie'/.test(readFileSync(p, 'utf8'))) offenders.push(p);
+      }
+    };
+    walk(join(root, 'apps/web/src/pages'));
+    expect(offenders).toEqual([]);
+  });
+
+  it('saving an address redirects, so a refresh cannot save it twice', () => {
+    expect(read('apps/web/src/pages/account/addresses.astro')).toMatch(/return Astro\.redirect\(`\/account\/addresses\?done=\$\{done\}`, 303\)/);
+  });
+
+  it('one-click destructive admin buttons ask first', () => {
+    for (const [file, n] of [
+      ['apps/web/src/pages/admin/pricing/delivery-zones.astro', 1],
+      ['apps/web/src/pages/admin/seo/integrations/[provider].astro', 2],
+      ['apps/web/src/pages/admin/compatibility.astro', 1],
+      ['apps/web/src/pages/admin/legal/index.astro', 2],
+      ['apps/web/src/pages/admin/ai-search/settings.astro', 1],
+      ['apps/web/src/components/admin/AdCapabilityForm.astro', 1],
+    ] as const) {
+      expect((read(file).match(/data-confirm=/g) ?? []).length, file).toBeGreaterThanOrEqual(n);
+    }
+  });
+
+  it('failed queue jobs are bounded, not kept forever', () => {
+    expect(read('apps/api/src/infrastructure/queues/QueueService.ts')).not.toMatch(/removeOnFail: false/);
   });
 });

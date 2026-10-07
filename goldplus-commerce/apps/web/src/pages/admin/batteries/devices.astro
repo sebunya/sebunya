@@ -144,7 +144,7 @@ const current = brands.find((b) => b.id === brandId) ?? null;
                   <span class="font-bold">{s.name}</span><span class="text-gray-500">{s.deviceCount}</span>
                   {s.status === 'ACTIVE' && (
                     <form method="POST" class="inline"><input type="hidden" name="intent" value="series-archive" /><input type="hidden" name="seriesId" value={s.id} />
-                      <button type="submit" class="text-[9px] font-black uppercase tracking-widest text-red-600">Archive</button></form>
+                      <button type="submit" data-confirm="Archive this device series?" class="text-[9px] font-black uppercase tracking-widest text-red-600">Archive</button></form>
                   )}
                 </li>
               ))}

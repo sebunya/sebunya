@@ -1,5 +1,5 @@
 import { db } from '../client';
-import { orders, carts } from '../schema/commerce';
+import { orders, carts, cartItems } from '../schema/commerce';
 import { fulfilmentDeliveries, fulfilmentTasks, fulfilmentLines } from '../schema/fulfilment';
 import { loyaltyAccounts, loyaltyLedgerEntries } from '../schema/loyalty';
 import { supportIssues } from '../schema/governance';
@@ -31,7 +31,7 @@ export class DrizzleCustomerSignalReader implements ICustomerSignalReader {
     if (orderIdKeys.length > 0) matchers.push(inArray(orders.id, orderIdKeys));
     if (profileKeys.length > 0) matchers.push(inArray(orders.profileId, profileKeys));
     if (matchers.length === 0) {
-      return { sourceVersion: 0, orders: [], searches: [], deliveries: [], backorderCount: 0, supportInteractions: 0, cartAbandonments: 0, loyaltyBalance: null, declaredPreferences: null };
+      return { sourceVersion: 0, orders: [], searches: null, deliveries: [], backorderCount: 0, supportInteractions: 0, cartAbandonments: 0, loyaltyBalance: null, declaredPreferences: null };
     }
     const orderRows = await db.select().from(orders).where(or(...matchers));
     const orderIds = orderRows.map((o) => o.id);
@@ -49,16 +49,23 @@ export class DrizzleCustomerSignalReader implements ICustomerSignalReader {
       backorderCount = bo?.n ?? 0;
     }
 
-    // Cart abandonments — carts for this customer that never converted to an order.
+    // Cart abandonments: carts that HAD something in them, were left alone for
+    // a day, and never became an order. Every unconverted cart used to count,
+    // including empty ones and the cart the customer is filling right now.
     const cartMatchers = [] as any[];
     if (input.accountUserId) cartMatchers.push(eq(carts.userId, input.accountUserId));
     if (anon.length > 0) cartMatchers.push(inArray(carts.anonymousId, anon));
     let cartAbandonments = 0;
     if (cartMatchers.length > 0) {
       const convertedCartIds = orderRows.map((o) => o.cartId).filter((id): id is string => !!id);
+      const abandoned = and(
+        or(...cartMatchers),
+        sql`${carts.updatedAt} < now() - interval '24 hours'`,
+        sql`exists (select 1 from ${cartItems} where ${cartItems.cartId} = ${carts.id})`,
+      );
       const notConverted = convertedCartIds.length > 0
-        ? and(or(...cartMatchers), sql`${carts.id} not in (${sql.join(convertedCartIds.map((id) => sql`${id}`), sql`, `)})`)
-        : or(...cartMatchers);
+        ? and(abandoned, sql`${carts.id} not in (${sql.join(convertedCartIds.map((id) => sql`${id}`), sql`, `)})`)
+        : abandoned;
       const [c] = await db.select({ n: sql<number>`count(*)::int` }).from(carts).where(notConverted);
       cartAbandonments = c?.n ?? 0;
     }
@@ -90,8 +97,9 @@ export class DrizzleCustomerSignalReader implements ICustomerSignalReader {
     return {
       sourceVersion,
       // 0157: the payment method chosen at checkout ('offline' = cash on delivery, 'pesapal' = online), not a null placeholder.
-      orders: orderRows.map((o) => ({ totalAmountUgx: o.totalAmount, createdAt: o.createdAt, paymentMethod: o.paymentMethod ?? null, status: o.status })),
-      searches: [],
+      orders: orderRows.map((o) => ({ totalAmountUgx: o.totalAmount, createdAt: o.createdAt, paymentMethod: o.paymentMethod ?? null, status: o.status, paymentStatus: o.paymentStatus ?? null })),
+      // No per-customer search source is joined here: NOT_OBSERVED, never 0.
+      searches: null,
       deliveries: deliveryRows,
       backorderCount,
       supportInteractions,

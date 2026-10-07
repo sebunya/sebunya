@@ -75,3 +75,9 @@ migrate_against goldplus-commerce_default "$(grep -E '^DATABASE_URL=' .env.produ
 R=$(docker exec goldplus-commerce-postgres-1 sh -c "psql -U \$POSTGRES_USER -d \$POSTGRES_DB -tAc \"$ASSERT\"" | tr -d '[:space:]')
 [ "$R" = "1" ] || { echo "STOP: live assertion returned '$R' — restore from $DUMP"; exit 1; }
 echo "MIGRATED live, assertion 1, backup $DUMP"
+# Migrator images are only used to run migrations and are rebuilt from git
+# for each one; nothing removed them, and each held layers on a 75 GB disk.
+# Keep the image this run used; remove older ones. Never fails the migration.
+docker images goldplus-migrator --format '{{.Repository}}:{{.Tag}}' 2>/dev/null \
+  | grep -vxF "$MIG" | xargs -r docker image rm >/dev/null 2>&1 || true
+echo "older migrator images removed (kept $MIG)"

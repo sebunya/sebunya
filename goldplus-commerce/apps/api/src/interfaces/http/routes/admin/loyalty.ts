@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
+import { isRedemptionHalted } from '../../../../application/use-cases/loyalty/LoyaltyCompletionUseCases';
 import { Registry } from '../../../../infrastructure/Registry';
 import { CreateAuditLogUseCase } from '../../../../application/use-cases/audit/CreateAuditLogUseCase';
 import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
@@ -36,6 +37,12 @@ routes.get('/operations', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), asy
 routes.post('/accounts/:id/expire', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const registry = Registry.getInstance();
   const accountId = String(c.req.param('id') ?? '');
+  // The same rule the sweep follows: while customers cannot spend points,
+  // none expire. This route skipped it.
+  const config = await registry.loyaltyCompletionRepo.getProgrammeConfig();
+  if (isRedemptionHalted(config, await registry.loyaltyGate.isActive())) {
+    return c.json({ success: false, error: { code: 'REDEMPTION_HALTED', message: 'Redemption is paused, so no points expire. Resume redemption first.' } } satisfies ApiResponse<never>, 409);
+  }
   const entries = await registry.expireLoyaltyPointsUseCase.execute({ accountId });
   for (const entry of entries) {
     await new CreateAuditLogUseCase(registry.auditRepo).execute({
@@ -71,10 +78,14 @@ routes.put('/config', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (
 
 routes.post('/entries/:id/reverse', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const body = await c.req.json().catch(() => ({}));
+  const reason = String(body?.reason ?? '').trim();
+  if (reason.length < 5) {
+    return c.json({ success: false, error: { code: 'REASON_REQUIRED', message: 'Say why this entry is reversed (at least 5 characters). The customer sees it in their history.' } } satisfies ApiResponse<never>, 400);
+  }
   const registry = Registry.getInstance();
   const result = await registry.reverseLoyaltyEntryUseCase.execute({
     entryId: String(c.req.param('id') ?? ''),
-    reason: String(body?.reason ?? ''),
+    reason,
   });
   if (!result.ok) {
     return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, result.code === 'NOT_FOUND' ? 404 : 400);

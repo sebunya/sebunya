@@ -38,6 +38,13 @@ export async function runFirstPartyNightlyOnce(now = new Date(), trigger = 'sche
     const stitchingOff = (process.env.IDENTITY_STITCHING ?? '').trim().toLowerCase() === 'off';
     const result = await registry.materialiseSegmentsUseCase.execute({ trigger, now, ...(stitchingOff ? { backfillLimit: 0 } : {}) });
     logger.info({ runId: result.runId, status: result.status, ordersStitched: result.ordersStitched, customers: result.customersEvaluated, segments: result.segments.length }, '[first-party] nightly run');
+    // Customer DNA: stages move with time (ACTIVE -> AT_RISK -> LAPSED with no
+    // new order), so the profiles computed longest ago are re-projected every
+    // night. Bounded per run; a failure here never fails the segment run.
+    const dna = await registry.reprojectStaleProfilesUseCase
+      .execute({ limit: Number(process.env.CUSTOMER_DNA_NIGHTLY_LIMIT ?? 2000), olderThanHours: 20, now })
+      .catch((err) => { logger.error({ err: (err as Error).message }, '[customer-dna] nightly re-projection failed'); return null; });
+    if (dna) logger.info(dna, '[customer-dna] nightly re-projection');
     return 'RAN';
   } finally {
     running = false;

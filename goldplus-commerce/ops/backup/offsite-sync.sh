@@ -39,12 +39,12 @@ TARGET="$(head -1 "$TARGET_FILE" | tr -d '[:space:]')"
 # Only real backups travel: dumps and media archives, never state files or
 # the Steward's database. Same-sized on both ends = proven.
 list_local() { ( cd "$BACKUPS" && find . -type f \( -name '*.dump' -o -name '*.tar.gz' \) -printf '%s %P\n' 2>/dev/null \
-  || find . -type f \( -name '*.dump' -o -name '*.tar.gz' \) -exec stat -f '%z %N' {} \; | sed 's# \./# #' ) | sort -k2; }
+  || find . -type f \( -name '*.dump' -o -name '*.tar.gz' \) -exec stat -f '%z %N' {} \; | sed 's# \./# #' ) | LC_ALL=C sort; }
 
 # rsync --list-only prints "-rw-r--r--  159,799,130 2026/10/06 02:16:01 nightly/x.dump";
 # directories come as "drwx------ ... nightly" with NO trailing slash, so the
 # first character decides, not the name. Sizes may carry thousands separators.
-parse_rsync_listing() { awk '/^-/ { gsub(",", "", $2); print $2, $NF }' | sort -k2; }
+parse_rsync_listing() { awk '/^-/ { gsub(",", "", $2); print $2, $NF }' | LC_ALL=C sort; }
 
 if [ -n "$LOCAL_ONLY" ]; then
   RSYNC_DEST="$LOCAL_ONLY/"
@@ -63,15 +63,22 @@ if [ "$MODE" = "sync" ]; then
   echo "=== offsite sync $(date -u +%FT%TZ) → $TARGET"
   # -a keeps times for the far side's retention; --ignore-existing never
   # rewrites a file already there (a backup is immutable once taken);
-  # --partial survives a dropped link; nothing on the far side is ever removed.
-  rsync -a --ignore-existing --partial --timeout=600 \
+  # --partial-dir survives a dropped link. Plain --partial left the cut-off
+  # file under its final name, which --ignore-existing then skipped forever:
+  # a truncated dump offsite and a verify failure every night, never repaired.
+  # Nothing on the far side is ever removed.
+  rsync -a --ignore-existing --partial-dir=.rsync-partial --timeout=600 \
     --include='*/' --include='*.dump' --include='*.tar.gz' --exclude='*' \
     ${RSYNC_E[@]+"${RSYNC_E[@]}"} "$BACKUPS/" "$RSYNC_DEST"
 fi
 
 echo "--- verify"
 LOCAL=$(list_local); REMOTE=$(list_remote)
-MISSING=$(comm -23 <(printf '%s\n' "$LOCAL") <(printf '%s\n' "$REMOTE") | awk '{print $2 " (" $1 " bytes locally)"}')
+# comm compares WHOLE lines ("size path"), so both sides are sorted by the
+# whole line in the C locale. They were sorted by path only: GNU comm on the
+# Linux host then stopped with "not in sorted order" (exit 1 under set -e)
+# instead of reporting what is missing offsite (exit 2).
+MISSING=$(LC_ALL=C comm -23 <(printf '%s\n' "$LOCAL") <(printf '%s\n' "$REMOTE") | awk '{print $2 " (" $1 " bytes locally)"}')
 if [ -n "$MISSING" ]; then
   echo "FAIL: not on the remote, or a different size there:"; printf '  %s\n' $MISSING
   rm -f "$VERIFIED_FILE"

@@ -1,0 +1,66 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { SITE_ORIGIN } from '../lib/sitemap';
+
+/**
+ * /developers — the human-readable page behind the machine endpoints: what an
+ * AI assistant or a developer can use to read the GoldPlus catalogue, and the
+ * rules. Every endpoint listed here is live and read-only.
+ */
+const mcpConfig = JSON.stringify({ mcpServers: { goldplus: { type: 'http', url: `${SITE_ORIGIN}/mcp` } } }, null, 2);
+const endpoints = [
+  { name: 'MCP server', href: '/mcp', note: 'Model Context Protocol, Streamable HTTP, no key. Tools: search_products, get_product, list_categories, find_battery, store_info.' },
+  { name: 'MCP server card', href: '/.well-known/mcp/server-card.json', note: 'What the server offers, for discovery before connecting.' },
+  { name: 'OpenAPI', href: '/openapi.json', note: 'The public, read-only catalogue API (products, product details, battery finder).' },
+  { name: 'API catalog', href: '/.well-known/api-catalog', note: 'RFC 9727 linkset pointing to the above.' },
+  { name: 'llms.txt', href: '/llms.txt', note: 'The shop in one page: what it sells, where it is, how delivery works.' },
+  { name: 'llms-full.txt', href: '/llms-full.txt', note: 'Every product with today’s price, stock and verified specifications.' },
+  { name: 'Markdown pages', href: '/shop', note: 'Request any shop, product or info page with Accept: text/markdown to get it as Markdown.' },
+  { name: 'Sitemap', href: '/sitemap.xml', note: 'Every product and page URL.' },
+];
+---
+
+<BaseLayout title="For developers and AI assistants | GoldPlus" description="Read the GoldPlus catalogue from an AI assistant or your own code: a public MCP server, an OpenAPI description, llms.txt and Markdown pages. Read-only, no key needed.">
+  <header class="border-b border-slate-200 bg-gradient-to-b from-slate-50 to-white py-12 sm:py-16">
+    <div class="container mx-auto max-w-4xl px-4 lg:px-8">
+      <p class="text-xs font-black uppercase tracking-[0.18em] text-brand-primaryInk">Developers and AI assistants</p>
+      <h1 class="mt-3 text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">Use the GoldPlus catalogue from an AI assistant</h1>
+      <p class="mt-4 max-w-3xl text-sm leading-relaxed text-slate-600 sm:text-base">
+        Assistants such as ChatGPT, Claude and Perplexity can read our products, prices and stock directly, so the answer someone gets about GoldPlus is the same one this website gives. Everything below is public, read-only and free to use; buying always happens on the website.
+      </p>
+    </div>
+  </header>
+
+  <div class="container mx-auto max-w-4xl px-4 py-10 sm:py-14 lg:px-8">
+    <div class="space-y-10 text-sm leading-relaxed text-slate-700 sm:text-base">
+      <section aria-labelledby="dev-endpoints">
+        <h2 id="dev-endpoints" class="text-xl font-black text-gray-900">What is available</h2>
+        <ul class="mt-4 divide-y divide-slate-100 rounded-2xl border border-slate-200">
+          {endpoints.map((e) => (
+            <li class="p-4">
+              <a href={e.href} class="font-bold text-brand-primaryInk underline underline-offset-2">{e.name}</a>
+              <span class="ml-2 font-mono text-xs text-slate-500">{SITE_ORIGIN}{e.href}</span>
+              <p class="mt-1 text-slate-600">{e.note}</p>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section aria-labelledby="dev-connect">
+        <h2 id="dev-connect" class="text-xl font-black text-gray-900">Connect an assistant</h2>
+        <p class="mt-3">Add the server to any MCP client (Claude, ChatGPT connectors, Cursor, VS Code and others) with this configuration:</p>
+        <pre class="mt-3 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs text-slate-100"><code>{mcpConfig}</code></pre>
+      </section>
+
+      <section aria-labelledby="dev-rules">
+        <h2 id="dev-rules" class="text-xl font-black text-gray-900">Fair use</h2>
+        <ul class="mt-3 list-disc space-y-2 pl-5">
+          <li>Read-only: nothing here places an order, reads a customer or changes the shop.</li>
+          <li>Prices are Ugandan shillings and are what the shop charges today. Quote them from the tool results; do not estimate.</li>
+          <li>Battery fits are only reported when GoldPlus has checked them. GoldPlus confirms the fit before a customer pays.</li>
+          <li>About 60 MCP calls a minute per address. For more, <a href="/support" class="font-bold text-brand-primaryInk underline underline-offset-2">contact us</a>.</li>
+        </ul>
+      </section>
+    </div>
+  </div>
+</BaseLayout>

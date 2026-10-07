@@ -118,6 +118,7 @@ export class DrizzleLoyaltyCompletionRepository implements ILoyaltyCompletionRep
 
   async createReservation(input: {
     maxTotalReservedPoints?: number;
+    ledgerPointsAtRead?: number;
     accountId: string;
     orderId: string | null;
     pointsReserved: number;
@@ -133,13 +134,26 @@ export class DrizzleLoyaltyCompletionRepository implements ILoyaltyCompletionRep
       // only an early exit.
       if (input.maxTotalReservedPoints !== undefined) {
         await tx.execute(sql`select id from loyalty_accounts where id = ${input.accountId} for update`);
+        // The SAME lock every debit takes. The row lock alone never excluded a
+        // delivery consuming points between the caller's balance read and this
+        // insert, so a second order could reserve points just spent.
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`loyalty:${input.accountId}`}, 0))`);
+        let ceiling = input.maxTotalReservedPoints;
+        if (input.ledgerPointsAtRead !== undefined) {
+          const [now] = (await tx.execute(sql`
+            select coalesce(sum(points), 0)::bigint as pts from loyalty_ledger_entries
+            where account_id = ${input.accountId}
+               or account_id in (select merged_account_id from loyalty_account_merges where survivor_account_id = ${input.accountId})`)) as unknown as Array<{ pts: string | number }>;
+          const spentSince = input.ledgerPointsAtRead - Number(now?.pts ?? 0);
+          if (spentSince > 0) ceiling -= spentSince;
+        }
         const [current] = (await tx.execute(sql`
           select coalesce(sum(points_reserved), 0)::bigint as reserved
           from loyalty_redemptions
           where account_id = ${input.accountId} and status = 'reserved'
             and idempotency_key <> ${input.idempotencyKey}`)) as unknown as Array<{ reserved: string | number }>;
         const alreadyReserved = Number(current?.reserved ?? 0);
-        if (alreadyReserved + input.pointsReserved > input.maxTotalReservedPoints) return null;
+        if (alreadyReserved + input.pointsReserved > ceiling) return null;
       }
       const [row] = await tx
         .insert(loyaltyRedemptions)

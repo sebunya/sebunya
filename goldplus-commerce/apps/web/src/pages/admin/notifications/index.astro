@@ -2,7 +2,7 @@
 import AdminLayout from '../../../layouts/AdminLayout.astro';
 import Notice from '../../../components/Notice.astro';
 import { apiBase } from '../../../lib/api';
-import { readSessionToken, clearSessionCookie } from '../../../lib/session';
+import { readSessionToken, SESSION_COOKIE_NAME } from '../../../lib/session';
 import type { ApiEnvelope } from '@goldplus/shared';
 
 const token = readSessionToken(Astro.request);
@@ -39,7 +39,7 @@ try {
   // cookie on 403 signed them out, and signing back in returned them here.
   if (res.status === 403) return Astro.redirect(`/admin/not-permitted?from=${encodeURIComponent(Astro.url.pathname)}&need=notifications.read`, 303);
   if (res.status === 401) {
-    Astro.response.headers.set('Set-Cookie', clearSessionCookie());
+    Astro.cookies.delete(SESSION_COOKIE_NAME, { path: '/' }); // a header set on Astro.response is dropped by a returned redirect
     return Astro.redirect(`/admin/login?returnTo=${encodeURIComponent(Astro.url.pathname)}`, 303);
   }
 

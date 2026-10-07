@@ -81,7 +81,7 @@ describe('every SSR auth call is attributed to the real visitor', () => {
     it(`${page} no longer posts a bare Content-Type header to the API`, () => {
       // The defect shape: a server-side auth call with no forwarded address.
       const src = read(page);
-      const authCalls = src.match(/apiBase\}\/auth\/[\s\S]{0,220}?\}\)/g) ?? [];
+      const authCalls = src.match(/apiBase\}\/auth\/[\s\S]{0,280}?\}\)/g) ?? [];
       expect(authCalls.length).toBeGreaterThan(0);
       for (const call of authCalls) {
         expect(call, call.slice(0, 90)).not.toMatch(/headers: \{ 'Content-Type': 'application\/json' \}/);

@@ -22,6 +22,12 @@ export interface ISocialIdentityRepository {
     subject: string;
     email: string | null;
     emailVerified: boolean;
+    /**
+     * In the same transaction: clear the account's password, sign out every
+     * existing session and void unused reset links. Used when a provider that
+     * proved the email is linked to an account whose password nobody proved.
+     */
+    revokePasswordAccess?: boolean;
   }): Promise<LinkedIdentity>;
 
   /**

@@ -1,3 +1,4 @@
+import { signInTokens } from './auth';
 import { Hono } from 'hono';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { ApiResponse } from '@goldplus/shared';
@@ -222,7 +223,10 @@ routes.post('/:provider/exchange', async (c) => {
   if (!user) return refuse('ACCOUNT_MISSING', 'That account could not be loaded.', 500);
 
   const ttlSeconds = 60 * 60 * 24 * 7;
-  const token = await registry.tokenSigner.sign({ subject: user.id, email: user.email, ttlSeconds });
+  const longToken = await registry.tokenSigner.sign({ subject: user.id, email: user.email, ttlSeconds });
+  // Same as password sign-in: a short token plus a refresh credential when the
+  // session store answers; the 7-day token only as the fallback.
+  const tokens = await signInTokens(registry, user, c, { token: longToken, expiresAt: new Date(Date.now() + ttlSeconds * 1000) });
   // 0155: the provider verified this email only when it says so.
   stitchInBackground({ moment: 'SOCIAL_SIGN_IN', accountUserId: user.id, accountEmailVerified: verified.identity.emailVerified === true });
 
@@ -240,13 +244,14 @@ routes.post('/:provider/exchange', async (c) => {
   const res: ApiResponse<{
     token: string;
     expiresAt: string;
+    refreshToken?: string;
+    refreshExpiresAt?: string;
     created: boolean;
     user: { id: string; email: string };
   }> = {
     success: true,
     data: {
-      token,
-      expiresAt: new Date(Date.now() + ttlSeconds * 1000).toISOString(),
+      ...tokens,
       created: resolved.created,
       user: { id: user.id, email: user.email },
     },

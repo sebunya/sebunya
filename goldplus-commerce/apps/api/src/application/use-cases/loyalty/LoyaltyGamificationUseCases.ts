@@ -279,7 +279,17 @@ export class AwardBirthdayPointsUseCase {
   async execute(now = new Date()): Promise<{ awarded: number }> {
     const config = await this.completion.getProgrammeConfig();
     if (!config.enabled || config.killSwitch || config.birthdayPoints === null) return { awarded: 0 };
-    const celebrants = await this.users.usersWithBirthdayOn({ month: now.getUTCMonth() + 1, day: now.getUTCDate() });
+    // Kampala's calendar day (UTC+3, no daylight saving). The UTC day made a
+    // sweep between 00:00 and 03:00 Kampala award YESTERDAY's birthdays.
+    const kampala = new Date(now.getTime() + 3 * 3_600_000);
+    const year = kampala.getUTCFullYear();
+    const month = kampala.getUTCMonth() + 1;
+    const day = kampala.getUTCDate();
+    const celebrants = await this.users.usersWithBirthdayOn({ month, day });
+    // 29 February birthdays are celebrated on 28 February in other years
+    // (they never matched before). The yearly key keeps it to one award.
+    const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+    if (month === 2 && day === 28 && !leap) celebrants.push(...(await this.users.usersWithBirthdayOn({ month: 2, day: 29 })));
     let awarded = 0;
     for (const { userId } of celebrants) {
       const account = await this.loyalty.getOrCreateAccount(userId);
@@ -290,7 +300,7 @@ export class AwardBirthdayPointsUseCase {
           points: config.birthdayPoints,
           orderId: null,
           reason: 'Happy birthday from GoldPlus',
-          idempotencyKey: `birthday:${userId}:${now.getUTCFullYear()}`, // once per year
+          idempotencyKey: `birthday:${userId}:${year}`, // once per (Kampala) year
           expiresAt: null,
           reversedEntryId: null,
           ruleCode: 'birthday',

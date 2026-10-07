@@ -1,4 +1,5 @@
 ---
+import { readClientAddress } from '../../lib/forwardClient';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import FormField from '../../components/FormField.astro';
 import FormFeedback from '../../components/FormFeedback.astro';
@@ -40,7 +41,7 @@ if (Astro.request.method === 'POST') {
     const fullLocStr = `${formattedLoc} | DETAILS: ${shopDetails}`.trim();
     const result = await postJson('/governance/dealers/apply', {
       businessName, contactName, email, phone, tinNumber, location: fullLocStr
-    });
+    }, null, readClientAddress(Astro));
     reference = result.ok ? result.reference : undefined;
     if (result.ok) {
       status = 'success';

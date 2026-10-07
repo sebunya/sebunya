@@ -1,0 +1,11 @@
+# Same five reviewed exceptions as pnpm.auditConfig.ignoreGhsas; evidence for
+# each is in docs/security/audit-exceptions.md. Remove an entry when its fix lands.
+GHSA-26w7-cxv4-gfx2
+CVE-2026-102984
+GHSA-qh8j-hqjv-7m4x
+CVE-2026-39356
+GHSA-gpj5-g38j-94v9
+CVE-2026-93748
+GHSA-ch52-4w7c-c8xp
+CVE-2026-93687
+GHSA-vfj7-8cjw-p6xm

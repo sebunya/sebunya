@@ -7,6 +7,16 @@ import { ICustomerOrderRepository } from '../../apps/api/src/application/ports/I
 import { IOrderTransitionPort } from '../../apps/api/src/application/ports/IOrderTransitionPort';
 import { Order } from '../../apps/api/src/domain/commerce/Order';
 
+// No real network in a unit test: resilientFetch's SSRF guard resolves the
+// provider host first, and a real DNS lookup under a busy parallel run timed
+// out and opened the circuit breaker (flaky "Network error" failures). The
+// address is public, so the guard behaves exactly as in production.
+vi.mock('node:dns', async (orig) => {
+  const real = (await orig()) as typeof import('node:dns');
+  const lookup = (_host: string, ...rest: any[]) => { const cb = rest[rest.length - 1]; cb(null, '93.184.216.34', 4); };
+  return { ...real, default: { ...real, lookup }, lookup };
+});
+
 describe('PesaPal Payment Integration Unit Tests', () => {
   let mockPaymentRepo: IPesaPalPaymentRepository;
   let mockOrderRepo: ICustomerOrderRepository;

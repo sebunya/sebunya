@@ -108,6 +108,14 @@ async function gracefulShutdown(signal: string) {
   }, 15000);
 
   try {
+    // Tickers first: stopped after the HTTP drain, they could start new
+    // provider calls during it that the forced exit then cut off mid-flight.
+    stopLoyaltyDailyTicker();
+    stopPaymentReconcileTicker();
+    stopLighthouseWatchTicker();
+    stopProductCostTicker();
+    stopAdvertisingTicker();
+    stopFirstPartyNightlyTicker();
     logger.info('[Process] Stopping HTTP server...');
     await new Promise<void>((resolve) => {
       server.close((err) => {
@@ -121,12 +129,6 @@ async function gracefulShutdown(signal: string) {
     });
 
     logger.info('[Process] Waiting for background tasks to finish...');
-    stopLoyaltyDailyTicker();
-    stopPaymentReconcileTicker();
-    stopLighthouseWatchTicker();
-    stopProductCostTicker();
-    stopAdvertisingTicker();
-    stopFirstPartyNightlyTicker();
     await gracefulStopOutboxTicker(10000);
     await Registry.getInstance().recommendationServingStats?.stop(3000);
 
@@ -142,7 +144,8 @@ async function gracefulShutdown(signal: string) {
 
     logger.info('[Process] Shutdown complete.');
     clearTimeout(timeoutId);
-    process.exit(0);
+    // exitCode is 1 after a crash, so restart policies and alerts see a failure.
+    process.exit(process.exitCode ?? 0);
   } catch (err) {
     logger.error({ err }, '[Process] Error during graceful shutdown:');
     process.exit(1);
@@ -155,11 +158,13 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('uncaughtException', (err) => {
   Sentry.captureException(err);
   logger.fatal({ err }, '[Process] UNCAUGHT EXCEPTION! Shutting down gracefully.');
+  process.exitCode = 1;
   gracefulShutdown('uncaughtException');
 });
 
 process.on('unhandledRejection', (reason, promise) => {
   Sentry.captureException(reason);
   logger.fatal({ reason }, '[Process] UNHANDLED REJECTION! Shutting down gracefully.');
+  process.exitCode = 1;
   gracefulShutdown('unhandledRejection');
 });

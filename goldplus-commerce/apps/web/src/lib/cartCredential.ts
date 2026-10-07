@@ -29,10 +29,10 @@ const isProduction = () => import.meta.env.PROD === true;
 
 function keys(): CartKey[] | null {
   const root = (
-    import.meta.env.CART_CREDENTIAL_SECRET ||
     process.env.CART_CREDENTIAL_SECRET ||
-    import.meta.env.JWT_SECRET ||
+    import.meta.env.CART_CREDENTIAL_SECRET ||
     process.env.JWT_SECRET ||
+    import.meta.env.JWT_SECRET ||
     ''
   ).trim();
   if (!root) return null;
@@ -43,10 +43,10 @@ function keys(): CartKey[] | null {
   try {
     return buildCartKeyring({
       rootSecret: root,
-      currentKeyId: import.meta.env.CART_CREDENTIAL_KEY_ID || process.env.CART_CREDENTIAL_KEY_ID,
+      currentKeyId: process.env.CART_CREDENTIAL_KEY_ID || import.meta.env.CART_CREDENTIAL_KEY_ID,
       previousKeyId:
-        import.meta.env.CART_CREDENTIAL_PREVIOUS_KEY_ID ||
-        process.env.CART_CREDENTIAL_PREVIOUS_KEY_ID,
+        process.env.CART_CREDENTIAL_PREVIOUS_KEY_ID ||
+        import.meta.env.CART_CREDENTIAL_PREVIOUS_KEY_ID,
     });
   } catch {
     // Misconfigured rather than absent. Returning null makes the caller degrade to a

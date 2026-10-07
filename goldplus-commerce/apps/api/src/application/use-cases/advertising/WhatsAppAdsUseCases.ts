@@ -80,7 +80,10 @@ export class WhatsAppAdsUseCases {
     // Signed and understood, but switched off: acknowledged and not kept.
     if (!s.live) return { status: 200, stored: 0, duplicates: 0, messages: parsed.messages, withoutClickId: parsed.referralsWithoutClickId };
     let stored = 0, duplicates = 0;
-    for (const r of parsed.referrals) (await this.repo.record(r)) ? (stored += 1) : (duplicates += 1);
+    for (const r of parsed.referrals) {
+      if (await this.repo.record(r)) stored += 1;
+      else duplicates += 1;
+    }
     await this.purgeIfDue();
     return { status: 200, stored, duplicates, messages: parsed.messages, withoutClickId: parsed.referralsWithoutClickId };
   }

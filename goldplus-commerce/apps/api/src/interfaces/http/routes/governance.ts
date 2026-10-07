@@ -7,6 +7,7 @@ import { OpenSupportTicketUseCase } from '../../../application/use-cases/governa
 import { ReportFakeProductUseCase } from '../../../application/use-cases/governance/ReportFakeProductUseCase';
 import { randomUUID } from 'node:crypto';
 import { authMiddleware } from '../middleware/auth';
+import { bearerTokenFrom, resolveLiveSession } from '../middleware/liveSession';
 import { requirePermissions } from '../middleware/permissions';
 import { NotificationTemplateRenderer } from '../../../application/use-cases/notifications/NotificationTemplateRenderer';
 import { clientIp } from '../clientAddress';
@@ -168,7 +169,8 @@ routes.post('/support/report-fake', async (c) => {
   // of the report later earns points. Anonymous reports stay anonymous.
   const reporterAuth = c.req.header('Authorization');
   if (reporterAuth?.startsWith('Bearer ')) {
-    const verified = await registry.tokenSigner.verify(reporterAuth.slice(7).trim()).catch(() => null);
+    const live = await resolveLiveSession(bearerTokenFrom(reporterAuth)).catch(() => null);
+    const verified = live?.ok ? { subject: live.user.id } : null;
     if (verified?.subject) {
       await registry.fakeReportRepo.attributeReporter(result.reportId, verified.subject).catch(() => undefined);
     }
@@ -218,10 +220,10 @@ routes.post('/verification/check', async (c) => {
   // Loyalty PART J: a signed-in scan is attributable and may earn — through
   // the versioned 'verification_scan' rule, which is INACTIVE until activated.
   // Anonymous scans stay anonymous; a loyalty failure never fails the check.
-  const header = c.req.header('Authorization');
-  const verified = header?.startsWith('Bearer ')
-    ? await registry.tokenSigner.verify(header.slice(7).trim()).catch(() => null)
-    : null;
+  // A LIVE session, not just a valid signature: a token from before a password
+  // reset, a sign-out-everywhere or a disabled account must not earn points.
+  const live = await resolveLiveSession(bearerTokenFrom(c.req.header('Authorization'))).catch(() => null);
+  const verified = live?.ok ? { subject: live.user.id } : null;
 
   // The scanner is written on the attempt, which the "verify ten" mission counts.
   const result = await registry.verificationCheckUseCase.execute(code, ip, ua, verified?.subject ?? null);

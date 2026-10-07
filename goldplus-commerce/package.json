@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "engines": {
-    "node": ">=20.0.0",
+    "node": ">=22.12.0",
     "pnpm": ">=8.0.0"
   },
   "scripts": {
@@ -15,7 +15,7 @@
     "lint": "pnpm -r lint",
     "test": "vitest run",
     "test:unit": "vitest run tests/unit",
-    "test:integration": "vitest run tests/integration",
+    "test:integration": "vitest run tests/integration --no-file-parallelism",
     "test:e2e": "playwright test",
     "test:architecture": "vitest run tests/architecture",
     "db:generate": "pnpm -F @goldplus/api db:generate",
@@ -46,7 +46,33 @@
     "prettier": "^3.2.5",
     "tsx": "^4.7.1",
     "typescript": "^5.3.3",
-    "vitest": "^1.3.1",
-    "xlsx": "^0.18.5"
+    "vitest": "^4.1.11",
+    "xlsx": "file:vendor/xlsx-0.20.3.tgz"
+  },
+  "pnpm": {
+    "overrides": {
+      "devalue": ">=5.9.3",
+      "@grpc/grpc-js": ">=1.14.5",
+      "@opentelemetry/propagator-jaeger": ">=2.9.0",
+      "sharp": ">=0.35.5",
+      "brace-expansion@<1.1.20": "^1.1.20",
+      "brace-expansion@>=2.0.0 <2.1.6": "^2.1.6",
+      "brace-expansion@>=5.0.0 <5.0.11": "^5.0.11",
+      "js-yaml@>=4.0.0 <4.3.2": "^4.3.2",
+      "js-yaml@<3.15.2": "^3.15.2",
+      "nanoid@<3.3.18": "^3.3.18",
+      "postcss@<8.5.18": "^8.5.18",
+      "source-map-js@<1.2.2": "^1.2.2",
+      "browserslist@<4.28.7": "^4.28.7"
+    },
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-26w7-cxv4-gfx2",
+        "GHSA-qh8j-hqjv-7m4x",
+        "GHSA-gpj5-g38j-94v9",
+        "GHSA-ch52-4w7c-c8xp",
+        "GHSA-vfj7-8cjw-p6xm"
+      ]
+    }
   }
 }

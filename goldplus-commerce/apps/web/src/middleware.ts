@@ -1,11 +1,13 @@
 import { defineMiddleware } from "astro:middleware";
+import { SITE_ORIGIN } from './lib/sitemap';
 import { prefersMarkdown, markdownResponse } from "./lib/agentMarkdown";
 import { agentDocumentFor, agentRepresentablePath } from "./lib/agentDocuments";
 import { resolveRequestIdentity } from "./lib/requestIdentity";
 import { isSignedVisitToken, mintSignedVisitToken } from "./lib/visitToken";
 import { apiBase } from "./lib/api";
 import { visitorCookieDomain } from "./lib/visitorCookieDomain";
-import { SESSION_COOKIE_NAME } from "./lib/session";
+import { readRefreshToken, readSessionToken, setRequestSessionToken, setSignInCookies, clearSignInCookies, tokenSecondsLeft } from "./lib/session";
+import { apiHeaders, readClientAddress } from "./lib/forwardClient";
 import { makeNonce, nonceScriptStream, strictPolicyMode, strictReportOnlyPolicy } from "./lib/contentSecurityPolicy";
 import { PublicFormLimiter, budgetedFormPath, tooManySubmissionsResponse, visitorKey } from "./lib/publicFormLimiter";
 
@@ -59,21 +61,26 @@ export function visitCookieOptions() {
  * behind this still cannot read a single privileged byte without the API.
  */
 async function holderIsAdmin(request: Request): Promise<boolean> {
-  const cookie = request.headers.get('cookie') ?? '';
-  const token = cookie.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE_NAME}=([^;]+)`))?.[1];
+  // Through readSessionToken: it sees a token the renewal step just issued.
+  const token = readSessionToken(request);
   if (!token) return false;
+  // Decoded before the try: a malformed cookie (e.g. "%E0") threw URIError
+  // inside it and the catch below let any visitor render the console.
+  let bearer: string;
+  try { bearer = decodeURIComponent(token); } catch { return false; }
   try {
     const res = await fetch(`${apiBase}/auth/admin-session`, {
-      headers: { Authorization: `Bearer ${decodeURIComponent(token)}` },
+      headers: { Authorization: `Bearer ${bearer}` },
       signal: AbortSignal.timeout(4000),
     });
     // Only a 200 proves an admin. Treating "anything that is not 401/403" as
     // proof means a moved route, a 404 or a 502 silently stops guarding.
     if (res.ok) return true;
     if (res.status === 401 || res.status === 403) return false;
-    // Any other status is the API misbehaving rather than a verdict on this
-    // caller, so it degrades the same way an outage does: see the fail-open
-    // note above.
+    // Any other 4xx is a refusal too (a moved route answers 404, and that
+    // must not open the console). 429 and 5xx are the API under strain, not a
+    // verdict on this caller, so they degrade like an outage.
+    if (res.status < 500 && res.status !== 429) return false;
     return true;
   } catch {
     return true;
@@ -94,9 +101,46 @@ export const MOVED_PATHS: Readonly<Record<string, string>> = {
   '/locations/new-pioneer-mall': '/locations/zainab-aziza',
 };
 
+/** Renew this long before expiry, so a page's own API calls never meet a dead token. */
+const RENEW_WHEN_SECONDS_LEFT = 120;
+
+/**
+ * Session renewal (2026-10-07). Access tokens live 15 minutes; when the one in
+ * the cookie is expiring (or gone) and a refresh credential is present, swap it
+ * for a fresh pair BEFORE anything else reads the session. A refusal (revoked,
+ * expired, reused) signs the visitor out; an API outage changes nothing, and the
+ * page treats the old token as it always did.
+ */
+async function renewSessionIfDue(context: Parameters<Parameters<typeof defineMiddleware>[0]>[0]): Promise<void> {
+  const refreshToken = readRefreshToken(context.request);
+  if (!refreshToken) return;
+  const token = readSessionToken(context.request);
+  const left = token ? tokenSecondsLeft(token) : -1;
+  if (left !== null && left > RENEW_WHEN_SECONDS_LEFT) return;
+  try {
+    const res = await fetch(`${apiBase}/auth/refresh`, {
+      method: 'POST',
+      headers: apiHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }, readClientAddress(context)),
+      body: JSON.stringify({ refreshToken: decodeURIComponent(refreshToken) }),
+      signal: AbortSignal.timeout(4000),
+    });
+    const json: any = await res.json().catch(() => null);
+    if (res.ok && json?.success && typeof json.data?.token === 'string') {
+      setSignInCookies(context.cookies, json.data); // a concurrent-refresh answer carries no new refresh token: the cookie stays
+      setRequestSessionToken(context.request, json.data.token);
+    } else if (res.status === 401) {
+      clearSignInCookies(context.cookies);
+      setRequestSessionToken(context.request, null);
+    }
+  } catch {
+    /* unreachable API: leave the session as it is */
+  }
+}
+
 export const onRequest = defineMiddleware(async (context, next) => {
   const moved = MOVED_PATHS[context.url.pathname.replace(/\/+$/, '') || '/'];
   if (moved) return context.redirect(`${moved}${context.url.search}`, 301);
+  if (!context.url.pathname.startsWith('/_astro/')) await renewSessionIfDue(context);
 
   if (context.request.method === 'POST') {
     const formPath = budgetedFormPath(context.url.pathname);
@@ -146,8 +190,11 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // The extension check is anchored to the LAST path segment so a product
   // slug containing a dot still counts as a document.
   const path = context.url.pathname;
+  // Machine endpoints (/mcp, /.well-known/*) are not pages: no analytics visitor
+  // cookie and no page Link headers on their responses.
   const isDocument =
-    !path.startsWith("/api/") && !path.startsWith("/_astro/") && !/\.[A-Za-z0-9]{2,8}$/.test(path);
+    !path.startsWith("/api/") && !path.startsWith("/_astro/") && !path.startsWith("/.well-known/") && path !== "/mcp" &&
+    !/\.[A-Za-z0-9]{2,8}$/.test(path);
 
   // The analytics visitor id (`_fp_cid`, GA's client_id) is set by the SERVER
   // and refreshed on every page: Safari caps cookies written by JavaScript at 7
@@ -224,6 +271,14 @@ export const onRequest = defineMiddleware(async (context, next) => {
   if (isDocument && response.status === 200 && agentRepresentablePath(path)) {
     response.headers.append('Link', `<${context.url.origin}${path}>; rel="alternate"; type="text/markdown"`);
     response.headers.append('Vary', 'Accept');
+  }
+  // Discovery for agents on every page (RFC 8288 links, RFC 9727 api-catalog):
+  // where the machine-readable descriptions of this site live. Headers, not
+  // <link> tags, so the documents' byte budget is untouched.
+  if (isDocument && response.status === 200 && (response.headers.get('content-type') ?? '').startsWith('text/html')) {
+    response.headers.append('Link', `<${SITE_ORIGIN}/.well-known/api-catalog>; rel="api-catalog"`);
+    response.headers.append('Link', `<${SITE_ORIGIN}/openapi.json>; rel="service-desc"; type="application/openapi+json"`);
+    response.headers.append('Link', `<${SITE_ORIGIN}/llms.txt>; rel="describedby"; type="text/plain"`);
   }
   return withStrictScriptPolicyReport(response, cspNonce);
 });

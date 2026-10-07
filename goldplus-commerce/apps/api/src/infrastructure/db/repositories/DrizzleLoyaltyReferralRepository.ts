@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { LOYALTY_PAYMENT_QUALIFIES_SQL } from '../LoyaltyEarnEligibilitySql';
 import { users } from '../schema/identity';
@@ -71,6 +71,15 @@ export class DrizzleLoyaltyReferralRepository implements ILoyaltyReferralReposit
         updatedAt: new Date(),
       })
       .where(eq(loyaltyReferrals.id, id));
+  }
+
+  async findAwardedByQualifyingOrder(orderId: string): Promise<{ id: string; referrerEntryId: string | null; refereeEntryId: string | null } | null> {
+    const [row] = await db
+      .select({ id: loyaltyReferrals.id, referrerEntryId: loyaltyReferrals.referrerEntryId, refereeEntryId: loyaltyReferrals.refereeEntryId })
+      .from(loyaltyReferrals)
+      .where(and(eq(loyaltyReferrals.qualifyingOrderId, orderId), eq(loyaltyReferrals.status, 'awarded')))
+      .limit(1);
+    return row ?? null;
   }
 
   async markRejected(id: string, reason: string): Promise<void> {

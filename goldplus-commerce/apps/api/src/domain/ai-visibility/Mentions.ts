@@ -39,6 +39,7 @@ export function aliasPattern(alias: string): RegExp | null {
   if (tokens.length === 0) return null;
   const isDomain = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(a);
   const body = isDomain ? escape(a) : tokens.join('[\\s\\-_.]*');
+  // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- every alias token is escaped by escape() above
   return new RegExp(`(?<![\\p{L}\\p{N}])${body}(?![\\p{L}\\p{N}])`, 'giu');
 }
 

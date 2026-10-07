@@ -1,4 +1,5 @@
 ---
+import { readClientAddress } from '../lib/forwardClient';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import FormField from '../components/FormField.astro';
 import FormFeedback from '../components/FormFeedback.astro';
@@ -63,7 +64,7 @@ if (Astro.request.method === 'POST') {
       quantity: values.quantity,
       message: finalMsg,
       kind: values.kind
-    });
+    }, null, readClientAddress(Astro));
     reference = result.ok ? result.reference : undefined;
     if (result.ok) {
       status = 'received';

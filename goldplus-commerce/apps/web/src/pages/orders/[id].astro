@@ -3,7 +3,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import { formatUgx } from "../../lib/money";
 import Notice from '../../components/Notice.astro';
 import { apiBase } from '../../lib/api';
-import { readSessionToken, clearSessionCookie } from '../../lib/session';
+import { readSessionToken, SESSION_COOKIE_NAME } from '../../lib/session';
 import { getBusinessInfo } from '../../lib/businessInfo';
 import { orderStatusCopy, STATUS_TONE_CLASS } from '../../lib/orderStatusCopy';
 import { resolveCheckoutIntent } from '../../lib/checkoutIntent';
@@ -30,7 +30,7 @@ try {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (res.status === 401) {
-    Astro.response.headers.set('Set-Cookie', clearSessionCookie());
+    Astro.cookies.delete(SESSION_COOKIE_NAME, { path: '/' }); // a header set on Astro.response is dropped by a returned redirect
     return Astro.redirect(`/login?returnTo=/orders/${encodeURIComponent(id ?? '')}`, 303);
   }
   if (res.status === 404) {

@@ -50,7 +50,7 @@ describe('Lifecycle segments use case (Slice 9)', () => {
     const uc = new GetLifecycleSegmentsUseCase(fakeReads([
       { userId: 'u1', ordersCount: 2, firstOrderAt: daysAgo(200), lastOrderAt: daysAgo(10) },
       { userId: 'u2', ordersCount: 1, firstOrderAt: daysAgo(400), lastOrderAt: daysAgo(400) },
-    ], { u1: 'granted' }));
+    ], { u1: 'granted' }), () => now);
     const report = await uc.execute();
     expect(report.totals.active).toBe(1);
     expect(report.totals.dormant).toBe(1);

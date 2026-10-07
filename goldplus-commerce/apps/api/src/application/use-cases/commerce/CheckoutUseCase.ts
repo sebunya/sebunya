@@ -351,45 +351,58 @@ export class CheckoutUseCase {
         loyaltyReservation = { reservationId: reserveResult.reservationId, valueUgx: reserveResult.valueUgx };
       }
 
-      const reservation = await this.authoritativePricing.capacity.reserve({ quoteId: quote.id, checkoutKey });
-      const snapshot: OrderPricingSnapshot = {
-        quoteId: quote.id,
-        currency: quote.currency,
-        baseSubtotalUgx: quote.baseSubtotalUgx,
-        discountTotalUgx: quote.discountTotalUgx,
-        shippingUgx: quote.shippingUgx,
-        taxUgx: quote.taxUgx,
-        finalTotalUgx: quote.finalTotalUgx,
-        calculationVersion: quote.calculationVersion,
-        couponReference: quote.couponReference,
-        appliedPromotionVersions: quote.appliedPromotionVersions,
-        experimentEvidence: quote.experimentEvidence,
-        adjustments: quote.adjustments,
-        evaluatedAt: quote.evaluatedAt,
-      };
-      const pricedItems: OrderItem[] = quote.lines.map((line) => ({ productId: line.productId, sku: line.sku, name: line.name, price: line.canonicalUnitPriceUgx, quantity: line.quantity, canonicalUnitPrice: line.canonicalUnitPriceUgx, baseSubtotal: line.baseSubtotalUgx, discountAmount: line.discountUgx, finalLineTotal: line.finalSubtotalUgx }));
-      if (dto.paymentMethod === 'offline' && district && this.codPolicy) {
-        const policy = await this.codPolicy.forDistrict(district);
-        const payable = quote.finalTotalUgx - (loyaltyReservation?.valueUgx ?? 0);
-        if (policy?.active && policy.codMaxOrderValueUgx !== null && payable > policy.codMaxOrderValueUgx) {
-          throw new Error(
-            `COD_LIMIT_EXCEEDED: Orders above ${policy.codMaxOrderValueUgx.toLocaleString('en-UG')} UGX to this zone must be paid online.`,
-          );
+      // Points reserved above are released if anything below refuses the
+      // checkout (stock hold, expired quote, promotion limit, cash limit).
+      // They used to stay held until the 2-hour sweep, so the customer's
+      // retry was told they had too few points (2026-10-07).
+      const capacity = this.authoritativePricing.capacity; // narrowed here, not inside the closure
+      const { reservation, order } = await (async () => {
+        const reservation = await capacity.reserve({ quoteId: quote.id, checkoutKey });
+        const snapshot: OrderPricingSnapshot = {
+          quoteId: quote.id,
+          currency: quote.currency,
+          baseSubtotalUgx: quote.baseSubtotalUgx,
+          discountTotalUgx: quote.discountTotalUgx,
+          shippingUgx: quote.shippingUgx,
+          taxUgx: quote.taxUgx,
+          finalTotalUgx: quote.finalTotalUgx,
+          calculationVersion: quote.calculationVersion,
+          couponReference: quote.couponReference,
+          appliedPromotionVersions: quote.appliedPromotionVersions,
+          experimentEvidence: quote.experimentEvidence,
+          adjustments: quote.adjustments,
+          evaluatedAt: quote.evaluatedAt,
+        };
+        const pricedItems: OrderItem[] = quote.lines.map((line) => ({ productId: line.productId, sku: line.sku, name: line.name, price: line.canonicalUnitPriceUgx, quantity: line.quantity, canonicalUnitPrice: line.canonicalUnitPriceUgx, baseSubtotal: line.baseSubtotalUgx, discountAmount: line.discountUgx, finalLineTotal: line.finalSubtotalUgx }));
+        if (dto.paymentMethod === 'offline' && district && this.codPolicy) {
+          const policy = await this.codPolicy.forDistrict(district);
+          const payable = quote.finalTotalUgx - (loyaltyReservation?.valueUgx ?? 0);
+          if (policy?.active && policy.codMaxOrderValueUgx !== null && payable > policy.codMaxOrderValueUgx) {
+            throw new Error(
+              `COD_LIMIT_EXCEEDED: Orders above ${policy.codMaxOrderValueUgx.toLocaleString('en-UG')} UGX to this zone must be paid online.`,
+            );
+          }
         }
-      }
 
-      const order = Order.create(
-        crypto.randomUUID(),
-        dto.customerDetails,
-        dto.buyerType,
-        pricedItems,
-        quote.shippingUgx,
-        fee.confirmed,
-        snapshot,
-        dto.principal?.kind === 'USER' ? dto.principal.id : null,
-        loyaltyReservation ? { discountUgx: loyaltyReservation.valueUgx, redemptionId: loyaltyReservation.reservationId } : null,
-        await this.ownerReviewThresholdUgx(),
-      );
+        const order = Order.create(
+          crypto.randomUUID(),
+          dto.customerDetails,
+          dto.buyerType,
+          pricedItems,
+          quote.shippingUgx,
+          fee.confirmed,
+          snapshot,
+          dto.principal?.kind === 'USER' ? dto.principal.id : null,
+          loyaltyReservation ? { discountUgx: loyaltyReservation.valueUgx, redemptionId: loyaltyReservation.reservationId } : null,
+          await this.ownerReviewThresholdUgx(),
+        );
+        return { reservation, order };
+      })().catch(async (err: unknown) => {
+        if (loyaltyReservation && this.loyaltyRedemption) {
+          await this.loyaltyRedemption.release({ reservationId: loyaltyReservation.reservationId }).catch(() => undefined);
+        }
+        throw err;
+      });
       try {
         const saved = await this.authoritativePricing.orders.savePricedOrder({ order, quote, reservationIds: reservation.reservations.map((item) => item.id), clientOrderKey, checkoutLink: dto.checkoutLink, stitching: dto.stitching ?? null, paymentMethod: dto.paymentMethod ?? null });
         if (saved.duplicate && reservation.reservations.length) await this.authoritativePricing.capacity.release({ quoteId: quote.id });

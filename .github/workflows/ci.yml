@@ -5,11 +5,14 @@ name: CI
 # here (the previous copy under goldplus-commerce/.github was never executed).
 # All `run:` steps default to the app directory.
 
+# deploy/** is where production is cut from (scripts/deploy-prod.sh rolls its
+# tip). Until 2026-10-07 nothing here ran for that branch, so a lint error, a
+# type error and three red unit tests reached it unnoticed.
 on:
   push:
-    branches: [ main, master, 'claude/**' ]
+    branches: [ main, master, 'claude/**', 'deploy/**' ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, master, 'deploy/**' ]
 
 defaults:
   run:
@@ -19,13 +22,13 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4, pinned 2026-10-07
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4, pinned 2026-10-07
         with:
-          version: 8
-      - uses: actions/setup-node@v4
+          version: 9.1.4  # the version Dockerfile.api/web build with; pnpm 8 cannot read lockfile v9
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4, pinned 2026-10-07
         with:
-          node-version: 20
+          node-version: 22
           cache: 'pnpm'
           cache-dependency-path: goldplus-commerce/pnpm-lock.yaml
       - run: pnpm install
@@ -65,14 +68,19 @@ jobs:
       COMMERCE_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/goldplus_test
       ANALYTICS_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/goldplus_it
       REDIS_TEST_URL: redis://localhost:6379
+      # The measurement suite routes GA4 only when a measurement id exists;
+      # these are the values scripts/integration-on-clone.sh has always used.
+      GA4_MEASUREMENT_ID: G-ITEST00001
+      METRICS_INTERNAL_URL: http://127.0.0.1:9
+      PROXY_TOPOLOGY_MODE: DIRECT
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4, pinned 2026-10-07
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4, pinned 2026-10-07
         with:
-          version: 8
-      - uses: actions/setup-node@v4
+          version: 9.1.4  # the version Dockerfile.api/web build with; pnpm 8 cannot read lockfile v9
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4, pinned 2026-10-07
         with:
-          node-version: 20
+          node-version: 22
           cache: 'pnpm'
           cache-dependency-path: goldplus-commerce/pnpm-lock.yaml
       - run: pnpm install
@@ -82,19 +90,22 @@ jobs:
         run: node scripts/release/claude/verify-migration-parity.mjs
       - name: Create isolated analytics DB (self-contained suites drop/recreate)
         run: PGPASSWORD=postgres psql -h localhost -U postgres -c 'create database goldplus_it;'
+      # One file at a time (see package.json): the suites share this database,
+      # and in parallel one suite's live ad platforms leaked into another's
+      # routing (Meta/X/measurement failed together, passed alone).
       - name: Integration tests (real PostgreSQL + Redis)
         run: pnpm test:integration
 
   security-audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4, pinned 2026-10-07
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4, pinned 2026-10-07
         with:
-          version: 8
-      - uses: actions/setup-node@v4
+          version: 10.17.1  # audit only: honours pnpm.auditConfig.ignoreGhsas (9.1.4 ignores it); same lockfile v9
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4, pinned 2026-10-07
         with:
-          node-version: 20
+          node-version: 22
           cache: 'pnpm'
           cache-dependency-path: goldplus-commerce/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
@@ -105,21 +116,25 @@ jobs:
     container:
       image: semgrep/semgrep
     steps:
-      - uses: actions/checkout@v4
-      - run: semgrep scan --config auto --error
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4, pinned 2026-10-07
+      # One rule excluded, with evidence in goldplus-commerce/docs/security/audit-exceptions.md:
+      # raw-html-format fires on our HTML email templates, where every value is
+      # escaped (escapeHtml / the escaping renderer) and a nosemgrep comment would
+      # land inside the email markup itself. Everything else is fixed or annotated.
+      - run: semgrep scan --config auto --error --exclude-rule javascript.express.security.injection.raw-html-format.raw-html-format
         working-directory: .
 
   sbom:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4, pinned 2026-10-07
       - name: Generate SBOM (SPDX) for the application
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610  # v0, pinned 2026-10-07
         with:
           path: goldplus-commerce
           format: spdx-json
           output-file: sbom.spdx.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4, pinned 2026-10-07
         with:
           name: sbom-spdx
           path: sbom.spdx.json
@@ -127,31 +142,83 @@ jobs:
   container-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4, pinned 2026-10-07
       # Filesystem vulnerability scan of deps + config (fails on CRITICAL/HIGH).
       # The final production IMAGE scan runs in the release workflow before deploy.
       - name: Trivy filesystem scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0, pinned 2026-10-07
         with:
           scan-type: fs
           scan-ref: goldplus-commerce
           severity: CRITICAL,HIGH
           exit-code: '1'
           ignore-unfixed: true
+          # Reviewed exceptions, shared with the pnpm audit (docs/security/audit-exceptions.md).
+          trivyignores: goldplus-commerce/.trivyignore
+          # Lab tooling with its own npm lockfile, never built into an image.
+          skip-dirs: goldplus-commerce/performance-audit,goldplus-commerce/compatibility-audit
 
+  # The browser suite needs a running shop. Until 2026-10-07 this job started
+  # nothing, so all ~370 tests failed with "connection refused" and the job
+  # was ignored. Now: real Postgres + Redis, migrated and seeded, the API (tsx,
+  # as in dev: the shared package is TypeScript) and the built website, then
+  # Chromium desktop + mobile. Admin-only specs skip without E2E_ADMIN_*.
   e2e-playwright:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: goldplus_e2e
+        ports: [ '5432:5432' ]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: [ '6379:6379' ]
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/goldplus_e2e
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-only-test-jwt-secret-000000000000000000000000
+      IDENTITY_HASH_PEPPER: ci-only-test-identity-pepper-0000000000000000
+      MTN_WEBHOOK_SECRET: ci-only-test-mtn-webhook-secret-0000
+      AIRTEL_WEBHOOK_SECRET: ci-only-test-airtel-webhook-secret-0000
+      PUBLIC_API_BASE_URL: http://127.0.0.1:3000
+      INTERNAL_API_ORIGIN: http://127.0.0.1:3000
+      PROXY_TOPOLOGY_MODE: DIRECT
+      NODE_ENV: development
+      E2E_WEB_BASE: http://127.0.0.1:4321
+      E2E_API_BASE: http://127.0.0.1:3000
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4, pinned 2026-10-07
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4, pinned 2026-10-07
         with:
-          version: 8
-      - uses: actions/setup-node@v4
+          version: 9.1.4  # the version Dockerfile.api/web build with; pnpm 8 cannot read lockfile v9
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4, pinned 2026-10-07
         with:
-          node-version: 20
+          node-version: 22
           cache: 'pnpm'
           cache-dependency-path: goldplus-commerce/pnpm-lock.yaml
       - run: pnpm install
+      - run: pnpm -F @goldplus/api db:migrate
+      - run: pnpm exec tsx scripts/seed.ts
+      - run: pnpm build
+      - name: Start API and website
+        run: |
+          (cd apps/api && nohup pnpm exec tsx src/interfaces/http/server.ts > /tmp/api.log 2>&1 &)
+          (HOST=127.0.0.1 PORT=4321 nohup node apps/web/dist/server/entry.mjs > /tmp/web.log 2>&1 &)
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:3000/health/live >/dev/null && curl -sf http://127.0.0.1:4321/ >/dev/null && exit 0
+            sleep 2
+          done
+          echo "API or website never came up"; tail -40 /tmp/api.log; tail -40 /tmp/web.log; exit 1
       - run: pnpm exec playwright install --with-deps chromium
       - name: Playwright e2e (isolated data; no real payments/messages/provider events)
-        run: pnpm test:e2e
+        run: pnpm exec playwright test --project=chromium-desktop --project=chromium-mobile
+      - name: Server logs on failure
+        if: failure()
+        run: tail -80 /tmp/api.log; tail -40 /tmp/web.log

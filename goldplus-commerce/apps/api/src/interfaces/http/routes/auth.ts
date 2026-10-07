@@ -42,6 +42,25 @@ async function issueSessionSafely(
   }
 }
 
+/**
+ * The tokens a sign-in hands out. With a refresh credential the access token is
+ * SHORT (SESSION_LIFETIMES.accessTtlMs, 15 min) and the website renews it;
+ * a stolen one is useful for minutes. Without one (session store down) the
+ * long token the use case signed is kept, so a sign-in never fails for it.
+ */
+export async function signInTokens(
+  registry: ReturnType<typeof Registry.getInstance>,
+  user: { id: string; email: string },
+  c: Context,
+  fallback: { token: string; expiresAt: Date },
+): Promise<{ token: string; expiresAt: string; refreshToken?: string; refreshExpiresAt?: string }> {
+  const refresh = await issueSessionSafely(registry, user.id, c);
+  if (!refresh) return { token: fallback.token, expiresAt: fallback.expiresAt.toISOString() };
+  const ttlSeconds = Math.floor(SESSION_LIFETIMES.accessTtlMs / 1000);
+  const token = await registry.tokenSigner.sign({ subject: user.id, email: user.email, ttlSeconds });
+  return { token, expiresAt: new Date(Date.now() + ttlSeconds * 1000).toISOString(), ...refresh };
+}
+
 /** Resolve the authenticated user from a bearer token, or null. */
 /**
  * The caller behind a bearer token, or null.
@@ -87,7 +106,7 @@ routes.post('/login', async (c) => {
     return c.json(res, statusCode);
   }
 
-  const refresh = await issueSessionSafely(registry, result.user.id, c);
+  const tokens = await signInTokens(registry, result.user, c, { token: result.token, expiresAt: result.expiresAt });
   // 0155: link the account to its customer profile (never blocks the login).
   stitchInBackground({ moment: 'SIGN_IN', accountUserId: result.user.id });
 
@@ -100,9 +119,7 @@ routes.post('/login', async (c) => {
   }> = {
     success: true,
     data: {
-      token: result.token,
-      expiresAt: result.expiresAt.toISOString(),
-      ...(refresh ? { refreshToken: refresh.refreshToken, refreshExpiresAt: refresh.refreshExpiresAt } : {}),
+      ...tokens,
       user: result.user,
     },
   };
@@ -149,7 +166,7 @@ routes.post('/register', async (c) => {
 
   // Registration IS a login: same durable session, same response shape, so the
   // storefront handles both flows with one code path.
-  const refresh = await issueSessionSafely(registry, result.user.id, c);
+  const tokens = await signInTokens(registry, result.user, c, { token: result.token, expiresAt: result.expiresAt });
   // 0155: a new account gets its customer profile (never blocks registration).
   stitchInBackground({ moment: 'REGISTRATION', accountUserId: result.user.id });
 
@@ -163,9 +180,7 @@ routes.post('/register', async (c) => {
   }> = {
     success: true,
     data: {
-      token: result.token,
-      expiresAt: result.expiresAt.toISOString(),
-      ...(refresh ? { refreshToken: refresh.refreshToken, refreshExpiresAt: refresh.refreshExpiresAt } : {}),
+      ...tokens,
       user: result.user,
       ...(referral ? { referral } : {}),
     },
@@ -230,7 +245,7 @@ routes.post('/admin/login', async (c) => {
     newState: { email: result.user.email, permissionCount: permissions.length },
   });
 
-  const refresh = await issueSessionSafely(registry, result.user.id, c);
+  const tokens = await signInTokens(registry, result.user, c, { token: result.token, expiresAt: result.expiresAt });
 
   const res: ApiResponse<{
     token: string;
@@ -241,9 +256,7 @@ routes.post('/admin/login', async (c) => {
   }> = {
     success: true,
     data: {
-      token: result.token,
-      expiresAt: result.expiresAt.toISOString(),
-      ...(refresh ? { refreshToken: refresh.refreshToken, refreshExpiresAt: refresh.refreshExpiresAt } : {}),
+      ...tokens,
       user: { id: result.user.id, email: result.user.email, permissions },
     },
   };
@@ -295,12 +308,15 @@ routes.post('/refresh', async (c) => {
 
   return c.json({
     success: true,
-    data: {
-      token,
-      expiresAt: result.session.accessExpiresAt.toISOString(),
-      refreshToken: result.session.refreshToken,
-      refreshExpiresAt: result.session.refreshExpiresAt.toISOString(),
-    },
+    data: 'grace' in result
+      // Concurrent refresh: an access token only; the caller keeps its refresh credential.
+      ? { token, expiresAt: result.session.accessExpiresAt.toISOString() }
+      : {
+          token,
+          expiresAt: result.session.accessExpiresAt.toISOString(),
+          refreshToken: result.session.refreshToken,
+          refreshExpiresAt: result.session.refreshExpiresAt.toISOString(),
+        },
   });
 });
 

@@ -80,7 +80,13 @@ suite('durable revocable sessions (real PostgreSQL)', () => {
     const rotated = await service.rotate({ refreshToken: issued.refreshToken });
     expect(rotated.ok).toBe(true);
 
-    // Replay the ORIGINAL (now consumed) token.
+    // Within the grace window a replay is the same browser refreshing twice
+    // (two tabs, two web replicas): an access token only, the family lives.
+    const twin = await service.rotate({ refreshToken: issued.refreshToken });
+    expect(twin).toMatchObject({ ok: true, grace: true });
+    expect(twin.session.refreshToken).toBeUndefined();
+    // Past the window, replaying the ORIGINAL (consumed) token is reuse.
+    await raw`update auth_sessions set rotated_at = now() - interval '1 minute' where user_id = ${userId} and rotated_at is not null`;
     const replay = await service.rotate({ refreshToken: issued.refreshToken });
     expect(replay.ok).toBe(false);
     expect(replay.reason).toBe('REUSE_DETECTED');
@@ -91,17 +97,20 @@ suite('durable revocable sessions (real PostgreSQL)', () => {
     expect(afterReuse.reason).toBe('REVOKED');
   });
 
-  it('makes concurrent submits of one credential single-use', async () => {
+  it('makes concurrent submits of one credential mint once, without signing the browser out', async () => {
     const userId = await freshUser();
     const issued = await service.issue({ userId });
     const [a, b] = await Promise.all([
       service.rotate({ refreshToken: issued.refreshToken }),
       service.rotate({ refreshToken: issued.refreshToken }),
     ]);
-    const oks = [a, b].filter((r) => r.ok);
-    expect(oks).toHaveLength(1); // exactly one rotation wins
-    const loser = [a, b].find((r) => !r.ok);
-    expect(loser.reason).toBe('REUSE_DETECTED');
+    // Exactly one rotation mints a new refresh credential; the twin request is
+    // answered with an access token only, and nobody is signed out.
+    const minted = [a, b].filter((r) => r.ok && !r.grace);
+    const twins = [a, b].filter((r) => r.ok && r.grace);
+    expect(minted).toHaveLength(1);
+    expect(twins).toHaveLength(1);
+    expect((await service.rotate({ refreshToken: minted[0].session.refreshToken })).ok).toBe(true);
   });
 
   it('logout revokes only the current session; other sessions keep working', async () => {

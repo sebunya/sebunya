@@ -205,7 +205,7 @@ async function collectQueueMetrics(): Promise<void> {
     } catch (err) {
       errors.push(err);
       queueJobCount.set({ queue_name: queueName, status: 'degraded' }, 0);
-      console.error(`[Metrics] Error gathering metrics for queue ${queueName}:`, err);
+      console.error('[Metrics] Error gathering metrics for queue %s:', queueName, err);
     }
   }));
 

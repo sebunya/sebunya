@@ -110,6 +110,7 @@ export const DEFAULT_TAXONOMY: Taxonomy = [
 function taxonomyKeywordMatches(keyword: string, haystack: string): boolean {
   const escaped = keyword.trim().toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
   if (!escaped) return false;
+  // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- keyword is fully escaped on the line above
   return new RegExp('\\b' + escaped).test(haystack);
 }
 

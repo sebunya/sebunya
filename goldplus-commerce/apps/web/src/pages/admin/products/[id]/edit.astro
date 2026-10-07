@@ -4,7 +4,7 @@ import FormField from '../../../../components/FormField.astro';
 import FormFeedback from '../../../../components/FormFeedback.astro';
 import Notice from '../../../../components/Notice.astro';
 import { apiBase } from '../../../../lib/api';
-import { readSessionToken, clearSessionCookie } from '../../../../lib/session';
+import { readSessionToken, SESSION_COOKIE_NAME } from '../../../../lib/session';
 import type { ProductPublicDto } from '@goldplus/shared';
 
 const { id } = Astro.params;
@@ -92,7 +92,7 @@ if (Astro.request.method === 'POST') {
 const productRes = await authedJson<ProductPublicDto>(`/admin/products/${encodeURIComponent(id ?? '')}/view`);
 if (productRes.status === 401) {
   // Only an expired session signs out; a 403 is a permission gap, shown below.
-  Astro.response.headers.set('Set-Cookie', clearSessionCookie());
+  Astro.cookies.delete(SESSION_COOKIE_NAME, { path: '/' }); // a header set on Astro.response is dropped by a returned redirect
   return Astro.redirect(`/admin/login?returnTo=/admin/products/${encodeURIComponent(id ?? '')}/edit`, 303);
 }
 const product = productRes.data;

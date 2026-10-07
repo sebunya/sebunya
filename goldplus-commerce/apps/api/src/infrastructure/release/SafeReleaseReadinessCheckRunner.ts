@@ -71,6 +71,7 @@ export class SafeReleaseReadinessCheckRunner implements IReleaseReadinessCheckRu
    * developer machine.
    */
   private sourceTooling(): { ok: true } | { ok: false; result: CheckRunnerResult } {
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal -- fixed repository file names
     const missing = ['package.json', 'tsconfig.base.json', 'tests/architecture', 'node_modules/.bin/vitest'].filter((p) => !existsSync(join(this.root, p)));
     if (missing.length === 0) return { ok: true };
     return {
@@ -142,6 +143,7 @@ export class SafeReleaseReadinessCheckRunner implements IReleaseReadinessCheckRu
 function findRepoRoot(start: string): string {
   let dir = start;
   for (let i = 0; i < 6; i++) {
+    // nosemgrep: javascript.lang.security.audit.path-traversal.path-join-resolve-traversal.path-join-resolve-traversal -- walks up from the process directory, no request input
     if (existsSync(join(dir, 'pnpm-workspace.yaml'))) return dir;
     const up = dirname(dir);
     if (up === dir) break;

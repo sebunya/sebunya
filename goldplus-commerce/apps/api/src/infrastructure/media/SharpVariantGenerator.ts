@@ -25,11 +25,13 @@ const FORMATS: Array<{ format: MediaVariantRecord['format']; ext: string }> = [
   { format: 'jpeg', ext: 'jpg' },
 ];
 
-let sharpModule: typeof import('sharp') | null | undefined;
-async function loadSharp(): Promise<typeof import('sharp') | null> {
+// sharp 0.35 ships ESM types: the callable is the default export.
+type SharpFn = typeof import('sharp').default;
+let sharpModule: SharpFn | null | undefined;
+async function loadSharp(): Promise<SharpFn | null> {
   if (sharpModule !== undefined) return sharpModule;
   try {
-    sharpModule = (await import('sharp')).default as unknown as typeof import('sharp');
+    sharpModule = (await import('sharp')).default;
   } catch (err) {
     sharpModule = null;
     logger.warn({ err: (err as Error).message }, '[SharpVariantGenerator] sharp unavailable — storing originals only');

@@ -13,6 +13,7 @@
  */
 const PUBLIC_API_ORIGIN =
   ((import.meta.env.PUBLIC_API_BASE_URL as string | undefined) || 'http://localhost:3000');
+import { apiHeaders } from './forwardClient';
 
 function resolveApiOrigin(): string {
   if (import.meta.env.SSR) {
@@ -138,11 +139,16 @@ export function formReference(json: { data?: unknown; meta?: { requestId?: unkno
 }
 
 /** `bearer`: the signed-in session token, forwarded when the action is attributable (a verification scan earns points). */
-export async function postJson(path: string, body: unknown, bearer?: string | null): Promise<FormPostResult> {
+/**
+ * `clientAddress`: the visitor's address (readClientAddress(Astro)). Without it
+ * the API sees no X-Forwarded-For, treats the call as internal and applies NO
+ * rate limit: verification-code guessing and form spam were unbounded.
+ */
+export async function postJson(path: string, body: unknown, bearer?: string | null, clientAddress?: string | null): Promise<FormPostResult> {
   try {
     const res = await fetch(`${API_BASE}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}) },
+      headers: apiHeaders({ 'Content-Type': 'application/json', Accept: 'application/json', ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}) }, clientAddress),
       body: JSON.stringify(body),
     });
     const json = (await res.json().catch(() => null)) as ApiEnvelope<unknown> | null;

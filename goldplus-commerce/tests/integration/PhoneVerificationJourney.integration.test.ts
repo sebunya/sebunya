@@ -26,8 +26,8 @@ suite('phone verification journey on real PostgreSQL', () => {
 
   const newUser = async (): Promise<string> => {
     const [row] = await raw`
-      insert into users (email, password_hash, display_name)
-      values (${`${tag}-${userIds.length}@example.test`}, 'x', 'Journey Test') returning id`;
+      insert into users (email, password_hash)
+      values (${`${tag}-${userIds.length}@example.test`}, 'x') returning id`;
     userIds.push(row.id);
     return row.id;
   };

@@ -1,4 +1,5 @@
 ---
+import { readClientAddress } from '../../lib/forwardClient';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import FormField from '../../components/FormField.astro';
 import FormFeedback from '../../components/FormFeedback.astro';
@@ -17,7 +18,7 @@ if (Astro.request.method === 'POST') {
   } else {
     // A signed-in scan is attributable: it earns the verification points and
     // counts toward the "verify ten" mission. Anonymous scans stay anonymous.
-    const result = await postJson('/governance/verification/check', { code }, Astro.cookies.get('goldplus_session')?.value ?? null);
+    const result = await postJson('/governance/verification/check', { code }, Astro.cookies.get('goldplus_session')?.value ?? null, readClientAddress(Astro));
     reference = result.ok ? result.reference : undefined;
     if (!result.ok) {
       status = 'error';

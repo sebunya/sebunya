@@ -1,3 +1,4 @@
+import { ReholdStockOnLatePaymentUseCase } from '../application/use-cases/payments/ReholdStockOnLatePaymentUseCase';
 import './logging/appLoggerBinding';
 import { PERMISSIONS as SHARED_PERMISSIONS, toEatParts } from '@goldplus/shared';
 import { MeasurementOperationsUseCases } from '../application/use-cases/measurement/MeasurementOperationsUseCases';
@@ -332,7 +333,8 @@ import { DrizzleLoyaltyIdentityRepository, DrizzleLoyaltyTierRepository, Loyalty
 import { SaveLoyaltyProgrammeConfigUseCase } from '../application/use-cases/loyalty/SaveLoyaltyProgrammeConfigUseCase';
 import { ReconcileLoyaltyControlTotalsUseCase } from '../application/use-cases/loyalty/ReconcileLoyaltyControlTotalsUseCase';
 import { DrizzleLoyaltyControlTotalsRepository } from './db/repositories/DrizzleLoyaltyControlTotalsRepository';
-import { VestLoyaltyOnDeliveryUseCase, ClawbackOrderEarnUseCase, ReserveRedemptionUseCase, ConsumeRedemptionUseCase, ReleaseRedemptionUseCase, ReverseRedemptionUseCase, RunLoyaltyDailySweepUseCase, ApplyRefundToLoyaltyUseCase, guardLoyaltyIssuance } from '../application/use-cases/loyalty/LoyaltyCompletionUseCases';
+import { VestLoyaltyOnDeliveryUseCase, ClawbackOrderEarnUseCase, ReserveRedemptionUseCase, ConsumeRedemptionUseCase, ReleaseRedemptionUseCase, ReverseRedemptionUseCase, RunLoyaltyDailySweepUseCase, ApplyRefundToLoyaltyUseCase,
+  ReverseReferralOnRefundUseCase, guardLoyaltyIssuance } from '../application/use-cases/loyalty/LoyaltyCompletionUseCases';
 import { ListSearchMissesUseCase, PromoteSearchMissToAliasUseCase, ListAddressReviewQueueUseCase, ResolveAddressUseCase, ManageLandmarksUseCase, ManagePickupPointsUseCase, GetZonePoliciesUseCase, SaveZonePolicyUseCase, ListDataExceptionsUseCase } from '../application/use-cases/locations/LocationAdminUseCases';
 import {
   ListDeliveryZonesUseCase,
@@ -640,6 +642,7 @@ import { DrizzleCustomerSignalReader } from './db/repositories/DrizzleCustomerSi
 import {
   ResolveCustomerIdentityUseCase,
   ProjectCustomerProfileUseCase,
+  ReprojectStaleProfilesUseCase,
   GenerateNextBestActionUseCase,
   GetCustomerDnaUseCase,
 } from '../application/use-cases/customer-dna/CustomerDnaUseCases';
@@ -1207,6 +1210,7 @@ export class Registry {
   public readonly recordPackingExceptionUseCase = new RecordPackingExceptionUseCase(this.packingSessionRepo, this.auditRepo);
   // Inventory ledger (Section 12): reservation, release, consumption, availability.
   public readonly inventoryRepo = new DrizzleInventoryRepository();
+  public readonly reholdStockOnLatePaymentUseCase = new ReholdStockOnLatePaymentUseCase(this.inventoryRepo, this.auditRepo);
   public readonly orderReservationState = new DrizzleOrderReservationState();
   public readonly checkoutIdempotencyRepo = new DrizzleCheckoutIdempotencyRepository();
 
@@ -1253,6 +1257,7 @@ export class Registry {
     sideEffectRecorder: this.checkoutSideEffectRecorder,
     // Derived through a labelled HMAC so the digest key is unrelated to the session,
     // checkout-intent and cart-credential key streams even from one root secret.
+    // nosemgrep: javascript.lang.security.audit.hardcoded-hmac-key.hardcoded-hmac-key -- a public derivation label; the secret is the HMAC message (CHECKOUT_INTENT_SECRET / JWT_SECRET)
     fingerprintDigestKey: createHmac('sha256', 'goldplus-checkout-fingerprint-v1')
       .update((process.env.CHECKOUT_INTENT_SECRET || process.env.JWT_SECRET || '').trim())
       .digest('hex'),
@@ -1346,7 +1351,8 @@ export class Registry {
   public readonly customerSignalReader = new DrizzleCustomerSignalReader();
   public readonly identityConflictRepo = new DrizzleIdentityConflictRepository();
   public readonly resolveCustomerIdentityUseCase = new ResolveCustomerIdentityUseCase(this.customerProfileRepo, this.customerIdentityRepo, this.auditRepo, this.identityConflictRepo);
-  public readonly projectCustomerProfileUseCase = new ProjectCustomerProfileUseCase(this.customerProfileRepo, this.customerIdentityRepo, this.customerFeatureRepo, this.customerLifecycleRepo, this.customerSignalReader, this.auditRepo);
+  public readonly projectCustomerProfileUseCase = new ProjectCustomerProfileUseCase(this.customerProfileRepo, this.customerIdentityRepo, this.customerFeatureRepo, this.customerLifecycleRepo, this.customerSignalReader, this.auditRepo, this.lifecycleReadRepo);
+  public readonly reprojectStaleProfilesUseCase = new ReprojectStaleProfilesUseCase(this.customerProfileRepo, this.projectCustomerProfileUseCase);
   public readonly generateNextBestActionUseCase = new GenerateNextBestActionUseCase(this.customerProfileRepo, this.nbaDecisionRepo, this.auditRepo);
   public readonly getCustomerDnaUseCase = new GetCustomerDnaUseCase(this.customerProfileRepo, this.customerIdentityRepo, this.customerFeatureRepo, this.customerLifecycleRepo, this.nbaDecisionRepo);
 
@@ -1502,7 +1508,7 @@ export class Registry {
     this.loyaltyCompletionRepo,
     // Lazy: both are declared further down this class.
     { getRefundedShareBpsForOrder: (orderId) => this.refundLedgerRepo.getRefundedShareBpsForOrder(orderId) },
-    { execute: (input) => new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase).execute(input) },
+    { execute: (input) => new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase, this.reverseReferralOnRefundUseCase).execute(input) },
   );
   public readonly clawbackOrderEarnUseCase = new ClawbackOrderEarnUseCase(this.loyaltyRepo, this.loyaltyCompletionRepo, this.auditRepo);
   public readonly reserveRedemptionUseCase = new ReserveRedemptionUseCase(this.loyaltyRepo, this.loyaltyCompletionRepo, this.loyaltyGate);
@@ -1570,6 +1576,7 @@ export class Registry {
 
   // ── Gamification LIVE (0087, activated 2026-08-05) ────────────────────────
   public readonly loyaltyReferralRepo = new DrizzleLoyaltyReferralRepository();
+  public readonly reverseReferralOnRefundUseCase = new ReverseReferralOnRefundUseCase(this.loyaltyReferralRepo, this.loyaltyRepo);
   public readonly birthdayUserSource = new DrizzleBirthdayUserSource();
   public readonly evaluateGamificationForUserUseCase = new EvaluateGamificationForUserUseCase(
     this.loyaltyRepo,
@@ -2223,7 +2230,7 @@ export class Registry {
     // The ledger decides whether a provider reversal was total or partial.
     this.refundLedgerRepo,
     // Points follow the money back even when the order cannot move (delivered, partial refund).
-    new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase),
+    new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase, this.reverseReferralOnRefundUseCase),
     // A total refund cancels the order; its fulfilment task leaves the work queue with it.
     new CancelFulfilmentTaskForCancelledOrderUseCase(this.fulfilmentRepo, this.transitionFulfilmentTaskUseCase),
   );
@@ -2236,7 +2243,7 @@ export class Registry {
     this.pesapalPaymentRepo,
     this.orderTransitionService,
     this.refundLedgerRepo,
-    new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase),
+    new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase, this.reverseReferralOnRefundUseCase),
     // A total refund cancels the order; its fulfilment task leaves the work queue with it.
     new CancelFulfilmentTaskForCancelledOrderUseCase(this.fulfilmentRepo, this.transitionFulfilmentTaskUseCase),
   );
@@ -3046,6 +3053,11 @@ export class Registry {
             .catch(() => undefined);
         }
       }
+      if (toStatus === 'processing' && ctx.paymentStatus === 'paid') {
+        // Paid after the stock hold expired: hold it again, or flag it.
+        await this.reholdStockOnLatePaymentUseCase.execute(orderId)
+          .catch((err: unknown) => logger.error({ orderId, err: err instanceof Error ? err.message : String(err) }, 'late-payment stock re-hold failed'));
+      }
       if (toStatus === 'delivered' || toStatus === 'completed') {
         // Goods that left the shop use up their reservation. Dispatch consumes
         // at READY_FOR_DISPATCH, but an order closed without dispatch (a
@@ -3070,6 +3082,8 @@ export class Registry {
           .execute({ orderId, actorId: null, actorType: 'system', reason: 'Payment reversed by provider' })
           .catch(() => undefined);
         await this.reverseRedemptionUseCase.execute({ orderId, reason: 'Payment reversed by provider' }).catch(() => undefined);
+        await this.reverseReferralOnRefundUseCase.execute({ orderId, reason: 'Payment reversed by provider' })
+          .catch((err: unknown) => logger.error({ orderId, err: err instanceof Error ? err.message : String(err) }, 'loyalty referral reversal failed'));
       }
     });
   }

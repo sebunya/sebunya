@@ -201,7 +201,10 @@ export class QueueService {
             delay: 5000,
           },
           removeOnComplete: true,
-          removeOnFail: false,
+          // Bounded: per-event queues (telemetry, measurement delivery) kept
+          // every failure forever in a Redis with no maxmemory; a weekend of a
+          // provider being down filled it. The cron jobs already cap at 200.
+          removeOnFail: { age: 7 * 24 * 3600, count: 1000 },
         },
       });
       this.queues.set(queueName, queue);

@@ -162,9 +162,9 @@ app.use('*', async (c, next) => {
   c.header('X-Correlation-Id', reqId);
   c.header('X-Request-Id', reqId);
 
-  const userId = c.req.header('x-user-id') || undefined;
-
-  return traceLocalStorage.run({ traceId: reqId, userId }, async () => {
+  // userId is set by authMiddleware from the verified session. It came from a
+  // caller-supplied x-user-id header, so anyone could sign log lines as anyone.
+  return traceLocalStorage.run({ traceId: reqId, userId: undefined }, async () => {
     await next();
   });
 });

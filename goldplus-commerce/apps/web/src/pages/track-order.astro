@@ -1,4 +1,5 @@
 ---
+import { readClientAddress } from '../lib/forwardClient';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { postJson, whatsappSupportNumber } from '../lib/api';
 import { startPaymentByReference, paymentStartMessageFor, orderAwaitsPayment } from '../lib/checkoutClient';
@@ -15,7 +16,7 @@ const orderHelpWhatsappUrl = `https://wa.me/${whatsappSupportNumber}?text=${enco
 
 const fmtDate = (iso: unknown) => {
   const t = iso ? new Date(String(iso)).getTime() : NaN;
-  return Number.isFinite(t) ? new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+  return Number.isFinite(t) ? new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Kampala' }) : '';
 };
 
 // Dispatch stages the customer cares about — fulfilment progress, NOT live GPS.
@@ -39,7 +40,7 @@ const stageIndexOf = (orderStatus: unknown): number => {
 };
 
 async function lookupOrder(reference: string, contact: string) {
-  return postJson('/commerce/orders/lookup', { reference, contact });
+  return postJson('/commerce/orders/lookup', { reference, contact }, null, readClientAddress(Astro));
 }
 
 let order: any = null;
@@ -88,7 +89,7 @@ if (Astro.request.method === 'POST') {
         // it through the public support form sent phone '' for a customer who
         // verified with their email, and the ticket was refused for a phone
         // number they were never asked for.
-        const ticket = await postJson('/commerce/orders/lookup/followup', { reference, contact, note });
+        const ticket = await postJson('/commerce/orders/lookup/followup', { reference, contact, note }, null, readClientAddress(Astro));
         if (ticket.ok) followupOk = true;
         else followupError = ticket.message ?? 'We could not send your follow-up request. Please try WhatsApp instead.';
       }

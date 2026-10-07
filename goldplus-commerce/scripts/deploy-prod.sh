@@ -60,8 +60,10 @@ N=$(echo $SERVICES | wc -w); WANT=$((N*2))
 # Bounded wait. This loop had no timeout: a replica that never reports
 # healthy (or a service with no healthcheck at all — caddy has none) would
 # hang the deploy forever with the old containers already replaced.
+# "(healthy)" in brackets: a bare `.*healthy` also matched "(unhealthy)", so a
+# release whose healthcheck failed was declared healthy and tagged as rollback.
 DEADLINE=$(( $(date +%s) + ${HEALTH_TIMEOUT_SECONDS:-600} ))
-until [ "$(docker compose --env-file .env.production -f docker-compose.production.yml ps --format '{{.Name}} {{.Status}}' | grep -cE "($(echo $SERVICES | tr ' ' '|'))-[12] .*healthy")" -ge "$WANT" ]; do
+until [ "$(docker compose --env-file .env.production -f docker-compose.production.yml ps --format '{{.Name}} {{.Status}}' | grep -cE "($(echo $SERVICES | tr ' ' '|'))-[12] Up .*\(healthy\)")" -ge "$WANT" ]; do
   if [ "$(date +%s)" -ge "$DEADLINE" ]; then
     echo "STOP: $WANT healthy replicas of [$SERVICES] not reached within ${HEALTH_TIMEOUT_SECONDS:-600}s. Inspect with: docker compose ps; roll back with the rollback-$(git rev-parse --short "$PREV") image if needed."
     docker compose --env-file .env.production -f docker-compose.production.yml ps --format '{{.Name}} {{.Status}}' | grep -E "($(echo $SERVICES | tr ' ' '|'))"
@@ -87,8 +89,12 @@ docker builder prune -f --filter until=24h >/dev/null 2>&1 || true
 # layers this deploy just used stay warm.
 CACHE_CAP_GB="${BUILD_CACHE_MAX_GB:-2}"
 CACHE_FLAG=""
+# Read the help once into a variable. Piping it into `grep -q` is unsafe
+# under `set -o pipefail`: grep can exit on the first match, docker then
+# dies of SIGPIPE, the pipeline reports failure and the flag looks absent.
+CACHE_HELP="$(docker builder prune --help 2>/dev/null || true)"
 for f in --max-used-space --keep-storage; do
-  if docker builder prune --help 2>/dev/null | grep -q -- "$f"; then CACHE_FLAG="$f"; break; fi
+  case "$CACHE_HELP" in *"$f"*) CACHE_FLAG="$f"; break ;; esac
 done
 if [ -n "$CACHE_FLAG" ]; then
   # A plain byte count, exactly as the Steward passes it (proven on this host).

@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { clearSessionCookie, readSessionToken } from '../../lib/session';
+import { clearRefreshCookie, clearSessionCookie, readSessionToken } from '../../lib/session';
 import { apiBase } from '../../lib/api';
 
 /**
@@ -29,6 +29,7 @@ export const POST: APIRoute = async ({ request }) => {
     try {
       await fetch(`${apiBase}/auth/logout-all`, {
         method: 'POST',
+        signal: AbortSignal.timeout(3000),
         headers: { Authorization: `Bearer ${token}` },
       });
     } catch {
@@ -36,13 +37,12 @@ export const POST: APIRoute = async ({ request }) => {
     }
   }
 
-  return new Response(null, {
-    status: 303,
-    headers: {
-      Location: '/admin/login',
-      'Set-Cookie': clearSessionCookie(),
-    },
-  });
+  // Both cookies: the refresh credential was revoked above (logout-all), and
+  // a dead one left in the browser would only cost a pointless renewal call.
+  const headers = new Headers({ Location: '/admin/login' });
+  headers.append('Set-Cookie', clearSessionCookie());
+  headers.append('Set-Cookie', clearRefreshCookie());
+  return new Response(null, { status: 303, headers });
 };
 
 export const GET = POST;

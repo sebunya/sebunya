@@ -48,6 +48,9 @@ export class DrizzleAuditRepository implements IAuditRepository {
       // by the name the route knows it by.
       where: eq(auditLogs.entityId, auditEntityId(entity, entityId)),
       orderBy: [desc(auditLogs.createdAt)],
+      // Bounded: a busy singleton (nav, business info) collects thousands of
+      // rows with two jsonb snapshots each; every caller shows the newest few.
+      limit: 500,
     });
 
     return results.map(r => new AuditLogEntity(

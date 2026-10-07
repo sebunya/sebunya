@@ -697,8 +697,8 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
 // recaps travels in a sealed, short-lived, httpOnly cookie on this device.
 if (status === 'received' && reference) {
   const sign = orderReceiptSigner({
-    CHECKOUT_INTENT_SECRET: import.meta.env.CHECKOUT_INTENT_SECRET || process.env.CHECKOUT_INTENT_SECRET,
-    JWT_SECRET: import.meta.env.JWT_SECRET || process.env.JWT_SECRET,
+    CHECKOUT_INTENT_SECRET: process.env.CHECKOUT_INTENT_SECRET || import.meta.env.CHECKOUT_INTENT_SECRET,
+    JWT_SECRET: process.env.JWT_SECRET || import.meta.env.JWT_SECRET,
   });
   if (sign) {
     const sealed = sealOrderReceipt({

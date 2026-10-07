@@ -37,17 +37,35 @@ export class DrizzleSocialIdentityRepository implements ISocialIdentityRepositor
     subject: string;
     email: string | null;
     emailVerified: boolean;
+    revokePasswordAccess?: boolean;
   }): Promise<LinkedIdentity> {
-    const rows = rowsOf(
-      await db.execute(sql`
-        insert into user_identities (user_id, provider, subject, email, email_verified)
-        values (${input.userId}::uuid, ${input.provider}, ${input.subject}, ${input.email}, ${input.emailVerified})
-        on conflict (provider, subject) do update
-          set email = excluded.email, email_verified = excluded.email_verified
-        returning *
-      `),
-    );
-    return toIdentity(rows[0]);
+    return db.transaction(async (tx) => {
+      const rows = rowsOf(
+        await tx.execute(sql`
+          insert into user_identities (user_id, provider, subject, email, email_verified)
+          values (${input.userId}::uuid, ${input.provider}, ${input.subject}, ${input.email}, ${input.emailVerified})
+          on conflict (provider, subject) do update
+            set email = excluded.email, email_verified = excluded.email_verified
+          returning *
+        `),
+      );
+      if (input.revokePasswordAccess) {
+        // Cut-off just before the current second: tokens carry whole-second
+        // iat and the check is iat <= cutoff, so "now()" would also void the
+        // token this very sign-in is about to issue.
+        await tx.execute(sql`
+          update users
+          set password_hash = null,
+              sessions_invalidated_after = date_trunc('second', now()) - interval '1 millisecond'
+          where id = ${input.userId}::uuid
+        `);
+        await tx.execute(sql`
+          update password_reset_tokens set consumed_at = now()
+          where user_id = ${input.userId}::uuid and consumed_at is null
+        `);
+      }
+      return toIdentity(rows[0]);
+    });
   }
 
   async createUserWithIdentity(input: {

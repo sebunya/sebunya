@@ -7,7 +7,7 @@ import FormFeedback from '../components/FormFeedback.astro';
 import Notice from '../components/Notice.astro';
 import { apiBase } from '../lib/api';
 import SocialSignIn from '../components/auth/SocialSignIn.astro';
-import { SESSION_COOKIE_NAME } from '../lib/session';
+import { SESSION_COOKIE_NAME, setSignInCookies } from '../lib/session';
 import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../lib/requestOrigin';
 
 /**
@@ -54,6 +54,7 @@ if (Astro.request.method === 'POST') {
     try {
       const res = await fetch(`${apiBase}/auth/login`, {
         method: 'POST',
+        signal: AbortSignal.timeout(8000),
         headers: jsonApiHeaders(clientAddress),
         body: JSON.stringify({ email, password }),
       });
@@ -65,13 +66,7 @@ if (Astro.request.method === 'POST') {
         // raw-header version signed nobody in — the customer bounced straight
         // back to this page. Admin login always used Astro.cookies and worked,
         // which is why the breakage hid on the customer side only.
-        Astro.cookies.set(SESSION_COOKIE_NAME, json.data.token, {
-          path: '/',
-          httpOnly: true,
-          sameSite: 'lax',
-          maxAge: 604800,
-          secure: import.meta.env.PROD,
-        });
+        setSignInCookies(Astro.cookies, json.data); // short token + refresh credential (renewed by the middleware)
 
 
         // R9 (M8, fixation): the visit token is ROTATED at the authentication

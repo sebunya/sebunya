@@ -23,8 +23,17 @@ export interface SessionRow {
   refreshExpiresAt: Date;
 }
 
+/**
+ * A rotated refresh credential presented again this soon is the same browser
+ * refreshing twice at once (two tabs, two web replicas), not a thief: it is
+ * answered with an access token only, and the family lives. Past the window,
+ * reuse still ends the family. Kept short on purpose (OAuth "reuse interval").
+ */
+export const REFRESH_REUSE_GRACE_MS = 20_000;
+
 export type RefreshOutcome =
   | { action: 'ROTATE' }
+  | { action: 'GRACE' }
   | { action: 'REVOKED' }
   | { action: 'EXPIRED' }
   | { action: 'REUSE_DETECTED' };
@@ -44,7 +53,9 @@ export function decideRefresh(row: SessionRow | null, now: Date): RefreshOutcome
   if (!row) return { action: 'REUSE_DETECTED' }; // unknown hash: never issued, or already pruned after a prior rotation
   if (row.revokedAt) return { action: 'REVOKED' };
   if (row.refreshExpiresAt.getTime() <= now.getTime()) return { action: 'EXPIRED' };
-  if (row.rotatedAt) return { action: 'REUSE_DETECTED' };
+  if (row.rotatedAt) {
+    return now.getTime() - row.rotatedAt.getTime() <= REFRESH_REUSE_GRACE_MS ? { action: 'GRACE' } : { action: 'REUSE_DETECTED' };
+  }
   return { action: 'ROTATE' };
 }
 

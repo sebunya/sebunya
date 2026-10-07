@@ -1321,13 +1321,14 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
   // Segment is derived from the POST-increment count so it matches the greeting
   // and NBA the visitor actually sees (v===1 first visit → 'new', v>1 → 'returning').
   var gpSeg = CFG.signedIn ? 'signed_in' : (gpVisitsKnown ? (gpVisits > 1 ? 'returning' : 'new') : 'unknown');
-  var gpBeacon = { NBA_CLICK:1, SEARCH_SUGGEST_CLICK:1, WHATSAPP_TAP:1, BATTERY_FINDER_SUBMIT:1, MINICART_CHECKOUT:1 };
   var gpSeen = {};
   window.gpNavTrack = function(type, d){
     d = d || {};
     try {
       var body = JSON.stringify({ eventType:type, itemKey:d.itemKey||'', position:d.position||0, segment:gpSeg, term:(d.term!=null?String(d.term):null) });
-      if (gpBeacon[type] && navigator.sendBeacon){ navigator.sendBeacon('/api/nav/events', new Blob([body],{type:'application/json'})); return; }
+      // Beacon first for every event (low priority, off the load's critical chain);
+      // fetch only when the browser refuses the beacon.
+      if (navigator.sendBeacon && navigator.sendBeacon('/api/nav/events', new Blob([body],{type:'application/json'}))) return;
       fetch('/api/nav/events', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', keepalive:true, body:body }).catch(function(){});
     } catch(e){}
   };

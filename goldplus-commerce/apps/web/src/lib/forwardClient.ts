@@ -35,3 +35,12 @@ export function apiHeaders(
 export function jsonApiHeaders(clientAddress?: string | null): Record<string, string> {
   return apiHeaders({ 'Content-Type': 'application/json' }, clientAddress);
 }
+
+/** The visitor's address, or null where Astro cannot tell (prerendered pages throw). */
+export function readClientAddress(astro: { clientAddress?: string }): string | null {
+  try {
+    return astro.clientAddress ?? null;
+  } catch {
+    return null;
+  }
+}

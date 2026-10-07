@@ -91,6 +91,7 @@ const clean = (s: string | null): string | null => {
 
 /** Attribute value from a tag string, single/double quoted or bare. */
 function attr(tag: string, name: string): string | null {
+  // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- name is one of this module's fixed attribute names, never input
   const re = new RegExp(`\\b${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s"'>]+))`, 'i');
   const m = re.exec(tag);
   if (!m) return null;
