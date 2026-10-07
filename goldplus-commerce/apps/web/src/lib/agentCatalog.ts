@@ -20,7 +20,7 @@ export interface AgentProduct {
   model: string | null;
   category: string;
   price_ugx: number | null;
-  availability: 'in_stock' | 'out_of_stock' | 'pre_order';
+  availability: ProductPublicDto['availability']['kind'];
   summary: string | null;
   specifications: Record<string, string | number>;
   images: string[];
@@ -45,6 +45,7 @@ export const AVAILABILITY_TEXT: Record<AgentProduct['availability'], string> = {
   in_stock: 'In stock',
   out_of_stock: 'Out of stock',
   pre_order: 'Pre-order',
+  unknown: 'Stock not confirmed — ask the shop',
 };
 
 async function getJson<T>(path: string, timeoutMs = 4000): Promise<T | null> {
