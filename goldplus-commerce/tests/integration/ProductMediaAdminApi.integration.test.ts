@@ -120,7 +120,7 @@ suite('product media admin API (real PostgreSQL, real app)', () => {
     const tooMany = await app.request(`/admin/products/${productId}/media/upload`, as(maker, { method: 'POST', body: five }));
     expect(tooMany.status).toBe(400);
     expect((await tooMany.json()).error.message).toMatch(/four images/);
-  });
+  }, 30_000); // encodes AVIF/WebP/JPEG at four widths per file: past 5 s on a CI runner
 
   it('set as cover swaps with slot 1; a stale editor gets 409 with the current revision; undo restores', async () => {
     const before = await galleryOf();
@@ -217,7 +217,7 @@ suite('product media admin API (real PostgreSQL, real app)', () => {
     const again = await app.request(`/admin/media-imports/${s2.id}/apply`, as(checker, { method: 'POST', headers: J, body: JSON.stringify({ expectedVersion: abody.data.session.version }) }));
     expect(again.status).toBe(409);
     expect((await galleryOf()).mediaRevision).toBe(g.mediaRevision);
-  });
+  }, 30_000); // encodes AVIF/WebP/JPEG at four widths per file: past 5 s on a CI runner
 
   it('the legacy add-by-URL route is gone (410) and the legacy delete route goes through the gallery', async () => {
     const gone = await app.request(`/admin/products/${productId}/images`, as(maker, { method: 'POST', headers: J, body: JSON.stringify({ url: 'https://example.com/x.jpg' }) }));
