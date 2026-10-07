@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { clearSessionCookie, readSessionToken } from '../lib/session';
+import { clearRefreshCookie, clearSessionCookie, readSessionToken } from '../lib/session';
 import { apiBase } from '../lib/api';
 import { checkRequestOrigin } from '../lib/requestOrigin';
 import { mintSignedVisitToken } from '../lib/visitToken';
@@ -42,13 +42,12 @@ export const GET: APIRoute = async ({ request, cookies }) => {
   if (freshVisit) cookies.set(VISIT_COOKIE_NAME, freshVisit, visitCookieOptions());
   else cookies.delete(VISIT_COOKIE_NAME, { path: '/' });
 
-  return new Response(null, {
-    status: 303,
-    headers: {
-      Location: '/',
-      'Set-Cookie': clearSessionCookie(),
-    },
-  });
+  // Both cookies: the refresh credential was revoked above (logout-all), and
+  // a dead one left in the browser would only cost a pointless renewal call.
+  const headers = new Headers({ Location: '/' });
+  headers.append('Set-Cookie', clearSessionCookie());
+  headers.append('Set-Cookie', clearRefreshCookie());
+  return new Response(null, { status: 303, headers });
 };
 
 export const POST = GET;

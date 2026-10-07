@@ -5,7 +5,7 @@ import FormField from '../../components/FormField.astro';
 import FormFeedback from '../../components/FormFeedback.astro';
 import Notice from '../../components/Notice.astro';
 import { apiBase } from '../../lib/api';
-import { sessionCookieValue, SESSION_COOKIE_NAME } from '../../lib/session';
+import { sessionCookieValue, SESSION_COOKIE_NAME, setSignInCookies } from '../../lib/session';
 import { safeReturnTo } from '../../lib/safeReturnTo';
 
 let status: 'success' | 'error' | null = null;
@@ -36,13 +36,7 @@ if (Astro.request.method === 'POST') {
       const json: any = await res.json().catch(() => null);
 
       if (res.ok && json?.success && json.data?.token) {
-        Astro.cookies.set(SESSION_COOKIE_NAME, json.data.token, {
-          path: '/',
-          httpOnly: true,
-          sameSite: 'lax',
-          maxAge: 604800,
-          secure: import.meta.env.PROD,
-        });
+        setSignInCookies(Astro.cookies, json.data); // short token + refresh credential (renewed by the middleware)
         const returnTo = Astro.url.searchParams.get('returnTo');
         // Same-origin proved by the shared helper, THEN scoped to /admin.
         const resolved = safeReturnTo(returnTo, '/admin');

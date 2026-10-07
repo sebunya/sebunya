@@ -18,6 +18,8 @@ export interface IssuedSession {
 
 export type RotateResult =
   | { ok: true; session: IssuedSession }
+  /** A concurrent refresh inside the grace window: a new access token only; keep the refresh credential you have. */
+  | { ok: true; grace: true; session: { userId: string; familyId: string; accessExpiresAt: Date } }
   | { ok: false; reason: 'INVALID' | 'EXPIRED' | 'REVOKED' | 'REUSE_DETECTED' };
 
 /**
@@ -88,6 +90,9 @@ export class SessionService {
     const decision = decideRefresh(row, now);
 
     if (decision.action === 'REVOKED') return { ok: false, reason: 'REVOKED' };
+    if (decision.action === 'GRACE') {
+      return { ok: true, grace: true, session: { userId: row!.userId, familyId: row!.familyId, accessExpiresAt: sessionExpiries(now).accessExpiresAt } };
+    }
     if (decision.action === 'EXPIRED') return { ok: false, reason: 'EXPIRED' };
     if (decision.action === 'REUSE_DETECTED') {
       // A consumed (or unknown-but-plausible) credential was replayed. Kill the
@@ -116,8 +121,13 @@ export class SessionService {
     });
 
     if (!rotated) {
-      // Lost the race: another request already consumed this exact credential.
-      // That is a concurrent reuse — revoke the family.
+      // Lost the race to a request that consumed this credential a moment
+      // ago: the same browser twice, inside the grace window by definition.
+      const after = await this.repo.findByRefreshHash(currentHash);
+      if (after && decideRefresh(after, now).action === 'GRACE') {
+        return { ok: true, grace: true, session: { userId: after.userId, familyId: after.familyId, accessExpiresAt } };
+      }
+      // Otherwise a genuine concurrent reuse — revoke the family.
       await this.repo.revokeFamily(row!.familyId, 'refresh_reuse_detected', now);
       return { ok: false, reason: 'REUSE_DETECTED' };
     }

@@ -5,7 +5,8 @@ import { resolveRequestIdentity } from "./lib/requestIdentity";
 import { isSignedVisitToken, mintSignedVisitToken } from "./lib/visitToken";
 import { apiBase } from "./lib/api";
 import { visitorCookieDomain } from "./lib/visitorCookieDomain";
-import { SESSION_COOKIE_NAME } from "./lib/session";
+import { readRefreshToken, readSessionToken, setRequestSessionToken, setSignInCookies, clearSignInCookies, tokenSecondsLeft } from "./lib/session";
+import { apiHeaders, readClientAddress } from "./lib/forwardClient";
 import { makeNonce, nonceScriptStream, strictPolicyMode, strictReportOnlyPolicy } from "./lib/contentSecurityPolicy";
 import { PublicFormLimiter, budgetedFormPath, tooManySubmissionsResponse, visitorKey } from "./lib/publicFormLimiter";
 
@@ -59,8 +60,8 @@ export function visitCookieOptions() {
  * behind this still cannot read a single privileged byte without the API.
  */
 async function holderIsAdmin(request: Request): Promise<boolean> {
-  const cookie = request.headers.get('cookie') ?? '';
-  const token = cookie.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE_NAME}=([^;]+)`))?.[1];
+  // Through readSessionToken: it sees a token the renewal step just issued.
+  const token = readSessionToken(request);
   if (!token) return false;
   // Decoded before the try: a malformed cookie (e.g. "%E0") threw URIError
   // inside it and the catch below let any visitor render the console.
@@ -99,9 +100,46 @@ export const MOVED_PATHS: Readonly<Record<string, string>> = {
   '/locations/new-pioneer-mall': '/locations/zainab-aziza',
 };
 
+/** Renew this long before expiry, so a page's own API calls never meet a dead token. */
+const RENEW_WHEN_SECONDS_LEFT = 120;
+
+/**
+ * Session renewal (2026-10-07). Access tokens live 15 minutes; when the one in
+ * the cookie is expiring (or gone) and a refresh credential is present, swap it
+ * for a fresh pair BEFORE anything else reads the session. A refusal (revoked,
+ * expired, reused) signs the visitor out; an API outage changes nothing, and the
+ * page treats the old token as it always did.
+ */
+async function renewSessionIfDue(context: Parameters<Parameters<typeof defineMiddleware>[0]>[0]): Promise<void> {
+  const refreshToken = readRefreshToken(context.request);
+  if (!refreshToken) return;
+  const token = readSessionToken(context.request);
+  const left = token ? tokenSecondsLeft(token) : -1;
+  if (left !== null && left > RENEW_WHEN_SECONDS_LEFT) return;
+  try {
+    const res = await fetch(`${apiBase}/auth/refresh`, {
+      method: 'POST',
+      headers: apiHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }, readClientAddress(context)),
+      body: JSON.stringify({ refreshToken: decodeURIComponent(refreshToken) }),
+      signal: AbortSignal.timeout(4000),
+    });
+    const json: any = await res.json().catch(() => null);
+    if (res.ok && json?.success && typeof json.data?.token === 'string') {
+      setSignInCookies(context.cookies, json.data); // a concurrent-refresh answer carries no new refresh token: the cookie stays
+      setRequestSessionToken(context.request, json.data.token);
+    } else if (res.status === 401) {
+      clearSignInCookies(context.cookies);
+      setRequestSessionToken(context.request, null);
+    }
+  } catch {
+    /* unreachable API: leave the session as it is */
+  }
+}
+
 export const onRequest = defineMiddleware(async (context, next) => {
   const moved = MOVED_PATHS[context.url.pathname.replace(/\/+$/, '') || '/'];
   if (moved) return context.redirect(`${moved}${context.url.search}`, 301);
+  if (!context.url.pathname.startsWith('/_astro/')) await renewSessionIfDue(context);
 
   if (context.request.method === 'POST') {
     const formPath = budgetedFormPath(context.url.pathname);

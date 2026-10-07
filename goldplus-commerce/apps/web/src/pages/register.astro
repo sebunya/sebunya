@@ -7,7 +7,7 @@ import FormFeedback from '../components/FormFeedback.astro';
 import Notice from '../components/Notice.astro';
 import { apiBase } from '../lib/api';
 import SocialSignIn from '../components/auth/SocialSignIn.astro';
-import { SESSION_COOKIE_NAME } from '../lib/session';
+import { SESSION_COOKIE_NAME, setSignInCookies } from '../lib/session';
 import { SIGNED_UP_COOKIE } from '../lib/siteSignalRules';
 import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../lib/requestOrigin';
 import {
@@ -116,13 +116,7 @@ if (Astro.request.method === 'POST') {
         // very next page is their signed-in account (or the checkout they came from).
         // Via Astro.cookies — a raw Set-Cookie header on Astro.response is DROPPED
         // when the return value is Astro.redirect(), which is exactly this path.
-        Astro.cookies.set(SESSION_COOKIE_NAME, json.data.token, {
-          path: '/',
-          httpOnly: true,
-          sameSite: 'lax',
-          maxAge: 604800,
-          secure: import.meta.env.PROD,
-        });
+        setSignInCookies(Astro.cookies, json.data); // short token + refresh credential (renewed by the middleware)
 
 
         // R9 (M8, fixation): the visit token is ROTATED at the authentication

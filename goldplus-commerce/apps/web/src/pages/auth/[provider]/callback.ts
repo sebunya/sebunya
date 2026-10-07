@@ -1,7 +1,7 @@
 import { safeReturnTo } from '../../../lib/safeReturnTo';
 import type { APIRoute } from 'astro';
 import { apiBase } from '../../../lib/api';
-import { sessionCookieValue } from '../../../lib/session';
+import { signInCookieHeaders } from '../../../lib/session';
 import { SIGNED_UP_COOKIE } from '../../../lib/siteSignalRules';
 
 /**
@@ -71,11 +71,11 @@ const handle: APIRoute = async ({ params, request, url }) => {
       return fail(errorCode);
     }
 
-    const { token, created } = json.data as { token: string; created?: boolean };
+    const { created } = json.data as { token: string; created?: boolean };
     const headers = new Headers({ Location: safeReturnTo(flow.returnTo) });
     // Clear the one-time flow AND set the session, on this host.
     headers.append('Set-Cookie', clearFlow);
-    headers.append('Set-Cookie', sessionCookieValue(token));
+    for (const cookie of signInCookieHeaders(json.data)) headers.append('Set-Cookie', cookie); // short token + refresh credential
     // A first sign-in with Google or Apple IS a new account: the same marker
     // the register page sets, so it is reported as one sign_up (lib/siteSignals).
     if (created === true) headers.append('Set-Cookie', `${SIGNED_UP_COOKIE}=1; Path=/${secure}; SameSite=Lax; Max-Age=300`);
