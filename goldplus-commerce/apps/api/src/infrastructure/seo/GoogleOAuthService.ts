@@ -79,7 +79,7 @@ export class GoogleOAuthService {
       const iv = Buffer.from(parts[1], 'base64url');
       const sealed = Buffer.from(parts[2], 'base64url');
       if (iv.length !== 12 || sealed.length <= 16) return null;
-      const decipher = createDecipheriv('aes-256-gcm', this.sealKey, iv);
+      const decipher = createDecipheriv('aes-256-gcm', this.sealKey, iv, { authTagLength: 16 }); // a truncated tag is refused, not accepted
       decipher.setAuthTag(sealed.subarray(sealed.length - 16));
       const plain = Buffer.concat([decipher.update(sealed.subarray(0, sealed.length - 16)), decipher.final()]).toString('utf8');
       const body = JSON.parse(plain) as { c?: unknown; a?: unknown; v?: unknown; t?: unknown; n?: unknown };

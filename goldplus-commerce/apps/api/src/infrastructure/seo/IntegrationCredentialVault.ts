@@ -47,7 +47,7 @@ export class IntegrationCredentialVault {
     const parts = ciphertext.split('.');
     if (parts.length !== 3) throw new Error('Malformed vault ciphertext.');
     const [iv, tag, data] = parts.map((p) => Buffer.from(p, 'base64'));
-    const decipher = createDecipheriv('aes-256-gcm', this.key, iv);
+    const decipher = createDecipheriv('aes-256-gcm', this.key, iv, { authTagLength: 16 }); // a truncated tag is refused, not accepted
     decipher.setAuthTag(tag);
     const plain = Buffer.concat([decipher.update(data), decipher.final()]);
     return JSON.parse(plain.toString('utf8')) as T;
