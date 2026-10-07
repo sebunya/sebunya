@@ -68,6 +68,11 @@ jobs:
       COMMERCE_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/goldplus_test
       ANALYTICS_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/goldplus_it
       REDIS_TEST_URL: redis://localhost:6379
+      # The measurement suite routes GA4 only when a measurement id exists;
+      # these are the values scripts/integration-on-clone.sh has always used.
+      GA4_MEASUREMENT_ID: G-ITEST00001
+      METRICS_INTERNAL_URL: http://127.0.0.1:9
+      PROXY_TOPOLOGY_MODE: DIRECT
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -85,6 +90,9 @@ jobs:
         run: node scripts/release/claude/verify-migration-parity.mjs
       - name: Create isolated analytics DB (self-contained suites drop/recreate)
         run: PGPASSWORD=postgres psql -h localhost -U postgres -c 'create database goldplus_it;'
+      # One file at a time (see package.json): the suites share this database,
+      # and in parallel one suite's live ad platforms leaked into another's
+      # routing (Meta/X/measurement failed together, passed alone).
       - name: Integration tests (real PostgreSQL + Redis)
         run: pnpm test:integration
 

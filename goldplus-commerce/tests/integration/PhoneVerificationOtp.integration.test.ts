@@ -26,8 +26,8 @@ suite('phone verification OTP on real PostgreSQL', () => {
   const newUser = async (): Promise<string> => {
     const email = `${tag}-${userIds.length}@example.test`;
     const [row] = await raw`
-      insert into users (email, password_hash, display_name)
-      values (${email}, 'x', 'OTP Test') returning id`;
+      insert into users (email, password_hash)
+      values (${email}, 'x') returning id`;
     userIds.push(row.id);
     return row.id;
   };
