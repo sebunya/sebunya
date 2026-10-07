@@ -2,7 +2,8 @@ import { db } from '../client';
 import {
   customerProfiles, customerIdentityLinks, customerFeatureSnapshots, customerLifecycleSnapshots, nbaDecisions, nbaCandidates,
 } from '../schema/customer_dna';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, lt, sql } from 'drizzle-orm';
+import { users } from '../schema/identity';
 import { CustomerProfileSnapshot, CustomerFeature, IdentityConfidence, LifecycleStage } from '../../../domain/customer-dna/CustomerProfile';
 import { IdentityLinkSnapshot, IdentitySignalType, IdentityLinkStatus } from '../../../domain/customer-dna/CustomerIdentity';
 import { NbaDecision } from '../../../domain/customer-dna/NextBestAction';
@@ -47,9 +48,30 @@ export class DrizzleCustomerProfileRepository implements ICustomerProfileReposit
     return row ? toProfile(row) : null;
   }
   async upsertProjection(s: CustomerProfileSnapshot): Promise<{ updated: boolean; profileVersion: number }> {
-    // Advance only when the incoming source version strictly increases.
+    const consent = typeof s.consentEligible === 'boolean' ? s.consentEligible : null;
+    const prefs = typeof s.communicationPreferences === 'object' ? s.communicationPreferences : null;
+    const valueFlags = JSON.stringify(s.valueFlags);
+    const riskFlags = JSON.stringify(s.riskFlags);
+    // Advance when the data is newer OR the derived result changed: a stage
+    // moves with time alone (ACTIVE -> AT_RISK -> LAPSED with no new order).
+    // It used to advance on newer data only, so stages froze.
+    // jsonb here is written by the driver as an encoded string ('"[]"'), so it
+    // is decoded before comparing, and the new value goes in as TEXT (a param
+    // typed jsonb is JSON-encoded again by the driver); timestamps are compared at millisecond
+    // precision (a JS Date has no microseconds, Postgres does).
+    const asJson = (col: unknown) => sql`(case when jsonb_typeof(${col}) = 'string' then (${col} #>> '{}')::jsonb else ${col} end)`;
+    const ms = (v: unknown) => sql`date_trunc('second', ${v})`;
+    const at = (d: Date | null) => (d ? sql`${d.toISOString()}::timestamptz` : sql`null::timestamptz`);
+    const changed = sql`(${customerProfiles.sourceVersion} < ${s.sourceVersion}
+      or ${customerProfiles.primaryLifecycleStage} is distinct from ${s.primaryLifecycleStage}
+      or ${asJson(customerProfiles.valueFlags)} is distinct from ${valueFlags}::text::jsonb
+      or ${asJson(customerProfiles.riskFlags)} is distinct from ${riskFlags}::text::jsonb
+      or ${customerProfiles.identityConfidence} is distinct from ${s.identityConfidence}
+      or ${customerProfiles.consentEligible} is distinct from ${consent}
+      or ${ms(customerProfiles.firstSeen)} is distinct from ${ms(at(s.firstSeen))}
+      or ${ms(customerProfiles.lastSeen)} is distinct from ${ms(at(s.lastSeen))})`;
     const res = await db.update(customerProfiles).set({
-      sourceVersion: s.sourceVersion,
+      sourceVersion: sql`greatest(${customerProfiles.sourceVersion}, ${s.sourceVersion})`,
       profileVersion: sql`${customerProfiles.profileVersion} + 1`,
       accountUserId: s.accountUserId,
       identityConfidence: s.identityConfidence,
@@ -58,24 +80,54 @@ export class DrizzleCustomerProfileRepository implements ICustomerProfileReposit
       primaryLifecycleStage: s.primaryLifecycleStage,
       valueFlags: s.valueFlags,
       riskFlags: s.riskFlags,
-      consentEligible: typeof s.consentEligible === 'boolean' ? s.consentEligible : null,
-      communicationPreferences: typeof s.communicationPreferences === 'object' ? s.communicationPreferences : null,
+      consentEligible: consent,
+      communicationPreferences: prefs,
       staleAfterHours: s.freshness.staleAfterHours,
       computedAt: s.computedAt,
       updatedAt: new Date(),
-    }).where(and(eq(customerProfiles.canonicalCustomerId, s.canonicalCustomerId), sql`${customerProfiles.sourceVersion} < ${s.sourceVersion}`))
+    }).where(and(eq(customerProfiles.canonicalCustomerId, s.canonicalCustomerId), changed))
       .returning({ profileVersion: customerProfiles.profileVersion });
     if (res.length > 0) return { updated: true, profileVersion: res[0].profileVersion };
-    const [cur] = await db.select({ v: customerProfiles.profileVersion }).from(customerProfiles).where(eq(customerProfiles.canonicalCustomerId, s.canonicalCustomerId)).limit(1);
+    // Unchanged: record that it was checked (the nightly batch takes the oldest
+    // first), without a new profile version.
+    const [cur] = await db.update(customerProfiles).set({ computedAt: s.computedAt })
+      .where(eq(customerProfiles.canonicalCustomerId, s.canonicalCustomerId))
+      .returning({ v: customerProfiles.profileVersion });
     return { updated: false, profileVersion: cur?.v ?? s.profileVersion };
   }
   async search(query: string, limit: number): Promise<CustomerProfileSnapshot[]> {
     const q = query.trim();
-    if (!q) { const rows = await db.select().from(customerProfiles).limit(limit); return rows.map(toProfile); }
-    const rows = await db.select().from(customerProfiles)
-      .where(sql`${customerProfiles.canonicalCustomerId}::text ilike ${'%' + q + '%'} or ${customerProfiles.accountUserId}::text ilike ${'%' + q + '%'}`)
+    const live = isNull(customerProfiles.mergedInto); // a merged guest profile is not a customer of its own
+    const recentFirst = [sql`${customerProfiles.lastSeen} desc nulls last`, desc(customerProfiles.computedAt)];
+    if (!q) {
+      const rows = await db.select().from(customerProfiles).where(live).orderBy(...recentFirst).limit(limit);
+      return rows.map(toProfile);
+    }
+    // An admin knows a customer by email or phone, not by a uuid. Exact on
+    // phone digits (last 9, so 0772… and +256772… both match), contains on email.
+    const digits = q.replace(/\D/g, '');
+    const byContact = q.includes('@')
+      ? sql`${users.email} ilike ${'%' + q.toLowerCase() + '%'}`
+      : digits.length >= 9
+        ? sql`right(regexp_replace(coalesce(${users.phone}, ''), '\D', '', 'g'), 9) = ${digits.slice(-9)}`
+        : sql`false`;
+    const rows = await db.select({ p: customerProfiles }).from(customerProfiles)
+      .leftJoin(users, eq(users.id, customerProfiles.accountUserId))
+      .where(and(live, sql`(${byContact} or ${customerProfiles.canonicalCustomerId}::text ilike ${'%' + q + '%'} or ${customerProfiles.accountUserId}::text ilike ${'%' + q + '%'})`))
+      .orderBy(...recentFirst)
       .limit(limit);
-    return rows.map(toProfile);
+    return rows.map((r) => toProfile(r.p));
+  }
+  async stageCounts(): Promise<Record<string, number>> {
+    const rows = await db.select({ stage: customerProfiles.primaryLifecycleStage, n: sql<number>`count(*)::int` })
+      .from(customerProfiles).where(isNull(customerProfiles.mergedInto)).groupBy(customerProfiles.primaryLifecycleStage);
+    return Object.fromEntries(rows.map((r) => [r.stage, Number(r.n)]));
+  }
+  async listForReprojection(limit: number, computedBefore: Date): Promise<string[]> {
+    const rows = await db.select({ id: customerProfiles.canonicalCustomerId }).from(customerProfiles)
+      .where(and(isNull(customerProfiles.mergedInto), lt(customerProfiles.computedAt, computedBefore)))
+      .orderBy(asc(customerProfiles.computedAt)).limit(limit);
+    return rows.map((r) => r.id);
   }
 }
 
@@ -110,7 +162,7 @@ export class DrizzleCustomerIdentityRepository implements ICustomerIdentityRepos
     await db.update(customerIdentityLinks).set({ status, updatedAt: new Date() }).where(eq(customerIdentityLinks.id, id));
   }
   async listConflicts(limit: number): Promise<IdentityLinkSnapshot[]> {
-    const rows = await db.select().from(customerIdentityLinks).where(eq(customerIdentityLinks.status, 'CONFLICT')).limit(limit);
+    const rows = await db.select().from(customerIdentityLinks).where(eq(customerIdentityLinks.status, 'CONFLICT')).orderBy(desc(customerIdentityLinks.updatedAt)).limit(limit);
     return rows.map(toLink);
   }
 }
@@ -119,7 +171,9 @@ export class DrizzleCustomerFeatureRepository implements ICustomerFeatureReposit
   async saveSnapshot(canonicalCustomerId: string, sourceVersion: number, features: CustomerFeature[]): Promise<{ created: boolean }> {
     const inserted = await db.insert(customerFeatureSnapshots)
       .values({ canonicalCustomerId, sourceVersion, features: features as unknown as object })
-      .onConflictDoNothing({ target: [customerFeatureSnapshots.canonicalCustomerId, customerFeatureSnapshots.sourceVersion] })
+      // Same source data, later clock: days-since and recency features change
+      // with time, so the snapshot for this source version is refreshed.
+      .onConflictDoUpdate({ target: [customerFeatureSnapshots.canonicalCustomerId, customerFeatureSnapshots.sourceVersion], set: { features: features as unknown as object, computedAt: new Date() } })
       .returning({ id: customerFeatureSnapshots.id });
     return { created: inserted.length > 0 };
   }
@@ -135,7 +189,7 @@ export class DrizzleCustomerLifecycleRepository implements ICustomerLifecycleRep
   async saveSnapshot(input: { canonicalCustomerId: string; stage: LifecycleStage | 'UNKNOWN'; policyVersion: number; sourceVersion: number }): Promise<{ created: boolean }> {
     const inserted = await db.insert(customerLifecycleSnapshots)
       .values({ canonicalCustomerId: input.canonicalCustomerId, stage: input.stage, policyVersion: input.policyVersion, sourceVersion: input.sourceVersion })
-      .onConflictDoNothing({ target: [customerLifecycleSnapshots.canonicalCustomerId, customerLifecycleSnapshots.sourceVersion, customerLifecycleSnapshots.policyVersion] })
+      .onConflictDoUpdate({ target: [customerLifecycleSnapshots.canonicalCustomerId, customerLifecycleSnapshots.sourceVersion, customerLifecycleSnapshots.policyVersion], set: { stage: input.stage, computedAt: new Date() } })
       .returning({ id: customerLifecycleSnapshots.id });
     return { created: inserted.length > 0 };
   }

@@ -8,9 +8,18 @@ export interface ICustomerProfileRepository {
   create(input: { canonicalCustomerId?: string; accountUserId: string | null }): Promise<CustomerProfileSnapshot>;
   findByCanonicalId(canonicalCustomerId: string): Promise<CustomerProfileSnapshot | null>;
   findByAccountUserId(accountUserId: string): Promise<CustomerProfileSnapshot | null>;
-  /** Idempotent projection update — only advances when sourceVersion strictly increases. */
+  /**
+   * Projection update. Advances when the source data is newer OR the derived
+   * result changed (a stage moves with time alone); an identical re-projection
+   * only refreshes computedAt and does not bump profileVersion.
+   */
   upsertProjection(snapshot: CustomerProfileSnapshot): Promise<{ updated: boolean; profileVersion: number }>;
+  /** Most recently seen first; by account email/phone or id. Merged profiles excluded. */
   search(query: string, limit: number): Promise<CustomerProfileSnapshot[]>;
+  /** Profile counts per lifecycle stage, merged profiles excluded. */
+  stageCounts(): Promise<Record<string, number>>;
+  /** Unmerged profiles last computed before `computedBefore`, oldest first. */
+  listForReprojection(limit: number, computedBefore: Date): Promise<string[]>;
 }
 
 export interface IdentityLinkCreate {

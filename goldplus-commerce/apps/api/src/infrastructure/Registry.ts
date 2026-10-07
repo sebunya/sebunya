@@ -641,6 +641,7 @@ import { DrizzleCustomerSignalReader } from './db/repositories/DrizzleCustomerSi
 import {
   ResolveCustomerIdentityUseCase,
   ProjectCustomerProfileUseCase,
+  ReprojectStaleProfilesUseCase,
   GenerateNextBestActionUseCase,
   GetCustomerDnaUseCase,
 } from '../application/use-cases/customer-dna/CustomerDnaUseCases';
@@ -1347,7 +1348,8 @@ export class Registry {
   public readonly customerSignalReader = new DrizzleCustomerSignalReader();
   public readonly identityConflictRepo = new DrizzleIdentityConflictRepository();
   public readonly resolveCustomerIdentityUseCase = new ResolveCustomerIdentityUseCase(this.customerProfileRepo, this.customerIdentityRepo, this.auditRepo, this.identityConflictRepo);
-  public readonly projectCustomerProfileUseCase = new ProjectCustomerProfileUseCase(this.customerProfileRepo, this.customerIdentityRepo, this.customerFeatureRepo, this.customerLifecycleRepo, this.customerSignalReader, this.auditRepo);
+  public readonly projectCustomerProfileUseCase = new ProjectCustomerProfileUseCase(this.customerProfileRepo, this.customerIdentityRepo, this.customerFeatureRepo, this.customerLifecycleRepo, this.customerSignalReader, this.auditRepo, this.lifecycleReadRepo);
+  public readonly reprojectStaleProfilesUseCase = new ReprojectStaleProfilesUseCase(this.customerProfileRepo, this.projectCustomerProfileUseCase);
   public readonly generateNextBestActionUseCase = new GenerateNextBestActionUseCase(this.customerProfileRepo, this.nbaDecisionRepo, this.auditRepo);
   public readonly getCustomerDnaUseCase = new GetCustomerDnaUseCase(this.customerProfileRepo, this.customerIdentityRepo, this.customerFeatureRepo, this.customerLifecycleRepo, this.nbaDecisionRepo);
 

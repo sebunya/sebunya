@@ -24,8 +24,9 @@ const notFound = (c: any) => c.json({ success: false, error: { code: 'NOT_FOUND'
 routes.get('/', requirePermissions([PERMISSIONS.CUSTOMER_DNA_READ]), async (c) => {
   const q = c.req.query('q') ?? '';
   const limit = Number(c.req.query('limit') ?? '25');
-  const results = await Registry.getInstance().getCustomerDnaUseCase.search(q, Number.isFinite(limit) ? limit : 25);
-  return c.json({ success: true, data: { results } } satisfies ApiResponse<{ results: typeof results }>);
+  const uc = Registry.getInstance().getCustomerDnaUseCase;
+  const [results, stageCounts] = await Promise.all([uc.search(q, Number.isFinite(limit) ? limit : 25), uc.stageCounts()]);
+  return c.json({ success: true, data: { results, stageCounts } } satisfies ApiResponse<{ results: typeof results; stageCounts: typeof stageCounts }>);
 });
 
 routes.get('/conflicts', requirePermissions([PERMISSIONS.IDENTITY_REVIEW]), async (c) => {

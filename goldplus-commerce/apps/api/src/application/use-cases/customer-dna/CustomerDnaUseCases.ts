@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { CustomerProfileSnapshot } from '../../../domain/customer-dna/CustomerProfile';
 import { canLinkIdentity, resolveLinkTarget, aggregateConfidence, IdentitySignalType } from '../../../domain/customer-dna/CustomerIdentity';
-import { computeFeatures, numericFeature } from '../../../domain/customer-dna/CustomerFeatures';
+import { computeFeatures, isPurchase, numericFeature } from '../../../domain/customer-dna/CustomerFeatures';
 import { deriveLifecycle, deriveValueFlags, deriveRiskFlags } from '../../../domain/customer-dna/CustomerLifecycle';
 import { NbaCandidate, NbaContext, decideNextBestAction } from '../../../domain/customer-dna/NextBestAction';
 import {
@@ -104,7 +104,9 @@ export class ProjectCustomerProfileUseCase {
     private readonly features: ICustomerFeatureRepository,
     private readonly lifecycles: ICustomerLifecycleRepository,
     private readonly signals: ICustomerSignalReader,
-    private readonly audit: IAuditRepository
+    private readonly audit: IAuditRepository,
+    /** The consent system's answer for personalisation, per account. Guests stay UNKNOWN. */
+    private readonly consent?: { getPersonalisationConsent(userIds: string[]): Promise<Map<string, 'granted' | 'denied' | 'unknown'>> },
   ) {}
   async execute(input: { canonicalCustomerId: string; actorId: string; now?: Date }): Promise<{ ok: true; advanced: boolean; sourceVersion: number } | Fail> {
     const now = input.now ?? new Date();
@@ -118,8 +120,9 @@ export class ProjectCustomerProfileUseCase {
     const feats = computeFeatures(raw, now);
     await this.features.saveSnapshot(input.canonicalCustomerId, raw.sourceVersion, feats);
 
-    // Lifecycle inputs computed directly from real orders.
-    const activeOrders = raw.orders.filter((o) => o.status !== 'cancelled').sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    // Lifecycle inputs from PURCHASES only (paid, or cash on delivery that was
+    // delivered): an unpaid checkout is not a customer coming back.
+    const activeOrders = raw.orders.filter(isPurchase).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
     const orderCount = activeOrders.length;
     const daysSinceLastOrder = orderCount ? Math.floor((now.getTime() - activeOrders[orderCount - 1].createdAt.getTime()) / DAY) : null;
     let maxGap: number | null = null;
@@ -130,7 +133,13 @@ export class ProjectCustomerProfileUseCase {
     const { stage, policyVersion } = deriveLifecycle({ orderCount, daysSinceLastOrder, maxInterOrderGapDays: maxGap });
     await this.lifecycles.saveSnapshot({ canonicalCustomerId: input.canonicalCustomerId, stage, policyVersion, sourceVersion: raw.sourceVersion });
 
-    const stamps = activeOrders.map((o) => o.createdAt.getTime());
+    // Seen = any activity (an order of any kind, a delivery), not only purchases.
+    const stamps = [...raw.orders.map((o) => o.createdAt.getTime()), ...raw.deliveries.map((d) => d.createdAt.getTime())];
+    let consentEligible: boolean | 'UNKNOWN' = 'UNKNOWN';
+    if (profile.accountUserId && this.consent) {
+      const state = (await this.consent.getPersonalisationConsent([profile.accountUserId]).catch(() => null))?.get(profile.accountUserId);
+      consentEligible = state === 'granted' ? true : state === 'denied' ? false : 'UNKNOWN';
+    }
     const snapshot: CustomerProfileSnapshot = {
       canonicalCustomerId: input.canonicalCustomerId,
       profileVersion: profile.profileVersion,
@@ -142,7 +151,7 @@ export class ProjectCustomerProfileUseCase {
       primaryLifecycleStage: stage,
       valueFlags: deriveValueFlags({ lifetimeValueUgx: numericFeature(feats, 'lifetime_value_ugx'), orderCount }),
       riskFlags: deriveRiskFlags({ deliverySuccessRate: numericFeature(feats, 'delivery_success_rate'), backorderExposure: raw.backorderCount }),
-      consentEligible: 'UNKNOWN',
+      consentEligible,
       communicationPreferences: 'UNKNOWN',
       freshness: { computedAt: now, staleAfterHours: 24 },
       computedAt: now,
@@ -206,6 +215,10 @@ export class GetCustomerDnaUseCase {
   async search(query: string, limit: number) {
     return this.profiles.search(query, Math.min(Math.max(1, limit), 50));
   }
+  /** How many customers are in each lifecycle stage (merged profiles excluded). */
+  async stageCounts() {
+    return this.profiles.stageCounts();
+  }
   /**
    * Identity conflicts, masked on the SERVER like the detail view: the raw
    * identifier (an anonymous id or account id) never leaves the API — the page
@@ -224,4 +237,33 @@ export class GetCustomerDnaUseCase {
 /** First and last four characters of an identifier; short ones are fully hidden. */
 export function maskIdentifier(key: string): string {
   return key.length > 8 ? `${key.slice(0, 4)}…${key.slice(-4)}` : '••••';
+}
+
+/**
+ * Re-project the profiles computed longest ago (nightly). A stage depends on
+ * TIME as well as data: with no new order, ACTIVE must become AT_RISK and then
+ * LAPSED. Before 2026-10-07 nothing re-projected a profile unless an admin
+ * pressed Recompute, so every stage froze where it was first computed.
+ */
+export class ReprojectStaleProfilesUseCase {
+  constructor(
+    private readonly profiles: Pick<ICustomerProfileRepository, 'listForReprojection'>,
+    private readonly project: Pick<ProjectCustomerProfileUseCase, 'execute'>,
+  ) {}
+  async execute(input: { limit: number; olderThanHours: number; now?: Date }): Promise<{ attempted: number; advanced: number; failed: number }> {
+    const now = input.now ?? new Date();
+    const ids = await this.profiles.listForReprojection(input.limit, new Date(now.getTime() - input.olderThanHours * 3_600_000));
+    let advanced = 0;
+    let failed = 0;
+    for (const canonicalCustomerId of ids) {
+      try {
+        const r = await this.project.execute({ canonicalCustomerId, actorId: 'system:customer-dna-nightly', now });
+        if (r.ok && r.advanced) advanced++;
+        if (!r.ok) failed++;
+      } catch {
+        failed++; // one bad profile never stops the batch
+      }
+    }
+    return { attempted: ids.length, advanced, failed };
+  }
 }
