@@ -279,6 +279,18 @@ describe('social sign-in — which account does a verified identity belong to?',
       provider: 'google', subject: 'sub-ok', email: 'taken@example.com', emailVerified: true, autoLinkOnVerifiedEmail: true,
     });
     expect(result).toMatchObject({ ok: true, userId: 'u-existing', linked: true, created: false });
+    // The account had a password nobody proved (registration does not verify
+    // the email): it is revoked with every session, so a pre-registered
+    // attacker cannot keep a door into the owner's account (2026-10-07).
+    expect(identities.rows.at(-1)).toMatchObject({ userId: 'u-existing', revokePasswordAccess: true });
+  });
+
+  it('linking a provider to an account WITHOUT a password revokes nothing', async () => {
+    const identities = makeIdentities();
+    const socialOnly = { ...existing, id: 'u-social', email: 'social@example.com', passwordHash: null };
+    const uc = new ResolveSocialIdentityUseCase(makeUsers([socialOnly]) as never, identities as never);
+    await uc.execute({ provider: 'apple', subject: 'sub-2', email: 'social@example.com', emailVerified: true, autoLinkOnVerifiedEmail: true });
+    expect(identities.rows.at(-1)).toMatchObject({ userId: 'u-social', revokePasswordAccess: false });
   });
 
   it('no email and no prior link cannot become an account', async () => {

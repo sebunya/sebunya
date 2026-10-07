@@ -103,12 +103,18 @@ export class ResolveSocialIdentityUseCase {
       };
     }
 
+    // Registration never proves the email, so a password on this account may
+    // have been set by someone else (register victim@gmail.com first, wait for
+    // the owner to "Sign in with Google"). The provider just proved who owns
+    // the address: the unproven password and every session made with it go.
+    // The owner keeps the account and can set a password again by reset.
     await this.identities.link({
       userId: byEmail.id,
       provider: input.provider,
       subject: input.subject,
       email,
       emailVerified: input.emailVerified,
+      revokePasswordAccess: !!byEmail.passwordHash,
     });
     return { ok: true, userId: byEmail.id, created: false, linked: true };
   }

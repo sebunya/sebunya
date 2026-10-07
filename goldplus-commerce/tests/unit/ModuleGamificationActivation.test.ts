@@ -83,7 +83,7 @@ describe('award integrity', () => {
   it('gives every award a deterministic once-ever idempotency key', () => {
     expect(engine).toContain('idempotencyKey: `mission:${mission.key}:${input.userId}`');
     expect(engine).toContain('idempotencyKey: `referral:${referral.id}:${side}`');
-    expect(engine).toContain('idempotencyKey: `birthday:${userId}:${now.getUTCFullYear()}`');
+    expect(engine).toContain('idempotencyKey: `birthday:${userId}:${year}`');
     expect(engine).toContain('idempotencyKey: `counterfeit:${input.reportId}`');
     expect(engine).toContain('idempotencyKey: `phoneverify:${input.userId}`');
   });

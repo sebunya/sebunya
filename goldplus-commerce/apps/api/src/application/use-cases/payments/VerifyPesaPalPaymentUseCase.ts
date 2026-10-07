@@ -161,8 +161,22 @@ export class VerifyPesaPalPaymentUseCase {
     }
 
     // 3. Strict Verification & Integrity Checks
-    // - Verify merchant reference
-    if (statusResponse.merchant_reference !== reference || statusResponse.merchant_reference !== attempt.merchantReference) {
+    // - The CALLER's reference comes from the public callback/return URL. A
+    //   wrong one says nothing about the payment, so it changes nothing: it
+    //   used to mark the attempt verification_failed, letting anyone holding a
+    //   tracking id knock a live payment into review (2026-10-07).
+    if (reference !== attempt.merchantReference) {
+      return {
+        ok: false,
+        status: attempt.status as never,
+        amount: attempt.amount,
+        currency: attempt.currency,
+        orderId: attempt.orderId,
+        message: 'REFERENCE_MISMATCH: the reference supplied does not belong to this payment; nothing was changed.',
+      };
+    }
+    // - Only the PROVIDER disagreeing with our record is an integrity failure.
+    if (statusResponse.merchant_reference !== attempt.merchantReference) {
       await this.paymentRepo.updatePaymentAttemptStatus(attempt.id, { status: 'verification_failed' });
       return {
         ok: false,

@@ -2,6 +2,7 @@ import { Context, Next } from 'hono';
 import { ApiResponse } from '@goldplus/shared';
 import { Registry } from '../../../infrastructure/Registry';
 import { bearerTokenFrom, resolveLiveSession } from './liveSession';
+import { traceLocalStorage } from '../../../infrastructure/observability/TraceContext';
 
 type AdminContext = Context<{
   Variables: {
@@ -33,6 +34,8 @@ export const authMiddleware = async (c: AdminContext, next: Next) => {
   }
 
   c.set('user', { id: user.id, email: user.email, permissions });
+  const trace = traceLocalStorage.getStore();
+  if (trace) trace.userId = user.id; // log lines carry the VERIFIED user
   await next();
 };
 
