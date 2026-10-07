@@ -175,6 +175,7 @@ function setPath(obj: any, path: string, value: unknown): void {
   // Never walk into or write an object's prototype, whatever the path says.
   if (parts.some((p) => UNSAFE_KEYS.has(p))) return;
   let cur = obj;
+  // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop -- paths with __proto__/constructor/prototype are refused just above
   for (let i = 0; i < parts.length - 1; i++) { if (cur[parts[i]] == null) return; cur = cur[parts[i]]; }
   cur[parts[parts.length - 1]] = value;
 }

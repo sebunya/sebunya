@@ -6,5 +6,11 @@ goldplus-commerce/scripts/
 goldplus-commerce/apps/api/src/scripts/
 goldplus-commerce/performance-audit/
 goldplus-commerce/compatibility-audit/
+# Test code (fixture secrets, assertion regexes): semgrep skips tests by
+# default only when no .semgrepignore exists, so they are listed here.
+goldplus-commerce/tests/
+goldplus-commerce/apps/api/tests/
+*.test.ts
+*.spec.ts
 node_modules/
 dist/

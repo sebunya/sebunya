@@ -23,6 +23,7 @@ function lookup(stack: TemplateData[], path: string): TemplateValue {
     const scope = stack[i];
     if (scope && typeof scope === 'object' && head in scope) {
       let value: TemplateValue = scope[head];
+      // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop -- prototype keys are refused above; this loop only reads
       for (const part of rest) {
         if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
         value = (value as TemplateData)[part];
