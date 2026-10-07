@@ -54,6 +54,7 @@ if (Astro.request.method === 'POST') {
     try {
       const res = await fetch(`${apiBase}/auth/login`, {
         method: 'POST',
+        signal: AbortSignal.timeout(8000),
         headers: jsonApiHeaders(clientAddress),
         body: JSON.stringify({ email, password }),
       });

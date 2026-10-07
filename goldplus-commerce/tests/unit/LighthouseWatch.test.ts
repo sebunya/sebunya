@@ -7,6 +7,7 @@ import {
   describeShortfall,
   evaluateLighthouse,
   lighthouseDedupeKey,
+  lighthouseStaleness,
   summariseLighthouseResult,
   targetsFromEnv,
   toWebVitalMeasurement,
@@ -230,8 +231,7 @@ describe('one weekly measurement is the median of three, and a silent stop is no
     expect(sh).toContain('exec > >(tee -a "$LOG") 2>&1');
   });
 
-  it('flags measurements older than 8 days, and unknown ages, as stale', async () => {
-    const { lighthouseStaleness } = await import('../../apps/api/src/infrastructure/scheduler/LighthouseWatchTicker');
+  it('flags measurements older than 8 days, and unknown ages, as stale', () => {
     const now = Date.parse('2026-10-20T00:00:00Z');
     expect(lighthouseStaleness([{ fetchTime: '2026-10-18T00:05:00Z' }], now).stale).toBe(false);
     // the NEWEST measurement decides: one missed Sunday (7 days) is fine, two are not

@@ -63,8 +63,11 @@ if [ "$MODE" = "sync" ]; then
   echo "=== offsite sync $(date -u +%FT%TZ) → $TARGET"
   # -a keeps times for the far side's retention; --ignore-existing never
   # rewrites a file already there (a backup is immutable once taken);
-  # --partial survives a dropped link; nothing on the far side is ever removed.
-  rsync -a --ignore-existing --partial --timeout=600 \
+  # --partial-dir survives a dropped link. Plain --partial left the cut-off
+  # file under its final name, which --ignore-existing then skipped forever:
+  # a truncated dump offsite and a verify failure every night, never repaired.
+  # Nothing on the far side is ever removed.
+  rsync -a --ignore-existing --partial-dir=.rsync-partial --timeout=600 \
     --include='*/' --include='*.dump' --include='*.tar.gz' --exclude='*' \
     ${RSYNC_E[@]+"${RSYNC_E[@]}"} "$BACKUPS/" "$RSYNC_DEST"
 fi

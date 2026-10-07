@@ -60,8 +60,10 @@ N=$(echo $SERVICES | wc -w); WANT=$((N*2))
 # Bounded wait. This loop had no timeout: a replica that never reports
 # healthy (or a service with no healthcheck at all — caddy has none) would
 # hang the deploy forever with the old containers already replaced.
+# "(healthy)" in brackets: a bare `.*healthy` also matched "(unhealthy)", so a
+# release whose healthcheck failed was declared healthy and tagged as rollback.
 DEADLINE=$(( $(date +%s) + ${HEALTH_TIMEOUT_SECONDS:-600} ))
-until [ "$(docker compose --env-file .env.production -f docker-compose.production.yml ps --format '{{.Name}} {{.Status}}' | grep -cE "($(echo $SERVICES | tr ' ' '|'))-[12] .*healthy")" -ge "$WANT" ]; do
+until [ "$(docker compose --env-file .env.production -f docker-compose.production.yml ps --format '{{.Name}} {{.Status}}' | grep -cE "($(echo $SERVICES | tr ' ' '|'))-[12] Up .*\(healthy\)")" -ge "$WANT" ]; do
   if [ "$(date +%s)" -ge "$DEADLINE" ]; then
     echo "STOP: $WANT healthy replicas of [$SERVICES] not reached within ${HEALTH_TIMEOUT_SECONDS:-600}s. Inspect with: docker compose ps; roll back with the rollback-$(git rev-parse --short "$PREV") image if needed."
     docker compose --env-file .env.production -f docker-compose.production.yml ps --format '{{.Name}} {{.Status}}' | grep -E "($(echo $SERVICES | tr ' ' '|'))"

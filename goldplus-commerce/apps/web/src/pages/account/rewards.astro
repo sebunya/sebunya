@@ -135,12 +135,12 @@ const canVerifyPhone = Boolean(src?.phoneVerification) && me && !me.phoneVerifie
 const verificationPending = verificationState?.status === 'ACTIVE';
 const verificationExpired = verificationState?.status === 'EXPIRED';
 const asTime = (iso: string | null | undefined) =>
-  iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : null;
+  iso ? new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Kampala' }) : null;
 const verificationExpiresAt = verificationPending ? asTime(verificationState?.expiresAt) : null;
 const verificationResendAt = asTime(verificationState?.resendAvailableAt);
 const canAddBirthday = Boolean(src?.birthday) && me && !me.dateOfBirthSet;
 
-const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB');
+const formatDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala' });
 const pct = (progress: number, threshold: number) =>
   Math.max(0, Math.min(100, Math.round((progress / Math.max(1, threshold)) * 100)));
 ---
@@ -199,8 +199,8 @@ const pct = (progress: number, threshold: number) =>
                 </form>
                 <p class="mt-2 text-xs text-brand-mutedGrey">
                   {draw.tokens.length === 1
-                    ? `1 card waiting · expires ${new Date(draw.tokens[0].expiresAt).toLocaleDateString('en-GB')}`
-                    : `${draw.tokens.length} cards waiting · next expires ${new Date(draw.tokens[0].expiresAt).toLocaleDateString('en-GB')}`}
+                    ? `1 card waiting · expires ${new Date(draw.tokens[0].expiresAt).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala' })}`
+                    : `${draw.tokens.length} cards waiting · next expires ${new Date(draw.tokens[0].expiresAt).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala' })}`}
                 </p>
               </div>
             )}

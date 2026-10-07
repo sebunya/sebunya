@@ -105,6 +105,7 @@ if (Astro.request.method === 'POST') {
     try {
       const res = await fetch(`${apiBase}/auth/register`, {
         method: 'POST',
+        signal: AbortSignal.timeout(8000),
         headers: jsonApiHeaders(clientAddress),
         body: JSON.stringify({ email, phone, password, ...(referralCode ? { referralCode } : {}) }),
       });

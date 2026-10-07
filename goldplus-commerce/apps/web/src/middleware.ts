@@ -62,18 +62,22 @@ async function holderIsAdmin(request: Request): Promise<boolean> {
   const cookie = request.headers.get('cookie') ?? '';
   const token = cookie.match(new RegExp(`(?:^|;\\s*)${SESSION_COOKIE_NAME}=([^;]+)`))?.[1];
   if (!token) return false;
+  // Decoded before the try: a malformed cookie (e.g. "%E0") threw URIError
+  // inside it and the catch below let any visitor render the console.
+  let bearer: string;
+  try { bearer = decodeURIComponent(token); } catch { return false; }
   try {
     const res = await fetch(`${apiBase}/auth/admin-session`, {
-      headers: { Authorization: `Bearer ${decodeURIComponent(token)}` },
+      headers: { Authorization: `Bearer ${bearer}` },
       signal: AbortSignal.timeout(4000),
     });
     // Only a 200 proves an admin. Treating "anything that is not 401/403" as
     // proof means a moved route, a 404 or a 502 silently stops guarding.
     if (res.ok) return true;
     if (res.status === 401 || res.status === 403) return false;
-    // Any other status is the API misbehaving rather than a verdict on this
-    // caller, so it degrades the same way an outage does: see the fail-open
-    // note above.
+    // Any other 4xx is a refusal too (a moved route answers 404, and that
+    // must not open the console). Only 5xx degrades like an outage.
+    if (res.status < 500) return false;
     return true;
   } catch {
     return true;

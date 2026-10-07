@@ -190,6 +190,21 @@ export function describeShortfall(s: LighthouseShortfall): string {
   return `${s.formFactor} ${s.category} ${s.score}/${s.target} at ${s.url}${audits.length ? ': ' + audits.join('; ') : ''}`;
 }
 
+/**
+ * Is the newest stored measurement too old? The watch runs weekly; a run that
+ * silently failed or a timer that never fired would otherwise leave last
+ * month's scores looking current. Measurements without a fetchTime are unknown,
+ * never fresh. Pure, so it lives here and not in the ticker (whose import pulls
+ * in the whole Registry).
+ */
+export function lighthouseStaleness(summaries: Array<{ fetchTime: string | null }>, nowMs: number, maxAgeDays = 8): { stale: boolean; newestAt: string | null; ageDays: number | null } {
+  const times = summaries.map((s) => (s.fetchTime ? Date.parse(s.fetchTime) : NaN)).filter((t) => Number.isFinite(t));
+  if (times.length === 0) return { stale: true, newestAt: null, ageDays: null };
+  const newest = Math.max(...times);
+  const ageDays = (nowMs - newest) / 86_400_000;
+  return { stale: ageDays > maxAgeDays, newestAt: new Date(newest).toISOString(), ageDays: Math.round(ageDays * 10) / 10 };
+}
+
 export function targetsFromEnv(envLookup: (name: string) => string | undefined): LighthouseTargets {
   const read = (name: string, fallback: number): number => {
     const raw = (envLookup(name) ?? '').trim();

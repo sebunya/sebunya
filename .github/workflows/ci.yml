@@ -5,11 +5,14 @@ name: CI
 # here (the previous copy under goldplus-commerce/.github was never executed).
 # All `run:` steps default to the app directory.
 
+# deploy/** is where production is cut from (scripts/deploy-prod.sh rolls its
+# tip). Until 2026-10-07 nothing here ran for that branch, so a lint error, a
+# type error and three red unit tests reached it unnoticed.
 on:
   push:
-    branches: [ main, master, 'claude/**' ]
+    branches: [ main, master, 'claude/**', 'deploy/**' ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, master, 'deploy/**' ]
 
 defaults:
   run:
@@ -20,9 +23,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
+      - uses: pnpm/action-setup@v4
         with:
-          version: 8
+          version: 9.1.4  # the version Dockerfile.api/web build with; pnpm 8 cannot read lockfile v9
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -67,9 +70,9 @@ jobs:
       REDIS_TEST_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
+      - uses: pnpm/action-setup@v4
         with:
-          version: 8
+          version: 9.1.4  # the version Dockerfile.api/web build with; pnpm 8 cannot read lockfile v9
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -89,9 +92,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
+      - uses: pnpm/action-setup@v4
         with:
-          version: 8
+          version: 9.1.4  # the version Dockerfile.api/web build with; pnpm 8 cannot read lockfile v9
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -131,7 +134,7 @@ jobs:
       # Filesystem vulnerability scan of deps + config (fails on CRITICAL/HIGH).
       # The final production IMAGE scan runs in the release workflow before deploy.
       - name: Trivy filesystem scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0  # tags are v-prefixed; 0.28.0 no longer resolves
         with:
           scan-type: fs
           scan-ref: goldplus-commerce
@@ -143,9 +146,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
+      - uses: pnpm/action-setup@v4
         with:
-          version: 8
+          version: 9.1.4  # the version Dockerfile.api/web build with; pnpm 8 cannot read lockfile v9
       - uses: actions/setup-node@v4
         with:
           node-version: 20

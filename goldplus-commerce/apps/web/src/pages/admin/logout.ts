@@ -29,6 +29,7 @@ export const POST: APIRoute = async ({ request }) => {
     try {
       await fetch(`${apiBase}/auth/logout-all`, {
         method: 'POST',
+        signal: AbortSignal.timeout(3000),
         headers: { Authorization: `Bearer ${token}` },
       });
     } catch {

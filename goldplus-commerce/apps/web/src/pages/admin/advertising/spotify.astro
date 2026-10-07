@@ -2,6 +2,7 @@
 import AdminLayout from "../../../layouts/AdminLayout.astro";
 import { readSessionToken } from "../../../lib/session";
 import { advertisingApi, whenKampala } from "../../../lib/adminAdvertising";
+import { formatUgx } from "../../../lib/money";
 
 /**
  * Spotify ad rotation preview (phase 2): which products the planner would
@@ -68,7 +69,7 @@ const day = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString("en-
           <p class="text-sm text-gray-600 mb-3 max-w-3xl">Products you choose to advertise even when nothing about them is new. Their ad states only the name and today's price, never "new" or "drop". New arrivals, restocks and genuine price drops still take a slot first. Up to 10. A sold-out featured product is not advertised until it is back.</p>
           <div class="grid sm:grid-cols-2 gap-x-6 gap-y-1">
             {d.candidates.map((c: any) => (
-              <label class="flex items-center gap-2 text-sm py-1"><input type="checkbox" name="featured" value={c.productId} checked={c.featured} /> <span>{c.name}</span> <span class="text-gray-500">UGX {Number(c.priceUgx).toLocaleString("en-UG")}</span></label>
+              <label class="flex items-center gap-2 text-sm py-1"><input type="checkbox" name="featured" value={c.productId} checked={c.featured} /> <span>{c.name}</span> <span class="text-gray-500">{formatUgx(c.priceUgx)}</span></label>
             ))}
           </div>
           <button class="mt-4 inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 font-bold text-white">Save featured products</button>

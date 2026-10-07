@@ -8,7 +8,8 @@ export const GET: APIRoute = async ({ request, params }) => {
   if (!token) return new Response('Sign in first.', { status: 401 });
   const segment = String(params.segment ?? '');
   const r = await advertisingApi<{ csv: string }>(token, 'GET', `/audiences/linkedin-csv/${encodeURIComponent(segment)}`);
-  if (!r.ok || !r.data) return new Response(r.message ?? 'Could not build the list.', { status: 400 });
+  if (!r.ok) return new Response(r.message, { status: 400 });
+  if (typeof r.data?.csv !== 'string') return new Response('Could not build the list.', { status: 400 });
   return new Response(r.data.csv, { headers: {
     'Content-Type': 'text/csv; charset=utf-8',
     'Content-Disposition': `attachment; filename="goldplus-linkedin-${segment.replace(/[^a-z_]/g, '')}.csv"`,

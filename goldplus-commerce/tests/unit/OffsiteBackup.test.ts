@@ -70,6 +70,10 @@ describe('ops/backup/offsite-sync.sh', () => {
     const s = read('ops/backup/offsite-sync.sh');
     expect(s).not.toMatch(/--delete/);
     expect(s).toMatch(/--ignore-existing/);
+    // A cut-off transfer must not sit under its final name, or --ignore-existing
+    // skips it forever and the offsite copy stays truncated.
+    expect(s).toMatch(/--partial-dir=/);
+    expect(s).not.toMatch(/^\s*rsync [^\n]*--partial(?!-dir)/m);
   });
 
   it('the timer runs after the nightly dump and both units are installable', () => {
@@ -158,5 +162,34 @@ describe('deploy-prod.sh and compose hygiene', () => {
     const c = read('docker-compose.production.yml');
     expect(c).toContain('PGHERO_USERNAME=${PGHERO_USERNAME:-}');
     expect(c).toContain('PGHERO_PASSWORD=${PGHERO_PASSWORD:-}');
+  });
+});
+
+describe('review fixes 2026-10-07', () => {
+  it('the deploy gate counts only "(healthy)" replicas, never "(unhealthy)" ones', () => {
+    const d = read('scripts/deploy-prod.sh');
+    const m = d.match(/grep -cE "\(\$\(echo \$SERVICES \| tr ' ' '\|'\)\)(-\[12\] [^"]*)"/);
+    expect(m).not.toBeNull();
+    const re = new RegExp(`(api|web)${m![1]}`);
+    expect(re.test('goldplus-commerce-api-1 Up 2 minutes (healthy)')).toBe(true);
+    expect(re.test('goldplus-commerce-api-1 Up 45 seconds (unhealthy)')).toBe(false);
+    expect(re.test('goldplus-commerce-api-1 Up 3 seconds (health: starting)')).toBe(false);
+  });
+
+  it('the admin guard refuses a malformed session cookie and any 4xx', () => {
+    const m = read('apps/web/src/middleware.ts');
+    expect(m).toMatch(/try \{ bearer = decodeURIComponent\(token\); \} catch \{ return false; \}/);
+    expect(m).toMatch(/if \(res\.status < 500\) return false;/);
+  });
+
+  it('a crash exits non-zero and tickers stop before the HTTP drain', () => {
+    const s = read('apps/api/src/interfaces/http/server.ts');
+    expect(s.match(/process\.exitCode = 1;/g)?.length).toBe(2);
+    expect(s).toMatch(/process\.exit\(process\.exitCode \?\? 0\)/);
+    expect(s.indexOf('stopLoyaltyDailyTicker();')).toBeLessThan(s.indexOf("Stopping HTTP server"));
+  });
+
+  it('failed queue jobs are bounded, not kept forever', () => {
+    expect(read('apps/api/src/infrastructure/queues/QueueService.ts')).not.toMatch(/removeOnFail: false/);
   });
 });
