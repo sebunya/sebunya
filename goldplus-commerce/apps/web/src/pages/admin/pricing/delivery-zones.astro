@@ -227,7 +227,7 @@ const formatter = { format: (n: unknown) => formatUgx(n) };
                 <form method="POST" class="inline">
                   <input type="hidden" name="intent" value="delete" />
                   <input type="hidden" name="id" value={z.id} />
-                  <button type="submit" class="text-[10px] font-black uppercase tracking-widest text-red-600 hover:text-red-800">
+                  <button type="submit" data-confirm="Remove this delivery zone? Deliveries there will no longer be quoted." class="text-[10px] font-black uppercase tracking-widest text-red-600 hover:text-red-800">
                     Remove
                   </button>
                 </form>

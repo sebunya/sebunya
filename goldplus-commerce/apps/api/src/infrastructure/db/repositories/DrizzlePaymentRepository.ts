@@ -1,4 +1,4 @@
-import { eq, desc } from 'drizzle-orm';
+import { and, desc, eq, notInArray } from 'drizzle-orm';
 import { db } from '../client';
 import { orders, payments } from '../schema/commerce';
 import { outboxEvents } from '../schema/system';
@@ -19,6 +19,9 @@ function rowToPayment(row: typeof payments.$inferSelect): RecordedPayment {
     createdAt: row.createdAt,
   };
 }
+
+/** The order states a successful payment may move to processing (OrderStateMachine). */
+const PAYABLE_ORDER_STATUSES: readonly string[] = ['received', 'pending_payment', 'pending_owner_review'];
 
 export class DrizzlePaymentRepository implements IPaymentRepository {
   // Infra-to-infra composition: a successful settlement transitions the order
@@ -66,12 +69,24 @@ export class DrizzlePaymentRepository implements IPaymentRepository {
     // reach the order transition, which threw, rolling back the payment row and
     // answering the provider with a 500 so it retried forever. It is recorded,
     // flagged for review, and moves nothing.
-    const alreadyPaid = input.outcome === 'SUCCESS' && order.paymentStatus === 'paid';
-    const requiresReview = requestedReview || alreadyPaid;
-
     try {
       const inserted = await db.transaction(async (tx) => {
         const paidAt = input.outcome === 'SUCCESS' ? new Date() : null;
+        // Decided on the LOCKED row, not the read above: two webhooks for the
+        // same order (a declined first prompt, a paid second one) race here.
+        const [locked] = await tx
+          .select({ status: orders.status, paymentStatus: orders.paymentStatus })
+          .from(orders)
+          .where(eq(orders.id, input.orderId))
+          .for('update');
+        const alreadyPaid = input.outcome === 'SUCCESS' && locked?.paymentStatus === 'paid';
+        // Money for an order that can no longer move to processing (cancelled
+        // by the abandonment sweep, or a cash order already being processed)
+        // made the transition throw, which rolled back the payment row: the
+        // money arrived and nothing recorded it. It is recorded for a person,
+        // as PesaPal's lifecycle conflicts are.
+        const cannotProcess = input.outcome === 'SUCCESS' && !!locked && !PAYABLE_ORDER_STATUSES.includes(locked.status as string);
+        const requiresReview = requestedReview || alreadyPaid || cannotProcess;
 
         const [row] = await tx
           .insert(payments)
@@ -112,10 +127,13 @@ export class DrizzlePaymentRepository implements IPaymentRepository {
             // A failed payment authorises NO lifecycle move (received ->
             // pending_payment is not a legal transition). Record the payment
             // status only; no order_event is invented.
+            // Never over a paid or reversed order: a late FAILED for an earlier
+            // declined prompt used to mark a paid order failed
+            // (orderPaymentWriteDecision: paid may only become reversed).
             await tx
               .update(orders)
               .set({ paymentStatus: 'failed', updatedAt: new Date() })
-              .where(eq(orders.id, input.orderId));
+              .where(and(eq(orders.id, input.orderId), notInArray(orders.paymentStatus, ['paid', 'reversed'])));
           }
         }
 

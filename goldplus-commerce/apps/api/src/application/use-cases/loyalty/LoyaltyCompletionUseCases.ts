@@ -197,6 +197,7 @@ export class ApplyRefundToLoyaltyUseCase {
   constructor(
     private readonly clawback: Pick<ClawbackOrderEarnUseCase, 'execute'>,
     private readonly reverseRedemption: Pick<ReverseRedemptionUseCase, 'execute'>,
+    private readonly reverseReferral?: Pick<ReverseReferralOnRefundUseCase, 'execute'>,
   ) {}
 
   async execute(input: { orderId: string; refundedShareBps: number; reason: string }): Promise<void> {
@@ -210,7 +211,51 @@ export class ApplyRefundToLoyaltyUseCase {
       await this.reverseRedemption
         .execute({ orderId: input.orderId, reason: input.reason })
         .catch((error) => appLogger.error({ orderId: input.orderId, err: (error as Error).message }, 'loyalty refund redemption reversal failed'));
+      await this.reverseReferral
+        ?.execute({ orderId: input.orderId, reason: input.reason })
+        .catch((error) => appLogger.error({ orderId: input.orderId, err: (error as Error).message }, 'loyalty refund referral reversal failed'));
     }
+  }
+}
+
+/** What the referral reversal needs from the referral store. */
+export interface ReferralRefundPort {
+  findAwardedByQualifyingOrder(orderId: string): Promise<{ id: string; referrerEntryId: string | null; refereeEntryId: string | null } | null>;
+  markRejected(id: string, reason: string): Promise<void>;
+}
+
+/**
+ * A referral pays both sides when the friend's first order is delivered. When
+ * that order is then refunded in full (or the payment reversed), the referral
+ * never really happened: both payouts are reversed and the referral leaves
+ * "awarded", so it stops counting toward Friends & Family. Before 2026-10-07
+ * a refund took back the order's own points only; a deliver-and-return loop
+ * kept 2 x the referral points. A mission bonus already paid is NOT taken back
+ * here: whether it stands is the owner's decision (it may rest on other
+ * friends too).
+ *
+ * Idempotent: reverseEntry is keyed `reversal:<entry>`, and a re-run after the
+ * referral is marked finds nothing awarded.
+ */
+export class ReverseReferralOnRefundUseCase {
+  constructor(
+    private readonly referrals: ReferralRefundPort,
+    private readonly ledger: Pick<ILoyaltyRepository, 'reverseEntry'>,
+  ) {}
+
+  async execute(input: { orderId: string; reason: string }): Promise<{ reversed: boolean }> {
+    const referral = await this.referrals.findAwardedByQualifyingOrder(input.orderId);
+    if (!referral) return { reversed: false };
+    for (const entryId of [referral.referrerEntryId, referral.refereeEntryId]) {
+      if (!entryId) continue;
+      const result = await this.ledger.reverseEntry(entryId, `Referral reversed: qualifying order refunded (${input.reason})`.slice(0, 300));
+      // ALREADY_REVERSED: a clawback or an earlier run already settled it.
+      if (!result.ok && result.code !== 'ALREADY_REVERSED' && result.code !== 'NOT_FOUND') {
+        throw new Error(`REFERRAL_REVERSAL_FAILED:${result.code}`);
+      }
+    }
+    await this.referrals.markRejected(referral.id, 'QUALIFYING_ORDER_REFUNDED');
+    return { reversed: true };
   }
 }
 

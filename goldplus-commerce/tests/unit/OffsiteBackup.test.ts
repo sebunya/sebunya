@@ -179,7 +179,7 @@ describe('review fixes 2026-10-07', () => {
   it('the admin guard refuses a malformed session cookie and any 4xx', () => {
     const m = read('apps/web/src/middleware.ts');
     expect(m).toMatch(/try \{ bearer = decodeURIComponent\(token\); \} catch \{ return false; \}/);
-    expect(m).toMatch(/if \(res\.status < 500\) return false;/);
+    expect(m).toMatch(/if \(res\.status < 500 && res\.status !== 429\) return false;/);
   });
 
   it('a crash exits non-zero and tickers stop before the HTTP drain', () => {
@@ -187,6 +187,36 @@ describe('review fixes 2026-10-07', () => {
     expect(s.match(/process\.exitCode = 1;/g)?.length).toBe(2);
     expect(s).toMatch(/process\.exit\(process\.exitCode \?\? 0\)/);
     expect(s.indexOf('stopLoyaltyDailyTicker();')).toBeLessThan(s.indexOf("Stopping HTTP server"));
+  });
+
+  it('a session cookie is never cleared through Astro.response before a returned redirect (Astro drops it)', () => {
+    const offenders: string[] = [];
+    const walk = (dir: string) => {
+      for (const e of require('node:fs').readdirSync(dir, { withFileTypes: true })) {
+        const p = join(dir, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (/\.(astro|ts)$/.test(e.name) && /Astro\.response\.headers\.set\('Set-Cookie'/.test(readFileSync(p, 'utf8'))) offenders.push(p);
+      }
+    };
+    walk(join(root, 'apps/web/src/pages'));
+    expect(offenders).toEqual([]);
+  });
+
+  it('saving an address redirects, so a refresh cannot save it twice', () => {
+    expect(read('apps/web/src/pages/account/addresses.astro')).toMatch(/return Astro\.redirect\(`\/account\/addresses\?done=\$\{done\}`, 303\)/);
+  });
+
+  it('one-click destructive admin buttons ask first', () => {
+    for (const [file, n] of [
+      ['apps/web/src/pages/admin/pricing/delivery-zones.astro', 1],
+      ['apps/web/src/pages/admin/seo/integrations/[provider].astro', 2],
+      ['apps/web/src/pages/admin/compatibility.astro', 1],
+      ['apps/web/src/pages/admin/legal/index.astro', 2],
+      ['apps/web/src/pages/admin/ai-search/settings.astro', 1],
+      ['apps/web/src/components/admin/AdCapabilityForm.astro', 1],
+    ] as const) {
+      expect((read(file).match(/data-confirm=/g) ?? []).length, file).toBeGreaterThanOrEqual(n);
+    }
   });
 
   it('failed queue jobs are bounded, not kept forever', () => {

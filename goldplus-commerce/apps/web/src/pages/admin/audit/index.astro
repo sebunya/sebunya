@@ -5,7 +5,7 @@ import AdminTable from '../../../components/AdminTable.astro';
 import EmptyState from '../../../components/EmptyState.astro';
 import Notice from '../../../components/Notice.astro';
 import { apiBase } from '../../../lib/api';
-import { readSessionToken, clearSessionCookie } from '../../../lib/session';
+import { readSessionToken, SESSION_COOKIE_NAME } from '../../../lib/session';
 import type { ApiResponse } from '@goldplus/shared';
 
 interface AuditRow {
@@ -43,7 +43,7 @@ try {
   // Only an expired session signs out. A 403 is a permission gap: signing the
   // user out sent them round a login loop back to the same refusal.
   if (res.status === 401) {
-    Astro.response.headers.set('Set-Cookie', clearSessionCookie());
+    Astro.cookies.delete(SESSION_COOKIE_NAME, { path: '/' }); // a header set on Astro.response is dropped by a returned redirect
     return Astro.redirect('/admin/login?returnTo=/admin/audit', 303);
   }
   if (res.status === 403) {

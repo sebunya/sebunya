@@ -76,8 +76,9 @@ async function holderIsAdmin(request: Request): Promise<boolean> {
     if (res.ok) return true;
     if (res.status === 401 || res.status === 403) return false;
     // Any other 4xx is a refusal too (a moved route answers 404, and that
-    // must not open the console). Only 5xx degrades like an outage.
-    if (res.status < 500) return false;
+    // must not open the console). 429 and 5xx are the API under strain, not a
+    // verdict on this caller, so they degrade like an outage.
+    if (res.status < 500 && res.status !== 429) return false;
     return true;
   } catch {
     return true;

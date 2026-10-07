@@ -3,7 +3,7 @@ import AdminLayout from '../../../layouts/AdminLayout.astro';
 import EmptyState from '../../../components/EmptyState.astro';
 import Notice from '../../../components/Notice.astro';
 import { apiBase } from '../../../lib/api';
-import { readSessionToken, clearSessionCookie } from '../../../lib/session';
+import { readSessionToken, SESSION_COOKIE_NAME } from '../../../lib/session';
 import type { ApiEnvelope } from '@goldplus/shared';
 
 /**
@@ -78,7 +78,7 @@ try {
   // Only an expired session signs out; a 403 is a permission gap (no login loop).
   if (res.status === 403) return Astro.redirect(`/admin/not-permitted?from=${encodeURIComponent('/admin/roles')}&need=roles.manage`, 303);
   if (res.status === 401) {
-    Astro.response.headers.set('Set-Cookie', clearSessionCookie());
+    Astro.cookies.delete(SESSION_COOKIE_NAME, { path: '/' }); // a header set on Astro.response is dropped by a returned redirect
     return Astro.redirect('/admin/login?returnTo=/admin/roles', 303);
   }
   if (!res.ok) {

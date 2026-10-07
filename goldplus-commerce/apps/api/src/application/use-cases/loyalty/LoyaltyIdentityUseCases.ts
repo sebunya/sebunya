@@ -289,6 +289,12 @@ export class MergeLoyaltyAccountsUseCase {
     if (await this.identity.mergedInto(input.survivorAccountId)) {
       return fail('SURVIVOR_MERGED', 'The survivor account was itself merged — merge into the final survivor.');
     }
+    // Balances and lifetime points resolve merges ONE level deep. Merging an
+    // account that already absorbed others (A→B, then B→C) left A's points
+    // unreachable from C: not spendable, not expiring, not counted.
+    if ((await this.identity.mergedSources(input.mergedAccountId)).length > 0) {
+      return fail('MERGED_HAS_SOURCES', 'That account already holds merged accounts. Merge the other way round (into it), or merge its sources into the final survivor first.');
+    }
     const recorded = await this.identity.recordMerge({
       mergedAccountId: input.mergedAccountId,
       survivorAccountId: input.survivorAccountId,

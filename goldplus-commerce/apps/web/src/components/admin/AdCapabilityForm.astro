@@ -72,7 +72,7 @@ const hasCustomField = cap.fields.some((f: any) => f.key === "customSegments");
       {cap.enabled
         ? <button name="intent" value="capability-disable" class="inline-flex min-h-11 items-center rounded-full border border-red-300 px-5 text-sm font-bold text-red-800">Switch off</button>
         : <button name="intent" value="capability-enable" class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Save and switch on</button>}
-      {cap.secretMask && <button name="intent" value="capability-remove-token" class="inline-flex min-h-11 items-center px-2 text-sm font-bold text-red-800 underline">Remove token</button>}
+      {cap.secretMask && <button name="intent" value="capability-remove-token" data-confirm="Remove this token? This feature stops until a new one is saved." class="inline-flex min-h-11 items-center px-2 text-sm font-bold text-red-800 underline">Remove token</button>}
     </div>
   </form>
 </section>

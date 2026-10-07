@@ -1,4 +1,5 @@
 ---
+import { apiHeaders, readClientAddress } from '../../lib/forwardClient';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import FormField from '../../components/FormField.astro';
 import FormFeedback from '../../components/FormFeedback.astro';
@@ -26,7 +27,10 @@ if (Astro.request.method === 'POST') {
       const res = await fetch(`${apiBase}/auth/admin/login`, {
         method: 'POST',
         signal: AbortSignal.timeout(8000),
-        headers: { 'Content-Type': 'application/json' },
+        // The visitor's address: without it the API treated the call as
+        // internal, and the lockout key fell back to the web container's
+        // address, one bucket shared by every admin (5 wrong tries locked all).
+        headers: apiHeaders({ 'Content-Type': 'application/json' }, readClientAddress(Astro)),
         body: JSON.stringify({ email, password }),
       });
       const json: any = await res.json().catch(() => null);

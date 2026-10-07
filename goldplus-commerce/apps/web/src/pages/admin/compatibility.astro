@@ -141,7 +141,7 @@ const nameOf = (id: string) => productNames.get(id) ?? `${id.slice(0, 8)}…`;
                   <form method="POST" class="inline">
                     <input type="hidden" name="intent" value="delete" />
                     <input type="hidden" name="id" value={m.id} />
-                    <button type="submit" class="text-[10px] font-black uppercase tracking-widest text-red-600 hover:text-red-800">Remove</button>
+                    <button type="submit" data-confirm="Remove this compatibility entry?" class="text-[10px] font-black uppercase tracking-widest text-red-600 hover:text-red-800">Remove</button>
                   </form>
                 </td>
               </tr>

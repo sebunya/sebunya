@@ -108,6 +108,21 @@ if (Astro.request.method === 'POST') {
       message = 'The account service is unreachable right now.';
     }
   }
+  // Post/Redirect/Get: rendering the success in the POST response meant a
+  // refresh (pull-to-refresh on a phone) re-sent the form and saved the same
+  // address twice. Errors still render here, beside what was typed.
+  if (status === 'success') {
+    const done = message?.startsWith('Address saved') ? 'added' : message?.startsWith('Default') ? 'default' : 'removed';
+    return Astro.redirect(`/account/addresses?done=${done}`, 303);
+  }
+} else {
+  const DONE: Record<string, string> = {
+    added: 'Address saved. Checkout will offer it from now on.',
+    default: 'Default address updated.',
+    removed: 'Address removed.',
+  };
+  const done = DONE[Astro.url.searchParams.get('done') ?? ''];
+  if (done) { status = 'success'; message = done; }
 }
 
 let addresses: AddressDto[] = [];
