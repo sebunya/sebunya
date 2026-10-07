@@ -1476,7 +1476,9 @@ function fillHeroTokens(text: string): string {
     function emit(type, key, pos){
       try {
         var body = JSON.stringify({ eventType: type, slideKey: key, position: pos, segment: seg });
-        if (type === 'CLICK' && navigator.sendBeacon){ navigator.sendBeacon('/api/hero/events', new Blob([body], {type:'application/json'})); return; }
+        // A beacon for every event: it is low priority, so an impression sent
+        // during load no longer sits in the page's critical request chain.
+        if (navigator.sendBeacon && navigator.sendBeacon('/api/hero/events', new Blob([body], {type:'application/json'}))) return;
         fetch('/api/hero/events', { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', keepalive:true, body:body }).catch(function(){});
       } catch(e){}
     }

@@ -181,11 +181,21 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
           document.cookie = '_fp_cid=' + cid + '; expires=' + new Date(Date.now() + 365 * 864e5).toUTCString() + '; path=/; SameSite=Lax; Secure';
         }
         dataLayer.push(userId ? { fp_client_id: cid, user_id: userId } : { fp_client_id: cid });
-        (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-        new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-        j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-        metricsUrl+'/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-        })(window,document,'script','dataLayer',gtmId);
+        // The container (gtm.js ~120 KB + gtag ~175 KB) is fetched once the page
+        // has loaded and the main thread is idle, for every visitor: requested in
+        // the head it shared the link with the hero image and cost mobile LCP.
+        // gtm.start keeps the real page-start time and dataLayer queues whatever
+        // is pushed meanwhile, so no event is lost; sales events go server-side.
+        window.dataLayer.push({'gtm.start': new Date().getTime(), event: 'gtm.js'});
+        var gtmLoaded = false;
+        function loadGtm(){
+          if (gtmLoaded) return; gtmLoaded = true;
+          var j = document.createElement('script'); j.async = true;
+          j.src = metricsUrl + '/gtm.js?id=' + gtmId;
+          document.head.appendChild(j);
+        }
+        function whenIdle(){ (window.requestIdleCallback || function(f){ setTimeout(f, 1); })(loadGtm, { timeout: 2500 }); }
+        if (document.readyState === 'complete') whenIdle(); else addEventListener('load', whenIdle);
         })();
       </script>
     )}
