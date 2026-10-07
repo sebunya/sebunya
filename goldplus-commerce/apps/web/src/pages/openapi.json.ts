@@ -33,7 +33,7 @@ const spec = {
           { name: 'q', in: 'query', schema: { type: 'string', maxLength: 120 }, description: 'Words, SKU or model number.' },
           { name: 'category', in: 'query', schema: { type: 'string', example: 'power-devices' }, description: 'Category slug.' },
           { name: 'inStock', in: 'query', schema: { type: 'boolean' }, description: 'Only products in stock.' },
-          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 100 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 60 } },
           { name: 'offset', in: 'query', schema: { type: 'integer', minimum: 0, default: 0 } },
         ],
         responses: {

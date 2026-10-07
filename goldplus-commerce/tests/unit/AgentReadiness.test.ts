@@ -138,6 +138,10 @@ describe('MCP server (/mcp)', () => {
     let last = 200;
     for (let i = 0; i < 61; i++) last = (await rpc({ jsonrpc: '2.0', id: i, method: 'ping' }, '10.9.9.9')).status;
     expect(last).toBe(429);
+    // Behind the proxy every socket address is the proxy's: the budget follows X-Real-IP.
+    const { POST } = await import('../../apps/web/src/pages/mcp');
+    const other = await (POST as any)({ request: new Request('https://shopgoldplus.com/mcp', { method: 'POST', headers: { 'x-real-ip': '203.0.113.7' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }) }), clientAddress: '10.9.9.9' });
+    expect(other.status).toBe(200);
     const { GET } = await import('../../apps/web/src/pages/mcp');
     expect((await (GET as any)({})).status).toBe(405);
   });

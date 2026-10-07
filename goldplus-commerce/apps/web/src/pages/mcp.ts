@@ -4,6 +4,7 @@ import { getBusinessInfo } from '../lib/businessInfo';
 import { fetchApprovedCatalogueWithStatus } from '../lib/catalogue';
 import { getStorefrontDiscount } from '../lib/storefrontDiscount';
 import { SITE_ORIGIN } from '../lib/sitemap';
+import { visitorKey } from '../lib/publicFormLimiter';
 import { AVAILABILITY_TEXT, agentProduct, batteryFinderSearch, productBySlug, searchCatalogue, type AgentProduct } from '../lib/agentCatalog';
 
 /**
@@ -269,7 +270,9 @@ const json = (body: unknown, status = 200, extra: Record<string, string> = {}) =
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...CORS, ...extra } });
 
 export const POST: APIRoute = async ({ request, clientAddress }) => {
-  if (!allow(clientAddress || 'unknown')) return json(rpcError(null, -32000, 'Too many requests; slow down.'), 429, { 'Retry-After': '60' });
+  // The visitor's own address (X-Real-IP from the edge), not the proxy's: keyed on
+  // the socket address every agent would share one budget behind Caddy.
+  if (!allow(visitorKey(request.headers, () => clientAddress))) return json(rpcError(null, -32000, 'Too many requests; slow down.'), 429, { 'Retry-After': '60' });
   const raw = await request.text();
   if (raw.length > MAX_BODY_BYTES) return json(rpcError(null, -32600, 'Request too large'), 413);
   let parsed: unknown;
