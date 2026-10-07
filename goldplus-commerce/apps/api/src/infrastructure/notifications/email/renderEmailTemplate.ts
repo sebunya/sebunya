@@ -26,7 +26,7 @@ function lookup(stack: TemplateData[], path: string): TemplateValue {
       // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop -- prototype keys are refused above; this loop only reads
       for (const part of rest) {
         if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
-        value = (value as TemplateData)[part];
+        value = (value as TemplateData)[part]; // nosemgrep: javascript.lang.security.audit.prototype-pollution.prototype-pollution-loop.prototype-pollution-loop -- read-only lookup; prototype keys refused above
       }
       return value;
     }
