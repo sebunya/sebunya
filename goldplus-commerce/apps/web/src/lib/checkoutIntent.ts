@@ -28,10 +28,10 @@ const isProduction = () => import.meta.env.PROD === true;
 
 function keys(): IntentKey[] | null {
   const root = (
-    import.meta.env.CHECKOUT_INTENT_SECRET ||
     process.env.CHECKOUT_INTENT_SECRET ||
-    import.meta.env.JWT_SECRET ||
+    import.meta.env.CHECKOUT_INTENT_SECRET ||
     process.env.JWT_SECRET ||
+    import.meta.env.JWT_SECRET ||
     ''
   ).trim();
   if (!root) return null;
@@ -42,10 +42,10 @@ function keys(): IntentKey[] | null {
   try {
     return buildIntentKeyring({
       rootSecret: root,
-      currentKeyId: import.meta.env.CHECKOUT_INTENT_KEY_ID || process.env.CHECKOUT_INTENT_KEY_ID,
+      currentKeyId: process.env.CHECKOUT_INTENT_KEY_ID || import.meta.env.CHECKOUT_INTENT_KEY_ID,
       previousKeyId:
-        import.meta.env.CHECKOUT_INTENT_PREVIOUS_KEY_ID ||
-        process.env.CHECKOUT_INTENT_PREVIOUS_KEY_ID,
+        process.env.CHECKOUT_INTENT_PREVIOUS_KEY_ID ||
+        import.meta.env.CHECKOUT_INTENT_PREVIOUS_KEY_ID,
     });
   } catch {
     // Misconfigured rather than absent. Returning null makes the page refuse, which

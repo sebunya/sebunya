@@ -424,6 +424,7 @@ export class SyntheticMonitor {
       stages.push('storefront_html_check');
       const storefrontUrl = 'http://web:4321'; // Resolve web container internally inside Docker Compose network
       try {
+        // nosemgrep: typescript.react.security.react-insecure-request.react-insecure-request -- container-to-container on the private Docker network; TLS ends at Caddy
         const storefrontRes = await fetch(storefrontUrl, {
           signal: AbortSignal.timeout(5000),
         });

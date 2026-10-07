@@ -16,8 +16,8 @@ if (!token) {
 let saveSuccess = false;
 let saveError = '';
 const consentOperatingEnabled =
-  import.meta.env.CONSENT_PERSISTENCE_COMMANDS_ENABLED === 'true' &&
-  import.meta.env.CONSENT_PREFERENCE_CENTRE_SAVE_ENABLED === 'true';
+  (process.env.CONSENT_PERSISTENCE_COMMANDS_ENABLED ?? import.meta.env.CONSENT_PERSISTENCE_COMMANDS_ENABLED) === 'true' &&
+  (process.env.CONSENT_PREFERENCE_CENTRE_SAVE_ENABLED ?? import.meta.env.CONSENT_PREFERENCE_CENTRE_SAVE_ENABLED) === 'true';
 
 if (Astro.request.method === 'POST') {
   try {

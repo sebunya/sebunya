@@ -169,8 +169,11 @@ export function navConfigWarnings(cfg: NavConfig): NavConfigError[] {
 function getPath(obj: any, path: string): unknown {
   return path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
 }
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 function setPath(obj: any, path: string, value: unknown): void {
   const parts = path.split('.');
+  // Never walk into or write an object's prototype, whatever the path says.
+  if (parts.some((p) => UNSAFE_KEYS.has(p))) return;
   let cur = obj;
   for (let i = 0; i < parts.length - 1; i++) { if (cur[parts[i]] == null) return; cur = cur[parts[i]]; }
   cur[parts[parts.length - 1]] = value;

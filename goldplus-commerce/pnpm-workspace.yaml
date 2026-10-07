@@ -1,3 +1,11 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+# Supply-chain guards (pnpm >= 10.16 enforces them; older pnpm ignores them).
+# A version must be a day old before it is installed (most hijacked releases
+# are caught and pulled within hours); a package whose publishing trust gets
+# weaker is refused; sub-dependencies may not come from git or arbitrary URLs.
+minimumReleaseAge: 1440
+trustPolicy: no-downgrade
+blockExoticSubdeps: true

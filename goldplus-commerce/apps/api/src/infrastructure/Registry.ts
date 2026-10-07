@@ -1257,6 +1257,7 @@ export class Registry {
     sideEffectRecorder: this.checkoutSideEffectRecorder,
     // Derived through a labelled HMAC so the digest key is unrelated to the session,
     // checkout-intent and cart-credential key streams even from one root secret.
+    // nosemgrep: javascript.lang.security.audit.hardcoded-hmac-key.hardcoded-hmac-key -- a public derivation label; the secret is the HMAC message (CHECKOUT_INTENT_SECRET / JWT_SECRET)
     fingerprintDigestKey: createHmac('sha256', 'goldplus-checkout-fingerprint-v1')
       .update((process.env.CHECKOUT_INTENT_SECRET || process.env.JWT_SECRET || '').trim())
       .digest('hex'),

@@ -147,7 +147,7 @@ export function decryptSecret(payload: string): string {
   const iv = raw.subarray(0, 12);
   const tag = raw.subarray(12, 28);
   const ct = raw.subarray(28);
-  const decipher = createDecipheriv('aes-256-gcm', encryptionKey(), iv);
+  const decipher = createDecipheriv('aes-256-gcm', encryptionKey(), iv, { authTagLength: 16 }); // a truncated tag is refused
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(ct), decipher.final()]).toString('utf8');
 }

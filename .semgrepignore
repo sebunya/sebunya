@@ -1,0 +1,10 @@
+# Offline operator and build tooling: run by hand against the repository,
+# never on the request path, and given operator input only. Reviewed
+# 2026-10-07 (docs/security/audit-exceptions.md). Everything else under goldplus-commerce/
+# (apps, packages, deployment files) is still scanned.
+goldplus-commerce/scripts/
+goldplus-commerce/apps/api/src/scripts/
+goldplus-commerce/performance-audit/
+goldplus-commerce/compatibility-audit/
+node_modules/
+dist/

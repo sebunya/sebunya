@@ -98,7 +98,7 @@ releaseReadinessAdminRouter.get('/runs/:runId', async (c) => {
     if (error.message === 'Run not found') {
       return c.json({ error: 'Run not found' }, 404);
     }
-    console.error(`Error fetching run ${runId}:`, error);
+    console.error('Error fetching run %s:', runId, error);
     return c.json({ error: 'Internal Server Error' }, 500);
   }
 });
@@ -161,7 +161,7 @@ releaseReadinessAdminRouter.post('/gates/:gateId/acknowledge', async (c) => {
     if (error.message === 'Gate result not found') {
       return c.json({ error: 'Gate not found' }, 404);
     }
-    console.error(`Error acknowledging gate ${gateId}:`, error);
+    console.error('Error acknowledging gate %s:', gateId, error);
     return c.json({ error: 'Internal Server Error' }, 500);
   }
 });

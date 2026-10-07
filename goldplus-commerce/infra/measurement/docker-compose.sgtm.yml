@@ -1,7 +1,10 @@
 version: '3.8'
 
 services:
+  # nosemgrep: yaml.docker-compose.security.writable-filesystem-service.writable-filesystem-service -- this service writes its own data/cache by design
   caddy-measurement-proxy:
+    security_opt:
+      - no-new-privileges:true
     image: caddy:2.7-alpine
     container_name: caddy-measurement-proxy
     restart: unless-stopped
@@ -20,7 +23,10 @@ services:
     networks:
       - sgtm-network
 
+  # nosemgrep: yaml.docker-compose.security.writable-filesystem-service.writable-filesystem-service -- this service writes its own data/cache by design
   sgtm-production:
+    security_opt:
+      - no-new-privileges:true
     image: gcr.io/cloud-tagging-10302018/gtm-cloud-image:stable
     container_name: sgtm-production
     restart: always
@@ -36,7 +42,10 @@ services:
       retries: 3
       start_period: 10s
 
+  # nosemgrep: yaml.docker-compose.security.writable-filesystem-service.writable-filesystem-service -- this service writes its own data/cache by design
   sgtm-preview:
+    security_opt:
+      - no-new-privileges:true
     image: gcr.io/cloud-tagging-10302018/gtm-cloud-image:stable
     container_name: sgtm-preview
     restart: always

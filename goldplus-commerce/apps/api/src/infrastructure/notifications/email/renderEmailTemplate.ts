@@ -17,6 +17,8 @@ const escapeHtml = (v: string) => v.replace(/[&<>"']/g, (c) => ESCAPES[c]);
 function lookup(stack: TemplateData[], path: string): TemplateValue {
   if (path === '.') return stack[stack.length - 1] as TemplateValue;
   const [head, ...rest] = path.split('.');
+  // A template path never reaches an object's prototype.
+  if ([head, ...rest].some((p) => p === '__proto__' || p === 'constructor' || p === 'prototype')) return undefined;
   for (let i = stack.length - 1; i >= 0; i--) {
     const scope = stack[i];
     if (scope && typeof scope === 'object' && head in scope) {
@@ -58,6 +60,7 @@ export function renderTemplate(template: string, data: TemplateData, options: Re
         let depth = 1;
         let cursor = tag.lastIndex;
         let end = -1;
+        // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp -- section names come from our own compiled templates
         const scan = new RegExp(`\\{\\{([#^/])${name}\\}\\}`, 'g');
         scan.lastIndex = cursor;
         let s: RegExpExecArray | null;
