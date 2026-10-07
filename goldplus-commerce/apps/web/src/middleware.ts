@@ -1,4 +1,5 @@
 import { defineMiddleware } from "astro:middleware";
+import { SITE_ORIGIN } from './lib/sitemap';
 import { prefersMarkdown, markdownResponse } from "./lib/agentMarkdown";
 import { agentDocumentFor, agentRepresentablePath } from "./lib/agentDocuments";
 import { resolveRequestIdentity } from "./lib/requestIdentity";
@@ -189,8 +190,11 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // The extension check is anchored to the LAST path segment so a product
   // slug containing a dot still counts as a document.
   const path = context.url.pathname;
+  // Machine endpoints (/mcp, /.well-known/*) are not pages: no analytics visitor
+  // cookie and no page Link headers on their responses.
   const isDocument =
-    !path.startsWith("/api/") && !path.startsWith("/_astro/") && !/\.[A-Za-z0-9]{2,8}$/.test(path);
+    !path.startsWith("/api/") && !path.startsWith("/_astro/") && !path.startsWith("/.well-known/") && path !== "/mcp" &&
+    !/\.[A-Za-z0-9]{2,8}$/.test(path);
 
   // The analytics visitor id (`_fp_cid`, GA's client_id) is set by the SERVER
   // and refreshed on every page: Safari caps cookies written by JavaScript at 7
@@ -267,6 +271,14 @@ export const onRequest = defineMiddleware(async (context, next) => {
   if (isDocument && response.status === 200 && agentRepresentablePath(path)) {
     response.headers.append('Link', `<${context.url.origin}${path}>; rel="alternate"; type="text/markdown"`);
     response.headers.append('Vary', 'Accept');
+  }
+  // Discovery for agents on every page (RFC 8288 links, RFC 9727 api-catalog):
+  // where the machine-readable descriptions of this site live. Headers, not
+  // <link> tags, so the documents' byte budget is untouched.
+  if (isDocument && response.status === 200 && (response.headers.get('content-type') ?? '').startsWith('text/html')) {
+    response.headers.append('Link', `<${SITE_ORIGIN}/.well-known/api-catalog>; rel="api-catalog"`);
+    response.headers.append('Link', `<${SITE_ORIGIN}/openapi.json>; rel="service-desc"; type="application/openapi+json"`);
+    response.headers.append('Link', `<${SITE_ORIGIN}/llms.txt>; rel="describedby"; type="text/plain"`);
   }
   return withStrictScriptPolicyReport(response, cspNonce);
 });

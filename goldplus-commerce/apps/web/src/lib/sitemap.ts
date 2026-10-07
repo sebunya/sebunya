@@ -36,6 +36,8 @@ export const STATIC_SITEMAP_PATHS: readonly string[] = [
   // /battery-finder stays out until its indexable flag can be read here.
   '/cookies',
   '/loyalty-terms',
+  // What the machine endpoints are and how an assistant connects (/mcp, /openapi.json).
+  '/developers',
 ];
 
 /** Path prefixes that are noindex and therefore banned from every sitemap. */

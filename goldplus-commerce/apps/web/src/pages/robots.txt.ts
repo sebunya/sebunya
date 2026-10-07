@@ -19,9 +19,30 @@ import { SITE_ORIGIN } from '../lib/sitemap';
 
 const FALLBACK_TIMEOUT_MS = 2500;
 
+/**
+ * AI crawlers are named, not left to the wildcard: an agent-aware robots.txt is
+ * how answer engines and AI-readiness scanners read "welcome" rather than
+ * "unaddressed". They share the ONE rule group below (RFC 9309: several
+ * User-agent lines may head a group), so every private path stays disallowed
+ * for them exactly as for everyone else — a separate group per bot would have
+ * to repeat every Disallow and silently drift.
+ *
+ * Content-Signal (contentsignals.org): search, quoting in AI answers and
+ * training are all permitted — the owner wants the shop known to assistants.
+ */
+export const AI_CRAWLERS = [
+  'GPTBot', 'OAI-SearchBot', 'ChatGPT-User',
+  'ClaudeBot', 'Claude-SearchBot', 'Claude-User',
+  'PerplexityBot', 'Perplexity-User',
+  'Google-Extended', 'Applebot-Extended', 'Amazonbot',
+  'meta-externalagent', 'CCBot', 'DuckAssistBot', 'MistralAI-User',
+];
+
 function staticRobots(base: string): string {
   return (
     'User-agent: *\n' +
+    AI_CRAWLERS.map((ua) => `User-agent: ${ua}\n`).join('') +
+    'Content-Signal: search=yes, ai-input=yes, ai-train=yes\n' +
     'Allow: /\n' +
     'Disallow: /admin\n' +
     'Disallow: /admin/\n' +
@@ -33,7 +54,10 @@ function staticRobots(base: string): string {
     'Disallow: /track-order\n' +
     'Disallow: /api/\n' +
     '\n' +
-    `Sitemap: ${base}/sitemap.xml\n`
+    `Sitemap: ${base}/sitemap.xml\n` +
+    '\n' +
+    `# For AI assistants: ${base}/llms.txt (full catalogue: ${base}/llms-full.txt)\n` +
+    `# MCP server: ${base}/mcp   API catalog: ${base}/.well-known/api-catalog\n`
   );
 }
 
