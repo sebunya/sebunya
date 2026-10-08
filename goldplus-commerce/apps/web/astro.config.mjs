@@ -71,6 +71,15 @@ export default defineConfig({
     port: 4321
   },
   vite: {
+    build: {
+      // Component scripts always ship as files, never inlined. The middleware
+      // stamps the CSP nonce only on same-site script FILES (stamping inline
+      // scripts would hand it to injected markup), so every script Astro
+      // inlined for being under 4 KB ran without one: flagged by the strict
+      // policy (report-only today) and blocked the day it is enforced. Every
+      // other asset keeps the default 4 KB rule.
+      assetsInlineLimit: (filePath) => (/\.m?js$/.test(filePath) ? false : undefined),
+    },
     define: {
       // Injected into the telemetry SDK at build time.
       // The SDK uses this to route beacons to the correct API origin.

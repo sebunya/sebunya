@@ -200,11 +200,19 @@ const fallbackCandidatesP: Promise<ProductPublicDto[]> = (async () => {
   const seen = new Set<string>();
   return [...sameCategory, ...general].filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true)));
 })().catch(() => []);
-const loyaltyRateP: Promise<number> = (async () => {
+// Earn rate and the redemption value of a point, both from the live programme
+// (the /loyalty worked example reads the same config, so the two cannot drift).
+const loyaltyP: Promise<{ rate: number; pointValueUgx: number }> = (async () => {
   const lpRes = await fetch(`${apiBase}/commerce/loyalty-programme`, { signal: AbortSignal.timeout(2000) });
   const lpJson: any = lpRes.ok ? await lpRes.json().catch(() => null) : null;
-  return lpJson?.success && lpJson.data?.active ? Number(lpJson.data.earnRatePer1000Ugx) || 0 : 0;
-})().catch(() => 0);
+  if (!(lpJson?.success && lpJson.data?.active)) return { rate: 0, pointValueUgx: 0 };
+  const redemption = lpJson.data.redemption;
+  return {
+    rate: Number(lpJson.data.earnRatePer1000Ugx) || 0,
+    pointValueUgx: redemption?.configured ? Number(redemption.pointValueUgx) || 0 : 0,
+  };
+})().catch(() => ({ rate: 0, pointValueUgx: 0 }));
+const loyaltyRateP: Promise<number> = loyaltyP.then((l) => l.rate);
 const compatibilityP: Promise<unknown> = (async () => {
   const compatRes = await fetch(`${apiBase}/products/${encodeURIComponent(product!.slug)}/compatibility`, { signal: AbortSignal.timeout(2000) });
   return compatRes.json().catch(() => null);
@@ -264,6 +272,7 @@ try {
 // Loyalty earn preview (loyalty brief PART G: visibility at the point of
 // decision). Lower bound, vests on delivery — absent when the programme is off.
 const loyaltyRate = await loyaltyRateP; // preview only: 0 when unavailable
+const loyaltyPointValueUgx = (await loyaltyP).pointValueUgx; // 0 = redemption not configured: points only
 
 const bizForPdp = await bizP;
 const askAboutHref = `${bizForPdp.whatsappUrl}?text=${encodeURIComponent(`Hello GoldPlus, is the ${product.name} available?`)}`;
@@ -556,7 +565,9 @@ if (product) {
                   <p class="mt-1.5 text-xs font-bold text-amber-700" data-pdp-sale-ends={pdpDiscount.endsIso}>Offer ends soon</p>
                 )}
                 {loyaltyRate > 0 && Math.floor((pdpSaleUgx ?? product.retailPriceUgx) / 1000) * loyaltyRate > 0 && (
-                  <p class="text-xs font-bold text-brand-primaryInk mt-1">Earn {(Math.floor((pdpSaleUgx ?? product.retailPriceUgx) / 1000) * loyaltyRate).toLocaleString('en-UG')} GoldPlus points on this order</p>
+                  <p class="text-xs font-bold text-brand-primaryInk mt-1">Earn {(Math.floor((pdpSaleUgx ?? product.retailPriceUgx) / 1000) * loyaltyRate).toLocaleString('en-UG')} GoldPlus points{loyaltyPointValueUgx > 0
+                    ? ` on this order, worth UGX ${(Math.floor((pdpSaleUgx ?? product.retailPriceUgx) / 1000) * loyaltyRate * loyaltyPointValueUgx).toLocaleString('en-UG')} off a later one`
+                    : ' on this order'}</p>
                 )}
                 </>
               ) : (
@@ -694,13 +705,22 @@ if (product) {
               <span class="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-brand-charcoal shrink-0" aria-hidden="true">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a5 5 0 010 10H9m-6-10l4-4m-4 4l4 4" /></svg>
               </span>
-              <span>{RETURNS_POLICY.windowDays}-day returns if unused and complete. <a href="/returns" class="font-semibold text-gray-900 underline underline-offset-2 hover:text-brand-primaryInk">How returns work</a></span>
+              <span>{RETURNS_POLICY.windowDays}-day returns if unused and complete. Faulty? Replaced or refunded at our cost. <a href="/returns" class="font-semibold text-gray-900 underline underline-offset-2 hover:text-brand-primaryInk">How returns work</a></span>
             </li>
             <li class="flex items-center gap-3 text-sm text-slate-600">
               <span class="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-brand-charcoal shrink-0" aria-hidden="true">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
               </span>
               <span>{storefrontCopy.payment.pesapal.label}, or {lowerFirst(storefrontCopy.payment.offline.label)}.</span>
+            </li>
+            {/* Authenticity, said where the decision is made (2026-10-08 design
+                audit), in the /verification page's own words: every genuine
+                GoldPlus product carries a hologram code that can be checked. */}
+            <li class="flex items-center gap-3 text-sm text-slate-600">
+              <span class="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-brand-charcoal shrink-0" aria-hidden="true">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4" /></svg>
+              </span>
+              <span>Every genuine GoldPlus product carries a hologram code you can check. <a href="/verification" class="font-semibold text-gray-900 underline underline-offset-2 hover:text-brand-primaryInk">Verify a product</a></span>
             </li>
           </ul>
 

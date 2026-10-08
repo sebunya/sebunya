@@ -50,8 +50,12 @@ export function buildHomepageProductAllocation(
   // owner's "show the placeholder" policy holds and no slot goes empty.
   allProducts = realCoversFirst(allProducts);
 
-  // 1. Featured Products (Takes up to 4)
-  const featured = getUniqueProducts(allProducts, 4);
+  // 1. Featured Products (Takes up to 4). The row is not curated: it was the
+  // first four in catalogue order, which put four batteries at one price in it
+  // (2026-10-08 design audit, 15). The first photographed product of each
+  // category leads now, then the same order as before. Sample frames still
+  // come only after every photographed product.
+  const featured = getUniqueProducts([...firstPhotographedPerCategory(allProducts), ...allProducts], 4);
   if (featured.length < 4) {
     warnings.push(`Featured section has fewer than 4 products (found: ${featured.length})`);
   }
@@ -112,3 +116,15 @@ export function getCategoryAwareProducts(
   );
 }
 
+/** The first product with a real photograph in each category, in the given order. */
+function firstPhotographedPerCategory(products: ProductPublicDto[]): ProductPublicDto[] {
+  const seen = new Set<string>();
+  const firsts: ProductPublicDto[] = [];
+  for (const product of products) {
+    const category = (product.categoryName ?? '').trim().toLowerCase();
+    if (!category || seen.has(category) || !hasRealCover(product)) continue;
+    seen.add(category);
+    firsts.push(product);
+  }
+  return firsts;
+}

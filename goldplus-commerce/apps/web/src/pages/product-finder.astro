@@ -6,7 +6,7 @@ const rawReference = Astro.url.searchParams.get('compatibleWith');
 const compatibleWith = rawReference && /^[0-9a-f-]{36}$/i.test(rawReference) ? rawReference : null;
 ---
 
-<BaseLayout title="Find the Right GoldPlus Product">
+<BaseLayout title="Find the Right GoldPlus Product" description="Not sure which charger, power bank, earbuds or storage to buy? Answer four quick questions and GoldPlus suggests products in stock in Kampala, at current prices.">
   <div class="container mx-auto px-4 py-8">
     <div class="max-w-2xl mx-auto">
       <h1 class="text-3xl md:text-4xl font-black tracking-tight text-gray-900 mb-2">Find the right GoldPlus product</h1>
