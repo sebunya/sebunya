@@ -1,5 +1,6 @@
 ---
 import DeliveryQuote from "../../components/DeliveryQuote.astro";
+import { indexableCategoryHref } from '../../lib/indexableLinks';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import ProductJsonLd from '../../components/ProductJsonLd.astro';
 import Notice from '../../components/Notice.astro';
@@ -429,9 +430,33 @@ const verdictBadge: Record<string, string> = {
 
 // No selling price = nothing to buy: checkout refuses a priceless line (PRICE_UNAVAILABLE).
 const canBuy = product?.availability.kind === 'in_stock' && pdpHasPrice;
-const pageTitle = product ? product.name : 'Product unavailable';
+// Search snippet (2026-10-08 SEO audit: all 183 titles were the bare name and
+// every description the same template; none said Kampala, Uganda or the price,
+// which is how shoppers here search — "… price in Uganda"). Built only from
+// facts on this page: the price charged today (campaign included), the stock
+// state, the product's own summary and the admin-editable delivery note.
+const metaPriceUgx = product && pdpHasPrice ? (pdpOnSale && pdpSaleUgx !== null ? pdpSaleUgx : product.retailPriceUgx) : null;
+const metaPrice = typeof metaPriceUgx === 'number' ? `UGX ${metaPriceUgx.toLocaleString('en-UG')}` : null;
+const pageTitle = product
+  ? `${product.name} | ${metaPrice ? `${metaPrice} in ` : ''}Kampala, Uganda`
+  : 'Product unavailable';
+const metaStock: Record<ProductPublicDto['availability']['kind'], string> = {
+  in_stock: 'in stock',
+  out_of_stock: 'currently out of stock',
+  pre_order: 'available to pre-order',
+  unknown: 'ask us about stock',
+};
+const firstSentence = (s: string | null | undefined) => (s ?? '').trim().split(/(?<=\.)\s/)[0] ?? '';
+const clip = (s: string, max: number) => (s.length <= max ? s : `${s.slice(0, s.lastIndexOf(' ', max - 1)).replace(/[,;:.\s]+$/, '')}…`);
 const description = product
-  ? `${product.name}, ${product.categoryName} from GoldPlus Uganda.`
+  ? clip(
+      [
+        `${product.name}${metaPrice ? ` for ${metaPrice}` : ''}, ${metaStock[product.availability.kind]}.`,
+        (product.shortDescription ?? '').trim(),
+        firstSentence(bizForPdp.deliveryNote),
+      ].filter(Boolean).join(' '),
+      160,
+    )
   : 'This product is temporarily unavailable.';
 // Path only: ?searchQuery=…&searchRank=… must never become the canonical.
 // SITE_ORIGIN, not the request's origin: the product pages are the ones that
@@ -451,7 +476,7 @@ if (product) {
   // The breadcrumb JSON-LD names the same one host as the canonical above.
   const origin = SITE_ORIGIN;
   const crumbs = [{ name: 'Home', url: `${origin}/` }];
-  if (crumbCategory) crumbs.push({ name: crumbCategory.name, url: `${origin}/shop?category=${encodeURIComponent(crumbCategory.slug)}` });
+  if (crumbCategory) crumbs.push({ name: crumbCategory.name, url: `${origin}${indexableCategoryHref(`/shop?category=${encodeURIComponent(crumbCategory.slug)}`)}` });
   crumbs.push({ name: product.name, url: canonical });
   breadcrumbJson = serializeJsonLd(breadcrumbJsonLd(crumbs));
 }
@@ -484,7 +509,7 @@ if (product) {
         {crumbCategory && (
           <>
             <span class="mx-2 text-slate-300" aria-hidden="true">/</span>
-            <a href={`/shop?category=${encodeURIComponent(crumbCategory.slug)}`} class="whitespace-nowrap hover:text-brand-primaryInk transition-colors">{crumbCategory.name}</a>
+            <a href={indexableCategoryHref(`/shop?category=${encodeURIComponent(crumbCategory.slug)}`)} class="whitespace-nowrap hover:text-brand-primaryInk transition-colors">{crumbCategory.name}</a>
           </>
         )}
         <span class="mx-2 text-slate-300" aria-hidden="true">/</span>
@@ -855,11 +880,12 @@ if (product) {
   </div>
 </BaseLayout>
 
+{/* Sale countdown. SCOPED to the PDP's own element: the header carries
+    data-sale-ends for the flash-sale strip, and a bare [data-sale-ends] query
+    matched it FIRST — textContent then wiped the whole navigation. (Notes live
+    out here: an is:inline script ships to the browser exactly as written.) */}
 <script nonce={Astro.locals.cspNonce} is:inline>
   (function () {
-    // SCOPED to the PDP's own element: the header carries data-sale-ends for the
-    // flash-sale strip, and a bare [data-sale-ends] query matched it FIRST —
-    // textContent then wiped the ENTIRE navigation on every product page.
     var el = document.querySelector('[data-pdp-sale-ends]');
     if (!el) return;
     var end = new Date(el.getAttribute('data-pdp-sale-ends')).getTime();

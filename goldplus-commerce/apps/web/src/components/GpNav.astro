@@ -13,6 +13,7 @@ import { getNavFeatured } from '../lib/navFeatured';
 import { getStorefrontDiscount, salePriceUgx, effectiveFloorUgx } from '../lib/storefrontDiscount';
 import { formatUgx } from '../lib/money';
 import { getNavConfig } from '../lib/navConfig';
+import { withIndexableHrefs } from '../lib/indexableLinks';
 
 /**
  * GoldPlus site navigation.
@@ -30,7 +31,8 @@ import { getNavConfig } from '../lib/navConfig';
 // Cached in-process with a short TTL (getNavConfig): per-site, identical for all
 // visitors, so we do not block every page render on a fetch. Falls back to the
 // last good value / DEFAULT_NAV_CONFIG — the header never blanks on a DB hiccup.
-const nav: NavConfig = await getNavConfig();
+// Menu links point at the indexable category hubs, not noindex filter views.
+const nav: NavConfig = withIndexableHrefs(await getNavConfig());
 
 // Contact details come from business_info (/admin/business-info), which is the
 // ONE owner: it carries the dial string, the WhatsApp URL, the address, the
