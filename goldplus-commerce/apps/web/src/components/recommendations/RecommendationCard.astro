@@ -12,9 +12,11 @@ interface Props {
   };
   placement: RecommendationPlacement;
   variant?: "default" | "cart-compact";
+  /** false when the rail's own title already states the reason for every card. */
+  showReason?: boolean;
 }
 
-const { item, placement, variant = "default" } = Astro.props;
+const { item, placement, variant = "default", showReason = true } = Astro.props;
 
 const hasValidPrice = typeof item.price === "number" && Number.isFinite(item.price) && item.price > 0;
 const formattedPrice = hasValidPrice ? formatUgx(item.price!) : "Price on request";
@@ -41,7 +43,7 @@ const availabilityLabel = item.availability?.kind === "in_stock"
   : item.availability?.kind === "out_of_stock" ? "Out of stock"
   : item.availability?.kind === "pre_order" ? "Pre-order"
   : "Confirm availability";
-const displayReason = supportedRecommendationReason(item.reasonCode);
+const displayReason = showReason ? supportedRecommendationReason(item.reasonCode) : undefined;
 
 const lowerName = item.name.toLowerCase();
 const productType = lowerName.includes("charger") ? "Charger"

@@ -1,6 +1,37 @@
 import { defineConfig, passthroughImageService } from 'astro/config';
 import node from '@astrojs/node';
 import sentry from '@sentry/astro';
+import { createRequire } from 'node:module';
+import { existsSync } from 'node:fs';
+import { readFile, writeFile } from 'node:fs/promises';
+
+// Files in public/ are copied to the build byte-for-byte, comments included —
+// the service worker carried dated developer notes and incident history to
+// every visitor. After each build their shipped copies are minified (the
+// commented sources stay in the repo, where the tests read them). esbuild is
+// the build's own copy, reached through astro -> vite so no new dependency is
+// added. A file that cannot be found fails the build: a silent skip would put
+// the comments straight back in production.
+function minifyPublicAssets() {
+  const FILES = [['sw.js', 'js'], ['fonts/faces.css', 'css']];
+  return {
+    name: 'goldplus:minify-public-assets',
+    hooks: {
+      'astro:build:done': async ({ dir }) => {
+        const astroRequire = createRequire(createRequire(import.meta.url).resolve('astro/package.json'));
+        const { transform } = createRequire(astroRequire.resolve('vite/package.json'))('esbuild');
+        const roots = [dir, new URL('../client/', dir), new URL('client/', dir)];
+        for (const [rel, loader] of FILES) {
+          const file = roots.map((r) => new URL(rel, r)).find((u) => existsSync(u));
+          if (!file) throw new Error(`minify-public-assets: ${rel} not found in the build output`);
+          const source = await readFile(file, 'utf8');
+          const { code } = await transform(source, { loader, minify: true, legalComments: 'none', target: 'es2020' });
+          await writeFile(file, code);
+        }
+      },
+    },
+  };
+}
 
 // Sentry only when a DSN exists. With no DSN the integration still shipped its
 // whole browser SDK to every visitor (the 92 KB `page.*.js` that Lighthouse
@@ -19,6 +50,7 @@ export default defineConfig({
     mode: 'standalone'
   }),
   integrations: [
+    minifyPublicAssets(),
     // Tailwind runs through postcss.config.mjs (Astro 6+ has no Tailwind
     // integration). The @tailwind directives live in src/styles/global.css
     // (storefront config) and src/styles/admin.css (full config).
@@ -39,6 +71,15 @@ export default defineConfig({
     port: 4321
   },
   vite: {
+    build: {
+      // Component scripts always ship as files, never inlined. The middleware
+      // stamps the CSP nonce only on same-site script FILES (stamping inline
+      // scripts would hand it to injected markup), so every script Astro
+      // inlined for being under 4 KB ran without one: flagged by the strict
+      // policy (report-only today) and blocked the day it is enforced. Every
+      // other asset keeps the default 4 KB rule.
+      assetsInlineLimit: (filePath) => (/\.m?js$/.test(filePath) ? false : undefined),
+    },
     define: {
       // Injected into the telemetry SDK at build time.
       // The SDK uses this to route beacons to the correct API origin.

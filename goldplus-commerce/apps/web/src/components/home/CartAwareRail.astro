@@ -4,6 +4,11 @@ import { parseLocalCartCookie } from "../../lib/cart";
 const localDataCookie = Astro.cookies.get('goldplus_cart_data')?.value;
 const items = parseLocalCartCookie(localDataCookie);
 const initialCount = items.reduce((acc, item) => acc + item.quantity, 0);
+// An empty cart keeps the rail's copy in a <template> until something is added.
+// Hidden markup is still read by text readers and crawlers, and the hidden
+// "You have 0 items saved and ready to continue." was reported to every new
+// visitor that way (2026-10-08 design audit, 02).
+const Body = initialCount > 0 ? 'div' : 'template';
 ---
 
 <div
@@ -16,7 +21,7 @@ const initialCount = items.reduce((acc, item) => acc + item.quantity, 0);
   <div class="absolute -right-16 -top-16 w-64 h-64 bg-brand-primary/10 rounded-full blur-3xl pointer-events-none"></div>
   <div class="absolute -left-16 -bottom-16 w-48 h-48 bg-brand-primary/5 rounded-full blur-2xl pointer-events-none"></div>
 
-  <div class="relative flex flex-col md:flex-row md:items-center justify-between gap-6">
+  <Body class="relative flex flex-col md:flex-row md:items-center justify-between gap-6" data-cart-aware-body>
     <div class="flex items-start sm:items-center gap-4 sm:gap-5">
       <div class="flex-shrink-0 w-12 h-12 rounded-2xl bg-brand-primary/10 border border-brand-primary/20 flex items-center justify-center text-brand-primary">
         <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
@@ -44,7 +49,7 @@ const initialCount = items.reduce((acc, item) => acc + item.quantity, 0);
         </svg>
       </a>
     </div>
-  </div>
+  </Body>
 </div>
 
 <script>
@@ -53,14 +58,21 @@ const initialCount = items.reduce((acc, item) => acc + item.quantity, 0);
   function getCookie(name: string): string | undefined {
     const value = `; ${document.cookie}`;
     const parts = value.split(`; ${name}=`);
-    if (parts.length === 2) return parts.pop()?.split(';').shift();
-    return undefined;
+    if (parts.length !== 2) return undefined;
+    const raw = parts.pop()?.split(';').shift();
+    // Astro writes the cart cookie URL-encoded. Parsed raw, it was never valid
+    // JSON, so this script read an empty cart and hid the rail the server had
+    // just shown with items in it (the hero slider already decoded it).
+    try {
+      return raw === undefined ? undefined : decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
   }
 
   function syncCartState() {
     const el = document.getElementById("cart-aware-rail");
-    const countLabel = document.querySelector("[data-cart-count-label]");
-    if (!el || !countLabel) return;
+    if (!el) return;
 
     try {
       const cookieVal = getCookie("goldplus_cart_data");
@@ -68,6 +80,17 @@ const initialCount = items.reduce((acc, item) => acc + item.quantity, 0);
       const totalCount = items.reduce((acc, item) => acc + item.quantity, 0);
 
       if (totalCount > 0) {
+        // The page was rendered with an empty cart: bring the copy out of its template.
+        const tpl = el.querySelector<HTMLTemplateElement>("template[data-cart-aware-body]");
+        if (tpl) {
+          const body = document.createElement("div");
+          body.className = tpl.className;
+          body.setAttribute("data-cart-aware-body", "");
+          body.append(tpl.content.cloneNode(true));
+          tpl.replaceWith(body);
+        }
+        const countLabel = el.querySelector("[data-cart-count-label]");
+        if (!countLabel) return;
         countLabel.textContent = String(totalCount);
         // The noun follows the number; it used to stay as rendered ("3 item").
         const suffix = document.querySelector("[data-cart-count-suffix]");
