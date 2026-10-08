@@ -1,6 +1,7 @@
 ---
 import '../styles/global.css';
 import GpNav from '../components/GpNav.astro';
+import WebMcpTools from '../components/WebMcpTools.astro';
 
 import { whatsappSupportNumber } from '../lib/api';
 import { getBusinessInfo } from '../lib/businessInfo';
@@ -262,6 +263,7 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
 
     {/* Header — the GoldPlus navigation system */}
     <GpNav />
+    <WebMcpTools />
 
     {/* Slice 13: uniform skip-link landing point for every page */}
     <div id="main" tabindex="-1"></div>
