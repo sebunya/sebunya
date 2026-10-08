@@ -202,3 +202,37 @@ describe('discovery documents', () => {
     expect(src).toContain('- [Full catalogue](${SITE_ORIGIN}/llms-full.txt)');
   });
 });
+
+describe('agent skill, auth.md and WebMCP (2026-10-08, Cloudflare Agent Readiness)', () => {
+  it('the skills index is v0.2.0 and its digest is the sha256 of the exact SKILL.md bytes served', async () => {
+    const { createHash } = await import('node:crypto');
+    const idx = await (await (await import('../../apps/web/src/pages/.well-known/agent-skills/index.json')).GET({} as any)).json();
+    expect(idx.$schema).toBe('https://schemas.agentskills.io/discovery/0.2.0/schema.json');
+    const [skill] = idx.skills;
+    expect(skill).toMatchObject({ name: 'goldplus-shop', type: 'skill-md', url: '/.well-known/agent-skills/goldplus-shop/SKILL.md' });
+    expect(skill.name).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
+    expect(skill.description.length).toBeLessThanOrEqual(1024);
+    const md = await (await (await import('../../apps/web/src/pages/.well-known/agent-skills/goldplus-shop/SKILL.md')).GET({} as any)).text();
+    expect(skill.digest).toBe(`sha256:${createHash('sha256').update(md, 'utf8').digest('hex')}`);
+    expect(md).toMatch(/^---\nname: goldplus-shop\ndescription: .+\n---\n/);
+  });
+
+  it('auth.md says plainly that agents need no sign-in and may not sign in for a customer', async () => {
+    const body = await (await (await import('../../apps/web/src/pages/auth.md')).GET({} as any)).text();
+    expect(body).toContain('You do not need to sign in');
+    expect(body).toContain('Not supported');
+  });
+
+  it('WebMCP tools are feature-detected, read-only, and each maps to a real /mcp tool', async () => {
+    const src = read('apps/web/src/components/WebMcpTools.astro');
+    expect(src).toMatch(/modelContext/);
+    expect(src).toMatch(/typeof ctx\.registerTool === 'function'/);
+    const names = [...src.matchAll(/name: '([a-z_]+)'/g)].map((m) => m[1]);
+    const { POST } = await import('../../apps/web/src/pages/mcp');
+    const res = await (POST as any)({ request: new Request('https://shopgoldplus.com/mcp', { method: 'POST', headers: { 'x-real-ip': '198.51.100.9' }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }) }), clientAddress: '1.1.1.1' });
+    const serverTools = (await res.json()).result.tools.map((t: any) => t.name);
+    expect(names.length).toBe(3);
+    for (const n of names) expect(serverTools).toContain(n);
+    expect(read('apps/web/src/layouts/BaseLayout.astro')).toContain('<WebMcpTools />');
+  });
+});

@@ -1,6 +1,9 @@
 ---
 import '../styles/global.css';
 import GpNav from '../components/GpNav.astro';
+import WebMcpTools from '../components/WebMcpTools.astro';
+import BackToTop from '../components/BackToTop.astro';
+import { indexableCategoryHref } from '../lib/indexableLinks';
 
 import { whatsappSupportNumber } from '../lib/api';
 import { getBusinessInfo } from '../lib/businessInfo';
@@ -242,7 +245,7 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
     <link rel="alternate" type="application/rss+xml" title="GoldPlus guides and advice" href="/rss.xml" />
     <meta name="theme-color" content="#0A0A0A" />
   </head>
-  <body data-clarity-mask={clarityMaskAll ? "true" : undefined} class="bg-brand-softGrey text-brand-charcoal flex flex-col min-h-screen font-sans selection:bg-brand-primary selection:text-brand-charcoal">
+  <body id="top" data-clarity-mask={clarityMaskAll ? "true" : undefined} class="bg-brand-softGrey text-brand-charcoal flex flex-col min-h-screen font-sans selection:bg-brand-primary selection:text-brand-charcoal">
 
     {/* Slice 13: keyboard users skip repeated navigation. Visible on focus only. */}
     <a href="#main" class="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[100] focus:rounded-lg focus:bg-slate-950 focus:px-4 focus:py-2 focus:text-sm focus:font-bold focus:text-white">Skip to content</a>
@@ -262,6 +265,7 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
 
     {/* Header — the GoldPlus navigation system */}
     <GpNav />
+    <WebMcpTools />
 
     {/* Slice 13: uniform skip-link landing point for every page */}
     <div id="main" tabindex="-1"></div>
@@ -307,7 +311,7 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
               <h3 class="font-bold text-xs uppercase tracking-wider mb-5 text-white">{col.heading}</h3>
               <ul class="space-y-3.5 text-xs">
                 {col.links.map((l) => (
-                  <li><a href={l.href} class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">{l.label}</a></li>
+                  <li><a href={indexableCategoryHref(l.href)} class="hover:text-brand-primary transition-colors hover:underline decoration-brand-primary/45 underline-offset-4">{l.label}</a></li>
                 ))}
               </ul>
             </div>
@@ -358,10 +362,16 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
             >
               {footer.attribution.label}
             </a>
+            <a href="#top" class="inline-flex items-center gap-1.5 font-semibold text-slate-300 hover:text-brand-primary transition-colors">
+              Back to top
+              <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            </a>
           </div>
         </div>
       </div>
     </footer>
+
+    <BackToTop />
 
     <script>
       // Capture marketing attribution (last-touch UTM + external referrer) on every

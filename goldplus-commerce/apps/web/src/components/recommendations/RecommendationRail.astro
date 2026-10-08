@@ -15,6 +15,8 @@ interface Props {
   emptyMessage?: string;
   /** The list's grid. Defaults to the shared 2/3/4 grid every rail uses. */
   gridClass?: string;
+  /** false when the title already states every card's reason (no repeated tag). */
+  showReasons?: boolean;
 }
 
 const {
@@ -26,6 +28,7 @@ const {
   showEmptyState = false,
   emptyMessage = "No eligible products are currently available to show.",
   gridClass = "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6",
+  showReasons = true,
 } = Astro.props;
 
 const productIdsString = items.map((item) => item.productId).join(",");
@@ -50,7 +53,7 @@ const productIdsString = items.map((item) => item.productId).join(",");
   {items.length > 0 ? (
     <ul class={gridClass}>
       {items.map((item) => (
-        <RecommendationCard item={item} placement={placement} variant={variant} />
+        <RecommendationCard item={item} placement={placement} variant={variant} showReason={showReasons} />
       ))}
     </ul>
   ) : showEmptyState ? (
