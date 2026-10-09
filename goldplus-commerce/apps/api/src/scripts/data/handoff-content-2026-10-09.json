@@ -1,11 +1,11 @@
 {
- "source": "docs/content/handoff-2026-10-09: packaging photographed on the 2026-10 shoot (box fronts/backs), checked against the maker's spec panels already on the listings",
+ "source": "Packaging photographed on the 2026-10 shoot (box fronts and backs), checked against the maker's spec panels already on the listings; copy in the shop's own voice with the terms customers use in Uganda (flash disk, Type-C, V8, iPhone cable).",
  "products": [
   {
    "sku": "GP-C12",
-   "title": "GoldPlus GP-C12 GaN USB-C Fast Charger with USB-C to Lightning Cable (UK plug)",
-   "shortDescription": "GaN USB-C charger with a braided USB-C to Lightning cable in the box. Marked 50W; its printed outputs give about 20W, iPhone fast-charge speed. UK plug.",
-   "longDescription": "A GaN wall charger with a single USB-C port and a UK 3-pin plug, sold as a kit with a braided USB-C to Lightning cable for iPhone. The box marks it 50W, but the maker's own output ratings are 5V⎓3A, 9V⎓2.2A and 12V⎓1.6A, which work out to about 20W at most, so we list it as a 20W charger: the speed an iPhone fast-charges at, not a laptop charger. Temperature, overcurrent and short-circuit protection in an ABS body. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "title": "GoldPlus GP-C12 GaN USB-C Fast Charger with USB-C to Lightning iPhone Cable (UK plug)",
+   "shortDescription": "Full set for iPhone: compact GaN charger plus a braided Type-C to Lightning cable. Real output about 20W, the speed an iPhone fast-charges at. UK plug.",
+   "longDescription": "This is the full set for an iPhone: a small GaN charger for the wall and a braided Type-C to Lightning cable, so you are not buying the cable separately. One honest note on the power. The box is printed 50W, but the charger's own ratings (5V 3A, 9V 2.2A, 12V 1.6A) add up to about 20W, and that is what we list. 20W is exactly what an iPhone takes for fast charging, so the phone charges fast; it is not a laptop charger. GaN parts stay cooler than an old-style charger, and it has temperature, overcurrent and short-circuit protection. UK 3-pin plug, so it fits every socket in Uganda. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Output power",
@@ -17,8 +17,8 @@
   {
    "sku": "GP-C13",
    "title": "GoldPlus GP-C13 GaN USB-C Fast Charger with USB-C to USB-C Cable (UK plug)",
-   "shortDescription": "GaN USB-C charger with a braided USB-C to USB-C cable in the box. Marked 50W; its printed outputs give about 20W, phone fast-charge speed. UK plug.",
-   "longDescription": "A GaN wall charger with a single USB-C port and a UK 3-pin plug, sold as a kit with a braided USB-C to USB-C cable. The box marks it 50W, but the maker's own output ratings are 5V⎓3A, 9V⎓2.2A and 12V⎓1.6A, which work out to about 20W at most, so we list it as a 20W charger: fast charging for phones and small tablets, not a laptop charger. Temperature, overcurrent and short-circuit protection in an ABS body. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "shortDescription": "Full set for any Type-C phone: compact GaN charger plus a braided Type-C to Type-C cable. Real output about 20W. UK plug.",
+   "longDescription": "The full set for a Type-C phone: Samsung, Tecno, Infinix, Itel, Oppo or Xiaomi. A small GaN charger for the wall plus a braided Type-C to Type-C cable, bought together so they match. One honest note on the power. The box is printed 50W, but the charger's own ratings (5V 3A, 9V 2.2A, 12V 1.6A) add up to about 20W, and that is what we list: proper fast charging for a phone or a small tablet, not a laptop charger. GaN parts stay cooler than an old-style charger, with temperature, overcurrent and short-circuit protection. UK 3-pin plug. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Output power",
@@ -30,8 +30,8 @@
   {
    "sku": "GP-C10",
    "title": "GoldPlus GP-C10 USB-C PD Fast Charger, labelled 100W (UK plug)",
-   "shortDescription": "Single-port USB-C PD wall charger, labelled 100W by the maker, with smart chip and flame-retardant body. UK plug.",
-   "longDescription": "A single USB-C port wall charger with multi-protocol PD fast charging in a white-and-black flame-retardant body with a UK 3-pin plug. The maker labels it 100W; the output ratings we hold for it (5V⎓3A, 9V⎓2.2A, 12V⎓1.6A) support about 20W, so until the label on the unit is confirmed, count on phone and tablet fast charging rather than laptop charging. Smart chip and temperature protection. Works with iPhone, Android and other USB-C devices. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "shortDescription": "Single Type-C port, PD fast charging, flame-retardant body. Labelled 100W by the maker; buy it as a fast charger for phones and tablets. UK plug.",
+   "longDescription": "A single Type-C port charger with PD fast charging in a flame-retardant white-and-black body. The maker labels it 100W. The ratings we hold for it (5V 3A, 9V 2.2A, 12V 1.6A) support about 20W, so buy it as a fast charger for a phone or tablet rather than a laptop until we have confirmed the label on the unit itself. Smart chip and temperature protection inside. Charges any Type-C phone directly, and an iPhone through a Type-C to Lightning cable. UK 3-pin plug. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Output power",
@@ -44,8 +44,8 @@
   {
    "sku": "GP-C09",
    "title": "GoldPlus GP-C09 USB-C PD Fast Charger with USB-C to USB-C Cable (UK plug)",
-   "shortDescription": "Single-port USB-C PD wall charger, marked 100W on the box, sold with a white USB-C to USB-C cable. UK plug.",
-   "longDescription": "A white single-port USB-C wall charger on a UK 3-pin plug, sold as a kit with a white USB-C to USB-C cable. The box marks it 100W with PD fast charging, constant-voltage and constant-current charging, over-voltage and over-current protection, low-temperature fast charging and a fire-resistant housing; the 100W figure is the maker's marking. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "shortDescription": "Full set: white single-port Type-C PD charger plus a white Type-C to Type-C cable. Box marked 100W. UK plug.",
+   "longDescription": "A clean white charger with one Type-C port and a matching white Type-C to Type-C cable, sold together as a full set. The box is marked 100W with PD fast charging, over-voltage and over-current protection, low-temperature fast charging and a fire-resistant housing; take the 100W as the maker's marking. Plug any Type-C phone straight in, or an iPad with a Type-C port. UK 3-pin plug. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Output power",
@@ -82,8 +82,8 @@
   {
    "sku": "GP-GAN01",
    "title": "GoldPlus GP-GAN01 65W GaN Fast Charger with Retractable USB-C Cable (UK plug)",
-   "shortDescription": "65W GaN wall charger with a built-in retractable USB-C cable plus USB-A and USB-C ports for your own cables. UK plug.",
-   "longDescription": "A GaN wall charger marked 65W on its box, with a retractable USB-C cable that winds back into the body, so there is no loose cable to carry. USB-A and USB-C ports take your own cables for a second device. GaN parts run cooler and smaller than ordinary chargers; the box lists a built-in intelligent chip with temperature control. UK 3-pin plug. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "shortDescription": "65W GaN charger with its own Type-C cable that pulls out and winds back in, plus USB-A and Type-C ports for two more devices. UK plug.",
+   "longDescription": "The charger that never leaves its cable at home. A Type-C cable is built into the GP-GAN01: pull it out to charge, let it wind back in when you are done. Next to it sit a USB-A port and a Type-C port, so a phone, earbuds and a tablet can share one socket. GaN parts make it smaller and cooler than an ordinary 65W charger, and the box lists an intelligent chip with temperature control. UK 3-pin plug. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Output power",
@@ -115,8 +115,8 @@
   {
    "sku": "GP-C03-CH",
    "title": "GoldPlus GP-C03 45W Dual-Port Fast Charger, USB-A + USB-C, QC3.0, with USB-C to USB-C Cable (UK plug)",
-   "shortDescription": "45W wall charger with USB-A and USB-C ports and Quick Charge 3.0, sold with a white USB-C to USB-C cable. UK plug.",
-   "longDescription": "A white two-port wall charger on a UK 3-pin plug: one USB-A and one USB-C port, so two devices charge from one socket. The box marks it 45W with Qualcomm Quick Charge 3.0. Sold as a kit with a white USB-C to USB-C cable. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "shortDescription": "Two ports, one socket: 45W charger with USB-A and Type-C, Qualcomm Quick Charge 3.0, white Type-C to Type-C cable in the set. UK plug.",
+   "longDescription": "One charger for two phones. The GP-C03 has a USB-A port and a Type-C port in a white body, rated 45W on the box with Qualcomm Quick Charge 3.0, so an old cable and a new one both work from the same socket. It comes as a full set with a white Type-C to Type-C cable. Good for a bedside, an office desk or the shop counter where everyone asks to charge. UK 3-pin plug. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Output power",
@@ -147,9 +147,9 @@
   },
   {
    "sku": "GP-C11",
-   "title": "GoldPlus GP-C11 30W Dual-Port Fast Charger, USB-A + USB-C, with USB-C to Lightning Cable (UK plug)",
-   "shortDescription": "30W wall charger with USB-A and USB-C ports, sold with a USB-C to Lightning cable for iPhone. UK plug.",
-   "longDescription": "A white two-port wall charger on a UK 3-pin plug, with one USB-A and one USB-C port and a maximum output of 30W marked on the box. Sold as a kit with a white USB-C to Lightning cable, so an iPhone fast-charges from the USB-C port while a second device uses USB-A. The box lists an aluminium-and-copper cooling system and protection against short circuits and over-voltage. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "title": "GoldPlus GP-C11 30W Dual-Port Fast Charger, USB-A + USB-C, with USB-C to Lightning iPhone Cable (UK plug)",
+   "shortDescription": "30W charger with USB-A and Type-C ports plus a Type-C to Lightning cable: fast-charge an iPhone and a second phone from one socket. UK plug.",
+   "longDescription": "An iPhone set that also looks after the Android in the house. The GP-C11 is a white 30W charger with a Type-C port and a USB-A port, and it comes with a white Type-C to Lightning cable. The iPhone fast-charges from the Type-C port while a second phone, earbuds or a power bank uses USB-A. The box lists aluminium-and-copper cooling and protection against short circuits and over-voltage. UK 3-pin plug. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Output power",
@@ -184,8 +184,8 @@
   },
   {
    "sku": "GP-CA02",
-   "shortDescription": "55W mini car charger: USB-A QC3.0 plus USB-C PD 36W, auto-ID chip, runs from a 12–24V socket, cable included.",
-   "longDescription": "A mini-size 55W car charger with USB-A (QC 3.0) and USB-C (PD 36W) ports and an auto-ID chip that matches the charge to the device. Runs from a 12–24V car socket. LED lamp ring, ABS body, includes a USB-C to USB-C cable. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "shortDescription": "Small 55W car charger: USB-A with Quick Charge 3.0 and Type-C with PD 36W, auto-ID chip, Type-C cable included. Fits 12V and 24V sockets.",
+   "longDescription": "A car charger the size of a bottle top that still gives 55W. The Type-C port does PD 36W for a fast top-up on the way to town, the USB-A port does Quick Charge 3.0 for a second phone, and the auto-ID chip gives each phone the charge it asks for. Works in cars, taxis and trucks with a 12V or 24V socket. A lamp ring so you find it at night, ABS body, Type-C to Type-C cable in the box. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Input",
@@ -200,8 +200,8 @@
   {
    "sku": "GP-L12",
    "title": "GoldPlus GP-L12 USB-C to USB-C 66W Fast Charging Cable, 2 m, Braided",
-   "shortDescription": "2-metre braided USB-C to USB-C cable rated 66W by the maker: reaches from the socket to the sofa or desk.",
-   "longDescription": "A 2-metre USB-C to USB-C charging and data cable with a braided jacket. The maker rates it for 66W, which covers fast charging for phones and tablets and the charging rate of many USB-C laptops; the charger and the device set the actual speed. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "shortDescription": "2-metre braided Type-C to Type-C cable rated 66W: charge a phone, tablet or many laptops from a socket across the room.",
+   "longDescription": "Two metres is the difference between charging on the bed and charging on the floor next to the socket. The GP-L12 is a braided Type-C to Type-C cable rated 66W by the maker, so it carries fast charging for phones and tablets and the charging rate of many Type-C laptops; your charger and your device decide the final speed. Braided jacket for the pulling and winding a long cable gets. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Connectors",
@@ -229,9 +229,9 @@
   },
   {
    "sku": "GP-L14V",
-   "title": "GoldPlus GP-L14V Micro-USB Braided Fast Charging Cable, 1 m, 6A",
-   "shortDescription": "1-metre braided USB-A to Micro-USB cable rated 6A, with reinforced plugs the maker rates for 300,000 bends.",
-   "longDescription": "A 1-metre USB-A to Micro-USB charging and data cable with a black braided jacket and a tinned-copper core. The maker rates it for 6A fast charging and sync, and its plugs for 300,000 bends, so it should outlast an ordinary plastic cable. Fits any phone or device that charges over Micro-USB. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "title": "GoldPlus GP-L14V Micro-USB (V8) Braided Fast Charging Cable, 1 m, 6A",
+   "shortDescription": "1-metre braided V8 (Micro USB) cable rated 6A, with plugs rated for 300,000 bends. For Tecno, Itel, Nokia and any V8 phone, speaker or MiFi.",
+   "longDescription": "A V8 cable that does not die at the plug. The GP-L14V is a USB-A to Micro USB cable with a black braided jacket, a tinned-copper core and reinforced plugs the maker rates for 300,000 bends, which is where cheap cables break. Rated 6A for fast charging and data sync. Fits anything with the small V8 port: older Tecno, Itel, Infinix and Nokia phones, Bluetooth speakers, MiFis and radios. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Connector",
@@ -257,15 +257,15 @@
     },
     {
      "name": "Works with",
-     "value": "All phones with Micro-USB"
+     "value": "All phones with Micro-USB (V8)"
     }
    ]
   },
   {
    "sku": "GP-L14T",
    "title": "GoldPlus GP-L14T USB-C Braided Fast Charging Cable, 1 m, 6A",
-   "shortDescription": "1-metre braided USB-A to USB-C cable rated 6A, with reinforced plugs the maker rates for 300,000 bends.",
-   "longDescription": "A 1-metre USB-A to USB-C charging and data cable with a black braided jacket and a tinned-copper core. The maker rates it for 6A fast charging and sync, and its plugs for 300,000 bends, so it should outlast an ordinary plastic cable. Fits any phone or device that charges over USB-C. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "shortDescription": "1-metre braided USB-A to Type-C cable rated 6A, reinforced plugs rated for 300,000 bends. For Samsung, Tecno, Infinix and any Type-C phone.",
+   "longDescription": "The Type-C cable to keep in the bag. USB-A to Type-C, black braided jacket, tinned-copper core and reinforced plugs the maker rates for 300,000 bends, so it survives being wound up and pulled out every day. Rated 6A for fast charging and data sync from any USB-A charger, power bank or laptop. Fits any phone with a Type-C port: Samsung, Tecno, Infinix, Itel, Oppo, Xiaomi. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Connector",
@@ -291,15 +291,15 @@
     },
     {
      "name": "Works with",
-     "value": "All phones with USB-C"
+     "value": "All phones with USB-C (Type-C)"
     }
    ]
   },
   {
    "sku": "GP-M02L",
-   "title": "GoldPlus GP-M02 Lightning Fast Charging Cable, 2 m, 3A, Braided",
-   "shortDescription": "2-metre braided USB-A to Lightning cable, 3A, thick copper core: charge an iPhone from a bed or sofa.",
-   "longDescription": "A 2-metre USB-A to Lightning charging and data cable with a grey braided jacket and a thick copper core wire, rated 3A by the maker. The extra length reaches a bed or sofa from a wall socket. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "title": "GoldPlus GP-M02 Lightning iPhone Fast Charging Cable, 2 m, 3A, Braided",
+   "shortDescription": "2-metre braided USB-A to Lightning iPhone cable, 3A, thick copper core. Long enough to use the phone while it charges.",
+   "longDescription": "An iPhone cable with reach. Two metres of grey braided cable from USB-A to Lightning means the phone sits on the bed or the sofa while the charger stays in the wall. Thick copper core wire, rated 3A by the maker, for charging and data. Works with any USB-A charger, power bank or laptop. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Connector",
@@ -325,15 +325,15 @@
     },
     {
      "name": "Works with",
-     "value": "All phones with Lightning"
+     "value": "iPhone and iPad with a Lightning port"
     }
    ]
   },
   {
    "sku": "GP-M02C",
    "title": "GoldPlus GP-M02 USB-C Fast Charging Cable, 2 m, 3A, Braided",
-   "shortDescription": "2-metre braided USB-A to USB-C cable, 3A, thick copper core: charge a USB-C phone from a bed or sofa.",
-   "longDescription": "A 2-metre USB-A to USB-C charging and data cable with a grey braided jacket and a thick copper core wire, rated 3A by the maker. The extra length reaches a bed or sofa from a wall socket. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "shortDescription": "2-metre braided USB-A to Type-C cable, 3A, thick copper core. Charge a Samsung, Tecno or Infinix from the bed, not the floor.",
+   "longDescription": "The long Type-C cable. Two metres of grey braided cable from USB-A to Type-C, with a thick copper core wire rated 3A by the maker, for charging and data. Reaches a bed, a sofa or the back seat from the socket or the car charger. Fits any phone with a Type-C port. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Connector",
@@ -359,15 +359,15 @@
     },
     {
      "name": "Works with",
-     "value": "All phones with USB-C"
+     "value": "All phones with USB-C (Type-C)"
     }
    ]
   },
   {
    "sku": "GP-M02V",
-   "title": "GoldPlus GP-M02 Micro-USB Fast Charging Cable, 2 m, 3A, Braided",
-   "shortDescription": "2-metre braided USB-A to Micro-USB cable, 3A, thick copper core: charge a Micro-USB phone from a bed or sofa.",
-   "longDescription": "A 2-metre USB-A to Micro-USB charging and data cable with a grey braided jacket and a thick copper core wire, rated 3A by the maker. The extra length reaches a bed or sofa from a wall socket. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "title": "GoldPlus GP-M02 Micro-USB (V8) Fast Charging Cable, 2 m, 3A, Braided",
+   "shortDescription": "2-metre braided USB-A to V8 (Micro USB) cable, 3A, thick copper core. For older Tecno, Itel and Nokia phones, speakers and MiFis.",
+   "longDescription": "The long V8 cable. Two metres of grey braided cable from USB-A to Micro USB, with a thick copper core wire rated 3A by the maker, for charging and data. Reaches a bed or a sofa from the socket. Fits anything with the small V8 port: older Tecno, Itel, Infinix and Nokia phones, Bluetooth speakers, MiFis and radios. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Connector",
@@ -393,15 +393,15 @@
     },
     {
      "name": "Works with",
-     "value": "All phones with Micro-USB"
+     "value": "All phones with Micro-USB (V8)"
     }
    ]
   },
   {
    "sku": "GP-PD03L",
-   "title": "GoldPlus GP-PD03 USB-C to Lightning 30W Flat Fast Charging Cable, 1 m",
-   "shortDescription": "1-metre flat USB-C to Lightning cable rated 30W for iPhone fast charging from a USB-C charger; tangle-free flat design.",
-   "longDescription": "A 1-metre flat USB-C to Lightning charging and data cable, rated 30W by the maker for PD fast charging from a USB-C charger. The flat braided design resists tangling, and the maker rates the plugs for 300,000 bends. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "title": "GoldPlus GP-PD03 USB-C to Lightning 30W Flat iPhone Fast Charging Cable, 1 m",
+   "shortDescription": "1-metre flat Type-C to Lightning cable rated 30W: iPhone fast charging from a Type-C charger, and it does not tangle in the pocket.",
+   "longDescription": "Flat cables do not knot. The GP-PD03 is a 1-metre Type-C to Lightning cable, rated 30W by the maker for PD fast charging, so an iPhone charges at full speed from any Type-C charger or power bank. Flat braided body, plugs rated for 300,000 bends. Carries data too, for backing up to a laptop. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Connector",
@@ -424,14 +424,18 @@
     {
      "name": "Fast charging",
      "value": "PD"
+    },
+    {
+     "name": "Works with",
+     "value": "iPhone and iPad with a Lightning port"
     }
    ]
   },
   {
    "sku": "GP-PD04C",
    "title": "GoldPlus GP-PD04 USB-C to USB-C 66W Flat Fast Charging Cable, 1 m",
-   "shortDescription": "1-metre flat USB-C to USB-C cable rated 66W for PD fast charging of phones, tablets and many laptops; tangle-free flat design.",
-   "longDescription": "A 1-metre flat USB-C to USB-C charging and data cable, rated 66W by the maker for PD fast charging, enough for phones, tablets and many USB-C laptops. The flat braided design resists tangling, and the maker rates the plugs for 300,000 bends. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "shortDescription": "1-metre flat Type-C to Type-C cable rated 66W: fast charging for phones, tablets and many laptops, no tangles.",
+   "longDescription": "A flat Type-C to Type-C cable rated 66W by the maker, enough for PD fast charging on phones and tablets and for many Type-C laptops. One metre, flat braided so it lies flat on the desk and does not knot in a bag, with plugs rated for 300,000 bends. Charging and data in one cable. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Connector",
@@ -479,9 +483,9 @@
   },
   {
    "sku": "GP-P02A-PB",
-   "title": "GoldPlus GP-P02A 20000mAh Power Bank with Four Built-in Cables and Phone Stand",
-   "shortDescription": "20000mAh power bank with four built-in charging cables, a digital charge display and a fold-out phone stand.",
-   "longDescription": "A 20000mAh power bank with four charging cables built into the back, so you never hunt for a cable: Lightning, USB-C, Micro-USB and USB-A. A digital display shows the charge left, and a fold-out stand props your phone up while it charges. Capacity is the maker's rating. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "title": "GoldPlus GP-P02A 20000mAh Power Bank with 4 Built-in Cables and Phone Stand",
+   "shortDescription": "20000mAh power bank with iPhone, Type-C, V8 and USB-A cables built in, a digital charge display and a fold-out phone stand. No cable to forget.",
+   "longDescription": "The power bank for a house with mixed phones. Four cables are built into the back of the GP-P02A: Lightning for iPhone, Type-C, V8 (Micro USB) and USB-A, so whoever needs charge plugs straight in and nobody borrows your cable. 20000mAh is several phone charges, enough for a power cut or a day upcountry. The digital display shows exactly how much is left, and a fold-out stand props the phone up to watch something while it charges. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Capacity",
@@ -490,7 +494,7 @@
     },
     {
      "name": "Built-in cables",
-     "value": "Lightning, USB-C, Micro-USB, USB-A"
+     "value": "Lightning, USB-C, Micro-USB (V8), USB-A"
     },
     {
      "name": "Display",
@@ -504,13 +508,13 @@
   },
   {
    "sku": "GP-P03A-PB",
-   "title": "GoldPlus GP-P03A Power Bank with Four Built-in Cables, Camping Lamp and Lanyard",
-   "shortDescription": "Power bank with four built-in charging cables, a bright camping lamp, a digital display and its own lanyard.",
-   "longDescription": "A power bank built for power cuts and trips: four charging cables are built in (Lightning, USB-C, Micro-USB and USB-A), a strong light on the side doubles as a camping lamp, and an orange lanyard loop makes it easy to carry or hang. A digital display shows the charge left. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "title": "GoldPlus GP-P03A Power Bank with 4 Built-in Cables, Camping Lamp and Lanyard",
+   "shortDescription": "Big power bank with iPhone, Type-C, V8 and USB-A cables built in, a bright side lamp for when the power goes, a digital display and a carry lanyard.",
+   "longDescription": "Made for power cuts and nights away. The GP-P03A has four cables built in (Lightning, Type-C, V8 and USB-A), a strong light on the side that works as a lamp or torch when the power goes, and an orange lanyard loop to hang it in a tent or carry on the wrist. A digital display shows the charge left. Message us on WhatsApp for the capacity of the current stock before you order. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Built-in cables",
-     "value": "Lightning, USB-C, Micro-USB, USB-A"
+     "value": "Lightning, USB-C, Micro-USB (V8), USB-A"
     },
     {
      "name": "Features",
@@ -524,9 +528,9 @@
   },
   {
    "sku": "GP-P02W-PB",
-   "title": "GoldPlus GP-P02W 20000mAh Wireless Power Bank with Four Built-in Cables and Camping Lamp",
-   "shortDescription": "20000mAh power bank with a wireless charging pad on top, four built-in cables, a camping lamp and a lanyard.",
-   "longDescription": "A 20000mAh power bank with a wireless charging pad on top for phones that support it, plus four built-in charging cables (Lightning, USB-C, Micro-USB and USB-A) for everything else. A strong side light works as a camping lamp, and the orange lanyard loop lets you hang it in a tent or carry it on a wrist. A digital display shows the charge left. Wireless charging needs a phone that supports it, out of a thick case. Capacity is the maker's rating. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "title": "GoldPlus GP-P02W 20000mAh Wireless Power Bank with 4 Built-in Cables and Camping Lamp",
+   "shortDescription": "20000mAh power bank with wireless charging on top, iPhone, Type-C, V8 and USB-A cables built in, a camping lamp and a lanyard.",
+   "longDescription": "Twenty thousand mAh, wireless on top, four cables on the back. Lay a phone that supports wireless charging on the GP-P02W and it charges with no cable at all (take it out of a thick case first). For every other phone there are built-in Lightning, Type-C, V8 and USB-A cables. A strong side lamp for power cuts and camping, an orange lanyard loop to hang it, and a digital display for the charge left. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Capacity",
@@ -535,7 +539,7 @@
     },
     {
      "name": "Built-in cables",
-     "value": "Lightning, USB-C, Micro-USB, USB-A"
+     "value": "Lightning, USB-C, Micro-USB (V8), USB-A"
     },
     {
      "name": "Features",
@@ -549,9 +553,9 @@
   },
   {
    "sku": "GP-P05W-PB",
-   "title": "GoldPlus GP-P05W 10000mAh Magnetic Wireless Power Bank, 22.5W, with Built-in USB-C and Lightning Cables",
-   "shortDescription": "10000mAh magnetic wireless power bank: snaps to a phone with a magnetic ring or case, 15W wireless, 22.5W wired, two built-in cables.",
-   "longDescription": "A 10000mAh power bank that snaps magnetically to the back of a phone with a magnetic ring or a magnetic case and charges it wirelessly at up to 15W. For everything else, a USB-C cable and a Lightning cable are built into the back, with wired charging up to 22.5W. Capacity and output figures are the maker's ratings. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "title": "GoldPlus GP-P05W 10000mAh Magnetic Wireless Power Bank, 22.5W, Built-in USB-C and Lightning Cables",
+   "shortDescription": "10000mAh power bank that snaps onto the back of a phone with a magnetic ring and charges it wirelessly at up to 15W. Type-C and iPhone cables built in, 22.5W wired.",
+   "longDescription": "No cable, no holding it in place. The GP-P05W snaps magnetically onto the back of a phone that has a magnetic ring or a magnetic case and charges it wirelessly at up to 15W while you keep using the phone. For any other phone, a Type-C cable and a Lightning cable are built into the back, with wired charging up to 22.5W. 10000mAh, slim enough for a pocket. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Capacity",
@@ -576,8 +580,8 @@
   {
    "sku": "GP-P06-PB",
    "title": "GoldPlus GP-P06 10000mAh Compact Power Bank, 22.5W, Built-in USB-C and Lightning Cables",
-   "shortDescription": "Palm-sized 10000mAh power bank with USB-C and Lightning cables built in, 22.5W fast charging with PD.",
-   "longDescription": "A compact 10000mAh power bank that fits in a palm or a small bag, with a USB-C cable and a Lightning cable built into the body, so it charges an Android phone or an iPhone with nothing else to carry. The maker rates it at 22.5W fast charging with PD, with battery, stable-voltage and over-current protection. Capacity is the maker's rating. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "shortDescription": "Palm-sized 10000mAh power bank with a Type-C cable and an iPhone cable built in. 22.5W fast charging with PD. Fits a pocket.",
+   "longDescription": "A power bank you forget is in your pocket until you need it. The GP-P06 is 10000mAh in a palm-sized body with a Type-C cable and a Lightning cable built in, so it charges an Android phone or an iPhone with nothing else to carry. 22.5W fast charging with PD, and battery, stable-voltage and over-current protection built in. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Capacity",
@@ -606,8 +610,8 @@
   {
    "sku": "GP-P07-PB",
    "title": "GoldPlus GP-P07 20000mAh Power Bank with Digital Display, 22.5W, Built-in USB-C and Lightning Cables",
-   "shortDescription": "20000mAh power bank with a digital charge display, USB-C and Lightning cables built in, 22.5W fast charging with PD.",
-   "longDescription": "A 20000mAh power bank with a USB-C cable and a Lightning cable built into the body and a digital display that shows the charge left, so a phone charges with nothing else to carry. The maker rates it at 22.5W fast charging with PD, with battery, stable-voltage and over-current protection. Capacity is the maker's rating. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "shortDescription": "20000mAh power bank with a digital charge display and Type-C and iPhone cables built in. 22.5W fast charging with PD.",
+   "longDescription": "Twice the capacity of the GP-P06, same idea: no cable to forget. 20000mAh in the GP-P07 is several full phone charges, with a Type-C cable and a Lightning cable built in and a digital display that shows the charge left in numbers, not four little dots. 22.5W fast charging with PD; battery, stable-voltage and over-current protection. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Capacity",
@@ -628,6 +632,10 @@
      "value": "PD"
     },
     {
+     "name": "Display",
+     "value": "Digital charge level display"
+    },
+    {
      "name": "Protection",
      "value": "Battery protection, stable voltage, over-current protection"
     }
@@ -635,9 +643,9 @@
   },
   {
    "sku": "GP-H06-TYPE-PIN",
-   "title": "GoldPlus GP-H06 Extra Bass Wired Earphones, 3.5mm Jack, Mic and Volume Control",
-   "shortDescription": "Wired earphones with a 3.5mm plug, extra-bass tuning, a microphone for calls and inline buttons. No battery, no pairing.",
-   "longDescription": "GoldPlus GP-H06 wired earphones with a 3.5mm jack plug for phones, laptops and radios that still have a headphone socket. Extra-bass tuning with stereo sound, a microphone for calls and inline buttons for volume and tracks. Nothing to charge or pair: plug in and listen. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "title": "GoldPlus GP-H06 Extra Bass Wired Earphones, 3.5mm Jack, Mic and Volume Buttons",
+   "shortDescription": "Wired earphones with a 3.5mm plug, extra bass, a mic for calls and inline buttons. Nothing to charge, nothing to pair: plug in and listen.",
+   "longDescription": "For every phone, laptop and radio that still has a headphone hole. The GP-H06 plugs into a 3.5mm jack, has extra-bass tuning with stereo sound, a mic for calls and inline buttons for volume and tracks. No battery to run out and no Bluetooth to pair. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Connector",
@@ -685,6 +693,9 @@
   },
   {
    "sku": "GP-2GB-F",
+   "title": "GoldPlus 2GB Flash Disk, USB 3.0 (Flash Drive)",
+   "shortDescription": "2GB flash disk (USB 3.0) for documents and a few songs. Metal body with a key-ring loop; works in any USB port.",
+   "longDescription": "A 2GB GoldPlus flash disk: documents and a few songs. USB 3.0 for fast copying, and it still works in an older USB 2.0 port on a laptop, a car radio or a TV. Metal body that shrugs off a pocket full of keys, with a loop for a key ring. Plug and play, no software to install. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Interface",
@@ -694,6 +705,9 @@
   },
   {
    "sku": "GP-4GB-F",
+   "title": "GoldPlus 4GB Flash Disk, USB 3.0 (Flash Drive)",
+   "shortDescription": "4GB flash disk (USB 3.0) for documents, photos and music. Metal body with a key-ring loop; works in any USB port.",
+   "longDescription": "A 4GB GoldPlus flash disk: documents, photos and music. USB 3.0 for fast copying, and it still works in an older USB 2.0 port on a laptop, a car radio or a TV. Metal body that shrugs off a pocket full of keys, with a loop for a key ring. Plug and play, no software to install. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Interface",
@@ -703,6 +717,9 @@
   },
   {
    "sku": "GP-8GB-F",
+   "title": "GoldPlus 8GB Flash Disk, USB 3.0 (Flash Drive)",
+   "shortDescription": "8GB flash disk (USB 3.0) for school work, music and photos. Metal body with a key-ring loop; works in any USB port.",
+   "longDescription": "A 8GB GoldPlus flash disk: school work, music and photos. USB 3.0 for fast copying, and it still works in an older USB 2.0 port on a laptop, a car radio or a TV. Metal body that shrugs off a pocket full of keys, with a loop for a key ring. Plug and play, no software to install. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Interface",
@@ -712,6 +729,9 @@
   },
   {
    "sku": "GP-16GB-F",
+   "title": "GoldPlus 16GB Flash Disk, USB 3.0 (Flash Drive)",
+   "shortDescription": "16GB flash disk (USB 3.0) for school work, office files and music for the car. Metal body with a key-ring loop; works in any USB port.",
+   "longDescription": "A 16GB GoldPlus flash disk: school work, office files and music for the car. USB 3.0 for fast copying, and it still works in an older USB 2.0 port on a laptop, a car radio or a TV. Metal body that shrugs off a pocket full of keys, with a loop for a key ring. Plug and play, no software to install. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Interface",
@@ -721,6 +741,9 @@
   },
   {
    "sku": "GP-32GB-F",
+   "title": "GoldPlus 32GB Flash Disk, USB 3.0 (Flash Drive)",
+   "shortDescription": "32GB flash disk (USB 3.0) for office files, a music collection and phone backups. Metal body with a key-ring loop; works in any USB port.",
+   "longDescription": "A 32GB GoldPlus flash disk: office files, a music collection and phone backups. USB 3.0 for fast copying, and it still works in an older USB 2.0 port on a laptop, a car radio or a TV. Metal body that shrugs off a pocket full of keys, with a loop for a key ring. Plug and play, no software to install. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Interface",
@@ -730,6 +753,9 @@
   },
   {
    "sku": "GP-64GB-F",
+   "title": "GoldPlus 64GB Flash Disk, USB 3.0 (Flash Drive)",
+   "shortDescription": "64GB flash disk (USB 3.0) for full phone backups, films and office archives. Metal body with a key-ring loop; works in any USB port.",
+   "longDescription": "A 64GB GoldPlus flash disk: full phone backups, films and office archives. USB 3.0 for fast copying, and it still works in an older USB 2.0 port on a laptop, a car radio or a TV. Metal body that shrugs off a pocket full of keys, with a loop for a key ring. Plug and play, no software to install. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Interface",
@@ -739,6 +765,9 @@
   },
   {
    "sku": "GP-128GB-F",
+   "title": "GoldPlus 128GB Flash Disk, USB 3.0 (Flash Drive)",
+   "shortDescription": "128GB flash disk (USB 3.0) for films, full phone backups and a laptop's worth of files. Metal body with a key-ring loop; works in any USB port.",
+   "longDescription": "A 128GB GoldPlus flash disk: films, full phone backups and a laptop's worth of files. USB 3.0 for fast copying, and it still works in an older USB 2.0 port on a laptop, a car radio or a TV. Metal body that shrugs off a pocket full of keys, with a loop for a key ring. Plug and play, no software to install. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Interface",
@@ -748,6 +777,9 @@
   },
   {
    "sku": "GP-256GB-F",
+   "title": "GoldPlus 256GB Flash Disk, USB 3.0 (Flash Drive)",
+   "shortDescription": "256GB flash disk (USB 3.0) for a whole laptop backup, film collections and camera footage. Metal body with a key-ring loop; works in any USB port.",
+   "longDescription": "A 256GB GoldPlus flash disk: a whole laptop backup, film collections and camera footage. USB 3.0 for fast copying, and it still works in an older USB 2.0 port on a laptop, a car radio or a TV. Metal body that shrugs off a pocket full of keys, with a loop for a key ring. Plug and play, no software to install. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Interface",
@@ -757,6 +789,9 @@
   },
   {
    "sku": "GP-1GB-MC",
+   "title": "GoldPlus 1GB Memory Card (microSD, Class 10)",
+   "shortDescription": "1GB microSD memory card, Class 10, for a radio, an old phone or an MP3 player. Give a full phone room to breathe or keep a camera recording.",
+   "longDescription": "A 1GB GoldPlus microSD memory card, Class 10, for a radio, an old phone or an MP3 player. Move photos and music off a phone that keeps saying storage is full, keep a CCTV or dashcam recording around the clock, or load a radio with music. Class 10 means it writes fast enough for HD video. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Speed class",
@@ -766,6 +801,9 @@
   },
   {
    "sku": "GP-2GB-MC",
+   "title": "GoldPlus 2GB Memory Card (microSD, Class 10)",
+   "shortDescription": "2GB microSD memory card, Class 10, for a radio, an old phone or an MP3 player. Give a full phone room to breathe or keep a camera recording.",
+   "longDescription": "A 2GB GoldPlus microSD memory card, Class 10, for a radio, an old phone or an MP3 player. Move photos and music off a phone that keeps saying storage is full, keep a CCTV or dashcam recording around the clock, or load a radio with music. Class 10 means it writes fast enough for HD video. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Speed class",
@@ -775,6 +813,9 @@
   },
   {
    "sku": "GP-4GB-MC",
+   "title": "GoldPlus 4GB Memory Card (microSD, Class 10)",
+   "shortDescription": "4GB microSD memory card, Class 10, for an old phone, a radio or a small camera. Give a full phone room to breathe or keep a camera recording.",
+   "longDescription": "A 4GB GoldPlus microSD memory card, Class 10, for an old phone, a radio or a small camera. Move photos and music off a phone that keeps saying storage is full, keep a CCTV or dashcam recording around the clock, or load a radio with music. Class 10 means it writes fast enough for HD video. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Speed class",
@@ -784,6 +825,9 @@
   },
   {
    "sku": "GP-8GB-MC",
+   "title": "GoldPlus 8GB Memory Card (microSD, Class 10)",
+   "shortDescription": "8GB microSD memory card, Class 10, for a phone, a radio or a camera. Give a full phone room to breathe or keep a camera recording.",
+   "longDescription": "A 8GB GoldPlus microSD memory card, Class 10, for a phone, a radio or a camera. Move photos and music off a phone that keeps saying storage is full, keep a CCTV or dashcam recording around the clock, or load a radio with music. Class 10 means it writes fast enough for HD video. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Speed class",
@@ -793,6 +837,9 @@
   },
   {
    "sku": "GP-16GB-MC",
+   "title": "GoldPlus 16GB Memory Card (microSD, Class 10)",
+   "shortDescription": "16GB microSD memory card, Class 10, for a phone, a camera or a CCTV recorder. Give a full phone room to breathe or keep a camera recording.",
+   "longDescription": "A 16GB GoldPlus microSD memory card, Class 10, for a phone, a camera or a CCTV recorder. Move photos and music off a phone that keeps saying storage is full, keep a CCTV or dashcam recording around the clock, or load a radio with music. Class 10 means it writes fast enough for HD video. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Speed class",
@@ -806,6 +853,9 @@
   },
   {
    "sku": "GP-32GB-MC",
+   "title": "GoldPlus 32GB Memory Card (microSD, Class 10)",
+   "shortDescription": "32GB microSD memory card, Class 10, for a phone, a CCTV camera, a dashcam or a camera. Give a full phone room to breathe or keep a camera recording.",
+   "longDescription": "A 32GB GoldPlus microSD memory card, Class 10, for a phone, a CCTV camera, a dashcam or a camera. Move photos and music off a phone that keeps saying storage is full, keep a CCTV or dashcam recording around the clock, or load a radio with music. Class 10 means it writes fast enough for HD video. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Speed class",
@@ -819,6 +869,9 @@
   },
   {
    "sku": "GP-64GB-MC",
+   "title": "GoldPlus 64GB Memory Card (microSD, Class 10)",
+   "shortDescription": "64GB microSD memory card, Class 10, for a phone, a CCTV camera, a dashcam or a drone. Give a full phone room to breathe or keep a camera recording.",
+   "longDescription": "A 64GB GoldPlus microSD memory card, Class 10, for a phone, a CCTV camera, a dashcam or a drone. Move photos and music off a phone that keeps saying storage is full, keep a CCTV or dashcam recording around the clock, or load a radio with music. Class 10 means it writes fast enough for HD video. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Speed class",
@@ -832,6 +885,9 @@
   },
   {
    "sku": "GP-128GB-MC",
+   "title": "GoldPlus 128GB Memory Card (microSD, Class 10)",
+   "shortDescription": "128GB microSD memory card, Class 10, for a phone, a CCTV camera, a dashcam or a 4K camera. Give a full phone room to breathe or keep a camera recording.",
+   "longDescription": "A 128GB GoldPlus microSD memory card, Class 10, for a phone, a CCTV camera, a dashcam or a 4K camera. Move photos and music off a phone that keeps saying storage is full, keep a CCTV or dashcam recording around the clock, or load a radio with music. Class 10 means it writes fast enough for HD video. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Speed class",
@@ -841,6 +897,9 @@
   },
   {
    "sku": "GP-256GB-MC",
+   "title": "GoldPlus 256GB Memory Card (microSD, Class 10)",
+   "shortDescription": "256GB microSD memory card, Class 10, for a phone, a CCTV system, a dashcam or a 4K camera. Give a full phone room to breathe or keep a camera recording.",
+   "longDescription": "A 256GB GoldPlus microSD memory card, Class 10, for a phone, a CCTV system, a dashcam or a 4K camera. Move photos and music off a phone that keeps saying storage is full, keep a CCTV or dashcam recording around the clock, or load a radio with music. Class 10 means it writes fast enough for HD video. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Speed class",
@@ -850,6 +909,9 @@
   },
   {
    "sku": "GP-512GB-MC",
+   "title": "GoldPlus 512GB Memory Card (microSD, Class 10)",
+   "shortDescription": "512GB microSD memory card, Class 10, for a CCTV system, a 4K camera or a phone that shoots a lot of video. Give a full phone room to breathe or keep a camera recording.",
+   "longDescription": "A 512GB GoldPlus microSD memory card, Class 10, for a CCTV system, a 4K camera or a phone that shoots a lot of video. Move photos and music off a phone that keeps saying storage is full, keep a CCTV or dashcam recording around the clock, or load a radio with music. Class 10 means it writes fast enough for HD video. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Speed class",
