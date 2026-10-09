@@ -148,8 +148,8 @@
   {
    "sku": "GP-C11",
    "title": "GoldPlus GP-C11 30W Dual-Port Fast Charger, USB-A + USB-C, with USB-C to Lightning iPhone Cable (UK plug)",
-   "shortDescription": "30W charger with USB-A and Type-C ports plus a Type-C to Lightning cable: fast-charge an iPhone and a second phone from one socket. UK plug.",
-   "longDescription": "An iPhone set that also looks after the Android in the house. The GP-C11 is a white 30W charger with a Type-C port and a USB-A port, and it comes with a white Type-C to Lightning cable. The iPhone fast-charges from the Type-C port while a second phone, earbuds or a power bank uses USB-A. The box lists aluminium-and-copper cooling and protection against short circuits and over-voltage. UK 3-pin plug. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "shortDescription": "30W charger with USB-A and Type-C ports plus a Type-C to Lightning cable: charge an iPhone and a second phone from one socket. UK plug.",
+   "longDescription": "An iPhone set that also looks after the Android in the house. The GP-C11 is a white 30W charger with a Type-C port and a USB-A port, and it comes with a white Type-C to Lightning cable. Charge an iPhone from the Type-C port and a second phone, earbuds or a power bank from USB-A at the same time; the 30W is shared between them. The box lists aluminium-and-copper cooling and protection against short circuits and over-voltage. UK 3-pin plug. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Output power",
@@ -185,7 +185,7 @@
   {
    "sku": "GP-CA02",
    "shortDescription": "Small 55W car charger: USB-A with Quick Charge 3.0 and Type-C with PD 36W, auto-ID chip, Type-C cable included. Fits 12V and 24V sockets.",
-   "longDescription": "A car charger the size of a bottle top that still gives 55W. The Type-C port does PD 36W for a fast top-up on the way to town, the USB-A port does Quick Charge 3.0 for a second phone, and the auto-ID chip gives each phone the charge it asks for. Works in cars, taxis and trucks with a 12V or 24V socket. A lamp ring so you find it at night, ABS body, Type-C to Type-C cable in the box. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "longDescription": "A small car charger that still gives 55W. The Type-C port does PD 36W for a fast top-up on the way to town, the USB-A port does Quick Charge 3.0 for a second phone, and the auto-ID chip gives each phone the charge it asks for. Works in cars, taxis and trucks with a 12V or 24V socket. A lamp ring so you find it at night, ABS body, Type-C to Type-C cable in the box. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Input",
@@ -555,7 +555,7 @@
    "sku": "GP-P05W-PB",
    "title": "GoldPlus GP-P05W 10000mAh Magnetic Wireless Power Bank, 22.5W, Built-in USB-C and Lightning Cables",
    "shortDescription": "10000mAh power bank that snaps onto the back of a phone with a magnetic ring and charges it wirelessly at up to 15W. Type-C and iPhone cables built in, 22.5W wired.",
-   "longDescription": "No cable, no holding it in place. The GP-P05W snaps magnetically onto the back of a phone that has a magnetic ring or a magnetic case and charges it wirelessly at up to 15W while you keep using the phone. For any other phone, a Type-C cable and a Lightning cable are built into the back, with wired charging up to 22.5W. 10000mAh, slim enough for a pocket. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "longDescription": "No cable, no holding it in place. The GP-P05W snaps magnetically onto the back of a phone that has a magnetic ring or a magnetic case and charges it wirelessly at up to 15W while you keep using the phone. For any other phone, a Type-C cable and a Lightning cable are built into the back, with wired charging up to 22.5W. 10000mAh capacity. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
    "specs": [
     {
      "name": "Capacity",
@@ -693,39 +693,24 @@
   },
   {
    "sku": "GP-2GB-F",
-   "title": "GoldPlus 2GB Flash Disk, USB 3.0 (Flash Drive)",
-   "shortDescription": "2GB flash disk (USB 3.0) for documents and a few songs. Metal body with a key-ring loop; works in any USB port.",
-   "longDescription": "A 2GB GoldPlus flash disk: documents and a few songs. USB 3.0 for fast copying, and it still works in an older USB 2.0 port on a laptop, a car radio or a TV. Metal body that shrugs off a pocket full of keys, with a loop for a key ring. Plug and play, no software to install. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
-   "specs": [
-    {
-     "name": "Interface",
-     "value": "USB 3.0 (USB-A plug)"
-    }
-   ]
+   "title": "GoldPlus 2GB Flash Disk (USB Flash Drive)",
+   "shortDescription": "2GB flash disk for documents and a few songs. Metal body with a key-ring loop; works in any USB port.",
+   "longDescription": "A 2GB GoldPlus flash disk: documents and a few songs. Plugs into any USB port on a laptop, a desktop, a car radio or a TV. Metal body that shrugs off a pocket full of keys, with a loop for a key ring. Plug and play, no software to install. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "specs": []
   },
   {
    "sku": "GP-4GB-F",
-   "title": "GoldPlus 4GB Flash Disk, USB 3.0 (Flash Drive)",
-   "shortDescription": "4GB flash disk (USB 3.0) for documents, photos and music. Metal body with a key-ring loop; works in any USB port.",
-   "longDescription": "A 4GB GoldPlus flash disk: documents, photos and music. USB 3.0 for fast copying, and it still works in an older USB 2.0 port on a laptop, a car radio or a TV. Metal body that shrugs off a pocket full of keys, with a loop for a key ring. Plug and play, no software to install. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
-   "specs": [
-    {
-     "name": "Interface",
-     "value": "USB 3.0 (USB-A plug)"
-    }
-   ]
+   "title": "GoldPlus 4GB Flash Disk (USB Flash Drive)",
+   "shortDescription": "4GB flash disk for documents, photos and music. Metal body with a key-ring loop; works in any USB port.",
+   "longDescription": "A 4GB GoldPlus flash disk: documents, photos and music. Plugs into any USB port on a laptop, a desktop, a car radio or a TV. Metal body that shrugs off a pocket full of keys, with a loop for a key ring. Plug and play, no software to install. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "specs": []
   },
   {
    "sku": "GP-8GB-F",
-   "title": "GoldPlus 8GB Flash Disk, USB 3.0 (Flash Drive)",
-   "shortDescription": "8GB flash disk (USB 3.0) for school work, music and photos. Metal body with a key-ring loop; works in any USB port.",
-   "longDescription": "A 8GB GoldPlus flash disk: school work, music and photos. USB 3.0 for fast copying, and it still works in an older USB 2.0 port on a laptop, a car radio or a TV. Metal body that shrugs off a pocket full of keys, with a loop for a key ring. Plug and play, no software to install. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
-   "specs": [
-    {
-     "name": "Interface",
-     "value": "USB 3.0 (USB-A plug)"
-    }
-   ]
+   "title": "GoldPlus 8GB Flash Disk (USB Flash Drive)",
+   "shortDescription": "8GB flash disk for school work, music and photos. Metal body with a key-ring loop; works in any USB port.",
+   "longDescription": "A 8GB GoldPlus flash disk: school work, music and photos. Plugs into any USB port on a laptop, a desktop, a car radio or a TV. Metal body that shrugs off a pocket full of keys, with a loop for a key ring. Plug and play, no software to install. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "specs": []
   },
   {
    "sku": "GP-16GB-F",
@@ -777,63 +762,38 @@
   },
   {
    "sku": "GP-256GB-F",
-   "title": "GoldPlus 256GB Flash Disk, USB 3.0 (Flash Drive)",
-   "shortDescription": "256GB flash disk (USB 3.0) for a whole laptop backup, film collections and camera footage. Metal body with a key-ring loop; works in any USB port.",
-   "longDescription": "A 256GB GoldPlus flash disk: a whole laptop backup, film collections and camera footage. USB 3.0 for fast copying, and it still works in an older USB 2.0 port on a laptop, a car radio or a TV. Metal body that shrugs off a pocket full of keys, with a loop for a key ring. Plug and play, no software to install. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
-   "specs": [
-    {
-     "name": "Interface",
-     "value": "USB 3.0 (USB-A plug)"
-    }
-   ]
+   "title": "GoldPlus 256GB Flash Disk (USB Flash Drive)",
+   "shortDescription": "256GB flash disk for a whole laptop backup, film collections and camera footage. Metal body with a key-ring loop; works in any USB port.",
+   "longDescription": "A 256GB GoldPlus flash disk: a whole laptop backup, film collections and camera footage. Plugs into any USB port on a laptop, a desktop, a car radio or a TV. Metal body that shrugs off a pocket full of keys, with a loop for a key ring. Plug and play, no software to install. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "specs": []
   },
   {
    "sku": "GP-1GB-MC",
-   "title": "GoldPlus 1GB Memory Card (microSD, Class 10)",
-   "shortDescription": "1GB microSD memory card, Class 10, for a radio, an old phone or an MP3 player. Give a full phone room to breathe or keep a camera recording.",
-   "longDescription": "A 1GB GoldPlus microSD memory card, Class 10, for a radio, an old phone or an MP3 player. Move photos and music off a phone that keeps saying storage is full, keep a CCTV or dashcam recording around the clock, or load a radio with music. Class 10 means it writes fast enough for HD video. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
-   "specs": [
-    {
-     "name": "Speed class",
-     "value": "Class 10"
-    }
-   ]
+   "title": "GoldPlus 1GB Memory Card (microSD)",
+   "shortDescription": "1GB microSD memory card, for a radio, an old phone or an MP3 player. Give a full phone room to breathe or keep a camera recording.",
+   "longDescription": "A 1GB GoldPlus microSD memory card for a radio, an old phone or an MP3 player. Move photos and music off a phone that keeps saying storage is full, keep a CCTV or dashcam recording around the clock, or load a radio with music. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "specs": []
   },
   {
    "sku": "GP-2GB-MC",
-   "title": "GoldPlus 2GB Memory Card (microSD, Class 10)",
-   "shortDescription": "2GB microSD memory card, Class 10, for a radio, an old phone or an MP3 player. Give a full phone room to breathe or keep a camera recording.",
-   "longDescription": "A 2GB GoldPlus microSD memory card, Class 10, for a radio, an old phone or an MP3 player. Move photos and music off a phone that keeps saying storage is full, keep a CCTV or dashcam recording around the clock, or load a radio with music. Class 10 means it writes fast enough for HD video. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
-   "specs": [
-    {
-     "name": "Speed class",
-     "value": "Class 10"
-    }
-   ]
+   "title": "GoldPlus 2GB Memory Card (microSD)",
+   "shortDescription": "2GB microSD memory card, for a radio, an old phone or an MP3 player. Give a full phone room to breathe or keep a camera recording.",
+   "longDescription": "A 2GB GoldPlus microSD memory card for a radio, an old phone or an MP3 player. Move photos and music off a phone that keeps saying storage is full, keep a CCTV or dashcam recording around the clock, or load a radio with music. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "specs": []
   },
   {
    "sku": "GP-4GB-MC",
-   "title": "GoldPlus 4GB Memory Card (microSD, Class 10)",
-   "shortDescription": "4GB microSD memory card, Class 10, for an old phone, a radio or a small camera. Give a full phone room to breathe or keep a camera recording.",
-   "longDescription": "A 4GB GoldPlus microSD memory card, Class 10, for an old phone, a radio or a small camera. Move photos and music off a phone that keeps saying storage is full, keep a CCTV or dashcam recording around the clock, or load a radio with music. Class 10 means it writes fast enough for HD video. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
-   "specs": [
-    {
-     "name": "Speed class",
-     "value": "Class 10"
-    }
-   ]
+   "title": "GoldPlus 4GB Memory Card (microSD)",
+   "shortDescription": "4GB microSD memory card, for an old phone, a radio or a small camera. Give a full phone room to breathe or keep a camera recording.",
+   "longDescription": "A 4GB GoldPlus microSD memory card for an old phone, a radio or a small camera. Move photos and music off a phone that keeps saying storage is full, keep a CCTV or dashcam recording around the clock, or load a radio with music. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "specs": []
   },
   {
    "sku": "GP-8GB-MC",
-   "title": "GoldPlus 8GB Memory Card (microSD, Class 10)",
-   "shortDescription": "8GB microSD memory card, Class 10, for a phone, a radio or a camera. Give a full phone room to breathe or keep a camera recording.",
-   "longDescription": "A 8GB GoldPlus microSD memory card, Class 10, for a phone, a radio or a camera. Move photos and music off a phone that keeps saying storage is full, keep a CCTV or dashcam recording around the clock, or load a radio with music. Class 10 means it writes fast enough for HD video. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
-   "specs": [
-    {
-     "name": "Speed class",
-     "value": "Class 10"
-    }
-   ]
+   "title": "GoldPlus 8GB Memory Card (microSD)",
+   "shortDescription": "8GB microSD memory card, for a phone, a radio or a camera. Give a full phone room to breathe or keep a camera recording.",
+   "longDescription": "A 8GB GoldPlus microSD memory card for a phone, a radio or a camera. Move photos and music off a phone that keeps saying storage is full, keep a CCTV or dashcam recording around the clock, or load a radio with music. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "specs": []
   },
   {
    "sku": "GP-16GB-MC",
@@ -897,27 +857,17 @@
   },
   {
    "sku": "GP-256GB-MC",
-   "title": "GoldPlus 256GB Memory Card (microSD, Class 10)",
-   "shortDescription": "256GB microSD memory card, Class 10, for a phone, a CCTV system, a dashcam or a 4K camera. Give a full phone room to breathe or keep a camera recording.",
-   "longDescription": "A 256GB GoldPlus microSD memory card, Class 10, for a phone, a CCTV system, a dashcam or a 4K camera. Move photos and music off a phone that keeps saying storage is full, keep a CCTV or dashcam recording around the clock, or load a radio with music. Class 10 means it writes fast enough for HD video. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
-   "specs": [
-    {
-     "name": "Speed class",
-     "value": "Class 10"
-    }
-   ]
+   "title": "GoldPlus 256GB Memory Card (microSD)",
+   "shortDescription": "256GB microSD memory card, for a phone, a CCTV system, a dashcam or a 4K camera. Give a full phone room to breathe or keep a camera recording.",
+   "longDescription": "A 256GB GoldPlus microSD memory card for a phone, a CCTV system, a dashcam or a 4K camera. Move photos and music off a phone that keeps saying storage is full, keep a CCTV or dashcam recording around the clock, or load a radio with music. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "specs": []
   },
   {
    "sku": "GP-512GB-MC",
-   "title": "GoldPlus 512GB Memory Card (microSD, Class 10)",
-   "shortDescription": "512GB microSD memory card, Class 10, for a CCTV system, a 4K camera or a phone that shoots a lot of video. Give a full phone room to breathe or keep a camera recording.",
-   "longDescription": "A 512GB GoldPlus microSD memory card, Class 10, for a CCTV system, a 4K camera or a phone that shoots a lot of video. Move photos and music off a phone that keeps saying storage is full, keep a CCTV or dashcam recording around the clock, or load a radio with music. Class 10 means it writes fast enough for HD video. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
-   "specs": [
-    {
-     "name": "Speed class",
-     "value": "Class 10"
-    }
-   ]
+   "title": "GoldPlus 512GB Memory Card (microSD)",
+   "shortDescription": "512GB microSD memory card, for a CCTV system, a 4K camera or a phone that shoots a lot of video. Give a full phone room to breathe or keep a camera recording.",
+   "longDescription": "A 512GB GoldPlus microSD memory card for a CCTV system, a 4K camera or a phone that shoots a lot of video. Move photos and music off a phone that keeps saying storage is full, keep a CCTV or dashcam recording around the clock, or load a radio with music. Every unit is tested before it is sold; same-day delivery in Kampala and Wakiso.",
+   "specs": []
   }
  ]
 }
