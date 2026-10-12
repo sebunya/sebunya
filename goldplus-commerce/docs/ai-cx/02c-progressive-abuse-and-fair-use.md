@@ -11,10 +11,16 @@ refused with 409 inside two minutes on the same replica and so counts once. The 
 its transcript in `sessionStorage`; the counters live in Redis under the principal pseudonym,
 so clearing the chat does not reset them.
 
-Not implemented: server-side "clarification lineage" (a follow-up inside one unresolved request
-not counting). Every send counts. This is the conservative reading; the fifth request still
-gets paid answers while the silent allowances hold, so a clarification on request five is not
-a trap. Lineage can be added later keyed on the finder's `AMBIGUOUS_DEVICE` result.
+Clarification lineage: when the finder has just asked "Which of these is your phone?" and the
+customer's next turn is a short reply that routes deterministically, the reply is read as part of
+the open request and does not spend a welcome request (`isClarificationReply`, `continuation`).
+The flag is honoured only on deterministic turns, which cost no model money, so a client that
+forges it on a paid turn gains nothing: paid turns are always counted. Other follow-ups (a new
+intent, anything that goes to the model) count as new requests.
+
+Retries: the browser sends one `X-Assistant-Request-Id` per send. The web replica refuses a
+repeat for two minutes, and the API's shared Redis counter (`assistant.request`) refuses a second
+arrival on any replica (`DUPLICATE`, 409), before anything is counted or reserved.
 
 ## The five concerns, five signals
 

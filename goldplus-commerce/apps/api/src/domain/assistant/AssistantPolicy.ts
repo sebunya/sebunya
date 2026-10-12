@@ -139,6 +139,7 @@ export const monthKey = (at: Date): string => `${at.getUTCFullYear()}-${String(a
 
 export type AdmissionDecision =
   | 'DISABLED'
+  | 'DUPLICATE'
   | 'DENY_EXPENSIVE'
   | 'ALLOW_DETERMINISTIC'
   | 'AI_DISABLED'

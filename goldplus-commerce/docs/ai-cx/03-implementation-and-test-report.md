@@ -28,7 +28,6 @@ Tests: `tests/unit/AssistantPolicy.test.ts`, `AssistantRouter.test.ts`, `Assista
 
 - Order status, loyalty balance, delivery-fee tools: no session-scoped read exists that a chat
   could call without copying the public lookup's reference+phone fields into a prompt (Phase C).
-- Clarification lineage (a follow-up not counting as a request): conservative counting instead (02c).
 - Turnstile / step-up challenge: not known to be available; SOFT_LIMIT + Retry-After instead.
 - Ticket creation, WhatsApp API: no system exists; link-out is labelled as such.
 - SDK: blocked by the workspace's release-age guard; raw HTTP confined to one function.
@@ -42,7 +41,7 @@ Tests: `tests/unit/AssistantPolicy.test.ts`, `AssistantRouter.test.ts`, `Assista
 | `pnpm --filter @goldplus/api exec tsc --noEmit` | clean |
 | `pnpm --filter @goldplus/web typecheck` | clean |
 | `pnpm --filter @goldplus/api lint`, `... web lint` | 0 errors (pre-existing warnings only) |
-| Assistant unit files (Policy 11, Router 6, Evals 4, Simulation 8, ShopAssistant 13, AgentReadiness 17) | 60 passed |
+| Assistant unit files (Policy 11, Router 7, Admission 3, Evals 4, Simulation 8, ShopAssistant 13, AgentReadiness 17) | 63 passed |
 | `scripts/integration-env.sh pnpm vitest run tests/integration/AssistantLedger.integration.test.ts` (real PostgreSQL, Redis absent) | 3 passed |
 | Full unit + architecture suites | see the final section below |
 
@@ -79,7 +78,7 @@ product, policy, order) are deterministic and their exact answers are in `Assist
 
 Covered by tests: malformed conversations refused; client cannot inject assistant/tool turns;
 tool allowlist and round cap; 429-before-output not billed and released; unreachable admission
-fails closed for paid, open for free; retried request id answered once; burst 21/min refused;
+fails closed for paid, open for free; retried request id answered once across replicas (shared counter); a clarification reply does not spend a welcome request and a forged flag on a paid turn buys nothing; burst 21/min refused;
 address 121/min refused while 100/min passes; welcome tier ignores allowances; progressive soft
 limits; ledger refuses past kill under concurrency; stale reservations stay counted; internal
 routes need the internal key; admin PUT needs `settings.manage`, audits, and 409s on a stale version;

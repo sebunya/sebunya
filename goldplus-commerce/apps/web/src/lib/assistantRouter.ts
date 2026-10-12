@@ -93,7 +93,7 @@ export async function answerDeterministically(c: Classification): Promise<Determ
       const out = await callTool('store_info', {});
       const s = structured(out);
       const elsewhere = /\b(mbarara|gulu|jinja|mbale|lira|arua|fort portal|masaka|soroti|hoima|kabale|upcountry|up-country|outside kampala)\b/i.test(c.query);
-      const text = `${String(s.delivery ?? biz.deliveryNote)} The exact delivery fee for your address is shown at checkout before you pay.${elsewhere ? ' For places outside Kampala and Wakiso, check with us on WhatsApp before you order.' : ''}`;
+      const text = `${String(s.delivery ?? biz.deliveryNote)} An estimated delivery fee for your address is shown at checkout before you pay and confirmed before the rider leaves.${elsewhere ? ' For places outside Kampala and Wakiso, check with us on WhatsApp before you order.' : ''}`;
       return { intent: c.intent, text, products: [], links: [link('Delivery in Kampala and Wakiso', '/delivery/kampala-wakiso'), wa] };
     }
     case 'PAYMENT': {
@@ -130,7 +130,7 @@ export async function answerDeterministically(c: Classification): Promise<Determ
       }
       if (kind === 'AMBIGUOUS_DEVICE' || kind === 'SUGGESTIONS') {
         const devices = Array.isArray(s.devices) ? (s.devices as Json[]).slice(0, 6).map((d) => String(d.label ?? '')) : [];
-        return { intent: c.intent, text: `${devices.length ? `Which of these is your phone? ${devices.join(', ')}.` : 'I could not match that phone.'} Your exact model number is in Settings under About phone.`, products: [], links };
+        return { intent: c.intent, text: `${devices.length ? `${CLARIFY_PHONE} ${devices.join(', ')}.` : 'I could not match that phone.'} Your exact model number is in Settings under About phone.`, products: [], links };
       }
       if (kind === 'BATTERY') {
         const b = (s.battery as Json) ?? {};
@@ -149,6 +149,22 @@ export async function answerDeterministically(c: Classification): Promise<Determ
     default:
       return { intent: 'UNKNOWN', text: 'I can help you find products, check a price or a phone battery, and explain delivery and payment. For anything else, message us on WhatsApp.', products: [], links: [wa] };
   }
+}
+
+/** The one clarifying question the finder asks; a reply to it is the same request, not a new one. */
+export const CLARIFY_PHONE = 'Which of these is your phone?';
+
+/**
+ * Clarification lineage (mandate §5A.A): the customer's turn is a short reply
+ * to the shop's own "which phone?" question in the previous assistant turn,
+ * and it routes deterministically (so it costs no model money whatever the
+ * client claims). Only then is it read as part of the open request.
+ */
+export function isClarificationReply(turns: ReadonlyArray<{ role: 'user' | 'assistant'; content: string }>, classified: Classification): boolean {
+  if (!classified.deterministic || classified.intent !== 'BATTERY') return false;
+  const prev = turns.length >= 2 ? turns[turns.length - 2] : undefined;
+  const last = turns[turns.length - 1];
+  return !!prev && prev.role === 'assistant' && prev.content.includes(CLARIFY_PHONE) && !!last && last.content.length <= 60;
 }
 
 /** What the customer sees when paid AI is not available for this turn (mandate §5A.F wording). */

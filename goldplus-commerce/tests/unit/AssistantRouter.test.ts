@@ -59,6 +59,21 @@ describe('assistant router: classification', () => {
   });
 });
 
+describe('assistant router: clarification lineage', () => {
+  it('a short deterministic reply to the shop\'s own "which phone?" question is the same request; anything else is new', async () => {
+    const { CLARIFY_PHONE, classify, isClarificationReply } = await import('../../apps/web/src/lib/assistantRouter');
+    const ask = { role: 'assistant' as const, content: `${CLARIFY_PHONE} TECNO Spark 10, TECNO Spark 10C, TECNO Spark 10 Pro. Your exact model number is in Settings under About phone.` };
+    const reply = { role: 'user' as const, content: 'Spark 10 Pro battery' };
+    expect(isClarificationReply([{ role: 'user', content: 'battery for tecno spark 10' }, ask, reply], classify(reply.content))).toBe(true);
+    // A new unrelated intent after the question is a new request.
+    const other = { role: 'user' as const, content: 'how much is a 65W charger?' };
+    expect(isClarificationReply([ask, other], classify(other.content))).toBe(false);
+    // The model path never qualifies, whatever the transcript says.
+    const paid = { role: 'user' as const, content: 'which charger is best for it?' };
+    expect(isClarificationReply([ask, paid], classify(paid.content))).toBe(false);
+  });
+});
+
 describe('assistant router: deterministic answers come from shop data', () => {
   it('store, delivery and payment answers use the business info and storefront copy, never invented wording', async () => {
     const { answerDeterministically, classify } = await import('../../apps/web/src/lib/assistantRouter');
@@ -67,7 +82,7 @@ describe('assistant router: deterministic answers come from shop data', () => {
     expect(store.text).toMatch(/Zainab Aziza/);
     expect(store.links.map((l) => l.label)).toEqual(['Open the map', 'Chat on WhatsApp']);
     const delivery = await answerDeterministically(classify('do you deliver to Mbarara?'));
-    expect(delivery.text).toMatch(/shown at checkout before you pay/);
+    expect(delivery.text).toMatch(/shown at checkout before you pay and confirmed before the rider leaves/);
     expect(delivery.text).toMatch(/outside Kampala and Wakiso/);
     const pay = await answerDeterministically(classify('how do I pay with MTN?'));
     expect(pay.text).toMatch(/MTN or Airtel Mobile Money/);

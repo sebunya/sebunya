@@ -28,11 +28,14 @@ routes.post('/admit', async (c) => {
     addressHash: hash.nullable().optional(),
     wantsAi: z.boolean(),
     conversationId: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/).nullable().optional(),
+    requestId: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/).nullable().optional(),
+    continuation: z.boolean().optional(),
   }).safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return bad(c, 'INVALID_BODY', parsed.error.issues[0]?.message ?? 'Invalid body.');
   const out = await Registry.getInstance().assistantAdmissionUseCases.admit({
     principalHash: parsed.data.principalHash, addressHash: parsed.data.addressHash ?? null,
     wantsAi: parsed.data.wantsAi, conversationId: parsed.data.conversationId ?? null,
+    requestId: parsed.data.requestId ?? null, continuation: parsed.data.continuation === true,
   });
   return ok(c, out);
 });

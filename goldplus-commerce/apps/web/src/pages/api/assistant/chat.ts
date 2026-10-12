@@ -4,14 +4,15 @@ import { readBodyCapped } from '../../../lib/boundedBody';
 import { visitorKey } from '../../../lib/publicFormLimiter';
 import { isSignedVisitToken } from '../../../lib/visitToken';
 import { assistantEnabled, runAssistant, validateTurns, type AssistantEvent } from '../../../lib/assistant';
-import { SOFT_LIMIT_TEXT, answerDeterministically, classify, type DeterministicAnswer } from '../../../lib/assistantRouter';
+import { SOFT_LIMIT_TEXT, answerDeterministically, classify, isClarificationReply, type DeterministicAnswer } from '../../../lib/assistantRouter';
 import { addressHash, admit, principalHash, release, settle, type AdmitOutput } from '../../../lib/assistantAdmission';
 
 /**
  * POST /api/assistant/chat — the shop assistant, same origin only.
  * Body: { messages: [{ role, content }, …] ending with the customer's turn }.
  * Header X-Assistant-Request-Id: one id per send; a retry reuses it and is
- * answered once (idempotent within this replica for two minutes).
+ * answered once: this replica remembers ids for two minutes, and the API's
+ * shared counter refuses a second arrival on any other replica.
  * Reply: text/event-stream of `data: <AssistantEvent JSON>` frames.
  *
  * Order of operations (mandate §5A): validate -> classify -> admission
@@ -76,11 +77,13 @@ export const POST: APIRoute = async ({ request, clientAddress, cookies, locals }
   const last = turns[turns.length - 1]!.content;
   const classified = classify(last);
   const wantsAi = !classified.deterministic;
-  const admission: AdmitOutput = (await admit({ principalHash: principal, addressHash: addressHash(address), wantsAi, conversationId })) ?? {
+  const continuation = isClarificationReply(turns, classified);
+  const admission: AdmitOutput = (await admit({ principalHash: principal, addressHash: addressHash(address), wantsAi, conversationId, requestId, continuation })) ?? {
     // The admission authority could not be reached: fail closed for money, open for deterministic help.
     decision: wantsAi ? 'GLOBAL_BUDGET_FALLBACK' : 'ALLOW_DETERMINISTIC', tier: 'welcome', reason: 'admission unreachable', reservationId: null,
     model: '', effort: 'low', maxOutputTokens: 0, maxToolRounds: 0, degraded: true,
   };
+  if (admission.decision === 'DUPLICATE') return json({ success: false, error: { code: 'DUPLICATE', message: 'That question is already being answered.' } }, 409);
   if (admission.decision === 'DISABLED') return json({ success: false, error: { code: 'DISABLED', message: 'The assistant is switched off for now.' } }, 503);
   if (admission.decision === 'DENY_EXPENSIVE') {
     const retry = String(admission.retryAfterSeconds ?? 60);

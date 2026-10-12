@@ -23,6 +23,10 @@ export interface AdmitInput {
   addressHash: string | null;
   wantsAi: boolean;
   conversationId: string | null;
+  /** The browser's per-send id: a retry reuses it and must be answered once across every replica. */
+  requestId?: string | null;
+  /** A reply to the shop's own clarifying question inside one unresolved request (mandate §5A.A): not a new meaningful request. */
+  continuation?: boolean;
 }
 
 export interface AdmitOutput extends AdmissionResult {
@@ -74,11 +78,20 @@ export class AssistantAdmissionUseCases {
       return r.count;
     };
 
+    // A retried send (same request id) is answered once across replicas: the second arrival is refused before it is counted.
+    if (input.requestId) {
+      const seen = await count('assistant.request', input.requestId, 2 * 60_000);
+      if (seen > 1) return { ...base, decision: 'DUPLICATE', tier: 'welcome', reason: 'request id already admitted', reservationId: null, degraded };
+    }
     // Abuse ceilings first: cheap, every request, before anything is reserved.
     const burstInMinute = await count('assistant.burst', input.principalHash, minute.windowMs);
     const addressInMinute = input.addressHash ? await count('assistant.address', input.addressHash, minute.windowMs) : 0;
     // Fairness: the meaningful-request count decides the tier (welcome ≤ free, progressive after).
-    const meaningfulInWindow = await count('assistant.meaningful', input.principalHash, config.fairnessWindowHours * 3_600_000);
+    // A clarification reply stays inside the request it answers: it is read, not counted. Only deterministic
+    // turns qualify (the caller decides), so a forged flag can never buy a paid answer.
+    const meaningfulInWindow = input.continuation && !input.wantsAi
+      ? await this.counters.consume('assistant.meaningful', input.principalHash, { limit: Number.MAX_SAFE_INTEGER, windowMs: config.fairnessWindowHours * 3_600_000 }).then((r) => { degraded = degraded || r.degraded; return Math.max(0, r.count - 1); })
+      : await count('assistant.meaningful', input.principalHash, config.fairnessWindowHours * 3_600_000);
     const tierProgressive = meaningfulInWindow > config.freeRequests;
 
     let paidInHour = 0, paidInDay = 0, paidInPacingWindow = 0;

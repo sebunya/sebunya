@@ -8,7 +8,7 @@ import { apiBase } from './api';
  * this process; the API sees only hashes.
  */
 export interface AdmitOutput {
-  decision: 'DISABLED' | 'DENY_EXPENSIVE' | 'ALLOW_DETERMINISTIC' | 'AI_DISABLED' | 'SOFT_LIMIT' | 'GLOBAL_BUDGET_FALLBACK' | 'ALLOW_AI';
+  decision: 'DISABLED' | 'DUPLICATE' | 'DENY_EXPENSIVE' | 'ALLOW_DETERMINISTIC' | 'AI_DISABLED' | 'SOFT_LIMIT' | 'GLOBAL_BUDGET_FALLBACK' | 'ALLOW_AI';
   tier: 'welcome' | 'progressive';
   retryAfterSeconds?: number;
   reason: string;
@@ -47,6 +47,6 @@ async function post<T>(path: string, body: unknown, timeoutMs: number): Promise<
 }
 
 /** Null means the admission authority could not be reached: callers treat that as no paid AI. */
-export const admit = (body: { principalHash: string; addressHash: string | null; wantsAi: boolean; conversationId: string | null }) => post<AdmitOutput>('/admit', body, 3000);
+export const admit = (body: { principalHash: string; addressHash: string | null; wantsAi: boolean; conversationId: string | null; requestId?: string | null; continuation?: boolean }) => post<AdmitOutput>('/admit', body, 3000);
 export const settle = (body: { reservationId: string; model: string; providerRequestId: string | null; outcome: string; usage: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number } }) => post<{ costMicroUsd: number }>('/settle', body, 5000);
 export const release = (body: { reservationId: string; reason: string }) => post<{ released: boolean }>('/release', body, 5000);
