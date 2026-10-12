@@ -1,14 +1,19 @@
 ---
 /**
- * The shop assistant: a launcher and a panel on every page. The browser posts
- * the conversation to /api/assistant/chat (same origin) and renders the
- * streamed answer; product cards are rendered from validated tool data the
- * server sends as `products` events, never from the model's prose. Rendered
- * only when the server has an API key, so a host without one shows nothing.
+ * Goldie, the GoldPlus shop host: a launcher and a panel on every page. The
+ * browser posts the conversation to /api/assistant/chat (same origin) and
+ * renders the streamed answer. Product cards and action chips are built from
+ * the validated `products` and `links` events the server sends, never from
+ * the model's prose. Rendered only when the server has an API key.
  *
- * The transcript lives in sessionStorage for this tab only (per-viewer
- * convenience, wrapped in try/catch); the server stores nothing. Clearing it
- * clears the display, not the server's fairness counters (by design).
+ * The transcript lives in sessionStorage for this tab only (wrapped in
+ * try/catch); the server stores nothing. Clearing it clears the display, not
+ * the server's fairness counters (by design).
+ *
+ * Voice and look (2026-10-12 redesign): Goldie greets by time of day, answers
+ * in one to three plain sentences, and offers the next step as a chip. Motion
+ * is one quiet moment (the panel rising from the launcher) plus a typing
+ * indicator; both respect prefers-reduced-motion.
  */
 import { assistantEnabled } from '../lib/assistant';
 interface Props { whatsappUrl: string }
@@ -18,103 +23,139 @@ const enabled = assistantEnabled();
 {enabled && (
   <div id="gp-assistant" class="gp-assistant" data-whatsapp={whatsappUrl} data-endpoint="/api/assistant/chat">
     <button type="button" class="gp-assistant__launch" aria-haspopup="dialog" aria-controls="gp-assistant-panel" aria-expanded="false" data-launch>
-      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-8 8H8l-5 3 1.2-4.2A8 8 0 1 1 21 12z"/></svg>
-      <span>Ask GoldPlus</span>
+      <span class="gp-assistant__avatar gp-assistant__avatar--launch" aria-hidden="true"><span>G</span></span>
+      <span class="gp-assistant__launchtext"><strong>Ask Goldie</strong><small>GoldPlus shop help</small></span>
     </button>
 
-    <section id="gp-assistant-panel" class="gp-assistant__panel" role="dialog" aria-label="GoldPlus shop assistant" aria-modal="false" hidden data-panel>
+    <section id="gp-assistant-panel" class="gp-assistant__panel" role="dialog" aria-label="Goldie, the GoldPlus shop assistant" aria-modal="false" hidden data-panel>
       <header class="gp-assistant__head">
-        <div>
-          <p class="gp-assistant__title">GoldPlus assistant <span class="gp-assistant__ai">AI</span></p>
-          <p class="gp-assistant__sub">Answers from the shop's own catalogue. For orders and payments, our team is on WhatsApp.</p>
+        <span class="gp-assistant__avatar" aria-hidden="true"><span>G</span></span>
+        <div class="gp-assistant__who">
+          <p class="gp-assistant__title">Goldie</p>
+          <p class="gp-assistant__sub"><span class="gp-assistant__dot" aria-hidden="true"></span>GoldPlus shop help · AI, answers from the shelf</p>
         </div>
         <div class="gp-assistant__headbtns">
-          <button type="button" class="gp-assistant__clear" data-clear hidden>Clear chat</button>
-          <button type="button" class="gp-assistant__close" aria-label="Close the assistant" data-close>×</button>
+          <button type="button" class="gp-assistant__clear" data-clear hidden>Start over</button>
+          <button type="button" class="gp-assistant__close" aria-label="Close Goldie" data-close>
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
         </div>
       </header>
 
       <div class="gp-assistant__log" role="log" aria-live="polite" aria-relevant="additions" data-log></div>
 
       <div class="gp-assistant__starters" data-starters>
-        <button type="button" data-starter="Find a battery for my phone">Find a phone battery</button>
+        <button type="button" data-starter="Find a battery for my phone">Battery for my phone</button>
         <button type="button" data-prefill="How much is ">Check a price</button>
-        <button type="button" data-starter="Do you deliver to my area and what does it cost?">Delivery help</button>
-        <button type="button" data-starter="Where is my order?">Track my order</button>
+        <button type="button" data-starter="Do you deliver to my area and what does it cost?">Delivery</button>
+        <button type="button" data-starter="Where is the shop and when are you open?">Visit the shop</button>
       </div>
 
       <form class="gp-assistant__form" data-form>
-        <label class="sr-only" for="gp-assistant-input">Your question</label>
-        <textarea id="gp-assistant-input" rows="1" maxlength="2000" placeholder="Ask about a product, a price or a battery…" autocomplete="off" data-input></textarea>
+        <label class="sr-only" for="gp-assistant-input">Message Goldie</label>
+        <textarea id="gp-assistant-input" rows="1" maxlength="2000" placeholder="Type your question…" autocomplete="off" data-input></textarea>
         <button type="submit" class="gp-assistant__send" aria-label="Send" data-send>
-          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
         </button>
       </form>
       <p class="gp-assistant__foot">
-        An AI assistant. Prices and stock on the cards are live; check the product page before you pay.
-        <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" data-whatsapp-link>Chat on WhatsApp</a>
+        Goldie is an AI. Prices and stock on the cards are live; check the product page before you pay.
+        <a href={whatsappUrl} target="_blank" rel="noopener noreferrer">Prefer a person? WhatsApp us</a>
       </p>
     </section>
   </div>
 )}
 
 <style is:global>
-  /* Global on purpose: the script creates the message bubbles and cards after
-     render, and Astro's scoped styles only reach elements present in the template. */
-  .gp-assistant { --gp-green: #93d500; --gp-ink: #0a0a0a; font-family: inherit; }
+  /* Global on purpose: the script creates the bubbles, cards and chips after render. */
+  .gp-assistant { --gp-green: #93d500; --gp-green-deep: #456b00; --gp-ink: #0a0a0a; --gp-paper: #fbfbf7; --gp-line: #e6e6df; --gp-mute: #6b6b64; --gp-ease: cubic-bezier(.2,.8,.2,1); font-family: inherit; }
+  .gp-assistant__avatar { width: 38px; height: 38px; flex: none; display: grid; place-items: center; border-radius: 9999px; background: var(--gp-green); color: var(--gp-ink); font-weight: 900; font-size: 1.05rem; letter-spacing: -.02em; box-shadow: inset 0 0 0 2px rgba(10,10,10,.12); }
+  .gp-assistant__avatar--sm { width: 28px; height: 28px; font-size: .8rem; }
   .gp-assistant__launch {
     position: fixed; right: max(1rem, env(safe-area-inset-right)); bottom: calc(max(1rem, env(safe-area-inset-bottom)) + 64px);
-    z-index: 46; display: inline-flex; align-items: center; gap: .5rem; padding: .7rem 1rem; border: 0; border-radius: 9999px;
-    background: var(--gp-ink); color: #fff; font-weight: 800; font-size: .8rem; letter-spacing: .02em; box-shadow: 0 10px 30px rgba(0,0,0,.25); cursor: pointer; min-height: 44px;
+    z-index: 46; display: inline-flex; align-items: center; gap: .6rem; padding: .45rem 1rem .45rem .45rem; border: 0; border-radius: 9999px;
+    background: var(--gp-ink); color: #fff; box-shadow: 0 10px 30px rgba(0,0,0,.28); cursor: pointer; min-height: 48px; text-align: left;
+    transition: transform .2s var(--gp-ease), box-shadow .2s var(--gp-ease);
   }
-  .gp-assistant__launch:focus-visible, .gp-assistant__close:focus-visible, .gp-assistant__clear:focus-visible, .gp-assistant__send:focus-visible, .gp-assistant__starters button:focus-visible, .gp-assistant__card a:focus-visible { outline: 3px solid var(--gp-green); outline-offset: 2px; }
+  .gp-assistant__launch:hover { transform: translateY(-1px); box-shadow: 0 14px 34px rgba(0,0,0,.32); }
+  .gp-assistant__launchtext { display: grid; line-height: 1.1; }
+  .gp-assistant__launchtext strong { font-size: .84rem; font-weight: 800; }
+  .gp-assistant__launchtext small { font-size: .66rem; color: #cfcfc7; font-weight: 600; }
+  .gp-assistant__launch--nudge .gp-assistant__avatar--launch { animation: gp-nudge 1.1s var(--gp-ease) 1; }
+  @keyframes gp-nudge { 0%,100% { transform: rotate(0) } 20% { transform: rotate(-12deg) } 45% { transform: rotate(10deg) } 70% { transform: rotate(-6deg) } }
+  .gp-assistant__launch:focus-visible, .gp-assistant__close:focus-visible, .gp-assistant__clear:focus-visible, .gp-assistant__send:focus-visible, .gp-assistant__starters button:focus-visible, .gp-assistant__chip:focus-visible, .gp-assistant__card a:focus-visible { outline: 3px solid var(--gp-green); outline-offset: 2px; }
   .gp-assistant--open .gp-assistant__launch { display: none; }
-  /* The class sets display:flex, which would beat the hidden attribute's UA rule; the panel stays closed until opened. */
   .gp-assistant__panel[hidden] { display: none; }
   .gp-assistant__panel {
     position: fixed; right: max(1rem, env(safe-area-inset-right)); bottom: max(1rem, env(safe-area-inset-bottom)); z-index: 47;
-    width: min(400px, calc(100vw - 2rem)); height: min(620px, calc(100vh - 2rem)); display: flex; flex-direction: column;
-    background: #fff; color: var(--gp-ink); border: 1px solid #e5e5e5; border-radius: 1.25rem; box-shadow: 0 24px 60px rgba(0,0,0,.3); overflow: hidden;
+    width: min(400px, calc(100vw - 2rem)); height: min(640px, calc(100vh - 2rem)); display: flex; flex-direction: column;
+    background: var(--gp-paper); color: var(--gp-ink); border: 1px solid var(--gp-line); border-radius: 1.25rem; box-shadow: 0 24px 60px rgba(0,0,0,.3); overflow: hidden;
+    transform-origin: 92% 100%;
   }
+  .gp-assistant__panel--enter { animation: gp-rise .26s var(--gp-ease) both; }
+  @keyframes gp-rise { from { opacity: 0; transform: translateY(14px) scale(.96) } to { opacity: 1; transform: none } }
   @media (max-width: 480px) { .gp-assistant__panel { right: 0; bottom: 0; width: 100vw; height: 100dvh; border-radius: 0; } }
-  .gp-assistant__head { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; padding: .9rem 1rem; background: var(--gp-ink); color: #fff; }
-  .gp-assistant__title { margin: 0; font-weight: 900; font-size: .95rem; }
-  .gp-assistant__ai { margin-left: .35rem; font-size: .6rem; font-weight: 800; letter-spacing: .08em; border: 1px solid #555; border-radius: .3rem; padding: .05rem .3rem; color: #cfcfcf; vertical-align: middle; }
-  .gp-assistant__sub { margin: .2rem 0 0; font-size: .72rem; color: #cfcfcf; line-height: 1.35; }
-  .gp-assistant__headbtns { display: flex; align-items: center; gap: .5rem; }
-  .gp-assistant__clear { border: 1px solid #555; background: transparent; color: #cfcfcf; font-size: .65rem; font-weight: 700; border-radius: 9999px; padding: .25rem .6rem; cursor: pointer; }
+  .gp-assistant__head { display: flex; align-items: center; gap: .7rem; padding: .8rem .9rem; background: var(--gp-ink); color: #fff; }
+  .gp-assistant__who { min-width: 0; flex: 1; }
+  .gp-assistant__title { margin: 0; font-weight: 900; font-size: 1rem; letter-spacing: -.01em; }
+  .gp-assistant__sub { margin: .1rem 0 0; font-size: .7rem; color: #cfcfc7; display: flex; align-items: center; gap: .35rem; }
+  .gp-assistant__dot { width: 7px; height: 7px; border-radius: 9999px; background: var(--gp-green); box-shadow: 0 0 0 3px rgba(147,213,0,.25); }
+  .gp-assistant__headbtns { display: flex; align-items: center; gap: .4rem; }
+  .gp-assistant__clear { border: 1px solid #4a4a46; background: transparent; color: #cfcfc7; font-size: .66rem; font-weight: 700; border-radius: 9999px; padding: .3rem .65rem; cursor: pointer; }
   .gp-assistant__clear[hidden] { display: none; }
-  .gp-assistant__close { border: 0; background: transparent; color: #fff; font-size: 1.5rem; line-height: 1; cursor: pointer; padding: 0 .25rem; min-width: 44px; min-height: 44px; }
-  .gp-assistant__log { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: .6rem; background: #f7f7f7; overflow-anchor: auto; }
-  .gp-assistant__msg { max-width: 88%; padding: .6rem .8rem; border-radius: 1rem; font-size: .88rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .gp-assistant__msg--user { align-self: flex-end; background: var(--gp-ink); color: #fff; border-bottom-right-radius: .3rem; }
-  .gp-assistant__msg--bot { align-self: flex-start; background: #fff; border: 1px solid #e5e5e5; border-bottom-left-radius: .3rem; }
-  .gp-assistant__msg--bot a { color: #456b00; font-weight: 700; text-decoration: underline; }
-  .gp-assistant__msg--status { align-self: flex-start; font-size: .75rem; color: #6b6b6b; padding: .1rem .2rem; }
-  .gp-assistant__msg--error { align-self: flex-start; background: #fff4f4; border: 1px solid #f3c2c2; color: #8a1f1f; }
-  .gp-assistant__cards { display: grid; gap: .5rem; width: 100%; }
-  .gp-assistant__card { display: grid; grid-template-columns: 56px 1fr; gap: .6rem; align-items: center; background: #fff; border: 1px solid #e5e5e5; border-radius: .9rem; padding: .5rem .6rem; }
-  .gp-assistant__card img { width: 56px; height: 56px; object-fit: cover; border-radius: .5rem; background: #f0f0f0; }
-  .gp-assistant__card .ph { width: 56px; height: 56px; border-radius: .5rem; background: #ececec; }
-  .gp-assistant__card b { display: block; font-size: .82rem; line-height: 1.3; }
-  .gp-assistant__card small { display: block; font-size: .72rem; color: #6b6b6b; margin-top: .15rem; }
-  .gp-assistant__card a { font-size: .75rem; font-weight: 800; color: #456b00; text-decoration: underline; }
+  .gp-assistant__close { border: 0; background: transparent; color: #fff; cursor: pointer; display: grid; place-items: center; min-width: 44px; min-height: 44px; border-radius: 9999px; }
+  .gp-assistant__close:hover { background: rgba(255,255,255,.1); }
+  .gp-assistant__log { flex: 1; overflow-y: auto; padding: 1rem .9rem; display: flex; flex-direction: column; gap: .55rem; overflow-anchor: auto; }
+  .gp-assistant__row { display: flex; align-items: flex-end; gap: .45rem; max-width: 92%; }
+  .gp-assistant__row--user { align-self: flex-end; }
+  .gp-assistant__row--bot { align-self: flex-start; }
+  .gp-assistant__msg { padding: .62rem .85rem; border-radius: 1.1rem; font-size: .9rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
+  .gp-assistant__msg--user { background: var(--gp-ink); color: #fff; border-bottom-right-radius: .35rem; }
+  .gp-assistant__msg--bot { background: #fff; border: 1px solid var(--gp-line); border-bottom-left-radius: .35rem; }
+  .gp-assistant__msg--bot a { color: var(--gp-green-deep); font-weight: 700; text-decoration: underline; }
+  .gp-assistant__msg--bot strong { font-weight: 800; }
+  .gp-assistant__msg--error { background: #fff5f4; border: 1px solid #f1c7c2; color: #8a1f1f; }
+  .gp-assistant__status { align-self: flex-start; margin-left: 2.3rem; font-size: .72rem; color: var(--gp-mute); }
+  .gp-assistant__typing { display: inline-flex; gap: 4px; padding: .7rem .9rem; }
+  .gp-assistant__typing i { width: 7px; height: 7px; border-radius: 9999px; background: var(--gp-mute); animation: gp-bounce 1.1s infinite var(--gp-ease); }
+  .gp-assistant__typing i:nth-child(2) { animation-delay: .15s } .gp-assistant__typing i:nth-child(3) { animation-delay: .3s }
+  @keyframes gp-bounce { 0%,70%,100% { transform: translateY(0); opacity: .45 } 35% { transform: translateY(-5px); opacity: 1 } }
+  .gp-assistant__chips { display: flex; flex-wrap: wrap; gap: .4rem; margin-left: 2.3rem; max-width: 92%; }
+  .gp-assistant__chip { display: inline-flex; align-items: center; gap: .35rem; border: 1.5px solid var(--gp-green-deep); background: #fff; color: var(--gp-green-deep); border-radius: 9999px; padding: .4rem .8rem; font-size: .78rem; font-weight: 800; text-decoration: none; min-height: 36px; transition: background .15s, color .15s; }
+  .gp-assistant__chip:hover { background: var(--gp-green-deep); color: #fff; }
+  .gp-assistant__cards { display: grid; gap: .5rem; margin-left: 2.3rem; max-width: 92%; }
+  .gp-assistant__card { display: grid; grid-template-columns: 60px 1fr; gap: .65rem; align-items: center; background: #fff; border: 1px solid var(--gp-line); border-radius: 1rem; padding: .55rem .65rem; text-decoration: none; color: inherit; transition: border-color .15s, transform .15s var(--gp-ease); }
+  .gp-assistant__card:hover { border-color: var(--gp-green); transform: translateY(-1px); }
+  .gp-assistant__card img, .gp-assistant__card .ph { width: 60px; height: 60px; object-fit: cover; border-radius: .6rem; background: #f0f0ea; }
+  .gp-assistant__card b { display: block; font-size: .84rem; line-height: 1.3; font-weight: 800; }
+  .gp-assistant__card .price { display: block; margin-top: .2rem; font-size: .9rem; font-weight: 900; color: var(--gp-ink); font-variant-numeric: tabular-nums; }
+  .gp-assistant__card .meta { display: inline-block; margin-top: .25rem; font-size: .68rem; font-weight: 700; color: var(--gp-mute); }
+  .gp-assistant__card .meta--in { color: var(--gp-green-deep); }
   .gp-assistant__starters[hidden] { display: none; }
-  .gp-assistant__starters { display: flex; flex-wrap: wrap; gap: .4rem; padding: .5rem 1rem 0; background: #f7f7f7; }
-  .gp-assistant__starters button { border: 1px solid #d9d9d9; background: #fff; border-radius: 9999px; padding: .45rem .75rem; font-size: .75rem; font-weight: 700; cursor: pointer; min-height: 36px; }
-  .gp-assistant__form { display: flex; gap: .5rem; padding: .75rem 1rem; border-top: 1px solid #e5e5e5; background: #fff; }
-  .gp-assistant__form textarea { flex: 1; resize: none; border: 1px solid #d9d9d9; border-radius: .8rem; padding: .6rem .75rem; font: inherit; font-size: 16px; max-height: 6rem; }
-  .gp-assistant__send { width: 44px; height: 44px; border: 0; border-radius: 9999px; background: var(--gp-green); color: var(--gp-ink); display: grid; place-items: center; cursor: pointer; }
-  .gp-assistant__send[disabled] { opacity: .5; cursor: progress; }
-  .gp-assistant__foot { margin: 0; padding: .4rem 1rem .7rem; font-size: .68rem; color: #6b6b6b; background: #fff; }
-  .gp-assistant__foot a { color: #456b00; font-weight: 700; margin-left: .25rem; }
+  .gp-assistant__starters { display: flex; flex-wrap: wrap; gap: .4rem; padding: .25rem .9rem .5rem; }
+  .gp-assistant__starters button { border: 1.5px solid var(--gp-line); background: #fff; border-radius: 9999px; padding: .45rem .8rem; font-size: .78rem; font-weight: 800; color: var(--gp-ink); cursor: pointer; min-height: 38px; transition: border-color .15s; }
+  .gp-assistant__starters button:hover { border-color: var(--gp-green); }
+  .gp-assistant__form { display: flex; gap: .5rem; padding: .7rem .9rem; border-top: 1px solid var(--gp-line); background: #fff; }
+  .gp-assistant__form textarea { flex: 1; resize: none; border: 1.5px solid var(--gp-line); border-radius: .9rem; padding: .62rem .8rem; font: inherit; font-size: 16px; max-height: 6rem; background: var(--gp-paper); }
+  .gp-assistant__form textarea:focus { outline: none; border-color: var(--gp-green); background: #fff; }
+  .gp-assistant__send { width: 44px; height: 44px; flex: none; border: 0; border-radius: 9999px; background: var(--gp-green); color: var(--gp-ink); display: grid; place-items: center; cursor: pointer; transition: transform .15s var(--gp-ease); }
+  .gp-assistant__send:hover { transform: scale(1.05); }
+  .gp-assistant__send[disabled] { opacity: .5; cursor: progress; transform: none; }
+  .gp-assistant__foot { margin: 0; padding: .35rem .9rem .7rem; font-size: .67rem; color: var(--gp-mute); background: #fff; }
+  .gp-assistant__foot a { color: var(--gp-green-deep); font-weight: 700; margin-left: .25rem; }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+  @media (prefers-reduced-motion: reduce) {
+    .gp-assistant__panel--enter, .gp-assistant__launch--nudge .gp-assistant__avatar--launch, .gp-assistant__typing i { animation: none; }
+    .gp-assistant__launch, .gp-assistant__send, .gp-assistant__card { transition: none; }
+    .gp-assistant__typing i { opacity: .7; }
+  }
 </style>
 
 <script>
   type Turn = { role: 'user' | 'assistant'; content: string };
   type Card = { name: string; url: string; sku: string | null; price_ugx: number | null; availability: string; image: string | null; note?: string };
-  type Ev = { type: 'text'; text: string } | { type: 'tool'; name: string } | { type: 'products'; items: Card[] } | { type: 'done' } | { type: 'error'; code: string; message: string };
+  type Chip = { label: string; url: string };
+  type Ev = { type: 'text'; text: string } | { type: 'tool'; name: string } | { type: 'products'; items: Card[] } | { type: 'links'; items: Chip[] } | { type: 'done' } | { type: 'error'; code: string; message: string };
 
   const root = document.getElementById('gp-assistant');
   if (root) {
@@ -123,8 +164,9 @@ const enabled = assistantEnabled();
     const launch = q<HTMLButtonElement>('[data-launch]'), panel = q<HTMLElement>('[data-panel]'), closeBtn = q<HTMLButtonElement>('[data-close]');
     const clearBtn = q<HTMLButtonElement>('[data-clear]'), log = q<HTMLElement>('[data-log]'), starters = q<HTMLElement>('[data-starters]');
     const form = q<HTMLFormElement>('[data-form]'), input = q<HTMLTextAreaElement>('[data-input]'), send = q<HTMLButtonElement>('[data-send]');
-    const KEY = 'gp-assistant-turns';
+    const KEY = 'gp-assistant-turns', SEEN = 'gp-assistant-seen';
     const SITE = location.origin;
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
     let turns: Turn[] = [];
     let busy = false;
 
@@ -133,68 +175,110 @@ const enabled = assistantEnabled();
     const ugx = (n: number | null) => (n == null ? 'Price on request' : `UGX ${n.toLocaleString('en-UG')}`);
     const AVAIL: Record<string, string> = { in_stock: 'In stock', low_stock: 'Low stock', out_of_stock: 'Out of stock', pre_order: 'Pre-order' };
     const TOOL_STATUS: Record<string, string> = {
-      search_products: 'Searching the catalogue…', get_product: 'Reading the product page…', list_categories: 'Checking the categories…',
-      find_battery: 'Running the battery finder…', store_info: 'Checking the shop details…',
+      search_products: 'checking the shelf…', get_product: 'reading the product page…', list_categories: 'checking the categories…',
+      find_battery: 'running the battery finder…', store_info: 'checking the shop details…',
     };
     const newId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`);
+    const hour = new Date().getHours();
+    const GREETING = `${hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'}, I'm Goldie from GoldPlus. Ask me about a charger, a cable, a power bank, earphones or a battery for your phone, and I'll check the shelf for you.`;
 
-    /** Text to DOM with links only to this site (anything else stays plain text). */
+    /** Text to DOM: minimal markdown (**bold**, "- " bullets), links only to this site (anything else stays plain text). */
     const render = (el: HTMLElement, text: string) => {
       el.replaceChildren();
-      for (const part of text.split(/(https?:\/\/[^\s)\]>]+)/g)) {
-        if (/^https?:\/\//.test(part)) {
-          const clean = part.replace(/[.,;:!?]+$/, ''), trail = part.slice(clean.length);
-          if (clean.startsWith(SITE + '/') || clean === SITE) {
-            const a = document.createElement('a'); a.href = clean; a.rel = 'noopener';
-            const path = clean.replace(SITE, '');
-            a.textContent = path.startsWith('/products/') ? 'Open the product page' : path.startsWith('/wa') ? 'WhatsApp' : path || clean;
+      const clean = text.replace(/^\s*[-*]\s+/gm, '• ').replace(/^#+\s*/gm, '');
+      for (const seg of clean.split(/(\*\*[^*]+\*\*|https?:\/\/[^\s)\]>]+)/g)) {
+        if (!seg) continue;
+        if (/^\*\*[^*]+\*\*$/.test(seg)) { const b = document.createElement('strong'); b.textContent = seg.slice(2, -2); el.append(b); continue; }
+        if (/^https?:\/\//.test(seg)) {
+          const url = seg.replace(/[.,;:!?]+$/, ''), trail = seg.slice(url.length);
+          if (url.startsWith(SITE + '/') || url === SITE) {
+            const a = document.createElement('a'); a.href = url; a.rel = 'noopener';
+            const path = url.replace(SITE, '');
+            a.textContent = path.startsWith('/products/') ? 'the product page' : path.startsWith('/wa') ? 'WhatsApp' : path || 'the site';
             el.append(a); if (trail) el.append(trail);
-          } else el.append(part);
-        } else el.append(part);
+          } else el.append(seg);
+          continue;
+        }
+        el.append(seg.replace(/\*/g, ''));
       }
     };
-    const bubble = (kind: 'user' | 'bot' | 'status' | 'error', text: string) => {
-      const el = document.createElement('div');
-      el.className = `gp-assistant__msg gp-assistant__msg--${kind}`;
+    const avatar = () => { const a = document.createElement('span'); a.className = 'gp-assistant__avatar gp-assistant__avatar--sm'; a.setAttribute('aria-hidden', 'true'); a.textContent = 'G'; return a; };
+    const bubble = (kind: 'user' | 'bot' | 'error', text: string) => {
+      const row = document.createElement('div'); row.className = `gp-assistant__row gp-assistant__row--${kind === 'user' ? 'user' : 'bot'}`;
+      const el = document.createElement('div'); el.className = `gp-assistant__msg gp-assistant__msg--${kind}`;
       if (kind === 'bot') render(el, text); else el.textContent = text;
-      log.append(el); log.scrollTop = log.scrollHeight; return el;
+      if (kind !== 'user') row.append(avatar());
+      row.append(el); log.append(row); log.scrollTop = log.scrollHeight; return { row, el };
+    };
+    const typing = () => {
+      const row = document.createElement('div'); row.className = 'gp-assistant__row gp-assistant__row--bot';
+      const t = document.createElement('div'); t.className = 'gp-assistant__msg gp-assistant__msg--bot gp-assistant__typing'; t.setAttribute('aria-label', 'Goldie is typing');
+      for (let i = 0; i < 3; i += 1) t.append(document.createElement('i'));
+      row.append(avatar(), t); log.append(row);
+      const status = document.createElement('p'); status.className = 'gp-assistant__status'; status.textContent = ''; log.append(status);
+      log.scrollTop = log.scrollHeight; return { row, status };
+    };
+    const chips = (items: Chip[]) => {
+      const wrap = document.createElement('div'); wrap.className = 'gp-assistant__chips';
+      for (const it of items) {
+        const ok = it.url.startsWith(SITE + '/') || /^https:\/\/(wa\.me|maps\.google\.com|www\.google\.com\/maps|goo\.gl\/maps|maps\.app\.goo\.gl)\//.test(it.url);
+        if (!ok) continue;
+        const a = document.createElement('a'); a.className = 'gp-assistant__chip'; a.href = it.url; a.textContent = it.label;
+        if (!it.url.startsWith(SITE)) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
+        wrap.append(a);
+      }
+      if (wrap.childElementCount) { log.append(wrap); log.scrollTop = log.scrollHeight; }
     };
     const cards = (items: Card[]) => {
       const wrap = document.createElement('div'); wrap.className = 'gp-assistant__cards';
       for (const it of items) {
         if (!it.url.startsWith(SITE + '/')) continue;
-        const card = document.createElement('article'); card.className = 'gp-assistant__card';
+        const card = document.createElement('a'); card.className = 'gp-assistant__card'; card.href = it.url;
         if (it.image) { const img = document.createElement('img'); img.src = it.image; img.alt = ''; img.loading = 'lazy'; card.append(img); } else { const ph = document.createElement('div'); ph.className = 'ph'; card.append(ph); }
         const body = document.createElement('div');
         const b = document.createElement('b'); b.textContent = it.name; body.append(b);
-        const s = document.createElement('small'); s.textContent = `${ugx(it.price_ugx)} · ${AVAIL[it.availability] ?? it.availability}${it.note ? ` · ${it.note}` : ''}`; body.append(s);
-        const a = document.createElement('a'); a.href = it.url; a.textContent = 'View product'; body.append(a);
+        const p = document.createElement('span'); p.className = 'price'; p.textContent = ugx(it.price_ugx); body.append(p);
+        const m = document.createElement('span'); m.className = `meta${it.availability === 'in_stock' ? ' meta--in' : ''}`; m.textContent = `${AVAIL[it.availability] ?? it.availability}${it.note ? ` · ${it.note}` : ''}`; body.append(m);
         card.append(body); wrap.append(card);
       }
-      log.append(wrap); log.scrollTop = log.scrollHeight;
+      if (wrap.childElementCount) { log.append(wrap); log.scrollTop = log.scrollHeight; }
     };
-    const paint = () => { log.replaceChildren(); for (const t of turns) bubble(t.role === 'user' ? 'user' : 'bot', t.content); starters.hidden = turns.length > 0; clearBtn.hidden = turns.length === 0; };
+    const paint = () => {
+      log.replaceChildren();
+      if (turns.length === 0) bubble('bot', GREETING);
+      for (const t of turns) bubble(t.role === 'user' ? 'user' : 'bot', t.content);
+      starters.hidden = turns.length > 0; clearBtn.hidden = turns.length === 0;
+    };
 
-    const open = () => { root.classList.add('gp-assistant--open'); panel.hidden = false; launch.setAttribute('aria-expanded', 'true'); paint(); setTimeout(() => input.focus(), 50); };
+    const open = () => {
+      root.classList.add('gp-assistant--open'); panel.hidden = false; launch.setAttribute('aria-expanded', 'true');
+      if (!reduced) { panel.classList.add('gp-assistant__panel--enter'); panel.addEventListener('animationend', () => panel.classList.remove('gp-assistant__panel--enter'), { once: true }); }
+      try { sessionStorage.setItem(SEEN, '1'); } catch { /* ignore */ }
+      paint(); setTimeout(() => input.focus(), 60);
+    };
     const close = () => { root.classList.remove('gp-assistant--open'); panel.hidden = true; launch.setAttribute('aria-expanded', 'false'); launch.focus(); };
     launch.addEventListener('click', open);
     closeBtn.addEventListener('click', close);
     clearBtn.addEventListener('click', () => { turns = []; persist(); paint(); input.focus(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !panel.hidden) close(); });
+    // One quiet nudge on the launcher, once per tab, after the shopper has had a moment.
+    let seen = false; try { seen = sessionStorage.getItem(SEEN) === '1'; } catch { seen = false; }
+    if (!seen && !reduced) setTimeout(() => { if (panel.hidden) launch.classList.add('gp-assistant__launch--nudge'); }, 7000);
 
     const ask = async (question: string) => {
       const text = question.trim(); if (!text || busy) return;
       busy = true; send.disabled = true; input.value = ''; starters.hidden = true; clearBtn.hidden = false;
       turns.push({ role: 'user', content: text }); bubble('user', text); persist();
-      const status = bubble('status', 'Thinking…');
-      const reply = bubble('bot', ''); let answer = '';
+      const wait = typing();
+      let reply: { row: HTMLElement; el: HTMLElement } | null = null; let answer = '';
+      const ensureReply = () => { if (!reply) { wait.row.remove(); reply = bubble('bot', ''); } return reply; };
       const requestId = newId();
       try {
         const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', 'X-Assistant-Request-Id': requestId }, credentials: 'same-origin', body: JSON.stringify({ messages: turns.slice(-12) }) });
         if (!res.ok || !res.body) {
-          let msg = 'The assistant is not available just now. Please use WhatsApp.';
+          let msg = "I can't reach the shop right now. Try again in a moment, or message us on WhatsApp.";
           try { msg = (await res.json()).error?.message || msg; } catch { /* keep default */ }
-          status.remove(); reply.remove(); bubble('error', msg); turns.pop(); persist(); return;
+          wait.row.remove(); wait.status.remove(); bubble('error', msg); turns.pop(); persist(); return;
         }
         const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
         for (;;) {
@@ -206,18 +290,19 @@ const enabled = assistantEnabled();
             const data = frame.split('\n').filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trim()).join('\n');
             if (data) {
               let ev: Ev | null = null; try { ev = JSON.parse(data); } catch { ev = null; }
-              if (ev?.type === 'text') { answer += ev.text; render(reply, answer); log.scrollTop = log.scrollHeight; status.textContent = ''; }
-              else if (ev?.type === 'tool') { status.textContent = TOOL_STATUS[ev.name] || 'Checking the shop…'; }
-              else if (ev?.type === 'products') { status.textContent = ''; if (reply.isConnected && !answer) reply.remove(); cards(ev.items); if (!reply.isConnected) log.append(reply); }
-              else if (ev?.type === 'error') { status.remove(); if (!answer) reply.remove(); bubble('error', ev.message); }
+              if (ev?.type === 'text') { answer += ev.text; render(ensureReply().el, answer); wait.status.textContent = ''; log.scrollTop = log.scrollHeight; }
+              else if (ev?.type === 'tool') { wait.status.textContent = TOOL_STATUS[ev.name] || 'checking the shop…'; }
+              else if (ev?.type === 'products') { wait.status.textContent = ''; cards(ev.items); }
+              else if (ev?.type === 'links') { chips(ev.items); }
+              else if (ev?.type === 'error') { wait.row.remove(); wait.status.remove(); if (reply && !answer) (reply as { row: HTMLElement }).row.remove(); bubble('error', ev.message); }
             }
             i = buf.indexOf('\n\n');
           }
         }
-        status.remove();
-        if (answer) { turns.push({ role: 'assistant', content: answer }); persist(); } else if (reply.isConnected) reply.remove();
+        wait.row.remove(); wait.status.remove();
+        if (answer) { turns.push({ role: 'assistant', content: answer }); persist(); } else if (reply) (reply as { row: HTMLElement }).row.remove();
       } catch {
-        status.remove(); if (!answer) reply.remove(); bubble('error', 'The connection dropped. Please ask again.');
+        wait.row.remove(); wait.status.remove(); if (reply && !answer) (reply as { row: HTMLElement }).row.remove(); bubble('error', 'The connection dropped. Ask me again?');
       } finally { busy = false; send.disabled = false; input.focus(); }
     };
 

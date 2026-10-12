@@ -84,35 +84,38 @@ export async function answerDeterministically(c: Classification): Promise<Determ
   const link = (label: string, path: string): Link => ({ label, url: `${SITE_ORIGIN}${path}` });
   switch (c.intent) {
     case 'GREETING':
-      return { intent: c.intent, text: 'Hello. Ask me about a product, a price, a phone battery, delivery or the shop. For an order, use Track my order or WhatsApp.', products: [], links: [link('Browse the shop', '/shop'), link('Battery finder', '/battery-finder')] };
+      return { intent: c.intent, text: 'Hello, you are welcome. Ask me about a product, a price, a battery for your phone, delivery or the shop, and I will check for you. For anything about an order, the Track my order page or WhatsApp is quickest.', products: [], links: [link('Browse the shop', '/shop'), link('Battery finder', '/battery-finder')] };
     case 'STORE': {
       const out = await callTool('store_info', {});
-      return { intent: c.intent, text: toolTextOf(out), products: [], links: [{ label: 'Open the map', url: String(structured(out).map ?? biz.mapUrl) }, wa] };
+      const s = structured(out);
+      const b = biz as { openDays?: string; shopHours?: string; phoneDisplay?: string };
+      const text = `We are on the 4th floor of the Zainab Aziza Building on Burton Street, opposite Pioneer Mall and next to Uhuru Restaurant.${b.openDays && b.shopHours ? ` We are open ${b.openDays}, ${b.shopHours}.` : ''}${b.phoneDisplay ? ` Call or WhatsApp us on ${b.phoneDisplay} before you come, if you like.` : ''}`;
+      return { intent: c.intent, text, products: [], links: [{ label: 'Open the map', url: String(s.map ?? biz.mapUrl) }, wa] };
     }
     case 'DELIVERY': {
       const out = await callTool('store_info', {});
       const s = structured(out);
       const elsewhere = /\b(mbarara|gulu|jinja|mbale|lira|arua|fort portal|masaka|soroti|hoima|kabale|upcountry|up-country|outside kampala)\b/i.test(c.query);
-      const text = `${String(s.delivery ?? biz.deliveryNote)} An estimated delivery fee for your address is shown at checkout before you pay and confirmed before the rider leaves.${elsewhere ? ' For places outside Kampala and Wakiso, check with us on WhatsApp before you order.' : ''}`;
+      const text = `Yes, we deliver. ${String(s.delivery ?? biz.deliveryNote)} An estimated delivery fee for your address is shown at checkout before you pay and confirmed before the rider leaves.${elsewhere ? ' For places outside Kampala and Wakiso, message us on WhatsApp first and we will tell you what is possible.' : ''}`;
       return { intent: c.intent, text, products: [], links: [link('Delivery in Kampala and Wakiso', '/delivery/kampala-wakiso'), wa] };
     }
     case 'PAYMENT': {
       const copy = (await getStorefrontCopy()).payment;
-      const text = `Two ways to pay at checkout. ${copy.pesapal.label}: ${copy.pesapal.description} ${copy.offline.label}: ${copy.offline.description} We never ask for your PIN or OTP in this chat, and we cannot confirm a payment here; if money left your phone and the order still says pending, message us on WhatsApp with the order reference.`;
+      const text = `You can pay two ways at checkout. ${copy.pesapal.label}: ${copy.pesapal.description} Or ${copy.offline.label.toLowerCase()}: ${copy.offline.description} One thing to know: we never ask for your PIN or OTP in this chat, and I cannot confirm a payment from here. If money left your phone and the order still says pending, send us the order reference on WhatsApp and a person will sort it out.`;
       return { intent: c.intent, text, products: [], links: [link('Payment questions', '/faq'), wa] };
     }
     case 'ORDER':
-      return { intent: c.intent, text: 'I cannot open orders in this chat. Use Track my order with your order reference and the phone number or email you used at checkout. For anything else about an order, message us on WhatsApp.', products: [], links: [link('Track my order', '/track-order'), wa] };
+      return { intent: c.intent, text: 'I cannot open orders from this chat, so your details stay private. The Track my order page shows it with your order reference and the phone number or email you used at checkout. For anything else about an order, message us on WhatsApp and a person will help.', products: [], links: [link('Track my order', '/track-order'), wa] };
     case 'POLICY': {
       if (/\b(fake|genuine|original|verify|verification|authentic|counterfeit)\b/i.test(c.query)) {
-        return { intent: c.intent, text: 'You can check a GoldPlus product on the verification page. I cannot confirm authenticity in chat; the page is the check. If you think you were sold a fake, report it on the support page.', products: [], links: [link('Verify a product', '/verification'), link('Report a fake', '/support/fake'), wa] };
+        return { intent: c.intent, text: 'Every GoldPlus product has a code under the hologram on the pack. Enter it on the verification page and it tells you straight away. I cannot confirm authenticity in chat; the page is the check. If you think you were sold a fake, please report it so we can follow up.', products: [], links: [link('Verify a product', '/verification'), link('Report a fake', '/support/fake'), wa] };
       }
-      return { intent: c.intent, text: 'Warranty cover depends on the product, and our team checks the item before any replacement or refund; nothing is approved in this chat. The warranty page explains what is covered and the steps, and the returns page explains returns. If your item has stopped working, start there or message us on WhatsApp.', products: [], links: [link('Warranty', '/warranty'), link('Returns', '/returns'), wa] };
+      return { intent: c.intent, text: 'Sorry to hear that. Warranty cover depends on the product, and our team checks the item before any replacement or refund, so nothing is approved in this chat. The warranty page explains what is covered and the steps, and the returns page covers returns. If you would rather talk to someone, message us on WhatsApp with your order number.', products: [], links: [link('Warranty', '/warranty'), link('Returns', '/returns'), wa] };
     }
     case 'BULK':
-      return { intent: c.intent, text: 'For bulk or business orders, the bulk page builds a quote from the live catalogue, and the quote request page sends it to the shop. Prices in this chat are single-unit prices.', products: [], links: [link('Bulk buying', '/bulk'), link('Request a quote', '/quote-request'), wa] };
+      return { intent: c.intent, text: 'For a bulk or business order, the bulk page builds your list from the live catalogue and the quote request sends it to our sales team. The prices I quote here are single-unit prices; the team confirms the bulk price.', products: [], links: [link('Bulk buying', '/bulk'), link('Request a quote', '/quote-request'), wa] };
     case 'BATTERY': {
-      if (!c.query) return { intent: c.intent, text: 'Tell me the phone model, for example Tecno Spark 7, or the battery code printed on the old battery, for example BL-49FT.', products: [], links: [link('Battery finder', '/battery-finder')] };
+      if (!c.query) return { intent: c.intent, text: 'Happy to check. Tell me the phone model, for example Tecno Spark 7, or the code printed on the old battery, for example BL-49FT.', products: [], links: [link('Battery finder', '/battery-finder')] };
       const out = await callTool('find_battery', { phone_or_code: c.query });
       const s = structured(out);
       const kind = String(s.kind ?? '');
@@ -124,30 +127,30 @@ export async function answerDeterministically(c: Classification): Promise<Determ
           name: String(r.name ?? ''), url: `${SITE_ORIGIN}/products/${String(r.slug ?? '')}`, sku: r.canonicalCode == null ? null : String(r.canonicalCode),
           price_ugx: r.priceUgx == null ? null : Number(r.priceUgx), availability: r.inStock ? 'in_stock' : 'out_of_stock', image: r.imageUrl ? String(r.imageUrl) : null, note: String(r.fitLabel ?? ''),
         })).filter((p) => p.name);
-        if (!products.length) return { intent: c.intent, text: `We have not matched a battery to the ${String(device.label ?? c.query)} yet. Send us the model number on WhatsApp and we will confirm the right one.`, products: [], links };
+        if (!products.length) return { intent: c.intent, text: `We have not matched a battery to the ${String(device.label ?? c.query)} yet, so I will not guess. Send us the model number on WhatsApp and we will confirm the right one.`, products: [], links };
         const awaiting = results.some((r) => r.fitState === 'AWAITING_VERIFICATION');
-        return { intent: c.intent, text: `For the ${String(device.label ?? c.query)}: ${products.length === 1 ? '1 battery' : `${products.length} batteries`} listed.${awaiting ? ' A fit marked "not yet checked" is listed by the supplier; we confirm the fit before you pay.' : ''}`, products, links };
+        return { intent: c.intent, text: `For the ${String(device.label ?? c.query)} we have ${products.length === 1 ? 'one battery' : `${products.length} batteries`} listed.${awaiting ? ' Where it says "not yet checked", the fit is listed by the supplier; we confirm the fit before you pay.' : ''}`, products, links };
       }
       if (kind === 'AMBIGUOUS_DEVICE' || kind === 'SUGGESTIONS') {
         const devices = Array.isArray(s.devices) ? (s.devices as Json[]).slice(0, 6).map((d) => String(d.label ?? '')) : [];
-        return { intent: c.intent, text: `${devices.length ? `${CLARIFY_PHONE} ${devices.join(', ')}.` : 'I could not match that phone.'} Your exact model number is in Settings under About phone.`, products: [], links };
+        return { intent: c.intent, text: `${devices.length ? `${CLARIFY_PHONE} ${devices.join(', ')}.` : 'I could not match that phone.'} The exact model is in Settings under About phone, if you want to check.`, products: [], links };
       }
       if (kind === 'BATTERY') {
         const b = (s.battery as Json) ?? {};
         const products: ProductCard[] = b.name ? [{ name: String(b.name), url: `${SITE_ORIGIN}/products/${String(b.slug ?? '')}`, sku: b.canonicalCode == null ? null : String(b.canonicalCode), price_ugx: b.priceUgx == null ? null : Number(b.priceUgx), availability: b.inStock ? 'in_stock' : 'out_of_stock', image: b.imageUrl ? String(b.imageUrl) : null, note: String(b.fitLabel ?? '') }] : [];
-        return { intent: c.intent, text: products.length ? `Battery ${String(b.canonicalCode ?? c.query)} found.` : toolTextOf(out), products, links };
+        return { intent: c.intent, text: products.length ? `Found it: battery ${String(b.canonicalCode ?? c.query)}.` : toolTextOf(out), products, links };
       }
-      return { intent: c.intent, text: toolTextOf(out) || 'I could not find that battery. Use the battery finder or ask us on WhatsApp.', products: [], links };
+      return { intent: c.intent, text: toolTextOf(out) || 'I could not find that battery on the shelf. Try the battery finder, or ask us on WhatsApp with your phone model.', products: [], links };
     }
     case 'PRODUCT': {
       const query = c.query || 'accessories';
       const out = await callTool('search_products', { query, limit: 5 });
       const products = cardsFromProducts(structured(out).products);
-      if (!products.length) return { intent: c.intent, text: `No GoldPlus product matched "${query}". Try the product code (SKU), fewer words, or browse the shop.`, products: [], links: [link('Browse the shop', '/shop'), wa] };
-      return { intent: c.intent, text: `${products.length === 1 ? '1 product matches' : `${products.length} products match`} "${query}". Prices are today's prices; stock is shown on each card.`, products, links: [link('See all results', `/shop?q=${encodeURIComponent(query)}`)] };
+      if (!products.length) return { intent: c.intent, text: `No GoldPlus product matched "${query}". Try the product code, fewer words, or have a look through the shop.`, products: [], links: [link('Browse the shop', '/shop'), wa] };
+      return { intent: c.intent, text: `${products.length === 1 ? 'Here is what we have' : `Here is what we have, ${products.length} options`} for "${query}". Prices are today's prices and stock is on each card.`, products, links: [link('See all results', `/shop?q=${encodeURIComponent(query)}`)] };
     }
     default:
-      return { intent: 'UNKNOWN', text: 'I can help you find products, check a price or a phone battery, and explain delivery and payment. For anything else, message us on WhatsApp.', products: [], links: [wa] };
+      return { intent: 'UNKNOWN', text: 'I can help you find a product, check a price or a phone battery, and explain delivery and payment. For anything else, our team is on WhatsApp.', products: [], links: [wa] };
   }
 }
 
@@ -168,4 +171,4 @@ export function isClarificationReply(turns: ReadonlyArray<{ role: 'user' | 'assi
 }
 
 /** What the customer sees when paid AI is not available for this turn (mandate §5A.F wording). */
-export const SOFT_LIMIT_TEXT = 'I can still help you find products and check delivery. For more detailed questions, please try again shortly or contact our team.';
+export const SOFT_LIMIT_TEXT = 'I can still help you find products and check delivery. For the more detailed questions, give me a little while and try again, or our team can answer on WhatsApp.';
