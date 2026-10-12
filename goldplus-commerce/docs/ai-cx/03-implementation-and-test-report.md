@@ -85,6 +85,9 @@ limits; ledger refuses past kill under concurrency; stale reservations stay coun
 routes need the internal key; admin PUT needs `settings.manage`, audits, and 409s on a stale version;
 non-site links render as text. Unresolved: four-and-reset is not detected, only contained (02c).
 
-## Final suite run (after commit, clean tree)
+## Final suite run (after commit, clean tree, 2026-10-12 15:10 local)
 
-Filled in below by the run recorded in the pull request description.
+- `pnpm vitest run tests/unit tests/architecture`: **658 files, 10,089 passed, 9 skipped, 0 failed**.
+- `pnpm security:scan-secrets`: passed (2,886 files). `scripts/release/claude/verify-migration-parity.mjs`: PASSED (175/175).
+- `astro build` (web) under Node 22.23.3: complete in 22.9 s; `pnpm -F @goldplus/api build`: complete.
+- Not run locally: semgrep (not installed), Playwright e2e, `pnpm audit`; CI runs them on the `claude/assistant-mandate` copy.
