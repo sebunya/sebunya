@@ -132,7 +132,7 @@ async function* readTurn(body: ReadableStream<Uint8Array>, onBlock: (b: ContentB
       }
       case 'error': {
         const err = (ev.error as Json) ?? {};
-        throw new Error(`stream error: ${String(err.type ?? 'unknown')}: ${String(err.message ?? '')}`);
+        throw new Error('stream error: ' + String(err.type ?? 'unknown') + ': ' + String(err.message ?? ''));
       }
       default:
         return null;
@@ -214,7 +214,7 @@ export async function* runAssistant(turns: ChatTurn[], opts: AssistantOptions): 
     }
     if (!res.ok || !res.body) {
       const detail = await res.text().catch(() => '');
-      console.error(`[assistant] upstream ${res.status}: ${detail.slice(0, 300)}`);
+      console.error('[assistant] upstream failed', res.status, detail.slice(0, 300));
       if (res.status === 429 || res.status === 529) yield { type: 'error', code: 'BUSY', message: 'The assistant is busy right now. Please try again in a minute.' };
       else yield { type: 'error', code: 'UNAVAILABLE', message: 'The assistant is not available just now. Please try again in a moment.' };
       return;
@@ -270,7 +270,7 @@ export async function* runAssistant(turns: ChatTurn[], opts: AssistantOptions): 
           content = textOut || JSON.stringify(out.structuredContent ?? {});
           isError = out.isError === true;
         } catch (e) {
-          console.error(`[assistant] tool ${name} failed`, e instanceof Error ? e.message : e);
+          console.error('[assistant] tool failed', name, e instanceof Error ? e.message : e);
           content = 'The shop could not be reached for that just now.';
           isError = true;
         }
