@@ -52,7 +52,9 @@ const enabled = assistantEnabled();
   </div>
 )}
 
-<style>
+<style is:global>
+  /* Global on purpose: the script creates the message bubbles after render,
+     and Astro's scoped styles only reach elements present in the template. */
   .gp-assistant { --gp-green: #93d500; --gp-ink: #0a0a0a; font-family: inherit; }
   .gp-assistant__launch {
     position: fixed; right: max(1rem, env(safe-area-inset-right)); bottom: calc(max(1rem, env(safe-area-inset-bottom)) + 64px);
@@ -83,6 +85,7 @@ const enabled = assistantEnabled();
   .gp-assistant__msg--bot a { color: #456b00; font-weight: 700; text-decoration: underline; }
   .gp-assistant__msg--status { align-self: flex-start; font-size: .75rem; color: #6b6b6b; padding: .1rem .2rem; }
   .gp-assistant__msg--error { align-self: flex-start; background: #fff4f4; border: 1px solid #f3c2c2; color: #8a1f1f; }
+  .gp-assistant__starters[hidden] { display: none; }
   .gp-assistant__starters { display: flex; flex-wrap: wrap; gap: .4rem; padding: .5rem 1rem 0; background: #f7f7f7; }
   .gp-assistant__starters button { border: 1px solid #d9d9d9; background: #fff; border-radius: 9999px; padding: .35rem .7rem; font-size: .75rem; font-weight: 700; cursor: pointer; }
   .gp-assistant__form { display: flex; gap: .5rem; padding: .75rem 1rem; border-top: 1px solid #e5e5e5; background: #fff; }
