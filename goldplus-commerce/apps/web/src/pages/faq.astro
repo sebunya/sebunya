@@ -23,7 +23,7 @@ const cutoff = `${biz.sameDayCutoffHour % 12 || 12}${biz.sameDayCutoffHour >= 12
 const faqs: Array<{ q: string; a: string; links?: Array<{ label: string; href: string }> }> = [
   {
     q: 'Do you deliver, and how long does it take?',
-    a: `${biz.deliveryNote} Delivery runs ${biz.deliveryHours}, ${biz.openDays}. Order before ${cutoff} and your order goes out on the same day's run; after that it goes on the next one. The delivery fee is calculated for your address and shown before you pay — never added afterwards.`,
+    a: `${biz.deliveryNote} Delivery runs ${biz.deliveryHours}, ${biz.openDays}. Order before ${cutoff} and your order goes out on the same day's run; after that it goes on the next one. An estimated delivery fee for your address is shown at checkout before you pay, and confirmed before the rider leaves; nothing is added after delivery.`,
     links: [{ label: 'Delivery details', href: '/delivery/kampala-wakiso' }],
   },
   {
@@ -42,8 +42,28 @@ const faqs: Array<{ q: string; a: string; links?: Array<{ label: string; href: s
   },
   {
     q: 'Are GoldPlus products genuine, and what if something is faulty?',
-    a: `GoldPlus is the brand as well as the shop: the products are GoldPlus-branded, and every unit is tested before it is sold. Product pages list the maker's own specifications. If a product is faulty, we replace it or refund you, and GoldPlus pays the cost of getting it back to us — tell support what the fault is, with your order number. Changed your mind instead? Return it unused and complete within ${RETURNS_POLICY.windowDays} days of delivery or collection, and the refund goes back the way you paid; for a change-of-mind return the carriage back to us is yours.`,
+    a: `GoldPlus is the brand as well as the shop: the products are GoldPlus-branded, and you can check the code from the security hologram on the verification page. Product pages list the maker's own specifications. If a product is faulty, we replace it or refund you, and GoldPlus pays the cost of getting it back to us — tell support what the fault is, with your order number. Changed your mind instead? Return it unused and complete within ${RETURNS_POLICY.windowDays} days of delivery or collection, and the refund goes back the way you paid; for a change-of-mind return the carriage back to us is yours.`,
     links: [{ label: 'Warranty', href: '/warranty' }, { label: 'Returns', href: '/returns' }, { label: 'Contact support', href: '/support' }],
+  },
+  {
+    q: 'Does a larger wattage number mean faster charging for every phone?',
+    a: 'No. The charger, the cable and the phone must support the same charging mode. For a charger with several ports, check the rating for the port you use and any shared-output limit printed on the label.',
+    links: [{ label: 'Chargers', href: '/power/chargers' }, { label: 'Charging cables', href: '/power/charging-cables' }],
+  },
+  {
+    q: 'Does 3A on a cable mean USB 3.0?',
+    a: 'No. Amps describe electrical current. USB data speed is a separate specification. A cable marked 3A does not, by itself, establish USB 3.0 data transfer.',
+    links: [{ label: 'Charging cables', href: '/power/charging-cables' }],
+  },
+  {
+    q: 'Will a magnetic power bank work with my phone?',
+    a: 'Wireless charging and magnetic attachment are separate questions. Check that your phone supports the relevant wireless charging method and that your phone or its case supports magnetic attachment. Ask us about the exact model before ordering.',
+    links: [{ label: 'Power banks', href: '/power/power-banks' }],
+  },
+  {
+    q: 'Why are two capacities printed on a battery label?',
+    a: 'Some labels list both a rated capacity and a typical capacity. Keep those values separate when comparing batteries, and match the exact battery code and phone model first; capacity alone does not establish the fit.',
+    links: [{ label: 'Phone batteries', href: '/phone-batteries' }],
   },
 ];
 
@@ -60,12 +80,12 @@ const faqJsonLd = {
 };
 const crumbs = breadcrumbJsonLd([
   { name: 'GoldPlus', url: SITE_ORIGIN },
-  { name: 'Questions and answers', url: canonical },
+  { name: 'Shopping questions and product help', url: canonical },
 ]);
 ---
 <BaseLayout
-  title="Questions and answers"
-  description="Delivery, the shop address and hours, finding the battery that fits your phone, how to pay, and what happens if something is faulty."
+  title="Shopping Questions & Product Help | GoldPlus"
+  description="Answers about product fit, connections, delivery, verification and support. Follow the relevant GoldPlus product or policy page for details."
   canonicalUrl={canonical}
 >
   <Fragment slot="head">
@@ -76,7 +96,7 @@ const crumbs = breadcrumbJsonLd([
   <div class="bg-white">
     <section class="border-b border-slate-100 bg-gradient-to-b from-slate-50 to-white py-12 sm:py-16">
       <div class="container mx-auto max-w-3xl px-4 lg:px-8">
-        <h1 class="text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">Questions and answers</h1>
+        <h1 class="text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">Questions about choosing and ordering</h1>
         <p class="mt-3 text-base leading-relaxed text-slate-600">
           The things people ask us most, answered plainly. If yours is not here,
           <a href="/support" class="font-bold text-brand-primaryInk underline underline-offset-2">ask support</a> —

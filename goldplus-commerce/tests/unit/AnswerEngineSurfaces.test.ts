@@ -80,7 +80,7 @@ describe('the FAQ answers from the site\'s own commitments', () => {
     expect(src).toContain("'@type': 'FAQPage'");
     expect(src).toContain('mainEntity: faqs.map');
     expect(src).toContain('{faqs.map((f) => (');
-    expect((src.match(/^\s*q: '/gm) ?? []).length).toBe(5);
+    expect((src.match(/^\s*q: '/gm) ?? []).length).toBe(9);
   });
 
   it('states the owner-set returns policy from the one constant', () => {

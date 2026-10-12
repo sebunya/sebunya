@@ -54,7 +54,7 @@ const breadcrumbs = serializeJsonLd(
   ]),
 );
 ---
-<BaseLayout title={post.seoTitle ? `${post.seoTitle} | GoldPlus` : `${post.title} | GoldPlus`} description={description} canonicalUrl={canonical} image={post.coverImageUrl ?? undefined}>
+<BaseLayout title={post.seoTitle || post.title} description={description} canonicalUrl={canonical} image={post.coverImageUrl ?? undefined}>
   <Fragment slot="head">
     <script type="application/ld+json" set:html={jsonLd} />
     <script type="application/ld+json" set:html={breadcrumbs} />

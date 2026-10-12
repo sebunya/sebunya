@@ -1,0 +1,1836 @@
+{
+  "$comment": "Product metadata REVIEW QUEUE from the website copy/SEO handoff V2 (2026-10-12). Candidates only: nothing here is verified stock data. Titles are complete strings (the site template adds the brand once). Descriptions were cut at ~160 chars in the handoff and some carry a price that must come from live data, never from this file. State RETAIN_CURRENT_REVIEW_ONLY = no change proposed. Use scripts/review-seo-metadata.ts to diff against live products; it never writes.",
+  "preparedAt": "2026-10-12",
+  "records": [
+    {
+      "sku": "GP-BAT-30RT",
+      "url": "https://shopgoldplus.com/products/30-rt-battery",
+      "slug": "30-rt-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-30 RT",
+      "descriptionCandidate": "GoldPlus Battery GP-30 RT for UGX 40,000, in stock. Replacement phone battery, pack code 30 RT. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-4L",
+      "url": "https://shopgoldplus.com/products/4l-battery",
+      "slug": "4l-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-4L",
+      "descriptionCandidate": "GoldPlus Battery GP-4L for UGX 18,000, in stock. Replacement phone battery, pack code 4L. Match it to the code on your old battery; we confirm the fit before…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-4U",
+      "url": "https://shopgoldplus.com/products/4u-battery",
+      "slug": "4u-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-4U",
+      "descriptionCandidate": "GoldPlus Battery GP-4U for UGX 18,000, in stock. Replacement phone battery, pack code 4U. Match it to the code on your old battery; we confirm the fit before…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-4UL",
+      "url": "https://shopgoldplus.com/products/4ul-battery",
+      "slug": "4ul-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-4UL",
+      "descriptionCandidate": "GoldPlus Battery GP-4UL for UGX 18,000, in stock. Replacement phone battery, pack code 4UL. Match it to the code on your old battery; we confirm the fit before…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-5C",
+      "url": "https://shopgoldplus.com/products/5c-battery",
+      "slug": "5c-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-5C",
+      "descriptionCandidate": "GoldPlus Battery GP-5C for UGX 10,000, in stock. Replacement phone battery, pack code 5C. Match it to the code on your old battery; we confirm the fit before…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-A02SA03S",
+      "url": "https://shopgoldplus.com/products/a02s-a03s-battery",
+      "slug": "a02s-a03s-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Replacement Battery A02S/A03S — fits the A02s and A03s",
+      "descriptionCandidate": "GoldPlus Replacement Battery A02S/A03S — fits the A02s and A03s for UGX 40,000, in stock. Replacement battery for the A02s and A03s, model A02S/A03S. Tested…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-A03CORE",
+      "url": "https://shopgoldplus.com/products/a03-core-battery",
+      "slug": "a03-core-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Replacement Battery A03 CORE — fits the A03 Core",
+      "descriptionCandidate": "GoldPlus Replacement Battery A03 CORE — fits the A03 Core for UGX 40,000, in stock. Replacement battery for the A03 Core, model A03 CORE. Tested before sale…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-A10SA20S",
+      "url": "https://shopgoldplus.com/products/a10s-a20s-battery",
+      "slug": "a10s-a20s-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Replacement Battery A10S/A20S — fits the A10s and A20s",
+      "descriptionCandidate": "GoldPlus Replacement Battery A10S/A20S — fits the A10s and A20s for UGX 40,000, in stock. Replacement battery for the A10s and A20s, model A10S/A20S. Tested…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-A10S",
+      "url": "https://shopgoldplus.com/products/a10s-battery",
+      "slug": "a10s-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Replacement Battery A10S — fits the A10s",
+      "descriptionCandidate": "GoldPlus Replacement Battery A10S — fits the A10s for UGX 40,000, in stock. Replacement battery for the A10s, model A10S. Tested before sale; fit confirmed…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-A11BLP727",
+      "url": "https://shopgoldplus.com/products/a11-blp727-battery",
+      "slug": "a11-blp727-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Replacement Battery A11/BLP727 — fits the A11 (BLP727 pack)",
+      "descriptionCandidate": "GoldPlus Replacement Battery A11/BLP727 — fits the A11 (BLP727 pack) for UGX 40,000, in stock. Replacement battery for the A11 (BLP727 pack), model A11/BLP727…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-A12A21S",
+      "url": "https://shopgoldplus.com/products/a12-a21s-battery",
+      "slug": "a12-a21s-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Replacement Battery A12/A21S — fits the A12 and A21s",
+      "descriptionCandidate": "GoldPlus Replacement Battery A12/A21S — fits the A12 and A21s for UGX 40,000, in stock. Replacement battery for the A12 and A21s, model A12/A21S. Tested before…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-A20A30A50",
+      "url": "https://shopgoldplus.com/products/a20-a30-a50-battery",
+      "slug": "a20-a30-a50-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Replacement Battery A20/A30/A50 — fits the A20, A30 and A50",
+      "descriptionCandidate": "GoldPlus Replacement Battery A20/A30/A50 — fits the A20, A30 and A50 for UGX 40,000, in stock. Replacement battery for the A20, A30 and A50, model A20/A30/A50…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-A325G",
+      "url": "https://shopgoldplus.com/products/a32-5g-battery",
+      "slug": "a32-5g-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Replacement Battery A32/5G — fits the A32 5G",
+      "descriptionCandidate": "GoldPlus Replacement Battery A32/5G — fits the A32 5G for UGX 40,000, in stock. Replacement battery for the A32 5G, model A32/5G. Tested before sale; fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL10BI",
+      "url": "https://shopgoldplus.com/products/bl-10bi-battery",
+      "slug": "bl-10bi-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-10BI",
+      "descriptionCandidate": "GoldPlus Battery GP-10BI for UGX 18,000, in stock. Replacement phone battery, pack code BL-10BI. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL10CI",
+      "url": "https://shopgoldplus.com/products/bl-10ci-battery",
+      "slug": "bl-10ci-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-10CI",
+      "descriptionCandidate": "GoldPlus Battery GP-10CI for UGX 18,000, in stock. Replacement phone battery, pack code BL-10CI. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL11CT",
+      "url": "https://shopgoldplus.com/products/bl-11ct-battery",
+      "slug": "bl-11ct-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-11CT",
+      "descriptionCandidate": "GoldPlus Battery GP-11CT for UGX 18,000, in stock. Replacement phone battery, pack code BL-11CT. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL11DI",
+      "url": "https://shopgoldplus.com/products/bl-11di-battery",
+      "slug": "bl-11di-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-11DI",
+      "descriptionCandidate": "GoldPlus Battery GP-11DI for UGX 18,000, in stock. Replacement phone battery, pack code BL-11DI. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL11GT",
+      "url": "https://shopgoldplus.com/products/bl-11gt-battery",
+      "slug": "bl-11gt-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-11GT",
+      "descriptionCandidate": "GoldPlus Battery GP-11GT for UGX 18,000, in stock. Replacement phone battery, pack code BL-11GT. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL15BI",
+      "url": "https://shopgoldplus.com/products/bl-15bi-battery",
+      "slug": "bl-15bi-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-15BI",
+      "descriptionCandidate": "GoldPlus Battery GP-15BI for UGX 18,000, in stock. Replacement phone battery, pack code BL-15BI. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL15DI",
+      "url": "https://shopgoldplus.com/products/bl-15di-battery",
+      "slug": "bl-15di-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-15DI",
+      "descriptionCandidate": "GoldPlus Battery GP-15DI for UGX 18,000, in stock. Replacement phone battery, pack code BL-15DI. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL15FI",
+      "url": "https://shopgoldplus.com/products/bl-15fi-battery",
+      "slug": "bl-15fi-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-15FI",
+      "descriptionCandidate": "GoldPlus Battery GP-15FI for UGX 18,000, in stock. Replacement phone battery, pack code BL-15FI. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL15HI",
+      "url": "https://shopgoldplus.com/products/bl-15hi-battery",
+      "slug": "bl-15hi-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-15HI",
+      "descriptionCandidate": "GoldPlus Battery GP-15HI for UGX 18,000, in stock. Replacement phone battery, pack code BL-15HI. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL19CI",
+      "url": "https://shopgoldplus.com/products/bl-19ci-battery",
+      "slug": "bl-19ci-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-19CI",
+      "descriptionCandidate": "GoldPlus Battery GP-19CI for UGX 18,000, in stock. Replacement phone battery, pack code BL-19CI. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL20JT",
+      "url": "https://shopgoldplus.com/products/bl-20jt-battery",
+      "slug": "bl-20jt-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-20JT",
+      "descriptionCandidate": "GoldPlus Battery GP-20JT for UGX 18,000, in stock. Replacement phone battery, pack code BL-20JT. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL20NT",
+      "url": "https://shopgoldplus.com/products/bl-20nt-battery",
+      "slug": "bl-20nt-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-20NT",
+      "descriptionCandidate": "GoldPlus Battery GP-20NT for UGX 18,000, in stock. Replacement phone battery, pack code BL-20NT. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL24ET",
+      "url": "https://shopgoldplus.com/products/bl-24et-battery",
+      "slug": "bl-24et-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-24ET",
+      "descriptionCandidate": "GoldPlus Battery GP-24ET for UGX 18,000, in stock. Replacement phone battery, pack code BL-24ET. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL25BI",
+      "url": "https://shopgoldplus.com/products/bl-25bi-battery",
+      "slug": "bl-25bi-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-25BI",
+      "descriptionCandidate": "GoldPlus Battery GP-25BI for UGX 18,000, in stock. Replacement phone battery, pack code BL-25BI. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL25JT",
+      "url": "https://shopgoldplus.com/products/bl-25jt-battery",
+      "slug": "bl-25jt-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-25JT",
+      "descriptionCandidate": "GoldPlus Battery GP-25JT for UGX 18,000, in stock. Replacement phone battery, pack code BL-25JT. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL28AT",
+      "url": "https://shopgoldplus.com/products/bl-28at-battery",
+      "slug": "bl-28at-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-28AT",
+      "descriptionCandidate": "GoldPlus Battery GP-28AT for UGX 18,000, in stock. Replacement phone battery, pack code BL-28AT. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL29BT",
+      "url": "https://shopgoldplus.com/products/bl-29bt-battery",
+      "slug": "bl-29bt-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-29BT",
+      "descriptionCandidate": "GoldPlus Battery GP-29BT for UGX 18,000, in stock. Replacement phone battery, pack code BL-29BT. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL29CI",
+      "url": "https://shopgoldplus.com/products/bl-29ci-battery",
+      "slug": "bl-29ci-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-29CI",
+      "descriptionCandidate": "GoldPlus Battery GP-29CI for UGX 18,000, in stock. Replacement phone battery, pack code BL-29CI. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL29FT",
+      "url": "https://shopgoldplus.com/products/bl-29ft-battery",
+      "slug": "bl-29ft-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-29FT",
+      "descriptionCandidate": "GoldPlus Battery GP-29FT for UGX 18,000, in stock. Replacement phone battery, pack code BL-29FT. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL32AT",
+      "url": "https://shopgoldplus.com/products/bl-32at-battery",
+      "slug": "bl-32at-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-32AT CX",
+      "descriptionCandidate": "GoldPlus Battery GP-32AT CX for UGX 40,000, in stock. Replacement phone battery, pack code BL-32AT. Match it to the code on your old battery; we confirm the…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL34CT",
+      "url": "https://shopgoldplus.com/products/bl-34ct-battery",
+      "slug": "bl-34ct-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-34CT",
+      "descriptionCandidate": "GoldPlus Battery GP-34CT for UGX 40,000, in stock. Replacement phone battery, pack code BL-34CT. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL34ET",
+      "url": "https://shopgoldplus.com/products/bl-34et-battery",
+      "slug": "bl-34et-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-34ET",
+      "descriptionCandidate": "GoldPlus Battery GP-34ET for UGX 18,000, in stock. Replacement phone battery, pack code BL-34ET. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL36BT",
+      "url": "https://shopgoldplus.com/products/bl-36bt-battery",
+      "slug": "bl-36bt-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-36BT",
+      "descriptionCandidate": "GoldPlus Battery GP-36BT for UGX 40,000, in stock. Replacement phone battery, pack code BL-36BT. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL38AT",
+      "url": "https://shopgoldplus.com/products/bl-38at-battery",
+      "slug": "bl-38at-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-38AT",
+      "descriptionCandidate": "GoldPlus Battery GP-38AT for UGX 40,000, in stock. Replacement phone battery, pack code BL-38AT. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL38BT",
+      "url": "https://shopgoldplus.com/products/bl-38bt-battery",
+      "slug": "bl-38bt-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-38BT",
+      "descriptionCandidate": "GoldPlus Battery GP-38BT for UGX 18,000, in stock. Replacement phone battery, pack code BL-38BT. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL38CT",
+      "url": "https://shopgoldplus.com/products/bl-38ct-battery",
+      "slug": "bl-38ct-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Replacement Battery BL-38CT — fits the Pop 6",
+      "descriptionCandidate": "GoldPlus Replacement Battery BL-38CT — fits the Pop 6 for UGX 18,000, in stock. Replacement battery for the Pop 6, model BL-38CT. Tested before sale; fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL39AX",
+      "url": "https://shopgoldplus.com/products/bl-39ax-battery",
+      "slug": "bl-39ax-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-39AX",
+      "descriptionCandidate": "GoldPlus Battery GP-39AX for UGX 40,000, in stock. Replacement phone battery, pack code BL-39AX. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL39EX",
+      "url": "https://shopgoldplus.com/products/bl-39ex-battery",
+      "slug": "bl-39ex-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-39EX",
+      "descriptionCandidate": "GoldPlus Battery GP-39EX for UGX 40,000, in stock. Replacement phone battery, pack code BL-39EX. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL39JX",
+      "url": "https://shopgoldplus.com/products/bl-39jx-battery",
+      "slug": "bl-39jx-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-39JX",
+      "descriptionCandidate": "GoldPlus Battery GP-39JX for UGX 40,000, in stock. Replacement phone battery, pack code BL-39JX. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL39KX",
+      "url": "https://shopgoldplus.com/products/bl-39kx-battery",
+      "slug": "bl-39kx-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-39KX",
+      "descriptionCandidate": "GoldPlus Battery GP-39KX for UGX 40,000, in stock. Replacement phone battery, pack code BL-39KX. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL43BX",
+      "url": "https://shopgoldplus.com/products/bl-43bx-battery",
+      "slug": "bl-43bx-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-43BX",
+      "descriptionCandidate": "GoldPlus Battery GP-43BX for UGX 40,000, in stock. Replacement phone battery, pack code BL-43BX. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL48BT",
+      "url": "https://shopgoldplus.com/products/bl-48bt-battery",
+      "slug": "bl-48bt-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-48BT",
+      "descriptionCandidate": "GoldPlus Battery GP-48BT for UGX 50,000, in stock. Replacement phone battery, pack code BL-48BT. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL49CI",
+      "url": "https://shopgoldplus.com/products/bl-49ci-battery",
+      "slug": "bl-49ci-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-49CI",
+      "descriptionCandidate": "GoldPlus Battery GP-49CI for UGX 50,000, in stock. Replacement phone battery, pack code BL-49CI. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL49DT",
+      "url": "https://shopgoldplus.com/products/bl-49dt-battery",
+      "slug": "bl-49dt-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-49DT",
+      "descriptionCandidate": "GoldPlus Battery GP-49DT for UGX 40,000, in stock. Replacement phone battery, pack code BL-49DT. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL49ET",
+      "url": "https://shopgoldplus.com/products/bl-49et-battery",
+      "slug": "bl-49et-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-49ET",
+      "descriptionCandidate": "GoldPlus Battery GP-49ET for UGX 40,000, in stock. Replacement phone battery, pack code BL-49ET. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL49FT",
+      "url": "https://shopgoldplus.com/products/bl-49ft-battery",
+      "slug": "bl-49ft-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-49FT",
+      "descriptionCandidate": "GoldPlus Battery GP-49FT for UGX 40,000, in stock. Replacement phone battery, pack code BL-49FT. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL49GX",
+      "url": "https://shopgoldplus.com/products/bl-49gx-battery",
+      "slug": "bl-49gx-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-49GX",
+      "descriptionCandidate": "GoldPlus Battery GP-49GX for UGX 40,000, in stock. Replacement phone battery, pack code BL-49GX. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL49JT",
+      "url": "https://shopgoldplus.com/products/bl-49jt-battery",
+      "slug": "bl-49jt-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-49JT",
+      "descriptionCandidate": "GoldPlus Battery GP-49JT for UGX 40,000, in stock. Replacement phone battery, pack code BL-49JT. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL49JX",
+      "url": "https://shopgoldplus.com/products/bl-49jx-battery",
+      "slug": "bl-49jx-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-49JX",
+      "descriptionCandidate": "GoldPlus Battery GP-49JX for UGX 40,000, in stock. Replacement phone battery, pack code BL-49JX. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL51BX",
+      "url": "https://shopgoldplus.com/products/bl-51bx-battery",
+      "slug": "bl-51bx-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-51BX",
+      "descriptionCandidate": "GoldPlus Battery GP-51BX for UGX 50,000, in stock. Replacement phone battery, pack code BL-51BX. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL58BT",
+      "url": "https://shopgoldplus.com/products/bl-58bt-battery",
+      "slug": "bl-58bt-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-58BT",
+      "descriptionCandidate": "GoldPlus Battery GP-58BT for UGX 50,000, in stock. Replacement phone battery, pack code BL-58BT. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL58BX",
+      "url": "https://shopgoldplus.com/products/bl-58bx-battery",
+      "slug": "bl-58bx-battery",
+      "state": "IDENTITY_HOLD_NO_AUTOMATIC_SPEC_OR_IMAGE_IMPORT",
+      "titleCandidate": "GoldPlus Battery GP-58BX",
+      "descriptionCandidate": "GoldPlus Battery GP-58BX for UGX 40,000, in stock. Replacement phone battery, pack code BL-58BX. Match it to the code on your old battery; we confirm the fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-BL681",
+      "url": "https://shopgoldplus.com/products/bl-681-battery",
+      "slug": "bl-681-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Replacement Battery BL-681 — fits the Oppo F9",
+      "descriptionCandidate": "GoldPlus Replacement Battery BL-681 — fits the Oppo F9 for UGX 40,000, in stock. Replacement battery for the Oppo F9, model BL-681. Tested before sale; fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-G530",
+      "url": "https://shopgoldplus.com/products/g530-battery",
+      "slug": "g530-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Replacement Battery G530 — fits phones that use the G530 pack",
+      "descriptionCandidate": "GoldPlus Replacement Battery G530 — fits phones that use the G530 pack for UGX 18,000, in stock. Replacement battery for phones that use the G530 pack, model…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-15GI4LT-BAT",
+      "url": "https://shopgoldplus.com/products/goldplus-battery-gp-15gi-4lt",
+      "slug": "goldplus-battery-gp-15gi-4lt",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-15GI/4LT",
+      "descriptionCandidate": "GoldPlus Battery GP-15GI/4LT for UGX 18,000, in stock. Replacement phone battery, pack code 15GI/4LT. Match it to the code on your old battery; we confirm the…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-34DT30VX-BAT",
+      "url": "https://shopgoldplus.com/products/goldplus-battery-gp-34dt-30vx",
+      "slug": "goldplus-battery-gp-34dt-30vx",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-34DT/30VX",
+      "descriptionCandidate": "GoldPlus Battery GP-34DT/30VX for UGX 40,000, in stock. Replacement phone battery, pack code 34DT/30VX. Match it to the code on your old battery; we confirm…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-39LT9-BAT",
+      "url": "https://shopgoldplus.com/products/goldplus-battery-gp-39lt9",
+      "slug": "goldplus-battery-gp-39lt9",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Replacement Battery GP-39LT9 — fits the Spark 4 and the A56",
+      "descriptionCandidate": "GoldPlus Replacement Battery GP-39LT9 — fits the Spark 4 and the A56 for UGX 40,000, in stock. Replacement battery for the Spark 4 and the A56, model GP-39LT9…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-49FX-BAT",
+      "url": "https://shopgoldplus.com/products/goldplus-battery-gp-49fx",
+      "slug": "goldplus-battery-gp-49fx",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Replacement Battery GP-49FX — fits the Pop 5 and the Smart 6 and 7",
+      "descriptionCandidate": "GoldPlus Replacement Battery GP-49FX — fits the Pop 5 and the Smart 6 and 7 for UGX 40,000, in stock. Replacement battery for the Pop 5 and the Smart 6 and 7…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-49LT49LX-BAT",
+      "url": "https://shopgoldplus.com/products/goldplus-battery-gp-49lt-49lx",
+      "slug": "goldplus-battery-gp-49lt-49lx",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Battery GP-49LT/49LX",
+      "descriptionCandidate": "GoldPlus Battery GP-49LT/49LX for UGX 40,000, in stock. Replacement phone battery, pack code 49LT/49LX. Match it to the code on your old battery; we confirm…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-A03A04-BAT",
+      "url": "https://shopgoldplus.com/products/goldplus-battery-gp-a03-a04",
+      "slug": "goldplus-battery-gp-a03-a04",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Replacement Battery GP-A03/A04 — fits the A03 and A04",
+      "descriptionCandidate": "GoldPlus Replacement Battery GP-A03/A04 — fits the A03 and A04 for UGX 40,000, in stock. Replacement battery for the A03 and A04, model GP-A03/A04. Tested…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-NOTE-4-EDGE-BAT",
+      "url": "https://shopgoldplus.com/products/goldplus-battery-gp-note-4-edge",
+      "slug": "goldplus-battery-gp-note-4-edge",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Replacement Battery GP-NOTE 4 EDGE — fits the Note 4 Edge",
+      "descriptionCandidate": "GoldPlus Replacement Battery GP-NOTE 4 EDGE — fits the Note 4 Edge for UGX 18,000, in stock. Replacement battery for the Note 4 Edge, model GP-NOTE 4 EDGE…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-NOTE-4-EDGE-PLUS-BAT",
+      "url": "https://shopgoldplus.com/products/goldplus-battery-gp-note-4-edge-plus",
+      "slug": "goldplus-battery-gp-note-4-edge-plus",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Replacement Battery GP-NOTE 4 EDGE PLUS — fits the Note 4 Edge Plus",
+      "descriptionCandidate": "GoldPlus Replacement Battery GP-NOTE 4 EDGE PLUS — fits the Note 4 Edge Plus for UGX 18,000, in stock. Replacement battery for the Note 4 Edge Plus, model…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-OPPO-A57-BAT",
+      "url": "https://shopgoldplus.com/products/goldplus-battery-gp-oppo-a57",
+      "slug": "goldplus-battery-gp-oppo-a57",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Replacement Battery GP-OPPO A57 — fits the Oppo A57",
+      "descriptionCandidate": "GoldPlus Replacement Battery GP-OPPO A57 — fits the Oppo A57 for UGX 40,000, in stock. Replacement battery for the Oppo A57, model GP-OPPO A57. Tested before…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-CH01",
+      "url": "https://shopgoldplus.com/products/goldplus-bluetooth-gp-ch01",
+      "slug": "goldplus-bluetooth-gp-ch01",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Bluetooth GP-CH01",
+      "descriptionCandidate": "GoldPlus Bluetooth GP-CH01 for UGX 40,000, in stock. Bluetooth audio, model GP-CH01. Same-day in Kampala & Wakiso.",
+      "parent": "/audio",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-CH02-BT",
+      "url": "https://shopgoldplus.com/products/goldplus-bluetooth-gp-ch02-bt",
+      "slug": "goldplus-bluetooth-gp-ch02-bt",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Bluetooth GP-CH02",
+      "descriptionCandidate": "GoldPlus Bluetooth GP-CH02 for UGX 40,000, in stock. Bluetooth audio, model GP-CH02 BT. Same-day in Kampala & Wakiso.",
+      "parent": "/audio",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-W03",
+      "url": "https://shopgoldplus.com/products/goldplus-bluetooth-gp-w03",
+      "slug": "goldplus-bluetooth-gp-w03",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-W03 Wireless Earbuds, Bluetooth 5.4, 4h Play Time, LED Display Case",
+      "descriptionCandidate": "GoldPlus GP-W03 Wireless Earbuds, Bluetooth 5.4, 4h Play Time, LED Display Case for UGX 50,000, in stock. Bluetooth 5.4 earbuds, 4h play, 100h standby, LED…",
+      "parent": "/audio",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-W04",
+      "url": "https://shopgoldplus.com/products/goldplus-bluetooth-gp-w04",
+      "slug": "goldplus-bluetooth-gp-w04",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-W04 Open-Ear Clip Wireless Earphones, Bluetooth 5.4, Smart Touch",
+      "descriptionCandidate": "GoldPlus GP-W04 Open-Ear Clip Wireless Earphones, Bluetooth 5.4, Smart Touch for UGX 60,000, in stock. Open-ear clip earphones, Bluetooth 5.4, smart touch…",
+      "parent": "/audio",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-W05",
+      "url": "https://shopgoldplus.com/products/goldplus-bluetooth-gp-w05",
+      "slug": "goldplus-bluetooth-gp-w05",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-W05 Wireless Earphones, Bluetooth 5.4, Smart Touch, Noise Reduction",
+      "descriptionCandidate": "GoldPlus GP-W05 Wireless Earphones, Bluetooth 5.4, Smart Touch, Noise Reduction for UGX 40,000, in stock. Bluetooth 5.4 earphones, smart touch, 4h play, LED…",
+      "parent": "/audio",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-W06",
+      "url": "https://shopgoldplus.com/products/goldplus-bluetooth-gp-w06",
+      "slug": "goldplus-bluetooth-gp-w06",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-W06 Open-Ear Hook Wireless Earphones, Bluetooth 5.4, Hi-Res Audio, Noise Reduction",
+      "descriptionCandidate": "GoldPlus GP-W06 Open-Ear Hook Wireless Earphones, Bluetooth 5.4, Hi-Res Audio, Noise Reduction for UGX 80,000, in stock. Open-ear hook earphones, Bluetooth…",
+      "parent": "/audio",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP01",
+      "url": "https://shopgoldplus.com/products/goldplus-bluetooth-gp01",
+      "slug": "goldplus-bluetooth-gp01",
+      "state": "IDENTITY_HOLD_NO_AUTOMATIC_SPEC_OR_IMAGE_IMPORT",
+      "titleCandidate": "GoldPlus GP01 Wireless Earbuds",
+      "descriptionCandidate": "GoldPlus GP01 Wireless Earbuds for UGX 100,000, in stock. Wireless Bluetooth earbuds, model GP01, with charging case. Same-day in Kampala & Wakiso.",
+      "parent": "/audio",
+      "review": "Live GP01 versus photographed GP-H01 alias needs stock confirmation before copying Bluetooth/runtime/specification fields."
+    },
+    {
+      "sku": "GP02BT",
+      "url": "https://shopgoldplus.com/products/goldplus-bluetooth-gp02bt",
+      "slug": "goldplus-bluetooth-gp02bt",
+      "state": "IDENTITY_HOLD_NO_AUTOMATIC_SPEC_OR_IMAGE_IMPORT",
+      "titleCandidate": "GoldPlus GP02BT Open-Style Bluetooth Headphones (OWS), LED Power Display, 4.5h Music",
+      "descriptionCandidate": "GoldPlus GP02BT Open-Style Bluetooth Headphones (OWS), LED Power Display, 4.5h Music for UGX 90,000, in stock. Open-style (OWS) Bluetooth 5.4 headphones…",
+      "parent": "/audio",
+      "review": "Do not generate new meta claims from either conflicting OWS package or loose stem set. Current title/description retained here for review, not endorsed."
+    },
+    {
+      "sku": "GP03BT",
+      "url": "https://shopgoldplus.com/products/goldplus-bluetooth-gp03bt",
+      "slug": "goldplus-bluetooth-gp03bt",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP03BT TWS Wireless Earphones, Bluetooth 5.4, 6h Play Time, Zinc Alloy Case",
+      "descriptionCandidate": "GoldPlus GP03BT TWS Wireless Earphones, Bluetooth 5.4, 6h Play Time, Zinc Alloy Case for UGX 100,000, in stock. TWS earphones, Bluetooth 5.4, 6h play time…",
+      "parent": "/audio",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP04",
+      "url": "https://shopgoldplus.com/products/goldplus-bluetooth-gp04",
+      "slug": "goldplus-bluetooth-gp04",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP04 Wireless Earbuds",
+      "descriptionCandidate": "GoldPlus GP04 Wireless Earbuds for UGX 100,000, in stock. Wireless Bluetooth earbuds, model GP04, with charging case. Same-day in Kampala & Wakiso.",
+      "parent": "/audio",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP05",
+      "url": "https://shopgoldplus.com/products/goldplus-bluetooth-gp05",
+      "slug": "goldplus-bluetooth-gp05",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Bluetooth GP05",
+      "descriptionCandidate": "GoldPlus Bluetooth GP05 for UGX 90,000, in stock. Bluetooth audio, model GP05. Same-day in Kampala & Wakiso.",
+      "parent": "/audio",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GD-PD01-C-TO-C",
+      "url": "https://shopgoldplus.com/products/goldplus-cable-gd-pd01-c-to-c",
+      "slug": "goldplus-cable-gd-pd01-c-to-c",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-PD01 USB-C to USB-C PD Fast Data Cable, 1 m, 20W, Braided",
+      "descriptionCandidate": "GoldPlus GP-PD01 USB-C to USB-C PD Fast Data Cable, 1 m, 20W, Braided for UGX 10,000, in stock. 1 m braided USB-C to USB-C cable, 20W PD, wear- and…",
+      "parent": "/power/charging-cables",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GD-PD01-C-TO-IPHONE",
+      "url": "https://shopgoldplus.com/products/goldplus-cable-gd-pd01-c-to-iphone",
+      "slug": "goldplus-cable-gd-pd01-c-to-iphone",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GD-PD01 C TO IPHONE USB-C to Lightning Cable",
+      "descriptionCandidate": "GoldPlus GD-PD01 C TO IPHONE USB-C to Lightning Cable for UGX 10,000, in stock. USB-C to Lightning charging and data cable, model GD-PD01 C TO IPHONE. Same-day…",
+      "parent": "/power/charging-cables",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-G3L",
+      "url": "https://shopgoldplus.com/products/goldplus-cable-gp-g3l",
+      "slug": "goldplus-cable-gp-g3l",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-G3L Lightning Charging Cable",
+      "descriptionCandidate": "GoldPlus GP-G3L Lightning Charging Cable for UGX 4,000, in stock. Lightning charging and data cable, model GP-G3L. Tested before sale. Same-day in Kampala &…",
+      "parent": "/power/charging-cables",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-G3T",
+      "url": "https://shopgoldplus.com/products/goldplus-cable-gp-g3t",
+      "slug": "goldplus-cable-gp-g3t",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-G3T USB-C Charging Cable",
+      "descriptionCandidate": "GoldPlus GP-G3T USB-C Charging Cable for UGX 4,000, in stock. USB-C charging and data cable, model GP-G3T. Tested before sale. Same-day in Kampala & Wakiso.",
+      "parent": "/power/charging-cables",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-G3V",
+      "url": "https://shopgoldplus.com/products/goldplus-cable-gp-g3v",
+      "slug": "goldplus-cable-gp-g3v",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-G3V Micro-USB Charging Cable",
+      "descriptionCandidate": "GoldPlus GP-G3V Micro-USB Charging Cable for UGX 4,000, in stock. Micro-USB charging and data cable, model GP-G3V. Tested before sale. Same-day in Kampala &…",
+      "parent": "/power/charging-cables",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-L01V",
+      "url": "https://shopgoldplus.com/products/goldplus-cable-gp-l01v",
+      "slug": "goldplus-cable-gp-l01v",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-L01 Micro-USB Fast Charging Cable, 1 m, 3A",
+      "descriptionCandidate": "GoldPlus GP-L01 Micro-USB Fast Charging Cable, 1 m, 3A for UGX 4,000, in stock. 1 m Micro-USB charging and data cable rated 3A. Fits every Micro-USB phone…",
+      "parent": "/power/charging-cables",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-L02L",
+      "url": "https://shopgoldplus.com/products/goldplus-cable-gp-l02l",
+      "slug": "goldplus-cable-gp-l02l",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-L02L Lightning Charging Cable",
+      "descriptionCandidate": "GoldPlus GP-L02L Lightning Charging Cable for UGX 4,000, in stock. Lightning charging and data cable, model GP-L02L. Tested before sale. Same-day in Kampala &…",
+      "parent": "/power/charging-cables",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-L03C",
+      "url": "https://shopgoldplus.com/products/goldplus-cable-gp-l03c",
+      "slug": "goldplus-cable-gp-l03c",
+      "state": "PROPOSED_COPY_REQUIRES_FIELD_MATCH",
+      "titleCandidate": "GoldPlus GP-L03 USB-A to USB-C Cable, 1 m",
+      "descriptionCandidate": "Connect a compatible USB-C device to a USB-A charger or computer with the one-metre GP-L03 cable. Check both connections before ordering.",
+      "parent": "/power/charging-cables",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-L04V",
+      "url": "https://shopgoldplus.com/products/goldplus-cable-gp-l04v",
+      "slug": "goldplus-cable-gp-l04v",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-L04V Micro-USB Charging Cable",
+      "descriptionCandidate": "GoldPlus GP-L04V Micro-USB Charging Cable for UGX 10,000, in stock. Micro-USB charging and data cable, model GP-L04V. Tested before sale. Same-day in Kampala &…",
+      "parent": "/power/charging-cables",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-L05L",
+      "url": "https://shopgoldplus.com/products/goldplus-cable-gp-l05l",
+      "slug": "goldplus-cable-gp-l05l",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-L05L Lightning Charging Cable",
+      "descriptionCandidate": "GoldPlus GP-L05L Lightning Charging Cable for UGX 10,000, in stock. Lightning charging and data cable, model GP-L05L. Tested before sale. Same-day in Kampala &…",
+      "parent": "/power/charging-cables",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-L06C",
+      "url": "https://shopgoldplus.com/products/goldplus-cable-gp-l06c",
+      "slug": "goldplus-cable-gp-l06c",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-L06C USB-C Charging Cable",
+      "descriptionCandidate": "GoldPlus GP-L06C USB-C Charging Cable for UGX 10,000, in stock. USB-C charging and data cable, model GP-L06C. Tested before sale. Same-day in Kampala & Wakiso.",
+      "parent": "/power/charging-cables",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-L07L",
+      "url": "https://shopgoldplus.com/products/goldplus-cable-gp-l07l",
+      "slug": "goldplus-cable-gp-l07l",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-L07L Lightning Charging Cable",
+      "descriptionCandidate": "GoldPlus GP-L07L Lightning Charging Cable for UGX 5,000, in stock. Lightning charging and data cable, model GP-L07L. Tested before sale. Same-day in Kampala &…",
+      "parent": "/power/charging-cables",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-L08V",
+      "url": "https://shopgoldplus.com/products/goldplus-cable-gp-l08v",
+      "slug": "goldplus-cable-gp-l08v",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-L08V Micro-USB Charging Cable",
+      "descriptionCandidate": "GoldPlus GP-L08V Micro-USB Charging Cable for UGX 5,000, in stock. Micro-USB charging and data cable, model GP-L08V. Tested before sale. Same-day in Kampala &…",
+      "parent": "/power/charging-cables",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-L09C",
+      "url": "https://shopgoldplus.com/products/goldplus-cable-gp-l09c",
+      "slug": "goldplus-cable-gp-l09c",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-L09C USB-C Charging Cable",
+      "descriptionCandidate": "GoldPlus GP-L09C USB-C Charging Cable for UGX 5,000, in stock. USB-C charging and data cable, model GP-L09C. Tested before sale. Same-day in Kampala & Wakiso.",
+      "parent": "/power/charging-cables",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-L10-C-TO-C",
+      "url": "https://shopgoldplus.com/products/goldplus-cable-gp-l10-c-to-c",
+      "slug": "goldplus-cable-gp-l10-c-to-c",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-L10 C TO C USB-C to USB-C Cable",
+      "descriptionCandidate": "GoldPlus GP-L10 C TO C USB-C to USB-C Cable for UGX 8,000, in stock. USB-C to USB-C charging and data cable, model GP-L10 C TO C. Same-day in Kampala & Wakiso.",
+      "parent": "/power/charging-cables",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-L11-4IN1",
+      "url": "https://shopgoldplus.com/products/goldplus-cable-gp-l11-4in1",
+      "slug": "goldplus-cable-gp-l11-4in1",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-L11 4IN1 4-in-1 Charging Cable",
+      "descriptionCandidate": "GoldPlus GP-L11 4IN1 4-in-1 Charging Cable for UGX 10,000, in stock. One cable, four connectors — charges the whole household’s phones. Same-day in Kampala &…",
+      "parent": "/power/charging-cables",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-L12",
+      "url": "https://shopgoldplus.com/products/goldplus-cable-gp-l12",
+      "slug": "goldplus-cable-gp-l12",
+      "state": "PROPOSED_COPY_REQUIRES_FIELD_MATCH",
+      "titleCandidate": "GoldPlus GP-L12 USB-C to USB-C Cable, 2 m",
+      "descriptionCandidate": "A two-metre USB-C cable with connectors at both ends. Check the charging requirement for your device and confirm the exact GP-L12 variant.",
+      "parent": "/power/charging-cables",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-L14L",
+      "url": "https://shopgoldplus.com/products/goldplus-cable-gp-l14l",
+      "slug": "goldplus-cable-gp-l14l",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-L14L Lightning Charging Cable",
+      "descriptionCandidate": "GoldPlus GP-L14L Lightning Charging Cable for UGX 12,000, in stock. Lightning charging and data cable, model GP-L14L. Tested before sale. Same-day in Kampala &…",
+      "parent": "/power/charging-cables",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-L14T",
+      "url": "https://shopgoldplus.com/products/goldplus-cable-gp-l14t",
+      "slug": "goldplus-cable-gp-l14t",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-L14T USB-C Braided Fast Charging Cable, 1 m, 6A",
+      "descriptionCandidate": "GoldPlus GP-L14T USB-C Braided Fast Charging Cable, 1 m, 6A for UGX 12,000, in stock. 1-metre braided USB-A to Type-C cable rated 6A, reinforced plugs rated…",
+      "parent": "/power/charging-cables",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-L14V",
+      "url": "https://shopgoldplus.com/products/goldplus-cable-gp-l14v",
+      "slug": "goldplus-cable-gp-l14v",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-L14V Micro-USB (V8) Braided Fast Charging Cable, 1 m, 6A",
+      "descriptionCandidate": "GoldPlus GP-L14V Micro-USB (V8) Braided Fast Charging Cable, 1 m, 6A for UGX 12,000, in stock. 1-metre braided V8 (Micro USB) cable rated 6A, with plugs rated…",
+      "parent": "/power/charging-cables",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-M02C",
+      "url": "https://shopgoldplus.com/products/goldplus-cable-gp-m02c",
+      "slug": "goldplus-cable-gp-m02c",
+      "state": "PROPOSED_COPY_REQUIRES_FIELD_MATCH",
+      "titleCandidate": "GoldPlus GP-M02 USB-A to USB-C Cable, 2 m",
+      "descriptionCandidate": "Two metres of reach from a USB-A charger or computer to a compatible USB-C device. Choose the GP-M02 connector variant that matches your setup.",
+      "parent": "/power/charging-cables",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-M02L",
+      "url": "https://shopgoldplus.com/products/goldplus-cable-gp-m02l",
+      "slug": "goldplus-cable-gp-m02l",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-M02 Lightning iPhone Fast Charging Cable, 2 m, 3A, Braided",
+      "descriptionCandidate": "GoldPlus GP-M02 Lightning iPhone Fast Charging Cable, 2 m, 3A, Braided for UGX 10,000, in stock. 2-metre braided USB-A to Lightning iPhone cable, 3A, thick…",
+      "parent": "/power/charging-cables",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-M02V",
+      "url": "https://shopgoldplus.com/products/goldplus-cable-gp-m02v",
+      "slug": "goldplus-cable-gp-m02v",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-M02 Micro-USB (V8) Fast Charging Cable, 2 m, 3A, Braided",
+      "descriptionCandidate": "GoldPlus GP-M02 Micro-USB (V8) Fast Charging Cable, 2 m, 3A, Braided for UGX 10,000, in stock. 2-metre braided USB-A to V8 (Micro USB) cable, 3A, thick copper…",
+      "parent": "/power/charging-cables",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-PD03L",
+      "url": "https://shopgoldplus.com/products/goldplus-cable-gp-pd03l",
+      "slug": "goldplus-cable-gp-pd03l",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-PD03 USB-C to Lightning 30W Flat iPhone Fast Charging Cable, 1 m",
+      "descriptionCandidate": "GoldPlus GP-PD03 USB-C to Lightning 30W Flat iPhone Fast Charging Cable, 1 m for UGX 18,000, in stock. 1-metre flat Type-C to Lightning cable rated 30W: iPhone…",
+      "parent": "/power/charging-cables",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-PD04C",
+      "url": "https://shopgoldplus.com/products/goldplus-cable-gp-pd04c",
+      "slug": "goldplus-cable-gp-pd04c",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-PD04 USB-C to USB-C 66W Flat Fast Charging Cable, 1 m",
+      "descriptionCandidate": "GoldPlus GP-PD04 USB-C to USB-C 66W Flat Fast Charging Cable, 1 m for UGX 18,000, in stock. 1-metre flat Type-C to Type-C cable rated 66W: fast charging for…",
+      "parent": "/power/charging-cables",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-CA01",
+      "url": "https://shopgoldplus.com/products/goldplus-car-charger-gp-ca01",
+      "slug": "goldplus-car-charger-gp-ca01",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-CA01 65W Fast Charging Car Charger, USB-C PD 30W + USB-A QC4.0, with USB-C Cable",
+      "descriptionCandidate": "GoldPlus GP-CA01 65W Fast Charging Car Charger, USB-C PD 30W + USB-A QC4.0, with USB-C Cable for UGX 30,000, in stock. 65W car charger: USB-C PD 30W plus USB-A…",
+      "parent": "/car-accessories",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-CA02",
+      "url": "https://shopgoldplus.com/products/goldplus-car-charger-gp-ca02",
+      "slug": "goldplus-car-charger-gp-ca02",
+      "state": "PROPOSED_COPY_REQUIRES_FIELD_MATCH",
+      "titleCandidate": "GoldPlus GP-CA02 USB-A & USB-C Car Charger",
+      "descriptionCandidate": "Compare the GP-CA02 car charger connections with your phone and cable. Confirm the exact unit and port output before ordering.",
+      "parent": "/car-accessories",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-CA03",
+      "url": "https://shopgoldplus.com/products/goldplus-car-charger-gp-ca03",
+      "slug": "goldplus-car-charger-gp-ca03",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-CA03 Car Charger",
+      "descriptionCandidate": "GoldPlus GP-CA03 Car Charger for UGX 10,000, in stock. Car charger, model GP-CA03 — charge on the road from the 12V socket. Same-day in Kampala & Wakiso.",
+      "parent": "/car-accessories",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "CRD-010",
+      "url": "https://shopgoldplus.com/products/goldplus-card-reader-crd-010",
+      "slug": "goldplus-card-reader-crd-010",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus CRD-010 Multi-Slot Card Reader",
+      "descriptionCandidate": "GoldPlus CRD-010 Multi-Slot Card Reader for UGX 18,000, in stock. Multi-slot card reader, model CRD-010. Same-day in Kampala & Wakiso.",
+      "parent": "/shop",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "CRD-011",
+      "url": "https://shopgoldplus.com/products/goldplus-card-reader-crd-011",
+      "slug": "goldplus-card-reader-crd-011",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus CRD-011 Multi-Slot Card Reader",
+      "descriptionCandidate": "GoldPlus CRD-011 Multi-Slot Card Reader for UGX 12,000, in stock. Multi-slot card reader, model CRD-011. Same-day in Kampala & Wakiso.",
+      "parent": "/shop",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-C03-CH",
+      "url": "https://shopgoldplus.com/products/goldplus-charger-gp-c03-ch",
+      "slug": "goldplus-charger-gp-c03-ch",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-C03 45W Dual-Port Fast Charger, USB-A + USB-C, QC3.0, with USB-C to USB-C Cable (UK plug)",
+      "descriptionCandidate": "GoldPlus GP-C03 45W Dual-Port Fast Charger, USB-A + USB-C, QC3.0, with USB-C to USB-C Cable (UK plug) for UGX 24,000, in stock. Two ports, one socket: 45W…",
+      "parent": "/power/chargers",
+      "review": "Long observed title: consider a shorter accurate model/type/variant title after review. Do not mechanically truncate a model or add keywords."
+    },
+    {
+      "sku": "GP-C04-TYPE-C",
+      "url": "https://shopgoldplus.com/products/goldplus-charger-gp-c04-type-c",
+      "slug": "goldplus-charger-gp-c04-type-c",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-C04 TYPE C Wall Charger, USB-C (UK plug)",
+      "descriptionCandidate": "GoldPlus GP-C04 TYPE C Wall Charger, USB-C (UK plug) for UGX 18,000, in stock. Wall charger, model GP-C04 TYPE C (USB-C), UK plug. Tested before sale. Same-day…",
+      "parent": "/power/chargers",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-C04-V8",
+      "url": "https://shopgoldplus.com/products/goldplus-charger-gp-c04-v8",
+      "slug": "goldplus-charger-gp-c04-v8",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-C04 V8 Wall Charger, Micro-USB (UK plug)",
+      "descriptionCandidate": "GoldPlus GP-C04 V8 Wall Charger, Micro-USB (UK plug) for UGX 16,000, in stock. Wall charger, model GP-C04 V8 (Micro-USB), UK plug. Tested before sale. Same-day…",
+      "parent": "/power/chargers",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-C06",
+      "url": "https://shopgoldplus.com/products/goldplus-charger-gp-c06",
+      "slug": "goldplus-charger-gp-c06",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-C06 Wall Charger (UK plug)",
+      "descriptionCandidate": "GoldPlus GP-C06 Wall Charger (UK plug) for UGX 24,000, in stock. Wall charger, model GP-C06, UK plug. Tested before sale. Same-day in Kampala & Wakiso.",
+      "parent": "/power/chargers",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-C07",
+      "url": "https://shopgoldplus.com/products/goldplus-charger-gp-c07",
+      "slug": "goldplus-charger-gp-c07",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-C07 Wall Charger (UK plug)",
+      "descriptionCandidate": "GoldPlus GP-C07 Wall Charger (UK plug) for UGX 14,000, in stock. Wall charger, model GP-C07, UK plug. Tested before sale. Same-day in Kampala & Wakiso.",
+      "parent": "/power/chargers",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-C08",
+      "url": "https://shopgoldplus.com/products/goldplus-charger-gp-c08",
+      "slug": "goldplus-charger-gp-c08",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-C08 12W USB Fast Charger, 2A (UK plug)",
+      "descriptionCandidate": "GoldPlus GP-C08 12W USB Fast Charger, 2A (UK plug) for UGX 10,000, in stock. 12W USB wall charger, 2A, UK plug. Charges iPhone, Android and any USB device…",
+      "parent": "/power/chargers",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-C09",
+      "url": "https://shopgoldplus.com/products/goldplus-charger-gp-c09",
+      "slug": "goldplus-charger-gp-c09",
+      "state": "IDENTITY_HOLD_NO_AUTOMATIC_SPEC_OR_IMAGE_IMPORT",
+      "titleCandidate": "GoldPlus GP-C09 Wall-Charger Set",
+      "descriptionCandidate": "Check the exact GP-C09 charger and included cable before ordering. Match the device connection and required output with help from GoldPlus.",
+      "parent": "/power/chargers",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-C10",
+      "url": "https://shopgoldplus.com/products/goldplus-charger-gp-c10",
+      "slug": "goldplus-charger-gp-c10",
+      "state": "IDENTITY_HOLD_NO_AUTOMATIC_SPEC_OR_IMAGE_IMPORT",
+      "titleCandidate": "GoldPlus GP-C10 USB-C Wall Charger, UK Plug",
+      "descriptionCandidate": "A USB-C wall charger with a UK three-pin plug. Ask GoldPlus to confirm the output label on the exact GP-C10 unit before ordering.",
+      "parent": "/power/chargers",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-C11",
+      "url": "https://shopgoldplus.com/products/goldplus-charger-gp-c11",
+      "slug": "goldplus-charger-gp-c11",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-C11 30W Dual-Port Fast Charger, USB-A + USB-C, with USB-C to Lightning iPhone Cable (UK plug)",
+      "descriptionCandidate": "GoldPlus GP-C11 30W Dual-Port Fast Charger, USB-A + USB-C, with USB-C to Lightning iPhone Cable (UK plug) for UGX 30,000, in stock. 30W charger with USB-A and…",
+      "parent": "/power/chargers",
+      "review": "Long observed title: consider a shorter accurate model/type/variant title after review. Do not mechanically truncate a model or add keywords."
+    },
+    {
+      "sku": "GP-C12",
+      "url": "https://shopgoldplus.com/products/goldplus-charger-gp-c12",
+      "slug": "goldplus-charger-gp-c12",
+      "state": "IDENTITY_HOLD_NO_AUTOMATIC_SPEC_OR_IMAGE_IMPORT",
+      "titleCandidate": "GoldPlus GP-C12 GaN USB-C Fast Charger with USB-C to Lightning iPhone Cable (UK plug)",
+      "descriptionCandidate": "GoldPlus GP-C12 GaN USB-C Fast Charger with USB-C to Lightning iPhone Cable (UK plug) for UGX 30,000, in stock. Full set for iPhone: compact GaN charger plus a…",
+      "parent": "/power/chargers",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-C13",
+      "url": "https://shopgoldplus.com/products/goldplus-charger-gp-c13",
+      "slug": "goldplus-charger-gp-c13",
+      "state": "IDENTITY_HOLD_NO_AUTOMATIC_SPEC_OR_IMAGE_IMPORT",
+      "titleCandidate": "GoldPlus GP-C13 GaN USB-C Fast Charger with USB-C to USB-C Cable (UK plug)",
+      "descriptionCandidate": "GoldPlus GP-C13 GaN USB-C Fast Charger with USB-C to USB-C Cable (UK plug) for UGX 30,000, in stock. Full set for any Type-C phone: compact GaN charger plus a…",
+      "parent": "/power/chargers",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-GAN01",
+      "url": "https://shopgoldplus.com/products/goldplus-charger-gp-gan01",
+      "slug": "goldplus-charger-gp-gan01",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-GAN01 65W GaN Fast Charger with Retractable USB-C Cable (UK plug)",
+      "descriptionCandidate": "GoldPlus GP-GAN01 65W GaN Fast Charger with Retractable USB-C Cable (UK plug) for UGX 50,000, in stock. 65W GaN charger with its own Type-C cable that pulls…",
+      "parent": "/power/chargers",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-UNIVERSAL-CH",
+      "url": "https://shopgoldplus.com/products/goldplus-charger-gp-universal-ch",
+      "slug": "goldplus-charger-gp-universal-ch",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Universal Charger",
+      "descriptionCandidate": "GoldPlus Universal Charger for UGX 10,000, in stock. Universal charger for bare batteries and odd devices. Same-day in Kampala & Wakiso.",
+      "parent": "/power/chargers",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-H02",
+      "url": "https://shopgoldplus.com/products/goldplus-earphones-gp-h02",
+      "slug": "goldplus-earphones-gp-h02",
+      "state": "IDENTITY_HOLD_NO_AUTOMATIC_SPEC_OR_IMAGE_IMPORT",
+      "titleCandidate": "GoldPlus GP-H02 Wired Earphones",
+      "descriptionCandidate": "Check the connection and fit of the live GP-H02 wired earphones. Ask GoldPlus to confirm compatibility with your device before ordering.",
+      "parent": "/audio",
+      "review": "Retain wired identity in live copy. Wireless photos must never be used for this wired SKU without a verified business resolution."
+    },
+    {
+      "sku": "GP-H06-TYPE-PIN",
+      "url": "https://shopgoldplus.com/products/goldplus-earphones-gp-h06-type-pin",
+      "slug": "goldplus-earphones-gp-h06-type-pin",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-H06 Extra Bass Wired Earphones, 3.5mm Jack, Mic and Volume Buttons",
+      "descriptionCandidate": "GoldPlus GP-H06 Extra Bass Wired Earphones, 3.5mm Jack, Mic and Volume Buttons for UGX 14,000, in stock. Wired earphones with a 3.5mm plug, extra bass, a mic…",
+      "parent": "/audio",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-H07-TYPE-C",
+      "url": "https://shopgoldplus.com/products/goldplus-earphones-gp-h07-type-c",
+      "slug": "goldplus-earphones-gp-h07-type-c",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-H07 Wired Earphones, USB-C",
+      "descriptionCandidate": "GoldPlus GP-H07 Wired Earphones, USB-C for UGX 16,000, in stock. Wired earphones (USB-C), model GP-H07 TYPE C. Plug in and listen. Same-day in Kampala & Wakiso.",
+      "parent": "/audio",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-128GB-F",
+      "url": "https://shopgoldplus.com/products/goldplus-flash-drive-128gb",
+      "slug": "goldplus-flash-drive-128gb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus 128GB Flash Disk, USB 3.0 (Flash Drive)",
+      "descriptionCandidate": "GoldPlus 128GB Flash Disk, USB 3.0 (Flash Drive) for UGX 190,000, in stock. 128GB flash disk (USB 3.0) for films, full phone backups and a laptop's worth of…",
+      "parent": "/storage",
+      "review": "Family-level photo candidate only: validate this capacity and speed classification individually. Unphotographed capacities stay on existing evidence; no capacity mockup is proof."
+    },
+    {
+      "sku": "GP-16GB-F",
+      "url": "https://shopgoldplus.com/products/goldplus-flash-drive-16gb",
+      "slug": "goldplus-flash-drive-16gb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus 16GB Flash Disk, USB 3.0 (Flash Drive)",
+      "descriptionCandidate": "GoldPlus 16GB Flash Disk, USB 3.0 (Flash Drive) for UGX 30,000, in stock. 16GB flash disk (USB 3.0) for school work, office files and music for the car. Metal…",
+      "parent": "/storage",
+      "review": "Family-level photo candidate only: validate this capacity and speed classification individually. Unphotographed capacities stay on existing evidence; no capacity mockup is proof."
+    },
+    {
+      "sku": "GP-256GB-F",
+      "url": "https://shopgoldplus.com/products/goldplus-flash-drive-256gb",
+      "slug": "goldplus-flash-drive-256gb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus 256GB Flash Disk (USB Flash Drive)",
+      "descriptionCandidate": "GoldPlus 256GB Flash Disk (USB Flash Drive) for UGX 500,000, in stock. 256GB flash disk for a whole laptop backup, film collections and camera footage. Metal…",
+      "parent": "/storage",
+      "review": "Family-level photo candidate only: validate this capacity and speed classification individually. Unphotographed capacities stay on existing evidence; no capacity mockup is proof."
+    },
+    {
+      "sku": "GP-2GB-F",
+      "url": "https://shopgoldplus.com/products/goldplus-flash-drive-2gb",
+      "slug": "goldplus-flash-drive-2gb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus 2GB Flash Disk (USB Flash Drive)",
+      "descriptionCandidate": "GoldPlus 2GB Flash Disk (USB Flash Drive) for UGX 20,000, in stock. 2GB flash disk for documents and a few songs. Metal body with a key-ring loop; works in any…",
+      "parent": "/storage",
+      "review": "Family-level photo candidate only: validate this capacity and speed classification individually. Unphotographed capacities stay on existing evidence; no capacity mockup is proof."
+    },
+    {
+      "sku": "GP-32GB-F",
+      "url": "https://shopgoldplus.com/products/goldplus-flash-drive-32gb",
+      "slug": "goldplus-flash-drive-32gb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus 32GB Flash Disk, USB 3.0 (Flash Drive)",
+      "descriptionCandidate": "GoldPlus 32GB Flash Disk, USB 3.0 (Flash Drive) for UGX 40,000, in stock. 32GB flash disk (USB 3.0) for office files, a music collection and phone backups…",
+      "parent": "/storage",
+      "review": "Family-level photo candidate only: validate this capacity and speed classification individually. Unphotographed capacities stay on existing evidence; no capacity mockup is proof."
+    },
+    {
+      "sku": "GP-4GB-F",
+      "url": "https://shopgoldplus.com/products/goldplus-flash-drive-4gb",
+      "slug": "goldplus-flash-drive-4gb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus 4GB Flash Disk (USB Flash Drive)",
+      "descriptionCandidate": "GoldPlus 4GB Flash Disk (USB Flash Drive) for UGX 22,000, in stock. 4GB flash disk for documents, photos and music. Metal body with a key-ring loop; works in…",
+      "parent": "/storage",
+      "review": "Family-level photo candidate only: validate this capacity and speed classification individually. Unphotographed capacities stay on existing evidence; no capacity mockup is proof."
+    },
+    {
+      "sku": "GP-64GB-F",
+      "url": "https://shopgoldplus.com/products/goldplus-flash-drive-64gb",
+      "slug": "goldplus-flash-drive-64gb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus 64GB Flash Disk, USB 3.0 (Flash Drive)",
+      "descriptionCandidate": "GoldPlus 64GB Flash Disk, USB 3.0 (Flash Drive) for UGX 50,000, in stock. 64GB flash disk (USB 3.0) for full phone backups, films and office archives. Metal…",
+      "parent": "/storage",
+      "review": "Family-level photo candidate only: validate this capacity and speed classification individually. Unphotographed capacities stay on existing evidence; no capacity mockup is proof."
+    },
+    {
+      "sku": "GP-8GB-F",
+      "url": "https://shopgoldplus.com/products/goldplus-flash-drive-8gb",
+      "slug": "goldplus-flash-drive-8gb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus 8GB Flash Disk (USB Flash Drive)",
+      "descriptionCandidate": "GoldPlus 8GB Flash Disk (USB Flash Drive) for UGX 24,000, in stock. 8GB flash disk for school work, music and photos. Metal body with a key-ring loop; works in…",
+      "parent": "/storage",
+      "review": "Family-level photo candidate only: validate this capacity and speed classification individually. Unphotographed capacities stay on existing evidence; no capacity mockup is proof."
+    },
+    {
+      "sku": "GP-128GB-MC",
+      "url": "https://shopgoldplus.com/products/goldplus-memory-card-128gb",
+      "slug": "goldplus-memory-card-128gb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus 128GB Memory Card (microSD, Class 10)",
+      "descriptionCandidate": "GoldPlus 128GB Memory Card (microSD, Class 10) for UGX 190,000, in stock. 128GB microSD memory card, Class 10, for a phone, a CCTV camera, a dashcam or a 4K…",
+      "parent": "/storage",
+      "review": "Family-level photo candidate only: validate this capacity and speed classification individually. Unphotographed capacities stay on existing evidence; no capacity mockup is proof."
+    },
+    {
+      "sku": "GP-128MB-MC",
+      "url": "https://shopgoldplus.com/products/goldplus-memory-card-128mb",
+      "slug": "goldplus-memory-card-128mb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Memory Card 128MB",
+      "descriptionCandidate": "GoldPlus Memory Card 128MB for UGX 9,000, in stock. 128MB memory card for phones, cameras and radios. Tested before sale. Same-day in Kampala & Wakiso.",
+      "parent": "/storage",
+      "review": "Family-level photo candidate only: validate this capacity and speed classification individually. Unphotographed capacities stay on existing evidence; no capacity mockup is proof."
+    },
+    {
+      "sku": "GP-16GB-MC",
+      "url": "https://shopgoldplus.com/products/goldplus-memory-card-16gb",
+      "slug": "goldplus-memory-card-16gb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus 16GB Memory Card (microSD, Class 10)",
+      "descriptionCandidate": "GoldPlus 16GB Memory Card (microSD, Class 10) for UGX 30,000, in stock. 16GB microSD memory card, Class 10, for a phone, a camera or a CCTV recorder. Give a…",
+      "parent": "/storage",
+      "review": "Family-level photo candidate only: validate this capacity and speed classification individually. Unphotographed capacities stay on existing evidence; no capacity mockup is proof."
+    },
+    {
+      "sku": "GP-1GB-MC",
+      "url": "https://shopgoldplus.com/products/goldplus-memory-card-1gb",
+      "slug": "goldplus-memory-card-1gb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus 1GB Memory Card (microSD)",
+      "descriptionCandidate": "GoldPlus 1GB Memory Card (microSD) for UGX 14,000, in stock. 1GB microSD memory card, for a radio, an old phone or an MP3 player. Give a full phone room to…",
+      "parent": "/storage",
+      "review": "Family-level photo candidate only: validate this capacity and speed classification individually. Unphotographed capacities stay on existing evidence; no capacity mockup is proof."
+    },
+    {
+      "sku": "GP-256GB-MC",
+      "url": "https://shopgoldplus.com/products/goldplus-memory-card-256gb",
+      "slug": "goldplus-memory-card-256gb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus 256GB Memory Card (microSD)",
+      "descriptionCandidate": "GoldPlus 256GB Memory Card (microSD) for UGX 500,000, in stock. 256GB microSD memory card, for a phone, a CCTV system, a dashcam or a 4K camera. Give a full…",
+      "parent": "/storage",
+      "review": "Family-level photo candidate only: validate this capacity and speed classification individually. Unphotographed capacities stay on existing evidence; no capacity mockup is proof."
+    },
+    {
+      "sku": "GP-2GB-MC",
+      "url": "https://shopgoldplus.com/products/goldplus-memory-card-2gb",
+      "slug": "goldplus-memory-card-2gb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus 2GB Memory Card (microSD)",
+      "descriptionCandidate": "GoldPlus 2GB Memory Card (microSD) for UGX 16,000, in stock. 2GB microSD memory card, for a radio, an old phone or an MP3 player. Give a full phone room to…",
+      "parent": "/storage",
+      "review": "Family-level photo candidate only: validate this capacity and speed classification individually. Unphotographed capacities stay on existing evidence; no capacity mockup is proof."
+    },
+    {
+      "sku": "GP-32GB-MC",
+      "url": "https://shopgoldplus.com/products/goldplus-memory-card-32gb",
+      "slug": "goldplus-memory-card-32gb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus 32GB Memory Card (microSD, Class 10)",
+      "descriptionCandidate": "GoldPlus 32GB Memory Card (microSD, Class 10) for UGX 50,000, in stock. 32GB microSD memory card, Class 10, for a phone, a CCTV camera, a dashcam or a camera…",
+      "parent": "/storage",
+      "review": "Family-level photo candidate only: validate this capacity and speed classification individually. Unphotographed capacities stay on existing evidence; no capacity mockup is proof."
+    },
+    {
+      "sku": "GP-4GB-MC",
+      "url": "https://shopgoldplus.com/products/goldplus-memory-card-4gb",
+      "slug": "goldplus-memory-card-4gb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus 4GB Memory Card (microSD)",
+      "descriptionCandidate": "GoldPlus 4GB Memory Card (microSD) for UGX 18,000, in stock. 4GB microSD memory card, for an old phone, a radio or a small camera. Give a full phone room to…",
+      "parent": "/storage",
+      "review": "Family-level photo candidate only: validate this capacity and speed classification individually. Unphotographed capacities stay on existing evidence; no capacity mockup is proof."
+    },
+    {
+      "sku": "GP-512GB-MC",
+      "url": "https://shopgoldplus.com/products/goldplus-memory-card-512gb",
+      "slug": "goldplus-memory-card-512gb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus 512GB Memory Card (microSD)",
+      "descriptionCandidate": "GoldPlus 512GB Memory Card (microSD) for UGX 720,000, in stock. 512GB microSD memory card, for a CCTV system, a 4K camera or a phone that shoots a lot of…",
+      "parent": "/storage",
+      "review": "Family-level photo candidate only: validate this capacity and speed classification individually. Unphotographed capacities stay on existing evidence; no capacity mockup is proof."
+    },
+    {
+      "sku": "GP-64GB-MC",
+      "url": "https://shopgoldplus.com/products/goldplus-memory-card-64gb",
+      "slug": "goldplus-memory-card-64gb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus 64GB Memory Card (microSD, Class 10)",
+      "descriptionCandidate": "GoldPlus 64GB Memory Card (microSD, Class 10) for UGX 70,000, in stock. 64GB microSD memory card, Class 10, for a phone, a CCTV camera, a dashcam or a drone…",
+      "parent": "/storage",
+      "review": "Family-level photo candidate only: validate this capacity and speed classification individually. Unphotographed capacities stay on existing evidence; no capacity mockup is proof."
+    },
+    {
+      "sku": "GP-8GB-MC",
+      "url": "https://shopgoldplus.com/products/goldplus-memory-card-8gb",
+      "slug": "goldplus-memory-card-8gb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus 8GB Memory Card (microSD)",
+      "descriptionCandidate": "GoldPlus 8GB Memory Card (microSD) for UGX 24,000, in stock. 8GB microSD memory card, for a phone, a radio or a camera. Give a full phone room to breathe or…",
+      "parent": "/storage",
+      "review": "Family-level photo candidate only: validate this capacity and speed classification individually. Unphotographed capacities stay on existing evidence; no capacity mockup is proof."
+    },
+    {
+      "sku": "MOS-W321R",
+      "url": "https://shopgoldplus.com/products/goldplus-mouse-mos-w321r",
+      "slug": "goldplus-mouse-mos-w321r",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus MOS-W321R Computer Mouse",
+      "descriptionCandidate": "GoldPlus MOS-W321R Computer Mouse for UGX 20,000, in stock. Computer mouse, model MOS-W321R, for desktop and laptop. Same-day in Kampala & Wakiso.",
+      "parent": "/shop",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "MOS-W345R",
+      "url": "https://shopgoldplus.com/products/goldplus-mouse-mos-w345r",
+      "slug": "goldplus-mouse-mos-w345r",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus MOS-W345R Computer Mouse",
+      "descriptionCandidate": "GoldPlus MOS-W345R Computer Mouse for UGX 20,000, in stock. Computer mouse, model MOS-W345R, for desktop and laptop. Same-day in Kampala & Wakiso.",
+      "parent": "/shop",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "MOS-W371",
+      "url": "https://shopgoldplus.com/products/goldplus-mouse-mos-w371",
+      "slug": "goldplus-mouse-mos-w371",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus MOS-W371 Computer Mouse",
+      "descriptionCandidate": "GoldPlus MOS-W371 Computer Mouse for UGX 12,000, in stock. Computer mouse, model MOS-W371, for desktop and laptop. Same-day in Kampala & Wakiso.",
+      "parent": "/shop",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-LT01-PB",
+      "url": "https://shopgoldplus.com/products/goldplus-power-bank-gp-lt01-pb",
+      "slug": "goldplus-power-bank-gp-lt01-pb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-LT01 Power Bank",
+      "descriptionCandidate": "GoldPlus GP-LT01 Power Bank for UGX 200,000, in stock. Power bank GP-LT01 — power through outages and long days. Same-day in Kampala & Wakiso.",
+      "parent": "/power/power-banks",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-P02A-PB",
+      "url": "https://shopgoldplus.com/products/goldplus-power-bank-gp-p02a-pb",
+      "slug": "goldplus-power-bank-gp-p02a-pb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-P02A 20000mAh Power Bank with 4 Built-in Cables and Phone Stand",
+      "descriptionCandidate": "GoldPlus GP-P02A 20000mAh Power Bank with 4 Built-in Cables and Phone Stand for UGX 90,000, in stock. 20000mAh power bank with iPhone, Type-C, V8 and USB-A…",
+      "parent": "/power/power-banks",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-P02W-PB",
+      "url": "https://shopgoldplus.com/products/goldplus-power-bank-gp-p02w-pb",
+      "slug": "goldplus-power-bank-gp-p02w-pb",
+      "state": "PROPOSED_COPY_REQUIRES_FIELD_MATCH",
+      "titleCandidate": "GoldPlus GP-P02W Wireless Power Bank with Built-in Leads",
+      "descriptionCandidate": "Compare the GP-P02W wireless pad, built-in leads and carry features. Check your phone’s charging compatibility and the exact unit before ordering.",
+      "parent": "/power/power-banks",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-P03A-PB",
+      "url": "https://shopgoldplus.com/products/goldplus-power-bank-gp-p03a-pb",
+      "slug": "goldplus-power-bank-gp-p03a-pb",
+      "state": "PROPOSED_COPY_REQUIRES_FIELD_MATCH",
+      "titleCandidate": "GoldPlus GP-P03A Power Bank with Built-in Leads",
+      "descriptionCandidate": "Built-in leads, a carry loop and a side light in the GP-P03A power bank. Ask GoldPlus to confirm the exact unit’s capacity and output.",
+      "parent": "/power/power-banks",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-P04-PB",
+      "url": "https://shopgoldplus.com/products/goldplus-power-bank-gp-p04-pb",
+      "slug": "goldplus-power-bank-gp-p04-pb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-P04 Power Bank",
+      "descriptionCandidate": "GoldPlus GP-P04 Power Bank for UGX 40,000, in stock. Power bank GP-P04 — power through outages and long days. Same-day in Kampala & Wakiso.",
+      "parent": "/power/power-banks",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-P05W-PB",
+      "url": "https://shopgoldplus.com/products/goldplus-power-bank-gp-p05w-pb",
+      "slug": "goldplus-power-bank-gp-p05w-pb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-P05W 10000mAh Magnetic Wireless Power Bank, 22.5W, Built-in USB-C and Lightning Cables",
+      "descriptionCandidate": "GoldPlus GP-P05W 10000mAh Magnetic Wireless Power Bank, 22.5W, Built-in USB-C and Lightning Cables for UGX 130,000, in stock. 10000mAh power bank that snaps…",
+      "parent": "/power/power-banks",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-P06-PB",
+      "url": "https://shopgoldplus.com/products/goldplus-power-bank-gp-p06-pb",
+      "slug": "goldplus-power-bank-gp-p06-pb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-P06 10000mAh Compact Power Bank, 22.5W, Built-in USB-C and Lightning Cables",
+      "descriptionCandidate": "GoldPlus GP-P06 10000mAh Compact Power Bank, 22.5W, Built-in USB-C and Lightning Cables for UGX 110,000, in stock. Palm-sized 10000mAh power bank with a Type-C…",
+      "parent": "/power/power-banks",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-P07-PB",
+      "url": "https://shopgoldplus.com/products/goldplus-power-bank-gp-p07-pb",
+      "slug": "goldplus-power-bank-gp-p07-pb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-P07 20000mAh Power Bank with Digital Display, 22.5W, Built-in USB-C and Lightning Cables",
+      "descriptionCandidate": "GoldPlus GP-P07 20000mAh Power Bank with Digital Display, 22.5W, Built-in USB-C and Lightning Cables for UGX 130,000, in stock. 20000mAh power bank with a…",
+      "parent": "/power/power-banks",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-W2-PB",
+      "url": "https://shopgoldplus.com/products/goldplus-power-bank-gp-w2-pb",
+      "slug": "goldplus-power-bank-gp-w2-pb",
+      "state": "IDENTITY_HOLD_NO_AUTOMATIC_SPEC_OR_IMAGE_IMPORT",
+      "titleCandidate": "GoldPlus GP-W2 Power Bank",
+      "descriptionCandidate": "GoldPlus GP-W2 Power Bank for UGX 110,000, in stock. Power bank GP-W2 — power through outages and long days. Same-day in Kampala & Wakiso.",
+      "parent": "/power/power-banks",
+      "review": "Resolve GP-W5/GP-W2 live code versus PD-W5/PD-W2 photographed identity before transfer."
+    },
+    {
+      "sku": "GP-W3-PB",
+      "url": "https://shopgoldplus.com/products/goldplus-power-bank-gp-w3-pb",
+      "slug": "goldplus-power-bank-gp-w3-pb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-W3 Power Bank",
+      "descriptionCandidate": "GoldPlus GP-W3 Power Bank for UGX 120,000, in stock. Power bank GP-W3 — power through outages and long days. Same-day in Kampala & Wakiso.",
+      "parent": "/power/power-banks",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-W4-PB",
+      "url": "https://shopgoldplus.com/products/goldplus-power-bank-gp-w4-pb",
+      "slug": "goldplus-power-bank-gp-w4-pb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-W4 Power Bank",
+      "descriptionCandidate": "GoldPlus GP-W4 Power Bank for UGX 160,000, in stock. Power bank GP-W4 — power through outages and long days. Same-day in Kampala & Wakiso.",
+      "parent": "/power/power-banks",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-W5-PB",
+      "url": "https://shopgoldplus.com/products/goldplus-power-bank-gp-w5-pb",
+      "slug": "goldplus-power-bank-gp-w5-pb",
+      "state": "IDENTITY_HOLD_NO_AUTOMATIC_SPEC_OR_IMAGE_IMPORT",
+      "titleCandidate": "GoldPlus GP-W5 Power Bank",
+      "descriptionCandidate": "GoldPlus GP-W5 Power Bank for UGX 200,000, in stock. Power bank GP-W5 — power through outages and long days. Same-day in Kampala & Wakiso.",
+      "parent": "/power/power-banks",
+      "review": "Resolve GP-W5/GP-W2 live code versus PD-W5/PD-W2 photographed identity before transfer."
+    },
+    {
+      "sku": "GP-X01-PB",
+      "url": "https://shopgoldplus.com/products/goldplus-power-bank-gp-x01-pb",
+      "slug": "goldplus-power-bank-gp-x01-pb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-X01 Power Bank",
+      "descriptionCandidate": "GoldPlus GP-X01 Power Bank for UGX 260,000, in stock. Power bank GP-X01 — power through outages and long days. Same-day in Kampala & Wakiso.",
+      "parent": "/power/power-banks",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-X02-PB",
+      "url": "https://shopgoldplus.com/products/goldplus-power-bank-gp-x02-pb",
+      "slug": "goldplus-power-bank-gp-x02-pb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-X02 Power Bank",
+      "descriptionCandidate": "GoldPlus GP-X02 Power Bank for UGX 280,000, in stock. Power bank GP-X02 — power through outages and long days. Same-day in Kampala & Wakiso.",
+      "parent": "/power/power-banks",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-X03-PB",
+      "url": "https://shopgoldplus.com/products/goldplus-power-bank-gp-x03-pb",
+      "slug": "goldplus-power-bank-gp-x03-pb",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus GP-X03 Power Bank with Carry Handle",
+      "descriptionCandidate": "GoldPlus GP-X03 Power Bank with Carry Handle for UGX 240,000, in stock. Power bank GP-X03 with a carry handle — power through outages and long days. Same-day…",
+      "parent": "/power/power-banks",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "ADT-S005",
+      "url": "https://shopgoldplus.com/products/goldplus-sound-card-adt-s005",
+      "slug": "goldplus-sound-card-adt-s005",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus ADT-S005 USB Sound Card",
+      "descriptionCandidate": "GoldPlus ADT-S005 USB Sound Card for UGX 10,000, in stock. USB sound card, model ADT-S005: headphone and mic jacks over USB. Same-day in Kampala & Wakiso.",
+      "parent": "/shop",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-IP11",
+      "url": "https://shopgoldplus.com/products/ip-11-battery",
+      "slug": "ip-11-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus iPhone 11 Replacement Battery (IP 11)",
+      "descriptionCandidate": "GoldPlus iPhone 11 Replacement Battery (IP 11) for UGX 124,000, in stock. Replacement battery for iPhone 11, model IP 11. Tested before sale; fit confirmed…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-IP11PROBATTERY",
+      "url": "https://shopgoldplus.com/products/ip-11-pro-battery-battery",
+      "slug": "ip-11-pro-battery-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus iPhone 11 Pro Replacement Battery (IP 11 PRO BATTERY)",
+      "descriptionCandidate": "GoldPlus iPhone 11 Pro Replacement Battery (IP 11 PRO BATTERY) for UGX 168,000, in stock. Replacement battery for iPhone 11 Pro, model IP 11 PRO BATTERY…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-IP11PROMAX",
+      "url": "https://shopgoldplus.com/products/ip-11-promax-battery",
+      "slug": "ip-11-promax-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus iPhone 11 Pro Max Replacement Battery (IP 11 PROMAX)",
+      "descriptionCandidate": "GoldPlus iPhone 11 Pro Max Replacement Battery (IP 11 PROMAX) for UGX 190,000, in stock. Replacement battery for iPhone 11 Pro Max, model IP 11 PROMAX. Tested…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-IP12",
+      "url": "https://shopgoldplus.com/products/ip-12-battery",
+      "slug": "ip-12-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus iPhone 12 Replacement Battery (IP 12)",
+      "descriptionCandidate": "GoldPlus iPhone 12 Replacement Battery (IP 12) for UGX 124,000, in stock. Replacement battery for iPhone 12, model IP 12. Tested before sale; fit confirmed…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-IP12PRO",
+      "url": "https://shopgoldplus.com/products/ip-12-pro-battery",
+      "slug": "ip-12-pro-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus iPhone 12 Pro Replacement Battery (IP 12 PRO)",
+      "descriptionCandidate": "GoldPlus iPhone 12 Pro Replacement Battery (IP 12 PRO) for UGX 120,000, in stock. Replacement battery for iPhone 12 Pro, model IP 12 PRO. Tested before sale…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-IP12PROMAX",
+      "url": "https://shopgoldplus.com/products/ip-12-promax-battery",
+      "slug": "ip-12-promax-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus iPhone 12 Pro Max Replacement Battery (IP 12 PROMAX)",
+      "descriptionCandidate": "GoldPlus iPhone 12 Pro Max Replacement Battery (IP 12 PROMAX) for UGX 190,000, in stock. Replacement battery for iPhone 12 Pro Max, model IP 12 PROMAX. Tested…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-IP13",
+      "url": "https://shopgoldplus.com/products/ip-13-battery",
+      "slug": "ip-13-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus iPhone 13 Replacement Battery (IP 13)",
+      "descriptionCandidate": "GoldPlus iPhone 13 Replacement Battery (IP 13) for UGX 132,000, in stock. Replacement battery for iPhone 13, model IP 13. Tested before sale; fit confirmed…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-IP13PRO",
+      "url": "https://shopgoldplus.com/products/ip-13-pro-battery",
+      "slug": "ip-13-pro-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus iPhone 13 Pro Replacement Battery (IP 13 PRO)",
+      "descriptionCandidate": "GoldPlus iPhone 13 Pro Replacement Battery (IP 13 PRO) for UGX 200,000, in stock. Replacement battery for iPhone 13 Pro, model IP 13 PRO. Tested before sale…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-IP13PROMAX",
+      "url": "https://shopgoldplus.com/products/ip-13-promax-battery",
+      "slug": "ip-13-promax-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus iPhone 13 Pro Max Replacement Battery (IP 13 PROMAX)",
+      "descriptionCandidate": "GoldPlus iPhone 13 Pro Max Replacement Battery (IP 13 PROMAX) for UGX 200,000, in stock. Replacement battery for iPhone 13 Pro Max, model IP 13 PROMAX. Tested…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-IP14",
+      "url": "https://shopgoldplus.com/products/ip-14-battery",
+      "slug": "ip-14-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus iPhone 14 Replacement Battery (IP 14)",
+      "descriptionCandidate": "GoldPlus iPhone 14 Replacement Battery (IP 14) for UGX 146,000, in stock. Replacement battery for iPhone 14, model IP 14. Tested before sale; fit confirmed…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-IP14PRO",
+      "url": "https://shopgoldplus.com/products/ip-14-pro-battery",
+      "slug": "ip-14-pro-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus iPhone 14 Pro Replacement Battery (IP 14 PRO)",
+      "descriptionCandidate": "GoldPlus iPhone 14 Pro Replacement Battery (IP 14 PRO) for UGX 200,000, in stock. Replacement battery for iPhone 14 Pro, model IP 14 PRO. Tested before sale…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-IP14PROMAX",
+      "url": "https://shopgoldplus.com/products/ip-14-promax-battery",
+      "slug": "ip-14-promax-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus iPhone 14 Pro Max Replacement Battery (IP 14 PROMAX)",
+      "descriptionCandidate": "GoldPlus iPhone 14 Pro Max Replacement Battery (IP 14 PROMAX) for UGX 220,000, in stock. Replacement battery for iPhone 14 Pro Max, model IP 14 PROMAX. Tested…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-IPX",
+      "url": "https://shopgoldplus.com/products/ip-x-battery",
+      "slug": "ip-x-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus iPhone X Replacement Battery (IP X)",
+      "descriptionCandidate": "GoldPlus iPhone X Replacement Battery (IP X) for UGX 124,000, in stock. Replacement battery for iPhone X, model IP X. Tested before sale; fit confirmed before…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-IPXR",
+      "url": "https://shopgoldplus.com/products/ip-xr-battery",
+      "slug": "ip-xr-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus iPhone XR Replacement Battery (IP XR)",
+      "descriptionCandidate": "GoldPlus iPhone XR Replacement Battery (IP XR) for UGX 120,000, in stock. Replacement battery for iPhone XR, model IP XR. Tested before sale; fit confirmed…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-NOKIAC1",
+      "url": "https://shopgoldplus.com/products/nokia-c1-battery",
+      "slug": "nokia-c1-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Replacement Battery NOKIA C1 — fits the Nokia C1",
+      "descriptionCandidate": "GoldPlus Replacement Battery NOKIA C1 — fits the Nokia C1 for UGX 18,000, in stock. Replacement battery for the Nokia C1, model NOKIA C1. Tested before sale…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-NOTE4",
+      "url": "https://shopgoldplus.com/products/note-4-battery",
+      "slug": "note-4-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Replacement Battery NOTE 4 — fits the Note 4",
+      "descriptionCandidate": "GoldPlus Replacement Battery NOTE 4 — fits the Note 4 for UGX 18,000, in stock. Replacement battery for the Note 4, model NOTE 4. Tested before sale; fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-VIVOBB1",
+      "url": "https://shopgoldplus.com/products/vivo-b-b1-battery",
+      "slug": "vivo-b-b1-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Replacement Battery VIVO B-B1 — fits Vivo phones that use the B-B1 pack",
+      "descriptionCandidate": "GoldPlus Replacement Battery VIVO B-B1 — fits Vivo phones that use the B-B1 pack for UGX 36,000, in stock. Replacement battery for Vivo phones that use the…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-VIVOBB2",
+      "url": "https://shopgoldplus.com/products/vivo-b-b2-battery",
+      "slug": "vivo-b-b2-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Replacement Battery VIVO B-B2 — fits Vivo phones that use the B-B2 pack",
+      "descriptionCandidate": "GoldPlus Replacement Battery VIVO B-B2 — fits Vivo phones that use the B-B2 pack for UGX 36,000, in stock. Replacement battery for Vivo phones that use the…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-VIVOBD2",
+      "url": "https://shopgoldplus.com/products/vivo-b-d2-battery",
+      "slug": "vivo-b-d2-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Replacement Battery VIVO B-D2 — fits Vivo phones that use the B-D2 pack",
+      "descriptionCandidate": "GoldPlus Replacement Battery VIVO B-D2 — fits Vivo phones that use the B-D2 pack for UGX 40,000, in stock. Replacement battery for Vivo phones that use the…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-WIFIBATBIG",
+      "url": "https://shopgoldplus.com/products/wifi-bat-big-battery",
+      "slug": "wifi-bat-big-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Portable WiFi (MiFi) Replacement Battery — Large Pack (WIFI BAT BIG)",
+      "descriptionCandidate": "GoldPlus Portable WiFi (MiFi) Replacement Battery — Large Pack (WIFI BAT BIG) for UGX 18,000, in stock. Replacement battery for portable WiFi (MiFi) units —…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-WIFIBATTERYSMALL",
+      "url": "https://shopgoldplus.com/products/wifi-battery-small-battery",
+      "slug": "wifi-battery-small-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Portable WiFi (MiFi) Replacement Battery — Small Pack (WIFI BATTERY SMALL)",
+      "descriptionCandidate": "GoldPlus Portable WiFi (MiFi) Replacement Battery — Small Pack (WIFI BATTERY SMALL) for UGX 18,000, in stock. Replacement battery for portable WiFi (MiFi)…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    },
+    {
+      "sku": "GP-BAT-WT140",
+      "url": "https://shopgoldplus.com/products/wt140-battery",
+      "slug": "wt140-battery",
+      "state": "RETAIN_CURRENT_REVIEW_ONLY",
+      "titleCandidate": "GoldPlus Replacement Battery WT140 — fits the C01 Plus",
+      "descriptionCandidate": "GoldPlus Replacement Battery WT140 — fits the C01 Plus for UGX 18,000, in stock. Replacement battery for the C01 Plus, model WT140. Tested before sale; fit…",
+      "parent": "/phone-batteries",
+      "review": "Preserve useful current copy; change only evidence-supported fields."
+    }
+  ]
+}
