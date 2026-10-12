@@ -71,6 +71,18 @@ describe('compatibility workflow: maker/checker and publication', () => {
     expect(strong).toEqual({ ok: true, next: 'READY', evidenceStatus: 'FIT_TESTED' });
   });
 
+  it('a submitted supplier listing can be published as awaiting verification only when the shop allows it, and never by its maker', () => {
+    const submitted = { ...base, workflowStatus: 'REVIEW' as const, submittedBy: 'maker' };
+    expect(transitionClaim(submitted, 'PUBLISH', 'publisher').ok).toBe(false);
+    expect(transitionClaim(submitted, 'PUBLISH', 'publisher', { allowAwaiting: true })).toEqual({ ok: true, next: 'ACTIVE', evidenceStatus: 'SUPPLIER_LISTED' });
+    const byMaker = transitionClaim(submitted, 'PUBLISH', 'maker', { allowAwaiting: true });
+    expect(byMaker.ok).toBe(false);
+    if (!byMaker.ok) expect(byMaker.code).toBe('MAKER_CHECKER');
+    // A verified claim is unaffected, and a draft still cannot skip submission.
+    expect(transitionClaim({ ...submitted, evidenceStatus: 'FIT_TESTED' }, 'PUBLISH', 'publisher', { allowAwaiting: true }).ok).toBe(false);
+    expect(transitionClaim(base, 'PUBLISH', 'publisher', { allowAwaiting: true }).ok).toBe(false);
+  });
+
   it('a conditional verdict must state its condition', () => {
     const noCondition = transitionClaim({ ...base, workflowStatus: 'REVIEW', submittedBy: 'maker' }, 'VERIFY', 'checker', { evidenceStatus: 'CONDITIONAL' });
     expect(noCondition.ok).toBe(false);
@@ -107,6 +119,9 @@ describe('compatibility workflow: maker/checker and publication', () => {
     expect(publicFitState({ ...live, evidenceStatus: 'REJECTED', stockQuantity: 5 })).toBeNull();
     expect(publicFitState({ ...live, workflowStatus: 'READY', evidenceStatus: 'FIT_TESTED', stockQuantity: 5 })).toBeNull();
     expect(publicFitState({ ...live, batteryLifecycle: 'DRAFT', evidenceStatus: 'FIT_TESTED', stockQuantity: 5 })).toBeNull();
+    // An unchecked listing shows (as awaiting) for any sellable product whose battery record is not archived.
+    expect(publicFitState({ ...live, batteryLifecycle: 'DRAFT', evidenceStatus: 'SUPPLIER_LISTED', stockQuantity: 5 })).toBe('AWAITING_VERIFICATION');
+    expect(publicFitState({ ...live, batteryLifecycle: 'ARCHIVED', evidenceStatus: 'SUPPLIER_LISTED', stockQuantity: 5 })).toBeNull();
     expect(publicFitState({ ...live, productApproved: false, evidenceStatus: 'FIT_TESTED', stockQuantity: 5 })).toBeNull();
   });
 

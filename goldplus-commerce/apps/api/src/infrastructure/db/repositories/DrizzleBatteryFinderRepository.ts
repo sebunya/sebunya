@@ -74,7 +74,7 @@ export class DrizzleBatteryFinderRepository implements IBatteryFinderRepository 
 
   // ---------------------------------------------------------------- browse
   async brands(showAwaiting: boolean): Promise<Array<FinderBrandDto & { displayOrder: number; demandCount: number }>> {
-    const awaiting = showAwaiting ? sql`OR (c.workflow_status = 'ACTIVE' AND c.evidence_status = 'SUPPLIER_LISTED' AND bp.lifecycle_status = 'ACTIVE' AND p.approval_status = 'approved' AND p.active)` : sql``;
+    const awaiting = showAwaiting ? sql`OR (c.workflow_status = 'ACTIVE' AND c.evidence_status = 'SUPPLIER_LISTED' AND bp.lifecycle_status <> 'ARCHIVED' AND p.approval_status = 'approved' AND p.active)` : sql``;
     const rows = (await db.execute(sql`
       SELECT b.id, b.name, b.slug, b.is_featured AS "isFeatured", b.display_order AS "displayOrder",
         (SELECT count(*) FROM devices d WHERE d.brand_id = b.id AND d.status = 'ACTIVE')::int AS "deviceCount",

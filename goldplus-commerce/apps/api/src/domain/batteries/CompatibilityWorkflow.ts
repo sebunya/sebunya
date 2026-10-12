@@ -48,7 +48,7 @@ export function transitionClaim(
   state: CompatClaimState,
   action: CompatAction,
   actorId: string,
-  detail: { evidenceStatus?: CompatEvidenceStatus; publicCondition?: string | null; reason?: string } = {},
+  detail: { evidenceStatus?: CompatEvidenceStatus; publicCondition?: string | null; reason?: string; allowAwaiting?: boolean } = {},
 ): TransitionResult {
   const s = state.workflowStatus;
   const fail = (code: Extract<TransitionResult, { ok: false }>['code'], message: string): TransitionResult => ({ ok: false, code, message });
@@ -83,6 +83,16 @@ export function transitionClaim(
       return { ok: true, next: 'ARCHIVED', evidenceStatus: 'REJECTED' };
     }
     case 'PUBLISH': {
+      // Owner policy (2026-10-12): when the finder is set to show fits awaiting
+      // verification, a submitted supplier-listed claim may be published as
+      // exactly that — the public label says the fit has not been checked —
+      // by someone other than the person who entered it. Verification later
+      // upgrades it in place; nothing here lets a claim call itself verified.
+      if (s === 'REVIEW' && state.evidenceStatus === 'SUPPLIER_LISTED' && detail.allowAwaiting) {
+        if (actorId === state.createdBy) return fail('MAKER_CHECKER', 'The person who entered a claim cannot publish it unverified. A second person must.');
+        if (state.deviceStatus !== 'ACTIVE') return fail('DEVICE_INVALID', 'The device is archived or merged.');
+        return { ok: true, next: 'ACTIVE', evidenceStatus: 'SUPPLIER_LISTED' };
+      }
       if (s !== 'READY') return fail('INVALID_TRANSITION', `Only a verified (ready) claim can be published (this one is ${s}).`);
       if (state.evidenceStatus === 'REJECTED') return fail('REJECTED', 'A rejected claim can never be published.');
       if (state.deviceStatus !== 'ACTIVE') return fail('DEVICE_INVALID', 'The device is archived or merged.');
@@ -145,13 +155,19 @@ export interface PublicFitInput {
 export function publicFitState(input: PublicFitInput): PublicFitState | null {
   if (input.workflowStatus !== 'ACTIVE') return null;
   if (input.evidenceStatus === 'REJECTED') return null;
-  if (input.batteryLifecycle !== 'ACTIVE') return null;
   if (!input.productApproved || !input.productActive) return null;
+  // An unchecked listing needs only a sellable product (the shop already sells
+  // it); calling a fit VERIFIED additionally needs the battery record itself
+  // to have passed its own readiness gate (ACTIVE).
+  if (input.evidenceStatus === 'SUPPLIER_LISTED') {
+    if (input.batteryLifecycle === 'ARCHIVED') return null;
+    return input.showAwaitingVerification ? 'AWAITING_VERIFICATION' : null;
+  }
+  if (input.batteryLifecycle !== 'ACTIVE') return null;
   if (VERIFIED_EVIDENCE_STATUSES.includes(input.evidenceStatus)) {
     return input.stockQuantity > 0 ? 'VERIFIED_IN_STOCK' : 'VERIFIED_OUT_OF_STOCK';
   }
   if (input.evidenceStatus === 'CONDITIONAL') return 'CONDITIONAL';
-  if (input.evidenceStatus === 'SUPPLIER_LISTED') return input.showAwaitingVerification ? 'AWAITING_VERIFICATION' : null;
   return null;
 }
 
