@@ -193,6 +193,8 @@ export interface FinderDeviceDto {
   label: string;
   releaseYear: number | null;
   verifiedFits: number;
+  /** Live fits listed by a supplier and not yet checked by the shop (0 when the finder hides them). */
+  listedFits: number;
 }
 
 export interface FinderBatteryResultDto {

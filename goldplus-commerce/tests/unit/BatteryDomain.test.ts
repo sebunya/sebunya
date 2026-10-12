@@ -83,6 +83,19 @@ describe('compatibility workflow: maker/checker and publication', () => {
     expect(transitionClaim(base, 'PUBLISH', 'publisher', { allowAwaiting: true }).ok).toBe(false);
   });
 
+  it('a live awaiting fit is verified, rejected or withdrawn in place, by a second person', () => {
+    const live = { ...base, workflowStatus: 'ACTIVE' as const, submittedBy: 'maker' };
+    expect(transitionClaim(live, 'VERIFY', 'checker', { evidenceStatus: 'PACKAGE_VERIFIED' })).toEqual({ ok: true, next: 'ACTIVE', evidenceStatus: 'PACKAGE_VERIFIED' });
+    expect(transitionClaim(live, 'VERIFY', 'maker', { evidenceStatus: 'PACKAGE_VERIFIED' }).ok).toBe(false);
+    expect(transitionClaim(live, 'VERIFY', 'checker').ok).toBe(false); // still needs real evidence
+    expect(transitionClaim(live, 'REJECT', 'checker', { reason: 'Wrong connector.' })).toEqual({ ok: true, next: 'ARCHIVED', evidenceStatus: 'REJECTED' });
+    expect(transitionClaim(live, 'UNPUBLISH', 'anyone')).toEqual({ ok: true, next: 'REVIEW', evidenceStatus: 'SUPPLIER_LISTED' });
+    // A live VERIFIED fit keeps the old behaviour: no re-verify, unpublish goes to ready.
+    const verifiedLive = { ...live, evidenceStatus: 'FIT_TESTED' as const, reviewedBy: 'checker' };
+    expect(transitionClaim(verifiedLive, 'VERIFY', 'other', { evidenceStatus: 'FIT_TESTED' }).ok).toBe(false);
+    expect(transitionClaim(verifiedLive, 'UNPUBLISH', 'anyone')).toEqual({ ok: true, next: 'READY', evidenceStatus: 'FIT_TESTED' });
+  });
+
   it('a conditional verdict must state its condition', () => {
     const noCondition = transitionClaim({ ...base, workflowStatus: 'REVIEW', submittedBy: 'maker' }, 'VERIFY', 'checker', { evidenceStatus: 'CONDITIONAL' });
     expect(noCondition.ok).toBe(false);

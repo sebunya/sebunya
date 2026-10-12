@@ -52,6 +52,10 @@ export function transitionClaim(
 ): TransitionResult {
   const s = state.workflowStatus;
   const fail = (code: Extract<TransitionResult, { ok: false }>['code'], message: string): TransitionResult => ({ ok: false, code, message });
+  // A fit that is live but unchecked (published as awaiting verification). It
+  // is checked, rejected or withdrawn in place — a customer never sees it
+  // flicker off and on while staff do the work.
+  const awaiting = s === 'ACTIVE' && state.evidenceStatus === 'SUPPLIER_LISTED';
 
   switch (action) {
     case 'SUBMIT': {
@@ -60,7 +64,7 @@ export function transitionClaim(
       return { ok: true, next: 'REVIEW', evidenceStatus: state.evidenceStatus };
     }
     case 'VERIFY': {
-      if (s !== 'REVIEW') return fail('INVALID_TRANSITION', `Only a claim in review can be verified (this one is ${s}).`);
+      if (s !== 'REVIEW' && !awaiting) return fail('INVALID_TRANSITION', `Only a claim in review (or live awaiting verification) can be verified (this one is ${s}).`);
       if (actorId === state.createdBy || actorId === state.submittedBy) {
         return fail('MAKER_CHECKER', 'The person who entered or submitted a claim cannot verify it. A second person must check the evidence.');
       }
@@ -72,10 +76,11 @@ export function transitionClaim(
       }
       const condition = (detail.publicCondition ?? state.publicCondition ?? '').trim();
       if (evidence === 'CONDITIONAL' && !condition) return fail('CONDITION_REQUIRED', 'A conditional fit must state the customer-facing condition.');
-      return { ok: true, next: 'READY', evidenceStatus: evidence };
+      // A live awaiting fit stays live and simply becomes a verified one.
+      return { ok: true, next: awaiting ? 'ACTIVE' : 'READY', evidenceStatus: evidence };
     }
     case 'REJECT': {
-      if (s !== 'REVIEW' && s !== 'READY') return fail('INVALID_TRANSITION', `Only a claim in review or ready can be rejected (this one is ${s}).`);
+      if (s !== 'REVIEW' && s !== 'READY' && !awaiting) return fail('INVALID_TRANSITION', `Only a claim in review, ready or live awaiting verification can be rejected (this one is ${s}).`);
       if (actorId === state.createdBy || actorId === state.submittedBy) {
         return fail('MAKER_CHECKER', 'The person who entered or submitted a claim cannot decide on it.');
       }
@@ -100,7 +105,8 @@ export function transitionClaim(
     }
     case 'UNPUBLISH': {
       if (s !== 'ACTIVE') return fail('INVALID_TRANSITION', 'Only a live claim can be unpublished.');
-      return { ok: true, next: 'READY', evidenceStatus: state.evidenceStatus };
+      // An unchecked fit goes back to review, never to 'ready' (which would claim it was verified).
+      return { ok: true, next: awaiting ? 'REVIEW' : 'READY', evidenceStatus: state.evidenceStatus };
     }
     case 'ARCHIVE': {
       if (s === 'ARCHIVED') return fail('INVALID_TRANSITION', 'The claim is already archived.');
