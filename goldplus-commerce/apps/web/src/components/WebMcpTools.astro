@@ -1,0 +1,84 @@
+---
+/**
+ * WebMCP (W3C Web Machine Learning CG): read-only tools an in-browser AI agent
+ * can call on any storefront page instead of scraping it. Each tool forwards
+ * to the site's own MCP server (/mcp), so prices, stock and the internal-field
+ * filter are exactly the ones the server applies — no second implementation.
+ *
+ * Feature-detected: browsers without navigator.modelContext (almost all of them
+ * today) run nothing beyond the check. Nothing here buys, writes or reads a
+ * customer; checkout stays a human action on the page.
+ */
+---
+<script>
+  type ToolResult = { content: Array<{ type: 'text'; text: string }>; structuredContent?: unknown; isError?: boolean };
+  type ModelContext = { registerTool?: (tool: unknown) => unknown };
+
+  async function callServer(name: string, args: Record<string, unknown>): Promise<ToolResult> {
+    try {
+      const res = await fetch('/mcp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        credentials: 'omit',
+        body: JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method: 'tools/call', params: { name, arguments: args } }),
+      });
+      const json = await res.json();
+      if (json?.result) return json.result as ToolResult;
+      return { content: [{ type: 'text', text: json?.error?.message ?? 'The shop could not answer just now.' }], isError: true };
+    } catch {
+      return { content: [{ type: 'text', text: 'The shop could not be reached just now. Please try again.' }], isError: true };
+    }
+  }
+
+  const READ_ONLY = { readOnlyHint: true };
+  const tools = [
+    {
+      name: 'search_products',
+      description:
+        'Search the GoldPlus catalogue (chargers, cables, power banks, earphones, storage, car and PC accessories, replacement phone batteries) by words, SKU or model. Returns current UGX prices, stock and product links.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', maxLength: 120, description: 'Words, a SKU or a model number, e.g. "65W charger" or "GP-C11".' },
+          in_stock_only: { type: 'boolean', description: 'Only products in stock now.' },
+          limit: { type: 'integer', minimum: 1, maximum: 20, description: 'How many results (default 10).' },
+        },
+      },
+      annotations: READ_ONLY,
+      execute: (input: Record<string, unknown>) => callServer('search_products', input ?? {}),
+    },
+    {
+      name: 'get_product',
+      description: 'Full details of one GoldPlus product: UGX price, stock, verified specifications, photos and link. Pass the slug or the product page URL.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          slug: { type: 'string', maxLength: 200, description: 'Product slug, e.g. "goldplus-charger-gp-c11".' },
+          url: { type: 'string', maxLength: 300, description: 'Or the product page URL.' },
+        },
+      },
+      annotations: READ_ONLY,
+      execute: (input: Record<string, unknown>) => callServer('get_product', input ?? {}),
+    },
+    {
+      name: 'store_info',
+      description: 'Where the GoldPlus shop is in Kampala, opening hours, phone/WhatsApp, delivery terms and the returns and warranty pages.',
+      inputSchema: { type: 'object', properties: {} },
+      annotations: READ_ONLY,
+      execute: () => callServer('store_info', {}),
+    },
+  ];
+
+  const ctx = ((navigator as unknown as { modelContext?: ModelContext }).modelContext ??
+    (document as unknown as { modelContext?: ModelContext }).modelContext) as ModelContext | undefined;
+  if (ctx && typeof ctx.registerTool === 'function') {
+    for (const tool of tools) {
+      try {
+        const r = ctx.registerTool(tool) as Promise<unknown> | undefined;
+        if (r && typeof (r as Promise<unknown>).catch === 'function') (r as Promise<unknown>).catch(() => {});
+      } catch {
+        // A tool the browser refuses (a name already registered by a soft navigation) is not worth an error.
+      }
+    }
+  }
+</script>
