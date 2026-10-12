@@ -32,6 +32,7 @@ import { DrizzleBatteryCompatibilityRepository } from './db/repositories/Drizzle
 import { DrizzleInventoryLedgerRepository } from './db/repositories/DrizzleInventoryLedgerRepository';
 import { DrizzleBatteryFinderRepository } from './db/repositories/DrizzleBatteryFinderRepository';
 import { DrizzleBatteryImportRepository } from './db/repositories/DrizzleBatteryImportRepository';
+import { DrizzleUnlistedProductReader } from './db/repositories/DrizzleUnlistedProductReader';
 import { DrizzleAssistantConfigRepository, DrizzleAssistantLedgerRepository } from './db/repositories/DrizzleAssistantRepository';
 import { AssistantCounterStore } from './security/AssistantCounterStore';
 import { AssistantAdmissionUseCases } from '../application/use-cases/assistant/AssistantAdmissionUseCases';
@@ -742,6 +743,8 @@ export class Registry {
   public readonly orderRepo = new DrizzleOrderRepository();
   public readonly orderAttributionRepo = new DrizzleOrderAttributionRepository();
   public readonly productRepo = new DrizzleProductRepository();
+  /** Once-published products that are off sale: the product page's honest 404 (no price, stock or images). */
+  public readonly unlistedProductReader = new DrizzleUnlistedProductReader();
   public readonly blogRepo = new DrizzleBlogRepository();
   public readonly deviceRepo = new DrizzleDeviceRepository();
   public readonly pricingRepo = new DrizzlePricingRepository();

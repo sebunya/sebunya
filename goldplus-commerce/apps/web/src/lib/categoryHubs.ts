@@ -69,6 +69,10 @@ export interface HubChildConfig {
   excludeKeywords?: string[];
   /** False when the live taxonomy has no subcategory for this child. */
   taxonomyMapped: boolean;
+  /** Questions specific to this child, shown before the hub's shared ones. */
+  faqs?: HubFaq[];
+  /** Guides worth reading before choosing in this range. */
+  guides?: HubTile[];
 }
 
 /** An entry tile on a hub that points outside its own children (e.g. /power → /phone-batteries). */
@@ -100,6 +104,8 @@ export interface CategoryHubConfig {
   children: HubChildConfig[];
   /** Extra entry tiles shown with the children (a related range that lives at its own URL). */
   extraTiles?: HubTile[];
+  /** Guides worth reading before choosing in this range. */
+  guides?: HubTile[];
 }
 
 /** Superlatives and claims we never publish — enforced by unit test. */
@@ -109,6 +115,35 @@ const GATE = DEFAULT_RELEASE_GATE;
 
 const DELIVERY_FAQ: HubFaq = { question: 'Do you deliver in Kampala and Wakiso?', source: 'delivery' };
 const WARRANTY_FAQ: HubFaq = { question: 'Is there a warranty on these products?', source: 'warranty' };
+const GUIDE_CHARGER: HubTile = { label: 'Charger watts: read the output label', href: '/blog/charger-watts-explained-how-to-read-a-charger-s-real-power' };
+const GUIDE_POWER_BANK: HubTile = { label: 'Power-bank capacity: what the numbers mean', href: '/blog/power-bank-capacity-explained-what-10-000mah-really-gives-you' };
+const GUIDE_BATTERY: HubTile = { label: 'How to find the right replacement phone battery', href: '/blog/how-to-find-the-right-replacement-battery-for-your-phone' };
+
+/** Answer bank (copy handoff 2026-10-12): short, always-true answers a shopper can act on. No product claims. */
+const FAQ_WATTAGE: HubFaq = { question: 'Does a higher wattage guarantee faster charging?', answer: 'No. Charging depends on the charger, the cable and the phone supporting the same charging mode. A larger number on a box does not establish the speed every phone will receive; check the rating printed for the port you will use.' };
+const FAQ_ADD_PORTS: HubFaq = { question: 'Can I add the wattages of two ports together?', answer: 'Do not assume so. A multi-port charger usually shares power between its ports when more than one device is connected. Check its stated combined-output limit and the supported combinations on the label.' };
+const FAQ_CABLE_INCLUDED: HubFaq = { question: 'Is a cable included with this charger?', answer: 'Check the "In the box" line on the product page for the exact kit. A cable drawn on packaging does not confirm the contents of every variant; ask us if the listing does not say.' };
+const FAQ_CABLE_ENDS: HubFaq = { question: 'How do I identify both ends of a cable?', answer: 'Look at the port on your charger or computer, then the port on your device. Choose a cable whose two connectors match those ports. Do not choose by the phone brand alone.' };
+const FAQ_3A: HubFaq = { question: 'Does 3A mean USB 3.0?', answer: 'No. 3A is an electrical-current figure. USB 3.0 describes a data-transfer standard. One does not establish the other.' };
+const FAQ_IPHONE_CABLE: HubFaq = { question: 'Which cable should I buy for an iPhone?', answer: 'Check the connector on your particular iPhone and on your charger. The phone may use Lightning or USB-C; the charger may use USB-A or USB-C. Match both ends before ordering.' };
+const FAQ_TYPE_C: HubFaq = { question: 'Is Type-C the same connector as USB-C?', answer: 'Type-C is the common name for the USB-C connector. The connector name alone does not tell you the charging power or data speed a particular cable or device supports.' };
+const FAQ_CAPACITY: HubFaq = { question: 'How much power-bank capacity do I need?', answer: 'Think about what you need to charge, how often and how you will carry it. Compare the model\'s labelled capacity with its output and connection options. Capacity alone does not decide charging speed or an exact number of full phone charges.' };
+const FAQ_MAH: HubFaq = { question: 'What does mAh mean on a power bank?', answer: 'It describes charge capacity at a stated voltage. To compare energy between two units, watt-hours are more useful: voltage multiplied by amp-hours. Do not compare mAh figures stated at different voltages as if they were the same amount of energy.' };
+const FAQ_LAPTOP: HubFaq = { question: 'Can a power bank charge my laptop?', answer: 'Check the laptop\'s charging input, the power bank\'s supported output profile and the cable. A large capacity or a headline wattage alone does not establish laptop compatibility; send us the laptop model if you are unsure.' };
+const FAQ_FLIGHT: HubFaq = { question: 'Can I take this power bank on a flight?', answer: 'Check the exact unit\'s watt-hour label and your airline\'s current rules before you travel. A plane symbol or a "check-in OK" phrase on packaging is not an approval.' };
+const FAQ_LEADS: HubFaq = { question: 'Are all built-in leads outputs?', answer: 'Not necessarily. Check the direction and purpose of each lead on that exact model. Some designs use one lead to recharge the power bank rather than to charge a phone.' };
+const FAQ_WIRED_WIRELESS: HubFaq = { question: 'What is the difference between wired and wireless earphones?', answer: 'Wired earphones need a compatible physical audio connection, usually a 3.5mm plug or USB-C. Wireless sets need a compatible Bluetooth connection and their own charging arrangement. Check the exact connector, fit and controls on the model you choose.' };
+const FAQ_PLAYTIME: HubFaq = { question: 'How long will these earbuds play?', answer: 'Use the figure recorded for that exact model and the conditions it was measured under. Listening time varies with volume and use; we do not borrow another model\'s runtime or quote the largest of conflicting package claims.' };
+const FAQ_ANC: HubFaq = { question: 'Do these earbuds have noise cancellation?', answer: 'Check the specification for the exact model. A generic package phrase or an unrelated product image does not establish active noise cancellation. If it is not confirmed on the product page, ask us rather than assuming it is included.' };
+const FAQ_USABLE: HubFaq = { question: 'Why is usable storage lower than the label?', answer: 'Capacity conventions, formatting and file-system information all take a share of the space a device reports as available. A lower displayed number alone does not mean a counterfeit; a full-capacity test can check a specific unit.' };
+const FAQ_FLASH_DISK: HubFaq = { question: 'Is a flash disk the same as a USB flash drive?', answer: 'Yes, both names describe portable USB storage. Check the drive\'s connector, capacity and any confirmed transfer-speed information for the device you will use it with.' };
+const FAQ_CAMERA_CARD: HubFaq = { question: 'Will any microSD card work in my camera?', answer: 'Check the camera\'s supported card type, maximum capacity and recording-speed requirement. A capacity number or a camera icon on the package alone does not establish a suitable card.' };
+const FAQ_CHOOSE_BATTERY: HubFaq = { question: 'How do I choose a replacement battery?', answer: 'Match the exact phone variant and the battery code, then confirm the connector and fit. A familiar phone name, a similar shape or a larger capacity alone is not enough.' };
+const FAQ_OPEN_PHONE: HubFaq = { question: 'Do I need to open my phone to find the code?', answer: 'No. Do not open a sealed phone just to find a code. Start with the phone\'s model in Settings under About phone and ask us; share the battery code only if it is already accessible.' };
+const FAQ_RATED_TYPICAL: HubFaq = { question: 'Why are rated and typical capacities different?', answer: 'Some battery labels print both a rated value and a typical value for the same battery. Keep them separate when comparing, and compare like with like. Neither replaces the need to confirm the correct battery model.' };
+const FAQ_SAME_SHAPE: HubFaq = { question: 'Does a same-shaped battery fit?', answer: 'Shape alone does not establish compatibility. The exact model, the connector and the phone variant need to match.' };
+const FAQ_CAR_INPUT: HubFaq = { question: 'Which car-charger input and port does my setup need?', answer: 'Check that the charger\'s input matches your vehicle socket (12V or 24V), then match the output port to the cable your phone uses. Read the rating printed for that port rather than a combined figure on the box.' };
+
 const SHOP_FAQ: HubFaq = {
   question: 'Where is the GoldPlus shop?',
   answer:
@@ -148,7 +183,8 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
         body: 'Kits differ in whether a cable is included. Check the individual product page. We list what each product actually comes with, and if a detail is missing from a listing we say so rather than guess.',
       },
     ],
-    faqs: [DELIVERY_FAQ, WARRANTY_FAQ, SHOP_FAQ],
+    faqs: [FAQ_WATTAGE, FAQ_CABLE_ENDS, DELIVERY_FAQ, WARRANTY_FAQ, SHOP_FAQ],
+    guides: [GUIDE_CHARGER, GUIDE_POWER_BANK, GUIDE_BATTERY],
     releaseGate: GATE,
     extraTiles: [{ label: 'Phone batteries', href: '/phone-batteries' }],
     children: [
@@ -162,6 +198,8 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
           'Choose portable power around the devices you carry. Compare the input and output connections, built-in leads, any wireless charging and the capacity stated for the exact model. A larger capacity number does not mean faster charging or a fixed number of phone recharges.',
         subcategorySlug: 'power-banks',
         taxonomyMapped: true,
+        faqs: [FAQ_CAPACITY, FAQ_MAH, FAQ_LAPTOP, FAQ_LEADS, FAQ_FLIGHT],
+        guides: [GUIDE_POWER_BANK, GUIDE_CHARGER],
       },
       {
         slug: 'chargers',
@@ -173,6 +211,8 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
           'Compare wall chargers by their ports, supported charging modes and listed output. On a charger with several ports, the available power may be shared when more than one device is connected. Check the exact kit to see whether a cable is included, and send us the device model if you are unsure which charger and cable to pair.',
         subcategorySlug: 'chargers',
         taxonomyMapped: true,
+        faqs: [FAQ_WATTAGE, FAQ_ADD_PORTS, FAQ_CABLE_INCLUDED],
+        guides: [GUIDE_CHARGER],
       },
       {
         slug: 'charging-cables',
@@ -186,6 +226,8 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
         subcategorySlug: null,
         keywordFilter: ['cable'],
         taxonomyMapped: false,
+        faqs: [FAQ_CABLE_ENDS, FAQ_3A, FAQ_IPHONE_CABLE, FAQ_TYPE_C],
+        guides: [GUIDE_CHARGER],
       },
     ],
   },
@@ -201,6 +243,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
     ],
     categorySlug: 'sound-devices',
     taxonomyMapped: true,
+    guides: [],
     buyingCriteria: [
       {
         heading: 'Wired or wireless',
@@ -215,7 +258,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
         body: 'Check whether a product uses touch or button controls and what ear-tip sizes are included. Details are on each product page where recorded.',
       },
     ],
-    faqs: [DELIVERY_FAQ, WARRANTY_FAQ, SHOP_FAQ],
+    faqs: [FAQ_WIRED_WIRELESS, FAQ_PLAYTIME, DELIVERY_FAQ, WARRANTY_FAQ, SHOP_FAQ],
     releaseGate: GATE,
     children: [
       {
@@ -230,6 +273,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
         // The taxonomy folds wired earphones into "earbuds": keep them on the audio hub, off this page.
         excludeKeywords: ['wired', '3.5mm'],
         taxonomyMapped: true,
+        faqs: [FAQ_PLAYTIME, FAQ_ANC],
       },
       {
         slug: 'headphones',
@@ -271,7 +315,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
         body: 'Every storage device shows slightly less usable space than the size printed on the package once it is formatted. This is normal across the industry, not a fault. Ask us about the checks available for a card before you buy.',
       },
     ],
-    faqs: [DELIVERY_FAQ, WARRANTY_FAQ, SHOP_FAQ],
+    faqs: [FAQ_USABLE, DELIVERY_FAQ, WARRANTY_FAQ, SHOP_FAQ],
     releaseGate: GATE,
     children: [
       {
@@ -283,6 +327,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
         intro: 'USB flash drives (flash disks) from the GoldPlus range, listed from live stock. Check the connector your device uses and the capacity it supports.',
         subcategorySlug: 'flash-drives',
         taxonomyMapped: true,
+        faqs: [FAQ_FLASH_DISK, FAQ_USABLE],
       },
       {
         slug: 'memory-cards',
@@ -293,6 +338,7 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
         intro: 'microSD cards from the GoldPlus range, listed from live stock. Check the card type, the maximum capacity and the recording-speed requirement of your device before ordering.',
         subcategorySlug: 'memory-cards',
         taxonomyMapped: true,
+        faqs: [FAQ_CAMERA_CARD, FAQ_USABLE],
       },
     ],
   },
@@ -320,7 +366,8 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
         body: 'Some battery labels print two capacities: a rated value and a typical value. Keep them separate when comparing, and compare like with like. Neither replaces the need to confirm the correct battery model.',
       },
     ],
-    faqs: [DELIVERY_FAQ, WARRANTY_FAQ, SHOP_FAQ],
+    faqs: [FAQ_CHOOSE_BATTERY, FAQ_OPEN_PHONE, FAQ_RATED_TYPICAL, FAQ_SAME_SHAPE, DELIVERY_FAQ, WARRANTY_FAQ, SHOP_FAQ],
+    guides: [GUIDE_BATTERY],
     releaseGate: GATE,
     children: [],
   },
@@ -366,7 +413,8 @@ export const CATEGORY_HUBS: CategoryHubConfig[] = [
         body: 'A charger with a fast-charging port only charges quickly when the cable and the phone support the same mode. Each product page shows the details recorded for that model; ask us if a rating needs confirming.',
       },
     ],
-    faqs: [DELIVERY_FAQ, WARRANTY_FAQ, SHOP_FAQ],
+    faqs: [FAQ_CAR_INPUT, FAQ_WATTAGE, DELIVERY_FAQ, WARRANTY_FAQ, SHOP_FAQ],
+    guides: [GUIDE_CHARGER],
     releaseGate: GATE,
     children: [],
   },

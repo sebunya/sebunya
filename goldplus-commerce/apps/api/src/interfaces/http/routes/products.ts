@@ -102,13 +102,16 @@ routes.get('/:slug/compatibility', async (c) => {
 
 routes.get('/:slug', async (c) => {
   const registry = Registry.getInstance();
-  const useCase = new GetProductBySlugUseCase(registry.productRepo);
+  const useCase = new GetProductBySlugUseCase(registry.productRepo, registry.unlistedProductReader);
   const result = await useCase.execute(c.req.param('slug'));
 
   if (!result.ok) {
+    // Still a 404 (nothing to buy here), but a once-published product says what it was: the storefront renders a helpful page.
     const res: ApiResponse<never> = {
       success: false,
-      error: { code: 'PRODUCT_NOT_FOUND', message: 'Product not found' },
+      error: result.code === 'NOT_LISTED'
+        ? { code: 'PRODUCT_NOT_LISTED', message: 'This product is not listed right now', details: result.notice }
+        : { code: 'PRODUCT_NOT_FOUND', message: 'Product not found' },
       meta: { requestId: c.get('requestId') as string | undefined },
     };
     return c.json(res, 404);

@@ -64,7 +64,8 @@ const robotsMeta = gate.pass ? undefined : 'noindex,follow';
 
 // FAQs: static honest ones + live-data ones only when the data backs them.
 const showWarrantyFaq = hasVerifiedWarrantyFact(products);
-const faqs = hub.faqs
+// A child's own questions come first; the range's shared ones (delivery, warranty, shop) follow.
+const faqs = [...(child?.faqs ?? []), ...hub.faqs]
   .map((f) => {
     if (f.source === 'delivery') {
       const answer = `Yes. ${biz.deliveryNote} Delivery runs ${biz.deliveryHours}, ${biz.openDays}. An estimated fee for your address is shown at checkout before you pay and confirmed before the rider leaves.`;
@@ -128,6 +129,7 @@ else if (!child && !hub.categorySlug && hub.keywordFilter?.[0]) shopParams.set('
 const seeAllHref = shopParams.toString() ? `/shop?${shopParams.toString()}` : '/shop';
 
 const relatedHubs = CATEGORY_HUBS.filter((h) => h.slug !== hub.slug).slice(0, 5);
+const guides = (child?.guides ?? hub.guides ?? []);
 const intro = child ? [child.intro] : hub.intro;
 ---
 
@@ -199,6 +201,17 @@ const intro = child ? [child.intro] : hub.intro;
               <h3 class="text-sm font-black text-slate-900">{c.heading}</h3>
               <p class="mt-2 text-sm leading-relaxed text-slate-600">{c.body}</p>
             </div>
+          ))}
+        </div>
+      </section>
+    )}
+
+    {guides.length > 0 && (
+      <section aria-labelledby="guides-heading" class="mt-10">
+        <h2 id="guides-heading" class="text-base font-black text-slate-900">Read before you choose</h2>
+        <div class="mt-3 flex flex-wrap gap-2">
+          {guides.map((g) => (
+            <a href={g.href} class="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:border-brand-primary">{g.label}</a>
           ))}
         </div>
       </section>
