@@ -120,6 +120,12 @@ export class BatteryFinderUseCases {
     };
   }
 
+  /** The listed-fits count follows the same switch as the awaiting results themselves. */
+  private applyListedSwitch<T extends { listedFits: number }>(device: T, cfg: BatteryFinderConfig): T {
+    if (!cfg.showAwaitingVerification) device.listedFits = 0;
+    return device;
+  }
+
   private async resultsForDevice(deviceId: string, cfg: BatteryFinderConfig): Promise<FinderBatteryResultDto[]> {
     const [rows, campaign] = await Promise.all([this.repo.fitsForDevice(deviceId), this.campaign()]);
     const out: Array<{ r: FinderBatteryResultDto; rank: number }> = [];
@@ -142,8 +148,7 @@ export class BatteryFinderUseCases {
     const device = await this.repo.deviceBySlug(slug);
     if (!device) throw notFound('Device');
     const results = await this.resultsForDevice(device.id, cfg);
-    // The listed-fits count follows the same switch as the results themselves.
-    if (!cfg.showAwaitingVerification) device.listedFits = 0;
+    this.applyListedSwitch(device, cfg);
     if (record) void this.repo.recordEvent({ eventType: 'DEVICE_SELECTED', mode: 'FIND_BY_PHONE', queryNormalised: null, outcome: results.length ? outcomeFor(results[0].fitState) : 'NO_RESULT', brandId: null, seriesId: null, deviceId: device.id, batteryProductId: null, resultCount: results.length, aliasHit: false, sessionHash: this.sessionHash(sessionId) }).catch(() => undefined);
     return { device, results, config: cfg };
   }
@@ -226,19 +231,20 @@ export class BatteryFinderUseCases {
     if (exactDevices.length === 1) {
       const device = await this.repo.deviceById(exactDevices[0].deviceId);
       if (device) {
+        this.applyListedSwitch(device, cfg);
         const results = await this.resultsForDevice(device.id, cfg);
         void event(results.length ? outcomeFor(results[0].fitState) : 'NO_RESULT', { deviceId: device.id, resultCount: results.length, aliasHit: exactDevices[0].tier === 5 });
         return { kind: 'DEVICE', device, results, query, config: cfg };
       }
     }
     if (exactDevices.length > 1) {
-      const list = (await Promise.all(exactDevices.map((d) => this.repo.deviceById(d.deviceId)))).filter((d): d is FinderDeviceDto => !!d);
+      const list = (await Promise.all(exactDevices.map((d) => this.repo.deviceById(d.deviceId)))).filter((d): d is FinderDeviceDto => !!d).map((d) => this.applyListedSwitch(d, cfg));
       void event('AMBIGUOUS', { resultCount: list.length });
       return { kind: 'AMBIGUOUS_DEVICE', devices: list, message: 'More than one phone matches. Pick your exact model number so we show the right battery.', query, config: cfg };
     }
     const suggestions = ranked.filter((r) => !isExactTier(r.tier));
     if (suggestions.length) {
-      const deviceList = (await Promise.all(suggestions.filter((s): s is Extract<typeof s, { kind: 'DEVICE' }> => s.kind === 'DEVICE').map((s) => this.repo.deviceById(s.deviceId)))).filter((d): d is FinderDeviceDto => !!d);
+      const deviceList = (await Promise.all(suggestions.filter((s): s is Extract<typeof s, { kind: 'DEVICE' }> => s.kind === 'DEVICE').map((s) => this.repo.deviceById(s.deviceId)))).filter((d): d is FinderDeviceDto => !!d).map((d) => this.applyListedSwitch(d, cfg));
       const batteryIds = suggestions.filter((s): s is Extract<typeof s, { kind: 'BATTERY' }> => s.kind === 'BATTERY').map((s) => s.productId);
       // Only published, approved, active batteries are suggested. The candidate
       // set behind the prefix tier is every non-archived battery, which includes
@@ -252,7 +258,7 @@ export class BatteryFinderUseCases {
       // form, instead of "Did you mean one of these?" above an empty list.
       if (deviceList.length > 0 || batteryList.length > 0) {
         void event('NO_RESULT', { resultCount: 0 });
-        return { kind: 'SUGGESTIONS', devices: deviceList, batteries: batteryList, message: 'No exact match. Did you mean one of these? Pick it to see checked batteries; we never guess a fit from a similar name.', query, config: cfg };
+        return { kind: 'SUGGESTIONS', devices: deviceList, batteries: batteryList, message: 'No exact match. Did you mean one of these? Pick it to see the batteries matched to it; we never guess a fit from a similar name.', query, config: cfg };
       }
     }
     void event('NO_RESULT');
