@@ -1226,6 +1226,13 @@
       "when": 1790140000052,
       "tag": "0175_assistant_budget_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 175,
+      "version": "5",
+      "when": 1790140000053,
+      "tag": "0176_product_market_event_trigger_array_fix",
+      "breakpoints": true
     }
   ]
 }
