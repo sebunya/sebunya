@@ -237,7 +237,7 @@ describe('the product page', () => {
 
 describe('pages that had the site-wide description', () => {
   it('33 · verification and the product finder describe themselves', () => {
-    expect(read(`${WEB}pages/verification/index.astro`)).toMatch(/<BaseLayout title="Product Verification \| GoldPlus" description="[^"]{60,}"/);
+    expect(read(`${WEB}pages/verification/index.astro`)).toMatch(/<BaseLayout title="Check a GoldPlus Product Code" description="[^"]{60,}"/);
     expect(read(`${WEB}pages/product-finder.astro`)).toMatch(/<BaseLayout title="Find the Right GoldPlus Product" description="[^"]{60,}"/);
   });
 
