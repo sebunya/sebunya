@@ -61,6 +61,9 @@ const enabled = assistantEnabled();
   }
   .gp-assistant__launch:focus-visible, .gp-assistant__close:focus-visible, .gp-assistant__send:focus-visible, .gp-assistant__starters button:focus-visible { outline: 3px solid var(--gp-green); outline-offset: 2px; }
   .gp-assistant--open .gp-assistant__launch { display: none; }
+  /* The class sets display:flex, which would beat the hidden attribute's
+     UA rule; the panel must stay closed until the launcher opens it. */
+  .gp-assistant__panel[hidden] { display: none; }
   .gp-assistant__panel {
     position: fixed; right: max(1rem, env(safe-area-inset-right)); bottom: max(1rem, env(safe-area-inset-bottom)); z-index: 47;
     width: min(400px, calc(100vw - 2rem)); height: min(620px, calc(100vh - 2rem)); display: flex; flex-direction: column;
