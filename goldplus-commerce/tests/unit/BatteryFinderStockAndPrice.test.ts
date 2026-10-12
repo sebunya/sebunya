@@ -128,3 +128,27 @@ describe('battery finder: search by code agrees with the phone pages', () => {
     expect(out.battery.fitState).toBe('VERIFIED_IN_STOCK');
   });
 });
+
+describe('battery finder: the product page contract', () => {
+  function pageFinder(lifecycle: 'ACTIVE' | 'REVIEW', showAwaiting = true) {
+    const row = fit({ batteryLifecycle: lifecycle, evidenceStatus: 'SUPPLIER_LISTED' });
+    const repo = {
+      getConfig: async () => ({ config: { ...DEFAULT_BATTERY_FINDER_CONFIG, showAwaitingVerification: showAwaiting }, version: 1 }),
+      batteryPublicBySlug: async () => ({ ...product, lifecycleStatus: lifecycle, stockQuantity: 3, floorPriceUgx: 38_000, productApproved: true, productActive: true }),
+      fitsForBattery: async () => [row],
+    };
+    return new BatteryFinderUseCases(repo as never, {} as never, {} as never, 'pepper');
+  }
+
+  it('a battery whose record is still in review returns its live awaiting fits, flagged unpublished, so the page can still list them', async () => {
+    const out = await pageFinder('REVIEW').battery('bl-5c');
+    expect(out?.isPublished).toBe(false);
+    expect(out?.devices.map((d) => [d.slug, d.fitState])).toEqual([['nokia-1100', 'AWAITING_VERIFICATION']]);
+  });
+
+  it('with awaiting fits hidden the same battery returns no devices, so the page shows nothing', async () => {
+    const out = await pageFinder('REVIEW', false).battery('bl-5c');
+    expect(out?.isPublished).toBe(false);
+    expect(out?.devices).toEqual([]);
+  });
+});

@@ -177,6 +177,7 @@ export class BatteryFinderUseCases {
     const cfg = await this.config();
     const device = await this.repo.deviceBySlug(deviceSlug);
     if (!device) return { device: null, fits: {} as Record<string, { fitState: PublicFitState | null; fitLabel: string | null; condition: string | null }> };
+    this.applyListedSwitch(device, cfg);
     const rows = await this.repo.fitsForDevice(device.id);
     const fits: Record<string, { fitState: PublicFitState | null; fitLabel: string | null; condition: string | null }> = {};
     for (const id of productIds.slice(0, 100)) {
