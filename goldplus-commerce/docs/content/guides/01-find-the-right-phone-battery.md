@@ -2,9 +2,9 @@ Title: How to find the right replacement battery for your phone
 
 Summary: A phone battery is matched to the exact model, not the brand. Here is how to find your model number and battery code, the signs a battery is worn out, and what to do if you cannot find yours.
 
-Meta title: How to find the right phone battery in Kampala | GoldPlus
+Meta title: Find the Right Phone Battery | GoldPlus
 
-Meta description: Find your phone's exact model number and battery code, know when a battery needs replacing, and get the right one from GoldPlus in Kampala, with same-day delivery in Kampala and Wakiso.
+Meta description: Match a replacement phone battery by exact device variant and battery code. Learn why capacity and shape alone are not enough to establish fit.
 
 Related products: two or three of your best-stocked phone batteries.
 
@@ -33,6 +33,10 @@ On phones with a removable back, the battery has its own code printed on its lab
 - iPhone batteries are specific to each model, so the exact model (for example iPhone 11 or iPhone 11 Pro) is what matters.
 
 The battery code is the most reliable thing to match. If the code on your old battery and the code on the new one are the same, you are on the right track.
+
+# Rated and typical capacity
+
+Some labels print two capacities, for example 4,900mAh rated and 5,000mAh typical. Both describe the same battery under different measurement conditions. Keep them separate when you compare, and compare like with like. Neither figure tells you which phone the battery fits; only the code and the exact phone variant do.
 
 > Never open a sealed phone to find a code, and never remove or charge a battery that is swollen or damaged. Your model number in Settings is enough for us to help.
 

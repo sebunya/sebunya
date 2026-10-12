@@ -38,10 +38,16 @@ interface Props {
   errorMessage?: string;
   /** Show the GPS / pasted-link pin capture section. */
   withPin?: boolean;
+  /** Label for the free-text fallback; the default is delivery wording, so a non-delivery form (a counterfeit report) passes its own. */
+  manualLabel?: string;
+  /** Note under the free-text fallback; empty string hides it. */
+  manualNote?: string;
 }
 
 const {
   id = 'loc_' + Math.random().toString(36).substr(2, 9),
+  manualLabel = 'Describe where the delivery should go',
+  manualNote = 'Our team will confirm the delivery details with a phone call before dispatch.',
   name,
   label = 'Delivery location',
   placeholder = 'Type your area, town or district, e.g. Najjera, Seeta, Mbarara',
@@ -153,7 +159,7 @@ if (defaultValue && defaultValue.startsWith('{')) {
 
     <div class="js-manual-mode hidden space-y-2 bg-amber-50 border border-amber-200 rounded-xl p-4">
       <label class="block text-sm font-bold text-brand-charcoal" for={`${id}_manual`}>
-        Describe where the delivery should go
+        {manualLabel}
       </label>
       <textarea
         id={`${id}_manual`}
@@ -161,7 +167,7 @@ if (defaultValue && defaultValue.startsWith('{')) {
         maxlength="400"
         class="js-manual-text w-full px-3 py-2.5 bg-white border border-brand-borderGrey rounded-lg text-base sm:text-sm outline-none focus:ring-2 focus:ring-brand-primaryInk"
         placeholder="e.g. Kyanamukaaka trading centre, past the mosque, ask for Ssalongo's shop"></textarea>
-      <p class="text-xs text-amber-800">Our team will confirm the delivery details with a phone call before dispatch.</p>
+      {manualNote && <p class="text-xs text-amber-800">{manualNote}</p>}
       <button type="button" class="js-manual-commit bg-brand-charcoal text-white text-sm font-bold px-4 py-2 rounded-lg">
         Use these directions
       </button>

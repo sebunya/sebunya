@@ -65,7 +65,7 @@ if (Astro.request.method === 'POST') {
 }
 ---
 
-<BaseLayout title="Report counterfeit product | GoldPlus">
+<BaseLayout title="Report a Suspected Counterfeit | GoldPlus" description="Tell GoldPlus about a product you suspect may be counterfeit. Share the relevant product and seller details so support can review the report.">
   <div class="container mx-auto px-4 lg:px-8 py-16">
     <div class="max-w-2xl mx-auto">
       <div class="bg-red-50/45 border border-red-200/60 rounded-2xl p-6 md:p-8 mb-8 flex gap-5 items-start">
@@ -87,8 +87,10 @@ if (Astro.request.method === 'POST') {
             <legend class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Discovery Location</legend>
             <UgandaLocationPicker 
                name="locationJson" 
-               label="Where did you find the product?" 
-               helperText="Type the area, town or district where the product was found."
+               label="Where did you see or buy this product?" 
+               helperText="Name the shop or seller and the area. Include any details that may help us identify the location."
+               manualLabel="Describe where you saw or bought the product"
+               manualNote=""
                required={false} 
                defaultValue={values.locationJson} 
                errorMessage={errors.locationJson} 

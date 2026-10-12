@@ -67,7 +67,7 @@ const showWarrantyFaq = hasVerifiedWarrantyFact(products);
 const faqs = hub.faqs
   .map((f) => {
     if (f.source === 'delivery') {
-      const answer = `Yes. ${biz.deliveryNote} Delivery runs ${biz.deliveryHours}, ${biz.openDays}. The exact fee for your address is shown at checkout before you pay.`;
+      const answer = `Yes. ${biz.deliveryNote} Delivery runs ${biz.deliveryHours}, ${biz.openDays}. An estimated fee for your address is shown at checkout before you pay and confirmed before the rider leaves.`;
       return { question: f.question, answer };
     }
     if (f.source === 'warranty') {
@@ -158,10 +158,13 @@ const intro = child ? [child.intro] : hub.intro;
   </header>
 
   <main class="mx-auto w-full min-w-0 max-w-7xl overflow-hidden px-4 py-7 sm:px-6 sm:py-10 lg:px-8">
-    {!child && hub.children.length > 0 && (
+    {!child && (hub.children.length > 0 || (hub.extraTiles?.length ?? 0) > 0) && (
       <section aria-label="Browse this range" class="flex flex-wrap gap-2">
         {hub.children.map((c) => (
           <a href={hubPath(hub.slug, c.slug)} class="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:border-brand-primary">{c.h1}</a>
+        ))}
+        {(hub.extraTiles ?? []).map((t) => (
+          <a href={t.href} class="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:border-brand-primary">{t.label}</a>
         ))}
         <a href={hub.categorySlug ? `/shop?category=${hub.categorySlug}` : '/shop'} class="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:border-brand-primary">All in shop</a>
       </section>

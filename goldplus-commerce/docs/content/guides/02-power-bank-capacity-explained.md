@@ -1,10 +1,10 @@
 Title: Power bank capacity explained: what 10,000mAh really gives you
 
-Summary: A 10,000mAh power bank does not put 10,000mAh into your phone. Here is why, how many charges to expect, what watts mean for speed, and the rules for taking a power bank on a plane.
+Summary: A power bank's mAh figure is a capacity label, not a promise of a fixed number of phone charges. Here is what the number means, why voltage and watt-hours matter, what the output label says about speed, and what to check before flying.
 
-Meta title: Power bank capacity explained: mAh, watts and charges | GoldPlus
+Meta title: Power Bank Capacity: mAh, Wh & Output | GoldPlus
 
-Meta description: Why a 10,000mAh power bank gives about 6,000 to 7,000mAh to your phone, how many charges to expect, how watts affect speed, and the airline rules for power banks.
+Meta description: Understand power-bank capacity, voltage and watt-hours. Learn why mAh alone cannot promise a fixed number of phone charges or a charging speed.
 
 Related products: two or three power banks of different sizes.
 
@@ -12,23 +12,21 @@ Related SKUs: GP-P02A-PB, GP-P05W-PB, GP-P07-PB
 
 ---- Article (paste everything below this line into the Article box) ----
 
-The number on a power bank is the capacity of the cells inside it. What reaches your phone is less, and knowing how much less helps you buy the right size for your day, a trip upcountry or a long power cut.
+A power bank's mAh figure is a capacity label, not a promise of a fixed number of phone charges. To compare energy, you also need the voltage at which that capacity is stated. Output conversion and how the devices are used affect the energy that reaches the phone.
 
 # Why you get less than the number on the box
 
-The capacity (mAh) is measured at the voltage of the cells inside, about 3.7V. To charge a phone, the power bank raises that to 5V or more for USB, and some energy is lost as heat along the way, in the power bank and in the phone.
+The capacity (mAh) is stated at the voltage of the cells inside, which the label may or may not print. To charge a phone, the power bank converts that to 5V or more for USB, and some energy is lost as heat along the way, in the power bank and in the phone.
 
-The result: **a phone usually receives around 60% to 70% of the rated capacity.** That is normal for every power bank, not a fault.
+The result: **a phone receives less than the labelled capacity.** How much less depends on the voltage the capacity is stated at, the output mode and the cable; there is no single percentage that applies to every model. It is normal, not a fault.
+
+# Compare in watt-hours, not mAh
+
+Two capacity figures stated at different voltages are not the same amount of energy. Where the package prints watt-hours (Wh), compare those. As a worked example only: a unit rated 10,000mAh at 3.7V stores 10Ah × 3.7V = 37Wh. That is how the sum works; it is not a claim that every 10,000mAh product uses that voltage.
 
 # How many charges to expect
 
-Many phones today have a battery of about 5,000mAh. As a rough guide:
-
-- **10,000mAh:** a little over one full charge of a 5,000mAh phone, or about two charges of a smaller phone.
-- **20,000mAh:** about two and a half full charges of a 5,000mAh phone.
-- **30,000mAh and up:** several days of normal use, or charging two phones through a long power cut.
-
-Check your own phone's battery size in Settings, or on the maker's website, and divide.
+Nobody can promise a number of charges from the capacity figure alone. To estimate for your own phone: find its battery energy (Settings or the maker's site, in mAh at its own voltage, or in Wh), compare it with the power bank's Wh where printed, and allow for conversion loss. A larger capacity gives more charges; it does not give faster charging, and it does not make a laptop compatible.
 
 # Watts decide the speed
 
@@ -41,13 +39,7 @@ For fast charging, the phone, the power bank and the cable all have to support t
 
 # Taking a power bank on a plane
 
-Airlines follow international rules for lithium batteries. In short:
-
-- Power banks go in your **hand luggage only**, never in checked bags.
-- Up to **100Wh** is generally allowed. Between 100Wh and 160Wh needs the airline's approval. Above 160Wh is not allowed.
-- To work out watt-hours: mAh × 3.7 ÷ 1,000. A 20,000mAh power bank is about 74Wh, and 27,000mAh is about 100Wh.
-
-Rules can vary, so check with your airline before you fly.
+Airlines set limits in watt-hours and usually require power banks in hand luggage. Check the exact unit's Wh label and your airline's current rules before you travel. A plane symbol or a "check-in OK" phrase printed on packaging is not an approval.
 
 # Make it last
 
@@ -57,4 +49,4 @@ Rules can vary, so check with your airline before you fly.
 
 # Choose yours
 
-See every [power bank we stock](/power/power-banks), with same-day delivery in Kampala and Wakiso. For the right cable, see [charging cables](/power/charging-cables).
+See every [power bank we stock](/power/power-banks) and compare the input, the per-port output and the built-in leads for the exact model. For the right cable, see [charging cables](/power/charging-cables), and read the [charger guide](/blog/charger-watts-explained-how-to-read-a-charger-s-real-power) for what the output label means.
