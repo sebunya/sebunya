@@ -29,6 +29,39 @@ import { getStorefrontCopy } from '../../lib/storefrontCopy';
 import { findRecordedRedirect } from '../../lib/recordedRedirect';
 import { isLikelyHuman } from '../../lib/humanTraffic';
 
+/**
+ * A product that was on sale and is off sale now (drafted until photographed,
+ * or discontinued): still a 404 for search engines, but a person on an old
+ * link, a WhatsApp share or a Goldie card gets the name and the way to the
+ * range. The API says PRODUCT_NOT_LISTED only for a once-published product.
+ */
+async function notListedResponse(res: Response): Promise<Response | null> {
+  const body = (await res.json().catch(() => null)) as { error?: { code?: string; details?: { name?: string; categorySlug?: string | null; categoryName?: string | null } } } | null;
+  const notice = body?.error?.code === 'PRODUCT_NOT_LISTED' ? body.error.details : null;
+  if (!notice?.name) return null;
+  const esc = (t: string) => t.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string));
+  const hubHref = notice.categorySlug ? indexableCategoryHref(`/shop?category=${encodeURIComponent(notice.categorySlug)}`) : '/shop';
+  const biz = await getBusinessInfo().catch(() => null);
+  return new Response(
+    `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+      `<meta name="viewport" content="width=device-width,initial-scale=1">` +
+      `<meta name="robots" content="noindex,follow">` +
+      `<title>${esc(notice.name)} is not listed right now | GoldPlus</title></head>` +
+      `<body style="font-family:system-ui,sans-serif;margin:0;padding:3rem 1.5rem;color:#0A0A0A;background:#fbfbf7">` +
+      `<main style="max-width:34rem;margin:0 auto">` +
+      `<p style="font-size:.75rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#456b00">GoldPlus</p>` +
+      `<h1 style="font-size:1.5rem;font-weight:800;line-height:1.25">${esc(notice.name)} is not listed right now</h1>` +
+      `<p style="line-height:1.6">This product is off the shop for the moment, so there is no price or stock to show. ` +
+      `If you need it, ask us and we will tell you whether it is back soon${notice.categoryName ? `, or browse the current ${esc(notice.categoryName.toLowerCase())} range` : ''}.</p>` +
+      `<p style="display:flex;flex-wrap:wrap;gap:.6rem;margin-top:1.5rem">` +
+      `<a href="${esc(hubHref)}" style="font-weight:800;color:#fff;background:#0A0A0A;padding:.7rem 1.1rem;border-radius:9999px;text-decoration:none">Browse the range</a>` +
+      (biz?.whatsappUrl ? `<a href="${esc(biz.whatsappUrl)}" style="font-weight:800;color:#456b00;border:1.5px solid #456b00;padding:.7rem 1.1rem;border-radius:9999px;text-decoration:none">Ask us on WhatsApp</a>` : '') +
+      `<a href="/shop" style="font-weight:700;color:#456b00;padding:.7rem .4rem;text-decoration:underline">All products</a>` +
+      `</p></main></body></html>`,
+    { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } },
+  );
+}
+
 const { slug } = Astro.params;
 const searchQuery = Astro.url.searchParams.get('searchQuery') ?? '';
 const searchRank = Number(Astro.url.searchParams.get('searchRank') ?? 0);
@@ -58,34 +91,8 @@ try {
     {
       const recorded = await findRecordedRedirect(Astro.url.pathname);
       if (recorded) return Astro.redirect(recorded.target, recorded.status);
-      // A product that was on sale and is off sale now (drafted until photographed, or
-      // discontinued): still a 404 for search engines, but a person on an old link, a
-      // WhatsApp share or a Goldie card gets the name and the way to the range.
-      const body = (await res.json().catch(() => null)) as { error?: { code?: string; details?: { name?: string; categorySlug?: string | null; categoryName?: string | null } } } | null;
-      const notice = body?.error?.code === 'PRODUCT_NOT_LISTED' ? body.error.details : null;
-      if (notice?.name) {
-        const esc = (t: string) => t.replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string));
-        const hubHref = notice.categorySlug ? indexableCategoryHref(`/shop?category=${encodeURIComponent(notice.categorySlug)}`) : '/shop';
-        const biz = await getBusinessInfo().catch(() => null);
-        return new Response(
-          `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
-            `<meta name="viewport" content="width=device-width,initial-scale=1">` +
-            `<meta name="robots" content="noindex,follow">` +
-            `<title>${esc(notice.name)} is not listed right now | GoldPlus</title></head>` +
-            `<body style="font-family:system-ui,sans-serif;margin:0;padding:3rem 1.5rem;color:#0A0A0A;background:#fbfbf7">` +
-            `<main style="max-width:34rem;margin:0 auto">` +
-            `<p style="font-size:.75rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#456b00">GoldPlus</p>` +
-            `<h1 style="font-size:1.5rem;font-weight:800;line-height:1.25">${esc(notice.name)} is not listed right now</h1>` +
-            `<p style="line-height:1.6">This product is off the shop for the moment, so there is no price or stock to show. ` +
-            `If you need it, ask us and we will tell you whether it is back soon${notice.categoryName ? `, or browse the current ${esc(notice.categoryName.toLowerCase())} range` : ''}.</p>` +
-            `<p style="display:flex;flex-wrap:wrap;gap:.6rem;margin-top:1.5rem">` +
-            `<a href="${esc(hubHref)}" style="font-weight:800;color:#fff;background:#0A0A0A;padding:.7rem 1.1rem;border-radius:9999px;text-decoration:none">Browse the range</a>` +
-            (biz?.whatsappUrl ? `<a href="${esc(biz.whatsappUrl)}" style="font-weight:800;color:#456b00;border:1.5px solid #456b00;padding:.7rem 1.1rem;border-radius:9999px;text-decoration:none">Ask us on WhatsApp</a>` : '') +
-            `<a href="/shop" style="font-weight:700;color:#456b00;padding:.7rem .4rem;text-decoration:underline">All products</a>` +
-            `</p></main></body></html>`,
-          { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } },
-        );
-      }
+      const unlisted = await notListedResponse(res);
+      if (unlisted) return unlisted;
       return Astro.redirect('/404', 404);
     }
   } else {

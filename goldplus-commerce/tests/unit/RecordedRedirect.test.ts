@@ -83,10 +83,11 @@ describe('the routes that 404 ask for a recorded redirect first', () => {
     let count = 0;
     while (at !== -1) {
       count += 1;
-      // The lookup and its redirect sit directly before this 404, in the same block.
-      const before = src.slice(Math.max(0, at - 200), at);
+      // The lookup and its redirect sit before this 404, in the same block; the only thing allowed
+      // between them is the once-published "not listed right now" answer, which is a 404 too.
+      const before = src.slice(Math.max(0, at - 320), at);
       expect(before).toContain(lookup);
-      expect(before).toMatch(/if \(recorded\) return Astro\.redirect\(recorded\.target, recorded\.status\);\s*$/);
+      expect(before).toMatch(/if \(recorded\) return Astro\.redirect\(recorded\.target, recorded\.status\);\s*(const unlisted = await notListedResponse\(res\);\s*if \(unlisted\) return unlisted;\s*)?$/);
       at = src.indexOf(notFound, at + 1);
     }
     expect(count).toBe(2);
