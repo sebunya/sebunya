@@ -113,6 +113,10 @@ describe('assistant router: deterministic answers come from shop data', () => {
     const ambiguous = await answerDeterministically(classify('battery for tecno spark 10'));
     expect(ambiguous.text).toMatch(/Which of these is your phone\? TECNO Spark 10, TECNO Spark 10C, TECNO Spark 10 Pro/);
     expect(ambiguous.products).toEqual([]);
+    callTool.mockResolvedValueOnce({ content: [{ type: 'text', text: 'x' }], structuredContent: { kind: 'SUGGESTIONS', devices: [{ label: 'TECNO Spark 3' }, { label: 'TECNO Spark 7 (KF6n)' }] } });
+    const nomatch = await answerDeterministically(classify('battery for tecno spark 10'));
+    expect(nomatch.text).toMatch(/do not have the tecno spark 10 on our battery list yet/);
+    expect(nomatch.text).not.toMatch(/Which of these is your phone/);
     const none = await answerDeterministically(classify('I need a battery'));
     expect(none.text).toMatch(/Tell me the phone model/);
   });

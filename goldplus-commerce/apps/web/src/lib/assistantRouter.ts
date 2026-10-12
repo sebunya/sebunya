@@ -133,7 +133,9 @@ export async function answerDeterministically(c: Classification): Promise<Determ
       }
       if (kind === 'AMBIGUOUS_DEVICE' || kind === 'SUGGESTIONS') {
         const devices = Array.isArray(s.devices) ? (s.devices as Json[]).slice(0, 6).map((d) => String(d.label ?? '')) : [];
-        return { intent: c.intent, text: `${devices.length ? `${CLARIFY_PHONE} ${devices.join(', ')}.` : 'I could not match that phone.'} The exact model is in Settings under About phone, if you want to check.`, products: [], links };
+        if (kind === 'AMBIGUOUS_DEVICE' && devices.length) return { intent: c.intent, text: `${CLARIFY_PHONE} ${devices.join(', ')}. The exact model is in Settings under About phone, if you want to check.`, products: [], links };
+        // SUGGESTIONS: nothing matched the phone the customer named; the finder offers its nearest names. Say so plainly, never pretend one of them is the phone.
+        return { intent: c.intent, text: `I do not have the ${c.query} on our battery list yet, so I will not guess a fit.${devices.length ? ` The closest names we do have are ${devices.join(', ')}; if yours is one of those, tell me which.` : ''} Otherwise send us the phone model on WhatsApp and we will check for you.`, products: [], links };
       }
       if (kind === 'BATTERY') {
         const b = (s.battery as Json) ?? {};
