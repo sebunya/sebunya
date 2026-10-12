@@ -245,8 +245,13 @@ export class BatteryFinderUseCases {
       const batteryList = (await Promise.all(batteryIds.map((id) => this.repo.batteryPublic(id))))
         .filter((b): b is NonNullable<typeof b> => !!b && b.lifecycleStatus === 'ACTIVE' && b.productApproved && b.productActive)
         .map((b) => ({ canonicalCode: b.canonicalCode, slug: b.slug, name: b.name }));
-      void event('NO_RESULT', { resultCount: 0 });
-      return { kind: 'SUGGESTIONS', devices: deviceList, batteries: batteryList, message: 'No exact match. Did you mean one of these? Pick it to see checked batteries; we never guess a fit from a similar name.', query, config: cfg };
+      // The publish filter can empty the list (only drafts were close). Then
+      // there is nothing to suggest: answer NO_RESULT, which carries the request
+      // form, instead of "Did you mean one of these?" above an empty list.
+      if (deviceList.length > 0 || batteryList.length > 0) {
+        void event('NO_RESULT', { resultCount: 0 });
+        return { kind: 'SUGGESTIONS', devices: deviceList, batteries: batteryList, message: 'No exact match. Did you mean one of these? Pick it to see checked batteries; we never guess a fit from a similar name.', query, config: cfg };
+      }
     }
     void event('NO_RESULT');
     return { kind: 'NO_RESULT', message: cfg.noResultBody, query, config: cfg };

@@ -51,12 +51,18 @@ const railDiscount = await getStorefrontDiscount();
   data-sale-percent={railDiscount.active ? String(railDiscount.percent) : ""}
   data-sale-ends-iso={railDiscount.active ? (railDiscount.endsIso ?? "") : ""}
 >
-  <div class="mb-6">
-    <h2 id="recommendation-recently-viewed" class="text-2xl font-black tracking-tight text-brand-charcoal">
-      {title}
-    </h2>
-    <p class="text-brand-mutedGrey text-sm mt-1 font-medium">{subtitle}</p>
-  </div>
+  {/* The heading waits in a <template> until the rail has products to show:
+      the section starts hidden, but text readers and crawlers read hidden
+      markup and reported "Pick Up Where You Left Off" to every new visitor
+      (2026-10-08 design audit, 02). */}
+  <template data-recently-viewed-head>
+    <div class="mb-6">
+      <h2 id="recommendation-recently-viewed" class="text-2xl font-black tracking-tight text-brand-charcoal">
+        {title}
+      </h2>
+      <p class="text-brand-mutedGrey text-sm mt-1 font-medium">{subtitle}</p>
+    </div>
+  </template>
 
   <ul class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6" data-recently-viewed-list>
      {/* Hydrated dynamically on client mount */}
@@ -140,6 +146,8 @@ const railDiscount = await getStorefrontDiscount();
     if (composed.length === 0) return;
 
     // Unhide section now that all gating rules passed and we have data
+    const head = rail.querySelector<HTMLTemplateElement>("template[data-recently-viewed-head]");
+    if (head) head.replaceWith(head.content.cloneNode(true));
     rail.style.display = "block";
 
     // The SAME campaign discount every server-rendered card shows (stamped by

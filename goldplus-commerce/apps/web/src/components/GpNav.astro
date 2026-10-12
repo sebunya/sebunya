@@ -178,6 +178,8 @@ const saleLive = saleEnds ? Date.now() < new Date(saleEnds).getTime() : false;
 /** The rail's "Flash sale — Live" chip is a claim; drop it when it is untrue. */
 const railItems = saleLive ? nav.rail : nav.rail.filter((c) => c.key !== 'flash');
 const featAt = (i: number) => navFeatured.length ? navFeatured[i % navFeatured.length] : null;
+// A panel's card comes from that panel's own category, or the panel shows none.
+const featFor = (category: string) => navFeatured.find((c) => c.categoryName === category) ?? null;
 
 /**
  * The deal panel's featured card, and whether it is HONESTLY on sale.
@@ -238,7 +240,7 @@ const nbaJson = escNav(JSON.stringify(nba));
     <div class="gp-nav__top-in gpn-container">
       <div class="gp-nav__nba" id="gpNavNba" role="status" aria-live="off" aria-label="Recommended next step">
         <span class="gp-nav__dot" aria-hidden="true"></span>
-        <a class="gp-nav__nba-slot" id="gpNavNbaSlot" href="/support" data-in=""><span class="gp-nav__nba-txt" id="gpNavNbaText">Order before <b>{cut.cutoffLabel}</b> for same-day delivery in Kampala</span><u id="gpNavNbaCta" hidden=""></u></a>
+        <a class="gp-nav__nba-slot" id="gpNavNbaSlot" href="/delivery/kampala-wakiso" data-in=""><span class="gp-nav__nba-txt" id="gpNavNbaText">Order before <b>{cut.cutoffLabel}</b> for same-day delivery in Kampala</span><u id="gpNavNbaCta" hidden=""></u></a>
         <button class="gp-nav__nba-x" id="gpNavNbaX" type="button" aria-label="Dismiss this message">×</button>
       </div>
       <span class="gp-nav__reach">
@@ -374,10 +376,10 @@ const nbaJson = escNav(JSON.stringify(nba));
             Can't find your model? Send us a photo of the old one
           </a>
         </div>
-        {featAt(0) && (
-          <a class="gp-nav__feat" href={`/products/${featAt(0)!.slug}`}>
-            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featAt(0)!.imageUrl} srcset={productSrcset(featAt(0)!.imageUrl) ?? undefined} sizes={productSrcset(featAt(0)!.imageUrl) ? "200px" : undefined} alt={featAt(0)!.name} loading="lazy" decoding="async"></div>
-            <div><small>{featAt(0)!.label}</small><p>{featAt(0)!.name}</p><span>{featAt(0)!.blurb}</span></div>
+        {featFor('Power Devices') && (
+          <a class="gp-nav__feat" href={`/products/${featFor('Power Devices')!.slug}`}>
+            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featFor('Power Devices')!.imageUrl} srcset={productSrcset(featFor('Power Devices')!.imageUrl) ?? undefined} sizes={productSrcset(featFor('Power Devices')!.imageUrl) ? "200px" : undefined} alt={featFor('Power Devices')!.name} loading="lazy" decoding="async"></div>
+            <div><small>{featFor('Power Devices')!.label}</small><p>{featFor('Power Devices')!.name}</p><span>{featFor('Power Devices')!.blurb}</span></div>
           </a>
         )}
       </div>
@@ -386,8 +388,7 @@ const nbaJson = escNav(JSON.stringify(nba));
         <div class="gp-nav__tiles">
           <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=sound&q=earbuds')}><b>Earbuds</b><span>True wireless, with a charging case</span></a>
           <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=sound&q=earphones')}><b>Earphones</b><span>Wired, with a mic for calls</span></a>
-          <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=sound&q=headphones')}><b>Headphones</b><span>On-ear, for everyday listening</span></a>
-          <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=sound&q=over-ear')}><b>Over-ear headphones</b><span>Full cups, for studio and travel</span></a>
+          <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=sound&q=headphones')}><b>Headphones</b><span>For everyday listening</span></a>
         </div>
         {/* Cross-sell slot. Every card must name the product actually in the
              photo, the only GoldPlus photography available is the power range,
@@ -396,10 +397,10 @@ const nbaJson = escNav(JSON.stringify(nba));
              photography when it exists and restore the category product.
              A JSX comment, not an HTML one: an HTML comment ships to every
              visitor on every page (~330 bytes of the home document). */}
-        {featAt(1) && (
-          <a class="gp-nav__feat" href={`/products/${featAt(1)!.slug}`}>
-            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featAt(1)!.imageUrl} srcset={productSrcset(featAt(1)!.imageUrl) ?? undefined} sizes={productSrcset(featAt(1)!.imageUrl) ? "200px" : undefined} alt={featAt(1)!.name} loading="lazy" decoding="async"></div>
-            <div><small>{featAt(1)!.label}</small><p>{featAt(1)!.name}</p><span>{featAt(1)!.blurb}</span></div>
+        {featFor('Sound Devices') && (
+          <a class="gp-nav__feat" href={`/products/${featFor('Sound Devices')!.slug}`}>
+            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featFor('Sound Devices')!.imageUrl} srcset={productSrcset(featFor('Sound Devices')!.imageUrl) ?? undefined} sizes={productSrcset(featFor('Sound Devices')!.imageUrl) ? "200px" : undefined} alt={featFor('Sound Devices')!.name} loading="lazy" decoding="async"></div>
+            <div><small>{featFor('Sound Devices')!.label}</small><p>{featFor('Sound Devices')!.name}</p><span>{featFor('Sound Devices')!.blurb}</span></div>
           </a>
         )}
       </div>
@@ -409,39 +410,38 @@ const nbaJson = escNav(JSON.stringify(nba));
           <div class="gp-nav__matrix-row">
             <h4><img class="gp-nav__matrix-img" src="/nav/flash-drive.webp" alt="" loading="lazy" decoding="async">Flash drives <a href={indexableCategoryHref('/shop?category=storage&q=flash+drive')}>All sizes →</a></h4>
             <div class="gp-nav__caps">
-              <a href={indexableCategoryHref('/shop?category=storage&q=1gb')}>1GB</a>
-              <a href={indexableCategoryHref('/shop?category=storage&q=2gb')}>2GB</a>
-              <a href={indexableCategoryHref('/shop?category=storage&q=4gb')}>4GB</a>
-              <a href={indexableCategoryHref('/shop?category=storage&q=8gb')}>8GB</a>
-              <a href={indexableCategoryHref('/shop?category=storage&q=16gb')}>16GB</a>
-              <a href={indexableCategoryHref('/shop?category=storage&q=32gb')}>32GB</a>
-              <a href={indexableCategoryHref('/shop?category=storage&q=64gb')}>64GB</a>
-              <a href={indexableCategoryHref('/shop?category=storage&q=128gb')}>128GB</a>
-              <a href={indexableCategoryHref('/shop?category=storage&q=256gb')}>256GB</a>
-              <a href={indexableCategoryHref('/shop?category=storage&q=512gb')}>512GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=2gb+flash+drive')}>2GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=4gb+flash+drive')}>4GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=8gb+flash+drive')}>8GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=16gb+flash+drive')}>16GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=32gb+flash+drive')}>32GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=64gb+flash+drive')}>64GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=128gb+flash+drive')}>128GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=256gb+flash+drive')}>256GB</a>
             </div>
           </div>
           <div class="gp-nav__matrix-row">
             <h4><img class="gp-nav__matrix-img" src="/nav/memory-card.webp" alt="" loading="lazy" decoding="async">Memory cards <a href={indexableCategoryHref('/shop?category=storage&q=memory+card')}>All sizes →</a></h4>
             <div class="gp-nav__caps">
-              <a href={indexableCategoryHref('/shop?category=storage&q=1gb')}>1GB</a>
-              <a href={indexableCategoryHref('/shop?category=storage&q=2gb')}>2GB</a>
-              <a href={indexableCategoryHref('/shop?category=storage&q=4gb')}>4GB</a>
-              <a href={indexableCategoryHref('/shop?category=storage&q=8gb')}>8GB</a>
-              <a href={indexableCategoryHref('/shop?category=storage&q=16gb')}>16GB</a>
-              <a href={indexableCategoryHref('/shop?category=storage&q=32gb')}>32GB</a>
-              <a href={indexableCategoryHref('/shop?category=storage&q=64gb')}>64GB</a>
-              <a href={indexableCategoryHref('/shop?category=storage&q=128gb')}>128GB</a>
-              <a href={indexableCategoryHref('/shop?category=storage&q=256gb')}>256GB</a>
-              <a href={indexableCategoryHref('/shop?category=storage&q=512gb')}>512GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=1gb+memory+card')}>1GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=2gb+memory+card')}>2GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=4gb+memory+card')}>4GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=8gb+memory+card')}>8GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=16gb+memory+card')}>16GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=32gb+memory+card')}>32GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=64gb+memory+card')}>64GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=128gb+memory+card')}>128GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=256gb+memory+card')}>256GB</a>
+              <a href={indexableCategoryHref('/shop?category=storage&q=512gb+memory+card')}>512GB</a>
             </div>
           </div>
           <p class="gp-nav__note">Every card is written full and read back before it is sold. <b>The size on the box is the size you get.</b></p>
+          <p class="gp-nav__note">Reading a card on a computer? <a href={indexableCategoryHref('/shop?category=storage&q=card+reader')}>Multi-slot card readers &rarr;</a></p>
         </div>
-        {featAt(2) && (
-          <a class="gp-nav__feat" href={`/products/${featAt(2)!.slug}`}>
-            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featAt(2)!.imageUrl} srcset={productSrcset(featAt(2)!.imageUrl) ?? undefined} sizes={productSrcset(featAt(2)!.imageUrl) ? "200px" : undefined} alt={featAt(2)!.name} loading="lazy" decoding="async"></div>
-            <div><small>{featAt(2)!.label}</small><p>{featAt(2)!.name}</p><span>{featAt(2)!.blurb}</span></div>
+        {featFor('Storage Devices') && (
+          <a class="gp-nav__feat" href={`/products/${featFor('Storage Devices')!.slug}`}>
+            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featFor('Storage Devices')!.imageUrl} srcset={productSrcset(featFor('Storage Devices')!.imageUrl) ?? undefined} sizes={productSrcset(featFor('Storage Devices')!.imageUrl) ? "200px" : undefined} alt={featFor('Storage Devices')!.name} loading="lazy" decoding="async"></div>
+            <div><small>{featFor('Storage Devices')!.label}</small><p>{featFor('Storage Devices')!.name}</p><span>{featFor('Storage Devices')!.blurb}</span></div>
           </a>
         )}
       </div>
@@ -449,12 +449,11 @@ const nbaJson = escNav(JSON.stringify(nba));
       <div class="gp-nav__panel" data-panel="car" data-shape="wide">
         <div class="gp-nav__tiles">
           <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=car&q=charger')}><b>Car chargers</b><span>Fast charging built for Kampala potholes</span></a>
-          <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=car&q=bluetooth')}><b>Bluetooth for cars</b><span>Calls and music in a car with no Bluetooth</span></a>
         </div>
-        {featAt(3) && (
-          <a class="gp-nav__feat" href={`/products/${featAt(3)!.slug}`}>
-            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featAt(3)!.imageUrl} srcset={productSrcset(featAt(3)!.imageUrl) ?? undefined} sizes={productSrcset(featAt(3)!.imageUrl) ? "200px" : undefined} alt={featAt(3)!.name} loading="lazy" decoding="async"></div>
-            <div><small>{featAt(3)!.label}</small><p>{featAt(3)!.name}</p><span>{featAt(3)!.blurb}</span></div>
+        {featFor('Car Accessories') && (
+          <a class="gp-nav__feat" href={`/products/${featFor('Car Accessories')!.slug}`}>
+            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featFor('Car Accessories')!.imageUrl} srcset={productSrcset(featFor('Car Accessories')!.imageUrl) ?? undefined} sizes={productSrcset(featFor('Car Accessories')!.imageUrl) ? "200px" : undefined} alt={featFor('Car Accessories')!.name} loading="lazy" decoding="async"></div>
+            <div><small>{featFor('Car Accessories')!.label}</small><p>{featFor('Car Accessories')!.name}</p><span>{featFor('Car Accessories')!.blurb}</span></div>
           </a>
         )}
       </div>
@@ -464,10 +463,10 @@ const nbaJson = escNav(JSON.stringify(nba));
           <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=pc&q=mouse')}><b>Mouse</b><span>Wired and wireless, for work and play</span></a>
           <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=pc&q=sound+card')}><b>Sound cards</b><span>External audio for laptops and studios</span></a>
         </div>
-        {featAt(4) && (
-          <a class="gp-nav__feat" href={`/products/${featAt(4)!.slug}`}>
-            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featAt(4)!.imageUrl} srcset={productSrcset(featAt(4)!.imageUrl) ?? undefined} sizes={productSrcset(featAt(4)!.imageUrl) ? "200px" : undefined} alt={featAt(4)!.name} loading="lazy" decoding="async"></div>
-            <div><small>{featAt(4)!.label}</small><p>{featAt(4)!.name}</p><span>{featAt(4)!.blurb}</span></div>
+        {featFor('PC Accessories') && (
+          <a class="gp-nav__feat" href={`/products/${featFor('PC Accessories')!.slug}`}>
+            <div class="gp-nav__feat-card gp-nav__feat-card--photo"><img src={featFor('PC Accessories')!.imageUrl} srcset={productSrcset(featFor('PC Accessories')!.imageUrl) ?? undefined} sizes={productSrcset(featFor('PC Accessories')!.imageUrl) ? "200px" : undefined} alt={featFor('PC Accessories')!.name} loading="lazy" decoding="async"></div>
+            <div><small>{featFor('PC Accessories')!.label}</small><p>{featFor('PC Accessories')!.name}</p><span>{featFor('PC Accessories')!.blurb}</span></div>
           </a>
         )}
       </div>
@@ -566,21 +565,19 @@ const nbaJson = escNav(JSON.stringify(nba));
             <li><a href={indexableCategoryHref('/shop?category=sound&q=earbuds')}>Earbuds</a></li>
             <li><a href={indexableCategoryHref('/shop?category=sound&q=earphones')}>Earphones</a></li>
             <li><a href={indexableCategoryHref('/shop?category=sound&q=headphones')}>Headphones</a></li>
-            <li><a href={indexableCategoryHref('/shop?category=sound&q=over-ear')}>Over-ear headphones</a></li>
           </ul>
         </div>
         <div class="gp-nav__acc" data-acc="storage">
           <div class="gp-nav__acc-head"><a href={indexableCategoryHref('/shop?category=storage')}>Storage</a><button class="gp-nav__acc-tog" type="button" aria-expanded="false" aria-label="Show Storage sizes">+</button></div>
           <ul>
-            <li><h3>Flash drives</h3><div class="gp-nav__caps"><a href={indexableCategoryHref('/shop?category=storage&q=1gb')}>1GB</a><a href={indexableCategoryHref('/shop?category=storage&q=2gb')}>2GB</a><a href={indexableCategoryHref('/shop?category=storage&q=4gb')}>4GB</a><a href={indexableCategoryHref('/shop?category=storage&q=8gb')}>8GB</a><a href={indexableCategoryHref('/shop?category=storage&q=16gb')}>16GB</a><a href={indexableCategoryHref('/shop?category=storage&q=32gb')}>32GB</a><a href={indexableCategoryHref('/shop?category=storage&q=64gb')}>64GB</a><a href={indexableCategoryHref('/shop?category=storage&q=128gb')}>128GB</a><a href={indexableCategoryHref('/shop?category=storage&q=256gb')}>256GB</a><a href={indexableCategoryHref('/shop?category=storage&q=512gb')}>512GB</a></div></li>
-            <li><h3>Memory cards</h3><div class="gp-nav__caps"><a href={indexableCategoryHref('/shop?category=storage&q=1gb')}>1GB</a><a href={indexableCategoryHref('/shop?category=storage&q=2gb')}>2GB</a><a href={indexableCategoryHref('/shop?category=storage&q=4gb')}>4GB</a><a href={indexableCategoryHref('/shop?category=storage&q=8gb')}>8GB</a><a href={indexableCategoryHref('/shop?category=storage&q=16gb')}>16GB</a><a href={indexableCategoryHref('/shop?category=storage&q=32gb')}>32GB</a><a href={indexableCategoryHref('/shop?category=storage&q=64gb')}>64GB</a><a href={indexableCategoryHref('/shop?category=storage&q=128gb')}>128GB</a><a href={indexableCategoryHref('/shop?category=storage&q=256gb')}>256GB</a><a href={indexableCategoryHref('/shop?category=storage&q=512gb')}>512GB</a></div></li>
+            <li><h3>Flash drives</h3><div class="gp-nav__caps"><a href={indexableCategoryHref('/shop?category=storage&q=2gb+flash+drive')}>2GB</a><a href={indexableCategoryHref('/shop?category=storage&q=4gb+flash+drive')}>4GB</a><a href={indexableCategoryHref('/shop?category=storage&q=8gb+flash+drive')}>8GB</a><a href={indexableCategoryHref('/shop?category=storage&q=16gb+flash+drive')}>16GB</a><a href={indexableCategoryHref('/shop?category=storage&q=32gb+flash+drive')}>32GB</a><a href={indexableCategoryHref('/shop?category=storage&q=64gb+flash+drive')}>64GB</a><a href={indexableCategoryHref('/shop?category=storage&q=128gb+flash+drive')}>128GB</a><a href={indexableCategoryHref('/shop?category=storage&q=256gb+flash+drive')}>256GB</a></div></li>
+            <li><h3>Memory cards</h3><div class="gp-nav__caps"><a href={indexableCategoryHref('/shop?category=storage&q=1gb+memory+card')}>1GB</a><a href={indexableCategoryHref('/shop?category=storage&q=2gb+memory+card')}>2GB</a><a href={indexableCategoryHref('/shop?category=storage&q=4gb+memory+card')}>4GB</a><a href={indexableCategoryHref('/shop?category=storage&q=8gb+memory+card')}>8GB</a><a href={indexableCategoryHref('/shop?category=storage&q=16gb+memory+card')}>16GB</a><a href={indexableCategoryHref('/shop?category=storage&q=32gb+memory+card')}>32GB</a><a href={indexableCategoryHref('/shop?category=storage&q=64gb+memory+card')}>64GB</a><a href={indexableCategoryHref('/shop?category=storage&q=128gb+memory+card')}>128GB</a><a href={indexableCategoryHref('/shop?category=storage&q=256gb+memory+card')}>256GB</a><a href={indexableCategoryHref('/shop?category=storage&q=512gb+memory+card')}>512GB</a></div></li>
           </ul>
         </div>
         <div class="gp-nav__acc" data-acc="car">
           <div class="gp-nav__acc-head"><a href={indexableCategoryHref('/shop?category=car')}>Car</a><button class="gp-nav__acc-tog" type="button" aria-expanded="false" aria-label="Show Car subcategories">+</button></div>
           <ul>
             <li><a href={indexableCategoryHref('/shop?category=car&q=charger')}>Car chargers</a></li>
-            <li><a href={indexableCategoryHref('/shop?category=car&q=bluetooth')}>Bluetooth for cars</a></li>
           </ul>
         </div>
         <div class="gp-nav__acc" data-acc="pc">
@@ -1192,6 +1189,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
 .gp-nav__panel[data-shape="wide"]{grid-template-columns:1fr 296px;}
 .gp-nav__note{margin:-8px 0 12px;font-size:12px;color:var(--gpn-muted);}
 .gp-nav__note b{color:var(--gpn-cream);font-weight:600;}
+.gp-nav__note a{color:var(--gpn-green);font-weight:500;}
 
 /* battery finder — searching beats listing once the range is wide */
 .gp-nav__finder form{margin:0;}
@@ -2006,7 +2004,7 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
       /* ---- always available, and always true ---- */
       if (CTX.sunday) c.push({ id:'sunday', score:40,
         text:'Closed today. Same day delivery resumes on the <b>next working day</b>',
-        short:'Delivery resumes <b>next working day</b>', href:'/support' });
+        short:'Delivery resumes <b>next working day</b>', href:'/delivery/kampala-wakiso' });
       else if (CTX.beforeCutoff) c.push({ id:'cutoff', score:CTX.minsToCutoff <= 60 ? 90 : 50, urgent:CTX.minsToCutoff <= 60,
         text: CTX.minsToCutoff <= 60
           ? SD + 'only <em>' + CTX.minsToCutoff + ' minutes</em> left to order for delivery today'
@@ -2014,10 +2012,10 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
         short: CTX.minsToCutoff <= 60
           ? SD + '<em>' + CTX.minsToCutoff + ' min</em> left for same-day'
           : SD + 'order by <b>' + (nav.getAttribute('data-cutoff-label') || '5:00pm') + '</b> for same-day',
-        href:'/support' });
+        href:'/delivery/kampala-wakiso' });
       else c.push({ id:'aftercutoff', score:44,
         text:"Today's run has left. Order now and it goes out <b>tomorrow morning</b>",
-        short:'Next delivery run is <b>tomorrow</b>', href:'/support' });
+        short:'Next delivery run is <b>tomorrow</b>', href:'/delivery/kampala-wakiso' });
 
       c.push({ id:'verify', score:30,
         text:'Every unit is tested before it is sold', cta:'How we verify', href:'/verification' });

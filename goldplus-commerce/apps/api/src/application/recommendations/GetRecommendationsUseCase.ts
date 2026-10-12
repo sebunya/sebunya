@@ -87,6 +87,9 @@ const PLACEMENT_LADDERS: Record<RecommendationPlacement, RecommendationCandidate
 /** How stale a materialized-cache row may be before the live path takes over. */
 const CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 
+/** A product's whole category is read for same-category candidates (the largest holds ~140). */
+const SAME_CATEGORY_SCAN_LIMIT = 500;
+
 /** Server-side context that must never travel in the shared client input. */
 export interface RecommendationServerContext {
   profileId?: string;
@@ -508,6 +511,27 @@ export class GetRecommendationsUseCase {
         const categoryId = input.categoryId ?? contextProduct?.categoryId ?? undefined;
         const categorySlug = input.categorySlug;
         if (!categoryId && !categorySlug) return { products: [], state: "UNSUPPORTED" };
+        if (contextProduct) {
+          // The cut used to be the first fetchLimit products BY NAME, and
+          // "GoldPlus Battery …" sorts before every other power device: a power
+          // bank's similar products were four phone batteries (2026-10-08 design
+          // audit, 34). The whole category is read, products of the context's
+          // own type (power bank, charger, battery …, the extractor's name
+          // inference) lead in their stable order, and the same cut follows, so
+          // the pool and the cache stay their usual size.
+          const inCategory = await this.products.findPublicProducts({
+            categoryId,
+            categorySlug,
+            excludeProductIds: excludeIds,
+            limit: SAME_CATEGORY_SCAN_LIMIT,
+          });
+          const contextType = this.signalExtractor.extract(contextProduct).productType;
+          if (!contextType || contextType === "unknown") return { products: inCategory.slice(0, fetchLimit), state: "SUPPORTED" };
+          const sameType = inCategory.filter((product) => this.signalExtractor.extract(product).productType === contextType);
+          const sameTypeIds = new Set(sameType.map((product) => product.id));
+          const products = [...sameType, ...inCategory.filter((product) => !sameTypeIds.has(product.id))].slice(0, fetchLimit);
+          return { products, state: "SUPPORTED" };
+        }
         const products = await this.products.findPublicProducts({
           categoryId,
           categorySlug,

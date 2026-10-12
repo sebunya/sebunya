@@ -4,7 +4,7 @@ const { apiBase, compatibleWith = null } = Astro.props;
 ---
 
 <div id="product-finder-shell" data-api-base={apiBase} data-compatible-with={compatibleWith ?? ''} class="bg-white rounded-2xl border border-brand-borderGrey p-5 sm:p-6">
-  <div id="pf-status" class="mb-4 text-sm text-slate-600" aria-live="polite">Starting a private finder session…</div>
+  <div id="pf-status" class="mb-4 text-sm text-slate-600" aria-live="polite">Getting your questions ready…</div>
   <div id="pf-progress" class="mb-6 hidden">
     <div class="flex justify-between text-sm font-semibold text-slate-600 mb-2"><span id="pf-step-text">Step 1 of 4</span></div>
     <div class="w-full bg-slate-100 rounded-full h-2"><div id="pf-progress-bar" class="bg-brand-primary h-2 rounded-full transition-all" style="width:25%"></div></div>
@@ -17,7 +17,7 @@ const { apiBase, compatibleWith = null } = Astro.props;
     <button id="pf-submit" type="button" class="px-6 min-h-11 rounded-full bg-brand-primary text-sm font-bold text-brand-black hover:shadow-md hover:shadow-brand-primary/25 active:scale-[0.98] disabled:opacity-50 ml-auto hidden">See recommendations</button>
   </div>
   <div class="mt-8 pt-4 border-t border-slate-100 text-xs text-slate-500 text-center">
-    <p>Answers are limited to this finder. Advertising consent is never inferred. Interest buttons do not add to cart or send WhatsApp messages.</p>
+    <p>Answering does not sign you up for adverts. The buttons on a suggestion never add to your cart or send a message.</p>
   </div>
 </div>
 
@@ -68,12 +68,12 @@ const { apiBase, compatibleWith = null } = Astro.props;
       accessToken = data.accessToken;
       const reference = shell.dataset.compatibleWith;
       if (reference) await saveAnswer('referenceProductId', reference);
-      status.textContent = reference ? 'Private session ready. Only declared compatible, available products can match.' : 'Private session ready.';
+      status.textContent = reference ? `${questions.length} quick questions. Only products listed as compatible and in stock are suggested.` : `${questions.length} quick questions.`;
       progress.classList.remove('hidden');
       actions.classList.remove('hidden');
       renderQuestion();
     } catch {
-      status.textContent = 'Shopping Assistant unavailable. No sample recommendations are shown.';
+      status.textContent = 'The finder is not available right now. Everything is still in the shop.';
     }
   }
 
@@ -113,24 +113,24 @@ const { apiBase, compatibleWith = null } = Astro.props;
   btnNext.addEventListener('click', async () => {
     const q = questions[currentStep];
     if (!answers[q.id]) return void (status.textContent = 'Select one option to continue.');
-    try { await saveAnswer(q.id, answers[q.id]); currentStep += 1; renderQuestion(); } catch { status.textContent = 'Answer was not saved. Please retry.'; }
+    try { await saveAnswer(q.id, answers[q.id]); currentStep += 1; renderQuestion(); } catch { status.textContent = 'That answer did not save. Please try again.'; }
   });
   btnBack.addEventListener('click', () => { if (currentStep > 0) { currentStep -= 1; renderQuestion(); } });
   btnSubmit.addEventListener('click', async () => {
     const q = questions[currentStep];
     if (!answers[q.id]) return void (status.textContent = 'Select one option to continue.');
-    btnSubmit.disabled = true; status.textContent = 'Checking live catalogue, availability, compatibility and pricing…';
+    btnSubmit.disabled = true; status.textContent = 'Checking stock, fit and prices…';
     try {
       await saveAnswer(q.id, answers[q.id]);
       const data = await request(`/product-finder/sessions/${sessionId}/complete`, { method: 'POST', headers: finderHeaders() });
       renderResults(data.status, data.recommendations ?? []);
-    } catch { status.textContent = 'Recommendations unavailable. No products were invented or substituted.'; btnSubmit.disabled = false; }
+    } catch { status.textContent = 'We could not load suggestions just now. Please try again.'; btnSubmit.disabled = false; }
   });
 
   function renderResults(resultStatus: string, recommendations: Recommendation[]) {
     qContainer.classList.add('hidden'); actions.classList.add('hidden'); progress.classList.add('hidden'); rContainer.classList.remove('hidden'); rContainer.replaceChildren();
     if (resultStatus === 'NO_MATCH' || resultStatus === 'NO_EXACT_MATCH') {
-      rContainer.append(text('h2', 'No exact match found', 'text-2xl font-black tracking-tight text-gray-900 mb-4'), text('p', 'No eligible product satisfied the answers and current safety gates. Browse the catalogue without an invented recommendation.', 'text-slate-600 mb-6'));
+      rContainer.append(text('h2', 'No exact match found', 'text-2xl font-black tracking-tight text-gray-900 mb-4'), text('p', 'Nothing we stock matches all of your answers right now, and we will not suggest something that does not.', 'text-slate-600 mb-6'));
       const link = text('a', 'Browse all products', 'inline-flex items-center min-h-11 px-6 rounded-full bg-brand-primary text-sm font-bold text-brand-black') as HTMLAnchorElement; link.href = '/shop'; rContainer.append(link); status.textContent = 'No match yet. We would rather say so than guess. Browse the shop or ask us.'; return;
     }
     rContainer.append(text('h2', 'Your GoldPlus matches', 'text-2xl font-black tracking-tight text-gray-900 mb-6'));
@@ -142,7 +142,7 @@ const { apiBase, compatibleWith = null } = Astro.props;
       // (compatibility was not part of this session — nothing to claim).
       const humanEvidence = (value: string): string | null => {
         if (value === 'NOT_REQUESTED') return null;
-        if (value === 'CANONICAL_CATALOGUE_PRICE') return 'Current catalogue price. Revalidated at checkout';
+        if (value === 'CANONICAL_CATALOGUE_PRICE') return 'Current price, checked again at checkout';
         if (value === 'APPROVED_NON_PERSISTENT_PRICING_SIMULATION') return 'Includes an approved promotion. Final price confirmed at checkout';
         if (value.startsWith('DECLARED_')) return `Compatibility on record: ${value.slice('DECLARED_'.length).toLowerCase().replace(/_/g, ' ')}`;
         return value;
@@ -156,7 +156,7 @@ const { apiBase, compatibleWith = null } = Astro.props;
       const interest = text('button', rec.secondaryCta, 'min-h-11 px-5 rounded-full border-2 border-brand-charcoal text-sm font-bold text-brand-charcoal') as HTMLButtonElement; interest.addEventListener('click', () => void recordIntent('add_to_cart_intent', rec.productId));
       card.append(view, interest); rContainer.append(card);
     }
-    status.textContent = 'Recommendations use current persisted catalogue evidence. Revalidate price and stock at checkout.';
+    status.textContent = 'Prices and stock are checked again at checkout.';
   }
 
   async function recordIntent(action: string, productId: string) {

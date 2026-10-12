@@ -56,9 +56,21 @@ if (realCoverIds.length > 0 && !claimsPopularity(finalItems)) {
 // thresholds (paid-unit minimum / engagement sample). Source membership alone
 // was claimable from a single sold unit, and search affinity is personal
 // intent, not popularity.
-const evidenceBased = finalItems.some((item) =>
-  ((item as { reasonCodes?: string[] }).reasonCodes ?? []).includes("POPULAR_NOW"),
+//
+// And the title must be true of EVERY card (2026-10-08 design audit, 17): the
+// engine pads its evidence list with FALLBACK_USED items, and one of them led
+// the rail under "Popular right now". With enough evidence-backed items the
+// rail shows only those, so the per-card "Recently popular" tag (it was on
+// five of six cards) repeats the title and is dropped. With too few, the rail
+// is an honest browse list and the tag marks the items that earned it.
+const POPULAR_MIN = 4;
+const popularOnly = filterDisplayableRecommendations(
+  response.items.filter((item) => claimsPopularity([item])),
+  { excludeIds: excludeProductIds, limit: 6 },
 );
+const evidenceBased = popularOnly.length >= POPULAR_MIN;
+// Six evidence-backed items fill the 2/3/6 grid; four or five show four (2/4).
+if (evidenceBased) finalItems = popularOnly.length >= 6 ? popularOnly : popularOnly.slice(0, 4);
 const title = evidenceBased ? "Popular right now" : "Browse available products";
 const subtitle = evidenceBased
   ? "What people are actually buying and engaging with."
@@ -66,20 +78,22 @@ const subtitle = evidenceBased
 // Six cards on the home band: 2, 3 and 6 per row divide six evenly, so no
 // width leaves an orphan row (the shared 4-up grid left 4 + 2 from 1024px).
 const HOME_GRID = "grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 sm:gap-6";
+const HOME_GRID_FOUR = "grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6";
+const homeGrid = finalItems.length === 4 ? HOME_GRID_FOUR : HOME_GRID;
 ---
 
 {finalItems.length > 0 && (
   homeBand ? (
     <div class="bg-white border-b border-slate-100 flex flex-col">
       <div class="container mx-auto px-4 lg:px-8">
-        <RecommendationRail title={title} subtitle={subtitle} placement="home_trending" items={finalItems} gridClass={HOME_GRID} />
+        <RecommendationRail title={title} subtitle={subtitle} placement="home_trending" items={finalItems} gridClass={homeGrid} showReasons={!evidenceBased} />
       </div>
     </div>
   ) : useContainerWrapper ? (
     <div class="container mx-auto px-4 sm:px-6">
-      <RecommendationRail title={title} subtitle={subtitle} placement="home_trending" items={finalItems} />
+      <RecommendationRail title={title} subtitle={subtitle} placement="home_trending" items={finalItems} showReasons={!evidenceBased} />
     </div>
   ) : (
-    <RecommendationRail title={title} subtitle={subtitle} placement="home_trending" items={finalItems} />
+    <RecommendationRail title={title} subtitle={subtitle} placement="home_trending" items={finalItems} showReasons={!evidenceBased} />
   )
 )}

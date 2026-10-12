@@ -282,7 +282,8 @@ describe('round 2 deferred items in the shop window', () => {
   it('product finder has the site-wide page heading', () => {
     const pf = read(`${WEB}pages/product-finder.astro`);
     expect(pf).toContain('<h1 class="text-3xl md:text-4xl font-black tracking-tight text-gray-900 mb-2">Find the right GoldPlus product</h1>');
-    expect(pf).toContain('<BaseLayout title="Find the Right GoldPlus Product">');
+    // The title is pinned; the page has its own description since the 2026-10-08 audit (33).
+    expect(pf).toContain('<BaseLayout title="Find the Right GoldPlus Product" description=');
   });
 
   it('the shop Search button has no double focus outline; the verification report link is 44px', () => {

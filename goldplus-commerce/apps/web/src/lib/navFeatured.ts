@@ -3,13 +3,16 @@ import { fetchApprovedCatalogue } from './catalogue';
 import { hasRealCover } from './productCover';
 
 /**
- * The header's featured cross-sell cards ("Most carried"), served by REAL data
+ * The header's featured cross-sell cards, served by REAL data
  * instead of a hardcoded name over a stock photo. Cached in-process (the header
  * renders on every page; this must never add a fetch per view).
  *
- * Honesty rule: the label "Most carried" is a popularity claim, so it is used
- * only when the recommendation engine emits its evidence-gated POPULAR_NOW
- * reason. Otherwise the card says "Carried in the shop" — a plain stock fact.
+ * Honesty rule: "Popular right now" is a popularity claim, so it is used only
+ * when the recommendation engine emits its evidence-gated POPULAR_NOW reason.
+ * Otherwise the card says "In stock now" — a plain stock fact. (Shopper words:
+ * the earlier "Most carried" / "worth carrying" was trade vocabulary.)
+ * Each menu panel shows a card from its OWN category (categoryName), so the
+ * Storage panel never features a phone battery.
  */
 export interface NavFeaturedCard {
   label: string;
@@ -20,6 +23,8 @@ export interface NavFeaturedCard {
   priceUgx: number | null;
   /** The product's own floor (Price A); null = not discountable. */
   floorPriceUgx: number | null;
+  /** The product's category, so each menu panel can show its own shelf. */
+  categoryName: string | null;
 }
 
 const TTL_MS = 120_000;
@@ -64,13 +69,16 @@ async function fetchCards(): Promise<NavFeaturedCard[]> {
       blurb: p.categoryName ? `From our ${String(p.categoryName).toLowerCase()} shelf` : 'On the shelf now',
       priceUgx: typeof p.retailPriceUgx === 'number' && p.retailPriceUgx > 0 ? p.retailPriceUgx : null,
       floorPriceUgx: typeof p.floorPriceUgx === 'number' && p.floorPriceUgx > 0 ? p.floorPriceUgx : null,
+      categoryName: typeof p.categoryName === 'string' ? p.categoryName : null,
     });
 
-    cards.push(toCard(first, proven ? 'Most carried' : 'Carried in the shop'));
-    for (const p of imaged.filter((x) => x.slug !== first.slug)
-      .sort((a, b) => (b.availability?.quantity ?? 0) - (a.availability?.quantity ?? 0))
-      .slice(0, 5)) {
-      cards.push(toCard(p, 'Also worth carrying'));
+    cards.push(toCard(first, proven ? 'Popular right now' : 'In stock now'));
+    const byStock = imaged.filter((x) => x.slug !== first.slug)
+      .sort((a, b) => (b.availability?.quantity ?? 0) - (a.availability?.quantity ?? 0));
+    for (const p of byStock.slice(0, 5)) cards.push(toCard(p, 'In stock now'));
+    // One photographed, in-stock product per category that has none yet.
+    for (const p of byStock) {
+      if (p.categoryName && !cards.some((c) => c.categoryName === p.categoryName)) cards.push(toCard(p, 'In stock now'));
     }
     return cards;
   } catch {
