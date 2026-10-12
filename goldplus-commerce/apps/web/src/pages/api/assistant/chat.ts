@@ -105,7 +105,7 @@ export const POST: APIRoute = async ({ request, clientAddress, cookies, locals }
       const sendAnswer = (a: DeterministicAnswer) => {
         send({ type: 'text', text: a.text });
         if (a.products.length) send({ type: 'products', items: a.products });
-        if (a.links.length) send({ type: 'text', text: '\n' + a.links.map((l) => `${l.label}: ${l.url}`).join('\n') });
+        if (a.links.length) send({ type: 'links', items: a.links });
         send({ type: 'done', usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, providerRequestId: null, outcome: 'ANSWERED' });
       };
       try {

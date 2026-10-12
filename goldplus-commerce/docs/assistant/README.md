@@ -1,6 +1,6 @@
-# Shop assistant (site chat)
+# Goldie, the shop assistant (site chat)
 
-A chat panel on every storefront page ("Ask GoldPlus", bottom right). It answers
+A chat panel on every storefront page ("Ask Goldie", bottom right). Goldie is the shop's host: a named, warm, plain-spoken voice (system prompt `goldie-2026-10-12.3` in `assistant.ts`; deterministic answers in `assistantRouter.ts`). She greets by time of day, answers in one to three sentences, and offers the next step as an action chip (`links` events) beside product cards (`products` events); the model is told not to paste URLs or markdown because the cards and chips carry them. Motion: the panel rises from the launcher on open, a three-dot typing indicator while she checks the shelf, and one nudge of the launcher per tab; all off under prefers-reduced-motion. It answers
 from the shop's own catalogue through the same read-only tools the public MCP
 server exposes (`apps/web/src/lib/agentTools.ts`): product search, one product,
 categories, the battery finder and the shop details. It cannot order, take
