@@ -65,6 +65,9 @@ describe('assistant router: clarification lineage', () => {
     const ask = { role: 'assistant' as const, content: `${CLARIFY_PHONE} TECNO Spark 10, TECNO Spark 10C, TECNO Spark 10 Pro. Your exact model number is in Settings under About phone.` };
     const reply = { role: 'user' as const, content: 'Spark 10 Pro battery' };
     expect(isClarificationReply([{ role: 'user', content: 'battery for tecno spark 10' }, ask, reply], classify(reply.content))).toBe(true);
+    // A reply to the "closest names we have" question is the same request too.
+    const nearest = { role: 'assistant' as const, content: 'I do not have the tecno spark 10 on our battery list yet, so I will not guess a fit. The closest names we do have are TECNO Spark 3, TECNO Spark 7 (KF6n); if yours is one of those, tell me which. Otherwise send us the phone model on WhatsApp and we will check for you.' };
+    expect(isClarificationReply([nearest, { role: 'user', content: 'Spark 7 battery' }], classify('Spark 7 battery'))).toBe(true);
     // A new unrelated intent after the question is a new request.
     const other = { role: 'user' as const, content: 'how much is a 65W charger?' };
     expect(isClarificationReply([ask, other], classify(other.content))).toBe(false);

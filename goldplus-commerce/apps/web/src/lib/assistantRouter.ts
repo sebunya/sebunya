@@ -135,7 +135,7 @@ export async function answerDeterministically(c: Classification): Promise<Determ
         const devices = Array.isArray(s.devices) ? (s.devices as Json[]).slice(0, 6).map((d) => String(d.label ?? '')) : [];
         if (kind === 'AMBIGUOUS_DEVICE' && devices.length) return { intent: c.intent, text: `${CLARIFY_PHONE} ${devices.join(', ')}. The exact model is in Settings under About phone, if you want to check.`, products: [], links };
         // SUGGESTIONS: nothing matched the phone the customer named; the finder offers its nearest names. Say so plainly, never pretend one of them is the phone.
-        return { intent: c.intent, text: `I do not have the ${c.query} on our battery list yet, so I will not guess a fit.${devices.length ? ` The closest names we do have are ${devices.join(', ')}; if yours is one of those, tell me which.` : ''} Otherwise send us the phone model on WhatsApp and we will check for you.`, products: [], links };
+        return { intent: c.intent, text: `I do not have the ${c.query} on our battery list yet, so I will not guess a fit.${devices.length ? ` The closest names we do have are ${devices.join(', ')}; ${CLARIFY_NEAREST}.` : ''} Otherwise send us the phone model on WhatsApp and we will check for you.`, products: [], links };
       }
       if (kind === 'BATTERY') {
         const b = (s.battery as Json) ?? {};
@@ -156,8 +156,9 @@ export async function answerDeterministically(c: Classification): Promise<Determ
   }
 }
 
-/** The one clarifying question the finder asks; a reply to it is the same request, not a new one. */
+/** The clarifying questions the finder asks; a reply to either is the same request, not a new one. */
 export const CLARIFY_PHONE = 'Which of these is your phone?';
+export const CLARIFY_NEAREST = 'if yours is one of those, tell me which';
 
 /**
  * Clarification lineage (mandate §5A.A): the customer's turn is a short reply
@@ -169,7 +170,7 @@ export function isClarificationReply(turns: ReadonlyArray<{ role: 'user' | 'assi
   if (!classified.deterministic || classified.intent !== 'BATTERY') return false;
   const prev = turns.length >= 2 ? turns[turns.length - 2] : undefined;
   const last = turns[turns.length - 1];
-  return !!prev && prev.role === 'assistant' && prev.content.includes(CLARIFY_PHONE) && !!last && last.content.length <= 60;
+  return !!prev && prev.role === 'assistant' && (prev.content.includes(CLARIFY_PHONE) || prev.content.includes(CLARIFY_NEAREST)) && !!last && last.content.length <= 60;
 }
 
 /** What the customer sees when paid AI is not available for this turn (mandate §5A.F wording). */
