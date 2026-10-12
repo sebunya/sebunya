@@ -8,6 +8,8 @@ Meta description: Find your phone's exact model number and battery code, know wh
 
 Related products: two or three of your best-stocked phone batteries.
 
+Related SKUs: GP-39LT9-BAT, GP-49FX-BAT, GP-BAT-IP14
+
 ---- Article (paste everything below this line into the Article box) ----
 
 A phone battery is made for one phone, or a small family of phones. Two batteries can look the same and still not fit, or fit and charge wrongly. The way to get it right is to match the exact model, not the brand and not the size.

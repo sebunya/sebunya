@@ -1,0 +1,10 @@
+{
+  "note": "Category descriptions for the shop header and the categories sitemap. The shop serves a category page noindex, and the sitemap omits it, until the category has a description; nothing here claims more than the listings in that category already say. Max 300 characters each (TaxonomyService).",
+  "categories": {
+    "power-devices": "Replacement phone batteries matched by phone model and battery code, wall chargers with the UK plug, USB-C, Lightning and Micro-USB cables, and power banks from pocket size to models with a display. Same-day delivery in Kampala and Wakiso when you order before the cutoff.",
+    "sound-devices": "Wired earphones with a 3.5mm jack or a USB-C plug, Bluetooth 5.4 wireless earbuds, open-ear clip and hook earphones that leave the ear canal free, and open-style Bluetooth headphones.",
+    "storage-devices": "Flash disks (USB flash drives) from 2GB to 256GB, microSD memory cards from 1GB to 512GB, and multi-slot card readers. The 16GB to 128GB flash disks are USB 3.0 and the 16GB to 128GB cards are Class 10, as printed on their boxes.",
+    "car-accessories": "Car chargers for the 12V socket with USB-C Power Delivery and USB-A Quick Charge ports, from a mini single charger to dual-port fast chargers, so a phone charges on the road.",
+    "pc-accessories": "Computer mice and a USB sound card for laptops and desktops."
+  }
+}

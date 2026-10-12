@@ -18,6 +18,25 @@ paste straight into the editor.
 4. Pick two or three **related products** (the file suggests which kind).
 5. Add a cover photo if you have one, then **Save**, read the preview, and **Publish**.
 
+## Publishing all of them at once (host, inside the API builder image)
+
+`publish-guides.ts` reads every numbered file here (the image carries no docs/, so the host folder is mounted), creates or updates the
+article through the blog's own use cases (audited), resolves the `Related SKUs:`
+line to live products, and publishes unless the file says `Publish: hold`.
+Guide 03 is on hold until the charger labels below are checked.
+
+```
+docker run --rm --network goldplus-commerce_default --env-file .env.production \
+  -e NODE_ENV=production -e DRY_RUN=1 -e ACTOR_USER_ID=<admin uuid> \
+  -v /opt/goldplus/app/goldplus-commerce/docs/content/guides:/guides:ro -e GUIDES_DIR=/guides \
+  -w /app/apps/api goldplus-migrator:<sha> \
+  npx tsx src/scripts/publish-guides.ts
+```
+
+Read the dry-run lines (which articles are created, updated, published or held,
+and the links each one carries), then rerun with `DRY_RUN=0`. Re-running is
+safe: a published article keeps its URL and its first publish date.
+
 ## Before publishing guide 03
 
 Guide 03 teaches readers to check a charger's real power on its label

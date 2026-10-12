@@ -8,6 +8,8 @@ Meta description: Why a 10,000mAh power bank gives about 6,000 to 7,000mAh to yo
 
 Related products: two or three power banks of different sizes.
 
+Related SKUs: GP-P02A-PB, GP-P05W-PB, GP-P07-PB
+
 ---- Article (paste everything below this line into the Article box) ----
 
 The number on a power bank is the capacity of the cells inside it. What reaches your phone is less, and knowing how much less helps you buy the right size for your day, a trip upcountry or a long power cut.
