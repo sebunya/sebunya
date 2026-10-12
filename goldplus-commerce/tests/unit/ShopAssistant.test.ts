@@ -212,6 +212,8 @@ describe('POST /api/assistant/chat', () => {
     expect(fetchMock).not.toHaveBeenCalled();
     let f = await frames(res);
     expect(f[0].text).toMatch(/I can still help you find products and check delivery/);
+    // The way to a person is never missing from a fallback answer.
+    expect(f.some((x) => x.type === 'links' && (x as { items: Array<{ url: string }> }).items.some((i) => /wa\.me/.test(i.url)))).toBe(true);
     expect(f.find((x) => x.type === 'products').items[0].name).toBe('GoldPlus Power Bank GP-P07');
     admitMock.mockResolvedValueOnce(allow({ decision: 'DENY_EXPENSIVE', retryAfterSeconds: 60, reservationId: null }));
     res = await post({ messages: [{ role: 'user', content: 'x' }] });

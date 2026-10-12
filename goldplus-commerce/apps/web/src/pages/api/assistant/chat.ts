@@ -6,6 +6,7 @@ import { isSignedVisitToken } from '../../../lib/visitToken';
 import { assistantEnabled, runAssistant, validateTurns, type AssistantEvent } from '../../../lib/assistant';
 import { SOFT_LIMIT_TEXT, answerDeterministically, classify, isClarificationReply, type DeterministicAnswer } from '../../../lib/assistantRouter';
 import { addressHash, admit, principalHash, release, settle, type AdmitOutput } from '../../../lib/assistantAdmission';
+import { getBusinessInfo } from '../../../lib/businessInfo';
 
 /**
  * POST /api/assistant/chat — the shop assistant, same origin only.
@@ -53,7 +54,13 @@ const fallbackAnswer = async (classified: ReturnType<typeof classify>): Promise<
     ? await answerDeterministically({ ...classified, intent: 'PRODUCT', deterministic: true }).catch(() => null)
     : null;
   const products = base?.products ?? [];
-  return { intent: classified.intent, text: products.length ? `${SOFT_LIMIT_TEXT} Here is what matched in the catalogue:` : SOFT_LIMIT_TEXT, products, links: base?.links ?? [] };
+  // Whatever else is missing, the way to a person is never missing.
+  const links = [...(base?.links ?? [])];
+  if (!links.some((l) => /wa\.me|whatsapp/i.test(l.url))) {
+    const wa = await getBusinessInfo().then((b) => b.whatsappUrl).catch(() => null);
+    if (wa) links.push({ label: 'Chat on WhatsApp', url: wa });
+  }
+  return { intent: classified.intent, text: products.length ? `${SOFT_LIMIT_TEXT} Here is what matched on the shelf:` : SOFT_LIMIT_TEXT, products, links };
 };
 
 export const POST: APIRoute = async ({ request, clientAddress, cookies, locals }) => {
