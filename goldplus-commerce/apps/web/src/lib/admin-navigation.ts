@@ -77,6 +77,13 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Stage, validate, approve, apply and safely roll back catalogue imports.'
   },
   {
+    label: 'Shop assistant',
+    href: '/admin/assistant',
+    group: 'Commerce',
+    status: 'working',
+    description: 'Site chat: this month\'s model spend against the cap, the first-four fairness policy, abuse ceilings, model and the two switches.',
+  },
+  {
     label: 'Batteries',
     href: '/admin/batteries',
     group: 'Commerce',
