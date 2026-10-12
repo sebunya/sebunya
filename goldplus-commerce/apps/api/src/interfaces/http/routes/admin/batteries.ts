@@ -283,7 +283,9 @@ routes.post('/compatibility/:id/transition', requirePermissions([PERMISSIONS.BAT
   if (!has(c, needs)) return bad(c, 'FORBIDDEN', 'You do not have the right to perform this action.', 403);
   // Publishing an unverified (supplier-listed) claim is allowed only while the
   // finder is set to show fits awaiting verification; the domain rule checks it.
-  const allowAwaiting = b.data.action === 'PUBLISH' ? (await registry().batteryFinderUseCases.config()).showAwaitingVerification : undefined;
+  const allowAwaiting = b.data.action === 'PUBLISH'
+    ? await Promise.resolve(registry().batteryFinderUseCases?.config()).then((cfg) => !!cfg?.showAwaitingVerification).catch(() => false)
+    : undefined;
   return run(c, () => registry().batteryCompatibilityUseCases.transition(param(c, 'id'), b.data.action, actor(c), { evidenceStatus: b.data.evidenceStatus, publicCondition: b.data.publicCondition, reason: b.data.reason ?? undefined, allowAwaiting }));
 });
 routes.post('/compatibility/:id/evidence', requirePermissions([PERMISSIONS.BATTERIES_COMPAT_PROPOSE]), adminUploadLimit, (c) => evidenceUpload(c, 'COMPATIBILITY'));
