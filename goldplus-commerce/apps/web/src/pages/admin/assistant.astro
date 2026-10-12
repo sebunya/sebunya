@@ -1,0 +1,125 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../lib/session';
+import { apiBase } from '../../lib/api';
+
+/**
+ * Shop assistant operations: this month's spend against the cap, ledger
+ * counts, the policy (budget, fairness, abuse ceilings, model) and the two
+ * switches. Reads need analytics.read; saving needs settings.manage (the API
+ * enforces both). No transcript is stored anywhere, so none is shown here.
+ */
+export const prerender = false;
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/assistant', 303);
+
+interface Config {
+  enabled: boolean; aiEnabled: boolean; model: string; effort: 'low' | 'medium';
+  monthlyCapMicroUsd: number; killThresholdMicroUsd: number; alarmThresholdsMicroUsd: number[];
+  freeRequests: number; fairnessWindowHours: number; paidPerHour: number; paidPerDay: number; paidPerPacingWindow: number; pacingSeconds: number;
+  burstPerMinute: number; addressPerMinute: number; maxOutputTokens: number; maxToolRounds: number; maxInputTokensPerCall: number;
+}
+interface Status {
+  month: string; config: Config; version: number;
+  totals: { settledMicroUsd: number; reservedMicroUsd: number; counts: Record<string, number>; outcomes: Record<string, number> };
+  recent: Array<{ status: string; model: string; reservedMicroUsd: number; settledMicroUsd: number | null; outcome: string | null; createdAt: string }>;
+}
+const call = async <T,>(path: string, init?: RequestInit): Promise<{ ok: true; data: T } | { ok: false; message: string }> => {
+  try {
+    const res = await fetch(`${apiBase}/admin/assistant${path}`, { ...init, headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json', ...(init?.headers ?? {}) } });
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.success) return { ok: false, message: json?.error?.message ?? `The API answered ${res.status}.` };
+    return { ok: true, data: json.data as T };
+  } catch { return { ok: false, message: 'The API could not be reached.' }; }
+};
+
+let notice: { kind: 'success' | 'error'; text: string } | null = null;
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const usd = (name: string) => Math.round(Number(form.get(name) || 0) * 1_000_000);
+  const num = (name: string) => Number(form.get(name) || 0);
+  const config = {
+    enabled: form.get('enabled') === 'on', aiEnabled: form.get('aiEnabled') === 'on',
+    model: String(form.get('model') || ''), effort: String(form.get('effort') || 'low'),
+    monthlyCapMicroUsd: usd('capUsd'), killThresholdMicroUsd: usd('killUsd'),
+    alarmThresholdsMicroUsd: String(form.get('alarmsUsd') || '').split(',').map((s) => Math.round(Number(s.trim()) * 1_000_000)).filter((n) => n > 0),
+    freeRequests: num('freeRequests'), fairnessWindowHours: num('fairnessWindowHours'), paidPerHour: num('paidPerHour'), paidPerDay: num('paidPerDay'),
+    paidPerPacingWindow: num('paidPerPacingWindow'), pacingSeconds: num('pacingSeconds'), burstPerMinute: num('burstPerMinute'), addressPerMinute: num('addressPerMinute'),
+    maxOutputTokens: num('maxOutputTokens'), maxToolRounds: num('maxToolRounds'), maxInputTokensPerCall: num('maxInputTokensPerCall'),
+  };
+  const res = await call<{ version: number }>('/config', { method: 'PUT', body: JSON.stringify({ expectedVersion: Number(form.get('expectedVersion') || 0), config }) });
+  notice = res.ok ? { kind: 'success', text: `Saved (version ${res.data.version}). Takes effect on the next question.` } : { kind: 'error', text: res.message };
+}
+
+const status = await call<Status>('/status');
+const usd = (micro: number) => `$${(micro / 1_000_000).toFixed(4)}`;
+const c = status.ok ? status.data.config : null;
+const t = status.ok ? status.data.totals : null;
+const pct = status.ok && c ? Math.min(100, Math.round(((t!.settledMicroUsd + t!.reservedMicroUsd) / Math.max(1, c.monthlyCapMicroUsd)) * 100)) : 0;
+---
+<AdminLayout title="Shop assistant" description="Spend this month, the policy that keeps it inside the cap, and the two switches." activePath="/admin/assistant">
+  <div class="container mx-auto px-6 lg:px-8 max-w-5xl space-y-8">
+    {notice && <div role="status" class={`rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>}
+    {!status.ok && <div role="status" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{status.message}</div>}
+
+    {status.ok && c && t && (
+      <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+        <h2 class="text-sm font-black uppercase tracking-widest text-gray-500">This month ({status.data.month}, UTC)</h2>
+        <div class="mt-4 grid gap-4 sm:grid-cols-4">
+          <div><p class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Settled</p><p class="text-2xl font-black text-brand-dark tabular-nums">{usd(t.settledMicroUsd)}</p></div>
+          <div><p class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Reserved or unknown</p><p class="text-2xl font-black text-brand-dark tabular-nums">{usd(t.reservedMicroUsd)}</p></div>
+          <div><p class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Kill threshold / cap</p><p class="text-2xl font-black text-brand-dark tabular-nums">{usd(c.killThresholdMicroUsd)} <span class="text-sm text-gray-500">/ {usd(c.monthlyCapMicroUsd)}</span></p></div>
+          <div><p class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Paid turns</p><p class="text-2xl font-black text-brand-dark tabular-nums">{t.counts.SETTLED ?? 0} <span class="text-sm text-gray-500">settled · {t.counts.RESERVED ?? 0} open · {t.counts.RELEASED ?? 0} released · {t.counts.UNKNOWN ?? 0} unknown</span></p></div>
+        </div>
+        <div class="mt-4 h-3 w-full rounded-full bg-gray-100 overflow-hidden" aria-hidden="true"><div class={`h-3 ${pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-amber-400' : 'bg-brand-primary'}`} style={`width:${pct}%`}></div></div>
+        <p class="mt-2 text-xs text-gray-600">{pct}% of the cap committed (settled plus reserved). Paid answers stop at the kill threshold; product search, the battery finder, shop details and WhatsApp keep working.</p>
+        {Object.keys(t.outcomes).length > 0 && <p class="mt-2 text-xs text-gray-600">Outcomes: {Object.entries(t.outcomes).map(([k, v]) => `${k} ${v}`).join(' · ')}</p>}
+      </section>
+    )}
+
+    {status.ok && c && (
+      <form method="POST" class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-6">
+        <input type="hidden" name="expectedVersion" value={status.data.version} />
+        <div class="flex flex-wrap gap-6">
+          <label class="flex items-center gap-2 text-sm font-bold"><input type="checkbox" name="enabled" checked={c.enabled} class="w-4 h-4" /> Assistant on (widget and deterministic help)</label>
+          <label class="flex items-center gap-2 text-sm font-bold"><input type="checkbox" name="aiEnabled" checked={c.aiEnabled} class="w-4 h-4" /> Paid AI layer on (off = instant kill switch; deterministic help stays)</label>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-3">
+          <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Model</span><input name="model" value={c.model} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono" /></label>
+          <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Effort</span>
+            <select name="effort" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"><option value="low" selected={c.effort === 'low'}>low (chat)</option><option value="medium" selected={c.effort === 'medium'}>medium</option></select></label>
+          <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Monthly cap (USD)</span><input name="capUsd" type="number" step="0.01" min="0" value={(c.monthlyCapMicroUsd / 1e6).toFixed(2)} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Kill threshold (USD, below the cap)</span><input name="killUsd" type="number" step="0.01" min="0" value={(c.killThresholdMicroUsd / 1e6).toFixed(2)} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <label class="block sm:col-span-2"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Alarms (USD, comma-separated; logged when crossed)</span><input name="alarmsUsd" value={c.alarmThresholdsMicroUsd.map((a) => (a / 1e6).toFixed(2)).join(', ')} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        </div>
+        <h3 class="text-sm font-black uppercase tracking-widest text-gray-500">Fairness (first-four policy)</h3>
+        <div class="grid gap-4 sm:grid-cols-3">
+          <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Requests with no friction</span><input name="freeRequests" type="number" min="0" value={c.freeRequests} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Rolling window (hours)</span><input name="fairnessWindowHours" type="number" min="1" value={c.fairnessWindowHours} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <div></div>
+          <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">After that: paid answers per hour</span><input name="paidPerHour" type="number" min="0" value={c.paidPerHour} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Paid answers per day</span><input name="paidPerDay" type="number" min="0" value={c.paidPerDay} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Pacing: paid answers per window / seconds</span><div class="flex gap-2"><input name="paidPerPacingWindow" type="number" min="1" value={c.paidPerPacingWindow} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /><input name="pacingSeconds" type="number" min="1" value={c.pacingSeconds} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></div></label>
+        </div>
+        <h3 class="text-sm font-black uppercase tracking-widest text-gray-500">Abuse ceilings (from request one) and per-turn bounds</h3>
+        <div class="grid gap-4 sm:grid-cols-3">
+          <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Requests per visitor per minute</span><input name="burstPerMinute" type="number" min="1" value={c.burstPerMinute} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Requests per network address per minute</span><input name="addressPerMinute" type="number" min="1" value={c.addressPerMinute} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <div></div>
+          <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Max output tokens per call</span><input name="maxOutputTokens" type="number" min="128" value={c.maxOutputTokens} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Max tool rounds per answer</span><input name="maxToolRounds" type="number" min="0" value={c.maxToolRounds} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+          <label class="block"><span class="text-[10px] uppercase font-black text-gray-500 tracking-widest">Input tokens per call (reservation sizing)</span><input name="maxInputTokensPerCall" type="number" min="1000" value={c.maxInputTokensPerCall} class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" /></label>
+        </div>
+        <button type="submit" class="bg-brand-primary text-brand-black text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Save assistant policy</button>
+      </form>
+    )}
+
+    {status.ok && status.data.recent.length > 0 && (
+      <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
+        <h2 class="text-sm font-black uppercase tracking-widest text-gray-500">Recent paid turns (no transcript is kept)</h2>
+        <table class="mt-3 w-full text-xs"><thead><tr class="text-left text-gray-500"><th class="py-1">When (UTC)</th><th>Status</th><th>Model</th><th class="text-right">Reserved</th><th class="text-right">Settled</th><th>Outcome</th></tr></thead>
+          <tbody>{status.data.recent.map((r) => (<tr class="border-t border-gray-100"><td class="py-1 font-mono">{r.createdAt.replace('T', ' ').slice(0, 19)}</td><td>{r.status}</td><td class="font-mono">{r.model}</td><td class="text-right tabular-nums">{usd(r.reservedMicroUsd)}</td><td class="text-right tabular-nums">{r.settledMicroUsd == null ? '—' : usd(r.settledMicroUsd)}</td><td>{r.outcome ?? '—'}</td></tr>))}</tbody></table>
+      </section>
+    )}
+  </div>
+</AdminLayout>

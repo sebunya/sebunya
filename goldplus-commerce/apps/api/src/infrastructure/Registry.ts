@@ -32,6 +32,9 @@ import { DrizzleBatteryCompatibilityRepository } from './db/repositories/Drizzle
 import { DrizzleInventoryLedgerRepository } from './db/repositories/DrizzleInventoryLedgerRepository';
 import { DrizzleBatteryFinderRepository } from './db/repositories/DrizzleBatteryFinderRepository';
 import { DrizzleBatteryImportRepository } from './db/repositories/DrizzleBatteryImportRepository';
+import { DrizzleAssistantConfigRepository, DrizzleAssistantLedgerRepository } from './db/repositories/DrizzleAssistantRepository';
+import { AssistantCounterStore } from './security/AssistantCounterStore';
+import { AssistantAdmissionUseCases } from '../application/use-cases/assistant/AssistantAdmissionUseCases';
 import { XlsxSpreadsheetParser } from './batteries/XlsxSpreadsheetParser';
 import { BatteryCatalogueUseCases } from '../application/use-cases/batteries/BatteryCatalogueUseCases';
 import { DeviceCatalogueUseCases } from '../application/use-cases/batteries/DeviceCatalogueUseCases';
@@ -774,6 +777,10 @@ export class Registry {
   public readonly verificationRepo = new DrizzleVerificationRepository();
   public readonly auditRepo = new DrizzleAuditRepository();
   public readonly createAuditLogUseCase = new CreateAuditLogUseCase(this.auditRepo);
+  // Shop assistant (mandate 2026-10-12): admission, fairness tiers and the month spend ledger.
+  public readonly assistantLedgerRepo = new DrizzleAssistantLedgerRepository();
+  public readonly assistantConfigRepo = new DrizzleAssistantConfigRepository();
+  public readonly assistantAdmissionUseCases = new AssistantAdmissionUseCases(this.assistantLedgerRepo, this.assistantConfigRepo, new AssistantCounterStore());
   /** AI Search Visibility (AEO/GEO) — migration 0131; see docs/ai-visibility/README.md. */
   public readonly aiVisibility = createAiVisibility(this.createAuditLogUseCase);
   /** Attribution module (0156): order ↔ visit links, per-order channel credit, weekly channel report. */

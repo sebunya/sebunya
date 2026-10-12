@@ -1219,6 +1219,13 @@
       "when": 1790140000051,
       "tag": "0174_referral_mission",
       "breakpoints": true
+    },
+    {
+      "idx": 174,
+      "version": "5",
+      "when": 1790140000052,
+      "tag": "0175_assistant_budget_ledger",
+      "breakpoints": true
     }
   ]
 }
