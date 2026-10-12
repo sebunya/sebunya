@@ -141,7 +141,8 @@ const TABS = [['REVIEW', 'Waiting for a checker'], ['DRAFT', 'Drafts'], ['READY'
                 {c.evidenceStatus.replace(/_/g, ' ').toLowerCase()}
                 {c.evidenceSource ? ` · ${c.evidenceSource}` : ' · no evidence source recorded'}
                 {c.device.status !== 'ACTIVE' ? ` · the phone is ${c.device.status.toLowerCase()}` : ''}
-                {c.battery.lifecycleStatus !== 'ACTIVE' ? ` · the battery is ${c.battery.lifecycleStatus.toLowerCase()}, so this fit is not public yet` : ''}
+                {c.battery.lifecycleStatus !== 'ACTIVE' ? ` · the battery is ${c.battery.lifecycleStatus.toLowerCase()}, so this fit cannot show as verified yet` : ''}
+                {c.workflowStatus === 'ACTIVE' && c.evidenceStatus === 'SUPPLIER_LISTED' ? ' · live as "awaiting verification": verify it here to upgrade it in place' : ''}
               </p>
               {c.publicCondition && <p class="text-xs text-amber-900 mt-1">Condition shown to the customer: {c.publicCondition}</p>}
               {c.notes && <p class="text-xs text-gray-500 mt-1">{c.notes}</p>}
@@ -154,7 +155,7 @@ const TABS = [['REVIEW', 'Waiting for a checker'], ['DRAFT', 'Drafts'], ['READY'
               <form method="POST" class="inline"><input type="hidden" name="intent" value="transition" /><input type="hidden" name="claimId" value={c.id} /><input type="hidden" name="action" value="SUBMIT" />
                 <button type="submit" class="rounded-lg bg-brand-dark px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white">Submit for checking</button></form>
             )}
-            {c.workflowStatus === 'REVIEW' && (
+            {(c.workflowStatus === 'REVIEW' || (c.workflowStatus === 'ACTIVE' && c.evidenceStatus === 'SUPPLIER_LISTED')) && (
               <>
                 <form method="POST" class="flex flex-wrap gap-2 items-end">
                   <input type="hidden" name="intent" value="transition" /><input type="hidden" name="claimId" value={c.id} /><input type="hidden" name="action" value="VERIFY" />
@@ -179,6 +180,10 @@ const TABS = [['REVIEW', 'Waiting for a checker'], ['DRAFT', 'Drafts'], ['READY'
             {c.workflowStatus === 'READY' && (
               <form method="POST" class="inline"><input type="hidden" name="intent" value="transition" /><input type="hidden" name="claimId" value={c.id} /><input type="hidden" name="action" value="PUBLISH" />
                 <button type="submit" class="rounded-lg bg-brand-primary px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white">Publish this fit</button></form>
+            )}
+            {c.workflowStatus === 'REVIEW' && c.evidenceStatus === 'SUPPLIER_LISTED' && (
+              <form method="POST" class="inline"><input type="hidden" name="intent" value="transition" /><input type="hidden" name="claimId" value={c.id} /><input type="hidden" name="action" value="PUBLISH" />
+                <button type="submit" title="Shown to customers with the note that the fit has not been checked yet. Allowed only while the finder is set to show fits awaiting verification." class="rounded-lg border border-amber-400 bg-amber-50 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-amber-900">Publish as awaiting verification</button></form>
             )}
             {c.workflowStatus === 'ACTIVE' && (
               <form method="POST" class="inline"><input type="hidden" name="intent" value="transition" /><input type="hidden" name="claimId" value={c.id} /><input type="hidden" name="action" value="UNPUBLISH" />
