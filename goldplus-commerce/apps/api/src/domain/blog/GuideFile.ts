@@ -20,10 +20,16 @@ export interface GuideFile {
 
 export const ARTICLE_MARKER = /^---- Article\b/m;
 
+/** The value after `Label:` on the first header line that starts with it (case-insensitive). */
 const field = (header: string, label: string): string | null => {
-  const m = header.match(new RegExp(`^${label}:[ \\t]*(.*)$`, 'mi'));
-  const v = m?.[1]?.trim() ?? '';
-  return v ? v : null;
+  const prefix = `${label.toLowerCase()}:`;
+  for (const line of header.split('\n')) {
+    if (line.toLowerCase().startsWith(prefix)) {
+      const v = line.slice(prefix.length).trim();
+      return v ? v : null;
+    }
+  }
+  return null;
 };
 
 export function parseGuideFile(text: string): { ok: true; value: GuideFile } | { ok: false; message: string } {
