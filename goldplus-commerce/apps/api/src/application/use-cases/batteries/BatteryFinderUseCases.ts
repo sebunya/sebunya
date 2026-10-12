@@ -142,6 +142,8 @@ export class BatteryFinderUseCases {
     const device = await this.repo.deviceBySlug(slug);
     if (!device) throw notFound('Device');
     const results = await this.resultsForDevice(device.id, cfg);
+    // The listed-fits count follows the same switch as the results themselves.
+    if (!cfg.showAwaitingVerification) device.listedFits = 0;
     if (record) void this.repo.recordEvent({ eventType: 'DEVICE_SELECTED', mode: 'FIND_BY_PHONE', queryNormalised: null, outcome: results.length ? outcomeFor(results[0].fitState) : 'NO_RESULT', brandId: null, seriesId: null, deviceId: device.id, batteryProductId: null, resultCount: results.length, aliasHit: false, sessionHash: this.sessionHash(sessionId) }).catch(() => undefined);
     return { device, results, config: cfg };
   }

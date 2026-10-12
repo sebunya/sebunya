@@ -14,6 +14,8 @@ const jsonb = (value: unknown) => sql`${client.json(value as never)}::jsonb`;
 /** A public fit: live workflow, non-rejected evidence. The use case derives the customer-facing state. */
 const PUBLIC_CLAIM = sql`${productDeviceCompatibility.workflowStatus} = 'ACTIVE' AND ${productDeviceCompatibility.evidenceStatus} <> 'REJECTED'`;
 const VERIFIED_PUBLIC = sql`c.workflow_status = 'ACTIVE' AND c.evidence_status IN ('PACKAGE_VERIFIED','FIT_TESTED','VERIFIED_EXACT','CONDITIONAL') AND bp.lifecycle_status = 'ACTIVE' AND p.approval_status = 'approved' AND p.active`;
+/** A live supplier-listed fit for a sellable product: shown as "awaiting verification" when the finder allows it (publicFitState). */
+const AWAITING_PUBLIC = sql`c.workflow_status = 'ACTIVE' AND c.evidence_status = 'SUPPLIER_LISTED' AND bp.lifecycle_status <> 'ARCHIVED' AND p.approval_status = 'approved' AND p.active`;
 
 /**
  * Units a customer can still buy: on hand minus what open orders already hold.
@@ -26,7 +28,7 @@ const FLOOR_PRICE = sql<number | null>`(SELECT pp.floor_price FROM product_price
 
 const PRIMARY_IMAGE = sql<string | null>`COALESCE((SELECT ${displayImageUrlSql('i')} FROM product_images i WHERE i.product_id = ${products.id} AND ${galleryVisibleSql('i', sql`${products.id}`)} ORDER BY ${galleryOrderSql('i')} LIMIT 1), ${products.imageUrl})`;
 
-function deviceDto(d: typeof devices.$inferSelect, seriesName: string | null, verifiedFits: number): FinderDeviceDto {
+function deviceDto(d: typeof devices.$inferSelect, seriesName: string | null, verifiedFits: number, listedFits = 0): FinderDeviceDto {
   return {
     id: d.id,
     slug: d.slug,
@@ -38,6 +40,7 @@ function deviceDto(d: typeof devices.$inferSelect, seriesName: string | null, ve
     label: deviceLabel({ brandName: d.brand, model: d.model, modelNumber: d.modelNumber, variant: d.variant }),
     releaseYear: d.releaseYear,
     verifiedFits,
+    listedFits,
   };
 }
 
@@ -74,7 +77,7 @@ export class DrizzleBatteryFinderRepository implements IBatteryFinderRepository 
 
   // ---------------------------------------------------------------- browse
   async brands(showAwaiting: boolean): Promise<Array<FinderBrandDto & { displayOrder: number; demandCount: number }>> {
-    const awaiting = showAwaiting ? sql`OR (c.workflow_status = 'ACTIVE' AND c.evidence_status = 'SUPPLIER_LISTED' AND bp.lifecycle_status <> 'ARCHIVED' AND p.approval_status = 'approved' AND p.active)` : sql``;
+    const awaiting = showAwaiting ? sql`OR (${AWAITING_PUBLIC})` : sql``;
     const rows = (await db.execute(sql`
       SELECT b.id, b.name, b.slug, b.is_featured AS "isFeatured", b.display_order AS "displayOrder",
         (SELECT count(*) FROM devices d WHERE d.brand_id = b.id AND d.status = 'ACTIVE')::int AS "deviceCount",
@@ -99,12 +102,13 @@ export class DrizzleBatteryFinderRepository implements IBatteryFinderRepository 
       d: devices,
       seriesName: deviceSeries.name,
       verifiedFits: sql<number>`(SELECT count(*) FROM product_device_compatibility c JOIN battery_profiles bp ON bp.product_id = c.product_id JOIN products p ON p.id = c.product_id WHERE c.device_id = ${sql.raw("devices.id")} AND ${VERIFIED_PUBLIC})::int`,
+      listedFits: sql<number>`(SELECT count(*) FROM product_device_compatibility c JOIN battery_profiles bp ON bp.product_id = c.product_id JOIN products p ON p.id = c.product_id WHERE c.device_id = ${sql.raw("devices.id")} AND ${AWAITING_PUBLIC})::int`,
       demandCount: sql<number>`(SELECT count(*) FROM battery_finder_events e WHERE e.device_id = ${sql.raw("devices.id")} AND e.occurred_at > now() - interval '90 days')::int`,
     }).from(devices).leftJoin(deviceSeries, eq(deviceSeries.id, devices.seriesId)).where(and(eq(devices.brandId, brand.id), eq(devices.status, 'ACTIVE'))).orderBy(devices.model, devices.modelNumber);
     return {
       brand,
       series,
-      devices: deviceRows.map((r) => ({ ...deviceDto(r.d, r.seriesName, r.verifiedFits), seriesId: r.d.seriesId, displayOrder: r.d.displayOrder, demandCount: r.demandCount })),
+      devices: deviceRows.map((r) => ({ ...deviceDto(r.d, r.seriesName, r.verifiedFits, showAwaiting ? r.listedFits : 0), seriesId: r.d.seriesId, displayOrder: r.d.displayOrder, demandCount: r.demandCount })),
     };
   }
 
@@ -113,12 +117,13 @@ export class DrizzleBatteryFinderRepository implements IBatteryFinderRepository 
       d: devices,
       seriesName: deviceSeries.name,
       verifiedFits: sql<number>`(SELECT count(*) FROM product_device_compatibility c JOIN battery_profiles bp ON bp.product_id = c.product_id JOIN products p ON p.id = c.product_id WHERE c.device_id = ${sql.raw("devices.id")} AND ${VERIFIED_PUBLIC})::int`,
+      listedFits: sql<number>`(SELECT count(*) FROM product_device_compatibility c JOIN battery_profiles bp ON bp.product_id = c.product_id JOIN products p ON p.id = c.product_id WHERE c.device_id = ${sql.raw("devices.id")} AND ${AWAITING_PUBLIC})::int`,
     }).from(devices).leftJoin(deviceSeries, eq(deviceSeries.id, devices.seriesId)).where(where).limit(1);
     if (!row) return null;
     // A merged device answers as its target so old links keep working.
     if (row.d.status === 'MERGED' && row.d.mergedIntoDeviceId) return this.deviceById(row.d.mergedIntoDeviceId);
     if (row.d.status !== 'ACTIVE') return null;
-    return deviceDto(row.d, row.seriesName, row.verifiedFits);
+    return deviceDto(row.d, row.seriesName, row.verifiedFits, row.listedFits);
   }
 
   deviceBySlug(slug: string): Promise<FinderDeviceDto | null> { return this.deviceWhere(eq(devices.slug, slug)); }
