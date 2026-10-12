@@ -138,6 +138,11 @@ async function renewSessionIfDue(context: Parameters<Parameters<typeof defineMid
 }
 
 export const onRequest = defineMiddleware(async (context, next) => {
+  // /products/<slug>/ served a second copy of every product page (canonical
+  // included); one address per product.
+  if (/^\/products\/[^/]+\/+$/.test(context.url.pathname)) {
+    return context.redirect(`${context.url.pathname.replace(/\/+$/, '')}${context.url.search}`, 301);
+  }
   const moved = MOVED_PATHS[context.url.pathname.replace(/\/+$/, '') || '/'];
   if (moved) return context.redirect(`${moved}${context.url.search}`, 301);
   if (!context.url.pathname.startsWith('/_astro/')) await renewSessionIfDue(context);
@@ -269,7 +274,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // Tell agents the cheaper representation exists. Only for documents we can
   // actually serve as Markdown, so the header never promises a 404.
   if (isDocument && response.status === 200 && agentRepresentablePath(path)) {
-    response.headers.append('Link', `<${context.url.origin}${path}>; rel="alternate"; type="text/markdown"`);
+    response.headers.append('Link', `<${SITE_ORIGIN}${path}>; rel="alternate"; type="text/markdown"`);
     response.headers.append('Vary', 'Accept');
   }
   // Discovery for agents on every page (RFC 8288 links, RFC 9727 api-catalog):

@@ -68,3 +68,14 @@ label:has(input.sr-only:focus-visible) {
   outline-offset: 2px;
   box-shadow: 0 0 0 2px #FFFFFF;
 }
+
+/* Page-to-page transitions (2026-10-08): same-origin navigations cross-fade in
+   browsers that support cross-document View Transitions instead of flashing
+   white; others ignore the rule. The header is its own layer, so it stays put
+   while the page under it changes. Off under reduced motion. */
+@view-transition { navigation: auto; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.18s; }
+.gp-nav { view-transition-name: gp-header; }
+@media (prefers-reduced-motion: reduce) {
+  @view-transition { navigation: none; }
+}

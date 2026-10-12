@@ -55,6 +55,9 @@ shopgoldplus.com, www.shopgoldplus.com {
   # /uploads sandbox policy below. Kept apart, the block above applies
   # immediately and the /uploads handle's own set replaces it (2026-09-24).
   header -Server
+  # reverse_proxy adds "Via: 1.1 Caddy" to every response; it names the proxy
+  # software to anyone looking. Removed the same way as Server: its own line.
+  header -Via
 
   encode gzip
 
@@ -156,6 +159,7 @@ api.shopgoldplus.com {
     X-Content-Type-Options    "nosniff"
     X-Frame-Options           "DENY"
     -Server
+    -Via
   }
 
   # Rate limit the telemetry ingestion endpoint to protect the outbox
@@ -234,6 +238,7 @@ metrics.shopgoldplus.com {
     Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
     X-Content-Type-Options    "nosniff"
     -Server
+    -Via
     # No CORS headers here: the tagging server sets its own per request, and
     # a second, fixed Access-Control-Allow-Origin makes browsers reject both.
   }
@@ -268,6 +273,7 @@ preview-metrics.shopgoldplus.com {
     Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
     X-Content-Type-Options    "nosniff"
     -Server
+    -Via
   }
 
   reverse_proxy sgtm-preview:8080 {

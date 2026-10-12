@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
+import { indexableCategoryHref } from '../lib/indexableLinks';
 import { apiBase } from '../lib/api';
 import ProductCard from '../components/ProductCard.astro';
 import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
@@ -160,7 +161,7 @@ const realCoverIds = allProducts.filter(hasRealCover).map((p) => p.id);
       <div class="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
         {homepageCategories.map((cat) => (
           <a
-            href={`/shop?category=${cat.slug}`}
+            href={indexableCategoryHref(`/shop?category=${cat.slug}`)}
             class="gp-cat-tile flex flex-col rounded-2xl outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk min-h-[168px] max-lg:[&:last-child:nth-child(odd)]:col-span-2"
             style="background:#101010;border:1px solid rgba(243,239,232,.1);padding:26px 18px 20px;transition:border-color .25s,background .25s"
           >

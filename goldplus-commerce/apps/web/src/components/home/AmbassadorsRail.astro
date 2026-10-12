@@ -23,8 +23,12 @@ interface Props {
 const { section, products } = Astro.props;
 
 const bySlug = new Map(products.map((p) => [p.slug, p]));
+// A "photo coming soon" card is a placeholder, not a person photographed with
+// the product: the home page shows real photography or nothing (2026-10-08).
+// The admin entry is untouched — uploading the real photo brings the card back.
+const isPlaceholderPortrait = (alt: string | null | undefined) => /photo coming soon/i.test(alt ?? '');
 const people = (section?.people ?? [])
-  .filter((p) => p.image)
+  .filter((p) => p.image && !isPlaceholderPortrait(p.imageAlt))
   .map((p) => {
     const product = p.productSlug ? bySlug.get(p.productSlug) ?? null : null;
     return {

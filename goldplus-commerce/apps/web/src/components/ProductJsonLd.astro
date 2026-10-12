@@ -81,6 +81,9 @@ if (product.retailPriceUgx !== null) {
     itemCondition: 'https://schema.org/NewCondition',
     // The shop's returns promise, on the offer Google reads.
     hasMerchantReturnPolicy: merchantReturnPolicyJsonLd(),
+    // Who sells it: the same organisation node the home page describes (@id),
+    // inline so the offer is complete on its own page.
+    seller: { '@type': 'Organization', '@id': `${SITE_ORIGIN}/#organization`, name: 'ShopGoldPlus', url: SITE_ORIGIN },
   };
   const availUrl = availabilityUrl[product.availability.kind];
   if (availUrl) offers.availability = availUrl;

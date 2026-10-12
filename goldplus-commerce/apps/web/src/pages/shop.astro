@@ -427,9 +427,9 @@ const shopBreadcrumb = breadcrumbJsonLd([
     @media (min-width: 981px) { .shop-search { display: none; } }
   </style>
 
+  {/* Progressive autocomplete: the form works without JavaScript; this only
+      fills the datalist with catalogue names on capable browsers. */}
   <script nonce={Astro.locals.cspNonce} is:inline define:vars={{ apiBase: publicApiBase }}>
-    // Progressive autocomplete. The form works without JavaScript; this only
-    // fills the datalist with catalogue names on capable browsers.
     (function () {
       var input = document.getElementById('shop-search');
       var list = document.getElementById('shop-suggest');
