@@ -7,15 +7,25 @@ importer (`/admin/batteries` → Import → type **Compatibility**) was built fo
 exactly this workbook sheet: its column auto-mapping matches all 11 columns.
 
 ## How a claim becomes customer-visible (existing code, `CompatibilityWorkflow.ts`)
-A fit is shown only when ALL hold: claim `workflow_status = ACTIVE`; battery
-lifecycle `ACTIVE`; product approved+active; and evidence is
-- `PACKAGE_VERIFIED` / `FIT_TESTED` / `VERIFIED_EXACT` → "Verified fit, in stock / out of stock"
-- `CONDITIONAL` → "Fits with a condition"
-- `SUPPLIER_LISTED` → shown ONLY if the finder setting *show awaiting verification* is on, as **"Listed by the supplier, not yet checked by us"** (never "fits your phone").
+A fit is shown only when ALL hold: claim `workflow_status = ACTIVE`; product
+approved+active; and evidence is
+- `PACKAGE_VERIFIED` / `FIT_TESTED` / `VERIFIED_EXACT` → "Verified fit, in stock / out of stock" — additionally needs the battery record lifecycle `ACTIVE`
+- `CONDITIONAL` → "Fits with a condition" — additionally needs the battery record lifecycle `ACTIVE`
+- `SUPPLIER_LISTED` → shown ONLY if the finder setting *show awaiting verification* is on, as **"Listed by the supplier, not yet checked by us"** (never "fits your phone"); needs only a sellable product whose battery record is not archived.
 
 An import always stages `DRAFT` + `SUPPLIER_LISTED`. **Imports never publish.**
-Note: all 80 live batteries are currently lifecycle `REVIEW`, so no fit can be
-public until batteries are activated too — a second, separate gate.
+
+**Owner policy, 2026-10-12.** A submitted `SUPPLIER_LISTED` claim may be
+published straight into that "awaiting verification" state, by someone other
+than the person who entered it, and only while the finder setting is on
+(`Publish as awaiting verification` on the compatibility page, or
+`scripts/publish-supplier-listed-claims.ts` for a whole import). A live
+awaiting fit is then verified, rejected or withdrawn **in place** — it never
+leaves the site while staff check it — and verification upgrades its label to
+"Verified fit" once the battery record is `ACTIVE` too. Maker/checker still
+applies: the claim's creator and submitter cannot verify it. The 208 fits from
+import `f29e931c` are live this way; the admin tab *Live, awaiting verification*
+lists them.
 
 ## What the importer's own rules do with the 102 claims (`evidence-ledger.csv`)
 | Outcome | Rows | Meaning |

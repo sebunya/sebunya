@@ -411,7 +411,12 @@ interface BatteryPublic {
   isPublished: boolean;
 }
 const batteryRes = await batteryP;
-const battery = batteryRes && batteryRes.ok && batteryRes.data.isPublished ? batteryRes.data : null;
+// The section shows whenever the finder would show something for this battery:
+// an activated record, or (owner policy 2026-10-12) fits a supplier lists that
+// are live as "awaiting verification". The use case has already applied the
+// finder's own switch, so an empty devices list here means nothing is public.
+const battery = batteryRes && batteryRes.ok && (batteryRes.data.isPublished || batteryRes.data.devices.length > 0) ? batteryRes.data : null;
+const hasAwaitingFit = !!battery && battery.devices.some((dv) => dv.fitState === 'AWAITING_VERIFICATION');
 const fitForSelected = battery && selectedDevice ? battery.devices.find((dv) => dv.slug === selectedDevice.slug) ?? null : null;
 const CHEMISTRY_LABEL: Record<string, string> = { LI_ION: 'Li-ion', LI_POLYMER: 'Li-polymer', NIMH: 'NiMH', OTHER: 'Other' };
 
@@ -814,8 +819,9 @@ if (product) {
           <div class="border-t border-slate-100 pt-10" aria-labelledby="battery-fits-heading">
             <h2 id="battery-fits-heading" class="text-xl font-black text-slate-900">Phones this battery fits</h2>
             <p class="mt-1 text-sm text-slate-600">
-              Every phone below has been checked and published by GoldPlus staff. A phone that is not listed has not been
-              checked; we will confirm it for you rather than guess.
+              {hasAwaitingFit
+                ? 'A phone marked "not yet checked" is one a supplier lists this battery for; we have not confirmed it ourselves. Every other phone below has been checked and published by GoldPlus staff. A phone that is not listed has not been checked; we will confirm it for you rather than guess.'
+                : 'Every phone below has been checked and published by GoldPlus staff. A phone that is not listed has not been checked; we will confirm it for you rather than guess.'}
             </p>
             {battery.devices.length > 0 ? (
               <ul class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">

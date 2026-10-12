@@ -102,7 +102,7 @@ const FIELDS: Array<[keyof Config, string, string, 'input' | 'textarea']> = [
           </label>
           <label class="flex items-start gap-2 text-xs font-bold text-gray-600 pt-6">
             <input type="checkbox" name="showAwaitingVerification" checked={c.showAwaitingVerification} class="w-4 h-4 border-gray-300 rounded mt-0.5" />
-            <span>Show fits a supplier lists but we have not checked, labelled as unchecked. Turn this off to show only fits we have verified ourselves.</span>
+            <span>Show fits a supplier lists but we have not checked, labelled as unchecked, on the finder, on phone pages and on battery product pages. Turn this off to show only fits we have verified ourselves; it also stops anyone publishing a claim as "awaiting verification" until it is turned on again.</span>
           </label>
         </div>
         <button type="submit" class="bg-brand-primary text-brand-black text-xs font-black uppercase tracking-widest px-5 py-3 rounded-lg hover:opacity-90">Save finder wording</button>

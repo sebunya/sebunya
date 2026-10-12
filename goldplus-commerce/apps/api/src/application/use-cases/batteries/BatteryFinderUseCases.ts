@@ -120,6 +120,12 @@ export class BatteryFinderUseCases {
     };
   }
 
+  /** The listed-fits count follows the same switch as the awaiting results themselves. */
+  private applyListedSwitch<T extends { listedFits: number }>(device: T, cfg: BatteryFinderConfig): T {
+    if (!cfg.showAwaitingVerification) device.listedFits = 0;
+    return device;
+  }
+
   private async resultsForDevice(deviceId: string, cfg: BatteryFinderConfig): Promise<FinderBatteryResultDto[]> {
     const [rows, campaign] = await Promise.all([this.repo.fitsForDevice(deviceId), this.campaign()]);
     const out: Array<{ r: FinderBatteryResultDto; rank: number }> = [];
@@ -142,8 +148,7 @@ export class BatteryFinderUseCases {
     const device = await this.repo.deviceBySlug(slug);
     if (!device) throw notFound('Device');
     const results = await this.resultsForDevice(device.id, cfg);
-    // The listed-fits count follows the same switch as the results themselves.
-    if (!cfg.showAwaitingVerification) device.listedFits = 0;
+    this.applyListedSwitch(device, cfg);
     if (record) void this.repo.recordEvent({ eventType: 'DEVICE_SELECTED', mode: 'FIND_BY_PHONE', queryNormalised: null, outcome: results.length ? outcomeFor(results[0].fitState) : 'NO_RESULT', brandId: null, seriesId: null, deviceId: device.id, batteryProductId: null, resultCount: results.length, aliasHit: false, sessionHash: this.sessionHash(sessionId) }).catch(() => undefined);
     return { device, results, config: cfg };
   }
@@ -172,6 +177,7 @@ export class BatteryFinderUseCases {
     const cfg = await this.config();
     const device = await this.repo.deviceBySlug(deviceSlug);
     if (!device) return { device: null, fits: {} as Record<string, { fitState: PublicFitState | null; fitLabel: string | null; condition: string | null }> };
+    this.applyListedSwitch(device, cfg);
     const rows = await this.repo.fitsForDevice(device.id);
     const fits: Record<string, { fitState: PublicFitState | null; fitLabel: string | null; condition: string | null }> = {};
     for (const id of productIds.slice(0, 100)) {
@@ -210,12 +216,19 @@ export class BatteryFinderUseCases {
       const rows = await this.repo.fitsForBattery(productId);
       const publicDevices = rows
         .map((row) => ({ row, state: publicFitState({ workflowStatus: row.workflowStatus as never, evidenceStatus: row.evidenceStatus as never, batteryLifecycle: row.batteryLifecycle, productApproved: row.productApproved, productActive: row.productActive, stockQuantity: row.stockQuantity, showAwaitingVerification: cfg.showAwaitingVerification }) }))
-        .filter((x) => x.state)
-        .map((x) => x.row.device);
-      if (product && product.lifecycleStatus === 'ACTIVE' && product.productApproved && product.productActive) {
-        const { lifecycleStatus: _l, stockQuantity, floorPriceUgx, productApproved: _a, productActive: _p, ...unpriced } = product;
+        .filter((x): x is { row: PublicFitRow; state: PublicFitState } => !!x.state)
+        .sort((a, b) => publicFitRank(a.state) - publicFitRank(b.state) || a.row.device.label.localeCompare(b.row.device.label))
+        .map((x) => ({ ...this.applyListedSwitch(x.row.device, cfg), fitState: x.state, fitLabel: publicFitLabel(x.state) }));
+      // A battery whose record has passed its readiness gate (ACTIVE) answers as
+      // itself. One that is sellable but not yet activated answers only while
+      // the finder shows unchecked fits, and is labelled exactly as its fits are:
+      // the same product the phone pages already list, said the same way.
+      const sellable = !!product && product.productApproved && product.productActive;
+      const answerable = sellable && (product.lifecycleStatus === 'ACTIVE' || (cfg.showAwaitingVerification && product.lifecycleStatus !== 'ARCHIVED'));
+      if (product && answerable) {
+        const { lifecycleStatus, stockQuantity, floorPriceUgx, productApproved: _a, productActive: _p, ...unpriced } = product;
         const publicProduct = this.priced(unpriced, floorPriceUgx, await this.campaign());
-        const state: PublicFitState = stockQuantity > 0 ? 'VERIFIED_IN_STOCK' : 'VERIFIED_OUT_OF_STOCK';
+        const state: PublicFitState = lifecycleStatus !== 'ACTIVE' ? 'AWAITING_VERIFICATION' : stockQuantity > 0 ? 'VERIFIED_IN_STOCK' : 'VERIFIED_OUT_OF_STOCK';
         void event('RESOLVED', { mode: 'SEARCH_CODE', batteryProductId: productId, resultCount: publicDevices.length, aliasHit: exactBatteries[0].tier === 5 });
         return { kind: 'BATTERY', battery: { ...publicProduct, inStock: stockQuantity > 0, fitState: state, fitLabel: publicFitLabel(state), condition: null }, devices: publicDevices, query, config: cfg };
       }
@@ -226,19 +239,20 @@ export class BatteryFinderUseCases {
     if (exactDevices.length === 1) {
       const device = await this.repo.deviceById(exactDevices[0].deviceId);
       if (device) {
+        this.applyListedSwitch(device, cfg);
         const results = await this.resultsForDevice(device.id, cfg);
         void event(results.length ? outcomeFor(results[0].fitState) : 'NO_RESULT', { deviceId: device.id, resultCount: results.length, aliasHit: exactDevices[0].tier === 5 });
         return { kind: 'DEVICE', device, results, query, config: cfg };
       }
     }
     if (exactDevices.length > 1) {
-      const list = (await Promise.all(exactDevices.map((d) => this.repo.deviceById(d.deviceId)))).filter((d): d is FinderDeviceDto => !!d);
+      const list = (await Promise.all(exactDevices.map((d) => this.repo.deviceById(d.deviceId)))).filter((d): d is FinderDeviceDto => !!d).map((d) => this.applyListedSwitch(d, cfg));
       void event('AMBIGUOUS', { resultCount: list.length });
       return { kind: 'AMBIGUOUS_DEVICE', devices: list, message: 'More than one phone matches. Pick your exact model number so we show the right battery.', query, config: cfg };
     }
     const suggestions = ranked.filter((r) => !isExactTier(r.tier));
     if (suggestions.length) {
-      const deviceList = (await Promise.all(suggestions.filter((s): s is Extract<typeof s, { kind: 'DEVICE' }> => s.kind === 'DEVICE').map((s) => this.repo.deviceById(s.deviceId)))).filter((d): d is FinderDeviceDto => !!d);
+      const deviceList = (await Promise.all(suggestions.filter((s): s is Extract<typeof s, { kind: 'DEVICE' }> => s.kind === 'DEVICE').map((s) => this.repo.deviceById(s.deviceId)))).filter((d): d is FinderDeviceDto => !!d).map((d) => this.applyListedSwitch(d, cfg));
       const batteryIds = suggestions.filter((s): s is Extract<typeof s, { kind: 'BATTERY' }> => s.kind === 'BATTERY').map((s) => s.productId);
       // Only published, approved, active batteries are suggested. The candidate
       // set behind the prefix tier is every non-archived battery, which includes
@@ -252,7 +266,7 @@ export class BatteryFinderUseCases {
       // form, instead of "Did you mean one of these?" above an empty list.
       if (deviceList.length > 0 || batteryList.length > 0) {
         void event('NO_RESULT', { resultCount: 0 });
-        return { kind: 'SUGGESTIONS', devices: deviceList, batteries: batteryList, message: 'No exact match. Did you mean one of these? Pick it to see checked batteries; we never guess a fit from a similar name.', query, config: cfg };
+        return { kind: 'SUGGESTIONS', devices: deviceList, batteries: batteryList, message: 'No exact match. Did you mean one of these? Pick it to see the batteries matched to it; we never guess a fit from a similar name.', query, config: cfg };
       }
     }
     void event('NO_RESULT');

@@ -172,6 +172,8 @@ export interface FinderBrandDto {
   slug: string;
   isFeatured: boolean;
   verifiedFits: number;
+  /** Verified fits plus fits listed by a supplier and not yet checked (the latter only while the finder shows them). */
+  coverageCount: number;
   deviceCount: number;
 }
 
@@ -217,7 +219,7 @@ export interface FinderBatteryResultDto {
 
 export type FinderResolution =
   | { kind: 'DEVICE'; device: FinderDeviceDto; results: FinderBatteryResultDto[] }
-  | { kind: 'BATTERY'; battery: FinderBatteryResultDto; devices: FinderDeviceDto[] }
+  | { kind: 'BATTERY'; battery: FinderBatteryResultDto; devices: Array<FinderDeviceDto & { fitState: PublicFitState; fitLabel: string }> }
   | { kind: 'AMBIGUOUS_DEVICE'; devices: FinderDeviceDto[]; message: string }
   | { kind: 'SUGGESTIONS'; devices: FinderDeviceDto[]; batteries: Array<{ canonicalCode: string; slug: string; name: string }>; message: string }
   | { kind: 'NO_RESULT'; message: string };
