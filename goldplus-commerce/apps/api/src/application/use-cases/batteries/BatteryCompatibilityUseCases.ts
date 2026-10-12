@@ -139,7 +139,7 @@ export class BatteryCompatibilityUseCases {
     return updated;
   }
 
-  async transition(id: string, action: CompatAction, actorId: string, detail: { evidenceStatus?: CompatEvidenceStatus; publicCondition?: string | null; reason?: string } = {}) {
+  async transition(id: string, action: CompatAction, actorId: string, detail: { evidenceStatus?: CompatEvidenceStatus; publicCondition?: string | null; reason?: string; allowAwaiting?: boolean } = {}) {
     const claim = await this.repo.find(id);
     if (!claim) throw notFound('Compatibility claim');
     const result = transitionClaim(
