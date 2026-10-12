@@ -1,0 +1,21 @@
+{
+  "$comment": "Follow-up to seo-review-apply-2026-10-12.json: the same two disputed figures (CA02 55W/36W, L12 66W) also sat in the long descriptions and in verified specs, which feed the page and the Product JSON-LD. Specs upsert by name; the disputed value becomes the per-port truth or 'Not confirmed'. Apply with apply-supplier-specs.ts, DRY_RUN=1 first.",
+  "products": [
+    {
+      "sku": "GP-CA02",
+      "longDescription": "A small car charger with two ports: USB-C with Power Delivery and USB-A with Quick Charge 3.0, so two phones can charge at once. The auto-ID chip gives each phone the charge it asks for. Works in cars, taxis and trucks with a 12V or 24V socket. A lamp ring so you find it at night, ABS body, USB-C to USB-C cable in the box. The output printed for the USB-C port is 9V⎓2.22A and 12V⎓1.67A (about 20W); the larger figures on the packaging are combined marketing numbers, so ask us if you need a particular rating confirmed. Same-day delivery in Kampala and Wakiso.",
+      "specs": [
+        { "name": "Output power", "value": "USB-C about 20 W per the printed profiles; combined figure on the packaging not confirmed", "isVerified": false },
+        { "name": "Ports", "value": "USB-A (QC 3.0) + USB-C (PD)", "isVerified": true },
+        { "name": "Output", "value": "USB-A: 3.6–6V⎓2.4A, 6–9V⎓2A, 9–12V⎓1.5A; USB-C: 5V⎓2.4A, 9V⎓2.22A, 12V⎓1.67A", "isVerified": true }
+      ]
+    },
+    {
+      "sku": "GP-L12",
+      "longDescription": "Two metres is the difference between charging on the bed and charging on the floor next to the socket. The GP-L12 is a braided cable with USB-C at both ends, for phones, tablets and other USB-C devices. Your charger and your device decide the charging speed; the packaging prints two different power figures, so we do not quote one until it is confirmed on the unit. Braided jacket for the pulling and winding a long cable gets. Same-day delivery in Kampala and Wakiso.",
+      "specs": [
+        { "name": "Output power", "value": "Not confirmed (packaging shows two different figures)", "isVerified": false }
+      ]
+    }
+  ]
+}
