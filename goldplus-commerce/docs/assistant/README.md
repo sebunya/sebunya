@@ -23,7 +23,7 @@ orders and complaints are handed to WhatsApp.
 
 ## Switching it on
 
-Set `ANTHROPIC_API_KEY` in `.env.production` on the host and roll `web`
+Set `ANTHROPIC_API_KEY` in `.env.production` on the host (and `ANTHROPIC_WORKSPACE_ID` if the key is organisation-scoped: the API otherwise answers "not scoped to a workspace") and roll `web`
 (`scripts/deploy-prod.sh <sha> web`). `docker-compose.production.yml` passes
 the key to the web container. Without a key the endpoint answers 503 and the
 layout renders no widget at all. The model (default `claude-haiku-5-5`), the

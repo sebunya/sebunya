@@ -81,6 +81,7 @@ describe('assistant engine', () => {
     expect(url).toBe('https://api.anthropic.com/v1/messages');
     expect(init.headers['anthropic-version']).toBe('2023-06-01');
     expect(init.headers['anthropic-beta']).toBeUndefined();
+    expect(init.headers['anthropic-workspace-id']).toBeUndefined();
     const body = JSON.parse(init.body);
     expect(body.model).toBe('claude-haiku-5-5');
     expect(body.fallbacks).toBeUndefined();
@@ -90,6 +91,13 @@ describe('assistant engine', () => {
     expect(body.max_tokens).toBe(1024);
     expect(body.system[0].cache_control).toEqual({ type: 'ephemeral' });
     expect(body.tools.map((t: any) => t.name)).toEqual(['search_products', 'get_product', 'list_categories', 'find_battery', 'store_info']);
+  });
+
+  it('names the workspace only when an organisation-scoped key needs it', async () => {
+    fetchMock.mockResolvedValueOnce(streamResponse(textTurn('ok')));
+    const { runAssistant } = await import('../../apps/web/src/lib/assistant');
+    await collect(runAssistant([{ role: 'user', content: 'hi' }], { apiKey: 'k', workspaceId: 'wrkspc_test', fetchImpl: fetchMock as never }));
+    expect(fetchMock.mock.calls[0][1].headers['anthropic-workspace-id']).toBe('wrkspc_test');
   });
 
   it('keeps the server-side fallback only for models that document one', async () => {

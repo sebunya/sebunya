@@ -317,6 +317,8 @@ services:
       - INTERNAL_API_KEY=${INTERNAL_API_KEY}
       # The shop assistant (/api/assistant/chat). Unset = the widget is not rendered. Policy lives in admin.
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # Only for an organisation-scoped key: the workspace it bills (console → Settings → Workspaces).
+      - ANTHROPIC_WORKSPACE_ID=${ANTHROPIC_WORKSPACE_ID:-}
       - CHECKOUT_INTENT_SECRET=${CHECKOUT_INTENT_SECRET}
       # Strict script policy: report (default: observe only) | enforce | off.
       # See docs/hardening/strict-csp.md before changing it.

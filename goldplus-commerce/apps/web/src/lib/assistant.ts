@@ -184,6 +184,8 @@ async function* readTurn(body: ReadableStream<Uint8Array>, onBlock: (b: ContentB
 
 export interface AssistantOptions {
   apiKey: string;
+  /** Console workspace id (wrkspc_…) for an organisation-scoped key; defaults to ANTHROPIC_WORKSPACE_ID. */
+  workspaceId?: string;
   model?: string;
   effort?: 'low' | 'medium';
   maxOutputTokens?: number;
@@ -206,6 +208,9 @@ async function requestTurn(messages: MessageParam[], opts: Required<Pick<Assista
     messages,
   };
   const headers: Record<string, string> = { 'Content-Type': 'application/json', 'x-api-key': opts.apiKey, 'anthropic-version': '2023-06-01' };
+  // An organisation-scoped console key must name the workspace it bills; a workspace-scoped key needs nothing.
+  const workspace = (opts.workspaceId ?? process.env.ANTHROPIC_WORKSPACE_ID ?? '').trim();
+  if (workspace) headers['anthropic-workspace-id'] = workspace;
   if (supportsServerFallback(opts.model)) {
     // A policy decline is re-run server-side on Anthropic's recommended fallback (Opus/Sonnet/Fable only).
     body.fallbacks = 'default';
