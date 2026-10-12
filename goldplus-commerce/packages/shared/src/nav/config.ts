@@ -96,8 +96,8 @@ export const DEFAULT_NAV_CONFIG: NavConfig = {
       tiles: [
         { label: 'Power', descriptor: 'Banks, batteries, chargers', href: '/shop?category=power' },
         { label: 'Sound', descriptor: 'Earbuds and headphones', href: '/shop?category=sound' },
-        { label: 'Storage', descriptor: '1GB to 512GB', href: '/shop?category=storage' },
-        { label: 'Car', descriptor: 'Chargers and Bluetooth', href: '/shop?category=car' },
+        { label: 'Storage', descriptor: 'Flash drives and memory cards', href: '/shop?category=storage' },
+        { label: 'Car', descriptor: 'Car chargers', href: '/shop?category=car' },
         { label: 'PC', descriptor: 'Mouse and sound cards', href: '/shop?category=pc' },
         { label: 'Everything →', descriptor: 'The full range', href: '/shop', variant: 'go' },
       ],
@@ -107,7 +107,7 @@ export const DEFAULT_NAV_CONFIG: NavConfig = {
           { label: 'New this month', href: '/shop' },
           { label: 'Best sellers', href: '/shop' },
           { label: 'Best value picks', href: '/shop' },
-          { label: 'How we verify stock', href: '/verification' },
+          { label: 'Verify a product', href: '/verification' },
         ],
       },
       featured: null,
@@ -143,8 +143,7 @@ export const DEFAULT_NAV_CONFIG: NavConfig = {
       tiles: [
         { label: 'Earbuds', descriptor: 'True wireless, with a charging case', href: '/shop?category=sound&q=earbuds' },
         { label: 'Earphones', descriptor: 'Wired, with a mic for calls', href: '/shop?category=sound&q=earphones' },
-        { label: 'Headphones', descriptor: 'On-ear, for everyday listening', href: '/shop?category=sound&q=headphones' },
-        { label: 'Over-ear headphones', descriptor: 'Full cups, for studio and travel', href: '/shop?category=sound&q=over-ear' },
+        { label: 'Headphones', descriptor: 'For everyday listening', href: '/shop?category=sound&q=headphones' },
       ],
       featured: {
         eyebrow: 'Also worth carrying', name: 'Digital Display Power Bank', line: '20,000mAh, with a charge level you can read',
@@ -168,8 +167,7 @@ export const DEFAULT_NAV_CONFIG: NavConfig = {
       key: 'car',
       shape: 'wide',
       tiles: [
-        { label: 'Car chargers', descriptor: 'Fast charging built for Kampala potholes', href: '/shop?category=car&q=charger' },
-        { label: 'Bluetooth for cars', descriptor: 'Calls and music in a car with no Bluetooth', href: '/shop?category=car&q=bluetooth' },
+        { label: 'Car chargers', descriptor: 'Charge on the road from the 12V socket', href: '/shop?category=car&q=charger' },
       ],
       featured: {
         eyebrow: 'Also worth carrying', name: 'Power Bank with Carry Handle', line: 'Enough charge for the whole car',
@@ -180,8 +178,8 @@ export const DEFAULT_NAV_CONFIG: NavConfig = {
       key: 'pc',
       shape: 'wide',
       tiles: [
-        { label: 'Mouse', descriptor: 'Wired and wireless, for work and play', href: '/shop?category=pc&q=mouse' },
-        { label: 'Sound cards', descriptor: 'External audio for laptops and studios', href: '/shop?category=pc&q=sound+card' },
+        { label: 'Mouse', descriptor: 'For desktop and laptop', href: '/shop?category=pc&q=mouse' },
+        { label: 'Sound cards', descriptor: 'Headphone and mic jacks over USB', href: '/shop?category=pc&q=sound+card' },
       ],
       featured: {
         eyebrow: 'Also worth carrying', name: '100W Portable Power Station', line: 'Keeps a desk running through a blackout',

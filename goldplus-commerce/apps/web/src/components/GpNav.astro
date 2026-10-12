@@ -326,8 +326,8 @@ const nbaJson = escNav(JSON.stringify(nba));
         <div class="gp-nav__tiles gp-nav__tiles--five">
           <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=power')}><b>Power</b><span>Banks, batteries, chargers</span></a>
           <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=sound')}><b>Sound</b><span>Earbuds and headphones</span></a>
-          <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=storage')}><b>Storage</b><span>1GB to 512GB</span></a>
-          <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=car')}><b>Car</b><span>Chargers and Bluetooth</span></a>
+          <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=storage')}><b>Storage</b><span>Flash drives and memory cards</span></a>
+          <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=car')}><b>Car</b><span>Car chargers</span></a>
           <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=pc')}><b>PC</b><span>Mouse and sound cards</span></a>
           <a class="gp-nav__tile gp-nav__tile--go" href="/shop"><b>Everything →</b><span>The full range</span></a>
         </div>
@@ -336,7 +336,7 @@ const nbaJson = escNav(JSON.stringify(nba));
           <ul>
             <li><a href="/shop?sort=price-low-high">Lowest prices first</a></li>
             <li><a href="/bulk">Buying in bulk? Build a list</a></li>
-            <li><a href="/verification">How we verify stock</a></li>
+            <li><a href="/verification">Verify a product</a></li>
           </ul>
         </div>
       </div>
@@ -448,7 +448,7 @@ const nbaJson = escNav(JSON.stringify(nba));
 
       <div class="gp-nav__panel" data-panel="car" data-shape="wide">
         <div class="gp-nav__tiles">
-          <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=car&q=charger')}><b>Car chargers</b><span>Fast charging built for Kampala potholes</span></a>
+          <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=car&q=charger')}><b>Car chargers</b><span>Charge on the road from the 12V socket</span></a>
         </div>
         {featFor('Car Accessories') && (
           <a class="gp-nav__feat" href={`/products/${featFor('Car Accessories')!.slug}`}>
@@ -460,8 +460,8 @@ const nbaJson = escNav(JSON.stringify(nba));
 
       <div class="gp-nav__panel" data-panel="pc" data-shape="wide">
         <div class="gp-nav__tiles">
-          <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=pc&q=mouse')}><b>Mouse</b><span>Wired and wireless, for work and play</span></a>
-          <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=pc&q=sound+card')}><b>Sound cards</b><span>External audio for laptops and studios</span></a>
+          <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=pc&q=mouse')}><b>Mouse</b><span>For desktop and laptop</span></a>
+          <a class="gp-nav__tile" href={indexableCategoryHref('/shop?category=pc&q=sound+card')}><b>Sound cards</b><span>Headphone and mic jacks over USB</span></a>
         </div>
         {featFor('PC Accessories') && (
           <a class="gp-nav__feat" href={`/products/${featFor('PC Accessories')!.slug}`}>
