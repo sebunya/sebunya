@@ -215,12 +215,19 @@ export class BatteryFinderUseCases {
       const rows = await this.repo.fitsForBattery(productId);
       const publicDevices = rows
         .map((row) => ({ row, state: publicFitState({ workflowStatus: row.workflowStatus as never, evidenceStatus: row.evidenceStatus as never, batteryLifecycle: row.batteryLifecycle, productApproved: row.productApproved, productActive: row.productActive, stockQuantity: row.stockQuantity, showAwaitingVerification: cfg.showAwaitingVerification }) }))
-        .filter((x) => x.state)
-        .map((x) => x.row.device);
-      if (product && product.lifecycleStatus === 'ACTIVE' && product.productApproved && product.productActive) {
-        const { lifecycleStatus: _l, stockQuantity, floorPriceUgx, productApproved: _a, productActive: _p, ...unpriced } = product;
+        .filter((x): x is { row: PublicFitRow; state: PublicFitState } => !!x.state)
+        .sort((a, b) => publicFitRank(a.state) - publicFitRank(b.state) || a.row.device.label.localeCompare(b.row.device.label))
+        .map((x) => ({ ...this.applyListedSwitch(x.row.device, cfg), fitState: x.state, fitLabel: publicFitLabel(x.state) }));
+      // A battery whose record has passed its readiness gate (ACTIVE) answers as
+      // itself. One that is sellable but not yet activated answers only while
+      // the finder shows unchecked fits, and is labelled exactly as its fits are:
+      // the same product the phone pages already list, said the same way.
+      const sellable = !!product && product.productApproved && product.productActive;
+      const answerable = sellable && (product.lifecycleStatus === 'ACTIVE' || (cfg.showAwaitingVerification && product.lifecycleStatus !== 'ARCHIVED'));
+      if (product && answerable) {
+        const { lifecycleStatus, stockQuantity, floorPriceUgx, productApproved: _a, productActive: _p, ...unpriced } = product;
         const publicProduct = this.priced(unpriced, floorPriceUgx, await this.campaign());
-        const state: PublicFitState = stockQuantity > 0 ? 'VERIFIED_IN_STOCK' : 'VERIFIED_OUT_OF_STOCK';
+        const state: PublicFitState = lifecycleStatus !== 'ACTIVE' ? 'AWAITING_VERIFICATION' : stockQuantity > 0 ? 'VERIFIED_IN_STOCK' : 'VERIFIED_OUT_OF_STOCK';
         void event('RESOLVED', { mode: 'SEARCH_CODE', batteryProductId: productId, resultCount: publicDevices.length, aliasHit: exactBatteries[0].tier === 5 });
         return { kind: 'BATTERY', battery: { ...publicProduct, inStock: stockQuantity > 0, fitState: state, fitLabel: publicFitLabel(state), condition: null }, devices: publicDevices, query, config: cfg };
       }

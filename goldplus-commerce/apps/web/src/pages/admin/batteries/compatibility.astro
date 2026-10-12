@@ -73,6 +73,8 @@ const devices = (devicesRes.data ?? []).filter((d) => d.status === 'ACTIVE');
 const EVIDENCE = [['SUPPLIER_LISTED', 'A supplier lists it (not checked by us)'], ['PACKAGE_VERIFIED', 'The GoldPlus pack says so'], ['FIT_TESTED', 'We fitted it to the phone'], ['VERIFIED_EXACT', 'Confirmed exact for this model number'], ['CONDITIONAL', 'Fits with a condition']];
 const STATUS_BADGE: Record<string, string> = { ACTIVE: 'bg-green-50 text-green-800 border-green-200', READY: 'bg-blue-50 text-blue-800 border-blue-200', REVIEW: 'bg-amber-50 text-amber-900 border-amber-200', DRAFT: 'bg-slate-100 text-slate-700 border-slate-200', ARCHIVED: 'bg-slate-50 text-slate-600 border-slate-200' };
 const TABS = [['REVIEW', 'Waiting for a checker'], ['DRAFT', 'Drafts'], ['READY', 'Verified, not published'], ['ACTIVE', 'Live'], ['ARCHIVED', 'Archived'], ['ALL', 'Everything']];
+// The one view the owner works from most: fits that are public but unchecked.
+const awaitingTab = workflowStatus === 'ACTIVE' && evidenceStatus === 'SUPPLIER_LISTED';
 ---
 
 <AdminLayout title="Battery compatibility" description="Connect a battery to an exact phone, check the evidence, then publish." activePath="/admin/batteries">
@@ -127,8 +129,9 @@ const TABS = [['REVIEW', 'Waiting for a checker'], ['DRAFT', 'Drafts'], ['READY'
     )}
     <nav class="flex flex-wrap gap-2 mb-4">
       {TABS.map(([v, l]) => (
-        <a href={`/admin/batteries/compatibility?workflowStatus=${v}${productId ? `&productId=${productId}` : ''}${deviceId ? `&deviceId=${deviceId}` : ''}`} class={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase tracking-widest ${v === workflowStatus ? 'border-brand-primary bg-brand-primary/10 text-brand-dark' : 'border-gray-300 text-gray-600 hover:border-brand-primary'}`}>{l}</a>
+        <a href={`/admin/batteries/compatibility?workflowStatus=${v}${productId ? `&productId=${productId}` : ''}${deviceId ? `&deviceId=${deviceId}` : ''}`} class={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase tracking-widest ${v === workflowStatus && !awaitingTab ? 'border-brand-primary bg-brand-primary/10 text-brand-dark' : 'border-gray-300 text-gray-600 hover:border-brand-primary'}`}>{l}</a>
       ))}
+      <a href={`/admin/batteries/compatibility?workflowStatus=ACTIVE&evidenceStatus=SUPPLIER_LISTED${productId ? `&productId=${productId}` : ''}${deviceId ? `&deviceId=${deviceId}` : ''}`} title="Live fits a supplier lists that nobody here has checked yet. Verify or reject each one in place." class={`rounded-lg border px-3 py-2 text-[10px] font-black uppercase tracking-widest ${awaitingTab ? 'border-amber-400 bg-amber-50 text-amber-900' : 'border-amber-300 text-amber-800 hover:border-amber-500'}`}>Live, awaiting verification</a>
     </nav>
 
     <div class="space-y-3">

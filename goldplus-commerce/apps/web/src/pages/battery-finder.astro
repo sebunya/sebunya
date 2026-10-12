@@ -119,6 +119,21 @@ const brandOnlyList = brandOnly
   : null;
 const results: FinderBatteryResultDto[] = device?.results ?? (search?.kind === 'DEVICE' ? search.results : []);
 const shownDevice: FinderDeviceDto | null = device?.device ?? (search?.kind === 'DEVICE' ? search.device : null);
+
+// Counters say what is on the page: verified fits first, then fits a supplier
+// lists that we have not checked (only counted while the finder shows them).
+const brandCount = (b: { verifiedFits: number; coverageCount: number; deviceCount: number }): string => {
+  const listed = Math.max(0, b.coverageCount - b.verifiedFits);
+  const parts = [b.verifiedFits > 0 ? `${b.verifiedFits} checked` : '', listed > 0 ? `${listed} listed` : ''].filter(Boolean);
+  return parts.length ? parts.join(', ') : `${b.deviceCount} phones`;
+};
+const deviceCount = (dv: { verifiedFits: number; listedFits: number }): string => {
+  const parts = [
+    dv.verifiedFits > 0 ? `${dv.verifiedFits} ${dv.verifiedFits === 1 ? 'battery' : 'batteries'} we have checked` : '',
+    dv.listedFits > 0 ? `${dv.listedFits} listed by the supplier, not yet checked by us` : '',
+  ].filter(Boolean);
+  return parts.length ? parts.join(' · ') : 'No battery matched yet';
+};
 ---
 
 <BaseLayout title={headline} description={cfg?.intro ?? 'Search your phone or a battery code to see the batteries we have checked.'} canonicalUrl={canonicalUrl} robotsMeta={robotsMeta}>
@@ -152,7 +167,7 @@ const shownDevice: FinderDeviceDto | null = device?.device ?? (search?.kind === 
             <ul class="mt-3 flex flex-wrap gap-2">
               {brands.map((b) => (
                 <li><a href={`/battery-finder?brand=${encodeURIComponent(b.slug)}`} class="inline-block rounded-full border border-gray-300 px-4 py-2 text-sm font-bold text-brand-dark hover:border-brand-primary">
-                  {b.name}<span class="text-gray-600 font-normal"> · {b.verifiedFits > 0 ? `${b.verifiedFits} checked` : b.coverageCount > 0 ? `${b.coverageCount} listed` : `${b.deviceCount} phones`}</span>
+                  {b.name}<span class="text-gray-600 font-normal"> · {brandCount(b)}</span>
                 </a></li>
               ))}
             </ul>
@@ -169,7 +184,7 @@ const shownDevice: FinderDeviceDto | null = device?.device ?? (search?.kind === 
                   <li><a href={`/battery-finder?device=${encodeURIComponent(dv.slug)}`} class="block rounded-xl border border-gray-200 bg-white px-4 py-3 hover:border-brand-primary">
                     <span class="font-bold text-brand-dark">{dv.model}</span>
                     {dv.modelNumber && <span class="block text-xs text-gray-500 font-mono mt-0.5">{dv.modelNumber}{dv.variant ? ` · ${dv.variant}` : ''}</span>}
-                    <span class="block text-xs text-gray-500 mt-1">{dv.verifiedFits > 0 ? `${dv.verifiedFits} battery we have checked` : dv.listedFits > 0 ? `${dv.listedFits} battery listed by the supplier, not yet checked by us` : 'No battery matched yet'}</span>
+                    <span class="block text-xs text-gray-500 mt-1">{deviceCount(dv)}</span>
                   </a></li>
                 ))}
               </ul>
@@ -221,9 +236,9 @@ const shownDevice: FinderDeviceDto | null = device?.device ?? (search?.kind === 
             </article>
             {search.devices.length > 0 && (
               <>
-                <h3 class="mt-6 text-sm font-black uppercase tracking-widest text-gray-500">Phones we have checked it against</h3>
+                <h3 class="mt-6 text-sm font-black uppercase tracking-widest text-gray-500">{search.devices.every((dv) => dv.fitState === 'AWAITING_VERIFICATION') ? 'Phones it is listed for, not yet checked by us' : search.devices.some((dv) => dv.fitState === 'AWAITING_VERIFICATION') ? 'Phones it fits (checked unless marked)' : 'Phones we have checked it against'}</h3>
                 <ul class="mt-2 flex flex-wrap gap-2">
-                  {search.devices.map((dv) => <li><a href={`/battery-finder?device=${encodeURIComponent(dv.slug)}`} class="inline-block rounded-full border border-gray-300 px-3 py-1.5 text-xs font-bold hover:border-brand-primary">{dv.label}</a></li>)}
+                  {search.devices.map((dv) => <li><a href={`/battery-finder?device=${encodeURIComponent(dv.slug)}`} title={dv.fitLabel} class="inline-block rounded-full border border-gray-300 px-3 py-1.5 text-xs font-bold hover:border-brand-primary">{dv.label}{dv.fitState === 'AWAITING_VERIFICATION' ? <span class="text-blue-900 font-normal"> · not yet checked</span> : null}</a></li>)}
                 </ul>
               </>
             )}

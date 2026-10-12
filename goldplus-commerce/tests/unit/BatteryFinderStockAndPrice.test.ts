@@ -12,7 +12,7 @@ import type { PublicFitRow } from '../../apps/api/src/application/ports/IBattery
 const read = (p: string) => readFileSync(resolve(__dirname, '../..', p), 'utf8');
 
 const product = { productId: 'p1', slug: 'bl-5c', name: 'BL-5C battery', canonicalCode: 'BL-5C', imageUrl: null, priceUgx: 45_000, capacityMah: 1020, nominalVoltageMv: 3700 };
-const device = { id: 'd1', slug: 'nokia-1100', brandName: 'Nokia', seriesName: null, model: '1100', modelNumber: null, variant: null, label: 'Nokia 1100', releaseYear: null, verifiedFits: 1 };
+const device = { id: 'd1', slug: 'nokia-1100', brandName: 'Nokia', seriesName: null, model: '1100', modelNumber: null, variant: null, label: 'Nokia 1100', releaseYear: null, verifiedFits: 1, listedFits: 0 };
 
 function fit(over: Partial<PublicFitRow> = {}): PublicFitRow {
   return {
@@ -80,5 +80,51 @@ describe('battery finder stock and price', () => {
     const out = await finder([fit()]).device('nokia-1100');
     expect(out.results[0].priceUgx).toBe(45_000);
     expect(out.results[0].regularPriceUgx).toBeNull();
+  });
+});
+
+/**
+ * Searching by battery code must say the same thing the phone pages say. A
+ * battery that is sold but whose record has not passed its readiness gate is
+ * listed on phone pages as "awaiting verification" (owner policy 2026-10-12);
+ * typing its code must not answer "not available online yet".
+ */
+import { normaliseBatteryCode } from '../../apps/api/src/domain/batteries/BatteryCodes';
+import { DEFAULT_BATTERY_FINDER_CONFIG } from '@goldplus/shared';
+
+function codeFinder(opts: { lifecycle: 'ACTIVE' | 'REVIEW'; showAwaiting: boolean }) {
+  const row = fit({ batteryLifecycle: opts.lifecycle, evidenceStatus: 'SUPPLIER_LISTED' });
+  const repo = {
+    getConfig: async () => ({ config: { ...DEFAULT_BATTERY_FINDER_CONFIG, showAwaitingVerification: opts.showAwaiting }, version: 1 }),
+    deviceCandidates: async () => [],
+    batteryCandidates: async () => [{ productId: 'p1', canonicalCodeNormalised: normaliseBatteryCode('BL-5C'), supplierCodeNormalised: null, barcode: null, aliasesNormalised: [], lifecycleStatus: opts.lifecycle }],
+    batteryPublic: async () => ({ ...product, lifecycleStatus: opts.lifecycle, stockQuantity: 3, floorPriceUgx: 38_000, productApproved: true, productActive: true }),
+    fitsForBattery: async () => [row],
+    fuzzyDevices: async () => [],
+    fuzzyBatteries: async () => [],
+    recordEvent: async () => undefined,
+  };
+  return new BatteryFinderUseCases(repo as never, {} as never, {} as never, 'pepper');
+}
+
+describe('battery finder: search by code agrees with the phone pages', () => {
+  it('a sellable battery whose record is not yet active answers as awaiting verification, with its listed phones marked', async () => {
+    const out = await codeFinder({ lifecycle: 'REVIEW', showAwaiting: true }).search('BL-5C');
+    expect(out.kind).toBe('BATTERY');
+    if (out.kind !== 'BATTERY') return;
+    expect(out.battery.fitState).toBe('AWAITING_VERIFICATION');
+    expect(out.devices.map((d) => [d.slug, d.fitState])).toEqual([['nokia-1100', 'AWAITING_VERIFICATION']]);
+  });
+
+  it('with awaiting fits hidden, the same code still says the battery is not online yet', async () => {
+    const out = await codeFinder({ lifecycle: 'REVIEW', showAwaiting: false }).search('BL-5C');
+    expect(out.kind).toBe('NO_RESULT');
+  });
+
+  it('an active record keeps its verified, stock-aware answer', async () => {
+    const out = await codeFinder({ lifecycle: 'ACTIVE', showAwaiting: true }).search('BL-5C');
+    expect(out.kind).toBe('BATTERY');
+    if (out.kind !== 'BATTERY') return;
+    expect(out.battery.fitState).toBe('VERIFIED_IN_STOCK');
   });
 });
