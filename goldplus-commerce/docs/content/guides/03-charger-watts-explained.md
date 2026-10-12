@@ -9,7 +9,6 @@ Meta description: Volts × amps = watts. How to read a charger's output label, w
 Related products: two or three chargers with clear output labels.
 
 Related SKUs: GP-C08, GP-GAN01, GP-L03C
-Publish: hold
 
 ---- Article (paste everything below this line into the Article box) ----
 

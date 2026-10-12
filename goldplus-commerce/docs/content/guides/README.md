@@ -23,7 +23,7 @@ paste straight into the editor.
 `publish-guides.ts` reads every numbered file here (the image carries no docs/, so the host folder is mounted), creates or updates the
 article through the blog's own use cases (audited), resolves the `Related SKUs:`
 line to live products, and publishes unless the file says `Publish: hold`.
-Guide 03 is on hold until the charger labels below are checked.
+Owner decision 2026-10-12: guide 03 publishes with the others.
 
 ```
 docker run --rm --network goldplus-commerce_default --env-file .env.production \
