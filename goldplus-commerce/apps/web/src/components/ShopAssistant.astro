@@ -1,0 +1,192 @@
+---
+/**
+ * The shop assistant chat: a launcher button and a panel on every page. The
+ * browser posts the conversation to /api/assistant/chat (same origin) and
+ * renders the streamed answer. Rendered only when the server has an API key,
+ * so a host without one shows nothing rather than a dead button.
+ *
+ * The transcript lives in sessionStorage for this tab only (per-viewer
+ * convenience, wrapped in try/catch); the server stores nothing.
+ */
+import { assistantEnabled } from '../lib/assistant';
+interface Props { whatsappUrl: string }
+const { whatsappUrl } = Astro.props;
+const enabled = assistantEnabled();
+---
+{enabled && (
+  <div id="gp-assistant" class="gp-assistant" data-whatsapp={whatsappUrl} data-endpoint="/api/assistant/chat">
+    <button type="button" class="gp-assistant__launch" aria-haspopup="dialog" aria-controls="gp-assistant-panel" aria-expanded="false" data-launch>
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-8 8H8l-5 3 1.2-4.2A8 8 0 1 1 21 12z"/></svg>
+      <span>Ask GoldPlus</span>
+    </button>
+
+    <section id="gp-assistant-panel" class="gp-assistant__panel" role="dialog" aria-label="GoldPlus shop assistant" aria-modal="false" hidden data-panel>
+      <header class="gp-assistant__head">
+        <div>
+          <p class="gp-assistant__title">GoldPlus assistant</p>
+          <p class="gp-assistant__sub">Prices, stock and battery fits from the shop's own catalogue. For orders, chat on WhatsApp.</p>
+        </div>
+        <button type="button" class="gp-assistant__close" aria-label="Close the assistant" data-close>×</button>
+      </header>
+
+      <div class="gp-assistant__log" role="log" aria-live="polite" aria-relevant="additions text" data-log></div>
+
+      <div class="gp-assistant__starters" data-starters>
+        <button type="button" data-starter>Which charger works with my phone?</button>
+        <button type="button" data-starter>Find a battery for Tecno Spark 7</button>
+        <button type="button" data-starter>Do you deliver to Wakiso today?</button>
+      </div>
+
+      <form class="gp-assistant__form" data-form>
+        <label class="sr-only" for="gp-assistant-input">Your question</label>
+        <textarea id="gp-assistant-input" rows="1" maxlength="2000" placeholder="Ask about a product, a price or a battery…" autocomplete="off" data-input></textarea>
+        <button type="submit" class="gp-assistant__send" aria-label="Send" data-send>
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+      </form>
+      <p class="gp-assistant__foot">
+        Answers come from the shop's catalogue and can be wrong; check the product page before you pay.
+        <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" data-whatsapp-link>Chat on WhatsApp</a>
+      </p>
+    </section>
+  </div>
+)}
+
+<style>
+  .gp-assistant { --gp-green: #93d500; --gp-ink: #0a0a0a; font-family: inherit; }
+  .gp-assistant__launch {
+    position: fixed; right: max(1rem, env(safe-area-inset-right)); bottom: calc(max(1rem, env(safe-area-inset-bottom)) + 64px);
+    z-index: 46; display: inline-flex; align-items: center; gap: .5rem; padding: .7rem 1rem; border: 0; border-radius: 9999px;
+    background: var(--gp-ink); color: #fff; font-weight: 800; font-size: .8rem; letter-spacing: .02em; box-shadow: 0 10px 30px rgba(0,0,0,.25); cursor: pointer;
+  }
+  .gp-assistant__launch:focus-visible, .gp-assistant__close:focus-visible, .gp-assistant__send:focus-visible, .gp-assistant__starters button:focus-visible { outline: 3px solid var(--gp-green); outline-offset: 2px; }
+  .gp-assistant--open .gp-assistant__launch { display: none; }
+  .gp-assistant__panel {
+    position: fixed; right: max(1rem, env(safe-area-inset-right)); bottom: max(1rem, env(safe-area-inset-bottom)); z-index: 47;
+    width: min(400px, calc(100vw - 2rem)); height: min(620px, calc(100vh - 2rem)); display: flex; flex-direction: column;
+    background: #fff; color: var(--gp-ink); border: 1px solid #e5e5e5; border-radius: 1.25rem; box-shadow: 0 24px 60px rgba(0,0,0,.3); overflow: hidden;
+  }
+  @media (max-width: 480px) {
+    .gp-assistant__panel { right: 0; bottom: 0; width: 100vw; height: 100dvh; border-radius: 0; }
+  }
+  .gp-assistant__head { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; padding: .9rem 1rem; background: var(--gp-ink); color: #fff; }
+  .gp-assistant__title { margin: 0; font-weight: 900; font-size: .95rem; }
+  .gp-assistant__sub { margin: .2rem 0 0; font-size: .72rem; color: #cfcfcf; line-height: 1.35; }
+  .gp-assistant__close { border: 0; background: transparent; color: #fff; font-size: 1.5rem; line-height: 1; cursor: pointer; padding: 0 .25rem; }
+  .gp-assistant__log { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: .6rem; background: #f7f7f7; }
+  .gp-assistant__msg { max-width: 88%; padding: .6rem .8rem; border-radius: 1rem; font-size: .88rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .gp-assistant__msg--user { align-self: flex-end; background: var(--gp-ink); color: #fff; border-bottom-right-radius: .3rem; }
+  .gp-assistant__msg--bot { align-self: flex-start; background: #fff; border: 1px solid #e5e5e5; border-bottom-left-radius: .3rem; }
+  .gp-assistant__msg--bot a { color: #456b00; font-weight: 700; text-decoration: underline; }
+  .gp-assistant__msg--status { align-self: flex-start; font-size: .75rem; color: #6b6b6b; padding: .1rem .2rem; }
+  .gp-assistant__msg--error { align-self: flex-start; background: #fff4f4; border: 1px solid #f3c2c2; color: #8a1f1f; }
+  .gp-assistant__starters { display: flex; flex-wrap: wrap; gap: .4rem; padding: .5rem 1rem 0; background: #f7f7f7; }
+  .gp-assistant__starters button { border: 1px solid #d9d9d9; background: #fff; border-radius: 9999px; padding: .35rem .7rem; font-size: .75rem; font-weight: 700; cursor: pointer; }
+  .gp-assistant__form { display: flex; gap: .5rem; padding: .75rem 1rem; border-top: 1px solid #e5e5e5; background: #fff; }
+  .gp-assistant__form textarea { flex: 1; resize: none; border: 1px solid #d9d9d9; border-radius: .8rem; padding: .6rem .75rem; font: inherit; font-size: .9rem; max-height: 6rem; }
+  .gp-assistant__send { width: 42px; height: 42px; border: 0; border-radius: 9999px; background: var(--gp-green); color: var(--gp-ink); display: grid; place-items: center; cursor: pointer; }
+  .gp-assistant__send[disabled] { opacity: .5; cursor: progress; }
+  .gp-assistant__foot { margin: 0; padding: .4rem 1rem .7rem; font-size: .68rem; color: #6b6b6b; background: #fff; }
+  .gp-assistant__foot a { color: #456b00; font-weight: 700; margin-left: .25rem; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+</style>
+
+<script>
+  type Turn = { role: 'user' | 'assistant'; content: string };
+  type Ev = { type: 'text'; text: string } | { type: 'tool'; name: string } | { type: 'done' } | { type: 'error'; code: string; message: string };
+
+  const root = document.getElementById('gp-assistant');
+  if (root) {
+    const endpoint = root.dataset.endpoint || '/api/assistant/chat';
+    const launch = root.querySelector<HTMLButtonElement>('[data-launch]')!;
+    const panel = root.querySelector<HTMLElement>('[data-panel]')!;
+    const closeBtn = root.querySelector<HTMLButtonElement>('[data-close]')!;
+    const log = root.querySelector<HTMLElement>('[data-log]')!;
+    const starters = root.querySelector<HTMLElement>('[data-starters]')!;
+    const form = root.querySelector<HTMLFormElement>('[data-form]')!;
+    const input = root.querySelector<HTMLTextAreaElement>('[data-input]')!;
+    const send = root.querySelector<HTMLButtonElement>('[data-send]')!;
+    const KEY = 'gp-assistant-turns';
+    const SITE = location.origin;
+    let turns: Turn[] = [];
+    let busy = false;
+
+    try { const saved = sessionStorage.getItem(KEY); if (saved) turns = JSON.parse(saved); } catch { turns = []; }
+    const persist = () => { try { sessionStorage.setItem(KEY, JSON.stringify(turns.slice(-12))); } catch { /* private mode or blocked storage */ } };
+
+    const TOOL_STATUS: Record<string, string> = {
+      search_products: 'Searching the catalogue…', get_product: 'Reading the product page…', list_categories: 'Checking the categories…',
+      find_battery: 'Running the battery finder…', store_info: 'Checking the shop details…',
+    };
+
+    /** Text to DOM with links only to this site (anything else stays plain text). */
+    const render = (el: HTMLElement, text: string) => {
+      el.replaceChildren();
+      const parts = text.split(/(https?:\/\/[^\s)\]>]+)/g);
+      for (const part of parts) {
+        if (/^https?:\/\//.test(part)) {
+          const clean = part.replace(/[.,;:!?]+$/, '');
+          const trail = part.slice(clean.length);
+          if (clean.startsWith(SITE + '/') || clean === SITE) {
+            const a = document.createElement('a'); a.href = clean; a.textContent = clean.replace(SITE, '').replace(/^\/products\//, '') || clean; a.rel = 'noopener';
+            el.append(a); if (trail) el.append(trail);
+          } else el.append(part);
+        } else el.append(part);
+      }
+    };
+    const bubble = (kind: 'user' | 'bot' | 'status' | 'error', text: string) => {
+      const el = document.createElement('div');
+      el.className = `gp-assistant__msg gp-assistant__msg--${kind}`;
+      if (kind === 'bot') render(el, text); else el.textContent = text;
+      log.append(el); log.scrollTop = log.scrollHeight; return el;
+    };
+    const paint = () => { log.replaceChildren(); for (const t of turns) bubble(t.role === 'user' ? 'user' : 'bot', t.content); starters.hidden = turns.length > 0; };
+
+    const open = () => { root.classList.add('gp-assistant--open'); panel.hidden = false; launch.setAttribute('aria-expanded', 'true'); paint(); setTimeout(() => input.focus(), 50); };
+    const close = () => { root.classList.remove('gp-assistant--open'); panel.hidden = true; launch.setAttribute('aria-expanded', 'false'); launch.focus(); };
+    launch.addEventListener('click', open);
+    closeBtn.addEventListener('click', close);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !panel.hidden) close(); });
+
+    const ask = async (question: string) => {
+      const q = question.trim(); if (!q || busy) return;
+      busy = true; send.disabled = true; input.value = ''; starters.hidden = true;
+      turns.push({ role: 'user', content: q }); bubble('user', q); persist();
+      const status = bubble('status', 'Thinking…');
+      const reply = bubble('bot', ''); let answer = '';
+      try {
+        const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' }, credentials: 'same-origin', body: JSON.stringify({ messages: turns.slice(-12) }) });
+        if (!res.ok || !res.body) {
+          let msg = 'The assistant is not available just now. Please use WhatsApp.';
+          try { msg = (await res.json()).error?.message || msg; } catch { /* keep default */ }
+          status.remove(); reply.remove(); bubble('error', msg); turns.pop(); persist(); return;
+        }
+        const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
+        for (;;) {
+          const { done, value } = await reader.read(); if (done) break;
+          buf += dec.decode(value, { stream: true });
+          let i = buf.indexOf('\n\n');
+          while (i >= 0) {
+            const frame = buf.slice(0, i); buf = buf.slice(i + 2);
+            const data = frame.split('\n').filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trim()).join('\n');
+            if (data) {
+              let ev: Ev | null = null; try { ev = JSON.parse(data); } catch { ev = null; }
+              if (ev?.type === 'text') { answer += ev.text; render(reply, answer); log.scrollTop = log.scrollHeight; status.textContent = ''; }
+              else if (ev?.type === 'tool') { status.textContent = TOOL_STATUS[ev.name] || 'Checking the shop…'; }
+              else if (ev?.type === 'error') { status.remove(); if (!answer) reply.remove(); bubble('error', ev.message); }
+            }
+            i = buf.indexOf('\n\n');
+          }
+        }
+        status.remove();
+        if (answer) { turns.push({ role: 'assistant', content: answer }); persist(); } else if (reply.isConnected) reply.remove();
+      } catch {
+        status.remove(); if (!answer) reply.remove(); bubble('error', 'The connection dropped. Please ask again.');
+      } finally { busy = false; send.disabled = false; input.focus(); }
+    };
+
+    form.addEventListener('submit', (e) => { e.preventDefault(); void ask(input.value); });
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void ask(input.value); } });
+    starters.querySelectorAll<HTMLButtonElement>('[data-starter]').forEach((b) => b.addEventListener('click', () => { open(); void ask(b.textContent || ''); }));
+  }
+</script>

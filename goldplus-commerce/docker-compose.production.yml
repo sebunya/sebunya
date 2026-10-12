@@ -315,6 +315,9 @@ services:
       # Storefront SSR -> API: proves the caller is our own SSR, the only caller
       # that receives product floors (Price A). MUST match between api and web.
       - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+      # The shop assistant (/api/assistant/chat). Unset = the widget is not rendered.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ASSISTANT_MODEL=${ASSISTANT_MODEL:-}
       - CHECKOUT_INTENT_SECRET=${CHECKOUT_INTENT_SECRET}
       # Strict script policy: report (default: observe only) | enforce | off.
       # See docs/hardening/strict-csp.md before changing it.
