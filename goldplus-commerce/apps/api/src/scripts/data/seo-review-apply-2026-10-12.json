@@ -1,0 +1,35 @@
+{
+  "$comment": "Five products from the copy/SEO handoff V2 review (docs/content/website-copy-2026-10-12) whose live title or description stated a figure the packaging evidence contradicts (CA02 36W/55W, L12 66W, C10 100W) or omitted the connector a shopper must match (L03, M02: USB-A end). Apply with apply-supplier-specs.ts (DATA_FILE=src/scripts/data/seo-review-apply-2026-10-12.json), DRY_RUN=1 first. No specs are written here.",
+  "products": [
+    {
+      "sku": "GP-CA02",
+      "title": "GoldPlus GP-CA02 USB-A & USB-C Car Charger, with USB-C cable",
+      "shortDescription": "Compact car charger with one USB-A port (Quick Charge 3.0) and one USB-C port, auto-ID chip and a USB-C cable included. Fits 12V and 24V sockets. Check the rating printed for the port you will use; ask us to confirm the exact unit before ordering.",
+      "specs": []
+    },
+    {
+      "sku": "GP-L12",
+      "title": "GoldPlus GP-L12 USB-C to USB-C Cable, 2 m, Braided",
+      "shortDescription": "Two-metre braided cable with USB-C at both ends, for charging a phone or tablet from a socket across the room. Charging speed depends on what your charger and device support; check the rating on your charger's port.",
+      "specs": []
+    },
+    {
+      "sku": "GP-L03C",
+      "title": "GoldPlus GP-L03 USB-A to USB-C Cable, 1 m, 3A",
+      "shortDescription": "One-metre cable from a USB-A charger or computer to a USB-C device, rated 3A for charging and data. Check both ends before ordering: if your charger has only USB-C ports, you need a USB-C to USB-C cable instead.",
+      "specs": []
+    },
+    {
+      "sku": "GP-M02C",
+      "title": "GoldPlus GP-M02 USB-A to USB-C Cable, 2 m, 3A, Braided",
+      "shortDescription": "Two-metre braided cable from a USB-A charger or computer to a USB-C phone, 3A, thick copper core. Reach the bed, not the floor. The GP-M02 name also comes in Lightning and Micro-USB versions, so check the connector before ordering.",
+      "specs": []
+    },
+    {
+      "sku": "GP-C10",
+      "title": "GoldPlus GP-C10 USB-C Wall Charger, UK Plug",
+      "shortDescription": "Single-port USB-C PD wall charger with a UK three-pin plug and a flame-retardant body, for phones and tablets. The box and the label disagree on the output figure, so ask us to confirm the output printed on the exact unit before ordering.",
+      "specs": []
+    }
+  ]
+}
