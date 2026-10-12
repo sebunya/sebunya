@@ -99,6 +99,14 @@ describe('hub registry integrity', () => {
   it('faq entries either carry a static answer or a live-data source, never neither', () => {
     for (const hub of CATEGORY_HUBS) {
       for (const faq of hub.faqs) expect(Boolean(faq.answer) || Boolean(faq.source)).toBe(true);
+      for (const child of hub.children) for (const faq of child.faqs ?? []) expect(Boolean(faq.answer), `${hub.slug}/${child.slug}: ${faq.question}`).toBe(true);
+    }
+  });
+
+  it('every indexable range answers at least one buying question of its own, and guide links stay on this site', () => {
+    for (const hub of CATEGORY_HUBS) {
+      if (hub.slug !== 'computer-accessories') expect(hub.faqs.filter((f) => f.answer && f !== undefined).length, hub.slug).toBeGreaterThanOrEqual(2);
+      for (const g of [...(hub.guides ?? []), ...hub.children.flatMap((c) => c.guides ?? [])]) expect(g.href.startsWith('/blog/') || g.href.startsWith('/'), g.href).toBe(true);
     }
   });
 
