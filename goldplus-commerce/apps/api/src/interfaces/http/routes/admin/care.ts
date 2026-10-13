@@ -41,7 +41,8 @@ routes.post('/tasks', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c)
     urgent: z.boolean().optional(),
   }).safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return bad(c, 'INVALID_BODY', parsed.error.issues[0]?.message ?? 'Invalid body.');
-  const out = await Registry.getInstance().careDeskUseCases.openTask({ ...parsed.data, openedBy: `staff:${actor(c)}` });
+  // Who opened it is in the audit entry below; the column says only that staff did (it is varchar(40), a uuid would not fit).
+  const out = await Registry.getInstance().careDeskUseCases.openTask({ ...parsed.data, openedBy: 'staff' });
   if (!out.ok) return bad(c, out.code, out.message);
   await audit(c, 'CARE_TASK_OPENED', out.task.id, { kind: parsed.data.kind });
   return ok(c, { id: out.task.id, alerted: out.alerted });

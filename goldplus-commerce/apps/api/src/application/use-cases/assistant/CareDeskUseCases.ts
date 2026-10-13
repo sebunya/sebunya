@@ -60,7 +60,7 @@ export class CareDeskUseCases {
       customerName: text(input.customerName).slice(0, 120) || null, customerPhone: phone, customerEmail: email,
       orderNumber: text(input.orderNumber).toUpperCase().slice(0, 40) || null,
       conversationId: input.conversationId ?? null, channel: input.channel ?? null,
-      proposedAction: input.proposedAction ?? null, dueAt: input.dueAt ?? null, openedBy: input.openedBy ?? 'goldie',
+      proposedAction: input.proposedAction ?? null, dueAt: input.dueAt ?? null, openedBy: (input.openedBy ?? 'goldie').slice(0, 40),
     });
     const alerted = created && shouldAlert(task.priority) ? await this.alert(task) : [];
     return { ok: true, task, created, alerted };

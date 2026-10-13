@@ -67,4 +67,10 @@ suite('Care Desk repository (real PostgreSQL)', () => {
     expect(await repo.purgeClosedBefore(new Date(Date.now() - 365 * 86400_000))).toBeGreaterThanOrEqual(1);
     expect(await repo.get(a.task.id)).toBeNull();
   });
+
+  it('saves a task a member of staff added from the desk', async () => {
+    const r = await repo.open({ ...base, kind: 'follow_up', priority: 'normal', title: `${tag} staff added`, conversationId: null, openedBy: 'staff' });
+    expect(r.created).toBe(true);
+    expect((await repo.get(r.task.id))!.openedBy).toBe('staff');
+  });
 });
