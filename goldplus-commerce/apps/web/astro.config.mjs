@@ -42,6 +42,20 @@ const sentryDsn = process.env.PUBLIC_SENTRY_DSN || process.env.SENTRY_DSN;
 
 export default defineConfig({
   output: 'server',
+  // Behind Caddy, which terminates HTTPS and forwards Host + X-Forwarded-Proto. Since Astro 5.14.2 the request's
+  // host is ignored unless it matches allowedDomains; with none set, every request was rebuilt as
+  // http://localhost:4321, so Astro's origin check refused EVERY form post from a real browser ("Cross-site POST
+  // form submissions are forbidden": add to cart, checkout, login, quotes, support) from the Astro 6 upgrade on
+  // 2026-10-07 until this fix. Only the shop's own names over https are trusted; localhost / 127.0.0.1 only in
+  // non-production builds (local dev and CI talk to the container directly over http).
+  security: {
+    checkOrigin: true,
+    allowedDomains: [
+      { hostname: 'shopgoldplus.com', protocol: 'https' },
+      { hostname: 'www.shopgoldplus.com', protocol: 'https' },
+      ...(process.env.NODE_ENV === 'production' ? [] : [{ hostname: 'localhost' }, { hostname: '127.0.0.1' }]),
+    ],
+  },
   // The site never uses astro:assets (images come from the API's own pipeline),
   // so Astro does not decode images at all: no /_image processing, and the
   // AVIF/libheif path behind GHSA-26w7-cxv4-gfx2 cannot be reached.
