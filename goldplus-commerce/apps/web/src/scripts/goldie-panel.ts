@@ -32,6 +32,8 @@ export interface PanelContext {
   getTeaser: () => Teaser | null;
   /** The launcher's side of opening: hide the teaser, clear the unread dot. */
   onOpen: () => void;
+  /** Optional: run a DOM change as the launcher-to-panel morph (View Transitions); without it the change is instant. */
+  morph?: (update: () => void, toPanel: boolean) => void;
 }
 export interface GoldiePanel { open: () => void; close: () => void; ask: (question: string) => Promise<void>; isOpen: () => boolean }
 
@@ -193,9 +195,11 @@ export function mountGoldie(root: HTMLElement, ctx: PanelContext): GoldiePanel {
     paint(); if (!ctx.narrow()) setTimeout(() => input.focus(), 60);
   };
   const close = () => { root.classList.remove('gp-assistant--open'); panel.hidden = true; launch.setAttribute('aria-expanded', 'false'); launch.focus(); };
-  closeBtn.addEventListener('click', close);
+  // Closing folds the panel back into the launcher where the browser can morph it; opening from the launcher does the same in ShopAssistant.
+  const closeMorph = () => (ctx.morph ? ctx.morph(close, false) : close());
+  closeBtn.addEventListener('click', closeMorph);
   clearBtn.addEventListener('click', () => { turns = []; persist(); paint(); if (!ctx.narrow()) input.focus(); });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !panel.hidden) close(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !panel.hidden) closeMorph(); });
 
   const ask = async (question: string) => {
     const text = question.trim(); if (!text || busy) return;
