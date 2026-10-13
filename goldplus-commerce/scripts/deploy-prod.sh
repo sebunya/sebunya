@@ -130,3 +130,9 @@ fi
 ) 9>&- &
 disown 2>/dev/null || true
 echo "post-deploy smoke started in the background (label post-deploy-smoke-$HEAD; results under /var/lib/goldplus-performance-audit and on /admin/seo/performance-audit); Lighthouse Watch runs weekly, Sunday 03:00 Kampala time (goldplus-lighthouse-watch.timer)"
+# Live smoke last, in the foreground: home, api, and real form posts through Cloudflare + Caddy (2026-10-14: a week of
+# refused form posts went unseen by every GET check). The roll stays; a failure here means fix forward or roll back.
+if [ -x scripts/live-smoke.sh ]; then
+  sleep 5
+  scripts/live-smoke.sh || { echo "DEPLOY ROLLED, BUT CUSTOMERS ARE AFFECTED: see the live smoke above."; exit 1; }
+fi
