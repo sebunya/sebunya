@@ -1,5 +1,6 @@
 ---
 import { gaSessionFromCookieHeader } from '../lib/gaSession';
+import { readGuestMemory, writeGuestMemory } from '../lib/guestMemory';
 import { HEARD_ABOUT_OPTIONS, parseHeardAbout } from '@goldplus/shared';
 import DeliveryQuote from "../components/DeliveryQuote.astro";
 import BaseLayout from '../layouts/BaseLayout.astro';
@@ -287,22 +288,10 @@ try {
 // Guest memory: details from their last completed checkout, held in an
 // httpOnly cookie on their own device so a repeat guest confirms instead of
 // retyping. Signed-in customers use their address book instead.
-const GUEST_PREFILL_COOKIE = 'gp_checkout_prefill';
+// The cookie and its reader live in lib/guestMemory.ts, shared with the other forms.
 let guestPrefill: Record<string, string> = {};
 if (!authenticatedUserId) {
-  try {
-    const raw = Astro.cookies.get(GUEST_PREFILL_COOKIE)?.value;
-    if (raw) {
-      const parsed = JSON.parse(decodeURIComponent(raw));
-      if (parsed && typeof parsed === 'object') {
-        for (const k of ['name', 'email', 'phone', 'locationJson', 'deliveryAddress']) {
-          if (typeof parsed[k] === 'string' && parsed[k].length <= 600) guestPrefill[k] = parsed[k];
-        }
-      }
-    }
-  } catch {
-    /* stale/corrupt cookie = no prefill */
-  }
+  guestPrefill = { ...readGuestMemory(Astro.cookies) } as Record<string, string>;
 }
 
 // Cross-site refusal comes BEFORE the intent is resolved, because resolving it can
@@ -521,19 +510,10 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
         // so the "remember for next time" work happens here, before any
         // redirect can end the render.
         if (!authenticatedUserId) {
-          try {
-            Astro.cookies.set(
-              GUEST_PREFILL_COOKIE,
-              encodeURIComponent(JSON.stringify({
-                name: values.name,
-                email: values.email,
-                phone: values.phone,
-                locationJson: values.locationJson,
-                deliveryAddress: values.deliveryAddress,
-              })),
-              { path: '/checkout', maxAge: 60 * 60 * 24 * 180, httpOnly: true, sameSite: 'lax', secure: import.meta.env.PROD },
-            );
-          } catch { /* memory is a convenience */ }
+          writeGuestMemory(Astro.cookies, {
+            name: values.name, email: values.email, phone: values.phone,
+            locationJson: values.locationJson, deliveryAddress: values.deliveryAddress,
+          }, import.meta.env.PROD);
         } else if (!selectedAddress && sessionToken && String(formData.get('saveAddress') || '') === 'true') {
           // Best-effort: a failed save must never disturb an order that succeeded.
           const district = payload.customerDetails.deliveryLocation?.district;

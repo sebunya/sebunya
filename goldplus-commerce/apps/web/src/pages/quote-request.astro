@@ -1,13 +1,25 @@
 ---
+/**
+ * Quote request. Reworked 2026-10-13 for a short, task-first journey:
+ *  - the form opens with what the buyer came to say: what they need and how many;
+ *  - "who is it for" is a plain-language choice (myself, my shop, an organisation),
+ *    preset from ?kind=; an organisation buyer gets one optional field for the
+ *    organisation's name, which had nowhere to go before;
+ *  - only name, phone, product and quantity are required (the API's own rule);
+ *    delivery location, landmark, email and notes are optional and folded away.
+ *    The page used to require a location the API never needed;
+ *  - a returning checkout guest finds their name, phone, email and area filled in
+ *    (lib/guestMemory.ts);
+ *  - one honest line about what a quote is, instead of two boxes above the form.
+ */
 import { readClientAddress } from '../lib/forwardClient';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import FormField from '../components/FormField.astro';
 import FormFeedback from '../components/FormFeedback.astro';
-import Notice from '../components/Notice.astro';
 import UgandaLocationPicker from '../components/UgandaLocationPicker.astro';
 import { formatLocationLabel } from '../lib/location-utils';
 import { postJson } from '../lib/api';
-
+import { readGuestMemory } from '../lib/guestMemory';
 import { isValidEmail, isValidUgandanPhone, normalizeEmail, normalizePhone } from '../lib/formValidation';
 
 let status: 'success' | 'error' | 'received' | null = null;
@@ -15,169 +27,157 @@ let message: string | undefined;
 let reference: string | undefined;
 let values: Record<string, string> = {};
 let errors: Record<string, string> = {};
+let showMore = false;
 
+type Kind = 'retail' | 'wholesale' | 'corporate';
 const kindParam = Astro.url.searchParams.get('kind');
-const initialKind = kindParam === 'wholesale' || kindParam === 'corporate' ? kindParam : 'retail';
+const initialKind: Kind = kindParam === 'wholesale' || kindParam === 'corporate' ? kindParam : 'retail';
 
-// Pre-fill productName from URL search params on initial render.
-// `requested` carries the customer's zero-result shop search (Slice 4).
-const productNameParam = Astro.url.searchParams.get('productName') || Astro.url.searchParams.get('requested');
-if (Astro.request.method === 'GET' && productNameParam) {
-  values.productName = productNameParam;
+if (Astro.request.method === 'GET') {
+  const m = readGuestMemory(Astro.cookies);
+  values = { customerName: m.name ?? '', phone: m.phone ?? '', email: m.email ?? '', locationJson: m.locationJson ?? '' };
+  // `requested` carries the customer's zero-result shop search (Slice 4).
+  const productNameParam = Astro.url.searchParams.get('productName') || Astro.url.searchParams.get('requested');
+  if (productNameParam) values.productName = productNameParam.slice(0, 255);
 }
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
-  
   values = {
-    customerName: String(form.get('customerName') ?? '').trim(),
-    email: normalizeEmail(String(form.get('email') ?? '')),
-    phone: normalizePhone(String(form.get('phone') ?? '')),
+    kind: String(form.get('kind') ?? initialKind),
     productName: String(form.get('productName') ?? '').trim(),
     quantity: String(form.get('quantity') ?? '').trim(),
-    message: String(form.get('message') ?? '').trim(),
-    kind: String(form.get('kind') ?? initialKind),
+    customerName: String(form.get('customerName') ?? '').trim(),
+    phone: normalizePhone(String(form.get('phone') ?? '')),
+    organisation: String(form.get('organisation') ?? '').trim(),
+    email: normalizeEmail(String(form.get('email') ?? '')),
     locationJson: String(form.get('locationJson') ?? '').trim(),
-    deliveryAddress: String(form.get('deliveryAddress') ?? '').trim()
+    deliveryAddress: String(form.get('deliveryAddress') ?? '').trim(),
+    message: String(form.get('message') ?? '').trim(),
   };
+  showMore = Boolean(values.email || values.locationJson || values.deliveryAddress || values.message);
 
-  if (!values.customerName) errors.customerName = 'Your name is required.';
-  // Email is optional: sales calls the phone number back.
-  if (values.email && !isValidEmail(values.email)) errors.email = 'That email address does not look right. Check it, or leave it blank.';
-  if (!isValidUgandanPhone(values.phone)) errors.phone = 'A valid Ugandan phone number is required.';
-  if (!values.productName) errors.productName = 'Please state the product you need.';
-  if (!values.quantity) errors.quantity = 'Required.';
-  if (!values.locationJson) errors.locationJson = 'Please select a location.';
+  if (!values.productName) errors.productName = 'Tell us what you need.';
+  if (!values.quantity) errors.quantity = 'Roughly how many?';
+  if (!values.customerName || values.customerName.length < 2) errors.customerName = 'Tell us who to ask for.';
+  if (!isValidUgandanPhone(values.phone)) errors.phone = 'Enter a Ugandan number we can call, for example 0772 123 456.';
+  if (values.email && !isValidEmail(values.email)) { errors.email = 'That email does not look right. Check it, or leave it blank.'; showMore = true; }
 
   if (Object.keys(errors).length === 0) {
-    const locStr = formatLocationLabel(values.locationJson);
-    let finalMsg = `${values.message}\n\n[Service Location: ${locStr}]`.trim();
-    if (values.deliveryAddress) {
-      finalMsg += `\n[Landmark/Details: ${values.deliveryAddress}]`;
-    }
-
+    const lines = [values.message];
+    if (values.organisation) lines.push(`[Organisation: ${values.organisation}]`);
+    if (values.locationJson) lines.push(`[Delivery location: ${formatLocationLabel(values.locationJson)}]`);
+    if (values.deliveryAddress) lines.push(`[Landmark/Details: ${values.deliveryAddress}]`);
     const result = await postJson('/governance/quotes/request', {
       customerName: values.customerName,
       email: values.email,
       phone: values.phone,
       productName: values.productName,
       quantity: values.quantity,
-      message: finalMsg,
-      kind: values.kind
+      message: lines.filter(Boolean).join('\n').trim(),
+      kind: values.kind,
     }, null, readClientAddress(Astro));
     reference = result.ok ? result.reference : undefined;
     if (result.ok) {
       status = 'received';
-      message = 'We have your quote request. Someone from our sales team will call you to confirm what you need and give you a price.';
+      message = `Thank you, ${values.customerName.split(' ')[0]}. Our sales team will call you on ${values.phone} with a price and a delivery time.`;
       values = {};
     } else {
       status = 'error';
       message = result.code === 'NETWORK'
-        ? 'Cannot reach the sales service right now. Please try again shortly.'
-        : (result.message || 'Failed to submit.');
+        ? 'We could not send that just now. Please try again in a moment, or call us.'
+        : (result.message || 'We could not send that. Please try again.');
     }
   } else {
     status = 'error';
-    message = 'Some details are missing. Check the highlighted fields below.';
+    message = 'A few details are missing. They are marked below.';
   }
 }
 
-const buyerOptions = [
-  { v: 'retail', l: 'Retail bulk' },
-  { v: 'wholesale', l: 'Wholesale' },
-  { v: 'corporate', l: 'Corporate' },
+const buyerOptions: Array<{ v: Kind; l: string }> = [
+  { v: 'retail', l: 'Myself' },
+  { v: 'wholesale', l: 'My shop, to resell' },
+  { v: 'corporate', l: 'An organisation' },
 ];
-const checkedKind = values.kind || initialKind;
+const checkedKind = (values.kind as Kind) || initialKind;
+const heading = checkedKind === 'corporate' ? 'Get a quote for your organisation' : checkedKind === 'wholesale' ? 'Get a wholesale quote' : 'Get a quote for a larger order';
 ---
 
-<BaseLayout title="Request a Product Quote | GoldPlus" description="Tell GoldPlus which products, variants and quantities you need. Submit a quote request so the team can check availability and the appropriate terms.">
-  <div class="bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 text-white py-14 border-b border-slate-950">
-    <div class="container mx-auto px-4 lg:px-8">
-      <h1 class="text-3xl md:text-4xl font-black tracking-tight text-white mb-4">Request a quote</h1>
-      <p class="text-slate-400 max-w-2xl text-sm sm:text-base leading-relaxed font-medium">
-        Tell us what you are after and roughly how many. Our team comes back with a real price and a realistic delivery time, whether it is a bulk retail order, wholesale, or a corporate fit-out.
+<BaseLayout title="Request a quote | GoldPlus" description="Tell GoldPlus what you need and how many. Our sales team calls you with a price and a delivery time; a quote is an estimate until you confirm.">
+  <div class="bg-slate-950 text-white py-10 sm:py-12">
+    <div class="container mx-auto px-4 lg:px-8 max-w-2xl">
+      <h1 class="text-3xl md:text-4xl font-black tracking-tight" style="text-wrap:balance">{heading}</h1>
+      <p class="mt-3 text-slate-300 text-sm sm:text-base leading-relaxed">Tell us what you need and roughly how many. We call you with a price and a delivery time. It takes about a minute.</p>
+    </div>
+  </div>
+
+  <div class="container mx-auto px-4 lg:px-8 py-8 sm:py-10">
+    <div class="max-w-xl mx-auto space-y-5">
+      <FormFeedback status={status} message={message} reference={reference} />
+      {status === 'received' && reference && <span hidden data-lead-ref={reference}></span>}
+
+      {status !== 'received' && (
+        <form method="POST" action={`/quote-request${initialKind !== 'retail' ? `?kind=${initialKind}` : ''}`} novalidate id="quoteForm" class="bg-white p-5 sm:p-8 rounded-2xl border border-slate-200 space-y-5">
+          <fieldset>
+            <legend class="text-sm font-bold text-gray-900 mb-2">Who is it for?</legend>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2" id="buyerTypeSelector">
+              {buyerOptions.map((opt) => (
+                <label class="gp-kind flex min-h-11 items-center justify-center rounded-xl border px-3 py-2 text-sm font-bold cursor-pointer select-none">
+                  <input type="radio" name="kind" value={opt.v} checked={checkedKind === opt.v} class="sr-only" />
+                  <span>{opt.l}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          <div class="grid grid-cols-1 sm:grid-cols-[1fr_9rem] gap-4">
+            <FormField id="productName" name="productName" label="What do you need?" required defaultValue={values.productName} placeholder="e.g. Type-C chargers, 20,000mAh power banks" errorMessage={errors.productName} />
+            <FormField id="quantity" name="quantity" label="How many?" required defaultValue={values.quantity} placeholder="e.g. 50" inputmode="text" errorMessage={errors.quantity} />
+          </div>
+
+          <div id="orgField" hidden={checkedKind !== 'corporate'}>
+            <FormField id="organisation" name="organisation" label="Organisation (optional)" defaultValue={values.organisation} autocomplete="organization" placeholder="Company, school, office or NGO" />
+          </div>
+
+          <FormField id="customerName" name="customerName" label="Your name" required defaultValue={values.customerName} autocomplete="name" errorMessage={errors.customerName} />
+          <FormField id="phone" name="phone" label="Phone we can call" type="tel" required defaultValue={values.phone} autocomplete="tel" inputmode="tel" placeholder="07XX XXX XXX" errorMessage={errors.phone} />
+
+          <details class="group rounded-xl border border-slate-200 bg-slate-50 px-4 py-3" open={showMore}>
+            <summary class="cursor-pointer list-none text-sm font-bold text-slate-800 marker:content-none flex items-center gap-2">
+              <span aria-hidden="true" class="transition-transform group-open:rotate-90">▸</span> Add more details (optional)
+            </summary>
+            <div class="mt-4 space-y-4">
+              <UgandaLocationPicker
+                name="locationJson"
+                label="Delivery area"
+                helperText="Town or area, for example Najjera, Seeta or Mbarara."
+                defaultValue={values.locationJson}
+              />
+              <FormField id="deliveryAddress" name="deliveryAddress" label="Building, street or landmark" placeholder="e.g. Plot 12, Bukoto Street, 3rd floor" defaultValue={values.deliveryAddress} />
+              <FormField id="email" name="email" label="Email" type="email" defaultValue={values.email} autocomplete="email" errorMessage={errors.email} />
+              <FormField id="message" name="message" label="Anything else?" type="textarea" rows={3} defaultValue={values.message} placeholder="Deadline, brand or model, packaging, invoice name" />
+            </div>
+          </details>
+
+          <button type="submit" id="submitBtn" class="w-full min-h-12 bg-brand-primary text-gray-950 rounded-full font-black text-sm tracking-wider uppercase outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk active:scale-[0.99]">
+            Get my quote
+          </button>
+          <p class="text-center text-xs text-slate-500">A quote is an estimate. We confirm it with you before anything is charged.</p>
+        </form>
+      )}
+
+      <p class="text-center text-sm text-slate-600">
+        Several different products? <a href="/bulk" class="font-bold underline">Build the whole list</a> and see an estimate at our listed prices.
       </p>
     </div>
   </div>
-
-  <div class="container mx-auto px-4 lg:px-8 py-14">
-    <div class="max-w-2xl mx-auto space-y-6">
-      <FormFeedback status={status} message={message} reference={reference} />
-      {status === 'received' && reference && <span hidden data-lead-ref={reference}></span>}
-      <Notice kind="info" title="How quotes work" message="Prices for large orders depend on the quantity and where you are. Send this form and our sales team will prepare a quote for you. A quote is an estimate, not a final bill." />
-      <div class="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-        <p class="text-sm font-bold text-gray-900">Need several different products?</p>
-        <p class="mt-1 text-sm leading-relaxed text-slate-700">Use the bulk order builder: pick a quantity for every product you need across all categories, see an estimate at our listed prices, and send the whole list at once.</p>
-        <a href="/bulk" class="mt-3 inline-flex min-h-11 items-center rounded-full bg-slate-900 px-5 text-sm font-bold text-white outline-none hover:bg-black focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2">Open the bulk order builder</a>
-      </div>
-
-      <div class="bg-white p-8 md:p-10 rounded-2xl border border-slate-200/80 shadow-xs">
-        <form method="POST" action="/quote-request" novalidate id="quoteForm" class="space-y-8">
-
-          <fieldset class="space-y-3">
-            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Buyer type</legend>
-            <div class="grid grid-cols-3 gap-3" id="buyerTypeSelector">
-              {buyerOptions.map((opt) => {
-                const isSelected = checkedKind === opt.v;
-                return (
-                  <label class={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl border cursor-pointer text-xs font-bold transition-all duration-300 select-none ${
-                    isSelected 
-                      ? 'bg-slate-900 text-white border-slate-900 shadow-sm' 
-                      : 'bg-slate-50 text-slate-500 border-slate-200/70 hover:bg-white hover:text-slate-900 hover:border-slate-350'
-                  }`}>
-                    <input type="radio" name="kind" value={opt.v} checked={isSelected} class="sr-only" />
-                    <span>{opt.l}</span>
-                  </label>
-                );
-              })}
-            </div>
-          </fieldset>
-
-          <fieldset class="space-y-5 pt-4 border-t border-slate-100">
-            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Your Details</legend>
-            <FormField id="customerName" name="customerName" label="Your name" required defaultValue={values.customerName} autocomplete="name" errorMessage={errors.customerName} />
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <FormField id="email" name="email" label="Email (optional)" type="email" defaultValue={values.email} autocomplete="email" errorMessage={errors.email} />
-              <FormField id="phone" name="phone" label="Phone" type="tel" required defaultValue={values.phone} autocomplete="tel" inputmode="tel" placeholder="07XX XXX XXX" errorMessage={errors.phone} />
-            </div>
-          </fieldset>
-
-          <fieldset class="space-y-5 pt-4 border-t border-slate-100">
-            <legend class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Request Details</legend>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <FormField id="productName" name="productName" label="Product or category" required defaultValue={values.productName} placeholder="e.g. Fast chargers, USB-C cables" errorMessage={errors.productName} />
-              <FormField id="quantity" name="quantity" label="Quantity needed" required defaultValue={values.quantity} placeholder="e.g. 50 units" errorMessage={errors.quantity} />
-            </div>
-            
-            <div class="space-y-4">
-              <UgandaLocationPicker 
-                name="locationJson" 
-                label="Delivery location" 
-                helperText="Type the area, town or district where delivery is needed, for example Najjera, Seeta or Mbarara."
-                required 
-                defaultValue={values.locationJson} 
-                errorMessage={errors.locationJson} 
-              />
-              <FormField 
-                id="deliveryAddress" 
-                name="deliveryAddress" 
-                label="Additional address details" 
-                placeholder="Building, road, estate, shop, or nearby landmark"
-                defaultValue={values.deliveryAddress}
-              />
-            </div>
-
-            <FormField id="message" name="message" label="Notes for sales" type="textarea" rows={4} defaultValue={values.message} placeholder="Anything we should know? Delivery deadlines, special needs, packaging…" />
-          </fieldset>
-
-          <button type="submit" id="submitBtn" class="w-full bg-brand-primary text-gray-955 py-3 rounded-full font-bold text-sm tracking-wider uppercase hover:shadow-lg hover:shadow-brand-primary/20 transition-all outline-none cursor-pointer hover:scale-[1.005] active:scale-[0.985]">
-            Request quote
-          </button>
-        </form>
-      </div>
-    </div>
-  </div>
 </BaseLayout>
+
+<style>
+  .gp-kind { background: #f8fafc; color: #334155; border-color: #e2e8f0; }
+  .gp-kind:has(input:checked) { background: #0f172a; color: #fff; border-color: #0f172a; }
+  .gp-kind:has(input:focus-visible) { outline: 3px solid #93d500; outline-offset: 2px; }
+</style>
 
 <script>
   // A sent quote request is a lead (advertising 0154).
@@ -188,74 +188,46 @@ const checkedKind = values.kind || initialKind;
 <script>
   import { isValidEmail, isValidUgandanPhone } from '../lib/formValidation';
 
-  const form = document.getElementById('quoteForm') as HTMLFormElement;
-  const submitBtn = document.getElementById('submitBtn') as HTMLButtonElement;
+  const form = document.getElementById('quoteForm') as HTMLFormElement | null;
+  const submitBtn = document.getElementById('submitBtn') as HTMLButtonElement | null;
+  const org = document.getElementById('orgField');
 
-  // Visual selector update
-  const labels = document.querySelectorAll('#buyerTypeSelector label');
-  labels.forEach(label => {
-    const radio = label.querySelector('input[type="radio"]') as HTMLInputElement;
-    radio?.addEventListener('change', () => {
-      labels.forEach(l => {
-        l.classList.remove('bg-slate-900', 'text-white', 'border-slate-900', 'shadow-sm');
-        l.classList.add('bg-slate-50', 'text-slate-500', 'border-slate-200/70');
-      });
-      if (radio.checked) {
-        label.classList.remove('bg-slate-50', 'text-slate-500', 'border-slate-200/70');
-        label.classList.add('bg-slate-900', 'text-white', 'border-slate-900', 'shadow-sm');
-      }
-    });
+  // The organisation field appears only for an organisation buyer.
+  form?.querySelectorAll<HTMLInputElement>('input[name="kind"]').forEach((r) => r.addEventListener('change', () => {
+    if (org) org.hidden = r.value !== 'corporate' || !r.checked;
+  }));
+
+  /** Inline messages under each field; never a pop-up. The server checks the same rules. */
+  const mark = (name: string, msg: string | null) => {
+    const field = form?.querySelector<HTMLElement>(`[name="${name}"]`);
+    if (!field) return false;
+    field.parentElement?.querySelectorAll('.js-error-msg').forEach((x) => x.remove());
+    field.removeAttribute('aria-invalid');
+    if (!msg) return true;
+    field.setAttribute('aria-invalid', 'true');
+    const p = document.createElement('p');
+    p.className = 'text-xs text-red-700 mt-1 font-bold js-error-msg';
+    p.textContent = msg;
+    field.insertAdjacentElement('afterend', p);
+    return false;
+  };
+
+  form?.addEventListener('submit', (e) => {
+    const v = (n: string) => (form.querySelector<HTMLInputElement>(`[name="${n}"]`)?.value ?? '').trim();
+    const ok = [
+      mark('productName', v('productName') ? null : 'Tell us what you need.'),
+      mark('quantity', v('quantity') ? null : 'Roughly how many?'),
+      mark('customerName', v('customerName').length >= 2 ? null : 'Tell us who to ask for.'),
+      mark('phone', isValidUgandanPhone(v('phone')) ? null : 'Enter a Ugandan number we can call.'),
+      mark('email', !v('email') || isValidEmail(v('email')) ? null : 'Check the email, or leave it blank.'),
+    ].every(Boolean);
+    if (!ok) {
+      e.preventDefault();
+      const bad = form.querySelector<HTMLElement>('[aria-invalid="true"]');
+      if (bad?.closest('details')) (bad.closest('details') as HTMLDetailsElement).open = true;
+      bad?.focus();
+      return;
+    }
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = 'Sending…'; }
   });
-
-  if (form) {
-    form.addEventListener('submit', (e) => {
-      let valid = true;
-
-      const setError = (id: string, msg: string | null) => {
-        const field = document.getElementById(id);
-        if (!field) return;
-        field.classList.remove('border-red-300', 'ring-2', 'ring-red-100');
-        field.removeAttribute('aria-invalid');
-        
-        let next = field.nextElementSibling;
-        while (next && !next.classList.contains('text-red-600')) {
-          next = next.nextElementSibling;
-        }
-        if (next) next.remove();
-
-        if (msg) {
-          field.classList.add('border-red-300', 'ring-2', 'ring-red-100');
-          field.setAttribute('aria-invalid', 'true');
-          const p = document.createElement('p');
-          p.className = 'text-xs text-red-600 mt-1 font-bold js-error-msg';
-          p.textContent = msg;
-          field.parentNode?.insertBefore(p, field.nextSibling);
-          valid = false;
-        }
-      };
-
-      document.querySelectorAll('.js-error-msg').forEach(e => e.remove());
-
-      const nameIn = form.querySelector('[name="customerName"]') as HTMLInputElement;
-      const emailIn = form.querySelector('[name="email"]') as HTMLInputElement;
-      const phoneIn = form.querySelector('[name="phone"]') as HTMLInputElement;
-      const prodIn = form.querySelector('[name="productName"]') as HTMLInputElement;
-      const qIn = form.querySelector('[name="quantity"]') as HTMLInputElement;
-
-      if (!nameIn.value.trim()) setError('customerName', 'Required.');
-      if (emailIn.value.trim() && !isValidEmail(emailIn.value)) setError('email', 'Check the email, or leave it blank.');
-      if (!isValidUgandanPhone(phoneIn.value)) setError('phone', 'Enter a valid Ugandan phone.');
-      if (!prodIn.value.trim()) setError('productName', 'Required.');
-      if (!qIn.value.trim()) setError('quantity', 'Required.');
-
-      if (!valid) {
-        e.preventDefault();
-        const first = form.querySelector('[aria-invalid="true"]') as HTMLElement;
-        if (first) first.focus();
-      } else {
-        submitBtn.disabled = true;
-        submitBtn.textContent = 'Submitting...';
-      }
-    });
-  }
 </script>

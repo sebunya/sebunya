@@ -10,6 +10,7 @@
 import { readClientAddress } from '../lib/forwardClient';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { postJson, whatsappSupportNumber } from '../lib/api';
+import { readGuestMemory, rememberedContact } from '../lib/guestMemory';
 
 type Item = { productId: string; name: string; reviewed: boolean };
 let reference = (Astro.url.searchParams.get('reference') ?? '').trim().slice(0, 80);
@@ -52,6 +53,19 @@ if (Astro.request.method === 'POST') {
       orderNumber = String(d.orderNumber ?? reference);
       delivered = Boolean(d.delivered);
       items = Array.isArray(d.items) ? d.items : [];
+    }
+  }
+}
+// From the "delivered" text on the device that placed the order: the contact is remembered from
+// checkout, so the items to rate show at once. Same proof and lockout as a typed lookup; on a
+// mismatch the form simply shows, pre-filled.
+if (Astro.request.method === 'GET') {
+  contact = rememberedContact(readGuestMemory(Astro.cookies));
+  if (reference && contact) {
+    const auto = await eligibility();
+    if (auto.ok) {
+      const d = auto.data as { orderNumber?: string; delivered?: boolean; items?: Item[] };
+      orderNumber = String(d.orderNumber ?? reference); delivered = Boolean(d.delivered); items = Array.isArray(d.items) ? d.items : [];
     }
   }
 }
