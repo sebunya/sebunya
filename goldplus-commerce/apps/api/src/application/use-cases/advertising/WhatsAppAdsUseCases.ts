@@ -1,4 +1,4 @@
-import { parseDeliveryReceipts, parseInboundTexts, type DeliveryReceipt, type InboundText } from '../../../domain/assistant/WhatsAppGoldie';
+import { parseAccountEvents, parseDeliveryReceipts, parseInboundTexts, type AccountEvent, type DeliveryReceipt, type InboundText } from '../../../domain/assistant/WhatsAppGoldie';
 import type { WhatsAppAdReferralRepository } from '../../ports/WhatsAppAds';
 import {
   CTWA_WINDOW_DEFAULT_DAYS, messagingClickWins, parseAdReferrals, subscriptionChallenge, verifyWebhookSignature, type CtwaSecrets,
@@ -54,6 +54,9 @@ export class WhatsAppAdsUseCases {
   private receipts: ((receipts: DeliveryReceipt[]) => void) | null = null;
   /** Delivery receipts for messages the shop sent (order updates, alerts, Goldie's replies). */
   onDeliveryReceipts(listener: (receipts: DeliveryReceipt[]) => void): void { this.receipts = listener; }
+  private accountEvents: ((events: AccountEvent[]) => void) | null = null;
+  /** Meta's news about the account: templates approved / rejected / paused, number quality, restrictions. */
+  onAccountEvents(listener: (events: AccountEvent[]) => void): void { this.accountEvents = listener; }
   /** The saved Cloud API token (needs whatsapp_business_messaging to send); null when none is saved. */
   async messagingToken(): Promise<string | null> {
     const s = await this.settings().catch(() => null);
@@ -109,6 +112,10 @@ export class WhatsAppAdsUseCases {
     if (this.receipts) {
       const receipts = parseDeliveryReceipts(payload, s.wabaId);
       if (receipts.length) { try { this.receipts(receipts); } catch { /* never costs Meta a 200 */ } }
+    }
+    if (this.accountEvents) {
+      const events = parseAccountEvents(payload, s.wabaId);
+      if (events.length) { try { this.accountEvents(events); } catch { /* never costs Meta a 200 */ } }
     }
     // Signed and understood, but switched off: acknowledged and not kept.
     if (!s.live) return { status: 200, stored: 0, duplicates: 0, messages: parsed.messages, withoutClickId: parsed.referralsWithoutClickId };

@@ -38,8 +38,9 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   PAUSED: { label: 'Paused by Meta', cls: 'bg-red-50 text-red-800 border-red-200' },
   DISABLED: { label: 'Disabled by Meta', cls: 'bg-red-50 text-red-800 border-red-200' },
   NOT_SUBMITTED: { label: 'Not at Meta yet', cls: 'bg-gray-50 text-gray-700 border-gray-200' },
+  OUT_OF_DATE: { label: 'Changed in code: update at Meta', cls: 'bg-amber-50 text-amber-900 border-amber-200' },
 };
-const missing = res.ok ? res.data.rows.filter((r) => r.status === 'NOT_SUBMITTED').length : 0;
+const missing = res.ok ? res.data.rows.filter((r) => r.status === 'NOT_SUBMITTED' || r.status === 'OUT_OF_DATE').length : 0;
 ---
 <AdminLayout title="WhatsApp templates" description="Meta's approval for every WhatsApp message GoldPlus sends." activePath="/admin/notifications">
   <div class="max-w-4xl space-y-5">
@@ -51,7 +52,7 @@ const missing = res.ok ? res.data.rows.filter((r) => r.status === 'NOT_SUBMITTED
       {res.data.error && <p class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">Meta did not answer: {res.data.error === 'not configured' ? 'WhatsApp is not connected yet (WHATSAPP_WABA_ID, the number id and the token).' : res.data.error}</p>}
       {missing > 0 && !res.data.error && (
         <form method="post" class="flex items-center gap-3">
-          <button class="rounded-full bg-brand-dark text-white font-bold px-4 py-2">Submit {missing} template{missing === 1 ? '' : 's'} to Meta</button>
+          <button class="rounded-full bg-brand-dark text-white font-bold px-4 py-2">Send {missing} template{missing === 1 ? '' : 's'} to Meta</button>
           <span class="text-xs text-gray-600">Sent word for word from the shop's code. Meta reviews each one.</span>
         </form>
       )}

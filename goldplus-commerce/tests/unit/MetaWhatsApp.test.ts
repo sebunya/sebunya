@@ -195,3 +195,117 @@ describe('delivery receipts', () => {
     ]);
   });
 });
+
+import { optOutWord, parseAccountEvents, parseInboundTexts } from '../../apps/api/src/domain/assistant/WhatsAppGoldie';
+
+describe('every kind of customer message is kept', () => {
+  const wrap = (msg: Record<string, unknown>) => ({ object: 'whatsapp_business_account', entry: [{ id: '444555666', changes: [{ field: 'messages', value: { metadata: { phone_number_id: '111222333' }, contacts: [{ wa_id: '256772123456', profile: { name: 'Sarah' } }], messages: [{ from: '256772123456', id: 'wamid.M', timestamp: '1760000000', ...msg }] } }] }] });
+  it('a photo with a caption, a voice note, a location and a contact card are filed; reactions are not', () => {
+    const [photo] = parseInboundTexts(wrap({ type: 'image', image: { id: '1234567890', mime_type: 'image/jpeg', caption: 'Is this original?' } }), '444555666');
+    expect(photo).toMatchObject({ text: '[Photo ⟦media:1234567890:image/jpeg⟧] Is this original?', media: { kind: 'image', id: '1234567890', mimeType: 'image/jpeg' } });
+    const [voice] = parseInboundTexts(wrap({ type: 'audio', audio: { id: '9876543210', mime_type: 'audio/ogg; codecs=opus' } }), '444555666');
+    expect(voice!.media!.kind).toBe('audio');
+    const [loc] = parseInboundTexts(wrap({ type: 'location', location: { latitude: 0.3136, longitude: 32.5811, name: 'Ntinda' } }), '444555666');
+    expect(loc!.text).toBe('My location: Ntinda (0.31360, 32.58110)');
+    const [card] = parseInboundTexts(wrap({ type: 'contacts', contacts: [{ name: { formatted_name: 'Brian' }, phones: [{ phone: '+256700111222' }] }] }), '444555666');
+    expect(card!.text).toBe('[Contact card] Brian +256700111222');
+    expect(parseInboundTexts(wrap({ type: 'reaction', reaction: { emoji: '👍', message_id: 'x' } }), '444555666')).toEqual([]);
+  });
+  it('STOP and START are recognised; a sentence with the word in it is not', () => {
+    expect(optOutWord('STOP')).toBe('STOP'); expect(optOutWord('Unsubscribe.')).toBe('STOP'); expect(optOutWord('start')).toBe('START');
+    expect(optOutWord('please stop the order, wrong address')).toBeNull();
+  });
+  it("Meta's account news: a paused template and a quality drop are flagged; an approval is not", () => {
+    const ev = parseAccountEvents({ object: 'whatsapp_business_account', entry: [{ id: '444555666', changes: [
+      { field: 'message_template_status_update', value: { event: 'APPROVED', message_template_name: 'goldplus_order_delivered' } },
+      { field: 'message_template_status_update', value: { event: 'PAUSED', message_template_name: 'goldplus_order_on_the_way', reason: 'LOW_QUALITY' } },
+      { field: 'phone_number_quality_update', value: { event: 'DOWNGRADE', display_phone_number: '256705004545', current_limit: 'TIER_250' } },
+    ] }] }, '444555666');
+    expect(ev.map((e) => [e.event, e.bad])).toEqual([['APPROVED', false], ['PAUSED', true], ['DOWNGRADE', true]]);
+    expect(ev[1]).toMatchObject({ subject: 'goldplus_order_on_the_way', detail: 'LOW_QUALITY' });
+  });
+});
+
+describe('STOP is honoured on every provider', () => {
+  const original = { ...process.env };
+  beforeEach(() => { process.env = { ...LIVE_ENV }; });
+  afterEach(() => { process.env = original; });
+  const payload = { recipient: '0772123456', template: 'ORDER_PAYMENT_SUCCESS', data: ORDER, relatedEntity: 'order', relatedEntityId: null };
+  it('Meta does not send to an opted-out number, and Zoho is not asked either: SMS carries it', async () => {
+    const { c } = catalogWith({ goldplus_payment_received: 'APPROVED' });
+    await c.refresh();
+    const send = vi.fn();
+    const outcomes: string[] = [];
+    const meta = new MetaWhatsAppAdapter(c, async () => null, send as unknown as typeof fetch, { isOptedOut: async (p) => p === '+256772123456', onOutcome: (o) => outcomes.push(o) });
+    const zoho = { canCarry: vi.fn(() => true), dispatch: vi.fn() };
+    const r = await new FailoverWhatsAppProvider(meta, zoho as unknown as INotificationProvider, async () => true).dispatch(payload);
+    expect(r).toMatchObject({ status: 'NOT_CONFIGURED', providerCode: 'RECIPIENT_OPTED_OUT' });
+    expect(send).not.toHaveBeenCalled();
+    expect(zoho.dispatch).not.toHaveBeenCalled();
+    expect(outcomes).toEqual(['opted_out']);
+    // Zoho alone (Meta not approved yet) also honours it.
+    const { c: empty } = catalogWith({}); await empty.refresh();
+    const r2 = await new FailoverWhatsAppProvider(new MetaWhatsAppAdapter(empty, async () => null), zoho as unknown as INotificationProvider, async () => true).dispatch(payload);
+    expect(r2.providerCode).toBe('RECIPIENT_OPTED_OUT');
+    expect(zoho.dispatch).not.toHaveBeenCalled();
+  });
+  it('a refused token is reported as auth_rejected (the team is paged)', async () => {
+    const { c } = catalogWith({ goldplus_payment_received: 'APPROVED' }); await c.refresh();
+    const seen: Array<[string, string | null]> = [];
+    const meta = new MetaWhatsAppAdapter(c, async () => null, (async () => json(401, { error: { code: 190 } })) as unknown as typeof fetch, { onOutcome: (o, k) => seen.push([o, k]) });
+    await meta.dispatch(payload);
+    expect(seen).toEqual([['failed', 'auth_rejected']]);
+  });
+});
+
+describe('a template changed in code after Meta approved it', () => {
+  const original = { ...process.env };
+  beforeEach(() => { process.env = { ...LIVE_ENV }; });
+  afterEach(() => { process.env = original; });
+  it('is not used (old words), shows as out of date, and is sent to Meta as an edit of the same template', async () => {
+    const posts: Array<{ url: string; body: any }> = [];
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      if (!init?.method) return json(200, { data: [
+        { id: '900', name: 'goldplus_order_delivered', status: 'APPROVED', language: 'en', components: [{ type: 'BODY', text: 'Old words {{customer_name}} {{order_number}} {{support_phone}} end.' }] },
+        { id: '901', name: 'goldplus_payment_received', status: 'APPROVED', language: 'en', components: [{ type: 'BODY', text: WHATSAPP_TEMPLATES.ORDER_PAYMENT_SUCCESS!.body }] },
+      ] });
+      posts.push({ url, body: JSON.parse(String(init.body)) });
+      return json(200, { success: true });
+    });
+    const c = new MetaWhatsAppTemplateCatalog(async () => null, fetchImpl as unknown as typeof fetch);
+    await c.refresh();
+    expect(c.approved('goldplus_order_delivered')).toBe(false);
+    expect(c.approved('goldplus_payment_received')).toBe(true);
+    expect((await c.rows()).rows.find((r) => r.name === 'goldplus_order_delivered')!.status).toBe('OUT_OF_DATE');
+    await c.submitMissing();
+    const edit = posts.find((p) => p.url.endsWith('/900'))!;
+    expect(edit.body).toEqual({ components: (metaTemplateCreateBody(WHATSAPP_TEMPLATES.ORDER_FULFILLMENT_COMPLETED!) as any).components });
+    expect(posts.some((p) => p.url.endsWith('/901'))).toBe(false);
+  });
+});
+
+import { createHmac } from 'node:crypto';
+import { WhatsAppAdsUseCases } from '../../apps/api/src/application/use-cases/advertising/WhatsAppAdsUseCases';
+
+describe('the signed webhook, end to end', () => {
+  const appSecret = 'test-app-secret-for-signatures';
+  const repo = { record: vi.fn(async () => true), latestFor: vi.fn(async () => null), markAttributed: vi.fn(async () => undefined), purgeBefore: vi.fn(async () => 0) };
+  const uc = () => new WhatsAppAdsUseCases(repo as never, async () => ({ live: false, wabaId: '444555666', windowDays: 7, datasetId: null, secrets: { appSecret, verifyToken: 'v', accessToken: 'tok' } }) as never);
+  const body = JSON.stringify({ object: 'whatsapp_business_account', entry: [{ id: '444555666', changes: [
+    { field: 'messages', value: { metadata: { phone_number_id: '111222333' }, contacts: [{ wa_id: '256772123456', profile: { name: 'Sarah' } }], messages: [{ from: '256772123456', id: 'wamid.in', timestamp: '1760000000', type: 'text', text: { body: 'Hello' } }], statuses: [{ id: 'wamid.out', status: 'failed', errors: [{ code: 131026, title: 'Message undeliverable' }] }] } },
+    { field: 'message_template_status_update', value: { event: 'PAUSED', message_template_name: 'goldplus_order_on_the_way', reason: 'LOW_QUALITY' } },
+  ] }] });
+  it('one delivery reaches Goldie, the receipt handler and the account handler; a forged one reaches none', async () => {
+    const u = uc();
+    const inbound = vi.fn(), receipts = vi.fn(), events = vi.fn();
+    u.onInboundText(inbound); u.onDeliveryReceipts(receipts); u.onAccountEvents(events);
+    const forged = await u.receive(body, 'sha256=00');
+    expect(forged.status).toBe(401);
+    expect(inbound).not.toHaveBeenCalled();
+    const ok = await u.receive(body, `sha256=${createHmac('sha256', appSecret).update(body).digest('hex')}`);
+    expect(ok.status).toBe(200);
+    expect(inbound.mock.calls[0]![0][0]).toMatchObject({ from: '256772123456', text: 'Hello' });
+    expect(receipts.mock.calls[0]![0]).toEqual([{ messageId: 'wamid.out', status: 'failed', errorCode: 131026, errorTitle: 'Message undeliverable' }]);
+    expect(events.mock.calls[0]![0][0]).toMatchObject({ field: 'message_template_status_update', event: 'PAUSED', bad: true });
+  });
+});

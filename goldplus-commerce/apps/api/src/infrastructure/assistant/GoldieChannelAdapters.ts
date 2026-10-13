@@ -8,7 +8,8 @@ import { goldieMetrics } from './GoldieMetrics';
 import { CARE_ALERT_TEMPLATE } from '../notifications/whatsapp/whatsAppTemplates';
 import { generateVapidKeys, sendWebPush, vapidFromEnv, type VapidKeys } from './WebPush';
 import { IntegrationCredentialVault } from '../seo/IntegrationCredentialVault';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
+import { channelSuppressions } from '../db/schema/consent-foundation';
 import { db } from '../db/client';
 import { carePushKeys, carePushSubscriptions } from '../db/schema/assistant';
 
@@ -37,6 +38,18 @@ export class WhatsAppCloudMessenger implements IWhatsAppMessenger {
     } catch (e) {
       return { ok: false as const, reason: e instanceof Error ? e.message.slice(0, 120) : 'unreachable' };
     }
+  }
+
+  /** Marks the customer's message read (blue ticks) and, while Goldie prepares the answer, shows "typing…". */
+  async markRead(input: { phoneNumberId: string; messageId: string; typing: boolean }) {
+    const token = (process.env.GOLDIE_WHATSAPP_TOKEN || '').trim() || (await this.token());
+    if (!token || !/^\d{5,20}$/.test(input.phoneNumberId)) return;
+    await this.fetchImpl(`https://graph.facebook.com/${META_GRAPH_VERSION}/${input.phoneNumberId}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messaging_product: 'whatsapp', status: 'read', message_id: input.messageId, ...(input.typing ? { typing_indicator: { type: 'text' } } : {}) }),
+      signal: AbortSignal.timeout(5_000),
+    }).catch(() => undefined);
   }
 
   /**
@@ -208,3 +221,28 @@ export function goldieWhatsAppSettings(env: NodeJS.ProcessEnv = process.env): Go
     phoneNumberId: /^\d{5,20}$/.test(String(env.GOLDIE_WHATSAPP_PHONE_NUMBER_ID ?? '')) ? String(env.GOLDIE_WHATSAPP_PHONE_NUMBER_ID) : null,
   };
 }
+
+/**
+ * WhatsApp STOP / START (on the shop's existing channel_suppressions, keyed like an SMS STOP: phone:+256…). An
+ * active row means: no customer templates on WhatsApp to this number (SMS carries them). START ends it.
+ */
+export const whatsAppOptOutStore = {
+  async stop(phoneE164: string, messageId: string): Promise<void> {
+    const ref = `phone:${phoneE164}`;
+    if (await whatsAppOptOutStore.isOptedOut(phoneE164)) return;
+    await db.insert(channelSuppressions).values({
+      endpointRef: ref, channelKey: 'whatsapp', purposeKey: null, scope: 'channel',
+      reason: 'Customer replied STOP on WhatsApp', sourceSurface: 'whatsapp_stop_reply', providerCallbackRef: messageId.slice(0, 255),
+      suppressionActive: true, effectiveAt: new Date(),
+    });
+  },
+  async start(phoneE164: string): Promise<void> {
+    await db.update(channelSuppressions).set({ suppressionActive: false, liftedAt: new Date(), liftedBy: 'customer:whatsapp_start', liftReason: 'Customer replied START on WhatsApp' })
+      .where(and(eq(channelSuppressions.endpointRef, `phone:${phoneE164}`), eq(channelSuppressions.channelKey, 'whatsapp'), eq(channelSuppressions.suppressionActive, true)));
+  },
+  async isOptedOut(phoneE164: string): Promise<boolean> {
+    const [r] = await db.select({ id: channelSuppressions.id }).from(channelSuppressions)
+      .where(and(eq(channelSuppressions.endpointRef, `phone:${phoneE164}`), eq(channelSuppressions.channelKey, 'whatsapp'), eq(channelSuppressions.suppressionActive, true), eq(channelSuppressions.scope, 'channel'))).limit(1);
+    return !!r;
+  },
+};

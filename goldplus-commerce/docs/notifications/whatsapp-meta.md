@@ -42,7 +42,10 @@ and the WhatsApp account (full control) → Generate token → app **goldplus**,
 
 ## 5. Webhook
 App goldplus → WhatsApp → Configuration → Callback URL `https://api.shopgoldplus.com/webhooks/whatsapp`, Verify
-token = a long random phrase you choose → Verify and save → subscribe the field **messages**.
+token = a long random phrase you choose → Verify and save → subscribe the fields **messages**,
+**message_template_status_update**, **message_template_quality_update**, **phone_number_quality_update**,
+**account_update** and **account_alerts** (the last five are how the shop hears about a paused template, a quality
+drop or a restriction the moment it happens).
 In GoldPlus admin → Advertising → Offline sales → WhatsApp: the **WhatsApp Business Account ID**, and the secrets
 `{"appSecret":"<App settings → Basic → App secret>","verifyToken":"<the phrase above>","accessToken":"<token from step 4>"}`.
 Save here first, then press Verify and save in Meta. Switch the app to **Live** (App settings → Basic needs the privacy
@@ -69,6 +72,20 @@ WhatsApp only once its template is approved; until then Zoho (if configured) or 
 3. Place a small test order with your own phone: the order and payment messages arrive on WhatsApp.
 4. Grafana "Goldie (customer care)": `whatsapp_delivery_receipts_total` shows delivered/read.
 5. Remove `GOLDIE_WHATSAPP_TEST_NUMBERS`, roll api.
+
+## How the module behaves (enterprise checklist)
+| Situation | What happens |
+|---|---|
+| Template not approved yet, rejected, paused, or changed in code after approval | Not used; the message goes by Zoho or SMS. The templates page shows why; "Changed in code" is sent to Meta as an edit with one button. |
+| Meta pauses a template, the number's quality drops, the account is restricted | Webhook → approvals re-read at once → urgent Care Desk task (SMS to the alert lines), once per problem per hour. |
+| The token expires or loses a permission; the account is blocked or has a billing problem | First refused send → urgent Care Desk task; customer updates continue by SMS. |
+| Meta accepted a message but could not deliver it | The delivery receipt marks that notification FAILED in the log. |
+| Meta does not answer in time | Not resent, no fallback (it may already be on the phone): recorded as outcome unknown. |
+| Customer replies STOP / START | Recorded on the shop's channel suppressions (phone:+256…); no more WhatsApp updates on Meta or Zoho, SMS instead; confirmed in the chat. Honoured even when Goldie is off. |
+| Customer sends a photo, voice note, video or document | Filed with a viewable link in the conversation, a Care Desk task for a person, an honest holding reply (or Goldie answers the caption). Stickers are filed quietly. |
+| Customer sends a location or a contact card | Filed as words ("My location: Ntinda (0.31, 32.58)") that Goldie and the team can use. |
+| Every message Goldie answers | Marked read (blue ticks) with "typing…" while the answer is prepared. |
+| Monitoring | `whatsapp_template_sends_total{outcome,class}`, `whatsapp_delivery_receipts_total{status}`, `whatsapp_account_events_total{field,event}`, `goldie_whatsapp_messages_total{outcome}`. |
 
 ## Limits to know
 - New numbers start at a messaging limit (business-initiated conversations per day) that rises with quality and

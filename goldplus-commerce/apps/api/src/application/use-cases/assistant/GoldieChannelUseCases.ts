@@ -1,11 +1,29 @@
-import { formatWhatsAppReply, whatsappKey, type InboundText, type ReplyParts } from '../../../domain/assistant/WhatsAppGoldie';
+import { MEDIA_MARKER_RE, formatWhatsAppReply, optOutWord, whatsappKey, type InboundText, type ReplyParts } from '../../../domain/assistant/WhatsAppGoldie';
 import { closesMatter, isAbusive, silenceFor } from '../../../domain/assistant/CareDesk';
 import type { ConversationArchiveUseCases } from './ConversationArchiveUseCases';
 
 /** Sends a free-form WhatsApp message inside the 24-hour customer service window. */
 export interface IWhatsAppMessenger {
   sendText(input: { phoneNumberId: string; to: string; text: string }): Promise<{ ok: true; messageId: string | null } | { ok: false; reason: string }>;
+  /** Blue ticks and "typing…" while the answer is prepared (best effort). */
+  markRead?(input: { phoneNumberId: string; messageId: string; typing: boolean }): Promise<void>;
 }
+
+/** WhatsApp opt-outs (STOP / START): customer templates are not sent on WhatsApp to an opted-out number. */
+export interface IWhatsAppOptOuts {
+  stop(phoneE164: string, messageId: string): Promise<void>;
+  start(phoneE164: string): Promise<void>;
+}
+
+export const STOP_REPLY = "Done. GoldPlus will not send you updates on WhatsApp any more; order updates will come by SMS. You can still message us here any time. Reply START to turn WhatsApp updates back on.";
+export const START_REPLY = 'Welcome back. GoldPlus order updates will come to you on WhatsApp again. Reply STOP at any time to turn them off.';
+export const MEDIA_REPLY: Record<string, string> = {
+  image: "Thank you for the photo. I'm passing it to the team now so a person can look at it properly, and they will reply here shortly.",
+  audio: "Thank you for your voice note. I'm passing it to the team so a person can listen, and they will reply here shortly. If it is quicker, you can also type your question.",
+  video: "Thank you for the video. I'm passing it to the team so a person can look at it, and they will reply here shortly.",
+  document: "Thank you for the document. I'm passing it to the team, and they will reply here shortly.",
+  sticker: '',
+};
 
 /** Goldie's brain (the web container runs the router and the model): one turn for a channel. */
 export interface IGoldieBrain {
@@ -55,6 +73,7 @@ export class GoldieChannelUseCases {
     private readonly emailCustomer: (input: { to: string; firstName: string | null; text: string; conversationId: string }) => Promise<boolean> = async () => false,
     /** Messenger / Instagram threads: the reply goes back through Meta's Send API (GoldieSocialUseCases). */
     private readonly socialReply: (conversation: { id: string; channel: string; channelKey: string }, text: string) => Promise<{ ok: true } | { ok: false; reason: string }> = async () => ({ ok: false, reason: 'not configured' }),
+    private readonly optOuts: IWhatsAppOptOuts | null = null,
   ) {}
   private staffCache: { at: number; numbers: string[] } = { at: 0, numbers: [] };
   private async staff(): Promise<string[]> {
@@ -72,6 +91,19 @@ export class GoldieChannelUseCases {
   /** One inbound WhatsApp message (webhook signature already checked). Never throws: Meta is answered 200 regardless. */
   async handleWhatsApp(msg: InboundText): Promise<'answered' | 'filed' | 'duplicate' | 'skipped' | 'failed'> {
     const s = this.settings();
+    // STOP / START are honoured whether or not Goldie is switched on: they govern the shop's WhatsApp updates.
+    const word = optOutWord(msg.text);
+    if (word && this.optOuts) {
+      try {
+        if (word === 'STOP') await this.optOuts.stop(`+${msg.from}`, msg.messageId); else await this.optOuts.start(`+${msg.from}`);
+        const phoneNumberId = msg.phoneNumberId ?? s.phoneNumberId;
+        if (phoneNumberId) await this.whatsapp.sendText({ phoneNumberId, to: msg.from, text: word === 'STOP' ? STOP_REPLY : START_REPLY });
+        this.log(word === 'STOP' ? 'WHATSAPP_OPT_OUT' : 'WHATSAPP_OPT_IN', {});
+      } catch (e) {
+        this.log('WHATSAPP_OPT_OUT_FAILED', { error: e instanceof Error ? e.message : String(e) });
+      }
+      return 'answered';
+    }
     if (!s.enabled) return 'skipped';
     if (s.onlyNumbers.length && !s.onlyNumbers.includes(msg.from)) return 'skipped';
     try {
@@ -113,6 +145,9 @@ export class GoldieChannelUseCases {
   /** Decide and send Goldie's reply to a filed message; every path records an outcome on the customer's message. */
   private async respond(conversationId: string, msg: InboundText): Promise<'answered' | 'filed' | 'failed'> {
     const s = this.settings();
+    // Blue ticks and "typing…" straight away, so the customer sees they were read (best effort, never in the way).
+    const readOn = msg.phoneNumberId ?? s.phoneNumberId;
+    if (readOn && this.whatsapp.markRead) void this.whatsapp.markRead({ phoneNumberId: readOn, messageId: msg.messageId, typing: true }).catch(() => undefined);
     const mark = (outcome: 'answered' | 'silent' | 'held' | 'send_failed') => this.archive.markCustomerMessage(msg.messageId, outcome).catch(() => undefined);
     // The last 40 messages are plenty for history, silence rules and repeats.
     const thread = await this.archive.get(conversationId, 40);
@@ -138,10 +173,28 @@ export class GoldieChannelUseCases {
       return 'filed';
     }
 
+    // A photo, voice note, video or document: Goldie cannot see it, so a person is asked to look, and the customer is
+    // told so. With a caption, Goldie still answers the words.
+    if (msg.media?.kind === 'sticker') { await mark('silent'); return 'filed'; }
+    if (msg.media) {
+      const caption = msg.text.replace(MEDIA_MARKER_RE, '').replace(/^\[[^\]]*\]\s*/, '').trim();
+      const kindWord = msg.media.kind === 'image' ? 'photo' : msg.media.kind === 'audio' ? 'voice note' : msg.media.kind;
+      await this.openTask({ kind: 'follow_up', title: `WhatsApp ${kindWord} to look at${caption ? `: ${caption.slice(0, 100)}` : ''}`, customerName: msg.name, customerPhone: `+${msg.from}`, conversationId, channel: 'whatsapp' }).catch(() => undefined);
+      if (!caption) {
+        const text = MEDIA_REPLY[msg.media.kind] ?? '';
+        const phoneNumberId = msg.phoneNumberId ?? s.phoneNumberId;
+        if (!text || !phoneNumberId) { await mark('held'); return 'filed'; }
+        const sent = await this.whatsapp.sendText({ phoneNumberId, to: msg.from, text });
+        if (sent.ok) { await this.archive.logReply(conversationId, text, 'deterministic', sent.messageId); await mark('answered'); return 'answered'; }
+        await mark('send_failed');
+        return 'failed';
+      }
+    }
+
     const turns = (thread?.messages ?? [])
       .filter((m) => m.role === 'customer' || m.role === 'goldie')
       .slice(-HISTORY)
-      .map((m) => ({ role: m.role === 'customer' ? 'user' as const : 'assistant' as const, content: m.content }));
+      .map((m) => ({ role: m.role === 'customer' ? 'user' as const : 'assistant' as const, content: m.content.replace(MEDIA_MARKER_RE, '(sent something you cannot see; a person will look at it)') }));
     // The brain wants alternating turns ending with the customer: merge consecutive same-role lines.
     const merged: typeof turns = [];
     for (const x of turns) { const last = merged[merged.length - 1]; if (last && last.role === x.role) last.content = `${last.content}\n${x.content}`; else merged.push({ ...x }); }

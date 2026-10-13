@@ -43,7 +43,7 @@ import { renderTeamReplyMail } from '../domain/assistant/ChatTranscript';
 import { QualityReviewUseCases } from '../application/use-cases/assistant/QualityReviewUseCases';
 import { DrizzleQualityReviewRepository } from './assistant/DrizzleQualityReviewRepository';
 import { GoldieChannelUseCases } from '../application/use-cases/assistant/GoldieChannelUseCases';
-import { CareAlertChannels, HttpGoldieBrain, MetaSocialMessenger, WhatsAppCloudMessenger, goldieSocialSettings, goldieWhatsAppSettings } from './assistant/GoldieChannelAdapters';
+import { CareAlertChannels, HttpGoldieBrain, MetaSocialMessenger, WhatsAppCloudMessenger, goldieSocialSettings, goldieWhatsAppSettings, whatsAppOptOutStore } from './assistant/GoldieChannelAdapters';
 import { CareDeskUseCases } from '../application/use-cases/assistant/CareDeskUseCases';
 import { DrizzleCareDeskRepository } from './assistant/DrizzleCareDeskRepository';
 import { NextBestActionAdvisor } from './assistant/NextBestActionAdvisor';
@@ -1057,9 +1057,25 @@ export class Registry {
   public readonly whatsappTemplateCatalog = new MetaWhatsAppTemplateCatalog(() => this.advertisingOps.whatsappAds.messagingAccount());
   public readonly zohoWhatsAppAdapter = new ZohoWhatsAppAdapter();
   public readonly whatsappAdapter = new FailoverWhatsAppProvider(
-    new MetaWhatsAppAdapter(this.whatsappTemplateCatalog, () => this.advertisingOps.whatsappAds.messagingToken()),
+    new MetaWhatsAppAdapter(this.whatsappTemplateCatalog, () => this.advertisingOps.whatsappAds.messagingToken(), fetch, {
+      isOptedOut: (phone) => whatsAppOptOutStore.isOptedOut(phone),
+      onOutcome: (outcome, cls) => {
+        goldieMetrics.templateSends.inc({ outcome, class: cls ?? 'none' });
+        // A refused token or a blocked account stops every customer WhatsApp message: page the team.
+        if (cls === 'auth_rejected' || cls === 'account_blocked') this.whatsappNeedsAttention(cls === 'auth_rejected' ? 'token' : 'account', cls === 'auth_rejected' ? 'Meta refused the WhatsApp token (expired or permission removed). Customer updates are going by SMS. Generate a new system-user token and save it in Advertising > Offline sales > WhatsApp.' : 'Meta says the WhatsApp account is blocked or has a payment problem. Customer updates are going by SMS. Check WhatsApp Manager > Account quality and Billing.');
+      },
+    }),
     this.zohoWhatsAppAdapter,
+    (phone) => whatsAppOptOutStore.isOptedOut(phone),
   );
+  private readonly whatsappAlertedAt = new Map<string, number>();
+  /** One urgent Care Desk task per WhatsApp problem per hour (it pages the alert lines by SMS). */
+  whatsappNeedsAttention(key: string, text: string): void {
+    const now = Date.now();
+    if (now - (this.whatsappAlertedAt.get(key) ?? 0) < 3600_000) return;
+    this.whatsappAlertedAt.set(key, now);
+    void this.careDeskUseCases.openTask({ kind: 'urgent', title: `WhatsApp needs attention: ${text}`.slice(0, 200), openedBy: 'whatsapp-monitor', urgent: true }).catch(() => undefined);
+  }
   public readonly zeptoMailAdapter = new ZeptoMailAdapter();
   public readonly smsAdapter = process.env.SMS_PROVIDER === 'pahappa_comms'
     ? new PahappaCommsSmsAdapter()
@@ -2757,6 +2773,7 @@ export class Registry {
       return id !== null;
     },
     (conversation, text) => this.goldieSocialUseCases.teamReply(conversation, text),
+    whatsAppOptOutStore,
   );
   /** Goldie on Facebook Messenger and Instagram Direct. Off until GOLDIE_MESSENGER_ENABLED / GOLDIE_INSTAGRAM_ENABLED and a page token. */
   public readonly goldieSocialUseCases = new GoldieSocialUseCases(
@@ -2777,6 +2794,14 @@ export class Registry {
     });
     // A customer message Meta accepted but could not deliver (not on WhatsApp, blocked, expired) is recorded as
     // FAILED on its notification attempt, so the log never shows it as sent.
+    this.advertisingOps.whatsappAds.onAccountEvents((events) => {
+      // Something about templates or the number changed at Meta: re-read approvals now, not in 10 minutes.
+      this.whatsappTemplateCatalog.invalidate();
+      for (const e of events) {
+        goldieMetrics.accountEvents.inc({ field: e.field, event: e.event });
+        if (e.bad) this.whatsappNeedsAttention(`${e.field}:${e.subject ?? ''}:${e.event}`, `${e.field.replace(/_/g, ' ')}: ${e.subject ? `${e.subject} ` : ''}${e.event.toLowerCase().replace(/_/g, ' ')}${e.detail ? ` (${e.detail})` : ''}. Messages that need it go by SMS meanwhile. See Notifications > WhatsApp templates and WhatsApp Manager.`);
+      }
+    });
     this.advertisingOps.whatsappAds.onDeliveryReceipts((receipts) => {
       for (const r of receipts) {
         goldieMetrics.deliveryReceipts.inc({ status: r.status });
