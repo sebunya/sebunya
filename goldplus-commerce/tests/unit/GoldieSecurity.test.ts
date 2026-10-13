@@ -103,3 +103,11 @@ describe('push keys made by the api itself', () => {
     expect(generateVapidKeys().publicKey).not.toBe(k.publicKey);
   });
 });
+
+describe('WhatsApp alert template variable', () => {
+  it('is one tidy line: no line breaks, tabs or long runs of spaces (Meta refuses those)', async () => {
+    const { templateParam } = await import('../../apps/api/src/infrastructure/assistant/GoldieChannelAdapters');
+    expect(templateParam('Order never came\n\tCustomer:      Sarah')).toBe('Order never came Customer: Sarah');
+    expect(templateParam('x'.repeat(2000)).length).toBe(1000);
+  });
+});

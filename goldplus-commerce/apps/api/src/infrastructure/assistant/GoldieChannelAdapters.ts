@@ -49,7 +49,7 @@ export class WhatsAppCloudMessenger implements IWhatsAppMessenger {
       const res = await this.fetchImpl(`https://graph.facebook.com/${META_GRAPH_VERSION}/${input.phoneNumberId}/messages`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messaging_product: 'whatsapp', to: input.to, type: 'template', template: { name: input.template, language: { code: input.language }, components: [{ type: 'body', parameters: [{ type: 'text', text: input.body.slice(0, 1000) }] }] } }),
+        body: JSON.stringify({ messaging_product: 'whatsapp', to: input.to, type: 'template', template: { name: input.template, language: { code: input.language }, components: [{ type: 'body', parameters: [{ type: 'text', text: templateParam(input.body) }] }] } }),
         signal: AbortSignal.timeout(10_000),
       });
       return res.ok ? { ok: true as const } : { ok: false as const, reason: String(res.status) };
@@ -58,6 +58,9 @@ export class WhatsAppCloudMessenger implements IWhatsAppMessenger {
     }
   }
 }
+
+/** Meta refuses a template variable with a line break, a tab or more than four spaces in a row: one tidy line. */
+export const templateParam = (text: string) => text.replace(/\s+/g, ' ').trim().slice(0, 1000);
 
 const intl = (phone: string) => { const d = phone.replace(/\D/g, ''); return d.startsWith('0') ? `256${d.slice(1)}` : d; };
 const uuidOrNull = (id: string) => (/^[0-9a-f-]{36}$/i.test(id) ? id : null);

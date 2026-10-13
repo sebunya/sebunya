@@ -23,3 +23,13 @@
    phone, as on the website.
 10. After two weeks, read the Goldie numbers in the meeting summary (sales after a chat, rating, free-answer share) and
    the quality-review trend.
+
+## WhatsApp alert template (for WhatsApp alerts to the four alert lines)
+Needs a WhatsApp Business Account on the Cloud API (step 7). In WhatsApp Manager, Message templates, Create:
+- Category: **Utility**. Name: **goldplus_care_alert**. Language: **English (en)**.
+- Body: `A GoldPlus customer needs a person now: {{1}} Please open the Care Desk at shopgoldplus.com/admin/care.`
+- Sample for {{1}}: `GoldPlus Care: Urgent. Order never arrived (GP-1042). Customer: Sarah 0772 123456. Open the Care Desk.`
+- No header, no buttons. Submit; approval usually takes minutes.
+Then set `GOLDIE_ALERT_TEMPLATE=goldplus_care_alert` and `GOLDIE_ALERT_TEMPLATE_LANG=en` (with the WhatsApp token and number id) and
+roll api. Test from /admin/care/team ("Send a test alert"). The alert text is sent as one line (Meta refuses line breaks).
+
