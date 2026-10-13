@@ -83,7 +83,7 @@ export const notificationAttempts = pgTable('notification_attempts', {
   recipient: varchar('recipient', { length: 255 }).notNull(),
   template: varchar('template', { length: 100 }).notNull(),
   status: varchar('status', { length: 30 }).default('PENDING').notNull(), // PENDING | SENT | FAILED | NOT_CONFIGURED
-  providerCode: varchar('provider_code', { length: 50 }), // raw provider response code
+  providerCode: varchar('provider_code', { length: 160 }), // raw provider response code (a Meta wamid is longer than 50; 0184)
   providerMessage: text('provider_message'),
   relatedEntity: varchar('related_entity', { length: 50 }), // order, dealer, quote, fake_report, support_ticket
   relatedEntityId: uuid('related_entity_id'),

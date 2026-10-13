@@ -1,4 +1,4 @@
-import { createCipheriv, createECDH, createHmac, createPrivateKey, randomBytes, sign } from 'node:crypto';
+import { createCipheriv, createECDH, createHmac, createPrivateKey, generateKeyPairSync, randomBytes, sign } from 'node:crypto';
 
 /**
  * Web Push to staff phones (Care Desk alerts), with no dependency: VAPID (RFC 8292) signs who is sending,
@@ -65,6 +65,14 @@ export async function sendWebPush(sub: PushSubscriptionKeys, message: { title: s
   } catch {
     return 'failed';
   }
+}
+
+/** A fresh P-256 VAPID key pair, base64url: the uncompressed public point and the private scalar. */
+export function generateVapidKeys(): { publicKey: string; privateKey: string } {
+  const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  const jwk = privateKey.export({ format: 'jwk' }) as { d: string; x: string; y: string };
+  const pub = Buffer.concat([Buffer.from([4]), Buffer.from(jwk.x, 'base64url'), Buffer.from(jwk.y, 'base64url')]);
+  return { publicKey: b64u(pub), privateKey: jwk.d };
 }
 
 export function vapidFromEnv(env: NodeJS.ProcessEnv = process.env): VapidKeys | null {

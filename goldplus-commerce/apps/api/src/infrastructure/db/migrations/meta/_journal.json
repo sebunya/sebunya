@@ -1268,6 +1268,34 @@
       "when": 1790140000058,
       "tag": "0181_care_enterprise",
       "breakpoints": true
+    },
+    {
+      "idx": 181,
+      "version": "5",
+      "when": 1790140000059,
+      "tag": "0182_care_push_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 182,
+      "version": "5",
+      "when": 1790140000060,
+      "tag": "0183_care_alert_lines",
+      "breakpoints": true
+    },
+    {
+      "idx": 183,
+      "version": "5",
+      "when": 1790140000061,
+      "tag": "0184_notification_provider_code_width",
+      "breakpoints": true
+    },
+    {
+      "idx": 184,
+      "version": "5",
+      "when": 1790140000062,
+      "tag": "0185_whatsapp_sent_messages",
+      "breakpoints": true
     }
   ]
 }

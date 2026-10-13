@@ -76,7 +76,16 @@ const teamHasIt = !!(c?.humanUntil && new Date(c.humanUntil) > new Date());
             <div class={`flex ${m.role === 'customer' ? 'justify-start' : 'justify-end'}`}>
               <div class={`max-w-[85%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap ${m.role === 'customer' ? 'bg-white border border-gray-200' : m.role === 'team' ? 'bg-indigo-50 border border-indigo-200' : 'bg-lime-50 border border-lime-200'}`}>
                 <p class="text-[10px] uppercase font-black tracking-widest text-gray-500 mb-1">{m.role === 'customer' ? 'Customer' : m.role === 'team' ? 'Team' : 'Goldie'} · {when(m.createdAt)}{m.mood && m.role === 'customer' && m.mood !== 'neutral' ? ` · ${MOOD_LABEL[m.mood] ?? m.mood}` : ''}{m.route === 'ai' ? ' · model' : ''}</p>
-                {m.content}
+                {m.content.split(/(⟦media:[0-9]{5,30}:[^⟧]*⟧)/).map((part) => {
+                  const media = part.match(/^⟦media:([0-9]{5,30}):([^⟧]*)⟧$/);
+                  if (!media) return part;
+                  const [, mid, mime] = media;
+                  const src = `/api/admin/assistant/whatsapp-media/${mid}`;
+                  return mime!.startsWith('image/') ? <a href={src} target="_blank" rel="noopener"><img src={src} alt="Photo the customer sent" loading="lazy" class="mt-1 max-h-64 rounded-lg border border-gray-200" /></a>
+                    : mime!.startsWith('audio/') ? <audio controls preload="none" src={src} class="mt-1 w-64"></audio>
+                    : mime!.startsWith('video/') ? <video controls preload="none" src={src} class="mt-1 max-h-64 rounded-lg"></video>
+                    : <a href={src} target="_blank" rel="noopener" class="underline font-bold">Open the file</a>;
+                })}
               </div>
             </div>
           ))}

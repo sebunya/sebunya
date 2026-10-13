@@ -3,7 +3,7 @@ import { createCipheriv, createDecipheriv, createECDH, createHmac, generateKeyPa
 import { rememberable } from '../../apps/api/src/domain/assistant/AnswerMemory';
 import { cleanTranscript } from '../../apps/api/src/domain/assistant/ChatTranscript';
 import { redact } from '../../apps/api/src/domain/assistant/ConversationArchive';
-import { encryptPayload, vapidAuthorization } from '../../apps/api/src/infrastructure/assistant/WebPush';
+import { encryptPayload, generateVapidKeys, vapidAuthorization } from '../../apps/api/src/infrastructure/assistant/WebPush';
 
 vi.mock('../../apps/web/src/lib/api', () => ({ apiBase: 'http://api.test' }));
 
@@ -87,5 +87,27 @@ describe('Web Push is real cryptography', () => {
     const [h64, c64, s64] = token.split('.');
     expect(JSON.parse(Buffer.from(c64!, 'base64url').toString())).toMatchObject({ aud: 'https://fcm.googleapis.com', sub: 'mailto:ops@example.com' });
     expect(verify('sha256', Buffer.from(`${h64}.${c64}`), { key: publicKey, dsaEncoding: 'ieee-p1363' }, Buffer.from(s64!, 'base64url'))).toBe(true);
+  });
+});
+
+describe('push keys made by the api itself', () => {
+  it('a generated pair signs a VAPID token the public key verifies', async () => {
+    const { createPublicKey } = await import('node:crypto');
+    const k = generateVapidKeys();
+    const pub = Buffer.from(k.publicKey, 'base64url');
+    expect(pub.length).toBe(65);
+    const header = vapidAuthorization('https://web.push.apple.com/abc', { ...k, contact: 'mailto:ops@example.com' });
+    const [h64, c64, s64] = header.match(/^vapid t=([^,]+), k=/)![1]!.split('.');
+    const key = createPublicKey({ key: { kty: 'EC', crv: 'P-256', x: pub.subarray(1, 33).toString('base64url'), y: pub.subarray(33).toString('base64url') }, format: 'jwk' });
+    expect(verify('sha256', Buffer.from(`${h64}.${c64}`), { key, dsaEncoding: 'ieee-p1363' }, Buffer.from(s64!, 'base64url'))).toBe(true);
+    expect(generateVapidKeys().publicKey).not.toBe(k.publicKey);
+  });
+});
+
+describe('WhatsApp alert template variable', () => {
+  it('is one tidy line: no line breaks, tabs or long runs of spaces (Meta refuses those)', async () => {
+    const { templateParam } = await import('../../apps/api/src/infrastructure/assistant/GoldieChannelAdapters');
+    expect(templateParam('Order never came\n\tCustomer:      Sarah')).toBe('Order never came Customer: Sarah');
+    expect(templateParam('x'.repeat(2000)).length).toBe(1000);
   });
 });

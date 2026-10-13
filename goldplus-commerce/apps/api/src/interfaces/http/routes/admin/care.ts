@@ -4,8 +4,7 @@ import { PERMISSIONS } from '@goldplus/shared';
 import { Registry } from '../../../../infrastructure/Registry';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
-import { carePushStore } from '../../../../infrastructure/assistant/GoldieChannelAdapters';
-import { vapidFromEnv } from '../../../../infrastructure/assistant/WebPush';
+import { careVapidKeys, carePushStore } from '../../../../infrastructure/assistant/GoldieChannelAdapters';
 
 /**
  * The Care Desk (0178): the shop attendants' and care team's one screen.
@@ -143,7 +142,7 @@ routes.post('/handover', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async 
 
 // ---- Push alerts to staff phones (Web Push, VAPID)
 routes.get('/push-key', requirePermissions([PERMISSIONS.CUSTOMER_DATA_VIEW]), async (c) => {
-  const keys = vapidFromEnv();
+  const keys = await careVapidKeys().catch(() => null);
   return ok(c, { publicKey: keys?.publicKey ?? null, subscribed: keys ? await carePushStore.count() : 0 });
 });
 routes.put('/push-subscriptions', requirePermissions([PERMISSIONS.CUSTOMER_DATA_VIEW]), async (c) => {

@@ -1,0 +1,10 @@
+# Provisioned at Grafana start (docker-compose.production.yml mounts this folder).
+apiVersion: 1
+datasources:
+  - name: GoldPlus Prometheus
+    uid: goldplus-prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: false  # never clashes with a default made by hand
+    editable: false

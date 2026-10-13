@@ -97,11 +97,10 @@ routes.get('/ready', async (c) => {
   const smsApiKey = process.env.SMS_API_KEY;
   subsystems.zeptomail_config = { status: zeptoMailToken ? 'configured' : 'not_configured' };
   subsystems.sms_config = { status: smsApiKey ? 'configured' : 'not_configured' };
-  subsystems.whatsapp_config = {
-    status: (process.env.ZOHO_WHATSAPP_API_KEY || '').trim() && (process.env.ZOHO_WHATSAPP_FROM_NUMBER || '').trim()
-      ? 'configured'
-      : 'not_configured',
-  };
+  // Meta's Cloud API directly (primary) or Zoho CPaaS (fallback): either carries customer WhatsApp messages.
+  const metaWhatsApp = (process.env.GOLDIE_WHATSAPP_PHONE_NUMBER_ID || '').trim();
+  const zohoWhatsApp = (process.env.ZOHO_WHATSAPP_API_KEY || '').trim() && (process.env.ZOHO_WHATSAPP_FROM_NUMBER || '').trim();
+  subsystems.whatsapp_config = { status: metaWhatsApp || zohoWhatsApp ? 'configured' : 'not_configured' };
 
   // Redis: DEGRADED, not unready.
   //

@@ -140,6 +140,19 @@ routes.get('/channel-status', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ
   return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
 });
 
+// --- WhatsApp templates at Meta: our list beside Meta's approval status; submit the missing ones ---
+routes.get('/whatsapp-templates', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ]), async (c) => {
+  const data = await Registry.getInstance().whatsappTemplateCatalog.rows();
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+routes.post('/whatsapp-templates/submit', requirePermissions([PERMISSIONS.NOTIFICATIONS_MANAGE]), async (c) => {
+  const registry = Registry.getInstance();
+  const actorId = (c.get('user') as { id: string }).id;
+  const out = await registry.whatsappTemplateCatalog.submitMissing();
+  await registry.createAuditLogUseCase.execute({ actorId, action: 'WHATSAPP_TEMPLATES_SUBMITTED', entity: 'whatsapp_templates', entityId: 'meta', previousState: null, newState: { submitted: out.submitted, failed: out.failed.map((f) => f.name) } }).catch(() => undefined);
+  return c.json({ success: true, data: out } satisfies ApiResponse<typeof out>);
+});
+
 // --- Transactional admin order email (outbox intents + manual replay) ---
 // audit-exempt: the only write endpoint (POST /admin-order-emails/:id/replay)
 // delegates to ReplayAdminOrderEmailUseCase, which writes the outbox_event audit

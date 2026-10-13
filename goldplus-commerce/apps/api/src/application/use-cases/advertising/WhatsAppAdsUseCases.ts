@@ -1,4 +1,4 @@
-import { parseInboundTexts, type InboundText } from '../../../domain/assistant/WhatsAppGoldie';
+import { parseAccountEvents, parseDeliveryReceipts, parseInboundTexts, type AccountEvent, type DeliveryReceipt, type InboundText } from '../../../domain/assistant/WhatsAppGoldie';
 import type { WhatsAppAdReferralRepository } from '../../ports/WhatsAppAds';
 import {
   CTWA_WINDOW_DEFAULT_DAYS, messagingClickWins, parseAdReferrals, subscriptionChallenge, verifyWebhookSignature, type CtwaSecrets,
@@ -51,6 +51,12 @@ export class WhatsAppAdsUseCases {
   /** Goldie (site chat on WhatsApp) listens for customers' messages; set once by the registry. */
   private inbound: ((messages: InboundText[]) => void) | null = null;
   onInboundText(listener: (messages: InboundText[]) => void): void { this.inbound = listener; }
+  private receipts: ((receipts: DeliveryReceipt[]) => void) | null = null;
+  /** Delivery receipts for messages the shop sent (order updates, alerts, Goldie's replies). */
+  onDeliveryReceipts(listener: (receipts: DeliveryReceipt[]) => void): void { this.receipts = listener; }
+  private accountEvents: ((events: AccountEvent[]) => void) | null = null;
+  /** Meta's news about the account: templates approved / rejected / paused, number quality, restrictions. */
+  onAccountEvents(listener: (events: AccountEvent[]) => void): void { this.accountEvents = listener; }
   /** The saved Cloud API token (needs whatsapp_business_messaging to send); null when none is saved. */
   async messagingToken(): Promise<string | null> {
     const s = await this.settings().catch(() => null);
@@ -62,6 +68,12 @@ export class WhatsAppAdsUseCases {
     if (t - this.lastPurgeAt < PURGE_EVERY_MS) return;
     this.lastPurgeAt = t;
     await this.repo.purgeBefore(new Date(t - CTWA_RETENTION_DAYS * 86_400_000)).catch(() => undefined);
+  }
+
+  /** The WhatsApp Business Account saved in the admin, with its token: what customer templates are sent through. */
+  async messagingAccount(): Promise<{ wabaId: string; accessToken: string | null } | null> {
+    const s = await this.settings().catch(() => null);
+    return s?.wabaId ? { wabaId: s.wabaId, accessToken: s.secrets.accessToken ?? null } : null;
   }
 
   /** The Meta app's webhook secrets, shared with Goldie's Messenger/Instagram webhook (the same Meta app). */
@@ -96,6 +108,14 @@ export class WhatsAppAdsUseCases {
     if (this.inbound) {
       const texts = parseInboundTexts(payload, s.wabaId, this.now());
       if (texts.length) { try { this.inbound(texts); } catch { /* Goldie must never cost Meta a 200 */ } }
+    }
+    if (this.receipts) {
+      const receipts = parseDeliveryReceipts(payload, s.wabaId);
+      if (receipts.length) { try { this.receipts(receipts); } catch { /* never costs Meta a 200 */ } }
+    }
+    if (this.accountEvents) {
+      const events = parseAccountEvents(payload, s.wabaId);
+      if (events.length) { try { this.accountEvents(events); } catch { /* never costs Meta a 200 */ } }
     }
     // Signed and understood, but switched off: acknowledged and not kept.
     if (!s.live) return { status: 200, stored: 0, duplicates: 0, messages: parsed.messages, withoutClickId: parsed.referralsWithoutClickId };

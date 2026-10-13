@@ -469,6 +469,7 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
   { label: 'Demand signals', href: '/admin/demand', group: 'Marketing', status: 'working', description: 'Search and browse demand the catalogue does not yet serve.' },
   { label: 'Surveys', href: '/admin/surveys', group: 'Marketing', status: 'working', description: 'Customer surveys and their responses.' },
   { label: 'Notifications', href: '/admin/notifications', group: 'Marketing', status: 'working', description: 'Notification templates and wording overrides.' },
+  { label: 'WhatsApp templates', href: '/admin/notifications/whatsapp-templates', group: 'Marketing', status: 'working', description: 'Meta approval for every WhatsApp message (order updates, phone code, staff alerts), and one button to submit the missing ones.' },
   { label: 'Loyalty & rewards', href: '/admin/loyalty', group: 'Marketing', status: 'working', description: 'Points programme, tiers, quests and gamification.' },
   { label: 'Loyalty tiers', href: '/admin/loyalty/tiers', group: 'Marketing', status: 'working', description: 'Tier names, lifetime-point thresholds and activation.' },
   { label: 'Points liability', href: '/admin/loyalty/liability', group: 'Marketing', status: 'working', description: 'Outstanding points, UGX value, daily snapshots and the finance CSV.' },

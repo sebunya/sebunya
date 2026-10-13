@@ -5,10 +5,12 @@ import type { GoldieSocialSettings, ISocialMessenger } from '../../application/u
 import type { SocialPlatform } from '../../domain/assistant/SocialGoldie';
 import { insertOutboxObject } from './AssistantConversationAdapters';
 import { goldieMetrics } from './GoldieMetrics';
-import { sendWebPush, vapidFromEnv } from './WebPush';
+import { CARE_ALERT_TEMPLATE } from '../notifications/whatsapp/whatsAppTemplates';
+import { generateVapidKeys, sendWebPush, vapidFromEnv, type VapidKeys } from './WebPush';
+import { IntegrationCredentialVault } from '../seo/IntegrationCredentialVault';
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client';
-import { carePushSubscriptions } from '../db/schema/assistant';
+import { carePushKeys, carePushSubscriptions } from '../db/schema/assistant';
 
 /**
  * WhatsApp Cloud API: a free-form text reply inside the customer service window
@@ -37,6 +39,18 @@ export class WhatsAppCloudMessenger implements IWhatsAppMessenger {
     }
   }
 
+  /** Marks the customer's message read (blue ticks) and, while Goldie prepares the answer, shows "typing…". */
+  async markRead(input: { phoneNumberId: string; messageId: string; typing: boolean }) {
+    const token = (process.env.GOLDIE_WHATSAPP_TOKEN || '').trim() || (await this.token());
+    if (!token || !/^\d{5,20}$/.test(input.phoneNumberId)) return;
+    await this.fetchImpl(`https://graph.facebook.com/${META_GRAPH_VERSION}/${input.phoneNumberId}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messaging_product: 'whatsapp', status: 'read', message_id: input.messageId, ...(input.typing ? { typing_indicator: { type: 'text' } } : {}) }),
+      signal: AbortSignal.timeout(5_000),
+    }).catch(() => undefined);
+  }
+
   /**
    * An approved template message: the only kind WhatsApp allows outside the 24-hour window, so it is how a
    * team member is paged. GOLDIE_ALERT_TEMPLATE names a template with one body variable ({{1}} = the alert).
@@ -48,7 +62,7 @@ export class WhatsAppCloudMessenger implements IWhatsAppMessenger {
       const res = await this.fetchImpl(`https://graph.facebook.com/${META_GRAPH_VERSION}/${input.phoneNumberId}/messages`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messaging_product: 'whatsapp', to: input.to, type: 'template', template: { name: input.template, language: { code: input.language }, components: [{ type: 'body', parameters: [{ type: 'text', text: input.body.slice(0, 1000) }] }] } }),
+        body: JSON.stringify({ messaging_product: 'whatsapp', to: input.to, type: 'template', template: { name: input.template, language: { code: input.language }, components: [{ type: 'body', parameters: [{ type: 'text', text: templateParam(input.body) }] }] } }),
         signal: AbortSignal.timeout(10_000),
       });
       return res.ok ? { ok: true as const } : { ok: false as const, reason: String(res.status) };
@@ -58,6 +72,9 @@ export class WhatsAppCloudMessenger implements IWhatsAppMessenger {
   }
 }
 
+/** Meta refuses a template variable with a line break, a tab or more than four spaces in a row: one tidy line. */
+export const templateParam = (text: string) => text.replace(/\s+/g, ' ').trim().slice(0, 1000);
+
 const intl = (phone: string) => { const d = phone.replace(/\D/g, ''); return d.startsWith('0') ? `256${d.slice(1)}` : d; };
 const uuidOrNull = (id: string) => (/^[0-9a-f-]{36}$/i.test(id) ? id : null);
 
@@ -66,7 +83,12 @@ const uuidOrNull = (id: string) => (/^[0-9a-f-]{36}$/i.test(id) ? id : null);
  * provider as every other operational message), WhatsApp through an approved template when one is set.
  */
 export class CareAlertChannels implements ICareAlertChannels {
-  constructor(private readonly messenger: WhatsAppCloudMessenger, private readonly settings: () => GoldieWhatsAppSettings) {}
+  constructor(
+    private readonly messenger: WhatsAppCloudMessenger,
+    private readonly settings: () => GoldieWhatsAppSettings,
+    /** Meta has approved the alert template (no refused call on every alert before then). */
+    private readonly templateApproved: (name: string) => boolean = () => true,
+  ) {}
 
   async sms(input: { to: string; message: string; key: string; taskId: string }) {
     await insertOutboxObject({ eventType: 'CARE_ALERT_SMS', template: 'CARE_ALERT', channel: 'sms', idempotencyKey: input.key.slice(0, 255), relatedEntity: 'care_task', relatedEntityId: uuidOrNull(input.taskId),
@@ -83,9 +105,11 @@ export class CareAlertChannels implements ICareAlertChannels {
   }
 
   async whatsapp(input: { to: string; message: string }) {
-    const template = (process.env.GOLDIE_ALERT_TEMPLATE || '').trim();
+    // The template Admin > Notifications > WhatsApp templates submits (goldplus_care_alert) unless another is named.
+    const template = (process.env.GOLDIE_ALERT_TEMPLATE || '').trim() || CARE_ALERT_TEMPLATE.name;
     const s = this.settings();
-    if (!template || !s.phoneNumberId) return { queued: false, reason: 'WhatsApp alerts need GOLDIE_ALERT_TEMPLATE and the number id' };
+    if (!s.phoneNumberId) return { queued: false, reason: 'WhatsApp alerts need the Cloud API number id' };
+    if (!process.env.GOLDIE_ALERT_TEMPLATE && !this.templateApproved(template)) return { queued: false, reason: `the ${template} template is not approved by Meta yet` };
     const r = await this.messenger.sendTemplate({ phoneNumberId: s.phoneNumberId, to: intl(input.to), template, language: (process.env.GOLDIE_ALERT_TEMPLATE_LANG || 'en').trim(), body: input.message });
     if (r.ok) goldieMetrics.careAlerts.inc({ channel: 'whatsapp' });
     return r.ok ? { queued: true } : { queued: false, reason: r.reason };
@@ -93,7 +117,7 @@ export class CareAlertChannels implements ICareAlertChannels {
 
   /** Push to every staff phone that subscribed on the Care Desk; a subscription the browser dropped is deleted. */
   async push(input: { title: string; body: string; url: string; key: string }) {
-    const keys = vapidFromEnv();
+    const keys = await careVapidKeys().catch(() => null);
     if (!keys) return { sent: 0 };
     const subs = await db.select().from(carePushSubscriptions).limit(100);
     let sent = 0;
@@ -106,6 +130,30 @@ export class CareAlertChannels implements ICareAlertChannels {
     if (sent) goldieMetrics.careAlerts.inc({ channel: 'push' }, sent);
     return { sent };
   }
+}
+
+/**
+ * The Care Desk's VAPID keys: the environment's when set, otherwise the pair the api generated and stored (0182),
+ * created on first use, so push alerts need no server settings. Cached; null only without vault material.
+ */
+let vapidCache: VapidKeys | null = null;
+export async function careVapidKeys(): Promise<VapidKeys | null> {
+  const fromEnv = vapidFromEnv();
+  if (fromEnv) return fromEnv;
+  if (vapidCache) return vapidCache;
+  const vault = IntegrationCredentialVault.fromEnv();
+  if (!vault) return null;
+  const contact = (process.env.CARE_PUSH_CONTACT ?? '').trim() || 'mailto:support@shopgoldplus.com';
+  let [row] = await db.select().from(carePushKeys).limit(1);
+  if (!row) {
+    const k = generateVapidKeys();
+    // Two replicas may race on first use: the row id is fixed, so exactly one pair wins and both read it back.
+    await db.insert(carePushKeys).values({ id: 1, publicKey: k.publicKey, privateKeyEnc: vault.encrypt({ d: k.privateKey }) }).onConflictDoNothing();
+    [row] = await db.select().from(carePushKeys).limit(1);
+  }
+  if (!row) return null;
+  vapidCache = { publicKey: row.publicKey, privateKey: vault.decrypt<{ d: string }>(row.privateKeyEnc).d, contact };
+  return vapidCache;
 }
 
 /** Staff push subscriptions (0181): one row per phone or browser, keyed by the push endpoint. */

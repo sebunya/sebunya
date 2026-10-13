@@ -6,7 +6,7 @@ import { redact, nextOutcome, worseMood, selfServeRate } from '../../apps/api/sr
 import { parseInboundTexts, formatWhatsAppReply, whatsappKey, WHATSAPP_MAX } from '../../apps/api/src/domain/assistant/WhatsAppGoldie';
 import { tierStanding } from '../../apps/api/src/domain/loyalty/LoyaltyLedger';
 import { ConversationArchiveUseCases } from '../../apps/api/src/application/use-cases/assistant/ConversationArchiveUseCases';
-import { GoldieChannelUseCases, HOLDING_REPLY } from '../../apps/api/src/application/use-cases/assistant/GoldieChannelUseCases';
+import { GoldieChannelUseCases, HOLDING_REPLY, MEDIA_REPLY, STOP_REPLY } from '../../apps/api/src/application/use-cases/assistant/GoldieChannelUseCases';
 import { GoldieSocialUseCases } from '../../apps/api/src/application/use-cases/assistant/GoldieSocialUseCases';
 import { SOCIAL_MAX, formatSocialReply, parseSocialMessages, socialKey } from '../../apps/api/src/domain/assistant/SocialGoldie';
 import { createHmac } from 'node:crypto';
@@ -353,5 +353,55 @@ describe('Goldie on Messenger and Instagram', () => {
     expect(c.sender.sendText).toHaveBeenLastCalledWith({ platform: 'messenger', recipientId: '7000000001', text: 'Hello, this is Grace from the shop.' });
     expect(conv.humanUntil!.getTime()).toBeGreaterThan(Date.now());
     expect(await c.uc.handle({ ...msg, messageId: 'm_9', text: 'thanks' })).toBe('filed');
+  });
+});
+
+describe('WhatsApp: STOP, media and read receipts', () => {
+  const inboundBase = { from: '256772123456', name: 'Sarah N', phoneNumberId: '111222333', at: new Date() };
+  function wa(enabled = true) {
+    const { store, msgs, convs, outcomes } = memoryStore();
+    const archive = new ConversationArchiveUseCases(store);
+    const brain = { turn: vi.fn(async () => ({ text: 'Yes, that one is original.', products: [], links: [], intent: 'PRODUCT', mood: 'neutral', route: 'deterministic' })) };
+    const whatsapp = { sendText: vi.fn(async () => ({ ok: true as const, messageId: 'wamid.r' })), markRead: vi.fn(async () => undefined) };
+    const tasks: Array<Record<string, unknown>> = [];
+    const optOuts = { stop: vi.fn(async () => undefined), start: vi.fn(async () => undefined) };
+    const uc = new GoldieChannelUseCases(archive, brain, whatsapp, () => ({ enabled, onlyNumbers: [], phoneNumberId: '111222333' }), () => {}, () => new Date(), async () => [], async (t) => { tasks.push(t as Record<string, unknown>); }, async () => null, async () => false, async () => ({ ok: false as const, reason: 'n/a' }), optOuts);
+    return { uc, brain, whatsapp, tasks, optOuts, msgs, convs, outcomes };
+  }
+
+  it('STOP is recorded and confirmed even while Goldie is switched off; START undoes it', async () => {
+    const c = wa(false);
+    expect(await c.uc.handleWhatsApp({ ...inboundBase, text: 'STOP', messageId: 'wamid.s1' })).toBe('answered');
+    expect(c.optOuts.stop).toHaveBeenCalledWith('+256772123456', 'wamid.s1');
+    expect(c.whatsapp.sendText).toHaveBeenCalledWith(expect.objectContaining({ text: STOP_REPLY }));
+    await c.uc.handleWhatsApp({ ...inboundBase, text: 'start', messageId: 'wamid.s2' });
+    expect(c.optOuts.start).toHaveBeenCalledWith('+256772123456');
+    expect(c.brain.turn).not.toHaveBeenCalled();
+  });
+
+  it('a photo without words: a task for a person, an honest holding reply, blue ticks', async () => {
+    const c = wa();
+    const out = await c.uc.handleWhatsApp({ ...inboundBase, text: '[Photo ⟦media:1234567890:image/jpeg⟧]', messageId: 'wamid.p1', media: { kind: 'image', id: '1234567890', mimeType: 'image/jpeg' } });
+    expect(out).toBe('answered');
+    expect(c.tasks[0]).toMatchObject({ kind: 'follow_up', title: 'WhatsApp photo to look at', customerPhone: '+256772123456' });
+    expect(c.whatsapp.sendText).toHaveBeenCalledWith(expect.objectContaining({ text: MEDIA_REPLY.image }));
+    expect(c.whatsapp.markRead).toHaveBeenCalledWith({ phoneNumberId: '111222333', messageId: 'wamid.p1', typing: true });
+    expect(c.brain.turn).not.toHaveBeenCalled();
+  });
+
+  it('a photo with a caption: Goldie answers the words (never sees the raw marker) and a person still looks', async () => {
+    const c = wa();
+    await c.uc.handleWhatsApp({ ...inboundBase, text: '[Photo ⟦media:1234567890:image/jpeg⟧] Is this charger original?', messageId: 'wamid.p2', media: { kind: 'image', id: '1234567890', mimeType: 'image/jpeg' } });
+    expect(c.tasks[0]!.title).toBe('WhatsApp photo to look at: Is this charger original?');
+    const sent = JSON.stringify((c.brain.turn.mock.calls[0] as unknown as [unknown])[0]);
+    expect(sent).not.toContain('⟦media');
+    expect(sent).toContain('Is this charger original?');
+  });
+
+  it('a sticker is filed quietly: no task, no reply', async () => {
+    const c = wa();
+    expect(await c.uc.handleWhatsApp({ ...inboundBase, text: '[Sticker ⟦media:5555566666:image/webp⟧]', messageId: 'wamid.k', media: { kind: 'sticker', id: '5555566666', mimeType: 'image/webp' } })).toBe('filed');
+    expect(c.tasks).toEqual([]);
+    expect(c.whatsapp.sendText).not.toHaveBeenCalled();
   });
 });

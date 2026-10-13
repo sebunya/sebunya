@@ -2,6 +2,7 @@ import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { PERMISSIONS } from '@goldplus/shared';
 import { Registry } from '../../../../infrastructure/Registry';
+import { META_GRAPH_VERSION } from '../../../../infrastructure/advertising/AdPlatforms';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
 import { csvCell } from '../../csv';
@@ -129,6 +130,32 @@ routes.get('/conversations.csv', requirePermissions([PERMISSIONS.CUSTOMER_DATA_V
   const lines = rows.map((r) => [r.startedAt.toISOString(), r.lastMessageAt.toISOString(), r.channel, r.contactName, r.contactPhone, r.contactEmail, r.firstTopic, r.lastTopic, r.worstMood, r.outcome, r.csat ?? '', r.messageCount, r.aiTurns, r.supportTicketId, r.lastCustomerLine].map(csvCell).join(','));
   const stamp = new Date().toISOString().slice(0, 10);
   return new Response([head.map(csvCell).join(','), ...lines].join('\r\n'), { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="goldie-conversations-${stamp}.csv"`, 'Cache-Control': 'no-store' } });
+});
+
+// A photo / voice note / video / document a customer sent on WhatsApp, fetched from Meta with the shop's token
+// (the token never reaches the browser). Meta keeps media about 30 days. Read-only.
+routes.get('/whatsapp-media/:id', requirePermissions([PERMISSIONS.CUSTOMER_DATA_VIEW]), async (c) => {
+  const id = c.req.param('id') ?? '';
+  if (!/^\d{5,30}$/.test(id)) return bad(c, 'INVALID_ID', 'Not a media id.');
+  const token = (process.env.GOLDIE_WHATSAPP_TOKEN || '').trim() || (await Registry.getInstance().advertisingOps.whatsappAds.messagingToken().catch(() => null));
+  if (!token) return bad(c, 'NOT_CONFIGURED', 'WhatsApp is not connected.', 503);
+  const graph = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
+  try {
+    const meta = await fetch(`${graph}/${id}`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) });
+    const info = (await meta.json().catch(() => null)) as { url?: string; mime_type?: string; file_size?: number } | null;
+    if (!meta.ok || !info?.url) return bad(c, 'GONE', 'Meta no longer has this file (media is kept about 30 days).', 404);
+    if (Number(info.file_size ?? 0) > 25 * 1024 * 1024) return bad(c, 'TOO_LARGE', 'The file is larger than 25 MB.', 413);
+    // Only Meta's own media host, with the token.
+    if (!/^https:\/\/[a-z0-9.-]+\.(fbsbx|facebook|whatsapp)\.(com|net)\//i.test(info.url)) return bad(c, 'GONE', 'Unexpected media address.', 502);
+    const file = await fetch(info.url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) });
+    if (!file.ok || !file.body) return bad(c, 'GONE', 'Meta did not return the file.', 502);
+    const type = String(info.mime_type ?? file.headers.get('content-type') ?? 'application/octet-stream').slice(0, 80);
+    // A customer's photo or voice note is personal data: every view is on the audit log.
+    await Registry.getInstance().createAuditLogUseCase.execute({ actorId: actor(c), action: 'WHATSAPP_MEDIA_VIEWED', entity: 'whatsapp_media', entityId: id, previousState: null, newState: { type } }).catch(() => undefined);
+    return new Response(file.body, { status: 200, headers: { 'Content-Type': type, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Disposition': `inline; filename="whatsapp-${id}"`, 'Content-Security-Policy': "default-src 'none'; img-src 'self' data:; media-src 'self'; sandbox" } });
+  } catch {
+    return bad(c, 'UPSTREAM_UNAVAILABLE', 'Meta could not be reached.', 502);
+  }
 });
 
 routes.get('/conversations/:id', requirePermissions([PERMISSIONS.CUSTOMER_DATA_VIEW]), async (c) => {

@@ -1,0 +1,77 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../../lib/session';
+import { apiBase } from '../../../lib/api';
+
+/**
+ * WhatsApp templates at Meta: every message GoldPlus sends on WhatsApp outside a customer's 24-hour window
+ * (order updates, payment, the phone code, staff alerts) needs a template Meta has approved. This page shows
+ * Meta's status for each, and submits the ones Meta does not have yet, word for word from the code. Until a
+ * template is approved, that message goes by Zoho (if configured) or SMS instead. Reading needs
+ * notifications.read; submitting needs notifications.manage (audited).
+ */
+export const prerender = false;
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/notifications/whatsapp-templates', 303);
+const call = async <T,>(path: string, init?: RequestInit): Promise<{ ok: true; data: T } | { ok: false; message: string }> => {
+  try {
+    const res = await fetch(`${apiBase}/admin/notifications${path}`, { ...init, headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json', ...(init?.headers ?? {}) } });
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.success) return { ok: false, message: json?.error?.message ?? `The system answered ${res.status}.` };
+    return { ok: true, data: json.data as T };
+  } catch { return { ok: false, message: 'The system could not be reached.' }; }
+};
+let notice: { kind: 'success' | 'error'; text: string } | null = null;
+if (Astro.request.method === 'POST') {
+  const r = await call<{ submitted: string[]; failed: Array<{ name: string; reason: string }>; skipped: string[] }>('/whatsapp-templates/submit', { method: 'POST', body: '{}' });
+  notice = !r.ok ? { kind: 'error', text: r.message }
+    : r.data.failed.length ? { kind: 'error', text: `Submitted ${r.data.submitted.length}. Not accepted: ${r.data.failed.map((f) => `${f.name} (${f.reason})`).join('; ')}` }
+    : { kind: 'success', text: r.data.submitted.length ? `Submitted ${r.data.submitted.length} template(s) to Meta. Approval usually takes minutes; refresh this page.` : 'Meta already has every template.' };
+}
+interface Row { ours: string; name: string; category: string; status: string; rejectedReason: string | null }
+const res = await call<{ rows: Row[]; error: string | null; readAt: number }>('/whatsapp-templates');
+const STATUS: Record<string, { label: string; cls: string }> = {
+  APPROVED: { label: 'Approved', cls: 'bg-green-50 text-green-800 border-green-200' },
+  PENDING: { label: 'Waiting for Meta', cls: 'bg-amber-50 text-amber-900 border-amber-200' },
+  IN_APPEAL: { label: 'Appealed', cls: 'bg-amber-50 text-amber-900 border-amber-200' },
+  REJECTED: { label: 'Rejected', cls: 'bg-red-50 text-red-800 border-red-200' },
+  PAUSED: { label: 'Paused by Meta', cls: 'bg-red-50 text-red-800 border-red-200' },
+  DISABLED: { label: 'Disabled by Meta', cls: 'bg-red-50 text-red-800 border-red-200' },
+  NOT_SUBMITTED: { label: 'Not at Meta yet', cls: 'bg-gray-50 text-gray-700 border-gray-200' },
+  OUT_OF_DATE: { label: 'Changed in code: update at Meta', cls: 'bg-amber-50 text-amber-900 border-amber-200' },
+  RECATEGORISED: { label: 'Meta made it Marketing: not used', cls: 'bg-red-50 text-red-800 border-red-200' },
+};
+const missing = res.ok ? res.data.rows.filter((r) => r.status === 'NOT_SUBMITTED' || r.status === 'OUT_OF_DATE').length : 0;
+---
+<AdminLayout title="WhatsApp templates" description="Meta's approval for every WhatsApp message GoldPlus sends." activePath="/admin/notifications">
+  <div class="max-w-4xl space-y-5">
+    <p class="text-sm"><a href="/admin/notifications" class="underline font-bold">Notifications</a></p>
+    <h1 class="text-2xl font-black">WhatsApp templates</h1>
+    <p class="text-sm text-gray-700">Order updates, payment messages, the phone code and staff alerts go to WhatsApp through Meta directly. Each needs a template Meta has approved. Until then that message goes by Zoho (if set up) or SMS, so nothing is lost.</p>
+    {notice && <div role="status" class={`rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-800'}`}>{notice.text}</div>}
+    {!res.ok ? <p class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm">{res.message}</p> : <>
+      {res.data.error && <p class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">Meta did not answer: {res.data.error === 'not configured' ? 'WhatsApp is not connected yet (WHATSAPP_WABA_ID, the number id and the token).' : res.data.error}</p>}
+      {missing > 0 && !res.data.error && (
+        <form method="post" class="flex items-center gap-3">
+          <button class="rounded-full bg-brand-dark text-white font-bold px-4 py-2">Send {missing} template{missing === 1 ? '' : 's'} to Meta</button>
+          <span class="text-xs text-gray-600">Sent word for word from the shop's code. Meta reviews each one.</span>
+        </form>
+      )}
+      <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 text-left text-[10px] uppercase tracking-widest text-gray-500"><tr><th class="px-3 py-2">Message</th><th class="px-3 py-2">Template at Meta</th><th class="px-3 py-2">Kind</th><th class="px-3 py-2">Status</th></tr></thead>
+          <tbody>
+            {res.data.rows.map((r) => (
+              <tr class="border-t border-gray-100">
+                <td class="px-3 py-2 font-bold">{r.ours.replace(/_/g, ' ').toLowerCase()}</td>
+                <td class="px-3 py-2 font-mono text-xs">{r.name}</td>
+                <td class="px-3 py-2 text-xs">{r.category === 'AUTHENTICATION' ? 'Phone code' : 'Utility'}</td>
+                <td class="px-3 py-2"><span class={`inline-block rounded border px-2 py-0.5 text-[11px] font-black ${(STATUS[r.status] ?? STATUS.NOT_SUBMITTED!).cls}`}>{(STATUS[r.status] ?? { label: r.status }).label}</span>{r.rejectedReason && <span class="block text-[11px] text-red-700 mt-1">{r.rejectedReason}</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>}
+  </div>
+</AdminLayout>

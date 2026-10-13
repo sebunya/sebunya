@@ -43,9 +43,22 @@ export class CareDeskUseCases {
   constructor(
     private readonly repo: ICareDeskRepository,
     private readonly alerts: ICareAlertChannels,
-    private readonly config: { deskUrl: string; alertsPerHour?: number },
+    private readonly config: { deskUrl: string; alertsPerHour?: number; fallback?: { emails: string[]; phone: string | null } },
     private readonly now: () => Date = () => new Date(),
   ) {}
+
+  /**
+   * Who gets paged: the active team; before anyone is set up, the shop itself (the order-notification inboxes and
+   * the shop phone), so an urgent customer is never left with nobody told. Adding the first team member ends it.
+   */
+  private async activeTeam(): Promise<CareTeamMemberRow[]> {
+    const team = await this.repo.team(true);
+    if (team.length || !this.config.fallback) return team;
+    const f = this.config.fallback;
+    const shop: CareTeamMemberRow[] = f.emails.map((email, i) => ({ id: `shop-email-${i}`, name: 'Shop inbox', roleLabel: null, phone: null, email, alertSms: false, alertEmail: true, alertWhatsapp: false, onDuty: null, active: true }));
+    if (f.phone) shop.push({ id: 'shop-phone', name: 'Shop phone', roleLabel: null, phone: f.phone, email: null, alertSms: true, alertEmail: false, alertWhatsapp: false, onDuty: null, active: true });
+    return shop;
+  }
 
   async openTask(input: OpenTaskInput): Promise<OpenTaskResult> {
     if (!isCareKind(input.kind)) return { ok: false, code: 'BAD_INPUT', message: 'Unknown task kind.' };
@@ -74,9 +87,10 @@ export class CareDeskUseCases {
     const t = this.now().getTime();
     const [hour, recent] = await Promise.all([this.repo.alertsSince(new Date(t - 3600_000), null), this.repo.alertsSince(new Date(t - 30 * 60_000), task.customerPhone)]);
     if (alertAllowed({ samePhoneLast30Min: task.customerPhone ? recent.samePhone : 0, shopLastHour: hour.shop, perHour: this.config.alertsPerHour ?? DEFAULT_ALERTS_PER_HOUR }) !== 'ALLOWED') return [];
-    const team = (await this.repo.team(true)).filter((m) => onDutyNow(m.onDuty, this.now()));
+    const active = await this.activeTeam();
+    const team = active.filter((m) => onDutyNow(m.onDuty, this.now()));
     // Nobody on duty: page everyone active, so an urgent customer is never left with no one told.
-    const people = team.length ? team : await this.repo.team(true);
+    const people = team.length ? team : active;
     const message = alertText(task);
     const sent: string[] = [];
     const subject = `GoldPlus Care: ${CARE_KIND_LABEL[task.kind]}${task.customerName ? `, ${task.customerName}` : ''}`.slice(0, 150);
@@ -143,7 +157,7 @@ export class CareDeskUseCases {
     for (const t of due) {
       const waitedMin = Math.round((now.getTime() - t.createdAt.getTime()) / 60000);
       const message = `STILL WAITING ${waitedMin} min. ${alertText(t)}`.slice(0, 300);
-      const team = await this.repo.team(true);
+      const team = await this.activeTeam();
       for (const m of team) {
         if (m.alertSms && m.phone) await this.alerts.sms({ to: m.phone, message, key: `care-escalate:${t.id}:${t.escalations + 1}:${m.id}:sms`, taskId: t.id }).catch(() => undefined);
         if (m.alertEmail && m.email) await this.alerts.email({ to: m.email, subject: `STILL WAITING: ${CARE_KIND_LABEL[t.kind]}`, text: `${message}\n\nCare Desk: ${this.config.deskUrl}`, html: `<p><strong>${esc(message)}</strong></p><p><a href="${esc(this.config.deskUrl)}">Open the Care Desk</a></p>`, key: `care-escalate:${t.id}:${t.escalations + 1}:${m.id}:email`, taskId: t.id }).catch(() => undefined);
@@ -183,7 +197,7 @@ export class CareDeskUseCases {
   /** A test page to every active member, so the owner can see alerts arrive before a real customer needs one. */
   async testAlert(): Promise<string[]> {
     const fake: CareTaskRow = { id: `test-${this.now().getTime()}`, kind: 'urgent', priority: 'urgent', status: 'open', title: 'This is a test alert from the Care Desk. No customer is waiting.', detail: null, customerName: null, customerPhone: null, customerEmail: null, orderNumber: null, conversationId: null, channel: null, proposedAction: null, dueAt: null, assignedTo: null, openedBy: 'test', resolvedBy: null, resolution: null, alertedAt: null, resolvedAt: null, createdAt: this.now() };
-    const team = await this.repo.team(true);
+    const team = await this.activeTeam();
     const sent: string[] = [];
     for (const m of team) {
       if (m.alertSms && m.phone) { const r = await this.alerts.sms({ to: m.phone, message: alertText(fake), key: `${fake.id}:${m.id}:sms`, taskId: fake.id }).catch(() => ({ queued: false })); if (r.queued) sent.push(`sms:${m.name}`); }
