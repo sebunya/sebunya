@@ -149,12 +149,13 @@ routes.post('/log', async (c) => {
     intent: z.string().max(20).nullable().optional(),
     mood: z.string().max(12).nullable().optional(),
     route: z.string().max(16).nullable().optional(),
+    cacheId: z.string().uuid().nullable().optional(),
   }).safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return bad(c, 'INVALID_BODY', parsed.error.issues[0]?.message ?? 'Invalid body.');
   const d = parsed.data;
   const out = await Registry.getInstance().conversationArchiveUseCases.logTurn({
     channel: 'web', channelKey: d.conversationId, customerId: d.userId ?? null, page: d.page ?? null,
-    customer: { content: d.customer }, goldie: d.goldie ? { content: d.goldie, route: d.route ?? null } : null, intent: d.intent ?? null, mood: d.mood ?? null,
+    customer: { content: d.customer }, goldie: d.goldie ? { content: d.goldie, route: d.route ?? null, cacheId: d.cacheId ?? null } : null, intent: d.intent ?? null, mood: d.mood ?? null,
   });
   return ok(c, { conversationId: out.conversationId });
 });
@@ -213,9 +214,31 @@ routes.post('/csat', async (c) => {
   const conv = await registry.conversationArchiveUseCases.findByKey('web', parsed.data.conversationKey);
   if (!conv) return bad(c, 'NOT_FOUND', 'No such conversation.', 404);
   await registry.careDeskUseCases.rate(conv.id, parsed.data.score, parsed.data.comment ?? null);
+  // A poor rating counts against every remembered answer served in that chat; two retire it.
+  if (parsed.data.score <= 2) await registry.answerMemoryUseCases.poorRating(await registry.conversationArchiveUseCases.servedMemory(conv.id)).catch(() => undefined);
   // A poor rating is a customer to win back: it goes on the desk.
   if (parsed.data.score <= 2) await registry.careDeskUseCases.openTask({ kind: 'follow_up', title: `Rated the chat ${parsed.data.score}/5${parsed.data.comment ? `: ${parsed.data.comment}` : ''}`, conversationId: conv.id, channel: 'web', customerName: conv.contactName, customerPhone: conv.contactPhone, customerEmail: conv.contactEmail, mood: 'upset' }).catch(() => undefined);
   return ok(c, { rated: true });
+});
+
+// ---- Answer memory (0179): look up before paying for the model, remember after.
+const memoryProduct = z.object({ slug: z.string().max(200), price_ugx: z.number().int().nullable(), availability: z.string().max(20) });
+routes.post('/memory/lookup', async (c) => {
+  const parsed = z.object({ key: z.string().regex(/^[0-9a-f]{64}$/) }).safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return bad(c, 'INVALID_BODY', 'Send a question key.');
+  return ok(c, await Registry.getInstance().answerMemoryUseCases.lookup(parsed.data.key));
+});
+routes.post('/memory/remember', async (c) => {
+  const parsed = z.object({ key: z.string().regex(/^[0-9a-f]{64}$/), question: z.string().min(2).max(2000), answer: z.string().min(1).max(4000), intent: z.string().max(20).nullable().optional(), products: z.array(memoryProduct).max(10) }).safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return bad(c, 'INVALID_BODY', parsed.error.issues[0]?.message ?? 'Invalid body.');
+  return ok(c, { remembered: await Registry.getInstance().answerMemoryUseCases.remember({ ...parsed.data, intent: parsed.data.intent ?? null }) });
+});
+routes.post('/memory/:id/:event', async (c) => {
+  const id = c.req.param('id') ?? '', event = c.req.param('event');
+  if (!/^[0-9a-f-]{36}$/i.test(id) || (event !== 'served' && event !== 'stale')) return bad(c, 'INVALID_BODY', 'Unknown memory event.');
+  const m = Registry.getInstance().answerMemoryUseCases;
+  await (event === 'served' ? m.served(id) : m.stale(id));
+  return ok(c, { id, event });
 });
 
 export default routes;

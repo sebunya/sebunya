@@ -45,6 +45,26 @@ routes.put('/config', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (
 
 routes.get('/channels', requirePermissions([PERMISSIONS.ANALYTICS_READ]), async (c) => ok(c, Registry.getInstance().goldieChannelUseCases.status()));
 
+// ---- Answer memory ("Teach Goldie") and the route mix
+routes.get('/answers', requirePermissions([PERMISSIONS.ANALYTICS_READ]), async (c) => ok(c, await Registry.getInstance().answerMemoryUseCases.list(c.req.query('retired') === '1')));
+routes.get('/savings', requirePermissions([PERMISSIONS.ANALYTICS_READ]), async (c) => ok(c, await Registry.getInstance().answerMemoryUseCases.savings(Math.min(Math.max(Number(c.req.query('days') ?? 7) || 7, 1), 90))));
+routes.post('/answers/:id', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const id = c.req.param('id') ?? '';
+  const parsed = z.object({ answer: z.string().max(1500).optional(), pinned: z.boolean().optional(), retired: z.boolean().optional() }).safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success || !/^[0-9a-f-]{36}$/i.test(id)) return bad(c, 'INVALID_BODY', 'Invalid body.');
+  const registry = Registry.getInstance();
+  if (!(await registry.answerMemoryUseCases.edit(id, parsed.data))) return bad(c, 'NOT_FOUND', 'No such answer, or the answer is too short or too long.', 404);
+  await registry.createAuditLogUseCase.execute({ actorId: actor(c), action: 'ASSISTANT_ANSWER_EDITED', entity: 'assistant_answer_memory', entityId: id, previousState: null, newState: parsed.data });
+  return ok(c, { id });
+});
+routes.delete('/answers/:id', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const id = c.req.param('id') ?? '';
+  const registry = Registry.getInstance();
+  if (!/^[0-9a-f-]{36}$/i.test(id) || !(await registry.answerMemoryUseCases.remove(id))) return bad(c, 'NOT_FOUND', 'No such answer.', 404);
+  await registry.createAuditLogUseCase.execute({ actorId: actor(c), action: 'ASSISTANT_ANSWER_DELETED', entity: 'assistant_answer_memory', entityId: id, previousState: null, newState: null });
+  return ok(c, { id });
+});
+
 // ---- Conversations
 const OUTCOMES = ['open', 'resolved', 'handed_over', 'needs_human'] as const;
 const MOODS = ['upset', 'worried', 'confused', 'happy', 'neutral'] as const;

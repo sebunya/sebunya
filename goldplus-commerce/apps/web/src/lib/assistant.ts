@@ -311,6 +311,41 @@ async function requestTurn(messages: MessageParam[], opts: Required<Pick<Assista
 
 const HANDOFF = `I can't take that one here. The shop answers on WhatsApp: ${SITE_ORIGIN}/wa`;
 
+/**
+ * What the model reads from a catalogue tool: the facts it needs to answer and to act (id for bulk_quote,
+ * slug for get_product, price, stock, fit), one compact line each, no URLs (the customer sees cards).
+ * Fewer tokens per call, and the ids the bulk quote needs are actually there.
+ */
+export function modelToolText(name: string, out: Json): string | null {
+  const s = (out.structuredContent && typeof out.structuredContent === 'object' ? out.structuredContent : {}) as Json;
+  const money = (v: unknown) => (v == null ? 'price on request' : `UGX ${Number(v).toLocaleString('en-UG')}`);
+  // Same rule as the cards: only this shop's products reach the model, and a slug only from a real product page.
+  const ours = (p: Json) => typeof p.url === 'string' && p.url.startsWith(`${SITE_ORIGIN}/`);
+  const slug = (p: Json) => String(p.url ?? '').match(/\/products\/([a-z0-9-]+)/)?.[1] ?? '';
+  const line = (p: Json) => [String(p.name ?? ''), money(p.price_ugx), String(p.availability ?? ''), p.sku ? `sku ${p.sku}` : '', p.id ? `id ${p.id}` : '', slug(p) ? `slug ${slug(p)}` : ''].filter(Boolean).join(' | ');
+  if (name === 'search_products' && Array.isArray(s.products)) {
+    const list = (s.products as Json[]).filter(ours);
+    return list.length ? list.map(line).join('\n') : 'No GoldPlus product matched. Try fewer words or another name.';
+  }
+  if (name === 'get_product' && s.product && typeof s.product === 'object') {
+    const p = s.product as Json;
+    const specs = p.specifications && typeof p.specifications === 'object' ? Object.entries(p.specifications as Json).slice(0, 12).map(([k, v]) => `${k}: ${v}`).join('; ') : '';
+    return [line(p), p.summary ? String(p.summary).slice(0, 400) : '', specs ? `Specs: ${specs}` : ''].filter(Boolean).join('\n');
+  }
+  if (name === 'find_battery') {
+    const kind = String(s.kind ?? '');
+    const results = Array.isArray(s.results) ? (s.results as Json[]) : [];
+    if (results.length) {
+      const device = (s.device as Json | undefined)?.label ?? '';
+      return [`Batteries for ${device || 'this phone'}:`, ...results.slice(0, 5).map((r) => [String(r.name ?? ''), r.canonicalCode ? `code ${r.canonicalCode}` : '', money(r.priceUgx), r.inStock ? 'in stock' : 'out of stock', String(r.fitLabel ?? ''), r.productId ? `id ${r.productId}` : '', r.slug ? `slug ${r.slug}` : ''].filter(Boolean).join(' | '))].join('\n');
+    }
+    if (s.battery && typeof s.battery === 'object') { const b = s.battery as Json; return [String(b.name ?? ''), b.canonicalCode ? `code ${b.canonicalCode}` : '', money(b.priceUgx), b.inStock ? 'in stock' : 'out of stock', String(b.fitLabel ?? '')].filter(Boolean).join(' | '); }
+    if (Array.isArray(s.devices) && s.devices.length) return `${kind === 'AMBIGUOUS_DEVICE' ? 'Several phones match; ask which one' : 'No exact match; nearest names'}: ${(s.devices as Json[]).slice(0, 6).map((d) => String(d.label ?? '')).join(', ')}`;
+    return null;
+  }
+  return null;
+}
+
 /** Product cards the widget renders from validated tool data, never from the model's prose. */
 function cardsFrom(structured: unknown): ProductCard[] {
   const s = (structured && typeof structured === 'object' ? structured : {}) as Json;
@@ -406,7 +441,7 @@ export async function* runAssistant(turns: ChatTurn[], options: AssistantOptions
         try {
           const out = await callTool(name, use.input as Json);
           const textOut = Array.isArray(out.content) ? (out.content as Array<{ text?: string }>).map((c) => c.text ?? '').join('\n') : '';
-          content = (textOut || JSON.stringify(out.structuredContent ?? {})).slice(0, MAX_TOOL_RESULT_CHARS);
+          content = ((out.isError !== true ? modelToolText(name, out) : null) || textOut || JSON.stringify(out.structuredContent ?? {})).slice(0, MAX_TOOL_RESULT_CHARS);
           isError = out.isError === true;
           if (!isError && (name === 'search_products' || name === 'get_product')) {
             const items = cardsFrom(out.structuredContent);

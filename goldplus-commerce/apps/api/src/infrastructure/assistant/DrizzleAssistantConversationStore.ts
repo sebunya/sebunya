@@ -31,9 +31,10 @@ export class DrizzleAssistantConversationStore implements IAssistantConversation
     return toRow(row!);
   }
 
-  async addMessage(conversationId: string, m: { role: ArchiveRole; content: string; intent?: string | null; mood?: ArchiveMood | null; route?: string | null; channelMessageId?: string | null }): Promise<boolean> {
+  async addMessage(conversationId: string, m: { role: ArchiveRole; content: string; intent?: string | null; mood?: ArchiveMood | null; route?: string | null; channelMessageId?: string | null; cacheId?: string | null }): Promise<boolean> {
     const inserted = await db.insert(assistantMessages).values({
       conversationId, role: m.role, content: m.content, intent: m.intent ?? null, mood: m.mood ?? null, route: m.route ?? null, channelMessageId: clip(m.channelMessageId, 160),
+      cacheId: m.cacheId && /^[0-9a-f-]{36}$/i.test(m.cacheId) ? m.cacheId : null,
     }).onConflictDoNothing().returning({ id: assistantMessages.id });
     if (!inserted.length) return false;
     await db.update(assistantConversations).set({ messageCount: sql`${assistantConversations.messageCount} + 1`, lastMessageAt: sql`now()` }).where(eq(assistantConversations.id, conversationId));
@@ -54,6 +55,11 @@ export class DrizzleAssistantConversationStore implements IAssistantConversation
     if (p.contact?.email) set.contactEmail = clip(p.contact.email, 200);
     if (!Object.keys(set).length) return;
     await db.update(assistantConversations).set(set).where(eq(assistantConversations.id, id));
+  }
+
+  async servedMemory(conversationId: string): Promise<string[]> {
+    const rows = await db.selectDistinct({ id: assistantMessages.cacheId }).from(assistantMessages).where(and(eq(assistantMessages.conversationId, conversationId), sql`${assistantMessages.cacheId} is not null`));
+    return rows.map((r) => String(r.id));
   }
 
   async findByKey(channel: ArchiveChannel, channelKey: string): Promise<ArchiveConversationRow | null> {

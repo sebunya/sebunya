@@ -44,7 +44,9 @@ export function classify(raw: string): Classification {
   const short = t.length <= 40;
   // "Are you a real person?": always the same honest answer, never left to the model.
   if (/\b(are you (a |an )?(real|human|person|people|bot|robot|machine|computer|ai)|is (this|it|goldie) (a )?(real person|human|person|bot|robot|machine)|am i (talking|chatting|speaking|texting) (to|with) (a )?(real person|real|human|person|bot|robot|machine|someone)|who am i (talking|chatting|speaking) (to|with)|who are you|what are you)\b/.test(t)) return { intent: 'IDENTITY', deterministic: true, query: '' };
-  if (short && /^(hi|hello|hey|yo|good (morning|afternoon|evening)|thanks|thank you|ok(ay)?|cool|sure)\b[!. ]*$/.test(t)) return { intent: 'GREETING', deterministic: true, query: t };
+  if (short && /^(hi|hello|hey|yo|good (morning|afternoon|evening)|ok(ay)?|cool|sure)\b[!. ]*$/.test(t)) return { intent: 'GREETING', deterministic: true, query: t };
+  // Thanks in its common forms (never worth a paid answer): "thank you so much", "ok thanks", "webale nnyo", "asante sana".
+  if (short && /^(ok(ay)?[ ,]*)?(thanks?|thank you|thx|webale|asante)( (so|very) much| a lot| nnyo| sana| dear| goldie| boss)*[!. 🙏]*$/u.test(t)) return { intent: 'GREETING', deterministic: true, query: t };
   if (/\b(call me( back)?|phone me|ring me|give me a call|can (someone|somebody|you|a person) (call|phone|ring)|i want (someone|somebody|a person) to call|call back)\b/.test(t)) return { intent: 'CALLBACK', deterministic: true, query: text };
   if (ORDER_REF.test(text)) return { intent: 'ORDER', deterministic: true, query: '' };
   if (/\b(my )?(loyalty|reward points|my points|points balance|how many points|my tier|tier|friends ?(&|and) ?family (points|rewards))\b/.test(t) && !/\b(charging|power) points?\b/.test(t)) return { intent: 'LOYALTY', deterministic: true, query: '' };

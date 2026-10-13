@@ -59,7 +59,7 @@ const pct = status.ok && c ? Math.min(100, Math.round(((t!.settledMicroUsd + t!.
 ---
 <AdminLayout title="Shop assistant" description="Spend this month, the policy that keeps it inside the cap, and the two switches." activePath="/admin/assistant">
   <div class="container mx-auto px-6 lg:px-8 max-w-5xl space-y-8">
-    <p class="text-sm"><a href="/admin/assistant/conversations" class="font-bold underline">Goldie conversations</a>: every chat on the website and WhatsApp, with the meeting summary.</p>
+    <p class="text-sm"><a href="/admin/assistant/conversations" class="font-bold underline">Goldie conversations</a>: every chat on the website and WhatsApp, with the meeting summary. <a href="/admin/assistant/answers" class="font-bold underline">Teach Goldie</a>: what her answers cost and the answers she remembers.</p>
     {notice && <div role="status" class={`rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>}
     {!status.ok && <div role="status" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{status.message}</div>}
 

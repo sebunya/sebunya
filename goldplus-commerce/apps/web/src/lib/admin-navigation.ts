@@ -91,6 +91,13 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'For shop attendants and the care team: everything a customer is waiting on (urgent first), with Call, WhatsApp and Done buttons, today\'s numbers, and who gets alerts.',
   },
   {
+    label: 'Teach Goldie',
+    href: '/admin/assistant/answers',
+    group: 'Commerce',
+    status: 'working',
+    description: 'How Goldie answers (fixed, remembered, model), the model spend and what her memory saved, and the answers she remembers: pin, edit or retire them.',
+  },
+  {
     label: 'Goldie conversations',
     href: '/admin/assistant/conversations',
     group: 'Commerce',

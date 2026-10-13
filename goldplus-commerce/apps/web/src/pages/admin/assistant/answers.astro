@@ -1,0 +1,91 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../../lib/session';
+import { apiBase } from '../../../lib/api';
+
+/**
+ * Teach Goldie: how her answers were produced (fixed answers, memory, model,
+ * fallback), what the model cost and what the memory saved, and the answers
+ * she remembers, most asked first. The team pins the good ones (never expire,
+ * never overwritten), edits wording, or retires a poor one. Reading needs
+ * analytics.read; changing needs settings.manage (the API enforces and audits).
+ */
+export const prerender = false;
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/assistant/answers', 303);
+
+const call = async <T,>(path: string, init?: RequestInit): Promise<{ ok: true; data: T } | { ok: false; message: string }> => {
+  try {
+    const res = await fetch(`${apiBase}/admin/assistant${path}`, { ...init, headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json', ...(init?.headers ?? {}) } });
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.success) return { ok: false, message: json?.error?.message ?? `The system answered ${res.status}.` };
+    return { ok: true, data: json.data as T };
+  } catch { return { ok: false, message: 'The system could not be reached.' }; }
+};
+
+let notice: { kind: 'success' | 'error'; text: string } | null = null;
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const id = String(f.get('id') ?? '');
+  const action = String(f.get('action') ?? '');
+  const r = action === 'delete'
+    ? await call(`/answers/${id}`, { method: 'DELETE' })
+    : await call(`/answers/${id}`, { method: 'POST', body: JSON.stringify(action === 'pin' ? { pinned: true } : action === 'unpin' ? { pinned: false } : action === 'retire' ? { retired: true } : action === 'restore' ? { retired: false } : { answer: String(f.get('answer') ?? '') }) });
+  notice = r.ok ? { kind: 'success', text: 'Saved.' } : { kind: 'error', text: r.message };
+}
+
+interface Entry { id: string; question: string; answer: string; intent: string | null; pinned: boolean; edited: boolean; retired: boolean; asks: number; served: number; poorRatings: number; staleMisses: number; lastServedAt: string | null; createdAt: string }
+interface Savings { days: number; answers: number; byRoute: Record<string, number>; freeShare: number | null; modelSpendMicroUsd: number; averageModelAnswerMicroUsd: number; savedByMemoryMicroUsd: number }
+const days = Math.min(Math.max(Number(Astro.url.searchParams.get('days') ?? 7) || 7, 1), 90);
+const [answers, savings] = await Promise.all([call<Entry[]>(`/answers${Astro.url.searchParams.get('retired') === '1' ? '?retired=1' : ''}`), call<Savings>(`/savings?days=${days}`)]);
+const usd = (m: number) => `$${(m / 1_000_000).toFixed(m < 100_000 ? 4 : 2)}`;
+const ROUTE: Record<string, string> = { deterministic: 'Fixed answers from shop data', cache: 'Remembered answers', ai: 'Model (paid)', fallback: 'Without the model (budget or outage)' };
+const s = savings.ok ? savings.data : null;
+---
+<AdminLayout title="Teach Goldie" description="How Goldie answers, what it costs, and the answers she remembers." activePath="/admin/assistant">
+  <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-5xl space-y-6">
+    <p class="text-sm"><a href="/admin/assistant" class="underline font-bold">Shop assistant settings</a> · <a href="/admin/assistant/conversations" class="underline font-bold">Conversations</a></p>
+    {notice && <div role="status" class={`rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>}
+
+    {s && (
+      <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-4">
+        <div class="flex flex-wrap justify-between gap-2 items-baseline"><h2 class="text-sm font-black uppercase tracking-widest text-gray-500">Last {s.days} days</h2><p class="text-xs">{[7, 30, 90].map((d) => <a class={`ml-2 underline ${d === days ? 'font-black' : ''}`} href={`?days=${d}`}>{d} days</a>)}</p></div>
+        <div class="grid gap-4 sm:grid-cols-4">
+          <div><p class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Answers</p><p class="text-2xl font-black tabular-nums">{s.answers}</p></div>
+          <div><p class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Answered at no model cost</p><p class="text-2xl font-black tabular-nums">{s.freeShare == null ? 'no data' : `${Math.round(s.freeShare * 100)}%`}</p></div>
+          <div><p class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Model spend</p><p class="text-2xl font-black tabular-nums">{usd(s.modelSpendMicroUsd)}</p><p class="text-xs text-gray-500">about {usd(s.averageModelAnswerMicroUsd)} per paid answer</p></div>
+          <div><p class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Saved by memory</p><p class="text-2xl font-black tabular-nums text-green-700">{usd(s.savedByMemoryMicroUsd)}</p></div>
+        </div>
+        <ul class="text-sm grid gap-1 sm:grid-cols-2">{Object.entries(s.byRoute).sort((a, b) => b[1] - a[1]).map(([k, v]) => <li class="flex justify-between gap-3 border-b border-gray-100 py-1"><span>{ROUTE[k] ?? k}</span><span class="tabular-nums font-bold">{v} ({s.answers ? Math.round((v / s.answers) * 100) : 0}%)</span></li>)}</ul>
+        <p class="text-xs text-gray-600">Fixed answers come straight from the shop's systems (prices, stock, orders, delivery). Remembered answers are earlier model answers reused after their prices and stock are re-checked live. Only new or unusual questions reach the model.</p>
+      </section>
+    )}
+
+    <section class="space-y-3">
+      <div class="flex flex-wrap justify-between gap-2 items-baseline">
+        <h2 class="text-lg font-black">What Goldie remembers ({answers.ok ? answers.data.length : 0})</h2>
+        <a class="text-sm underline" href={Astro.url.searchParams.get('retired') === '1' ? '?' : '?retired=1'}>{Astro.url.searchParams.get('retired') === '1' ? 'Hide retired' : 'Show retired'}</a>
+      </div>
+      <p class="text-sm text-gray-600">Most asked first. Pin an answer you are happy with: it never expires and the model never overwrites it. Edit the wording if needed. Retire one that is wrong; two poor ratings retire an answer automatically.</p>
+      {!answers.ok && <div role="status" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{answers.message}</div>}
+      {answers.ok && answers.data.length === 0 && <p class="rounded-2xl border border-gray-200 bg-white p-5 text-sm text-gray-600">Nothing remembered yet. Answers appear here as customers ask general shopping questions.</p>}
+      {answers.ok && answers.data.map((e) => (
+        <article class={`rounded-2xl border bg-white p-4 text-sm ${e.retired ? 'opacity-60 border-gray-200' : e.pinned ? 'border-lime-400' : 'border-gray-200'}`}>
+          <p class="font-bold">“{e.question}”</p>
+          <p class="text-xs text-gray-500 mt-1">Asked {e.asks} time{e.asks === 1 ? '' : 's'} · served from memory {e.served} · {e.poorRatings} poor rating{e.poorRatings === 1 ? '' : 's'}{e.staleMisses ? ` · ${e.staleMisses} time${e.staleMisses === 1 ? '' : 's'} the shelf had changed` : ''}{e.pinned ? ' · pinned' : ''}{e.edited ? ' · edited' : ''}{e.retired ? ' · retired' : ''}</p>
+          <form method="post" class="mt-2 grid gap-2">
+            <input type="hidden" name="id" value={e.id} />
+            <label class="sr-only" for={`a-${e.id}`}>Answer</label>
+            <textarea id={`a-${e.id}`} name="answer" rows="3" maxlength="1500" class="rounded-lg border border-gray-300 px-3 py-2">{e.answer}</textarea>
+            <div class="flex flex-wrap gap-2">
+              <button name="action" value="save" class="rounded-full border border-gray-300 font-bold px-3 py-1.5">Save wording</button>
+              {e.pinned ? <button name="action" value="unpin" class="rounded-full border border-gray-300 font-bold px-3 py-1.5">Unpin</button> : <button name="action" value="pin" class="rounded-full bg-lime-500 text-black font-bold px-3 py-1.5">Pin</button>}
+              {e.retired ? <button name="action" value="restore" class="rounded-full border border-gray-300 font-bold px-3 py-1.5">Restore</button> : <button name="action" value="retire" class="rounded-full border border-gray-300 font-bold px-3 py-1.5">Retire</button>}
+              <button name="action" value="delete" class="rounded-full border border-red-200 text-red-700 font-bold px-3 py-1.5 ml-auto">Delete</button>
+            </div>
+          </form>
+        </article>
+      ))}
+    </section>
+  </div>
+</AdminLayout>

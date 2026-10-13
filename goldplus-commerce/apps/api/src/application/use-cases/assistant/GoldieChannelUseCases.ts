@@ -9,7 +9,7 @@ export interface IWhatsAppMessenger {
 
 /** Goldie's brain (the web container runs the router and the model): one turn for a channel. */
 export interface IGoldieBrain {
-  turn(input: { channel: 'whatsapp'; conversationKey: string; verifiedPhone: string; name: string | null; turns: Array<{ role: 'user' | 'assistant'; content: string }> }): Promise<(ReplyParts & { intent: string; mood: string; route: string }) | null>;
+  turn(input: { channel: 'whatsapp'; conversationKey: string; verifiedPhone: string; name: string | null; turns: Array<{ role: 'user' | 'assistant'; content: string }> }): Promise<(ReplyParts & { intent: string; mood: string; route: string; cacheId?: string | null }) | null>;
 }
 
 export interface GoldieWhatsAppSettings {
@@ -108,7 +108,7 @@ export class GoldieChannelUseCases {
       if (!phoneNumberId) { this.log('GOLDIE_WHATSAPP_NO_NUMBER_ID', {}); return 'failed'; }
       const sent = await this.whatsapp.sendText({ phoneNumberId, to: msg.from, text });
       if (!sent.ok) { this.log('GOLDIE_WHATSAPP_SEND_FAILED', { reason: sent.reason }); return 'failed'; }
-      await this.archive.logReply(filed.conversationId, text, reply.route, sent.messageId, reply.intent, reply.mood);
+      await this.archive.logReply(filed.conversationId, text, reply.route, sent.messageId, reply.intent, reply.mood, reply.cacheId ?? null);
       return 'answered';
     } catch (e) {
       this.log('GOLDIE_WHATSAPP_FAILED', { error: e instanceof Error ? e.message : String(e) });

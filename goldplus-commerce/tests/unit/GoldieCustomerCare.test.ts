@@ -141,6 +141,7 @@ function memoryStore() {
       convs.get(id)!.messageCount += 1; return true;
     },
     async update(id, p) { const c = convs.get(id)!; if (p.outcome) c.outcome = p.outcome; if (p.worstMood) c.worstMood = p.worstMood; if (p.lastTopic) c.lastTopic = p.lastTopic; if (p.firstTopic) c.firstTopic = p.firstTopic; if (p.humanUntil !== undefined) c.humanUntil = p.humanUntil; if (p.aiTurn) c.aiTurns += 1; },
+    async servedMemory() { return []; },
     async findByKey(ch, k) { return [...convs.values()].find((c) => c.channel === ch && c.channelKey === k) ?? null; },
     async get(id) { const c = convs.get(id); return c ? { conversation: c, messages: msgs.get(id)! } : null; },
     async list() { return { rows: [], total: 0 }; },

@@ -62,7 +62,7 @@ export const POST: APIRoute = async ({ request }) => {
     else if (ev.type === 'links') links = [...links, ...ev.items];
     else if (ev.type === 'error' && !text) text = 'Sorry, I could not finish that one. The team will reply to you here shortly.';
   }
-  return json({ success: true, data: { text, products, links, intent: prepared.meta.intent, mood: prepared.meta.mood.mood, route: prepared.meta.route } });
+  return json({ success: true, data: { text, products, links, intent: prepared.meta.intent, mood: prepared.meta.mood.mood, route: prepared.meta.route, cacheId: prepared.meta.cacheId ?? null } });
 };
 
 export const GET: APIRoute = () => notFound();

@@ -39,7 +39,9 @@ export interface IAssistantConversationStore {
   /** Finds or opens the conversation for this channel key, updating contact and customer when newly known. */
   open(input: { channel: ArchiveChannel; channelKey: string; customerId: string | null; page: string | null; contact?: { name?: string | null; phone?: string | null; email?: string | null } }): Promise<ArchiveConversationRow>;
   /** Files one message; false when a message with this channel message id was already filed (a redelivery). */
-  addMessage(conversationId: string, m: { role: ArchiveRole; content: string; intent?: string | null; mood?: ArchiveMood | null; route?: string | null; channelMessageId?: string | null }): Promise<boolean>;
+  addMessage(conversationId: string, m: { role: ArchiveRole; content: string; intent?: string | null; mood?: ArchiveMood | null; route?: string | null; channelMessageId?: string | null; cacheId?: string | null }): Promise<boolean>;
+  /** Answer-memory entries Goldie served in this conversation (for ratings). */
+  servedMemory(conversationId: string): Promise<string[]>;
   /** Rolls up topic, mood, outcome and counters after a turn. */
   update(conversationId: string, patch: { lastTopic?: string | null; firstTopic?: string | null; worstMood?: ArchiveMood; outcome?: ArchiveOutcome; aiTurn?: boolean; supportTicketId?: string | null; humanUntil?: Date | null; contact?: { name?: string | null; phone?: string | null; email?: string | null } }): Promise<void>;
   findByKey(channel: ArchiveChannel, channelKey: string): Promise<ArchiveConversationRow | null>;

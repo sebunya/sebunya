@@ -11,7 +11,7 @@ export interface LogTurnInput {
   page?: string | null;
   contact?: { name?: string | null; phone?: string | null; email?: string | null };
   customer: { content: string; channelMessageId?: string | null };
-  goldie?: { content: string; route?: string | null; channelMessageId?: string | null } | null;
+  goldie?: { content: string; route?: string | null; channelMessageId?: string | null; cacheId?: string | null } | null;
   intent?: string | null;
   mood?: string | null;
 }
@@ -34,7 +34,7 @@ export class ConversationArchiveUseCases {
     const intent = (input.intent ?? '').slice(0, 20) || null;
     const filed = await this.store.addMessage(conv.id, { role: 'customer', content: redact(input.customer.content), intent, mood, channelMessageId: input.customer.channelMessageId ?? null });
     if (!filed) return { conversationId: conv.id, duplicate: true, humanUntil: conv.humanUntil };
-    if (input.goldie?.content) await this.store.addMessage(conv.id, { role: 'goldie', content: redact(input.goldie.content), intent, route: input.goldie.route ?? null, channelMessageId: input.goldie.channelMessageId ?? null });
+    if (input.goldie?.content) await this.store.addMessage(conv.id, { role: 'goldie', content: redact(input.goldie.content), intent, route: input.goldie.route ?? null, channelMessageId: input.goldie.channelMessageId ?? null, cacheId: input.goldie.cacheId ?? null });
     const topic = intent && !QUIET_TOPICS.has(intent) ? intent : null;
     await this.store.update(conv.id, {
       lastTopic: topic ?? undefined,
@@ -48,12 +48,12 @@ export class ConversationArchiveUseCases {
   }
 
   /** Goldie's reply sent after the customer's message was filed (WhatsApp: the reply is produced after the inbound is stored). */
-  async logReply(conversationId: string, content: string, route: string | null, channelMessageId: string | null, intent?: string | null, mood?: string | null): Promise<void> {
+  async logReply(conversationId: string, content: string, route: string | null, channelMessageId: string | null, intent?: string | null, mood?: string | null, cacheId?: string | null): Promise<void> {
     const found = await this.store.get(conversationId);
     if (!found) return;
     const m: ArchiveMood = isMood(mood) ? mood : 'neutral';
     const topic = intent && !QUIET_TOPICS.has(intent) ? intent.slice(0, 20) : null;
-    await this.store.addMessage(conversationId, { role: 'goldie', content: redact(content), intent: intent ?? null, route, channelMessageId });
+    await this.store.addMessage(conversationId, { role: 'goldie', content: redact(content), intent: intent ?? null, route, channelMessageId, cacheId: cacheId ?? null });
     await this.store.update(conversationId, {
       aiTurn: route === 'ai', lastTopic: topic ?? undefined, firstTopic: !found.conversation.firstTopic && topic ? topic : undefined,
       worstMood: worseMood(found.conversation.worstMood, m), outcome: nextOutcome(found.conversation.outcome, { mood: m }),
@@ -90,6 +90,7 @@ export class ConversationArchiveUseCases {
   list(f: ArchiveFilters) { return this.store.list({ ...f, limit: Math.min(Math.max(f.limit, 1), 200), offset: Math.max(f.offset, 0) }); }
   get(id: string) { return this.store.get(id); }
   findByKey(channel: ArchiveChannel, key: string) { return this.store.findByKey(channel, key); }
+  servedMemory(conversationId: string) { return this.store.servedMemory(conversationId); }
   summary(from: Date, to: Date) { return this.store.summary(from, to); }
 
   /** Nightly: conversations whose last message is older than the retention period are deleted with their messages. */

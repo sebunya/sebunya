@@ -85,6 +85,38 @@ call it.
    that are refused with that reason.
 - Tests: `tests/unit/GoldieCustomerCare.test.ts`.
 
+## Low model use: answer memory and leaner calls (owner, 2026-10-13)
+
+Goal: Goldie works without Claude for almost everything, and the model is paid only for genuinely new
+questions. Order of answering, cheapest first:
+1. **Fixed answers** from shop data (router intents: orders, points, delivery, shop, payments, warranty, thanks...).
+2. **Remembered answers** (migration 0179, `assistant_answer_memory`).
+   - A paid answer to a short, general, single-turn question is remembered under a normalised key
+     (`lib/goldieAnswerMemory.ts`: synonyms folded, filler dropped, plurals folded, words sorted; no embeddings, no
+     extra dependency).
+   - Reuse needs every product the answer named to be still sellable at the same price (re-read live). Otherwise the
+     answer is stale, the model is asked, and the memory refreshes.
+   - Never remembered:
+     - personal answers (names, orders, points, actions, phone numbers or emails);
+     - answers to upset or worried customers;
+     - WhatsApp-formatted replies;
+     - long questions or instruction-like ones (so nobody can plant an answer for others).
+   - Unpinned answers expire after 7 days. Two poor ratings retire one.
+3. **The model** (Haiku 5.5, effort low): it sees the last 8 turns only. Catalogue tool results reach it as compact
+   lines (name, price, stock, sku, id, slug; this shop's products only, no URLs). That is fewer tokens, and the ids
+   `bulk_quote` needs are now present (they were missing before). Battery lookups now give the model the batteries
+   and fit labels (before, it only received the summary sentence).
+4. **Without the model** (budget reached, outage, switched off): fixed answers, remembered answers and catalogue
+   search keep working.
+
+**Teach Goldie** (`/admin/assistant/answers`):
+- The route mix (fixed / remembered / model / fallback) and the share answered at no model cost.
+- Model spend and the average cost per paid answer.
+- What memory saved.
+- Every remembered answer, most asked first, with asks, serves, stale misses and poor ratings. The team can pin
+  (never expires, never overwritten), edit, retire or delete.
+- A rating of 2 or lower counts against every remembered answer served in that chat.
+
 ## Senior care expert, Care Desk and alerts (owner, 2026-10-13)
 
 **Persona** (prompt `goldie-2026-10-13.4`): the most experienced person on the care team. Skills written in:

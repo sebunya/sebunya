@@ -9,6 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  * admission API are stubbed at their module boundaries.
  */
 const callTool = vi.fn();
+// The answer memory is its own suite (GoldieAnswerMemory); here every question is new.
+vi.mock('../../apps/web/src/lib/goldieAnswerMemory', () => ({ recall: async () => null, remember: () => undefined }));
 vi.mock('../../apps/web/src/lib/agentTools', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../apps/web/src/lib/agentTools')>();
   return { ...actual, callTool: (...a: unknown[]) => callTool(...a) };
@@ -126,7 +128,7 @@ describe('assistant engine', () => {
     const second = JSON.parse(fetchMock.mock.calls[1][1].body);
     expect(second.messages[1].content[0]).toEqual({ type: 'thinking', thinking: '', signature: 'sig_think' });
     expect(second.messages[1].content[2]).toMatchObject({ type: 'tool_use', id: 'toolu_1', name: 'search_products', input: { query: 'charger', limit: 3 } });
-    expect(second.messages[2]).toEqual({ role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: '1 product' }] });
+    expect(second.messages[2]).toEqual({ role: 'user', content: [{ type: 'tool_result', tool_use_id: 'toolu_1', content: 'GoldPlus Charger GP-C11 | UGX 65,000 | in_stock | sku GP-C11 | id 0f3a9c1e-5b7d-4e2a-9c6f-1a2b3c4d5e6f | slug goldplus-charger-gp-c11' }] });
     const done = events.at(-1) as any;
     expect(done).toMatchObject({ type: 'done', outcome: 'ANSWERED', providerRequestId: 'msg_1' });
     expect(done.usage).toEqual({ inputTokens: 240, outputTokens: 29, cacheReadTokens: 1800, cacheWriteTokens: 0 });

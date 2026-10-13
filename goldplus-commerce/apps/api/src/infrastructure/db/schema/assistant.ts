@@ -79,6 +79,7 @@ export const assistantMessages = pgTable('assistant_messages', {
   mood: varchar('mood', { length: 12 }),
   route: varchar('route', { length: 16 }),
   channelMessageId: varchar('channel_message_id', { length: 160 }),
+  cacheId: uuid('cache_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
   conversationIdx: index('assistant_messages_conversation_idx').on(t.conversationId, t.createdAt),
@@ -123,6 +124,27 @@ export const careTeamMembers = pgTable('care_team_members', {
   alertWhatsapp: boolean('alert_whatsapp').default(false).notNull(),
   onDuty: jsonb('on_duty'),
   active: boolean('active').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Goldie's answer memory (0179): paid answers reused at no model cost after a live price and stock check. */
+export const assistantAnswerMemory = pgTable('assistant_answer_memory', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  questionKey: varchar('question_key', { length: 64 }).notNull(),
+  question: text('question').notNull(),
+  answer: text('answer').notNull(),
+  intent: varchar('intent', { length: 20 }),
+  products: jsonb('products').default([]).notNull(),
+  pinned: boolean('pinned').default(false).notNull(),
+  edited: boolean('edited').default(false).notNull(),
+  retired: boolean('retired').default(false).notNull(),
+  asks: integer('asks').default(1).notNull(),
+  served: integer('served').default(0).notNull(),
+  poorRatings: integer('poor_ratings').default(0).notNull(),
+  staleMisses: integer('stale_misses').default(0).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  lastServedAt: timestamp('last_served_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });

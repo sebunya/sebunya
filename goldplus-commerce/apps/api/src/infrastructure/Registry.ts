@@ -44,6 +44,8 @@ import { CareAlertChannels, HttpGoldieBrain, WhatsAppCloudMessenger, goldieWhats
 import { CareDeskUseCases } from '../application/use-cases/assistant/CareDeskUseCases';
 import { DrizzleCareDeskRepository } from './assistant/DrizzleCareDeskRepository';
 import { NextBestActionAdvisor } from './assistant/NextBestActionAdvisor';
+import { AnswerMemoryUseCases } from '../application/use-cases/assistant/AnswerMemoryUseCases';
+import { DrizzleAnswerMemoryRepository } from './assistant/DrizzleAnswerMemoryRepository';
 import { PhoneCareReader } from './assistant/PhoneCareReader';
 import { DrizzleAssistantContextReader, DrizzleAssistantMailOutbox, ZeroPartyAssistantInterestSink } from './assistant/AssistantConversationAdapters';
 import { XlsxSpreadsheetParser } from './batteries/XlsxSpreadsheetParser';
@@ -2711,6 +2713,8 @@ export class Registry {
   public readonly captureZeroPartyDataUseCase = new CaptureZeroPartyDataUseCase(this.zpdRepo, this.measurementLogger, this.consentService);
   /** Goldie's conversation archive (0177): every channel, every message, for the admin inbox and meetings. */
   public readonly conversationArchiveUseCases = new ConversationArchiveUseCases(new DrizzleAssistantConversationStore());
+  /** Goldie's answer memory (0179): paid answers reused at no model cost while their facts still hold. */
+  public readonly answerMemoryUseCases = new AnswerMemoryUseCases(new DrizzleAnswerMemoryRepository());
   private readonly whatsappMessenger = new WhatsAppCloudMessenger(() => this.advertisingOps.whatsappAds.messagingToken());
   /** The Care Desk (0178): tasks for people, urgent alerts to the on-duty team, ratings. */
   public readonly careDeskUseCases = new CareDeskUseCases(
