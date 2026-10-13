@@ -48,10 +48,10 @@ Amazon Rufus (questions on the product page itself) and WCAG 2.2.1.
   the first sign of interest (hover, focus, touch, tap, or an inline
   question); while it loads the pill says "Opening…", and if it never arrives
   the shopper is offered WhatsApp instead of a dead button.
-- **Measured** through the nav telemetry as NBA items: `goldie:<context>`
-  impressions, taps and dismissals (`:pill` on phones, `:chip` for a teaser
-  chip, `goldie:inline:pdp` for the product page questions,
-  `goldie:cart-add` for a cart add, `goldie:launcher` as PANEL_OPEN). They show
+- **Measured** through the nav telemetry as NBA items: `goldie-<context>`
+  impressions, taps and dismissals (`-pill` on phones, `-chip` for a teaser
+  chip, `goldie-inline-pdp` for the product page questions,
+  `goldie-cart-add` for a cart add, `goldie-launcher` as PANEL_OPEN). Keys must be lowercase slugs of at most 32 characters or the server drops them (`goldieKey()`). They show
   in the admin nav report's NBA table; judge the teaser by its tap rate against
   its dismiss rate after a week.
 - Every motion respects prefers-reduced-motion.

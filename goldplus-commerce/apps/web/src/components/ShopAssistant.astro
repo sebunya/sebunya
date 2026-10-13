@@ -36,7 +36,7 @@
  * first sign of interest; only the launcher and this awareness layer ship with
  * every page. Cards with a catalogue id offer Add to cart from the chat.
  * Impressions, taps and dismissals are counted as NBA items
- * ("goldie:<context>") in the nav telemetry, so the admin nav report says
+ * ("goldie-<context>") in the nav telemetry, so the admin nav report says
  * whether it earns its place. Everything respects prefers-reduced-motion.
  */
 import { assistantEnabled } from '../lib/assistant';
@@ -252,7 +252,7 @@ const enabled = assistantEnabled();
 
 <script>
   import type { GoldiePanel, Teaser } from '../scripts/goldie-panel';
-  import { pageQuestions, productQuestions, shortProductName, todayStillOpen as stillOpen, type PageKey } from '../lib/goldieQuestions';
+  import { goldieKey, pageQuestions, productQuestions, shortProductName, todayStillOpen as stillOpen, type PageKey } from '../lib/goldieQuestions';
 
   // Only the launcher and its awareness layer ship with the page. The conversation panel
   // (../scripts/goldie-panel.ts) loads on the first sign of interest: a hover, a touch, a tap,
@@ -310,7 +310,7 @@ const enabled = assistantEnabled();
     launch.addEventListener('pointerenter', prefetch, { once: true });
     launch.addEventListener('focus', prefetch, { once: true });
     launch.addEventListener('touchstart', prefetch, { once: true, passive: true });
-    launch.addEventListener('click', () => { track(pillShown ? 'NBA_CLICK' : 'PANEL_OPEN', pillShown ? `${teaserKey}:pill` : 'goldie:launcher'); withPanel((p) => p.open()); });
+    launch.addEventListener('click', () => { track(pillShown ? 'NBA_CLICK' : 'PANEL_OPEN', pillShown ? `${teaserKey}-pill` : goldieKey('launcher')); withPanel((p) => p.open()); });
     const launchStrong = launch.querySelector<HTMLElement>('strong')!, launchSmall = launch.querySelector<HTMLElement>('small')!;
     const setPillText = (big: string, small: string) => { launchStrong.textContent = big; launchSmall.textContent = small; };
     // A tab that already has a conversation going gets the panel code early, so "Start over" and the transcript are instant.
@@ -400,13 +400,13 @@ const enabled = assistantEnabled();
     const showTeaser = () => {
       if (teaserState !== 'idle' || !panel.hidden) return;
       const t = pageTeaser(); if (!t) { teaserState = 'done'; return; }
-      activeTeaser = t; teaserKey = `goldie:${t.key}`; markTeased();
+      activeTeaser = t; teaserKey = goldieKey(t.key); markTeased();
       if (narrow.matches) {
         // Phones: the message rides in the pill; nothing floats over the content.
         teaserState = 'done'; pillShown = true;
         launch.classList.remove('gp-assistant__launch--mini'); launch.classList.add('gp-assistant__launch--msg');
         setPillText(t.pill, 'Ask Goldie'); holdOpenUntil = Date.now() + 8000;
-        track('NBA_IMPRESSION', `${teaserKey}:pill`);
+        track('NBA_IMPRESSION', `${teaserKey}-pill`);
         // The wide pill returns to its usual size after a moment so it covers nothing for long;
         // the panel keeps the full message and its questions, so nothing is lost to the timer.
         setTimeout(() => { if (panel.hidden) { launch.classList.remove('gp-assistant__launch--msg'); setPillText('Ask Goldie', 'GoldPlus shop help'); badge.hidden = false; launch.setAttribute('aria-label', 'Ask Goldie, 1 new message'); } }, 12000);
@@ -414,7 +414,7 @@ const enabled = assistantEnabled();
       }
       teaserState = 'shown';
       teaserText.textContent = t.text; teaserChips.replaceChildren();
-      for (const c of t.chips) { const b = document.createElement('button'); b.type = 'button'; b.textContent = c.label; b.setAttribute('aria-label', c.ask); b.addEventListener('click', () => askNow(c.ask, `${teaserKey}:chip`)); teaserChips.append(b); }
+      for (const c of t.chips) { const b = document.createElement('button'); b.type = 'button'; b.textContent = c.label; b.setAttribute('aria-label', c.ask); b.addEventListener('click', () => askNow(c.ask, `${teaserKey}-chip`)); teaserChips.append(b); }
       teaser.hidden = false; if (!reduced) teaser.classList.add('gp-assistant__teaser--enter');
       track('NBA_IMPRESSION', teaserKey);
       // Ignored for a minute, it folds to an unread dot; the panel still opens with the same message.
@@ -436,7 +436,7 @@ const enabled = assistantEnabled();
     // Inline "Ask Goldie" questions elsewhere on the page (AskGoldie.astro) open the panel and ask.
     document.addEventListener('gp-assistant:ask', (e) => {
       const d = (e as CustomEvent<{ question?: string; source?: string }>).detail || {};
-      if (d.question) askNow(d.question, `goldie:inline:${d.source || 'page'}`);
+      if (d.question) askNow(d.question, goldieKey('inline', d.source || 'page'));
     });
     // Hovering an inline question is interest too: fetch the panel before the tap.
     document.querySelector('.gp-askgoldie')?.addEventListener('pointerenter', prefetch, { once: true });

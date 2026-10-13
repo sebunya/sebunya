@@ -14,6 +14,15 @@
  */
 export interface GoldieQuestion { label: string; ask: string }
 
+/**
+ * A Goldie telemetry item key: 'goldie-' + parts, hyphenated. The nav telemetry accepts only a
+ * lowercase slug of up to 32 characters (NavTelemetryService.NAV_ITEM_KEY) and DROPS anything
+ * else silently; the first release used colons ('goldie:pdp') and lost every event.
+ */
+export function goldieKey(...parts: string[]): string {
+  return ['goldie', ...parts].join('-').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/-+/g, '-').replace(/-$/, '').slice(0, 32);
+}
+
 /** "GoldPlus Replacement Battery A03 CORE — fits the A03 Core" -> "Replacement Battery A03 CORE";
  *  "GoldPlus GP-P06 10000mAh Compact Power Bank, 22.5W, ..." -> "GP-P06 10000mAh Compact Power Bank". */
 export function shortProductName(name: string): string {
