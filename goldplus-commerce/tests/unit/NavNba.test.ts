@@ -137,4 +137,10 @@ describe('kampalaCutoff (fixed UTC+3, no DST)', () => {
     expect(kampalaCutoff(new Date('2026-08-10T09:00:00Z'), { closedDays: [1] }).closed).toBe(true);
     expect(kampalaCutoff(new Date('2026-08-09T09:00:00Z'), { closedDays: [1] }).closed).toBe(false);
   });
+
+  it('never claims every unit is tested (owner decision 2026-10-13); the verify tip states what is true', () => {
+    const all = JSON.stringify([true, false].flatMap((signedIn) => computeNbaCandidates({ signedIn } as never)));
+    expect(all).not.toMatch(/tested before|unit is tested/i);
+    expect(all).toContain('a code you can check');
+  });
 });
