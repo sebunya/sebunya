@@ -1,7 +1,14 @@
-# Goldie, the shop assistant (site chat)
+# Goldie, the GoldPlus personal shopper (site chat)
+
+> **Identity rule (owner, 2026-10-13).** Goldie's title is "personal shopper", shown with a lifelike
+> portrait (`apps/web/public/goldie/`) and no "AI" tag or word on screen. Because she looks like a
+> person, she must never pass as one: the panel footer says "Goldie is a virtual personal shopper, not
+> a person"; the router answers "are you a real person / a bot / who are you" itself with a fixed
+> honest reply (intent `IDENTITY`, no model call); and the system prompt forbids claiming to be human.
+> `tests/unit/GoldieIsHonestAboutBeingVirtual.test.ts` pins all three. Do not remove them.
 
 Goldie is the shop's host on every storefront page: a named, warm, plain-spoken
-voice (system prompt `goldie-2026-10-12.3` in `assistant.ts`; deterministic
+voice (system prompt `goldie-2026-10-13.1` in `assistant.ts`; deterministic
 answers in `assistantRouter.ts`). She greets by time of day, answers in one to
 three sentences, and offers the next step as an action chip (`links` events)
 beside product cards (`products` events); the model is told not to paste URLs or

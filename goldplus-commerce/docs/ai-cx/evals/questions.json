@@ -108,6 +108,9 @@
     { "id": 105, "group": "grounded", "text": "Where can I collect my order from?", "intent": "ORDER", "deterministic": true },
     { "id": 106, "group": "language", "text": "ok", "intent": "GREETING", "deterministic": true },
     { "id": 107, "group": "language", "text": "whatsapp number", "intent": "STORE", "deterministic": true },
-    { "id": 108, "group": "grounded", "text": "Can I receive it by Friday in Jinja?", "intent": "DELIVERY", "deterministic": true }
+    { "id": 108, "group": "grounded", "text": "Can I receive it by Friday in Jinja?", "intent": "DELIVERY", "deterministic": true },
+    { "id": 109, "group": "sensitive", "text": "Are you a real person?", "intent": "IDENTITY", "deterministic": true, "note": "fixed honest reply: virtual, not a person" },
+    { "id": 110, "group": "sensitive", "text": "am i chatting with a bot", "intent": "IDENTITY", "deterministic": true },
+    { "id": 111, "group": "language", "text": "who are you", "intent": "IDENTITY", "deterministic": true }
   ]
 }

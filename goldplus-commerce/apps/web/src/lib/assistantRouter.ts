@@ -11,7 +11,7 @@ import { callTool, type Json } from './agentTools';
  * The model is reserved for interpretation: trade-offs, suitability, anything
  * ambiguous. Every fact here comes from the same sources the pages render.
  */
-export type Intent = 'GREETING' | 'STORE' | 'DELIVERY' | 'PAYMENT' | 'ORDER' | 'POLICY' | 'BULK' | 'BATTERY' | 'PRODUCT' | 'UNKNOWN';
+export type Intent = 'IDENTITY' | 'GREETING' | 'STORE' | 'DELIVERY' | 'PAYMENT' | 'ORDER' | 'POLICY' | 'BULK' | 'BATTERY' | 'PRODUCT' | 'UNKNOWN';
 
 export interface Classification {
   intent: Intent;
@@ -40,6 +40,8 @@ export function classify(raw: string): Classification {
   const text = raw.trim().replace(/\s+/g, ' ');
   const t = text.toLowerCase();
   const short = t.length <= 40;
+  // "Are you a real person?": always the same honest answer, never left to the model.
+  if (/\b(are you (a |an )?(real|human|person|people|bot|robot|machine|computer|ai)|is (this|it|goldie) (a )?(real person|human|person|bot|robot|machine)|am i (talking|chatting|speaking|texting) (to|with) (a )?(real person|real|human|person|bot|robot|machine|someone)|who am i (talking|chatting|speaking) (to|with)|who are you|what are you)\b/.test(t)) return { intent: 'IDENTITY', deterministic: true, query: '' };
   if (short && /^(hi|hello|hey|yo|good (morning|afternoon|evening)|thanks|thank you|ok(ay)?|cool|sure)\b[!. ]*$/.test(t)) return { intent: 'GREETING', deterministic: true, query: '' };
   if (/\b(track|tracking|status of|where is|where's|wheres)\b[^.?]*\border\b|\border (status|number|ref|reference)\b|\bmy order\b|\bdelivered yet\b|\b(show|check|find|see|open|look up)\b[^.?]*\border\b/.test(t)) return { intent: 'ORDER', deterministic: true, query: '' };
   if (/\b(pay|payment|paid|paying|mobile money|momo|mtn|airtel|pesapal|visa|mastercard|(credit|debit|bank) ?card|card payment|(pay|paying|paid) (by|with|using) (a |my )?card|cash on delivery|refund me|my refund|refund (status|arrive|arrived|when)|pin|otp)\b/.test(t) && !/\b(refund policy|return)\b/.test(t)) return { intent: 'PAYMENT', deterministic: true, query: '' };
@@ -87,6 +89,8 @@ export async function answerDeterministically(c: Classification): Promise<Determ
   const wa: Link = { label: 'Chat on WhatsApp', url: biz.whatsappUrl };
   const link = (label: string, path: string): Link => ({ label, url: `${SITE_ORIGIN}${path}` });
   switch (c.intent) {
+    case 'IDENTITY':
+      return { intent: c.intent, text: "I'm Goldie, the GoldPlus personal shopper. I'm virtual, not a person: I answer from what is on our shelf and in our shop information. If you would rather talk to someone from the shop, they are on WhatsApp.", products: [], links: [wa] };
     case 'GREETING':
       return { intent: c.intent, text: 'Hello, you are welcome. Ask me about a product, a price, a battery for your phone, delivery or the shop, and I will check for you. For anything about an order, the Track my order page or WhatsApp is quickest.', products: [], links: [link('Browse the shop', '/shop'), link('Battery finder', '/battery-finder')] };
     case 'STORE': {

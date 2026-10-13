@@ -31,7 +31,7 @@ export const armMoves = (arm: GoldieArm) => arm === 'a';
 
 /** The pill's second line. Longest line 26 characters, so it fits the phone pill without clipping. */
 export const SUBLINE_MAX = 26;
-export const DEFAULT_SUBLINE = 'GoldPlus shop help';
+export const DEFAULT_SUBLINE = 'Your personal shopper';
 export function launcherSubline(o: { path: string; productName?: string | null; phone?: string | null; todayOpen?: boolean }): string {
   const path = o.path || '/';
   const phone = (o.phone ?? '').trim();
