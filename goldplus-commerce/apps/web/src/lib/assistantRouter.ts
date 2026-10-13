@@ -21,7 +21,11 @@ export interface Classification {
   query: string;
 }
 
-export interface ProductCard { name: string; url: string; sku: string | null; price_ugx: number | null; availability: string; image: string | null; note?: string }
+/** A product card the widget renders. `id` is the catalogue id the cart accepts; the widget shows
+ *  "Add to cart" only when it is present and the item is in stock with a price. */
+export interface ProductCard { id: string | null; name: string; url: string; sku: string | null; price_ugx: number | null; availability: string; image: string | null; category: string | null; note?: string }
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const cardId = (v: unknown): string | null => (typeof v === 'string' && UUID.test(v) ? v.toLowerCase() : null);
 export interface Link { label: string; url: string }
 export interface DeterministicAnswer { intent: Intent; text: string; products: ProductCard[]; links: Link[] }
 
@@ -74,7 +78,7 @@ function cardsFromProducts(list: unknown): ProductCard[] {
   if (!Array.isArray(list)) return [];
   return list.slice(0, 5).map((p) => {
     const x = p as Json;
-    return { name: String(x.name ?? ''), url: String(x.url ?? ''), sku: x.sku == null ? null : String(x.sku), price_ugx: x.price_ugx == null ? null : Number(x.price_ugx), availability: String(x.availability ?? ''), image: Array.isArray(x.images) && x.images[0] ? String(x.images[0]) : null };
+    return { id: cardId(x.id), name: String(x.name ?? ''), url: String(x.url ?? ''), sku: x.sku == null ? null : String(x.sku), price_ugx: x.price_ugx == null ? null : Number(x.price_ugx), availability: String(x.availability ?? ''), image: Array.isArray(x.images) && x.images[0] ? String(x.images[0]) : null, category: x.category == null ? null : String(x.category) };
   }).filter((c) => c.name && c.url.startsWith(SITE_ORIGIN));
 }
 
@@ -124,7 +128,7 @@ export async function answerDeterministically(c: Classification): Promise<Determ
         const device = (s.device as Json) ?? {};
         const results = Array.isArray(s.results) ? (s.results as Json[]) : [];
         const products: ProductCard[] = results.slice(0, 3).map((r) => ({
-          name: String(r.name ?? ''), url: `${SITE_ORIGIN}/products/${String(r.slug ?? '')}`, sku: r.canonicalCode == null ? null : String(r.canonicalCode),
+          id: cardId(r.productId), category: null, name: String(r.name ?? ''), url: `${SITE_ORIGIN}/products/${String(r.slug ?? '')}`, sku: r.canonicalCode == null ? null : String(r.canonicalCode),
           price_ugx: r.priceUgx == null ? null : Number(r.priceUgx), availability: r.inStock ? 'in_stock' : 'out_of_stock', image: r.imageUrl ? String(r.imageUrl) : null, note: String(r.fitLabel ?? ''),
         })).filter((p) => p.name);
         if (!products.length) return { intent: c.intent, text: `We have not matched a battery to the ${String(device.label ?? c.query)} yet, so I will not guess. Send us the model number on WhatsApp and we will confirm the right one.`, products: [], links };

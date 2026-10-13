@@ -14,6 +14,8 @@ import { SITE_ORIGIN } from './sitemap';
  * charged today, campaign included — the same chargedPriceUgx the page uses.
  */
 export interface AgentProduct {
+  /** The catalogue id the cart accepts (public already on /products). */
+  id: string;
   name: string;
   url: string;
   sku: string | null;
@@ -28,6 +30,7 @@ export interface AgentProduct {
 
 export function agentProduct(p: ProductPublicDto, discount: StorefrontDiscount | null): AgentProduct {
   return {
+    id: p.id,
     name: p.name,
     url: `${SITE_ORIGIN}/products/${p.slug}`,
     sku: p.sku,

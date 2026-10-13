@@ -32,6 +32,9 @@
  *    product page's buy bar;
  *  - the product page also offers two inline "Ask Goldie" questions in the
  *    content flow (AskGoldie.astro), the Rufus pattern, user-initiated.
+ * The conversation panel's code (src/scripts/goldie-panel.ts) loads on the
+ * first sign of interest; only the launcher and this awareness layer ship with
+ * every page. Cards with a catalogue id offer Add to cart from the chat.
  * Impressions, taps and dismissals are counted as NBA items
  * ("goldie:<context>") in the nav telemetry, so the admin nav report says
  * whether it earns its place. Everything respects prefers-reduced-motion.
@@ -201,8 +204,19 @@ const enabled = assistantEnabled();
   .gp-assistant__chip { display: inline-flex; align-items: center; gap: .35rem; border: 1.5px solid var(--gp-green-deep); background: #fff; color: var(--gp-green-deep); border-radius: 9999px; padding: .4rem .8rem; font-size: .78rem; font-weight: 800; text-decoration: none; min-height: 36px; transition: background .15s, color .15s; }
   .gp-assistant__chip:hover { background: var(--gp-green-deep); color: #fff; }
   .gp-assistant__cards { display: grid; gap: .5rem; margin-left: 2.3rem; max-width: 92%; }
-  .gp-assistant__card { display: grid; grid-template-columns: 60px 1fr; gap: .65rem; align-items: center; background: #fff; border: 1px solid var(--gp-line); border-radius: 1rem; padding: .55rem .65rem; text-decoration: none; color: inherit; transition: border-color .15s, transform .15s var(--gp-ease); }
-  .gp-assistant__card:hover { border-color: var(--gp-green); transform: translateY(-1px); }
+  .gp-assistant__card { background: #fff; border: 1px solid var(--gp-line); border-radius: 1rem; padding: .55rem .65rem; transition: border-color .15s; }
+  .gp-assistant__card:hover { border-color: var(--gp-green); }
+  .gp-assistant__card-link { display: grid; grid-template-columns: 60px 1fr; gap: .65rem; align-items: center; text-decoration: none; color: inherit; }
+  .gp-assistant__card-link:focus-visible { outline: 3px solid var(--gp-green); outline-offset: 2px; border-radius: .6rem; }
+  /* Add to cart sits under the facts, in line with the text column: ask, see, add, without leaving the chat. */
+  .gp-assistant__card-act { display: flex; align-items: center; gap: .5rem; margin: .5rem 0 0 calc(60px + .65rem); flex-wrap: wrap; }
+  .gp-assistant__add { display: inline-flex; align-items: center; min-height: 36px; padding: .35rem .9rem; border: 0; border-radius: 9999px; background: var(--gp-green); color: var(--gp-ink); font: inherit; font-size: .78rem; font-weight: 900; text-decoration: none; cursor: pointer; transition: transform .15s var(--gp-ease), background .15s; }
+  .gp-assistant__add:hover { transform: translateY(-1px); }
+  .gp-assistant__add[disabled] { opacity: .6; cursor: progress; transform: none; }
+  .gp-assistant__add--done { background: #fff; border: 1.5px solid var(--gp-green-deep); color: var(--gp-green-deep); }
+  .gp-assistant__add:focus-visible { outline: 3px solid var(--gp-green); outline-offset: 2px; }
+  .gp-assistant__add-note { font-size: .7rem; color: var(--gp-mute); }
+  .gp-assistant__add-note:empty { display: none; }
   .gp-assistant__card img, .gp-assistant__card .ph { width: 60px; height: 60px; object-fit: cover; border-radius: .6rem; background: #f0f0ea; }
   .gp-assistant__card b { display: block; font-size: .84rem; line-height: 1.3; font-weight: 800; }
   .gp-assistant__card .price { display: block; margin-top: .2rem; font-size: .9rem; font-weight: 900; color: var(--gp-ink); font-variant-numeric: tabular-nums; }
@@ -229,43 +243,29 @@ const enabled = assistantEnabled();
     .gp-assistant__launch--arrive, .gp-assistant__teaser--enter, .gp-assistant__teaser--enter .gp-assistant__avatar--sm, .gp-assistant__teaser--leave, .gp-assistant__launch--msg .gp-assistant__avatar--launch { animation: none; }
     .gp-assistant__launch--pending { opacity: 1; transform: none; pointer-events: auto; }
     .gp-assistant__teaser--leave { display: none; }
-    .gp-assistant__launch, .gp-assistant__send, .gp-assistant__card, .gp-assistant__launchtext { transition: none; }
+    .gp-assistant__launch, .gp-assistant__send, .gp-assistant__card, .gp-assistant__add, .gp-assistant__launchtext { transition: none; }
     .gp-assistant__typing i { opacity: .7; }
   }
 </style>
 
 <script>
-  type Turn = { role: 'user' | 'assistant'; content: string };
-  type Card = { name: string; url: string; sku: string | null; price_ugx: number | null; availability: string; image: string | null; note?: string };
-  type Chip = { label: string; url: string };
-  type Ev = { type: 'text'; text: string } | { type: 'tool'; name: string } | { type: 'products'; items: Card[] } | { type: 'links'; items: Chip[] } | { type: 'done' } | { type: 'error'; code: string; message: string };
+  import type { GoldiePanel, Teaser } from '../scripts/goldie-panel';
 
+  // Only the launcher and its awareness layer ship with the page. The conversation panel
+  // (../scripts/goldie-panel.ts) loads on the first sign of interest: a hover, a touch, a tap,
+  // or an inline "Ask Goldie" question.
   const root = document.getElementById('gp-assistant');
   if (root) {
     const endpoint = root.dataset.endpoint || '/api/assistant/chat';
     const q = <T extends Element>(sel: string) => root.querySelector<T>(sel)!;
-    const launch = q<HTMLButtonElement>('[data-launch]'), panel = q<HTMLElement>('[data-panel]'), closeBtn = q<HTMLButtonElement>('[data-close]');
-    const clearBtn = q<HTMLButtonElement>('[data-clear]'), log = q<HTMLElement>('[data-log]'), starters = q<HTMLElement>('[data-starters]');
-    const form = q<HTMLFormElement>('[data-form]'), input = q<HTMLTextAreaElement>('[data-input]'), send = q<HTMLButtonElement>('[data-send]');
+    const launch = q<HTMLButtonElement>('[data-launch]'), panel = q<HTMLElement>('[data-panel]');
     const teaser = q<HTMLElement>('[data-teaser]'), teaserText = q<HTMLElement>('[data-teaser-text]'), teaserChips = q<HTMLElement>('[data-teaser-chips]');
     const teaserOpen = q<HTMLButtonElement>('[data-teaser-open]'), teaserClose = q<HTMLButtonElement>('[data-teaser-close]'), badge = q<HTMLElement>('[data-badge]');
-    const KEY = 'gp-assistant-turns', SEEN = 'gp-assistant-seen', TEASED = 'gp-assistant-teased';
+    const SEEN = 'gp-assistant-seen', TEASED = 'gp-assistant-teased';
     const track = (type: string, itemKey: string) => { const w = window as unknown as { gpNavTrack?: (t: string, d: { itemKey: string }) => void }; try { w.gpNavTrack?.(type, { itemKey }); } catch { /* telemetry is optional */ } };
-    const SITE = location.origin;
     const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    let turns: Turn[] = [];
-    let busy = false;
-
-    try { const saved = sessionStorage.getItem(KEY); if (saved) turns = JSON.parse(saved); } catch { turns = []; }
-    const persist = () => { try { sessionStorage.setItem(KEY, JSON.stringify(turns.slice(-12))); } catch { /* private mode or blocked storage */ } };
-    const ugx = (n: number | null) => (n == null ? 'Price on request' : `UGX ${n.toLocaleString('en-UG')}`);
-    const AVAIL: Record<string, string> = { in_stock: 'In stock', low_stock: 'Low stock', out_of_stock: 'Out of stock', pre_order: 'Pre-order' };
-    const TOOL_STATUS: Record<string, string> = {
-      search_products: 'checking the shelf…', get_product: 'reading the product page…', list_categories: 'checking the categories…',
-      find_battery: 'running the battery finder…', store_info: 'checking the shop details…',
-    };
-    const newId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`);
     const hour = new Date().getHours();
+
     /** What the site already knows, so Goldie never asks twice: the phone chosen in the battery
      *  finder (a readable cookie set by the finder and the product page) and whether today's
      *  delivery run is still open (shop cutoff, Kampala time). */
@@ -283,110 +283,22 @@ const enabled = assistantEnabled();
     const DELIVERY_Q = todayStillOpen ? 'Can it come today?' : 'When can it reach me?';
     const GREETING = `${hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'}, I'm Goldie from GoldPlus. Ask me about a charger, a cable, a power bank, earphones or a battery for your phone, and I'll check the shelf for you.`;
 
-    /** Text to DOM: minimal markdown (**bold**, "- " bullets), links only to this site (anything else stays plain text). */
-    const render = (el: HTMLElement, text: string) => {
-      el.replaceChildren();
-      const clean = text.replace(/^\s*[-*]\s+/gm, '• ').replace(/^#+\s*/gm, '');
-      for (const seg of clean.split(/(\*\*[^*]+\*\*|https?:\/\/[^\s)\]>]+)/g)) {
-        if (!seg) continue;
-        if (/^\*\*[^*]+\*\*$/.test(seg)) { const b = document.createElement('strong'); b.textContent = seg.slice(2, -2); el.append(b); continue; }
-        if (/^https?:\/\//.test(seg)) {
-          const url = seg.replace(/[.,;:!?]+$/, ''), trail = seg.slice(url.length);
-          if (url.startsWith(SITE + '/') || url === SITE) {
-            const a = document.createElement('a'); a.href = url; a.rel = 'noopener';
-            const path = url.replace(SITE, '');
-            a.textContent = path.startsWith('/products/') ? 'the product page' : path.startsWith('/wa') ? 'WhatsApp' : path || 'the site';
-            el.append(a); if (trail) el.append(trail);
-          } else el.append(seg);
-          continue;
-        }
-        el.append(seg.replace(/\*/g, ''));
-      }
-    };
-    const avatar = () => { const a = document.createElement('span'); a.className = 'gp-assistant__avatar gp-assistant__avatar--sm'; a.setAttribute('aria-hidden', 'true'); a.textContent = 'G'; return a; };
-    const bubble = (kind: 'user' | 'bot' | 'error', text: string) => {
-      const row = document.createElement('div'); row.className = `gp-assistant__row gp-assistant__row--${kind === 'user' ? 'user' : 'bot'}`;
-      const el = document.createElement('div'); el.className = `gp-assistant__msg gp-assistant__msg--${kind}`;
-      if (kind === 'bot') render(el, text); else el.textContent = text;
-      if (kind !== 'user') row.append(avatar());
-      row.append(el); log.append(row); log.scrollTop = log.scrollHeight; return { row, el };
-    };
-    const typing = () => {
-      const row = document.createElement('div'); row.className = 'gp-assistant__row gp-assistant__row--bot';
-      const t = document.createElement('div'); t.className = 'gp-assistant__msg gp-assistant__msg--bot gp-assistant__typing'; t.setAttribute('aria-label', 'Goldie is typing');
-      for (let i = 0; i < 3; i += 1) t.append(document.createElement('i'));
-      row.append(avatar(), t); log.append(row);
-      const status = document.createElement('p'); status.className = 'gp-assistant__status'; status.textContent = ''; log.append(status);
-      log.scrollTop = log.scrollHeight; return { row, status };
-    };
-    const chips = (items: Chip[]) => {
-      const wrap = document.createElement('div'); wrap.className = 'gp-assistant__chips';
-      for (const it of items) {
-        const ok = it.url.startsWith(SITE + '/') || /^https:\/\/(wa\.me|maps\.google\.com|www\.google\.com\/maps|goo\.gl\/maps|maps\.app\.goo\.gl)\//.test(it.url);
-        if (!ok) continue;
-        const a = document.createElement('a'); a.className = 'gp-assistant__chip'; a.href = it.url; a.textContent = it.label;
-        if (!it.url.startsWith(SITE)) { a.target = '_blank'; a.rel = 'noopener noreferrer'; }
-        wrap.append(a);
-      }
-      if (wrap.childElementCount) { log.append(wrap); log.scrollTop = log.scrollHeight; }
-    };
-    const cards = (items: Card[]) => {
-      const wrap = document.createElement('div'); wrap.className = 'gp-assistant__cards';
-      for (const it of items) {
-        if (!it.url.startsWith(SITE + '/')) continue;
-        const card = document.createElement('a'); card.className = 'gp-assistant__card'; card.href = it.url;
-        if (it.image) { const img = document.createElement('img'); img.src = it.image; img.alt = ''; img.loading = 'lazy'; card.append(img); } else { const ph = document.createElement('div'); ph.className = 'ph'; card.append(ph); }
-        const body = document.createElement('div');
-        const b = document.createElement('b'); b.textContent = it.name; body.append(b);
-        const p = document.createElement('span'); p.className = 'price'; p.textContent = ugx(it.price_ugx); body.append(p);
-        const m = document.createElement('span'); m.className = `meta${it.availability === 'in_stock' ? ' meta--in' : ''}`; m.textContent = `${AVAIL[it.availability] ?? it.availability}${it.note ? ` · ${it.note}` : ''}`; body.append(m);
-        card.append(body); wrap.append(card);
-      }
-      if (wrap.childElementCount) { log.append(wrap); log.scrollTop = log.scrollHeight; }
-    };
-    /** The panel's opening line and starter chips. When a teaser was shown for this page, the
-     *  panel opens with that same message and its questions first, so the folded-away teaser
-     *  loses nothing (WCAG 2.2.1: a timer-free way to reach the same content). */
-    type Starter = { label: string; ask?: string; prefill?: string };
-    const DEFAULT_STARTERS: Starter[] = Array.from(starters.querySelectorAll<HTMLButtonElement>('button')).map((b) => ({ label: b.textContent || '', ask: b.dataset.starter, prefill: b.dataset.prefill }));
-    let activeTeaser: { key: string; text: string; chips: string[]; asksPhone?: boolean } | null = null;
-    const renderStarters = () => {
-      // With a known phone, the default starters name it too, so "for my phone" never sits beside "for my A12".
-      const defaults = knownPhone ? DEFAULT_STARTERS.map((st) => ({ ...st, label: st.label.replace(/my phone/i, `my ${knownPhone}`), ask: st.ask?.replace(/my phone/i, `my ${knownPhone}`) })) : DEFAULT_STARTERS;
-      const list: Starter[] = [...(activeTeaser?.chips ?? []).map((c) => ({ label: c, ask: c })), ...defaults];
-      const seen = new Set<string>(); starters.replaceChildren();
-      input.placeholder = activeTeaser?.asksPhone && !knownPhone ? 'e.g. Samsung A12 or Tecno Spark 10' : 'Type your question…';
-      for (const st of list) {
-        if (starters.childElementCount >= 4) break;
-        if (seen.has(st.label.toLowerCase())) continue; seen.add(st.label.toLowerCase());
-        const b = document.createElement('button'); b.type = 'button'; b.textContent = st.label;
-        if (st.prefill != null) b.addEventListener('click', () => { input.value = st.prefill || ''; input.focus(); input.setSelectionRange(input.value.length, input.value.length); });
-        else b.addEventListener('click', () => { void ask(st.ask || st.label); });
-        starters.append(b);
-      }
-    };
-    const paint = () => {
-      log.replaceChildren();
-      if (turns.length === 0) bubble('bot', activeTeaser ? activeTeaser.text : GREETING);
-      for (const t of turns) bubble(t.role === 'user' ? 'user' : 'bot', t.content);
-      renderStarters(); starters.hidden = turns.length > 0; clearBtn.hidden = turns.length === 0;
-    };
-
-    const open = () => {
-      hideTeaser(false); badge.hidden = true; launch.removeAttribute('aria-label'); launch.classList.remove('gp-assistant__launch--msg'); setPillText('Ask Goldie', 'GoldPlus shop help');
-      root.classList.add('gp-assistant--open'); panel.hidden = false; launch.setAttribute('aria-expanded', 'true');
-      if (!reduced) { panel.classList.add('gp-assistant__panel--enter'); panel.addEventListener('animationend', () => panel.classList.remove('gp-assistant__panel--enter'), { once: true }); }
-      try { sessionStorage.setItem(SEEN, '1'); } catch { /* ignore */ }
-      paint(); setTimeout(() => input.focus(), 60);
-    };
-    const close = () => { root.classList.remove('gp-assistant--open'); panel.hidden = true; launch.setAttribute('aria-expanded', 'false'); launch.focus(); };
-    launch.addEventListener('click', open);
-    closeBtn.addEventListener('click', close);
-    clearBtn.addEventListener('click', () => { turns = []; persist(); paint(); input.focus(); });
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !panel.hidden) close(); });
-    launch.addEventListener('click', () => track(pillShown ? 'NBA_CLICK' : 'PANEL_OPEN', pillShown ? `${teaserKey}:pill` : 'goldie:launcher'));
+    // ---- the panel, loaded once, on first interest
+    let activeTeaser: Teaser | null = null;
+    let panelP: Promise<GoldiePanel> | null = null;
+    const getPanel = () => (panelP ??= import('../scripts/goldie-panel').then((m) => m.mountGoldie(root, {
+      endpoint, reduced, knownPhone, greeting: GREETING, track, getTeaser: () => activeTeaser,
+      onOpen: () => { hideTeaser(false); badge.hidden = true; launch.removeAttribute('aria-label'); launch.classList.remove('gp-assistant__launch--msg'); setPillText('Ask Goldie', 'GoldPlus shop help'); },
+    })));
+    const prefetch = () => { void getPanel(); };
+    launch.addEventListener('pointerenter', prefetch, { once: true });
+    launch.addEventListener('focus', prefetch, { once: true });
+    launch.addEventListener('touchstart', prefetch, { once: true, passive: true });
+    launch.addEventListener('click', () => { track(pillShown ? 'NBA_CLICK' : 'PANEL_OPEN', pillShown ? `${teaserKey}:pill` : 'goldie:launcher'); void getPanel().then((p) => p.open()); });
     const launchStrong = launch.querySelector<HTMLElement>('strong')!, launchSmall = launch.querySelector<HTMLElement>('small')!;
     const setPillText = (big: string, small: string) => { launchStrong.textContent = big; launchSmall.textContent = small; };
+    // A tab that already has a conversation going gets the panel code early, so "Start over" and the transcript are instant.
+    try { if (sessionStorage.getItem('gp-assistant-turns')) prefetch(); } catch { /* ignore */ }
 
     // Arrival: out of the first paint; rises once the page has loaded and gone idle.
     launch.classList.add('gp-assistant__launch--pending');
@@ -421,9 +333,9 @@ const enabled = assistantEnabled();
     // The teaser: one message written for this page. Not on pages where a floating invitation
     // gets in the way of a task (checkout, cart, account, the finders, search and filtered lists).
     const EXCLUDED = /^\/(checkout|cart|admin|account|orders|login|logout|auth|forgot-password|consent|preferences|offline|shop|search|compare|product-finder|battery-finder|quote-request|bulk|dealers)(\/|$)/;
-    type Teaser = { key: string; text: string; pill: string; chips: string[]; asksPhone?: boolean };
+    type PageTeaser = Teaser & { pill: string };
     const my = knownPhone ? `my ${knownPhone}` : 'my phone';
-    const pageTeaser = (): Teaser | null => {
+    const pageTeaser = (): PageTeaser | null => {
       const path = location.pathname;
       if (EXCLUDED.test(path)) return null;
       // One voice per page: where the page already offers "Ask Goldie" questions in its content, the launcher stays quiet.
@@ -466,6 +378,7 @@ const enabled = assistantEnabled();
       if (reduced) finish(); else { teaser.classList.add('gp-assistant__teaser--leave'); teaser.addEventListener('animationend', finish, { once: true }); }
       if (leaveBadge && panel.hidden) { badge.hidden = false; launch.setAttribute('aria-label', 'Ask Goldie, 1 new message'); }
     }
+    const askNow = (question: string, itemKey: string) => { track('NBA_CLICK', itemKey); void getPanel().then((p) => p.ask(question)); };
     const showTeaser = () => {
       if (teaserState !== 'idle' || !panel.hidden) return;
       const t = pageTeaser(); if (!t) { teaserState = 'done'; return; }
@@ -483,13 +396,13 @@ const enabled = assistantEnabled();
       }
       teaserState = 'shown';
       teaserText.textContent = t.text; teaserChips.replaceChildren();
-      for (const c of t.chips) { const b = document.createElement('button'); b.type = 'button'; b.textContent = c; b.addEventListener('click', () => { track('NBA_CLICK', `${teaserKey}:chip`); open(); void ask(c); }); teaserChips.append(b); }
+      for (const c of t.chips) { const b = document.createElement('button'); b.type = 'button'; b.textContent = c; b.addEventListener('click', () => askNow(c, `${teaserKey}:chip`)); teaserChips.append(b); }
       teaser.hidden = false; if (!reduced) teaser.classList.add('gp-assistant__teaser--enter');
       track('NBA_IMPRESSION', teaserKey);
       // Ignored for a minute, it folds to an unread dot; the panel still opens with the same message.
       setTimeout(() => hideTeaser(true), 60000);
     };
-    teaserOpen.addEventListener('click', () => { track('NBA_CLICK', teaserKey); open(); });
+    teaserOpen.addEventListener('click', () => { track('NBA_CLICK', teaserKey); void getPanel().then((p) => p.open()); });
     teaserClose.addEventListener('click', () => { track('NBA_DISMISS', teaserKey); hideTeaser(false); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && teaserState === 'shown') hideTeaser(false); });
     if (!teasedRecently() && pageTeaser()) {
@@ -505,52 +418,9 @@ const enabled = assistantEnabled();
     // Inline "Ask Goldie" questions elsewhere on the page (AskGoldie.astro) open the panel and ask.
     document.addEventListener('gp-assistant:ask', (e) => {
       const d = (e as CustomEvent<{ question?: string; source?: string }>).detail || {};
-      if (!d.question) return; track('NBA_CLICK', `goldie:inline:${d.source || 'page'}`); open(); void ask(d.question);
+      if (d.question) askNow(d.question, `goldie:inline:${d.source || 'page'}`);
     });
-
-    const ask = async (question: string) => {
-      const text = question.trim(); if (!text || busy) return;
-      busy = true; send.disabled = true; input.value = ''; starters.hidden = true; clearBtn.hidden = false;
-      turns.push({ role: 'user', content: text }); bubble('user', text); persist();
-      const wait = typing();
-      let reply: { row: HTMLElement; el: HTMLElement } | null = null; let answer = '';
-      const ensureReply = () => { if (!reply) { wait.row.remove(); reply = bubble('bot', ''); } return reply; };
-      const requestId = newId();
-      try {
-        const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', 'X-Assistant-Request-Id': requestId }, credentials: 'same-origin', body: JSON.stringify({ messages: turns.slice(-12) }) });
-        if (!res.ok || !res.body) {
-          let msg = "I can't reach the shop right now. Try again in a moment, or message us on WhatsApp.";
-          try { msg = (await res.json()).error?.message || msg; } catch { /* keep default */ }
-          wait.row.remove(); wait.status.remove(); bubble('error', msg); turns.pop(); persist(); return;
-        }
-        const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
-        for (;;) {
-          const { done, value } = await reader.read(); if (done) break;
-          buf += dec.decode(value, { stream: true });
-          let i = buf.indexOf('\n\n');
-          while (i >= 0) {
-            const frame = buf.slice(0, i); buf = buf.slice(i + 2);
-            const data = frame.split('\n').filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trim()).join('\n');
-            if (data) {
-              let ev: Ev | null = null; try { ev = JSON.parse(data); } catch { ev = null; }
-              if (ev?.type === 'text') { answer += ev.text; render(ensureReply().el, answer); wait.status.textContent = ''; log.scrollTop = log.scrollHeight; }
-              else if (ev?.type === 'tool') { wait.status.textContent = TOOL_STATUS[ev.name] || 'checking the shop…'; }
-              else if (ev?.type === 'products') { wait.status.textContent = ''; cards(ev.items); }
-              else if (ev?.type === 'links') { chips(ev.items); }
-              else if (ev?.type === 'error') { wait.row.remove(); wait.status.remove(); if (reply && !answer) (reply as { row: HTMLElement }).row.remove(); bubble('error', ev.message); }
-            }
-            i = buf.indexOf('\n\n');
-          }
-        }
-        wait.row.remove(); wait.status.remove();
-        if (answer) { turns.push({ role: 'assistant', content: answer }); persist(); } else if (reply) (reply as { row: HTMLElement }).row.remove();
-      } catch {
-        wait.row.remove(); wait.status.remove(); if (reply && !answer) (reply as { row: HTMLElement }).row.remove(); bubble('error', 'The connection dropped. Ask me again?');
-      } finally { busy = false; send.disabled = false; input.focus(); }
-    };
-
-    form.addEventListener('submit', (e) => { e.preventDefault(); void ask(input.value); });
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void ask(input.value); } });
-    renderStarters();
+    // Hovering an inline question is interest too: fetch the panel before the tap.
+    document.querySelector('.gp-askgoldie')?.addEventListener('pointerenter', prefetch, { once: true });
   }
 </script>
