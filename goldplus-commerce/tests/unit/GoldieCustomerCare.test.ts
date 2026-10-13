@@ -298,10 +298,12 @@ describe('Goldie on Messenger and Instagram', () => {
     expect(formatSocialReply({ text: 'x'.repeat(3000) }, 'instagram').length).toBeLessThanOrEqual(SOCIAL_MAX.instagram);
   });
 
-  it('is invisible until switched on, and refuses a delivery without a valid signature', async () => {
+  it('takes no messages until switched on (the handshake works before), and refuses a delivery without a valid signature', async () => {
     const off = social({ messenger: false, instagram: false });
     expect((await off.uc.receive(delivery('page', 'hi'), sign(delivery('page', 'hi')))).status).toBe(404);
-    expect(await off.uc.verifySubscription({ mode: 'subscribe', token: 'verify-me', challenge: '42' })).toBeNull();
+    // The handshake answers before the switch: Meta must verify the callback before the channels can be connected.
+    expect(await off.uc.verifySubscription({ mode: 'subscribe', token: 'verify-me', challenge: '42' })).toBe('42');
+    expect(await off.uc.verifySubscription({ mode: 'subscribe', token: 'wrong', challenge: '42' })).toBeNull();
     const on = social();
     expect((await on.uc.receive(delivery('page', 'hi'), 'sha256=forged')).status).toBe(401);
     expect(await on.uc.verifySubscription({ mode: 'subscribe', token: 'verify-me', challenge: '42' })).toBe('42');

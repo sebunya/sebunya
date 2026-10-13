@@ -43,10 +43,11 @@ export class GoldieSocialUseCases {
     return { messenger: s.messenger ? 'on' : 'not_configured', instagram: s.instagram ? 'on' : 'not_configured' };
   }
 
-  /** Meta's webhook verification handshake (GET). */
+  /**
+   * Meta's webhook verification handshake (GET). Answered as soon as the Meta app's secrets are saved, before the
+   * channels are switched on: Meta must verify the callback before Messenger / Instagram can be connected at all.
+   */
   async verifySubscription(query: { mode?: string | null; token?: string | null; challenge?: string | null }): Promise<string | null> {
-    const s = this.settings();
-    if (!s.messenger && !s.instagram) return null;
     const sec = await this.secrets().catch(() => null);
     return sec?.verifyToken ? subscriptionChallenge(query, sec.verifyToken) : null;
   }

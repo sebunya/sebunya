@@ -1,0 +1,50 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { DEFAULT_BUSINESS_INFO } from '@goldplus/shared';
+
+/**
+ * How to have GoldPlus delete your data: the page Meta asks every app to publish (data deletion instructions URL in
+ * the goldplus Meta app), and the plain answer for anyone who asks. Accurate to how erasure works here: requests
+ * from the account's "Your data" page (0157), carried out by a person, never while an order is on its way; Goldie
+ * chats, Care Desk tasks and chat interests are included (0181).
+ */
+export const prerender = false;
+const biz = DEFAULT_BUSINESS_INFO;
+const wa = `${biz.whatsappUrl}?text=${encodeURIComponent('Hello GoldPlus, please delete my data. The phone number or email I used is: ')}`;
+---
+<BaseLayout title="Deleting your data | GoldPlus" description="How to ask GoldPlus to delete your account, your order details and your chats, including WhatsApp, Messenger and Instagram.">
+  <div class="container mx-auto max-w-3xl px-4 py-12 sm:py-16">
+    <h1 class="text-3xl font-black text-gray-900">Deleting your data</h1>
+    <p class="mt-4 text-slate-700 leading-relaxed">You can ask GoldPlus to delete the information we hold about you at any time. This page explains how, what is deleted, and what the law asks us to keep.</p>
+
+    <section class="mt-10" aria-labelledby="how">
+      <h2 id="how" class="text-xl font-black text-gray-900">How to ask</h2>
+      <ol class="mt-3 list-decimal pl-6 space-y-3 text-slate-700 leading-relaxed">
+        <li><strong>If you have a GoldPlus account:</strong> sign in and open <a class="underline font-bold" href="/account/privacy">Account &gt; Your data</a>. There you can download a copy of your data, remove your details from past orders, or ask for your account to be deleted.</li>
+        <li><strong>If you only chatted with us</strong> (on our website, WhatsApp, Facebook Messenger or Instagram) <strong>or bought without an account:</strong> <a class="underline font-bold" href={wa} rel="noopener">message us on WhatsApp</a> or call {biz.phoneDisplay}, say "Please delete my data", and give the phone number or email you used with us.</li>
+      </ol>
+      <p class="mt-3 text-slate-700">A person from our team handles every request. We may ask you to confirm the request from the same phone number or email, so that nobody else can delete your information. We confirm when it is done, within 30 days. If an order is still on its way, we finish it first.</p>
+    </section>
+
+    <section class="mt-10" aria-labelledby="what">
+      <h2 id="what" class="text-xl font-black text-gray-900">What is deleted</h2>
+      <ul class="mt-3 list-disc pl-6 space-y-2 text-slate-700 leading-relaxed">
+        <li>Your account, saved addresses and preferences, loyalty points and rewards.</li>
+        <li>Your name, phone number, email and address on past orders (the order itself stays, without your details).</li>
+        <li>Your chats with Goldie, our personal shopper, and with our team, on the website, WhatsApp, Messenger and Instagram, with any follow-up notes our team made.</li>
+        <li>The interests we noted from your chats and browsing, and your marketing choices.</li>
+      </ul>
+    </section>
+
+    <section class="mt-10" aria-labelledby="keep">
+      <h2 id="keep" class="text-xl font-black text-gray-900">What we must keep</h2>
+      <p class="mt-3 text-slate-700 leading-relaxed">Uganda's tax and accounting rules require us to keep records of sales and payments. We keep those records without your name, phone number, email or address. If you replied STOP to our WhatsApp messages, we keep only that number and the fact that you said STOP, so that we never message you on WhatsApp again.</p>
+    </section>
+
+    <section class="mt-10" aria-labelledby="meta">
+      <h2 id="meta" class="text-xl font-black text-gray-900">Facebook, Instagram and WhatsApp</h2>
+      <p class="mt-3 text-slate-700 leading-relaxed">Deleting your data at GoldPlus removes our copy. Meta keeps its own copy of messages on its apps under its own rules; you can manage that in your Facebook, Instagram or WhatsApp settings. GoldPlus does not use Facebook to sign you in.</p>
+      <p class="mt-3 text-slate-700">More about how we handle your information: <a class="underline font-bold" href="/privacy">Privacy policy</a>.</p>
+    </section>
+  </div>
+</BaseLayout>

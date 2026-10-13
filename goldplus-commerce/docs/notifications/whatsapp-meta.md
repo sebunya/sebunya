@@ -15,7 +15,7 @@ fallback when a Meta send fails; SMS is the last resort. One number, one token, 
 
 ## State on 2026-10-14 (checked in the owner's browser)
 - Business portfolio **Goldplus Ecommerce** `1783651446293515`: **no WhatsApp account, no Messaging account**.
-- Meta app **goldplus** `3149057878534050` (in Development mode) in that portfolio; also "Conversions API Application".
+- Meta app **goldplus** `3149957878534050` (in Development mode) in that portfolio; also "Conversions API Application".
 - So nothing can be sent yet. Steps 1–6 are the owner's: they create accounts, verify a phone by code and handle tokens.
 
 ## 1. Choose the number
