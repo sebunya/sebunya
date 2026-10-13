@@ -35,7 +35,7 @@ describe('assistant router: classification', () => {
       ['How do I check if my GoldPlus product is genuine?', 'POLICY', true],
       ['What happens if the item stops working?', 'POLICY', true],
       ['I have a problem with a payment or refund.', 'PAYMENT', true],
-      ['I need 50 power banks for the office', 'BULK', true],
+      ['I need 50 power banks for the office', 'BULK', false],
       ['hello', 'GREETING', true],
       ['Will this charger fast-charge my phone?', 'PRODUCT', false],
       ['battery for Infinix Hot 10', 'BATTERY', true],

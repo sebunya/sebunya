@@ -84,6 +84,13 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Site chat: this month\'s model spend against the cap, the first-four fairness policy, abuse ceilings, model and the two switches.',
   },
   {
+    label: 'Care Desk',
+    href: '/admin/care',
+    group: 'Commerce',
+    status: 'working',
+    description: 'For shop attendants and the care team: everything a customer is waiting on (urgent first), with Call, WhatsApp and Done buttons, today\'s numbers, and who gets alerts.',
+  },
+  {
     label: 'Goldie conversations',
     href: '/admin/assistant/conversations',
     group: 'Commerce',

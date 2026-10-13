@@ -1,5 +1,8 @@
 import { META_GRAPH_VERSION } from '../advertising/AdPlatforms';
 import type { IGoldieBrain, IWhatsAppMessenger, GoldieWhatsAppSettings } from '../../application/use-cases/assistant/GoldieChannelUseCases';
+import type { ICareAlertChannels } from '../../application/use-cases/assistant/CareDeskUseCases';
+import { db } from '../db/client';
+import { outboxEvents } from '../db/schema/system';
 
 /**
  * WhatsApp Cloud API: a free-form text reply inside the customer service window
@@ -26,6 +29,61 @@ export class WhatsAppCloudMessenger implements IWhatsAppMessenger {
     } catch (e) {
       return { ok: false as const, reason: e instanceof Error ? e.message.slice(0, 120) : 'unreachable' };
     }
+  }
+
+  /**
+   * An approved template message: the only kind WhatsApp allows outside the 24-hour window, so it is how a
+   * team member is paged. GOLDIE_ALERT_TEMPLATE names a template with one body variable ({{1}} = the alert).
+   */
+  async sendTemplate(input: { phoneNumberId: string; to: string; template: string; language: string; body: string }) {
+    const token = (process.env.GOLDIE_WHATSAPP_TOKEN || '').trim() || (await this.token());
+    if (!token) return { ok: false as const, reason: 'no messaging token' };
+    try {
+      const res = await this.fetchImpl(`https://graph.facebook.com/${META_GRAPH_VERSION}/${input.phoneNumberId}/messages`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messaging_product: 'whatsapp', to: input.to, type: 'template', template: { name: input.template, language: { code: input.language }, components: [{ type: 'body', parameters: [{ type: 'text', text: input.body.slice(0, 1000) }] }] } }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      return res.ok ? { ok: true as const } : { ok: false as const, reason: String(res.status) };
+    } catch (e) {
+      return { ok: false as const, reason: e instanceof Error ? e.message.slice(0, 120) : 'unreachable' };
+    }
+  }
+}
+
+const intl = (phone: string) => { const d = phone.replace(/\D/g, ''); return d.startsWith('0') ? `256${d.slice(1)}` : d; };
+const uuidOrNull = (id: string) => (/^[0-9a-f-]{36}$/i.test(id) ? id : null);
+
+/**
+ * Care Desk alerts to team members: SMS and email through the outbox (the same governance, retries and
+ * provider as every other operational message), WhatsApp through an approved template when one is set.
+ */
+export class CareAlertChannels implements ICareAlertChannels {
+  constructor(private readonly messenger: WhatsAppCloudMessenger, private readonly settings: () => GoldieWhatsAppSettings) {}
+
+  async sms(input: { to: string; message: string; key: string; taskId: string }) {
+    await db.insert(outboxEvents).values({
+      eventType: 'CARE_ALERT_SMS', payload: { recipient: input.to, message: input.message, relatedEntity: 'care_task', relatedEntityId: uuidOrNull(input.taskId) } as never,
+      idempotencyKey: input.key.slice(0, 255), status: 'pending', channel: 'sms', template: 'CARE_ALERT', dryRunOnly: false, relatedEntity: 'care_task', relatedEntityId: uuidOrNull(input.taskId),
+    }).onConflictDoNothing({ target: outboxEvents.idempotencyKey });
+    return { queued: true };
+  }
+
+  async email(input: { to: string; subject: string; text: string; html: string; key: string; taskId: string }) {
+    await db.insert(outboxEvents).values({
+      eventType: 'CARE_ALERT_EMAIL', payload: { recipient: input.to, subject: input.subject, text: input.text, html: input.html, relatedEntity: 'care_task', relatedEntityId: uuidOrNull(input.taskId) } as never,
+      idempotencyKey: input.key.slice(0, 255), status: 'pending', channel: 'email', template: 'CARE_ALERT_EMAIL', dryRunOnly: false, relatedEntity: 'care_task', relatedEntityId: uuidOrNull(input.taskId),
+    }).onConflictDoNothing({ target: outboxEvents.idempotencyKey });
+    return { queued: true };
+  }
+
+  async whatsapp(input: { to: string; message: string }) {
+    const template = (process.env.GOLDIE_ALERT_TEMPLATE || '').trim();
+    const s = this.settings();
+    if (!template || !s.phoneNumberId) return { queued: false, reason: 'WhatsApp alerts need GOLDIE_ALERT_TEMPLATE and the number id' };
+    const r = await this.messenger.sendTemplate({ phoneNumberId: s.phoneNumberId, to: intl(input.to), template, language: (process.env.GOLDIE_ALERT_TEMPLATE_LANG || 'en').trim(), body: input.message });
+    return r.ok ? { queued: true } : { queued: false, reason: r.reason };
   }
 }
 

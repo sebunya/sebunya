@@ -328,11 +328,37 @@ export function mountGoldie(root: HTMLElement, ctx: PanelContext): GoldiePanel {
       streamDone = true;
       await revealed;
       wait.row.remove(); wait.status.remove();
-      if (answer) { turns.push({ role: 'assistant', content: answer }); persist(); showTools(); } else if (reply) (reply as { row: HTMLElement }).row.remove();
+      if (answer) { turns.push({ role: 'assistant', content: answer }); persist(); showTools(); maybeAskRating(text); } else if (reply) (reply as { row: HTMLElement }).row.remove();
     } catch {
       failed = true; clearInterval(timer);
       wait.row.remove(); wait.status.remove(); if (reply && !answer) (reply as { row: HTMLElement }).row.remove(); bubble('error', 'The connection dropped. Ask me again?');
     } finally { clearInterval(timer); busy = false; send.disabled = false; if (!ctx.narrow() || document.activeElement === input) input.focus(); }
+  };
+
+  // ---- how did I do? Once per conversation: after a thank-you, or after three answers.
+  const RATED = 'gp-goldie-rated';
+  const rated = () => { try { return sessionStorage.getItem(RATED) === conversationId; } catch { return false; } };
+  const thumb = (up: boolean) => `<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"${up ? '' : ' style="transform:rotate(180deg)"'}><path d="M7 10v11H3V10h4zm0 0 4-7a2 2 0 0 1 3 2l-1 5h6a2 2 0 0 1 2 2.3l-1.4 7A2 2 0 0 1 17.6 21H7"/></svg>`;
+  const maybeAskRating = (customerText: string) => {
+    if (rated() || log.querySelector('.gp-assistant__rate')) return;
+    const answers = turns.filter((t) => t.role === 'assistant').length;
+    if (!(answers >= 3 || /\b(thank|thanks|webale|asante)\b/i.test(customerText))) return;
+    const row = document.createElement('div'); row.className = 'gp-assistant__rate'; row.setAttribute('role', 'group'); row.setAttribute('aria-label', 'Rate this chat');
+    const label = document.createElement('span'); label.textContent = 'How did I do?';
+    const send = async (score: number) => {
+      try { sessionStorage.setItem(RATED, conversationId); } catch { /* ignore */ }
+      row.replaceChildren(); const done = document.createElement('span');
+      done.textContent = score >= 4 ? 'Thank you, that means a lot to us.' : 'Thank you for telling me. I have let the team know so they can make it right.';
+      row.append(done);
+      ctx.track('NBA_CLICK', score >= 4 ? 'goldie-rate-up' : 'goldie-rate-down');
+      try { await fetch('/api/assistant/rate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin', body: JSON.stringify({ conversationId, score }) }); } catch { /* best effort */ }
+    };
+    for (const [up, score, name] of [[true, 5, 'Helpful'], [false, 1, 'Not helpful']] as const) {
+      const b = document.createElement('button'); b.type = 'button'; b.setAttribute('aria-label', name); b.innerHTML = thumb(up);
+      b.addEventListener('click', () => { void send(score); });
+      row.append(b);
+    }
+    row.prepend(label); log.append(row); log.scrollTop = log.scrollHeight;
   };
 
   // ---- keeping the chat, and passing it to the team

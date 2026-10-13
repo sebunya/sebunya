@@ -339,6 +339,18 @@ export class DefaultNotificationRouter implements INotificationRouter {
         }
         break;
       }
+      // Care Desk alerts (0178): to a team member's own phone or inbox, when Goldie opens an urgent task.
+      case 'CARE_ALERT_SMS': {
+        const recipient = typeof payload.recipient === 'string' ? payload.recipient : '';
+        const message = typeof payload.message === 'string' ? payload.message : '';
+        if (recipient && message) targets.push({ channel: 'sms', provider: this.smsProvider, payload: { recipient, template: 'CARE_ALERT', data: { message }, relatedEntity: 'care_task', relatedEntityId } });
+        break;
+      }
+      case 'CARE_ALERT_EMAIL': {
+        const recipient = typeof payload.recipient === 'string' ? payload.recipient : '';
+        if (recipient) targets.push({ channel: 'email', provider: this.emailProvider, payload: { recipient, template: 'CARE_ALERT_EMAIL', data: { subject: payload.subject, text: payload.text, html: payload.html }, relatedEntity: 'care_task', relatedEntityId } });
+        break;
+      }
       case 'GOLDIE_TRANSCRIPT': {
         const recipient = typeof payload.recipient === 'string' ? payload.recipient.trim() : '';
         if (recipient) {

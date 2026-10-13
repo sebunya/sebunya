@@ -1,0 +1,136 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../../lib/session';
+import { apiBase } from '../../../lib/api';
+import { KIND, CHANGE, waited, intl, greeting } from '../../../lib/careDeskCopy';
+
+/**
+ * The Care Desk: one screen for shop attendants and the care team. What needs
+ * a person now (urgent first, then the longest waiting), with one-tap Call,
+ * WhatsApp, Open chat, "I'll take it" and "Done". Today's numbers on top.
+ * Refreshes itself every minute. Reading needs customer_data.view; working a
+ * task needs orders.manage (the API enforces and audits both).
+ */
+export const prerender = false;
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/care', 303);
+
+const call = async <T,>(path: string, init?: RequestInit): Promise<{ ok: true; data: T } | { ok: false; message: string }> => {
+  try {
+    const res = await fetch(`${apiBase}/admin/care${path}`, { ...init, headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json', ...(init?.headers ?? {}) } });
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.success) return { ok: false, message: json?.error?.message ?? `The system answered ${res.status}.` };
+    return { ok: true, data: json.data as T };
+  } catch { return { ok: false, message: 'The system could not be reached. Try again in a moment.' }; }
+};
+
+let notice: { kind: 'success' | 'error'; text: string } | null = null;
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const id = String(form.get('id') ?? '');
+  const action = String(form.get('action') ?? '');
+  if (action === 'done' || action === 'cancel') {
+    const r = await call(`/tasks/${id}/resolve`, { method: 'POST', body: JSON.stringify({ status: action === 'done' ? 'done' : 'cancelled', resolution: String(form.get('note') ?? '').trim() || null }) });
+    notice = r.ok ? { kind: 'success', text: action === 'done' ? 'Marked done. Well done.' : 'Closed.' } : { kind: 'error', text: r.message };
+  } else if (action === 'take') {
+    const r = await call(`/tasks/${id}/assign`, { method: 'POST', body: JSON.stringify({ toMe: true }) });
+    notice = r.ok ? { kind: 'success', text: 'It is yours now.' } : { kind: 'error', text: r.message };
+  } else if (action === 'new') {
+    const r = await call('/tasks', { method: 'POST', body: JSON.stringify({ kind: String(form.get('kind') ?? 'follow_up'), title: String(form.get('title') ?? '').trim(), customerName: String(form.get('customerName') ?? '').trim() || null, customerPhone: String(form.get('customerPhone') ?? '').trim() || null, orderNumber: String(form.get('orderNumber') ?? '').trim() || null, urgent: form.get('urgent') === 'on' }) });
+    notice = r.ok ? { kind: 'success', text: 'Added to the desk.' } : { kind: 'error', text: r.message };
+  }
+}
+
+interface Task { id: string; kind: string; priority: string; title: string; detail: string | null; customerName: string | null; customerPhone: string | null; customerEmail: string | null; orderNumber: string | null; conversationId: string | null; channel: string | null; proposedAction: { type?: string; details?: string; orderStatus?: string } | null; assignedTo: string | null; openedBy: string; createdAt: string; resolvedAt: string | null; resolution: string | null }
+interface Today { openTasks: number; urgentOpen: number; callbacksOpen: number; approvalsOpen: number; bulkLeadsOpen: number; chatsToday: number; handledByGoldieToday: number; needsPersonToday: number; csatAverage: number | null; csatCount: number }
+const [tasks, today, done] = await Promise.all([call<Task[]>('/tasks?status=open'), call<Today>('/today'), call<Task[]>('/tasks?status=done&limit=8')]);
+const t = today.ok ? today.data : null;
+const handledPct = t && t.chatsToday ? Math.round((t.handledByGoldieToday / t.chatsToday) * 100) : null;
+---
+<AdminLayout title="Care Desk" description="Everything a customer is waiting on, in one place." activePath="/admin/care">
+  <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-5xl space-y-6">
+    <div class="flex flex-wrap items-baseline justify-between gap-2">
+      <h1 class="text-2xl font-black">{greeting()}. Here is what needs you.</h1>
+      <p class="text-sm"><a href="/admin/assistant/conversations" class="underline font-bold">All chats</a> · <a href="/admin/care/team" class="underline font-bold">Team and alerts</a></p>
+    </div>
+    {notice && <div role="status" class={`rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>}
+    {!tasks.ok && <div role="status" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{tasks.message}</div>}
+
+    {t && (
+      <section class="grid grid-cols-2 sm:grid-cols-4 gap-3" aria-label="Today">
+        <a href="#queue" class={`rounded-2xl p-4 border ${t.urgentOpen ? 'bg-red-600 text-white border-red-600' : 'bg-white border-gray-200'}`}><p class="text-xs font-black uppercase tracking-widest opacity-80">Urgent now</p><p class="text-3xl font-black tabular-nums">{t.urgentOpen}</p></a>
+        <div class="rounded-2xl p-4 border bg-white border-gray-200"><p class="text-xs font-black uppercase tracking-widest text-gray-500">Call backs</p><p class="text-3xl font-black tabular-nums">{t.callbacksOpen}</p></div>
+        <div class="rounded-2xl p-4 border bg-white border-gray-200"><p class="text-xs font-black uppercase tracking-widest text-gray-500">To approve</p><p class="text-3xl font-black tabular-nums">{t.approvalsOpen}</p></div>
+        <div class="rounded-2xl p-4 border bg-white border-gray-200"><p class="text-xs font-black uppercase tracking-widest text-gray-500">Bulk buyers</p><p class="text-3xl font-black tabular-nums">{t.bulkLeadsOpen}</p></div>
+        <div class="col-span-2 sm:col-span-4 rounded-2xl p-4 border bg-white border-gray-200 text-sm">
+          Today Goldie talked with <strong>{t.chatsToday}</strong> customer{t.chatsToday === 1 ? '' : 's'}{handledPct !== null && <> and settled <strong>{handledPct}%</strong> on her own</>}. <strong>{t.needsPersonToday}</strong> needed a person.
+          {t.csatCount > 0 && <> Customers rated her <strong>{(t.csatAverage ?? 0).toFixed(1)} out of 5</strong> ({t.csatCount} rating{t.csatCount === 1 ? '' : 's'}).</>}
+        </div>
+      </section>
+    )}
+
+    <section id="queue" aria-labelledby="queue-h" class="space-y-3">
+      <h2 id="queue-h" class="text-lg font-black">Waiting for a person ({tasks.ok ? tasks.data.length : 0})</h2>
+      {tasks.ok && tasks.data.length === 0 && <p class="rounded-2xl border border-green-200 bg-green-50 p-5 text-green-800 font-bold">Nothing is waiting. Goldie has it all under control.</p>}
+      {tasks.ok && tasks.data.map((k) => (
+        <article class={`rounded-2xl border bg-white p-4 shadow-sm ${k.priority === 'urgent' ? 'border-red-400 ring-2 ring-red-100' : 'border-gray-200'}`}>
+          <div class="flex flex-wrap items-center gap-2">
+            <span class={`text-xs font-black rounded-full px-2.5 py-1 ${(KIND[k.kind] ?? KIND.follow_up!).tone}`}>{(KIND[k.kind] ?? KIND.follow_up!).label}</span>
+            {k.priority === 'urgent' && k.kind !== 'urgent' && <span class="text-xs font-black rounded-full px-2.5 py-1 bg-red-600 text-white">Urgent</span>}
+            <span class="text-xs text-gray-500">{waited(k.createdAt)}{k.channel ? ` · from ${k.channel === 'whatsapp' ? 'WhatsApp' : 'the website'}` : ''}{k.openedBy.startsWith('staff') ? ' · added by staff' : ''}{k.assignedTo ? ' · someone has taken it' : ''}</span>
+          </div>
+          <p class="mt-2 font-bold text-base">{k.title}</p>
+          {k.kind === 'order_change' && k.proposedAction?.type && <p class="mt-1 text-sm"><strong>{CHANGE[k.proposedAction.type] ?? 'Change the order'}</strong>{k.proposedAction.details ? `: ${k.proposedAction.details}` : ''}{k.proposedAction.orderStatus ? ` (order is ${k.proposedAction.orderStatus.replace(/_/g, ' ')})` : ''}. Call the customer to confirm, make the change in the order, then mark done.</p>}
+          {k.detail && <details class="mt-1 text-sm text-gray-700"><summary class="cursor-pointer font-bold">More</summary><p class="whitespace-pre-wrap mt-1">{k.detail}</p></details>}
+          <p class="mt-2 text-sm">{k.customerName ?? 'Customer'}{k.customerPhone && <> · <span class="tabular-nums">{k.customerPhone}</span></>}{k.customerEmail && <> · {k.customerEmail}</>}{k.orderNumber && <> · Order <a class="underline font-bold" href={`/admin/orders?search=${encodeURIComponent(k.orderNumber)}`}>{k.orderNumber}</a></>}</p>
+          <div class="mt-3 flex flex-wrap gap-2 text-sm">
+            {k.customerPhone && <a href={`tel:+${intl(k.customerPhone)}`} class="rounded-full bg-brand-dark text-white font-bold px-4 py-2">Call</a>}
+            {k.customerPhone && <a href={`https://wa.me/${intl(k.customerPhone)}`} target="_blank" rel="noopener noreferrer" class="rounded-full border-2 border-green-700 text-green-800 font-bold px-4 py-2">WhatsApp</a>}
+            {k.customerEmail && <a href={`mailto:${k.customerEmail}`} class="rounded-full border border-gray-300 font-bold px-4 py-2">Email</a>}
+            {k.conversationId && <a href={`/admin/assistant/conversations/${k.conversationId}`} class="rounded-full border border-gray-300 font-bold px-4 py-2">Read the chat</a>}
+            {!k.assignedTo && <form method="post"><input type="hidden" name="id" value={k.id} /><input type="hidden" name="action" value="take" /><button class="rounded-full border border-gray-300 font-bold px-4 py-2">I'll take it</button></form>}
+          </div>
+          <form method="post" class="mt-3 flex flex-wrap gap-2 items-center text-sm">
+            <input type="hidden" name="id" value={k.id} />
+            <label class="sr-only" for={`note-${k.id}`}>What did you do?</label>
+            <input id={`note-${k.id}`} name="note" placeholder="What did you do? (optional)" class="flex-1 min-w-[12rem] rounded-full border border-gray-300 px-4 py-2" />
+            <button name="action" value="done" class="rounded-full bg-green-700 text-white font-bold px-4 py-2">Done</button>
+            <button name="action" value="cancel" class="rounded-full border border-gray-300 font-bold px-3 py-2 text-gray-600">Not needed</button>
+          </form>
+        </article>
+      ))}
+    </section>
+
+    <details class="rounded-2xl border border-gray-200 bg-white p-4">
+      <summary class="font-black cursor-pointer">Add something to the desk</summary>
+      <form method="post" class="mt-3 grid gap-3 sm:grid-cols-2 text-sm">
+        <input type="hidden" name="action" value="new" />
+        <label class="grid gap-1 sm:col-span-2"><span class="font-bold">What needs doing?</span><input name="title" required minlength="3" maxlength="200" class="rounded-lg border border-gray-300 px-3 py-2" placeholder="e.g. Call Mary about the Tecno battery" /></label>
+        <label class="grid gap-1"><span class="font-bold">Kind</span><select name="kind" class="rounded-lg border border-gray-300 px-2 py-2">{Object.entries(KIND).map(([key, v]) => <option value={key} selected={key === 'follow_up'}>{v.label}</option>)}</select></label>
+        <label class="grid gap-1"><span class="font-bold">Customer name</span><input name="customerName" class="rounded-lg border border-gray-300 px-3 py-2" /></label>
+        <label class="grid gap-1"><span class="font-bold">Customer phone</span><input name="customerPhone" type="tel" class="rounded-lg border border-gray-300 px-3 py-2" /></label>
+        <label class="grid gap-1"><span class="font-bold">Order number</span><input name="orderNumber" class="rounded-lg border border-gray-300 px-3 py-2" placeholder="GP-..." /></label>
+        <label class="flex items-center gap-2 font-bold"><input type="checkbox" name="urgent" /> Urgent (alerts the team now)</label>
+        <button class="justify-self-start rounded-full bg-brand-dark text-white font-bold px-4 py-2">Add</button>
+      </form>
+    </details>
+
+    <p class="text-xs text-gray-500">This page refreshes itself every minute, except while you are typing.</p>
+    {done.ok && done.data.length > 0 && (
+      <section class="rounded-2xl border border-gray-200 bg-white p-4 text-sm">
+        <h2 class="font-black mb-2">Recently done</h2>
+        <ul class="divide-y divide-gray-100">{done.data.map((k) => <li class="py-2"><span class="font-bold">{k.title}</span>{k.resolution && <span class="text-gray-600"> · {k.resolution}</span>}<span class="text-gray-400"> · {k.resolvedAt ? waited(k.resolvedAt) : ''}</span></li>)}</ul>
+      </section>
+    )}
+  </div>
+</AdminLayout>
+
+<script>
+  // Fresh every minute, but never while someone is typing a note or a form is half filled.
+  setInterval(() => {
+    const el = document.activeElement as HTMLElement | null;
+    const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT');
+    const filled = Array.from(document.querySelectorAll<HTMLInputElement>('input[name="note"], input[name="title"]')).some((i) => i.value.trim());
+    if (!typing && !filled && document.visibilityState === 'visible') location.reload();
+  }, 60_000);
+</script>

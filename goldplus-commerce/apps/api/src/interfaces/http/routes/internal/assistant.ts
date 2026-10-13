@@ -70,6 +70,7 @@ const shopper = z.object({
   visitToken: z.string().max(600).nullable().optional(),
   userId: z.string().uuid().nullable().optional(),
   fpClientId: z.string().max(255).nullable().optional(),
+  verifiedPhone: z.string().regex(/^\d{9,15}$/).nullable().optional(),
 });
 
 async function shopperKey(input: z.infer<typeof shopper>) {
@@ -77,7 +78,7 @@ async function shopperKey(input: z.infer<typeof shopper>) {
   if (input.visitToken) {
     try { profileId = (await Registry.getInstance().resolveExperienceProfileUseCase.execute(input.visitToken, 'read'))?.id ?? null; } catch { profileId = null; }
   }
-  return { profileId, userId: input.userId ?? null, fpClientId: input.fpClientId ?? null };
+  return { profileId, userId: input.userId ?? null, fpClientId: input.fpClientId ?? null, verifiedPhone: input.verifiedPhone ?? null };
 }
 
 routes.post('/context', async (c) => {
@@ -111,6 +112,15 @@ routes.post('/handover', async (c) => {
   if (out.ok && parsed.data.conversationId) {
     await Registry.getInstance().conversationArchiveUseCases.markHandover('web', parsed.data.conversationId, {
       ticketId: out.ticketId, customerId: parsed.data.userId ?? null, contact: { name: parsed.data.name ?? null, phone: parsed.data.phone ?? null, email: parsed.data.email ?? null },
+    }).catch(() => undefined);
+  }
+  if (out.ok) {
+    // One queue for the team: every handover is also a Care Desk task.
+    const conv = parsed.data.conversationId ? await Registry.getInstance().conversationArchiveUseCases.findByKey('web', parsed.data.conversationId).catch(() => null) : null;
+    await Registry.getInstance().careDeskUseCases.openTask({
+      kind: 'follow_up', title: parsed.data.note ? `Asked for the team: ${parsed.data.note}` : 'Asked Goldie to pass the chat to the team',
+      customerName: parsed.data.name ?? null, customerPhone: parsed.data.phone ?? null, customerEmail: parsed.data.email ?? null,
+      conversationId: conv?.id ?? null, channel: 'web',
     }).catch(() => undefined);
   }
   return out.ok ? ok(c, out) : bad(c, out.code, out.message);
@@ -172,6 +182,40 @@ routes.post('/care-by-phone', async (c) => {
     };
   }
   return ok(c, { orders, loyalty, hasAccount: !!userId });
+});
+
+// ---- Care Desk (0178): tasks Goldie opens from a chat (callback, order problem, order change, bulk lead, urgent).
+routes.post('/care-task', async (c) => {
+  const parsed = z.object({
+    kind: z.enum(['callback', 'follow_up', 'order_change', 'order_problem', 'bulk_lead', 'urgent']),
+    title: z.string().min(3).max(300), detail: z.string().max(4000).nullable().optional(),
+    customerName: z.string().max(120).nullable().optional(), customerPhone: z.string().max(40).nullable().optional(), customerEmail: z.string().max(200).nullable().optional(),
+    orderNumber: z.string().max(40).nullable().optional(),
+    channel: z.enum(['web', 'whatsapp']), conversationKey: z.string().max(128).nullable().optional(),
+    mood: z.string().max(12).nullable().optional(), urgent: z.boolean().optional(), units: z.number().int().min(0).max(1_000_000).nullable().optional(),
+    proposedAction: z.record(z.unknown()).nullable().optional(), dueAt: z.string().datetime().nullable().optional(),
+  }).safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return bad(c, 'INVALID_BODY', parsed.error.issues[0]?.message ?? 'Invalid body.');
+  const d = parsed.data;
+  const registry = Registry.getInstance();
+  const conv = d.conversationKey ? await registry.conversationArchiveUseCases.findByKey(d.channel, d.conversationKey).catch(() => null) : null;
+  const out = await registry.careDeskUseCases.openTask({ ...d, conversationId: conv?.id ?? null, dueAt: d.dueAt ? new Date(d.dueAt) : null });
+  if (!out.ok) return bad(c, out.code, out.message);
+  // A task a person must act on puts the conversation with the team (a bulk lead stays Goldie's to nurture).
+  if (conv && d.kind !== 'bulk_lead') await registry.conversationArchiveUseCases.markHandover(d.channel, conv.channelKey, { ticketId: null, contact: { name: d.customerName ?? null, phone: d.customerPhone ?? null, email: d.customerEmail ?? null } }).catch(() => undefined);
+  return ok(c, { taskId: out.task.id, created: out.created, priority: out.task.priority, alerted: out.alerted.length });
+});
+
+routes.post('/csat', async (c) => {
+  const parsed = z.object({ conversationKey: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/), score: z.number().int().min(1).max(5), comment: z.string().max(500).nullable().optional() }).safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return bad(c, 'INVALID_BODY', 'Send a score from 1 to 5.');
+  const registry = Registry.getInstance();
+  const conv = await registry.conversationArchiveUseCases.findByKey('web', parsed.data.conversationKey);
+  if (!conv) return bad(c, 'NOT_FOUND', 'No such conversation.', 404);
+  await registry.careDeskUseCases.rate(conv.id, parsed.data.score, parsed.data.comment ?? null);
+  // A poor rating is a customer to win back: it goes on the desk.
+  if (parsed.data.score <= 2) await registry.careDeskUseCases.openTask({ kind: 'follow_up', title: `Rated the chat ${parsed.data.score}/5${parsed.data.comment ? `: ${parsed.data.comment}` : ''}`, conversationId: conv.id, channel: 'web', customerName: conv.contactName, customerPhone: conv.contactPhone, customerEmail: conv.contactEmail, mood: 'upset' }).catch(() => undefined);
+  return ok(c, { rated: true });
 });
 
 export default routes;

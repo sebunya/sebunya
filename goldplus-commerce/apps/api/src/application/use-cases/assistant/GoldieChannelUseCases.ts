@@ -1,4 +1,5 @@
 import { formatWhatsAppReply, whatsappKey, type InboundText, type ReplyParts } from '../../../domain/assistant/WhatsAppGoldie';
+import { closesMatter, isAbusive, silenceFor } from '../../../domain/assistant/CareDesk';
 import type { ConversationArchiveUseCases } from './ConversationArchiveUseCases';
 
 /** Sends a free-form WhatsApp message inside the 24-hour customer service window. */
@@ -39,7 +40,16 @@ export class GoldieChannelUseCases {
     private readonly settings: () => GoldieWhatsAppSettings,
     private readonly log: (event: string, detail: Record<string, unknown>) => void = () => {},
     private readonly now: () => Date = () => new Date(),
+    /** Team members' own numbers: their WhatsApp messages to the shop never get a Goldie reply. */
+    private readonly staffNumbers: () => Promise<string[]> = async () => [],
   ) {}
+  private staffCache: { at: number; numbers: string[] } = { at: 0, numbers: [] };
+  private async staff(): Promise<string[]> {
+    if (this.now().getTime() - this.staffCache.at < 5 * 60_000) return this.staffCache.numbers;
+    const numbers = await this.staffNumbers().catch(() => this.staffCache.numbers);
+    this.staffCache = { at: this.now().getTime(), numbers };
+    return numbers;
+  }
 
   status(): { whatsapp: 'on' | 'not_configured'; rollout: 'everyone' | 'test_numbers' } {
     const s = this.settings();
@@ -59,9 +69,28 @@ export class GoldieChannelUseCases {
         customer: { content: msg.text, channelMessageId: msg.messageId },
       });
       if (filed.duplicate) return 'duplicate';
-      if (filed.humanUntil && filed.humanUntil.getTime() > this.now().getTime()) return 'filed';
 
       const thread = await this.archive.get(filed.conversationId);
+      // When not to answer: a colleague has it, the matter is settled and this is "ok 👍", the same text pasted
+      // again and again, a stream of abuse, or a team member's own number. Filed either way, never lost.
+      const t = this.now().getTime();
+      const customerLines = (thread?.messages ?? []).filter((m) => m.role === 'customer');
+      const lastGoldie = [...(thread?.messages ?? [])].reverse().find((m) => m.role === 'goldie' || m.role === 'team');
+      const silence = silenceFor({
+        text: msg.text,
+        teamHasIt: !!(filed.humanUntil && filed.humanUntil.getTime() > t),
+        fromStaff: (await this.staff()).includes(msg.from),
+        lastGoldieClosed: !!lastGoldie && closesMatter(lastGoldie.content),
+        sameTextRecently: customerLines.filter((m) => m.content.trim().toLowerCase() === msg.text.trim().toLowerCase() && t - m.createdAt.getTime() < 10 * 60_000).length,
+        abuseRecently: customerLines.filter((m) => isAbusive(m.content) && t - m.createdAt.getTime() < 3600_000).length,
+      });
+      if (silence) {
+        // "ok, thanks" after a settled answer is the customer closing it: file it as resolved (never over a handover).
+        if (silence === 'ACK_AFTER_CLOSE' && thread && !['handed_over', 'needs_human'].includes(thread.conversation.outcome)) await this.archive.setOutcome(filed.conversationId, 'resolved');
+        this.log('GOLDIE_WHATSAPP_SILENT', { conversationId: filed.conversationId, reason: silence });
+        return 'filed';
+      }
+
       const turns = (thread?.messages ?? [])
         .filter((m) => m.role === 'customer' || m.role === 'goldie')
         .slice(-HISTORY)

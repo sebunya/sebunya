@@ -120,7 +120,8 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
     // spend, policy, kill switch; docs/ai-cx, 2026-10-12).
     // 185: +2 for Goldie's conversation archive (admin/assistant/conversations
     // list with the meeting summary, and conversations/[id] thread, 2026-10-13).
-    expect(adminPages).toHaveLength(185);
+    // 187: +2 for the Care Desk (admin/care and admin/care/team, 2026-10-13).
+    expect(adminPages).toHaveLength(187);
     expect(adminPages[0]).toBe('apps/web/src/pages/admin/advertising.astro');
     expect(adminPages.at(-1)).toBe('apps/web/src/pages/admin/verification/index.astro');
   });
@@ -138,7 +139,7 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
 
   it('fails closed for every non-allowlisted admin Astro page', () => {
     const protectedPages = adminPages.filter((page) => !publicAllowlist.includes(page as typeof publicAllowlist[number]));
-    expect(protectedPages).toHaveLength(184); // +2 Goldie conversations list and thread (2026-10-13)
+    expect(protectedPages).toHaveLength(186); // +2 Goldie conversations list and thread (2026-10-13)
     for (const page of protectedPages) {
       const source = read(page);
       expect(source, `${page} must use the server-side session contract`).toContain('readSessionToken(Astro.request)');

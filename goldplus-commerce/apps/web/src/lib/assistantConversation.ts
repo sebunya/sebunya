@@ -7,7 +7,7 @@ import type { ShopperContext } from './assistant';
  * API's internal routes (internal key added by lib/api's fetch patch); the
  * user id comes only from this server's session check, never from the browser.
  */
-export interface ShopperIdentity { visitToken: string | null; userId: string | null; fpClientId: string | null }
+export interface ShopperIdentity { visitToken: string | null; userId: string | null; fpClientId: string | null; verifiedPhone?: string | null }
 
 type Result<T> = { ok: true; data: T } | { ok: false; status: number; code: string; message: string };
 
@@ -25,7 +25,7 @@ async function call<T>(path: string, body: unknown, timeoutMs: number): Promise<
 
 /** Null when nothing could be read; callers then treat the shopper as new. Kept short: it sits in front of an answer. */
 export async function shopperContext(who: ShopperIdentity, timeoutMs = 900): Promise<ShopperContext | null> {
-  if (!who.visitToken && !who.userId && !who.fpClientId) return null;
+  if (!who.visitToken && !who.userId && !who.fpClientId && !who.verifiedPhone) return null;
   const r = await call<ShopperContext>('/context', who, timeoutMs);
   return r.ok ? r.data : null;
 }

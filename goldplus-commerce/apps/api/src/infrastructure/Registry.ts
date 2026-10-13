@@ -40,7 +40,11 @@ import { AssistantConversationUseCases } from '../application/use-cases/assistan
 import { ConversationArchiveUseCases } from '../application/use-cases/assistant/ConversationArchiveUseCases';
 import { DrizzleAssistantConversationStore } from './assistant/DrizzleAssistantConversationStore';
 import { GoldieChannelUseCases } from '../application/use-cases/assistant/GoldieChannelUseCases';
-import { HttpGoldieBrain, WhatsAppCloudMessenger, goldieWhatsAppSettings } from './assistant/GoldieChannelAdapters';
+import { CareAlertChannels, HttpGoldieBrain, WhatsAppCloudMessenger, goldieWhatsAppSettings } from './assistant/GoldieChannelAdapters';
+import { CareDeskUseCases } from '../application/use-cases/assistant/CareDeskUseCases';
+import { DrizzleCareDeskRepository } from './assistant/DrizzleCareDeskRepository';
+import { NextBestActionAdvisor } from './assistant/NextBestActionAdvisor';
+import { PhoneCareReader } from './assistant/PhoneCareReader';
 import { DrizzleAssistantContextReader, DrizzleAssistantMailOutbox, ZeroPartyAssistantInterestSink } from './assistant/AssistantConversationAdapters';
 import { XlsxSpreadsheetParser } from './batteries/XlsxSpreadsheetParser';
 import { BatteryCatalogueUseCases } from '../application/use-cases/batteries/BatteryCatalogueUseCases';
@@ -2707,13 +2711,22 @@ export class Registry {
   public readonly captureZeroPartyDataUseCase = new CaptureZeroPartyDataUseCase(this.zpdRepo, this.measurementLogger, this.consentService);
   /** Goldie's conversation archive (0177): every channel, every message, for the admin inbox and meetings. */
   public readonly conversationArchiveUseCases = new ConversationArchiveUseCases(new DrizzleAssistantConversationStore());
+  private readonly whatsappMessenger = new WhatsAppCloudMessenger(() => this.advertisingOps.whatsappAds.messagingToken());
+  /** The Care Desk (0178): tasks for people, urgent alerts to the on-duty team, ratings. */
+  public readonly careDeskUseCases = new CareDeskUseCases(
+    new DrizzleCareDeskRepository(),
+    new CareAlertChannels(this.whatsappMessenger, () => goldieWhatsAppSettings()),
+    { deskUrl: `${(process.env.PUBLIC_WEB_BASE_URL || 'https://shopgoldplus.com').replace(/\/+$/, '')}/admin/care` },
+  );
   /** Goldie on WhatsApp (and the admin inbox's team replies). Off until GOLDIE_WHATSAPP_ENABLED=true. */
   public readonly goldieChannelUseCases = new GoldieChannelUseCases(
     this.conversationArchiveUseCases,
     new HttpGoldieBrain(),
-    new WhatsAppCloudMessenger(() => this.advertisingOps.whatsappAds.messagingToken()),
+    this.whatsappMessenger,
     () => goldieWhatsAppSettings(),
     (event, detail) => logger.warn(detail, event),
+    () => new Date(),
+    () => this.careDeskUseCases.staffNumbers(),
   );
   private readonly goldieListensToWhatsApp = (() => {
     // Each customer message is handled on its own, after Meta has been answered.
@@ -2732,6 +2745,9 @@ export class Registry {
       const site = (process.env.PUBLIC_WEB_BASE_URL || 'https://shopgoldplus.com').replace(/\/+$/, '');
       return { siteUrl: site, whatsappUrl: `https://wa.me/${DEFAULT_BUSINESS_INFO.whatsappNumber}`, supportInboxUrl: `${site}/admin/support` };
     })(),
+    () => new Date(),
+    new NextBestActionAdvisor((input) => this.decideNextBestActionUseCase.execute(input) as never),
+    (phone) => new PhoneCareReader().verifiedUserId(phone),
   );
 
   public readonly planGtmMeasurementChangesUseCase = new PlanGtmMeasurementChangesUseCase(this.gtmRepo, this.gtmPlanRepo, this.gtmPlanBuilder);

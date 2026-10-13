@@ -4,7 +4,7 @@ import { renderHandoverMail, renderTranscriptMail, type TranscriptTurn } from '.
 import type { ISupportRepository } from '../../ports/ISupportRepository';
 import type {
   AssistantInterest, AssistantShopperContext, AssistantShopperKey,
-  IAssistantContextReader, IAssistantInterestSink, IAssistantMailOutbox,
+  IAssistantContextReader, IAssistantInterestSink, IAssistantMailOutbox, INextBestActionAdvisor,
 } from '../../ports/IAssistantConversationPorts';
 import { isValidEmail, isValidUgandanPhone, normalizeEmail, normalizePhone, text } from '../../services/validationHelpers';
 
@@ -35,12 +35,23 @@ export class AssistantConversationUseCases {
     private readonly interests: IAssistantInterestSink,
     private readonly config: AssistantConversationConfig,
     private readonly now: () => Date = () => new Date(),
+    private readonly nba: INextBestActionAdvisor | null = null,
+    /** WhatsApp: the account whose verified phone this is, if exactly one. */
+    private readonly userForPhone: (phone: string) => Promise<string | null> = async () => null,
   ) {}
 
   /** Never throws: a shopper with no history, or a failed read, is simply a new shopper. */
   async context(key: AssistantShopperKey): Promise<AssistantShopperContext> {
-    if (!key.profileId && !key.userId && !key.fpClientId) return EMPTY_CONTEXT;
-    try { return await this.contextReader.read(key); } catch { return EMPTY_CONTEXT; }
+    let k = key;
+    if (!k.userId && k.verifiedPhone) k = { ...k, userId: await this.userForPhone(k.verifiedPhone).catch(() => null) };
+    if (!k.profileId && !k.userId && !k.fpClientId) return EMPTY_CONTEXT;
+    try {
+      const [ctx, nextBestAction] = await Promise.all([
+        this.contextReader.read(k),
+        k.userId && this.nba ? this.nba.forCustomer(k.userId).catch(() => null) : Promise.resolve(null),
+      ]);
+      return { ...ctx, nextBestAction };
+    } catch { return EMPTY_CONTEXT; }
   }
 
   async recordInterest(key: AssistantShopperKey, interest: AssistantInterest): Promise<boolean> {

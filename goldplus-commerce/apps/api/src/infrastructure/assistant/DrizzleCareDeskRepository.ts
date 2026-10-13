@@ -1,0 +1,115 @@
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { db } from '../db/client';
+import { assistantConversations, careTasks, careTeamMembers } from '../db/schema/assistant';
+import type { CareTaskRow, CareTeamMemberRow, ICareDeskRepository, NewCareTask } from '../../application/ports/ICareDeskRepository';
+import type { CareDeskToday, CarePriority, CareStatus, CareTaskKind, OnDuty } from '../../domain/assistant/CareDesk';
+
+type T = typeof careTasks.$inferSelect;
+type M = typeof careTeamMembers.$inferSelect;
+const task = (r: T): CareTaskRow => ({
+  id: r.id, kind: r.kind as CareTaskKind, priority: r.priority as CarePriority, status: r.status as CareStatus, title: r.title, detail: r.detail,
+  customerName: r.customerName, customerPhone: r.customerPhone, customerEmail: r.customerEmail, orderNumber: r.orderNumber,
+  conversationId: r.conversationId, channel: r.channel, proposedAction: (r.proposedAction as Record<string, unknown> | null) ?? null,
+  dueAt: r.dueAt, assignedTo: r.assignedTo, openedBy: r.openedBy, resolvedBy: r.resolvedBy, resolution: r.resolution,
+  alertedAt: r.alertedAt, resolvedAt: r.resolvedAt, createdAt: r.createdAt,
+});
+const member = (r: M): CareTeamMemberRow => ({ id: r.id, name: r.name, roleLabel: r.roleLabel, phone: r.phone, email: r.email, alertSms: r.alertSms, alertEmail: r.alertEmail, alertWhatsapp: r.alertWhatsapp, onDuty: (r.onDuty as OnDuty | null) ?? null, active: r.active });
+const rowsOf = (r: unknown): Array<Record<string, unknown>> => (Array.isArray(r) ? r : (r as { rows?: unknown[] })?.rows ?? []) as Array<Record<string, unknown>>;
+const PRIORITY_ORDER = sql`case ${careTasks.priority} when 'urgent' then 0 when 'high' then 1 else 2 end`;
+
+export class DrizzleCareDeskRepository implements ICareDeskRepository {
+  async open(t: NewCareTask): Promise<{ task: CareTaskRow; created: boolean }> {
+    if (t.conversationId) {
+      const [existing] = await db.select().from(careTasks).where(and(eq(careTasks.conversationId, t.conversationId), eq(careTasks.kind, t.kind), eq(careTasks.status, 'open'))).limit(1);
+      if (existing) {
+        // The customer said more: keep the newest detail and raise the priority if it went up.
+        const rank = (p: string) => (p === 'urgent' ? 0 : p === 'high' ? 1 : 2);
+        const set: Record<string, unknown> = {};
+        if (t.detail) set.detail = t.detail;
+        if (rank(t.priority) < rank(existing.priority)) set.priority = t.priority;
+        if (Object.keys(set).length) await db.update(careTasks).set(set).where(eq(careTasks.id, existing.id));
+        return { task: task({ ...existing, ...(set as Partial<T>) }), created: false };
+      }
+    }
+    const [row] = await db.insert(careTasks).values({
+      kind: t.kind, priority: t.priority, title: t.title, detail: t.detail, customerName: t.customerName, customerPhone: t.customerPhone, customerEmail: t.customerEmail,
+      orderNumber: t.orderNumber, conversationId: t.conversationId, channel: t.channel, proposedAction: t.proposedAction as never, dueAt: t.dueAt, openedBy: t.openedBy,
+    }).returning();
+    return { task: task(row!), created: true };
+  }
+
+  async get(id: string) { const [r] = await db.select().from(careTasks).where(eq(careTasks.id, id)).limit(1); return r ? task(r) : null; }
+
+  async list(f: { status?: CareStatus; kind?: CareTaskKind; limit: number }) {
+    const where = [f.status ? eq(careTasks.status, f.status) : undefined, f.kind ? eq(careTasks.kind, f.kind) : undefined].filter(Boolean) as ReturnType<typeof eq>[];
+    const rows = await db.select().from(careTasks).where(where.length ? and(...where) : undefined)
+      .orderBy(...(f.status === 'open' ? [asc(PRIORITY_ORDER), asc(careTasks.createdAt)] : [desc(careTasks.resolvedAt), desc(careTasks.createdAt)])).limit(f.limit);
+    return rows.map(task);
+  }
+
+  async resolve(id: string, input: { status: 'done' | 'cancelled'; resolvedBy: string; resolution: string | null }) {
+    const r = await db.update(careTasks).set({ status: input.status, resolvedBy: /^[0-9a-f-]{36}$/i.test(input.resolvedBy) ? input.resolvedBy : null, resolution: input.resolution, resolvedAt: sql`now()` })
+      .where(and(eq(careTasks.id, id), eq(careTasks.status, 'open'))).returning({ id: careTasks.id });
+    return r.length > 0;
+  }
+
+  async assign(id: string, userId: string | null) {
+    const r = await db.update(careTasks).set({ assignedTo: userId }).where(eq(careTasks.id, id)).returning({ id: careTasks.id });
+    return r.length > 0;
+  }
+
+  async markAlerted(id: string) { if (/^[0-9a-f-]{36}$/i.test(id)) await db.update(careTasks).set({ alertedAt: sql`now()` }).where(eq(careTasks.id, id)); }
+
+  async team(activeOnly: boolean) {
+    const rows = await db.select().from(careTeamMembers).where(activeOnly ? eq(careTeamMembers.active, true) : undefined).orderBy(asc(careTeamMembers.name));
+    return rows.map(member);
+  }
+
+  async saveMember(m: Omit<CareTeamMemberRow, 'id'> & { id?: string | null }) {
+    const values = { name: m.name, roleLabel: m.roleLabel, phone: m.phone, email: m.email, alertSms: m.alertSms, alertEmail: m.alertEmail, alertWhatsapp: m.alertWhatsapp, onDuty: m.onDuty as never, active: m.active };
+    if (m.id) {
+      const [r] = await db.update(careTeamMembers).set({ ...values, updatedAt: sql`now()` }).where(eq(careTeamMembers.id, m.id)).returning();
+      if (r) return member(r);
+    }
+    const [r] = await db.insert(careTeamMembers).values(values).returning();
+    return member(r!);
+  }
+
+  async removeMember(id: string) { const r = await db.delete(careTeamMembers).where(eq(careTeamMembers.id, id)).returning({ id: careTeamMembers.id }); return r.length > 0; }
+
+  async staffNumbers() {
+    const rows = await db.select({ phone: careTeamMembers.phone }).from(careTeamMembers).where(eq(careTeamMembers.active, true));
+    return rows.map((r) => (r.phone ?? '').replace(/\D/g, '')).filter((d) => d.length >= 9).map((d) => (d.startsWith('0') ? `256${d.slice(1)}` : d));
+  }
+
+  async today(since: Date): Promise<CareDeskToday> {
+    const [t] = rowsOf(await db.execute(sql`select
+        count(*) filter (where status = 'open')::int as open_tasks,
+        count(*) filter (where status = 'open' and priority = 'urgent')::int as urgent_open,
+        count(*) filter (where status = 'open' and kind = 'callback')::int as callbacks_open,
+        count(*) filter (where status = 'open' and kind = 'order_change')::int as approvals_open,
+        count(*) filter (where status = 'open' and kind = 'bulk_lead')::int as bulk_open
+      from care_tasks`));
+    const [c] = rowsOf(await db.execute(sql`select
+        count(*)::int as chats,
+        count(*) filter (where outcome in ('open', 'resolved'))::int as by_goldie,
+        count(*) filter (where outcome in ('needs_human', 'handed_over'))::int as needs_person,
+        avg(csat)::float8 as csat_avg,
+        count(csat)::int as csat_count
+      from assistant_conversations where last_message_at >= ${since}`));
+    return {
+      openTasks: Number(t?.open_tasks ?? 0), urgentOpen: Number(t?.urgent_open ?? 0), callbacksOpen: Number(t?.callbacks_open ?? 0), approvalsOpen: Number(t?.approvals_open ?? 0), bulkLeadsOpen: Number(t?.bulk_open ?? 0),
+      chatsToday: Number(c?.chats ?? 0), handledByGoldieToday: Number(c?.by_goldie ?? 0), needsPersonToday: Number(c?.needs_person ?? 0),
+      csatAverage: c?.csat_avg == null ? null : Number(c.csat_avg), csatCount: Number(c?.csat_count ?? 0),
+    };
+  }
+
+  async rate(conversationId: string, score: number, comment: string | null) {
+    const r = await db.update(assistantConversations).set({ csat: score, csatComment: comment }).where(eq(assistantConversations.id, conversationId)).returning({ id: assistantConversations.id });
+    return r.length > 0;
+  }
+
+  async setNextAction(conversationId: string, action: string | null) {
+    await db.update(assistantConversations).set({ nextAction: action }).where(eq(assistantConversations.id, conversationId));
+  }
+}

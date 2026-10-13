@@ -16,6 +16,13 @@ export interface AssistantShopperContext {
   recentlyViewed: string[];
   /** What they asked Goldie about before (short topics, newest first, at most 3). */
   pastTopics: string[];
+  /** The next-best action the Customer DNA engine chose for them (RESUME_CART, LOYALTY_ACTION, ...), or null. */
+  nextBestAction?: string | null;
+}
+
+/** The Customer DNA next-best-action engine, asked on the customer's behalf (service context, not marketing). */
+export interface INextBestActionAdvisor {
+  forCustomer(userId: string): Promise<string | null>;
 }
 
 export interface AssistantShopperKey {
@@ -25,6 +32,8 @@ export interface AssistantShopperKey {
   userId: string | null;
   /** First-party analytics id (_fp_cid), used for consent and zero-party signals. */
   fpClientId: string | null;
+  /** WhatsApp: the sender's Meta-verified number (international digits); resolves to an account with that verified phone. */
+  verifiedPhone?: string | null;
 }
 
 export interface IAssistantContextReader {

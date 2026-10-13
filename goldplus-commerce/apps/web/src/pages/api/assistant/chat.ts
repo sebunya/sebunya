@@ -83,7 +83,7 @@ export const POST: APIRoute = async ({ request, clientAddress, cookies, locals }
   const prepared = await prepareTurn({
     channel: 'web', turns, requestId, page,
     principalHash: principalHash({ userId, visitToken: who.visitToken, address }), addressHash: addressHash(address), who,
-    care: { bearer: userId ? readSessionToken(request) : null, clientAddress: address === 'unknown' ? null : address, site: SITE_ORIGIN },
+    care: { bearer: userId ? readSessionToken(request) : null, clientAddress: address === 'unknown' ? null : address, site: SITE_ORIGIN, channel: 'web', conversationKey: archiveKey },
     apiKey: String(process.env.ANTHROPIC_API_KEY), signal: request.signal,
   });
   if (prepared.kind === 'refused') {

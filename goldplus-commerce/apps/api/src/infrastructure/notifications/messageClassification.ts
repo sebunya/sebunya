@@ -32,6 +32,9 @@ const OPERATIONAL_TEMPLATES = new Set([
   'ADMIN_ORDER_EMAIL',
   // A shopper asked Goldie to pass their chat to the team: to the shop's own inbox only.
   'GOLDIE_HANDOVER',
+  // Care Desk alerts (0178): to the shop's own team members, never to a customer.
+  'CARE_ALERT',
+  'CARE_ALERT_EMAIL',
   // The paid-order alert (0143): to the shop's own fulfilment phone, so that a
   // paid order is never sitting unnoticed. Never to a customer.
   'FULFILMENT_PAID_ORDER_ALERT',

@@ -39,7 +39,7 @@ const pick = <T,>(options: readonly T[], seed: string): T => {
 /** What the customer is after, in their terms, for the intents the router answers itself. */
 const NEED: Record<string, string> = {
   ORDER: 'your order', PAYMENT: 'your payment', POLICY: 'this', DELIVERY: 'getting it to you', BATTERY: 'the right battery',
-  PRODUCT: 'finding the right one', BULK: 'your bulk order', STORE: 'finding us', LOYALTY: 'your points', IDENTITY: '', GREETING: '', UNKNOWN: '',
+  PRODUCT: 'finding the right one', BULK: 'your bulk order', STORE: 'finding us', LOYALTY: 'your points', CALLBACK: '', IDENTITY: '', GREETING: '', UNKNOWN: '',
 };
 
 /**

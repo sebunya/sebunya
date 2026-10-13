@@ -60,6 +60,9 @@ export const assistantConversations = pgTable('assistant_conversations', {
   messageCount: integer('message_count').default(0).notNull(),
   aiTurns: integer('ai_turns').default(0).notNull(),
   humanUntil: timestamp('human_until', { withTimezone: true }),
+  csat: integer('csat'),
+  csatComment: text('csat_comment'),
+  nextAction: varchar('next_action', { length: 40 }),
   startedAt: timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
   lastMessageAt: timestamp('last_message_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
@@ -80,3 +83,46 @@ export const assistantMessages = pgTable('assistant_messages', {
 }, (t) => ({
   conversationIdx: index('assistant_messages_conversation_idx').on(t.conversationId, t.createdAt),
 }));
+
+/** The Care Desk (0178): what a person must do, opened by Goldie or staff. */
+export const careTasks = pgTable('care_tasks', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  kind: varchar('kind', { length: 20 }).notNull(),
+  priority: varchar('priority', { length: 10 }).default('normal').notNull(),
+  status: varchar('status', { length: 12 }).default('open').notNull(),
+  title: varchar('title', { length: 200 }).notNull(),
+  detail: text('detail'),
+  customerName: varchar('customer_name', { length: 120 }),
+  customerPhone: varchar('customer_phone', { length: 32 }),
+  customerEmail: varchar('customer_email', { length: 200 }),
+  orderNumber: varchar('order_number', { length: 40 }),
+  conversationId: uuid('conversation_id'),
+  channel: varchar('channel', { length: 20 }),
+  proposedAction: jsonb('proposed_action'),
+  dueAt: timestamp('due_at', { withTimezone: true }),
+  assignedTo: uuid('assigned_to'),
+  openedBy: varchar('opened_by', { length: 40 }).default('goldie').notNull(),
+  resolvedBy: uuid('resolved_by'),
+  resolution: text('resolution'),
+  alertedAt: timestamp('alerted_at', { withTimezone: true }),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  openIdx: index('care_tasks_open_idx').on(t.status, t.priority, t.createdAt),
+}));
+
+/** Who gets Care Desk alerts, how, and when they are on duty (0178). */
+export const careTeamMembers = pgTable('care_team_members', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  name: varchar('name', { length: 80 }).notNull(),
+  roleLabel: varchar('role_label', { length: 60 }),
+  phone: varchar('phone', { length: 32 }),
+  email: varchar('email', { length: 200 }),
+  alertSms: boolean('alert_sms').default(true).notNull(),
+  alertEmail: boolean('alert_email').default(true).notNull(),
+  alertWhatsapp: boolean('alert_whatsapp').default(false).notNull(),
+  onDuty: jsonb('on_duty'),
+  active: boolean('active').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});

@@ -54,6 +54,13 @@ const fallbackAnswer = async (classified: Classification): Promise<Deterministic
   return { intent: classified.intent, text: products.length ? `${SOFT_LIMIT_TEXT} Here is what matched in the catalogue:` : SOFT_LIMIT_TEXT, products, links: base?.links ?? [] };
 };
 
+/** A number given after Goldie asked which number the team should call is the same callback request. */
+export function isCallbackFollowUp(turns: readonly ChatTurn[]): boolean {
+  const last = turns[turns.length - 1]?.content ?? '';
+  const prev = turns.length >= 2 ? turns[turns.length - 2] : undefined;
+  return !!prev && prev.role === 'assistant' && /which number should the team call/i.test(prev.content) && /(?:\+?256|0)\s?7\d{2}[\s-]?\d{3}[\s-]?\d{3}/.test(last) && last.length <= 80;
+}
+
 /** A reply to Goldie's own "which order / what phone" question is the same order request, answered from the order system. */
 export function isOrderFollowUp(turns: readonly ChatTurn[]): boolean {
   const last = turns[turns.length - 1]?.content ?? '';
@@ -67,8 +74,10 @@ export function isOrderFollowUp(turns: readonly ChatTurn[]): boolean {
 export async function prepareTurn(input: TurnInput): Promise<PreparedTurn> {
   const last = input.turns[input.turns.length - 1]!.content;
   const mood = readMood(last);
+  input = { ...input, care: { ...input.care, channel: input.channel, mood: mood.mood } };
   let classified = classify(last);
   if (isOrderFollowUp(input.turns)) classified = { intent: 'ORDER', deterministic: true, query: '' };
+  else if (isCallbackFollowUp(input.turns)) classified = { intent: 'CALLBACK', deterministic: true, query: '' };
   const clarify = classified.intent === 'UNKNOWN' || classified.intent === 'PRODUCT' ? clarifyFirst(last, classified.intent) : null;
   const wantsAi = !classified.deterministic && !clarify;
 

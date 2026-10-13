@@ -20,6 +20,7 @@ import webhookRoutes from './routes/webhooks';
 import internalLighthouseRoutes from './routes/internal/lighthouse';
 import internalAssistantRoutes from './routes/internal/assistant';
 import adminAssistantRoutes from './routes/admin/assistant';
+import adminCareRoutes from './routes/admin/care';
 import accountRoutes from './routes/account';
 import adminAuditRoutes from './routes/admin/audit';
 import adminUsersRoutes from './routes/admin/users';
@@ -236,6 +237,7 @@ app.route('/internal/lighthouse', internalLighthouseRoutes);
 // Shop assistant: admission + spend ledger for the web container (internal key), and its admin surface.
 app.route('/internal/assistant', internalAssistantRoutes);
 app.route('/admin/assistant', adminAssistantRoutes);
+app.route('/admin/care', adminCareRoutes);
 app.route('/account', accountRoutes);
 app.route('/admin/audit', adminAuditRoutes);
 app.route('/admin/users', adminUsersRoutes);
@@ -481,6 +483,7 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/internal/lighthouse',
   '/internal/assistant',
   '/admin/assistant',
+  '/admin/care',
 ] as const;
 
 registerMountedPrefixes(MOUNTED_API_PREFIXES);

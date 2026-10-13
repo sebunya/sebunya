@@ -85,8 +85,72 @@ call it.
    that are refused with that reason.
 - Tests: `tests/unit/GoldieCustomerCare.test.ts`.
 
+## Senior care expert, Care Desk and alerts (owner, 2026-10-13)
+
+**Persona** (prompt `goldie-2026-10-13.4`): the most experienced person on the care team. Skills written in:
+ownership, honest expectations, de-escalation, recovery, follow-through, closing well. Ugandan warmth ("You are most
+welcome", "Thank you for choosing GoldPlus", "You have chosen well" only when true). A banned list of machine phrases
+("As an AI", "I'd be happy to", "Rest assured", ...). Honesty is kept: if a customer sincerely asks whether she is a
+person, she says she is virtual and that a person is one message away.
+
+**Acts, not just answers** (`lib/goldieCare.ts`):
+- `request_callback`: a call task (a fixed router path too: "call me" asks for the number, then books it).
+- `escalate_to_team`: a follow-up, or urgent (pages the on-duty team).
+- `report_order_problem`: a verified order problem.
+- `request_order_change`: a verified change request on the desk (see "Order actions" below).
+- `bulk_quote`: files a real bulk quote (`POST /quotes/bulk`) from the products and quantities the customer
+  confirmed, and puts a bulk-lead task on the desk (50 units or more is high priority). Bulk messages that name items
+  and numbers go to the model; vague ones get "which items and how many".
+
+**Next best action**: for a signed-in customer (or a WhatsApp number that is an account's verified phone) the
+Customer DNA engine is asked once per 6 hours (`NextBestActionAdvisor`, actor `system:goldie`, no activation
+channel because the customer started the chat). The result reaches the model as a one-line hint, never a script.
+
+**When not to answer** (`CareDesk.silenceFor`, WhatsApp):
+- Goldie stays quiet when a colleague has the conversation, on "ok/thanks/👍" after a settled answer (the chat is
+  filed as resolved), on emoji-only messages, on the same text three times in 10 minutes, after three abusive messages
+  in an hour, and on team members' own numbers.
+- Every message is still filed with the reason.
+- On the website she always answers; "thanks" gets a warm one-line close.
+
+**Ratings**: once per conversation (after a thank-you or three answers) the panel asks "How did I do?". A rating of
+2 or lower opens a follow-up task to win the customer back. The average is on the Care Desk.
+
+**Care Desk** (`/admin/care`, migration 0178):
+- For shop attendants, in plain words: urgent count, callbacks, approvals, bulk buyers, today's chats and the share
+  Goldie settled, the rating.
+- The queue shows urgent first, then the longest waiting, each with Call, WhatsApp, Email, Read the chat, "I'll take
+  it", Done (with a note) and Not needed. Staff can add a task. The page refreshes every minute, except while someone
+  is typing.
+- Every handover from the website panel is also a task, so there is one queue.
+- Permissions: reading needs `customer_data.view`, working needs `orders.manage`, the team list needs `settings.manage`.
+  All changes are audited.
+
+**Alerts** (`/admin/care/team`):
+- Team members: name, role, phone, email, channels (SMS, email, WhatsApp), on-duty days and hours in Kampala time.
+- Urgent tasks page everyone on duty, once per task; if nobody is on duty, everyone active.
+- SMS and email go through the outbox (`CARE_ALERT_SMS`, `CARE_ALERT_EMAIL`, operational).
+- WhatsApp needs an approved template: set `GOLDIE_ALERT_TEMPLATE` (one body variable) and, optionally,
+  `GOLDIE_ALERT_TEMPLATE_LANG`.
+- "Send a test alert" pages everyone active.
+
+**Order actions without a person** (owner's instruction; written, NOT wired):
+- `GoldieOrderActionsUseCases` holds the policy:
+  - cancel any order not yet with the rider;
+  - refund Pesapal payments in full on cancellation, up to `GOLDIE_REFUND_CAP_UGX` (default UGX 300,000), through the
+    refund ledger and audit with Goldie's actor id `601d1e00-0000-4000-8000-000000000001`;
+  - over the cap, or paid offline: cancelled, and the refund goes to the desk as urgent;
+  - refund a failed delivery;
+  - write rider instructions on the order;
+  - never refund faulty items unseen (warranty needs the item).
+- Policy tests: `tests/unit/GoldieCareDesk.test.ts`.
+- Wiring it to the live state machine and refund ledger was stopped by Claude Code's real-world-transaction safety
+  check, so it needs the owner's explicit go-ahead (or the owner's own commit). Until then `request_order_change`
+  files the change on the Care Desk and Goldie tells the customer the team will confirm.
+- Tests: `tests/unit/GoldieCareDesk.test.ts`, `tests/integration/GoldieCareDesk.integration.test.ts`.
+
 Goldie is the shop's host on every storefront page: a named, warm, plain-spoken
-voice (system prompt `goldie-2026-10-13.3` in `assistant.ts`; deterministic
+voice (system prompt `goldie-2026-10-13.4` in `assistant.ts`; deterministic
 answers in `assistantRouter.ts`). She greets by time of day, answers in one to
 three sentences, and offers the next step as an action chip (`links` events)
 beside product cards (`products` events); the model is told not to paste URLs or
