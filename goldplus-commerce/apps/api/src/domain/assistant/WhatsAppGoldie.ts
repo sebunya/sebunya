@@ -152,7 +152,7 @@ export function optOutWord(text: string): 'STOP' | 'START' | null {
  * shop can act on.
  */
 export interface AccountEvent { field: string; event: string; subject: string | null; detail: string | null; bad: boolean }
-const BAD_EVENTS = new Set(['REJECTED', 'PAUSED', 'DISABLED', 'FLAGGED', 'DOWNGRADE', 'PENDING_DELETION', 'ACCOUNT_RESTRICTION', 'ACCOUNT_VIOLATION', 'DISABLED_UPDATE', 'ACCOUNT_DELETED', 'RED']);
+const BAD_EVENTS = new Set(['CATEGORY_MARKETING', 'REJECTED', 'PAUSED', 'DISABLED', 'FLAGGED', 'DOWNGRADE', 'PENDING_DELETION', 'ACCOUNT_RESTRICTION', 'ACCOUNT_VIOLATION', 'DISABLED_UPDATE', 'ACCOUNT_DELETED', 'RED']);
 export function parseAccountEvents(payload: unknown, wabaId: string): AccountEvent[] {
   const out: AccountEvent[] = [];
   const p = payload as { object?: unknown; entry?: unknown } | null;
@@ -163,7 +163,7 @@ export function parseAccountEvents(payload: unknown, wabaId: string): AccountEve
       const field = String(change?.field ?? '');
       if (!field || field === 'messages') continue;
       const v = change?.value ?? {};
-      const event = String(v?.event ?? v?.new_quality_score ?? v?.current_limit ?? v?.ban_info?.waba_ban_state ?? 'UPDATE').toUpperCase().slice(0, 40);
+      const event = String(v?.event ?? (v?.new_category ? `CATEGORY_${v.new_category}` : null) ?? v?.new_quality_score ?? v?.current_limit ?? v?.ban_info?.waba_ban_state ?? 'UPDATE').toUpperCase().slice(0, 40);
       const subject = String(v?.message_template_name ?? v?.display_phone_number ?? v?.phone_number ?? '').slice(0, 120) || null;
       const detail = String(v?.reason ?? v?.violation_info?.violation_type ?? v?.restriction_info?.[0]?.restriction_type ?? v?.current_limit ?? '').slice(0, 200) || null;
       const quality = String(v?.new_quality_score ?? '').toUpperCase();

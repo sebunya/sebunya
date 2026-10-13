@@ -43,7 +43,8 @@ import { renderTeamReplyMail } from '../domain/assistant/ChatTranscript';
 import { QualityReviewUseCases } from '../application/use-cases/assistant/QualityReviewUseCases';
 import { DrizzleQualityReviewRepository } from './assistant/DrizzleQualityReviewRepository';
 import { GoldieChannelUseCases } from '../application/use-cases/assistant/GoldieChannelUseCases';
-import { CareAlertChannels, HttpGoldieBrain, MetaSocialMessenger, WhatsAppCloudMessenger, goldieSocialSettings, goldieWhatsAppSettings, whatsAppOptOutStore } from './assistant/GoldieChannelAdapters';
+import { CareAlertChannels, HttpGoldieBrain, MetaSocialMessenger, WhatsAppCloudMessenger, goldieSocialSettings, goldieWhatsAppSettings } from './assistant/GoldieChannelAdapters';
+import { whatsAppDeliveryStore } from './notifications/whatsapp/WhatsAppDeliveryStore';
 import { CareDeskUseCases } from '../application/use-cases/assistant/CareDeskUseCases';
 import { DrizzleCareDeskRepository } from './assistant/DrizzleCareDeskRepository';
 import { NextBestActionAdvisor } from './assistant/NextBestActionAdvisor';
@@ -1058,7 +1059,9 @@ export class Registry {
   public readonly zohoWhatsAppAdapter = new ZohoWhatsAppAdapter();
   public readonly whatsappAdapter = new FailoverWhatsAppProvider(
     new MetaWhatsAppAdapter(this.whatsappTemplateCatalog, () => this.advertisingOps.whatsappAds.messagingToken(), fetch, {
-      isOptedOut: (phone) => whatsAppOptOutStore.isOptedOut(phone),
+      blockReason: (phone) => whatsAppDeliveryStore.blockReason(phone),
+      onSent: (messageId, payload) => { void whatsAppDeliveryStore.rememberSent(messageId, payload).catch(() => undefined); },
+      onUndeliverable: (phone, ref) => { void whatsAppDeliveryStore.markNotOnWhatsApp(phone, ref).catch(() => undefined); },
       onOutcome: (outcome, cls) => {
         goldieMetrics.templateSends.inc({ outcome, class: cls ?? 'none' });
         // A refused token or a blocked account stops every customer WhatsApp message: page the team.
@@ -1066,15 +1069,39 @@ export class Registry {
       },
     }),
     this.zohoWhatsAppAdapter,
-    (phone) => whatsAppOptOutStore.isOptedOut(phone),
+    (phone) => whatsAppDeliveryStore.blockReason(phone),
   );
   private readonly whatsappAlertedAt = new Map<string, number>();
-  /** One urgent Care Desk task per WhatsApp problem per hour (it pages the alert lines by SMS). */
+  /**
+   * One urgent Care Desk task per WhatsApp problem per hour (it pages the alert lines by SMS). Checked in memory
+   * first, then against the desk itself, so two api replicas or a restart do not page twice.
+   */
   whatsappNeedsAttention(key: string, text: string): void {
     const now = Date.now();
     if (now - (this.whatsappAlertedAt.get(key) ?? 0) < 3600_000) return;
     this.whatsappAlertedAt.set(key, now);
-    void this.careDeskUseCases.openTask({ kind: 'urgent', title: `WhatsApp needs attention: ${text}`.slice(0, 200), openedBy: 'whatsapp-monitor', urgent: true }).catch(() => undefined);
+    const title = `WhatsApp needs attention: ${text}`.slice(0, 200);
+    void (async () => {
+      const open = await this.careDeskUseCases.list({ status: 'open', kind: 'urgent', limit: 100 });
+      if (open.some((t) => t.title === title && now - t.createdAt.getTime() < 3600_000)) return;
+      await this.careDeskUseCases.openTask({ kind: 'urgent', title, openedBy: 'whatsapp-monitor', urgent: true });
+    })().catch(() => undefined);
+  }
+
+  /**
+   * Meta could not deliver a customer update (failed receipt): recorded as FAILED, and the same update goes by SMS
+   * once (within 24 hours of sending). "Not on WhatsApp" also skips WhatsApp for that number for 30 days.
+   */
+  private async whatsappDeliveryFailed(r: { messageId: string; errorCode: number | null; errorTitle: string | null }): Promise<void> {
+    await markWhatsAppDeliveryFailed(r.messageId, `WhatsApp delivery failed (Meta${r.errorCode !== null ? ` ${r.errorCode}` : ''}${r.errorTitle ? `: ${r.errorTitle}` : ''}); sent by SMS instead.`);
+    const payload = await whatsAppDeliveryStore.takeForSmsFallback(r.messageId);
+    if (!payload) return;
+    const digits = payload.recipient.replace(/\D/g, '');
+    const e164 = `+${digits.startsWith('0') ? `256${digits.slice(1)}` : digits}`;
+    if (r.errorCode === 131026) await whatsAppDeliveryStore.markNotOnWhatsApp(e164, r.messageId).catch(() => undefined);
+    const result = await this.smsAdapter.dispatch(payload);
+    await this.recordNotificationAttemptUseCase.execute({ channel: 'sms', recipient: payload.recipient, template: payload.template, status: result.status, providerCode: result.providerCode, providerMessage: `${result.providerMessage} (after WhatsApp could not deliver)`.slice(0, 1000), relatedEntity: payload.relatedEntity, relatedEntityId: payload.relatedEntityId });
+    goldieMetrics.deliveryReceipts.inc({ status: 'sms_fallback' });
   }
   public readonly zeptoMailAdapter = new ZeptoMailAdapter();
   public readonly smsAdapter = process.env.SMS_PROVIDER === 'pahappa_comms'
@@ -2750,7 +2777,7 @@ export class Registry {
   /** The Care Desk (0178): tasks for people, urgent alerts to the on-duty team, ratings. */
   public readonly careDeskUseCases = new CareDeskUseCases(
     new DrizzleCareDeskRepository(),
-    new CareAlertChannels(this.whatsappMessenger, () => goldieWhatsAppSettings()),
+    new CareAlertChannels(this.whatsappMessenger, () => goldieWhatsAppSettings(), (name) => this.whatsappTemplateCatalog.approved(name)),
     { deskUrl: `${(process.env.PUBLIC_WEB_BASE_URL || 'https://shopgoldplus.com').replace(/\/+$/, '')}/admin/care`, alertsPerHour: Math.max(1, Number(process.env.CARE_ALERTS_PER_HOUR ?? 12) || 12),
       // Before the team is set up, urgent customers page the shop's own order inboxes and phone.
       fallback: { emails: String(process.env.ADMIN_ORDER_NOTIFICATION_EMAILS ?? '').split(',').map((e) => e.trim()).filter((e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)).slice(0, 5), phone: `+${DEFAULT_BUSINESS_INFO.whatsappNumber}` } },
@@ -2773,7 +2800,7 @@ export class Registry {
       return id !== null;
     },
     (conversation, text) => this.goldieSocialUseCases.teamReply(conversation, text),
-    whatsAppOptOutStore,
+    whatsAppDeliveryStore,
   );
   /** Goldie on Facebook Messenger and Instagram Direct. Off until GOLDIE_MESSENGER_ENABLED / GOLDIE_INSTAGRAM_ENABLED and a page token. */
   public readonly goldieSocialUseCases = new GoldieSocialUseCases(
@@ -2805,7 +2832,7 @@ export class Registry {
     this.advertisingOps.whatsappAds.onDeliveryReceipts((receipts) => {
       for (const r of receipts) {
         goldieMetrics.deliveryReceipts.inc({ status: r.status });
-        if (r.status === 'failed') void markWhatsAppDeliveryFailed(r.messageId, `WhatsApp delivery failed (Meta${r.errorCode !== null ? ` ${r.errorCode}` : ''}${r.errorTitle ? `: ${r.errorTitle}` : ''}).`).catch(() => undefined);
+        if (r.status === 'failed') void this.whatsappDeliveryFailed(r).catch(() => undefined);
       }
     });
     return true;

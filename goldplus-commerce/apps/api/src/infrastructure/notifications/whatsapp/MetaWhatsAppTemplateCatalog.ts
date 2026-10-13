@@ -11,6 +11,11 @@ export interface TemplateRow { ours: string; name: string; category: string; sta
 const GRAPH = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
 const FRESH_MS = 10 * 60_000;
 const norm = (t: string) => t.replace(/\s+/g, ' ').trim();
+/** The category the template must keep: utility (or authentication) messages may go to every customer; marketing may not. */
+function expectedCategory(name: string): string | null {
+  if (name === CARE_ALERT_TEMPLATE.name) return CARE_ALERT_TEMPLATE.category;
+  return Object.values(WHATSAPP_TEMPLATES).find((t) => t.name === name)?.category ?? null;
+}
 /** The words Meta should hold for a template name (null for authentication: Meta writes those). */
 function expectedBody(name: string): string | null {
   if (name === CARE_ALERT_TEMPLATE.name) return CARE_ALERT_TEMPLATE.body;
@@ -46,7 +51,25 @@ export class MetaWhatsAppTemplateCatalog {
   approved(name: string): boolean {
     if (this.now() - this.readAt > FRESH_MS) void this.refresh().catch(() => undefined);
     const s = this.states.get(name);
-    return s?.status === 'APPROVED' && !this.drifted(name);
+    return s?.status === 'APPROVED' && !this.drifted(name) && !this.recategorised(name);
+  }
+
+  /**
+   * Meta moved the template to another category (e.g. Utility → Marketing). Never used then: a marketing message
+   * may only go to customers who opted in to WhatsApp offers, and it is priced as marketing.
+   */
+  recategorised(name: string): boolean {
+    const s = this.states.get(name);
+    const want = expectedCategory(name);
+    return !!s?.category && !!want && s.category.toUpperCase() !== want;
+  }
+
+  private shownStatus(name: string): string {
+    const s = this.states.get(name);
+    if (!s) return 'NOT_SUBMITTED';
+    if (s.status === 'APPROVED' && this.recategorised(name)) return 'RECATEGORISED';
+    if (s.status === 'APPROVED' && this.drifted(name)) return 'OUT_OF_DATE';
+    return s.status;
   }
 
   /** Meta holds different words for this template than the code (authentication wording is Meta's own). */
@@ -97,10 +120,10 @@ export class MetaWhatsAppTemplateCatalog {
     await this.refresh();
     const rows: TemplateRow[] = Object.entries(WHATSAPP_TEMPLATES).map(([ours, spec]) => {
       const s = this.states.get(spec.name);
-      return { ours, name: spec.name, category: spec.category, status: s ? (s.status === 'APPROVED' && this.drifted(spec.name) ? 'OUT_OF_DATE' : s.status) : 'NOT_SUBMITTED', rejectedReason: s?.rejectedReason ?? null };
+      return { ours, name: spec.name, category: spec.category, status: this.shownStatus(spec.name), rejectedReason: s?.rejectedReason ?? null };
     });
     const alert = this.states.get(CARE_ALERT_TEMPLATE.name);
-    rows.push({ ours: 'CARE_ALERT', name: CARE_ALERT_TEMPLATE.name, category: CARE_ALERT_TEMPLATE.category, status: alert ? (alert.status === 'APPROVED' && this.drifted(CARE_ALERT_TEMPLATE.name) ? 'OUT_OF_DATE' : alert.status) : 'NOT_SUBMITTED', rejectedReason: alert?.rejectedReason ?? null });
+    rows.push({ ours: 'CARE_ALERT', name: CARE_ALERT_TEMPLATE.name, category: CARE_ALERT_TEMPLATE.category, status: this.shownStatus(CARE_ALERT_TEMPLATE.name), rejectedReason: alert?.rejectedReason ?? null });
     return { rows, error: this.lastError, readAt: this.readAt };
   }
 

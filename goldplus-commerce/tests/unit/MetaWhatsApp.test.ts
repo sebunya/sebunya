@@ -236,16 +236,16 @@ describe('STOP is honoured on every provider', () => {
     await c.refresh();
     const send = vi.fn();
     const outcomes: string[] = [];
-    const meta = new MetaWhatsAppAdapter(c, async () => null, send as unknown as typeof fetch, { isOptedOut: async (p) => p === '+256772123456', onOutcome: (o) => outcomes.push(o) });
+    const meta = new MetaWhatsAppAdapter(c, async () => null, send as unknown as typeof fetch, { blockReason: async (p) => (p === '+256772123456' ? 'RECIPIENT_OPTED_OUT' : null), onOutcome: (o) => outcomes.push(o) });
     const zoho = { canCarry: vi.fn(() => true), dispatch: vi.fn() };
-    const r = await new FailoverWhatsAppProvider(meta, zoho as unknown as INotificationProvider, async () => true).dispatch(payload);
+    const r = await new FailoverWhatsAppProvider(meta, zoho as unknown as INotificationProvider, async () => 'RECIPIENT_OPTED_OUT').dispatch(payload);
     expect(r).toMatchObject({ status: 'NOT_CONFIGURED', providerCode: 'RECIPIENT_OPTED_OUT' });
     expect(send).not.toHaveBeenCalled();
     expect(zoho.dispatch).not.toHaveBeenCalled();
     expect(outcomes).toEqual(['opted_out']);
     // Zoho alone (Meta not approved yet) also honours it.
     const { c: empty } = catalogWith({}); await empty.refresh();
-    const r2 = await new FailoverWhatsAppProvider(new MetaWhatsAppAdapter(empty, async () => null), zoho as unknown as INotificationProvider, async () => true).dispatch(payload);
+    const r2 = await new FailoverWhatsAppProvider(new MetaWhatsAppAdapter(empty, async () => null), zoho as unknown as INotificationProvider, async () => 'RECIPIENT_OPTED_OUT').dispatch(payload);
     expect(r2.providerCode).toBe('RECIPIENT_OPTED_OUT');
     expect(zoho.dispatch).not.toHaveBeenCalled();
   });
@@ -307,5 +307,59 @@ describe('the signed webhook, end to end', () => {
     expect(inbound.mock.calls[0]![0][0]).toMatchObject({ from: '256772123456', text: 'Hello' });
     expect(receipts.mock.calls[0]![0]).toEqual([{ messageId: 'wamid.out', status: 'failed', errorCode: 131026, errorTitle: 'Message undeliverable' }]);
     expect(events.mock.calls[0]![0][0]).toMatchObject({ field: 'message_template_status_update', event: 'PAUSED', bad: true });
+  });
+});
+
+describe('second round of hardening', () => {
+  const original = { ...process.env };
+  beforeEach(() => { process.env = { ...LIVE_ENV }; });
+  afterEach(() => { process.env = original; });
+  const payload = { recipient: '0772123456', template: 'ORDER_PAYMENT_SUCCESS', data: ORDER, relatedEntity: 'order', relatedEntityId: null };
+
+  it('a template Meta moved to Marketing is never used for an order update, and shows why', async () => {
+    const fetchImpl = vi.fn(async () => json(200, { data: [{ id: '1', name: 'goldplus_payment_received', status: 'APPROVED', language: 'en', category: 'MARKETING', components: [{ type: 'BODY', text: WHATSAPP_TEMPLATES.ORDER_PAYMENT_SUCCESS!.body }] }] }));
+    const c = new MetaWhatsAppTemplateCatalog(async () => null, fetchImpl as unknown as typeof fetch);
+    await c.refresh();
+    expect(c.approved('goldplus_payment_received')).toBe(false);
+    expect((await c.rows()).rows.find((r) => r.name === 'goldplus_payment_received')!.status).toBe('RECATEGORISED');
+    expect(parseAccountEvents({ object: 'whatsapp_business_account', entry: [{ id: '444555666', changes: [{ field: 'template_category_update', value: { message_template_name: 'goldplus_payment_received', new_category: 'MARKETING', previous_category: 'UTILITY' } }] }] }, '444555666')[0]).toMatchObject({ event: 'CATEGORY_MARKETING', bad: true });
+  });
+
+  it('a number Meta could not reach lately goes straight to SMS (even the phone code), and Zoho is not tried', async () => {
+    const { c } = catalogWith({ goldplus_payment_received: 'APPROVED', goldplus_phone_code: 'APPROVED' }); await c.refresh();
+    const send = vi.fn();
+    const meta = new MetaWhatsAppAdapter(c, async () => null, send as unknown as typeof fetch, { blockReason: async () => 'RECIPIENT_NOT_ON_WHATSAPP' });
+    const zoho = { canCarry: vi.fn(() => true), dispatch: vi.fn() };
+    const r = await new FailoverWhatsAppProvider(meta, zoho as unknown as INotificationProvider, async () => 'RECIPIENT_NOT_ON_WHATSAPP').dispatch(payload);
+    expect(r.providerCode).toBe('RECIPIENT_NOT_ON_WHATSAPP');
+    const code = await meta.dispatch({ ...payload, template: 'PHONE_VERIFICATION', data: { code: '123456' } });
+    expect(code.providerCode).toBe('RECIPIENT_NOT_ON_WHATSAPP');
+    expect(send).not.toHaveBeenCalled();
+    expect(zoho.dispatch).not.toHaveBeenCalled();
+  });
+
+  it('an accepted send is remembered (for the SMS fallback); a 131026 refusal marks the number', async () => {
+    const { c } = catalogWith({ goldplus_payment_received: 'APPROVED' }); await c.refresh();
+    const sent: string[] = [], undeliverable: string[] = [];
+    const ok = new MetaWhatsAppAdapter(c, async () => null, (async () => json(200, { messages: [{ id: 'wamid.ok' }] })) as unknown as typeof fetch, { onSent: (id) => sent.push(id) });
+    await ok.dispatch(payload);
+    expect(sent).toEqual(['wamid.ok']);
+    const refused = new MetaWhatsAppAdapter(c, async () => null, (async () => json(400, { error: { code: 131026 } })) as unknown as typeof fetch, { onUndeliverable: (p) => undeliverable.push(p) });
+    await refused.dispatch(payload);
+    expect(undeliverable).toEqual(['+256772123456']);
+  });
+});
+
+import { CareAlertChannels } from '../../apps/api/src/infrastructure/assistant/GoldieChannelAdapters';
+describe('staff WhatsApp alerts', () => {
+  it('are not tried until Meta has approved the alert template', async () => {
+    const messenger = { sendTemplate: vi.fn(async () => ({ ok: true as const })) };
+    const settings = () => ({ enabled: true, onlyNumbers: [], phoneNumberId: '111222333' });
+    const before = new CareAlertChannels(messenger as never, settings, () => false);
+    expect(await before.whatsapp({ to: '0705004545', message: 'x' })).toMatchObject({ queued: false });
+    expect(messenger.sendTemplate).not.toHaveBeenCalled();
+    const after = new CareAlertChannels(messenger as never, settings, () => true);
+    expect(await after.whatsapp({ to: '0705004545', message: 'x' })).toMatchObject({ queued: true });
+    expect(messenger.sendTemplate).toHaveBeenCalledWith(expect.objectContaining({ to: '256705004545', template: 'goldplus_care_alert', language: 'en' }));
   });
 });

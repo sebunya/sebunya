@@ -38,8 +38,12 @@ export class MetaWhatsAppAdapter implements INotificationProvider {
     private readonly token: () => Promise<string | null>,
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly hooks: {
-      /** The customer replied STOP on WhatsApp: their updates go by SMS instead. */
-      isOptedOut?: (phoneE164: string) => Promise<boolean>;
+      /** STOP, or Meta could not deliver to this number lately: WhatsApp is skipped and SMS carries it. */
+      blockReason?: (phoneE164: string) => Promise<'RECIPIENT_OPTED_OUT' | 'RECIPIENT_NOT_ON_WHATSAPP' | null>;
+      /** Accepted by Meta: kept briefly so a FAILED delivery receipt can resend it by SMS. */
+      onSent?: (messageId: string, payload: NotificationDispatchPayload) => void;
+      /** Meta says this number cannot receive WhatsApp (131026). */
+      onUndeliverable?: (phoneE164: string, ref: string) => void;
       /** Every outcome (metrics), and Meta's class when it refused (an auth refusal pages the team). */
       onOutcome?: (outcome: string, classification: MetaWhatsAppFailureClass | null) => void;
     } = {},
@@ -90,10 +94,11 @@ export class MetaWhatsAppAdapter implements INotificationProvider {
       return { status: (decision.kind === 'BLOCK_PROVIDER_NOT_CONFIGURED' ? 'NOT_CONFIGURED' : 'DISABLED') as NotificationStatus, providerCode: decision.kind, providerMessage: `WhatsApp (Meta) not sent: ${decision.guard}.` };
     }
     const spec = whatsAppTemplateSpec(payload.template);
-    // A customer who replied STOP gets the SMS instead (the phone code they asked for is still sent).
-    if (spec && spec.category !== 'AUTHENTICATION' && messageClass !== 'OPERATIONAL' && this.hooks.isOptedOut && await this.hooks.isOptedOut(`+${to}`).catch(() => false)) {
-      this.hooks.onOutcome?.('opted_out', null);
-      return { status: 'NOT_CONFIGURED' as NotificationStatus, providerCode: 'RECIPIENT_OPTED_OUT', providerMessage: 'WhatsApp not sent: the customer replied STOP on WhatsApp; SMS instead.' };
+    // STOP (not for the phone code they asked for) or a number Meta could not reach lately: SMS instead.
+    const block = this.hooks.blockReason ? await this.hooks.blockReason(`+${to}`).catch(() => null) : null;
+    if (block === 'RECIPIENT_NOT_ON_WHATSAPP' || (block === 'RECIPIENT_OPTED_OUT' && spec?.category !== 'AUTHENTICATION' && messageClass !== 'OPERATIONAL')) {
+      this.hooks.onOutcome?.(block === 'RECIPIENT_OPTED_OUT' ? 'opted_out' : 'not_on_whatsapp', null);
+      return { status: 'NOT_CONFIGURED' as NotificationStatus, providerCode: block, providerMessage: block === 'RECIPIENT_OPTED_OUT' ? 'WhatsApp not sent: the customer replied STOP on WhatsApp; SMS instead.' : 'WhatsApp not sent: Meta could not deliver to this number recently; SMS instead.' };
     }
     if (!spec) return { status: 'NOT_CONFIGURED' as NotificationStatus, providerCode: 'TEMPLATE_NOT_MAPPED', providerMessage: `WhatsApp not sent: ${payload.template} has no WhatsApp template.` };
     if (!this.catalog.approved(spec.name)) return { status: 'NOT_CONFIGURED' as NotificationStatus, providerCode: 'TEMPLATE_NOT_APPROVED', providerMessage: `WhatsApp (Meta) not sent: ${spec.name} is not approved by Meta yet.` };
@@ -111,11 +116,13 @@ export class MetaWhatsAppAdapter implements INotificationProvider {
       try { json = text ? JSON.parse(text) : null; } catch { json = null; }
       if (res.ok && json?.messages?.[0]) {
         this.hooks.onOutcome?.('sent', null);
+        if (json.messages[0].id) this.hooks.onSent?.(String(json.messages[0].id), payload);
         // The wamid: delivery and read receipts arrive on the webhook under this id.
         return { status: 'SENT' as NotificationStatus, providerCode: String(json.messages[0].id ?? 'ACCEPTED').slice(0, 120), providerMessage: `WhatsApp accepted by Meta (${spec.name}).` };
       }
       const f = classifyMetaWhatsAppFailure(res.status, json);
       this.hooks.onOutcome?.('failed', f.classification);
+      if (f.code === 131026) this.hooks.onUndeliverable?.(`+${to}`, `send:${spec.name}`);
       return {
         status: 'FAILED' as NotificationStatus, providerCode: `META_${f.classification.toUpperCase()}`, retryable: f.retryable,
         providerMessage: this.sanitize([`HTTP ${res.status}`, f.code !== null ? `code=${f.code}` : '', `class=${f.classification}`, text].filter(Boolean).join(' | '), token),
@@ -147,7 +154,7 @@ export class MetaWhatsAppAdapter implements INotificationProvider {
  * timeout is never followed by Zoho: the message may already be on the phone. SMS stays the router's last resort.
  */
 export class FailoverWhatsAppProvider implements INotificationProvider {
-  constructor(private readonly primary: MetaWhatsAppAdapter, private readonly secondary: INotificationProvider & { canCarry?: INotificationProvider['canCarry'] }, private readonly optedOut?: (phoneE164: string) => Promise<boolean>) {}
+  constructor(private readonly primary: MetaWhatsAppAdapter, private readonly secondary: INotificationProvider & { canCarry?: INotificationProvider['canCarry'] }, private readonly blockReason?: (phoneE164: string) => Promise<string | null>) {}
 
   canCarry(template: string, recipient: string, data: Record<string, unknown>): boolean {
     return this.primary.canCarry(template, recipient, data) || this.secondary.canCarry?.(template, recipient, data) === true;
@@ -160,14 +167,15 @@ export class FailoverWhatsAppProvider implements INotificationProvider {
       if (!secondaryCan) return this.primary.dispatch(payload);
       // Zoho alone still honours a WhatsApp STOP.
       const to = this.primary.normalizeNumber(payload.recipient);
-      if (to && this.optedOut && await this.optedOut(`+${to}`).catch(() => false)) return { status: 'NOT_CONFIGURED', providerCode: 'RECIPIENT_OPTED_OUT', providerMessage: 'WhatsApp not sent: the customer replied STOP on WhatsApp; SMS instead.' };
+      const block = to && this.blockReason ? await this.blockReason(`+${to}`).catch(() => null) : null;
+      if (block) return { status: 'NOT_CONFIGURED', providerCode: block, providerMessage: 'WhatsApp not sent (STOP, or not reachable on WhatsApp); SMS instead.' };
       return this.secondary.dispatch(payload);
     }
     const first = await this.primary.dispatch(payload);
     const definitelyNotSent = first.status === 'FAILED' || first.status === 'NOT_CONFIGURED';
     // Never Zoho after: a possible delivery (timeout), data or number problems Zoho would repeat, or a STOP (it is
     // the customer's choice about WhatsApp, whoever sends it).
-    if (!definitelyNotSent || !secondaryCan || [OUTCOME_UNKNOWN_PROVIDER_CODE, 'TEMPLATE_DATA_MISSING', 'INVALID_RECIPIENT', 'RECIPIENT_OPTED_OUT', 'META_RECIPIENT_REJECTED'].includes(String(first.providerCode))) return first;
+    if (!definitelyNotSent || !secondaryCan || [OUTCOME_UNKNOWN_PROVIDER_CODE, 'TEMPLATE_DATA_MISSING', 'INVALID_RECIPIENT', 'RECIPIENT_OPTED_OUT', 'RECIPIENT_NOT_ON_WHATSAPP', 'META_RECIPIENT_REJECTED'].includes(String(first.providerCode))) return first;
     const second = await this.secondary.dispatch(payload);
     return { ...second, providerMessage: `${second.providerMessage} (Meta first: ${first.providerCode})`.slice(0, 400) };
   }

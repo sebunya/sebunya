@@ -8,8 +8,7 @@ import { goldieMetrics } from './GoldieMetrics';
 import { CARE_ALERT_TEMPLATE } from '../notifications/whatsapp/whatsAppTemplates';
 import { generateVapidKeys, sendWebPush, vapidFromEnv, type VapidKeys } from './WebPush';
 import { IntegrationCredentialVault } from '../seo/IntegrationCredentialVault';
-import { and, eq, sql } from 'drizzle-orm';
-import { channelSuppressions } from '../db/schema/consent-foundation';
+import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { carePushKeys, carePushSubscriptions } from '../db/schema/assistant';
 
@@ -84,7 +83,12 @@ const uuidOrNull = (id: string) => (/^[0-9a-f-]{36}$/i.test(id) ? id : null);
  * provider as every other operational message), WhatsApp through an approved template when one is set.
  */
 export class CareAlertChannels implements ICareAlertChannels {
-  constructor(private readonly messenger: WhatsAppCloudMessenger, private readonly settings: () => GoldieWhatsAppSettings) {}
+  constructor(
+    private readonly messenger: WhatsAppCloudMessenger,
+    private readonly settings: () => GoldieWhatsAppSettings,
+    /** Meta has approved the alert template (no refused call on every alert before then). */
+    private readonly templateApproved: (name: string) => boolean = () => true,
+  ) {}
 
   async sms(input: { to: string; message: string; key: string; taskId: string }) {
     await insertOutboxObject({ eventType: 'CARE_ALERT_SMS', template: 'CARE_ALERT', channel: 'sms', idempotencyKey: input.key.slice(0, 255), relatedEntity: 'care_task', relatedEntityId: uuidOrNull(input.taskId),
@@ -105,6 +109,7 @@ export class CareAlertChannels implements ICareAlertChannels {
     const template = (process.env.GOLDIE_ALERT_TEMPLATE || '').trim() || CARE_ALERT_TEMPLATE.name;
     const s = this.settings();
     if (!s.phoneNumberId) return { queued: false, reason: 'WhatsApp alerts need the Cloud API number id' };
+    if (!process.env.GOLDIE_ALERT_TEMPLATE && !this.templateApproved(template)) return { queued: false, reason: `the ${template} template is not approved by Meta yet` };
     const r = await this.messenger.sendTemplate({ phoneNumberId: s.phoneNumberId, to: intl(input.to), template, language: (process.env.GOLDIE_ALERT_TEMPLATE_LANG || 'en').trim(), body: input.message });
     if (r.ok) goldieMetrics.careAlerts.inc({ channel: 'whatsapp' });
     return r.ok ? { queued: true } : { queued: false, reason: r.reason };
@@ -221,28 +226,3 @@ export function goldieWhatsAppSettings(env: NodeJS.ProcessEnv = process.env): Go
     phoneNumberId: /^\d{5,20}$/.test(String(env.GOLDIE_WHATSAPP_PHONE_NUMBER_ID ?? '')) ? String(env.GOLDIE_WHATSAPP_PHONE_NUMBER_ID) : null,
   };
 }
-
-/**
- * WhatsApp STOP / START (on the shop's existing channel_suppressions, keyed like an SMS STOP: phone:+256…). An
- * active row means: no customer templates on WhatsApp to this number (SMS carries them). START ends it.
- */
-export const whatsAppOptOutStore = {
-  async stop(phoneE164: string, messageId: string): Promise<void> {
-    const ref = `phone:${phoneE164}`;
-    if (await whatsAppOptOutStore.isOptedOut(phoneE164)) return;
-    await db.insert(channelSuppressions).values({
-      endpointRef: ref, channelKey: 'whatsapp', purposeKey: null, scope: 'channel',
-      reason: 'Customer replied STOP on WhatsApp', sourceSurface: 'whatsapp_stop_reply', providerCallbackRef: messageId.slice(0, 255),
-      suppressionActive: true, effectiveAt: new Date(),
-    });
-  },
-  async start(phoneE164: string): Promise<void> {
-    await db.update(channelSuppressions).set({ suppressionActive: false, liftedAt: new Date(), liftedBy: 'customer:whatsapp_start', liftReason: 'Customer replied START on WhatsApp' })
-      .where(and(eq(channelSuppressions.endpointRef, `phone:${phoneE164}`), eq(channelSuppressions.channelKey, 'whatsapp'), eq(channelSuppressions.suppressionActive, true)));
-  },
-  async isOptedOut(phoneE164: string): Promise<boolean> {
-    const [r] = await db.select({ id: channelSuppressions.id }).from(channelSuppressions)
-      .where(and(eq(channelSuppressions.endpointRef, `phone:${phoneE164}`), eq(channelSuppressions.channelKey, 'whatsapp'), eq(channelSuppressions.suppressionActive, true), eq(channelSuppressions.scope, 'channel'))).limit(1);
-    return !!r;
-  },
-};

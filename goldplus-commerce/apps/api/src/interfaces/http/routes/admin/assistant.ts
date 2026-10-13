@@ -150,6 +150,8 @@ routes.get('/whatsapp-media/:id', requirePermissions([PERMISSIONS.CUSTOMER_DATA_
     const file = await fetch(info.url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) });
     if (!file.ok || !file.body) return bad(c, 'GONE', 'Meta did not return the file.', 502);
     const type = String(info.mime_type ?? file.headers.get('content-type') ?? 'application/octet-stream').slice(0, 80);
+    // A customer's photo or voice note is personal data: every view is on the audit log.
+    await Registry.getInstance().createAuditLogUseCase.execute({ actorId: actor(c), action: 'WHATSAPP_MEDIA_VIEWED', entity: 'whatsapp_media', entityId: id, previousState: null, newState: { type } }).catch(() => undefined);
     return new Response(file.body, { status: 200, headers: { 'Content-Type': type, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Disposition': `inline; filename="whatsapp-${id}"`, 'Content-Security-Policy': "default-src 'none'; img-src 'self' data:; media-src 'self'; sandbox" } });
   } catch {
     return bad(c, 'UPSTREAM_UNAVAILABLE', 'Meta could not be reached.', 502);

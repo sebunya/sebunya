@@ -39,6 +39,7 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   DISABLED: { label: 'Disabled by Meta', cls: 'bg-red-50 text-red-800 border-red-200' },
   NOT_SUBMITTED: { label: 'Not at Meta yet', cls: 'bg-gray-50 text-gray-700 border-gray-200' },
   OUT_OF_DATE: { label: 'Changed in code: update at Meta', cls: 'bg-amber-50 text-amber-900 border-amber-200' },
+  RECATEGORISED: { label: 'Meta made it Marketing: not used', cls: 'bg-red-50 text-red-800 border-red-200' },
 };
 const missing = res.ok ? res.data.rows.filter((r) => r.status === 'NOT_SUBMITTED' || r.status === 'OUT_OF_DATE').length : 0;
 ---

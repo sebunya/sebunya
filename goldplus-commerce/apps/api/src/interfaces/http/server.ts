@@ -64,6 +64,8 @@ const server = serve({
     startFirstPartyNightlyTicker();
     // Goldie (0177-0181): finish interrupted WhatsApp replies; re-page urgent customers nobody has taken.
     startGoldieCareTicker();
+    // Meta's template approvals read at start: customer updates go on WhatsApp from the first message after a deploy.
+    void Registry.getInstance().whatsappTemplateCatalog.refresh().catch(() => undefined);
     registerAllWorkers();
     // Converge DB permissions on the code registry (advisory-locked, add-only).
     void runPermissionRegistrySyncAtBoot();

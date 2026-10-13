@@ -190,6 +190,16 @@ export const assistantQaReviews = pgTable('assistant_qa_reviews', {
   reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
+/** Customer WhatsApp messages sent through Meta (0185), 7 days: a FAILED delivery receipt sends the same update by SMS. */
+export const whatsappSentMessages = pgTable('whatsapp_sent_messages', {
+  messageId: varchar('message_id', { length: 160 }).primaryKey(),
+  recipient: varchar('recipient', { length: 40 }).notNull(),
+  template: varchar('template', { length: 100 }).notNull(),
+  payload: jsonb('payload').notNull(),
+  sentAt: timestamp('sent_at', { withTimezone: true }).defaultNow().notNull(),
+  smsFallbackAt: timestamp('sms_fallback_at', { withTimezone: true }),
+});
+
 /** The Care Desk's Web Push key pair (0182): generated once by the api; the private key vault-encrypted. */
 export const carePushKeys = pgTable('care_push_keys', {
   id: smallint('id').primaryKey().default(1),
