@@ -14,6 +14,16 @@ export interface InsertReviewInput {
   flagReason: string | null;
 }
 
+/** What a shopper sees of a published review: no name, phone or identity hash. */
+export interface PublicReview {
+  id: string;
+  rating: number;
+  title: string | null;
+  body: string | null;
+  isVerifiedPurchase: boolean;
+  createdAt: Date;
+}
+
 export interface IReviewRepository {
   /** The order line's owning phone and order status, for verification. */
   resolveOrderLine(orderItemId: string): Promise<{ orderPhone: string; orderStatus: string } | null>;
@@ -25,4 +35,10 @@ export interface IReviewRepository {
    * recompute the product's rating aggregate in the SAME transaction. */
   moderate(input: { reviewId: string; status: ReviewStatus; moderatorId: string; reason: string | null; now: Date }): Promise<{ productId: string } | null>;
   getAggregate(productId: string): Promise<RatingAggregate | null>;
+  /** The order line id for a product on an order (by order number), or null. */
+  findOrderLineId(orderNumber: string, productId: string): Promise<string | null>;
+  /** Which of these products this identity has already reviewed (any status). */
+  reviewedProductIds(customerIdentityHash: string, productIds: string[]): Promise<Set<string>>;
+  /** Published reviews for a product, newest first. */
+  listPublished(productId: string, limit: number): Promise<PublicReview[]>;
 }

@@ -51,7 +51,9 @@ export class CreateFulfilmentTaskOnOrderPlacedUseCase {
 
   async execute(
     order: Order,
-    opts: { extraWarnings?: string[]; hold?: boolean } = {}
+    /** paymentMethod: how the customer chose to pay ('offline' = on delivery or at the shop, 'pesapal' = online),
+     *  so the queue can tell 'collect at the door' from 'confirm before dispatch'. */
+    opts: { extraWarnings?: string[]; hold?: boolean; paymentMethod?: string | null } = {}
   ): Promise<CreateFulfilmentTaskResult> {
     const existing = await this.repo.findByOrderId(order.id);
     if (existing) {
@@ -84,7 +86,7 @@ export class CreateFulfilmentTaskOnOrderPlacedUseCase {
       orderId: order.id,
       orderNumber: order.orderNumber,
       paymentStatus: toFulfilmentPaymentStatus(order.paymentStatus),
-      paymentMethod: null,
+      paymentMethod: opts.paymentMethod ?? null,
       customerName: order.customerName,
       customerPhone: order.customerPhone,
       customerEmail: order.customerEmail,

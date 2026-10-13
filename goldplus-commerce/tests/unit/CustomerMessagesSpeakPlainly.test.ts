@@ -146,3 +146,15 @@ describe('the renderer and the gates agree with the wording table', () => {
     }
   });
 });
+
+describe('the delivered message asks for a review', () => {
+  it('carries the review link for THIS order, still fits two segments and still ends with a person to call', () => {
+    const d = { ...DATA, orderNumber: 'GP-202609-C8E8FA7B' };
+    const s = smsText('ORDER_FULFILLMENT_COMPLETED', d)!;
+    expect(s).toContain('/review?reference=GP-202609-C8E8FA7B');
+    expect(s.length).toBeLessThanOrEqual(320);
+    expect(s).toMatch(/call 0705 004545\.$/);
+    // Asked once, when the goods arrive; no other order message asks.
+    for (const t of TEMPLATES.filter((x) => x !== 'ORDER_FULFILLMENT_COMPLETED')) expect(smsText(t, d) ?? '', t).not.toContain('/review');
+  });
+});

@@ -102,16 +102,21 @@ const HUB_CARDS = hub?.counts
       </div>
       {reviews == null ? <p class="mt-3 text-sm text-slate-500">Reviews service unavailable.</p> : (
         <table class="mt-3 w-full text-sm">
-          <thead><tr class="text-left text-slate-500"><th class="py-1">Rating</th><th>Title</th><th>Verified</th><th>Flag</th><th>Action</th></tr></thead>
+          <thead><tr class="text-left text-slate-500"><th class="py-1">Rating</th><th>Product</th><th>Review</th><th>Verified</th><th>Flag</th><th>Action</th></tr></thead>
           <tbody>
-            {(reviews.items || []).length === 0 && <tr><td colspan="5" class="py-3 text-slate-500">No {reviewStatus} reviews.</td></tr>}
+            {(reviews.items || []).length === 0 && <tr><td colspan="6" class="py-3 text-slate-500">No {reviewStatus} reviews.</td></tr>}
             {(reviews.items || []).map((r: any) => (
               <tr class="border-t border-slate-100">
-                <td class="py-2">{"★".repeat(r.rating)}</td>
-                <td>{r.title || <span class="text-slate-600">(no title)</span>}</td>
-                <td>{r.isVerifiedPurchase ? "✓" : "—"}</td>
-                <td class="text-rose-600">{r.flagReason || ""}</td>
-                <td>
+                <td class="py-2 align-top whitespace-nowrap">{"★".repeat(r.rating)}</td>
+                <td class="align-top">{r.productSlug ? <a class="font-semibold underline" href={`/products/${r.productSlug}`} target="_blank" rel="noopener">{r.productName ?? r.productSlug}</a> : <span class="text-slate-600">{r.productName ?? "(product)"}</span>}</td>
+                <td class="align-top max-w-md">
+                  <p class="font-semibold">{r.title || <span class="text-slate-600">(no title)</span>}</p>
+                  {r.body && <p class="mt-1 whitespace-pre-line text-slate-700">{r.body}</p>}
+                  {r.createdAt && <p class="mt-1 text-xs text-slate-500">{new Date(r.createdAt).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Kampala" })}</p>}
+                </td>
+                <td class="align-top">{r.isVerifiedPurchase ? "✓" : "—"}</td>
+                <td class="align-top text-rose-600">{r.flagReason || ""}</td>
+                <td class="align-top">
                   <form method="POST" class="flex gap-1">
                     <input type="hidden" name="intent" value="moderate" /><input type="hidden" name="id" value={r.id} />
                     <button name="status" value="published" class="rounded bg-emerald-600 px-2 py-1 text-xs font-bold text-white">Publish</button>

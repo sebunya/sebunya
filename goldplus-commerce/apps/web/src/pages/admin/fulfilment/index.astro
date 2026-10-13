@@ -269,6 +269,27 @@ function prioChip(p: string) {
   }
 }
 const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
+
+/**
+ * The warnings to show, judged against the order AS IT IS NOW. The task stores the
+ * warnings it was created with; "payment not yet confirmed" was written when an
+ * unpaid order was placed and stayed after the money arrived, so a card read
+ * "Paid" and "Payment not yet confirmed" at once. The payment line is derived
+ * from the live payment status instead of the stored snapshot.
+ */
+const PAYMENT_WARNING = /^Payment not yet confirmed/i;
+function liveWarnings(task: { paymentStatus: string; paymentMethod?: string | null; warnings: string[] }): string[] {
+  const rest = task.warnings.filter((w) => !PAYMENT_WARNING.test(w));
+  if (task.paymentStatus === 'paid') return rest;
+  // Pay on delivery is collected at the door; an online payment is confirmed before dispatch.
+  // Tasks created before the method was recorded say both, which is true of either.
+  const line = task.paymentMethod === 'offline'
+    ? 'Pay on delivery: collect the money when you hand it over.'
+    : task.paymentMethod === 'pesapal'
+      ? 'Online payment not confirmed yet. Do not dispatch until it is.'
+      : 'Not paid yet. If it is pay on delivery, collect the money when you hand it over; otherwise confirm payment before dispatch.';
+  return [...rest, line];
+}
 ---
 
 <AdminLayout
@@ -431,9 +452,9 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
             </table>
           </div>
 
-          {task.warnings.length > 0 && (
+          {liveWarnings(task).length > 0 && (
             <ul class="mb-4 space-y-1">
-              {task.warnings.map((w) => (
+              {liveWarnings(task).map((w) => (
                 <li class="text-[11px] text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-3 py-1.5">⚠ {w}</li>
               ))}
             </ul>

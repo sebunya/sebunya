@@ -1,8 +1,9 @@
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { reviews, productRatingAggregate } from '../schema/reviews';
 import { orders, orderItems } from '../schema/commerce';
-import { IReviewRepository, InsertReviewInput, ReviewStatus } from '../../../application/ports/IReviewRepository';
+import { products } from '../schema/products';
+import { IReviewRepository, InsertReviewInput, PublicReview, ReviewStatus } from '../../../application/ports/IReviewRepository';
 import { RatingAggregate, computeRatingAggregate } from '../../../domain/reviews/ReviewDomain';
 
 export class DrizzleReviewRepository implements IReviewRepository {
@@ -84,10 +85,12 @@ export class DrizzleReviewRepository implements IReviewRepository {
   }
 
   /** Admin moderation queue: recent reviews of a given status. */
-  async listByStatus(status: ReviewStatus, limit = 100): Promise<Array<{ id: string; productId: string; rating: number; title: string | null; body: string | null; status: string; isVerifiedPurchase: boolean; flagReason: string | null; createdAt: Date }>> {
+  /** The moderation queue. Carries the product's name and slug so a moderator sees WHAT the review is about. */
+  async listByStatus(status: ReviewStatus, limit = 100): Promise<Array<{ id: string; productId: string; productName: string | null; productSlug: string | null; rating: number; title: string | null; body: string | null; status: string; isVerifiedPurchase: boolean; flagReason: string | null; createdAt: Date }>> {
     const rows = await db
-      .select({ id: reviews.id, productId: reviews.productId, rating: reviews.rating, title: reviews.title, body: reviews.body, status: reviews.status, isVerifiedPurchase: reviews.isVerifiedPurchase, flagReason: reviews.flagReason, createdAt: reviews.createdAt })
+      .select({ id: reviews.id, productId: reviews.productId, productName: products.name, productSlug: products.slug, rating: reviews.rating, title: reviews.title, body: reviews.body, status: reviews.status, isVerifiedPurchase: reviews.isVerifiedPurchase, flagReason: reviews.flagReason, createdAt: reviews.createdAt })
       .from(reviews)
+      .leftJoin(products, eq(products.id, reviews.productId))
       .where(eq(reviews.status, status))
       .orderBy(desc(reviews.createdAt))
       .limit(Math.min(limit, 500));
@@ -110,5 +113,33 @@ export class DrizzleReviewRepository implements IReviewRepository {
       average: row.ratingAverage == null ? null : Number(row.ratingAverage),
       distribution: (row.distribution ?? {}) as Record<string, number>,
     };
+  }
+
+  async findOrderLineId(orderNumber: string, productId: string): Promise<string | null> {
+    const rows = await db
+      .select({ id: orderItems.id })
+      .from(orderItems)
+      .innerJoin(orders, eq(orders.id, orderItems.orderId))
+      .where(and(eq(orders.orderNumber, orderNumber), eq(orderItems.productId, productId)))
+      .limit(1);
+    return rows.length ? rows[0].id : null;
+  }
+
+  async reviewedProductIds(customerIdentityHash: string, productIds: string[]): Promise<Set<string>> {
+    if (productIds.length === 0) return new Set();
+    const rows = await db
+      .select({ productId: reviews.productId })
+      .from(reviews)
+      .where(and(eq(reviews.customerIdentityHash, customerIdentityHash), inArray(reviews.productId, productIds)));
+    return new Set(rows.map((r) => r.productId));
+  }
+
+  async listPublished(productId: string, limit: number): Promise<PublicReview[]> {
+    return db
+      .select({ id: reviews.id, rating: reviews.rating, title: reviews.title, body: reviews.body, isVerifiedPurchase: reviews.isVerifiedPurchase, createdAt: reviews.createdAt })
+      .from(reviews)
+      .where(and(eq(reviews.productId, productId), eq(reviews.status, 'published')))
+      .orderBy(desc(reviews.createdAt))
+      .limit(Math.max(1, Math.min(limit, 50)));
   }
 }

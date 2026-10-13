@@ -968,6 +968,77 @@ routes.post('/orders/lookup', async (c) => {
  * who verified with their email is not refused for a phone they were never
  * asked for. The lockout counts a wrong contact here exactly as on lookup.
  */
+/**
+ * Customer reviews. The shopper proves the order exactly as order tracking does
+ * (reference + the phone or email used at checkout, with the shared lockout), so
+ * these routes only ever touch the shopper's own order. Thin: the use cases decide.
+ */
+const toVerifiedOrder = (order: any) => ({
+  orderNumber: String(order.orderNumber),
+  customerPhone: String(order.customerPhone ?? ''),
+  orderStatus: String(order.orderStatus ?? ''),
+  items: (order.items ?? []).map((it: any) => ({ productId: String(it.productId ?? ''), name: String(it.name ?? '') })),
+});
+
+routes.post('/reviews/eligibility', async (c) => {
+  try {
+    const verified = await verifyOrderRequest(c);
+    if (!verified.ok) return c.json({ success: false, error: { code: verified.code, message: verified.message } }, verified.status);
+    const data = await registry.orderReviewEligibilityUseCase.execute(toVerifiedOrder(verified.order));
+    return c.json({ success: true, data: { orderNumber: verified.order.orderNumber, ...data } });
+  } catch {
+    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred.' } }, 500);
+  }
+});
+
+const REVIEW_REFUSALS: Record<string, { status: 400 | 409; message: string }> = {
+  NOT_DELIVERED: { status: 400, message: 'You can rate an order once it has reached you.' },
+  NOT_ON_ORDER: { status: 400, message: 'That item is not on this order.' },
+  INVALID_RATING: { status: 400, message: 'Choose between one and five stars.' },
+  TOO_LONG: { status: 400, message: 'Keep the title under 140 characters and the review under 2,000.' },
+  ALREADY_REVIEWED: { status: 409, message: 'You have already rated this item. Thank you.' },
+  ORDER_LINE_NOT_FOUND: { status: 400, message: 'That item is not on this order.' },
+  ORDER_NOT_OWNED: { status: 400, message: 'That item is not on this order.' },
+};
+
+routes.post('/reviews', async (c) => {
+  try {
+    const verified = await verifyOrderRequest(c);
+    if (!verified.ok) return c.json({ success: false, error: { code: verified.code, message: verified.message } }, verified.status);
+    const body = await c.req.json().catch(() => null);
+    const result = await registry.submitOrderReviewUseCase.execute(toVerifiedOrder(verified.order), {
+      productId: String(body?.productId ?? ''),
+      rating: Number(body?.rating),
+      title: typeof body?.title === 'string' ? body.title : null,
+      body: typeof body?.body === 'string' ? body.body : null,
+    });
+    if (!result.ok) {
+      const r = REVIEW_REFUSALS[result.reason] ?? { status: 400 as const, message: 'We could not take that review.' };
+      return c.json({ success: false, error: { code: result.reason, message: r.message } }, r.status);
+    }
+    return c.json({ success: true, data: { status: result.status } });
+  } catch {
+    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred.' } }, 500);
+  }
+});
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+routes.get('/reviews/products/:productId', async (c) => {
+  const productId = c.req.param('productId');
+  // A malformed id is simply a product with no reviews — never a Postgres cast error.
+  if (!UUID_RE.test(productId)) return c.json({ success: true, data: { aggregate: null, reviews: [] } });
+  try {
+    const data = await registry.productReviewsUseCase.execute(productId, 10);
+    c.header('Cache-Control', 'public, max-age=300');
+    return c.json({ success: true, data: {
+      aggregate: data.aggregate ? { count: data.aggregate.count, average: data.aggregate.average, distribution: data.aggregate.distribution } : null,
+      reviews: data.reviews.map((r) => ({ id: r.id, rating: r.rating, title: r.title, body: r.body, verified: r.isVerifiedPurchase, createdAt: r.createdAt })),
+    } });
+  } catch {
+    return c.json({ success: true, data: { aggregate: null, reviews: [] } });
+  }
+});
+
 routes.post('/orders/lookup/followup', async (c) => {
   const body = await c.req.json().catch(() => null);
   const verified = await verifyOrderByContact(

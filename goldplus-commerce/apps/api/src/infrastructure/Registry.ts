@@ -49,6 +49,7 @@ import { DrizzlePricingCapacityRepository } from './db/repositories/DrizzlePrici
 import { DrizzleCouponRepository } from './db/repositories/DrizzleCouponRepository';
 import { DrizzleReviewRepository } from './db/repositories/DrizzleReviewRepository';
 import { SubmitReviewUseCase } from '../application/use-cases/reviews/SubmitReviewUseCase';
+import { GetOrderReviewEligibilityUseCase, GetProductReviewsUseCase, SubmitOrderReviewUseCase } from '../application/use-cases/reviews/OrderReviewUseCases';
 import { DrizzleCreatorRepository } from './db/repositories/DrizzleCreatorRepository';
 import { DrizzleFlashSaleRepository } from './db/repositories/DrizzleFlashSaleRepository';
 import { DrizzleSeoRepository } from './db/repositories/DrizzleSeoRepository';
@@ -773,6 +774,9 @@ export class Registry {
   public readonly resetPerformanceAuditSettingsUseCase = new ResetPerformanceAuditSettingsUseCase(this.performanceAuditStore);
   public readonly mobileMoneyDisbursement = new NoSendMobileMoneyDisbursement();
   public readonly submitReviewUseCase = new SubmitReviewUseCase(this.reviewRepo, process.env.IDENTITY_HASH_PEPPER ?? '');
+  public readonly orderReviewEligibilityUseCase = new GetOrderReviewEligibilityUseCase(this.reviewRepo, process.env.IDENTITY_HASH_PEPPER ?? '');
+  public readonly submitOrderReviewUseCase = new SubmitOrderReviewUseCase(this.reviewRepo, this.submitReviewUseCase);
+  public readonly productReviewsUseCase = new GetProductReviewsUseCase(this.reviewRepo);
   public readonly pricingOperationsRepo = new DrizzlePricingOperationsRepository();
   public readonly dealerRepo = new DrizzleDealerRepository();
   public readonly supportRepo = new DrizzleSupportRepository();
@@ -1971,6 +1975,7 @@ export class Registry {
                 ? (event.payload.warnings as string[])
                 : [],
               hold: event.payload.hold === true,
+              paymentMethod: await this.orderRepo.findPaymentMethod(order.id),
             });
             return { status: 'HANDLED' };
           },

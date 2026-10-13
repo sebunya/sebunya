@@ -30,6 +30,7 @@ import { RETURNS_POLICY } from '../../lib/returnsPolicy';
 import { getStorefrontCopy } from '../../lib/storefrontCopy';
 import { findRecordedRedirect } from '../../lib/recordedRedirect';
 import { isLikelyHuman } from '../../lib/humanTraffic';
+import { getProductReviews, aggregateRatingNode, starsText } from '../../lib/reviews';
 
 /**
  * A product that was on sale and is off sale now (drafted until photographed,
@@ -216,6 +217,8 @@ try {
 const settle = <T,>(p: Promise<T>): Promise<T> => { p.catch(() => undefined); return p; };
 const taxonomyP = settle(getTaxonomy());
 const bizP = settle(getBusinessInfo());
+// Started with the page's other parallel reads, so reviews never add a round trip.
+const productReviewsP = settle(getProductReviews(product!.id));
 const storefrontCopyP = settle(getStorefrontCopy());
 const discountP = settle(getStorefrontDiscount());
 // The browse-rail fallback needs a handful of candidates, not the whole
@@ -312,6 +315,9 @@ const loyaltyRate = await loyaltyRateP; // preview only: 0 when unavailable
 const loyaltyPointValueUgx = (await loyaltyP).pointValueUgx; // 0 = redemption not configured: points only
 
 const bizForPdp = await bizP;
+// Published, verified-purchase reviews (none until a real buyer's review passes moderation).
+const productReviews = await productReviewsP;
+const ratingNode = aggregateRatingNode(productReviews, product.availability.kind === 'in_stock');
 const askAboutHref = `${bizForPdp.whatsappUrl}?text=${encodeURIComponent(`Hello GoldPlus, is the ${product.name} available?`)}`;
 
 const availabilityLabel: Record<ProductPublicDto['availability']['kind'], string> = {
@@ -537,7 +543,7 @@ if (product) {
   product={product && pdpHasPrice ? { id: product.id, priceUgx: pdpOnSale ? pdpSaleUgx! : product.retailPriceUgx!, inStock: product.availability.kind === 'in_stock' } : undefined}>
   {product && (
     <Fragment slot="head">
-      <ProductJsonLd product={product} url={canonical} priceUgx={pdpSaleUgx} />
+      <ProductJsonLd product={product} url={canonical} priceUgx={pdpSaleUgx} aggregateRating={ratingNode} />
       {breadcrumbJson && <script type="application/ld+json" is:inline set:html={breadcrumbJson} />}
     </Fragment>
   )}
@@ -590,6 +596,12 @@ if (product) {
           <div class="mb-6">
             <p class="text-xs font-bold text-slate-600 uppercase tracking-widest mb-1.5">{product.categoryName}</p>
             <h1 class="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-gray-900 mb-4">{product.name}</h1>
+            {productReviews.aggregate && (
+              <a href="#reviews" class="-mt-2 mb-4 inline-flex items-center gap-2 text-sm font-semibold text-slate-700 hover:text-brand-primaryInk">
+                <span class="text-amber-500 tracking-tight" aria-hidden="true">{starsText(productReviews.aggregate.average)}</span>
+                <span>{productReviews.aggregate.average.toFixed(1)} from {productReviews.aggregate.count} verified buyer{productReviews.aggregate.count === 1 ? '' : 's'}</span>
+              </a>
+            )}
 
             <div class="flex items-baseline gap-3 mb-4 flex-wrap">
               {product.retailPriceUgx !== null ? (
@@ -919,6 +931,23 @@ if (product) {
               ))}
             </ul>
           </div>
+        )}
+        {productReviews.reviews.length > 0 && productReviews.aggregate && (
+          <section id="reviews" aria-labelledby="reviews-h" class="scroll-mt-24">
+            <h2 id="reviews-h" class="text-lg font-black tracking-tight text-gray-900">What buyers say</h2>
+            <p class="mt-1 text-sm text-slate-600"><span class="text-amber-500" aria-hidden="true">{starsText(productReviews.aggregate.average)}</span> {productReviews.aggregate.average.toFixed(1)} out of 5 from {productReviews.aggregate.count} verified buyer{productReviews.aggregate.count === 1 ? '' : 's'}. Every review is from a delivered order and checked by our team.</p>
+            <ul class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {productReviews.reviews.slice(0, 6).map((r) => (
+                <li class="rounded-2xl border border-slate-200 bg-white p-4">
+                  <p class="flex items-center justify-between gap-2 text-sm"><span class="text-amber-500" aria-label={`${r.rating} out of 5 stars`}>{starsText(r.rating)}</span>{r.verified && <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-emerald-800">Verified buyer</span>}</p>
+                  {r.title && <p class="mt-2 font-bold text-gray-900">{r.title}</p>}
+                  {r.body && <p class="mt-1 text-sm leading-relaxed text-slate-700 whitespace-pre-line">{r.body}</p>}
+                  <p class="mt-2 text-xs text-slate-500">{new Date(r.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Africa/Kampala' })}</p>
+                </li>
+              ))}
+            </ul>
+            <p class="mt-3 text-xs text-slate-500">Bought this? <a class="font-bold underline" href="/review">Rate it</a> once it has reached you.</p>
+          </section>
         )}
         <CompleteSetupRail
           productId={product.id}

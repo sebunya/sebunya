@@ -266,6 +266,16 @@ const paymentCopy = order ? paymentStatusCopy(order.paymentStatus) : null;
                 </div>
               )}
 
+              {/* Delivered: one tap to rate it. The reference and contact are the shopper's own, from this request. */}
+              {['delivered', 'completed'].includes(orderStatusKey) && (
+                <form method="POST" action="/review" class="mt-4">
+                  <input type="hidden" name="intent" value="lookup" />
+                  <input type="hidden" name="reference" value={submittedRef} />
+                  <input type="hidden" name="contact" value={submittedContact} />
+                  <button type="submit" class="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border-2 border-brand-primaryInk px-5 text-xs font-black uppercase tracking-widest text-brand-primaryInk hover:bg-brand-primaryInk hover:text-white transition-colors"><span aria-hidden="true">★</span> Rate what you bought</button>
+                </form>
+              )}
+
               {/* Back-office follow-up: notifies our team about THIS order. */}
               <div class="mt-5 border-t border-slate-200 pt-4">
                 {followupOk ? (

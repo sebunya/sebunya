@@ -24,6 +24,13 @@ export function detectReviewPii(...parts: Array<string | null | undefined>): Rev
   return { hasPii: kinds.length > 0, kinds };
 }
 
+// ---- Who may review ---------------------------------------------------------
+/** The order statuses that mean the buyer has the goods. A door delivery ENDS at
+ *  'delivered' (the state machine's terminal success); 'completed' closes a
+ *  counter collection. Both are a verified purchase. Counting only 'completed'
+ *  meant no delivered buyer could ever be verified. */
+export const REVIEWABLE_ORDER_STATUSES: ReadonlySet<string> = new Set(['delivered', 'completed']);
+
 // ---- Rating aggregate (AC2/AC4) -----------------------------------------
 export interface RatingAggregate {
   count: number;

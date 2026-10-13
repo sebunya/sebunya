@@ -93,6 +93,13 @@ export function trackOrderUrl(orderNumber: string | null | undefined): string {
   return orderNumber ? `${base}?reference=${encodeURIComponent(orderNumber)}` : base;
 }
 
+/** "Rate what you bought" for a delivered order: the review page with the reference filled in.
+ *  The shopper still proves the order with the phone or email they used, as on /track-order. */
+export function reviewOrderUrl(orderNumber: string | null | undefined): string {
+  const base = `${publicBaseUrl()}/review`;
+  return orderNumber ? `${base}?reference=${encodeURIComponent(orderNumber)}` : base;
+}
+
 export function formatUgx(amount: number | null | undefined): string {
   const n = Math.max(0, Math.round(Number(amount) || 0));
   return `UGX ${n.toLocaleString('en-UG')}`;
@@ -172,7 +179,8 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
     case 'ORDER_DISPATCHED':
       return `${SHOP_NAME}: your order${ref} is on its way with our rider. Please keep your phone on. Track it: ${track}`;
     case 'ORDER_FULFILLMENT_COMPLETED':
-      return `${SHOP_NAME}: your order${ref} has been delivered. Thank you. If anything is wrong with it, call ${phone} and we will sort it out.`;
+      // The one moment to ask for a review: the goods have just arrived. Same text, one link more.
+      return `${SHOP_NAME}: your order${ref} has been delivered. Thank you. How was it? Rate it in a minute: ${reviewOrderUrl(d.orderNumber)} If anything is wrong, call ${phone}.`;
     case 'ORDER_CANCELLED_BY_SHOP':
       return `${SHOP_NAME}: order${ref} has been cancelled. If you paid for it, our team arranges the refund. Call ${phone} if you have not heard from us.`;
     case 'PHONE_VERIFICATION':
@@ -310,7 +318,7 @@ export function emailCopy(template: string, d: CustomerMessageData = {}): EmailC
         subject: `Your order${ref} has been delivered`,
         preheader: 'Thank you for shopping with GoldPlus.',
         headline: 'Delivered',
-        body: `Your order${ref} has been delivered. Thank you for shopping with ${SHOP_NAME}. If anything is wrong with it, call ${phone} and we will sort it out with you.`,
+        body: `Your order${ref} has been delivered. Thank you for shopping with ${SHOP_NAME}. If you have a minute, rate what you bought from the order page; it helps the next shopper choose. If anything is wrong with it, call ${phone} and we will sort it out with you.`,
         cta: { label: 'See this order', url: track },
         tone: 'success',
       };
