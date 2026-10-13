@@ -123,6 +123,8 @@ const enabled = assistantEnabled();
   @keyframes gp-nudge { 0%,100% { transform: rotate(0) } 20% { transform: rotate(-12deg) } 45% { transform: rotate(10deg) } 70% { transform: rotate(-6deg) } }
   /* Arrival: the launcher is not in the first paint; it rises once the page has settled. */
   .gp-assistant__launch--pending { opacity: 0; transform: translateY(16px) scale(.96); pointer-events: none; }
+  .gp-assistant__launch--loading { cursor: progress; }
+  .gp-assistant__launch--loading .gp-assistant__avatar--launch { animation: gp-ring 1.2s var(--gp-ease) infinite; }
   .gp-assistant__launch--arrive { animation: gp-arrive .5s var(--gp-ease) both; }
   @keyframes gp-arrive { from { opacity: 0; transform: translateY(16px) scale(.96) } to { opacity: 1; transform: none } }
   .gp-assistant__avatar--launch { position: relative; }
@@ -240,7 +242,7 @@ const enabled = assistantEnabled();
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
   @media (prefers-reduced-motion: reduce) {
     .gp-assistant__panel--enter, .gp-assistant__launch--nudge .gp-assistant__avatar--launch, .gp-assistant__typing i,
-    .gp-assistant__launch--arrive, .gp-assistant__teaser--enter, .gp-assistant__teaser--enter .gp-assistant__avatar--sm, .gp-assistant__teaser--leave, .gp-assistant__launch--msg .gp-assistant__avatar--launch { animation: none; }
+    .gp-assistant__launch--arrive, .gp-assistant__teaser--enter, .gp-assistant__teaser--enter .gp-assistant__avatar--sm, .gp-assistant__teaser--leave, .gp-assistant__launch--msg .gp-assistant__avatar--launch, .gp-assistant__launch--loading .gp-assistant__avatar--launch { animation: none; }
     .gp-assistant__launch--pending { opacity: 1; transform: none; pointer-events: auto; }
     .gp-assistant__teaser--leave { display: none; }
     .gp-assistant__launch, .gp-assistant__send, .gp-assistant__card, .gp-assistant__add, .gp-assistant__launchtext { transition: none; }
@@ -286,15 +288,31 @@ const enabled = assistantEnabled();
     // ---- the panel, loaded once, on first interest
     let activeTeaser: Teaser | null = null;
     let panelP: Promise<GoldiePanel> | null = null;
+    const narrow = matchMedia('(max-width: 640px)');
     const getPanel = () => (panelP ??= import('../scripts/goldie-panel').then((m) => m.mountGoldie(root, {
-      endpoint, reduced, knownPhone, greeting: GREETING, track, getTeaser: () => activeTeaser,
-      onOpen: () => { hideTeaser(false); badge.hidden = true; launch.removeAttribute('aria-label'); launch.classList.remove('gp-assistant__launch--msg'); setPillText('Ask Goldie', 'GoldPlus shop help'); },
-    })));
-    const prefetch = () => { void getPanel(); };
+      endpoint, reduced, knownPhone, greeting: GREETING, track, getTeaser: () => activeTeaser, narrow: () => narrow.matches,
+      onOpen: () => { hideTeaser(false); badge.hidden = true; launch.removeAttribute('aria-label'); launch.classList.remove('gp-assistant__launch--msg', 'gp-assistant__launch--loading'); setPillText('Ask Goldie', 'GoldPlus shop help'); },
+    })).catch((err) => { panelP = null; throw err; }));
+    // A failed module load is cached by the browser for this page view, so a further tap shows the same
+    // WhatsApp fallback rather than a dead button; the next page load fetches it afresh.
+    const prefetch = () => { getPanel().catch(() => { /* the tap path shows the fallback */ }); };
+    /** A tap while the panel code is still on its way (slow network): the pill says so, and if the
+     *  code never arrives the shopper is not left with a dead button but with the person on WhatsApp. */
+    const withPanel = (fn: (p: GoldiePanel) => void) => {
+      let pending = true;
+      setTimeout(() => { if (pending) { launch.classList.add('gp-assistant__launch--loading'); setPillText('Opening…', 'one moment'); } }, 250);
+      getPanel().then((p) => { pending = false; fn(p); }).catch(() => {
+        pending = false; launch.classList.remove('gp-assistant__launch--loading'); setPillText('Ask Goldie', 'GoldPlus shop help');
+        const wa = root.dataset.whatsapp || '/wa';
+        teaserText.textContent = 'I could not load just now. The shop answers on WhatsApp.'; teaserChips.replaceChildren();
+        const a = document.createElement('a'); a.href = wa; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = 'Open WhatsApp'; a.className = 'gp-assistant__chip'; teaserChips.append(a);
+        teaser.hidden = false; teaserState = 'shown';
+      });
+    };
     launch.addEventListener('pointerenter', prefetch, { once: true });
     launch.addEventListener('focus', prefetch, { once: true });
     launch.addEventListener('touchstart', prefetch, { once: true, passive: true });
-    launch.addEventListener('click', () => { track(pillShown ? 'NBA_CLICK' : 'PANEL_OPEN', pillShown ? `${teaserKey}:pill` : 'goldie:launcher'); void getPanel().then((p) => p.open()); });
+    launch.addEventListener('click', () => { track(pillShown ? 'NBA_CLICK' : 'PANEL_OPEN', pillShown ? `${teaserKey}:pill` : 'goldie:launcher'); withPanel((p) => p.open()); });
     const launchStrong = launch.querySelector<HTMLElement>('strong')!, launchSmall = launch.querySelector<HTMLElement>('small')!;
     const setPillText = (big: string, small: string) => { launchStrong.textContent = big; launchSmall.textContent = small; };
     // A tab that already has a conversation going gets the panel code early, so "Start over" and the transcript are instant.
@@ -320,7 +338,6 @@ const enabled = assistantEnabled();
     }
 
     // Phones: fold the pill to the avatar while scrolling down; open it again on a pause or a scroll up.
-    const narrow = matchMedia('(max-width: 640px)');
     let lastY = scrollY, foldTimer: number | undefined, holdOpenUntil = 0;
     addEventListener('scroll', () => {
       if (!narrow.matches) return;
@@ -378,7 +395,7 @@ const enabled = assistantEnabled();
       if (reduced) finish(); else { teaser.classList.add('gp-assistant__teaser--leave'); teaser.addEventListener('animationend', finish, { once: true }); }
       if (leaveBadge && panel.hidden) { badge.hidden = false; launch.setAttribute('aria-label', 'Ask Goldie, 1 new message'); }
     }
-    const askNow = (question: string, itemKey: string) => { track('NBA_CLICK', itemKey); void getPanel().then((p) => p.ask(question)); };
+    const askNow = (question: string, itemKey: string) => { track('NBA_CLICK', itemKey); withPanel((p) => { void p.ask(question); }); };
     const showTeaser = () => {
       if (teaserState !== 'idle' || !panel.hidden) return;
       const t = pageTeaser(); if (!t) { teaserState = 'done'; return; }
@@ -402,7 +419,7 @@ const enabled = assistantEnabled();
       // Ignored for a minute, it folds to an unread dot; the panel still opens with the same message.
       setTimeout(() => hideTeaser(true), 60000);
     };
-    teaserOpen.addEventListener('click', () => { track('NBA_CLICK', teaserKey); void getPanel().then((p) => p.open()); });
+    teaserOpen.addEventListener('click', () => { track('NBA_CLICK', teaserKey); withPanel((p) => p.open()); });
     teaserClose.addEventListener('click', () => { track('NBA_DISMISS', teaserKey); hideTeaser(false); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && teaserState === 'shown') hideTeaser(false); });
     if (!teasedRecently() && pageTeaser()) {

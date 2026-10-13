@@ -22,6 +22,8 @@ export type Teaser = { key: string; text: string; chips: string[]; asksPhone?: b
 export interface PanelContext {
   endpoint: string;
   reduced: boolean;
+  /** Phone-width viewport: the keyboard is not raised until the shopper taps the box, so the greeting and chips stay visible. */
+  narrow: () => boolean;
   knownPhone: string;
   greeting: string;
   track: (type: string, itemKey: string) => void;
@@ -115,7 +117,7 @@ export function mountGoldie(root: HTMLElement, ctx: PanelContext): GoldiePanel {
       const res = await fetch('/cart', { method: 'POST', body: fd, credentials: 'same-origin', redirect: 'follow' });
       let added = false; try { added = res.ok && new URL(res.url).searchParams.get('added') === it.id; } catch { added = false; }
       if (added) {
-        const a = document.createElement('a'); a.className = 'gp-assistant__add gp-assistant__add--done'; a.href = `/cart#line-${it.id}`; a.textContent = 'Added · View cart';
+        const a = document.createElement('a'); a.className = 'gp-assistant__add gp-assistant__add--done'; a.href = `/cart#line-${it.id}`; a.textContent = 'Added · View cart'; a.setAttribute('aria-label', `${it.name} added to cart. View cart`);
         btn.replaceWith(a);
         const badge = document.getElementById('gpNavCart'); const n = (parseInt(badge?.textContent || '0', 10) || 0) + 1;
         const w = window as unknown as { gpCartCount?: (n: number) => void }; try { w.gpCartCount?.(n); } catch { /* nav not present */ }
@@ -144,7 +146,7 @@ export function mountGoldie(root: HTMLElement, ctx: PanelContext): GoldiePanel {
       const canAdd = it.id != null && UUID.test(it.id) && it.price_ugx != null && (it.availability === 'in_stock' || it.availability === 'low_stock');
       if (canAdd) {
         const act = document.createElement('div'); act.className = 'gp-assistant__card-act';
-        const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'gp-assistant__add'; btn.textContent = 'Add to cart';
+        const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'gp-assistant__add'; btn.textContent = 'Add to cart'; btn.setAttribute('aria-label', `Add ${it.name} to cart`);
         const note = document.createElement('span'); note.className = 'gp-assistant__add-note';
         btn.addEventListener('click', () => { void addToCart(it, btn, note); });
         act.append(btn, note); card.append(act);
@@ -187,11 +189,11 @@ export function mountGoldie(root: HTMLElement, ctx: PanelContext): GoldiePanel {
     root.classList.add('gp-assistant--open'); panel.hidden = false; launch.setAttribute('aria-expanded', 'true');
     if (!ctx.reduced) { panel.classList.add('gp-assistant__panel--enter'); panel.addEventListener('animationend', () => panel.classList.remove('gp-assistant__panel--enter'), { once: true }); }
     try { sessionStorage.setItem(SEEN, '1'); } catch { /* ignore */ }
-    paint(); setTimeout(() => input.focus(), 60);
+    paint(); if (!ctx.narrow()) setTimeout(() => input.focus(), 60);
   };
   const close = () => { root.classList.remove('gp-assistant--open'); panel.hidden = true; launch.setAttribute('aria-expanded', 'false'); launch.focus(); };
   closeBtn.addEventListener('click', close);
-  clearBtn.addEventListener('click', () => { turns = []; persist(); paint(); input.focus(); });
+  clearBtn.addEventListener('click', () => { turns = []; persist(); paint(); if (!ctx.narrow()) input.focus(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !panel.hidden) close(); });
 
   const ask = async (question: string) => {
@@ -233,7 +235,7 @@ export function mountGoldie(root: HTMLElement, ctx: PanelContext): GoldiePanel {
       if (answer) { turns.push({ role: 'assistant', content: answer }); persist(); } else if (reply) (reply as { row: HTMLElement }).row.remove();
     } catch {
       wait.row.remove(); wait.status.remove(); if (reply && !answer) (reply as { row: HTMLElement }).row.remove(); bubble('error', 'The connection dropped. Ask me again?');
-    } finally { busy = false; send.disabled = false; input.focus(); }
+    } finally { busy = false; send.disabled = false; if (!ctx.narrow() || document.activeElement === input) input.focus(); }
   };
 
   form.addEventListener('submit', (e) => { e.preventDefault(); void ask(input.value); });

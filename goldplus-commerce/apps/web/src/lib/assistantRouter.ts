@@ -143,7 +143,7 @@ export async function answerDeterministically(c: Classification): Promise<Determ
       }
       if (kind === 'BATTERY') {
         const b = (s.battery as Json) ?? {};
-        const products: ProductCard[] = b.name ? [{ name: String(b.name), url: `${SITE_ORIGIN}/products/${String(b.slug ?? '')}`, sku: b.canonicalCode == null ? null : String(b.canonicalCode), price_ugx: b.priceUgx == null ? null : Number(b.priceUgx), availability: b.inStock ? 'in_stock' : 'out_of_stock', image: b.imageUrl ? String(b.imageUrl) : null, note: String(b.fitLabel ?? '') }] : [];
+        const products: ProductCard[] = b.name ? [{ id: cardId(b.productId), category: null, name: String(b.name), url: `${SITE_ORIGIN}/products/${String(b.slug ?? '')}`, sku: b.canonicalCode == null ? null : String(b.canonicalCode), price_ugx: b.priceUgx == null ? null : Number(b.priceUgx), availability: b.inStock ? 'in_stock' : 'out_of_stock', image: b.imageUrl ? String(b.imageUrl) : null, note: String(b.fitLabel ?? '') }] : [];
         return { intent: c.intent, text: products.length ? `Found it: battery ${String(b.canonicalCode ?? c.query)}.` : toolTextOf(out), products, links };
       }
       return { intent: c.intent, text: toolTextOf(out) || 'I could not find that battery on the shelf. Try the battery finder, or ask us on WhatsApp with your phone model.', products: [], links };
