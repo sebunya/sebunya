@@ -1,7 +1,7 @@
 import { and, eq, gte, sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { outboxEvents } from '../db/schema/system';
-import { pgInTextList } from '../db/PgParams';
+import { pgInTextList, pgJsonb } from '../db/PgParams';
 import type { HeroSignalsService } from '../hero/HeroSignalsService';
 import type {
   AssistantInterest, AssistantShopperContext, AssistantShopperKey,
@@ -15,13 +15,13 @@ const rowsOf = (r: unknown): Array<Record<string, unknown>> => (Array.isArray(r)
  * An outbox row whose payload is a real JSON object. drizzle-orm 0.29 with postgres-js double-encodes jsonb
  * on insert (the column holds a JSON *string*); Drizzle's own reads parse it back, so most code never notices,
  * but SQL that looks inside the payload (payload->>'recipient') sees nothing. The chat-copy daily cap and its
- * index (0180) read the recipient that way, so these rows are written as text cast to jsonb: a bare ::jsonb
- * parameter makes postgres-js encode the JSON string a second time.
+ * index (0180) read the recipient that way, so these rows are written with pgJsonb() (text cast to jsonb, the
+ * repo's own helper; a bare ::jsonb parameter makes postgres-js encode the JSON string a second time).
  */
 export async function insertOutboxObject(row: { eventType: string; template: string; channel: string; idempotencyKey: string; relatedEntity: string; relatedEntityId: string | null; payload: Record<string, unknown> }): Promise<string | null> {
   const rows = rowsOf(await db.execute(sql`
     insert into outbox_events (event_type, payload, idempotency_key, status, channel, template, dry_run_only, related_entity, related_entity_id)
-    values (${row.eventType}, ${JSON.stringify(row.payload)}::text::jsonb, ${row.idempotencyKey}, 'pending', ${row.channel}, ${row.template}, false, ${row.relatedEntity}, ${row.relatedEntityId}::uuid)
+    values (${row.eventType}, ${pgJsonb(row.payload)}, ${row.idempotencyKey}, 'pending', ${row.channel}, ${row.template}, false, ${row.relatedEntity}, ${row.relatedEntityId}::uuid)
     on conflict (idempotency_key) do nothing
     returning id
   `));
