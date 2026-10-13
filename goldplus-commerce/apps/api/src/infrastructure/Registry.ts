@@ -1975,6 +1975,7 @@ export class Registry {
                 ? (event.payload.warnings as string[])
                 : [],
               hold: event.payload.hold === true,
+              paymentMethod: await this.orderRepo.findPaymentMethod(order.id),
             });
             return { status: 'HANDLED' };
           },

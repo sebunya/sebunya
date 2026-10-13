@@ -278,10 +278,17 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
  * from the live payment status instead of the stored snapshot.
  */
 const PAYMENT_WARNING = /^Payment not yet confirmed/i;
-function liveWarnings(task: { paymentStatus: string; warnings: string[] }): string[] {
+function liveWarnings(task: { paymentStatus: string; paymentMethod?: string | null; warnings: string[] }): string[] {
   const rest = task.warnings.filter((w) => !PAYMENT_WARNING.test(w));
-  // True for both kinds of order: pay on delivery is collected at the door; anything else is confirmed first.
-  return task.paymentStatus === 'paid' ? rest : [...rest, 'Not paid yet. If it is pay on delivery, collect the money when you hand it over; otherwise confirm payment before dispatch.'];
+  if (task.paymentStatus === 'paid') return rest;
+  // Pay on delivery is collected at the door; an online payment is confirmed before dispatch.
+  // Tasks created before the method was recorded say both, which is true of either.
+  const line = task.paymentMethod === 'offline'
+    ? 'Pay on delivery: collect the money when you hand it over.'
+    : task.paymentMethod === 'pesapal'
+      ? 'Online payment not confirmed yet. Do not dispatch until it is.'
+      : 'Not paid yet. If it is pay on delivery, collect the money when you hand it over; otherwise confirm payment before dispatch.';
+  return [...rest, line];
 }
 ---
 

@@ -12,9 +12,9 @@ import { describe, expect, it } from 'vitest';
  */
 const src = readFileSync(resolve(__dirname, '../../apps/web/src/pages/admin/fulfilment/index.astro'), 'utf8');
 const fnSrc = src.slice(src.indexOf('const PAYMENT_WARNING'), src.indexOf('\n}\n', src.indexOf('function liveWarnings')) + 2)
-  .replace(/: \{ paymentStatus: string; warnings: string\[\] \}\): string\[\]/, ')').replace(/\(task\)/, '(task)');
+  .replace(/: \{ paymentStatus: string; paymentMethod\?: string \| null; warnings: string\[\] \}\): string\[\]/, ')').replace(/\(task\)/, '(task)');
 // eslint-disable-next-line no-new-func
-const liveWarnings = new Function(`${fnSrc.replace('function liveWarnings(task', 'return function liveWarnings(task')}`)() as (t: { paymentStatus: string; warnings: string[] }) => string[];
+const liveWarnings = new Function(`${fnSrc.replace('function liveWarnings(task', 'return function liveWarnings(task')}`)() as (t: { paymentStatus: string; paymentMethod?: string | null; warnings: string[] }) => string[];
 
 describe('the fulfilment card judges payment by the order as it is now', () => {
   const stored = ['Delivery fee not from a configured zone — confirm before dispatch.', 'Payment not yet confirmed — do not dispatch until paid.'];
@@ -27,6 +27,11 @@ describe('the fulfilment card judges payment by the order as it is now', () => {
     const w = liveWarnings({ paymentStatus: 'pending', warnings: stored });
     expect(w).toHaveLength(2);
     expect(w[1]).toMatch(/collect the money when you hand it over/);
+  });
+
+  it('says the exact thing once the payment method is known', () => {
+    expect(liveWarnings({ paymentStatus: 'pending', paymentMethod: 'offline', warnings: stored })[1]).toBe('Pay on delivery: collect the money when you hand it over.');
+    expect(liveWarnings({ paymentStatus: 'pending', paymentMethod: 'pesapal', warnings: stored })[1]).toMatch(/Do not dispatch until it is/);
   });
 
   it('the card renders the live list, not the stored one', () => {
