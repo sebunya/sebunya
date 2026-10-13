@@ -103,18 +103,20 @@ export class WhatsAppAdsUseCases {
     if (!verifyWebhookSignature(rawBody, signatureHeader, s.secrets.appSecret)) return { status: 401, ...none };
     let payload: unknown;
     try { payload = JSON.parse(rawBody); } catch { return { status: 200, ...none }; }
-    const parsed = parseAdReferrals(payload, s.wabaId, this.now());
+    // The WhatsApp account saved in the admin, plus the Messaging account (WHATSAPP_MESSAGING_ACCOUNT_ID) if set.
+    const ownIds = [s.wabaId, (process.env.WHATSAPP_MESSAGING_ACCOUNT_ID ?? '').trim()].filter((x) => /^\d{5,20}$/.test(x)).join(',');
+    const parsed = parseAdReferrals(payload, ownIds, this.now());
     // Customers' words go to Goldie (who files them and answers when switched on); the advert path below never reads them.
     if (this.inbound) {
-      const texts = parseInboundTexts(payload, s.wabaId, this.now());
+      const texts = parseInboundTexts(payload, ownIds, this.now());
       if (texts.length) { try { this.inbound(texts); } catch { /* Goldie must never cost Meta a 200 */ } }
     }
     if (this.receipts) {
-      const receipts = parseDeliveryReceipts(payload, s.wabaId);
+      const receipts = parseDeliveryReceipts(payload, ownIds);
       if (receipts.length) { try { this.receipts(receipts); } catch { /* never costs Meta a 200 */ } }
     }
     if (this.accountEvents) {
-      const events = parseAccountEvents(payload, s.wabaId);
+      const events = parseAccountEvents(payload, ownIds);
       if (events.length) { try { this.accountEvents(events); } catch { /* never costs Meta a 200 */ } }
     }
     // Signed and understood, but switched off: acknowledged and not kept.
