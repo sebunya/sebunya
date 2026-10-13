@@ -19,7 +19,8 @@ export async function runGoldieCareOnce(): Promise<{ recovered: number; escalate
   running = true;
   try {
     const registry = Registry.getInstance();
-    const recovered = await registry.goldieChannelUseCases.recoverPending().catch((err) => { logger.error({ err: (err as Error).message }, '[goldie] whatsapp recovery failed'); return 0; });
+    const recovered = await registry.goldieChannelUseCases.recoverPending().catch((err) => { logger.error({ err: (err as Error).message }, '[goldie] whatsapp recovery failed'); return 0; })
+      + await registry.goldieSocialUseCases.recoverPending().catch((err) => { logger.error({ err: (err as Error).message }, '[goldie] messenger/instagram recovery failed'); return 0; });
     const escalated = await registry.careDeskUseCases.escalateOverdue().catch((err) => { logger.error({ err: (err as Error).message }, '[care-desk] escalation failed'); return 0; });
     if (recovered) goldieMetrics.recovered.inc(recovered);
     if (escalated) goldieMetrics.escalations.inc(escalated);
@@ -43,7 +44,7 @@ export async function watchGoldieHealth(): Promise<string[]> {
   const now = Date.now();
   const [today, failures, status] = await Promise.all([
     registry.careDeskUseCases.today(),
-    registry.conversationArchiveUseCases.whatsappFailuresSince(new Date(now - 15 * 60_000)),
+    registry.conversationArchiveUseCases.replyFailuresSince(new Date(now - 15 * 60_000)),
     registry.assistantAdmissionUseCases.status().catch(() => null),
   ]);
   goldieMetrics.urgentOpen.set(today.urgentOpen);
@@ -53,8 +54,8 @@ export async function watchGoldieHealth(): Promise<string[]> {
   const ratio = cap > 0 ? committed / cap : 0;
   goldieMetrics.spendRatio.set(ratio);
 
-  const problems: Array<{ kind: 'WhatsApp' | 'spend'; text: string }> = [];
-  if (failures >= 3) problems.push({ kind: 'WhatsApp', text: `${failures} WhatsApp messages could not be answered in the last 15 minutes. Check the WhatsApp token and the web container; customers got a holding reply.` });
+  const problems: Array<{ kind: 'replies' | 'spend'; text: string }> = [];
+  if (failures >= 3) problems.push({ kind: 'replies', text: `${failures} customer messages (WhatsApp, Messenger or Instagram) could not be answered in the last 15 minutes. Check the channel tokens and the web container; customers got a holding reply.` });
   if (ratio >= 0.9) problems.push({ kind: 'spend', text: `this month's model spend is ${Math.round(ratio * 100)}% of the cap. Goldie keeps answering from shop data and memory; raise the cap in Shop assistant settings if paid answers should continue.` });
   if (!problems.length) return [];
   const open = await registry.careDeskUseCases.list({ status: 'open', kind: 'urgent', limit: 50 });

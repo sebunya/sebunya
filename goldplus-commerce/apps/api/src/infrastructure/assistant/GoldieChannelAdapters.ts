@@ -1,6 +1,8 @@
 import { META_GRAPH_VERSION } from '../advertising/AdPlatforms';
 import type { IGoldieBrain, IWhatsAppMessenger, GoldieWhatsAppSettings } from '../../application/use-cases/assistant/GoldieChannelUseCases';
 import type { ICareAlertChannels } from '../../application/use-cases/assistant/CareDeskUseCases';
+import type { GoldieSocialSettings, ISocialMessenger } from '../../application/use-cases/assistant/GoldieSocialUseCases';
+import type { SocialPlatform } from '../../domain/assistant/SocialGoldie';
 import { insertOutboxObject } from './AssistantConversationAdapters';
 import { goldieMetrics } from './GoldieMetrics';
 import { sendWebPush, vapidFromEnv } from './WebPush';
@@ -136,6 +138,37 @@ export class HttpGoldieBrain implements IGoldieBrain {
       return null;
     }
   }
+}
+
+/**
+ * Meta's Send API for Messenger and Instagram Direct (page token: GOLDIE_META_PAGE_TOKEN, a Page access token with
+ * pages_messaging, plus instagram_manage_messages for Instagram). A RESPONSE inside the 24-hour window only.
+ */
+export class MetaSocialMessenger implements ISocialMessenger {
+  constructor(private readonly fetchImpl: typeof fetch = fetch) {}
+  async sendText(input: { platform: SocialPlatform; recipientId: string; text: string }) {
+    const token = (process.env.GOLDIE_META_PAGE_TOKEN || '').trim();
+    if (!token) return { ok: false as const, reason: 'no page token' };
+    if (!/^\d{5,30}$/.test(input.recipientId)) return { ok: false as const, reason: 'bad recipient' };
+    try {
+      const res = await this.fetchImpl(`https://graph.facebook.com/${META_GRAPH_VERSION}/me/messages`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipient: { id: input.recipientId }, messaging_type: 'RESPONSE', message: { text: input.text } }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      const json = (await res.json().catch(() => null)) as { message_id?: string; error?: { message?: string; code?: number } } | null;
+      if (!res.ok) return { ok: false as const, reason: `${res.status}${json?.error?.code ? ` ${json.error.code}` : ''} ${String(json?.error?.message ?? '').slice(0, 120)}`.trim() };
+      return { ok: true as const, messageId: json?.message_id ?? null };
+    } catch (e) {
+      return { ok: false as const, reason: e instanceof Error ? e.message.slice(0, 120) : 'unreachable' };
+    }
+  }
+}
+
+export function goldieSocialSettings(env: NodeJS.ProcessEnv = process.env): GoldieSocialSettings {
+  const token = !!(env.GOLDIE_META_PAGE_TOKEN ?? '').trim();
+  return { messenger: token && env.GOLDIE_MESSENGER_ENABLED === 'true', instagram: token && env.GOLDIE_INSTAGRAM_ENABLED === 'true' };
 }
 
 export function goldieWhatsAppSettings(env: NodeJS.ProcessEnv = process.env): GoldieWhatsAppSettings {

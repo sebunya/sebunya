@@ -64,6 +64,12 @@ export class WhatsAppAdsUseCases {
     await this.repo.purgeBefore(new Date(t - CTWA_RETENTION_DAYS * 86_400_000)).catch(() => undefined);
   }
 
+  /** The Meta app's webhook secrets, shared with Goldie's Messenger/Instagram webhook (the same Meta app). */
+  async appSecrets(): Promise<{ appSecret: string; verifyToken: string } | null> {
+    const s = await this.settings().catch(() => null);
+    return s?.secrets.appSecret ? { appSecret: s.secrets.appSecret, verifyToken: s.secrets.verifyToken } : null;
+  }
+
   /** Meta's subscription check (GET). The challenge to echo, or null to refuse. Works before the capability is switched on: verification is part of setting it up. */
   async verifySubscription(query: { mode?: string | null; token?: string | null; challenge?: string | null }): Promise<string | null> {
     const s = await this.settings().catch(() => null);

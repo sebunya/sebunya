@@ -59,6 +59,8 @@ export interface IAssistantConversationStore {
   claimCustomerMessage(channelMessageId: string): Promise<boolean>;
   /** Records what happened to a customer message (answered, silent, held, send_failed). */
   markCustomerMessage(channelMessageId: string, outcome: string): Promise<void>;
-  /** WhatsApp customer messages since `since` that Goldie could not answer (held or send_failed). */
-  whatsappFailuresSince(since: Date): Promise<number>;
+  /** Messenger/Instagram threads whose last line is a customer message that never got an outcome (the recovery pass). */
+  pendingSocial(olderThan: Date, newerThan: Date, limit: number): Promise<Array<{ conversationId: string; channel: 'messenger' | 'instagram'; channelKey: string; messageId: string; text: string; at: Date }>>;
+  /** Customer messages (any channel) since `since` that Goldie could not answer (held or send_failed). */
+  replyFailuresSince(since: Date): Promise<number>;
 }

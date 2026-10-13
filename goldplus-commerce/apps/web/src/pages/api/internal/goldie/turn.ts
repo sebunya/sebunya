@@ -8,7 +8,7 @@ import type { ProductCard } from '../../../../lib/assistantRouter';
 
 /**
  * POST /api/internal/goldie/turn: one Goldie turn for a messaging channel
- * (WhatsApp today), asked by the API container over the internal network with
+ * (WhatsApp, Messenger, Instagram), asked by the API container over the internal network with
  * the internal key. The API has already verified Meta's signature and filed
  * the customer's message; this runs the same brain as the website and returns
  * the answer as JSON for the API to send and file.
@@ -36,20 +36,25 @@ export const POST: APIRoute = async ({ request }) => {
   if (!read.ok) return json({ success: false, error: { code: 'TOO_LARGE', message: 'Too long.' } }, 413);
   let b: Record<string, unknown> | null = null;
   try { b = JSON.parse(read.text); } catch { b = null; }
-  const phone = typeof b?.verifiedPhone === 'string' && /^\d{8,15}$/.test(b.verifiedPhone) ? b.verifiedPhone : null;
   const turns = validateTurns(b?.turns);
-  if (!b || b.channel !== 'whatsapp' || !phone || !turns) return json({ success: false, error: { code: 'INVALID_BODY', message: 'channel, verifiedPhone and turns are required.' } }, 400);
+  const social = b?.channel === 'messenger' || b?.channel === 'instagram' ? b.channel as 'messenger' | 'instagram' : null;
+  const senderId = social && typeof b?.senderId === 'string' && /^\d{5,30}$/.test(b.senderId) ? b.senderId : null;
+  const phone = !social && typeof b?.verifiedPhone === 'string' && /^\d{8,15}$/.test(b.verifiedPhone) ? b.verifiedPhone : null;
+  if (!b || !turns || (social ? !senderId : b.channel !== 'whatsapp' || !phone)) return json({ success: false, error: { code: 'INVALID_BODY', message: 'channel, turns and verifiedPhone (WhatsApp) or senderId (Messenger, Instagram) are required.' } }, 400);
 
-  const principal = createHash('sha256').update(`assistant:wa:${phone}`).digest('hex');
-  const requestId = createHash('sha256').update(`${phone}:${turns.length}:${turns[turns.length - 1]!.content}`).digest('hex').slice(0, 32);
+  // Messenger and Instagram carry no phone: the sender id is only a fairness bucket, never proof of anything.
+  const who = social ? `${social}:${senderId}` : `wa:${phone}`;
+  const principal = createHash('sha256').update(`assistant:${who}`).digest('hex');
+  const requestId = createHash('sha256').update(`${who}:${turns.length}:${turns[turns.length - 1]!.content}`).digest('hex').slice(0, 32);
+  const channel = social ?? 'whatsapp';
   const prepared = await prepareTurn({
-    channel: 'whatsapp', turns, requestId, page: null, principalHash: principal, addressHash: null,
+    channel, turns, requestId, page: null, principalHash: principal, addressHash: null,
     who: { visitToken: null, userId: null, fpClientId: null, verifiedPhone: phone },
-    care: { bearer: null, clientAddress: null, site: SITE_ORIGIN, verifiedPhone: phone, channel: 'whatsapp', conversationKey: typeof b.conversationKey === 'string' ? b.conversationKey.slice(0, 128) : null, customerName: typeof b.name === 'string' ? b.name.slice(0, 80) : null },
+    care: { bearer: null, clientAddress: null, site: SITE_ORIGIN, verifiedPhone: phone, channel, conversationKey: typeof b.conversationKey === 'string' ? b.conversationKey.slice(0, 128) : null, customerName: typeof b.name === 'string' ? b.name.slice(0, 80) : null },
     apiKey: String(process.env.ANTHROPIC_API_KEY),
   });
   if (prepared.kind === 'refused') {
-    // A busy or rate-limited moment still gets a human answer on WhatsApp, never silence.
+    // A busy or rate-limited moment still gets a human answer on the channel, never silence.
     const text = prepared.code === 'RATE_LIMITED' || prepared.code === 'BUSY'
       ? "Give me a moment, I'm with a few customers. Send your question again in a minute, or wait and the team will reply here."
       : prepared.code === 'DUPLICATE' ? '' : 'The team will reply to you here shortly.';

@@ -22,6 +22,10 @@ import { cardId, type ProductCard } from './assistantRouter';
 
 export const DEFAULT_MODEL = 'claude-haiku-5-5';
 export const MESSAGES_URL = 'https://api.anthropic.com/v1/messages';
+/** CI only: ANTHROPIC_MESSAGES_URL points the model somewhere harmless (a closed local port), so the real widget
+ *  renders in browser tests and every model call takes the fallback path. Ignored in production. */
+export const messagesUrl = (env: NodeJS.ProcessEnv = process.env): string =>
+  env.NODE_ENV !== 'production' && env.ANTHROPIC_MESSAGES_URL ? env.ANTHROPIC_MESSAGES_URL : MESSAGES_URL;
 export const MAX_TURNS = 12;
 export const MAX_TURN_CHARS = 2000;
 export const MAX_TOOL_ROUNDS = 4;
@@ -306,7 +310,7 @@ async function requestTurn(messages: MessageParam[], opts: Required<Pick<Assista
     headers['anthropic-beta'] = 'server-side-fallback-2026-07-01';
   }
   const signal = opts.signal ? AbortSignal.any([opts.signal, AbortSignal.timeout(UPSTREAM_TIMEOUT_MS)]) : AbortSignal.timeout(UPSTREAM_TIMEOUT_MS);
-  return fetchImpl(MESSAGES_URL, { method: 'POST', headers, body: JSON.stringify(body), signal });
+  return fetchImpl(messagesUrl(), { method: 'POST', headers, body: JSON.stringify(body), signal });
 }
 
 const HANDOFF = `I can't take that one here. The shop answers on WhatsApp: ${SITE_ORIGIN}/wa`;

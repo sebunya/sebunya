@@ -7,7 +7,7 @@
  * before anything is stored, whatever the customer typed.
  */
 
-export type ArchiveChannel = 'web' | 'whatsapp';
+export type ArchiveChannel = 'web' | 'whatsapp' | 'messenger' | 'instagram';
 export type ArchiveRole = 'customer' | 'goldie' | 'team';
 export type ArchiveMood = 'upset' | 'worried' | 'confused' | 'happy' | 'neutral';
 /** open: in progress; resolved: answered and closed; handed_over: passed to the team; needs_human: upset and not settled. */

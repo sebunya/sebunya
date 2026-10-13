@@ -9,6 +9,12 @@ groups:
         annotations:
           summary: "Goldie could not answer {{ $value }} WhatsApp messages in 15 minutes"
           runbook: "docs/assistant/RUNBOOK.md#whatsapp-replies-failing"
+      - alert: GoldieSocialRepliesFailing
+        expr: sum(increase(goldie_social_messages_total{outcome="failed"}[15m])) >= 3
+        labels: { severity: page }
+        annotations:
+          summary: "Goldie could not answer {{ $value }} Messenger/Instagram messages in 15 minutes"
+          runbook: "docs/assistant/RUNBOOK.md#whatsapp-replies-failing"
       - alert: GoldieUrgentCustomerWaiting
         expr: goldie_care_oldest_open_minutes > 30 and goldie_care_urgent_open > 0
         labels: { severity: page }

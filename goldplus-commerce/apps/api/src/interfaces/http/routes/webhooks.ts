@@ -50,6 +50,23 @@ routes.post('/whatsapp', async (c) => {
   return c.body(null, r.status);
 });
 
+/**
+ * Goldie on Facebook Messenger and Instagram Direct: one callback for both (subscribe the Page and the Instagram
+ * account to "messages" in the same Meta app as WhatsApp). 404 until switched on; signature checked on the raw
+ * body; the body is never logged.
+ */
+routes.get('/meta-messaging', async (c) => {
+  const challenge = await Registry.getInstance().goldieSocialUseCases.verifySubscription({
+    mode: c.req.query('hub.mode'), token: c.req.query('hub.verify_token'), challenge: c.req.query('hub.challenge'),
+  });
+  return challenge ? c.text(challenge, 200) : c.text('Forbidden', 403);
+});
+routes.post('/meta-messaging', async (c) => {
+  const r = await Registry.getInstance().goldieSocialUseCases.receive(await c.req.text(), c.req.header('x-hub-signature-256'));
+  if (r.status !== 200 && r.status !== 404) logger.warn({ status: r.status, ip: clientIp(c) }, '[Goldie] Messenger/Instagram delivery not accepted');
+  return c.body(null, r.status);
+});
+
 routes.post('/payment/:provider', async (c) => {
   const provider = c.req.param('provider').toLowerCase();
   if (!ALLOWED.has(provider)) {

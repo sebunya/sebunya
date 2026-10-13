@@ -22,16 +22,19 @@ Care Desk (`/admin/care`), which pages the on-duty team by SMS and email.
   for people to answer.
 
 ## WhatsApp replies failing
-Alert: `GoldieWhatsAppRepliesFailing`, or a Care Desk task "Goldie needs attention: WhatsApp".
+Alert: `GoldieWhatsAppRepliesFailing` (or `GoldieSocialRepliesFailing` for Messenger/Instagram), or a Care Desk task
+"Goldie needs attention: replies".
 Customers received a holding reply and a follow-up task exists for each.
 1. Look at the task titles: "could not be sent (…)" names WhatsApp's reason.
 2. `401` or `190` means the token expired or lost `whatsapp_business_messaging`. Make a new system-user token, set
    `GOLDIE_WHATSAPP_TOKEN`, and roll api.
-3. `131047` means more than 24 hours have passed since the customer's last message. Only a person can reply,
+3. Messenger/Instagram: `190` is an expired Page token (`GOLDIE_META_PAGE_TOKEN`); `10` or `2018278` means outside the
+   24-hour window, so only a person can reach the customer another way.
+4. `131047` means more than 24 hours have passed since the customer's last message. Only a person can reply,
    with an approved template or a call.
-4. No reason given (the brain failed): check the web container is up (`docker compose ps web`). The api reaches it at
+5. No reason given (the brain failed): check the web container is up (`docker compose ps web`). The api reaches it at
    `WEB_INTERNAL_ORIGIN`. Roll web.
-5. Interrupted replies are retried once by the recovery pass within 2 minutes (`goldie_whatsapp_recovered_total`).
+6. Interrupted replies (all three channels) are retried once by the recovery pass within 2 minutes (`goldie_whatsapp_recovered_total`).
 
 ## Urgent customer waiting
 Alert: `GoldieUrgentCustomerWaiting`. Open the Care Desk; the red-edged task at the top is the one. Press "I'll take it",

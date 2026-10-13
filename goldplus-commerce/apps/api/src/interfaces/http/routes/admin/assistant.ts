@@ -5,6 +5,7 @@ import { Registry } from '../../../../infrastructure/Registry';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
 import { csvCell } from '../../csv';
+import type { ArchiveChannel } from '../../../../domain/assistant/ConversationArchive';
 
 /**
  * Shop-assistant operations: month spend, ledger counts, the policy (budget,
@@ -43,7 +44,7 @@ routes.put('/config', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (
   return ok(c, { version: saved.version, config: after.config });
 });
 
-routes.get('/channels', requirePermissions([PERMISSIONS.ANALYTICS_READ]), async (c) => ok(c, Registry.getInstance().goldieChannelUseCases.status()));
+routes.get('/channels', requirePermissions([PERMISSIONS.ANALYTICS_READ]), async (c) => ok(c, { ...Registry.getInstance().goldieChannelUseCases.status(), ...Registry.getInstance().goldieSocialUseCases.status() }));
 
 // ---- Answer memory ("Teach Goldie") and the route mix
 routes.get('/answers', requirePermissions([PERMISSIONS.ANALYTICS_READ]), async (c) => ok(c, await Registry.getInstance().answerMemoryUseCases.list(c.req.query('retired') === '1')));
@@ -102,7 +103,7 @@ const filters = (c: Context) => {
   const date = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(`${v}T00:00:00+03:00`) : undefined);
   const to = date(q.to); if (to) to.setUTCDate(to.getUTCDate() + 1);
   return {
-    channel: q.channel === 'web' || q.channel === 'whatsapp' ? (q.channel as 'web' | 'whatsapp') : undefined,
+    channel: ['web', 'whatsapp', 'messenger', 'instagram'].includes(String(q.channel)) ? (q.channel as ArchiveChannel) : undefined,
     outcome: (OUTCOMES as readonly string[]).includes(q.outcome ?? '') ? (q.outcome as (typeof OUTCOMES)[number]) : undefined,
     mood: (MOODS as readonly string[]).includes(q.mood ?? '') ? (q.mood as (typeof MOODS)[number]) : undefined,
     topic: q.topic && /^[A-Z_]{2,20}$/.test(q.topic) ? q.topic : undefined,

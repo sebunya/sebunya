@@ -147,11 +147,12 @@ const enabled = assistantEnabled();
   /* A face does not wobble: the nudge is one gentle lift. */
   @keyframes gp-nudge { 0%,100% { transform: none } 35% { transform: translateY(-3px) scale(1.06) } 70% { transform: translateY(0) scale(.99) } }
   /* Arrival: the launcher is not in the first paint; it rises once the page has settled. */
-  .gp-assistant__launch--pending { opacity: 0; transform: translateY(16px) scale(.96); pointer-events: none; }
+  .gp-assistant__launch--pending { visibility: hidden; transform: translateY(calc(100% + 32px)); pointer-events: none; }
   .gp-assistant__launch--loading { cursor: progress; }
   .gp-assistant__launch--loading .gp-assistant__avatar--launch { animation: gp-ring 1.2s var(--gp-ease) infinite; }
   .gp-assistant__launch--arrive { animation: gp-arrive .5s var(--gp-ease) both; }
-  @keyframes gp-arrive { from { opacity: 0; transform: translateY(16px) scale(.96) } to { opacity: 1; transform: none } }
+  /* Slides up from below the screen at full opacity: the text is never drawn half-faded (contrast holds every frame). */
+  @keyframes gp-arrive { from { transform: translateY(calc(100% + 32px)) } to { transform: none } }
   .gp-assistant__avatar--launch { position: relative; }
   /* The Goldie wordmark. The real text is always drawn solid; the glint is a copy laid over it
      (::after, hidden from screen readers) whose lime-to-gold band crosses once. If a browser cannot
@@ -311,7 +312,7 @@ const enabled = assistantEnabled();
     .gp-assistant__panel--enter, .gp-assistant__launch--nudge .gp-assistant__avatar--launch, .gp-assistant__typing i,
     .gp-assistant__launch--arrive, .gp-assistant__teaser--enter, .gp-assistant__teaser--enter .gp-assistant__avatar--sm, .gp-assistant__teaser--leave, .gp-assistant__launch--msg .gp-assistant__avatar--launch, .gp-assistant__launch--loading .gp-assistant__avatar--launch,
     .gp-goldie::after, .gp-assistant__launch--hello .gp-assistant__avatar--launch { animation: none !important; }
-    .gp-assistant__launch--pending { opacity: 1; transform: none; pointer-events: auto; }
+    .gp-assistant__launch--pending { visibility: visible; transform: none; pointer-events: auto; }
     .gp-assistant__teaser--leave { display: none; }
     .gp-assistant__launch, .gp-assistant__send, .gp-assistant__card, .gp-assistant__add, .gp-assistant__launchtext { transition: none; }
     .gp-assistant__typing i { opacity: .7; }

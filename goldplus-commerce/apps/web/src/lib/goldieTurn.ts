@@ -20,7 +20,7 @@ import { recall, remember } from './goldieAnswerMemory';
  * gets the way to a person.
  */
 export interface TurnInput {
-  channel: 'web' | 'whatsapp';
+  channel: 'web' | 'whatsapp' | 'messenger' | 'instagram';
   turns: ChatTurn[];
   requestId: string | null;
   principalHash: string;
@@ -151,7 +151,9 @@ export async function prepareTurn(input: TurnInput): Promise<PreparedTurn> {
       meta.nextAction = ctx?.nextBestAction ?? null;
       const moodLine = (mood.mood === 'neutral' ? '' : ` This message reads as ${mood.mood}${mood.urgent ? ' and urgent' : ''}; acknowledge that first.`)
         + (lang === 'lg' ? ' The customer is writing in Luganda: answer in Luganda.' : lang === 'sw' ? ' The customer is writing in Swahili: answer in Swahili.' : '');
-      const note = (shopperNote(ctx) + (input.channel === 'whatsapp' ? ' Channel: WhatsApp (plain text, no cards; keep it short).' : '') + moodLine).trim();
+      const channelLine = input.channel === 'whatsapp' ? ' Channel: WhatsApp (plain text, no cards; keep it short).'
+        : input.channel === 'messenger' || input.channel === 'instagram' ? ` Channel: ${input.channel === 'messenger' ? 'Facebook Messenger' : 'Instagram'} (plain text, no cards; keep it short). There is no verified phone here: for an order or points, ask for the order number and the phone used, as on the website.` : '';
+      const note = (shopperNote(ctx) + channelLine + moodLine).trim();
       // Cost: the model sees the last eight turns, starting with the customer (older turns rarely change the answer).
       let modelTurns = input.turns.slice(-8);
       while (modelTurns.length && modelTurns[0]!.role !== 'user') modelTurns = modelTurns.slice(1);

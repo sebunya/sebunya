@@ -45,5 +45,7 @@ export function rememberable(answer: string): boolean {
   // Anything that reads as personal or as a one-off action is not a general answer.
   if (/\b(welcome back|your order|your points|GP-[A-Z0-9]|booked|logged|alerted|passed (this|it) to the team|I have (asked|sent|filed))\b/i.test(a)) return false;
   if (/(?:\+?256|0)\s?7\d{2}[\s-]?\d{3}[\s-]?\d{3}|[\w.+-]+@[\w-]+\.[\w.-]+/.test(a)) return false;
+  // A link to anywhere but this shop would be handed to every later customer: never remembered.
+  if (/\bhttps?:\/\/(?!(?:www\.)?shopgoldplus\.com(?:[/?#]|$))/i.test(a) || /\bwww\.(?!shopgoldplus\.com)/i.test(a)) return false;
   return true;
 }

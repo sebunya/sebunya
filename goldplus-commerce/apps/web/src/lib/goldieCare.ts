@@ -28,7 +28,7 @@ export interface CareContext {
   /** WhatsApp only: the sender's number as Meta verified it (international digits). It proves THEIR orders and points. */
   verifiedPhone?: string | null;
   /** Where the conversation lives, so a task links to the thread the team will read. */
-  channel?: 'web' | 'whatsapp';
+  channel?: 'web' | 'whatsapp' | 'messenger' | 'instagram';
   conversationKey?: string | null;
   /** How the customer feels this turn (lib/goldieEmpathy), so an upset customer's task is urgent. */
   mood?: string | null;

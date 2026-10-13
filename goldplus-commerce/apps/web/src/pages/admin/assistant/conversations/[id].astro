@@ -40,7 +40,7 @@ if (Astro.request.method === 'POST') {
     const r = await call<{ sent: boolean; note?: string }>(`/conversations/${id}/reply`, { method: 'POST', body: JSON.stringify({ text: String(form.get('text') ?? '').trim() }) });
     const savedId = String(form.get('savedReplyId') ?? '');
     if (r.ok && /^[0-9a-f-]{36}$/i.test(savedId)) await fetch(`${apiBase}/admin/care/saved-replies/${savedId}/used`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => undefined);
-    notice = r.ok ? { kind: 'success', text: r.data.sent ? ((r.data as { channel?: string }).channel === 'email' ? 'Email sent to the customer.' : 'Sent on WhatsApp. Goldie stays quiet for 24 hours.') : (r.data.note ?? 'Filed.') } : { kind: 'error', text: r.message };
+    notice = r.ok ? { kind: 'success', text: r.data.sent ? ((r.data as { channel?: string }).channel === 'email' ? 'Email sent to the customer.' : `Sent on ${({ messenger: 'Messenger', instagram: 'Instagram' } as Record<string, string>)[(r.data as { channel?: string }).channel ?? ''] ?? 'WhatsApp'}. Goldie stays quiet for 24 hours.`) : (r.data.note ?? 'Filed.') } : { kind: 'error', text: r.message };
   }
 }
 
@@ -87,9 +87,9 @@ const teamHasIt = !!(c?.humanUntil && new Date(c.humanUntil) > new Date());
           <form method="post" class="grid gap-2">
             <input type="hidden" name="action" value="reply" />
             {savedReplies.length > 0 && <label class="grid gap-1"><span class="font-bold">Saved reply</span><select data-saved-reply class="rounded-lg border border-gray-300 px-2 py-2"><option value="">Choose one to start from…</option>{savedReplies.map((r) => <option value={r.body} data-id={r.id}>{r.title}</option>)}</select></label>}
-            <label class="grid gap-1"><span class="font-bold">{c.channel === 'whatsapp' ? 'Reply on WhatsApp' : c.contactEmail ? `Reply by email to ${c.contactEmail}` : 'Add a note (this customer left no email: call or WhatsApp them)'}</span><textarea name="text" data-reply-text rows="3" maxlength="2000" required class="rounded-lg border border-gray-300 px-3 py-2"></textarea></label>
+            <label class="grid gap-1"><span class="font-bold">{c.channel === 'whatsapp' ? 'Reply on WhatsApp' : c.channel === 'messenger' ? 'Reply on Messenger' : c.channel === 'instagram' ? 'Reply on Instagram' : c.contactEmail ? `Reply by email to ${c.contactEmail}` : 'Add a note (this customer left no email: call or WhatsApp them)'}</span><textarea name="text" data-reply-text rows="3" maxlength="2000" required class="rounded-lg border border-gray-300 px-3 py-2"></textarea></label>
             <input type="hidden" name="savedReplyId" data-saved-reply-id value="" />
-            <button class="justify-self-start rounded-full bg-brand-dark text-white font-bold px-4 py-2">{c.channel === 'whatsapp' ? 'Send on WhatsApp' : c.contactEmail ? 'Send email' : 'File note'}</button>
+            <button class="justify-self-start rounded-full bg-brand-dark text-white font-bold px-4 py-2">{c.channel === 'whatsapp' ? 'Send on WhatsApp' : c.channel === 'messenger' ? 'Send on Messenger' : c.channel === 'instagram' ? 'Send on Instagram' : c.contactEmail ? 'Send email' : 'File note'}</button>
           </form>
           <div class="flex flex-wrap gap-3 items-end">
             {teamHasIt

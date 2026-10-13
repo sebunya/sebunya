@@ -14,5 +14,12 @@
    `GOLDIE_WHATSAPP_ENABLED=true`. Roll api, chat from your phone, then clear `GOLDIE_WHATSAPP_TEST_NUMBERS`.
 8. Staff push alerts (optional): set `CARE_PUSH_VAPID_PUBLIC_KEY`, `CARE_PUSH_VAPID_PRIVATE_KEY` and
    `CARE_PUSH_CONTACT`, roll api and web, then each person presses "Alert me on this phone" on the Care Desk.
-9. After two weeks, read the Goldie numbers in the meeting summary (sales after a chat, rating, free-answer share) and
+9. Messenger and Instagram (optional): in the same Meta app as WhatsApp, add the Messenger product, subscribe the
+   GoldPlus Page (and the linked Instagram account) to `messages` with callback
+   `https://<api host>/webhooks/meta-messaging` and the same verify token. Make a Page access token with
+   `pages_messaging` (and `instagram_manage_messages`), set `GOLDIE_META_PAGE_TOKEN`, then
+   `GOLDIE_MESSENGER_ENABLED=true` and/or `GOLDIE_INSTAGRAM_ENABLED=true`, and roll api. Message the Page from your
+   own account to check. Orders and points are only discussed there after the customer gives the order number and
+   phone, as on the website.
+10. After two weeks, read the Goldie numbers in the meeting summary (sales after a chat, rating, free-answer share) and
    the quality-review trend.

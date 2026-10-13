@@ -5,7 +5,7 @@ import { apiBase } from '../../../lib/api';
 import { TOPIC_LABEL, MOOD_LABEL, OUTCOME_LABEL, CHANNEL_LABEL, pct } from '../../../lib/goldieArchiveCopy';
 
 /**
- * Goldie's conversations: every chat on every channel (website, WhatsApp),
+ * Goldie's conversations: every chat on every channel (website, WhatsApp, Messenger, Instagram),
  * with the meeting summary on top (what customers came for, how they felt,
  * how it ended, who still needs a person) and the inbox below. Reading needs
  * customers.data.view (the API enforces it). Kept 365 days.
@@ -34,7 +34,7 @@ interface Summary { from: string; to: string; conversations: number; customerMes
 const [list, summary, channels] = await Promise.all([
   call<{ rows: Row[]; total: number }>(`/conversations?${params.toString()}&limit=50&offset=${offset}`),
   call<Summary>(`/conversations/summary?${params.toString()}`),
-  call<{ whatsapp: string; rollout: string }>('/channels'),
+  call<{ whatsapp: string; rollout: string; messenger?: string; instagram?: string }>('/channels'),
 ]);
 const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { timeZone: 'Africa/Kampala', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 const day = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala', day: 'numeric', month: 'short' });
@@ -44,7 +44,7 @@ const page = (o: number) => { const p = new URLSearchParams(params); if (o) p.se
 ---
 <AdminLayout title="Goldie conversations" description="Every chat with Goldie on the website and WhatsApp: the meeting summary, then each thread." activePath="/admin/assistant">
   <div class="container mx-auto px-6 lg:px-8 max-w-6xl space-y-6">
-    <p class="text-sm"><a href="/admin/assistant" class="font-bold underline">Shop assistant settings</a> · WhatsApp: <strong>{channels.ok ? (channels.data.whatsapp === 'on' ? `on${channels.data.rollout === 'test_numbers' ? ' (test numbers only)' : ''}` : 'not configured') : 'unknown'}</strong></p>
+    <p class="text-sm"><a href="/admin/assistant" class="font-bold underline">Shop assistant settings</a> · WhatsApp: <strong>{channels.ok ? (channels.data.whatsapp === 'on' ? `on${channels.data.rollout === 'test_numbers' ? ' (test numbers only)' : ''}` : 'not configured') : 'unknown'}</strong>{channels.ok && <> · Messenger: <strong>{channels.data.messenger === 'on' ? 'on' : 'not configured'}</strong> · Instagram: <strong>{channels.data.instagram === 'on' ? 'on' : 'not configured'}</strong></>}</p>
     {!list.ok && <div role="status" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{list.message}</div>}
 
     <form method="get" class="bg-white border border-gray-200 rounded-2xl shadow-sm p-4 grid gap-3 sm:grid-cols-4 lg:grid-cols-8 items-end text-sm">
@@ -73,7 +73,7 @@ const page = (o: number) => { const p = new URLSearchParams(params); if (o) p.se
         {summary.data.influence && (
           <div class="rounded-xl bg-lime-50 border border-lime-200 p-4 text-sm">
             <h3 class="font-black mb-1">Sales after a chat</h3>
-            <p><strong>{summary.data.influence.orders}</strong> paid order{summary.data.influence.orders === 1 ? '' : 's'} worth <strong>UGX {summary.data.influence.revenueUgx.toLocaleString('en-UG')}</strong> came from shoppers within 7 days of chatting with Goldie{summary.data.influence.conversionRate != null ? `, ${Math.round(summary.data.influence.conversionRate * 100)}% of chats we can link to a shopper` : ''}.{summary.data.influence.withHint > 0 && summary.data.influence.hintConversionRate != null ? ` When Goldie had a suggestion for the shopper: ${Math.round(summary.data.influence.hintConversionRate * 100)}% bought.` : ''}</p>
+            <p><strong>{summary.data.influence.orders}</strong> paid order{summary.data.influence.orders === 1 ? '' : 's'} worth <strong>UGX {new Intl.NumberFormat('en-UG').format(summary.data.influence.revenueUgx)}</strong> came from shoppers within 7 days of chatting with Goldie{summary.data.influence.conversionRate != null ? `, ${Math.round(summary.data.influence.conversionRate * 100)}% of chats we can link to a shopper` : ''}.{summary.data.influence.withHint > 0 && summary.data.influence.hintConversionRate != null ? ` When Goldie had a suggestion for the shopper: ${Math.round(summary.data.influence.hintConversionRate * 100)}% bought.` : ''}</p>
             <p class="text-xs text-gray-600 mt-1">Influence, not proof that the chat caused the sale.</p>
           </div>
         )}

@@ -198,7 +198,7 @@ routes.post('/care-task', async (c) => {
     title: z.string().min(3).max(300), detail: z.string().max(4000).nullable().optional(),
     customerName: z.string().max(120).nullable().optional(), customerPhone: z.string().max(40).nullable().optional(), customerEmail: z.string().max(200).nullable().optional(),
     orderNumber: z.string().max(40).nullable().optional(),
-    channel: z.enum(['web', 'whatsapp']), conversationKey: z.string().max(128).nullable().optional(),
+    channel: z.enum(['web', 'whatsapp', 'messenger', 'instagram']), conversationKey: z.string().max(128).nullable().optional(),
     mood: z.string().max(12).nullable().optional(), urgent: z.boolean().optional(), units: z.number().int().min(0).max(1_000_000).nullable().optional(),
     proposedAction: z.record(z.unknown()).nullable().optional(), dueAt: z.string().datetime().nullable().optional(),
   }).safeParse(await c.req.json().catch(() => null));

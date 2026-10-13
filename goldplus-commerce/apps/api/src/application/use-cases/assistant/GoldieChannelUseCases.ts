@@ -9,7 +9,10 @@ export interface IWhatsAppMessenger {
 
 /** Goldie's brain (the web container runs the router and the model): one turn for a channel. */
 export interface IGoldieBrain {
-  turn(input: { channel: 'whatsapp'; conversationKey: string; verifiedPhone: string; name: string | null; turns: Array<{ role: 'user' | 'assistant'; content: string }> }): Promise<(ReplyParts & { intent: string; mood: string; route: string; cacheId?: string | null }) | null>;
+  turn(input:
+    | { channel: 'whatsapp'; conversationKey: string; verifiedPhone: string; name: string | null; turns: Array<{ role: 'user' | 'assistant'; content: string }> }
+    | { channel: 'messenger' | 'instagram'; conversationKey: string; senderId: string; turns: Array<{ role: 'user' | 'assistant'; content: string }> }
+  ): Promise<(ReplyParts & { intent: string; mood: string; route: string; cacheId?: string | null }) | null>;
 }
 
 export interface GoldieWhatsAppSettings {
@@ -50,6 +53,8 @@ export class GoldieChannelUseCases {
     private readonly customerForPhone: (digits: string) => Promise<string | null> = async () => null,
     /** Email a team reply to a website customer who left an email (outbox, CARE_REPLY_EMAIL). */
     private readonly emailCustomer: (input: { to: string; firstName: string | null; text: string; conversationId: string }) => Promise<boolean> = async () => false,
+    /** Messenger / Instagram threads: the reply goes back through Meta's Send API (GoldieSocialUseCases). */
+    private readonly socialReply: (conversation: { id: string; channel: string; channelKey: string }, text: string) => Promise<{ ok: true } | { ok: false; reason: string }> = async () => ({ ok: false, reason: 'not configured' }),
   ) {}
   private staffCache: { at: number; numbers: string[] } = { at: 0, numbers: [] };
   private async staff(): Promise<string[]> {
@@ -177,6 +182,11 @@ export class GoldieChannelUseCases {
     const found = await this.archive.get(conversationId);
     if (!found) return { ok: false, code: 'NOT_FOUND', message: 'No such conversation.' };
     const c = found.conversation;
+    if (c.channel === 'messenger' || c.channel === 'instagram') {
+      const where = c.channel === 'messenger' ? 'Messenger' : 'Instagram';
+      const r = await this.socialReply({ id: c.id, channel: c.channel, channelKey: c.channelKey }, text);
+      return r.ok ? { ok: true, sent: true, channel: c.channel } : { ok: false, code: 'NOT_SENT', message: `${where} did not accept the message (${r.reason}). Outside 24 hours of the customer's last message, ${where} does not allow a normal reply.` };
+    }
     if (c.channel !== 'whatsapp') {
       // A website customer who left an email gets the reply by email; otherwise it is a note for the team.
       const sent = c.contactEmail ? await this.emailCustomer({ to: c.contactEmail, firstName: c.contactName ? c.contactName.split(/\s+/)[0]! : null, text, conversationId }).catch(() => false) : false;

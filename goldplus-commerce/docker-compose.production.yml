@@ -194,6 +194,11 @@ services:
       - GOLDIE_ALERT_TEMPLATE_LANG=${GOLDIE_ALERT_TEMPLATE_LANG:-en}
       - CARE_ALERTS_PER_HOUR=${CARE_ALERTS_PER_HOUR:-12}
       - WEB_INTERNAL_ORIGIN=${WEB_INTERNAL_ORIGIN:-http://web:4321}
+      # Goldie on Messenger / Instagram: a Page access token (pages_messaging; instagram_manage_messages) and the
+      # per-platform switch. Webhook: /webhooks/meta-messaging in the same Meta app as WhatsApp.
+      - GOLDIE_META_PAGE_TOKEN=${GOLDIE_META_PAGE_TOKEN:-}
+      - GOLDIE_MESSENGER_ENABLED=${GOLDIE_MESSENGER_ENABLED:-false}
+      - GOLDIE_INSTAGRAM_ENABLED=${GOLDIE_INSTAGRAM_ENABLED:-false}
       # Care Desk push alerts to staff phones (Web Push): set all three to enable.
       - CARE_PUSH_VAPID_PUBLIC_KEY=${CARE_PUSH_VAPID_PUBLIC_KEY:-}
       - CARE_PUSH_VAPID_PRIVATE_KEY=${CARE_PUSH_VAPID_PRIVATE_KEY:-}

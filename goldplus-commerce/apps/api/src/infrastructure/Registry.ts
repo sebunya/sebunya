@@ -43,11 +43,12 @@ import { renderTeamReplyMail } from '../domain/assistant/ChatTranscript';
 import { QualityReviewUseCases } from '../application/use-cases/assistant/QualityReviewUseCases';
 import { DrizzleQualityReviewRepository } from './assistant/DrizzleQualityReviewRepository';
 import { GoldieChannelUseCases } from '../application/use-cases/assistant/GoldieChannelUseCases';
-import { CareAlertChannels, HttpGoldieBrain, WhatsAppCloudMessenger, goldieWhatsAppSettings } from './assistant/GoldieChannelAdapters';
+import { CareAlertChannels, HttpGoldieBrain, MetaSocialMessenger, WhatsAppCloudMessenger, goldieSocialSettings, goldieWhatsAppSettings } from './assistant/GoldieChannelAdapters';
 import { CareDeskUseCases } from '../application/use-cases/assistant/CareDeskUseCases';
 import { DrizzleCareDeskRepository } from './assistant/DrizzleCareDeskRepository';
 import { NextBestActionAdvisor } from './assistant/NextBestActionAdvisor';
 import { goldieMetrics } from './assistant/GoldieMetrics';
+import { GoldieSocialUseCases } from '../application/use-cases/assistant/GoldieSocialUseCases';
 import { AnswerMemoryUseCases } from '../application/use-cases/assistant/AnswerMemoryUseCases';
 import { DrizzleAnswerMemoryRepository } from './assistant/DrizzleAnswerMemoryRepository';
 import { PhoneCareReader } from './assistant/PhoneCareReader';
@@ -2745,6 +2746,19 @@ export class Registry {
       const id = await insertOutboxObject({ eventType: 'CARE_REPLY_EMAIL', template: 'CARE_REPLY_EMAIL', channel: 'email', idempotencyKey: `care-reply:${input.conversationId}:${Date.now()}`, relatedEntity: 'assistant_chat', relatedEntityId: input.conversationId, payload: { recipient: input.to, ...m, relatedEntity: 'assistant_chat', relatedEntityId: input.conversationId } });
       return id !== null;
     },
+    (conversation, text) => this.goldieSocialUseCases.teamReply(conversation, text),
+  );
+  /** Goldie on Facebook Messenger and Instagram Direct. Off until GOLDIE_MESSENGER_ENABLED / GOLDIE_INSTAGRAM_ENABLED and a page token. */
+  public readonly goldieSocialUseCases = new GoldieSocialUseCases(
+    this.conversationArchiveUseCases,
+    new HttpGoldieBrain(),
+    new MetaSocialMessenger(),
+    () => goldieSocialSettings(),
+    () => this.advertisingOps.whatsappAds.appSecrets(),
+    (input) => this.careDeskUseCases.openTask(input),
+    (event, detail) => logger.warn(detail, event),
+    () => new Date(),
+    (platform, outcome) => goldieMetrics.socialMessages.inc({ platform, outcome }),
   );
   private readonly goldieListensToWhatsApp = (() => {
     // Each customer message is handled on its own, after Meta has been answered.

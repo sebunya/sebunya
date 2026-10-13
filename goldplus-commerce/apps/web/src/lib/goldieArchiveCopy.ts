@@ -5,7 +5,7 @@ export const TOPIC_LABEL: Record<string, string> = {
 };
 export const MOOD_LABEL: Record<string, string> = { upset: 'Upset', worried: 'Worried', confused: 'Confused', neutral: 'Calm', happy: 'Happy' };
 export const OUTCOME_LABEL: Record<string, string> = { open: 'Open', resolved: 'Resolved', handed_over: 'With the team', needs_human: 'Needs a person' };
-export const CHANNEL_LABEL: Record<string, string> = { web: 'Website', whatsapp: 'WhatsApp' };
+export const CHANNEL_LABEL: Record<string, string> = { web: 'Website', whatsapp: 'WhatsApp', messenger: 'Messenger', instagram: 'Instagram' };
 export const pct = (r: number | null) => (r == null ? 'no data' : `${Math.round(r * 100)}%`);
 /** The Customer DNA next-best action Goldie was given, in plain words. */
 export const NBA_LABEL: Record<string, string> = {

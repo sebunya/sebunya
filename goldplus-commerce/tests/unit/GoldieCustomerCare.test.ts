@@ -6,7 +6,10 @@ import { redact, nextOutcome, worseMood, selfServeRate } from '../../apps/api/sr
 import { parseInboundTexts, formatWhatsAppReply, whatsappKey, WHATSAPP_MAX } from '../../apps/api/src/domain/assistant/WhatsAppGoldie';
 import { tierStanding } from '../../apps/api/src/domain/loyalty/LoyaltyLedger';
 import { ConversationArchiveUseCases } from '../../apps/api/src/application/use-cases/assistant/ConversationArchiveUseCases';
-import { GoldieChannelUseCases } from '../../apps/api/src/application/use-cases/assistant/GoldieChannelUseCases';
+import { GoldieChannelUseCases, HOLDING_REPLY } from '../../apps/api/src/application/use-cases/assistant/GoldieChannelUseCases';
+import { GoldieSocialUseCases } from '../../apps/api/src/application/use-cases/assistant/GoldieSocialUseCases';
+import { SOCIAL_MAX, formatSocialReply, parseSocialMessages, socialKey } from '../../apps/api/src/domain/assistant/SocialGoldie';
+import { createHmac } from 'node:crypto';
 import type { IAssistantConversationStore, ArchiveConversationRow, ArchiveMessageRow } from '../../apps/api/src/application/ports/IAssistantConversationStore';
 
 vi.mock('../../apps/web/src/lib/api', () => ({ apiBase: 'http://api.test' }));
@@ -127,7 +130,7 @@ describe('the conversation archive', () => {
 
 function memoryStore() {
   const convs = new Map<string, ArchiveConversationRow>(); const msgs = new Map<string, ArchiveMessageRow[]>(); const seen = new Set<string>();
-  let n = 0;
+  let n = 0; const outcomes = new Map<string, string>();
   const store: IAssistantConversationStore = {
     async open(i) {
       const found = [...convs.values()].find((c) => c.channel === i.channel && c.channelKey === i.channelKey);
@@ -137,7 +140,7 @@ function memoryStore() {
     },
     async addMessage(id, m) {
       if (m.channelMessageId) { if (seen.has(m.channelMessageId)) return false; seen.add(m.channelMessageId); }
-      msgs.get(id)!.push({ id: String(Math.random()), role: m.role, content: m.content, intent: m.intent ?? null, mood: m.mood ?? null, route: m.route ?? null, createdAt: new Date() });
+      msgs.get(id)!.push({ id: String(Math.random()), role: m.role, content: m.content, intent: m.intent ?? null, mood: m.mood ?? null, route: m.route ?? null, createdAt: new Date(), channelMessageId: m.channelMessageId ?? null } as ArchiveMessageRow);
       convs.get(id)!.messageCount += 1; return true;
     },
     async update(id, p) { const c = convs.get(id)!; if (p.outcome) c.outcome = p.outcome; if (p.worstMood) c.worstMood = p.worstMood; if (p.lastTopic) c.lastTopic = p.lastTopic; if (p.firstTopic) c.firstTopic = p.firstTopic; if (p.humanUntil !== undefined) c.humanUntil = p.humanUntil; if (p.aiTurn) c.aiTurns += 1; },
@@ -147,8 +150,19 @@ function memoryStore() {
     async list() { return { rows: [], total: 0 }; },
     async summary() { throw new Error('unused'); },
     async purgeBefore() { return 0; },
+    async pendingWhatsApp() { return []; },
+    async claimCustomerMessage() { return true; },
+    async markCustomerMessage(id, outcome) { outcomes.set(id, outcome); },
+    async replyFailuresSince() { return 0; },
+    async pendingSocial() {
+      return [...convs.values()].filter((c) => c.channel === 'messenger' || c.channel === 'instagram').flatMap((c) => {
+        const last = msgs.get(c.id)!.at(-1) as (ArchiveMessageRow & { channelMessageId?: string | null }) | undefined;
+        return last && last.role === 'customer' && last.channelMessageId && !outcomes.has(last.channelMessageId)
+          ? [{ conversationId: c.id, channel: c.channel as 'messenger' | 'instagram', channelKey: c.channelKey, messageId: last.channelMessageId, text: last.content, at: last.createdAt }] : [];
+      });
+    },
   };
-  return { store, convs, msgs };
+  return { store, convs, msgs, outcomes };
 }
 
 describe('archive use cases', () => {
@@ -248,5 +262,96 @@ describe('Goldie on WhatsApp', () => {
     expect(conv!.humanUntil!.getTime()).toBeGreaterThan(Date.now());
     expect(await c.uc.handleWhatsApp({ ...inbound, messageId: 'wamid.2', text: 'ok thanks' })).toBe('filed');
     expect(c.whatsapp.sendText).toHaveBeenCalledTimes(2); // Goldie's first answer + the team's reply, nothing after
+  });
+});
+
+describe('Goldie on Messenger and Instagram', () => {
+  const secret = 'meta-app-secret-for-tests';
+  const sign = (body: string) => `sha256=${createHmac('sha256', secret).update(body).digest('hex')}`;
+  const delivery = (object: 'page' | 'instagram', text: string, mid = 'm_1', extra: Record<string, unknown> = {}) => JSON.stringify({ object, entry: [{ id: '5550001', time: 1760000000000, messaging: [{ sender: { id: '7000000001' }, recipient: { id: '5550001' }, timestamp: 1760000000000, message: { mid, text, ...extra } }] }] });
+
+  function social(on = { messenger: true, instagram: true }, brainReply: unknown = { text: 'We have **two** chargers that fit.', products: [{ name: 'GoldPlus 20W', url: 'https://shopgoldplus.com/products/a', price_ugx: 45000, availability: 'in_stock' }], links: [], intent: 'PRODUCT', mood: 'neutral', route: 'deterministic' }) {
+    const { store, msgs, convs, outcomes } = memoryStore();
+    const archive = new ConversationArchiveUseCases(store);
+    const brain = { turn: vi.fn(async () => brainReply as never) };
+    const sender = { sendText: vi.fn(async () => ({ ok: true as const, messageId: 'mid.reply' })) };
+    const tasks: unknown[] = [];
+    const uc = new GoldieSocialUseCases(archive, brain, sender, () => on, async () => ({ appSecret: secret, verifyToken: 'verify-me' }), async (t) => { tasks.push(t); });
+    return { uc, brain, sender, msgs, convs, outcomes, tasks };
+  }
+
+  it('reads text messages for both platforms and ignores echoes, deletions and non-text events', () => {
+    expect(parseSocialMessages(JSON.parse(delivery('page', 'Do you have iPhone chargers?')))).toMatchObject([{ platform: 'messenger', senderId: '7000000001', text: 'Do you have iPhone chargers?', messageId: 'm_1' }]);
+    expect(parseSocialMessages(JSON.parse(delivery('instagram', 'price?')))[0]!.platform).toBe('instagram');
+    expect(parseSocialMessages(JSON.parse(delivery('page', 'our own reply', 'm_2', { is_echo: true })))).toEqual([]);
+    expect(parseSocialMessages(JSON.parse(delivery('page', 'gone', 'm_3', { is_deleted: true })))).toEqual([]);
+    expect(parseSocialMessages({ object: 'page', entry: [{ messaging: [{ sender: { id: '7000000001' }, recipient: { id: '5550001' }, read: { watermark: 1 } }] }] })).toEqual([]);
+    expect(parseSocialMessages({ object: 'whatsapp_business_account', entry: [] })).toEqual([]);
+    expect(socialKey('messenger', '7000000001')).toBe('fb:7000000001');
+  });
+
+  it('writes plain text inside each platform limit', () => {
+    const out = formatSocialReply({ text: 'We have **two** options.', products: [{ name: 'GoldPlus 20W', url: 'https://shopgoldplus.com/products/a', price_ugx: 45000, availability: 'low_stock' }] }, 'messenger');
+    expect(out).toContain('We have two options.');
+    expect(out).toContain('GoldPlus 20W: UGX 45,000, low stock');
+    expect(formatSocialReply({ text: 'x'.repeat(3000) }, 'messenger').length).toBeLessThanOrEqual(SOCIAL_MAX.messenger);
+    expect(formatSocialReply({ text: 'x'.repeat(3000) }, 'instagram').length).toBeLessThanOrEqual(SOCIAL_MAX.instagram);
+  });
+
+  it('is invisible until switched on, and refuses a delivery without a valid signature', async () => {
+    const off = social({ messenger: false, instagram: false });
+    expect((await off.uc.receive(delivery('page', 'hi'), sign(delivery('page', 'hi')))).status).toBe(404);
+    expect(await off.uc.verifySubscription({ mode: 'subscribe', token: 'verify-me', challenge: '42' })).toBeNull();
+    const on = social();
+    expect((await on.uc.receive(delivery('page', 'hi'), 'sha256=forged')).status).toBe(401);
+    expect(await on.uc.verifySubscription({ mode: 'subscribe', token: 'verify-me', challenge: '42' })).toBe('42');
+    expect(await on.uc.verifySubscription({ mode: 'subscribe', token: 'wrong', challenge: '42' })).toBeNull();
+    const igOff = social({ messenger: true, instagram: false });
+    expect((await igOff.uc.receive(delivery('instagram', 'hi'), sign(delivery('instagram', 'hi')))).messages).toBe(0);
+  });
+
+  it('files first, answers through the same brain with no phone proof, sends plain text, and files a redelivery once', async () => {
+    const c = social();
+    const msg = parseSocialMessages(JSON.parse(delivery('page', 'Do you have iPhone chargers?')))[0]!;
+    expect(await c.uc.handle(msg)).toBe('answered');
+    expect(c.brain.turn).toHaveBeenCalledWith(expect.objectContaining({ channel: 'messenger', senderId: '7000000001', conversationKey: 'fb:7000000001' }));
+    expect(JSON.stringify(c.brain.turn.mock.calls[0])).not.toContain('verifiedPhone');
+    expect(c.sender.sendText).toHaveBeenCalledWith(expect.objectContaining({ platform: 'messenger', recipientId: '7000000001', text: expect.stringContaining('We have two chargers that fit.') }));
+    const conv = [...c.convs.values()][0]!;
+    expect(conv).toMatchObject({ channel: 'messenger', channelKey: 'fb:7000000001' });
+    expect(c.msgs.get(conv.id)!.map((m) => m.role)).toEqual(['customer', 'goldie']);
+    expect(c.outcomes.get('m_1')).toBe('answered');
+    expect(await c.uc.handle(msg)).toBe('duplicate');
+    expect(c.sender.sendText).toHaveBeenCalledTimes(1);
+  });
+
+  it('when Goldie cannot answer: one holding line, a Care Desk task, and the message marked held', async () => {
+    const c = social(undefined, null);
+    const msg = parseSocialMessages(JSON.parse(delivery('instagram', 'Is the shop open on Sunday?')))[0]!;
+    expect(await c.uc.handle(msg)).toBe('failed');
+    expect(c.sender.sendText).toHaveBeenCalledWith(expect.objectContaining({ platform: 'instagram', text: HOLDING_REPLY }));
+    expect(c.tasks).toMatchObject([{ kind: 'follow_up', channel: 'instagram', title: expect.stringContaining('Instagram message waiting') }]);
+    expect(c.outcomes.get('m_1')).toBe('held');
+  });
+
+  it('a message filed but never answered (a restart mid-turn) is answered once by the recovery pass', async () => {
+    const c = social();
+    const archive = (c.uc as unknown as { archive: ConversationArchiveUseCases }).archive;
+    await archive.logTurn({ channel: 'instagram', channelKey: 'ig:7000000001', customerId: null, contact: {}, customer: { content: 'Do you deliver to Jinja?', channelMessageId: 'm_lost' } });
+    expect(await c.uc.recoverPending()).toBe(1);
+    expect(c.sender.sendText).toHaveBeenCalledWith(expect.objectContaining({ platform: 'instagram', recipientId: '7000000001' }));
+    expect(c.outcomes.get('m_lost')).toBe('answered');
+    expect(await c.uc.recoverPending()).toBe(0);
+  });
+
+  it('a team reply goes back on the same platform and Goldie stays quiet', async () => {
+    const c = social();
+    const msg = parseSocialMessages(JSON.parse(delivery('page', 'Can someone call me?')))[0]!;
+    await c.uc.handle(msg);
+    const conv = [...c.convs.values()][0]!;
+    expect(await c.uc.teamReply({ id: conv.id, channel: conv.channel, channelKey: conv.channelKey }, 'Hello, this is Grace from the shop.')).toEqual({ ok: true });
+    expect(c.sender.sendText).toHaveBeenLastCalledWith({ platform: 'messenger', recipientId: '7000000001', text: 'Hello, this is Grace from the shop.' });
+    expect(conv.humanUntil!.getTime()).toBeGreaterThan(Date.now());
+    expect(await c.uc.handle({ ...msg, messageId: 'm_9', text: 'thanks' })).toBe('filed');
   });
 });

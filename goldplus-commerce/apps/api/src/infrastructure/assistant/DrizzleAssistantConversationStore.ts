@@ -181,7 +181,20 @@ export class DrizzleAssistantConversationStore implements IAssistantConversation
       .filter((x) => /^\d{8,15}$/.test(x.phone));
   }
 
-  async whatsappFailuresSince(since: Date) {
+  async pendingSocial(olderThan: Date, newerThan: Date, limit: number) {
+    const r = rowsOf(await db.execute(sql`
+      select c.id as conversation_id, c.channel, c.channel_key, m.channel_message_id, m.content, m.created_at
+      from assistant_conversations c
+      join lateral (select role, route, channel_message_id, content, created_at from assistant_messages
+                    where conversation_id = c.id order by created_at desc limit 1) m on true
+      where c.channel in ('messenger', 'instagram') and c.last_message_at > ${newerThan} and c.last_message_at < ${olderThan}
+        and m.role = 'customer' and m.route is null and m.channel_message_id is not null
+        and (c.human_until is null or c.human_until < now())
+      order by c.last_message_at desc limit ${limit}`));
+    return r.map((x) => ({ conversationId: String(x.conversation_id), channel: String(x.channel) as 'messenger' | 'instagram', channelKey: String(x.channel_key), messageId: String(x.channel_message_id), text: String(x.content), at: new Date(String(x.created_at)) }));
+  }
+
+  async replyFailuresSince(since: Date) {
     const [r] = rowsOf(await db.execute(sql`select count(*)::int as n from assistant_messages where role = 'customer' and route in ('held', 'send_failed') and created_at >= ${since}`));
     return Number(r?.n ?? 0);
   }

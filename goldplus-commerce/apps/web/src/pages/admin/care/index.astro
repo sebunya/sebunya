@@ -103,7 +103,7 @@ const handledPct = t && t.chatsToday ? Math.round((t.handledByGoldieToday / t.ch
           <div class="flex flex-wrap items-center gap-2">
             <span class={`text-xs font-black rounded-full px-2.5 py-1 ${(KIND[k.kind] ?? KIND.follow_up!).tone}`}>{(KIND[k.kind] ?? KIND.follow_up!).label}</span>
             {k.priority === 'urgent' && k.kind !== 'urgent' && <span class="text-xs font-black rounded-full px-2.5 py-1 bg-red-600 text-white">Urgent</span>}
-            <span class="text-xs text-gray-500">{waited(k.createdAt)}{k.channel ? ` · from ${k.channel === 'whatsapp' ? 'WhatsApp' : 'the website'}` : ''}{k.openedBy.startsWith('staff') ? ' · added by staff' : ''}{k.assignedTo ? ' · someone has taken it' : ''}</span>
+            <span class="text-xs text-gray-500">{waited(k.createdAt)}{k.channel ? ` · from ${({ whatsapp: 'WhatsApp', messenger: 'Messenger', instagram: 'Instagram' } as Record<string, string>)[k.channel] ?? 'the website'}` : ''}{k.openedBy.startsWith('staff') ? ' · added by staff' : ''}{k.assignedTo ? ' · someone has taken it' : ''}</span>
           </div>
           <p class="mt-2 font-bold text-base">{k.title}</p>
           {k.kind === 'order_change' && k.proposedAction?.type && <p class="mt-1 text-sm"><strong>{CHANGE[k.proposedAction.type] ?? 'Change the order'}</strong>{k.proposedAction.details ? `: ${k.proposedAction.details}` : ''}{k.proposedAction.orderStatus ? ` (order is ${k.proposedAction.orderStatus.replace(/_/g, ' ')})` : ''}. Call the customer to confirm, make the change in the order, then mark done.</p>}
