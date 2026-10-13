@@ -86,7 +86,7 @@ Recorded in the pull request description.
 
 ### Still the owner's decision
 
-- **"Every unit is tested before it is sold."** Removed from the FAQ (OPS-01) but still stated in the site banner (`GpNav.astro`), `llms.txt`, the agent documents and most product long descriptions. Either the shop tests every unit and the FAQ should say it again, or it does not and a one-pass script should replace the sentence everywhere with "Ask us about the checks available for this product". Say which.
+- **"Every unit is tested before it is sold."** Decided 2026-10-13: the shop does not make this claim. Removed from the site banner (`GpNav.astro`), `llms.txt`, the agent documents, the shop metadata, the seed data files, and from live product descriptions by `strip-tested-claim.ts` (owner-run on prod, dry run by default).
 - **Search Console**: resubmit `sitemap.xml`, request indexing for `/`, `/power`, `/power/chargers`, `/power/charging-cables`, `/power/power-banks`, `/phone-batteries`, `/storage`, `/audio` and the three guides. The 111 drafted URLs will drop from the index on their own.
 - **Google Business Profile**: address, hours and phone must match `businessInfo.ts` (Zainab Aziza Building, 4th floor, Burton Street, opposite Pioneer Mall; Mon–Sat 8:30–18:00; 0705 004545).
 - Photos for the 111 drafted products; approve each in the admin as it is photographed. GP-H02 (wired vs wireless), C09/C10, GP02BT and the 58BX battery stay held until the identity questions are answered.
