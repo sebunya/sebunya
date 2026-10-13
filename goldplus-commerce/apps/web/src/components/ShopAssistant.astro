@@ -38,6 +38,13 @@
  * Impressions, taps and dismissals are counted as NBA items
  * ("goldie-<context>") in the nav telemetry, so the admin nav report says
  * whether it earns its place. Everything respects prefers-reduced-motion.
+ *
+ * The Goldie wordmark (2026-10-13): the name carries one lime-to-gold glint
+ * that crosses the word, and only when it means something: once per visit as
+ * the launcher arrives (with one ring from the avatar), when Goldie has a
+ * message waiting, on hover or keyboard focus, and as the panel opens. No loop,
+ * no idle motion, no change to the pill's size (nothing on the page moves);
+ * plain text in forced-colours mode, still under reduced motion.
  */
 import { assistantEnabled } from '../lib/assistant';
 interface Props { whatsappUrl: string; cutoffHour?: number }
@@ -48,7 +55,7 @@ const enabled = assistantEnabled();
   <div id="gp-assistant" class="gp-assistant" data-whatsapp={whatsappUrl} data-endpoint="/api/assistant/chat" data-cutoff-hour={String(cutoffHour)}>
     <button type="button" class="gp-assistant__launch" aria-haspopup="dialog" aria-controls="gp-assistant-panel" aria-expanded="false" data-launch>
       <span class="gp-assistant__avatar gp-assistant__avatar--launch" aria-hidden="true"><span>G</span><i class="gp-assistant__badge" data-badge hidden></i></span>
-      <span class="gp-assistant__launchtext"><strong>Ask Goldie</strong><small>GoldPlus shop help</small></span>
+      <span class="gp-assistant__launchtext"><strong>Ask <span class="gp-goldie" data-goldie data-text="Goldie">Goldie</span></strong><small>GoldPlus shop help</small></span>
     </button>
 
     <div class="gp-assistant__teaser" role="status" aria-live="polite" hidden data-teaser>
@@ -66,7 +73,7 @@ const enabled = assistantEnabled();
       <header class="gp-assistant__head">
         <span class="gp-assistant__avatar" aria-hidden="true"><span>G</span></span>
         <div class="gp-assistant__who">
-          <p class="gp-assistant__title">Goldie</p>
+          <p class="gp-assistant__title"><span class="gp-goldie" data-goldie-title data-text="Goldie">Goldie</span></p>
           <p class="gp-assistant__sub"><span class="gp-assistant__dot" aria-hidden="true"></span>GoldPlus shop help · AI, answers from the shelf</p>
         </div>
         <div class="gp-assistant__headbtns">
@@ -128,6 +135,26 @@ const enabled = assistantEnabled();
   .gp-assistant__launch--arrive { animation: gp-arrive .5s var(--gp-ease) both; }
   @keyframes gp-arrive { from { opacity: 0; transform: translateY(16px) scale(.96) } to { opacity: 1; transform: none } }
   .gp-assistant__avatar--launch { position: relative; }
+  /* The Goldie wordmark. The real text is always drawn solid; the glint is a copy laid over it
+     (::after, hidden from screen readers) whose lime-to-gold band crosses once. If a browser cannot
+     paint clipped text, the overlay simply does not show and the name stays plain white. */
+  .gp-goldie { position: relative; display: inline-block; }
+  @supports ((-webkit-background-clip: text) or (background-clip: text)) {
+    .gp-goldie::after {
+      content: attr(data-text); content: attr(data-text) / ""; position: absolute; inset: 0; pointer-events: none;
+      background-image: linear-gradient(105deg, transparent 0 33%, #c6f25a 42%, #f2c744 50%, #c6f25a 58%, transparent 67% 100%);
+      background-size: 300% 100%; background-position: 100% 0; background-repeat: no-repeat;
+      -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent;
+    }
+  }
+  .gp-goldie--glint::after { animation: gp-glint 1.2s cubic-bezier(.45,0,.2,1) both; }
+  @media (hover: hover) { .gp-assistant__launch:hover .gp-goldie::after { animation: gp-glint-hover .9s cubic-bezier(.45,0,.2,1) both; } }
+  .gp-assistant__launch:focus-visible .gp-goldie::after { animation: gp-glint-hover .9s cubic-bezier(.45,0,.2,1) both; }
+  @keyframes gp-glint { from { background-position: 100% 0 } to { background-position: 0 0 } }
+  @keyframes gp-glint-hover { from { background-position: 100% 0 } to { background-position: 0 0 } }
+  /* Hello: once per visit, the avatar sends one ring out as the name glints. */
+  .gp-assistant__launch--hello .gp-assistant__avatar--launch { animation: gp-ring 1.3s var(--gp-ease) .1s 1; }
+  @media (forced-colors: active) { .gp-goldie::after { display: none; } }
   .gp-assistant__badge { position: absolute; top: -2px; right: -2px; width: 12px; height: 12px; border-radius: 9999px; background: #ff5a36; border: 2px solid var(--gp-ink); }
   .gp-assistant__badge[hidden] { display: none; }
   /* On phones the pill folds to the avatar while the shopper scrolls down, and opens again when they pause. */
@@ -242,7 +269,8 @@ const enabled = assistantEnabled();
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
   @media (prefers-reduced-motion: reduce) {
     .gp-assistant__panel--enter, .gp-assistant__launch--nudge .gp-assistant__avatar--launch, .gp-assistant__typing i,
-    .gp-assistant__launch--arrive, .gp-assistant__teaser--enter, .gp-assistant__teaser--enter .gp-assistant__avatar--sm, .gp-assistant__teaser--leave, .gp-assistant__launch--msg .gp-assistant__avatar--launch, .gp-assistant__launch--loading .gp-assistant__avatar--launch { animation: none; }
+    .gp-assistant__launch--arrive, .gp-assistant__teaser--enter, .gp-assistant__teaser--enter .gp-assistant__avatar--sm, .gp-assistant__teaser--leave, .gp-assistant__launch--msg .gp-assistant__avatar--launch, .gp-assistant__launch--loading .gp-assistant__avatar--launch,
+    .gp-goldie::after, .gp-assistant__launch--hello .gp-assistant__avatar--launch { animation: none !important; }
     .gp-assistant__launch--pending { opacity: 1; transform: none; pointer-events: auto; }
     .gp-assistant__teaser--leave { display: none; }
     .gp-assistant__launch, .gp-assistant__send, .gp-assistant__card, .gp-assistant__add, .gp-assistant__launchtext { transition: none; }
@@ -289,7 +317,7 @@ const enabled = assistantEnabled();
     const narrow = matchMedia('(max-width: 640px)');
     const getPanel = () => (panelP ??= import('../scripts/goldie-panel').then((m) => m.mountGoldie(root, {
       endpoint, reduced, knownPhone, greeting: GREETING, track, getTeaser: () => activeTeaser, narrow: () => narrow.matches,
-      onOpen: () => { hideTeaser(false); badge.hidden = true; launch.removeAttribute('aria-label'); launch.classList.remove('gp-assistant__launch--msg', 'gp-assistant__launch--loading'); setPillText('Ask Goldie', 'GoldPlus shop help'); },
+      onOpen: () => { hideTeaser(false); badge.hidden = true; launch.removeAttribute('aria-label'); launch.classList.remove('gp-assistant__launch--msg', 'gp-assistant__launch--loading'); setPillText('Ask Goldie', 'GoldPlus shop help'); setTimeout(() => glintOn(titleWord), 160); },
     })).catch((err) => { panelP = null; throw err; }));
     // A failed module load is cached by the browser for this page view, so a further tap shows the same
     // WhatsApp fallback rather than a dead button; the next page load fetches it afresh.
@@ -312,7 +340,21 @@ const enabled = assistantEnabled();
     launch.addEventListener('touchstart', prefetch, { once: true, passive: true });
     launch.addEventListener('click', () => { track(pillShown ? 'NBA_CLICK' : 'PANEL_OPEN', pillShown ? `${teaserKey}-pill` : goldieKey('launcher')); withPanel((p) => p.open()); });
     const launchStrong = launch.querySelector<HTMLElement>('strong')!, launchSmall = launch.querySelector<HTMLElement>('small')!;
-    const setPillText = (big: string, small: string) => { launchStrong.textContent = big; launchSmall.textContent = small; };
+    // "Ask Goldie" keeps the wordmark node; any other line (a page message, "Opening…") is plain text.
+    const goldieWord = launch.querySelector<HTMLElement>('[data-goldie]')!;
+    const setPillText = (big: string, small: string) => {
+      if (big === 'Ask Goldie') launchStrong.replaceChildren('Ask ', goldieWord); else launchStrong.textContent = big;
+      launchSmall.textContent = small;
+    };
+    /** One glint across the name; restarts cleanly if called again. Only when the name is on screen and motion is welcome. */
+    const glintOn = (word: HTMLElement | null) => {
+      if (reduced || !word || !word.isConnected) return;
+      word.classList.remove('gp-goldie--glint'); void word.offsetWidth; word.classList.add('gp-goldie--glint');
+    };
+    const glint = () => glintOn(goldieWord);
+    // The panel title glints on its own timer: the panel drops its entry class after 0.26 s, which would cut a glint tied to it.
+    const titleWord = root.querySelector<HTMLElement>('[data-goldie-title]');
+    for (const w of [goldieWord, titleWord]) w?.addEventListener('animationend', (e) => { if ((e as AnimationEvent).animationName.startsWith('gp-glint')) w.classList.remove('gp-goldie--glint'); });
     // A tab that already has a conversation going gets the panel code early, so "Start over" and the transcript are instant.
     try { if (sessionStorage.getItem('gp-assistant-turns')) prefetch(); } catch { /* ignore */ }
 
@@ -321,6 +363,12 @@ const enabled = assistantEnabled();
     const arrive = () => {
       launch.classList.remove('gp-assistant__launch--pending');
       if (!reduced) { launch.classList.add('gp-assistant__launch--arrive'); launch.addEventListener('animationend', () => launch.classList.remove('gp-assistant__launch--arrive'), { once: true }); }
+      // Hello, once per visit: the name glints and the avatar rings as the pill settles. Later pages just arrive.
+      let greeted = true;
+      try { greeted = sessionStorage.getItem('gp-goldie-hello') === '1'; sessionStorage.setItem('gp-goldie-hello', '1'); } catch { greeted = true; }
+      if (!greeted && !reduced) {
+        setTimeout(() => { glint(); launch.classList.add('gp-assistant__launch--hello'); setTimeout(() => launch.classList.remove('gp-assistant__launch--hello'), 1500); }, 420);
+      }
     };
     const whenSettled = (fn: () => void) => {
       const idle = () => { const w = window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => void }; if (w.requestIdleCallback) w.requestIdleCallback(fn, { timeout: 2500 }); else setTimeout(fn, 800); };
@@ -409,13 +457,13 @@ const enabled = assistantEnabled();
         track('NBA_IMPRESSION', `${teaserKey}-pill`);
         // The wide pill returns to its usual size after a moment so it covers nothing for long;
         // the panel keeps the full message and its questions, so nothing is lost to the timer.
-        setTimeout(() => { if (panel.hidden) { launch.classList.remove('gp-assistant__launch--msg'); setPillText('Ask Goldie', 'GoldPlus shop help'); badge.hidden = false; launch.setAttribute('aria-label', 'Ask Goldie, 1 new message'); } }, 12000);
+        setTimeout(() => { if (panel.hidden) { launch.classList.remove('gp-assistant__launch--msg'); setPillText('Ask Goldie', 'GoldPlus shop help'); badge.hidden = false; launch.setAttribute('aria-label', 'Ask Goldie, 1 new message'); glint(); } }, 12000);
         return;
       }
       teaserState = 'shown';
       teaserText.textContent = t.text; teaserChips.replaceChildren();
       for (const c of t.chips) { const b = document.createElement('button'); b.type = 'button'; b.textContent = c.label; b.setAttribute('aria-label', c.ask); b.addEventListener('click', () => askNow(c.ask, `${teaserKey}-chip`)); teaserChips.append(b); }
-      teaser.hidden = false; if (!reduced) teaser.classList.add('gp-assistant__teaser--enter');
+      teaser.hidden = false; if (!reduced) { teaser.classList.add('gp-assistant__teaser--enter'); setTimeout(glint, 200); }
       track('NBA_IMPRESSION', teaserKey);
       // Ignored for a minute, it folds to an unread dot; the panel still opens with the same message.
       setTimeout(() => hideTeaser(true), 60000);
