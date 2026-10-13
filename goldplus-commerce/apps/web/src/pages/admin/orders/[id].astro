@@ -196,17 +196,30 @@ import { orderLoadError, orderFulfilmentTransitionOptions, DISPATCH_ON_TASK_STAT
 // UGX code format via the single money source (en-UG's currency symbol is "USh").
 const formatter = { format: (n: unknown) => formatUgx(n) };
 
+/**
+ * An order line as the API sends it: the domain OrderItem has `name` and `price`
+ * (and `finalLineTotal` after discounts). This page read `productName` and
+ * `unitPrice`, which do not exist, so every order showed a blank product and
+ * UGX 0. Older shapes are still accepted.
+ */
+const lineOf = (item: any) => {
+  const unit = Number(item?.price ?? item?.unitPrice ?? 0) || 0;
+  const qty = Number(item?.quantity ?? 1) || 1;
+  const total = Number(item?.finalLineTotal ?? item?.lineTotalUgx ?? unit * qty) || 0;
+  return { name: String(item?.name ?? item?.productName ?? item?.sku ?? 'Item'), sku: item?.sku ?? '', qty, unit, total };
+};
+
 if (order && !previewData.emailHtml) {
   const formattedTotal = formatter.format(order.totalUgx);
-  const itemsHtml = (order.items || []).map((item: any) => `
+  const itemsHtml = (order.items || []).map(lineOf).map((item: any) => `
     <tr>
       <td style="padding: 12px 8px; font-family: sans-serif; font-size: 13px; font-weight: bold; color: #0A0A0A; border-bottom: 1px solid #E5E7EB; text-align: left;">
-        ${escapeHtml(item.productName)}
+        ${escapeHtml(item.name)}
         <div style="font-size: 10px; font-weight: normal; color: #6B7280; margin-top: 2px;">SKU: ${escapeHtml(item.sku || 'N/A')}</div>
       </td>
-      <td style="padding: 12px 8px; font-family: sans-serif; font-size: 13px; font-weight: bold; color: #374151; border-bottom: 1px solid #E5E7EB; text-align: center;">${item.quantity}</td>
-      <td style="padding: 12px 8px; font-family: sans-serif; font-size: 13px; color: #4B5563; border-bottom: 1px solid #E5E7EB; text-align: right;">${escapeHtml(formatter.format(item.unitPrice))}</td>
-      <td style="padding: 12px 8px; font-family: sans-serif; font-size: 13px; font-weight: 800; color: #0A0A0A; border-bottom: 1px solid #E5E7EB; text-align: right;">${escapeHtml(formatter.format(item.unitPrice * item.quantity))}</td>
+      <td style="padding: 12px 8px; font-family: sans-serif; font-size: 13px; font-weight: bold; color: #374151; border-bottom: 1px solid #E5E7EB; text-align: center;">${item.qty}</td>
+      <td style="padding: 12px 8px; font-family: sans-serif; font-size: 13px; color: #4B5563; border-bottom: 1px solid #E5E7EB; text-align: right;">${escapeHtml(formatter.format(item.unit))}</td>
+      <td style="padding: 12px 8px; font-family: sans-serif; font-size: 13px; font-weight: 800; color: #0A0A0A; border-bottom: 1px solid #E5E7EB; text-align: right;">${escapeHtml(formatter.format(item.total))}</td>
     </tr>
   `).join('');
 
@@ -594,13 +607,13 @@ const customerHref = order?.userId ? `/admin/customers/${encodeURIComponent(orde
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-50">
-                  {(order.items || []).map((item: any) => (
+                  {(order.items || []).map(lineOf).map((item: any) => (
                     <tr>
-                      <td class="px-4 py-3 font-bold text-brand-dark">{item.productName}</td>
+                      <td class="px-4 py-3 font-bold text-brand-dark">{item.name}</td>
                       <td class="px-4 py-3 text-center font-mono font-bold text-gray-500">{item.sku || 'N/A'}</td>
-                      <td class="px-4 py-3 text-center font-black font-mono text-gray-700">{item.quantity}</td>
-                      <td class="px-4 py-3 text-right font-medium text-gray-500">{formatter.format(item.unitPrice)}</td>
-                      <td class="px-4 py-3 text-right font-black text-brand-dark">{formatter.format(item.quantity * item.unitPrice)}</td>
+                      <td class="px-4 py-3 text-center font-black font-mono text-gray-700">{item.qty}</td>
+                      <td class="px-4 py-3 text-right font-medium text-gray-500">{formatter.format(item.unit)}</td>
+                      <td class="px-4 py-3 text-right font-black text-brand-dark">{formatter.format(item.total)}</td>
                     </tr>
                   ))}
                 </tbody>
