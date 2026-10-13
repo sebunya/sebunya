@@ -13,14 +13,26 @@
  * Voice and look (2026-10-12 redesign): Goldie greets by time of day, answers
  * in one to three plain sentences, and offers the next step as a chip.
  *
- * Awareness (2026-10-13): motion only ever carries information. The launcher
- * rises in once the page has settled; a single teaser message, written for the
- * page the shopper is on, slides out of the launcher after a short dwell or a
- * third of the page scrolled, with two tappable questions. It shows once per
- * tab, is dismissed with one tap, folds to an unread dot if ignored, and
- * never appears on checkout, cart or account pages. On phones the pill folds
- * to the avatar while scrolling down so it never sits on the content. Every
- * teaser impression, tap and dismissal is counted as an NBA item
+ * Awareness (2026-10-13, researched): motion only ever carries information,
+ * and nothing floats over content on a phone. Baymard's usability testing
+ * found floating chat on mobile the most harmful pattern (it covers swatches,
+ * filters and copy and cannot be moved), found invitations on filter and
+ * checkout pages disruptive, and found user-initiated chat fast and welcome.
+ * Trigger benchmarks put a proactive message at 30 to 45 seconds of reading
+ * or 60 percent scroll, page-specific, once. So:
+ *  - the launcher rises in once the page has loaded and gone idle;
+ *  - on desktop, one teaser written for the page slides out of the launcher
+ *    after 30 s or 60% read, once per visitor per week, never on checkout,
+ *    cart, account, finder, search or filter pages; it folds to an unread
+ *    dot after a minute and the panel then opens with the same message and
+ *    chips, so nothing is lost to the timer (WCAG 2.2.1);
+ *  - on phones there is no bubble: the pill itself carries a short line
+ *    ("Will it fit your phone?") and the panel opens with the full message;
+ *    the pill folds to the avatar while scrolling down and lifts above the
+ *    product page's buy bar;
+ *  - the product page also offers two inline "Ask Goldie" questions in the
+ *    content flow (AskGoldie.astro), the Rufus pattern, user-initiated.
+ * Impressions, taps and dismissals are counted as NBA items
  * ("goldie:<context>") in the nav telemetry, so the admin nav report says
  * whether it earns its place. Everything respects prefers-reduced-motion.
  */
@@ -92,7 +104,7 @@ const enabled = assistantEnabled();
   .gp-assistant__avatar { width: 38px; height: 38px; flex: none; display: grid; place-items: center; border-radius: 9999px; background: var(--gp-green); color: var(--gp-ink); font-weight: 900; font-size: 1.05rem; letter-spacing: -.02em; box-shadow: inset 0 0 0 2px rgba(10,10,10,.12); }
   .gp-assistant__avatar--sm { width: 28px; height: 28px; font-size: .8rem; }
   .gp-assistant__launch {
-    position: fixed; right: max(1rem, env(safe-area-inset-right)); bottom: calc(max(1rem, env(safe-area-inset-bottom)) + 64px);
+    position: fixed; right: max(1rem, env(safe-area-inset-right)); bottom: calc(max(1rem, env(safe-area-inset-bottom)) + 64px + var(--gp-lift, 0px));
     z-index: 46; display: inline-flex; align-items: center; gap: .6rem; padding: .45rem 1rem .45rem .45rem; border: 0; border-radius: 9999px;
     background: var(--gp-ink); color: #fff; box-shadow: 0 10px 30px rgba(0,0,0,.28); cursor: pointer; min-height: 48px; text-align: left;
     transition: transform .2s var(--gp-ease), box-shadow .2s var(--gp-ease);
@@ -116,11 +128,15 @@ const enabled = assistantEnabled();
     .gp-assistant__launchtext { max-width: 9rem; overflow: hidden; white-space: nowrap; transition: max-width .25s var(--gp-ease), opacity .2s; }
     .gp-assistant__launch--mini { padding-right: .45rem; }
     .gp-assistant__launch--mini .gp-assistant__launchtext { max-width: 0; opacity: 0; }
+    /* The pill carrying a message: wider, the line in bold, "Ask Goldie" beneath. */
+    .gp-assistant__launch--msg .gp-assistant__launchtext { max-width: 14rem; }
+    .gp-assistant__launch--msg.gp-assistant__launch--mini .gp-assistant__launchtext { max-width: 0; }
+    .gp-assistant__launch--msg .gp-assistant__avatar--launch { animation: gp-ring 1.5s var(--gp-ease) .2s 2; }
   }
   /* The teaser: one message for this page, anchored to the launcher. */
   .gp-assistant__teaser[hidden] { display: none; }
   .gp-assistant__teaser {
-    position: fixed; right: max(1rem, env(safe-area-inset-right)); bottom: calc(max(1rem, env(safe-area-inset-bottom)) + 124px); z-index: 46;
+    position: fixed; right: max(1rem, env(safe-area-inset-right)); bottom: calc(max(1rem, env(safe-area-inset-bottom)) + 124px + var(--gp-lift, 0px)); z-index: 46;
     width: min(364px, calc(100vw - 2rem)); background: var(--gp-paper); color: var(--gp-ink); border: 1px solid var(--gp-line);
     border-radius: 1.1rem; border-bottom-right-radius: .4rem; box-shadow: 0 18px 44px rgba(0,0,0,.26); padding: .7rem .7rem .6rem; transform-origin: 92% 100%;
   }
@@ -203,7 +219,7 @@ const enabled = assistantEnabled();
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
   @media (prefers-reduced-motion: reduce) {
     .gp-assistant__panel--enter, .gp-assistant__launch--nudge .gp-assistant__avatar--launch, .gp-assistant__typing i,
-    .gp-assistant__launch--arrive, .gp-assistant__teaser--enter, .gp-assistant__teaser--enter .gp-assistant__avatar--sm, .gp-assistant__teaser--leave { animation: none; }
+    .gp-assistant__launch--arrive, .gp-assistant__teaser--enter, .gp-assistant__teaser--enter .gp-assistant__avatar--sm, .gp-assistant__teaser--leave, .gp-assistant__launch--msg .gp-assistant__avatar--launch { animation: none; }
     .gp-assistant__launch--pending { opacity: 1; transform: none; pointer-events: auto; }
     .gp-assistant__teaser--leave { display: none; }
     .gp-assistant__launch, .gp-assistant__send, .gp-assistant__card, .gp-assistant__launchtext { transition: none; }
@@ -306,15 +322,32 @@ const enabled = assistantEnabled();
       }
       if (wrap.childElementCount) { log.append(wrap); log.scrollTop = log.scrollHeight; }
     };
+    /** The panel's opening line and starter chips. When a teaser was shown for this page, the
+     *  panel opens with that same message and its questions first, so the folded-away teaser
+     *  loses nothing (WCAG 2.2.1: a timer-free way to reach the same content). */
+    type Starter = { label: string; ask?: string; prefill?: string };
+    const DEFAULT_STARTERS: Starter[] = Array.from(starters.querySelectorAll<HTMLButtonElement>('button')).map((b) => ({ label: b.textContent || '', ask: b.dataset.starter, prefill: b.dataset.prefill }));
+    let activeTeaser: { key: string; text: string; chips: string[] } | null = null;
+    const renderStarters = () => {
+      const list: Starter[] = [...(activeTeaser?.chips ?? []).map((c) => ({ label: c, ask: c })), ...DEFAULT_STARTERS];
+      const seen = new Set<string>(); starters.replaceChildren();
+      for (const st of list) {
+        if (seen.has(st.label.toLowerCase())) continue; seen.add(st.label.toLowerCase());
+        const b = document.createElement('button'); b.type = 'button'; b.textContent = st.label;
+        if (st.prefill != null) b.addEventListener('click', () => { input.value = st.prefill || ''; input.focus(); input.setSelectionRange(input.value.length, input.value.length); });
+        else b.addEventListener('click', () => { void ask(st.ask || st.label); });
+        starters.append(b);
+      }
+    };
     const paint = () => {
       log.replaceChildren();
-      if (turns.length === 0) bubble('bot', GREETING);
+      if (turns.length === 0) bubble('bot', activeTeaser ? activeTeaser.text : GREETING);
       for (const t of turns) bubble(t.role === 'user' ? 'user' : 'bot', t.content);
-      starters.hidden = turns.length > 0; clearBtn.hidden = turns.length === 0;
+      renderStarters(); starters.hidden = turns.length > 0; clearBtn.hidden = turns.length === 0;
     };
 
     const open = () => {
-      hideTeaser(false); badge.hidden = true;
+      hideTeaser(false); badge.hidden = true; launch.removeAttribute('aria-label'); launch.classList.remove('gp-assistant__launch--msg'); setPillText('Ask Goldie', 'GoldPlus shop help');
       root.classList.add('gp-assistant--open'); panel.hidden = false; launch.setAttribute('aria-expanded', 'true');
       if (!reduced) { panel.classList.add('gp-assistant__panel--enter'); panel.addEventListener('animationend', () => panel.classList.remove('gp-assistant__panel--enter'), { once: true }); }
       try { sessionStorage.setItem(SEEN, '1'); } catch { /* ignore */ }
@@ -325,79 +358,122 @@ const enabled = assistantEnabled();
     closeBtn.addEventListener('click', close);
     clearBtn.addEventListener('click', () => { turns = []; persist(); paint(); input.focus(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !panel.hidden) close(); });
-    launch.addEventListener('click', () => track('PANEL_OPEN', 'goldie:launcher'));
+    launch.addEventListener('click', () => track(pillShown ? 'NBA_CLICK' : 'PANEL_OPEN', pillShown ? `${teaserKey}:pill` : 'goldie:launcher'));
+    const launchStrong = launch.querySelector<HTMLElement>('strong')!, launchSmall = launch.querySelector<HTMLElement>('small')!;
+    const setPillText = (big: string, small: string) => { launchStrong.textContent = big; launchSmall.textContent = small; };
 
-    // Arrival: the launcher is kept out of the first paint and rises in once the page has settled.
+    // Arrival: out of the first paint; rises once the page has loaded and gone idle.
     launch.classList.add('gp-assistant__launch--pending');
     const arrive = () => {
       launch.classList.remove('gp-assistant__launch--pending');
       if (!reduced) { launch.classList.add('gp-assistant__launch--arrive'); launch.addEventListener('animationend', () => launch.classList.remove('gp-assistant__launch--arrive'), { once: true }); }
     };
-    setTimeout(arrive, 1200);
+    const whenSettled = (fn: () => void) => {
+      const idle = () => { const w = window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => void }; if (w.requestIdleCallback) w.requestIdleCallback(fn, { timeout: 2500 }); else setTimeout(fn, 800); };
+      if (document.readyState === 'complete') idle(); else addEventListener('load', idle, { once: true });
+    };
+    whenSettled(arrive);
 
-    // Phones: fold the pill to the avatar while scrolling down; open it again when the scroll pauses or turns up.
+    // The product page's buy bar on phones: the launcher lifts above it rather than sitting on it.
+    const buybar = document.querySelector<HTMLElement>('[data-pdp-buybar]');
+    if (buybar) {
+      const lift = () => { const h = buybar.hidden ? 0 : buybar.getBoundingClientRect().height; root.style.setProperty('--gp-lift', `${Math.max(0, Math.round(h) - 56)}px`); };
+      new MutationObserver(lift).observe(buybar, { attributes: true, attributeFilter: ['hidden', 'class', 'style'] }); lift();
+    }
+
+    // Phones: fold the pill to the avatar while scrolling down; open it again on a pause or a scroll up.
     const narrow = matchMedia('(max-width: 640px)');
-    let lastY = scrollY, foldTimer: number | undefined;
+    let lastY = scrollY, foldTimer: number | undefined, holdOpenUntil = 0;
     addEventListener('scroll', () => {
       if (!narrow.matches) return;
       const y = scrollY; const down = y > lastY + 4 && y > 120; const up = y < lastY - 4; lastY = y;
+      if (Date.now() < holdOpenUntil) return;
       if (down) launch.classList.add('gp-assistant__launch--mini'); else if (up) launch.classList.remove('gp-assistant__launch--mini');
       clearTimeout(foldTimer); foldTimer = setTimeout(() => launch.classList.remove('gp-assistant__launch--mini'), 1400) as unknown as number;
     }, { passive: true });
 
-    // The teaser: one message written for this page, shown once per tab.
-    type Teaser = { key: string; text: string; chips: string[] };
+    // The teaser: one message written for this page. Not on pages where a floating invitation
+    // gets in the way of a task (checkout, cart, account, the finders, search and filtered lists).
+    const EXCLUDED = /^\/(checkout|cart|admin|account|orders|login|logout|auth|forgot-password|consent|preferences|offline|shop|search|compare|product-finder|battery-finder|quote-request|bulk|dealers)(\/|$)/;
+    type Teaser = { key: string; text: string; pill: string; chips: string[] };
     const pageTeaser = (): Teaser | null => {
       const path = location.pathname;
-      if (/^\/(checkout|cart|admin|account|orders|login|logout|auth|forgot-password|consent|preferences|offline)(\/|$)/.test(path)) return null;
+      if (EXCLUDED.test(path)) return null;
       const name = document.querySelector<HTMLElement>('[data-product-name]')?.dataset.productName?.trim();
       if (path.startsWith('/products/') && name) {
         const short = name.replace(/^GoldPlus\s+/i, '').split(/\s[—(]/)[0].trim();
         return /batter/i.test(name)
-          ? { key: 'pdp-battery', text: `Looking at the ${short}? Tell me your phone and I'll confirm it fits before you pay.`, chips: ['Will it fit my phone?', 'Can it come today?'] }
-          : { key: 'pdp', text: `Looking at the ${short}? Ask me anything about it, or whether it can reach you today.`, chips: ['Is it in stock?', 'Can it come today?'] };
+          ? { key: 'pdp-battery', text: `Looking at the ${short}? Tell me your phone and I'll confirm it fits before you pay.`, pill: 'Will it fit your phone?', chips: ['Will it fit my phone?', 'Can it come today?'] }
+          : { key: 'pdp', text: `Looking at the ${short}? Ask me anything about it, or whether it can reach you today.`, pill: 'Questions on this one?', chips: ['Which phones does it work with?', 'Can it come today?'] };
       }
-      if (path.startsWith('/phone-batteries') || path.startsWith('/battery-finder')) return { key: 'batteries', text: 'Not sure which battery fits? Tell me the phone and I\'ll check the shelf.', chips: ['Find a battery for my phone', 'How much is a battery?'] };
-      if (path.startsWith('/power/chargers')) return { key: 'chargers', text: 'Choosing a charger? Tell me the phone and I\'ll say what it takes.', chips: ['Which charger for my phone?', 'Can it come today?'] };
-      if (path.startsWith('/power/power-banks')) return { key: 'power-banks', text: 'For the power cuts? Tell me what you charge and I\'ll size the power bank.', chips: ['Which size do I need?', 'Can it come today?'] };
-      if (path.startsWith('/power/charging-cables')) return { key: 'cables', text: 'Type-C, V8 or iPhone cable? Tell me the phone and I\'ll pick the right end.', chips: ['Which cable for my phone?', 'Can it come today?'] };
-      if (path.startsWith('/audio')) return { key: 'audio', text: 'Earphones for calls, music or the gym? Say which and I\'ll shortlist.', chips: ['Best for calls?', 'Can it come today?'] };
-      if (path.startsWith('/storage')) return { key: 'storage', text: 'Flash disk or memory card? Tell me what it\'s for and I\'ll find the size.', chips: ['Which card for my phone?', 'Can it come today?'] };
-      if (path.startsWith('/delivery')) return { key: 'delivery', text: 'Ask me about delivery to your area and whether today\'s run still has room.', chips: ['Deliver to my area?', 'How much is delivery?'] };
-      return { key: 'home', text: 'Hi, I\'m Goldie. Ask me about a charger, a cable, a power bank or a battery for your phone.', chips: ['Battery for my phone', 'Can it come today?'] };
+      if (path.startsWith('/phone-batteries')) return { key: 'batteries', text: 'Not sure which battery fits? Tell me the phone and I\'ll check the shelf.', pill: 'Which battery fits?', chips: ['Find a battery for my phone', 'How much is a battery?'] };
+      if (path.startsWith('/power/chargers')) return { key: 'chargers', text: 'Choosing a charger? Tell me the phone and I\'ll say what it takes.', pill: 'Which charger for you?', chips: ['Which charger for my phone?', 'Can it come today?'] };
+      if (path.startsWith('/power/power-banks')) return { key: 'power-banks', text: 'For the power cuts? Tell me what you charge and I\'ll size the power bank.', pill: 'Which size do you need?', chips: ['Which size do I need?', 'Can it come today?'] };
+      if (path.startsWith('/power/charging-cables')) return { key: 'cables', text: 'Type-C, V8 or iPhone cable? Tell me the phone and I\'ll pick the right end.', pill: 'Which cable fits?', chips: ['Which cable for my phone?', 'Can it come today?'] };
+      if (path.startsWith('/audio')) return { key: 'audio', text: 'Earphones for calls, music or the gym? Say which and I\'ll shortlist.', pill: 'Calls, music or gym?', chips: ['Best for calls?', 'Can it come today?'] };
+      if (path.startsWith('/storage')) return { key: 'storage', text: 'Flash disk or memory card? Tell me what it\'s for and I\'ll find the size.', pill: 'Which size do you need?', chips: ['Which card for my phone?', 'Can it come today?'] };
+      if (path.startsWith('/delivery')) return { key: 'delivery', text: 'Ask me about delivery to your area and whether today\'s run still has room.', pill: 'Delivery to your area?', chips: ['Deliver to my area?', 'How much is delivery?'] };
+      if (path.startsWith('/blog')) return { key: 'guide', text: 'Reading up? When you know what you need, tell me the phone and I\'ll find it on the shelf.', pill: 'Found what you need?', chips: ['Find a battery for my phone', 'Which charger for my phone?'] };
+      if (path === '/') return { key: 'home', text: 'Hi, I\'m Goldie. Tell me your phone and I\'ll find the battery, charger or cable that fits, and say if it can come today.', pill: 'What phone do you use?', chips: ['Battery for my phone', 'Can it come today?'] };
+      return null;
     };
-    let teaserState: 'idle' | 'shown' | 'done' = 'idle'; let teaserKey = '';
-    const markTeased = () => { try { sessionStorage.setItem(TEASED, '1'); } catch { /* ignore */ } };
+
+    // Once per visitor per week (a tab-only fallback where storage is blocked).
+    const TEASED_AT = 'gp-assistant-teased-at', WEEK = 7 * 24 * 3600 * 1000;
+    const teasedRecently = () => {
+      try { if (Date.now() - Number(localStorage.getItem(TEASED_AT) || 0) < WEEK) return true; } catch { /* blocked */ }
+      try { return sessionStorage.getItem(TEASED) === '1' || sessionStorage.getItem(SEEN) === '1'; } catch { return false; }
+    };
+    const markTeased = () => { try { localStorage.setItem(TEASED_AT, String(Date.now())); } catch { /* ignore */ } try { sessionStorage.setItem(TEASED, '1'); } catch { /* ignore */ } };
+
+    let teaserState: 'idle' | 'shown' | 'done' = 'idle'; let teaserKey = ''; let pillShown = false;
     function hideTeaser(leaveBadge: boolean) {
-      if (teaserState !== 'shown') return; teaserState = 'done'; markTeased();
+      if (teaserState !== 'shown') return; teaserState = 'done';
       const finish = () => { teaser.hidden = true; teaser.classList.remove('gp-assistant__teaser--leave', 'gp-assistant__teaser--enter'); };
       if (reduced) finish(); else { teaser.classList.add('gp-assistant__teaser--leave'); teaser.addEventListener('animationend', finish, { once: true }); }
-      if (leaveBadge && panel.hidden) badge.hidden = false;
+      if (leaveBadge && panel.hidden) { badge.hidden = false; launch.setAttribute('aria-label', 'Ask Goldie, 1 new message'); }
     }
     const showTeaser = () => {
       if (teaserState !== 'idle' || !panel.hidden) return;
       const t = pageTeaser(); if (!t) { teaserState = 'done'; return; }
-      teaserState = 'shown'; teaserKey = `goldie:${t.key}`;
+      activeTeaser = t; teaserKey = `goldie:${t.key}`; markTeased();
+      if (narrow.matches) {
+        // Phones: the message rides in the pill; nothing floats over the content.
+        teaserState = 'done'; pillShown = true;
+        launch.classList.remove('gp-assistant__launch--mini'); launch.classList.add('gp-assistant__launch--msg');
+        setPillText(t.pill, 'Ask Goldie'); holdOpenUntil = Date.now() + 8000;
+        track('NBA_IMPRESSION', `${teaserKey}:pill`);
+        // The wide pill returns to its usual size after a moment so it covers nothing for long;
+        // the panel keeps the full message and its questions, so nothing is lost to the timer.
+        setTimeout(() => { if (panel.hidden) { launch.classList.remove('gp-assistant__launch--msg'); setPillText('Ask Goldie', 'GoldPlus shop help'); badge.hidden = false; launch.setAttribute('aria-label', 'Ask Goldie, 1 new message'); } }, 12000);
+        return;
+      }
+      teaserState = 'shown';
       teaserText.textContent = t.text; teaserChips.replaceChildren();
       for (const c of t.chips) { const b = document.createElement('button'); b.type = 'button'; b.textContent = c; b.addEventListener('click', () => { track('NBA_CLICK', `${teaserKey}:chip`); open(); void ask(c); }); teaserChips.append(b); }
       teaser.hidden = false; if (!reduced) teaser.classList.add('gp-assistant__teaser--enter');
       track('NBA_IMPRESSION', teaserKey);
-      // Ignored, it folds away to an unread dot: sooner on phones, where it sits on the content.
-      setTimeout(() => hideTeaser(true), narrow.matches ? 18000 : 45000);
+      // Ignored for a minute, it folds to an unread dot; the panel still opens with the same message.
+      setTimeout(() => hideTeaser(true), 60000);
     };
     teaserOpen.addEventListener('click', () => { track('NBA_CLICK', teaserKey); open(); });
     teaserClose.addEventListener('click', () => { track('NBA_DISMISS', teaserKey); hideTeaser(false); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && teaserState === 'shown') hideTeaser(false); });
-    let teased = false; try { teased = sessionStorage.getItem(TEASED) === '1' || sessionStorage.getItem(SEEN) === '1'; } catch { teased = false; }
-    if (!teased) {
-      // Whichever comes first: a short dwell, or a third of the page read.
-      const dwell = setTimeout(showTeaser, 9000);
+    if (!teasedRecently() && pageTeaser()) {
+      // Whichever comes first: real reading time, or most of the page read.
+      const dwell = setTimeout(showTeaser, narrow.matches ? 40000 : 30000);
       const onScroll = () => {
         const depth = (scrollY + innerHeight) / Math.max(1, document.documentElement.scrollHeight);
-        if (depth >= 0.34) { clearTimeout(dwell); removeEventListener('scroll', onScroll); showTeaser(); }
+        if (depth >= 0.6) { clearTimeout(dwell); removeEventListener('scroll', onScroll); showTeaser(); }
       };
       addEventListener('scroll', onScroll, { passive: true });
     }
+
+    // Inline "Ask Goldie" questions elsewhere on the page (AskGoldie.astro) open the panel and ask.
+    document.addEventListener('gp-assistant:ask', (e) => {
+      const d = (e as CustomEvent<{ question?: string; source?: string }>).detail || {};
+      if (!d.question) return; track('NBA_CLICK', `goldie:inline:${d.source || 'page'}`); open(); void ask(d.question);
+    });
 
     const ask = async (question: string) => {
       const text = question.trim(); if (!text || busy) return;
@@ -442,7 +518,6 @@ const enabled = assistantEnabled();
 
     form.addEventListener('submit', (e) => { e.preventDefault(); void ask(input.value); });
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void ask(input.value); } });
-    starters.querySelectorAll<HTMLButtonElement>('[data-starter]').forEach((b) => b.addEventListener('click', () => { open(); void ask(b.dataset.starter || ''); }));
-    starters.querySelectorAll<HTMLButtonElement>('[data-prefill]').forEach((b) => b.addEventListener('click', () => { open(); input.value = b.dataset.prefill || ''; input.focus(); input.setSelectionRange(input.value.length, input.value.length); }));
+    renderStarters();
   }
 </script>

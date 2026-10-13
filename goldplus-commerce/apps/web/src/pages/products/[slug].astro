@@ -19,6 +19,7 @@ import { breadcrumbJsonLd, serializeJsonLd } from '../../lib/jsonld';
 import { getBusinessInfo } from '../../lib/businessInfo';
 import ThisPhoneSuggestion from '../../components/ThisPhoneSuggestion.astro';
 import CheckYourPhoneNote from '../../components/CheckYourPhoneNote.astro';
+import AskGoldie from '../../components/AskGoldie.astro';
 import ProductGallery from '../../components/product/ProductGallery.astro';
 // Focus 4 rollback switch: PRODUCT_GALLERY_ENRICHMENT=false shows slot 1 only (still the correct cover).
 const galleryEnrichment = process.env.PRODUCT_GALLERY_ENRICHMENT !== 'false';
@@ -666,6 +667,17 @@ if (product) {
               ))}
             </ul>
           )}
+
+          {/* The question a shopper has at this point, one tap away, in the flow
+              rather than floating over it (the Rufus pattern). */}
+          <AskGoldie class="mb-6" source="pdp" questions={
+            (battery || /batter/i.test(product.name)) ? ['Will it fit my phone?', 'Can it come today?']
+            : /charger|cable/i.test(product.name) ? ['Which phones does it work with?', 'Can it come today?']
+            : /power bank/i.test(product.name) ? ['How many charges will I get?', 'Can it come today?']
+            : /earphone|earbud|headphone|speaker|bluetooth/i.test(product.name) ? ['Is it good for calls?', 'Can it come today?']
+            : /memory card|flash/i.test(product.name) ? ['Will it work in my phone?', 'Can it come today?']
+            : ['Tell me more about this one', 'Can it come today?']
+          } />
 
           <form id="pdp-buy" method="POST" action="/cart" class="flex flex-col sm:flex-row gap-3 mb-6">
             <input type="hidden" name="action" value="add" />
