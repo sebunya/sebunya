@@ -252,6 +252,7 @@ const enabled = assistantEnabled();
 
 <script>
   import type { GoldiePanel, Teaser } from '../scripts/goldie-panel';
+  import { pageQuestions, productQuestions, shortProductName, todayStillOpen as stillOpen, type PageKey } from '../lib/goldieQuestions';
 
   // Only the launcher and its awareness layer ship with the page. The conversation panel
   // (../scripts/goldie-panel.ts) loads on the first sign of interest: a hover, a touch, a tap,
@@ -279,10 +280,7 @@ const enabled = assistantEnabled();
         return /^[\w .+'/-]{2,60}$/.test(label) ? label : '';
       } catch { return ''; }
     })();
-    const cutoffHour = Number(root.dataset.cutoffHour) || 17;
-    const kampalaHour = (() => { try { return Number(new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hour12: false, timeZone: 'Africa/Kampala' }).format(new Date())); } catch { return hour; } })();
-    const todayStillOpen = kampalaHour < cutoffHour;
-    const DELIVERY_Q = todayStillOpen ? 'Can it come today?' : 'When can it reach me?';
+    const todayStillOpen = stillOpen(Number(root.dataset.cutoffHour) || 17);
     const GREETING = `${hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'}, I'm Goldie from GoldPlus. Ask me about a charger, a cable, a power bank, earphones or a battery for your phone, and I'll check the shelf for you.`;
 
     // ---- the panel, loaded once, on first interest
@@ -351,7 +349,9 @@ const enabled = assistantEnabled();
     // gets in the way of a task (checkout, cart, account, the finders, search and filtered lists).
     const EXCLUDED = /^\/(checkout|cart|admin|account|orders|login|logout|auth|forgot-password|consent|preferences|offline|shop|search|compare|product-finder|battery-finder|quote-request|bulk|dealers)(\/|$)/;
     type PageTeaser = Teaser & { pill: string };
-    const my = knownPhone ? `my ${knownPhone}` : 'my phone';
+    // Labels are short; each chip SENDS a full question naming its subject (lib/goldieQuestions.ts),
+    // because the server never sees the page the conversation came from.
+    const page = (key: PageKey, text: string, pill: string, asksPhone = false): PageTeaser => ({ key, text, pill, asksPhone, chips: pageQuestions(key, knownPhone, todayStillOpen) });
     const pageTeaser = (): PageTeaser | null => {
       const path = location.pathname;
       if (EXCLUDED.test(path)) return null;
@@ -359,24 +359,25 @@ const enabled = assistantEnabled();
       if (document.querySelector('.gp-askgoldie')) return null;
       const name = document.querySelector<HTMLElement>('[data-product-name]')?.dataset.productName?.trim();
       if (path.startsWith('/products/') && name) {
-        const short = name.replace(/^GoldPlus\s+/i, '').split(/\s[—(]/)[0].trim();
-        return /batter/i.test(name)
-          ? { key: 'pdp-battery', text: knownPhone ? `Looking at the ${short} for your ${knownPhone}? I can confirm the fit before you pay.` : `Looking at the ${short}? Tell me your phone and I'll confirm it fits before you pay.`, pill: knownPhone ? `Fits your ${knownPhone}?` : 'Will it fit your phone?', chips: [`Will it fit ${my}?`, DELIVERY_Q], asksPhone: true }
-          : { key: 'pdp', text: `Looking at the ${short}? Ask me anything about it, or whether it can reach you today.`, pill: 'Questions on this one?', chips: ['Which phones does it work with?', DELIVERY_Q] };
+        const short = shortProductName(name); const battery = /batter/i.test(name);
+        const chips = productQuestions({ name, isBattery: battery, phone: knownPhone, todayOpen: todayStillOpen });
+        return battery
+          ? { key: 'pdp-battery', text: knownPhone ? `Looking at the ${short} for your ${knownPhone}? I can confirm the fit before you pay.` : `Looking at the ${short}? Tell me your phone and I'll confirm it fits before you pay.`, pill: knownPhone ? `Fits your ${knownPhone}?` : 'Will it fit your phone?', chips, asksPhone: true }
+          : { key: 'pdp', text: `Looking at the ${short}? Ask me anything about it, or whether it can reach you today.`, pill: 'Questions on this one?', chips };
       }
       if (path.startsWith('/phone-batteries')) return knownPhone
-        ? { key: 'batteries', text: `Still shopping for your ${knownPhone}? Say the word and I'll pull up the battery that fits it.`, pill: `Battery for your ${knownPhone}?`, chips: [`Battery for ${my}`, 'How much is a battery?'] }
-        : { key: 'batteries', text: 'Not sure which battery fits? Tell me the phone and I\'ll check the shelf.', pill: 'Which battery fits?', chips: ['Find a battery for my phone', 'How much is a battery?'], asksPhone: true };
-      if (path.startsWith('/power/chargers')) return { key: 'chargers', text: 'Choosing a charger? Tell me the phone and I\'ll say what it takes.', pill: 'Which charger for you?', chips: [`Which charger for ${my}?`, DELIVERY_Q], asksPhone: true };
-      if (path.startsWith('/power/power-banks')) return { key: 'power-banks', text: 'For the power cuts? Tell me what you charge and I\'ll size the power bank.', pill: 'Which size do you need?', chips: ['Which size do I need?', DELIVERY_Q] };
-      if (path.startsWith('/power/charging-cables')) return { key: 'cables', text: 'Type-C, V8 or iPhone cable? Tell me the phone and I\'ll pick the right end.', pill: 'Which cable fits?', chips: [`Which cable for ${my}?`, DELIVERY_Q], asksPhone: true };
-      if (path.startsWith('/audio')) return { key: 'audio', text: 'Earphones for calls, music or the gym? Say which and I\'ll shortlist.', pill: 'Calls, music or gym?', chips: ['Best for calls?', DELIVERY_Q] };
-      if (path.startsWith('/storage')) return { key: 'storage', text: 'Flash disk or memory card? Tell me what it\'s for and I\'ll find the size.', pill: 'Which size do you need?', chips: [`Which card for ${my}?`, DELIVERY_Q] };
-      if (path.startsWith('/delivery')) return { key: 'delivery', text: todayStillOpen ? 'Ask me about delivery to your area and whether today\'s run still has room.' : 'Today\'s run has left. Ask me when the next one can reach your area.', pill: 'Delivery to your area?', chips: ['Deliver to my area?', 'How much is delivery?'] };
-      if (path.startsWith('/blog')) return { key: 'guide', text: 'Reading up? When you know what you need, tell me the phone and I\'ll find it on the shelf.', pill: 'Found what you need?', chips: [`Find a battery for ${my}`, `Which charger for ${my}?`], asksPhone: true };
+        ? page('batteries', `Still shopping for your ${knownPhone}? Say the word and I'll pull up the battery that fits it.`, `Battery for your ${knownPhone}?`)
+        : page('batteries', 'Not sure which battery fits? Tell me the phone and I\'ll check the shelf.', 'Which battery fits?', true);
+      if (path.startsWith('/power/chargers')) return page('chargers', 'Choosing a charger? Tell me the phone and I\'ll say what it takes.', 'Which charger for you?', true);
+      if (path.startsWith('/power/power-banks')) return page('power-banks', 'For the power cuts? Tell me what you charge and I\'ll size the power bank.', 'Which size do you need?');
+      if (path.startsWith('/power/charging-cables')) return page('cables', 'Type-C, V8 or iPhone cable? Tell me the phone and I\'ll pick the right end.', 'Which cable fits?', true);
+      if (path.startsWith('/audio')) return page('audio', 'Earphones for calls, music or the gym? Say which and I\'ll shortlist.', 'Calls, music or gym?');
+      if (path.startsWith('/storage')) return page('storage', 'Flash disk or memory card? Tell me what it\'s for and I\'ll find the size.', 'Which size do you need?');
+      if (path.startsWith('/delivery')) return page('delivery', todayStillOpen ? 'Ask me about delivery to your area and whether today\'s run still has room.' : 'Today\'s run has left. Ask me when the next one can reach your area.', 'Delivery to your area?');
+      if (path.startsWith('/blog')) return page('guide', 'Reading up? When you know what you need, tell me the phone and I\'ll find it on the shelf.', 'Found what you need?', true);
       if (path === '/') return knownPhone
-        ? { key: 'home', text: `Welcome back. Shopping for your ${knownPhone} again? I can find the battery, charger or cable that fits it.`, pill: `For your ${knownPhone}?`, chips: [`Battery for ${my}`, DELIVERY_Q] }
-        : { key: 'home', text: 'Hi, I\'m Goldie. Tell me your phone and I\'ll find the battery, charger or cable that fits, and say if it can come today.', pill: 'What phone do you use?', chips: ['Battery for my phone', DELIVERY_Q], asksPhone: true };
+        ? page('home', `Welcome back. Shopping for your ${knownPhone} again? I can find the battery, charger or cable that fits it.`, `For your ${knownPhone}?`)
+        : page('home', 'Hi, I\'m Goldie. Tell me your phone and I\'ll find the battery, charger or cable that fits, and say if it can come today.', 'What phone do you use?', true);
       return null;
     };
 
@@ -413,7 +414,7 @@ const enabled = assistantEnabled();
       }
       teaserState = 'shown';
       teaserText.textContent = t.text; teaserChips.replaceChildren();
-      for (const c of t.chips) { const b = document.createElement('button'); b.type = 'button'; b.textContent = c; b.addEventListener('click', () => askNow(c, `${teaserKey}:chip`)); teaserChips.append(b); }
+      for (const c of t.chips) { const b = document.createElement('button'); b.type = 'button'; b.textContent = c.label; b.setAttribute('aria-label', c.ask); b.addEventListener('click', () => askNow(c.ask, `${teaserKey}:chip`)); teaserChips.append(b); }
       teaser.hidden = false; if (!reduced) teaser.classList.add('gp-assistant__teaser--enter');
       track('NBA_IMPRESSION', teaserKey);
       // Ignored for a minute, it folds to an unread dot; the panel still opens with the same message.

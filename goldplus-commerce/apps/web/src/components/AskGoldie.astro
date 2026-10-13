@@ -9,7 +9,9 @@
  * nothing rather than a dead button.
  */
 import { assistantEnabled } from '../lib/assistant';
-interface Props { questions: string[]; source: string; class?: string }
+import type { GoldieQuestion } from '../lib/goldieQuestions';
+/** Each chip shows a short label and sends the full question (which names the product). */
+interface Props { questions: GoldieQuestion[]; source: string; class?: string }
 const { questions, source, class: cls = '' } = Astro.props;
 const enabled = assistantEnabled() && questions.length > 0;
 ---
@@ -17,7 +19,7 @@ const enabled = assistantEnabled() && questions.length > 0;
   <div class={`gp-askgoldie ${cls}`} data-askgoldie={source}>
     <span class="gp-askgoldie__label"><span class="gp-askgoldie__avatar" aria-hidden="true">G</span>Ask Goldie</span>
     <div class="gp-askgoldie__chips">
-      {questions.map((q) => (<button type="button" data-ask={q}>{q}</button>))}
+      {questions.map((q) => (<button type="button" data-ask={q.ask} aria-label={q.ask}>{q.label}</button>))}
     </div>
   </div>
 )}

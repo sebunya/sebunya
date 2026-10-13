@@ -18,7 +18,8 @@ type Card = { id: string | null; name: string; url: string; sku: string | null; 
 type Chip = { label: string; url: string };
 type Ev = { type: 'text'; text: string } | { type: 'tool'; name: string } | { type: 'products'; items: Card[] } | { type: 'links'; items: Chip[] } | { type: 'done' } | { type: 'error'; code: string; message: string };
 
-export type Teaser = { key: string; text: string; chips: string[]; asksPhone?: boolean };
+import type { GoldieQuestion } from '../lib/goldieQuestions';
+export type Teaser = { key: string; text: string; chips: GoldieQuestion[]; asksPhone?: boolean };
 export interface PanelContext {
   endpoint: string;
   reduced: boolean;
@@ -164,7 +165,7 @@ export function mountGoldie(root: HTMLElement, ctx: PanelContext): GoldiePanel {
   const renderStarters = () => {
     const teaser = ctx.getTeaser();
     const defaults = ctx.knownPhone ? DEFAULT_STARTERS.map((st) => ({ ...st, label: st.label.replace(/my phone/i, `my ${ctx.knownPhone}`), ask: st.ask?.replace(/my phone/i, `my ${ctx.knownPhone}`) })) : DEFAULT_STARTERS;
-    const list: Starter[] = [...(teaser?.chips ?? []).map((c) => ({ label: c, ask: c })), ...defaults];
+    const list: Starter[] = [...(teaser?.chips ?? []).map((c) => ({ label: c.label, ask: c.ask })), ...defaults];
     const seen = new Set<string>(); starters.replaceChildren();
     input.placeholder = teaser?.asksPhone && !ctx.knownPhone ? 'e.g. Samsung A12 or Tecno Spark 10' : 'Type your question…';
     for (const st of list) {
