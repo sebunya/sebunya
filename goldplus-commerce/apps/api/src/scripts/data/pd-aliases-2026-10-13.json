@@ -1,0 +1,20 @@
+{
+  "$comment": "Owner 2026-10-13: the box and label print PD-W2 / PD-W3 / PD-W5; the catalogue code is GP-W2 / GP-W3 / GP-W5; both names are right. Site search matches the product NAME (not descriptions), and the name also feeds page titles, structured data and the Google Merchant feed, so the PD code goes in the name. Slugs and model numbers are unchanged. Apply with apply-supplier-specs.ts (DATA_FILE=…, DRY_RUN=1 first). No specs are written. Applied in production 2026-10-13 (3 applied, 0 missing).",
+  "products": [
+    {
+      "sku": "GP-W2-PB",
+      "title": "GoldPlus GP-W2 (PD-W2) Power Bank",
+      "specs": []
+    },
+    {
+      "sku": "GP-W3-PB",
+      "title": "GoldPlus GP-W3 (PD-W3) Power Bank",
+      "specs": []
+    },
+    {
+      "sku": "GP-W5-PB",
+      "title": "GoldPlus GP-W5 (PD-W5) Power Bank",
+      "specs": []
+    }
+  ]
+}

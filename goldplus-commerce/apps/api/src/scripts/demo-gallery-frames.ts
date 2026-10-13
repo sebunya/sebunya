@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { endDbConnection } from '../infrastructure/db/client';
 import { Registry } from '../infrastructure/Registry';
 import { requireMediaVolume } from './requireMediaVolume';
+import { frameTargets, parseOnly } from './skuSelection';
 import type { GallerySlot } from '@goldplus/shared';
 
 /**
@@ -146,7 +147,7 @@ async function main() {
   const dryRun = process.env.DRY_RUN !== '0';
   const actorId = String(process.env.ACTOR_USER_ID ?? '');
   if (!dryRun && !/^[0-9a-f-]{36}$/i.test(actorId)) throw new Error('ACTOR_USER_ID must be the acting admin uuid to apply.');
-  const only = new Set(String(process.env.ONLY ?? '').split(',').map((s) => s.trim()).filter(Boolean));
+  const only = parseOnly(process.env.ONLY);
   const mediaRoot = requireMediaVolume();
   const r = Registry.getInstance();
   const repo = r.productMediaRepo;
@@ -155,7 +156,7 @@ async function main() {
   const sharp = (await import('sharp')).default;
 
   const all = await repo.listCompleteness();
-  const targets = all.filter((p) => p.active && (only.size === 0 || only.has(p.sku)));
+  const targets = frameTargets(all, only, mode);
   const totals = { products: 0, framesAdded: 0, framesRemoved: 0, skipped: 0, failed: 0 };
   for (const p of targets) {
     const snap = await repo.getSnapshot(p.productId);

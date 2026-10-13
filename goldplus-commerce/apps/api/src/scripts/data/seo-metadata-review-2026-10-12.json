@@ -1537,7 +1537,7 @@
       "url": "https://shopgoldplus.com/products/goldplus-power-bank-gp-w2-pb",
       "slug": "goldplus-power-bank-gp-w2-pb",
       "state": "IDENTITY_HOLD_NO_AUTOMATIC_SPEC_OR_IMAGE_IMPORT",
-      "titleCandidate": "GoldPlus GP-W2 Power Bank",
+      "titleCandidate": "GoldPlus GP-W2 (PD-W2) Power Bank",
       "descriptionCandidate": "GoldPlus GP-W2 Power Bank for UGX 110,000, in stock. Power bank GP-W2 — power through outages and long days. Same-day in Kampala & Wakiso.",
       "parent": "/power/power-banks",
       "review": "Resolve GP-W5/GP-W2 live code versus PD-W5/PD-W2 photographed identity before transfer."
@@ -1547,7 +1547,7 @@
       "url": "https://shopgoldplus.com/products/goldplus-power-bank-gp-w3-pb",
       "slug": "goldplus-power-bank-gp-w3-pb",
       "state": "RETAIN_CURRENT_REVIEW_ONLY",
-      "titleCandidate": "GoldPlus GP-W3 Power Bank",
+      "titleCandidate": "GoldPlus GP-W3 (PD-W3) Power Bank",
       "descriptionCandidate": "GoldPlus GP-W3 Power Bank for UGX 120,000, in stock. Power bank GP-W3 — power through outages and long days. Same-day in Kampala & Wakiso.",
       "parent": "/power/power-banks",
       "review": "Preserve useful current copy; change only evidence-supported fields."
@@ -1567,7 +1567,7 @@
       "url": "https://shopgoldplus.com/products/goldplus-power-bank-gp-w5-pb",
       "slug": "goldplus-power-bank-gp-w5-pb",
       "state": "IDENTITY_HOLD_NO_AUTOMATIC_SPEC_OR_IMAGE_IMPORT",
-      "titleCandidate": "GoldPlus GP-W5 Power Bank",
+      "titleCandidate": "GoldPlus GP-W5 (PD-W5) Power Bank",
       "descriptionCandidate": "GoldPlus GP-W5 Power Bank for UGX 200,000, in stock. Power bank GP-W5 — power through outages and long days. Same-day in Kampala & Wakiso.",
       "parent": "/power/power-banks",
       "review": "Resolve GP-W5/GP-W2 live code versus PD-W5/PD-W2 photographed identity before transfer."

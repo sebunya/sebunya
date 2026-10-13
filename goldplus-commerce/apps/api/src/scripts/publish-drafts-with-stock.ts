@@ -11,6 +11,9 @@ import { CreateAuditLogUseCase } from '../application/use-cases/audit/CreateAudi
  * DRAFT that has stock recorded — the same rule as the admin bulk approval —
  * through the same repository method, audited as one batch.
  *
+ * CAUTION (2026-10-13): this approves EVERY draft with stock, including ones held back
+ * for missing photos. To put back only some products, use approve-skus.ts with ONLY=.
+ *
  *   ACTOR_USER_ID=<uuid> npx tsx src/scripts/publish-drafts-with-stock.ts
  */
 const rowsOf = (r: unknown): Record<string, unknown>[] => (Array.isArray(r) ? (r as never) : ((r as { rows?: never[] })?.rows ?? []));
