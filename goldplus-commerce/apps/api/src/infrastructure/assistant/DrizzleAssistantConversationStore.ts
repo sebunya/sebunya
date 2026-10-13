@@ -80,11 +80,13 @@ export class DrizzleAssistantConversationStore implements IAssistantConversation
       const like = `%${f.q.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
       where.push(or(
         ilike(assistantConversations.contactName, like), ilike(assistantConversations.contactPhone, like), ilike(assistantConversations.contactEmail, like),
-        sql`exists (select 1 from assistant_messages m where m.conversation_id = ${assistantConversations.id} and m.content ilike ${like})`,
+        sql`exists (select 1 from assistant_messages m where m.conversation_id = assistant_conversations.id and m.content ilike ${like})`,
       )!);
     }
     const cond = where.length ? and(...where) : undefined;
-    const lastLine = sql<string>`coalesce((select m.content from assistant_messages m where m.conversation_id = ${assistantConversations.id} and m.role = 'customer' order by m.created_at desc limit 1), '')`;
+    // The outer table is named in full: inside a select list Drizzle renders a column unqualified, and a bare "id" in
+    // this subquery would bind to the message's own id.
+    const lastLine = sql<string>`coalesce((select m.content from assistant_messages m where m.conversation_id = assistant_conversations.id and m.role = 'customer' order by m.created_at desc limit 1), '')`;
     const [rows, count] = await Promise.all([
       db.select({ c: assistantConversations, lastCustomerLine: lastLine }).from(assistantConversations).where(cond).orderBy(desc(assistantConversations.lastMessageAt)).limit(f.limit).offset(f.offset),
       db.select({ n: sql<number>`count(*)::int` }).from(assistantConversations).where(cond),
