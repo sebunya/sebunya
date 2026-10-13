@@ -1,5 +1,5 @@
 import type { ICareDeskRepository, CareTaskRow, CareTeamMemberRow } from '../../ports/ICareDeskRepository';
-import { alertAllowed, alertText, carePriority, isCareKind, onDutyNow, shouldAlert, CARE_KIND_LABEL, DEFAULT_ALERTS_PER_HOUR, type CarePriority, type CareTaskKind, type OnDuty } from '../../../domain/assistant/CareDesk';
+import { alertAllowed, alertText, needsEscalation, carePriority, isCareKind, onDutyNow, shouldAlert, CARE_KIND_LABEL, DEFAULT_ALERTS_PER_HOUR, type CarePriority, type CareTaskKind, type OnDuty } from '../../../domain/assistant/CareDesk';
 import { redact } from '../../../domain/assistant/ConversationArchive';
 import { isValidEmail, isValidUgandanPhone, normalizeEmail, normalizePhone, text } from '../../services/validationHelpers';
 
@@ -8,6 +8,8 @@ export interface ICareAlertChannels {
   sms(input: { to: string; message: string; key: string; taskId: string }): Promise<{ queued: boolean; reason?: string }>;
   email(input: { to: string; subject: string; text: string; html: string; key: string; taskId: string }): Promise<{ queued: boolean; reason?: string }>;
   whatsapp(input: { to: string; message: string }): Promise<{ queued: boolean; reason?: string }>;
+  /** Push notifications to staff phones that subscribed on the Care Desk (optional). */
+  push?(input: { title: string; body: string; url: string; key: string }): Promise<{ sent: number }>;
 }
 
 export interface OpenTaskInput {
@@ -126,6 +128,50 @@ export class CareDeskUseCases {
     return this.repo.rate(conversationId, score, comment ? redact(text(comment)).slice(0, 500) : null);
   }
   setNextAction(conversationId: string, action: string | null) { return this.repo.setNextAction(conversationId, action ? action.slice(0, 40) : null); }
+
+  /**
+   * Every minute: an urgent task nobody has taken for 15 minutes pages every active team member again, on every
+   * channel they chose (on duty or not, the customer has waited long enough), at most twice per task.
+   */
+  async escalateOverdue(): Promise<number> {
+    const now = this.now();
+    const due = (await this.repo.urgentUntaken(50)).filter((t) => needsEscalation(t, now));
+    for (const t of due) {
+      const waitedMin = Math.round((now.getTime() - t.createdAt.getTime()) / 60000);
+      const message = `STILL WAITING ${waitedMin} min. ${alertText(t)}`.slice(0, 300);
+      const team = await this.repo.team(true);
+      for (const m of team) {
+        if (m.alertSms && m.phone) await this.alerts.sms({ to: m.phone, message, key: `care-escalate:${t.id}:${t.escalations + 1}:${m.id}:sms`, taskId: t.id }).catch(() => undefined);
+        if (m.alertEmail && m.email) await this.alerts.email({ to: m.email, subject: `STILL WAITING: ${CARE_KIND_LABEL[t.kind]}`, text: `${message}\n\nCare Desk: ${this.config.deskUrl}`, html: `<p><strong>${esc(message)}</strong></p><p><a href="${esc(this.config.deskUrl)}">Open the Care Desk</a></p>`, key: `care-escalate:${t.id}:${t.escalations + 1}:${m.id}:email`, taskId: t.id }).catch(() => undefined);
+        if (m.alertWhatsapp && m.phone) await this.alerts.whatsapp({ to: m.phone, message }).catch(() => undefined);
+      }
+      if (this.alerts.push) await this.alerts.push({ title: 'GoldPlus Care: still waiting', body: message, url: this.config.deskUrl, key: `care-escalate:${t.id}:${t.escalations + 1}` }).catch(() => undefined);
+      await this.repo.markEscalated(t.id);
+    }
+    return due.length;
+  }
+
+  // ---- notes, saved replies, shift handover (plain text, redacted like everything Goldie keeps)
+  async addNote(taskId: string, authorId: string | null, note: string) {
+    const n = redact(text(note)).slice(0, 2000);
+    return n.length >= 2 ? this.repo.addNote(taskId, authorId, n) : false;
+  }
+  notesFor(taskIds: string[]) { return taskIds.length ? this.repo.notesFor(taskIds) : Promise.resolve({}); }
+  savedReplies() { return this.repo.savedReplies(); }
+  async saveReply(input: { id?: string | null; title: string; body: string; createdBy: string | null }) {
+    const title = text(input.title).slice(0, 80), body = text(input.body).slice(0, 2000);
+    if (title.length < 2 || body.length < 5) return { ok: false as const, message: 'Give the reply a short title and some text.' };
+    return { ok: true as const, ...(await this.repo.saveReply({ ...input, title, body })) };
+  }
+  removeReply(id: string) { return this.repo.removeReply(id); }
+  usedReply(id: string) { return this.repo.usedReply(id); }
+  async addHandover(authorId: string | null, note: string) {
+    const n = redact(text(note)).slice(0, 2000);
+    if (n.length < 3) return false;
+    await this.repo.addHandover(authorId, n);
+    return true;
+  }
+  recentHandovers(limit = 5) { return this.repo.recentHandovers(limit); }
 
   /** Nightly: closed tasks older than a year go (they hold customer names and numbers). */
   purgeClosed(days = 365) { return this.repo.purgeClosedBefore(new Date(this.now().getTime() - days * 86400_000)); }

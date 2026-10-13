@@ -151,11 +151,14 @@ routes.post('/log', async (c) => {
     route: z.string().max(16).nullable().optional(),
     cacheId: z.string().uuid().nullable().optional(),
     nextAction: z.string().max(40).nullable().optional(),
+    visitToken: z.string().max(600).nullable().optional(),
+    fpClientId: z.string().max(200).nullable().optional(),
   }).safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return bad(c, 'INVALID_BODY', parsed.error.issues[0]?.message ?? 'Invalid body.');
   const d = parsed.data;
+  const who = await shopperKey({ visitToken: d.visitToken ?? null, userId: d.userId ?? null, fpClientId: d.fpClientId ?? null });
   const out = await Registry.getInstance().conversationArchiveUseCases.logTurn({
-    channel: 'web', channelKey: d.conversationId, customerId: d.userId ?? null, page: d.page ?? null,
+    channel: 'web', channelKey: d.conversationId, customerId: d.userId ?? null, page: d.page ?? null, profileId: who.profileId, visitorKey: who.fpClientId,
     customer: { content: d.customer }, goldie: d.goldie ? { content: d.goldie, route: d.route ?? null, cacheId: d.cacheId ?? null } : null, intent: d.intent ?? null, mood: d.mood ?? null,
   });
   // The next-best action Goldie was given for this customer, so the team sees what she was nudging towards.

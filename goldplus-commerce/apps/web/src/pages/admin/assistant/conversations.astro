@@ -29,7 +29,7 @@ const call = async <T,>(path: string): Promise<{ ok: true; data: T } | { ok: fal
   } catch { return { ok: false, message: 'The API could not be reached.' }; }
 };
 interface Row { id: string; channel: string; contactName: string | null; contactPhone: string | null; contactEmail: string | null; firstTopic: string | null; lastTopic: string | null; worstMood: string; outcome: string; messageCount: number; aiTurns: number; humanUntil: string | null; lastMessageAt: string; lastCustomerLine: string; csat?: number | null }
-interface Summary { from: string; to: string; conversations: number; customerMessages: number; byChannel: Record<string, number>; byTopic: Array<{ topic: string; count: number }>; byMood: Record<string, number>; byOutcome: Record<string, number>; selfServeRate: number | null; csatAverage: number | null; csatCount: number; byRoute: Record<string, number>; needsFollowUp: Array<{ id: string; channel: string; contact: string | null; topic: string | null; mood: string; lastMessageAt: string; lastCustomerLine: string }> }
+interface Summary { from: string; to: string; conversations: number; customerMessages: number; byChannel: Record<string, number>; byTopic: Array<{ topic: string; count: number }>; byMood: Record<string, number>; byOutcome: Record<string, number>; selfServeRate: number | null; csatAverage: number | null; csatCount: number; byRoute: Record<string, number>; influence?: { linkableConversations: number; orders: number; revenueUgx: number; conversionRate: number | null; withHint: number; hintConversionRate: number | null }; needsFollowUp: Array<{ id: string; channel: string; contact: string | null; topic: string | null; mood: string; lastMessageAt: string; lastCustomerLine: string }> }
 
 const [list, summary, channels] = await Promise.all([
   call<{ rows: Row[]; total: number }>(`/conversations?${params.toString()}&limit=50&offset=${offset}`),
@@ -70,6 +70,13 @@ const page = (o: number) => { const p = new URLSearchParams(params); if (o) p.se
           <div><p class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Handled by Goldie</p><p class="text-2xl font-black tabular-nums">{pct(summary.data.selfServeRate)}</p><p class="text-xs text-gray-500">resolved or still open without a person{(() => { const total = Object.values(summary.data.byRoute).reduce((s, n) => s + n, 0); return total ? `; ${Math.round(((total - (summary.data.byRoute.ai ?? 0)) / total) * 100)}% of answers at no model cost` : ''; })()}</p></div>
           <div><p class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Need a person</p><p class="text-2xl font-black tabular-nums text-red-700">{(summary.data.byOutcome.needs_human ?? 0) + (summary.data.byOutcome.handed_over ?? 0)}</p><p class="text-xs text-gray-500">upset, or passed to the team</p></div>
         </div>
+        {summary.data.influence && (
+          <div class="rounded-xl bg-lime-50 border border-lime-200 p-4 text-sm">
+            <h3 class="font-black mb-1">Sales after a chat</h3>
+            <p><strong>{summary.data.influence.orders}</strong> paid order{summary.data.influence.orders === 1 ? '' : 's'} worth <strong>UGX {summary.data.influence.revenueUgx.toLocaleString('en-UG')}</strong> came from shoppers within 7 days of chatting with Goldie{summary.data.influence.conversionRate != null ? `, ${Math.round(summary.data.influence.conversionRate * 100)}% of chats we can link to a shopper` : ''}.{summary.data.influence.withHint > 0 && summary.data.influence.hintConversionRate != null ? ` When Goldie had a suggestion for the shopper: ${Math.round(summary.data.influence.hintConversionRate * 100)}% bought.` : ''}</p>
+            <p class="text-xs text-gray-600 mt-1">Influence, not proof that the chat caused the sale.</p>
+          </div>
+        )}
         <div class="grid gap-6 md:grid-cols-3 text-sm">
           <div><h3 class="font-black mb-2">What they came for</h3><ul class="space-y-1">{summary.data.byTopic.map((t) => <li class="flex justify-between gap-2"><span>{TOPIC_LABEL[t.topic] ?? 'Other'}</span><span class="tabular-nums font-bold">{t.count}</span></li>)}</ul></div>
           <div><h3 class="font-black mb-2">How they felt (lowest point)</h3><ul class="space-y-1">{Object.entries(summary.data.byMood).map(([k, v]) => <li class="flex justify-between gap-2"><span>{MOOD_LABEL[k] ?? k}</span><span class="tabular-nums font-bold">{v}</span></li>)}</ul></div>

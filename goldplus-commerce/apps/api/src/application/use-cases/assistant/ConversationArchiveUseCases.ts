@@ -10,6 +10,9 @@ export interface LogTurnInput {
   customerId: string | null;
   page?: string | null;
   contact?: { name?: string | null; phone?: string | null; email?: string | null };
+  /** Website: the shopper's server profile and analytics id, so a later order can be linked to the chat. */
+  profileId?: string | null;
+  visitorKey?: string | null;
   customer: { content: string; channelMessageId?: string | null };
   goldie?: { content: string; route?: string | null; channelMessageId?: string | null; cacheId?: string | null } | null;
   intent?: string | null;
@@ -29,7 +32,7 @@ export class ConversationArchiveUseCases {
   constructor(private readonly store: IAssistantConversationStore, private readonly now: () => Date = () => new Date()) {}
 
   async logTurn(input: LogTurnInput): Promise<{ conversationId: string; duplicate: boolean; humanUntil: Date | null }> {
-    const conv = await this.store.open({ channel: input.channel, channelKey: input.channelKey.slice(0, 128), customerId: input.customerId, page: input.page ?? null, contact: input.contact });
+    const conv = await this.store.open({ channel: input.channel, channelKey: input.channelKey.slice(0, 128), customerId: input.customerId, page: input.page ?? null, contact: input.contact, profileId: input.profileId ?? null, visitorKey: input.visitorKey ?? null });
     const mood: ArchiveMood = isMood(input.mood) ? input.mood : 'neutral';
     const intent = (input.intent ?? '').slice(0, 20) || null;
     const filed = await this.store.addMessage(conv.id, { role: 'customer', content: redact(input.customer.content), intent, mood, channelMessageId: input.customer.channelMessageId ?? null });
@@ -91,6 +94,9 @@ export class ConversationArchiveUseCases {
   get(id: string, limit?: number) { return this.store.get(id, limit); }
   findByKey(channel: ArchiveChannel, key: string) { return this.store.findByKey(channel, key); }
   servedMemory(conversationId: string) { return this.store.servedMemory(conversationId); }
+  pendingWhatsApp(olderThan: Date, newerThan: Date, limit: number) { return this.store.pendingWhatsApp(olderThan, newerThan, limit); }
+  claimCustomerMessage(channelMessageId: string) { return this.store.claimCustomerMessage(channelMessageId); }
+  markCustomerMessage(channelMessageId: string, outcome: string) { return this.store.markCustomerMessage(channelMessageId, outcome); }
   summary(from: Date, to: Date) { return this.store.summary(from, to); }
 
   /** Nightly: conversations whose last message is older than the retention period are deleted with their messages. */

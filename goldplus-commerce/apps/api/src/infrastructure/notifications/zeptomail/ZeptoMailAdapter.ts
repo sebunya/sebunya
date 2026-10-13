@@ -233,7 +233,7 @@ export class ZeptoMailAdapter implements INotificationProvider {
       subject = designed.subject;
       htmlContent = designed.html;
       textContent = designed.text;
-    } else if ((payload.template === 'ADMIN_ORDER_EMAIL' || payload.template === 'GOLDIE_HANDOVER' || payload.template === 'GOLDIE_TRANSCRIPT' || payload.template === 'CARE_ALERT_EMAIL') && typeof payload.data?.html === 'string') {
+    } else if ((payload.template === 'ADMIN_ORDER_EMAIL' || payload.template === 'GOLDIE_HANDOVER' || payload.template === 'GOLDIE_TRANSCRIPT' || payload.template === 'CARE_ALERT_EMAIL' || payload.template === 'CARE_REPLY_EMAIL') && typeof payload.data?.html === 'string') {
       // Pre-rendered in the pure domain (already escaped): the admin order email and Goldie's chat emails.
       subject = String(payload.data.subject || subject);
       htmlContent = String(payload.data.html);

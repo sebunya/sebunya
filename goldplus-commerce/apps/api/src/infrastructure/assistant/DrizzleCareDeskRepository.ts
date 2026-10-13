@@ -1,6 +1,6 @@
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client';
-import { assistantConversations, careTasks, careTeamMembers } from '../db/schema/assistant';
+import { assistantConversations, careHandoverNotes, careSavedReplies, careTaskNotes, careTasks, careTeamMembers } from '../db/schema/assistant';
 import type { CareTaskRow, CareTeamMemberRow, ICareDeskRepository, NewCareTask } from '../../application/ports/ICareDeskRepository';
 import type { CareDeskToday, CarePriority, CareStatus, CareTaskKind, OnDuty } from '../../domain/assistant/CareDesk';
 
@@ -70,6 +70,15 @@ export class DrizzleCareDeskRepository implements ICareDeskRepository {
     return gone.length;
   }
 
+  async urgentUntaken(limit: number) {
+    const rows = await db.select().from(careTasks).where(and(eq(careTasks.status, 'open'), eq(careTasks.priority, 'urgent'), sql`${careTasks.assignedTo} is null`, sql`${careTasks.escalations} < 2`)).orderBy(asc(careTasks.createdAt)).limit(limit);
+    return rows.map((r) => ({ ...task(r), escalations: r.escalations, lastEscalatedAt: r.lastEscalatedAt }));
+  }
+
+  async markEscalated(id: string) {
+    await db.update(careTasks).set({ escalations: sql`${careTasks.escalations} + 1`, lastEscalatedAt: sql`now()` }).where(eq(careTasks.id, id));
+  }
+
   async markAlerted(id: string) { if (/^[0-9a-f-]{36}$/i.test(id)) await db.update(careTasks).set({ alertedAt: sql`now()` }).where(eq(careTasks.id, id)); }
 
   async team(activeOnly: boolean) {
@@ -123,6 +132,28 @@ export class DrizzleCareDeskRepository implements ICareDeskRepository {
     const r = await db.update(assistantConversations).set({ csat: score, csatComment: comment }).where(eq(assistantConversations.id, conversationId)).returning({ id: assistantConversations.id });
     return r.length > 0;
   }
+
+  async addNote(taskId: string, authorId: string | null, note: string) {
+    if (!(await this.get(taskId))) return false;
+    await db.insert(careTaskNotes).values({ taskId, authorId: authorId && /^[0-9a-f-]{36}$/i.test(authorId) ? authorId : null, note });
+    return true;
+  }
+  async notesFor(taskIds: string[]) {
+    const rows = await db.select().from(careTaskNotes).where(inArray(careTaskNotes.taskId, taskIds)).orderBy(asc(careTaskNotes.createdAt));
+    const out: Record<string, Array<{ note: string; createdAt: Date; authorId: string | null }>> = {};
+    for (const r of rows) (out[r.taskId] ??= []).push({ note: r.note, createdAt: r.createdAt, authorId: r.authorId });
+    return out;
+  }
+  async savedReplies() { return (await db.select().from(careSavedReplies).orderBy(desc(careSavedReplies.uses), asc(careSavedReplies.title))).map((r) => ({ id: r.id, title: r.title, body: r.body, uses: r.uses })); }
+  async saveReply(i: { id?: string | null; title: string; body: string; createdBy: string | null }) {
+    if (i.id) { const [r] = await db.update(careSavedReplies).set({ title: i.title, body: i.body, updatedAt: sql`now()` }).where(eq(careSavedReplies.id, i.id)).returning({ id: careSavedReplies.id }); if (r) return { id: r.id }; }
+    const [r] = await db.insert(careSavedReplies).values({ title: i.title, body: i.body, createdBy: i.createdBy && /^[0-9a-f-]{36}$/i.test(i.createdBy) ? i.createdBy : null }).returning({ id: careSavedReplies.id });
+    return { id: r!.id };
+  }
+  async removeReply(id: string) { const r = await db.delete(careSavedReplies).where(eq(careSavedReplies.id, id)).returning({ id: careSavedReplies.id }); return r.length > 0; }
+  async usedReply(id: string) { await db.update(careSavedReplies).set({ uses: sql`${careSavedReplies.uses} + 1` }).where(eq(careSavedReplies.id, id)); }
+  async addHandover(authorId: string | null, note: string) { await db.insert(careHandoverNotes).values({ authorId: authorId && /^[0-9a-f-]{36}$/i.test(authorId) ? authorId : null, note }); }
+  async recentHandovers(limit: number) { return (await db.select().from(careHandoverNotes).orderBy(desc(careHandoverNotes.createdAt)).limit(limit)).map((r) => ({ note: r.note, createdAt: r.createdAt, authorId: r.authorId })); }
 
   async setNextAction(conversationId: string, action: string | null) {
     await db.update(assistantConversations).set({ nextAction: action }).where(eq(assistantConversations.id, conversationId));

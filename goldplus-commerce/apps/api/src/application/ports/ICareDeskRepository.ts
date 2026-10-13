@@ -23,6 +23,9 @@ export interface ICareDeskRepository {
   resolve(id: string, input: { status: 'done' | 'cancelled'; resolvedBy: string; resolution: string | null }): Promise<boolean>;
   assign(id: string, userId: string | null): Promise<boolean>;
   markAlerted(id: string): Promise<void>;
+  /** Urgent open tasks nobody has taken, with their escalation state (the use case decides). */
+  urgentUntaken(limit: number): Promise<Array<CareTaskRow & { escalations: number; lastEscalatedAt: Date | null }>>;
+  markEscalated(id: string): Promise<void>;
   /** Tasks that paged people since `since`: across the shop, and for this customer phone (any format). */
   alertsSince(since: Date, phone: string | null): Promise<{ shop: number; samePhone: number }>;
   /** Closed tasks resolved before `cutoff` are deleted (retention). */
@@ -35,4 +38,12 @@ export interface ICareDeskRepository {
   today(since: Date): Promise<CareDeskToday>;
   rate(conversationId: string, score: number, comment: string | null): Promise<boolean>;
   setNextAction(conversationId: string, action: string | null): Promise<void>;
+  addNote(taskId: string, authorId: string | null, note: string): Promise<boolean>;
+  notesFor(taskIds: string[]): Promise<Record<string, Array<{ note: string; createdAt: Date; authorId: string | null }>>>;
+  savedReplies(): Promise<Array<{ id: string; title: string; body: string; uses: number }>>;
+  saveReply(input: { id?: string | null; title: string; body: string; createdBy: string | null }): Promise<{ id: string }>;
+  removeReply(id: string): Promise<boolean>;
+  usedReply(id: string): Promise<void>;
+  addHandover(authorId: string | null, note: string): Promise<void>;
+  recentHandovers(limit: number): Promise<Array<{ note: string; createdAt: Date; authorId: string | null }>>;
 }

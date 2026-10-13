@@ -64,6 +64,8 @@ export const assistantConversations = pgTable('assistant_conversations', {
   csat: integer('csat'),
   csatComment: text('csat_comment'),
   nextAction: varchar('next_action', { length: 40 }),
+  profileId: uuid('profile_id'),
+  visitorKey: varchar('visitor_key', { length: 200 }),
   startedAt: timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
   lastMessageAt: timestamp('last_message_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
@@ -108,6 +110,8 @@ export const careTasks = pgTable('care_tasks', {
   resolution: text('resolution'),
   alertedAt: timestamp('alerted_at', { withTimezone: true }),
   resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  escalations: integer('escalations').default(0).notNull(),
+  lastEscalatedAt: timestamp('last_escalated_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
   // 0180: partial indexes for the open queue and dedupe (the generic 0178 index was dropped).
@@ -149,4 +153,51 @@ export const assistantAnswerMemory = pgTable('assistant_answer_memory', {
   lastServedAt: timestamp('last_served_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** 0181: care operations. */
+export const careTaskNotes = pgTable('care_task_notes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  taskId: uuid('task_id').notNull(),
+  authorId: uuid('author_id'),
+  note: text('note').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+export const careSavedReplies = pgTable('care_saved_replies', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  title: varchar('title', { length: 80 }).notNull(),
+  body: text('body').notNull(),
+  uses: integer('uses').default(0).notNull(),
+  createdBy: uuid('created_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+export const careHandoverNotes = pgTable('care_handover_notes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  authorId: uuid('author_id'),
+  note: text('note').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+export const assistantQaReviews = pgTable('assistant_qa_reviews', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  conversationId: uuid('conversation_id').notNull(),
+  week: varchar('week', { length: 10 }).notNull(),
+  score: integer('score'),
+  accurate: boolean('accurate'),
+  toneOk: boolean('tone_ok'),
+  note: text('note'),
+  reviewerId: uuid('reviewer_id'),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+export const carePushSubscriptions = pgTable('care_push_subscriptions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull(),
+  endpoint: text('endpoint').notNull(),
+  p256dh: varchar('p256dh', { length: 200 }).notNull(),
+  auth: varchar('auth', { length: 100 }).notNull(),
+  label: varchar('label', { length: 80 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  lastSuccessAt: timestamp('last_success_at', { withTimezone: true }),
+  failures: integer('failures').default(0).notNull(),
 });

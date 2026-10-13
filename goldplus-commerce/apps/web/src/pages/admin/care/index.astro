@@ -35,6 +35,18 @@ if (Astro.request.method === 'POST') {
   } else if (action === 'take') {
     const r = await call(`/tasks/${id}/assign`, { method: 'POST', body: JSON.stringify({ toMe: true }) });
     notice = r.ok ? { kind: 'success', text: 'It is yours now.' } : { kind: 'error', text: r.message };
+  } else if (action === 'note') {
+    const r = await call(`/tasks/${id}/notes`, { method: 'POST', body: JSON.stringify({ note: String(form.get('text') ?? '').trim() }) });
+    notice = r.ok ? { kind: 'success', text: 'Note added.' } : { kind: 'error', text: r.message };
+  } else if (action === 'handover') {
+    const r = await call('/handover', { method: 'POST', body: JSON.stringify({ note: String(form.get('text') ?? '').trim() }) });
+    notice = r.ok ? { kind: 'success', text: 'Handover note saved for the next shift.' } : { kind: 'error', text: r.message };
+  } else if (action === 'reply-save') {
+    const r = await call('/saved-replies', { method: 'PUT', body: JSON.stringify({ id: String(form.get('replyId') ?? '') || null, title: String(form.get('title') ?? ''), body: String(form.get('body') ?? '') }) });
+    notice = r.ok ? { kind: 'success', text: 'Saved reply stored.' } : { kind: 'error', text: r.message };
+  } else if (action === 'reply-remove') {
+    const r = await call(`/saved-replies/${String(form.get('replyId') ?? '')}`, { method: 'DELETE' });
+    notice = r.ok ? { kind: 'success', text: 'Saved reply removed.' } : { kind: 'error', text: r.message };
   } else if (action === 'new') {
     const r = await call('/tasks', { method: 'POST', body: JSON.stringify({ kind: String(form.get('kind') ?? 'follow_up'), title: String(form.get('title') ?? '').trim(), customerName: String(form.get('customerName') ?? '').trim() || null, customerPhone: String(form.get('customerPhone') ?? '').trim() || null, orderNumber: String(form.get('orderNumber') ?? '').trim() || null, urgent: form.get('urgent') === 'on' }) });
     notice = r.ok ? { kind: 'success', text: 'Added to the desk.' } : { kind: 'error', text: r.message };
@@ -45,10 +57,12 @@ interface Task { id: string; kind: string; priority: string; title: string; deta
 interface Today { openTasks: number; urgentOpen: number; callbacksOpen: number; approvalsOpen: number; bulkLeadsOpen: number; chatsToday: number; handledByGoldieToday: number; needsPersonToday: number; csatAverage: number | null; csatCount: number; oldestOpenAt: string | null }
 /** How long a customer has waited, as a colour: fine, getting long (30 min), too long (2 h). */
 const age = (iso: string) => { const m = (Date.now() - new Date(iso).getTime()) / 60000; return m >= 120 ? 'border-l-8 border-l-red-500' : m >= 30 ? 'border-l-8 border-l-amber-400' : 'border-l-8 border-l-green-500'; };
+const [handovers, replies] = await Promise.all([call<Array<{ note: string; createdAt: string }>>('/handover'), call<Array<{ id: string; title: string; body: string; uses: number }>>('/saved-replies')]);
 const [tasks, today, done, team] = await Promise.all([call<Task[]>('/tasks?status=open'), call<Today>('/today'), call<Task[]>('/tasks?status=done&limit=8'), call<Array<{ active: boolean; phone: string | null; email: string | null; alertSms: boolean; alertEmail: boolean; alertWhatsapp: boolean }>>('/team')]);
 // Urgent customers page whoever is set up here; with nobody, an urgent task would page no one.
 const nobodyAlerted = team.ok && !team.data.some((m) => m.active && ((m.alertSms && m.phone) || (m.alertEmail && m.email) || (m.alertWhatsapp && m.phone)));
 const t = today.ok ? today.data : null;
+const notes = tasks.ok && tasks.data.length ? await call<Record<string, Array<{ note: string; createdAt: string }>>>(`/tasks/notes?ids=${tasks.data.map((k) => k.id).join(',')}`) : null;
 const handledPct = t && t.chatsToday ? Math.round((t.handledByGoldieToday / t.chatsToday) * 100) : null;
 ---
 <AdminLayout title="Care Desk" description="Everything a customer is waiting on, in one place." activePath="/admin/care">
@@ -75,6 +89,12 @@ const handledPct = t && t.chatsToday ? Math.round((t.handledByGoldieToday / t.ch
       </section>
     )}
 
+    <section class="rounded-2xl border border-gray-200 bg-white p-4 text-sm" aria-labelledby="handover-h">
+      <h2 id="handover-h" class="font-black">From the last shift</h2>
+      {handovers.ok && handovers.data.length ? <ul class="mt-2 space-y-1">{handovers.data.map((h) => <li><span class="text-gray-500">{waited(h.createdAt)}:</span> {h.note}</li>)}</ul> : <p class="mt-1 text-gray-500">No handover notes yet.</p>}
+      <form method="post" class="mt-2 flex gap-2"><input type="hidden" name="action" value="handover" /><label class="sr-only" for="handover-text">Note for the next shift</label><input id="handover-text" name="text" minlength="3" maxlength="2000" class="flex-1 rounded-full border border-gray-300 px-4 py-2" placeholder="What does the next shift need to know?" /><button class="rounded-full border border-gray-300 font-bold px-4 py-2">Save</button></form>
+    </section>
+
     <section id="queue" aria-labelledby="queue-h" class="space-y-3">
       <h2 id="queue-h" class="text-lg font-black">Waiting for a person ({tasks.ok ? tasks.data.length : 0})</h2>
       {tasks.ok && tasks.data.length === 0 && <p class="rounded-2xl border border-green-200 bg-green-50 p-5 text-green-800 font-bold">Nothing is waiting. Goldie has it all under control.</p>}
@@ -96,6 +116,8 @@ const handledPct = t && t.chatsToday ? Math.round((t.handledByGoldieToday / t.ch
             {k.conversationId && <a href={`/admin/assistant/conversations/${k.conversationId}`} class="rounded-full border border-gray-300 font-bold px-4 py-2">Read the chat</a>}
             {!k.assignedTo && <form method="post"><input type="hidden" name="id" value={k.id} /><input type="hidden" name="action" value="take" /><button class="rounded-full border border-gray-300 font-bold px-4 py-2">I'll take it</button></form>}
           </div>
+          {notes?.ok && notes.data[k.id]?.length ? <ul class="mt-2 text-sm border-l-4 border-gray-200 pl-3 space-y-1">{notes.data[k.id]!.map((n) => <li><span class="text-gray-500">{waited(n.createdAt)}:</span> {n.note}</li>)}</ul> : null}
+          <form method="post" class="mt-2 flex gap-2 text-sm"><input type="hidden" name="id" value={k.id} /><input type="hidden" name="action" value="note" /><label class="sr-only" for={`tn-${k.id}`}>Add a note</label><input id={`tn-${k.id}`} name="text" minlength="2" maxlength="2000" class="flex-1 rounded-full border border-gray-200 px-4 py-1.5" placeholder="Add a note (e.g. called, no answer)" /><button class="rounded-full border border-gray-200 font-bold px-3 py-1.5">Add note</button></form>
           <form method="post" class="mt-3 flex flex-wrap gap-2 items-center text-sm">
             <input type="hidden" name="id" value={k.id} />
             <label class="sr-only" for={`note-${k.id}`}>What did you do?</label>
@@ -106,6 +128,23 @@ const handledPct = t && t.chatsToday ? Math.round((t.handledByGoldieToday / t.ch
         </article>
       ))}
     </section>
+
+    <details class="rounded-2xl border border-gray-200 bg-white p-4 text-sm">
+      <summary class="font-black cursor-pointer">Saved replies ({replies.ok ? replies.data.length : 0})</summary>
+      <p class="mt-2 text-gray-600">Ready answers the team can pick when replying to a customer from a conversation.</p>
+      {replies.ok && replies.data.map((r) => (
+        <form method="post" class="mt-3 grid gap-2 border-t border-gray-100 pt-3"><input type="hidden" name="action" value="reply-save" /><input type="hidden" name="replyId" value={r.id} />
+          <input name="title" value={r.title} maxlength="80" class="rounded-lg border border-gray-300 px-3 py-1.5 font-bold" />
+          <textarea name="body" rows="2" maxlength="2000" class="rounded-lg border border-gray-300 px-3 py-1.5">{r.body}</textarea>
+          <div class="flex gap-2"><button class="rounded-full border border-gray-300 font-bold px-3 py-1">Save</button><button name="action" value="reply-remove" class="rounded-full border border-red-200 text-red-700 font-bold px-3 py-1">Remove</button><span class="text-xs text-gray-500 self-center">used {r.uses} time{r.uses === 1 ? '' : 's'}</span></div>
+        </form>
+      ))}
+      <form method="post" class="mt-3 grid gap-2 border-t border-gray-100 pt-3"><input type="hidden" name="action" value="reply-save" />
+        <input name="title" maxlength="80" placeholder="Title, e.g. Delivery today" class="rounded-lg border border-gray-300 px-3 py-1.5" />
+        <textarea name="body" rows="2" maxlength="2000" placeholder="The reply text" class="rounded-lg border border-gray-300 px-3 py-1.5"></textarea>
+        <button class="justify-self-start rounded-full bg-brand-dark text-white font-bold px-3 py-1">Add saved reply</button>
+      </form>
+    </details>
 
     <details class="rounded-2xl border border-gray-200 bg-white p-4">
       <summary class="font-black cursor-pointer">Add something to the desk</summary>

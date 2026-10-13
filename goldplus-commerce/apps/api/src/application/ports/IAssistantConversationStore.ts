@@ -41,7 +41,7 @@ export interface ArchiveFilters {
 
 export interface IAssistantConversationStore {
   /** Finds or opens the conversation for this channel key, updating contact and customer when newly known. */
-  open(input: { channel: ArchiveChannel; channelKey: string; customerId: string | null; page: string | null; contact?: { name?: string | null; phone?: string | null; email?: string | null } }): Promise<ArchiveConversationRow>;
+  open(input: { channel: ArchiveChannel; channelKey: string; customerId: string | null; page: string | null; contact?: { name?: string | null; phone?: string | null; email?: string | null }; profileId?: string | null; visitorKey?: string | null }): Promise<ArchiveConversationRow>;
   /** Files one message; false when a message with this channel message id was already filed (a redelivery). */
   addMessage(conversationId: string, m: { role: ArchiveRole; content: string; intent?: string | null; mood?: ArchiveMood | null; route?: string | null; channelMessageId?: string | null; cacheId?: string | null }): Promise<boolean>;
   /** Answer-memory entries Goldie served in this conversation (for ratings). */
@@ -53,4 +53,10 @@ export interface IAssistantConversationStore {
   list(f: ArchiveFilters): Promise<{ rows: Array<ArchiveConversationRow & { lastCustomerLine: string }>; total: number }>;
   summary(from: Date, to: Date): Promise<MeetingSummary>;
   purgeBefore(cutoff: Date): Promise<number>;
+  /** WhatsApp customer messages filed between the two times that never reached an outcome (route still null), newest thread first. */
+  pendingWhatsApp(olderThan: Date, newerThan: Date, limit: number): Promise<Array<{ conversationId: string; messageId: string; phone: string; name: string | null; text: string; at: Date }>>;
+  /** Marks a WhatsApp customer message as being recovered; false when another pass already took it. */
+  claimCustomerMessage(channelMessageId: string): Promise<boolean>;
+  /** Records what happened to a customer message (answered, silent, held, send_failed). */
+  markCustomerMessage(channelMessageId: string, outcome: string): Promise<void>;
 }

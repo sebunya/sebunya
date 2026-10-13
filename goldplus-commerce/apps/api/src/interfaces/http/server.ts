@@ -22,6 +22,7 @@ import { startLighthouseWatchTicker, stopLighthouseWatchTicker } from '../../inf
 import { startProductCostTicker, stopProductCostTicker } from '../../infrastructure/scheduler/ProductCostTicker';
 import { startAdvertisingTicker, stopAdvertisingTicker } from '../../infrastructure/scheduler/AdvertisingTicker';
 import { startFirstPartyNightlyTicker, stopFirstPartyNightlyTicker } from '../../infrastructure/scheduler/FirstPartyNightlyTicker';
+import { startGoldieCareTicker, stopGoldieCareTicker } from '../../infrastructure/scheduler/GoldieCareTicker';
 import { Registry } from '../../infrastructure/Registry';
 import { runPermissionRegistrySyncAtBoot } from '../../infrastructure/security/PermissionRegistrySync';
 import { runHeroSlideSeedAtBoot } from '../../infrastructure/hero/HeroSlideSeeder';
@@ -61,6 +62,8 @@ const server = serve({
     startAdvertisingTicker();
     // First-party data (0155): nightly order→customer linking + segment materialisation.
     startFirstPartyNightlyTicker();
+    // Goldie (0177-0181): finish interrupted WhatsApp replies; re-page urgent customers nobody has taken.
+    startGoldieCareTicker();
     registerAllWorkers();
     // Converge DB permissions on the code registry (advisory-locked, add-only).
     void runPermissionRegistrySyncAtBoot();
@@ -116,6 +119,7 @@ async function gracefulShutdown(signal: string) {
     stopProductCostTicker();
     stopAdvertisingTicker();
     stopFirstPartyNightlyTicker();
+    stopGoldieCareTicker();
     logger.info('[Process] Stopping HTTP server...');
     await new Promise<void>((resolve) => {
       server.close((err) => {

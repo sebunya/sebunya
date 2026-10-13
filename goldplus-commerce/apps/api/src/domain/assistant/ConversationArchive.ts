@@ -64,6 +64,12 @@ export interface MeetingSummary {
   csatCount: number;
   /** How Goldie's answers were produced (deterministic, cache, ai, fallback). */
   byRoute: Record<string, number>;
+  /**
+   * Paid orders by the same shopper within 7 days after a chat (by server profile or account). Influence, not proof
+   * of cause. conversionRate is over conversations that can be linked to a shopper at all; hintConversionRate is the
+   * same for conversations where Goldie had a next-best-action hint.
+   */
+  influence: { linkableConversations: number; orders: number; revenueUgx: number; conversionRate: number | null; withHint: number; hintConversionRate: number | null };
   needsFollowUp: Array<{ id: string; channel: string; contact: string | null; topic: string | null; mood: string; lastMessageAt: string; lastCustomerLine: string }>;
 }
 

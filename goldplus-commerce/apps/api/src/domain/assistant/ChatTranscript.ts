@@ -92,3 +92,12 @@ export function renderTranscriptMail(i: TranscriptMailInput): RenderedMail {
   const text = [hello, '', `Here is your chat with Goldie from ${when(i.at)}, as you asked. Prices and stock change, so check the product page before you pay.`, '', textLines(i.turns, 'You'), '', `Need a person? WhatsApp us: ${i.whatsappUrl}`, i.siteUrl].join('\n');
   return { subject, text, html: shell('Your chat with Goldie', intro, body, 'You asked for this copy from the chat on shopgoldplus.com. We do not add you to any mailing list for it.') };
 }
+
+/** A reply from a person on the GoldPlus team to a customer who chatted with Goldie and left their email. */
+export function renderTeamReplyMail(i: { firstName: string | null; text: string; whatsappUrl: string; siteUrl: string }): RenderedMail {
+  const hello = i.firstName ? `Hello ${i.firstName},` : 'Hello,';
+  const subject = 'A reply from the GoldPlus team';
+  const body = `<p style="margin:0 0 12px;line-height:1.6;white-space:pre-wrap">${esc(i.text)}</p><p style="margin:16px 0 0;line-height:1.5">You can reply to this email, or <a href="${esc(i.whatsappUrl)}" style="color:#1a1a1a">WhatsApp us</a>.</p>`;
+  const text = [hello, '', i.text, '', `You can reply to this email, or WhatsApp us: ${i.whatsappUrl}`, i.siteUrl].join('\n');
+  return { subject, text, html: shell('A reply from the GoldPlus team', esc(hello), body, 'You chatted with Goldie on shopgoldplus.com and asked us to get back to you.') };
+}

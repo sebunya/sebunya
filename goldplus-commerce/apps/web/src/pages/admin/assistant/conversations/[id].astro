@@ -38,13 +38,18 @@ if (Astro.request.method === 'POST') {
     notice = r.ok ? { kind: 'success', text: 'Outcome saved.' } : { kind: 'error', text: r.message };
   } else if (action === 'reply') {
     const r = await call<{ sent: boolean; note?: string }>(`/conversations/${id}/reply`, { method: 'POST', body: JSON.stringify({ text: String(form.get('text') ?? '').trim() }) });
-    notice = r.ok ? { kind: 'success', text: r.data.sent ? 'Sent on WhatsApp. Goldie stays quiet for 24 hours.' : (r.data.note ?? 'Filed.') } : { kind: 'error', text: r.message };
+    const savedId = String(form.get('savedReplyId') ?? '');
+    if (r.ok && /^[0-9a-f-]{36}$/i.test(savedId)) await fetch(`${apiBase}/admin/care/saved-replies/${savedId}/used`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => undefined);
+    notice = r.ok ? { kind: 'success', text: r.data.sent ? ((r.data as { channel?: string }).channel === 'email' ? 'Email sent to the customer.' : 'Sent on WhatsApp. Goldie stays quiet for 24 hours.') : (r.data.note ?? 'Filed.') } : { kind: 'error', text: r.message };
   }
 }
 
 interface Msg { id: string; role: 'customer' | 'goldie' | 'team'; content: string; intent: string | null; mood: string | null; route: string | null; createdAt: string }
 interface Conv { csat?: number | null; nextAction?: string | null; id: string; channel: string; contactName: string | null; contactPhone: string | null; contactEmail: string | null; customerId: string | null; firstTopic: string | null; lastTopic: string | null; worstMood: string; outcome: string; supportTicketId: string | null; page: string | null; messageCount: number; aiTurns: number; humanUntil: string | null; startedAt: string; lastMessageAt: string }
 const found = await call<{ conversation: Conv; messages: Msg[] }>(`/conversations/${id}`);
+const savedReplies = await (async () => {
+  try { const res = await fetch(`${apiBase}/admin/care/saved-replies`, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' } }); const j = await res.json(); return res.ok && j?.success ? (j.data as Array<{ id: string; title: string; body: string }>) : []; } catch { return []; }
+})();
 const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { timeZone: 'Africa/Kampala', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 const c = found.ok ? found.data.conversation : null;
 const teamHasIt = !!(c?.humanUntil && new Date(c.humanUntil) > new Date());
@@ -81,8 +86,10 @@ const teamHasIt = !!(c?.humanUntil && new Date(c.humanUntil) > new Date());
           <h2 class="font-black">What next</h2>
           <form method="post" class="grid gap-2">
             <input type="hidden" name="action" value="reply" />
-            <label class="grid gap-1"><span class="font-bold">{c.channel === 'whatsapp' ? 'Reply on WhatsApp' : 'Add a note (website chats cannot receive replies here)'}</span><textarea name="text" rows="3" maxlength="2000" required class="rounded-lg border border-gray-300 px-3 py-2"></textarea></label>
-            <button class="justify-self-start rounded-full bg-brand-dark text-white font-bold px-4 py-2">{c.channel === 'whatsapp' ? 'Send' : 'File note'}</button>
+            {savedReplies.length > 0 && <label class="grid gap-1"><span class="font-bold">Saved reply</span><select data-saved-reply class="rounded-lg border border-gray-300 px-2 py-2"><option value="">Choose one to start from…</option>{savedReplies.map((r) => <option value={r.body} data-id={r.id}>{r.title}</option>)}</select></label>}
+            <label class="grid gap-1"><span class="font-bold">{c.channel === 'whatsapp' ? 'Reply on WhatsApp' : c.contactEmail ? `Reply by email to ${c.contactEmail}` : 'Add a note (this customer left no email: call or WhatsApp them)'}</span><textarea name="text" data-reply-text rows="3" maxlength="2000" required class="rounded-lg border border-gray-300 px-3 py-2"></textarea></label>
+            <input type="hidden" name="savedReplyId" data-saved-reply-id value="" />
+            <button class="justify-self-start rounded-full bg-brand-dark text-white font-bold px-4 py-2">{c.channel === 'whatsapp' ? 'Send on WhatsApp' : c.contactEmail ? 'Send email' : 'File note'}</button>
           </form>
           <div class="flex flex-wrap gap-3 items-end">
             {teamHasIt
@@ -95,3 +102,14 @@ const teamHasIt = !!(c?.humanUntil && new Date(c.humanUntil) > new Date());
     )}
   </div>
 </AdminLayout>
+
+<script>
+  // A saved reply fills the box; the person then edits it before sending.
+  const pick = document.querySelector<HTMLSelectElement>('[data-saved-reply]');
+  const box = document.querySelector<HTMLTextAreaElement>('[data-reply-text]');
+  const used = document.querySelector<HTMLInputElement>('[data-saved-reply-id]');
+  pick?.addEventListener('change', () => {
+    if (pick.value && box) { box.value = pick.value; box.focus(); }
+    if (used) used.value = pick.selectedOptions[0]?.dataset.id ?? '';
+  });
+</script>

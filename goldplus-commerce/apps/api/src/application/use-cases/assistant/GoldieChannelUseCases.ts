@@ -48,6 +48,8 @@ export class GoldieChannelUseCases {
     private readonly openTask: (input: { kind: 'follow_up'; title: string; customerName: string | null; customerPhone: string; conversationId: string; channel: 'whatsapp' }) => Promise<unknown> = async () => undefined,
     /** The account whose verified phone this WhatsApp number is (indexed), so the thread is linked to the customer. */
     private readonly customerForPhone: (digits: string) => Promise<string | null> = async () => null,
+    /** Email a team reply to a website customer who left an email (outbox, CARE_REPLY_EMAIL). */
+    private readonly emailCustomer: (input: { to: string; firstName: string | null; text: string; conversationId: string }) => Promise<boolean> = async () => false,
   ) {}
   private staffCache: { at: number; numbers: string[] } = { at: 0, numbers: [] };
   private async staff(): Promise<string[]> {
@@ -67,71 +69,107 @@ export class GoldieChannelUseCases {
     const s = this.settings();
     if (!s.enabled) return 'skipped';
     if (s.onlyNumbers.length && !s.onlyNumbers.includes(msg.from)) return 'skipped';
-    const key = whatsappKey(msg.from);
     try {
       const customerId = await this.customerForPhone(msg.from).catch(() => null);
       const filed = await this.archive.logTurn({
-        channel: 'whatsapp', channelKey: key, customerId,
+        channel: 'whatsapp', channelKey: whatsappKey(msg.from), customerId,
         contact: { name: msg.name, phone: `+${msg.from}` },
         customer: { content: msg.text, channelMessageId: msg.messageId },
       });
       if (filed.duplicate) return 'duplicate';
-
-      // The last 40 messages are plenty for history, silence rules and repeats.
-      const thread = await this.archive.get(filed.conversationId, 40);
-      // When not to answer: a colleague has it, the matter is settled and this is "ok 👍", the same text pasted
-      // again and again, a stream of abuse, or a team member's own number. Filed either way, never lost.
-      const t = this.now().getTime();
-      const customerLines = (thread?.messages ?? []).filter((m) => m.role === 'customer');
-      const lastGoldie = [...(thread?.messages ?? [])].reverse().find((m) => m.role === 'goldie' || m.role === 'team');
-      const silence = silenceFor({
-        text: msg.text,
-        teamHasIt: !!(filed.humanUntil && filed.humanUntil.getTime() > t),
-        fromStaff: (await this.staff()).includes(msg.from),
-        lastGoldieClosed: !!lastGoldie && closesMatter(lastGoldie.content),
-        sameTextRecently: customerLines.filter((m) => m.content.trim().toLowerCase() === msg.text.trim().toLowerCase() && t - m.createdAt.getTime() < 10 * 60_000).length,
-        abuseRecently: customerLines.filter((m) => isAbusive(m.content) && t - m.createdAt.getTime() < 3600_000).length,
-      });
-      if (silence) {
-        // "ok, thanks" after a settled answer is the customer closing it: file it as resolved (never over a handover).
-        if (silence === 'ACK_AFTER_CLOSE' && thread && !['handed_over', 'needs_human'].includes(thread.conversation.outcome)) await this.archive.setOutcome(filed.conversationId, 'resolved');
-        this.log('GOLDIE_WHATSAPP_SILENT', { conversationId: filed.conversationId, reason: silence });
-        return 'filed';
-      }
-
-      const turns = (thread?.messages ?? [])
-        .filter((m) => m.role === 'customer' || m.role === 'goldie')
-        .slice(-HISTORY)
-        .map((m) => ({ role: m.role === 'customer' ? 'user' as const : 'assistant' as const, content: m.content }));
-      // The brain wants alternating turns ending with the customer: merge consecutive same-role lines.
-      const merged: typeof turns = [];
-      for (const t of turns) { const last = merged[merged.length - 1]; if (last && last.role === t.role) last.content = `${last.content}\n${t.content}`; else merged.push({ ...t }); }
-      while (merged.length && merged[0]!.role !== 'user') merged.shift();
-      if (!merged.length || merged[merged.length - 1]!.role !== 'user') return 'filed';
-
-      const reply = await this.brain.turn({ channel: 'whatsapp', conversationKey: key, verifiedPhone: msg.from, name: msg.name, turns: merged });
-      const phoneNumberId = msg.phoneNumberId ?? s.phoneNumberId;
-      if (!phoneNumberId) { this.log('GOLDIE_WHATSAPP_NO_NUMBER_ID', {}); return 'failed'; }
-      if (!reply?.text) {
-        // Goldie could not answer (brain unreachable or failed): never leave the customer unanswered. One warm
-        // holding line (not repeated while it is the last thing said) and a task, so a person replies.
-        this.log('GOLDIE_WHATSAPP_NO_REPLY', { conversationId: filed.conversationId });
-        if (lastGoldie?.content !== HOLDING_REPLY) {
-          const sent = await this.whatsapp.sendText({ phoneNumberId, to: msg.from, text: HOLDING_REPLY });
-          if (sent.ok) await this.archive.logReply(filed.conversationId, HOLDING_REPLY, 'fallback', sent.messageId);
-        }
-        await this.openTask({ kind: 'follow_up', title: `WhatsApp message waiting for a reply: ${msg.text.slice(0, 120)}`, customerName: msg.name, customerPhone: `+${msg.from}`, conversationId: filed.conversationId, channel: 'whatsapp' }).catch(() => undefined);
-        return 'failed';
-      }
-      const text = formatWhatsAppReply(reply);
-      const sent = await this.whatsapp.sendText({ phoneNumberId, to: msg.from, text });
-      if (!sent.ok) { this.log('GOLDIE_WHATSAPP_SEND_FAILED', { reason: sent.reason }); return 'failed'; }
-      await this.archive.logReply(filed.conversationId, text, reply.route, sent.messageId, reply.intent, reply.mood, reply.cacheId ?? null);
-      return 'answered';
+      return await this.respond(filed.conversationId, msg);
     } catch (e) {
+      // Filed but not answered (or not even filed): the recovery pass picks a filed message up within minutes.
       this.log('GOLDIE_WHATSAPP_FAILED', { error: e instanceof Error ? e.message : String(e) });
       return 'failed';
     }
+  }
+
+  /**
+   * Durable replies: a customer message that was filed but never reached an outcome (the API restarted mid-turn,
+   * the brain call crashed) is answered here, once. Each message is marked 'recovering' first, so a message that
+   * fails again is not retried forever; it stays visible in the inbox and a person can pick it up.
+   */
+  async recoverPending(limit = 20): Promise<number> {
+    const s = this.settings();
+    if (!s.enabled) return 0;
+    const t = this.now().getTime();
+    const pending = await this.archive.pendingWhatsApp(new Date(t - 90_000), new Date(t - 23 * 3600_000), limit);
+    let answered = 0;
+    for (const p of pending) {
+      if (!(await this.archive.claimCustomerMessage(p.messageId))) continue;
+      const msg: InboundText = { from: p.phone, name: p.name, text: p.text, messageId: p.messageId, phoneNumberId: null, at: p.at };
+      const outcome = await this.respond(p.conversationId, msg).catch(() => 'failed' as const);
+      if (outcome === 'answered') answered += 1;
+    }
+    return answered;
+  }
+
+  /** Decide and send Goldie's reply to a filed message; every path records an outcome on the customer's message. */
+  private async respond(conversationId: string, msg: InboundText): Promise<'answered' | 'filed' | 'failed'> {
+    const s = this.settings();
+    const mark = (outcome: 'answered' | 'silent' | 'held' | 'send_failed') => this.archive.markCustomerMessage(msg.messageId, outcome).catch(() => undefined);
+    // The last 40 messages are plenty for history, silence rules and repeats.
+    const thread = await this.archive.get(conversationId, 40);
+    // When not to answer: a colleague has it, the matter is settled and this is "ok 👍", the same text pasted
+    // again and again, a stream of abuse, or a team member's own number. Filed either way, never lost.
+    const t = this.now().getTime();
+    const customerLines = (thread?.messages ?? []).filter((m) => m.role === 'customer');
+    const lastGoldie = [...(thread?.messages ?? [])].reverse().find((m) => m.role === 'goldie' || m.role === 'team');
+    const humanUntil = thread?.conversation.humanUntil ?? null;
+    const silence = silenceFor({
+      text: msg.text,
+      teamHasIt: !!(humanUntil && humanUntil.getTime() > t),
+      fromStaff: (await this.staff()).includes(msg.from),
+      lastGoldieClosed: !!lastGoldie && closesMatter(lastGoldie.content),
+      sameTextRecently: customerLines.filter((m) => m.content.trim().toLowerCase() === msg.text.trim().toLowerCase() && t - m.createdAt.getTime() < 10 * 60_000).length,
+      abuseRecently: customerLines.filter((m) => isAbusive(m.content) && t - m.createdAt.getTime() < 3600_000).length,
+    });
+    if (silence) {
+      // "ok, thanks" after a settled answer is the customer closing it: file it as resolved (never over a handover).
+      if (silence === 'ACK_AFTER_CLOSE' && thread && !['handed_over', 'needs_human'].includes(thread.conversation.outcome)) await this.archive.setOutcome(conversationId, 'resolved');
+      this.log('GOLDIE_WHATSAPP_SILENT', { conversationId, reason: silence });
+      await mark('silent');
+      return 'filed';
+    }
+
+    const turns = (thread?.messages ?? [])
+      .filter((m) => m.role === 'customer' || m.role === 'goldie')
+      .slice(-HISTORY)
+      .map((m) => ({ role: m.role === 'customer' ? 'user' as const : 'assistant' as const, content: m.content }));
+    // The brain wants alternating turns ending with the customer: merge consecutive same-role lines.
+    const merged: typeof turns = [];
+    for (const x of turns) { const last = merged[merged.length - 1]; if (last && last.role === x.role) last.content = `${last.content}\n${x.content}`; else merged.push({ ...x }); }
+    while (merged.length && merged[0]!.role !== 'user') merged.shift();
+    if (!merged.length || merged[merged.length - 1]!.role !== 'user') { await mark('silent'); return 'filed'; }
+
+    const reply = await this.brain.turn({ channel: 'whatsapp', conversationKey: whatsappKey(msg.from), verifiedPhone: msg.from, name: msg.name, turns: merged });
+    const phoneNumberId = msg.phoneNumberId ?? s.phoneNumberId;
+    if (!phoneNumberId) { this.log('GOLDIE_WHATSAPP_NO_NUMBER_ID', {}); return 'failed'; }
+    if (!reply?.text) {
+      // Goldie could not answer (brain unreachable or failed): never leave the customer unanswered. One warm
+      // holding line (not repeated while it is the last thing said) and a task, so a person replies.
+      this.log('GOLDIE_WHATSAPP_NO_REPLY', { conversationId });
+      if (lastGoldie?.content !== HOLDING_REPLY) {
+        const sent = await this.whatsapp.sendText({ phoneNumberId, to: msg.from, text: HOLDING_REPLY });
+        if (sent.ok) await this.archive.logReply(conversationId, HOLDING_REPLY, 'fallback', sent.messageId);
+      }
+      await this.openTask({ kind: 'follow_up', title: `WhatsApp message waiting for a reply: ${msg.text.slice(0, 120)}`, customerName: msg.name, customerPhone: `+${msg.from}`, conversationId, channel: 'whatsapp' }).catch(() => undefined);
+      await mark('held');
+      return 'failed';
+    }
+    const text = formatWhatsAppReply(reply);
+    const sent = await this.whatsapp.sendText({ phoneNumberId, to: msg.from, text });
+    if (!sent.ok) {
+      // WhatsApp refused (24-hour window, token, number): a person must reach the customer another way.
+      this.log('GOLDIE_WHATSAPP_SEND_FAILED', { reason: sent.reason });
+      await this.openTask({ kind: 'follow_up', title: `WhatsApp reply could not be sent (${sent.reason.slice(0, 60)}): ${msg.text.slice(0, 100)}`, customerName: msg.name, customerPhone: `+${msg.from}`, conversationId, channel: 'whatsapp' }).catch(() => undefined);
+      await mark('send_failed');
+      return 'failed';
+    }
+    await this.archive.logReply(conversationId, text, reply.route, sent.messageId, reply.intent, reply.mood, reply.cacheId ?? null);
+    await mark('answered');
+    return 'answered';
   }
 
   /** A person from the shop answers from the admin inbox. WhatsApp: sent to the customer, and Goldie stays quiet for 24 hours. */
@@ -140,8 +178,12 @@ export class GoldieChannelUseCases {
     if (!found) return { ok: false, code: 'NOT_FOUND', message: 'No such conversation.' };
     const c = found.conversation;
     if (c.channel !== 'whatsapp') {
+      // A website customer who left an email gets the reply by email; otherwise it is a note for the team.
+      const sent = c.contactEmail ? await this.emailCustomer({ to: c.contactEmail, firstName: c.contactName ? c.contactName.split(/\s+/)[0]! : null, text, conversationId }).catch(() => false) : false;
       await this.archive.addTeamMessage(conversationId, text);
-      return { ok: true, sent: false, channel: c.channel, note: 'Website chats cannot receive a reply here. The note is filed; reach the customer by their phone or email.' };
+      return sent
+        ? { ok: true, sent: true, channel: 'email' }
+        : { ok: true, sent: false, channel: c.channel, note: 'This customer left no email, so the reply is filed as a note. Call or WhatsApp them on the number above.' };
     }
     const s = this.settings();
     const to = (c.contactPhone ?? '').replace(/\D/g, '');

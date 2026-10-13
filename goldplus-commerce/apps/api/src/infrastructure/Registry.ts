@@ -39,6 +39,9 @@ import { AssistantAdmissionUseCases } from '../application/use-cases/assistant/A
 import { AssistantConversationUseCases } from '../application/use-cases/assistant/AssistantConversationUseCases';
 import { ConversationArchiveUseCases } from '../application/use-cases/assistant/ConversationArchiveUseCases';
 import { DrizzleAssistantConversationStore } from './assistant/DrizzleAssistantConversationStore';
+import { renderTeamReplyMail } from '../domain/assistant/ChatTranscript';
+import { QualityReviewUseCases } from '../application/use-cases/assistant/QualityReviewUseCases';
+import { DrizzleQualityReviewRepository } from './assistant/DrizzleQualityReviewRepository';
 import { GoldieChannelUseCases } from '../application/use-cases/assistant/GoldieChannelUseCases';
 import { CareAlertChannels, HttpGoldieBrain, WhatsAppCloudMessenger, goldieWhatsAppSettings } from './assistant/GoldieChannelAdapters';
 import { CareDeskUseCases } from '../application/use-cases/assistant/CareDeskUseCases';
@@ -47,7 +50,7 @@ import { NextBestActionAdvisor } from './assistant/NextBestActionAdvisor';
 import { AnswerMemoryUseCases } from '../application/use-cases/assistant/AnswerMemoryUseCases';
 import { DrizzleAnswerMemoryRepository } from './assistant/DrizzleAnswerMemoryRepository';
 import { PhoneCareReader } from './assistant/PhoneCareReader';
-import { DrizzleAssistantContextReader, DrizzleAssistantMailOutbox, ZeroPartyAssistantInterestSink } from './assistant/AssistantConversationAdapters';
+import { DrizzleAssistantContextReader, DrizzleAssistantMailOutbox, ZeroPartyAssistantInterestSink, insertOutboxObject } from './assistant/AssistantConversationAdapters';
 import { XlsxSpreadsheetParser } from './batteries/XlsxSpreadsheetParser';
 import { BatteryCatalogueUseCases } from '../application/use-cases/batteries/BatteryCatalogueUseCases';
 import { DeviceCatalogueUseCases } from '../application/use-cases/batteries/DeviceCatalogueUseCases';
@@ -2713,6 +2716,8 @@ export class Registry {
   public readonly captureZeroPartyDataUseCase = new CaptureZeroPartyDataUseCase(this.zpdRepo, this.measurementLogger, this.consentService);
   /** Goldie's conversation archive (0177): every channel, every message, for the admin inbox and meetings. */
   public readonly conversationArchiveUseCases = new ConversationArchiveUseCases(new DrizzleAssistantConversationStore());
+  /** The weekly human quality review of Goldie's chats (0181). */
+  public readonly qualityReviewUseCases = new QualityReviewUseCases(new DrizzleQualityReviewRepository());
   /** Goldie's answer memory (0179): paid answers reused at no model cost while their facts still hold. */
   public readonly answerMemoryUseCases = new AnswerMemoryUseCases(new DrizzleAnswerMemoryRepository());
   private readonly whatsappMessenger = new WhatsAppCloudMessenger(() => this.advertisingOps.whatsappAds.messagingToken());
@@ -2733,6 +2738,12 @@ export class Registry {
     () => this.careDeskUseCases.staffNumbers(),
     (input) => this.careDeskUseCases.openTask(input),
     (digits) => new PhoneCareReader().verifiedUserId(digits),
+    async (input) => {
+      const site = (process.env.PUBLIC_WEB_BASE_URL || 'https://shopgoldplus.com').replace(/\/+$/, '');
+      const m = renderTeamReplyMail({ firstName: input.firstName, text: input.text, whatsappUrl: `https://wa.me/${DEFAULT_BUSINESS_INFO.whatsappNumber}`, siteUrl: site });
+      const id = await insertOutboxObject({ eventType: 'CARE_REPLY_EMAIL', template: 'CARE_REPLY_EMAIL', channel: 'email', idempotencyKey: `care-reply:${input.conversationId}:${Date.now()}`, relatedEntity: 'assistant_chat', relatedEntityId: input.conversationId, payload: { recipient: input.to, ...m, relatedEntity: 'assistant_chat', relatedEntityId: input.conversationId } });
+      return id !== null;
+    },
   );
   private readonly goldieListensToWhatsApp = (() => {
     // Each customer message is handled on its own, after Meta has been answered.

@@ -108,7 +108,7 @@ export const POST: APIRoute = async ({ request, clientAddress, cookies, locals }
       } finally {
         controller.close();
         // Filed after the answer, off the customer's path: the archive never slows a reply.
-        if (archiveKey) logTurn({ conversationId: archiveKey, userId, page, customer: last, goldie: answer || null, intent: prepared.meta.intent, mood: prepared.meta.mood.mood, route: prepared.meta.route, cacheId: prepared.meta.cacheId ?? null, nextAction: prepared.meta.nextAction ?? null });
+        if (archiveKey) logTurn({ conversationId: archiveKey, userId, page, customer: last, goldie: answer || null, intent: prepared.meta.intent, mood: prepared.meta.mood.mood, route: prepared.meta.route, cacheId: prepared.meta.cacheId ?? null, nextAction: prepared.meta.nextAction ?? null, visitToken: who.visitToken, fpClientId: who.fpClientId });
       }
     },
   });

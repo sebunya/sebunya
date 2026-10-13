@@ -95,4 +95,48 @@ routes.post('/team/test-alert', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]
   return ok(c, { sent });
 });
 
+// ---- notes on a task, saved replies, shift handover
+routes.post('/tasks/:id/notes', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const id = c.req.param('id') ?? '';
+  const parsed = z.object({ note: z.string().min(2).max(2000) }).safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success || !UUID.test(id)) return bad(c, 'INVALID_BODY', 'Write a note.');
+  if (!(await Registry.getInstance().careDeskUseCases.addNote(id, actor(c), parsed.data.note))) return bad(c, 'NOT_FOUND', 'No such task.', 404);
+  await audit(c, 'CARE_TASK_NOTE_ADDED', id, null);
+  return ok(c, { id });
+});
+routes.get('/tasks/notes', requirePermissions([PERMISSIONS.CUSTOMER_DATA_VIEW]), async (c) => {
+  const ids = String(c.req.query('ids') ?? '').split(',').filter((x) => UUID.test(x)).slice(0, 300);
+  return ok(c, await Registry.getInstance().careDeskUseCases.notesFor(ids));
+});
+routes.get('/saved-replies', requirePermissions([PERMISSIONS.CUSTOMER_DATA_VIEW]), async (c) => ok(c, await Registry.getInstance().careDeskUseCases.savedReplies()));
+routes.put('/saved-replies', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const parsed = z.object({ id: z.string().uuid().nullable().optional(), title: z.string().max(80), body: z.string().max(2000) }).safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return bad(c, 'INVALID_BODY', 'Invalid body.');
+  const out = await Registry.getInstance().careDeskUseCases.saveReply({ ...parsed.data, createdBy: actor(c) });
+  if (!out.ok) return bad(c, 'BAD_INPUT', out.message);
+  await Registry.getInstance().createAuditLogUseCase.execute({ actorId: actor(c), action: 'CARE_SAVED_REPLY_SAVED', entity: 'care_saved_reply', entityId: out.id, previousState: null, newState: { title: parsed.data.title } }).catch(() => undefined);
+  return ok(c, { id: out.id });
+});
+routes.delete('/saved-replies/:id', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const id = c.req.param('id') ?? '';
+  if (!UUID.test(id) || !(await Registry.getInstance().careDeskUseCases.removeReply(id))) return bad(c, 'NOT_FOUND', 'No such reply.', 404);
+  await Registry.getInstance().createAuditLogUseCase.execute({ actorId: actor(c), action: 'CARE_SAVED_REPLY_REMOVED', entity: 'care_saved_reply', entityId: id, previousState: null, newState: null }).catch(() => undefined);
+  return ok(c, { id });
+});
+routes.post('/saved-replies/:id/used', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  // audit-exempt: a usage counter, no customer data and no decision.
+  const id = c.req.param('id') ?? '';
+  if (!UUID.test(id)) return bad(c, 'INVALID_BODY', 'Bad id.');
+  await Registry.getInstance().careDeskUseCases.usedReply(id);
+  return ok(c, { id });
+});
+routes.get('/handover', requirePermissions([PERMISSIONS.CUSTOMER_DATA_VIEW]), async (c) => ok(c, await Registry.getInstance().careDeskUseCases.recentHandovers(5)));
+routes.post('/handover', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const parsed = z.object({ note: z.string().min(3).max(2000) }).safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return bad(c, 'INVALID_BODY', 'Write what the next shift needs to know.');
+  await Registry.getInstance().careDeskUseCases.addHandover(actor(c), parsed.data.note);
+  await Registry.getInstance().createAuditLogUseCase.execute({ actorId: actor(c), action: 'CARE_HANDOVER_NOTE_ADDED', entity: 'care_handover_note', entityId: 'desk', previousState: null, newState: null }).catch(() => undefined);
+  return ok(c, { added: true });
+});
+
 export default routes;

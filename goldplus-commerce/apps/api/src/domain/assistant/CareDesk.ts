@@ -42,6 +42,18 @@ export function carePriority(input: { kind: CareTaskKind; mood?: string | null; 
 /** Only urgent tasks page people; everything else waits on the desk. */
 export const shouldAlert = (p: CarePriority) => p === 'urgent';
 
+/** An urgent task nobody has taken pages again after this long, at most MAX_ESCALATIONS times. */
+export const ESCALATE_AFTER_MIN = 15;
+export const MAX_ESCALATIONS = 2;
+
+/** Whether an urgent task has waited too long untouched and should page the whole team again. */
+export function needsEscalation(t: { priority: string; status: string; assignedTo: string | null; createdAt: Date; escalations: number; lastEscalatedAt: Date | null }, now: Date): boolean {
+  if (t.priority !== 'urgent' || t.status !== 'open' || t.assignedTo) return false;
+  if (t.escalations >= MAX_ESCALATIONS) return false;
+  const since = (t.lastEscalatedAt ?? t.createdAt).getTime();
+  return now.getTime() - since >= ESCALATE_AFTER_MIN * 60_000;
+}
+
 /** Shop-wide ceiling on paging alerts per hour (CARE_ALERTS_PER_HOUR); the desk still shows every urgent task. */
 export const DEFAULT_ALERTS_PER_HOUR = 12;
 

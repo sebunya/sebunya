@@ -84,6 +84,8 @@ const TRANSACTIONAL_TEMPLATES = new Set([
   'SUPPORT_REQUEST_RECEIVED',
   // The copy of their Goldie chat a customer asked for, to the address they typed, seconds ago.
   'GOLDIE_TRANSCRIPT',
+  // A person on the team answering the customer's own chat request, by the email they left.
+  'CARE_REPLY_EMAIL',
   'QUOTE_REQUEST_RECEIVED',
   'DEALER_APPLICATION_RECEIVED',
   'FAKE_REPORT_RECEIVED',

@@ -65,6 +65,22 @@ routes.delete('/answers/:id', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]),
   return ok(c, { id });
 });
 
+// ---- Weekly quality review
+routes.get('/quality', requirePermissions([PERMISSIONS.CUSTOMER_DATA_VIEW]), async (c) => {
+  const r = Registry.getInstance().qualityReviewUseCases;
+  const [week, trend] = await Promise.all([r.thisWeek(), r.trend(8)]);
+  return ok(c, { ...week, trend });
+});
+routes.post('/quality/:id', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const id = c.req.param('id') ?? '';
+  const parsed = z.object({ score: z.number().int().min(1).max(5), accurate: z.boolean(), toneOk: z.boolean(), note: z.string().max(1000).nullable().optional() }).safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success || !/^[0-9a-f-]{36}$/i.test(id)) return bad(c, 'INVALID_BODY', 'Give a score from 1 to 5 and the two checks.');
+  const registry = Registry.getInstance();
+  if (!(await registry.qualityReviewUseCases.review(id, { ...parsed.data, reviewerId: actor(c) }))) return bad(c, 'NOT_FOUND', 'No such review.', 404);
+  await registry.createAuditLogUseCase.execute({ actorId: actor(c), action: 'ASSISTANT_QA_REVIEWED', entity: 'assistant_qa_review', entityId: id, previousState: null, newState: { score: parsed.data.score } });
+  return ok(c, { id });
+});
+
 // ---- Conversations
 const OUTCOMES = ['open', 'resolved', 'handed_over', 'needs_human'] as const;
 const MOODS = ['upset', 'worried', 'confused', 'happy', 'neutral'] as const;

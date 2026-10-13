@@ -351,6 +351,11 @@ export class DefaultNotificationRouter implements INotificationRouter {
         if (recipient) targets.push({ channel: 'email', provider: this.emailProvider, payload: { recipient, template: 'CARE_ALERT_EMAIL', data: { subject: payload.subject, text: payload.text, html: payload.html }, relatedEntity: 'care_task', relatedEntityId } });
         break;
       }
+      case 'CARE_REPLY_EMAIL': {
+        const recipient = typeof payload.recipient === 'string' ? payload.recipient.trim() : '';
+        if (recipient) targets.push({ channel: 'email', provider: this.emailProvider, payload: { recipient, template: 'CARE_REPLY_EMAIL', data: { subject: payload.subject, text: payload.text, html: payload.html }, relatedEntity: 'assistant_chat', relatedEntityId } });
+        break;
+      }
       case 'GOLDIE_TRANSCRIPT': {
         const recipient = typeof payload.recipient === 'string' ? payload.recipient.trim() : '';
         if (recipient) {

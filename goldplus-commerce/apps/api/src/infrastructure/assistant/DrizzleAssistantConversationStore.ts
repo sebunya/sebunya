@@ -18,6 +18,7 @@ export class DrizzleAssistantConversationStore implements IAssistantConversation
     const [row] = await db.insert(assistantConversations).values({
       channel: input.channel, channelKey: input.channelKey, customerId: input.customerId, page: clip(input.page, 500),
       contactName: clip(input.contact?.name, 120), contactPhone: clip(input.contact?.phone, 32), contactEmail: clip(input.contact?.email, 200),
+      profileId: input.profileId && /^[0-9a-f-]{36}$/i.test(input.profileId) ? input.profileId : null, visitorKey: clip(input.visitorKey, 200),
     }).onConflictDoUpdate({
       target: [assistantConversations.channel, assistantConversations.channelKey],
       // A known customer or contact fills in; nothing already known is wiped.
@@ -26,6 +27,8 @@ export class DrizzleAssistantConversationStore implements IAssistantConversation
         contactName: sql`coalesce(excluded.contact_name, ${assistantConversations.contactName})`,
         contactPhone: sql`coalesce(excluded.contact_phone, ${assistantConversations.contactPhone})`,
         contactEmail: sql`coalesce(excluded.contact_email, ${assistantConversations.contactEmail})`,
+        profileId: sql`coalesce(${assistantConversations.profileId}, excluded.profile_id)`,
+        visitorKey: sql`coalesce(${assistantConversations.visitorKey}, excluded.visitor_key)`,
       },
     }).returning();
     return toRow(row!);
@@ -125,6 +128,25 @@ export class DrizzleAssistantConversationStore implements IAssistantConversation
       db.execute(sql`select avg(csat)::float8 as avg, count(csat)::int as n from assistant_conversations where ${range}`),
       db.execute(sql`select coalesce(route, 'deterministic') as k, count(*)::int as n from assistant_messages where role = 'goldie' and created_at >= ${from} and created_at < ${to} group by 1`),
     ]);
+    // Revenue influenced: paid orders by the same shopper (server profile or account) within 7 days after the chat
+    // started. Each order counts once, for the first conversation that preceded it. Influence, not proof of cause.
+    const [inf] = rowsOf(await db.execute(sql`
+      with convs as (
+        select id, started_at, profile_id, customer_id, next_action from assistant_conversations
+        where ${range} and (profile_id is not null or customer_id is not null)
+      ), hits as (
+        select distinct on (o.id) o.id as order_id, o.total_amount, c.id as conversation_id
+        from convs c join orders o on (o.profile_id = c.profile_id or o.user_id = c.customer_id)
+        where o.created_at >= c.started_at and o.created_at < c.started_at + interval '7 days'
+          and o.payment_status = 'paid' and o.status <> 'cancelled'
+        order by o.id, c.started_at
+      )
+      select (select count(*)::int from convs) as linkable,
+             (select count(*)::int from hits) as orders,
+             (select coalesce(sum(total_amount), 0)::bigint from hits) as revenue,
+             (select count(distinct conversation_id)::int from hits) as converting,
+             (select count(*)::int from convs where next_action is not null) as with_hint,
+             (select count(distinct h.conversation_id)::int from hits h join convs c on c.id = h.conversation_id where c.next_action is not null) as with_hint_converting`));
     const r = rowsOf(ratings)[0] ?? {};
     const map = (r: unknown) => Object.fromEntries(rowsOf(r).map((x) => [String(x.k), Number(x.n)]));
     const t = rowsOf(totals)[0] ?? {};
@@ -135,8 +157,37 @@ export class DrizzleAssistantConversationStore implements IAssistantConversation
       byChannel: map(channels), byTopic: rowsOf(topics).map((x) => ({ topic: String(x.k), count: Number(x.n) })), byMood: map(moods), byOutcome,
       selfServeRate: selfServeRate(byOutcome),
       csatAverage: r.avg == null ? null : Number(r.avg), csatCount: Number(r.n ?? 0), byRoute: map(routes),
+      influence: {
+        linkableConversations: Number(inf?.linkable ?? 0), orders: Number(inf?.orders ?? 0), revenueUgx: Number(inf?.revenue ?? 0),
+        conversionRate: Number(inf?.linkable ?? 0) ? Number(inf?.converting ?? 0) / Number(inf.linkable) : null,
+        withHint: Number(inf?.with_hint ?? 0),
+        hintConversionRate: Number(inf?.with_hint ?? 0) ? Number(inf?.with_hint_converting ?? 0) / Number(inf.with_hint) : null,
+      },
       needsFollowUp: rowsOf(follow).map((x) => ({ id: String(x.id), channel: String(x.channel), contact: x.contact ? String(x.contact) : null, topic: x.topic ? String(x.topic) : null, mood: String(x.mood), lastMessageAt: new Date(String(x.last_message_at)).toISOString(), lastCustomerLine: String(x.line ?? '').slice(0, 200) })),
     };
+  }
+
+  async pendingWhatsApp(olderThan: Date, newerThan: Date, limit: number) {
+    const r = rowsOf(await db.execute(sql`
+      select c.id as conversation_id, c.contact_phone, c.contact_name, m.channel_message_id, m.content, m.created_at
+      from assistant_conversations c
+      join lateral (select role, route, channel_message_id, content, created_at from assistant_messages
+                    where conversation_id = c.id order by created_at desc limit 1) m on true
+      where c.channel = 'whatsapp' and c.last_message_at > ${newerThan} and c.last_message_at < ${olderThan}
+        and m.role = 'customer' and m.route is null and m.channel_message_id is not null
+        and (c.human_until is null or c.human_until < now())
+      order by c.last_message_at desc limit ${limit}`));
+    return r.map((x) => ({ conversationId: String(x.conversation_id), messageId: String(x.channel_message_id), phone: String(x.contact_phone ?? '').replace(/\D/g, ''), name: x.contact_name ? String(x.contact_name) : null, text: String(x.content), at: new Date(String(x.created_at)) }))
+      .filter((x) => /^\d{8,15}$/.test(x.phone));
+  }
+
+  async claimCustomerMessage(channelMessageId: string) {
+    const r = await db.update(assistantMessages).set({ route: 'recovering' }).where(and(eq(assistantMessages.channelMessageId, channelMessageId), sql`${assistantMessages.route} is null`)).returning({ id: assistantMessages.id });
+    return r.length > 0;
+  }
+
+  async markCustomerMessage(channelMessageId: string, outcome: string) {
+    await db.update(assistantMessages).set({ route: outcome.slice(0, 16) }).where(and(eq(assistantMessages.channelMessageId, channelMessageId), eq(assistantMessages.role, 'customer')));
   }
 
   async purgeBefore(cutoff: Date): Promise<number> {

@@ -98,6 +98,13 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'How Goldie answers (fixed, remembered, model), the model spend and what her memory saved, and the answers she remembers: pin, edit or retire them.',
   },
   {
+    label: 'Goldie quality review',
+    href: '/admin/assistant/quality',
+    group: 'Commerce',
+    status: 'working',
+    description: 'Each week a dozen of Goldie\'s chats (half drawn from those most worth a look) scored by a person: 1-5, facts right, tone right, with the trend.',
+  },
+  {
     label: 'Goldie conversations',
     href: '/admin/assistant/conversations',
     group: 'Commerce',
