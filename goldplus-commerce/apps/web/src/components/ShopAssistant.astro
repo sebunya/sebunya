@@ -37,12 +37,12 @@
  * whether it earns its place. Everything respects prefers-reduced-motion.
  */
 import { assistantEnabled } from '../lib/assistant';
-interface Props { whatsappUrl: string }
-const { whatsappUrl } = Astro.props;
+interface Props { whatsappUrl: string; cutoffHour?: number }
+const { whatsappUrl, cutoffHour = 17 } = Astro.props;
 const enabled = assistantEnabled();
 ---
 {enabled && (
-  <div id="gp-assistant" class="gp-assistant" data-whatsapp={whatsappUrl} data-endpoint="/api/assistant/chat">
+  <div id="gp-assistant" class="gp-assistant" data-whatsapp={whatsappUrl} data-endpoint="/api/assistant/chat" data-cutoff-hour={String(cutoffHour)}>
     <button type="button" class="gp-assistant__launch" aria-haspopup="dialog" aria-controls="gp-assistant-panel" aria-expanded="false" data-launch>
       <span class="gp-assistant__avatar gp-assistant__avatar--launch" aria-hidden="true"><span>G</span><i class="gp-assistant__badge" data-badge hidden></i></span>
       <span class="gp-assistant__launchtext"><strong>Ask Goldie</strong><small>GoldPlus shop help</small></span>
@@ -91,8 +91,11 @@ const enabled = assistantEnabled();
         </button>
       </form>
       <p class="gp-assistant__foot">
-        Goldie is an AI. Prices and stock on the cards are live; check the product page before you pay.
-        <a href={whatsappUrl} target="_blank" rel="noopener noreferrer">Prefer a person? WhatsApp us</a>
+        <span>Goldie is an AI. Prices and stock on the cards are live; check the product page before you pay.</span>
+        <a class="gp-assistant__wa" href={whatsappUrl} target="_blank" rel="noopener noreferrer">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 2a8 8 0 1 1-4.2 14.8l-.3-.2-3 .8.8-2.9-.2-.3A8 8 0 0 1 12 4zm-3 4.5c-.2 0-.5.1-.7.3-.3.3-1 1-1 2.4s1 2.8 1.2 3c.1.2 2 3.2 5 4.4 2.5 1 3 .8 3.5.7.5 0 1.7-.7 1.9-1.4.2-.7.2-1.2.2-1.4-.1-.1-.3-.2-.6-.3l-2-1c-.3-.1-.5-.1-.7.1l-.9 1.1c-.2.2-.3.2-.6.1-.3-.2-1.3-.5-2.4-1.5-.9-.8-1.5-1.8-1.7-2.1-.2-.3 0-.5.1-.6l.5-.6.3-.5c.1-.2 0-.4 0-.5l-.9-2.2c-.2-.5-.4-.5-.6-.5H9z"/></svg>
+          Prefer a person? WhatsApp us
+        </a>
       </p>
     </section>
   </div>
@@ -160,7 +163,8 @@ const enabled = assistantEnabled();
   .gp-assistant--open .gp-assistant__launch { display: none; }
   .gp-assistant__panel[hidden] { display: none; }
   .gp-assistant__panel {
-    position: fixed; right: max(1rem, env(safe-area-inset-right)); bottom: max(1rem, env(safe-area-inset-bottom)); z-index: 47;
+    /* Above the site header (z 60-62) and its menus (z 70): on phones the panel is the whole screen and its own close button must never sit under the nav. */
+    position: fixed; right: max(1rem, env(safe-area-inset-right)); bottom: max(1rem, env(safe-area-inset-bottom)); z-index: 80;
     width: min(400px, calc(100vw - 2rem)); height: min(640px, calc(100vh - 2rem)); display: flex; flex-direction: column;
     background: var(--gp-paper); color: var(--gp-ink); border: 1px solid var(--gp-line); border-radius: 1.25rem; box-shadow: 0 24px 60px rgba(0,0,0,.3); overflow: hidden;
     transform-origin: 92% 100%;
@@ -214,8 +218,11 @@ const enabled = assistantEnabled();
   .gp-assistant__send { width: 44px; height: 44px; flex: none; border: 0; border-radius: 9999px; background: var(--gp-green); color: var(--gp-ink); display: grid; place-items: center; cursor: pointer; transition: transform .15s var(--gp-ease); }
   .gp-assistant__send:hover { transform: scale(1.05); }
   .gp-assistant__send[disabled] { opacity: .5; cursor: progress; transform: none; }
-  .gp-assistant__foot { margin: 0; padding: .35rem .9rem .7rem; font-size: .67rem; color: var(--gp-mute); background: #fff; }
-  .gp-assistant__foot a { color: var(--gp-green-deep); font-weight: 700; margin-left: .25rem; }
+  .gp-assistant__foot { margin: 0; padding: .35rem .9rem .7rem; font-size: .67rem; color: var(--gp-mute); background: #fff; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .35rem .75rem; }
+  .gp-assistant__foot > span { flex: 1 1 14rem; }
+  .gp-assistant__wa { display: inline-flex; align-items: center; gap: .35rem; min-height: 36px; padding: .3rem .75rem; border-radius: 9999px; border: 1.5px solid var(--gp-green-deep); color: var(--gp-green-deep); font-size: .74rem; font-weight: 800; text-decoration: none; white-space: nowrap; }
+  .gp-assistant__wa:hover { background: var(--gp-green-deep); color: #fff; }
+  .gp-assistant__wa:focus-visible { outline: 3px solid var(--gp-green); outline-offset: 2px; }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
   @media (prefers-reduced-motion: reduce) {
     .gp-assistant__panel--enter, .gp-assistant__launch--nudge .gp-assistant__avatar--launch, .gp-assistant__typing i,
@@ -259,6 +266,21 @@ const enabled = assistantEnabled();
     };
     const newId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`);
     const hour = new Date().getHours();
+    /** What the site already knows, so Goldie never asks twice: the phone chosen in the battery
+     *  finder (a readable cookie set by the finder and the product page) and whether today's
+     *  delivery run is still open (shop cutoff, Kampala time). */
+    const knownPhone = (() => {
+      try {
+        const raw = document.cookie.split('; ').find((c) => c.startsWith('gp_battery_device='))?.slice('gp_battery_device='.length);
+        const d = raw ? (JSON.parse(decodeURIComponent(raw)) as { label?: unknown }) : null;
+        const label = typeof d?.label === 'string' ? d.label.trim().slice(0, 60) : '';
+        return /^[\w .+'/-]{2,60}$/.test(label) ? label : '';
+      } catch { return ''; }
+    })();
+    const cutoffHour = Number(root.dataset.cutoffHour) || 17;
+    const kampalaHour = (() => { try { return Number(new Intl.DateTimeFormat('en-GB', { hour: 'numeric', hour12: false, timeZone: 'Africa/Kampala' }).format(new Date())); } catch { return hour; } })();
+    const todayStillOpen = kampalaHour < cutoffHour;
+    const DELIVERY_Q = todayStillOpen ? 'Can it come today?' : 'When can it reach me?';
     const GREETING = `${hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'}, I'm Goldie from GoldPlus. Ask me about a charger, a cable, a power bank, earphones or a battery for your phone, and I'll check the shelf for you.`;
 
     /** Text to DOM: minimal markdown (**bold**, "- " bullets), links only to this site (anything else stays plain text). */
@@ -327,11 +349,15 @@ const enabled = assistantEnabled();
      *  loses nothing (WCAG 2.2.1: a timer-free way to reach the same content). */
     type Starter = { label: string; ask?: string; prefill?: string };
     const DEFAULT_STARTERS: Starter[] = Array.from(starters.querySelectorAll<HTMLButtonElement>('button')).map((b) => ({ label: b.textContent || '', ask: b.dataset.starter, prefill: b.dataset.prefill }));
-    let activeTeaser: { key: string; text: string; chips: string[] } | null = null;
+    let activeTeaser: { key: string; text: string; chips: string[]; asksPhone?: boolean } | null = null;
     const renderStarters = () => {
-      const list: Starter[] = [...(activeTeaser?.chips ?? []).map((c) => ({ label: c, ask: c })), ...DEFAULT_STARTERS];
+      // With a known phone, the default starters name it too, so "for my phone" never sits beside "for my A12".
+      const defaults = knownPhone ? DEFAULT_STARTERS.map((st) => ({ ...st, label: st.label.replace(/my phone/i, `my ${knownPhone}`), ask: st.ask?.replace(/my phone/i, `my ${knownPhone}`) })) : DEFAULT_STARTERS;
+      const list: Starter[] = [...(activeTeaser?.chips ?? []).map((c) => ({ label: c, ask: c })), ...defaults];
       const seen = new Set<string>(); starters.replaceChildren();
+      input.placeholder = activeTeaser?.asksPhone && !knownPhone ? 'e.g. Samsung A12 or Tecno Spark 10' : 'Type your question…';
       for (const st of list) {
+        if (starters.childElementCount >= 4) break;
         if (seen.has(st.label.toLowerCase())) continue; seen.add(st.label.toLowerCase());
         const b = document.createElement('button'); b.type = 'button'; b.textContent = st.label;
         if (st.prefill != null) b.addEventListener('click', () => { input.value = st.prefill || ''; input.focus(); input.setSelectionRange(input.value.length, input.value.length); });
@@ -395,26 +421,33 @@ const enabled = assistantEnabled();
     // The teaser: one message written for this page. Not on pages where a floating invitation
     // gets in the way of a task (checkout, cart, account, the finders, search and filtered lists).
     const EXCLUDED = /^\/(checkout|cart|admin|account|orders|login|logout|auth|forgot-password|consent|preferences|offline|shop|search|compare|product-finder|battery-finder|quote-request|bulk|dealers)(\/|$)/;
-    type Teaser = { key: string; text: string; pill: string; chips: string[] };
+    type Teaser = { key: string; text: string; pill: string; chips: string[]; asksPhone?: boolean };
+    const my = knownPhone ? `my ${knownPhone}` : 'my phone';
     const pageTeaser = (): Teaser | null => {
       const path = location.pathname;
       if (EXCLUDED.test(path)) return null;
+      // One voice per page: where the page already offers "Ask Goldie" questions in its content, the launcher stays quiet.
+      if (document.querySelector('.gp-askgoldie')) return null;
       const name = document.querySelector<HTMLElement>('[data-product-name]')?.dataset.productName?.trim();
       if (path.startsWith('/products/') && name) {
         const short = name.replace(/^GoldPlus\s+/i, '').split(/\s[—(]/)[0].trim();
         return /batter/i.test(name)
-          ? { key: 'pdp-battery', text: `Looking at the ${short}? Tell me your phone and I'll confirm it fits before you pay.`, pill: 'Will it fit your phone?', chips: ['Will it fit my phone?', 'Can it come today?'] }
-          : { key: 'pdp', text: `Looking at the ${short}? Ask me anything about it, or whether it can reach you today.`, pill: 'Questions on this one?', chips: ['Which phones does it work with?', 'Can it come today?'] };
+          ? { key: 'pdp-battery', text: knownPhone ? `Looking at the ${short} for your ${knownPhone}? I can confirm the fit before you pay.` : `Looking at the ${short}? Tell me your phone and I'll confirm it fits before you pay.`, pill: knownPhone ? `Fits your ${knownPhone}?` : 'Will it fit your phone?', chips: [`Will it fit ${my}?`, DELIVERY_Q], asksPhone: true }
+          : { key: 'pdp', text: `Looking at the ${short}? Ask me anything about it, or whether it can reach you today.`, pill: 'Questions on this one?', chips: ['Which phones does it work with?', DELIVERY_Q] };
       }
-      if (path.startsWith('/phone-batteries')) return { key: 'batteries', text: 'Not sure which battery fits? Tell me the phone and I\'ll check the shelf.', pill: 'Which battery fits?', chips: ['Find a battery for my phone', 'How much is a battery?'] };
-      if (path.startsWith('/power/chargers')) return { key: 'chargers', text: 'Choosing a charger? Tell me the phone and I\'ll say what it takes.', pill: 'Which charger for you?', chips: ['Which charger for my phone?', 'Can it come today?'] };
-      if (path.startsWith('/power/power-banks')) return { key: 'power-banks', text: 'For the power cuts? Tell me what you charge and I\'ll size the power bank.', pill: 'Which size do you need?', chips: ['Which size do I need?', 'Can it come today?'] };
-      if (path.startsWith('/power/charging-cables')) return { key: 'cables', text: 'Type-C, V8 or iPhone cable? Tell me the phone and I\'ll pick the right end.', pill: 'Which cable fits?', chips: ['Which cable for my phone?', 'Can it come today?'] };
-      if (path.startsWith('/audio')) return { key: 'audio', text: 'Earphones for calls, music or the gym? Say which and I\'ll shortlist.', pill: 'Calls, music or gym?', chips: ['Best for calls?', 'Can it come today?'] };
-      if (path.startsWith('/storage')) return { key: 'storage', text: 'Flash disk or memory card? Tell me what it\'s for and I\'ll find the size.', pill: 'Which size do you need?', chips: ['Which card for my phone?', 'Can it come today?'] };
-      if (path.startsWith('/delivery')) return { key: 'delivery', text: 'Ask me about delivery to your area and whether today\'s run still has room.', pill: 'Delivery to your area?', chips: ['Deliver to my area?', 'How much is delivery?'] };
-      if (path.startsWith('/blog')) return { key: 'guide', text: 'Reading up? When you know what you need, tell me the phone and I\'ll find it on the shelf.', pill: 'Found what you need?', chips: ['Find a battery for my phone', 'Which charger for my phone?'] };
-      if (path === '/') return { key: 'home', text: 'Hi, I\'m Goldie. Tell me your phone and I\'ll find the battery, charger or cable that fits, and say if it can come today.', pill: 'What phone do you use?', chips: ['Battery for my phone', 'Can it come today?'] };
+      if (path.startsWith('/phone-batteries')) return knownPhone
+        ? { key: 'batteries', text: `Still shopping for your ${knownPhone}? Say the word and I'll pull up the battery that fits it.`, pill: `Battery for your ${knownPhone}?`, chips: [`Battery for ${my}`, 'How much is a battery?'] }
+        : { key: 'batteries', text: 'Not sure which battery fits? Tell me the phone and I\'ll check the shelf.', pill: 'Which battery fits?', chips: ['Find a battery for my phone', 'How much is a battery?'], asksPhone: true };
+      if (path.startsWith('/power/chargers')) return { key: 'chargers', text: 'Choosing a charger? Tell me the phone and I\'ll say what it takes.', pill: 'Which charger for you?', chips: [`Which charger for ${my}?`, DELIVERY_Q], asksPhone: true };
+      if (path.startsWith('/power/power-banks')) return { key: 'power-banks', text: 'For the power cuts? Tell me what you charge and I\'ll size the power bank.', pill: 'Which size do you need?', chips: ['Which size do I need?', DELIVERY_Q] };
+      if (path.startsWith('/power/charging-cables')) return { key: 'cables', text: 'Type-C, V8 or iPhone cable? Tell me the phone and I\'ll pick the right end.', pill: 'Which cable fits?', chips: [`Which cable for ${my}?`, DELIVERY_Q], asksPhone: true };
+      if (path.startsWith('/audio')) return { key: 'audio', text: 'Earphones for calls, music or the gym? Say which and I\'ll shortlist.', pill: 'Calls, music or gym?', chips: ['Best for calls?', DELIVERY_Q] };
+      if (path.startsWith('/storage')) return { key: 'storage', text: 'Flash disk or memory card? Tell me what it\'s for and I\'ll find the size.', pill: 'Which size do you need?', chips: [`Which card for ${my}?`, DELIVERY_Q] };
+      if (path.startsWith('/delivery')) return { key: 'delivery', text: todayStillOpen ? 'Ask me about delivery to your area and whether today\'s run still has room.' : 'Today\'s run has left. Ask me when the next one can reach your area.', pill: 'Delivery to your area?', chips: ['Deliver to my area?', 'How much is delivery?'] };
+      if (path.startsWith('/blog')) return { key: 'guide', text: 'Reading up? When you know what you need, tell me the phone and I\'ll find it on the shelf.', pill: 'Found what you need?', chips: [`Find a battery for ${my}`, `Which charger for ${my}?`], asksPhone: true };
+      if (path === '/') return knownPhone
+        ? { key: 'home', text: `Welcome back. Shopping for your ${knownPhone} again? I can find the battery, charger or cable that fits it.`, pill: `For your ${knownPhone}?`, chips: [`Battery for ${my}`, DELIVERY_Q] }
+        : { key: 'home', text: 'Hi, I\'m Goldie. Tell me your phone and I\'ll find the battery, charger or cable that fits, and say if it can come today.', pill: 'What phone do you use?', chips: ['Battery for my phone', DELIVERY_Q], asksPhone: true };
       return null;
     };
 
