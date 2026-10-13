@@ -187,13 +187,13 @@ const pageTitle = search
     ? `${titleScope} | Shop | GoldPlus`
     : 'Shop products | GoldPlus';
 const pageDescription = search
-  ? `GoldPlus products matching "${search}"${categoryLabel ? ` in ${categoryLabel}` : ''}. Every unit tested before it is sold.`
+  ? `GoldPlus products matching "${search}"${categoryLabel ? ` in ${categoryLabel}` : ''}.`
   : titleScope
     // A category the operator described in the taxonomy says what it sells in
     // its own words (the same text the page header shows); a subcategory or an
     // undescribed category falls back to the generic line.
     ? (!subcategoryLabel && selectedCategory?.description) ||
-      `Browse ${titleScope.replace(' | ', ' in ')} at GoldPlus. Every unit tested before it is sold, same day delivery in Kampala and Wakiso.`
+      `Browse ${titleScope.replace(' | ', ' in ')} at GoldPlus. Same-day delivery in Kampala and Wakiso.`
     : 'Search and browse GoldPlus products by category and subcategory.';
 
 // A search that found nothing: the category chips must not carry the failed

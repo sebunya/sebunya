@@ -7,10 +7,10 @@ import { CreateAuditLogUseCase } from '../application/use-cases/audit/CreateAudi
 
 /**
  * A factual one-line description for every product that has none: what it
- * is, its model as the price list writes it, and the two promises the shop
- * already makes everywhere else (tested before sale; same-day delivery in
- * Kampala and Wakiso). Nothing about the product is invented; anything an
- * operator has already written is left alone. Audited as one batch.
+ * is, its model as the price list writes it, and the same-day delivery
+ * promise the shop already makes everywhere else (Kampala and Wakiso).
+ * Nothing about the product is invented; anything an operator has already
+ * written is left alone. Audited as one batch.
  *
  *   ACTOR_USER_ID=<uuid> npx tsx src/scripts/fill-short-descriptions.ts
  */
@@ -28,11 +28,11 @@ async function main(): Promise<void> {
   for (const r of rows) {
     const name = String(r.name); const model = String(r.model_number ?? '').trim();
     const kind = KIND.find(([re]) => re.test(name))?.[1] ?? 'accessory';
-    const text = `GoldPlus ${kind}${model ? `, model ${model}` : ''}. Every unit is tested before it is sold. Same-day delivery in Kampala and Wakiso.`;
+    const text = `GoldPlus ${kind}${model ? `, model ${model}` : ''}. Same-day delivery in Kampala and Wakiso.`;
     await db.execute(sql`update products set short_description = ${text}, updated_at = now() where id = ${String(r.id)} and length(btrim(short_description)) = 0`);
     done.push(String(r.id));
   }
-  await new CreateAuditLogUseCase(Registry.getInstance().auditRepo).execute({ actorId, action: 'PRODUCT_DESCRIPTIONS_FILLED', entity: 'product_bulk_edit', entityId: randomUUID(), newState: { count: done.length, productIds: done, template: 'GoldPlus <kind>, model <model>. Every unit is tested before it is sold. Same-day delivery in Kampala and Wakiso.' } });
+  await new CreateAuditLogUseCase(Registry.getInstance().auditRepo).execute({ actorId, action: 'PRODUCT_DESCRIPTIONS_FILLED', entity: 'product_bulk_edit', entityId: randomUUID(), newState: { count: done.length, productIds: done, template: 'GoldPlus <kind>, model <model>. Same-day delivery in Kampala and Wakiso.' } });
   console.log(`descriptions written for ${done.length} products`);
 }
 main().then(() => endDbConnection()).catch(async (e) => { console.error(e); await endDbConnection(); process.exit(1); });

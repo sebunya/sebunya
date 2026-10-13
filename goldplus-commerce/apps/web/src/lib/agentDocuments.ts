@@ -288,7 +288,7 @@ async function faqDocument(): Promise<AgentDocument> {
     ['How can I pay?',
       'MTN or Airtel Mobile Money, or a Visa or Mastercard through PesaPal; or pay on delivery or at the shop.'],
     ['Are GoldPlus products genuine, and what if something is faulty?',
-      `Products are GoldPlus-branded and every unit is tested before it is sold. A faulty product is replaced or refunded with GoldPlus covering the return carriage. A change-of-mind return is accepted within ${RETURNS_POLICY.windowDays} days of delivery or collection, unused and complete, with the customer covering the return carriage. ${RETURNS_POLICY.policyUrl}`],
+      `Products are GoldPlus-branded; the code on the pack can be checked at ${SITE_ORIGIN}/verification. A faulty product is replaced or refunded with GoldPlus covering the return carriage. A change-of-mind return is accepted within ${RETURNS_POLICY.windowDays} days of delivery or collection, unused and complete, with the customer covering the return carriage. ${RETURNS_POLICY.policyUrl}`],
   ];
   const body = ['# GoldPlus: questions and answers', '', ...qa.flatMap(([q, a]) => [`## ${q}`, '', a, ''])].join('\n');
   return {
@@ -318,7 +318,7 @@ async function homeDocument(): Promise<AgentDocument> {
   const body = [
     '# GoldPlus — phone accessories and replacement batteries in Kampala',
     '',
-    `GoldPlus sells and delivers phone accessories and replacement phone batteries in Kampala, Uganda.${catalogueSentence} GoldPlus is both the shop and the brand; every unit is tested before it is sold.`,
+    `GoldPlus sells and delivers phone accessories and replacement phone batteries in Kampala, Uganda.${catalogueSentence} GoldPlus is both the shop and the brand.`,
     '',
     '## The shop',
     '',

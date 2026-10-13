@@ -58,7 +58,6 @@ export const GET: APIRoute = async () => {
     `- Phone and WhatsApp: ${esc(biz.phoneDisplay)}`,
     `- Delivery: ${esc(biz.deliveryNote)} Delivery runs ${esc(biz.deliveryHours)}; order before ${biz.sameDayCutoffHour % 12 || 12}${biz.sameDayCutoffHour >= 12 ? 'pm' : 'am'} for the same-day run.`,
     '- Currency: Ugandan shilling (UGX). Prices on the site are what is charged.',
-    '- Every unit is tested before it is sold.',
     '',
     ...(complete
       ? [
