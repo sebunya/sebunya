@@ -1441,14 +1441,14 @@
   },
   {
    "sku": "GP-W3-PB",
-   "title": "GoldPlus GP-W3 Power Bank",
+   "title": "GoldPlus GP-W3 (PD-W3) Power Bank",
    "shortDescription": "Power bank GP-W3 — power through outages and long days.",
    "longDescription": "A GoldPlus power bank, model GP-W3 — charge your phone through a power cut or a long day off the grid. Same-day delivery in Kampala and Wakiso.",
    "specs": []
   },
   {
    "sku": "GP-W5-PB",
-   "title": "GoldPlus GP-W5 Power Bank",
+   "title": "GoldPlus GP-W5 (PD-W5) Power Bank",
    "shortDescription": "Power bank GP-W5 — power through outages and long days.",
    "longDescription": "A GoldPlus power bank, model GP-W5 — charge your phone through a power cut or a long day off the grid. Same-day delivery in Kampala and Wakiso.",
    "specs": []
@@ -1462,7 +1462,7 @@
   },
   {
    "sku": "GP-W2-PB",
-   "title": "GoldPlus GP-W2 Power Bank",
+   "title": "GoldPlus GP-W2 (PD-W2) Power Bank",
    "shortDescription": "Power bank GP-W2 — power through outages and long days.",
    "longDescription": "A GoldPlus power bank, model GP-W2 — charge your phone through a power cut or a long day off the grid. Same-day delivery in Kampala and Wakiso.",
    "specs": []
