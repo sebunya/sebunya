@@ -3,6 +3,7 @@ import { DrizzleReviewRepository } from '../../apps/api/src/infrastructure/db/re
 import { SubmitReviewUseCase } from '../../apps/api/src/application/use-cases/reviews/SubmitReviewUseCase';
 import { computeRatingAggregate } from '../../apps/api/src/domain/reviews/ReviewDomain';
 import { hashCustomerPhoneIdentity } from '../../apps/api/src/domain/pricing/CustomerIdentity';
+import { GetOrderReviewEligibilityUseCase, GetProductReviewsUseCase, SubmitOrderReviewUseCase } from '../../apps/api/src/application/use-cases/reviews/OrderReviewUseCases';
 
 /**
  * U3 — reviews on real PostgreSQL.
@@ -122,4 +123,38 @@ suite('reviews (real PostgreSQL, U3)', () => {
     expect(actual!.average).toBe(expected.average);
     expect(actual!.distribution).toEqual(expected.distribution);
   }, 30_000);
+
+  it('the customer flow end to end on real SQL: eligibility, submit, already-reviewed, moderation, public read', async () => {
+    const product = await mkProduct();
+    const phone = '+256700555666';
+    const on = `rvf${Date.now().toString(36)}`.slice(0, 20);
+    const [o] = await raw`insert into orders (order_number, customer_name, customer_phone, delivery_area, delivery_address, subtotal_amount, delivery_fee, total_amount, status, payment_status)
+      values (${on}, 'T', ${phone}, 'Kla', 'Adr', 100, 0, 100, 'delivered', 'paid') returning id`;
+    orderIds.push(o.id);
+    await raw`insert into order_items (order_id, product_id, sku, product_name, quantity, unit_price) values (${o.id}, ${product}, 'SKU', 'Item', 1, 100)`;
+    const order = { orderNumber: on, customerPhone: phone, orderStatus: 'delivered', items: [{ productId: product, name: 'Item' }] };
+
+    const eligibility = new GetOrderReviewEligibilityUseCase(repo, PEPPER);
+    const submitOrder = new SubmitOrderReviewUseCase(repo, submit);
+    const read = new GetProductReviewsUseCase(repo);
+
+    expect(await eligibility.execute(order)).toEqual({ delivered: true, items: [{ productId: product, name: 'Item', reviewed: false }] });
+    expect(await submitOrder.execute(order, { productId: product, rating: 5, title: 'Fits', body: 'Works well' })).toMatchObject({ ok: true, status: 'pending' });
+    expect((await eligibility.execute(order)).items[0].reviewed).toBe(true);
+    expect(await submitOrder.execute(order, { productId: product, rating: 4 })).toEqual({ ok: false, reason: 'ALREADY_REVIEWED' });
+
+    // Pending reviews are invisible to shoppers; publishing makes them public and builds the aggregate.
+    expect(await read.execute(product)).toEqual({ aggregate: null, reviews: [] });
+    const [row] = await raw`select id, is_verified_purchase from reviews where product_id = ${product}`;
+    // The moderation queue shows the moderator WHICH product and the full text.
+    const queued = (await repo.listByStatus('pending')).find((r) => r.id === row.id);
+    expect(queued).toMatchObject({ productId: product, title: 'Fits', body: 'Works well' });
+    expect(queued?.productName).toBeTruthy();
+    expect(queued?.productSlug).toBeTruthy();
+    expect(row.is_verified_purchase).toBe(true);
+    await repo.moderate({ reviewId: row.id, status: 'published', moderatorId: '00000000-0000-4000-8000-000000000000', reason: null, now: new Date() });
+    const after = await read.execute(product);
+    expect(after.aggregate).toMatchObject({ count: 1, average: 5 });
+    expect(after.reviews).toEqual([expect.objectContaining({ rating: 5, title: 'Fits', body: 'Works well', isVerifiedPurchase: true })]);
+  });
 });

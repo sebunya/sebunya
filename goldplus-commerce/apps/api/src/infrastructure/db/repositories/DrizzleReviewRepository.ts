@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { reviews, productRatingAggregate } from '../schema/reviews';
 import { orders, orderItems } from '../schema/commerce';
+import { products } from '../schema/products';
 import { IReviewRepository, InsertReviewInput, PublicReview, ReviewStatus } from '../../../application/ports/IReviewRepository';
 import { RatingAggregate, computeRatingAggregate } from '../../../domain/reviews/ReviewDomain';
 
@@ -84,10 +85,12 @@ export class DrizzleReviewRepository implements IReviewRepository {
   }
 
   /** Admin moderation queue: recent reviews of a given status. */
-  async listByStatus(status: ReviewStatus, limit = 100): Promise<Array<{ id: string; productId: string; rating: number; title: string | null; body: string | null; status: string; isVerifiedPurchase: boolean; flagReason: string | null; createdAt: Date }>> {
+  /** The moderation queue. Carries the product's name and slug so a moderator sees WHAT the review is about. */
+  async listByStatus(status: ReviewStatus, limit = 100): Promise<Array<{ id: string; productId: string; productName: string | null; productSlug: string | null; rating: number; title: string | null; body: string | null; status: string; isVerifiedPurchase: boolean; flagReason: string | null; createdAt: Date }>> {
     const rows = await db
-      .select({ id: reviews.id, productId: reviews.productId, rating: reviews.rating, title: reviews.title, body: reviews.body, status: reviews.status, isVerifiedPurchase: reviews.isVerifiedPurchase, flagReason: reviews.flagReason, createdAt: reviews.createdAt })
+      .select({ id: reviews.id, productId: reviews.productId, productName: products.name, productSlug: products.slug, rating: reviews.rating, title: reviews.title, body: reviews.body, status: reviews.status, isVerifiedPurchase: reviews.isVerifiedPurchase, flagReason: reviews.flagReason, createdAt: reviews.createdAt })
       .from(reviews)
+      .leftJoin(products, eq(products.id, reviews.productId))
       .where(eq(reviews.status, status))
       .orderBy(desc(reviews.createdAt))
       .limit(Math.min(limit, 500));

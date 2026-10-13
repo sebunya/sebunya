@@ -75,7 +75,7 @@ const helpUrl = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComponen
         </label>
         <label class="block">
           <span class="text-sm font-bold text-gray-900">Phone number or email used at checkout</span>
-          <input name="contact" required value={contact} autocomplete="tel" inputmode="email" class="mt-1 w-full min-h-11 rounded-lg border border-slate-300 px-3 py-2.5 text-base outline-none focus:ring-2 focus:ring-brand-primaryInk" />
+          <input name="contact" required value={contact} autocomplete="tel" class="mt-1 w-full min-h-11 rounded-lg border border-slate-300 px-3 py-2.5 text-base outline-none focus:ring-2 focus:ring-brand-primaryInk" />
         </label>
         <button type="submit" class="inline-flex min-h-12 items-center justify-center rounded-full bg-brand-primary px-6 text-xs font-black uppercase tracking-widest text-brand-black">Find my order</button>
       </form>
@@ -104,8 +104,8 @@ const helpUrl = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComponen
             <p class="font-bold text-gray-900">{it.name}</p>
             <fieldset class="mt-3">
               <legend class="text-sm font-semibold text-slate-700">How many stars?</legend>
-              <div class="gp-stars mt-2" role="radiogroup">
-                {[5, 4, 3, 2, 1].map((n) => (
+              <div class="gp-stars mt-2">
+                {[1, 2, 3, 4, 5].map((n) => (
                   <>
                     <input type="radio" id={`r-${it.productId}-${n}`} name="rating" value={String(n)} required />
                     <label for={`r-${it.productId}-${n}`} title={`${n} star${n === 1 ? '' : 's'}`}><span class="sr-only">{n} star{n === 1 ? '' : 's'}</span>★</label>
@@ -132,10 +132,14 @@ const helpUrl = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComponen
 </BaseLayout>
 
 <style>
-  /* Five stars, right to left in the DOM so a pure-CSS hover/checked fill works; shown left to right. */
-  .gp-stars { display: inline-flex; flex-direction: row-reverse; gap: .15rem; }
+  /* Five stars in natural order (arrow keys move left to right). The fill up to the chosen or
+     hovered star uses :has(); without :has support the chosen star alone is highlighted. */
+  .gp-stars { display: inline-flex; gap: .15rem; }
   .gp-stars input { position: absolute; opacity: 0; width: 1px; height: 1px; }
   .gp-stars label { font-size: 2rem; line-height: 1; color: #cbd5e1; cursor: pointer; padding: .1rem; min-width: 44px; min-height: 44px; display: grid; place-items: center; }
-  .gp-stars input:checked ~ label, .gp-stars label:hover, .gp-stars label:hover ~ label { color: #f59e0b; }
+  .gp-stars input:checked + label { color: #f59e0b; }
+  .gp-stars label:has(~ input:checked) { color: #f59e0b; }
+  .gp-stars:hover label { color: #cbd5e1; }
+  .gp-stars:hover label:hover, .gp-stars label:has(~ label:hover) { color: #f59e0b; }
   .gp-stars input:focus-visible + label { outline: 3px solid #93d500; outline-offset: 2px; border-radius: .4rem; }
 </style>
