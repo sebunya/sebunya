@@ -11,6 +11,7 @@ export const goldieMetrics = {
   careAlerts: once(client.Counter, { name: 'goldie_care_alerts_total', help: 'Care Desk alerts queued, by channel', labelNames: ['channel'] as const }),
   escalations: once(client.Counter, { name: 'goldie_care_escalations_total', help: 'Urgent tasks re-paged because nobody took them' }),
   socialMessages: once(client.Counter, { name: 'goldie_social_messages_total', help: 'Messenger and Instagram messages Goldie handled, by platform and outcome', labelNames: ['platform', 'outcome'] as const }),
+  deliveryReceipts: once(client.Counter, { name: 'whatsapp_delivery_receipts_total', help: 'WhatsApp delivery receipts from Meta, by status', labelNames: ['status'] as const }),
   recovered: once(client.Counter, { name: 'goldie_whatsapp_recovered_total', help: 'WhatsApp replies finished by the recovery pass after an interruption' }),
   urgentOpen: once(client.Gauge, { name: 'goldie_care_urgent_open', help: 'Urgent Care Desk tasks still open' }),
   oldestOpenMinutes: once(client.Gauge, { name: 'goldie_care_oldest_open_minutes', help: 'Minutes the longest-waiting open task has waited' }),

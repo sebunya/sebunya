@@ -33,7 +33,7 @@ export class DrizzleNotificationAttemptRepository implements INotificationAttemp
         recipient: fit(input.recipient, 255) ?? '',
         template: fit(input.template, 100) ?? '',
         status: fit(input.status, 30) ?? 'PENDING',
-        providerCode: fit(input.providerCode, 50),
+        providerCode: fit(input.providerCode, 160), // a Meta wamid (0184) must be kept whole: delivery receipts match on it
         providerMessage: input.providerMessage,
         relatedEntity: fit(input.relatedEntity, 50),
         // The column is a uuid: a non-UUID reference (an order number) made the

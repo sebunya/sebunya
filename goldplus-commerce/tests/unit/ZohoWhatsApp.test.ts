@@ -4,7 +4,7 @@ import {
   classifyZohoWhatsAppFailure,
   toZohoWhatsAppRequest,
 } from '../../apps/api/src/infrastructure/notifications/whatsapp/ZohoWhatsAppAdapter';
-import { ZOHO_WHATSAPP_TEMPLATES, fillWhatsAppVariables } from '../../apps/api/src/infrastructure/notifications/whatsapp/zohoWhatsAppTemplates';
+import { WHATSAPP_TEMPLATES as ZOHO_WHATSAPP_TEMPLATES, fillWhatsAppVariables } from '../../apps/api/src/infrastructure/notifications/whatsapp/whatsAppTemplates';
 import { readZohoWhatsAppConfig, zohoWhatsAppStartupWarnings } from '../../apps/api/src/config/zohoWhatsApp';
 import { classifyTemplate } from '../../apps/api/src/infrastructure/notifications/messageClassification';
 import { outboundGovernance } from '../../apps/api/src/infrastructure/notifications/OutboundGovernanceService';
@@ -224,7 +224,7 @@ describe('Zoho CPaaS WhatsApp', () => {
         expect(classifyTemplate(template), template).toBe('TRANSACTIONAL');
         const inBody = [...spec.body.matchAll(/\{\{([a-z_]+)\}\}/g)].map((m) => m[1]);
         expect(inBody, template).toEqual(spec.variables.map((v) => v.name));
-        expect(spec.zohoName).toMatch(/^[a-z0-9_]+$/);
+        expect(spec.name).toMatch(/^[a-z0-9_]+$/);
       }
     });
 
@@ -233,7 +233,7 @@ describe('Zoho CPaaS WhatsApp', () => {
       expect(spec.category).toBe('AUTHENTICATION');
       expect(fillWhatsAppVariables(spec, { code: '482913', expiresInMinutes: 10 })).toEqual({
         ok: true,
-        values: [{ name: 'code', value: '482913' }, { name: 'minutes', value: '10' }],
+        values: [{ name: 'code', value: '482913' }],
       });
       expect(fillWhatsAppVariables(spec, {}).ok).toBe(false);
     });

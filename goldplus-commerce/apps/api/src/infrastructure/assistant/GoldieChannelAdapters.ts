@@ -5,6 +5,7 @@ import type { GoldieSocialSettings, ISocialMessenger } from '../../application/u
 import type { SocialPlatform } from '../../domain/assistant/SocialGoldie';
 import { insertOutboxObject } from './AssistantConversationAdapters';
 import { goldieMetrics } from './GoldieMetrics';
+import { CARE_ALERT_TEMPLATE } from '../notifications/whatsapp/whatsAppTemplates';
 import { generateVapidKeys, sendWebPush, vapidFromEnv, type VapidKeys } from './WebPush';
 import { IntegrationCredentialVault } from '../seo/IntegrationCredentialVault';
 import { eq, sql } from 'drizzle-orm';
@@ -87,9 +88,10 @@ export class CareAlertChannels implements ICareAlertChannels {
   }
 
   async whatsapp(input: { to: string; message: string }) {
-    const template = (process.env.GOLDIE_ALERT_TEMPLATE || '').trim();
+    // The template Admin > Notifications > WhatsApp templates submits (goldplus_care_alert) unless another is named.
+    const template = (process.env.GOLDIE_ALERT_TEMPLATE || '').trim() || CARE_ALERT_TEMPLATE.name;
     const s = this.settings();
-    if (!template || !s.phoneNumberId) return { queued: false, reason: 'WhatsApp alerts need GOLDIE_ALERT_TEMPLATE and the number id' };
+    if (!s.phoneNumberId) return { queued: false, reason: 'WhatsApp alerts need the Cloud API number id' };
     const r = await this.messenger.sendTemplate({ phoneNumberId: s.phoneNumberId, to: intl(input.to), template, language: (process.env.GOLDIE_ALERT_TEMPLATE_LANG || 'en').trim(), body: input.message });
     if (r.ok) goldieMetrics.careAlerts.inc({ channel: 'whatsapp' });
     return r.ok ? { queued: true } : { queued: false, reason: r.reason };

@@ -156,7 +156,7 @@ const statusToBadgeKind = {
               <p class="text-[10px] text-gray-500 mt-2 font-mono">Decided by: {ch.guard}</p>
               {ch.channel === 'whatsapp' && ch.mappedTemplates && (
                 <p class="text-[11px] text-gray-600 mt-1">
-                  {(ch.keyedTemplates ?? []).length} of {ch.mappedTemplates.length} WhatsApp templates have a Zoho template key.
+                  {ch.mappedTemplates.length} WhatsApp templates go to Meta directly; their approval is on <a href="/admin/notifications/whatsapp-templates" class="underline font-bold">WhatsApp templates</a>. {(ch.keyedTemplates ?? []).length} also have a Zoho key (the fallback).
                 </p>
               )}
             </div>

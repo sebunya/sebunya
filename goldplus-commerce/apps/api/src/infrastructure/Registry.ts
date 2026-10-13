@@ -243,6 +243,8 @@ import { SyntheticMonitor } from './scheduler/SyntheticMonitor';
 import { RecommendationMaterializer } from './scheduler/RecommendationMaterializer';
 
 import { ZohoWhatsAppAdapter } from './notifications/whatsapp/ZohoWhatsAppAdapter';
+import { FailoverWhatsAppProvider, MetaWhatsAppAdapter } from './notifications/whatsapp/MetaWhatsAppAdapter';
+import { MetaWhatsAppTemplateCatalog, markWhatsAppDeliveryFailed } from './notifications/whatsapp/MetaWhatsAppTemplateCatalog';
 import { ZeptoMailAdapter } from './notifications/zeptomail/ZeptoMailAdapter';
 import { DisabledSmsAdapter } from './notifications/sms/DisabledSmsAdapter';
 import { PahappaCommsSmsAdapter } from './notifications/sms/PahappaCommsSmsAdapter';
@@ -1051,7 +1053,13 @@ export class Registry {
   public readonly pesapalMeasurementMapper = new PesapalMeasurementMapper(this.paymentMeasurementRedactor);
 
   // Infrastructure Adapters
-  public readonly whatsappAdapter = new ZohoWhatsAppAdapter();
+  // WhatsApp: Meta's Cloud API directly (the same number and token as Goldie), Zoho CPaaS if Meta fails, SMS last.
+  public readonly whatsappTemplateCatalog = new MetaWhatsAppTemplateCatalog(() => this.advertisingOps.whatsappAds.messagingAccount());
+  public readonly zohoWhatsAppAdapter = new ZohoWhatsAppAdapter();
+  public readonly whatsappAdapter = new FailoverWhatsAppProvider(
+    new MetaWhatsAppAdapter(this.whatsappTemplateCatalog, () => this.advertisingOps.whatsappAds.messagingToken()),
+    this.zohoWhatsAppAdapter,
+  );
   public readonly zeptoMailAdapter = new ZeptoMailAdapter();
   public readonly smsAdapter = process.env.SMS_PROVIDER === 'pahappa_comms'
     ? new PahappaCommsSmsAdapter()
@@ -2766,6 +2774,14 @@ export class Registry {
     // Each customer message is handled on its own, after Meta has been answered.
     this.advertisingOps.whatsappAds.onInboundText((messages) => {
       for (const m of messages) void this.goldieChannelUseCases.handleWhatsApp(m).then((outcome) => goldieMetrics.whatsappMessages.inc({ outcome }));
+    });
+    // A customer message Meta accepted but could not deliver (not on WhatsApp, blocked, expired) is recorded as
+    // FAILED on its notification attempt, so the log never shows it as sent.
+    this.advertisingOps.whatsappAds.onDeliveryReceipts((receipts) => {
+      for (const r of receipts) {
+        goldieMetrics.deliveryReceipts.inc({ status: r.status });
+        if (r.status === 'failed') void markWhatsAppDeliveryFailed(r.messageId, `WhatsApp delivery failed (Meta${r.errorCode !== null ? ` ${r.errorCode}` : ''}${r.errorTitle ? `: ${r.errorTitle}` : ''}).`).catch(() => undefined);
+      }
     });
     return true;
   })();

@@ -78,7 +78,7 @@ describe('a delivered message is never turned into a retry', () => {
 describe('attempt rows fit their columns', () => {
   it('the repository truncates to the column widths and nulls a non-UUID reference', () => {
     const repo = readFileSync(join(__dirname, '../../apps/api/src/infrastructure/db/repositories/DrizzleNotificationAttemptRepository.ts'), 'utf8');
-    expect(repo).toContain('providerCode: fit(input.providerCode, 50)');
+    expect(repo).toContain('providerCode: fit(input.providerCode, 160)'); // widened in 0184 (Meta wamid)
     expect(repo).toContain('template: fit(input.template, 100)');
     expect(repo).toContain('relatedEntity: fit(input.relatedEntity, 50)');
     expect(repo).toContain('relatedEntityId: toRelatedEntityId(input.relatedEntityId)');

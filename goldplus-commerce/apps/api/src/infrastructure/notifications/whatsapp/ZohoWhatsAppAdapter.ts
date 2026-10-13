@@ -11,7 +11,7 @@ import {
 import { resilientFetch } from '../../http/HttpClient';
 import { readFlag } from '../../../domain/notifications/OutboundGovernancePolicy';
 import { readZohoWhatsAppConfig, zohoTemplateKeyFor, type ZohoWhatsAppConfig } from '../../../config/zohoWhatsApp';
-import { fillWhatsAppVariables, whatsAppTemplateSpec } from './zohoWhatsAppTemplates';
+import { fillWhatsAppVariables, whatsAppTemplateSpec } from './whatsAppTemplates';
 
 /**
  * WhatsApp through Zoho CPaaS (formerly ZeptoMail) — the same account family as
@@ -197,7 +197,7 @@ export class ZohoWhatsAppAdapter implements INotificationProvider {
       return {
         status: 'DRY_RUN' as NotificationStatus,
         providerCode: 'DRY_RUN',
-        providerMessage: `WhatsApp simulated (${spec.zohoName}). No message was sent.`,
+        providerMessage: `WhatsApp simulated (${spec.name}). No message was sent.`,
       };
     }
 
@@ -285,7 +285,7 @@ export class ZohoWhatsAppAdapter implements INotificationProvider {
     message: string;
   }> {
     const cfg = readZohoWhatsAppConfig(env);
-    const { ZOHO_WHATSAPP_TEMPLATES } = await import('./zohoWhatsAppTemplates');
+    const { WHATSAPP_TEMPLATES: ZOHO_WHATSAPP_TEMPLATES } = await import('./whatsAppTemplates');
     const mappedTemplates = Object.keys(ZOHO_WHATSAPP_TEMPLATES).filter((t) => zohoTemplateKeyFor(t, env));
     if (!cfg.configured) {
       return {

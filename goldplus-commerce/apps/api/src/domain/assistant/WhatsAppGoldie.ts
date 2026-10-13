@@ -52,6 +52,29 @@ export function parseInboundTexts(payload: unknown, wabaId: string, now: Date = 
   return out;
 }
 
+export interface DeliveryReceipt { messageId: string; status: 'sent' | 'delivered' | 'read' | 'failed'; errorCode: number | null; errorTitle: string | null }
+
+/** Delivery receipts for messages we sent (statuses on the same webhook): sent, delivered, read, failed. */
+export function parseDeliveryReceipts(payload: unknown, wabaId: string): DeliveryReceipt[] {
+  const out: DeliveryReceipt[] = [];
+  const p = payload as { object?: unknown; entry?: unknown } | null;
+  if (!p || p.object !== 'whatsapp_business_account' || !Array.isArray(p.entry)) return out;
+  for (const entry of p.entry as Array<Record<string, any>>) {
+    if (String(entry?.id ?? '') !== wabaId) continue;
+    for (const change of Array.isArray(entry?.changes) ? entry.changes : []) {
+      if (change?.field !== 'messages') continue;
+      for (const st of Array.isArray(change?.value?.statuses) ? change.value.statuses : []) {
+        const id = typeof st?.id === 'string' ? st.id.slice(0, 160) : '';
+        const status = String(st?.status ?? '');
+        if (!id || !['sent', 'delivered', 'read', 'failed'].includes(status)) continue;
+        const e = Array.isArray(st?.errors) ? st.errors[0] : null;
+        out.push({ messageId: id, status: status as DeliveryReceipt['status'], errorCode: Number.isFinite(Number(e?.code)) ? Number(e.code) : null, errorTitle: e ? String(e.title ?? e.message ?? '').slice(0, 200) || null : null });
+      }
+    }
+  }
+  return out;
+}
+
 /** The archive key for a WhatsApp number: never the number itself as the key. */
 export const whatsappKey = (from: string) => createHash('sha256').update(`goldie:wa:${from}`).digest('hex');
 

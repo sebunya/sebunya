@@ -1282,6 +1282,13 @@
       "when": 1790140000060,
       "tag": "0183_care_alert_lines",
       "breakpoints": true
+    },
+    {
+      "idx": 183,
+      "version": "5",
+      "when": 1790140000061,
+      "tag": "0184_notification_provider_code_width",
+      "breakpoints": true
     }
   ]
 }

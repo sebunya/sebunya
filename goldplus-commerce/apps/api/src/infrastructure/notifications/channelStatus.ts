@@ -1,7 +1,8 @@
 import { OutboundChannel, failsReleaseReadiness } from '../../domain/notifications/OutboundGovernancePolicy';
 import { outboundGovernance } from './OutboundGovernanceService';
 import { readZohoWhatsAppConfig, zohoTemplateKeyFor } from '../../config/zohoWhatsApp';
-import { ZOHO_WHATSAPP_TEMPLATES } from './whatsapp/zohoWhatsAppTemplates';
+import { WHATSAPP_TEMPLATES } from './whatsapp/whatsAppTemplates';
+import { readMetaWhatsAppConfig } from '../../config/metaWhatsApp';
 
 /**
  * What the admin shows for each customer channel, derived from the SAME flags
@@ -36,15 +37,17 @@ function stateOf(channel: OutboundChannel, configured: boolean, env: NodeJS.Proc
 export function customerChannelStatuses(env: NodeJS.ProcessEnv = process.env): ChannelStatus[] {
   const emailConfigured = present(env, 'ZEPTOMAIL_API_TOKEN', 'ZEPTOMAIL_FROM_ADDRESS');
   const smsConfigured = (env.SMS_PROVIDER || '').trim() === 'pahappa_comms' && present(env, 'SMS_USERNAME', 'SMS_API_KEY', 'SMS_SENDER_ID');
-  const wa = readZohoWhatsAppConfig(env);
-  const mapped = Object.keys(ZOHO_WHATSAPP_TEMPLATES);
+  const meta = readMetaWhatsAppConfig(env);
+  const zoho = readZohoWhatsAppConfig(env);
+  const mapped = Object.keys(WHATSAPP_TEMPLATES);
   return [
     { channel: 'email', provider: 'Zoho ZeptoMail', ...stateOf('EMAIL', emailConfigured, env) },
     { channel: 'sms', provider: 'EgoSMS (Pahappa)', ...stateOf('SMS', smsConfigured, env) },
     {
       channel: 'whatsapp',
-      provider: 'Zoho CPaaS WhatsApp',
-      ...stateOf('WHATSAPP', wa.configured, env),
+      // Meta Cloud API first; Zoho CPaaS only if Meta fails (and only for templates keyed in Zoho).
+      provider: zoho.configured ? 'Meta WhatsApp Cloud API (Zoho CPaaS as fallback)' : 'Meta WhatsApp Cloud API',
+      ...stateOf('WHATSAPP', meta.configured || zoho.configured, env),
       mappedTemplates: mapped,
       keyedTemplates: mapped.filter((t) => zohoTemplateKeyFor(t, env)),
     },
