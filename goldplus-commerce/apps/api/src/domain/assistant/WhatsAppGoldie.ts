@@ -28,6 +28,16 @@ export const MEDIA_MARKER_RE = /⟦media:([0-9]{5,30}):([^⟧]*)⟧/g;
 const DIGITS = /^\d{8,15}$/;
 
 /**
+ * The shop's own WhatsApp account(s): `ids` may list several, comma separated. Meta now splits a WhatsApp account
+ * (the number) from a Messaging account (templates, billing), and its documentation is not consistent about which
+ * id a webhook entry carries, so both are accepted; anything else is someone else's and ignored.
+ */
+export function isOwnAccount(entryId: unknown, ids: string): boolean {
+  const id = String(entryId ?? '');
+  return !!id && ids.split(',').map((x) => x.trim()).filter(Boolean).includes(id);
+}
+
+/**
  * What the customer sent: text, a button / list reply, a location, a contact card, or a photo / voice note / video /
  * document / sticker (filed with a marker; Goldie cannot see media, so a person is asked to look). Reactions and
  * statuses are not conversation turns.
@@ -37,7 +47,7 @@ export function parseInboundTexts(payload: unknown, wabaId: string, now: Date = 
   const p = payload as { object?: unknown; entry?: unknown } | null;
   if (!p || p.object !== 'whatsapp_business_account' || !Array.isArray(p.entry)) return out;
   for (const entry of p.entry as Array<Record<string, any>>) {
-    if (String(entry?.id ?? '') !== wabaId) continue;
+    if (!isOwnAccount(entry?.id, wabaId)) continue;
     for (const change of Array.isArray(entry?.changes) ? entry.changes : []) {
       if (change?.field !== 'messages') continue;
       const value = change?.value ?? {};
@@ -92,7 +102,7 @@ export function parseDeliveryReceipts(payload: unknown, wabaId: string): Deliver
   const p = payload as { object?: unknown; entry?: unknown } | null;
   if (!p || p.object !== 'whatsapp_business_account' || !Array.isArray(p.entry)) return out;
   for (const entry of p.entry as Array<Record<string, any>>) {
-    if (String(entry?.id ?? '') !== wabaId) continue;
+    if (!isOwnAccount(entry?.id, wabaId)) continue;
     for (const change of Array.isArray(entry?.changes) ? entry.changes : []) {
       if (change?.field !== 'messages') continue;
       for (const st of Array.isArray(change?.value?.statuses) ? change.value.statuses : []) {
@@ -158,7 +168,7 @@ export function parseAccountEvents(payload: unknown, wabaId: string): AccountEve
   const p = payload as { object?: unknown; entry?: unknown } | null;
   if (!p || p.object !== 'whatsapp_business_account' || !Array.isArray(p.entry)) return out;
   for (const entry of p.entry as Array<Record<string, any>>) {
-    if (String(entry?.id ?? '') !== wabaId) continue;
+    if (!isOwnAccount(entry?.id, wabaId)) continue;
     for (const change of Array.isArray(entry?.changes) ? entry.changes : []) {
       const field = String(change?.field ?? '');
       if (!field || field === 'messages') continue;

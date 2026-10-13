@@ -363,3 +363,28 @@ describe('staff WhatsApp alerts', () => {
     expect(messenger.sendTemplate).toHaveBeenCalledWith(expect.objectContaining({ to: '256705004545', template: 'goldplus_care_alert', language: 'en' }));
   });
 });
+
+import { isOwnAccount } from '../../apps/api/src/domain/assistant/WhatsAppGoldie';
+describe("Meta's WhatsApp account / Messaging account split", () => {
+  const original = { ...process.env };
+  afterEach(() => { process.env = original; });
+  it('webhooks are accepted for either of the shop\'s own ids, and nobody else\'s', () => {
+    expect(isOwnAccount('1070547395884403', '1070547395884403,2297240887691836')).toBe(true);
+    expect(isOwnAccount('2297240887691836', '1070547395884403,2297240887691836')).toBe(true);
+    expect(isOwnAccount('999', '1070547395884403,2297240887691836')).toBe(false);
+    expect(isOwnAccount('', '1070547395884403')).toBe(false);
+  });
+  it('templates are read from the Messaging account first, then the WhatsApp account, and the one that answers is kept', async () => {
+    process.env = { ...LIVE_ENV, WHATSAPP_WABA_ID: '1070547395884403', WHATSAPP_MESSAGING_ACCOUNT_ID: '2297240887691836' };
+    const urls: string[] = [];
+    const fetchImpl = vi.fn(async (url: string) => {
+      urls.push(url);
+      return url.includes('/2297240887691836/') ? json(400, { error: { code: 100, message: 'Unsupported get request' } }) : json(200, { data: [{ name: 'goldplus_payment_received', status: 'APPROVED', language: 'en', category: 'UTILITY', components: [{ type: 'BODY', text: WHATSAPP_TEMPLATES.ORDER_PAYMENT_SUCCESS!.body }] }] });
+    });
+    const c = new MetaWhatsAppTemplateCatalog(async () => null, fetchImpl as unknown as typeof fetch);
+    await c.refresh();
+    expect(urls.map((u) => u.split('/')[4])).toEqual(['2297240887691836', '1070547395884403']);
+    expect(c.approved('goldplus_payment_received')).toBe(true);
+    expect((await c.credentials()).wabaId).toBe('1070547395884403');
+  });
+});

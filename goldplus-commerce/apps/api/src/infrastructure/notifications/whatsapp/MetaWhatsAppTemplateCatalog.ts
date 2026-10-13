@@ -37,11 +37,15 @@ export class MetaWhatsAppTemplateCatalog {
   constructor(private readonly account: () => Promise<{ wabaId: string; accessToken: string | null } | null>, private readonly fetchImpl: typeof fetch = fetch, private readonly now: () => number = () => Date.now()) {}
 
   /** The server setting wins; otherwise the WhatsApp account and token saved in the admin. */
-  async credentials(): Promise<{ wabaId: string | null; token: string | null }> {
+  async credentials(): Promise<{ wabaId: string | null; token: string | null; candidates: string[] }> {
     const cfg = readMetaWhatsAppConfig();
     const saved = cfg.wabaId && cfg.envToken ? null : await this.account().catch(() => null);
-    return { wabaId: cfg.wabaId ?? saved?.wabaId ?? null, token: cfg.envToken ?? saved?.accessToken ?? null };
+    const waba = cfg.wabaId ?? saved?.wabaId ?? null;
+    // Templates: the account that answered last time, else the Messaging account first, then the WhatsApp account.
+    const candidates = [...new Set([this.templateAccount, cfg.messagingAccountId, waba].filter((x): x is string => !!x))];
+    return { wabaId: candidates[0] ?? null, token: cfg.envToken ?? saved?.accessToken ?? null, candidates };
   }
+  private templateAccount: string | null = null;
 
   /**
    * Synchronous, for routing: APPROVED in the last reading AND Meta's approved wording is the code's wording (a
@@ -87,14 +91,17 @@ export class MetaWhatsAppTemplateCatalog {
     if (this.inflight) return this.inflight;
     this.inflight = (async () => {
       try {
-        const { wabaId, token } = await this.credentials();
-        if (!wabaId || !token) { this.lastError = 'not configured'; return; }
+        const { token, candidates } = await this.credentials();
+        if (!candidates.length || !token) { this.lastError = 'not configured'; return; }
+        let lastFailure = '';
+        for (const accountId of candidates) {
         const next = new Map<string, MetaTemplateState>();
-        let url: string | null = `${GRAPH}/${wabaId}/message_templates?fields=id,name,status,category,language,rejected_reason,components&limit=200`;
+        let failed = false;
+        let url: string | null = `${GRAPH}/${accountId}/message_templates?fields=id,name,status,category,language,rejected_reason,components&limit=200`;
         for (let page = 0; url && page < 5; page++) {
           const res: Response = await this.fetchImpl(url, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) });
           const json = (await res.json().catch(() => null)) as { data?: Array<Record<string, unknown>>; paging?: { next?: string }; error?: { message?: string; code?: number } } | null;
-          if (!res.ok) { this.lastError = `${res.status}${json?.error?.code ? ` ${json.error.code}` : ''} ${String(json?.error?.message ?? '').slice(0, 120)}`.trim(); return; }
+          if (!res.ok) { lastFailure = `${res.status}${json?.error?.code ? ` ${json.error.code}` : ''} ${String(json?.error?.message ?? '').slice(0, 120)}`.trim(); failed = true; break; }
           for (const t of json?.data ?? []) {
             const name = String(t.name ?? '');
             // Our language only; another language's copy of the same name is not what we send.
@@ -105,7 +112,11 @@ export class MetaWhatsAppTemplateCatalog {
           }
           url = json?.paging?.next ?? null;
         }
-        this.states = next; this.readAt = this.now(); this.lastError = null;
+        if (failed) continue;
+        this.states = next; this.readAt = this.now(); this.lastError = null; this.templateAccount = accountId;
+        return;
+        }
+        this.lastError = lastFailure || 'Meta did not list the templates';
       } catch (e) {
         this.lastError = e instanceof Error ? e.message.slice(0, 120) : 'unreachable';
       } finally {
@@ -129,6 +140,7 @@ export class MetaWhatsAppTemplateCatalog {
 
   /** Submit every template Meta does not have (or rejected, under the same name it cannot be resubmitted: reported). */
   async submitMissing(): Promise<{ submitted: string[]; failed: Array<{ name: string; reason: string }>; skipped: string[] }> {
+    await this.refresh();
     const { wabaId, token } = await this.credentials();
     if (!wabaId || !token) return { submitted: [], failed: [{ name: '*', reason: 'WhatsApp is not configured (WABA id and token).' }], skipped: [] };
     await this.refresh();

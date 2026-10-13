@@ -85,7 +85,7 @@ export function parseAdReferrals(payload: unknown, wabaId: string, now: Date = n
   const p = payload as { object?: unknown; entry?: unknown } | null;
   if (!p || p.object !== 'whatsapp_business_account' || !Array.isArray(p.entry)) return out;
   for (const entry of p.entry as Array<Record<string, any>>) {
-    if (String(entry?.id ?? '') !== wabaId) { out.foreignEntries += 1; continue; }
+    if (!String(wabaId).split(',').map((x) => x.trim()).includes(String(entry?.id ?? ''))) { out.foreignEntries += 1; continue; }
     for (const change of Array.isArray(entry?.changes) ? entry.changes : []) {
       if (change?.field !== 'messages') continue;
       const value = change?.value ?? {};
