@@ -35,8 +35,58 @@
     a copy.
 - Tests: `tests/unit/GoldiePersonalShopper.test.ts`.
 
+## Customer care, conversations and channels (owner, 2026-10-13)
+
+**Listen first** (`lib/goldieEmpathy.ts`, no model): every message gets a mood read (upset, worried, confused,
+happy, calm). Every fixed answer opens with a line that names the customer's situation in that mood (O2's
+"acknowledge, own, resolve, check" was the owner's reference), and closes with a check-back when it helps. A thin
+request ("charger", "I need help") gets one clarifying question instead of a guess. An upset customer about an
+order, payment, delivery or a fault always gets "Email the team". The model gets the same rules in the prompt
+("Listen first") plus a per-turn note of the mood.
+
+**One brain, every channel** (`lib/goldieTurn.ts`): classify + mood, Customer DNA, admission and spend, then a fixed
+answer or the model with tools. The website (`/api/assistant/chat`) and WhatsApp (`/api/internal/goldie/turn`) both
+call it.
+
+**Customer care from the commerce engine** (`lib/goldieCare.ts`, not in agentTools/MCP):
+- *Order tracking*: reference + phone or email, through the same verified `POST /commerce/orders/lookup` as Track my
+  order (5-tries lockout per reference, one answer for a wrong reference or a wrong contact; now on the
+  `order-lookup` rate family). Signed in: the customer's own latest orders (`/account/orders`, their token).
+- *Points*: signed in only, `/account/loyalty`, which now also returns `tier` (current, next, points to go; the
+  nightly rule, `tierStanding()`) and `soonestExpiry`. A guest is asked to sign in, never looked up by phone.
+- *Delivery quotes*: the one quoting service (`POST /delivery/quote`) when a place is named.
+- On WhatsApp the sender's number is verified by Meta, so it is the proof for THEIR orders (placed with that
+  number) and points (when it is an account's verified phone): `POST /internal/assistant/care-by-phone`.
+- Goldie cannot place, change or cancel an order, take or confirm a payment, refund, or approve warranty. Those go to
+  the team.
+
+**Conversation archive** (migration 0177, `assistant_conversations` + `assistant_messages`):
+- Every website turn is filed under the browser's conversation id (`X-Goldie-Conversation`). Every WhatsApp message
+  is filed by the API before Goldie answers, so nothing is lost. Stored per message: topic (intent), mood and route.
+  Rolled up per conversation: first and last topic, lowest mood, outcome (open / resolved / handed over / needs a
+  person), contact, support ticket.
+- Card numbers, PINs, OTPs and passwords are redacted before storage (`ConversationArchive.redact`).
+- Kept 365 days; the nightly job purges older threads.
+- The panel footer says chats are kept, with a link to /privacy. **Owner: add a line to the privacy policy.**
+- Admin: `/admin/assistant/conversations` shows the meeting summary (conversations, what customers came for, moods,
+  outcomes, share handled by Goldie, follow-up list), filters, CSV, and each thread. On a thread the team can take
+  over (Goldie stays quiet on WhatsApp), reply (sent on WhatsApp), and set the outcome. Reading needs
+  `customer_data.view` and is audited per thread; actions need `orders.manage` and are audited.
+
+**WhatsApp switch-on** (off until all of this is done):
+1. The shop number must be on the WhatsApp Cloud API (or coexistence), with the webhook from Ads > Offline already
+   subscribed to `messages` (same `/webhooks/whatsapp`, same app secret).
+2. A system-user token with `whatsapp_business_messaging`: set `GOLDIE_WHATSAPP_TOKEN` on the api container, or
+   save it as the access token in the WhatsApp ads settings.
+3. `GOLDIE_WHATSAPP_PHONE_NUMBER_ID=<the number's Cloud API id>` and `GOLDIE_WHATSAPP_ENABLED=true` on the api
+   container. To trial it first, set `GOLDIE_WHATSAPP_TEST_NUMBERS=2567...,2567...` and only those numbers get Goldie.
+4. The api reaches the web container at `WEB_INTERNAL_ORIGIN` (default `http://web:4321`); both share `INTERNAL_API_KEY`.
+5. Free-form replies only work within 24 hours of the customer's last message (WhatsApp's rule). Team replies after
+   that are refused with that reason.
+- Tests: `tests/unit/GoldieCustomerCare.test.ts`.
+
 Goldie is the shop's host on every storefront page: a named, warm, plain-spoken
-voice (system prompt `goldie-2026-10-13.2` in `assistant.ts`; deterministic
+voice (system prompt `goldie-2026-10-13.3` in `assistant.ts`; deterministic
 answers in `assistantRouter.ts`). She greets by time of day, answers in one to
 three sentences, and offers the next step as an action chip (`links` events)
 beside product cards (`products` events); the model is told not to paste URLs or

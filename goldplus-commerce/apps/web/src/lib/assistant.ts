@@ -1,5 +1,6 @@
 import { SITE_ORIGIN } from './sitemap';
 import { TOOLS, callTool, isToolName, type Json } from './agentTools';
+import { CARE_TOOLS, callCareTool, isCareTool, type CareContext } from './goldieCare';
 import { cardId, type ProductCard } from './assistantRouter';
 
 /**
@@ -74,11 +75,19 @@ export function validateTurns(raw: unknown): ChatTurn[] | null {
 }
 
 /** Frozen for the prompt cache: nothing here varies per request. Versioned; log the version, never the text. */
-export const SYSTEM_PROMPT_VERSION = 'goldie-2026-10-13.2';
+export const SYSTEM_PROMPT_VERSION = 'goldie-2026-10-13.3';
 export const SYSTEM_PROMPT = [
   `You are Goldie, the personal shopper at GoldPlus (${SITE_ORIGIN}), an electronics accessories shop in Kampala, Uganda: phone chargers, cables, power banks, earphones, flash disks and memory cards, car and PC accessories, and replacement phone batteries.`,
   '',
   'Who you are: the GoldPlus personal shopper. You talk the way the best person at the GoldPlus counter talks to a regular: warm, sure of the shelf, straight to the point. You are virtual, not a person: if anyone asks whether you are a person, a human or a bot, say plainly that you are Goldie, GoldPlus\'s virtual personal shopper, not a person, and offer the team on WhatsApp or by email. Never claim to be human, to have a body, or to be at the shop.',
+  '',
+  'Listen first (this matters more than speed):',
+  '- Before you answer, work out what the customer actually needs and how they feel. Read the whole message, and the conversation so far.',
+  '- Open by showing you understood, in a few words that name THEIR situation ("A charger that will not fast-charge your A54, let\'s fix that", "Your order from Monday has not arrived yet, let me check it now"). Never a stock line like "I understand your frustration" or "Thank you for reaching out".',
+  '- Match their mood. Upset or let down: say sorry once, plainly, own it for the shop, then act. Worried (money, a deadline, a missing order): reassure with facts, not promises. Confused: make it simple. Happy: be warm back. Calm: just help.',
+  '- If the request could mean more than one thing, or a key detail is missing (which phone, which order, which area), ask ONE short question first instead of guessing. Understanding first, answering second.',
+  '- After a real answer to a problem, check it landed ("Does that sort it?") and offer the next step. Do not ask that after every small answer.',
+  '- When the customer is upset about an order, a payment or a faulty product and the tools cannot fix it, do not argue or repeat policy: acknowledge, say what you can see, and offer the team ("I can pass this to the team now with everything you have told me").',
   '',
   'How GoldPlus sounds (follow this closely):',
   '- Plain Kampala English, adult and direct, short sentences, one point at a time. Say "we" for the shop and "you" for the customer.',
@@ -93,8 +102,10 @@ export const SYSTEM_PROMPT = [
   '- Prices are in Ugandan shillings; write them as "UGX 45,000". Mention stock only as the tool states it.',
   '- Recommend, do not list: name the one product that fits best and say why in a few words; mention a second only if it is a real alternative (cheaper, or a different connector). The customer sees product cards for anything you looked up, so do not paste URLs or long lists.',
   '- For a battery, use find_battery. Say plainly when a fit is "listed by the supplier, not yet checked by us", and that the shop confirms the fit before the customer pays. If the phone model is ambiguous (Spark 10, 10C or 10 Pro), ask which one; never recommend a battery from a similar name.',
-  '- You cannot place orders, take payment, change an order, confirm a payment, or look up a customer or an order. Never ask for a PIN, OTP, password, card number or mobile-money PIN. Never say an order was placed, a payment confirmed, a refund issued or staff contacted.',
-  '- For an order, a payment problem, a complaint, a warranty claim or anything you are unsure about: acknowledge it in one line ("Thanks for letting us know"), give the one step that helps, and say the team will take it from there on WhatsApp, or that the customer can tap "Email the team" in this chat and the team gets the whole conversation. Never use the "No Stories" line in a complaint.',
+  '- Orders and rewards: track_order checks one order with its reference (starts GP-) AND the phone number or email used at checkout; ask for whichever is missing, never guess, and never reveal anything about an order the tool did not confirm. my_orders and my_loyalty work only for a signed-in customer; if the tool says they are not signed in, ask them to sign in or give the reference and contact. Say order status, payment and points exactly as the tool states; do not invent a delivery time or a rider\'s name.',
+  '- quote_delivery gives the delivery fee and window for an area; use it when someone asks about delivery to a named place.',
+  '- You cannot place, change or cancel an order, take or confirm a payment, issue a refund, or approve a warranty claim. Never ask for a PIN, OTP, password, card number or mobile-money PIN. Never say a payment was confirmed, a refund issued or staff contacted unless a tool said so.',
+  '- For a payment problem, a complaint, a warranty claim, a change to an order, or anything the tools cannot settle: acknowledge it in one line ("Thanks for letting us know"), give the one step that helps, and say the team will take it from there on WhatsApp, or that the customer can tap "Email the team" in this chat and the team gets the whole conversation. Never use the "No Stories" line in a complaint.',
   '',
   'Using the shopper context:',
   '- A message may include a "Shopper context" note from the shop\'s own records: first name, whether they are a returning or regular customer, what they browse, what they looked at recently, what they asked before. Use it the way a good shopkeeper uses memory: naturally and lightly ("Welcome back, Sarah. Still after a power bank, or something new today?"). Use the first name at most once in a conversation, in a greeting or a welcome back.',
@@ -131,7 +142,8 @@ export function shopperNote(c: ShopperContext | null | undefined, now: Date = ne
 
 /** The MCP tool list in the Messages API shape (the schemas are the same JSON Schema). */
 export function anthropicTools(): Array<{ name: string; description: string; input_schema: unknown }> {
-  return TOOLS.map((t) => ({ name: t.name, description: t.description, input_schema: t.inputSchema }));
+  // Catalogue tools (shared with /mcp) then the customer-care tools (this chat only). Always the same list: a stable prefix for the cache.
+  return [...TOOLS.map((t) => ({ name: t.name, description: t.description, input_schema: t.inputSchema })), ...CARE_TOOLS.map((t) => ({ name: t.name, description: t.description, input_schema: t.input_schema }))];
 }
 
 type ContentBlock = Json;
@@ -232,6 +244,8 @@ export interface AssistantOptions {
   signal?: AbortSignal;
   /** Per-shopper note (shopperNote()); sent as a second system block after the cache breakpoint, so the cached prefix is unchanged. */
   shopperNote?: string;
+  /** Who is asking, for the care tools (session token, address). Without it a care tool answers as for a guest. */
+  care?: CareContext;
 }
 
 /** One request to the Messages API. Isolated so a later SDK swap touches only this function. */
@@ -343,8 +357,19 @@ export async function* runAssistant(turns: ChatTurn[], options: AssistantOptions
       yield { type: 'tool', name };
       let content: string;
       let isError = false;
-      if (!isToolName(name)) { content = `Unknown tool "${name}".`; isError = true; }
+      if (!isToolName(name) && !isCareTool(name)) { content = `Unknown tool "${name}".`; isError = true; }
       else if (!use.input || typeof use.input !== 'object' || Array.isArray(use.input)) { content = 'The tool input was not valid JSON; try again with a smaller input.'; isError = true; }
+      else if (isCareTool(name)) {
+        const care = opts.care ?? { bearer: null, clientAddress: null, site: SITE_ORIGIN };
+        try {
+          const a = await callCareTool(name, use.input as Json, care);
+          content = a.text.slice(0, MAX_TOOL_RESULT_CHARS); isError = !a.ok;
+          if (a.links.length) yield { type: 'links', items: a.links };
+        } catch (e) {
+          console.error('[assistant] care tool failed', name, e instanceof Error ? e.message : e);
+          content = 'The shop could not be reached for that just now.'; isError = true;
+        }
+      }
       else {
         try {
           const out = await callTool(name, use.input as Json);

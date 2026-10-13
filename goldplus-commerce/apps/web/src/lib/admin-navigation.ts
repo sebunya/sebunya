@@ -84,6 +84,13 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
     description: 'Site chat: this month\'s model spend against the cap, the first-four fairness policy, abuse ceilings, model and the two switches.',
   },
   {
+    label: 'Goldie conversations',
+    href: '/admin/assistant/conversations',
+    group: 'Commerce',
+    status: 'working',
+    description: 'Every chat with Goldie on the website and WhatsApp: the meeting summary (topics, moods, outcomes, who needs a person), each thread, team takeover and replies, CSV.',
+  },
+  {
     label: 'Batteries',
     href: '/admin/batteries',
     group: 'Commerce',

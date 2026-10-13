@@ -1,0 +1,96 @@
+---
+import AdminLayout from '../../../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../../../lib/session';
+import { apiBase } from '../../../../lib/api';
+import { TOPIC_LABEL, MOOD_LABEL, OUTCOME_LABEL, CHANNEL_LABEL } from '../../../../lib/goldieArchiveCopy';
+
+/**
+ * One Goldie conversation: every message with its topic and mood, the
+ * customer's contact, and the team's actions: take it over (WhatsApp: Goldie
+ * stays quiet), reply (WhatsApp: sent to the customer), set the outcome.
+ * Viewing is audited by the API (customers.data.view); actions need
+ * orders.manage and are audited.
+ */
+export const prerender = false;
+const token = readSessionToken(Astro.request);
+const id = String(Astro.params.id ?? '');
+if (!token) return Astro.redirect(`/admin/login?returnTo=/admin/assistant/conversations/${encodeURIComponent(id)}`, 303);
+if (!/^[0-9a-f-]{36}$/i.test(id)) return Astro.redirect('/admin/assistant/conversations', 303);
+
+const call = async <T,>(path: string, init?: RequestInit): Promise<{ ok: true; data: T } | { ok: false; message: string }> => {
+  try {
+    const res = await fetch(`${apiBase}/admin/assistant${path}`, { ...init, headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json', ...(init?.headers ?? {}) } });
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.success) return { ok: false, message: json?.error?.message ?? `The API answered ${res.status}.` };
+    return { ok: true, data: json.data as T };
+  } catch { return { ok: false, message: 'The API could not be reached.' }; }
+};
+
+let notice: { kind: 'success' | 'error'; text: string } | null = null;
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') ?? '');
+  if (action === 'takeover' || action === 'return') {
+    const r = await call(`/conversations/${id}/takeover`, { method: 'POST', body: JSON.stringify({ hours: action === 'takeover' ? Number(form.get('hours') || 24) : 0 }) });
+    notice = r.ok ? { kind: 'success', text: action === 'takeover' ? 'You have this conversation. On WhatsApp, Goldie stays quiet until then.' : 'Handed back to Goldie.' } : { kind: 'error', text: r.message };
+  } else if (action === 'outcome') {
+    const r = await call(`/conversations/${id}/outcome`, { method: 'POST', body: JSON.stringify({ outcome: String(form.get('outcome') ?? '') }) });
+    notice = r.ok ? { kind: 'success', text: 'Outcome saved.' } : { kind: 'error', text: r.message };
+  } else if (action === 'reply') {
+    const r = await call<{ sent: boolean; note?: string }>(`/conversations/${id}/reply`, { method: 'POST', body: JSON.stringify({ text: String(form.get('text') ?? '').trim() }) });
+    notice = r.ok ? { kind: 'success', text: r.data.sent ? 'Sent on WhatsApp. Goldie stays quiet for 24 hours.' : (r.data.note ?? 'Filed.') } : { kind: 'error', text: r.message };
+  }
+}
+
+interface Msg { id: string; role: 'customer' | 'goldie' | 'team'; content: string; intent: string | null; mood: string | null; route: string | null; createdAt: string }
+interface Conv { id: string; channel: string; contactName: string | null; contactPhone: string | null; contactEmail: string | null; customerId: string | null; firstTopic: string | null; lastTopic: string | null; worstMood: string; outcome: string; supportTicketId: string | null; page: string | null; messageCount: number; aiTurns: number; humanUntil: string | null; startedAt: string; lastMessageAt: string }
+const found = await call<{ conversation: Conv; messages: Msg[] }>(`/conversations/${id}`);
+const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { timeZone: 'Africa/Kampala', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const c = found.ok ? found.data.conversation : null;
+const teamHasIt = !!(c?.humanUntil && new Date(c.humanUntil) > new Date());
+---
+<AdminLayout title="Goldie conversation" description="One conversation with Goldie, and what the team can do next." activePath="/admin/assistant">
+  <div class="container mx-auto px-6 lg:px-8 max-w-4xl space-y-6">
+    <p class="text-sm"><a href="/admin/assistant/conversations" class="font-bold underline">All conversations</a></p>
+    {notice && <div role="status" class={`rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>}
+    {!found.ok && <div role="status" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{found.message}</div>}
+    {found.ok && c && (
+      <>
+        <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 grid gap-2 sm:grid-cols-2 text-sm">
+          <p><span class="text-gray-500">Customer:</span> <strong>{c.contactName ?? 'Not given'}</strong>{c.customerId && <span class="text-gray-500"> (signed in)</span>}</p>
+          <p><span class="text-gray-500">Reach them:</span> {c.contactPhone ? <a class="underline font-bold" href={`https://wa.me/${c.contactPhone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer">{c.contactPhone}</a> : '—'}{c.contactEmail && <> · <a class="underline font-bold" href={`mailto:${c.contactEmail}`}>{c.contactEmail}</a></>}</p>
+          <p><span class="text-gray-500">Channel:</span> {CHANNEL_LABEL[c.channel] ?? c.channel}{c.page && <span class="text-gray-500"> · from {c.page}</span>}</p>
+          <p><span class="text-gray-500">Topic:</span> {TOPIC_LABEL[c.lastTopic ?? c.firstTopic ?? ''] ?? 'Other'} · <span class="text-gray-500">Mood:</span> {MOOD_LABEL[c.worstMood] ?? c.worstMood} · <span class="text-gray-500">Outcome:</span> {OUTCOME_LABEL[c.outcome] ?? c.outcome}</p>
+          <p><span class="text-gray-500">Started:</span> {when(c.startedAt)} · <span class="text-gray-500">Last:</span> {when(c.lastMessageAt)}</p>
+          <p>{c.supportTicketId ? <a class="underline font-bold" href="/admin/support">Support ticket opened</a> : <span class="text-gray-500">No support ticket</span>}{teamHasIt && <span class="ml-2 text-indigo-700 font-bold">Team has it until {when(c.humanUntil!)}</span>}</p>
+        </section>
+
+        <section class="space-y-3" aria-label="Messages">
+          {found.data.messages.map((m) => (
+            <div class={`flex ${m.role === 'customer' ? 'justify-start' : 'justify-end'}`}>
+              <div class={`max-w-[85%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap ${m.role === 'customer' ? 'bg-white border border-gray-200' : m.role === 'team' ? 'bg-indigo-50 border border-indigo-200' : 'bg-lime-50 border border-lime-200'}`}>
+                <p class="text-[10px] uppercase font-black tracking-widest text-gray-500 mb-1">{m.role === 'customer' ? 'Customer' : m.role === 'team' ? 'Team' : 'Goldie'} · {when(m.createdAt)}{m.mood && m.role === 'customer' && m.mood !== 'neutral' ? ` · ${MOOD_LABEL[m.mood] ?? m.mood}` : ''}{m.route === 'ai' ? ' · model' : ''}</p>
+                {m.content}
+              </div>
+            </div>
+          ))}
+        </section>
+
+        <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 space-y-4 text-sm">
+          <h2 class="font-black">What next</h2>
+          <form method="post" class="grid gap-2">
+            <input type="hidden" name="action" value="reply" />
+            <label class="grid gap-1"><span class="font-bold">{c.channel === 'whatsapp' ? 'Reply on WhatsApp' : 'Add a note (website chats cannot receive replies here)'}</span><textarea name="text" rows="3" maxlength="2000" required class="rounded-lg border border-gray-300 px-3 py-2"></textarea></label>
+            <button class="justify-self-start rounded-full bg-brand-dark text-white font-bold px-4 py-2">{c.channel === 'whatsapp' ? 'Send' : 'File note'}</button>
+          </form>
+          <div class="flex flex-wrap gap-3 items-end">
+            {teamHasIt
+              ? <form method="post"><input type="hidden" name="action" value="return" /><button class="rounded-full border border-gray-300 font-bold px-4 py-2">Hand back to Goldie</button></form>
+              : <form method="post" class="flex gap-2 items-end"><input type="hidden" name="action" value="takeover" /><label class="grid gap-1"><span class="font-bold">Take it over for</span><select name="hours" class="rounded-lg border border-gray-300 px-2 py-2"><option value="4">4 hours</option><option value="24" selected>24 hours</option><option value="72">3 days</option></select></label><button class="rounded-full border border-gray-300 font-bold px-4 py-2">Take over</button></form>}
+            <form method="post" class="flex gap-2 items-end"><input type="hidden" name="action" value="outcome" /><label class="grid gap-1"><span class="font-bold">Outcome</span><select name="outcome" class="rounded-lg border border-gray-300 px-2 py-2">{Object.entries(OUTCOME_LABEL).map(([k, v]) => <option value={k} selected={c.outcome === k}>{v}</option>)}</select></label><button class="rounded-full border border-gray-300 font-bold px-4 py-2">Save</button></form>
+          </div>
+        </section>
+      </>
+    )}
+  </div>
+</AdminLayout>

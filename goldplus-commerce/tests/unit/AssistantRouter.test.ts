@@ -92,7 +92,7 @@ describe('assistant router: deterministic answers come from shop data', () => {
   it('orders and warranty are routed to the existing pages; nothing is approved or looked up in chat', async () => {
     const { answerDeterministically, classify } = await import('../../apps/web/src/lib/assistantRouter');
     const order = await answerDeterministically(classify('where is my order?'));
-    expect(order.text).toMatch(/do not open orders in this chat/);
+    expect(order.text).toMatch(/Track my order shows your order/);
     expect(order.links.map((l) => l.url)).toContain('https://shopgoldplus.com/track-order');
     const warranty = await answerDeterministically(classify('my earbuds stopped working'));
     expect(warranty.text).toMatch(/nothing is approved in this chat/);

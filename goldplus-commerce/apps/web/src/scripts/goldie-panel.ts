@@ -50,7 +50,7 @@ export interface PanelContext {
 }
 export interface GoldiePanel { open: () => void; close: () => void; ask: (question: string) => Promise<void>; isOpen: () => boolean }
 
-const KEY = 'gp-assistant-turns', SEEN = 'gp-assistant-seen', HELLO = 'gp-goldie-welcome'; // not gp-goldie-hello: the launcher's wordmark glint owns that key
+const KEY = 'gp-assistant-turns', SEEN = 'gp-assistant-seen', CONV = 'gp-goldie-conv', HELLO = 'gp-goldie-welcome'; // not gp-goldie-hello: the launcher's wordmark glint owns that key
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function mountGoldie(root: HTMLElement, ctx: PanelContext): GoldiePanel {
@@ -87,8 +87,14 @@ export function mountGoldie(root: HTMLElement, ctx: PanelContext): GoldiePanel {
   const TOOL_STATUS: Record<string, string> = {
     search_products: 'checking the shelf…', get_product: 'reading the product page…', list_categories: 'checking the categories…',
     find_battery: 'running the battery finder…', store_info: 'checking the shop details…',
+    track_order: 'checking your order…', my_orders: 'checking your orders…', my_loyalty: 'checking your points…', quote_delivery: 'getting a delivery quote…',
   };
   const newId = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`);
+  // One id per conversation (this tab), so the team sees each chat as one thread; "Start over" begins a new one.
+  let conversationId = '';
+  try { conversationId = sessionStorage.getItem(CONV) || ''; } catch { conversationId = ''; }
+  const freshConversation = () => { conversationId = newId(); try { sessionStorage.setItem(CONV, conversationId); } catch { /* ignore */ } };
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(conversationId)) freshConversation();
 
   /** Text to DOM: minimal markdown (**bold**, "- " bullets), links only to this site (anything else stays plain text). */
   const render = (el: HTMLElement, text: string) => {
@@ -244,7 +250,7 @@ export function mountGoldie(root: HTMLElement, ctx: PanelContext): GoldiePanel {
   // Closing folds the panel back into the launcher where the browser can morph it; opening from the launcher does the same in ShopAssistant.
   const closeMorph = () => (ctx.morph ? ctx.morph(close, false) : close());
   closeBtn.addEventListener('click', closeMorph);
-  clearBtn.addEventListener('click', () => { turns = []; persist(); paint(); if (!ctx.narrow()) input.focus(); });
+  clearBtn.addEventListener('click', () => { turns = []; persist(); freshConversation(); paint(); if (!ctx.narrow()) input.focus(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !panel.hidden) closeMorph(); });
 
   const ask = async (question: string) => {
@@ -290,7 +296,7 @@ export function mountGoldie(root: HTMLElement, ctx: PanelContext): GoldiePanel {
     const timer = window.setInterval(tick, 40);
 
     try {
-      const res = await fetch(ctx.endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', 'X-Assistant-Request-Id': requestId }, credentials: 'same-origin', body: JSON.stringify({ messages: turns.slice(-12) }) });
+      const res = await fetch(ctx.endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', 'X-Assistant-Request-Id': requestId, 'X-Goldie-Conversation': conversationId }, credentials: 'same-origin', body: JSON.stringify({ messages: turns.slice(-12) }) });
       if (!res.ok || !res.body) {
         let msg = "I can't reach the shop right now. Try again in a moment, or message us on WhatsApp.";
         try { msg = (await res.json()).error?.message || msg; } catch { /* keep default */ }
@@ -401,7 +407,7 @@ export function mountGoldie(root: HTMLElement, ctx: PanelContext): GoldiePanel {
       if (!phone && !email) { note.textContent = 'Give a phone number or an email so the team can reply.'; return; }
       note.textContent = 'Passing it on…';
       const sendCopy = (f.elements.namedItem('copy') as HTMLInputElement).checked;
-      const r = await postJson('/api/assistant/handover', { name, phone, email, note: extra, sendCopy, turns });
+      const r = await postJson('/api/assistant/handover', { name, phone, email, note: extra, sendCopy, turns, conversationId });
       if (!r.ok) { note.textContent = r.message; return; }
       f.closest('.gp-assistant__formcard')?.remove();
       const how = phone ? `on ${phone}` : `by email at ${email}`;

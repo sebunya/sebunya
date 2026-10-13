@@ -37,6 +37,10 @@ import { DrizzleAssistantConfigRepository, DrizzleAssistantLedgerRepository } fr
 import { AssistantCounterStore } from './security/AssistantCounterStore';
 import { AssistantAdmissionUseCases } from '../application/use-cases/assistant/AssistantAdmissionUseCases';
 import { AssistantConversationUseCases } from '../application/use-cases/assistant/AssistantConversationUseCases';
+import { ConversationArchiveUseCases } from '../application/use-cases/assistant/ConversationArchiveUseCases';
+import { DrizzleAssistantConversationStore } from './assistant/DrizzleAssistantConversationStore';
+import { GoldieChannelUseCases } from '../application/use-cases/assistant/GoldieChannelUseCases';
+import { HttpGoldieBrain, WhatsAppCloudMessenger, goldieWhatsAppSettings } from './assistant/GoldieChannelAdapters';
 import { DrizzleAssistantContextReader, DrizzleAssistantMailOutbox, ZeroPartyAssistantInterestSink } from './assistant/AssistantConversationAdapters';
 import { XlsxSpreadsheetParser } from './batteries/XlsxSpreadsheetParser';
 import { BatteryCatalogueUseCases } from '../application/use-cases/batteries/BatteryCatalogueUseCases';
@@ -2701,6 +2705,23 @@ export class Registry {
   public readonly consentService = new ConsentService(this.consentRepo, this.measurementLogger);
   public readonly consentAwareMeasurementPolicy = new ConsentAwareMeasurementPolicy(this.consentService);
   public readonly captureZeroPartyDataUseCase = new CaptureZeroPartyDataUseCase(this.zpdRepo, this.measurementLogger, this.consentService);
+  /** Goldie's conversation archive (0177): every channel, every message, for the admin inbox and meetings. */
+  public readonly conversationArchiveUseCases = new ConversationArchiveUseCases(new DrizzleAssistantConversationStore());
+  /** Goldie on WhatsApp (and the admin inbox's team replies). Off until GOLDIE_WHATSAPP_ENABLED=true. */
+  public readonly goldieChannelUseCases = new GoldieChannelUseCases(
+    this.conversationArchiveUseCases,
+    new HttpGoldieBrain(),
+    new WhatsAppCloudMessenger(() => this.advertisingOps.whatsappAds.messagingToken()),
+    () => goldieWhatsAppSettings(),
+    (event, detail) => logger.warn(detail, event),
+  );
+  private readonly goldieListensToWhatsApp = (() => {
+    // Each customer message is handled on its own, after Meta has been answered.
+    this.advertisingOps.whatsappAds.onInboundText((messages) => {
+      for (const m of messages) void this.goldieChannelUseCases.handleWhatsApp(m);
+    });
+    return true;
+  })();
   /** Goldie beyond the answer: shopper context, Customer DNA interests, and chats passed on by email. */
   public readonly assistantConversationUseCases = new AssistantConversationUseCases(
     this.supportRepo,

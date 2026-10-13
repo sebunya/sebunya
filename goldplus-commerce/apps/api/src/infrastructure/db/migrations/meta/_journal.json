@@ -1233,6 +1233,13 @@
       "when": 1790140000053,
       "tag": "0176_product_market_event_trigger_array_fix",
       "breakpoints": true
+    },
+    {
+      "idx": 176,
+      "version": "5",
+      "when": 1790140000054,
+      "tag": "0177_assistant_conversations",
+      "breakpoints": true
     }
   ]
 }

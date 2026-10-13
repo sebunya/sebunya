@@ -38,3 +38,45 @@ export const assistantConfig = pgTable('assistant_config', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+/**
+ * Goldie conversation archive (0177): every channel, every message, with topic, mood and outcome
+ * for the admin inbox and the meeting summary. Text is redacted (cards, PINs, OTPs) before insert.
+ */
+export const assistantConversations = pgTable('assistant_conversations', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  channel: varchar('channel', { length: 20 }).notNull(),
+  channelKey: varchar('channel_key', { length: 128 }).notNull(),
+  customerId: uuid('customer_id'),
+  contactName: varchar('contact_name', { length: 120 }),
+  contactPhone: varchar('contact_phone', { length: 32 }),
+  contactEmail: varchar('contact_email', { length: 200 }),
+  firstTopic: varchar('first_topic', { length: 20 }),
+  lastTopic: varchar('last_topic', { length: 20 }),
+  worstMood: varchar('worst_mood', { length: 12 }).default('neutral').notNull(),
+  outcome: varchar('outcome', { length: 20 }).default('open').notNull(),
+  supportTicketId: uuid('support_ticket_id'),
+  page: text('page'),
+  messageCount: integer('message_count').default(0).notNull(),
+  aiTurns: integer('ai_turns').default(0).notNull(),
+  humanUntil: timestamp('human_until', { withTimezone: true }),
+  startedAt: timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
+  lastMessageAt: timestamp('last_message_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  lastIdx: index('assistant_conversations_last_idx').on(t.lastMessageAt),
+  customerIdx: index('assistant_conversations_customer_idx').on(t.customerId),
+}));
+
+export const assistantMessages = pgTable('assistant_messages', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  conversationId: uuid('conversation_id').notNull(),
+  role: varchar('role', { length: 12 }).notNull(),
+  content: text('content').notNull(),
+  intent: varchar('intent', { length: 20 }),
+  mood: varchar('mood', { length: 12 }),
+  route: varchar('route', { length: 16 }),
+  channelMessageId: varchar('channel_message_id', { length: 160 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  conversationIdx: index('assistant_messages_conversation_idx').on(t.conversationId, t.createdAt),
+}));

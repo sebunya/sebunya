@@ -358,3 +358,22 @@ export function dueExpiryNotices(earn: LoyaltyLedgerEntry, now: Date): string[] 
   if (msLeft <= 0) return [];
   return EXPIRY_NOTICE_KINDS.filter((n) => msLeft <= n.daysBefore * 24 * 3600 * 1000).map((n) => n.kind);
 }
+
+/**
+ * Where a customer stands among the active tiers, by the same rule EvaluateTiersUseCase assigns
+ * them (highest tier whose threshold the lifetime points reach). Read-only: what the customer is
+ * told (account, Goldie) can never disagree with the tier the nightly run will give them.
+ */
+export function tierStanding(
+  lifetime: number,
+  tiers: ReadonlyArray<{ code: string; name: string; thresholdLifetimePoints: number | null; rank: number }>,
+): { current: { code: string; name: string } | null; next: { code: string; name: string; pointsToGo: number } | null; lifetime: number } {
+  const ranked = tiers.filter((t) => t.thresholdLifetimePoints !== null).sort((a, b) => b.rank - a.rank);
+  const current = ranked.find((t) => lifetime >= (t.thresholdLifetimePoints as number)) ?? null;
+  const above = ranked.filter((t) => (t.thresholdLifetimePoints as number) > lifetime).sort((a, b) => (a.thresholdLifetimePoints as number) - (b.thresholdLifetimePoints as number))[0] ?? null;
+  return {
+    current: current ? { code: current.code, name: current.name } : null,
+    next: above ? { code: above.code, name: above.name, pointsToGo: (above.thresholdLifetimePoints as number) - lifetime } : null,
+    lifetime,
+  };
+}

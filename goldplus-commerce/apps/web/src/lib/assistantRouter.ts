@@ -3,6 +3,7 @@ import { getStorefrontCopy } from './storefrontCopy';
 import { SITE_ORIGIN } from './sitemap';
 import { callTool, type Json } from './agentTools';
 import { TEAM_HANDOVER_PATH } from './goldieLinks';
+import { ORDER_REF, findContact, findOrderRef, myLoyalty, myOrders, quoteDelivery, trackOrder, type CareContext } from './goldieCare';
 
 /**
  * Deterministic first (mandate §3): the questions a shop answers the same way
@@ -12,7 +13,7 @@ import { TEAM_HANDOVER_PATH } from './goldieLinks';
  * The model is reserved for interpretation: trade-offs, suitability, anything
  * ambiguous. Every fact here comes from the same sources the pages render.
  */
-export type Intent = 'IDENTITY' | 'GREETING' | 'STORE' | 'DELIVERY' | 'PAYMENT' | 'ORDER' | 'POLICY' | 'BULK' | 'BATTERY' | 'PRODUCT' | 'UNKNOWN';
+export type Intent = 'IDENTITY' | 'LOYALTY' | 'GREETING' | 'STORE' | 'DELIVERY' | 'PAYMENT' | 'ORDER' | 'POLICY' | 'BULK' | 'BATTERY' | 'PRODUCT' | 'UNKNOWN';
 
 export interface Classification {
   intent: Intent;
@@ -44,6 +45,8 @@ export function classify(raw: string): Classification {
   // "Are you a real person?": always the same honest answer, never left to the model.
   if (/\b(are you (a |an )?(real|human|person|people|bot|robot|machine|computer|ai)|is (this|it|goldie) (a )?(real person|human|person|bot|robot|machine)|am i (talking|chatting|speaking|texting) (to|with) (a )?(real person|real|human|person|bot|robot|machine|someone)|who am i (talking|chatting|speaking) (to|with)|who are you|what are you)\b/.test(t)) return { intent: 'IDENTITY', deterministic: true, query: '' };
   if (short && /^(hi|hello|hey|yo|good (morning|afternoon|evening)|thanks|thank you|ok(ay)?|cool|sure)\b[!. ]*$/.test(t)) return { intent: 'GREETING', deterministic: true, query: '' };
+  if (ORDER_REF.test(text)) return { intent: 'ORDER', deterministic: true, query: '' };
+  if (/\b(my )?(loyalty|reward points|my points|points balance|how many points|my tier|tier|friends ?(&|and) ?family (points|rewards))\b/.test(t) && !/\b(charging|power) points?\b/.test(t)) return { intent: 'LOYALTY', deterministic: true, query: '' };
   if (/\b(track|tracking|status of|where is|where's|wheres)\b[^.?]*\border\b|\border (status|number|ref|reference)\b|\bmy order\b|\bdelivered yet\b|\b(show|check|find|see|open|look up)\b[^.?]*\border\b/.test(t)) return { intent: 'ORDER', deterministic: true, query: '' };
   if (/\b(pay|payment|paid|paying|mobile money|momo|mtn|airtel|pesapal|visa|mastercard|(credit|debit|bank) ?card|card payment|(pay|paying|paid) (by|with|using) (a |my )?card|cash on delivery|refund me|my refund|refund (status|arrive|arrived|when)|pin|otp)\b/.test(t) && !/\b(refund policy|return)\b/.test(t)) return { intent: 'PAYMENT', deterministic: true, query: '' };
   if (/\b(bulk|wholesale|quotation|quote|for (my|the|our) (office|school|shop|company|business))\b/.test(t) || /\b(\d{2,}|fifty|hundred) (power ?banks|chargers|cables|units|pieces|pcs)\b/.test(t)) return { intent: 'BULK', deterministic: true, query: '' };
@@ -85,7 +88,10 @@ function cardsFromProducts(list: unknown): ProductCard[] {
   }).filter((c) => c.name && c.url.startsWith(SITE_ORIGIN));
 }
 
-export async function answerDeterministically(c: Classification): Promise<DeterministicAnswer> {
+/** What a care answer needs: who is asking (session, address) and the conversation (for an order reference and contact typed earlier). */
+export interface CareInput { care: CareContext; turns: ReadonlyArray<{ role: 'user' | 'assistant'; content: string }> }
+
+export async function answerDeterministically(c: Classification, ci?: CareInput): Promise<DeterministicAnswer> {
   const biz = await getBusinessInfo();
   const wa: Link = { label: 'Chat on WhatsApp', url: biz.whatsappUrl };
   const link = (label: string, path: string): Link => ({ label, url: `${SITE_ORIGIN}${path}` });
@@ -107,6 +113,12 @@ export async function answerDeterministically(c: Classification): Promise<Determ
       const out = await callTool('store_info', {});
       const s = structured(out);
       const elsewhere = /\b(mbarara|gulu|jinja|mbale|lira|arua|fort portal|masaka|soroti|hoima|kabale|upcountry|up-country|outside kampala)\b/i.test(c.query);
+      // A named place: the real quote from the one quoting service, not a general sentence.
+      const place = c.query.toLowerCase().match(PLACES)?.[0];
+      if (ci && place && !/^my /.test(place)) {
+        const q = await quoteDelivery(place.replace(/\b\w/g, (m) => m.toUpperCase()), ci.care);
+        if (q.ok) return { intent: c.intent, text: q.text, products: [], links: [...q.links, wa] };
+      }
       const text = `Yes, we deliver. ${String(s.delivery ?? biz.deliveryNote)} An estimated delivery fee for your address is shown at checkout before you pay and confirmed before the rider leaves.${elsewhere ? ' For places outside Kampala and Wakiso, message us on WhatsApp first and we will tell you what is possible.' : ''}`;
       return { intent: c.intent, text, products: [], links: [link('Delivery in Kampala and Wakiso', '/delivery/kampala-wakiso'), wa] };
     }
@@ -115,8 +127,19 @@ export async function answerDeterministically(c: Classification): Promise<Determ
       const text = `You can pay two ways at checkout. ${copy.pesapal.label}: ${copy.pesapal.description} Or ${copy.offline.label.toLowerCase()}: ${copy.offline.description} One thing to know: we never ask for your PIN or OTP in this chat, and I cannot confirm a payment from here. If money left your phone and the order still says pending, send us the order reference on WhatsApp and a person will sort it out.`;
       return { intent: c.intent, text, products: [], links: [link('Payment questions', '/faq'), wa] };
     }
-    case 'ORDER':
-      return { intent: c.intent, text: 'Let me point you to the right place. Track my order shows your order with the reference and the phone number or email you used at checkout. I do not open orders in this chat, so your details stay private. For anything else about the order, the team will sort it out on WhatsApp or by email.', products: [], links: [link('Track my order', '/track-order'), wa, team] };
+    case 'ORDER': {
+      if (!ci) return { intent: c.intent, text: 'Track my order shows your order with the reference and the phone number or email you used at checkout. For anything else about the order, the team will sort it out on WhatsApp or by email.', products: [], links: [link('Track my order', '/track-order'), wa, team] };
+      const ref = findOrderRef(ci.turns), contact = findContact(ci.turns) ?? (ci.care.verifiedPhone ? `+${ci.care.verifiedPhone}` : null);
+      if (ref && contact) { const a = await trackOrder(ref, contact, ci.care); return { intent: c.intent, text: a.text, products: [], links: [...a.links, ...(a.ok ? [] : [wa])] }; }
+      if (!ref && (ci.care.bearer || ci.care.verifiedPhone)) { const a = await myOrders(ci.care); return { intent: c.intent, text: a.text, products: [], links: a.links }; }
+      if (ref) return { intent: c.intent, text: `Thanks, I have ${ref}. To keep your order private, what is the phone number or email you used at checkout?`, products: [], links: [] };
+      return { intent: c.intent, text: 'Send me your order reference (it starts with GP- and is in your order SMS or email) and the phone number or email you used at checkout, and I will check it now. If you are signed in, I can see your orders straight away.', products: [], links: [link('Sign in', '/login?returnTo=/account/orders')] };
+    }
+    case 'LOYALTY': {
+      if (!ci) return { intent: c.intent, text: 'Your points, tier and what expires next are on your rewards page once you sign in.', products: [], links: [link('My rewards', '/account/loyalty')] };
+      const a = await myLoyalty(ci.care);
+      return { intent: c.intent, text: a.text, products: [], links: a.links };
+    }
     case 'POLICY': {
       if (/\b(fake|genuine|original|verify|verification|authentic|counterfeit)\b/i.test(c.query)) {
         return { intent: c.intent, text: 'Every GoldPlus product has a code under the hologram on the pack. Enter it on the verification page and it tells you straight away. That page is the check, not this chat. If you think you were sold a fake, report it and we will follow up.', products: [], links: [link('Verify a product', '/verification'), link('Report a fake', '/support/fake'), wa] };

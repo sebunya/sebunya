@@ -90,7 +90,7 @@ describe('assistant engine', () => {
     expect(body.output_config).toEqual({ effort: 'low' });
     expect(body.max_tokens).toBe(1024);
     expect(body.system[0].cache_control).toEqual({ type: 'ephemeral' });
-    expect(body.tools.map((t: any) => t.name)).toEqual(['search_products', 'get_product', 'list_categories', 'find_battery', 'store_info']);
+    expect(body.tools.map((t: any) => t.name)).toEqual(['search_products', 'get_product', 'list_categories', 'find_battery', 'store_info', 'track_order', 'my_orders', 'my_loyalty', 'quote_delivery']);
   });
 
   it('names the workspace only when an organisation-scoped key needs it', async () => {

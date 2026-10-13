@@ -7,7 +7,7 @@ import { apiBase } from '../../lib/api';
  * Shop assistant operations: this month's spend against the cap, ledger
  * counts, the policy (budget, fairness, abuse ceilings, model) and the two
  * switches. Reads need analytics.read; saving needs settings.manage (the API
- * enforces both). No transcript is stored anywhere, so none is shown here.
+ * enforces both). Conversations themselves are at /admin/assistant/conversations.
  */
 export const prerender = false;
 const token = readSessionToken(Astro.request);
@@ -59,6 +59,7 @@ const pct = status.ok && c ? Math.min(100, Math.round(((t!.settledMicroUsd + t!.
 ---
 <AdminLayout title="Shop assistant" description="Spend this month, the policy that keeps it inside the cap, and the two switches." activePath="/admin/assistant">
   <div class="container mx-auto px-6 lg:px-8 max-w-5xl space-y-8">
+    <p class="text-sm"><a href="/admin/assistant/conversations" class="font-bold underline">Goldie conversations</a>: every chat on the website and WhatsApp, with the meeting summary.</p>
     {notice && <div role="status" class={`rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>}
     {!status.ok && <div role="status" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{status.message}</div>}
 

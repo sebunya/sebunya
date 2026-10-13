@@ -118,7 +118,9 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
     // redirect target admin/advertising/spotify/callback, 2026-10-06).
     // 183: +1 for the shop assistant operations page (admin/assistant: month
     // spend, policy, kill switch; docs/ai-cx, 2026-10-12).
-    expect(adminPages).toHaveLength(183);
+    // 185: +2 for Goldie's conversation archive (admin/assistant/conversations
+    // list with the meeting summary, and conversations/[id] thread, 2026-10-13).
+    expect(adminPages).toHaveLength(185);
     expect(adminPages[0]).toBe('apps/web/src/pages/admin/advertising.astro');
     expect(adminPages.at(-1)).toBe('apps/web/src/pages/admin/verification/index.astro');
   });
@@ -136,7 +138,7 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
 
   it('fails closed for every non-allowlisted admin Astro page', () => {
     const protectedPages = adminPages.filter((page) => !publicAllowlist.includes(page as typeof publicAllowlist[number]));
-    expect(protectedPages).toHaveLength(182);
+    expect(protectedPages).toHaveLength(184); // +2 Goldie conversations list and thread (2026-10-13)
     for (const page of protectedPages) {
       const source = read(page);
       expect(source, `${page} must use the server-side session contract`).toContain('readSessionToken(Astro.request)');
@@ -182,7 +184,8 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
     // 26: +1 for the customer workspace detail page.
     // 29: +1 for one quote request's detail page (admin/quotes/[id]).
     // 30: +1 for the Customer 360 (admin/customer-360/[id], first-party data).
-    expect(dynamicPages).toHaveLength(30); // +2 Focus 4: products/[id]/media, media/imports/[id]
+    // 31: +1 for one Goldie conversation (admin/assistant/conversations/[id]).
+    expect(dynamicPages).toHaveLength(31); // +2 Focus 4: products/[id]/media, media/imports/[id]
     for (const page of dynamicPages) {
       expect(read(page), `${page} requires source-level protection`).toContain('readSessionToken(Astro.request)');
     }

@@ -36,7 +36,7 @@ export function recordInterest(who: ShopperIdentity, interest: { intent: string;
   void call('/interest', { ...who, ...interest }, 3000);
 }
 
-export const handOver = (body: { userId: string | null; name: string | null; phone: string | null; email: string | null; note: string | null; page: string | null; sendCopy: boolean; turns: unknown[] }) =>
+export const handOver = (body: { userId: string | null; conversationId?: string | null; name: string | null; phone: string | null; email: string | null; note: string | null; page: string | null; sendCopy: boolean; turns: unknown[] }) =>
   call<{ ticketId: string; copySent: boolean }>('/handover', body, 6000);
 
 export const emailTranscript = (body: { email: string; firstName: string | null; requestId: string; turns: unknown[] }) =>
@@ -49,4 +49,9 @@ export const emailTranscript = (body: { email: string; firstName: string | null;
 export function interestTopic(query: string, raw: string): string {
   const base = (query || raw).replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, ' ').replace(/\+?\d[\d\s-]{6,}\d/g, ' ').replace(/\s+/g, ' ').trim();
   return base.slice(0, 80);
+}
+
+/** Files one website turn in the conversation archive (0177). Fire-and-forget: the archive never slows or breaks a reply. */
+export function logTurn(body: { conversationId: string; userId: string | null; page: string | null; customer: string; goldie: string | null; intent: string; mood: string; route: string }): void {
+  void call('/log', { ...body, customer: body.customer.slice(0, 4000), goldie: body.goldie ? body.goldie.slice(0, 8000) : null }, 4000);
 }

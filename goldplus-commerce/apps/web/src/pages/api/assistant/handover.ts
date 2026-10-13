@@ -24,7 +24,8 @@ export const POST: APIRoute = async ({ request, cookies, locals }) => {
   let page: string | null = null;
   try { const u = new URL(request.headers.get('referer') ?? ''); if (u.origin === new URL(request.url).origin) page = u.pathname; } catch { page = null; }
   const userId = await requestUserId(locals as { gpUserId?: string | null }, cookies).catch(() => null);
-  const r = await handOver({ userId, name: str(b.name, 80), phone: str(b.phone, 30), email: str(b.email, 200), note: str(b.note, 500), page, sendCopy: b.sendCopy !== false, turns: b.turns.slice(-40) });
+  const conversationId = typeof b.conversationId === 'string' && /^[A-Za-z0-9_-]{8,64}$/.test(b.conversationId) ? b.conversationId : null;
+  const r = await handOver({ userId, conversationId, name: str(b.name, 80), phone: str(b.phone, 30), email: str(b.email, 200), note: str(b.note, 500), page, sendCopy: b.sendCopy !== false, turns: b.turns.slice(-40) });
   if (r.ok) return json({ success: true, data: { copySent: r.data.copySent } }, 200);
   return json({ success: false, error: { code: r.code, message: r.message } }, r.status >= 500 ? 503 : 400);
 };
