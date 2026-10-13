@@ -9,9 +9,11 @@ interface Props {
   url: string;
   /** The campaign sale price the page is showing, when one is running. */
   priceUgx?: number | null;
+  /** AggregateRating from published, verified-purchase reviews; omitted when there are none. */
+  aggregateRating?: Record<string, unknown> | null;
 }
 
-const { product, url, priceUgx } = Astro.props;
+const { product, url, priceUgx, aggregateRating } = Astro.props;
 
 const availabilityUrl: Record<string, string | null> = {
   in_stock: 'https://schema.org/InStock',
@@ -89,6 +91,9 @@ if (product.retailPriceUgx !== null) {
   if (availUrl) offers.availability = availUrl;
   node.offers = offers;
 }
+
+// Stars in search results only from real, published ratings (never from zero, never invented).
+if (aggregateRating) node.aggregateRating = aggregateRating;
 
 // Two-space indent is fine; crawlers don't care. Keep newlines out of inline script.
 const jsonText = JSON.stringify(node);

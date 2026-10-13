@@ -73,7 +73,8 @@ suite('reviews (real PostgreSQL, U3)', () => {
 
   it('computes verified purchase for the owning customer of a delivered order', async () => {
     const product = await mkProduct();
-    const orderItem = await mkOrderWithItem('+256700333444', 'completed', product);
+    // 'delivered' is where a door delivery ENDS (OrderStateMachine); this test used 'completed' and hid that delivered buyers were never verified.
+    const orderItem = await mkOrderWithItem('+256700333444', 'delivered', product);
     const ok = await submit.execute({ productId: product, orderItemId: orderItem, customerPhone: '+256 700-333-444', rating: 4, body: 'solid' });
     expect(ok.ok && ok.isVerifiedPurchase).toBe(true);
   });

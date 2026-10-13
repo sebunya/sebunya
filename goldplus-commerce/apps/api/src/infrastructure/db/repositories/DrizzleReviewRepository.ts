@@ -1,8 +1,8 @@
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { reviews, productRatingAggregate } from '../schema/reviews';
 import { orders, orderItems } from '../schema/commerce';
-import { IReviewRepository, InsertReviewInput, ReviewStatus } from '../../../application/ports/IReviewRepository';
+import { IReviewRepository, InsertReviewInput, PublicReview, ReviewStatus } from '../../../application/ports/IReviewRepository';
 import { RatingAggregate, computeRatingAggregate } from '../../../domain/reviews/ReviewDomain';
 
 export class DrizzleReviewRepository implements IReviewRepository {
@@ -110,5 +110,33 @@ export class DrizzleReviewRepository implements IReviewRepository {
       average: row.ratingAverage == null ? null : Number(row.ratingAverage),
       distribution: (row.distribution ?? {}) as Record<string, number>,
     };
+  }
+
+  async findOrderLineId(orderNumber: string, productId: string): Promise<string | null> {
+    const rows = await db
+      .select({ id: orderItems.id })
+      .from(orderItems)
+      .innerJoin(orders, eq(orders.id, orderItems.orderId))
+      .where(and(eq(orders.orderNumber, orderNumber), eq(orderItems.productId, productId)))
+      .limit(1);
+    return rows.length ? rows[0].id : null;
+  }
+
+  async reviewedProductIds(customerIdentityHash: string, productIds: string[]): Promise<Set<string>> {
+    if (productIds.length === 0) return new Set();
+    const rows = await db
+      .select({ productId: reviews.productId })
+      .from(reviews)
+      .where(and(eq(reviews.customerIdentityHash, customerIdentityHash), inArray(reviews.productId, productIds)));
+    return new Set(rows.map((r) => r.productId));
+  }
+
+  async listPublished(productId: string, limit: number): Promise<PublicReview[]> {
+    return db
+      .select({ id: reviews.id, rating: reviews.rating, title: reviews.title, body: reviews.body, isVerifiedPurchase: reviews.isVerifiedPurchase, createdAt: reviews.createdAt })
+      .from(reviews)
+      .where(and(eq(reviews.productId, productId), eq(reviews.status, 'published')))
+      .orderBy(desc(reviews.createdAt))
+      .limit(Math.max(1, Math.min(limit, 50)));
   }
 }

@@ -1,5 +1,5 @@
 import { IReviewRepository, ReviewStatus } from '../../ports/IReviewRepository';
-import { detectReviewPii } from '../../../domain/reviews/ReviewDomain';
+import { REVIEWABLE_ORDER_STATUSES, detectReviewPii } from '../../../domain/reviews/ReviewDomain';
 import { hashCustomerPhoneIdentity } from '../../../domain/pricing/CustomerIdentity';
 
 export interface SubmitReviewInput {
@@ -38,8 +38,8 @@ export class SubmitReviewUseCase {
       // AC1 — an order line owned by a DIFFERENT customer is rejected outright.
       const orderIdentity = hashCustomerPhoneIdentity(line.orderPhone, this.pepper);
       if (orderIdentity !== identityHash) return { ok: false, reason: 'ORDER_NOT_OWNED' };
-      // Verified only when the owning order is delivered (completed).
-      isVerifiedPurchase = line.orderStatus === 'completed';
+      // Verified only when the buyer has the goods: delivered (door) or completed (collection).
+      isVerifiedPurchase = REVIEWABLE_ORDER_STATUSES.has(line.orderStatus);
     }
 
     const pii = detectReviewPii(input.title, input.body);
