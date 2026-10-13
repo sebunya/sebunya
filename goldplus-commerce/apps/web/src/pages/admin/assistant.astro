@@ -7,7 +7,7 @@ import { apiBase } from '../../lib/api';
  * Shop assistant operations: this month's spend against the cap, ledger
  * counts, the policy (budget, fairness, abuse ceilings, model) and the two
  * switches. Reads need analytics.read; saving needs settings.manage (the API
- * enforces both). No transcript is stored anywhere, so none is shown here.
+ * enforces both). Conversations themselves are at /admin/assistant/conversations.
  */
 export const prerender = false;
 const token = readSessionToken(Astro.request);
@@ -59,6 +59,7 @@ const pct = status.ok && c ? Math.min(100, Math.round(((t!.settledMicroUsd + t!.
 ---
 <AdminLayout title="Shop assistant" description="Spend this month, the policy that keeps it inside the cap, and the two switches." activePath="/admin/assistant">
   <div class="container mx-auto px-6 lg:px-8 max-w-5xl space-y-8">
+    <p class="text-sm"><a href="/admin/assistant/conversations" class="font-bold underline">Goldie conversations</a>: every chat on the website and WhatsApp, with the meeting summary. <a href="/admin/assistant/answers" class="font-bold underline">Teach Goldie</a>: what her answers cost and the answers she remembers.</p>
     {notice && <div role="status" class={`rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>}
     {!status.ok && <div role="status" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{status.message}</div>}
 
@@ -116,7 +117,7 @@ const pct = status.ok && c ? Math.min(100, Math.round(((t!.settledMicroUsd + t!.
 
     {status.ok && status.data.recent.length > 0 && (
       <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6">
-        <h2 class="text-sm font-black uppercase tracking-widest text-gray-500">Recent paid turns (no transcript is kept)</h2>
+        <h2 class="text-sm font-black uppercase tracking-widest text-gray-500">Recent paid turns (the words are in <a href="/admin/assistant/conversations" class="underline">Conversations</a>)</h2>
         <table class="mt-3 w-full text-xs"><thead><tr class="text-left text-gray-500"><th class="py-1">When (UTC)</th><th>Status</th><th>Model</th><th class="text-right">Reserved</th><th class="text-right">Settled</th><th>Outcome</th></tr></thead>
           <tbody>{status.data.recent.map((r) => (<tr class="border-t border-gray-100"><td class="py-1 font-mono">{r.createdAt.replace('T', ' ').slice(0, 19)}</td><td>{r.status}</td><td class="font-mono">{r.model}</td><td class="text-right tabular-nums">{usd(r.reservedMicroUsd)}</td><td class="text-right tabular-nums">{r.settledMicroUsd == null ? '—' : usd(r.settledMicroUsd)}</td><td>{r.outcome ?? '—'}</td></tr>))}</tbody></table>
       </section>

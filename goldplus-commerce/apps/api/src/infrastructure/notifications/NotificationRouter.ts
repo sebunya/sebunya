@@ -325,6 +325,49 @@ export class DefaultNotificationRouter implements INotificationRouter {
         break;
       }
 
+      // Goldie (site chat), pre-rendered in the domain (ChatTranscript): the handover goes
+      // to the shop's configured order inbox (same recipients as the new-order email);
+      // the transcript goes only to the address the customer typed for their own copy.
+      case 'GOLDIE_HANDOVER': {
+        const { recipients } = parseAdminRecipients(process.env.ADMIN_ORDER_NOTIFICATION_EMAILS || process.env.OPS_ALERT_EMAIL);
+        for (const recipient of recipients) {
+          targets.push({
+            channel: 'email',
+            provider: this.emailProvider,
+            payload: { recipient, template: 'GOLDIE_HANDOVER', data: { subject: payload.subject, text: payload.text, html: payload.html, replyTo: payload.replyTo, replyToName: payload.replyToName }, relatedEntity: 'support_issue', relatedEntityId },
+          });
+        }
+        break;
+      }
+      // Care Desk alerts (0178): to a team member's own phone or inbox, when Goldie opens an urgent task.
+      case 'CARE_ALERT_SMS': {
+        const recipient = typeof payload.recipient === 'string' ? payload.recipient : '';
+        const message = typeof payload.message === 'string' ? payload.message : '';
+        if (recipient && message) targets.push({ channel: 'sms', provider: this.smsProvider, payload: { recipient, template: 'CARE_ALERT', data: { message }, relatedEntity: 'care_task', relatedEntityId } });
+        break;
+      }
+      case 'CARE_ALERT_EMAIL': {
+        const recipient = typeof payload.recipient === 'string' ? payload.recipient : '';
+        if (recipient) targets.push({ channel: 'email', provider: this.emailProvider, payload: { recipient, template: 'CARE_ALERT_EMAIL', data: { subject: payload.subject, text: payload.text, html: payload.html }, relatedEntity: 'care_task', relatedEntityId } });
+        break;
+      }
+      case 'CARE_REPLY_EMAIL': {
+        const recipient = typeof payload.recipient === 'string' ? payload.recipient.trim() : '';
+        if (recipient) targets.push({ channel: 'email', provider: this.emailProvider, payload: { recipient, template: 'CARE_REPLY_EMAIL', data: { subject: payload.subject, text: payload.text, html: payload.html }, relatedEntity: 'assistant_chat', relatedEntityId } });
+        break;
+      }
+      case 'GOLDIE_TRANSCRIPT': {
+        const recipient = typeof payload.recipient === 'string' ? payload.recipient.trim() : '';
+        if (recipient) {
+          targets.push({
+            channel: 'email',
+            provider: this.emailProvider,
+            payload: { recipient, template: 'GOLDIE_TRANSCRIPT', data: { subject: payload.subject, text: payload.text, html: payload.html }, relatedEntity: 'assistant_chat', relatedEntityId },
+          });
+        }
+        break;
+      }
+
       case 'FAKE_PRODUCT_REPORTED':
         if (opsEmail) {
           targets.push({

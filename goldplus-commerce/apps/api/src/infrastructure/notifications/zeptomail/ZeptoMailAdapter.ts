@@ -233,8 +233,8 @@ export class ZeptoMailAdapter implements INotificationProvider {
       subject = designed.subject;
       htmlContent = designed.html;
       textContent = designed.text;
-    } else if (payload.template === 'ADMIN_ORDER_EMAIL' && typeof payload.data?.html === 'string') {
-      // Pre-rendered admin order email (already escaped in the pure domain).
+    } else if ((payload.template === 'ADMIN_ORDER_EMAIL' || payload.template === 'GOLDIE_HANDOVER' || payload.template === 'GOLDIE_TRANSCRIPT' || payload.template === 'CARE_ALERT_EMAIL' || payload.template === 'CARE_REPLY_EMAIL') && typeof payload.data?.html === 'string') {
+      // Pre-rendered in the pure domain (already escaped): the admin order email and Goldie's chat emails.
       subject = String(payload.data.subject || subject);
       htmlContent = String(payload.data.html);
       textContent = String(payload.data.text || subject);
@@ -299,10 +299,10 @@ export class ZeptoMailAdapter implements INotificationProvider {
           },
         ],
         reply_to: [
-          {
-            address: replyTo,
-            name: fromName,
-          },
+          // A Goldie handover that carries the customer's email: the shop's Reply goes straight to them.
+          payload.template === 'GOLDIE_HANDOVER' && typeof payload.data?.replyTo === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.data.replyTo)
+            ? { address: payload.data.replyTo, name: String(payload.data?.replyToName || 'Customer') }
+            : { address: replyTo, name: fromName },
         ],
         subject: subject,
         htmlbody: htmlContent,

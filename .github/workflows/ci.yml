@@ -193,6 +193,11 @@ jobs:
       NODE_ENV: development
       E2E_WEB_BASE: http://127.0.0.1:4321
       E2E_API_BASE: http://127.0.0.1:3000
+      # Goldie's widget renders only with a model key (as in production). A placeholder key plus a closed local
+      # model URL: the real widget is tested, nothing reaches Anthropic, and model turns take the fallback path.
+      ANTHROPIC_API_KEY: ci-placeholder-not-a-key
+      ANTHROPIC_MESSAGES_URL: http://127.0.0.1:9/v1/messages
+      INTERNAL_API_KEY: ci-only-internal-key-000000000000000000000
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4, pinned 2026-10-07
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4, pinned 2026-10-07

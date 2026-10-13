@@ -142,6 +142,19 @@ function plainContacts(values: Array<{ email?: unknown; phone?: unknown }>): { e
   return { emails: [...emails], phoneDigits: [...phoneDigits] };
 }
 
+/**
+ * Goldie (site chat and WhatsApp, 0177-0178): the customer's conversations are theirs by account, or by a
+ * phone or email they gave Goldie. A field inside a jsonb column written through Drizzle is double-encoded
+ * (a JSON string), so support metadata is read in either form.
+ */
+const jsonField = (col: string, field: string) => sql.raw(`coalesce(${col}->>'${field}', case when jsonb_typeof(${col}) = 'string' then (${col} #>> '{}')::jsonb->>'${field}' end)`);
+async function goldieConversationIds(exec: typeof db, userId: string, plain: { emails: string[]; phoneDigits: string[] }): Promise<string[]> {
+  const r = rows(await exec.execute(sql`select id from assistant_conversations where customer_id = ${userId}::uuid
+    or ${plain.phoneDigits.length ? phoneIn(sql.raw('contact_phone'), plain.phoneDigits) : sql`false`}
+    or ${plain.emails.length ? emailIn(sql.raw('contact_email'), plain.emails) : sql`false`}`));
+  return r.map((x) => String(x.id));
+}
+
 const phoneIn = (col: SQL, digits: string[]) => pgInTextList(sql`regexp_replace(coalesce(${col}, ''), '\\D', '', 'g')`, digits);
 const emailIn = (col: SQL, emails: string[]) => pgInTextList(sql`lower(trim(coalesce(${col}, '')))`, emails);
 const HASH_SCAN_PAGE = 2000;
@@ -247,6 +260,22 @@ export class DrizzlePersonalDataExporter implements IPersonalDataExporter {
       join loyalty_accounts a on a.id = e.account_id where a.user_id = ${userId}::uuid order by e.created_at`));
     const support = rows(await db.execute(sql`
       select subject, description, status, type, created_at from support_issues where customer_id = ${userId}::uuid order by created_at`));
+    // Goldie: every conversation that is theirs, its messages, the Care Desk tasks about it, and what they asked about.
+    const goldieIds = await goldieConversationIds(db, userId, plain);
+    const goldieConversations = goldieIds.length ? rows(await db.execute(sql`
+      select id, channel, started_at, last_message_at, outcome, csat, contact_name, contact_phone, contact_email from assistant_conversations
+      where id in (${uuidList(goldieIds)}) order by started_at`)) : [];
+    const goldieMessages = goldieIds.length ? rows(await db.execute(sql`
+      select conversation_id, role, content, created_at from assistant_messages where conversation_id in (${uuidList(goldieIds)}) order by created_at limit 5000`)) : [];
+    const goldieTasks = rows(await db.execute(sql`
+      select kind, title, status, created_at, resolved_at from care_tasks
+      where ${goldieIds.length ? sql`conversation_id in (${uuidList(goldieIds)})` : sql`false`}
+        or ${plain.phoneDigits.length ? phoneIn(sql.raw('customer_phone'), plain.phoneDigits) : sql`false`}
+        or ${plain.emails.length ? emailIn(sql.raw('customer_email'), plain.emails) : sql`false`}
+      order by created_at`));
+    const goldieInterests = rows(await db.execute(sql`
+      select ${jsonField('payload', 'topic')} as topic, captured_at from zero_party_signals
+      where user_id = ${userId}::uuid and source_component = 'goldie_chat' order by captured_at`));
     const tracking = rows(await db.execute(sql`
       select analytics_granted, advertising_granted, personalization_granted, last_grant_type, updated_at
       from consent_current_state where user_id = ${userId}::uuid`));
@@ -295,6 +324,13 @@ export class DrizzlePersonalDataExporter implements IPersonalDataExporter {
           return a ? { source: a.source, medium: a.medium, campaign: a.campaign, landingPage: a.landing_path, referrer: a.referrer, firstVisit: iso(a.first_at), ipAddress: a.client_ip, browser: a.user_agent } : null;
         })(),
       })),
+      goldieChats: goldieConversations.map((c) => ({
+        channel: c.channel, startedAt: iso(c.started_at), lastMessageAt: iso(c.last_message_at), outcome: c.outcome, yourRating: c.csat ?? null,
+        name: c.contact_name ?? null, phone: c.contact_phone ?? null, email: c.contact_email ?? null,
+        messages: goldieMessages.filter((m) => String(m.conversation_id) === String(c.id)).map((m) => ({ from: m.role === 'customer' ? 'you' : m.role === 'team' ? 'GoldPlus team' : 'Goldie', text: m.content, at: iso(m.created_at) })),
+      })),
+      goldieFollowUps: goldieTasks.map((t) => ({ kind: t.kind, title: t.title, status: t.status, openedAt: iso(t.created_at), closedAt: t.resolved_at ? iso(t.resolved_at) : null })),
+      goldieInterests: goldieInterests.map((i) => ({ topic: i.topic, at: iso(i.captured_at) })),
       quoteRequests: quotes.map((q) => ({
         reference: q.reference, name: q.customer_name, email: q.email, phone: q.phone, business: q.business_name,
         product: q.product_name, quantity: q.quantity, message: q.message, status: q.status, deliveryDistrict: q.delivery_district, createdAt: iso(q.created_at),
@@ -437,6 +473,26 @@ export class DrizzlePersonalDataEraser implements IPersonalDataEraser {
         update battery_requests set contact_name = null, contact_phone = null, notes = null where id in (${uuidList(batteryReqs)})`)) : 0;
       counts.supportRequests = affected(await exec.execute(sql`
         update support_issues set description = ${REMOVED_TEXT}, metadata = '{}'::jsonb where customer_id = ${input.userId}::uuid`));
+
+      // Goldie: conversations (their messages go with them), Care Desk tasks, chat interests, guest handover tickets
+      // that carry their phone or email, and the chat copies and handover emails queued to them.
+      const goldieIds = await goldieConversationIds(exec, input.userId, plain);
+      const byPhone = (col: string) => (plain.phoneDigits.length ? phoneIn(sql.raw(col), plain.phoneDigits) : sql`false`);
+      const byEmail = (col: string) => (plain.emails.length ? emailIn(sql.raw(col), plain.emails) : sql`false`);
+      counts.goldieCareTasks = affected(await exec.execute(sql`
+        delete from care_tasks where ${goldieIds.length ? sql`conversation_id in (${uuidList(goldieIds)})` : sql`false`} or ${byPhone('customer_phone')} or ${byEmail('customer_email')}`));
+      counts.goldieConversations = goldieIds.length ? affected(await exec.execute(sql`delete from assistant_conversations where id in (${uuidList(goldieIds)})`)) : 0;
+      counts.goldieInterests = affected(await exec.execute(sql`
+        delete from zero_party_signals where user_id = ${input.userId}::uuid and source_component = 'goldie_chat'`));
+      counts.goldieHandoverTickets = affected(await exec.execute(sql`
+        update support_issues set description = ${REMOVED_TEXT}, metadata = '{}'::jsonb
+        where ${jsonField('metadata', 'source')} = 'goldie'
+          and (${plain.phoneDigits.length ? pgInTextList(sql`regexp_replace(coalesce(${jsonField('metadata', 'phone')}, ''), '\\D', '', 'g')`, plain.phoneDigits) : sql`false`}
+            or ${plain.emails.length ? pgInTextList(sql`lower(trim(coalesce(${jsonField('metadata', 'email')}, '')))`, plain.emails) : sql`false`})`));
+      counts.goldieEmails = affected(await exec.execute(sql`
+        update outbox_events set payload = '{}'::jsonb
+        where event_type in ('GOLDIE_TRANSCRIPT', 'GOLDIE_HANDOVER') and is_processed = true and jsonb_typeof(payload) = 'object'
+          and (${byEmail("payload->>'recipient'")} or ${byEmail("payload->>'replyTo'")})`));
 
       counts.identityLinks = affected(await exec.execute(sql`
         delete from customer_identity_links l using customer_profiles p

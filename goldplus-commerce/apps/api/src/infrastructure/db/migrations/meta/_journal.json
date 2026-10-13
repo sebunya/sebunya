@@ -1233,6 +1233,41 @@
       "when": 1790140000053,
       "tag": "0176_product_market_event_trigger_array_fix",
       "breakpoints": true
+    },
+    {
+      "idx": 176,
+      "version": "5",
+      "when": 1790140000054,
+      "tag": "0177_assistant_conversations",
+      "breakpoints": true
+    },
+    {
+      "idx": 177,
+      "version": "5",
+      "when": 1790140000055,
+      "tag": "0178_care_desk",
+      "breakpoints": true
+    },
+    {
+      "idx": 178,
+      "version": "5",
+      "when": 1790140000056,
+      "tag": "0179_assistant_answer_memory",
+      "breakpoints": true
+    },
+    {
+      "idx": 179,
+      "version": "5",
+      "when": 1790140000057,
+      "tag": "0180_goldie_query_tuning",
+      "breakpoints": true
+    },
+    {
+      "idx": 180,
+      "version": "5",
+      "when": 1790140000058,
+      "tag": "0181_care_enterprise",
+      "breakpoints": true
     }
   ]
 }

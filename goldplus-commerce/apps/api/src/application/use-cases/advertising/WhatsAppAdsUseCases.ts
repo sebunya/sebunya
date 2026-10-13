@@ -1,3 +1,4 @@
+import { parseInboundTexts, type InboundText } from '../../../domain/assistant/WhatsAppGoldie';
 import type { WhatsAppAdReferralRepository } from '../../ports/WhatsAppAds';
 import {
   CTWA_WINDOW_DEFAULT_DAYS, messagingClickWins, parseAdReferrals, subscriptionChallenge, verifyWebhookSignature, type CtwaSecrets,
@@ -47,12 +48,26 @@ export class WhatsAppAdsUseCases {
   ) {}
 
   private lastPurgeAt = 0;
+  /** Goldie (site chat on WhatsApp) listens for customers' messages; set once by the registry. */
+  private inbound: ((messages: InboundText[]) => void) | null = null;
+  onInboundText(listener: (messages: InboundText[]) => void): void { this.inbound = listener; }
+  /** The saved Cloud API token (needs whatsapp_business_messaging to send); null when none is saved. */
+  async messagingToken(): Promise<string | null> {
+    const s = await this.settings().catch(() => null);
+    return s?.secrets.accessToken ?? null;
+  }
   /** At most hourly, and never in the way of a delivery: old referrals are removed. */
   private async purgeIfDue(): Promise<void> {
     const t = this.now().getTime();
     if (t - this.lastPurgeAt < PURGE_EVERY_MS) return;
     this.lastPurgeAt = t;
     await this.repo.purgeBefore(new Date(t - CTWA_RETENTION_DAYS * 86_400_000)).catch(() => undefined);
+  }
+
+  /** The Meta app's webhook secrets, shared with Goldie's Messenger/Instagram webhook (the same Meta app). */
+  async appSecrets(): Promise<{ appSecret: string; verifyToken: string } | null> {
+    const s = await this.settings().catch(() => null);
+    return s?.secrets.appSecret ? { appSecret: s.secrets.appSecret, verifyToken: s.secrets.verifyToken } : null;
   }
 
   /** Meta's subscription check (GET). The challenge to echo, or null to refuse. Works before the capability is switched on: verification is part of setting it up. */
@@ -77,6 +92,11 @@ export class WhatsAppAdsUseCases {
     let payload: unknown;
     try { payload = JSON.parse(rawBody); } catch { return { status: 200, ...none }; }
     const parsed = parseAdReferrals(payload, s.wabaId, this.now());
+    // Customers' words go to Goldie (who files them and answers when switched on); the advert path below never reads them.
+    if (this.inbound) {
+      const texts = parseInboundTexts(payload, s.wabaId, this.now());
+      if (texts.length) { try { this.inbound(texts); } catch { /* Goldie must never cost Meta a 200 */ } }
+    }
     // Signed and understood, but switched off: acknowledged and not kept.
     if (!s.live) return { status: 200, stored: 0, duplicates: 0, messages: parsed.messages, withoutClickId: parsed.referralsWithoutClickId };
     let stored = 0, duplicates = 0;

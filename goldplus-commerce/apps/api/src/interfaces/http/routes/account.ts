@@ -11,7 +11,7 @@ import {
 } from '../../../application/use-cases/addresses/AddressUseCases';
 import { ApiResponse, MeDto, OrderSummaryDto, OrderDetailDto, AddressDto } from '@goldplus/shared';
 import { clientIp } from '../clientAddress';
-import { soonestUnspentExpiry } from '../../../domain/loyalty/LoyaltyLedger';
+import { computeLifetimePoints, soonestUnspentExpiry, tierStanding } from '../../../domain/loyalty/LoyaltyLedger';
 import { stitchInBackground } from '../../../infrastructure/first-party/stitchInBackground';
 
 const routes = new Hono<{ Variables: { userId: string; userEmail: string } }>();
@@ -22,10 +22,12 @@ routes.use('*', customerSessionMiddleware);
 routes.get('/loyalty', async (c) => {
   const userId = c.get('userId') as string;
   const registry = Registry.getInstance();
-  const [data, pendingOrders, config] = await Promise.all([
+  const [data, pendingOrders, config, tiers, reductionsFrom] = await Promise.all([
     registry.getLoyaltyHistoryUseCase.execute({ userId }),
     registry.loyaltyCompletionRepo.pendingEarnOrders(userId),
     registry.loyaltyRepo.getConfig(),
+    registry.loyaltyTierRepo.activeTiers().catch(() => []),
+    registry.loyaltyRepo.lifetimeReductionsFrom().catch(() => null),
   ]);
   // PART F: pending vs available shown separately. Pending is a projection
   // over paid-but-undelivered orders — the ledger records only vested facts.
@@ -33,7 +35,10 @@ routes.get('/loyalty', async (c) => {
     (sum, o) => sum + Math.floor(o.totalUgx / 1000) * config.earnRatePer1000Ugx,
     0,
   );
-  return c.json({ success: true, data: { ...data, pendingPoints, pendingOrders: pendingOrders.length } });
+  // Tier standing by the nightly rule, and the soonest expiry of points still held (Goldie and the account page).
+  const tier = tiers.length ? tierStanding(computeLifetimePoints(data.entries, reductionsFrom), tiers) : null;
+  const soonest = soonestUnspentExpiry(data.entries, new Date());
+  return c.json({ success: true, data: { ...data, pendingPoints, pendingOrders: pendingOrders.length, tier, soonestExpiry: soonest ? soonest.toISOString() : null } });
 });
 
 // The account hub's single read: everything the landing page shows, one call.

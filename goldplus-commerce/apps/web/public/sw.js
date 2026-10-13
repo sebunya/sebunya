@@ -118,3 +118,27 @@ self.addEventListener('fetch', (event) => {
     caches.match(event.request).then((cached) => cached || fetch(event.request)),
   );
 });
+
+// Care Desk alerts (staff only): a push the api sends when a customer needs a person urgently. Only staff who
+// pressed "Alert me on this phone" on the Care Desk are subscribed; shoppers never are.
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { data = { body: event.data ? event.data.text() : '' }; }
+  const title = data.title || 'GoldPlus Care';
+  event.waitUntil(self.registration.showNotification(title, {
+    body: data.body || 'A customer needs a person.',
+    tag: 'goldplus-care',
+    renotify: true,
+    requireInteraction: true,
+    data: { url: typeof data.url === 'string' && data.url.startsWith(self.location.origin) ? data.url : '/admin/care' },
+  }));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || '/admin/care';
+  event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
+    for (const w of wins) { if (w.url.includes('/admin/care') && 'focus' in w) return w.focus(); }
+    return self.clients.openWindow(url);
+  }));
+});

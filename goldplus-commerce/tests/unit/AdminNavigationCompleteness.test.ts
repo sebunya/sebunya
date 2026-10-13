@@ -21,6 +21,7 @@ const pagesDir = join(root, 'apps/web/src/pages/admin');
 
 /** Deliberately not in the sidebar — each with the reason it is excluded. */
 const EXCLUDED: Record<string, string> = {
+  '/admin/care/team': 'Reached from the Care Desk header (Team and alerts); a settings page for the desk, not a daily screen.',
   '/admin/login': 'the door, not a room',
   '/admin/not-permitted': 'where a 403 lands (a permission gap, not a room)',
   '/admin/advertising/tiktok/callback': 'where TikTok sends the owner back after Connect TikTok; it does nothing when opened on its own',

@@ -1,14 +1,15 @@
 ---
 /**
- * Goldie, the GoldPlus shop host: a launcher and a panel on every page. The
+ * Goldie, the GoldPlus personal shopper: a launcher and a panel on every page. The
  * browser posts the conversation to /api/assistant/chat (same origin) and
  * renders the streamed answer. Product cards and action chips are built from
  * the validated `products` and `links` events the server sends, never from
  * the model's prose. Rendered only when the server has an API key.
  *
- * The transcript lives in sessionStorage for this tab only (wrapped in
- * try/catch); the server stores nothing. Clearing it clears the display, not
- * the server's fairness counters (by design).
+ * The browser keeps the transcript in sessionStorage for this tab (wrapped in
+ * try/catch); each turn is also filed in the conversation archive (0177, kept
+ * 365 days, cards/PINs/OTPs redacted) for the team. "Start over" begins a new
+ * archived conversation; it does not reset the server's fairness counters.
  *
  * Voice and look (2026-10-12 redesign): Goldie greets by time of day, answers
  * in one to three plain sentences, and offers the next step as a chip.
@@ -47,6 +48,7 @@
  * plain text in forced-colours mode, still under reduced motion.
  */
 import { assistantEnabled } from '../lib/assistant';
+import { GOLDIE_AVATAR_SRC, GOLDIE_AVATAR_SRCSET } from '../lib/goldieAvatar';
 interface Props { whatsappUrl: string; cutoffHour?: number }
 const { whatsappUrl, cutoffHour = 17 } = Astro.props;
 const enabled = assistantEnabled();
@@ -54,8 +56,8 @@ const enabled = assistantEnabled();
 {enabled && (
   <div id="gp-assistant" class="gp-assistant" data-whatsapp={whatsappUrl} data-endpoint="/api/assistant/chat" data-cutoff-hour={String(cutoffHour)}>
     <button type="button" class="gp-assistant__launch" aria-haspopup="dialog" aria-controls="gp-assistant-panel" aria-expanded="false" data-launch>
-      <span class="gp-assistant__avatar gp-assistant__avatar--launch" aria-hidden="true"><span>G</span><i class="gp-assistant__badge" data-badge hidden></i></span>
-      <span class="gp-assistant__launchtext"><strong>Ask <span class="gp-goldie" data-goldie data-text="Goldie">Goldie</span></strong><small>GoldPlus shop help</small></span>
+      <span class="gp-assistant__avatar gp-assistant__avatar--launch" aria-hidden="true"><span>G</span><img class="gp-assistant__face" src={GOLDIE_AVATAR_SRC} srcset={GOLDIE_AVATAR_SRCSET} sizes="42px" width="42" height="42" alt="" decoding="async" /><i class="gp-assistant__badge" data-badge hidden></i></span>
+      <span class="gp-assistant__launchtext"><strong>Ask <span class="gp-goldie" data-goldie data-text="Goldie">Goldie</span></strong><small>Your personal shopper</small></span>
     </button>
 
     <div class="gp-assistant__teaser" role="status" aria-live="polite" hidden data-teaser>
@@ -63,18 +65,18 @@ const enabled = assistantEnabled();
         <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
       </button>
       <button type="button" class="gp-assistant__teaser-body" data-teaser-open>
-        <span class="gp-assistant__avatar gp-assistant__avatar--sm" aria-hidden="true"><span>G</span></span>
+        <span class="gp-assistant__avatar gp-assistant__avatar--sm" aria-hidden="true"><span>G</span><img class="gp-assistant__face" src={GOLDIE_AVATAR_SRC} srcset={GOLDIE_AVATAR_SRCSET} sizes="28px" width="28" height="28" alt="" decoding="async" /></span>
         <span class="gp-assistant__teaser-text"><b>Goldie</b><span data-teaser-text></span></span>
       </button>
       <div class="gp-assistant__teaser-chips" data-teaser-chips></div>
     </div>
 
-    <section id="gp-assistant-panel" class="gp-assistant__panel" role="dialog" aria-label="Goldie, the GoldPlus shop assistant" aria-modal="false" hidden data-panel>
+    <section id="gp-assistant-panel" class="gp-assistant__panel" role="dialog" aria-label="Goldie, your GoldPlus personal shopper" aria-modal="false" hidden data-panel>
       <header class="gp-assistant__head">
-        <span class="gp-assistant__avatar" aria-hidden="true"><span>G</span></span>
+        <span class="gp-assistant__avatar gp-assistant__avatar--head" aria-hidden="true"><span>G</span><img class="gp-assistant__face" src={GOLDIE_AVATAR_SRC} srcset={GOLDIE_AVATAR_SRCSET} sizes="42px" width="42" height="42" alt="" decoding="async" /></span>
         <div class="gp-assistant__who">
           <p class="gp-assistant__title"><span class="gp-goldie" data-goldie-title data-text="Goldie">Goldie</span></p>
-          <p class="gp-assistant__sub"><span class="gp-assistant__dot" aria-hidden="true"></span>GoldPlus shop help · AI, answers from the shelf</p>
+          <p class="gp-assistant__sub"><span class="gp-assistant__dot" aria-hidden="true"></span>Your personal shopper</p>
         </div>
         <div class="gp-assistant__headbtns">
           <button type="button" class="gp-assistant__clear" data-clear hidden>Start over</button>
@@ -93,6 +95,12 @@ const enabled = assistantEnabled();
         <button type="button" data-starter="Where is the shop and when are you open?">Visit the shop</button>
       </div>
 
+      <div class="gp-assistant__tools" role="group" aria-label="Keep or pass on this chat" data-tools hidden>
+        <button type="button" data-tool="email"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>Email me a copy</button>
+        <button type="button" data-tool="save" aria-label="Save or share this chat"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>Save</button>
+        <button type="button" data-tool="team"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18.5 14a5.5 5.5 0 0 1 3 6"/></svg>Email the team</button>
+      </div>
+
       <form class="gp-assistant__form" data-form>
         <label class="sr-only" for="gp-assistant-input">Message Goldie</label>
         <textarea id="gp-assistant-input" rows="1" maxlength="2000" placeholder="Type your question…" autocomplete="off" data-input></textarea>
@@ -101,7 +109,7 @@ const enabled = assistantEnabled();
         </button>
       </form>
       <p class="gp-assistant__foot">
-        <span>Goldie is an AI. Prices and stock on the cards are live; check the product page before you pay.</span>
+        <span>Prices and stock on the cards are live; check the product page before you pay. We keep chats so the team can follow up (<a href="/privacy">privacy</a>).</span>
         <a class="gp-assistant__wa" href={whatsappUrl} target="_blank" rel="noopener noreferrer">
           <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 2a8 8 0 1 1-4.2 14.8l-.3-.2-3 .8.8-2.9-.2-.3A8 8 0 0 1 12 4zm-3 4.5c-.2 0-.5.1-.7.3-.3.3-1 1-1 2.4s1 2.8 1.2 3c.1.2 2 3.2 5 4.4 2.5 1 3 .8 3.5.7.5 0 1.7-.7 1.9-1.4.2-.7.2-1.2.2-1.4-.1-.1-.3-.2-.6-.3l-2-1c-.3-.1-.5-.1-.7.1l-.9 1.1c-.2.2-.3.2-.6.1-.3-.2-1.3-.5-2.4-1.5-.9-.8-1.5-1.8-1.7-2.1-.2-.3 0-.5.1-.6l.5-.6.3-.5c.1-.2 0-.4 0-.5l-.9-2.2c-.2-.5-.4-.5-.6-.5H9z"/></svg>
           Prefer a person? WhatsApp us
@@ -114,8 +122,10 @@ const enabled = assistantEnabled();
 <style is:global>
   /* Global on purpose: the script creates the bubbles, cards and chips after render. */
   .gp-assistant { --gp-green: #93d500; --gp-green-deep: #456b00; --gp-ink: #0a0a0a; --gp-paper: #fbfbf7; --gp-line: #e6e6df; --gp-mute: #6b6b64; --gp-ease: cubic-bezier(.2,.8,.2,1); font-family: inherit; }
-  .gp-assistant__avatar { width: 38px; height: 38px; flex: none; display: grid; place-items: center; border-radius: 9999px; background: var(--gp-green); color: var(--gp-ink); font-weight: 900; font-size: 1.05rem; letter-spacing: -.02em; box-shadow: inset 0 0 0 2px rgba(10,10,10,.12); }
-  .gp-assistant__avatar--sm { width: 28px; height: 28px; font-size: .8rem; }
+  .gp-assistant__avatar { position: relative; width: 42px; height: 42px; flex: none; display: grid; place-items: center; border-radius: 9999px; background: #f4efe4; color: var(--gp-ink); font-weight: 900; font-size: 1.05rem; letter-spacing: -.02em; box-shadow: 0 0 0 2px var(--gp-green); }
+  /* The portrait fills the circle; the "G" under it shows only if the image cannot load. */
+  .gp-assistant__face { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 9999px; object-fit: cover; }
+  .gp-assistant__avatar--sm { width: 28px; height: 28px; font-size: .8rem; box-shadow: 0 0 0 1.5px var(--gp-green); }
   .gp-assistant__launch {
     position: fixed; right: max(1rem, env(safe-area-inset-right)); bottom: calc(max(1rem, env(safe-area-inset-bottom)) + 64px + var(--gp-lift, 0px));
     z-index: 46; display: inline-flex; align-items: center; gap: .6rem; padding: .45rem 1rem .45rem .45rem; border: 0; border-radius: 9999px;
@@ -125,15 +135,24 @@ const enabled = assistantEnabled();
   .gp-assistant__launch:hover { transform: translateY(-1px); box-shadow: 0 14px 34px rgba(0,0,0,.32); }
   .gp-assistant__launchtext { display: grid; line-height: 1.1; }
   .gp-assistant__launchtext strong { font-size: .84rem; font-weight: 800; }
-  .gp-assistant__launchtext small { font-size: .66rem; color: #cfcfc7; font-weight: 600; }
+  .gp-assistant__launchtext small { font-size: .66rem; line-height: 1.35; color: #cfcfc7; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The launcher-to-panel morph (View Transitions): one surface grows into the panel, the name travels into the header. */
+  ::view-transition-group(goldie-surface) { animation-duration: .36s; animation-timing-function: cubic-bezier(.2,.8,.2,1); border-radius: 1.25rem; overflow: clip; }
+  ::view-transition-old(goldie-surface), ::view-transition-new(goldie-surface) { height: 100%; width: 100%; object-fit: none; object-position: right bottom; }
+  ::view-transition-old(goldie-surface) { animation: gp-vt-out .12s ease-out both; }
+  ::view-transition-new(goldie-surface) { animation: none; }
+  @keyframes gp-vt-out { to { opacity: 0 } }
+  ::view-transition-group(goldie-name) { animation-duration: .36s; animation-timing-function: cubic-bezier(.2,.8,.2,1); }
   .gp-assistant__launch--nudge .gp-assistant__avatar--launch { animation: gp-nudge 1.1s var(--gp-ease) 1; }
-  @keyframes gp-nudge { 0%,100% { transform: rotate(0) } 20% { transform: rotate(-12deg) } 45% { transform: rotate(10deg) } 70% { transform: rotate(-6deg) } }
+  /* A face does not wobble: the nudge is one gentle lift. */
+  @keyframes gp-nudge { 0%,100% { transform: none } 35% { transform: translateY(-3px) scale(1.06) } 70% { transform: translateY(0) scale(.99) } }
   /* Arrival: the launcher is not in the first paint; it rises once the page has settled. */
-  .gp-assistant__launch--pending { opacity: 0; transform: translateY(16px) scale(.96); pointer-events: none; }
+  .gp-assistant__launch--pending { visibility: hidden; transform: translateY(calc(100% + 32px)); pointer-events: none; }
   .gp-assistant__launch--loading { cursor: progress; }
   .gp-assistant__launch--loading .gp-assistant__avatar--launch { animation: gp-ring 1.2s var(--gp-ease) infinite; }
   .gp-assistant__launch--arrive { animation: gp-arrive .5s var(--gp-ease) both; }
-  @keyframes gp-arrive { from { opacity: 0; transform: translateY(16px) scale(.96) } to { opacity: 1; transform: none } }
+  /* Slides up from below the screen at full opacity: the text is never drawn half-faded (contrast holds every frame). */
+  @keyframes gp-arrive { from { transform: translateY(calc(100% + 32px)) } to { transform: none } }
   .gp-assistant__avatar--launch { position: relative; }
   /* The Goldie wordmark. The real text is always drawn solid; the glint is a copy laid over it
      (::after, hidden from screen readers) whose lime-to-gold band crosses once. If a browser cannot
@@ -177,7 +196,7 @@ const enabled = assistantEnabled();
   }
   .gp-assistant__teaser--enter { animation: gp-rise .32s var(--gp-ease) both; }
   .gp-assistant__teaser--enter .gp-assistant__avatar--sm { animation: gp-ring 1.5s var(--gp-ease) .25s 2; }
-  @keyframes gp-ring { 0% { box-shadow: inset 0 0 0 2px rgba(10,10,10,.12), 0 0 0 0 rgba(147,213,0,.55) } 100% { box-shadow: inset 0 0 0 2px rgba(10,10,10,.12), 0 0 0 14px rgba(147,213,0,0) } }
+  @keyframes gp-ring { 0% { box-shadow: 0 0 0 2px #93d500, 0 0 0 2px rgba(147,213,0,.6) } 100% { box-shadow: 0 0 0 2px #93d500, 0 0 0 16px rgba(147,213,0,0) } }
   .gp-assistant__teaser--leave { animation: gp-sink .22s var(--gp-ease) both; }
   @keyframes gp-sink { to { opacity: 0; transform: translateY(10px) scale(.96) } }
   .gp-assistant__teaser-x { position: absolute; top: .35rem; right: .35rem; width: 32px; height: 32px; border: 0; border-radius: 9999px; background: transparent; color: var(--gp-mute); display: grid; place-items: center; cursor: pointer; }
@@ -255,6 +274,27 @@ const enabled = assistantEnabled();
   .gp-assistant__starters { display: flex; flex-wrap: wrap; gap: .4rem; padding: .25rem .9rem .5rem; }
   .gp-assistant__starters button { border: 1.5px solid var(--gp-line); background: #fff; border-radius: 9999px; padding: .45rem .8rem; font-size: .78rem; font-weight: 800; color: var(--gp-ink); cursor: pointer; min-height: 38px; transition: border-color .15s; }
   .gp-assistant__starters button:hover { border-color: var(--gp-green); }
+  /* Keep the chat or pass it on: a quiet row under the conversation, once Goldie has answered. */
+  .gp-assistant__tools[hidden] { display: none; }
+  .gp-assistant__tools { display: flex; gap: .35rem; padding: .35rem .9rem; overflow-x: auto; scrollbar-width: none; background: var(--gp-paper); border-top: 1px solid var(--gp-line); }
+  .gp-assistant__tools::-webkit-scrollbar { display: none; }
+  .gp-assistant__tools button { flex: none; display: inline-flex; align-items: center; gap: .3rem; min-height: 32px; padding: .25rem .65rem; border: 1px solid var(--gp-line); border-radius: 9999px; background: #fff; color: var(--gp-ink); font: inherit; font-size: .72rem; font-weight: 800; cursor: pointer; }
+  .gp-assistant__tools button:hover { border-color: var(--gp-green-deep); color: var(--gp-green-deep); }
+  .gp-assistant__tools button:focus-visible, .gp-assistant__mini-cancel:focus-visible { outline: 3px solid var(--gp-green); outline-offset: 2px; }
+  .gp-assistant__rate { display: flex; align-items: center; gap: .4rem; margin-left: 2.3rem; font-size: .76rem; font-weight: 700; color: var(--gp-mute); }
+  .gp-assistant__rate button { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid var(--gp-line); border-radius: 9999px; background: #fff; color: var(--gp-ink); cursor: pointer; }
+  .gp-assistant__rate button:hover { border-color: var(--gp-green-deep); color: var(--gp-green-deep); }
+  .gp-assistant__rate button:focus-visible { outline: 3px solid var(--gp-green); outline-offset: 2px; }
+  .gp-assistant__mini { flex: 1; min-width: 0; max-width: 19rem; display: grid; gap: .5rem; padding: .7rem .8rem; background: #fff; border: 1px solid var(--gp-line); border-radius: 1.1rem; border-bottom-left-radius: .35rem; }
+  .gp-assistant__mini-title { margin: 0; font-size: .86rem; font-weight: 800; line-height: 1.4; }
+  .gp-assistant__field { display: grid; gap: .2rem; font-size: .72rem; font-weight: 700; color: var(--gp-mute); }
+  .gp-assistant__field input, .gp-assistant__field textarea { font: inherit; font-size: 16px; color: var(--gp-ink); padding: .5rem .65rem; border: 1.5px solid var(--gp-line); border-radius: .7rem; background: var(--gp-paper); resize: vertical; }
+  .gp-assistant__field input:focus, .gp-assistant__field textarea:focus { outline: none; border-color: var(--gp-green); background: #fff; }
+  .gp-assistant__check { display: flex; align-items: center; gap: .45rem; font-size: .78rem; font-weight: 700; }
+  .gp-assistant__check input { width: 18px; height: 18px; accent-color: var(--gp-green-deep); }
+  .gp-assistant__mini-act { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+  .gp-assistant__mini-cancel { border: 0; background: none; padding: .35rem .5rem; font: inherit; font-size: .76rem; font-weight: 700; color: var(--gp-mute); cursor: pointer; text-decoration: underline; }
+  .gp-assistant__mini .gp-assistant__add-note { margin: 0; }
   .gp-assistant__form { display: flex; gap: .5rem; padding: .7rem .9rem; border-top: 1px solid var(--gp-line); background: #fff; }
   .gp-assistant__form textarea { flex: 1; resize: none; border: 1.5px solid var(--gp-line); border-radius: .9rem; padding: .62rem .8rem; font: inherit; font-size: 16px; max-height: 6rem; background: var(--gp-paper); }
   .gp-assistant__form textarea:focus { outline: none; border-color: var(--gp-green); background: #fff; }
@@ -263,6 +303,7 @@ const enabled = assistantEnabled();
   .gp-assistant__send[disabled] { opacity: .5; cursor: progress; transform: none; }
   .gp-assistant__foot { margin: 0; padding: .35rem .9rem .7rem; font-size: .67rem; color: var(--gp-mute); background: #fff; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .35rem .75rem; }
   .gp-assistant__foot > span { flex: 1 1 14rem; }
+  .gp-assistant__foot > span a { color: inherit; text-decoration: underline; }
   .gp-assistant__wa { display: inline-flex; align-items: center; gap: .35rem; min-height: 36px; padding: .3rem .75rem; border-radius: 9999px; border: 1.5px solid var(--gp-green-deep); color: var(--gp-green-deep); font-size: .74rem; font-weight: 800; text-decoration: none; white-space: nowrap; }
   .gp-assistant__wa:hover { background: var(--gp-green-deep); color: #fff; }
   .gp-assistant__wa:focus-visible { outline: 3px solid var(--gp-green); outline-offset: 2px; }
@@ -271,7 +312,7 @@ const enabled = assistantEnabled();
     .gp-assistant__panel--enter, .gp-assistant__launch--nudge .gp-assistant__avatar--launch, .gp-assistant__typing i,
     .gp-assistant__launch--arrive, .gp-assistant__teaser--enter, .gp-assistant__teaser--enter .gp-assistant__avatar--sm, .gp-assistant__teaser--leave, .gp-assistant__launch--msg .gp-assistant__avatar--launch, .gp-assistant__launch--loading .gp-assistant__avatar--launch,
     .gp-goldie::after, .gp-assistant__launch--hello .gp-assistant__avatar--launch { animation: none !important; }
-    .gp-assistant__launch--pending { opacity: 1; transform: none; pointer-events: auto; }
+    .gp-assistant__launch--pending { visibility: visible; transform: none; pointer-events: auto; }
     .gp-assistant__teaser--leave { display: none; }
     .gp-assistant__launch, .gp-assistant__send, .gp-assistant__card, .gp-assistant__add, .gp-assistant__launchtext { transition: none; }
     .gp-assistant__typing i { opacity: .7; }
@@ -281,6 +322,7 @@ const enabled = assistantEnabled();
 <script>
   import type { GoldiePanel, Teaser } from '../scripts/goldie-panel';
   import { goldieKey, pageQuestions, productQuestions, shortProductName, todayStillOpen as stillOpen, type PageKey } from '../lib/goldieQuestions';
+  import { goldieArm, armMoves, launcherSubline, createHesitation, NUDGE_EXCLUDED, NUDGES_PER_VISIT, NUDGE_CREDIT_MS, type GoldieArm, type HesitationReason } from '../lib/goldieAwareness';
 
   // Only the launcher and its awareness layer ship with the page. The conversation panel
   // (../scripts/goldie-panel.ts) loads on the first sign of interest: a hover, a touch, a tap,
@@ -309,15 +351,23 @@ const enabled = assistantEnabled();
       } catch { return ''; }
     })();
     const todayStillOpen = stillOpen(Number(root.dataset.cutoffHour) || 17);
-    const GREETING = `${hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'}, I'm Goldie from GoldPlus. Ask me about a charger, a cable, a power bank, earphones or a battery for your phone, and I'll check the shelf for you.`;
+    // The motion experiment (lib/goldieAwareness.ts): arm "a" moves, arm "b" stays still; both are counted.
+    let arm: GoldieArm = 'a';
+    try { arm = goldieArm(localStorage); } catch { arm = 'a'; }
+    const moves = armMoves(arm) && !reduced;
+    let nudgeKey = '', nudgedAt = 0;
+    // The pill's second line names the question this page raises ("Ask if it fits your phone").
+    const subline = launcherSubline({ path: location.pathname, productName: document.querySelector<HTMLElement>('[data-product-name]')?.dataset.productName, phone: knownPhone, todayOpen: todayStillOpen });
+    const GREETING = `${hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'}, I'm Goldie, your GoldPlus personal shopper. Ask me about a charger, a cable, a power bank, earphones or a battery for your phone, and I'll check the shelf for you.`;
 
     // ---- the panel, loaded once, on first interest
     let activeTeaser: Teaser | null = null;
     let panelP: Promise<GoldiePanel> | null = null;
     const narrow = matchMedia('(max-width: 640px)');
     const getPanel = () => (panelP ??= import('../scripts/goldie-panel').then((m) => m.mountGoldie(root, {
-      endpoint, reduced, knownPhone, greeting: GREETING, track, getTeaser: () => activeTeaser, narrow: () => narrow.matches,
-      onOpen: () => { hideTeaser(false); badge.hidden = true; launch.removeAttribute('aria-label'); launch.classList.remove('gp-assistant__launch--msg', 'gp-assistant__launch--loading'); setPillText('Ask Goldie', 'GoldPlus shop help'); setTimeout(() => glintOn(titleWord), 160); },
+      endpoint, helloEndpoint: '/api/assistant/hello', reduced, knownPhone, greeting: GREETING, track, getTeaser: () => activeTeaser, narrow: () => narrow.matches,
+      morph,
+      onOpen: () => { hideTeaser(false); badge.hidden = true; launch.removeAttribute('aria-label'); launch.classList.remove('gp-assistant__launch--msg', 'gp-assistant__launch--loading'); setPillText('Ask Goldie', subline); setTimeout(() => glintOn(titleWord), 160); },
     })).catch((err) => { panelP = null; throw err; }));
     // A failed module load is cached by the browser for this page view, so a further tap shows the same
     // WhatsApp fallback rather than a dead button; the next page load fetches it afresh.
@@ -328,7 +378,7 @@ const enabled = assistantEnabled();
       let pending = true;
       setTimeout(() => { if (pending) { launch.classList.add('gp-assistant__launch--loading'); setPillText('Opening…', 'one moment'); } }, 250);
       getPanel().then((p) => { pending = false; fn(p); }).catch(() => {
-        pending = false; launch.classList.remove('gp-assistant__launch--loading'); setPillText('Ask Goldie', 'GoldPlus shop help');
+        pending = false; launch.classList.remove('gp-assistant__launch--loading'); setPillText('Ask Goldie', subline);
         const wa = root.dataset.whatsapp || '/wa';
         teaserText.textContent = 'I could not load just now. The shop answers on WhatsApp.'; teaserChips.replaceChildren();
         const a = document.createElement('a'); a.href = wa; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = 'Open WhatsApp'; a.className = 'gp-assistant__chip'; teaserChips.append(a);
@@ -338,7 +388,13 @@ const enabled = assistantEnabled();
     launch.addEventListener('pointerenter', prefetch, { once: true });
     launch.addEventListener('focus', prefetch, { once: true });
     launch.addEventListener('touchstart', prefetch, { once: true, passive: true });
-    launch.addEventListener('click', () => { track(pillShown ? 'NBA_CLICK' : 'PANEL_OPEN', pillShown ? `${teaserKey}-pill` : goldieKey('launcher')); withPanel((p) => p.open()); });
+    launch.addEventListener('click', () => {
+      track(pillShown ? 'NBA_CLICK' : 'PANEL_OPEN', pillShown ? `${teaserKey}-pill` : goldieKey('launcher'));
+      // The experiment counts the first tap of the visit for the visitor's arm; a tap soon after a nudge is credited to it.
+      if (onceThisVisit('gp-goldie-tap')) track('NBA_CLICK', goldieKey('launch', arm));
+      if (nudgeKey && Date.now() - nudgedAt < NUDGE_CREDIT_MS) { track('NBA_CLICK', nudgeKey); nudgeKey = ''; }
+      withPanel((p) => morph(() => p.open(), true));
+    });
     const launchStrong = launch.querySelector<HTMLElement>('strong')!, launchSmall = launch.querySelector<HTMLElement>('small')!;
     // "Ask Goldie" keeps the wordmark node; any other line (a page message, "Opening…") is plain text.
     const goldieWord = launch.querySelector<HTMLElement>('[data-goldie]')!;
@@ -351,12 +407,37 @@ const enabled = assistantEnabled();
       if (reduced || !word || !word.isConnected) return;
       word.classList.remove('gp-goldie--glint'); void word.offsetWidth; word.classList.add('gp-goldie--glint');
     };
-    const glint = () => glintOn(goldieWord);
+    /** The launcher's glint draws the eye, so only the moving arm gets it; hover and the panel title are feedback and stay for everyone. */
+    const glint = () => { if (moves) glintOn(goldieWord); };
+    launchSmall.textContent = subline;
     // The panel title glints on its own timer: the panel drops its entry class after 0.26 s, which would cut a glint tied to it.
     const titleWord = root.querySelector<HTMLElement>('[data-goldie-title]');
     for (const w of [goldieWord, titleWord]) w?.addEventListener('animationend', (e) => { if ((e as AnimationEvent).animationName.startsWith('gp-glint')) w.classList.remove('gp-goldie--glint'); });
     // A tab that already has a conversation going gets the panel code early, so "Start over" and the transcript are instant.
     try { if (sessionStorage.getItem('gp-assistant-turns')) prefetch(); } catch { /* ignore */ }
+
+    /** True the first time a key is seen this visit (tab session); false after, and where storage is blocked. */
+    function onceThisVisit(key: string): boolean { try { if (sessionStorage.getItem(key) === '1') return false; sessionStorage.setItem(key, '1'); return true; } catch { return false; } }
+
+    /** The launcher grows into the panel (and folds back) as one surface, the name travelling into the
+     *  header, where the browser supports View Transitions; elsewhere, and under reduced motion, the change is instant. */
+    function morph(update: () => void, toPanel: boolean) {
+      const d = document as Document & { startViewTransition?: (cb: () => void) => { finished: Promise<void> } };
+      if (reduced || typeof d.startViewTransition !== 'function') { update(); return; }
+      const surfaces: [HTMLElement, HTMLElement] = toPanel ? [launch, panel] : [panel, launch];
+      const words = goldieWord.isConnected && titleWord ? (toPanel ? [goldieWord, titleWord] : [titleWord, goldieWord]) : null;
+      const name = (el: HTMLElement | null | undefined, v: string) => { if (el) el.style.viewTransitionName = v; };
+      name(surfaces[0], 'goldie-surface'); name(words?.[0], 'goldie-name');
+      try {
+        const vt = d.startViewTransition(() => {
+          name(surfaces[0], ''); name(words?.[0], '');
+          update();
+          panel.classList.remove('gp-assistant__panel--enter');
+          name(surfaces[1], 'goldie-surface'); name(words?.[1], 'goldie-name');
+        });
+        vt.finished.catch(() => undefined).finally(() => { for (const el of [launch, panel, goldieWord, titleWord]) name(el, ''); });
+      } catch { for (const el of [launch, panel, goldieWord, titleWord]) name(el, ''); update(); }
+    }
 
     // Arrival: out of the first paint; rises once the page has loaded and gone idle.
     launch.classList.add('gp-assistant__launch--pending');
@@ -366,7 +447,8 @@ const enabled = assistantEnabled();
       // Hello, once per visit: the name glints and the avatar rings as the pill settles. Later pages just arrive.
       let greeted = true;
       try { greeted = sessionStorage.getItem('gp-goldie-hello') === '1'; sessionStorage.setItem('gp-goldie-hello', '1'); } catch { greeted = true; }
-      if (!greeted && !reduced) {
+      if (onceThisVisit('gp-goldie-imp')) track('NBA_IMPRESSION', goldieKey('launch', arm));
+      if (!greeted && moves) {
         setTimeout(() => { glint(); launch.classList.add('gp-assistant__launch--hello'); setTimeout(() => launch.classList.remove('gp-assistant__launch--hello'), 1500); }, 420);
       }
     };
@@ -375,6 +457,9 @@ const enabled = assistantEnabled();
       if (document.readyState === 'complete') idle(); else addEventListener('load', idle, { once: true });
     };
     whenSettled(arrive);
+    /** Phones: back to the portrait alone once Goldie has nothing to say. */
+    const settleMini = () => { if (narrow.matches && panel.hidden && !launch.classList.contains('gp-assistant__launch--msg') && Date.now() >= holdOpenUntil) launch.classList.add('gp-assistant__launch--mini'); };
+    whenSettled(() => setTimeout(settleMini, 4500));
 
     // The product page's buy bar on phones: the launcher lifts above it rather than sitting on it.
     const buybar = document.querySelector<HTMLElement>('[data-pdp-buybar]');
@@ -384,13 +469,14 @@ const enabled = assistantEnabled();
     }
 
     // Phones: fold the pill to the avatar while scrolling down; open it again on a pause or a scroll up.
-    let lastY = scrollY, foldTimer: number | undefined, holdOpenUntil = 0;
+    let lastY = scrollY, holdOpenUntil = 0;
     addEventListener('scroll', () => {
       if (!narrow.matches) return;
       const y = scrollY; const down = y > lastY + 4 && y > 120; const up = y < lastY - 4; lastY = y;
       if (Date.now() < holdOpenUntil) return;
-      if (down) launch.classList.add('gp-assistant__launch--mini'); else if (up) launch.classList.remove('gp-assistant__launch--mini');
-      clearTimeout(foldTimer); foldTimer = setTimeout(() => launch.classList.remove('gp-assistant__launch--mini'), 1400) as unknown as number;
+      // Once folded it stays folded while the shopper browses: the full pill covered product titles.
+      // It opens again only to say something (a page message or a hesitation nudge), then folds back.
+      if (down || up) launch.classList.add('gp-assistant__launch--mini');
     }, { passive: true });
 
     // The teaser: one message written for this page. Not on pages where a floating invitation
@@ -457,7 +543,7 @@ const enabled = assistantEnabled();
         track('NBA_IMPRESSION', `${teaserKey}-pill`);
         // The wide pill returns to its usual size after a moment so it covers nothing for long;
         // the panel keeps the full message and its questions, so nothing is lost to the timer.
-        setTimeout(() => { if (panel.hidden) { launch.classList.remove('gp-assistant__launch--msg'); setPillText('Ask Goldie', 'GoldPlus shop help'); badge.hidden = false; launch.setAttribute('aria-label', 'Ask Goldie, 1 new message'); glint(); } }, 12000);
+        setTimeout(() => { if (panel.hidden) { launch.classList.remove('gp-assistant__launch--msg'); setPillText('Ask Goldie', subline); badge.hidden = false; launch.setAttribute('aria-label', 'Ask Goldie, 1 new message'); glint(); setTimeout(settleMini, 4000); } }, 12000);
         return;
       }
       teaserState = 'shown';
@@ -479,6 +565,28 @@ const enabled = assistantEnabled();
         if (depth >= 0.6) { clearTimeout(dwell); removeEventListener('scroll', onScroll); showTeaser(); }
       };
       addEventListener('scroll', onScroll, { passive: true });
+    }
+
+    // Hesitation: when the shopper looks stuck (re-reading, copying a model number, going still), the name
+    // glints once and the avatar rings, so the motion means "I can help with that". Once per page, a few per visit.
+    if (!NUDGE_EXCLUDED.test(location.pathname)) {
+      const h = createHesitation(performance.now(), { stillMs: 20000 });
+      const reading = location.pathname.startsWith('/blog');
+      const nudgesSoFar = () => { try { return Number(sessionStorage.getItem('gp-goldie-nudges') || 0); } catch { return NUDGES_PER_VISIT; } };
+      const onReason = (r: HesitationReason | null) => {
+        if (!r || (reading && r === 'still')) return;
+        if (!panel.hidden || teaserState === 'shown' || nudgesSoFar() >= NUDGES_PER_VISIT) return;
+        try { sessionStorage.setItem('gp-goldie-nudges', String(nudgesSoFar() + 1)); } catch { /* ignore */ }
+        nudgeKey = goldieKey('nudge', r, arm); nudgedAt = Date.now(); track('NBA_IMPRESSION', nudgeKey);
+        if (!moves) return;
+        launch.classList.remove('gp-assistant__launch--mini'); holdOpenUntil = Date.now() + 4000; setTimeout(settleMini, 4100);
+        glint(); launch.classList.add('gp-assistant__launch--hello'); setTimeout(() => launch.classList.remove('gp-assistant__launch--hello'), 1500);
+      };
+      const now = () => performance.now();
+      addEventListener('scroll', () => onReason(h.scroll(scrollY, innerHeight, document.documentElement.scrollHeight, now())), { passive: true });
+      document.addEventListener('copy', () => onReason(h.copy(now())));
+      for (const ev of ['pointerdown', 'keydown', 'pointermove'] as const) addEventListener(ev, () => h.activity(now()), { passive: true });
+      const tick = setInterval(() => { if (h.fired) { clearInterval(tick); return; } onReason(h.tick(now(), document.visibilityState === 'visible')); }, 2000);
     }
 
     // Inline "Ask Goldie" questions elsewhere on the page (AskGoldie.astro) open the panel and ask.

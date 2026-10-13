@@ -45,6 +45,13 @@ export async function runFirstPartyNightlyOnce(now = new Date(), trigger = 'sche
       .execute({ limit: Number(process.env.CUSTOMER_DNA_NIGHTLY_LIMIT ?? 2000), olderThanHours: 20, now })
       .catch((err) => { logger.error({ err: (err as Error).message }, '[customer-dna] nightly re-projection failed'); return null; });
     if (dna) logger.info(dna, '[customer-dna] nightly re-projection');
+    // Goldie's conversation archive keeps 365 days (0177); older threads go with their messages.
+    const purged = await registry.conversationArchiveUseCases.purgeExpired()
+      .catch((err) => { logger.error({ err: (err as Error).message }, '[goldie] archive purge failed'); return null; });
+    if (purged) logger.info({ purged }, '[goldie] archive purge');
+    const closed = await registry.careDeskUseCases.purgeClosed()
+      .catch((err) => { logger.error({ err: (err as Error).message }, '[care-desk] purge failed'); return null; });
+    if (closed) logger.info({ closed }, '[care-desk] closed-task purge');
     return 'RAN';
   } finally {
     running = false;

@@ -35,7 +35,7 @@ describe('assistant router: classification', () => {
       ['How do I check if my GoldPlus product is genuine?', 'POLICY', true],
       ['What happens if the item stops working?', 'POLICY', true],
       ['I have a problem with a payment or refund.', 'PAYMENT', true],
-      ['I need 50 power banks for the office', 'BULK', true],
+      ['I need 50 power banks for the office', 'BULK', false],
       ['hello', 'GREETING', true],
       ['Will this charger fast-charge my phone?', 'PRODUCT', false],
       ['battery for Infinix Hot 10', 'BATTERY', true],
@@ -92,7 +92,7 @@ describe('assistant router: deterministic answers come from shop data', () => {
   it('orders and warranty are routed to the existing pages; nothing is approved or looked up in chat', async () => {
     const { answerDeterministically, classify } = await import('../../apps/web/src/lib/assistantRouter');
     const order = await answerDeterministically(classify('where is my order?'));
-    expect(order.text).toMatch(/cannot open orders/);
+    expect(order.text).toMatch(/Track my order shows your order/);
     expect(order.links.map((l) => l.url)).toContain('https://shopgoldplus.com/track-order');
     const warranty = await answerDeterministically(classify('my earbuds stopped working'));
     expect(warranty.text).toMatch(/nothing is approved in this chat/);
@@ -118,7 +118,7 @@ describe('assistant router: deterministic answers come from shop data', () => {
     expect(nomatch.text).toMatch(/do not have the tecno spark 10 on our battery list yet/);
     expect(nomatch.text).not.toMatch(/Which of these is your phone/);
     const none = await answerDeterministically(classify('I need a battery'));
-    expect(none.text).toMatch(/Tell me the phone model/);
+    expect(none.text).toMatch(/exact model/);
   });
 
   it('a product lookup searches the catalogue and says so honestly when nothing matches', async () => {
@@ -127,10 +127,10 @@ describe('assistant router: deterministic answers come from shop data', () => {
     const found = await answerDeterministically(classify('What is the cheapest 64GB flash drive you have today?'));
     expect(callTool).toHaveBeenCalledWith('search_products', { query: expect.stringMatching(/64GB flash drive/), limit: 5 });
     expect(found.products[0].sku).toBe('GP-64GB-F');
-    expect(found.text).toMatch(/today's prices/);
+    expect(found.text).toMatch(/Today's price and stock are on each card/);
     callTool.mockResolvedValueOnce({ content: [{ type: 'text', text: 'none' }], structuredContent: { products: [] } });
     const nothing = await answerDeterministically(classify('do you have a drone?'));
-    expect(nothing.text).toMatch(/No GoldPlus product matched/);
+    expect(nothing.text).toMatch(/I don't see .* on our shelf/);
     expect(nothing.products).toEqual([]);
   });
 });

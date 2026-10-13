@@ -1,0 +1,66 @@
+import type { ArchiveChannel, ArchiveMood, ArchiveOutcome, ArchiveRole, MeetingSummary } from '../../domain/assistant/ConversationArchive';
+
+export interface ArchiveConversationRow {
+  id: string;
+  channel: ArchiveChannel;
+  channelKey: string;
+  customerId: string | null;
+  contactName: string | null;
+  contactPhone: string | null;
+  contactEmail: string | null;
+  firstTopic: string | null;
+  lastTopic: string | null;
+  worstMood: ArchiveMood;
+  outcome: ArchiveOutcome;
+  supportTicketId: string | null;
+  page: string | null;
+  messageCount: number;
+  aiTurns: number;
+  humanUntil: Date | null;
+  /** The customer's rating of the chat (1-5), when given. */
+  csat?: number | null;
+  /** The next-best action Goldie was given (Customer DNA), when there was one. */
+  nextAction?: string | null;
+  startedAt: Date;
+  lastMessageAt: Date;
+}
+
+export interface ArchiveMessageRow { id: string; role: ArchiveRole; content: string; intent: string | null; mood: string | null; route: string | null; createdAt: Date }
+
+export interface ArchiveFilters {
+  channel?: ArchiveChannel;
+  outcome?: ArchiveOutcome;
+  mood?: ArchiveMood;
+  topic?: string;
+  q?: string;
+  from?: Date;
+  to?: Date;
+  limit: number;
+  offset: number;
+}
+
+export interface IAssistantConversationStore {
+  /** Finds or opens the conversation for this channel key, updating contact and customer when newly known. */
+  open(input: { channel: ArchiveChannel; channelKey: string; customerId: string | null; page: string | null; contact?: { name?: string | null; phone?: string | null; email?: string | null }; profileId?: string | null; visitorKey?: string | null }): Promise<ArchiveConversationRow>;
+  /** Files one message; false when a message with this channel message id was already filed (a redelivery). */
+  addMessage(conversationId: string, m: { role: ArchiveRole; content: string; intent?: string | null; mood?: ArchiveMood | null; route?: string | null; channelMessageId?: string | null; cacheId?: string | null }): Promise<boolean>;
+  /** Answer-memory entries Goldie served in this conversation (for ratings). */
+  servedMemory(conversationId: string): Promise<string[]>;
+  /** Rolls up topic, mood, outcome and counters after a turn. */
+  update(conversationId: string, patch: { lastTopic?: string | null; firstTopic?: string | null; worstMood?: ArchiveMood; outcome?: ArchiveOutcome; aiTurn?: boolean; supportTicketId?: string | null; humanUntil?: Date | null; contact?: { name?: string | null; phone?: string | null; email?: string | null } }): Promise<void>;
+  findByKey(channel: ArchiveChannel, channelKey: string): Promise<ArchiveConversationRow | null>;
+  get(id: string, limit?: number): Promise<{ conversation: ArchiveConversationRow; messages: ArchiveMessageRow[] } | null>;
+  list(f: ArchiveFilters): Promise<{ rows: Array<ArchiveConversationRow & { lastCustomerLine: string }>; total: number }>;
+  summary(from: Date, to: Date): Promise<MeetingSummary>;
+  purgeBefore(cutoff: Date): Promise<number>;
+  /** WhatsApp customer messages filed between the two times that never reached an outcome (route still null), newest thread first. */
+  pendingWhatsApp(olderThan: Date, newerThan: Date, limit: number): Promise<Array<{ conversationId: string; messageId: string; phone: string; name: string | null; text: string; at: Date }>>;
+  /** Marks a WhatsApp customer message as being recovered; false when another pass already took it. */
+  claimCustomerMessage(channelMessageId: string): Promise<boolean>;
+  /** Records what happened to a customer message (answered, silent, held, send_failed). */
+  markCustomerMessage(channelMessageId: string, outcome: string): Promise<void>;
+  /** Messenger/Instagram threads whose last line is a customer message that never got an outcome (the recovery pass). */
+  pendingSocial(olderThan: Date, newerThan: Date, limit: number): Promise<Array<{ conversationId: string; channel: 'messenger' | 'instagram'; channelKey: string; messageId: string; text: string; at: Date }>>;
+  /** Customer messages (any channel) since `since` that Goldie could not answer (held or send_failed). */
+  replyFailuresSince(since: Date): Promise<number>;
+}

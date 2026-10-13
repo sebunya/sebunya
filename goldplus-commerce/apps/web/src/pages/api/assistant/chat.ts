@@ -3,36 +3,42 @@ import { randomUUID } from 'node:crypto';
 import { readBodyCapped } from '../../../lib/boundedBody';
 import { visitorKey } from '../../../lib/publicFormLimiter';
 import { isSignedVisitToken } from '../../../lib/visitToken';
-import { assistantEnabled, runAssistant, validateTurns, type AssistantEvent } from '../../../lib/assistant';
-import { SOFT_LIMIT_TEXT, answerDeterministically, classify, isClarificationReply, type DeterministicAnswer } from '../../../lib/assistantRouter';
-import { addressHash, admit, principalHash, release, settle, type AdmitOutput } from '../../../lib/assistantAdmission';
+import { assistantEnabled, validateTurns } from '../../../lib/assistant';
+import { SITE_ORIGIN } from '../../../lib/sitemap';
+import { requestUserId } from '../../../lib/customerAuth';
+import { readSessionToken } from '../../../lib/session';
+import { createHash, timingSafeEqual } from 'node:crypto';
+import { addressHash, principalHash } from '../../../lib/assistantAdmission';
+import { logTurn, type ShopperIdentity } from '../../../lib/assistantConversation';
+import { prepareTurn, resetTurnState } from '../../../lib/goldieTurn';
 
 /**
- * POST /api/assistant/chat — the shop assistant, same origin only.
- * Body: { messages: [{ role, content }, …] ending with the customer's turn }.
+ * POST /api/assistant/chat: Goldie on the website, same origin only.
+ * Body: { messages: [{ role, content }, ...] ending with the customer's turn }.
  * Header X-Assistant-Request-Id: one id per send; a retry reuses it and is
  * answered once: this replica remembers ids for two minutes, and the API's
  * shared counter refuses a second arrival on any other replica.
- * Reply: text/event-stream of `data: <AssistantEvent JSON>` frames.
+ * Header X-Goldie-Conversation: the browser's id for this conversation; each
+ * turn is filed under it in the conversation archive (0177) for the team.
+ * Reply: text/event-stream of `data: <event JSON>` frames.
  *
- * Order of operations (mandate §5A): validate -> classify -> admission
- * (fairness tier, abuse ceilings, month ledger) -> deterministic answer, or a
- * paid turn against a reservation that is settled or released afterwards.
- * Nothing is stored: the browser keeps its own transcript for the session.
+ * The turn itself (listen, route, answer) is lib/goldieTurn.ts, shared with
+ * WhatsApp. This file is the website's door: validation, who is asking, the
+ * stream, and filing the turn.
  */
 export const prerender = false;
 
 /** The signed first-party visit cookie the middleware issues (middleware.ts VISIT_COOKIE_NAME); read only, never set here. */
 const VISIT_COOKIE_NAME = 'gp_visit';
+/** The first-party analytics id (middleware); the key consent and zero-party signals are filed under. */
+const FP_COOKIE_NAME = '_fp_cid';
 
 const MAX_BODY_BYTES = 32 * 1024;
-const MAX_CONCURRENT = 8;
 const IDEMPOTENCY_TTL_MS = 2 * 60_000;
 const recentRequestIds = new Map<string, number>();
-let inFlight = 0;
 
 /** Test seam. */
-export function resetAssistantState(): void { recentRequestIds.clear(); inFlight = 0; }
+export function resetAssistantState(): void { recentRequestIds.clear(); resetTurnState(); }
 
 const json = (body: unknown, status: number, extra: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...extra } });
@@ -47,13 +53,15 @@ const seenRecently = (id: string | null): boolean => {
   return false;
 };
 
-const fallbackAnswer = async (classified: ReturnType<typeof classify>): Promise<DeterministicAnswer> => {
-  // Paid AI is not available for this turn: a product lookup still runs, and the honest sentence leads.
-  const base = classified.intent === 'PRODUCT' || classified.intent === 'UNKNOWN'
-    ? await answerDeterministically({ ...classified, intent: 'PRODUCT', deterministic: true }).catch(() => null)
-    : null;
-  const products = base?.products ?? [];
-  return { intent: classified.intent, text: products.length ? `${SOFT_LIMIT_TEXT} Here is what matched in the catalogue:` : SOFT_LIMIT_TEXT, products, links: base?.links ?? [] };
+function isEvalCaller(header: string | null): boolean {
+  const expected = process.env.INTERNAL_API_KEY ?? '';
+  if (expected.length < 32 || !header) return false;
+  return timingSafeEqual(createHash('sha256').update(header).digest(), createHash('sha256').update(expected).digest());
+}
+
+/** The page the question was asked on, as a same-site path. */
+const pagePath = (request: Request): string | null => {
+  try { const u = new URL(request.headers.get('referer') ?? ''); return u.origin === new URL(request.url).origin ? u.pathname.slice(0, 300) : null; } catch { return null; }
 };
 
 export const POST: APIRoute = async ({ request, clientAddress, cookies, locals }) => {
@@ -67,86 +75,60 @@ export const POST: APIRoute = async ({ request, clientAddress, cookies, locals }
   const requestId = (request.headers.get('x-assistant-request-id') ?? '').trim().slice(0, 64) || null;
   if (requestId && !/^[A-Za-z0-9_-]{8,64}$/.test(requestId)) return json({ success: false, error: { code: 'INVALID_REQUEST_ID', message: 'Bad request id.' } }, 400);
   if (seenRecently(requestId)) return json({ success: false, error: { code: 'DUPLICATE', message: 'That question is already being answered.' } }, 409);
+  const conversationId = (request.headers.get('x-goldie-conversation') ?? '').trim();
+  const archiveKey = /^[A-Za-z0-9_-]{8,64}$/.test(conversationId) ? conversationId : null;
 
-  // Who is asking, as a one-way pseudonym: the signed-in customer, else the signed first-party visit cookie, else the address.
+  // Who is asking: the signed-in customer (the middleware resolves the session for pages only, not /api/*, so ask
+  // here; a guest without a session cookie costs nothing), else the signed visit cookie, else the address.
   const address = visitorKey(request.headers, () => clientAddress);
   const visit = cookies.get(VISIT_COOKIE_NAME)?.value;
-  const principal = principalHash({ userId: (locals as { gpUserId?: string | null }).gpUserId ?? null, visitToken: isSignedVisitToken(visit) ? visit : null, address });
-  const conversationId = requestId;
+  const userId = await requestUserId(locals as { gpUserId?: string | null }, cookies).catch(() => null);
+  const fp = cookies.get(FP_COOKIE_NAME)?.value ?? '';
+  const who: ShopperIdentity = { visitToken: isSignedVisitToken(visit) ? visit! : null, userId, fpClientId: /^[A-Za-z0-9._-]{8,200}$/.test(fp) ? fp : null };
+  const page = pagePath(request);
+  // The live evaluation (scripts/qa/goldie-live-eval.ts) authenticates with the internal key: each question is its
+  // own fairness bucket so the set can run in one go, while the month's spend ledger still applies. Not archived.
+  const evalRun = isEvalCaller(request.headers.get('x-goldplus-internal-key'));
 
-  const last = turns[turns.length - 1]!.content;
-  const classified = classify(last);
-  const wantsAi = !classified.deterministic;
-  const continuation = isClarificationReply(turns, classified);
-  const admission: AdmitOutput = (await admit({ principalHash: principal, addressHash: addressHash(address), wantsAi, conversationId, requestId, continuation })) ?? {
-    // The admission authority could not be reached: fail closed for money, open for deterministic help.
-    decision: wantsAi ? 'GLOBAL_BUDGET_FALLBACK' : 'ALLOW_DETERMINISTIC', tier: 'welcome', reason: 'admission unreachable', reservationId: null,
-    model: '', effort: 'low', maxOutputTokens: 0, maxToolRounds: 0, degraded: true,
-  };
-  if (admission.decision === 'DUPLICATE') return json({ success: false, error: { code: 'DUPLICATE', message: 'That question is already being answered.' } }, 409);
-  if (admission.decision === 'DISABLED') return json({ success: false, error: { code: 'DISABLED', message: 'The assistant is switched off for now.' } }, 503);
-  if (admission.decision === 'DENY_EXPENSIVE') {
-    const retry = String(admission.retryAfterSeconds ?? 60);
-    return json({ success: false, error: { code: 'RATE_LIMITED', message: 'Please wait a moment before asking more.' } }, 429, { 'Retry-After': retry });
+  const prepared = await prepareTurn({
+    channel: 'web', turns, requestId, page,
+    principalHash: evalRun ? createHash('sha256').update(`assistant:eval:${requestId ?? Math.random()}`).digest('hex') : principalHash({ userId, visitToken: who.visitToken, address }),
+    addressHash: evalRun ? null : addressHash(address), who,
+    care: { bearer: userId ? readSessionToken(request) : null, clientAddress: address === 'unknown' ? null : address, site: SITE_ORIGIN, channel: 'web', conversationKey: archiveKey },
+    apiKey: String(process.env.ANTHROPIC_API_KEY), signal: request.signal,
+  });
+  if (prepared.kind === 'refused') {
+    return json({ success: false, error: { code: prepared.code, message: prepared.message } }, prepared.status, prepared.retryAfter ? { 'Retry-After': prepared.retryAfter } : {});
   }
 
   const encoder = new TextEncoder();
-  const route = admission.decision === 'ALLOW_AI' ? 'ai' : wantsAi ? 'fallback' : 'deterministic';
-  if (route === 'ai' && inFlight >= MAX_CONCURRENT) {
-    if (admission.reservationId) void release({ reservationId: admission.reservationId, reason: 'replica concurrency cap' });
-    return json({ success: false, error: { code: 'BUSY', message: 'The assistant is busy right now. Please try again in a minute.' } }, 503, { 'Retry-After': '30' });
-  }
-  if (route === 'ai') inFlight += 1;
-  const apiKey = String(process.env.ANTHROPIC_API_KEY);
-
+  const last = turns[turns.length - 1]!.content;
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const send = (ev: AssistantEvent) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(ev)}\n\n`));
-      const sendAnswer = (a: DeterministicAnswer) => {
-        send({ type: 'text', text: a.text });
-        if (a.products.length) send({ type: 'products', items: a.products });
-        if (a.links.length) send({ type: 'links', items: a.links });
-        send({ type: 'done', usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, providerRequestId: null, outcome: 'ANSWERED' });
-      };
+      const send = (ev: unknown) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(ev)}\n\n`));
+      let answer = '';
       try {
-        if (route === 'deterministic') {
-          sendAnswer(await answerDeterministically(classified));
-        } else if (route === 'fallback') {
-          sendAnswer(await fallbackAnswer(classified));
-        } else {
-          const reservationId = admission.reservationId!;
-          let settled = false;
-          for await (const ev of runAssistant(turns, { apiKey, model: admission.model, effort: admission.effort, maxOutputTokens: admission.maxOutputTokens, maxToolRounds: admission.maxToolRounds, signal: request.signal })) {
-            if (ev.type === 'done') {
-              settled = true;
-              await settle({ reservationId, model: admission.model, providerRequestId: ev.providerRequestId, outcome: ev.outcome, usage: ev.usage });
-            } else if (ev.type === 'error') {
-              settled = true;
-              // Not billed (refused before any output): give the money back. Billed or unknown: settle what is known; a
-              // partial stream with unknown output stays reserved and becomes UNKNOWN, never zero.
-              if (!ev.billed) await release({ reservationId, reason: ev.code });
-              else if (ev.usage && ev.usage.outputTokens > 0) await settle({ reservationId, model: admission.model, providerRequestId: null, outcome: 'STREAM_FAILED', usage: ev.usage });
-            }
-            send(ev);
-          }
-          if (!settled) { /* client aborted mid-turn: the reservation ages into UNKNOWN and keeps counting */ }
+        for await (const ev of prepared.run()) {
+          if (ev.type === 'meta') continue; // operational, not for the browser
+          if (ev.type === 'text') answer += ev.text;
+          send(ev);
         }
       } catch (e) {
         console.error('[assistant] unexpected', e instanceof Error ? e.message : e);
         send({ type: 'error', code: 'FAILED', message: 'Something went wrong. Please ask again.', billed: false });
       } finally {
-        if (route === 'ai') inFlight = Math.max(0, inFlight - 1);
         controller.close();
+        // Filed after the answer, off the customer's path: the archive never slows a reply.
+        if (archiveKey && !evalRun) logTurn({ conversationId: archiveKey, userId, page, customer: last, goldie: answer || null, intent: prepared.meta.intent, mood: prepared.meta.mood.mood, route: prepared.meta.route, cacheId: prepared.meta.cacheId ?? null, nextAction: prepared.meta.nextAction ?? null, visitToken: who.visitToken, fpClientId: who.fpClientId });
       }
     },
-    cancel() { if (route === 'ai') inFlight = Math.max(0, inFlight - 1); },
   });
   return new Response(stream, {
     status: 200,
     headers: {
       'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no', 'X-Robots-Tag': 'noindex',
       // Operational, never personal: which path answered and which tier the visitor is in.
-      'X-Assistant-Route': route, 'X-Assistant-Tier': admission.tier, 'X-Assistant-Request-Id': requestId ?? randomUUID(),
+      'X-Assistant-Route': prepared.meta.route, 'X-Assistant-Tier': prepared.meta.tier, 'X-Assistant-Request-Id': requestId ?? randomUUID(),
     },
   });
 };

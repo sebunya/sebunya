@@ -36,4 +36,5 @@ Unverified fit, missing policy, payment discrepancy, fulfilment problem, suspect
 (`/support/fake`), warranty dispute, angry or vulnerable customer, persistent misunderstanding,
 provider unavailable: all end in the WhatsApp link (labelled "Chat on WhatsApp", opens WhatsApp,
 no transcript or personal data appended) or the support/verification pages. No ticket is created
-because no ticket system exists.
+because no ticket system exists. (Superseded 2026-10-13: Goldie now hands over by email and to the Care
+Desk with the whole conversation, see docs/assistant/README.md.)

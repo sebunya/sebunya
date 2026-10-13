@@ -39,6 +39,10 @@ export const PUBLIC_FORM_BUDGETS: Readonly<Record<string, FormBudget>> = {
   '/api/bulk/quote': { limit: 5, windowMs: TEN_MINUTES },
   '/bulk/status': { limit: 20, windowMs: TEN_MINUTES },
   '/api/bulk/cart': { limit: 30, windowMs: TEN_MINUTES },
+  // Goldie's chat passed on by email: to the shop (handover) or to the shopper (their copy).
+  '/api/assistant/handover': { limit: 3, windowMs: TEN_MINUTES },
+  '/api/assistant/transcript': { limit: 3, windowMs: TEN_MINUTES },
+  '/api/assistant/rate': { limit: 10, windowMs: TEN_MINUTES },
 };
 
 /** Trailing slash and case are not a way around the budget. */

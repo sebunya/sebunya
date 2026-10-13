@@ -1,0 +1,64 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { readSessionToken } from '../../../lib/session';
+import { apiBase } from '../../../lib/api';
+import { CHANNEL_LABEL, OUTCOME_LABEL } from '../../../lib/goldieArchiveCopy';
+
+/**
+ * The weekly quality review: a dozen of this week's Goldie chats (half drawn from the ones most worth a look),
+ * each scored by a person: 1-5, were the facts right, was the tone right, and a note. The trend shows whether
+ * Goldie is getting better. Reading needs customers.data.view; scoring needs orders.manage (audited).
+ */
+export const prerender = false;
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/assistant/quality', 303);
+const call = async <T,>(path: string, init?: RequestInit): Promise<{ ok: true; data: T } | { ok: false; message: string }> => {
+  try {
+    const res = await fetch(`${apiBase}/admin/assistant${path}`, { ...init, headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json', ...(init?.headers ?? {}) } });
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json?.success) return { ok: false, message: json?.error?.message ?? `The system answered ${res.status}.` };
+    return { ok: true, data: json.data as T };
+  } catch { return { ok: false, message: 'The system could not be reached.' }; }
+};
+let notice: { kind: 'success' | 'error'; text: string } | null = null;
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const r = await call(`/quality/${String(f.get('id') ?? '')}`, { method: 'POST', body: JSON.stringify({ score: Number(f.get('score') ?? 0), accurate: f.get('accurate') === 'yes', toneOk: f.get('tone') === 'yes', note: String(f.get('note') ?? '').trim() || null }) });
+  notice = r.ok ? { kind: 'success', text: 'Review saved.' } : { kind: 'error', text: r.message };
+}
+interface Item { id: string; conversationId: string; score: number | null; accurate: boolean | null; toneOk: boolean | null; note: string | null; reviewedAt: string | null; channel: string; outcome: string; csat: number | null; firstLine: string; lastMessageAt: string }
+interface Data { week: string; items: Item[]; trend: Array<{ week: string; reviewed: number; averageScore: number | null; accurateShare: number | null; toneShare: number | null }> }
+const data = await call<Data>('/quality');
+const pct = (v: number | null) => (v == null ? '—' : `${Math.round(v * 100)}%`);
+---
+<AdminLayout title="Goldie quality review" description="This week's sample of Goldie's chats, scored by a person." activePath="/admin/assistant">
+  <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-4xl space-y-6">
+    <p class="text-sm"><a href="/admin/assistant/conversations" class="underline font-bold">Conversations</a> · <a href="/admin/assistant/answers" class="underline font-bold">Teach Goldie</a></p>
+    {notice && <div role="status" class={`rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>}
+    {!data.ok && <div role="status" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{data.message}</div>}
+    {data.ok && (
+      <>
+        <section class="bg-white border border-gray-200 rounded-2xl p-5 text-sm">
+          <h2 class="font-black mb-2">Week {data.data.week}: {data.data.items.filter((i) => i.reviewedAt).length} of {data.data.items.length} reviewed</h2>
+          <p class="text-gray-600 mb-3">Read the chat, then score it. About half are chats most worth a look (needed a person, rated poorly, or used the model); the rest are random.</p>
+          {data.data.trend.length > 0 && <table class="w-full text-left"><thead><tr class="text-xs uppercase text-gray-500"><th>Week</th><th>Reviewed</th><th>Average score</th><th>Facts right</th><th>Tone right</th></tr></thead><tbody>{data.data.trend.map((t) => <tr class="border-t border-gray-100"><td>{t.week}</td><td>{t.reviewed}</td><td>{t.averageScore == null ? '—' : t.averageScore.toFixed(1)}</td><td>{pct(t.accurateShare)}</td><td>{pct(t.toneShare)}</td></tr>)}</tbody></table>}
+        </section>
+        {data.data.items.length === 0 && <p class="text-sm text-gray-600">No chats in the last seven days to review yet.</p>}
+        {data.data.items.map((i) => (
+          <article class={`rounded-2xl border bg-white p-4 text-sm ${i.reviewedAt ? 'border-green-200' : 'border-gray-200'}`}>
+            <p class="font-bold">“{i.firstLine}”</p>
+            <p class="text-xs text-gray-500 mt-1">{CHANNEL_LABEL[i.channel] ?? i.channel} · {OUTCOME_LABEL[i.outcome] ?? i.outcome}{i.csat != null ? ` · customer rated ${i.csat}/5` : ''} · <a class="underline" href={`/admin/assistant/conversations/${i.conversationId}`}>Read the chat</a></p>
+            <form method="post" class="mt-3 flex flex-wrap gap-3 items-end">
+              <input type="hidden" name="id" value={i.id} />
+              <label class="grid gap-1"><span class="font-bold">Score</span><select name="score" class="rounded-lg border border-gray-300 px-2 py-1">{[5, 4, 3, 2, 1].map((n) => <option value={n} selected={i.score === n}>{n}</option>)}</select></label>
+              <label class="grid gap-1"><span class="font-bold">Facts right?</span><select name="accurate" class="rounded-lg border border-gray-300 px-2 py-1"><option value="yes" selected={i.accurate !== false}>Yes</option><option value="no" selected={i.accurate === false}>No</option></select></label>
+              <label class="grid gap-1"><span class="font-bold">Tone right?</span><select name="tone" class="rounded-lg border border-gray-300 px-2 py-1"><option value="yes" selected={i.toneOk !== false}>Yes</option><option value="no" selected={i.toneOk === false}>No</option></select></label>
+              <label class="grid gap-1 flex-1 min-w-[12rem]"><span class="font-bold">Note</span><input name="note" value={i.note ?? ''} class="rounded-lg border border-gray-300 px-3 py-1" placeholder="What should Goldie do better?" /></label>
+              <button class="rounded-full bg-brand-dark text-white font-bold px-4 py-2">{i.reviewedAt ? 'Update' : 'Save review'}</button>
+            </form>
+          </article>
+        ))}
+      </>
+    )}
+  </div>
+</AdminLayout>

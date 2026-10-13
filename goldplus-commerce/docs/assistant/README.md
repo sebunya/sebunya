@@ -1,7 +1,196 @@
-# Goldie, the shop assistant (site chat)
+# Goldie, the GoldPlus personal shopper (site chat)
+
+> **Identity rule (owner, 2026-10-13).** Goldie's title is "personal shopper", shown with a lifelike
+> portrait (`apps/web/public/goldie/`) and no "AI" tag or word on screen. Because she looks like a
+> person, she must never pass as one when asked (owner, same day: no "not a person" line on screen):
+> the router answers "are you a real person / a bot / who are you" itself with a fixed
+> honest reply (intent `IDENTITY`, no model call); and the system prompt forbids claiming to be human.
+> `tests/unit/GoldieIsHonestAboutBeingVirtual.test.ts` pins both. Do not remove them.
+
+## Personal shopper layer (owner, 2026-10-13)
+
+- **Voice.** The prompt follows the GoldPlus voice (brand book §15, messaging deck, `docs/customer-language-standard.md`):
+  plain Kampala English, "Let's check" and "Thanks for letting us know", numbers said flatly ("20W means 20W"),
+  recommend one product rather than list, no chatbot openers. Router replies (`assistantRouter.ts`) use the same voice.
+- **Knows the shopper.** `/api/assistant/hello` (panel welcome) and every paid turn read
+  `POST /internal/assistant/context`: first name (saved address, else last order), visits (the hero's measure: 2+
+  returning, 4+ regular), has ordered, top categories, last viewed products, past Goldie topics. The model gets it as
+  a second system block after the cache breakpoint (`shopperNote()`), labelled as data. The welcome is built in
+  `lib/goldieGreeting.ts` ("Good evening Sarah, welcome back. Last time you were looking at power banks...").
+- **Customer DNA.** Product, battery and bulk questions are filed as zero-party signals (`declared_intent`,
+  `source_component = 'goldie_chat'`, payload `{source, intent, topic, phone_model?}`) through
+  `CaptureZeroPartyDataUseCase`, so personalisation consent is respected. Never orders, payments, complaints, phone
+  numbers or emails (`interestTopic()`). (The full transcript is kept separately in the conversation archive, 0177.)
+- **Human pace.** A short reading pause (650-1600 ms by question length), then a word-by-word reveal at ~70
+  characters a second, capped at 2.6 s; cards and chips follow the sentence. Reduced motion: 350 ms pause, no reveal.
+  Numbers in `lib/goldieGreeting.ts`.
+- **Keep or pass on the chat** (row under the conversation once Goldie has answered):
+  - *Email me a copy*: `POST /api/assistant/transcript` -> outbox `GOLDIE_TRANSCRIPT` (transactional) to the
+    typed address. Links are stripped from the shopper's lines; 3 per address per day (API) and 3 per visitor per
+    10 minutes (middleware budget).
+  - *Save* (labelled "Save", "Save or share" to screen readers): the phone's share sheet (save to notes, send to self on WhatsApp), else a .txt download.
+  - *Email the team* (also a chip on order, warranty, bulk, identity and unknown answers): `POST /api/assistant/handover`
+    -> support ticket (`type inquiry`, `metadata.source = 'goldie'`, in /admin/support) + outbox `GOLDIE_HANDOVER`
+    (operational) to `ADMIN_ORDER_NOTIFICATION_EMAILS`; with a customer email, Reply-To is the customer, and they get
+    a copy.
+- Tests: `tests/unit/GoldiePersonalShopper.test.ts`.
+
+## Customer care, conversations and channels (owner, 2026-10-13)
+
+**Listen first** (`lib/goldieEmpathy.ts`, no model): every message gets a mood read (upset, worried, confused,
+happy, calm). Every fixed answer opens with a line that names the customer's situation in that mood (O2's
+"acknowledge, own, resolve, check" was the owner's reference), and closes with a check-back when it helps. A thin
+request ("charger", "I need help") gets one clarifying question instead of a guess. An upset customer about an
+order, payment, delivery or a fault always gets "Email the team". The model gets the same rules in the prompt
+("Listen first") plus a per-turn note of the mood.
+
+**One brain, every channel** (`lib/goldieTurn.ts`): classify + mood, Customer DNA, admission and spend, then a fixed
+answer or the model with tools. The website (`/api/assistant/chat`) and WhatsApp (`/api/internal/goldie/turn`) both
+call it.
+
+**Customer care from the commerce engine** (`lib/goldieCare.ts`, not in agentTools/MCP):
+- *Order tracking*: reference + phone or email, through the same verified `POST /commerce/orders/lookup` as Track my
+  order (5-tries lockout per reference, one answer for a wrong reference or a wrong contact; now on the
+  `order-lookup` rate family). Signed in: the customer's own latest orders (`/account/orders`, their token).
+- *Points*: signed in only, `/account/loyalty`, which now also returns `tier` (current, next, points to go; the
+  nightly rule, `tierStanding()`) and `soonestExpiry`. A guest is asked to sign in, never looked up by phone.
+- *Delivery quotes*: the one quoting service (`POST /delivery/quote`) when a place is named.
+- On WhatsApp the sender's number is verified by Meta, so it is the proof for THEIR orders (placed with that
+  number) and points (when it is an account's verified phone): `POST /internal/assistant/care-by-phone`.
+- Goldie cannot place, change or cancel an order, take or confirm a payment, refund, or approve warranty. Those go to
+  the team.
+
+**Conversation archive** (migration 0177, `assistant_conversations` + `assistant_messages`):
+- Every website turn is filed under the browser's conversation id (`X-Goldie-Conversation`). Every WhatsApp message
+  is filed by the API before Goldie answers, so nothing is lost. Stored per message: topic (intent), mood and route.
+  Rolled up per conversation: first and last topic, lowest mood, outcome (open / resolved / handed over / needs a
+  person), contact, support ticket.
+- Card numbers, PINs, OTPs and passwords are redacted before storage (`ConversationArchive.redact`).
+- Kept 365 days; the nightly job purges older threads.
+- The panel footer says chats are kept, with a link to /privacy. **Owner: add a line to the privacy policy.**
+- Admin: `/admin/assistant/conversations` shows the meeting summary (conversations, what customers came for, moods,
+  outcomes, share handled by Goldie, follow-up list), filters, CSV, and each thread. On a thread the team can take
+  over (Goldie stays quiet on WhatsApp), reply (sent on WhatsApp), and set the outcome. Reading needs
+  `customer_data.view` and is audited per thread; actions need `orders.manage` and are audited.
+
+**WhatsApp switch-on** (off until all of this is done):
+1. The shop number must be on the WhatsApp Cloud API (or coexistence), with the webhook from Ads > Offline already
+   subscribed to `messages` (same `/webhooks/whatsapp`, same app secret).
+2. A system-user token with `whatsapp_business_messaging`: set `GOLDIE_WHATSAPP_TOKEN` on the api container, or
+   save it as the access token in the WhatsApp ads settings.
+3. `GOLDIE_WHATSAPP_PHONE_NUMBER_ID=<the number's Cloud API id>` and `GOLDIE_WHATSAPP_ENABLED=true` on the api
+   container. To trial it first, set `GOLDIE_WHATSAPP_TEST_NUMBERS=2567...,2567...` and only those numbers get Goldie.
+4. The api reaches the web container at `WEB_INTERNAL_ORIGIN` (default `http://web:4321`); both share `INTERNAL_API_KEY`.
+5. Free-form replies only work within 24 hours of the customer's last message (WhatsApp's rule). Team replies after
+   that are refused with that reason.
+- Tests: `tests/unit/GoldieCustomerCare.test.ts`.
+
+## Low model use: answer memory and leaner calls (owner, 2026-10-13)
+
+Goal: Goldie works without Claude for almost everything, and the model is paid only for genuinely new
+questions. Order of answering, cheapest first:
+1. **Fixed answers** from shop data (router intents: orders, points, delivery, shop, payments, warranty, thanks...).
+2. **Remembered answers** (migration 0179, `assistant_answer_memory`).
+   - A paid answer to a short, general, single-turn question is remembered under a normalised key
+     (`lib/goldieAnswerMemory.ts`: synonyms folded, filler dropped, plurals folded, words sorted; no embeddings, no
+     extra dependency).
+   - Reuse needs every product the answer named to be still sellable at the same price (re-read live). Otherwise the
+     answer is stale, the model is asked, and the memory refreshes.
+   - Never remembered:
+     - personal answers (names, orders, points, actions, phone numbers or emails);
+     - answers to upset or worried customers;
+     - WhatsApp-formatted replies;
+     - long questions or instruction-like ones (so nobody can plant an answer for others).
+   - Unpinned answers expire after 7 days. Two poor ratings retire one.
+3. **The model** (Haiku 5.5, effort low): it sees the last 8 turns only. Catalogue tool results reach it as compact
+   lines (name, price, stock, sku, id, slug; this shop's products only, no URLs). That is fewer tokens, and the ids
+   `bulk_quote` needs are now present (they were missing before). Battery lookups now give the model the batteries
+   and fit labels (before, it only received the summary sentence).
+4. **Without the model** (budget reached, outage, switched off): fixed answers, remembered answers and catalogue
+   search keep working.
+
+**Teach Goldie** (`/admin/assistant/answers`):
+- The route mix (fixed / remembered / model / fallback) and the share answered at no model cost.
+- Model spend and the average cost per paid answer.
+- What memory saved.
+- Every remembered answer, most asked first, with asks, serves, stale misses and poor ratings. The team can pin
+  (never expires, never overwritten), edit, retire or delete.
+- A rating of 2 or lower counts against every remembered answer served in that chat.
+
+## Senior care expert, Care Desk and alerts (owner, 2026-10-13)
+
+**Persona** (prompt `goldie-2026-10-13.4`): the most experienced person on the care team. Skills written in:
+ownership, honest expectations, de-escalation, recovery, follow-through, closing well. Ugandan warmth ("You are most
+welcome", "Thank you for choosing GoldPlus", "You have chosen well" only when true). A banned list of machine phrases
+("As an AI", "I'd be happy to", "Rest assured", ...). Honesty is kept: if a customer sincerely asks whether she is a
+person, she says she is virtual and that a person is one message away.
+
+**Acts, not just answers** (`lib/goldieCare.ts`):
+- `request_callback`: a call task (a fixed router path too: "call me" asks for the number, then books it).
+- `escalate_to_team`: a follow-up, or urgent (pages the on-duty team).
+- `report_order_problem`: a verified order problem.
+- `request_order_change`: a verified change request on the desk (see "Order actions" below).
+- `bulk_quote`: files a real bulk quote (`POST /quotes/bulk`) from the products and quantities the customer
+  confirmed, and puts a bulk-lead task on the desk (50 units or more is high priority). Bulk messages that name items
+  and numbers go to the model; vague ones get "which items and how many".
+
+**Next best action**: for a signed-in customer (or a WhatsApp number that is an account's verified phone) the
+Customer DNA engine is asked once per 6 hours (`NextBestActionAdvisor`, actor `system:goldie`, no activation
+channel because the customer started the chat). The result reaches the model as a one-line hint, never a script.
+
+**When not to answer** (`CareDesk.silenceFor`, WhatsApp):
+- Goldie stays quiet when a colleague has the conversation, on "ok/thanks/👍" after a settled answer (the chat is
+  filed as resolved), on emoji-only messages, on the same text three times in 10 minutes, after three abusive messages
+  in an hour, and on team members' own numbers.
+- Every message is still filed with the reason.
+- On the website she always answers; "thanks" gets a warm one-line close.
+
+**Ratings**: once per conversation (after a thank-you or three answers) the panel asks "How did I do?". A rating of
+2 or lower opens a follow-up task to win the customer back. The average is on the Care Desk.
+
+**Care Desk** (`/admin/care`, migration 0178):
+- For shop attendants, in plain words: urgent count, callbacks, approvals, bulk buyers, today's chats and the share
+  Goldie settled, the rating.
+- The queue shows urgent first, then the longest waiting, each with Call, WhatsApp, Email, Read the chat, "I'll take
+  it", Done (with a note) and Not needed. Staff can add a task. The page refreshes every minute, except while someone
+  is typing.
+- Every handover from the website panel is also a task, so there is one queue.
+- Permissions: reading needs `customer_data.view`, working needs `orders.manage`, the team list needs `settings.manage`.
+  All changes are audited.
+
+**Alerts** (`/admin/care/team`):
+- Team members: name, role, phone, email, channels (SMS, email, WhatsApp), on-duty days and hours in Kampala time.
+- Urgent tasks page everyone on duty, once per task; if nobody is on duty, everyone active.
+- SMS and email go through the outbox (`CARE_ALERT_SMS`, `CARE_ALERT_EMAIL`, operational).
+- WhatsApp needs an approved template: set `GOLDIE_ALERT_TEMPLATE` (one body variable) and, optionally,
+  `GOLDIE_ALERT_TEMPLATE_LANG`.
+- "Send a test alert" pages everyone active.
+- Abuse-proof paging: at most one alert per customer number every 30 minutes, and at most `CARE_ALERTS_PER_HOUR`
+  (default 12) across the shop. A throttled task is still urgent at the top of the desk, and Goldie then says "marked
+  urgent" instead of "alerted".
+- WhatsApp never goes silent: if Goldie cannot answer (brain unreachable or failed), the customer gets one holding
+  line ("I'm passing it to the team now...", not repeated) and a follow-up task opens.
+- Closed tasks are purged after 365 days (nightly), like conversations.
+- The next-best action Goldie was given is stored on the conversation and shown on the thread. The rating is shown on
+  the thread and included in the CSV.
+
+**Order actions without a person** (owner's instruction; written, NOT wired):
+- `GoldieOrderActionsUseCases` holds the policy:
+  - cancel any order not yet with the rider;
+  - refund Pesapal payments in full on cancellation, up to `GOLDIE_REFUND_CAP_UGX` (default UGX 300,000), through the
+    refund ledger and audit with Goldie's actor id `601d1e00-0000-4000-8000-000000000001`;
+  - over the cap, or paid offline: cancelled, and the refund goes to the desk as urgent;
+  - refund a failed delivery;
+  - write rider instructions on the order;
+  - never refund faulty items unseen (warranty needs the item).
+- Policy tests: `tests/unit/GoldieCareDesk.test.ts`.
+- Wiring it to the live state machine and refund ledger was stopped by Claude Code's real-world-transaction safety
+  check, so it needs the owner's explicit go-ahead (or the owner's own commit). Until then `request_order_change`
+  files the change on the Care Desk and Goldie tells the customer the team will confirm.
+- Tests: `tests/unit/GoldieCareDesk.test.ts`, `tests/integration/GoldieCareDesk.integration.test.ts`.
 
 Goldie is the shop's host on every storefront page: a named, warm, plain-spoken
-voice (system prompt `goldie-2026-10-12.3` in `assistant.ts`; deterministic
+voice (system prompt `goldie-2026-10-13.4` in `assistant.ts`; deterministic
 answers in `assistantRouter.ts`). She greets by time of day, answers in one to
 three sentences, and offers the next step as an action chip (`links` events)
 beside product cards (`products` events); the model is told not to paste URLs or

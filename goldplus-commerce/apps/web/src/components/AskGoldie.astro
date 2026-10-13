@@ -10,6 +10,7 @@
  */
 import { assistantEnabled } from '../lib/assistant';
 import type { GoldieQuestion } from '../lib/goldieQuestions';
+import { GOLDIE_AVATAR_SRC, GOLDIE_AVATAR_SRCSET } from '../lib/goldieAvatar';
 /** Each chip shows a short label and sends the full question (which names the product). */
 interface Props { questions: GoldieQuestion[]; source: string; class?: string }
 const { questions, source, class: cls = '' } = Astro.props;
@@ -17,7 +18,7 @@ const enabled = assistantEnabled() && questions.length > 0;
 ---
 {enabled && (
   <div class={`gp-askgoldie ${cls}`} data-askgoldie={source}>
-    <span class="gp-askgoldie__label"><span class="gp-askgoldie__avatar" aria-hidden="true">G</span>Ask Goldie</span>
+    <span class="gp-askgoldie__label"><span class="gp-askgoldie__avatar" aria-hidden="true">G<img src={GOLDIE_AVATAR_SRC} srcset={GOLDIE_AVATAR_SRCSET} sizes="24px" width="24" height="24" alt="" decoding="async" loading="lazy" /></span>Ask Goldie</span>
     <div class="gp-askgoldie__chips">
       {questions.map((q) => (<button type="button" data-ask={q.ask} aria-label={q.ask}>{q.label}</button>))}
     </div>
@@ -27,7 +28,8 @@ const enabled = assistantEnabled() && questions.length > 0;
 <style is:global>
   .gp-askgoldie { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; }
   .gp-askgoldie__label { display: inline-flex; align-items: center; gap: .4rem; font-size: .72rem; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; color: #456b00; }
-  .gp-askgoldie__avatar { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 9999px; background: #93d500; color: #0a0a0a; font-weight: 900; font-size: .7rem; letter-spacing: 0; text-transform: none; }
+  .gp-askgoldie__avatar { position: relative; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 9999px; background: #f4efe4; color: #0a0a0a; font-weight: 900; font-size: .7rem; letter-spacing: 0; text-transform: none; box-shadow: 0 0 0 1.5px #93d500; overflow: hidden; }
+  .gp-askgoldie__avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .gp-askgoldie__chips { display: flex; flex-wrap: wrap; gap: .4rem; }
   .gp-askgoldie__chips button { border: 1.5px solid #456b00; background: #fff; color: #456b00; border-radius: 9999px; padding: .4rem .8rem; font: inherit; font-size: .78rem; font-weight: 800; cursor: pointer; min-height: 36px; transition: background .15s, color .15s; }
   .gp-askgoldie__chips button:hover { background: #456b00; color: #fff; }

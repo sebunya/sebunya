@@ -2,6 +2,8 @@ import { getBusinessInfo } from './businessInfo';
 import { getStorefrontCopy } from './storefrontCopy';
 import { SITE_ORIGIN } from './sitemap';
 import { callTool, type Json } from './agentTools';
+import { TEAM_HANDOVER_PATH } from './goldieLinks';
+import { ORDER_REF, findContact, findOrderRef, myLoyalty, myOrders, quoteDelivery, requestCallback, trackOrder, type CareContext } from './goldieCare';
 
 /**
  * Deterministic first (mandate §3): the questions a shop answers the same way
@@ -11,7 +13,7 @@ import { callTool, type Json } from './agentTools';
  * The model is reserved for interpretation: trade-offs, suitability, anything
  * ambiguous. Every fact here comes from the same sources the pages render.
  */
-export type Intent = 'GREETING' | 'STORE' | 'DELIVERY' | 'PAYMENT' | 'ORDER' | 'POLICY' | 'BULK' | 'BATTERY' | 'PRODUCT' | 'UNKNOWN';
+export type Intent = 'IDENTITY' | 'LOYALTY' | 'CALLBACK' | 'GREETING' | 'STORE' | 'DELIVERY' | 'PAYMENT' | 'ORDER' | 'POLICY' | 'BULK' | 'BATTERY' | 'PRODUCT' | 'UNKNOWN';
 
 export interface Classification {
   intent: Intent;
@@ -40,10 +42,21 @@ export function classify(raw: string): Classification {
   const text = raw.trim().replace(/\s+/g, ' ');
   const t = text.toLowerCase();
   const short = t.length <= 40;
-  if (short && /^(hi|hello|hey|yo|good (morning|afternoon|evening)|thanks|thank you|ok(ay)?|cool|sure)\b[!. ]*$/.test(t)) return { intent: 'GREETING', deterministic: true, query: '' };
+  // "Are you a real person?": always the same honest answer, never left to the model.
+  if (/\b(are you (a |an )?(real|human|person|people|bot|robot|machine|computer|ai)|is (this|it|goldie) (a )?(real person|human|person|bot|robot|machine)|am i (talking|chatting|speaking|texting) (to|with) (a )?(real person|real|human|person|bot|robot|machine|someone)|who am i (talking|chatting|speaking) (to|with)|who are you|what are you)\b/.test(t)) return { intent: 'IDENTITY', deterministic: true, query: '' };
+  if (short && /^(hi|hello|hey|yo|good (morning|afternoon|evening)|ok(ay)?|cool|sure)\b[!. ]*$/.test(t)) return { intent: 'GREETING', deterministic: true, query: t };
+  // Thanks in its common forms (never worth a paid answer): "thank you so much", "ok thanks", "webale nnyo", "asante sana".
+  if (short && /^(ok(ay)?[ ,]*)?(thanks?|thank you|thx|webale|asante)( (so|very) much| a lot| nnyo| sana| dear| goldie| boss)*[!. 🙏]*$/u.test(t)) return { intent: 'GREETING', deterministic: true, query: t };
+  if (/\b(call me( back)?|phone me|ring me|give me a call|can (someone|somebody|you|a person) (call|phone|ring)|i want (someone|somebody|a person) to call|call back)\b/.test(t)) return { intent: 'CALLBACK', deterministic: true, query: text };
+  if (ORDER_REF.test(text)) return { intent: 'ORDER', deterministic: true, query: '' };
+  if (/\b(my )?(loyalty|reward points|my points|points balance|how many points|my tier|tier|friends ?(&|and) ?family (points|rewards))\b/.test(t) && !/\b(charging|power) points?\b/.test(t)) return { intent: 'LOYALTY', deterministic: true, query: '' };
   if (/\b(track|tracking|status of|where is|where's|wheres)\b[^.?]*\border\b|\border (status|number|ref|reference)\b|\bmy order\b|\bdelivered yet\b|\b(show|check|find|see|open|look up)\b[^.?]*\border\b/.test(t)) return { intent: 'ORDER', deterministic: true, query: '' };
   if (/\b(pay|payment|paid|paying|mobile money|momo|mtn|airtel|pesapal|visa|mastercard|(credit|debit|bank) ?card|card payment|(pay|paying|paid) (by|with|using) (a |my )?card|cash on delivery|refund me|my refund|refund (status|arrive|arrived|when)|pin|otp)\b/.test(t) && !/\b(refund policy|return)\b/.test(t)) return { intent: 'PAYMENT', deterministic: true, query: '' };
-  if (/\b(bulk|wholesale|quotation|quote|for (my|the|our) (office|school|shop|company|business))\b/.test(t) || /\b(\d{2,}|fifty|hundred) (power ?banks|chargers|cables|units|pieces|pcs)\b/.test(t)) return { intent: 'BULK', deterministic: true, query: '' };
+  if (/\b(bulk|wholesale|quotation|quote|for (my|the|our) (office|school|shop|company|business))\b/.test(t) || /\b(\d{2,}|fifty|hundred) (power ?banks|chargers|cables|units|pieces|pcs)\b/.test(t)) {
+    // Items AND numbers named: the model searches the shelf, confirms the list and files the quote. Otherwise ask.
+    const named = /\b(\d{2,}|fifty|hundred|dozen)\b/.test(t) && PRODUCT_NOUNS.test(t);
+    return { intent: 'BULK', deterministic: !named, query: '' };
+  }
   if (/\b(warranty|guarantee|returns?|refund|exchange|replace(ment)?(?!\s+batter)|broken|(bought|got|ordered|received) the wrong|wrong (item|product|battery|size|one|colour|color)|stop(s|ped)? working|not working|faulty|fake|genuine|original|verify|verification|authentic|counterfeit|swollen)\b/.test(t)) return { intent: 'POLICY', deterministic: true, query: text };
   if (/\bbatter(y|ies)\b/.test(t) || BATTERY_CODE.test(text)) return { intent: 'BATTERY', deterministic: true, query: batteryQuery(text) };
   if (/\b(deliver|delivery|deliveries|shipping|ship|courier|boda|cut.?off|same.?day|upcountry|how long (to|does|will)|when will (it|i)|receive (it|this|them|my)|bring (it|this|them))\b/.test(t) || (PLACES.test(t) && /\b(today|tomorrow|tonight|by (today|tomorrow|\w+day))\b/.test(t))) return { intent: 'DELIVERY', deterministic: true, query: text };
@@ -64,7 +77,7 @@ function batteryQuery(text: string): string {
 
 function productQuery(text: string): string {
   return text
-    .replace(/\b(do you (have|sell|stock)|have you got|got any|how much (is|are|does|for)?|what is the price of|price (of|for)|cost of|cheapest|cheap|looking for|i need|i want|i am looking for|show me|any|please|a|an|the|your|you|some|in stock|available|is|are|there|to buy|buy)\b/gi, ' ')
+    .replace(/\b(what('?s| is)?|do you (have|sell|stock)|have you got|got any|how much (is|are|does|for)?|what is the price of|price (of|for)|cost of|cheapest|cheap|looking for|i need|i want|i am looking for|show me|any|please|a|an|the|your|you|some|in stock|available|is|are|there|to buy|buy)\b/gi, ' ')
     .replace(/[?.!,]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -82,24 +95,39 @@ function cardsFromProducts(list: unknown): ProductCard[] {
   }).filter((c) => c.name && c.url.startsWith(SITE_ORIGIN));
 }
 
-export async function answerDeterministically(c: Classification): Promise<DeterministicAnswer> {
+/** What a care answer needs: who is asking (session, address) and the conversation (for an order reference and contact typed earlier). */
+export interface CareInput { care: CareContext; turns: ReadonlyArray<{ role: 'user' | 'assistant'; content: string }> }
+
+export async function answerDeterministically(c: Classification, ci?: CareInput): Promise<DeterministicAnswer> {
   const biz = await getBusinessInfo();
   const wa: Link = { label: 'Chat on WhatsApp', url: biz.whatsappUrl };
   const link = (label: string, path: string): Link => ({ label, url: `${SITE_ORIGIN}${path}` });
+  // Opens the in-chat "pass this to the team" form (the panel intercepts this address); without the panel it is the support page.
+  const team: Link = { label: 'Email the team', url: `${SITE_ORIGIN}${TEAM_HANDOVER_PATH}` };
   switch (c.intent) {
+    case 'IDENTITY':
+      return { intent: c.intent, text: "I'm Goldie, the GoldPlus personal shopper. I'm virtual, not a person: I answer from what is on our shelf and in our shop information. If you would rather talk to someone from the shop, they are on WhatsApp, or I can email them this chat.", products: [], links: [wa, team] };
     case 'GREETING':
-      return { intent: c.intent, text: 'Hello, you are welcome. Ask me about a product, a price, a battery for your phone, delivery or the shop, and I will check for you. For anything about an order, the Track my order page or WhatsApp is quickest.', products: [], links: [link('Browse the shop', '/shop'), link('Battery finder', '/battery-finder')] };
+      if (/\b(thanks|thank you|webale|asante)\b/.test(c.query)) return { intent: c.intent, text: 'You are most welcome. Thank you for choosing GoldPlus. If anything else comes up, I am right here.', products: [], links: [] };
+      if (/^(ok(ay)?|cool|sure)\b/.test(c.query)) return { intent: c.intent, text: 'Alright. Anything else I can check for you?', products: [], links: [] };
+      return { intent: c.intent, text: 'Hello, you are welcome. Tell me what you are looking for, a charger, a cable, a power bank or a battery for your phone, and I will check the shelf for you.', products: [], links: [link('Browse the shop', '/shop'), link('Battery finder', '/battery-finder')] };
     case 'STORE': {
       const out = await callTool('store_info', {});
       const s = structured(out);
       const b = biz as { openDays?: string; shopHours?: string; phoneDisplay?: string };
-      const text = `We are on the 4th floor of the Zainab Aziza Building on Burton Street, opposite Pioneer Mall and next to Uhuru Restaurant.${b.openDays && b.shopHours ? ` We are open ${b.openDays}, ${b.shopHours}.` : ''}${b.phoneDisplay ? ` Call or WhatsApp us on ${b.phoneDisplay} before you come, if you like.` : ''}`;
+      const text = `We are on the 4th floor of the Zainab Aziza Building on Burton Street, opposite Pioneer Mall and next to Uhuru Restaurant.${b.openDays && b.shopHours ? ` We are open ${b.openDays}, ${b.shopHours}.` : ''}${b.phoneDisplay ? ` Call or WhatsApp us on ${b.phoneDisplay} before you come and we will have it ready.` : ''}`;
       return { intent: c.intent, text, products: [], links: [{ label: 'Open the map', url: String(s.map ?? biz.mapUrl) }, wa] };
     }
     case 'DELIVERY': {
       const out = await callTool('store_info', {});
       const s = structured(out);
       const elsewhere = /\b(mbarara|gulu|jinja|mbale|lira|arua|fort portal|masaka|soroti|hoima|kabale|upcountry|up-country|outside kampala)\b/i.test(c.query);
+      // A named place: the real quote from the one quoting service, not a general sentence.
+      const place = c.query.toLowerCase().match(PLACES)?.[0];
+      if (ci && place && !/^my /.test(place)) {
+        const q = await quoteDelivery(place.replace(/\b\w/g, (m) => m.toUpperCase()), ci.care);
+        if (q.ok) return { intent: c.intent, text: q.text, products: [], links: [...q.links, wa] };
+      }
       const text = `Yes, we deliver. ${String(s.delivery ?? biz.deliveryNote)} An estimated delivery fee for your address is shown at checkout before you pay and confirmed before the rider leaves.${elsewhere ? ' For places outside Kampala and Wakiso, message us on WhatsApp first and we will tell you what is possible.' : ''}`;
       return { intent: c.intent, text, products: [], links: [link('Delivery in Kampala and Wakiso', '/delivery/kampala-wakiso'), wa] };
     }
@@ -108,18 +136,37 @@ export async function answerDeterministically(c: Classification): Promise<Determ
       const text = `You can pay two ways at checkout. ${copy.pesapal.label}: ${copy.pesapal.description} Or ${copy.offline.label.toLowerCase()}: ${copy.offline.description} One thing to know: we never ask for your PIN or OTP in this chat, and I cannot confirm a payment from here. If money left your phone and the order still says pending, send us the order reference on WhatsApp and a person will sort it out.`;
       return { intent: c.intent, text, products: [], links: [link('Payment questions', '/faq'), wa] };
     }
-    case 'ORDER':
-      return { intent: c.intent, text: 'I cannot open orders from this chat, so your details stay private. The Track my order page shows it with your order reference and the phone number or email you used at checkout. For anything else about an order, message us on WhatsApp and a person will help.', products: [], links: [link('Track my order', '/track-order'), wa] };
+    case 'ORDER': {
+      if (!ci) return { intent: c.intent, text: 'Track my order shows your order with the reference and the phone number or email you used at checkout. For anything else about the order, the team will sort it out on WhatsApp or by email.', products: [], links: [link('Track my order', '/track-order'), wa, team] };
+      const ref = findOrderRef(ci.turns), contact = findContact(ci.turns) ?? (ci.care.verifiedPhone ? `+${ci.care.verifiedPhone}` : null);
+      if (ref && contact) { const a = await trackOrder(ref, contact, ci.care); return { intent: c.intent, text: a.text, products: [], links: [...a.links, ...(a.ok ? [] : [wa])] }; }
+      if (!ref && (ci.care.bearer || ci.care.verifiedPhone)) { const a = await myOrders(ci.care); return { intent: c.intent, text: a.text, products: [], links: a.links }; }
+      if (ref) return { intent: c.intent, text: `Thanks, I have ${ref}. To keep your order private, what is the phone number or email you used at checkout?`, products: [], links: [] };
+      return { intent: c.intent, text: 'Send me your order reference (it starts with GP- and is in your order SMS or email) and the phone number or email you used at checkout, and I will check it now. If you are signed in, I can see your orders straight away.', products: [], links: [link('Sign in', '/login?returnTo=/account/orders')] };
+    }
+    case 'CALLBACK': {
+      if (!ci) return { intent: c.intent, text: 'Leave your number with the team on WhatsApp and someone will call you.', products: [], links: [wa] };
+      const phone = findContact(ci.turns) ?? (ci.care.verifiedPhone ? `+${ci.care.verifiedPhone}` : null);
+      if (!phone || /@/.test(phone)) return { intent: c.intent, text: 'Of course. Which number should the team call you on?', products: [], links: [] };
+      const reason = ci.turns.filter((t) => t.role === 'user').map((t) => t.content).slice(-3).join(' / ').slice(0, 180);
+      const a = await requestCallback({ phone, reason }, ci.care);
+      return { intent: c.intent, text: a.text, products: [], links: a.links };
+    }
+    case 'LOYALTY': {
+      if (!ci) return { intent: c.intent, text: 'Your points, tier and what expires next are on your rewards page once you sign in.', products: [], links: [link('My rewards', '/account/loyalty')] };
+      const a = await myLoyalty(ci.care);
+      return { intent: c.intent, text: a.text, products: [], links: a.links };
+    }
     case 'POLICY': {
       if (/\b(fake|genuine|original|verify|verification|authentic|counterfeit)\b/i.test(c.query)) {
-        return { intent: c.intent, text: 'Every GoldPlus product has a code under the hologram on the pack. Enter it on the verification page and it tells you straight away. I cannot confirm authenticity in chat; the page is the check. If you think you were sold a fake, please report it so we can follow up.', products: [], links: [link('Verify a product', '/verification'), link('Report a fake', '/support/fake'), wa] };
+        return { intent: c.intent, text: 'Every GoldPlus product has a code under the hologram on the pack. Enter it on the verification page and it tells you straight away. That page is the check, not this chat. If you think you were sold a fake, report it and we will follow up.', products: [], links: [link('Verify a product', '/verification'), link('Report a fake', '/support/fake'), wa] };
       }
-      return { intent: c.intent, text: 'Sorry to hear that. Warranty cover depends on the product, and our team checks the item before any replacement or refund, so nothing is approved in this chat. The warranty page explains what is covered and the steps, and the returns page covers returns. If you would rather talk to someone, message us on WhatsApp with your order number.', products: [], links: [link('Warranty', '/warranty'), link('Returns', '/returns'), wa] };
+      return { intent: c.intent, text: 'Thanks for letting us know, and sorry about the trouble. The team checks the item first, then agrees the replacement or refund with you; nothing is approved in this chat. The warranty page shows what is covered and the steps. The quickest way is WhatsApp with your order number, or I can email the team this chat and they will get back to you.', products: [], links: [link('Warranty', '/warranty'), link('Returns', '/returns'), wa, team] };
     }
     case 'BULK':
-      return { intent: c.intent, text: 'For a bulk or business order, the bulk page builds your list from the live catalogue and the quote request sends it to our sales team. The prices I quote here are single-unit prices; the team confirms the bulk price.', products: [], links: [link('Bulk buying', '/bulk'), link('Request a quote', '/quote-request'), wa] };
+      return { intent: c.intent, text: "Good, we do bulk, and we look after our resellers. Tell me which items and roughly how many units of each, and I'll put the quote together for you right here. Prices in this chat are single-unit prices; the sales team confirms your bulk price.", products: [], links: [link('Bulk buying', '/bulk'), wa] };
     case 'BATTERY': {
-      if (!c.query) return { intent: c.intent, text: 'Happy to check. Tell me the phone model, for example Tecno Spark 7, or the code printed on the old battery, for example BL-49FT.', products: [], links: [link('Battery finder', '/battery-finder')] };
+      if (!c.query) return { intent: c.intent, text: "Let's confirm the right battery. Send me the phone's exact model, for example Tecno Spark 7, or the code on the old battery, for example BL-49FT.", products: [], links: [link('Battery finder', '/battery-finder')] };
       const out = await callTool('find_battery', { phone_or_code: c.query });
       const s = structured(out);
       const kind = String(s.kind ?? '');
@@ -131,7 +178,7 @@ export async function answerDeterministically(c: Classification): Promise<Determ
           id: cardId(r.productId), category: null, name: String(r.name ?? ''), url: `${SITE_ORIGIN}/products/${String(r.slug ?? '')}`, sku: r.canonicalCode == null ? null : String(r.canonicalCode),
           price_ugx: r.priceUgx == null ? null : Number(r.priceUgx), availability: r.inStock ? 'in_stock' : 'out_of_stock', image: r.imageUrl ? String(r.imageUrl) : null, note: String(r.fitLabel ?? ''),
         })).filter((p) => p.name);
-        if (!products.length) return { intent: c.intent, text: `We have not matched a battery to the ${String(device.label ?? c.query)} yet, so I will not guess. Send us the model number on WhatsApp and we will confirm the right one.`, products: [], links };
+        if (!products.length) return { intent: c.intent, text: `We haven't confirmed a battery for the ${String(device.label ?? c.query)} yet, so I won't guess. Send us the model on WhatsApp and the team will confirm the right one.`, products: [], links };
         const awaiting = results.some((r) => r.fitState === 'AWAITING_VERIFICATION');
         return { intent: c.intent, text: `For the ${String(device.label ?? c.query)} we have ${products.length === 1 ? 'one battery' : `${products.length} batteries`} listed.${awaiting ? ' Where it says "not yet checked", the fit is listed by the supplier; we confirm the fit before you pay.' : ''}`, products, links };
       }
@@ -152,11 +199,11 @@ export async function answerDeterministically(c: Classification): Promise<Determ
       const query = c.query || 'accessories';
       const out = await callTool('search_products', { query, limit: 5 });
       const products = cardsFromProducts(structured(out).products);
-      if (!products.length) return { intent: c.intent, text: `No GoldPlus product matched "${query}". Try the product code, fewer words, or have a look through the shop.`, products: [], links: [link('Browse the shop', '/shop'), wa] };
-      return { intent: c.intent, text: `${products.length === 1 ? 'Here is what we have' : `Here is what we have, ${products.length} options`} for "${query}". Prices are today's prices and stock is on each card.`, products, links: [link('See all results', `/shop?q=${encodeURIComponent(query)}`)] };
+      if (!products.length) return { intent: c.intent, text: `I don't see "${query}" on our shelf. Try the product code or fewer words, or tell me what it is for and I'll find the closest fit.`, products: [], links: [link('Browse the shop', '/shop'), wa] };
+      return { intent: c.intent, text: `${products.length === 1 ? 'We have one that matches' : `We have ${products.length} that match`}. Today's price and stock are on each card${products.length > 1 ? '; tell me what it is for and I will say which one fits' : ''}.`, products, links: [link('See all results', `/shop?q=${encodeURIComponent(query)}`)] };
     }
     default:
-      return { intent: 'UNKNOWN', text: 'I can help you find a product, check a price or a phone battery, and explain delivery and payment. For anything else, our team is on WhatsApp.', products: [], links: [wa] };
+      return { intent: 'UNKNOWN', text: 'I can find a product, check a price or a battery for your phone, and explain delivery and payment. For anything else, the team is on WhatsApp, or I can email them this chat.', products: [], links: [wa, team] };
   }
 }
 
@@ -177,4 +224,4 @@ export function isClarificationReply(turns: ReadonlyArray<{ role: 'user' | 'assi
 }
 
 /** What the customer sees when paid AI is not available for this turn (mandate §5A.F wording). */
-export const SOFT_LIMIT_TEXT = 'I can still help you find products and check delivery. For the more detailed questions, give me a little while and try again, or our team can answer on WhatsApp.';
+export const SOFT_LIMIT_TEXT = 'I can still find products and check delivery for you. For the more detailed questions, give me a little while and ask again, or the team can answer on WhatsApp.';

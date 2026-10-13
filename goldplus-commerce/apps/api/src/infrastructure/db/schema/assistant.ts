@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { bigint, boolean, index, integer, jsonb, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 
 /**
@@ -37,4 +38,166 @@ export const assistantConfig = pgTable('assistant_config', {
   updatedBy: uuid('updated_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * Goldie conversation archive (0177): every channel, every message, with topic, mood and outcome
+ * for the admin inbox and the meeting summary. Text is redacted (cards, PINs, OTPs) before insert.
+ */
+export const assistantConversations = pgTable('assistant_conversations', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  channel: varchar('channel', { length: 20 }).notNull(),
+  channelKey: varchar('channel_key', { length: 128 }).notNull(),
+  customerId: uuid('customer_id'),
+  contactName: varchar('contact_name', { length: 120 }),
+  contactPhone: varchar('contact_phone', { length: 32 }),
+  contactEmail: varchar('contact_email', { length: 200 }),
+  firstTopic: varchar('first_topic', { length: 20 }),
+  lastTopic: varchar('last_topic', { length: 20 }),
+  worstMood: varchar('worst_mood', { length: 12 }).default('neutral').notNull(),
+  outcome: varchar('outcome', { length: 20 }).default('open').notNull(),
+  supportTicketId: uuid('support_ticket_id'),
+  page: text('page'),
+  messageCount: integer('message_count').default(0).notNull(),
+  aiTurns: integer('ai_turns').default(0).notNull(),
+  humanUntil: timestamp('human_until', { withTimezone: true }),
+  csat: integer('csat'),
+  csatComment: text('csat_comment'),
+  nextAction: varchar('next_action', { length: 40 }),
+  profileId: uuid('profile_id'),
+  visitorKey: varchar('visitor_key', { length: 200 }),
+  startedAt: timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
+  lastMessageAt: timestamp('last_message_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  lastIdx: index('assistant_conversations_last_idx').on(t.lastMessageAt),
+  customerIdx: index('assistant_conversations_customer_idx').on(t.customerId),
+}));
+
+export const assistantMessages = pgTable('assistant_messages', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  conversationId: uuid('conversation_id').notNull(),
+  role: varchar('role', { length: 12 }).notNull(),
+  content: text('content').notNull(),
+  intent: varchar('intent', { length: 20 }),
+  mood: varchar('mood', { length: 12 }),
+  route: varchar('route', { length: 16 }),
+  channelMessageId: varchar('channel_message_id', { length: 160 }),
+  cacheId: uuid('cache_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  conversationIdx: index('assistant_messages_conversation_idx').on(t.conversationId, t.createdAt),
+}));
+
+/** The Care Desk (0178): what a person must do, opened by Goldie or staff. */
+export const careTasks = pgTable('care_tasks', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  kind: varchar('kind', { length: 20 }).notNull(),
+  priority: varchar('priority', { length: 10 }).default('normal').notNull(),
+  status: varchar('status', { length: 12 }).default('open').notNull(),
+  title: varchar('title', { length: 200 }).notNull(),
+  detail: text('detail'),
+  customerName: varchar('customer_name', { length: 120 }),
+  customerPhone: varchar('customer_phone', { length: 32 }),
+  customerEmail: varchar('customer_email', { length: 200 }),
+  orderNumber: varchar('order_number', { length: 40 }),
+  conversationId: uuid('conversation_id'),
+  channel: varchar('channel', { length: 20 }),
+  proposedAction: jsonb('proposed_action'),
+  dueAt: timestamp('due_at', { withTimezone: true }),
+  assignedTo: uuid('assigned_to'),
+  openedBy: varchar('opened_by', { length: 40 }).default('goldie').notNull(),
+  resolvedBy: uuid('resolved_by'),
+  resolution: text('resolution'),
+  alertedAt: timestamp('alerted_at', { withTimezone: true }),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  escalations: integer('escalations').default(0).notNull(),
+  lastEscalatedAt: timestamp('last_escalated_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  // 0180: partial indexes for the open queue and dedupe (the generic 0178 index was dropped).
+  openQueueIdx: index('care_tasks_open_queue_idx').on(t.priority, t.createdAt).where(sql`status = 'open'`),
+}));
+
+/** Who gets Care Desk alerts, how, and when they are on duty (0178). */
+export const careTeamMembers = pgTable('care_team_members', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  name: varchar('name', { length: 80 }).notNull(),
+  roleLabel: varchar('role_label', { length: 60 }),
+  phone: varchar('phone', { length: 32 }),
+  email: varchar('email', { length: 200 }),
+  alertSms: boolean('alert_sms').default(true).notNull(),
+  alertEmail: boolean('alert_email').default(true).notNull(),
+  alertWhatsapp: boolean('alert_whatsapp').default(false).notNull(),
+  onDuty: jsonb('on_duty'),
+  active: boolean('active').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Goldie's answer memory (0179): paid answers reused at no model cost after a live price and stock check. */
+export const assistantAnswerMemory = pgTable('assistant_answer_memory', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  questionKey: varchar('question_key', { length: 64 }).notNull(),
+  question: text('question').notNull(),
+  answer: text('answer').notNull(),
+  intent: varchar('intent', { length: 20 }),
+  products: jsonb('products').default([]).notNull(),
+  pinned: boolean('pinned').default(false).notNull(),
+  edited: boolean('edited').default(false).notNull(),
+  retired: boolean('retired').default(false).notNull(),
+  asks: integer('asks').default(1).notNull(),
+  served: integer('served').default(0).notNull(),
+  poorRatings: integer('poor_ratings').default(0).notNull(),
+  staleMisses: integer('stale_misses').default(0).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  lastServedAt: timestamp('last_served_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** 0181: care operations. */
+export const careTaskNotes = pgTable('care_task_notes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  taskId: uuid('task_id').notNull(),
+  authorId: uuid('author_id'),
+  note: text('note').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+export const careSavedReplies = pgTable('care_saved_replies', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  title: varchar('title', { length: 80 }).notNull(),
+  body: text('body').notNull(),
+  uses: integer('uses').default(0).notNull(),
+  createdBy: uuid('created_by'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+export const careHandoverNotes = pgTable('care_handover_notes', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  authorId: uuid('author_id'),
+  note: text('note').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+export const assistantQaReviews = pgTable('assistant_qa_reviews', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  conversationId: uuid('conversation_id').notNull(),
+  week: varchar('week', { length: 10 }).notNull(),
+  score: integer('score'),
+  accurate: boolean('accurate'),
+  toneOk: boolean('tone_ok'),
+  note: text('note'),
+  reviewerId: uuid('reviewer_id'),
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+export const carePushSubscriptions = pgTable('care_push_subscriptions', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull(),
+  endpoint: text('endpoint').notNull(),
+  p256dh: varchar('p256dh', { length: 200 }).notNull(),
+  auth: varchar('auth', { length: 100 }).notNull(),
+  label: varchar('label', { length: 80 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  lastSuccessAt: timestamp('last_success_at', { withTimezone: true }),
+  failures: integer('failures').default(0).notNull(),
 });
