@@ -25,10 +25,10 @@
   characters a second, capped at 2.6 s; cards and chips follow the sentence. Reduced motion: 350 ms pause, no reveal.
   Numbers in `lib/goldieGreeting.ts`.
 - **Keep or pass on the chat** (row under the conversation once Goldie has answered):
-  - *Email me this chat*: `POST /api/assistant/transcript` -> outbox `GOLDIE_TRANSCRIPT` (transactional) to the
+  - *Email me a copy*: `POST /api/assistant/transcript` -> outbox `GOLDIE_TRANSCRIPT` (transactional) to the
     typed address. Links are stripped from the shopper's lines; 3 per address per day (API) and 3 per visitor per
     10 minutes (middleware budget).
-  - *Save or share*: the phone's share sheet (save to notes, send to self on WhatsApp), else a .txt download.
+  - *Save* (labelled "Save", "Save or share" to screen readers): the phone's share sheet (save to notes, send to self on WhatsApp), else a .txt download.
   - *Email the team* (also a chip on order, warranty, bulk, identity and unknown answers): `POST /api/assistant/handover`
     -> support ticket (`type inquiry`, `metadata.source = 'goldie'`, in /admin/support) + outbox `GOLDIE_HANDOVER`
     (operational) to `ADMIN_ORDER_NOTIFICATION_EMAILS`; with a customer email, Reply-To is the customer, and they get

@@ -50,7 +50,7 @@ export interface PanelContext {
 }
 export interface GoldiePanel { open: () => void; close: () => void; ask: (question: string) => Promise<void>; isOpen: () => boolean }
 
-const KEY = 'gp-assistant-turns', SEEN = 'gp-assistant-seen', HELLO = 'gp-goldie-hello';
+const KEY = 'gp-assistant-turns', SEEN = 'gp-assistant-seen', HELLO = 'gp-goldie-welcome'; // not gp-goldie-hello: the launcher's wordmark glint owns that key
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function mountGoldie(root: HTMLElement, ctx: PanelContext): GoldiePanel {
@@ -261,7 +261,7 @@ export function mountGoldie(root: HTMLElement, ctx: PanelContext): GoldiePanel {
     // Cards and chips wait until the sentence is written, so the reply reads in order.
     const started = performance.now();
     const pause = ctx.reduced ? 350 : readPauseMs(text);
-    let shown = 0, streamDone = false, failed = false;
+    let shown = 0, budget = 0, streamDone = false, failed = false;
     const later: Array<() => void> = [];
     let finish: () => void = () => {};
     const revealed = new Promise<void>((resolve) => { finish = resolve; });
@@ -269,10 +269,19 @@ export function mountGoldie(root: HTMLElement, ctx: PanelContext): GoldiePanel {
       if (failed) { clearInterval(timer); finish(); return; }
       if (performance.now() - started < pause) return;
       if (shown < answer.length) {
+        // A character budget per tick, spent a whole word at a time: the pace stays REVEAL_CPS and words never break.
+        budget += ctx.reduced ? answer.length : revealStep(answer.length);
+        let next = shown;
+        for (;;) {
+          const space = answer.indexOf(' ', next + 1);
+          const end = space < 0 ? (streamDone ? answer.length : -1) : space;
+          if (end < 0 || end - shown > budget) break;
+          next = end;
+          if (end === answer.length) break;
+        }
+        if (next === shown) return;
+        budget -= next - shown; shown = next;
         const el = ensureReply().el;
-        let next = ctx.reduced ? answer.length : Math.min(answer.length, shown + revealStep(answer.length));
-        const space = answer.indexOf(' ', next); next = space < 0 ? (streamDone ? answer.length : next) : space;
-        shown = Math.max(shown + 1, next);
         render(el, answer.slice(0, shown)); wait.status.textContent = ''; log.scrollTop = log.scrollHeight;
         return;
       }
@@ -344,7 +353,9 @@ export function mountGoldie(root: HTMLElement, ctx: PanelContext): GoldiePanel {
     act.append(btn, cancel); f.append(act, note);
     f.addEventListener('submit', (e) => { e.preventDefault(); if (btn.disabled) return; btn.disabled = true; void onSubmit(f, note, btn).finally(() => { btn.disabled = false; }); });
     row.append(avatar(), f); log.append(row); log.scrollTop = log.scrollHeight;
-    (f.querySelector('input') as HTMLInputElement | null)?.focus();
+    // The first field still to fill (a known name is already there), without raising the keyboard over the chat on a phone.
+    const first = Array.from(f.querySelectorAll<HTMLInputElement>('input:not([type=checkbox])')).find((i) => !i.value) ?? f.querySelector('input');
+    if (!ctx.narrow()) first?.focus(); else first?.scrollIntoView({ block: 'nearest' });
   };
   const postJson = async (url: string, body: unknown): Promise<{ ok: boolean; message: string }> => {
     try {
