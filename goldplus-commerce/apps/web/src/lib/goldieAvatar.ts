@@ -3,8 +3,8 @@
  * headset so the face reads at button size; 3 to 15 KB per size. The "G" stays underneath as the
  * fallback when an image cannot load (empty alt shows nothing broken).
  *
- * The portrait looks like a person, so an "AI" tag sits on it wherever Goldie greets a shopper
- * (launcher, panel header) and the panel says "AI" in words: nobody should think a human is typing.
+ * The portrait looks like a person, so the panel says in words that Goldie is a virtual assistant,
+ * not a person (header line and footer). Owner's call 2026-10-13: no "AI" tag or word on screen.
  */
 export const GOLDIE_AVATAR_SRC = '/goldie/goldie-v1-160.webp';
 export const GOLDIE_AVATAR_SRCSET = '/goldie/goldie-v1-96.webp 96w, /goldie/goldie-v1-160.webp 160w, /goldie/goldie-v1-320.webp 320w';

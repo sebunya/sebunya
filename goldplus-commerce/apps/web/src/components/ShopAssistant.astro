@@ -55,7 +55,7 @@ const enabled = assistantEnabled();
 {enabled && (
   <div id="gp-assistant" class="gp-assistant" data-whatsapp={whatsappUrl} data-endpoint="/api/assistant/chat" data-cutoff-hour={String(cutoffHour)}>
     <button type="button" class="gp-assistant__launch" aria-haspopup="dialog" aria-controls="gp-assistant-panel" aria-expanded="false" data-launch>
-      <span class="gp-assistant__avatar gp-assistant__avatar--launch" aria-hidden="true"><span>G</span><img class="gp-assistant__face" src={GOLDIE_AVATAR_SRC} srcset={GOLDIE_AVATAR_SRCSET} sizes="42px" width="42" height="42" alt="" decoding="async" /><i class="gp-assistant__ai">AI</i><i class="gp-assistant__badge" data-badge hidden></i></span>
+      <span class="gp-assistant__avatar gp-assistant__avatar--launch" aria-hidden="true"><span>G</span><img class="gp-assistant__face" src={GOLDIE_AVATAR_SRC} srcset={GOLDIE_AVATAR_SRCSET} sizes="42px" width="42" height="42" alt="" decoding="async" /><i class="gp-assistant__badge" data-badge hidden></i></span>
       <span class="gp-assistant__launchtext"><strong>Ask <span class="gp-goldie" data-goldie data-text="Goldie">Goldie</span></strong><small>GoldPlus shop help</small></span>
     </button>
 
@@ -72,10 +72,10 @@ const enabled = assistantEnabled();
 
     <section id="gp-assistant-panel" class="gp-assistant__panel" role="dialog" aria-label="Goldie, the GoldPlus shop assistant" aria-modal="false" hidden data-panel>
       <header class="gp-assistant__head">
-        <span class="gp-assistant__avatar gp-assistant__avatar--head" aria-hidden="true"><span>G</span><img class="gp-assistant__face" src={GOLDIE_AVATAR_SRC} srcset={GOLDIE_AVATAR_SRCSET} sizes="42px" width="42" height="42" alt="" decoding="async" /><i class="gp-assistant__ai">AI</i></span>
+        <span class="gp-assistant__avatar gp-assistant__avatar--head" aria-hidden="true"><span>G</span><img class="gp-assistant__face" src={GOLDIE_AVATAR_SRC} srcset={GOLDIE_AVATAR_SRCSET} sizes="42px" width="42" height="42" alt="" decoding="async" /></span>
         <div class="gp-assistant__who">
           <p class="gp-assistant__title"><span class="gp-goldie" data-goldie-title data-text="Goldie">Goldie</span></p>
-          <p class="gp-assistant__sub"><span class="gp-assistant__dot" aria-hidden="true"></span>AI assistant · answers from the shelf</p>
+          <p class="gp-assistant__sub"><span class="gp-assistant__dot" aria-hidden="true"></span>Virtual shop assistant</p>
         </div>
         <div class="gp-assistant__headbtns">
           <button type="button" class="gp-assistant__clear" data-clear hidden>Start over</button>
@@ -102,7 +102,7 @@ const enabled = assistantEnabled();
         </button>
       </form>
       <p class="gp-assistant__foot">
-        <span>Goldie is an AI. Prices and stock on the cards are live; check the product page before you pay.</span>
+        <span>Goldie is a virtual assistant, not a person. Prices and stock on the cards are live; check the product page before you pay.</span>
         <a class="gp-assistant__wa" href={whatsappUrl} target="_blank" rel="noopener noreferrer">
           <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 2a8 8 0 1 1-4.2 14.8l-.3-.2-3 .8.8-2.9-.2-.3A8 8 0 0 1 12 4zm-3 4.5c-.2 0-.5.1-.7.3-.3.3-1 1-1 2.4s1 2.8 1.2 3c.1.2 2 3.2 5 4.4 2.5 1 3 .8 3.5.7.5 0 1.7-.7 1.9-1.4.2-.7.2-1.2.2-1.4-.1-.1-.3-.2-.6-.3l-2-1c-.3-.1-.5-.1-.7.1l-.9 1.1c-.2.2-.3.2-.6.1-.3-.2-1.3-.5-2.4-1.5-.9-.8-1.5-1.8-1.7-2.1-.2-.3 0-.5.1-.6l.5-.6.3-.5c.1-.2 0-.4 0-.5l-.9-2.2c-.2-.5-.4-.5-.6-.5H9z"/></svg>
           Prefer a person? WhatsApp us
@@ -118,8 +118,6 @@ const enabled = assistantEnabled();
   .gp-assistant__avatar { position: relative; width: 42px; height: 42px; flex: none; display: grid; place-items: center; border-radius: 9999px; background: #f4efe4; color: var(--gp-ink); font-weight: 900; font-size: 1.05rem; letter-spacing: -.02em; box-shadow: 0 0 0 2px var(--gp-green); }
   /* The portrait fills the circle; the "G" under it shows only if the image cannot load. */
   .gp-assistant__face { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 9999px; object-fit: cover; }
-  /* "AI", always visible on the portrait where Goldie greets a shopper: she looks like a person, so say plainly she is not. */
-  .gp-assistant__ai { position: absolute; left: 50%; bottom: -5px; transform: translateX(-50%); padding: 0 4px; border-radius: 9999px; background: var(--gp-green); color: var(--gp-ink); font-weight: 900; font-size: 8px; line-height: 12px; font-style: normal; letter-spacing: .06em; box-shadow: 0 0 0 1.5px var(--gp-ink); }
   .gp-assistant__avatar--sm { width: 28px; height: 28px; font-size: .8rem; box-shadow: 0 0 0 1.5px var(--gp-green); }
   .gp-assistant__launch {
     position: fixed; right: max(1rem, env(safe-area-inset-right)); bottom: calc(max(1rem, env(safe-area-inset-bottom)) + 64px + var(--gp-lift, 0px));
