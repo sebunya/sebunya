@@ -30,11 +30,21 @@ describe('short form journeys', () => {
 
   it('tracking: the follow-up carries the proven contact instead of asking again; texted links can open the order', () => {
     expect(track).toMatch(/<input type="hidden" name="contact" value=\{submittedContact\} \/>\s*<label class="block">\s*<span class="text-xs font-bold text-slate-700">Anything/);
-    expect(track).toMatch(/rememberedContact\(readGuestMemory\(Astro\.cookies\)\)/);
+    expect(track).toMatch(/rememberedContact\(readGuestMemory\(Astro\.cookies, Astro\.request\)\)/);
   });
 
-  it('guest memory is site-wide, httpOnly, and replaces the old /checkout-scoped copy', () => {
+  it('guest memory is site-wide and httpOnly; reading prefers it over an old /checkout copy', async () => {
     expect(memory).toMatch(/path: '\/', maxAge: GUEST_MEMORY_MAX_AGE, httpOnly: true/);
-    expect(memory).toMatch(/cookies\.delete\(GUEST_MEMORY_COOKIE, \{ path: '\/checkout' \}\)/);
+    const { readGuestMemory, forgetGuestMemoryHeaders } = await import('../../apps/web/src/lib/guestMemory');
+    const enc = (o: object) => encodeURIComponent(JSON.stringify(o));
+    const req = new Request('https://shopgoldplus.com/checkout', { headers: { cookie: `gp_checkout_prefill=${enc({ phone: '0700000001' })}; gp_checkout_prefill=${enc({ phone: '0700000002' })}` } });
+    const cookies = { get: () => ({ value: enc({ phone: '0700000001' }) }) } as never;
+    expect(readGuestMemory(cookies, req).phone).toBe('0700000002');
+    // "Not you?" clears both copies, as two separate Set-Cookie headers (Astro keeps one change per name).
+    expect(forgetGuestMemoryHeaders()).toEqual([expect.stringContaining('Path=/;'), expect.stringContaining('Path=/checkout;')]);
+  });
+
+  it('every pre-filled form offers "Not you? Clear these details"', () => {
+    for (const src of [dealer, quote, track, read('apps/web/src/pages/review.astro'), read('apps/web/src/pages/checkout.astro')]) expect(src).toMatch(/<RememberedDetails show=/);
   });
 });

@@ -1,6 +1,7 @@
 ---
 import { readClientAddress } from '../lib/forwardClient';
 import { readGuestMemory, rememberedContact } from '../lib/guestMemory';
+import RememberedDetails from '../components/RememberedDetails.astro';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { postJson, whatsappSupportNumber } from '../lib/api';
 import { startPaymentByReference, paymentStartMessageFor, orderAwaitsPayment } from '../lib/checkoutClient';
@@ -102,7 +103,8 @@ if (Astro.request.method === 'POST') {
 // the order: the contact is remembered from checkout, so the order shows at once instead of
 // asking the shopper to type what this device already knows. The API applies the same proof
 // and lockout as a typed lookup; if it does not match, the form simply shows, pre-filled.
-if (Astro.request.method === 'GET' && !submittedContact) submittedContact = rememberedContact(readGuestMemory(Astro.cookies));
+let contactRemembered = false;
+if (Astro.request.method === 'GET' && !submittedContact) { submittedContact = rememberedContact(readGuestMemory(Astro.cookies, Astro.request)); contactRemembered = Boolean(submittedContact); }
 if (Astro.request.method === 'GET' && submittedRef && submittedContact && !order) {
   const auto = await lookupOrder(submittedRef, submittedContact);
   if (auto.ok) order = auto.data;
@@ -187,6 +189,7 @@ const paymentCopy = order ? paymentStatusCopy(order.paymentStatus) : null;
             <p class="text-center text-xs text-slate-600">Have an account? <a href="/account/orders" class="font-bold underline">See all your orders</a> without a reference.</p>
           </form>
           </LookupWrap>
+          <RememberedDetails show={contactRemembered} back="/track-order" class="mt-3" />
 
 
           {order && (

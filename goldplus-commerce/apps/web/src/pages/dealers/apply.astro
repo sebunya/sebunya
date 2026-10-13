@@ -21,7 +21,8 @@ import { postJson } from '../../lib/api';
 import UgandaLocationPicker from '../../components/UgandaLocationPicker.astro';
 import { formatLocationLabel } from '../../lib/location-utils';
 import { isValidEmail, isValidUgandanPhone, normalizeEmail, normalizePhone } from '../../lib/formValidation';
-import { readGuestMemory } from '../../lib/guestMemory';
+import { readGuestMemory, hasGuestMemory } from '../../lib/guestMemory';
+import RememberedDetails from '../../components/RememberedDetails.astro';
 
 let status: 'success' | 'error' | 'received' | null = null;
 let message: string | undefined;
@@ -29,9 +30,11 @@ let reference: string | undefined;
 let values: Record<string, string> = {};
 let errors: Record<string, string> = {};
 let showMore = false;
+let remembered = false;
 
 if (Astro.request.method === 'GET') {
-  const m = readGuestMemory(Astro.cookies);
+  const m = readGuestMemory(Astro.cookies, Astro.request);
+  remembered = hasGuestMemory(m);
   values = { contactName: m.name ?? '', phone: m.phone ?? '', email: m.email ?? '', locationJson: m.locationJson ?? '' };
 }
 
@@ -96,6 +99,7 @@ if (Astro.request.method === 'POST') {
     <div class="max-w-xl mx-auto space-y-5">
       <FormFeedback status={status} message={message} reference={reference} />
 
+      {status !== 'success' && <RememberedDetails show={remembered} back="/dealers/apply" />}
       {status !== 'success' && (
         <form method="POST" action="/dealers/apply" novalidate id="dealerForm" class="bg-white p-5 sm:p-8 rounded-2xl border border-slate-200 space-y-5">
           <FormField id="contactName" name="contactName" label="Your name" required defaultValue={values.contactName} autocomplete="name" errorMessage={errors.contactName} />

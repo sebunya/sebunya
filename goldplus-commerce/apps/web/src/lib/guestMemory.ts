@@ -16,10 +16,21 @@ export const GUEST_MEMORY_MAX_AGE = 60 * 60 * 24 * 180;
 
 export interface GuestMemory { name?: string; email?: string; phone?: string; locationJson?: string; deliveryAddress?: string }
 
-export function readGuestMemory(cookies: AstroCookies): GuestMemory {
+/**
+ * Read the memory. A device that checked out before 2026-10-13 may also hold an older copy scoped
+ * to /checkout; on /checkout the browser then sends both, most specific path first, and
+ * cookies.get() would return the stale one. With the request, the LAST copy (the site-wide one)
+ * wins.
+ */
+export function readGuestMemory(cookies: AstroCookies, request?: Request): GuestMemory {
   const out: GuestMemory = {};
   try {
-    const raw = cookies.get(GUEST_MEMORY_COOKIE)?.value;
+    let raw = cookies.get(GUEST_MEMORY_COOKIE)?.value;
+    const header = request?.headers.get('cookie');
+    if (header) {
+      const all = header.split(/;\s*/).filter((c) => c.startsWith(`${GUEST_MEMORY_COOKIE}=`)).map((c) => c.slice(GUEST_MEMORY_COOKIE.length + 1));
+      if (all.length) raw = all[all.length - 1];
+    }
     if (!raw) return out;
     const parsed = JSON.parse(decodeURIComponent(raw));
     if (!parsed || typeof parsed !== 'object') return out;
@@ -30,12 +41,23 @@ export function readGuestMemory(cookies: AstroCookies): GuestMemory {
   return out;
 }
 
+/** Write the memory for the whole site. (Astro keeps ONE pending change per cookie name, so the
+ *  old /checkout-scoped copy cannot be deleted in the same response; readGuestMemory ignores it
+ *  and "Not you?" deletes both.) */
 export function writeGuestMemory(cookies: AstroCookies, m: GuestMemory, secure: boolean): void {
   try {
-    cookies.delete(GUEST_MEMORY_COOKIE, { path: '/checkout' });
     cookies.set(GUEST_MEMORY_COOKIE, encodeURIComponent(JSON.stringify(m)), { path: '/', maxAge: GUEST_MEMORY_MAX_AGE, httpOnly: true, sameSite: 'lax', secure });
   } catch { /* memory is a convenience */ }
 }
+
+/** The Set-Cookie headers that forget this device's memory: both the site-wide copy and the old
+ *  /checkout-scoped one. Raw headers, because Astro's cookie API would keep only the last of two
+ *  changes to the same name. */
+export function forgetGuestMemoryHeaders(): string[] {
+  return ['/', '/checkout'].map((path) => `${GUEST_MEMORY_COOKIE}=; Path=${path}; Max-Age=0; HttpOnly; SameSite=Lax`);
+}
+
+export const hasGuestMemory = (m: GuestMemory): boolean => Boolean(m.name || m.phone || m.email);
 
 /** The contact a guest used at checkout, for an order lookup: phone first (what most people use), else email. */
 export const rememberedContact = (m: GuestMemory): string => m.phone || m.email || '';

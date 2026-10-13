@@ -19,7 +19,8 @@ import FormFeedback from '../components/FormFeedback.astro';
 import UgandaLocationPicker from '../components/UgandaLocationPicker.astro';
 import { formatLocationLabel } from '../lib/location-utils';
 import { postJson } from '../lib/api';
-import { readGuestMemory } from '../lib/guestMemory';
+import { readGuestMemory, hasGuestMemory } from '../lib/guestMemory';
+import RememberedDetails from '../components/RememberedDetails.astro';
 import { isValidEmail, isValidUgandanPhone, normalizeEmail, normalizePhone } from '../lib/formValidation';
 
 let status: 'success' | 'error' | 'received' | null = null;
@@ -28,13 +29,15 @@ let reference: string | undefined;
 let values: Record<string, string> = {};
 let errors: Record<string, string> = {};
 let showMore = false;
+let remembered = false;
 
 type Kind = 'retail' | 'wholesale' | 'corporate';
 const kindParam = Astro.url.searchParams.get('kind');
 const initialKind: Kind = kindParam === 'wholesale' || kindParam === 'corporate' ? kindParam : 'retail';
 
 if (Astro.request.method === 'GET') {
-  const m = readGuestMemory(Astro.cookies);
+  const m = readGuestMemory(Astro.cookies, Astro.request);
+  remembered = hasGuestMemory(m);
   values = { customerName: m.name ?? '', phone: m.phone ?? '', email: m.email ?? '', locationJson: m.locationJson ?? '' };
   // `requested` carries the customer's zero-result shop search (Slice 4).
   const productNameParam = Astro.url.searchParams.get('productName') || Astro.url.searchParams.get('requested');
@@ -116,6 +119,7 @@ const heading = checkedKind === 'corporate' ? 'Get a quote for your organisation
       <FormFeedback status={status} message={message} reference={reference} />
       {status === 'received' && reference && <span hidden data-lead-ref={reference}></span>}
 
+      {status !== 'received' && <RememberedDetails show={remembered} back={`/quote-request${initialKind !== 'retail' ? `?kind=${initialKind}` : ''}`} />}
       {status !== 'received' && (
         <form method="POST" action={`/quote-request${initialKind !== 'retail' ? `?kind=${initialKind}` : ''}`} novalidate id="quoteForm" class="bg-white p-5 sm:p-8 rounded-2xl border border-slate-200 space-y-5">
           <fieldset>

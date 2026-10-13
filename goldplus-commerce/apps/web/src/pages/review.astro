@@ -11,6 +11,7 @@ import { readClientAddress } from '../lib/forwardClient';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { postJson, whatsappSupportNumber } from '../lib/api';
 import { readGuestMemory, rememberedContact } from '../lib/guestMemory';
+import RememberedDetails from '../components/RememberedDetails.astro';
 
 type Item = { productId: string; name: string; reviewed: boolean };
 let reference = (Astro.url.searchParams.get('reference') ?? '').trim().slice(0, 80);
@@ -21,6 +22,7 @@ let orderNumber = '';
 let errorMsg = '';
 let thanksFor = '';
 let itemError: { productId: string; message: string } | null = null;
+let contactRemembered = false;
 
 const eligibility = () => postJson('/commerce/reviews/eligibility', { reference, contact }, null, readClientAddress(Astro));
 
@@ -60,7 +62,8 @@ if (Astro.request.method === 'POST') {
 // checkout, so the items to rate show at once. Same proof and lockout as a typed lookup; on a
 // mismatch the form simply shows, pre-filled.
 if (Astro.request.method === 'GET') {
-  contact = rememberedContact(readGuestMemory(Astro.cookies));
+  contact = rememberedContact(readGuestMemory(Astro.cookies, Astro.request));
+  contactRemembered = Boolean(contact);
   if (reference && contact) {
     const auto = await eligibility();
     if (auto.ok) {
@@ -78,6 +81,7 @@ const helpUrl = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComponen
     <h1 class="mt-3 text-3xl font-black tracking-tight text-gray-900 sm:text-4xl" style="text-wrap:balance">Rate what you bought</h1>
     <p class="mt-3 text-base text-slate-600">It takes a minute and helps the next shopper choose. Only orders that have reached you can be rated, so every review on GoldPlus is from someone who bought the item.</p>
 
+    <RememberedDetails show={contactRemembered} back="/review" class="mt-4" />
     {errorMsg && <p role="alert" class="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{errorMsg}</p>}
 
     {!items && (
