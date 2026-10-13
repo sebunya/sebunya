@@ -30,6 +30,10 @@ export class DrizzleAnswerMemoryRepository implements IAnswerMemoryRepository {
       });
   }
 
+  async askByKey(key: string) {
+    const [r] = await db.update(assistantAnswerMemory).set({ asks: sql`${assistantAnswerMemory.asks} + 1` }).where(eq(assistantAnswerMemory.questionKey, key)).returning();
+    return r ? row(r) : null;
+  }
   async countAsk(id: string) { await db.update(assistantAnswerMemory).set({ asks: sql`${assistantAnswerMemory.asks} + 1` }).where(eq(assistantAnswerMemory.id, id)); }
   async served(id: string) { await db.update(assistantAnswerMemory).set({ served: sql`${assistantAnswerMemory.served} + 1`, lastServedAt: sql`now()` }).where(eq(assistantAnswerMemory.id, id)); }
   async stale(id: string) { await db.update(assistantAnswerMemory).set({ staleMisses: sql`${assistantAnswerMemory.staleMisses} + 1` }).where(eq(assistantAnswerMemory.id, id)); }

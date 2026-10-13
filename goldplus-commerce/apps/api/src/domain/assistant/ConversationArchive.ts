@@ -59,6 +59,11 @@ export interface MeetingSummary {
   byOutcome: Record<string, number>;
   /** Share of conversations Goldie closed without a person (resolved + open with no upset), 0..1; null with no data. */
   selfServeRate: number | null;
+  /** Average customer rating (1-5) of conversations in the period, and how many rated. */
+  csatAverage: number | null;
+  csatCount: number;
+  /** How Goldie's answers were produced (deterministic, cache, ai, fallback). */
+  byRoute: Record<string, number>;
   needsFollowUp: Array<{ id: string; channel: string; contact: string | null; topic: string | null; mood: string; lastMessageAt: string; lastCustomerLine: string }>;
 }
 

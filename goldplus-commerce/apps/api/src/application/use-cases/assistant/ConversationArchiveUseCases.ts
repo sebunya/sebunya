@@ -88,7 +88,7 @@ export class ConversationArchiveUseCases {
   }
 
   list(f: ArchiveFilters) { return this.store.list({ ...f, limit: Math.min(Math.max(f.limit, 1), 200), offset: Math.max(f.offset, 0) }); }
-  get(id: string) { return this.store.get(id); }
+  get(id: string, limit?: number) { return this.store.get(id, limit); }
   findByKey(channel: ArchiveChannel, key: string) { return this.store.findByKey(channel, key); }
   servedMemory(conversationId: string) { return this.store.servedMemory(conversationId); }
   summary(from: Date, to: Date) { return this.store.summary(from, to); }

@@ -118,4 +118,6 @@ export interface CareDeskToday {
   needsPersonToday: number;
   csatAverage: number | null;
   csatCount: number;
+  /** When the longest-waiting open task was opened (null when nothing is open). */
+  oldestOpenAt: string | null;
 }

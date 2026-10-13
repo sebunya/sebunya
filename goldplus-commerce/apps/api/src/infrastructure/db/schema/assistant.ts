@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { bigint, boolean, index, integer, jsonb, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 
 /**
@@ -109,7 +110,8 @@ export const careTasks = pgTable('care_tasks', {
   resolvedAt: timestamp('resolved_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
-  openIdx: index('care_tasks_open_idx').on(t.status, t.priority, t.createdAt),
+  // 0180: partial indexes for the open queue and dedupe (the generic 0178 index was dropped).
+  openQueueIdx: index('care_tasks_open_queue_idx').on(t.priority, t.createdAt).where(sql`status = 'open'`),
 }));
 
 /** Who gets Care Desk alerts, how, and when they are on duty (0178). */

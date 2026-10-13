@@ -70,7 +70,8 @@ export class GoldieChannelUseCases {
       });
       if (filed.duplicate) return 'duplicate';
 
-      const thread = await this.archive.get(filed.conversationId);
+      // The last 40 messages are plenty for history, silence rules and repeats.
+      const thread = await this.archive.get(filed.conversationId, 40);
       // When not to answer: a colleague has it, the matter is settled and this is "ok 👍", the same text pasted
       // again and again, a stream of abuse, or a team member's own number. Filed either way, never lost.
       const t = this.now().getTime();

@@ -23,11 +23,30 @@ async function call<T>(path: string, body: unknown, timeoutMs: number): Promise<
   }
 }
 
+/**
+ * What the shop knows about this shopper changes slowly (visits, orders, interests), but it was read afresh, about
+ * eight queries, for the welcome and again for every paid turn. Kept for two minutes per shopper in this process;
+ * a shopper's own new order or interest shows up on the next read after that.
+ */
+const CONTEXT_TTL_MS = 2 * 60_000;
+const contextCache = new Map<string, { at: number; value: ShopperContext | null }>();
+/** Test seam. */
+export function clearShopperContextCache(): void { contextCache.clear(); }
+
 /** Null when nothing could be read; callers then treat the shopper as new. Kept short: it sits in front of an answer. */
 export async function shopperContext(who: ShopperIdentity, timeoutMs = 900): Promise<ShopperContext | null> {
   if (!who.visitToken && !who.userId && !who.fpClientId && !who.verifiedPhone) return null;
+  const key = JSON.stringify([who.userId ?? '', who.verifiedPhone ?? '', who.visitToken ?? '', who.fpClientId ?? '']);
+  const hit = contextCache.get(key);
+  if (hit && Date.now() - hit.at < CONTEXT_TTL_MS) return hit.value;
   const r = await call<ShopperContext>('/context', who, timeoutMs);
-  return r.ok ? r.data : null;
+  const value = r.ok ? r.data : null;
+  // A failed read is not remembered: the next turn tries again.
+  if (r.ok) {
+    if (contextCache.size > 5000) contextCache.clear();
+    contextCache.set(key, { at: Date.now(), value });
+  }
+  return value;
 }
 
 /** Fire-and-forget: a lost interest never costs the shopper anything. */

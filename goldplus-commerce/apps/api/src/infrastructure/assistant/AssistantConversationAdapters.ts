@@ -101,16 +101,11 @@ export class DrizzleAssistantContextReader implements IAssistantContextReader {
 
   private async pastTopics(key: AssistantShopperKey): Promise<string[]> {
     if (!key.fpClientId && !key.userId) return [];
-    const who = key.userId && key.fpClientId
-      ? sql`(user_id = ${key.userId}::uuid or fp_client_id = ${key.fpClientId})`
-      : key.userId ? sql`user_id = ${key.userId}::uuid` : sql`fp_client_id = ${key.fpClientId}`;
-    const rows = rowsOf(await db.execute(sql`
-      select payload->>'topic' as topic
-      from zero_party_signals
-      where source_component = ${GOLDIE_SOURCE_COMPONENT} and ${who} and captured_at > now() - interval '120 days'
-      order by captured_at desc
-      limit 12
-    `));
+    // Each identity reads its own partial index (0180) newest first; the two short lists are merged.
+    const side = (cond: ReturnType<typeof sql>) => sql`(select payload->>'topic' as topic, captured_at from zero_party_signals
+      where source_component = ${GOLDIE_SOURCE_COMPONENT} and ${cond} and captured_at > now() - interval '120 days' order by captured_at desc limit 12)`;
+    const parts = [key.fpClientId ? side(sql`fp_client_id = ${key.fpClientId}`) : null, key.userId ? side(sql`user_id = ${key.userId}::uuid`) : null].filter(Boolean) as ReturnType<typeof sql>[];
+    const rows = rowsOf(await db.execute(sql`select topic from (${sql.join(parts, sql` union all `)}) t order by captured_at desc limit 12`));
     const seen = new Set<string>(); const out: string[] = [];
     for (const r of rows) {
       const t = String(r.topic ?? '').trim();

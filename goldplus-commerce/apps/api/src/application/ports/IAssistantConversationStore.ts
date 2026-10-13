@@ -17,6 +17,8 @@ export interface ArchiveConversationRow {
   messageCount: number;
   aiTurns: number;
   humanUntil: Date | null;
+  /** The customer's rating of the chat (1-5), when given. */
+  csat?: number | null;
   startedAt: Date;
   lastMessageAt: Date;
 }
@@ -45,7 +47,7 @@ export interface IAssistantConversationStore {
   /** Rolls up topic, mood, outcome and counters after a turn. */
   update(conversationId: string, patch: { lastTopic?: string | null; firstTopic?: string | null; worstMood?: ArchiveMood; outcome?: ArchiveOutcome; aiTurn?: boolean; supportTicketId?: string | null; humanUntil?: Date | null; contact?: { name?: string | null; phone?: string | null; email?: string | null } }): Promise<void>;
   findByKey(channel: ArchiveChannel, channelKey: string): Promise<ArchiveConversationRow | null>;
-  get(id: string): Promise<{ conversation: ArchiveConversationRow; messages: ArchiveMessageRow[] } | null>;
+  get(id: string, limit?: number): Promise<{ conversation: ArchiveConversationRow; messages: ArchiveMessageRow[] } | null>;
   list(f: ArchiveFilters): Promise<{ rows: Array<ArchiveConversationRow & { lastCustomerLine: string }>; total: number }>;
   summary(from: Date, to: Date): Promise<MeetingSummary>;
   purgeBefore(cutoff: Date): Promise<number>;

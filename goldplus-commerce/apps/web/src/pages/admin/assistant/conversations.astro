@@ -28,8 +28,8 @@ const call = async <T,>(path: string): Promise<{ ok: true; data: T } | { ok: fal
     return { ok: true, data: json.data as T };
   } catch { return { ok: false, message: 'The API could not be reached.' }; }
 };
-interface Row { id: string; channel: string; contactName: string | null; contactPhone: string | null; contactEmail: string | null; firstTopic: string | null; lastTopic: string | null; worstMood: string; outcome: string; messageCount: number; aiTurns: number; humanUntil: string | null; lastMessageAt: string; lastCustomerLine: string }
-interface Summary { from: string; to: string; conversations: number; customerMessages: number; byChannel: Record<string, number>; byTopic: Array<{ topic: string; count: number }>; byMood: Record<string, number>; byOutcome: Record<string, number>; selfServeRate: number | null; needsFollowUp: Array<{ id: string; channel: string; contact: string | null; topic: string | null; mood: string; lastMessageAt: string; lastCustomerLine: string }> }
+interface Row { id: string; channel: string; contactName: string | null; contactPhone: string | null; contactEmail: string | null; firstTopic: string | null; lastTopic: string | null; worstMood: string; outcome: string; messageCount: number; aiTurns: number; humanUntil: string | null; lastMessageAt: string; lastCustomerLine: string; csat?: number | null }
+interface Summary { from: string; to: string; conversations: number; customerMessages: number; byChannel: Record<string, number>; byTopic: Array<{ topic: string; count: number }>; byMood: Record<string, number>; byOutcome: Record<string, number>; selfServeRate: number | null; csatAverage: number | null; csatCount: number; byRoute: Record<string, number>; needsFollowUp: Array<{ id: string; channel: string; contact: string | null; topic: string | null; mood: string; lastMessageAt: string; lastCustomerLine: string }> }
 
 const [list, summary, channels] = await Promise.all([
   call<{ rows: Row[]; total: number }>(`/conversations?${params.toString()}&limit=50&offset=${offset}`),
@@ -66,8 +66,8 @@ const page = (o: number) => { const p = new URLSearchParams(params); if (o) p.se
         </div>
         <div class="grid gap-4 sm:grid-cols-4">
           <div><p class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Conversations</p><p class="text-2xl font-black tabular-nums">{summary.data.conversations}</p><p class="text-xs text-gray-500">{Object.entries(summary.data.byChannel).map(([k, v]) => `${CHANNEL_LABEL[k] ?? k} ${v}`).join(' · ') || 'none yet'}</p></div>
-          <div><p class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Customer messages</p><p class="text-2xl font-black tabular-nums">{summary.data.customerMessages}</p></div>
-          <div><p class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Handled by Goldie</p><p class="text-2xl font-black tabular-nums">{pct(summary.data.selfServeRate)}</p><p class="text-xs text-gray-500">resolved or still open without a person</p></div>
+          <div><p class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Customer messages</p><p class="text-2xl font-black tabular-nums">{summary.data.customerMessages}</p><p class="text-xs text-gray-500">{summary.data.csatCount ? `rated ${(summary.data.csatAverage ?? 0).toFixed(1)} / 5 by ${summary.data.csatCount}` : 'no ratings yet'}</p></div>
+          <div><p class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Handled by Goldie</p><p class="text-2xl font-black tabular-nums">{pct(summary.data.selfServeRate)}</p><p class="text-xs text-gray-500">resolved or still open without a person{(() => { const total = Object.values(summary.data.byRoute).reduce((s, n) => s + n, 0); return total ? `; ${Math.round(((total - (summary.data.byRoute.ai ?? 0)) / total) * 100)}% of answers at no model cost` : ''; })()}</p></div>
           <div><p class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Need a person</p><p class="text-2xl font-black tabular-nums text-red-700">{(summary.data.byOutcome.needs_human ?? 0) + (summary.data.byOutcome.handed_over ?? 0)}</p><p class="text-xs text-gray-500">upset, or passed to the team</p></div>
         </div>
         <div class="grid gap-6 md:grid-cols-3 text-sm">
@@ -95,7 +95,7 @@ const page = (o: number) => { const p = new URLSearchParams(params); if (o) p.se
               <span class="font-bold">{r.contactName ?? r.contactPhone ?? r.contactEmail ?? 'Website visitor'} <span class="font-normal text-gray-500">· {CHANNEL_LABEL[r.channel] ?? r.channel} · {TOPIC_LABEL[r.lastTopic ?? r.firstTopic ?? ''] ?? 'Other'} · {r.messageCount} messages</span></span>
               <span class="text-gray-500 tabular-nums">{when(r.lastMessageAt)}</span>
               <span class="text-gray-700 truncate">“{r.lastCustomerLine}”</span>
-              <span class="flex gap-1 justify-end"><span class={`text-xs border rounded-full px-2 ${tone[r.worstMood] ?? tone.neutral}`}>{MOOD_LABEL[r.worstMood] ?? r.worstMood}</span><span class="text-xs border rounded-full px-2 border-gray-200">{OUTCOME_LABEL[r.outcome] ?? r.outcome}</span>{r.humanUntil && new Date(r.humanUntil) > new Date() && <span class="text-xs border rounded-full px-2 border-indigo-200 bg-indigo-50 text-indigo-700">Team has it</span>}</span>
+              <span class="flex gap-1 justify-end"><span class={`text-xs border rounded-full px-2 ${tone[r.worstMood] ?? tone.neutral}`}>{MOOD_LABEL[r.worstMood] ?? r.worstMood}</span><span class="text-xs border rounded-full px-2 border-gray-200">{OUTCOME_LABEL[r.outcome] ?? r.outcome}</span>{r.csat != null && <span class={`text-xs border rounded-full px-2 ${r.csat >= 4 ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{r.csat >= 4 ? 'Rated well' : 'Rated poorly'}</span>}{r.humanUntil && new Date(r.humanUntil) > new Date() && <span class="text-xs border rounded-full px-2 border-indigo-200 bg-indigo-50 text-indigo-700">Team has it</span>}</span>
             </a>
           </li>
         ))}</ul>

@@ -83,13 +83,15 @@ export class DrizzleCareDeskRepository implements ICareDeskRepository {
   }
 
   async today(since: Date): Promise<CareDeskToday> {
+    // Open tasks only, so the open-queue partial index (0180) carries it however many tasks are closed.
     const [t] = rowsOf(await db.execute(sql`select
-        count(*) filter (where status = 'open')::int as open_tasks,
-        count(*) filter (where status = 'open' and priority = 'urgent')::int as urgent_open,
-        count(*) filter (where status = 'open' and kind = 'callback')::int as callbacks_open,
-        count(*) filter (where status = 'open' and kind = 'order_change')::int as approvals_open,
-        count(*) filter (where status = 'open' and kind = 'bulk_lead')::int as bulk_open
-      from care_tasks`));
+        count(*)::int as open_tasks,
+        count(*) filter (where priority = 'urgent')::int as urgent_open,
+        count(*) filter (where kind = 'callback')::int as callbacks_open,
+        count(*) filter (where kind = 'order_change')::int as approvals_open,
+        count(*) filter (where kind = 'bulk_lead')::int as bulk_open,
+        min(created_at) as oldest_open
+      from care_tasks where status = 'open'`));
     const [c] = rowsOf(await db.execute(sql`select
         count(*)::int as chats,
         count(*) filter (where outcome in ('open', 'resolved'))::int as by_goldie,
@@ -101,6 +103,7 @@ export class DrizzleCareDeskRepository implements ICareDeskRepository {
       openTasks: Number(t?.open_tasks ?? 0), urgentOpen: Number(t?.urgent_open ?? 0), callbacksOpen: Number(t?.callbacks_open ?? 0), approvalsOpen: Number(t?.approvals_open ?? 0), bulkLeadsOpen: Number(t?.bulk_open ?? 0),
       chatsToday: Number(c?.chats ?? 0), handledByGoldieToday: Number(c?.by_goldie ?? 0), needsPersonToday: Number(c?.needs_person ?? 0),
       csatAverage: c?.csat_avg == null ? null : Number(c.csat_avg), csatCount: Number(c?.csat_count ?? 0),
+      oldestOpenAt: t?.oldest_open ? new Date(String(t.oldest_open)).toISOString() : null,
     };
   }
 

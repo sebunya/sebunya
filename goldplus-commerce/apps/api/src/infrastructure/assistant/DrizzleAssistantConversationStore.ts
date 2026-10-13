@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, ilike, lt, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gte, lt, or, sql, type SQL } from 'drizzle-orm';
 import { db } from '../db/client';
 import { assistantConversations, assistantMessages } from '../db/schema/assistant';
 import type { ArchiveConversationRow, ArchiveFilters, ArchiveMessageRow, IAssistantConversationStore } from '../../application/ports/IAssistantConversationStore';
@@ -8,7 +8,7 @@ type ConvRow = typeof assistantConversations.$inferSelect;
 const toRow = (r: ConvRow): ArchiveConversationRow => ({
   id: r.id, channel: r.channel as ArchiveChannel, channelKey: r.channelKey, customerId: r.customerId, contactName: r.contactName, contactPhone: r.contactPhone, contactEmail: r.contactEmail,
   firstTopic: r.firstTopic, lastTopic: r.lastTopic, worstMood: r.worstMood as ArchiveMood, outcome: r.outcome as ArchiveOutcome, supportTicketId: r.supportTicketId, page: r.page,
-  messageCount: r.messageCount, aiTurns: r.aiTurns, humanUntil: r.humanUntil, startedAt: r.startedAt, lastMessageAt: r.lastMessageAt,
+  messageCount: r.messageCount, aiTurns: r.aiTurns, humanUntil: r.humanUntil, csat: r.csat ?? null, startedAt: r.startedAt, lastMessageAt: r.lastMessageAt,
 });
 const rowsOf = (r: unknown): Array<Record<string, unknown>> => (Array.isArray(r) ? r : (r as { rows?: unknown[] })?.rows ?? []) as Array<Record<string, unknown>>;
 const clip = (s: string | null | undefined, n: number) => (s ? s.trim().slice(0, n) || null : null);
@@ -32,13 +32,20 @@ export class DrizzleAssistantConversationStore implements IAssistantConversation
   }
 
   async addMessage(conversationId: string, m: { role: ArchiveRole; content: string; intent?: string | null; mood?: ArchiveMood | null; route?: string | null; channelMessageId?: string | null; cacheId?: string | null }): Promise<boolean> {
-    const inserted = await db.insert(assistantMessages).values({
-      conversationId, role: m.role, content: m.content, intent: m.intent ?? null, mood: m.mood ?? null, route: m.route ?? null, channelMessageId: clip(m.channelMessageId, 160),
-      cacheId: m.cacheId && /^[0-9a-f-]{36}$/i.test(m.cacheId) ? m.cacheId : null,
-    }).onConflictDoNothing().returning({ id: assistantMessages.id });
-    if (!inserted.length) return false;
-    await db.update(assistantConversations).set({ messageCount: sql`${assistantConversations.messageCount} + 1`, lastMessageAt: sql`now()` }).where(eq(assistantConversations.id, conversationId));
-    return true;
+    // One round trip: the insert (skipped for a redelivered channel message) and the thread's counter move together.
+    const cacheId = m.cacheId && /^[0-9a-f-]{36}$/i.test(m.cacheId) ? m.cacheId : null;
+    const rows = rowsOf(await db.execute(sql`
+      with ins as (
+        insert into assistant_messages (conversation_id, role, content, intent, mood, route, channel_message_id, cache_id)
+        values (${conversationId}::uuid, ${m.role}, ${m.content}, ${m.intent ?? null}, ${m.mood ?? null}, ${m.route ?? null}, ${clip(m.channelMessageId, 160)}, ${cacheId}::uuid)
+        on conflict do nothing
+        returning id
+      )
+      update assistant_conversations set message_count = message_count + 1, last_message_at = now()
+      where id = ${conversationId}::uuid and exists (select 1 from ins)
+      returning (select id from ins) as id
+    `));
+    return rows.length > 0;
   }
 
   async update(id: string, p: Parameters<IAssistantConversationStore['update']>[1]): Promise<void> {
@@ -67,10 +74,11 @@ export class DrizzleAssistantConversationStore implements IAssistantConversation
     return r ? toRow(r) : null;
   }
 
-  async get(id: string): Promise<{ conversation: ArchiveConversationRow; messages: ArchiveMessageRow[] } | null> {
+  async get(id: string, limit = 500): Promise<{ conversation: ArchiveConversationRow; messages: ArchiveMessageRow[] } | null> {
     const [r] = await db.select().from(assistantConversations).where(eq(assistantConversations.id, id)).limit(1);
     if (!r) return null;
-    const msgs = await db.select().from(assistantMessages).where(eq(assistantMessages.conversationId, id)).orderBy(assistantMessages.createdAt).limit(500);
+    // The newest `limit` messages, oldest first (a long thread never loads whole for a channel decision).
+    const msgs = (await db.select().from(assistantMessages).where(eq(assistantMessages.conversationId, id)).orderBy(desc(assistantMessages.createdAt)).limit(Math.min(Math.max(limit, 1), 500))).reverse();
     return { conversation: toRow(r), messages: msgs.map((m) => ({ id: m.id, role: m.role as ArchiveRole, content: m.content, intent: m.intent, mood: m.mood, route: m.route, createdAt: m.createdAt })) };
   }
 
@@ -84,9 +92,10 @@ export class DrizzleAssistantConversationStore implements IAssistantConversation
     if (f.to) where.push(lt(assistantConversations.lastMessageAt, f.to));
     if (f.q) {
       const like = `%${f.q.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
+      // Both halves match a trigram index (0180): the contact expression, and what customers and staff wrote.
       where.push(or(
-        ilike(assistantConversations.contactName, like), ilike(assistantConversations.contactPhone, like), ilike(assistantConversations.contactEmail, like),
-        sql`exists (select 1 from assistant_messages m where m.conversation_id = assistant_conversations.id and m.content ilike ${like})`,
+        sql`(coalesce(${assistantConversations.contactName}, '') || ' ' || coalesce(${assistantConversations.contactPhone}, '') || ' ' || coalesce(${assistantConversations.contactEmail}, '')) ilike ${like}`,
+        sql`exists (select 1 from assistant_messages m where m.conversation_id = assistant_conversations.id and m.role in ('customer', 'team') and m.content ilike ${like})`,
       )!);
     }
     const cond = where.length ? and(...where) : undefined;
@@ -102,7 +111,7 @@ export class DrizzleAssistantConversationStore implements IAssistantConversation
 
   async summary(from: Date, to: Date): Promise<MeetingSummary> {
     const range = sql`last_message_at >= ${from} and last_message_at < ${to}`;
-    const [totals, channels, topics, moods, outcomes, follow] = await Promise.all([
+    const [totals, channels, topics, moods, outcomes, follow, ratings, routes] = await Promise.all([
       db.execute(sql`select count(*)::int as conversations,
         coalesce((select count(*)::int from assistant_messages m join assistant_conversations c on c.id = m.conversation_id where m.role = 'customer' and m.created_at >= ${from} and m.created_at < ${to}), 0) as customer_messages
         from assistant_conversations where ${range}`),
@@ -113,7 +122,10 @@ export class DrizzleAssistantConversationStore implements IAssistantConversation
       db.execute(sql`select c.id, c.channel, coalesce(c.contact_name, c.contact_phone, c.contact_email) as contact, c.last_topic as topic, c.worst_mood as mood, c.last_message_at,
         coalesce((select m.content from assistant_messages m where m.conversation_id = c.id and m.role = 'customer' order by m.created_at desc limit 1), '') as line
         from assistant_conversations c where ${range} and c.outcome in ('needs_human', 'handed_over') order by c.last_message_at desc limit 25`),
+      db.execute(sql`select avg(csat)::float8 as avg, count(csat)::int as n from assistant_conversations where ${range}`),
+      db.execute(sql`select coalesce(route, 'deterministic') as k, count(*)::int as n from assistant_messages where role = 'goldie' and created_at >= ${from} and created_at < ${to} group by 1`),
     ]);
+    const r = rowsOf(ratings)[0] ?? {};
     const map = (r: unknown) => Object.fromEntries(rowsOf(r).map((x) => [String(x.k), Number(x.n)]));
     const t = rowsOf(totals)[0] ?? {};
     const byOutcome = map(outcomes);
@@ -122,6 +134,7 @@ export class DrizzleAssistantConversationStore implements IAssistantConversation
       conversations: Number(t.conversations ?? 0), customerMessages: Number(t.customer_messages ?? 0),
       byChannel: map(channels), byTopic: rowsOf(topics).map((x) => ({ topic: String(x.k), count: Number(x.n) })), byMood: map(moods), byOutcome,
       selfServeRate: selfServeRate(byOutcome),
+      csatAverage: r.avg == null ? null : Number(r.avg), csatCount: Number(r.n ?? 0), byRoute: map(routes),
       needsFollowUp: rowsOf(follow).map((x) => ({ id: String(x.id), channel: String(x.channel), contact: x.contact ? String(x.contact) : null, topic: x.topic ? String(x.topic) : null, mood: String(x.mood), lastMessageAt: new Date(String(x.last_message_at)).toISOString(), lastCustomerLine: String(x.line ?? '').slice(0, 200) })),
     };
   }

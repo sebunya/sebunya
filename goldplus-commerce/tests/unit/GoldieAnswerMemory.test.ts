@@ -61,6 +61,7 @@ describe('answer memory use cases', () => {
     const calls: string[] = [];
     const r: IAnswerMemoryRepository = {
       byKey: async () => (entry ? { id: 'e1', questionKey: 'k', question: 'q', answer: 'A good answer for the customer.', intent: 'PRODUCT', products: [], pinned: false, edited: false, retired: false, asks: 1, served: 0, poorRatings: 0, staleMisses: 0, expiresAt: new Date(Date.now() + 86400_000), lastServedAt: null, createdAt: new Date(), updatedAt: new Date(), ...entry } : null),
+      askByKey: async (k: string) => { calls.push('ask'); return r.byKey(k); },
       remember: async () => { calls.push('remember'); }, countAsk: async () => { calls.push('ask'); }, served: async () => {}, stale: async () => {},
       poorRating: async (ids) => { calls.push(`poor:${ids.join(',')}`); }, list: async () => [], update: async () => true, remove: async () => true,
       routeMix: async () => ({ byRoute: { deterministic: 60, cache: 25, ai: 10, fallback: 5 }, aiCostMicroUsd: 20_000, aiCalls: 10 }),

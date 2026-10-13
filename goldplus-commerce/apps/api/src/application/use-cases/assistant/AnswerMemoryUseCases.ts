@@ -8,6 +8,8 @@ export interface AnswerMemoryRow {
 
 export interface IAnswerMemoryRepository {
   byKey(key: string): Promise<AnswerMemoryRow | null>;
+  /** The entry for this key with its ask counted, in one statement. */
+  askByKey(key: string): Promise<AnswerMemoryRow | null>;
   /** Insert, or refresh an unpinned, unedited entry with the newer answer (asks + 1). */
   remember(input: { key: string; question: string; answer: string; intent: string | null; products: RememberedProduct[]; expiresAt: Date }): Promise<void>;
   countAsk(id: string): Promise<void>;
@@ -31,9 +33,8 @@ export class AnswerMemoryUseCases {
 
   async lookup(key: string): Promise<{ id: string; answer: string; products: RememberedProduct[] } | null> {
     if (!/^[0-9a-f]{64}$/.test(key)) return null;
-    const e = await this.repo.byKey(key);
+    const e = await this.repo.askByKey(key);
     if (!e) return null;
-    await this.repo.countAsk(e.id);
     if (!memoryUsable(e, this.now())) return null;
     return { id: e.id, answer: e.answer, products: e.products };
   }
