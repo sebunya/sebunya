@@ -46,6 +46,8 @@ export class GoldieChannelUseCases {
     private readonly staffNumbers: () => Promise<string[]> = async () => [],
     /** The Care Desk, for a customer Goldie could not answer (so a person does). */
     private readonly openTask: (input: { kind: 'follow_up'; title: string; customerName: string | null; customerPhone: string; conversationId: string; channel: 'whatsapp' }) => Promise<unknown> = async () => undefined,
+    /** The account whose verified phone this WhatsApp number is (indexed), so the thread is linked to the customer. */
+    private readonly customerForPhone: (digits: string) => Promise<string | null> = async () => null,
   ) {}
   private staffCache: { at: number; numbers: string[] } = { at: 0, numbers: [] };
   private async staff(): Promise<string[]> {
@@ -67,8 +69,9 @@ export class GoldieChannelUseCases {
     if (s.onlyNumbers.length && !s.onlyNumbers.includes(msg.from)) return 'skipped';
     const key = whatsappKey(msg.from);
     try {
+      const customerId = await this.customerForPhone(msg.from).catch(() => null);
       const filed = await this.archive.logTurn({
-        channel: 'whatsapp', channelKey: key, customerId: null,
+        channel: 'whatsapp', channelKey: key, customerId,
         contact: { name: msg.name, phone: `+${msg.from}` },
         customer: { content: msg.text, channelMessageId: msg.messageId },
       });

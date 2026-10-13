@@ -182,6 +182,18 @@ services:
       # ADMIN_ORDER_EMAIL intent routes to zero targets and is marked unroutable —
       # the alert silently never sends however many delivery flags are on.
       - ADMIN_ORDER_NOTIFICATION_EMAILS=${ADMIN_ORDER_NOTIFICATION_EMAILS}
+      # Goldie (docs/assistant/README.md). WhatsApp stays off unless GOLDIE_WHATSAPP_ENABLED=true AND a token and
+      # the number id are set; GOLDIE_WHATSAPP_TEST_NUMBERS limits a trial to those numbers. The api asks the web
+      # container for Goldie's answer at WEB_INTERNAL_ORIGIN. Care Desk alerts: CARE_ALERTS_PER_HOUR caps paging
+      # shop-wide; GOLDIE_ALERT_TEMPLATE (an approved WhatsApp template, one body variable) enables WhatsApp alerts.
+      - GOLDIE_WHATSAPP_ENABLED=${GOLDIE_WHATSAPP_ENABLED:-false}
+      - GOLDIE_WHATSAPP_TOKEN=${GOLDIE_WHATSAPP_TOKEN:-}
+      - GOLDIE_WHATSAPP_PHONE_NUMBER_ID=${GOLDIE_WHATSAPP_PHONE_NUMBER_ID:-}
+      - GOLDIE_WHATSAPP_TEST_NUMBERS=${GOLDIE_WHATSAPP_TEST_NUMBERS:-}
+      - GOLDIE_ALERT_TEMPLATE=${GOLDIE_ALERT_TEMPLATE:-}
+      - GOLDIE_ALERT_TEMPLATE_LANG=${GOLDIE_ALERT_TEMPLATE_LANG:-en}
+      - CARE_ALERTS_PER_HOUR=${CARE_ALERTS_PER_HOUR:-12}
+      - WEB_INTERNAL_ORIGIN=${WEB_INTERNAL_ORIGIN:-http://web:4321}
       # Outbound governance gates (domain/notifications/OutboundGovernancePolicy).
       # Each defaults to false — silence must never read as permission — and every
       # one must be true before a real message reaches a provider. They were

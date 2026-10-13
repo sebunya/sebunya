@@ -230,6 +230,15 @@ describe('Goldie on WhatsApp', () => {
     expect([...convs.values()][0]!.messageCount).toBeGreaterThan(0);
   });
 
+  it('links the WhatsApp thread to the account whose verified phone it is', async () => {
+    const { store, convs } = memoryStore();
+    const archive = new ConversationArchiveUseCases(store);
+    const brain = { turn: vi.fn(async () => ({ text: 'Hello Sarah.', products: [], links: [], intent: 'GREETING', mood: 'neutral', route: 'deterministic' })) };
+    const uc = new GoldieChannelUseCases(archive, brain, { sendText: vi.fn(async () => ({ ok: true as const, messageId: 'w' })) }, () => ({ enabled: true, onlyNumbers: [], phoneNumberId: '111222333' }), () => {}, () => new Date(), async () => [], async () => undefined, async (d) => (d === '256772123456' ? '11111111-1111-4111-8111-111111111111' : null));
+    await uc.handleWhatsApp(inbound);
+    expect([...convs.values()][0]!.customerId).toBe('11111111-1111-4111-8111-111111111111');
+  });
+
   it('keeps quiet while a person from the shop has the conversation, and a team reply takes it over', async () => {
     const c = channel();
     await c.uc.handleWhatsApp(inbound);

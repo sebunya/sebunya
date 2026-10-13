@@ -20,7 +20,7 @@
 - **Customer DNA.** Product, battery and bulk questions are filed as zero-party signals (`declared_intent`,
   `source_component = 'goldie_chat'`, payload `{source, intent, topic, phone_model?}`) through
   `CaptureZeroPartyDataUseCase`, so personalisation consent is respected. Never orders, payments, complaints, phone
-  numbers or emails (`interestTopic()`). The transcript itself is still not stored.
+  numbers or emails (`interestTopic()`). (The full transcript is kept separately in the conversation archive, 0177.)
 - **Human pace.** A short reading pause (650-1600 ms by question length), then a word-by-word reveal at ~70
   characters a second, capped at 2.6 s; cards and chips follow the sentence. Reduced motion: 350 ms pause, no reveal.
   Numbers in `lib/goldieGreeting.ts`.

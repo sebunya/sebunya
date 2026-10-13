@@ -2732,6 +2732,7 @@ export class Registry {
     () => new Date(),
     () => this.careDeskUseCases.staffNumbers(),
     (input) => this.careDeskUseCases.openTask(input),
+    (digits) => new PhoneCareReader().verifiedUserId(digits),
   );
   private readonly goldieListensToWhatsApp = (() => {
     // Each customer message is handled on its own, after Meta has been answered.

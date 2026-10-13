@@ -6,9 +6,10 @@
  * the validated `products` and `links` events the server sends, never from
  * the model's prose. Rendered only when the server has an API key.
  *
- * The transcript lives in sessionStorage for this tab only (wrapped in
- * try/catch); the server stores nothing. Clearing it clears the display, not
- * the server's fairness counters (by design).
+ * The browser keeps the transcript in sessionStorage for this tab (wrapped in
+ * try/catch); each turn is also filed in the conversation archive (0177, kept
+ * 365 days, cards/PINs/OTPs redacted) for the team. "Start over" begins a new
+ * archived conversation; it does not reset the server's fairness counters.
  *
  * Voice and look (2026-10-12 redesign): Goldie greets by time of day, answers
  * in one to three plain sentences, and offers the next step as a chip.

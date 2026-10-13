@@ -14,7 +14,7 @@
 | A delivery-fee engine can be called read-only | Fee exists only inside checkout use-cases | verified | Chat quotes wrong fees | Never quoted; "shown at checkout" |
 | An order-status read exists for a session | `/track-order` takes reference + phone/email; no session-scoped read | verified | Enumeration via chat | No order tool; link-out only |
 | A loyalty balance read exists | Loyalty APIs are account-session routes, not tools | verified | Private data in prompt | Not built (Phase C) |
-| Real customer questions are available | No transcripts are stored anywhere | verified | Eval set is synthetic | Labelled synthetic in `evals/questions.json` |
+| Real customer questions are available | No transcripts are stored anywhere (until 0177, 2026-10-13: the conversation archive now keeps them for 365 days, so the eval set can be refreshed from real, redacted questions) | verified | Eval set is synthetic | Labelled synthetic in `evals/questions.json` |
 | Cloudflare Turnstile / bot management is available | Not verifiable from the repo; owner toggles in Cloudflare | unknown | Step-up challenge unavailable | Designed without it: soft limit + Retry-After only |
 
 ## Alternatives compared
