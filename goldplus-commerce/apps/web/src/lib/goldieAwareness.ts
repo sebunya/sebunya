@@ -5,7 +5,7 @@
  *     half get a still launcher. The admin nav report already computes click-through per NBA item,
  *     so each arm records one impression per visit and one click per visit under its own key
  *     ("goldie-launch-a" moving, "goldie-launch-b" still). Keep whichever earns its place.
- *  2. A subtitle that knows the page. "GoldPlus shop help" promised nothing; a line that names the
+ *  2. A subtitle that knows the page, in the shopper's own words. "GoldPlus shop help" promised nothing; a line that names the
  *     shopper's actual question does the work the animation was trying to do. Phrased as an offer
  *     to ask, never as a product claim.
  *  3. A hesitation detector. Motion should mean "I can help with that", so the glint fires when the
@@ -37,22 +37,23 @@ export function launcherSubline(o: { path: string; productName?: string | null; 
   const phone = (o.phone ?? '').trim();
   const name = (o.productName ?? '').trim();
   const fit = (line: string, fallback: string) => (line.length <= SUBLINE_MAX ? line : fallback);
+  // Written as the shopper's own question, so "Ask Goldie" above it never repeats the word "Ask".
   if (path.startsWith('/products/') && name) {
-    if (/batter/i.test(name)) return phone ? fit(`Fits your ${phone}?`, 'Ask if it fits your phone') : 'Ask if it fits your phone';
-    if (/charger|adapter/i.test(name)) return 'Ask what it charges fast';
-    if (/cable|lead/i.test(name)) return 'Ask if it fits your phone';
-    if (/power ?bank/i.test(name)) return 'Ask how many charges';
-    if (/earphone|earbud|headphone|headset|speaker|bluetooth/i.test(name)) return 'Ask if it suits you';
-    if (/flash|memory|card|disk/i.test(name)) return 'Ask which size you need';
-    return 'Ask about this one';
+    if (/batter/i.test(name)) return phone ? fit(`Fits your ${phone}?`, 'Will it fit your phone?') : 'Will it fit your phone?';
+    if (/charger|adapter/i.test(name)) return 'What will it charge fast?';
+    if (/cable|lead/i.test(name)) return 'Will it fit your phone?';
+    if (/power ?bank/i.test(name)) return 'How many charges?';
+    if (/earphone|earbud|headphone|headset|speaker|bluetooth/i.test(name)) return 'Calls, music or gym?';
+    if (/flash|memory|card|disk/i.test(name)) return 'Which size do you need?';
+    return 'Questions on this one?';
   }
-  if (path.startsWith('/phone-batteries')) return phone ? fit(`Battery for your ${phone}?`, 'Find your phone\'s battery') : 'Find your phone\'s battery';
-  if (path.startsWith('/power/chargers')) return 'Ask which charger you need';
-  if (path.startsWith('/power/power-banks')) return 'Ask which size you need';
-  if (path.startsWith('/power/charging-cables')) return 'Ask which cable fits';
-  if (path.startsWith('/audio')) return 'Ask for the right earphones';
-  if (path.startsWith('/storage')) return 'Ask which size you need';
-  if (path.startsWith('/delivery') || path.startsWith('/track-order')) return o.todayOpen ? 'Ask if it can come today' : 'Ask about delivery to you';
+  if (path.startsWith('/phone-batteries')) return phone ? fit(`Battery for your ${phone}?`, 'Which battery fits?') : 'Which battery fits?';
+  if (path.startsWith('/power/chargers')) return 'Which charger do you need?';
+  if (path.startsWith('/power/power-banks')) return 'Which size do you need?';
+  if (path.startsWith('/power/charging-cables')) return 'Which cable fits?';
+  if (path.startsWith('/audio')) return 'Calls, music or gym?';
+  if (path.startsWith('/storage')) return 'Which size do you need?';
+  if (path.startsWith('/delivery') || path.startsWith('/track-order')) return o.todayOpen ? 'Can it come today?' : 'Delivery to your area?';
   return DEFAULT_SUBLINE;
 }
 

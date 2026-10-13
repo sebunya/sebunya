@@ -36,11 +36,14 @@ describe('launcherSubline: a second line that names the question', () => {
     launcherSubline({ path: '/' }),
   ];
   it('names the question for the page', () => {
-    expect(lines[0]).toBe('Ask if it fits your phone');
+    expect(lines[0]).toBe('Will it fit your phone?');
     expect(launcherSubline({ path: '/products/x', productName: 'Battery BL-5C', phone: 'Nokia 105' })).toBe('Fits your Nokia 105?');
-    expect(lines[2]).toBe('Ask what it charges fast');
-    expect(lines[8]).toBe('Ask if it can come today');
+    expect(lines[2]).toBe('What will it charge fast?');
+    expect(lines[8]).toBe('Can it come today?');
     expect(lines[9]).toBe(DEFAULT_SUBLINE);
+  });
+  it('never repeats "Ask" under "Ask Goldie"', () => {
+    for (const l of lines) expect(l.startsWith('Ask '), l).toBe(false);
   });
   it('never runs past the phone pill', () => {
     for (const l of lines) expect(l.length, l).toBeLessThanOrEqual(SUBLINE_MAX);

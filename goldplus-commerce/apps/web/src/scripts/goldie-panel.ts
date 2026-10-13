@@ -19,6 +19,7 @@ type Chip = { label: string; url: string };
 type Ev = { type: 'text'; text: string } | { type: 'tool'; name: string } | { type: 'products'; items: Card[] } | { type: 'links'; items: Chip[] } | { type: 'done' } | { type: 'error'; code: string; message: string };
 
 import type { GoldieQuestion } from '../lib/goldieQuestions';
+import { goldieAvatarImg } from '../lib/goldieAvatar';
 export type Teaser = { key: string; text: string; chips: GoldieQuestion[]; asksPhone?: boolean };
 export interface PanelContext {
   endpoint: string;
@@ -79,7 +80,7 @@ export function mountGoldie(root: HTMLElement, ctx: PanelContext): GoldiePanel {
       el.append(seg.replace(/\*/g, ''));
     }
   };
-  const avatar = () => { const a = document.createElement('span'); a.className = 'gp-assistant__avatar gp-assistant__avatar--sm'; a.setAttribute('aria-hidden', 'true'); a.textContent = 'G'; return a; };
+  const avatar = () => { const a = document.createElement('span'); a.className = 'gp-assistant__avatar gp-assistant__avatar--sm'; a.setAttribute('aria-hidden', 'true'); const g = document.createElement('span'); g.textContent = 'G'; a.append(g, goldieAvatarImg(28)); return a; };
   const bubble = (kind: 'user' | 'bot' | 'error', text: string) => {
     const row = document.createElement('div'); row.className = `gp-assistant__row gp-assistant__row--${kind === 'user' ? 'user' : 'bot'}`;
     const el = document.createElement('div'); el.className = `gp-assistant__msg gp-assistant__msg--${kind}`;
