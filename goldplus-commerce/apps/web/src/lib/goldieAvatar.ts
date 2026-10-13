@@ -4,8 +4,8 @@
  * fallback when an image cannot load (empty alt shows nothing broken).
  *
  * Goldie is the GoldPlus personal shopper (owner, 2026-10-13: that is her title; no "AI" tag or word
- * on screen). The portrait looks like a person, so the panel footer says she is a virtual personal
- * shopper, not a person, and she says the same whenever she is asked (prompt and router).
+ * on screen, and no "not a person" line either). She never claims to be human: asked, she says she is
+ * virtual (router IDENTITY reply and the prompt).
  */
 export const GOLDIE_AVATAR_SRC = '/goldie/goldie-v1-160.webp';
 export const GOLDIE_AVATAR_SRCSET = '/goldie/goldie-v1-96.webp 96w, /goldie/goldie-v1-160.webp 160w, /goldie/goldie-v1-320.webp 320w';
