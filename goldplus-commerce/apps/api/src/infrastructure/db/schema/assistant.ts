@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { bigint, boolean, index, integer, jsonb, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import { bigint, boolean, index, integer, jsonb, pgTable, smallint, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
 
 /**
  * Shop-assistant money ledger (0175). One row per reserved paid turn.
@@ -190,6 +190,14 @@ export const assistantQaReviews = pgTable('assistant_qa_reviews', {
   reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
+/** The Care Desk's Web Push key pair (0182): generated once by the api; the private key vault-encrypted. */
+export const carePushKeys = pgTable('care_push_keys', {
+  id: smallint('id').primaryKey().default(1),
+  publicKey: varchar('public_key', { length: 120 }).notNull(),
+  privateKeyEnc: text('private_key_enc').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const carePushSubscriptions = pgTable('care_push_subscriptions', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').notNull(),

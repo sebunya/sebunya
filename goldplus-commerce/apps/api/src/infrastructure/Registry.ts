@@ -2727,7 +2727,9 @@ export class Registry {
   public readonly careDeskUseCases = new CareDeskUseCases(
     new DrizzleCareDeskRepository(),
     new CareAlertChannels(this.whatsappMessenger, () => goldieWhatsAppSettings()),
-    { deskUrl: `${(process.env.PUBLIC_WEB_BASE_URL || 'https://shopgoldplus.com').replace(/\/+$/, '')}/admin/care`, alertsPerHour: Math.max(1, Number(process.env.CARE_ALERTS_PER_HOUR ?? 12) || 12) },
+    { deskUrl: `${(process.env.PUBLIC_WEB_BASE_URL || 'https://shopgoldplus.com').replace(/\/+$/, '')}/admin/care`, alertsPerHour: Math.max(1, Number(process.env.CARE_ALERTS_PER_HOUR ?? 12) || 12),
+      // Before the team is set up, urgent customers page the shop's own order inboxes and phone.
+      fallback: { emails: String(process.env.ADMIN_ORDER_NOTIFICATION_EMAILS ?? '').split(',').map((e) => e.trim()).filter((e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)).slice(0, 5), phone: `+${DEFAULT_BUSINESS_INFO.whatsappNumber}` } },
   );
   /** Goldie on WhatsApp (and the admin inbox's team replies). Off until GOLDIE_WHATSAPP_ENABLED=true. */
   public readonly goldieChannelUseCases = new GoldieChannelUseCases(

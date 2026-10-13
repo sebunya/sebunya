@@ -1,0 +1,10 @@
+# Dashboards in ops/grafana/dashboards load automatically (folder "GoldPlus"); edits in the UI are not kept.
+apiVersion: 1
+providers:
+  - name: goldplus
+    folder: GoldPlus
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards

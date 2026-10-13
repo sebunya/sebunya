@@ -73,7 +73,7 @@ const handledPct = t && t.chatsToday ? Math.round((t.handledByGoldieToday / t.ch
     </div>
     {notice && <div role="status" class={`rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>}
     {!tasks.ok && <div role="status" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{tasks.message}</div>}
-    {nobodyAlerted && <div role="status" class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">Nobody gets urgent alerts yet, so an urgent customer would only show here. <a href="/admin/care/team" class="underline">Add the team and their phones</a>.</div>}
+    {nobodyAlerted && <div role="status" class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">No team is set up yet, so urgent alerts go to the shop phone and the order-notification inbox. <a href="/admin/care/team" class="underline">Add the team and their phones</a> so the right person is alerted.</div>}
 
     {t && (
       <section class="grid grid-cols-2 sm:grid-cols-4 gap-3" aria-label="Today">

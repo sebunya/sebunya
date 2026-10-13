@@ -5,10 +5,11 @@ import type { GoldieSocialSettings, ISocialMessenger } from '../../application/u
 import type { SocialPlatform } from '../../domain/assistant/SocialGoldie';
 import { insertOutboxObject } from './AssistantConversationAdapters';
 import { goldieMetrics } from './GoldieMetrics';
-import { sendWebPush, vapidFromEnv } from './WebPush';
+import { generateVapidKeys, sendWebPush, vapidFromEnv, type VapidKeys } from './WebPush';
+import { IntegrationCredentialVault } from '../seo/IntegrationCredentialVault';
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client';
-import { carePushSubscriptions } from '../db/schema/assistant';
+import { carePushKeys, carePushSubscriptions } from '../db/schema/assistant';
 
 /**
  * WhatsApp Cloud API: a free-form text reply inside the customer service window
@@ -93,7 +94,7 @@ export class CareAlertChannels implements ICareAlertChannels {
 
   /** Push to every staff phone that subscribed on the Care Desk; a subscription the browser dropped is deleted. */
   async push(input: { title: string; body: string; url: string; key: string }) {
-    const keys = vapidFromEnv();
+    const keys = await careVapidKeys().catch(() => null);
     if (!keys) return { sent: 0 };
     const subs = await db.select().from(carePushSubscriptions).limit(100);
     let sent = 0;
@@ -106,6 +107,30 @@ export class CareAlertChannels implements ICareAlertChannels {
     if (sent) goldieMetrics.careAlerts.inc({ channel: 'push' }, sent);
     return { sent };
   }
+}
+
+/**
+ * The Care Desk's VAPID keys: the environment's when set, otherwise the pair the api generated and stored (0182),
+ * created on first use, so push alerts need no server settings. Cached; null only without vault material.
+ */
+let vapidCache: VapidKeys | null = null;
+export async function careVapidKeys(): Promise<VapidKeys | null> {
+  const fromEnv = vapidFromEnv();
+  if (fromEnv) return fromEnv;
+  if (vapidCache) return vapidCache;
+  const vault = IntegrationCredentialVault.fromEnv();
+  if (!vault) return null;
+  const contact = (process.env.CARE_PUSH_CONTACT ?? '').trim() || 'mailto:support@shopgoldplus.com';
+  let [row] = await db.select().from(carePushKeys).limit(1);
+  if (!row) {
+    const k = generateVapidKeys();
+    // Two replicas may race on first use: the row id is fixed, so exactly one pair wins and both read it back.
+    await db.insert(carePushKeys).values({ id: 1, publicKey: k.publicKey, privateKeyEnc: vault.encrypt({ d: k.privateKey }) }).onConflictDoNothing();
+    [row] = await db.select().from(carePushKeys).limit(1);
+  }
+  if (!row) return null;
+  vapidCache = { publicKey: row.publicKey, privateKey: vault.decrypt<{ d: string }>(row.privateKeyEnc).d, contact };
+  return vapidCache;
 }
 
 /** Staff push subscriptions (0181): one row per phone or browser, keyed by the push endpoint. */

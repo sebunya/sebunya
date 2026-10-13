@@ -54,10 +54,10 @@ export const LEGAL_POLICIES: LegalPolicy[] = [
     slug: 'privacy',
     path: '/privacy',
     title: 'Privacy policy',
-    version: '1.1',
+    version: '1.2',
     status: 'in_force',
-    effectiveDate: '2026-09-19',
-    summary: 'How GoldPlus handles customer information, and how connected Google account data is used and protected.',
+    effectiveDate: '2026-10-14',
+    summary: 'How GoldPlus handles customer information, chats with Goldie, and how connected Google account data is used and protected.',
   },
   {
     slug: 'terms',

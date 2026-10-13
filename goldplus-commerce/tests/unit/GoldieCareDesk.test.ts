@@ -61,7 +61,7 @@ describe('when not to answer (WhatsApp)', () => {
 });
 
 let alertsSoFar = { shop: 0, samePhone: 0 };
-function desk(team: Partial<CareTeamMemberRow>[] = []) {
+function desk(team: Partial<CareTeamMemberRow>[] = [], fallback?: { emails: string[]; phone: string | null }) {
   alertsSoFar = { shop: 0, samePhone: 0 };
   const tasks: CareTaskRow[] = [];
   const members: CareTeamMemberRow[] = team.map((m, i) => ({ id: `m${i}`, name: `Member ${i}`, roleLabel: null, phone: '0772000000', email: 'm@example.com', alertSms: true, alertEmail: true, alertWhatsapp: false, onDuty: null, active: true, ...m }));
@@ -88,7 +88,7 @@ function desk(team: Partial<CareTeamMemberRow>[] = []) {
     email: vi.fn(async (i: { to: string }) => { sent.push(`email:${i.to}`); return { queued: true }; }),
     whatsapp: vi.fn(async () => ({ queued: false, reason: 'no template' })),
   };
-  const uc = new CareDeskUseCases(repo, alerts, { deskUrl: 'https://shopgoldplus.com/admin/care' }, () => new Date('2026-10-13T09:00:00Z'));
+  const uc = new CareDeskUseCases(repo, alerts, { deskUrl: 'https://shopgoldplus.com/admin/care', fallback }, () => new Date('2026-10-13T09:00:00Z'));
   return { uc, tasks, sent, alerts };
 }
 
@@ -228,5 +228,20 @@ describe('Goldie acting from the chat', () => {
     expect(bodies[0]!.body).toMatchObject({ customerName: 'Moses', buyerType: 'wholesale', lines: [{ quantity: 100 }, { quantity: 20 }] });
     expect(bodies[0]!.body.idempotencyKey).toMatch(/^[A-Za-z0-9_-]{16,80}$/);
     expect(bodies[1]!.body).toMatchObject({ kind: 'bulk_lead', units: 120 });
+  });
+});
+
+describe('before the team is set up', () => {
+  it('an urgent customer pages the shop inbox and phone; adding a team member ends the fallback', async () => {
+    const shop = { emails: ['orders@shopgoldplus.com'], phone: '+256705004545' };
+    const empty = desk([], shop);
+    const r = await empty.uc.openTask({ kind: 'urgent', title: 'Money taken, no order', urgent: true, customerPhone: '0772123456' });
+    expect(r.ok && r.alerted).toEqual(['email:Shop inbox', 'sms:Shop phone']);
+    expect(empty.sent).toEqual(['email:orders@shopgoldplus.com', 'sms:+256705004545']);
+    expect(await empty.uc.testAlert()).toEqual(['email:Shop inbox', 'sms:Shop phone']);
+    const staffed = desk([{ name: 'Grace' }], shop);
+    await staffed.uc.openTask({ kind: 'urgent', title: 'Money taken, no order', urgent: true, customerPhone: '0772123456' });
+    expect(staffed.sent).toEqual(['sms:0772000000', 'email:m@example.com']);
+    expect(await desk([]).uc.openTask({ kind: 'urgent', title: 'Money taken, no order', urgent: true }).then((x) => x.ok && x.alerted)).toEqual([]);
   });
 });
