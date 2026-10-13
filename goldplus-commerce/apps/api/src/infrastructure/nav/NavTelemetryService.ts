@@ -19,6 +19,10 @@ const SEGMENTS = new Set(['new', 'returning', 'signed_in', 'unknown']);
 const TERM_TYPES = new Set(['SEARCH_ZERO', 'BATTERY_FINDER_SUBMIT']);
 const MIN_FOR_RATE = 100;
 
+/** An item key the nav telemetry accepts: '' (keyless) or a lowercase slug up to 32 chars.
+ *  Anything else is dropped silently, so every emitter must be tested against this. */
+export const NAV_ITEM_KEY = /^$|^[a-z][a-z0-9-]{1,31}$/;
+
 export class NavTelemetryService {
   async capture(input: {
     eventType: string; itemKey: string; position: number;
@@ -29,7 +33,7 @@ export class NavTelemetryService {
       if (!EVENT_TYPES.has(eventType)) return { recorded: false };
       const itemKey = String(input.itemKey ?? '').trim();
       // '' (keyless) OR a lowercase slug up to 32 chars
-      if (!/^$|^[a-z][a-z0-9-]{1,31}$/.test(itemKey)) return { recorded: false };
+      if (!NAV_ITEM_KEY.test(itemKey)) return { recorded: false };
       const segment = SEGMENTS.has(input.segment) ? input.segment : 'unknown';
       const position = Number.isInteger(input.position) && input.position >= 0 && input.position <= 50 ? input.position : 0;
       const term = TERM_TYPES.has(eventType) && input.term != null ? String(input.term).slice(0, 80) : null;

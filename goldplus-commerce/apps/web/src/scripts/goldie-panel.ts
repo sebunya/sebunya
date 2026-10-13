@@ -122,7 +122,7 @@ export function mountGoldie(root: HTMLElement, ctx: PanelContext): GoldiePanel {
         btn.replaceWith(a);
         const badge = document.getElementById('gpNavCart'); const n = (parseInt(badge?.textContent || '0', 10) || 0) + 1;
         const w = window as unknown as { gpCartCount?: (n: number) => void }; try { w.gpCartCount?.(n); } catch { /* nav not present */ }
-        ctx.track('NBA_CLICK', 'goldie:cart-add');
+        ctx.track('NBA_CLICK', 'goldie-cart-add');
       } else {
         // The server did not accept the line (stock, limit); the cart page explains why.
         const a = document.createElement('a'); a.className = 'gp-assistant__add'; a.href = '/cart'; a.textContent = 'Open the cart';
