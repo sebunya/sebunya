@@ -45,4 +45,27 @@ suite('answer memory repository (real PostgreSQL)', () => {
     expect(typeof mix.aiCostMicroUsd).toBe('number');
     expect(mix.byRoute).toBeTypeOf('object');
   });
+
+  it('writes Goldie outbox rows as real JSON objects, so the daily cap can read the recipient', async () => {
+    const { insertOutboxObject, DrizzleAssistantMailOutbox } = await import('../../apps/api/src/infrastructure/assistant/AssistantConversationAdapters');
+    const recipient = `cap-${tag.slice(0, 8)}@example.com`;
+    const id = await insertOutboxObject({ eventType: 'GOLDIE_TRANSCRIPT', template: 'GOLDIE_TRANSCRIPT', channel: 'email', idempotencyKey: `itest-${tag}`, relatedEntity: 'assistant_chat', relatedEntityId: null, payload: { recipient, subject: 's', text: 't', html: 'h' } });
+    expect(id).toBeTruthy();
+    const [row] = await raw`select jsonb_typeof(payload) as t, payload->>'recipient' as r from outbox_events where id = ${id}`;
+    expect(row).toEqual({ t: 'object', r: recipient });
+    expect(await new DrizzleAssistantMailOutbox().countTranscriptsSince(recipient, new Date(Date.now() - 60_000))).toBe(1);
+    await raw`delete from outbox_events where id = ${id}`;
+  });
+
+  it('reads past topics whether the shared capture path double-encoded the payload or not', async () => {
+    const { DrizzleAssistantContextReader } = await import('../../apps/api/src/infrastructure/assistant/AssistantConversationAdapters');
+    const { HeroSignalsService } = await import('../../apps/api/src/infrastructure/hero/HeroSignalsService');
+    const fp = `fp-itest-${tag.slice(0, 8)}`;
+    await raw`insert into zero_party_signals (fp_client_id, signal_type, payload, source_component, captured_at) values
+      (${fp}, 'declared_intent', to_jsonb(${JSON.stringify({ topic: 'power bank' })}::text), 'goldie_chat', now() - interval '1 minute'),
+      (${fp}, 'declared_intent', ${JSON.stringify({ topic: 'usb-c cable' })}::text::jsonb, 'goldie_chat', now())`;
+    const ctx = await new DrizzleAssistantContextReader(new HeroSignalsService()).read({ profileId: null, userId: null, fpClientId: fp });
+    expect(ctx.pastTopics).toEqual(['usb-c cable', 'power bank']);
+    await raw`delete from zero_party_signals where fp_client_id = ${fp}`;
+  });
 });

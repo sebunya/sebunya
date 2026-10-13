@@ -1,8 +1,7 @@
 import { META_GRAPH_VERSION } from '../advertising/AdPlatforms';
 import type { IGoldieBrain, IWhatsAppMessenger, GoldieWhatsAppSettings } from '../../application/use-cases/assistant/GoldieChannelUseCases';
 import type { ICareAlertChannels } from '../../application/use-cases/assistant/CareDeskUseCases';
-import { db } from '../db/client';
-import { outboxEvents } from '../db/schema/system';
+import { insertOutboxObject } from './AssistantConversationAdapters';
 
 /**
  * WhatsApp Cloud API: a free-form text reply inside the customer service window
@@ -63,18 +62,14 @@ export class CareAlertChannels implements ICareAlertChannels {
   constructor(private readonly messenger: WhatsAppCloudMessenger, private readonly settings: () => GoldieWhatsAppSettings) {}
 
   async sms(input: { to: string; message: string; key: string; taskId: string }) {
-    await db.insert(outboxEvents).values({
-      eventType: 'CARE_ALERT_SMS', payload: { recipient: input.to, message: input.message, relatedEntity: 'care_task', relatedEntityId: uuidOrNull(input.taskId) } as never,
-      idempotencyKey: input.key.slice(0, 255), status: 'pending', channel: 'sms', template: 'CARE_ALERT', dryRunOnly: false, relatedEntity: 'care_task', relatedEntityId: uuidOrNull(input.taskId),
-    }).onConflictDoNothing({ target: outboxEvents.idempotencyKey });
+    await insertOutboxObject({ eventType: 'CARE_ALERT_SMS', template: 'CARE_ALERT', channel: 'sms', idempotencyKey: input.key.slice(0, 255), relatedEntity: 'care_task', relatedEntityId: uuidOrNull(input.taskId),
+      payload: { recipient: input.to, message: input.message, relatedEntity: 'care_task', relatedEntityId: uuidOrNull(input.taskId) } });
     return { queued: true };
   }
 
   async email(input: { to: string; subject: string; text: string; html: string; key: string; taskId: string }) {
-    await db.insert(outboxEvents).values({
-      eventType: 'CARE_ALERT_EMAIL', payload: { recipient: input.to, subject: input.subject, text: input.text, html: input.html, relatedEntity: 'care_task', relatedEntityId: uuidOrNull(input.taskId) } as never,
-      idempotencyKey: input.key.slice(0, 255), status: 'pending', channel: 'email', template: 'CARE_ALERT_EMAIL', dryRunOnly: false, relatedEntity: 'care_task', relatedEntityId: uuidOrNull(input.taskId),
-    }).onConflictDoNothing({ target: outboxEvents.idempotencyKey });
+    await insertOutboxObject({ eventType: 'CARE_ALERT_EMAIL', template: 'CARE_ALERT_EMAIL', channel: 'email', idempotencyKey: input.key.slice(0, 255), relatedEntity: 'care_task', relatedEntityId: uuidOrNull(input.taskId),
+      payload: { recipient: input.to, subject: input.subject, text: input.text, html: input.html, relatedEntity: 'care_task', relatedEntityId: uuidOrNull(input.taskId) } });
     return { queued: true };
   }
 

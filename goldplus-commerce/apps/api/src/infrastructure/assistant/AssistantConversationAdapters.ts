@@ -11,29 +11,42 @@ import type { ZeroPartySignal } from '@goldplus/shared';
 
 const rowsOf = (r: unknown): Array<Record<string, unknown>> => (Array.isArray(r) ? r : (r as { rows?: unknown[] })?.rows ?? []) as Array<Record<string, unknown>>;
 
+/**
+ * An outbox row whose payload is a real JSON object. drizzle-orm 0.29 with postgres-js double-encodes jsonb
+ * on insert (the column holds a JSON *string*); Drizzle's own reads parse it back, so most code never notices,
+ * but SQL that looks inside the payload (payload->>'recipient') sees nothing. The chat-copy daily cap and its
+ * index (0180) read the recipient that way, so these rows are written as text cast to jsonb: a bare ::jsonb
+ * parameter makes postgres-js encode the JSON string a second time.
+ */
+export async function insertOutboxObject(row: { eventType: string; template: string; channel: string; idempotencyKey: string; relatedEntity: string; relatedEntityId: string | null; payload: Record<string, unknown> }): Promise<string | null> {
+  const rows = rowsOf(await db.execute(sql`
+    insert into outbox_events (event_type, payload, idempotency_key, status, channel, template, dry_run_only, related_entity, related_entity_id)
+    values (${row.eventType}, ${JSON.stringify(row.payload)}::text::jsonb, ${row.idempotencyKey}, 'pending', ${row.channel}, ${row.template}, false, ${row.relatedEntity}, ${row.relatedEntityId}::uuid)
+    on conflict (idempotency_key) do nothing
+    returning id
+  `));
+  return rows[0]?.id ? String(rows[0].id) : null;
+}
+
+/**
+ * A field inside a jsonb payload written either way: as an object, or double-encoded by Drizzle as a JSON string
+ * (zero_party_signals rows come from the shared capture path, which writes through Drizzle).
+ */
+const payloadField = (field: string) => sql.raw(`coalesce(payload->>'${field}', case when jsonb_typeof(payload) = 'string' then (payload #>> '{}')::jsonb->>'${field}' end)`);
+
 /** Where Goldie's interests live in zero_party_signals (signal_type declared_intent). */
 export const GOLDIE_SOURCE_COMPONENT = 'goldie_chat';
 
 /** Pre-rendered chat emails through the same outbox, governance and provider as every other email. */
 export class DrizzleAssistantMailOutbox implements IAssistantMailOutbox {
   async enqueue(mail: PreRenderedMail): Promise<{ enqueued: boolean }> {
-    const inserted = await db.insert(outboxEvents).values({
-      eventType: mail.eventType,
-      payload: {
-        recipient: mail.recipient, subject: mail.subject, text: mail.text, html: mail.html,
-        replyTo: mail.replyTo ?? null, replyToName: mail.replyToName ?? null,
-        relatedEntity: mail.relatedEntity, relatedEntityId: mail.relatedEntityId,
-      } as never,
-      idempotencyKey: mail.idempotencyKey,
-      status: 'pending',
-      channel: 'email',
-      template: mail.eventType,
-      // Delivery is governed downstream (live-send switches, classification); this row is a real intent.
-      dryRunOnly: false,
-      relatedEntity: mail.relatedEntity,
-      relatedEntityId: mail.relatedEntityId,
-    }).onConflictDoNothing({ target: outboxEvents.idempotencyKey }).returning({ id: outboxEvents.id });
-    return { enqueued: inserted.length > 0 };
+    // Delivery is governed downstream (live-send switches, classification); this row is a real intent.
+    const id = await insertOutboxObject({
+      eventType: mail.eventType, template: mail.eventType, channel: 'email', idempotencyKey: mail.idempotencyKey,
+      relatedEntity: mail.relatedEntity, relatedEntityId: mail.relatedEntityId,
+      payload: { recipient: mail.recipient, subject: mail.subject, text: mail.text, html: mail.html, replyTo: mail.replyTo ?? null, replyToName: mail.replyToName ?? null, relatedEntity: mail.relatedEntity, relatedEntityId: mail.relatedEntityId },
+    });
+    return { enqueued: id !== null };
   }
 
   async countTranscriptsSince(recipient: string, since: Date): Promise<number> {
@@ -102,7 +115,7 @@ export class DrizzleAssistantContextReader implements IAssistantContextReader {
   private async pastTopics(key: AssistantShopperKey): Promise<string[]> {
     if (!key.fpClientId && !key.userId) return [];
     // Each identity reads its own partial index (0180) newest first; the two short lists are merged.
-    const side = (cond: ReturnType<typeof sql>) => sql`(select payload->>'topic' as topic, captured_at from zero_party_signals
+    const side = (cond: ReturnType<typeof sql>) => sql`(select ${payloadField('topic')} as topic, captured_at from zero_party_signals
       where source_component = ${GOLDIE_SOURCE_COMPONENT} and ${cond} and captured_at > now() - interval '120 days' order by captured_at desc limit 12)`;
     const parts = [key.fpClientId ? side(sql`fp_client_id = ${key.fpClientId}`) : null, key.userId ? side(sql`user_id = ${key.userId}::uuid`) : null].filter(Boolean) as ReturnType<typeof sql>[];
     const rows = rowsOf(await db.execute(sql`select topic from (${sql.join(parts, sql` union all `)}) t order by captured_at desc limit 12`));
