@@ -54,4 +54,17 @@ suite('Care Desk repository (real PostgreSQL)', () => {
     expect(await repo.rate(convId, 5, 'very helpful')).toBe(true);
     expect((await raw`select csat from assistant_conversations where id = ${convId}`)[0].csat).toBe(5);
   });
+
+  it('counts alerts by shop and by customer phone in any format, and purges only old closed tasks', async () => {
+    const a = await repo.open({ ...base, kind: 'urgent', priority: 'urgent', title: `${tag} paged`, conversationId: null, customerPhone: '0772 123 456' });
+    await repo.markAlerted(a.task.id);
+    const counts = await repo.alertsSince(new Date(Date.now() - 60_000), '+256772123456');
+    expect(counts.shop).toBeGreaterThanOrEqual(1);
+    expect(counts.samePhone).toBeGreaterThanOrEqual(1);
+    expect((await repo.alertsSince(new Date(Date.now() - 60_000), '0700999888')).samePhone).toBe(0);
+    await repo.resolve(a.task.id, { status: 'done', resolvedBy: randomUUID(), resolution: 'sorted' });
+    await raw`update care_tasks set resolved_at = now() - interval '400 days' where id = ${a.task.id}`;
+    expect(await repo.purgeClosedBefore(new Date(Date.now() - 365 * 86400_000))).toBeGreaterThanOrEqual(1);
+    expect(await repo.get(a.task.id)).toBeNull();
+  });
 });

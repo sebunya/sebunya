@@ -24,6 +24,8 @@ export interface GoldieWhatsAppSettings {
 export type TeamReplyResult = { ok: true; sent: boolean; channel: string; note?: string } | { ok: false; code: 'NOT_FOUND' | 'NOT_SENT'; message: string };
 
 const HISTORY = 12;
+/** What a customer hears when Goldie cannot answer just now; a task makes sure a person follows up. */
+export const HOLDING_REPLY = "Thank you for your message. I'm passing it to the team now, and someone will reply to you here shortly.";
 
 /**
  * Goldie across messaging channels. WhatsApp today: a customer's message is
@@ -42,6 +44,8 @@ export class GoldieChannelUseCases {
     private readonly now: () => Date = () => new Date(),
     /** Team members' own numbers: their WhatsApp messages to the shop never get a Goldie reply. */
     private readonly staffNumbers: () => Promise<string[]> = async () => [],
+    /** The Care Desk, for a customer Goldie could not answer (so a person does). */
+    private readonly openTask: (input: { kind: 'follow_up'; title: string; customerName: string | null; customerPhone: string; conversationId: string; channel: 'whatsapp' }) => Promise<unknown> = async () => undefined,
   ) {}
   private staffCache: { at: number; numbers: string[] } = { at: 0, numbers: [] };
   private async staff(): Promise<string[]> {
@@ -103,10 +107,20 @@ export class GoldieChannelUseCases {
       if (!merged.length || merged[merged.length - 1]!.role !== 'user') return 'filed';
 
       const reply = await this.brain.turn({ channel: 'whatsapp', conversationKey: key, verifiedPhone: msg.from, name: msg.name, turns: merged });
-      if (!reply?.text) { this.log('GOLDIE_WHATSAPP_NO_REPLY', { conversationId: filed.conversationId }); return 'failed'; }
-      const text = formatWhatsAppReply(reply);
       const phoneNumberId = msg.phoneNumberId ?? s.phoneNumberId;
       if (!phoneNumberId) { this.log('GOLDIE_WHATSAPP_NO_NUMBER_ID', {}); return 'failed'; }
+      if (!reply?.text) {
+        // Goldie could not answer (brain unreachable or failed): never leave the customer unanswered. One warm
+        // holding line (not repeated while it is the last thing said) and a task, so a person replies.
+        this.log('GOLDIE_WHATSAPP_NO_REPLY', { conversationId: filed.conversationId });
+        if (lastGoldie?.content !== HOLDING_REPLY) {
+          const sent = await this.whatsapp.sendText({ phoneNumberId, to: msg.from, text: HOLDING_REPLY });
+          if (sent.ok) await this.archive.logReply(filed.conversationId, HOLDING_REPLY, 'fallback', sent.messageId);
+        }
+        await this.openTask({ kind: 'follow_up', title: `WhatsApp message waiting for a reply: ${msg.text.slice(0, 120)}`, customerName: msg.name, customerPhone: `+${msg.from}`, conversationId: filed.conversationId, channel: 'whatsapp' }).catch(() => undefined);
+        return 'failed';
+      }
+      const text = formatWhatsAppReply(reply);
       const sent = await this.whatsapp.sendText({ phoneNumberId, to: msg.from, text });
       if (!sent.ok) { this.log('GOLDIE_WHATSAPP_SEND_FAILED', { reason: sent.reason }); return 'failed'; }
       await this.archive.logReply(filed.conversationId, text, reply.route, sent.messageId, reply.intent, reply.mood, reply.cacheId ?? null);

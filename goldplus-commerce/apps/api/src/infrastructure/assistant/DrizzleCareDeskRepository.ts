@@ -58,6 +58,18 @@ export class DrizzleCareDeskRepository implements ICareDeskRepository {
     return r.length > 0;
   }
 
+  async alertsSince(since: Date, phone: string | null) {
+    const last9 = (phone ?? '').replace(/\D/g, '').slice(-9);
+    const same = last9.length === 9 ? sql`count(*) filter (where right(regexp_replace(coalesce(customer_phone, ''), '\\D', '', 'g'), 9) = ${last9})::int` : sql`0`;
+    const [r] = rowsOf(await db.execute(sql`select count(*)::int as shop, ${same} as same_phone from care_tasks where alerted_at >= ${since}`));
+    return { shop: Number(r?.shop ?? 0), samePhone: Number(r?.same_phone ?? 0) };
+  }
+
+  async purgeClosedBefore(cutoff: Date) {
+    const gone = await db.delete(careTasks).where(and(sql`${careTasks.status} <> 'open'`, sql`${careTasks.resolvedAt} < ${cutoff}`)).returning({ id: careTasks.id });
+    return gone.length;
+  }
+
   async markAlerted(id: string) { if (/^[0-9a-f-]{36}$/i.test(id)) await db.update(careTasks).set({ alertedAt: sql`now()` }).where(eq(careTasks.id, id)); }
 
   async team(activeOnly: boolean) {

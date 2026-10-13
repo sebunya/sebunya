@@ -2720,7 +2720,7 @@ export class Registry {
   public readonly careDeskUseCases = new CareDeskUseCases(
     new DrizzleCareDeskRepository(),
     new CareAlertChannels(this.whatsappMessenger, () => goldieWhatsAppSettings()),
-    { deskUrl: `${(process.env.PUBLIC_WEB_BASE_URL || 'https://shopgoldplus.com').replace(/\/+$/, '')}/admin/care` },
+    { deskUrl: `${(process.env.PUBLIC_WEB_BASE_URL || 'https://shopgoldplus.com').replace(/\/+$/, '')}/admin/care`, alertsPerHour: Math.max(1, Number(process.env.CARE_ALERTS_PER_HOUR ?? 12) || 12) },
   );
   /** Goldie on WhatsApp (and the admin inbox's team replies). Off until GOLDIE_WHATSAPP_ENABLED=true. */
   public readonly goldieChannelUseCases = new GoldieChannelUseCases(
@@ -2731,6 +2731,7 @@ export class Registry {
     (event, detail) => logger.warn(detail, event),
     () => new Date(),
     () => this.careDeskUseCases.staffNumbers(),
+    (input) => this.careDeskUseCases.openTask(input),
   );
   private readonly goldieListensToWhatsApp = (() => {
     // Each customer message is handled on its own, after Meta has been answered.

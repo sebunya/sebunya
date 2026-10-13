@@ -32,7 +32,7 @@ export interface TurnInput {
   signal?: AbortSignal;
 }
 
-export interface TurnMeta { intent: Intent | 'CLARIFY'; mood: MoodRead; route: 'deterministic' | 'ai' | 'fallback' | 'cache'; tier: string; cacheId?: string | null }
+export interface TurnMeta { intent: Intent | 'CLARIFY'; mood: MoodRead; route: 'deterministic' | 'ai' | 'fallback' | 'cache'; tier: string; cacheId?: string | null; nextAction?: string | null }
 export type TurnEvent = AssistantEvent | { type: 'meta'; meta: TurnMeta };
 
 export type PreparedTurn =
@@ -138,6 +138,7 @@ export async function prepareTurn(input: TurnInput): Promise<PreparedTurn> {
     let settled = false;
     try {
       const ctx = await shopperContext(input.who);
+      meta.nextAction = ctx?.nextBestAction ?? null;
       const moodLine = mood.mood === 'neutral' ? '' : ` This message reads as ${mood.mood}${mood.urgent ? ' and urgent' : ''}; acknowledge that first.`;
       const note = (shopperNote(ctx) + (input.channel === 'whatsapp' ? ' Channel: WhatsApp (plain text, no cards; keep it short).' : '') + moodLine).trim();
       // Cost: the model sees the last eight turns, starting with the customer (older turns rarely change the answer).

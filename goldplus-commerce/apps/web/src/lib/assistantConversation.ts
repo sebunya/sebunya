@@ -71,6 +71,6 @@ export function interestTopic(query: string, raw: string): string {
 }
 
 /** Files one website turn in the conversation archive (0177). Fire-and-forget: the archive never slows or breaks a reply. */
-export function logTurn(body: { conversationId: string; userId: string | null; page: string | null; customer: string; goldie: string | null; intent: string; mood: string; route: string; cacheId?: string | null }): void {
+export function logTurn(body: { conversationId: string; userId: string | null; page: string | null; customer: string; goldie: string | null; intent: string; mood: string; route: string; cacheId?: string | null; nextAction?: string | null }): void {
   void call('/log', { ...body, customer: body.customer.slice(0, 4000), goldie: body.goldie ? body.goldie.slice(0, 8000) : null }, 4000);
 }

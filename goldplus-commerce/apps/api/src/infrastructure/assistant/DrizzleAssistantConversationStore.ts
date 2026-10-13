@@ -8,7 +8,7 @@ type ConvRow = typeof assistantConversations.$inferSelect;
 const toRow = (r: ConvRow): ArchiveConversationRow => ({
   id: r.id, channel: r.channel as ArchiveChannel, channelKey: r.channelKey, customerId: r.customerId, contactName: r.contactName, contactPhone: r.contactPhone, contactEmail: r.contactEmail,
   firstTopic: r.firstTopic, lastTopic: r.lastTopic, worstMood: r.worstMood as ArchiveMood, outcome: r.outcome as ArchiveOutcome, supportTicketId: r.supportTicketId, page: r.page,
-  messageCount: r.messageCount, aiTurns: r.aiTurns, humanUntil: r.humanUntil, csat: r.csat ?? null, startedAt: r.startedAt, lastMessageAt: r.lastMessageAt,
+  messageCount: r.messageCount, aiTurns: r.aiTurns, humanUntil: r.humanUntil, csat: r.csat ?? null, nextAction: r.nextAction ?? null, startedAt: r.startedAt, lastMessageAt: r.lastMessageAt,
 });
 const rowsOf = (r: unknown): Array<Record<string, unknown>> => (Array.isArray(r) ? r : (r as { rows?: unknown[] })?.rows ?? []) as Array<Record<string, unknown>>;
 const clip = (s: string | null | undefined, n: number) => (s ? s.trim().slice(0, n) || null : null);

@@ -2,7 +2,7 @@
 import AdminLayout from '../../../../layouts/AdminLayout.astro';
 import { readSessionToken } from '../../../../lib/session';
 import { apiBase } from '../../../../lib/api';
-import { TOPIC_LABEL, MOOD_LABEL, OUTCOME_LABEL, CHANNEL_LABEL } from '../../../../lib/goldieArchiveCopy';
+import { TOPIC_LABEL, MOOD_LABEL, OUTCOME_LABEL, CHANNEL_LABEL, NBA_LABEL } from '../../../../lib/goldieArchiveCopy';
 
 /**
  * One Goldie conversation: every message with its topic and mood, the
@@ -43,7 +43,7 @@ if (Astro.request.method === 'POST') {
 }
 
 interface Msg { id: string; role: 'customer' | 'goldie' | 'team'; content: string; intent: string | null; mood: string | null; route: string | null; createdAt: string }
-interface Conv { id: string; channel: string; contactName: string | null; contactPhone: string | null; contactEmail: string | null; customerId: string | null; firstTopic: string | null; lastTopic: string | null; worstMood: string; outcome: string; supportTicketId: string | null; page: string | null; messageCount: number; aiTurns: number; humanUntil: string | null; startedAt: string; lastMessageAt: string }
+interface Conv { csat?: number | null; nextAction?: string | null; id: string; channel: string; contactName: string | null; contactPhone: string | null; contactEmail: string | null; customerId: string | null; firstTopic: string | null; lastTopic: string | null; worstMood: string; outcome: string; supportTicketId: string | null; page: string | null; messageCount: number; aiTurns: number; humanUntil: string | null; startedAt: string; lastMessageAt: string }
 const found = await call<{ conversation: Conv; messages: Msg[] }>(`/conversations/${id}`);
 const when = (iso: string) => new Date(iso).toLocaleString('en-GB', { timeZone: 'Africa/Kampala', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 const c = found.ok ? found.data.conversation : null;
@@ -62,6 +62,7 @@ const teamHasIt = !!(c?.humanUntil && new Date(c.humanUntil) > new Date());
           <p><span class="text-gray-500">Channel:</span> {CHANNEL_LABEL[c.channel] ?? c.channel}{c.page && <span class="text-gray-500"> · from {c.page}</span>}</p>
           <p><span class="text-gray-500">Topic:</span> {TOPIC_LABEL[c.lastTopic ?? c.firstTopic ?? ''] ?? 'Other'} · <span class="text-gray-500">Mood:</span> {MOOD_LABEL[c.worstMood] ?? c.worstMood} · <span class="text-gray-500">Outcome:</span> {OUTCOME_LABEL[c.outcome] ?? c.outcome}</p>
           <p><span class="text-gray-500">Started:</span> {when(c.startedAt)} · <span class="text-gray-500">Last:</span> {when(c.lastMessageAt)}</p>
+          <p><span class="text-gray-500">Rating:</span> {c.csat != null ? <strong>{c.csat} / 5</strong> : 'not rated'}{c.nextAction && <> · <span class="text-gray-500">Goldie's suggestion:</span> {NBA_LABEL[c.nextAction] ?? c.nextAction}</>}</p>
           <p>{c.supportTicketId ? <a class="underline font-bold" href="/admin/support">Support ticket opened</a> : <span class="text-gray-500">No support ticket</span>}{teamHasIt && <span class="ml-2 text-indigo-700 font-bold">Team has it until {when(c.humanUntil!)}</span>}</p>
         </section>
 

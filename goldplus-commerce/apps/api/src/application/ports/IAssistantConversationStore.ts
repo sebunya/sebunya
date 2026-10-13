@@ -19,6 +19,8 @@ export interface ArchiveConversationRow {
   humanUntil: Date | null;
   /** The customer's rating of the chat (1-5), when given. */
   csat?: number | null;
+  /** The next-best action Goldie was given (Customer DNA), when there was one. */
+  nextAction?: string | null;
   startedAt: Date;
   lastMessageAt: Date;
 }

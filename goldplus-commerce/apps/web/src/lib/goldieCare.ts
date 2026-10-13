@@ -213,7 +213,7 @@ async function openTask(ctx: CareContext, body: TaskBody): Promise<{ ok: boolean
 }
 
 const ownPhone = (ctx: CareContext) => (ctx.verifiedPhone ? `+${ctx.verifiedPhone}` : '');
-const whenText = (priority?: string) => (priority === 'urgent' ? 'The team has been alerted now and will call you as soon as possible.' : 'The team will call you back, usually within working hours today.');
+const whenText = (priority?: string, alerted = 0) => (priority === 'urgent' ? (alerted > 0 ? 'The team has been alerted now and will call you as soon as possible.' : 'It is marked urgent, so the team will call you as soon as possible.') : 'The team will call you back, usually within working hours today.');
 
 /** A person calls the customer. */
 export async function requestCallback(input: { name?: string; phone?: string; reason: string; when?: string }, ctx: CareContext): Promise<CareAnswer> {
@@ -221,7 +221,7 @@ export async function requestCallback(input: { name?: string; phone?: string; re
   if (!phone || !PHONE.test(phone.replace(/\s/g, '')) && !/^\+?\d{9,15}$/.test(phone.replace(/\s/g, ''))) return { ok: false, text: 'Which number should the team call you on?', links: [] };
   const t = await openTask(ctx, { kind: 'callback', title: `Call back: ${input.reason}`.slice(0, 200), detail: input.when ? `Best time: ${input.when}` : null, customerName: input.name ?? null, customerPhone: phone });
   if (!t.ok) return { ok: false, text: "I couldn't book the call just now. Please WhatsApp us and the team will call you.", links: [] };
-  return { ok: true, text: `Done, I've booked a call to ${phone}${input.when ? ` (${input.when})` : ''}. ${whenText(t.priority)}`, links: [] };
+  return { ok: true, text: `Done, I've booked a call to ${phone}${input.when ? ` (${input.when})` : ''}. ${whenText(t.priority, t.alerted)}`, links: [] };
 }
 
 /** Hand the matter to the team now (urgent pages the on-duty team by SMS, email and WhatsApp). */
@@ -230,7 +230,11 @@ export async function escalateToTeam(input: { summary: string; urgent?: boolean;
   if (!phone && !input.email) return { ok: false, text: 'So the team can reach you, what is your phone number?', links: [] };
   const t = await openTask(ctx, { kind: input.urgent ? 'urgent' : 'follow_up', title: input.summary.slice(0, 200), customerName: input.name ?? null, customerPhone: phone || null, customerEmail: input.email ?? null, urgent: input.urgent });
   if (!t.ok) return { ok: false, text: "I couldn't reach the team from here just now. Please WhatsApp us and someone will help you straight away.", links: [] };
-  return { ok: true, text: t.priority === 'urgent' ? 'I have alerted the team now with everything you told me. Someone will contact you very shortly.' : 'I have passed this to the team with everything you told me. They will get back to you today.', links: [] };
+  // Say "alerted" only when someone was actually paged (a repeat within 30 minutes or the hourly cap still marks it urgent).
+  const text = t.priority !== 'urgent' ? 'I have passed this to the team with everything you told me. They will get back to you today.'
+    : (t.alerted ?? 0) > 0 ? 'I have alerted the team now with everything you told me. Someone will contact you very shortly.'
+    : 'I have marked this urgent for the team with everything you told me. Someone will contact you as soon as possible.';
+  return { ok: true, text, links: [] };
 }
 
 /** Verified order first (same proof as Track my order), then a task for the team. */
@@ -248,7 +252,7 @@ export async function reportOrderProblem(input: { reference: string; contact?: s
   const ref = String(v.summary.facts?.orderNumber ?? input.reference).toUpperCase();
   const t = await openTask(ctx, { kind: 'order_problem', title: `${ref}: ${input.problem}`.slice(0, 200), detail: v.summary.text, orderNumber: ref, customerPhone: input.contact && PHONE.test(input.contact) ? input.contact : ownPhone(ctx) || null, customerEmail: input.contact && EMAIL.test(input.contact) ? input.contact : null });
   if (!t.ok) return { ok: false, text: "I couldn't log it just now. Please WhatsApp us with the order number and the team will sort it out.", links: [] };
-  return { ok: true, text: `I've logged this on order ${ref} for the team${t.priority === 'urgent' ? ' and alerted them now' : ''}. They will check it and get back to you; nothing is approved until they have looked at it.`, links: [] };
+  return { ok: true, text: `I've logged this on order ${ref} for the team${t.priority === 'urgent' ? ((t.alerted ?? 0) > 0 ? ' and alerted them now' : ' as urgent') : ''}. They will check it and get back to you; nothing is approved until they have looked at it.`, links: [] };
 }
 
 const CHANGE_LABEL: Record<string, string> = { cancel: 'cancel the order', delivery_address: 'change the delivery address', delivery_time: 'change the delivery time', items: 'change the items', other: 'change the order' };

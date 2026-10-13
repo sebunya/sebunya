@@ -60,7 +60,9 @@ describe('when not to answer (WhatsApp)', () => {
   });
 });
 
+let alertsSoFar = { shop: 0, samePhone: 0 };
 function desk(team: Partial<CareTeamMemberRow>[] = []) {
+  alertsSoFar = { shop: 0, samePhone: 0 };
   const tasks: CareTaskRow[] = [];
   const members: CareTeamMemberRow[] = team.map((m, i) => ({ id: `m${i}`, name: `Member ${i}`, roleLabel: null, phone: '0772000000', email: 'm@example.com', alertSms: true, alertEmail: true, alertWhatsapp: false, onDuty: null, active: true, ...m }));
   const repo: ICareDeskRepository = {
@@ -73,6 +75,8 @@ function desk(team: Partial<CareTeamMemberRow>[] = []) {
     async get(id) { return tasks.find((t) => t.id === id) ?? null; },
     async list() { return tasks; },
     async resolve() { return true; }, async assign() { return true; },
+    async alertsSince() { return { shop: alertsSoFar.shop, samePhone: alertsSoFar.samePhone }; },
+    async purgeClosedBefore() { return 0; },
     async markAlerted(id) { const t = tasks.find((x) => x.id === id); if (t) t.alertedAt = new Date(); },
     async team(activeOnly) { return members.filter((m) => !activeOnly || m.active); },
     async saveMember(m) { return { ...m, id: m.id ?? 'new' } as CareTeamMemberRow; }, async removeMember() { return true; },
@@ -112,6 +116,21 @@ describe('Care Desk use cases', () => {
     expect(await d.uc.openTask({ kind: 'callback', title: 'Call me' })).toMatchObject({ ok: false });
     const r = await d.uc.openTask({ kind: 'follow_up', title: 'Paid with 4111 1111 1111 1111 but nothing', customerPhone: '0772123456' });
     expect(r.ok && r.task.title).not.toMatch(/4111/);
+  });
+});
+
+describe('alerts cannot be abused', () => {
+  it('pages once per customer per 30 minutes and never past the hourly cap, but the task stays urgent', async () => {
+    const { alertAllowed } = await import('../../apps/api/src/domain/assistant/CareDesk');
+    expect(alertAllowed({ samePhoneLast30Min: 0, shopLastHour: 3, perHour: 12 })).toBe('ALLOWED');
+    expect(alertAllowed({ samePhoneLast30Min: 1, shopLastHour: 0, perHour: 12 })).toBe('SAME_CUSTOMER_RECENTLY');
+    expect(alertAllowed({ samePhoneLast30Min: 0, shopLastHour: 12, perHour: 12 })).toBe('HOURLY_CAP');
+    const d = desk([{ name: 'Grace' }]);
+    alertsSoFar = { shop: 12, samePhone: 0 };
+    const r = await d.uc.openTask({ kind: 'urgent', title: 'Customer stuck with money deducted', customerPhone: '0772123456' });
+    expect(r.ok && r.task.priority).toBe('urgent');
+    expect(r.ok && r.alerted).toEqual([]);
+    expect(d.sent).toEqual([]);
   });
 });
 

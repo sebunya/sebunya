@@ -215,6 +215,21 @@ describe('Goldie on WhatsApp', () => {
     expect(c.whatsapp.sendText).toHaveBeenCalledTimes(1);
   });
 
+  it('never leaves a customer unanswered: if Goldie cannot answer, one holding line and a task for a person', async () => {
+    const { store, convs } = memoryStore();
+    const archive = new ConversationArchiveUseCases(store);
+    const whatsapp = { sendText: vi.fn(async () => ({ ok: true as const, messageId: 'wamid.hold' })) };
+    const tasks: unknown[] = [];
+    const { HOLDING_REPLY } = await import('../../apps/api/src/application/use-cases/assistant/GoldieChannelUseCases');
+    const uc = new GoldieChannelUseCases(archive, { turn: vi.fn(async () => null) }, whatsapp, () => ({ enabled: true, onlyNumbers: [], phoneNumberId: '111222333' }), () => {}, () => new Date(), async () => [], async (t) => { tasks.push(t); });
+    expect(await uc.handleWhatsApp(inbound)).toBe('failed');
+    expect(whatsapp.sendText).toHaveBeenCalledWith(expect.objectContaining({ text: HOLDING_REPLY }));
+    expect(tasks).toHaveLength(1);
+    await uc.handleWhatsApp({ ...inbound, messageId: 'wamid.9', text: 'hello??' });
+    expect(whatsapp.sendText).toHaveBeenCalledTimes(1); // the holding line is not repeated
+    expect([...convs.values()][0]!.messageCount).toBeGreaterThan(0);
+  });
+
   it('keeps quiet while a person from the shop has the conversation, and a team reply takes it over', async () => {
     const c = channel();
     await c.uc.handleWhatsApp(inbound);

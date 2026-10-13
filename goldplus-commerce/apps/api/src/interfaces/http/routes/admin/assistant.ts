@@ -95,8 +95,8 @@ routes.get('/conversations/summary', requirePermissions([PERMISSIONS.CUSTOMER_DA
 
 routes.get('/conversations.csv', requirePermissions([PERMISSIONS.CUSTOMER_DATA_VIEW]), async (c) => {
   const { rows } = await Registry.getInstance().conversationArchiveUseCases.list({ ...filters(c), limit: 200, offset: 0 });
-  const head = ['started', 'last message', 'channel', 'contact name', 'phone', 'email', 'first topic', 'last topic', 'mood', 'outcome', 'messages', 'ai turns', 'support ticket', 'last customer line'];
-  const lines = rows.map((r) => [r.startedAt.toISOString(), r.lastMessageAt.toISOString(), r.channel, r.contactName, r.contactPhone, r.contactEmail, r.firstTopic, r.lastTopic, r.worstMood, r.outcome, r.messageCount, r.aiTurns, r.supportTicketId, r.lastCustomerLine].map(csvCell).join(','));
+  const head = ['started', 'last message', 'channel', 'contact name', 'phone', 'email', 'first topic', 'last topic', 'mood', 'outcome', 'rating', 'messages', 'ai turns', 'support ticket', 'last customer line'];
+  const lines = rows.map((r) => [r.startedAt.toISOString(), r.lastMessageAt.toISOString(), r.channel, r.contactName, r.contactPhone, r.contactEmail, r.firstTopic, r.lastTopic, r.worstMood, r.outcome, r.csat ?? '', r.messageCount, r.aiTurns, r.supportTicketId, r.lastCustomerLine].map(csvCell).join(','));
   const stamp = new Date().toISOString().slice(0, 10);
   return new Response([head.map(csvCell).join(','), ...lines].join('\r\n'), { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="goldie-conversations-${stamp}.csv"`, 'Cache-Control': 'no-store' } });
 });

@@ -49,6 +49,9 @@ export async function runFirstPartyNightlyOnce(now = new Date(), trigger = 'sche
     const purged = await registry.conversationArchiveUseCases.purgeExpired()
       .catch((err) => { logger.error({ err: (err as Error).message }, '[goldie] archive purge failed'); return null; });
     if (purged) logger.info({ purged }, '[goldie] archive purge');
+    const closed = await registry.careDeskUseCases.purgeClosed()
+      .catch((err) => { logger.error({ err: (err as Error).message }, '[care-desk] purge failed'); return null; });
+    if (closed) logger.info({ closed }, '[care-desk] closed-task purge');
     return 'RAN';
   } finally {
     running = false;

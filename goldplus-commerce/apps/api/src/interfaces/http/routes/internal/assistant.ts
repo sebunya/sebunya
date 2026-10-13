@@ -150,6 +150,7 @@ routes.post('/log', async (c) => {
     mood: z.string().max(12).nullable().optional(),
     route: z.string().max(16).nullable().optional(),
     cacheId: z.string().uuid().nullable().optional(),
+    nextAction: z.string().max(40).nullable().optional(),
   }).safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return bad(c, 'INVALID_BODY', parsed.error.issues[0]?.message ?? 'Invalid body.');
   const d = parsed.data;
@@ -157,6 +158,8 @@ routes.post('/log', async (c) => {
     channel: 'web', channelKey: d.conversationId, customerId: d.userId ?? null, page: d.page ?? null,
     customer: { content: d.customer }, goldie: d.goldie ? { content: d.goldie, route: d.route ?? null, cacheId: d.cacheId ?? null } : null, intent: d.intent ?? null, mood: d.mood ?? null,
   });
+  // The next-best action Goldie was given for this customer, so the team sees what she was nudging towards.
+  if (d.nextAction && !out.duplicate) await Registry.getInstance().careDeskUseCases.setNextAction(out.conversationId, d.nextAction).catch(() => undefined);
   return ok(c, { conversationId: out.conversationId });
 });
 

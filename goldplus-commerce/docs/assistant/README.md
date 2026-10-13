@@ -165,6 +165,14 @@ channel because the customer started the chat). The result reaches the model as 
 - WhatsApp needs an approved template: set `GOLDIE_ALERT_TEMPLATE` (one body variable) and, optionally,
   `GOLDIE_ALERT_TEMPLATE_LANG`.
 - "Send a test alert" pages everyone active.
+- Abuse-proof paging: at most one alert per customer number every 30 minutes, and at most `CARE_ALERTS_PER_HOUR`
+  (default 12) across the shop. A throttled task is still urgent at the top of the desk, and Goldie then says "marked
+  urgent" instead of "alerted".
+- WhatsApp never goes silent: if Goldie cannot answer (brain unreachable or failed), the customer gets one holding
+  line ("I'm passing it to the team now...", not repeated) and a follow-up task opens.
+- Closed tasks are purged after 365 days (nightly), like conversations.
+- The next-best action Goldie was given is stored on the conversation and shown on the thread. The rating is shown on
+  the thread and included in the CSV.
 
 **Order actions without a person** (owner's instruction; written, NOT wired):
 - `GoldieOrderActionsUseCases` holds the policy:

@@ -109,7 +109,7 @@ export class DrizzleCustomerProfileRepository implements ICustomerProfileReposit
     const byContact = q.includes('@')
       ? sql`${users.email} ilike ${'%' + q.toLowerCase() + '%'}`
       : digits.length >= 9
-        ? sql`right(regexp_replace(coalesce(${users.phone}, ''), '\D', '', 'g'), 9) = ${digits.slice(-9)}`
+        ? sql`right(regexp_replace(coalesce(${users.phone}, ''), '\\D', '', 'g'), 9) = ${digits.slice(-9)}`
         : sql`false`;
     const rows = await db.select({ p: customerProfiles }).from(customerProfiles)
       .leftJoin(users, eq(users.id, customerProfiles.accountUserId))

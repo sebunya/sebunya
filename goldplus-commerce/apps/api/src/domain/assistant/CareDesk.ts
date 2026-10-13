@@ -42,6 +42,20 @@ export function carePriority(input: { kind: CareTaskKind; mood?: string | null; 
 /** Only urgent tasks page people; everything else waits on the desk. */
 export const shouldAlert = (p: CarePriority) => p === 'urgent';
 
+/** Shop-wide ceiling on paging alerts per hour (CARE_ALERTS_PER_HOUR); the desk still shows every urgent task. */
+export const DEFAULT_ALERTS_PER_HOUR = 12;
+
+/**
+ * Whether paging is allowed: one alert per customer number per 30 minutes (a new chat from the same person is
+ * not a new emergency), and at most `perHour` alerts across the shop, so nobody can run up an SMS bill or flood
+ * the team by opening chats. A throttled urgent task still sits at the top of the Care Desk.
+ */
+export function alertAllowed(input: { samePhoneLast30Min: number; shopLastHour: number; perHour: number }): 'ALLOWED' | 'SAME_CUSTOMER_RECENTLY' | 'HOURLY_CAP' {
+  if (input.samePhoneLast30Min > 0) return 'SAME_CUSTOMER_RECENTLY';
+  if (input.shopLastHour >= input.perHour) return 'HOURLY_CAP';
+  return 'ALLOWED';
+}
+
 export interface OnDuty { days?: number[]; from?: string; to?: string }
 
 /** Is a team member on duty now (Kampala time)? No schedule means always. Overnight ranges (22:00-06:00) work. */

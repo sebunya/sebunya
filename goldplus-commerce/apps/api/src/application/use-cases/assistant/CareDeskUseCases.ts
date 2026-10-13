@@ -1,5 +1,5 @@
 import type { ICareDeskRepository, CareTaskRow, CareTeamMemberRow } from '../../ports/ICareDeskRepository';
-import { alertText, carePriority, isCareKind, onDutyNow, shouldAlert, CARE_KIND_LABEL, type CarePriority, type CareTaskKind, type OnDuty } from '../../../domain/assistant/CareDesk';
+import { alertAllowed, alertText, carePriority, isCareKind, onDutyNow, shouldAlert, CARE_KIND_LABEL, DEFAULT_ALERTS_PER_HOUR, type CarePriority, type CareTaskKind, type OnDuty } from '../../../domain/assistant/CareDesk';
 import { redact } from '../../../domain/assistant/ConversationArchive';
 import { isValidEmail, isValidUgandanPhone, normalizeEmail, normalizePhone, text } from '../../services/validationHelpers';
 
@@ -41,7 +41,7 @@ export class CareDeskUseCases {
   constructor(
     private readonly repo: ICareDeskRepository,
     private readonly alerts: ICareAlertChannels,
-    private readonly config: { deskUrl: string },
+    private readonly config: { deskUrl: string; alertsPerHour?: number },
     private readonly now: () => Date = () => new Date(),
   ) {}
 
@@ -69,6 +69,9 @@ export class CareDeskUseCases {
   /** Pages every on-duty team member on each channel they chose; at most once per task. Returns what was queued. */
   async alert(task: CareTaskRow): Promise<string[]> {
     if (task.alertedAt) return [];
+    const t = this.now().getTime();
+    const [hour, recent] = await Promise.all([this.repo.alertsSince(new Date(t - 3600_000), null), this.repo.alertsSince(new Date(t - 30 * 60_000), task.customerPhone)]);
+    if (alertAllowed({ samePhoneLast30Min: task.customerPhone ? recent.samePhone : 0, shopLastHour: hour.shop, perHour: this.config.alertsPerHour ?? DEFAULT_ALERTS_PER_HOUR }) !== 'ALLOWED') return [];
     const team = (await this.repo.team(true)).filter((m) => onDutyNow(m.onDuty, this.now()));
     // Nobody on duty: page everyone active, so an urgent customer is never left with no one told.
     const people = team.length ? team : await this.repo.team(true);
@@ -123,6 +126,9 @@ export class CareDeskUseCases {
     return this.repo.rate(conversationId, score, comment ? redact(text(comment)).slice(0, 500) : null);
   }
   setNextAction(conversationId: string, action: string | null) { return this.repo.setNextAction(conversationId, action ? action.slice(0, 40) : null); }
+
+  /** Nightly: closed tasks older than a year go (they hold customer names and numbers). */
+  purgeClosed(days = 365) { return this.repo.purgeClosedBefore(new Date(this.now().getTime() - days * 86400_000)); }
 
   /** A test page to every active member, so the owner can see alerts arrive before a real customer needs one. */
   async testAlert(): Promise<string[]> {
