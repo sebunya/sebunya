@@ -113,7 +113,7 @@ describe('assistant engine', () => {
     fetchMock.mockResolvedValueOnce(streamResponse(toolTurn('search_products', { query: 'charger', limit: 3 })));
     fetchMock.mockResolvedValueOnce(streamResponse(textTurn('The GP-C11 is UGX 65,000.')));
     callTool.mockResolvedValueOnce({ content: [{ type: 'text', text: '1 product' }], structuredContent: { count: 1, products: [
-      { name: 'GoldPlus Charger GP-C11', url: 'https://shopgoldplus.com/products/goldplus-charger-gp-c11', sku: 'GP-C11', price_ugx: 65000, availability: 'in_stock', images: ['https://shopgoldplus.com/uploads/a.webp'] },
+      { id: '0f3a9c1e-5b7d-4e2a-9c6f-1a2b3c4d5e6f', name: 'GoldPlus Charger GP-C11', url: 'https://shopgoldplus.com/products/goldplus-charger-gp-c11', sku: 'GP-C11', category: 'Power Devices', price_ugx: 65000, availability: 'in_stock', images: ['https://shopgoldplus.com/uploads/a.webp'] },
       { name: 'Evil', url: 'https://evil.example/x', sku: null, price_ugx: 1, availability: 'in_stock', images: [] },
     ] } });
     const { runAssistant } = await import('../../apps/web/src/lib/assistant');
@@ -121,7 +121,8 @@ describe('assistant engine', () => {
     expect(callTool).toHaveBeenCalledWith('search_products', { query: 'charger', limit: 3 });
     expect(events).toContainEqual({ type: 'tool', name: 'search_products' });
     const cards = (events as any[]).find((e) => e.type === 'products');
-    expect(cards.items).toEqual([{ name: 'GoldPlus Charger GP-C11', url: 'https://shopgoldplus.com/products/goldplus-charger-gp-c11', sku: 'GP-C11', price_ugx: 65000, availability: 'in_stock', image: 'https://shopgoldplus.com/uploads/a.webp' }]);
+    // The card carries the catalogue id (so the widget can offer Add to cart) and the category the cart form records.
+    expect(cards.items).toEqual([{ id: '0f3a9c1e-5b7d-4e2a-9c6f-1a2b3c4d5e6f', name: 'GoldPlus Charger GP-C11', url: 'https://shopgoldplus.com/products/goldplus-charger-gp-c11', sku: 'GP-C11', price_ugx: 65000, availability: 'in_stock', image: 'https://shopgoldplus.com/uploads/a.webp', category: 'Power Devices' }]);
     const second = JSON.parse(fetchMock.mock.calls[1][1].body);
     expect(second.messages[1].content[0]).toEqual({ type: 'thinking', thinking: '', signature: 'sig_think' });
     expect(second.messages[1].content[2]).toMatchObject({ type: 'tool_use', id: 'toolu_1', name: 'search_products', input: { query: 'charger', limit: 3 } });

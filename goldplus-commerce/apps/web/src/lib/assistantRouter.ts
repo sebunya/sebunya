@@ -21,7 +21,11 @@ export interface Classification {
   query: string;
 }
 
-export interface ProductCard { name: string; url: string; sku: string | null; price_ugx: number | null; availability: string; image: string | null; note?: string }
+/** A product card the widget renders. `id` is the catalogue id the cart accepts; the widget shows
+ *  "Add to cart" only when it is present and the item is in stock with a price. */
+export interface ProductCard { id: string | null; name: string; url: string; sku: string | null; price_ugx: number | null; availability: string; image: string | null; category: string | null; note?: string }
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const cardId = (v: unknown): string | null => (typeof v === 'string' && UUID.test(v) ? v.toLowerCase() : null);
 export interface Link { label: string; url: string }
 export interface DeterministicAnswer { intent: Intent; text: string; products: ProductCard[]; links: Link[] }
 
@@ -40,7 +44,7 @@ export function classify(raw: string): Classification {
   if (/\b(track|tracking|status of|where is|where's|wheres)\b[^.?]*\border\b|\border (status|number|ref|reference)\b|\bmy order\b|\bdelivered yet\b|\b(show|check|find|see|open|look up)\b[^.?]*\border\b/.test(t)) return { intent: 'ORDER', deterministic: true, query: '' };
   if (/\b(pay|payment|paid|paying|mobile money|momo|mtn|airtel|pesapal|visa|mastercard|(credit|debit|bank) ?card|card payment|(pay|paying|paid) (by|with|using) (a |my )?card|cash on delivery|refund me|my refund|refund (status|arrive|arrived|when)|pin|otp)\b/.test(t) && !/\b(refund policy|return)\b/.test(t)) return { intent: 'PAYMENT', deterministic: true, query: '' };
   if (/\b(bulk|wholesale|quotation|quote|for (my|the|our) (office|school|shop|company|business))\b/.test(t) || /\b(\d{2,}|fifty|hundred) (power ?banks|chargers|cables|units|pieces|pcs)\b/.test(t)) return { intent: 'BULK', deterministic: true, query: '' };
-  if (/\b(warranty|guarantee|returns?|refund|exchange|replace(ment)?|broken|(bought|got|ordered|received) the wrong|wrong (item|product|battery|size|one|colour|color)|stop(s|ped)? working|not working|faulty|fake|genuine|original|verify|verification|authentic|counterfeit|swollen)\b/.test(t)) return { intent: 'POLICY', deterministic: true, query: text };
+  if (/\b(warranty|guarantee|returns?|refund|exchange|replace(ment)?(?!\s+batter)|broken|(bought|got|ordered|received) the wrong|wrong (item|product|battery|size|one|colour|color)|stop(s|ped)? working|not working|faulty|fake|genuine|original|verify|verification|authentic|counterfeit|swollen)\b/.test(t)) return { intent: 'POLICY', deterministic: true, query: text };
   if (/\bbatter(y|ies)\b/.test(t) || BATTERY_CODE.test(text)) return { intent: 'BATTERY', deterministic: true, query: batteryQuery(text) };
   if (/\b(deliver|delivery|deliveries|shipping|ship|courier|boda|cut.?off|same.?day|upcountry|how long (to|does|will)|when will (it|i)|receive (it|this|them|my)|bring (it|this|them))\b/.test(t) || (PLACES.test(t) && /\b(today|tomorrow|tonight|by (today|tomorrow|\w+day))\b/.test(t))) return { intent: 'DELIVERY', deterministic: true, query: text };
   if (/\b(where (is|are) (the |your )?(shop|store|you|office)|location|address|directions?|open(ing)?|hours|close|closing|phone number|whatsapp|contact|call you|visit)\b/.test(t)) return { intent: 'STORE', deterministic: true, query: '' };
@@ -74,7 +78,7 @@ function cardsFromProducts(list: unknown): ProductCard[] {
   if (!Array.isArray(list)) return [];
   return list.slice(0, 5).map((p) => {
     const x = p as Json;
-    return { name: String(x.name ?? ''), url: String(x.url ?? ''), sku: x.sku == null ? null : String(x.sku), price_ugx: x.price_ugx == null ? null : Number(x.price_ugx), availability: String(x.availability ?? ''), image: Array.isArray(x.images) && x.images[0] ? String(x.images[0]) : null };
+    return { id: cardId(x.id), name: String(x.name ?? ''), url: String(x.url ?? ''), sku: x.sku == null ? null : String(x.sku), price_ugx: x.price_ugx == null ? null : Number(x.price_ugx), availability: String(x.availability ?? ''), image: Array.isArray(x.images) && x.images[0] ? String(x.images[0]) : null, category: x.category == null ? null : String(x.category) };
   }).filter((c) => c.name && c.url.startsWith(SITE_ORIGIN));
 }
 
@@ -124,7 +128,7 @@ export async function answerDeterministically(c: Classification): Promise<Determ
         const device = (s.device as Json) ?? {};
         const results = Array.isArray(s.results) ? (s.results as Json[]) : [];
         const products: ProductCard[] = results.slice(0, 3).map((r) => ({
-          name: String(r.name ?? ''), url: `${SITE_ORIGIN}/products/${String(r.slug ?? '')}`, sku: r.canonicalCode == null ? null : String(r.canonicalCode),
+          id: cardId(r.productId), category: null, name: String(r.name ?? ''), url: `${SITE_ORIGIN}/products/${String(r.slug ?? '')}`, sku: r.canonicalCode == null ? null : String(r.canonicalCode),
           price_ugx: r.priceUgx == null ? null : Number(r.priceUgx), availability: r.inStock ? 'in_stock' : 'out_of_stock', image: r.imageUrl ? String(r.imageUrl) : null, note: String(r.fitLabel ?? ''),
         })).filter((p) => p.name);
         if (!products.length) return { intent: c.intent, text: `We have not matched a battery to the ${String(device.label ?? c.query)} yet, so I will not guess. Send us the model number on WhatsApp and we will confirm the right one.`, products: [], links };
@@ -139,7 +143,7 @@ export async function answerDeterministically(c: Classification): Promise<Determ
       }
       if (kind === 'BATTERY') {
         const b = (s.battery as Json) ?? {};
-        const products: ProductCard[] = b.name ? [{ name: String(b.name), url: `${SITE_ORIGIN}/products/${String(b.slug ?? '')}`, sku: b.canonicalCode == null ? null : String(b.canonicalCode), price_ugx: b.priceUgx == null ? null : Number(b.priceUgx), availability: b.inStock ? 'in_stock' : 'out_of_stock', image: b.imageUrl ? String(b.imageUrl) : null, note: String(b.fitLabel ?? '') }] : [];
+        const products: ProductCard[] = b.name ? [{ id: cardId(b.productId), category: null, name: String(b.name), url: `${SITE_ORIGIN}/products/${String(b.slug ?? '')}`, sku: b.canonicalCode == null ? null : String(b.canonicalCode), price_ugx: b.priceUgx == null ? null : Number(b.priceUgx), availability: b.inStock ? 'in_stock' : 'out_of_stock', image: b.imageUrl ? String(b.imageUrl) : null, note: String(b.fitLabel ?? '') }] : [];
         return { intent: c.intent, text: products.length ? `Found it: battery ${String(b.canonicalCode ?? c.query)}.` : toolTextOf(out), products, links };
       }
       return { intent: c.intent, text: toolTextOf(out) || 'I could not find that battery on the shelf. Try the battery finder, or ask us on WhatsApp with your phone model.', products: [], links };

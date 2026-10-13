@@ -267,7 +267,7 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
     {/* Header — the GoldPlus navigation system */}
     <GpNav />
     <WebMcpTools />
-    <ShopAssistant whatsappUrl={biz.whatsappUrl} />
+    <ShopAssistant whatsappUrl={biz.whatsappUrl} cutoffHour={biz.sameDayCutoffHour} />
 
     {/* Slice 13: uniform skip-link landing point for every page */}
     <div id="main" tabindex="-1"></div>

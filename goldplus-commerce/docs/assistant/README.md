@@ -1,11 +1,60 @@
 # Goldie, the shop assistant (site chat)
 
-A chat panel on every storefront page ("Ask Goldie", bottom right). Goldie is the shop's host: a named, warm, plain-spoken voice (system prompt `goldie-2026-10-12.3` in `assistant.ts`; deterministic answers in `assistantRouter.ts`). She greets by time of day, answers in one to three sentences, and offers the next step as an action chip (`links` events) beside product cards (`products` events); the model is told not to paste URLs or markdown because the cards and chips carry them. Motion: the panel rises from the launcher on open, a three-dot typing indicator while she checks the shelf, and one nudge of the launcher per tab; all off under prefers-reduced-motion. It answers
-from the shop's own catalogue through the same read-only tools the public MCP
-server exposes (`apps/web/src/lib/agentTools.ts`): product search, one product,
-categories, the battery finder and the shop details. It cannot order, take
-payment, or read a customer or an order; buying stays on the product page, and
-orders and complaints are handed to WhatsApp.
+Goldie is the shop's host on every storefront page: a named, warm, plain-spoken
+voice (system prompt `goldie-2026-10-12.3` in `assistant.ts`; deterministic
+answers in `assistantRouter.ts`). She greets by time of day, answers in one to
+three sentences, and offers the next step as an action chip (`links` events)
+beside product cards (`products` events); the model is told not to paste URLs or
+markdown because the cards and chips carry them. It answers from the shop's own
+catalogue through the same read-only tools the public MCP server exposes
+(`apps/web/src/lib/agentTools.ts`): product search, one product, categories,
+the battery finder and the shop details. It cannot order, take payment, or read
+a customer or an order; orders and complaints are handed to WhatsApp. A product
+card with a catalogue id, a price and stock offers **Add to cart** (the product
+page's own POST to `/cart`, read for its result), so a shopper can ask, see and
+add without leaving the conversation.
+
+### How she gets noticed (2026-10-13, researched)
+
+Built on Baymard's live-chat usability testing (floating chat on phones is the
+most harmful pattern; invitations on filter and checkout pages disrupt; chat the
+shopper starts is fast and welcome; invite once, after reading), published
+proactive-chat trigger benchmarks (30 to 45 s or 60% scroll, page-specific),
+Amazon Rufus (questions on the product page itself) and WCAG 2.2.1.
+
+- **Entry on the product page**: two inline "Ask Goldie" questions under the
+  key facts (`AskGoldie.astro`), user-initiated. Where they exist the launcher
+  stays quiet: one voice per page.
+- **Launcher**: out of the first paint, rises after load + idle. On phones it
+  folds to the avatar while scrolling down and lifts above the product page's
+  buy bar.
+- **Desktop teaser**: one message written for the page (product, batteries,
+  chargers, power banks, cables, audio, storage, delivery, guides, home) after
+  30 s of reading or 60% scroll, once per visitor per week
+  (`localStorage` `gp-assistant-teased-at`), with two question chips. X or
+  Escape dismisses; ignored, it folds to an unread dot after a minute and the
+  panel opens with the same message and chips, so nothing is lost to the timer.
+- **Phones**: no bubble. The pill carries a short line for 12 s, then returns
+  to size with an unread dot; the panel carries the full message.
+- **Never** on checkout, cart, account, orders, auth, the finders, search, the
+  filtered shop list, compare, quote, bulk or dealer pages.
+- **Goldie never asks what the site knows**: the phone chosen in the battery
+  finder (cookie `gp_battery_device`, readable) names every question; the
+  delivery question respects the shop cutoff in Kampala time ("Can it come
+  today?" only while today is possible).
+- **Panel**: at most four starter chips; the keyboard is not raised on phones
+  until the shopper taps the box; "Prefer a person? WhatsApp us" is a real tap
+  target. The panel's code (`apps/web/src/scripts/goldie-panel.ts`) loads on
+  the first sign of interest (hover, focus, touch, tap, or an inline
+  question); while it loads the pill says "Opening…", and if it never arrives
+  the shopper is offered WhatsApp instead of a dead button.
+- **Measured** through the nav telemetry as NBA items: `goldie:<context>`
+  impressions, taps and dismissals (`:pill` on phones, `:chip` for a teaser
+  chip, `goldie:inline:pdp` for the product page questions,
+  `goldie:cart-add` for a cart add, `goldie:launcher` as PANEL_OPEN). They show
+  in the admin nav report's NBA table; judge the teaser by its tap rate against
+  its dismiss rate after a week.
+- Every motion respects prefers-reduced-motion.
 
 ## Pieces
 
@@ -15,7 +64,9 @@ orders and complaints are handed to WhatsApp.
 | Engine: prompt, turn validation, Messages API call, tool loop, SSE parsing | `apps/web/src/lib/assistant.ts` |
 | Admission client (visitor pseudonym; admit / settle / release) | `apps/web/src/lib/assistantAdmission.ts` |
 | Endpoint `POST /api/assistant/chat` (same origin, streams `data:` frames) | `apps/web/src/pages/api/assistant/chat.ts` |
-| Widget (launcher, panel, transcript in `sessionStorage`) | `apps/web/src/components/ShopAssistant.astro`, included by `BaseLayout.astro` |
+| Widget: launcher and awareness layer (teaser, pill, lift, telemetry) | `apps/web/src/components/ShopAssistant.astro`, included by `BaseLayout.astro` |
+| Panel: conversation, cards, Add to cart, transcript in `sessionStorage` (lazy) | `apps/web/src/scripts/goldie-panel.ts` |
+| Inline product-page questions | `apps/web/src/components/AskGoldie.astro`, placed in `products/[slug].astro` |
 | Policy, month ledger, counters (API) | `apps/api/src/domain/assistant/AssistantPolicy.ts`, `.../use-cases/assistant/AssistantAdmissionUseCases.ts`, migration 0175 |
 | Admin page: spend this month, policy, kill switch | `/admin/assistant` (`apps/web/src/pages/admin/assistant.astro`) |
 | Tests | `tests/unit/ShopAssistant.test.ts`, `AssistantRouter`, `AssistantPolicy`, `AssistantEvals`, `AssistantCostSimulation`, `tests/integration/AssistantLedger.integration.test.ts` |
@@ -55,6 +106,10 @@ first (two new tables). See `docs/ai-cx/04-deployment-operations-and-rollback.md
 - Nothing customer-written is stored server-side. The ledger keeps token
   counts, cost, model, outcome and a one-way visitor pseudonym.
 - The widget links only to this site; any other URL in an answer is plain text.
+- Add to cart from a card is offered only when the card carries a valid
+  catalogue id, a price and stock; the POST is the product page's own and the
+  server's redirect (`/cart?added=<id>`) is the only success signal. A refused
+  line links to the cart page, which explains why.
 
 ## Why raw HTTP and not the SDK
 

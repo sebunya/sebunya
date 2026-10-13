@@ -1,6 +1,6 @@
 import { SITE_ORIGIN } from './sitemap';
 import { TOOLS, callTool, isToolName, type Json } from './agentTools';
-import type { ProductCard } from './assistantRouter';
+import { cardId, type ProductCard } from './assistantRouter';
 
 /**
  * The paid layer of the shop assistant: Claude over the Messages API with the
@@ -232,7 +232,7 @@ function cardsFrom(structured: unknown): ProductCard[] {
   const list = Array.isArray(s.products) ? s.products : s.product ? [s.product] : [];
   return list.slice(0, 5).map((p) => {
     const x = p as Json;
-    return { name: String(x.name ?? ''), url: String(x.url ?? ''), sku: x.sku == null ? null : String(x.sku), price_ugx: x.price_ugx == null ? null : Number(x.price_ugx), availability: String(x.availability ?? ''), image: Array.isArray(x.images) && x.images[0] ? String(x.images[0]) : null };
+    return { id: cardId(x.id), name: String(x.name ?? ''), url: String(x.url ?? ''), sku: x.sku == null ? null : String(x.sku), price_ugx: x.price_ugx == null ? null : Number(x.price_ugx), availability: String(x.availability ?? ''), image: Array.isArray(x.images) && x.images[0] ? String(x.images[0]) : null, category: x.category == null ? null : String(x.category) };
   }).filter((c) => c.name && c.url.startsWith(SITE_ORIGIN));
 }
 

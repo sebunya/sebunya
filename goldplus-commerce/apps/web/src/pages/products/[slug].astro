@@ -19,6 +19,8 @@ import { breadcrumbJsonLd, serializeJsonLd } from '../../lib/jsonld';
 import { getBusinessInfo } from '../../lib/businessInfo';
 import ThisPhoneSuggestion from '../../components/ThisPhoneSuggestion.astro';
 import CheckYourPhoneNote from '../../components/CheckYourPhoneNote.astro';
+import AskGoldie from '../../components/AskGoldie.astro';
+import { productQuestions, todayStillOpen } from '../../lib/goldieQuestions';
 import ProductGallery from '../../components/product/ProductGallery.astro';
 // Focus 4 rollback switch: PRODUCT_GALLERY_ENRICHMENT=false shows slot 1 only (still the correct cover).
 const galleryEnrichment = process.env.PRODUCT_GALLERY_ENRICHMENT !== 'false';
@@ -666,6 +668,13 @@ if (product) {
               ))}
             </ul>
           )}
+
+          {/* The question a shopper has at this point, one tap away, in the flow
+              rather than floating over it (the Rufus pattern). */}
+          <AskGoldie class="mb-6" source="pdp" questions={productQuestions({
+            name: product.name, isBattery: !!battery, phone: selectedDevice?.label ?? '',
+            todayOpen: todayStillOpen(bizForPdp?.sameDayCutoffHour ?? 17),
+          })} />
 
           <form id="pdp-buy" method="POST" action="/cart" class="flex flex-col sm:flex-row gap-3 mb-6">
             <input type="hidden" name="action" value="add" />
