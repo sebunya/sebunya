@@ -91,3 +91,20 @@ export function clarifyFirst(raw: string, intent: string): string | null {
   if (/^(price|how much|cost)$/.test(t)) return 'Which product would you like the price for?';
   return null;
 }
+
+/**
+ * The customer's language, from words they would not use in English. Luganda and Swahili customers get their
+ * answer in their own language (the model writes it, from the same facts and tools), instead of a fixed English
+ * line. Two marker words are needed, so a single "webale" or "asante" in an English message stays English.
+ */
+const LUGANDA = /\b(oli otya|webale|nsaba|mwattu|ssebo|nnyabo|njagala|nyagala|mpa|bbeeyi|beeyi|ssente|simu yange|nedda|simanyi|nina|tewali|wano|kati|ddi|kiki|ani|nti|okugula|okutuusa|okuleeta|nnyo|ebyuma|kyetaagisa)\b/gi;
+const SWAHILI = /\b(habari|tafadhali|asante|nataka|ninahitaji|bei|simu yangu|je|gani|ngapi|kwa|sana|nini|wapi|lini|ndiyo|hapana|leo|kesho|naomba|unaweza|nipe|kununua|kuleta)\b/gi;
+export type Lang = 'en' | 'lg' | 'sw';
+export function detectLanguage(raw: string): Lang {
+  const t = raw.toLowerCase();
+  const lg = new Set((t.match(LUGANDA) ?? []).map((w) => w.toLowerCase())).size;
+  const sw = new Set((t.match(SWAHILI) ?? []).map((w) => w.toLowerCase())).size;
+  if (lg >= 2 && lg >= sw) return 'lg';
+  if (sw >= 2) return 'sw';
+  return 'en';
+}

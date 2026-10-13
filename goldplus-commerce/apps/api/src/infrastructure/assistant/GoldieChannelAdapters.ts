@@ -2,6 +2,11 @@ import { META_GRAPH_VERSION } from '../advertising/AdPlatforms';
 import type { IGoldieBrain, IWhatsAppMessenger, GoldieWhatsAppSettings } from '../../application/use-cases/assistant/GoldieChannelUseCases';
 import type { ICareAlertChannels } from '../../application/use-cases/assistant/CareDeskUseCases';
 import { insertOutboxObject } from './AssistantConversationAdapters';
+import { goldieMetrics } from './GoldieMetrics';
+import { sendWebPush, vapidFromEnv } from './WebPush';
+import { eq, sql } from 'drizzle-orm';
+import { db } from '../db/client';
+import { carePushSubscriptions } from '../db/schema/assistant';
 
 /**
  * WhatsApp Cloud API: a free-form text reply inside the customer service window
@@ -64,12 +69,14 @@ export class CareAlertChannels implements ICareAlertChannels {
   async sms(input: { to: string; message: string; key: string; taskId: string }) {
     await insertOutboxObject({ eventType: 'CARE_ALERT_SMS', template: 'CARE_ALERT', channel: 'sms', idempotencyKey: input.key.slice(0, 255), relatedEntity: 'care_task', relatedEntityId: uuidOrNull(input.taskId),
       payload: { recipient: input.to, message: input.message, relatedEntity: 'care_task', relatedEntityId: uuidOrNull(input.taskId) } });
+    goldieMetrics.careAlerts.inc({ channel: 'sms' });
     return { queued: true };
   }
 
   async email(input: { to: string; subject: string; text: string; html: string; key: string; taskId: string }) {
     await insertOutboxObject({ eventType: 'CARE_ALERT_EMAIL', template: 'CARE_ALERT_EMAIL', channel: 'email', idempotencyKey: input.key.slice(0, 255), relatedEntity: 'care_task', relatedEntityId: uuidOrNull(input.taskId),
       payload: { recipient: input.to, subject: input.subject, text: input.text, html: input.html, relatedEntity: 'care_task', relatedEntityId: uuidOrNull(input.taskId) } });
+    goldieMetrics.careAlerts.inc({ channel: 'email' });
     return { queued: true };
   }
 
@@ -78,9 +85,36 @@ export class CareAlertChannels implements ICareAlertChannels {
     const s = this.settings();
     if (!template || !s.phoneNumberId) return { queued: false, reason: 'WhatsApp alerts need GOLDIE_ALERT_TEMPLATE and the number id' };
     const r = await this.messenger.sendTemplate({ phoneNumberId: s.phoneNumberId, to: intl(input.to), template, language: (process.env.GOLDIE_ALERT_TEMPLATE_LANG || 'en').trim(), body: input.message });
+    if (r.ok) goldieMetrics.careAlerts.inc({ channel: 'whatsapp' });
     return r.ok ? { queued: true } : { queued: false, reason: r.reason };
   }
+
+  /** Push to every staff phone that subscribed on the Care Desk; a subscription the browser dropped is deleted. */
+  async push(input: { title: string; body: string; url: string; key: string }) {
+    const keys = vapidFromEnv();
+    if (!keys) return { sent: 0 };
+    const subs = await db.select().from(carePushSubscriptions).limit(100);
+    let sent = 0;
+    for (const s of subs) {
+      const outcome = await sendWebPush({ endpoint: s.endpoint, p256dh: s.p256dh, auth: s.auth }, { title: input.title, body: input.body, url: input.url }, keys);
+      if (outcome === 'sent') { sent += 1; await db.update(carePushSubscriptions).set({ lastSuccessAt: sql`now()`, failures: 0 }).where(eq(carePushSubscriptions.id, s.id)); }
+      else if (outcome === 'gone' || s.failures >= 9) await db.delete(carePushSubscriptions).where(eq(carePushSubscriptions.id, s.id));
+      else await db.update(carePushSubscriptions).set({ failures: sql`${carePushSubscriptions.failures} + 1` }).where(eq(carePushSubscriptions.id, s.id));
+    }
+    if (sent) goldieMetrics.careAlerts.inc({ channel: 'push' }, sent);
+    return { sent };
+  }
 }
+
+/** Staff push subscriptions (0181): one row per phone or browser, keyed by the push endpoint. */
+export const carePushStore = {
+  async save(userId: string, sub: { endpoint: string; p256dh: string; auth: string }, label: string | null) {
+    await db.insert(carePushSubscriptions).values({ userId, endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth, label })
+      .onConflictDoUpdate({ target: carePushSubscriptions.endpoint, set: { userId, p256dh: sub.p256dh, auth: sub.auth, label, failures: 0 } });
+  },
+  async remove(endpoint: string) { await db.delete(carePushSubscriptions).where(eq(carePushSubscriptions.endpoint, endpoint)); },
+  async count() { const [r] = await db.select({ n: sql<number>`count(*)::int` }).from(carePushSubscriptions); return Number(r?.n ?? 0); },
+};
 
 /**
  * Goldie's brain lives in the web container (router, model, catalogue). The API

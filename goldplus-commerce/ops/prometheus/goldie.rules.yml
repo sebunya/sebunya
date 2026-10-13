@@ -1,0 +1,29 @@
+# Goldie (site chat + WhatsApp) alerting rules. The api also pages the team itself through the Care Desk
+# (urgent task -> SMS/email) for the same conditions, so these are for Prometheus/Grafana visibility.
+groups:
+  - name: goldie
+    rules:
+      - alert: GoldieWhatsAppRepliesFailing
+        expr: increase(goldie_whatsapp_messages_total{outcome=~"held|send_failed|failed"}[15m]) >= 3
+        labels: { severity: page }
+        annotations:
+          summary: "Goldie could not answer {{ $value }} WhatsApp messages in 15 minutes"
+          runbook: "docs/assistant/RUNBOOK.md#whatsapp-replies-failing"
+      - alert: GoldieUrgentCustomerWaiting
+        expr: goldie_care_oldest_open_minutes > 30 and goldie_care_urgent_open > 0
+        labels: { severity: page }
+        annotations:
+          summary: "An urgent customer has waited over 30 minutes on the Care Desk"
+          runbook: "docs/assistant/RUNBOOK.md#urgent-customer-waiting"
+      - alert: GoldieSpendNearCap
+        expr: goldie_model_spend_ratio >= 0.9
+        labels: { severity: warn }
+        annotations:
+          summary: "Goldie's model spend is {{ $value | humanizePercentage }} of this month's cap"
+          runbook: "docs/assistant/RUNBOOK.md#spend-near-the-cap"
+      - alert: GoldieEscalationsFiring
+        expr: increase(goldie_care_escalations_total[1h]) >= 3
+        labels: { severity: warn }
+        annotations:
+          summary: "Urgent tasks are being re-paged: nobody is taking them"
+          runbook: "docs/assistant/RUNBOOK.md#nobody-taking-urgent-tasks"

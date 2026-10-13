@@ -3,7 +3,7 @@
  *
  * What is kept is what a care team needs to follow a customer up and to learn
  * from: the words, the topic, how the customer felt and how it ended. What is
- * never kept is a secret: card numbers, PINs, OTPs and passwords are replaced
+ * never kept is a secret: card numbers, national ID numbers (NIN), PINs, OTPs and passwords are replaced
  * before anything is stored, whatever the customer typed.
  */
 
@@ -29,6 +29,8 @@ export function redact(raw: string): string {
   return raw
     .replace(CONTROL, '')
     .replace(/\b(?:\d[ -]?){13,19}\b/g, '[card number removed]')
+    // Uganda national ID number (NIN): CM or CF and 12 letters or digits.
+    .replace(/\bC[MF][0-9A-Z]{12}\b/gi, '[ID number removed]')
     .replace(/\b(pin|otp|one[- ]time (?:pin|code)|password|passcode|cvv|cvc|security code|m-?pin)\b(\s*(?:is|was|:|=|-)?\s*)(\S{3,32})/gi, (_m, k: string, sep: string) => `${k}${sep}[removed]`)
     .trim()
     .slice(0, MAX_ARCHIVED_MESSAGE);

@@ -3,7 +3,7 @@ import { SOFT_LIMIT_TEXT, answerDeterministically, classify, isClarificationRepl
 import { admit, release, settle, type AdmitOutput } from './assistantAdmission';
 import { interestTopic, recordInterest, shopperContext, type ShopperIdentity } from './assistantConversation';
 import { ORDER_REF, type CareContext } from './goldieCare';
-import { acknowledge, checkBack, clarifyFirst, readMood, type MoodRead } from './goldieEmpathy';
+import { acknowledge, checkBack, clarifyFirst, detectLanguage, readMood, type MoodRead } from './goldieEmpathy';
 import { TEAM_HANDOVER_PATH } from './goldieLinks';
 import { recall, remember } from './goldieAnswerMemory';
 
@@ -79,7 +79,12 @@ export async function prepareTurn(input: TurnInput): Promise<PreparedTurn> {
   let classified = classify(last);
   if (isOrderFollowUp(input.turns)) classified = { intent: 'ORDER', deterministic: true, query: '' };
   else if (isCallbackFollowUp(input.turns)) classified = { intent: 'CALLBACK', deterministic: true, query: '' };
-  const clarify = classified.intent === 'UNKNOWN' || classified.intent === 'PRODUCT' ? clarifyFirst(last, classified.intent) : null;
+  // Luganda or Swahili: the model answers in their language from the same facts (fixed answers are English).
+  // Order, points and callback flows stay fixed (they need exact proof handling); a refused model falls back to them.
+  const lang = detectLanguage(last);
+  const languageUpgrade = lang !== 'en' && classified.deterministic && ['GREETING', 'STORE', 'DELIVERY', 'PAYMENT', 'POLICY', 'BULK', 'PRODUCT', 'BATTERY'].includes(classified.intent);
+  if (languageUpgrade) classified = { ...classified, deterministic: false };
+  const clarify = !languageUpgrade && (classified.intent === 'UNKNOWN' || classified.intent === 'PRODUCT') ? clarifyFirst(last, classified.intent) : null;
   // Answer memory first: a general question asked before is answered from memory (facts re-checked live), at no model cost.
   const singleTurn = input.turns.length === 1;
   const remembered = !classified.deterministic && !clarify && singleTurn ? await recall(last).catch(() => null) : null;
@@ -131,7 +136,12 @@ export async function prepareTurn(input: TurnInput): Promise<PreparedTurn> {
     if (clarify) { yield* emit({ intent: classified.intent, text: [acknowledge('UNKNOWN', mood, seed), clarify].filter(Boolean).join(' '), products: [], links: [] }); return; }
     if (route === 'deterministic') { yield* emit(heard(await answerDeterministically(classified, { care: input.care, turns: input.turns }))); return; }
     if (route === 'cache' && remembered) { yield* emit(heard({ intent: classified.intent, text: remembered.text, products: remembered.products, links: [] })); return; }
-    if (route === 'fallback') { yield* emit(heard(await fallbackAnswer(classified))); return; }
+    if (route === 'fallback') {
+      // A language upgrade the model could not take: the fixed answer (in English) beats an apology.
+      if (languageUpgrade) { yield* emit(heard(await answerDeterministically({ ...classified, deterministic: true }, { care: input.care, turns: input.turns }))); return; }
+      yield* emit(heard(await fallbackAnswer(classified)));
+      return;
+    }
 
     inFlight += 1;
     const reservationId = admission.reservationId!;
@@ -139,7 +149,8 @@ export async function prepareTurn(input: TurnInput): Promise<PreparedTurn> {
     try {
       const ctx = await shopperContext(input.who);
       meta.nextAction = ctx?.nextBestAction ?? null;
-      const moodLine = mood.mood === 'neutral' ? '' : ` This message reads as ${mood.mood}${mood.urgent ? ' and urgent' : ''}; acknowledge that first.`;
+      const moodLine = (mood.mood === 'neutral' ? '' : ` This message reads as ${mood.mood}${mood.urgent ? ' and urgent' : ''}; acknowledge that first.`)
+        + (lang === 'lg' ? ' The customer is writing in Luganda: answer in Luganda.' : lang === 'sw' ? ' The customer is writing in Swahili: answer in Swahili.' : '');
       const note = (shopperNote(ctx) + (input.channel === 'whatsapp' ? ' Channel: WhatsApp (plain text, no cards; keep it short).' : '') + moodLine).trim();
       // Cost: the model sees the last eight turns, starting with the customer (older turns rarely change the answer).
       let modelTurns = input.turns.slice(-8);

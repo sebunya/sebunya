@@ -7,6 +7,7 @@ import { assistantEnabled, validateTurns } from '../../../lib/assistant';
 import { SITE_ORIGIN } from '../../../lib/sitemap';
 import { requestUserId } from '../../../lib/customerAuth';
 import { readSessionToken } from '../../../lib/session';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { addressHash, principalHash } from '../../../lib/assistantAdmission';
 import { logTurn, type ShopperIdentity } from '../../../lib/assistantConversation';
 import { prepareTurn, resetTurnState } from '../../../lib/goldieTurn';
@@ -52,6 +53,12 @@ const seenRecently = (id: string | null): boolean => {
   return false;
 };
 
+function isEvalCaller(header: string | null): boolean {
+  const expected = process.env.INTERNAL_API_KEY ?? '';
+  if (expected.length < 32 || !header) return false;
+  return timingSafeEqual(createHash('sha256').update(header).digest(), createHash('sha256').update(expected).digest());
+}
+
 /** The page the question was asked on, as a same-site path. */
 const pagePath = (request: Request): string | null => {
   try { const u = new URL(request.headers.get('referer') ?? ''); return u.origin === new URL(request.url).origin ? u.pathname.slice(0, 300) : null; } catch { return null; }
@@ -79,10 +86,14 @@ export const POST: APIRoute = async ({ request, clientAddress, cookies, locals }
   const fp = cookies.get(FP_COOKIE_NAME)?.value ?? '';
   const who: ShopperIdentity = { visitToken: isSignedVisitToken(visit) ? visit! : null, userId, fpClientId: /^[A-Za-z0-9._-]{8,200}$/.test(fp) ? fp : null };
   const page = pagePath(request);
+  // The live evaluation (scripts/qa/goldie-live-eval.ts) authenticates with the internal key: each question is its
+  // own fairness bucket so the set can run in one go, while the month's spend ledger still applies. Not archived.
+  const evalRun = isEvalCaller(request.headers.get('x-goldplus-internal-key'));
 
   const prepared = await prepareTurn({
     channel: 'web', turns, requestId, page,
-    principalHash: principalHash({ userId, visitToken: who.visitToken, address }), addressHash: addressHash(address), who,
+    principalHash: evalRun ? createHash('sha256').update(`assistant:eval:${requestId ?? Math.random()}`).digest('hex') : principalHash({ userId, visitToken: who.visitToken, address }),
+    addressHash: evalRun ? null : addressHash(address), who,
     care: { bearer: userId ? readSessionToken(request) : null, clientAddress: address === 'unknown' ? null : address, site: SITE_ORIGIN, channel: 'web', conversationKey: archiveKey },
     apiKey: String(process.env.ANTHROPIC_API_KEY), signal: request.signal,
   });
@@ -108,7 +119,7 @@ export const POST: APIRoute = async ({ request, clientAddress, cookies, locals }
       } finally {
         controller.close();
         // Filed after the answer, off the customer's path: the archive never slows a reply.
-        if (archiveKey) logTurn({ conversationId: archiveKey, userId, page, customer: last, goldie: answer || null, intent: prepared.meta.intent, mood: prepared.meta.mood.mood, route: prepared.meta.route, cacheId: prepared.meta.cacheId ?? null, nextAction: prepared.meta.nextAction ?? null, visitToken: who.visitToken, fpClientId: who.fpClientId });
+        if (archiveKey && !evalRun) logTurn({ conversationId: archiveKey, userId, page, customer: last, goldie: answer || null, intent: prepared.meta.intent, mood: prepared.meta.mood.mood, route: prepared.meta.route, cacheId: prepared.meta.cacheId ?? null, nextAction: prepared.meta.nextAction ?? null, visitToken: who.visitToken, fpClientId: who.fpClientId });
       }
     },
   });

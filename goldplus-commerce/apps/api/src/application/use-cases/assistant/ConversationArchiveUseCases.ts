@@ -97,6 +97,7 @@ export class ConversationArchiveUseCases {
   pendingWhatsApp(olderThan: Date, newerThan: Date, limit: number) { return this.store.pendingWhatsApp(olderThan, newerThan, limit); }
   claimCustomerMessage(channelMessageId: string) { return this.store.claimCustomerMessage(channelMessageId); }
   markCustomerMessage(channelMessageId: string, outcome: string) { return this.store.markCustomerMessage(channelMessageId, outcome); }
+  whatsappFailuresSince(since: Date) { return this.store.whatsappFailuresSince(since); }
   summary(from: Date, to: Date) { return this.store.summary(from, to); }
 
   /** Nightly: conversations whose last message is older than the retention period are deleted with their messages. */

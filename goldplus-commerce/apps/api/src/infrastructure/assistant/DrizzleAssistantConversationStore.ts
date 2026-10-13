@@ -181,6 +181,11 @@ export class DrizzleAssistantConversationStore implements IAssistantConversation
       .filter((x) => /^\d{8,15}$/.test(x.phone));
   }
 
+  async whatsappFailuresSince(since: Date) {
+    const [r] = rowsOf(await db.execute(sql`select count(*)::int as n from assistant_messages where role = 'customer' and route in ('held', 'send_failed') and created_at >= ${since}`));
+    return Number(r?.n ?? 0);
+  }
+
   async claimCustomerMessage(channelMessageId: string) {
     const r = await db.update(assistantMessages).set({ route: 'recovering' }).where(and(eq(assistantMessages.channelMessageId, channelMessageId), sql`${assistantMessages.route} is null`)).returning({ id: assistantMessages.id });
     return r.length > 0;

@@ -57,7 +57,7 @@ interface Task { id: string; kind: string; priority: string; title: string; deta
 interface Today { openTasks: number; urgentOpen: number; callbacksOpen: number; approvalsOpen: number; bulkLeadsOpen: number; chatsToday: number; handledByGoldieToday: number; needsPersonToday: number; csatAverage: number | null; csatCount: number; oldestOpenAt: string | null }
 /** How long a customer has waited, as a colour: fine, getting long (30 min), too long (2 h). */
 const age = (iso: string) => { const m = (Date.now() - new Date(iso).getTime()) / 60000; return m >= 120 ? 'border-l-8 border-l-red-500' : m >= 30 ? 'border-l-8 border-l-amber-400' : 'border-l-8 border-l-green-500'; };
-const [handovers, replies] = await Promise.all([call<Array<{ note: string; createdAt: string }>>('/handover'), call<Array<{ id: string; title: string; body: string; uses: number }>>('/saved-replies')]);
+const [handovers, replies, push] = await Promise.all([call<Array<{ note: string; createdAt: string }>>('/handover'), call<Array<{ id: string; title: string; body: string; uses: number }>>('/saved-replies'), call<{ publicKey: string | null; subscribed: number }>('/push-key')]);
 const [tasks, today, done, team] = await Promise.all([call<Task[]>('/tasks?status=open'), call<Today>('/today'), call<Task[]>('/tasks?status=done&limit=8'), call<Array<{ active: boolean; phone: string | null; email: string | null; alertSms: boolean; alertEmail: boolean; alertWhatsapp: boolean }>>('/team')]);
 // Urgent customers page whoever is set up here; with nobody, an urgent task would page no one.
 const nobodyAlerted = team.ok && !team.data.some((m) => m.active && ((m.alertSms && m.phone) || (m.alertEmail && m.email) || (m.alertWhatsapp && m.phone)));
@@ -69,7 +69,7 @@ const handledPct = t && t.chatsToday ? Math.round((t.handledByGoldieToday / t.ch
   <div class="container mx-auto px-4 sm:px-6 lg:px-8 max-w-5xl space-y-6">
     <div class="flex flex-wrap items-baseline justify-between gap-2">
       <h1 class="text-2xl font-black">{greeting()}. Here is what needs you.</h1>
-      <p class="text-sm"><a href="/admin/assistant/conversations" class="underline font-bold">All chats</a> · <a href="/admin/care/team" class="underline font-bold">Team and alerts</a></p>
+      <p class="text-sm"><a href="/admin/assistant/conversations" class="underline font-bold">All chats</a> · <a href="/admin/care/team" class="underline font-bold">Team and alerts</a>{push.ok && push.data.publicKey && <> · <button type="button" data-push-toggle data-key={push.data.publicKey} class="underline font-bold">Alert me on this phone</button><span data-push-status class="ml-1 text-gray-500"></span></>}</p>
     </div>
     {notice && <div role="status" class={`rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-700' : 'border-red-200 bg-red-50 text-red-700'}`}>{notice.text}</div>}
     {!tasks.ok && <div role="status" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{tasks.message}</div>}
@@ -171,6 +171,33 @@ const handledPct = t && t.chatsToday ? Math.round((t.handledByGoldieToday / t.ch
 </AdminLayout>
 
 <script>
+  // "Alert me on this phone": a Web Push subscription for this browser, so urgent customers buzz the phone.
+  const btn = document.querySelector<HTMLButtonElement>('[data-push-toggle]');
+  const status = document.querySelector<HTMLElement>('[data-push-status]');
+  const keyBytes = (b64: string) => { const s = atob(b64.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - (b64.length % 4)) % 4)); return Uint8Array.from(s, (ch) => ch.charCodeAt(0)); };
+  // Admin pages do not register the site's service worker (only the storefront layout does); push needs it.
+  const swReady = () => navigator.serviceWorker.register('/sw.js').then(() => navigator.serviceWorker.ready);
+  async function current() { const reg = await swReady().catch(() => null); return reg ? reg.pushManager.getSubscription() : null; }
+  if (btn && 'serviceWorker' in navigator && 'PushManager' in window) {
+    void current().then((s) => { if (s) { btn.textContent = 'Stop alerts on this phone'; btn.dataset.on = '1'; } });
+    btn.addEventListener('click', async () => {
+      try {
+        const reg = await swReady();
+        if (btn.dataset.on) {
+          const s = await reg.pushManager.getSubscription();
+          if (s) { await fetch('/api/admin/care/push', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ endpoint: s.endpoint }) }); await s.unsubscribe(); }
+          btn.textContent = 'Alert me on this phone'; delete btn.dataset.on; if (status) status.textContent = 'Alerts stopped.';
+          return;
+        }
+        if ((await Notification.requestPermission()) !== 'granted') { if (status) status.textContent = 'Notifications are blocked in this browser.'; return; }
+        const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(btn.dataset.key || '') });
+        const res = await fetch('/api/admin/care/push', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...sub.toJSON(), label: navigator.userAgent.slice(0, 80) }) });
+        if (res.ok) { btn.textContent = 'Stop alerts on this phone'; btn.dataset.on = '1'; if (status) status.textContent = 'This phone will be alerted.'; }
+        else if (status) status.textContent = 'Could not turn alerts on. Try again.';
+      } catch { if (status) status.textContent = 'This browser cannot receive alerts.'; }
+    });
+  } else if (btn) { btn.hidden = true; }
+
   // Fresh every minute, but never while someone is typing a note or a form is half filled.
   setInterval(() => {
     const el = document.activeElement as HTMLElement | null;

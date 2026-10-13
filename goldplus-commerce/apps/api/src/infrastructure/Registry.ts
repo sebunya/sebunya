@@ -47,6 +47,7 @@ import { CareAlertChannels, HttpGoldieBrain, WhatsAppCloudMessenger, goldieWhats
 import { CareDeskUseCases } from '../application/use-cases/assistant/CareDeskUseCases';
 import { DrizzleCareDeskRepository } from './assistant/DrizzleCareDeskRepository';
 import { NextBestActionAdvisor } from './assistant/NextBestActionAdvisor';
+import { goldieMetrics } from './assistant/GoldieMetrics';
 import { AnswerMemoryUseCases } from '../application/use-cases/assistant/AnswerMemoryUseCases';
 import { DrizzleAnswerMemoryRepository } from './assistant/DrizzleAnswerMemoryRepository';
 import { PhoneCareReader } from './assistant/PhoneCareReader';
@@ -2748,7 +2749,7 @@ export class Registry {
   private readonly goldieListensToWhatsApp = (() => {
     // Each customer message is handled on its own, after Meta has been answered.
     this.advertisingOps.whatsappAds.onInboundText((messages) => {
-      for (const m of messages) void this.goldieChannelUseCases.handleWhatsApp(m);
+      for (const m of messages) void this.goldieChannelUseCases.handleWhatsApp(m).then((outcome) => goldieMetrics.whatsappMessages.inc({ outcome }));
     });
     return true;
   })();

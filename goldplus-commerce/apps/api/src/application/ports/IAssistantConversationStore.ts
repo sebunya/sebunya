@@ -59,4 +59,6 @@ export interface IAssistantConversationStore {
   claimCustomerMessage(channelMessageId: string): Promise<boolean>;
   /** Records what happened to a customer message (answered, silent, held, send_failed). */
   markCustomerMessage(channelMessageId: string, outcome: string): Promise<void>;
+  /** WhatsApp customer messages since `since` that Goldie could not answer (held or send_failed). */
+  whatsappFailuresSince(since: Date): Promise<number>;
 }

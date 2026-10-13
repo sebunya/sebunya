@@ -194,6 +194,10 @@ services:
       - GOLDIE_ALERT_TEMPLATE_LANG=${GOLDIE_ALERT_TEMPLATE_LANG:-en}
       - CARE_ALERTS_PER_HOUR=${CARE_ALERTS_PER_HOUR:-12}
       - WEB_INTERNAL_ORIGIN=${WEB_INTERNAL_ORIGIN:-http://web:4321}
+      # Care Desk push alerts to staff phones (Web Push): set all three to enable.
+      - CARE_PUSH_VAPID_PUBLIC_KEY=${CARE_PUSH_VAPID_PUBLIC_KEY:-}
+      - CARE_PUSH_VAPID_PRIVATE_KEY=${CARE_PUSH_VAPID_PRIVATE_KEY:-}
+      - CARE_PUSH_CONTACT=${CARE_PUSH_CONTACT:-mailto:support@shopgoldplus.com}
       # Outbound governance gates (domain/notifications/OutboundGovernancePolicy).
       # Each defaults to false — silence must never read as permission — and every
       # one must be true before a real message reaches a provider. They were
@@ -409,6 +413,7 @@ services:
       - "127.0.0.1:9090:9090"
     volumes:
       - ./ops/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./ops/prometheus/goldie.rules.yml:/etc/prometheus/goldie.rules.yml:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'

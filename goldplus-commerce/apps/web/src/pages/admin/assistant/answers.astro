@@ -35,7 +35,7 @@ if (Astro.request.method === 'POST') {
 }
 
 interface Entry { id: string; question: string; answer: string; intent: string | null; pinned: boolean; edited: boolean; retired: boolean; asks: number; served: number; poorRatings: number; staleMisses: number; lastServedAt: string | null; createdAt: string }
-interface Savings { days: number; answers: number; byRoute: Record<string, number>; freeShare: number | null; modelSpendMicroUsd: number; averageModelAnswerMicroUsd: number; savedByMemoryMicroUsd: number }
+interface Savings { days: number; answers: number; byRoute: Record<string, number>; freeShare: number | null; modelSpendMicroUsd: number; averageModelAnswerMicroUsd: number; savedByMemoryMicroUsd: number; forecast?: { monthToDateMicroUsd: number; projectedMonthMicroUsd: number; capMicroUsd: number; perDayMicroUsd: number; overCap: boolean } }
 const days = Math.min(Math.max(Number(Astro.url.searchParams.get('days') ?? 7) || 7, 1), 90);
 const [answers, savings] = await Promise.all([call<Entry[]>(`/answers${Astro.url.searchParams.get('retired') === '1' ? '?retired=1' : ''}`), call<Savings>(`/savings?days=${days}`)]);
 const usd = (m: number) => `$${(m / 1_000_000).toFixed(m < 100_000 ? 4 : 2)}`;
@@ -57,6 +57,12 @@ const s = savings.ok ? savings.data : null;
           <div><p class="text-[10px] uppercase font-black text-gray-400 tracking-widest">Saved by memory</p><p class="text-2xl font-black tabular-nums text-green-700">{usd(s.savedByMemoryMicroUsd)}</p></div>
         </div>
         <ul class="text-sm grid gap-1 sm:grid-cols-2">{Object.entries(s.byRoute).sort((a, b) => b[1] - a[1]).map(([k, v]) => <li class="flex justify-between gap-3 border-b border-gray-100 py-1"><span>{ROUTE[k] ?? k}</span><span class="tabular-nums font-bold">{v} ({s.answers ? Math.round((v / s.answers) * 100) : 0}%)</span></li>)}</ul>
+        {s.forecast && s.forecast.capMicroUsd > 0 && (
+          <p class={`rounded-xl border px-4 py-3 text-sm ${s.forecast.overCap ? 'border-amber-300 bg-amber-50 text-amber-900' : 'border-green-200 bg-green-50 text-green-800'}`}>
+            This month so far: <strong>{usd(s.forecast.monthToDateMicroUsd)}</strong> of the <strong>{usd(s.forecast.capMicroUsd)}</strong> cap. At the pace of the last {s.days} days ({usd(s.forecast.perDayMicroUsd)} a day) the month ends near <strong>{usd(s.forecast.projectedMonthMicroUsd)}</strong>.
+            {s.forecast.overCap ? ' That is over the cap: when it is reached, Goldie keeps answering from shop data and memory only. Pin good answers to make them free, or raise the cap in Shop assistant settings.' : ' That is inside the cap.'}
+          </p>
+        )}
         <p class="text-xs text-gray-600">Fixed answers come straight from the shop's systems (prices, stock, orders, delivery). Remembered answers are earlier model answers reused after their prices and stock are re-checked live. Only new or unusual questions reach the model.</p>
       </section>
     )}

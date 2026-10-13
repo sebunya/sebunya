@@ -4,6 +4,8 @@ import { PERMISSIONS } from '@goldplus/shared';
 import { Registry } from '../../../../infrastructure/Registry';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
+import { carePushStore } from '../../../../infrastructure/assistant/GoldieChannelAdapters';
+import { vapidFromEnv } from '../../../../infrastructure/assistant/WebPush';
 
 /**
  * The Care Desk (0178): the shop attendants' and care team's one screen.
@@ -137,6 +139,26 @@ routes.post('/handover', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async 
   await Registry.getInstance().careDeskUseCases.addHandover(actor(c), parsed.data.note);
   await Registry.getInstance().createAuditLogUseCase.execute({ actorId: actor(c), action: 'CARE_HANDOVER_NOTE_ADDED', entity: 'care_handover_note', entityId: 'desk', previousState: null, newState: null }).catch(() => undefined);
   return ok(c, { added: true });
+});
+
+// ---- Push alerts to staff phones (Web Push, VAPID)
+routes.get('/push-key', requirePermissions([PERMISSIONS.CUSTOMER_DATA_VIEW]), async (c) => {
+  const keys = vapidFromEnv();
+  return ok(c, { publicKey: keys?.publicKey ?? null, subscribed: keys ? await carePushStore.count() : 0 });
+});
+routes.put('/push-subscriptions', requirePermissions([PERMISSIONS.CUSTOMER_DATA_VIEW]), async (c) => {
+  const parsed = z.object({ endpoint: z.string().url().max(2000).refine((u) => u.startsWith('https://')), keys: z.object({ p256dh: z.string().max(200), auth: z.string().max(100) }), label: z.string().max(80).nullable().optional() }).safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return bad(c, 'INVALID_BODY', 'Not a push subscription.');
+  await carePushStore.save(actor(c), { endpoint: parsed.data.endpoint, ...parsed.data.keys }, parsed.data.label ?? null);
+  await Registry.getInstance().createAuditLogUseCase.execute({ actorId: actor(c), action: 'CARE_PUSH_SUBSCRIBED', entity: 'care_push_subscription', entityId: 'self', previousState: null, newState: { label: parsed.data.label ?? null } }).catch(() => undefined);
+  return ok(c, { subscribed: true });
+});
+routes.delete('/push-subscriptions', requirePermissions([PERMISSIONS.CUSTOMER_DATA_VIEW]), async (c) => {
+  const parsed = z.object({ endpoint: z.string().max(2000) }).safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return bad(c, 'INVALID_BODY', 'Invalid body.');
+  await carePushStore.remove(parsed.data.endpoint);
+  await Registry.getInstance().createAuditLogUseCase.execute({ actorId: actor(c), action: 'CARE_PUSH_UNSUBSCRIBED', entity: 'care_push_subscription', entityId: 'self', previousState: null, newState: null }).catch(() => undefined);
+  return ok(c, { subscribed: false });
 });
 
 export default routes;

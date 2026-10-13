@@ -87,6 +87,10 @@ export class CareDeskUseCases {
       if (m.alertEmail && m.email) { const r = await this.alerts.email({ to: m.email, subject, text: lines, html, key: `care-alert:${task.id}:${m.id}:email`, taskId: task.id }).catch(() => ({ queued: false })); if (r.queued) sent.push(`email:${m.name}`); }
       if (m.alertWhatsapp && m.phone) { const r = await this.alerts.whatsapp({ to: m.phone, message }).catch(() => ({ queued: false })); if (r.queued) sent.push(`whatsapp:${m.name}`); }
     }
+    if (this.alerts.push) {
+      const p = await this.alerts.push({ title: `GoldPlus Care: ${CARE_KIND_LABEL[task.kind]}`, body: message, url: this.config.deskUrl, key: `care-alert:${task.id}` }).catch(() => ({ sent: 0 }));
+      if (p.sent) sent.push(`push:${p.sent}`);
+    }
     if (sent.length) await this.repo.markAlerted(task.id);
     return sent;
   }

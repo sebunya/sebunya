@@ -47,7 +47,20 @@ routes.get('/channels', requirePermissions([PERMISSIONS.ANALYTICS_READ]), async 
 
 // ---- Answer memory ("Teach Goldie") and the route mix
 routes.get('/answers', requirePermissions([PERMISSIONS.ANALYTICS_READ]), async (c) => ok(c, await Registry.getInstance().answerMemoryUseCases.list(c.req.query('retired') === '1')));
-routes.get('/savings', requirePermissions([PERMISSIONS.ANALYTICS_READ]), async (c) => ok(c, await Registry.getInstance().answerMemoryUseCases.savings(Math.min(Math.max(Number(c.req.query('days') ?? 7) || 7, 1), 90))));
+routes.get('/savings', requirePermissions([PERMISSIONS.ANALYTICS_READ]), async (c) => {
+  const registry = Registry.getInstance();
+  const days = Math.min(Math.max(Number(c.req.query('days') ?? 7) || 7, 1), 90);
+  const [savings, status] = await Promise.all([registry.answerMemoryUseCases.savings(days), registry.assistantAdmissionUseCases.status().catch(() => null)]);
+  // The month ahead at the recent pace: what is committed so far, plus the daily run rate for the days left (UTC month).
+  const now = new Date();
+  const daysInMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate();
+  const daysLeft = daysInMonth - now.getUTCDate() + 1;
+  const committed = Number(status?.totals?.settledMicroUsd ?? 0) + Number(status?.totals?.reservedMicroUsd ?? 0);
+  const perDay = savings.modelSpendMicroUsd / days;
+  const cap = Number(status?.config?.monthlyCapMicroUsd ?? 0);
+  const projected = Math.round(committed + perDay * daysLeft);
+  return ok(c, { ...savings, forecast: { monthToDateMicroUsd: committed, projectedMonthMicroUsd: projected, capMicroUsd: cap, perDayMicroUsd: Math.round(perDay), overCap: cap > 0 && projected > cap } });
+});
 routes.post('/answers/:id', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
   const id = c.req.param('id') ?? '';
   const parsed = z.object({ answer: z.string().max(1500).optional(), pinned: z.boolean().optional(), retired: z.boolean().optional() }).safeParse(await c.req.json().catch(() => null));
