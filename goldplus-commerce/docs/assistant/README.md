@@ -7,8 +7,36 @@
 > honest reply (intent `IDENTITY`, no model call); and the system prompt forbids claiming to be human.
 > `tests/unit/GoldieIsHonestAboutBeingVirtual.test.ts` pins both. Do not remove them.
 
+## Personal shopper layer (owner, 2026-10-13)
+
+- **Voice.** The prompt follows the GoldPlus voice (brand book §15, messaging deck, `docs/customer-language-standard.md`):
+  plain Kampala English, "Let's check" and "Thanks for letting us know", numbers said flatly ("20W means 20W"),
+  recommend one product rather than list, no chatbot openers. Router replies (`assistantRouter.ts`) use the same voice.
+- **Knows the shopper.** `/api/assistant/hello` (panel welcome) and every paid turn read
+  `POST /internal/assistant/context`: first name (saved address, else last order), visits (the hero's measure: 2+
+  returning, 4+ regular), has ordered, top categories, last viewed products, past Goldie topics. The model gets it as
+  a second system block after the cache breakpoint (`shopperNote()`), labelled as data. The welcome is built in
+  `lib/goldieGreeting.ts` ("Good evening Sarah, welcome back. Last time you were looking at power banks...").
+- **Customer DNA.** Product, battery and bulk questions are filed as zero-party signals (`declared_intent`,
+  `source_component = 'goldie_chat'`, payload `{source, intent, topic, phone_model?}`) through
+  `CaptureZeroPartyDataUseCase`, so personalisation consent is respected. Never orders, payments, complaints, phone
+  numbers or emails (`interestTopic()`). The transcript itself is still not stored.
+- **Human pace.** A short reading pause (650-1600 ms by question length), then a word-by-word reveal at ~70
+  characters a second, capped at 2.6 s; cards and chips follow the sentence. Reduced motion: 350 ms pause, no reveal.
+  Numbers in `lib/goldieGreeting.ts`.
+- **Keep or pass on the chat** (row under the conversation once Goldie has answered):
+  - *Email me this chat*: `POST /api/assistant/transcript` -> outbox `GOLDIE_TRANSCRIPT` (transactional) to the
+    typed address. Links are stripped from the shopper's lines; 3 per address per day (API) and 3 per visitor per
+    10 minutes (middleware budget).
+  - *Save or share*: the phone's share sheet (save to notes, send to self on WhatsApp), else a .txt download.
+  - *Email the team* (also a chip on order, warranty, bulk, identity and unknown answers): `POST /api/assistant/handover`
+    -> support ticket (`type inquiry`, `metadata.source = 'goldie'`, in /admin/support) + outbox `GOLDIE_HANDOVER`
+    (operational) to `ADMIN_ORDER_NOTIFICATION_EMAILS`; with a customer email, Reply-To is the customer, and they get
+    a copy.
+- Tests: `tests/unit/GoldiePersonalShopper.test.ts`.
+
 Goldie is the shop's host on every storefront page: a named, warm, plain-spoken
-voice (system prompt `goldie-2026-10-13.1` in `assistant.ts`; deterministic
+voice (system prompt `goldie-2026-10-13.2` in `assistant.ts`; deterministic
 answers in `assistantRouter.ts`). She greets by time of day, answers in one to
 three sentences, and offers the next step as an action chip (`links` events)
 beside product cards (`products` events); the model is told not to paste URLs or

@@ -3,7 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { readBodyCapped } from '../../../lib/boundedBody';
 import { visitorKey } from '../../../lib/publicFormLimiter';
 import { isSignedVisitToken } from '../../../lib/visitToken';
-import { assistantEnabled, runAssistant, validateTurns, type AssistantEvent } from '../../../lib/assistant';
+import { assistantEnabled, runAssistant, shopperNote, validateTurns, type AssistantEvent } from '../../../lib/assistant';
+import { requestUserId } from '../../../lib/customerAuth';
+import { interestTopic, recordInterest, shopperContext, type ShopperIdentity } from '../../../lib/assistantConversation';
 import { SOFT_LIMIT_TEXT, answerDeterministically, classify, isClarificationReply, type DeterministicAnswer } from '../../../lib/assistantRouter';
 import { addressHash, admit, principalHash, release, settle, type AdmitOutput } from '../../../lib/assistantAdmission';
 
@@ -18,12 +20,23 @@ import { addressHash, admit, principalHash, release, settle, type AdmitOutput } 
  * Order of operations (mandate §5A): validate -> classify -> admission
  * (fairness tier, abuse ceilings, month ledger) -> deterministic answer, or a
  * paid turn against a reservation that is settled or released afterwards.
- * Nothing is stored: the browser keeps its own transcript for the session.
+ * The transcript is not stored: the browser keeps it for the session. What is
+ * kept is the topic of a product or battery question (Customer DNA, through the
+ * consent-checked zero-party capture), and a paid turn reads a short note of
+ * what the shop already knows about the shopper (first name, returning or
+ * regular, interests) so Goldie can greet and help them like a regular.
  */
 export const prerender = false;
 
 /** The signed first-party visit cookie the middleware issues (middleware.ts VISIT_COOKIE_NAME); read only, never set here. */
 const VISIT_COOKIE_NAME = 'gp_visit';
+/** The first-party analytics id (middleware); the key consent and zero-party signals are filed under. */
+const FP_COOKIE_NAME = '_fp_cid';
+
+/** The page the question was asked on, as a same-site path, for the interest record. */
+const pagePath = (request: Request): string | null => {
+  try { const u = new URL(request.headers.get('referer') ?? ''); return u.origin === new URL(request.url).origin ? u.pathname.slice(0, 300) : null; } catch { return null; }
+};
 
 const MAX_BODY_BYTES = 32 * 1024;
 const MAX_CONCURRENT = 8;
@@ -71,12 +84,21 @@ export const POST: APIRoute = async ({ request, clientAddress, cookies, locals }
   // Who is asking, as a one-way pseudonym: the signed-in customer, else the signed first-party visit cookie, else the address.
   const address = visitorKey(request.headers, () => clientAddress);
   const visit = cookies.get(VISIT_COOKIE_NAME)?.value;
-  const principal = principalHash({ userId: (locals as { gpUserId?: string | null }).gpUserId ?? null, visitToken: isSignedVisitToken(visit) ? visit : null, address });
+  // The middleware resolves the session for pages only, not /api/*, so ask here (a guest without a session cookie costs nothing).
+  const userId = await requestUserId(locals as { gpUserId?: string | null }, cookies).catch(() => null);
+  const fp = cookies.get(FP_COOKIE_NAME)?.value ?? '';
+  const who: ShopperIdentity = { visitToken: isSignedVisitToken(visit) ? visit! : null, userId, fpClientId: /^[A-Za-z0-9._-]{8,200}$/.test(fp) ? fp : null };
+  const principal = principalHash({ userId, visitToken: who.visitToken, address });
   const conversationId = requestId;
 
   const last = turns[turns.length - 1]!.content;
   const classified = classify(last);
   const wantsAi = !classified.deterministic;
+  // Customer DNA: what this shopper is after (never an order, payment or complaint; never a phone number or email).
+  if (['PRODUCT', 'BATTERY', 'BULK'].includes(classified.intent)) {
+    const topic = classified.intent === 'BATTERY' && classified.query ? interestTopic(`${classified.query} battery`, '') : interestTopic(classified.query, last);
+    if (topic.length >= 3) recordInterest(who, { intent: classified.intent, topic, phoneModel: classified.intent === 'BATTERY' ? classified.query || null : null, page: pagePath(request) });
+  }
   const continuation = isClarificationReply(turns, classified);
   const admission: AdmitOutput = (await admit({ principalHash: principal, addressHash: addressHash(address), wantsAi, conversationId, requestId, continuation })) ?? {
     // The admission authority could not be reached: fail closed for money, open for deterministic help.
@@ -116,7 +138,8 @@ export const POST: APIRoute = async ({ request, clientAddress, cookies, locals }
         } else {
           const reservationId = admission.reservationId!;
           let settled = false;
-          for await (const ev of runAssistant(turns, { apiKey, model: admission.model, effort: admission.effort, maxOutputTokens: admission.maxOutputTokens, maxToolRounds: admission.maxToolRounds, signal: request.signal })) {
+          const note = shopperNote(await shopperContext(who));
+          for await (const ev of runAssistant(turns, { apiKey, model: admission.model, effort: admission.effort, maxOutputTokens: admission.maxOutputTokens, maxToolRounds: admission.maxToolRounds, signal: request.signal, shopperNote: note })) {
             if (ev.type === 'done') {
               settled = true;
               await settle({ reservationId, model: admission.model, providerRequestId: ev.providerRequestId, outcome: ev.outcome, usage: ev.usage });

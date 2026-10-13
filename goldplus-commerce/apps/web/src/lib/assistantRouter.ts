@@ -2,6 +2,7 @@ import { getBusinessInfo } from './businessInfo';
 import { getStorefrontCopy } from './storefrontCopy';
 import { SITE_ORIGIN } from './sitemap';
 import { callTool, type Json } from './agentTools';
+import { TEAM_HANDOVER_PATH } from './goldieLinks';
 
 /**
  * Deterministic first (mandate §3): the questions a shop answers the same way
@@ -66,7 +67,7 @@ function batteryQuery(text: string): string {
 
 function productQuery(text: string): string {
   return text
-    .replace(/\b(do you (have|sell|stock)|have you got|got any|how much (is|are|does|for)?|what is the price of|price (of|for)|cost of|cheapest|cheap|looking for|i need|i want|i am looking for|show me|any|please|a|an|the|your|you|some|in stock|available|is|are|there|to buy|buy)\b/gi, ' ')
+    .replace(/\b(what('?s| is)?|do you (have|sell|stock)|have you got|got any|how much (is|are|does|for)?|what is the price of|price (of|for)|cost of|cheapest|cheap|looking for|i need|i want|i am looking for|show me|any|please|a|an|the|your|you|some|in stock|available|is|are|there|to buy|buy)\b/gi, ' ')
     .replace(/[?.!,]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -88,16 +89,18 @@ export async function answerDeterministically(c: Classification): Promise<Determ
   const biz = await getBusinessInfo();
   const wa: Link = { label: 'Chat on WhatsApp', url: biz.whatsappUrl };
   const link = (label: string, path: string): Link => ({ label, url: `${SITE_ORIGIN}${path}` });
+  // Opens the in-chat "pass this to the team" form (the panel intercepts this address); without the panel it is the support page.
+  const team: Link = { label: 'Email the team', url: `${SITE_ORIGIN}${TEAM_HANDOVER_PATH}` };
   switch (c.intent) {
     case 'IDENTITY':
-      return { intent: c.intent, text: "I'm Goldie, the GoldPlus personal shopper. I'm virtual, not a person: I answer from what is on our shelf and in our shop information. If you would rather talk to someone from the shop, they are on WhatsApp.", products: [], links: [wa] };
+      return { intent: c.intent, text: "I'm Goldie, the GoldPlus personal shopper. I'm virtual, not a person: I answer from what is on our shelf and in our shop information. If you would rather talk to someone from the shop, they are on WhatsApp, or I can email them this chat.", products: [], links: [wa, team] };
     case 'GREETING':
-      return { intent: c.intent, text: 'Hello, you are welcome. Ask me about a product, a price, a battery for your phone, delivery or the shop, and I will check for you. For anything about an order, the Track my order page or WhatsApp is quickest.', products: [], links: [link('Browse the shop', '/shop'), link('Battery finder', '/battery-finder')] };
+      return { intent: c.intent, text: 'Hello, you are welcome. Tell me what you are looking for, a charger, a cable, a power bank or a battery for your phone, and I will check the shelf for you.', products: [], links: [link('Browse the shop', '/shop'), link('Battery finder', '/battery-finder')] };
     case 'STORE': {
       const out = await callTool('store_info', {});
       const s = structured(out);
       const b = biz as { openDays?: string; shopHours?: string; phoneDisplay?: string };
-      const text = `We are on the 4th floor of the Zainab Aziza Building on Burton Street, opposite Pioneer Mall and next to Uhuru Restaurant.${b.openDays && b.shopHours ? ` We are open ${b.openDays}, ${b.shopHours}.` : ''}${b.phoneDisplay ? ` Call or WhatsApp us on ${b.phoneDisplay} before you come, if you like.` : ''}`;
+      const text = `We are on the 4th floor of the Zainab Aziza Building on Burton Street, opposite Pioneer Mall and next to Uhuru Restaurant.${b.openDays && b.shopHours ? ` We are open ${b.openDays}, ${b.shopHours}.` : ''}${b.phoneDisplay ? ` Call or WhatsApp us on ${b.phoneDisplay} before you come and we will have it ready.` : ''}`;
       return { intent: c.intent, text, products: [], links: [{ label: 'Open the map', url: String(s.map ?? biz.mapUrl) }, wa] };
     }
     case 'DELIVERY': {
@@ -113,17 +116,17 @@ export async function answerDeterministically(c: Classification): Promise<Determ
       return { intent: c.intent, text, products: [], links: [link('Payment questions', '/faq'), wa] };
     }
     case 'ORDER':
-      return { intent: c.intent, text: 'I cannot open orders from this chat, so your details stay private. The Track my order page shows it with your order reference and the phone number or email you used at checkout. For anything else about an order, message us on WhatsApp and a person will help.', products: [], links: [link('Track my order', '/track-order'), wa] };
+      return { intent: c.intent, text: 'Let me point you to the right place. Track my order shows your order with the reference and the phone number or email you used at checkout. I do not open orders in this chat, so your details stay private. For anything else about the order, the team will sort it out on WhatsApp or by email.', products: [], links: [link('Track my order', '/track-order'), wa, team] };
     case 'POLICY': {
       if (/\b(fake|genuine|original|verify|verification|authentic|counterfeit)\b/i.test(c.query)) {
-        return { intent: c.intent, text: 'Every GoldPlus product has a code under the hologram on the pack. Enter it on the verification page and it tells you straight away. I cannot confirm authenticity in chat; the page is the check. If you think you were sold a fake, please report it so we can follow up.', products: [], links: [link('Verify a product', '/verification'), link('Report a fake', '/support/fake'), wa] };
+        return { intent: c.intent, text: 'Every GoldPlus product has a code under the hologram on the pack. Enter it on the verification page and it tells you straight away. That page is the check, not this chat. If you think you were sold a fake, report it and we will follow up.', products: [], links: [link('Verify a product', '/verification'), link('Report a fake', '/support/fake'), wa] };
       }
-      return { intent: c.intent, text: 'Sorry to hear that. Warranty cover depends on the product, and our team checks the item before any replacement or refund, so nothing is approved in this chat. The warranty page explains what is covered and the steps, and the returns page covers returns. If you would rather talk to someone, message us on WhatsApp with your order number.', products: [], links: [link('Warranty', '/warranty'), link('Returns', '/returns'), wa] };
+      return { intent: c.intent, text: 'Thanks for letting us know, and sorry about the trouble. The team checks the item first, then agrees the replacement or refund with you; nothing is approved in this chat. The warranty page shows what is covered and the steps. The quickest way is WhatsApp with your order number, or I can email the team this chat and they will get back to you.', products: [], links: [link('Warranty', '/warranty'), link('Returns', '/returns'), wa, team] };
     }
     case 'BULK':
-      return { intent: c.intent, text: 'For a bulk or business order, the bulk page builds your list from the live catalogue and the quote request sends it to our sales team. The prices I quote here are single-unit prices; the team confirms the bulk price.', products: [], links: [link('Bulk buying', '/bulk'), link('Request a quote', '/quote-request'), wa] };
+      return { intent: c.intent, text: 'Good, we do bulk. The bulk page builds your list from the live catalogue and sends it to our sales team for a quote. Prices in this chat are single-unit prices; the team confirms the bulk price with you.', products: [], links: [link('Bulk buying', '/bulk'), link('Request a quote', '/quote-request'), wa, team] };
     case 'BATTERY': {
-      if (!c.query) return { intent: c.intent, text: 'Happy to check. Tell me the phone model, for example Tecno Spark 7, or the code printed on the old battery, for example BL-49FT.', products: [], links: [link('Battery finder', '/battery-finder')] };
+      if (!c.query) return { intent: c.intent, text: "Let's confirm the right battery. Send me the phone's exact model, for example Tecno Spark 7, or the code on the old battery, for example BL-49FT.", products: [], links: [link('Battery finder', '/battery-finder')] };
       const out = await callTool('find_battery', { phone_or_code: c.query });
       const s = structured(out);
       const kind = String(s.kind ?? '');
@@ -135,7 +138,7 @@ export async function answerDeterministically(c: Classification): Promise<Determ
           id: cardId(r.productId), category: null, name: String(r.name ?? ''), url: `${SITE_ORIGIN}/products/${String(r.slug ?? '')}`, sku: r.canonicalCode == null ? null : String(r.canonicalCode),
           price_ugx: r.priceUgx == null ? null : Number(r.priceUgx), availability: r.inStock ? 'in_stock' : 'out_of_stock', image: r.imageUrl ? String(r.imageUrl) : null, note: String(r.fitLabel ?? ''),
         })).filter((p) => p.name);
-        if (!products.length) return { intent: c.intent, text: `We have not matched a battery to the ${String(device.label ?? c.query)} yet, so I will not guess. Send us the model number on WhatsApp and we will confirm the right one.`, products: [], links };
+        if (!products.length) return { intent: c.intent, text: `We haven't confirmed a battery for the ${String(device.label ?? c.query)} yet, so I won't guess. Send us the model on WhatsApp and the team will confirm the right one.`, products: [], links };
         const awaiting = results.some((r) => r.fitState === 'AWAITING_VERIFICATION');
         return { intent: c.intent, text: `For the ${String(device.label ?? c.query)} we have ${products.length === 1 ? 'one battery' : `${products.length} batteries`} listed.${awaiting ? ' Where it says "not yet checked", the fit is listed by the supplier; we confirm the fit before you pay.' : ''}`, products, links };
       }
@@ -156,11 +159,11 @@ export async function answerDeterministically(c: Classification): Promise<Determ
       const query = c.query || 'accessories';
       const out = await callTool('search_products', { query, limit: 5 });
       const products = cardsFromProducts(structured(out).products);
-      if (!products.length) return { intent: c.intent, text: `No GoldPlus product matched "${query}". Try the product code, fewer words, or have a look through the shop.`, products: [], links: [link('Browse the shop', '/shop'), wa] };
-      return { intent: c.intent, text: `${products.length === 1 ? 'Here is what we have' : `Here is what we have, ${products.length} options`} for "${query}". Prices are today's prices and stock is on each card.`, products, links: [link('See all results', `/shop?q=${encodeURIComponent(query)}`)] };
+      if (!products.length) return { intent: c.intent, text: `I don't see "${query}" on our shelf. Try the product code or fewer words, or tell me what it is for and I'll find the closest fit.`, products: [], links: [link('Browse the shop', '/shop'), wa] };
+      return { intent: c.intent, text: `${products.length === 1 ? 'We have one that matches' : `We have ${products.length} that match`}. Today's price and stock are on each card${products.length > 1 ? '; tell me what it is for and I will say which one fits' : ''}.`, products, links: [link('See all results', `/shop?q=${encodeURIComponent(query)}`)] };
     }
     default:
-      return { intent: 'UNKNOWN', text: 'I can help you find a product, check a price or a phone battery, and explain delivery and payment. For anything else, our team is on WhatsApp.', products: [], links: [wa] };
+      return { intent: 'UNKNOWN', text: 'I can find a product, check a price or a battery for your phone, and explain delivery and payment. For anything else, the team is on WhatsApp, or I can email them this chat.', products: [], links: [wa, team] };
   }
 }
 
@@ -181,4 +184,4 @@ export function isClarificationReply(turns: ReadonlyArray<{ role: 'user' | 'assi
 }
 
 /** What the customer sees when paid AI is not available for this turn (mandate §5A.F wording). */
-export const SOFT_LIMIT_TEXT = 'I can still help you find products and check delivery. For the more detailed questions, give me a little while and try again, or our team can answer on WhatsApp.';
+export const SOFT_LIMIT_TEXT = 'I can still find products and check delivery for you. For the more detailed questions, give me a little while and ask again, or the team can answer on WhatsApp.';

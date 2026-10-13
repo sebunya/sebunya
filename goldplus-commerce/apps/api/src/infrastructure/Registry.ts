@@ -1,6 +1,6 @@
 import { ReholdStockOnLatePaymentUseCase } from '../application/use-cases/payments/ReholdStockOnLatePaymentUseCase';
 import './logging/appLoggerBinding';
-import { PERMISSIONS as SHARED_PERMISSIONS, toEatParts } from '@goldplus/shared';
+import { PERMISSIONS as SHARED_PERMISSIONS, toEatParts, DEFAULT_BUSINESS_INFO } from '@goldplus/shared';
 import { MeasurementOperationsUseCases } from '../application/use-cases/measurement/MeasurementOperationsUseCases';
 import { CollectBrowserBatchUseCase } from '../application/use-cases/telemetry/CollectBrowserBatchUseCase';
 import { DrizzleCollectorStore } from './db/repositories/DrizzleCollectorStore';
@@ -36,6 +36,8 @@ import { DrizzleUnlistedProductReader } from './db/repositories/DrizzleUnlistedP
 import { DrizzleAssistantConfigRepository, DrizzleAssistantLedgerRepository } from './db/repositories/DrizzleAssistantRepository';
 import { AssistantCounterStore } from './security/AssistantCounterStore';
 import { AssistantAdmissionUseCases } from '../application/use-cases/assistant/AssistantAdmissionUseCases';
+import { AssistantConversationUseCases } from '../application/use-cases/assistant/AssistantConversationUseCases';
+import { DrizzleAssistantContextReader, DrizzleAssistantMailOutbox, ZeroPartyAssistantInterestSink } from './assistant/AssistantConversationAdapters';
 import { XlsxSpreadsheetParser } from './batteries/XlsxSpreadsheetParser';
 import { BatteryCatalogueUseCases } from '../application/use-cases/batteries/BatteryCatalogueUseCases';
 import { DeviceCatalogueUseCases } from '../application/use-cases/batteries/DeviceCatalogueUseCases';
@@ -2699,6 +2701,17 @@ export class Registry {
   public readonly consentService = new ConsentService(this.consentRepo, this.measurementLogger);
   public readonly consentAwareMeasurementPolicy = new ConsentAwareMeasurementPolicy(this.consentService);
   public readonly captureZeroPartyDataUseCase = new CaptureZeroPartyDataUseCase(this.zpdRepo, this.measurementLogger, this.consentService);
+  /** Goldie beyond the answer: shopper context, Customer DNA interests, and chats passed on by email. */
+  public readonly assistantConversationUseCases = new AssistantConversationUseCases(
+    this.supportRepo,
+    new DrizzleAssistantMailOutbox(),
+    new DrizzleAssistantContextReader(this.heroSignalsService),
+    new ZeroPartyAssistantInterestSink(this.captureZeroPartyDataUseCase),
+    (() => {
+      const site = (process.env.PUBLIC_WEB_BASE_URL || 'https://shopgoldplus.com').replace(/\/+$/, '');
+      return { siteUrl: site, whatsappUrl: `https://wa.me/${DEFAULT_BUSINESS_INFO.whatsappNumber}`, supportInboxUrl: `${site}/admin/support` };
+    })(),
+  );
 
   public readonly planGtmMeasurementChangesUseCase = new PlanGtmMeasurementChangesUseCase(this.gtmRepo, this.gtmPlanRepo, this.gtmPlanBuilder);
   public readonly listGtmWorkspacesUseCase = new ListGtmWorkspacesUseCase(this.gtmRepo);

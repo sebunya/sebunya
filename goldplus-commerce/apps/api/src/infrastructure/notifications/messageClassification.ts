@@ -30,6 +30,8 @@ import { NotificationDispatchPayload } from '../../application/ports/INotificati
  */
 const OPERATIONAL_TEMPLATES = new Set([
   'ADMIN_ORDER_EMAIL',
+  // A shopper asked Goldie to pass their chat to the team: to the shop's own inbox only.
+  'GOLDIE_HANDOVER',
   // The paid-order alert (0143): to the shop's own fulfilment phone, so that a
   // paid order is never sitting unnoticed. Never to a customer.
   'FULFILMENT_PAID_ORDER_ALERT',
@@ -77,6 +79,8 @@ const TRANSACTIONAL_TEMPLATES = new Set([
   'ORDER_DISPATCHED',
   'ORDER_CANCELLED_BY_SHOP',
   'SUPPORT_REQUEST_RECEIVED',
+  // The copy of their Goldie chat a customer asked for, to the address they typed, seconds ago.
+  'GOLDIE_TRANSCRIPT',
   'QUOTE_REQUEST_RECEIVED',
   'DEALER_APPLICATION_RECEIVED',
   'FAKE_REPORT_RECEIVED',

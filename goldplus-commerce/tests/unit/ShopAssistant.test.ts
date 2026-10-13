@@ -212,7 +212,7 @@ describe('POST /api/assistant/chat', () => {
     expect(res.headers.get('x-assistant-route')).toBe('fallback');
     expect(fetchMock).not.toHaveBeenCalled();
     let f = await frames(res);
-    expect(f[0].text).toMatch(/I can still help you find products and check delivery/);
+    expect(f[0].text).toMatch(/I can still find products and check delivery/);
     expect(f.find((x) => x.type === 'products').items[0].name).toBe('GoldPlus Power Bank GP-P07');
     admitMock.mockResolvedValueOnce(allow({ decision: 'DENY_EXPENSIVE', retryAfterSeconds: 60, reservationId: null }));
     res = await post({ messages: [{ role: 'user', content: 'x' }] });
