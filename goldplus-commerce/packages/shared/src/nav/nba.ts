@@ -201,7 +201,8 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
     c.push({ id: 'aftercutoff', score: 44, text: "Today's run has left. Order now and it goes out <b>tomorrow morning</b>", short: 'Next delivery run is <b>tomorrow</b>', href: R.delivery });
   }
 
-  c.push({ id: 'verify', score: 30, text: 'Every unit is tested before it is sold', cta: 'How we verify', href: R.verify });
+  // Owner decision 2026-10-13: the shop does not claim every unit is tested; the tip states what is true.
+  c.push({ id: 'verify', score: 30, text: 'Verified original GoldPlus products, with a code you can check', cta: 'How we verify', href: R.verify });
 
   return c;
 }
