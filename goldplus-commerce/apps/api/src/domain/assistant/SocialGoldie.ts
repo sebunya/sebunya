@@ -1,4 +1,4 @@
-import type { ReplyParts } from './WhatsAppGoldie';
+import { productsToList, type ReplyParts } from './WhatsAppGoldie';
 
 /**
  * Goldie on Facebook Messenger and Instagram Direct (Meta's Messenger Platform). Pure: parsing Meta's webhook
@@ -59,7 +59,7 @@ const AVAIL: Record<string, string> = { in_stock: 'in stock', low_stock: 'low st
 /** Plain text (neither app renders markdown), up to three products with their links, within the platform limit. */
 export function formatSocialReply(r: ReplyParts, platform: SocialPlatform): string {
   const lines = [r.text.replace(/\*\*?([^*]+)\*\*?/g, '$1').trim()];
-  const products = (r.products ?? []).slice(0, 3);
+  const products = productsToList(r);
   if (products.length) {
     lines.push('');
     for (const p of products) lines.push(`${p.name}: ${p.price_ugx == null ? 'price on request' : `UGX ${p.price_ugx.toLocaleString('en-UG')}`}, ${AVAIL[p.availability] ?? p.availability}\n${p.url}`);

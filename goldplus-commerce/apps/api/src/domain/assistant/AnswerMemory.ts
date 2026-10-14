@@ -14,11 +14,21 @@ export interface RememberedProduct { slug: string; price_ugx: number | null; ava
 export const MEMORY_TTL_DAYS = 7;
 export const RETIRE_AFTER_POOR_RATINGS = 2;
 
-export interface MemoryEntryState { pinned: boolean; retired: boolean; poorRatings: number; expiresAt: Date | null }
+export interface MemoryEntryState { pinned: boolean; retired: boolean; poorRatings: number; expiresAt: Date | null; createdAt?: Date | null; updatedAt?: Date | null }
+
+/**
+ * Answers written before the instructions changed are not reused (pinned answers excepted: the team chose them).
+ * 2026-10-14: goldie-2026-10-14.1 asks for needs before a recommendation and forbids unproven superlatives; answers
+ * remembered under the old prompt (one said a power bank had "the most capacity at that price", false) must not be
+ * replayed. The question is answered fresh, and that answer is remembered. Raise this date with each prompt change.
+ */
+export const ANSWERS_VALID_FROM = new Date('2026-10-14T15:30:00Z');
 
 /** May this entry be served now? (The live product check comes after.) */
 export function memoryUsable(e: MemoryEntryState, now: Date): boolean {
   if (e.retired) return false;
+  const written = e.updatedAt ?? e.createdAt ?? null;
+  if (!e.pinned && written && written.getTime() < ANSWERS_VALID_FROM.getTime()) return false;
   if (!e.pinned && e.poorRatings >= RETIRE_AFTER_POOR_RATINGS) return false;
   if (!e.pinned && e.expiresAt && e.expiresAt.getTime() <= now.getTime()) return false;
   return true;
