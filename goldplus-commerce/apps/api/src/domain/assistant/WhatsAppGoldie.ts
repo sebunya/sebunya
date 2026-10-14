@@ -120,6 +120,26 @@ export function parseDeliveryReceipts(payload: unknown, wabaId: string): Deliver
   return out;
 }
 
+/**
+ * Customer messages on our accounts that carry no phone number (a customer who switched to a WhatsApp username:
+ * Meta then sends from_user_id instead of from). Counted so the admin sees them; they are not answered here yet.
+ */
+export function countMessagesWithoutPhone(payload: unknown, wabaId: string): number {
+  const p = payload as { object?: unknown; entry?: unknown } | null;
+  if (!p || p.object !== 'whatsapp_business_account' || !Array.isArray(p.entry)) return 0;
+  let n = 0;
+  for (const entry of p.entry as Array<Record<string, any>>) {
+    if (!isOwnAccount(entry?.id, wabaId)) continue;
+    for (const change of Array.isArray(entry?.changes) ? entry.changes : []) {
+      if (change?.field !== 'messages') continue;
+      for (const msg of Array.isArray(change?.value?.messages) ? change.value.messages : []) {
+        if (!DIGITS.test(String(msg?.from ?? '').replace(/\D/g, ''))) n += 1;
+      }
+    }
+  }
+  return n;
+}
+
 /** Marks a customer message Goldie cannot read (an unsupported WhatsApp type): a person looks at it. */
 export const UNREADABLE_PREFIX = '[A WhatsApp message the shop cannot show here:';
 

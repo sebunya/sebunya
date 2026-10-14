@@ -1,11 +1,11 @@
-import { parseAccountEvents, parseDeliveryReceipts, parseInboundTexts, type AccountEvent, type DeliveryReceipt, type InboundText } from '../../../domain/assistant/WhatsAppGoldie';
-import type { WhatsAppAdReferralRepository } from '../../ports/WhatsAppAds';
+import { countMessagesWithoutPhone, parseAccountEvents, parseDeliveryReceipts, parseInboundTexts, type AccountEvent, type DeliveryReceipt, type InboundText } from '../../../domain/assistant/WhatsAppGoldie';
+import type { WhatsAppAdReferralRepository, WhatsAppDeliveryLog, WhatsAppDeliveryRecord } from '../../ports/WhatsAppAds';
 import {
   CTWA_WINDOW_DEFAULT_DAYS, messagingClickWins, parseAdReferrals, subscriptionChallenge, verifyWebhookSignature, type CtwaSecrets,
 } from '../../../domain/advertising/WhatsAppAdReferrals';
 
 /** One delivery from Meta as the admin sees it (no personal data). */
-export interface DeliveryRecord { at: string; status: number; entryIds?: string[]; fields?: string[]; messages?: number; receipts?: number; events?: number; note?: string }
+export type DeliveryRecord = WhatsAppDeliveryRecord;
 
 /** The WhatsApp ads settings as saved (the secrets are read just in time and go no further than this class). */
 export interface CtwaSettings {
@@ -98,9 +98,19 @@ export class WhatsAppAdsUseCases {
    */
   private readonly deliveries: DeliveryRecord[] = [];
   recentDeliveries(): DeliveryRecord[] { return [...this.deliveries]; }
+  private deliveryLog: WhatsAppDeliveryLog | null = null;
+  /** The shared log (Redis): both replicas see every delivery, and a restart does not erase them. */
+  setDeliveryLog(log: WhatsAppDeliveryLog): void { this.deliveryLog = log; }
   private remember(d: Omit<DeliveryRecord, 'at'>): void {
-    this.deliveries.unshift({ at: this.now().toISOString(), ...d });
+    const rec = { at: this.now().toISOString(), ...d };
+    this.deliveries.unshift(rec);
     this.deliveries.length = Math.min(this.deliveries.length, 20);
+    if (this.deliveryLog) void this.deliveryLog.record(rec).catch(() => undefined);
+  }
+  /** Newest first, from the shared log when there is one (this replica's memory otherwise). */
+  async sharedDeliveries(limit = 8): Promise<DeliveryRecord[]> {
+    if (this.deliveryLog) { const r = await this.deliveryLog.recent(limit).catch(() => null); if (r) return r; }
+    return this.recentDeliveries().slice(0, limit);
   }
 
   /**
@@ -137,10 +147,13 @@ export class WhatsAppAdsUseCases {
     const entryIds = [...new Set(entries.map((e) => String(e?.id ?? '')).filter(Boolean))].slice(0, 5);
     const fields = [...new Set(entries.flatMap((e) => (Array.isArray(e?.changes) ? (e.changes as Array<{ field?: unknown }>) : []).map((c) => String(c?.field ?? ''))).filter(Boolean))].slice(0, 6);
     const foreign = entryIds.filter((id) => !ownIds.split(',').includes(id));
-    this.remember({
-      status: 200, entryIds, fields, messages: textCount, receipts: receiptCount, events: eventCount,
-      note: foreign.length ? `ignored entries for account ${foreign.join(', ')} (ours: ${ownIds || 'none saved'})` : undefined,
-    });
+    // A customer who uses a WhatsApp username can arrive with no phone number: not answerable here yet, but never silent.
+    const noPhone = countMessagesWithoutPhone(payload, ownIds);
+    const notes = [
+      foreign.length ? `ignored entries for account ${foreign.join(', ')} (ours: ${ownIds || 'none saved'})` : '',
+      noPhone ? `${noPhone} message(s) from a WhatsApp username with no phone number: not handled yet, read them in WhatsApp` : '',
+    ].filter(Boolean);
+    this.remember({ status: 200, entryIds, fields, messages: textCount, receipts: receiptCount, events: eventCount, note: notes.length ? notes.join('; ') : undefined });
     // Signed and understood, but switched off: acknowledged and not kept.
     if (!s.live) return { status: 200, stored: 0, duplicates: 0, messages: parsed.messages, withoutClickId: parsed.referralsWithoutClickId };
     let stored = 0, duplicates = 0;
@@ -172,12 +185,13 @@ export class WhatsAppAdsUseCases {
   /** For the admin page: what is set up and what has arrived. No secret, no click id. */
   async overview(webhookUrl: string) {
     const s = await this.settings().catch(() => null);
+    const recentDeliveries = await this.sharedDeliveries(8);
     const since = new Date(this.now().getTime() - 30 * 86_400_000);
     const stats = await this.repo.stats(since);
     return {
       configured: !!s, live: !!s?.live, wabaId: s?.wabaId ?? null, windowDays: s?.windowDays ?? CTWA_WINDOW_DEFAULT_DAYS,
       ownDataset: !!s?.datasetId, ownToken: !!s?.secrets.accessToken, retentionDays: CTWA_RETENTION_DAYS,
-      webhookUrl, last30Days: stats, recentDeliveries: this.recentDeliveries().slice(0, 8),
+      webhookUrl, last30Days: stats, recentDeliveries,
     };
   }
 }

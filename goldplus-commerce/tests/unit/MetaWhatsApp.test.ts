@@ -311,6 +311,19 @@ describe('the signed webhook, end to end', () => {
     expect(events.mock.calls[0]![0][0]).toMatchObject({ field: 'message_template_status_update', event: 'PAUSED', bad: true });
   });
 
+  it('deliveries go to the shared log (both replicas, survive restarts); a username message with no phone is flagged', async () => {
+    const u = uc();
+    const shared: unknown[] = [];
+    u.setDeliveryLog({ record: async (d) => { shared.unshift(d); }, recent: async (n) => shared.slice(0, n) as never });
+    const noPhone = JSON.stringify({ object: 'whatsapp_business_account', entry: [{ id: '444555666', changes: [{ field: 'messages', value: { metadata: { phone_number_id: '1' }, messages: [{ from_user_id: 'UG.1426592812928753', id: 'wamid.u', timestamp: '1760000000', type: 'text', text: { body: 'hi' } }] } }] }] });
+    await u.receive(noPhone, `sha256=${createHmac('sha256', appSecret).update(noPhone).digest('hex')}`);
+    await new Promise((r) => setTimeout(r, 0));
+    const [first] = await u.sharedDeliveries(5);
+    expect(first).toMatchObject({ status: 200, messages: 0 });
+    expect(first!.note).toContain('1 message(s) from a WhatsApp username with no phone number');
+    expect(shared).toHaveLength(1);
+  });
+
   it('every delivery leaves a trace for the admin: refused (with why), accepted (what it held), foreign account flagged', async () => {
     const u = uc();
     await u.receive(body, 'sha256=00');
