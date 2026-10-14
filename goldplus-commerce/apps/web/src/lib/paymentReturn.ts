@@ -18,6 +18,8 @@ export type PaymentReturnKind =
   | 'pending'
   | 'review_required'
   | 'already_settled'
+  /** A second, different payment completed on an order that was already paid: the customer was charged twice. */
+  | 'second_payment'
   | 'failed'
   | 'unknown_attempt';
 
@@ -59,6 +61,8 @@ export function normalisePaymentReturnKind(raw: string): PaymentReturnKind {
       return 'review_required';
     case 'already_settled':
       return 'already_settled';
+    case 'second_payment':
+      return 'second_payment';
     case 'failed':
       return 'failed';
     default:
@@ -94,6 +98,17 @@ export function paymentReturnCopy(kind: PaymentReturnKind, orderNumber: string |
         primaryCta: { label: 'Track this order', href: trackHref },
         secondaryCta: { label: 'Continue shopping', href: '/shop' },
         offerHelp: false,
+      };
+    case 'second_payment':
+      return {
+        kind,
+        tone: 'wait',
+        title: 'This order was already paid',
+        money: `Order${ref} was paid earlier, and this payment also went through, so you have paid twice. The team has been told and will contact you about returning the extra payment.`,
+        next: 'You do not need to do anything else for this order. If you would like to talk to us about the extra payment now, message us on WhatsApp.',
+        primaryCta: { label: 'Track this order', href: trackHref },
+        secondaryCta: { label: 'Continue shopping', href: '/shop' },
+        offerHelp: true,
       };
     case 'pending':
       return {

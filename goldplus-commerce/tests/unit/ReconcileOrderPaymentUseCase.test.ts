@@ -208,6 +208,38 @@ describe('duplicate callbacks are safe', () => {
     expect((await run(useCase, 'completed')).kind).toBe('ALREADY_SETTLED');
     expect(trace.recorded).toEqual([]);
   });
+
+  it('a repeat of the paying attempt stays quiet: no review, no second-payment reason', async () => {
+    const { useCase, trace } = build({ stage: 'ORDER_CONFIRMED' });
+    const outcome = await run(useCase, 'completed');
+    expect(outcome.reason).toBe('ALREADY_CONFIRMED');
+    expect(trace.reviews).toEqual([]);
+  });
+
+  it('a DIFFERENT attempt paid on an already-paid order is a double charge: reviewed, named, the order left as it is', async () => {
+    // Attempt B's money arrived after attempt A paid: VerifyPesaPal could not move processing -> processing, so it
+    // recorded the payment and returned lifecycleConflict with ok. That used to read as a harmless duplicate.
+    const { useCase, trace } = build({ stage: 'ORDER_CONFIRMED' });
+    const outcome = await useCase.execute({
+      verification: { ok: true, orderId: ORDER, status: 'completed', lifecycleConflict: true },
+      traceId: 't1',
+    });
+    expect(outcome.kind).toBe('ALREADY_SETTLED');
+    expect(outcome.reason).toBe('SECOND_PAYMENT_TAKEN');
+    expect(trace.reviews).toEqual(['SECOND_PAYMENT_TAKEN']);
+    expect(trace.advances).toEqual([]);
+    expect(trace.recorded).toEqual([]);
+  });
+
+  it('a conflict with NO money arriving (e.g. a failed second attempt) is not a double charge', async () => {
+    const { useCase, trace } = build({ stage: 'ORDER_CONFIRMED' });
+    const outcome = await useCase.execute({
+      verification: { ok: false, orderId: ORDER, status: 'failed', lifecycleConflict: true },
+      traceId: 't1',
+    });
+    expect(outcome.reason).toBe('ALREADY_CONFIRMED');
+    expect(trace.reviews).toEqual([]);
+  });
 });
 
 describe('only a checkout that reached payment may be settled', () => {

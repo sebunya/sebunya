@@ -66,6 +66,12 @@ describe('payment return — callback then return-state tell the same truth', ()
     expect(customerReturnKind({ settlement, verification: { ok: true, status: 'completed', lifecycleConflict: true } as never }).kind).toBe('already_settled');
   });
 
+  it('a second attempt that DID take money on a paid order reads second_payment, not already_settled', () => {
+    const settlement = { kind: 'ALREADY_SETTLED', orderId: 'o', stage: 'ORDER_CONFIRMED', reason: 'SECOND_PAYMENT_TAKEN' } as const;
+    expect(customerReturnKind({ settlement, verification: { ok: true, status: 'completed', lifecycleConflict: true } as never }))
+      .toEqual({ kind: 'second_payment', code: 'SECOND_PAYMENT_TAKEN' });
+  });
+
   it('non-settled outcomes pass through lower-cased', () => {
     expect(customerReturnKind({
       settlement: { kind: 'PENDING', orderId: 'o', stage: null, reason: 'PAYMENT_PENDING' },

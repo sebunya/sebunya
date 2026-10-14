@@ -76,6 +76,8 @@ export function customerReturnKind(
 ): { kind: string; code: string } {
   const { verification, settlement } = result;
   if (paymentDidConfirm(settlement)) return { kind: 'success', code: settlement.reason };
+  // Charged twice: the order is paid, and this page must say a second payment arrived (never "no second payment").
+  if (settlement.reason === 'SECOND_PAYMENT_TAKEN') return { kind: 'second_payment', code: settlement.reason };
   if (
     settlement.kind === 'ALREADY_SETTLED' &&
     verification.ok &&

@@ -2352,8 +2352,27 @@ export class Registry {
       // lines outlive the request; no customer or payment detail belongs in them.
       onSettled: (orderId, kind, traceId) =>
         logger.info({ orderId, kind, traceId }, 'PAYMENT_SETTLED'),
-      onReviewRequired: (orderId, traceId, reason) =>
-        logger.error({ orderId, traceId, reason }, 'PAYMENT_REVIEW_REQUIRED'),
+      onReviewRequired: (orderId, traceId, reason) => {
+        logger.error({ orderId, traceId, reason }, 'PAYMENT_REVIEW_REQUIRED');
+        // A double charge must reach a person, not only a log line: an urgent Care Desk task pages the team.
+        // The callback and the IPN both report it, so one task per order while it is open.
+        if (reason === 'SECOND_PAYMENT_TAKEN') {
+          void (async () => {
+            const order = await this.orderRepo.findById(orderId).catch(() => null);
+            const ref = order?.orderNumber ?? orderId;
+            const title = `Second payment received on order ${ref}: check PesaPal and return the extra payment`;
+            const last = await this.careDeskUseCases.lastTitled(title);
+            if (last?.status === 'open') return;
+            await this.careDeskUseCases.openTask({
+              kind: 'urgent', urgent: true, openedBy: 'payments', title,
+              detail: `A second PesaPal payment completed on an order that was already paid (trace ${traceId}). The order itself is paid and unchanged. Confirm both payments in PesaPal, then refund the extra one from the payments admin and tell the customer.`,
+              orderNumber: order?.orderNumber ?? null,
+              customerName: order?.customerName ?? null,
+              customerPhone: order?.customerPhone ?? null,
+            });
+          })().catch((err) => logger.error({ err: (err as Error).message, orderId }, 'SECOND_PAYMENT_TASK_FAILED'));
+        }
+      },
     },
   });
   /**
