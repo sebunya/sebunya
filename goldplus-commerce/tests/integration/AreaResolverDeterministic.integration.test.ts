@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { buildSearchText, foldUgandanOrthography } from '../../packages/shared/src/locations/folding';
 
 /**
  * The same place name exists in more than one district. The alias and exact lookups took `limit 1` with no order,
@@ -20,7 +21,7 @@ suite('area text lookups are deterministic (real PostgreSQL)', () => {
     const rows: Array<[string, string, boolean]> = [[slugs[0], 'Mukono', false], [slugs[1], 'Wakiso', true], [slugs[2], 'Luwero', false]];
     for (const [slug, district, metro] of rows) {
       await raw`insert into ug_area (area_slug, parish_or_area_clean, display_label, current_district, search_text, data_version, selectable, is_metro)
-        values (${slug}, ${name}, ${`${name}, ${district}`}, ${district}, ${`${name} ${district.toLowerCase()}`}, 1, true, ${metro})`;
+        values (${slug}, ${name}, ${`${name}, ${district}`}, ${district}, ${buildSearchText([name, district])}, 1, true, ${metro})`;
     }
     const { DeliveryAreaResolver } = await import('../../apps/api/src/infrastructure/delivery/DeliveryAreaResolver');
     resolver = new DeliveryAreaResolver();
@@ -42,7 +43,8 @@ suite('area text lookups are deterministic (real PostgreSQL)', () => {
   it('an alias shared by several areas resolves the same way', async () => {
     const alias = `${name}al`;
     for (const slug of slugs) {
-      await raw`insert into ug_area_alias (alias, normalised_alias, area_slug, confidence, source) values (${alias}, ${alias}, ${slug}, 'high', 'manual')`;
+      // Stored folded, as the import writes it (Ugandan spellings fold, e.g. r and l).
+      await raw`insert into ug_area_alias (alias, normalised_alias, area_slug, confidence, source) values (${alias}, ${foldUgandanOrthography(alias)}, ${slug}, 'high', 'manual')`;
     }
     const r = await resolver.byText(alias, null);
     expect(r?.input.areaSlug).toBe(slugs[1]);
