@@ -6,6 +6,7 @@ import {
   sessionExpiries,
   RevocationReason,
 } from '../../domain/identity/SessionPolicy';
+import { isInvalidatedByCutoff } from '../../domain/identity/SessionPolicy';
 
 export interface IssuedSession {
   userId: string;
@@ -83,6 +84,12 @@ export class SessionService {
     userAgentHash?: string | null;
     ipHash?: string | null;
     now?: Date;
+    /**
+     * The user's users.sessions_invalidated_after. A session family that began at or before it is over: "sign out
+     * everywhere", a password change, a social-login takeover guard or a deactivation set it, and before this check a
+     * refresh token from before it still minted fresh access tokens.
+     */
+    cutoffFor?: (userId: string) => Promise<Date | null>;
   }): Promise<RotateResult> {
     const now = input.now ?? new Date();
     const currentHash = this.hash(input.refreshToken);
@@ -90,6 +97,14 @@ export class SessionService {
     const decision = decideRefresh(row, now);
 
     if (decision.action === 'REVOKED') return { ok: false, reason: 'REVOKED' };
+    if (row && input.cutoffFor && (decision.action === 'GRACE' || decision.action === 'ROTATE')) {
+      const cutoff = await input.cutoffFor(row.userId);
+      const began = row.familyStartedAt ?? null;
+      if (cutoff && began && isInvalidatedByCutoff(began, cutoff)) {
+        await this.repo.revokeFamily(row.familyId, 'logout_all', now);
+        return { ok: false, reason: 'REVOKED' };
+      }
+    }
     if (decision.action === 'GRACE') {
       return { ok: true, grace: true, session: { userId: row!.userId, familyId: row!.familyId, accessExpiresAt: sessionExpiries(now).accessExpiresAt } };
     }

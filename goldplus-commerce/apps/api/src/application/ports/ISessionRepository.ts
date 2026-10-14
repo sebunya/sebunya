@@ -39,6 +39,8 @@ export interface SessionForDecision {
   rotatedAt: Date | null;
   revokedAt: Date | null;
   refreshExpiresAt: Date;
+  /** When the session family was first created (its first sign-in), for the users.sessions_invalidated_after cut-off. */
+  familyStartedAt?: Date | null;
 }
 
 /** One active session in the user-facing inventory (a family). */

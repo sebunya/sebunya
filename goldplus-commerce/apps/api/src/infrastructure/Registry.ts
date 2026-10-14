@@ -941,7 +941,9 @@ export class Registry {
   // Stateless hasher constructed inline: the shared field is declared later in the
   // class and TS rightly refuses use-before-initialization.
   public readonly adminUserManagementUseCase = new AdminUserManagementUseCase(this.adminUserWriteRepo, new ScryptPasswordHasher(), {
-    invalidateSessionsAfter: (userId: string, at: Date) => this.userRepo.invalidateSessionsAfter(userId, at),
+    // Deactivation revokes every refresh token as well as setting the cut-off, so reactivating the account later
+    // cannot revive a token taken before.
+    invalidateSessionsAfter: async (userId: string, at: Date) => { await this.sessionService.logoutAll(userId, 'account_disabled', at); },
   });
   public readonly campaignSendEngine = new CampaignSendEngineUseCase(this.campaignSendRepo, this.campaignSendRepo);
 

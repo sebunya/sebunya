@@ -167,4 +167,26 @@ suite('durable revocable sessions (real PostgreSQL)', () => {
     expect(row.refresh_hash).toHaveLength(64); // sha256 hex
     expect(row.refresh_hash).not.toContain(issued.refreshToken);
   });
+
+  it('a refresh token from before "sign out everywhere" is refused and its family revoked, even after a rotation', async () => {
+    const userId = await freshUser();
+    const issued = await service.issue({ userId });
+    // Rotate once, so the presented credential is a newer row of a family that began before the cut-off.
+    const rotated = await service.rotate({ refreshToken: issued.refreshToken });
+    expect(rotated.ok).toBe(true);
+    await raw`update users set sessions_invalidated_after = now() + interval '1 second' where id = ${userId}`;
+    const cutoffFor = async (id: string) => ((await raw`select sessions_invalidated_after as at from users where id = ${id}`)[0]?.at ?? null);
+    const later = await service.rotate({ refreshToken: rotated.session.refreshToken, cutoffFor, now: new Date(Date.now() + 5000) });
+    expect(later).toMatchObject({ ok: false, reason: 'REVOKED' });
+    const live = await raw`select count(*)::int as n from auth_sessions where user_id = ${userId} and revoked_at is null`;
+    expect(live[0].n).toBe(0);
+  });
+
+  it('a session begun after the cut-off refreshes normally', async () => {
+    const userId = await freshUser();
+    await raw`update users set sessions_invalidated_after = now() - interval '1 minute' where id = ${userId}`;
+    const issued = await service.issue({ userId });
+    const cutoffFor = async (id: string) => ((await raw`select sessions_invalidated_after as at from users where id = ${id}`)[0]?.at ?? null);
+    expect((await service.rotate({ refreshToken: issued.refreshToken, cutoffFor })).ok).toBe(true);
+  });
 });

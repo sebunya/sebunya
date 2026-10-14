@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull, lte, gt } from 'drizzle-orm';
+import { and, desc, eq, isNull, lte, gt, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { authSessions } from '../schema/identity';
 import {
@@ -30,6 +30,9 @@ export class DrizzleSessionRepository implements ISessionRepository {
       where: eq(authSessions.refreshHash, refreshHash),
     });
     if (!row) return null;
+    // The family's first row: a credential rotated after a "sign out everywhere" still belongs to a session that
+    // began before it.
+    const [first] = await db.select({ at: sql<Date>`min(${authSessions.createdAt})` }).from(authSessions).where(eq(authSessions.familyId, row.familyId));
     return {
       id: row.id,
       userId: row.userId,
@@ -37,6 +40,7 @@ export class DrizzleSessionRepository implements ISessionRepository {
       rotatedAt: row.rotatedAt ?? null,
       revokedAt: row.revokedAt ?? null,
       refreshExpiresAt: row.refreshExpiresAt,
+      familyStartedAt: first?.at ? new Date(first.at) : row.createdAt,
     };
   }
 

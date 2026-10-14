@@ -281,7 +281,10 @@ routes.post('/refresh', async (c) => {
   }
 
   const registry = Registry.getInstance();
-  const result = await registry.sessionService.rotate({ refreshToken });
+  const result = await registry.sessionService.rotate({
+    refreshToken,
+    cutoffFor: async (userId) => (await registry.userRepo.findById(userId))?.sessionsInvalidatedAfter ?? null,
+  });
   if (!result.ok) {
     // One generic message: an attacker must not learn whether a token was
     // expired, revoked or reused.
