@@ -59,7 +59,7 @@
     { "id": 56, "group": "grounded", "text": "thanks", "intent": "GREETING", "deterministic": true },
     { "id": 57, "group": "language", "text": "techno spark 7 battery", "intent": "BATTERY", "deterministic": true },
     { "id": 58, "group": "language", "text": "u have flash disk 32gb?", "intent": "PRODUCT", "deterministic": true },
-    { "id": 59, "group": "language", "text": "power bank 70k?", "intent": "PRODUCT", "deterministic": true },
+    { "id": 59, "group": "language", "text": "power bank 70k?", "intent": "PRODUCT", "deterministic": false, "note": "a price on its own (70k, under 50k) needs filtering by price, which a plain catalogue search cannot do: the model searches and compares" },
     { "id": 60, "group": "language", "text": "delivery fee to Mukono", "intent": "DELIVERY", "deterministic": true },
     { "id": 61, "group": "language", "text": "charger for infinix", "intent": "PRODUCT", "deterministic": true },
     { "id": 62, "group": "language", "text": "mwe mulina battery ya tecno pop 5?", "intent": "BATTERY", "deterministic": true },

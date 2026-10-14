@@ -42,7 +42,7 @@ const WANTS_PERSON = /\b((talk|speak|chat) (to|with) (a |an |the |your |some )?(
 const WANTS_HELP = /\b(support|help|assist(ance)?|complain(t|ts|ing)?|problem|issue|query|inquiry|enquiry|disappointed|unhappy)\b/;
 /** Phrases that say "I am shopping" on their own, with no product named. */
 const SHOPPING = /\b(do you (have|sell|stock)|have you got|got any|how much|price|cost|cheapest|in stock|available)\b/;
-const INTERPRETIVE = /\b(which|best|better|compatible|compatibility|fast.?charg(e|er|ing)?|right for|work(s)? with|fit(s)? my|difference|vs\.?|versus|compare|recommend|suitable|good for|laptop|how (do|does|can|long)|why|explain|should i)\b/i;
+const INTERPRETIVE = /\b(choos(e|ing)|pick|advice|advise|suggest|under|below|less than|\d+\s?k\b|which|best|better|compatible|compatibility|fast.?charg(e|er|ing)?|right for|work(s)? with|fit(s)? my|difference|vs\.?|versus|compare|recommend|suitable|good for|laptop|how (do|does|can|long)|why|explain|should i)\b/i;
 
 export function classify(raw: string): Classification {
   const text = raw.trim().replace(/\s+/g, ' ');
@@ -52,26 +52,30 @@ export function classify(raw: string): Classification {
   if (/\b(are you (a |an )?(real|human|person|people|bot|robot|machine|computer|ai)|is (this|it|goldie) (a )?(real person|human|person|bot|robot|machine)|am i (talking|chatting|speaking|texting) (to|with) (a )?(real person|real|human|person|bot|robot|machine|someone)|who am i (talking|chatting|speaking) (to|with)|who are you|what are you)\b/.test(t)) return { intent: 'IDENTITY', deterministic: true, query: '' };
   if (short && /^(hi|hello|hey|yo|good (morning|afternoon|evening)|ok(ay)?|cool|sure)\b[!. ]*$/.test(t)) return { intent: 'GREETING', deterministic: true, query: t };
   // Thanks in its common forms (never worth a paid answer): "thank you so much", "ok thanks", "webale nnyo", "asante sana".
-  if (short && /^(ok(ay)?[ ,]*)?(thanks?|thank you|thx|webale|asante)( (so|very) much| a lot| nnyo| sana| dear| goldie| boss)*[!. 🙏]*$/u.test(t)) return { intent: 'GREETING', deterministic: true, query: t };
+  if (short && /^(ok(ay)?[ ,]*)?(thanks?|thank you|thx|webale|weebale|mwebale|asante)( (so|very) much| a lot| nnyo| sana| dear| goldie| boss)*[!. 🙏]*$/u.test(t)) return { intent: 'GREETING', deterministic: true, query: t };
   // Someone asking for a person gets the team (a callback task; on WhatsApp the verified number is enough).
   if (WANTS_PERSON.test(t)) return { intent: 'CALLBACK', deterministic: true, query: text };
   if (/\b(call me( back)?|phone me|ring me|give me a call|can (someone|somebody|you|a person) (call|phone|ring)|i want (someone|somebody|a person) to call|call back)\b/.test(t)) return { intent: 'CALLBACK', deterministic: true, query: text };
   if (ORDER_REF.test(text)) return { intent: 'ORDER', deterministic: true, query: '' };
   if (/\b(my )?(loyalty|reward points|my points|points balance|how many points|my tier|tier|friends ?(&|and) ?family (points|rewards))\b/.test(t) && !/\b(charging|power) points?\b/.test(t)) return { intent: 'LOYALTY', deterministic: true, query: '' };
-  if (/\b(track|tracking|status of|where is|where's|wheres)\b[^.?]*\border\b|\border (status|number|ref|reference)\b|\bmy order\b|\bdelivered yet\b|\b(show|check|find|see|open|look up)\b[^.?]*\border\b/.test(t)) return { intent: 'ORDER', deterministic: true, query: '' };
+  if (/\b(track|tracking|status of|where is|where's|wheres)\b[^.?]*\border\b|\border (status|number|ref|reference)\b|\bmy order\b|\bdelivered yet\b|\b(show|check|find|see|open|look up)\b[^.?]*\border\b/.test(t)
+    || /\b(i )?(ordered|bought|paid for)\b[^.?]*\b(where|when|not (yet )?(come|arrived|received|delivered)|still waiting)\b|\bmy (package|parcel|delivery)\b/.test(t)) return { intent: 'ORDER', deterministic: true, query: '' };
   if (/\b(pay|payment|paid|paying|mobile money|momo|mtn|airtel|pesapal|visa|mastercard|(credit|debit|bank) ?card|card payment|(pay|paying|paid) (by|with|using) (a |my )?card|cash on delivery|refund me|my refund|refund (status|arrive|arrived|when)|pin|otp)\b/.test(t) && !/\b(refund policy|return)\b/.test(t)) return { intent: 'PAYMENT', deterministic: true, query: '' };
   if (/\b(bulk|wholesale|quotation|quote|for (my|the|our) (office|school|shop|company|business))\b/.test(t) || /\b(\d{2,}|fifty|hundred) (power ?banks|chargers|cables|units|pieces|pcs)\b/.test(t)) {
     // Items AND numbers named: the model searches the shelf, confirms the list and files the quote. Otherwise ask.
     const named = /\b(\d{2,}|fifty|hundred|dozen)\b/.test(t) && PRODUCT_NOUNS.test(t);
     return { intent: 'BULK', deterministic: !named, query: '' };
   }
-  if (/\b(warranty|guarantee|returns?|refund|exchange|replace(ment)?(?!\s+batter)|broken|(bought|got|ordered|received) the wrong|wrong (item|product|battery|size|one|colour|color)|stop(s|ped)? working|not working|faulty|fake|genuine|original|verify|verification|authentic|counterfeit|swollen)\b/.test(t)) return { intent: 'POLICY', deterministic: true, query: text };
+  if (/\b(warranty|guarantee|returns?|refund|exchange|replace(ment)?(?!\s+batter)|broken|(bought|got|ordered|received) the wrong|wrong (item|product|battery|size|one|colour|color)|stop(s|ped)? working|not working|faulty|fake|genuine|original|verify|verification|authentic|counterfeit|swollen|not charging|(doesn'?t|does not|won'?t|will not|can'?t|cannot) (charge|work|turn on|switch on|hold charge)|spoilt|spoiled|dead|died)\b/.test(t)
+    // "Do you have original iPhone chargers?" is shopping, not a fake-product check.
+    && !(/\b(do you (have|sell|stock)|have you got|how much|price|cost|i (want|need))\b/.test(t) && PRODUCT_NOUNS.test(t) && !/\b(not|fake|counterfeit|broken|faulty|spoilt|dead|swollen|return|refund|warranty)\b/.test(t))) return { intent: 'POLICY', deterministic: true, query: text };
   if (/\bbatter(y|ies)\b/.test(t) || BATTERY_CODE.test(text)) return { intent: 'BATTERY', deterministic: true, query: batteryQuery(text) };
   if (/\b(deliver|delivery|deliveries|shipping|ship|courier|boda|cut.?off|same.?day|upcountry|how long (to|does|will)|when will (it|i)|receive (it|this|them|my)|bring (it|this|them))\b/.test(t) || (PLACES.test(t) && /\b(today|tomorrow|tonight|by (today|tomorrow|\w+day))\b/.test(t))) return { intent: 'DELIVERY', deterministic: true, query: text };
-  if (/\b(where (is|are) (the |your )?(shop|store|you|office)|location|address|directions?|open(ing)?|hours|close|closing|phone number|whatsapp|contact|call you|visit)\b/.test(t)) return { intent: 'STORE', deterministic: true, query: '' };
+  if (/\b(where (is|are) (the |your )?(shop|store|you|office)|location|address|directions?|open(ing)?|hours|close|closing|phone number|whatsapp|contact|call you|visit|your (number|phone|contacts?))\b/.test(t)) return { intent: 'STORE', deterministic: true, query: '' };
   // A product is searched without the model only when the message names one (a product word, a phone brand, a battery
   // code, a size) or asks a plain shopping question. "I want support", "I need help", "any update?" are not searches:
   // 2026-10-14, "I want support" was answered "I don't see 'support' on our shelf".
+  if (/\b(what (do|can) (you|i) (sell|buy|get)|what (products|items) do you|(your|a) (catalogue|catalog|price ?list|products? list))\b/.test(t)) return { intent: 'UNKNOWN', deterministic: false, query: text };
   const named = PRODUCT_NOUNS.test(t) || PHONE_BRANDS.test(t) || BATTERY_CODE.test(text);
   if (!named && WANTS_HELP.test(t)) return { intent: 'UNKNOWN', deterministic: false, query: text };
   if (named || SHOPPING.test(t)) return { intent: 'PRODUCT', deterministic: !INTERPRETIVE.test(t), query: productQuery(text) };
@@ -91,6 +95,10 @@ function batteryQuery(text: string): string {
 
 function productQuery(text: string): string {
   return text
+    // Luganda / Swahili "I want", "give me", "please" (the product word itself is usually English).
+    .replace(/\b(nkwagala|njagala|nnyagala|mpa|mpaayo|nsaba|ninataka|nataka|nipe|tafadhali)\b/gi, ' ')
+    // "for my phone" / "for my device" says nothing the search can use (the finder asks which phone).
+    .replace(/\bfor (my|a|the) (phone|device|handset|mobile)\b/gi, ' ')
     .replace(/\b(what('?s| is)?|do you (have|sell|stock)|have you got|got any|how much (is|are|does|for)?|what is the price of|price (of|for)|cost of|cheapest|cheap|looking for|i need|i want|i am looking for|show me|any|please|a|an|the|your|you|some|in stock|available|is|are|there|to buy|buy)\b/gi, ' ')
     .replace(/[?.!,]/g, ' ')
     .replace(/\s+/g, ' ')

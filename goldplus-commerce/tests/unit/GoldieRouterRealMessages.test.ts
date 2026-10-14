@@ -41,5 +41,25 @@ describe('real shopping questions still get the fast catalogue answer', () => {
     ['where is my order', 'ORDER'],
     ['I need help with my order', 'ORDER'],
     ['my charger stopped working', 'POLICY'],
+    ['My power bank is not charging', 'POLICY'],
+    ['my earphones are spoilt', 'POLICY'],
+    ['Do you have original iphone chargers', 'PRODUCT'],
+    ['is this product genuine', 'POLICY'],
+    ['I ordered yesterday where is it', 'ORDER'],
+    ['I paid for a cable and it has not come', 'ORDER'],
+    ['I need help choosing a power bank', 'PRODUCT:ai'],
+    ['I want earbuds under 50k', 'PRODUCT:ai'],
+    ['Mwebale', 'GREETING'],
+    ['give me your number', 'STORE'],
+    ['What do you sell', 'UNKNOWN:ai'],
+    ['send me your catalogue', 'UNKNOWN:ai'],
   ])('%s → %s', (m, want) => expect(route(m)).toBe(want));
+});
+
+describe('the search sees the product, not the filler', () => {
+  it('Luganda "I want" and "for my phone" are dropped; a bare product asks which phone first', () => {
+    expect(classify('Nkwagala charger').query).toBe('charger');
+    expect(clarifyFirst('I need a charger for my phone', 'PRODUCT')).toMatch(/Which phone or device is it for\?/);
+    expect(clarifyFirst('Nkwagala charger', 'PRODUCT')).toMatch(/Which phone or device is it for\?/);
+  });
 });

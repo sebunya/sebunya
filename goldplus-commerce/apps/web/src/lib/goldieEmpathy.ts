@@ -90,8 +90,10 @@ export function clarifyFirst(raw: string, intent: string): string | null {
   // Bare requests for help or support in their common forms ("I want support", "hi, I need assistance", "help me").
   const bare = t.replace(/^(hi|hello|hey|good (morning|afternoon|evening))[ ,!]*/, '').replace(/[ ,]*(please|pls|plz|goldie|dear|sir|madam)$/, '').trim();
   if (/^(help|help me|help me please|support|assistance|customer support|i need help|please help|i have a problem|problem|issue|i have an issue|i have a complaint|complaint|(i (want|need|would like)|can i (get|have)|can (you|someone) (help|assist)( me)?|please) ?(some |your )?(help|support|assistance)?( me)?)$/.test(bare) && bare.length > 0) return "Of course. Tell me a little about what you need, a product, an order, a delivery or a problem with something you bought, and I'll take it from there.";
-  if (intent === 'PRODUCT' && /^(a |an |the )?(charger|cable|power ?bank|earphones?|earbuds|headphones?|battery|speaker|adapter)s?$/.test(t)) {
-    const thing = t.replace(/^(a |an |the )/, '');
+  // "charger", "I need a charger", "I want a charger for my phone": one question first (which phone?), not a blind search.
+  const ask = t.replace(/^(hi|hello|hey)[ ,!]*/, '').replace(/^(i (need|want|am looking for)|looking for|nkwagala|njagala) /, '').replace(/ for (my|a|the) (phone|device|handset|mobile)$/, '').trim();
+  if (intent === 'PRODUCT' && /^(a |an |the )?(charger|cable|power ?bank|earphones?|earbuds|headphones?|battery|speaker|adapter)s?$/.test(ask)) {
+    const thing = ask.replace(/^(a |an |the )/, '');
     return /battery/.test(thing) ? 'Which phone is it for? The exact model, for example Tecno Spark 10, or the code on the old battery.' : `Happy to help with a ${thing}. Which phone or device is it for?`;
   }
   if (/^(price|how much|cost)$/.test(t)) return 'Which product would you like the price for?';
