@@ -183,7 +183,8 @@ export class GoldieChannelUseCases {
     const silence = silenceFor({
       text: msg.text,
       teamHasIt: !!(humanUntil && humanUntil.getTime() > t),
-      fromStaff: (await this.staff()).includes(msg.from),
+      // A number in the trial list (GOLDIE_WHATSAPP_TEST_NUMBERS) is a tester even when it is also a team line.
+      fromStaff: (await this.staff()).includes(msg.from) && !s.onlyNumbers.includes(msg.from),
       lastGoldieClosed: !!lastGoldie && closesMatter(lastGoldie.content),
       sameTextRecently: customerLines.filter((m) => m.content.trim().toLowerCase() === msg.text.trim().toLowerCase() && t - m.createdAt.getTime() < 10 * 60_000).length,
       abuseRecently: customerLines.filter((m) => isAbusive(m.content) && t - m.createdAt.getTime() < 3600_000).length,

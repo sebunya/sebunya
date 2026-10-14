@@ -214,6 +214,17 @@ describe('Goldie on WhatsApp', () => {
   }
   const inbound = { from: '256772123456', name: 'Sarah N', text: 'Where is my order?', messageId: 'wamid.1', phoneNumberId: '111222333', at: new Date() };
 
+  it('a team line in the trial list is answered as a tester; a team line outside it stays quiet', async () => {
+    const { store } = memoryStore();
+    const archive = new ConversationArchiveUseCases(store);
+    const brain = { turn: vi.fn(async () => ({ text: 'Hello.', products: [], links: [], intent: 'GREETING', mood: 'neutral', route: 'deterministic' })) };
+    const whatsapp = { sendText: vi.fn(async () => ({ ok: true as const, messageId: 'w' })) };
+    const tester = new GoldieChannelUseCases(archive, brain, whatsapp, () => ({ enabled: true, onlyNumbers: ['256772123456'], phoneNumberId: '111222333' }), () => {}, () => new Date(), async () => ['256772123456']);
+    expect(await tester.handleWhatsApp(inbound)).toBe('answered');
+    const staffOnly = new GoldieChannelUseCases(new ConversationArchiveUseCases(memoryStore().store), brain, whatsapp, () => ({ enabled: true, onlyNumbers: [], phoneNumberId: '111222333' }), () => {}, () => new Date(), async () => ['256772123456']);
+    expect(await staffOnly.handleWhatsApp({ ...inbound, messageId: 'wamid.st' })).toBe('filed');
+  });
+
   it('stays silent until switched on, and only answers test numbers during a trial', async () => {
     const off = channel(false);
     expect(await off.uc.handleWhatsApp(inbound)).toBe('skipped');
