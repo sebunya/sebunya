@@ -127,7 +127,7 @@ describe('assistant router: deterministic answers come from shop data', () => {
     const found = await answerDeterministically(classify('What is the cheapest 64GB flash drive you have today?'));
     expect(callTool).toHaveBeenCalledWith('search_products', { query: expect.stringMatching(/64GB flash drive/), limit: 5 });
     expect(found.products[0].sku).toBe('GP-64GB-F');
-    expect(found.text).toMatch(/Today's price and stock are on each card/);
+    expect(found.text).toMatch(/Today's price and stock are with each one/);
     callTool.mockResolvedValueOnce({ content: [{ type: 'text', text: 'none' }], structuredContent: { products: [] } });
     const nothing = await answerDeterministically(classify('do you have a drone?'));
     // Never a dead end: it asks what the thing is for / which device, and offers the team.

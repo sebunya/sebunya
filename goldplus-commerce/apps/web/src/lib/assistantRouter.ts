@@ -32,7 +32,9 @@ export interface Link { label: string; url: string }
 export interface DeterministicAnswer { intent: Intent; text: string; products: ProductCard[]; links: Link[] }
 
 const PHONE_BRANDS = /\b(tecno|techno|infinix|itel|samsung|nokia|oppo|vivo|realme|iphone|apple|huawei|xiaomi|redmi|pixel|motorola)\b/i;
-const BATTERY_CODE = /\b(bl|eb|blp|hb)[- ]?[a-z0-9]{3,8}\b/i;
+// A battery code always has a digit (BL-5C, BL-44E1F, EB-BG973ABU, HB396285ECW): without that rule "black" and
+// "bluetooth" were read as battery codes ("bluetooth speaker" got the battery finder).
+const BATTERY_CODE = /\b(bl|eb|blp|hb)[- ]?(?=[a-z]*\d)[a-z0-9]{2,10}\b/i;
 const PRODUCT_NOUNS = /\b(charger|chargers|cable|cables|power ?banks?|earphones?|earbuds?|headphones?|headset|speaker|flash ?(disk|drive)|memory ?card|sd ?card|micro ?sd|mouse|sound ?card|car charger|type.?c|usb|lightning|micro.?usb|adapter|bluetooth|batter(y|ies)|\d+\s?gb|\d+\s?w\b|\d+\s?mah)/i;
 /** Places a customer names when asking whether something can reach them; with "today"/"tomorrow" that is a delivery question. */
 const PLACES = /\b(kampala|wakiso|nansana|mukono|entebbe|kira|ntinda|kawempe|makindye|rubaga|lubaga|nakawa|kajjansi|gayaza|bweyogerere|seeta|namugongo|kireka|bukoto|kololo|kisaasi|kyanja|najjera|kitende|jinja|mbarara|gulu|mbale|masaka|lira|arua|fort portal|hoima|soroti|kabale|my (area|place|home|office|location))\b/;
@@ -223,7 +225,7 @@ export async function answerDeterministically(c: Classification, ci?: CareInput)
       const products = cardsFromProducts(structured(out).products);
       // Never a dead end: ask the one thing that finds it (what it is for, which device), and offer a person.
       if (!products.length) return { intent: c.intent, text: `I couldn't find "${query}" by that name. What is it for, or which phone or device should it work with? Tell me and I'll find the closest match. You can also message the team on WhatsApp.`, products: [], links: [link('Browse the shop', '/shop'), wa] };
-      return { intent: c.intent, text: `${products.length === 1 ? 'We have one that matches' : `We have ${products.length} that match`}. Today's price and stock are on each card${products.length > 1 ? '; tell me what it is for and I will say which one fits' : ''}.`, products, links: [link('See all results', `/shop?q=${encodeURIComponent(query)}`)] };
+      return { intent: c.intent, text: `${products.length === 1 ? 'We have one that matches' : `We have ${products.length} that match`}. Today's price and stock are with each one${products.length > 1 ? '; tell me what it is for and I will say which one fits' : ''}.`, products, links: [link('See all results', `/shop?q=${encodeURIComponent(query)}`)] };
     }
     default:
       return { intent: 'UNKNOWN', text: 'I can find a product, check a price or a battery for your phone, and explain delivery and payment. For anything else, the team is on WhatsApp, or I can email them this chat.', products: [], links: [wa, team] };

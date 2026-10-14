@@ -53,6 +53,12 @@ describe('real shopping questions still get the fast catalogue answer', () => {
     ['give me your number', 'STORE'],
     ['What do you sell', 'UNKNOWN:ai'],
     ['send me your catalogue', 'UNKNOWN:ai'],
+    ['bluetooth speaker', 'PRODUCT'],
+    ['do you have a black power bank', 'PRODUCT'],
+    ['BL-5C battery', 'BATTERY'],
+    ['battery code BL-44E1F', 'BATTERY'],
+    ['EB-BG973ABU', 'BATTERY'],
+    ['HB396285ECW', 'BATTERY'],
   ])('%s → %s', (m, want) => expect(route(m)).toBe(want));
 });
 
