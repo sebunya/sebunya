@@ -68,6 +68,28 @@ suite('Care Desk repository (real PostgreSQL)', () => {
     expect(await repo.get(a.task.id)).toBeNull();
   });
 
+  it('claims an alert once under the lock; escalates only paged tasks; finds the last task by title prefix; reports the oldest urgent wait', async () => {
+    const t = await repo.open({ ...base, kind: 'urgent', priority: 'urgent', title: `${tag} claim me`, conversationId: null, customerPhone: '0700111000' });
+    const both = await Promise.all([repo.withAlertLock(() => repo.claimAlert(t.task.id)), repo.withAlertLock(() => repo.claimAlert(t.task.id))]);
+    expect(both.filter(Boolean)).toHaveLength(1);
+    const quiet = await repo.open({ ...base, kind: 'urgent', priority: 'urgent', title: `${tag} held back`, conversationId: null });
+    await raw`update care_tasks set created_at = now() - interval '20 minutes' where id in (${t.task.id}, ${quiet.task.id})`;
+    const due = (await repo.urgentUntaken(300)).map((x) => x.id);
+    expect(due).toContain(t.task.id);
+    expect(due).not.toContain(quiet.task.id);
+    // The prefix is matched literally (a % or _ in it is not a wildcard).
+    expect(await repo.lastTitled(`${tag} claim`)).toMatchObject({ status: 'open' });
+    expect(await repo.lastTitled(`${tag} cl_im`)).toBeNull();
+    const today = await repo.today(new Date(Date.now() - 3600_000));
+    expect(today.oldestUrgentAt).not.toBeNull();
+  });
+
+  it("opens one task when the same customer's messages arrive together", async () => {
+    const c2 = (await convs.open({ channel: 'web', channelKey: `${tag}-burst`, customerId: null, page: null })).id;
+    const opened = await Promise.all([1, 2, 3].map((i) => repo.open({ ...base, kind: 'follow_up', priority: 'normal', title: `${tag} burst ${i}`, conversationId: c2 })));
+    expect(opened.filter((o) => o.created)).toHaveLength(1);
+  });
+
   it('saves a task a member of staff added from the desk', async () => {
     const r = await repo.open({ ...base, kind: 'follow_up', priority: 'normal', title: `${tag} staff added`, conversationId: null, openedBy: 'staff' });
     expect(r.created).toBe(true);
