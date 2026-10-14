@@ -2485,26 +2485,12 @@ export class Registry {
       batchLimit: 100,
     },
     {
-      // Paid through a COMPLETED attempt (never a hand-marked COD order), task
-      // still unpaid and still live. Idempotent effects only; see
-      // SettlePaymentUseCase.redoConfirmedEffects.
+      // Paid orders still owed the task update, the receipt or a paid-order alert (PaidOrdersOwedEffects).
+      // Idempotent effects only; see SettlePaymentUseCase.redoConfirmedEffects.
       windowHours: 48,
       listPaidOrdersAwaitingFulfilmentPayment: async (since: Date, limit: number) => {
-        const { db } = await import('./db/client');
-        const { sql } = await import('drizzle-orm');
-        const rows = (await db.execute(sql`
-          select o.id
-          from orders o
-          join fulfilment_tasks t on t.order_id = o.id
-          where o.payment_status = 'paid'
-            and t.payment_status <> 'paid'
-            and t.status not in ('CANCELLED', 'DELIVERED')
-            and o.updated_at >= ${since}
-            and exists (select 1 from payment_attempts pa where pa.order_id = o.id and pa.status = 'completed')
-          order by o.updated_at desc
-          limit ${Math.max(1, Math.min(limit, 200))}
-        `)) as unknown as Array<{ id: string }>;
-        return rows.map((r) => String(r.id));
+        const { listPaidOrdersOwedConfirmedEffects } = await import('./payments/PaidOrdersOwedEffects');
+        return listPaidOrdersOwedConfirmedEffects(since, limit, alertRecipients(await this.fulfilmentAlertConfig.values()));
       },
     },
   );
