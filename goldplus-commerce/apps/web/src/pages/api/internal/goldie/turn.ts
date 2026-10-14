@@ -62,13 +62,17 @@ export const POST: APIRoute = async ({ request }) => {
       : prepared.code === 'DUPLICATE' ? '' : 'The team will reply to you here shortly.';
     return json({ success: true, data: { text, products: [], links: [], intent: 'UNKNOWN', mood: 'neutral', route: 'deterministic' } });
   }
-  let text = ''; let products: ProductCard[] = []; let links: Array<{ label: string; url: string }> = [];
+  // WhatsApp gets one message, so only the answer after the last tool call is sent; words written before a tool call
+  // ("I'll pull the list again…") are thinking aloud and were glued to the answer ("more.You were right").
+  let text = ''; let before = ''; let products: ProductCard[] = []; let links: Array<{ label: string; url: string }> = [];
   for await (const ev of prepared.run()) {
     if (ev.type === 'text') text += ev.text;
+    else if (ev.type === 'tool') { if (text.trim()) before = `${before} ${text}`.trim(); text = ''; }
     else if (ev.type === 'products') products = [...products, ...ev.items];
     else if (ev.type === 'links') links = [...links, ...ev.items];
     else if (ev.type === 'error' && !text) text = 'Sorry, I could not finish that one. The team will reply to you here shortly.';
   }
+  text = text.trim() || before;
   return json({ success: true, data: { text, products, links, intent: prepared.meta.intent, mood: prepared.meta.mood.mood, route: prepared.meta.route, cacheId: prepared.meta.cacheId ?? null } });
 };
 

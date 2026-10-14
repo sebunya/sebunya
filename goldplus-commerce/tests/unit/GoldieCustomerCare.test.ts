@@ -195,6 +195,21 @@ describe('Goldie on WhatsApp', () => {
     expect(whatsappKey('256772123456')).not.toContain('256772123456');
   });
 
+  it('the products under a recommendation are the ones she recommended, not the search\'s first three', () => {
+    const products = [
+      { name: 'GoldPlus 10000mAh Power Bank', url: 'https://shopgoldplus.com/products/a', price_ugx: 45000, availability: 'in_stock' },
+      { name: 'Oraimo Traveler 20000mAh Power Bank', url: 'https://shopgoldplus.com/products/b', price_ugx: 89000, availability: 'in_stock' },
+      { name: 'Anker 30000mAh Power Bank', url: 'https://shopgoldplus.com/products/c', price_ugx: 120000, availability: 'low_stock' },
+    ];
+    const out = formatWhatsAppReply({ text: 'For a phone and a long trip I would go for the Oraimo Traveler 20000mAh: two full charges of an A14.', products });
+    expect(out).toContain('Oraimo Traveler 20000mAh Power Bank');
+    expect(out).not.toContain('Anker');
+    expect(out).not.toContain('products/a');
+    expect(formatWhatsAppReply({ text: 'We have 3 that match.', products }).match(/•/g)).toHaveLength(3);
+    // A model answer that names none of them lists none (no contradicting search results under it).
+    expect(formatWhatsAppReply({ text: 'What matters most to you: capacity, weight or how many devices at once?', products, route: 'ai' })).not.toContain('•');
+  });
+
   it('writes a phone-sized reply: words, a few products with links, no panel-only links', () => {
     const out = formatWhatsAppReply({ text: 'We have **two** options.', products: [{ name: 'GoldPlus 20W', url: 'https://shopgoldplus.com/products/a', price_ugx: 45000, availability: 'in_stock' }], links: [{ label: 'Email the team', url: 'https://shopgoldplus.com/support#goldie-team' }, { label: 'Track my order', url: 'https://shopgoldplus.com/track-order' }] });
     expect(out).toContain('*two*');

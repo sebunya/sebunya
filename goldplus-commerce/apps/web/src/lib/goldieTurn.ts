@@ -72,6 +72,37 @@ export function isOrderFollowUp(turns: readonly ChatTurn[]): boolean {
   return asked && gave && last.length <= 120;
 }
 
+/**
+ * A reply inside a conversation is read WITH the conversation. A router that sees only the last message forgets
+ * what was said ten seconds ago: after Goldie lists three power banks, "how much is the second one?" became a
+ * search for "second one", "is it original?" a fake-product check, "yes" a greeting. When the customer is answering
+ * Goldie's question, or points back at what was said (it, that one, the second, the cheaper, and for Samsung?),
+ * the model answers with the history. New, self-contained requests (an order reference, delivery to an area, the
+ * shop hours) and a plain thank-you keep their fixed answers.
+ */
+export function isConversationalReply(turns: readonly ChatTurn[], classified: Classification): boolean {
+  const prev = turns.length >= 2 ? turns[turns.length - 2] : undefined;
+  if (!prev || prev.role !== 'assistant') return false;
+  if (!['PRODUCT', 'UNKNOWN', 'GREETING', 'POLICY'].includes(classified.intent)) return false;
+  const last = (turns[turns.length - 1]?.content ?? '').trim().toLowerCase();
+  if (!last || last.length > 160) return false;
+  const askedQuestion = /\?\s*$/.test(prev.content.trim());
+  // A thank-you, or a bare "ok" after an answer that asked nothing, is the customer closing: the short fixed reply is right.
+  if (classified.intent === 'GREETING' && (/\b(thanks?|thank you|thx|webale|weebale|mwebale|asante)\b/.test(last) || !askedQuestion)) return false;
+  // A fault or fake report names its own subject ("my charger is fake"); only "is it / is this one original?" points back.
+  if (classified.intent === 'POLICY' && !/\b(it|this|that|this one|that one|they|them|these|those)\b/.test(last)) return false;
+  const pointsBack = /\b(it|its|this|that|these|those|one|ones|them|they|first|second|third|last|1st|2nd|3rd|cheaper|cheapest|other|same|both|either|yes|yeah|yep|no|nope|sure|which|instead|another|more|else|also|too|what about|how about)\b/.test(last) || /^(and|but|so|ok|okay)\b/.test(last);
+  return askedQuestion || pointsBack;
+}
+
+/** A first name worth using from a WhatsApp profile name ("Rob", "Sarah N" → Sarah); null for "~ 🌸", "GoldPlus Test", digits. */
+export function profileFirstName(name: string | null | undefined): string | null {
+  const first = (name ?? '').normalize('NFKC').trim().split(/\s+/)[0] ?? '';
+  const clean = first.replace(/[^\p{L}'-]/gu, '');
+  if (clean.length < 2 || clean.length > 20 || /^(test|goldplus|shop|admin|user|customer|mr|mrs|ms|dr|sir|madam)$/i.test(clean)) return null;
+  return clean[0]!.toUpperCase() + clean.slice(1).toLowerCase();
+}
+
 export async function prepareTurn(input: TurnInput): Promise<PreparedTurn> {
   const last = input.turns[input.turns.length - 1]!.content;
   const mood = readMood(last);
@@ -84,7 +115,15 @@ export async function prepareTurn(input: TurnInput): Promise<PreparedTurn> {
   const lang = detectLanguage(last);
   const languageUpgrade = lang !== 'en' && classified.deterministic && ['GREETING', 'STORE', 'DELIVERY', 'PAYMENT', 'POLICY', 'BULK', 'PRODUCT', 'BATTERY'].includes(classified.intent);
   if (languageUpgrade) classified = { ...classified, deterministic: false };
-  const clarify = !languageUpgrade && (classified.intent === 'UNKNOWN' || classified.intent === 'PRODUCT') ? clarifyFirst(last, classified.intent) : null;
+  // Inside a conversation, a reply is answered with the conversation (see isConversationalReply).
+  const conversational = isConversationalReply(input.turns, classified);
+  if (conversational) classified = { ...classified, intent: classified.intent === 'GREETING' ? 'UNKNOWN' : classified.intent, deterministic: false };
+  // On WhatsApp, Messenger and Instagram a product question is a personal shopper's job: the model recommends the one
+  // that fits and asks the one question that matters (which phone?), instead of a fixed list. The fixed list remains
+  // the fallback when the spend policy says no.
+  const shopperUpgrade = input.channel !== 'web' && classified.intent === 'PRODUCT' && classified.deterministic;
+  if (shopperUpgrade) classified = { ...classified, deterministic: false };
+  const clarify = !languageUpgrade && !conversational && (classified.intent === 'UNKNOWN' || classified.intent === 'PRODUCT') ? clarifyFirst(last, classified.intent) : null;
   // Answer memory first: a general question asked before is answered from memory (facts re-checked live), at no model cost.
   const singleTurn = input.turns.length === 1;
   const remembered = !classified.deterministic && !clarify && singleTurn ? await recall(last).catch(() => null) : null;
@@ -134,11 +173,17 @@ export async function prepareTurn(input: TurnInput): Promise<PreparedTurn> {
       yield { type: 'done', usage: { ...ZERO }, providerRequestId: null, outcome: 'ANSWERED' };
     };
     if (clarify) { yield* emit({ intent: classified.intent, text: [acknowledge('UNKNOWN', mood, seed), clarify].filter(Boolean).join(' '), products: [], links: [] }); return; }
-    if (route === 'deterministic') { yield* emit(heard(await answerDeterministically(classified, { care: input.care, turns: input.turns }))); return; }
+    if (route === 'deterministic') {
+      const a = heard(await answerDeterministically(classified, { care: input.care, turns: input.turns }));
+      // A hello on WhatsApp greets the customer by name (free, fixed): "Hello Rob, welcome to GoldPlus…".
+      const first = input.channel !== 'web' && classified.intent === 'GREETING' && !/^(ok|okay|cool|sure|thanks?|thank|thx|webale|weebale|mwebale|asante)/.test(classified.query) ? profileFirstName(input.care.customerName) : null;
+      yield* emit(first ? { ...a, text: `Hello ${first}, welcome to GoldPlus. What are you looking for today? A charger, a power bank, earphones, or a battery for your phone, tell me and I'll find the right one.` } : a);
+      return;
+    }
     if (route === 'cache' && remembered) { yield* emit(heard({ intent: classified.intent, text: remembered.text, products: remembered.products, links: [] })); return; }
     if (route === 'fallback') {
       // A language upgrade the model could not take: the fixed answer (in English) beats an apology.
-      if (languageUpgrade) { yield* emit(heard(await answerDeterministically({ ...classified, deterministic: true }, { care: input.care, turns: input.turns }))); return; }
+      if (languageUpgrade || shopperUpgrade) { yield* emit(heard(await answerDeterministically({ ...classified, deterministic: true }, { care: input.care, turns: input.turns }))); return; }
       yield* emit(heard(await fallbackAnswer(classified)));
       return;
     }
@@ -153,7 +198,10 @@ export async function prepareTurn(input: TurnInput): Promise<PreparedTurn> {
         + (lang === 'lg' ? ' The customer is writing in Luganda: answer in Luganda.' : lang === 'sw' ? ' The customer is writing in Swahili: answer in Swahili.' : '');
       const channelLine = input.channel === 'whatsapp' ? ' Channel: WhatsApp (plain text, no cards; keep it short).'
         : input.channel === 'messenger' || input.channel === 'instagram' ? ` Channel: ${input.channel === 'messenger' ? 'Facebook Messenger' : 'Instagram'} (plain text, no cards; keep it short). There is no verified phone here: for an order or points, ask for the order number and the phone used, as on the website.` : '';
-      const note = (shopperNote(ctx) + channelLine + moodLine).trim();
+      // The customer's WhatsApp profile name, when the shop's records have none: a shop assistant uses the name.
+      const profileName = !ctx?.firstName && input.channel === 'whatsapp' ? profileFirstName(input.care.customerName) : null;
+      const nameLine = profileName ? ` WhatsApp profile name: ${profileName} (use it lightly, the way a shopkeeper would).` : '';
+      const note = (shopperNote(ctx) + nameLine + channelLine + moodLine).trim();
       // Cost: the model sees the last eight turns, starting with the customer (older turns rarely change the answer).
       let modelTurns = input.turns.slice(-8);
       while (modelTurns.length && modelTurns[0]!.role !== 'user') modelTurns = modelTurns.slice(1);

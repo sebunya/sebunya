@@ -150,6 +150,8 @@ export interface ReplyParts {
   text: string;
   products?: Array<{ name: string; url: string; price_ugx: number | null; availability: string }>;
   links?: Array<{ label: string; url: string }>;
+  /** How the answer was made ('ai' = the model wrote it): decides which products are listed under it. */
+  route?: string;
 }
 
 /** WhatsApp allows 4096 characters; a chat bubble reads best far shorter. */
@@ -163,7 +165,17 @@ const AVAIL: Record<string, string> = { in_stock: 'in stock', low_stock: 'low st
  */
 export function formatWhatsAppReply(r: ReplyParts): string {
   const lines = [r.text.replace(/\*\*/g, '*').trim()];
-  const products = (r.products ?? []).slice(0, 3);
+  // The products follow the answer: the ones the text names (she recommended them), and only those when there are
+  // any; otherwise the first three of a list. A search's first three under "I'd go for the Oraimo" read as noise.
+  const all = r.products ?? [];
+  const said = r.text.toLowerCase();
+  const named = all.filter((p) => {
+    const words = p.name.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((w) => w.length >= 3 && !/^(goldplus|the|and|for|with)$/.test(w));
+    const hits = words.filter((w) => said.includes(w)).length;
+    return words.length > 0 && hits >= Math.min(2, words.length);
+  });
+  // A model answer lists only what it named (a search's other results would contradict it); a fixed list answer shows three.
+  const products = named.length ? named.slice(0, 2) : r.route === 'ai' ? [] : all.slice(0, 3);
   if (products.length) {
     lines.push('');
     for (const p of products) lines.push(`• ${p.name}: ${p.price_ugx == null ? 'price on request' : `UGX ${p.price_ugx.toLocaleString('en-UG')}`}, ${AVAIL[p.availability] ?? p.availability}\n  ${p.url}`);

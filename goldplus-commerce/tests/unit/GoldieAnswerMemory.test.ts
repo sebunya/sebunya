@@ -122,7 +122,8 @@ describe('the model reads less, and what it needs', async () => {
   const { modelToolText } = await import('../../apps/web/src/lib/assistant');
   it('search results carry id and slug for bulk quotes, without URLs', () => {
     const t = modelToolText('search_products', { structuredContent: { products: [{ id: '3f1c2b9a-1111-4a2b-9c3d-123456789abc', name: 'GoldPlus 20W', price_ugx: 45000, availability: 'in_stock', sku: 'GP-20W', url: 'https://shopgoldplus.com/products/gp-20w' }] } })!;
-    expect(t).toBe('GoldPlus 20W | UGX 45,000 | in_stock | sku GP-20W | id 3f1c2b9a-1111-4a2b-9c3d-123456789abc | slug gp-20w');
+    // A product with no verified specs says so (the model must not infer them).
+    expect(t).toBe('GoldPlus 20W | UGX 45,000 | in_stock | sku GP-20W | id 3f1c2b9a-1111-4a2b-9c3d-123456789abc | slug gp-20w | specs: not confirmed by the shop');
     expect(t).not.toContain('https://');
   });
   it('battery lookups now give the model the batteries, not just a sentence', () => {
