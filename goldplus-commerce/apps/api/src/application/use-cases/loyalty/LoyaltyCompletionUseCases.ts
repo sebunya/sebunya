@@ -360,6 +360,20 @@ export class ConsumeRedemptionUseCase {
     }
   }
 
+  /** The `redeem` entry for a reservation: the same key whichever path writes it, so it is written once. */
+  private static redeemEntry(reservation: { id: string; accountId: string; pointsReserved: number; orderId: string | null; valueUgx: number; pointValueUgx: number }) {
+    return {
+      accountId: reservation.accountId,
+      type: 'redeem' as const,
+      points: -reservation.pointsReserved,
+      orderId: reservation.orderId,
+      reason: `Redeemed against order (${reservation.valueUgx.toLocaleString('en-UG')} UGX at ${reservation.pointValueUgx}/pt)`.slice(0, 300),
+      idempotencyKey: `redeem:${reservation.id}`,
+      expiresAt: null,
+      reversedEntryId: null,
+    };
+  }
+
   /** Writes the `redeem` ledger entry. Idempotent per reservation. */
   async execute(input: { reservationId?: string; orderId?: string }): Promise<{ ok: true } | Fail> {
     const reservation = input.reservationId
@@ -371,16 +385,7 @@ export class ConsumeRedemptionUseCase {
     if (reservation.status === 'applied') return { ok: true }; // idempotent
     if (reservation.status !== 'reserved') return fail('NOT_RESERVED', `Reservation is ${reservation.status}.`);
     const result = await this.repo.appendDebitIfAvailable(
-      {
-        accountId: reservation.accountId,
-        type: 'redeem',
-        points: -reservation.pointsReserved,
-        orderId: reservation.orderId,
-        reason: `Redeemed against order (${reservation.valueUgx.toLocaleString('en-UG')} UGX at ${reservation.pointValueUgx}/pt)`.slice(0, 300),
-        idempotencyKey: `redeem:${reservation.id}`,
-        expiresAt: null,
-        reversedEntryId: null,
-      },
+      ConsumeRedemptionUseCase.redeemEntry(reservation),
       new Date(),
       { expireDue: !(await this.redemptionPaused()) },
     );
@@ -399,6 +404,24 @@ export class ConsumeRedemptionUseCase {
     const result = await this.execute({ orderId });
     if (result.ok || result.code === 'NOT_FOUND' || result.code === 'NOT_RESERVED') return result;
     const reservation = await this.completion.findReservationByOrder(orderId);
+    if (result.code === 'INSUFFICIENT_BALANCE' && reservation && reservation.status === 'reserved') {
+      // The discount was given at the door; the points it was given for have gone since (an earlier order's earn
+      // clawed back by a refund). The debit is written anyway and the balance goes negative, carried, not
+      // forgiven (loyalty brief, Clawback). It used to be refused and the reservation released, so the customer
+      // kept a discount paid for with points they no longer had. Support can forgive it with a reason.
+      const { entry } = await this.repo.append(ConsumeRedemptionUseCase.redeemEntry(reservation));
+      await this.completion.markReservation(reservation.id, 'applied', entry.id);
+      appLogger.warn({ orderId, reservationId: reservation.id }, 'loyalty redemption consumed at delivery past the balance: carried negative');
+      await this.completion
+        .recordFraudSignal({
+          accountId: reservation.accountId,
+          signalType: 'REDEMPTION_CARRIED_NEGATIVE',
+          severity: 'medium',
+          details: { orderId, pointsReserved: reservation.pointsReserved, valueUgx: reservation.valueUgx },
+        })
+        .catch(() => undefined);
+      return { ok: true };
+    }
     appLogger.error({ orderId, code: result.code, reservationId: reservation?.id ?? null }, 'loyalty redemption could not be consumed at delivery');
     await this.completion
       .recordFraudSignal({
