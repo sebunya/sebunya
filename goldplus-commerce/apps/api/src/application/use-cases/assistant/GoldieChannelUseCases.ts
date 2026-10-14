@@ -104,8 +104,8 @@ export class GoldieChannelUseCases {
       }
       return 'answered';
     }
-    if (!s.enabled) return 'skipped';
-    if (s.onlyNumbers.length && !s.onlyNumbers.includes(msg.from)) return 'skipped';
+    if (!s.enabled) { this.log('GOLDIE_WHATSAPP_SKIPPED', { reason: 'GOLDIE_WHATSAPP_ENABLED is not true' }); return 'skipped'; }
+    if (s.onlyNumbers.length && !s.onlyNumbers.includes(msg.from)) { this.log('GOLDIE_WHATSAPP_SKIPPED', { reason: 'not in GOLDIE_WHATSAPP_TEST_NUMBERS', ending: msg.from.slice(-3) }); return 'skipped'; }
     try {
       const customerId = await this.customerForPhone(msg.from).catch(() => null);
       const filed = await this.archive.logTurn({

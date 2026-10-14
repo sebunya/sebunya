@@ -45,8 +45,10 @@ routes.get('/whatsapp', async (c) => {
 routes.post('/whatsapp', async (c) => {
   const rawBody = await c.req.text();
   const r = await Registry.getInstance().advertisingOps.whatsappAds.receive(rawBody, c.req.header('x-hub-signature-256'));
-  if (r.status !== 200) logger.warn({ status: r.status, ip: clientIp(c) }, '[WhatsApp] webhook delivery not accepted');
-  else if (r.stored > 0 || r.withoutClickId > 0) logger.info({ stored: r.stored, duplicates: r.duplicates, withoutClickId: r.withoutClickId }, '[WhatsApp] advert referrals received');
+  const last = Registry.getInstance().advertisingOps.whatsappAds.recentDeliveries()[0];
+  if (r.status !== 200) logger.warn({ status: r.status, ip: clientIp(c), note: last?.note }, '[WhatsApp] webhook delivery not accepted');
+  else logger.info({ entryIds: last?.entryIds, fields: last?.fields, messages: last?.messages, receipts: last?.receipts, events: last?.events, note: last?.note }, '[WhatsApp] webhook delivery');
+  if (r.stored > 0 || r.withoutClickId > 0) logger.info({ stored: r.stored, duplicates: r.duplicates, withoutClickId: r.withoutClickId }, '[WhatsApp] advert referrals received');
   return c.body(null, r.status);
 });
 
