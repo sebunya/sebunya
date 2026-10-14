@@ -1,5 +1,6 @@
 import { expect, test, describe, vi, beforeEach, afterEach } from 'vitest';
 import { PahappaCommsSmsAdapter } from '../../apps/api/src/infrastructure/notifications/sms/PahappaCommsSmsAdapter';
+import { OUTCOME_UNKNOWN_PROVIDER_CODE } from '../../apps/api/src/application/ports/INotificationProvider';
 
 describe('Pahappa Comms / EgoSMS SMS Adapter Unit Tests', () => {
   let adapter: PahappaCommsSmsAdapter;
@@ -268,7 +269,8 @@ describe('Pahappa Comms / EgoSMS SMS Adapter Unit Tests', () => {
   });
 
   test('13. API key/password is never included in returned error or masking leaks', async () => {
-    vi.mocked(fetch).mockRejectedValue(new Error('Sensitive details username=test_user password=test_key'));
+    // Refused before anything was sent: a definite failure, so the outbox may retry it.
+    vi.mocked(fetch).mockRejectedValue(Object.assign(new Error('Sensitive details username=test_user password=test_key'), { cause: { code: 'ECONNREFUSED' } }));
 
     const res = await adapter.dispatch({
       recipient: '0772123456',
@@ -282,7 +284,14 @@ describe('Pahappa Comms / EgoSMS SMS Adapter Unit Tests', () => {
     expect(res.providerMessage).not.toContain('test_key');
   });
 
-  test('14. Network timeout maps to FAILED and scrubs token', async () => {
+  test('13b. A connection that broke after sending is outcome-unknown, scrubbed, and never retried', async () => {
+    vi.mocked(fetch).mockRejectedValue(Object.assign(new Error('socket hang up password=test_key'), { cause: { code: 'ECONNRESET' } }));
+    const res = await adapter.dispatch({ recipient: '0772123456', template: 'ORDER_PAYMENT_SUCCESS', data: { message: 'Hello' } });
+    expect(res).toMatchObject({ status: 'FAILED', providerCode: OUTCOME_UNKNOWN_PROVIDER_CODE, retryable: false });
+    expect(res.providerMessage).not.toContain('test_key');
+  });
+
+  test('14. Network timeout is outcome-unknown: egosms may have sent it, so it is not retried (no double SMS)', async () => {
     const mockAbortError = new Error('The operation was aborted.');
     mockAbortError.name = 'AbortError';
     vi.mocked(fetch).mockRejectedValue(mockAbortError);
@@ -294,7 +303,8 @@ describe('Pahappa Comms / EgoSMS SMS Adapter Unit Tests', () => {
     });
 
     expect(res.status).toBe('FAILED');
-    expect(res.providerCode).toBe('PROVIDER_ERROR');
+    expect(res.providerCode).toBe(OUTCOME_UNKNOWN_PROVIDER_CODE);
+    expect(res.retryable).toBe(false);
     expect(res.providerMessage).toContain('timed out');
   });
 

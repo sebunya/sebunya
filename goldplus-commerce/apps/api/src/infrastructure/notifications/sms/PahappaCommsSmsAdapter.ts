@@ -6,8 +6,9 @@ import {
   NotificationDispatchPayload,
   NotificationDispatchResult,
   NotificationStatus,
+  OUTCOME_UNKNOWN_PROVIDER_CODE,
 } from '../../../application/ports/INotificationProvider';
-import { resilientFetch } from '../../http/HttpClient';
+import { resilientFetch, sendMayHaveReachedProvider } from '../../http/HttpClient';
 
 export class PahappaCommsSmsAdapter implements INotificationProvider {
   /**
@@ -151,7 +152,9 @@ export class PahappaCommsSmsAdapter implements INotificationProvider {
         ],
       };
 
-      const timeoutMs = parseInt(process.env.SMS_TIMEOUT_MS || '3000', 10);
+      // 10 s, as .env.example says: a timeout is now final (never re-sent), so a slow provider must not look lost.
+      const configuredTimeout = parseInt(process.env.SMS_TIMEOUT_MS || '', 10);
+      const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 10_000;
       const response = await resilientFetch(baseUrl, {
         method: 'POST',
         headers: {
@@ -187,6 +190,15 @@ export class PahappaCommsSmsAdapter implements INotificationProvider {
       };
     } catch (err: any) {
       const isTimeout = err.name === 'AbortError';
+      if (sendMayHaveReachedProvider(err)) {
+        // It may have been delivered: the outbox must neither re-send it nor hand it to a fallback channel.
+        return {
+          status: 'FAILED' as NotificationStatus,
+          providerCode: OUTCOME_UNKNOWN_PROVIDER_CODE,
+          retryable: false,
+          providerMessage: this.sanitizeErrorMessage(`SMS (egosms) ${isTimeout ? 'timed out after sending' : 'failed after sending (' + (err.message || 'network error') + ')'}; outcome unknown. Not retried, no fallback.`),
+        };
+      }
       return {
         status: 'FAILED' as NotificationStatus,
         providerCode: 'PROVIDER_ERROR',
