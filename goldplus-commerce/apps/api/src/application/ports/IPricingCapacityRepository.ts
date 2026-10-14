@@ -16,4 +16,10 @@ export interface IPricingCapacityRepository {
   /** AC6 — on refund, reverse a redeemed quote: restore each version's consumed
    * UGX budget and mark the redemption undone, in one transaction. Idempotent. */
   reverseRedemption(input: { quoteId: string; now: Date }): Promise<{ reversed: boolean }>;
+  /**
+   * Of these versions, the ones whose usage limit is used up whoever is asking: the global limit, and the
+   * per-code limit for this code. Read-only, the same counts reserveQuote refuses on. Pricing leaves them out,
+   * so the cart, the code preview and the order all stop offering a promotion nobody can have any more.
+   */
+  exhaustedVersionIds(input: { versionIds: readonly string[]; couponReferenceHash: string | null; now: Date }): Promise<Set<string>>;
 }

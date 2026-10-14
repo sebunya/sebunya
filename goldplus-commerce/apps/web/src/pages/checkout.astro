@@ -494,7 +494,7 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
      // The preview is exactly what a price or offer refusal says has changed.
      // Carrying it into the retry would refuse the retry the same way, for
      // ever; the code stays, and the retry is priced (and charged) afresh.
-     if (!result.ok && (result.code === 'PRICE_CHANGED' || result.code === 'PROMOTION_CHANGED')) {
+     if (!result.ok && (result.code === 'PRICE_CHANGED' || result.code === 'PROMOTION_CHANGED' || result.code === 'PROMOTION_LIMIT_REACHED')) {
         previewQuoteIdValue = '';
      }
 

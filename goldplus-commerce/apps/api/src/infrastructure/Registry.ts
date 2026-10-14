@@ -1201,6 +1201,7 @@ export class Registry {
     this.productRepo,
     this.pricingRepo,
     this.pricingQuoteRepo,
+    this.pricingCapacityRepo,
   );
   public readonly managePromotionCapacityUseCase = new ManagePromotionCapacityUseCase(this.pricingCapacityRepo);
   public readonly redeemCouponUseCase = new RedeemCouponUseCase(this.couponRepo);

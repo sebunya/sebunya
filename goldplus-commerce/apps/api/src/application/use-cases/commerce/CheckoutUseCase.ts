@@ -5,6 +5,7 @@ import { IDeliveryZoneRepository } from '../../ports/IDeliveryZoneRepository';
 import { EvaluateCartPricingUseCase } from '../pricing/EvaluateCartPricingUseCase';
 import { ManagePromotionCapacityUseCase } from '../pricing/ManagePromotionCapacityUseCase';
 import { IPricingQuoteRepository } from '../../ports/IPricingQuoteRepository';
+import { CheckoutDependencyError } from '../../ports/CheckoutDependencyOutcomes';
 import { PricingQuote } from '../../../domain/pricing/PricingEvaluator';
 import { pricingCustomerScopeKey } from '../../../domain/pricing/CustomerIdentity';
 import { normalizeUgandaDistrict } from '@goldplus/shared';
@@ -336,7 +337,7 @@ export class CheckoutUseCase {
       let loyaltyReservation: { reservationId: string; valueUgx: number } | null = null;
       if (dto.redeemPoints && dto.redeemPoints > 0) {
         if (!this.loyaltyRedemption || dto.principal?.kind !== 'USER') {
-          throw new Error('REDEMPTION_UNAVAILABLE: Sign in to redeem points.');
+          throw new CheckoutDependencyError('LOYALTY_REDEMPTION_REFUSED', 'REDEMPTION_UNAVAILABLE: Sign in to redeem points.');
         }
         const goodsTotalUgx = quote.finalTotalUgx - quote.shippingUgx - quote.taxUgx;
         const reserveResult = await this.loyaltyRedemption.reserve({
@@ -346,7 +347,7 @@ export class CheckoutUseCase {
           idempotencyKey: checkoutKey,
         });
         if (!reserveResult.ok) {
-          throw new Error(`${reserveResult.code}: ${reserveResult.message}`);
+          throw new CheckoutDependencyError('LOYALTY_REDEMPTION_REFUSED', `${reserveResult.code}: ${reserveResult.message}`);
         }
         loyaltyReservation = { reservationId: reserveResult.reservationId, valueUgx: reserveResult.valueUgx };
       }

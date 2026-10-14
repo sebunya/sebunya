@@ -376,6 +376,21 @@ export function customerMessageFor(result: CheckoutCallResult): {
         status: 'error',
         message: 'We could not confirm the price of an item in your basket. Please try again in a moment, or ask us about it. You have not been charged.',
       };
+    case 'PROMOTION_LIMIT_REACHED':
+      return {
+        status: 'error',
+        message: 'An offer on your basket has been used as many times as it allows, so it cannot be applied to this order. If you used a code, remove it and place the order again; otherwise message us and we will sort it out. You have not been charged.',
+      };
+    case 'PAY_ON_DELIVERY_UNAVAILABLE':
+      return {
+        status: 'error',
+        message: 'Pay on delivery is not available for this order or this destination. Please choose to pay online, then place the order again. You have not been charged.',
+      };
+    case 'LOYALTY_REDEMPTION_REFUSED':
+      return {
+        status: 'error',
+        message: 'We could not use your points on this order. Untick the points option and place the order again, or message us about your points. You have not been charged.',
+      };
     case 'CHECKOUT_SESSION_UNAVAILABLE':
     case 'DB_NOT_CONFIGURED':
       return {

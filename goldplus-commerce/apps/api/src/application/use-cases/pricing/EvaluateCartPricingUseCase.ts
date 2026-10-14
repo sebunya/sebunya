@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { IProductRepository } from '../../ports/IProductRepository';
 import { IPricingRepository } from '../../ports/IPricingRepository';
 import { IPricingQuoteRepository } from '../../ports/IPricingQuoteRepository';
+import { IPricingCapacityRepository } from '../../ports/IPricingCapacityRepository';
 import { evaluatePricing, PricingRule } from '../../../domain/pricing/PricingEvaluator';
 import { normalizeCouponCode } from '../../../domain/pricing/Pricing';
 import { effectiveFloorUgx } from '@goldplus/shared';
@@ -26,7 +27,18 @@ export class PricingEvaluationError extends Error {
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 
 export class EvaluateCartPricingUseCase {
-  constructor(private readonly products: IProductRepository, private readonly pricing: IPricingRepository, private readonly quotes: IPricingQuoteRepository) {}
+  constructor(
+    private readonly products: IProductRepository,
+    private readonly pricing: IPricingRepository,
+    private readonly quotes: IPricingQuoteRepository,
+    /**
+     * Leaves out promotions whose global or per-code usage limit is used up. Pricing never looked: such a
+     * promotion stayed on the cart and in the total, and every qualifying checkout was then refused at
+     * reservation with "please try again", shop-wide once a global limit ran out. Optional so suites without a
+     * database construct unchanged.
+     */
+    private readonly capacity?: Pick<IPricingCapacityRepository, 'exhaustedVersionIds'>,
+  ) {}
 
   async execute(input: EvaluateCartPricingInput) {
     if (!input.items.length || input.items.length > 50) throw new PricingEvaluationError('INVALID_BASKET', 'Pricing requires 1-50 line items.');
@@ -61,7 +73,11 @@ export class EvaluateCartPricingUseCase {
     if (!Number.isInteger(ttl) || ttl < 30 || ttl > 1800) throw new PricingEvaluationError('INVALID_QUOTE_TTL', 'Quote TTL must be 30-1800 seconds.');
     let couponCode: string | null;
     try { couponCode = normalizeCouponCode(input.couponCode); } catch (error) { throw new PricingEvaluationError('INVALID_COUPON', error instanceof Error ? error.message : 'Coupon is invalid.'); }
-    const active = await this.pricing.listActiveVersions(evaluatedAt);
+    const listed = await this.pricing.listActiveVersions(evaluatedAt);
+    const exhausted = this.capacity && listed.length
+      ? await this.capacity.exhaustedVersionIds({ versionIds: listed.map(({ version }) => version.id), couponReferenceHash: couponCode ? hash(couponCode) : null, now: evaluatedAt })
+      : new Set<string>();
+    const active = listed.filter(({ version }) => !exhausted.has(version.id));
     const rules: PricingRule[] = active.map(({ definition, version }) => ({
       definitionId: definition.id,
       definitionKey: definition.key,
