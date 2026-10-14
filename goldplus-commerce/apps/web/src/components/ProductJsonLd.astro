@@ -1,6 +1,7 @@
 ---
 import type { ProductPublicDto } from '@goldplus/shared';
 import { offerPriceUgx } from '../lib/offerPrice';
+import { serializeJsonLd } from '../lib/jsonld';
 import { SITE_ORIGIN } from '../lib/sitemap';
 import { merchantReturnPolicyJsonLd } from '../lib/returnsPolicy';
 
@@ -95,7 +96,7 @@ if (product.retailPriceUgx !== null) {
 // Stars in search results only from real, published ratings (never from zero, never invented).
 if (aggregateRating) node.aggregateRating = aggregateRating;
 
-// Two-space indent is fine; crawlers don't care. Keep newlines out of inline script.
-const jsonText = JSON.stringify(node);
+// Escaped like every other JSON-LD block: a product name or spec containing "</script>" must not end the tag.
+const jsonText = serializeJsonLd(node);
 ---
 <script type="application/ld+json" is:inline set:html={jsonText} />
