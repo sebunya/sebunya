@@ -22,7 +22,14 @@ export interface MemoryEntryState { pinned: boolean; retired: boolean; poorRatin
  * remembered under the old prompt (one said a power bank had "the most capacity at that price", false) must not be
  * replayed. The question is answered fresh, and that answer is remembered. Raise this date with each prompt change.
  */
-export const ANSWERS_VALID_FROM = new Date('2026-10-14T15:30:00Z');
+export const ANSWERS_VALID_FROM = new Date('2026-10-14T15:50:00Z');
+/**
+ * The web prompt version the date above was set for. A test fails when apps/web SYSTEM_PROMPT_VERSION changes and
+ * this does not, so a prompt change cannot ship without deciding whether older answers may still be replayed.
+ * (15:50 UTC: just after goldie-2026-10-14.1 went live at about 15:44; .2 only tightens wording, so answers from .1
+ * stay valid.)
+ */
+export const ANSWERS_VALID_FOR_PROMPT = 'goldie-2026-10-14.2';
 
 /** May this entry be served now? (The live product check comes after.) */
 export function memoryUsable(e: MemoryEntryState, now: Date): boolean {

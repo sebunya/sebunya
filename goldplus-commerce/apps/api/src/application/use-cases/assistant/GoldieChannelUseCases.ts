@@ -169,7 +169,10 @@ export class GoldieChannelUseCases {
     // The last 40 messages are plenty for history, silence rules and repeats.
     const thread = await this.archive.get(conversationId, 40);
     const newestCustomer = [...(thread?.messages ?? [])].reverse().find((m) => m.role === 'customer');
-    if (newestCustomer?.channelMessageId && newestCustomer.channelMessageId !== msg.messageId) {
+    // Only when the newer line is words Goldie will answer (her reply then covers both): a newer photo, STOP or
+    // unreadable message does not answer this one, so this one is answered on its own.
+    const newerAnswersThis = !!newestCustomer && !newestCustomer.content.includes('⟦media:') && !newestCustomer.content.startsWith(UNREADABLE_PREFIX) && !optOutWord(newestCustomer.content);
+    if (newestCustomer?.channelMessageId && newestCustomer.channelMessageId !== msg.messageId && newerAnswersThis) {
       this.log('GOLDIE_WHATSAPP_SILENT', { conversationId, reason: 'NEWER_MESSAGE' });
       await mark('silent');
       return 'filed';

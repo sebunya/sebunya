@@ -5,6 +5,7 @@ import { assistantEnabled, validateTurns } from '../../../../lib/assistant';
 import { SITE_ORIGIN } from '../../../../lib/sitemap';
 import { prepareTurn } from '../../../../lib/goldieTurn';
 import type { ProductCard } from '../../../../lib/assistantRouter';
+import { withoutNarration } from '../../../../lib/goldieChannelText';
 
 /**
  * POST /api/internal/goldie/turn: one Goldie turn for a messaging channel
@@ -62,18 +63,20 @@ export const POST: APIRoute = async ({ request }) => {
       : prepared.code === 'DUPLICATE' ? '' : 'The team will reply to you here shortly.';
     return json({ success: true, data: { text, products: [], links: [], intent: 'UNKNOWN', mood: 'neutral', route: 'deterministic' } });
   }
-  // WhatsApp gets one message, so only the answer after the last tool call is sent; words written before a tool call
-  // ("I'll pull the list again…") are thinking aloud and were glued to the answer ("more.You were right").
-  let text = ''; let before = ''; let products: ProductCard[] = []; let links: Array<{ label: string; url: string }> = [];
+  // WhatsApp gets one message: text written before a tool call is kept (an order status before "I've asked the team
+  // to call you" is the answer), except the sentences that only narrate the checking ("I'll pull the list again…"),
+  // and the parts are joined as sentences, never glued ("more.You were right").
+  let text = ''; const parts: string[] = []; let products: ProductCard[] = []; let links: Array<{ label: string; url: string }> = [];
   for await (const ev of prepared.run()) {
     if (ev.type === 'text') text += ev.text;
-    else if (ev.type === 'tool') { if (text.trim()) before = `${before} ${text}`.trim(); text = ''; }
+    else if (ev.type === 'tool') { const kept = withoutNarration(text); if (kept) parts.push(kept); text = ''; }
     else if (ev.type === 'products') products = [...products, ...ev.items];
     else if (ev.type === 'links') links = [...links, ...ev.items];
     else if (ev.type === 'error' && !text) text = 'Sorry, I could not finish that one. The team will reply to you here shortly.';
   }
-  text = text.trim() || before;
+  text = [...parts, text.trim()].filter(Boolean).join(' ');
   return json({ success: true, data: { text, products, links, intent: prepared.meta.intent, mood: prepared.meta.mood.mood, route: prepared.meta.route, cacheId: prepared.meta.cacheId ?? null } });
 };
 
 export const GET: APIRoute = () => notFound();
+

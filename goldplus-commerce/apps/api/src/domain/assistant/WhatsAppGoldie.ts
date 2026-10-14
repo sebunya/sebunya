@@ -170,13 +170,41 @@ const AVAIL: Record<string, string> = { in_stock: 'in stock', low_stock: 'low st
  */
 export function productsToList(r: ReplyParts): NonNullable<ReplyParts['products']> {
   const all = r.products ?? [];
-  const said = r.text.toLowerCase();
-  const named = all.filter((p) => {
-    const words = p.name.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((w) => w.length >= 3 && !/^(goldplus|the|and|for|with)$/.test(w));
-    const hits = words.filter((w) => said.includes(w)).length;
-    return words.length > 0 && hits >= Math.min(2, words.length);
-  });
-  return named.length ? named.slice(0, 2) : r.route === 'ai' ? [] : all.slice(0, 3);
+  const named = namedProducts(r.text, all, 2);
+  return named.length ? named : r.route === 'ai' ? [] : all.slice(0, 3);
+}
+
+// Same rule as the web (apps/web/src/lib/goldieProducts.ts): a product is named by its model code (GP-P07, "P07"),
+// never by words it shares with another ("20000mAh power bank"); without a code, every distinctive word must appear
+// (category words such as power, bank, charger and measurements such as 20000mAh do not count).
+const MEASURE = /^\d+(\.\d+)?(mah|w|v|a|gb|tb|mb|m|cm|mm|hz|h|in|inch)$/i;
+const normTok = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+export function productCodes(name: string): string[] {
+  const out = new Set<string>();
+  for (const raw of name.match(/[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*/g) ?? []) {
+    if (!/\d/.test(raw) || !/[a-z]/i.test(raw) || MEASURE.test(raw.replace(/-/g, ''))) continue;
+    if (/^usb-?c$/i.test(raw)) continue;
+    out.add(normTok(raw));
+    const parts = raw.split('-');
+    const tail = parts.length > 1 ? parts[parts.length - 1]! : '';
+    if (tail && /\d/.test(tail) && /[a-z]/i.test(tail) && tail.length >= 2) out.add(normTok(tail));
+  }
+  return [...out];
+}
+function namedProducts<T extends { name: string }>(text: string, products: readonly T[], max: number): T[] {
+  const tokens = new Set((text.match(/[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*/g) ?? []).flatMap((t) => [normTok(t), ...t.split('-').map(normTok)]));
+  const lower = text.toLowerCase();
+  const out: T[] = [];
+  for (const p of products) {
+    if (out.some((o) => o.name === p.name)) continue;
+    const codes = productCodes(p.name);
+    const hit = codes.length
+      ? codes.some((c) => tokens.has(c))
+      : (() => { const words = p.name.toLowerCase().replace(/[^a-z0-9. ]/g, ' ').split(/\s+/).filter((w) => w.length >= 3 && !MEASURE.test(w) && !/^(goldplus|the|and|for|with|power|bank|banks|charger|chargers|charging|cable|cables|earphones|earbuds|headphones|headset|speaker|wireless|wired|fast|usb|type|built|phone|phones|battery|replacement|display|digital|compact|magnetic|portable|mini|pro|new|original|black|white|blue|red)$/.test(w)); return words.length > 0 && words.every((w) => lower.includes(w)); })();
+    if (hit) out.push(p);
+    if (out.length >= max) break;
+  }
+  return out;
 }
 
 export function formatWhatsAppReply(r: ReplyParts): string {

@@ -68,6 +68,10 @@ export function classify(raw: string): Classification {
     const named = /\b(\d{2,}|fifty|hundred|dozen)\b/.test(t) && PRODUCT_NOUNS.test(t);
     return { intent: 'BULK', deterministic: !named, query: '' };
   }
+  // A problem or complaint about something they have is a care matter for the model (it listens, asks what happened,
+  // and files report_order_problem / escalate_to_team), never a product search: "my charger has a problem",
+  // "an issue with my power bank" and "a complaint about my earphones" were all searched as products.
+  if (/\b(problems?|issues?|faults?|complain(t|ts|ing)?|not happy|unhappy|disappointed)\b/.test(t) && (PRODUCT_NOUNS.test(t) || /\b(my|the|this|it|item|product|purchase|what i bought)\b/.test(t))) return { intent: 'POLICY', deterministic: false, query: text };
   if (/\b(warranty|guarantee|returns?|refund|exchange|replace(ment)?(?!\s+batter)|broken|(bought|got|ordered|received) the wrong|wrong (item|product|battery|size|one|colour|color)|stop(s|ped)? working|not working|faulty|fake|genuine|original|verify|verification|authentic|counterfeit|swollen|not charging|(doesn'?t|does not|won'?t|will not|can'?t|cannot) (charge|work|turn on|switch on|hold charge)|spoilt|spoiled|dead|died)\b/.test(t)
     // "Do you have original iPhone chargers?" is shopping, not a fake-product check.
     && !(/\b(do you (have|sell|stock)|have you got|how much|price|cost|i (want|need))\b/.test(t) && PRODUCT_NOUNS.test(t) && !/\b(not|fake|counterfeit|broken|faulty|spoilt|dead|swollen|return|refund|warranty)\b/.test(t))) return { intent: 'POLICY', deterministic: true, query: text };
@@ -80,7 +84,9 @@ export function classify(raw: string): Classification {
   if (/\b(what (do|can) (you|i) (sell|buy|get)|what (products|items) do you|(your|a) (catalogue|catalog|price ?list|products? list))\b/.test(t)) return { intent: 'UNKNOWN', deterministic: false, query: text };
   const named = PRODUCT_NOUNS.test(t) || PHONE_BRANDS.test(t) || BATTERY_CODE.test(text);
   if (!named && WANTS_HELP.test(t)) return { intent: 'UNKNOWN', deterministic: false, query: text };
-  if (named || SHOPPING.test(t)) return { intent: 'PRODUCT', deterministic: !INTERPRETIVE.test(t), query: productQuery(text) };
+  // "Help me find a charger for my iPhone 13", "I need help with my power bank": the model reads it (a fixed search
+  // would search the words "help me find").
+  if (named || SHOPPING.test(t)) return { intent: 'PRODUCT', deterministic: !INTERPRETIVE.test(t) && !WANTS_HELP.test(t), query: productQuery(text) };
   // "I want…", "I need…", "looking for…" with nothing recognisable named: the model reads it (and searches if it is a product).
   if (/\b(cheap|under|budget|looking for|i need|i want|buy|show me|any)\b/.test(t)) return { intent: 'PRODUCT', deterministic: false, query: productQuery(text) };
   return { intent: 'UNKNOWN', deterministic: false, query: text };
