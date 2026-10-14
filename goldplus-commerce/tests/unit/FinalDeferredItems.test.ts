@@ -82,9 +82,9 @@ describe('F19: a refund that cancels the order closes its fulfilment task', () =
     expect(transitions.execute).not.toHaveBeenCalled();
   });
 
-  it('both refund doors are wired to it (provider poll and operator resolution)', () => {
+  it('both refund doors (provider poll and operator resolution) and the unpaid-order abandonment are wired to it', () => {
     const registry = read('apps/api/src/infrastructure/Registry.ts');
-    expect(registry.match(/new CancelFulfilmentTaskForCancelledOrderUseCase\(this\.fulfilmentRepo, this\.transitionFulfilmentTaskUseCase\)/g)?.length).toBe(2);
+    expect(registry.match(/new CancelFulfilmentTaskForCancelledOrderUseCase\(this\.fulfilmentRepo, this\.transitionFulfilmentTaskUseCase\)/g)?.length).toBe(3);
   });
 });
 
