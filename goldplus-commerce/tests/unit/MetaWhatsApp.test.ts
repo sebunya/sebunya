@@ -418,7 +418,7 @@ describe("Meta's WhatsApp account / Messaging account split", () => {
 });
 
 describe('WhatsApp connection to Meta (subscribed_apps)', () => {
-  it('reports each account as linked or not, and links only the missing ones with the saved token', async () => {
+  it("linked means OUR app (Meta's own viewer app does not count); links only the missing ones with the saved token", async () => {
     const { MetaWhatsAppTemplateCatalog } = await import('../../apps/api/src/infrastructure/notifications/whatsapp/MetaWhatsAppTemplateCatalog');
     const env = { ...process.env };
     process.env.WHATSAPP_WABA_ID = '1070547395884403';
@@ -430,7 +430,11 @@ describe('WhatsApp connection to Meta (subscribed_apps)', () => {
       calls.push(`${init?.method ?? 'GET'} ${url.replace(/^https:\/\/graph\.facebook\.com\/v[\d.]+\//, '')}`);
       const id = url.match(/\/(\d+)\/subscribed_apps/)?.[1];
       if (id && init?.method === 'POST') { linked.add(id); return new Response(JSON.stringify({ success: true })); }
-      if (id) return new Response(JSON.stringify({ data: linked.has(id) ? [{ whatsapp_business_api_data: { id: '3149957878534050', name: 'GoldPlus' } }] : [] }));
+      if (id) return new Response(JSON.stringify({ data: [
+        ...(id === '2297240887691836' ? [{ whatsapp_business_api_data: { id: '111', name: 'WA DevX Webhook Events 1P App' } }] : []),
+        ...(linked.has(id) ? [{ whatsapp_business_api_data: { id: '3149957878534050', name: 'GoldPlus' } }] : []),
+      ] }));
+      if (/\/app$/.test(url)) return new Response(JSON.stringify({ id: '3149957878534050', name: 'GoldPlus' }));
       return new Response(JSON.stringify({ display_phone_number: '15556598350', verified_name: 'Test Number', status: 'CONNECTED', quality_rating: 'GREEN' }));
     }) as unknown as typeof fetch;
     try {

@@ -162,13 +162,21 @@ export class MetaWhatsAppTemplateCatalog {
     add(cfg.wabaId ?? saved?.wabaId, 'WhatsApp account (holds the number)');
     add(cfg.messagingAccountId, 'Messaging account (customer messages arrive here)');
     if (!token) return { configured: false, accounts: ids.map((x) => ({ ...x, linked: null, apps: [], error: 'No token saved' })), phone: null };
+    // Which app is ours: the one the saved token belongs to. "Some app is subscribed" is not enough: Meta subscribes
+    // its own "WA DevX Webhook Events 1P App" to test accounts, and then the messages go to Meta's viewer, not to us.
+    const ours = await this.fetchImpl(`${GRAPH}/app`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) })
+      .then(async (r) => (r.ok ? ((await r.json().catch(() => null)) as { id?: string; name?: string } | null) : null)).catch(() => null);
+    const ourAppId = ours?.id && /^\d{5,25}$/.test(String(ours.id)) ? String(ours.id) : null;
     const accounts = await Promise.all(ids.map(async (x) => {
       try {
         const res = await this.fetchImpl(`${GRAPH}/${x.id}/subscribed_apps`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) });
         const json = (await res.json().catch(() => null)) as { data?: Array<{ whatsapp_business_api_data?: { id?: string; name?: string } }>; error?: { message?: string; code?: number } } | null;
         if (!res.ok) return { ...x, linked: null, apps: [], error: `${res.status}${json?.error?.code ? ` code ${json.error.code}` : ''}: ${String(json?.error?.message ?? 'Meta refused').slice(0, 160)}` };
-        const apps = (json?.data ?? []).map((d) => String(d.whatsapp_business_api_data?.name ?? d.whatsapp_business_api_data?.id ?? 'an app')).slice(0, 10);
-        return { ...x, linked: apps.length > 0, apps, error: null };
+        const subscribed = (json?.data ?? []).map((d) => ({ id: String(d.whatsapp_business_api_data?.id ?? ''), name: String(d.whatsapp_business_api_data?.name ?? d.whatsapp_business_api_data?.id ?? 'an app') }));
+        const apps = subscribed.map((a) => (ourAppId && a.id === ourAppId ? `${a.name} (ours)` : a.name)).slice(0, 10);
+        // Without knowing our app id, only an empty list is certainly "not linked".
+        const linked = ourAppId ? subscribed.some((a) => a.id === ourAppId) : subscribed.length > 0 ? null : false;
+        return { ...x, linked, apps, error: linked === null ? 'Could not tell which app is ours; press Link to make sure.' : null };
       } catch (e) {
         return { ...x, linked: null, apps: [], error: e instanceof Error ? e.message.slice(0, 120) : 'unreachable' };
       }
