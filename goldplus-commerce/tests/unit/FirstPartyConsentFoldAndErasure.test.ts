@@ -185,7 +185,7 @@ describe('erasure: nothing left behind, nothing sent afterwards, refusals kept',
         const s = r.sql.replace(/\s+/g, ' ').trim();
         statements.push({ sql: s, params: r.params });
         if (s.startsWith('update privacy_requests set status')) return [{ id: REQ }];
-        if (s.startsWith('select email, phone from users')) return [{ email: 'Jane@Example.com', phone: '0772 123 456' }];
+        if (s.startsWith('select email, phone')) return [{ email: 'Jane@Example.com', phone: '0772 123 456', phone_verified_at: new Date() }];
         if (s.includes('select l.identifier_key from customer_identity_links')) return [];
         if (s.startsWith('select id from orders where user_id')) return [{ id: ORDER }];
         if (s.includes('select l.signal_type, l.identifier_key')) return opts.hashedEmailKey ? [{ signal_type: 'CONTACT_EMAIL', identifier_key: opts.hashedEmailKey }] : [];
@@ -200,15 +200,17 @@ describe('erasure: nothing left behind, nothing sent afterwards, refusals kept',
     return { statements, go: () => new DrizzlePersonalDataEraser(new HmacIdentifierHasher(PEPPER)).erase({ userId: USER, kind: 'ANONYMISE_HISTORY', requestId: REQ, actorId: randomUUID(), reason: 'checked' }) };
   }
 
-  it('matches quotes and battery requests in SQL with no limit, by every known email and phone spelling', async () => {
+  it('matches quotes and battery requests in SQL with no limit, by every spelling of the PROVEN contacts only', async () => {
     const { statements, go } = run();
     expect((await go()).completed).toBe(true);
     expect(statements.some((s) => /limit 5000/.test(s.sql))).toBe(false);
     const quoteMatch = statements.find((s) => s.sql.startsWith('select id from quote_requests where'))!;
     expect(quoteMatch.sql).toContain("regexp_replace(coalesce(phone, ''), '\\D', '', 'g')");
-    expect(quoteMatch.sql).toContain('lower(trim(coalesce(email');
     const params = JSON.stringify(quoteMatch.params);
-    for (const v of ['256772123456', '0772123456', 'jane@example.com', 'jane.work@example.com']) expect(params).toContain(v);
+    // The verified account phone, in every spelling.
+    for (const v of ['256772123456', '0772123456']) expect(params).toContain(v);
+    // Neither an unverified account email nor a contact typed at checkout proves ownership (2026-10-14).
+    for (const v of ['jane@example.com', 'jane.work@example.com']) expect(params).not.toContain(v);
     const quoteUpdate = statements.find((s) => s.sql.startsWith('update quote_requests set'))!;
     expect(quoteUpdate.params).toContain(QUOTE);
     const batteryMatch = statements.find((s) => s.sql.startsWith('select id from battery_requests where'))!;
