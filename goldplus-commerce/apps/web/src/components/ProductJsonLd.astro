@@ -1,7 +1,7 @@
 ---
 import type { ProductPublicDto } from '@goldplus/shared';
 import { offerPriceUgx } from '../lib/offerPrice';
-import { serializeJsonLd } from '../lib/jsonld';
+import { serializeJsonLd, schemaAvailability } from '../lib/jsonld';
 import { SITE_ORIGIN } from '../lib/sitemap';
 import { merchantReturnPolicyJsonLd } from '../lib/returnsPolicy';
 
@@ -16,12 +16,6 @@ interface Props {
 
 const { product, url, priceUgx, aggregateRating } = Astro.props;
 
-const availabilityUrl: Record<string, string | null> = {
-  in_stock: 'https://schema.org/InStock',
-  out_of_stock: 'https://schema.org/OutOfStock',
-  pre_order: 'https://schema.org/PreOrder',
-  unknown: null,
-};
 
 const node: Record<string, unknown> = {
   '@context': 'https://schema.org',
@@ -88,7 +82,7 @@ if (product.retailPriceUgx !== null) {
     // inline so the offer is complete on its own page.
     seller: { '@type': 'Organization', '@id': `${SITE_ORIGIN}/#organization`, name: 'ShopGoldPlus', url: SITE_ORIGIN },
   };
-  const availUrl = availabilityUrl[product.availability.kind];
+  const availUrl = schemaAvailability(product.availability.kind);
   if (availUrl) offers.availability = availUrl;
   node.offers = offers;
 }

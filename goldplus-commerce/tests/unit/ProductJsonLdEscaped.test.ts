@@ -6,7 +6,7 @@ import { serializeJsonLd } from '../../apps/web/src/lib/jsonld';
 describe('ProductJsonLd', () => {
   it('serialises with serializeJsonLd, never a bare JSON.stringify into set:html', () => {
     const src = readFileSync('apps/web/src/components/ProductJsonLd.astro', 'utf8');
-    expect(src).toMatch(/import \{ serializeJsonLd \} from '\.\.\/lib\/jsonld';/);
+    expect(src).toMatch(/import \{ serializeJsonLd(, [\w, ]+)? \} from '\.\.\/lib\/jsonld';/);
     expect(src).toMatch(/const jsonText = serializeJsonLd\(node\)/);
     expect(src).not.toMatch(/const jsonText = JSON\.stringify\(node\)/);
   });
