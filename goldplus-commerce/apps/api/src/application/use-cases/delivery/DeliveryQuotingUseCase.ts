@@ -162,11 +162,29 @@ export class DeliveryQuotingUseCase {
 
     // Parcels are only planned for the bus path, but planning them costs one
     // query and makes the explanation complete either way.
-    const town = resolved?.input.district ?? request.district ?? null;
-    const [classes, cards, office] = await Promise.all([
-      this.repo.shippingClassesFor(request.items.map((i) => i.productId)),
-      mode === 'bus_parcel' && town ? this.repo.cardsFor({ town, district: town }) : Promise.resolve([]),
-      mode === 'bus_parcel' && town ? this.repo.officeFor({ town, district: town }) : Promise.resolve(null),
+    //
+    // A carrier's card names a TOWN and its district ("Fort Portal, Kabarole"). The town used to be the district
+    // for both, so a card for any town not named after its district never matched (NO_RATE_CARD forever). The
+    // resolved area's own name is tried first, then the district's town, which is what every card that worked
+    // before ("Gulu, Gulu") still matches.
+    const destinationDistrict = resolved?.input.district ?? request.district ?? null;
+    const areaTown = resolved && !resolved.input.districtOnly ? (resolved.label.split(',')[0] ?? '').trim() || null : null;
+    let town = destinationDistrict;
+    let cards: Awaited<ReturnType<IDeliveryQuotingRepository['cardsFor']>> = [];
+    const classesRead = this.repo.shippingClassesFor(request.items.map((i) => i.productId));
+    if (mode === 'bus_parcel' && destinationDistrict) {
+      for (const candidate of [...new Set([areaTown, destinationDistrict].filter((t): t is string => !!t))]) {
+        const found = await this.repo.cardsFor({ town: candidate, district: destinationDistrict });
+        if (found.some((c) => c.destinationDistrict.trim().toLowerCase() === destinationDistrict.trim().toLowerCase())) {
+          town = candidate;
+          cards = found;
+          break;
+        }
+      }
+    }
+    const [classes, office] = await Promise.all([
+      classesRead,
+      mode === 'bus_parcel' && town && destinationDistrict ? this.repo.officeFor({ town, district: destinationDistrict }) : Promise.resolve(null),
     ]);
 
     const lines: BasketLine[] = request.items.map((i) => {
@@ -218,7 +236,7 @@ export class DeliveryQuotingUseCase {
         office,
         parcels,
         destinationTown: town,
-        destinationDistrict: town,
+        destinationDistrict,
         at,
         declaredValueUgx: subtotalUgx || null,
       },
