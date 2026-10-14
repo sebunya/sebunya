@@ -8,7 +8,7 @@ Care Desk (`/admin/care`), which pages the on-duty team by SMS and email.
 | Measure | Target | Where to see it |
 |---|---|---|
 | First reply to a customer (website or WhatsApp) | under 1 minute, 24/7 | Goldie answers immediately; WhatsApp outcomes in Grafana "Goldie (customer care)" |
-| Urgent task picked up ("I'll take it" or Done) | within 15 minutes in working hours | Care Desk wait colours; `goldie_care_oldest_open_minutes` |
+| Urgent task picked up ("I'll take it" or Done) | within 15 minutes in working hours | Care Desk wait colours; `goldie_care_oldest_urgent_minutes` |
 | Callback made | same working day | Care Desk "Call backs" |
 | Weekly quality review | 12 chats scored every week | `/admin/assistant/quality` |
 | Model spend | inside the monthly cap | Shop assistant settings, Teach Goldie |

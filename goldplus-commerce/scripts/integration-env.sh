@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# Bash only, and run (not sourced): under zsh the migration list does not split into names, and a sourced copy
+# that hits `set -e` closes the terminal it was sourced into.
+if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
+if [ "${BASH_SOURCE[0]}" != "$0" ]; then echo "Run this script (bash scripts/integration-env.sh), do not source it." >&2; return 1; fi
 # ═══════════════════════════════════════════════════════════════════════════
 # The integration test environment (payments brief, 2026-08-06).
 #

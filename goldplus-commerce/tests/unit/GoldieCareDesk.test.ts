@@ -136,6 +136,12 @@ describe('alerts cannot be abused', () => {
     expect(d.sent).toEqual([]);
   });
 
+  it('the same person listed twice (0705… and +256705…) is paged once per channel', async () => {
+    const d = desk([{ name: 'Grace', phone: '0705004545', email: 'g@example.com' }, { name: 'Grace again', phone: '+256705004545', email: 'G@example.com' }]);
+    const r = await d.uc.openTask({ kind: 'urgent', title: 'Customer stuck with money deducted', customerPhone: '0772123456' });
+    expect(r.ok && r.alerted).toEqual(['sms:Grace', 'email:Grace']);
+  });
+
   it('a task pages at most once, even when alert() is called twice for it (two replicas)', async () => {
     const d = desk([{ name: 'Grace' }]);
     const r = await d.uc.openTask({ kind: 'urgent', title: 'Customer stuck with money deducted', customerPhone: '0772123456' });

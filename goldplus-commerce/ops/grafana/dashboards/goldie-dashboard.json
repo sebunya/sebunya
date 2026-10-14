@@ -24,7 +24,7 @@
       },
       "targets": [
         {
-          "expr": "goldie_care_urgent_open",
+          "expr": "max(goldie_care_urgent_open)",
           "refId": "A",
           "legendFormat": "{{outcome}}{{channel}}"
         }
@@ -33,7 +33,7 @@
     {
       "id": 2,
       "type": "stat",
-      "title": "Longest wait (minutes)",
+      "title": "Longest urgent wait, nobody on it (minutes)",
       "gridPos": {
         "x": 6,
         "y": 0,
@@ -46,7 +46,7 @@
       },
       "targets": [
         {
-          "expr": "goldie_care_oldest_open_minutes",
+          "expr": "max(goldie_care_oldest_urgent_minutes)",
           "refId": "A",
           "legendFormat": "{{outcome}}{{channel}}"
         }
@@ -68,7 +68,7 @@
       },
       "targets": [
         {
-          "expr": "goldie_model_spend_ratio",
+          "expr": "max(goldie_model_spend_ratio)",
           "refId": "A",
           "legendFormat": "{{outcome}}{{channel}}"
         }
@@ -96,7 +96,7 @@
       },
       "targets": [
         {
-          "expr": "increase(goldie_care_escalations_total[1h])",
+          "expr": "sum(increase(goldie_care_escalations_total[1h]))",
           "refId": "A",
           "legendFormat": "{{outcome}}{{channel}}"
         }
@@ -162,7 +162,7 @@
       },
       "targets": [
         {
-          "expr": "increase(goldie_whatsapp_recovered_total[1h])",
+          "expr": "sum(increase(goldie_whatsapp_recovered_total[1h]))",
           "refId": "A",
           "legendFormat": "{{outcome}}{{channel}}"
         }

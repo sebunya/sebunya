@@ -48,6 +48,15 @@ if git diff --name-only --relative "$PREV" HEAD | grep -qx Caddyfile; then
   docker compose --env-file .env.production -f docker-compose.production.yml exec -T caddy caddy validate --config /etc/caddy/Caddyfile 2>&1 | grep -q 'Valid configuration' || { echo "STOP: Caddyfile invalid after recreate"; exit 1; }
   echo "Caddy recreated for the new Caddyfile"
 fi
+# Monitoring config is bind-mounted the same way (prometheus.yml and the rules are single files; Grafana reads
+# its provisioning at start): a change only takes effect when those containers are recreated. Never fatal.
+MON=""
+git diff --name-only --relative "$PREV" HEAD | grep -q '^ops/prometheus/' && MON="$MON prometheus"
+git diff --name-only --relative "$PREV" HEAD | grep -q '^ops/grafana/' && MON="$MON grafana"
+if [ -n "$MON" ]; then
+  docker compose --env-file .env.production -f docker-compose.production.yml up -d --force-recreate --no-deps $MON 2>&1 | tail -1 || echo "WARN: could not recreate$MON (monitoring only)"
+  echo "Recreated for new monitoring config:$MON"
+fi
 # A failed build used to print only its LAST line — blank — and the roll died
 # silently (38ce4a3b, 2026-09-26: an Astro template error tsc cannot see).
 BUILD_LOG=/var/log/goldplus/build-$HEAD.log; mkdir -p /var/log/goldplus

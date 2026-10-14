@@ -1,10 +1,12 @@
 # Goldie (site chat + WhatsApp) alerting rules. The api also pages the team itself through the Care Desk
-# (urgent task -> SMS/email) for the same conditions, so these are for Prometheus/Grafana visibility.
+# (urgent task -> SMS/email/push) for the same conditions, so these are for Prometheus/Grafana visibility.
+# Two api replicas are scraped as separate targets: counters are summed across them, gauges read with max()
+# (both replicas report the same Care Desk numbers from the database).
 groups:
   - name: goldie
     rules:
       - alert: GoldieWhatsAppRepliesFailing
-        expr: increase(goldie_whatsapp_messages_total{outcome=~"held|send_failed|failed"}[15m]) >= 3
+        expr: sum(increase(goldie_whatsapp_messages_total{outcome="failed"}[15m])) >= 3
         labels: { severity: page }
         annotations:
           summary: "Goldie could not answer {{ $value }} WhatsApp messages in 15 minutes"
@@ -16,19 +18,20 @@ groups:
           summary: "Goldie could not answer {{ $value }} Messenger/Instagram messages in 15 minutes"
           runbook: "docs/assistant/RUNBOOK.md#whatsapp-replies-failing"
       - alert: GoldieUrgentCustomerWaiting
-        expr: goldie_care_oldest_open_minutes > 30 and goldie_care_urgent_open > 0
+        # The oldest urgent task nobody has taken (not the oldest task of any kind: callbacks wait for hours by design).
+        expr: max(goldie_care_oldest_urgent_minutes) > 30
         labels: { severity: page }
         annotations:
-          summary: "An urgent customer has waited over 30 minutes on the Care Desk"
+          summary: "An urgent customer has waited {{ $value }} minutes on the Care Desk with nobody on it"
           runbook: "docs/assistant/RUNBOOK.md#urgent-customer-waiting"
       - alert: GoldieSpendNearCap
-        expr: goldie_model_spend_ratio >= 0.9
+        expr: max(goldie_model_spend_ratio) >= 0.9
         labels: { severity: warn }
         annotations:
           summary: "Goldie's model spend is {{ $value | humanizePercentage }} of this month's cap"
           runbook: "docs/assistant/RUNBOOK.md#spend-near-the-cap"
       - alert: GoldieEscalationsFiring
-        expr: increase(goldie_care_escalations_total[1h]) >= 3
+        expr: sum(increase(goldie_care_escalations_total[1h])) >= 3
         labels: { severity: warn }
         annotations:
           summary: "Urgent tasks are being re-paged: nobody is taking them"

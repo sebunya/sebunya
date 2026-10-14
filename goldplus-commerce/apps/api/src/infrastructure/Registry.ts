@@ -1082,8 +1082,9 @@ export class Registry {
     this.whatsappAlertedAt.set(key, now);
     const title = `WhatsApp needs attention: ${text}`.slice(0, 200);
     void (async () => {
-      const open = await this.careDeskUseCases.list({ status: 'open', kind: 'urgent', limit: 100 });
-      if (open.some((t) => t.title === title && now - t.createdAt.getTime() < 3600_000)) return;
+      // One task while it is open (both replicas), then an hour's quiet: not one per replica per hour.
+      const last = await this.careDeskUseCases.lastTitled(title);
+      if (last && (last.status === 'open' || now - last.createdAt.getTime() < 3600_000)) return;
       await this.careDeskUseCases.openTask({ kind: 'urgent', title, openedBy: 'whatsapp-monitor', urgent: true });
     })().catch(() => undefined);
   }
