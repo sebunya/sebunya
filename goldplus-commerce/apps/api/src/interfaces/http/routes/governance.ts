@@ -336,10 +336,11 @@ routes.get('/admin/verification/summary', requirePermissions([PERMISSIONS.REPORT
 
 // ---------- Admin dashboard stats ----------
 routes.get('/admin/stats', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
-  const [productCount, dealerCount, auditCount, supportCount] = await Promise.all([
-    registry.productRepo.findAll(), 
+  // The audit log is not read here: its rows were loaded on every admin home visit (no limit, the table only
+  // grows) and never used.
+  const [productCount, dealerCount, supportCount] = await Promise.all([
+    registry.productRepo.findAll(),
     registry.dealerRepo.findAll(),
-    registry.auditRepo.findAll(),
     registry.supportRepo.findAll(),
   ]);
   
