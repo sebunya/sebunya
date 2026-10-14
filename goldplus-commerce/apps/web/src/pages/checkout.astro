@@ -1234,7 +1234,7 @@ const checkoutSavingLabel = basketSavingLabel(
   import { track, captureClickIdsServerSide } from '../lib/telemetry';
   import { getCheckoutAttribution } from '../lib/attribution';
   import { publicApiBase } from '../lib/api';
-  import { buildDeliveryQuoteRequest, renderDeliveryQuotePanel, DELIVERY_QUOTE_UNREACHABLE_HTML } from '../lib/deliveryQuotePanel';
+  import { buildDeliveryQuoteRequest, renderDeliveryQuotePanel, DELIVERY_QUOTE_UNREACHABLE_HTML, manualDeliveryAreaLine } from '../lib/deliveryQuotePanel';
 
   document.addEventListener('DOMContentLoaded', () => {
     const dataEl  = document.getElementById('checkout-telemetry-data');
@@ -1398,11 +1398,12 @@ const checkoutSavingLabel = basketSavingLabel(
       setCutoffFor(district);
       void refreshQuotePanel(district, area, areaSlug);
       const seq = ++estimateSeq;
-      if (!district) { renderEstimate(null, false); return; }
+      // A typed place with no district is still priced by the order (from its text), so it is asked too.
+      if (!district && !area) { renderEstimate(null, false); return; }
       if (!API_BASE) { renderEstimate(null, true); return; }
       try {
         const qs = new URLSearchParams({
-          district,
+          district: district ?? '',
           ...(area ? { area } : {}),
           ...(areaSlug ? { areaSlug } : {}),
           ...(estimateItems ? { items: estimateItems } : {}),
@@ -1428,6 +1429,8 @@ const checkoutSavingLabel = basketSavingLabel(
       if (!raw) { ++estimateSeq; setCutoffFor(null); renderEstimate(null, false); void refreshQuotePanel(null, null, null); return; }
       try {
         const loc = JSON.parse(raw);
+        // A typed location: ask with the very area line the order is placed with, district or not.
+        if (loc?.manual && loc.rawAddressText) { refreshEstimate(loc.district ? String(loc.district) : null, manualDeliveryAreaLine(loc.rawAddressText, loc.district), null); return; }
         if (loc?.district) { refreshEstimate(String(loc.district), loc.area ?? null, loc.areaSlug ? String(loc.areaSlug) : null); return; }
         // Written directions or a pickup point: a place, with no district to price.
         ++estimateSeq;

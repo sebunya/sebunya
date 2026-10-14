@@ -24,6 +24,18 @@ export interface DeliveryQuoteRequestInput {
 }
 
 /** The request body `POST /delivery/quote` expects. Same shape the server-side render sends. */
+/**
+ * The area line a typed (manual) location is ordered with: prepareCheckoutPayload sends exactly this as the
+ * order's deliveryArea, and the page must ask the quote the same question. It used to ask with the district
+ * alone ("confirmed by phone", fee left out of the total) while the order resolved the typed text to an area and
+ * charged its fee.
+ */
+export function manualDeliveryAreaLine(rawAddressText: unknown, district?: unknown): string {
+  const raw = String(rawAddressText ?? '');
+  const d = district ? String(district).trim() : '';
+  return d ? `${raw.slice(0, 200)}, ${d}` : raw.slice(0, 255);
+}
+
 export function buildDeliveryQuoteRequest(input: DeliveryQuoteRequestInput): Record<string, unknown> {
   const areaSlug = typeof input.areaSlug === 'string' && input.areaSlug.trim() ? input.areaSlug.trim() : null;
   const district = typeof input.district === 'string' && input.district.trim() ? input.district.trim() : null;

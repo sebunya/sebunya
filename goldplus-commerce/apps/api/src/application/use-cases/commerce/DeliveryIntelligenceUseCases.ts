@@ -65,11 +65,14 @@ export class GetDeliveryEstimateUseCase {
     | { ok: true; district: string; area: string | null; estimate: DeliveryEstimate }
     | { ok: false; code: 'UNKNOWN_DISTRICT'; message: string }
   > {
-    const district = normalizeUgandaDistrict(input.district);
-    if (!district) {
+    const area = input.area?.trim() || null;
+    // A typed place with no district: checkout prices it from the text alone (district null), so the estimate
+    // asks the same. Only a district that is given and not a Uganda district is refused.
+    const typedOnly = !(input.district ?? '').trim() && !!area;
+    const district = typedOnly ? null : normalizeUgandaDistrict(input.district);
+    if (!district && !typedOnly) {
       return { ok: false, code: 'UNKNOWN_DISTRICT', message: `"${input.district}" is not a Uganda district.` };
     }
-    const area = input.area?.trim() || null;
     const areaSlug = input.areaSlug?.trim() || null;
     const items = (input.items ?? []).filter((i) => i && i.productId && i.quantity > 0);
 
@@ -98,8 +101,12 @@ export class GetDeliveryEstimateUseCase {
         const estimate: DeliveryEstimate = quoted.feeUgx === null
           ? { kind: 'UNAVAILABLE', feeUgx: null, source: null, band: null, km: null, sampleSize: 0, observedDisagreesWithModel: false }
           : { kind: quoted.confirmed ? 'CONFIRMED' : 'ESTIMATED', feeUgx: quoted.feeUgx, source: 'MODEL', band: null, km: null, sampleSize: 0, observedDisagreesWithModel: false };
-        return { ok: true, district, area, estimate };
+        return { ok: true, district: district ?? '', area, estimate };
       }
+    }
+    // The legacy zone model needs a district; without one there is no figure to show (CONTRACT #4).
+    if (!district) {
+      return { ok: true, district: '', area, estimate: { kind: 'UNAVAILABLE', feeUgx: null, source: null, band: null, km: null, sampleSize: 0, observedDisagreesWithModel: false } };
     }
 
     const [policy, zone, observed] = await Promise.all([

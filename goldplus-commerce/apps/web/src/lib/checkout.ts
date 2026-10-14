@@ -1,5 +1,6 @@
 import { createHmac } from 'node:crypto';
 import type { CartItem } from './cart';
+import { manualDeliveryAreaLine } from './deliveryQuotePanel';
 
 export interface CustomerDetails {
   name: string;
@@ -84,7 +85,7 @@ export function prepareCheckoutPayload(formData: FormData, cartItems: CartItem[]
       // along when the customer picked one.
       if (loc.manual && loc.rawAddressText) {
         const manualDistrict = loc.district ? String(loc.district).trim() : '';
-        deliveryArea = manualDistrict ? `${String(loc.rawAddressText).slice(0, 200)}, ${manualDistrict}` : String(loc.rawAddressText).slice(0, 255);
+        deliveryArea = manualDeliveryAreaLine(loc.rawAddressText, manualDistrict);
         const rawDetails = String(formData.get('deliveryAddress') || '').trim();
         deliveryAddress = rawDetails || deliveryArea;
         deliveryLocation = manualDistrict ? { district: manualDistrict, displayLabel: deliveryArea.slice(0, 200) } : null;
