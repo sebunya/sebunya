@@ -108,11 +108,16 @@ export class DrizzleLoyaltyCompletionRepository implements ILoyaltyCompletionRep
     return row ? toEntry(row) : null;
   }
 
+  /**
+   * Points already CLAWED BACK from this earn: reversal entries only. Expiry entries point at the earn too, and
+   * counting them made a refund after some points had lapsed take back too few (earn 1,000, spend 600, 400
+   * expire, refund half: 100 instead of 500). Lapsed points were never given back to the shop.
+   */
   async sumReversedPointsForEntry(earnEntryId: string): Promise<number> {
     const [row] = await db
       .select({ total: sql<number>`coalesce(sum(-${loyaltyLedgerEntries.points}), 0)::int` })
       .from(loyaltyLedgerEntries)
-      .where(eq(loyaltyLedgerEntries.reversedEntryId, earnEntryId));
+      .where(and(eq(loyaltyLedgerEntries.reversedEntryId, earnEntryId), eq(loyaltyLedgerEntries.type, 'reversal')));
     return row?.total ?? 0;
   }
 
