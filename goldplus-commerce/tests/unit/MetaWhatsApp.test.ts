@@ -23,13 +23,15 @@ describe('templates as submitted to Meta', () => {
       expect([...spec.body.matchAll(VAR)].map((m) => m[1]), ours).toEqual(spec.variables.map((v) => v.name));
       // Authentication wording is Meta's own preset (never submitted as text), so the rule applies to the rest.
       if (spec.category !== 'AUTHENTICATION') {
-        expect(spec.body.trim().startsWith('{{'), ours).toBe(false);
-        expect(spec.body.trim().endsWith('}}'), ours).toBe(false);
+        // Meta counts a variable followed only by punctuation as the end ("Call {{support_phone}}." was rejected).
+        const bare = spec.body.trim().replace(/[\s.,!?;:)\]]+$/, '').replace(/^[\s(\[]+/, '');
+        expect(bare.startsWith('{{'), ours).toBe(false);
+        expect(bare.endsWith('}}'), ours).toBe(false);
       }
       expect(spec.body, ours).not.toMatch(/\}\}\s*\{\{/);
       for (const v of spec.variables) expect(v.example.length, `${ours}.${v.name}`).toBeGreaterThan(0);
     }
-    expect(CARE_ALERT_TEMPLATE.body.trim().endsWith('}}')).toBe(false);
+    expect(CARE_ALERT_TEMPLATE.body.trim().replace(/[\s.,!?;:]+$/, '').endsWith('}}')).toBe(false);
   });
 
   it('utility templates are created with NAMED parameters and examples; the phone code as Meta authentication', () => {

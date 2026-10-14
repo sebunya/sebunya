@@ -91,6 +91,12 @@ WhatsApp only once its template is approved; until then Zoho (if configured) or 
 | Staff open a customer's photo or voice note | Allowed with customer-data permission, every view on the audit log; Meta keeps media about 30 days. |
 | Monitoring | `whatsapp_template_sends_total{outcome,class}`, `whatsapp_delivery_receipts_total{status}`, `whatsapp_account_events_total{field,event}`, `goldie_whatsapp_messages_total{outcome}`. |
 
+## Found on the first submission (2026-10-14, Meta test number)
+- Meta rejects a template whose body ends with a variable followed only by punctuation ("Call {{support_phone}}.");
+  six bodies were fixed to end in words, and the unit test now strips trailing punctuation before checking.
+- A **test** WhatsApp account cannot create AUTHENTICATION templates ("does not have permission to create message
+  template"): the phone code stays on SMS until the real, verified business number is connected.
+
 ## Limits to know
 - New numbers start at a messaging limit (business-initiated conversations per day) that rises with quality and
   volume; Business verification raises it. Replies inside 24 hours of a customer's message are not limited.
