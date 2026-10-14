@@ -123,7 +123,7 @@ interface PhoneCare { orders: Array<{ orderNumber: string; status: string; payme
 
 /** WhatsApp: the verified number's own orders and points (internal route; the API started this turn). */
 async function phoneCare(ctx: CareContext): Promise<PhoneCare | null> {
-  if (!ctx.verifiedPhone || !/^\d{9,15}$/.test(ctx.verifiedPhone)) return null;
+  if (!ctx.verifiedPhone || !/^\d{8,15}$/.test(ctx.verifiedPhone)) return null;
   const r = await api<PhoneCare>('POST', '/internal/assistant/care-by-phone', ctx, { phone: ctx.verifiedPhone });
   return r.ok ? r.data : null;
 }

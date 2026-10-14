@@ -25,31 +25,45 @@ const call = async <T,>(path: string, init?: RequestInit): Promise<{ ok: true; d
 };
 
 let notice: { kind: 'success' | 'error'; text: string } | null = null;
+// Every successful action redirects here (post, redirect, get), so a refresh never repeats it.
+const DONE_TEXT: Record<string, string> = {
+  done: 'Marked done. Well done.', cancel: 'Closed.', take: 'It is yours now.', note: 'Note added.',
+  handover: 'Handover note saved for the next shift.', 'reply-save': 'Saved reply stored.', 'reply-remove': 'Saved reply removed.', new: 'Added to the desk.',
+};
+const doneKey = Astro.url.searchParams.get('done') ?? '';
+if (Astro.request.method === 'GET' && DONE_TEXT[doneKey]) notice = { kind: 'success', text: DONE_TEXT[doneKey]! };
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const id = String(form.get('id') ?? '');
   const action = String(form.get('action') ?? '');
   if (action === 'done' || action === 'cancel') {
     const r = await call(`/tasks/${id}/resolve`, { method: 'POST', body: JSON.stringify({ status: action === 'done' ? 'done' : 'cancelled', resolution: String(form.get('note') ?? '').trim() || null }) });
-    notice = r.ok ? { kind: 'success', text: action === 'done' ? 'Marked done. Well done.' : 'Closed.' } : { kind: 'error', text: r.message };
+    if (r.ok) return Astro.redirect(`/admin/care?done=${encodeURIComponent(action)}`, 303);
+    notice = { kind: 'error', text: r.message };
   } else if (action === 'take') {
     const r = await call(`/tasks/${id}/assign`, { method: 'POST', body: JSON.stringify({ toMe: true }) });
-    notice = r.ok ? { kind: 'success', text: 'It is yours now.' } : { kind: 'error', text: r.message };
+    if (r.ok) return Astro.redirect(`/admin/care?done=${encodeURIComponent(action)}`, 303);
+    notice = { kind: 'error', text: r.message };
   } else if (action === 'note') {
     const r = await call(`/tasks/${id}/notes`, { method: 'POST', body: JSON.stringify({ note: String(form.get('text') ?? '').trim() }) });
-    notice = r.ok ? { kind: 'success', text: 'Note added.' } : { kind: 'error', text: r.message };
+    if (r.ok) return Astro.redirect(`/admin/care?done=${encodeURIComponent(action)}`, 303);
+    notice = { kind: 'error', text: r.message };
   } else if (action === 'handover') {
     const r = await call('/handover', { method: 'POST', body: JSON.stringify({ note: String(form.get('text') ?? '').trim() }) });
-    notice = r.ok ? { kind: 'success', text: 'Handover note saved for the next shift.' } : { kind: 'error', text: r.message };
+    if (r.ok) return Astro.redirect(`/admin/care?done=${encodeURIComponent(action)}`, 303);
+    notice = { kind: 'error', text: r.message };
   } else if (action === 'reply-save') {
     const r = await call('/saved-replies', { method: 'PUT', body: JSON.stringify({ id: String(form.get('replyId') ?? '') || null, title: String(form.get('title') ?? ''), body: String(form.get('body') ?? '') }) });
-    notice = r.ok ? { kind: 'success', text: 'Saved reply stored.' } : { kind: 'error', text: r.message };
+    if (r.ok) return Astro.redirect(`/admin/care?done=${encodeURIComponent(action)}`, 303);
+    notice = { kind: 'error', text: r.message };
   } else if (action === 'reply-remove') {
     const r = await call(`/saved-replies/${String(form.get('replyId') ?? '')}`, { method: 'DELETE' });
-    notice = r.ok ? { kind: 'success', text: 'Saved reply removed.' } : { kind: 'error', text: r.message };
+    if (r.ok) return Astro.redirect(`/admin/care?done=${encodeURIComponent(action)}`, 303);
+    notice = { kind: 'error', text: r.message };
   } else if (action === 'new') {
     const r = await call('/tasks', { method: 'POST', body: JSON.stringify({ kind: String(form.get('kind') ?? 'follow_up'), title: String(form.get('title') ?? '').trim(), customerName: String(form.get('customerName') ?? '').trim() || null, customerPhone: String(form.get('customerPhone') ?? '').trim() || null, orderNumber: String(form.get('orderNumber') ?? '').trim() || null, urgent: form.get('urgent') === 'on' }) });
-    notice = r.ok ? { kind: 'success', text: 'Added to the desk.' } : { kind: 'error', text: r.message };
+    if (r.ok) return Astro.redirect(`/admin/care?done=${encodeURIComponent(action)}`, 303);
+    notice = { kind: 'error', text: r.message };
   }
 }
 
@@ -202,7 +216,9 @@ const handledPct = t && t.chatsToday ? Math.round((t.handledByGoldieToday / t.ch
   setInterval(() => {
     const el = document.activeElement as HTMLElement | null;
     const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT');
-    const filled = Array.from(document.querySelectorAll<HTMLInputElement>('input[name="note"], input[name="title"]')).some((i) => i.value.trim());
-    if (!typing && !filled && document.visibilityState === 'visible') location.reload();
+    // Half filled = any field changed from what the page loaded with (saved replies load with their text).
+    const filled = Array.from(document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input:not([type=hidden]):not([type=checkbox]), textarea')).some((i) => i.value !== i.defaultValue);
+    // A plain GET of the page (never reload(), which would re-post the last form after an action).
+    if (!typing && !filled && document.visibilityState === 'visible') location.replace(location.pathname);
   }, 60_000);
 </script>

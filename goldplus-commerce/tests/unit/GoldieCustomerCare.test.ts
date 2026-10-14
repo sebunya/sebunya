@@ -29,6 +29,11 @@ describe('listening first', () => {
     expect(readMood('Thank you, got it').mood).toBe('happy');
     expect(readMood('Do you have a 20W charger?').mood).toBe('neutral');
     expect(readMood('Is this charger fake or original?').mood).not.toBe('upset');
+    // Capitals on a phone are a question, "today" is not a worry; "again?" at the end is upset.
+    expect(readMood('HOW MUCH IS ORAIMO POWER BANK').mood).toBe('neutral');
+    expect(readMood('Do you deliver today?').mood).toBe('neutral');
+    expect(readMood('WHERE IS MY ORDER??').mood).toBe('upset');
+    expect(readMood('Not delivered again?').mood).toBe('upset');
   });
 
   it('acknowledges the customer\'s own situation, in their mood, and checks back when it helps', () => {

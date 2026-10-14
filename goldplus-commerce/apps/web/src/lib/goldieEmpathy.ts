@@ -12,18 +12,22 @@
 export type Mood = 'upset' | 'worried' | 'confused' | 'happy' | 'neutral';
 export interface MoodRead { mood: Mood; urgent: boolean }
 
-const UPSET = /\b(angry|annoyed|furious|frustrat\w*|disappoint\w*|terrible|horrible|useless|rubbish|worst|scam|cheat\w*|conned|lied|liars?|ridiculous|unacceptable|nonsense|still (not|no|waiting|nothing)|no one|nobody (has|is|called|answered)|never (came|arrived|got)|waste of|fed up|tired of|again\?|what kind of|refund my|i want my money)\b/i;
-const WORRIED = /\b(urgent\w*|asap|emergency|today|right now|immediately|quickly|please help|help me|worried|stuck|lost|deducted|money (left|went|was taken|gone)|charged (twice|two times)|double charged|not received|hasn'?t (come|arrived)|where is my|is it safe)\b/i;
+const UPSET = /\b(angry|annoyed|furious|frustrat\w*|disappoint\w*|terrible|horrible|useless|rubbish|worst|scam|cheat\w*|conned|lied|liars?|ridiculous|unacceptable|nonsense|still (not|no|waiting|nothing)|no one|nobody (has|is|called|answered)|never (came|arrived|got)|waste of|fed up|tired of|what kind of|refund my|i want my money)\b/i;
+const WORRIED = /\b(urgent\w*|asap|emergency|right now|immediately|please help|worried|stuck|deducted|money (left|went|was taken|gone)|charged (twice|two times)|double charged|not received|hasn'?t (come|arrived)|where is my|is it safe)\b/i;
 const CONFUSED = /\b(confus\w*|don'?t understand|not sure|which one|what does .* mean|how do i|how does|what is the difference|i don'?t know|explain)\b/i;
 const HAPPY = /\b(thank(s| you)|great|perfect|awesome|amazing|love (it|this|you)|excellent|good job|well done|webale|nice one|it works|received it|got it)\b/i;
 
-/** How this message reads. Shouting (mostly capitals) and repeated !/? count as upset. */
+/**
+ * How this message reads. Repeated !/? count as upset, and capitals only together with them: many customers type
+ * in capitals on a phone ("HOW MUCH IS ORAIMO POWER BANK"), which is a question, not anger.
+ */
 export function readMood(raw: string): MoodRead {
   const text = raw.trim();
   const letters = text.replace(/[^A-Za-z]/g, '');
-  const shouting = letters.length >= 12 && letters.replace(/[^A-Z]/g, '').length / letters.length > 0.7;
+  const shouting = letters.length >= 12 && letters.replace(/[^A-Z]/g, '').length / letters.length > 0.7 && /[!?]{2,}/.test(text);
   const urgent = WORRIED.test(text) || /!{2,}/.test(text);
-  if (UPSET.test(text) || shouting || /[!?]{3,}/.test(text)) return { mood: 'upset', urgent: true };
+  // "again?" ends a message, where \b cannot follow the "?", so it is tested on its own.
+  if (UPSET.test(text) || /\bagain\s*\?/i.test(text) || shouting || /[!?]{3,}/.test(text)) return { mood: 'upset', urgent: true };
   if (WORRIED.test(text)) return { mood: 'worried', urgent };
   if (CONFUSED.test(text)) return { mood: 'confused', urgent };
   if (HAPPY.test(text)) return { mood: 'happy', urgent: false };
@@ -38,7 +42,7 @@ const pick = <T,>(options: readonly T[], seed: string): T => {
 
 /** What the customer is after, in their terms, for the intents the router answers itself. */
 const NEED: Record<string, string> = {
-  ORDER: 'your order', PAYMENT: 'your payment', POLICY: 'this', DELIVERY: 'getting it to you', BATTERY: 'the right battery',
+  ORDER: 'your order', PAYMENT: 'your payment', POLICY: 'this', DELIVERY: 'your delivery', BATTERY: 'the right battery',
   PRODUCT: 'finding the right one', BULK: 'your bulk order', STORE: 'finding us', LOYALTY: 'your points', CALLBACK: '', IDENTITY: '', GREETING: '', UNKNOWN: '',
 };
 

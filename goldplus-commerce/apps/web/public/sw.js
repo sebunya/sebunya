@@ -130,15 +130,21 @@ self.addEventListener('push', (event) => {
     tag: 'goldplus-care',
     renotify: true,
     requireInteraction: true,
-    data: { url: typeof data.url === 'string' && data.url.startsWith(self.location.origin) ? data.url : '/admin/care' },
+    // Same origin only, compared as an origin (a prefix test would let shopgoldplus.com.example.net through).
+    data: { url: sameOrigin(data.url) ? data.url : '/admin/care' },
   }));
 });
+
+function sameOrigin(u) {
+  try { return typeof u === 'string' && new URL(u, self.location.origin).origin === self.location.origin; } catch { return false; }
+}
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const url = (event.notification.data && event.notification.data.url) || '/admin/care';
   event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((wins) => {
-    for (const w of wins) { if (w.url.includes('/admin/care') && 'focus' in w) return w.focus(); }
+    // An open Care Desk window is brought forward and taken to the alert's page.
+    for (const w of wins) { if (w.url.includes('/admin/care') && 'focus' in w) return w.focus().then((f) => (f && 'navigate' in f ? f.navigate(url) : f)).catch(() => undefined); }
     return self.clients.openWindow(url);
   }));
 });

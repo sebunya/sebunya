@@ -45,7 +45,9 @@ export const POST: APIRoute = async ({ request }) => {
   // Messenger and Instagram carry no phone: the sender id is only a fairness bucket, never proof of anything.
   const who = social ? `${social}:${senderId}` : `wa:${phone}`;
   const principal = createHash('sha256').update(`assistant:${who}`).digest('hex');
-  const requestId = createHash('sha256').update(`${who}:${turns.length}:${turns[turns.length - 1]!.content}`).digest('hex').slice(0, 32);
+  // The whole conversation, not its length and last line: once the history window is full, the length stays the
+  // same, and a customer who says "ok" twice would be taken for a duplicate (no reply, a needless task).
+  const requestId = createHash('sha256').update(`${who}:${JSON.stringify(turns)}`).digest('hex').slice(0, 32);
   const channel = social ?? 'whatsapp';
   const prepared = await prepareTurn({
     channel, turns, requestId, page: null, principalHash: principal, addressHash: null,
