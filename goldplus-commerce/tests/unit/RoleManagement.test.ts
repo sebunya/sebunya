@@ -119,6 +119,46 @@ describe('RoleManagementUseCase — editing permissions', () => {
   });
 });
 
+describe('RoleManagementUseCase — an assigned role cannot be elevated by an edit (two-person rule)', () => {
+  it('refuses adding auth.manage or roles.manage to a role somebody holds; nothing is saved', async () => {
+    const repo = new FakeRoles();
+    const id = repo.seed('HARMLESS', [PERMISSIONS.ORDERS_READ], 1);
+    const uc = new RoleManagementUseCase(repo);
+    for (const code of [PERMISSIONS.AUTH_MANAGE, PERMISSIONS.ROLES_MANAGE, PERMISSIONS.PERMISSIONS_MANAGE]) {
+      const r = await uc.replacePermissions({ roleId: id, permissionCodes: [PERMISSIONS.ORDERS_READ, code], actorId });
+      expect(r, code).toMatchObject({ ok: false, code: 'ELEVATES_ASSIGNED_ROLE', status: 409 });
+    }
+    expect((await repo.findRoleById(id))!.permissionCodes).toEqual([PERMISSIONS.ORDERS_READ]);
+  });
+
+  it('refuses making a held role full access in all but name', async () => {
+    const repo = new FakeRoles();
+    const id = repo.seed('HARMLESS', [PERMISSIONS.ORDERS_READ], 2);
+    const uc = new RoleManagementUseCase(repo);
+    const everyCodeButAccess = Object.values(PERMISSIONS);
+    expect(await uc.replacePermissions({ roleId: id, permissionCodes: everyCodeButAccess, actorId })).toMatchObject({ ok: false, code: 'ELEVATES_ASSIGNED_ROLE' });
+  });
+
+  it('a role nobody holds may still gain them (granting it later needs the second approver)', async () => {
+    const repo = new FakeRoles();
+    const id = repo.seed('NEW_ADMIN_ROLE', [PERMISSIONS.ORDERS_READ], 0);
+    const uc = new RoleManagementUseCase(repo);
+    expect(await uc.replacePermissions({ roleId: id, permissionCodes: [PERMISSIONS.ORDERS_READ, PERMISSIONS.AUTH_MANAGE], actorId })).toMatchObject({ ok: true });
+  });
+
+  it('ordinary edits of a held role still work, and an elevated held role may keep or lose its codes', async () => {
+    const repo = new FakeRoles();
+    const plain = repo.seed('SUPPORT', [PERMISSIONS.ORDERS_READ], 3);
+    const elevated = repo.seed('ACCESS', [PERMISSIONS.ORDERS_READ, PERMISSIONS.AUTH_MANAGE], 1);
+    repo.holders.set('u-1', { active: true, roleIds: [elevated] });
+    repo.holders.set('u-2', { active: true, roleIds: [repo.seed('OTHER_ACCESS', [PERMISSIONS.AUTH_MANAGE], 1)] });
+    const uc = new RoleManagementUseCase(repo);
+    expect(await uc.replacePermissions({ roleId: plain, permissionCodes: [PERMISSIONS.ORDERS_READ, PERMISSIONS.ORDERS_MANAGE], actorId })).toMatchObject({ ok: true });
+    expect(await uc.replacePermissions({ roleId: elevated, permissionCodes: [PERMISSIONS.ORDERS_READ, PERMISSIONS.ORDERS_MANAGE, PERMISSIONS.AUTH_MANAGE], actorId })).toMatchObject({ ok: true });
+    expect(await uc.replacePermissions({ roleId: elevated, permissionCodes: [PERMISSIONS.ORDERS_READ], actorId })).toMatchObject({ ok: true });
+  });
+});
+
 describe('RoleManagementUseCase — deleting roles', () => {
   it('deletes only a non-system role nobody holds', async () => {
     const repo = new FakeRoles();
