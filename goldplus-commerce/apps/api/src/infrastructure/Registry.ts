@@ -2355,26 +2355,37 @@ export class Registry {
       onReviewRequired: (orderId, traceId, reason) => {
         logger.error({ orderId, traceId, reason }, 'PAYMENT_REVIEW_REQUIRED');
         // A double charge must reach a person, not only a log line: an urgent Care Desk task pages the team.
-        // The callback and the IPN both report it, so one task per order while it is open.
         if (reason === 'SECOND_PAYMENT_TAKEN') {
-          void (async () => {
-            const order = await this.orderRepo.findById(orderId).catch(() => null);
-            const ref = order?.orderNumber ?? orderId;
-            const title = `Second payment received on order ${ref}: check PesaPal and return the extra payment`;
-            const last = await this.careDeskUseCases.lastTitled(title);
-            if (last?.status === 'open') return;
-            await this.careDeskUseCases.openTask({
-              kind: 'urgent', urgent: true, openedBy: 'payments', title,
-              detail: `A second PesaPal payment completed on an order that was already paid (trace ${traceId}). The order itself is paid and unchanged. Confirm both payments in PesaPal, then refund the extra one from the payments admin and tell the customer.`,
-              orderNumber: order?.orderNumber ?? null,
-              customerName: order?.customerName ?? null,
-              customerPhone: order?.customerPhone ?? null,
-            });
-          })().catch((err) => logger.error({ err: (err as Error).message, orderId }, 'SECOND_PAYMENT_TASK_FAILED'));
+          void this.openPaymentReviewTask(orderId, (ref) => ({
+            title: `Second payment received on order ${ref}: check PesaPal and return the extra payment`,
+            detail: `A second PesaPal payment completed on an order that was already paid (trace ${traceId}). The order itself is paid and unchanged. Confirm both payments in PesaPal, then refund the extra one from the payments admin and tell the customer.`,
+          }));
         }
       },
     },
   });
+  /**
+   * A payment fact a person must act on (a double charge, a page paid at an old total): one urgent Care Desk task
+   * per order while it is open, since the callback, the IPN and the poller can all report the same payment.
+   * Never throws: the money path has already been decided.
+   */
+  private async openPaymentReviewTask(orderId: string, text: (ref: string) => { title: string; detail: string }): Promise<void> {
+    try {
+      const order = await this.orderRepo.findById(orderId).catch(() => null);
+      const { title, detail } = text(order?.orderNumber ?? orderId);
+      const last = await this.careDeskUseCases.lastTitled(title);
+      if (last?.status === 'open') return;
+      await this.careDeskUseCases.openTask({
+        kind: 'urgent', urgent: true, openedBy: 'payments', title, detail,
+        orderNumber: order?.orderNumber ?? null,
+        customerName: order?.customerName ?? null,
+        customerPhone: order?.customerPhone ?? null,
+      });
+    } catch (err) {
+      logger.error({ err: (err as Error).message, orderId }, 'PAYMENT_REVIEW_TASK_FAILED');
+    }
+  }
+
   /**
    * ONE settlement for all four doors: callback, IPN, poller, ops re-verify.
    *
@@ -2439,6 +2450,18 @@ export class Registry {
           });
           throw err;
         });
+      },
+      flagPaidAmountMismatch: async (orderId, paidUgx) => {
+        const order = await this.orderRepo.findById(orderId);
+        if (!order || order.totalUgx === paidUgx) return;
+        const gap = order.totalUgx - paidUgx;
+        logger.error({ orderId, paidUgx, orderTotalUgx: order.totalUgx }, 'PAYMENT_REVIEW_REQUIRED PAID_AMOUNT_DIFFERS_FROM_ORDER_TOTAL');
+        await this.openPaymentReviewTask(orderId, (ref) => ({
+          title: `Order ${ref} was paid UGX ${paidUgx.toLocaleString('en-US')} but its total is now UGX ${order.totalUgx.toLocaleString('en-US')}`,
+          detail: gap > 0
+            ? `The customer paid an older payment page made before the total went up by UGX ${gap.toLocaleString('en-US')} (a delivery fee change). The order is paid and proceeding. Collect the difference or absorb it, and tell the customer.`
+            : `The customer paid an older payment page made before the total went down by UGX ${(-gap).toLocaleString('en-US')}. The order is paid and proceeding. Refund the difference from the payments admin and tell the customer.`,
+        }));
       },
       onEffectFailed: (effect, orderId, error) =>
         logger.error(
