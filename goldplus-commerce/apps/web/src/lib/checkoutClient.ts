@@ -61,7 +61,7 @@ export type CheckoutCallResult =
        * Present on CHECKOUT_ALREADY_ORDERED: the order this checkout already
        * produced, so the page can name it instead of refusing with nothing to act on.
        */
-      existingOrder?: { orderId: string; orderNumber: string; paymentStatus: string };
+      existingOrder?: { orderId: string; orderNumber: string; paymentStatus: string; sameItems?: boolean };
     };
 
 
@@ -114,7 +114,7 @@ export async function submitCheckout(args: {
           code?: string;
           message?: string;
           details?: CheckoutResponseDto;
-          existingOrder?: { orderId: string; orderNumber: string; paymentStatus: string };
+          existingOrder?: { orderId: string; orderNumber: string; paymentStatus: string; sameItems?: boolean };
         };
       }
     | null = null;

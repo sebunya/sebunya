@@ -166,6 +166,8 @@ let reference: string | undefined;
 let createdOrderId: string | undefined;
 /** Set only when a refusal has somewhere useful to send the customer. */
 let feedbackAction: { href: string; label: string } | undefined;
+/** The basket differs from the unpaid order this checkout already made: offer to place it as a new order. */
+let offerNewOrder = false;
 let receivedActionLabel = 'View & track this order';
 let values: Record<string, string> = {};
 let errors: Record<string, string> = {};
@@ -330,6 +332,12 @@ if (originDecision.allowed && !sessionUnknown && !checkoutIntent) {
 }
 
 // Handle Form Submission (RESTORED FEATURE)
+// Back from /checkout/new-order: the intent was dropped on the customer's say-so.
+if (Astro.request.method === 'GET' && Astro.url.searchParams.get('new_order') === '1') {
+  status = 'success';
+  message = 'Ready for a new order. Check your details, then press Complete order to place this basket. Your earlier order is still saved.';
+}
+
 if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent) {
   const formData = await Astro.request.formData();
   
@@ -597,16 +605,25 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
               await clearBasketAfterOrder();
            }
         }
+     } else if (result.code === 'CHECKOUT_ALREADY_ORDERED' && result.existingOrder && result.existingOrder.sameItems === false) {
+        // This checkout already produced an unpaid order, and the basket on screen holds DIFFERENT items: it was
+        // never ordered. It used to be treated as that order: "pay now" sent the customer to pay the OLD order's
+        // amount, and pay on delivery sealed a receipt listing the NEW items under the old order number while no
+        // order existed for them (2026-10-14 review). The API keeps the intent on the earlier order on purpose (a
+        // changed basket must not silently become a second order), so the customer chooses: pay the earlier order
+        // from its tracking page, or place this basket as a new order (/checkout/new-order). The basket is kept.
+        const existing = result.existingOrder;
+        status = 'error';
+        offerNewOrder = true;
+        feedbackAction = {
+          href: `/track-order?reference=${encodeURIComponent(existing.orderNumber)}`,
+          label: `Open order ${existing.orderNumber} to pay for it`,
+        };
+        message = `You have an unpaid order ${existing.orderNumber} from earlier. The basket below is different, so it has not been ordered yet and nothing has been charged for it. Open order ${existing.orderNumber} to pay for that one, or place this basket as a new order.`;
      } else if (result.code === 'CHECKOUT_ALREADY_ORDERED' && result.existingOrder) {
-        // This checkout already produced an order. Nothing failed: the order
-        // the customer wanted exists and is theirs, so it gets the same screen
-        // a fresh order gets — and, if they asked to pay now, the same thing a
-        // fresh order does: the handoff to the payment provider, for THAT
-        // order. The intent is kept (it is the customer's authorisation to pay
-        // it). The basket is NOT cleared: the API answers this code only when
-        // this basket's fingerprint differs from the order's, so the basket on
-        // screen is a NEW one the order was not made from, and deleting it
-        // would throw away what the customer has just put together.
+        // The SAME items as the order this checkout already made (only a detail such as the address or the payment
+        // method changed): this is that order, so it gets the screen a fresh order gets and, if they asked to pay
+        // now, the payment handoff for THAT order. The intent is kept (it is the authorisation to pay it).
         const existing = result.existingOrder;
         const paid = existing.paymentStatus === 'paid';
         reference = existing.orderNumber;
@@ -890,6 +907,11 @@ const checkoutSavingLabel = basketSavingLabel(
                customer to it instead of leaving them at the top of the body. */
             <div id="checkout-feedback" tabindex="-1" class="outline-none" data-error={status === 'error' ? 'true' : undefined}>
             <FormFeedback status={status} message={message} reference={status === 'error' ? reference : undefined} actionHref={feedbackAction?.href} actionLabel={feedbackAction?.label} helpHref={bizCheckout.whatsappUrl ? `${bizCheckout.whatsappUrl}?text=${encodeURIComponent(`Hi GoldPlus, I need help with my checkout${reference ? ` (order ${reference})` : ''}.`)}` : undefined} helpPhone={bizCheckout.phoneDisplay} />
+            {offerNewOrder && (
+              <form method="POST" action="/checkout/new-order" class="mt-2">
+                <button type="submit" class="inline-flex items-center justify-center rounded-full border border-slate-300 bg-white px-5 py-2.5 text-xs font-black uppercase tracking-widest text-gray-900 hover:bg-slate-50 transition-colors">Place this basket as a new order</button>
+              </form>
+            )}
             </div>
           )}
 
