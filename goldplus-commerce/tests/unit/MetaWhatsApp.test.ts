@@ -190,8 +190,8 @@ describe('delivery receipts', () => {
       { id: 'wamid.A', status: 'delivered' }, { id: 'wamid.B', status: 'failed', errors: [{ code: 131026, title: 'Message undeliverable' }] }, { id: 'wamid.C', status: 'deleted' },
     ] } }] }, { id: '999', changes: [{ field: 'messages', value: { statuses: [{ id: 'wamid.X', status: 'read' }] } }] }] };
     expect(parseDeliveryReceipts(payload, '444555666')).toEqual([
-      { messageId: 'wamid.A', status: 'delivered', errorCode: null, errorTitle: null },
-      { messageId: 'wamid.B', status: 'failed', errorCode: 131026, errorTitle: 'Message undeliverable' },
+      { messageId: 'wamid.A', status: 'delivered', errorCode: null, errorTitle: null, recipientId: null },
+      { messageId: 'wamid.B', status: 'failed', errorCode: 131026, errorTitle: 'Message undeliverable', recipientId: null },
     ]);
   });
 });
@@ -305,7 +305,7 @@ describe('the signed webhook, end to end', () => {
     const ok = await u.receive(body, `sha256=${createHmac('sha256', appSecret).update(body).digest('hex')}`);
     expect(ok.status).toBe(200);
     expect(inbound.mock.calls[0]![0][0]).toMatchObject({ from: '256772123456', text: 'Hello' });
-    expect(receipts.mock.calls[0]![0]).toEqual([{ messageId: 'wamid.out', status: 'failed', errorCode: 131026, errorTitle: 'Message undeliverable' }]);
+    expect(receipts.mock.calls[0]![0]).toEqual([{ messageId: 'wamid.out', status: 'failed', errorCode: 131026, errorTitle: 'Message undeliverable', recipientId: null }]);
     expect(events.mock.calls[0]![0][0]).toMatchObject({ field: 'message_template_status_update', event: 'PAUSED', bad: true });
   });
 

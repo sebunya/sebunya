@@ -95,7 +95,9 @@ export class MetaWhatsAppAdapter implements INotificationProvider {
     }
     const spec = whatsAppTemplateSpec(payload.template);
     // STOP (not for the phone code they asked for) or a number Meta could not reach lately: SMS instead.
-    const block = this.hooks.blockReason ? await this.hooks.blockReason(`+${to}`).catch(() => null) : null;
+    // A failed check is not "not blocked": a customer who said STOP must not get WhatsApp because the database blinked.
+    const block = this.hooks.blockReason ? await this.hooks.blockReason(`+${to}`).catch(() => 'BLOCK_CHECK_FAILED') : null;
+    if (block === 'BLOCK_CHECK_FAILED') return { status: 'NOT_CONFIGURED' as NotificationStatus, providerCode: block, providerMessage: 'WhatsApp not sent: the STOP list could not be checked just now; SMS instead.' };
     if (block === 'RECIPIENT_NOT_ON_WHATSAPP' || (block === 'RECIPIENT_OPTED_OUT' && spec?.category !== 'AUTHENTICATION' && messageClass !== 'OPERATIONAL')) {
       this.hooks.onOutcome?.(block === 'RECIPIENT_OPTED_OUT' ? 'opted_out' : 'not_on_whatsapp', null);
       return { status: 'NOT_CONFIGURED' as NotificationStatus, providerCode: block, providerMessage: block === 'RECIPIENT_OPTED_OUT' ? 'WhatsApp not sent: the customer replied STOP on WhatsApp; SMS instead.' : 'WhatsApp not sent: Meta could not deliver to this number recently; SMS instead.' };
@@ -132,6 +134,13 @@ export class MetaWhatsAppAdapter implements INotificationProvider {
         // Sent, no answer: Meta may have delivered it. Neither re-sent nor handed to a fallback.
         this.hooks.onOutcome?.('unknown', null);
         return { status: 'FAILED' as NotificationStatus, providerCode: OUTCOME_UNKNOWN_PROVIDER_CODE, retryable: false, providerMessage: 'WhatsApp (Meta) timed out after sending; outcome unknown. Not retried, no fallback.' };
+      }
+      // Only a failure before the request left (no connection, DNS) is a definite "not sent". A connection that
+      // broke after the request was written may have reached Meta: treated like a timeout, so Zoho never doubles it.
+      const code = String(((err as { cause?: { code?: unknown } })?.cause?.code) ?? (err as { code?: unknown })?.code ?? '');
+      if (!/^(ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ENETUNREACH|EHOSTUNREACH|UND_ERR_CONNECT_TIMEOUT|CERT_|ERR_TLS|DEPTH_ZERO|UNABLE_TO)/.test(code)) {
+        this.hooks.onOutcome?.('unknown', null);
+        return { status: 'FAILED' as NotificationStatus, providerCode: OUTCOME_UNKNOWN_PROVIDER_CODE, retryable: false, providerMessage: this.sanitize(`WhatsApp (Meta) connection broke after sending (${code || (err as Error)?.message || 'network error'}); outcome unknown. Not retried, no fallback.`, token) };
       }
       return { status: 'FAILED' as NotificationStatus, providerCode: 'PROVIDER_ERROR', providerMessage: this.sanitize(String((err as Error)?.message || 'network error'), token) };
     }
@@ -175,7 +184,7 @@ export class FailoverWhatsAppProvider implements INotificationProvider {
     const definitelyNotSent = first.status === 'FAILED' || first.status === 'NOT_CONFIGURED';
     // Never Zoho after: a possible delivery (timeout), data or number problems Zoho would repeat, or a STOP (it is
     // the customer's choice about WhatsApp, whoever sends it).
-    if (!definitelyNotSent || !secondaryCan || [OUTCOME_UNKNOWN_PROVIDER_CODE, 'TEMPLATE_DATA_MISSING', 'INVALID_RECIPIENT', 'RECIPIENT_OPTED_OUT', 'RECIPIENT_NOT_ON_WHATSAPP', 'META_RECIPIENT_REJECTED'].includes(String(first.providerCode))) return first;
+    if (!definitelyNotSent || !secondaryCan || [OUTCOME_UNKNOWN_PROVIDER_CODE, 'TEMPLATE_DATA_MISSING', 'INVALID_RECIPIENT', 'RECIPIENT_OPTED_OUT', 'RECIPIENT_NOT_ON_WHATSAPP', 'META_RECIPIENT_REJECTED', 'BLOCK_CHECK_FAILED'].includes(String(first.providerCode))) return first;
     const second = await this.secondary.dispatch(payload);
     return { ...second, providerMessage: `${second.providerMessage} (Meta first: ${first.providerCode})`.slice(0, 400) };
   }

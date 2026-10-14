@@ -8,6 +8,8 @@ import type { NotificationDispatchPayload } from '../../../application/ports/INo
 const NOT_ON_WHATSAPP_DAYS = 30;
 const KEEP_SENT_DAYS = 7;
 const FALLBACK_WITHIN_HOURS = 24;
+/** The notification template whose WhatsApp copy is the phone code (an AUTHENTICATION template). */
+const PHONE_CODE_TEMPLATE = 'PHONE_VERIFICATION';
 
 /**
  * Who should not get WhatsApp from the shop, and what was sent (for the SMS fallback). On the shop's existing
@@ -68,8 +70,11 @@ export const whatsAppDeliveryStore = {
 
   /** The message to resend by SMS after a FAILED receipt: at most once, and only within 24 hours of sending. */
   async takeForSmsFallback(messageId: string): Promise<NotificationDispatchPayload | null> {
+    // A phone code is only good for 10 minutes: a late failure must not text a dead code (perhaps after a new one).
+    const fresh = sql`${whatsappSentMessages.sentAt} > case when ${whatsappSentMessages.template} = ${PHONE_CODE_TEMPLATE}
+      then now() - interval '10 minutes' else ${new Date(Date.now() - FALLBACK_WITHIN_HOURS * 3600_000)} end`;
     const [row] = await db.update(whatsappSentMessages).set({ smsFallbackAt: sql`now()` })
-      .where(and(eq(whatsappSentMessages.messageId, messageId.slice(0, 160)), isNull(whatsappSentMessages.smsFallbackAt), gt(whatsappSentMessages.sentAt, new Date(Date.now() - FALLBACK_WITHIN_HOURS * 3600_000))))
+      .where(and(eq(whatsappSentMessages.messageId, messageId.slice(0, 160)), isNull(whatsappSentMessages.smsFallbackAt), fresh))
       .returning({ payload: whatsappSentMessages.payload });
     return row ? (row.payload as NotificationDispatchPayload) : null;
   },

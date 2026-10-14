@@ -390,6 +390,17 @@ describe('WhatsApp: STOP, media and read receipts', () => {
     expect(c.msgs.get(conv!.id)!.map((m) => m.content)).toEqual(['STOP']);
   });
 
+  it('a WhatsApp message type Goldie cannot read is filed, answered honestly, and put on the desk', async () => {
+    const { parseInboundTexts: parse } = await import('../../apps/api/src/domain/assistant/WhatsAppGoldie');
+    const poll = { object: 'whatsapp_business_account', entry: [{ id: '1234567890', changes: [{ field: 'messages', value: { metadata: { phone_number_id: '111222333' }, messages: [{ from: '256772123456', id: 'wamid.u1', timestamp: '1760000000', type: 'unsupported', unsupported: {} }] } }] }] };
+    const [m] = parse(poll, '1234567890');
+    expect(m!.text).toContain('unsupported');
+    const c = wa();
+    expect(await c.uc.handleWhatsApp({ ...inboundBase, text: m!.text, messageId: 'wamid.u1' })).toBe('answered');
+    expect(c.tasks[0]).toMatchObject({ kind: 'follow_up' });
+    expect(c.brain.turn).not.toHaveBeenCalled();
+  });
+
   it('a team reply after the 24-hour window is refused with the reason, not reported as sent', async () => {
     const { store } = memoryStore();
     const archive = new ConversationArchiveUseCases(store);

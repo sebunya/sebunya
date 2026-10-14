@@ -82,8 +82,11 @@ export function parseInboundTexts(payload: unknown, wabaId: string, now: Date = 
           const c = Array.isArray(msg?.contacts) ? msg.contacts[0] : null;
           const phone = c?.phones?.[0]?.phone ?? c?.phones?.[0]?.wa_id;
           if (c) text = `[Contact card] ${String(c?.name?.formatted_name ?? '').slice(0, 80)} ${phone ? String(phone).slice(0, 20) : ''}`.trim();
-        } else if (type === 'reaction' || type === 'unsupported' || type === 'system' || type === 'ephemeral') continue;
-        text = text.trim().slice(0, 2000);
+        } else if (type === 'reaction' || type === 'system' || type === 'ephemeral') continue;
+        // Anything else (a poll, view-once, a catalogue order, a form reply, a type Meta adds later) is never dropped:
+        // filed with a marker so the team sees it, and a person is asked to look.
+        text = text.trim() || `${UNREADABLE_PREFIX} ${type.replace(/[^a-z_]/gi, '').slice(0, 30) || 'unknown'}]`;
+        text = text.slice(0, 2000);
         if (!text) continue;
         const sec = Number(msg?.timestamp);
         const at = Number.isFinite(sec) && sec > 0 && sec * 1000 <= now.getTime() + 5 * 60_000 ? new Date(sec * 1000) : now;
@@ -94,7 +97,7 @@ export function parseInboundTexts(payload: unknown, wabaId: string, now: Date = 
   return out;
 }
 
-export interface DeliveryReceipt { messageId: string; status: 'sent' | 'delivered' | 'read' | 'failed'; errorCode: number | null; errorTitle: string | null }
+export interface DeliveryReceipt { messageId: string; status: 'sent' | 'delivered' | 'read' | 'failed'; errorCode: number | null; errorTitle: string | null; recipientId?: string | null }
 
 /** Delivery receipts for messages we sent (statuses on the same webhook): sent, delivered, read, failed. */
 export function parseDeliveryReceipts(payload: unknown, wabaId: string): DeliveryReceipt[] {
@@ -110,12 +113,15 @@ export function parseDeliveryReceipts(payload: unknown, wabaId: string): Deliver
         const status = String(st?.status ?? '');
         if (!id || !['sent', 'delivered', 'read', 'failed'].includes(status)) continue;
         const e = Array.isArray(st?.errors) ? st.errors[0] : null;
-        out.push({ messageId: id, status: status as DeliveryReceipt['status'], errorCode: Number.isFinite(Number(e?.code)) ? Number(e.code) : null, errorTitle: e ? String(e.title ?? e.message ?? '').slice(0, 200) || null : null });
+        out.push({ messageId: id, status: status as DeliveryReceipt['status'], errorCode: Number.isFinite(Number(e?.code)) ? Number(e.code) : null, errorTitle: e ? String(e.title ?? e.message ?? '').slice(0, 200) || null : null, recipientId: /^\d{8,15}$/.test(String(st?.recipient_id ?? '')) ? String(st.recipient_id) : null });
       }
     }
   }
   return out;
 }
+
+/** Marks a customer message Goldie cannot read (an unsupported WhatsApp type): a person looks at it. */
+export const UNREADABLE_PREFIX = '[A WhatsApp message the shop cannot show here:';
 
 /** The archive key for a WhatsApp number: never the number itself as the key. */
 export const whatsappKey = (from: string) => createHash('sha256').update(`goldie:wa:${from}`).digest('hex');

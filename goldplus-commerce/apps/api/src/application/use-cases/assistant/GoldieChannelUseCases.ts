@@ -1,4 +1,4 @@
-import { MEDIA_MARKER_RE, formatWhatsAppReply, optOutWord, whatsappKey, type InboundText, type ReplyParts } from '../../../domain/assistant/WhatsAppGoldie';
+import { MEDIA_MARKER_RE, UNREADABLE_PREFIX, formatWhatsAppReply, optOutWord, whatsappKey, type InboundText, type ReplyParts } from '../../../domain/assistant/WhatsAppGoldie';
 import { closesMatter, isAbusive, silenceFor } from '../../../domain/assistant/CareDesk';
 import type { ConversationArchiveUseCases } from './ConversationArchiveUseCases';
 
@@ -17,6 +17,8 @@ export interface IWhatsAppOptOuts {
 
 export const STOP_REPLY = "Done. GoldPlus will not send you updates on WhatsApp any more; order updates will come by SMS. You can still message us here any time. Reply START to turn WhatsApp updates back on.";
 export const START_REPLY = 'Welcome back. GoldPlus order updates will come to you on WhatsApp again. Reply STOP at any time to turn them off.';
+export const UNREADABLE_REPLY = "Thank you. I can't open that kind of message here, so I'm passing it to the team, and a person will reply shortly. If you can, please type your question too.";
+
 export const MEDIA_REPLY: Record<string, string> = {
   image: "Thank you for the photo. I'm passing it to the team now so a person can look at it properly, and they will reply here shortly.",
   audio: "Thank you for your voice note. I'm passing it to the team so a person can listen, and they will reply here shortly. If it is quicker, you can also type your question.",
@@ -197,6 +199,15 @@ export class GoldieChannelUseCases {
     // A photo, voice note, video or document: Goldie cannot see it, so a person is asked to look, and the customer is
     // told so. With a caption, Goldie still answers the words.
     if (msg.media?.kind === 'sticker') { await mark('silent'); return 'filed'; }
+    if (msg.text.startsWith(UNREADABLE_PREFIX)) {
+      await this.openTask({ kind: 'follow_up', title: `WhatsApp message to look at: ${msg.text.slice(UNREADABLE_PREFIX.length, UNREADABLE_PREFIX.length + 40).replace(/\]$/, '').trim()} (open WhatsApp on the shop phone)`, customerName: msg.name, customerPhone: `+${msg.from}`, conversationId, channel: 'whatsapp' }).catch(() => undefined);
+      const phoneNumberId = msg.phoneNumberId ?? s.phoneNumberId;
+      if (!phoneNumberId) { await mark('held'); return 'filed'; }
+      const sent = await this.whatsapp.sendText({ phoneNumberId, to: msg.from, text: UNREADABLE_REPLY });
+      if (sent.ok) { await this.archive.logReply(conversationId, UNREADABLE_REPLY, 'deterministic', sent.messageId); await mark('answered'); return 'answered'; }
+      await mark('send_failed');
+      return 'failed';
+    }
     if (msg.media) {
       const caption = msg.text.replace(MEDIA_MARKER_RE, '').replace(/^\[[^\]]*\]\s*/, '').trim();
       const kindWord = msg.media.kind === 'image' ? 'photo' : msg.media.kind === 'audio' ? 'voice note' : msg.media.kind;
