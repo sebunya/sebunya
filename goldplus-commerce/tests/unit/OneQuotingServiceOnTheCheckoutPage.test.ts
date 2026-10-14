@@ -58,6 +58,34 @@ describe('the estimate is the quoting service’s answer', () => {
     expect(wasLegacyAsked()).toBe(true);
   });
 
+  it('on CONFIG_INCOMPLETE it shows only what checkout charges: the enabled zone fee, else nothing (never a band seed figure)', async () => {
+    const withZone = build({ feeUgx: null, confirmed: false, mayFallBackToLegacy: true });
+    const zoned = await withZone.useCase.execute({ district: 'Kampala', area: 'Ntinda' });
+    expect(zoned.ok && zoned.estimate).toMatchObject({ kind: 'CONFIRMED', feeUgx: 15_000, source: 'ZONE' });
+    // No zone row: checkout charges 0 unconfirmed and the panel says pricing is being finalised. The row used to
+    // say "about UGX 8,000" from DEFAULT_DELIVERY_BAND_POLICY.
+    const noZone = new GetDeliveryEstimateUseCase({
+      zones: { findByDistrict: async () => null } as never,
+      policy: { get: async () => { throw new Error('the band policy must not be read for a checkout figure'); } } as never,
+      observations: { summarizeByDistrict: async () => { throw new Error('nor the observed medians'); } } as never,
+      quoting: { quote: async () => ({ feeUgx: null, confirmed: false, mayFallBackToLegacy: true }) },
+    });
+    const r = await noZone.execute({ district: 'Kampala', area: 'Ntinda' });
+    expect(r.ok && r.estimate).toMatchObject({ kind: 'UNAVAILABLE', feeUgx: null });
+    const disabled = new GetDeliveryEstimateUseCase({
+      zones: { findByDistrict: async () => ({ enabled: false, feeUgx: 9_000 }) } as never,
+      policy: {} as never, observations: {} as never,
+      quoting: { quote: async () => ({ feeUgx: null, confirmed: false, mayFallBackToLegacy: true }) },
+    });
+    const d = await disabled.execute({ district: 'Kampala' });
+    expect(d.ok && d.estimate.kind).toBe('UNAVAILABLE');
+  });
+
+  it("the quote panel keys its zone fallback on the customer's district first, as checkout does", () => {
+    const route = readFileSync(join(__dirname, '../../apps/api/src/interfaces/http/routes/delivery.ts'), 'utf8');
+    expect(route).toMatch(/const districtName = district \|\| outcome\.resolved\?\.input\.district;/);
+  });
+
   it('still refuses a district that does not exist before asking anyone', async () => {
     const { useCase, wasLegacyAsked } = build({ feeUgx: 1, confirmed: true, mayFallBackToLegacy: false });
     const r = await useCase.execute({ district: 'Atlantis' });

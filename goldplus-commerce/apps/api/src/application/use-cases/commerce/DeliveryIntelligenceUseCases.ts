@@ -2,7 +2,6 @@ import {
   UGANDA_DISTRICTS,
   normalizeUgandaDistrict,
   districtRoadKm,
-  deliveryPointKm,
 } from '@goldplus/shared';
 import {
   DEFAULT_DELIVERY_BAND_POLICY,
@@ -38,12 +37,6 @@ interface Deps {
       items: ReadonlyArray<{ productId: string; quantity: number }>;
     }): Promise<{ feeUgx: number | null; confirmed: boolean; mayFallBackToLegacy: boolean; unavailableReason?: string | null }>;
   } | null;
-}
-
-async function effectivePolicy(repo: IDeliveryPricingPolicyRepository): Promise<DeliveryBandPolicy> {
-  // Never saved → the seed defaults apply, so the cockpit and the estimate
-  // line work from day one; the first save replaces them with owned numbers.
-  return (await repo.get()) ?? DEFAULT_DELIVERY_BAND_POLICY;
 }
 
 /** One destination's estimate — the checkout read. */
@@ -109,17 +102,14 @@ export class GetDeliveryEstimateUseCase {
       return { ok: true, district: '', area, estimate: { kind: 'UNAVAILABLE', feeUgx: null, source: null, band: null, km: null, sampleSize: 0, observedDisagreesWithModel: false } };
     }
 
-    const [policy, zone, observed] = await Promise.all([
-      effectivePolicy(this.deps.policy),
-      this.deps.zones.findByDistrict(district),
-      this.deps.observations.summarizeByDistrict(),
-    ]);
-    const estimate = estimateDeliveryFee({
-      policy,
-      km: deliveryPointKm(district, area),
-      zoneFeeUgx: zone && zone.enabled ? zone.feeUgx : null,
-      observation: observed.get(normalizeDistrict(district)) ?? null,
-    });
+    // CONFIG_INCOMPLETE: the zone row alone, exactly what CheckoutUseCase (resolveDeliveryFee) charges and what
+    // /delivery/quote falls back to. This used to run the band model, whose never-saved seed figures (CITY 8,000
+    // and so on) and observed medians showed "about UGX 8,000" in the Delivery row beside a panel saying pricing
+    // was being finalised, for an order charged 0 (CONTRACT #1, #4). The band model stays in the cockpit.
+    const zone = await this.deps.zones.findByDistrict(district);
+    const estimate: DeliveryEstimate = zone && zone.enabled
+      ? { kind: 'CONFIRMED', feeUgx: zone.feeUgx, source: 'ZONE', band: null, km: null, sampleSize: 0, observedDisagreesWithModel: false }
+      : { kind: 'UNAVAILABLE', feeUgx: null, source: null, band: null, km: null, sampleSize: 0, observedDisagreesWithModel: false };
     return { ok: true, district, area, estimate };
   }
 }
