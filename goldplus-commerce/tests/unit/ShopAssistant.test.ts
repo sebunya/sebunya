@@ -122,6 +122,9 @@ describe('assistant engine', () => {
     const events = await collect(runAssistant([{ role: 'user', content: 'a charger?' }], { apiKey: 'k', fetchImpl: fetchMock as never }));
     expect(callTool).toHaveBeenCalledWith('search_products', { query: 'charger', limit: 3 });
     expect(events).toContainEqual({ type: 'tool', name: 'search_products' });
+    // Text before and after a tool call never runs together ("more.You").
+    const said = (events as any[]).filter((e) => e.type === 'text').map((e) => e.text).join('');
+    expect(said).not.toMatch(/[.!?][A-Z]/);
     const cards = (events as any[]).find((e) => e.type === 'products');
     // The card carries the catalogue id (so the widget can offer Add to cart) and the category the cart form records.
     expect(cards.items).toEqual([{ id: '0f3a9c1e-5b7d-4e2a-9c6f-1a2b3c4d5e6f', name: 'GoldPlus Charger GP-C11', url: 'https://shopgoldplus.com/products/goldplus-charger-gp-c11', sku: 'GP-C11', price_ugx: 65000, availability: 'in_stock', image: 'https://shopgoldplus.com/uploads/a.webp', category: 'Power Devices' }]);

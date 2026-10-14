@@ -163,10 +163,12 @@ const AVAIL: Record<string, string> = { in_stock: 'in stock', low_stock: 'low st
  * link, then up to two useful links. Panel-only links (the in-chat team form) are dropped: on WhatsApp the
  * customer is already talking to the shop.
  */
-export function formatWhatsAppReply(r: ReplyParts): string {
-  const lines = [r.text.replace(/\*\*/g, '*').trim()];
-  // The products follow the answer: the ones the text names (she recommended them), and only those when there are
-  // any; otherwise the first three of a list. A search's first three under "I'd go for the Oraimo" read as noise.
+/**
+ * The products that go under an answer on a messaging channel: the ones the text names (she recommended them), and
+ * only those when there are any; a model answer that names none lists none (a search's other results would
+ * contradict it); a fixed list answer shows its first three.
+ */
+export function productsToList(r: ReplyParts): NonNullable<ReplyParts['products']> {
   const all = r.products ?? [];
   const said = r.text.toLowerCase();
   const named = all.filter((p) => {
@@ -174,8 +176,12 @@ export function formatWhatsAppReply(r: ReplyParts): string {
     const hits = words.filter((w) => said.includes(w)).length;
     return words.length > 0 && hits >= Math.min(2, words.length);
   });
-  // A model answer lists only what it named (a search's other results would contradict it); a fixed list answer shows three.
-  const products = named.length ? named.slice(0, 2) : r.route === 'ai' ? [] : all.slice(0, 3);
+  return named.length ? named.slice(0, 2) : r.route === 'ai' ? [] : all.slice(0, 3);
+}
+
+export function formatWhatsAppReply(r: ReplyParts): string {
+  const lines = [r.text.replace(/\*\*/g, '*').trim()];
+  const products = productsToList(r);
   if (products.length) {
     lines.push('');
     for (const p of products) lines.push(`• ${p.name}: ${p.price_ugx == null ? 'price on request' : `UGX ${p.price_ugx.toLocaleString('en-UG')}`}, ${AVAIL[p.availability] ?? p.availability}\n  ${p.url}`);

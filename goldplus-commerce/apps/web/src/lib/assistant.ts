@@ -384,6 +384,7 @@ export async function* runAssistant(turns: ChatTurn[], options: AssistantOptions
   const add = (u: Usage) => { usage.inputTokens += u.inputTokens; usage.outputTokens += u.outputTokens; usage.cacheReadTokens += u.cacheReadTokens; usage.cacheWriteTokens += u.cacheWriteTokens; };
   const done = (outcome: 'ANSWERED' | 'REFUSAL' | 'MAX_TOKENS' | 'TOOL_CAP'): AssistantEvent => ({ type: 'done', usage: { ...usage }, providerRequestId, outcome });
 
+  let wrote = false; let lastChar = '';
   for (let round = 0; round <= maxRounds; round += 1) {
     let res: Response;
     try {
@@ -404,7 +405,13 @@ export async function* runAssistant(turns: ChatTurn[], options: AssistantOptions
     const blocks: ContentBlock[] = [];
     const state: TurnState = { stopReason: null, usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }, providerRequestId: null };
     try {
-      for await (const text of readTurn(res.body, (b) => blocks.push(b), state)) yield { type: 'text', text };
+      // Text from a later round (after a tool call) is a new sentence: never glue it to the last one ("more.You").
+      let first = true;
+      for await (const text of readTurn(res.body, (b) => blocks.push(b), state)) {
+        if (first && wrote && !/^\s/.test(text) && !/\s$/.test(lastChar)) yield { type: 'text', text: ' ' };
+        first = false; wrote = true; lastChar = text.slice(-1);
+        yield { type: 'text', text };
+      }
     } catch (e) {
       // Input tokens were counted at message_start: this call was (at least partly) billed.
       billed = billed || state.usage.inputTokens > 0;
