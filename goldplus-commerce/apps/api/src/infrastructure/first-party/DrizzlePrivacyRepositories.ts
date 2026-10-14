@@ -123,10 +123,25 @@ async function contactKeys(exec: typeof db, userId: string): Promise<{ email: Se
     select l.signal_type, l.identifier_key from customer_identity_links l
     join customer_profiles p on p.canonical_customer_id = l.canonical_customer_id
     where p.account_user_id = ${userId}::uuid and l.status = 'ACTIVE'
-      and l.signal_type in ('CONTACT_EMAIL', 'VERIFIED_EMAIL', 'CONTACT_PHONE', 'VERIFIED_PHONE')`));
+      and l.signal_type in ('VERIFIED_EMAIL', 'VERIFIED_PHONE')`));
   return {
     email: new Set(links.filter((l) => String(l.signal_type).endsWith('EMAIL')).map((l) => String(l.identifier_key))),
     phone: new Set(links.filter((l) => String(l.signal_type).endsWith('PHONE')).map((l) => String(l.identifier_key))),
+  };
+}
+
+/**
+ * The account's contacts that it has PROVEN, the only ones that may claim records not linked to the account by id
+ * (quote and battery requests, Goldie chats, care tasks, WhatsApp messages). A typed phone, an unverified account
+ * email or the contact details typed at checkout prove nothing: anyone could register or order with someone else's
+ * number and then export, or have erased, that person's chats and requests (2026-10-14 review).
+ */
+function provenAccountContacts(user: { email?: unknown; phone?: unknown; phone_verified_at?: unknown } | null | undefined, keys: { email: Set<string>; phone: Set<string> }, hasher: IIdentifierHasher): { email: string | null; phone: string | null } {
+  const email = normaliseEmail(typeof user?.email === 'string' ? user.email : null);
+  const emailHash = email ? hasher.hash(email) : null;
+  return {
+    email: email && emailHash && keys.email.has(emailHash) ? email : null,
+    phone: typeof user?.phone === 'string' && user.phone && user.phone_verified_at ? user.phone : null,
   };
 }
 
@@ -225,7 +240,8 @@ export class DrizzlePersonalDataExporter implements IPersonalDataExporter {
     if (!user) return null;
     const orderIds = await ownedOrderIds(db, userId);
     const keys = await contactKeys(db, userId);
-    const match = matcher(this.hasher, keys, { email: user.email ?? null, phone: user.phone ?? null });
+    const proven = provenAccountContacts(user, keys, this.hasher);
+    const match = matcher(this.hasher, keys, proven);
 
     const addresses = rows(await db.execute(sql`
       select label, recipient_name, phone, phone_secondary, district, area_details, landmark_text, additional_directions,
@@ -241,8 +257,7 @@ export class DrizzlePersonalDataExporter implements IPersonalDataExporter {
     const attribution = orderIds.length ? rows(await db.execute(sql`
       select order_id, source, medium, campaign, landing_path, referrer, first_at, client_ip, user_agent
       from order_attribution where order_id in (${uuidList(orderIds)})`)) : [];
-    const orderContacts = orderIds.length ? rows(await db.execute(sql`select customer_email as email, customer_phone as phone from orders where id in (${uuidList(orderIds)})`)) : [];
-    const plain = plainContacts([{ email: user.email, phone: user.phone }, ...orderContacts]);
+    const plain = plainContacts([proven]);
     const hashedKeys = keys.email.size + keys.phone.size > 0;
     const quoteIds = await matchingIds(db, 'quote_requests', plain, match, hashedKeys);
     const quotes = quoteIds.length ? rows(await db.execute(sql`
@@ -408,14 +423,16 @@ export class DrizzlePersonalDataEraser implements IPersonalDataEraser {
       if (claimed.length !== 1) return { completed: false, counts: {} };
 
       const counts: Record<string, number> = {};
-      const [user] = rows(await exec.execute(sql`select email, phone from users where id = ${input.userId}::uuid for update`));
+      const [user] = rows(await exec.execute(sql`select email, phone, phone_verified_at from users where id = ${input.userId}::uuid for update`));
       const orderIds = await ownedOrderIds(exec, input.userId);
       const keys = await contactKeys(exec, input.userId);
-      const match = matcher(this.hasher, keys, user ? { email: user.email ?? null, phone: user.phone ?? null } : null);
-
-      // Read before the orders are blanked: their contacts find the customer's quote and battery requests.
-      const contacts = orderIds.length ? rows(await exec.execute(sql`select customer_email, customer_phone from orders where id in (${uuidList(orderIds)})`)) : [];
-      const plain = plainContacts([{ email: user?.email, phone: user?.phone }, ...contacts.map((c) => ({ email: c.customer_email, phone: c.customer_phone }))]);
+      // Only proven contacts may claim records outside the account (see provenAccountContacts): erasing by a typed
+      // phone deleted another person's chats and requests.
+      const proven = provenAccountContacts(user, keys, this.hasher);
+      const match = matcher(this.hasher, keys, proven);
+      const plain = plainContacts([proven]);
+      // Read before the orders are blanked: used only to blank advertising hashes (see below).
+      const contactsForAdHashes = orderIds.length ? rows(await exec.execute(sql`select customer_email, customer_phone from orders where id in (${uuidList(orderIds)})`)) : [];
       if (orderIds.length) {
         counts.orders = affected(await exec.execute(sql`
           update orders set customer_name = ${REMOVED_TEXT}, customer_phone = '', customer_email = null,
@@ -436,7 +453,10 @@ export class DrizzlePersonalDataEraser implements IPersonalDataEraser {
       }
 
       // Admin-recorded sales and waiting offline conversions: by order, and by
-      // the contact hashes (a sale recorded by phone may name no order).
+      // the contact hashes (a sale recorded by phone may name no order). The checkout contacts are used here and
+      // only here: this blanks advertising hashes (never reads or deletes anyone's content), so it errs on the side
+      // of removing. Orders were blanked above, so their contacts were read first (contactsForAdHashes).
+      const contacts = contactsForAdHashes;
       const hashes = new Set<string>();
       for (const c of [...contacts, { customer_email: user?.email, customer_phone: user?.phone }]) {
         const h = offlineSaleHashes({ email: c.customer_email ?? null, phone: c.customer_phone ?? null });

@@ -20,7 +20,7 @@ suite('privacy erasure (real PostgreSQL)', () => {
   const seedCustomer = async (label: string) => {
     const email = `erase-${label}-${tag}@e.com`;
     const phone = `07721${Math.floor(10000 + Math.random() * 89999)}`;
-    const [u] = await raw`insert into users (email, phone, password_hash) values (${email}, ${phone}, 'x') returning id`;
+    const [u] = await raw`insert into users (email, phone, password_hash, phone_verified_at) values (${email}, ${phone}, 'x', now()) returning id`;
     userIds.push(u.id);
     const [o] = await raw`
       insert into orders (order_number, user_id, customer_name, customer_phone, customer_email, delivery_area, delivery_address,

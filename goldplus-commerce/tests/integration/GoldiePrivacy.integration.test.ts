@@ -23,7 +23,7 @@ suite('Goldie data in privacy export and erasure (real PostgreSQL)', () => {
     const adapters = await import('../../apps/api/src/infrastructure/first-party/FirstPartyAdapters');
     const hasher = new adapters.HmacIdentifierHasher('p'.repeat(40));
     exporter = new repo.DrizzlePersonalDataExporter(hasher); eraser = new repo.DrizzlePersonalDataEraser(hasher);
-    const [u] = await raw`insert into users (email, phone, password_hash) values (${email}, ${phone}, 'x') returning id`; userId = u.id;
+    const [u] = await raw`insert into users (email, phone, password_hash, phone_verified_at) values (${email}, ${phone}, 'x', now()) returning id`; userId = u.id;
     [{ id: webConv }] = await raw`insert into assistant_conversations (channel, channel_key, customer_id) values ('web', ${`w-${tag}`}, ${userId}) returning id`;
     // A WhatsApp chat from the same phone, written in international form, with no account link.
     [{ id: waConv }] = await raw`insert into assistant_conversations (channel, channel_key, contact_phone) values ('whatsapp', ${`wa-${tag}`}, ${'+256' + phone.slice(1)}) returning id`;
@@ -53,6 +53,24 @@ suite('Goldie data in privacy export and erasure (real PostgreSQL)', () => {
     expect(chats.flatMap((c) => c.messages.map((m) => m.text))).not.toContain('someone else');
     expect(out.sections.goldieFollowUps).toHaveLength(1);
     expect(out.sections.goldieInterests).toEqual([expect.objectContaining({ topic: '20W charger' })]);
+  });
+
+  it('an account whose phone is NOT verified cannot export a guest\'s chats from that number', async () => {
+    // A guest chats on WhatsApp from 0700 777 xxx; someone else registers with that number (typed, never verified).
+    const guestPhone = `0700777${tag.replace(/\D/g, '').padEnd(3, '7').slice(0, 3)}`;
+    const [{ id: guestConv }] = await raw`insert into assistant_conversations (channel, channel_key, contact_phone) values ('whatsapp', ${`guest-${tag}`}, ${'+256' + guestPhone.slice(1)}) returning id`;
+    await raw`insert into assistant_messages (conversation_id, role, content) values (${guestConv}, 'customer', 'my private question')`;
+    const [att] = await raw`insert into users (email, phone, password_hash) values (${`att-${tag}@e.com`}, ${guestPhone}, 'x') returning id`;
+    try {
+      const out = await exporter.collect(att.id);
+      expect(JSON.stringify(out.sections.goldieChats ?? [])).not.toContain('my private question');
+      // Once the number is verified it is theirs: the chat is exported.
+      await raw`update users set phone_verified_at = now() where id = ${att.id}`;
+      const after = await exporter.collect(att.id);
+      expect(JSON.stringify(after.sections.goldieChats ?? [])).toContain('my private question');
+    } finally {
+      await raw`delete from users where id = ${att.id}`;
+    }
   });
 
   it('erases them, the guest handover ticket included, and leaves other customers alone', async () => {
