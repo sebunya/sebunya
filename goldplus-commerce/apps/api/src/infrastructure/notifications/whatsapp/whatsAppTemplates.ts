@@ -14,7 +14,8 @@ import {
  *
  * Utility templates use Meta's NAMED parameters: `body` is the text submitted for approval, its {{variables}}
  * are exactly `variables`, in order (a unit test holds them together). Meta refuses a body that starts or ends
- * with a variable, so every body ends in words. The phone code is an AUTHENTICATION template, whose wording
+ * with a variable, and a variable followed only by punctuation counts as the end ("Call {{support_phone}}." was
+ * rejected on 2026-10-14), so every body ends in words. The phone code is an AUTHENTICATION template, whose wording
  * Meta fixes itself (code, security line, expiry footer, copy-code button).
  *
  * Wording follows the SMS in CustomerMessages: the two channels must never disagree.
@@ -66,7 +67,7 @@ export const WHATSAPP_TEMPLATES: Readonly<Record<string, WhatsAppTemplateSpec>> 
   ORDER_RECEIVED_UNPAID: {
     name: 'goldplus_order_received',
     category: 'UTILITY',
-    body: 'Hello {{customer_name}}, we have your GoldPlus order {{order_number}} for {{amount}}. It is not paid yet. Our team will call you to confirm it. Questions? Call {{support_phone}}.',
+    body: 'Hello {{customer_name}}, we have your GoldPlus order {{order_number}} for {{amount}}. It is not paid yet. Our team will call you to confirm it. If you have questions, call us on {{support_phone}} and we will help.',
     variables: [V.customerName, V.orderNumber, V.amount, V.supportPhone],
   },
   ORDER_PAYMENT_PENDING: {
@@ -84,13 +85,13 @@ export const WHATSAPP_TEMPLATES: Readonly<Record<string, WhatsAppTemplateSpec>> 
   ORDER_PAYMENT_FAILED: {
     name: 'goldplus_payment_failed',
     category: 'UTILITY',
-    body: 'Hello {{customer_name}}, the payment for GoldPlus order {{order_number}} did not go through, so it is not paid. If money left your phone, it will come back. To pay again or get help, call {{support_phone}}.',
+    body: 'Hello {{customer_name}}, the payment for GoldPlus order {{order_number}} did not go through, so it is not paid. If money left your phone, it will come back. To pay again or get help, call {{support_phone}} and we will sort it out.',
     variables: [V.customerName, V.orderNumber, V.supportPhone],
   },
   ORDER_PAYMENT_CANCELLED: {
     name: 'goldplus_payment_cancelled',
     category: 'UTILITY',
-    body: 'Hello {{customer_name}}, you cancelled the payment for GoldPlus order {{order_number}}. Nothing was charged and the order is saved. Pay when you are ready, or call {{support_phone}}.',
+    body: 'Hello {{customer_name}}, you cancelled the payment for GoldPlus order {{order_number}}. Nothing was charged and the order is saved. Pay when you are ready, or call {{support_phone}} for help.',
     variables: [V.customerName, V.orderNumber, V.supportPhone],
   },
   ORDER_FULFILLMENT_PROCESSING: {
@@ -127,7 +128,7 @@ export const WHATSAPP_TEMPLATES: Readonly<Record<string, WhatsAppTemplateSpec>> 
   SUPPORT_REQUEST_RECEIVED: {
     name: 'goldplus_support_received',
     category: 'UTILITY',
-    body: 'Hello {{customer_name}}, GoldPlus has your request (ref {{reference}}). Our team will call you on this number. Need us sooner? Call {{support_phone}}.',
+    body: 'Hello {{customer_name}}, GoldPlus has your request (ref {{reference}}). Our team will call you on this number. Need us sooner? Call {{support_phone}} anytime.',
     variables: [V.customerName, V.reference, V.supportPhone],
   },
   QUOTE_REQUEST_RECEIVED: {
@@ -139,13 +140,13 @@ export const WHATSAPP_TEMPLATES: Readonly<Record<string, WhatsAppTemplateSpec>> 
   DEALER_APPLICATION_RECEIVED: {
     name: 'goldplus_dealer_received',
     category: 'UTILITY',
-    body: 'Hello {{customer_name}}, GoldPlus has your dealer application (ref {{reference}}). Our team will review it and call you. Questions? Call {{support_phone}}.',
+    body: 'Hello {{customer_name}}, GoldPlus has your dealer application (ref {{reference}}). Our team will review it and call you. Questions? Call {{support_phone}} anytime.',
     variables: [V.customerName, V.reference, V.supportPhone],
   },
   FAKE_REPORT_RECEIVED: {
     name: 'goldplus_fake_report_received',
     category: 'UTILITY',
-    body: 'Hello {{customer_name}}, thank you for reporting a suspected fake to GoldPlus (ref {{reference}}). We check every report. We may call you for a detail or two. Questions? Call {{support_phone}}.',
+    body: 'Hello {{customer_name}}, thank you for reporting a suspected fake to GoldPlus (ref {{reference}}). We check every report. We may call you for a detail or two. Questions? Call {{support_phone}} anytime.',
     variables: [V.customerName, V.reference, V.supportPhone],
   },
 });
