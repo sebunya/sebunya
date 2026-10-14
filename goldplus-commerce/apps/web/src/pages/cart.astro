@@ -167,7 +167,8 @@ if (Astro.request.method === 'POST' && cartOrigin.allowed) {
         }
 
       } else if (action === 'update') {
-        const qty = Number(formData.get('quantity') || 1);
+        // A whole number: a hand-made "abc" was NaN, which survived Math.min and was stored as quantity null.
+        const qty = Math.trunc(Number(formData.get('quantity') || 1)) || 1;
         // 99 per product, the bound checkout enforces (the server refuses more).
         const validatedQty = Math.min(99, qty < 1 ? 1 : qty);
         if (qty > 99) cartNotice = cartMessageFor('QUANTITY_OUT_OF_BOUNDS');
