@@ -220,8 +220,10 @@ routes.post('/csat', async (c) => {
   const conv = await registry.conversationArchiveUseCases.findByKey('web', parsed.data.conversationKey);
   if (!conv) return bad(c, 'NOT_FOUND', 'No such conversation.', 404);
   await registry.careDeskUseCases.rate(conv.id, parsed.data.score, parsed.data.comment ?? null);
-  // A poor rating counts against every remembered answer served in that chat; two retire it.
-  if (parsed.data.score <= 2) await registry.answerMemoryUseCases.poorRating(await registry.conversationArchiveUseCases.servedMemory(conv.id)).catch(() => undefined);
+  // A poor rating counts against every remembered answer served in that chat; two retire it. Only the chat's first
+  // move to poor counts: tapping thumbs-down again (or scripting the endpoint) must not retire the shop's answers.
+  const firstPoor = parsed.data.score <= 2 && !(conv.csat != null && conv.csat <= 2);
+  if (firstPoor) await registry.answerMemoryUseCases.poorRating(await registry.conversationArchiveUseCases.servedMemory(conv.id)).catch(() => undefined);
   // A poor rating is a customer to win back: it goes on the desk.
   if (parsed.data.score <= 2) await registry.careDeskUseCases.openTask({ kind: 'follow_up', title: `Rated the chat ${parsed.data.score}/5${parsed.data.comment ? `: ${parsed.data.comment}` : ''}`, conversationId: conv.id, channel: 'web', customerName: conv.contactName, customerPhone: conv.contactPhone, customerEmail: conv.contactEmail, mood: 'upset' }).catch(() => undefined);
   return ok(c, { rated: true });

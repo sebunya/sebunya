@@ -381,6 +381,40 @@ describe('WhatsApp: STOP, media and read receipts', () => {
     expect(c.brain.turn).not.toHaveBeenCalled();
   });
 
+  it('a redelivered STOP is not confirmed twice, and STOP is filed in the inbox', async () => {
+    const c = wa(false);
+    await c.uc.handleWhatsApp({ ...inboundBase, text: 'STOP', messageId: 'wamid.s9' });
+    expect(await c.uc.handleWhatsApp({ ...inboundBase, text: 'STOP', messageId: 'wamid.s9' })).toBe('duplicate');
+    expect(c.whatsapp.sendText).toHaveBeenCalledTimes(1);
+    const [conv] = [...c.convs.values()];
+    expect(c.msgs.get(conv!.id)!.map((m) => m.content)).toEqual(['STOP']);
+  });
+
+  it('a team reply after the 24-hour window is refused with the reason, not reported as sent', async () => {
+    const { store } = memoryStore();
+    const archive = new ConversationArchiveUseCases(store);
+    const whatsapp = { sendText: vi.fn(async () => ({ ok: true as const, messageId: 'w' })) };
+    const later = () => new Date(Date.now() + 25 * 3600_000);
+    const uc = new GoldieChannelUseCases(archive, { turn: vi.fn(async () => null) }, whatsapp, () => ({ enabled: true, onlyNumbers: [], phoneNumberId: '111222333' }), () => {}, later);
+    const f = await archive.logTurn({ channel: 'whatsapp', channelKey: whatsappKey('256772123456'), customerId: null, contact: { name: 'Sarah N', phone: '+256772123456' }, customer: { content: 'hello', channelMessageId: 'wamid.t1' } });
+    const r = await uc.teamReply(f.conversationId, 'Hello from the shop');
+    expect(r).toMatchObject({ ok: false, code: 'NOT_SENT' });
+    expect(whatsapp.sendText).not.toHaveBeenCalled();
+  });
+
+  it('a burst of lines gets one reply: an older line stays quiet when a newer one is already filed', async () => {
+    const c = wa();
+    const archive = (c.uc as unknown as { archive: ConversationArchiveUseCases }).archive;
+    const file = (text: string, id: string) => archive.logTurn({ channel: 'whatsapp', channelKey: whatsappKey('256772123456'), customerId: null, contact: { name: 'Sarah N', phone: '+256772123456' }, customer: { content: text, channelMessageId: id } });
+    const first = await file('hi', 'wamid.b1');
+    await file('iPhone 11 battery price?', 'wamid.b2');
+    const respond = (c.uc as unknown as { respond: (id: string, m: unknown) => Promise<string> }).respond.bind(c.uc);
+    expect(await respond(first.conversationId, { ...inboundBase, text: 'hi', messageId: 'wamid.b1' })).toBe('filed');
+    expect(await respond(first.conversationId, { ...inboundBase, text: 'iPhone 11 battery price?', messageId: 'wamid.b2' })).toBe('answered');
+    expect(c.whatsapp.sendText).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify((c.brain.turn.mock.calls[0] as unknown as [unknown])[0])).toContain('hi\\niPhone 11 battery price?');
+  });
+
   it('a photo without words: a task for a person, an honest holding reply, blue ticks', async () => {
     const c = wa();
     const out = await c.uc.handleWhatsApp({ ...inboundBase, text: '[Photo ⟦media:1234567890:image/jpeg⟧]', messageId: 'wamid.p1', media: { kind: 'image', id: '1234567890', mimeType: 'image/jpeg' } });

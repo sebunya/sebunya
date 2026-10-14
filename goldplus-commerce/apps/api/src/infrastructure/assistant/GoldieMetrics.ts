@@ -17,5 +17,6 @@ export const goldieMetrics = {
   recovered: once(client.Counter, { name: 'goldie_whatsapp_recovered_total', help: 'WhatsApp replies finished by the recovery pass after an interruption' }),
   urgentOpen: once(client.Gauge, { name: 'goldie_care_urgent_open', help: 'Urgent Care Desk tasks still open' }),
   oldestOpenMinutes: once(client.Gauge, { name: 'goldie_care_oldest_open_minutes', help: 'Minutes the longest-waiting open task has waited' }),
+  oldestUrgentMinutes: once(client.Gauge, { name: 'goldie_care_oldest_urgent_minutes', help: 'Minutes the longest-waiting urgent task nobody has taken has waited' }),
   spendRatio: once(client.Gauge, { name: 'goldie_model_spend_ratio', help: 'This month\'s model spend (settled + reserved) as a share of the cap' }),
 };

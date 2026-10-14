@@ -128,6 +128,10 @@ routes.get('/conversations.csv', requirePermissions([PERMISSIONS.CUSTOMER_DATA_V
   const { rows } = await Registry.getInstance().conversationArchiveUseCases.list({ ...filters(c), limit: 200, offset: 0 });
   const head = ['started', 'last message', 'channel', 'contact name', 'phone', 'email', 'first topic', 'last topic', 'mood', 'outcome', 'rating', 'messages', 'ai turns', 'support ticket', 'last customer line'];
   const lines = rows.map((r) => [r.startedAt.toISOString(), r.lastMessageAt.toISOString(), r.channel, r.contactName, r.contactPhone, r.contactEmail, r.firstTopic, r.lastTopic, r.worstMood, r.outcome, r.csat ?? '', r.messageCount, r.aiTurns, r.supportTicketId, r.lastCustomerLine].map(csvCell).join(','));
+  // A bulk download of customer contacts: audited like viewing one conversation is.
+  const f = filters(c);
+  await Registry.getInstance().createAuditLogUseCase.execute({ actorId: (c.get('user') as { id: string }).id, action: 'GOLDIE_CONVERSATIONS_EXPORTED', entity: 'assistant_conversation', entityId: 'csv', previousState: null,
+    newState: { rows: rows.length, channel: f.channel ?? null, outcome: f.outcome ?? null, from: f.from?.toISOString() ?? null, to: f.to?.toISOString() ?? null } }).catch(() => undefined);
   const stamp = new Date().toISOString().slice(0, 10);
   return new Response([head.map(csvCell).join(','), ...lines].join('\r\n'), { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="goldie-conversations-${stamp}.csv"`, 'Cache-Control': 'no-store' } });
 });

@@ -78,6 +78,9 @@ function desk(team: Partial<CareTeamMemberRow>[] = [], fallback?: { emails: stri
     async alertsSince() { return { shop: alertsSoFar.shop, samePhone: alertsSoFar.samePhone }; },
     async purgeClosedBefore() { return 0; },
     async markAlerted(id) { const t = tasks.find((x) => x.id === id); if (t) t.alertedAt = new Date(); },
+    async claimAlert(id) { const t = tasks.find((x) => x.id === id); if (!t || t.alertedAt) return false; t.alertedAt = new Date(); return true; },
+    async withAlertLock(fn) { return fn(); },
+    async lastTitled() { return null; },
     async team(activeOnly) { return members.filter((m) => !activeOnly || m.active); },
     async saveMember(m) { return { ...m, id: m.id ?? 'new' } as CareTeamMemberRow; }, async removeMember() { return true; },
     async staffNumbers() { return []; }, async today() { throw new Error('unused'); }, async rate() { return true; }, async setNextAction() {},
@@ -131,6 +134,15 @@ describe('alerts cannot be abused', () => {
     expect(r.ok && r.task.priority).toBe('urgent');
     expect(r.ok && r.alerted).toEqual([]);
     expect(d.sent).toEqual([]);
+  });
+
+  it('a task pages at most once, even when alert() is called twice for it (two replicas)', async () => {
+    const d = desk([{ name: 'Grace' }]);
+    const r = await d.uc.openTask({ kind: 'urgent', title: 'Customer stuck with money deducted', customerPhone: '0772123456' });
+    expect(r.ok && r.alerted.length).toBe(2);
+    const stale = { ...(r.ok ? r.task : ({} as never)), alertedAt: null };
+    expect(await d.uc.alert(stale)).toEqual([]);
+    expect(d.sent).toHaveLength(2);
   });
 });
 

@@ -2801,6 +2801,7 @@ export class Registry {
     },
     (conversation, text) => this.goldieSocialUseCases.teamReply(conversation, text),
     whatsAppDeliveryStore,
+    Math.min(Math.max(Number(process.env.GOLDIE_BURST_WAIT_MS ?? 2000) || 0, 0), 10_000),
   );
   /** Goldie on Facebook Messenger and Instagram Direct. Off until GOLDIE_MESSENGER_ENABLED / GOLDIE_INSTAGRAM_ENABLED and a page token. */
   public readonly goldieSocialUseCases = new GoldieSocialUseCases(

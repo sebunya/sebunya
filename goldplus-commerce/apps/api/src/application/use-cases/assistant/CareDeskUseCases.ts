@@ -85,8 +85,14 @@ export class CareDeskUseCases {
   async alert(task: CareTaskRow): Promise<string[]> {
     if (task.alertedAt) return [];
     const t = this.now().getTime();
-    const [hour, recent] = await Promise.all([this.repo.alertsSince(new Date(t - 3600_000), null), this.repo.alertsSince(new Date(t - 30 * 60_000), task.customerPhone)]);
-    if (alertAllowed({ samePhoneLast30Min: task.customerPhone ? recent.samePhone : 0, shopLastHour: hour.shop, perHour: this.config.alertsPerHour ?? DEFAULT_ALERTS_PER_HOUR }) !== 'ALLOWED') return [];
+    // Count and claim under one lock: two urgent tasks opened at once (a customer's burst of messages, two replicas)
+    // must not both read "no alert yet" and both page. The claim also makes "once per task" hold across replicas.
+    const claimed = await this.repo.withAlertLock(async () => {
+      const [hour, recent] = await Promise.all([this.repo.alertsSince(new Date(t - 3600_000), null), this.repo.alertsSince(new Date(t - 30 * 60_000), task.customerPhone)]);
+      if (alertAllowed({ samePhoneLast30Min: task.customerPhone ? recent.samePhone : 0, shopLastHour: hour.shop, perHour: this.config.alertsPerHour ?? DEFAULT_ALERTS_PER_HOUR }) !== 'ALLOWED') return false;
+      return this.repo.claimAlert(task.id);
+    });
+    if (!claimed) return [];
     const active = await this.activeTeam();
     const team = active.filter((m) => onDutyNow(m.onDuty, this.now()));
     // Nobody on duty: page everyone active, so an urgent customer is never left with no one told.
@@ -105,12 +111,12 @@ export class CareDeskUseCases {
       const p = await this.alerts.push({ title: `GoldPlus Care: ${CARE_KIND_LABEL[task.kind]}`, body: message, url: this.config.deskUrl, key: `care-alert:${task.id}` }).catch(() => ({ sent: 0 }));
       if (p.sent) sent.push(`push:${p.sent}`);
     }
-    if (sent.length) await this.repo.markAlerted(task.id);
     return sent;
   }
 
   list(f: { status?: 'open' | 'done' | 'cancelled'; kind?: CareTaskKind; limit?: number }) { return this.repo.list({ ...f, limit: Math.min(f.limit ?? 100, 300) }); }
   get(id: string) { return this.repo.get(id); }
+  lastTitled(prefix: string) { return this.repo.lastTitled(prefix); }
   async resolve(id: string, status: 'done' | 'cancelled', resolvedBy: string, resolution: string | null) {
     return this.repo.resolve(id, { status, resolvedBy, resolution: resolution ? text(resolution).slice(0, 1000) : null });
   }

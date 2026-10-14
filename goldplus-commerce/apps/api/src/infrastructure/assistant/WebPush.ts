@@ -48,6 +48,17 @@ export function encryptPayload(payload: Buffer, sub: { p256dh: string; auth: str
 
 export type PushOutcome = 'sent' | 'gone' | 'failed';
 
+/**
+ * The JSON the service worker parses, always valid and under 3000 bytes (a push record is at most 4096 bytes
+ * after encryption): the body is shortened by whole characters before encoding, never the JSON after it.
+ */
+export function pushPayload(message: { title: string; body: string; url: string }): Buffer {
+  const m = { title: [...message.title].slice(0, 100).join(''), body: [...message.body].slice(0, 600).join(''), url: message.url.slice(0, 500) };
+  let out = Buffer.from(JSON.stringify(m));
+  while (out.length > 3000 && m.body.length) { m.body = [...m.body].slice(0, Math.floor([...m.body].length * 0.8)).join(''); out = Buffer.from(JSON.stringify(m)); }
+  return out;
+}
+
 /** Send one notification. 'gone' means the browser unsubscribed (404/410): the subscription should be deleted. */
 export async function sendWebPush(sub: PushSubscriptionKeys, message: { title: string; body: string; url: string }, keys: VapidKeys, fetchImpl: typeof fetch = fetch): Promise<PushOutcome> {
   try {
@@ -57,7 +68,7 @@ export async function sendWebPush(sub: PushSubscriptionKeys, message: { title: s
         Authorization: vapidAuthorization(sub.endpoint, keys),
         'Content-Encoding': 'aes128gcm', 'Content-Type': 'application/octet-stream', TTL: '3600', Urgency: 'high',
       },
-      body: new Uint8Array(encryptPayload(Buffer.from(JSON.stringify(message).slice(0, 3000)), sub)),
+      body: new Uint8Array(encryptPayload(pushPayload(message), sub)),
       signal: AbortSignal.timeout(8000),
     });
     if (res.status === 404 || res.status === 410) return 'gone';
