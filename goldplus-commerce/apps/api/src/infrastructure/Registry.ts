@@ -1202,6 +1202,7 @@ export class Registry {
     this.pricingRepo,
     this.pricingQuoteRepo,
     this.pricingCapacityRepo,
+    this.couponRepo,
   );
   public readonly managePromotionCapacityUseCase = new ManagePromotionCapacityUseCase(this.pricingCapacityRepo);
   public readonly redeemCouponUseCase = new RedeemCouponUseCase(this.couponRepo);
@@ -1249,6 +1250,29 @@ export class Registry {
         const raw = (await Registry.getInstance().paymentsOpsConfig.values())['owner_review_threshold_ugx'];
         const n = raw === undefined ? NaN : Number(raw);
         return Number.isInteger(n) && n > 0 ? n : null;
+      },
+    },
+    // A batch code is counted once its order exists. A version's own single code is not a batch code (not found).
+    {
+      redeemForOrder: async ({ code, orderId, customerScopeKey, quote }) => {
+        const { normalizeCouponCode } = await import('../domain/pricing/Pricing');
+        let normalised: string | null = null;
+        try { normalised = normalizeCouponCode(code); } catch { return; }
+        if (!normalised) return;
+        const coupon = await this.couponRepo.findByNormalisedCode(normalised);
+        if (!coupon) return;
+        const discountUgx = quote.adjustments
+          .filter((a) => a.promotionDefinitionId === coupon.promotionDefinitionId)
+          .reduce((n, a) => n + a.amountUgx, 0);
+        if (discountUgx <= 0) return; // the code did not apply to this basket
+        const { createHash } = await import('node:crypto');
+        const result = await Registry.getInstance().redeemCouponUseCase.execute({
+          code: normalised,
+          orderId,
+          customerIdentityHash: createHash('sha256').update(customerScopeKey).digest('hex'),
+          discountAmountUgx: discountUgx,
+        });
+        if (!result.ok) logger.warn({ orderId, reason: result.reason }, 'COUPON_REDEMPTION_REFUSED_AFTER_ORDER');
       },
     },
   );

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { couponCodes, couponRedemptions } from '../schema/pricing';
 import {
@@ -77,6 +77,16 @@ export class DrizzleCouponRepository implements ICouponRepository {
       .orderBy(desc(couponCodes.createdAt))
       .limit(Math.min(limit, 200));
     return { totalCodes: tot?.n ?? 0, totalRedemptions: red?.n ?? 0, recent };
+  }
+
+  async definitionsWithActiveCodes(promotionDefinitionIds: readonly string[]): Promise<Set<string>> {
+    const ids = promotionDefinitionIds.filter((id) => /^[0-9a-f-]{36}$/i.test(id));
+    if (!ids.length) return new Set();
+    const rows = await db
+      .selectDistinct({ id: couponCodes.promotionDefinitionId })
+      .from(couponCodes)
+      .where(and(inArray(couponCodes.promotionDefinitionId, ids), eq(couponCodes.isActive, true)));
+    return new Set(rows.map((r) => String(r.id)));
   }
 
   async findByNormalisedCode(codeNormalised: string): Promise<CouponRecord | null> {

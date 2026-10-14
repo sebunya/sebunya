@@ -176,7 +176,14 @@ export class CheckoutUseCase {
      * A failed read is treated as unset: the setting can hold an order for
      * review, but it must never fail a checkout.
      */
-    private readonly ownerReviewThreshold: { thresholdUgx(): Promise<number | null> } | null = null
+    private readonly ownerReviewThreshold: { thresholdUgx(): Promise<number | null> } | null = null,
+    /**
+     * Counts a batch code against its redemption maximum once its order exists (exactly once per code and order).
+     * Never fatal: the order is committed with the discount the customer was shown. Optional; production wires it.
+     */
+    private readonly couponRedemption: {
+      redeemForOrder(input: { code: string; orderId: string; customerScopeKey: string; quote: PricingQuote }): Promise<void>;
+    } | null = null,
   ) {}
 
   private async ownerReviewThresholdUgx(): Promise<number | null> {
@@ -420,6 +427,11 @@ export class CheckoutUseCase {
             // may release.
             await this.loyaltyRedemption.attach(loyaltyReservation.reservationId, saved.order.id).catch(() => undefined);
           }
+        }
+        if (!saved.duplicate && dto.couponCode && this.couponRedemption) {
+          await this.couponRedemption
+            .redeemForOrder({ code: dto.couponCode, orderId: saved.order.id, customerScopeKey, quote })
+            .catch(() => undefined);
         }
         if (!saved.duplicate && this.checkoutSignals) {
           // Fraud velocity (location brief I.3 / loyalty brief PART N):

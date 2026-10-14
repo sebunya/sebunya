@@ -3,6 +3,7 @@ import { IProductRepository } from '../../ports/IProductRepository';
 import { IPricingRepository } from '../../ports/IPricingRepository';
 import { IPricingQuoteRepository } from '../../ports/IPricingQuoteRepository';
 import { IPricingCapacityRepository } from '../../ports/IPricingCapacityRepository';
+import { ICouponRepository, couponUsableAt } from '../../ports/ICouponRepository';
 import { evaluatePricing, PricingRule } from '../../../domain/pricing/PricingEvaluator';
 import { normalizeCouponCode } from '../../../domain/pricing/Pricing';
 import { effectiveFloorUgx } from '@goldplus/shared';
@@ -25,6 +26,8 @@ export class PricingEvaluationError extends Error {
 }
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
+/** Stands in for "one of this promotion's batch codes": no typed code can equal it (codes are [A-Z0-9_-]). */
+const BATCH_CODE_REQUIRED = '#BATCH_CODE';
 
 export class EvaluateCartPricingUseCase {
   constructor(
@@ -38,6 +41,13 @@ export class EvaluateCartPricingUseCase {
      * database construct unchanged.
      */
     private readonly capacity?: Pick<IPricingCapacityRepository, 'exhaustedVersionIds'>,
+    /**
+     * Batch codes (/admin/modules/coupons/batch). Pricing matched only a version's own single code, so every
+     * generated code read "doesn't match a live offer", and a promotion with batch codes but no code of its own
+     * applied to everyone. A usable batch code now unlocks its promotion, and a promotion that has batch codes
+     * applies only with one. Optional so suites without a database construct unchanged.
+     */
+    private readonly coupons?: Pick<ICouponRepository, 'findByNormalisedCode' | 'definitionsWithActiveCodes'>,
   ) {}
 
   async execute(input: EvaluateCartPricingInput) {
@@ -93,6 +103,17 @@ export class EvaluateCartPricingUseCase {
       couponCode: version.couponCode,
       priceFloorUgx: version.priceFloorUgx,
     }));
+    if (this.coupons && rules.length) {
+      const [gated, batch] = await Promise.all([
+        this.coupons.definitionsWithActiveCodes([...new Set(rules.map((r) => r.definitionId))]),
+        couponCode ? this.coupons.findByNormalisedCode(couponCode) : Promise.resolve(null),
+      ]);
+      const unlocked = batch && couponUsableAt(batch, evaluatedAt) ? batch.promotionDefinitionId : null;
+      for (const rule of rules) {
+        if (unlocked && rule.definitionId === unlocked) rule.couponCode = couponCode;
+        else if (gated.has(rule.definitionId) && !rule.couponCode) rule.couponCode = BATCH_CODE_REQUIRED;
+      }
+    }
     const customerScopeHash = input.customerScopeKey ? hash(input.customerScopeKey) : null;
     const quote = evaluatePricing({
       quoteId: randomUUID(),
