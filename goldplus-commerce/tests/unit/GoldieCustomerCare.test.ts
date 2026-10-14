@@ -432,6 +432,17 @@ describe('WhatsApp: STOP, media and read receipts', () => {
     expect(c.brain.turn).not.toHaveBeenCalled();
   });
 
+  it('a question followed by a photo is still answered (the photo reply does not cover the question)', async () => {
+    const c = wa();
+    const archive = (c.uc as unknown as { archive: ConversationArchiveUseCases }).archive;
+    const file = (text: string, id: string) => archive.logTurn({ channel: 'whatsapp', channelKey: whatsappKey('256772123456'), customerId: null, contact: { name: 'Sarah N', phone: '+256772123456' }, customer: { content: text, channelMessageId: id } });
+    const q = await file('Is this charger original?', 'wamid.q1');
+    await file('[Photo ⟦media:1234567890:image/jpeg⟧]', 'wamid.q2');
+    const respond = (c.uc as unknown as { respond: (id: string, m: unknown) => Promise<string> }).respond.bind(c.uc);
+    expect(await respond(q.conversationId, { ...inboundBase, text: 'Is this charger original?', messageId: 'wamid.q1' })).toBe('answered');
+    expect(c.brain.turn).toHaveBeenCalledTimes(1);
+  });
+
   it('a team reply after the 24-hour window is refused with the reason, not reported as sent', async () => {
     const { store } = memoryStore();
     const archive = new ConversationArchiveUseCases(store);
