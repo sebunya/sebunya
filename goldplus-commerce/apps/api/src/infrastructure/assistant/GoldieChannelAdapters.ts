@@ -28,7 +28,9 @@ export class WhatsAppCloudMessenger implements IWhatsAppMessenger {
       const res = await this.fetchImpl(`https://graph.facebook.com/${META_GRAPH_VERSION}/${input.phoneNumberId}/messages`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: input.to, type: 'text', text: { body: input.text, preview_url: true } }),
+        // A link preview only for a product page (its photo helps); a 'browse the shop' link would put a big generic
+        // card above every answer.
+        body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: input.to, type: 'text', text: { body: input.text, preview_url: /\/products\//.test(input.text) } }),
         signal: AbortSignal.timeout(10_000),
       });
       const json = (await res.json().catch(() => null)) as { messages?: Array<{ id?: string }>; error?: { message?: string; code?: number } } | null;
