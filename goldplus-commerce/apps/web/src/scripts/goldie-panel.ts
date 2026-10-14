@@ -11,7 +11,7 @@
  * ask, see, and add in two taps without leaving the conversation.
  *
  * The transcript lives in sessionStorage for this tab only (wrapped in
- * try/catch); the server does not store it. The shopper can keep it (save or
+ * try/catch). The shop keeps its own copy of each chat (the Goldie archive, see /privacy). The shopper can keep it (save or
  * share on the phone, or "Email me this chat") or pass it to the team by email
  * ("Email the team": a support ticket plus an email the shop can Reply to).
  *
@@ -328,10 +328,20 @@ export function mountGoldie(root: HTMLElement, ctx: PanelContext): GoldiePanel {
       streamDone = true;
       await revealed;
       wait.row.remove(); wait.status.remove();
-      if (answer) { turns.push({ role: 'assistant', content: answer }); persist(); showTools(); maybeAskRating(text); } else if (reply) (reply as { row: HTMLElement }).row.remove();
+      if (answer) { turns.push({ role: 'assistant', content: answer }); persist(); showTools(); maybeAskRating(text); }
+      else {
+        // No answer (the shop said it could not, or the stream ended empty): the question comes back off the
+        // conversation, so the next one still alternates customer / Goldie and is not refused.
+        if (reply) (reply as { row: HTMLElement }).row.remove();
+        if (turns[turns.length - 1]?.role === 'user') { turns.pop(); persist(); }
+      }
     } catch {
       failed = true; clearInterval(timer);
       wait.row.remove(); wait.status.remove(); if (reply && !answer) (reply as { row: HTMLElement }).row.remove(); bubble('error', 'The connection dropped. Ask me again?');
+      // Keep what arrived as the answer; with nothing, the question comes off (see above).
+      if (answer) turns.push({ role: 'assistant', content: answer });
+      else if (turns[turns.length - 1]?.role === 'user') turns.pop();
+      persist();
     } finally { clearInterval(timer); busy = false; send.disabled = false; if (!ctx.narrow() || document.activeElement === input) input.focus(); }
   };
 

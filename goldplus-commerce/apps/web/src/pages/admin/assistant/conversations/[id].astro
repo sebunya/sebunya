@@ -27,20 +27,33 @@ const call = async <T,>(path: string, init?: RequestInit): Promise<{ ok: true; d
 };
 
 let notice: { kind: 'success' | 'error'; text: string } | null = null;
+const DONE_TEXT: Record<string, string> = {
+  takeover: 'You have this conversation. On WhatsApp, Goldie stays quiet until then.', return: 'Handed back to Goldie.', outcome: 'Outcome saved.',
+  'sent-email': 'Email sent to the customer.', 'sent-whatsapp': 'Sent on WhatsApp. Goldie stays quiet for 24 hours.',
+  'sent-messenger': 'Sent on Messenger. Goldie stays quiet for 24 hours.', 'sent-instagram': 'Sent on Instagram. Goldie stays quiet for 24 hours.',
+  filed: 'This customer left no email, so the reply is filed as a note. Call or WhatsApp them on the number above.',
+};
+const doneKey = Astro.url.searchParams.get('done') ?? '';
+if (Astro.request.method === 'GET' && DONE_TEXT[doneKey]) notice = { kind: 'success', text: DONE_TEXT[doneKey]! };
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
   const action = String(form.get('action') ?? '');
   if (action === 'takeover' || action === 'return') {
     const r = await call(`/conversations/${id}/takeover`, { method: 'POST', body: JSON.stringify({ hours: action === 'takeover' ? Number(form.get('hours') || 24) : 0 }) });
-    notice = r.ok ? { kind: 'success', text: action === 'takeover' ? 'You have this conversation. On WhatsApp, Goldie stays quiet until then.' : 'Handed back to Goldie.' } : { kind: 'error', text: r.message };
+    if (r.ok) return Astro.redirect(`/admin/assistant/conversations/${encodeURIComponent(id)}?done=${action === 'takeover' ? 'takeover' : 'return'}`, 303);
+    notice = { kind: 'error', text: r.message };
   } else if (action === 'outcome') {
     const r = await call(`/conversations/${id}/outcome`, { method: 'POST', body: JSON.stringify({ outcome: String(form.get('outcome') ?? '') }) });
-    notice = r.ok ? { kind: 'success', text: 'Outcome saved.' } : { kind: 'error', text: r.message };
+    if (r.ok) return Astro.redirect(`/admin/assistant/conversations/${encodeURIComponent(id)}?done=outcome`, 303);
+    notice = { kind: 'error', text: r.message };
   } else if (action === 'reply') {
     const r = await call<{ sent: boolean; note?: string }>(`/conversations/${id}/reply`, { method: 'POST', body: JSON.stringify({ text: String(form.get('text') ?? '').trim() }) });
     const savedId = String(form.get('savedReplyId') ?? '');
     if (r.ok && /^[0-9a-f-]{36}$/i.test(savedId)) await fetch(`${apiBase}/admin/care/saved-replies/${savedId}/used`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => undefined);
-    notice = r.ok ? { kind: 'success', text: r.data.sent ? ((r.data as { channel?: string }).channel === 'email' ? 'Email sent to the customer.' : `Sent on ${({ messenger: 'Messenger', instagram: 'Instagram' } as Record<string, string>)[(r.data as { channel?: string }).channel ?? ''] ?? 'WhatsApp'}. Goldie stays quiet for 24 hours.`) : (r.data.note ?? 'Filed.') } : { kind: 'error', text: r.message };
+    // Redirect after sending, so a refresh can never send the customer the same message twice.
+    const ch = (r.data as { channel?: string } | undefined)?.channel ?? '';
+    if (r.ok) return Astro.redirect(`/admin/assistant/conversations/${encodeURIComponent(id)}?done=${r.data.sent ? `sent-${['email', 'messenger', 'instagram'].includes(ch) ? ch : 'whatsapp'}` : 'filed'}`, 303);
+    notice = { kind: 'error', text: r.message };
   }
 }
 

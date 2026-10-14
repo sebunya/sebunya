@@ -19,19 +19,33 @@ const PRIORITY_ORDER = sql`case ${careTasks.priority} when 'urgent' then 0 when 
 
 export class DrizzleCareDeskRepository implements ICareDeskRepository {
   async open(t: NewCareTask): Promise<{ task: CareTaskRow; created: boolean }> {
-    if (t.conversationId) {
-      const [existing] = await db.select().from(careTasks).where(and(eq(careTasks.conversationId, t.conversationId), eq(careTasks.kind, t.kind), eq(careTasks.status, 'open'))).limit(1);
+    if (!t.conversationId) return this.insertTask(t);
+    // Two messages from one customer can arrive together (both replicas): serialise the check-then-insert per
+    // conversation and kind, so a chatty customer gets one task, not one per message.
+    return db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`care-open:${t.conversationId}:${t.kind}`}))`);
+      return this.openOrMerge(t, tx as unknown as typeof db);
+    });
+  }
+
+  private async openOrMerge(t: NewCareTask, q: typeof db): Promise<{ task: CareTaskRow; created: boolean }> {
+    {
+      const [existing] = await q.select().from(careTasks).where(and(eq(careTasks.conversationId, t.conversationId!), eq(careTasks.kind, t.kind), eq(careTasks.status, 'open'))).limit(1);
       if (existing) {
         // The customer said more: keep the newest detail and raise the priority if it went up.
         const rank = (p: string) => (p === 'urgent' ? 0 : p === 'high' ? 1 : 2);
         const set: Record<string, unknown> = {};
         if (t.detail) set.detail = t.detail;
         if (rank(t.priority) < rank(existing.priority)) set.priority = t.priority;
-        if (Object.keys(set).length) await db.update(careTasks).set(set).where(eq(careTasks.id, existing.id));
+        if (Object.keys(set).length) await q.update(careTasks).set(set).where(eq(careTasks.id, existing.id));
         return { task: task({ ...existing, ...(set as Partial<T>) }), created: false };
       }
     }
-    const [row] = await db.insert(careTasks).values({
+    return this.insertTask(t, q);
+  }
+
+  private async insertTask(t: NewCareTask, q: typeof db = db): Promise<{ task: CareTaskRow; created: boolean }> {
+    const [row] = await q.insert(careTasks).values({
       kind: t.kind, priority: t.priority, title: t.title, detail: t.detail, customerName: t.customerName, customerPhone: t.customerPhone, customerEmail: t.customerEmail,
       orderNumber: t.orderNumber, conversationId: t.conversationId, channel: t.channel, proposedAction: t.proposedAction as never, dueAt: t.dueAt, openedBy: t.openedBy,
     }).returning();
@@ -71,12 +85,35 @@ export class DrizzleCareDeskRepository implements ICareDeskRepository {
   }
 
   async urgentUntaken(limit: number) {
-    const rows = await db.select().from(careTasks).where(and(eq(careTasks.status, 'open'), eq(careTasks.priority, 'urgent'), sql`${careTasks.assignedTo} is null`, sql`${careTasks.escalations} < 2`)).orderBy(asc(careTasks.createdAt)).limit(limit);
+    // Only tasks that paged people (the paging limits held the rest back on purpose), and never the health alarms:
+    // those are about Goldie, not a waiting customer, and repeat on their own schedule.
+    const rows = await db.select().from(careTasks).where(and(eq(careTasks.status, 'open'), eq(careTasks.priority, 'urgent'), sql`${careTasks.assignedTo} is null`, sql`${careTasks.escalations} < 2`,
+      sql`${careTasks.alertedAt} is not null`, sql`${careTasks.openedBy} not in ('goldie-health', 'whatsapp-monitor')`)).orderBy(asc(careTasks.createdAt)).limit(limit);
     return rows.map((r) => ({ ...task(r), escalations: r.escalations, lastEscalatedAt: r.lastEscalatedAt }));
   }
 
   async markEscalated(id: string) {
     await db.update(careTasks).set({ escalations: sql`${careTasks.escalations} + 1`, lastEscalatedAt: sql`now()` }).where(eq(careTasks.id, id));
+  }
+
+  async claimAlert(id: string) {
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return true;
+    const r = await db.update(careTasks).set({ alertedAt: sql`now()` }).where(and(eq(careTasks.id, id), sql`${careTasks.alertedAt} is null`)).returning({ id: careTasks.id });
+    return r.length > 0;
+  }
+
+  withAlertLock<R>(fn: () => Promise<R>): Promise<R> {
+    // A transaction-scoped advisory lock: released on commit or rollback, so a crash can never leave it held.
+    return db.transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext('care-alert'))`);
+      return fn();
+    });
+  }
+
+  async lastTitled(prefix: string) {
+    const [r] = await db.select({ status: careTasks.status, createdAt: careTasks.createdAt }).from(careTasks)
+      .where(sql`${careTasks.title} like ${prefix.replace(/[\\%_]/g, (m) => `\\${m}`) + '%'}`).orderBy(desc(careTasks.createdAt)).limit(1);
+    return r ? { status: r.status as CareStatus, createdAt: r.createdAt } : null;
   }
 
   async markAlerted(id: string) { if (/^[0-9a-f-]{36}$/i.test(id)) await db.update(careTasks).set({ alertedAt: sql`now()` }).where(eq(careTasks.id, id)); }
@@ -111,7 +148,8 @@ export class DrizzleCareDeskRepository implements ICareDeskRepository {
         count(*) filter (where kind = 'callback')::int as callbacks_open,
         count(*) filter (where kind = 'order_change')::int as approvals_open,
         count(*) filter (where kind = 'bulk_lead')::int as bulk_open,
-        min(created_at) as oldest_open
+        min(created_at) as oldest_open,
+        min(created_at) filter (where priority = 'urgent' and assigned_to is null) as oldest_urgent
       from care_tasks where status = 'open'`));
     const [c] = rowsOf(await db.execute(sql`select
         count(*)::int as chats,
@@ -125,6 +163,7 @@ export class DrizzleCareDeskRepository implements ICareDeskRepository {
       chatsToday: Number(c?.chats ?? 0), handledByGoldieToday: Number(c?.by_goldie ?? 0), needsPersonToday: Number(c?.needs_person ?? 0),
       csatAverage: c?.csat_avg == null ? null : Number(c.csat_avg), csatCount: Number(c?.csat_count ?? 0),
       oldestOpenAt: t?.oldest_open ? new Date(String(t.oldest_open)).toISOString() : null,
+      oldestUrgentAt: t?.oldest_urgent ? new Date(String(t.oldest_urgent)).toISOString() : null,
     };
   }
 

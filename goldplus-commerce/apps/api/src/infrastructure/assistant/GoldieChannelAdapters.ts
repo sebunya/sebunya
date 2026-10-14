@@ -8,7 +8,7 @@ import { goldieMetrics } from './GoldieMetrics';
 import { CARE_ALERT_TEMPLATE } from '../notifications/whatsapp/whatsAppTemplates';
 import { generateVapidKeys, sendWebPush, vapidFromEnv, type VapidKeys } from './WebPush';
 import { IntegrationCredentialVault } from '../seo/IntegrationCredentialVault';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { carePushKeys, carePushSubscriptions } from '../db/schema/assistant';
 
@@ -119,10 +119,15 @@ export class CareAlertChannels implements ICareAlertChannels {
   async push(input: { title: string; body: string; url: string; key: string }) {
     const keys = await careVapidKeys().catch(() => null);
     if (!keys) return { sent: 0 };
-    const subs = await db.select().from(carePushSubscriptions).limit(100);
+    // Only staff who still have an active account with an admin role: an alert carries a customer's name and number.
+    const subs = await db.select().from(carePushSubscriptions)
+      .where(sql`exists (select 1 from users u where u.id = ${carePushSubscriptions.userId} and u.is_active)
+        and exists (select 1 from user_roles r where r.user_id = ${carePushSubscriptions.userId})`).limit(100);
     let sent = 0;
-    for (const s of subs) {
-      const outcome = await sendWebPush({ endpoint: s.endpoint, p256dh: s.p256dh, auth: s.auth }, { title: input.title, body: input.body, url: input.url }, keys);
+    // Sent side by side (each has its own timeout), so a few slow push services cannot hold up the ticker.
+    const outcomes = await Promise.all(subs.map((s) => sendWebPush({ endpoint: s.endpoint, p256dh: s.p256dh, auth: s.auth }, { title: input.title, body: input.body, url: input.url }, keys).catch(() => 'failed' as const)));
+    for (const [i, s] of subs.entries()) {
+      const outcome = outcomes[i];
       if (outcome === 'sent') { sent += 1; await db.update(carePushSubscriptions).set({ lastSuccessAt: sql`now()`, failures: 0 }).where(eq(carePushSubscriptions.id, s.id)); }
       else if (outcome === 'gone' || s.failures >= 9) await db.delete(carePushSubscriptions).where(eq(carePushSubscriptions.id, s.id));
       else await db.update(carePushSubscriptions).set({ failures: sql`${carePushSubscriptions.failures} + 1` }).where(eq(carePushSubscriptions.id, s.id));
@@ -162,7 +167,8 @@ export const carePushStore = {
     await db.insert(carePushSubscriptions).values({ userId, endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth, label })
       .onConflictDoUpdate({ target: carePushSubscriptions.endpoint, set: { userId, p256dh: sub.p256dh, auth: sub.auth, label, failures: 0 } });
   },
-  async remove(endpoint: string) { await db.delete(carePushSubscriptions).where(eq(carePushSubscriptions.endpoint, endpoint)); },
+  /** Only the caller's own subscription: one staff member cannot switch off a colleague's alerts. */
+  async remove(endpoint: string, userId: string) { await db.delete(carePushSubscriptions).where(and(eq(carePushSubscriptions.endpoint, endpoint), eq(carePushSubscriptions.userId, userId))); },
   async count() { const [r] = await db.select({ n: sql<number>`count(*)::int` }).from(carePushSubscriptions); return Number(r?.n ?? 0); },
 };
 

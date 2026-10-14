@@ -10,6 +10,10 @@ export interface TemplateRow { ours: string; name: string; category: string; sta
 
 const GRAPH = `https://graph.facebook.com/${META_GRAPH_VERSION}`;
 const FRESH_MS = 10 * 60_000;
+/** After a failed listing, wait this long before asking Meta again (every routing check would otherwise re-list). */
+const RETRY_MS = 60_000;
+/** A reading older than this is not trusted to say "approved" (Meta may have paused or removed the template). */
+const STALE_MS = 6 * 3600_000;
 const norm = (t: string) => t.replace(/\s+/g, ' ').trim();
 /** The category the template must keep: utility (or authentication) messages may go to every customer; marketing may not. */
 function expectedCategory(name: string): string | null {
@@ -31,6 +35,7 @@ function expectedBody(name: string): string | null {
 export class MetaWhatsAppTemplateCatalog {
   private states = new Map<string, MetaTemplateState>();
   private readAt = 0;
+  private retryAt = 0;
   private inflight: Promise<void> | null = null;
   lastError: string | null = null;
 
@@ -53,7 +58,9 @@ export class MetaWhatsAppTemplateCatalog {
    * background refresh when the reading is old.
    */
   approved(name: string): boolean {
-    if (this.now() - this.readAt > FRESH_MS) void this.refresh().catch(() => undefined);
+    const now = this.now();
+    if (now - this.readAt > FRESH_MS && now >= this.retryAt) void this.refresh().catch(() => undefined);
+    if (this.readAt > 0 && now - this.readAt > STALE_MS) return false;
     const s = this.states.get(name);
     return s?.status === 'APPROVED' && !this.drifted(name) && !this.recategorised(name);
   }
@@ -85,7 +92,7 @@ export class MetaWhatsAppTemplateCatalog {
   }
 
   /** Force the next routing check to re-read Meta (a webhook said something changed). */
-  invalidate(): void { this.readAt = 0; void this.refresh().catch(() => undefined); }
+  invalidate(): void { this.readAt = 0; this.retryAt = 0; void this.refresh().catch(() => undefined); }
 
   async refresh(): Promise<void> {
     if (this.inflight) return this.inflight;
@@ -94,6 +101,10 @@ export class MetaWhatsAppTemplateCatalog {
         const { token, candidates } = await this.credentials();
         if (!candidates.length || !token) { this.lastError = 'not configured'; return; }
         let lastFailure = '';
+        // An account can answer with an empty or foreign list (Meta's split accounts): prefer the first one that
+        // holds any of our templates, and fall back to the first that answered at all.
+        const ourNames = new Set([...Object.values(WHATSAPP_TEMPLATES).map((t) => t.name), CARE_ALERT_TEMPLATE.name]);
+        let firstAnswer: { accountId: string; states: Map<string, MetaTemplateState> } | null = null;
         for (const accountId of candidates) {
         const next = new Map<string, MetaTemplateState>();
         let failed = false;
@@ -113,12 +124,16 @@ export class MetaWhatsAppTemplateCatalog {
           url = json?.paging?.next ?? null;
         }
         if (failed) continue;
+        if (![...next.keys()].some((n) => ourNames.has(n))) { firstAnswer ??= { accountId, states: next }; continue; }
         this.states = next; this.readAt = this.now(); this.lastError = null; this.templateAccount = accountId;
         return;
         }
+        if (firstAnswer) { this.states = firstAnswer.states; this.readAt = this.now(); this.lastError = null; this.templateAccount = firstAnswer.accountId; return; }
         this.lastError = lastFailure || 'Meta did not list the templates';
+        this.retryAt = this.now() + RETRY_MS;
       } catch (e) {
         this.lastError = e instanceof Error ? e.message.slice(0, 120) : 'unreachable';
+        this.retryAt = this.now() + RETRY_MS;
       } finally {
         this.inflight = null;
       }

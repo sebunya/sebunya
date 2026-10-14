@@ -98,6 +98,14 @@ const today = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
               <div><dt class="text-xs font-bold text-gray-600">Led to a sale reported to Meta</dt><dd class="text-2xl font-black text-brand-dark tabular-nums">{fmtInt(data.whatsappAds.last30Days.attributed)}</dd></div>
               <div><dt class="text-xs font-bold text-gray-600">Last advert chat</dt><dd class="text-sm text-gray-800">{data.whatsappAds.last30Days.lastReceivedAt ? whenKampala(data.whatsappAds.last30Days.lastReceivedAt) : "None yet"}</dd></div>
             </dl>
+            <div class="mt-4 text-sm">
+              <p class="text-xs font-bold text-gray-700">Recent deliveries from Meta (this server, newest first)</p>
+              {(data.whatsappAds.recentDeliveries ?? []).length === 0
+                ? <p class="text-xs text-gray-600 mt-1">None since the last restart. If customers are messaging and nothing appears here, Meta is not sending: check the webhook fields are subscribed and the WhatsApp account is linked to the app.</p>
+                : <ul class="mt-1 space-y-1 text-xs">{data.whatsappAds.recentDeliveries.map((d: any) => (
+                    <li class={d.status === 200 && !d.note ? "text-gray-700" : "text-red-700 font-bold"}>{whenKampala(d.at)} · {d.status === 200 ? "accepted" : `refused (${d.status})`}{d.fields?.length ? ` · ${d.fields.join(", ")}` : ""}{d.messages ? ` · ${d.messages} message(s)` : ""}{d.receipts ? ` · ${d.receipts} receipt(s)` : ""}{d.events ? ` · ${d.events} account event(s)` : ""}{d.note ? ` · ${d.note}` : ""}</li>
+                  ))}</ul>}
+            </div>
             <details class="mt-4 text-sm" open={!data.whatsappAds.live}>
               <summary class="cursor-pointer text-xs font-bold text-gray-700">What it needs (once)</summary>
               <ol class="mt-2 list-decimal space-y-1.5 pl-5 text-gray-700">

@@ -82,7 +82,7 @@ export class DrizzleAssistantConversationStore implements IAssistantConversation
     if (!r) return null;
     // The newest `limit` messages, oldest first (a long thread never loads whole for a channel decision).
     const msgs = (await db.select().from(assistantMessages).where(eq(assistantMessages.conversationId, id)).orderBy(desc(assistantMessages.createdAt)).limit(Math.min(Math.max(limit, 1), 500))).reverse();
-    return { conversation: toRow(r), messages: msgs.map((m) => ({ id: m.id, role: m.role as ArchiveRole, content: m.content, intent: m.intent, mood: m.mood, route: m.route, createdAt: m.createdAt })) };
+    return { conversation: toRow(r), messages: msgs.map((m) => ({ id: m.id, role: m.role as ArchiveRole, content: m.content, intent: m.intent, mood: m.mood, route: m.route, createdAt: m.createdAt, channelMessageId: m.channelMessageId ?? null })) };
   }
 
   async list(f: ArchiveFilters) {

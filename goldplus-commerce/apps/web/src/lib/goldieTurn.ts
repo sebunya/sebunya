@@ -158,7 +158,10 @@ export async function prepareTurn(input: TurnInput): Promise<PreparedTurn> {
       let modelTurns = input.turns.slice(-8);
       while (modelTurns.length && modelTurns[0]!.role !== 'user') modelTurns = modelTurns.slice(1);
       // What the answer showed and used, to decide whether it can be remembered for the next customer.
-      let answerText = ''; let shown: import('./assistantRouter').ProductCard[] = []; let personal = !!ctx?.firstName || input.channel !== 'web' || mood.mood !== 'neutral';
+      let answerText = ''; let shown: import('./assistantRouter').ProductCard[] = []; // Personal = the model was told anything about this shopper beyond the time of day (it is asked to use it:
+      // "welcome back", "still after that power bank?"), so the answer is never replayed to another customer.
+      let personal = input.channel !== 'web' || mood.mood !== 'neutral' || (!!ctx && (!!ctx.firstName || ctx.visits >= 2 || ctx.hasOrdered
+        || ctx.topCategories.length > 0 || ctx.recentlyViewed.length > 0 || ctx.pastTopics.length > 0 || !!ctx.nextBestAction));
       for await (const ev of runAssistant(modelTurns, { apiKey: input.apiKey, model: admission.model, effort: admission.effort, maxOutputTokens: admission.maxOutputTokens, maxToolRounds: admission.maxToolRounds, signal: input.signal, shopperNote: note, care: input.care })) {
         if (ev.type === 'text') answerText += ev.text;
         else if (ev.type === 'products') shown = [...shown, ...ev.items];

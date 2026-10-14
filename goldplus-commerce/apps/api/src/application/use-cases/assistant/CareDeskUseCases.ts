@@ -39,6 +39,20 @@ const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
  * page the on-duty team when something is urgent, the queue staff work from,
  * the team list, and the customer's rating of a chat.
  */
+/**
+ * One alert per phone number (any spelling: 0705…, +256705…) or email per channel, however many team rows share
+ * it: the same person listed twice must not be paged twice.
+ */
+function onePerContact(): (channel: string, contact: string) => boolean {
+  const seen = new Set<string>();
+  return (channel, contact) => {
+    const key = `${channel}:${contact.includes('@') ? contact.trim().toLowerCase() : contact.replace(/\D/g, '').slice(-9)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  };
+}
+
 export class CareDeskUseCases {
   constructor(
     private readonly repo: ICareDeskRepository,
@@ -85,8 +99,14 @@ export class CareDeskUseCases {
   async alert(task: CareTaskRow): Promise<string[]> {
     if (task.alertedAt) return [];
     const t = this.now().getTime();
-    const [hour, recent] = await Promise.all([this.repo.alertsSince(new Date(t - 3600_000), null), this.repo.alertsSince(new Date(t - 30 * 60_000), task.customerPhone)]);
-    if (alertAllowed({ samePhoneLast30Min: task.customerPhone ? recent.samePhone : 0, shopLastHour: hour.shop, perHour: this.config.alertsPerHour ?? DEFAULT_ALERTS_PER_HOUR }) !== 'ALLOWED') return [];
+    // Count and claim under one lock: two urgent tasks opened at once (a customer's burst of messages, two replicas)
+    // must not both read "no alert yet" and both page. The claim also makes "once per task" hold across replicas.
+    const claimed = await this.repo.withAlertLock(async () => {
+      const [hour, recent] = await Promise.all([this.repo.alertsSince(new Date(t - 3600_000), null), this.repo.alertsSince(new Date(t - 30 * 60_000), task.customerPhone)]);
+      if (alertAllowed({ samePhoneLast30Min: task.customerPhone ? recent.samePhone : 0, shopLastHour: hour.shop, perHour: this.config.alertsPerHour ?? DEFAULT_ALERTS_PER_HOUR }) !== 'ALLOWED') return false;
+      return this.repo.claimAlert(task.id);
+    });
+    if (!claimed) return [];
     const active = await this.activeTeam();
     const team = active.filter((m) => onDutyNow(m.onDuty, this.now()));
     // Nobody on duty: page everyone active, so an urgent customer is never left with no one told.
@@ -96,21 +116,22 @@ export class CareDeskUseCases {
     const subject = `GoldPlus Care: ${CARE_KIND_LABEL[task.kind]}${task.customerName ? `, ${task.customerName}` : ''}`.slice(0, 150);
     const lines = [message, task.detail ? `\n${task.detail.slice(0, 1200)}` : '', `\nCare Desk: ${this.config.deskUrl}`].join('\n');
     const html = `<p><strong>${esc(CARE_KIND_LABEL[task.kind])}</strong></p><p>${esc(task.title)}</p>${task.detail ? `<p style="white-space:pre-wrap">${esc(task.detail.slice(0, 1200))}</p>` : ''}<p>${esc([task.customerName, task.customerPhone, task.customerEmail, task.orderNumber].filter(Boolean).join(' · '))}</p><p><a href="${esc(this.config.deskUrl)}">Open the Care Desk</a></p>`;
+    const once = onePerContact();
     for (const m of people) {
-      if (m.alertSms && m.phone) { const r = await this.alerts.sms({ to: m.phone, message, key: `care-alert:${task.id}:${m.id}:sms`, taskId: task.id }).catch(() => ({ queued: false })); if (r.queued) sent.push(`sms:${m.name}`); }
-      if (m.alertEmail && m.email) { const r = await this.alerts.email({ to: m.email, subject, text: lines, html, key: `care-alert:${task.id}:${m.id}:email`, taskId: task.id }).catch(() => ({ queued: false })); if (r.queued) sent.push(`email:${m.name}`); }
-      if (m.alertWhatsapp && m.phone) { const r = await this.alerts.whatsapp({ to: m.phone, message }).catch(() => ({ queued: false })); if (r.queued) sent.push(`whatsapp:${m.name}`); }
+      if (m.alertSms && m.phone && once('sms', m.phone)) { const r = await this.alerts.sms({ to: m.phone, message, key: `care-alert:${task.id}:${m.id}:sms`, taskId: task.id }).catch(() => ({ queued: false })); if (r.queued) sent.push(`sms:${m.name}`); }
+      if (m.alertEmail && m.email && once('email', m.email)) { const r = await this.alerts.email({ to: m.email, subject, text: lines, html, key: `care-alert:${task.id}:${m.id}:email`, taskId: task.id }).catch(() => ({ queued: false })); if (r.queued) sent.push(`email:${m.name}`); }
+      if (m.alertWhatsapp && m.phone && once('whatsapp', m.phone)) { const r = await this.alerts.whatsapp({ to: m.phone, message }).catch(() => ({ queued: false })); if (r.queued) sent.push(`whatsapp:${m.name}`); }
     }
     if (this.alerts.push) {
       const p = await this.alerts.push({ title: `GoldPlus Care: ${CARE_KIND_LABEL[task.kind]}`, body: message, url: this.config.deskUrl, key: `care-alert:${task.id}` }).catch(() => ({ sent: 0 }));
       if (p.sent) sent.push(`push:${p.sent}`);
     }
-    if (sent.length) await this.repo.markAlerted(task.id);
     return sent;
   }
 
   list(f: { status?: 'open' | 'done' | 'cancelled'; kind?: CareTaskKind; limit?: number }) { return this.repo.list({ ...f, limit: Math.min(f.limit ?? 100, 300) }); }
   get(id: string) { return this.repo.get(id); }
+  lastTitled(prefix: string) { return this.repo.lastTitled(prefix); }
   async resolve(id: string, status: 'done' | 'cancelled', resolvedBy: string, resolution: string | null) {
     return this.repo.resolve(id, { status, resolvedBy, resolution: resolution ? text(resolution).slice(0, 1000) : null });
   }
@@ -158,10 +179,11 @@ export class CareDeskUseCases {
       const waitedMin = Math.round((now.getTime() - t.createdAt.getTime()) / 60000);
       const message = `STILL WAITING ${waitedMin} min. ${alertText(t)}`.slice(0, 300);
       const team = await this.activeTeam();
+      const once = onePerContact();
       for (const m of team) {
-        if (m.alertSms && m.phone) await this.alerts.sms({ to: m.phone, message, key: `care-escalate:${t.id}:${t.escalations + 1}:${m.id}:sms`, taskId: t.id }).catch(() => undefined);
-        if (m.alertEmail && m.email) await this.alerts.email({ to: m.email, subject: `STILL WAITING: ${CARE_KIND_LABEL[t.kind]}`, text: `${message}\n\nCare Desk: ${this.config.deskUrl}`, html: `<p><strong>${esc(message)}</strong></p><p><a href="${esc(this.config.deskUrl)}">Open the Care Desk</a></p>`, key: `care-escalate:${t.id}:${t.escalations + 1}:${m.id}:email`, taskId: t.id }).catch(() => undefined);
-        if (m.alertWhatsapp && m.phone) await this.alerts.whatsapp({ to: m.phone, message }).catch(() => undefined);
+        if (m.alertSms && m.phone && once('sms', m.phone)) await this.alerts.sms({ to: m.phone, message, key: `care-escalate:${t.id}:${t.escalations + 1}:${m.id}:sms`, taskId: t.id }).catch(() => undefined);
+        if (m.alertEmail && m.email && once('email', m.email)) await this.alerts.email({ to: m.email, subject: `STILL WAITING: ${CARE_KIND_LABEL[t.kind]}`, text: `${message}\n\nCare Desk: ${this.config.deskUrl}`, html: `<p><strong>${esc(message)}</strong></p><p><a href="${esc(this.config.deskUrl)}">Open the Care Desk</a></p>`, key: `care-escalate:${t.id}:${t.escalations + 1}:${m.id}:email`, taskId: t.id }).catch(() => undefined);
+        if (m.alertWhatsapp && m.phone && once('whatsapp', m.phone)) await this.alerts.whatsapp({ to: m.phone, message }).catch(() => undefined);
       }
       if (this.alerts.push) await this.alerts.push({ title: 'GoldPlus Care: still waiting', body: message, url: this.config.deskUrl, key: `care-escalate:${t.id}:${t.escalations + 1}` }).catch(() => undefined);
       await this.repo.markEscalated(t.id);

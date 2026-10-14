@@ -6,11 +6,15 @@ rule_files:
   - /etc/prometheus/goldie.rules.yml
 
 scrape_configs:
+  # One target per api replica (Docker DNS returns every replica's address for "api"). A single static "api:3000"
+  # target would reach a random replica on each scrape, and its counters would look like resets.
   - job_name: goldplus-api
     metrics_path: /metrics
-    static_configs:
-      - targets:
-          - api:3000
+    dns_sd_configs:
+      - names: [api]
+        type: A
+        port: 3000
+        refresh_interval: 30s
 
   - job_name: node-exporter
     static_configs:

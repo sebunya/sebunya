@@ -1082,8 +1082,9 @@ export class Registry {
     this.whatsappAlertedAt.set(key, now);
     const title = `WhatsApp needs attention: ${text}`.slice(0, 200);
     void (async () => {
-      const open = await this.careDeskUseCases.list({ status: 'open', kind: 'urgent', limit: 100 });
-      if (open.some((t) => t.title === title && now - t.createdAt.getTime() < 3600_000)) return;
+      // One task while it is open (both replicas), then an hour's quiet: not one per replica per hour.
+      const last = await this.careDeskUseCases.lastTitled(title);
+      if (last && (last.status === 'open' || now - last.createdAt.getTime() < 3600_000)) return;
       await this.careDeskUseCases.openTask({ kind: 'urgent', title, openedBy: 'whatsapp-monitor', urgent: true });
     })().catch(() => undefined);
   }
@@ -1092,14 +1093,17 @@ export class Registry {
    * Meta could not deliver a customer update (failed receipt): recorded as FAILED, and the same update goes by SMS
    * once (within 24 hours of sending). "Not on WhatsApp" also skips WhatsApp for that number for 30 days.
    */
-  private async whatsappDeliveryFailed(r: { messageId: string; errorCode: number | null; errorTitle: string | null }): Promise<void> {
-    await markWhatsAppDeliveryFailed(r.messageId, `WhatsApp delivery failed (Meta${r.errorCode !== null ? ` ${r.errorCode}` : ''}${r.errorTitle ? `: ${r.errorTitle}` : ''}); sent by SMS instead.`);
+  private async whatsappDeliveryFailed(r: { messageId: string; errorCode: number | null; errorTitle: string | null; recipientId?: string | null }): Promise<void> {
+    const why = `WhatsApp delivery failed (Meta${r.errorCode !== null ? ` ${r.errorCode}` : ''}${r.errorTitle ? `: ${r.errorTitle}` : ''})`;
+    // Not on WhatsApp: the receipt names the number, so the 30-day skip holds whether or not we kept the message.
+    if (r.errorCode === 131026 && r.recipientId) await whatsAppDeliveryStore.markNotOnWhatsApp(`+${r.recipientId}`, r.messageId).catch(() => undefined);
     const payload = await whatsAppDeliveryStore.takeForSmsFallback(r.messageId);
-    if (!payload) return;
+    if (!payload) { await markWhatsAppDeliveryFailed(r.messageId, `${why}; no SMS sent (too old, a phone code past 10 minutes, or already sent).`); return; }
     const digits = payload.recipient.replace(/\D/g, '');
     const e164 = `+${digits.startsWith('0') ? `256${digits.slice(1)}` : digits}`;
-    if (r.errorCode === 131026) await whatsAppDeliveryStore.markNotOnWhatsApp(e164, r.messageId).catch(() => undefined);
+    if (r.errorCode === 131026 && !r.recipientId) await whatsAppDeliveryStore.markNotOnWhatsApp(e164, r.messageId).catch(() => undefined);
     const result = await this.smsAdapter.dispatch(payload);
+    await markWhatsAppDeliveryFailed(r.messageId, `${why}; ${result.status === 'SENT' ? 'sent by SMS instead' : `SMS also not sent (${result.providerCode})`}.`);
     await this.recordNotificationAttemptUseCase.execute({ channel: 'sms', recipient: payload.recipient, template: payload.template, status: result.status, providerCode: result.providerCode, providerMessage: `${result.providerMessage} (after WhatsApp could not deliver)`.slice(0, 1000), relatedEntity: payload.relatedEntity, relatedEntityId: payload.relatedEntityId });
     goldieMetrics.deliveryReceipts.inc({ status: 'sms_fallback' });
   }
@@ -2801,6 +2805,7 @@ export class Registry {
     },
     (conversation, text) => this.goldieSocialUseCases.teamReply(conversation, text),
     whatsAppDeliveryStore,
+    Math.min(Math.max(Number(process.env.GOLDIE_BURST_WAIT_MS ?? 2000) || 0, 0), 10_000),
   );
   /** Goldie on Facebook Messenger and Instagram Direct. Off until GOLDIE_MESSENGER_ENABLED / GOLDIE_INSTAGRAM_ENABLED and a page token. */
   public readonly goldieSocialUseCases = new GoldieSocialUseCases(

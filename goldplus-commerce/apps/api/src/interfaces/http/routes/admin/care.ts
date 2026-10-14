@@ -155,7 +155,7 @@ routes.put('/push-subscriptions', requirePermissions([PERMISSIONS.CUSTOMER_DATA_
 routes.delete('/push-subscriptions', requirePermissions([PERMISSIONS.CUSTOMER_DATA_VIEW]), async (c) => {
   const parsed = z.object({ endpoint: z.string().max(2000) }).safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) return bad(c, 'INVALID_BODY', 'Invalid body.');
-  await carePushStore.remove(parsed.data.endpoint);
+  await carePushStore.remove(parsed.data.endpoint, actor(c));
   await Registry.getInstance().createAuditLogUseCase.execute({ actorId: actor(c), action: 'CARE_PUSH_UNSUBSCRIBED', entity: 'care_push_subscription', entityId: 'self', previousState: null, newState: null }).catch(() => undefined);
   return ok(c, { subscribed: false });
 });

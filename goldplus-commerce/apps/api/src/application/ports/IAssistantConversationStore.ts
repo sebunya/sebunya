@@ -25,7 +25,7 @@ export interface ArchiveConversationRow {
   lastMessageAt: Date;
 }
 
-export interface ArchiveMessageRow { id: string; role: ArchiveRole; content: string; intent: string | null; mood: string | null; route: string | null; createdAt: Date }
+export interface ArchiveMessageRow { id: string; role: ArchiveRole; content: string; intent: string | null; mood: string | null; route: string | null; createdAt: Date; channelMessageId?: string | null }
 
 export interface ArchiveFilters {
   channel?: ArchiveChannel;

@@ -146,4 +146,6 @@ export interface CareDeskToday {
   csatCount: number;
   /** When the longest-waiting open task was opened (null when nothing is open). */
   oldestOpenAt: string | null;
+  /** When the longest-waiting urgent task nobody has taken was opened (null when none). */
+  oldestUrgentAt?: string | null;
 }

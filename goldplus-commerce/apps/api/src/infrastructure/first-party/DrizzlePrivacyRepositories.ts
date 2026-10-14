@@ -479,8 +479,14 @@ export class DrizzlePersonalDataEraser implements IPersonalDataEraser {
       const goldieIds = await goldieConversationIds(exec, input.userId, plain);
       const byPhone = (col: string) => (plain.phoneDigits.length ? phoneIn(sql.raw(col), plain.phoneDigits) : sql`false`);
       const byEmail = (col: string) => (plain.emails.length ? emailIn(sql.raw(col), plain.emails) : sql`false`);
-      counts.goldieCareTasks = affected(await exec.execute(sql`
-        delete from care_tasks where ${goldieIds.length ? sql`conversation_id in (${uuidList(goldieIds)})` : sql`false`} or ${byPhone('customer_phone')} or ${byEmail('customer_email')}`));
+      const careWhere = sql`${goldieIds.length ? sql`conversation_id in (${uuidList(goldieIds)})` : sql`false`} or ${byPhone('customer_phone')} or ${byEmail('customer_email')}`;
+      // The team's alert copies of those tasks (SMS and email, sent or waiting) quote the customer's name, number and
+      // words: blanked before the tasks go, while their ids still find them. A blank payload is never sent.
+      const careIds = rows(await exec.execute(sql`select id from care_tasks where ${careWhere}`)).map((r) => String(r.id));
+      counts.goldieCareAlerts = careIds.length ? affected(await exec.execute(sql`
+        update outbox_events set payload = '{}'::jsonb
+        where related_entity = 'care_task' and related_entity_id in (${uuidList(careIds)})`)) : 0;
+      counts.goldieCareTasks = affected(await exec.execute(sql`delete from care_tasks where ${careWhere}`));
       counts.goldieConversations = goldieIds.length ? affected(await exec.execute(sql`delete from assistant_conversations where id in (${uuidList(goldieIds)})`)) : 0;
       counts.goldieInterests = affected(await exec.execute(sql`
         delete from zero_party_signals where user_id = ${input.userId}::uuid and source_component = 'goldie_chat'`));
@@ -491,8 +497,11 @@ export class DrizzlePersonalDataEraser implements IPersonalDataEraser {
             or ${plain.emails.length ? pgInTextList(sql`lower(trim(coalesce(${jsonField('metadata', 'email')}, '')))`, plain.emails) : sql`false`})`));
       counts.goldieEmails = affected(await exec.execute(sql`
         update outbox_events set payload = '{}'::jsonb
-        where event_type in ('GOLDIE_TRANSCRIPT', 'GOLDIE_HANDOVER') and is_processed = true and jsonb_typeof(payload) = 'object'
+        where event_type in ('GOLDIE_TRANSCRIPT', 'GOLDIE_HANDOVER', 'CARE_REPLY_EMAIL') and jsonb_typeof(payload) = 'object'
           and (${byEmail("payload->>'recipient'")} or ${byEmail("payload->>'replyTo'")})`));
+      // WhatsApp messages sent to them, kept a week for the SMS fallback (they hold the message's wording).
+      counts.whatsappSent = plain.phoneDigits.length ? affected(await exec.execute(sql`
+        delete from whatsapp_sent_messages where ${phoneIn(sql.raw('recipient'), plain.phoneDigits)}`)) : 0;
 
       counts.identityLinks = affected(await exec.execute(sql`
         delete from customer_identity_links l using customer_profiles p

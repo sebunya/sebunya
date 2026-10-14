@@ -23,7 +23,13 @@ export interface ICareDeskRepository {
   resolve(id: string, input: { status: 'done' | 'cancelled'; resolvedBy: string; resolution: string | null }): Promise<boolean>;
   assign(id: string, userId: string | null): Promise<boolean>;
   markAlerted(id: string): Promise<void>;
-  /** Urgent open tasks nobody has taken, with their escalation state (the use case decides). */
+  /** Marks the task as having paged people, only if it has not already (true = this caller won and may page). */
+  claimAlert(id: string): Promise<boolean>;
+  /** Runs `fn` while holding the shop-wide paging lock (both replicas), so the paging limits cannot be raced. */
+  withAlertLock<R>(fn: () => Promise<R>): Promise<R>;
+  /** The newest task (any status) whose title starts with `prefix`, for the health watchdog's dedupe. */
+  lastTitled(prefix: string): Promise<{ status: CareStatus; createdAt: Date } | null>;
+  /** Urgent open tasks nobody has taken that already paged people (health alarms excluded), with their escalation state. */
   urgentUntaken(limit: number): Promise<Array<CareTaskRow & { escalations: number; lastEscalatedAt: Date | null }>>;
   markEscalated(id: string): Promise<void>;
   /** Tasks that paged people since `since`: across the shop, and for this customer phone (any format). */

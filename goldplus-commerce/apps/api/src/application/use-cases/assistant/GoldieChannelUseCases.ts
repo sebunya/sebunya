@@ -1,4 +1,4 @@
-import { MEDIA_MARKER_RE, formatWhatsAppReply, optOutWord, whatsappKey, type InboundText, type ReplyParts } from '../../../domain/assistant/WhatsAppGoldie';
+import { MEDIA_MARKER_RE, UNREADABLE_PREFIX, formatWhatsAppReply, optOutWord, whatsappKey, type InboundText, type ReplyParts } from '../../../domain/assistant/WhatsAppGoldie';
 import { closesMatter, isAbusive, silenceFor } from '../../../domain/assistant/CareDesk';
 import type { ConversationArchiveUseCases } from './ConversationArchiveUseCases';
 
@@ -17,6 +17,8 @@ export interface IWhatsAppOptOuts {
 
 export const STOP_REPLY = "Done. GoldPlus will not send you updates on WhatsApp any more; order updates will come by SMS. You can still message us here any time. Reply START to turn WhatsApp updates back on.";
 export const START_REPLY = 'Welcome back. GoldPlus order updates will come to you on WhatsApp again. Reply STOP at any time to turn them off.';
+export const UNREADABLE_REPLY = "Thank you. I can't open that kind of message here, so I'm passing it to the team, and a person will reply shortly. If you can, please type your question too.";
+
 export const MEDIA_REPLY: Record<string, string> = {
   image: "Thank you for the photo. I'm passing it to the team now so a person can look at it properly, and they will reply here shortly.",
   audio: "Thank you for your voice note. I'm passing it to the team so a person can listen, and they will reply here shortly. If it is quicker, you can also type your question.",
@@ -74,6 +76,8 @@ export class GoldieChannelUseCases {
     /** Messenger / Instagram threads: the reply goes back through Meta's Send API (GoldieSocialUseCases). */
     private readonly socialReply: (conversation: { id: string; channel: string; channelKey: string }, text: string) => Promise<{ ok: true } | { ok: false; reason: string }> = async () => ({ ok: false, reason: 'not configured' }),
     private readonly optOuts: IWhatsAppOptOuts | null = null,
+    /** How long to wait for the rest of a burst before answering (0 in tests). */
+    private readonly burstWaitMs: number = 0,
   ) {}
   private staffCache: { at: number; numbers: string[] } = { at: 0, numbers: [] };
   private async staff(): Promise<string[]> {
@@ -94,18 +98,26 @@ export class GoldieChannelUseCases {
     // STOP / START are honoured whether or not Goldie is switched on: they govern the shop's WhatsApp updates.
     const word = optOutWord(msg.text);
     if (word && this.optOuts) {
+      // Filed first, like every message (the inbox shows it), and a redelivery of the same message is not answered twice.
+      const filed = await this.archive.logTurn({
+        channel: 'whatsapp', channelKey: whatsappKey(msg.from), customerId: null,
+        contact: { name: msg.name, phone: `+${msg.from}` },
+        customer: { content: msg.text, channelMessageId: msg.messageId },
+      }).catch(() => null);
+      if (filed?.duplicate) return 'duplicate';
       try {
         if (word === 'STOP') await this.optOuts.stop(`+${msg.from}`, msg.messageId); else await this.optOuts.start(`+${msg.from}`);
         const phoneNumberId = msg.phoneNumberId ?? s.phoneNumberId;
         if (phoneNumberId) await this.whatsapp.sendText({ phoneNumberId, to: msg.from, text: word === 'STOP' ? STOP_REPLY : START_REPLY });
         this.log(word === 'STOP' ? 'WHATSAPP_OPT_OUT' : 'WHATSAPP_OPT_IN', {});
+        await this.archive.markCustomerMessage(msg.messageId, 'answered').catch(() => undefined);
       } catch (e) {
         this.log('WHATSAPP_OPT_OUT_FAILED', { error: e instanceof Error ? e.message : String(e) });
       }
       return 'answered';
     }
-    if (!s.enabled) return 'skipped';
-    if (s.onlyNumbers.length && !s.onlyNumbers.includes(msg.from)) return 'skipped';
+    if (!s.enabled) { this.log('GOLDIE_WHATSAPP_SKIPPED', { reason: 'GOLDIE_WHATSAPP_ENABLED is not true' }); return 'skipped'; }
+    if (s.onlyNumbers.length && !s.onlyNumbers.includes(msg.from)) { this.log('GOLDIE_WHATSAPP_SKIPPED', { reason: 'not in GOLDIE_WHATSAPP_TEST_NUMBERS', ending: msg.from.slice(-3) }); return 'skipped'; }
     try {
       const customerId = await this.customerForPhone(msg.from).catch(() => null);
       const filed = await this.archive.logTurn({
@@ -131,7 +143,9 @@ export class GoldieChannelUseCases {
     const s = this.settings();
     if (!s.enabled) return 0;
     const t = this.now().getTime();
-    const pending = await this.archive.pendingWhatsApp(new Date(t - 90_000), new Date(t - 23 * 3600_000), limit);
+    // Three minutes: longer than a live turn can take (brain 45 s, send 10 s, alerts), so recovery never answers a
+    // message the live path is still answering.
+    const pending = await this.archive.pendingWhatsApp(new Date(t - 180_000), new Date(t - 23 * 3600_000), limit);
     let answered = 0;
     for (const p of pending) {
       if (!(await this.archive.claimCustomerMessage(p.messageId))) continue;
@@ -149,8 +163,17 @@ export class GoldieChannelUseCases {
     const readOn = msg.phoneNumberId ?? s.phoneNumberId;
     if (readOn && this.whatsapp.markRead) void this.whatsapp.markRead({ phoneNumberId: readOn, messageId: msg.messageId, typing: true }).catch(() => undefined);
     const mark = (outcome: 'answered' | 'silent' | 'held' | 'send_failed') => this.archive.markCustomerMessage(msg.messageId, outcome).catch(() => undefined);
+    // A customer often sends two or three lines in a row ("hi" / "iPhone 11 battery?"): wait a moment, and answer
+    // only from the newest line (its reply covers the earlier ones, merged), so a burst gets one reply, not three.
+    if (this.burstWaitMs > 0) await new Promise((r) => setTimeout(r, this.burstWaitMs));
     // The last 40 messages are plenty for history, silence rules and repeats.
     const thread = await this.archive.get(conversationId, 40);
+    const newestCustomer = [...(thread?.messages ?? [])].reverse().find((m) => m.role === 'customer');
+    if (newestCustomer?.channelMessageId && newestCustomer.channelMessageId !== msg.messageId) {
+      this.log('GOLDIE_WHATSAPP_SILENT', { conversationId, reason: 'NEWER_MESSAGE' });
+      await mark('silent');
+      return 'filed';
+    }
     // When not to answer: a colleague has it, the matter is settled and this is "ok 👍", the same text pasted
     // again and again, a stream of abuse, or a team member's own number. Filed either way, never lost.
     const t = this.now().getTime();
@@ -176,6 +199,15 @@ export class GoldieChannelUseCases {
     // A photo, voice note, video or document: Goldie cannot see it, so a person is asked to look, and the customer is
     // told so. With a caption, Goldie still answers the words.
     if (msg.media?.kind === 'sticker') { await mark('silent'); return 'filed'; }
+    if (msg.text.startsWith(UNREADABLE_PREFIX)) {
+      await this.openTask({ kind: 'follow_up', title: `WhatsApp message to look at: ${msg.text.slice(UNREADABLE_PREFIX.length, UNREADABLE_PREFIX.length + 40).replace(/\]$/, '').trim()} (open WhatsApp on the shop phone)`, customerName: msg.name, customerPhone: `+${msg.from}`, conversationId, channel: 'whatsapp' }).catch(() => undefined);
+      const phoneNumberId = msg.phoneNumberId ?? s.phoneNumberId;
+      if (!phoneNumberId) { await mark('held'); return 'filed'; }
+      const sent = await this.whatsapp.sendText({ phoneNumberId, to: msg.from, text: UNREADABLE_REPLY });
+      if (sent.ok) { await this.archive.logReply(conversationId, UNREADABLE_REPLY, 'deterministic', sent.messageId); await mark('answered'); return 'answered'; }
+      await mark('send_failed');
+      return 'failed';
+    }
     if (msg.media) {
       const caption = msg.text.replace(MEDIA_MARKER_RE, '').replace(/^\[[^\]]*\]\s*/, '').trim();
       const kindWord = msg.media.kind === 'image' ? 'photo' : msg.media.kind === 'audio' ? 'voice note' : msg.media.kind;
@@ -251,6 +283,12 @@ export class GoldieChannelUseCases {
     const s = this.settings();
     const to = (c.contactPhone ?? '').replace(/\D/g, '');
     if (!s.enabled || !s.phoneNumberId || !to) return { ok: false, code: 'NOT_SENT', message: 'WhatsApp sending is not configured, so the reply was not sent.' };
+    // Meta accepts a normal message outside the 24-hour window and only reports the failure later, so the admin
+    // would show "sent" for a message that never arrives: refuse it here, with the reason.
+    const lastCustomer = [...found.messages].reverse().find((m) => m.role === 'customer');
+    if (!lastCustomer || this.now().getTime() - lastCustomer.createdAt.getTime() > 24 * 3600_000) {
+      return { ok: false, code: 'NOT_SENT', message: "The customer's last WhatsApp message is more than 24 hours old, so WhatsApp will not deliver a normal reply. Call or text them on the number above; the conversation reopens when they write again." };
+    }
     const sent = await this.whatsapp.sendText({ phoneNumberId: s.phoneNumberId, to, text });
     if (!sent.ok) return { ok: false, code: 'NOT_SENT', message: `WhatsApp did not accept the message (${sent.reason}). Outside 24 hours of the customer's last message, WhatsApp only allows approved templates.` };
     await this.archive.addTeamMessage(conversationId, text);

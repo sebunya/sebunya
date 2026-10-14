@@ -4,6 +4,9 @@ import {
   CTWA_WINDOW_DEFAULT_DAYS, messagingClickWins, parseAdReferrals, subscriptionChallenge, verifyWebhookSignature, type CtwaSecrets,
 } from '../../../domain/advertising/WhatsAppAdReferrals';
 
+/** One delivery from Meta as the admin sees it (no personal data). */
+export interface DeliveryRecord { at: string; status: number; entryIds?: string[]; fields?: string[]; messages?: number; receipts?: number; events?: number; note?: string }
+
 /** The WhatsApp ads settings as saved (the secrets are read just in time and go no further than this class). */
 export interface CtwaSettings {
   /** Switched on, with everything it needs. */
@@ -89,36 +92,55 @@ export class WhatsAppAdsUseCases {
   }
 
   /**
+   * The last deliveries from Meta (newest first, this api replica): when, what we answered, and what they held.
+   * Nothing personal: counts, the account ids on the entries, and Meta's field names. Shown on the admin card so a
+   * silent drop (wrong account id, wrong app secret) is visible without reading server logs.
+   */
+  private readonly deliveries: DeliveryRecord[] = [];
+  recentDeliveries(): DeliveryRecord[] { return [...this.deliveries]; }
+  private remember(d: Omit<DeliveryRecord, 'at'>): void {
+    this.deliveries.unshift({ at: this.now().toISOString(), ...d });
+    this.deliveries.length = Math.min(this.deliveries.length, 20);
+  }
+
+  /**
    * One webhook delivery (POST). The status is what Meta is answered with:
    * 200 once the signature holds (whatever was in it, so Meta does not retry
    * what we chose to ignore), 401 when it does not, 404 when nothing is
    * configured to receive it.
    */
-  async receive(rawBody: string, signatureHeader: string | null | undefined): Promise<{ status: 200 | 401 | 404 | 413; stored: number; duplicates: number; messages: number; withoutClickId: number }> {
+  async receive(rawBody: string, signatureHeader: string | null | undefined): Promise<{ status: 200 | 401 | 404 | 413; stored: number; duplicates: number; messages: number; withoutClickId: number; summary?: DeliveryRecord }> {
     const none = { stored: 0, duplicates: 0, messages: 0, withoutClickId: 0 };
-    if (Buffer.byteLength(rawBody, 'utf8') > MAX_BODY_BYTES) return { status: 413, ...none };
+    if (Buffer.byteLength(rawBody, 'utf8') > MAX_BODY_BYTES) { this.remember({ status: 413, note: 'too large' }); return { status: 413, ...none }; }
     const s = await this.settings().catch(() => null);
-    if (!s) return { status: 404, ...none };
+    if (!s) { this.remember({ status: 404, note: 'WhatsApp settings not saved in the admin' }); return { status: 404, ...none }; }
     // Before anything is parsed: the signature is over the bytes as received.
-    if (!verifyWebhookSignature(rawBody, signatureHeader, s.secrets.appSecret)) return { status: 401, ...none };
+    if (!verifyWebhookSignature(rawBody, signatureHeader, s.secrets.appSecret)) {
+      this.remember({ status: 401, note: signatureHeader ? 'signature did not match the saved app secret' : 'no signature' });
+      return { status: 401, ...none };
+    }
     let payload: unknown;
-    try { payload = JSON.parse(rawBody); } catch { return { status: 200, ...none }; }
-    // The WhatsApp account saved in the admin, plus the Messaging account (WHATSAPP_MESSAGING_ACCOUNT_ID) if set.
-    const ownIds = [s.wabaId, (process.env.WHATSAPP_MESSAGING_ACCOUNT_ID ?? '').trim()].filter((x) => /^\d{5,20}$/.test(x)).join(',');
+    try { payload = JSON.parse(rawBody); } catch { this.remember({ status: 200, note: 'not JSON' }); return { status: 200, ...none }; }
+    // Every account id that is ours: the one saved in the admin, the server's WHATSAPP_WABA_ID (which wins for
+    // sending) and the Messaging account. A delivery for any of them is the shop's; one missing here is dropped.
+    const ownIds = [...new Set([s.wabaId, (process.env.WHATSAPP_WABA_ID ?? '').trim(), (process.env.WHATSAPP_MESSAGING_ACCOUNT_ID ?? '').trim()].filter((x) => /^\d{5,20}$/.test(x)))].join(',');
     const parsed = parseAdReferrals(payload, ownIds, this.now());
     // Customers' words go to Goldie (who files them and answers when switched on); the advert path below never reads them.
-    if (this.inbound) {
-      const texts = parseInboundTexts(payload, ownIds, this.now());
-      if (texts.length) { try { this.inbound(texts); } catch { /* Goldie must never cost Meta a 200 */ } }
-    }
-    if (this.receipts) {
-      const receipts = parseDeliveryReceipts(payload, ownIds);
-      if (receipts.length) { try { this.receipts(receipts); } catch { /* never costs Meta a 200 */ } }
-    }
-    if (this.accountEvents) {
-      const events = parseAccountEvents(payload, ownIds);
-      if (events.length) { try { this.accountEvents(events); } catch { /* never costs Meta a 200 */ } }
-    }
+    const texts = parseInboundTexts(payload, ownIds, this.now());
+    const receipts = parseDeliveryReceipts(payload, ownIds);
+    const events = parseAccountEvents(payload, ownIds);
+    if (this.inbound && texts.length) { try { this.inbound(texts); } catch { /* Goldie must never cost Meta a 200 */ } }
+    if (this.receipts && receipts.length) { try { this.receipts(receipts); } catch { /* never costs Meta a 200 */ } }
+    if (this.accountEvents && events.length) { try { this.accountEvents(events); } catch { /* never costs Meta a 200 */ } }
+    const textCount = texts.length, receiptCount = receipts.length, eventCount = events.length;
+    const entries = Array.isArray((payload as { entry?: unknown })?.entry) ? ((payload as { entry: Array<Record<string, unknown>> }).entry) : [];
+    const entryIds = [...new Set(entries.map((e) => String(e?.id ?? '')).filter(Boolean))].slice(0, 5);
+    const fields = [...new Set(entries.flatMap((e) => (Array.isArray(e?.changes) ? (e.changes as Array<{ field?: unknown }>) : []).map((c) => String(c?.field ?? ''))).filter(Boolean))].slice(0, 6);
+    const foreign = entryIds.filter((id) => !ownIds.split(',').includes(id));
+    this.remember({
+      status: 200, entryIds, fields, messages: textCount, receipts: receiptCount, events: eventCount,
+      note: foreign.length ? `ignored entries for account ${foreign.join(', ')} (ours: ${ownIds || 'none saved'})` : undefined,
+    });
     // Signed and understood, but switched off: acknowledged and not kept.
     if (!s.live) return { status: 200, stored: 0, duplicates: 0, messages: parsed.messages, withoutClickId: parsed.referralsWithoutClickId };
     let stored = 0, duplicates = 0;
@@ -155,7 +177,7 @@ export class WhatsAppAdsUseCases {
     return {
       configured: !!s, live: !!s?.live, wabaId: s?.wabaId ?? null, windowDays: s?.windowDays ?? CTWA_WINDOW_DEFAULT_DAYS,
       ownDataset: !!s?.datasetId, ownToken: !!s?.secrets.accessToken, retentionDays: CTWA_RETENTION_DAYS,
-      webhookUrl, last30Days: stats,
+      webhookUrl, last30Days: stats, recentDeliveries: this.recentDeliveries().slice(0, 8),
     };
   }
 }
