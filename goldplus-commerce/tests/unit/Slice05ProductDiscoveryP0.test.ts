@@ -107,7 +107,8 @@ describe('Slice 05 product discovery P0', () => {
     // "View details" text link was removed. The whole card (image + name) links to
     // the PDP, and the accessible name is carried by the aria-label below, so the
     // PDP is still reachable and labelled without the redundant text link.
-    expect(card).toContain('aria-label={`${product.name}, ${formattedPrice}, ${availabilityLabel}`}');
+    // During a sale the label says the price the customer pays (it used to read the regular price only).
+    expect(card).toContain('aria-label={`${product.name}, ${onSale ? `on sale at ${formatUgx(saleUgx)}, was ${formattedPrice}` : formattedPrice}, ${availabilityLabel}`}');
   });
 
   it('introduces no fake popularity, trending, scarcity, or recommendation claims', () => {

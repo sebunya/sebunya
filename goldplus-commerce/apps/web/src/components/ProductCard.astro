@@ -73,9 +73,9 @@ const availabilityBadgeClass = (() => {
   class="group flex flex-col h-full border border-slate-200/80 rounded-2xl p-3 sm:p-5 hover:border-brand-primary hover:-translate-y-0.5 transition-[transform,border-color] duration-200 bg-white"
   data-product-id={product.id}
   data-product-name={product.name}
-  data-product-price={product.retailPriceUgx ?? ''}
+  data-product-price={onSale ? saleUgx : product.retailPriceUgx ?? ''}
   data-product-category={product.categoryName ?? ''}
-  aria-label={`${product.name}, ${formattedPrice}, ${availabilityLabel}`}
+  aria-label={`${product.name}, ${onSale ? `on sale at ${formatUgx(saleUgx)}, was ${formattedPrice}` : formattedPrice}, ${availabilityLabel}`}
 >
   
   {/* Product Image & Status Badge */}
