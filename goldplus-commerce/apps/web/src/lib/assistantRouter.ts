@@ -36,6 +36,12 @@ const BATTERY_CODE = /\b(bl|eb|blp|hb)[- ]?[a-z0-9]{3,8}\b/i;
 const PRODUCT_NOUNS = /\b(charger|chargers|cable|cables|power ?banks?|earphones?|earbuds?|headphones?|headset|speaker|flash ?(disk|drive)|memory ?card|sd ?card|micro ?sd|mouse|sound ?card|car charger|type.?c|usb|lightning|micro.?usb|adapter|bluetooth|batter(y|ies)|\d+\s?gb|\d+\s?w\b|\d+\s?mah)/i;
 /** Places a customer names when asking whether something can reach them; with "today"/"tomorrow" that is a delivery question. */
 const PLACES = /\b(kampala|wakiso|nansana|mukono|entebbe|kira|ntinda|kawempe|makindye|rubaga|lubaga|nakawa|kajjansi|gayaza|bweyogerere|seeta|namugongo|kireka|bukoto|kololo|kisaasi|kyanja|najjera|kitende|jinja|mbarara|gulu|mbale|masaka|lira|arua|fort portal|hoima|soroti|kabale|my (area|place|home|office|location))\b/;
+/** Asking for a person, not a product: "talk to someone", "customer care", "an agent", "a real person". */
+const WANTS_PERSON = /\b((talk|speak|chat) (to|with) (a |an |the |your |some )?(person|human|someone|somebody|agent|staff|manager|team|owner|customer (care|service))|(customer|client) (care|service|support)|real person|human (agent|being)|(a|an) (agent|attendant|human))\b/;
+/** Asking for help in general (an order, a payment, a fault each have their own route above): never a product search. */
+const WANTS_HELP = /\b(support|help|assist(ance)?|complain(t|ts|ing)?|problem|issue|query|inquiry|enquiry|disappointed|unhappy)\b/;
+/** Phrases that say "I am shopping" on their own, with no product named. */
+const SHOPPING = /\b(do you (have|sell|stock)|have you got|got any|how much|price|cost|cheapest|in stock|available)\b/;
 const INTERPRETIVE = /\b(which|best|better|compatible|compatibility|fast.?charg(e|er|ing)?|right for|work(s)? with|fit(s)? my|difference|vs\.?|versus|compare|recommend|suitable|good for|laptop|how (do|does|can|long)|why|explain|should i)\b/i;
 
 export function classify(raw: string): Classification {
@@ -47,6 +53,8 @@ export function classify(raw: string): Classification {
   if (short && /^(hi|hello|hey|yo|good (morning|afternoon|evening)|ok(ay)?|cool|sure)\b[!. ]*$/.test(t)) return { intent: 'GREETING', deterministic: true, query: t };
   // Thanks in its common forms (never worth a paid answer): "thank you so much", "ok thanks", "webale nnyo", "asante sana".
   if (short && /^(ok(ay)?[ ,]*)?(thanks?|thank you|thx|webale|asante)( (so|very) much| a lot| nnyo| sana| dear| goldie| boss)*[!. 🙏]*$/u.test(t)) return { intent: 'GREETING', deterministic: true, query: t };
+  // Someone asking for a person gets the team (a callback task; on WhatsApp the verified number is enough).
+  if (WANTS_PERSON.test(t)) return { intent: 'CALLBACK', deterministic: true, query: text };
   if (/\b(call me( back)?|phone me|ring me|give me a call|can (someone|somebody|you|a person) (call|phone|ring)|i want (someone|somebody|a person) to call|call back)\b/.test(t)) return { intent: 'CALLBACK', deterministic: true, query: text };
   if (ORDER_REF.test(text)) return { intent: 'ORDER', deterministic: true, query: '' };
   if (/\b(my )?(loyalty|reward points|my points|points balance|how many points|my tier|tier|friends ?(&|and) ?family (points|rewards))\b/.test(t) && !/\b(charging|power) points?\b/.test(t)) return { intent: 'LOYALTY', deterministic: true, query: '' };
@@ -61,8 +69,14 @@ export function classify(raw: string): Classification {
   if (/\bbatter(y|ies)\b/.test(t) || BATTERY_CODE.test(text)) return { intent: 'BATTERY', deterministic: true, query: batteryQuery(text) };
   if (/\b(deliver|delivery|deliveries|shipping|ship|courier|boda|cut.?off|same.?day|upcountry|how long (to|does|will)|when will (it|i)|receive (it|this|them|my)|bring (it|this|them))\b/.test(t) || (PLACES.test(t) && /\b(today|tomorrow|tonight|by (today|tomorrow|\w+day))\b/.test(t))) return { intent: 'DELIVERY', deterministic: true, query: text };
   if (/\b(where (is|are) (the |your )?(shop|store|you|office)|location|address|directions?|open(ing)?|hours|close|closing|phone number|whatsapp|contact|call you|visit)\b/.test(t)) return { intent: 'STORE', deterministic: true, query: '' };
-  const lookup = /\b(do you (have|sell|stock)|have you got|got any|how much|price|cost|cheapest|cheap|under|budget|looking for|i need|i want|buy|available|in stock|show me|any)\b/.test(t);
-  if (lookup || PRODUCT_NOUNS.test(t)) return { intent: 'PRODUCT', deterministic: !INTERPRETIVE.test(t), query: productQuery(text) };
+  // A product is searched without the model only when the message names one (a product word, a phone brand, a battery
+  // code, a size) or asks a plain shopping question. "I want support", "I need help", "any update?" are not searches:
+  // 2026-10-14, "I want support" was answered "I don't see 'support' on our shelf".
+  const named = PRODUCT_NOUNS.test(t) || PHONE_BRANDS.test(t) || BATTERY_CODE.test(text);
+  if (!named && WANTS_HELP.test(t)) return { intent: 'UNKNOWN', deterministic: false, query: text };
+  if (named || SHOPPING.test(t)) return { intent: 'PRODUCT', deterministic: !INTERPRETIVE.test(t), query: productQuery(text) };
+  // "I want…", "I need…", "looking for…" with nothing recognisable named: the model reads it (and searches if it is a product).
+  if (/\b(cheap|under|budget|looking for|i need|i want|buy|show me|any)\b/.test(t)) return { intent: 'PRODUCT', deterministic: false, query: productQuery(text) };
   return { intent: 'UNKNOWN', deterministic: false, query: text };
 }
 
@@ -199,7 +213,8 @@ export async function answerDeterministically(c: Classification, ci?: CareInput)
       const query = c.query || 'accessories';
       const out = await callTool('search_products', { query, limit: 5 });
       const products = cardsFromProducts(structured(out).products);
-      if (!products.length) return { intent: c.intent, text: `I don't see "${query}" on our shelf. Try the product code or fewer words, or tell me what it is for and I'll find the closest fit.`, products: [], links: [link('Browse the shop', '/shop'), wa] };
+      // Never a dead end: ask the one thing that finds it (what it is for, which device), and offer a person.
+      if (!products.length) return { intent: c.intent, text: `I couldn't find "${query}" by that name. What is it for, or which phone or device should it work with? Tell me and I'll find the closest match. You can also message the team on WhatsApp.`, products: [], links: [link('Browse the shop', '/shop'), wa] };
       return { intent: c.intent, text: `${products.length === 1 ? 'We have one that matches' : `We have ${products.length} that match`}. Today's price and stock are on each card${products.length > 1 ? '; tell me what it is for and I will say which one fits' : ''}.`, products, links: [link('See all results', `/shop?q=${encodeURIComponent(query)}`)] };
     }
     default:

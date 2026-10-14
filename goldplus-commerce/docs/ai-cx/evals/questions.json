@@ -19,7 +19,7 @@
     { "id": 16, "group": "grounded", "text": "The earbuds stopped working", "intent": "POLICY", "deterministic": true },
     { "id": 17, "group": "grounded", "text": "I need 50 power banks for the office", "intent": "BULK", "deterministic": false },
     { "id": 18, "group": "grounded", "text": "I bought the wrong battery", "intent": "POLICY", "deterministic": true },
-    { "id": 19, "group": "grounded", "text": "I want something under UGX 30,000", "intent": "PRODUCT", "deterministic": true },
+    { "id": 19, "group": "grounded", "text": "I want something under UGX 30,000", "intent": "PRODUCT", "deterministic": false },
     { "id": 20, "group": "grounded", "text": "Will this charger fast-charge my phone?", "intent": "PRODUCT", "deterministic": false },
     { "id": 21, "group": "grounded", "text": "battery for Infinix Hot 10", "intent": "BATTERY", "deterministic": true },
     { "id": 22, "group": "grounded", "text": "BL-49FT", "intent": "BATTERY", "deterministic": true },

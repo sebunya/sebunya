@@ -130,7 +130,8 @@ describe('assistant router: deterministic answers come from shop data', () => {
     expect(found.text).toMatch(/Today's price and stock are on each card/);
     callTool.mockResolvedValueOnce({ content: [{ type: 'text', text: 'none' }], structuredContent: { products: [] } });
     const nothing = await answerDeterministically(classify('do you have a drone?'));
-    expect(nothing.text).toMatch(/I don't see .* on our shelf/);
+    // Never a dead end: it asks what the thing is for / which device, and offers the team.
+    expect(nothing.text).toMatch(/couldn't find "drone" by that name\. What is it for/);
     expect(nothing.products).toEqual([]);
   });
 });
