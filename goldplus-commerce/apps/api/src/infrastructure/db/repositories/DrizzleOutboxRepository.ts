@@ -11,6 +11,17 @@ import {
 import { DEAD_LETTER_STATE, DEAD_LETTER_STATES } from '../../../domain/outbox/TerminalState';
 
 /**
+ * Events whose payload carries a live secret (a phone verification code). The outbox needs it until the event is
+ * handled; after that it is removed, so a database or queue reader cannot read codes, and the event is never
+ * replayed (the code has expired, and the message would go out without it).
+ */
+export const SECRET_PAYLOAD_EVENT_TYPES: readonly string[] = ['PHONE_VERIFICATION_REQUESTED'];
+const scrubbedPayload = () => sql`case when ${outboxEvents.eventType} in (${sql.join(SECRET_PAYLOAD_EVENT_TYPES.map((t) => sql`${t}`), sql`, `)})
+  then (${outboxEvents.payload} - 'code') || jsonb_build_object('message', 'Verification code (removed once handled).')
+  else ${outboxEvents.payload} end`;
+const notSecretPayload = () => notInArray(outboxEvents.eventType, [...SECRET_PAYLOAD_EVENT_TYPES]);
+
+/**
  * The read-compatible state list as a literal IN-list.
  *
  * Interpolating the JS array as a bound parameter makes Drizzle emit a record,
@@ -133,6 +144,7 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
         lastError: opts?.lastError ?? null,
         workerId: null,
         leaseExpiresAt: null,
+        payload: scrubbedPayload(),
       })
       .where(and(eq(outboxEvents.id, eventId), eq(outboxEvents.workerId, this.workerId)))
       .returning({ id: outboxEvents.id });
@@ -156,6 +168,7 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
         lastError: error,
         workerId: null,
         leaseExpiresAt: null,
+        payload: scrubbedPayload(),
       })
       .where(and(eq(outboxEvents.id, eventId), eq(outboxEvents.workerId, this.workerId)))
       .returning({ id: outboxEvents.id });
@@ -249,7 +262,7 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
       })
       // Accepts either spelling, so a telemetry dead letter can actually be
       // replayed. Before this it matched nothing and returned false forever.
-      .where(and(eq(outboxEvents.id, eventId), inArray(outboxEvents.status, [...DEAD_LETTER_STATES])))
+      .where(and(eq(outboxEvents.id, eventId), inArray(outboxEvents.status, [...DEAD_LETTER_STATES]), notSecretPayload()))
       .returning({ id: outboxEvents.id });
     return updated.length === 1;
   }
@@ -318,7 +331,8 @@ export class DrizzleOutboxRepository implements IOutboxRepository {
         and(
           eq(outboxEvents.id, eventId),
           eq(outboxEvents.isProcessed, true),
-          sql`${outboxEvents.lastError} is not null`
+          sql`${outboxEvents.lastError} is not null`,
+          notSecretPayload()
         )
       )
       .returning({ id: outboxEvents.id });
