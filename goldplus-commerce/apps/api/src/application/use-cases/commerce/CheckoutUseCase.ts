@@ -333,7 +333,20 @@ export class CheckoutUseCase {
         // comparison failed every priced delivery with a false "an offer on
         // your basket ended". Shipping and tax are not promotion facts.
         const goodsTotal = (q: { finalTotalUgx: number; shippingUgx: number; taxUgx: number }) => q.finalTotalUgx - q.shippingUgx - q.taxUgx;
-        const promotionChanged = preview.discountTotalUgx !== quote.discountTotalUgx || goodsTotal(preview) !== goodsTotal(quote) || preview.appliedPromotionVersions.map((item) => item.versionId).join(',') !== quote.appliedPromotionVersions.map((item) => item.versionId).join(',');
+        // Goods discounts only, for the same reason: a free-shipping promotion is never in the preview (it has no
+        // fee to waive) but is in this quote, so comparing the total discount, or the version list with it in,
+        // refused every customer who applied a code once while one was live.
+        const shippingOnly = (q: PricingQuote) => {
+          const scopes = new Map<string, Set<string>>();
+          for (const a of q.adjustments ?? []) scopes.set(a.promotionVersionId, (scopes.get(a.promotionVersionId) ?? new Set()).add(a.scope));
+          return new Set([...scopes].filter(([, set]) => set.size === 1 && set.has('SHIPPING')).map(([id]) => id));
+        };
+        const goodsDiscount = (q: PricingQuote) => q.discountTotalUgx - (q.adjustments ?? []).filter((a) => a.scope === 'SHIPPING').reduce((n, a) => n + a.amountUgx, 0);
+        const goodsVersions = (q: PricingQuote) => {
+          const skip = shippingOnly(q);
+          return q.appliedPromotionVersions.filter((item) => !skip.has(item.versionId)).map((item) => item.versionId).join(',');
+        };
+        const promotionChanged = goodsDiscount(preview) !== goodsDiscount(quote) || goodsTotal(preview) !== goodsTotal(quote) || goodsVersions(preview) !== goodsVersions(quote);
         if (!dto.acceptPriceChange && (baseChanged || promotionChanged)) throw new Error(`${baseChanged ? 'PRICE_CHANGED' : 'PROMOTION_CHANGED'}: The authoritative checkout total differs from the preview. Review and confirm the revised breakdown.`);
       }
       const checkoutKey = clientOrderKey ?? `quote:${quote.id}`;
