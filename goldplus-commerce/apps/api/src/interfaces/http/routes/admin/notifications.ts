@@ -145,6 +145,18 @@ routes.get('/whatsapp-templates', requirePermissions([PERMISSIONS.NOTIFICATIONS_
   const data = await Registry.getInstance().whatsappTemplateCatalog.rows();
   return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
 });
+// Is each WhatsApp account linked to the app (Meta sends messages only for linked accounts)? Read with the saved token.
+routes.get('/whatsapp-connection', requirePermissions([PERMISSIONS.NOTIFICATIONS_READ]), async (c) => {
+  const data = await Registry.getInstance().whatsappTemplateCatalog.connection();
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+routes.post('/whatsapp-connection/link', requirePermissions([PERMISSIONS.NOTIFICATIONS_MANAGE]), async (c) => {
+  const registry = Registry.getInstance();
+  const actorId = (c.get('user') as { id: string }).id;
+  const out = await registry.whatsappTemplateCatalog.linkAccounts();
+  await registry.createAuditLogUseCase.execute({ actorId, action: 'WHATSAPP_ACCOUNTS_LINKED', entity: 'whatsapp_connection', entityId: 'meta', previousState: null, newState: out }).catch(() => undefined);
+  return c.json({ success: true, data: out } satisfies ApiResponse<typeof out>);
+});
 routes.post('/whatsapp-templates/submit', requirePermissions([PERMISSIONS.NOTIFICATIONS_MANAGE]), async (c) => {
   const registry = Registry.getInstance();
   const actorId = (c.get('user') as { id: string }).id;
