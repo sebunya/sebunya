@@ -17,9 +17,9 @@ const checkout = read('apps/web/src/pages/checkout.astro');
 describe('the checkout intent is used up when its order settles', () => {
   const callback = read('apps/web/src/pages/checkout/pesapal/callback.astro');
 
-  it('the PesaPal return clears the intent on success and on already-settled', () => {
+  it('the PesaPal return clears the intent on success, on already-settled and on a second payment (all paid orders)', () => {
     expect(callback).toContain("import { clearCheckoutIntent } from '../../../lib/checkoutIntent';");
-    const settled = callback.slice(callback.indexOf("if (kind === 'success' || kind === 'already_settled') {"));
+    const settled = callback.slice(callback.indexOf("if (kind === 'success' || kind === 'already_settled' || kind === 'second_payment') {"));
     const block = settled.slice(0, settled.indexOf('\n}\n'));
     expect(block).toContain("Astro.cookies.delete('goldplus_cart_data', { path: '/' });");
     expect(block).toContain('clearCheckoutIntent(Astro.cookies);');
