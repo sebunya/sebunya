@@ -142,6 +142,21 @@ describe('requesting a reset code by SMS', () => {
     expect(capped.rows).toHaveLength(5);
   });
 
+  it('caps issuing at ten a day even when each hour is under its own cap', async () => {
+    // Ten codes spread over the last 20 hours: two an hour at most, so the hourly cap never fires.
+    const issued: OtpRow[] = [];
+    for (let i = 0; i < 10; i += 1) {
+      issued.push({ id: `day-${i}`, userId: 'u-1', phoneE164: E164, codeHash: 'x', attempts: 0, consumedAt: null, expiresAt: new Date(T0.getTime() - 3_600_000), createdAt: new Date(T0.getTime() - (i + 1) * 2 * 3_600_000) });
+    }
+    const capped = harness({ issued });
+    const r = await capped.request.execute({ phone: '0772123456' });
+    expect(r.internal.throttled).toBe(true);
+    expect(capped.sent).toHaveLength(0);
+    // Nine leaves room for one more.
+    const room = harness({ issued: issued.slice(1) });
+    expect((await room.request.execute({ phone: '0772123456' })).internal.throttled).toBe(false);
+  });
+
   it('allows another code once the cooldown has passed', async () => {
     const h = harness();
     await h.request.execute({ phone: '0772123456' });
