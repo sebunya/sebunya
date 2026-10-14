@@ -2622,6 +2622,8 @@ export class Registry {
     },
     { releaseForOrder: (orderId) => this.inventoryRepo.releaseForOrder(orderId) },
     this.auditRepo,
+    // The abandoned order's task leaves the work queue with it.
+    new CancelFulfilmentTaskForCancelledOrderUseCase(this.fulfilmentRepo, this.transitionFulfilmentTaskUseCase),
   );
 
   public readonly alertOnLedgerMismatchUseCase = new AlertOnLedgerMismatchUseCase(

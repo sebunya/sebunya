@@ -45,6 +45,10 @@ function toSnapshot(row: typeof fulfilmentTasks.$inferSelect): FulfilmentTaskSna
   };
 }
 
+
+/** The task's order is still one somebody works on (a cancelled or finished order's task is not work). */
+const ORDER_STILL_LIVE = sql`exists (select 1 from orders o where o.id = ${fulfilmentTasks.orderId} and o.status not in ('cancelled', 'completed', 'delivered', 'failed'))`;
+
 export class DrizzleFulfilmentRepository implements IFulfilmentRepository {
   async createForOrder(task: FulfilmentTask): Promise<{ created: boolean; task: FulfilmentTaskSnapshot }> {
     const s = task.toSnapshot();
@@ -142,12 +146,14 @@ export class DrizzleFulfilmentRepository implements IFulfilmentRepository {
     orderId: string; orderNumber: string | null; orderStatus: string; taskStatus: string | null;
   }>> {
     // LEFT JOIN, so an order with no task at all is caught alongside one whose
-    // task has gone terminal. Orders that are themselves finished are not drift.
+    // task has gone terminal. Orders that are themselves finished are not drift:
+    // delivered and failed are finished too (counting them put every delivered
+    // order, whose task is DELIVERED, into "open orders" on every admin page).
     const rows = (await db.execute(sql`
       select o.id::text as order_id, o.order_number, o.status as order_status, t.status as task_status
       from orders o
       left join fulfilment_tasks t on t.order_id = o.id
-      where o.status not in ('cancelled', 'completed', 'refunded')
+      where o.status not in ('cancelled', 'completed', 'delivered', 'failed')
         and (t.id is null or t.status in ('DELIVERED', 'CANCELLED'))
       order by o.created_at desc
       limit ${limit}
@@ -206,7 +212,7 @@ export class DrizzleFulfilmentRepository implements IFulfilmentRepository {
     const [{ value }] = await db
       .select({ value: count() })
       .from(fulfilmentTasks)
-      .where(eq(fulfilmentTasks.status, 'NEW'));
+      .where(and(eq(fulfilmentTasks.status, 'NEW'), sql`${ORDER_STILL_LIVE}`));
     return Number(value);
   }
 
@@ -220,14 +226,23 @@ export class DrizzleFulfilmentRepository implements IFulfilmentRepository {
     return rows.map(toSnapshot);
   }
 
+  /**
+   * "Past the time we promised": only work somebody could have done. A task waiting for an online payment, a
+   * backorder ON_HOLD, a parcel whose carrier's delivery date is still ahead, and a task whose order was
+   * cancelled or finished were all counted, so the banner never meant anything.
+   */
   async countOverdue(now: Date): Promise<number> {
     const [{ value }] = await db
       .select({ value: count() })
       .from(fulfilmentTasks)
       .where(
         and(
-          notInArray(fulfilmentTasks.status, [...TERMINAL_FULFILMENT_STATUSES]),
-          lt(fulfilmentTasks.slaDueAt, now)
+          notInArray(fulfilmentTasks.status, [...TERMINAL_FULFILMENT_STATUSES, 'ON_HOLD']),
+          lt(fulfilmentTasks.slaDueAt, now),
+          // Paid, or pay on delivery ('offline'); older tasks carry no method, so the order's own is read.
+          sql`(${fulfilmentTasks.paymentStatus} = 'paid' or coalesce(${fulfilmentTasks.paymentMethod}, (select o.payment_method from orders o where o.id = ${fulfilmentTasks.orderId})) = 'offline')`,
+          sql`${ORDER_STILL_LIVE}`,
+          sql`not exists (select 1 from fulfilment_dispatches d where d.fulfilment_task_id = ${fulfilmentTasks.id} and d.estimated_delivery_at > ${now})`
         )
       );
     return Number(value);

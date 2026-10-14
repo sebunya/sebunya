@@ -244,7 +244,7 @@ const isPathActive = (href: string) => {
                 )}
                 {fulfilmentAlert.overdue > 0 && fulfilmentAlert.unworkable > 0 && <span class="text-gray-400"> · </span>}
                 {fulfilmentAlert.unworkable > 0 && (
-                  <span><strong>{fulfilmentAlert.unworkable}</strong> open order{fulfilmentAlert.unworkable === 1 ? '' : 's'} with nobody assigned</span>
+                  <span><strong>{fulfilmentAlert.unworkable}</strong> open order{fulfilmentAlert.unworkable === 1 ? '' : 's'} not in the work queue</span>
                 )}
               </span>
               <a
