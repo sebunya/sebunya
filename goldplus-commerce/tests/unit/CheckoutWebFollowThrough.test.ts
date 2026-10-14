@@ -48,8 +48,8 @@ describe('a refused checkout re-renders with the promo code', () => {
     expect(checkout).toContain('<input type="hidden" id="previewQuoteId" name="previewQuoteId" form="checkout-form" value={previewQuoteIdValue} />');
   });
 
-  it('a price or offer refusal drops the stale preview (a retry under it would be refused the same way)', () => {
-    expect(checkout).toMatch(/if \(!result\.ok && \(result\.code === 'PRICE_CHANGED' \|\| result\.code === 'PROMOTION_CHANGED'\)\) \{\s*previewQuoteIdValue = '';/);
+  it('a price or offer refusal (an offer at its limit too) drops the stale preview (a retry under it would be refused the same way)', () => {
+    expect(checkout).toMatch(/if \(!result\.ok && \(result\.code === 'PRICE_CHANGED' \|\| result\.code === 'PROMOTION_CHANGED' \|\| result\.code === 'PROMOTION_LIMIT_REACHED'\)\) \{\s*previewQuoteIdValue = '';/);
   });
 
   it('a carried code is checked again on load, so the summary shows its discount', () => {
