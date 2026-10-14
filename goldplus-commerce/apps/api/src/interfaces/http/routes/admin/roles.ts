@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
+import { requireStepUp } from '../../middleware/requireStepUp';
 import { Registry } from '../../../../infrastructure/Registry';
 import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
 import { AdminRoleDto } from '../../../../application/use-cases/admin/ListAdminRolesUseCase';
@@ -29,7 +30,7 @@ routes.get('/permissions', requirePermissions([PERMISSIONS.ROLES_MANAGE]), (c) =
   return c.json({ success: true, data });
 });
 
-routes.post('/', requirePermissions([PERMISSIONS.ROLES_MANAGE]), async (c) => {
+routes.post('/', requirePermissions([PERMISSIONS.ROLES_MANAGE]), requireStepUp('role_admin'), async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'Expected a JSON body.' } }, 400);
   const registry = Registry.getInstance();
@@ -49,7 +50,7 @@ routes.post('/', requirePermissions([PERMISSIONS.ROLES_MANAGE]), async (c) => {
   return c.json({ success: true, data: outcome.value });
 });
 
-routes.put('/:id/permissions', requirePermissions([PERMISSIONS.ROLES_MANAGE]), async (c) => {
+routes.put('/:id/permissions', requirePermissions([PERMISSIONS.ROLES_MANAGE]), requireStepUp('role_admin'), async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'Expected a JSON body.' } }, 400);
   const registry = Registry.getInstance();
@@ -72,7 +73,7 @@ routes.put('/:id/permissions', requirePermissions([PERMISSIONS.ROLES_MANAGE]), a
   return c.json({ success: true, data: { id: outcome.value.role.id, name: outcome.value.role.name, permissionCodes: outcome.value.nextCodes, added, removed } });
 });
 
-routes.delete('/:id', requirePermissions([PERMISSIONS.ROLES_MANAGE]), async (c) => {
+routes.delete('/:id', requirePermissions([PERMISSIONS.ROLES_MANAGE]), requireStepUp('role_admin'), async (c) => {
   const registry = Registry.getInstance();
   const actorId = (c.get('user') as { id: string }).id;
   const outcome = await registry.roleManagementUseCase.deleteRole({ roleId: c.req.param('id') ?? '', actorId });

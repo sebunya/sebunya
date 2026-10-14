@@ -3,13 +3,13 @@ import {
   RECOVERY_CODE_COUNT,
   RECOVERY_CODE_BYTES,
   decideStepUp,
-  isStepUpFresh,
   StepUpDecision,
 } from '../../domain/identity/MfaPolicy';
 import {
   generateTotpSecret,
   otpauthUri,
   verifyTotp,
+  matchTotpStep,
   encryptSecret,
   decryptSecret,
   hashRecoveryCode,
@@ -48,19 +48,28 @@ export class MfaService {
    * answered ALLOW. The authenticator the administrator actually holds was
    * silently replaced, and MFA protected nothing it was added to protect.
    *
-   * Replacing a live authenticator now needs a recent proof of the CURRENT one,
-   * which is the same freshness rule every other privileged action uses. First
+   * Replacing a live authenticator needs a code from the CURRENT one (or a
+   * recovery code, for a lost phone) in the same request. It used to accept a
+   * recent step-up instead, but freshness is stored per user, not per session,
+   * and /mfa/status reports when it happened: a stolen token could wait for the
+   * real admin to verify and then swap the authenticator inside those five
+   * minutes. A code the thief does not hold cannot be borrowed that way. First
    * enrolment, and re-enrolment of a secret that was never confirmed, are
    * unaffected: there is nothing to protect yet.
    */
   async beginEnrolment(
     userId: string,
     account: string,
+    proof?: { code?: string; recovery?: boolean },
     now = new Date(),
-  ): Promise<EnrolmentStart | { stepUpRequired: true }> {
+  ): Promise<EnrolmentStart | { currentCodeRequired: true } | { currentCodeInvalid: true } | { locked: true }> {
     const existing = await this.repo.get(userId);
-    if (existing?.confirmedAt && !isStepUpFresh(existing.lastVerifiedAt, now)) {
-      return { stepUpRequired: true };
+    if (existing?.confirmedAt) {
+      const code = String(proof?.code ?? '').trim();
+      if (!code) return { currentCodeRequired: true };
+      const proved = proof?.recovery ? await this.useRecoveryCode(userId, code, now) : await this.verify(userId, code, now);
+      if (proved === 'LOCKED') return { locked: true };
+      if (proved !== true) return { currentCodeInvalid: true };
     }
 
     const secret = generateTotpSecret();
@@ -117,11 +126,21 @@ export class MfaService {
     );
   }
 
+  /**
+   * A code is valid for ~90 seconds, so one read over a shoulder or out of a log could be used again. The last
+   * accepted verification's step is known to within one (the window either side), so a code is accepted only from
+   * a step after that; the cost is that a second step-up inside about a minute waits for the next code.
+   */
+  static isReplayedStep(matchedStep: number, lastVerifiedAt: Date | null): boolean {
+    return !!lastVerifiedAt && matchedStep <= Math.floor(lastVerifiedAt.getTime() / 30_000) + 1;
+  }
+
   async verify(userId: string, code: string, now = new Date()): Promise<boolean | 'LOCKED'> {
     const record = await this.repo.get(userId);
     if (!record || !record.confirmedAt) return false;
     if (this.isLocked(record, now)) return 'LOCKED';
-    if (!verifyTotp(decryptSecret(record.secretCiphertext), code, now.getTime())) {
+    const matched = matchTotpStep(decryptSecret(record.secretCiphertext), code, now.getTime());
+    if (matched === null || MfaService.isReplayedStep(matched, record.lastVerifiedAt)) {
       await this.repo.recordFailure(userId, now);
       return false;
     }

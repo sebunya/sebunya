@@ -94,21 +94,35 @@ export function verifyTotp(
   nowMs: number,
   opts: TotpOptions & { window?: number } = {},
 ): boolean {
+  return matchTotpStep(secretBase32, code, nowMs, opts) !== null;
+}
+
+/**
+ * The time step the code belongs to, or null when it matches none in the window. A code is valid for ~90 seconds
+ * (the window either side), so a caller that must refuse a replayed code needs to know WHICH step matched.
+ */
+export function matchTotpStep(
+  secretBase32: string,
+  code: string,
+  nowMs: number,
+  opts: TotpOptions & { window?: number } = {},
+): number | null {
   const step = opts.stepSeconds ?? 30;
   const digits = opts.digits ?? 6;
   const window = opts.window ?? 1;
   const trimmed = (code ?? '').replace(/\s+/g, '');
-  if (!/^\d+$/.test(trimmed) || trimmed.length !== digits) return false;
+  if (!/^\d+$/.test(trimmed) || trimmed.length !== digits) return null;
   const key = base32Decode(secretBase32);
   const t0 = opts.t0 ?? 0;
   const base = Math.floor((Math.floor(nowMs / 1000) - t0) / step);
   const provided = Buffer.from(trimmed);
-  let ok = false;
+  let matched: number | null = null;
+  // Every step is compared (no early exit), so the timing does not say which one matched.
   for (let w = -window; w <= window; w++) {
     const candidate = Buffer.from(hotp(key, base + w, digits));
-    if (candidate.length === provided.length && timingSafeEqual(candidate, provided)) ok = true;
+    if (candidate.length === provided.length && timingSafeEqual(candidate, provided)) matched = base + w;
   }
-  return ok;
+  return matched;
 }
 
 export function generateTotpSecret(): string {

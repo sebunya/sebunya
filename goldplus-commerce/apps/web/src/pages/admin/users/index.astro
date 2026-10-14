@@ -24,6 +24,12 @@ if (!token) {
   // typed by the creating administrator and communicated out-of-band — they are
   // posted to the API and never echoed back or logged.
   let umNotice: { kind: "success" | "error"; text: string } | null = null;
+  // Two-step refusals say where to verify; the change was not made.
+  const refusal = (j: any, fallback: string): string =>
+    String(j?.error?.code ?? '').startsWith('MFA_')
+      ? `${j.error.message} Verify on Two-step verification (/admin/security/mfa), then try again. Nothing was changed.`
+      : j?.error?.message || fallback;
+
   if (Astro.request.method === "POST") {
     try {
       const form = await Astro.request.formData();
@@ -40,7 +46,7 @@ if (!token) {
         const json2 = await res2.json().catch(() => null);
         umNotice = res2.ok && json2?.success
           ? { kind: "success", text: `User ${json2.data.email} created — role ${json2.data.roleOutcome === "ASSIGNED" ? "assigned" : "awaiting a second administrator's approval"}. Communicate the initial password out-of-band and have them change it on first login.` }
-          : { kind: "error", text: json2?.error?.message || "User creation refused." };
+          : { kind: "error", text: refusal(json2, "User creation refused.") };
       } else if (action === "set-active") {
         const id = String(form.get("id") || "");
         const active = String(form.get("active") || "") === "true";
@@ -52,7 +58,7 @@ if (!token) {
         const json2 = await res2.json().catch(() => null);
         umNotice = res2.ok && json2?.success
           ? { kind: "success", text: active ? "Account reactivated. They can sign in again." : "Account deactivated. Their sessions have been ended and they can no longer sign in." }
-          : { kind: "error", text: json2?.error?.message || "Change refused." };
+          : { kind: "error", text: refusal(json2, "Change refused.") };
       } else if (action === "decide-grant") {
         const id = String(form.get("id") || "");
         const res2 = await fetch(`${apiBase}/admin/users/grant-requests/${encodeURIComponent(id)}/decide`, {
@@ -63,7 +69,7 @@ if (!token) {
         const json2 = await res2.json().catch(() => null);
         umNotice = res2.ok && json2?.success
           ? { kind: "success", text: `Grant request ${json2.data.decided}.` }
-          : { kind: "error", text: json2?.error?.message || "Decision refused." };
+          : { kind: "error", text: refusal(json2, "Decision refused.") };
       } else if (action === "withdraw-grant") {
         const id = String(form.get("id") || "");
         const res2 = await fetch(`${apiBase}/admin/users/grant-requests/${encodeURIComponent(id)}/withdraw`, {
@@ -74,7 +80,7 @@ if (!token) {
         const json2 = await res2.json().catch(() => null);
         umNotice = res2.ok && json2?.success
           ? { kind: "success", text: "Grant request withdrawn." }
-          : { kind: "error", text: json2?.error?.message || "Withdraw refused." };
+          : { kind: "error", text: refusal(json2, "Withdraw refused.") };
       } else if (action === "assign-role") {
         const id = String(form.get("id") || "");
         const roleName = String(form.get("roleName") || "");
@@ -86,7 +92,7 @@ if (!token) {
         const json2 = await res2.json().catch(() => null);
         umNotice = res2.ok && json2?.success
           ? { kind: "success", text: json2.data.outcome === "ASSIGNED" ? `${roleName} assigned. It applies on their next request.` : `${roleName} requested — a different administrator must approve it below.` }
-          : { kind: "error", text: json2?.error?.message || "Role assignment refused." };
+          : { kind: "error", text: refusal(json2, "Role assignment refused.") };
       } else if (action === "revoke-role") {
         const id = String(form.get("id") || "");
         const roleName = String(form.get("roleName") || "");
@@ -98,7 +104,7 @@ if (!token) {
         const json2 = await res2.json().catch(() => null);
         umNotice = res2.ok && json2?.success
           ? { kind: "success", text: json2.data.revoked ? `${roleName} revoked. It stops applying on their next request.` : `${roleName} was not held by that account.` }
-          : { kind: "error", text: json2?.error?.message || "Revoke refused." };
+          : { kind: "error", text: refusal(json2, "Revoke refused.") };
       }
     } catch {
       umNotice = { kind: "error", text: "User service is unreachable right now." };
