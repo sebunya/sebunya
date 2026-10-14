@@ -377,3 +377,15 @@ export function tierStanding(
     lifetime,
   };
 }
+
+/**
+ * When points earned at `earnedAt` expire: `expiryDays` after the KAMPALA day they were earned (UTC+3, no DST),
+ * at the same instant every other earn of that day expires. It used to add the days to the UTC calendar day, so
+ * an order delivered between midnight and 03:00 in Kampala expired a day early (119 days against the promised 120).
+ * Null when points do not expire.
+ */
+export function earnExpiresAt(earnedAt: Date, expiryDays: number): Date | null {
+  if (!(expiryDays > 0)) return null;
+  const kampala = new Date(earnedAt.getTime() + 3 * 3_600_000);
+  return new Date(Date.UTC(kampala.getUTCFullYear(), kampala.getUTCMonth(), kampala.getUTCDate() + expiryDays));
+}

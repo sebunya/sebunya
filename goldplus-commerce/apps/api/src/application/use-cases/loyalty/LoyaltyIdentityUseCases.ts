@@ -3,6 +3,7 @@ import { ILoyaltyCompletionRepository } from '../../ports/ILoyaltyCompletion';
 import { IAuditRepository } from '../../ports/IAuditRepository';
 import { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
 import { normalizeUgandanPhone } from '@goldplus/shared';
+import { earnExpiresAt } from '../../../domain/loyalty/LoyaltyLedger';
 
 type Fail = { ok: false; code: string; message: string };
 const fail = (code: string, message: string): Fail => ({ ok: false, code, message });
@@ -235,9 +236,7 @@ export class BackfillGuestOrdersUseCase {
       );
       if (points <= 0) break; // per-customer cap reached
       const earnedOn = new Date();
-      const expiresAt = config.expiryDays > 0
-        ? new Date(Date.UTC(earnedOn.getUTCFullYear(), earnedOn.getUTCMonth(), earnedOn.getUTCDate() + config.expiryDays))
-        : null;
+      const expiresAt = earnExpiresAt(earnedOn, config.expiryDays);
       try {
         const { replay } = await this.loyalty.append({
           accountId: account.id,
