@@ -1,5 +1,6 @@
 import { runAssistant, shopperNote, type AssistantEvent, type ChatTurn } from './assistant';
-import { SOFT_LIMIT_TEXT, answerDeterministically, classify, isClarificationReply, type Classification, type DeterministicAnswer, type Intent } from './assistantRouter';
+import { namedProducts } from './goldieProducts';
+import { CLARIFY_PHONE, SOFT_LIMIT_TEXT, answerDeterministically, classify, isClarificationReply, type Classification, type DeterministicAnswer, type Intent } from './assistantRouter';
 import { admit, release, settle, type AdmitOutput } from './assistantAdmission';
 import { interestTopic, recordInterest, shopperContext, type ShopperIdentity } from './assistantConversation';
 import { ORDER_REF, type CareContext } from './goldieCare';
@@ -46,9 +47,10 @@ export function resetTurnState(): void { inFlight = 0; }
 
 const ZERO = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
 
-const fallbackAnswer = async (classified: Classification): Promise<DeterministicAnswer> => {
-  // Paid AI is not available for this turn: a product lookup still runs, and the honest sentence leads.
-  const base = classified.intent === 'PRODUCT' || classified.intent === 'UNKNOWN'
+const fallbackAnswer = async (classified: Classification, conversational = false): Promise<DeterministicAnswer> => {
+  // Paid AI is not available for this turn: a product lookup still runs, and the honest sentence leads. Not for a
+  // reply inside a conversation ("the second one", "is it original?"): searching those words finds nothing useful.
+  const base = !conversational && (classified.intent === 'PRODUCT' || classified.intent === 'UNKNOWN')
     ? await answerDeterministically({ ...classified, intent: 'PRODUCT', deterministic: true }).catch(() => null)
     : null;
   const products = base?.products ?? [];
@@ -60,6 +62,15 @@ export function isCallbackFollowUp(turns: readonly ChatTurn[]): boolean {
   const last = turns[turns.length - 1]?.content ?? '';
   const prev = turns.length >= 2 ? turns[turns.length - 2] : undefined;
   return !!prev && prev.role === 'assistant' && /which number should the team call/i.test(prev.content) && /(?:\+?256|0)\s?7\d{2}[\s-]?\d{3}[\s-]?\d{3}/.test(last) && last.length <= 80;
+}
+
+/** A short answer to the battery finder's "Which of these is your phone?" that is not some other clear request. */
+export function isBatteryPhoneAnswer(turns: readonly ChatTurn[], classified: Classification): boolean {
+  const prev = turns.length >= 2 ? turns[turns.length - 2] : undefined;
+  const last = (turns[turns.length - 1]?.content ?? '').trim();
+  if (!prev || prev.role !== 'assistant' || !prev.content.includes(CLARIFY_PHONE)) return false;
+  if (!last || last.length > 60 || /\?/.test(last)) return false;
+  return ['UNKNOWN', 'PRODUCT', 'BATTERY', 'GREETING'].includes(classified.intent) && !/^(no|none|neither|not sure|i don'?t know|ok|okay|thanks?|thank you)\b/i.test(last);
 }
 
 /** A reply to Goldie's own "which order / what phone" question is the same order request, answered from the order system. */
@@ -109,6 +120,9 @@ export async function prepareTurn(input: TurnInput): Promise<PreparedTurn> {
   input = { ...input, care: { ...input.care, channel: input.channel, mood: mood.mood } };
   let classified = classify(last);
   if (isOrderFollowUp(input.turns)) classified = { intent: 'ORDER', deterministic: true, query: '' };
+  // The answer to the battery finder's own "Which of these is your phone?" ("Spark 10 Pro") goes back to the finder,
+  // which gives the exact fit, instead of to the model.
+  else if (isBatteryPhoneAnswer(input.turns, classified)) classified = { intent: 'BATTERY', deterministic: true, query: last.trim().slice(0, 60) };
   else if (isCallbackFollowUp(input.turns)) classified = { intent: 'CALLBACK', deterministic: true, query: '' };
   // Luganda or Swahili: the model answers in their language from the same facts (fixed answers are English).
   // Order, points and callback flows stay fixed (they need exact proof handling); a refused model falls back to them.
@@ -180,11 +194,11 @@ export async function prepareTurn(input: TurnInput): Promise<PreparedTurn> {
       yield* emit(first ? { ...a, text: `Hello ${first}, welcome to GoldPlus. What are you looking for today? A charger, a power bank, earphones, or a battery for your phone, tell me and I'll find the right one.` } : a);
       return;
     }
-    if (route === 'cache' && remembered) { yield* emit(heard({ intent: classified.intent, text: remembered.text, products: remembered.products, links: [] })); return; }
+    if (route === 'cache' && remembered) { yield* emit(heard({ intent: classified.intent, text: remembered.text, products: namedProducts(remembered.text, remembered.products, 3), links: [] })); return; }
     if (route === 'fallback') {
       // A language upgrade the model could not take: the fixed answer (in English) beats an apology.
       if (languageUpgrade || shopperUpgrade) { yield* emit(heard(await answerDeterministically({ ...classified, deterministic: true }, { care: input.care, turns: input.turns }))); return; }
-      yield* emit(heard(await fallbackAnswer(classified)));
+      yield* emit(heard(await fallbackAnswer(classified, conversational)));
       return;
     }
 
@@ -212,11 +226,15 @@ export async function prepareTurn(input: TurnInput): Promise<PreparedTurn> {
         || ctx.topCategories.length > 0 || ctx.recentlyViewed.length > 0 || ctx.pastTopics.length > 0 || !!ctx.nextBestAction));
       for await (const ev of runAssistant(modelTurns, { apiKey: input.apiKey, model: admission.model, effort: admission.effort, maxOutputTokens: admission.maxOutputTokens, maxToolRounds: admission.maxToolRounds, signal: input.signal, shopperNote: note, care: input.care })) {
         if (ev.type === 'text') answerText += ev.text;
-        else if (ev.type === 'products') shown = [...shown, ...ev.items];
+        // Products are held until the answer is written, then only the ones it names are shown (the search's other
+        // results would sit under a recommendation of a different product).
+        else if (ev.type === 'products') { shown = [...shown, ...ev.items]; continue; }
         else if (ev.type === 'tool' && !['search_products', 'get_product', 'list_categories', 'find_battery', 'store_info'].includes(ev.name)) personal = true;
         if (ev.type === 'done') {
           settled = true;
-          if (singleTurn && !personal && ev.outcome === 'ANSWERED' && answerText) remember(last, answerText, classified.intent, shown);
+          const picked = namedProducts(answerText, shown, 3);
+          if (picked.length) yield { type: 'products', items: picked };
+          if (singleTurn && !personal && ev.outcome === 'ANSWERED' && answerText) remember(last, answerText, classified.intent, picked);
           await settle({ reservationId, model: admission.model, providerRequestId: ev.providerRequestId, outcome: ev.outcome, usage: ev.usage });
         } else if (ev.type === 'error') {
           settled = true;

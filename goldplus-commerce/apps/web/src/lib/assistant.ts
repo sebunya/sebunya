@@ -31,7 +31,9 @@ export const MAX_TURN_CHARS = 2000;
 export const MAX_TOOL_ROUNDS = 4;
 export const MAX_OUTPUT_TOKENS = 1024;
 /** Longest tool result the model is given back; a product list past this is cut, not the budget. */
-export const MAX_TOOL_RESULT_CHARS = 6000;
+export const MAX_TOOL_RESULT_CHARS = 8000;
+/** A product list is fitted inside this many characters line by line, with a note of what was left out (never cut mid-line). */
+const SEARCH_LIST_BUDGET = 7200;
 const UPSTREAM_TIMEOUT_MS = 60_000;
 
 export interface ChatTurn { role: 'user' | 'assistant'; content: string }
@@ -79,7 +81,7 @@ export function validateTurns(raw: unknown): ChatTurn[] | null {
 }
 
 /** Frozen for the prompt cache: nothing here varies per request. Versioned; log the version, never the text. */
-export const SYSTEM_PROMPT_VERSION = 'goldie-2026-10-14.1';
+export const SYSTEM_PROMPT_VERSION = 'goldie-2026-10-14.2';
 export const SYSTEM_PROMPT = [
   `You are Goldie, customer care and personal shopper at GoldPlus (${SITE_ORIGIN}), an electronics accessories shop in Kampala, Uganda: phone chargers, cables, power banks, earphones, flash disks and memory cards, car and PC accessories, and replacement phone batteries. Customers reach you on the website and on WhatsApp.`,
   '',
@@ -122,8 +124,8 @@ export const SYSTEM_PROMPT = [
   '',
   'Selling like a good personal shopper (helpful, never pushy):',
   "- Find out what they need before you recommend, the way a good attendant does. \"The best power bank\", \"a good charger\", \"recommend earphones\" with no use given: ask ONE short question naming the two or three things that decide it for that kind of product, then recommend. Power banks: which phone, how many full charges they need (capacity), whether it must be light and small, how many devices at once, wireless or built-in cables. Chargers: which phone and whether they want fast charging. Earphones: wireless or wired, and what for (calls, music, gym). Skip the question when they already said it.",
-  "- To compare, search the right category with in_stock_only and limit 20, and compare on the specs each result shows. Never say \"most\", \"best\", \"cheapest\", \"longest\" or \"only\" unless the list in front of you shows it. When a product says \"specs: not confirmed by the shop\", say its capacity or output is not confirmed; never work a spec out from the name, the price or the photo.",
-  "- Recommend, do not list: name the one product that fits their need, with the one or two reasons that match what they told you; a second only if it is a real alternative. Do not paste URLs; the shop adds the product links.",
+  "- To compare, search for the kind of product (for example \"power bank\") with in_stock_only and limit 20, and compare on the specs each result shows; if the result says more matched than are shown, narrow the search before naming a winner. Never say \"most\", \"best\", \"cheapest\", \"longest\" or \"only\" unless the list in front of you shows it. When a product says \"specs: not confirmed by the shop\", say its capacity or output is not confirmed; never work a spec out from the name, the price or the photo.",
+  "- Recommend, do not list: name the one product that fits their need, with the one or two reasons that match what they told you; a second only if it is a real alternative. Name each product by its model code as the tool shows it (GP-P07, GP-C11), so the shop attaches the right link; do not paste URLs.",
   "- Do not narrate your checking (\"let me check\", \"I'll pull the list\"); check, then answer once.",
   '- One useful add-on at most, and only when it truly completes the purchase (a cable for a charger without one, a case for a new power bank). No fake urgency, no invented scarcity, no "only today".',
   '- Bulk and resellers are very welcome: ask what they sell or what it is for, which items and how many units, search the shelf, confirm the list and quantities back in one line, then file bulk_quote. Say the sales team confirms the bulk price; never quote a bulk price yourself.',
@@ -338,7 +340,17 @@ export function modelToolText(name: string, out: Json): string | null {
       const sp = p.specifications && typeof p.specifications === 'object' ? Object.entries(p.specifications as Json).filter(([k]) => !/^(colou?r|in the box|plug|protection)$/i.test(k)).slice(0, 6) : [];
       return sp.length ? `specs: ${sp.map(([k, v]) => `${k} ${String(v).slice(0, 60)}`).join('; ')}` : 'specs: not confirmed by the shop';
     };
-    return list.length ? list.map((p) => `${line(p)} | ${specs(p)}`).join('\n') : 'No GoldPlus product matched. Try fewer words or another name.';
+    if (!list.length) return 'No GoldPlus product matched. Try fewer words or another name.';
+    // Whole lines only, and say what did not fit: a list cut mid-line (20 cables = 6,352 characters against a 6,000
+    // cut) was compared as if it were complete.
+    const lines: string[] = []; let used = 0;
+    for (const p of list) {
+      const l = `${line(p)} | ${specs(p)}`;
+      if (used + l.length + 1 > SEARCH_LIST_BUDGET) break;
+      lines.push(l); used += l.length + 1;
+    }
+    const left = list.length - lines.length;
+    return left > 0 ? `${lines.join('\n')}\n(${left} more matched but are not shown: search with more words, or for a narrower kind, before saying any one is the most or the cheapest.)` : lines.join('\n');
   }
   if (name === 'get_product' && s.product && typeof s.product === 'object') {
     const p = s.product as Json;
@@ -363,7 +375,9 @@ export function modelToolText(name: string, out: Json): string | null {
 function cardsFrom(structured: unknown): ProductCard[] {
   const s = (structured && typeof structured === 'object' ? structured : {}) as Json;
   const list = Array.isArray(s.products) ? s.products : s.product ? [s.product] : [];
-  return list.slice(0, 5).map((p) => {
+  // Up to 20: the turn keeps the ones the answer names (goldieProducts.namedProducts), so the one recommended is there
+  // even when it was the eighth result.
+  return list.slice(0, 20).map((p) => {
     const x = p as Json;
     return { id: cardId(x.id), name: String(x.name ?? ''), url: String(x.url ?? ''), sku: x.sku == null ? null : String(x.sku), price_ugx: x.price_ugx == null ? null : Number(x.price_ugx), availability: String(x.availability ?? ''), image: Array.isArray(x.images) && x.images[0] ? String(x.images[0]) : null, category: x.category == null ? null : String(x.category) };
   }).filter((c) => c.name && c.url.startsWith(SITE_ORIGIN));
