@@ -15,6 +15,7 @@ import {
   FulfilmentQueueQuery,
   FulfilmentQueuePage,
 } from '../../../application/ports/IFulfilmentRepository';
+import { DomainError } from '../../../domain/errors/DomainError';
 
 function toSnapshot(row: typeof fulfilmentTasks.$inferSelect): FulfilmentTaskSnapshot {
   return {
@@ -103,23 +104,63 @@ export class DrizzleFulfilmentRepository implements IFulfilmentRepository {
     return row ? toSnapshot(row) : null;
   }
 
+  /**
+   * Compare-and-set (FulfilmentTask.loadedSnapshot): only the fields this change altered are written, and only
+   * while the row still has the status that was read (and the assignee, when the assignee is what changed).
+   * A row that moved meanwhile is a CONFLICT the person sees ("refresh and try again"), never a silent overwrite.
+   */
   async update(task: FulfilmentTask): Promise<void> {
     const s = task.toSnapshot();
-    await db
+    const was = task.loadedSnapshot();
+    const time = (d: Date | null | undefined) => (d ? d.getTime() : null);
+    const all = {
+      status: s.status,
+      paymentStatus: s.paymentStatus,
+      priority: s.priority,
+      slaDueAt: s.slaDueAt,
+      slaPolicyVersion: s.slaPolicyVersion,
+      teamId: s.teamId,
+      assignedTo: s.assignedTo,
+      assignedAt: s.assignedAt,
+      notes: s.notes,
+    };
+    if (!was) {
+      await db.update(fulfilmentTasks).set({ ...all, updatedAt: s.updatedAt }).where(eq(fulfilmentTasks.id, s.id));
+      return;
+    }
+    const changed: Partial<typeof all> = {};
+    if (s.status !== was.status) changed.status = s.status;
+    if (s.paymentStatus !== was.paymentStatus) changed.paymentStatus = s.paymentStatus;
+    if (s.priority !== was.priority) changed.priority = s.priority;
+    if (time(s.slaDueAt) !== time(was.slaDueAt)) changed.slaDueAt = s.slaDueAt;
+    if (s.slaPolicyVersion !== was.slaPolicyVersion) changed.slaPolicyVersion = s.slaPolicyVersion;
+    if (s.teamId !== was.teamId) changed.teamId = s.teamId;
+    if (s.assignedTo !== was.assignedTo) changed.assignedTo = s.assignedTo;
+    if (time(s.assignedAt) !== time(was.assignedAt)) changed.assignedAt = s.assignedAt;
+    if (s.notes !== was.notes) changed.notes = s.notes;
+    if (Object.keys(changed).length === 0) return;
+    const rows = await db
       .update(fulfilmentTasks)
-      .set({
-        status: s.status,
-        paymentStatus: s.paymentStatus,
-        priority: s.priority,
-        slaDueAt: s.slaDueAt,
-        slaPolicyVersion: s.slaPolicyVersion,
-        teamId: s.teamId,
-        assignedTo: s.assignedTo,
-        assignedAt: s.assignedAt,
-        notes: s.notes,
-        updatedAt: s.updatedAt,
-      })
-      .where(eq(fulfilmentTasks.id, s.id));
+      .set({ ...changed, updatedAt: s.updatedAt })
+      .where(and(
+        eq(fulfilmentTasks.id, s.id),
+        eq(fulfilmentTasks.status, was.status),
+        ...('assignedTo' in changed ? [was.assignedTo === null ? isNull(fulfilmentTasks.assignedTo) : eq(fulfilmentTasks.assignedTo, was.assignedTo)] : []),
+      ))
+      .returning({ id: fulfilmentTasks.id });
+    if (rows.length === 0) {
+      throw new DomainError('FULFILMENT_TASK_CHANGED', 'CONFLICT', 'Someone else changed this task a moment ago. Refresh the page and try again.', { clientSafe: true });
+    }
+  }
+
+  /** The payment mirror only: never writes status or assignee, so it cannot undo what staff did meanwhile. */
+  async updatePaymentStatus(taskId: string, paymentStatus: FulfilmentPaymentStatus, at: Date): Promise<boolean> {
+    const rows = await db
+      .update(fulfilmentTasks)
+      .set({ paymentStatus, updatedAt: at })
+      .where(and(eq(fulfilmentTasks.id, taskId), sql`${fulfilmentTasks.paymentStatus} is distinct from ${paymentStatus}`))
+      .returning({ id: fulfilmentTasks.id });
+    return rows.length > 0;
   }
   async updateWhereStatus(task: FulfilmentTask, expectedStatus: FulfilmentStatus): Promise<boolean> {
     const s = task.toSnapshot();
