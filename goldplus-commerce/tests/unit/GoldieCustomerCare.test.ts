@@ -206,6 +206,8 @@ describe('Goldie on WhatsApp', () => {
     expect(out).not.toContain('Anker');
     expect(out).not.toContain('products/a');
     expect(formatWhatsAppReply({ text: 'We have 3 that match.', products }).match(/•/g)).toHaveLength(3);
+    // A model answer that names none of them lists none (no contradicting search results under it).
+    expect(formatWhatsAppReply({ text: 'What matters most to you: capacity, weight or how many devices at once?', products, route: 'ai' })).not.toContain('•');
   });
 
   it('writes a phone-sized reply: words, a few products with links, no panel-only links', () => {

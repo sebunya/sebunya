@@ -150,6 +150,8 @@ export interface ReplyParts {
   text: string;
   products?: Array<{ name: string; url: string; price_ugx: number | null; availability: string }>;
   links?: Array<{ label: string; url: string }>;
+  /** How the answer was made ('ai' = the model wrote it): decides which products are listed under it. */
+  route?: string;
 }
 
 /** WhatsApp allows 4096 characters; a chat bubble reads best far shorter. */
@@ -172,7 +174,8 @@ export function formatWhatsAppReply(r: ReplyParts): string {
     const hits = words.filter((w) => said.includes(w)).length;
     return words.length > 0 && hits >= Math.min(2, words.length);
   });
-  const products = (named.length ? named.slice(0, 2) : all.slice(0, 3));
+  // A model answer lists only what it named (a search's other results would contradict it); a fixed list answer shows three.
+  const products = named.length ? named.slice(0, 2) : r.route === 'ai' ? [] : all.slice(0, 3);
   if (products.length) {
     lines.push('');
     for (const p of products) lines.push(`• ${p.name}: ${p.price_ugx == null ? 'price on request' : `UGX ${p.price_ugx.toLocaleString('en-UG')}`}, ${AVAIL[p.availability] ?? p.availability}\n  ${p.url}`);

@@ -79,7 +79,7 @@ export function validateTurns(raw: unknown): ChatTurn[] | null {
 }
 
 /** Frozen for the prompt cache: nothing here varies per request. Versioned; log the version, never the text. */
-export const SYSTEM_PROMPT_VERSION = 'goldie-2026-10-13.4';
+export const SYSTEM_PROMPT_VERSION = 'goldie-2026-10-14.1';
 export const SYSTEM_PROMPT = [
   `You are Goldie, customer care and personal shopper at GoldPlus (${SITE_ORIGIN}), an electronics accessories shop in Kampala, Uganda: phone chargers, cables, power banks, earphones, flash disks and memory cards, car and PC accessories, and replacement phone batteries. Customers reach you on the website and on WhatsApp.`,
   '',
@@ -121,7 +121,10 @@ export const SYSTEM_PROMPT = [
   '- You cannot change an order, take or confirm a payment, refund, or approve a warranty claim yourself: request_order_change and report_order_problem put it with the team, who confirm with the customer. Never ask for a PIN, OTP, password or card number. Never say a payment was confirmed, a refund issued, or an order changed.',
   '',
   'Selling like a good personal shopper (helpful, never pushy):',
-  '- Recommend, do not list: name the one product that fits best and why; a second only if it is a real alternative. The customer sees product cards, so do not paste URLs.',
+  "- Find out what they need before you recommend, the way a good attendant does. \"The best power bank\", \"a good charger\", \"recommend earphones\" with no use given: ask ONE short question naming the two or three things that decide it for that kind of product, then recommend. Power banks: which phone, how many full charges they need (capacity), whether it must be light and small, how many devices at once, wireless or built-in cables. Chargers: which phone and whether they want fast charging. Earphones: wireless or wired, and what for (calls, music, gym). Skip the question when they already said it.",
+  "- To compare, search the right category with in_stock_only and limit 20, and compare on the specs each result shows. Never say \"most\", \"best\", \"cheapest\", \"longest\" or \"only\" unless the list in front of you shows it. When a product says \"specs: not confirmed by the shop\", say its capacity or output is not confirmed; never work a spec out from the name, the price or the photo.",
+  "- Recommend, do not list: name the one product that fits their need, with the one or two reasons that match what they told you; a second only if it is a real alternative. Do not paste URLs; the shop adds the product links.",
+  "- Do not narrate your checking (\"let me check\", \"I'll pull the list\"); check, then answer once.",
   '- One useful add-on at most, and only when it truly completes the purchase (a cable for a charger without one, a case for a new power bank). No fake urgency, no invented scarcity, no "only today".',
   '- Bulk and resellers are very welcome: ask what they sell or what it is for, which items and how many units, search the shelf, confirm the list and quantities back in one line, then file bulk_quote. Say the sales team confirms the bulk price; never quote a bulk price yourself.',
   '',
@@ -329,7 +332,13 @@ export function modelToolText(name: string, out: Json): string | null {
   const line = (p: Json) => [String(p.name ?? ''), money(p.price_ugx), String(p.availability ?? ''), p.sku ? `sku ${p.sku}` : '', p.id ? `id ${p.id}` : '', slug(p) ? `slug ${slug(p)}` : ''].filter(Boolean).join(' | ');
   if (name === 'search_products' && Array.isArray(s.products)) {
     const list = (s.products as Json[]).filter(ours);
-    return list.length ? list.map(line).join('\n') : 'No GoldPlus product matched. Try fewer words or another name.';
+    // The verified specs on every line, so products can be compared without one get_product per item, and an empty
+    // spec sheet says so: on 2026-10-14 a list without specs led to "the most capacity at that price", a guess.
+    const specs = (p: Json) => {
+      const sp = p.specifications && typeof p.specifications === 'object' ? Object.entries(p.specifications as Json).filter(([k]) => !/^(colou?r|in the box|plug|protection)$/i.test(k)).slice(0, 6) : [];
+      return sp.length ? `specs: ${sp.map(([k, v]) => `${k} ${String(v).slice(0, 60)}`).join('; ')}` : 'specs: not confirmed by the shop';
+    };
+    return list.length ? list.map((p) => `${line(p)} | ${specs(p)}`).join('\n') : 'No GoldPlus product matched. Try fewer words or another name.';
   }
   if (name === 'get_product' && s.product && typeof s.product === 'object') {
     const p = s.product as Json;

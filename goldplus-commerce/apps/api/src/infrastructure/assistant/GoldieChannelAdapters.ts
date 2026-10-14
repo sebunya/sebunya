@@ -30,7 +30,7 @@ export class WhatsAppCloudMessenger implements IWhatsAppMessenger {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         // A link preview only for a product page (its photo helps); a 'browse the shop' link would put a big generic
         // card above every answer.
-        body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: input.to, type: 'text', text: { body: input.text, preview_url: /\/products\//.test(input.text) } }),
+        body: JSON.stringify({ messaging_product: 'whatsapp', recipient_type: 'individual', to: input.to, type: 'text', text: { body: input.text, preview_url: (input.text.match(/\/products\//g) ?? []).length === 1 } }),
         signal: AbortSignal.timeout(10_000),
       });
       const json = (await res.json().catch(() => null)) as { messages?: Array<{ id?: string }>; error?: { message?: string; code?: number } } | null;
