@@ -82,7 +82,10 @@ describe('the host stops filling between deploys', () => {
     const block = deploy.slice(deploy.indexOf('# Post-roll measurement'));
     expect(block).toContain('run-in-container.sh --ad-hoc');
     expect(block).not.toMatch(/lighthouse-watch\.sh (deploy|cron)/);
-    expect(block.match(/\) 9>&- &/g)).toHaveLength(1);
+    // One background job, which never inherits the deploy lock (9>&-), started as its own named process so
+    // "pgrep deploy-prod" does not see it as a deploy.
+    expect(block.match(/post-deploy-smoke 9>&- /g)).toHaveLength(1);
+    expect(block).toContain('setsid bash -c');
     expect(block).not.toMatch(/nohup/);
   });
 });

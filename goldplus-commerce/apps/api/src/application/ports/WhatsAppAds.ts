@@ -14,3 +14,12 @@ export interface WhatsAppAdReferralRepository {
   /** Removes referrals received before the given time; returns how many. */
   purgeBefore(cutoff: Date): Promise<number>;
 }
+
+/** One webhook delivery from Meta as the admin sees it (no personal data). */
+export interface WhatsAppDeliveryRecord { at: string; status: number; entryIds?: string[]; fields?: string[]; messages?: number; receipts?: number; events?: number; note?: string }
+
+/** Where deliveries are kept so both api replicas share them and a restart does not erase them (Redis). */
+export interface WhatsAppDeliveryLog {
+  record(d: WhatsAppDeliveryRecord): Promise<void>;
+  recent(limit: number): Promise<WhatsAppDeliveryRecord[]>;
+}

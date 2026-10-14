@@ -22,7 +22,13 @@ const call = async <T,>(path: string, init?: RequestInit): Promise<{ ok: true; d
   } catch { return { ok: false, message: 'The system could not be reached.' }; }
 };
 let notice: { kind: 'success' | 'error'; text: string } | null = null;
-if (Astro.request.method === 'POST') {
+const form = Astro.request.method === 'POST' ? await Astro.request.formData() : null;
+if (form?.get('action') === 'link') {
+  const r = await call<{ linked: string[]; failed: Array<{ id: string; reason: string }>; already: string[] }>('/whatsapp-connection/link', { method: 'POST', body: '{}' });
+  notice = !r.ok ? { kind: 'error', text: r.message }
+    : r.data.failed.length ? { kind: 'error', text: `Linked ${r.data.linked.length}. Meta refused: ${r.data.failed.map((f) => `${f.id} (${f.reason})`).join('; ')}` }
+    : { kind: 'success', text: r.data.linked.length ? `Linked ${r.data.linked.join(' and ')} to the app. Meta now sends their messages to the shop.` : 'Every account was already linked.' };
+} else if (form) {
   const r = await call<{ submitted: string[]; failed: Array<{ name: string; reason: string }>; skipped: string[] }>('/whatsapp-templates/submit', { method: 'POST', body: '{}' });
   notice = !r.ok ? { kind: 'error', text: r.message }
     : r.data.failed.length ? { kind: 'error', text: `Submitted ${r.data.submitted.length}. Not accepted: ${r.data.failed.map((f) => `${f.name} (${f.reason})`).join('; ')}` }
@@ -30,6 +36,9 @@ if (Astro.request.method === 'POST') {
 }
 interface Row { ours: string; name: string; category: string; status: string; rejectedReason: string | null }
 const res = await call<{ rows: Row[]; error: string | null; readAt: number }>('/whatsapp-templates');
+interface Conn { configured: boolean; accounts: Array<{ id: string; role: string; linked: boolean | null; apps: string[]; error: string | null }>; phone: { id: string; number: string; name: string; quality: string; status: string; platform: string; error: string | null } | null }
+const conn = await call<Conn>('/whatsapp-connection');
+const unlinked = conn.ok ? conn.data.accounts.filter((a) => a.linked !== true).length : 0;
 const STATUS: Record<string, { label: string; cls: string }> = {
   APPROVED: { label: 'Approved', cls: 'bg-green-50 text-green-800 border-green-200' },
   PENDING: { label: 'Waiting for Meta', cls: 'bg-amber-50 text-amber-900 border-amber-200' },
@@ -49,6 +58,28 @@ const missing = res.ok ? res.data.rows.filter((r) => r.status === 'NOT_SUBMITTED
     <h1 class="text-2xl font-black">WhatsApp templates</h1>
     <p class="text-sm text-gray-700">Order updates, payment messages, the phone code and staff alerts go to WhatsApp through Meta directly. Each needs a template Meta has approved. Until then that message goes by Zoho (if set up) or SMS, so nothing is lost.</p>
     {notice && <div role="status" class={`rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === 'success' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-800'}`}>{notice.text}</div>}
+    <section class="rounded-2xl border border-gray-200 bg-white p-4 space-y-3" aria-labelledby="wa-conn">
+      <h2 id="wa-conn" class="font-black">Connection to Meta</h2>
+      <p class="text-xs text-gray-600">Meta sends a customer's WhatsApp message to the shop only when the account it arrives on is linked to the app. Checked live with the token saved on the server.</p>
+      {!conn.ok ? <p class="text-sm text-red-800">{conn.message}</p> : <>
+        <ul class="space-y-2 text-sm">
+          {conn.data.accounts.map((a) => (
+            <li class="flex flex-wrap items-center gap-2">
+              <span class={`inline-block rounded border px-2 py-0.5 text-[11px] font-black ${a.linked ? 'bg-green-50 text-green-800 border-green-200' : 'bg-red-50 text-red-800 border-red-200'}`}>{a.linked ? 'Linked' : a.linked === false ? 'Not linked' : 'Unknown'}</span>
+              <span class="font-bold">{a.role}</span><span class="font-mono text-xs text-gray-600">{a.id}</span>
+              {a.apps.length > 0 && <span class="text-xs text-gray-600">({a.apps.join(', ')})</span>}
+              {a.error && <span class="block w-full text-xs text-red-700">{a.error}</span>}
+            </li>
+          ))}
+          {conn.data.phone && <li class="text-sm"><span class="font-bold">Number</span> {conn.data.phone.number || conn.data.phone.id}{conn.data.phone.name && ` · ${conn.data.phone.name}`}{conn.data.phone.status && ` · ${conn.data.phone.status}`}{conn.data.phone.quality && ` · quality ${conn.data.phone.quality}`}{conn.data.phone.error && <span class="block text-xs text-red-700">{conn.data.phone.error}</span>}</li>}
+        </ul>
+        {unlinked > 0 && conn.data.configured && (
+          <form method="post"><input type="hidden" name="action" value="link" />
+            <button class="rounded-full bg-brand-dark text-white font-bold px-4 py-2">Link {unlinked === 1 ? 'the account' : `all ${unlinked} accounts`} to the app</button>
+          </form>
+        )}
+      </>}
+    </section>
     {!res.ok ? <p class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm">{res.message}</p> : <>
       {res.data.error && <p class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">Meta did not answer: {res.data.error === 'not configured' ? 'WhatsApp is not connected yet (WHATSAPP_WABA_ID, the number id and the token).' : res.data.error}</p>}
       {missing > 0 && !res.data.error && (

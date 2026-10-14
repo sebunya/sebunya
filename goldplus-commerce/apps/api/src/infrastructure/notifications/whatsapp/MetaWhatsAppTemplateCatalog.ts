@@ -32,6 +32,12 @@ function expectedBody(name: string): string | null {
  * says APPROVED. Read from Meta at most every 10 minutes (refreshed in the background, never in a send's way),
  * and on demand from the admin page. Also submits the templates Meta does not have yet.
  */
+export interface WhatsAppConnection {
+  configured: boolean;
+  accounts: Array<{ id: string; role: string; linked: boolean | null; apps: string[]; error: string | null }>;
+  phone: { id: string; number: string; name: string; quality: string; status: string; platform: string; error: string | null } | null;
+}
+
 export class MetaWhatsAppTemplateCatalog {
   private states = new Map<string, MetaTemplateState>();
   private readAt = 0;
@@ -139,6 +145,66 @@ export class MetaWhatsAppTemplateCatalog {
       }
     })();
     return this.inflight;
+  }
+
+  /**
+   * Is each of our WhatsApp accounts linked to the app (GET /{account}/subscribed_apps)? Meta only sends an
+   * account's messages and receipts to our webhook once the app is subscribed to that account. Since Meta's split
+   * (2026), customer messages arrive under the Messaging account, so both the WhatsApp account and the Messaging
+   * account must be linked. Read with the saved token on the server: no token ever reaches the browser.
+   */
+  async connection(): Promise<WhatsAppConnection> {
+    const cfg = readMetaWhatsAppConfig();
+    const { token } = await this.credentials();
+    const saved = await this.account().catch(() => null);
+    const ids: Array<{ id: string; role: string }> = [];
+    const add = (id: string | null | undefined, role: string) => { if (id && /^\d{5,20}$/.test(id) && !ids.some((x) => x.id === id)) ids.push({ id, role }); };
+    add(cfg.wabaId ?? saved?.wabaId, 'WhatsApp account (holds the number)');
+    add(cfg.messagingAccountId, 'Messaging account (customer messages arrive here)');
+    if (!token) return { configured: false, accounts: ids.map((x) => ({ ...x, linked: null, apps: [], error: 'No token saved' })), phone: null };
+    const accounts = await Promise.all(ids.map(async (x) => {
+      try {
+        const res = await this.fetchImpl(`${GRAPH}/${x.id}/subscribed_apps`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) });
+        const json = (await res.json().catch(() => null)) as { data?: Array<{ whatsapp_business_api_data?: { id?: string; name?: string } }>; error?: { message?: string; code?: number } } | null;
+        if (!res.ok) return { ...x, linked: null, apps: [], error: `${res.status}${json?.error?.code ? ` code ${json.error.code}` : ''}: ${String(json?.error?.message ?? 'Meta refused').slice(0, 160)}` };
+        const apps = (json?.data ?? []).map((d) => String(d.whatsapp_business_api_data?.name ?? d.whatsapp_business_api_data?.id ?? 'an app')).slice(0, 10);
+        return { ...x, linked: apps.length > 0, apps, error: null };
+      } catch (e) {
+        return { ...x, linked: null, apps: [], error: e instanceof Error ? e.message.slice(0, 120) : 'unreachable' };
+      }
+    }));
+    let phone: WhatsAppConnection['phone'] = null;
+    if (cfg.phoneNumberId) {
+      try {
+        const res = await this.fetchImpl(`${GRAPH}/${cfg.phoneNumberId}?fields=display_phone_number,verified_name,quality_rating,status,platform_type,code_verification_status`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) });
+        const json = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+        phone = res.ok && json ? { id: cfg.phoneNumberId, number: String(json.display_phone_number ?? ''), name: String(json.verified_name ?? ''), quality: String(json.quality_rating ?? ''), status: String(json.status ?? ''), platform: String(json.platform_type ?? ''), error: null }
+          : { id: cfg.phoneNumberId, number: '', name: '', quality: '', status: '', platform: '', error: String(((json?.error as { message?: string }) ?? {}).message ?? `HTTP ${res.status}`).slice(0, 160) };
+      } catch (e) {
+        phone = { id: cfg.phoneNumberId, number: '', name: '', quality: '', status: '', platform: '', error: e instanceof Error ? e.message.slice(0, 120) : 'unreachable' };
+      }
+    }
+    return { configured: true, accounts, phone };
+  }
+
+  /** Links the app to every one of our accounts that is not linked yet (POST /{account}/subscribed_apps). */
+  async linkAccounts(): Promise<{ linked: string[]; failed: Array<{ id: string; reason: string }>; already: string[] }> {
+    const { token } = await this.credentials();
+    const before = await this.connection();
+    const out = { linked: [] as string[], failed: [] as Array<{ id: string; reason: string }>, already: [] as string[] };
+    if (!token) { out.failed.push({ id: '*', reason: 'No token saved with the WhatsApp settings.' }); return out; }
+    for (const a of before.accounts) {
+      if (a.linked) { out.already.push(a.id); continue; }
+      try {
+        const res = await this.fetchImpl(`${GRAPH}/${a.id}/subscribed_apps`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15_000) });
+        const json = (await res.json().catch(() => null)) as { success?: boolean; error?: { message?: string; code?: number } } | null;
+        if (res.ok && json?.success !== false) out.linked.push(a.id);
+        else out.failed.push({ id: a.id, reason: `${res.status}${json?.error?.code ? ` code ${json.error.code}` : ''}: ${String(json?.error?.message ?? 'Meta refused').slice(0, 200)}` });
+      } catch (e) {
+        out.failed.push({ id: a.id, reason: e instanceof Error ? e.message.slice(0, 120) : 'unreachable' });
+      }
+    }
+    return out;
   }
 
   /** Our templates beside Meta's status for each (refreshes first). */

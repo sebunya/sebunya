@@ -30,6 +30,7 @@ import { storefrontOrigin } from '../config/storefrontOrigin';
 import { WhatsAppAdsUseCases } from '../../application/use-cases/advertising/WhatsAppAdsUseCases';
 import { DrizzleWhatsAppAdReferralRepository } from '../db/repositories/DrizzleWhatsAppAdReferralRepository';
 import { ctwaWindowDays, parseCtwaSecrets } from '../../domain/advertising/WhatsAppAdReferrals';
+import { RedisWhatsAppDeliveryLog } from '../notifications/whatsapp/WhatsAppDeliveryLog';
 import { setWhatsAppAdResolver } from '../measurement/DeliveryService';
 
 /**
@@ -100,6 +101,8 @@ export function createAdvertisingOperations(deps: {
     if (!secrets) return null;
     return { live: !!(await capabilities.live('meta', 'whatsapp_ads')), wabaId, windowDays: ctwaWindowDays(row.config?.windowDays), datasetId: row.config?.datasetId || null, secrets };
   });
+  // Deliveries are shared between replicas and survive restarts (Redis), so the admin sees what Meta really sent.
+  whatsappAds.setDeliveryLog(new RedisWhatsAppDeliveryLog());
   // The order path (DeliveryService) cannot import this module back; it is handed the resolver.
   setWhatsAppAdResolver(whatsappAds);
 

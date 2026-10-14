@@ -130,14 +130,15 @@ fi
 # 9>&- : a background job must not inherit the deploy lock. It did, and the
 # next deploy was refused for as long as the smoke ran (2026-09-18).
 # Never blocks or fails the deploy.
-(
-  if [ -x performance-audit/schedule/run-in-container.sh ]; then
-    PERF_AUDIT_ONLY="control lighthouse compatibility" COMPATIBILITY_AUDIT_MODE=smoke LIGHTHOUSE_RUNS=1 \
-      performance-audit/schedule/run-in-container.sh --ad-hoc --label "post-deploy-smoke-$HEAD" \
-      >> /var/log/goldplus/performance-audit-post-deploy.log 2>&1 </dev/null || true
-  fi
-) 9>&- &
-disown 2>/dev/null || true
+# Its own process (bash -c, named post-deploy-smoke), not a subshell of this script: a subshell keeps this
+# script's command line ("/tmp/deploy-prod.XXXX.sh"), so "pgrep deploy-prod" said a deploy was still running for
+# as long as Lighthouse ran (2026-10-14, ~15 minutes after "ALL DONE").
+if [ -x performance-audit/schedule/run-in-container.sh ]; then
+  HEAD="$HEAD" setsid bash -c 'PERF_AUDIT_ONLY="control lighthouse compatibility" COMPATIBILITY_AUDIT_MODE=smoke LIGHTHOUSE_RUNS=1 \
+    performance-audit/schedule/run-in-container.sh --ad-hoc --label "post-deploy-smoke-$HEAD" \
+    >> /var/log/goldplus/performance-audit-post-deploy.log 2>&1 || true' post-deploy-smoke 9>&- </dev/null >/dev/null 2>&1 &
+  disown 2>/dev/null || true
+fi
 echo "post-deploy smoke started in the background (label post-deploy-smoke-$HEAD; results under /var/lib/goldplus-performance-audit and on /admin/seo/performance-audit); Lighthouse Watch runs weekly, Sunday 03:00 Kampala time (goldplus-lighthouse-watch.timer)"
 # Live smoke last, in the foreground: home, api, and real form posts through Cloudflare + Caddy (2026-10-14: a week of
 # refused form posts went unseen by every GET check). The roll stays; a failure here means fix forward or roll back.

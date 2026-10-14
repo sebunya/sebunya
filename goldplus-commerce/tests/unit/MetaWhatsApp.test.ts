@@ -311,6 +311,19 @@ describe('the signed webhook, end to end', () => {
     expect(events.mock.calls[0]![0][0]).toMatchObject({ field: 'message_template_status_update', event: 'PAUSED', bad: true });
   });
 
+  it('deliveries go to the shared log (both replicas, survive restarts); a username message with no phone is flagged', async () => {
+    const u = uc();
+    const shared: unknown[] = [];
+    u.setDeliveryLog({ record: async (d) => { shared.unshift(d); }, recent: async (n) => shared.slice(0, n) as never });
+    const noPhone = JSON.stringify({ object: 'whatsapp_business_account', entry: [{ id: '444555666', changes: [{ field: 'messages', value: { metadata: { phone_number_id: '1' }, messages: [{ from_user_id: 'UG.1426592812928753', id: 'wamid.u', timestamp: '1760000000', type: 'text', text: { body: 'hi' } }] } }] }] });
+    await u.receive(noPhone, `sha256=${createHmac('sha256', appSecret).update(noPhone).digest('hex')}`);
+    await new Promise((r) => setTimeout(r, 0));
+    const [first] = await u.sharedDeliveries(5);
+    expect(first).toMatchObject({ status: 200, messages: 0 });
+    expect(first!.note).toContain('1 message(s) from a WhatsApp username with no phone number');
+    expect(shared).toHaveLength(1);
+  });
+
   it('every delivery leaves a trace for the admin: refused (with why), accepted (what it held), foreign account flagged', async () => {
     const u = uc();
     await u.receive(body, 'sha256=00');
@@ -401,5 +414,34 @@ describe("Meta's WhatsApp account / Messaging account split", () => {
     expect(urls.map((u) => u.split('/')[4])).toEqual(['2297240887691836', '1070547395884403']);
     expect(c.approved('goldplus_payment_received')).toBe(true);
     expect((await c.credentials()).wabaId).toBe('1070547395884403');
+  });
+});
+
+describe('WhatsApp connection to Meta (subscribed_apps)', () => {
+  it('reports each account as linked or not, and links only the missing ones with the saved token', async () => {
+    const { MetaWhatsAppTemplateCatalog } = await import('../../apps/api/src/infrastructure/notifications/whatsapp/MetaWhatsAppTemplateCatalog');
+    const env = { ...process.env };
+    process.env.WHATSAPP_WABA_ID = '1070547395884403';
+    process.env.WHATSAPP_MESSAGING_ACCOUNT_ID = '2297240887691836';
+    process.env.GOLDIE_WHATSAPP_PHONE_NUMBER_ID = '1290932287447929';
+    const linked = new Set(['1070547395884403']);
+    const calls: string[] = [];
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      calls.push(`${init?.method ?? 'GET'} ${url.replace(/^https:\/\/graph\.facebook\.com\/v[\d.]+\//, '')}`);
+      const id = url.match(/\/(\d+)\/subscribed_apps/)?.[1];
+      if (id && init?.method === 'POST') { linked.add(id); return new Response(JSON.stringify({ success: true })); }
+      if (id) return new Response(JSON.stringify({ data: linked.has(id) ? [{ whatsapp_business_api_data: { id: '3149957878534050', name: 'GoldPlus' } }] : [] }));
+      return new Response(JSON.stringify({ display_phone_number: '15556598350', verified_name: 'Test Number', status: 'CONNECTED', quality_rating: 'GREEN' }));
+    }) as unknown as typeof fetch;
+    try {
+      const cat = new MetaWhatsAppTemplateCatalog(async () => ({ wabaId: '1070547395884403', accessToken: 'tok' }), fetchImpl);
+      const before = await cat.connection();
+      expect(before.accounts.map((a) => [a.id, a.linked])).toEqual([['1070547395884403', true], ['2297240887691836', false]]);
+      expect(before.phone).toMatchObject({ number: '15556598350', status: 'CONNECTED' });
+      const out = await cat.linkAccounts();
+      expect(out).toEqual({ linked: ['2297240887691836'], failed: [], already: ['1070547395884403'] });
+      expect(calls.filter((c) => c.startsWith('POST'))).toEqual(['POST 2297240887691836/subscribed_apps']);
+      expect((await cat.connection()).accounts.every((a) => a.linked)).toBe(true);
+    } finally { process.env = env; }
   });
 });
