@@ -1,31 +1,58 @@
 # Kampala Metropolitan Address System — specification
 
-Version 1.3, 2026-10-15 (revised the same day three times: owner-supplied datasets §3.9–3.12, the postcode scheme as
-join spine §3.1, and administrative change §14). Research and design for making delivery locations, and therefore
-delivery fees, more accurate on shopgoldplus.com. Written for a coding assistant or engineer to build from.
-District count used throughout: **146 districts and cities** (Electoral Commission, 2025), counted together.
+Version 2.0, 2026-10-15. Research and design for making delivery locations, and therefore delivery fees, more
+accurate on shopgoldplus.com. Written for a coding assistant or engineer to build from. Version 1 (same day, five
+commits on PR #115) was a catalogue of data sources with a design attached; version 2 is the design, with the
+catalogue moved to the appendices and the drafting history to Appendix I. Every measured number from version 1 is
+kept. District count used throughout: **146 districts and cities** (Electoral Commission, 2025), counted together.
 
-**Read these first and keep them in context:** `docs/delivery/CONTRACT.md` (the ten guarantees; nothing below
-breaks them), `docs/location-module-brief.md` (PART L: never make a paid geocoder a dependency; never invent fees
-or centroids), `docs/delivery/MODEL.md` (the minutes model this feeds).
+**Read these first and keep them in context:** `docs/delivery/CONTRACT.md` (ten guarantees; nothing below breaks
+them, and three are cited by number: #4 no invented numbers, #5 a quote at checkout is fixed, #8 a data gap never
+blocks a sale), `docs/location-module-brief.md` (PART L: never make a paid geocoder a dependency; never invent fees or
+centroids), `docs/delivery/MODEL.md` (the minutes model this feeds; §3.3 the six launch numbers).
 
-**What this spec is:** the coordinate, landmark and distance layer that the existing module was designed to receive
-("OSM centroids" is already a Phase 2 item in `docs/delivery/OPERATIONS.md` PART 7). It adds accuracy underneath the
-model that exists. **What it is not:** a rewrite of the gazetteer, the quoting service, the Control Centre, the
-checkout picker or the corridor data. Every one of those is kept and extended.
+**What this spec is:** the coordinate, pin, landmark and distance layer that the existing module was designed to
+receive ("OSM centroids" is already a Phase 2 item in `docs/delivery/OPERATIONS.md` PART 7). **What it is not:** a
+rewrite of the gazetteer, the quoting service, the Control Centre, the checkout picker or the corridor data. All of
+those are kept and extended.
 
 ---
 
-## 0. The one-paragraph version
+## 0. The design in one page
 
-The shop already has a 5,805-area national gazetteer, a 362-area Kampala-metro set with corridors and distance bands,
-a minutes-based fee model, and a Control Centre to run it. Two things stop it from quoting accurately today: no area
-has a coordinate, so every distance is a band midpoint (bands are 2–25 km wide); and the six launch numbers are unset,
-so every quote falls back to "confirmed by phone". This spec (1) gives every metro area a measured point and a road
-distance from the shop, (2) adds a landmark registry so a customer can point at a school, church, stage, mall or petrol
-station instead of typing directions, (3) records how accurate each order's location is, and (4) feeds measured
-kilometres into the existing model. It uses only open data and the shop's own delivered pins, with paid map APIs as
-optional, cached enrichment that can be switched off.
+**Why quotes are wrong today, ranked by how much fee error each one causes:**
+
+1. **The six launch numbers are unset** (`own_rider_max_band` and the five mandatory values), so every quote is
+   `CONFIG_INCOMPLETE` and the customer reads "Confirmed by phone before dispatch". No geography fixes this; only the
+   owner can (§11). Everything else in this document is wasted until it is done.
+2. **No area has a coordinate**, so every distance is a band midpoint. Bands are 2–25 km wide (Appendix F): two areas
+   in B4 are priced the same whether they are 15 or 25 km out, a difference of 20 km per round trip. Worse for
+   calibration: while distance is unknown, the learned `detour`, `corridor` and `hour` factors absorb distance error,
+   so the model cannot learn the things it was built to learn. Points first, then calibration.
+3. **Pins never reach the order.** Checkout never sends `hasPin`; WhatsApp location pins are already received and
+   parsed but dropped into chat text; riders record nothing at handover. Three pin channels exist in production and
+   none of them writes a coordinate anywhere useful.
+4. **The landmark is free text**, so it cannot be matched to a point, reused, or ranked.
+
+**The one success metric.** `delivery_quote_capture` already stores `expected_minutes`, `actual_minutes`,
+`quoted_fee_ugx`, `final_fee_ugx` and `actual_rider_cost_ugx` per order. The module is more accurate when the
+28-day median of |expected − actual| minutes falls and the share of metro orders quoted by the model (not "confirmed
+by phone") rises. Both are computable today from existing columns and form the baseline before any change ships.
+Targets are the owner's to set (contract #4), proposed in §12.
+
+**The order of work (critical path, nothing else is on it):**
+
+| Step | What | Who | Code |
+|---|---|---|---|
+| 0 | Set the six launch numbers in `/admin/delivery/launch` | owner | none |
+| 1 | A point for each of the 362 metro areas from the UBOS 2016 parish polygons (building-weighted, §3), validated against the existing bands (§3.4); straight-line km wired into `measuredKm` behind a Control-Centre switch (§4) | engineer, ~1 week | one script, one table, one resolver change |
+| 2 | Route the pins that already exist to the order: WhatsApp location messages, a one-tap rider handover link, pasted map links, saved addresses that remember their pin (§5) | engineer, ~1 week | three small use cases |
+| 3 | Landmarks: mined from the shop's own order text first, OSM second, EC station names third; a landmark step at checkout (§6) | engineer, ~2 weeks | registry extension, one endpoint, one checkout step |
+| 4 | The learning loop: delivered pins become area points nightly; road km from OSRM replaces straight-line × detour where present (§4.2, §3.5) | ongoing | one nightly job |
+
+**The one product decision the owner must make before Step 1 ships (§12, decision 1):** whether measured distance changes the
+fee *per area* (continuous, as MODEL.md computes it) or only *re-bands* areas while the customer-facing fee stays per
+band. The data is the same; the switch is a registry key; the recommendation is to re-band first.
 
 ---
 
@@ -36,598 +63,511 @@ optional, cached enrichment that can be switched off.
 | Gazetteer | `ug_area` 5,805 areas / 135 districts (Ministry of ICT draft postcodes, April 2019), `ug_area_alias` 28, groups, exceptions 255, trigram search, offline index (390 metro entries) | `apps/api/src/infrastructure/db/schema/locations.ts`, migration 0084, `scripts/import-locations.ts` |
 | Metro delivery set | `delivery_corridor` 362 areas: 14 corridors, bands B0–B6, access road/water, `centroid_lat/lng` columns **never written** | migrations 0092–0096, `scripts/import-delivery.ts` |
 | Origin | `delivery_origin` HUB `GoldPlus Zainab Aziza`, 0.314220, 32.577920 (±10 m) | migrations 0168, 0173 |
-| Fee model | `expected_minutes = handling + travel(band midpoint × 2 × detour / speed × factors) + last_mile`; fee = `max(min_fee, cost_per_minute × minutes × margin)`; window from percentiles | `domain/delivery/DeliveryModel.ts`, `DeliveryQuoteService.ts` |
+| Fee model | `expected_minutes = handling + travel + last_mile`; `travel = round_trip_km / speed × 60 × corridor × hour`; `round_trip_km = band_midpoint × 2 × detour`, or **real straight-line distance × detour where a measured centroid exists** (MODEL.md §3); fee = `max(min_fee, cost_per_minute × minutes × margin)`; window from percentiles | `domain/delivery/DeliveryModel.ts`, `DeliveryQuoteService.ts` |
 | Quoting entry points | `POST /delivery/quote`, `GET /commerce/delivery-estimate`, `CheckoutUseCase` | `interfaces/http/routes/delivery.ts`, `routes/commerce.ts` |
-| Config | versioned `delivery_config_value`, learned factors, calibration proposals, Control Centre + launch wizard | `admin/delivery/*.astro`, `DeliveryConfigRegistry.ts` |
-| Addresses | `addresses` widened with `area_slug`, `landmark_text`, `gps_lat/lng/accuracy/source`, `resolution_status`, `pickup_point_id` | migration 0084 |
+| Config | versioned `delivery_config_value`, learned factors (`origin='prior'` until fitted), calibration proposals, Control Centre + launch wizard | `admin/delivery/*.astro`, `DeliveryConfigRegistry.ts` |
+| Capture per order | `delivery_quote_capture`: area, alias, corridor, band, quoted/final fee, `actual_rider_cost_ugx`, `expected_minutes`, `actual_minutes`, `dispatched_at`, `delivered_at`, `had_pin` (never set), `first_attempt_success`, `distance_travelled`, **`straight_line_km`**, **`centroid_source`**, `eat_hour_of_week`, config version | `schema/delivery.ts` 148–187 |
+| Addresses | `addresses` widened with `area_slug`, `landmark_text`, `gps_lat/lng/accuracy/source`, `resolution_status`, `pickup_point_id`, `snapshot_*` labels | migration 0084 |
 | Landmarks | `ug_landmark` (area_slug, name, type, usage_count, verified, gps) — **admin-written only, 0 rows from checkout** | `DrizzleLocationAdminRepository.ts` |
+| Search misses | `ug_search_miss`: raw and normalised query, result count, what it was eventually resolved to and via what (alias/group/landmark/manual) | `schema/locations.ts` 176 |
 | Pickup points | `ug_pickup_point` with GPS, hours, carrier — **no rows seeded** | migration 0084, 0093 |
 | Bus / upcountry | 128 towns on 9 routes; `delivery_bus_rate_card` — **0 cards, no write path** | `scripts/import-bus-destinations.ts` |
-| Checkout | `UgandaLocationPicker` (server search + offline fallback + district browse + manual text + GPS/pasted-link pin); one free-text "Exact address" field doubles as the landmark | `components/UgandaLocationPicker.astro`, `lib/locationPickerClient.ts`, `pages/checkout.astro` |
+| Fulfilment | `fulfilment_dispatches` (method, `rider_name` free text, no rider account), `fulfilment_deliveries` (attempt, outcome, `delivered_at`, recipient confirmation, proof reference) — **no coordinate recorded at handover** | `schema/fulfilment.ts`, `DeliveryUseCases.ts` |
+| WhatsApp | Goldie's inbound parser already reads `type === 'location'` and turns it into the text `My location: <name, address> (lat, lng)`; **nothing stores the coordinate or links it to an order** | `domain/assistant/WhatsAppGoldie.ts` 77 |
+| Checkout | `UgandaLocationPicker` (server search + offline fallback + district browse + manual text + GPS/pasted-link pin); one free-text "Exact address" field doubles as the landmark; `hasPin` never sent; SAME_DAY hardcoded to Kampala/Wakiso | `components/UgandaLocationPicker.astro`, `lib/locationPickerClient.ts`, `pages/checkout.astro` |
 | Order storage | `orders.delivery_area`, `delivery_address` (the landmark text), `delivery_location` jsonb (district, areaSlug, gps*), `delivery_fee`, `delivery_fee_confirmed` | `schema/commerce.ts` |
+| District list | `UGANDA_DISTRICTS` hard-coded (136 entries, the 2021 list) in `packages/shared/src/locations/uganda.ts`; `routes/commerce.ts` **rejects an order whose district is not on it** | |
 
-**Why quotes are inaccurate today (root causes, in order):**
-1. `measuredKm` is always null (`DeliveryAreaResolver.ts` 70/85/138); `haversineKm` has no callers. Every travel estimate uses the band midpoint. B4 is 15–25 km, so two areas in the same band are priced identically even if one is 10 km further.
-2. The five mandatory launch values and `own_rider_max_band` are unset → `CONFIG_INCOMPLETE` → legacy `delivery_zones` (empty) → "Confirmed by phone before dispatch".
-3. Checkout never passes `hasPin`; `delivery_quote_capture.had_pin` is never set; pins are not fed back into centroids.
-4. The landmark lives inside a free-text field, so it cannot be matched to a point.
-
-Everything else in this spec is about fixing those four.
+Production Postgres is `postgres:16-alpine` with no PostGIS. `pg_trgm`, `unaccent`, `btree_gin` are already enabled
+(migration 0084). `cube` is a trusted extension; `earthdistance` is **not** (verified on 16.14: needs a superuser,
+which the compose migrator is). §3.6 gives the no-extension fallback.
 
 ---
 
-## 2. Corrections to the research document
+## 2. Design principles
 
-The research note ("Strategic Geospatial Architecture…", 2026) is right about the shape of the problem and the
-PostGIS patterns. Three of its data claims do not hold; the design below works around them.
-
-1. **Electoral Commission polling stations have no coordinates.** The Kalulu repository (`Uganda-Open-Data/kalulu`,
-   last updated 2026-05-01) holds `voter_register_summary_2020.csv`: 34,684 stations with district, constituency,
-   sub-county, parish, station name and voter count. **No latitude/longitude.** The station names are still valuable
-   (they name real schools, churches, mosques, LC1 offices and grounds), but each must be matched to a point from OSM
-   or GeoNames, or it stays an area-level label.
-2. **The HDX COD-AB boundaries stop at sub-county.** `cod-ab-uga` (UBOS with WHO, reviewed 2026-09-21, CC BY-IGO):
-   Admin 1 = 4 regions, Admin 2 = 135 districts, Admin 3 = 203 (county/municipality level), Admin 4 = 1,520
-   (sub-county level, 2020 boundaries). It has **no parish or village polygons**. Parish polygons do exist in a
-   different file the owner supplied, the UBOS 2016 parish shapefile (§3.9), which becomes the primary source of area
-   centroids; village polygons exist nowhere open.
-4. **(Self-correction, same day.)** My first draft matched polygons to areas "within the same district". The
-   datasets use five different district lists (116, 128, 135, 146, 222), so that rule fails for every district
-   created after 2016. Matching now runs inside a district lineage family (§3.1, §6.1c). The same draft treated every
-   postcode row as a deliverable neighbourhood; the source tables include prisons, barracks, a university, national
-   parks and mountains as "parishes". §6.1b classifies them so they are never priced as homes.
-3. **Boda stages are barely mapped in OSM.** `amenity=taxi` inside the Greater Kampala bounding box returns **82**
-   objects (75 nodes, 7 ways) on 2026-10-15. Stages will come mostly from the shop's own riders and customers, not
-   from OSM.
-
-Also: production Postgres is `postgres:16-alpine` with no PostGIS. The schema below runs on plain Postgres 16 with the
-`cube`/`earthdistance` contrib extensions (present in the alpine image) and has a defined upgrade path to PostGIS.
-
----
-
-## 3. Data sources (what each one actually gives us)
-
-Measured on 2026-10-15. "GKMA box" = lat −0.05…0.60, lon 32.30…32.95 (Kampala, Wakiso, Mukono town, Entebbe, Mpigi
-town). Licences matter because the data ends up inside a commercial database; see §12.
-
-### 3.1 Ministry of ICT draft postcodes, April 2019 (already imported; the spine everything else joins to)
-5,805 areas, 135 districts, with parish/area names, sub-county/division, county, region. No coordinates. This remains
-the **primary key space** (`area_slug`, which already carries the postcode: `kampala-nakawa-10318`). Nothing replaces
-it. The owner supplied the source tables on 2026-10-15 (also published at techjaja.com, "A list of ZIP or postal codes
-in Uganda", 2020); what they add to the design is below.
-
-**The scheme.** Five digits: zone digit (1 Kampala, 2 Eastern, 3 Central, 4 Western, 5 Mid-Western, 6 West Nile,
-7 Northern, 8 North-East), then a two-digit district number (Kampala is `1` + division `01`–`05`; Wakiso spans
-`313`/`314`, Arua `604`/`605`, Kasese `503`/`504`, Bulambuli `821`/`822`), then two digits per parish or ward in
-the order the Ministry listed them. 128 district blocks in the 2019 document. Kampala: 96 parishes across the five
-divisions (Central 20, Kawempe 19, Nakawa 23, Makindye 21, Rubaga 13).
-
-**What the postcode is for in this design.** Per the brief (PART B) a customer never types it and it is never
-required. Its real value is as a **join key between datasets that each use their own district list**: a 2019 postcode
-parish ↔ a 2016 UBOS parish polygon ↔ an EC parish ↔ a GeoNames ADM5 ↔ a passport-portal parish. Measured on
-2026-10-15 against the shop's metro index (390 entries): **350 (89%) match a 2016 polygon parish by exact folded name**
-(Kampala 94/109, Wakiso 139/148, Mukono 69/74, Mpigi 48/59); nearly every miss is a spelling variant (Civic Centre /
-CIVIC CENTER, Bogolobi / BUGOLOBI, Kikaya / KIKAAYA, Nateete / NATETE, Lubia / LUBYA, Najjanankumbi / NAJJANANKUBI,
-Nakivubo Shauliyako / NAKIVUBO-SHAURIYAKO, University (Makerere) / MAKERERE UNIVERSITY), so trigram ≥ 0.6 within the
-district should bring the metro set to ≈97%. The Phase A target in §13 is set from this number.
-
-**Defects visible in the source tables (all already handled by the importer's exceptions file; listed so the join
-logic never assumes the list is clean):**
-- Duplicate postcodes: Kyengera 31440 (twice), Kyotera 32008 / 32027 / 32029, Kasese 50382, Gomba 32617 / 32619,
-  Luuka 22106, Bulambuli 82101 / 82102 ("Butta Ward" twice), Sironko 21059 (twice) — the brief counts 14.
-- Out-of-sequence or truncated codes: Sironko "Shimoma 2103", "Busedani 21059"; Kiryandongo row 13 has no parish name.
-- Names printed without spaces: "NakivuboShauliyako", "OldBomaWard", "LakeMburo", "QueenElizabeth", "St.AloysiusPtcCompl".
-- Spellings that differ from UBOS and the EC: Bogolobi, Lubia, Kikaya, Najjanankumbi, Kazo Ward.
-- **Entries that are institutions or land, not neighbourhoods:** University (Makerere), Luzira Prisons, Nsambya Police
-  Barracks, Nakawa Institutions, Army Barracks (Mpigi), Mt. Elgon, Queen Elizabeth, Rwenzori Mountain, Hunting Area,
-  Grazing Area, Lake Mburo, Bwindi Impenetrable, Semuliki, Kyangwali Gr. They are real postcode rows and real
-  polygons, but a door delivery "to Queen Elizabeth" is not a thing. §6.1b adds `area_kind` so they are shown as
-  what they are (institution / reserve / water) and routed to the manual path or pickup, never priced as a home area.
-- Wakiso's list omits 31401–31404 and numbers two Kyengera rows; Entebbe (313xx) and Kyadondo are inside Wakiso.
-
-**District drift, the thing my first draft got wrong.** Every source has its own district list: 2016 polygons 116
-districts; 2019 postcodes 128 (still with Kazo under Kiruhura, Madi-Okollo under Arua, Kitagwenda under Kamwenge,
-Kalaki under Kaberamaido, Obongi under Moyo, Rwampara under Mbarara); `ug_area` 135 + Terego; EC 2020 135; the EC
-2025/26 selector 222 electoral districts (cities and municipalities counted separately); and the **current
-authoritative count, the Electoral Commission's 2025 statistics: 146 districts and cities** (counted together; this is
-the number the spec uses everywhere, and `ug_district` is seeded by enumerating those 146, not from the selector's
-222 or from any separate district/city tally). §7.0 originally matched polygon parishes "within the same district",
-which would silently fail for every
-parish in a district created after 2016. The fix is a `district_lineage` table (§6.1c): each current district maps to
-its 2016 parent, and all name matching runs within the **lineage family**, not the current district.
-
-### 3.2 GeoNames Uganda dump (`download.geonames.org/export/dump/UG.zip`, 0.7 MB, CC BY 4.0)
-26,943 features with WGS84 coordinates. 11,455 populated places (PPL), 2,215 ADM5 (parish-level), 1,359 ADM4
-(sub-county-level), 1,270 schools (SCH), 642 HSPC, 78 HSP, 88 missions.
-Inside the GKMA box: 1,205 PPL, 118 ADM5, 44 ADM4, 27 HSPC, 12 HSP, 9 SCH.
-Sample PPL names in Kampala (0.25…0.42, 32.50…32.68): Bakuli, Bugolobi, Bukoto, Bunga, Butabika, Bwaise,
-Bweyogerere, Ggaba, Kabowa, Kansanga, Katwe, Kawempe, Kazo, Kibuye, Kikaaya, Kinawataka, … (160 places).
-Sample ADM5: Bwaise I, Kabalagala, Kanyanya, Kawempe II, Kibuli, Kireka, Kyaliwajala, Kyanja, Makerere III,
-Mulago II, Mutundwe, Naguru Godown, Najjanankumbi II, Ndeeba, Wabigalo.
-**Use:** first-pass centroid for `ug_area` rows by name match within district (expect ~70–85% of the 362 metro areas to
-match directly; the rest via OSM or manual pin).
-**Caveat:** GeoNames points are settlement labels, not polygon centroids; accuracy is typically 200 m–1 km. Good
-enough for a band and a road distance; not for a door.
-
-### 3.3 OpenStreetMap (ODbL)
-Access: Overpass API (public mirrors: `overpass-api.de` was unreachable from this network; `overpass.kumi.systems`,
-`overpass.private.coffee`, `maps.mail.ru/osm/tools/overpass` answered, with rate limits), or the Geofabrik extract
-`download.geofabrik.de/africa/uganda-latest.osm.pbf` for bulk work (process offline with `osmium`).
-Counts inside the GKMA box (nodes+ways+relations):
-
-| Tag | Count | Note |
-|---|---|---|
-| amenity=school | 2,430 | best landmark class |
-| amenity=place_of_worship | 622 | churches, mosques |
-| amenity=bank | 461 | |
-| amenity=pharmacy | 424 | |
-| shop=supermarket | 409 | |
-| amenity=police | 158 | |
-| amenity=marketplace | 143 | |
-| place=neighbourhood | 96 | named localities |
-| highway=bus_stop | 88 | |
-| amenity=taxi (boda/taxi stages) | 82 | thin |
-| place=suburb | 78 | |
-| amenity=bus_station | 58 | |
-| highway=* with a name | 4,148 ways | named roads; useful for "near X Road" matching |
-| building=* | 1,567,904 ways | footprints (HOT/AI imports); a pin can be snapped to the nearest footprint |
-| boundary=administrative, Uganda-wide | admin_level 4: 146 relations (districts incl. new ones); admin_level 9: 51 | parish/village boundaries mostly absent |
-| amenity=hospital, clinic, fuel, shop=mall, place=village | not counted (mirrors overloaded) | re-run with the Geofabrik extract |
-
-**Use:** landmark registry (points with names and categories), place nodes for area centroids where GeoNames has none,
-admin boundaries where they exist (Uganda has few below district in OSM).
-**Caveat:** ODbL share-alike. Keep OSM-derived rows in their own table with `source='osm'` and `osm_id`; see §12.
-
-### 3.4 Electoral Commission polling stations (Kalulu repo, public data)
-34,684 stations (2020 register). GKMA: Kampala 1,423 stations / 6 divisions / 98 parishes; Wakiso 1,434 / 27 / 147;
-Mukono 619 / 18 / 97; Mpigi 245 / 9 / 56. Columns: district, constituency, sub-county, parish, station name, voters.
-Station name examples: "MATHEL NURSERY SCHOOL (NAMUI-S)", "KAWEMPE MBOGO MUSLIM S.S.S. (A-K)", "JAMBULA [NABI-Z]- LC I
-OFFICE", "UCTU GROUND (A-L)".
-**Use:** (a) a complete **parish list per sub-county** for the four GKMA districts (398 parishes) to validate and extend
-`ug_area`; (b) landmark **names** that locals know, to be matched against OSM/GeoNames points (strip the voter-range
-suffixes `(A-K)`, `[NABI-Z]`; expand `P/S`→Primary School, `S.S.S`→Secondary School, `C/U`→Church of Uganda,
-`R/C`→Roman Catholic). Unmatched names are kept as area-level landmarks (no point) and get a point the first time a
-rider delivers there.
-
-### 3.5 HDX COD-AB `cod-ab-uga` (CC BY-IGO)
-GeoJSON 37 MB, SHP 33 MB, GDB 16 MB, XLSX 0.4 MB. Admin 4 = 1,520 sub-county polygons (2020).
-**Use:** point-in-polygon to assign a sub-county to any pin or landmark; sanity-check that a GeoNames/OSM point lies in
-the district `ug_area` says it does; derive district/sub-county centroids for the manual path. Not needed on the
-request path; load into a `geo_admin_polygon` table (or keep as files) for batch jobs.
-
-### 3.6 Delivered pins (own data, best source)
-`addresses.gps_*`, `orders.delivery_location.gps*`, and the `delivery_quote_capture` row per order. Already designed
-as the top of the centroid precedence in MODEL.md ("delivered pins, then manual, then band midpoint"). Today nothing
-aggregates them. §6.5 adds the nightly job.
-
-### 3.7 Google Plus Codes (Open Location Code)
-Offline encode/decode, 14 m × 14 m at 10 characters (e.g. `6GCRPR6C+24` for central Kampala). npm:
-`open-location-code` 1.0.3 (Google's) or `pluscodes` 3.0.1. **Use:** printed on the rider card and in the WhatsApp
-message for every order with a pin; typed by a customer who has one. Never a required field.
-
-### 3.9 UBOS 2016 parish polygons (owner-supplied; `Ug_Parishes_2016.shp` inside `uganda-APIs` repo's `GIS-Parishes-2016.zip`, 28 MB)
-**7,566 parish polygons** for 116 districts (2016 boundaries), attributes `D` district, `C` county, `S` sub-county,
-`P` parish, `V` (a reference village), `PCODE`, `Shape_Area`. Projection Arc 1960 / UTM zone 36S (EPSG:21036); the
-datum shift to WGS84 is EPSG:1122 (dX −160, dY −6, dZ −302 m).
-GKMA: Kampala 96, Wakiso 151, Mukono 80, Mpigi 56 parishes (357 inside the GKMA box; median parish 9.7 km², Kampala
-median 1.2 km²). Centroids verified against known points: Civic Centre 0.3127, 32.5860; Kabalagala 0.3011, 32.5992;
-Ntinda 0.3467, 32.6181; Bugolobi 0.3112, 32.6227.
-Name agreement with the EC 2020 parish list before fuzzy folding: Kampala 82/98 (83%), Wakiso 121/144 (84%), Mukono
-65/95 (68%, Mukono split parishes after 2016), Mpigi 46/56 (82%). Remaining differences are spelling (BUGOLOOBI /
-BUGOLOBI, CIVIC CENTRE / CENTER, KAZO-ANGOLA / KAZO) and post-2016 splits.
-**Use:** the first-choice `geo_area_point` source (`source='parish_polygon'`, confidence 0.75) for every `ug_area` whose
-parish matches; point-in-polygon for pins and landmarks (`geo_admin_polygon` now holds parishes, not just HDX
-sub-counties); a 2016 parish is also the natural unit for same-day eligibility and for aggregating delivered pins.
-Derived file produced on 2026-10-15: `~/Downloads/ug_parishes_2016_centroids_wgs84.csv` (7,566 rows: district,
-county, sub-county, parish, reference village, PCODE, lat, lng, area_km2, bbox). Licence: the shapefile is Uganda
-Bureau of Statistics data redistributed in a GPL-3 code repository; the GPL applies to that repository's code, not to
-government statistical data. Attribute "Uganda Bureau of Statistics, 2016 parish boundaries".
-
-### 3.10 Full names hierarchy to village level (owner-supplied; `locations-uganda` npm, `uganda-geo-data` PHP, `ug-locale` Laravel; all MIT)
-The same dataset in three packagings, scraped from the Uganda passport portal: **135 districts → 303 counties → 2,120
-sub-counties → 10,365 parishes → 71,250 villages**, names and parent ids only, no coordinates. Village names are
-upper-case. **Use:** the village list is the deepest open gazetteer available and is what a customer in Wakiso will
-actually say ("Kira, Bulindo"); load it as `ug_village` (parish_id → `ug_area` via parish match) for search and for
-the landmark registry's area assignment; it supersedes the EC parish list as the hierarchy source (§7.3 keeps the EC
-file for station names only).
-
-### 3.11 EC 2025/26 electoral structure (owner-supplied; `uganda-location-selector` npm, MIT)
-222 electoral districts (cities and municipalities counted separately), 427 constituencies, 1,881 sub-counties, 3,454
-electoral areas, with EC codes. No coordinates. **Use:** the EC codes join to the Kalulu polling-station codes (district
-code 027 etc.), which lets the station list be refreshed from the 2026 register without re-matching names.
-
-### 3.12 Owner-supplied files not adopted
-- `Uganda-Delivery-Cost-API`: a FastAPI toy (20 district centroids × weight × "risk factor" × delivery-time factor,
-  UGX 40 per kg-km). Nothing to take except as a reminder not to price by weight×km×opaque factors; the shop's minutes
-  model already covers cost, and contract #4 forbids invented multipliers.
-- `uganda-APIs/districts_large_map.json`: a hand-started hierarchy, 139 sub-parishes filled in, almost all empty.
-- `final-vote-by-district-2016-presidential.csv`: 112 districts of 2016 with vote counts; no location use.
-
-### 3.13 Not used, and why
-- KCCA street naming / house numbering: started 2017, GPS survey funded under KIIDP-2 (2024), no public dataset, no
-  2025/26 status found. Revisit yearly.
-- DataHub "postal-codes-ug": it is the GeoNames PPL list with empty postcode fields; use GeoNames directly.
-- Public Nominatim for bulk: forbidden by its usage policy (1 req/s, no bulk). A self-hosted Nominatim/Photon on the
-  Uganda extract is possible later; not needed for this spec.
+1. **The point is the fact; everything else is a label.** Districts, parishes, postcodes and area names are ways of
+   finding and describing a point. Once an order has a point, no fee or route depends on which district it is said to
+   be in. Labels are snapshotted on the order (`snapshot_*`), so a renamed or split district changes wording, never
+   money. (§7 is the consequence for a map that keeps changing.)
+2. **Every point carries its source and its expected error in metres, and neither is invented.** Version 1 gave
+   sources made-up confidences (0.95, 0.75, 0.60); contract #4 forbids that. Version 2 ranks sources by an explicit
+   precedence and stores `expected_error_m` only where it can be measured or stated: the dispersion of buildings or
+   pins around the point, the polygon's equivalent radius, or the number an admin typed with a reason. Unknown is
+   `null`, never a guess.
+3. **Use the pins that already arrive before building a way to collect new ones.** WhatsApp location messages, pasted
+   map links and the rider standing at the door are three pin sources that exist today. A map widget at checkout is
+   the fourth and the least used in Uganda; it is Phase C, optional, and may never be needed.
+4. **Measured distance enters the model through one switch.** `distance_source` in the registry: `band_midpoint`
+   (today), `measured` (straight-line from the point × learned detour, exactly as MODEL.md already specifies), later
+   `road` (routed km, detour 1.0). The Control Centre flips it, with a dry run, and it reverts in one action
+   (contract #9).
+5. **New data is validated against old data before it is trusted.** A matched polygon whose point lands 20 km from
+   the band the team assigned by hand is wrong, or the band is; either way a person looks (§3.4).
+6. **Open data first; paid APIs are optional enrichment behind a cache with an off switch** (brief PART L). The
+   checkout works with Google and Mapbox both absent.
+7. **The customer chooses from things they know:** area → landmark → "share your location on WhatsApp". Typing
+   directions stays possible as the fallback.
+8. **The rider gets everything the customer gave, in one message:** area, landmark, directions, Plus Code, map link,
+   and how sure we are.
 
 ---
 
-## 4. Design principles (additions to the contract)
+## 3. The point layer: one point per area
 
-1. **Every location has an accuracy tier, and the quote knows it.** `PIN` (device GPS ≤50 m or pasted map link) →
-   `LANDMARK` (a registry point) → `AREA_POINT` (area centroid) → `BAND_MIDPOINT` (today's behaviour) → `DISTRICT`
-   (manual path). The tier is stored on the capture and shown to ops.
-2. **A point never comes from nowhere.** Every `lat/lng` row carries `source`, `source_ref`, `confidence` (0–1) and
-   `captured_at`. Contract #4 (no invented numbers) applies to coordinates.
-3. **Open data first; paid APIs are optional enrichment behind a cache, with an off switch.** The checkout must work
-   with Google and Mapbox both switched off (brief PART L).
-4. **The customer chooses from things they know.** Area → landmark → optional pin. Typing directions stays possible
-   but is the fallback, not the path.
-5. **Measured kilometres replace band midpoints wherever a point exists; bands remain the fallback and the grouping.**
-   The band of an area is recomputed from its measured road distance; the corridor stays as assigned.
-6. **The rider gets everything the customer gave us, in one message:** area, landmark, directions, Plus Code, map link.
-
----
-
-## 5. Architecture
-
-```
-checkout (web)                         api                                    data jobs (scripts, nightly/monthly)
-──────────────                         ───                                    ──────────────────────────────────
-UgandaLocationPicker  ──/locations/search──►  LocationSearchService (exists)
-   └ landmark step    ──/locations/landmarks?area=──►  LandmarkSuggestUseCase (new)  ◄── ug_landmark (OSM+EC+own)
-   └ pin / link / Plus Code  ──/locations/resolve-link (exists; + plus code)
-                      ──/delivery/quote {areaSlug, point?, landmarkId?}──►  DeliveryQuotingUseCase (exists)
-                                                           └ DeliveryAreaResolver.measuredKm (now filled from
-                                                             geo_area_point / landmark / pin, road_km from geo_road_distance)
-order ──► delivery_quote_capture (+ accuracy_tier, point, landmark_id)   ◄── nightly: pins → area points (§6.5)
-rider card ──► landmark + directions + Plus Code + maps link
-```
-
-New tables (§6): `geo_area_point`, `geo_road_distance`, `geo_landmark_source` (OSM/EC/GeoNames raw), `ug_landmark`
-extended, `geo_admin_polygon` (optional, batch only). New scripts: `geo-import-geonames.ts`, `geo-import-osm.ts`,
-`geo-import-ec-stations.ts`, `geo-compute-road-distances.ts`, `geo-nightly-area-points.ts`. New use case:
-`LandmarkSuggestUseCase`. Changes to existing code are small and listed in §9.
-
----
-
-## 6. Database
-
-Runs on Postgres 16 without PostGIS. Enable `cube` and `earthdistance` (both ship in `postgres:16-alpine`). Distances
-in metres; `earth_distance(ll_to_earth(lat1,lng1), ll_to_earth(lat2,lng2))` is great-circle; a GiST index on
-`ll_to_earth(lat,lng)` makes `earth_box` radius queries indexed. Upgrade path to PostGIS in §6.7.
-
-**Extension privilege check (verified on Postgres 16.14, 2026-10-15):** `cube` is a *trusted* extension; `earthdistance`
-is **not** (`pg_available_extension_versions.trusted = false`), so `CREATE EXTENSION earthdistance` needs a superuser.
-The migrator connects as the compose `POSTGRES_USER`, which is the superuser in the official image, so the migration
-should pass the rehearsal; if the rehearsal refuses it, the fallback that needs no extension at all is: keep `lat`/`lng`
-as plain columns, a btree index on `(lat, lng)`, prefilter candidates with a bounding box (±0.025° ≈ 2.8 km), and
-compute the haversine in SQL (`6371000 * acos(least(1, cos(radians(lat1))*cos(radians(lat2))*cos(radians(lng2-lng1)) +
-sin(radians(lat1))*sin(radians(lat2))))`). At ≤100k points that is sub-millisecond either way. The spec's queries below
-are written for `earthdistance`; each has this plain-SQL twin.
-
-### 6.1 `geo_area_point` — one best point per area
+### 3.1 `geo_area_point`
 ```sql
-CREATE EXTENSION IF NOT EXISTS cube;
-CREATE EXTENSION IF NOT EXISTS earthdistance;
-
 CREATE TABLE geo_area_point (
-  area_slug        text PRIMARY KEY REFERENCES ug_area(area_slug),
-  lat              double precision NOT NULL CHECK (lat BETWEEN -2.5 AND 5.5),
-  lng              double precision NOT NULL CHECK (lng BETWEEN 28 AND 36.5),
-  source           text NOT NULL CHECK (source IN ('delivered_pins','manual','parish_polygon','osm_place','geonames','admin_polygon')),
-  source_ref       text,                      -- parish PCODE, geonames id, osm type/id, admin pcode, or 'pins:<n>'
-  confidence       numeric(3,2) NOT NULL,     -- 0.95 pins(n>=5), 0.90 manual, 0.75 parish_polygon, 0.70 osm_place, 0.60 geonames, 0.40 admin_polygon
-  sample_size      integer NOT NULL DEFAULT 0, -- delivered pins used
-  spread_m         integer,                   -- p90 distance of pins from the median, when source=delivered_pins
-  set_by           text,                      -- 'job:geo-nightly' | admin user id
-  updated_at       timestamptz NOT NULL DEFAULT now()
+  area_slug         text PRIMARY KEY REFERENCES ug_area(area_slug),
+  lat               double precision NOT NULL CHECK (lat BETWEEN -2.5 AND 5.5),
+  lng               double precision NOT NULL CHECK (lng BETWEEN 28 AND 36.5),
+  source            text NOT NULL CHECK (source IN ('rider_handover','delivered_pins','manual','parish_buildings','parish_centroid','osm_place','geonames','subcounty_centroid')),
+  source_ref        text,                     -- parish PCODE | geonames id | osm type/id | 'pins:<n>' | admin note id
+  expected_error_m  integer,                  -- measured dispersion or stated by an admin; NULL = unknown (never guessed)
+  sample_size       integer NOT NULL DEFAULT 0,
+  shared_polygon    boolean NOT NULL DEFAULT false,  -- several areas share one 2016 polygon (post-2016 split)
+  straight_km_hub   numeric(6,2),             -- cached haversine from the HUB origin, recomputed when lat/lng change
+  set_by            text,                     -- 'job:<name>' | admin user id
+  updated_at        timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX geo_area_point_earth_idx ON geo_area_point USING gist (ll_to_earth(lat, lng));
+CREATE INDEX geo_area_point_latlng_idx ON geo_area_point (lat, lng);
 ```
-Precedence when writing (highest wins, never downgrade automatically): `delivered_pins` (≥5 pins, p90 spread ≤ 1,500 m)
-> `manual` > `parish_polygon` > `osm_place` > `geonames` > `admin_polygon`. The nightly job may replace
-`parish_polygon`/`geonames`/`osm_place` with `delivered_pins`; it never overwrites `manual`. A parish polygon centroid
-is the geometric centre, which for a large or oddly shaped parish (Ggaba, 13 km²) can sit away from the settlement;
-when GeoNames has a PPL for the same name inside that polygon, prefer the PPL point but keep `parish_polygon` as the
-containing polygon (`geo_admin_polygon`).
 
-### 6.1a `geo_admin_polygon` — parish and sub-county polygons for point-in-polygon (batch and request path)
+**Source precedence** (highest wins; a job never downgrades; `manual` is never overwritten by a job):
+`rider_handover` (≥3 handover pins, p90 spread ≤ 800 m) > `delivered_pins` (≥5 customer pins, p90 ≤ 1,500 m) >
+`manual` > `parish_buildings` > `parish_centroid` > `osm_place` > `geonames` > `subcounty_centroid`.
+
+**Expected error, by source, all measurable:**
+- `rider_handover`, `delivered_pins`: p90 distance of the pins from their geometric median.
+- `parish_buildings`: RMS distance of the buildings inside the polygon from their weighted centre.
+- `parish_centroid`: two-thirds of the polygon's equivalent radius, `(2/3)·√(area/π)` (the mean distance from the
+  centre of a disc to a uniformly placed point). Kampala's median parish (1.2 km²) gives 410 m; Wakiso's larger
+  parishes give 1–2 km, which is the honest statement of how little a bare centroid tells you there.
+- `manual`: the admin types it with a reason ("placed on the trading centre, ±200 m").
+- `osm_place`, `geonames`: `null`. A settlement label has no measurable error; it inherits the containing polygon's
+  figure only when it lies inside a matched polygon.
+- `subcounty_centroid`: `(2/3)·√(area/π)` of the sub-county, typically 3–6 km. Shown to ops as what it is.
+
+### 3.2 Where the first 362 points come from: parish polygons, weighted by buildings
+The UBOS 2016 parish shapefile (Appendix A.9) gives a polygon for 357 of the 390 metro-index entries' parishes;
+**89% match by exact folded name today** (Kampala 94/109, Wakiso 139/148, Mukono 69/74, Mpigi 48/59), and the
+misses are spelling variants that trigram folding inside the lineage family (§7.2) closes.
+
+A geometric centroid is the wrong point for delivery: Ggaba's 13 km² polygon has its centre away from where anyone
+lives. OSM holds **1,567,904 building footprints** inside the GKMA box (HOT and AI imports). So the point for a parish
+is the **centre of its buildings**: filter the Geofabrik `uganda-latest.osm.pbf` to `building=*` inside the box with
+`osmium`, take each footprint's centroid, assign it to a parish by point-in-polygon (batch, 7,566 rings, bbox index
+then ray-casting), and store the geometric median of the buildings as the area point with `source='parish_buildings'`
+and `expected_error_m` = the RMS spread. A parish with fewer than 20 buildings in OSM falls back to
+`parish_centroid`. This also fixes the Ggaba-type case with no manual work, and it is the same computation the
+nightly pin job does later with delivered pins instead of buildings.
+
+Quick alternative if the building extract is deferred: where GeoNames has a PPL of the same name inside the polygon,
+use the PPL point (`osm_place`/`geonames` precedence) and keep the polygon as the container. It is weaker than the
+building centre and should not outlive Phase A.
+
+### 3.3 Parish splits and the things that are not neighbourhoods
+- **One polygon, several current areas** (post-2016 splits; Mukono's EC parishes match the 2016 file only 68% of the
+  time for this reason): every area in the split shares the polygon's point with `shared_polygon = true`. Pins separate
+  them over time (§5.6); the admin page lists them under "shared polygon: needs pins or a manual point".
+- **`ug_area.area_kind`.** The 2019 postcode tables list prisons, barracks, a university, national parks, mountains
+  and lakes as parishes (Appendix B). A door delivery "to Queen Elizabeth" is not a thing.
+  ```sql
+  ALTER TABLE ug_area ADD COLUMN area_kind text NOT NULL DEFAULT 'neighbourhood'
+    CHECK (area_kind IN ('neighbourhood','ward','trading_centre','institution','barracks','reserve','water','island','unknown'));
+  ```
+  Set by the importer from name patterns and reviewable in `/admin/locations`. `institution` and `barracks` are
+  priced as their parish's point and the rider card says "institution: gate / reception"; `reserve`, `water`,
+  `island` and `unknown` are never priced for door delivery and go to the manual path or pickup (the 12 lake areas
+  already do this through `access_mode`).
+
+### 3.4 Validation against the bands the team already assigned (new in v2)
+`delivery_corridor` holds a hand-assigned band for every metro area. After matching, compute `straight_km_hub` for
+each new point and compare it with the band's range (Appendix F). Three lists come out of the import, and a person
+reads all three before anything is published:
+- **consistent**: the point sits inside the band's range ± 2 km (the vast majority);
+- **suspect match**: the point is more than one band away from the assigned band and the name match was fuzzy or
+  the polygon is shared; the match is probably wrong;
+- **suspect band**: the point is more than one band away, the match was exact and the polygon is unique; the band
+  is probably wrong, which is the whole purpose of this work.
+Nothing is written to `delivery_corridor.distance_band` by the import; the re-banding goes through the Control
+Centre's corridor dry run (§4.1).
+
+### 3.5 `geo_admin_polygon` (batch only in Phase A)
 ```sql
 CREATE TABLE geo_admin_polygon (
   id             serial PRIMARY KEY,
   level          text NOT NULL CHECK (level IN ('district','subcounty','parish')),
-  source         text NOT NULL,              -- 'ubos_parishes_2016' | 'hdx_cod_ab_2020' | later boundary sets
-  boundary_set   text NOT NULL,              -- 'ubos-2016' | 'hdx-2020' | 'ubos-2024-ea' …; several sets coexist
-  valid_from     date, valid_to date,        -- when this boundary set applied; null = unknown
+  boundary_set   text NOT NULL,              -- 'ubos-2016' | 'hdx-2020' | later sets; several coexist, none deleted
+  valid_from     date, valid_to date,
   source_ref     text NOT NULL,              -- PCODE or HDX pcode
   district       text NOT NULL, county text, subcounty text, name text NOT NULL,
-  area_slug      text REFERENCES ug_area(area_slug),   -- set when the parish matches one area
+  area_slug      text REFERENCES ug_area(area_slug),
   bbox_s double precision NOT NULL, bbox_w double precision NOT NULL, bbox_n double precision NOT NULL, bbox_e double precision NOT NULL,
   ring_wgs84     jsonb NOT NULL,             -- outer ring [[lng,lat],...], simplified to ≤500 points
   area_km2       numeric(8,3)
 );
 CREATE INDEX geo_admin_polygon_bbox_idx ON geo_admin_polygon (level, bbox_s, bbox_n, bbox_w, bbox_e);
 ```
-Point-in-polygon without PostGIS: filter candidates by bbox (indexed), then a ray-casting test over `ring_wgs84` in
-application code (7,566 rings, ≤500 points each; a lookup touches a handful). With PostGIS later this becomes
-`ST_Contains` on a `geometry` column generated from the same ring.
+Used by the import scripts and the nightly job (point-in-polygon in application code). The request path never
+touches it in Phase A: a pin is assigned to an area by the nearest `geo_area_point` within the chosen lineage family
+and 3 km, which is one indexed query. PostGIS (`ST_Contains`, KNN `<->`) is the upgrade when polygons are needed on
+the request path (§13.4); not before.
 
-### 6.1b `ug_area.area_kind` — what a postcode row actually is
-```sql
-ALTER TABLE ug_area ADD COLUMN area_kind text NOT NULL DEFAULT 'neighbourhood'
-  CHECK (area_kind IN ('neighbourhood','ward','trading_centre','institution','barracks','reserve','water','island','unknown'));
-```
-Set by the importer from name patterns (University, Prisons, Barracks, Institutions, Mt., Queen Elizabeth, Rwenzori,
-Hunting Area, Grazing Area, Gr, Island, Lake) and reviewable in `/admin/locations`. Quoting rule: `institution` and
-`barracks` are priced as their parish's area but the rider card says "institution: gate / reception"; `reserve`,
-`water`, `island` and `unknown` are never priced for door delivery and go to the manual path or pickup (the 12 lake
-areas already do this via `access_mode`).
+### 3.6 Distance in SQL without `earthdistance`
+`cube` is trusted, `earthdistance` is not; the migrator is the superuser so `CREATE EXTENSION earthdistance` should
+pass the rehearsal. If it does not, no extension is needed: prefilter by bounding box on the `(lat, lng)` btree
+(±0.025° ≈ 2.8 km) and compute the haversine in SQL,
+`6371000 * acos(least(1, cos(radians(lat1))*cos(radians(lat2))*cos(radians(lng2-lng1)) + sin(radians(lat1))*sin(radians(lat2))))`.
+At ≤100k points either way is sub-millisecond. Every query in this spec is written so the twin is a one-line swap.
 
-### 6.1c `ug_district` and `district_lineage` — the district list becomes data, with history
-Uganda keeps redrawing its map: 135 districts at the 2021 election, 146 districts and cities in the EC's 2025 count,
-three more districts and Tororo City approved in April 2025, ten cities carved out of districts in 2020 (Arua, Fort
-Portal, Gulu, Hoima, Jinja, Lira, Masaka, Mbale, Mbarara, Soroti) with more since. Today the shop's accepted districts
-are a hard-coded list in `packages/shared/src/locations/uganda.ts` (136 entries, the 2021 list), and `routes/commerce.ts`
-**rejects an order whose district is not on it**. A customer in a district created after that list is cut cannot use
-the structured path until a developer ships a new build, which contradicts contract #7. So:
+---
 
-```sql
-CREATE TABLE ug_district (
-  district        text PRIMARY KEY,          -- canonical name, Title Case, as normalizeUgandaDistrict() returns it
-  kind            text NOT NULL CHECK (kind IN ('district','city','capital_city')),
-  region          text NOT NULL,
-  status          text NOT NULL DEFAULT 'active' CHECK (status IN ('active','proposed','merged','renamed')),
-  effective_from  date,                      -- gazetted operational date when known
-  aliases         text[] NOT NULL DEFAULT '{}',  -- {'Luwero','Luweero'}, {'Sembabule','Ssembabule'}, {'Kasanda','Kassanda'}
-  postcode_prefixes text[] NOT NULL DEFAULT '{}', -- {'313','314'} for Wakiso; empty for districts newer than the 2019 scheme
-  ec_codes        text[] NOT NULL DEFAULT '{}',   -- EC electoral-district codes, including the district's cities/municipalities
-  data_version    text NOT NULL,             -- which list this row came from ('ec-2025', 'ubos-2024', 'gazette-2025-04')
-  notes           text
-);
-CREATE TABLE district_lineage (
-  child           text NOT NULL REFERENCES ug_district(district),
-  parent          text NOT NULL REFERENCES ug_district(district),
-  effective_from  date,
-  source          text NOT NULL,             -- 'gazette' | 'ec-list' | 'manual'
-  PRIMARY KEY (child, parent)
-);
-```
-A lineage family is the transitive closure over `district_lineage` (a district, its parents, grandparents and every
-sibling carved from the same parent). The 2016 shapefile's district is always an ancestor, so every current district
-resolves to a 2016 polygon set. A city and the district it was carved from are one family (Mbarara City and Mbarara
-District: a customer saying "Mbarara" means either, and it does not matter for the quote because the quote comes from
-the point). In "Browse by district" both the city and its district are listed (customers say "Mbarara City" and
-"Mbarara" interchangeably); choosing either searches the whole family's areas. Seed: the EC's 2025 list of 146
-districts and cities, reconciled against the 2021 list already in code, plus the known post-2016 creations (Kassanda ←
-Mubende; Kikuube ← Hoima; Bugweri ← Iganga; Kapelebyong ← Amuria; Nabilatuk ← Nakapiripirit; Kwania ← Apac; Kazo ←
-Kiruhura; Kitagwenda ← Kamwenge; Rwampara ← Mbarara; Kalaki ← Kaberamaido; Obongi ← Moyo; Madi-Okollo and Terego ←
-Arua; Karenga ← Kaabong; Rukiga ← Kabale; Bunyangabu ← Kabarole; Namisindwa ← Manafwa; Butebo ← Pallisa; Kyotera ←
-Rakai; Pakwach ← Nebbi; Omoro ← Gulu; Kagadi and Kakumiro ← Kibaale), plus the 2025 approvals as `proposed` (Mukuju,
-Mulanda and the third Tororo district; Tororo City) until gazetted.
+## 4. Distance: straight-line now, road later
 
-`ug_area.current_district` gets a foreign key to `ug_district.district` once the table is seeded (the importer's 140
-`district_changed` rows, where the 2019 document's district differs from today's, are the first lineage evidence and
-seed `district_lineage` rows with `source='manual'` for review).
+### 4.1 Phase A needs no router
+MODEL.md §3 already says what happens when a centroid exists: `round_trip_km = straight_line × 2 × detour_factor`,
+and `detour_factor` is learned per corridor from "actual against straight-line distance". So the only wiring Phase A
+needs is `DeliveryAreaResolver.measuredKm ← geo_area_point.straight_km_hub` (today it is always `null`, line 70/85/138),
+and the capture's existing `straight_line_km` and `centroid_source` columns get written. Version 1 put OSRM routing on
+the critical path and then double-counted detour; both are gone.
 
-**Code changes this implies (small):** `normalizeUgandaDistrict()` keeps the shared list as an offline fallback but the
-API validates against `ug_district` (active or proposed) including aliases; the checkout "Browse by district" list is
-served from `ug_district`; the offline index gains the same rows. Adding a district becomes an admin action in
-`/admin/locations` ("New district: name, parent, effective date, aliases"), not a deploy. The importer refuses a
-district it cannot place in a family and says so.
+The **`distance_source` registry key** controls what the model sees:
+- `band_midpoint` (default, today's behaviour);
+- `rebanded`: measured km re-assigns each area's band (through the corridor dry run), the model still prices by band
+  midpoint. Fees look exactly as they do now; only the wrongly banded areas move. **Recommended first setting.**
+- `measured`: the model prices each area by its own straight-line km × detour. Fees become continuous per area.
+- `road`: as `measured`, but `geo_road_distance.road_km` replaces straight-line × detour where a routed value exists
+  (detour applied as 1.0 and `router` recorded in the capture).
 
-### 6.2 `geo_road_distance` — road distance from an origin to a point, computed once
+### 4.2 `geo_road_distance` (Phase D)
 ```sql
 CREATE TABLE geo_road_distance (
   origin_code      text NOT NULL REFERENCES delivery_origin(origin_code),
   target_kind      text NOT NULL CHECK (target_kind IN ('area','landmark','pin_cell')),
-  target_key       text NOT NULL,             -- area_slug | landmark id | geohash-7 cell of a pin
+  target_key       text NOT NULL,             -- area_slug | landmark id | geohash-7 cell (~150 m) of a pin
   straight_km      numeric(6,2) NOT NULL,
-  road_km          numeric(6,2),              -- null until routed
+  road_km          numeric(6,2),
   road_minutes_freeflow numeric(6,1),
-  router           text,                      -- 'osrm-offline:<date>' | 'google-routes' | 'mapbox-directions' | 'factor:<detour>'
+  router           text,                      -- 'osrm-offline:<pbf date>' | 'google-routes' | 'mapbox-directions'
   computed_at      timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (origin_code, target_kind, target_key)
 );
 ```
-`pin_cell` rows cache routing for pins by 7-character geohash (~150 m cells) so a repeat pin never re-routes.
-When `road_km` is null the model uses `straight_km × detour factor` (the learned `detour` factor already in
-`delivery_learned_factor`), and records `router='factor:…'`.
+Router, in preference order: **OSRM offline on the Mac** (`osrm-extract` + `osrm-contract` on `uganda-latest.osm.pbf`,
+car profile, 2–4 GB RAM while building, then one `/table` call from the hub to every point; free, no runtime service;
+re-run quarterly); Google Routes `computeRouteMatrix` (10,000 free elements/month, 1 origin × ≤1,000 targets is inside
+it); Mapbox Matrix (100,000 free). A boda does not drive like a car: road km is a better *distance* than straight-line
+× detour, but minutes still come from the learned speed and hour factors, which is why road km is Phase D and not A.
 
-### 6.3 `ug_landmark` — extended into the registry
+### 4.3 Why points come before calibration
+With band midpoints, a Ntinda order that took 20 minutes longer than expected teaches the model nothing it can place:
+was the distance wrong, the detour, the hour, the rider? With a measured point the distance term is fixed and the
+calibration proposals (which exist) can attribute the residual to `hour_factor` and `corridor_factor`, which is what
+they were built for. `eat_hour_of_week` is already captured per order; it becomes useful the day distance stops
+being a guess.
+
+---
+
+## 5. Pins without a map: the channels that already exist
+
+### 5.1 WhatsApp location messages (highest value, smallest change)
+A customer taps the paper-clip and "Location" in WhatsApp; Meta delivers `type: 'location'` with `latitude`,
+`longitude`, optional `name` and `address`. Goldie's parser already reads it (`WhatsAppGoldie.ts` 77) and then
+throws the numbers into a text line. Change:
+1. `GoldieChannelUseCases` passes location messages to a new **`AttachLocationToOrderUseCase`**: find the sender's
+   most recent order (by the order's phone, E.164-normalised) that is `placed`, `confirmed` or `dispatched` and has
+   no handover yet; store the pin on the order (`delivery_location.gps*` with `gpsSource='whatsapp_location'`), on the
+   capture (`had_pin = true`, accuracy tier PIN), and on the customer's saved address if one matches the area.
+2. The order-confirmation WhatsApp template (templates exist in `whatsAppTemplates.ts`) gains one line: *"Reply with
+   your location pin (📎 → Location) so the rider finds you first time."* No new screen, no map, nothing to install.
+3. Contract #5: the quote for that order does not change because a pin arrived later; the pin improves the rider card
+   and the learning loop. If the pin lands outside the chosen area's family by more than 5 km, ops are told ("pin
+   disagrees with the area") rather than anything being silently re-priced.
+4. **Fee quotes on WhatsApp.** The same inbound pin, when the sender has no open order, answers "what's delivery to
+   here?": Goldie calls the one quoting service (contract #1) with `{point}` and replies with the fee and window the
+   model gives. Click-to-WhatsApp ads are live; this makes the first question those customers ask answerable.
+
+### 5.2 The rider at the door (highest accuracy)
+Riders are `rider_name` free text on a dispatch; there is no rider app and should not be one. Reuse the texted-link
+pattern the shop already has for tracking and reviews: when a dispatch is created, the rider receives a WhatsApp
+message with one signed link per stop (`/d/<token>`, token bound to the dispatch, expires in 48 h). Tapping it opens a
+page with two buttons, **Delivered** / **Not delivered**, that asks for location once (`navigator.geolocation`,
+`enableHighAccuracy`) and posts outcome, time and pin to `DeliveryUseCases.recordDelivery` (exists; gains optional
+`handover_lat/lng/accuracy_m`). That is the delivery record ops enter by hand today, captured at the moment it
+happens, with the best coordinate the system will ever have for that address. `source='rider_handover'`, accepted at
+accuracy ≤100 m, precedence above every other source in §3.1.
+
+### 5.3 Pasted links and device GPS at checkout (exist; wire them)
+`/locations/resolve-link` and the "Share my location" button exist. Changes: send `hasPin` and the point in the quote
+and order payload (today dropped); accept device accuracy ≤100 m, otherwise "we couldn't get a precise location;
+choose a landmark instead"; add a Plus Code field validated offline with `open-location-code` (a short code is
+expanded with the area point as reference). No map tiles are needed to accept a pin; a map is only needed to *drag*
+one, which is §13.3 and optional.
+
+### 5.4 The second order is always accurate
+When an order is delivered with any pin, the pin is written to the customer's saved address (`addresses.gps_*`,
+`gps_source='delivered'`, `resolution_status='verified'`). The next checkout for that address starts at tier PIN and
+the landmark step is skipped. Today the save-address flow drops `areaSlug`, `landmarkText` and `gps*`; fix that in
+the same change.
+
+### 5.5 Accuracy tier on every capture
+```sql
+ALTER TABLE delivery_quote_capture
+  ADD COLUMN accuracy_tier text CHECK (accuracy_tier IN ('PIN','LANDMARK','AREA_POINT','BAND_MIDPOINT','DISTRICT')),
+  ADD COLUMN point_lat double precision, ADD COLUMN point_lng double precision,
+  ADD COLUMN point_source text,            -- 'device' | 'pasted_link' | 'plus_code' | 'whatsapp_location' | 'saved_address' | 'rider_handover'
+  ADD COLUMN landmark_id uuid REFERENCES ug_landmark(id),
+  ADD COLUMN plus_code text;
+-- straight_line_km, centroid_source, had_pin already exist and are now written. No road_km column: it lives in geo_road_distance.
+```
+`had_pin` becomes derived (`accuracy_tier = 'PIN'`). Appendix F says what each tier means for the rider.
+
+### 5.6 Nightly: pins become area points (`geo-nightly-area-points.ts`)
+For each `area_slug`: take handover pins from the last 365 days with accuracy ≤100 m; if ≥3 and p90 spread ≤ 800 m,
+write `source='rider_handover'`. Else take customer pins (any `point_source` except `saved_address`) from delivered
+orders with `first_attempt_success`; if ≥5 and p90 ≤ 1,500 m, write `source='delivered_pins'`. A spread above the
+limit is logged and listed in `/admin/locations` ("wide-spread area: probably two areas or an alias covering
+several") and the existing point is left alone. The job never overwrites `manual`. It also gives a point to any
+`ug_landmark` without one that ≥3 delivered orders referenced.
+
+### 5.7 Privacy (DPPA 2019)
+A pin is personal data, and a handover pin is the customer's front door. Keep the brief's PART K: pins live with the
+order and the saved address, are used for delivery and for the aggregate area point, and raw pins are deleted after
+the retention period the owner sets (recommended 180 days; the aggregate point keeps no per-customer data). The
+nightly job reads only inside the window. The rider link shows the rider the pin for that stop only and dies with the
+token.
+
+---
+
+## 6. Landmarks: what customers already say, then what the map knows
+
+### 6.1 Mine the shop's own orders first (new in v2; zero licence, highest relevance)
+`orders.delivery_address` and `addresses.landmark_text` already hold every landmark customers have typed: "near
+Capital Shoppers", "opposite Shell Ntinda", "behind Kabira Country Club". A one-off script
+(`geo-mine-order-landmarks.ts`) splits each text on `near|opposite|opp\.?|next to|behind|after|before|off|at|close
+to|by`, takes the proper-noun phrase that follows, folds it, and counts phrases per `area_slug`. Phrases used by ≥2
+distinct customers become `ug_landmark` rows with `source='order_text'`, `usage_count` = the count, no point yet.
+They are the first list the checkout shows for that area, because they are the words that area's customers use. Points
+arrive by name match to OSM (§6.2) or by the first delivered pin that references them (§5.6).
+`ug_search_miss` is mined the same way: a query with `result_count = 0` that was later `resolved_via` an area is an
+alias candidate for that area (the table already records what it became).
+
+### 6.2 OSM (ODbL) for points and categories
+Counts inside the GKMA box are in Appendix A.3: schools 2,430, places of worship 622, banks 461, pharmacies 424,
+supermarkets 409, police 158, markets 143, bus stops 88, boda/taxi stages only 82. Import from the Geofabrik extract
+with `osmium` (Appendix C), categories school | church | mosque | hospital | clinic | pharmacy | bank | market | mall |
+supermarket | fuel | police | stage | bus_stop | office | other, `source='osm'`, `source_ref='node/<id>'`,
+`last_seen_at`. Unnamed objects are skipped except stages, which take a generated name from the nearest named road
+or place ("Boda stage, Kira Road / Bukoto"). A row absent from two consecutive imports gets `active=false`; nothing is
+deleted (orders reference it). `place=suburb|neighbourhood|village|hamlet|locality` nodes are area-point candidates
+(`osm_place`), not landmarks.
+
+### 6.3 Electoral Commission polling-station names (public data; names only, no coordinates)
+34,684 stations in the 2020 register name the schools, churches, mosques, LC1 offices and grounds locals know
+(Appendix A.4 and E for the normalisation rules). Phase C: match each normalised name to an OSM landmark with a point
+in the same lineage family (trigram ≥ 0.6 and the same category word), add the EC spelling as an alias; unmatched
+names become landmarks without a point, selectable, quoted at the area's point (tier AREA_POINT) until a delivery
+gives them one. Parishes in the EC list missing from `ug_area` are upserted as candidate areas
+(`selectable=false`, `data_version='ec2020'`) for the admin to promote.
+
+### 6.4 `ug_landmark` extension
 ```sql
 ALTER TABLE ug_landmark
-  ADD COLUMN source        text NOT NULL DEFAULT 'manual' CHECK (source IN ('manual','osm','geonames','ec_station','order_pin','rider')),
-  ADD COLUMN source_ref    text,              -- 'node/123', geonames id, 'ec:12-062-01-06-24'
-  ADD COLUMN category      text,              -- school|church|mosque|hospital|clinic|pharmacy|bank|market|mall|supermarket|fuel|police|stage|bus_stop|office|other
-  ADD COLUMN confidence    numeric(3,2) NOT NULL DEFAULT 0.5,
+  ADD COLUMN source        text NOT NULL DEFAULT 'manual' CHECK (source IN ('manual','order_text','osm','geonames','ec_station','order_pin','rider')),
+  ADD COLUMN source_ref    text,
+  ADD COLUMN category      text,
+  ADD COLUMN expected_error_m integer,      -- NULL unless measured (pins) or stated (manual)
   ADD COLUMN aliases       text[] NOT NULL DEFAULT '{}',
-  ADD COLUMN normalised    text,              -- folded name for search (packages/shared folding)
+  ADD COLUMN normalised    text,
   ADD COLUMN active        boolean NOT NULL DEFAULT true,
-  ADD COLUMN last_seen_at  timestamptz,       -- last time the source still had it
-  ADD COLUMN sub_county    text,              -- from admin polygon or ug_area
-  ADD COLUMN parish        text;
--- gps_lat/gps_lng already exist (double precision, nullable). Points are mandatory for source in ('osm','geonames','order_pin','rider').
-CREATE INDEX ug_landmark_earth_idx ON ug_landmark USING gist (ll_to_earth(gps_lat, gps_lng)) WHERE gps_lat IS NOT NULL;
+  ADD COLUMN last_seen_at  timestamptz,
+  ADD COLUMN sub_county    text, ADD COLUMN parish text,
+  ADD COLUMN is_meeting_point boolean NOT NULL DEFAULT false;   -- "deliver to this place", not "I am near it"
+CREATE INDEX ug_landmark_latlng_idx ON ug_landmark (gps_lat, gps_lng) WHERE gps_lat IS NOT NULL;
 CREATE INDEX ug_landmark_norm_trgm ON ug_landmark USING gin (normalised gin_trgm_ops);
 CREATE UNIQUE INDEX ug_landmark_source_ref_uq ON ug_landmark (source, source_ref) WHERE source_ref IS NOT NULL;
 ```
-`area_slug` is set by point-in-polygon against sub-county (HDX) + nearest `geo_area_point` within that sub-county; when
-ambiguous, nearest area point within 1,500 m; otherwise null (`active=false` until an admin places it).
+`area_slug` is set by nearest `geo_area_point` within the lineage family and 1,500 m, else null and `active=false`
+until an admin places it.
 
-### 6.4 Capture and order additions
+### 6.5 Meeting points (new in v2)
+Many Kampala deliveries are handed over at a place, not a home: the mall entrance, the office gate, the stage. The
+landmark step offers two choices for a chosen landmark: **"I'm near here"** (the landmark is a hint; directions still
+wanted) and **"Meet me here"** (the landmark *is* the destination; tier LANDMARK, no directions needed, rider card
+says "meet at"). Failed first attempts are mostly "couldn't find the house"; a meeting point removes the house from
+the problem. `is_meeting_point` marks landmarks that have been used that way, so they rank first for that choice.
+
+### 6.6 Suggestion query (request path)
 ```sql
-ALTER TABLE delivery_quote_capture
-  ADD COLUMN accuracy_tier  text CHECK (accuracy_tier IN ('PIN','LANDMARK','AREA_POINT','BAND_MIDPOINT','DISTRICT')),
-  ADD COLUMN point_lat      double precision,
-  ADD COLUMN point_lng      double precision,
-  ADD COLUMN landmark_id    uuid REFERENCES ug_landmark(id),
-  ADD COLUMN road_km        numeric(6,2),
-  ADD COLUMN plus_code      text;
--- orders.delivery_location (jsonb) gains: landmarkId, landmarkName, plusCode, accuracyTier (validated in routes/commerce.ts zod).
-```
-`had_pin` (exists) becomes derived: `accuracy_tier = 'PIN'`.
-
-### 6.5 Nightly job `geo-nightly-area-points.ts`
-For each `area_slug` with ≥5 delivered orders whose `first_attempt_success = true` and a pin with `gps_accuracy_m ≤ 100`
-in the last 365 days: take the geometric median of the pins; `spread_m` = p90 distance from it. If `spread_m ≤ 1,500`
-write/replace `geo_area_point` with `source='delivered_pins'`; else leave the existing row and log the spread (an
-area that wide is probably two areas, or an alias covering several; surface in `/admin/locations`).
-Also: for every `ug_landmark` with `source='ec_station'` and no point, if ≥3 delivered pins reference it
-(`landmark_id`), set its point the same way (`source` stays `ec_station`, `confidence` 0.8).
-
-### 6.6 Queries the request path uses
-Nearest landmarks to an area point (checkout suggestion list):
-```sql
-SELECT l.id, l.name, l.category, l.confidence,
+SELECT l.id, l.name, l.category, l.usage_count, l.is_meeting_point,
        earth_distance(ll_to_earth(l.gps_lat, l.gps_lng), ll_to_earth($lat, $lng)) AS metres
 FROM ug_landmark l
-WHERE l.active AND l.gps_lat IS NOT NULL
-  AND earth_box(ll_to_earth($lat, $lng), 2500) @> ll_to_earth(l.gps_lat, l.gps_lng)
-ORDER BY (l.area_slug = $area_slug) DESC, l.usage_count DESC, metres
+WHERE l.active AND (l.area_slug = $area_slug OR (l.gps_lat IS NOT NULL
+      AND earth_box(ll_to_earth($lat, $lng), 2500) @> ll_to_earth(l.gps_lat, l.gps_lng)))
+ORDER BY (l.area_slug = $area_slug) DESC, l.usage_count DESC, metres NULLS LAST
 LIMIT 12;
 ```
-Area for a pin (manual path with GPS): nearest `geo_area_point` within 3 km in the chosen district, else the
-sub-county polygon's district centroid → `AREA_TOO_COARSE` as today.
-
-### 6.7 PostGIS upgrade path (optional, later)
-When polygons or true KNN are needed on the request path: switch the compose image to `postgis/postgis:16-3.4-alpine`,
-`CREATE EXTENSION postgis`, add `geography(Point,4326)` columns generated from lat/lng, replace `earth_box` with
-`ST_DWithin` and ordering with `<->`. Nothing in the API contract changes. Do not do this in Phase A: the 4 GB host
-and the rehearse-then-migrate deploy script are fine with contrib extensions, and the data volume (≤100k points) does
-not need an R-tree yet.
+Landmarks without a point (order text, EC names) are included for their own area, ranked by usage; they are what
+customers say, and they get a point the first time a delivery references them.
 
 ---
 
-## 7. Ingestion pipelines (scripts under `apps/api/src/scripts/`, idempotent, MD5-gated like the existing importers)
+## 7. Districts and a map that keeps moving
 
-### 7.0 `geo-import-parish-polygons.ts` (runs first)
-Input: `Ug_Parishes_2016.shp/.dbf` (or the derived `ug_parishes_2016_centroids_wgs84.csv` plus the rings exported by
-the same script). Reproject EPSG:21036 → EPSG:4326 (Transverse Mercator inverse on Clarke 1880 RGS, then the EPSG:1122
-three-parameter shift). For each parish: write `geo_admin_polygon` (level `parish`, simplified ring, bbox, area) and,
-where exactly one `ug_area` in the same **lineage family** (§6.1c, not the current district) folds to the same name
-(use `packages/shared/src/locations/folding.ts`, then trigram ≥ 0.6 inside the family, accepting only a unique best
-match), write `geo_area_point` (`source='parish_polygon'`, confidence 0.75) unless a higher-precedence point exists.
-Report matched / ambiguous / unmatched per district. Measured floor: 89% of the 390 metro entries match exactly;
-expected ≥ 95% after folding and trigram. Also set `ug_area.area_kind` (§6.1b) on the way through. Also load HDX sub-county polygons
-(`level='subcounty'`) for the areas outside the 2016 parish file's 116 districts.
+Uganda added districts in almost every parliament: 34 in 1990, 56 in 2000, 80 in 2006, 112 in 2010, 135 at the 2021
+election, **146 districts and cities in the Electoral Commission's 2025 count**, with three more districts and Tororo
+City approved in April 2025. Sub-counties, town councils, parishes and wards split more often still. Postcodes were
+assigned once, in 2019, to a district list that was out of date within a year. Every source this spec uses has its
+own district list (2016 polygons 116; 2019 postcodes 128; `ug_area` 135 + Terego; EC 2020 135; EC 2025 146; the
+EC 2025/26 electoral selector 222 because it counts cities and municipalities separately). The rules:
 
-### 7.0a `geo-import-villages.ts`
-Input: `locations-uganda/data/{districts,counties,sub_counties,parishes,villages}.json`. Create `ug_village`
-(`id`, `name`, `normalised`, `parish_name`, `subcounty_name`, `district`, `area_slug` nullable) and link each parish to
-an `ug_area` by the same folding as §7.0. Villages are searchable through `LocationSearchService` as a new layer that
-returns the parent area (like the landmark layer does), so "Bulindo" resolves to Kira's area. 71,250 rows, names only.
+### 7.1 Never refuse a district (contract #8)
+`routes/commerce.ts` rejects a district that is not in the hard-coded 2021 list, so a customer in a district created
+since cannot check out through the structured path until a developer ships a build. Change: accept any district
+string that normalises to a row in `ug_district` (active or proposed, including aliases), and otherwise accept it as
+`district_unverified` on the manual path. Unknown never blocks a sale; it goes to the queue a person already handles.
+This is a ten-line change and ships in Phase A ahead of the tables below.
 
-### 7.1 `geo-import-geonames.ts`
-Input `UG.txt` (tab-separated, 19 columns: geonameid, name, asciiname, alternatenames, lat, lng, class, code, …,
-admin1, admin2, …). Load PPL/PPLX/PPLL/ADM4/ADM5/SCH/HSP/HSPC/CH/MSQE/MKT. Match to `ug_area` by folded name within
-`current_district` (admin2 name → district; GeoNames admin1 C/E/N/W = Central/Eastern/Northern/Western). On a unique
-match write `geo_area_point` (source `geonames`, confidence 0.60) unless a higher-precedence row exists. Report:
-matched / ambiguous (same name twice in a district: pick the ADM5 over PPL, else leave for manual) / unmatched.
-Expected for the 362 metro areas: ≥250 matched on the first run (118 ADM5 + 1,205 PPL in the box).
+### 7.2 Districts are data; matching runs inside a lineage family
+```sql
+CREATE TABLE ug_district (
+  district          text PRIMARY KEY,         -- canonical, Title Case, as normalizeUgandaDistrict() returns it
+  kind              text NOT NULL CHECK (kind IN ('district','city','capital_city')),
+  region            text NOT NULL,
+  status            text NOT NULL DEFAULT 'active' CHECK (status IN ('active','proposed','merged','renamed')),
+  effective_from    date,
+  aliases           text[] NOT NULL DEFAULT '{}',   -- {'Luwero','Luweero'}, {'Sembabule','Ssembabule'}
+  postcode_prefixes text[] NOT NULL DEFAULT '{}',   -- {'313','314'} for Wakiso; empty for districts newer than 2019
+  ec_codes          text[] NOT NULL DEFAULT '{}',
+  data_version      text NOT NULL,                  -- 'ec-2025' | 'gazette-2025-04' | 'manual'
+  notes             text
+);
+CREATE TABLE district_lineage (
+  child          text NOT NULL REFERENCES ug_district(district),
+  parent         text NOT NULL REFERENCES ug_district(district),
+  effective_from date,
+  source         text NOT NULL,                     -- 'gazette' | 'ec-list' | 'manual'
+  PRIMARY KEY (child, parent)
+);
+```
+A **lineage family** is the transitive closure: a district, its parents, and every sibling carved from the same
+parent. The 2016 district is always an ancestor, so every current district resolves to a 2016 polygon set. A city and
+the district it was carved from are one family (a customer saying "Mbarara" means either; the quote comes from the
+point, so it does not matter). **Every name match between datasets is accepted only inside one family**: version 1
+matched "within the same district", which fails silently for every district created after 2016.
 
-### 7.2 `geo-import-osm.ts`
-Preferred input: `uganda-latest.osm.pbf` filtered offline with `osmium tags-filter` to the tags below, exported as
-GeoJSON (`osmium export`), so the job needs no network and no Overpass rate limits. Fallback: Overpass QL per tag with
-`out center;` (Appendix A), one request per 10 s, mirrors in order, bbox = GKMA box.
-Tags → categories: `amenity=school`→school; `place_of_worship` + `religion`→church|mosque; `hospital`→hospital;
-`clinic|doctors`→clinic; `pharmacy`; `bank|atm`→bank; `marketplace`→market; `shop=mall`→mall; `shop=supermarket`;
-`amenity=fuel`→fuel; `police`; `amenity=taxi`→stage; `highway=bus_stop|amenity=bus_station`→bus_stop;
-`place=suburb|neighbourhood|village|hamlet|locality`→ area candidates (not landmarks).
-Write `ug_landmark` rows with `source='osm'`, `source_ref='node/<id>'|'way/<id>'|'relation/<id>'`, `confidence` 0.70
-(0.80 if `name` and `addr:*` present), `last_seen_at=now()`. Objects without a `name` are skipped except stages
-(`stage` rows take the nearest named road/place as a generated name: "Boda stage, Kira Road / Bukoto"). Place nodes
-without a `geo_area_point` match become `osm_place` area points (confidence 0.70).
-A row not seen in two consecutive imports gets `active=false` (never deleted: order history references it).
+Seed: the EC's 2025 list of 146, reconciled with the 2021 list in code, plus the known post-2016 creations
+(Kassanda ← Mubende; Kikuube ← Hoima; Bugweri ← Iganga; Kapelebyong ← Amuria; Nabilatuk ← Nakapiripirit; Kwania ←
+Apac; Kazo ← Kiruhura; Kitagwenda ← Kamwenge; Rwampara ← Mbarara; Kalaki ← Kaberamaido; Obongi ← Moyo; Madi-Okollo
+and Terego ← Arua; Karenga ← Kaabong; Rukiga ← Kabale; Bunyangabu ← Kabarole; Namisindwa ← Manafwa; Butebo ← Pallisa;
+Kyotera ← Rakai; Pakwach ← Nebbi; Omoro ← Gulu; Kagadi and Kakumiro ← Kibaale), the ten 2020 cities, and the 2025
+approvals as `proposed` (Mukuju, Mulanda, the third Tororo district, Tororo City). The seed lives in the repo as
+`data/locations/district-lineage.csv` (versioned, reviewed in a PR); the admin "new district" form (§7.4) is Phase C.
+The importer's existing 140 `district_changed` rows are the first lineage evidence. `ug_area.current_district` gains a
+foreign key to `ug_district` once seeded. The shared TypeScript constant is regenerated from the table at build time
+and kept only as the offline fallback.
 
-### 7.3 `geo-import-ec-stations.ts`
-Input `voter_register_summary_2020.csv`, districts limited to the GKMA four in Phase B (national in Phase C).
-Steps: (1) upsert the parish list into `ug_area` as **candidate areas** (`selectable=false`, `data_version='ec2020'`)
-when a parish is missing from the ICT list; the admin promotes them from `/admin/locations` (an existing alias/area
-promotion flow). (2) Normalise station names (strip `(A-K)`, `[NAM-Z]`, trailing codes; expand abbreviations;
-title-case) and dedupe (one station name often appears 2–4 times split by voter range). (3) Match each name to an
-`ug_landmark` with a point, in the same district, by folded trigram ≥ 0.6 **and** same category word (school↔school);
-on a match add the EC name to `aliases` and raise `confidence` by 0.1. (4) Unmatched names become `ug_landmark` rows
-with `source='ec_station'`, no point, `area_slug` = the parish's area, `active=true` (they can be chosen; the quote
-then uses the area point, tier `AREA_POINT`, and §6.5 gives them a point over time).
+### 7.3 Boundaries, slugs, names
+- **Boundary sets are additive.** A new UBOS file loads as another `boundary_set`; old sets stay (order history and
+  `source_ref` reference them). "Current set" is a registry key; a refresh produces a dry run of areas whose point or
+  band would change, and goes through the Control Centre like any corridor change. Bands are never recomputed silently.
+- **`area_slug` is opaque.** It contains the 2019 postcode (`kampala-nakawa-10318`) but nothing may parse it. Areas
+  added later get a synthetic suffix (`wakiso-bulindo-x0007`) and `postcode = null`; a future national renumbering
+  updates `ug_area.postcode`, never the slug.
+- **Names collide more as districts multiply** ("Kampala" parish in Sembabule, "Jinja" in Busia and in Kampala,
+  "Kibuye" in Kampala and Kamuli). `delivery_name_collision` (84 rows) stays the guard; the family rule keeps
+  cross-district false matches out; the resolver's `AREA_TOO_COARSE` for a bare district name stays.
+- **Customer wording tolerates change.** Saved addresses show the words the customer used (`snapshot_area_label`,
+  `snapshot_district`) after the official name moves on; search accepts old and new names through `aliases`.
 
-### 7.4 `geo-compute-road-distances.ts`
-For each `geo_area_point` and each active landmark point in the metro set, compute `straight_km` (haversine) and
-`road_km`. Router options, in preference order:
-1. **OSRM offline on the Mac** (free, no runtime dependency): `osrm-extract` + `osrm-contract` on
-   `uganda-latest.osm.pbf` (car profile; ~2–4 GB RAM during build, minutes to run), then `osrm-routed` locally and a
-   `/table` call from the one origin to all points. Store `router='osrm-offline:<pbf date>'`. Re-run quarterly.
-2. **Google Routes `computeRouteMatrix`** (Essentials: 10,000 free elements/month, then $5.00/1,000): 1 origin × ≤1,000
-   targets = ≤1,000 elements, well inside the free tier. Store `router='google-routes'`.
-3. Mapbox Matrix (100,000 free elements/month).
-Output also recomputes `delivery_corridor.distance_band` from `road_km` with the MODEL.md band edges and writes a
-dry-run CSV for the Control Centre's corridor round-trip (existing import path) rather than updating bands silently.
-
-### 7.5 Scheduling
-GeoNames and OSM: monthly (`systemd` timer on the host like the Lighthouse watch, or run from the Mac and import
-the CSV). EC: once per election register (next after the 2026 register is published). Nightly: §6.5. All scripts print
-a report and refuse to apply if the matched count drops by >10% from the previous run (data-regression guard).
-
----
-
-## 8. Checkout experience
-
-Keeps `UgandaLocationPicker` and adds one step. Mobile-first; works offline for the area step (existing index).
-
-1. **Area** (exists): search or browse; result shows "Ntinda, Kampala · Nakawa Division".
-2. **Landmark** (new): "Nearest place everyone knows" — a list from `/locations/landmarks?area=<slug>` (up to 12:
-   area's own landmarks by `usage_count`, then nearest within 2.5 km), grouped by category with icons (school, church,
-   mosque, stage, mall, petrol, bank, clinic, police). Type-ahead over `normalised` (trigram). Choosing one sets
-   `landmarkId`; "None of these" keeps the free-text field, which is renamed **"Directions for the rider"**
-   (gate colour, floor, "after the mosque, blue gate"). The directions field is required only when no landmark and no
-   pin is given.
-3. **Pin** (exists, improved): "Share my location" (GPS; shows accuracy, accepted ≤100 m) or paste a Google Maps /
-   WhatsApp link. New: a Plus Code field (validated offline with `open-location-code`; a short code is expanded with
-   the area point as the reference). When a pin is present, the suggested landmark list re-sorts by distance to the pin.
-4. **Quote** (exists): `/delivery/quote` is called with `{areaSlug, landmarkId?, point?}`; the response includes
-   `accuracyTier` and the copy already defined in the registry (`copy_*`). Wording for the customer by tier (registry
-   keys, editable without deploy): PIN/LANDMARK → the fixed quote; AREA_POINT → fixed quote; BAND_MIDPOINT →
-   "estimate; confirmed when we call"; DISTRICT → "Confirmed by phone before dispatch" (unchanged).
-5. **Order payload**: `deliveryLocation` gains `landmarkId`, `landmarkName`, `plusCode`, `accuracyTier`;
-   `deliveryAddress` keeps the directions text. The post-checkout "save address" sends `areaSlug`, `landmarkText`,
-   `gps*` (today it drops them).
-6. **Pickup** (exists): when the customer picks collection, store `pickup_point_id` on the order (today it is text only).
-
-Failure paths: landmark service down → step 2 is skipped silently (the area path is unchanged); pin refused (accuracy
->100 m) → "We couldn't get a precise location; choose a landmark instead"; no network → area step from the offline
-index, landmark step skipped, directions required.
-
-Copy rules follow `docs/customer-language-standard.md`: "boda stage" not "taxi rank"; "landmark"; never "GPS
-coordinates" in customer copy.
+### 7.4 The yearly drift report (`geo-admin-drift-report.ts`)
+Run each July after the financial-year changes and after every election register: fetch the current EC
+district/constituency/sub-county list and UBOS's statistical-abstract tables, diff them against `ug_district` and
+`ug_area`, and write to `/admin/locations`: new districts (with the parent the Gazette names), renames, parishes in
+the EC list missing from `ug_area` (candidates, `selectable=false`), areas whose district label changed. Nothing is
+applied automatically; each line is a one-click admin action with an audit row. Sources of truth, in order: the
+Uganda Gazette / Parliament resolution; the EC's lists; UBOS. News reports prompt a check of the Gazette and are never
+a source. **This needs a named owner (§12, decision 7); without one the lists rot exactly as the hard-coded one did.**
 
 ---
 
-## 9. Changes to existing code (small, listed so nothing is lost)
+## 8. Checkout and the rider card
 
-| File | Change |
-|---|---|
-| `infrastructure/delivery/DeliveryAreaResolver.ts` | fill `measuredKm` from (pin → `geo_road_distance` pin_cell or haversine×detour) → (landmark point) → (`geo_area_point`) → null; return `accuracyTier` and the point used |
-| `domain/delivery/DeliveryModel.ts` | when `measuredKm` is present use it for `round_trip_km = measured_road_km × 2` instead of `band_midpoint × 2 × detour`; keep the band for factors and reporting |
-| `application/use-cases/delivery/DeliveryQuotingUseCase.ts` | accept `landmarkId`, `point`; pass `hasPin`; honour `delivery_corridor.fulfilment_mode` (today `declaredMode: null`, a known gap) |
-| `interfaces/http/routes/delivery.ts`, `routes/commerce.ts` | zod: `landmarkId` uuid, `point {lat,lng,accuracyM,source}`, `plusCode` ^[23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,3}$ ; include `accuracyTier` in the response; cache key includes landmark/pin cell |
-| `routes/locations.ts` | `GET /landmarks?area=&q=&near=lat,lng` → `LandmarkSuggestUseCase`; `POST /resolve-link` also decodes Plus Codes |
-| `CheckoutUseCase.ts` | write `accuracy_tier`, `point_*`, `landmark_id`, `road_km`, `plus_code` to the capture; bump `ug_landmark.usage_count` on order placed |
-| `checkout.astro`, `lib/checkout.ts`, `locationPickerClient.ts` | landmark step, Plus Code field, payload fields, saved-address fields |
-| `admin/orders/[id].astro` rider card | add landmark name, Plus Code, `https://maps.google.com/?q=<lat>,<lng>` link, accuracy tier badge |
-| `admin/locations.astro` | landmark registry tab: search, verify, merge (exists), set point by pasting a link, "wide-spread areas" list from §6.5 |
-| `scripts/generate-locations-index.ts` | include `lat/lng` per metro area in the offline index when available (for pin→area offline) |
-| `DeliveryConfigRegistry.ts` | new keys: `pin_max_accuracy_m` (100), `landmark_suggest_radius_m` (2,500), `area_point_min_pins` (5), `area_point_max_spread_m` (1,500), `enrichment_provider` (none|google|mapbox), copy per tier |
-| `docs/delivery/MODEL.md` §3 | one paragraph: centroid precedence now has a concrete source table (`geo_area_point`) and road km |
+Keeps `UgandaLocationPicker`; adds one step and one sentence. Mobile-first; the area step works offline (existing
+index).
+
+1. **Area** (exists): "Ntinda, Kampala · Nakawa Division".
+2. **Landmark** (new, §6): "Nearest place everyone knows", up to 12 from `/locations/landmarks?area=<slug>`, grouped by
+   category with icons; type-ahead over `normalised`. "I'm near here" or "Meet me here" (§6.5). "None of these"
+   keeps the free-text field, renamed **"Directions for the rider"** (gate colour, floor, "after the mosque, blue
+   gate"), required only when there is no landmark and no pin.
+3. **Pin** (exists, wired per §5.3): share location, paste a link, or a Plus Code. One sentence under it: *"Or send us
+   your location on WhatsApp after you order."* With a pin, the landmark list re-sorts by distance to it.
+4. **Quote** (exists): `/delivery/quote {areaSlug, landmarkId?, point?}` returns `accuracyTier` and copy per tier from
+   the registry: PIN / LANDMARK / AREA_POINT → the fixed quote; BAND_MIDPOINT → "estimate; confirmed when we call";
+   DISTRICT → "Confirmed by phone before dispatch" (unchanged).
+5. **Order payload**: `deliveryLocation` gains `landmarkId`, `landmarkName`, `meetingPoint`, `plusCode`,
+   `accuracyTier`, `pointSource`; `deliveryAddress` keeps the directions text; save-address keeps everything (§5.4).
+6. **Pickup** (exists): store `pickup_point_id` (today text only).
+7. **Rider card** (`admin/orders/[id].astro` and the dispatch WhatsApp): area, landmark (+ "meet at" when a meeting
+   point), directions, Plus Code, `https://maps.google.com/?q=<lat>,<lng>`, accuracy tier badge, and the handover link
+   (§5.2).
+
+Failure paths: landmark service down → step 2 skipped silently; pin refused → "choose a landmark instead"; offline →
+area step only, directions required. Copy follows `docs/customer-language-standard.md`: "boda stage" not "taxi
+rank"; never "GPS coordinates" in customer copy.
+
+---
+
+## 9. Changes to existing code
+
+| File | Change | Phase |
+|---|---|---|
+| `routes/commerce.ts` | accept unknown districts as `district_unverified` → manual path (§7.1); zod for `landmarkId`, `point {lat,lng,accuracyM,source}`, `plusCode` `^[23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,3}$`, `meetingPoint` | A / C |
+| `infrastructure/delivery/DeliveryAreaResolver.ts` | `measuredKm` ← pin (haversine from hub) → landmark point → `geo_area_point.straight_km_hub` → null; return `accuracyTier`, point, `centroidSource` | A |
+| `DeliveryConfigRegistry.ts` | `distance_source` (band_midpoint \| rebanded \| measured \| road), `pin_max_accuracy_m` 100, `handover_pin_max_accuracy_m` 100, `landmark_suggest_radius_m` 2500, `area_point_min_pins` 5, `area_point_max_spread_m` 1500, `handover_min_pins` 3, `handover_max_spread_m` 800, `pin_retention_days`, copy per tier, `enrichment_provider` none\|google | A |
+| `domain/delivery/DeliveryModel.ts` | honour `distance_source`; when `road`, `round_trip_km = road_km × 2` with detour 1.0 and `router` in the capture | A (switch), D (road) |
+| `application/use-cases/delivery/DeliveryQuotingUseCase.ts` | accept `landmarkId`, `point`; pass `hasPin`; write `straight_line_km`, `centroid_source`, `accuracy_tier`, `point_*` to the capture; honour `delivery_corridor.fulfilment_mode` (today `declaredMode: null`, a known gap) | A |
+| `application/use-cases/assistant/GoldieChannelUseCases.ts` + new `AttachLocationToOrderUseCase` | route `location` messages to the sender's open order; fee quote from a pin when no order (§5.1) | B |
+| `whatsAppTemplates.ts` | one line in the order-confirmation template asking for a location pin | B |
+| `fulfilment/DeliveryUseCases.ts`, new `pages/d/[token].astro`, dispatch WhatsApp | rider handover link: outcome + pin (§5.2) | B |
+| `CheckoutUseCase.ts`, `routes/account` save-address | keep `areaSlug`, `landmarkText`, `gps*` on saved addresses; write the delivered pin back (§5.4); bump `ug_landmark.usage_count` | B |
+| `routes/locations.ts` + new `LandmarkSuggestUseCase` | `GET /landmarks?area=&q=&near=lat,lng`; `POST /resolve-link` also decodes Plus Codes | C |
+| `checkout.astro`, `lib/checkout.ts`, `locationPickerClient.ts` | landmark step, meeting point, Plus Code, payload fields; same-day eligibility by band (registry) instead of the hard-coded Kampala/Wakiso list | C |
+| `admin/orders/[id].astro` | rider card additions (§8, item 7) | B |
+| `admin/locations.astro` | landmark registry tab; "shared polygon" and "wide-spread" lists; band-consistency report (§3.4); new-district form | A (report), C (rest) |
+| `scripts/generate-locations-index.ts` | `lat/lng` per metro area in the offline index; district list from `ug_district` | A |
+| `packages/shared/src/locations/uganda.ts` | generated from `ug_district` at build time; offline fallback only | C |
+| `docs/delivery/MODEL.md` §3 | one paragraph: the centroid precedence now has a concrete table and a `distance_source` switch | A |
 
 Nothing is deleted. The legacy `delivery_zones` fallback stays until PROGRESS.md §7's hard stop is lifted.
 
 ---
 
-## 10. Switching the model on: the six numbers (this is the biggest fee-accuracy win and needs no code)
+## 10. Data pipelines (scripts under `apps/api/src/scripts/`, idempotent, MD5-gated like the existing importers)
 
-All of §5–§9 improves *where* a customer is. Fees stay "confirmed by phone" until the launch wizard
-(`/admin/delivery/launch`) has its answers. Per contract #4 this spec does not invent them; Rob provides them from the
-riders' actual pay and the shop's costs:
+| Script | Input | Writes | Phase |
+|---|---|---|---|
+| `geo-import-parish-polygons.ts` | `Ug_Parishes_2016.shp/.dbf` (EPSG:21036 → 4326: Transverse Mercator inverse on Clarke 1880 RGS, then the EPSG:1122 shift dX −160 dY −6 dZ −302) or the derived `ug_parishes_2016_centroids_wgs84.csv` plus rings; `gkma-buildings.geojsonl` from `osmium` (Appendix C); `district-lineage.csv` | `geo_admin_polygon` (parish rings, bbox, area), `geo_area_point` (`parish_buildings`, else `parish_centroid`) for every area whose folded name matches uniquely inside its lineage family (exact, then trigram ≥ 0.6, unique best only), `ug_area.area_kind`, `shared_polygon`; the three-list band-consistency report (§3.4); HDX sub-county polygons for districts outside the 2016 file | A |
+| `geo-import-villages.ts` | `locations-uganda` JSON (135 → 303 → 2,120 → 10,365 → 71,250 names) | `ug_village` (name, normalised, parish, sub-county, district, `area_slug` by the same folding); a search layer that returns the parent area, so "Bulindo" resolves to Kira's area | A |
+| `geo-import-geonames.ts` | `UG.txt` (Appendix D) | `geo_area_point` (`geonames`) only where no polygon point exists; PPL-in-polygon preference per §3.2 | A (gap fill) |
+| `geo-mine-order-landmarks.ts` | `orders.delivery_address`, `addresses.landmark_text`, `ug_search_miss` | `ug_landmark` (`order_text`), alias candidates | B |
+| `geo-import-osm.ts` | `gkma-pois.geojsonl` from `osmium` (fallback: Overpass per tag, Appendix C) | `ug_landmark` (`osm`), `geo_area_point` (`osm_place`) | C |
+| `geo-import-ec-stations.ts` | `voter_register_summary_2020.csv` (GKMA first, national later) | candidate areas, landmark aliases, pointless landmarks (§6.3) | C |
+| `geo-nightly-area-points.ts` | pins in the retention window | `geo_area_point` (`rider_handover`, `delivered_pins`), landmark points | B onward, nightly |
+| `geo-compute-road-distances.ts` | OSRM offline / Google Routes / Mapbox | `geo_road_distance`, re-banding dry-run CSV | D, quarterly |
+| `geo-admin-drift-report.ts` | EC and UBOS lists | report rows for `/admin/locations` | yearly (§7.4) |
+
+Every script prints a report and refuses to apply when its matched count drops by more than 10% from the previous
+run (regression guard). Monthly: GeoNames and OSM; per election register: EC; nightly: pins.
+
+---
+
+## 11. Switching the model on: the six numbers (owner; no code)
+
+Fees stay "confirmed by phone" until the launch wizard (`/admin/delivery/launch`) has its answers. Contract #4: this
+spec does not invent them; the owner provides them from the riders' actual pay and the shop's costs.
 
 | Wizard answer | Config key | What it means |
 |---|---|---|
@@ -636,219 +576,218 @@ riders' actual pay and the shop's costs:
 | Handling minutes per order | `handling_minutes` | picking, packing, handover |
 | Margin multiplier | `margin` | 1.0 = at cost |
 | Minimum fee | `minimum_fee_ugx` | the floor |
-| Furthest place a rider still goes | `own_rider_max_band` | everything beyond → bus parcel / pickup |
+| Furthest place a rider still goes | `own_rider_max_band` | beyond it → bus parcel / pickup |
 | Free-delivery threshold (optional) | `free_delivery_threshold_ugx` | the waiver basis is already built |
 
-With these set and §6/§7 in place, the quote for Ntinda is `max(min_fee, cost_per_minute × (handling + road_km×2 /
-speed × 60 × factors + last_mile) × margin)` with road_km measured, rounded to `fee_rounding_step_ugx` (500).
+With these set and Step 1 in place, Ntinda's quote is `max(min_fee, cost_per_minute × (handling + straight_km × 2 ×
+detour / speed × 60 × factors + last_mile) × margin)`, rounded to `fee_rounding_step_ugx` (500).
 
 ---
 
-## 11. Maps and geocoding providers: costs and the decision
+## 12. Decisions for the owner
 
-Volume assumption for sizing: 1,000 checkouts/month, 3 quote calls per checkout, 1 map load per checkout, 300 pins.
-Prices are list prices on 2026-10-15 from the providers' own pricing pages.
-
-### 11.1 Google Maps Platform (per 1,000, after the monthly free amount; Essentials tier unless stated)
-| SKU | Free/month | Then |
-|---|---|---|
-| Autocomplete Requests | 10,000 | $2.83 (session-based billing available: Autocomplete Session Usage is free; the Place Details call at the end is billed) |
-| Place Details (Essentials / Pro / Enterprise) | 10,000 / 5,000 / 1,000 | $5.00 / $17.00 / $20.00 |
-| Geocoding | 10,000 | $5.00 |
-| Address Validation (Pro) | 5,000 | $17.00 |
-| Dynamic Maps (Maps JavaScript) | 10,000 | $7.00 |
-| Static Maps | 10,000 | $2.00 |
-| Compute Routes (Essentials / Pro / Enterprise) | 10,000 / 5,000 / 1,000 | $5.00 / $10.00 / $15.00 |
-| Compute Route Matrix (per element) | 10,000 | $5.00 |
-| Distance Matrix (legacy) | 10,000 | $5.00 |
-At the sizing volume every SKU stays inside the free amount. Google Places has the best coverage of Kampala
-businesses and landmarks of any provider; it is the right **enrichment** source for landmark type-ahead if we want one.
-
-### 11.2 Mapbox (per 1,000)
-| API | Free/month | Then |
-|---|---|---|
-| Geocoding (temporary) | 100,000 | $0.75 (100k–500k) |
-| Geocoding (permanent, allowed to store) | none | $5.00 |
-| Search Box API (session, standard) | 2,500 | $11.50 |
-| Directions | 100,000 | $2.00 |
-| Matrix (per element) | 100,000 | $2.00 |
-| Map loads (GL JS) | 50,000 | $5.00 |
-| Static Images | 50,000 | $1.00 |
-Mapbox's Uganda place data is thinner than Google's for named landmarks; its strengths are tiles and routing. Note
-the licensing trap: **temporary** geocoding results may not be stored; storing requires the permanent SKU ($5/1,000).
-
-### 11.3 Free / self-hosted
-| Need | Option | Cost | Note |
-|---|---|---|---|
-| Map tiles for the pin step | **MapLibre GL + Protomaps PMTiles** of Uganda, served as one static file from the web container or Cloudflare R2 | $0 | ~100–300 MB file; no API key; OSM attribution required |
-| Map tiles (zero effort) | Leaflet + OSM tile servers | $0 | OSMF tile usage policy forbids heavy/commercial use; acceptable only for admin screens |
-| Geocoding | self-hosted Photon or Nominatim on the Uganda extract | host RAM (Nominatim needs ~2 GB for Uganda) | not needed: our registry is the geocoder |
-| Routing | OSRM run offline on the Mac (§7.4) | $0 | no runtime service |
-
-### 11.4 Decision
-- **Primary (Phase A–C): no paid API on the request path.** Area and landmark lookups come from our own tables; pins
-  come from the device or pasted links; distances are precomputed (OSRM offline) or haversine×detour.
-- **Map for the pin step:** MapLibre + self-hosted PMTiles (Uganda extract). If that is more build than wanted for Phase
-  B, Google Dynamic Maps within the 10,000 free loads is acceptable, behind `enrichment_provider='google'`, with the
-  pin step hidden when the key is absent.
-- **Enrichment (optional, Phase D):** Google Places Autocomplete (session) + Place Details Essentials for landmark
-  type-ahead when our registry returns fewer than 3 results. Google's terms forbid storing Places data for more than
-  30 days (place IDs excepted), so results are never written into `ug_landmark`; only the `place_id` may be kept and
-  the place re-fetched. This is why the registry, not a provider, is the system of record.
-- **Mapbox:** not chosen. Its advantages (cheap tiles/routing at scale) do not apply at our volume, and its landmark
-  coverage in Kampala is weaker.
+1. **How measured distance reaches the customer** (§4.1): `rebanded` (fees stay per band, wrong bands get fixed;
+   recommended for the first month) or `measured` (a fee per area). The switch is reversible.
+2. **The six launch numbers** (§11). Nothing quotes without them.
+3. **Targets for the success metric** (§0): proposed, ≥90% of metro orders quoted by the model within a month of
+   Step 1, and a 28-day median |expected − actual| under a number the owner sets once the baseline is read.
+4. **Pin retention** (recommended 180 days), covering handover pins.
+5. **The rider handover link** (§5.2): accept that riders receive one WhatsApp per dispatch with links, and that the
+   delivery record is made at the door rather than in the office afterwards.
+6. **Landmark step mandatory** for door delivery inside Kampala/Wakiso when no pin is given? (Recommended: yes for new
+   customers; skipped for an address with a delivered pin on file.)
+7. **A named owner for the yearly administrative review** (§7.4).
+8. **Same-day eligibility by band** (B0–B3 before the cutoff) through the registry instead of the hard-coded
+   Kampala/Wakiso list. Recommended: yes.
+9. **A map for dragging a pin** (§13.3): self-hosted PMTiles (no key, no bill, more build), Google Dynamic Maps (free
+   at our volume, key, off switch), or neither, because WhatsApp is the map. Recommended: neither until the data says
+   pins are being refused for accuracy.
+10. **Publish the OSM-derived landmark table openly** (simplest ODbL compliance).
 
 ---
 
-## 12. Licensing and privacy
+## 13. Providers, licensing, upgrades
 
-- **OSM (ODbL):** keep OSM-derived rows identifiable (`source='osm'`, `osm_id`) and in their own logical set; show
-  "© OpenStreetMap contributors" wherever OSM-derived landmarks or tiles are displayed. Because the public site uses a
-  database that mixes OSM with other sources, treat the OSM-derived landmark table as a *derivative database* and be
-  prepared to publish that table (not orders, not customers) on request. Keeping our own landmarks/pins in rows with
-  `source` ≠ 'osm' makes the whole a *collective database*, which is the safe shape.
-- **GeoNames:** CC BY 4.0 — attribution in `/privacy` data-sources note and the admin page.
-- **HDX COD-AB:** CC BY-IGO — attribution; batch use only.
-- **EC data:** public records, no licence stated in the repo; names of public institutions. Keep voter counts out of
-  our database (we only need names and hierarchy).
-- **Customer pins (DPPA 2019):** a pin is personal data. Keep the brief's PART K: store with the order, use for
-  delivery and for the aggregate area point, and delete raw pins after the retention period Rob decides (recommended
-  180 days; the aggregate `geo_area_point` keeps no per-customer data). The nightly job must only read pins inside the
-  window.
+### 13.1 Decision on providers
+No paid API on the request path in Phases A–C. Area and landmark lookups come from our own tables; pins come from
+WhatsApp, the device, pasted links and riders; distances are haversine × learned detour, later OSRM offline. Google
+Places Autocomplete (session) + Place Details Essentials may be added in Phase D as enrichment when the registry
+returns fewer than 3 results, behind `enrichment_provider='google'`: Google's terms forbid storing Places data beyond
+30 days (place IDs excepted), so results are never written into `ug_landmark`, which is why the registry, not a
+provider, is the system of record. Mapbox is not chosen (cheap tiles and routing at scale do not matter at our
+volume; Kampala landmark coverage is weaker; temporary geocoding results may not be stored). Prices in Appendix G.
 
----
+### 13.2 Licensing
+- **OSM (ODbL):** OSM-derived rows stay identifiable (`source='osm'`, `source_ref`) and in their own logical set;
+  "© OpenStreetMap contributors" wherever they or OSM tiles are shown. Our own landmarks and pins in rows with
+  `source ≠ 'osm'` make the whole a *collective* database; be prepared to publish the OSM-derived landmark table
+  (not orders, not customers) on request (decision 10).
+- **GeoNames:** CC BY 4.0, attribution in `/privacy` and the admin page. **HDX COD-AB:** CC BY-IGO, batch only.
+  **UBOS 2016 parishes:** government statistical data redistributed inside a GPL-3 code repository; the GPL covers
+  that repository's code, not the data; attribute "Uganda Bureau of Statistics, 2016 parish boundaries". **EC data:**
+  public records; keep voter counts out of our database. **Passport-portal hierarchy packages:** MIT.
+- **Customer and handover pins:** §5.7.
 
-## 13. Rollout
+### 13.3 A map for dragging a pin (optional)
+MapLibre GL + Protomaps PMTiles of Uganda served as one static file (~100–300 MB, no key, OSM attribution), or
+Google Dynamic Maps inside the 10,000 free loads behind the enrichment switch. Leaflet + OSM's public tile servers
+only on admin screens (OSMF usage policy).
 
-**Phase A — measure, don't guess (1–2 weeks, no customer-visible change).** Enable `cube`/`earthdistance`; create
-`geo_area_point`, `geo_admin_polygon`, `geo_road_distance`; import the 2016 parish polygons (§7.0) and the village
-hierarchy (§7.0a); fill the gaps with GeoNames + OSM place nodes for the 362 metro areas; run OSRM offline for road km; wire `measuredKm`; recompute bands as a dry-run CSV for Rob to review in the Control Centre; set the six
-numbers in the launch wizard; publish. **Done when:** ≥95% of the 362 metro areas have a point with confidence ≥0.6
-(89% is already reachable by exact name; the rest is folding),
-every one has `road_km`, and a quote for 10 named test areas (Ntinda, Kabalagala, Najjera, Kajjansi, Kyengera, Kira,
-Bweyogerere, Nansana, Munyonyo, Mukono town) returns a fee from the model, not "confirmed by phone".
-
-**Phase B — landmarks at checkout (2–3 weeks).** OSM landmark import (schools, churches/mosques, malls, supermarkets,
-petrol, banks, police, clinics, stages); `ug_landmark` extension; `GET /locations/landmarks`; the landmark step; Plus
-Code field; capture `accuracy_tier`; rider card additions; admin registry tab. **Done when:** 60% of metro orders carry a
-landmark or a pin within two weeks of release, and `delivery_quote_capture.accuracy_tier` is never null.
-
-**Phase C — polling-station names and the national list (1–2 weeks).** EC import for GKMA, then national; parish
-candidates into `ug_area`; alias enrichment. **Done when:** every GKMA parish in the EC list exists in `ug_area` or is
-mapped to one, and ≥50% of EC names in GKMA have a point.
-
-**Phase D — learn from deliveries (ongoing).** Nightly area points from pins; quarterly OSRM refresh; calibration
-proposals (exists) now driven by measured km; optional Google enrichment behind the switch; PostGIS only if a trigger in
-OPERATIONS.md PART 7 fires.
-
-Each phase ships behind the existing Control Centre: config keys are drafts until published, and everything reverts in
-one action (contract #9).
+### 13.4 PostGIS, when a trigger in OPERATIONS.md PART 7 fires
+Switch the compose image to `postgis/postgis:16-3.4-alpine`, `CREATE EXTENSION postgis`, add `geography(Point,4326)`
+columns generated from lat/lng, replace `earth_box` with `ST_DWithin`, ordering with `<->`, and the ray-casting
+point-in-polygon with `ST_Contains` on a geometry built from `ring_wgs84`. Nothing in the API contract changes. Not in
+Phase A: the 4 GB host and the rehearse-then-migrate deploy script are fine with contrib extensions at ≤100k points.
 
 ---
 
-## 14. Administrative change: building for a map that keeps moving
+## 14. Rollout
 
-Uganda has added districts in almost every parliament (34 in 1990, 56 in 2000, 80 in 2006, 112 in 2010, 135 by
-2021, 146 districts and cities in 2025, more approved). Sub-counties, town councils, parishes and wards split even
-more often (Mukono's parishes only match the 2016 polygons 68% of the time for that reason). Postcodes were assigned
-once, in 2019, to a district list that was out of date within a year. Any design that stores "the district" as a
-truth will rot. These are the rules this spec adopts, and the loose ends they close.
+**Phase A — points, the switch, the report (engineer ≈ 1 week; owner: the six numbers).** Read the baseline metric.
+Create `geo_area_point`, `geo_admin_polygon`, `ug_district`, `district_lineage`; accept unknown districts; run the
+parish import with buildings; review the three-list band report in the Control Centre; wire `measuredKm`; add
+`distance_source` and set it to `rebanded` through the corridor dry run; offline index gains points.
+**Done when:** ≥95% of the 362 metro areas have a point with a non-null `expected_error_m` (89% is reachable by
+exact name today); every one has `straight_km_hub`; every band-report line has been looked at; quotes for ten named
+test areas (Ntinda, Kabalagala, Najjera, Kajjansi, Kyengera, Kira, Bweyogerere, Nansana, Munyonyo, Mukono town)
+return a fee from the model once the six numbers are in; `accuracy_tier` is written on every new capture.
 
-1. **The point is the fact; the district is a label.** Once an area, landmark or order has a point, nothing about
-   quoting depends on which district it is said to be in. District, sub-county and parish are derived from the point
-   by point-in-polygon against the newest boundary set when needed, and stored as snapshots on the order (the
-   `snapshot_*` columns on `addresses` already exist for this reason). A renamed or split district changes labels,
-   never fees or routing.
-2. **District and area lists are data, versioned, editable by the team** (§6.1c), never a TypeScript constant on the
-   request path. The constant stays as the offline fallback and must be regenerated from the table at build time so
-   the two cannot disagree.
-3. **Matching across datasets runs inside a lineage family, never by district equality** (§3.1, §6.1c, §7.0).
-4. **Boundary sets are additive.** A new UBOS boundary file is loaded as another `boundary_set`; old sets are never
-   deleted (order history and `geo_area_point.source_ref` reference them). "Current set" is a config key in the
-   registry. A refresh produces a dry-run report of areas whose polygon, centroid or band would change and goes
-   through the Control Centre like any corridor change (contract #7 and #9); bands are never recomputed silently.
-5. **Parish splits are expected.** When one 2016 polygon matches several current areas (two post-split parishes), each
-   gets the same centroid with `confidence` 0.55 and `shared_polygon = true`; the nightly pins job (§6.5) separates
-   them as deliveries accumulate, and the admin page lists them as "shared polygon: needs pins or a manual point".
-6. **`area_slug` is opaque.** It happens to contain the 2019 postcode, but nothing may parse it. Areas added after
-   2019 (new wards, EC-only parishes, promoted aliases) get a slug with a synthetic suffix (`wakiso-bulindo-x0007`)
-   and `postcode = null`; a future national re-numbering updates `ug_area.postcode`, never the slug.
-7. **Names collide more as districts multiply** ("Kampala" parish in Sembabule, "Jinja" in Busia and Kampala, "Kibuye"
-   in Kampala and Kamuli). `delivery_name_collision` (84 rows) stays the guard; the lineage-family rule keeps
-   cross-district false matches out; the resolver's district probe (`AREA_TOO_COARSE` for a bare district name)
-   stays.
-8. **An annual administrative-drift job** (`geo-admin-drift-report.ts`, run each July after the financial-year changes
-   and after every election register): download the current EC district/constituency/sub-county list and the UBOS
-   statistical abstract tables, diff them against `ug_district` and `ug_area`, and write a report for
-   `/admin/locations`: new districts (with the parent the gazette names), renamed districts, parishes present in the
-   EC list but absent from `ug_area` (candidate areas, `selectable=false`), and areas whose district label has
-   changed. Nothing is applied automatically; each line is a one-click admin action with an audit row.
-9. **Sources of truth, in order:** the Uganda Gazette / Parliament resolution (creation, effective date, parent),
-   the Electoral Commission's lists (names and codes, refreshed per election), UBOS (counts and boundaries). News
-   reports are a prompt to check the gazette, never a source.
-10. **Customer wording tolerates change.** Saved addresses show the words the customer used (`snapshot_area_label`,
-    `snapshot_district`) even after the official name moves on; the search layer accepts old and new district names
-    through `ug_district.aliases`.
+**Phase B — pins that already exist, and the first landmarks (≈ 1–2 weeks).** WhatsApp location → order; the rider
+handover link; saved addresses keep and receive pins; `hasPin` from checkout; mined order-text landmarks; the nightly
+job; rider card additions. **Done when:** a WhatsApp pin sent after an order appears on that order's rider card
+without anyone touching admin; ≥50% of metro deliveries in a two-week window have a handover pin; the first
+`rider_handover` area points exist.
 
-What this does **not** try to do: track village-level changes (71,250 names, no polygons anywhere) beyond keeping the
-passport-portal list as a search layer and letting delivered pins define reality.
+**Phase C — the landmark step and the registry (≈ 2 weeks).** OSM import; `GET /locations/landmarks`; the landmark
+step with meeting points; Plus Code; EC names for GKMA; admin registry tab; district list from `ug_district`;
+same-day by band. **Done when:** 60% of metro orders carry a landmark or a pin within two weeks of release, and every
+GKMA parish in the EC list exists in `ug_area` or maps to one.
 
-## 15. Open decisions for Rob
+**Phase D — learn and refine (ongoing).** `distance_source = measured` when the owner is ready; OSRM road km
+quarterly; calibration proposals driven by measured distance; optional Google enrichment; PostGIS only on a trigger;
+the yearly drift report.
 
-1. The six launch numbers (§10). Nothing quotes without them.
-2. Pin retention period (recommended 180 days).
-3. Should the landmark step be mandatory for door delivery inside Kampala/Wakiso when no pin is given? (Recommended:
-   yes for new customers, optional for customers with a delivered address on file.)
-4. Map for the pin step: self-hosted PMTiles (more build, no key, no bill) or Google Dynamic Maps (fast, key, free at
-   our volume)?
-5. Same-day eligibility: by band (B0–B3 before the cutoff) rather than the hardcoded Kampala/Wakiso list in
-   `checkout.astro`. Recommended: by band, via the registry.
-6. Whether to publish the OSM-derived landmark table openly (simplest ODbL compliance).
-7. Who owns the yearly administrative review (§14.8): a named person on the team runs the drift report each July and
-   after each election register, and applies the new districts in `/admin/locations`. Without an owner the lists
-   will rot exactly as the hard-coded one did.
+Each phase ships behind the Control Centre: config keys are drafts until published, and everything reverts in one
+action (contract #9).
 
 ---
 
-## Appendix A — Overpass QL (one tag per request; `out center;` gives a point for ways/relations)
+## Appendix A — Data sources, with what was measured (2026-10-15)
 
+"GKMA box" = lat −0.05…0.60, lon 32.30…32.95 (Kampala, Wakiso, Mukono town, Entebbe, Mpigi town).
+
+**A.1 Ministry of ICT draft postcodes, April 2019 (imported; the key space).** 5,805 areas, 135 districts, parish/area,
+sub-county/division, county, region; no coordinates. The owner supplied the source tables (also at techjaja.com,
+2020); scheme and defects in Appendix B. The `area_slug` carries the postcode and is the join spine to every other
+source: 2019 parish ↔ 2016 polygon ↔ EC parish ↔ GeoNames ADM5 ↔ passport-portal parish.
+
+**A.2 GeoNames `UG.zip` (0.7 MB, CC BY 4.0).** 26,943 features; 11,455 PPL, 2,215 ADM5, 1,359 ADM4, 1,270 SCH, 642
+HSPC, 78 HSP, 88 missions. In the box: 1,205 PPL, 118 ADM5, 44 ADM4, 27 HSPC, 12 HSP, 9 SCH. Kampala PPL sample:
+Bakuli, Bugolobi, Bukoto, Bunga, Butabika, Bwaise, Bweyogerere, Ggaba, Kabowa, Kansanga, Katwe, Kawempe, Kazo, Kibuye,
+Kikaaya, Kinawataka (160 places); ADM5 sample: Bwaise I, Kabalagala, Kanyanya, Kawempe II, Kibuli, Kireka, Kyaliwajala,
+Kyanja, Makerere III, Mulago II, Mutundwe, Naguru Godown, Najjanankumbi II, Ndeeba, Wabigalo. Points are settlement
+labels, 200 m–1 km typical; gap fill only.
+
+**A.3 OpenStreetMap (ODbL).** Overpass mirrors that answered: `overpass.kumi.systems`, `overpass.private.coffee`,
+`maps.mail.ru/osm/tools/overpass` (`overpass-api.de` unreachable). Counts in the box: amenity=school 2,430 (n2038 w391
+r1); place_of_worship 622; bank 461; pharmacy 424; shop=supermarket 409; police 158; marketplace 143; place=neighbourhood
+96; highway=bus_stop 88; amenity=taxi 82 (75 nodes, 7 ways); place=suburb 78; bus_station 58; named highways 4,148 ways;
+building=* 1,567,904 ways; Uganda-wide boundary relations admin_level 4: 146, admin_level 9: 51 (parish/village
+boundaries mostly absent). hospital, clinic, fuel, mall, village, hamlet: mirrors timed out; count from the Geofabrik
+extract. Bulk: `download.geofabrik.de/africa/uganda-latest.osm.pbf` with `osmium` (not installed on the Mac yet).
+
+**A.4 Electoral Commission polling stations (Kalulu repo `Uganda-Open-Data/kalulu`, updated 2026-05-01).**
+`voter_register_summary_2020.csv`: 34,684 stations; district, constituency, sub-county, parish, station, voters;
+**no coordinates** (the research note assumed otherwise). GKMA: Kampala 1,423 stations / 6 divisions / 98 parishes;
+Wakiso 1,434 / 27 / 147; Mukono 619 / 18 / 97; Mpigi 245 / 9 / 56. Names like "MATHEL NURSERY SCHOOL (NAMUI-S)",
+"KAWEMPE MBOGO MUSLIM S.S.S. (A-K)", "JAMBULA [NABI-Z]- LC I OFFICE".
+
+**A.5 HDX COD-AB `cod-ab-uga` (UBOS with WHO, reviewed 2026-09-21, CC BY-IGO).** GeoJSON 37 MB, SHP 33 MB, GDB 16 MB.
+Admin 1 = 4 regions, Admin 2 = 135 districts, Admin 3 = 203, Admin 4 = 1,520 sub-county polygons (2020). **No parish
+or village polygons** (the research note assumed otherwise).
+
+**A.6 Delivered pins (own data).** `addresses.gps_*`, `orders.delivery_location.gps*`, the capture row. Nothing
+aggregates them today; §5.6.
+
+**A.7 Plus Codes.** 14 m × 14 m at 10 characters (`6GCRPR6C+24` central Kampala). npm `open-location-code` 1.0.3 or
+`pluscodes` 3.0.1. Offline encode/decode.
+
+**A.8 Not used, and why.** KCCA street naming / house numbering: begun 2017, GPS survey under KIIDP-2 (2024), no
+public dataset, revisit yearly. DataHub "postal-codes-ug": GeoNames PPL with empty postcode fields. Public Nominatim
+for bulk: forbidden by its usage policy (1 req/s, no bulk); self-hosted Photon/Nominatim possible later, not needed.
+Boda stages: 82 in OSM for the whole box; they will come from riders and customers, not the map.
+
+**A.9 UBOS 2016 parish polygons (owner-supplied: `uganda-APIs` repo → `GIS-Parishes-2016.zip` 28 MB →
+`Ug_Parishes_2016.shp`).** 7,566 polygons, 116 districts; fields OBJECTID, D, C, S, P, V (reference village), PCODE,
+Shape_Leng, Shape_Area; projection Arc 1960 / UTM 36S (EPSG:21036), datum shift to WGS84 EPSG:1122 (dX −160, dY −6, dZ
+−302 m). GKMA: Kampala 96, Wakiso 151, Mukono 80, Mpigi 56 parishes (357 in the box; median 9.7 km², Kampala median
+1.2 km²). Centroids computed by hand on 2026-10-15 (no pyproj wheel for Python 3.14): `~/Downloads/
+ug_parishes_2016_centroids_wgs84.csv` (7,566 rows), verified against Civic Centre 0.3127, 32.5860; Kabalagala 0.3011,
+32.5992; Ntinda 0.3467, 32.6181; Bugolobi 0.3112, 32.6227. Name agreement with the EC 2020 parish list before folding:
+Kampala 82/98 (83%), Wakiso 121/144 (84%), Mukono 65/95 (68%), Mpigi 46/56 (82%). Against the shop's metro index
+(390 entries) by exact folded name: 350 (89%); the Kampala misses are NAKAWA INSTITUTION, KIKAAYA, NAJJANANKUBI I/II,
+NATETE, BUGOLOBI, CIVIC CENTER, LUBYA, NANKULABYE, NTINDA POLICE BARRACKS, NAKIVUBO-SHAURIYAKO, NSAMBYA ESTATE,
+MAKERERE UNIVERSITY, all spelling variants of index entries.
+
+**A.10 Passport-portal hierarchy (owner-supplied: `locations-uganda` npm, `uganda-geo-data` PHP, `ug-locale` Laravel;
+MIT).** The same scrape three ways: 135 districts → 303 counties → 2,120 sub-counties → 10,365 parishes → 71,250
+villages; names and parent ids only, villages upper-case. The deepest open gazetteer; what a customer in Wakiso says
+("Kira, Bulindo").
+
+**A.11 EC 2025/26 electoral structure (owner-supplied: `uganda-location-selector` npm, MIT).** 222 electoral districts
+(cities and municipalities counted separately), 427 constituencies, 1,881 sub-counties, 3,454 electoral areas, with
+EC codes that join to the Kalulu station codes, so the 2026 register can be loaded without re-matching names.
+
+**A.12 Owner-supplied files not adopted.** `Uganda-Delivery-Cost-API` (a FastAPI toy: 20 district centroids × weight ×
+"risk factor"; contract #4 forbids invented multipliers); `uganda-APIs/districts_large_map.json` (139 sub-parishes
+filled, the rest empty); `final-vote-by-district-2016-presidential.csv` (112 districts, vote counts, no location use).
+
+## Appendix B — The 2019 postcode scheme and its defects
+
+Five digits: zone (1 Kampala, 2 Eastern, 3 Central, 4 Western, 5 Mid-Western, 6 West Nile, 7 Northern, 8
+North-East), two-digit district number (Kampala `1` + division `01`–`05`; Wakiso spans `313`/`314`, Arua `604`/`605`,
+Kasese `503`/`504`, Bulambuli `821`/`822`), two digits per parish or ward in the Ministry's order. 128 district blocks;
+Kampala 96 parishes (Central 20, Kawempe 19, Nakawa 23, Makindye 21, Rubaga 13). The 2019 list still has Kazo under
+Kiruhura, Madi-Okollo under Arua, Kitagwenda under Kamwenge, Kalaki under Kaberamaido, Obongi under Moyo, Rwampara
+under Mbarara. A customer never types a postcode (brief PART B).
+
+Defects in the source tables (handled by the importer's exceptions file; no join may assume the list is clean):
+duplicate codes Kyengera 31440, Kyotera 32008/32027/32029, Kasese 50382, Gomba 32617/32619, Luuka 22106, Bulambuli
+82101/82102 ("Butta Ward" twice), Sironko 21059 (the brief counts 14); truncated or out-of-sequence codes (Sironko
+"Shimoma 2103", "Busedani 21059"); Kiryandongo row 13 without a parish name; names printed without spaces
+(NakivuboShauliyako, OldBomaWard, LakeMburo, QueenElizabeth, St.AloysiusPtcCompl); spellings that differ from UBOS and
+the EC (Bogolobi, Lubia, Kikaya, Najjanankumbi, Kazo Ward); Wakiso omits 31401–31404; institutions and land listed as
+parishes (University (Makerere), Luzira Prisons, Nsambya Police Barracks, Nakawa Institutions, Army Barracks (Mpigi),
+Mt. Elgon, Queen Elizabeth, Rwenzori Mountain, Hunting Area, Grazing Area, Lake Mburo, Bwindi Impenetrable, Semuliki,
+Kyangwali Gr) → `area_kind` (§3.3).
+
+## Appendix C — OSM extraction
+
+Offline, preferred (no limits; needs `osmium`, not yet installed on the Mac):
+```
+osmium extract -b 32.30,-0.05,32.95,0.60 uganda-latest.osm.pbf -o gkma.osm.pbf
+osmium tags-filter gkma.osm.pbf w/building -o gkma-buildings.osm.pbf
+osmium export gkma-buildings.osm.pbf -f geojsonseq -o gkma-buildings.geojsonl      # footprint polygons → centroid in the importer
+osmium tags-filter gkma.osm.pbf nwr/amenity=school,hospital,clinic,place_of_worship,taxi,fuel,bank,marketplace,police,pharmacy nwr/shop=mall,supermarket nwr/place=suburb,neighbourhood,village,hamlet,locality -o gkma-pois.osm.pbf
+osmium export gkma-pois.osm.pbf -f geojsonseq -o gkma-pois.geojsonl
+```
+Overpass fallback, one tag per request, `out center;` gives a point for ways and relations:
 ```
 [out:json][timeout:180];
-(
-  node["amenity"="school"](-0.05,32.30,0.60,32.95);
+( node["amenity"="school"](-0.05,32.30,0.60,32.95);
   way["amenity"="school"](-0.05,32.30,0.60,32.95);
-  relation["amenity"="school"](-0.05,32.30,0.60,32.95);
-);
+  relation["amenity"="school"](-0.05,32.30,0.60,32.95); );
 out center tags;
 ```
-Whole country by ISO code (slower; prefer the Geofabrik extract):
-```
-[out:json][timeout:600];
-area["ISO3166-1"="UG"][admin_level=2]->.ug;
-(
-  node["amenity"~"^(school|hospital|clinic|place_of_worship|taxi|fuel|bank|marketplace|police|pharmacy)$"](area.ug);
-  way["amenity"~"^(school|hospital|clinic|place_of_worship|taxi|fuel|bank|marketplace|police|pharmacy)$"](area.ug);
-  relation["amenity"~"^(school|hospital|clinic|place_of_worship|taxi|fuel|bank|marketplace|police|pharmacy)$"](area.ug);
-);
-out center tags;
-```
-Place nodes for area centroids: replace the tag filter with `["place"~"^(suburb|neighbourhood|village|hamlet|locality)$"]`.
-Etiquette: identify with a `User-Agent`, one request at a time, ≥10 s between requests, retry across mirrors
-(`overpass.kumi.systems`, `overpass.private.coffee`, `maps.mail.ru/osm/tools/overpass`, `overpass-api.de`).
+Etiquette: identify with a `User-Agent`, one request at a time, ≥10 s apart, retry across mirrors.
 
-Offline alternative (no limits):
-```
-osmium tags-filter uganda-latest.osm.pbf nwr/amenity=school,hospital,clinic,place_of_worship,taxi,fuel,bank,marketplace,police,pharmacy nwr/shop=mall,supermarket nwr/place=suburb,neighbourhood,village,hamlet,locality -o gkma-pois.osm.pbf
-osmium export gkma-pois.osm.pbf -f geojsonseq -o gkma-pois.geojsonl   # one feature per line; ways/relations as polygons → take centroid in the importer
-```
-
-## Appendix B — GeoNames `UG.txt` columns used
+## Appendix D — GeoNames `UG.txt` columns used
 `geonameid(1) name(2) asciiname(3) alternatenames(4) latitude(5) longitude(6) feature_class(7) feature_code(8)
-country(9) admin1(11) admin2(12) population(15) modification_date(19)`. Feature codes: PPL populated place, PPLX
-section of populated place, ADM4/ADM5 admin divisions (sub-county/parish level in Uganda), SCH school, HSP hospital,
-HSPC clinic, CH church, MSQE mosque, MKT market.
+country(9) admin1(11) admin2(12) population(15) modification_date(19)`. admin1 C/E/N/W = Central/Eastern/Northern/
+Western; admin2 = district name (matched inside the lineage family). Codes: PPL, PPLX, PPLL, ADM4, ADM5, SCH, HSP,
+HSPC, CH, MSQE, MKT.
 
-## Appendix C — EC station name normalisation (examples)
+## Appendix E — EC station name normalisation
 | Raw | Normalised | Category |
 |---|---|---|
 | `MATHEL NURSERY SCHOOL (NAMUI-S)` | Mathel Nursery School | school |
@@ -856,23 +795,92 @@ HSPC clinic, CH church, MSQE mosque, MKT market.
 | `KISIMBIRI B [NAT -Z] KISIMBIRI C/U P/S` | Kisimbiri Church of Uganda Primary School | school |
 | `JAMBULA [NABI-Z]- LC I OFFICE` | Jambula LC1 Office | office |
 | `UCTU GROUND (A-L)` | UCTU Ground | other |
-Rules: remove `\(.*?\)` and `\[.*?\]` voter ranges; expand `P/S`, `P.S`, `S.S.S`, `S.S`, `C/U`, `R/C`, `S.D.A`,
-`H/C` (health centre), `T/C` (trading centre), `LC I` → `LC1`; collapse spaces; title-case except acronyms.
+Remove `\(.*?\)` and `\[.*?\]` voter ranges; expand `P/S`, `P.S`, `S.S.S`, `S.S`, `C/U`, `R/C`, `S.D.A`, `H/C`
+(health centre), `T/C` (trading centre), `LC I` → `LC1`; collapse spaces; title-case except acronyms; one station
+name appears 2–4 times split by voter range, dedupe.
 
-## Appendix D — accuracy tier and what the rider gets
+## Appendix F — Bands, accuracy tiers, and what the rider gets
+
+Band edges (MODEL.md): B0 0–2 km (midpoint 1.0), B1 2–5 (3.5), B2 5–9 (7.0), B3 9–15 (12.0), B4 15–25 (20.0), B5
+25–45 (35.0), B6 45–70 (57.5). The midpoint error is up to ±5 km in B4 and ±12.5 km in B6, doubled for the round trip.
+
 | Tier | Customer gave | Rider card shows | Distance used |
 |---|---|---|---|
-| PIN | device GPS ≤100 m or pasted link | map link, Plus Code, landmark if any, directions | road km to pin cell (cached) or haversine×detour |
-| LANDMARK | a registry landmark | landmark name + category, map link to it, directions | road km to landmark |
-| AREA_POINT | area only | area, directions, "call before dispatch" if no directions | road km to area point |
+| PIN | device ≤100 m, pasted link, Plus Code, WhatsApp location, saved address with a delivered pin | map link, Plus Code, landmark if any, directions | haversine from hub × detour (road km when routed) |
+| LANDMARK | a registry landmark (hint or meeting point) | landmark + category, "meet at" when chosen, map link, directions | distance to the landmark point |
+| AREA_POINT | area only | area, directions, "call before dispatch" if no directions | `geo_area_point` (source and expected error shown to ops) |
 | BAND_MIDPOINT | area without a point yet | as today | band midpoint |
-| DISTRICT | manual path | as today | none; manual queue |
+| DISTRICT | manual path, or an unverified district | as today | none; manual queue |
 
-## Appendix E — sources
-- Research note: "Strategic Geospatial Architecture and Last-Mile Logistics Optimization for E-Commerce Delivery in Uganda" (owner-supplied, 2026).
-- Owner-supplied datasets (2026-10-15): Ministry of ICT draft postcode tables (April 2019; also techjaja.com, 2020); `uganda-APIs` repo with UBOS `Ug_Parishes_2016` shapefile; `locations-uganda`, `uganda-geo-data`, `ug-locale` (passport-portal hierarchy); `uganda-location-selector` (EC 2025/26 codes); Kalulu election data.
-- District count: Electoral Commission statistics ahead of the 2026 election (Daily Monitor, 2025): 146 districts and cities, up from 135 in 2021; April 2025 approval of three districts and Tororo City (Pulse Uganda). The Gazette is the source of record for effective dates.
-- HDX `cod-ab-uga` metadata (CKAN API, 2026-09-24 resources); GeoNames `UG.zip` (2026-10-15 download); Kalulu repo file list and `voter_register_summary_2020.csv` (fetched 2026-10-15); Overpass counts (2026-10-15, mirrors as noted).
-- Google Maps Platform pricing page (page dated 2026-10-14); Mapbox pricing page (2026-10-15).
-- Nominatim usage policy (1 req/s, no bulk, caching required).
+## Appendix G — Provider list prices (2026-10-15, per 1,000 after the monthly free amount)
+
+Sizing assumption: 1,000 checkouts/month, 3 quote calls each, 1 map load each, 300 pins. Everything below stays
+inside the free amounts at that volume.
+
+Google Maps Platform (Essentials unless stated): Autocomplete 10,000 free then $2.83 (session billing: the session is
+free, the closing Place Details call is billed); Place Details Essentials/Pro/Enterprise 10,000/5,000/1,000 free then
+$5.00/$17.00/$20.00; Geocoding 10,000 then $5.00; Address Validation (Pro) 5,000 then $17.00; Dynamic Maps 10,000 then
+$7.00; Static Maps 10,000 then $2.00; Compute Routes Essentials/Pro/Enterprise 10,000/5,000/1,000 then
+$5.00/$10.00/$15.00; Compute Route Matrix (per element) 10,000 then $5.00; Distance Matrix (legacy) 10,000 then $5.00.
+Best Kampala landmark coverage of any provider; Places data may not be stored beyond 30 days except place IDs.
+
+Mapbox: Geocoding temporary 100,000 free then $0.75 (100k–500k), permanent (storable) none free, $5.00; Search Box
+(session) 2,500 then $11.50; Directions 100,000 then $2.00; Matrix (per element) 100,000 then $2.00; GL JS map loads
+50,000 then $5.00; Static Images 50,000 then $1.00. Temporary geocoding results may not be stored.
+
+Free / self-hosted: MapLibre GL + Protomaps PMTiles of Uganda (one static file, ~100–300 MB, no key, OSM attribution);
+Leaflet + OSM public tiles (admin screens only, OSMF policy); Photon/Nominatim on the Uganda extract (~2 GB RAM, not
+needed); OSRM offline on the Mac (no runtime service).
+
+## Appendix H — Sources
+- Research note: "Strategic Geospatial Architecture and Last-Mile Logistics Optimization for E-Commerce Delivery in
+  Uganda" (owner-supplied, 2026). Its three data claims that do not hold: EC stations have no coordinates; HDX COD-AB
+  has no parish polygons; boda stages are barely in OSM.
+- Owner-supplied datasets (2026-10-15): Ministry of ICT 2019 postcode tables (also techjaja.com 2020); `uganda-APIs`
+  repo with the UBOS `Ug_Parishes_2016` shapefile; `locations-uganda`, `uganda-geo-data`, `ug-locale`;
+  `uganda-location-selector`; Kalulu election data.
+- District count: Electoral Commission statistics ahead of the 2026 election (Daily Monitor, 2025): 146 districts and
+  cities, from 135 in 2021; April 2025 approval of three districts and Tororo City (Pulse Uganda). The Gazette is the
+  source of record for effective dates.
+- HDX `cod-ab-uga` metadata (CKAN, 2026-09-24 resources); GeoNames `UG.zip` (2026-10-15); Kalulu file list and
+  `voter_register_summary_2020.csv` (2026-10-15); Overpass counts (2026-10-15, mirrors as noted).
+- Google Maps Platform pricing (page dated 2026-10-14); Mapbox pricing (2026-10-15); Nominatim usage policy.
 - KCCA road naming and house numbering guidelines (2017); The Independent on the KIIDP-2 addressing survey (2024).
+- Code read on 2026-10-15: `WhatsAppGoldie.ts`, `schema/delivery.ts`, `schema/fulfilment.ts`, `schema/locations.ts`,
+  `DeliveryUseCases.ts`, `DeliveryCaptureUseCases.ts`, `MODEL.md`, `CONTRACT.md`, `uganda.ts`.
+
+## Appendix I — What changed from version 1, and why (the self-critique, in one place)
+
+1. **The order of work was upside down.** V1 led with a data catalogue; the six owner-set numbers that gate every
+   quote were §10. V2 opens with the ranked causes, the metric, and a five-step critical path.
+2. **No success metric.** V1 never said how anyone would know it worked. V2 uses the capture columns that already
+   exist (`expected_minutes` vs `actual_minutes`, model-quoted share).
+3. **Invented confidences** (0.95, 0.75, 0.60…) broke contract #4. V2 ranks sources explicitly and stores an expected
+   error in metres only where it is measured or stated.
+4. **OSRM was on the critical path, and detour was double-counted.** MODEL.md already prices straight-line × learned
+   detour when a centroid exists; v1's §9 then fed road km into a formula that still multiplied by detour. V2: no
+   router in Phase A; `distance_source` switch; road km in Phase D with detour 1.0.
+5. **Duplicate columns.** V1 added `road_km` to a capture that already has `straight_line_km`, `centroid_source`,
+   `actual_minutes`. V2 writes the existing columns.
+6. **The pin channels that already exist were ignored.** Goldie parses WhatsApp location messages today and drops
+   them into text; riders stand at the door with a phone; the delivery record is typed in the office afterwards. V2
+   routes WhatsApp pins to the order, adds the one-tap handover link, and makes the saved address remember its pin,
+   before any map widget. Decision "which map" became "probably none".
+7. **Landmarks came from OSM first.** The shop's own order text holds the landmarks its customers actually use, and
+   `ug_search_miss` already records what customers typed that we did not know. V2 mines both first (no licence, no
+   download), OSM second, EC names third. Meeting points ("meet me here") were missing entirely.
+8. **Geometric centroids are the wrong point.** 1.57 million OSM building footprints are in the box; the centre of a
+   parish's buildings is where its deliveries go. V2 uses it, with the measured spread as the error.
+9. **New data was not checked against old.** The hand-assigned bands are a validator for every matched polygon; v1
+   never used them. V2's three-list report does.
+10. **Districts.** V1 matched "within the same district" across datasets that use five different district lists
+    (116 / 128 / 135 / 146 / 222) and left the API rejecting unknown districts. V2: lineage families, districts as
+    data with a dated lineage, unknown districts accepted on the manual path (contract #8), additive boundary sets,
+    opaque slugs, a yearly drift report with a named owner; **146 districts and cities (EC 2025)** is the one count.
+11. **Institutions as parishes.** The postcode tables list prisons, barracks, a university, national parks and
+    mountains as parishes; v1 would have priced them as homes. `area_kind` fixes it.
+12. **`earthdistance` needs a superuser** (verified; `cube` does not). The no-extension fallback is written.
+13. **Fee presentation was never a decision.** Continuous per-area fees and "fix the wrong bands" use the same data
+    and look very different to a customer. V2 makes it the first owner decision and recommends re-banding first.
+14. **Drafting history was in the body** (a §2 numbered 1, 2, 4, 3; "the thing my first draft got wrong" in §3). It
+    is here instead.
