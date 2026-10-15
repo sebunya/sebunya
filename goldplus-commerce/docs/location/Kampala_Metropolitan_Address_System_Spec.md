@@ -132,6 +132,12 @@ which the compose migrator is). §3.6 gives the no-extension fallback.
 ## 3. The point layer: one point per area
 
 ### 3.1 `geo_area_point`
+> **Implementation note, Phase A.1 (PR #116, 2026-10-15).** The corridor rows already carried `centroid_lat / lng /
+> source / sample_size` since migration 0092, read by the resolver and written to the capture, so Phase A.1 fills those
+> and adds `centroid_expected_error_m`, `centroid_source_ref`, `centroid_shared_polygon`, `centroid_updated_at`
+> (migration 0189) instead of creating this table. `geo_area_point` stays the design for points outside the metro
+> set (Phase C). No Postgres extension was needed. See `docs/location/PHASE_A_RUNBOOK.md` on PR #116.
+
 ```sql
 CREATE TABLE geo_area_point (
   area_slug         text PRIMARY KEY REFERENCES ug_area(area_slug),
