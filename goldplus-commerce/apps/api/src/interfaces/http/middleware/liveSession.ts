@@ -24,7 +24,7 @@ import { isInvalidatedByCutoff } from '../../../domain/identity/SessionPolicy';
  */
 
 export type LiveSession =
-  | { ok: true; user: { id: string; email: string; isActive: boolean } }
+  | { ok: true; user: { id: string; email: string; isActive: boolean; sessionId: string | null } }
   | { ok: false; code: 'UNAUTHENTICATED'; message: string }
   | { ok: false; code: 'ACCOUNT_DISABLED'; message: string };
 
@@ -54,5 +54,5 @@ export async function resolveLiveSession(token: string | null): Promise<LiveSess
     return unauthenticated('This session has been revoked. Please sign in again.');
   }
 
-  return { ok: true, user: { id: user.id, email: user.email, isActive: user.isActive } };
+  return { ok: true, user: { id: user.id, email: user.email, isActive: user.isActive, sessionId: verified.sessionId ?? null } };
 }

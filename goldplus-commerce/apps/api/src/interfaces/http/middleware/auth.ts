@@ -6,7 +6,8 @@ import { traceLocalStorage } from '../../../infrastructure/observability/TraceCo
 
 type AdminContext = Context<{
   Variables: {
-    user: { id: string; email: string; permissions: string[] };
+    /** sessionId: the sign-in session the token names (0187); optional so route-local Variables types still fit. */
+    user: { id: string; email: string; permissions: string[]; sessionId?: string | null };
   };
 }>;
 
@@ -33,7 +34,7 @@ export const authMiddleware = async (c: AdminContext, next: Next) => {
     return fail('FORBIDDEN', 'This account does not have admin access.', 403);
   }
 
-  c.set('user', { id: user.id, email: user.email, permissions });
+  c.set('user', { id: user.id, email: user.email, permissions, sessionId: user.sessionId });
   const trace = traceLocalStorage.getStore();
   if (trace) trace.userId = user.id; // log lines carry the VERIFIED user
   await next();

@@ -15,6 +15,8 @@ interface JwtPayload {
   email: string;
   iat: number;
   exp: number;
+  /** The sign-in session (refresh-token family), so a step-up counts for that session only (0187). */
+  sid?: string;
 }
 
 export class Hs256TokenSigner implements ITokenSigner {
@@ -51,7 +53,7 @@ export class Hs256TokenSigner implements ITokenSigner {
     return this.secret !== null;
   }
 
-  async sign(payload: { subject: string; email: string; ttlSeconds: number }): Promise<string> {
+  async sign(payload: { subject: string; email: string; ttlSeconds: number; sessionId?: string }): Promise<string> {
     if (!this.secret) {
       throw new Error('JWT_SECRET is not configured (minimum 32 characters).');
     }
@@ -61,6 +63,7 @@ export class Hs256TokenSigner implements ITokenSigner {
       email: payload.email,
       iat: now,
       exp: now + payload.ttlSeconds,
+      ...(payload.sessionId ? { sid: payload.sessionId } : {}),
     };
     const header = base64UrlEncode(Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })));
     const payloadEncoded = base64UrlEncode(Buffer.from(JSON.stringify(body)));
@@ -103,6 +106,7 @@ export class Hs256TokenSigner implements ITokenSigner {
       email: payload.email,
       expiresAt: new Date(payload.exp * 1000),
       issuedAt: new Date(payload.iat * 1000),
+      ...(typeof payload.sid === 'string' && payload.sid ? { sessionId: payload.sid } : {}),
     };
   }
 }

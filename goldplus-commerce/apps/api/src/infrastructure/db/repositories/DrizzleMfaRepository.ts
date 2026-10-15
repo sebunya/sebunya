@@ -1,9 +1,31 @@
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../client';
-import { userMfa, userMfaRecoveryCodes } from '../schema/identity';
+import { authSessionStepUps, userMfa, userMfaRecoveryCodes } from '../schema/identity';
 import { IMfaRepository, MfaRecord } from '../../../application/ports/IMfaRepository';
 
+const UUID = /^[0-9a-f-]{36}$/i;
+
 export class DrizzleMfaRepository implements IMfaRepository {
+  async recordSessionStepUp(familyId: string, userId: string, at: Date): Promise<void> {
+    if (!UUID.test(familyId) || !UUID.test(userId)) return;
+    await db
+      .insert(authSessionStepUps)
+      .values({ familyId, userId, verifiedAt: at })
+      .onConflictDoUpdate({ target: authSessionStepUps.familyId, set: { verifiedAt: at }, where: eq(authSessionStepUps.userId, userId) });
+    // Small by nature (admins step up), kept small: rows for this user older than a month are spent.
+    await db.delete(authSessionStepUps).where(and(eq(authSessionStepUps.userId, userId), sql`${authSessionStepUps.verifiedAt} < ${new Date(at.getTime() - 30 * 86_400_000)}`));
+  }
+
+  async sessionStepUpAt(familyId: string, userId: string): Promise<Date | null> {
+    if (!UUID.test(familyId) || !UUID.test(userId)) return null;
+    const [row] = await db
+      .select({ verifiedAt: authSessionStepUps.verifiedAt })
+      .from(authSessionStepUps)
+      .where(and(eq(authSessionStepUps.familyId, familyId), eq(authSessionStepUps.userId, userId)))
+      .limit(1);
+    return row?.verifiedAt ?? null;
+  }
+
   async get(userId: string): Promise<MfaRecord | null> {
     const row = await db.query.userMfa.findFirst({ where: eq(userMfa.userId, userId) });
     if (!row) return null;

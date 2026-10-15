@@ -93,6 +93,7 @@ export class MfaService {
     userId: string,
     code: string,
     now = new Date(),
+    sessionId: string | null = null,
   ): Promise<{ ok: boolean; recoveryCodes?: string[]; locked?: true }> {
     const record = await this.repo.get(userId);
     if (!record || record.confirmedAt) return { ok: false };
@@ -102,6 +103,7 @@ export class MfaService {
       return { ok: false };
     }
     await this.repo.confirm(userId, now);
+    await this.stampSession(sessionId, userId, now);
     const codes = generateRecoveryCodes(RECOVERY_CODE_COUNT, RECOVERY_CODE_BYTES);
     await this.repo.replaceRecoveryCodes(userId, codes.map(hashRecoveryCode));
     return { ok: true, recoveryCodes: codes };
@@ -135,7 +137,12 @@ export class MfaService {
     return !!lastVerifiedAt && matchedStep <= Math.floor(lastVerifiedAt.getTime() / 30_000) + 1;
   }
 
-  async verify(userId: string, code: string, now = new Date()): Promise<boolean | 'LOCKED'> {
+  /** 0187: a verification counts for the sign-in session it was made in. */
+  private async stampSession(sessionId: string | null, userId: string, at: Date): Promise<void> {
+    if (sessionId && this.repo.recordSessionStepUp) await this.repo.recordSessionStepUp(sessionId, userId, at);
+  }
+
+  async verify(userId: string, code: string, now = new Date(), sessionId: string | null = null): Promise<boolean | 'LOCKED'> {
     const record = await this.repo.get(userId);
     if (!record || !record.confirmedAt) return false;
     if (this.isLocked(record, now)) return 'LOCKED';
@@ -145,27 +152,39 @@ export class MfaService {
       return false;
     }
     await this.repo.recordVerification(userId, now);
+    await this.stampSession(sessionId, userId, now);
     return true;
   }
 
   /** Consume a single-use recovery code as a step-up; stamps freshness. */
-  async useRecoveryCode(userId: string, code: string, now = new Date()): Promise<boolean | 'LOCKED'> {
+  async useRecoveryCode(userId: string, code: string, now = new Date(), sessionId: string | null = null): Promise<boolean | 'LOCKED'> {
     const record = await this.repo.get(userId);
     if (!record || !record.confirmedAt) return false;
     if (this.isLocked(record, now)) return 'LOCKED';
     const consumed = await this.repo.consumeRecoveryCode(userId, hashRecoveryCode(code), now);
-    if (consumed) await this.repo.recordVerification(userId, now);
-    else await this.repo.recordFailure(userId, now);
+    if (consumed) {
+      await this.repo.recordVerification(userId, now);
+      await this.stampSession(sessionId, userId, now);
+    } else await this.repo.recordFailure(userId, now);
     return consumed;
   }
 
-  async status(userId: string): Promise<MfaStatus> {
+  async status(userId: string, sessionId: string | null = null): Promise<MfaStatus> {
     const record = await this.repo.get(userId);
     return {
       enrolled: !!record,
       confirmed: !!record?.confirmedAt,
-      lastVerifiedAt: record?.lastVerifiedAt ?? null,
+      lastVerifiedAt: await this.freshnessBasis(record?.lastVerifiedAt ?? null, userId, sessionId),
     };
+  }
+
+  /**
+   * The verification time that counts: this sign-in session's own (0187). A token issued without a session (only
+   * when the session store was down) keeps the account-wide time, so it is never stuck re-verifying for nothing.
+   */
+  private async freshnessBasis(accountWide: Date | null, userId: string, sessionId: string | null): Promise<Date | null> {
+    if (!sessionId || !this.repo.sessionStepUpAt) return accountWide;
+    return this.repo.sessionStepUpAt(sessionId, userId);
   }
 
   /** Audited reset / disable. Callers must record the actor separately. */
@@ -174,12 +193,12 @@ export class MfaService {
   }
 
   /** The step-up gate for a privileged action, using the current MFA state. */
-  async gate(userId: string, action: string, now = new Date()): Promise<StepUpDecision> {
+  async gate(userId: string, action: string, now = new Date(), sessionId: string | null = null): Promise<StepUpDecision> {
     const record = await this.repo.get(userId);
     return decideStepUp({
       action,
       mfaConfirmed: !!record?.confirmedAt,
-      lastVerifiedAt: record?.lastVerifiedAt ?? null,
+      lastVerifiedAt: await this.freshnessBasis(record?.lastVerifiedAt ?? null, userId, sessionId),
       now,
     });
   }

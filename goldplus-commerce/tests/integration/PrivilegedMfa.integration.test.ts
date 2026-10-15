@@ -30,6 +30,10 @@ suite('privileged MFA + step-up (real PostgreSQL)', () => {
     const require = createRequire(import.meta.url);
     const postgres = require('../../apps/api/node_modules/postgres');
     raw = postgres(URL!, { max: 4, prepare: false });
+    // The auth database is built from the schema snapshot only: layer 0187 (idempotent) as other suites do.
+    const sqlText = (await import('node:fs')).readFileSync('apps/api/src/infrastructure/db/migrations/0187_auth_session_step_ups.sql', 'utf8')
+      .replace(/--> statement-breakpoint/g, '').replace(/SET LOCAL[^;]*;/g, '');
+    await raw.unsafe(sqlText);
 
     const repoMod = await import('../../apps/api/src/infrastructure/db/repositories/DrizzleMfaRepository');
     const svcMod = await import('../../apps/api/src/infrastructure/security/MfaService');
@@ -117,6 +121,27 @@ suite('privileged MFA + step-up (real PostgreSQL)', () => {
     const t2 = new Date(t1.getTime() + 60_000);
     const viaRecovery = await service.beginEnrolment(userId, 'a@b.com', { code: fresh?.[0] ?? '', recovery: true }, t2);
     expect('secret' in viaRecovery).toBe(true);
+  });
+
+  it("a verification counts for the session it was made in, never another session's (0187)", async () => {
+    const userId = await freshUser();
+    const start = await service.beginEnrolment(userId, 'a@b.com');
+    const t0 = new Date();
+    await service.confirmEnrolment(userId, totp.totp(start.secret, t0.getTime()), t0);
+    const { randomUUID } = await import('node:crypto');
+    const adminSession = randomUUID(); const stolenSession = randomUUID();
+    const t1 = new Date(t0.getTime() + 10 * 60_000); // the confirmation has gone stale
+    expect(await service.verify(userId, totp.totp(start.secret, t1.getTime()), t1, adminSession)).toBe(true);
+    // The admin's own session is open...
+    expect((await service.gate(userId, 'payment_refund', t1, adminSession)).action).toBe('ALLOW');
+    // ...a stolen token's session is not, though the ACCOUNT verified a moment ago.
+    expect((await service.gate(userId, 'payment_refund', t1, stolenSession)).action).toBe('STEP_UP_REQUIRED');
+    expect((await service.status(userId, stolenSession)).lastVerifiedAt).toBeNull();
+    // Stored to the second (the db client drops milliseconds), plenty for a five-minute window.
+    expect(Math.abs(((await service.status(userId, adminSession)).lastVerifiedAt?.getTime() ?? 0) - t1.getTime())).toBeLessThan(1000);
+    // A token issued without a session (store down) keeps the account-wide rule, so it is never stuck.
+    expect((await service.gate(userId, 'payment_refund', t1, null)).action).toBe('ALLOW');
+    await raw`delete from auth_session_step_ups where user_id = ${userId}`;
   });
 
   it('a code that was already accepted cannot be used again inside its window', async () => {
