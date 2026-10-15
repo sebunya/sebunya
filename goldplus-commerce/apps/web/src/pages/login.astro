@@ -9,6 +9,7 @@ import { apiBase } from '../lib/api';
 import SocialSignIn from '../components/auth/SocialSignIn.astro';
 import { SESSION_COOKIE_NAME, setSignInCookies } from '../lib/session';
 import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../lib/requestOrigin';
+import { socialSignInMessage } from '../lib/socialSignInMessages';
 
 /**
  * The visitor's address, forwarded so abuse control counts THEM and not this
@@ -32,6 +33,13 @@ let notConfigured = false;
 if (Astro.request.method === 'GET' && Astro.url.searchParams.get('passwordChanged') === '1') {
   status = 'success';
   message = 'Your password was changed and you were signed out everywhere. Sign in with the new password.';
+}
+
+// Back from Google, Apple or Facebook without a session: say why (the callback passes the API's code).
+const socialError = Astro.request.method === 'GET' ? socialSignInMessage(Astro.url.searchParams.get('social_error')) : null;
+if (socialError) {
+  status = 'error';
+  message = socialError;
 }
 
 if (Astro.request.method === 'POST') {

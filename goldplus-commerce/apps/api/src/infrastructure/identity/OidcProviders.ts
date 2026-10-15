@@ -32,6 +32,7 @@ const signAsync = promisify(signCallback) as (
  */
 
 import type { SocialProvider } from '../../domain/identity/SocialProvider';
+import { META_GRAPH_VERSION } from '../advertising/AdPlatforms';
 export type { SocialProvider };
 
 export interface OidcProviderConfig {
@@ -56,6 +57,15 @@ export interface OidcProviderConfig {
    * deliberately instead.
    */
   autoLinkOnVerifiedEmail: boolean;
+  /**
+   * Whether the provider takes PKCE. Google does, and Facebook's OIDC code flow requires it. Apple documents no PKCE
+   * and its discovery document advertises none (checked 2026-10-15), so an Apple flow sends no challenge or verifier
+   * rather than a parameter Apple may reject at the token exchange; state, nonce and Apple's signed client secret
+   * still bind the flow.
+   */
+  pkce: boolean;
+  /** Facebook documents its code exchange as a GET with query parameters; the others take a form POST. */
+  tokenRequestMethod: 'POST' | 'GET';
 }
 
 export const OIDC_PROVIDERS: Record<SocialProvider, OidcProviderConfig> = {
@@ -69,6 +79,8 @@ export const OIDC_PROVIDERS: Record<SocialProvider, OidcProviderConfig> = {
     scope: 'openid email profile',
     responseMode: 'query',
     autoLinkOnVerifiedEmail: true,
+    pkce: true,
+    tokenRequestMethod: 'POST',
   },
   apple: {
     provider: 'apple',
@@ -81,17 +93,22 @@ export const OIDC_PROVIDERS: Record<SocialProvider, OidcProviderConfig> = {
     // Apple POSTs the result back when name/email scopes are requested.
     responseMode: 'form_post',
     autoLinkOnVerifiedEmail: true,
+    pkce: false,
+    tokenRequestMethod: 'POST',
   },
   facebook: {
     provider: 'facebook',
     displayName: 'Facebook',
-    authorizationEndpoint: 'https://www.facebook.com/v18.0/dialog/oauth',
-    tokenEndpoint: 'https://graph.facebook.com/v18.0/oauth/access_token',
+    // The shop's pinned Graph version (the version named here before 2026-10-15 had long been retired).
+    authorizationEndpoint: `https://www.facebook.com/${META_GRAPH_VERSION}/dialog/oauth`,
+    tokenEndpoint: `https://graph.facebook.com/${META_GRAPH_VERSION}/oauth/access_token`,
     jwksUri: 'https://www.facebook.com/.well-known/oauth/openid/jwks/',
     issuers: ['https://www.facebook.com', 'https://facebook.com'],
     scope: 'openid email public_profile',
     responseMode: 'query',
     autoLinkOnVerifiedEmail: false,
+    pkce: true,
+    tokenRequestMethod: 'GET',
   },
 };
 
@@ -270,7 +287,33 @@ export const verifyIdToken = async (input: {
   };
 };
 
-/** Exchange the authorization code for tokens, server-side, with PKCE. */
+/** The code-exchange request for a provider: its method, and the verifier only where the provider takes PKCE. */
+export const tokenRequest = (input: {
+  provider: SocialProvider;
+  code: string;
+  redirectUri: string;
+  codeVerifier: string;
+  credentials: ProviderCredentials;
+}): { url: string; init: { method: 'POST' | 'GET'; headers: Record<string, string>; body?: URLSearchParams } } => {
+  const config = OIDC_PROVIDERS[input.provider];
+  const params = new URLSearchParams({
+    grant_type: 'authorization_code',
+    code: input.code,
+    redirect_uri: input.redirectUri,
+    client_id: input.credentials.clientId,
+    client_secret: input.credentials.clientSecret,
+  });
+  if (config.pkce) params.set('code_verifier', input.codeVerifier);
+  if (config.tokenRequestMethod === 'GET') {
+    return { url: `${config.tokenEndpoint}?${params.toString()}`, init: { method: 'GET', headers: { Accept: 'application/json' } } };
+  }
+  return {
+    url: config.tokenEndpoint,
+    init: { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' }, body: params },
+  };
+};
+
+/** Exchange the authorization code for tokens, server-side (with PKCE where the provider takes it). */
 export const exchangeCodeForIdToken = async (input: {
   provider: SocialProvider;
   code: string;
@@ -278,22 +321,8 @@ export const exchangeCodeForIdToken = async (input: {
   codeVerifier: string;
   credentials: ProviderCredentials;
 }): Promise<{ ok: true; idToken: string } | { ok: false; reason: string }> => {
-  const config = OIDC_PROVIDERS[input.provider];
-  const body = new URLSearchParams({
-    grant_type: 'authorization_code',
-    code: input.code,
-    redirect_uri: input.redirectUri,
-    client_id: input.credentials.clientId,
-    client_secret: input.credentials.clientSecret,
-    code_verifier: input.codeVerifier,
-  });
-
-  const response = await fetch(config.tokenEndpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
-    body,
-    signal: AbortSignal.timeout(8000),
-  });
+  const { url, init } = tokenRequest(input);
+  const response = await fetch(url, { ...init, signal: AbortSignal.timeout(8000) });
 
   if (!response.ok) return { ok: false, reason: `TOKEN_EXCHANGE_${response.status}` };
   const payload = (await response.json().catch(() => null)) as { id_token?: string } | null;
@@ -318,9 +347,11 @@ export const buildAuthorizationUrl = (input: {
     scope: config.scope,
     state: input.state,
     nonce: input.nonce,
-    code_challenge: input.codeChallenge,
-    code_challenge_method: 'S256',
   });
+  if (config.pkce) {
+    params.set('code_challenge', input.codeChallenge);
+    params.set('code_challenge_method', 'S256');
+  }
   if (config.responseMode === 'form_post') params.set('response_mode', 'form_post');
   return `${config.authorizationEndpoint}?${params.toString()}`;
 };
