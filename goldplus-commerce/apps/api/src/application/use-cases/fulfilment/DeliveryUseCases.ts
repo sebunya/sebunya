@@ -85,6 +85,9 @@ export class RecordDeliveryUseCase {
     taskId: string;
     actorId: string;
     outcome: FulfilmentDeliveryOutcome;
+    /** 0190: the rider's point at handover (a WhatsApp location) and how the attempt reached us. */
+    handover?: { lat: number; lng: number; accuracyM: number | null } | null;
+    recordedVia?: 'office' | 'rider_whatsapp';
     deliveredQuantity?: number;
     returnedQuantity?: number;
     recipientName?: string | null;
@@ -151,6 +154,8 @@ export class RecordDeliveryUseCase {
       deliveredQuantity,
       returnedQuantity,
       notes: input.notes?.trim() || null,
+      handover: input.handover ?? null,
+      recordedVia: input.recordedVia ?? 'office',
     });
 
     // Only DELIVERED completes the lifecycle. Payment is deliberately untouched.

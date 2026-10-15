@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, integer, text, jsonb, timestamp, boolean, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, integer, numeric, text, jsonb, timestamp, boolean, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { orders } from './commerce';
 import { users } from './identity';
 
@@ -144,6 +144,8 @@ export const fulfilmentDispatches = pgTable(
     carrierName: varchar('carrier_name', { length: 120 }),
     riderName: varchar('rider_name', { length: 120 }),
     contactMasked: varchar('contact_masked', { length: 40 }),
+    /** 0190: the rider on this dispatch, so a WhatsApp location from their phone is a handover, not a customer pin. */
+    riderId: uuid('rider_id'),
     paymentPolicy: varchar('payment_policy', { length: 20 }).notNull(),
     trackingStatus: varchar('tracking_status', { length: 20 }).default('DISPATCHED').notNull(),
     stockConsumed: boolean('stock_consumed').default(false).notNull(),
@@ -182,6 +184,12 @@ export const fulfilmentDeliveries = pgTable(
     deliveredQuantity: integer('delivered_quantity').default(0).notNull(),
     returnedQuantity: integer('returned_quantity').default(0).notNull(),
     notes: text('notes'),
+    /** 0190: where the rider stood at handover, and how hard the place was to find (rider WhatsApp or office). */
+    handoverLat: numeric('handover_lat', { precision: 9, scale: 6 }),
+    handoverLng: numeric('handover_lng', { precision: 9, scale: 6 }),
+    handoverAccuracyM: integer('handover_accuracy_m'),
+    findDifficulty: varchar('find_difficulty', { length: 8 }),
+    recordedVia: varchar('recorded_via', { length: 20 }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => ({

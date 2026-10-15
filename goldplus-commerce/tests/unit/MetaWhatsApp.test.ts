@@ -208,7 +208,8 @@ describe('every kind of customer message is kept', () => {
     const [voice] = parseInboundTexts(wrap({ type: 'audio', audio: { id: '9876543210', mime_type: 'audio/ogg; codecs=opus' } }), '444555666');
     expect(voice!.media!.kind).toBe('audio');
     const [loc] = parseInboundTexts(wrap({ type: 'location', location: { latitude: 0.3136, longitude: 32.5811, name: 'Ntinda' } }), '444555666');
-    expect(loc!.text).toBe('My location: Ntinda (0.31360, 32.58110)');
+    expect(loc!.text).toBe('[Location shared]'); // 0190: the coordinate rides structured, never in the archived words
+    expect(loc!.location).toEqual({ lat: 0.3136, lng: 32.5811, forwarded: false });
     const [card] = parseInboundTexts(wrap({ type: 'contacts', contacts: [{ name: { formatted_name: 'Brian' }, phones: [{ phone: '+256700111222' }] }] }), '444555666');
     expect(card!.text).toBe('[Contact card] Brian +256700111222');
     expect(parseInboundTexts(wrap({ type: 'reaction', reaction: { emoji: '👍', message_id: 'x' } }), '444555666')).toEqual([]);

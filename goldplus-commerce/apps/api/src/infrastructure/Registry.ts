@@ -325,6 +325,8 @@ import { DrizzleDeliveryQuotingRepository } from './db/repositories/DrizzleDeliv
 import { DrizzleDeliveryVarianceRepository } from './db/repositories/DrizzleDeliveryVarianceRepository';
 import { DrizzleDeliveryCalibrationRepository } from './db/repositories/DrizzleDeliveryCalibrationRepository';
 import { ApplyCorridorCsvUseCase, DryRunCorridorCsvUseCase, RevertCorridorBatchUseCase } from '../application/use-cases/delivery/DeliveryCorridorCsvUseCase';
+import { LocationPinUseCases } from '../application/use-cases/delivery/LocationPinUseCases';
+import { DrizzleLocationPinRepository } from './db/repositories/DrizzleLocationPinRepository';
 import {
   AcceptCalibrationProposalUseCase,
   RejectCalibrationProposalUseCase,
@@ -1913,6 +1915,39 @@ export class Registry {
   // 0189: how well we knew where orders were going, from the capture's own columns.
   public readonly deliveryLocationAccuracyReportUseCase = new DeliveryLocationAccuracyReportUseCase(this.deliveryCalibrationRepo);
 
+  // 0190: WhatsApp location pins → orders (customer) and handovers (rider). Deterministic replies, no model call.
+  public readonly locationPinRepo = new DrizzleLocationPinRepository(this.deliveryConfigReader);
+  public readonly locationPinUseCases = new LocationPinUseCases(this.locationPinRepo, {
+    record: async (input) => {
+      const task = await this.fulfilmentRepo.findById(input.taskId);
+      if (!task) return { ok: false, message: 'that stop is no longer open' };
+      const common = {
+        taskId: input.taskId,
+        actorId: null as unknown as string, // a system actor: the rider is named in the notes, never as an account
+        handover: input.point ? { ...input.point, accuracyM: null } : null,
+        recordedVia: 'rider_whatsapp' as const,
+        notes: 'Recorded by the rider on WhatsApp',
+      };
+      const r =
+        input.outcome === 'delivered'
+          ? await this.recordDeliveryUseCase.execute({ ...common, outcome: 'DELIVERED', deliveredQuantity: task.itemCount, returnedQuantity: 0 })
+          : await this.recordDeliveryUseCase.execute({
+              ...common,
+              outcome: 'DELIVERY_FAILED',
+              failedReason: input.outcome === 'absent' ? 'Customer not there (rider, WhatsApp)' : 'Could not find the address (rider, WhatsApp)',
+              deliveredQuantity: 0,
+              returnedQuantity: 0,
+            });
+      return r.ok ? { ok: true } : { ok: false, message: r.message };
+    },
+    setFindDifficulty: async (taskId, difficulty) => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      await db.execute(sql`update fulfilment_deliveries set find_difficulty = ${difficulty}
+        where id = (select id from fulfilment_deliveries where fulfilment_task_id = ${taskId} order by attempt desc limit 1)`);
+    },
+  });
+
   // The variance write path (PART 5). decideVariance decides; these apply.
   public readonly deliveryVarianceRepo = new DrizzleDeliveryVarianceRepository();
   public readonly applyDeliveryVarianceUseCase = new ApplyDeliveryVarianceUseCase(
@@ -2949,6 +2984,7 @@ export class Registry {
     (conversation, text) => this.goldieSocialUseCases.teamReply(conversation, text),
     whatsAppDeliveryStore,
     Math.min(Math.max(Number(process.env.GOLDIE_BURST_WAIT_MS ?? 2000) || 0, 0), 10_000),
+    this.locationPinUseCases,
   );
   /** Goldie on Facebook Messenger and Instagram Direct. Off until GOLDIE_MESSENGER_ENABLED / GOLDIE_INSTAGRAM_ENABLED and a page token. */
   public readonly goldieSocialUseCases = new GoldieSocialUseCases(

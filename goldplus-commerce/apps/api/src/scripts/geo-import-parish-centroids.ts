@@ -45,6 +45,7 @@ import {
 } from '@goldplus/shared';
 import { db } from '../infrastructure/db/client';
 import { DeliveryConfigReader } from '../infrastructure/delivery/DeliveryConfigReader';
+import { pgJsonb } from '../infrastructure/db/PgParams';
 import { haversineKm } from '../domain/delivery/DeliveryOrigin';
 import { DistanceBand, isDistanceBand } from '../domain/delivery/DeliveryModel';
 import {
@@ -543,7 +544,7 @@ export async function runParishCentroidImport(opts: ImportOptions): Promise<Impo
   const runRows = (await db.execute(sql`
     insert into geo_data_source_run (source_name, vintage, file_name, md5, rows_read, rows_matched, rows_written, params, mode, started_by, finished_at, note)
     values (${manifestRow?.source_name ?? 'ubos-parishes-2016'}, ${manifestRow?.vintage || null}, ${path.basename(csvPath)}, ${md5},
-            ${parishes.length}, ${outcome.matched.length}, ${applied ? applied.added + applied.changed : 0}, ${JSON.stringify(params)}::jsonb,
+            ${parishes.length}, ${outcome.matched.length}, ${applied ? applied.added + applied.changed : 0}, ${pgJsonb(params)},
             ${applied ? 'applied' : 'dry_run'}, ${opts.startedBy ?? null}, now(),
             ${`ambiguous ${outcome.ambiguous.length}, unmatched ${outcome.unmatched.length}, guarded ${counts.guarded}, suspect_band ${counts.suspectBand}`})
     returning id`)) as unknown as Array<{ id: number | string }>;

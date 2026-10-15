@@ -55,6 +55,12 @@ promise rather than a default.
 | `copy_below_minimum_order` | string | — | `This order is below our minimum for this destination. You ca` | — | Order below the minimum for its destination |
 | `copy_unavailable_parcel_class_unknown` | string | — | `We ship to your area by bus. Place your order and our team w` | — | Shipping class not set for something in the basket |
 | `copy_parcel_count_notice` | string | — | `Bus parcels are charged per parcel, so a larger order can sh` | — | Explaining per-parcel charging |
+| `copy_pin_confirm` | string | — | `Is this where we deliver order {{order}}?` | — | Pin received: confirm question |
+| `copy_pin_received` | string | — | `Thanks. We have your location for order {{order}}. The rider` | — | Pin kept |
+| `copy_pin_save_ask` | string | — | `Save this spot to your address for next time?` | — | Save to address: question |
+| `copy_pin_no_order` | string | — | `Thanks. We don't see an open order for this number, so we ha` | — | Pin with no open order |
+| `copy_pin_rejected` | string | — | `That pin doesn't look like a delivery address. Type the area` | — | Pin refused |
+| `copy_handover_prompt` | string | — | `Order {{order}} at {{area}}. How did it go?` | — | Rider handover: question |
 | `copy_pin_nudge` | string | — | `Drop a location pin so our rider can find you first time.` | — | Location pin request |
 
 ## Tier 2 — maker and checker
@@ -63,6 +69,7 @@ promise rather than a default.
 |---|---|---|---|---|---|
 | `own_rider_max_band` **(required)** | string | distance band | **unset** | B0 / B1 / B2 / B3 / B4 / B5 / B6 | How far out our own rider goes |
 | `distance_source` | string | — | `band_midpoint` | band_midpoint / measured | Which distance the fee is worked out from |
+| `pin_retention_days` | integer | days | `180` | 30 to 365 | How long a delivery pin is kept |
 
 ## Help text, as an operator sees it
 
@@ -107,4 +114,11 @@ promise rather than a default.
 - **Order below the minimum for its destination** (`copy_below_minimum_order`) — Informative, never a block, and shown with the minimum and the shortfall.
 - **Shipping class not set for something in the basket** (`copy_unavailable_parcel_class_unknown`) — A gap in OUR product data, never the customer's fault, so the sentence says nothing about it. Ops sees the real cause in the manual queue.
 - **Explaining per-parcel charging** (`copy_parcel_count_notice`) — Shown with the parcel count BEFORE the customer commits. Two parcels is two fees, and a surprise there is a dispute.
+- **How long a delivery pin is kept** (`pin_retention_days`) — A location a customer or rider shared for an order is deleted this many days after it was captured (the nightly purge). A pin the customer chose to save to their address stays until they remove it. The privacy page states this number.
+- **Pin received: confirm question** (`copy_pin_confirm`) — Asked with Yes / No buttons before a shared location is kept. {{order}} is the order number. A pin is never stored without the Yes.
+- **Pin kept** (`copy_pin_received`) — After the customer confirms. Never a claim about the fee: the quote does not change because a pin arrived.
+- **Save to address: question** (`copy_pin_save_ask`) — Asked with Save / Don't save buttons, only to a customer with an account. Nothing is saved without the tap.
+- **Pin with no open order** (`copy_pin_no_order`) — A location from a number with no open order in the last fortnight. The pin is not stored.
+- **Pin refused** (`copy_pin_rejected`) — A location outside Uganda or at the shop itself. Nothing is stored.
+- **Rider handover: question** (`copy_handover_prompt`) — Sent to a rider who shared a location while a stop is out for delivery, with Delivered / Customer not there / Couldn't find it buttons.
 - **Location pin request** (`copy_pin_nudge`) — Deliberately makes NO claim about time saved. No delivery has been completed with a pin yet, so any number would be invented. Add the claim here once the split is measured.

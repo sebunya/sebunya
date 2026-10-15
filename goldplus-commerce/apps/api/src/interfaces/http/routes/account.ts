@@ -239,6 +239,19 @@ routes.post('/addresses/:id/default', async (c) => {
   return c.json(res);
 });
 
+/** 0190: forget the location pin on a saved address (the address itself stays). The customer's call, one tap. */
+routes.post('/addresses/:id/remove-pin', async (c) => {
+  const userId = c.get('userId') as string;
+  const result = await Registry.getInstance().addressRepo.updateForUser(userId, String(c.req.param('id') ?? ''), {
+    gpsLat: null,
+    gpsLng: null,
+    gpsAccuracyM: null,
+    gpsSource: null,
+  });
+  if (!result) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'That address was not found.' } }, 404);
+  return c.json({ success: true, data: { id: result.after.id } });
+});
+
 routes.delete('/addresses/:id', async (c) => {
   const userId = c.get('userId') as string;
   const registry = Registry.getInstance();

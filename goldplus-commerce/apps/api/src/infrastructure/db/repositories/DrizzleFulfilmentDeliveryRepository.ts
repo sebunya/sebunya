@@ -56,6 +56,10 @@ export class DrizzleFulfilmentDeliveryRepository implements IFulfilmentDeliveryR
         deliveredQuantity: input.deliveredQuantity,
         returnedQuantity: input.returnedQuantity,
         notes: input.notes,
+        handoverLat: input.handover ? input.handover.lat.toFixed(6) : null,
+        handoverLng: input.handover ? input.handover.lng.toFixed(6) : null,
+        handoverAccuracyM: input.handover?.accuracyM ?? null,
+        recordedVia: input.recordedVia ?? 'office',
       })
       .onConflictDoNothing({ target: [fulfilmentDeliveries.fulfilmentTaskId, fulfilmentDeliveries.attempt] })
       .returning();

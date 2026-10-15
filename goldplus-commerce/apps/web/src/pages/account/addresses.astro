@@ -92,6 +92,12 @@ if (Astro.request.method === 'POST') {
         const json: any = await res.json().catch(() => null);
         status = res.ok && json?.success ? 'success' : 'error';
         message = status === 'success' ? 'Default address updated.' : json?.error?.message ?? 'Could not update the default.';
+      } else if (action === 'remove-pin') {
+        const id = encodeURIComponent(String(form.get('id') || ''));
+        const res = await fetch(`${apiBase}/account/addresses/${id}/remove-pin`, { method: 'POST', headers: authHeaders, signal: AbortSignal.timeout(6000) });
+        const json: any = await res.json().catch(() => null);
+        status = res.ok && json?.success ? 'success' : 'error';
+        message = status === 'success' ? 'Location pin removed. The address stays; the rider will ask for directions next time.' : json?.error?.message ?? 'Could not remove the pin.';
       } else if (action === 'delete') {
         const id = encodeURIComponent(String(form.get('id') || ''));
         const res = await fetch(`${apiBase}/account/addresses/${id}`, {
@@ -172,7 +178,19 @@ try {
                 <p class="text-sm text-brand-charcoal">{a.recipientName}</p>
                 <p class="text-sm text-brand-mutedGrey">{a.areaDetails}, {a.district}</p>
                 <p class="text-xs text-brand-mutedGrey mt-1">{a.phone}</p>
+                {typeof (a as any).gpsLat === 'number' && (
+                  <p class="text-xs text-brand-mutedGrey mt-1">
+                    Location pin saved{(a as any).gpsCapturedAt ? ` on ${new Date((a as any).gpsCapturedAt).toLocaleDateString('en-UG', { timeZone: 'Africa/Kampala' })}` : ''}. Our rider goes straight to it.
+                  </p>
+                )}
                 <div class="flex items-center gap-2 mt-3">
+                  {typeof (a as any).gpsLat === 'number' && (
+                    <form method="POST">
+                      <input type="hidden" name="action" value="remove-pin" />
+                      <input type="hidden" name="id" value={a.id} />
+                      <button type="submit" class="rounded-full border border-brand-borderGrey px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-brand-mutedGrey hover:text-brand-charcoal">Remove pin</button>
+                    </form>
+                  )}
                   {!a.isDefault && (
                     <form method="POST">
                       <input type="hidden" name="action" value="default" />

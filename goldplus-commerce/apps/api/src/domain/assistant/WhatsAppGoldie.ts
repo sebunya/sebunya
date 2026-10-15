@@ -16,7 +16,16 @@ export interface InboundText {
   at: Date;
   /** A photo, voice note, video, document or sticker: Goldie cannot see it, so a person is asked to. */
   media?: { kind: MediaKind; id: string; mimeType: string | null } | null;
+  /**
+   * A shared location, structured. `text` carries only the placeholder below: a coordinate is a front door and
+   * never enters the archive or a model call; the delivery module keeps it, with a purge date.
+   */
+  location?: { lat: number; lng: number; forwarded: boolean } | null;
+  /** A reply-button tap: the id is what was asked, the title is what the customer saw. */
+  button?: { id: string; title: string } | null;
 }
+
+export const LOCATION_PLACEHOLDER = '[Location shared]';
 
 export type MediaKind = 'image' | 'audio' | 'video' | 'document' | 'sticker';
 const MEDIA_LABEL: Record<MediaKind, string> = { image: 'Photo', audio: 'Voice note', video: 'Video', document: 'Document', sticker: 'Sticker' };
@@ -62,10 +71,17 @@ export function parseInboundTexts(payload: unknown, wabaId: string, now: Date = 
         if (!DIGITS.test(from) || !id) continue;
         let text = '';
         let media: InboundText['media'] = null;
+        let location: InboundText['location'] = null;
+        let button: InboundText['button'] = null;
         const type = String(msg?.type ?? '');
         if (type === 'text') text = String(msg?.text?.body ?? '');
         else if (type === 'button') text = String(msg?.button?.text ?? '');
-        else if (type === 'interactive') text = String(msg?.interactive?.button_reply?.title ?? msg?.interactive?.list_reply?.title ?? '');
+        else if (type === 'interactive') {
+          const reply = msg?.interactive?.button_reply ?? msg?.interactive?.list_reply ?? null;
+          text = String(reply?.title ?? '');
+          const replyId = typeof reply?.id === 'string' ? reply.id.slice(0, 256) : '';
+          if (replyId) button = { id: replyId, title: text.slice(0, 80) };
+        }
         else if (type === 'image' || type === 'audio' || type === 'video' || type === 'document' || type === 'sticker') {
           // Never dropped: filed with a marker so the team can open it, and the caption (if any) is the words.
           const m = msg?.[type] ?? {};
@@ -76,8 +92,14 @@ export function parseInboundTexts(payload: unknown, wabaId: string, now: Date = 
           }
         } else if (type === 'location') {
           const l = msg?.location ?? {};
-          const place = [l?.name, l?.address].filter((x: unknown) => typeof x === 'string' && x).join(', ');
-          if (Number.isFinite(Number(l?.latitude)) && Number.isFinite(Number(l?.longitude))) text = `My location: ${place ? `${place} ` : ''}(${Number(l.latitude).toFixed(5)}, ${Number(l.longitude).toFixed(5)})`;
+          const lat = Number(l?.latitude);
+          const lng = Number(l?.longitude);
+          if (Number.isFinite(lat) && Number.isFinite(lng)) {
+            // The coordinate rides structured; the archived words are the placeholder only (no name, no address either:
+            // Meta's `address` can be a home address).
+            location = { lat, lng, forwarded: msg?.context?.forwarded === true || msg?.context?.frequently_forwarded === true };
+            text = LOCATION_PLACEHOLDER;
+          }
         } else if (type === 'contacts') {
           const c = Array.isArray(msg?.contacts) ? msg.contacts[0] : null;
           const phone = c?.phones?.[0]?.phone ?? c?.phones?.[0]?.wa_id;
@@ -90,7 +112,7 @@ export function parseInboundTexts(payload: unknown, wabaId: string, now: Date = 
         if (!text) continue;
         const sec = Number(msg?.timestamp);
         const at = Number.isFinite(sec) && sec > 0 && sec * 1000 <= now.getTime() + 5 * 60_000 ? new Date(sec * 1000) : now;
-        out.push({ from, name: names.get(from) ?? null, text, messageId: id, phoneNumberId: typeof value?.metadata?.phone_number_id === 'string' ? value.metadata.phone_number_id : null, at, media });
+        out.push({ from, name: names.get(from) ?? null, text, messageId: id, location, button, phoneNumberId: typeof value?.metadata?.phone_number_id === 'string' ? value.metadata.phone_number_id : null, at, media });
       }
     }
   }
