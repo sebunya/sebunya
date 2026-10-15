@@ -198,6 +198,8 @@ export class ApplyRefundToLoyaltyUseCase {
     private readonly clawback: Pick<ClawbackOrderEarnUseCase, 'execute'>,
     private readonly reverseRedemption: Pick<ReverseRedemptionUseCase, 'execute'>,
     private readonly reverseReferral?: Pick<ReverseReferralOnRefundUseCase, 'execute'>,
+    /** The order's scratch card (ReverseDrawOnRefundUseCase). Optional so older suites construct unchanged. */
+    private readonly reverseDraw?: { execute(input: { orderId: string; reason: string }): Promise<unknown> },
   ) {}
 
   async execute(input: { orderId: string; refundedShareBps: number; reason: string }): Promise<void> {
@@ -214,6 +216,9 @@ export class ApplyRefundToLoyaltyUseCase {
       await this.reverseReferral
         ?.execute({ orderId: input.orderId, reason: input.reason })
         .catch((error) => appLogger.error({ orderId: input.orderId, err: (error as Error).message }, 'loyalty refund referral reversal failed'));
+      await this.reverseDraw
+        ?.execute({ orderId: input.orderId, reason: input.reason })
+        .catch((error) => appLogger.error({ orderId: input.orderId, err: (error as Error).message }, 'loyalty refund scratch card reversal failed'));
     }
   }
 }
