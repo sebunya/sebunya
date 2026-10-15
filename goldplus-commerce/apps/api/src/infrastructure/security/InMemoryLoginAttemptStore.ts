@@ -5,6 +5,7 @@ const MAX_AGE_MS = 60 * 60 * 1000; // entries older than an hour are irrelevant 
 /** Process-local store, pruned periodically — mirrors the middleware limiter pattern. */
 export class InMemoryLoginAttemptStore implements ILoginAttemptStore {
   private readonly failures = new Map<string, Date[]>();
+  private readonly remembered = new Map<string, number>();
 
   constructor() {
     setInterval(() => this.prune(), 5 * 60 * 1000).unref?.();
@@ -31,5 +32,16 @@ export class InMemoryLoginAttemptStore implements ILoginAttemptStore {
 
   async clear(key: string): Promise<void> {
     this.failures.delete(key);
+  }
+
+  async remember(key: string, ttlSeconds: number): Promise<void> {
+    this.remembered.set(key, Date.now() + ttlSeconds * 1000);
+  }
+
+  async isRemembered(key: string): Promise<boolean> {
+    const until = this.remembered.get(key);
+    if (until === undefined) return false;
+    if (until <= Date.now()) { this.remembered.delete(key); return false; }
+    return true;
   }
 }

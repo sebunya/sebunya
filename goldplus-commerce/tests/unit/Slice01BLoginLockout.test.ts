@@ -104,7 +104,8 @@ describe('AuthenticateUserUseCase lockout (Slice 1B)', () => {
     const r = await uc.execute({ email: 'ghost@example.com', password: 'x', ip: '1.1.1.1' });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.message).toBe('Email or password is incorrect.');
-    expect([...store.map.keys()]).toEqual(['ghost@example.com|1.1.1.1']);
+    // The (email, ip) key, and the account-wide key (owner, 2026-10-15): an unknown email counts the same way.
+    expect([...store.map.keys()]).toEqual(['ghost@example.com|1.1.1.1', 'account|ghost@example.com']);
   });
 
   it('remains fully backwards-compatible without a store', async () => {
