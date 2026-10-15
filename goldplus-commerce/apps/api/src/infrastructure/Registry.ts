@@ -1925,6 +1925,11 @@ export class Registry {
           quotedFeeUgx: charge,
           expectedMinutes: q.kind === 'rider_delivery' ? q.expectedMinutes : null,
           centroidSource: q.explanation.centroidSource,
+          // 0189: how well the location was known, and the point distance the
+          // quote could have used, whether or not distance_source let it.
+          accuracyTier: q.explanation.accuracyTier,
+          centroidKm: q.explanation.centroidKm,
+          centroidExpectedErrorM: q.explanation.centroidExpectedErrorM,
           configVersionId: q.explanation.configVersionId,
           aliasUsed: outcome.resolved?.aliasUsed ?? null,
           // 0152: what the hour and detour fits learn from. The straight line is

@@ -258,9 +258,52 @@ export interface AreaInput {
   /** Only known for areas in the corridor set. */
   accessMode: 'road' | 'water' | null;
   serviceable: boolean;
-  /** Measured centroid distance from the origin, when one exists. */
+  /**
+   * The one-way km the model may PRICE with. Null means "use the band
+   * midpoint". The quoting use case sets it from `centroidKm` only when the
+   * registry's `distance_source` is 'measured'; until then it stays null and
+   * fees do not move while the points are being checked.
+   */
   measuredKm: number | null;
-  centroidSource: 'delivered_pins' | 'manual' | null;
+  centroidSource: CentroidSource;
+  /**
+   * The one-way km from the active origin to the area's point, when the area
+   * has one, recorded on every quote whether or not it priced the fee. This is
+   * the fact; `measuredKm` is the decision to use it.
+   */
+  centroidKm?: number | null;
+  /** How far that point can be wrong, in metres, measured or stated; null = unknown, never guessed. */
+  centroidExpectedErrorM?: number | null;
+}
+
+/**
+ * Where an area's point came from, highest precedence first. A job never
+ * downgrades a source and never overwrites 'manual'. 'parish_centroid' is the
+ * geometric centre of the UBOS 2016 parish polygon (Phase A of the address
+ * system spec); the others were defined by MODEL.md before any existed.
+ */
+export const CENTROID_SOURCES = ['delivered_pins', 'manual', 'parish_centroid'] as const;
+export type CentroidSource = (typeof CENTROID_SOURCES)[number] | null;
+export function isCentroidSource(value: string | null | undefined): value is Exclude<CentroidSource, null> {
+  return typeof value === 'string' && (CENTROID_SOURCES as readonly string[]).includes(value);
+}
+
+/**
+ * How precisely the customer's location was known when the quote was made,
+ * best first. Stored on the capture so ops can tell a quote priced on a
+ * device pin from one priced on a 25-km-wide band.
+ */
+export const ACCURACY_TIERS = ['PIN', 'AREA_POINT', 'BAND_MIDPOINT', 'DISTRICT'] as const;
+export type AccuracyTier = (typeof ACCURACY_TIERS)[number];
+export function accuracyTierFor(input: {
+  hasPin: boolean;
+  centroidKm: number | null | undefined;
+  band: DistanceBand | null | undefined;
+}): AccuracyTier {
+  if (input.hasPin) return 'PIN';
+  if (typeof input.centroidKm === 'number' && Number.isFinite(input.centroidKm)) return 'AREA_POINT';
+  if (input.band) return 'BAND_MIDPOINT';
+  return 'DISTRICT';
 }
 
 /**
@@ -309,6 +352,8 @@ export interface QuoteInputs {
   onTimeTargetBps: number | null;
   windowMinSampleSize: number | null;
   configVersionId: string | null;
+  /** The customer shared a device pin or a map link for this order (0189: sets the PIN accuracy tier). */
+  hasPin?: boolean;
 }
 
 /* ── Output: a quote that explains itself ───────────────────────────────── */
@@ -327,7 +372,11 @@ export interface QuoteExplanation {
   band: DistanceBand | null;
   /** Which distance the quote used, and where it came from. */
   distanceSource: 'measured_centroid' | 'band_midpoint' | null;
-  centroidSource: 'delivered_pins' | 'manual' | null;
+  centroidSource: CentroidSource;
+  /** The area's point distance and its expected error, known or not, used or not (0189). */
+  centroidKm: number | null;
+  centroidExpectedErrorM: number | null;
+  accuracyTier: AccuracyTier;
   oneWayKm: number | null;
   roundTripKm: number | null;
   factors: Record<'corridor' | 'hour' | 'detour' | 'lastMile', LearnedFactor>;
@@ -370,6 +419,13 @@ function emptyExplanation(inputs: QuoteInputs): QuoteExplanation {
     band: inputs.area?.band ?? null,
     distanceSource: null,
     centroidSource: inputs.area?.centroidSource ?? null,
+    centroidKm: inputs.area?.centroidKm ?? null,
+    centroidExpectedErrorM: inputs.area?.centroidExpectedErrorM ?? null,
+    accuracyTier: accuracyTierFor({
+      hasPin: inputs.hasPin === true,
+      centroidKm: inputs.area?.centroidKm,
+      band: inputs.area?.band,
+    }),
     oneWayKm: null,
     roundTripKm: null,
     factors: {

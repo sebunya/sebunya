@@ -62,6 +62,7 @@ promise rather than a default.
 | Key | Type | Unit | Ships as | Range | What it is |
 |---|---|---|---|---|---|
 | `own_rider_max_band` **(required)** | string | distance band | **unset** | B0 / B1 / B2 / B3 / B4 / B5 / B6 | How far out our own rider goes |
+| `distance_source` | string | — | `band_midpoint` | band_midpoint / measured | Which distance the fee is worked out from |
 
 ## Help text, as an operator sees it
 
@@ -78,6 +79,7 @@ promise rather than a default.
 - **Items that fit in one small parcel** (`parcel_capacity_small_items`) — Above this the order ships as more than one parcel, and each parcel is charged. Unset means a multi-item small basket goes to the manual queue rather than guessing how many fees to charge.
 - **Items that fit in one medium parcel** (`parcel_capacity_medium_items`) — Above this the order ships as more than one parcel, and each parcel is charged. Unset means a multi-item medium basket goes to the manual queue rather than guessing how many fees to charge.
 - **Items that fit in one large parcel** (`parcel_capacity_large_items`) — Above this the order ships as more than one parcel, and each parcel is charged. Unset means a multi-item large basket goes to the manual queue rather than guessing how many fees to charge.
+- **Which distance the fee is worked out from** (`distance_source`) — 'band_midpoint' prices every area at the middle of its distance band, as the module has always done. 'measured' prices an area by the straight-line km to its own point (times the learned detour factor) wherever one exists, and falls back to the band midpoint where none does. Ships as 'band_midpoint': the points are loaded and checked first, and the km are recorded on every quote either way, so switching changes nothing you have not already seen in the capture.
 - **Round the fee up to a multiple of** (`fee_rounding_step_ugx`) — A quote of 4,317 is unusable in a cash market and a rider needs to make change. Applied after the margin and before the minimum fee.
 - **Reject a rider cost above** (`implausible_rider_cost_ugx`) — A single delivery costing more than this is a typo, not a delivery. Raise it if a genuine long-haul run ever costs more.
 - **Warn if a derived speed is below** (`plausible_speed_min_kmh`) — Only a warning on the setup wizard. It never changes a fee and never blocks a publish.

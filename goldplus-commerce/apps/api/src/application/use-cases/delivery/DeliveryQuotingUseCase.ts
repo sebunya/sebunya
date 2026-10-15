@@ -118,6 +118,18 @@ export type QuoteOutcome = {
   thresholdBasisUgx: number;
 };
 
+/**
+ * 0189: the resolver reports the area's point distance as a fact on every
+ * quote (`centroidKm`); the registry's `distance_source` decides whether the
+ * model may PRICE with it. Anything but 'measured' leaves `measuredKm` null,
+ * so loading the points changes no fee until an operator flips the key.
+ */
+export function withMeasuredDistance(area: AreaInput, distanceSource: string | null): AreaInput {
+  const km = area.centroidKm;
+  const usable = distanceSource === 'measured' && typeof km === 'number' && Number.isFinite(km) && km >= 0;
+  return { ...area, measuredKm: usable ? km : null };
+}
+
 export class DeliveryQuotingUseCase {
   constructor(
     private readonly repo: IDeliveryQuotingRepository,
@@ -211,6 +223,7 @@ export class DeliveryQuotingUseCase {
       config: numeric,
       hasActiveOrigin: origin,
       originCode,
+      hasPin: request.hasPin === true,
       corridorFactor: factors.corridor,
       hourFactor: factors.hour,
       detourFactor: factors.detour,
@@ -227,8 +240,12 @@ export class DeliveryQuotingUseCase {
       : null;
 
     const freeDeliveryThresholdUgx = zoneFreeDeliveryThreshold ?? numeric.free_delivery_threshold_ugx ?? null;
+    // 0189: the area's point distance is a fact the resolver carries on every
+    // quote; whether the model PRICES with it is the registry's decision. Off
+    // by default, so loading and checking the points moves no fee.
+    const areaForQuote = resolved ? withMeasuredDistance(resolved.input, raw.distance_source ?? null) : null;
     const unwaived = quoteFulfilment({
-      area: resolved?.input ?? null,
+      area: areaForQuote,
       mode,
       rider,
       bus: {

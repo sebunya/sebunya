@@ -1,4 +1,5 @@
 import {
+  accuracyTierFor,
   AreaInput,
   QuoteExplanation,
   QuoteInputs,
@@ -133,6 +134,13 @@ function baseExplanation(inputs: FulfilmentQuoteInputs): QuoteExplanation {
     band: inputs.area?.band ?? null,
     distanceSource: null,
     centroidSource: inputs.area?.centroidSource ?? null,
+    centroidKm: inputs.area?.centroidKm ?? null,
+    centroidExpectedErrorM: inputs.area?.centroidExpectedErrorM ?? null,
+    accuracyTier: accuracyTierFor({
+      hasPin: inputs.rider.hasPin === true,
+      centroidKm: inputs.area?.centroidKm,
+      band: inputs.area?.band,
+    }),
     oneWayKm: null,
     roundTripKm: null,
     factors: {

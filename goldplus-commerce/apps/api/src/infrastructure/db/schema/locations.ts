@@ -45,6 +45,11 @@ export const ugArea = pgTable(
     deliveryZoneCode: varchar('delivery_zone_code', { length: 8 }),
     selectable: boolean('selectable').default(true).notNull(),
     isMetro: boolean('is_metro').default(false).notNull(),
+    /**
+     * 0189: what the postcode row actually is. The 2019 list names prisons, barracks, a university and national
+     * parks as parishes; institution/barracks are priced as their parish, reserve/water/island never for a door.
+     */
+    areaKind: varchar('area_kind', { length: 20 }).default('neighbourhood').notNull(),
     /** lowercase, unaccented, orthography-folded text the trigram index runs on */
     searchText: text('search_text').notNull(),
     dataVersion: integer('data_version').notNull(),

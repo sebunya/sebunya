@@ -222,6 +222,17 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
 
   // ── Set by Rob explicitly ───────────────────────────────────────────────
   {
+    key: 'distance_source',
+    tier: 2,
+    type: 'string',
+    unit: null,
+    mandatory: false,
+    defaultValue: 'band_midpoint',
+    allowedValues: ['band_midpoint', 'measured'],
+    label: 'Which distance the fee is worked out from',
+    help: "'band_midpoint' prices every area at the middle of its distance band, as the module has always done. 'measured' prices an area by the straight-line km to its own point (times the learned detour factor) wherever one exists, and falls back to the band midpoint where none does. Ships as 'band_midpoint': the points are loaded and checked first, and the km are recorded on every quote either way, so switching changes nothing you have not already seen in the capture.",
+  },
+  {
     key: 'fee_rounding_step_ugx',
     tier: 1,
     type: 'ugx',

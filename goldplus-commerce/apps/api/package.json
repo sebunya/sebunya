@@ -8,6 +8,7 @@
     "start": "node dist/interfaces/http/server.js",
     "db:generate": "drizzle-kit generate:pg",
     "db:migrate": "tsx src/infrastructure/db/migrations/migrate.ts",
+    "geo:parish-centroids": "tsx src/scripts/geo-import-parish-centroids.ts",
     "db:studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"src/**/*.{ts,tsx}\""
