@@ -1,7 +1,9 @@
 # Kampala Metropolitan Address System — specification
 
-Version 1, 2026-10-15. Research and design for making delivery locations, and therefore delivery fees, more
-accurate on shopgoldplus.com. Written for a coding assistant or engineer to build from.
+Version 1.3, 2026-10-15 (revised the same day three times: owner-supplied datasets §3.9–3.12, the postcode scheme as
+join spine §3.1, and administrative change §14). Research and design for making delivery locations, and therefore
+delivery fees, more accurate on shopgoldplus.com. Written for a coding assistant or engineer to build from.
+District count used throughout: **146 districts and cities** (Electoral Commission, 2025), counted together.
 
 **Read these first and keep them in context:** `docs/delivery/CONTRACT.md` (the ten guarantees; nothing below
 breaks them), `docs/location-module-brief.md` (PART L: never make a paid geocoder a dependency; never invent fees
@@ -70,7 +72,7 @@ PostGIS patterns. Three of its data claims do not hold; the design below works a
    different file the owner supplied, the UBOS 2016 parish shapefile (§3.9), which becomes the primary source of area
    centroids; village polygons exist nowhere open.
 4. **(Self-correction, same day.)** My first draft matched polygons to areas "within the same district". The
-   datasets use five different district lists (116, 128, 135, 146+11, 222), so that rule fails for every district
+   datasets use five different district lists (116, 128, 135, 146, 222), so that rule fails for every district
    created after 2016. Matching now runs inside a district lineage family (§3.1, §6.1c). The same draft treated every
    postcode row as a deliverable neighbourhood; the source tables include prisons, barracks, a university, national
    parks and mountains as "parishes". §6.1b classifies them so they are never priced as homes.
@@ -126,8 +128,11 @@ logic never assumes the list is clean):**
 **District drift, the thing my first draft got wrong.** Every source has its own district list: 2016 polygons 116
 districts; 2019 postcodes 128 (still with Kazo under Kiruhura, Madi-Okollo under Arua, Kitagwenda under Kamwenge,
 Kalaki under Kaberamaido, Obongi under Moyo, Rwampara under Mbarara); `ug_area` 135 + Terego; EC 2020 135; the EC
-2025/26 selector 222 electoral districts (cities and municipalities counted separately); UBOS 2024 146 districts and
-11 cities. §7.0 originally matched polygon parishes "within the same district", which would silently fail for every
+2025/26 selector 222 electoral districts (cities and municipalities counted separately); and the **current
+authoritative count, the Electoral Commission's 2025 statistics: 146 districts and cities** (counted together; this is
+the number the spec uses everywhere, and `ug_district` is seeded by enumerating those 146, not from the selector's
+222 or from any separate district/city tally). §7.0 originally matched polygon parishes "within the same district",
+which would silently fail for every
 parish in a district created after 2016. The fix is a `district_lineage` table (§6.1c): each current district maps to
 its 2016 parent, and all name matching runs within the **lineage family**, not the current district.
 
@@ -392,12 +397,18 @@ A lineage family is the transitive closure over `district_lineage` (a district, 
 sibling carved from the same parent). The 2016 shapefile's district is always an ancestor, so every current district
 resolves to a 2016 polygon set. A city and the district it was carved from are one family (Mbarara City and Mbarara
 District: a customer saying "Mbarara" means either, and it does not matter for the quote because the quote comes from
-the point). Seed: the 2021 list already in code, plus the 2020 cities, plus the known post-2016 creations (Kassanda ←
+the point). In "Browse by district" both the city and its district are listed (customers say "Mbarara City" and
+"Mbarara" interchangeably); choosing either searches the whole family's areas. Seed: the EC's 2025 list of 146
+districts and cities, reconciled against the 2021 list already in code, plus the known post-2016 creations (Kassanda ←
 Mubende; Kikuube ← Hoima; Bugweri ← Iganga; Kapelebyong ← Amuria; Nabilatuk ← Nakapiripirit; Kwania ← Apac; Kazo ←
 Kiruhura; Kitagwenda ← Kamwenge; Rwampara ← Mbarara; Kalaki ← Kaberamaido; Obongi ← Moyo; Madi-Okollo and Terego ←
 Arua; Karenga ← Kaabong; Rukiga ← Kabale; Bunyangabu ← Kabarole; Namisindwa ← Manafwa; Butebo ← Pallisa; Kyotera ←
 Rakai; Pakwach ← Nebbi; Omoro ← Gulu; Kagadi and Kakumiro ← Kibaale), plus the 2025 approvals as `proposed` (Mukuju,
 Mulanda and the third Tororo district; Tororo City) until gazetted.
+
+`ug_area.current_district` gets a foreign key to `ug_district.district` once the table is seeded (the importer's 140
+`district_changed` rows, where the 2019 document's district differs from today's, are the first lineage evidence and
+seed `district_lineage` rows with `source='manual'` for review).
 
 **Code changes this implies (small):** `normalizeUgandaDistrict()` keeps the shared list as an offline fallback but the
 API validates against `ug_district` (active or proposed) including aliases; the checkout "Browse by district" list is
@@ -859,6 +870,8 @@ Rules: remove `\(.*?\)` and `\[.*?\]` voter ranges; expand `P/S`, `P.S`, `S.S.S`
 
 ## Appendix E — sources
 - Research note: "Strategic Geospatial Architecture and Last-Mile Logistics Optimization for E-Commerce Delivery in Uganda" (owner-supplied, 2026).
+- Owner-supplied datasets (2026-10-15): Ministry of ICT draft postcode tables (April 2019; also techjaja.com, 2020); `uganda-APIs` repo with UBOS `Ug_Parishes_2016` shapefile; `locations-uganda`, `uganda-geo-data`, `ug-locale` (passport-portal hierarchy); `uganda-location-selector` (EC 2025/26 codes); Kalulu election data.
+- District count: Electoral Commission statistics ahead of the 2026 election (Daily Monitor, 2025): 146 districts and cities, up from 135 in 2021; April 2025 approval of three districts and Tororo City (Pulse Uganda). The Gazette is the source of record for effective dates.
 - HDX `cod-ab-uga` metadata (CKAN API, 2026-09-24 resources); GeoNames `UG.zip` (2026-10-15 download); Kalulu repo file list and `voter_register_summary_2020.csv` (fetched 2026-10-15); Overpass counts (2026-10-15, mirrors as noted).
 - Google Maps Platform pricing page (page dated 2026-10-14); Mapbox pricing page (2026-10-15).
 - Nominatim usage policy (1 req/s, no bulk, caching required).
