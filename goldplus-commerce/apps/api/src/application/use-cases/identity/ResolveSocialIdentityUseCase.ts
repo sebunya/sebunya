@@ -72,7 +72,7 @@ export class ResolveSocialIdentityUseCase {
         ok: false,
         code: 'NO_EMAIL_FROM_PROVIDER',
         message:
-          'Your provider did not share an email address, so we cannot match or create an account. Sign in with your email and password, then link the provider from your account settings.',
+          'Your provider did not share an email address, so we cannot match or create an account. Sign in with your email and password, then connect it under Account, Sign-in methods.',
       };
     }
 
@@ -99,7 +99,7 @@ export class ResolveSocialIdentityUseCase {
         ok: false,
         code: 'MANUAL_LINK_REQUIRED',
         message:
-          'An account already uses this email address. Sign in with your password first, then link this provider from your account settings — we will not attach it automatically.',
+          'An account already uses this email address. Sign in with your password first, then connect this provider under Account, Sign-in methods. We do not attach it automatically.',
       };
     }
 

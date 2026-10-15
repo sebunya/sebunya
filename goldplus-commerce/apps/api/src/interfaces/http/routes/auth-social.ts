@@ -16,6 +16,8 @@ import {
   verifyIdToken,
 } from '../../../infrastructure/identity/OidcProviders';
 import { ResolveSocialIdentityUseCase } from '../../../application/use-cases/identity/ResolveSocialIdentityUseCase';
+import { LinkSocialIdentityUseCase } from '../../../application/use-cases/identity/LinkSocialIdentityUseCase';
+import { bearerTokenFrom, resolveLiveSession } from '../middleware/liveSession';
 import { stitchInBackground } from '../../../infrastructure/first-party/stitchInBackground';
 
 /**
@@ -49,6 +51,11 @@ interface FlowState {
   nonce: string;
   verifier: string;
   issuedAt: number;
+  /**
+   * Set when a signed-in customer is CONNECTING this provider (Account → Sign-in methods) rather than signing in:
+   * the account it was started for. Sealed, so the exchange can insist on that same account's live session.
+   */
+  linkUserId?: string;
 }
 
 const sealFlow = (flow: FlowState): string => {
@@ -142,6 +149,17 @@ routes.post('/:provider/authorize-url', async (c) => {
     );
   }
 
+  // Connecting a provider to the signed-in account needs that account's live session now, and again at the exchange.
+  const body = await c.req.json().catch(() => null);
+  let linkUserId: string | undefined;
+  if (body?.intent === 'link') {
+    const session = await resolveLiveSession(bearerTokenFrom(c.req.header('Authorization')));
+    if (!session.ok) {
+      return c.json({ success: false, error: { code: session.code, message: session.message } }, session.code === 'ACCOUNT_DISABLED' ? 403 : 401);
+    }
+    linkUserId = session.user.id;
+  }
+
   const { verifier, challenge } = createPkcePair();
   const flow: FlowState = {
     provider,
@@ -149,6 +167,7 @@ routes.post('/:provider/authorize-url', async (c) => {
     nonce: randomToken(),
     verifier,
     issuedAt: Date.now(),
+    ...(linkUserId ? { linkUserId } : {}),
   };
 
   const authorizationUrl = buildAuthorizationUrl({
@@ -202,6 +221,16 @@ routes.post('/:provider/exchange', async (c) => {
   const credentials = await providerCredentials(provider);
   if (!credentials) return refuse('NOT_CONFIGURED', 'This provider is not configured.', 503);
 
+  // A connect (Account → Sign-in methods) is finished only by the account that started it, checked before the
+  // provider is called: a different or ended session spends nothing and links nothing.
+  if (flow.linkUserId) {
+    const session = await resolveLiveSession(bearerTokenFrom(c.req.header('Authorization')));
+    if (!session.ok || session.user.id !== flow.linkUserId) {
+      logger.warn({ provider }, 'SOCIAL_LINK_SESSION_MISMATCH');
+      return refuse('LINK_SESSION_MISMATCH', 'Sign in again, then connect the provider from your account.', 401);
+    }
+  }
+
   const exchanged = await exchangeCodeForIdToken({
     provider,
     code,
@@ -226,6 +255,40 @@ routes.post('/:provider/exchange', async (c) => {
   }
 
   const registry = Registry.getInstance();
+
+  if (flow.linkUserId) {
+    // A connect, not a sign-in: no new session is issued (the session was checked above).
+    const linked = await new LinkSocialIdentityUseCase(registry.userRepo, registry.socialIdentityRepo).execute({
+      userId: flow.linkUserId,
+      provider,
+      subject: verified.identity.subject,
+      email: verified.identity.email,
+      emailVerified: verified.identity.emailVerified,
+      providerName: OIDC_PROVIDERS[provider].displayName,
+    });
+    if (!linked.ok) {
+      logger.info({ provider, code: linked.code }, 'SOCIAL_LINK_REFUSED');
+      return refuse(linked.code, linked.message, linked.code === 'ACCOUNT_DISABLED' ? 403 : 409);
+    }
+    if (!linked.alreadyLinked) {
+      await registry.createAuditLogUseCase
+        .execute({
+          actorId: flow.linkUserId,
+          action: 'SOCIAL_IDENTITY_LINKED',
+          entity: 'user',
+          entityId: flow.linkUserId,
+          previousState: null,
+          newState: { provider, emailVerified: verified.identity.emailVerified, from: 'account_settings' },
+        })
+        .catch(() => undefined);
+    }
+    const res: ApiResponse<{ linked: true; alreadyLinked: boolean; provider: string }> = {
+      success: true,
+      data: { linked: true, alreadyLinked: linked.alreadyLinked, provider },
+    };
+    return c.json(res);
+  }
+
   const resolved = await new ResolveSocialIdentityUseCase(registry.userRepo, registry.socialIdentityRepo).execute({
     provider,
     subject: verified.identity.subject,

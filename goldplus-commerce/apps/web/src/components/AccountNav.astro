@@ -1,6 +1,6 @@
 ---
 interface Props {
-  active: 'overview' | 'orders' | 'loyalty' | 'rewards' | 'addresses' | 'preferences' | 'password' | 'privacy';
+  active: 'overview' | 'orders' | 'loyalty' | 'rewards' | 'addresses' | 'preferences' | 'password' | 'sign-in' | 'privacy';
 }
 const { active } = Astro.props;
 
@@ -12,6 +12,7 @@ const items = [
   { key: 'addresses', href: '/account/addresses', label: 'Addresses' },
   { key: 'preferences', href: '/account/preferences', label: 'Preferences' },
   { key: 'password', href: '/account/password', label: 'Password' },
+  { key: 'sign-in', href: '/account/sign-in', label: 'Sign-in methods' },
   { key: 'privacy', href: '/account/privacy', label: 'Your data' },
 ] as const;
 ---

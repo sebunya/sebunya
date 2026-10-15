@@ -1,13 +1,17 @@
 import { safeReturnTo } from '../../../lib/safeReturnTo';
 import type { APIRoute } from 'astro';
 import { apiBase } from '../../../lib/api';
-import { signInCookieHeaders } from '../../../lib/session';
+import { readSessionToken, signInCookieHeaders } from '../../../lib/session';
 import { SIGNED_UP_COOKIE } from '../../../lib/siteSignalRules';
 
 /**
  * Complete social sign-in (0106).
  *
- * Handles GET (Google, Facebook) and POST (Apple's form_post response mode).
+ * Handles GET: Google and Facebook return here directly, and Apple's form POST reaches it as a GET through the API
+ * relay (POST /auth/social/apple/form-post). POST is still accepted for a direct form post.
+ *
+ * A flow started from Account → Sign-in methods (intent "link") connects the provider to the signed-in account:
+ * the session goes with the exchange, no new session is set, and the customer returns to that page.
  * The API verifies everything cryptographically; this route's only jobs are to
  * hand back the sealed flow, clear it so it cannot be replayed, and set the
  * session cookie on the storefront host.
@@ -15,7 +19,9 @@ import { SIGNED_UP_COOKIE } from '../../../lib/siteSignalRules';
 
 const FLOW_COOKIE = 'gp_oauth_flow';
 
-const readFlowCookie = (request: Request): { sealedFlow: string; returnTo: string; provider: string } | null => {
+const LINK_PAGE = '/account/sign-in';
+
+const readFlowCookie = (request: Request): { sealedFlow: string; returnTo: string; provider: string; intent?: string } | null => {
   const header = request.headers.get('cookie') ?? '';
   const raw = header
     .split(';')
@@ -36,10 +42,12 @@ const handle: APIRoute = async ({ params, request, url }) => {
   const secure = url.protocol === 'https:' ? '; Secure' : '';
   const clearFlow = `${FLOW_COOKIE}=; Path=/; HttpOnly${secure}; SameSite=Lax; Max-Age=0`;
 
+  const flow = readFlowCookie(request);
+  const link = flow?.intent === 'link';
   const fail = (code: string) =>
     new Response(null, {
       status: 303,
-      headers: { Location: `/login?social_error=${code}`, 'Set-Cookie': clearFlow },
+      headers: { Location: `${link ? LINK_PAGE : '/login'}?social_error=${encodeURIComponent(code)}`, 'Set-Cookie': clearFlow },
     });
 
   let code: string | null = null;
@@ -53,14 +61,15 @@ const handle: APIRoute = async ({ params, request, url }) => {
     state = url.searchParams.get('state');
   }
 
-  const flow = readFlowCookie(request);
   if (!flow || flow.provider !== provider) return fail('state');
   if (!code || !state) return fail('cancelled');
 
   try {
+    const token = link ? readSessionToken(request) : null;
+    if (link && !token) return fail('unauthenticated');
     const res = await fetch(`${apiBase}/auth/social/${encodeURIComponent(provider)}/exchange`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       body: JSON.stringify({ code, state, sealedFlow: flow.sealedFlow }),
       signal: AbortSignal.timeout(12000),
     });
@@ -69,6 +78,13 @@ const handle: APIRoute = async ({ params, request, url }) => {
     if (!res.ok || !json?.success) {
       const errorCode = String(json?.error?.code ?? 'exchange').toLowerCase();
       return fail(errorCode);
+    }
+
+    if (link) {
+      return new Response(null, {
+        status: 303,
+        headers: { Location: `${LINK_PAGE}?connected=${encodeURIComponent(provider)}`, 'Set-Cookie': clearFlow },
+      });
     }
 
     const { created } = json.data as { token: string; created?: boolean };

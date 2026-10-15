@@ -13,6 +13,9 @@ import { ApiResponse, MeDto, OrderSummaryDto, OrderDetailDto, AddressDto } from 
 import { clientIp } from '../clientAddress';
 import { computeLifetimePoints, soonestUnspentExpiry, tierStanding } from '../../../domain/loyalty/LoyaltyLedger';
 import { stitchInBackground } from '../../../infrastructure/first-party/stitchInBackground';
+import { ListSignInMethodsUseCase, RemoveSignInMethodUseCase } from '../../../application/use-cases/identity/SignInMethodsUseCases';
+import { OIDC_PROVIDERS, isProviderConfigured } from '../../../infrastructure/identity/OidcProviders';
+import { isSocialProvider } from '../../../domain/identity/SocialProvider';
 
 const routes = new Hono<{ Variables: { userId: string; userEmail: string } }>();
 routes.use('*', customerSessionMiddleware);
@@ -464,6 +467,34 @@ routes.get('/preferences/audit', async (c) => {
   const data = await uc.execute(userId);
   const res: ApiResponse<any> = { success: true, data };
   return c.json(res);
+});
+
+/** Account → Sign-in methods: the password and every provider, connected or not. */
+routes.get('/sign-in-methods', async (c) => {
+  const registry = Registry.getInstance();
+  const providers = await Promise.all(
+    Object.values(OIDC_PROVIDERS).map(async (p) => ({ provider: p.provider, displayName: p.displayName, configured: await isProviderConfigured(p.provider) })),
+  );
+  const data = await new ListSignInMethodsUseCase(registry.userRepo, registry.socialIdentityRepo).execute({ userId: c.get('userId'), providers });
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+
+/** Remove a connected provider; refused when it is the last way into the account. */
+routes.post('/sign-in-methods/:provider/remove', async (c) => {
+  const provider = String(c.req.param('provider'));
+  if (!isSocialProvider(provider)) {
+    return c.json({ success: false, error: { code: 'UNKNOWN_PROVIDER', message: 'Unknown sign-in provider.' } } satisfies ApiResponse<never>, 404);
+  }
+  const userId = c.get('userId');
+  const registry = Registry.getInstance();
+  const result = await new RemoveSignInMethodUseCase(registry.socialIdentityRepo).execute({ userId, provider, providerName: OIDC_PROVIDERS[provider].displayName });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, result.code === 'NOT_CONNECTED' ? 404 : 409);
+  }
+  await registry.createAuditLogUseCase
+    .execute({ actorId: userId, action: 'SOCIAL_IDENTITY_UNLINKED', entity: 'user', entityId: userId, previousState: { provider }, newState: null })
+    .catch(() => undefined);
+  return c.json({ success: true, data: { removed: provider } } satisfies ApiResponse<{ removed: string }>);
 });
 
 export default routes;
