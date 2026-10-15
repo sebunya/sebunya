@@ -1,7 +1,7 @@
 # Kampala Metropolitan Address System — specification
 
-Version 2.2, 2026-10-15 (2.1 added §0b, §4.4–4.6, §15 and Week 0; 2.2 is a consistency pass against the code,
-Appendix I items 24–30; nothing from 2.0 is removed). Research and design for making delivery locations, and therefore delivery fees, more
+Version 2.3, 2026-10-15 (2.1 added §0b, §4.4–4.6, §15 and Week 0; 2.2 a consistency pass against the code; 2.3 the
+review board addendum §16, which supersedes parts of §3–§8 as it states; nothing from 2.0 is removed). Research and design for making delivery locations, and therefore delivery fees, more
 accurate on shopgoldplus.com. Written for a coding assistant or engineer to build from. Version 1 (same day, five
 commits on PR #115) was a catalogue of data sources with a design attached; version 2 is the design, with the
 catalogue moved to the appendices and the drafting history to Appendix I. Every measured number from version 1 is
@@ -854,6 +854,81 @@ Written before building, so each failure has an answer in the design rather than
 | The spec was too big and nobody read past §3 | §0 is one page and is the whole plan; everything after §2 is reference for the step being built |
 
 ---
+
+## 16. Review board addendum (2026-10-15)
+
+Eleven independent reviews of Phase A.1 and of this spec (QA, principal engineer, Kampala domain expert, algorithm
+specialist, data scientist, boda rider, customer advocate, database, AI engineering, optimisation, data recency and
+configuration; synthesis in `docs/location/REVIEW_BOARD_2026-10-15.md` on PR #116). Every code-changing finding was
+re-run against the real functions before it was acted on. What the code now does is in the runbook; this section
+records what the reviews **change in the design above**, so a reader of §3–§8 knows where the text is superseded.
+
+**§3.1–3.4, points and matching.** The orthography fold collapses "II" into "I": numerals and dotted acronyms are
+normalised before folding, a bare name against numbered parishes is ambiguous, the unit word ("Ward") breaks ties,
+and a fuzzy match needs Dice ≥ 0.7 and a shared first letter (not the 0.6 lone-winner rule). The expected error is a
+p90 (0.949·R, or the bounding box's RMS half-diagonal when larger), not (2/3)·R, so it is comparable with the p90 of
+pins. Shoreline parishes drawn into Lake Victoria (Kigungu, Nkumba, Kisubi, Busabala, Bussi, Koome, Ggaba, Luzira)
+have their centre in the water: a **point guard** refuses water bodies, polygons over 50 km² and polygons that fill
+under 30% of their box, and lists them for a manual point. The band verdict is by band, with the point's own error
+as the only tolerance and an "adjacent" verdict that is read but never re-banded; the ±2 km rule in §3.4 is
+withdrawn. The detour allowance should become **per corridor** (radial roads ≈ 1.15, Ggaba/Munyonyo and Luzira ≈ 1.5,
+Entebbe Road ≈ 1.3) before it is used for anything beyond the report. The 2016 parish is a container: for areas that
+are villages inside it (Najjera in Kira, Kajjansi in Kitende, Munyonyo in Buziga/Bukasa, Mukono town's wards) the
+point must come from pins, a manual trading-centre point or an OSM place node, which is promoted from "quick
+alternative" to the default for those areas. Post-2016 splits are resolved through village evidence (the 2016
+`village_hq` and the passport-portal village lists), never by a Dice guess.
+
+**§0, §4, measurement.** Nothing wrote `actual_minutes`, `delivered_at` or `first_attempt_success`; they are now
+mirrored from recorded delivery attempts, with `first_attempt_success` false on a failed first attempt. `expected_minutes`
+(round trip plus handling) and the observable actual (dispatch → handover) are on different bases; MODEL.md states
+it and the fitting uses the travel component only. Metric definitions: model-priced share over own-rider quotes;
+minutes error windowed on the delivery date, signed and absolute medians, stratified by tier; first-attempt rate
+over recorded attempts; coverage order-weighted. Attribution of the `distance_source` flip: a paired replay on the
+`centroid_km` the capture stores (same orders, both distances, one actual; sign test), then a corridor holdback under
+a fixed ladder; a before/after read of the dashboard cannot separate the switch from the six numbers, re-banding and
+the rains. Learning pools top-down (tier → corridor → area; dayparts before hours; recency-weighted with a half-life;
+no geohash layer inside Kampala, where cells are finer than parishes); §4.4's cells remain for pins outside the
+gazetteer only. `stops_on_trip` goes on the dispatch now.
+
+**§4.5–4.6, fees.** Ladder rungs in thousands, published as a page ("Delivery to Ntinda: UGX 8,000", no km shown),
+with a dry-run rule that flags a nearer area on a higher rung than a farther one; a re-banded area's customers see
+one sentence explaining the change, up or down, from a registry copy key; the pin nudge shows a saving only when the
+within-area paired estimate (not the global split, which compares different customers) is at least one rounding
+step.
+
+**§5, pins.** The customer ask confirms before storing ("Is this where we deliver order GP-1234?"), never writes to
+the saved address without a second tap, goes out after payment, and offers a receiver's phone at checkout; a WhatsApp
+live location is "where you are now" until confirmed. Riders: one message with four buttons (Delivered / Delivered,
+hard to find / Not there / Can't find) bound to the dispatch, no "nearest stop" radius; pins accepted at ≤ 300 m for
+storage, ≤ 100 m for aggregation; a rider identity table (name, phones, active) and a dispatch template that opens
+the 24-hour window; pay reconciliation from the handover message is the incentive that works. Saved addresses show
+"Location pin saved from your delivery on <date>" with **Remove pin**; the privacy page states the retention from
+the same registry key as the deletion job. The rider card order is phone, area and stage in the customer's words,
+meet-at or house, amount to collect, map link, directions; the accuracy tier is shown in words; Plus Codes stay in
+the data and leave the card.
+
+**§5.1, the assistant.** Today a customer's WhatsApp pin is answered with directions to the shop (the router's STORE
+rule matches "location") and its coordinates are archived for a year and replayed into model calls. The location
+message is intercepted in `handleWhatsApp` before the assistant composes, carried as a structured field with a
+placeholder text (`[Location shared · Ntinda]`), matched to an order by full E.164 and open status, refused when
+forwarded or outside Uganda or at the shop, idempotent on the message id, and answered deterministically; the model
+never sees coordinates, map links or Meta's address string. Fee quotes from a pin go through the one quoting service
+with a point resolver inside it, and the reply is composed from the presented quote, never by the model. The
+archive now redacts coordinates and map links regardless.
+
+**§7, districts and recency.** The "146" is the Electoral Commission's electoral count (Annual Bulletin 2025–2026);
+the Local Government count is 150 with Mukuju, Mulanda, Kisoko (ex-Tororo) and Bughendera (ex-Bundibugyo) deemed
+created in July 2025 and deferred by the EC to the next election. The shop carries both, labelled (`ec-2026` 146,
+`molg-2025` 150), and the lineage lists the four as proposed. Lineage rows, name variants, area-kind rules, the
+acceptance areas and every file checksum are data under `data/geo` with a MANIFEST; every import writes a
+`geo_data_source_run` row (source, vintage, checksum, rows, parameters, who), so every point traces to a source and a
+year. Precedence for names and counts: Gazette > EC lists > UBOS > 2019 postcodes (keys only) > scraped packages;
+news prompts a check, never a source. The yearly drift report also runs within 30 days of an EC demarcation notice.
+
+**§9, build.** The corridor CSV round trip had no apply; it now has apply with a reason, compare-and-set, one audit
+row and a one-action revert. One CSV grammar (`packages/shared/src/csv.ts`) replaces six readers. Not yet done, noted
+for a follow-up: the quote path's eight redundant config reads per cache miss (pre-existing), a single-statement
+corridor apply, and `area_kind` read by the quote path.
 
 ## Appendix A — Data sources, with what was measured (2026-10-15)
 
