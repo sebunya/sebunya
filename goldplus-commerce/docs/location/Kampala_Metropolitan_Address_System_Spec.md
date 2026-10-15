@@ -1,6 +1,6 @@
 # Kampala Metropolitan Address System — specification
 
-Version 2.0, 2026-10-15. Research and design for making delivery locations, and therefore delivery fees, more
+Version 2.1, 2026-10-15 (2.1 adds §0b, §4.4–4.6, §15 and Week 0; nothing from 2.0 is removed). Research and design for making delivery locations, and therefore delivery fees, more
 accurate on shopgoldplus.com. Written for a coding assistant or engineer to build from. Version 1 (same day, five
 commits on PR #115) was a catalogue of data sources with a design attached; version 2 is the design, with the
 catalogue moved to the appendices and the drafting history to Appendix I. Every measured number from version 1 is
@@ -34,11 +34,15 @@ those are kept and extended.
    none of them writes a coordinate anywhere useful.
 4. **The landmark is free text**, so it cannot be matched to a point, reused, or ranked.
 
-**The one success metric.** `delivery_quote_capture` already stores `expected_minutes`, `actual_minutes`,
-`quoted_fee_ugx`, `final_fee_ugx` and `actual_rider_cost_ugx` per order. The module is more accurate when the
-28-day median of |expected − actual| minutes falls and the share of metro orders quoted by the model (not "confirmed
-by phone") rises. Both are computable today from existing columns and form the baseline before any change ships.
-Targets are the owner's to set (contract #4), proposed in §12.
+**The success metrics: three that exist, one to start counting.** `delivery_quote_capture` already stores
+`expected_minutes`, `actual_minutes`, `quoted_fee_ugx`, `final_fee_ugx`, `actual_rider_cost_ugx` and
+`first_attempt_success` per order. (1) The 28-day median of |expected − actual| minutes should fall. (2) The share of
+metro orders quoted by the model (not "confirmed by phone") should rise. (3) **First-attempt success should rise**: a
+failed attempt is a whole second trip, the largest hidden delivery cost in Kampala, and it is what better locations
+fix first. All three are computable today and form the baseline before any change ships. (4) Not measured today: how
+many customers leave at the fee step. The quote endpoint runs before an order exists, so one counter (quotes shown
+per session vs orders placed) makes fee shock visible; add it in Phase A. Targets are the owner's to set (contract
+#4), proposed in §12.
 
 **The order of work (critical path, nothing else is on it):**
 
@@ -50,9 +54,20 @@ Targets are the owner's to set (contract #4), proposed in §12.
 | 3 | Landmarks: mined from the shop's own order text first, OSM second, EC station names third; a landmark step at checkout (§6) | engineer, ~2 weeks | registry extension, one endpoint, one checkout step |
 | 4 | The learning loop: delivered pins become area points nightly; road km from OSRM replaces straight-line × detour where present (§4.2, §3.5) | ongoing | one nightly job |
 
-**The one product decision the owner must make before Step 1 ships (§12, decision 1):** whether measured distance changes the
-fee *per area* (continuous, as MODEL.md computes it) or only *re-bands* areas while the customer-facing fee stays per
-band. The data is the same; the switch is a registry key; the recommendation is to re-band first.
+**The one product decision the owner must make before Step 1 ships (§12, decision 1):** what the customer sees when
+distance becomes measured: a fee *per area* (continuous, as MODEL.md computes it), the *same bands with the wrong
+areas moved* (re-banding), or a short **price ladder the owner prices and the model places areas on** (§4.5). The
+data is the same for all three; the switches are registry keys; the recommendation is re-banding onto a ladder first.
+
+## 0b. What stays exactly as it is, and the rule for everything new
+
+Nothing in this document replaces anything that works. Kept unchanged: the contract and its one quoting service; the
+minutes model and its equation; `ug_area` and its slugs; `delivery_corridor` with its 14 corridors and bands (they
+become the prior and the fallback, never deleted); the Control Centre, the launch wizard, the calibration proposals
+and the versioned config; the checkout picker; the capture table; every migration to 0188. The rule for everything
+new: **additive, behind a switch, reversible in one action, with a dry run before publish** (contracts #7 and #9). A
+reader who deletes every section after §1 is left with the working shop they have; a reader who applies them in order
+is left with a more accurate one.
 
 ---
 
@@ -234,11 +249,14 @@ the critical path and then double-counted detour; both are gone.
 
 The **`distance_source` registry key** controls what the model sees:
 - `band_midpoint` (default, today's behaviour);
-- `rebanded`: measured km re-assigns each area's band (through the corridor dry run), the model still prices by band
-  midpoint. Fees look exactly as they do now; only the wrongly banded areas move. **Recommended first setting.**
-- `measured`: the model prices each area by its own straight-line km × detour. Fees become continuous per area.
+- `measured`: the model prices each destination by its own straight-line km × detour;
 - `road`: as `measured`, but `geo_road_distance.road_km` replaces straight-line × detour where a routed value exists
   (detour applied as 1.0 and `router` recorded in the capture).
+
+**Re-banding is not a distance source; it is an operation on the corridor data.** Measured km feed the existing
+corridor dry run, the team reviews which areas move band, and publishes. That can be done while `distance_source`
+stays `band_midpoint`, which is the recommended first month: fees look exactly as they do now and only the wrongly
+banded areas move. What the customer *sees* is a separate key, `fee_shape` (§4.5).
 
 ### 4.2 `geo_road_distance` (Phase D)
 ```sql
@@ -267,6 +285,53 @@ calibration proposals (which exist) can attribute the residual to `hour_factor` 
 they were built for. `eat_hour_of_week` is already captured per order; it becomes useful the day distance stops
 being a guess.
 
+### 4.4 Price surfaces on a grid: learning scopes that survive every boundary change
+Learned factors and window percentiles are keyed by `scope_key`, a free string (`delivery_learned_factor`,
+`delivery_window_percentile`, `delivery_calibration_proposal`); today the scopes are corridors, bands and areas, which
+are all *names*. Names change (§7). A **cell** does not: geohash-6 of the destination point is a 1.2 km × 0.6 km box
+that is the same box in 2030. Once orders carry points (§5), the nightly calibration also writes scopes
+`cell:<geohash6>` for observed minutes, last-mile minutes and window percentiles, with the cell's corridor as the
+prior and shrinkage toward it until the cell has enough samples (`(n·cell + k·corridor)/(n + k)`, `k` a registry
+key). A cell is also what a pin maps to when the area is unknown (manual path with GPS, or a WhatsApp pin from a
+customer with no account). Honest about volume: at roughly a thousand metro orders a month across a few hundred
+cells, most cells take months to reach five samples; the corridor prior does the work meanwhile, and the map of
+Kampala delivery minutes that accumulates belongs to the shop. No new table; no change to what the customer sees;
+`geohash` is forty lines of code and already proposed for pin cells (§4.2).
+
+### 4.5 Fee shape: continuous, or a ladder the owner prices and the model places
+The model turns minutes into cost. How the *fee* is presented is a separate choice, `fee_shape`:
+- `continuous` (today's design): `max(min_fee, cost × margin)` rounded to `fee_rounding_step_ugx`.
+- `ladder`: the owner sets a short list of price points (the example 3,000 / 5,000 / 8,000 / 12,000 / 20,000 is an
+  illustration, not a recommendation; contract #4), and the model places each destination on the **lowest rung
+  whose price covers modelled cost × margin**. Customers and riders in Kampala already talk this way ("Ntinda is
+  8k"); fees are round and memorable; re-banding and measured distance stay invisible until they change a rung; the
+  owner changes prices without touching the model. The rung is a function of minutes, so the fee and the window still
+  come from the same number (contract #2): a ladder is a quantisation of the model, not a second model. The
+  **margin alarm** in the Control Centre lists any rung where modelled cost exceeds its price for more than an
+  owner-set share of orders, which is the signal to add a rung or move to `continuous`. `fee_ladder` is a versioned
+  registry value with a dry run that shows which areas change rung.
+Why ladder first: it is the smallest change in what customers see for the largest change in what the shop knows.
+Why not forever: a ladder hides real cost differences inside a rung; the margin report says when that starts to cost
+money.
+
+### 4.6 Costs that fall honestly: the pin nudge the model already justifies, meeting points, pickup, batching
+MODEL.md's equation has `last_mile_minutes(area, has_pin, landmark_quality)`, and its calibration list already says
+last-mile "split by pin present or absent … is what justifies the pin nudge to customers". Phase A writes
+`accuracy_tier` on every capture, so last-mile minutes and first-attempt success get learned **per tier** (PIN,
+LANDMARK as a meeting point, LANDMARK as a hint, AREA_POINT, DISTRICT) with today's single value as the prior. The
+fee difference between tiers then *falls out of the model*: a pinned address costs less because it measurably takes
+fewer minutes and fewer second trips. Customer wording is shown only when the learned difference exists and is at
+least one rounding step: "Share your location and delivery is UGX X less", which is true, cost-based and ethical
+(CLAUDE.md: no invented discounts, no fake urgency). The same mechanism prices, without any special rule:
+- **meeting points** (§6.5): less last-mile, so cheaper when the data says so;
+- **collection at the shop**: zero travel, the floor is the handling cost;
+- **dealer pickup points**, when the owner wants them: `ug_pickup_point` has 0 rows and the dealer network (PR #80)
+  is the obvious seed; a pickup option appears in the same quote with its own tier and fee;
+- **batching**: riders take several stops per trip, and the model prices each order as a dedicated round trip, so on
+  batched days `actual_rider_cost_ugx` per order undercuts the quote. The existing margin report shows it; a
+  `stops_on_trip` count on the dispatch (later) lets margin be set from evidence instead of padded. Rain and public
+  holidays are not captured; `hour_factor` absorbs the regular part, and nothing is invented for the rest.
+
 ---
 
 ## 5. Pins without a map: the channels that already exist
@@ -280,7 +345,9 @@ throws the numbers into a text line. Change:
    no handover yet; store the pin on the order (`delivery_location.gps*` with `gpsSource='whatsapp_location'`), on the
    capture (`had_pin = true`, accuracy tier PIN), and on the customer's saved address if one matches the area.
 2. The order-confirmation WhatsApp template (templates exist in `whatsAppTemplates.ts`) gains one line: *"Reply with
-   your location pin (📎 → Location) so the rider finds you first time."* No new screen, no map, nothing to install.
+   your location pin (📎 → Location) so the rider finds you first time. Not there now? Open the map and drop the pin
+   where we should deliver."* WhatsApp lets a customer send any point, not only where they stand, which matters because
+   many orders are placed from work. No new screen, no map of ours, nothing to install.
 3. Contract #5: the quote for that order does not change because a pin arrived later; the pin improves the rider card
    and the learning loop. If the pin lands outside the chosen area's family by more than 5 km, ops are told ("pin
    disagrees with the area") rather than anything being silently re-priced.
@@ -289,14 +356,24 @@ throws the numbers into a text line. Change:
    model gives. Click-to-WhatsApp ads are live; this makes the first question those customers ask answerable.
 
 ### 5.2 The rider at the door (highest accuracy)
-Riders are `rider_name` free text on a dispatch; there is no rider app and should not be one. Reuse the texted-link
-pattern the shop already has for tracking and reviews: when a dispatch is created, the rider receives a WhatsApp
-message with one signed link per stop (`/d/<token>`, token bound to the dispatch, expires in 48 h). Tapping it opens a
-page with two buttons, **Delivered** / **Not delivered**, that asks for location once (`navigator.geolocation`,
-`enableHighAccuracy`) and posts outcome, time and pin to `DeliveryUseCases.recordDelivery` (exists; gains optional
-`handover_lat/lng/accuracy_m`). That is the delivery record ops enter by hand today, captured at the moment it
-happens, with the best coordinate the system will ever have for that address. `source='rider_handover'`, accepted at
-accuracy ≤100 m, precedence above every other source in §3.1.
+Riders are `rider_name` free text on a dispatch; there is no rider app and should not be one. Two routes, the first
+needs no new screen at all:
+
+**Route A, the rider sends a WhatsApp location to the shop's number at handover.** Goldie's parser already reads it
+(§5.1). `fulfilment_dispatches` gains `rider_phone`; an inbound location from a phone with an active dispatch is a
+handover pin for the stop nearest to it, and Goldie replies with buttons: **Delivered** / **Customer not there** /
+**Couldn't find it**, then **Easy to find** / **Hard to find**. The answers go to `DeliveryUseCases.recordDelivery`
+(exists; gains optional `handover_lat/lng/accuracy_m` and `find_difficulty`). That is the delivery record ops type in
+the office today, captured at the moment it happens, with the best coordinate the system will ever have for that
+address, plus a measured "hard to find" signal that becomes `last_mile_minutes` evidence per area and per tier
+(§4.6).
+
+**Route B, a signed link per stop** (`/d/<token>`, bound to the dispatch, 48 h), texted with the dispatch, opening a
+page with the same buttons that asks for location once (`navigator.geolocation`, `enableHighAccuracy`). Same use
+case underneath. Build it only if riders turn out not to use Route A.
+
+`source='rider_handover'`, accepted at accuracy ≤100 m and within 5 km of the order's area family (a pin from the
+hub or the wrong stop is rejected with a reply, not stored), precedence above every other source in §3.1.
 
 ### 5.3 Pasted links and device GPS at checkout (exist; wire them)
 `/locations/resolve-link` and the "Share my location" button exist. Changes: send `hasPin` and the point in the quote
@@ -526,8 +603,9 @@ rank"; never "GPS coordinates" in customer copy.
 |---|---|---|
 | `routes/commerce.ts` | accept unknown districts as `district_unverified` → manual path (§7.1); zod for `landmarkId`, `point {lat,lng,accuracyM,source}`, `plusCode` `^[23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,3}$`, `meetingPoint` | A / C |
 | `infrastructure/delivery/DeliveryAreaResolver.ts` | `measuredKm` ← pin (haversine from hub) → landmark point → `geo_area_point.straight_km_hub` → null; return `accuracyTier`, point, `centroidSource` | A |
-| `DeliveryConfigRegistry.ts` | `distance_source` (band_midpoint \| rebanded \| measured \| road), `pin_max_accuracy_m` 100, `handover_pin_max_accuracy_m` 100, `landmark_suggest_radius_m` 2500, `area_point_min_pins` 5, `area_point_max_spread_m` 1500, `handover_min_pins` 3, `handover_max_spread_m` 800, `pin_retention_days`, copy per tier, `enrichment_provider` none\|google | A |
-| `domain/delivery/DeliveryModel.ts` | honour `distance_source`; when `road`, `round_trip_km = road_km × 2` with detour 1.0 and `router` in the capture | A (switch), D (road) |
+| `DeliveryConfigRegistry.ts` | `distance_source` (band_midpoint \| measured \| road), `fee_shape` (continuous \| ladder), `fee_ladder` (versioned rungs), `cell_shrinkage_k`, `last_mile_minutes` learned per accuracy tier (prior = today's value), `pin_max_accuracy_m` 100, `handover_pin_max_accuracy_m` 100, `landmark_suggest_radius_m` 2500, `area_point_min_pins` 5, `area_point_max_spread_m` 1500, `handover_min_pins` 3, `handover_max_spread_m` 800, `pin_retention_days`, copy per tier, `enrichment_provider` none\|google | A |
+| `domain/delivery/DeliveryModel.ts` | honour `distance_source`; `fee_shape = ladder` maps minutes to a rung (§4.5); `last_mile_minutes` read per accuracy tier (§4.6); when `road`, `round_trip_km = road_km × 2` with detour 1.0 and `router` in the capture | A (switch, ladder), B (tiers), D (road) |
+| nightly calibration (exists) | add `cell:<geohash6>` scopes with corridor shrinkage (§4.4); margin alarm per rung (§4.5) | B |
 | `application/use-cases/delivery/DeliveryQuotingUseCase.ts` | accept `landmarkId`, `point`; pass `hasPin`; write `straight_line_km`, `centroid_source`, `accuracy_tier`, `point_*` to the capture; honour `delivery_corridor.fulfilment_mode` (today `declaredMode: null`, a known gap) | A |
 | `application/use-cases/assistant/GoldieChannelUseCases.ts` + new `AttachLocationToOrderUseCase` | route `location` messages to the sender's open order; fee quote from a pin when no order (§5.1) | B |
 | `whatsAppTemplates.ts` | one line in the order-confirmation template asking for a location pin | B |
@@ -580,20 +658,35 @@ spec does not invent them; the owner provides them from the riders' actual pay a
 | Free-delivery threshold (optional) | `free_delivery_threshold_ugx` | the waiver basis is already built |
 
 With these set and Step 1 in place, Ntinda's quote is `max(min_fee, cost_per_minute × (handling + straight_km × 2 ×
-detour / speed × 60 × factors + last_mile) × margin)`, rounded to `fee_rounding_step_ugx` (500).
+detour / speed × 60 × factors + last_mile) × margin)`, rounded to `fee_rounding_step_ugx` (500), or placed on the
+ladder (§4.5).
+
+**A second way into the same six numbers, in the owner's language.** Riders in Kampala are paid per trip by
+destination, not per minute, and the owner knows those prices without looking anything up. The wizard keeps its seven
+questions and gains an alternative first screen: *"Three to five places you already send riders to: the place, what
+the rider is paid for the trip, and roughly how long the round trip takes."* From those, `rider_cost_per_minute`
+(pay ÷ minutes, median across the trips) and `effective_speed_kmh` (straight-line × 2 × detour ÷ hours) are derived
+and shown with their working, exactly as the wizard shows its derivations today. Same six keys, same contract (#3),
+one more path to them, and the reason the numbers have gone unset for months is removed: nobody has to think in
+minutes.
 
 ---
 
 ## 12. Decisions for the owner
 
-1. **How measured distance reaches the customer** (§4.1): `rebanded` (fees stay per band, wrong bands get fixed;
-   recommended for the first month) or `measured` (a fee per area). The switch is reversible.
-2. **The six launch numbers** (§11). Nothing quotes without them.
-3. **Targets for the success metric** (§0): proposed, ≥90% of metro orders quoted by the model within a month of
-   Step 1, and a 28-day median |expected − actual| under a number the owner sets once the baseline is read.
+**Decide now (Week 0):**
+1. **What the customer sees when distance becomes measured** (§4.1, §4.5): re-banding onto a price ladder the owner
+   prices (recommended for the first month), re-banding with today's band fees, or a continuous fee per area. Every
+   switch is reversible.
+2. **The six launch numbers** (§11), by the seven questions or by trip prices. Nothing quotes without them.
+3. **Targets for the success metrics** (§0): proposed, ≥90% of metro orders quoted by the model within a month of
+   Step 1; a 28-day median |expected − actual| and a first-attempt success rate the owner sets once the baseline is
+   read.
+
+**Decide when the phase arrives:**
 4. **Pin retention** (recommended 180 days), covering handover pins.
-5. **The rider handover link** (§5.2): accept that riders receive one WhatsApp per dispatch with links, and that the
-   delivery record is made at the door rather than in the office afterwards.
+5. **Riders record handover on WhatsApp** (§5.2): accept that the delivery record is made at the door (a location
+   message and two taps) rather than in the office afterwards, and that `rider_phone` is kept on the dispatch.
 6. **Landmark step mandatory** for door delivery inside Kampala/Wakiso when no pin is given? (Recommended: yes for new
    customers; skipped for an address with a delivered pin on file.)
 7. **A named owner for the yearly administrative review** (§7.4).
@@ -603,6 +696,12 @@ detour / speed × 60 × factors + last_mile) × margin)`, rounded to `fee_roundi
    at our volume, key, off switch), or neither, because WhatsApp is the map. Recommended: neither until the data says
    pins are being refused for accuracy.
 10. **Publish the OSM-derived landmark table openly** (simplest ODbL compliance).
+11. **The pin nudge** (§4.6): once last-mile minutes per tier are learned, show the true saving for a pinned address.
+    Recommended: yes, only when the learned difference is at least one rounding step.
+12. **The ladder rungs** (§4.5): the owner's price points, entered in the Control Centre with a dry run. The model
+    never proposes prices (contract #4); it proposes placements and raises the margin alarm.
+13. **Dealer pickup points** (§4.6): whether dealers become collection options with their own fee from the same
+    model. No code is needed to decide; `ug_pickup_point` is waiting for rows.
 
 ---
 
@@ -643,10 +742,19 @@ Phase A: the 4 GB host and the rehearse-then-migrate deploy script are fine with
 
 ## 14. Rollout
 
-**Phase A — points, the switch, the report (engineer ≈ 1 week; owner: the six numbers).** Read the baseline metric.
-Create `geo_area_point`, `geo_admin_polygon`, `ug_district`, `district_lineage`; accept unknown districts; run the
-parish import with buildings; review the three-list band report in the Control Centre; wire `measuredKm`; add
-`distance_source` and set it to `rebanded` through the corridor dry run; offline index gains points.
+**Week 0 — five cheap experiments before any architecture (two days, mostly queries).** Each one replaces an opinion
+in §12 with a number: (a) read the baseline metrics from the capture table (free); (b) the owner sets the six numbers
+by trip prices (fifteen minutes; §11); (c) run the parish import against a copy of the database and read the
+three-list band report, which says how many bands are wrong *before* anything is written (one day); (d) count the
+WhatsApp location messages Goldie has already received and dropped into text (one query on the conversation log),
+which is the pin rate the shop gets for free; (e) count orders whose `delivery_address` contains a landmark word
+(near / opposite / behind / next to), which is the size of the landmark corpus. Decide 1–3 in §12 on those numbers.
+
+**Phase A — points, the switches, the report (engineer ≈ 1 week; owner: the six numbers).** Create `geo_area_point`,
+`geo_admin_polygon`, `ug_district`, `district_lineage`; accept unknown districts; run the parish import with
+buildings; review the three-list band report in the Control Centre; wire `measuredKm`; add `distance_source`
+(left at `band_midpoint`), `fee_shape` and `fee_ladder`; re-band through the corridor dry run; add the fee-step
+counter; offline index gains points.
 **Done when:** ≥95% of the 362 metro areas have a point with a non-null `expected_error_m` (89% is reachable by
 exact name today); every one has `straight_km_hub`; every band-report line has been looked at; quotes for ten named
 test areas (Ntinda, Kabalagala, Najjera, Kajjansi, Kyengera, Kira, Bweyogerere, Nansana, Munyonyo, Mukono town)
@@ -669,6 +777,26 @@ the yearly drift report.
 
 Each phase ships behind the Control Centre: config keys are drafts until published, and everything reverts in one
 action (contract #9).
+
+---
+
+## 15. Pre-mortem: it is April 2027 and this did not work. Why?
+
+Written before building, so each failure has an answer in the design rather than an apology after it.
+
+| Likely failure | What in this spec answers it |
+|---|---|
+| The six numbers were never set; every quote still says "confirmed by phone" | Week 0 (b) and the trip-price path (§11). Nothing else in the document matters until this is done, and it is now a fifteen-minute task in the owner's own units |
+| Fees changed and customers complained that Ntinda "used to be 8k" | Ladder first (§4.5), re-banding through a dry run, `distance_source` left at `band_midpoint` for the first month, every change reversible (§0b) |
+| Riders never recorded handover | Route A needs no app, no page and no login: a location message and two taps on WhatsApp (§5.2). Partial coverage is still useful: customer pins, building centres and order text fill the rest. Route B exists if A fails |
+| Customers did not share pins | Asked at the right moment (after the order, on WhatsApp, with the true saving once it is learned, §4.6); asked once per address because the saved address remembers (§5.4) |
+| Polygon matching put wrong points on areas and the bands moved wrongly | The three-list report (§3.4) compares every new point with the band the team set by hand; nothing writes to a band without a person; lineage families stop cross-district matches (§7.2) |
+| The nightly job drifted points on bad pins | Thresholds on count and spread, never overwrites `manual`, wide-spread areas listed for a person (§5.6); handover pins rejected outside 5 km of the area family (§5.2) |
+| A district was created and checkout broke, or data got stuck in the old list | Unknown districts accepted on the manual path (§7.1); districts as data with lineage (§7.2); the yearly drift report with a named owner (§7.4) |
+| A maps bill arrived | No paid API on the request path; enrichment off by default; counts sized against the free tiers (§13, Appendix G) |
+| A privacy complaint about stored locations | Retention window, aggregate points only, a rider sees one stop's pin for 48 h (§5.7) |
+| Nobody could say whether it worked | The baseline was read in Week 0 (a) from columns that already exist, and the same four numbers are in the Control Centre (§0) |
+| The spec was too big and nobody read past §3 | §0 is one page and is the whole plan; everything after §2 is reference for the step being built |
 
 ---
 
@@ -884,3 +1012,24 @@ needed); OSRM offline on the Mac (no runtime service).
     and look very different to a customer. V2 makes it the first owner decision and recommends re-banding first.
 14. **Drafting history was in the body** (a §2 numbered 1, 2, 4, 3; "the thing my first draft got wrong" in §3). It
     is here instead.
+
+Version 2.1, same day, after asking "what would make this fail, what does the model already allow, and what do
+customers and riders already do":
+15. **The spec never said what it would not touch.** §0b lists it and states the additive-only rule.
+16. **One metric was too few.** First-attempt success is the hidden cost better locations fix first; fee-step
+    abandonment was not measured at all. §0 has four.
+17. **Pricing was tied to names that change.** Learned scopes on geohash cells survive every boundary change and
+    need no schema (§4.4).
+18. **"Re-banded" was wrongly a distance source**, and the customer-facing shape of the fee was never designed.
+    `fee_shape` with a ladder the owner prices and the model places, plus a margin alarm (§4.5).
+19. **The pin discount was waiting in MODEL.md** (`last_mile_minutes(area, has_pin, …)`, "justifies the pin nudge").
+    §4.6 lets it, meeting points, pickup and dealer collection fall out of learned last-mile minutes per tier
+    instead of being invented. Batching named as the reason per-order cost will undercut quotes.
+20. **The rider link was more UI than needed.** A WhatsApp location message and two button taps do the same job on
+    the parser that exists; the link page is the fallback (§5.2). "Hard to find" is one more tap and a measured
+    area-difficulty signal.
+21. **The six numbers were asked for in minutes.** Riders are paid per trip; the owner knows trip prices. §11 adds
+    the trip-price path to the same six keys.
+22. **Nothing cheap came before the architecture.** Week 0 is five queries and a fifteen-minute owner task that turn
+    the three "decide now" questions into numbers (§14).
+23. **No pre-mortem.** §15.
