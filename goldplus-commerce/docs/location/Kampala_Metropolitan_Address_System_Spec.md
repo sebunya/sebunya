@@ -292,6 +292,15 @@ Runs on Postgres 16 without PostGIS. Enable `cube` and `earthdistance` (both shi
 in metres; `earth_distance(ll_to_earth(lat1,lng1), ll_to_earth(lat2,lng2))` is great-circle; a GiST index on
 `ll_to_earth(lat,lng)` makes `earth_box` radius queries indexed. Upgrade path to PostGIS in §6.7.
 
+**Extension privilege check (verified on Postgres 16.14, 2026-10-15):** `cube` is a *trusted* extension; `earthdistance`
+is **not** (`pg_available_extension_versions.trusted = false`), so `CREATE EXTENSION earthdistance` needs a superuser.
+The migrator connects as the compose `POSTGRES_USER`, which is the superuser in the official image, so the migration
+should pass the rehearsal; if the rehearsal refuses it, the fallback that needs no extension at all is: keep `lat`/`lng`
+as plain columns, a btree index on `(lat, lng)`, prefilter candidates with a bounding box (±0.025° ≈ 2.8 km), and
+compute the haversine in SQL (`6371000 * acos(least(1, cos(radians(lat1))*cos(radians(lat2))*cos(radians(lng2-lng1)) +
+sin(radians(lat1))*sin(radians(lat2))))`). At ≤100k points that is sub-millisecond either way. The spec's queries below
+are written for `earthdistance`; each has this plain-SQL twin.
+
 ### 6.1 `geo_area_point` — one best point per area
 ```sql
 CREATE EXTENSION IF NOT EXISTS cube;
@@ -323,7 +332,9 @@ containing polygon (`geo_admin_polygon`).
 CREATE TABLE geo_admin_polygon (
   id             serial PRIMARY KEY,
   level          text NOT NULL CHECK (level IN ('district','subcounty','parish')),
-  source         text NOT NULL,              -- 'ubos_parishes_2016' | 'hdx_cod_ab_2020'
+  source         text NOT NULL,              -- 'ubos_parishes_2016' | 'hdx_cod_ab_2020' | later boundary sets
+  boundary_set   text NOT NULL,              -- 'ubos-2016' | 'hdx-2020' | 'ubos-2024-ea' …; several sets coexist
+  valid_from     date, valid_to date,        -- when this boundary set applied; null = unknown
   source_ref     text NOT NULL,              -- PCODE or HDX pcode
   district       text NOT NULL, county text, subcounty text, name text NOT NULL,
   area_slug      text REFERENCES ug_area(area_slug),   -- set when the parish matches one area
@@ -348,22 +359,51 @@ Hunting Area, Grazing Area, Gr, Island, Lake) and reviewable in `/admin/location
 `water`, `island` and `unknown` are never priced for door delivery and go to the manual path or pickup (the 12 lake
 areas already do this via `access_mode`).
 
-### 6.1c `district_lineage` — one row per current district
+### 6.1c `ug_district` and `district_lineage` — the district list becomes data, with history
+Uganda keeps redrawing its map: 135 districts at the 2021 election, 146 districts and cities in the EC's 2025 count,
+three more districts and Tororo City approved in April 2025, ten cities carved out of districts in 2020 (Arua, Fort
+Portal, Gulu, Hoima, Jinja, Lira, Masaka, Mbale, Mbarara, Soroti) with more since. Today the shop's accepted districts
+are a hard-coded list in `packages/shared/src/locations/uganda.ts` (136 entries, the 2021 list), and `routes/commerce.ts`
+**rejects an order whose district is not on it**. A customer in a district created after that list is cut cannot use
+the structured path until a developer ships a new build, which contradicts contract #7. So:
+
 ```sql
+CREATE TABLE ug_district (
+  district        text PRIMARY KEY,          -- canonical name, Title Case, as normalizeUgandaDistrict() returns it
+  kind            text NOT NULL CHECK (kind IN ('district','city','capital_city')),
+  region          text NOT NULL,
+  status          text NOT NULL DEFAULT 'active' CHECK (status IN ('active','proposed','merged','renamed')),
+  effective_from  date,                      -- gazetted operational date when known
+  aliases         text[] NOT NULL DEFAULT '{}',  -- {'Luwero','Luweero'}, {'Sembabule','Ssembabule'}, {'Kasanda','Kassanda'}
+  postcode_prefixes text[] NOT NULL DEFAULT '{}', -- {'313','314'} for Wakiso; empty for districts newer than the 2019 scheme
+  ec_codes        text[] NOT NULL DEFAULT '{}',   -- EC electoral-district codes, including the district's cities/municipalities
+  data_version    text NOT NULL,             -- which list this row came from ('ec-2025', 'ubos-2024', 'gazette-2025-04')
+  notes           text
+);
 CREATE TABLE district_lineage (
-  district        text PRIMARY KEY,          -- canonical current name, as normalizeUgandaDistrict() returns it
-  parent_2016     text NOT NULL,             -- district it was carved from, as spelled in the 2016 shapefile
-  created_year    smallint,
-  postcode_prefix text[],                    -- {'313','314'} for Wakiso
-  ec_codes        text[]                     -- EC 2025/26 electoral district codes, incl. its cities/municipalities
+  child           text NOT NULL REFERENCES ug_district(district),
+  parent          text NOT NULL REFERENCES ug_district(district),
+  effective_from  date,
+  source          text NOT NULL,             -- 'gazette' | 'ec-list' | 'manual'
+  PRIMARY KEY (child, parent)
 );
 ```
-Seed from the Ministry's 2019 prefix table plus the known post-2016 creations (Kassanda ← Mubende; Kikuube ← Hoima;
-Bugweri ← Iganga; Kapelebyong ← Amuria; Nabilatuk ← Nakapiripirit; Kwania ← Apac; Kazo ← Kiruhura; Kitagwenda ←
-Kamwenge; Rwampara ← Mbarara; Kalaki ← Kaberamaido; Obongi ← Moyo; Madi-Okollo and Terego ← Arua; Karenga ← Kaabong;
-Rukiga ← Kabale; Bunyangabu ← Kabarole; Namisindwa ← Manafwa; Butebo ← Pallisa; Kyotera ← Rakai; Pakwach ← Nebbi;
-Omoro ← Gulu; Kagadi and Kakumiro ← Kibaale). A name match between any two datasets is accepted only inside one
-lineage family. The admin can correct a row; the importer refuses a district it cannot place.
+A lineage family is the transitive closure over `district_lineage` (a district, its parents, grandparents and every
+sibling carved from the same parent). The 2016 shapefile's district is always an ancestor, so every current district
+resolves to a 2016 polygon set. A city and the district it was carved from are one family (Mbarara City and Mbarara
+District: a customer saying "Mbarara" means either, and it does not matter for the quote because the quote comes from
+the point). Seed: the 2021 list already in code, plus the 2020 cities, plus the known post-2016 creations (Kassanda ←
+Mubende; Kikuube ← Hoima; Bugweri ← Iganga; Kapelebyong ← Amuria; Nabilatuk ← Nakapiripirit; Kwania ← Apac; Kazo ←
+Kiruhura; Kitagwenda ← Kamwenge; Rwampara ← Mbarara; Kalaki ← Kaberamaido; Obongi ← Moyo; Madi-Okollo and Terego ←
+Arua; Karenga ← Kaabong; Rukiga ← Kabale; Bunyangabu ← Kabarole; Namisindwa ← Manafwa; Butebo ← Pallisa; Kyotera ←
+Rakai; Pakwach ← Nebbi; Omoro ← Gulu; Kagadi and Kakumiro ← Kibaale), plus the 2025 approvals as `proposed` (Mukuju,
+Mulanda and the third Tororo district; Tororo City) until gazetted.
+
+**Code changes this implies (small):** `normalizeUgandaDistrict()` keeps the shared list as an offline fallback but the
+API validates against `ug_district` (active or proposed) including aliases; the checkout "Browse by district" list is
+served from `ug_district`; the offline index gains the same rows. Adding a district becomes an admin action in
+`/admin/locations` ("New district: name, parent, effective date, aliases"), not a deploy. The importer refuses a
+district it cannot place in a family and says so.
 
 ### 6.2 `geo_road_distance` — road distance from an origin to a point, computed once
 ```sql
@@ -695,7 +735,54 @@ one action (contract #9).
 
 ---
 
-## 14. Open decisions for Rob
+## 14. Administrative change: building for a map that keeps moving
+
+Uganda has added districts in almost every parliament (34 in 1990, 56 in 2000, 80 in 2006, 112 in 2010, 135 by
+2021, 146 districts and cities in 2025, more approved). Sub-counties, town councils, parishes and wards split even
+more often (Mukono's parishes only match the 2016 polygons 68% of the time for that reason). Postcodes were assigned
+once, in 2019, to a district list that was out of date within a year. Any design that stores "the district" as a
+truth will rot. These are the rules this spec adopts, and the loose ends they close.
+
+1. **The point is the fact; the district is a label.** Once an area, landmark or order has a point, nothing about
+   quoting depends on which district it is said to be in. District, sub-county and parish are derived from the point
+   by point-in-polygon against the newest boundary set when needed, and stored as snapshots on the order (the
+   `snapshot_*` columns on `addresses` already exist for this reason). A renamed or split district changes labels,
+   never fees or routing.
+2. **District and area lists are data, versioned, editable by the team** (§6.1c), never a TypeScript constant on the
+   request path. The constant stays as the offline fallback and must be regenerated from the table at build time so
+   the two cannot disagree.
+3. **Matching across datasets runs inside a lineage family, never by district equality** (§3.1, §6.1c, §7.0).
+4. **Boundary sets are additive.** A new UBOS boundary file is loaded as another `boundary_set`; old sets are never
+   deleted (order history and `geo_area_point.source_ref` reference them). "Current set" is a config key in the
+   registry. A refresh produces a dry-run report of areas whose polygon, centroid or band would change and goes
+   through the Control Centre like any corridor change (contract #7 and #9); bands are never recomputed silently.
+5. **Parish splits are expected.** When one 2016 polygon matches several current areas (two post-split parishes), each
+   gets the same centroid with `confidence` 0.55 and `shared_polygon = true`; the nightly pins job (§6.5) separates
+   them as deliveries accumulate, and the admin page lists them as "shared polygon: needs pins or a manual point".
+6. **`area_slug` is opaque.** It happens to contain the 2019 postcode, but nothing may parse it. Areas added after
+   2019 (new wards, EC-only parishes, promoted aliases) get a slug with a synthetic suffix (`wakiso-bulindo-x0007`)
+   and `postcode = null`; a future national re-numbering updates `ug_area.postcode`, never the slug.
+7. **Names collide more as districts multiply** ("Kampala" parish in Sembabule, "Jinja" in Busia and Kampala, "Kibuye"
+   in Kampala and Kamuli). `delivery_name_collision` (84 rows) stays the guard; the lineage-family rule keeps
+   cross-district false matches out; the resolver's district probe (`AREA_TOO_COARSE` for a bare district name)
+   stays.
+8. **An annual administrative-drift job** (`geo-admin-drift-report.ts`, run each July after the financial-year changes
+   and after every election register): download the current EC district/constituency/sub-county list and the UBOS
+   statistical abstract tables, diff them against `ug_district` and `ug_area`, and write a report for
+   `/admin/locations`: new districts (with the parent the gazette names), renamed districts, parishes present in the
+   EC list but absent from `ug_area` (candidate areas, `selectable=false`), and areas whose district label has
+   changed. Nothing is applied automatically; each line is a one-click admin action with an audit row.
+9. **Sources of truth, in order:** the Uganda Gazette / Parliament resolution (creation, effective date, parent),
+   the Electoral Commission's lists (names and codes, refreshed per election), UBOS (counts and boundaries). News
+   reports are a prompt to check the gazette, never a source.
+10. **Customer wording tolerates change.** Saved addresses show the words the customer used (`snapshot_area_label`,
+    `snapshot_district`) even after the official name moves on; the search layer accepts old and new district names
+    through `ug_district.aliases`.
+
+What this does **not** try to do: track village-level changes (71,250 names, no polygons anywhere) beyond keeping the
+passport-portal list as a search layer and letting delivered pins define reality.
+
+## 15. Open decisions for Rob
 
 1. The six launch numbers (§10). Nothing quotes without them.
 2. Pin retention period (recommended 180 days).
@@ -706,6 +793,9 @@ one action (contract #9).
 5. Same-day eligibility: by band (B0–B3 before the cutoff) rather than the hardcoded Kampala/Wakiso list in
    `checkout.astro`. Recommended: by band, via the registry.
 6. Whether to publish the OSM-derived landmark table openly (simplest ODbL compliance).
+7. Who owns the yearly administrative review (§14.8): a named person on the team runs the drift report each July and
+   after each election register, and applies the new districts in `/admin/locations`. Without an owner the lists
+   will rot exactly as the hard-coded one did.
 
 ---
 
