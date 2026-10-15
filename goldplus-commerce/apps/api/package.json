@@ -10,6 +10,7 @@
     "db:migrate": "tsx src/infrastructure/db/migrations/migrate.ts",
     "geo:parish-centroids": "tsx src/scripts/geo-import-parish-centroids.ts",
     "geo:purge-pins": "tsx src/scripts/geo-purge-pins.ts",
+    "geo:nightly-area-points": "tsx src/scripts/geo-nightly-area-points.ts",
     "db:studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",
     "lint": "eslint \"src/**/*.{ts,tsx}\""

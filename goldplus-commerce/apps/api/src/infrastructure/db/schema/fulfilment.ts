@@ -146,6 +146,8 @@ export const fulfilmentDispatches = pgTable(
     contactMasked: varchar('contact_masked', { length: 40 }),
     /** 0190: the rider on this dispatch, so a WhatsApp location from their phone is a handover, not a customer pin. */
     riderId: uuid('rider_id'),
+    /** 0191: stops the rider made on this trip; margin evidence for batched days. */
+    stopsOnTrip: integer('stops_on_trip'),
     paymentPolicy: varchar('payment_policy', { length: 20 }).notNull(),
     trackingStatus: varchar('tracking_status', { length: 20 }).default('DISPATCHED').notNull(),
     stockConsumed: boolean('stock_consumed').default(false).notNull(),

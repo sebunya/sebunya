@@ -1,5 +1,6 @@
 import { LAUNCH_KEYS, LaunchKey } from './DeliveryConfigRegistry';
 import type { FulfilmentMode } from './DeliveryFulfilmentMode';
+import { placeOnLadder, type FeeShape } from './DeliveryFeeLadder';
 import {
   ADDITIVE_PRIOR,
   LearnedFactorState,
@@ -282,7 +283,7 @@ export interface AreaInput {
  * geometric centre of the UBOS 2016 parish polygon (Phase A of the address
  * system spec); the others were defined by MODEL.md before any existed.
  */
-export const CENTROID_SOURCES = ['delivered_pins', 'manual', 'parish_centroid'] as const;
+export const CENTROID_SOURCES = ['rider_handover', 'delivered_pins', 'manual', 'parish_centroid'] as const;
 export type CentroidSource = (typeof CENTROID_SOURCES)[number] | null;
 export function isCentroidSource(value: string | null | undefined): value is Exclude<CentroidSource, null> {
   return typeof value === 'string' && (CENTROID_SOURCES as readonly string[]).includes(value);
@@ -354,6 +355,9 @@ export interface QuoteInputs {
   configVersionId: string | null;
   /** The customer shared a device pin or a map link for this order (0189: sets the PIN accuracy tier). */
   hasPin?: boolean;
+  /** §4.5: how the fee is presented. 'ladder' needs rungs; without them the shape is continuous. */
+  feeShape?: FeeShape;
+  feeLadder?: readonly number[] | null;
 }
 
 /* ── Output: a quote that explains itself ───────────────────────────────── */
@@ -388,6 +392,11 @@ export interface QuoteExplanation {
   roundingStepUgx: number | null;
   roundedFeeUgx: number | null;
   minimumFeeApplied: boolean;
+  /** §4.5: 'ladder' when a rung was charged; the continuous fee it covered, and whether the top rung still covered the cost. */
+  feeShape: FeeShape;
+  continuousFeeUgx: number | null;
+  ladderRungUgx: number | null;
+  ladderCovered: boolean | null;
   configVersionId: string | null;
   unavailableReason: UnavailableReason | null;
   missingConfigKeys: string[];
@@ -442,6 +451,10 @@ function emptyExplanation(inputs: QuoteInputs): QuoteExplanation {
     roundingStepUgx: null,
     roundedFeeUgx: null,
     minimumFeeApplied: false,
+    feeShape: inputs.feeShape === 'ladder' && inputs.feeLadder && inputs.feeLadder.length > 0 ? 'ladder' : 'continuous',
+    continuousFeeUgx: null,
+    ladderRungUgx: null,
+    ladderCovered: null,
     configVersionId: inputs.configVersionId,
     unavailableReason: null,
     missingConfigKeys: [],
@@ -532,7 +545,11 @@ export function quoteDelivery(inputs: QuoteInputs): QuoteResult {
   const rawFee = config.rider_cost_per_minute_ugx * expectedMinutes * config.margin_multiplier;
   const step = config.fee_rounding_step_ugx;
   const rounded = roundUpTo(rawFee, step);
-  const feeUgx = Math.max(config.minimum_fee_ugx, rounded);
+  const continuousFeeUgx = Math.max(config.minimum_fee_ugx, rounded);
+  // §4.5: a ladder places the destination on the lowest rung that covers what the
+  // continuous shape would charge. Same minutes, same window; only the price point moves.
+  const ladder = inputs.feeShape === 'ladder' && inputs.feeLadder && inputs.feeLadder.length > 0 ? placeOnLadder(continuousFeeUgx, inputs.feeLadder) : null;
+  const feeUgx = ladder ? ladder.rungUgx : continuousFeeUgx;
 
   return {
     available: true,
@@ -551,7 +568,11 @@ export function quoteDelivery(inputs: QuoteInputs): QuoteResult {
       rawFeeUgx: rawFee,
       roundingStepUgx: step,
       roundedFeeUgx: rounded,
-      minimumFeeApplied: feeUgx > rounded,
+      minimumFeeApplied: continuousFeeUgx > rounded,
+      feeShape: ladder ? 'ladder' : 'continuous',
+      continuousFeeUgx,
+      ladderRungUgx: ladder ? ladder.rungUgx : null,
+      ladderCovered: ladder ? ladder.covered : null,
     },
   };
 }

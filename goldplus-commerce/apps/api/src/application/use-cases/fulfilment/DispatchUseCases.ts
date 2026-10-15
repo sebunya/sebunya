@@ -122,6 +122,8 @@ export class RecordDispatchUseCase {
     riderName?: string | null;
     /** 0190: the rider's record, so their WhatsApp location at the door is a handover for this stop. */
     riderId?: string | null;
+    /** 0191: stops on this trip (1–50), when known at dispatch. */
+    stopsOnTrip?: number | null;
     contact?: string | null;
     estimatedDeliveryAt?: Date | null;
     notes?: string | null;
@@ -177,6 +179,7 @@ export class RecordDispatchUseCase {
       carrierName: input.carrierName?.trim() || null,
       riderName: input.riderName?.trim() || null,
       riderId: input.riderId ?? null,
+      stopsOnTrip: input.stopsOnTrip && Number.isInteger(input.stopsOnTrip) && input.stopsOnTrip >= 1 && input.stopsOnTrip <= 50 ? input.stopsOnTrip : null,
       contactMasked: maskDispatchContact(input.contact),
       paymentPolicy: guard.paymentPolicy,
       trackingStatus: 'DISPATCHED',

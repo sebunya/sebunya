@@ -558,6 +558,19 @@ routes.get('/reports/location-accuracy', requirePermissions([PERMISSIONS.REPORTS
   return c.json({ success: true, data: await Registry.getInstance().deliveryLocationAccuracyReportUseCase.execute() });
 });
 
+/** §4.5: place every area on a proposed ladder. Reads only. */
+routes.post('/ladder/dry-run', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PROPOSE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const r = await Registry.getInstance().ladderDryRunUseCase.execute({ ladder: String(body?.ladder ?? '') });
+  if (!r.ok) return c.json({ success: false, error: { code: r.code, message: r.message } } satisfies ApiResponse<never>, 400);
+  return c.json({ success: true, data: r });
+});
+
+/** §4.5: the margin alarm, per rung, last 28 days. */
+routes.get('/reports/ladder-margin', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+  return c.json({ success: true, data: await Registry.getInstance().ladderMarginReportUseCase.execute() });
+});
+
 /** Riders (0190): a name and a WhatsApp number. Phones are shown masked; the list is never exported. */
 routes.get('/riders', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   return c.json({ success: true, data: { riders: await Registry.getInstance().riderUseCases.list() } });

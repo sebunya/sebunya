@@ -69,12 +69,13 @@ const get = async (path: string) => {
   }
 };
 
-const [queue, margin, variance, fallback, accuracy] = await Promise.all([
+const [queue, margin, variance, fallback, accuracy, ladderMargin] = await Promise.all([
   get("/admin/delivery/calibration/proposals"),
   get("/admin/delivery/reports/margin"),
   get("/admin/delivery/reports/variance"),
   get("/admin/delivery/reports/fallback-rate"),
   get("/admin/delivery/reports/location-accuracy"),
+  get("/admin/delivery/reports/ladder-margin"),
 ]);
 const pctText = (n: number | null | undefined) => (n === null || n === undefined ? "—" : `${n}%`);
 
@@ -220,6 +221,34 @@ const ugx = (n: number | null | undefined) => (n === null || n === undefined ? "
         </>
       ) : (
         <p class="text-sm text-gray-500">The location accuracy report is unavailable.</p>
+      )}
+    </section>
+
+    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-1">Fee ladder — margin alarm</h3>
+      <p class="text-xs text-gray-500 mb-3">Per rung, the share of the last 28 days' orders whose modelled cost × margin was above the price. A flagged rung is the signal to add a rung there or move to continuous.</p>
+      {!ladderMargin ? (
+        <p class="text-sm text-gray-500">The ladder report is unavailable.</p>
+      ) : ladderMargin.shape !== "ladder" ? (
+        <p class="text-sm text-gray-600">{ladderMargin.note}</p>
+      ) : (
+        <>
+          <table class="w-full text-xs">
+            <thead class="text-[10px] uppercase font-black tracking-widest text-gray-500"><tr><th class="text-left py-1">Rung</th><th class="text-right py-1">Orders</th><th class="text-right py-1">Under cost</th><th class="text-right py-1">Mean headroom</th><th class="py-1"></th></tr></thead>
+            <tbody>
+              {ladderMargin.rungs.map((r: any) => (
+                <tr class={`border-t border-gray-100 ${r.alarm ? "text-red-700 font-bold" : ""}`}>
+                  <td class="py-1">{ugx(r.rungUgx)}</td>
+                  <td class="py-1 text-right">{r.orders}</td>
+                  <td class="py-1 text-right">{r.orders ? `${r.overCostPct}%` : "—"}</td>
+                  <td class="py-1 text-right">{ugx(r.meanHeadroomUgx)}</td>
+                  <td class="py-1 text-right">{r.alarm ? "ALARM" : ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p class="text-xs text-gray-600 mt-3">{ladderMargin.note}</p>
+        </>
       )}
     </section>
 

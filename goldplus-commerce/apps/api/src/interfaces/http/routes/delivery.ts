@@ -141,7 +141,12 @@ routes.post('/quote', async (c) => {
     disclaimerStage: hasFee ? 2 : 1,
     // Alongside EVERY quote, whatever the outcome.
     pickup: copy('copy_pickup_offer'),
-    pinNudge: copy('copy_pin_nudge'),
+    // §4.6: only when this area has learned the pin saving, and with the true figure in it.
+    pinNudge:
+      outcome.pinSavingUgx !== null
+        ? (copy('copy_pin_nudge') ?? '').replace(/\{\{\s*saving\s*\}\}/g, outcome.pinSavingUgx.toLocaleString('en-UG')) || null
+        : null,
+    pinSavingUgx: outcome.pinSavingUgx,
     // Business info: the one authority for the cutoff hour and closed days.
     cutoff: await registry.businessInfoService
       .getPublicConfig()
@@ -179,7 +184,8 @@ routes.get('/copy', async (c) => {
       stage1: raw.copy_estimate_stage1 ?? null,
       stage2: raw.copy_fixed_stage2 ?? null,
       pickup: raw.copy_pickup_offer ?? null,
-      pinNudge: raw.copy_pin_nudge ?? null,
+      // The template only; a page shows it solely with a saving from a quote (§4.6).
+      pinNudgeTemplate: raw.copy_pin_nudge ?? null,
       reasons: Object.fromEntries(Object.entries(REASON_COPY_KEY).map(([reason, key]) => [reason, raw[key] ?? null])),
     },
   });

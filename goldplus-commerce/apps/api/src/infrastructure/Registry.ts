@@ -328,6 +328,7 @@ import { ApplyCorridorCsvUseCase, DryRunCorridorCsvUseCase, RevertCorridorBatchU
 import { LocationPinUseCases } from '../application/use-cases/delivery/LocationPinUseCases';
 import { DrizzleLocationPinRepository } from './db/repositories/DrizzleLocationPinRepository';
 import { RiderUseCases } from '../application/use-cases/delivery/RiderUseCases';
+import { LadderDryRunUseCase, LadderMarginReportUseCase } from '../application/use-cases/delivery/FeeLadderUseCases';
 import { DrizzleRiderRepository } from './db/repositories/DrizzleRiderRepository';
 import {
   AcceptCalibrationProposalUseCase,
@@ -1994,6 +1995,9 @@ export class Registry {
     this.deliveryAreaResolver,
     this.deliveryConfigReader,
   );
+  // §4.5: the ladder's dry run and margin alarm. Writes nothing; publishing goes through config draft → publish.
+  public readonly ladderDryRunUseCase = new LadderDryRunUseCase(this.deliveryQuotingRepo, this.deliveryQuotingUseCase);
+  public readonly ladderMarginReportUseCase = new LadderMarginReportUseCase(this.deliveryQuotingRepo, this.deliveryConfigReader);
 
   /**
    * The adapter checkout holds. Deliberately narrow: checkout needs a fee, a

@@ -24,6 +24,9 @@ let notice: { kind: "success" | "error"; text: string } | null = null;
 // (with its confirmation digest) is what the Apply button sends back.
 let corridorCsvText = "";
 let corridorDryRun: any = null;
+// Fee ladder dry run (§4.5): the rungs stay in the box; the result is read-only.
+let ladderText = "";
+let ladderDryRun: any = null;
 
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
@@ -61,6 +64,12 @@ if (Astro.request.method === "POST") {
         corridorDryRun = json?.success ? json.data : null;
         if (!corridorDryRun) notice = { kind: "error", text: json?.error?.message || "Could not dry-run the file." };
       }
+    } else if (intent === "ladder-dry-run") {
+      ladderText = String(form.get("ladder") || "");
+      const res = await fetch(`${apiBase}/admin/delivery/ladder/dry-run`, { method: "POST", headers, body: JSON.stringify({ ladder: ladderText }) });
+      const json = await res.json().catch(() => null);
+      ladderDryRun = json?.success ? json.data : null;
+      if (!ladderDryRun) notice = { kind: "error", text: json?.error?.message || "Could not run the ladder." };
     } else if (intent === "actual-cost") {
       const res = await fetch(`${apiBase}/admin/delivery/orders/${encodeURIComponent(String(form.get("orderId") || ""))}/actual-cost`, {
         method: "POST",
@@ -273,6 +282,47 @@ const tierLabel: Record<number, string> = { 1: "One approver", 2: "Needs a secon
                   </button>
                 </form>
               )}
+            </div>
+          )}
+        </section>
+
+        <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8">
+          <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-1">Fee ladder</h3>
+          <p class="text-xs text-gray-500 mb-3">
+            Your price points, lowest to highest. The dry run places every area on the lowest rung that covers the model's
+            cost × margin and shows what changes. Nothing is written here: to go live, publish <code>fee_shape = ladder</code>
+            and <code>fee_ladder</code> through the setup, like any other value. The margin alarm on the Calibration page watches each rung.
+          </p>
+          <form method="POST" class="flex flex-wrap items-end gap-2">
+            <input type="hidden" name="intent" value="ladder-dry-run" />
+            <label class="block text-xs text-gray-700 grow">Rungs (UGX)
+              <input name="ladder" value={ladderText} required placeholder="3000, 5000, 8000, 12000, 20000" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono" />
+            </label>
+            <button type="submit" class="bg-brand-dark text-white text-[10px] font-black uppercase tracking-widest px-3 py-2.5 rounded-lg hover:bg-black">Dry run</button>
+          </form>
+          {ladderDryRun && (
+            <div class="mt-4 border border-gray-200 rounded-lg p-4">
+              <p class="text-sm font-bold text-gray-800">{ladderDryRun.summary}</p>
+              {ladderDryRun.orderingFlags.length > 0 && (
+                <ul class="mt-2 text-xs text-amber-800 space-y-1">
+                  {ladderDryRun.orderingFlags.map((f: any) => <li>{f.nearer} ({f.nearerKm} km) would cost UGX {Number(f.nearerFee).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}, more than {f.farther} ({f.fartherKm} km) at UGX {Number(f.fartherFee).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}.</li>)}
+                </ul>
+              )}
+              <div class="mt-3 max-h-80 overflow-auto">
+                <table class="w-full text-xs">
+                  <thead class="text-[10px] uppercase font-black tracking-widest text-gray-500"><tr><th class="text-left py-1">Area</th><th class="text-right py-1">km</th><th class="text-right py-1">Today</th><th class="text-right py-1">On the ladder</th></tr></thead>
+                  <tbody>
+                    {ladderDryRun.rows.map((r: any) => (
+                      <tr class={`border-t border-gray-100 ${r.currentFeeUgx !== r.proposedRungUgx ? "font-bold" : ""} ${!r.covered ? "text-red-700" : ""}`}>
+                        <td class="py-1">{r.label}</td>
+                        <td class="py-1 text-right">{r.oneWayKm ?? "—"}</td>
+                        <td class="py-1 text-right">{r.currentFeeUgx === null ? "—" : Number(r.currentFeeUgx).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}</td>
+                        <td class="py-1 text-right">{r.proposedRungUgx === null ? "—" : Number(r.proposedRungUgx).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}{!r.covered ? " (above top rung)" : ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </section>

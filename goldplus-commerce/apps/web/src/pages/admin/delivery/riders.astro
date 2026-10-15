@@ -82,9 +82,8 @@ try {
     </form>
 
     <div class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-      {loadFailed ? (
-        <p class="p-5 text-sm text-red-800">The rider list could not be loaded.</p>
-      ) : riders.length === 0 ? (
+      {loadFailed && <p class="p-5 text-sm text-red-800">The rider list is unavailable right now: the delivery service did not answer.</p>}
+      {!loadFailed && (riders.length === 0 ? (
         <p class="p-5 text-sm text-gray-600">No riders yet. Add the first one above; until then a location from any number is treated as a customer's pin.</p>
       ) : (
         <table class="w-full text-sm">
@@ -109,7 +108,7 @@ try {
             ))}
           </tbody>
         </table>
-      )}
+      ))}
     </div>
   </div>
 </AdminLayout>

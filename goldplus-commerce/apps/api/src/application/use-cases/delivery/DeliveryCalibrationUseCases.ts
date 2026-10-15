@@ -140,6 +140,10 @@ export class RunNightlyCalibrationUseCase {
       // difference between the two is what would justify a pin time claim, and
       // it stays null until both halves have a sample.
       await consider('last_mile_minutes', areaSlug, split.withoutPin);
+      // §4.6: the WITH-pin side is learned under `<area>#pin`. Once both sides
+      // are learned, a pinned quote is priced with its own minutes and the pin
+      // nudge may state the difference. A proposal like any other: a person accepts it.
+      await consider('last_mile_minutes', `${areaSlug}#pin`, split.withPin);
     }
 
     // Stateless: pending proposals are REPLACED wholesale, so running twice

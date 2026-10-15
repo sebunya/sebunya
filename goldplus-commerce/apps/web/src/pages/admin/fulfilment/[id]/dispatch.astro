@@ -33,6 +33,7 @@ if (Astro.request.method === "POST") {
         carrierName: String(form.get("carrierName") || "").trim() || undefined,
         riderName: String(form.get("riderName") || "").trim() || undefined,
         riderId: String(form.get("riderId") || "").trim() || undefined,
+        stopsOnTrip: Number(form.get("stopsOnTrip") || 0) || undefined,
         contact: String(form.get("contact") || "").trim() || undefined,
         notes: String(form.get("notes") || "").trim() || undefined,
         estimatedDeliveryAt: kampalaLocalToIso(eta) ?? undefined, // Kampala wall-clock, not UTC
@@ -202,6 +203,11 @@ function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG", 
             )}
             <label for="riderName" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Rider (optional)</label>
             <input id="riderName" name="riderName" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
+          </div>
+          <div>
+            <label for="stopsOnTrip" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Stops on this trip (optional)</label>
+            <input id="stopsOnTrip" name="stopsOnTrip" type="number" min="1" max="50" inputmode="numeric" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark" />
+            <p class="text-[10px] text-gray-500 mt-1">How many orders the rider is taking out together. The model prices each as its own trip; this is the evidence for setting margin from batching.</p>
           </div>
           <div>
             <label for="contact" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Rider contact (stored masked)</label>

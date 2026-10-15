@@ -1331,6 +1331,13 @@
       "when": 1790140000067,
       "tag": "0190_delivery_pins_riders_handover",
       "breakpoints": true
+    },
+    {
+      "idx": 190,
+      "version": "5",
+      "when": 1790140000068,
+      "tag": "0191_dispatch_stops_on_trip",
+      "breakpoints": true
     }
   ]
 }
