@@ -260,6 +260,7 @@ routes.post('/config/:versionId/publish', requirePermissions([PERMISSIONS.DELIVE
     previewConfirmed: body?.previewConfirmed === true,
     scheduledFor: scheduled,
   });
+  Registry.getInstance().deliveryConfigReader.invalidate(); // a new (or old) price is live on the next quote, not in five seconds
   if (!result.ok) {
     return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
   }
@@ -284,6 +285,7 @@ routes.post('/config/revert', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PU
     actorId: (c.get('user') as { id: string }).id,
     reason: String(body?.reason ?? ''),
   });
+  Registry.getInstance().deliveryConfigReader.invalidate(); // a new (or old) price is live on the next quote, not in five seconds
   if (!result.ok) {
     return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
   }

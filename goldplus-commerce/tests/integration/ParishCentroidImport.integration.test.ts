@@ -170,6 +170,15 @@ suite('parish centroid import (real PostgreSQL)', () => {
     expect(resolved?.input.measuredKm).toBeNull();
   });
 
+  it('a reserve, lake or island is never serviceable for a door delivery, whatever its band', async () => {
+    const { DeliveryAreaResolver } = await import('../../apps/api/src/infrastructure/delivery/DeliveryAreaResolver');
+    await raw`update ug_area set area_kind = 'reserve', area_kind_source = 'admin' where area_slug = ${slugs.prisons}`;
+    const resolved = await new DeliveryAreaResolver().bySlug(slugs.prisons);
+    expect(resolved?.input.serviceable).toBe(false);
+    const stillOk = await new DeliveryAreaResolver().bySlug(slugs.ntinda);
+    expect(stillOk?.input.serviceable).toBe(true);
+  });
+
   it('refuses a data file with the wrong checksum', async () => {
     await expect(importer.runParishCentroidImport({ csvPath, apply: false, expectedMd5: 'not-the-file', expectedRows: null, log: () => undefined })).rejects.toThrow(/checksum/);
   });

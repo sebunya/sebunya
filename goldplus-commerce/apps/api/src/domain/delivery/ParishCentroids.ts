@@ -51,7 +51,8 @@ export interface CorridorAreaRecord {
   band: DistanceBand;
 }
 
-export type MatchMethod = 'exact' | 'tokens' | 'fuzzy';
+/** 'village': the area is a named village inside a parish (Najjera in Kira); the parish's point, the shapefile's own evidence. */
+export type MatchMethod = 'exact' | 'tokens' | 'village' | 'fuzzy';
 
 export interface AreaMatch {
   areaSlug: string;
@@ -189,6 +190,7 @@ export function centroidSourceRef(match: Pick<AreaMatch, 'parish' | 'method' | '
   const base = `${match.parish.objectId}:${match.parish.pcode}`;
   if (match.method === 'exact') return base;
   if (match.method === 'tokens') return `${base}#tokens`;
+  if (match.method === 'village') return `${base}#village`;
   return `${base}#fuzzy:${round2(match.score)}`;
 }
 
@@ -210,10 +212,13 @@ export function matchParishesToAreas(
   const minKey = opts.fuzzyMinKeyLength ?? MATCH_DEFAULTS.fuzzyMinKeyLength;
   const canonical = opts.canonical ?? canonicalDistrictKey;
 
-  type Indexed = { p: ParishRecord; key: string; tokens: string; sub: string; units: string };
+  type Indexed = { p: ParishRecord; key: string; tokens: string; sub: string; units: string; village: string };
   const byDistrict = new Map<string, Indexed[]>();
   for (const p of parishes) {
-    const row: Indexed = { p, key: matchKey(p.parish), tokens: tokenKey(p.parish), sub: matchKey(p.subcounty), units: unitKey(p.parish) };
+    const row: Indexed = {
+      p, key: matchKey(p.parish), tokens: tokenKey(p.parish), sub: matchKey(p.subcounty), units: unitKey(p.parish),
+      village: p.villageHq ? matchKey(p.villageHq) : '',
+    };
     const d = canonical(p.district); // the 2016 file's own spellings (KABONG) mapped to the shop's
     const list = byDistrict.get(d) ?? [];
     list.push(row);
@@ -260,6 +265,9 @@ export function matchParishesToAreas(
 
     if (settle(candidates.filter((c) => c.key === key), 'exact', 1)) continue;
     if (settle(candidates.filter((c) => c.tokens === tokens), 'tokens', 0.95)) continue;
+    // The shapefile names one reference village per parish: an area that IS that village (Najjera → Kira,
+    // Kajjansi → Kitende) takes the parish's point on the file's own evidence, before any fuzzy guess.
+    if (settle(candidates.filter((c) => c.village !== '' && c.village === key), 'village', 0.9)) continue;
 
     // A bare name against numbered parishes ("Kololo" vs Kololo I–IV) is ambiguous, never a guess.
     const keyStem = stem(key);
@@ -438,7 +446,7 @@ export function classifyAgainstBand(input: {
   const tol = Math.max(0.25, (input.expectedErrorM ?? 0) / 1000);
   const nearEdge = (x: number) => Math.abs(x - lo) <= tol || Math.abs(x - hi) <= tol;
   if (nearEdge(input.km) || nearEdge(input.km * allowance)) return { verdict: 'adjacent', bandAtKm, bandAtAllowance };
-  const clean = input.method === 'exact' || input.method === 'tokens' || (input.score ?? 0) >= 0.85;
+  const clean = input.method === 'exact' || input.method === 'tokens' || input.method === 'village' || (input.score ?? 0) >= 0.85;
   const verdict: BandVerdict = !clean || input.sharedPolygon ? 'suspect_match' : 'suspect_band';
   return { verdict, bandAtKm, bandAtAllowance };
 }

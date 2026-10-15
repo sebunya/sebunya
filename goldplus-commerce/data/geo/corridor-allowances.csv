@@ -1,0 +1,4 @@
+# source=review board 2026-10-15 (domain expert + boda rider): the road/straight-line ratio from Burton Street is corridor-specific,
+# radial roads ~1.1-1.25, lake-wrapped corridors 1.4-2.0. Report parameters only (never model inputs); a corridor absent here uses --allowance.
+# vintage=2026-10 note=corridor names must match delivery_corridor.corridor exactly; fill in from the dry run's corridor column
+corridor,allowance,note

@@ -219,7 +219,9 @@ export class DrizzleDeliveryQuotingRepository implements IDeliveryQuotingReposit
 
   async activeOriginCode(): Promise<string | null> {
     const rows = (await db.execute(
-      sql`select origin_code from delivery_origin where active = true order by origin_code limit 1`,
+      // The same choice the area resolver makes for the point it measures from, so a capture's origin_code and its
+      // centroid_km never come from two different hubs.
+      sql`select origin_code from delivery_origin where active = true order by (role = 'primary_dispatch_hub') desc, origin_code limit 1`,
     )) as unknown as Array<{ origin_code: string }>;
     return rows[0]?.origin_code ?? null;
   }

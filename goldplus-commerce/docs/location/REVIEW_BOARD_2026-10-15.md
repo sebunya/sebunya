@@ -81,8 +81,12 @@ it; ladder rungs in thousands; `stops_on_trip` on the dispatch now, not later.
   parish by design, and the rider-card instruction that would use it is Phase B. It is now data with provenance.
 - Matching thresholds stay parameters of the run (recorded in `geo_data_source_run.params`), not registry keys: a bad
   value cannot change a fee, and a person runs the import.
-- The quote path's eight redundant config reads are pre-existing and out of this PR's scope; noted for a follow-up
-  with the three timings the optimisation reviewer asked for first.
+- The quote path's eight redundant config reads were pre-existing; fixed in the same PR with a five-second
+  per-process snapshot that publish and revert clear. The three timings the optimisation reviewer asked for (hit/miss
+  split, the report's EXPLAIN, the import's two phases) are still worth taking once the import has run in production.
+- Also implemented after the board: both origin readers prefer the primary hub; `area_kind` reserve/water/island is
+  honoured by the quote path (never serviceable for a door); village-name matching (`#village`) for areas that are a
+  parish's reference village; per-corridor detour allowances as a data file; a 5,000-row cap on the Corridor file.
 
 ## Data vintage, as the shop now records it
 

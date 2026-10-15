@@ -7,3 +7,4 @@ district-lineage.csv,district-lineage,2025-09-01,,38,public record,2026-10-15,re
 district-name-variants.csv,district-name-variants,2026-10-01,,7,shop,2026-10-15,
 area-kind-rules.csv,area-kind-rules,2026-10-01,,7,shop,2026-10-15,
 acceptance-areas.csv,acceptance-areas,2026-10-01,,10,shop,2026-10-15,
+corridor-allowances.csv,corridor-allowances,2026-10-01,,0,shop,2026-10-15,per-corridor detour allowance for the band report; empty until the dry run's corridor names are copied in

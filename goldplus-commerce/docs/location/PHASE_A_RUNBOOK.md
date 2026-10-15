@@ -51,7 +51,12 @@ attempt), without which two of the four numbers and the whole calibration loop h
 minutes and attempts on the delivery date, measures the model-priced share against own-rider quotes and shows the
 signed median; coordinates and map links are redacted from the assistant archive; and the lineage, name variants,
 area-kind rules, acceptance areas and file checksums are **data files under `data/geo` with a MANIFEST**, every run
-recorded in `geo_data_source_run` with vintage, checksum and parameters.
+recorded in `geo_data_source_run` with vintage, checksum and parameters. Follow-up observations implemented in the same PR: one configuration snapshot per process (a quote no longer reads the
+two config tables eight times; publish and revert clear it), both origin readers pick the same hub, the quote path
+refuses door delivery to a reserve, lake or island whatever its band, an area that is a parish's reference village
+(Najjera → Kira) matches on the file's own evidence, `data/geo/corridor-allowances.csv` gives the band report a
+per-corridor detour allowance (empty until the dry run's corridor names are copied in), and the Corridor file dry run
+refuses a file over 5,000 rows.
 
 Not in A.1 (deliberately): accepting unknown districts at checkout (the boundary refuses them today on purpose; a
 decision for the owner, spec §7.1), the fee ladder (spec §4.5, decision 1), the fee-step counter, `ug_district` as a

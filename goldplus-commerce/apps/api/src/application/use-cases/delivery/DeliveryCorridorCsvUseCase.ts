@@ -94,6 +94,16 @@ export class DryRunCorridorCsvUseCase {
     const header = lines[0].map((h) => h.trim());
     const idx = (name: string) => header.indexOf(name);
     const seen = new Map<string, number>();
+    if (lines.length - 1 > CORRIDOR_CSV_MAX_ROWS) {
+      return {
+        totalRows: lines.length - 1,
+        changes: [],
+        failures: [{ line: 1, areaSlug: '—', problem: `${lines.length - 1} rows; the corridor table has a few hundred. Is this the right file?` }],
+        unchanged: 0,
+        summary: 'The file is far larger than the corridor table, so nothing was read from it.',
+        confirmation: '',
+      };
+    }
     const required = ['area_slug', 'corridor', 'distance_band', 'access_mode'];
     const missingCols = required.filter((r) => idx(r) === -1);
     if (missingCols.length > 0) {
@@ -201,6 +211,8 @@ export type ApplyCorridorCsvResult =
 
 /** Contract #9: every change is attributed with a reason, and reverts in one action. */
 export const CORRIDOR_REASON_MIN = 5;
+/** A pasted file bigger than this is not a corridor file; refused before it is parsed row by row. */
+export const CORRIDOR_CSV_MAX_ROWS = 5_000;
 
 /**
  * The apply half of the round trip, which the brief promised ("landing as one

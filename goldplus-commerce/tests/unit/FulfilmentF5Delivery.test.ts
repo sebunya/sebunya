@@ -121,3 +121,39 @@ describe('F5 — record delivery use case', () => {
     if (!r.ok) expect(r.code).toBe('FAILURE_REASON_REQUIRED');
   });
 });
+
+describe('0189 — a recorded attempt reaches the delivery quote capture', () => {
+  const spy = () => {
+    const calls: any[] = [];
+    return { calls, mirror: { recordAttempt: async (input: any) => { calls.push(input); } } };
+  };
+  it('a first-attempt DELIVERED is completed, first attempt succeeded, with the handover time', async () => {
+    const { calls, mirror } = spy();
+    const r = await new RecordDeliveryUseCase(new TaskRepo(taskSnap()), new DeliveryRepo(), new SpyAudit(), undefined, mirror).execute({
+      taskId: 't1', actorId: 'a', outcome: 'DELIVERED', recipientName: 'Nakato Jane', deliveredQuantity: 2, returnedQuantity: 0,
+    });
+    expect(r.ok).toBe(true);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ orderId: 'o1', taskId: 't1', attempt: 1, completed: true, failedFirstAttempt: false });
+    expect(calls[0].deliveredAt).toBeInstanceOf(Date);
+  });
+  it('a failed first attempt is recorded as a failed first attempt (so the rate is not 100% by construction), and a later success is not a first-time success', async () => {
+    const { calls, mirror } = spy();
+    const tasks = new TaskRepo(taskSnap());
+    const deliveries = new DeliveryRepo();
+    const uc = new RecordDeliveryUseCase(tasks, deliveries, new SpyAudit(), undefined, mirror);
+    await uc.execute({ taskId: 't1', actorId: 'a', outcome: 'DELIVERY_FAILED', failedReason: 'customer not home' });
+    await uc.execute({ taskId: 't1', actorId: 'a', outcome: 'DELIVERED', recipientName: 'N', deliveredQuantity: 2, returnedQuantity: 0 });
+    expect(calls.map((c) => [c.attempt, c.completed, c.failedFirstAttempt, c.deliveredAt === null])).toEqual([
+      [1, false, true, true],
+      [2, true, false, false],
+    ]);
+  });
+  it('a capture that throws never voids the delivery', async () => {
+    const mirror = { recordAttempt: async () => { throw new Error('capture down'); } };
+    const r = await new RecordDeliveryUseCase(new TaskRepo(taskSnap()), new DeliveryRepo(), new SpyAudit(), undefined, mirror).execute({
+      taskId: 't1', actorId: 'a', outcome: 'DELIVERED', recipientName: 'N', deliveredQuantity: 2, returnedQuantity: 0,
+    });
+    expect(r.ok).toBe(true);
+  });
+});

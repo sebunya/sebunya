@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { DISTRICT_LINEAGE, canonicalDistrictKey, createLineage, lineageFamily, sameLineageFamily } from '../../packages/shared/src/locations/districtLineage';
 import { normalizeUgandaDistrict } from '../../packages/shared/src/locations/uganda';
 import { parseCsv, parseCsvRows, csvField } from '../../packages/shared/src/csv';
@@ -72,6 +74,13 @@ describe('district lineage families', () => {
     expect(lineageFamily('Karenga').has('KAABONG')).toBe(true);
     expect(lineageFamily('Kabong').has('KARENGA')).toBe(true);
     expect(lineageFamily('Kassanda').has('MUBENDE')).toBe(true);
+  });
+  it('the reviewed CSV under data/geo carries every row the constant has (the CSV is what the importer reads)', () => {
+    const csv = parseCsv(readFileSync(resolve(__dirname, '../../data/geo/district-lineage.csv'), 'utf8'));
+    const inCsv = new Set(csv.map((r) => `${r.child}<${r.parent}`));
+    const missing = DISTRICT_LINEAGE.map((r) => `${r.child}<${r.parent}`).filter((k) => !inCsv.has(k));
+    expect(missing).toEqual([]);
+    expect(csv.filter((r) => r.status === 'proposed').map((r) => r.child).sort()).toEqual(['Bughendera', 'Kisoko', 'Mukuju', 'Mulanda', 'Tororo City']);
   });
   it('a lineage built from data rows behaves like the constant (so the CSV can replace it)', () => {
     const l = createLineage([{ child: 'Newtown', parent: 'Oldshire' }], { OLDSHYRE: 'OLDSHIRE' });
@@ -181,6 +190,14 @@ describe('matching corridor areas to 2016 parishes', () => {
     const out = match([area('w-kazo-nabweru', 'Kazo Nabweru', 'Wakiso'), area('w-namugongo', 'Namugongo', 'Wakiso')], parishes);
     expect(out.matched).toEqual([]);
     expect(out.unmatched.sort()).toEqual(['w-kazo-nabweru', 'w-namugongo']);
+  });
+
+  it("an area that is a parish's reference village takes that parish on the file's own evidence, before any fuzzy guess", () => {
+    const kira = parish('WAKISO', 'KIRA', 'KIRA', { villageHq: 'NAJJERA' });
+    const out = match([area('w-najjera', 'Najjera', 'Wakiso'), area('w-nowhere', 'Nowhere', 'Wakiso')], [kira, parish('WAKISO', 'KIRA', 'NAJJANANKUMBI')]);
+    expect(out.matched.map((m) => [m.areaSlug, m.parish.parish, m.method])).toEqual([['w-najjera', 'KIRA', 'village']]);
+    expect(centroidSourceRef(out.matched[0])).toBe(`${kira.objectId}:${kira.pcode}#village`);
+    expect(out.unmatched).toEqual(['w-nowhere']);
   });
 
   it('short keys never fuzzy-match', () => {

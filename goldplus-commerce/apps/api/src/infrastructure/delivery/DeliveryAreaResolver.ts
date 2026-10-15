@@ -37,7 +37,11 @@ interface CorridorRow {
   centroid_source: string | null;
   centroid_sample_size: number;
   centroid_expected_error_m: number | null;
+  area_kind?: string | null;
 }
+
+/** A national park, a lake or an island is never a door-delivery destination, whatever its band says (spec §3.3). */
+const NEVER_DOOR_DELIVERY = new Set(['reserve', 'water', 'island']);
 
 interface OriginPoint {
   lat: number;
@@ -55,9 +59,11 @@ export class DeliveryAreaResolver implements IAreaResolverPort {
    */
   private async corridorFor(areaSlug: string): Promise<CorridorRow | null> {
     const rows = (await db.execute(sql`
-      select area_slug, area, district, corridor, distance_band, access_mode, serviceable,
-             centroid_lat, centroid_lng, centroid_source, centroid_sample_size, centroid_expected_error_m
-      from delivery_corridor where area_slug = ${areaSlug} limit 1`)) as unknown as CorridorRow[];
+      select c.area_slug, c.area, c.district, c.corridor, c.distance_band, c.access_mode, c.serviceable,
+             c.centroid_lat, c.centroid_lng, c.centroid_source, c.centroid_sample_size, c.centroid_expected_error_m,
+             u.area_kind
+      from delivery_corridor c left join ug_area u on u.area_slug = c.area_slug
+      where c.area_slug = ${areaSlug} limit 1`)) as unknown as CorridorRow[];
     return rows[0] ?? null;
   }
 
@@ -122,7 +128,7 @@ export class DeliveryAreaResolver implements IAreaResolverPort {
       corridor: row.corridor,
       band,
       accessMode: row.access_mode === 'water' ? 'water' : 'road',
-      serviceable: row.serviceable,
+      serviceable: row.serviceable && !NEVER_DOOR_DELIVERY.has(row.area_kind ?? ''),
       // A measured centroid beats a band midpoint — but only once it exists,
       // and only once the registry says to price with it. `centroidKm` is the
       // fact; `measuredKm` is set by the quoting use case from it (0189).

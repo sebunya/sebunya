@@ -119,6 +119,7 @@ export interface ImportSummary {
   matched: number;
   exact: number;
   tokens: number;
+  village: number;
   fuzzy: number;
   ambiguous: number;
   unmatched: number;
@@ -195,6 +196,16 @@ export function loadAreaKindRules(dataDir: string): readonly AreaKindRule[] {
         .sort((a, b) => Number(a.priority) - Number(b.priority))
         .map((x) => ({ pattern: new RegExp(x.pattern), kind: x.kind as AreaKind })),
     DEFAULT_AREA_KIND_RULES,
+  );
+}
+
+/** Per-corridor detour allowances (report parameters); corridors absent from the file use the global flag. */
+export function loadCorridorAllowances(dataDir: string): Map<string, number> {
+  return readOptional<Map<string, number>>(
+    dataDir,
+    'corridor-allowances.csv',
+    (r) => new Map(r.filter((x) => x.corridor && Number(x.allowance) >= 1).map((x) => [x.corridor.trim(), Number(x.allowance)])),
+    new Map(),
   );
 }
 
@@ -280,6 +291,7 @@ export async function runParishCentroidImport(opts: ImportOptions): Promise<Impo
   const { lineage, rows: lineageRows, variants } = loadLineage(dataDir);
   const kindRules = loadAreaKindRules(dataDir);
   const acceptance = loadAcceptanceAreas(dataDir);
+  const corridorAllowances = loadCorridorAllowances(dataDir);
 
   const corridor = (await db.execute(sql`
     select c.area_slug, c.area, c.district, c.distance_band,
@@ -316,7 +328,10 @@ export async function runParishCentroidImport(opts: ImportOptions): Promise<Impo
   const allowance = Number.isFinite(opts.allowance) && (opts.allowance as number) >= 1 ? (opts.allowance as number) : 1.3;
   const fuzzyThreshold = opts.fuzzyThreshold ?? MATCH_DEFAULTS.fuzzyThreshold;
   const fuzzyMargin = opts.fuzzyMargin ?? MATCH_DEFAULTS.fuzzyMargin;
-  const params = { allowance, fuzzyThreshold, fuzzyMargin, lineageRows, variants, kindRules: kindRules.length, ceiling };
+  const params = {
+    allowance, corridorAllowances: Object.fromEntries(corridorAllowances), fuzzyThreshold, fuzzyMargin, lineageRows, variants,
+    kindRules: kindRules.length, ceiling,
+  };
 
   const areas: CorridorAreaRecord[] = [];
   for (const r of corridor) {
@@ -335,7 +350,7 @@ export async function runParishCentroidImport(opts: ImportOptions): Promise<Impo
   const ambiguityBySlug = new Map(outcome.ambiguous.map((a) => [a.areaSlug, a]));
 
   const rows: ReportRow[] = [];
-  const counts = { exact: 0, tokens: 0, fuzzy: 0, guarded: 0, consistent: 0, adjacent: 0, suspectMatch: 0, suspectBand: 0, flips: 0 };
+  const counts = { exact: 0, tokens: 0, village: 0, fuzzy: 0, guarded: 0, consistent: 0, adjacent: 0, suspectMatch: 0, suspectBand: 0, flips: 0 };
   for (const area of areas) {
     const db = byArea.get(area.areaSlug)!;
     const base = {
@@ -365,8 +380,10 @@ export async function runParishCentroidImport(opts: ImportOptions): Promise<Impo
       });
       continue;
     }
+    const areaAllowance = corridorAllowances.get(db.corridor) ?? allowance;
     const verdict = classifyAgainstBand({
-      seededBand: area.band, km, method: m.method, score: m.score, sharedPolygon: m.sharedPolygon, expectedErrorM: errorM, allowance,
+      seededBand: area.band, km, method: m.method, score: m.score, sharedPolygon: m.sharedPolygon, expectedErrorM: errorM,
+      allowance: areaAllowance,
     });
     const flip = verdict.verdict === 'suspect_band' ? fulfilmentFlip(area.band, verdict.bandAtAllowance ?? verdict.bandAtKm, ceiling) : null;
     if (verdict.verdict === 'consistent') counts.consistent += 1;
@@ -376,19 +393,19 @@ export async function runParishCentroidImport(opts: ImportOptions): Promise<Impo
     if (flip) counts.flips += 1;
     rows.push({
       ...base, method: m.method, score: m.score, parish: parishLabel, ref: centroidSourceRef(m), guard: 'ok', km,
-      kmWithAllowance: Math.round(km * allowance * 100) / 100, bandAtKm: verdict.bandAtKm, bandAtAllowance: verdict.bandAtAllowance,
+      kmWithAllowance: Math.round(km * areaAllowance * 100) / 100, bandAtKm: verdict.bandAtKm, bandAtAllowance: verdict.bandAtAllowance,
       verdict: verdict.verdict, flip, expectedErrorM: errorM, sharedPolygon: m.sharedPolygon, candidates: null,
     });
   }
 
   // ── The report ──────────────────────────────────────────────────────────
   log(`\n=== parish centroids: ${areas.length} corridor areas, ${parishes.length} parishes (ubos-parishes-2016, md5 ${md5.slice(0, 8)}), origin ${origin!.code} ===`);
-  log(`  parameters: allowance ×${allowance}, fuzzy ≥ ${fuzzyThreshold} (margin ${fuzzyMargin}), lineage rows ${lineageRows}, name variants ${variants}, kind rules ${kindRules.length}, own_rider_max_band ${ceiling ?? 'UNSET'}`);
+  log(`  parameters: allowance ×${allowance} (${corridorAllowances.size} corridor override(s)), fuzzy ≥ ${fuzzyThreshold} (margin ${fuzzyMargin}), lineage rows ${lineageRows}, name variants ${variants}, kind rules ${kindRules.length}, own_rider_max_band ${ceiling ?? 'UNSET'}`);
   const districts = [...new Set(areas.map((a) => a.district))].sort();
   for (const d of districts) {
     const inD = rows.filter((r) => r.district === d);
     const n = (method: ReportRow['method']) => inD.filter((r) => r.method === method).length;
-    log(`  ${d.padEnd(12)} areas=${String(inD.length).padStart(3)} exact=${n('exact')} tokens=${n('tokens')} fuzzy=${n('fuzzy')} ambiguous=${n('ambiguous')} unmatched=${n('unmatched')}`);
+    log(`  ${d.padEnd(12)} areas=${String(inD.length).padStart(3)} exact=${n('exact')} tokens=${n('tokens')} village=${n('village')} fuzzy=${n('fuzzy')} ambiguous=${n('ambiguous')} unmatched=${n('unmatched')}`);
   }
   log(`  matched ${outcome.matched.length}/${areas.length} (${Math.round((100 * outcome.matched.length) / areas.length)}%), of which ${counts.guarded} refused by the point guard`);
 
@@ -408,6 +425,7 @@ export async function runParishCentroidImport(opts: ImportOptions): Promise<Impo
     (r) => `${r.areaSlug}: ${r.candidates}`);
   list('unmatched (no parish of that name in the district family)', rows.filter((r) => r.method === 'unmatched'),
     (r) => `${r.areaSlug} (${r.area}, ${r.district})`);
+  list('village matches (the area is a parish\'s reference village; the parish point, error of the whole parish)', rows.filter((r) => r.method === 'village'), (r) => `${r.areaSlug} → ${r.parish} ±${r.expectedErrorM} m`);
   list('fuzzy matches (accepted; method and score recorded on the row)', rows.filter((r) => r.method === 'fuzzy'), (r) => `${r.areaSlug} → ${r.parish} (${r.score})`);
   list('shared polygons (several area names, one 2016 parish)', rows.filter((r) => r.sharedPolygon), (r) => `${r.areaSlug} → ${r.parish}`);
   list('areas that are not neighbourhoods (area_kind, from the name)', rows.filter((r) => r.areaKind !== 'neighbourhood'),
@@ -536,6 +554,7 @@ export async function runParishCentroidImport(opts: ImportOptions): Promise<Impo
     matched: outcome.matched.length,
     exact: counts.exact,
     tokens: counts.tokens,
+    village: counts.village,
     fuzzy: counts.fuzzy,
     ambiguous: outcome.ambiguous.length,
     unmatched: outcome.unmatched.length,

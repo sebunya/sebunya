@@ -96,6 +96,13 @@ describe('the dry run', () => {
     expect(run.failures[0].problem).toMatch(/Duplicate area_slug \(first at line 2\)/);
     expect(run.confirmation).toBe('');
   });
+  it('refuses a file far larger than the corridor table before reading it row by row', async () => {
+    const huge = [HEADER, ...Array.from({ length: 5001 }, (_, i) => `slug-${i},C,B1,road`)].join('\n');
+    const run = await harness().dry.execute(huge);
+    expect(run.changes).toEqual([]);
+    expect(run.failures).toHaveLength(1);
+    expect(run.failures[0].problem).toMatch(/5001 rows/);
+  });
   it('digest does not depend on row order', () => {
     const a: CorridorChange[] = [
       { areaSlug: 'x', field: 'distance_band', from: 'B1', to: 'B2' },
