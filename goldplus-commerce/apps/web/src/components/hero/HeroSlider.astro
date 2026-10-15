@@ -261,7 +261,7 @@ function fillHeroTokens(text: string): string {
             )}
 
             {s.slideKey === 'sameday' && (
-              <div class="gp-hero__cutoff" id="gpCutoff"><span class="gp-hero__dot"></span><span id="gpCutoffText">Order now and we deliver today</span></div>
+              <div class="gp-hero__cutoff" id="gpCutoff"><span class="gp-hero__dot"></span><span id="gpCutoffText">Order now and it goes out today</span></div>
             )}
 
             {s.slideKey === 'fees' && Array.isArray(ex.fees) && ex.fees.length > 0 && (
@@ -1347,9 +1347,9 @@ function fillHeroTokens(text: string): string {
     var end = new Date(now); end.setHours(CONFIG.cutoffHour,0,0,0);
     var mins = Math.floor((end - now)/60000), shut = function(d){ return CONFIG.closedDays.indexOf(d % 7) > -1; };
     if (shut(CTX.day)) cut.textContent = 'Closed today. Order now and it goes out when we reopen';
-    else if (mins > 90) cut.textContent = Math.floor(mins/60) + 'h ' + (mins%60) + 'm left to order for delivery today';
-    else if (mins > 0)  cut.textContent = mins + ' minutes left to order for delivery today';
-    else cut.textContent = 'Today\u2019s run has left. Order now and ' + (shut(CTX.day + 1) ? 'it goes out when we reopen' : 'we deliver tomorrow');
+    else if (mins > 90) cut.textContent = Math.floor(mins/60) + 'h ' + (mins%60) + 'm left to order for it to go out today';
+    else if (mins > 0)  cut.textContent = mins + ' minutes left to order for it to go out today';
+    else cut.textContent = 'Today\u2019s run has left. Order now and ' + (shut(CTX.day + 1) ? 'it goes out when we reopen' : 'it goes out tomorrow');
   }
 
   /* ---------------- copy code ---------------- */

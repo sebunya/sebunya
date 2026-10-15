@@ -95,7 +95,9 @@ describe('decision 3 + round 2: the header says what is true', () => {
   it('every same-day line is scoped to Kampala & Wakiso', () => {
     expect(nav).not.toMatch(/and it arrives today|Check out now and we deliver today|we deliver <b>today<\/b>/);
     expect(nav).toContain("var SD = 'Kampala & Wakiso: ';");
-    expect(nav).toContain("'Kampala &amp; Wakiso: check out in <b>' + left + '</b> for <b>same-day</b> delivery.'");
+    expect(nav).toContain("'Kampala &amp; Wakiso: check out in <b>' + left + '</b> and it goes out <b>today</b>.'");
+    // When it goes OUT, never when it arrives (owner, 2026-10-15): no line promises delivery today.
+    expect(nav).not.toMatch(/for same-day delivery|same-day delivery in Kampala|we deliver today|Same day delivery resumes/i);
   });
 
   it('phone drawer fields are 16px, so iOS does not zoom the page on focus', () => {

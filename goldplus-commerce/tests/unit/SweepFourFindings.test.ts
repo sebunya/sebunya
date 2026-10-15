@@ -467,7 +467,7 @@ describe('hero copy carries tokens, not numbers', () => {
   it('the cutoff token comes from the operator setting, not a number in the copy', () => {
     const src = read('apps/web/src/components/hero/HeroSlider.astro');
     expect(src).toMatch(/\.replace\(\/\\\{cutoff\\\}\/g, heroCutoff\.cutoffLabel\)/);
-    expect(read('packages/shared/src/hero/library.ts')).toMatch(/Order before \{cutoff\} and we/);
+    expect(read('packages/shared/src/hero/library.ts')).toMatch(/Order before \{cutoff\} and it <em>goes out today<\/em>/);
   });
 });
 

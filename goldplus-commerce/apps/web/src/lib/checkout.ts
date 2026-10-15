@@ -338,10 +338,12 @@ export function sameDayCutoffCopy(
       : "Today's run has left. This goes out on the next working day";
     return { scoped: s, inArea: s, outside: s };
   }
-  const outside = `Same-day delivery is for ${SAME_DAY_AREA_LABEL}. We confirm your delivery day by phone`;
+  // When it goes OUT, never when it arrives (delivery contract #10): not every Wakiso area is in rider range, so
+  // "same-day delivery" was a promise the shop cannot keep everywhere it named.
+  const outside = `Same-day dispatch is for ${SAME_DAY_AREA_LABEL}. We confirm your delivery day by phone`;
   if (cut.minsToCutoff <= 60) {
     return {
-      scoped: `${SAME_DAY_AREA_LABEL}: only ${cut.minsToCutoff} minutes left for same-day delivery`,
+      scoped: `${SAME_DAY_AREA_LABEL}: only ${cut.minsToCutoff} minutes left for it to go out today`,
       // When it goes OUT, never when it arrives: no area has observed data
       // behind a same-day arrival (delivery contract #10).
       inArea: `Only ${cut.minsToCutoff} minutes left for this to go out today`,
@@ -351,7 +353,7 @@ export function sameDayCutoffCopy(
   const h = Math.floor(cut.minsToCutoff / 60);
   const m = cut.minsToCutoff % 60;
   return {
-    scoped: `${SAME_DAY_AREA_LABEL}: order in ${h}h ${m}m for same-day delivery`,
+    scoped: `${SAME_DAY_AREA_LABEL}: order in ${h}h ${m}m and it goes out today`,
     inArea: `Order in ${h}h ${m}m and this goes out today`,
     outside,
   };

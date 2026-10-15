@@ -67,7 +67,7 @@ function termsBlock(): string[] {
   return [
     '## Buying from GoldPlus',
     '',
-    '- **Delivery:** same-day in Kampala and Wakiso; the fee is calculated for the address and shown before payment.',
+    '- **Delivery:** orders before the daily cut-off go out the same day in Kampala and Wakiso; the fee is calculated for the address and shown before payment.',
     '- **Payment:** MTN or Airtel Mobile Money, Visa or Mastercard, or pay on delivery or at the shop.',
     `- **Returns:** ${RETURNS_POLICY.windowDays} days for a change of mind (unused and complete; customer covers return carriage). A faulty product is replaced or refunded with GoldPlus covering the carriage. ${RETURNS_POLICY.policyUrl}`,
     '',
