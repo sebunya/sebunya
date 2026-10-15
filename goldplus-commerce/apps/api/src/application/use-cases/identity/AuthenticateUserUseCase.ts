@@ -10,6 +10,7 @@ import {
   knownPlaceKey,
   loginThrottleKey,
 } from '../../../domain/identity/LoginThrottle';
+import { UNKNOWN_CLIENT_IP } from '../../../domain/identity/ClientAddress';
 
 // A real scrypt hash of an unguessable value, verified for unknown emails so
 // the response time does not reveal whether an email is registered.
@@ -74,13 +75,15 @@ export class AuthenticateUserUseCase {
     // And per account across every IP (owner, 2026-10-15), except from a place it signed in from before.
     const accountKey = accountThrottleKey(email);
     const placeKey = knownPlaceKey(email, input.ip ?? '');
+    // An address we could not determine is not a place: remembering it would exempt every other unknown caller.
+    const placeKnowable = !!input.ip && input.ip.trim() !== '' && input.ip !== UNKNOWN_CLIENT_IP;
     if (this.attempts) {
       const now = new Date();
       const lock = evaluateLoginLock(await this.attempts.getFailures(throttleKey), now);
       const accountLock = lock.locked ? null : evaluateLoginLock(await this.attempts.getFailures(accountKey), now, ACCOUNT_LOCK_POLICY);
       const held = lock.locked
         ? lock
-        : accountLock?.locked && !(await this.attempts.isRemembered?.(placeKey)) ? accountLock : null;
+        : accountLock?.locked && !(placeKnowable && (await this.attempts.isRemembered?.(placeKey))) ? accountLock : null;
       if (held) {
         return {
           ok: false,
@@ -124,7 +127,7 @@ export class AuthenticateUserUseCase {
     if (this.attempts) {
       await this.attempts.clear(throttleKey);
       await this.attempts.clear(accountKey);
-      await this.attempts.remember?.(placeKey, KNOWN_PLACE_DAYS * 24 * 3600);
+      if (placeKnowable) await this.attempts.remember?.(placeKey, KNOWN_PLACE_DAYS * 24 * 3600);
     }
 
     if (!user.isActive) {
