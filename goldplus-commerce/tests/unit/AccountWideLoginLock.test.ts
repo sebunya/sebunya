@@ -52,4 +52,12 @@ describe('account-wide sign-in lock', () => {
     for (let i = 0; i < 5; i++) await login('41.210.1.1', 'wrong');
     expect(await login('41.210.1.1', 'right')).toMatchObject({ ok: false, code: 'LOCKED' });
   });
+
+  it('an address that could not be determined is never a known place', async () => {
+    const { login } = harness();
+    const { UNKNOWN_CLIENT_IP } = await import('../../apps/api/src/domain/identity/ClientAddress');
+    expect((await login(UNKNOWN_CLIENT_IP, 'right')).ok).toBe(true);
+    for (let i = 0; i < ACCOUNT_LOCK_POLICY.maxFailures; i++) await login(`10.6.${Math.floor(i / 4)}.1`, 'wrong');
+    expect(await login(UNKNOWN_CLIENT_IP, 'right')).toMatchObject({ ok: false, code: 'LOCKED' });
+  });
 });
