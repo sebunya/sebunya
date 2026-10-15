@@ -120,11 +120,11 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
     c.push({
       id: 'cart-cutoff', score: 96,
       text: ctx.minsToCutoff <= 60
-        ? SD + 'only <em>' + ctx.minsToCutoff + ' minutes</em> left for same-day delivery'
-        : SD + 'check out in <b>' + hm + '</b> for same-day delivery',
+        ? SD + 'only <em>' + ctx.minsToCutoff + ' minutes</em> left for it to go out today'
+        : SD + 'check out in <b>' + hm + '</b> and it goes out today',
       short: ctx.minsToCutoff <= 60
-        ? SD + '<em>' + ctx.minsToCutoff + ' min</em> left for same-day'
-        : SD + '<b>' + hm + '</b> left for same-day',
+        ? SD + '<em>' + ctx.minsToCutoff + ' min</em> left to go out today'
+        : SD + '<b>' + hm + '</b> left to go out today',
       cta: 'Finish order', href: R.cart,
     });
   }
@@ -187,14 +187,14 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
   // always available, and always true
   const cutoffLabel = ctx.cutoffLabel || '5:00pm';
   if (ctx.sunday) {
-    c.push({ id: 'sunday', score: 40, text: 'Closed today. Same day delivery resumes the <b>next working day</b>', short: 'Delivery resumes <b>next working day</b>', href: R.delivery });
+    c.push({ id: 'sunday', score: 40, text: 'Closed today. Orders go out again on the <b>next working day</b>', short: 'Delivery resumes <b>next working day</b>', href: R.delivery });
   } else if (ctx.beforeCutoff) {
     c.push({
       id: 'cutoff', score: ctx.minsToCutoff <= 60 ? 90 : 50, urgent: ctx.minsToCutoff <= 60,
       text: ctx.minsToCutoff <= 60
-        ? SD + 'only <em>' + ctx.minsToCutoff + ' minutes</em> left to order for delivery today'
-        : 'Order before <b>' + cutoffLabel + '</b> and we deliver today in Kampala and Wakiso',
-      short: ctx.minsToCutoff <= 60 ? SD + '<em>' + ctx.minsToCutoff + ' min</em> left for same-day' : SD + 'order by <b>' + cutoffLabel + '</b> for same-day',
+        ? SD + 'only <em>' + ctx.minsToCutoff + ' minutes</em> left to order for it to go out today'
+        : 'Order before <b>' + cutoffLabel + '</b> and it goes out today in Kampala and Wakiso',
+      short: ctx.minsToCutoff <= 60 ? SD + '<em>' + ctx.minsToCutoff + ' min</em> left to go out today' : SD + 'order by <b>' + cutoffLabel + '</b>, out today',
       href: R.delivery,
     });
   } else {

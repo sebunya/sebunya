@@ -17,6 +17,7 @@ const CUSTOMER_FACING = [
   'apps/web/src/pages/shop.astro',
   'apps/web/src/pages/delivery/kampala-wakiso.astro',
   'packages/shared/src/hero/library.ts',
+  'packages/shared/src/nav/nba.ts',
 ];
 
 describe('same-day is a dispatch promise', () => {
@@ -34,5 +35,15 @@ describe('same-day is a dispatch promise', () => {
     expect(sql).toMatch(/WHERE "slide_key" = 'sameday' AND "kicker" = 'Same-day delivery'/);
     const journal = JSON.parse(read('apps/api/src/infrastructure/db/migrations/meta/_journal.json'));
     expect(journal.entries.map((e: { tag: string }) => e.tag)).toContain('0186_hero_sameday_dispatch_copy');
+  });
+});
+
+describe('the stored home page strip (0188)', () => {
+  it('rewrites only the retired phrases, bumps the version, and is registered', () => {
+    const sql = read('apps/api/src/infrastructure/db/migrations/0188_homepage_sameday_dispatch_copy.sql');
+    expect(sql).toMatch(/replace\(replace\("config"::text, 'same-day delivery in Kampala', 'same-day dispatch in Kampala'\), '"Get it today"', '"Goes out today"'\)::jsonb/);
+    expect(sql).toMatch(/"version" = "version" \+ 1/);
+    const journal = JSON.parse(read('apps/api/src/infrastructure/db/migrations/meta/_journal.json'));
+    expect(journal.entries.map((e: { tag: string }) => e.tag)).toContain('0188_homepage_sameday_dispatch_copy');
   });
 });

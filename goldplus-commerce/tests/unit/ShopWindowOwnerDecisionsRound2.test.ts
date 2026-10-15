@@ -144,17 +144,19 @@ describe('decision 3 + round 2: the server NBA list and the admin nav defaults s
 
   it('every same-day line from the server list names Kampala & Wakiso', () => {
     const soon = byId({ ...base, minsToCutoff: 42 }, 'cutoff');
-    expect(soon.text).toBe('Kampala & Wakiso: only <em>42 minutes</em> left to order for delivery today');
-    expect(soon.short).toBe('Kampala & Wakiso: <em>42 min</em> left for same-day');
+    // A dispatch promise (owner, 2026-10-15): when it goes OUT, never "delivery today".
+    expect(soon.text).toBe('Kampala & Wakiso: only <em>42 minutes</em> left to order for it to go out today');
+    expect(soon.short).toBe('Kampala & Wakiso: <em>42 min</em> left to go out today');
     const later = byId({ ...base, cutoffLabel: '5:00pm' }, 'cutoff');
     expect(later.text).toContain('in Kampala and Wakiso');
-    expect(later.short).toBe('Kampala & Wakiso: order by <b>5:00pm</b> for same-day');
+    expect(later.text).toBe('Order before <b>5:00pm</b> and it goes out today in Kampala and Wakiso');
+    expect(later.short).toBe('Kampala & Wakiso: order by <b>5:00pm</b>, out today');
     for (const mins of [42, 185]) {
       const cart = byId({ ...base, cart: 1, minsToCutoff: mins }, 'cart-cutoff');
       expect(cart.text.startsWith('Kampala & Wakiso: ')).toBe(true);
       expect(cart.short!.startsWith('Kampala & Wakiso: ')).toBe(true);
     }
-    expect(nba).not.toMatch(/and it arrives today|Check out now and we deliver today|, arrives today/);
+    expect(nba).not.toMatch(/and it arrives today|Check out now and we deliver today|, arrives today|we deliver today|for same-day delivery|to order for delivery today|Same day delivery resumes/);
   });
 
   it('past the cutoff the promise is when it goes out, not when it arrives', () => {
