@@ -137,6 +137,15 @@ which the compose migrator is). §3.6 gives the no-extension fallback.
 > and adds `centroid_expected_error_m`, `centroid_source_ref`, `centroid_shared_polygon`, `centroid_updated_at`
 > (migration 0189) instead of creating this table. `geo_area_point` stays the design for points outside the metro
 > set (Phase C). No Postgres extension was needed. See `docs/location/PHASE_A_RUNBOOK.md` on PR #116.
+>
+> **Loose end found and closed in the same PR.** This spec (§3.4, §4.1, §7.3) sends re-banding "through the Control
+> Centre's corridor dry run". The Control Centre had a corridor CSV export and a dry run, and **no apply**: a re-band
+> could only be done by hand in the database. PR #116 adds the apply half (the dry run returns a digest of its
+> changes; apply refuses anything else and lands them in one transaction and one audit row), a Corridor file card,
+> and an importer flag that writes the re-band proposal in that CSV shape. The calibration page gains the four
+> location-accuracy numbers of §0. Two data defects were also fixed there: a misspelled lineage row (Kassanda) and
+> the 2016 file's own district spellings (KABONG), now mapped through a variants table with a test against the
+> shop's district list.
 
 ```sql
 CREATE TABLE geo_area_point (
