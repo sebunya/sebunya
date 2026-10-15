@@ -40,3 +40,30 @@ describe('canTransitionOrder — order state machine', () => {
     expect(can('processing', 'processing').allowed).toBe(false);
   });
 });
+
+describe('an order the customer chose to pay online is not processed unpaid (owner, 2026-10-15)', () => {
+  const ctx = (o: { paymentStatus?: PaymentStatus; paymentMethod?: string | null; payOnDeliveryConfirmed?: boolean }) =>
+    ({ paymentStatus: o.paymentStatus ?? 'unpaid', paymentMethod: o.paymentMethod ?? null, payOnDeliveryConfirmed: o.payOnDeliveryConfirmed });
+
+  it('refuses an unpaid PesaPal order, from received and from owner review', () => {
+    for (const from of ['received', 'pending_owner_review'] as const) {
+      const r = canTransitionOrder(from, 'processing', ctx({ paymentMethod: 'pesapal' }));
+      expect(r, from).toMatchObject({ allowed: false, code: 'UNPAID_ONLINE' });
+      expect(!r.allowed && r.message, from).toMatch(/re-verify the payment|pay on delivery or at the shop/);
+    }
+  });
+
+  it('allows it once paid, or once a person confirms pay on delivery / at the shop', () => {
+    expect(canTransitionOrder('received', 'processing', ctx({ paymentMethod: 'pesapal', paymentStatus: 'paid' })).allowed).toBe(true);
+    expect(canTransitionOrder('received', 'processing', ctx({ paymentMethod: 'pesapal', payOnDeliveryConfirmed: true })).allowed).toBe(true);
+  });
+
+  it('pay-on-delivery and older orders with no method are unchanged', () => {
+    expect(canTransitionOrder('received', 'processing', ctx({ paymentMethod: 'offline' })).allowed).toBe(true);
+    expect(canTransitionOrder('received', 'processing', ctx({ paymentMethod: null })).allowed).toBe(true);
+  });
+
+  it('only the move INTO processing is gated (cancelling an unpaid online order still works)', () => {
+    expect(canTransitionOrder('received', 'cancelled', ctx({ paymentMethod: 'pesapal' })).allowed).toBe(true);
+  });
+});

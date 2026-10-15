@@ -33,6 +33,11 @@ export interface OrderTransitionContext {
    * not model; it gates as "not paid", which is correct.
    */
   paymentStatus?: PaymentStatus | 'reversed';
+  /**
+   * A person confirmed an unpaid ONLINE order will be paid on delivery or at the shop: moving it to processing
+   * switches its payment method to offline (recorded on the order event). Without it such a move is refused.
+   */
+  switchToPayOnDelivery?: boolean;
   /** Stable external identity of the transition; makes retries produce no duplicate event. */
   idempotencyKey?: string | null;
   correlationId?: string | null;

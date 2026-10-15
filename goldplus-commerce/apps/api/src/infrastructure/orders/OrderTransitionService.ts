@@ -1,7 +1,7 @@
 import { desc, eq } from 'drizzle-orm';
 import { guardedMeasurementWrite, recordOrderTransition } from '../measurement/BusinessEventWriter';
 import { db } from '../db/client';
-import { orders, orderEvents } from '../db/schema';
+import { orders, orderEvents, fulfilmentTasks } from '../db/schema';
 import { canTransitionOrder } from '../../domain/commerce/OrderStateMachine';
 import { OrderStatus, PaymentStatus } from '../../domain/commerce/Order';
 import { DomainError } from '../../domain/errors/DomainError';
@@ -98,7 +98,7 @@ export class OrderTransitionService implements IOrderTransitionPort {
   ): Promise<OrderTransitionResult> {
     {
       const locked = await tx
-        .select({ status: orders.status, paymentStatus: orders.paymentStatus })
+        .select({ status: orders.status, paymentStatus: orders.paymentStatus, paymentMethod: orders.paymentMethod })
         .from(orders)
         .where(eq(orders.id, orderId))
         .for('update');
@@ -149,11 +149,18 @@ export class OrderTransitionService implements IOrderTransitionPort {
       // The verified payment result (when supplied) is authoritative for the gate,
       // not the stale stored value.
       const effectivePaymentStatus = (ctx.paymentStatus ?? row.paymentStatus) as PaymentStatus;
-      const decision = canTransitionOrder(from, toStatus, { paymentStatus: effectivePaymentStatus });
+      const decision = canTransitionOrder(from, toStatus, {
+        paymentStatus: effectivePaymentStatus,
+        paymentMethod: row.paymentMethod ?? null,
+        payOnDeliveryConfirmed: ctx.switchToPayOnDelivery === true,
+      });
+      // The confirmed switch: an unpaid online order becomes pay-on-delivery as it moves to processing.
+      const switchesToOffline = toStatus === 'processing' && effectivePaymentStatus !== 'paid'
+        && row.paymentMethod === 'pesapal' && ctx.switchToPayOnDelivery === true;
       if (!decision.allowed) {
         // Illegal transition: the transaction commits NOTHING — no status change,
         // no payment change, no event (P0-2 AC2).
-        const category = decision.code === 'UNPAID' ? 'FORBIDDEN' : 'CONFLICT';
+        const category = decision.code === 'UNPAID' || decision.code === 'UNPAID_ONLINE' ? 'FORBIDDEN' : 'CONFLICT';
         throw new DomainError(`ORDER_TRANSITION_${decision.code}`, category, decision.message, { clientSafe: true });
       }
 
@@ -177,9 +184,13 @@ export class OrderTransitionService implements IOrderTransitionPort {
           status: toStatus,
           // Only override payment status when a verified result was supplied.
           paymentStatus: ctx.paymentStatus ?? undefined,
+          ...(switchesToOffline ? { paymentMethod: 'offline' } : {}),
           updatedAt: now,
         })
         .where(eq(orders.id, orderId));
+      if (switchesToOffline) {
+        await tx.update(fulfilmentTasks).set({ paymentMethod: 'offline', updatedAt: now }).where(eq(fulfilmentTasks.orderId, orderId));
+      }
       const inserted = await tx
         .insert(orderEvents)
         .values({
@@ -190,7 +201,7 @@ export class OrderTransitionService implements IOrderTransitionPort {
           actorType: ctx.actorType,
           reasonCode: ctx.reasonCode ?? null,
           source: ctx.source,
-          note: ctx.note ?? null,
+          note: switchesToOffline ? `Switched to pay on delivery or at the shop. ${ctx.note ?? ''}`.trim().slice(0, 500) : ctx.note ?? null,
           idempotencyKey: ctx.idempotencyKey ?? null,
           correlationId: ctx.correlationId ?? null,
           occurredAt: now,

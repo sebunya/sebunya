@@ -53,6 +53,8 @@ routes.post('/:id/transition', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), 
     source: 'admin_api',
     reasonCode: 'ADMIN_ACTION',
     note: reason,
+    // Ticked on the order page: an unpaid online order will be paid on delivery or at the shop instead.
+    switchToPayOnDelivery: body?.switchToPayOnDelivery === true,
   });
 
   await new CreateAuditLogUseCase(registry.auditRepo).execute({
