@@ -276,6 +276,8 @@ export class ReserveRedemptionUseCase {
     userId: string;
     points: number;
     orderGoodsTotalUgx: number;
+    /** Price A x quantity over the lines that have one: points never take the order below it. */
+    orderFloorTotalUgx?: number;
     idempotencyKey: string;
     ttlMinutes?: number;
   }): Promise<{ ok: true; reservationId: string; valueUgx: number } | Fail> {
@@ -298,6 +300,7 @@ export class ReserveRedemptionUseCase {
       points: input.points,
       balanceAvailable: spendable - reserved,
       orderGoodsTotalUgx: input.orderGoodsTotalUgx,
+      orderFloorTotalUgx: input.orderFloorTotalUgx,
       config,
     });
     if (!plan.ok) return fail(plan.code, plan.message);

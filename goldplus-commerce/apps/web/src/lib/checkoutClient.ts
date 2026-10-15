@@ -389,7 +389,7 @@ export function customerMessageFor(result: CheckoutCallResult): {
     case 'LOYALTY_REDEMPTION_REFUSED':
       return {
         status: 'error',
-        message: 'We could not use your points on this order. Untick the points option and place the order again, or message us about your points. You have not been charged.',
+        message: 'We could not use that many points on this order. Points can cover part of an order but never take an item below its lowest price. Use fewer points, or untick them, and place the order again. You have not been charged.',
       };
     case 'CHECKOUT_SESSION_UNAVAILABLE':
     case 'DB_NOT_CONFIGURED':

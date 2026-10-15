@@ -155,7 +155,7 @@ none of them is now a code change.
 |---|---|---|
 | 1 | Point value | **20 UGX** (20% return: 10 points per 1,000 UGX × 20 UGX a point = 200 UGX back per 1,000 UGX spent) |
 | 2 | Redemption min / max share | **500 points / 5,000 bps (50%)** |
-| 3 | Promo stacking | **Allowed** (redemption applies after the promo-priced quote) |
+| 3 | Promo stacking | **Allowed** (redemption applies after the promo-priced quote). **Amended 2026-10-15 (Rob):** points never take an order below the Price A of the lines that have one (`BELOW_PRICE_FLOOR`, planRedemption); products without a Price A are unchanged |
 | 4 | First-cohort expiry | Moot — clock never started |
 | 5 | Expiry window | **120 days** kept |
 | 6 | Earning basis | **Rule v1 retained** (order total). A v2 on subtotal is a new rule row whenever Rob wants it; changing it now would split history for zero live entries and no customer benefit. |

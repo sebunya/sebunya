@@ -295,7 +295,7 @@ export interface LoyaltyProgrammeConfig extends LoyaltyConfig {
 
 export type RedemptionPlan =
   | { ok: true; points: number; valueUgx: number; pointValueUgx: number }
-  | { ok: false; code: 'REDEMPTION_UNAVAILABLE' | 'BELOW_MINIMUM' | 'EXCEEDS_MAX_SHARE' | 'INSUFFICIENT_BALANCE' | 'INVALID_POINTS'; message: string };
+  | { ok: false; code: 'REDEMPTION_UNAVAILABLE' | 'BELOW_MINIMUM' | 'EXCEEDS_MAX_SHARE' | 'BELOW_PRICE_FLOOR' | 'INSUFFICIENT_BALANCE' | 'INVALID_POINTS'; message: string };
 
 /**
  * Plan a redemption against an order (PART G). Points convert to a discount at
@@ -306,6 +306,12 @@ export function planRedemption(input: {
   points: number;
   balanceAvailable: number;
   orderGoodsTotalUgx: number;
+  /**
+   * Sum of Price A x quantity over the lines that HAVE a Price A (owner, 2026-10-15). Points may take the order down
+   * to it, never below: "no discount may take a product below its own Price A" now holds for points too.
+   * Omitted = no floor limit (callers without the basket).
+   */
+  orderFloorTotalUgx?: number;
   config: LoyaltyProgrammeConfig;
 }): RedemptionPlan {
   const { config } = input;
@@ -325,6 +331,19 @@ export function planRedemption(input: {
   const maxValueUgx = Math.floor((input.orderGoodsTotalUgx * config.redemptionMaxShareBps) / 10_000);
   if (valueUgx > maxValueUgx) {
     return { ok: false, code: 'EXCEEDS_MAX_SHARE', message: `Points can cover at most ${Math.floor(config.redemptionMaxShareBps / 100)}% of this order.` };
+  }
+  if (input.orderFloorTotalUgx !== undefined && input.orderFloorTotalUgx > 0) {
+    const roomUgx = Math.max(0, input.orderGoodsTotalUgx - input.orderFloorTotalUgx);
+    if (valueUgx > roomUgx) {
+      const maxPoints = Math.floor(roomUgx / config.pointValueUgx);
+      return {
+        ok: false,
+        code: 'BELOW_PRICE_FLOOR',
+        message: maxPoints >= config.redemptionMinPoints
+          ? `Points can bring this order down to its lowest price, not below it: use at most ${maxPoints.toLocaleString('en-UG')} points.`
+          : 'This order is already at its lowest price, so points cannot be used on it.',
+      };
+    }
   }
   return { ok: true, points: input.points, valueUgx, pointValueUgx: config.pointValueUgx };
 }
