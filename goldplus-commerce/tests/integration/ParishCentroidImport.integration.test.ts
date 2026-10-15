@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { buildSearchText } from '../../packages/shared/src/locations/folding';
 
 /**
@@ -86,16 +86,27 @@ suite('parish centroid import (real PostgreSQL)', () => {
     expect(lines.some((l) => l.includes('DRY RUN'))).toBe(true);
   });
 
-  it('--apply stores the centroid with its expected error, protects manual, leaves the unmatched alone, sets area_kind', async () => {
-    const summary = await importer.runParishCentroidImport({ csvPath, apply: true, expectedMd5: null, expectedRows: null, ownRiderMaxBand: 'B4', log: () => undefined });
+  it('--apply stores the centroid with its expected error, protects manual, leaves the unmatched alone, sets area_kind, writes the re-band file', async () => {
+    const rebandCsvPath = join(dirname(csvPath), 'reband.csv');
+    const summary = await importer.runParishCentroidImport({
+      csvPath, apply: true, expectedMd5: null, expectedRows: null, ownRiderMaxBand: 'B4', rebandCsvPath, log: () => undefined,
+    });
     expect(summary.applied?.added).toBe(2);
     expect(summary.applied?.protectedRows).toBe(1);
+
+    // The re-band proposal is the corridor table in the Control Centre's CSV shape; nothing here was suspect, so our row keeps B2.
+    const reband = readFileSync(rebandCsvPath, 'utf8').split('\n');
+    expect(reband[0]).toBe('area_slug,postcode,delivery_zone,district,sub_county_or_division,area,corridor,distance_band,access_mode,serviceable,fulfilment_mode');
+    const ours = reband.find((l) => l.startsWith(`${slugs.ntinda},`))!;
+    expect(ours).toBeDefined();
+    expect(ours.split(',')[7]).toBe('B2');
 
     const ntinda = (await raw`select centroid_lat, centroid_lng, centroid_source, centroid_source_ref, centroid_expected_error_m, centroid_shared_polygon from delivery_corridor where area_slug = ${slugs.ntinda}`)[0];
     expect(Number(ntinda.centroid_lat)).toBeCloseTo(0.3467, 4);
     expect(Number(ntinda.centroid_lng)).toBeCloseTo(32.6181, 4);
     expect(ntinda.centroid_source).toBe('parish_centroid');
     expect(ntinda.centroid_source_ref).toContain('NTINDA');
+    expect(ntinda.centroid_source_ref).not.toContain('#'); // an exact match carries the bare PCODE; fuzzy ones carry the method and score
     expect(ntinda.centroid_expected_error_m).toBe(412);
     expect(ntinda.centroid_shared_polygon).toBe(false);
 

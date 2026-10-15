@@ -128,7 +128,9 @@ export class DeliveryAreaResolver implements IAreaResolverPort {
       // fact; `measuredKm` is set by the quoting use case from it (0189).
       measuredKm: null,
       centroidSource: isCentroidSource(row.centroid_source) ? row.centroid_source : null,
-      centroidKm: await this.centroidKm(row),
+      // A point whose source the model does not know is not a point the model
+      // may describe as one: no km, no AREA_POINT tier, until the source is named.
+      centroidKm: isCentroidSource(row.centroid_source) ? await this.centroidKm(row) : null,
       centroidExpectedErrorM:
         typeof row.centroid_expected_error_m === 'number' && Number.isFinite(row.centroid_expected_error_m)
           ? row.centroid_expected_error_m

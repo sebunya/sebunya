@@ -40,6 +40,86 @@ export interface IDeliveryReportRepository {
   counts(): Promise<{ observations: number; deliveredOrders: number; riderCostsRecorded: number; skippedMirrors: number }>;
   /** Quotes by which mechanism priced them, for the fallback rate. */
   pricedByBreakdown(): Promise<Array<{ priced_by: string | null; n: number }>>;
+  /** 0189: the location-accuracy facts of the last 28 days of captures, in one row. */
+  locationAccuracy(): Promise<LocationAccuracyRaw>;
+}
+
+/** What the repository returns; JSON columns may arrive parsed or as text depending on the driver. */
+export interface LocationAccuracyRaw {
+  quotes: number;
+  model_priced: number;
+  minutes_known: number;
+  median_abs_minutes: string | number | null;
+  first_attempt_ok: number;
+  first_attempt_known: number;
+  areas: number;
+  areas_with_point: number;
+  tiers: Array<{ tier: string | null; n: number }> | string | null;
+  sources: Array<{ source: string | null; n: number }> | string | null;
+}
+
+export interface LocationAccuracyReport {
+  windowDays: number;
+  quotes: number;
+  modelPricedPct: number | null;
+  minutesKnown: number;
+  medianAbsMinutes: number | null;
+  firstAttemptKnown: number;
+  firstAttemptPct: number | null;
+  tiers: Array<{ tier: string; n: number; pct: number }>;
+  sources: Array<{ source: string; n: number; pct: number }>;
+  areas: number;
+  areasWithPoint: number;
+  note: string;
+}
+
+/**
+ * Location accuracy (address system spec §0): the four numbers that say
+ * whether better locations are making quotes better, from columns the capture
+ * already has. Absence is reported in words, never as zero per cent.
+ */
+export class DeliveryLocationAccuracyReportUseCase {
+  constructor(private readonly repo: Pick<IDeliveryReportRepository, 'locationAccuracy'>) {}
+
+  async execute(): Promise<LocationAccuracyReport> {
+    const raw = await this.repo.locationAccuracy();
+    const parse = <T>(v: T[] | string | null | undefined): T[] =>
+      Array.isArray(v) ? v : typeof v === 'string' && v.trim() ? (JSON.parse(v) as T[]) : [];
+    const quotes = Number(raw.quotes ?? 0);
+    const pct = (n: number, d: number): number | null => (d > 0 ? Math.round((1000 * n) / d) / 10 : null);
+    const tiers = parse(raw.tiers)
+      .map((t) => ({ tier: t.tier ?? 'unrecorded', n: Number(t.n ?? 0), pct: pct(Number(t.n ?? 0), quotes) ?? 0 }))
+      .sort((a, b) => b.n - a.n);
+    const sources = parse(raw.sources)
+      .map((s) => ({ source: s.source ?? 'none', n: Number(s.n ?? 0), pct: pct(Number(s.n ?? 0), quotes) ?? 0 }))
+      .sort((a, b) => b.n - a.n);
+    const minutesKnown = Number(raw.minutes_known ?? 0);
+    const median =
+      raw.median_abs_minutes === null || raw.median_abs_minutes === undefined || !Number.isFinite(Number(raw.median_abs_minutes))
+        ? null
+        : Math.round(Number(raw.median_abs_minutes) * 10) / 10;
+    const firstAttemptKnown = Number(raw.first_attempt_known ?? 0);
+    const note =
+      quotes === 0
+        ? 'No quotes were captured in the last 28 days, so nothing can be said yet.'
+        : minutesKnown === 0
+          ? `${quotes} quote(s) captured, but no order has both an expected and an actual duration yet: the minutes error waits on deliveries being recorded with their time.`
+          : `${quotes} quote(s) captured; ${minutesKnown} with both expected and actual minutes; ${firstAttemptKnown} with a recorded first attempt.`;
+    return {
+      windowDays: 28,
+      quotes,
+      modelPricedPct: pct(Number(raw.model_priced ?? 0), quotes),
+      minutesKnown,
+      medianAbsMinutes: median,
+      firstAttemptKnown,
+      firstAttemptPct: pct(Number(raw.first_attempt_ok ?? 0), firstAttemptKnown),
+      tiers,
+      sources,
+      areas: Number(raw.areas ?? 0),
+      areasWithPoint: Number(raw.areas_with_point ?? 0),
+      note,
+    };
+  }
 }
 
 export interface DeliveryReport<T> {

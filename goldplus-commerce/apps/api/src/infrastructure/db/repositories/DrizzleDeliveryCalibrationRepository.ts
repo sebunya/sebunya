@@ -4,7 +4,7 @@ import {
   CalibrationProposal,
   ICalibrationRepository,
 } from '../../../application/use-cases/delivery/DeliveryCalibrationUseCases';
-import { IDeliveryReportRepository } from '../../../application/use-cases/delivery/DeliveryReportUseCases';
+import { IDeliveryReportRepository, LocationAccuracyRaw } from '../../../application/use-cases/delivery/DeliveryReportUseCases';
 import { Observation } from '../../../domain/delivery/DeliveryCalibration';
 import { FactorKind } from '../../../domain/delivery/DeliveryLearnedFactor';
 
@@ -292,5 +292,26 @@ export class DrizzleDeliveryCalibrationRepository implements ICalibrationReposit
       priced_by: string | null;
       n: number;
     }>;
+  }
+
+  /** 0189: the location-accuracy facts of the last 28 days, in one row (address system spec §0). */
+  async locationAccuracy(): Promise<LocationAccuracyRaw> {
+    const [row] = (await db.execute(sql`
+      with w as (select * from delivery_quote_capture where created_at > now() - interval '28 days')
+      select
+        (select count(*) from w)::int as quotes,
+        (select count(*) from w where priced_by = 'delivery_model')::int as model_priced,
+        (select count(*) from w where expected_minutes is not null and actual_minutes is not null)::int as minutes_known,
+        (select percentile_cont(0.5) within group (order by abs(expected_minutes - actual_minutes))
+           from w where expected_minutes is not null and actual_minutes is not null) as median_abs_minutes,
+        (select count(*) from w where first_attempt_success)::int as first_attempt_ok,
+        (select count(*) from w where first_attempt_success is not null)::int as first_attempt_known,
+        (select count(*) from delivery_corridor)::int as areas,
+        (select count(*) from delivery_corridor where centroid_lat is not null)::int as areas_with_point,
+        (select coalesce(json_agg(json_build_object('tier', t.accuracy_tier, 'n', t.n)), '[]'::json)
+           from (select accuracy_tier, count(*)::int as n from w group by accuracy_tier) t) as tiers,
+        (select coalesce(json_agg(json_build_object('source', s.centroid_source, 'n', s.n)), '[]'::json)
+           from (select centroid_source, count(*)::int as n from w group by centroid_source) s) as sources`)) as unknown as LocationAccuracyRaw[];
+    return row;
   }
 }

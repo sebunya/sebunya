@@ -14,7 +14,7 @@
  *  - a point's error is measured or derived from something measurable (here
  *    the polygon's size), never a made-up confidence (contract #4).
  */
-import { foldUgandanOrthography, normaliseLocationText } from '@goldplus/shared';
+import { canonicalDistrictKey, foldUgandanOrthography, normaliseLocationText } from '@goldplus/shared';
 import { BAND_EDGES_KM, DISTANCE_BANDS, DistanceBand } from './DeliveryModel';
 
 export interface ParishRecord {
@@ -118,8 +118,18 @@ export function diceBigram(a: string, b: string): number {
   return (2 * common) / total;
 }
 
-const upper = (s: string) => s.trim().replace(/\s+/g, ' ').toUpperCase();
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * What `centroid_source_ref` records for a match: the parish PCODE, and for
+ * anything other than an exact name the method and score, so a point placed by
+ * a fuzzy match can always be found and questioned later.
+ */
+export function centroidSourceRef(match: Pick<AreaMatch, 'parish' | 'method' | 'score'>): string {
+  if (match.method === 'exact') return match.parish.pcode;
+  if (match.method === 'tokens') return `${match.parish.pcode}#tokens`;
+  return `${match.parish.pcode}#fuzzy:${round2(match.score)}`;
+}
 
 /**
  * Match every corridor area to at most one parish polygon. Exact folded name
@@ -139,7 +149,8 @@ export function matchParishesToAreas(
   const byDistrict = new Map<string, Indexed[]>();
   for (const p of parishes) {
     const row: Indexed = { p, key: matchKey(p.parish), tokens: tokenKey(p.parish), sub: matchKey(p.subcounty) };
-    const d = upper(p.district);
+    // The 2016 file's own spellings (KABONG) are mapped to the shop's before the family lookup.
+    const d = canonicalDistrictKey(p.district);
     const list = byDistrict.get(d) ?? [];
     list.push(row);
     byDistrict.set(d, list);

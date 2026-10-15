@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { lineageFamily, sameLineageFamily } from '../../packages/shared/src/locations/districtLineage';
+import { DISTRICT_LINEAGE, canonicalDistrictKey, lineageFamily, sameLineageFamily } from '../../packages/shared/src/locations/districtLineage';
+import { normalizeUgandaDistrict } from '../../packages/shared/src/locations/uganda';
 import {
   CorridorAreaRecord,
   ParishRecord,
   areaKindFor,
   bandForStraightKm,
+  centroidSourceRef,
   classifyAgainstBand,
   diceBigram,
   expectedErrorMetres,
@@ -51,6 +53,24 @@ describe('district lineage families', () => {
     expect(lineageFamily('Kiruhura').has('KAZO')).toBe(true);
     expect(lineageFamily('Terego').has('MADI-OKOLLO')).toBe(true);
     expect(sameLineageFamily('Mbarara City', 'Rwampara')).toBe(true);
+  });
+  it('every lineage name is spelled the way the shop spells it (cities and proposals excepted)', () => {
+    const wrong = DISTRICT_LINEAGE.flatMap((row) => {
+      const out: string[] = [];
+      const child = normalizeUgandaDistrict(row.child);
+      const parent = normalizeUgandaDistrict(row.parent);
+      if (!row.kind && !row.proposed && child !== row.child) out.push(`child ${row.child} → ${child ?? 'unknown'}`);
+      if (parent !== row.parent) out.push(`parent ${row.parent} → ${parent ?? 'unknown'}`);
+      return out;
+    });
+    expect(wrong).toEqual([]);
+  });
+  it("maps the 2016 file's own spellings onto the shop's before the family lookup", () => {
+    expect(canonicalDistrictKey('KABONG')).toBe('KAABONG');
+    expect(canonicalDistrictKey('kasanda')).toBe('KASSANDA');
+    expect(lineageFamily('Karenga').has('KAABONG')).toBe(true);
+    expect(lineageFamily('Kabong').has('KARENGA')).toBe(true);
+    expect(lineageFamily('Kassanda').has('MUBENDE')).toBe(true);
   });
   it('a district nobody split is a family of one, and unknown names stay themselves', () => {
     expect([...lineageFamily('Kampala')]).toEqual(['KAMPALA']);
@@ -121,6 +141,18 @@ describe('matching corridor areas to 2016 parishes', () => {
     const out = match([area('kazo-kazo', 'Kazo Town Council', 'Kazo'), area('kampala-kampala', 'Kampala', 'Kampala')], parishes);
     expect(out.matched.map((m) => [m.areaSlug, m.parish.district])).toEqual([['kazo-kazo', 'KIRUHURA']]);
     expect(out.unmatched).toEqual(['kampala-kampala']);
+  });
+
+  it("a parish the 2016 file lists under KABONG matches an area the shop files under Karenga", () => {
+    const out = match([area('karenga-kapedo', 'Kapedo', 'Karenga')], [parish('KABONG', 'KAPEDO', 'KAPEDO')]);
+    expect(out.matched.map((m) => m.areaSlug)).toEqual(['karenga-kapedo']);
+  });
+
+  it('records how a point was placed in the source reference', () => {
+    const p = parish('KAMPALA', 'NAKAWA', 'NTINDA');
+    expect(centroidSourceRef({ parish: p, method: 'exact', score: 1 })).toBe(p.pcode);
+    expect(centroidSourceRef({ parish: p, method: 'tokens', score: 0.95 })).toBe(`${p.pcode}#tokens`);
+    expect(centroidSourceRef({ parish: p, method: 'fuzzy', score: 0.714 })).toBe(`${p.pcode}#fuzzy:0.71`);
   });
 
   it('two parishes of one name in a district: the sub-county decides, or the area is ambiguous', () => {

@@ -20,6 +20,10 @@ if (!token) return Astro.redirect("/admin/login?returnTo=/admin/delivery", 303);
 const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
 
 let notice: { kind: "success" | "error"; text: string } | null = null;
+// Corridor file round trip (0189): the pasted CSV stays in the box across the dry run, and the dry run's result
+// (with its confirmation digest) is what the Apply button sends back.
+let corridorCsvText = "";
+let corridorDryRun: any = null;
 
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
@@ -38,6 +42,25 @@ if (Astro.request.method === "POST") {
       notice = json?.success
         ? { kind: "success", text: "Reverted. The earlier values are live again, as a new version — the history still shows what was published in between." }
         : { kind: "error", text: json?.error?.message || "Could not revert." };
+    } else if (intent === "corridor-dry-run" || intent === "corridor-apply") {
+      corridorCsvText = String(form.get("csv") || "");
+      const path = intent === "corridor-apply" ? "/admin/delivery/corridors/apply" : "/admin/delivery/corridors/dry-run";
+      const res = await fetch(`${apiBase}${path}`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ csv: corridorCsvText, confirmation: String(form.get("confirmation") || "") }),
+      });
+      const json = await res.json().catch(() => null);
+      if (intent === "corridor-apply") {
+        notice = json?.success
+          ? { kind: "success", text: `Applied: ${json.data.applied} field change(s) across ${json.data.areas} area(s), as one audited change.` }
+          : { kind: "error", text: json?.error?.message || "Could not apply the file." };
+        corridorDryRun = null;
+        if (json?.success) corridorCsvText = "";
+      } else {
+        corridorDryRun = json?.success ? json.data : null;
+        if (!corridorDryRun) notice = { kind: "error", text: json?.error?.message || "Could not dry-run the file." };
+      }
     } else if (intent === "actual-cost") {
       const res = await fetch(`${apiBase}/admin/delivery/orders/${encodeURIComponent(String(form.get("orderId") || ""))}/actual-cost`, {
         method: "POST",
@@ -204,6 +227,46 @@ const tierLabel: Record<number, string> = { 1: "One approver", 2: "Needs a secon
                   <li class="font-mono">{m.order_number ?? m.fulfilment_task_id} — was {m.order_status_now}, {m.payment_status}</li>
                 ))}
               </ul>
+            </div>
+          )}
+        </section>
+
+        <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8">
+          <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-1">Corridor file</h3>
+          <p class="text-xs text-gray-500 mb-3">
+            Paste the corridor CSV (the parish import writes a re-band proposal in this shape). Dry run first: every changed and
+            failing row, nothing written. Apply lands exactly what the dry run showed, as one audited change, and refuses a file
+            that changed in between.
+          </p>
+          <form method="POST" class="space-y-3">
+            <input type="hidden" name="intent" value="corridor-dry-run" />
+            <textarea name="csv" rows="6" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono" placeholder="area_slug,postcode,delivery_zone,district,sub_county_or_division,area,corridor,distance_band,access_mode,serviceable,fulfilment_mode">{corridorCsvText}</textarea>
+            <button type="submit" class="bg-brand-dark text-white text-[10px] font-black uppercase tracking-widest px-3 py-2.5 rounded-lg hover:bg-black">Dry run</button>
+          </form>
+          {corridorDryRun && (
+            <div class="mt-4 border border-gray-200 rounded-lg p-4">
+              <p class="text-sm font-bold text-gray-800">{corridorDryRun.summary}</p>
+              {corridorDryRun.failures.length > 0 && (
+                <ul class="mt-2 text-xs text-red-700 space-y-1">
+                  {corridorDryRun.failures.slice(0, 50).map((f: any) => <li>line {f.line} ({f.areaSlug}): {f.problem}</li>)}
+                </ul>
+              )}
+              {corridorDryRun.changes.length > 0 && (
+                <ul class="mt-2 text-xs text-gray-700 space-y-1">
+                  {corridorDryRun.changes.slice(0, 100).map((ch: any) => <li>{ch.areaSlug}: {ch.field} {ch.from} → {ch.to}</li>)}
+                  {corridorDryRun.changes.length > 100 && <li class="text-gray-500">… and {corridorDryRun.changes.length - 100} more</li>}
+                </ul>
+              )}
+              {corridorDryRun.confirmation && corridorDryRun.failures.length === 0 && (
+                <form method="POST" class="mt-3">
+                  <input type="hidden" name="intent" value="corridor-apply" />
+                  <input type="hidden" name="confirmation" value={corridorDryRun.confirmation} />
+                  <textarea name="csv" class="hidden" aria-hidden="true">{corridorCsvText}</textarea>
+                  <button type="submit" class="bg-brand-dark text-white text-[10px] font-black uppercase tracking-widest px-3 py-2.5 rounded-lg hover:bg-black">
+                    Apply these {corridorDryRun.changes.length} change(s)
+                  </button>
+                </form>
+              )}
             </div>
           )}
         </section>

@@ -48,7 +48,7 @@ export const DISTRICT_LINEAGE: readonly DistrictLineageRow[] = [
   { child: 'Bunyangabu', parent: 'Kabarole', year: 2017 },
   { child: 'Nabilatuk', parent: 'Nakapiripirit', year: 2018 },
   { child: 'Bugweri', parent: 'Iganga', year: 2018 },
-  { child: 'Kasanda', parent: 'Mubende', year: 2018 },
+  { child: 'Kassanda', parent: 'Mubende', year: 2018 },
   { child: 'Kwania', parent: 'Apac', year: 2018 },
   { child: 'Kapelebyong', parent: 'Amuria', year: 2018 },
   { child: 'Kikuube', parent: 'Hoima', year: 2018 },
@@ -77,7 +77,27 @@ export const DISTRICT_LINEAGE: readonly DistrictLineageRow[] = [
   { child: 'Tororo City', parent: 'Tororo', kind: 'city', proposed: true },
 ];
 
-const KEY = (s: string) => s.trim().replace(/\s+/g, ' ').toUpperCase();
+/**
+ * Spellings other datasets use for a district the shop spells differently.
+ * The UBOS 2016 parish file writes KABONG for Kaabong; the shop's own list
+ * cannot normalise it. Keys and values are upper case. Add a row the first
+ * time a dataset's district fails to match, never a guess.
+ */
+export const DISTRICT_NAME_VARIANTS: Readonly<Record<string, string>> = {
+  KABONG: 'KAABONG',
+  'MADI OKOLLO': 'MADI-OKOLLO',
+  KASANDA: 'KASSANDA',
+  SSEMBABULE: 'SEMBABULE',
+  LUWEERO: 'LUWERO',
+};
+
+/** Upper-cased, whitespace-collapsed, with known variant spellings mapped to the shop's. */
+export function canonicalDistrictKey(name: string): string {
+  const key = name.trim().replace(/\s+/g, ' ').toUpperCase();
+  return DISTRICT_NAME_VARIANTS[key] ?? key;
+}
+
+const KEY = canonicalDistrictKey;
 
 /** parent → children and child → parent, both upper-cased, built once. */
 const PARENT_OF = new Map<string, string>();

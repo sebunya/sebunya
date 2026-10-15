@@ -1,5 +1,8 @@
+import { createHash, randomUUID } from 'node:crypto';
 import { isDistanceBand } from '../../../domain/delivery/DeliveryModel';
 import { isFulfilmentMode } from '../../../domain/delivery/DeliveryFulfilmentMode';
+import { IAuditRepository } from '../../ports/IAuditRepository';
+import { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
 
 /**
  * Corridor CSV round trip with a DRY RUN (brief PART 6 / PART 9 #29).
@@ -43,10 +46,25 @@ export interface CorridorDryRun {
   unchanged: number;
   /** Plain language, so nobody has to count rows to understand the impact. */
   summary: string;
+  /**
+   * A digest of exactly these changes. The apply path demands it back, so what
+   * lands is what was shown, never a file edited in between. Empty when there
+   * is nothing to apply.
+   */
+  confirmation: string;
 }
 
 export interface ICorridorCsvRepository {
   currentCorridors(): Promise<Map<string, CorridorCsvRow>>;
+  /** Writes the given field changes in one transaction; returns the number of rows touched. */
+  applyChanges(changes: CorridorChange[]): Promise<number>;
+}
+
+/** Order-independent digest of a change list (sha256 over sorted "slug|field|from|to" lines). */
+export function corridorChangesDigest(changes: readonly CorridorChange[]): string {
+  if (changes.length === 0) return '';
+  const lines = changes.map((c) => `${c.areaSlug}|${c.field}|${c.from}|${c.to}`).sort();
+  return createHash('sha256').update(lines.join('\n')).digest('hex');
 }
 
 export class DryRunCorridorCsvUseCase {
@@ -56,7 +74,7 @@ export class DryRunCorridorCsvUseCase {
     const current = await this.repo.currentCorridors();
     const lines = csv.split(/\r?\n/).filter((l) => l.trim() !== '');
     if (lines.length === 0) {
-      return { totalRows: 0, changes: [], failures: [], unchanged: 0, summary: 'The file is empty — nothing to apply.' };
+      return { totalRows: 0, changes: [], failures: [], unchanged: 0, summary: 'The file is empty — nothing to apply.', confirmation: '' };
     }
     const header = lines[0].split(',').map((h) => h.trim());
     const idx = (name: string) => header.indexOf(name);
@@ -69,6 +87,7 @@ export class DryRunCorridorCsvUseCase {
         failures: [{ line: 1, areaSlug: '—', problem: `Missing column(s): ${missingCols.join(', ')}` }],
         unchanged: 0,
         summary: 'The file is missing required columns, so nothing can be read from it.',
+        confirmation: '',
       };
     }
 
@@ -142,6 +161,64 @@ export class DryRunCorridorCsvUseCase {
             ? `All ${unchanged} row(s) match what is already stored. Applying this would change nothing.`
             : `${areasChanged} area(s) would change across ${changes.length} field(s). ${unchanged} row(s) are unchanged.`;
 
-    return { totalRows: lines.length - 1, changes, failures, unchanged, summary };
+    return {
+      totalRows: lines.length - 1,
+      changes,
+      failures,
+      unchanged,
+      summary,
+      confirmation: failures.length === 0 ? corridorChangesDigest(changes) : '',
+    };
+  }
+}
+
+export type ApplyCorridorCsvResult =
+  | { ok: true; applied: number; areas: number; batchId: string }
+  | { ok: false; code: 'FAILURES' | 'NOTHING_TO_APPLY' | 'CONFIRMATION_MISMATCH'; message: string; dryRun: CorridorDryRun };
+
+/**
+ * The apply half of the round trip, which the brief promised ("landing as one
+ * versioned change") and which never existed: the dry run was the whole
+ * feature, so a re-band could only be done by hand in the database.
+ *
+ * It re-runs the dry run on the file it is given and refuses unless the
+ * caller echoes the digest of exactly the changes that dry run shows. A file
+ * with any failing row is refused whole: 362 areas is the scale at which "the
+ * good rows landed" hides the bad ones. Writes are one transaction and one
+ * audit row carrying every change.
+ */
+export class ApplyCorridorCsvUseCase {
+  constructor(
+    private readonly repo: ICorridorCsvRepository,
+    private readonly audit: IAuditRepository,
+  ) {}
+
+  async execute(input: { csv: string; confirmation: string; actorId: string }): Promise<ApplyCorridorCsvResult> {
+    const dryRun = await new DryRunCorridorCsvUseCase(this.repo).execute(input.csv);
+    if (dryRun.failures.length > 0) {
+      return { ok: false, code: 'FAILURES', message: `${dryRun.failures.length} row(s) fail. Nothing was applied; fix them and dry-run again.`, dryRun };
+    }
+    if (dryRun.changes.length === 0) {
+      return { ok: false, code: 'NOTHING_TO_APPLY', message: 'Every row already matches what is stored. Nothing to apply.', dryRun };
+    }
+    if (!input.confirmation || input.confirmation !== dryRun.confirmation) {
+      return {
+        ok: false,
+        code: 'CONFIRMATION_MISMATCH',
+        message: 'This is not the file that was dry-run, or it changed since. Dry-run it again and apply what it shows.',
+        dryRun,
+      };
+    }
+    const applied = await this.repo.applyChanges(dryRun.changes);
+    const batchId = randomUUID();
+    await new CreateAuditLogUseCase(this.audit).execute({
+      actorId: input.actorId,
+      action: 'DELIVERY_CORRIDORS_APPLIED',
+      entity: 'delivery_corridor_batch',
+      entityId: batchId,
+      previousState: null,
+      newState: { confirmation: dryRun.confirmation, rowsTouched: applied, changes: dryRun.changes },
+    });
+    return { ok: true, applied, areas: new Set(dryRun.changes.map((c) => c.areaSlug)).size, batchId };
   }
 }

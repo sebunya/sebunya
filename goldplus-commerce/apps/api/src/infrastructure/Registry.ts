@@ -324,7 +324,7 @@ import { DeliveryAreaResolver, DeliveryWizardAreaReader } from './delivery/Deliv
 import { DrizzleDeliveryQuotingRepository } from './db/repositories/DrizzleDeliveryQuotingRepository';
 import { DrizzleDeliveryVarianceRepository } from './db/repositories/DrizzleDeliveryVarianceRepository';
 import { DrizzleDeliveryCalibrationRepository } from './db/repositories/DrizzleDeliveryCalibrationRepository';
-import { DryRunCorridorCsvUseCase } from '../application/use-cases/delivery/DeliveryCorridorCsvUseCase';
+import { ApplyCorridorCsvUseCase, DryRunCorridorCsvUseCase } from '../application/use-cases/delivery/DeliveryCorridorCsvUseCase';
 import {
   AcceptCalibrationProposalUseCase,
   RejectCalibrationProposalUseCase,
@@ -332,6 +332,7 @@ import {
 } from '../application/use-cases/delivery/DeliveryCalibrationUseCases';
 import {
   DeliveryFallbackRateUseCase,
+  DeliveryLocationAccuracyReportUseCase,
   DeliveryMarginReportUseCase,
   DeliveryVarianceReportUseCase,
 } from '../application/use-cases/delivery/DeliveryReportUseCases';
@@ -1777,8 +1778,43 @@ export class Registry {
     this.deliveryConfigRepo,
   );
 
-  // CSV round trip for the corridor table, with a mandatory dry run.
-  public readonly dryRunCorridorCsvUseCase = new DryRunCorridorCsvUseCase({
+  // CSV round trip for the corridor table, with a mandatory dry run, and (0189)
+  // the apply half: one transaction, one audit row, refused without the digest
+  // of the dry run it was shown.
+  private readonly corridorCsvRepo = {
+    applyChanges: async (changes: Array<{ areaSlug: string; field: string; from: string; to: string }>) => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      let touched = 0;
+      await db.transaction(async (tx) => {
+        for (const ch of changes) {
+          const slug = ch.areaSlug;
+          switch (ch.field) {
+            case 'corridor':
+              await tx.execute(sql`update delivery_corridor set corridor = ${ch.to}, updated_at = now() where area_slug = ${slug}`);
+              break;
+            case 'distance_band':
+              await tx.execute(sql`update delivery_corridor set distance_band = ${ch.to}, updated_at = now() where area_slug = ${slug}`);
+              break;
+            case 'access_mode':
+              await tx.execute(sql`update delivery_corridor set access_mode = ${ch.to}, updated_at = now() where area_slug = ${slug}`);
+              break;
+            case 'serviceable':
+              await tx.execute(sql`update delivery_corridor set serviceable = ${ch.to === 'true'}, updated_at = now() where area_slug = ${slug}`);
+              break;
+            case 'fulfilment_mode':
+              await tx.execute(
+                sql`update delivery_corridor set fulfilment_mode = ${ch.to === '(derived)' ? null : ch.to}, updated_at = now() where area_slug = ${slug}`,
+              );
+              break;
+            default:
+              throw new Error(`corridor apply: unknown field ${ch.field}`);
+          }
+          touched += 1;
+        }
+      });
+      return touched;
+    },
     currentCorridors: async () => {
       const { db } = await import('./db/client');
       const { sql } = await import('drizzle-orm');
@@ -1799,7 +1835,9 @@ export class Registry {
         ]),
       );
     },
-  });
+  };
+  public readonly dryRunCorridorCsvUseCase = new DryRunCorridorCsvUseCase(this.corridorCsvRepo);
+  public readonly applyCorridorCsvUseCase = new ApplyCorridorCsvUseCase(this.corridorCsvRepo, this.auditRepo);
 
   // The learning loop (PART 4). Proposes, never applies.
   public readonly deliveryCalibrationRepo = new DrizzleDeliveryCalibrationRepository();
@@ -1835,6 +1873,8 @@ export class Registry {
     () => this.deliveryConfigReader.numericValues(),
   );
   public readonly deliveryFallbackRateUseCase = new DeliveryFallbackRateUseCase(this.deliveryCalibrationRepo);
+  // 0189: how well we knew where orders were going, from the capture's own columns.
+  public readonly deliveryLocationAccuracyReportUseCase = new DeliveryLocationAccuracyReportUseCase(this.deliveryCalibrationRepo);
 
   // The variance write path (PART 5). decideVariance decides; these apply.
   public readonly deliveryVarianceRepo = new DrizzleDeliveryVarianceRepository();

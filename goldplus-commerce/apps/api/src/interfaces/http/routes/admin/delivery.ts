@@ -518,4 +518,27 @@ routes.post('/corridors/dry-run', requirePermissions([PERMISSIONS.DELIVERY_CONFI
   return c.json({ success: true, data: result });
 });
 
+/**
+ * Apply a corridor CSV that was dry-run: exactly the changes the dry run
+ * showed (the caller echoes its digest), one transaction, one audit row. A
+ * file with any failing row is refused whole.
+ */
+routes.post('/corridors/apply', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PUBLISH]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const result = await Registry.getInstance().applyCorridorCsvUseCase.execute({
+    csv: String(body?.csv ?? ''),
+    confirmation: String(body?.confirmation ?? ''),
+    actorId: (c.get('user') as { id: string }).id,
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
+  }
+  return c.json({ success: true, data: result });
+});
+
+/** Location accuracy (0189): how well we knew where orders were going, last 28 days. */
+routes.get('/reports/location-accuracy', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+  return c.json({ success: true, data: await Registry.getInstance().deliveryLocationAccuracyReportUseCase.execute() });
+});
+
 export default routes;

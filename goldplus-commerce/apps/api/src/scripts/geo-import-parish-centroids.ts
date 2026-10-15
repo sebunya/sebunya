@@ -19,7 +19,10 @@
  * NO FEE CHANGES: the model prices with the point only when the registry key
  * distance_source is 'measured', which ships off.
  *
- * Usage: DATABASE_URL=... node dist/scripts/geo-import-parish-centroids.js [--apply] [--report=path.csv] [--csv=path]
+ * Usage: pnpm -F @goldplus/api geo:parish-centroids [--apply] [--report=path.csv] [--reband-csv=path.csv]
+ *        [--allowance=1.3] [--tolerance-km=2] [--csv=path]
+ * --reband-csv writes the corridor table in the Control Centre's CSV shape with only the suspect-band rows changed,
+ * for the Corridor file card (dry run, then apply). The import itself never changes a band.
  */
 import '../config/env';
 import { createHash } from 'node:crypto';
@@ -32,12 +35,14 @@ import { DeliveryConfigReader } from '../infrastructure/delivery/DeliveryConfigR
 import { haversineKm } from '../domain/delivery/DeliveryOrigin';
 import { DistanceBand, isDistanceBand } from '../domain/delivery/DeliveryModel';
 import {
+  AreaKind,
   AreaMatch,
   BandVerdict,
   CorridorAreaRecord,
   FulfilmentFlip,
   ParishRecord,
   areaKindFor,
+  centroidSourceRef,
   classifyAgainstBand,
   expectedErrorMetres,
   fulfilmentFlip,
@@ -61,6 +66,11 @@ export interface ImportOptions {
   /** The registry's own_rider_max_band, for the fulfilment-flip column; null when unset. */
   ownRiderMaxBand?: string | null;
   reportPath?: string | null;
+  /** The corridor CSV (export shape) with suspect bands replaced by the measured ones, for the Control Centre dry run. */
+  rebandCsvPath?: string | null;
+  /** Report parameters, not model numbers: the urban detour allowance and the km tolerance around a band. */
+  allowance?: number;
+  toleranceKm?: number;
   log?: (line: string) => void;
 }
 
@@ -68,6 +78,7 @@ export interface ReportRow {
   areaSlug: string;
   area: string;
   district: string;
+  areaKind: AreaKind;
   seededBand: DistanceBand;
   method: AreaMatch['method'] | 'ambiguous' | 'unmatched';
   score: number | null;
@@ -181,6 +192,13 @@ interface CorridorDbRow {
   district: string;
   distance_band: string;
   subcounty: string | null;
+  postcode: string | null;
+  delivery_zone: string | null;
+  sub_county_or_division: string | null;
+  corridor: string;
+  access_mode: string;
+  serviceable: boolean;
+  fulfilment_mode: string | null;
   centroid_lat: string | null;
   centroid_lng: string | null;
   centroid_source: string | null;
@@ -197,6 +215,7 @@ export async function runParishCentroidImport(opts: ImportOptions): Promise<Impo
   const corridor = (await db.execute(sql`
     select c.area_slug, c.area, c.district, c.distance_band,
            coalesce(c.sub_county_or_division, u.subcounty_or_division) as subcounty,
+           c.postcode, c.delivery_zone, c.sub_county_or_division, c.corridor, c.access_mode, c.serviceable, c.fulfilment_mode,
            c.centroid_lat, c.centroid_lng, c.centroid_source, c.centroid_source_ref,
            c.centroid_expected_error_m, c.centroid_shared_polygon, u.area_kind
     from delivery_corridor c left join ug_area u on u.area_slug = c.area_slug
@@ -218,6 +237,8 @@ export async function runParishCentroidImport(opts: ImportOptions): Promise<Impo
 
   const ceiling: DistanceBand | null =
     opts.ownRiderMaxBand && isDistanceBand(opts.ownRiderMaxBand) ? (opts.ownRiderMaxBand as DistanceBand) : null;
+  const allowance = Number.isFinite(opts.allowance) && (opts.allowance as number) >= 1 ? (opts.allowance as number) : 1.3;
+  const tolerance = Number.isFinite(opts.toleranceKm) && (opts.toleranceKm as number) >= 0 ? (opts.toleranceKm as number) : 2;
 
   const areas: CorridorAreaRecord[] = [];
   for (const r of corridor) {
@@ -237,7 +258,7 @@ export async function runParishCentroidImport(opts: ImportOptions): Promise<Impo
     if (!m) {
       const amb = ambiguityBySlug.get(area.areaSlug);
       rows.push({
-        areaSlug: area.areaSlug, area: area.area, district: area.district, seededBand: area.band,
+        areaSlug: area.areaSlug, area: area.area, district: area.district, areaKind: areaKindFor(area.area), seededBand: area.band,
         method: amb ? 'ambiguous' : 'unmatched', score: null, parish: null, pcode: null, km: null, kmWithAllowance: null,
         bandAtKm: null, bandAtAllowance: null, verdict: null, flip: null, expectedErrorM: null, sharedPolygon: false,
         candidates: amb ? amb.candidates.join(' | ') : null,
@@ -246,16 +267,18 @@ export async function runParishCentroidImport(opts: ImportOptions): Promise<Impo
     }
     counts[m.method] += 1;
     const km = Math.round(haversineKm(origin!, { lat: m.parish.lat, lng: m.parish.lng }) * 100) / 100;
-    const verdict = classifyAgainstBand({ seededBand: area.band, km, method: m.method, sharedPolygon: m.sharedPolygon });
+    const verdict = classifyAgainstBand({
+      seededBand: area.band, km, method: m.method, sharedPolygon: m.sharedPolygon, allowance, toleranceKm: tolerance,
+    });
     const flip = fulfilmentFlip(area.band, verdict.bandAtAllowance ?? verdict.bandAtKm, ceiling);
     if (verdict.verdict === 'consistent') counts.consistent += 1;
     else if (verdict.verdict === 'suspect_match') counts.suspectMatch += 1;
     else counts.suspectBand += 1;
     if (flip) counts.flips += 1;
     rows.push({
-      areaSlug: area.areaSlug, area: area.area, district: area.district, seededBand: area.band,
+      areaSlug: area.areaSlug, area: area.area, district: area.district, areaKind: areaKindFor(area.area), seededBand: area.band,
       method: m.method, score: m.score, parish: `${m.parish.district}/${m.parish.subcounty}/${m.parish.parish}`, pcode: m.parish.pcode,
-      km, kmWithAllowance: Math.round(km * 1.3 * 100) / 100, bandAtKm: verdict.bandAtKm, bandAtAllowance: verdict.bandAtAllowance,
+      km, kmWithAllowance: Math.round(km * allowance * 100) / 100, bandAtKm: verdict.bandAtKm, bandAtAllowance: verdict.bandAtAllowance,
       verdict: verdict.verdict, flip, expectedErrorM: expectedErrorMetres(m.parish.areaKm2), sharedPolygon: m.sharedPolygon,
       candidates: null,
     });
@@ -285,6 +308,8 @@ export async function runParishCentroidImport(opts: ImportOptions): Promise<Impo
     (r) => `${r.areaSlug} (${r.area}, ${r.district})`);
   list('fuzzy matches to read (accepted)', rows.filter((r) => r.method === 'fuzzy'), (r) => `${r.areaSlug} → ${r.parish} (${r.score})`);
   list('shared polygons (several areas, one 2016 parish)', rows.filter((r) => r.sharedPolygon), (r) => `${r.areaSlug} → ${r.parish}`);
+  list('areas that are not neighbourhoods (area_kind, from the name)', rows.filter((r) => r.areaKind !== 'neighbourhood'),
+    (r) => `${r.areaSlug}: ${r.areaKind}`);
   if (ceiling) list(`fulfilment flips at own_rider_max_band=${ceiling}`, rows.filter((r) => r.flip), (r) => `${r.areaSlug}: ${r.seededBand} → ${r.bandAtAllowance ?? r.bandAtKm} ${r.flip}`);
   else log('\n--- fulfilment flips: own_rider_max_band is unset, so none can be computed');
 
@@ -303,6 +328,31 @@ export async function runParishCentroidImport(opts: ImportOptions): Promise<Impo
     log(`\nreport written: ${opts.reportPath}`);
   }
 
+  // The re-band proposal: the corridor table in the exact shape the Control
+  // Centre's dry run reads, with ONLY the suspect-band rows carrying the band
+  // their measured point suggests. The person applies it there, or does not.
+  if (opts.rebandCsvPath) {
+    const header = [
+      'area_slug', 'postcode', 'delivery_zone', 'district', 'sub_county_or_division', 'area',
+      'corridor', 'distance_band', 'access_mode', 'serviceable', 'fulfilment_mode',
+    ];
+    const suggested = new Map<string, DistanceBand>();
+    for (const r of rows) {
+      const band = r.bandAtAllowance ?? r.bandAtKm;
+      if (r.verdict === 'suspect_band' && band && band !== r.seededBand) suggested.set(r.areaSlug, band);
+    }
+    // The dry run splits on commas without quoting, so a cell can never carry one.
+    const cell = (v: unknown) => (v === null || v === undefined ? '' : String(v).replace(/[,\r\n]+/g, ' ').trim());
+    const lines = corridor.map((c) =>
+      [
+        c.area_slug, c.postcode, c.delivery_zone, c.district, c.sub_county_or_division, c.area,
+        c.corridor, suggested.get(c.area_slug) ?? c.distance_band, c.access_mode, c.serviceable ? 'true' : 'false', c.fulfilment_mode,
+      ].map(cell).join(','),
+    );
+    fs.writeFileSync(opts.rebandCsvPath, `${[header.join(','), ...lines].join('\n')}\n`);
+    log(`re-band proposal written: ${opts.rebandCsvPath} (${suggested.size} band change(s); Control Centre → Corridor file → dry run → apply)`);
+  }
+
   // ── Apply ───────────────────────────────────────────────────────────────
   let applied: ImportSummary['applied'] = null;
   if (opts.apply) {
@@ -317,11 +367,12 @@ export async function runParishCentroidImport(opts: ImportOptions): Promise<Impo
         const error = expectedErrorMetres(m.parish.areaKm2);
         const lat = m.parish.lat.toFixed(6);
         const lng = m.parish.lng.toFixed(6);
+        const ref = centroidSourceRef(m);
         const same =
           existing.centroid_source === SOURCE &&
           existing.centroid_lat !== null && Number(existing.centroid_lat).toFixed(6) === lat &&
           existing.centroid_lng !== null && Number(existing.centroid_lng).toFixed(6) === lng &&
-          existing.centroid_source_ref === m.parish.pcode &&
+          existing.centroid_source_ref === ref &&
           (existing.centroid_expected_error_m ?? null) === error &&
           existing.centroid_shared_polygon === m.sharedPolygon;
         if (same) {
@@ -330,7 +381,7 @@ export async function runParishCentroidImport(opts: ImportOptions): Promise<Impo
         }
         await tx.execute(sql`
           update delivery_corridor
-          set centroid_lat = ${lat}, centroid_lng = ${lng}, centroid_source = ${SOURCE}, centroid_source_ref = ${m.parish.pcode},
+          set centroid_lat = ${lat}, centroid_lng = ${lng}, centroid_source = ${SOURCE}, centroid_source_ref = ${ref},
               centroid_expected_error_m = ${error}, centroid_shared_polygon = ${m.sharedPolygon}, centroid_sample_size = 0,
               centroid_updated_at = now(), updated_at = now()
           where area_slug = ${m.areaSlug} and (centroid_source is null or centroid_source = ${SOURCE})`);
@@ -376,10 +427,17 @@ async function main(): Promise<void> {
   const apply = Boolean(flag('apply'));
   const reader = new DeliveryConfigReader();
   const values = await reader.currentValues();
+  const numberFlag = (name: string) => {
+    const v = value(name);
+    return v === null ? undefined : Number(v);
+  };
   const summary = await runParishCentroidImport({
     apply,
     csvPath: value('csv') ?? undefined,
     reportPath: value('report'),
+    rebandCsvPath: value('reband-csv'),
+    allowance: numberFlag('allowance'),
+    toleranceKm: numberFlag('tolerance-km'),
     ownRiderMaxBand: values.own_rider_max_band ?? null,
   });
   console.log(

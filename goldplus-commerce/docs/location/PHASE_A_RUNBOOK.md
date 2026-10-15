@@ -24,11 +24,23 @@ deferred; this pass uses the parish polygon's geometric centroid with an error d
 | Resolver carries `centroidKm`; use case prices with it only when `distance_source = measured` | `DeliveryAreaResolver.ts`, `DeliveryQuotingUseCase.ts` (`withMeasuredDistance`) |
 | Every capture records `accuracy_tier`, `centroid_km`, `centroid_expected_error_m` | `Registry.ts`, `DrizzleDeliveryCaptureRepository.ts` |
 | Registry key `distance_source` (ships `band_midpoint`) | `DeliveryConfigRegistry.ts`, `docs/delivery/CONFIGURATION.md` |
-| Tests | `tests/unit/ParishCentroids.test.ts`, `tests/unit/DeliveryAccuracyTier.test.ts`, `tests/integration/ParishCentroidImport.integration.test.ts` |
+| Corridor CSV apply (digest-confirmed, audited) + Control Centre card | `DeliveryCorridorCsvUseCase.ts` (`ApplyCorridorCsvUseCase`), `routes/admin/delivery.ts`, `admin/delivery/index.astro` |
+| Location accuracy report (spec §0's four numbers) | `DeliveryReportUseCases.ts`, `GET /admin/delivery/reports/location-accuracy`, `admin/delivery/calibration.astro` |
+| Tests | `tests/unit/ParishCentroids.test.ts`, `DeliveryAccuracyTier.test.ts`, `CorridorCsvApply.test.ts`, `DeliveryLocationAccuracyReport.test.ts`; `tests/integration/ParishCentroidImport.integration.test.ts`, `DeliveryCaptureAccuracy.integration.test.ts` |
+
+Also built, because the runbook's own Step 5 depended on it and it did not exist: the **apply half of the corridor
+CSV round trip**. The Control Centre had an export and a dry run (`POST /admin/delivery/corridors/dry-run`) and no way
+to land what the dry run showed, so a re-band could only be done by hand in the database. Now: the dry run returns a
+digest of exactly its changes; `POST /admin/delivery/corridors/apply` refuses anything but that digest, writes the
+changes in one transaction and one audit row (`DELIVERY_CORRIDORS_APPLIED`); the Control Centre has a **Corridor
+file** card (paste → Dry run → Apply). The importer's `--reband-csv` writes the file for it. And a **Location
+accuracy** panel on the calibration page shows the four numbers of spec §0 from the capture's own columns.
 
 Not in A.1 (deliberately): accepting unknown districts at checkout (the boundary refuses them today on purpose; a
 decision for the owner, spec §7.1), the fee ladder (spec §4.5, decision 1), the fee-step counter, `ug_district` as a
-table (the lineage is a reviewed constant until the admin form exists).
+table (the lineage is a reviewed constant until the admin form exists). Points placed by a fuzzy name match are
+stored like any other but carry the method and score in `centroid_source_ref` (`…#fuzzy:0.71`), so they can always be
+found and questioned.
 
 ## Step 1 — deploy (migration 0189, then the api)
 
@@ -49,7 +61,8 @@ echo "DONE $SHA"
 EOF
 ```
 
-Then `bash scripts/live-smoke.sh` from the Mac as after every deploy. Fees are unchanged at this point.
+Then `bash scripts/live-smoke.sh` from the Mac as after every deploy. Fees are unchanged at this point. (Both
+services: the api carries the migration and the routes, the web carries the two Control Centre panels.)
 
 ## Step 2 — Week 0 baseline (read-only)
 
@@ -66,7 +79,7 @@ q "select count(*) filter (where expected_minutes is not null and actual_minutes
 echo "== first-attempt success, last 28 days (succeeded | known)"
 q "select count(*) filter (where first_attempt_success), count(*) filter (where first_attempt_success is not null) from delivery_quote_capture where created_at > now() - interval '28 days'"
 echo "== WhatsApp location pins already received and dropped into text"
-q "select count(*) from assistant_messages where role = 'user' and content like 'My location:%'"
+q "select role, count(*) from assistant_messages where content like 'My location:%' group by role"
 echo "== orders whose address text names a landmark (with landmark words | all orders)"
 q "select count(*) filter (where delivery_address ~* '\m(near|opposite|opp|behind|next to|after|before|off)\M'), count(*) from orders"
 echo "== corridor areas by centroid source (before the import)"
@@ -93,10 +106,13 @@ mkdir -p /root/geo-reports
 docker run --rm --network goldplus-commerce_default --env-file .env.production \
   -e DATABASE_URL="$(grep -E '^DATABASE_URL=' .env.production | cut -d= -f2-)" \
   -v "$WT/goldplus-commerce/data:/app/data:ro" -v /root/geo-reports:/app/reports \
-  "$IMG" pnpm -F @goldplus/api geo:parish-centroids --report=/app/reports/parish-centroids-dryrun-$SHA.csv \
+  "$IMG" pnpm -F @goldplus/api geo:parish-centroids --report=/app/reports/parish-centroids-dryrun-$SHA.csv --reband-csv=/app/reports/parish-reband-$SHA.csv \
   2>&1 | tee /root/geo-reports/parish-centroids-dryrun-$SHA.log | tail -150
 EOF
 ```
+
+The same numbers appear in the Control Centre once the import has applied (Step 4): `/admin/delivery/calibration` →
+Location accuracy.
 
 What to look for: `matched N/362` (89% is expected by exact name; folding should take it past 95%), the **suspect
 BAND** list (exact matches whose point is nowhere near the band they were given: the bands most worth re-checking),
@@ -118,7 +134,7 @@ IMG=goldplus-migrator:$SHA
 docker run --rm --network goldplus-commerce_default --env-file .env.production \
   -e DATABASE_URL="$(grep -E '^DATABASE_URL=' .env.production | cut -d= -f2-)" \
   -v "$WT/goldplus-commerce/data:/app/data:ro" -v /root/geo-reports:/app/reports \
-  "$IMG" pnpm -F @goldplus/api geo:parish-centroids --apply --report=/app/reports/parish-centroids-applied-$SHA.csv \
+  "$IMG" pnpm -F @goldplus/api geo:parish-centroids --apply --report=/app/reports/parish-centroids-applied-$SHA.csv --reband-csv=/app/reports/parish-reband-$SHA.csv \
   2>&1 | tee /root/geo-reports/parish-centroids-applied-$SHA.log | tail -40
 docker exec goldplus-commerce-postgres-1 sh -c "psql -U \$POSTGRES_USER -d \$POSTGRES_DB -tAc \"select coalesce(centroid_source,'none'), count(*) from delivery_corridor group by 1 order by 2 desc\""
 git worktree remove --force "$WT" 2>/dev/null || true
@@ -128,13 +144,27 @@ EOF
 
 From the next quote on, every capture carries `accuracy_tier` and `centroid_km`. Customers see nothing different.
 
-## Step 5 — what happens next (not in this runbook)
+## Step 5 — re-band the suspect areas (Control Centre; a person decides every row)
 
-1. Read the suspect-band list and re-band those areas through the Control Centre's corridor dry run (the existing
-   path; the import never does it).
-2. Decide the fee shape (spec §12, decision 1: re-band onto a ladder, re-band only, or `distance_source = measured`).
-3. Set the six launch numbers (spec §11), by the seven questions or by trip prices.
-4. Phase B: WhatsApp pins to the order, rider handover, saved addresses that remember (spec §5).
+The import wrote `/root/geo-reports/parish-reband-<sha>.csv`: the whole corridor table in the Control Centre's CSV
+shape, with only the **suspect-band** rows carrying the band their measured point suggests. Nothing else differs.
+
+1. Copy it to the Mac: `scp goldplus-prod:/root/geo-reports/parish-reband-<sha>.csv ~/Downloads/`
+2. Open it, read the rows the dry-run log listed under *suspect BAND*, and delete the line of any area you do not
+   want moved (a deleted line is simply "no change" to the dry run).
+3. `/admin/delivery` → **Corridor file** → paste the file → **Dry run**. It lists every band that would change and
+   refuses any malformed row.
+4. **Apply**. One transaction, one audit row; the quote cache turns over within a minute. The Control Centre's
+   change history and the audit log show what moved.
+
+Fees for the moved areas change at their next quote (contract #5: a quote already given stays). Customers in areas
+that were in the wrong band were paying the wrong fee; that is what this step corrects.
+
+## Step 6 — what happens next (not in this runbook)
+
+1. Decide the fee shape (spec §12, decision 1: re-band onto a ladder, re-band only, or `distance_source = measured`).
+2. Set the six launch numbers (spec §11), by the seven questions or by trip prices.
+3. Phase B: WhatsApp pins to the order, rider handover, saved addresses that remember (spec §5).
 
 ## Rollback
 
