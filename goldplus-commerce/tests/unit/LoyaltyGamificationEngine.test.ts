@@ -276,6 +276,20 @@ describe('referrals', () => {
     expect(gamification.badges).toContainEqual({ userId: 'r1', badgeKey: 'referrer' });
   });
 
+  it("holds, never pays, when the referee's first order went to the referrer's own phone (a second SIM)", async () => {
+    const code = await referrals.getOrCreateCode('r1');
+    await new RecordReferralUseCase(completion as any, referrals as any).execute({ refereeUserId: 'newbie', code });
+    referrals.deliveredCounts.set('newbie', 1);
+    const asked: Array<[string, string]> = [];
+    (referrals as any).orderUsesReferrerPhone = async (orderId: string, referrerUserId: string) => { asked.push([orderId, referrerUserId]); return true; };
+    const uc = new QualifyReferralOnDeliveryUseCase(ledger as any, completion as any, referrals as any, gamification as any, async () => undefined);
+    expect(await uc.execute({ orderId: 'o1', refereeUserId: 'newbie' })).toMatchObject({ ok: true, status: 'held' });
+    expect(asked).toEqual([['o1', 'r1']]);
+    expect(ledger.entries).toHaveLength(0);
+    expect(completion.fraudSignals.map((s: any) => s.signalType)).toContain('REFERRAL_ORDER_TO_REFERRER_PHONE');
+    delete (referrals as any).orderUsesReferrerPhone;
+  });
+
   it('pays nothing on the referee SECOND delivery', async () => {
     const code = await referrals.getOrCreateCode('r1');
     await new RecordReferralUseCase(completion as any, referrals as any).execute({ refereeUserId: 'newbie', code });

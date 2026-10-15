@@ -281,7 +281,10 @@ routes.post('/refresh', async (c) => {
   }
 
   const registry = Registry.getInstance();
-  const result = await registry.sessionService.rotate({ refreshToken });
+  const result = await registry.sessionService.rotate({
+    refreshToken,
+    cutoffFor: async (userId) => (await registry.userRepo.findById(userId))?.sessionsInvalidatedAfter ?? null,
+  });
   if (!result.ok) {
     // One generic message: an attacker must not learn whether a token was
     // expired, revoked or reused.
@@ -372,21 +375,39 @@ routes.post('/mfa/enrol', async (c) => {
   if (!user) {
     return c.json({ success: false, error: { code: 'UNAUTHENTICATED', message: 'A valid session is required.' } }, 401);
   }
-  const start = await Registry.getInstance().mfaService.beginEnrolment(user.id, user.email);
-  if ('stepUpRequired' in start) {
-    // Replacing an authenticator that is already live needs a recent proof of
-    // the current one. Without this, a stolen token was enough to swap the
-    // second factor for one the attacker holds.
+  let body: any;
+  try {
+    body = await c.req.json();
+  } catch {
+    body = {};
+  }
+  // Replacing an authenticator that is already live needs a code from the current one in THIS request (or a
+  // recovery code). A recent step-up is not enough: a stolen token could ride the real admin's.
+  const start = await Registry.getInstance().mfaService.beginEnrolment(user.id, user.email, {
+    code: String(body?.code ?? ''),
+    recovery: body?.recovery === true,
+  });
+  if ('currentCodeRequired' in start) {
     return c.json(
       {
         success: false,
         error: {
-          code: 'MFA_STEP_UP_REQUIRED',
-          message: 'Verify your current authenticator before setting up a new one.',
+          code: 'MFA_CURRENT_CODE_REQUIRED',
+          message: 'Enter a code from your current authenticator (or a recovery code) to replace it.',
         },
       },
       403,
     );
+  }
+  if ('locked' in start) {
+    c.header('Retry-After', String(Math.ceil(MfaService.LOCK_WINDOW_MS / 1000)));
+    return c.json(
+      { success: false, error: { code: 'MFA_LOCKED', message: 'Too many wrong codes. Wait fifteen minutes and try again.' } },
+      429,
+    );
+  }
+  if ('currentCodeInvalid' in start) {
+    return c.json({ success: false, error: { code: 'MFA_CODE_INVALID', message: 'That code was not valid.' } }, 400);
   }
   const audit = new CreateAuditLogUseCase(Registry.getInstance().auditRepo);
   await audit.execute({

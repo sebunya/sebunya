@@ -31,16 +31,34 @@ describe('expiry never claims points held by an open reservation', () => {
 });
 
 describe('a failed consume at delivery is reported and stops haunting the balance', () => {
-  it('releases the stuck reservation and records an ops signal', async () => {
-    const reservation = { id: 'r1', accountId: 'acc', orderId: 'o1', status: 'reserved', pointsReserved: 1_000, valueUgx: 20_000, pointValueUgx: 20, ledgerEntryId: null };
-    const completion = {
-      findReservationByOrder: vi.fn().mockResolvedValue(reservation),
-      markReservation: vi.fn().mockResolvedValue(true),
-      recordFraudSignal: vi.fn().mockResolvedValue(undefined),
+  const reservation = { id: 'r1', accountId: 'acc', orderId: 'o1', status: 'reserved', pointsReserved: 1_000, valueUgx: 20_000, pointValueUgx: 20, ledgerEntryId: null };
+  const completionFake = () => ({
+    findReservationByOrder: vi.fn().mockResolvedValue(reservation),
+    markReservation: vi.fn().mockResolvedValue(true),
+    recordFraudSignal: vi.fn().mockResolvedValue(undefined),
+  });
+
+  it('a discount given at the door whose points have since gone is still debited: the balance is carried negative', async () => {
+    // Order A earned 1,000 points; COD order B redeemed them; A was refunded and its earn clawed back to 0. B is
+    // then delivered. The debit used to be refused and the reservation released: the discount stayed free.
+    const completion = completionFake();
+    const repo = {
+      appendDebitIfAvailable: vi.fn().mockResolvedValue({ ok: false, code: 'INSUFFICIENT_BALANCE' }),
+      append: vi.fn().mockResolvedValue({ entry: { id: 'e-neg' }, replay: false }),
     };
-    const repo = { appendDebitIfAvailable: vi.fn().mockResolvedValue({ ok: false, code: 'INSUFFICIENT_BALANCE' }) };
     const out = await new ConsumeRedemptionUseCase(repo as never, completion as never).settleOnDelivery('o1');
-    expect(out).toMatchObject({ ok: false, code: 'INSUFFICIENT_BALANCE' });
+    expect(out).toEqual({ ok: true });
+    expect(repo.append).toHaveBeenCalledWith(expect.objectContaining({ accountId: 'acc', type: 'redeem', points: -1_000, idempotencyKey: 'redeem:r1' }));
+    expect(completion.markReservation).toHaveBeenCalledWith('r1', 'applied', 'e-neg');
+    expect(completion.recordFraudSignal).toHaveBeenCalledWith(expect.objectContaining({ signalType: 'REDEMPTION_CARRIED_NEGATIVE' }));
+  });
+
+  it('any other refusal (a merged account) releases the stuck reservation and records an ops signal', async () => {
+    const completion = completionFake();
+    const repo = { appendDebitIfAvailable: vi.fn().mockResolvedValue({ ok: false, code: 'ACCOUNT_MERGED' }), append: vi.fn() };
+    const out = await new ConsumeRedemptionUseCase(repo as never, completion as never).settleOnDelivery('o1');
+    expect(out).toMatchObject({ ok: false, code: 'ACCOUNT_MERGED' });
+    expect(repo.append).not.toHaveBeenCalled();
     expect(completion.recordFraudSignal).toHaveBeenCalledWith(expect.objectContaining({ signalType: 'REDEMPTION_CONSUME_FAILED_AT_DELIVERY' }));
     expect(completion.markReservation).toHaveBeenCalledWith('r1', 'released');
   });

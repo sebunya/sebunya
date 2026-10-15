@@ -146,11 +146,14 @@ export class DeliveryAreaResolver implements IAreaResolverPort {
     }
 
     const districtFilter = district ?? null;
+    // Every lookup is ordered: the same name exists in more than one place (Kira, Seeta), and `limit 1` with no
+    // order let the page's quote and the order's charge resolve the same text to different areas.
     const alias = (await db.execute(sql`
       select a.area_slug, a.display_label, al.normalised_alias
       from ug_area_alias al join ug_area a on a.area_slug = al.area_slug
       where al.normalised_alias = ${folded} and a.selectable = true
         and (${districtFilter}::text is null or upper(a.current_district) = upper(${districtFilter}))
+      order by a.is_metro desc, a.area_slug
       limit 1`)) as unknown as Array<{ area_slug: string; display_label: string; normalised_alias: string }>;
     if (alias[0]) return this.finish(alias[0].area_slug, alias[0].display_label, 'alias', alias[0].normalised_alias);
 
@@ -158,6 +161,7 @@ export class DeliveryAreaResolver implements IAreaResolverPort {
       select area_slug, display_label from ug_area where selectable = true
         and (split_part(search_text, ' ', 1) = ${folded} or search_text like ${folded + ' %'})
         and (${districtFilter}::text is null or upper(current_district) = upper(${districtFilter}))
+      order by is_metro desc, area_slug
       limit 1`)) as unknown as Array<{ area_slug: string; display_label: string }>;
     if (exact[0]) return this.finish(exact[0].area_slug, exact[0].display_label, 'exact', null);
 
@@ -165,7 +169,7 @@ export class DeliveryAreaResolver implements IAreaResolverPort {
       select area_slug, display_label, similarity(search_text, ${folded}) as score
       from ug_area where selectable = true and similarity(search_text, ${folded}) > 0.5
         and (${districtFilter}::text is null or upper(current_district) = upper(${districtFilter}))
-      order by score desc limit 1`)) as unknown as Array<{ area_slug: string; display_label: string }>;
+      order by score desc, is_metro desc, area_slug limit 1`)) as unknown as Array<{ area_slug: string; display_label: string }>;
     if (trigram[0]) return this.finish(trigram[0].area_slug, trigram[0].display_label, 'trigram', null);
 
     // The stored district may itself be wrong — GP-202608-DBF2 is recorded as

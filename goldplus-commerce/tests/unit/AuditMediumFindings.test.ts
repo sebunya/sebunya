@@ -62,7 +62,7 @@ describe('money and display', () => {
 
   it('a terminal checkout refusal keeps its reason for the storefront', () => {
     const src = read('apps/api/src/interfaces/http/routes/commerce.ts');
-    expect(src).toMatch(/PUBLIC_TERMINAL_REASONS = new Set\(\['PRICE_CHANGED', 'PROMOTION_CHANGED', 'PRODUCT_UNAVAILABLE', 'PRICE_UNAVAILABLE'\]\)/);
+    expect(src).toMatch(/PUBLIC_TERMINAL_REASONS = new Set\(\['PRICE_CHANGED', 'PROMOTION_CHANGED', 'PRODUCT_UNAVAILABLE', 'PRICE_UNAVAILABLE', 'PROMOTION_LIMIT_REACHED', 'PAY_ON_DELIVERY_UNAVAILABLE', 'LOYALTY_REDEMPTION_REFUSED'\]\)/);
     expect(src).toMatch(/outcome\.kind === 'FAILED_FINAL' && PUBLIC_TERMINAL_REASONS\.has\(outcome\.reason\)/);
   });
 

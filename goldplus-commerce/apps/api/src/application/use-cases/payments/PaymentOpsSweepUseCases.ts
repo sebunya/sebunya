@@ -110,6 +110,12 @@ export class AbandonStaleUnpaidOrdersUseCase {
     },
     private readonly inventory: { releaseForOrder(orderId: string): Promise<{ released: boolean }> },
     private readonly audit: IAuditRepository,
+    /**
+     * Closes the order's fulfilment task (CancelFulfilmentTaskForCancelledOrderUseCase), as a full refund does.
+     * Without it an abandoned order's task stayed open in the queue and counted as new or overdue for good.
+     * Optional so older suites construct unchanged; production wires it.
+     */
+    private readonly fulfilment?: { execute(input: { orderId: string; actorId: string | null; reason: string }): Promise<unknown> },
   ) {}
 
   async execute(now: Date = new Date()): Promise<{ abandoned: number; skipped: 'window_not_configured' | null; errors: string[] }> {
@@ -131,6 +137,7 @@ export class AbandonStaleUnpaidOrdersUseCase {
           idempotencyKey: `abandon:${order.id}`,
         });
         await this.inventory.releaseForOrder(order.id).catch(() => ({ released: false }));
+        await this.fulfilment?.execute({ orderId: order.id, actorId: null, reason: 'Order cancelled: unpaid and abandoned.' }).catch(() => undefined);
         abandoned++;
         await new CreateAuditLogUseCase(this.audit).execute({
           actorId: null,

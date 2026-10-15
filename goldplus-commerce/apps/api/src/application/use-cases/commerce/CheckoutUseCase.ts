@@ -5,6 +5,7 @@ import { IDeliveryZoneRepository } from '../../ports/IDeliveryZoneRepository';
 import { EvaluateCartPricingUseCase } from '../pricing/EvaluateCartPricingUseCase';
 import { ManagePromotionCapacityUseCase } from '../pricing/ManagePromotionCapacityUseCase';
 import { IPricingQuoteRepository } from '../../ports/IPricingQuoteRepository';
+import { CheckoutDependencyError } from '../../ports/CheckoutDependencyOutcomes';
 import { PricingQuote } from '../../../domain/pricing/PricingEvaluator';
 import { pricingCustomerScopeKey } from '../../../domain/pricing/CustomerIdentity';
 import { normalizeUgandaDistrict } from '@goldplus/shared';
@@ -175,7 +176,14 @@ export class CheckoutUseCase {
      * A failed read is treated as unset: the setting can hold an order for
      * review, but it must never fail a checkout.
      */
-    private readonly ownerReviewThreshold: { thresholdUgx(): Promise<number | null> } | null = null
+    private readonly ownerReviewThreshold: { thresholdUgx(): Promise<number | null> } | null = null,
+    /**
+     * Counts a batch code against its redemption maximum once its order exists (exactly once per code and order).
+     * Never fatal: the order is committed with the discount the customer was shown. Optional; production wires it.
+     */
+    private readonly couponRedemption: {
+      redeemForOrder(input: { code: string; orderId: string; customerScopeKey: string; quote: PricingQuote }): Promise<void>;
+    } | null = null,
   ) {}
 
   private async ownerReviewThresholdUgx(): Promise<number | null> {
@@ -325,7 +333,20 @@ export class CheckoutUseCase {
         // comparison failed every priced delivery with a false "an offer on
         // your basket ended". Shipping and tax are not promotion facts.
         const goodsTotal = (q: { finalTotalUgx: number; shippingUgx: number; taxUgx: number }) => q.finalTotalUgx - q.shippingUgx - q.taxUgx;
-        const promotionChanged = preview.discountTotalUgx !== quote.discountTotalUgx || goodsTotal(preview) !== goodsTotal(quote) || preview.appliedPromotionVersions.map((item) => item.versionId).join(',') !== quote.appliedPromotionVersions.map((item) => item.versionId).join(',');
+        // Goods discounts only, for the same reason: a free-shipping promotion is never in the preview (it has no
+        // fee to waive) but is in this quote, so comparing the total discount, or the version list with it in,
+        // refused every customer who applied a code once while one was live.
+        const shippingOnly = (q: PricingQuote) => {
+          const scopes = new Map<string, Set<string>>();
+          for (const a of q.adjustments ?? []) scopes.set(a.promotionVersionId, (scopes.get(a.promotionVersionId) ?? new Set()).add(a.scope));
+          return new Set([...scopes].filter(([, set]) => set.size === 1 && set.has('SHIPPING')).map(([id]) => id));
+        };
+        const goodsDiscount = (q: PricingQuote) => q.discountTotalUgx - (q.adjustments ?? []).filter((a) => a.scope === 'SHIPPING').reduce((n, a) => n + a.amountUgx, 0);
+        const goodsVersions = (q: PricingQuote) => {
+          const skip = shippingOnly(q);
+          return q.appliedPromotionVersions.filter((item) => !skip.has(item.versionId)).map((item) => item.versionId).join(',');
+        };
+        const promotionChanged = goodsDiscount(preview) !== goodsDiscount(quote) || goodsTotal(preview) !== goodsTotal(quote) || goodsVersions(preview) !== goodsVersions(quote);
         if (!dto.acceptPriceChange && (baseChanged || promotionChanged)) throw new Error(`${baseChanged ? 'PRICE_CHANGED' : 'PROMOTION_CHANGED'}: The authoritative checkout total differs from the preview. Review and confirm the revised breakdown.`);
       }
       const checkoutKey = clientOrderKey ?? `quote:${quote.id}`;
@@ -336,7 +357,7 @@ export class CheckoutUseCase {
       let loyaltyReservation: { reservationId: string; valueUgx: number } | null = null;
       if (dto.redeemPoints && dto.redeemPoints > 0) {
         if (!this.loyaltyRedemption || dto.principal?.kind !== 'USER') {
-          throw new Error('REDEMPTION_UNAVAILABLE: Sign in to redeem points.');
+          throw new CheckoutDependencyError('LOYALTY_REDEMPTION_REFUSED', 'REDEMPTION_UNAVAILABLE: Sign in to redeem points.');
         }
         const goodsTotalUgx = quote.finalTotalUgx - quote.shippingUgx - quote.taxUgx;
         const reserveResult = await this.loyaltyRedemption.reserve({
@@ -346,7 +367,7 @@ export class CheckoutUseCase {
           idempotencyKey: checkoutKey,
         });
         if (!reserveResult.ok) {
-          throw new Error(`${reserveResult.code}: ${reserveResult.message}`);
+          throw new CheckoutDependencyError('LOYALTY_REDEMPTION_REFUSED', `${reserveResult.code}: ${reserveResult.message}`);
         }
         loyaltyReservation = { reservationId: reserveResult.reservationId, valueUgx: reserveResult.valueUgx };
       }
@@ -419,6 +440,11 @@ export class CheckoutUseCase {
             // may release.
             await this.loyaltyRedemption.attach(loyaltyReservation.reservationId, saved.order.id).catch(() => undefined);
           }
+        }
+        if (!saved.duplicate && dto.couponCode && this.couponRedemption) {
+          await this.couponRedemption
+            .redeemForOrder({ code: dto.couponCode, orderId: saved.order.id, customerScopeKey, quote })
+            .catch(() => undefined);
         }
         if (!saved.duplicate && this.checkoutSignals) {
           // Fraud velocity (location brief I.3 / loyalty brief PART N):

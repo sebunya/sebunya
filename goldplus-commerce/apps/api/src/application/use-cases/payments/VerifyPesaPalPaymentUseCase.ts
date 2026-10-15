@@ -273,6 +273,17 @@ export class VerifyPesaPalPaymentUseCase {
             message: `PAYMENT_PARTIALLY_REFUNDED: ${refund.refundedUgx} of ${attempt.amount} ${attempt.currency} returned (PesaPal: ${statusResponse.payment_status_description}).`,
           };
         }
+        if (refund.coveredByAnotherPayment) {
+          // The extra payment of a double charge went back; another attempt still pays for the order.
+          return {
+            ok: false,
+            status: 'reversed',
+            amount: attempt.amount,
+            currency: attempt.currency,
+            orderId: attempt.orderId,
+            message: `SECOND_PAYMENT_REFUNDED: this attempt's ${refund.refundedUgx} ${attempt.currency} went back; another payment still covers the order, which stays paid (PesaPal: ${statusResponse.payment_status_description}).`,
+          };
+        }
         if (refund.lifecycleConflict) {
           return {
             ok: false,

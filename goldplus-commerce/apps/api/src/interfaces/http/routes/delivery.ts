@@ -100,7 +100,9 @@ routes.post('/quote', async (c) => {
   // it the panel said "we are finalising pricing for your area" directly under
   // a Delivery row, and an order, carrying a CONFIRMED zone fee.
   if (outcome.mayFallBackToLegacy) {
-    const districtName = outcome.resolved?.input.district || district;
+    // Keyed on the customer's own district first, as CheckoutUseCase keys its zone: the resolver's district
+    // ("Kira" read as Wakiso) showed one zone's fee in the panel while checkout charged the other's.
+    const districtName = district || outcome.resolved?.input.district;
     const canonical = districtName ? normalizeUgandaDistrict(districtName) : null;
     const zone = canonical ? await registry.deliveryZoneRepo.findByDistrict(normalizeDistrict(canonical)) : null;
     if (zone && zone.enabled) {

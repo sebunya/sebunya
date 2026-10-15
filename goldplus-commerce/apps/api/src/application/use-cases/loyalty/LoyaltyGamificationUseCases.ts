@@ -48,6 +48,11 @@ export interface ILoyaltyReferralRepository {
   markRejected(id: string, reason: string): Promise<void>;
   countAwardedForReferrer(referrerUserId: string, sinceDays: number): Promise<number>;
   countDeliveredRetailOrders(userId: string): Promise<number>;
+  /**
+   * Was this (the referee's qualifying) order delivered to a phone the REFERRER uses: their account phone or one on
+   * their own orders? Optional so older fakes type.
+   */
+  orderUsesReferrerPhone?(orderId: string, referrerUserId: string): Promise<boolean>;
   listForReferrer(referrerUserId: string): Promise<Array<{ status: string; createdAt: Date }>>;
 }
 
@@ -229,6 +234,18 @@ export class QualifyReferralOnDeliveryUseCase {
         userId: referral.referrerUserId,
         signalType: 'REFERRAL_MONTHLY_CAP',
         details: { referralId: referral.id, awardedThisMonth },
+      });
+      return { ok: true, status: 'held' };
+    }
+    // Registration refuses a phone already on an account, so the same-phone check at registration can hardly ever
+    // fire: a second account on another SIM whose first order is delivered to the referrer's own phone paid both
+    // sides. Held for a person (a family sharing one phone is possible), never paid automatically.
+    if (this.referrals.orderUsesReferrerPhone && (await this.referrals.orderUsesReferrerPhone(input.orderId, referral.referrerUserId))) {
+      await this.completion.recordFraudSignal({
+        accountId: null,
+        userId: referral.referrerUserId,
+        signalType: 'REFERRAL_ORDER_TO_REFERRER_PHONE',
+        details: { referralId: referral.id, orderId: input.orderId, refereeUserId: input.refereeUserId },
       });
       return { ok: true, status: 'held' };
     }

@@ -868,7 +868,7 @@ if (product) {
         data-product-slug={product.slug}
         data-product-name={product.name}
         data-product-image={product.primaryImageUrl ?? ''}
-        data-product-price={product.retailPriceUgx ?? ''}
+        data-product-price={pdpOnSale ? pdpSaleUgx : product.retailPriceUgx ?? ''}
         data-product-category={product.categoryName ?? ''}
       >
         {battery && (

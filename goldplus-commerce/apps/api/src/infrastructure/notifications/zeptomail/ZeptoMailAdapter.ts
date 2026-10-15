@@ -8,9 +8,10 @@ import {
   NotificationDispatchPayload,
   NotificationDispatchResult,
   NotificationStatus,
+  OUTCOME_UNKNOWN_PROVIDER_CODE,
 } from '../../../application/ports/INotificationProvider';
 import { NotificationTemplateRenderer } from '../../../application/use-cases/notifications/NotificationTemplateRenderer';
-import { resilientFetch } from '../../http/HttpClient';
+import { resilientFetch, sendMayHaveReachedProvider } from '../../http/HttpClient';
 import { classifyTransactionalEmailFailure } from '../../../application/services/consent/TransactionalEmailFailureForensics';
 
 export class ZeptoMailAdapter implements INotificationProvider {
@@ -312,7 +313,9 @@ export class ZeptoMailAdapter implements INotificationProvider {
         client_reference: payload.relatedEntityId || undefined,
       };
 
-      const timeoutMs = parseInt(process.env.ZEPTOMAIL_TIMEOUT_MS || '3000', 10);
+      // 10 s, as .env.example says: a timeout is now final (never re-sent), so a slow provider must not look lost.
+      const configuredTimeout = parseInt(process.env.ZEPTOMAIL_TIMEOUT_MS || '', 10);
+      const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 10_000;
       const response = await resilientFetch(baseUrl, {
         method: 'POST',
         headers: {
@@ -390,6 +393,15 @@ export class ZeptoMailAdapter implements INotificationProvider {
       };
     } catch (err: any) {
       const isTimeout = err.name === 'AbortError';
+      if (sendMayHaveReachedProvider(err)) {
+        // It may have been delivered: the outbox must neither re-send it nor hand it to a fallback channel.
+        return {
+          status: 'FAILED' as NotificationStatus,
+          providerCode: OUTCOME_UNKNOWN_PROVIDER_CODE,
+          retryable: false,
+          providerMessage: this.sanitizeErrorMessage(`Email (ZeptoMail) ${isTimeout ? 'timed out after sending' : 'failed after sending (' + (err.message || 'network error') + ')'}; outcome unknown. Not retried, no fallback.`),
+        };
+      }
       return {
         status: 'FAILED' as NotificationStatus,
         providerCode: 'PROVIDER_ERROR',

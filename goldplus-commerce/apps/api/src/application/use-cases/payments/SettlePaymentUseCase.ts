@@ -47,6 +47,12 @@ export interface SettlePaymentEffects {
     trackingId: string;
     reference: string;
   }): Promise<void>;
+  /**
+   * The amount this payment page collected differs from the order's total now: the total moved after the page
+   * was made (a delivery fee the customer agreed to change, or one lowered for them) and the old page was paid.
+   * The payment stands and the order proceeds; a person settles the difference. Optional so older fakes type.
+   */
+  flagPaidAmountMismatch?(orderId: string, paidUgx: number): Promise<void>;
   /** Where a failed effect surfaces. Never silent. */
   onEffectFailed(effect: string, orderId: string, error: unknown): void;
 }
@@ -76,6 +82,8 @@ export function customerReturnKind(
 ): { kind: string; code: string } {
   const { verification, settlement } = result;
   if (paymentDidConfirm(settlement)) return { kind: 'success', code: settlement.reason };
+  // Charged twice: the order is paid, and this page must say a second payment arrived (never "no second payment").
+  if (settlement.reason === 'SECOND_PAYMENT_TAKEN') return { kind: 'second_payment', code: settlement.reason };
   if (
     settlement.kind === 'ALREADY_SETTLED' &&
     verification.ok &&
@@ -136,6 +144,10 @@ export class SettlePaymentUseCase {
         this.effects.recordMeasurement({ verification, trackingId: input.orderTrackingId, reference: input.merchantReference }));
       await this.runEffect('customer_message', verification.orderId, () =>
         this.effects.enqueueCustomerMessage(verification.orderId, 'ORDER_PAYMENT_SUCCESS'));
+      const flagMismatch = this.effects.flagPaidAmountMismatch?.bind(this.effects);
+      if (flagMismatch) {
+        await this.runEffect('paid_amount_check', verification.orderId, () => flagMismatch(verification.orderId, verification.amount));
+      }
     } else if (settlement.kind === 'FAILED' && settlement.orderId && !verification.superseded) {
       // A decline or reversal is the moment the customer most needs to hear
       // from us. Nothing else runs on this branch. Never for a superseded

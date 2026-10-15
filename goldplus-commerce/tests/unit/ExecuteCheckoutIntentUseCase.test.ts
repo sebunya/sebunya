@@ -515,6 +515,24 @@ describe('an existing record is answered without doing commerce work', () => {
     expect(trace.ordersCreated).toBe(0);
   });
 
+  it('says whether the superseded request holds the same items as the order (it may differ only by address or payment method)', async () => {
+    const same = build({
+      ...notClaimed(record({ fingerprint: 'DIFFERENT', state: 'COMPLETED', orderId: 'order-1' })),
+      existingOrder: order({ paymentStatus: 'unpaid', items: [{ productId: 'p1', quantity: 1, price: 1000, name: 'x' }] }),
+    });
+    const a = await same.useCase.execute(command);
+    expect(!isCheckoutSuccess(a) && a.existingOrder?.sameItems).toBe(true);
+
+    const different = build({
+      ...notClaimed(record({ fingerprint: 'DIFFERENT', state: 'COMPLETED', orderId: 'order-1' })),
+      existingOrder: order({ paymentStatus: 'unpaid', items: [{ productId: 'p9', quantity: 2, price: 1000, name: 'y' }] }),
+    });
+    const b = await different.useCase.execute(command);
+    expect(b.kind).toBe('SUPERSEDED_BY_ORDER');
+    expect(!isCheckoutSuccess(b) && b.existingOrder?.sameItems).toBe(false);
+    expect(different.trace.ordersCreated).toBe(0); // still never a second order by itself
+  });
+
   it('a paid order still replays as itself for the SAME basket', async () => {
     const { useCase, trace } = build({
       ...notClaimed(record({ state: 'COMPLETED', orderId: 'order-1' })),

@@ -119,7 +119,7 @@ describe('checkout re-quotes the panel through the one quoting service', () => {
   it('the server component and the page script share one renderer', () => {
     expect(component).toMatch(/renderDeliveryQuotePanel\(q, \{ stage, compact \}\)/);
     expect(component).toMatch(/buildDeliveryQuoteRequest\(/);
-    expect(checkout).toMatch(/import \{ buildDeliveryQuoteRequest, renderDeliveryQuotePanel, DELIVERY_QUOTE_UNREACHABLE_HTML \} from '\.\.\/lib\/deliveryQuotePanel'/);
+    expect(checkout).toMatch(/import \{ buildDeliveryQuoteRequest, renderDeliveryQuotePanel, DELIVERY_QUOTE_UNREACHABLE_HTML(, [\w, ]+)? \} from '\.\.\/lib\/deliveryQuotePanel'/);
   });
 
   it('a location pick POSTs /delivery/quote and redraws the panel, latest pick wins', () => {

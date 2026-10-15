@@ -38,6 +38,11 @@ import { constantTimeEquals } from './PasswordResetUseCases';
 
 export const SMS_RESET_CODE_TTL_MINUTES = 10;
 export const SMS_RESET_MAX_ATTEMPTS = 5;
+/**
+ * Codes per number per day. The hourly cap alone allowed ~120 codes (600 guesses) a day against one account,
+ * anonymously; ten covers any real customer and keeps a day's guessing to 50 in 900,000.
+ */
+export const SMS_RESET_MAX_PER_DAY = 10;
 const MIN_PASSWORD_LENGTH = 8;
 
 /** Identical for every input, by design. */
@@ -112,6 +117,9 @@ export class RequestSmsPasswordResetUseCase {
     }
     const issuedThisHour = await this.identity.otpCountSince(user.id, new Date(at.getTime() - 3_600_000));
     if (issuedThisHour >= OTP_MAX_PER_HOUR) {
+      return generic({ userFound: true, throttled: true, delivery: 'NOT_ATTEMPTED' });
+    }
+    if ((await this.identity.otpCountSince(user.id, new Date(at.getTime() - 86_400_000))) >= SMS_RESET_MAX_PER_DAY) {
       return generic({ userFound: true, throttled: true, delivery: 'NOT_ATTEMPTED' });
     }
 

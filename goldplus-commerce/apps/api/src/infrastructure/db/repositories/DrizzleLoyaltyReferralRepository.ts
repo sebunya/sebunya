@@ -105,6 +105,23 @@ export class DrizzleLoyaltyReferralRepository implements ILoyaltyReferralReposit
     return Number(rows[0]?.n ?? 0);
   }
 
+  /** Compared on the last nine digits, so 0772…, +256772… and 256772… are one number. */
+  async orderUsesReferrerPhone(orderId: string, referrerUserId: string): Promise<boolean> {
+    if (!/^[0-9a-f-]{36}$/i.test(orderId) || !/^[0-9a-f-]{36}$/i.test(referrerUserId)) return false;
+    const rows = (await db.execute(sql`
+      with order_phone as (
+        select right(regexp_replace(coalesce(customer_phone, ''), '\\D', '', 'g'), 9) as p from orders where id = ${orderId}::uuid
+      ), referrer_phones as (
+        select right(regexp_replace(coalesce(phone, ''), '\\D', '', 'g'), 9) as p from users where id = ${referrerUserId}::uuid
+        union
+        select right(regexp_replace(coalesce(customer_phone, ''), '\\D', '', 'g'), 9) from orders where user_id = ${referrerUserId}::uuid
+      )
+      select exists (
+        select 1 from order_phone o join referrer_phones r on r.p = o.p where length(o.p) = 9
+      ) as hit`)) as unknown as Array<{ hit: boolean }>;
+    return rows[0]?.hit === true;
+  }
+
   async listForReferrer(referrerUserId: string): Promise<Array<{ status: string; createdAt: Date }>> {
     const rows = await db.query.loyaltyReferrals.findMany({
       where: eq(loyaltyReferrals.referrerUserId, referrerUserId),

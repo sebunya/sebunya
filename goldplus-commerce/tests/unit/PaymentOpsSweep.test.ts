@@ -116,6 +116,20 @@ describe('order abandonment — cancelled through the canonical lifecycle, never
     expect(audit.entries[0]).toMatchObject({ action: 'ORDER_ABANDONED_UNPAID' });
   });
 
+  it("closes the abandoned order's fulfilment task, so it stops counting as new or overdue", async () => {
+    config.order_abandonment_hours = '72';
+    orders.stale = [{ id: 'o1', orderNumber: 'GP-1', status: 'received', createdAt: new Date(NOW.getTime() - 100 * HOUR) }];
+    const closed: Array<{ orderId: string; reason: string }> = [];
+    const fulfilment = { async execute(i: { orderId: string; actorId: string | null; reason: string }) { closed.push({ orderId: i.orderId, reason: i.reason }); } };
+    await new AbandonStaleUnpaidOrdersUseCase(configReader, orders, transition, inventory, audit as never, fulfilment).execute(NOW);
+    expect(closed).toEqual([{ orderId: 'o1', reason: expect.stringMatching(/abandoned/i) }]);
+    // A task that cannot be closed never undoes the cancellation or stops the sweep.
+    const failing = { async execute() { throw new Error('db down'); } };
+    const r = await new AbandonStaleUnpaidOrdersUseCase(configReader, orders, transition, inventory, audit as never, failing).execute(NOW);
+    expect(r.abandoned).toBe(1);
+    expect(r.errors).toEqual([]);
+  });
+
   it('one refused transition never stops the rest', async () => {
     config.order_abandonment_hours = '72';
     const refusing = {

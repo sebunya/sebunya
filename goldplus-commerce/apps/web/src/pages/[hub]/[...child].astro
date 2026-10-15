@@ -5,7 +5,7 @@ import { apiBase } from '../../lib/api';
 import { getCleanCatalog } from '../../lib/catalog/catalog';
 import { getTaxonomy } from '../../lib/taxonomy';
 import { getBusinessInfo } from '../../lib/businessInfo';
-import { serializeJsonLd, breadcrumbJsonLd } from '../../lib/jsonld';
+import { serializeJsonLd, breadcrumbJsonLd, schemaAvailability } from '../../lib/jsonld';
 import { SITE_ORIGIN } from '../../lib/sitemap';
 import {
   CATEGORY_HUBS,
@@ -110,7 +110,7 @@ const itemListJsonLd = {
       url: `${SITE_ORIGIN}/products/${p.slug}`,
       ...(p.primaryImageUrl ? { image: /^https?:\/\//i.test(p.primaryImageUrl) ? p.primaryImageUrl : `${SITE_ORIGIN}${p.primaryImageUrl}` } : {}),
       ...(p.retailPriceUgx != null
-        ? { offers: { '@type': 'Offer', priceCurrency: 'UGX', price: offerPriceUgx(p.retailPriceUgx, hubCampaignRunning ? salePriceUgx(p.retailPriceUgx, hubDiscount.percentBps, effectiveFloorUgx(hubDiscount.priceFloorUgx, p.floorPriceUgx, p.retailPriceUgx)) : null), availability: p.availability?.kind === 'in_stock' ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock', url: `${SITE_ORIGIN}/products/${p.slug}` } }
+        ? { offers: { '@type': 'Offer', priceCurrency: 'UGX', price: offerPriceUgx(p.retailPriceUgx, hubCampaignRunning ? salePriceUgx(p.retailPriceUgx, hubDiscount.percentBps, effectiveFloorUgx(hubDiscount.priceFloorUgx, p.floorPriceUgx, p.retailPriceUgx)) : null), ...(schemaAvailability(p.availability?.kind) ? { availability: schemaAvailability(p.availability?.kind) } : {}), url: `${SITE_ORIGIN}/products/${p.slug}` } }
         : {}),
     },
   })),

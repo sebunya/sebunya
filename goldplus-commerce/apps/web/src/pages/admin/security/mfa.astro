@@ -34,7 +34,8 @@ if (Astro.request.method === "POST") {
   const code = String(form.get("code") ?? "").replace(/\s+/g, "").slice(0, 32);
   try {
     if (intent === "enrol") {
-      const { json } = await call("enrol", {});
+      // Replacing a live authenticator sends a code from the current one (or a recovery code); first set-up sends none.
+      const { json } = await call("enrol", code ? { code, recovery: form.get("recovery") === "on" } : {});
       if (json?.success) enrolment = json.data;
       else notice = { kind: "error", text: json?.error?.message ?? "Could not start set-up." };
     } else if (intent === "confirm") {
@@ -46,7 +47,7 @@ if (Astro.request.method === "POST") {
     } else if (intent === "verify") {
       const { json } = await call("verify", { code, recovery: form.get("recovery") === "on" });
       notice = json?.success
-        ? { kind: "success", text: "Verified. Protected actions (refunds, pricing approval) are open for the next few minutes." }
+        ? { kind: "success", text: "Verified. Protected actions (refunds, pricing approval, user and role changes) are open for the next few minutes." }
         : { kind: "error", text: json?.error?.message ?? "That code was not accepted." };
     }
   } catch {
@@ -66,7 +67,7 @@ const confirmed = Boolean(status?.confirmed);
   <div class="container mx-auto max-w-2xl px-6 py-8 space-y-6">
     <header>
       <h1 class="text-2xl font-black text-brand-dark">Two-step verification</h1>
-      <p class="mt-1 text-sm text-slate-600">Refunds and pricing approval ask for a code from your authenticator app, checked within the last few minutes.</p>
+      <p class="mt-1 text-sm text-slate-600">Refunds, pricing approval and changes to users or roles ask for a code from your authenticator app, checked within the last few minutes.</p>
     </header>
 
     {notice && (
@@ -106,7 +107,12 @@ const confirmed = Boolean(status?.confirmed);
           <label class="flex items-center gap-2 text-xs"><input type="checkbox" name="recovery" /> This is a recovery code</label>
           <button class="rounded-lg bg-brand-dark px-4 py-2 text-xs font-black text-white">Verify</button>
         </form>
-        <form method="POST"><input type="hidden" name="intent" value="enrol" /><button class="text-xs font-bold underline">Replace my authenticator (needs a fresh verification first)</button></form>
+        <form method="POST" class="flex flex-wrap items-end gap-2 border-t border-slate-100 pt-3">
+          <input type="hidden" name="intent" value="enrol" />
+          <label class="text-xs font-bold">Replace my authenticator: code from the current one<input name="code" required autocomplete="one-time-code" class="mt-1 block rounded-lg border px-3 py-2 font-mono" /></label>
+          <label class="flex items-center gap-2 text-xs"><input type="checkbox" name="recovery" /> This is a recovery code</label>
+          <button class="rounded-lg border border-slate-300 px-4 py-2 text-xs font-black">Replace</button>
+        </form>
       </section>
     ) : (
       <form method="POST" class="rounded-2xl border border-slate-200 bg-white p-5">

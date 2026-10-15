@@ -24,7 +24,7 @@ import { orderStatusCopy, paymentStatusCopy } from '../../apps/web/src/lib/order
 const ROOT = join(__dirname, '../..');
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
 
-const KINDS: PaymentReturnKind[] = ['success', 'pending', 'review_required', 'already_settled', 'failed', 'unknown_attempt'];
+const KINDS: PaymentReturnKind[] = ['success', 'pending', 'review_required', 'already_settled', 'second_payment', 'failed', 'unknown_attempt'];
 
 describe('payment return copy', () => {
   it('never flatly asserts "not charged" — FAILED includes a provider reversal, where money did move', () => {
@@ -54,6 +54,15 @@ describe('payment return copy', () => {
     expect(c.primaryCta.href).toBe('/track-order?reference=GP-202608-3F7A');
     expect(c.next).toMatch(/not create a second/i);
     expect(c.next).toMatch(/payment link|pay on delivery/i);
+  });
+
+  it('a customer charged twice is told so, and never told "no second payment"', () => {
+    expect(normalisePaymentReturnKind('second_payment')).toBe('second_payment');
+    const c = paymentReturnCopy('second_payment', 'GP-202608-3F7A');
+    expect(c.money).toMatch(/paid twice/i);
+    expect(`${c.title} ${c.money} ${c.next}`).not.toMatch(/did not take a second payment|no second payment/i);
+    expect(c.primaryCta.href).toBe('/track-order?reference=GP-202608-3F7A');
+    expect(c.offerHelp).toBe(true);
   });
 
   it('treats an unrecognised or empty status as unknown, never as success or failure', () => {

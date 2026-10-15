@@ -138,11 +138,17 @@ export class ReconcileOrderPaymentUseCase {
     // callback and the IPN routinely both arrive — so this is an expected path, not an
     // error, and it must change nothing.
     if (checkout.stage === 'ORDER_CONFIRMED' || checkout.stage === 'COMPLETED') {
+      // Except one case: a DIFFERENT attempt's money arrived on an order that was already paid (a late Mobile Money
+      // approval on an older payment page). A repeat of the same attempt carries the same idempotency key and never
+      // conflicts; lifecycleConflict with money arrived means the customer has been charged twice. The order stays
+      // as it is (it is paid and moving), but a person is told, and the customer is not told "no second payment".
+      const secondPayment = !!verification.lifecycleConflict && verification.ok;
+      if (secondPayment) this.deps.observer?.onReviewRequired(orderId, traceId, 'SECOND_PAYMENT_TAKEN');
       return {
         kind: 'ALREADY_SETTLED',
         orderId,
         stage: checkout.stage as CheckoutSagaStage,
-        reason: 'ALREADY_CONFIRMED',
+        reason: secondPayment ? 'SECOND_PAYMENT_TAKEN' : 'ALREADY_CONFIRMED',
       };
     }
 

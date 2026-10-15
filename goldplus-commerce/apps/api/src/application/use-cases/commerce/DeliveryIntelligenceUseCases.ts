@@ -2,7 +2,6 @@ import {
   UGANDA_DISTRICTS,
   normalizeUgandaDistrict,
   districtRoadKm,
-  deliveryPointKm,
 } from '@goldplus/shared';
 import {
   DEFAULT_DELIVERY_BAND_POLICY,
@@ -40,12 +39,6 @@ interface Deps {
   } | null;
 }
 
-async function effectivePolicy(repo: IDeliveryPricingPolicyRepository): Promise<DeliveryBandPolicy> {
-  // Never saved → the seed defaults apply, so the cockpit and the estimate
-  // line work from day one; the first save replaces them with owned numbers.
-  return (await repo.get()) ?? DEFAULT_DELIVERY_BAND_POLICY;
-}
-
 /** One destination's estimate — the checkout read. */
 export class GetDeliveryEstimateUseCase {
   constructor(private readonly deps: Deps) {}
@@ -65,11 +58,14 @@ export class GetDeliveryEstimateUseCase {
     | { ok: true; district: string; area: string | null; estimate: DeliveryEstimate }
     | { ok: false; code: 'UNKNOWN_DISTRICT'; message: string }
   > {
-    const district = normalizeUgandaDistrict(input.district);
-    if (!district) {
+    const area = input.area?.trim() || null;
+    // A typed place with no district: checkout prices it from the text alone (district null), so the estimate
+    // asks the same. Only a district that is given and not a Uganda district is refused.
+    const typedOnly = !(input.district ?? '').trim() && !!area;
+    const district = typedOnly ? null : normalizeUgandaDistrict(input.district);
+    if (!district && !typedOnly) {
       return { ok: false, code: 'UNKNOWN_DISTRICT', message: `"${input.district}" is not a Uganda district.` };
     }
-    const area = input.area?.trim() || null;
     const areaSlug = input.areaSlug?.trim() || null;
     const items = (input.items ?? []).filter((i) => i && i.productId && i.quantity > 0);
 
@@ -98,21 +94,22 @@ export class GetDeliveryEstimateUseCase {
         const estimate: DeliveryEstimate = quoted.feeUgx === null
           ? { kind: 'UNAVAILABLE', feeUgx: null, source: null, band: null, km: null, sampleSize: 0, observedDisagreesWithModel: false }
           : { kind: quoted.confirmed ? 'CONFIRMED' : 'ESTIMATED', feeUgx: quoted.feeUgx, source: 'MODEL', band: null, km: null, sampleSize: 0, observedDisagreesWithModel: false };
-        return { ok: true, district, area, estimate };
+        return { ok: true, district: district ?? '', area, estimate };
       }
     }
+    // The legacy zone model needs a district; without one there is no figure to show (CONTRACT #4).
+    if (!district) {
+      return { ok: true, district: '', area, estimate: { kind: 'UNAVAILABLE', feeUgx: null, source: null, band: null, km: null, sampleSize: 0, observedDisagreesWithModel: false } };
+    }
 
-    const [policy, zone, observed] = await Promise.all([
-      effectivePolicy(this.deps.policy),
-      this.deps.zones.findByDistrict(district),
-      this.deps.observations.summarizeByDistrict(),
-    ]);
-    const estimate = estimateDeliveryFee({
-      policy,
-      km: deliveryPointKm(district, area),
-      zoneFeeUgx: zone && zone.enabled ? zone.feeUgx : null,
-      observation: observed.get(normalizeDistrict(district)) ?? null,
-    });
+    // CONFIG_INCOMPLETE: the zone row alone, exactly what CheckoutUseCase (resolveDeliveryFee) charges and what
+    // /delivery/quote falls back to. This used to run the band model, whose never-saved seed figures (CITY 8,000
+    // and so on) and observed medians showed "about UGX 8,000" in the Delivery row beside a panel saying pricing
+    // was being finalised, for an order charged 0 (CONTRACT #1, #4). The band model stays in the cockpit.
+    const zone = await this.deps.zones.findByDistrict(district);
+    const estimate: DeliveryEstimate = zone && zone.enabled
+      ? { kind: 'CONFIRMED', feeUgx: zone.feeUgx, source: 'ZONE', band: null, km: null, sampleSize: 0, observedDisagreesWithModel: false }
+      : { kind: 'UNAVAILABLE', feeUgx: null, source: null, band: null, km: null, sampleSize: 0, observedDisagreesWithModel: false };
     return { ok: true, district, area, estimate };
   }
 }

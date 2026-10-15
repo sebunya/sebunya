@@ -50,7 +50,7 @@ if (trackingId && reference) {
 const orderNumber = orderNumberFromMerchantReference(reference);
 const copy = paymentReturnCopy(kind, orderNumber);
 
-if (kind === 'success' || kind === 'already_settled') {
+if (kind === 'success' || kind === 'already_settled' || kind === 'second_payment') {
   // The basket has become a paid order; leaving the cookie would re-add the
   // same items to the next checkout.
   Astro.cookies.delete('goldplus_cart_data', { path: '/' });

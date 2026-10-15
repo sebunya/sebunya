@@ -1,5 +1,6 @@
 import { FULL_ACCESS_ROLES, PERMISSIONS, ROLE_DESCRIPTIONS, ROLE_NAME_PATTERN } from '@goldplus/shared';
 import type { AdminRoleDetail, IAdminRoleWriteRepository } from '../../ports/IAdminRoleWriteRepository';
+import { ELEVATED_ROLE_CODES } from '../identity/AdminUserManagementUseCase';
 
 /**
  * Role management (2026-09-12): create a role, set exactly which permissions
@@ -19,7 +20,11 @@ import type { AdminRoleDetail, IAdminRoleWriteRepository } from '../../ports/IAd
  *    or codes ADDED to an existing role, must be a subset of the actor's own
  *    permissions (full-access holders carry every code, so they are never
  *    blocked). Without this a roles.manage holder could mint a role with
- *    every permission and escape the two-person rule.
+ *    every permission and escape the two-person rule;
+ *  - a role somebody already holds never gains access-management codes (or
+ *    becomes full access in all but name) by an edit: granting such a role
+ *    needs a second approver, and editing one already granted used to hand
+ *    its holders that power with no approval at all.
  */
 export type RmOutcome<T> = { ok: true; value: T } | { ok: false; code: string; message: string; status: number };
 const refuse = (code: string, message: string, status = 400): RmOutcome<never> => ({ ok: false, code, message, status });
@@ -79,6 +84,18 @@ export class RoleManagementUseCase {
     const beyond = this.beyondActor(codes.value.filter((c) => !previousCodes.includes(c)), args.actorPermissions);
     if (beyond) return beyond;
     const next = new Set(codes.value);
+    if (role.userCount > 0) {
+      const addedElevated = ELEVATED_ROLE_CODES.filter((c) => next.has(c) && !previousCodes.includes(c));
+      const registry = Array.from(this.registry);
+      const becomesFullAccess = registry.every((c) => next.has(c)) && !registry.every((c) => previousCodes.includes(c));
+      if (addedElevated.length > 0 || becomesFullAccess) {
+        return refuse(
+          'ELEVATES_ASSIGNED_ROLE',
+          `${role.name} is held by ${role.userCount} account${role.userCount === 1 ? '' : 's'}. Adding ${addedElevated.length ? addedElevated.join(', ') : 'every permission'} would give them that power without a second approver. Create a new role with these permissions and grant it from Users, where a second administrator approves it.`,
+          409,
+        );
+      }
+    }
     for (const guarded of ACCESS_MANAGEMENT_CODES) {
       if (previousCodes.includes(guarded) && !next.has(guarded)) {
         const others = await this.repo.countActiveUsersWithPermissionOutsideRole(guarded, role.id);

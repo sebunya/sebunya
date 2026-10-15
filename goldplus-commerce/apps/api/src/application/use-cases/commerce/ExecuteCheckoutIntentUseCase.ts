@@ -81,7 +81,28 @@ export interface CheckoutRefusalOutcome {
    * Carried so the customer can be told WHICH order they already have and sent
    * to it, instead of being refused with nothing to act on.
    */
-  existingOrder?: { orderId: string; orderNumber: string; paymentStatus: string };
+  existingOrder?: {
+    orderId: string;
+    orderNumber: string;
+    paymentStatus: string;
+    /**
+     * Whether THIS request's items are the order's items (product and quantity). The fingerprint also covers the
+     * address, the payment method and so on, so a resubmit of the same basket with one detail changed lands here
+     * too, and is right to be pointed at paying that order. A different basket is not that order (2026-10-14).
+     */
+    sameItems: boolean;
+  };
+}
+
+/** Product -> quantity, consolidated, for comparing a basket with an order. */
+function itemCounts(items: ReadonlyArray<{ productId: string; quantity: number }>): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const i of items) m.set(i.productId, (m.get(i.productId) ?? 0) + i.quantity);
+  return m;
+}
+function sameItemCounts(a: ReadonlyArray<{ productId: string; quantity: number }>, b: ReadonlyArray<{ productId: string; quantity: number }>): boolean {
+  const x = itemCounts(a), y = itemCounts(b);
+  return x.size === y.size && [...x].every(([id, q]) => y.get(id) === q);
 }
 
 export type CheckoutOutcome = CheckoutSuccessOutcome | CheckoutRefusalOutcome;
@@ -550,6 +571,7 @@ export class ExecuteCheckoutIntentUseCase {
             orderId: existing.id,
             orderNumber: existing.orderNumber,
             paymentStatus: existing.paymentStatus,
+            sameItems: sameItemCounts(command.items, existing.items ?? []),
           },
         };
       }

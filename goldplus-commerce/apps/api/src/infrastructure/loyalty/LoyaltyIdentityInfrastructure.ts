@@ -1,4 +1,4 @@
-import { createHash, randomInt } from 'node:crypto';
+import { createHash, createHmac, randomInt } from 'node:crypto';
 import { and, eq, gte, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { LOYALTY_PAYMENT_QUALIFIES_SQL } from '../db/LoyaltyEarnEligibilitySql';
@@ -182,7 +182,18 @@ export class OutboxOtpSender implements IOtpSender {
   }
 }
 
-export const otpHash = (v: string) => createHash('sha256').update(v).digest('hex');
+/**
+ * Keyed: a plain SHA-256 of a six-digit code is reversed by trying all 900,000, so anyone able to read the
+ * verification table could read live codes. The key is OTP_HASH_KEY, else derived from JWT_SECRET (as the MFA
+ * key is). Changing the key only invalidates codes still waiting (ten minutes); customers ask for a new one.
+ */
+let otpKey: Buffer | null = null;
+export const otpHash = (v: string) => {
+  otpKey ??= createHash('sha256')
+    .update(`goldplus-otp:${process.env.OTP_HASH_KEY || process.env.JWT_SECRET || 'local-test-only-otp-key-material-000000000000'}`)
+    .digest();
+  return createHmac('sha256', otpKey).update(v).digest('hex');
+};
 export const otpRandom = () => String(randomInt(100000, 999999));
 
 /* ── Tier repository (0086, PART L) ─────────────────────────────────────── */

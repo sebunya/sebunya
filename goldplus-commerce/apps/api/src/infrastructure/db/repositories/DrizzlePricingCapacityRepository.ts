@@ -6,6 +6,23 @@ import { pricingAdjustments, pricingQuotes, promotionDefinitions, promotionRedem
 const asRecord = (row: typeof promotionReservations.$inferSelect): PromotionReservationRecord => ({ id: row.id, quoteId: row.quoteId, promotionVersionId: row.promotionVersionId, status: row.status as PromotionReservationStatus, reservedAt: row.reservedAt, expiresAt: row.expiresAt });
 
 export class DrizzlePricingCapacityRepository implements IPricingCapacityRepository {
+  async exhaustedVersionIds(input: { versionIds: readonly string[]; couponReferenceHash: string | null; now: Date }): Promise<Set<string>> {
+    const ids = input.versionIds.filter((id) => /^[0-9a-f-]{36}$/i.test(id));
+    if (!ids.length) return new Set();
+    const live = (scope: ReturnType<typeof sql>) => sql`(select count(*) from promotion_reservations r
+      where r.promotion_version_id = v.id ${scope}
+        and (r.status = 'REDEEMED' or (r.status = 'RESERVED' and r.expires_at > ${input.now})))`;
+    const rows = (await db.execute(sql`
+      select v.id::text as id from promotion_versions v
+      where v.id in (${sql.join(ids.map((id) => sql`${id}::uuid`), sql`, `)})
+        and (
+          (v.global_limit is not null and ${live(sql``)} >= v.global_limit)
+          or (${input.couponReferenceHash}::text is not null and v.per_coupon_limit is not null and v.coupon_code is not null
+              and ${live(sql`and r.coupon_reference_hash = ${input.couponReferenceHash}`)} >= v.per_coupon_limit)
+        )`)) as unknown as Array<{ id: string }>;
+    return new Set((Array.isArray(rows) ? rows : []).map((r) => String(r.id)));
+  }
+
   async reserveQuote(input: { quoteId: string; idempotencyKey: string; now: Date }) {
     return db.transaction(async (tx) => {
       const [quote] = await tx.select().from(pricingQuotes).where(eq(pricingQuotes.id, input.quoteId)).limit(1);

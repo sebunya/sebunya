@@ -31,6 +31,12 @@ if (!token) {
 const authHeaders = { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 
 let notice: { kind: 'success' | 'error'; text: string } | null = null;
+// Two-step refusals say where to verify; the change was not made.
+const refusal = (j: any, fallback: string): string =>
+  String(j?.error?.code ?? '').startsWith('MFA_')
+    ? `${j.error.message} Verify on Two-step verification (/admin/security/mfa), then try again. Nothing was changed.`
+    : j?.error?.message || fallback;
+
 if (Astro.request.method === 'POST') {
   try {
     const form = await Astro.request.formData();
@@ -44,7 +50,7 @@ if (Astro.request.method === 'POST') {
       const json = await res.json().catch(() => null);
       notice = res.ok && json?.success
         ? { kind: 'success', text: `Role ${json.data.name} created with ${json.data.permissionCodes.length} permission${json.data.permissionCodes.length === 1 ? '' : 's'}.` }
-        : { kind: 'error', text: json?.error?.message || 'Role creation refused.' };
+        : { kind: 'error', text: refusal(json, 'Role creation refused.') };
     } else if (action === 'save-permissions') {
       const id = String(form.get('id') || '');
       const res = await fetch(`${apiBase}/admin/roles/${encodeURIComponent(id)}/permissions`, {
@@ -53,14 +59,14 @@ if (Astro.request.method === 'POST') {
       const json = await res.json().catch(() => null);
       notice = res.ok && json?.success
         ? { kind: 'success', text: `${json.data.name} saved: ${json.data.added.length} added, ${json.data.removed.length} removed, ${json.data.permissionCodes.length} in total. Holders see the change on their next request.` }
-        : { kind: 'error', text: json?.error?.message || 'Save refused.' };
+        : { kind: 'error', text: refusal(json, 'Save refused.') };
     } else if (action === 'delete-role') {
       const id = String(form.get('id') || '');
       const res = await fetch(`${apiBase}/admin/roles/${encodeURIComponent(id)}`, { method: 'DELETE', headers: authHeaders });
       const json = await res.json().catch(() => null);
       notice = res.ok && json?.success
         ? { kind: 'success', text: `Role ${json.data.name} deleted.` }
-        : { kind: 'error', text: json?.error?.message || 'Delete refused.' };
+        : { kind: 'error', text: refusal(json, 'Delete refused.') };
     }
   } catch {
     notice = { kind: 'error', text: 'Roles service is unreachable right now.' };

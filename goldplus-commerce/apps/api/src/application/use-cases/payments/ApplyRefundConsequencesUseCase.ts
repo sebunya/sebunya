@@ -37,6 +37,11 @@ export interface RefundConsequencesResult {
   /** Set when a total reading met an order that can no longer be cancelled. */
   lifecycleConflict?: true;
   conflictMessage?: string;
+  /**
+   * Set when ANOTHER completed attempt still holds the order's money (the customer paid twice and this is the
+   * extra payment going back): only this attempt's status changed; the order, its stock and its points did not.
+   */
+  coveredByAnotherPayment?: true;
 }
 
 /**
@@ -60,7 +65,8 @@ export interface RefundConsequencesResult {
  */
 export class ApplyRefundConsequencesUseCase {
   constructor(
-    private readonly paymentRepo: Pick<IPesaPalPaymentRepository, 'updatePaymentAttemptStatus' | 'updateOrderPaymentStatusSafely'>,
+    private readonly paymentRepo: Pick<IPesaPalPaymentRepository, 'updatePaymentAttemptStatus' | 'updateOrderPaymentStatusSafely'>
+      & Partial<Pick<IPesaPalPaymentRepository, 'findAttemptsByOrderId'>>,
     private readonly orderTransition: IOrderTransitionPort,
     /** Optional so hermetic suites need no database: absent, every reversal reads total. */
     private readonly refundLedger?: Pick<IRefundLedgerRepository, 'getRefundedTotalUgx'>,
@@ -81,6 +87,23 @@ export class ApplyRefundConsequencesUseCase {
     } catch {
       // Isolated, as the loyalty follow-up is.
     }
+  }
+
+  /**
+   * The money OTHER completed attempts on this order still hold (paid, less what has gone back). When it covers
+   * this attempt, this attempt was a second payment, and money going back on it is not money going back on the
+   * order: refunding a customer's double charge used to cancel the order they had legitimately paid for.
+   */
+  private async otherAttemptsNetUgx(attemptId: string, orderId: string): Promise<number> {
+    if (!this.paymentRepo.findAttemptsByOrderId) return 0;
+    const others = (await this.paymentRepo.findAttemptsByOrderId(orderId))
+      .filter((a) => a.id !== attemptId && a.status === 'completed' && a.amount > 0);
+    let net = 0;
+    for (const a of others) {
+      const back = this.refundLedger ? await this.refundLedger.getRefundedTotalUgx(a.id) : 0;
+      net += Math.max(0, a.amount - back);
+    }
+    return net;
   }
 
   /** Never lets a loyalty failure fail the money path. */
@@ -105,6 +128,15 @@ export class ApplyRefundConsequencesUseCase {
   ): Promise<RefundConsequencesResult> {
     const refundedUgx = this.refundLedger ? await this.refundLedger.getRefundedTotalUgx(attempt.id) : 0;
     const reading = readRefund(refundedUgx, attempt.amount);
+
+    if (attempt.amount > 0 && (await this.otherAttemptsNetUgx(attempt.id, attempt.orderId)) >= attempt.amount) {
+      // A second payment going back. The attempt records it; the order stays paid and keeps its stock and points.
+      await this.paymentRepo.updatePaymentAttemptStatus(attempt.id, {
+        status: reading === 'partial' ? 'completed' : 'reversed',
+        ...(ctx.providerConfirmed ? { providerConfirmed: true } : {}),
+      });
+      return { reading, refundedUgx, coveredByAnotherPayment: true };
+    }
 
     if (reading === 'partial') {
       await this.paymentRepo.updatePaymentAttemptStatus(attempt.id, {

@@ -69,4 +69,14 @@ export interface ICouponRepository {
    * accounts sharing a phone collapse to one identity and cannot both claim a
    * first-order promotion. */
   hasRedeemedPromotionByIdentity(promotionDefinitionId: string, customerIdentityHash: string): Promise<boolean>;
+  /** Of these promotions, the ones that have at least one active batch code: they apply only with a code. */
+  definitionsWithActiveCodes(promotionDefinitionIds: readonly string[]): Promise<Set<string>>;
+}
+
+/** A batch code that can be used right now: active, inside its dates, under its redemption maximum. */
+export function couponUsableAt(coupon: CouponRecord, now: Date): boolean {
+  return coupon.isActive
+    && (coupon.startsAt === null || coupon.startsAt <= now)
+    && (coupon.expiresAt === null || coupon.expiresAt > now)
+    && (coupon.maxRedemptions === null || coupon.redemptionCount < coupon.maxRedemptions);
 }

@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { authMiddleware } from '../../middleware/auth';
 import { requirePermissions } from '../../middleware/permissions';
+import { requireStepUp } from '../../middleware/requireStepUp';
 import { Registry } from '../../../../infrastructure/Registry';
 import { ApiResponse, PERMISSIONS } from '@goldplus/shared';
 import { AdminUserDto } from '../../../../application/use-cases/admin/ListAdminUsersUseCase';
@@ -22,7 +23,7 @@ routes.get('/', requirePermissions([PERMISSIONS.AUTH_MANAGE]), async (c) => {
 // passwords are communicated out-of-band by the creating administrator and are
 // never logged.
 
-routes.post('/', requirePermissions([PERMISSIONS.AUTH_MANAGE]), async (c) => {
+routes.post('/', requirePermissions([PERMISSIONS.AUTH_MANAGE]), requireStepUp('user_admin'), async (c) => {
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'Expected a JSON body.' } }, 400);
   const registry = Registry.getInstance();
@@ -48,7 +49,7 @@ routes.get('/grant-requests', requirePermissions([PERMISSIONS.AUTH_MANAGE]), asy
   return c.json({ success: true, data: { requests } });
 });
 
-routes.post('/grant-requests/:id/decide', requirePermissions([PERMISSIONS.AUTH_MANAGE]), async (c) => {
+routes.post('/grant-requests/:id/decide', requirePermissions([PERMISSIONS.AUTH_MANAGE]), requireStepUp('user_admin'), async (c) => {
   const body = await c.req.json().catch(() => null);
   const decision = body?.decision === 'APPROVED' ? 'APPROVED' : body?.decision === 'REJECTED' ? 'REJECTED' : null;
   if (!decision) return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'decision must be APPROVED or REJECTED.' } }, 400);
@@ -75,7 +76,7 @@ routes.post('/grant-requests/:id/decide', requirePermissions([PERMISSIONS.AUTH_M
   return c.json({ success: true, data: outcome.value });
 });
 
-routes.post('/:id/roles', requirePermissions([PERMISSIONS.AUTH_MANAGE]), async (c) => {
+routes.post('/:id/roles', requirePermissions([PERMISSIONS.AUTH_MANAGE]), requireStepUp('user_admin'), async (c) => {
   const body = await c.req.json().catch(() => null);
   const registry = Registry.getInstance();
   const actorId = (c.get('user') as { id: string }).id;
@@ -92,7 +93,7 @@ routes.post('/:id/roles', requirePermissions([PERMISSIONS.AUTH_MANAGE]), async (
   return c.json({ success: true, data: outcome.value });
 });
 
-routes.post('/:id/roles/revoke', requirePermissions([PERMISSIONS.AUTH_MANAGE]), async (c) => {
+routes.post('/:id/roles/revoke', requirePermissions([PERMISSIONS.AUTH_MANAGE]), requireStepUp('user_admin'), async (c) => {
   const body = await c.req.json().catch(() => null);
   const registry = Registry.getInstance();
   const actorId = (c.get('user') as { id: string }).id;
@@ -113,7 +114,7 @@ routes.post('/:id/roles/revoke', requirePermissions([PERMISSIONS.AUTH_MANAGE]), 
  * the use case: not yourself, not the last active PLATFORM_ADMINISTRATOR, a
  * reason for deactivation; live sessions of a deactivated account are ended.
  */
-routes.post('/:id/active', requirePermissions([PERMISSIONS.AUTH_MANAGE]), async (c) => {
+routes.post('/:id/active', requirePermissions([PERMISSIONS.AUTH_MANAGE]), requireStepUp('user_admin'), async (c) => {
   const body = await c.req.json().catch(() => null);
   const actorId = (c.get('user') as { id: string }).id;
   const active = body?.active === true;
@@ -131,7 +132,7 @@ routes.post('/:id/active', requirePermissions([PERMISSIONS.AUTH_MANAGE]), async 
   return c.json({ success: true, data: outcome.value });
 });
 
-routes.post('/grant-requests/:id/withdraw', requirePermissions([PERMISSIONS.AUTH_MANAGE]), async (c) => {
+routes.post('/grant-requests/:id/withdraw', requirePermissions([PERMISSIONS.AUTH_MANAGE]), requireStepUp('user_admin'), async (c) => {
   const registry = Registry.getInstance();
   const actorId = (c.get('user') as { id: string }).id;
   const outcome = await registry.adminUserManagementUseCase.withdrawGrant({ requestId: c.req.param('id') ?? '', actorId });

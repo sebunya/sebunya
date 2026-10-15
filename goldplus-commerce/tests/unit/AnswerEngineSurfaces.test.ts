@@ -47,7 +47,7 @@ describe('answer-engine surfaces', () => {
 
   it('the shop page states what it lists', () => {
     const src = read('apps/web/src/pages/shop.astro');
-    expect(src).toContain("import { serializeJsonLd, breadcrumbJsonLd } from '../lib/jsonld';");
+    expect(src).toMatch(/import \{ serializeJsonLd, breadcrumbJsonLd(, [\w, ]+)? \} from '\.\.\/lib\/jsonld';/);
     expect(src).toContain("'@type': 'ItemList'");
     expect(src).toContain('numberOfItems: pageProducts.length');
     expect(src).toContain('serializeJsonLd(shopItemList)');

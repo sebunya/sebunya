@@ -182,8 +182,24 @@ export function maskContact(phone: string | null | undefined, email: string | nu
 export class FulfilmentTask {
   private constructor(private snap: FulfilmentTaskSnapshot) {}
 
+  /** The task as it was read, so a write changes only what this change changed (see loadedSnapshot). */
+  private loaded: FulfilmentTaskSnapshot | null = null;
+
   static rehydrate(snapshot: FulfilmentTaskSnapshot): FulfilmentTask {
-    return new FulfilmentTask({ ...snapshot, items: [...snapshot.items], warnings: [...snapshot.warnings] });
+    const task = new FulfilmentTask({ ...snapshot, items: [...snapshot.items], warnings: [...snapshot.warnings] });
+    task.loaded = { ...snapshot };
+    return task;
+  }
+
+  /**
+   * What this task looked like when it was read; null for one never persisted. Every task change is
+   * read-change-write, and writing the whole row back let two changes overwrite each other: a claim put an
+   * OUT_FOR_DELIVERY task back over DELIVERED, a payment update wiped an acknowledgement and its assignee, two
+   * staff both "won" the same claim. The repository writes only the fields that differ from this, and only while
+   * the row still has this status (and, when the assignee is being changed, this assignee).
+   */
+  loadedSnapshot(): FulfilmentTaskSnapshot | null {
+    return this.loaded;
   }
 
   /**

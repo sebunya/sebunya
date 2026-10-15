@@ -1,6 +1,6 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
-import { serializeJsonLd, breadcrumbJsonLd } from '../lib/jsonld';
+import { serializeJsonLd, breadcrumbJsonLd, schemaAvailability } from '../lib/jsonld';
 import ProductCard from '../components/ProductCard.astro';
 import Notice from '../components/Notice.astro';
 import { apiBase, publicApiBase } from '../lib/api';
@@ -247,7 +247,7 @@ const shopItemList = {
       name: p.name,
       url: `${SITE_ORIGIN}/products/${p.slug}`,
       ...(p.primaryImageUrl ? { image: /^https?:\/\//i.test(p.primaryImageUrl) ? p.primaryImageUrl : `${SITE_ORIGIN}${p.primaryImageUrl}` } : {}),
-      ...(p.retailPriceUgx != null ? { offers: { '@type': 'Offer', priceCurrency: 'UGX', price: offerPriceUgx(p.retailPriceUgx, shopCampaignRunning ? salePriceUgx(p.retailPriceUgx, shopDiscount.percentBps, effectiveFloorUgx(shopDiscount.priceFloorUgx, p.floorPriceUgx, p.retailPriceUgx)) : null), availability: p.availability?.kind === 'in_stock' ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock', url: `${SITE_ORIGIN}/products/${p.slug}` } } : {}),
+      ...(p.retailPriceUgx != null ? { offers: { '@type': 'Offer', priceCurrency: 'UGX', price: offerPriceUgx(p.retailPriceUgx, shopCampaignRunning ? salePriceUgx(p.retailPriceUgx, shopDiscount.percentBps, effectiveFloorUgx(shopDiscount.priceFloorUgx, p.floorPriceUgx, p.retailPriceUgx)) : null), ...(schemaAvailability(p.availability?.kind) ? { availability: schemaAvailability(p.availability?.kind) } : {}), url: `${SITE_ORIGIN}/products/${p.slug}` } } : {}),
     },
   })),
 };

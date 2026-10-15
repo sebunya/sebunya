@@ -94,6 +94,31 @@ describe('a coupon applied more than five minutes ago still checks out', () => {
     expect(saved).toHaveLength(0);
   });
 
+  it('a free-shipping promotion in the order but not in the preview is not an offer change', async () => {
+    // The preview is priced with no delivery fee, so FREE_SHIPPING has nothing to waive there; at checkout it
+    // waives the fee. Comparing the total discount and every applied version refused every coupon once.
+    const preview = quote();
+    const current = quote({
+      adjustments: [{ scope: 'SHIPPING', productId: null, promotionDefinitionId: 'free-ship', promotionVersionId: 'free-ship-v', benefitType: 'FREE_SHIPPING', amountUgx: 10_000, applicationOrder: 1, explanation: 'x' }],
+      discountTotalUgx: 30_000,
+      shippingUgx: 0,
+      finalTotalUgx: 180_000,
+      appliedPromotionVersions: [{ definitionId: 'definition-1', versionId: 'version-1', versionNumber: 1 }, { definitionId: 'free-ship', versionId: 'free-ship-v', versionNumber: 1 }],
+    });
+    const { useCase, saved } = harness(current, preview);
+    await place(useCase, 'coupon-free-shipping');
+    expect(saved).toHaveLength(1);
+  });
+
+  it('a goods promotion that appeared since the preview is still an offer change', async () => {
+    const current = quote({
+      appliedPromotionVersions: [{ definitionId: 'definition-1', versionId: 'version-1', versionNumber: 1 }, { definitionId: 'definition-2', versionId: 'version-2', versionNumber: 1 }],
+      adjustments: [{ scope: 'LINE', productId: 'product-1', promotionDefinitionId: 'definition-2', promotionVersionId: 'version-2', benefitType: 'PERCENTAGE_OFF', amountUgx: 0, applicationOrder: 1, explanation: 'x' }],
+    });
+    const { useCase } = harness(current, quote());
+    await expect(place(useCase, 'coupon-new-goods-promo')).rejects.toThrow('PROMOTION_CHANGED');
+  });
+
   it('a preview that cannot be found is refused', async () => {
     const { useCase } = harness(quote(), null);
     await expect(place(useCase, 'coupon-missing')).rejects.toThrow('PRICE_CHANGED');

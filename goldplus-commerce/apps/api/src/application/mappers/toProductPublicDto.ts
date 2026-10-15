@@ -27,19 +27,6 @@ function deriveAvailability(input: {
   return { kind: 'out_of_stock' };
 }
 
-function pickVerifiedSpecs(specs: Record<string, string | number>): Record<string, string | number> {
-  const out: Record<string, string | number> = {};
-  for (const [key, value] of Object.entries(specs ?? {})) {
-    if (typeof value === 'string') {
-      const cleaned = cleanString(value);
-      if (cleaned !== null) out[key] = cleaned;
-    } else if (typeof value === 'number' && Number.isFinite(value)) {
-      out[key] = value;
-    }
-  }
-  return out;
-}
-
 /**
  * Maps a `ProductWithPrice` (entity + join) into the public DTO.
  *

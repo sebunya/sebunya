@@ -94,30 +94,30 @@ describe('the conflict is carried, not just described', () => {
   });
 });
 
-describe('replacing a live authenticator needs a fresh proof of the current one', () => {
+describe('replacing a live authenticator needs a code from the current one', () => {
   const read = (f: string) => readFileSync(resolve(__dirname, '../..', f), 'utf8');
   const service = read('apps/api/src/infrastructure/security/MfaService.ts');
   const begin = service.slice(service.indexOf('async beginEnrolment('), service.indexOf('async confirmEnrolment('));
 
-  it('refuses when a confirmed secret exists and the proof is stale', () => {
-    expect(begin).toMatch(/existing\?\.confirmedAt && !isStepUpFresh\(existing\.lastVerifiedAt, now\)/);
-    expect(begin).toMatch(/return \{ stepUpRequired: true \};/);
+  it('refuses when a confirmed secret exists and no current code is given (freshness alone is not enough)', () => {
+    expect(begin).toMatch(/if \(existing\?\.confirmedAt\) \{/);
+    expect(begin).toMatch(/return \{ currentCodeRequired: true \};/);
+    expect(begin).not.toMatch(/isStepUpFresh/);
   });
 
-  it('does not write a new secret on that path', () => {
-    // The refusal must come BEFORE upsertEnrolment, or the secret is already gone.
-    expect(begin.indexOf('stepUpRequired')).toBeLessThan(begin.indexOf('upsertEnrolment'));
+  it('does not write a new secret on any refusal path', () => {
+    // Every refusal must come BEFORE upsertEnrolment, or the secret is already gone.
+    for (const refusal of ['currentCodeRequired', 'currentCodeInvalid', 'locked: true']) {
+      expect(begin.indexOf(refusal), refusal).toBeLessThan(begin.indexOf('upsertEnrolment'));
+    }
   });
 
-  it('the route answers with a step-up refusal rather than a secret', () => {
+  it('the route answers with a refusal rather than a secret', () => {
     const routes = read('apps/api/src/interfaces/http/routes/auth.ts');
     const handler = routes.slice(routes.indexOf("routes.post('/mfa/enrol'"), routes.indexOf("routes.post('/mfa/confirm'"));
-    expect(handler).toMatch(/'stepUpRequired' in start/);
-    expect(handler).toMatch(/MFA_STEP_UP_REQUIRED/);
-  });
-
-  it('first enrolment is still allowed', () => {
-    // Nothing to protect when no confirmed secret exists.
-    expect(begin).toMatch(/existing\?\.confirmedAt/);
+    expect(handler).toMatch(/'currentCodeRequired' in start/);
+    expect(handler).toMatch(/MFA_CURRENT_CODE_REQUIRED/);
+    expect(handler).toMatch(/'currentCodeInvalid' in start/);
+    expect(handler).toMatch(/'locked' in start/);
   });
 });

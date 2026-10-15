@@ -1,4 +1,4 @@
-import { FulfilmentStatus, FulfilmentTask, FulfilmentTaskSnapshot } from '../../domain/fulfilment/FulfilmentTask';
+import { FulfilmentPaymentStatus, FulfilmentStatus, FulfilmentTask, FulfilmentTaskSnapshot } from '../../domain/fulfilment/FulfilmentTask';
 
 export interface FulfilmentQueueQuery {
   status?: FulfilmentStatus | null;
@@ -26,7 +26,10 @@ export interface IFulfilmentRepository {
   findByOrderId(orderId: string): Promise<FulfilmentTaskSnapshot | null>;
   findById(id: string): Promise<FulfilmentTaskSnapshot | null>;
   /** Persist an already-mutated task (transition / payment mirror / cancel). */
+  /** Compare-and-set: throws a CONFLICT DomainError when the task changed since it was read. */
   update(task: FulfilmentTask): Promise<void>;
+  /** The payment mirror alone (no status or assignee written). Optional so older fakes type; false = unchanged. */
+  updatePaymentStatus?(taskId: string, paymentStatus: FulfilmentPaymentStatus, at: Date): Promise<boolean>;
   /**
    * Write the task ONLY if its stored status is still `expectedStatus`, and
    * say whether it was. The compare-and-swap for recovery actions: two

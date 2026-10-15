@@ -63,6 +63,16 @@ export class DrizzleSocialIdentityRepository implements ISocialIdentityRepositor
           update password_reset_tokens set consumed_at = now()
           where user_id = ${input.userId}::uuid and consumed_at is null
         `);
+        // Whoever registered with this email before the real owner proved it keeps nothing: their refresh tokens
+        // are revoked (the cut-off alone left /auth/refresh working), and an unverified phone they typed is removed
+        // so an SMS password reset cannot take the account back.
+        await tx.execute(sql`
+          update auth_sessions set revoked_at = now(), revoked_reason = 'logout_all'
+          where user_id = ${input.userId}::uuid and revoked_at is null
+        `);
+        await tx.execute(sql`
+          update users set phone = null where id = ${input.userId}::uuid and phone_verified_at is null
+        `);
       }
       return toIdentity(rows[0]);
     });

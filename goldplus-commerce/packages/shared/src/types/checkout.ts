@@ -70,6 +70,12 @@ export type CheckoutErrorCode =
   | 'PRICE_UNAVAILABLE'
   | 'PRICE_CHANGED'
   | 'PROMOTION_CHANGED'
+  /** An offer's usage limit is used up (for everyone, this code, or this customer). */
+  | 'PROMOTION_LIMIT_REACHED'
+  /** Pay on delivery refused for this destination or above its ceiling: pay online. */
+  | 'PAY_ON_DELIVERY_UNAVAILABLE'
+  /** The points could not be used on this order. */
+  | 'LOYALTY_REDEMPTION_REFUSED'
   | 'ORDER_FAILED'
   | 'CHECKOUT_SESSION_UNAVAILABLE'
   | 'DB_NOT_CONFIGURED';

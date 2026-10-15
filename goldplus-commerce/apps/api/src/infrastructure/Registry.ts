@@ -941,7 +941,9 @@ export class Registry {
   // Stateless hasher constructed inline: the shared field is declared later in the
   // class and TS rightly refuses use-before-initialization.
   public readonly adminUserManagementUseCase = new AdminUserManagementUseCase(this.adminUserWriteRepo, new ScryptPasswordHasher(), {
-    invalidateSessionsAfter: (userId: string, at: Date) => this.userRepo.invalidateSessionsAfter(userId, at),
+    // Deactivation revokes every refresh token as well as setting the cut-off, so reactivating the account later
+    // cannot revive a token taken before.
+    invalidateSessionsAfter: async (userId: string, at: Date) => { await this.sessionService.logoutAll(userId, 'account_disabled', at); },
   });
   public readonly campaignSendEngine = new CampaignSendEngineUseCase(this.campaignSendRepo, this.campaignSendRepo);
 
@@ -1199,6 +1201,8 @@ export class Registry {
     this.productRepo,
     this.pricingRepo,
     this.pricingQuoteRepo,
+    this.pricingCapacityRepo,
+    this.couponRepo,
   );
   public readonly managePromotionCapacityUseCase = new ManagePromotionCapacityUseCase(this.pricingCapacityRepo);
   public readonly redeemCouponUseCase = new RedeemCouponUseCase(this.couponRepo);
@@ -1246,6 +1250,29 @@ export class Registry {
         const raw = (await Registry.getInstance().paymentsOpsConfig.values())['owner_review_threshold_ugx'];
         const n = raw === undefined ? NaN : Number(raw);
         return Number.isInteger(n) && n > 0 ? n : null;
+      },
+    },
+    // A batch code is counted once its order exists. A version's own single code is not a batch code (not found).
+    {
+      redeemForOrder: async ({ code, orderId, customerScopeKey, quote }) => {
+        const { normalizeCouponCode } = await import('../domain/pricing/Pricing');
+        let normalised: string | null = null;
+        try { normalised = normalizeCouponCode(code); } catch { return; }
+        if (!normalised) return;
+        const coupon = await this.couponRepo.findByNormalisedCode(normalised);
+        if (!coupon) return;
+        const discountUgx = quote.adjustments
+          .filter((a) => a.promotionDefinitionId === coupon.promotionDefinitionId)
+          .reduce((n, a) => n + a.amountUgx, 0);
+        if (discountUgx <= 0) return; // the code did not apply to this basket
+        const { createHash } = await import('node:crypto');
+        const result = await Registry.getInstance().redeemCouponUseCase.execute({
+          code: normalised,
+          orderId,
+          customerIdentityHash: createHash('sha256').update(customerScopeKey).digest('hex'),
+          discountAmountUgx: discountUgx,
+        });
+        if (!result.ok) logger.warn({ orderId, reason: result.reason }, 'COUPON_REDEMPTION_REFUSED_AFTER_ORDER');
       },
     },
   );
@@ -2350,10 +2377,40 @@ export class Registry {
       // lines outlive the request; no customer or payment detail belongs in them.
       onSettled: (orderId, kind, traceId) =>
         logger.info({ orderId, kind, traceId }, 'PAYMENT_SETTLED'),
-      onReviewRequired: (orderId, traceId, reason) =>
-        logger.error({ orderId, traceId, reason }, 'PAYMENT_REVIEW_REQUIRED'),
+      onReviewRequired: (orderId, traceId, reason) => {
+        logger.error({ orderId, traceId, reason }, 'PAYMENT_REVIEW_REQUIRED');
+        // A double charge must reach a person, not only a log line: an urgent Care Desk task pages the team.
+        if (reason === 'SECOND_PAYMENT_TAKEN') {
+          void this.openPaymentReviewTask(orderId, (ref) => ({
+            title: `Second payment received on order ${ref}: check PesaPal and return the extra payment`,
+            detail: `A second PesaPal payment completed on an order that was already paid (trace ${traceId}). The order itself is paid and unchanged. Confirm both payments in PesaPal, then refund the extra one from the payments admin and tell the customer.`,
+          }));
+        }
+      },
     },
   });
+  /**
+   * A payment fact a person must act on (a double charge, a page paid at an old total): one urgent Care Desk task
+   * per order while it is open, since the callback, the IPN and the poller can all report the same payment.
+   * Never throws: the money path has already been decided.
+   */
+  private async openPaymentReviewTask(orderId: string, text: (ref: string) => { title: string; detail: string }): Promise<void> {
+    try {
+      const order = await this.orderRepo.findById(orderId).catch(() => null);
+      const { title, detail } = text(order?.orderNumber ?? orderId);
+      const last = await this.careDeskUseCases.lastTitled(title);
+      if (last?.status === 'open') return;
+      await this.careDeskUseCases.openTask({
+        kind: 'urgent', urgent: true, openedBy: 'payments', title, detail,
+        orderNumber: order?.orderNumber ?? null,
+        customerName: order?.customerName ?? null,
+        customerPhone: order?.customerPhone ?? null,
+      });
+    } catch (err) {
+      logger.error({ err: (err as Error).message, orderId }, 'PAYMENT_REVIEW_TASK_FAILED');
+    }
+  }
+
   /**
    * ONE settlement for all four doors: callback, IPN, poller, ops re-verify.
    *
@@ -2419,6 +2476,18 @@ export class Registry {
           throw err;
         });
       },
+      flagPaidAmountMismatch: async (orderId, paidUgx) => {
+        const order = await this.orderRepo.findById(orderId);
+        if (!order || order.totalUgx === paidUgx) return;
+        const gap = order.totalUgx - paidUgx;
+        logger.error({ orderId, paidUgx, orderTotalUgx: order.totalUgx }, 'PAYMENT_REVIEW_REQUIRED PAID_AMOUNT_DIFFERS_FROM_ORDER_TOTAL');
+        await this.openPaymentReviewTask(orderId, (ref) => ({
+          title: `Order ${ref} was paid UGX ${paidUgx.toLocaleString('en-US')} but its total is now UGX ${order.totalUgx.toLocaleString('en-US')}`,
+          detail: gap > 0
+            ? `The customer paid an older payment page made before the total went up by UGX ${gap.toLocaleString('en-US')} (a delivery fee change). The order is paid and proceeding. Collect the difference or absorb it, and tell the customer.`
+            : `The customer paid an older payment page made before the total went down by UGX ${(-gap).toLocaleString('en-US')}. The order is paid and proceeding. Refund the difference from the payments admin and tell the customer.`,
+        }));
+      },
       onEffectFailed: (effect, orderId, error) =>
         logger.error(
           { effect, orderId, err: error },
@@ -2441,26 +2510,12 @@ export class Registry {
       batchLimit: 100,
     },
     {
-      // Paid through a COMPLETED attempt (never a hand-marked COD order), task
-      // still unpaid and still live. Idempotent effects only; see
-      // SettlePaymentUseCase.redoConfirmedEffects.
+      // Paid orders still owed the task update, the receipt or a paid-order alert (PaidOrdersOwedEffects).
+      // Idempotent effects only; see SettlePaymentUseCase.redoConfirmedEffects.
       windowHours: 48,
       listPaidOrdersAwaitingFulfilmentPayment: async (since: Date, limit: number) => {
-        const { db } = await import('./db/client');
-        const { sql } = await import('drizzle-orm');
-        const rows = (await db.execute(sql`
-          select o.id
-          from orders o
-          join fulfilment_tasks t on t.order_id = o.id
-          where o.payment_status = 'paid'
-            and t.payment_status <> 'paid'
-            and t.status not in ('CANCELLED', 'DELIVERED')
-            and o.updated_at >= ${since}
-            and exists (select 1 from payment_attempts pa where pa.order_id = o.id and pa.status = 'completed')
-          order by o.updated_at desc
-          limit ${Math.max(1, Math.min(limit, 200))}
-        `)) as unknown as Array<{ id: string }>;
-        return rows.map((r) => String(r.id));
+        const { listPaidOrdersOwedConfirmedEffects } = await import('./payments/PaidOrdersOwedEffects');
+        return listPaidOrdersOwedConfirmedEffects(since, limit, alertRecipients(await this.fulfilmentAlertConfig.values()));
       },
     },
   );
@@ -2592,6 +2647,8 @@ export class Registry {
     },
     { releaseForOrder: (orderId) => this.inventoryRepo.releaseForOrder(orderId) },
     this.auditRepo,
+    // The abandoned order's task leaves the work queue with it.
+    new CancelFulfilmentTaskForCancelledOrderUseCase(this.fulfilmentRepo, this.transitionFulfilmentTaskUseCase),
   );
 
   public readonly alertOnLedgerMismatchUseCase = new AlertOnLedgerMismatchUseCase(

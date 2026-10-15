@@ -8,6 +8,7 @@ import {
   validateEarn,
   validateRedeem,
   validateLoyaltyConfig,
+  earnExpiresAt,
 } from '../../../domain/loyalty/LoyaltyLedger';
 
 export type LoyaltyResult<T> = { ok: true; value: T } | { ok: false; code: string; message: string };
@@ -58,9 +59,7 @@ export class EarnLoyaltyPointsUseCase {
         : { ok: false, code: 'IDEMPOTENCY_CONFLICT', message: 'The order earn key was already used for different ledger facts.' };
     }
     const earnedOn = new Date();
-    const expiresAt = config.expiryDays > 0
-      ? new Date(Date.UTC(earnedOn.getUTCFullYear(), earnedOn.getUTCMonth(), earnedOn.getUTCDate() + config.expiryDays))
-      : null;
+    const expiresAt = earnExpiresAt(earnedOn, config.expiryDays);
     try {
       const { entry } = await this.repo.append({
         accountId: account.id,
