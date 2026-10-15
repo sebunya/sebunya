@@ -69,6 +69,11 @@ PostGIS patterns. Three of its data claims do not hold; the design below works a
    (sub-county level, 2020 boundaries). It has **no parish or village polygons**. Parish polygons do exist in a
    different file the owner supplied, the UBOS 2016 parish shapefile (§3.9), which becomes the primary source of area
    centroids; village polygons exist nowhere open.
+4. **(Self-correction, same day.)** My first draft matched polygons to areas "within the same district". The
+   datasets use five different district lists (116, 128, 135, 146+11, 222), so that rule fails for every district
+   created after 2016. Matching now runs inside a district lineage family (§3.1, §6.1c). The same draft treated every
+   postcode row as a deliverable neighbourhood; the source tables include prisons, barracks, a university, national
+   parks and mountains as "parishes". §6.1b classifies them so they are never priced as homes.
 3. **Boda stages are barely mapped in OSM.** `amenity=taxi` inside the Greater Kampala bounding box returns **82**
    objects (75 nodes, 7 ways) on 2026-10-15. Stages will come mostly from the shop's own riders and customers, not
    from OSM.
@@ -83,9 +88,48 @@ Also: production Postgres is `postgres:16-alpine` with no PostGIS. The schema be
 Measured on 2026-10-15. "GKMA box" = lat −0.05…0.60, lon 32.30…32.95 (Kampala, Wakiso, Mukono town, Entebbe, Mpigi
 town). Licences matter because the data ends up inside a commercial database; see §12.
 
-### 3.1 Ministry of ICT draft postcodes, April 2019 (already imported)
+### 3.1 Ministry of ICT draft postcodes, April 2019 (already imported; the spine everything else joins to)
 5,805 areas, 135 districts, with parish/area names, sub-county/division, county, region. No coordinates. This remains
-the **primary key space** (`area_slug`). Nothing replaces it.
+the **primary key space** (`area_slug`, which already carries the postcode: `kampala-nakawa-10318`). Nothing replaces
+it. The owner supplied the source tables on 2026-10-15 (also published at techjaja.com, "A list of ZIP or postal codes
+in Uganda", 2020); what they add to the design is below.
+
+**The scheme.** Five digits: zone digit (1 Kampala, 2 Eastern, 3 Central, 4 Western, 5 Mid-Western, 6 West Nile,
+7 Northern, 8 North-East), then a two-digit district number (Kampala is `1` + division `01`–`05`; Wakiso spans
+`313`/`314`, Arua `604`/`605`, Kasese `503`/`504`, Bulambuli `821`/`822`), then two digits per parish or ward in
+the order the Ministry listed them. 128 district blocks in the 2019 document. Kampala: 96 parishes across the five
+divisions (Central 20, Kawempe 19, Nakawa 23, Makindye 21, Rubaga 13).
+
+**What the postcode is for in this design.** Per the brief (PART B) a customer never types it and it is never
+required. Its real value is as a **join key between datasets that each use their own district list**: a 2019 postcode
+parish ↔ a 2016 UBOS parish polygon ↔ an EC parish ↔ a GeoNames ADM5 ↔ a passport-portal parish. Measured on
+2026-10-15 against the shop's metro index (390 entries): **350 (89%) match a 2016 polygon parish by exact folded name**
+(Kampala 94/109, Wakiso 139/148, Mukono 69/74, Mpigi 48/59); nearly every miss is a spelling variant (Civic Centre /
+CIVIC CENTER, Bogolobi / BUGOLOBI, Kikaya / KIKAAYA, Nateete / NATETE, Lubia / LUBYA, Najjanankumbi / NAJJANANKUBI,
+Nakivubo Shauliyako / NAKIVUBO-SHAURIYAKO, University (Makerere) / MAKERERE UNIVERSITY), so trigram ≥ 0.6 within the
+district should bring the metro set to ≈97%. The Phase A target in §13 is set from this number.
+
+**Defects visible in the source tables (all already handled by the importer's exceptions file; listed so the join
+logic never assumes the list is clean):**
+- Duplicate postcodes: Kyengera 31440 (twice), Kyotera 32008 / 32027 / 32029, Kasese 50382, Gomba 32617 / 32619,
+  Luuka 22106, Bulambuli 82101 / 82102 ("Butta Ward" twice), Sironko 21059 (twice) — the brief counts 14.
+- Out-of-sequence or truncated codes: Sironko "Shimoma 2103", "Busedani 21059"; Kiryandongo row 13 has no parish name.
+- Names printed without spaces: "NakivuboShauliyako", "OldBomaWard", "LakeMburo", "QueenElizabeth", "St.AloysiusPtcCompl".
+- Spellings that differ from UBOS and the EC: Bogolobi, Lubia, Kikaya, Najjanankumbi, Kazo Ward.
+- **Entries that are institutions or land, not neighbourhoods:** University (Makerere), Luzira Prisons, Nsambya Police
+  Barracks, Nakawa Institutions, Army Barracks (Mpigi), Mt. Elgon, Queen Elizabeth, Rwenzori Mountain, Hunting Area,
+  Grazing Area, Lake Mburo, Bwindi Impenetrable, Semuliki, Kyangwali Gr. They are real postcode rows and real
+  polygons, but a door delivery "to Queen Elizabeth" is not a thing. §6.1b adds `area_kind` so they are shown as
+  what they are (institution / reserve / water) and routed to the manual path or pickup, never priced as a home area.
+- Wakiso's list omits 31401–31404 and numbers two Kyengera rows; Entebbe (313xx) and Kyadondo are inside Wakiso.
+
+**District drift, the thing my first draft got wrong.** Every source has its own district list: 2016 polygons 116
+districts; 2019 postcodes 128 (still with Kazo under Kiruhura, Madi-Okollo under Arua, Kitagwenda under Kamwenge,
+Kalaki under Kaberamaido, Obongi under Moyo, Rwampara under Mbarara); `ug_area` 135 + Terego; EC 2020 135; the EC
+2025/26 selector 222 electoral districts (cities and municipalities counted separately); UBOS 2024 146 districts and
+11 cities. §7.0 originally matched polygon parishes "within the same district", which would silently fail for every
+parish in a district created after 2016. The fix is a `district_lineage` table (§6.1c): each current district maps to
+its 2016 parent, and all name matching runs within the **lineage family**, not the current district.
 
 ### 3.2 GeoNames Uganda dump (`download.geonames.org/export/dump/UG.zip`, 0.7 MB, CC BY 4.0)
 26,943 features with WGS84 coordinates. 11,455 populated places (PPL), 2,215 ADM5 (parish-level), 1,359 ADM4
@@ -293,6 +337,34 @@ Point-in-polygon without PostGIS: filter candidates by bbox (indexed), then a ra
 application code (7,566 rings, ≤500 points each; a lookup touches a handful). With PostGIS later this becomes
 `ST_Contains` on a `geometry` column generated from the same ring.
 
+### 6.1b `ug_area.area_kind` — what a postcode row actually is
+```sql
+ALTER TABLE ug_area ADD COLUMN area_kind text NOT NULL DEFAULT 'neighbourhood'
+  CHECK (area_kind IN ('neighbourhood','ward','trading_centre','institution','barracks','reserve','water','island','unknown'));
+```
+Set by the importer from name patterns (University, Prisons, Barracks, Institutions, Mt., Queen Elizabeth, Rwenzori,
+Hunting Area, Grazing Area, Gr, Island, Lake) and reviewable in `/admin/locations`. Quoting rule: `institution` and
+`barracks` are priced as their parish's area but the rider card says "institution: gate / reception"; `reserve`,
+`water`, `island` and `unknown` are never priced for door delivery and go to the manual path or pickup (the 12 lake
+areas already do this via `access_mode`).
+
+### 6.1c `district_lineage` — one row per current district
+```sql
+CREATE TABLE district_lineage (
+  district        text PRIMARY KEY,          -- canonical current name, as normalizeUgandaDistrict() returns it
+  parent_2016     text NOT NULL,             -- district it was carved from, as spelled in the 2016 shapefile
+  created_year    smallint,
+  postcode_prefix text[],                    -- {'313','314'} for Wakiso
+  ec_codes        text[]                     -- EC 2025/26 electoral district codes, incl. its cities/municipalities
+);
+```
+Seed from the Ministry's 2019 prefix table plus the known post-2016 creations (Kassanda ← Mubende; Kikuube ← Hoima;
+Bugweri ← Iganga; Kapelebyong ← Amuria; Nabilatuk ← Nakapiripirit; Kwania ← Apac; Kazo ← Kiruhura; Kitagwenda ←
+Kamwenge; Rwampara ← Mbarara; Kalaki ← Kaberamaido; Obongi ← Moyo; Madi-Okollo and Terego ← Arua; Karenga ← Kaabong;
+Rukiga ← Kabale; Bunyangabu ← Kabarole; Namisindwa ← Manafwa; Butebo ← Pallisa; Kyotera ← Rakai; Pakwach ← Nebbi;
+Omoro ← Gulu; Kagadi and Kakumiro ← Kibaale). A name match between any two datasets is accepted only inside one
+lineage family. The admin can correct a row; the importer refuses a district it cannot place.
+
 ### 6.2 `geo_road_distance` — road distance from an origin to a point, computed once
 ```sql
 CREATE TABLE geo_road_distance (
@@ -382,10 +454,11 @@ not need an R-tree yet.
 Input: `Ug_Parishes_2016.shp/.dbf` (or the derived `ug_parishes_2016_centroids_wgs84.csv` plus the rings exported by
 the same script). Reproject EPSG:21036 → EPSG:4326 (Transverse Mercator inverse on Clarke 1880 RGS, then the EPSG:1122
 three-parameter shift). For each parish: write `geo_admin_polygon` (level `parish`, simplified ring, bbox, area) and,
-where exactly one `ug_area` in the same district folds to the same name (use `packages/shared/src/locations/folding.ts`,
-then trigram ≥ 0.8 within district), write `geo_area_point` (`source='parish_polygon'`, confidence 0.75) unless a
-higher-precedence point exists. Report matched / ambiguous / unmatched per district; expected ≥ 80% matched in the four
-GKMA districts on the first run (the EC comparison in §3.9 gives the floor). Also load HDX sub-county polygons
+where exactly one `ug_area` in the same **lineage family** (§6.1c, not the current district) folds to the same name
+(use `packages/shared/src/locations/folding.ts`, then trigram ≥ 0.6 inside the family, accepting only a unique best
+match), write `geo_area_point` (`source='parish_polygon'`, confidence 0.75) unless a higher-precedence point exists.
+Report matched / ambiguous / unmatched per district. Measured floor: 89% of the 390 metro entries match exactly;
+expected ≥ 95% after folding and trigram. Also set `ug_area.area_kind` (§6.1b) on the way through. Also load HDX sub-county polygons
 (`level='subcounty'`) for the areas outside the 2016 parish file's 116 districts.
 
 ### 7.0a `geo-import-villages.ts`
@@ -599,7 +672,8 @@ the licensing trap: **temporary** geocoding results may not be stored; storing r
 **Phase A — measure, don't guess (1–2 weeks, no customer-visible change).** Enable `cube`/`earthdistance`; create
 `geo_area_point`, `geo_admin_polygon`, `geo_road_distance`; import the 2016 parish polygons (§7.0) and the village
 hierarchy (§7.0a); fill the gaps with GeoNames + OSM place nodes for the 362 metro areas; run OSRM offline for road km; wire `measuredKm`; recompute bands as a dry-run CSV for Rob to review in the Control Centre; set the six
-numbers in the launch wizard; publish. **Done when:** ≥90% of the 362 metro areas have a point with confidence ≥0.6,
+numbers in the launch wizard; publish. **Done when:** ≥95% of the 362 metro areas have a point with confidence ≥0.6
+(89% is already reachable by exact name; the rest is folding),
 every one has `road_km`, and a quote for 10 named test areas (Ntinda, Kabalagala, Najjera, Kajjansi, Kyengera, Kira,
 Bweyogerere, Nansana, Munyonyo, Mukono town) returns a fee from the model, not "confirmed by phone".
 
