@@ -1,6 +1,7 @@
 # Kampala Metropolitan Address System — specification
 
-Version 2.1, 2026-10-15 (2.1 adds §0b, §4.4–4.6, §15 and Week 0; nothing from 2.0 is removed). Research and design for making delivery locations, and therefore delivery fees, more
+Version 2.2, 2026-10-15 (2.1 added §0b, §4.4–4.6, §15 and Week 0; 2.2 is a consistency pass against the code,
+Appendix I items 24–30; nothing from 2.0 is removed). Research and design for making delivery locations, and therefore delivery fees, more
 accurate on shopgoldplus.com. Written for a coding assistant or engineer to build from. Version 1 (same day, five
 commits on PR #115) was a catalogue of data sources with a design attached; version 2 is the design, with the
 catalogue moved to the appendices and the drafting history to Appendix I. Every measured number from version 1 is
@@ -141,7 +142,7 @@ CREATE TABLE geo_area_point (
   expected_error_m  integer,                  -- measured dispersion or stated by an admin; NULL = unknown (never guessed)
   sample_size       integer NOT NULL DEFAULT 0,
   shared_polygon    boolean NOT NULL DEFAULT false,  -- several areas share one 2016 polygon (post-2016 split)
-  straight_km_hub   numeric(6,2),             -- cached haversine from the HUB origin, recomputed when lat/lng change
+  -- no cached distance: delivery_origin can hold several origins, so km are computed at quote time (sub-millisecond)
   set_by            text,                     -- 'job:<name>' | admin user id
   updated_at        timestamptz NOT NULL DEFAULT now()
 );
@@ -164,8 +165,9 @@ CREATE INDEX geo_area_point_latlng_idx ON geo_area_point (lat, lng);
 - `subcounty_centroid`: `(2/3)·√(area/π)` of the sub-county, typically 3–6 km. Shown to ops as what it is.
 
 ### 3.2 Where the first 362 points come from: parish polygons, weighted by buildings
-The UBOS 2016 parish shapefile (Appendix A.9) gives a polygon for 357 of the 390 metro-index entries' parishes;
-**89% match by exact folded name today** (Kampala 94/109, Wakiso 139/148, Mukono 69/74, Mpigi 48/59), and the
+The UBOS 2016 parish shapefile (Appendix A.9) has 357 parish polygons inside the GKMA box, and **350 of the shop's
+390 metro-index entries (89%) match one by exact folded name today** (Kampala 94/109, Wakiso 139/148, Mukono 69/74,
+Mpigi 48/59), and the
 misses are spelling variants that trigram folding inside the lineage family (§7.2) closes.
 
 A geometric centroid is the wrong point for delivery: Ggaba's 13 km² polygon has its centre away from where anyone
@@ -173,8 +175,9 @@ lives. OSM holds **1,567,904 building footprints** inside the GKMA box (HOT and 
 is the **centre of its buildings**: filter the Geofabrik `uganda-latest.osm.pbf` to `building=*` inside the box with
 `osmium`, take each footprint's centroid, assign it to a parish by point-in-polygon (batch, 7,566 rings, bbox index
 then ray-casting), and store the geometric median of the buildings as the area point with `source='parish_buildings'`
-and `expected_error_m` = the RMS spread. A parish with fewer than 20 buildings in OSM falls back to
-`parish_centroid`. This also fixes the Ggaba-type case with no manual work, and it is the same computation the
+and `expected_error_m` = the RMS spread. A parish with fewer than 20 buildings in OSM (`area_point_min_buildings`, a registry key) falls back to
+`parish_centroid`. The building extract is processed on the Mac; only the resulting points reach production, never
+the 1.57 million footprints. This also fixes the Ggaba-type case with no manual work, and it is the same computation the
 nightly pin job does later with delivered pins instead of buildings.
 
 Quick alternative if the building extract is deferred: where GeoNames has a PPL of the same name inside the polygon,
@@ -197,16 +200,20 @@ building centre and should not outlive Phase A.
   already do this through `access_mode`).
 
 ### 3.4 Validation against the bands the team already assigned (new in v2)
-`delivery_corridor` holds a hand-assigned band for every metro area. After matching, compute `straight_km_hub` for
-each new point and compare it with the band's range (Appendix F). Three lists come out of the import, and a person
-reads all three before anything is published:
+`delivery_corridor` holds a hand-assigned band for every metro area. After matching, compute the straight-line km
+from the HUB origin for each new point, and the same × 1.3 as an urban detour allowance (a report parameter, not a
+model number: the bands were assigned by hand and may reflect road feel rather than straight line), and compare both
+with the band's range (Appendix F). Three lists come out of the import, and a person reads all three before anything
+is published:
 - **consistent**: the point sits inside the band's range ± 2 km (the vast majority);
 - **suspect match**: the point is more than one band away from the assigned band and the name match was fuzzy or
   the polygon is shared; the match is probably wrong;
 - **suspect band**: the point is more than one band away, the match was exact and the polygon is unique; the band
   is probably wrong, which is the whole purpose of this work.
 Nothing is written to `delivery_corridor.distance_band` by the import; the re-banding goes through the Control
-Centre's corridor dry run (§4.1).
+Centre's corridor dry run (§4.1). The dry run must also list areas whose **fulfilment mode** would change: an area
+moving past `own_rider_max_band` flips from own rider to bus parcel or pickup, which matters more to a customer than
+the fee.
 
 ### 3.5 `geo_admin_polygon` (batch only in Phase A)
 ```sql
@@ -243,7 +250,8 @@ At ≤100k points either way is sub-millisecond. Every query in this spec is wri
 ### 4.1 Phase A needs no router
 MODEL.md §3 already says what happens when a centroid exists: `round_trip_km = straight_line × 2 × detour_factor`,
 and `detour_factor` is learned per corridor from "actual against straight-line distance". So the only wiring Phase A
-needs is `DeliveryAreaResolver.measuredKm ← geo_area_point.straight_km_hub` (today it is always `null`, line 70/85/138),
+needs is `DeliveryAreaResolver.measuredKm ← haversine(active origin, geo_area_point)` (today it is always `null`, lines
+70/85/138; computed at quote time because `delivery_origin` can hold more than one origin),
 and the capture's existing `straight_line_km` and `centroid_source` columns get written. Version 1 put OSRM routing on
 the critical path and then double-counted detour; both are gone.
 
@@ -320,8 +328,8 @@ last-mile "split by pin present or absent … is what justifies the pin nudge to
 `accuracy_tier` on every capture, so last-mile minutes and first-attempt success get learned **per tier** (PIN,
 LANDMARK as a meeting point, LANDMARK as a hint, AREA_POINT, DISTRICT) with today's single value as the prior. The
 fee difference between tiers then *falls out of the model*: a pinned address costs less because it measurably takes
-fewer minutes and fewer second trips. Customer wording is shown only when the learned difference exists and is at
-least one rounding step: "Share your location and delivery is UGX X less", which is true, cost-based and ethical
+fewer minutes and fewer second trips. The registry already holds the copy key for this, `copy_pin_nudge`; it is shown only when the learned difference
+exists and is at least one rounding step: "Share your location and delivery is UGX X less", which is true, cost-based and ethical
 (CLAUDE.md: no invented discounts, no fake urgency). The same mechanism prices, without any special rule:
 - **meeting points** (§6.5): less last-mile, so cheaper when the data says so;
 - **collection at the shop**: zero travel, the floor is the handling cost;
@@ -343,13 +351,16 @@ throws the numbers into a text line. Change:
 1. `GoldieChannelUseCases` passes location messages to a new **`AttachLocationToOrderUseCase`**: find the sender's
    most recent order (by the order's phone, E.164-normalised) that is `placed`, `confirmed` or `dispatched` and has
    no handover yet; store the pin on the order (`delivery_location.gps*` with `gpsSource='whatsapp_location'`), on the
-   capture (`had_pin = true`, accuracy tier PIN), and on the customer's saved address if one matches the area.
+   capture (`had_pin = true`, accuracy tier PIN), and on the customer's saved address if one matches the area. The use case runs *before* the assistant composes a
+   reply and answers deterministically ("Got it, the rider has your pin"); when the phone has more than one open
+   order it asks which one with buttons.
 2. The order-confirmation WhatsApp template (templates exist in `whatsAppTemplates.ts`) gains one line: *"Reply with
    your location pin (📎 → Location) so the rider finds you first time. Not there now? Open the map and drop the pin
    where we should deliver."* WhatsApp lets a customer send any point, not only where they stand, which matters because
-   many orders are placed from work. No new screen, no map of ours, nothing to install.
+   many orders are placed from work. No new screen, no map of ours, nothing to install. The confirmation message is a Meta-approved template, so the
+   new line goes through template review before it can be sent (days, not weeks).
 3. Contract #5: the quote for that order does not change because a pin arrived later; the pin improves the rider card
-   and the learning loop. If the pin lands outside the chosen area's family by more than 5 km, ops are told ("pin
+   and the learning loop. If the pin lands more than 5 km from the chosen area's point, ops are told ("pin
    disagrees with the area") rather than anything being silently re-priced.
 4. **Fee quotes on WhatsApp.** The same inbound pin, when the sender has no open order, answers "what's delivery to
    here?": Goldie calls the one quoting service (contract #1) with `{point}` and replies with the fee and window the
@@ -366,13 +377,15 @@ handover pin for the stop nearest to it, and Goldie replies with buttons: **Deli
 (exists; gains optional `handover_lat/lng/accuracy_m` and `find_difficulty`). That is the delivery record ops type in
 the office today, captured at the moment it happens, with the best coordinate the system will ever have for that
 address, plus a measured "hard to find" signal that becomes `last_mile_minutes` evidence per area and per tier
-(§4.6).
+(§4.6). A message the shop sends a rider first needs an approved template or a rider who has written to the number
+in the last 24 hours; the dispatch message is a template, and one "hi" from each rider when they start is enough for
+the rest.
 
 **Route B, a signed link per stop** (`/d/<token>`, bound to the dispatch, 48 h), texted with the dispatch, opening a
 page with the same buttons that asks for location once (`navigator.geolocation`, `enableHighAccuracy`). Same use
 case underneath. Build it only if riders turn out not to use Route A.
 
-`source='rider_handover'`, accepted at accuracy ≤100 m and within 5 km of the order's area family (a pin from the
+`source='rider_handover'`, accepted at accuracy ≤100 m and within 5 km of the order's area point, or of any area point in its lineage family when it has none (a pin from the
 hub or the wrong stop is rejected with a reply, not stored), precedence above every other source in §3.1.
 
 ### 5.3 Pasted links and device GPS at checkout (exist; wire them)
@@ -413,7 +426,8 @@ A pin is personal data, and a handover pin is the customer's front door. Keep th
 order and the saved address, are used for delivery and for the aggregate area point, and raw pins are deleted after
 the retention period the owner sets (recommended 180 days; the aggregate point keeps no per-customer data). The
 nightly job reads only inside the window. The rider link shows the rider the pin for that stop only and dies with the
-token.
+token. `rider_phone` is a worker's personal data: kept on the dispatch for matching, masked in admin like the
+recipient's contact.
 
 ---
 
@@ -502,7 +516,8 @@ EC 2025/26 electoral selector 222 because it counts cities and municipalities se
 ### 7.1 Never refuse a district (contract #8)
 `routes/commerce.ts` rejects a district that is not in the hard-coded 2021 list, so a customer in a district created
 since cannot check out through the structured path until a developer ships a build. Change: accept any district
-string that normalises to a row in `ug_district` (active or proposed, including aliases), and otherwise accept it as
+string that normalises to a known district (the constant list today; `ug_district` with its aliases, active or
+proposed, once it is seeded), and otherwise accept it as
 `district_unverified` on the manual path. Unknown never blocks a sale; it goes to the queue a person already handles.
 This is a ten-line change and ships in Phase A ahead of the tables below.
 
@@ -601,11 +616,11 @@ rank"; never "GPS coordinates" in customer copy.
 
 | File | Change | Phase |
 |---|---|---|
-| `routes/commerce.ts` | accept unknown districts as `district_unverified` → manual path (§7.1); zod for `landmarkId`, `point {lat,lng,accuracyM,source}`, `plusCode` `^[23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,3}$`, `meetingPoint` | A / C |
+| `routes/commerce.ts` | accept unknown districts as `district_unverified` → manual path (§7.1); zod for `landmarkId`, `point {lat,lng,accuracyM,source}`, `plusCode` `^[23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,3}$`, `meetingPoint`; the quote cache key in `routes/delivery.ts` (today area + basket + config version) gains the pin's geohash-7 cell or the landmark id, otherwise a pinned quote would be served from the area's cached fee | A / C |
 | `infrastructure/delivery/DeliveryAreaResolver.ts` | `measuredKm` ← pin (haversine from hub) → landmark point → `geo_area_point.straight_km_hub` → null; return `accuracyTier`, point, `centroidSource` | A |
-| `DeliveryConfigRegistry.ts` | `distance_source` (band_midpoint \| measured \| road), `fee_shape` (continuous \| ladder), `fee_ladder` (versioned rungs), `cell_shrinkage_k`, `last_mile_minutes` learned per accuracy tier (prior = today's value), `pin_max_accuracy_m` 100, `handover_pin_max_accuracy_m` 100, `landmark_suggest_radius_m` 2500, `area_point_min_pins` 5, `area_point_max_spread_m` 1500, `handover_min_pins` 3, `handover_max_spread_m` 800, `pin_retention_days`, copy per tier, `enrichment_provider` none\|google | A |
+| `domain/delivery/DeliveryConfigRegistry.ts` | `distance_source` (band_midpoint \| measured \| road), `fee_shape` (continuous \| ladder), `fee_ladder` (versioned rungs), `cell_shrinkage_k`, `last_mile_minutes` learned per accuracy tier (prior = today's value), `pin_max_accuracy_m` 100, `handover_pin_max_accuracy_m` 100, `landmark_suggest_radius_m` 2500, `area_point_min_pins` 5, `area_point_max_spread_m` 1500, `handover_min_pins` 3, `handover_max_spread_m` 800, `pin_retention_days`, copy per tier, `enrichment_provider` none\|google | A |
 | `domain/delivery/DeliveryModel.ts` | honour `distance_source`; `fee_shape = ladder` maps minutes to a rung (§4.5); `last_mile_minutes` read per accuracy tier (§4.6); when `road`, `round_trip_km = road_km × 2` with detour 1.0 and `router` in the capture | A (switch, ladder), B (tiers), D (road) |
-| nightly calibration (exists) | add `cell:<geohash6>` scopes with corridor shrinkage (§4.4); margin alarm per rung (§4.5) | B |
+| `DeliveryCalibrationUseCases.ts` (exists; no scheduler for it is in the repo, so confirm the timer on the host and add one if it is missing) | add `cell:<geohash6>` scopes with corridor shrinkage (§4.4); margin alarm per rung (§4.5) | B |
 | `application/use-cases/delivery/DeliveryQuotingUseCase.ts` | accept `landmarkId`, `point`; pass `hasPin`; write `straight_line_km`, `centroid_source`, `accuracy_tier`, `point_*` to the capture; honour `delivery_corridor.fulfilment_mode` (today `declaredMode: null`, a known gap) | A |
 | `application/use-cases/assistant/GoldieChannelUseCases.ts` + new `AttachLocationToOrderUseCase` | route `location` messages to the sender's open order; fee quote from a pin when no order (§5.1) | B |
 | `whatsAppTemplates.ts` | one line in the order-confirmation template asking for a location pin | B |
@@ -620,6 +635,28 @@ rank"; never "GPS coordinates" in customer copy.
 | `docs/delivery/MODEL.md` §3 | one paragraph: the centroid precedence now has a concrete table and a `distance_source` switch | A |
 
 Nothing is deleted. The legacy `delivery_zones` fallback stays until PROGRESS.md §7's hard stop is lifted.
+
+### 9b. Build rules, dependencies, and the tests that must exist
+- **Architecture (CLAUDE.md):** reprojection, name folding, point-in-polygon, geohash and ladder placement are pure
+  functions (`packages/shared/src/geo/` or `domain/delivery/`), with no Drizzle or Hono imports; every write goes
+  through a use case; the scripts call use cases the way the existing importers do.
+- **Migration:** Phase A is `0189_geo_points.sql` (0188 is the last applied). It is rehearsed by
+  `scripts/deploy-prod.sh` like every migration; the `CREATE EXTENSION` lines come first so the rehearsal fails fast
+  if the role lacks superuser, in which case the §3.6 fallback applies.
+- **Dependencies (none of them present today):** `proj4` (EPSG:21036 with `+towgs84=-160,-6,-302`), `ngeohash`,
+  `open-location-code`. Small, pure JavaScript, no native code.
+- **Mac-side tooling:** `brew install osmium-tool`; `uganda-latest.osm.pbf` is a few hundred MB and an OSRM build
+  needs several GB of scratch, so run them after the Downloads clean-up (6.4 GB free on 2026-10-15) and never on the
+  4 GB production host.
+- **Tests (vitest; mandatory):** reprojection of the four verified points within 30 m (Civic Centre, Kabalagala,
+  Ntinda, Bugolobi); folding maps the twelve Kampala spelling variants in Appendix A.9 to their index entries and
+  nothing else; lineage families (Kazo matches inside Kiruhura's family; "Kampala" parish in Sembabule never matches
+  Kampala); the band report puts a synthetic 30 km "Ntinda" under *suspect match*; `expected_error_m` is null for a
+  GeoNames point outside any polygon; ladder placement picks the lowest covering rung and the margin alarm fires on a
+  rung below cost; an unknown district is accepted as `district_unverified`; a WhatsApp location attaches to the
+  newest open order and asks when there are two; a handover pin 6 km from the area point is rejected with a reply;
+  the nightly job never overwrites `manual` and skips a 1,501 m spread; every capture row carries an `accuracy_tier`;
+  the quote cache key differs for two pins in different cells.
 
 ---
 
@@ -650,7 +687,7 @@ spec does not invent them; the owner provides them from the riders' actual pay a
 | Wizard answer | Config key | What it means |
 |---|---|---|
 | A place riders go often, and the round-trip minutes | calibrates `speed`/`detour` prior | e.g. Ntinda, 50 minutes door to door and back |
-| Rider pay per hour (or per trip) | `rider_cost_per_minute` | UGX |
+| Rider pay per hour (or per trip) | `rider_cost_per_minute_ugx` | UGX |
 | Handling minutes per order | `handling_minutes` | picking, packing, handover |
 | Margin multiplier | `margin` | 1.0 = at cost |
 | Minimum fee | `minimum_fee_ugx` | the floor |
@@ -664,7 +701,7 @@ ladder (§4.5).
 **A second way into the same six numbers, in the owner's language.** Riders in Kampala are paid per trip by
 destination, not per minute, and the owner knows those prices without looking anything up. The wizard keeps its seven
 questions and gains an alternative first screen: *"Three to five places you already send riders to: the place, what
-the rider is paid for the trip, and roughly how long the round trip takes."* From those, `rider_cost_per_minute`
+the rider is paid for the trip, and roughly how long the round trip takes."* From those, `rider_cost_per_minute_ugx`
 (pay ÷ minutes, median across the trips) and `effective_speed_kmh` (straight-line × 2 × detour ÷ hours) are derived
 and shown with their working, exactly as the wizard shows its derivations today. Same six keys, same contract (#3),
 one more path to them, and the reason the numbers have gone unset for months is removed: nobody has to think in
@@ -717,7 +754,8 @@ provider, is the system of record. Mapbox is not chosen (cheap tiles and routing
 volume; Kampala landmark coverage is weaker; temporary geocoding results may not be stored). Prices in Appendix G.
 
 ### 13.2 Licensing
-- **OSM (ODbL):** OSM-derived rows stay identifiable (`source='osm'`, `source_ref`) and in their own logical set;
+- **OSM (ODbL):** OSM-derived rows stay identifiable (`source='osm'`, `source_ref`; area points with `source='parish_buildings'`
+  are derived from OSM footprints and count too, with the extract date in `source_ref`) and in their own logical set;
   "© OpenStreetMap contributors" wherever they or OSM tiles are shown. Our own landmarks and pins in rows with
   `source ≠ 'osm'` make the whole a *collective* database; be prepared to publish the OSM-derived landmark table
   (not orders, not customers) on request (decision 10).
@@ -744,9 +782,11 @@ Phase A: the 4 GB host and the rehearse-then-migrate deploy script are fine with
 
 **Week 0 — five cheap experiments before any architecture (two days, mostly queries).** Each one replaces an opinion
 in §12 with a number: (a) read the baseline metrics from the capture table (free); (b) the owner sets the six numbers
-by trip prices (fifteen minutes; §11); (c) run the parish import against a copy of the database and read the
+by trip prices (fifteen minutes; §11); (c) run the parish import against a copy of the production gazetteer (the local database has no `ug_area` rows:
+`data/locations/v1` is gitignored and lives on the server, so the first step is one owner command, `pg_dump -t
+ug_area -t ug_area_alias -t delivery_corridor` from prod) and read the
 three-list band report, which says how many bands are wrong *before* anything is written (one day); (d) count the
-WhatsApp location messages Goldie has already received and dropped into text (one query on the conversation log),
+WhatsApp location messages Goldie has already received and dropped into text (`assistant_messages` where `role = 'user'` and `content like 'My location:%'`),
 which is the pin rate the shop gets for free; (e) count orders whose `delivery_address` contains a landmark word
 (near / opposite / behind / next to), which is the size of the landmark corpus. Decide 1–3 in §12 on those numbers.
 
@@ -756,14 +796,14 @@ buildings; review the three-list band report in the Control Centre; wire `measur
 (left at `band_midpoint`), `fee_shape` and `fee_ladder`; re-band through the corridor dry run; add the fee-step
 counter; offline index gains points.
 **Done when:** ≥95% of the 362 metro areas have a point with a non-null `expected_error_m` (89% is reachable by
-exact name today); every one has `straight_km_hub`; every band-report line has been looked at; quotes for ten named
+exact name today); every band-report line has been looked at; quotes for ten named
 test areas (Ntinda, Kabalagala, Najjera, Kajjansi, Kyengera, Kira, Bweyogerere, Nansana, Munyonyo, Mukono town)
 return a fee from the model once the six numbers are in; `accuracy_tier` is written on every new capture.
 
 **Phase B — pins that already exist, and the first landmarks (≈ 1–2 weeks).** WhatsApp location → order; the rider
 handover link; saved addresses keep and receive pins; `hasPin` from checkout; mined order-text landmarks; the nightly
 job; rider card additions. **Done when:** a WhatsApp pin sent after an order appears on that order's rider card
-without anyone touching admin; ≥50% of metro deliveries in a two-week window have a handover pin; the first
+without anyone touching admin; a proposed ≥50% of metro deliveries in a two-week window have a handover pin (the owner sets the real figure); the first
 `rider_handover` area points exist.
 
 **Phase C — the landmark step and the registry (≈ 2 weeks).** OSM import; `GET /locations/landmarks`; the landmark
@@ -1033,3 +1073,23 @@ customers and riders already do":
 22. **Nothing cheap came before the architecture.** Week 0 is five queries and a fifteen-minute owner task that turn
     the three "decide now" questions into numbers (§14).
 23. **No pre-mortem.** §15.
+
+Version 2.2, same day, a consistency pass against the code and across the three revisions:
+24. **`straight_km_hub` cached one origin's distance on the area** while `delivery_origin` allows several. Distance
+    is computed at quote time; the column is gone.
+25. **§3.2 conflated 357 polygons in the box with 350 matched entries.** Corrected.
+26. **The band report compared straight-line km with bands that may have been assigned by road feel.** It now shows
+    a 1.3 detour allowance (a report parameter) and lists fulfilment-mode flips past `own_rider_max_band`, which
+    matter more to a customer than a fee change.
+27. **Config keys cited from memory were wrong or incomplete:** `rider_cost_per_minute_ugx`, the registry's real path
+    (`domain/delivery/`), and `copy_pin_nudge`, which already exists for exactly the nudge in §4.6. The calibration
+    use case exists but no timer for it is in the repo; it has to be confirmed on the host.
+28. **The quote cache key is area + basket + config version**, so a pinned quote would have been served from the
+    area's cache. The key gains the pin cell or landmark id.
+29. **Week 0 (c) assumed a local gazetteer.** The local database has no `ug_area` rows (the CSVs are gitignored and
+    on the server); the dump is the first step. Week 0 (d) is now a concrete query on `assistant_messages`.
+30. **No build rules.** No dependency list, migration number, test list, Mac tooling or disk note existed (§9b).
+    OSM-derived area points were outside the ODbL note; WhatsApp template review and the 24-hour window were
+    unmentioned; rider phone numbers were outside the privacy section; pins were checked against a district
+    "family" instead of the area's point; the 20-building and 50%-handover figures were unlabelled guesses and are now
+    a registry key and a proposal.
