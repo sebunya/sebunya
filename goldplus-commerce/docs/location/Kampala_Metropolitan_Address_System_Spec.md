@@ -66,8 +66,9 @@ PostGIS patterns. Three of its data claims do not hold; the design below works a
    or GeoNames, or it stays an area-level label.
 2. **The HDX COD-AB boundaries stop at sub-county.** `cod-ab-uga` (UBOS with WHO, reviewed 2026-09-21, CC BY-IGO):
    Admin 1 = 4 regions, Admin 2 = 135 districts, Admin 3 = 203 (county/municipality level), Admin 4 = 1,520
-   (sub-county level, 2020 boundaries). There are **no parish or village polygons**, so a "village centroid from the
-   polygon" cannot come from this source. Parish points come from GeoNames and OSM instead.
+   (sub-county level, 2020 boundaries). It has **no parish or village polygons**. Parish polygons do exist in a
+   different file the owner supplied, the UBOS 2016 parish shapefile (§3.9), which becomes the primary source of area
+   centroids; village polygons exist nowhere open.
 3. **Boda stages are barely mapped in OSM.** `amenity=taxi` inside the Greater Kampala bounding box returns **82**
    objects (75 nodes, 7 ways) on 2026-10-15. Stages will come mostly from the shop's own riders and customers, not
    from OSM.
@@ -155,7 +156,45 @@ Offline encode/decode, 14 m × 14 m at 10 characters (e.g. `6GCRPR6C+24` for cen
 `open-location-code` 1.0.3 (Google's) or `pluscodes` 3.0.1. **Use:** printed on the rider card and in the WhatsApp
 message for every order with a pin; typed by a customer who has one. Never a required field.
 
-### 3.8 Not used, and why
+### 3.9 UBOS 2016 parish polygons (owner-supplied; `Ug_Parishes_2016.shp` inside `uganda-APIs` repo's `GIS-Parishes-2016.zip`, 28 MB)
+**7,566 parish polygons** for 116 districts (2016 boundaries), attributes `D` district, `C` county, `S` sub-county,
+`P` parish, `V` (a reference village), `PCODE`, `Shape_Area`. Projection Arc 1960 / UTM zone 36S (EPSG:21036); the
+datum shift to WGS84 is EPSG:1122 (dX −160, dY −6, dZ −302 m).
+GKMA: Kampala 96, Wakiso 151, Mukono 80, Mpigi 56 parishes (357 inside the GKMA box; median parish 9.7 km², Kampala
+median 1.2 km²). Centroids verified against known points: Civic Centre 0.3127, 32.5860; Kabalagala 0.3011, 32.5992;
+Ntinda 0.3467, 32.6181; Bugolobi 0.3112, 32.6227.
+Name agreement with the EC 2020 parish list before fuzzy folding: Kampala 82/98 (83%), Wakiso 121/144 (84%), Mukono
+65/95 (68%, Mukono split parishes after 2016), Mpigi 46/56 (82%). Remaining differences are spelling (BUGOLOOBI /
+BUGOLOBI, CIVIC CENTRE / CENTER, KAZO-ANGOLA / KAZO) and post-2016 splits.
+**Use:** the first-choice `geo_area_point` source (`source='parish_polygon'`, confidence 0.75) for every `ug_area` whose
+parish matches; point-in-polygon for pins and landmarks (`geo_admin_polygon` now holds parishes, not just HDX
+sub-counties); a 2016 parish is also the natural unit for same-day eligibility and for aggregating delivered pins.
+Derived file produced on 2026-10-15: `~/Downloads/ug_parishes_2016_centroids_wgs84.csv` (7,566 rows: district,
+county, sub-county, parish, reference village, PCODE, lat, lng, area_km2, bbox). Licence: the shapefile is Uganda
+Bureau of Statistics data redistributed in a GPL-3 code repository; the GPL applies to that repository's code, not to
+government statistical data. Attribute "Uganda Bureau of Statistics, 2016 parish boundaries".
+
+### 3.10 Full names hierarchy to village level (owner-supplied; `locations-uganda` npm, `uganda-geo-data` PHP, `ug-locale` Laravel; all MIT)
+The same dataset in three packagings, scraped from the Uganda passport portal: **135 districts → 303 counties → 2,120
+sub-counties → 10,365 parishes → 71,250 villages**, names and parent ids only, no coordinates. Village names are
+upper-case. **Use:** the village list is the deepest open gazetteer available and is what a customer in Wakiso will
+actually say ("Kira, Bulindo"); load it as `ug_village` (parish_id → `ug_area` via parish match) for search and for
+the landmark registry's area assignment; it supersedes the EC parish list as the hierarchy source (§7.3 keeps the EC
+file for station names only).
+
+### 3.11 EC 2025/26 electoral structure (owner-supplied; `uganda-location-selector` npm, MIT)
+222 electoral districts (cities and municipalities counted separately), 427 constituencies, 1,881 sub-counties, 3,454
+electoral areas, with EC codes. No coordinates. **Use:** the EC codes join to the Kalulu polling-station codes (district
+code 027 etc.), which lets the station list be refreshed from the 2026 register without re-matching names.
+
+### 3.12 Owner-supplied files not adopted
+- `Uganda-Delivery-Cost-API`: a FastAPI toy (20 district centroids × weight × "risk factor" × delivery-time factor,
+  UGX 40 per kg-km). Nothing to take except as a reminder not to price by weight×km×opaque factors; the shop's minutes
+  model already covers cost, and contract #4 forbids invented multipliers.
+- `uganda-APIs/districts_large_map.json`: a hand-started hierarchy, 139 sub-parishes filled in, almost all empty.
+- `final-vote-by-district-2016-presidential.csv`: 112 districts of 2016 with vote counts; no location use.
+
+### 3.13 Not used, and why
 - KCCA street naming / house numbering: started 2017, GPS survey funded under KIIDP-2 (2024), no public dataset, no
   2025/26 status found. Revisit yearly.
 - DataHub "postal-codes-ug": it is the GeoNames PPL list with empty postcode fields; use GeoNames directly.
@@ -218,9 +257,9 @@ CREATE TABLE geo_area_point (
   area_slug        text PRIMARY KEY REFERENCES ug_area(area_slug),
   lat              double precision NOT NULL CHECK (lat BETWEEN -2.5 AND 5.5),
   lng              double precision NOT NULL CHECK (lng BETWEEN 28 AND 36.5),
-  source           text NOT NULL CHECK (source IN ('delivered_pins','manual','osm_place','geonames','admin_polygon')),
-  source_ref       text,                      -- geonames id, osm type/id, admin pcode, or 'pins:<n>'
-  confidence       numeric(3,2) NOT NULL,     -- 0.95 pins(n>=5), 0.90 manual, 0.70 osm_place, 0.60 geonames, 0.40 admin_polygon
+  source           text NOT NULL CHECK (source IN ('delivered_pins','manual','parish_polygon','osm_place','geonames','admin_polygon')),
+  source_ref       text,                      -- parish PCODE, geonames id, osm type/id, admin pcode, or 'pins:<n>'
+  confidence       numeric(3,2) NOT NULL,     -- 0.95 pins(n>=5), 0.90 manual, 0.75 parish_polygon, 0.70 osm_place, 0.60 geonames, 0.40 admin_polygon
   sample_size      integer NOT NULL DEFAULT 0, -- delivered pins used
   spread_m         integer,                   -- p90 distance of pins from the median, when source=delivered_pins
   set_by           text,                      -- 'job:geo-nightly' | admin user id
@@ -229,8 +268,30 @@ CREATE TABLE geo_area_point (
 CREATE INDEX geo_area_point_earth_idx ON geo_area_point USING gist (ll_to_earth(lat, lng));
 ```
 Precedence when writing (highest wins, never downgrade automatically): `delivered_pins` (≥5 pins, p90 spread ≤ 1,500 m)
-> `manual` > `osm_place` > `geonames` > `admin_polygon`. The nightly job may replace `geonames`/`osm_place` with
-`delivered_pins`; it never overwrites `manual`.
+> `manual` > `parish_polygon` > `osm_place` > `geonames` > `admin_polygon`. The nightly job may replace
+`parish_polygon`/`geonames`/`osm_place` with `delivered_pins`; it never overwrites `manual`. A parish polygon centroid
+is the geometric centre, which for a large or oddly shaped parish (Ggaba, 13 km²) can sit away from the settlement;
+when GeoNames has a PPL for the same name inside that polygon, prefer the PPL point but keep `parish_polygon` as the
+containing polygon (`geo_admin_polygon`).
+
+### 6.1a `geo_admin_polygon` — parish and sub-county polygons for point-in-polygon (batch and request path)
+```sql
+CREATE TABLE geo_admin_polygon (
+  id             serial PRIMARY KEY,
+  level          text NOT NULL CHECK (level IN ('district','subcounty','parish')),
+  source         text NOT NULL,              -- 'ubos_parishes_2016' | 'hdx_cod_ab_2020'
+  source_ref     text NOT NULL,              -- PCODE or HDX pcode
+  district       text NOT NULL, county text, subcounty text, name text NOT NULL,
+  area_slug      text REFERENCES ug_area(area_slug),   -- set when the parish matches one area
+  bbox_s double precision NOT NULL, bbox_w double precision NOT NULL, bbox_n double precision NOT NULL, bbox_e double precision NOT NULL,
+  ring_wgs84     jsonb NOT NULL,             -- outer ring [[lng,lat],...], simplified to ≤500 points
+  area_km2       numeric(8,3)
+);
+CREATE INDEX geo_admin_polygon_bbox_idx ON geo_admin_polygon (level, bbox_s, bbox_n, bbox_w, bbox_e);
+```
+Point-in-polygon without PostGIS: filter candidates by bbox (indexed), then a ray-casting test over `ring_wgs84` in
+application code (7,566 rings, ≤500 points each; a lookup touches a handful). With PostGIS later this becomes
+`ST_Contains` on a `geometry` column generated from the same ring.
 
 ### 6.2 `geo_road_distance` — road distance from an origin to a point, computed once
 ```sql
@@ -316,6 +377,22 @@ not need an R-tree yet.
 ---
 
 ## 7. Ingestion pipelines (scripts under `apps/api/src/scripts/`, idempotent, MD5-gated like the existing importers)
+
+### 7.0 `geo-import-parish-polygons.ts` (runs first)
+Input: `Ug_Parishes_2016.shp/.dbf` (or the derived `ug_parishes_2016_centroids_wgs84.csv` plus the rings exported by
+the same script). Reproject EPSG:21036 → EPSG:4326 (Transverse Mercator inverse on Clarke 1880 RGS, then the EPSG:1122
+three-parameter shift). For each parish: write `geo_admin_polygon` (level `parish`, simplified ring, bbox, area) and,
+where exactly one `ug_area` in the same district folds to the same name (use `packages/shared/src/locations/folding.ts`,
+then trigram ≥ 0.8 within district), write `geo_area_point` (`source='parish_polygon'`, confidence 0.75) unless a
+higher-precedence point exists. Report matched / ambiguous / unmatched per district; expected ≥ 80% matched in the four
+GKMA districts on the first run (the EC comparison in §3.9 gives the floor). Also load HDX sub-county polygons
+(`level='subcounty'`) for the areas outside the 2016 parish file's 116 districts.
+
+### 7.0a `geo-import-villages.ts`
+Input: `locations-uganda/data/{districts,counties,sub_counties,parishes,villages}.json`. Create `ug_village`
+(`id`, `name`, `normalised`, `parish_name`, `subcounty_name`, `district`, `area_slug` nullable) and link each parish to
+an `ug_area` by the same folding as §7.0. Villages are searchable through `LocationSearchService` as a new layer that
+returns the parent area (like the landmark layer does), so "Bulindo" resolves to Kira's area. 71,250 rows, names only.
 
 ### 7.1 `geo-import-geonames.ts`
 Input `UG.txt` (tab-separated, 19 columns: geonameid, name, asciiname, alternatenames, lat, lng, class, code, …,
@@ -520,8 +597,8 @@ the licensing trap: **temporary** geocoding results may not be stored; storing r
 ## 13. Rollout
 
 **Phase A — measure, don't guess (1–2 weeks, no customer-visible change).** Enable `cube`/`earthdistance`; create
-`geo_area_point`, `geo_road_distance`; run GeoNames + OSM place import for the 362 metro areas; run OSRM offline for
-road km; wire `measuredKm`; recompute bands as a dry-run CSV for Rob to review in the Control Centre; set the six
+`geo_area_point`, `geo_admin_polygon`, `geo_road_distance`; import the 2016 parish polygons (§7.0) and the village
+hierarchy (§7.0a); fill the gaps with GeoNames + OSM place nodes for the 362 metro areas; run OSRM offline for road km; wire `measuredKm`; recompute bands as a dry-run CSV for Rob to review in the Control Centre; set the six
 numbers in the launch wizard; publish. **Done when:** ≥90% of the 362 metro areas have a point with confidence ≥0.6,
 every one has `road_km`, and a quote for 10 named test areas (Ntinda, Kabalagala, Najjera, Kajjansi, Kyengera, Kira,
 Bweyogerere, Nansana, Munyonyo, Mukono town) returns a fee from the model, not "confirmed by phone".
