@@ -256,3 +256,20 @@ describe('every refusal reads as a sentence on the login and sign-in methods pag
     expect(read('apps/web/src/components/AccountNav.astro')).toContain("href: '/account/sign-in', label: 'Sign-in methods'");
   });
 });
+
+describe('the provider credentials reach the api container', () => {
+  // providerCredentials() reads `${PROVIDER}_CLIENT_ID` etc. by computed name, so a grep-based check cannot find
+  // them: they are listed here. Compose passes only the variables it names; none of these were named before.
+  const names = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'APPLE_CLIENT_ID', 'APPLE_TEAM_ID', 'APPLE_KEY_ID', 'APPLE_PRIVATE_KEY', 'FACEBOOK_CLIENT_ID', 'FACEBOOK_CLIENT_SECRET'];
+  it('every one is passed to the api service and documented', () => {
+    const compose = read('docker-compose.production.yml');
+    const apiBlock = compose.slice(compose.indexOf('\n  api:'), compose.indexOf('\n  web:'));
+    const example = read('.env.example');
+    const missing = names.filter((n) => !new RegExp(`- ${n}=\\$\\{${n}`).test(apiBlock));
+    const undocumented = names.filter((n) => !new RegExp(`^${n}=`, 'm').test(example));
+    expect({ missing, undocumented }).toEqual({ missing: [], undocumented: [] });
+  });
+  it('covers every provider the code knows', () => {
+    for (const p of Object.keys(OIDC_PROVIDERS)) expect(names).toContain(`${p.toUpperCase()}_CLIENT_ID`);
+  });
+});

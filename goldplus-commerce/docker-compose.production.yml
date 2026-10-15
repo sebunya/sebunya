@@ -208,6 +208,16 @@ services:
       - CARE_PUSH_VAPID_PUBLIC_KEY=${CARE_PUSH_VAPID_PUBLIC_KEY:-}
       - CARE_PUSH_VAPID_PRIVATE_KEY=${CARE_PUSH_VAPID_PRIVATE_KEY:-}
       - CARE_PUSH_CONTACT=${CARE_PUSH_CONTACT:-mailto:support@shopgoldplus.com}
+      # Social sign-in (Google, Apple, Facebook): a provider appears on /login only when its credentials are set.
+      # Listed here because compose passes only the variables named in this block (they never arrived before).
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - APPLE_CLIENT_ID=${APPLE_CLIENT_ID:-}
+      - APPLE_TEAM_ID=${APPLE_TEAM_ID:-}
+      - APPLE_KEY_ID=${APPLE_KEY_ID:-}
+      - APPLE_PRIVATE_KEY=${APPLE_PRIVATE_KEY:-}
+      - FACEBOOK_CLIENT_ID=${FACEBOOK_CLIENT_ID:-}
+      - FACEBOOK_CLIENT_SECRET=${FACEBOOK_CLIENT_SECRET:-}
       # Outbound governance gates (domain/notifications/OutboundGovernancePolicy).
       # Each defaults to false — silence must never read as permission — and every
       # one must be true before a real message reaches a provider. They were
