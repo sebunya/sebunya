@@ -64,7 +64,7 @@ table (the lineage is a reviewed constant until the admin form exists). Points p
 stored like any other but carry the method and score in `centroid_source_ref` (`…#fuzzy:0.71`), so they can always be
 found and questioned.
 
-## Step 1 — deploy (migration 0189, then the api)
+## Step 1 — deploy (migrations 0189–0191, then the api)
 
 After the PR is merged into `deploy/price-floor-145k`. Paste on the Mac as one block:
 
@@ -77,7 +77,8 @@ SHA=$(git rev-parse --short=8 origin/deploy/price-floor-145k)
 WT=/tmp/mig-$SHA
 [ -d "$WT" ] || git worktree add --detach "$WT" "$SHA" >/dev/null
 docker build -q --target builder -f "$WT/goldplus-commerce/Dockerfile.api" -t goldplus-migrator:$SHA "$WT/goldplus-commerce" >/dev/null
-scripts/migrate-prod.sh goldplus-migrator:$SHA geo-phase-a-0189 "select count(*) from information_schema.columns where table_name='delivery_corridor' and column_name='centroid_expected_error_m'"
+scripts/migrate-prod.sh goldplus-migrator:$SHA geo-phase-a-0191 "select count(*) from information_schema.columns where table_name='fulfilment_dispatches' and column_name='stops_on_trip'" 1 # 0189+0190+0191 land together; this proves the last one
+# original check: "select count(*) from information_schema.columns where table_name='delivery_corridor' and column_name='centroid_expected_error_m'"
 scripts/deploy-prod.sh $SHA api web
 echo "DONE $SHA"
 EOF
@@ -196,11 +197,47 @@ shape, with only the **suspect-band** rows carrying the band their measured poin
 Fees for the moved areas change at their next quote (contract #5: a quote already given stays). Customers in areas
 that were in the wrong band were paying the wrong fee; that is what this step corrects.
 
-## Step 6 — what happens next (not in this runbook)
+## Step 6 — Phase B is in this PR too (0190, 0191). What it does and what the owner switches on
 
-1. Decide the fee shape (spec §12, decision 1: re-band onto a ladder, re-band only, or `distance_source = measured`).
+Everything below ships OFF or inert until the owner acts; no fee changes by itself.
+
+**Already live once deployed (no switch):**
+- A WhatsApp location from a customer is answered by the delivery module, never the model: "Is this where we
+  deliver order GP-1234?" with Yes / No buttons; the pin is stored only on Yes (`delivery_order_pin`, purged after
+  `pin_retention_days`, default 180), the capture is marked PIN, and a pin more than 5 km from the chosen area opens
+  a care task for a person. A customer with an account is then asked "Save this spot to your address?" (second tap).
+  No open order in 14 days → told, nothing stored. Outside Uganda or at the shop → refused. Coordinates never reach
+  the assistant archive (placeholder `[Location shared]`).
+- Account → Addresses shows a saved pin with **Remove pin**. The privacy page states the retention.
+- Checkout sends the picker's pin with the quote (PIN tier; a pin with no area named resolves to the nearest area
+  point only when unambiguous). A district the list does not know is accepted on the manual path.
+- Dispatch form: pick a rider (Delivery → Riders, `delivery_riders`) and the stops on the trip. A location that
+  rider shares on WhatsApp while a stop is out asks Delivered / Customer not there / Couldn't find it, records the
+  attempt with the handover point, then Easy / Hard to find.
+
+**Two nightly jobs the host must run (add to the api container's timer alongside the calibration run):**
+```
+pnpm -F @goldplus/api geo:purge-pins            # deletes pins and handover points past retention, expired pending locations
+pnpm -F @goldplus/api geo:nightly-area-points   # ≥3 tight handovers or ≥5 tight customer pins → the area's point; never over 'manual'
+```
+Run both with `--dry-run` not available for purge (it only deletes expired rows); area points accept `--dry-run`.
+Each run writes a row to `geo_data_source_run` (`source_name = 'nightly-area-points'`; wide-spread areas in `params`).
+
+**Owner switches (Control Centre → setup, published as a version like any value):**
+1. `fee_shape = ladder` + `fee_ladder = "3000, 5000, 8000, 12000, 20000"` (your numbers). Run the **Fee ladder** dry run
+   on the Control Centre first: it lists every area's rung, what changes, and any nearer area dearer than a farther one.
+   The **margin alarm** on the Calibration page flags a rung whose orders ran over cost in more than
+   `ladder_margin_alarm_pct` (default 10%) of cases.
+2. The pin nudge (`copy_pin_nudge`, "…delivery is UGX {{saving}} less") shows itself only when the nightly calibration
+   has learned last-mile minutes for an area both with and without a pin (proposal scope `<area>#pin`, accepted by a
+   person) and the difference is at least one rounding step. Nothing to switch; it appears when it is true.
+3. Add riders under Delivery → Riders before relying on handovers; until then every location is a customer pin.
+
+## Step 7 — what happens next (not in this runbook)
+
+1. Decide the fee shape (spec §12, decision 1): the ladder dry run is the tool.
 2. Set the six launch numbers (spec §11), by the seven questions or by trip prices.
-3. Phase B: WhatsApp pins to the order, rider handover, saved addresses that remember (spec §5).
+3. Landmarks mined from orders, meeting points, OSRM road km (spec §6, §4.2).
 
 ## Rollback
 
