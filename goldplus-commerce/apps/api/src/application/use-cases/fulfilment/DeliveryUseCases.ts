@@ -15,6 +15,18 @@ import { IOrderTransitionPort } from '../../ports/IOrderTransitionPort';
 import { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
 import { mirrorOrderDispatched } from './DispatchUseCases';
 
+/** What the quote capture needs to know about a recorded delivery attempt (0189). */
+export interface IDeliveryCaptureMirror {
+  recordAttempt(input: {
+    orderId: string;
+    taskId: string;
+    attempt: number;
+    completed: boolean;
+    failedFirstAttempt: boolean;
+    deliveredAt: Date | null;
+  }): Promise<void>;
+}
+
 export type DeliveryError =
   | 'NOT_FOUND'
   | 'TASK_ON_HOLD'
@@ -56,7 +68,17 @@ export class RecordDeliveryUseCase {
      * order history. Optional so existing tests and callers stay valid; when
      * absent, only the fulfilment task moves (pre-stage-2 behaviour).
      */
-    private readonly orderTransitions?: IOrderTransitionPort
+    private readonly orderTransitions?: IOrderTransitionPort,
+    /**
+     * 0189: the delivery quote capture learns from this outcome (delivered_at,
+     * actual_minutes from the dispatch time, first_attempt_success — written
+     * FALSE on a failed first attempt too, so the rate is not 100% by
+     * construction). Nothing wrote these columns before, so the calibration
+     * loop and two of the location-accuracy numbers had no data source.
+     * Optional and best-effort: a capture that fails never voids a truthfully
+     * recorded delivery.
+     */
+    private readonly captureMirror?: IDeliveryCaptureMirror
   ) {}
 
   async execute(input: {
@@ -191,6 +213,20 @@ export class RecordDeliveryUseCase {
       }
     }
 
+    if (this.captureMirror) {
+      try {
+        await this.captureMirror.recordAttempt({
+          orderId: snapshot.orderId,
+          taskId: input.taskId,
+          attempt,
+          completed,
+          failedFirstAttempt: attempt === 1 && !deliveryCompletesTask(input.outcome),
+          deliveredAt: deliveryCompletesTask(input.outcome) ? now : null,
+        });
+      } catch {
+        // Best-effort by design: the capture is an observation for the model, never a condition of the delivery.
+      }
+    }
     await new CreateAuditLogUseCase(this.audit).execute({
       actorId: input.actorId,
       action: 'FULFILMENT_DELIVERY_RECORDED',

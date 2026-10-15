@@ -97,52 +97,71 @@ export function canonicalDistrictKey(name: string): string {
   return DISTRICT_NAME_VARIANTS[key] ?? key;
 }
 
-const KEY = canonicalDistrictKey;
-
-/** parent → children and child → parent, both upper-cased, built once. */
-const PARENT_OF = new Map<string, string>();
-const CHILDREN_OF = new Map<string, Set<string>>();
-for (const row of DISTRICT_LINEAGE) {
-  const child = KEY(row.child);
-  const parent = KEY(row.parent);
-  PARENT_OF.set(child, parent);
-  if (!CHILDREN_OF.has(parent)) CHILDREN_OF.set(parent, new Set());
-  CHILDREN_OF.get(parent)!.add(child);
+export interface Lineage {
+  /** Upper-cased, variant spellings mapped to the shop's. */
+  canonical: (name: string) => string;
+  /**
+   * Every district name (upper-cased) that may be treated as the same place
+   * when matching names across datasets: the district itself, its ancestors,
+   * and every descendant of those ancestors. Always contains the input.
+   */
+  family: (district: string) => ReadonlySet<string>;
 }
 
 /**
- * Every district name (upper-cased) that may be treated as the same place
- * when matching names across datasets: the district itself, its ancestors,
- * and every descendant of those ancestors. Always contains the input.
+ * Build a lineage from rows and variants. The constants above are the
+ * fallback; `data/geo/district-lineage.csv` and `district-name-variants.csv`
+ * are the reviewed source the importer reads, so a new district is a data
+ * change, not a deploy.
  */
-export function lineageFamily(district: string): ReadonlySet<string> {
-  const start = KEY(district);
-  if (!start) return new Set();
-  // Climb to the root of the family.
-  let root = start;
-  const seen = new Set<string>([root]);
-  while (PARENT_OF.has(root)) {
-    root = PARENT_OF.get(root)!;
-    if (seen.has(root)) break; // a cycle would be a data error; never loop
-    seen.add(root);
+export function createLineage(rows: readonly DistrictLineageRow[], variants: Readonly<Record<string, string>>): Lineage {
+  const canonical = (name: string): string => {
+    const key = name.trim().replace(/\s+/g, ' ').toUpperCase();
+    return variants[key] ?? key;
+  };
+  const parentOf = new Map<string, string>();
+  const childrenOf = new Map<string, Set<string>>();
+  for (const row of rows) {
+    const child = canonical(row.child);
+    const parent = canonical(row.parent);
+    parentOf.set(child, parent);
+    if (!childrenOf.has(parent)) childrenOf.set(parent, new Set());
+    childrenOf.get(parent)!.add(child);
   }
-  // Collect everything beneath the root.
-  const family = new Set<string>([root]);
-  const queue = [root];
-  while (queue.length > 0) {
-    const current = queue.pop()!;
-    for (const child of CHILDREN_OF.get(current) ?? []) {
-      if (!family.has(child)) {
-        family.add(child);
-        queue.push(child);
+  const family = (district: string): ReadonlySet<string> => {
+    const start = canonical(district);
+    if (!start) return new Set();
+    let root = start;
+    const seen = new Set<string>([root]);
+    while (parentOf.has(root)) {
+      root = parentOf.get(root)!;
+      if (seen.has(root)) break; // a cycle would be a data error; never loop
+      seen.add(root);
+    }
+    const out = new Set<string>([root]);
+    const queue = [root];
+    while (queue.length > 0) {
+      const current = queue.pop()!;
+      for (const child of childrenOf.get(current) ?? []) {
+        if (!out.has(child)) {
+          out.add(child);
+          queue.push(child);
+        }
       }
     }
-  }
-  family.add(start);
-  return family;
+    out.add(start);
+    return out;
+  };
+  return { canonical, family };
+}
+
+const DEFAULT_LINEAGE = createLineage(DISTRICT_LINEAGE, DISTRICT_NAME_VARIANTS);
+
+export function lineageFamily(district: string): ReadonlySet<string> {
+  return DEFAULT_LINEAGE.family(district);
 }
 
 /** True when two district names belong to one lineage family. */
 export function sameLineageFamily(a: string, b: string): boolean {
-  return lineageFamily(a).has(KEY(b));
+  return lineageFamily(a).has(canonicalDistrictKey(b));
 }

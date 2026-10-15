@@ -195,6 +195,8 @@ export const deliveryQuoteCapture = pgTable('delivery_quote_capture', {
   /** 0189: one-way km from the active origin to the area's point, recorded whether or not the quote used it. */
   centroidKm: numeric('centroid_km', { precision: 8, scale: 2 }),
   centroidExpectedErrorM: integer('centroid_expected_error_m'),
+  /** 0189: which distance priced this quote (band_midpoint | measured_centroid), so populations can be separated later. */
+  distanceSource: varchar('distance_source', { length: 16 }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({

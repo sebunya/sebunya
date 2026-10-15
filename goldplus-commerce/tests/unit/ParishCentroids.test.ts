@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { DISTRICT_LINEAGE, canonicalDistrictKey, lineageFamily, sameLineageFamily } from '../../packages/shared/src/locations/districtLineage';
+import { DISTRICT_LINEAGE, canonicalDistrictKey, createLineage, lineageFamily, sameLineageFamily } from '../../packages/shared/src/locations/districtLineage';
 import { normalizeUgandaDistrict } from '../../packages/shared/src/locations/uganda';
+import { parseCsv, parseCsvRows, csvField } from '../../packages/shared/src/csv';
 import {
   CorridorAreaRecord,
   ParishRecord,
@@ -13,14 +14,14 @@ import {
   fulfilmentFlip,
   matchKey,
   matchParishesToAreas,
+  pointGuard,
   tokenKey,
+  unitKey,
 } from '../../apps/api/src/domain/delivery/ParishCentroids';
-import { parseCsv } from '../../apps/api/src/scripts/geo-import-parish-centroids';
 
 /**
- * Address system spec, Phase A: the pure half of the parish centroid import.
- * The spelling variants below are the real Kampala misses measured on
- * 2026-10-15 (350/390 exact; the rest are these).
+ * Address system spec, Phase A: the pure half of the parish centroid import,
+ * with the counter-examples the review board traced on 2026-10-15.
  */
 
 let nextId = 1;
@@ -72,6 +73,11 @@ describe('district lineage families', () => {
     expect(lineageFamily('Kabong').has('KARENGA')).toBe(true);
     expect(lineageFamily('Kassanda').has('MUBENDE')).toBe(true);
   });
+  it('a lineage built from data rows behaves like the constant (so the CSV can replace it)', () => {
+    const l = createLineage([{ child: 'Newtown', parent: 'Oldshire' }], { OLDSHYRE: 'OLDSHIRE' });
+    expect(l.family('Oldshyre').has('NEWTOWN')).toBe(true);
+    expect([...l.family('Elsewhere')]).toEqual(['ELSEWHERE']);
+  });
   it('a district nobody split is a family of one, and unknown names stay themselves', () => {
     expect([...lineageFamily('Kampala')]).toEqual(['KAMPALA']);
     expect([...lineageFamily('Wakiso')]).toEqual(['WAKISO']);
@@ -84,6 +90,22 @@ describe('name keys', () => {
     expect(matchKey('Ntaawo Ward')).toBe(matchKey('NTAAWO'));
     expect(matchKey('Nakivubo Shauliyako')).toBe(matchKey('NAKIVUBO-SHAURIYAKO'));
     expect(matchKey('Rubaga')).toBe(matchKey('LUBAGA'));
+    expect(matchKey('Kasangati Town Council')).toBe(matchKey('KASANGATI T.C.'));
+  });
+  it('tells numbered parishes apart, however the numeral is written (the fold collapses II into I)', () => {
+    expect(matchKey('Kibuye I I')).toBe(matchKey('KIBUYE II'));
+    expect(matchKey('Kibuye I I')).not.toBe(matchKey('KIBUYE I'));
+    expect(matchKey('Kololo I V')).toBe(matchKey('KOLOLO IV'));
+    expect(matchKey('Nakasero I I I')).toBe(matchKey('NAKASERO III'));
+    expect(matchKey('Bwaise 2')).toBe(matchKey('BWAISE II'));
+  });
+  it('joins dotted acronyms', () => {
+    expect(matchKey('U.P.K')).toBe(matchKey('UPK'));
+    expect(matchKey('I.T.E.K')).toBe(matchKey('ITEK'));
+  });
+  it('keeps the unit word as a tie-break key', () => {
+    expect(unitKey('Gombe Ward')).toBe('ward');
+    expect(unitKey('Gombe')).toBe('');
   });
   it('the same words in another order share a token key', () => {
     expect(tokenKey('University (Makerere)')).toBe(tokenKey('MAKERERE UNIVERSITY'));
@@ -97,7 +119,7 @@ describe('name keys', () => {
 });
 
 describe('matching corridor areas to 2016 parishes', () => {
-  it('exact, reordered and fuzzy spellings all land on the right parish, inside the district', () => {
+  it('exact, reordered and variant spellings all land on the right parish, inside the district', () => {
     const parishes = [
       parish('KAMPALA', 'NAKAWA', 'NTINDA'),
       parish('KAMPALA', 'MAKINDYE', 'BUGOLOBI'),
@@ -128,12 +150,41 @@ describe('matching corridor areas to 2016 parishes', () => {
     expect(by['kampala-civic'].parish.parish).toBe('CIVIC CENTER');
     expect(by['kampala-nateete'].parish.parish).toBe('NATETE');
     expect(by['kampala-kikaya'].parish.parish).toBe('KIKAAYA');
-    // The orthography fold already equates some of these (doubled vowels, o/u);
-    // the rest need the fuzzy step. Either way the score is real, never below the threshold.
     for (const slug of ['kampala-bogolobi', 'kampala-civic', 'kampala-nateete', 'kampala-kikaya']) {
       expect(['exact', 'fuzzy']).toContain(by[slug].method);
-      expect(by[slug].score).toBeGreaterThanOrEqual(0.6);
+      expect(by[slug].score).toBeGreaterThanOrEqual(0.7);
     }
+  });
+
+  it('numbered parishes resolve to their own number, never to each other', () => {
+    const parishes = [parish('KAMPALA', 'MAKINDYE', 'KIBUYE I'), parish('KAMPALA', 'MAKINDYE', 'KIBUYE II'), parish('KAMPALA', 'CENTRAL', 'KOLOLO IV'), parish('KAMPALA', 'CENTRAL', 'KOLOLO I')];
+    const out = match([area('k-kibuye-2', 'Kibuye I I', 'Kampala'), area('k-kibuye-1', 'Kibuye I', 'Kampala'), area('k-kololo-4', 'Kololo I V', 'Kampala')], parishes);
+    const by = Object.fromEntries(out.matched.map((m) => [m.areaSlug, [m.parish.parish, m.method]]));
+    expect(by['k-kibuye-2']).toEqual(['KIBUYE II', 'exact']);
+    expect(by['k-kibuye-1']).toEqual(['KIBUYE I', 'exact']);
+    expect(by['k-kololo-4']).toEqual(['KOLOLO IV', 'exact']);
+    expect(out.ambiguous).toEqual([]);
+    // A bare name against numbered parishes is ambiguous, not guessed.
+    expect(match([area('k-kololo', 'Kololo', 'Kampala')], parishes).ambiguous).toHaveLength(1);
+  });
+
+  it('"Gombe" and "Gombe Ward" are different parishes: the unit word breaks the tie', () => {
+    const parishes = [parish('WAKISO', 'GOMBE DIVISION', 'GOMBE'), parish('WAKISO', 'WAKISO TOWN COUNCIL', 'GOMBE WARD')];
+    const out = match([area('w-gombe', 'Gombe', 'Wakiso'), area('w-gombe-ward', 'Gombe Ward', 'Wakiso')], parishes);
+    const by = Object.fromEntries(out.matched.map((m) => [m.areaSlug, m.parish.parish]));
+    expect(by['w-gombe']).toBe('GOMBE');
+    expect(by['w-gombe-ward']).toBe('GOMBE WARD');
+  });
+
+  it('a fuzzy match needs the score AND a shared start: Kazo Nabweru is not Nabweru North', () => {
+    const parishes = [parish('WAKISO', 'NANSANA', 'KAZO WARD'), parish('WAKISO', 'NANSANA', 'NABWERU NORTH WARD'), parish('WAKISO', 'KIRA', 'NAMULONGE')];
+    const out = match([area('w-kazo-nabweru', 'Kazo Nabweru', 'Wakiso'), area('w-namugongo', 'Namugongo', 'Wakiso')], parishes);
+    expect(out.matched).toEqual([]);
+    expect(out.unmatched.sort()).toEqual(['w-kazo-nabweru', 'w-namugongo']);
+  });
+
+  it('short keys never fuzzy-match', () => {
+    expect(match([area('x-lugo', 'Lugo', 'Kampala')], [parish('KAMPALA', 'A', 'LUGOBA')]).unmatched).toEqual(['x-lugo']);
   });
 
   it('matches inside the lineage family, never across districts', () => {
@@ -143,16 +194,9 @@ describe('matching corridor areas to 2016 parishes', () => {
     expect(out.unmatched).toEqual(['kampala-kampala']);
   });
 
-  it("a parish the 2016 file lists under KABONG matches an area the shop files under Karenga", () => {
+  it('a parish the 2016 file lists under KABONG matches an area the shop files under Karenga', () => {
     const out = match([area('karenga-kapedo', 'Kapedo', 'Karenga')], [parish('KABONG', 'KAPEDO', 'KAPEDO')]);
     expect(out.matched.map((m) => m.areaSlug)).toEqual(['karenga-kapedo']);
-  });
-
-  it('records how a point was placed in the source reference', () => {
-    const p = parish('KAMPALA', 'NAKAWA', 'NTINDA');
-    expect(centroidSourceRef({ parish: p, method: 'exact', score: 1 })).toBe(p.pcode);
-    expect(centroidSourceRef({ parish: p, method: 'tokens', score: 0.95 })).toBe(`${p.pcode}#tokens`);
-    expect(centroidSourceRef({ parish: p, method: 'fuzzy', score: 0.714 })).toBe(`${p.pcode}#fuzzy:0.71`);
   });
 
   it('two parishes of one name in a district: the sub-county decides, or the area is ambiguous', () => {
@@ -164,29 +208,38 @@ describe('matching corridor areas to 2016 parishes', () => {
     expect(without.ambiguous[0]?.candidates).toHaveLength(2);
   });
 
-  it('a fuzzy tie is ambiguous, not guessed', () => {
-    const parishes = [parish('KAMPALA', 'A', 'KIBUYE I'), parish('KAMPALA', 'B', 'KIBUYE II')];
-    const out = match([area('k-kibuye', 'Kibuye', 'Kampala')], parishes);
-    expect(out.matched).toEqual([]);
-    expect(out.ambiguous).toHaveLength(1);
+  it('several DISTINCT area names on one parish share the polygon; a duplicate postcode row of one name does not', () => {
+    const seeta = parish('MUKONO', 'GOMA', 'SEETA');
+    const shared = match([area('m-seeta', 'Seeta', 'Mukono'), area('m-seeta-ward', 'Seeta Ward', 'Mukono')], [seeta]);
+    expect(shared.matched).toHaveLength(2);
+    expect(shared.matched.every((m) => m.sharedPolygon)).toBe(true);
+    const dup = match([area('k-kyanja-1', 'Kyanja', 'Kampala'), area('k-kyanja-2', 'Kyanja', 'Kampala')], [parish('KAMPALA', 'NAKAWA', 'KYANJA')]);
+    expect(dup.matched.every((m) => !m.sharedPolygon)).toBe(true);
   });
 
-  it('several areas on one parish are flagged as sharing the polygon', () => {
-    const parishes = [parish('MUKONO', 'GOMA', 'SEETA')];
-    const out = match([area('m-seeta-a', 'Seeta', 'Mukono'), area('m-seeta-b', 'Seeta Ward', 'Mukono')], parishes);
-    expect(out.matched).toHaveLength(2);
-    expect(out.matched.every((m) => m.sharedPolygon)).toBe(true);
+  it('records how a point was placed in the source reference, keyed by the unique record id', () => {
+    const p = parish('KAMPALA', 'NAKAWA', 'NTINDA');
+    expect(centroidSourceRef({ parish: p, method: 'exact', score: 1 })).toBe(`${p.objectId}:${p.pcode}`);
+    expect(centroidSourceRef({ parish: p, method: 'tokens', score: 0.95 })).toBe(`${p.objectId}:${p.pcode}#tokens`);
+    expect(centroidSourceRef({ parish: p, method: 'fuzzy', score: 0.714 })).toBe(`${p.objectId}:${p.pcode}#fuzzy:0.71`);
   });
 });
 
-describe('expected error, area kind, bands', () => {
-  it('derives the error from the polygon size and never invents one', () => {
-    expect(expectedErrorMetres(1.2)).toBe(412);
-    expect(expectedErrorMetres(90.759)).toBe(3583);
+describe('expected error, point guard, area kind, bands', () => {
+  it('derives a p90-comparable error from the polygon size and shape and never invents one', () => {
+    expect(expectedErrorMetres(1.2)).toBe(587);
+    expect(expectedErrorMetres(1.2, { w: 5.2, h: 2.4 })).toBe(1653); // an elongated Mutungo-shaped box
     expect(expectedErrorMetres(0)).toBeNull();
     expect(expectedErrorMetres(Number.NaN)).toBeNull();
   });
-  it('classifies the postcode rows that are not neighbourhoods', () => {
+  it('refuses a centre that is in the lake or nowhere', () => {
+    expect(pointGuard(parish('WAKISO', 'ENTEBBE', 'KIGUNGU WARD', { areaKm2: 203 }))).toBe('too_large');
+    expect(pointGuard(parish('WAKISO', 'BUSSI', 'TEBANKIZA', { villageHq: 'WATER' }))).toBe('water_body');
+    expect(pointGuard(parish('MUKONO', 'MPUNGE', 'LULAGWE', { villageHq: 'LAKE VICTORIA' }))).toBe('water_body');
+    expect(pointGuard(parish('KAMPALA', 'MAKINDYE', 'GGABA', { areaKm2: 2, bbox: { s: 0.2, w: 32.6, n: 0.25, e: 32.65 } }))).toBe('sparse_polygon');
+    expect(pointGuard(parish('KAMPALA', 'NAKAWA', 'NTINDA'))).toBe('ok');
+  });
+  it('classifies the postcode rows that are not neighbourhoods, and never a housing estate', () => {
     expect(areaKindFor('Luzira Prisons')).toBe('institution');
     expect(areaKindFor('University (Makerere)')).toBe('institution');
     expect(areaKindFor('Nsambya Police Barracks')).toBe('barracks');
@@ -195,8 +248,9 @@ describe('expected error, area kind, bands', () => {
     expect(areaKindFor('Lake Mburo')).toBe('reserve');
     expect(areaKindFor('Bussi Island')).toBe('island');
     expect(areaKindFor('Butta Ward')).toBe('ward');
+    expect(areaKindFor('Nsambya Estate')).toBe('neighbourhood');
+    expect(areaKindFor('Kasangati T.C.')).toBe('neighbourhood');
     expect(areaKindFor('Ntinda')).toBe('neighbourhood');
-    expect(areaKindFor('Kajjansi')).toBe('neighbourhood');
   });
   it('maps straight-line km to the band whose edges contain it', () => {
     expect(bandForStraightKm(0)).toBe('B0');
@@ -210,17 +264,27 @@ describe('expected error, area kind, bands', () => {
 });
 
 describe('agreement with the hand-assigned band', () => {
-  it('consistent inside the band, inside the tolerance, or once the detour allowance is applied', () => {
-    expect(classifyAgainstBand({ seededBand: 'B2', km: 7, method: 'exact', sharedPolygon: false }).verdict).toBe('consistent');
-    expect(classifyAgainstBand({ seededBand: 'B2', km: 10.5, method: 'exact', sharedPolygon: false }).verdict).toBe('consistent'); // 9 + 2
-    expect(classifyAgainstBand({ seededBand: 'B3', km: 7.5, method: 'exact', sharedPolygon: false }).verdict).toBe('consistent'); // ×1.3 = 9.75
+  const clean = { method: 'exact' as const, sharedPolygon: false, expectedErrorM: 500 };
+  it('consistent when the seeded band is the band at the km, or at the km times the detour allowance', () => {
+    expect(classifyAgainstBand({ seededBand: 'B2', km: 7, ...clean }).verdict).toBe('consistent');
+    expect(classifyAgainstBand({ seededBand: 'B3', km: 7.5, ...clean }).verdict).toBe('consistent'); // ×1.3 = 9.75
   });
-  it('a clean exact match far outside the band makes the BAND suspect; a fuzzy one makes the MATCH suspect', () => {
-    const band = classifyAgainstBand({ seededBand: 'B1', km: 20, method: 'exact', sharedPolygon: false });
+  it('adjacent when the point is within its own error of the band edge, so nobody re-bands on noise', () => {
+    expect(classifyAgainstBand({ seededBand: 'B2', km: 9.3, ...clean }).verdict).toBe('adjacent');
+    expect(classifyAgainstBand({ seededBand: 'B2', km: 9.3, ...clean, expectedErrorM: 100 }).verdict).toBe('suspect_band'); // tolerance floor 250 m
+    expect(classifyAgainstBand({ seededBand: 'B1', km: 5.2, ...clean }).verdict).toBe('adjacent'); // just past B1's far edge
+    expect(classifyAgainstBand({ seededBand: 'B2', km: 4.8, ...clean }).verdict).toBe('consistent'); // the detour allowance explains a near point
+  });
+  it('a clean match far outside the band makes the BAND suspect; a weak fuzzy or shared one makes the MATCH suspect', () => {
+    const band = classifyAgainstBand({ seededBand: 'B1', km: 20, ...clean });
     expect(band.verdict).toBe('suspect_band');
     expect(band.bandAtKm).toBe('B4');
-    expect(classifyAgainstBand({ seededBand: 'B1', km: 20, method: 'fuzzy', sharedPolygon: false }).verdict).toBe('suspect_match');
+    expect(classifyAgainstBand({ seededBand: 'B1', km: 20, method: 'fuzzy', score: 0.72, sharedPolygon: false }).verdict).toBe('suspect_match');
+    expect(classifyAgainstBand({ seededBand: 'B1', km: 20, method: 'fuzzy', score: 0.9, sharedPolygon: false }).verdict).toBe('suspect_band');
     expect(classifyAgainstBand({ seededBand: 'B1', km: 20, method: 'exact', sharedPolygon: true }).verdict).toBe('suspect_match');
+  });
+  it('the detour allowance explains a point that is too near, never one that is too far', () => {
+    expect(classifyAgainstBand({ seededBand: 'B1', km: 11, ...clean }).verdict).toBe('suspect_band'); // ×1.3 only moves it further
   });
   it('says when a re-band would change who delivers', () => {
     expect(fulfilmentFlip('B3', 'B5', 'B4')).toBe('leaves_rider_range');
@@ -231,12 +295,15 @@ describe('agreement with the hand-assigned band', () => {
   });
 });
 
-describe('the CSV reader', () => {
-  it('handles quoted commas, doubled quotes and CRLF', () => {
-    const rows = parseCsv('a,b\r\n"x, y","say ""hi"""\r\n1,2\n');
-    expect(rows).toEqual([
+describe('the shared CSV grammar', () => {
+  it('handles quoted commas, doubled quotes, CRLF, comment lines and the export formula guard', () => {
+    expect(parseCsv('# provenance line\na,b\r\n"x, y","say ""hi"""\r\n1,2\n')).toEqual([
       { a: 'x, y', b: 'say "hi"' },
       { a: '1', b: '2' },
     ]);
+    expect(parseCsvRows("k\n'-leading\n")).toEqual([['k'], ['-leading']]);
+    expect(csvField('Kiwatule, Upper')).toBe('"Kiwatule, Upper"');
+    expect(csvField('B2')).toBe('B2');
+    expect(csvField(null)).toBe('');
   });
 });

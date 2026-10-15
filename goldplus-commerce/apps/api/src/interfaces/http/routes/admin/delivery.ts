@@ -528,10 +528,25 @@ routes.post('/corridors/apply', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_
   const result = await Registry.getInstance().applyCorridorCsvUseCase.execute({
     csv: String(body?.csv ?? ''),
     confirmation: String(body?.confirmation ?? ''),
+    reason: String(body?.reason ?? ''),
     actorId: (c.get('user') as { id: string }).id,
   });
   if (!result.ok) {
     return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
+  }
+  return c.json({ success: true, data: result });
+});
+
+/** Revert an applied corridor batch in one action (contract #9); refused if any of its areas moved again since. */
+routes.post('/corridors/batches/:batchId/revert', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PUBLISH]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const result = await Registry.getInstance().revertCorridorBatchUseCase.execute({
+    batchId: String(c.req.param('batchId') ?? ''),
+    reason: String(body?.reason ?? ''),
+    actorId: (c.get('user') as { id: string }).id,
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, result.code === 'NOT_FOUND' ? 404 : 400);
   }
   return c.json({ success: true, data: result });
 });

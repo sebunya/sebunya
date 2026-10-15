@@ -1,0 +1,10 @@
+# source=spellings other datasets use for a district the shop spells differently; add a row the first time a dataset's district fails to match, never a guess
+# vintage=2026-10 note=variant and canonical are upper-cased on load; canonical must be a name the shop's district list knows
+variant,canonical,dataset,note
+KABONG,KAABONG,ubos-parishes-2016,the 2016 shapefile's spelling
+MADI OKOLLO,MADI-OKOLLO,shop-aliases,hyphen variant
+KASANDA,KASSANDA,gazette,official gazette spelling vs the shop's
+SSEMBABULE,SEMBABULE,ec-2025,EC's current spelling; the shop displays Sembabule
+LUWEERO,LUWERO,ec-2025,EC's current spelling; the shop displays Luwero
+KAMPALA CAPITAL CITY,KAMPALA,kcca,
+KAMPALA CITY,KAMPALA,customers,

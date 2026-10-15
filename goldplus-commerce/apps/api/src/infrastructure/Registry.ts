@@ -324,7 +324,7 @@ import { DeliveryAreaResolver, DeliveryWizardAreaReader } from './delivery/Deliv
 import { DrizzleDeliveryQuotingRepository } from './db/repositories/DrizzleDeliveryQuotingRepository';
 import { DrizzleDeliveryVarianceRepository } from './db/repositories/DrizzleDeliveryVarianceRepository';
 import { DrizzleDeliveryCalibrationRepository } from './db/repositories/DrizzleDeliveryCalibrationRepository';
-import { ApplyCorridorCsvUseCase, DryRunCorridorCsvUseCase } from '../application/use-cases/delivery/DeliveryCorridorCsvUseCase';
+import { ApplyCorridorCsvUseCase, DryRunCorridorCsvUseCase, RevertCorridorBatchUseCase } from '../application/use-cases/delivery/DeliveryCorridorCsvUseCase';
 import {
   AcceptCalibrationProposalUseCase,
   RejectCalibrationProposalUseCase,
@@ -1454,7 +1454,23 @@ export class Registry {
   public readonly fulfilmentDeliveryRepo = new DrizzleFulfilmentDeliveryRepository();
   public readonly fulfilmentReportRepo = new DrizzleFulfilmentReportRepository();
   public readonly getDeliveryHistoryUseCase = new GetDeliveryHistoryUseCase(this.fulfilmentRepo, this.fulfilmentDeliveryRepo);
-  public readonly recordDeliveryUseCase = new RecordDeliveryUseCase(this.fulfilmentRepo, this.fulfilmentDeliveryRepo, this.auditRepo, this.orderTransitionService);
+  public readonly recordDeliveryUseCase = new RecordDeliveryUseCase(this.fulfilmentRepo, this.fulfilmentDeliveryRepo, this.auditRepo, this.orderTransitionService, {
+    // 0189: the quote capture learns the outcome. actual_minutes is dispatch → handover (one outbound leg + last
+    // mile), which is the only duration the shop observes; MODEL.md PART 4 states the comparison basis.
+    recordAttempt: async (input) => {
+      const dispatch = await this.fulfilmentDispatchRepo.getByTask(input.taskId);
+      const dispatchedAt = dispatch?.dispatchTime ?? null;
+      const actualMinutes =
+        input.deliveredAt && dispatchedAt ? Math.round(((input.deliveredAt.getTime() - dispatchedAt.getTime()) / 60_000) * 100) / 100 : null;
+      await this.deliveryCaptureRepo.upsert({
+        orderId: input.orderId,
+        ...(dispatchedAt ? { dispatchedAt } : {}),
+        ...(input.completed ? { deliveredAt: input.deliveredAt, firstAttemptSuccess: input.attempt === 1 } : {}),
+        ...(input.failedFirstAttempt ? { firstAttemptSuccess: false } : {}),
+        ...(actualMinutes !== null && actualMinutes >= 0 ? { actualMinutes } : {}),
+      });
+    },
+  });
   public readonly getFulfilmentReportUseCase = new GetFulfilmentReportUseCase(this.fulfilmentReportRepo);
 
   // Customer DNA & NBA: canonical profile projection + next-best action.
@@ -1782,38 +1798,58 @@ export class Registry {
   // the apply half: one transaction, one audit row, refused without the digest
   // of the dry run it was shown.
   private readonly corridorCsvRepo = {
+    // Compare-and-set per field under the corridor write lock (the parish import takes the same lock): a row that
+    // no longer carries its `from` value aborts the whole batch, so the audit row is always true.
     applyChanges: async (changes: Array<{ areaSlug: string; field: string; from: string; to: string }>) => {
       const { db } = await import('./db/client');
       const { sql } = await import('drizzle-orm');
-      let touched = 0;
+      const { CorridorChangedError } = await import('../application/use-cases/delivery/DeliveryCorridorCsvUseCase');
+      const rowCount = (r: unknown) => Number((r as { count?: number })?.count ?? 0);
+      const areas = new Set<string>();
       await db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext('delivery_corridor_apply'))`);
         for (const ch of changes) {
           const slug = ch.areaSlug;
+          let r: unknown;
           switch (ch.field) {
             case 'corridor':
-              await tx.execute(sql`update delivery_corridor set corridor = ${ch.to}, updated_at = now() where area_slug = ${slug}`);
+              r = await tx.execute(sql`update delivery_corridor set corridor = ${ch.to}, data_version = data_version + 1, updated_at = now()
+                where area_slug = ${slug} and corridor = ${ch.from}`);
               break;
             case 'distance_band':
-              await tx.execute(sql`update delivery_corridor set distance_band = ${ch.to}, updated_at = now() where area_slug = ${slug}`);
+              r = await tx.execute(sql`update delivery_corridor set distance_band = ${ch.to}, data_version = data_version + 1, updated_at = now()
+                where area_slug = ${slug} and distance_band = ${ch.from}`);
               break;
             case 'access_mode':
-              await tx.execute(sql`update delivery_corridor set access_mode = ${ch.to}, updated_at = now() where area_slug = ${slug}`);
+              r = await tx.execute(sql`update delivery_corridor set access_mode = ${ch.to}, data_version = data_version + 1, updated_at = now()
+                where area_slug = ${slug} and access_mode = ${ch.from}`);
               break;
             case 'serviceable':
-              await tx.execute(sql`update delivery_corridor set serviceable = ${ch.to === 'true'}, updated_at = now() where area_slug = ${slug}`);
+              r = await tx.execute(sql`update delivery_corridor set serviceable = ${ch.to === 'true'}, data_version = data_version + 1, updated_at = now()
+                where area_slug = ${slug} and serviceable = ${ch.from === 'true'}`);
               break;
-            case 'fulfilment_mode':
-              await tx.execute(
-                sql`update delivery_corridor set fulfilment_mode = ${ch.to === '(derived)' ? null : ch.to}, updated_at = now() where area_slug = ${slug}`,
-              );
+            case 'fulfilment_mode': {
+              const to = ch.to === '(derived)' ? null : ch.to;
+              const from = ch.from === '(derived)' ? null : ch.from;
+              r = await tx.execute(sql`update delivery_corridor set fulfilment_mode = ${to}, data_version = data_version + 1, updated_at = now()
+                where area_slug = ${slug} and fulfilment_mode is not distinct from ${from}`);
               break;
+            }
             default:
               throw new Error(`corridor apply: unknown field ${ch.field}`);
           }
-          touched += 1;
+          if (rowCount(r) !== 1) throw new CorridorChangedError(slug);
+          areas.add(slug);
         }
       });
-      return touched;
+      return areas.size;
+    },
+    findBatch: async (batchId: string) => {
+      const rows = await this.auditRepo.findByEntity('delivery_corridor_batch', batchId);
+      const applied = rows.find((r) => r.action === 'DELIVERY_CORRIDORS_APPLIED');
+      const state = (applied as { newState?: { changes?: Array<{ areaSlug: string; field: string; from: string; to: string }>; reason?: string } } | undefined)?.newState;
+      if (!state?.changes) return null;
+      return { changes: state.changes, reason: state.reason ?? null };
     },
     currentCorridors: async () => {
       const { db } = await import('./db/client');
@@ -1838,6 +1874,7 @@ export class Registry {
   };
   public readonly dryRunCorridorCsvUseCase = new DryRunCorridorCsvUseCase(this.corridorCsvRepo);
   public readonly applyCorridorCsvUseCase = new ApplyCorridorCsvUseCase(this.corridorCsvRepo, this.auditRepo);
+  public readonly revertCorridorBatchUseCase = new RevertCorridorBatchUseCase(this.corridorCsvRepo, this.auditRepo);
 
   // The learning loop (PART 4). Proposes, never applies.
   public readonly deliveryCalibrationRepo = new DrizzleDeliveryCalibrationRepository();
@@ -1970,6 +2007,7 @@ export class Registry {
           accuracyTier: q.explanation.accuracyTier,
           centroidKm: q.explanation.centroidKm,
           centroidExpectedErrorM: q.explanation.centroidExpectedErrorM,
+          distanceSource: q.explanation.distanceSource,
           configVersionId: q.explanation.configVersionId,
           aliasUsed: outcome.resolved?.aliasUsed ?? null,
           // 0152: what the hour and detour fits learn from. The straight line is

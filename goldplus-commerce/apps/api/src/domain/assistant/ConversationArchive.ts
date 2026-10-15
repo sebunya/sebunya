@@ -31,6 +31,10 @@ export function redact(raw: string): string {
     .replace(/\b(?:\d[ -]?){13,19}\b/g, '[card number removed]')
     // Uganda national ID number (NIN): CM or CF and 12 letters or digits.
     .replace(/\bC[MF][0-9A-Z]{12}\b/gi, '[ID number removed]')
+    // A shared location is a front door. Coordinates and map links never sit in the archive or reach the model
+    // (address system review, 2026-10-15); the delivery module keeps the pin where retention applies.
+    .replace(/-?\d{1,2}\.\d{3,}\s*,\s*-?\d{1,3}\.\d{3,}/g, '[coordinates removed]')
+    .replace(/https?:\/\/(?:www\.)?(?:maps\.google\.[a-z.]+|goo\.gl\/maps|maps\.app\.goo\.gl|google\.[a-z.]+\/maps)\S*/gi, '[map link removed]')
     .replace(/\b(pin|otp|one[- ]time (?:pin|code)|password|passcode|cvv|cvc|security code|m-?pin)\b(\s*(?:is|was|:|=|-)?\s*)(\S{3,32})/gi, (_m, k: string, sep: string) => `${k}${sep}[removed]`)
     .trim()
     .slice(0, MAX_ARCHIVED_MESSAGE);

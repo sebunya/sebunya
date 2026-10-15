@@ -47,9 +47,13 @@ export interface IDeliveryReportRepository {
 /** What the repository returns; JSON columns may arrive parsed or as text depending on the driver. */
 export interface LocationAccuracyRaw {
   quotes: number;
+  /** Quotes for own-rider destinations: the denominator of the model-priced share. */
+  own_rider_quotes?: number;
   model_priced: number;
   minutes_known: number;
   median_abs_minutes: string | number | null;
+  /** Median of (actual − expected): the sign says which way the six numbers are wrong. */
+  median_signed_minutes?: string | number | null;
   first_attempt_ok: number;
   first_attempt_known: number;
   areas: number;
@@ -61,9 +65,12 @@ export interface LocationAccuracyRaw {
 export interface LocationAccuracyReport {
   windowDays: number;
   quotes: number;
+  ownRiderQuotes: number;
   modelPricedPct: number | null;
   minutesKnown: number;
   medianAbsMinutes: number | null;
+  /** Positive = deliveries take longer than quoted. */
+  medianSignedMinutes: number | null;
   firstAttemptKnown: number;
   firstAttemptPct: number | null;
   tiers: Array<{ tier: string; n: number; pct: number }>;
@@ -94,10 +101,10 @@ export class DeliveryLocationAccuracyReportUseCase {
       .map((s) => ({ source: s.source ?? 'none', n: Number(s.n ?? 0), pct: pct(Number(s.n ?? 0), quotes) ?? 0 }))
       .sort((a, b) => b.n - a.n);
     const minutesKnown = Number(raw.minutes_known ?? 0);
-    const median =
-      raw.median_abs_minutes === null || raw.median_abs_minutes === undefined || !Number.isFinite(Number(raw.median_abs_minutes))
-        ? null
-        : Math.round(Number(raw.median_abs_minutes) * 10) / 10;
+    const tenth = (v: string | number | null | undefined): number | null =>
+      v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Math.round(Number(v) * 10) / 10;
+    const median = tenth(raw.median_abs_minutes);
+    const ownRider = Number(raw.own_rider_quotes ?? quotes);
     const firstAttemptKnown = Number(raw.first_attempt_known ?? 0);
     const note =
       quotes === 0
@@ -108,9 +115,11 @@ export class DeliveryLocationAccuracyReportUseCase {
     return {
       windowDays: 28,
       quotes,
-      modelPricedPct: pct(Number(raw.model_priced ?? 0), quotes),
+      ownRiderQuotes: ownRider,
+      modelPricedPct: pct(Number(raw.model_priced ?? 0), ownRider),
       minutesKnown,
       medianAbsMinutes: median,
+      medianSignedMinutes: tenth(raw.median_signed_minutes),
       firstAttemptKnown,
       firstAttemptPct: pct(Number(raw.first_attempt_ok ?? 0), firstAttemptKnown),
       tiers,

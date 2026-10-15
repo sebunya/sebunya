@@ -1,0 +1,9 @@
+# Every data file under data/geo, with what it describes (vintage) and its checksum. An importer verifies a file against
+# its row here (a mismatch is still a hard stop) and copies the row into geo_data_source_run. A refresh is a new file plus
+# one line here, reviewed in a data-only pull request; nothing in code pins a checksum.
+file,source_name,vintage,md5,rows,licence,derived_on,note
+ug_parishes_2016_centroids_wgs84.csv,ubos-parishes-2016,2016-01-01,21c31d6a7c04ed6213f24b56d7da0fad,7566,UBOS public data,2026-10-15,geometry only; names are 2016 spellings; 23 PCODEs duplicated so objectid is the key
+district-lineage.csv,district-lineage,2025-09-01,,38,public record,2026-10-15,reviewed constant; four July-2025 districts and Tororo City are proposed until gazetted
+district-name-variants.csv,district-name-variants,2026-10-01,,7,shop,2026-10-15,
+area-kind-rules.csv,area-kind-rules,2026-10-01,,7,shop,2026-10-15,
+acceptance-areas.csv,acceptance-areas,2026-10-01,,10,shop,2026-10-15,

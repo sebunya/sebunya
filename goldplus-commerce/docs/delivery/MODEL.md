@@ -73,6 +73,17 @@ hand-assigned bands first) or `measured`. Re-banding an area from its measured
 km is a corridor-file change through the Control Centre dry run, never a
 side effect of the import.
 
+**Comparison basis (0189, from the review board).** `expected_minutes` is a
+round trip plus handling; the only duration the shop observes is dispatch →
+handover (`fulfilment_dispatches.dispatch_time` → `fulfilment_deliveries.delivered_at`),
+one outbound leg plus the last mile, which is what `actual_minutes` on the
+capture now records. The two are therefore NOT on the same basis: a perfect
+model shows a gap of roughly handling plus half the travel. Read the median
+signed error as a bias with that offset in mind, and fit `corridor_factor` and
+`hour_factor` on the travel component only (`actual − last_mile` against
+`travel / 2`) until a rider-returned event exists. `first_attempt_success` is
+written false on a failed first attempt, so the rate is a real rate.
+
 ## 3.3 The six launch numbers
 
 These are the only values that must be set before the module goes live. Every

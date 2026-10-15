@@ -36,6 +36,23 @@ changes in one transaction and one audit row (`DELIVERY_CORRIDORS_APPLIED`); the
 file** card (paste → Dry run → Apply). The importer's `--reband-csv` writes the file for it. And a **Location
 accuracy** panel on the calibration page shows the four numbers of spec §0 from the capture's own columns.
 
+**Review board, 2026-10-15 (eleven independent reviews; synthesis in `docs/location/REVIEW_BOARD_2026-10-15.md`).**
+What changed in this PR because of it: numbered parishes (Kibuye I/II, Kololo I–IV) and dotted acronyms are told
+apart before the orthography fold collapses them; "Gombe" and "Gombe Ward" are different parishes; a fuzzy match
+needs the score (≥ 0.7) and a shared first letter, never a lone 0.61; the band verdict is by band, with the point's
+own error as the edge tolerance and a new "adjacent" list; a **point guard** refuses shoreline and water-body
+polygons whose centre is in the lake; the expected error is a p90 (disc or bounding-box RMS) so it is comparable
+with pins later; "Estate" is a neighbourhood; `area_kind` has provenance and all 5,805 gazetteer rows are classified;
+the source reference is keyed by the shapefile's unique record id; counters come from the rows the database says it
+wrote; both corridor writers take one advisory lock; the corridor dry run reads the shop's own quoted export, refuses
+duplicate rows, apply needs a reason and a batch reverts in one action; **delivery outcomes now reach the quote
+capture** (`delivered_at`, `actual_minutes` from the dispatch time, `first_attempt_success` false on a failed first
+attempt), without which two of the four numbers and the whole calibration loop had no data; the report windows
+minutes and attempts on the delivery date, measures the model-priced share against own-rider quotes and shows the
+signed median; coordinates and map links are redacted from the assistant archive; and the lineage, name variants,
+area-kind rules, acceptance areas and file checksums are **data files under `data/geo` with a MANIFEST**, every run
+recorded in `geo_data_source_run` with vintage, checksum and parameters.
+
 Not in A.1 (deliberately): accepting unknown districts at checkout (the boundary refuses them today on purpose; a
 decision for the owner, spec §7.1), the fee ladder (spec §4.5, decision 1), the fee-step counter, `ug_district` as a
 table (the lineage is a reviewed constant until the admin form exists). Points placed by a fuzzy name match are
@@ -99,6 +116,7 @@ cd /opt/goldplus/app/goldplus-commerce
 git fetch -q origin deploy/price-floor-145k
 SHA=$(git rev-parse --short=8 origin/deploy/price-floor-145k)
 WT=/tmp/mig-$SHA
+git worktree prune
 [ -d "$WT" ] || git worktree add --detach "$WT" "$SHA" >/dev/null
 IMG=goldplus-migrator:$SHA
 docker image inspect "$IMG" >/dev/null 2>&1 || docker build -q --target builder -f "$WT/goldplus-commerce/Dockerfile.api" -t "$IMG" "$WT/goldplus-commerce" >/dev/null
@@ -106,7 +124,7 @@ mkdir -p /root/geo-reports
 docker run --rm --network goldplus-commerce_default --env-file .env.production \
   -e DATABASE_URL="$(grep -E '^DATABASE_URL=' .env.production | cut -d= -f2-)" \
   -v "$WT/goldplus-commerce/data:/app/data:ro" -v /root/geo-reports:/app/reports \
-  "$IMG" pnpm -F @goldplus/api geo:parish-centroids --report=/app/reports/parish-centroids-dryrun-$SHA.csv --reband-csv=/app/reports/parish-reband-$SHA.csv \
+  "$IMG" pnpm -F @goldplus/api geo:parish-centroids --by=owner --report=/app/reports/parish-centroids-dryrun-$SHA.csv --reband-csv=/app/reports/parish-reband-$SHA.csv \
   2>&1 | tee /root/geo-reports/parish-centroids-dryrun-$SHA.log | tail -150
 EOF
 ```
@@ -114,10 +132,16 @@ EOF
 The same numbers appear in the Control Centre once the import has applied (Step 4): `/admin/delivery/calibration` →
 Location accuracy.
 
-What to look for: `matched N/362` (89% is expected by exact name; folding should take it past 95%), the **suspect
-BAND** list (exact matches whose point is nowhere near the band they were given: the bands most worth re-checking),
-and the ten acceptance areas with their km. `suspect MATCH` and `ambiguous` go to `/admin/locations` later; nothing
-is done with them in Phase A.
+What to look for: the parameter line (allowance, fuzzy threshold, lineage rows, name variants) so a later reader
+knows what produced the run; `matched N/362` and how many the **point guard refused** (shoreline parishes whose
+centre is in the lake: Kigungu, Nkumba, Kisubi, Busabala, Bussi, Koome, Ggaba, Luzira — these need a manual point,
+not a centroid); the **suspect BAND** list (clean matches whose point is in another band and not near an edge: the
+bands most worth re-checking); the **adjacent** list (within the point's own error of an edge: read, never
+re-banded); and the acceptance areas, which resolve through the shop's aliases as well as area names (Najjera,
+Kajjansi, Munyonyo and Mukono town are villages inside bigger 2016 parishes, so they print either via an alias or
+as a named gap). `suspect MATCH` and `ambiguous` go to `/admin/locations` later; nothing is done with them in
+Phase A. Every run, dry or applied, writes a row to `geo_data_source_run` with the file's checksum, vintage and
+parameters.
 
 ## Step 4 — APPLY (stores the centroids; still no fee change)
 
@@ -128,9 +152,14 @@ Same block with `--apply`. Idempotent: run it twice and the second reports `chan
 ssh goldplus-prod 'bash -s' <<'EOF'
 set -euo pipefail
 cd /opt/goldplus/app/goldplus-commerce
+git fetch -q origin deploy/price-floor-145k
 SHA=$(git rev-parse --short=8 origin/deploy/price-floor-145k)
 WT=/tmp/mig-$SHA
+git worktree prune
+[ -d "$WT" ] || git worktree add --detach "$WT" "$SHA" >/dev/null
 IMG=goldplus-migrator:$SHA
+docker image inspect "$IMG" >/dev/null 2>&1 || docker build -q --target builder -f "$WT/goldplus-commerce/Dockerfile.api" -t "$IMG" "$WT/goldplus-commerce" >/dev/null
+mkdir -p /root/geo-reports
 docker run --rm --network goldplus-commerce_default --env-file .env.production \
   -e DATABASE_URL="$(grep -E '^DATABASE_URL=' .env.production | cut -d= -f2-)" \
   -v "$WT/goldplus-commerce/data:/app/data:ro" -v /root/geo-reports:/app/reports \
@@ -153,9 +182,11 @@ shape, with only the **suspect-band** rows carrying the band their measured poin
 2. Open it, read the rows the dry-run log listed under *suspect BAND*, and delete the line of any area you do not
    want moved (a deleted line is simply "no change" to the dry run).
 3. `/admin/delivery` → **Corridor file** → paste the file → **Dry run**. It lists every band that would change and
-   refuses any malformed row.
-4. **Apply**. One transaction, one audit row; the quote cache turns over within a minute. The Control Centre's
-   change history and the audit log show what moved.
+   refuses any malformed or duplicated row. The shop's own export (quoted cells) reads back the same way.
+4. **Apply**, with a reason (kept with the change, contract #9). One transaction under the corridor write lock, each
+   row compare-and-set on the value the dry run showed, one audit row; the quote cache turns over within a minute.
+   The message names the batch id; **reverting that batch is one action** (the batch is refused for revert only if
+   one of its areas moved again since). Lake and island areas are never in the proposal file.
 
 Fees for the moved areas change at their next quote (contract #5: a quote already given stays). Customers in areas
 that were in the wrong band were paying the wrong fee; that is what this step corrects.
@@ -168,6 +199,13 @@ that were in the wrong band were paying the wrong fee; that is what this step co
 
 ## Rollback
 
-Columns are additive and unread by older code: `scripts/deploy-prod.sh <previous sha> api web` is a full rollback of
-behaviour; the columns can stay. To undo the data only:
-`update delivery_corridor set centroid_lat = null, centroid_lng = null, centroid_source = null, centroid_source_ref = null, centroid_expected_error_m = null, centroid_shared_polygon = false, centroid_updated_at = null where centroid_source = 'parish_centroid'`.
+Columns are additive and unread by older code, so the columns can stay. **`deploy-prod.sh` refuses a sha that is not
+the deploy branch's tip**, so "roll the previous sha" does not work: revert the PR on `deploy/price-floor-145k`
+(`gh pr revert`, or a revert commit) and roll the new tip with the usual block. Data, in order:
+1. Re-bands applied from the Corridor file card: revert the batch (`POST /admin/delivery/corridors/batches/<batchId>/revert`
+   with a reason; the batch id is in the apply message and in the audit log under `DELIVERY_CORRIDORS_APPLIED`). It is
+   refused if any of those areas moved again since, and then the audit row's `changes` (from → to) is the record to
+   undo by hand.
+2. Centroids: `update delivery_corridor set centroid_lat = null, centroid_lng = null, centroid_source = null, centroid_source_ref = null, centroid_expected_error_m = null, centroid_shared_polygon = false, centroid_updated_at = null where centroid_source = 'parish_centroid'`.
+3. Area kinds the import set: `update ug_area set area_kind = 'neighbourhood' where area_kind_source = 'pattern'`.
+Nothing the import wrote changes a fee while `distance_source` is `band_midpoint`, so a rollback is never urgent.

@@ -48,12 +48,12 @@ if (Astro.request.method === "POST") {
       const res = await fetch(`${apiBase}${path}`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ csv: corridorCsvText, confirmation: String(form.get("confirmation") || "") }),
+        body: JSON.stringify({ csv: corridorCsvText, confirmation: String(form.get("confirmation") || ""), reason: String(form.get("reason") || "").trim() }),
       });
       const json = await res.json().catch(() => null);
       if (intent === "corridor-apply") {
         notice = json?.success
-          ? { kind: "success", text: `Applied: ${json.data.applied} field change(s) across ${json.data.areas} area(s), as one audited change.` }
+          ? { kind: "success", text: `Applied: ${json.data.applied} field change(s) across ${json.data.areas} area(s), as one audited change (batch ${json.data.batchId}). To undo it, revert that batch.` }
           : { kind: "error", text: json?.error?.message || "Could not apply the file." };
         corridorDryRun = null;
         if (json?.success) corridorCsvText = "";
@@ -262,6 +262,9 @@ const tierLabel: Record<number, string> = { 1: "One approver", 2: "Needs a secon
                   <input type="hidden" name="intent" value="corridor-apply" />
                   <input type="hidden" name="confirmation" value={corridorDryRun.confirmation} />
                   <textarea name="csv" class="hidden" aria-hidden="true">{corridorCsvText}</textarea>
+                  <label class="block text-xs text-gray-700 mb-2">Why (kept with the change)
+                    <input name="reason" required minlength="5" maxlength="200" placeholder="e.g. parish points put Busabala in B3, dry run 2026-10-16" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" />
+                  </label>
                   <button type="submit" class="bg-brand-dark text-white text-[10px] font-black uppercase tracking-widest px-3 py-2.5 rounded-lg hover:bg-black">
                     Apply these {corridorDryRun.changes.length} change(s)
                   </button>

@@ -72,6 +72,7 @@ suite('parish centroid import (real PostgreSQL)', () => {
     if (!raw) return;
     const all = Object.values(slugs);
     await raw`delete from delivery_corridor where area_slug = any(${all})`;
+    await raw`delete from geo_data_source_run where file_name in ('parishes.csv', 'lake.csv')`;
     await raw`delete from ug_area where area_slug = any(${all})`;
     await raw`delete from delivery_origin where origin_code = ${originCode}`;
     await raw.end({ timeout: 5 });
@@ -105,9 +106,15 @@ suite('parish centroid import (real PostgreSQL)', () => {
     expect(Number(ntinda.centroid_lat)).toBeCloseTo(0.3467, 4);
     expect(Number(ntinda.centroid_lng)).toBeCloseTo(32.6181, 4);
     expect(ntinda.centroid_source).toBe('parish_centroid');
-    expect(ntinda.centroid_source_ref).toContain('NTINDA');
-    expect(ntinda.centroid_source_ref).not.toContain('#'); // an exact match carries the bare PCODE; fuzzy ones carry the method and score
-    expect(ntinda.centroid_expected_error_m).toBe(412);
+    expect(ntinda.centroid_source_ref).toMatch(/^1:KAMPALA.*NTINDA$/); // objectid:PCODE; an exact match carries no method suffix
+    expect(ntinda.centroid_expected_error_m).toBe(587);
+    expect(summary.runId).not.toBeNull();
+    const run = (await raw`select mode, md5, rows_read, rows_matched, rows_written, params from geo_data_source_run where id = ${summary.runId}`)[0];
+    expect(run.mode).toBe('applied');
+    expect(run.rows_read).toBe(3);
+    expect(run.rows_written).toBe(2);
+    const params = typeof run.params === 'string' ? JSON.parse(run.params) : run.params;
+    expect(params.allowance).toBe(1.3);
     expect(ntinda.centroid_shared_polygon).toBe(false);
 
     const manual = (await raw`select centroid_lat, centroid_source from delivery_corridor where area_slug = ${slugs.manual}`)[0];
@@ -129,9 +136,28 @@ suite('parish centroid import (real PostgreSQL)', () => {
     expect(report.verdict).toBe('consistent');
   });
 
-  it('a second --apply changes nothing', async () => {
+  it('a second --apply changes nothing, and never touches a kind an admin set', async () => {
+    await raw`update ug_area set area_kind = 'institution', area_kind_source = 'admin' where area_slug = ${slugs.ntinda}`;
     const summary = await importer.runParishCentroidImport({ csvPath, apply: true, expectedMd5: null, expectedRows: null, log: () => undefined });
     expect(summary.applied).toEqual({ added: 0, changed: 0, unchanged: 2, protectedRows: 1, kinds: 0 });
+    const kind = (await raw`select area_kind from ug_area where area_slug = ${slugs.ntinda}`)[0];
+    expect(kind.area_kind).toBe('institution');
+  });
+
+  it('refuses to store a centroid whose polygon is a water body, and says so', async () => {
+    const lakePath = join(dirname(csvPath), 'lake.csv');
+    writeFileSync(
+      lakePath,
+      [
+        'objectid,district,county,subcounty,parish,village_hq,pcode,lat,lng,area_km2,bbox_s,bbox_w,bbox_n,bbox_e',
+        `9,KAMPALA,KAMPALA,NAKAWA,${tag.toUpperCase()} NOWHERE,LAKE VICTORIA,KAMPALANOWHERE,0.1,32.7,180,0,0,0,0`,
+      ].join('\n') + '\n',
+    );
+    const summary = await importer.runParishCentroidImport({ csvPath: lakePath, apply: true, expectedMd5: null, expectedRows: null, log: () => undefined });
+    expect(summary.guarded).toBe(1);
+    expect(summary.rows.find((r) => r.areaSlug === slugs.nowhere)?.guard).toBe('water_body');
+    const nowhere = (await raw`select centroid_lat from delivery_corridor where area_slug = ${slugs.nowhere}`)[0];
+    expect(nowhere.centroid_lat).toBeNull();
   });
 
   it('the resolver now carries the km to the point, and leaves measuredKm for the registry to decide', async () => {
@@ -140,7 +166,7 @@ suite('parish centroid import (real PostgreSQL)', () => {
     expect(resolved?.input.centroidSource).toBe('parish_centroid');
     expect(resolved?.input.centroidKm).toBeGreaterThan(5);
     expect(resolved?.input.centroidKm).toBeLessThan(7);
-    expect(resolved?.input.centroidExpectedErrorM).toBe(412);
+    expect(resolved?.input.centroidExpectedErrorM).toBe(587);
     expect(resolved?.input.measuredKm).toBeNull();
   });
 

@@ -50,6 +50,8 @@ export const ugArea = pgTable(
      * parks as parishes; institution/barracks are priced as their parish, reserve/water/island never for a door.
      */
     areaKind: varchar('area_kind', { length: 20 }).default('neighbourhood').notNull(),
+    /** 'pattern' (derived from the name; an import may change it) or 'admin' (a person set it; never overwritten). */
+    areaKindSource: varchar('area_kind_source', { length: 16 }).default('pattern').notNull(),
     /** lowercase, unaccented, orthography-folded text the trigram index runs on */
     searchText: text('search_text').notNull(),
     dataVersion: integer('data_version').notNull(),

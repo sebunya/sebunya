@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { parseCsvRows } from '@goldplus/shared';
 import { isDistanceBand } from '../../../domain/delivery/DeliveryModel';
 import { isFulfilmentMode } from '../../../domain/delivery/DeliveryFulfilmentMode';
 import { IAuditRepository } from '../../ports/IAuditRepository';
@@ -56,8 +57,21 @@ export interface CorridorDryRun {
 
 export interface ICorridorCsvRepository {
   currentCorridors(): Promise<Map<string, CorridorCsvRow>>;
-  /** Writes the given field changes in one transaction; returns the number of rows touched. */
+  /**
+   * Writes the given field changes in one transaction, each as a compare-and-set
+   * on its `from` value under the corridor write lock. Returns the number of
+   * distinct areas written, or throws `CorridorChangedError` when any row no
+   * longer matched its `from` (another writer got there first): nothing lands.
+   */
   applyChanges(changes: CorridorChange[]): Promise<number>;
+  /** The audited batch to revert, or null. */
+  findBatch(batchId: string): Promise<{ changes: CorridorChange[]; reason: string | null } | null>;
+}
+
+export class CorridorChangedError extends Error {
+  constructor(public readonly areaSlug: string) {
+    super(`delivery_corridor ${areaSlug} changed since the dry run`);
+  }
 }
 
 /** Order-independent digest of a change list (sha256 over sorted "slug|field|from|to" lines). */
@@ -72,12 +86,14 @@ export class DryRunCorridorCsvUseCase {
 
   async execute(csv: string): Promise<CorridorDryRun> {
     const current = await this.repo.currentCorridors();
-    const lines = csv.split(/\r?\n/).filter((l) => l.trim() !== '');
+    // RFC 4180: the Control Centre's own export quotes every cell, so the reader must unquote (review board, 2026-10-15).
+    const lines = parseCsvRows(csv);
     if (lines.length === 0) {
       return { totalRows: 0, changes: [], failures: [], unchanged: 0, summary: 'The file is empty — nothing to apply.', confirmation: '' };
     }
-    const header = lines[0].split(',').map((h) => h.trim());
+    const header = lines[0].map((h) => h.trim());
     const idx = (name: string) => header.indexOf(name);
+    const seen = new Map<string, number>();
     const required = ['area_slug', 'corridor', 'distance_band', 'access_mode'];
     const missingCols = required.filter((r) => idx(r) === -1);
     if (missingCols.length > 0) {
@@ -96,12 +112,19 @@ export class DryRunCorridorCsvUseCase {
     let unchanged = 0;
 
     for (let i = 1; i < lines.length; i++) {
-      const cells = lines[i].split(',');
+      const cells = lines[i];
       const areaSlug = (cells[idx('area_slug')] ?? '').trim();
       if (!areaSlug) {
         failures.push({ line: i + 1, areaSlug: '—', problem: 'No area slug.' });
         continue;
       }
+      // A slug pasted twice (a spreadsheet edit gone wrong) would apply last-wins; refuse the file instead.
+      const first = seen.get(areaSlug);
+      if (first !== undefined) {
+        failures.push({ line: i + 1, areaSlug, problem: `Duplicate area_slug (first at line ${first}). Keep one row per area.` });
+        continue;
+      }
+      seen.set(areaSlug, i + 1);
       const existing = current.get(areaSlug);
       if (!existing) {
         // A CSV cannot CREATE an area. The gazetteer is the only source of
@@ -174,7 +197,10 @@ export class DryRunCorridorCsvUseCase {
 
 export type ApplyCorridorCsvResult =
   | { ok: true; applied: number; areas: number; batchId: string }
-  | { ok: false; code: 'FAILURES' | 'NOTHING_TO_APPLY' | 'CONFIRMATION_MISMATCH'; message: string; dryRun: CorridorDryRun };
+  | { ok: false; code: 'FAILURES' | 'NOTHING_TO_APPLY' | 'CONFIRMATION_MISMATCH' | 'REASON_REQUIRED'; message: string; dryRun: CorridorDryRun };
+
+/** Contract #9: every change is attributed with a reason, and reverts in one action. */
+export const CORRIDOR_REASON_MIN = 5;
 
 /**
  * The apply half of the round trip, which the brief promised ("landing as one
@@ -193,8 +219,12 @@ export class ApplyCorridorCsvUseCase {
     private readonly audit: IAuditRepository,
   ) {}
 
-  async execute(input: { csv: string; confirmation: string; actorId: string }): Promise<ApplyCorridorCsvResult> {
+  async execute(input: { csv: string; confirmation: string; actorId: string; reason: string }): Promise<ApplyCorridorCsvResult> {
     const dryRun = await new DryRunCorridorCsvUseCase(this.repo).execute(input.csv);
+    const reason = (input.reason ?? '').trim();
+    if (reason.length < CORRIDOR_REASON_MIN) {
+      return { ok: false, code: 'REASON_REQUIRED', message: 'Say why in a few words; the reason is kept with the change.', dryRun };
+    }
     if (dryRun.failures.length > 0) {
       return { ok: false, code: 'FAILURES', message: `${dryRun.failures.length} row(s) fail. Nothing was applied; fix them and dry-run again.`, dryRun };
     }
@@ -209,7 +239,15 @@ export class ApplyCorridorCsvUseCase {
         dryRun,
       };
     }
-    const applied = await this.repo.applyChanges(dryRun.changes);
+    let areas: number;
+    try {
+      areas = await this.repo.applyChanges(dryRun.changes);
+    } catch (e) {
+      if (e instanceof CorridorChangedError) {
+        return { ok: false, code: 'CONFIRMATION_MISMATCH', message: `${e.areaSlug} changed while you were applying. Dry-run again.`, dryRun };
+      }
+      throw e;
+    }
     const batchId = randomUUID();
     await new CreateAuditLogUseCase(this.audit).execute({
       actorId: input.actorId,
@@ -217,8 +255,49 @@ export class ApplyCorridorCsvUseCase {
       entity: 'delivery_corridor_batch',
       entityId: batchId,
       previousState: null,
-      newState: { confirmation: dryRun.confirmation, rowsTouched: applied, changes: dryRun.changes },
+      newState: { confirmation: dryRun.confirmation, reason, areasTouched: areas, fieldChanges: dryRun.changes.length, changes: dryRun.changes },
     });
-    return { ok: true, applied, areas: new Set(dryRun.changes.map((c) => c.areaSlug)).size, batchId };
+    return { ok: true, applied: dryRun.changes.length, areas, batchId };
+  }
+}
+
+export type RevertCorridorBatchResult =
+  | { ok: true; reverted: number; areas: number; batchId: string }
+  | { ok: false; code: 'NOT_FOUND' | 'REASON_REQUIRED' | 'CHANGED_SINCE'; message: string };
+
+/**
+ * Contract #9, "everything is reversible": invert an applied batch (to ↔ from)
+ * and land it the same way, compare-and-set on the values the batch wrote. If
+ * any area moved again since, nothing is reverted and the message names it.
+ */
+export class RevertCorridorBatchUseCase {
+  constructor(
+    private readonly repo: ICorridorCsvRepository,
+    private readonly audit: IAuditRepository,
+  ) {}
+
+  async execute(input: { batchId: string; actorId: string; reason: string }): Promise<RevertCorridorBatchResult> {
+    const reason = (input.reason ?? '').trim();
+    if (reason.length < CORRIDOR_REASON_MIN) return { ok: false, code: 'REASON_REQUIRED', message: 'Say why in a few words; the reason is kept with the change.' };
+    const batch = await this.repo.findBatch(input.batchId);
+    if (!batch) return { ok: false, code: 'NOT_FOUND', message: 'No applied corridor batch has that id.' };
+    const inverse: CorridorChange[] = batch.changes.map((c) => ({ areaSlug: c.areaSlug, field: c.field, from: c.to, to: c.from }));
+    let areas: number;
+    try {
+      areas = await this.repo.applyChanges(inverse);
+    } catch (e) {
+      if (e instanceof CorridorChangedError) return { ok: false, code: 'CHANGED_SINCE', message: `${e.areaSlug} has changed since that batch; revert by hand or apply a new file.` };
+      throw e;
+    }
+    const revertId = randomUUID();
+    await new CreateAuditLogUseCase(this.audit).execute({
+      actorId: input.actorId,
+      action: 'DELIVERY_CORRIDORS_REVERTED',
+      entity: 'delivery_corridor_batch',
+      entityId: revertId,
+      previousState: { batchId: input.batchId },
+      newState: { reason, areasTouched: areas, changes: inverse },
+    });
+    return { ok: true, reverted: inverse.length, areas, batchId: revertId };
   }
 }

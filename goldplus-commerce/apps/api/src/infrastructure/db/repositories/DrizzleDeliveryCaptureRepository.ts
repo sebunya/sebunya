@@ -32,6 +32,7 @@ function toRow(r: Row): DeliveryCaptureRow {
     accuracyTier: r.accuracyTier ?? null,
     centroidKm: num(r.centroidKm),
     centroidExpectedErrorM: r.centroidExpectedErrorM ?? null,
+    distanceSource: r.distanceSource ?? null,
     configVersionId: r.configVersionId ?? null,
     fulfilmentMode: r.fulfilmentMode ?? null,
     carrier: r.carrier ?? null,
@@ -91,6 +92,7 @@ export class DrizzleDeliveryCaptureRepository implements IDeliveryCaptureReposit
         typeof input.centroidExpectedErrorM === 'number' && Number.isInteger(input.centroidExpectedErrorM)
           ? input.centroidExpectedErrorM
           : null,
+      distanceSource: input.distanceSource ?? null,
       configVersionId: input.configVersionId ?? null,
       fulfilmentMode: input.fulfilmentMode ?? null,
       carrier: input.carrier ?? null,
