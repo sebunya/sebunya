@@ -80,6 +80,25 @@ Facebook does not assert that an email is verified. A Facebook sign-in never joi
     same provider is connected.
   - Removing is refused when it is the last way in.
 
+## Putting a secret on the server without typing it into ssh
+A hidden `read -s` prompt over ssh shows nothing when you paste, which led to a secret pasted three times (Google answered
+401). This sends it straight from the Mac, prints only its length, and keeps it out of the server's history:
+
+```
+printf '%s' 'PASTE_SECRET_HERE' | ssh goldplus-prod 'S=$(cat); cd /opt/goldplus/app/goldplus-commerce && sed -i "/^GOOGLE_CLIENT_SECRET=/d" .env.production && printf "GOOGLE_CLIENT_SECRET=%s\n" "$S" >> .env.production && echo "saved: length ${#S}"'
+sed -i '' '/CLIENT_SECRET/d' ~/.zsh_history
+```
+A Google client secret is 35 characters (`GOCSPX-`…); a Facebook app secret is 32. Then `scripts/deploy-prod.sh <sha> api`.
+
+## Live state (2026-10-15)
+| Provider | Where it lives | State |
+|---|---|---|
+| Google | Google Cloud project `goldplus-511709` (the shop's Google account), OAuth client "GoldPlus website", app published In production, no logo (a logo forces a verification review) | Live, sign-in and connect proven |
+| Facebook | Meta app "GoldPlus Sign-in" (App ID 1645471573874584) on the verified Goldplus Ecommerce business, Live | Live, sign-in and connect proven; the no-auto-link rule confirmed |
+| Apple | Not enrolled in the Apple Developer Program | Deferred by the owner; no button shows |
+
+`scripts/live-smoke.sh` warns after each deploy if Google or Facebook stops reporting `configured:true`.
+
 ## After switching one on
 1. `curl -s https://api.shopgoldplus.com/auth/social/providers`: the provider shows `"configured":true`.
 2. `/login` shows the button. Sign in with a real account and check you land signed in.
