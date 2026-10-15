@@ -74,6 +74,13 @@ export const userMfa = pgTable('user_mfa', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 });
 
+/** 0187: when a sign-in session (refresh-token family) last passed two-step verification. */
+export const authSessionStepUps = pgTable('auth_session_step_ups', {
+  familyId: uuid('family_id').primaryKey(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }).notNull(),
+  verifiedAt: timestamp('verified_at', { withTimezone: true }).notNull(),
+});
+
 /** Slice 3C — single-use break-glass codes, stored only as SHA-256 hashes. */
 export const userMfaRecoveryCodes = pgTable(
   'user_mfa_recovery_codes',

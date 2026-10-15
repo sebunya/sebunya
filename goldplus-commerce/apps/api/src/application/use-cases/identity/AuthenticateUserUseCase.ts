@@ -2,7 +2,14 @@ import { IUserRepository } from '../../ports/IUserRepository';
 import { IPasswordHasher } from '../../ports/IPasswordHasher';
 import { ITokenSigner } from '../../ports/ITokenSigner';
 import { ILoginAttemptStore } from '../../ports/ILoginAttemptStore';
-import { evaluateLoginLock, loginThrottleKey } from '../../../domain/identity/LoginThrottle';
+import {
+  ACCOUNT_LOCK_POLICY,
+  KNOWN_PLACE_DAYS,
+  accountThrottleKey,
+  evaluateLoginLock,
+  knownPlaceKey,
+  loginThrottleKey,
+} from '../../../domain/identity/LoginThrottle';
 
 // A real scrypt hash of an unguessable value, verified for unknown emails so
 // the response time does not reveal whether an email is registered.
@@ -64,14 +71,22 @@ export class AuthenticateUserUseCase {
 
     // Account-level lockout (Slice 1B): 5 failures per email+ip in 15 minutes.
     const throttleKey = loginThrottleKey(email, input.ip ?? '');
+    // And per account across every IP (owner, 2026-10-15), except from a place it signed in from before.
+    const accountKey = accountThrottleKey(email);
+    const placeKey = knownPlaceKey(email, input.ip ?? '');
     if (this.attempts) {
-      const lock = evaluateLoginLock(await this.attempts.getFailures(throttleKey), new Date());
-      if (lock.locked) {
+      const now = new Date();
+      const lock = evaluateLoginLock(await this.attempts.getFailures(throttleKey), now);
+      const accountLock = lock.locked ? null : evaluateLoginLock(await this.attempts.getFailures(accountKey), now, ACCOUNT_LOCK_POLICY);
+      const held = lock.locked
+        ? lock
+        : accountLock?.locked && !(await this.attempts.isRemembered?.(placeKey)) ? accountLock : null;
+      if (held) {
         return {
           ok: false,
           code: 'LOCKED',
           message: 'Too many failed sign-in attempts. Please try again later.',
-          retryAfterSeconds: lock.retryAfterSeconds,
+          retryAfterSeconds: held.retryAfterSeconds,
         };
       }
     }
@@ -80,7 +95,11 @@ export class AuthenticateUserUseCase {
     // Generic message either way — never disclose whether email is registered.
     const generic = { ok: false, code: 'INVALID_CREDENTIALS', message: 'Email or password is incorrect.' } as const;
     const failGeneric = async () => {
-      if (this.attempts) await this.attempts.addFailure(throttleKey, new Date());
+      if (this.attempts) {
+        const at = new Date();
+        await this.attempts.addFailure(throttleKey, at);
+        await this.attempts.addFailure(accountKey, at);
+      }
       return generic;
     };
 
@@ -102,7 +121,11 @@ export class AuthenticateUserUseCase {
     const passwordOk = await this.hasher.verify(password, user.passwordHash);
     if (!passwordOk) return failGeneric();
 
-    if (this.attempts) await this.attempts.clear(throttleKey);
+    if (this.attempts) {
+      await this.attempts.clear(throttleKey);
+      await this.attempts.clear(accountKey);
+      await this.attempts.remember?.(placeKey, KNOWN_PLACE_DAYS * 24 * 3600);
+    }
 
     if (!user.isActive) {
       return { ok: false, code: 'ACCOUNT_DISABLED', message: 'This account has been disabled.' };

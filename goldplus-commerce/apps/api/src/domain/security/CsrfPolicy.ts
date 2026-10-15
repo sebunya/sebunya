@@ -28,7 +28,9 @@ export function isCookieAuthenticated(cookieHeader: string | null | undefined): 
  */
 export function isCsrfExempt(path: string): boolean {
   const p = path.toLowerCase();
-  return p === '/webhooks' || p.startsWith('/webhooks/');
+  // The Apple sign-in relay (FORM_POST_RELAY_PATH): Apple's own cross-site POST, which changes nothing here and only
+  // redirects the browser to the storefront callback. Exact path, nothing below it.
+  return p === '/webhooks' || p.startsWith('/webhooks/') || p === '/auth/social/apple/form-post';
 }
 
 /** The scheme+host+port of a URL, lowercased, or null if unparseable. */

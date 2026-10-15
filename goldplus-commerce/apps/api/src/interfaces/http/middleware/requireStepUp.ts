@@ -20,7 +20,7 @@ export function requireStepUp(action: PrivilegedAction) {
   return async (c: Context, next: Next) => {
     if (process.env.NODE_ENV === 'test') return next();
 
-    const user = c.get('user') as { id?: string } | undefined;
+    const user = c.get('user') as { id?: string; sessionId?: string | null } | undefined;
     if (!user?.id) {
       const res: ApiResponse<never> = {
         success: false,
@@ -29,7 +29,8 @@ export function requireStepUp(action: PrivilegedAction) {
       return c.json(res, 401);
     }
 
-    const decision = await Registry.getInstance().mfaService.gate(user.id, action);
+    // Fresh for THIS sign-in session (0187): another session's verification does not open it.
+    const decision = await Registry.getInstance().mfaService.gate(user.id, action, new Date(), user.sessionId ?? null);
     if (decision.action === 'ENROL_REQUIRED') {
       const res: ApiResponse<never> = {
         success: false,

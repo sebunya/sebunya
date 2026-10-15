@@ -442,7 +442,7 @@ const cartPotentialPoints = cartLoyaltyRate > 0 ? Math.floor(saleSubtotal / 1000
 const bizCart = await getBusinessInfo();
 const cut = kampalaCutoff(new Date(), { cutoffHour: bizCart.sameDayCutoffHour, closedDays: bizCart.closedDays });
 // No area is known on the cart, so the same-day line names where it applies
-// ("Kampala & Wakiso: order in 3h 5m for same-day delivery") instead of
+// ("Kampala & Wakiso: order in 3h 5m and it goes out today") instead of
 // promising "arrives today" to a basket bound for Arua.
 const cutoffLine = sameDayCutoffCopy(cut, { now: new Date(), closedDays: bizCart.closedDays }).scoped;
 ---

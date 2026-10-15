@@ -72,7 +72,9 @@ describe('the same-day line is true for where the order is going', () => {
 
   it('names the area until a district is chosen, and never promises "today" outside it', () => {
     const copy = sameDayCutoffCopy(open);
-    expect(sameDayLineFor(copy, null)).toBe('Kampala & Wakiso: order in 3h 5m for same-day delivery');
+    // A dispatch promise (owner, 2026-10-15): not every Wakiso area is in rider range, so never "same-day delivery".
+    expect(sameDayLineFor(copy, null)).toBe('Kampala & Wakiso: order in 3h 5m and it goes out today');
+    expect(Object.values(copy).join(' ')).not.toMatch(/same-day delivery/i);
     // When it goes OUT: no area has observed data behind a same-day arrival.
     expect(sameDayLineFor(copy, 'Kampala')).toBe('Order in 3h 5m and this goes out today');
     expect(sameDayLineFor(copy, 'wakiso')).toBe('Order in 3h 5m and this goes out today');

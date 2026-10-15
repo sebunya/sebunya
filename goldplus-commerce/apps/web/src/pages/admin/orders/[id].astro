@@ -28,10 +28,11 @@ if (Astro.request.method === 'POST') {
       // generic failure. Reason is mandatory and lands in the order_events ledger.
       const toStatus = formData.get('toStatus')?.toString().trim() || '';
       const reason = formData.get('reason')?.toString().trim() || '';
+      const switchToPayOnDelivery = formData.get('payOnDelivery') === 'on';
       const res = await fetch(`${apiBase}/admin/orders/${id}/transition`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ toStatus, reason }),
+        body: JSON.stringify({ toStatus, reason, switchToPayOnDelivery }),
       });
       const json = await res.json().catch(() => null);
       if (res.ok && json?.success) {
@@ -1051,7 +1052,8 @@ const customerHref = order?.userId ? `/admin/customers/${encodeURIComponent(orde
                   <option value="completed">completed</option>
                   <option value="cancelled">cancelled</option>
                 </select>
-                <input name="reason" required maxlength="500" placeholder="Reason (required — recorded in the order ledger)" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-primaryInk" />
+                <input name="reason" required maxlength="450" placeholder="Reason (required — recorded in the order ledger)" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-primaryInk" />
+                <label class="flex items-start gap-2 text-[11px] font-medium text-gray-600"><input type="checkbox" name="payOnDelivery" class="mt-0.5" /> Unpaid online order: the customer will pay on delivery or at the shop (switches it to pay on delivery)</label>
                 <button type="submit" class="w-full bg-brand-dark hover:bg-black text-white text-xs font-black py-3 rounded-xl transition-colors tracking-wide">Apply lifecycle transition</button>
               </form>
               <p class="mt-2 text-[9px] leading-relaxed text-gray-400 font-medium">Illegal moves and unpaid-order processing are refused by the state machine with the exact reason shown above.</p>

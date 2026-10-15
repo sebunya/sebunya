@@ -310,6 +310,7 @@ import {
   GetDrawStateUseCase,
   GrantDrawTokenUseCase,
   PlayDrawTokenUseCase,
+  ReverseDrawOnRefundUseCase,
 } from '../application/use-cases/loyalty/LoyaltyDrawUseCases';
 import { DrizzleLoyaltyDrawRepository } from './db/repositories/DrizzleLoyaltyDrawRepository';
 import { DrizzleDeliveryCaptureRepository } from './db/repositories/DrizzleDeliveryCaptureRepository';
@@ -1621,7 +1622,7 @@ export class Registry {
     this.loyaltyCompletionRepo,
     // Lazy: both are declared further down this class.
     { getRefundedShareBpsForOrder: (orderId) => this.refundLedgerRepo.getRefundedShareBpsForOrder(orderId) },
-    { execute: (input) => new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase, this.reverseReferralOnRefundUseCase).execute(input) },
+    { execute: (input) => new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase, this.reverseReferralOnRefundUseCase, this.reverseDrawOnRefundUseCase).execute(input) },
   );
   public readonly clawbackOrderEarnUseCase = new ClawbackOrderEarnUseCase(this.loyaltyRepo, this.loyaltyCompletionRepo, this.auditRepo);
   public readonly reserveRedemptionUseCase = new ReserveRedemptionUseCase(this.loyaltyRepo, this.loyaltyCompletionRepo, this.loyaltyGate);
@@ -1977,6 +1978,8 @@ export class Registry {
       }),
   );
   public readonly getDrawStateUseCase = new GetDrawStateUseCase(this.loyaltyCompletionRepo, this.loyaltyDrawRepo);
+  /** A fully refunded order takes its scratch card with it (owner, 2026-10-15). */
+  public readonly reverseDrawOnRefundUseCase = new ReverseDrawOnRefundUseCase(this.loyaltyDrawRepo, this.loyaltyRepo);
   public readonly evaluateTiersUseCase = new EvaluateTiersUseCase(
     this.loyaltyRepo,
     this.loyaltyCompletionRepo,
@@ -2344,7 +2347,7 @@ export class Registry {
     // The ledger decides whether a provider reversal was total or partial.
     this.refundLedgerRepo,
     // Points follow the money back even when the order cannot move (delivered, partial refund).
-    new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase, this.reverseReferralOnRefundUseCase),
+    new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase, this.reverseReferralOnRefundUseCase, this.reverseDrawOnRefundUseCase),
     // A total refund cancels the order; its fulfilment task leaves the work queue with it.
     new CancelFulfilmentTaskForCancelledOrderUseCase(this.fulfilmentRepo, this.transitionFulfilmentTaskUseCase),
   );
@@ -2357,7 +2360,7 @@ export class Registry {
     this.pesapalPaymentRepo,
     this.orderTransitionService,
     this.refundLedgerRepo,
-    new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase, this.reverseReferralOnRefundUseCase),
+    new ApplyRefundToLoyaltyUseCase(this.clawbackOrderEarnUseCase, this.reverseRedemptionUseCase, this.reverseReferralOnRefundUseCase, this.reverseDrawOnRefundUseCase),
     // A total refund cancels the order; its fulfilment task leaves the work queue with it.
     new CancelFulfilmentTaskForCancelledOrderUseCase(this.fulfilmentRepo, this.transitionFulfilmentTaskUseCase),
   );
@@ -3313,6 +3316,8 @@ export class Registry {
         await this.reverseRedemptionUseCase.execute({ orderId, reason: 'Payment reversed by provider' }).catch(() => undefined);
         await this.reverseReferralOnRefundUseCase.execute({ orderId, reason: 'Payment reversed by provider' })
           .catch((err: unknown) => logger.error({ orderId, err: err instanceof Error ? err.message : String(err) }, 'loyalty referral reversal failed'));
+        await this.reverseDrawOnRefundUseCase.execute({ orderId, reason: 'Payment reversed by provider' })
+          .catch((err: unknown) => logger.error({ orderId, err: err instanceof Error ? err.message : String(err) }, 'loyalty scratch card reversal failed'));
       }
     });
   }

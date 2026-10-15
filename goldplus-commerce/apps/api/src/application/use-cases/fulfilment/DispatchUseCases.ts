@@ -65,6 +65,8 @@ export async function mirrorOrderDispatched(
       ...base,
       reasonCode: 'cod_dispatch_confirmed',
       note: `Cash on delivery confirmed at dispatch. ${ctx.note}`,
+      // The operator confirmed cash on delivery at dispatch: an online order that was never paid becomes COD here.
+      switchToPayOnDelivery: true,
     });
     await orderTransitions.transition(orderId, 'dispatched', { ...base, reasonCode: 'dispatch_recorded', note: ctx.note });
     return 'dispatched';

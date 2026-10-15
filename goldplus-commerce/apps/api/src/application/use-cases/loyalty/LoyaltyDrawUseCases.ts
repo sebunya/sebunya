@@ -318,3 +318,45 @@ export class GetDrawStateUseCase {
     };
   }
 }
+
+/** What reversing a refunded order's scratch card needs from the draw store. */
+export interface DrawRefundPort {
+  /** The cards this source granted, with the prize's ledger entry when one was played. */
+  drawsForSource(sourceType: string, sourceId: string): Promise<Array<{ tokenId: string; status: string; ledgerEntryId: string | null }>>;
+  /** Voids a card nobody has played yet; false when it was played (or gone) first. */
+  voidAvailableToken(tokenId: string, now: Date): Promise<boolean>;
+}
+
+/**
+ * Owner, 2026-10-15: a delivered order grants one scratch card; when that order is refunded in full the card goes
+ * with it. An unplayed card is voided; a played card's prize points are reversed (carried negative if spent, as
+ * every clawback is). Before this a deliver-and-refund kept the prize, and an unplayed card stayed playable.
+ * Idempotent: a voided card is no longer available, and reverseEntry refuses a second reversal.
+ */
+export class ReverseDrawOnRefundUseCase {
+  constructor(
+    private readonly draws: DrawRefundPort,
+    private readonly ledger: Pick<ILoyaltyRepository, 'reverseEntry'>,
+    private readonly now: () => Date = () => new Date(),
+  ) {}
+
+  async execute(input: { orderId: string; reason: string }): Promise<{ voided: number; reversed: number }> {
+    let voided = 0;
+    let reversed = 0;
+    for (const draw of await this.draws.drawsForSource('order', input.orderId)) {
+      if (draw.status === 'available' && (await this.draws.voidAvailableToken(draw.tokenId, this.now()))) {
+        voided++;
+        continue;
+      }
+      // Played (possibly a moment ago, by the customer): take the prize back.
+      const [latest] = draw.status === 'available'
+        ? (await this.draws.drawsForSource('order', input.orderId)).filter((d) => d.tokenId === draw.tokenId)
+        : [draw];
+      if (latest?.ledgerEntryId) {
+        const r = await this.ledger.reverseEntry(latest.ledgerEntryId, `Scratch card prize reversed: order refunded (${input.reason})`.slice(0, 300));
+        if (r.ok && !r.replay) reversed++;
+      }
+    }
+    return { voided, reversed };
+  }
+}

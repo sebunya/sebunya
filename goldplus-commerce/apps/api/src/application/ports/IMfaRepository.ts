@@ -30,4 +30,8 @@ export interface IMfaRepository {
   consumeRecoveryCode(userId: string, codeHash: string, at: Date): Promise<boolean>;
   /** Remove MFA and all recovery codes (audited reset / disable). */
   disable(userId: string): Promise<void>;
+  /** 0187: a verification made in this sign-in session (refresh-token family). Optional so older fakes type. */
+  recordSessionStepUp?(familyId: string, userId: string, at: Date): Promise<void>;
+  /** When this user's sign-in session last passed two-step verification; null when never. */
+  sessionStepUpAt?(familyId: string, userId: string): Promise<Date | null>;
 }

@@ -34,7 +34,7 @@ const ALLOWED: Record<OrderStatus, OrderStatus[]> = {
 
 export type OrderTransitionResult =
   | { allowed: true }
-  | { allowed: false; code: 'ILLEGAL_TRANSITION' | 'UNPAID'; message: string };
+  | { allowed: false; code: 'ILLEGAL_TRANSITION' | 'UNPAID' | 'UNPAID_ONLINE'; message: string };
 
 /**
  * Whether an order may move `from → to`. The one contextual rule: an order
@@ -44,7 +44,13 @@ export type OrderTransitionResult =
 export function canTransitionOrder(
   from: OrderStatus,
   to: OrderStatus,
-  ctx: { paymentStatus: PaymentStatus },
+  ctx: {
+    paymentStatus: PaymentStatus;
+    /** How the customer chose to pay: 'pesapal' (online) or 'offline' (on delivery or at the shop). Null for older orders. */
+    paymentMethod?: string | null;
+    /** A person confirmed the customer will pay on delivery or at the shop instead (the order switches to offline). */
+    payOnDeliveryConfirmed?: boolean;
+  },
 ): OrderTransitionResult {
   if (from === to) {
     return { allowed: false, code: 'ILLEGAL_TRANSITION', message: `Order is already '${to}'.` };
@@ -61,6 +67,17 @@ export function canTransitionOrder(
       allowed: false,
       code: 'UNPAID',
       message: 'Cannot process an unpaid order that is pending payment.',
+    };
+  }
+  // Owner, 2026-10-15: an order the customer chose to PAY ONLINE is not prepared before the money is confirmed.
+  // The guard above never fired (nothing sets pending_payment), so an unpaid PesaPal order went received ->
+  // processing on one click. Pay-on-delivery orders, and older orders with no method, are unchanged; cash at the
+  // shop is recorded by switching the order to pay on delivery, deliberately and with a reason.
+  if (to === 'processing' && ctx.paymentStatus !== 'paid' && ctx.paymentMethod === 'pesapal' && !ctx.payOnDeliveryConfirmed) {
+    return {
+      allowed: false,
+      code: 'UNPAID_ONLINE',
+      message: 'This order was placed to pay online and is not paid yet. If the customer paid, re-verify the payment under Payments. If they will pay on delivery or at the shop, tick that option and apply again.',
     };
   }
   return { allowed: true };

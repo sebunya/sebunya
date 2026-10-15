@@ -182,6 +182,26 @@ export class DrizzleLoyaltyDrawRepository implements ILoyaltyDrawRepository {
       .where(eq(loyaltyDrawCampaigns.id, campaignId));
   }
 
+  async drawsForSource(sourceType: string, sourceId: string): Promise<Array<{ tokenId: string; status: string; ledgerEntryId: string | null }>> {
+    if (!/^[0-9a-f-]{36}$/i.test(sourceId)) return [];
+    const rows = await db
+      .select({ tokenId: loyaltyDrawTokens.id, status: loyaltyDrawTokens.status, ledgerEntryId: loyaltyDrawResults.ledgerEntryId })
+      .from(loyaltyDrawTokens)
+      .leftJoin(loyaltyDrawResults, eq(loyaltyDrawResults.tokenId, loyaltyDrawTokens.id))
+      .where(and(eq(loyaltyDrawTokens.sourceType, sourceType), eq(loyaltyDrawTokens.sourceId, sourceId)));
+    return rows.map((r) => ({ tokenId: String(r.tokenId), status: String(r.status), ledgerEntryId: r.ledgerEntryId ? String(r.ledgerEntryId) : null }));
+  }
+
+  /** Only a card still available: the same WHERE the claim uses, so a play and a void never both win. */
+  async voidAvailableToken(tokenId: string, now: Date): Promise<boolean> {
+    const rows = await db
+      .update(loyaltyDrawTokens)
+      .set({ status: 'expired', expiresAt: now })
+      .where(and(eq(loyaltyDrawTokens.id, tokenId), eq(loyaltyDrawTokens.status, 'available')))
+      .returning({ id: loyaltyDrawTokens.id });
+    return rows.length > 0;
+  }
+
   async findResultByToken(tokenId: string) {
     const row = await db.query.loyaltyDrawResults.findFirst({ where: eq(loyaltyDrawResults.tokenId, tokenId) });
     return row ? { pointsAwarded: row.pointsAwarded, prizeId: row.prizeId } : null;

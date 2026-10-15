@@ -132,7 +132,7 @@ export class CheckoutUseCase {
       velocity(input: { phone: string; orderId: string }): Promise<void>;
     } | null = null,
     private readonly loyaltyRedemption: {
-      reserve(input: { userId: string; points: number; orderGoodsTotalUgx: number; idempotencyKey: string }): Promise<
+      reserve(input: { userId: string; points: number; orderGoodsTotalUgx: number; orderFloorTotalUgx?: number; idempotencyKey: string }): Promise<
         { ok: true; reservationId: string; valueUgx: number } | { ok: false; code: string; message: string }
       >;
       attach(reservationId: string, orderId: string): Promise<void>;
@@ -364,6 +364,8 @@ export class CheckoutUseCase {
           userId: dto.principal.id,
           points: dto.redeemPoints,
           orderGoodsTotalUgx: goodsTotalUgx,
+          // Price A x quantity over the lines that have one (owner, 2026-10-15): points stop there.
+          orderFloorTotalUgx: quote.lines.reduce((n, l) => n + (l.priceAUnitUgx ?? 0) * l.quantity, 0),
           idempotencyKey: checkoutKey,
         });
         if (!reserveResult.ok) {

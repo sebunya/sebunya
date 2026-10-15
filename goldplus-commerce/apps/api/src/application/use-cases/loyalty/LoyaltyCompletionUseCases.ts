@@ -198,6 +198,8 @@ export class ApplyRefundToLoyaltyUseCase {
     private readonly clawback: Pick<ClawbackOrderEarnUseCase, 'execute'>,
     private readonly reverseRedemption: Pick<ReverseRedemptionUseCase, 'execute'>,
     private readonly reverseReferral?: Pick<ReverseReferralOnRefundUseCase, 'execute'>,
+    /** The order's scratch card (ReverseDrawOnRefundUseCase). Optional so older suites construct unchanged. */
+    private readonly reverseDraw?: { execute(input: { orderId: string; reason: string }): Promise<unknown> },
   ) {}
 
   async execute(input: { orderId: string; refundedShareBps: number; reason: string }): Promise<void> {
@@ -214,6 +216,9 @@ export class ApplyRefundToLoyaltyUseCase {
       await this.reverseReferral
         ?.execute({ orderId: input.orderId, reason: input.reason })
         .catch((error) => appLogger.error({ orderId: input.orderId, err: (error as Error).message }, 'loyalty refund referral reversal failed'));
+      await this.reverseDraw
+        ?.execute({ orderId: input.orderId, reason: input.reason })
+        .catch((error) => appLogger.error({ orderId: input.orderId, err: (error as Error).message }, 'loyalty refund scratch card reversal failed'));
     }
   }
 }
@@ -276,6 +281,8 @@ export class ReserveRedemptionUseCase {
     userId: string;
     points: number;
     orderGoodsTotalUgx: number;
+    /** Price A x quantity over the lines that have one: points never take the order below it. */
+    orderFloorTotalUgx?: number;
     idempotencyKey: string;
     ttlMinutes?: number;
   }): Promise<{ ok: true; reservationId: string; valueUgx: number } | Fail> {
@@ -298,6 +305,7 @@ export class ReserveRedemptionUseCase {
       points: input.points,
       balanceAvailable: spendable - reserved,
       orderGoodsTotalUgx: input.orderGoodsTotalUgx,
+      orderFloorTotalUgx: input.orderFloorTotalUgx,
       config,
     });
     if (!plan.ok) return fail(plan.code, plan.message);

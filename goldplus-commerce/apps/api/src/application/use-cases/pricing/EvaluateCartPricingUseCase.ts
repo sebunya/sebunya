@@ -75,6 +75,7 @@ export class EvaluateCartPricingUseCase {
         // The product's own Price A. No floor set → floor at retail → not
         // discountable. A missing floor must never mean "discount freely".
         floorUnitPriceUgx: effectiveFloorUgx(0, product.floorPriceUgx, product.retailPriceUgx!),
+        priceAUnitUgx: Number.isInteger(product.floorPriceUgx) && product.floorPriceUgx! > 0 ? product.floorPriceUgx! : null,
         quantity: quantities.get(productId)!,
       };
     });

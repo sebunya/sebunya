@@ -4,7 +4,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { ApiResponse } from '@goldplus/shared';
 import { Registry } from '../../../infrastructure/Registry';
 import { logger } from '../../../infrastructure/logging/logger';
-import { isSocialProvider } from '../../../domain/identity/SocialProvider';
+import { FORM_POST_RELAY_PATH, formPostRelayLocation, isSocialProvider } from '../../../domain/identity/SocialProvider';
 import {
   OIDC_PROVIDERS,
   buildAuthorizationUrl,
@@ -78,8 +78,28 @@ const openFlow = (sealed: string | undefined): FlowState | null => {
 const publicWebBase = (): string =>
   (process.env.PUBLIC_WEB_BASE_URL || 'https://shopgoldplus.com').replace(/\/$/, '');
 
-/** The provider redirects the BROWSER here — a storefront URL, not an API one. */
-const redirectUriFor = (provider: string): string => `${publicWebBase()}/auth/${provider}/callback`;
+const publicApiBase = (): string =>
+  (process.env.PUBLIC_API_BASE_URL || 'https://api.shopgoldplus.com').replace(/\/$/, '');
+
+/**
+ * The provider redirects the BROWSER here: the storefront callback, or, for a form_post provider (Apple), the API
+ * relay that turns the POST into a GET to that callback (formPostRelayLocation). The authorize request and the code
+ * exchange both use this, so they always name the same redirect_uri.
+ */
+const redirectUriFor = (provider: string): string =>
+  isSocialProvider(provider) && OIDC_PROVIDERS[provider].responseMode === 'form_post'
+    ? `${publicApiBase()}${FORM_POST_RELAY_PATH(provider)}`
+    : `${publicWebBase()}/auth/${provider}/callback`;
+
+/** Apple's form POST lands here and is redirected, unchanged in meaning, to the storefront callback as a GET. */
+routes.post('/:provider/form-post', async (c) => {
+  const provider = String(c.req.param('provider'));
+  if (!isSocialProvider(provider) || OIDC_PROVIDERS[provider].responseMode !== 'form_post') {
+    return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Unknown sign-in provider.' } }, 404);
+  }
+  const fields = await c.req.parseBody().catch(() => ({} as Record<string, unknown>));
+  return c.redirect(formPostRelayLocation(publicWebBase(), provider, fields as Record<string, unknown>), 303);
+});
 
 /** Which providers an operator has actually configured — drives the UI. */
 routes.get('/providers', async (c) => {

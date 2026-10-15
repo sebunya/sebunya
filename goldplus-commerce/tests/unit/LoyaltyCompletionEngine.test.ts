@@ -63,6 +63,21 @@ describe('planRedemption (PART G)', () => {
   it('insufficient balance refused', () => {
     expect(planRedemption({ points: 2000, balanceAvailable: 1000, orderGoodsTotalUgx: 1_000_000, config: CONFIG })).toMatchObject({ ok: false, code: 'INSUFFICIENT_BALANCE' });
   });
+  it('points never take the order below its Price A total (owner, 2026-10-15)', () => {
+    // Retail 160,000, Price A 145,000, a campaign already at 145,000: no room at all.
+    const none = planRedemption({ points: 500, balanceAvailable: 10_000, orderGoodsTotalUgx: 145_000, orderFloorTotalUgx: 145_000, config: CONFIG });
+    expect(none).toMatchObject({ ok: false, code: 'BELOW_PRICE_FLOOR' });
+    expect(!none.ok && none.message).toMatch(/already at its lowest price/);
+    // 15,000 of room at 20 UGX a point: 750 points fit, 751 do not, and the refusal says how many fit.
+    expect(planRedemption({ points: 750, balanceAvailable: 10_000, orderGoodsTotalUgx: 160_000, orderFloorTotalUgx: 145_000, config: CONFIG })).toMatchObject({ ok: true, valueUgx: 15_000 });
+    const over = planRedemption({ points: 751, balanceAvailable: 10_000, orderGoodsTotalUgx: 160_000, orderFloorTotalUgx: 145_000, config: CONFIG });
+    expect(over).toMatchObject({ ok: false, code: 'BELOW_PRICE_FLOOR' });
+    expect(!over.ok && over.message).toMatch(/at most 750 points/);
+  });
+  it('no Price A on the basket (or no basket) is no floor limit, as before', () => {
+    expect(planRedemption({ points: 200, balanceAvailable: 1000, orderGoodsTotalUgx: 100_000, orderFloorTotalUgx: 0, config: CONFIG })).toMatchObject({ ok: true });
+    expect(planRedemption({ points: 200, balanceAvailable: 1000, orderGoodsTotalUgx: 100_000, config: CONFIG })).toMatchObject({ ok: true });
+  });
   it('max-share ceiling refused with a clear message (the margin guard)', () => {
     // 300 pts × 20 UGX = 6,000 > 50% of 10,000
     expect(planRedemption({ points: 300, balanceAvailable: 1000, orderGoodsTotalUgx: 10_000, config: CONFIG })).toMatchObject({ ok: false, code: 'EXCEEDS_MAX_SHARE' });

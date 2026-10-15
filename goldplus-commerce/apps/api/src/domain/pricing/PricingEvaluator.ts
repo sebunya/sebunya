@@ -11,6 +11,12 @@ export interface CanonicalPricingLine {
    * set, which makes an un-floored product simply not discountable.
    */
   floorUnitPriceUgx?: number;
+  /**
+   * The product's own Price A when one is SET (null when not). Carried, never used by the evaluator: limits outside
+   * promotions (loyalty points) hold a line at Price A only where the owner set one. Internal: no public route
+   * returns quote lines.
+   */
+  priceAUnitUgx?: number | null;
   productId: string;
   sku: string;
   name: string;

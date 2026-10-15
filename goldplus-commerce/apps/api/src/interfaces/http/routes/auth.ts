@@ -28,7 +28,7 @@ async function issueSessionSafely(
   registry: ReturnType<typeof Registry.getInstance>,
   userId: string,
   c: Context,
-): Promise<{ refreshToken: string; refreshExpiresAt: string } | null> {
+): Promise<{ refreshToken: string; refreshExpiresAt: string; familyId: string } | null> {
   if (process.env.NODE_ENV === 'test') return null;
   try {
     const ipHash = createHash('sha256').update(clientIp(c)).digest('hex');
@@ -36,7 +36,7 @@ async function issueSessionSafely(
       .update(c.req.header('user-agent') ?? '')
       .digest('hex');
     const s = await registry.sessionService.issue({ userId, ipHash, userAgentHash: uaHash });
-    return { refreshToken: s.refreshToken, refreshExpiresAt: s.refreshExpiresAt.toISOString() };
+    return { refreshToken: s.refreshToken, refreshExpiresAt: s.refreshExpiresAt.toISOString(), familyId: s.familyId };
   } catch {
     return null;
   }
@@ -57,8 +57,9 @@ export async function signInTokens(
   const refresh = await issueSessionSafely(registry, user.id, c);
   if (!refresh) return { token: fallback.token, expiresAt: fallback.expiresAt.toISOString() };
   const ttlSeconds = Math.floor(SESSION_LIFETIMES.accessTtlMs / 1000);
-  const token = await registry.tokenSigner.sign({ subject: user.id, email: user.email, ttlSeconds });
-  return { token, expiresAt: new Date(Date.now() + ttlSeconds * 1000).toISOString(), ...refresh };
+  // The token names its sign-in session (0187): a two-step verification counts for this session only.
+  const token = await registry.tokenSigner.sign({ subject: user.id, email: user.email, ttlSeconds, sessionId: refresh.familyId });
+  return { token, expiresAt: new Date(Date.now() + ttlSeconds * 1000).toISOString(), refreshToken: refresh.refreshToken, refreshExpiresAt: refresh.refreshExpiresAt };
 }
 
 /** Resolve the authenticated user from a bearer token, or null. */
@@ -70,9 +71,9 @@ export async function signInTokens(
  * or a session already revoked by a password reset. It now applies the same
  * live-session rule as the admin and customer middleware.
  */
-async function bearerUser(c: Context): Promise<{ id: string; email: string } | null> {
+async function bearerUser(c: Context): Promise<{ id: string; email: string; sessionId: string | null } | null> {
   const session = await resolveLiveSession(bearerTokenFrom(c.req.header('Authorization')));
-  return session.ok ? { id: session.user.id, email: session.user.email } : null;
+  return session.ok ? { id: session.user.id, email: session.user.email, sessionId: session.user.sessionId } : null;
 }
 
 routes.post('/login', async (c) => {
@@ -307,6 +308,8 @@ routes.post('/refresh', async (c) => {
     subject: user.id,
     email: user.email,
     ttlSeconds: Math.floor(SESSION_LIFETIMES.accessTtlMs / 1000),
+    // Same session family across rotations, so a verification made before a refresh still counts after it.
+    sessionId: result.session.familyId,
   });
 
   return c.json({
@@ -432,7 +435,7 @@ routes.post('/mfa/confirm', async (c) => {
   } catch {
     body = {};
   }
-  const result = await Registry.getInstance().mfaService.confirmEnrolment(user.id, String(body?.code ?? ''));
+  const result = await Registry.getInstance().mfaService.confirmEnrolment(user.id, String(body?.code ?? ''), new Date(), user.sessionId);
   if (result.locked) {
     c.header('Retry-After', String(Math.ceil(MfaService.LOCK_WINDOW_MS / 1000)));
     return c.json(
@@ -462,7 +465,7 @@ routes.post('/mfa/verify', async (c) => {
   }
   const svc = Registry.getInstance().mfaService;
   const code = String(body?.code ?? '');
-  const first = body?.recovery ? await svc.useRecoveryCode(user.id, code) : await svc.verify(user.id, code);
+  const first = body?.recovery ? await svc.useRecoveryCode(user.id, code, new Date(), user.sessionId) : await svc.verify(user.id, code, new Date(), user.sessionId);
   if (first === 'LOCKED') {
     c.header('Retry-After', String(Math.ceil(MfaService.LOCK_WINDOW_MS / 1000)));
     return c.json(
@@ -482,7 +485,8 @@ routes.get('/mfa/status', async (c) => {
   if (!user) {
     return c.json({ success: false, error: { code: 'UNAUTHENTICATED', message: 'A valid session is required.' } }, 401);
   }
-  const status = await Registry.getInstance().mfaService.status(user.id);
+  // This session's own verification time, never another session's (0187).
+  const status = await Registry.getInstance().mfaService.status(user.id, user.sessionId);
   return c.json({ success: true, data: status });
 });
 
