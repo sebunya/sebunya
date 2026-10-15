@@ -22,7 +22,7 @@ import { AreaInput } from '../../../domain/delivery/DeliveryModel';
 export interface ResolvedArea {
   input: AreaInput;
   label: string;
-  via: 'area_slug' | 'alias' | 'exact' | 'trigram' | 'district_only' | 'cross_district_correction' | null;
+  via: 'area_slug' | 'alias' | 'exact' | 'trigram' | 'district_only' | 'cross_district_correction' | 'pin' | null;
   aliasUsed: string | null;
 }
 
@@ -31,6 +31,8 @@ export interface IAreaResolverPort {
     areaSlug?: string | null;
     deliveryArea?: string | null;
     district?: string | null;
+    /** 0190: a pin with no area named (a WhatsApp location, a map link): the nearest area point, when it is close and unambiguous. */
+    point?: { lat: number; lng: number } | null;
   }): Promise<ResolvedArea | null>;
 }
 
@@ -97,6 +99,8 @@ export interface QuoteRequest {
   /** For the hour factor and the cutoff. Defaults to now. */
   at?: Date;
   hasPin?: boolean;
+  /** 0190: the customer's pin, when they gave one. Resolves the area when none was named; sets the PIN tier. */
+  point?: { lat: number; lng: number } | null;
 }
 
 export type QuoteOutcome = {
@@ -151,6 +155,7 @@ export class DeliveryQuotingUseCase {
         areaSlug: request.areaSlug ?? null,
         deliveryArea: request.deliveryArea ?? null,
         district: request.district ?? null,
+        point: request.point ?? null,
       }),
     ]);
 
@@ -223,7 +228,7 @@ export class DeliveryQuotingUseCase {
       config: numeric,
       hasActiveOrigin: origin,
       originCode,
-      hasPin: request.hasPin === true,
+      hasPin: request.hasPin === true || !!request.point,
       corridorFactor: factors.corridor,
       hourFactor: factors.hour,
       detourFactor: factors.detour,

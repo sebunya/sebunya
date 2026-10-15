@@ -75,7 +75,14 @@ routes.post('/quote', async (c) => {
   // The free-text destination is part of identity too: without it, 'Ntinda' and
   // 'Kajjansi' with the same basket shared one cached fee for sixty seconds.
   const areaText = typeof body?.deliveryArea === 'string' ? body.deliveryArea.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 120) : '';
-  const fullKey = `${key}:${areaText}:${items.map((i) => `${i.productId}x${i.quantity}`).sort().join(',')}`;
+  // 0190: a pin, to ~110 m (three decimals), is part of the quote's identity: two pins in one area must not share a fee once distance is measured.
+  const point =
+    body?.point && Number.isFinite(Number(body.point.lat)) && Number.isFinite(Number(body.point.lng))
+      && Number(body.point.lat) >= -2.5 && Number(body.point.lat) <= 5.5 && Number(body.point.lng) >= 28 && Number(body.point.lng) <= 36.5
+      ? { lat: Number(body.point.lat), lng: Number(body.point.lng) }
+      : null;
+  const pointKey = point ? `${point.lat.toFixed(3)},${point.lng.toFixed(3)}` : 'none';
+  const fullKey = `${key}:${areaText}:${pointKey}:${items.map((i) => `${i.productId}x${i.quantity}`).sort().join(',')}`;
   const hit = CACHE.get(fullKey);
   if (hit && now.getTime() - hit.at < CACHE_TTL_MS) {
     return c.json({ success: true, data: hit.body } satisfies ApiResponse<unknown>);
@@ -90,6 +97,7 @@ routes.post('/quote', async (c) => {
     subtotalUgx,
     at: now,
     hasPin: body?.hasPin === true,
+    point,
   });
 
   let presented = presentQuote(outcome.quote);

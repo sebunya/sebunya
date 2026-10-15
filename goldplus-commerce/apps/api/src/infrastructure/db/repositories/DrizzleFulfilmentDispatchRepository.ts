@@ -52,6 +52,7 @@ export class DrizzleFulfilmentDispatchRepository implements IFulfilmentDispatchR
         method: input.method,
         carrierName: input.carrierName,
         riderName: input.riderName,
+        riderId: input.riderId ?? null,
         contactMasked: input.contactMasked,
         paymentPolicy: input.paymentPolicy,
         trackingStatus: input.trackingStatus,

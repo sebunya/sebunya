@@ -256,6 +256,7 @@ export class DeliveryAreaResolver implements IAreaResolverPort {
     areaSlug?: string | null;
     deliveryArea?: string | null;
     district?: string | null;
+    point?: { lat: number; lng: number } | null;
   }): Promise<ResolvedArea | null> {
     if (input.areaSlug) {
       const bySlug = await this.bySlug(input.areaSlug);
@@ -269,9 +270,45 @@ export class DeliveryAreaResolver implements IAreaResolverPort {
     }
     if (input.district) {
       const asDistrict = await this.byText(input.district, null);
+      if (asDistrict && !asDistrict.input.districtOnly) return asDistrict;
+      // A district alone cannot be priced; a pin inside it can.
+      if (input.point) {
+        const byPin = await this.byPoint(input.point);
+        if (byPin) return byPin;
+      }
       if (asDistrict) return asDistrict;
     }
+    if (input.point) return this.byPoint(input.point);
     return null;
+  }
+
+  /**
+   * The area whose point is nearest to a pin, when that is unambiguous: the pin
+   * is within the point's expected error plus 1.5 km, and the runner-up is not
+   * within 30% of that distance. Otherwise null, and the caller asks for the
+   * area by name (contract #4: never guess a fee from a pin between two areas).
+   */
+  async byPoint(point: { lat: number; lng: number }): Promise<ResolvedArea | null> {
+    const rows = (await db.execute(sql`
+      select area_slug, centroid_lat, centroid_lng, centroid_expected_error_m
+      from delivery_corridor
+      where centroid_lat is not null and serviceable
+        and centroid_lat between ${point.lat - 0.3} and ${point.lat + 0.3}
+        and centroid_lng between ${point.lng - 0.3} and ${point.lng + 0.3}`)) as unknown as Array<{
+      area_slug: string;
+      centroid_lat: string;
+      centroid_lng: string;
+      centroid_expected_error_m: number | null;
+    }>;
+    const ranked = rows
+      .map((r) => ({ slug: r.area_slug, km: haversineKm(point, { lat: Number(r.centroid_lat), lng: Number(r.centroid_lng) }), errorM: r.centroid_expected_error_m ?? 0 }))
+      .sort((a, b) => a.km - b.km);
+    const best = ranked[0];
+    if (!best) return null;
+    if (best.km * 1000 > best.errorM + 1500) return null;
+    if (ranked[1] && ranked[1].km < best.km * 1.3) return null;
+    const resolved = await this.bySlug(best.slug);
+    return resolved ? { ...resolved, via: 'pin' } : null;
   }
 }
 

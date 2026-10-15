@@ -558,4 +558,25 @@ routes.get('/reports/location-accuracy', requirePermissions([PERMISSIONS.REPORTS
   return c.json({ success: true, data: await Registry.getInstance().deliveryLocationAccuracyReportUseCase.execute() });
 });
 
+/** Riders (0190): a name and a WhatsApp number. Phones are shown masked; the list is never exported. */
+routes.get('/riders', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  return c.json({ success: true, data: { riders: await Registry.getInstance().riderUseCases.list() } });
+});
+routes.post('/riders', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const r = await Registry.getInstance().riderUseCases.add({
+    name: String(body?.name ?? ''),
+    phone: String(body?.phone ?? ''),
+    addedBy: (c.get('user') as { id: string }).id,
+  });
+  if (!r.ok) return c.json({ success: false, error: { code: r.code, message: r.message } } satisfies ApiResponse<never>, 400);
+  return c.json({ success: true, data: r.rider }, 201);
+});
+routes.post('/riders/:id/active', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const r = await Registry.getInstance().riderUseCases.setActive(String(c.req.param('id') ?? ''), body?.active !== false);
+  if (!r.ok) return c.json({ success: false, error: { code: r.code, message: r.message } } satisfies ApiResponse<never>, 404);
+  return c.json({ success: true, data: { ok: true } });
+});
+
 export default routes;

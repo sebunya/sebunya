@@ -327,6 +327,8 @@ import { DrizzleDeliveryCalibrationRepository } from './db/repositories/DrizzleD
 import { ApplyCorridorCsvUseCase, DryRunCorridorCsvUseCase, RevertCorridorBatchUseCase } from '../application/use-cases/delivery/DeliveryCorridorCsvUseCase';
 import { LocationPinUseCases } from '../application/use-cases/delivery/LocationPinUseCases';
 import { DrizzleLocationPinRepository } from './db/repositories/DrizzleLocationPinRepository';
+import { RiderUseCases } from '../application/use-cases/delivery/RiderUseCases';
+import { DrizzleRiderRepository } from './db/repositories/DrizzleRiderRepository';
 import {
   AcceptCalibrationProposalUseCase,
   RejectCalibrationProposalUseCase,
@@ -1916,6 +1918,7 @@ export class Registry {
   public readonly deliveryLocationAccuracyReportUseCase = new DeliveryLocationAccuracyReportUseCase(this.deliveryCalibrationRepo);
 
   // 0190: WhatsApp location pins → orders (customer) and handovers (rider). Deterministic replies, no model call.
+  public readonly riderUseCases = new RiderUseCases(new DrizzleRiderRepository());
   public readonly locationPinRepo = new DrizzleLocationPinRepository(this.deliveryConfigReader);
   public readonly locationPinUseCases = new LocationPinUseCases(this.locationPinRepo, {
     record: async (input) => {
@@ -2002,6 +2005,7 @@ export class Registry {
       deliveryArea?: string | null;
       district?: string | null;
       items: ReadonlyArray<{ productId: string; quantity: number }>;
+      point?: { lat: number; lng: number } | null;
     }) => {
       // One instant for the quote AND its capture, so the recorded hour of week is
       // the one the hour factor was applied at (the use case derives it the same way).

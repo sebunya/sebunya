@@ -1,0 +1,115 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { apiBase } from "../../../lib/api";
+
+/**
+ * Riders (0190): the people whose WhatsApp number turns a shared location into
+ * a handover. A name and a number, nothing more. Numbers are shown masked and
+ * never leave this page; a rider who stops riding is switched off, not deleted,
+ * so past handovers keep their author.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/delivery/riders", 303);
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+let notice: { kind: "success" | "error"; text: string } | null = null;
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") || "");
+  try {
+    if (intent === "add") {
+      const res = await fetch(`${apiBase}/admin/delivery/riders`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ name: String(form.get("name") || ""), phone: String(form.get("phone") || "") }),
+      });
+      const json: any = await res.json().catch(() => null);
+      notice = json?.success ? { kind: "success", text: `${json.data.name} added.` } : { kind: "error", text: json?.error?.message || "Could not add the rider." };
+    } else if (intent === "active") {
+      const id = encodeURIComponent(String(form.get("id") || ""));
+      const active = String(form.get("active") || "") === "true";
+      const res = await fetch(`${apiBase}/admin/delivery/riders/${id}/active`, { method: "POST", headers, body: JSON.stringify({ active }) });
+      const json: any = await res.json().catch(() => null);
+      notice = json?.success ? { kind: "success", text: active ? "Rider switched on." : "Rider switched off." } : { kind: "error", text: json?.error?.message || "Could not update the rider." };
+    }
+  } catch {
+    notice = { kind: "error", text: "The delivery service is unreachable right now." };
+  }
+}
+
+let riders: Array<{ id: string; name: string; phoneMasked: string; active: boolean; createdAt: string }> = [];
+let loadFailed = false;
+try {
+  const res = await fetch(`${apiBase}/admin/delivery/riders`, { headers });
+  const json: any = await res.json().catch(() => null);
+  if (json?.success) riders = json.data.riders;
+  else loadFailed = true;
+} catch {
+  loadFailed = true;
+}
+---
+<AdminLayout title="Riders" description="The riders whose WhatsApp location at the door records a handover.">
+  <div class="max-w-3xl space-y-6">
+    <nav class="text-[10px] font-black uppercase tracking-widest text-gray-500 flex gap-3">
+      <a href="/admin/delivery" class="hover:text-brand-dark">Delivery</a><span>/</span><span class="text-brand-dark">Riders</span>
+    </nav>
+    <div>
+      <h1 class="text-2xl font-black text-brand-dark">Riders</h1>
+      <p class="text-sm text-gray-600 mt-1">
+        Pick a rider on the dispatch form. When that rider shares a location on WhatsApp while the stop is out, Goldie asks how
+        it went and records the handover. Numbers are shown masked and are not exported.
+      </p>
+    </div>
+
+    {notice && (
+      <div class={`rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-red-200 bg-red-50 text-red-900"}`} role="status">
+        {notice.text}
+      </div>
+    )}
+
+    <form method="POST" class="bg-white border border-gray-200 rounded-2xl p-5 grid gap-3 sm:grid-cols-[1fr_1fr_auto] items-end">
+      <input type="hidden" name="intent" value="add" />
+      <div>
+        <label for="name" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Name</label>
+        <input id="name" name="name" type="text" required maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+      </div>
+      <div>
+        <label for="phone" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">WhatsApp number</label>
+        <input id="phone" name="phone" type="tel" required inputmode="tel" placeholder="07XX XXX XXX" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+      </div>
+      <button type="submit" class="bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:bg-black">Add rider</button>
+    </form>
+
+    <div class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+      {loadFailed ? (
+        <p class="p-5 text-sm text-red-800">The rider list could not be loaded.</p>
+      ) : riders.length === 0 ? (
+        <p class="p-5 text-sm text-gray-600">No riders yet. Add the first one above; until then a location from any number is treated as a customer's pin.</p>
+      ) : (
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 text-[10px] font-black uppercase tracking-wider text-gray-500">
+            <tr><th class="text-left px-4 py-2">Rider</th><th class="text-left px-4 py-2">Number</th><th class="text-left px-4 py-2">Status</th><th class="px-4 py-2"></th></tr>
+          </thead>
+          <tbody>
+            {riders.map((r) => (
+              <tr class="border-t border-gray-100">
+                <td class="px-4 py-2.5 font-bold text-brand-dark">{r.name}</td>
+                <td class="px-4 py-2.5 font-mono text-xs">{r.phoneMasked}</td>
+                <td class="px-4 py-2.5">{r.active ? "On" : "Off"}</td>
+                <td class="px-4 py-2.5 text-right">
+                  <form method="POST">
+                    <input type="hidden" name="intent" value="active" />
+                    <input type="hidden" name="id" value={r.id} />
+                    <input type="hidden" name="active" value={r.active ? "false" : "true"} />
+                    <button type="submit" class="text-[10px] font-black uppercase tracking-wider text-gray-600 hover:text-brand-dark">{r.active ? "Switch off" : "Switch on"}</button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  </div>
+</AdminLayout>
