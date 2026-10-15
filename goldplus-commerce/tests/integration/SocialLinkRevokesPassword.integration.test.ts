@@ -16,6 +16,9 @@ suite('social link revokes an unproven password (real PostgreSQL)', () => {
   const userIds: string[] = [];
 
   beforeAll(async () => {
+    // The repository writes through DATABASE_URL: point it at the database the rows are seeded in, or the
+    // user lives in one database and its identity link is written to another (foreign key failure).
+    process.env.DATABASE_URL = URL as string;
     const { createRequire } = await import('node:module');
     const postgres = createRequire(import.meta.url)('postgres');
     raw = postgres(URL as string, { max: 2, onnotice: () => undefined });
