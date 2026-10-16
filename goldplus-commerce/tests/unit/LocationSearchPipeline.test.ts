@@ -118,7 +118,7 @@ describe('LocationSearchService — F.1 pipeline + F.3 ranking', () => {
     ]);
   });
 
-  it('order density breaks zone ties; quality breaks density ties; alphabetical last', async () => {
+  it('inside a zone: order density, then match quality; alphabetical last', async () => {
     const repo = new FakeRepo();
     repo.prefixHits = [
       area('low-density', 'Aaa · X', 'X', 'prefix', { deliveryZoneCode: 'Z2' }),
@@ -134,6 +134,20 @@ describe('LocationSearchService — F.1 pipeline + F.3 ranking', () => {
       'low-density',
       'same-zone-trigram',
     ]);
+  });
+
+  it('Greater Kampala is one tier: an exact Najjera (Wakiso) beats a Kampala prefix; any metro match beats upcountry', async () => {
+    const repo = new FakeRepo();
+    repo.exact = [
+      area('najjera', 'Najjera, Kira, Wakiso', 'Wakiso', 'area_exact', { deliveryZoneCode: 'Z2', isMetro: true }),
+      area('najja-up', 'Najja, Buikwe', 'Buikwe', 'area_exact', { deliveryZoneCode: 'Z3', isMetro: false }),
+    ];
+    repo.prefixHits = [
+      area('najjanankumbi', 'Najjanankumbi, Kampala', 'Kampala', 'prefix', { deliveryZoneCode: 'Z1', isMetro: true }),
+      area('seeta-ish', 'Najjembe, Mukono', 'Mukono', 'prefix', { deliveryZoneCode: 'Z2', isMetro: true }),
+    ];
+    const r = await new LocationSearchService(repo, noDensity).search('najj');
+    expect(r.hits.map((h) => (h as AreaSearchHit).areaSlug)).toEqual(['najjera', 'najjanankumbi', 'seeta-ish', 'najja-up']);
   });
 
   it('caps at 8 and pickup points are a distinct trailing result type', async () => {

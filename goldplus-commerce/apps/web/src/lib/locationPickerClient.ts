@@ -261,7 +261,7 @@
         const hits: PlaceOption[] = Array.isArray(json?.data?.hits)
           ? json.data.hits
               .filter((h: { kind: string }) => h.kind === 'area')
-              .map((h: { displayLabel: string; areaName: string; currentDistrict: string; areaSlug: string; matchType: string; isMetro?: boolean; score?: number }, i: number) => ({
+              .map((h: { displayLabel: string; areaName: string; currentDistrict: string; areaSlug: string; matchType: string; isMetro?: boolean; score?: number }) => ({
                 label: h.displayLabel,
                 district: h.currentDistrict,
                 area: h.areaName !== h.currentDistrict ? h.areaName : undefined,
@@ -269,11 +269,9 @@
                 provenance: h.matchType,
                 isMetro: h.isMetro === true,
                 matchedAs: h.matchType === 'alias_exact' ? titleCase(query) : undefined, // only a whole word: never "includes Kisa" mid-typing
-                _order: [-(Number(h.score) || 0), h.isMetro === true ? 0 : 1, i] as number[],
               }))
-              // Equal matches: the place we deliver to by rider (metro) before the namesake upcountry.
-              .sort((a: { _order: number[] }, b: { _order: number[] }) => a._order[0] - b._order[0] || a._order[1] - b._order[1] || a._order[2] - b._order[2])
-              .map(({ _order, ...rest }: { _order: number[] } & PlaceOption) => rest)
+              // The server's order is final: your saved and past areas, then Greater Kampala (Kampala, Wakiso,
+              // Mukono), then the better match. Re-sorting here used to undo "your saved areas first".
           : [];
         // Server hits lead; local fills gaps (dedupe by label+district).
         const seen = new Set(hits.map((h) => `${h.label}|${h.district}`.toLowerCase()));

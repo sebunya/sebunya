@@ -38,9 +38,9 @@ describe('checkout location: one question, answered the easiest way first (2026-
     expect(change).toMatch(/pin = null/);
   });
 
-  it('says why an alias matched, and puts the metro namesake first', () => {
+  it('says why an alias matched, and keeps the server order (saved areas, then Greater Kampala)', () => {
     expect(client).toMatch(/includes \$\{opt\.matchedAs\}/);
-    expect(client).toMatch(/isMetro === true \? 0 : 1/);
+    expect(client).not.toMatch(/_order/);
   });
 });
 
