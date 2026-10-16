@@ -267,7 +267,7 @@ export function paymentStartMessageFor(code: PaymentStartErrorCode | 'NETWORK'):
     default:
       // `default` so a code this client does not know (the API once returned
       // ORDER_ID_REQUIRED) cannot yield `undefined` and a blank error box.
-      return 'We could not start the online payment for this order. Your order is saved and nothing has been charged. You can pay on delivery or at the shop, or message us and we will send you a payment link.';
+      return 'We could not start the payment for this order. Your order is saved and nothing has been charged. Try again from the order page, or message us and we will send you a payment link.';
   }
 }
 
@@ -384,7 +384,7 @@ export function customerMessageFor(result: CheckoutCallResult): {
     case 'PAY_ON_DELIVERY_UNAVAILABLE':
       return {
         status: 'error',
-        message: 'Pay on delivery is not available for this order or this destination. Please choose to pay online, then place the order again. You have not been charged.',
+        message: 'Orders are paid now with Mobile Money or card. Please place the order again to pay. You have not been charged.',
       };
     case 'LOYALTY_REDEMPTION_REFUSED':
       return {

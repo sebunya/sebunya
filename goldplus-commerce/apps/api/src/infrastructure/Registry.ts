@@ -1296,6 +1296,8 @@ export class Registry {
         if (!result.ok) logger.warn({ orderId, reason: result.reason }, 'COUPON_REDEMPTION_REFUSED_AFTER_ORDER');
       },
     },
+    // Owner decision 2026-10-16: storefront orders pay online. STOREFRONT_PAY_ON_DELIVERY=on brings it back, no deploy.
+    { allowed: () => (process.env.STOREFRONT_PAY_ON_DELIVERY || '').trim().toLowerCase() === 'on' },
   );
   // Launch Phase 1 (Section 9.3): order-to-admin fulfilment alerts.
   public readonly fulfilmentRepo = new DrizzleFulfilmentRepository();

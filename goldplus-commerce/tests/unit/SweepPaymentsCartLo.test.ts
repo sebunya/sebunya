@@ -36,9 +36,9 @@ describe('checkout keeps what the customer chose across an error re-render', () 
   const src = read('apps/web/src/pages/checkout.astro');
 
   it('binds the payment method, points, promo code and preview quote to the submitted values', () => {
-    expect(src).not.toMatch(/name="paymentMethod" value="offline" checked\s/);
-    expect(src).toMatch(/value="offline" checked=\{paymentMethodValue !== 'pesapal'\}/);
-    expect(src).toMatch(/value="pesapal" checked=\{paymentMethodValue === 'pesapal'\}/);
+    // 2026-10-16: pay online only — one method, always chosen; pay on delivery is not offered.
+    expect(src).not.toMatch(/name="paymentMethod" value="offline"/);
+    expect(src).toMatch(/name="paymentMethod" value="pesapal" checked /);
     expect(src).toMatch(/value=\{redeemPointsValue\}/);
     expect(src).toMatch(/value=\{couponCodeValue\}/);
     expect(src).toMatch(/value=\{previewQuoteIdValue\}/);

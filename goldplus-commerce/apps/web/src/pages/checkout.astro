@@ -188,7 +188,8 @@ let previewQuoteIdValue = '';
 // The payment method and points the customer chose, carried back the same way.
 // The offline radio used to carry a literal `checked`, so any refusal quietly
 // turned "Pay securely now" into a pay-on-delivery order on the next submit.
-let paymentMethodValue: 'offline' | 'pesapal' = 'offline';
+// Owner decision 2026-10-16: storefront orders are paid online; pay on delivery confused customers.
+let paymentMethodValue: 'offline' | 'pesapal' = 'pesapal';
 let redeemPointsValue = '';
 
 // The checkout intent is resolved on EVERY render, including the initial GET.
@@ -364,7 +365,7 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
     const q = String(formData.get('previewQuoteId') || '').trim();
     previewQuoteIdValue = /^[0-9a-f-]{36}$/i.test(q) ? q : '';
   }
-  paymentMethodValue = String(formData.get('paymentMethod') || '').trim() === 'pesapal' ? 'pesapal' : 'offline';
+  paymentMethodValue = 'pesapal';
   {
     const rp = parseInt(String(formData.get('redeemPoints') || ''), 10);
     redeemPointsValue = Number.isInteger(rp) && rp > 0 ? String(rp) : '';
@@ -426,7 +427,8 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
          deliveryLocation: { district: selectedAddress.district, areaSlug: selectedAddress.areaSlug ?? undefined },
        };
      }
-     const paymentMethod = String(formData.get('paymentMethod') || 'offline').trim();
+     // Owner decision 2026-10-16: always online (the server refuses pay on delivery unless switched back on).
+     const paymentMethod = 'pesapal';
      receiptPlace = payload.customerDetails.deliveryArea;
      
      // Typed BFF call. The generic postJson helper returned `data: unknown` and
@@ -551,7 +553,8 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
                 headers: { Authorization: `Bearer ${sessionToken}`, 'Content-Type': 'application/json' },
                 signal: AbortSignal.timeout(3000),
                 body: JSON.stringify({
-                  label: district,
+                  // Named by the area ("Najjera"), not the district: "Wakiso" said nothing about which address it was.
+                  label: (payload.customerDetails.deliveryLocation?.displayLabel ?? '').split(',')[0].trim() || district,
                   recipientName: values.name,
                   phone: values.phone,
                   district,
@@ -610,9 +613,9 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
              ? { href: `/orders/${dto.orderId}`, label: 'Open your order and pay there' }
              : { href: `/track-order?reference=${encodeURIComponent(dto.orderNumber || '')}`, label: 'Track this order' };
         } else if (outcome.status === 'awaiting_payment') {
-           // Payable, but the customer chose the offline path.
+           // Placed, but not payable yet: the team confirms the total (usually the delivery fee) first.
            status = 'received';
-           message = 'Our team will call you to confirm the total before you pay.';
+           message = 'Our team will call you to confirm the total. Then pay from your order page with Mobile Money or card.';
            clearCheckoutIntent(Astro.cookies);
            await clearBasketAfterOrder();
         } else {
@@ -658,13 +661,13 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
            }
            status = 'received';
            receivedActionLabel = 'Track or pay for this order';
-           message = `${paymentStartMessageFor(payRes.code)} Nothing has been charged. Open the order below to try paying online again, or pay on delivery or at the shop.`;
+           message = `${paymentStartMessageFor(payRes.code)} Nothing has been charged. Open the order below to try paying again.`;
         } else {
            status = 'received';
            receivedActionLabel = paid ? 'Track this order' : 'Track or pay for this order';
            message = paid
              ? 'You have already paid for this order — there is nothing more to do, and we have not taken a second payment.'
-             : 'You placed this order a moment ago and it is saved for you. Nothing has been charged. Pay on delivery or at our shop, or open the order below to pay online now.';
+             : 'You placed this order a moment ago and it is saved for you. Nothing has been charged. Open the order below to pay now with Mobile Money or card.';
         }
      } else if (result.code === 'STOCK_NOT_RESERVED' && result.details) {
         // The order exists and is recorded truthfully; it simply cannot be paid.
@@ -1010,10 +1013,11 @@ const checkoutSavingLabel = basketSavingLabel(
                              class="mt-0.5 w-5 h-5 accent-[#456B00] cursor-pointer js-address-choice"
                            />
                            <span class="min-w-0">
-                             <span class="font-bold text-gray-900 text-sm">{a.label}</span>
+                             <span class="font-bold text-gray-900 text-sm">{a.label && a.label !== a.district ? a.label : (a.areaDetails || '').split(',')[0].trim() || a.label}</span>
                              {a.isDefault && <span class="ml-2 text-[10px] font-black uppercase tracking-widest text-brand-primaryInk">Default</span>}
                              <span class="block text-xs text-slate-500 mt-0.5">{a.recipientName} · {a.phone}</span>
-                             <span class="block text-xs text-slate-500">{a.areaDetails}, {a.district}</span>
+                             {/* "Najjera, Wakiso" already names the district: never "Najjera, Wakiso, Wakiso". */}
+                             <span class="block text-xs text-slate-500">{(a.areaDetails || '').toLowerCase().includes(String(a.district || '').toLowerCase()) ? a.areaDetails : `${a.areaDetails}, ${a.district}`}</span>
                            </span>
                          </label>
                        ))}
@@ -1029,12 +1033,18 @@ const checkoutSavingLabel = basketSavingLabel(
                 <legend class="block text-sm font-bold text-brand-charcoal">How would you like to get this order?</legend>
                 <div class="flex flex-wrap gap-x-4 gap-y-2">
                   <label class="flex min-h-11 items-center gap-2 text-sm font-semibold"><input type="radio" name="deliveryMethod" value="door" checked={values.deliveryMethod !== 'pickup'} class="js-method-radio w-5 h-5 accent-[#456B00]" /> Deliver to me</label>
-                  <label class="flex min-h-11 items-center gap-2 text-sm font-semibold"><input type="radio" name="deliveryMethod" value="pickup" checked={values.deliveryMethod === 'pickup'} class="js-method-radio w-5 h-5 accent-[#456B00]" /> I'll collect from a pickup point</label>
+                  {/* Owner 2026-10-16: with one pickup point (our shop) it is simply "our GoldPlus shop" — no dropdown. */}
+                  <label class="flex min-h-11 items-center gap-2 text-sm font-semibold"><input type="radio" name="deliveryMethod" value="pickup" checked={values.deliveryMethod === 'pickup'} class="js-method-radio w-5 h-5 accent-[#456B00]" /> {pickupPoints.length === 1 ? 'I\'ll collect from our GoldPlus shop' : 'I\'ll collect from a pickup point'}</label>
                 </div>
-                <select id="pickupPointSelect" name="pickupPointId" class={`${values.deliveryMethod === 'pickup' ? '' : 'hidden '}w-full bg-white border ${errors.pickupPointId ? 'border-red-600' : 'border-brand-borderGrey'} px-3 py-2.5 rounded-lg text-base sm:text-sm font-medium outline-none focus:ring-2 focus:ring-brand-primaryInk`} aria-label="Choose a pickup point" aria-invalid={errors.pickupPointId ? 'true' : undefined} aria-describedby={errors.pickupPointId ? 'pickupPointSelect-error' : undefined}>
-                  <option value="">Choose a pickup point…</option>
+                {pickupPoints.length === 1 && (
+                  <p id="pickupPointInfo" class={`${values.deliveryMethod === 'pickup' ? '' : 'hidden '}rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700`}>
+                    <span class="font-bold text-gray-900">{pickupPoints[0].name}</span>{pickupPoints[0].physicalAddress ? `, ${pickupPoints[0].physicalAddress}` : ''}
+                  </p>
+                )}
+                <select id="pickupPointSelect" name="pickupPointId" data-single={pickupPoints.length === 1 ? '1' : undefined} class={`${values.deliveryMethod === 'pickup' && pickupPoints.length !== 1 ? '' : 'hidden '}w-full bg-white border ${errors.pickupPointId ? 'border-red-600' : 'border-brand-borderGrey'} px-3 py-2.5 rounded-lg text-base sm:text-sm font-medium outline-none focus:ring-2 focus:ring-brand-primaryInk`} aria-label="Choose a pickup point" aria-invalid={errors.pickupPointId ? 'true' : undefined} aria-describedby={errors.pickupPointId ? 'pickupPointSelect-error' : undefined}>
+                  {pickupPoints.length !== 1 && <option value="">Choose a pickup point…</option>}
                   {pickupPoints.map((p) => (
-                    <option value={p.id} selected={p.id === values.pickupPointId} data-name={p.name} data-address={p.physicalAddress ?? ''}>{p.name} ({p.operator.replace(/_/g, ' ')})</option>
+                    <option value={p.id} selected={pickupPoints.length === 1 || p.id === values.pickupPointId} data-name={p.name} data-address={p.physicalAddress ?? ''}>{p.name} ({p.operator.replace(/_/g, ' ')})</option>
                   ))}
                 </select>
                 {errors.pickupPointId && <p id="pickupPointSelect-error" class="text-xs text-red-600 font-bold">{errors.pickupPointId}</p>}
@@ -1084,14 +1094,7 @@ const checkoutSavingLabel = basketSavingLabel(
               <fieldset class="space-y-4">
                 <legend class="sr-only">Choose how to pay</legend>
                 <label class="flex items-start gap-3 p-4 border border-slate-200/70 rounded-xl hover:border-brand-primary cursor-pointer select-none bg-slate-50/30 transition-all has-[:checked]:border-brand-primary has-[:checked]:bg-brand-primary/5 has-[:checked]:ring-1 has-[:checked]:ring-brand-primary">
-                  <input type="radio" name="paymentMethod" value="offline" checked={paymentMethodValue !== 'pesapal'} class="mt-0.5 w-5 h-5 shrink-0 accent-[#456B00] cursor-pointer" />
-                  <div>
-                    <span class="font-bold text-gray-900 text-sm">{paymentCopy.offline.label}</span>
-                    <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">{paymentCopy.offline.description}</p>
-                  </div>
-                </label>
-                <label class="flex items-start gap-3 p-4 border border-slate-200/70 rounded-xl hover:border-brand-primary cursor-pointer select-none bg-slate-50/30 transition-all has-[:checked]:border-brand-primary has-[:checked]:bg-brand-primary/5 has-[:checked]:ring-1 has-[:checked]:ring-brand-primary">
-                  <input type="radio" name="paymentMethod" value="pesapal" checked={paymentMethodValue === 'pesapal'} class="mt-0.5 w-5 h-5 shrink-0 accent-[#456B00] cursor-pointer" />
+                  <input type="radio" name="paymentMethod" value="pesapal" checked class="mt-0.5 w-5 h-5 shrink-0 accent-[#456B00] cursor-pointer" />
                   <div>
                     <span class="font-bold text-gray-900 text-sm">{paymentCopy.pesapal.label}</span>
                     <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">{paymentCopy.pesapal.description}</p>
@@ -1101,12 +1104,14 @@ const checkoutSavingLabel = basketSavingLabel(
             </div>
 
             {/* One optional question, for attribution only: never required, no
-                default answer, and "prefer not to say" sends nothing. */}
+                default answer. A neutral first line; "prefer not to say" is the LAST
+                choice (owner 2026-10-16), and it and the first line both send nothing. */}
             <div class="bg-white p-6 md:p-8 rounded-2xl border border-slate-200/80">
               <label for="heardAbout" class="block text-sm font-bold text-gray-900">How did you hear about us? <span class="font-normal text-slate-500">(optional)</span></label>
               <select id="heardAbout" name="heardAbout" class="mt-2 w-full min-h-11 bg-white border border-brand-borderGrey px-3 py-2.5 rounded-lg text-base sm:text-sm font-medium outline-none focus:ring-2 focus:ring-brand-primaryInk">
-                <option value="" selected={heardAboutValue === ''}>Prefer not to say</option>
+                <option value="" selected={heardAboutValue === ''}>Choose an answer</option>
                 {HEARD_ABOUT_OPTIONS.map((o) => <option value={o.value} selected={heardAboutValue === o.value}>{o.label}</option>)}
+                <option value="">Prefer not to say</option>
               </select>
             </div>
 
@@ -1341,7 +1346,7 @@ const checkoutSavingLabel = basketSavingLabel(
     const methodRadios = document.querySelectorAll<HTMLInputElement>('input[name="paymentMethod"]');
     const syncSubmitLabel = () => {
       if (!submitBtn) return;
-      const method = document.querySelector<HTMLInputElement>('input[name="paymentMethod"]:checked')?.value ?? 'offline';
+      const method = document.querySelector<HTMLInputElement>('input[name="paymentMethod"]:checked')?.value ?? 'pesapal';
       submitBtn.textContent = (method === 'pesapal' ? submitBtn.dataset.labelPesapal : submitBtn.dataset.labelOffline) ?? 'Place order';
     };
     methodRadios.forEach((r) => r.addEventListener('change', syncSubmitLabel));
@@ -1595,6 +1600,13 @@ const checkoutSavingLabel = basketSavingLabel(
     pickerPayload?.addEventListener('change', onPickerChange);
     // A building picked from the deep layer: its name is exactly what the rider should look for. Filled only
     // when the customer has not written anything there themselves.
+    // A place our map did not know ("Parliament"): the customer picked its area another way; the words they typed
+    // are exactly what the rider should look for. Filled only when they have not written anything there.
+    document.addEventListener('gp:place-typed', (e) => {
+      const d = (e as CustomEvent<{ text: string }>).detail;
+      const field = document.getElementById('deliveryAddress') as HTMLInputElement | null;
+      if (field && !field.value.trim() && d?.text) field.value = d.text.slice(0, 200);
+    });
     document.addEventListener('gp:place-picked', (e) => {
       const d = (e as CustomEvent<{ name: string; detail: string }>).detail;
       const field = document.getElementById('deliveryAddress') as HTMLInputElement | null;
@@ -1732,7 +1744,10 @@ const checkoutSavingLabel = basketSavingLabel(
     const landmarkField = document.getElementById('deliveryAddress')?.closest('div');
     function syncMethod() {
       const pickup = document.querySelector<HTMLInputElement>('input.js-method-radio:checked')?.value === 'pickup';
-      pickupSelect?.classList.toggle('hidden', !pickup);
+      // One pickup point (our shop): the select stays hidden with the shop chosen; its address shows instead.
+      const single = pickupSelect?.dataset.single === '1';
+      pickupSelect?.classList.toggle('hidden', single || !pickup);
+      document.getElementById('pickupPointInfo')?.classList.toggle('hidden', !pickup);
       pickerBlock?.classList.toggle('hidden', pickup);
       (landmarkField as HTMLElement | undefined)?.classList.toggle('hidden', pickup);
       if (pickup) applyPickupSelection();

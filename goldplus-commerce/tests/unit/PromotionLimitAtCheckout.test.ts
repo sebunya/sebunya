@@ -37,7 +37,7 @@ describe('checkout refusals a retry cannot fix are named, final and explained', 
       expect(m.message, code).not.toMatch(/please try again\./i);
       expect(m.message, code).toMatch(/not been charged/);
     }
-    expect(customerMessageFor({ ok: false, code: 'PAY_ON_DELIVERY_UNAVAILABLE', message: '' } as never).message).toMatch(/pay online/i);
+    expect(customerMessageFor({ ok: false, code: 'PAY_ON_DELIVERY_UNAVAILABLE', message: '' } as never).message).toMatch(/paid now with Mobile Money or card/i);
   });
 });
 

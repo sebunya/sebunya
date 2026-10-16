@@ -206,6 +206,11 @@ export class CheckoutUseCase {
     private readonly couponRedemption: {
       redeemForOrder(input: { code: string; orderId: string; customerScopeKey: string; quote: PricingQuote }): Promise<void>;
     } | null = null,
+    /**
+     * Owner decision 2026-10-16: storefront orders are paid online (Mobile Money or card); pay on delivery confused
+     * customers. null = allowed (scripts, tests); production wires STOREFRONT_PAY_ON_DELIVERY (off unless 'on').
+     */
+    private readonly payOnDelivery: { allowed(): boolean } | null = null,
   ) {}
 
   private async ownerReviewThresholdUgx(): Promise<number | null> {
@@ -295,6 +300,10 @@ export class CheckoutUseCase {
         const before = quoted.mayFallBackToLegacy ? fee.feeUgx : (quoted.feeBeforeFreeDeliveryUgx ?? fee.feeUgx);
         freeDelivery = { thresholdUgx: threshold, feeBeforeUgx: before };
       }
+    }
+
+    if (dto.paymentMethod !== 'pesapal' && this.payOnDelivery && !this.payOnDelivery.allowed()) {
+      throw new Error('COD_NOT_AVAILABLE: Pay now with Mobile Money or card to place this order.');
     }
 
     // COD controls (location brief I.2): eligibility is a ZONE attribute. Only

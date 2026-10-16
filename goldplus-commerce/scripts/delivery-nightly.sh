@@ -3,7 +3,8 @@
 #
 #   1. calibration   — fit factors from the day's deliveries, PROPOSE (never apply)       delivery-nightly-calibration
 #   2. area points   — ≥3 tight rider handovers or ≥5 tight customer pins → the area's point   geo-nightly-area-points
-#   3. purge         — pins, handover points and pending locations past pin_retention_days   geo-purge-pins
+#   3. landmarks     — search misses several visitors resolved to one area become landmarks   geo-nightly-learn-landmarks
+#   4. purge         — pins, handover points and pending locations past pin_retention_days   geo-purge-pins
 #
 # Each job is independent; a failure is logged and the next one still runs; the script exits non-zero if any
 # failed, so systemd's OnFailure alert fires. Runs daily from goldplus-delivery-nightly.timer at 02:30 Kampala
@@ -33,6 +34,7 @@ run() {
 }
 run calibration delivery-nightly-calibration.js
 run area-points geo-nightly-area-points.js
+run landmarks   geo-nightly-learn-landmarks.js
 run purge-pins  geo-purge-pins.js
 
 echo "=== done failed=$failed"

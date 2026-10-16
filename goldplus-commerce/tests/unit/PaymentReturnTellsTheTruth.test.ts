@@ -53,7 +53,9 @@ describe('payment return copy', () => {
     // was a dead end the copy itself apologised for ("if the checkout looks empty").
     expect(c.primaryCta.href).toBe('/track-order?reference=GP-202608-3F7A');
     expect(c.next).toMatch(/not create a second/i);
-    expect(c.next).toMatch(/payment link|pay on delivery/i);
+    // 2026-10-16: storefront orders are paid online only; the way forward is paying again.
+    expect(c.next).toMatch(/pay again with Mobile Money or card/i);
+    expect(c.next).not.toMatch(/pay on delivery/i);
   });
 
   it('a customer charged twice is told so, and never told "no second payment"', () => {

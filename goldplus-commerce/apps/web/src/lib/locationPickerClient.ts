@@ -29,6 +29,8 @@
     provenance?: string;
     /** What the customer typed, when it matched an alias of this area ("Kisaasi" → Kyanja). Shown, so the answer is not a surprise. */
     matchedAs?: string;
+    /** A landmark of ours that matched ("Parliament"): the row says it is for that place. */
+    viaLandmark?: string;
     isMetro?: boolean;
     /** Shown on the right instead of the district, e.g. "1.2 km from you". */
     note?: string;
@@ -36,8 +38,8 @@
     fromPin?: boolean;
     /** A building or place from the deep layer (Google Places): choosing it pins it, then offers our areas. */
     deepPlaceId?: string;
-    /** The row that asks the deep layer, shown only when our own search cannot answer. */
-    action?: 'deep-search';
+    /** A row that does something instead of choosing: ask the deep layer, locate, or open the area list. */
+    action?: 'deep-search' | 'locate' | 'fallbacks';
     /** A row that cannot be chosen (the "Results from Google Maps" credit). */
     inert?: boolean;
   }
@@ -203,6 +205,10 @@
     let deepSeq = 0;
     let lastDeepQuery = '';
     let pinnedPlaceName = '';
+    // A search our map could not answer ("Parliament"), kept until the customer picks an area some other way: the
+    // pair teaches the gazetteer (nightly landmark learning) and the words go to the rider line.
+    let lastMiss = '';
+    const searchSession = newSessionToken();
 
     function payloadWithPin(base: Record<string, unknown>): string {
       return JSON.stringify({ ...base, ...(pin ?? {}) });
@@ -210,6 +216,7 @@
 
     function commit(opt: PlaceOption) {
       recordLocateOutcome(opt);
+      resolveMiss(opt);
       const hasArea = Boolean(opt.area && opt.area !== opt.district);
       payloadInput!.value = payloadWithPin({
         district: opt.district,
@@ -220,6 +227,21 @@
       if (cardPrimary) cardPrimary.textContent = opt.area ?? opt.district;
       if (cardSecondary) cardSecondary.textContent = `District: ${opt.district} · ${opt.fromPin ? 'near your location' : 'Uganda'}`;
       finishCommit();
+    }
+
+    /** The customer could not find "Parliament", then chose an area: tell the learning loop, and the rider. */
+    function resolveMiss(opt: PlaceOption) {
+      const missed = lastMiss;
+      lastMiss = '';
+      if (!missed || missed.length < 3) return;
+      el.dispatchEvent(new CustomEvent('gp:place-typed', { bubbles: true, detail: { text: titleCase(missed) } }));
+      if (!opt.areaSlug || !publicApiBase) return;
+      void fetch(`${publicApiBase}/locations/search-events`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ rawQuery: missed.slice(0, 120), resolvedAreaSlug: opt.areaSlug, resolvedVia: 'landmark', sessionId: searchSession }),
+        keepalive: true,
+      }).catch(() => undefined);
     }
 
     function commitManual() {
@@ -290,6 +312,27 @@
         li.className = 'px-4 py-3 text-sm text-gray-600';
         li.textContent = 'No match. Pick your district below, or write directions instead.';
         dropdown!.appendChild(li);
+      } else if (list.every((o) => o.inert || o.action) && list.some((o) => o.action === 'locate' || o.action === 'fallbacks')) {
+        // Our map has no answer: rows that move the customer forward instead of a dead end (rendered below).
+        list.forEach((opt, i) => {
+          const li = document.createElement('li');
+          li.setAttribute('role', 'option');
+          li.setAttribute('aria-selected', 'false');
+          li.setAttribute('id', `${el.dataset.id}_opt_${i}`);
+          if (opt.inert) {
+            li.setAttribute('aria-disabled', 'true');
+            li.className = 'px-4 py-3 text-sm text-gray-700';
+            li.textContent = opt.label;
+          } else {
+            li.className = 'px-4 py-3 cursor-pointer hover:bg-amber-50 min-h-[44px] text-sm font-bold text-brand-charcoal';
+            li.textContent = opt.label;
+            li.addEventListener('mousedown', (e) => { e.preventDefault(); choose(opt); });
+          }
+          dropdown!.appendChild(li);
+        });
+        dropdown!.classList.remove('hidden');
+        input!.setAttribute('aria-expanded', 'true');
+        return;
       } else {
         list.forEach((opt, i) => {
           const li = document.createElement('li');
@@ -321,10 +364,10 @@
           const distSpan = document.createElement('span');
           distSpan.className = 'text-xs text-gray-500 whitespace-nowrap';
           distSpan.textContent = opt.note ?? (opt.area ? `${opt.district} District` : 'District');
-          if (opt.matchedAs) {
+          if (opt.matchedAs || opt.viaLandmark) {
             const why = document.createElement('span');
             why.className = 'block text-xs font-normal text-gray-600';
-            why.textContent = `includes ${opt.matchedAs}`;
+            why.textContent = opt.viaLandmark ? `for ${opt.viaLandmark}` : `includes ${opt.matchedAs}`;
             nameSpan.appendChild(why);
           }
           li.appendChild(nameSpan);
@@ -358,14 +401,16 @@
         const hits: PlaceOption[] = Array.isArray(json?.data?.hits)
           ? json.data.hits
               .filter((h: { kind: string }) => h.kind === 'area')
-              .map((h: { displayLabel: string; areaName: string; currentDistrict: string; areaSlug: string; matchType: string; isMetro?: boolean; score?: number }) => ({
+              .map((h: { displayLabel: string; areaName: string; currentDistrict: string; areaSlug: string; matchType: string; isMetro?: boolean; score?: number; viaAlias?: string; viaLandmark?: string }) => ({
                 label: h.displayLabel,
                 district: h.currentDistrict,
                 area: h.areaName !== h.currentDistrict ? h.areaName : undefined,
                 areaSlug: h.areaSlug,
                 provenance: h.matchType,
                 isMetro: h.isMetro === true,
-                matchedAs: h.matchType === 'alias_exact' ? titleCase(query) : undefined, // only a whole word: never "includes Kisa" mid-typing
+                // The gazetteer's own spelling ("includes Najjera" even when "Najeera" was typed); a landmark says which.
+                matchedAs: h.viaAlias ? h.viaAlias : h.matchType === 'alias_exact' ? titleCase(query) : undefined,
+                viaLandmark: h.viaLandmark || undefined,
               }))
               // The server's order is final: your saved and past areas, then Greater Kampala (Kampala, Wakiso,
               // Mukono), then the better match. Re-sorting here used to undo "your saved areas first".
@@ -378,6 +423,12 @@
         current = local; // offline: the metro set that matters most still works
       }
       current = withDeepOffer(current, query);
+      if (current.length === 0 && query.length >= 3) {
+        lastMiss = query;
+        current = noMatchRows(query);
+      } else if (current.every((o) => o.action) && query.length >= 3) {
+        lastMiss = query;
+      }
       renderResults(current);
       // Ask the deep layer by itself once the customer pauses, when it is the likely answer: our search found
       // nothing, or they are clearly typing a building (the offer row is showing) with six or more characters.
@@ -399,6 +450,14 @@
       const exactTop = list[0] && (list[0].provenance === 'area_exact' || list[0].provenance === 'alias_exact' || list[0].provenance === 'group_exact');
       if (list.length > 0 && (!looksSpecific(query) || (exactTop && !SPECIFIC_CUES.test(query) && !/\d/.test(query)))) return list;
       return [...list.slice(0, 6), { label: `🔎 Find the building or place "${query.slice(0, 40)}"`, district: '', action: 'deep-search' }];
+    }
+
+    /** Our map has no answer for this text: say so plainly and offer the two ways forward. */
+    function noMatchRows(query: string): PlaceOption[] {
+      const rows: PlaceOption[] = [{ label: `"${query.slice(0, 40)}" is not on our map yet. Pick its area, and we will tell the rider to look for it.`, district: '', inert: true }];
+      if (withPinCapture) rows.push({ label: '📍 Use my location', district: '', action: 'locate' });
+      rows.push({ label: 'Choose the area from a list', district: '', action: 'fallbacks' });
+      return rows;
     }
 
     /** One paid suggestion call (the server enforces budget, per-session cap and cache). */
@@ -440,7 +499,9 @@
         ? oursExact
           ? [...ours.slice(0, 2), ...found, credit]
           : [...found, ...ours.slice(0, 3), credit]
-        : [...ours, { label: ours.length ? 'No building found. Pick an area above.' : 'No building found. Try an area name, or use Can\'t find your area.', district: '', inert: true }];
+        : ours.length
+          ? [...ours, { label: 'No building found. Pick an area above.', district: '', inert: true }]
+          : noMatchRows(query);
       renderResults(current);
     }
 
@@ -483,6 +544,13 @@
     function choose(opt: PlaceOption) {
       if (opt.inert) return;
       if (opt.action === 'deep-search') { void runDeep(input!.value.trim()); return; }
+      if (opt.action === 'locate') { dropdown!.classList.add('hidden'); captureDevicePin(pinStatus); return; }
+      if (opt.action === 'fallbacks') {
+        dropdown!.classList.add('hidden');
+        if (fallbacks) fallbacks.open = true;
+        districtSelect?.focus();
+        return;
+      }
       if (opt.deepPlaceId) { void pickDeep(opt); return; }
       commit(opt);
     }

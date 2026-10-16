@@ -163,7 +163,7 @@ export async function answerDeterministically(c: Classification, ci?: CareInput)
     }
     case 'PAYMENT': {
       const copy = (await getStorefrontCopy()).payment;
-      const text = `You can pay two ways at checkout. ${copy.pesapal.label}: ${copy.pesapal.description} Or ${copy.offline.label.toLowerCase()}: ${copy.offline.description} One thing to know: we never ask for your PIN or OTP in this chat, and I cannot confirm a payment from here. If money left your phone and the order still says pending, send us the order reference on WhatsApp and a person will sort it out.`;
+      const text = `You pay online when you order. ${copy.pesapal.label}: ${copy.pesapal.description} One thing to know: we never ask for your PIN or OTP in this chat, and I cannot confirm a payment from here. If money left your phone and the order still says pending, send us the order reference on WhatsApp and a person will sort it out.`;
       return { intent: c.intent, text, products: [], links: [link('Payment questions', '/faq'), wa] };
     }
     case 'ORDER': {
