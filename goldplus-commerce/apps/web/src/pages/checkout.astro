@@ -406,6 +406,8 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
      // Map priceUgx field since interface varies slightly between cart api and checkout lib
      const normalizedItems = cart.items.map(i => ({ ...i, priceUgx: i.priceUgx || i.unitPriceUgx }));
      const payload = prepareCheckoutPayload(formData, normalizedItems as any);
+     // Collect from our shop: the server prices it at zero once it confirms the point is one of ours.
+     if (collecting && pickupPoint) payload.customerDetails = { ...payload.customerDetails, pickupPointId: pickupPoint.id };
      if (selectedAddress) {
        payload.customerDetails = {
          name: values.name,
@@ -1256,7 +1258,7 @@ const checkoutSavingLabel = basketSavingLabel(
   import { track, captureClickIdsServerSide } from '../lib/telemetry';
   import { getCheckoutAttribution } from '../lib/attribution';
   import { publicApiBase } from '../lib/api';
-  import { buildDeliveryQuoteRequest, renderDeliveryQuotePanel, DELIVERY_QUOTE_UNREACHABLE_HTML, manualDeliveryAreaLine } from '../lib/deliveryQuotePanel';
+  import { buildDeliveryQuoteRequest, renderDeliveryQuotePanel, DELIVERY_QUOTE_UNREACHABLE_HTML, manualDeliveryAreaLine, escapeQuoteText } from '../lib/deliveryQuotePanel';
 
   document.addEventListener('DOMContentLoaded', () => {
     const dataEl  = document.getElementById('checkout-telemetry-data');
@@ -1458,6 +1460,17 @@ const checkoutSavingLabel = basketSavingLabel(
       if (!raw) { ++estimateSeq; setCutoffFor(null); renderEstimate(null, false); void refreshQuotePanel(null, null, null); return; }
       try {
         const loc = JSON.parse(raw);
+        // Collecting from our shop: nothing travels, so there is no fee to quote and no rider to promise.
+        if (loc?.pickupPointId) {
+          ++estimateSeq;
+          ++quoteSeq;
+          setCutoffFor(null);
+          renderEstimate({ kind: 'CONFIRMED', feeUgx: 0 }, true);
+          if (quotePanelEl) {
+            quotePanelEl.innerHTML = `<p class="text-sm font-bold text-emerald-900">Collect free from ${escapeQuoteText(String(loc.rawAddressText || '').replace(/^Pickup point:\s*/, ''))}.</p><p class="text-xs text-gray-600 mt-1">No delivery fee. We message you when your order is ready to collect.</p>`;
+          }
+          return;
+        }
         // A typed location: ask with the very area line the order is placed with, district or not.
         if (loc?.manual && loc.rawAddressText) { refreshEstimate(loc.district ? String(loc.district) : null, manualDeliveryAreaLine(loc.rawAddressText, loc.district), null); return; }
         if (loc?.district) { refreshEstimate(String(loc.district), loc.area ?? null, loc.areaSlug ? String(loc.areaSlug) : null); return; }
@@ -1613,6 +1626,7 @@ const checkoutSavingLabel = basketSavingLabel(
       if (opt && opt.value) {
         payloadEl.value = JSON.stringify({
           manual: true,
+          pickupPointId: opt.value,
           rawAddressText: `Pickup point: ${opt.dataset.name}${opt.dataset.address ? ', ' + opt.dataset.address : ''}`,
         });
         payloadEl.dispatchEvent(new Event('change', { bubbles: true }));

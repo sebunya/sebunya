@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { Registry } from '../../../infrastructure/Registry';
-import { ApiResponse } from '@goldplus/shared';
+import { ApiResponse } from '@goldplus/shared';import { isShopCollectionOperator } from '../../../domain/locations/CollectionPoints';
+
 
 /**
  * Public location endpoints (location-module brief PART F/G/H).
@@ -76,7 +77,7 @@ routes.get('/pickup-points', async (c) => {
   // and agents (brief PART B reality 2). No PII: operator-published data only.
   const all = await Registry.getInstance().managePickupPointsUseCase.list();
   const data = all
-    .filter((p) => p.active)
+    .filter((p) => p.active && isShopCollectionOperator(p.operator))
     .map((p) => ({
       id: p.id,
       name: p.name,

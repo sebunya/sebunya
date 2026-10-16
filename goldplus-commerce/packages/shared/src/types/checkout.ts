@@ -106,6 +106,8 @@ export interface CheckoutCustomerDetailsDto {
   deliveryArea: string;
   deliveryAddress: string;
   deliveryLocation?: CheckoutDeliveryLocationDto | null;
+  /** Collect from one of our own shops (active, non-carrier pickup point): no delivery fee. */
+  pickupPointId?: string | null;
 }
 
 export interface CheckoutLineItemDto {
