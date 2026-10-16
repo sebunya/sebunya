@@ -18,13 +18,19 @@ describe('checkout location: one question, answered the easiest way first (2026-
     for (const hook of ['js-district-select', 'js-pin-link', 'js-manual-text', 'js-manual-commit']) expect(details).toContain(hook);
   });
 
-  it('a pin alone names the area through the quote\'s own nearest-area rule, and invents nothing', () => {
+  it('a pin offers the nearest areas to choose from, and never decides alone', () => {
     expect(client).toMatch(/\/locations\/near\?lat=/);
     expect(routes).toMatch(/routes\.get\('\/near'/);
-    expect(routes).toMatch(/resolved\.via === 'pin'/);
+    expect(routes).toMatch(/nearestAreas\(/);
     // The pin is never echoed back from the endpoint.
     const near = routes.slice(routes.indexOf("routes.get('/near'"), routes.indexOf("routes.post('/search-events'"));
     expect(near).not.toMatch(/data: \{[^}]*lat/);
+  });
+
+  it('after Locate me nothing is chosen for the customer', () => {
+    const after = client.slice(client.indexOf('async function afterPin'), client.indexOf("pinGps?.addEventListener('click'"));
+    expect(after).not.toMatch(/\bcommit\(/);
+    expect(after).toMatch(/renderResults\(current\)/);
   });
 
   it('changing the place drops the old pin', () => {

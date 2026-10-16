@@ -288,6 +288,37 @@ export class DeliveryAreaResolver implements IAreaResolverPort {
    * within 30% of that distance. Otherwise null, and the caller asks for the
    * area by name (contract #4: never guess a fee from a pin between two areas).
    */
+  /**
+   * The nearest serviceable areas to a pin, closest first, for the customer to CHOOSE from (2026-10-16).
+   * Measured on production points: 1 km from an area's centre, the single automatic answer was wrong for
+   * about one pin in five, while the right area was among the nearest three about nine times in ten. So
+   * checkout offers these as one-tap choices and never decides alone. Labels only; the pin is not returned.
+   */
+  async nearestAreas(point: { lat: number; lng: number }, limit = 3, withinKm = 6): Promise<Array<{ areaSlug: string; label: string; district: string; km: number }>> {
+    const rows = (await db.execute(sql`
+      select area_slug, area, district, centroid_lat, centroid_lng
+      from delivery_corridor
+      where centroid_lat is not null and serviceable
+        and centroid_lat between ${point.lat - 0.1} and ${point.lat + 0.1}
+        and centroid_lng between ${point.lng - 0.1} and ${point.lng + 0.1}`)) as unknown as Array<{
+      area_slug: string;
+      area: string;
+      district: string;
+      centroid_lat: string;
+      centroid_lng: string;
+    }>;
+    return rows
+      .map((r) => ({
+        areaSlug: r.area_slug,
+        label: `${r.area}, ${r.district}`,
+        district: r.district,
+        km: Math.round(haversineKm(point, { lat: Number(r.centroid_lat), lng: Number(r.centroid_lng) }) * 10) / 10,
+      }))
+      .filter((r) => r.km <= withinKm)
+      .sort((a, b) => a.km - b.km)
+      .slice(0, limit);
+  }
+
   async byPoint(point: { lat: number; lng: number }): Promise<ResolvedArea | null> {
     const rows = (await db.execute(sql`
       select area_slug, centroid_lat, centroid_lng, centroid_expected_error_m

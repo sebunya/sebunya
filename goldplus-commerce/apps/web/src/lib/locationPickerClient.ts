@@ -29,6 +29,10 @@
     /** What the customer typed, when it matched an alias of this area ("Kisaasi" → Kyanja). Shown, so the answer is not a surprise. */
     matchedAs?: string;
     isMetro?: boolean;
+    /** Shown on the right instead of the district, e.g. "1.2 km from you". */
+    note?: string;
+    /** Chosen from the nearest-areas list after "Locate me". */
+    fromPin?: boolean;
   }
 
   interface PinState {
@@ -137,7 +141,7 @@
         displayLabel: hasArea ? `${opt.area}, ${opt.district}` : opt.district,
       });
       if (cardPrimary) cardPrimary.textContent = opt.area ?? opt.district;
-      if (cardSecondary) cardSecondary.textContent = `District: ${opt.district} · Uganda`;
+      if (cardSecondary) cardSecondary.textContent = `District: ${opt.district} · ${opt.fromPin ? 'near your location' : 'Uganda'}`;
       finishCommit();
     }
 
@@ -219,7 +223,7 @@
           nameSpan.textContent = opt.label;
           const distSpan = document.createElement('span');
           distSpan.className = 'text-xs text-gray-500 whitespace-nowrap';
-          distSpan.textContent = opt.area ? `${opt.district} District` : 'District';
+          distSpan.textContent = opt.note ?? (opt.area ? `${opt.district} District` : 'District');
           if (opt.matchedAs) {
             const why = document.createElement('span');
             why.className = 'block text-xs font-normal text-gray-600';
@@ -264,7 +268,7 @@
                 areaSlug: h.areaSlug,
                 provenance: h.matchType,
                 isMetro: h.isMetro === true,
-                matchedAs: String(h.matchType || '').startsWith('alias') ? titleCase(query) : undefined,
+                matchedAs: h.matchType === 'alias_exact' ? titleCase(query) : undefined, // only a whole word: never "includes Kisa" mid-typing
                 _order: [-(Number(h.score) || 0), h.isMetro === true ? 0 : 1, i] as number[],
               }))
               // Equal matches: the place we deliver to by rider (metro) before the namesake upcountry.
@@ -383,28 +387,43 @@
       );
     }
 
-    /** A pin arrived (device or link). Nothing chosen yet: name the area from it. Something chosen: attach it. */
+    /**
+     * A pin arrived (device or link). Something already chosen: attach it for the rider. Nothing chosen: offer the
+     * nearest areas as one-tap choices, closest first. Never decide alone: measured on our own area points, one
+     * automatic answer was wrong for about one pin in five; the right area was in the nearest three nine in ten.
+     */
     async function afterPin(statusEl: HTMLElement | null, okText: string) {
       const say = (t: string) => { if (statusEl) statusEl.textContent = t; };
       if (payloadInput!.value || !pin) { say(okText); refreshPayloadPin(); return; }
-      say('Finding your area…');
-      let area: { areaSlug: string; label: string; district: string | null } | null = null;
+      say('Finding areas near you…');
+      let areas: Array<{ areaSlug: string; label: string; district: string; km: number }> = [];
       if (publicApiBase) {
         try {
           const res = await fetch(`${publicApiBase}/locations/near?lat=${pin.gpsLat}&lng=${pin.gpsLng}`, { signal: AbortSignal.timeout(5000) });
           const json = await res.json().catch(() => null);
-          area = json?.data?.area ?? null;
+          if (Array.isArray(json?.data?.areas)) areas = json.data.areas;
         } catch { /* the honest message below */ }
       }
-      if (area && area.district) {
-        const name = area.label.split(',')[0].trim();
-        say('');
-        commit({ label: area.label, district: area.district, area: name !== area.district ? name : undefined, areaSlug: area.areaSlug });
-        if (cardSecondary) cardSecondary.textContent = `District: ${area.district} · from your location`;
+      if (areas.length === 0) {
+        say('We have your exact location for the rider. Type your area so we can price delivery.');
+        input!.focus();
         return;
       }
-      say('We have your exact location for the rider. Now type your area so we can price delivery.');
-      input!.focus();
+      // No focus here: on a phone it raises the keyboard over the very choices we are offering.
+      say('Tap your area below. Not listed? Type it instead.');
+      current = areas.map((a) => {
+        const name = a.label.split(',')[0].trim();
+        return {
+          label: a.label,
+          district: a.district,
+          area: name !== a.district ? name : undefined,
+          areaSlug: a.areaSlug,
+          note: a.km < 1 ? 'under 1 km from you' : `${a.km} km from you`,
+          fromPin: true,
+        };
+      });
+      renderResults(current);
+      highlight(1);
     }
 
     pinGps?.addEventListener('click', () => captureDevicePin(pinStatus));
