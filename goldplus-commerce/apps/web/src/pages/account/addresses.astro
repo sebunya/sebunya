@@ -46,7 +46,8 @@ if (Astro.request.method === 'POST') {
             knownArea = String(loc.area || '').trim();
             areaSlug = String(loc.areaSlug || '').trim();
             if (loc.manual && loc.rawAddressText) rawAddressText = String(loc.rawAddressText).trim();
-            if (typeof loc.gpsLat === 'number' && typeof loc.gpsLng === 'number') {
+            // A building picked from Google Places is never stored in the address book (Google allows coordinates 30 days at most).
+            if (typeof loc.gpsLat === 'number' && typeof loc.gpsLng === 'number' && loc.gpsSource !== 'map_place') {
               gps = {
                 gpsLat: loc.gpsLat,
                 gpsLng: loc.gpsLng,

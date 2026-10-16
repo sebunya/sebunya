@@ -1555,6 +1555,13 @@ const checkoutSavingLabel = basketSavingLabel(
       }
     }
     pickerPayload?.addEventListener('change', onPickerChange);
+    // A building picked from the deep layer: its name is exactly what the rider should look for. Filled only
+    // when the customer has not written anything there themselves.
+    document.addEventListener('gp:place-picked', (e) => {
+      const d = (e as CustomEvent<{ name: string; detail: string }>).detail;
+      const field = document.getElementById('deliveryAddress') as HTMLInputElement | null;
+      if (field && !field.value.trim() && d?.name) field.value = [d.name, d.detail].filter(Boolean).join(', ').slice(0, 200);
+    });
     // A returning guest's form opens with their last place already chosen:
     // price it now rather than showing "pick a location" beside a location.
     // (Called directly: re-dispatching 'change' would also fire the funnel event.)

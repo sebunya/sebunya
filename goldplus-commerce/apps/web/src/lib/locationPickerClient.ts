@@ -33,13 +33,38 @@
     note?: string;
     /** Chosen from the nearest-areas list after "Locate me". */
     fromPin?: boolean;
+    /** A building or place from the deep layer (Google Places): choosing it pins it, then offers our areas. */
+    deepPlaceId?: string;
+    /** The row that asks the deep layer, shown only when our own search cannot answer. */
+    action?: 'deep-search';
+    /** A row that cannot be chosen (the "Results from Google Maps" credit). */
+    inert?: boolean;
+  }
+
+  /**
+   * Is the customer typing something finer than an area: a building, plot, mall, estate, school, stage?
+   * Only then (or when our search finds nothing) is the paid deep layer offered.
+   */
+  const SPECIFIC_CUES =
+    /\b(mall|plaza|arcade|tower|towers|house|apartments?|apts|flats|hostel|hotel|lodge|church|mosque|cathedral|school|college|university|hospital|clinic|market|stage|petrol|station|shell|total|stabex|estate|road|rd|street|st|avenue|ave|lane|close|crescent|plot|building|bldg|complex|centre|center|supermarket|bank|office|offices|park|courts?|villas?|gardens?|heights|junction|roundabout)\b/i;
+  export function looksSpecific(q: string): boolean {
+    const t = q.trim();
+    return /\d/.test(t) || SPECIFIC_CUES.test(t) || t.split(/\s+/).filter(Boolean).length >= 3;
+  }
+
+  function newSessionToken(): string {
+    try {
+      return crypto.randomUUID();
+    } catch {
+      return Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+    }
   }
 
   interface PinState {
     gpsLat: number;
     gpsLng: number;
     gpsAccuracyM?: number;
-    gpsSource: 'device' | 'pasted_link';
+    gpsSource: 'device' | 'pasted_link' | 'map_place';
   }
 
   // Local fallback index — always available offline. Starts from the bundled
@@ -127,6 +152,13 @@
     let searchSeq = 0;
     let debounceTimer: number | undefined;
     let pin: PinState | null = null;
+    // The deep layer: one billing session per search-and-pick, switched off for the page when the server says
+    // "not configured" or the month's budget is spent.
+    let deepSession = newSessionToken();
+    let deepEnabled = Boolean(publicApiBase);
+    let deepTimer: number | undefined;
+    let deepSeq = 0;
+    let lastDeepQuery = '';
 
     function payloadWithPin(base: Record<string, unknown>): string {
       return JSON.stringify({ ...base, ...(pin ?? {}) });
@@ -141,7 +173,7 @@
         displayLabel: hasArea ? `${opt.area}, ${opt.district}` : opt.district,
       });
       if (cardPrimary) cardPrimary.textContent = opt.area ?? opt.district;
-      if (cardSecondary) cardSecondary.textContent = `District: ${opt.district} · ${opt.fromPin ? 'near your location' : 'Uganda'}`;
+      if (cardSecondary) cardSecondary.textContent = `District: ${opt.district} · ${opt.fromPin ? (pin?.gpsSource === 'map_place' ? 'near the place you chose' : 'near your location') : 'Uganda'}`;
       finishCommit();
     }
 
@@ -187,6 +219,7 @@
       input!.removeAttribute('aria-invalid');
       input!.classList.remove('border-red-600', 'ring-2', 'ring-red-100');
       cardPin?.classList.toggle('hidden', !pin);
+      if (cardPin && pin) cardPin.textContent = pin.gpsSource === 'map_place' ? `📍 ${input!.value.trim() || 'The building'} is pinned for the rider` : '📍 Your exact location is attached for the rider';
       cardAddPin?.classList.toggle('hidden', !!pin);
       if (commitAnnounce) {
         const chosen = [cardPrimary?.textContent, cardSecondary?.textContent].filter(Boolean).join(', ');
@@ -199,7 +232,8 @@
     function renderResults(list: PlaceOption[]) {
       dropdown!.innerHTML = '';
       activeIndex = -1;
-      if (announce) announce.textContent = `${list.length} matching place${list.length === 1 ? '' : 's'}`;
+      const choosable = list.filter((o) => !o.inert && !o.action).length;
+      if (announce) announce.textContent = `${choosable} matching place${choosable === 1 ? '' : 's'}`;
       if (list.length === 0) {
         // A listbox may only own options: a bare <li> here is an invalid
         // listbox (axe: aria-required-children). It is an option that cannot
@@ -217,7 +251,25 @@
           li.setAttribute('role', 'option');
           li.setAttribute('aria-selected', 'false');
           li.setAttribute('id', `${el.dataset.id}_opt_${i}`);
-          li.className = 'px-4 py-3 cursor-pointer hover:bg-amber-50 flex items-baseline justify-between gap-3 min-h-[44px]';
+          if (opt.inert) {
+            li.setAttribute('aria-disabled', 'true');
+            li.className = 'px-4 py-2 text-[11px] text-gray-500 text-right';
+            li.textContent = opt.label;
+            dropdown!.appendChild(li);
+            return;
+          }
+          li.className = opt.action
+            ? 'px-4 py-3 cursor-pointer hover:bg-amber-50 flex items-center gap-2 min-h-[44px] text-sm font-bold text-brand-charcoal bg-slate-50'
+            : 'px-4 py-3 cursor-pointer hover:bg-amber-50 flex items-baseline justify-between gap-3 min-h-[44px]';
+          if (opt.action) {
+            li.textContent = opt.label;
+            li.addEventListener('mousedown', (e) => {
+              e.preventDefault();
+              choose(opt);
+            });
+            dropdown!.appendChild(li);
+            return;
+          }
           const nameSpan = document.createElement('span');
           nameSpan.className = 'font-bold text-brand-charcoal text-sm';
           nameSpan.textContent = opt.label;
@@ -234,7 +286,7 @@
           li.appendChild(distSpan);
           li.addEventListener('mousedown', (e) => {
             e.preventDefault();
-            commit(opt);
+            choose(opt);
           });
           dropdown!.appendChild(li);
         });
@@ -280,7 +332,95 @@
         if (seq !== searchSeq) return;
         current = local; // offline: the metro set that matters most still works
       }
+      current = withDeepOffer(current, query);
       renderResults(current);
+      // Our search found nothing at all: ask the deep layer by itself, once the customer pauses.
+      if (deepEnabled && current.every((o) => o.action) && query.length >= 5) {
+        if (deepTimer) window.clearTimeout(deepTimer);
+        deepTimer = window.setTimeout(() => { if (input!.value.trim() === query) void runDeep(query); }, 700);
+      }
+    }
+
+    /**
+     * Offer the deep layer only when it can add something: our search found nothing, or the customer is typing
+     * something finer than an area (a building, plot, mall, stage) and our top answer is not an exact area match.
+     */
+    function withDeepOffer(list: PlaceOption[], query: string): PlaceOption[] {
+      if (!deepEnabled || query.length < 4) return list;
+      const exactTop = list[0] && (list[0].provenance === 'area_exact' || list[0].provenance === 'alias_exact' || list[0].provenance === 'group_exact');
+      if (list.length > 0 && (!looksSpecific(query) || (exactTop && !SPECIFIC_CUES.test(query) && !/\d/.test(query)))) return list;
+      return [...list.slice(0, 6), { label: `🔎 Find the building or place "${query.slice(0, 40)}"`, district: '', action: 'deep-search' }];
+    }
+
+    /** One paid suggestion call (the server enforces budget, per-session cap and cache). */
+    async function runDeep(query: string) {
+      if (!deepEnabled || !publicApiBase) return;
+      if (query === lastDeepQuery) return;
+      lastDeepQuery = query;
+      const seq = ++deepSeq;
+      const ours = current.filter((o) => !o.action && !o.inert && !o.deepPlaceId);
+      current = [...ours, { label: 'Searching buildings and places…', district: '', inert: true }];
+      renderResults(current);
+      let places: Array<{ placeId: string; name: string; detail: string }> = [];
+      let status = 'unavailable';
+      try {
+        const res = await fetch(`${publicApiBase}/locations/deep-search`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ q: query, session: deepSession }),
+          signal: AbortSignal.timeout(5000),
+        });
+        const json = await res.json().catch(() => null);
+        status = String(json?.data?.status ?? 'unavailable');
+        if (Array.isArray(json?.data?.places)) places = json.data.places;
+      } catch { /* honest line below */ }
+      if (seq !== deepSeq || input!.value.trim() !== query) return;
+      if (status === 'not_configured' || status === 'budget_reached') {
+        // No deep layer this visit: back to exactly what the picker said before it existed.
+        deepEnabled = false;
+        current = ours;
+        renderResults(current);
+        return;
+      }
+      const found: PlaceOption[] = places.map((p) => ({ label: p.name, district: '', note: p.detail, deepPlaceId: p.placeId }));
+      current = found.length
+        ? [...found, ...ours.slice(0, 3), { label: 'Results from Google Maps', district: '', inert: true }]
+        : [...ours, { label: ours.length ? 'No building found. Pick an area above.' : 'No building found. Try an area name, or use Can\'t find your area.', district: '', inert: true }];
+      renderResults(current);
+    }
+
+    /** A building chosen: pin it, put its name where the rider reads, then offer OUR nearest areas to tap. */
+    async function pickDeep(opt: PlaceOption) {
+      if (!opt.deepPlaceId || !publicApiBase) return;
+      if (pinStatus) pinStatus.textContent = `Finding ${opt.label}…`;
+      dropdown!.classList.add('hidden');
+      let data: { status?: string; point?: { lat: number; lng: number } | null; areas?: Array<{ areaSlug: string; label: string; district: string; km: number }> } | null = null;
+      try {
+        const res = await fetch(`${publicApiBase}/locations/deep-place`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ placeId: opt.deepPlaceId, session: deepSession }),
+          signal: AbortSignal.timeout(5000),
+        });
+        data = (await res.json().catch(() => null))?.data ?? null;
+      } catch { /* honest line below */ }
+      deepSession = newSessionToken(); // the pick ended Google's billing session
+      lastDeepQuery = '';
+      if (!data?.point) {
+        if (pinStatus) pinStatus.textContent = 'Could not place that building. Pick your area instead.';
+        return;
+      }
+      pin = { gpsLat: Number(data.point.lat.toFixed(6)), gpsLng: Number(data.point.lng.toFixed(6)), gpsSource: 'map_place' };
+      input!.value = opt.label;
+      el.dispatchEvent(new CustomEvent('gp:place-picked', { bubbles: true, detail: { name: opt.label, detail: opt.note ?? '' } }));
+      offerAreas(data.areas ?? [], pinStatus, `📍 ${opt.label} is pinned for the rider. Tap your area to see the delivery fee.`);
+    }
+
+    function choose(opt: PlaceOption) {
+      if (opt.inert) return;
+      if (opt.action === 'deep-search') { void runDeep(input!.value.trim()); return; }
+      if (opt.deepPlaceId) { void pickDeep(opt); return; }
+      commit(opt);
     }
 
     input.addEventListener('input', () => {
@@ -329,8 +469,9 @@
         // novalidate checkout form with no location, and the typed search and
         // promo code were lost on the re-render. It chooses, or it does nothing.
         e.preventDefault();
-        if (activeIndex >= 0 && current[activeIndex]) commit(current[activeIndex]);
-        else if (current.length === 1) commit(current[0]);
+        const choosable = current.filter((o) => !o.inert);
+        if (activeIndex >= 0 && choosable[activeIndex]) choose(choosable[activeIndex]);
+        else if (choosable.length === 1) choose(choosable[0]);
       } else if (e.key === 'Escape') {
         dropdown.classList.add('hidden');
         input.setAttribute('aria-expanded', 'false');
@@ -407,13 +548,34 @@
         input!.focus();
         return;
       }
-      // No focus here: on a phone it raises the keyboard over the very choices we are offering.
       const roughKm = pin.gpsAccuracyM && pin.gpsAccuracyM > 1500 ? Math.round(pin.gpsAccuracyM / 100) / 10 : null;
-      say(
+      offerAreas(
+        areas,
+        statusEl,
         roughKm
           ? `This device only knows your location to about ${roughKm} km, so check these carefully. Not listed? Type your area.`
           : 'Tap your area below. Not listed? Type it instead.',
+        'you',
       );
+    }
+
+    /**
+     * The nearest of OUR areas to a pin, as one-tap choices (never chosen for the customer). Shared by
+     * "Locate me" and a building picked from the deep layer, so pricing always comes from our own areas.
+     * No focus: on a phone it raises the keyboard over the very choices we are offering.
+     */
+    function offerAreas(
+      areas: Array<{ areaSlug: string; label: string; district: string; km: number }>,
+      statusEl: HTMLElement | null,
+      message: string,
+      from: 'you' | 'there' = 'there',
+    ) {
+      if (areas.length === 0) {
+        if (statusEl) statusEl.textContent = 'Pinned for the rider. Type your area so we can price delivery.';
+        input!.focus();
+        return;
+      }
+      if (statusEl) statusEl.textContent = message;
       current = areas.map((a) => {
         const name = a.label.split(',')[0].trim();
         return {
@@ -421,7 +583,7 @@
           district: a.district,
           area: name !== a.district ? name : undefined,
           areaSlug: a.areaSlug,
-          note: a.km < 1 ? 'under 1 km from you' : `${a.km} km from you`,
+          note: a.km < 1 ? `under 1 km from ${from}` : `${a.km} km from ${from}`,
           fromPin: true,
         };
       });

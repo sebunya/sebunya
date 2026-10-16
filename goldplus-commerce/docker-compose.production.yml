@@ -218,6 +218,10 @@ services:
       - APPLE_PRIVATE_KEY=${APPLE_PRIVATE_KEY:-}
       - FACEBOOK_CLIENT_ID=${FACEBOOK_CLIENT_ID:-}
       - FACEBOOK_CLIENT_SECRET=${FACEBOOK_CLIENT_SECRET:-}
+      # Checkout's deep place layer (buildings, malls, plots) via Google Places API (New). Unset = "Not configured":
+      # the picker behaves exactly as without it. The cap counts every Google request, shared by both replicas.
+      - GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY:-}
+      - GOOGLE_PLACES_MONTHLY_REQUEST_CAP=${GOOGLE_PLACES_MONTHLY_REQUEST_CAP:-1000}
       # Outbound governance gates (domain/notifications/OutboundGovernancePolicy).
       # Each defaults to false — silence must never read as permission — and every
       # one must be true before a real message reaches a provider. They were

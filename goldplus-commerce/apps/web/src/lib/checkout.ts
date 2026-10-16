@@ -38,7 +38,7 @@ export interface StructuredDeliveryLocation {
   gpsLat?: number;
   gpsLng?: number;
   gpsAccuracyM?: number;
-  gpsSource?: 'device' | 'pasted_link';
+  gpsSource?: 'device' | 'pasted_link' | 'map_place';
 }
 
 export function validateCheckoutPayload(payload: Partial<CheckoutPayload>): { valid: boolean; errors: string[] } {
@@ -126,7 +126,7 @@ export function prepareCheckoutPayload(formData: FormData, cartItems: CartItem[]
                 gpsLat: loc.gpsLat,
                 gpsLng: loc.gpsLng,
                 ...(typeof loc.gpsAccuracyM === 'number' ? { gpsAccuracyM: loc.gpsAccuracyM } : {}),
-                ...(loc.gpsSource === 'device' || loc.gpsSource === 'pasted_link' ? { gpsSource: loc.gpsSource } : {}),
+                ...(loc.gpsSource === 'device' || loc.gpsSource === 'pasted_link' || loc.gpsSource === 'map_place' ? { gpsSource: loc.gpsSource } : {}),
               }
             : {}),
         };

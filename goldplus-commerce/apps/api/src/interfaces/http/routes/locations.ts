@@ -70,6 +70,38 @@ routes.get('/near', async (c) => {
   return c.json({ success: true, data: { areas } } satisfies ApiResponse<{ areas: typeof areas }>);
 });
 
+/**
+ * Deep place search (2026-10-16): buildings, malls, plots our gazetteer does not hold, via Google Places (New).
+ * Called by the picker only when our own search cannot answer; the use case enforces the monthly budget,
+ * the per-session cap, the cache and "Not configured". The query text goes to Google; nothing personal does.
+ */
+const deepSearchSchema = z.object({ q: z.string().min(1).max(100), session: z.string().regex(/^[A-Za-z0-9-]{16,64}$/) }).strict();
+const deepPlaceSchema = z.object({ placeId: z.string().min(10).max(300), session: z.string().regex(/^[A-Za-z0-9-]{16,64}$/) }).strict();
+
+routes.post('/deep-search', async (c) => {
+  const parsed = deepSearchSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    return c.json({ success: false, error: { code: 'INVALID_BODY', message: 'Invalid body.' } } satisfies ApiResponse<never>, 400);
+  }
+  const result = await Registry.getInstance().deepPlaceSearchUseCase.suggest({ query: parsed.data.q, sessionToken: parsed.data.session });
+  return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
+});
+
+/** A chosen place → its point and the nearest of OUR areas to tap (pricing stays ours). Ends the billing session. */
+routes.post('/deep-place', async (c) => {
+  const parsed = deepPlaceSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    return c.json({ success: false, error: { code: 'INVALID_BODY', message: 'Invalid body.' } } satisfies ApiResponse<never>, 400);
+  }
+  const registry = Registry.getInstance();
+  const found = await registry.deepPlaceSearchUseCase.locate({ placeId: parsed.data.placeId, sessionToken: parsed.data.session });
+  if (found.status !== 'ok' || !('point' in found)) {
+    return c.json({ success: true, data: { status: found.status, point: null, address: null, areas: [] } });
+  }
+  const areas = await registry.deliveryAreaResolver.nearestAreas(found.point).catch(() => []);
+  return c.json({ success: true, data: { status: 'ok', point: found.point, address: found.address, areas } });
+});
+
 routes.post('/search-events', async (c) => {
   const parsed = searchEventSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {

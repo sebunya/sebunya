@@ -77,7 +77,7 @@ export interface OrderDeliveryLocation {
   gpsLat?: number;
   gpsLng?: number;
   gpsAccuracyM?: number;
-  gpsSource?: 'device' | 'pasted_link';
+  gpsSource?: 'device' | 'pasted_link' | 'map_place';
   countyOrMunicipality?: string;
   subcountyDivisionTc?: string;
   parishWard?: string;
