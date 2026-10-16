@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import type { INearbyDemandReader, NearbyScope } from '../ports/INearbyDemandReader';
 import type { IProductRecommendationReader } from '../ports/IProductRecommendationReader';
 import { GREATER_KAMPALA_DISTRICTS, isGreaterKampala } from '../../domain/locations/GreaterKampala';
+import { boughtNearbyReason } from '@goldplus/shared';
 
 /**
  * "Popular in Najjera" (0193, 2026-10-16): what customers where THIS visitor wants delivery actually bought — paid
@@ -66,7 +67,7 @@ export class PopularNearYouUseCase {
           currency: p.currency ?? 'UGX',
           score: t.buyers,
           reasonCodes: ['POPULAR_NOW'],
-          displayReason: `Bought by ${t.buyers} customers in ${rung.label}`,
+          displayReason: boughtNearbyReason(t.buyers, rung.label),
           attributionId: crypto.randomUUID(),
           railRenderId,
           availability: { kind: 'in_stock', quantity: Number(p.stockQuantity) },

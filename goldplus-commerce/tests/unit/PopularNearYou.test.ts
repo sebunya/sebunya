@@ -26,7 +26,7 @@ describe('Popular in <area>: what customers there actually bought', () => {
     const r = await uc.execute({ areaSlug: 'wakiso-najjera', areaName: 'Najjera', district: 'Wakiso' });
     expect(r.scopeLabel).toBe('Najjera');
     expect(r.items.map((i) => i.productId)).toEqual(['a', 'b', 'c', 'd', 'e']);
-    expect(r.items[0].displayReason).toBe('Bought by 9 customers in Najjera');
+    expect(r.items[0].displayReason).toBe('9 Najjera customers bought this');
   });
 
   it('widens to the district, then Greater Kampala; never pads with unrelated products', async () => {

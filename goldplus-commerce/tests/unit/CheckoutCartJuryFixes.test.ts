@@ -99,10 +99,11 @@ describe('the same-day line is true for where the order is going', () => {
     const cart = read('apps/web/src/pages/cart.astro');
     const checkout = read('apps/web/src/pages/checkout.astro');
     // 2026-10-16: the cart line follows "Deliver to" (scoped when no area is known, else in-area / outside).
-    expect(cart).toMatch(/sameDayLineFor\(sameDayCutoffCopy\(cut, \{ now: new Date\(\), closedDays: bizCart\.closedDays \}\), deliverTo\?\.district\)/);
+    expect(cart).toMatch(/sameDayLineFor\(sameDayCutoffCopy\(cut, \{ now: new Date\(\), closedDays: bizCart\.closedDays \}\), deliverTo\?\.district, deliverTo\?\.label\)/);
     expect(cart).not.toMatch(/and this arrives today`/);
     expect(checkout).toMatch(/data-in-area=\{sameDayCopy\.inArea\}/);
-    expect(checkout).toMatch(/setCutoffFor\(district\)/);
+    // 2026-10-16: the line also names the structured area the customer picked (copyArea), never typed details.
+    expect(checkout).toMatch(/setCutoffFor\(district, copyArea\)/);
   });
 });
 

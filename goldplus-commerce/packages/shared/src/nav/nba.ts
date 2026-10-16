@@ -16,6 +16,8 @@
  * has somewhere to fall back to; the client filters dismissed ids, sorts by score
  * and shows the top one.
  */
+import { upcountryNavLine } from '../locations/locationCopy';
+
 
 export interface NbaContext {
   /** authenticated customer (server truth) */
@@ -118,7 +120,8 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
   // Same-day is for Kampala & Wakiso only, so every same-day line names the
   // area, in the same words as the GpNav fallback list. This server list wins
   // over that fallback, so the two must say the same thing.
-  const place = ctx.deliverTo && ctx.deliverTo.label ? ctx.deliverTo : null;
+  // The area name goes into innerHTML copy: markup characters are removed (it came from a cookie).
+  const place = ctx.deliverTo && ctx.deliverTo.label ? { ...ctx.deliverTo, label: ctx.deliverTo.label.replace(/[<>&"]/g, '') } : null;
   const SD = place?.sameDay ? place.label + ': ' : 'Kampala & Wakiso: ';
   const noSameDay = place ? !place.sameDay : false;
   const hm = Math.floor(ctx.minsToCutoff / 60) + 'h ' + (ctx.minsToCutoff % 60) + 'm';
@@ -207,6 +210,12 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
     });
   } else if (!noSameDay) {
     c.push({ id: 'aftercutoff', score: 44, text: "Today's run has left. Order now and it goes out <b>tomorrow morning</b>", short: 'Next delivery run is <b>tomorrow</b>', href: R.delivery });
+  }
+
+  // Outside the same-day zone: say what IS true for them (we call to confirm the day), not nothing.
+  if (noSameDay && place) {
+    const up = upcountryNavLine(place.label);
+    c.push({ id: 'upcountry', score: 48, text: up.text, short: up.short, href: R.delivery });
   }
 
   // Owner decision 2026-10-13: the shop does not claim every unit is tested; the tip states what is true.

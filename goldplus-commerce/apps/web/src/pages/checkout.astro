@@ -850,7 +850,15 @@ const initialLineDistrict: string | null = (() => {
     return null;
   }
 })();
-const cutoffLine = sameDayLineFor(sameDayCopy, initialLineDistrict);
+const initialLineArea: string | null = (() => {
+  try {
+    const loc = JSON.parse(values.locationJson || '{}');
+    return typeof loc?.displayLabel === 'string' ? loc.displayLabel : typeof loc?.area === 'string' ? loc.area : null;
+  } catch {
+    return null;
+  }
+})();
+const cutoffLine = sameDayLineFor(sameDayCopy, initialLineDistrict, initialLineArea);
 
 // The site-wide campaign, for the label only.
 const checkoutDiscount = await getStorefrontDiscount();
@@ -1276,7 +1284,7 @@ const checkoutSavingLabel = basketSavingLabel(
             >
               {paymentMethodValue === 'pesapal' ? 'Pay securely now' : 'Place order'}
             </button>
-            <p id="cutoff-line" class="text-xs font-semibold" style="color:#456B00" data-scoped={sameDayCopy.scoped} data-in-area={sameDayCopy.inArea} data-outside={sameDayCopy.outside}>{cutoffLine}</p>
+            <p id="cutoff-line" class="text-xs font-semibold" style="color:#456B00" data-scoped={sameDayCopy.scoped} data-in-area={sameDayCopy.inArea} data-outside={sameDayCopy.outside} data-in-area-named={sameDayCopy.inAreaNamed} data-outside-named={sameDayCopy.outsideNamed}>{cutoffLine}</p>
           </div>
         </div>
       </div>
@@ -1366,10 +1374,15 @@ const checkoutSavingLabel = basketSavingLabel(
     // variants; the page never composes a delivery promise of its own).
     const cutoffEl = document.getElementById('cutoff-line');
     const SAME_DAY = ['kampala', 'wakiso'];
-    function setCutoffFor(district: string | null) {
+    // Names the area the customer just chose ("…goes out to Najjera today"); written directions fall back to the
+    // plain line. Copy rules: lib/locationCopy (area name only, service framing, real minutes).
+    function setCutoffFor(district: string | null, area: string | null = null) {
       if (!cutoffEl) return;
       const d = (district ?? '').trim().toLowerCase();
-      const text = !d ? cutoffEl.dataset.scoped : SAME_DAY.includes(d) ? cutoffEl.dataset.inArea : cutoffEl.dataset.outside;
+      const name = (area ?? '').split(',')[0].trim().slice(0, 40);
+      const inArea = SAME_DAY.includes(d);
+      const named = name ? (inArea ? cutoffEl.dataset.inAreaNamed : cutoffEl.dataset.outsideNamed) : null;
+      const text = !d ? cutoffEl.dataset.scoped : named ? named.split('{area}').join(name) : inArea ? cutoffEl.dataset.inArea : cutoffEl.dataset.outside;
       if (text) cutoffEl.textContent = text;
     }
     const ugx = (n: number) => `UGX ${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Math.round(n))}`;
@@ -1496,8 +1509,10 @@ const checkoutSavingLabel = basketSavingLabel(
       quotePanelEl.innerHTML = html;
     }
 
-    async function refreshEstimate(district: string | null, area: string | null, areaSlug: string | null = null) {
-      setCutoffFor(district);
+    // copyArea: the area NAME the cut-off line may say ("…goes out to Najjera today"). Only a structured area the
+    // customer picked; never a saved address's free-text details or written directions.
+    async function refreshEstimate(district: string | null, area: string | null, areaSlug: string | null = null, copyArea: string | null = null) {
+      setCutoffFor(district, copyArea);
       void refreshQuotePanel(district, area, areaSlug);
       const seq = ++estimateSeq;
       // A typed place with no district is still priced by the order (from its text), so it is asked too.
@@ -1565,7 +1580,7 @@ const checkoutSavingLabel = basketSavingLabel(
         }
         // A typed location: ask with the very area line the order is placed with, district or not.
         if (loc?.manual && loc.rawAddressText) { refreshEstimate(loc.district ? String(loc.district) : null, manualDeliveryAreaLine(loc.rawAddressText, loc.district), null); return; }
-        if (loc?.district) { refreshEstimate(String(loc.district), loc.area ?? null, loc.areaSlug ? String(loc.areaSlug) : null); return; }
+        if (loc?.district) { refreshEstimate(String(loc.district), loc.area ?? null, loc.areaSlug ? String(loc.areaSlug) : null, loc.area ? String(loc.area) : loc.displayLabel ? String(loc.displayLabel) : null); return; }
         // Written directions or a pickup point: a place, with no district to price (a pin alone can still name the area).
         ++estimateSeq;
         setCutoffFor(null);

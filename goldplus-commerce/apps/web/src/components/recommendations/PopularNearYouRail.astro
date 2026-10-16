@@ -4,6 +4,7 @@ import { apiBase } from "../../lib/api";
 import { filterDisplayableRecommendations } from "../../lib/recommendation-display";
 import type { RecommendationItemDto } from "@goldplus/shared";
 import type { DeliveryPlace } from "../../lib/deliveryPlace";
+import { popularNearYouCopy } from "../../../../../packages/shared/src/locations/locationCopy";
 
 /**
  * "Popular in Najjera" (0193): what customers where this visitor wants delivery actually bought. Server-rendered
@@ -19,6 +20,7 @@ const { place, excludeProductIds = [], homeBand = false } = Astro.props;
 
 let items: RecommendationItemDto[] = [];
 let scopeLabel: string | null = null;
+let scope: "area" | "district" | "greater_kampala" | null = null;
 if (place) {
   try {
     const qs = new URLSearchParams({
@@ -32,6 +34,7 @@ if (place) {
     if (json?.success && Array.isArray(json.data?.items)) {
       items = filterDisplayableRecommendations(json.data.items, { excludeIds: excludeProductIds, limit: 6 });
       scopeLabel = json.data.scopeLabel ?? null;
+      scope = json.data.scope ?? null;
     }
   } catch {
     /* the rail is a bonus; the page never waits on it failing */
@@ -40,8 +43,7 @@ if (place) {
 const show = items.length >= 4 && scopeLabel;
 const shown = items.length >= 6 ? items.slice(0, 6) : items.slice(0, 4);
 const grid = shown.length === 4 ? "grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6" : "grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 sm:gap-6";
-const title = `Popular in ${scopeLabel}`;
-const subtitle = "What customers delivering where you are actually bought.";
+const { title, subtitle } = popularNearYouCopy(scope, scopeLabel ?? "");
 ---
 
 {show && (

@@ -452,7 +452,7 @@ const cut = kampalaCutoff(new Date(), { cutoffHour: bizCart.sameDayCutoffHour, c
 const deliverTo = Astro.locals.gpDeliverTo !== undefined
   ? Astro.locals.gpDeliverTo
   : await resolveDeliveryPlace({ cookies: Astro.cookies, request: Astro.request, visit: Astro.locals.gpVisit, secure: import.meta.env.PROD });
-const cutoffLine = sameDayLineFor(sameDayCutoffCopy(cut, { now: new Date(), closedDays: bizCart.closedDays }), deliverTo?.district);
+const cutoffLine = sameDayLineFor(sameDayCutoffCopy(cut, { now: new Date(), closedDays: bizCart.closedDays }), deliverTo?.district, deliverTo?.label);
 ---
 
 <BaseLayout robotsMeta="noindex,follow" title="Your cart">
