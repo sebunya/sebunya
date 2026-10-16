@@ -110,6 +110,36 @@ routes.post('/deep-place', async (c) => {
   return c.json({ success: true, data: { status: 'ok', point: found.point } });
 });
 
+/**
+ * 0193 location signals. The storefront forwards the visitor's own signed visit token (x-gp-visit) server-to-server;
+ * a signed-in customer is read from the Bearer token. Consent decides whether the row is linked to them or anonymous
+ * (RecordLocationSignalUseCase). No coordinates are stored; a "Locate me" pin becomes a distance and is discarded.
+ */
+async function visitorFrom(c: { req: { header(name: string): string | undefined } }, intent: 'read' | 'behaviour') {
+  const registry = Registry.getInstance();
+  const rawVisit = c.req.header('x-gp-visit');
+  const profile = rawVisit ? await registry.resolveExperienceProfileUseCase.execute(rawVisit, intent).catch(() => null) : null;
+  const customerId = await optionalCustomerId(c);
+  return { profileId: profile?.id ?? null, customerId };
+}
+
+routes.post('/signals', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  // Setting "Deliver to" is something the visitor did, so it may create their profile; the rest only read it.
+  const intent = body && typeof body === 'object' && (body as { kind?: unknown }).kind === 'deliver_to_set' ? 'behaviour' : 'read';
+  const who = await visitorFrom(c, intent);
+  const result = await Registry.getInstance().recordLocationSignalUseCase.execute({ raw: body, ...who }).catch(() => 'invalid' as const);
+  return c.json({ success: result === 'recorded', data: { result } }, result === 'recorded' ? 200 : 400);
+});
+
+/** The visitor's "Deliver to" kept server-side (their device's, else their newest on any device when signed in). */
+routes.get('/deliver-to', async (c) => {
+  const who = await visitorFrom(c, 'read');
+  const place = await Registry.getInstance().getDeliverToUseCase.execute(who).catch(() => null);
+  c.header('Cache-Control', 'private, no-store');
+  return c.json({ success: true, data: { place: place ? { areaSlug: place.areaSlug, district: place.district, label: place.label } : null } });
+});
+
 routes.post('/search-events', async (c) => {
   const parsed = searchEventSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {

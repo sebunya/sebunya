@@ -323,6 +323,10 @@ import {
 import { DeliveryAreaResolver, DeliveryWizardAreaReader } from './delivery/DeliveryAreaResolver';
 import { GooglePlacesProvider } from './places/GooglePlacesProvider';
 import { DrizzlePlaceMemoryReader } from './db/repositories/DrizzlePlaceMemoryReader';
+import { DrizzleLocationSignalStore } from './db/repositories/DrizzleLocationSignalStore';
+import { DrizzleNearbyDemandReader } from './db/repositories/DrizzleNearbyDemandReader';
+import { PopularNearYouUseCase } from '../application/recommendations/PopularNearYouUseCase';
+import { GetDeliverToUseCase, LocationDemandReportUseCase, RecordLocationSignalUseCase } from '../application/use-cases/locations/LocationSignalUseCases';
 import { GetPlaceMemoryUseCase } from '../application/use-cases/delivery/GetPlaceMemoryUseCase';
 import { RedisPlaceLocationCache, RedisPlaceRequestBudget } from './places/RedisPlaceStores';
 import { DeepPlaceSearchUseCase } from '../application/use-cases/locations/DeepPlaceSearchUseCases';
@@ -927,6 +931,8 @@ export class Registry {
   public readonly recommendationRuleRepo = new DrizzleRecommendationRuleRepository();
   public readonly recommendationRuleAuditRepo = new DrizzleRecommendationRuleAuditRepository();
   public readonly productRecommendationReader = new DrizzleProductRecommendationReader();
+  /** 0193: "Popular in <area>" — paid orders by delivery place, server-side, the same for everyone in an area. */
+  public readonly popularNearYouUseCase = new PopularNearYouUseCase(new DrizzleNearbyDemandReader(), this.productRecommendationReader);
   public readonly recommendationAnalyticsRepo = new DrizzleRecommendationAnalyticsRepository();
   public readonly experienceProfileRepo = new DrizzleExperienceProfileRepository();
   public readonly searchAffinityReader = new DrizzleSearchAffinityReader();
@@ -1639,6 +1645,11 @@ export class Registry {
   /** Buildings and places under our gazetteer, via Google Places (New), under a shared monthly budget (2026-10-16). */
   /** What earlier deliveries to the same customer and area taught our riders (2026-10-16). */
   public readonly getPlaceMemoryUseCase = new GetPlaceMemoryUseCase(new DrizzlePlaceMemoryReader());
+  /** 0193: location signals — what customers tell us about where they want delivery (no coordinates). */
+  public readonly locationSignalStore = new DrizzleLocationSignalStore();
+  public readonly recordLocationSignalUseCase = new RecordLocationSignalUseCase(this.locationSignalStore);
+  public readonly getDeliverToUseCase = new GetDeliverToUseCase(this.locationSignalStore);
+  public readonly locationDemandReportUseCase = new LocationDemandReportUseCase(this.locationSignalStore);
   public readonly deepPlaceSearchUseCase = new DeepPlaceSearchUseCase(new GooglePlacesProvider(), new RedisPlaceRequestBudget(), new RedisPlaceLocationCache());
   public readonly recordLocationSearchEventUseCase = new RecordLocationSearchEventUseCase(this.searchMissRecorder);
   public readonly resolveMapLinkUseCase = new ResolveMapLinkUseCase(new HttpShortLinkResolver());
@@ -2502,7 +2513,7 @@ export class Registry {
       };
     },
   );
-  public readonly heroSignalsService = new HeroSignalsService();
+  public readonly heroSignalsService = new HeroSignalsService((profileId) => this.getDeliverToUseCase.execute({ profileId, customerId: null }));
   public readonly heroTelemetryService = new HeroTelemetryService();
 
   /** Header/nav CMS (0109/0110): the editable header document + its telemetry. */

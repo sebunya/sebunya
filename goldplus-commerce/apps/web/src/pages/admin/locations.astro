@@ -148,6 +148,19 @@ const [misses, reviewQueue, landmarks, pickupPoints, zones, exceptions] = await 
 ]);
 const fmt = new Intl.NumberFormat("en-UG");
 
+// 0193: where customers want delivery — "Deliver to" choices, fees shown, orders, "Locate me" outcomes (no coordinates).
+let demand: null | {
+  days: number;
+  areas: Array<{ areaSlug: string | null; label: string; deliverToSets: number; feeViews: number; orders: number; medianFeeShownUgx: number | null; locateChosen: number; locateMissed: number; medianOfferKm: number | null }>;
+  feeShock: Array<{ label: string; feeViews: number; orders: number; conversion: number; medianFeeShownUgx: number | null }>;
+  areaPointFlags: Array<{ label: string; reason: string; suggestedPoint?: { lat: number; lng: number; pins: number } | null }>;
+} = null;
+try {
+  const res = await fetch(`${apiBase}/admin/locations/demand?days=30`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(6000) });
+  const json: any = res.ok ? await res.json().catch(() => null) : null;
+  if (json?.success) demand = json.data;
+} catch { /* the section says it could not be read */ }
+
 // Google Places spend for the checkout's deep place layer: this month, today, and today's paced allowance.
 let places: { configured: boolean; usage: null | { month: string; suggest: { used: number; cap: number; today: number; todayAllowance: number }; details: { used: number; cap: number; today: number; todayAllowance: number } } } | null = null;
 try {
@@ -166,6 +179,57 @@ try {
 
     {actionMessage && <div class="rounded-xl bg-green-50 border border-green-200 px-4 py-3 text-sm font-bold text-green-800">{actionMessage}</div>}
     {actionError && <div class="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm font-bold text-red-800">{actionError}</div>}
+
+    {/* Where customers want delivery (0193 location signals) */}
+    <section class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+      <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
+        <h2 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Where customers want delivery (last {demand?.days ?? 30} days)</h2>
+      </div>
+      <div class="px-6 py-4 text-sm text-gray-700 space-y-4">
+        {!demand && <p>Could not read the location signals just now.</p>}
+        {demand && demand.areas.length === 0 && <p>No location signals yet. They start when customers choose "Deliver to", see a delivery fee, or use Locate me.</p>}
+        {demand && demand.areaPointFlags.length > 0 && (
+          <div class="rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <p class="text-xs font-black uppercase tracking-widest text-amber-900">Area points to check</p>
+            <ul class="mt-1 list-disc pl-5 text-xs text-amber-900">{demand.areaPointFlags.map((f) => (
+              <li>
+                <b>{f.label}</b>: {f.reason}
+                {f.suggestedPoint && (
+                  <> Where {f.suggestedPoint.pins} customers who chose it really were: <a class="font-bold underline" href={`https://maps.google.com/?q=${f.suggestedPoint.lat},${f.suggestedPoint.lng}`} target="_blank" rel="noopener">{f.suggestedPoint.lat}, {f.suggestedPoint.lng}</a> (set it as a manual point if it looks right).</>
+                )}
+              </li>
+            ))}</ul>
+          </div>
+        )}
+        {demand && demand.feeShock.length > 0 && (
+          <div class="rounded-xl border border-slate-200 p-3">
+            <p class="text-xs font-black uppercase tracking-widest text-slate-700">Fee seen, few orders (10+ fee views)</p>
+            <ul class="mt-1 list-disc pl-5 text-xs">{demand.feeShock.map((r) => <li><b>{r.label}</b>: {fmt.format(r.orders)} orders from {fmt.format(r.feeViews)} fee views ({Math.round(r.conversion * 100)}%){r.medianFeeShownUgx !== null ? `, typical fee UGX ${fmt.format(r.medianFeeShownUgx)}` : ''}</li>)}</ul>
+          </div>
+        )}
+        {demand && demand.areas.length > 0 && (
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs">
+              <thead><tr class="text-left text-[10px] uppercase tracking-widest text-gray-500"><th class="py-1 pr-3">Area</th><th class="pr-3">Deliver to set</th><th class="pr-3">Fee views</th><th class="pr-3">Orders</th><th class="pr-3">Typical fee</th><th class="pr-3">Locate me: chosen / typed</th><th>Median km</th></tr></thead>
+              <tbody>
+                {demand.areas.slice(0, 40).map((r) => (
+                  <tr class="border-t border-gray-100">
+                    <td class="py-1.5 pr-3 font-bold">{r.label}</td>
+                    <td class="pr-3">{fmt.format(r.deliverToSets)}</td>
+                    <td class="pr-3">{fmt.format(r.feeViews)}</td>
+                    <td class="pr-3">{fmt.format(r.orders)}</td>
+                    <td class="pr-3">{r.medianFeeShownUgx !== null ? `UGX ${fmt.format(r.medianFeeShownUgx)}` : '—'}</td>
+                    <td class="pr-3">{r.locateChosen} / {r.locateMissed}</td>
+                    <td>{r.medianOfferKm ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p class="text-xs text-gray-500">From "Deliver to" choices, delivery fees shown and Locate me. Linked to each visitor's profile for their experience; no IP addresses; Google Places points are never stored here.</p>
+      </div>
+    </section>
 
     {/* 0. Google Places spend (deep place layer at checkout) */}
     <section class="bg-white border border-gray-200 rounded-2xl overflow-hidden">

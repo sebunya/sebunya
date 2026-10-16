@@ -48,6 +48,8 @@ interface Props {
   withDirections?: boolean;
   /** Offer the paid Google Places layer for buildings (false where an area is all that is needed). */
   deepPlaces?: boolean;
+  /** Where this picker is, for location signals (0193). */
+  surface?: 'pdp' | 'cart' | 'checkout' | 'account';
 }
 
 const {
@@ -64,6 +66,7 @@ const {
   withPin = false,
   withDirections = true,
   deepPlaces = true,
+  surface = 'checkout',
 } = Astro.props;
 
 const helperId = helperText ? `${id}_helper` : undefined;
@@ -90,7 +93,7 @@ if (defaultValue && defaultValue.startsWith('{')) {
 }
 ---
 
-<div class="js-uganda-location-picker space-y-2 relative" data-id={id} data-with-pin={withPin ? '1' : ''} data-deep={deepPlaces ? '' : 'off'}>
+<div class="js-uganda-location-picker space-y-2 relative" data-id={id} data-with-pin={withPin ? '1' : ''} data-deep={deepPlaces ? '' : 'off'} data-surface={surface}>
   <label for={`${id}_input`} class="block text-sm font-bold text-brand-charcoal">
     {label} {required && <span class="text-red-500" aria-hidden="true">*</span>}
   </label>

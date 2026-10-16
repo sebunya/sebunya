@@ -1,3 +1,4 @@
+import { areaNameFromLabel, outsideSameDayLine, sameDayAreaLine } from '../../../../packages/shared/src/locations/locationCopy';
 import { createHmac } from 'node:crypto';
 import type { CartItem } from './cart';
 import { manualDeliveryAreaLine } from './deliveryQuotePanel';
@@ -306,6 +307,9 @@ export interface SameDayCopy {
   inArea: string;
   /** Anywhere else: no same-day promise at all. */
   outside: string;
+  /** 2026-10-16: the same lines naming the customer's area ("{area}" is replaced; lib/locationCopy rules). */
+  inAreaNamed: string;
+  outsideNamed: string;
 }
 
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
@@ -333,13 +337,13 @@ export function sameDayCutoffCopy(
   const next = nextDispatchDayLabel(calendar?.now, calendar?.closedDays);
   if (cut.closed) {
     const s = next ? `Closed today. This goes out ${next} morning` : 'Closed today. This goes out on the next working day';
-    return { scoped: s, inArea: s, outside: s };
+    return { scoped: s, inArea: s, outside: s, inAreaNamed: s, outsideNamed: s };
   }
   if (!cut.beforeCutoff) {
     const s = next
       ? `Today's run has left. This goes out ${next} morning`
       : "Today's run has left. This goes out on the next working day";
-    return { scoped: s, inArea: s, outside: s };
+    return { scoped: s, inArea: s, outside: s, inAreaNamed: s, outsideNamed: s };
   }
   // When it goes OUT, never when it arrives (delivery contract #10): not every Wakiso area is in rider range, so
   // "same-day delivery" was a promise the shop cannot keep everywhere it named.
@@ -351,6 +355,8 @@ export function sameDayCutoffCopy(
       // behind a same-day arrival (delivery contract #10).
       inArea: `Only ${cut.minsToCutoff} minutes left for this to go out today`,
       outside,
+      inAreaNamed: sameDayAreaLine(AREA_TOKEN, cut.minsToCutoff),
+      outsideNamed: outsideSameDayLine(AREA_TOKEN),
     };
   }
   const h = Math.floor(cut.minsToCutoff / 60);
@@ -359,12 +365,22 @@ export function sameDayCutoffCopy(
     scoped: `${SAME_DAY_AREA_LABEL}: order in ${h}h ${m}m and it goes out today`,
     inArea: `Order in ${h}h ${m}m and this goes out today`,
     outside,
+    inAreaNamed: sameDayAreaLine(AREA_TOKEN, cut.minsToCutoff),
+    outsideNamed: outsideSameDayLine(AREA_TOKEN),
   };
 }
 
-/** Which of the three lines is true for this district (null = not chosen yet). */
-export function sameDayLineFor(copy: SameDayCopy, district: string | null | undefined): string {
+/** The placeholder the named lines carry; the page fills it with the customer's own area name. */
+export const AREA_TOKEN = '{area}';
+
+/**
+ * Which line is true for this district (null = not chosen yet), naming the customer's area when we know it
+ * (the area THEY gave: "Deliver to" or their checkout).
+ */
+export function sameDayLineFor(copy: SameDayCopy, district: string | null | undefined, areaLabel?: string | null): string {
   if (!district || !String(district).trim()) return copy.scoped;
+  const name = areaNameFromLabel(areaLabel);
+  if (name) return (isSameDayDistrict(district) ? copy.inAreaNamed : copy.outsideNamed).split(AREA_TOKEN).join(name);
   return isSameDayDistrict(district) ? copy.inArea : copy.outside;
 }
 

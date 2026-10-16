@@ -39,6 +39,12 @@ declare namespace App {
     /** The session check timed out or failed: identity is UNKNOWN, not guest. */
     gpSessionUnknown?: boolean;
     /**
+     * 0193: the visitor's "Deliver to" area, resolved ONCE per document request in middleware (this device's cookie,
+     * then their last checkout here, then — signed in or known visitor — their profile on the server). Every page and
+     * component reads this one value. null = no area known; undefined = not a document request.
+     */
+    gpDeliverTo?: import('./lib/deliveryPlace').DeliveryPlace | null;
+    /**
      * This response's script nonce (lib/contentSecurityPolicy). Every INLINE
      * executable script a template writes carries nonce={Astro.locals.cspNonce};
      * the middleware only stamps same-site script FILES, so an injected inline

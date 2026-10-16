@@ -222,6 +222,13 @@ export class DrizzleCustomer360Reader implements ICustomer360Reader {
       where customer_identity_ref = ${accountUserId} order by effective_at desc limit 50`)) : [];
 
     // ── Addresses, segments, privacy, finder ───────────────────────────────
+    // 0193: areas this customer looked at or set as "Deliver to".
+    const considered = accountUserId ? rows(await db.execute(sql`
+      select coalesce(u.display_label, s.district) as label, count(*)::int as times
+      from location_signals s left join ug_area u on u.area_slug = s.area_slug
+      where s.customer_id = ${accountUserId}::uuid and s.kind in ('deliver_to_set', 'quote_shown')
+        and s.occurred_at > now() - interval '90 days'
+      group by 1 order by 2 desc limit 5`).catch(() => [])) : [];
     const addresses = accountUserId ? rows(await db.execute(sql`
       select coalesce(nullif(snapshot_district, ''), district) as district from addresses
       where user_id = ${accountUserId}::uuid and deleted_at is null order by is_default desc, created_at desc limit 10`)) : [];
@@ -278,6 +285,7 @@ export class DrizzleCustomer360Reader implements ICustomer360Reader {
       selfReported: reportRows.map((r) => ({ orderNumber: numberOf.get(String(r.order_id)) ?? '', answer: str(r.answer), whatsappRef: str(r.whatsapp_ref) })),
       devices,
       addressDistricts: addresses.map((a) => str(a.district)).filter((d): d is string => !!d),
+      areasConsidered: considered.map((c) => ({ label: String(c.label ?? ''), times: Number(c.times ?? 0) })).filter((c) => c.label),
       segments: segments.map((s) => ({ id: String(s.id), key: String(s.key), name: String(s.name), firstMatchedAt: date(s.first_matched_at) })),
       privacyRequests: privacy.map((x) => ({ reference: String(x.reference), kind: String(x.kind), status: String(x.status), requestedAt: date(x.requested_at) })),
       finderSessions: finder.map((f) => ({ at: date(f.created_at), status: String(f.status), answers: finderAnswers(f.answers) })),

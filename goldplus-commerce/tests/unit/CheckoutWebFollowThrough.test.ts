@@ -72,7 +72,8 @@ describe('the estimate asks the one quoting service what the order will be charg
     expect(fn).toContain('...(areaSlug ? { areaSlug } : {})');
     expect(fn).toContain('...(estimateItems ? { items: estimateItems } : {})');
     expect(checkout).toContain('refreshEstimate(r.dataset.district ?? null, r.dataset.area || null, r.dataset.areaSlug || null)');
-    expect(checkout).toContain("refreshEstimate(String(loc.district), loc.area ?? null, loc.areaSlug ? String(loc.areaSlug) : null)");
+    // 2026-10-16: a fourth argument names the picked area in the cut-off line (copyArea).
+    expect(checkout).toContain("refreshEstimate(String(loc.district), loc.area ?? null, loc.areaSlug ? String(loc.areaSlug) : null, ");
   });
 
   it('each saved address carries its area and slug, and the order is charged on the same key', () => {

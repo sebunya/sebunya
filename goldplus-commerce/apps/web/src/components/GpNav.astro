@@ -202,7 +202,7 @@ const dealFeatOnSale =
 const cut = kampalaCutoff(new Date(), { cutoffHour: biz.sameDayCutoffHour, closedDays: biz.closedDays });
 // "Deliver to" (the area the customer told us on this device): the same-day line names it, or says nothing about
 // same-day when it is outside Kampala & Wakiso. Unknown = the general Kampala & Wakiso line, as before.
-const navPlace = knownDeliveryPlace(Astro.cookies, Astro.request);
+const navPlace = Astro.locals.gpDeliverTo !== undefined ? Astro.locals.gpDeliverTo : knownDeliveryPlace(Astro.cookies, Astro.request);
 const navPlaceSameDay = navPlace ? (isSameDayDistrict(navPlace.district) ? '1' : '0') : '';
 const nba = computeNbaCandidates({
   signedIn, visits, cart: cartCount, points, lastOrderDays, orderInTransit,
@@ -1963,7 +1963,8 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
       var SD = 'Kampala & Wakiso: ';
       /* "Deliver to": the customer's own area. In Kampala & Wakiso the line names it; outside, no same-day line at
          all (it would be a promise this customer cannot have). Unknown: the general line above. */
-      var DL = nav.getAttribute('data-deliver-label') || '';
+      /* The strip renders with innerHTML: strip markup characters from the area name (it came from a cookie). */
+      var DL = (nav.getAttribute('data-deliver-label') || '').replace(/[<>&"]/g, '');
       var DSD = nav.getAttribute('data-deliver-sameday') || '';
       if (DL && DSD === '1') SD = DL + ': ';
       var noSameDay = DSD === '0';
@@ -2031,6 +2032,11 @@ body.gph-nav-demo .gp-hero{margin-top:22px;}
       else if (!noSameDay) c.push({ id:'aftercutoff', score:44,
         text:"Today's run has left. Order now and it goes out <b>tomorrow morning</b>",
         short:'Next delivery run is <b>tomorrow</b>', href:'/delivery/kampala-wakiso' });
+
+      /* outside the same-day zone: what IS true for them (mirrors nba.ts upcountryNavLine) */
+      if (noSameDay && DL) c.push({ id:'upcountry', score:48,
+        text:'Delivering to <b>' + DL.replace(/[<>&"]/g, '') + '</b>? We confirm your delivery day by phone',
+        short:'Delivering to <b>' + DL.replace(/[<>&"]/g, '') + '</b>: we call to confirm the day', href:'/delivery/kampala-wakiso' });
 
       c.push({ id:'verify', score:30,
         text:'Verified original GoldPlus products, with a code you can check', cta:'How we verify', href:'/verification' });

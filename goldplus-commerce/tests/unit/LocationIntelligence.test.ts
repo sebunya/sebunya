@@ -52,7 +52,7 @@ describe('"Deliver to": the area the customer told us, area only', () => {
     expect(cart).toMatch(/sameDayLineFor\(sameDayCutoffCopy\(/);
     const checkout = read('apps/web/src/pages/checkout.astro');
     expect(checkout).toMatch(/locationJson: guestPrefill\.locationJson \|\| deliverToJson/);
-    expect(checkout).toMatch(/if \(orderedTo\) writeChosenPlace\(/);
+    expect(checkout).toMatch(/if \(orderedTo\) \{\s*writeChosenPlace\(/);
   });
 });
 

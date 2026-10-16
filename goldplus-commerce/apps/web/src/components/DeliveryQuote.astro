@@ -1,6 +1,7 @@
 ---
 import { apiBase } from "../lib/api";
 import { buildDeliveryQuoteRequest, renderDeliveryQuotePanel, DELIVERY_QUOTE_UNREACHABLE_HTML } from "../lib/deliveryQuotePanel";
+import { sendLocationSignal } from "../lib/locationSignals";
 
 /**
  * The delivery quote, shown identically at the product page, the cart and
@@ -29,9 +30,14 @@ interface Props {
   subtotalUgx?: number | null;
   /** Product page: a single item, before any area is known. */
   compact?: boolean;
+  /**
+   * 0193: record "a fee was shown for this area" (a location signal) — only for a known area, a human visitor, and
+   * the surface named here. Consent decides at the API whether it is linked to the visitor or counted anonymously.
+   */
+  record?: { surface: 'pdp' | 'cart' } | null;
 }
 
-const { stage, areaSlug = null, district = null, items = [], subtotalUgx = null, compact = false } = Astro.props;
+const { stage, areaSlug = null, district = null, items = [], subtotalUgx = null, compact = false, record = null } = Astro.props;
 
 let q: any = null;
 let unreachable = false;
@@ -45,6 +51,13 @@ try {
   const json = await res.json().catch(() => null);
   if (json?.success) q = json.data;
   else unreachable = true;
+  if (q && record && (areaSlug || district)) {
+    void sendLocationSignal(
+      { kind: 'quote_shown', surface: record.surface, areaSlug, district, feeUgx: typeof q.feeUgx === 'number' ? q.feeUgx : null, quoteKind: q.kind ?? q.tone ?? null },
+      (Astro.locals as { gpVisit?: string }).gpVisit,
+      Astro.request,
+    );
+  }
 } catch {
   unreachable = true;
 }

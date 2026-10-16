@@ -1,3 +1,4 @@
+import { isSameDayDispatchDistrict } from '../../domain/locations/GreaterKampala';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client';
 import { VISITOR_ACTION_EVENT_TYPES } from '@goldplus/shared';
@@ -48,11 +49,10 @@ export interface HeroSignals {
   /** in-stock flag per product slug the slides reference, so E can gate. */
   stockBySlug: Record<string, boolean>;
   /**
-   * Delivery zone is UNAVAILABLE before checkout: we do not know the visitor's
-   * address, and guessing a zone's price is worse than saying nothing (§4.2 F).
-   * The seam exists; the value is honestly null.
+   * 0193: the area the visitor TOLD us ("Deliver to", on this device or, signed in, any device). Never guessed:
+   * with no "Deliver to" it is null, and nothing about the zone is claimed (§4.2 F).
    */
-  zone: null;
+  zone: { label: string; district: string; sameDay: boolean } | null;
 }
 
 const rowsOf = (r: any): any[] => (Array.isArray(r) ? r : r?.rows ?? []);
@@ -62,6 +62,11 @@ const EMPTY: HeroSignals = {
 };
 
 export class HeroSignalsService {
+  constructor(
+    /** 0193: the visitor's "Deliver to" (area only), or null. Injected so the hero never guesses one. */
+    private readonly deliverTo: (profileId: string) => Promise<{ label: string; district: string } | null> = async () => null,
+  ) {}
+
   /**
    * @param profileId server-issued experience-profile id, or null for a
    *   visitor with no resolvable profile (the endpoint still returns a safe,
@@ -76,18 +81,20 @@ export class HeroSignalsService {
     }
 
     try {
-      const [affinity, ordered, loyalty, stock, visits, customer] = await Promise.all([
+      const [affinity, ordered, loyalty, stock, visits, customer, place] = await Promise.all([
         this.categoryAffinity(profileId),
         this.hasOrdered(profileId),
         this.loyaltyFor(profileId),
         this.stockFor(productSlugs),
         this.visitStrength(profileId),
         this.customerIdentity(profileId),
+        this.deliverTo(profileId).catch(() => null),
       ]);
+      const zone = place ? { label: place.label, district: place.district, sameDay: isSameDayDispatchDistrict(place.district) } : null;
 
       const preferredProduct = affinity.length > 0 ? await this.preferredProduct(affinity[0].categorySlug) : null;
 
-      return { customer, visits, hasOrdered: ordered, categoryAffinity: affinity, preferredProduct, loyalty, stockBySlug: stock, zone: null };
+      return { customer, visits, hasOrdered: ordered, categoryAffinity: affinity, preferredProduct, loyalty, stockBySlug: stock, zone };
     } catch (error) {
       // A signals failure must never break the hero: return the neutral payload.
       // But never SILENTLY: a broken query here makes every visitor look new.

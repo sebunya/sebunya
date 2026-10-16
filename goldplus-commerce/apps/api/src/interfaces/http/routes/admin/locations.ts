@@ -28,6 +28,12 @@ routes.get('/places-usage', requirePermissions([PERMISSIONS.REPORTS_READ]), asyn
   return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
 });
 
+// ── Where customers want delivery (0193 location signals) ─────────────────
+routes.get('/demand', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+  const data = await Registry.getInstance().locationDemandReportUseCase.execute(Number(c.req.query('days') ?? 30));
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+
 // ── Unresolved searches ──────────────────────────────────────────────────
 routes.get('/misses', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
   const data = await Registry.getInstance().listSearchMissesUseCase.execute(Number(c.req.query('limit') ?? 100));

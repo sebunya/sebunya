@@ -168,6 +168,30 @@
     let debounceTimer: number | undefined;
     let pin: PinState | null = null;
     const withPinCapture = el.dataset.withPin === '1';
+    // 0193: the areas "Locate me" last offered, so the choice can teach us whether our area points are right.
+    let lastOffer: string[] | null = null;
+    const surface = ['pdp', 'cart', 'checkout', 'account'].includes(el.dataset.surface ?? '') ? el.dataset.surface : 'checkout';
+
+    /**
+     * Did "Locate me" offer the right areas? Sent to our own server (which adds the visitor's token) with the
+     * customer's own pin, so area points learn where customers really are. Best-effort: never delays the customer.
+     */
+    function recordLocateOutcome(opt: PlaceOption) {
+      if (!lastOffer || !pin || pin.gpsSource === 'map_place' || !opt.areaSlug) return;
+      const rank = lastOffer.indexOf(opt.areaSlug) + 1;
+      const body = {
+        kind: rank > 0 ? 'locate_offer_chosen' : 'locate_offer_missed',
+        surface,
+        areaSlug: opt.areaSlug,
+        district: opt.district,
+        ...(rank > 0 ? { offerRank: rank } : {}),
+        pin: { lat: pin.gpsLat, lng: pin.gpsLng, accuracyM: pin.gpsAccuracyM ?? null, source: pin.gpsSource },
+      };
+      lastOffer = null;
+      try {
+        void fetch('/location-signal', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), keepalive: true }).catch(() => undefined);
+      } catch { /* never in the customer's way */ }
+    }
     // The deep layer: one billing session per search-and-pick, switched off for the page when the server says
     // "not configured" or the month's budget is spent.
     let deepSession = newSessionToken();
@@ -185,6 +209,7 @@
     }
 
     function commit(opt: PlaceOption) {
+      recordLocateOutcome(opt);
       const hasArea = Boolean(opt.area && opt.area !== opt.district);
       payloadInput!.value = payloadWithPin({
         district: opt.district,
@@ -624,6 +649,7 @@
         return;
       }
       if (statusEl) statusEl.textContent = message;
+      lastOffer = areas.map((a) => a.areaSlug);
       current = areas.map((a) => {
         const name = a.label.split(',')[0].trim();
         return {

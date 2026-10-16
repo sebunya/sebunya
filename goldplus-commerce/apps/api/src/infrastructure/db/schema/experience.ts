@@ -1,4 +1,4 @@
-import { index, pgTable, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
+import { boolean, index, integer, numeric, pgTable, smallint, timestamp, uniqueIndex, uuid, varchar } from "drizzle-orm/pg-core";
 
 /**
  * Server-side experience profiles (0100, R2 2026-08-06).
@@ -20,6 +20,11 @@ export const experienceProfiles = pgTable(
     customerLinkedAt: timestamp("customer_linked_at", { withTimezone: true }),
     firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).defaultNow().notNull(),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
+    /** 0193: the visitor's "Deliver to" area (area only), set by the customer. */
+    deliverAreaSlug: varchar("deliver_area_slug", { length: 160 }),
+    deliverDistrict: varchar("deliver_district", { length: 60 }),
+    deliverLabel: varchar("deliver_label", { length: 120 }),
+    deliverSetAt: timestamp("deliver_set_at", { withTimezone: true }),
   },
   (table) => ({
     tokenHashUq: uniqueIndex("experience_profiles_token_hash_uq").on(table.tokenHash),
@@ -27,3 +32,34 @@ export const experienceProfiles = pgTable(
     lastSeenIdx: index("experience_profiles_last_seen_idx").on(table.lastSeenAt),
   }),
 );
+
+/**
+ * 0193: location signals — what customers tell us about where they want delivery, linked to their profile so it
+ * personalises their experience (owner decision 2026-10-16). "Locate me" rows keep the customer's own pin.
+ */
+export const locationSignals = pgTable(
+  "location_signals",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).defaultNow().notNull(),
+    kind: varchar("kind", { length: 30 }).notNull(),
+    surface: varchar("surface", { length: 20 }).notNull(),
+    profileId: uuid("profile_id"),
+    customerId: uuid("customer_id"),
+    areaSlug: varchar("area_slug", { length: 160 }),
+    district: varchar("district", { length: 60 }),
+    feeUgx: integer("fee_ugx"),
+    quoteKind: varchar("quote_kind", { length: 40 }),
+    offerRank: smallint("offer_rank"),
+    offerKm: numeric("offer_km", { precision: 7, scale: 2 }),
+    personalisation: boolean("personalisation").default(false).notNull(),
+    pinLat: numeric("pin_lat", { precision: 9, scale: 6 }),
+    pinLng: numeric("pin_lng", { precision: 9, scale: 6 }),
+    pinAccuracyM: integer("pin_accuracy_m"),
+  },
+  (table) => ({
+    areaTimeIdx: index("location_signals_area_time_idx").on(table.areaSlug, table.occurredAt),
+    timeIdx: index("location_signals_time_idx").on(table.occurredAt),
+  }),
+);
+

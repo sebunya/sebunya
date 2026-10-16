@@ -5,6 +5,7 @@ import { apiBase } from '../lib/api';
 import ProductCard from '../components/ProductCard.astro';
 import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
 import PopularNowRail from '../components/recommendations/PopularNowRail.astro';
+import PopularNearYouRail from '../components/recommendations/PopularNearYouRail.astro';
 import RecentlyViewedRail from '../components/recommendations/RecentlyViewedRail.astro';
 import CartAwareRail from '../components/home/CartAwareRail.astro';
 import HeroSlider from '../components/hero/HeroSlider.astro';
@@ -222,6 +223,8 @@ const realCoverIds = allProducts.filter(hasRealCover).map((p) => p.id);
   </div>
 
   {/* 7. Trending Now (with Cross-Section Deduplication) */}
+  {/* 0193: "Popular in <their area>", from the visitor's "Deliver to" (server-side; hidden without enough evidence). */}
+  <PopularNearYouRail place={Astro.locals.gpDeliverTo} excludeProductIds={usedProductIds} homeBand={true} />
   <PopularNowRail excludeProductIds={usedProductIds} realCoverIds={realCoverIds} homeBand={true} />
 
   {/* 8. Business pathways */}

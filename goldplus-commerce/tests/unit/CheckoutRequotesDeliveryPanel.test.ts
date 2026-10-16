@@ -126,7 +126,7 @@ describe('checkout re-quotes the panel through the one quoting service', () => {
     expect(checkout).toMatch(/<dd id="checkout-delivery-quote" data-subtotal=\{cart\.subtotalUgx\}/);
     expect(checkout).toMatch(/fetch\(`\$\{API_BASE\}\/delivery\/quote`, \{\s*method: 'POST'/);
     expect(checkout).toMatch(/if \(seq !== quoteSeq\) return;[^\n]*\n\s*quotePanelEl\.innerHTML = html;/);
-    expect(checkout).toMatch(/setCutoffFor\(district\);\s*void refreshQuotePanel\(district, area, areaSlug\);/);
+    expect(checkout).toMatch(/setCutoffFor\(district, copyArea\);\s*void refreshQuotePanel\(district, area, areaSlug\);/);
   });
 
   it('clearing the place, or written directions, re-quotes with no place', () => {

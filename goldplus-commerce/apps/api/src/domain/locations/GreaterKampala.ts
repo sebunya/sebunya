@@ -20,3 +20,11 @@ export function areaNameOf(label: string | null | undefined): string | null {
   const first = String(label ?? '').split(',')[0]?.trim();
   return first ? first.slice(0, 80) : null;
 }
+
+/** Same-day DISPATCH (narrower than Greater Kampala): the districts the storefront promises it for. */
+export const SAME_DAY_DISPATCH_DISTRICTS = ['Kampala', 'Wakiso'] as const;
+
+export function isSameDayDispatchDistrict(district: string | null | undefined): boolean {
+  const d = String(district ?? '').trim().toLowerCase();
+  return SAME_DAY_DISPATCH_DISTRICTS.some((g) => g.toLowerCase() === d);
+}

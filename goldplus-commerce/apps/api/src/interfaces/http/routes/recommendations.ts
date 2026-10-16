@@ -88,6 +88,22 @@ routes.post('/events', botDetectionMiddleware, optionalCustomerSessionMiddleware
   }
 });
 
+/**
+ * "Popular in <area>" (0193): products customers in the visitor's "Deliver to" area actually bought (paid orders),
+ * widening to the district, then Greater Kampala. Area-level and the same for everyone there, so it is cached
+ * publicly per query. Nothing personal goes in or comes out.
+ */
+routes.get('/near-you', async (c) => {
+  const slug = String(c.req.query('areaSlug') ?? '');
+  const areaSlug = /^[a-z0-9-]{3,160}$/.test(slug) ? slug : null;
+  const district = String(c.req.query('district') ?? '').trim().slice(0, 60) || null;
+  const areaName = String(c.req.query('area') ?? '').replace(/[<>]/g, '').trim().slice(0, 60) || null;
+  if (!areaSlug && !district) return c.json({ success: true, data: { scope: null, scopeLabel: null, items: [] } });
+  const data = await Registry.getInstance().popularNearYouUseCase.execute({ areaSlug, areaName, district, limit: Number(c.req.query('limit') ?? 6) });
+  c.header('Cache-Control', 'public, max-age=300');
+  return c.json({ success: true, data });
+});
+
 routes.get('/', async (c) => {
   try {
     const q = c.req.query();

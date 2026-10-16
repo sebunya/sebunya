@@ -1,0 +1,61 @@
+---
+import RecommendationRail from "./RecommendationRail.astro";
+import { apiBase } from "../../lib/api";
+import { filterDisplayableRecommendations } from "../../lib/recommendation-display";
+import type { RecommendationItemDto } from "@goldplus/shared";
+import type { DeliveryPlace } from "../../lib/deliveryPlace";
+import { popularNearYouCopy } from "../../../../../packages/shared/src/locations/locationCopy";
+
+/**
+ * "Popular in Najjera" (0193): what customers where this visitor wants delivery actually bought. Server-rendered
+ * from the API's area-level answer (paid orders, at least two different buyers per product, widening to the
+ * district then Greater Kampala). No area known, or too little evidence: nothing is rendered.
+ */
+interface Props {
+  place: DeliveryPlace | null | undefined;
+  excludeProductIds?: string[];
+  homeBand?: boolean;
+}
+const { place, excludeProductIds = [], homeBand = false } = Astro.props;
+
+let items: RecommendationItemDto[] = [];
+let scopeLabel: string | null = null;
+let scope: "area" | "district" | "greater_kampala" | null = null;
+if (place) {
+  try {
+    const qs = new URLSearchParams({
+      ...(place.areaSlug ? { areaSlug: place.areaSlug } : {}),
+      district: place.district,
+      area: place.label.split(",")[0].trim(),
+      limit: "8",
+    });
+    const res = await fetch(`${apiBase}/recommendations/near-you?${qs}`, { signal: AbortSignal.timeout(2500) });
+    const json: any = res.ok ? await res.json().catch(() => null) : null;
+    if (json?.success && Array.isArray(json.data?.items)) {
+      items = filterDisplayableRecommendations(json.data.items, { excludeIds: excludeProductIds, limit: 6 });
+      scopeLabel = json.data.scopeLabel ?? null;
+      scope = json.data.scope ?? null;
+    }
+  } catch {
+    /* the rail is a bonus; the page never waits on it failing */
+  }
+}
+const show = items.length >= 4 && scopeLabel;
+const shown = items.length >= 6 ? items.slice(0, 6) : items.slice(0, 4);
+const grid = shown.length === 4 ? "grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6" : "grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 sm:gap-6";
+const { title, subtitle } = popularNearYouCopy(scope, scopeLabel ?? "");
+---
+
+{show && (
+  homeBand ? (
+    <div class="bg-white border-b border-slate-100 flex flex-col" data-rail="popular-near-you">
+      <div class="container mx-auto px-4 lg:px-8">
+        <RecommendationRail title={title} subtitle={subtitle} placement="home_trending" items={shown} gridClass={grid} showReasons={false} />
+      </div>
+    </div>
+  ) : (
+    <div data-rail="popular-near-you">
+      <RecommendationRail title={title} subtitle={subtitle} placement="home_trending" items={shown} gridClass={grid} showReasons={false} />
+    </div>
+  )
+)}

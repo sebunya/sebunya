@@ -48,7 +48,14 @@ export async function runNightlyAreaPoints(opts: { dryRun?: boolean; now?: Date 
     from delivery_order_pin p
     join delivery_quote_capture c on c.order_id = p.order_id
     where p.confirmed_at is not null and p.source <> 'saved_address' and c.first_attempt_success = true
-      and p.captured_at >= ${since} and c.area_slug is not null`));
+      and p.captured_at >= ${since} and c.area_slug is not null
+    union all
+    -- 0193: a customer who used "Locate me" and CHOSE this area, with a phone fix of 100 m or better: they told us
+    -- they are in it, standing there. Customer pins, not Google points (those never become signals).
+    select area_slug, pin_lat as lat, pin_lng as lng
+    from location_signals
+    where kind = 'locate_offer_chosen' and pin_lat is not null and area_slug is not null
+      and (pin_accuracy_m is null or pin_accuracy_m <= 100) and occurred_at >= ${since}`));
   const current = rows(await db.execute(sql`select area_slug, centroid_source from delivery_corridor`));
   const sourceOf = new Map(current.map((r) => [String(r.area_slug), r.centroid_source === null ? null : String(r.centroid_source)]));
 

@@ -56,6 +56,29 @@ customers never type postcodes (location brief) — so the "special code" is not
 5. **Google Places compliance fix.** A building picked from Google is a rider pin and a Google Maps link only; the
    customer names the area with our search, and that prices the order.
 
+## 2b. Location signals (0193) — the experience comes first
+
+**Owner decision, 2026-10-16:** the store's experience and personalisation take priority. Signals link to the
+visitor's profile (and customer) whatever their consent state — the same rule the homepage hero has followed since
+2026-08-07 — with the consent state recorded on each row for marketing uses that respect it. "Locate me" keeps the
+customer's own pin. Rows are kept three years (`LOCATION_SIGNAL_RETENTION_DAYS`, default 1095). The only hard limit
+is contractual: Google Places points never become signals, area matches, learning or DNA (Maps Platform Terms
+§3.2.3(c)).
+
+| Signal | Captured when | Used for |
+|---|---|---|
+| `deliver_to_set` | "Deliver to" chosen (product page, cart) or an order placed | The visitor's profile; follows a signed-in customer to every device; homepage zone; header; product page and cart fees |
+| `quote_shown` | A delivery fee shown for a known area to a human visitor | Demand by area; fee shock; typical fee per area; Customer 360 "areas they priced delivery to" |
+| `locate_offer_chosen` / `_missed` | After "Locate me" the customer took an offered area (rank) or typed another | The customer's pin + distance: nightly area points learn from chosen pins (≤ 100 m); flagged areas get a suggested point (median of chosen pins) for a person to apply |
+
+**Server side first.** Middleware resolves "Deliver to" once per document (cookie → last checkout → the profile on
+the server, at most one lookup a day for a visitor without one) into `Astro.locals.gpDeliverTo`; the header,
+homepage, product page, cart and checkout all read that one value.
+
+**Popular in <area>.** `GET /recommendations/near-you`: products customers in the visitor's area actually bought
+(paid orders, at least two different buyers per product, buyer = account or phone), widening to the district then
+Greater Kampala; hidden with fewer than four. Area-level, the same for everyone there, cached per area.
+
 ## 3. Smarter delivery — next steps (from our own data)
 
 - **Hour-of-week and area learning** already exists (calibration proposes, a person accepts). Feed it *place

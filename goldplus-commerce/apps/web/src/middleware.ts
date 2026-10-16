@@ -5,6 +5,7 @@ import { agentDocumentFor, agentRepresentablePath } from "./lib/agentDocuments";
 import { resolveRequestIdentity } from "./lib/requestIdentity";
 import { isSignedVisitToken, mintSignedVisitToken } from "./lib/visitToken";
 import { apiBase } from "./lib/api";
+import { resolveDeliveryPlace } from "./lib/locationSignals";
 import { visitorCookieDomain } from "./lib/visitorCookieDomain";
 import { readRefreshToken, readSessionToken, setRequestSessionToken, setSignInCookies, clearSignInCookies, tokenSecondsLeft } from "./lib/session";
 import { apiHeaders, readClientAddress } from "./lib/forwardClient";
@@ -260,6 +261,14 @@ export const onRequest = defineMiddleware(async (context, next) => {
       context.locals.gpUserId = identity.gpUserId;
       context.locals.gpSessionUnknown = identity.gpSessionUnknown;
       context.locals.gpCart = identity.gpCart;
+      // 0193: "Deliver to", once per document, for every page and component (header, homepage, product page, cart,
+      // checkout). Cookie first (no network); the profile lookup runs at most once a day for a visitor without one.
+      context.locals.gpDeliverTo = await resolveDeliveryPlace({
+        cookies: context.cookies,
+        request: context.request,
+        visit: context.locals.gpVisit,
+        secure: context.url.protocol === 'https:',
+      }).catch(() => null);
     } catch {
       // A basket is not worth failing a page render for; the component falls
       // back to resolving one itself.
