@@ -220,12 +220,12 @@ const paymentCopy = order ? paymentStatusCopy(order.paymentStatus) : null;
                           covers a reversal, where money DID leave and is coming
                           back, so saying nothing left could be false. */}
                       <p class="font-semibold">Your online payment did not go through, so the order is not paid. If money left your phone or card, it will come back. Tell us if it does not.</p>
-                      <p class="mt-1 text-xs">Your order is still saved. Pay online now, or pay on delivery or at our shop.</p>
+                      <p class="mt-1 text-xs">Your order is still saved. Pay now with Mobile Money or card.</p>
                     </>
                   ) : (
                     <>
                       <p class="font-semibold">Waiting for payment before we prepare it.</p>
-                      <p class="mt-1 text-xs">If you already paid online and it has not cleared, please do not pay again — ask us on WhatsApp and we will check. Otherwise you can pay online now, or pay on delivery.</p>
+                      <p class="mt-1 text-xs">If you already paid online and it has not cleared, please do not pay again — ask us on WhatsApp and we will check. Otherwise you can pay now with Mobile Money or card.</p>
                     </>
                   )}
                   {payError && (

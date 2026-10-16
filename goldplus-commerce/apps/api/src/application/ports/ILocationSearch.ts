@@ -32,6 +32,8 @@ export interface AreaSearchHit {
   groupName?: string;
   /** set when the hit came via a landmark — surfaced for provenance */
   viaLandmark?: string;
+  /** 2026-10-16: the alias as written in the gazetteer ("Najjera"), when an alias matched — shown instead of the customer's typing. */
+  viaAlias?: string;
 }
 
 export interface PickupPointSearchHit {

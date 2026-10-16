@@ -141,7 +141,7 @@ export function paymentReturnCopy(kind: PaymentReturnKind, orderNumber: string |
         // this cannot flatly say "not charged": on a reversal money did leave
         // and is on its way back.
         money: `Your payment for order${ref} did not go through, so the order is not paid. If money left your phone or card, it will come back. Tell us if it does not.`,
-        next: 'Your order is saved and paying again will not create a second one. Check the order to pay online again with Mobile Money or card, or to pay on delivery or at the shop instead.',
+        next: 'Your order is saved and paying again will not create a second one. Check the order to pay again with Mobile Money or card.',
         primaryCta: { label: 'Check this order', href: trackHref },
         secondaryCta: { label: 'Back to the shop', href: '/shop' },
         offerHelp: true,

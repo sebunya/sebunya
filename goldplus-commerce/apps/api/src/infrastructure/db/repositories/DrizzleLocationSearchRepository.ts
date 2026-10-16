@@ -26,6 +26,7 @@ type AreaRowRaw = {
   is_metro: boolean;
   score: number;
   via_landmark?: string | null;
+  via_alias?: string | null;
   group_id?: string | null;
   group_name?: string | null;
   member_slugs?: string[] | null;
@@ -46,6 +47,7 @@ function toHit(matchType: LocationMatchType) {
     ...(r.group_id ? { groupId: r.group_id, groupName: r.group_name ?? undefined } : {}),
     ...(r.member_slugs ? ({ memberSlugs: r.member_slugs } as object) : {}),
     ...(r.via_landmark ? { viaLandmark: r.via_landmark } : {}),
+    ...(r.via_alias ? { viaAlias: r.via_alias } : {}),
   });
 }
 
@@ -54,7 +56,7 @@ const AREA_COLS = sql`a.area_slug, a.display_label, a.parish_or_area_clean, a.cu
 export class DrizzleLocationSearchRepository implements ILocationSearchRepository {
   async aliasExact(folded: string): Promise<AreaSearchHit[]> {
     const rows = (await db.execute(sql`
-      select ${AREA_COLS}, 1::float as score
+      select ${AREA_COLS}, 1::float as score, al.alias as via_alias
       from ug_area_alias al
       join ug_area a on a.area_slug = al.area_slug
       where al.normalised_alias = ${folded} and a.selectable = true
@@ -101,12 +103,12 @@ export class DrizzleLocationSearchRepository implements ILocationSearchRepositor
     // soup: "bunga" cannot reach "Busanga".
     const rows = (await db.execute(sql`
       select * from (
-        select ${AREA_COLS}, 0.9::float as score
+        select ${AREA_COLS}, 0.9::float as score, null::text as via_alias
         from ug_area a
         where a.selectable = true
           and (a.search_text like ${folded + '%'} or a.search_text like ${'% ' + folded + '%'})
         union
-        select ${AREA_COLS}, 0.9::float as score
+        select ${AREA_COLS}, 0.9::float as score, al.alias as via_alias
         from ug_area_alias al join ug_area a on a.area_slug = al.area_slug
         where a.selectable = true and al.normalised_alias like ${folded + '%'}
       ) p

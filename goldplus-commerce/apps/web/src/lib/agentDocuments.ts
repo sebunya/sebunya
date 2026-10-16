@@ -68,7 +68,7 @@ function termsBlock(): string[] {
     '## Buying from GoldPlus',
     '',
     '- **Delivery:** orders before the daily cut-off go out the same day in Kampala and Wakiso; the fee is calculated for the address and shown before payment.',
-    '- **Payment:** MTN or Airtel Mobile Money, Visa or Mastercard, or pay on delivery or at the shop.',
+    '- **Payment:** paid online when you order: MTN or Airtel Mobile Money, or Visa or Mastercard.',
     `- **Returns:** ${RETURNS_POLICY.windowDays} days for a change of mind (unused and complete; customer covers return carriage). A faulty product is replaced or refunded with GoldPlus covering the carriage. ${RETURNS_POLICY.policyUrl}`,
     '',
   ];
@@ -286,7 +286,7 @@ async function faqDocument(): Promise<AgentDocument> {
     ['How do I know which replacement battery fits my phone?',
       `Search the phone in the battery finder (${SITE_ORIGIN}/battery-finder), match the code printed on the battery inside the phone to the code in the product name, or send the phone model on WhatsApp. GoldPlus confirms the fit before payment.`],
     ['How can I pay?',
-      'MTN or Airtel Mobile Money, or a Visa or Mastercard through PesaPal; or pay on delivery or at the shop.'],
+      'Paid online when you order: MTN or Airtel Mobile Money, or a Visa or Mastercard through PesaPal.'],
     ['Are GoldPlus products genuine, and what if something is faulty?',
       `Products are GoldPlus-branded; the code on the pack can be checked at ${SITE_ORIGIN}/verification. A faulty product is replaced or refunded with GoldPlus covering the return carriage. A change-of-mind return is accepted within ${RETURNS_POLICY.windowDays} days of delivery or collection, unused and complete, with the customer covering the return carriage. ${RETURNS_POLICY.policyUrl}`],
   ];
