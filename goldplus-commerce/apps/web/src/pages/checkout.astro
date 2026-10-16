@@ -1021,6 +1021,9 @@ const checkoutSavingLabel = basketSavingLabel(
                        defaultValue={values.locationJson}
                        errorMessage={errors.locationJson}
                      />
+                     {/* 2026-10-16: the fee, where the customer just answered. On a phone the order summary sits below
+                         the whole form, so the number they were waiting for appeared out of sight. */}
+                     <p id="location-fee-line" class="hidden -mt-1 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-900" role="status" aria-live="polite"></p>
                      <FormField
                        id="deliveryAddress"
                        name="deliveryAddress"
@@ -1366,8 +1369,27 @@ const checkoutSavingLabel = basketSavingLabel(
       lastLocated = located;
       if (!estimateEl || !totalEl || !totalLabelEl) return;
       renderEstimateRow(est, located);
+      renderLocationFeeLine(est, located);
       if (submitTotalEl) submitTotalEl.textContent = totalEl.textContent;
       if (submitTotalLabelEl) submitTotalLabelEl.textContent = totalLabelEl.textContent;
+    }
+
+    let feeLineHome: { parent: HTMLElement | null; next: Element | null } | null = null;
+    function renderLocationFeeLine(est: { kind: string; feeUgx: number | null } | null, located: boolean) {
+      const line = document.getElementById('location-fee-line');
+      if (!line) return;
+      let text = '';
+      if (est && est.kind === 'CONFIRMED' && est.feeUgx !== null) text = est.feeUgx === 0 ? 'No delivery fee' : `Delivery ${ugx(est.feeUgx)}`;
+      else if (est && est.kind === 'ESTIMATED' && est.feeUgx !== null) text = `Delivery about ${ugx(est.feeUgx)}, confirmed before the rider leaves`;
+      else if (located) text = 'Delivery fee confirmed by phone before dispatch';
+      // A saved address hides the new-address block the line sits in: then it shows under the saved choices.
+      const savedFieldset = document.querySelector('input.js-address-choice')?.closest('fieldset');
+      const usingSaved = Boolean(document.querySelector<HTMLInputElement>('input.js-address-choice:checked')?.value);
+      if (!feeLineHome) feeLineHome = { parent: line.parentElement, next: line.nextElementSibling };
+      if (usingSaved && savedFieldset) savedFieldset.after(line);
+      else if (feeLineHome.parent) feeLineHome.parent.insertBefore(line, feeLineHome.next);
+      line.textContent = text;
+      line.classList.toggle('hidden', !text);
     }
 
     function renderEstimateRow(est: { kind: string; feeUgx: number | null } | null, located: boolean) {
@@ -1538,6 +1560,10 @@ const checkoutSavingLabel = basketSavingLabel(
     // (Called directly: re-dispatching 'change' would also fire the funnel event.)
     const savedChosenAtLoad = document.querySelector<HTMLInputElement>('input.js-address-choice:checked');
     if (pickerPayload?.value && !(savedChosenAtLoad && savedChosenAtLoad.value !== '')) onPickerChange();
+    // A saved address chosen at load: price it here too, so its fee shows beside it, not only in the summary.
+    else if (savedChosenAtLoad && savedChosenAtLoad.value !== '') {
+      refreshEstimate(savedChosenAtLoad.dataset.district ?? null, savedChosenAtLoad.dataset.area || null, savedChosenAtLoad.dataset.areaSlug || null);
+    }
 
     // ── promo code (Apply = live preview from the SAME evaluator that charges) ──
     const promoInput = document.getElementById('couponCode') as HTMLInputElement | null;

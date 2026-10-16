@@ -69,3 +69,20 @@ describe('a customer we know confirms who is buying in one line (2026-10-16)', (
     expect(checkout).toMatch(/phone: defaultAddress\?\.phone \|\| accountPhone \|\| guestPrefill\.phone/);
   });
 });
+
+describe('the fee shows where the customer answered (2026-10-16)', () => {
+  const checkout = read('apps/web/src/pages/checkout.astro');
+  const client = read('apps/web/src/lib/locationPickerClient.ts');
+
+  it('mirrors every estimate into a line beside the chosen place, saved address included', () => {
+    expect(checkout).toMatch(/id="location-fee-line"/);
+    expect(checkout).toMatch(/renderEstimateRow\(est, located\);\s*renderLocationFeeLine\(est, located\);/);
+    expect(checkout).toMatch(/savedFieldset\.after\(line\)/);
+    expect(checkout).toMatch(/else if \(savedChosenAtLoad && savedChosenAtLoad\.value !== ''\) \{\s*refreshEstimate\(/);
+  });
+
+  it('warns when the device location is rough instead of trusting it', () => {
+    expect(client).toMatch(/gpsAccuracyM > 1500/);
+  });
+});
+

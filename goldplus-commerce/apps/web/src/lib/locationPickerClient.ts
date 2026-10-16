@@ -410,7 +410,12 @@
         return;
       }
       // No focus here: on a phone it raises the keyboard over the very choices we are offering.
-      say('Tap your area below. Not listed? Type it instead.');
+      const roughKm = pin.gpsAccuracyM && pin.gpsAccuracyM > 1500 ? Math.round(pin.gpsAccuracyM / 100) / 10 : null;
+      say(
+        roughKm
+          ? `This device only knows your location to about ${roughKm} km, so check these carefully. Not listed? Type your area.`
+          : 'Tap your area below. Not listed? Type it instead.',
+      );
       current = areas.map((a) => {
         const name = a.label.split(',')[0].trim();
         return {
