@@ -25,7 +25,8 @@ const value = (name: string) => process.argv.find((a) => a.startsWith(`--${name}
 
 export async function applyManualPoints(opts: { apply: boolean; replace: boolean; csvPath?: string; by?: string | null; now?: Date }) {
   const now = opts.now ?? new Date();
-  const path = opts.csvPath ?? resolve(process.cwd(), 'data/geo/manual-points.csv');
+  // data/geo at the repo root, like the parish importer: the migrator image mounts it at /app/data, not under apps/api.
+  const path = opts.csvPath ?? resolve(__dirname, '../../../../data/geo/manual-points.csv');
   const rows = parseCsv(readFileSync(path, 'utf8'));
   const problems: string[] = [];
   const plan: Array<{ slug: string; lat: number; lng: number; err: number; ref: string; note: string; current: string | null }> = [];
