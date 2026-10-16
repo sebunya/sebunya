@@ -28,10 +28,11 @@ describe('riders (0190)', () => {
     expect(added.ok && added.rider.name).toBe('musa kato');
     expect(rows[0].phoneE164).toBe('+256772123456');
     expect(added.ok && added.rider.phoneMasked).toBe('+256 772 ••• 456');
+    expect(added.ok && added.rider.phone).toBe('+256772123456'); // admin shows the full number: riders are our own team
     expect((await uc.add({ name: 'Again', phone: '+256772123456', addedBy: null })).ok).toBe(false);
     expect((await uc.add({ name: 'Nairobi', phone: '+254712345678', addedBy: null })).ok).toBe(false);
     expect((await uc.add({ name: 'X', phone: '0700000000', addedBy: null })).ok).toBe(false);
-    expect((await uc.list()).some((x) => 'phoneE164' in x)).toBe(false);
+    expect((await uc.list())[0].phone).toBe('+256772123456');
   });
   it('switching off keeps the row', async () => {
     const { r, rows } = repo();

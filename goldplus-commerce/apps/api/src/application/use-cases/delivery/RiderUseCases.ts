@@ -1,8 +1,9 @@
 /**
  * Riders (0190). A rider has a name and a WhatsApp number; a location message
  * from that number while one of their stops is out for delivery is a
- * handover, not a customer pin. The number is a worker's personal data: shown
- * masked in admin, never exported, never in an audit row.
+ * handover, not a customer pin. Riders are the shop's own team, so admin
+ * pages show the full number (owner's decision 2026-10-16); it is still never
+ * exported and never written into an audit row.
  */
 import { normalisePhoneE164 } from '../../../domain/customer-dna/IdentityStitching';
 
@@ -25,7 +26,9 @@ export type RiderResult = { ok: true; rider: RiderMasked } | { ok: false; code: 
 export interface RiderMasked {
   id: string;
   name: string;
-  /** +256 7XX ••• 456 */
+  /** Full E.164 number, for the admin pages: riders are our own team. */
+  phone: string;
+  /** +256 7XX ••• 456, for any surface that is not the admin. */
   phoneMasked: string;
   active: boolean;
   createdAt: Date;
@@ -37,7 +40,7 @@ export function maskRiderPhone(e164: string): string {
   return `+${d.slice(0, 3)} ${d.slice(3, 6)} ••• ${d.slice(-3)}`;
 }
 
-const mask = (r: RiderRow): RiderMasked => ({ id: r.id, name: r.name, phoneMasked: maskRiderPhone(r.phoneE164), active: r.active, createdAt: r.createdAt });
+const mask = (r: RiderRow): RiderMasked => ({ id: r.id, name: r.name, phone: r.phoneE164, phoneMasked: maskRiderPhone(r.phoneE164), active: r.active, createdAt: r.createdAt });
 
 export class RiderUseCases {
   constructor(private readonly repo: IRiderRepository) {}

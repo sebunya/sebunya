@@ -571,7 +571,7 @@ routes.get('/reports/ladder-margin', requirePermissions([PERMISSIONS.REPORTS_REA
   return c.json({ success: true, data: await Registry.getInstance().ladderMarginReportUseCase.execute() });
 });
 
-/** Riders (0190): a name and a WhatsApp number. Phones are shown masked; the list is never exported. */
+/** Riders (0190): a name and a WhatsApp number. Admin sees the full number (our own team); the list is never exported. */
 routes.get('/riders', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   return c.json({ success: true, data: { riders: await Registry.getInstance().riderUseCases.list() } });
 });
