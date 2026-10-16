@@ -757,7 +757,7 @@ const errorLinks = Object.keys(FIELD_TARGET)
 // account holders from their address book, returning guests from their own
 // last checkout. Confirming beats retyping; everything stays editable.
 // The "Deliver to" area chosen on a product page or the cart opens checkout already chosen (area only, no pin).
-const deliverToAtLoad = knownDeliveryPlace(Astro.cookies, Astro.request);
+const deliverToAtLoad = Astro.locals.gpDeliverTo !== undefined ? Astro.locals.gpDeliverTo : knownDeliveryPlace(Astro.cookies, Astro.request);
 const deliverToJson = deliverToAtLoad
   ? JSON.stringify({
       district: deliverToAtLoad.district,

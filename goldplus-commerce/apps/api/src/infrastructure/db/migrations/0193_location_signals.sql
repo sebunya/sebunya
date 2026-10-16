@@ -31,10 +31,13 @@ CREATE TABLE IF NOT EXISTS location_signals (
   offer_rank smallint,
   offer_km numeric(7,2),
   personalisation boolean NOT NULL DEFAULT false,
+  pin_lat numeric(9,6),
+  pin_lng numeric(9,6),
+  pin_accuracy_m integer,
   CONSTRAINT location_signals_kind_check CHECK (kind in ('deliver_to_set','quote_shown','locate_offer_chosen','locate_offer_missed')),
   CONSTRAINT location_signals_surface_check CHECK (surface in ('pdp','cart','checkout','account','home')),
   CONSTRAINT location_signals_rank_check CHECK (offer_rank is null or offer_rank between 1 and 10),
-  CONSTRAINT location_signals_link_check CHECK (personalisation or (profile_id is null and customer_id is null))
+  CONSTRAINT location_signals_pin_check CHECK ((pin_lat is null and pin_lng is null) or kind in ('locate_offer_chosen','locate_offer_missed'))
 );
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS location_signals_area_time_idx ON location_signals (area_slug, occurred_at);
@@ -42,5 +45,7 @@ CREATE INDEX IF NOT EXISTS location_signals_area_time_idx ON location_signals (a
 CREATE INDEX IF NOT EXISTS location_signals_time_idx ON location_signals (occurred_at);
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS location_signals_customer_idx ON location_signals (customer_id) WHERE customer_id IS NOT NULL;
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS location_signals_profile_idx ON location_signals (profile_id) WHERE profile_id IS NOT NULL;
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS experience_profiles_deliver_customer_idx ON experience_profiles (customer_id, deliver_set_at) WHERE deliver_set_at IS NOT NULL;

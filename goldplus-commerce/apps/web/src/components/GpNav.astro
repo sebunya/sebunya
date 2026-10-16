@@ -202,7 +202,7 @@ const dealFeatOnSale =
 const cut = kampalaCutoff(new Date(), { cutoffHour: biz.sameDayCutoffHour, closedDays: biz.closedDays });
 // "Deliver to" (the area the customer told us on this device): the same-day line names it, or says nothing about
 // same-day when it is outside Kampala & Wakiso. Unknown = the general Kampala & Wakiso line, as before.
-const navPlace = knownDeliveryPlace(Astro.cookies, Astro.request);
+const navPlace = Astro.locals.gpDeliverTo !== undefined ? Astro.locals.gpDeliverTo : knownDeliveryPlace(Astro.cookies, Astro.request);
 const navPlaceSameDay = navPlace ? (isSameDayDistrict(navPlace.district) ? '1' : '0') : '';
 const nba = computeNbaCandidates({
   signedIn, visits, cart: cartCount, points, lastOrderDays, orderInTransit,

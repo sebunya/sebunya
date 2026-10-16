@@ -2,9 +2,9 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID, createHash } from 'node:crypto';
 
 /**
- * 0193 location signals against real PostgreSQL: consent decides the link (and the table's CHECK refuses a link
- * without it), "Deliver to" follows a signed-in customer across devices, the demand report joins signals to orders,
- * and the purge deletes rows past 13 months.
+ * 0193 location signals against real PostgreSQL: every signal links to the visitor (consent recorded), Locate me
+ * keeps the customer's own pin, "Deliver to" follows a signed-in customer across devices, the demand report joins
+ * signals to orders, and the purge deletes rows past the retention period (three years).
  */
 const URL = process.env.COMMERCE_TEST_DATABASE_URL;
 const suite = URL ? describe : describe.skip;
@@ -53,18 +53,20 @@ suite('location signals (real PostgreSQL)', () => {
     await raw.end({ timeout: 5 });
   });
 
-  it('a consenting customer\'s signal is linked; a guest\'s is anonymous; the CHECK refuses a link without consent', async () => {
+  it('every signal links to the visitor; consent is recorded; Locate me keeps the pin; a pin on other kinds is refused', async () => {
     await record.execute({ raw: { kind: 'deliver_to_set', surface: 'pdp', areaSlug: slug, district: 'Wakiso', label: 'Ls, Wakiso' }, profileId: phoneProfile, customerId: null });
     await record.execute({ raw: { kind: 'quote_shown', surface: 'pdp', areaSlug: slug, district: 'Wakiso', feeUgx: 6500 }, profileId: guestProfile, customerId: null });
     await record.execute({ raw: { kind: 'quote_shown', surface: 'cart', areaSlug: slug, district: 'Wakiso', feeUgx: 6500 }, profileId: null, customerId: declining });
-    await record.execute({ raw: { kind: 'locate_offer_missed', surface: 'checkout', areaSlug: slug, district: 'Wakiso', pin: { lat: 0.4, lng: 32.62 } }, profileId: phoneProfile, customerId: null });
-    const rows = await raw`select kind, profile_id, customer_id, personalisation, offer_km from location_signals where area_slug = ${slug} order by occurred_at`;
+    await record.execute({ raw: { kind: 'locate_offer_chosen', surface: 'checkout', areaSlug: slug, district: 'Wakiso', offerRank: 1, pin: { lat: 0.3895, lng: 32.6105, accuracyM: 15, source: 'device' } }, profileId: phoneProfile, customerId: null });
+    const rows = await raw`select kind, profile_id, customer_id, personalisation, offer_km, pin_lat, pin_accuracy_m from location_signals where area_slug = ${slug} order by occurred_at`;
     expect(rows).toHaveLength(4);
     expect(rows[0]).toMatchObject({ kind: 'deliver_to_set', profile_id: phoneProfile, customer_id: consenting, personalisation: true });
-    expect(rows[1]).toMatchObject({ profile_id: null, customer_id: null, personalisation: false });
-    expect(rows[2]).toMatchObject({ profile_id: null, customer_id: null, personalisation: false });
-    expect(Number(rows[3].offer_km)).toBeGreaterThan(1);
-    await expect(raw`insert into location_signals (kind, surface, customer_id, personalisation) values ('quote_shown', 'pdp', ${declining}, false)`).rejects.toThrow();
+    expect(rows[1]).toMatchObject({ profile_id: guestProfile, customer_id: null, personalisation: false });
+    expect(rows[2]).toMatchObject({ profile_id: null, customer_id: declining, personalisation: false });
+    expect(rows[3]).toMatchObject({ kind: 'locate_offer_chosen', pin_accuracy_m: 15 });
+    expect(Number(rows[3].pin_lat)).toBeCloseTo(0.3895, 4);
+    expect(Number(rows[3].offer_km)).toBeLessThan(1);
+    await expect(raw`insert into location_signals (kind, surface, pin_lat, pin_lng) values ('quote_shown', 'pdp', 0.3, 32.5)`).rejects.toThrow();
   });
 
   it('"Deliver to" set on the phone is there on the laptop of the same signed-in customer', async () => {
@@ -75,13 +77,16 @@ suite('location signals (real PostgreSQL)', () => {
   it('the demand report counts the area and the purge removes rows past 13 months', async () => {
     const rows = await store.demandByArea(30);
     const mine = rows.find((r: any) => r.areaSlug === slug);
-    expect(mine).toMatchObject({ deliverToSets: 1, feeViews: 2, locateMissed: 1, medianFeeShownUgx: 6500 });
+    expect(mine).toMatchObject({ deliverToSets: 1, feeViews: 2, locateChosen: 1, medianFeeShownUgx: 6500 });
+    const pins = await store.chosenPins(30);
+    expect(pins.get(slug)).toHaveLength(1);
     expect(await store.areasConsidered(consenting, 90)).toEqual([{ label: expect.any(String), times: 1 }]);
-    await raw`update location_signals set occurred_at = now() - interval '400 days' where area_slug = ${slug} and kind = 'quote_shown'`;
+    expect(await store.areasConsidered(declining, 90)).toEqual([{ label: expect.any(String), times: 1 }]);
+    await raw`update location_signals set occurred_at = now() - interval '1100 days' where area_slug = ${slug} and kind = 'quote_shown'`;
     const { purgePins } = await import('../../apps/api/src/scripts/geo-purge-pins');
     const r = await purgePins();
     expect(r.signals).toBeGreaterThanOrEqual(2);
     const left = await raw`select kind from location_signals where area_slug = ${slug}`;
-    expect(left.map((x: any) => x.kind).sort()).toEqual(['deliver_to_set', 'locate_offer_missed']);
+    expect(left.map((x: any) => x.kind).sort()).toEqual(['deliver_to_set', 'locate_offer_chosen']);
   });
 });

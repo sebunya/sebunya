@@ -29,9 +29,13 @@ export async function sendLocationSignal(body: Record<string, unknown>, visit: s
   }
 }
 
+/** Set after a server lookup found no "Deliver to": the next lookup waits a day. */
+export const DELIVER_TO_CHECKED_COOKIE = 'gp_deliver_to_checked';
+
 /**
  * "Deliver to" for this visitor: this device first (cookie, then last checkout), else what they set on another
- * device when signed in (kept on their profile, 0193) — which is then remembered here too.
+ * device when signed in (kept on their profile, 0193) — which is then remembered here too. A miss is remembered for
+ * a day, so a visitor with no area costs one lookup a day, not one per page.
  */
 export async function resolveDeliveryPlace(
   ctx: { cookies: AstroCookies; request: Request; visit: string | null | undefined; secure: boolean },
@@ -39,8 +43,10 @@ export async function resolveDeliveryPlace(
   const local = knownDeliveryPlace(ctx.cookies, ctx.request);
   if (local) return local;
   if (!readSessionToken(ctx.request) && !ctx.visit) return null;
+  if (ctx.cookies.get(DELIVER_TO_CHECKED_COOKIE)?.value) return null;
   try {
-    const res = await fetch(`${apiBase}/locations/deliver-to`, { headers: signalHeaders(ctx.visit, ctx.request), signal: AbortSignal.timeout(1500) });
+    // Short: this runs in middleware before the page renders, at most once a day for a visitor without an area.
+    const res = await fetch(`${apiBase}/locations/deliver-to`, { headers: signalHeaders(ctx.visit, ctx.request), signal: AbortSignal.timeout(700) });
     const json: any = res.ok ? await res.json().catch(() => null) : null;
     const p = placeFromPayload(json?.data?.place ?? null, 'account');
     if (p) {
@@ -49,6 +55,10 @@ export async function resolveDeliveryPlace(
     }
   } catch {
     /* this device's answer stands */
+    return null;
   }
+  try {
+    ctx.cookies.set(DELIVER_TO_CHECKED_COOKIE, '1', { path: '/', maxAge: 60 * 60 * 24, httpOnly: true, sameSite: 'lax', secure: ctx.secure });
+  } catch { /* a convenience */ }
   return null;
 }

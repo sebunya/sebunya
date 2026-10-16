@@ -173,8 +173,8 @@
     const surface = ['pdp', 'cart', 'checkout', 'account'].includes(el.dataset.surface ?? '') ? el.dataset.surface : 'checkout';
 
     /**
-     * Did "Locate me" offer the right areas? Sent to our own server (which adds the visitor's token); the pin is
-     * turned into a distance there and discarded, never stored. Best-effort: it never delays the customer.
+     * Did "Locate me" offer the right areas? Sent to our own server (which adds the visitor's token) with the
+     * customer's own pin, so area points learn where customers really are. Best-effort: never delays the customer.
      */
     function recordLocateOutcome(opt: PlaceOption) {
       if (!lastOffer || !pin || pin.gpsSource === 'map_place' || !opt.areaSlug) return;
@@ -185,7 +185,7 @@
         areaSlug: opt.areaSlug,
         district: opt.district,
         ...(rank > 0 ? { offerRank: rank } : {}),
-        pin: { lat: pin.gpsLat, lng: pin.gpsLng },
+        pin: { lat: pin.gpsLat, lng: pin.gpsLng, accuracyM: pin.gpsAccuracyM ?? null, source: pin.gpsSource },
       };
       lastOffer = null;
       try {

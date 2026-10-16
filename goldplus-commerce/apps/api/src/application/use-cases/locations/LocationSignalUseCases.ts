@@ -1,10 +1,10 @@
 import type { DeliverToPlace, ILocationSignalStore } from '../../ports/ILocationSignalStore';
-import { areaPointFlags, feeShockAreas, parseLocationSignal, type AreaDemandRow, type AreaPointFlag } from '../../../domain/locations/LocationSignals';
+import { areaPointFlags, feeShockAreas, medianPoint, parseLocationSignal, type AreaDemandRow, type AreaPointFlag } from '../../../domain/locations/LocationSignals';
 
 /**
- * Records one location signal. Consent decides the link: with personalisation granted the row carries the profile
- * and customer (it may then personalise their experience and appear in their Customer 360); without it the row is
- * anonymous and only ever counted per area. A "Locate me" pin is turned into a distance and discarded.
+ * Records one location signal, linked to the visitor's profile and customer so it personalises their experience
+ * (owner decision 2026-10-16). Their consent state is recorded on the row, for marketing uses that respect it.
+ * A "Locate me" row keeps the customer's own pin and its distance to the chosen area's point.
  */
 export class RecordLocationSignalUseCase {
   constructor(private readonly store: ILocationSignalStore) {}
@@ -22,8 +22,8 @@ export class RecordLocationSignalUseCase {
     await this.store.insert({
       kind: s.kind,
       surface: s.surface,
-      profileId: consent.personalisation ? input.profileId : null,
-      customerId: consent.personalisation ? consent.customerId : null,
+      profileId: input.profileId,
+      customerId: consent.customerId,
       areaSlug: s.areaSlug,
       district: s.district,
       feeUgx: s.feeUgx,
@@ -31,6 +31,7 @@ export class RecordLocationSignalUseCase {
       offerRank: s.offerRank,
       offerKm,
       personalisation: consent.personalisation,
+      pin: s.pin,
     });
     return 'recorded';
   }
@@ -61,7 +62,9 @@ export class LocationDemandReportUseCase {
 
   async execute(days: number): Promise<LocationDemandReport> {
     const d = Number.isInteger(days) && days >= 1 && days <= 365 ? days : 30;
-    const areas = await this.store.demandByArea(d);
-    return { days: d, areas, feeShock: feeShockAreas(areas).slice(0, 10), areaPointFlags: areaPointFlags(areas) };
+    const [areas, pins] = await Promise.all([this.store.demandByArea(d), this.store.chosenPins(Math.max(d, 90))]);
+    // A flagged area comes with where customers who chose it really were (a person decides whether to move it).
+    const flags = areaPointFlags(areas).map((f) => ({ ...f, suggestedPoint: f.areaSlug ? medianPoint(pins.get(f.areaSlug) ?? []) : null }));
+    return { days: d, areas, feeShock: feeShockAreas(areas).slice(0, 10), areaPointFlags: flags };
   }
 }

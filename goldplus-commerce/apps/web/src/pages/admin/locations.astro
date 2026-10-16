@@ -153,7 +153,7 @@ let demand: null | {
   days: number;
   areas: Array<{ areaSlug: string | null; label: string; deliverToSets: number; feeViews: number; orders: number; medianFeeShownUgx: number | null; locateChosen: number; locateMissed: number; medianOfferKm: number | null }>;
   feeShock: Array<{ label: string; feeViews: number; orders: number; conversion: number; medianFeeShownUgx: number | null }>;
-  areaPointFlags: Array<{ label: string; reason: string }>;
+  areaPointFlags: Array<{ label: string; reason: string; suggestedPoint?: { lat: number; lng: number; pins: number } | null }>;
 } = null;
 try {
   const res = await fetch(`${apiBase}/admin/locations/demand?days=30`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(6000) });
@@ -191,7 +191,14 @@ try {
         {demand && demand.areaPointFlags.length > 0 && (
           <div class="rounded-xl border border-amber-200 bg-amber-50 p-3">
             <p class="text-xs font-black uppercase tracking-widest text-amber-900">Area points to check</p>
-            <ul class="mt-1 list-disc pl-5 text-xs text-amber-900">{demand.areaPointFlags.map((f) => <li><b>{f.label}</b>: {f.reason}</li>)}</ul>
+            <ul class="mt-1 list-disc pl-5 text-xs text-amber-900">{demand.areaPointFlags.map((f) => (
+              <li>
+                <b>{f.label}</b>: {f.reason}
+                {f.suggestedPoint && (
+                  <> Where {f.suggestedPoint.pins} customers who chose it really were: <a class="font-bold underline" href={`https://maps.google.com/?q=${f.suggestedPoint.lat},${f.suggestedPoint.lng}`} target="_blank" rel="noopener">{f.suggestedPoint.lat}, {f.suggestedPoint.lng}</a> (set it as a manual point if it looks right).</>
+                )}
+              </li>
+            ))}</ul>
           </div>
         )}
         {demand && demand.feeShock.length > 0 && (
@@ -220,7 +227,7 @@ try {
             </table>
           </div>
         )}
-        <p class="text-xs text-gray-500">Areas, fees, ranks and distances only: no coordinates, no IP addresses. Linked to a customer only with their personalisation consent; deleted after 13 months.</p>
+        <p class="text-xs text-gray-500">From "Deliver to" choices, delivery fees shown and Locate me. Linked to each visitor's profile for their experience; no IP addresses; Google Places points are never stored here.</p>
       </div>
     </section>
 

@@ -57,8 +57,24 @@ export class DrizzleLocationSignalStore implements ILocationSignalStore {
 
   async insert(x: Parameters<ILocationSignalStore['insert']>[0]): Promise<void> {
     await db.execute(sql`
-      insert into location_signals (kind, surface, profile_id, customer_id, area_slug, district, fee_ugx, quote_kind, offer_rank, offer_km, personalisation)
-      values (${x.kind}, ${x.surface}, ${x.profileId}, ${x.customerId}, ${x.areaSlug}, ${x.district}, ${x.feeUgx}, ${x.quoteKind}, ${x.offerRank}, ${x.offerKm}, ${x.personalisation})`);
+      insert into location_signals (kind, surface, profile_id, customer_id, area_slug, district, fee_ugx, quote_kind, offer_rank, offer_km, personalisation, pin_lat, pin_lng, pin_accuracy_m)
+      values (${x.kind}, ${x.surface}, ${x.profileId}, ${x.customerId}, ${x.areaSlug}, ${x.district}, ${x.feeUgx}, ${x.quoteKind}, ${x.offerRank}, ${x.offerKm}, ${x.personalisation},
+              ${x.pin?.lat ?? null}, ${x.pin?.lng ?? null}, ${x.pin?.accuracyM ?? null})`);
+  }
+
+  async chosenPins(sinceDays: number): Promise<Map<string, Array<{ lat: number; lng: number; accuracyM: number | null }>>> {
+    const since = new Date(Date.now() - sinceDays * 86_400_000);
+    const r = rows(await db.execute(sql`
+      select area_slug, pin_lat, pin_lng, pin_accuracy_m from location_signals
+      where kind = 'locate_offer_chosen' and pin_lat is not null and area_slug is not null and occurred_at > ${since}`));
+    const out = new Map<string, Array<{ lat: number; lng: number; accuracyM: number | null }>>();
+    for (const x of r) {
+      const k = String(x.area_slug);
+      const list = out.get(k) ?? [];
+      list.push({ lat: Number(x.pin_lat), lng: Number(x.pin_lng), accuracyM: num(x.pin_accuracy_m) });
+      out.set(k, list);
+    }
+    return out;
   }
 
   async demandByArea(sinceDays: number): Promise<AreaDemandRow[]> {
@@ -101,7 +117,7 @@ export class DrizzleLocationSignalStore implements ILocationSignalStore {
     const r = rows(await db.execute(sql`
       select coalesce(u.display_label, s.district) as label, count(*) as times
       from location_signals s left join ug_area u on u.area_slug = s.area_slug
-      where s.customer_id = ${customerId}::uuid and s.personalisation and s.kind in ('deliver_to_set', 'quote_shown') and s.occurred_at > ${since}
+      where s.customer_id = ${customerId}::uuid and s.kind in ('deliver_to_set', 'quote_shown') and s.occurred_at > ${since}
       group by 1 order by 2 desc limit 5`));
     return r.map((x) => ({ label: String(x.label ?? ''), times: Number(x.times ?? 0) })).filter((x) => x.label);
   }

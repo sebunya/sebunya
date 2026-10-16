@@ -493,7 +493,9 @@ const canBuy = product?.availability.kind === 'in_stock' && pdpHasPrice;
 // is THEIR fee, not "from …". Never inferred from the IP address.
 // 0193: else the area they set on another device when signed in (kept on their profile), never a guess.
 const deliverTo = canBuy
-  ? await resolveDeliveryPlace({ cookies: Astro.cookies, request: Astro.request, visit: (Astro.locals as { gpVisit?: string }).gpVisit, secure: import.meta.env.PROD })
+  ? (Astro.locals.gpDeliverTo !== undefined
+      ? Astro.locals.gpDeliverTo
+      : await resolveDeliveryPlace({ cookies: Astro.cookies, request: Astro.request, visit: Astro.locals.gpVisit, secure: import.meta.env.PROD }))
   : null;
 const humanVisitor = isLikelyHuman(Astro.request.headers.get('user-agent'));
 // Search snippet (2026-10-08 SEO audit: all 183 titles were the bare name and

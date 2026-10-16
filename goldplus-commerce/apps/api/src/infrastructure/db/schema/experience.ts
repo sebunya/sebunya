@@ -34,8 +34,8 @@ export const experienceProfiles = pgTable(
 );
 
 /**
- * 0193: location signals — what customers tell us about where they want delivery. No coordinates, no IP, no user
- * agent. Linked to a profile/customer only with personalisation consent (a CHECK enforces it); deleted after 395 days.
+ * 0193: location signals — what customers tell us about where they want delivery, linked to their profile so it
+ * personalises their experience (owner decision 2026-10-16). "Locate me" rows keep the customer's own pin.
  */
 export const locationSignals = pgTable(
   "location_signals",
@@ -53,6 +53,9 @@ export const locationSignals = pgTable(
     offerRank: smallint("offer_rank"),
     offerKm: numeric("offer_km", { precision: 7, scale: 2 }),
     personalisation: boolean("personalisation").default(false).notNull(),
+    pinLat: numeric("pin_lat", { precision: 9, scale: 6 }),
+    pinLng: numeric("pin_lng", { precision: 9, scale: 6 }),
+    pinAccuracyM: integer("pin_accuracy_m"),
   },
   (table) => ({
     areaTimeIdx: index("location_signals_area_time_idx").on(table.areaSlug, table.occurredAt),

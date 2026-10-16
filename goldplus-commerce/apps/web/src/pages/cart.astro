@@ -449,7 +449,9 @@ const cut = kampalaCutoff(new Date(), { cutoffHour: bizCart.sameDayCutoffHour, c
 // promising "arrives today" to a basket bound for Arua.
 // "Deliver to": the area the customer told us (chosen here or at their last checkout on this device). The
 // same-day line and the quote below follow it; with none, both stay general.
-const deliverTo = await resolveDeliveryPlace({ cookies: Astro.cookies, request: Astro.request, visit: (Astro.locals as { gpVisit?: string }).gpVisit, secure: import.meta.env.PROD });
+const deliverTo = Astro.locals.gpDeliverTo !== undefined
+  ? Astro.locals.gpDeliverTo
+  : await resolveDeliveryPlace({ cookies: Astro.cookies, request: Astro.request, visit: Astro.locals.gpVisit, secure: import.meta.env.PROD });
 const cutoffLine = sameDayLineFor(sameDayCutoffCopy(cut, { now: new Date(), closedDays: bizCart.closedDays }), deliverTo?.district);
 ---
 

@@ -222,11 +222,11 @@ export class DrizzleCustomer360Reader implements ICustomer360Reader {
       where customer_identity_ref = ${accountUserId} order by effective_at desc limit 50`)) : [];
 
     // ── Addresses, segments, privacy, finder ───────────────────────────────
-    // 0193: areas this customer looked at or set as "Deliver to" — only rows they consented to link (personalisation).
+    // 0193: areas this customer looked at or set as "Deliver to".
     const considered = accountUserId ? rows(await db.execute(sql`
       select coalesce(u.display_label, s.district) as label, count(*)::int as times
       from location_signals s left join ug_area u on u.area_slug = s.area_slug
-      where s.customer_id = ${accountUserId}::uuid and s.personalisation and s.kind in ('deliver_to_set', 'quote_shown')
+      where s.customer_id = ${accountUserId}::uuid and s.kind in ('deliver_to_set', 'quote_shown')
         and s.occurred_at > now() - interval '90 days'
       group by 1 order by 2 desc limit 5`).catch(() => [])) : [];
     const addresses = accountUserId ? rows(await db.execute(sql`

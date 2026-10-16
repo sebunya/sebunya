@@ -1,15 +1,21 @@
 /**
- * Location signals (0193, 2026-10-16): what customers tell us about where they want delivery, kept for a stated
- * purpose — price and promise for their area everywhere, learn where demand is, check our area points — and deleted
- * after LOCATION_SIGNAL_RETENTION_DAYS. Never coordinates, never an IP, never anything from Google Places.
+ * Location signals (0193, 2026-10-16): what customers tell us about where they want delivery, used to price and
+ * promise for their area everywhere, personalise what they see, learn where demand is and fix our area points.
+ * Owner decision 2026-10-16: the experience comes first — signals link to the visitor's profile whatever their
+ * consent state (recorded on each row for marketing uses), "Locate me" keeps the customer's own pin, and rows are
+ * kept LOCATION_SIGNAL_RETENTION_DAYS. Never an IP, never anything from Google Places (contract, not preference:
+ * Maps Platform Terms §3.2.3(c)).
  */
 export const LOCATION_SIGNAL_KINDS = ['deliver_to_set', 'quote_shown', 'locate_offer_chosen', 'locate_offer_missed'] as const;
 export type LocationSignalKind = (typeof LOCATION_SIGNAL_KINDS)[number];
 export const LOCATION_SIGNAL_SURFACES = ['pdp', 'cart', 'checkout', 'account', 'home'] as const;
 export type LocationSignalSurface = (typeof LOCATION_SIGNAL_SURFACES)[number];
 
-/** Thirteen months: a full year of seasons to compare, then gone. */
-export const LOCATION_SIGNAL_RETENTION_DAYS = 395;
+/** Three years by default (several seasons to compare); LOCATION_SIGNAL_RETENTION_DAYS overrides. */
+export const LOCATION_SIGNAL_RETENTION_DAYS = (() => {
+  const n = Number(typeof process !== 'undefined' ? process.env.LOCATION_SIGNAL_RETENTION_DAYS : NaN);
+  return Number.isInteger(n) && n >= 30 ? n : 1095;
+})();
 
 export interface LocationSignalInput {
   kind: LocationSignalKind;
@@ -20,8 +26,8 @@ export interface LocationSignalInput {
   feeUgx: number | null;
   quoteKind: string | null;
   offerRank: number | null;
-  /** The customer's own pin, used ONLY to measure how far it is from the chosen area's point; never stored. */
-  pin: { lat: number; lng: number } | null;
+  /** The customer's own pin ("Locate me": device GPS or a shared link). Stored to learn area points. */
+  pin: { lat: number; lng: number; accuracyM: number | null } | null;
 }
 
 const SLUG = /^[a-z0-9-]{3,160}$/;
@@ -45,7 +51,13 @@ export function parseLocationSignal(raw: unknown): LocationSignalInput | null {
   const pinObj = o.pin as { lat?: unknown; lng?: unknown } | undefined;
   const lat = Number(pinObj?.lat);
   const lng = Number(pinObj?.lng);
-  const pin = Number.isFinite(lat) && Number.isFinite(lng) && lat >= -2.5 && lat <= 5.5 && lng >= 28 && lng <= 36.5 ? { lat, lng } : null;
+  const acc = Number((pinObj as { accuracyM?: unknown } | undefined)?.accuracyM);
+  // A Google Places point is never a signal (Maps Platform Terms §3.2.3(c)): only the customer's own pin.
+  const ownPin = (pinObj as { source?: unknown } | undefined)?.source !== 'map_place';
+  const pin =
+    ownPin && Number.isFinite(lat) && Number.isFinite(lng) && lat >= -2.5 && lat <= 5.5 && lng >= 28 && lng <= 36.5
+      ? { lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6, accuracyM: Number.isFinite(acc) && acc >= 0 && acc <= 100000 ? Math.round(acc) : null }
+      : null;
   return {
     kind,
     surface,
@@ -73,7 +85,25 @@ export interface AreaDemandRow {
   medianOfferKm: number | null;
 }
 
-export type AreaPointFlag = { areaSlug: string | null; label: string; reason: string };
+export type AreaPointFlag = {
+  areaSlug: string | null;
+  label: string;
+  reason: string;
+  /** Where customers who chose this area actually were: the median of their accurate "Locate me" pins. */
+  suggestedPoint?: { lat: number; lng: number; pins: number } | null;
+};
+
+/** Component-wise median of accurate pins (≤ 100 m) — a robust "where people really are" for an area. */
+export function medianPoint(pins: Array<{ lat: number; lng: number; accuracyM: number | null }>, minPins = 3): { lat: number; lng: number; pins: number } | null {
+  const good = pins.filter((p) => p.accuracyM === null || p.accuracyM <= 100);
+  if (good.length < minPins) return null;
+  const med = (xs: number[]) => {
+    const s = [...xs].sort((a, b) => a - b);
+    const m = Math.floor(s.length / 2);
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  };
+  return { lat: Math.round(med(good.map((p) => p.lat)) * 1e6) / 1e6, lng: Math.round(med(good.map((p) => p.lng)) * 1e6) / 1e6, pins: good.length };
+}
 
 /**
  * Areas whose point may be in the wrong place: customers who used "Locate me" and then had to TYPE this area

@@ -78,7 +78,7 @@ export interface TraitInput {
   bulkQuotes: Array<{ reference: string; createdAt: Date; lineCount: number | null; totalUnits: number | null }>;
   /** Districts on the account's saved addresses (default first). */
   addressDistricts: string[];
-  /** 0193: areas the customer priced or set as "Deliver to" in the last 90 days (consented rows only). */
+  /** 0193: areas the customer priced or set as "Deliver to" in the last 90 days. */
   areasConsidered?: Array<{ label: string; times: number }>;
   /** Marketing channels the customer switched ON themselves. */
   optedInChannels: string[];
@@ -287,8 +287,8 @@ export function computeCustomerTraits(input: TraitInput, rfm: (RfmScore & { popu
 
   const considered = input.areasConsidered ?? [];
   const areasConsidered: Trait<Array<{ label: string; times: number }>> = considered.length
-    ? { key: 'areas_considered', label: 'Areas they priced delivery to', basis: 'OBSERVED', value: considered, evidence: 'Delivery fees they looked at and "Deliver to" areas they set in the last 90 days, recorded with their personalisation consent.' }
-    : { key: 'areas_considered', label: 'Areas they priced delivery to', basis: 'OBSERVED', value: null, evidence: 'None recorded, or personalisation is off for this customer.' };
+    ? { key: 'areas_considered', label: 'Areas they priced delivery to', basis: 'OBSERVED', value: considered, evidence: 'Delivery fees they looked at and "Deliver to" areas they set in the last 90 days.' }
+    : { key: 'areas_considered', label: 'Areas they priced delivery to', basis: 'OBSERVED', value: null, evidence: 'No delivery fee viewed or "Deliver to" set in the last 90 days.' };
 
   const bulkBuyer: Trait<boolean> = {
     key: 'bulk_buyer', label: 'Bulk buyer', basis: 'OBSERVED',

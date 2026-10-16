@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { areaPointFlags, feeShockAreas, parseLocationSignal, LOCATION_SIGNAL_RETENTION_DAYS, type AreaDemandRow } from '../../apps/api/src/domain/locations/LocationSignals';
+import { areaPointFlags, feeShockAreas, medianPoint, parseLocationSignal, LOCATION_SIGNAL_RETENTION_DAYS, type AreaDemandRow } from '../../apps/api/src/domain/locations/LocationSignals';
 import { GetDeliverToUseCase, RecordLocationSignalUseCase } from '../../apps/api/src/application/use-cases/locations/LocationSignalUseCases';
 import type { ILocationSignalStore } from '../../apps/api/src/application/ports/ILocationSignalStore';
 import { selectHeroSlides, HERO_SLIDE_LIBRARY, type HeroSelectionContext } from '../../packages/shared/src/hero';
@@ -22,11 +22,12 @@ function fakeStore(personalisation: boolean) {
     demandByArea: async () => [],
     areasConsidered: async () => [],
     purgeOlderThan: async () => 0,
+    chosenPins: async () => new Map(),
   };
   return { store, inserted, deliverTo, kmCalls };
 }
 
-describe('a location signal is an area, a fee, a rank or a distance: never coordinates', () => {
+describe('a location signal: an area, a fee, a rank, a distance, and the customer\'s own Locate me pin', () => {
   it('parses only known kinds and surfaces, and needs an area or a district', () => {
     expect(parseLocationSignal({ kind: 'teleport', surface: 'pdp', district: 'Kampala' })).toBeNull();
     expect(parseLocationSignal({ kind: 'quote_shown', surface: 'moon', district: 'Kampala' })).toBeNull();
@@ -39,22 +40,24 @@ describe('a location signal is an area, a fee, a rank or a distance: never coord
     expect(q?.pin).toBeNull();
     expect(q?.offerRank).toBeNull();
     const c = parseLocationSignal({ kind: 'locate_offer_chosen', surface: 'checkout', areaSlug: 'wakiso-kira-31340', district: 'Wakiso', pin: { lat: 0.39, lng: 32.6 }, offerRank: 2 });
-    expect(c?.pin).toEqual({ lat: 0.39, lng: 32.6 });
+    expect(c?.pin).toEqual({ lat: 0.39, lng: 32.6, accuracyM: null });
+    // A Google Places point is never a signal (Maps Platform Terms §3.2.3(c)).
+    expect(parseLocationSignal({ kind: 'locate_offer_chosen', surface: 'checkout', district: 'Wakiso', pin: { lat: 0.39, lng: 32.6, source: 'map_place' } })?.pin).toBeNull();
     expect(c?.offerRank).toBe(2);
   });
 
-  it('keeps 13 months, and the table cannot link a row to anyone without consent (migration CHECK)', () => {
-    expect(LOCATION_SIGNAL_RETENTION_DAYS).toBe(395);
+  it('keeps three years by default, stores pins only on Locate me rows, and the nightly purge applies it', () => {
+    expect(LOCATION_SIGNAL_RETENTION_DAYS).toBe(1095);
     const sql = read('apps/api/src/infrastructure/db/migrations/0193_location_signals.sql');
-    expect(sql).toMatch(/CHECK \(personalisation or \(profile_id is null and customer_id is null\)\)/);
+    expect(sql).toMatch(/CHECK \(\(pin_lat is null and pin_lng is null\) or kind in \('locate_offer_chosen','locate_offer_missed'\)\)/);
     const table = sql.slice(sql.indexOf('CREATE TABLE IF NOT EXISTS location_signals'), sql.indexOf(');', sql.indexOf('CREATE TABLE IF NOT EXISTS location_signals')));
-    expect(table).not.toMatch(/\blat\b|\blng\b|latitude|longitude|\bip\b|user_agent/i);
+    expect(table).not.toMatch(/\bip\b|user_agent/i);
     expect(read('apps/api/src/scripts/geo-purge-pins.ts')).toMatch(/delete from location_signals where occurred_at < \$\{signalCutoff\}/);
   });
 });
 
-describe('consent decides the link', () => {
-  it('without personalisation the row is anonymous; "Deliver to" is still kept as their own preference', async () => {
+describe('signals link to the visitor (owner decision 2026-10-16: the experience comes first)', () => {
+  it('without personalisation consent the row is still linked, and the consent state is recorded', async () => {
     const f = fakeStore(false);
     const r = await new RecordLocationSignalUseCase(f.store).execute({
       raw: { kind: 'deliver_to_set', surface: 'pdp', areaSlug: 'wakiso-kira-31340', district: 'Wakiso', label: 'Kira, Wakiso' },
@@ -63,19 +66,19 @@ describe('consent decides the link', () => {
     });
     expect(r).toBe('recorded');
     expect(f.deliverTo['prof-1']).toEqual({ areaSlug: 'wakiso-kira-31340', district: 'Wakiso', label: 'Kira, Wakiso' });
-    expect(f.inserted[0]).toMatchObject({ profileId: null, customerId: null, personalisation: false });
+    expect(f.inserted[0]).toMatchObject({ profileId: 'prof-1', customerId: 'cust-1', personalisation: false });
   });
 
-  it('with personalisation the row is linked; a Locate me pin becomes a distance and is not stored', async () => {
+  it('a Locate me row keeps the customer\'s pin and its distance to the area point', async () => {
     const f = fakeStore(true);
     await new RecordLocationSignalUseCase(f.store).execute({
       raw: { kind: 'locate_offer_missed', surface: 'checkout', areaSlug: 'wakiso-kira-31340', district: 'Wakiso', pin: { lat: 0.39, lng: 32.6 } },
       profileId: 'prof-1',
       customerId: null,
     });
-    expect(f.kmCalls).toEqual([{ lat: 0.39, lng: 32.6 }]);
+    expect(f.kmCalls).toEqual([{ lat: 0.39, lng: 32.6, accuracyM: null }]);
     expect(f.inserted[0]).toMatchObject({ profileId: 'prof-1', customerId: 'cust-1', personalisation: true, offerKm: 1.4 });
-    expect(JSON.stringify(f.inserted[0])).not.toMatch(/0\.39|32\.6\b/);
+    expect(f.inserted[0].pin).toEqual({ lat: 0.39, lng: 32.6, accuracyM: null });
   });
 
   it('"Deliver to" follows a signed-in customer to another device', async () => {
@@ -135,3 +138,37 @@ describe('capture points', () => {
     expect(read('apps/web/src/lib/locationSignals.ts')).toMatch(/h\['x-gp-visit'\] = visit/);
   });
 });
+
+describe('area points learn where customers really are', () => {
+  it('suggests the median of accurate chosen pins, ignoring rough fixes, with at least three', () => {
+    const p = medianPoint([
+      { lat: 0.390, lng: 32.610, accuracyM: 12 },
+      { lat: 0.392, lng: 32.612, accuracyM: 30 },
+      { lat: 0.391, lng: 32.611, accuracyM: null },
+      { lat: 0.500, lng: 32.900, accuracyM: 2500 },
+    ]);
+    expect(p).toEqual({ lat: 0.391, lng: 32.611, pins: 3 });
+    expect(medianPoint([{ lat: 0.39, lng: 32.61, accuracyM: 10 }])).toBeNull();
+  });
+
+  it('the nightly area-point job counts chosen Locate me pins (100 m or better) as customer pins', () => {
+    const job = read('apps/api/src/scripts/geo-nightly-area-points.ts');
+    expect(job).toMatch(/from location_signals\s+where kind = 'locate_offer_chosen' and pin_lat is not null/);
+    expect(job).toMatch(/pin_accuracy_m is null or pin_accuracy_m <= 100/);
+  });
+});
+
+describe('server side first: one Deliver to per request', () => {
+  it('middleware resolves it once; header, product page, cart and checkout read the same value', () => {
+    expect(read('apps/web/src/middleware.ts')).toMatch(/context\.locals\.gpDeliverTo = await resolveDeliveryPlace\(/);
+    for (const f of ['apps/web/src/components/GpNav.astro', 'apps/web/src/pages/products/[slug].astro', 'apps/web/src/pages/cart.astro', 'apps/web/src/pages/checkout.astro']) {
+      expect(read(f), f).toMatch(/Astro\.locals\.gpDeliverTo/);
+    }
+  });
+  it('a visitor with no area costs one lookup a day, not one per page', () => {
+    const lib = read('apps/web/src/lib/locationSignals.ts');
+    expect(lib).toMatch(/if \(ctx\.cookies\.get\(DELIVER_TO_CHECKED_COOKIE\)\?\.value\) return null;/);
+    expect(lib).toMatch(/maxAge: 60 \* 60 \* 24/);
+  });
+});
+

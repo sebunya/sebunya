@@ -28,7 +28,10 @@ export interface ILocationSignalStore {
     offerRank: number | null;
     offerKm: number | null;
     personalisation: boolean;
+    pin: { lat: number; lng: number; accuracyM: number | null } | null;
   }): Promise<void>;
+  /** Accurate "Locate me" pins of customers who CHOSE each area (for suggested area points). */
+  chosenPins(sinceDays: number): Promise<Map<string, Array<{ lat: number; lng: number; accuracyM: number | null }>>>;
   demandByArea(sinceDays: number): Promise<AreaDemandRow[]>;
   areasConsidered(customerId: string, sinceDays: number): Promise<Array<{ label: string; times: number }>>;
   purgeOlderThan(days: number): Promise<number>;

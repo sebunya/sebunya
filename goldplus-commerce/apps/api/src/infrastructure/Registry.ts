@@ -324,6 +324,8 @@ import { DeliveryAreaResolver, DeliveryWizardAreaReader } from './delivery/Deliv
 import { GooglePlacesProvider } from './places/GooglePlacesProvider';
 import { DrizzlePlaceMemoryReader } from './db/repositories/DrizzlePlaceMemoryReader';
 import { DrizzleLocationSignalStore } from './db/repositories/DrizzleLocationSignalStore';
+import { DrizzleNearbyDemandReader } from './db/repositories/DrizzleNearbyDemandReader';
+import { PopularNearYouUseCase } from '../application/recommendations/PopularNearYouUseCase';
 import { GetDeliverToUseCase, LocationDemandReportUseCase, RecordLocationSignalUseCase } from '../application/use-cases/locations/LocationSignalUseCases';
 import { GetPlaceMemoryUseCase } from '../application/use-cases/delivery/GetPlaceMemoryUseCase';
 import { RedisPlaceLocationCache, RedisPlaceRequestBudget } from './places/RedisPlaceStores';
@@ -929,6 +931,8 @@ export class Registry {
   public readonly recommendationRuleRepo = new DrizzleRecommendationRuleRepository();
   public readonly recommendationRuleAuditRepo = new DrizzleRecommendationRuleAuditRepository();
   public readonly productRecommendationReader = new DrizzleProductRecommendationReader();
+  /** 0193: "Popular in <area>" — paid orders by delivery place, server-side, the same for everyone in an area. */
+  public readonly popularNearYouUseCase = new PopularNearYouUseCase(new DrizzleNearbyDemandReader(), this.productRecommendationReader);
   public readonly recommendationAnalyticsRepo = new DrizzleRecommendationAnalyticsRepository();
   public readonly experienceProfileRepo = new DrizzleExperienceProfileRepository();
   public readonly searchAffinityReader = new DrizzleSearchAffinityReader();
