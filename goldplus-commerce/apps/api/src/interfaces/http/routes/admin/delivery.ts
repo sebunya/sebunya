@@ -260,6 +260,7 @@ routes.post('/config/:versionId/publish', requirePermissions([PERMISSIONS.DELIVE
     previewConfirmed: body?.previewConfirmed === true,
     scheduledFor: scheduled,
   });
+  Registry.getInstance().deliveryConfigReader.invalidate(); // a new (or old) price is live on the next quote, not in five seconds
   if (!result.ok) {
     return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
   }
@@ -284,6 +285,7 @@ routes.post('/config/revert', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PU
     actorId: (c.get('user') as { id: string }).id,
     reason: String(body?.reason ?? ''),
   });
+  Registry.getInstance().deliveryConfigReader.invalidate(); // a new (or old) price is live on the next quote, not in five seconds
   if (!result.ok) {
     return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
   }
@@ -516,6 +518,78 @@ routes.post('/corridors/dry-run', requirePermissions([PERMISSIONS.DELIVERY_CONFI
   const csv = String(body?.csv ?? '');
   const result = await Registry.getInstance().dryRunCorridorCsvUseCase.execute(csv);
   return c.json({ success: true, data: result });
+});
+
+/**
+ * Apply a corridor CSV that was dry-run: exactly the changes the dry run
+ * showed (the caller echoes its digest), one transaction, one audit row. A
+ * file with any failing row is refused whole.
+ */
+routes.post('/corridors/apply', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PUBLISH]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const result = await Registry.getInstance().applyCorridorCsvUseCase.execute({
+    csv: String(body?.csv ?? ''),
+    confirmation: String(body?.confirmation ?? ''),
+    reason: String(body?.reason ?? ''),
+    actorId: (c.get('user') as { id: string }).id,
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
+  }
+  return c.json({ success: true, data: result });
+});
+
+/** Revert an applied corridor batch in one action (contract #9); refused if any of its areas moved again since. */
+routes.post('/corridors/batches/:batchId/revert', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PUBLISH]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const result = await Registry.getInstance().revertCorridorBatchUseCase.execute({
+    batchId: String(c.req.param('batchId') ?? ''),
+    reason: String(body?.reason ?? ''),
+    actorId: (c.get('user') as { id: string }).id,
+  });
+  if (!result.ok) {
+    return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, result.code === 'NOT_FOUND' ? 404 : 400);
+  }
+  return c.json({ success: true, data: result });
+});
+
+/** Location accuracy (0189): how well we knew where orders were going, last 28 days. */
+routes.get('/reports/location-accuracy', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+  return c.json({ success: true, data: await Registry.getInstance().deliveryLocationAccuracyReportUseCase.execute() });
+});
+
+/** §4.5: place every area on a proposed ladder. Reads only. */
+routes.post('/ladder/dry-run', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PROPOSE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const r = await Registry.getInstance().ladderDryRunUseCase.execute({ ladder: String(body?.ladder ?? '') });
+  if (!r.ok) return c.json({ success: false, error: { code: r.code, message: r.message } } satisfies ApiResponse<never>, 400);
+  return c.json({ success: true, data: r });
+});
+
+/** §4.5: the margin alarm, per rung, last 28 days. */
+routes.get('/reports/ladder-margin', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+  return c.json({ success: true, data: await Registry.getInstance().ladderMarginReportUseCase.execute() });
+});
+
+/** Riders (0190): a name and a WhatsApp number. Phones are shown masked; the list is never exported. */
+routes.get('/riders', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  return c.json({ success: true, data: { riders: await Registry.getInstance().riderUseCases.list() } });
+});
+routes.post('/riders', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const r = await Registry.getInstance().riderUseCases.add({
+    name: String(body?.name ?? ''),
+    phone: String(body?.phone ?? ''),
+    addedBy: (c.get('user') as { id: string }).id,
+  });
+  if (!r.ok) return c.json({ success: false, error: { code: r.code, message: r.message } } satisfies ApiResponse<never>, 400);
+  return c.json({ success: true, data: r.rider }, 201);
+});
+routes.post('/riders/:id/active', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const r = await Registry.getInstance().riderUseCases.setActive(String(c.req.param('id') ?? ''), body?.active !== false);
+  if (!r.ok) return c.json({ success: false, error: { code: r.code, message: r.message } } satisfies ApiResponse<never>, 404);
+  return c.json({ success: true, data: { ok: true } });
 });
 
 export default routes;

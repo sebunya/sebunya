@@ -69,6 +69,13 @@ export const deliveryCorridor = pgTable('delivery_corridor', {
   centroidLng: numeric('centroid_lng', { precision: 9, scale: 6 }),
   centroidSource: varchar('centroid_source', { length: 24 }),
   centroidSampleSize: integer('centroid_sample_size').default(0).notNull(),
+  /** 0189: how far the point can be wrong, measured or stated, never guessed (null = unknown). */
+  centroidExpectedErrorM: integer('centroid_expected_error_m'),
+  /** 0189: what the point was derived from (parish PCODE, 'pins:<n>', an admin note). */
+  centroidSourceRef: varchar('centroid_source_ref', { length: 160 }),
+  /** 0189: several areas share one 2016 parish polygon (a post-2016 split); pins separate them later. */
+  centroidSharedPolygon: boolean('centroid_shared_polygon').default(false).notNull(),
+  centroidUpdatedAt: timestamp('centroid_updated_at', { withTimezone: true }),
   dataVersion: integer('data_version').default(1).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -183,6 +190,13 @@ export const deliveryQuoteCapture = pgTable('delivery_quote_capture', {
   // before any detour, comparable to distance_travelled_km.
   eatHourOfWeek: smallint('eat_hour_of_week'),
   straightLineKm: numeric('straight_line_km', { precision: 8, scale: 2 }),
+  /** 0189: PIN | AREA_POINT | BAND_MIDPOINT | DISTRICT — how precisely the customer's location was known. */
+  accuracyTier: varchar('accuracy_tier', { length: 16 }),
+  /** 0189: one-way km from the active origin to the area's point, recorded whether or not the quote used it. */
+  centroidKm: numeric('centroid_km', { precision: 8, scale: 2 }),
+  centroidExpectedErrorM: integer('centroid_expected_error_m'),
+  /** 0189: which distance priced this quote (band_midpoint | measured_centroid), so populations can be separated later. */
+  distanceSource: varchar('distance_source', { length: 16 }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({

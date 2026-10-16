@@ -32,6 +32,8 @@ if (Astro.request.method === "POST") {
         method: String(form.get("method") || "RIDER"),
         carrierName: String(form.get("carrierName") || "").trim() || undefined,
         riderName: String(form.get("riderName") || "").trim() || undefined,
+        riderId: String(form.get("riderId") || "").trim() || undefined,
+        stopsOnTrip: Number(form.get("stopsOnTrip") || 0) || undefined,
         contact: String(form.get("contact") || "").trim() || undefined,
         notes: String(form.get("notes") || "").trim() || undefined,
         estimatedDeliveryAt: kampalaLocalToIso(eta) ?? undefined, // Kampala wall-clock, not UTC
@@ -78,11 +80,15 @@ let loadFailed = false;
 let notFound = false;
 let permissionDenied = false;
 let apiError = "";
+let riders: Array<{ id: string; name: string; phoneMasked: string }> = [];
 try {
-  const [dRes, tRes] = await Promise.all([
+  const [dRes, tRes, rRes] = await Promise.all([
     fetch(`${apiBase}/admin/fulfilment/${encodeURIComponent(taskId)}/dispatch`, { headers }),
     fetch(`${apiBase}/admin/fulfilment/${encodeURIComponent(taskId)}`, { headers }),
+    fetch(`${apiBase}/admin/delivery/riders`, { headers }).catch(() => null),
   ]);
+  const rJson: any = rRes ? await rRes.json().catch(() => null) : null;
+  if (rJson?.success) riders = (rJson.data.riders as any[]).filter((r) => r.active);
   if (dRes.status === 403) permissionDenied = true;
   else if (dRes.status === 404) notFound = true;
   else {
@@ -185,8 +191,23 @@ function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG", 
             <input id="carrierName" name="carrierName" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
           </div>
           <div>
+            {riders.length > 0 && (
+              <div class="mb-3">
+                <label for="riderId" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Rider on WhatsApp</label>
+                <select id="riderId" name="riderId" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark">
+                  <option value="">— not one of our riders —</option>
+                  {riders.map((r) => <option value={r.id}>{r.name} · {r.phoneMasked}</option>)}
+                </select>
+                <p class="text-[10px] text-gray-500 mt-1">A location this rider shares on WhatsApp while the stop is out records the handover. Riders are managed under Delivery → Riders.</p>
+              </div>
+            )}
             <label for="riderName" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Rider (optional)</label>
             <input id="riderName" name="riderName" type="text" maxlength="120" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark outline-none focus:border-brand-primaryInk" />
+          </div>
+          <div>
+            <label for="stopsOnTrip" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Stops on this trip (optional)</label>
+            <input id="stopsOnTrip" name="stopsOnTrip" type="number" min="1" max="50" inputmode="numeric" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark" />
+            <p class="text-[10px] text-gray-500 mt-1">How many orders the rider is taking out together. The model prices each as its own trip; this is the evidence for setting margin from batching.</p>
           </div>
           <div>
             <label for="contact" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Rider contact (stored masked)</label>

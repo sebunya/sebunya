@@ -108,6 +108,16 @@ function districtFromAreaLine(area: string | null | undefined): string | null {
   return null;
 }
 
+/** The pin inside a checkout location, when it has one that lies in Uganda's bounding box. */
+function pinOf(loc: unknown): { lat: number; lng: number } | null {
+  const l = loc as { gpsLat?: unknown; gpsLng?: unknown } | null | undefined;
+  const lat = Number(l?.gpsLat);
+  const lng = Number(l?.gpsLng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (lat < -2.5 || lat > 5.5 || lng < 28 || lng > 36.5) return null;
+  return { lat, lng };
+}
+
 export class CheckoutUseCase {
   constructor(
     private readonly orderRepo: IOrderRepository,
@@ -156,6 +166,8 @@ export class CheckoutUseCase {
         deliveryArea?: string | null;
         district?: string | null;
         items: ReadonlyArray<{ productId: string; quantity: number }>;
+        /** 0190: the customer's pin at checkout, when there is one (PIN tier; the area when none was named). */
+        point?: { lat: number; lng: number } | null;
       }): Promise<{
         feeUgx: number | null;
         confirmed: boolean;
@@ -256,6 +268,7 @@ export class CheckoutUseCase {
         deliveryArea: dto.customerDetails.deliveryArea ?? null,
         district: dto.customerDetails.deliveryLocation?.district ?? null,
         items: dto.items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+        point: pinOf(dto.customerDetails.deliveryLocation),
       });
       deliveryCapture = { ...quoted.capture, pricedBy: quoted.pricedBy };
       if (!quoted.mayFallBackToLegacy) {

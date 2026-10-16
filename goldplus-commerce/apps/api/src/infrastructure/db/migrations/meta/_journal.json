@@ -1317,6 +1317,27 @@
       "when": 1790140000065,
       "tag": "0188_homepage_sameday_dispatch_copy",
       "breakpoints": true
+    },
+    {
+      "idx": 188,
+      "version": "5",
+      "when": 1790140000066,
+      "tag": "0189_delivery_corridor_parish_centroids",
+      "breakpoints": true
+    },
+    {
+      "idx": 189,
+      "version": "5",
+      "when": 1790140000067,
+      "tag": "0190_delivery_pins_riders_handover",
+      "breakpoints": true
+    },
+    {
+      "idx": 190,
+      "version": "5",
+      "when": 1790140000068,
+      "tag": "0191_dispatch_stops_on_trip",
+      "breakpoints": true
     }
   ]
 }

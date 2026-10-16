@@ -45,7 +45,8 @@ async function anyActiveZoneSetsAThreshold(): Promise<boolean> {
 
 export class DrizzleDeliveryQuotingRepository implements IDeliveryQuotingRepository {
   async factorsFor(input: { areaSlug: string | null; corridor: string | null; eatHourOfWeek: number | null }) {
-    const scopes = [input.areaSlug, input.corridor, input.eatHourOfWeek === null ? null : String(input.eatHourOfWeek)].filter(
+    const pinScope = input.areaSlug ? `${input.areaSlug}#pin` : null;
+    const scopes = [input.areaSlug, pinScope, input.corridor, input.eatHourOfWeek === null ? null : String(input.eatHourOfWeek)].filter(
       (v): v is string => Boolean(v),
     );
     const rows =
@@ -99,12 +100,35 @@ export class DrizzleDeliveryQuotingRepository implements IDeliveryQuotingReposit
       hour: pick('hour_factor', input.eatHourOfWeek === null ? null : String(input.eatHourOfWeek)),
       detour: pick('detour_factor', input.corridor),
       lastMile: pick('last_mile_minutes', input.areaSlug),
+      lastMileWithPin: pick('last_mile_minutes', pinScope),
       areaSampleSize: sample?.n ?? 0,
       // Percentiles are computed by the nightly job and stored; with no stored
       // row there is nothing to take a percentile OF, and a fabricated window is
       // never widened to look cautious.
       observedMinutes: Number.isFinite(p10) && Number.isFinite(p90) && p10 > 0 && p90 >= p10 ? { p10, p90 } : null,
     };
+  }
+
+  /** §4.5 dry run: every serviceable road area in the corridor set. */
+  async ownRiderAreas(): Promise<Array<{ areaSlug: string; label: string }>> {
+    const rows = (await db.execute(sql`
+      select area_slug, area, district from delivery_corridor
+      where serviceable and access_mode = 'road' order by district, area`)) as unknown as Array<{ area_slug: string; area: string; district: string }>;
+    return rows.map((r) => ({ areaSlug: r.area_slug, label: `${r.area}, ${r.district}` }));
+  }
+
+  /** §4.5 margin alarm: the last 28 days of model-priced own-rider captures. */
+  async ladderCaptures(): Promise<Array<{ quotedFeeUgx: number | null; expectedMinutes: number | null }>> {
+    const rows = (await db.execute(sql`
+      select quoted_fee_ugx, expected_minutes from delivery_quote_capture
+      where created_at > now() - interval '28 days' and priced_by = 'delivery_model' and quoted_fee_ugx is not null`)) as unknown as Array<{
+      quoted_fee_ugx: string | number | null;
+      expected_minutes: string | number | null;
+    }>;
+    return rows.map((r) => ({
+      quotedFeeUgx: r.quoted_fee_ugx === null ? null : Number(r.quoted_fee_ugx),
+      expectedMinutes: r.expected_minutes === null ? null : Number(r.expected_minutes),
+    }));
   }
 
   async zoneFreeDeliveryThresholdUgx(areaSlug: string): Promise<number | null> {
@@ -219,7 +243,9 @@ export class DrizzleDeliveryQuotingRepository implements IDeliveryQuotingReposit
 
   async activeOriginCode(): Promise<string | null> {
     const rows = (await db.execute(
-      sql`select origin_code from delivery_origin where active = true order by origin_code limit 1`,
+      // The same choice the area resolver makes for the point it measures from, so a capture's origin_code and its
+      // centroid_km never come from two different hubs.
+      sql`select origin_code from delivery_origin where active = true order by (role = 'primary_dispatch_hub') desc, origin_code limit 1`,
     )) as unknown as Array<{ origin_code: string }>;
     return rows[0]?.origin_code ?? null;
   }

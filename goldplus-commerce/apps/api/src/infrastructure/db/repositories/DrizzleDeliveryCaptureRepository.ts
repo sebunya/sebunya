@@ -29,6 +29,10 @@ function toRow(r: Row): DeliveryCaptureRow {
     firstAttemptSuccess: r.firstAttemptSuccess ?? null,
     distanceTravelledKm: num(r.distanceTravelledKm),
     centroidSource: r.centroidSource ?? null,
+    accuracyTier: r.accuracyTier ?? null,
+    centroidKm: num(r.centroidKm),
+    centroidExpectedErrorM: r.centroidExpectedErrorM ?? null,
+    distanceSource: r.distanceSource ?? null,
     configVersionId: r.configVersionId ?? null,
     fulfilmentMode: r.fulfilmentMode ?? null,
     carrier: r.carrier ?? null,
@@ -79,6 +83,16 @@ export class DrizzleDeliveryCaptureRepository implements IDeliveryCaptureReposit
           ? null
           : String(input.distanceTravelledKm),
       centroidSource: input.centroidSource ?? null,
+      accuracyTier: input.accuracyTier ?? null,
+      centroidKm:
+        typeof input.centroidKm === 'number' && Number.isFinite(input.centroidKm) && input.centroidKm >= 0
+          ? String(Math.round(input.centroidKm * 100) / 100)
+          : null,
+      centroidExpectedErrorM:
+        typeof input.centroidExpectedErrorM === 'number' && Number.isInteger(input.centroidExpectedErrorM)
+          ? input.centroidExpectedErrorM
+          : null,
+      distanceSource: input.distanceSource ?? null,
       configVersionId: input.configVersionId ?? null,
       fulfilmentMode: input.fulfilmentMode ?? null,
       carrier: input.carrier ?? null,

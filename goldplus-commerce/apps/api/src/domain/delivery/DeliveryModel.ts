@@ -1,5 +1,6 @@
 import { LAUNCH_KEYS, LaunchKey } from './DeliveryConfigRegistry';
 import type { FulfilmentMode } from './DeliveryFulfilmentMode';
+import { placeOnLadder, type FeeShape } from './DeliveryFeeLadder';
 import {
   ADDITIVE_PRIOR,
   LearnedFactorState,
@@ -258,9 +259,52 @@ export interface AreaInput {
   /** Only known for areas in the corridor set. */
   accessMode: 'road' | 'water' | null;
   serviceable: boolean;
-  /** Measured centroid distance from the origin, when one exists. */
+  /**
+   * The one-way km the model may PRICE with. Null means "use the band
+   * midpoint". The quoting use case sets it from `centroidKm` only when the
+   * registry's `distance_source` is 'measured'; until then it stays null and
+   * fees do not move while the points are being checked.
+   */
   measuredKm: number | null;
-  centroidSource: 'delivered_pins' | 'manual' | null;
+  centroidSource: CentroidSource;
+  /**
+   * The one-way km from the active origin to the area's point, when the area
+   * has one, recorded on every quote whether or not it priced the fee. This is
+   * the fact; `measuredKm` is the decision to use it.
+   */
+  centroidKm?: number | null;
+  /** How far that point can be wrong, in metres, measured or stated; null = unknown, never guessed. */
+  centroidExpectedErrorM?: number | null;
+}
+
+/**
+ * Where an area's point came from, highest precedence first. A job never
+ * downgrades a source and never overwrites 'manual'. 'parish_centroid' is the
+ * geometric centre of the UBOS 2016 parish polygon (Phase A of the address
+ * system spec); the others were defined by MODEL.md before any existed.
+ */
+export const CENTROID_SOURCES = ['rider_handover', 'delivered_pins', 'manual', 'parish_centroid'] as const;
+export type CentroidSource = (typeof CENTROID_SOURCES)[number] | null;
+export function isCentroidSource(value: string | null | undefined): value is Exclude<CentroidSource, null> {
+  return typeof value === 'string' && (CENTROID_SOURCES as readonly string[]).includes(value);
+}
+
+/**
+ * How precisely the customer's location was known when the quote was made,
+ * best first. Stored on the capture so ops can tell a quote priced on a
+ * device pin from one priced on a 25-km-wide band.
+ */
+export const ACCURACY_TIERS = ['PIN', 'AREA_POINT', 'BAND_MIDPOINT', 'DISTRICT'] as const;
+export type AccuracyTier = (typeof ACCURACY_TIERS)[number];
+export function accuracyTierFor(input: {
+  hasPin: boolean;
+  centroidKm: number | null | undefined;
+  band: DistanceBand | null | undefined;
+}): AccuracyTier {
+  if (input.hasPin) return 'PIN';
+  if (typeof input.centroidKm === 'number' && Number.isFinite(input.centroidKm)) return 'AREA_POINT';
+  if (input.band) return 'BAND_MIDPOINT';
+  return 'DISTRICT';
 }
 
 /**
@@ -309,6 +353,11 @@ export interface QuoteInputs {
   onTimeTargetBps: number | null;
   windowMinSampleSize: number | null;
   configVersionId: string | null;
+  /** The customer shared a device pin or a map link for this order (0189: sets the PIN accuracy tier). */
+  hasPin?: boolean;
+  /** §4.5: how the fee is presented. 'ladder' needs rungs; without them the shape is continuous. */
+  feeShape?: FeeShape;
+  feeLadder?: readonly number[] | null;
 }
 
 /* ── Output: a quote that explains itself ───────────────────────────────── */
@@ -327,7 +376,11 @@ export interface QuoteExplanation {
   band: DistanceBand | null;
   /** Which distance the quote used, and where it came from. */
   distanceSource: 'measured_centroid' | 'band_midpoint' | null;
-  centroidSource: 'delivered_pins' | 'manual' | null;
+  centroidSource: CentroidSource;
+  /** The area's point distance and its expected error, known or not, used or not (0189). */
+  centroidKm: number | null;
+  centroidExpectedErrorM: number | null;
+  accuracyTier: AccuracyTier;
   oneWayKm: number | null;
   roundTripKm: number | null;
   factors: Record<'corridor' | 'hour' | 'detour' | 'lastMile', LearnedFactor>;
@@ -339,6 +392,11 @@ export interface QuoteExplanation {
   roundingStepUgx: number | null;
   roundedFeeUgx: number | null;
   minimumFeeApplied: boolean;
+  /** §4.5: 'ladder' when a rung was charged; the continuous fee it covered, and whether the top rung still covered the cost. */
+  feeShape: FeeShape;
+  continuousFeeUgx: number | null;
+  ladderRungUgx: number | null;
+  ladderCovered: boolean | null;
   configVersionId: string | null;
   unavailableReason: UnavailableReason | null;
   missingConfigKeys: string[];
@@ -370,6 +428,13 @@ function emptyExplanation(inputs: QuoteInputs): QuoteExplanation {
     band: inputs.area?.band ?? null,
     distanceSource: null,
     centroidSource: inputs.area?.centroidSource ?? null,
+    centroidKm: inputs.area?.centroidKm ?? null,
+    centroidExpectedErrorM: inputs.area?.centroidExpectedErrorM ?? null,
+    accuracyTier: accuracyTierFor({
+      hasPin: inputs.hasPin === true,
+      centroidKm: inputs.area?.centroidKm,
+      band: inputs.area?.band,
+    }),
     oneWayKm: null,
     roundTripKm: null,
     factors: {
@@ -386,6 +451,10 @@ function emptyExplanation(inputs: QuoteInputs): QuoteExplanation {
     roundingStepUgx: null,
     roundedFeeUgx: null,
     minimumFeeApplied: false,
+    feeShape: inputs.feeShape === 'ladder' && inputs.feeLadder && inputs.feeLadder.length > 0 ? 'ladder' : 'continuous',
+    continuousFeeUgx: null,
+    ladderRungUgx: null,
+    ladderCovered: null,
     configVersionId: inputs.configVersionId,
     unavailableReason: null,
     missingConfigKeys: [],
@@ -476,7 +545,11 @@ export function quoteDelivery(inputs: QuoteInputs): QuoteResult {
   const rawFee = config.rider_cost_per_minute_ugx * expectedMinutes * config.margin_multiplier;
   const step = config.fee_rounding_step_ugx;
   const rounded = roundUpTo(rawFee, step);
-  const feeUgx = Math.max(config.minimum_fee_ugx, rounded);
+  const continuousFeeUgx = Math.max(config.minimum_fee_ugx, rounded);
+  // §4.5: a ladder places the destination on the lowest rung that covers what the
+  // continuous shape would charge. Same minutes, same window; only the price point moves.
+  const ladder = inputs.feeShape === 'ladder' && inputs.feeLadder && inputs.feeLadder.length > 0 ? placeOnLadder(continuousFeeUgx, inputs.feeLadder) : null;
+  const feeUgx = ladder ? ladder.rungUgx : continuousFeeUgx;
 
   return {
     available: true,
@@ -495,7 +568,11 @@ export function quoteDelivery(inputs: QuoteInputs): QuoteResult {
       rawFeeUgx: rawFee,
       roundingStepUgx: step,
       roundedFeeUgx: rounded,
-      minimumFeeApplied: feeUgx > rounded,
+      minimumFeeApplied: continuousFeeUgx > rounded,
+      feeShape: ladder ? 'ladder' : 'continuous',
+      continuousFeeUgx,
+      ladderRungUgx: ladder ? ladder.rungUgx : null,
+      ladderCovered: ladder ? ladder.covered : null,
     },
   };
 }

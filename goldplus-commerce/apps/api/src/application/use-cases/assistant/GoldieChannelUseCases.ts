@@ -1,10 +1,19 @@
-import { MEDIA_MARKER_RE, UNREADABLE_PREFIX, formatWhatsAppReply, optOutWord, whatsappKey, type InboundText, type ReplyParts } from '../../../domain/assistant/WhatsAppGoldie';
+import { LOCATION_PLACEHOLDER, MEDIA_MARKER_RE, UNREADABLE_PREFIX, formatWhatsAppReply, optOutWord, whatsappKey, type InboundText, type ReplyParts } from '../../../domain/assistant/WhatsAppGoldie';
+import { isPinButton, numberedFallback } from '../../../domain/delivery/DeliveryPins';
+import type { LocationPinUseCases } from '../delivery/LocationPinUseCases';
 import { closesMatter, isAbusive, silenceFor } from '../../../domain/assistant/CareDesk';
 import type { ConversationArchiveUseCases } from './ConversationArchiveUseCases';
 
 /** Sends a free-form WhatsApp message inside the 24-hour customer service window. */
 export interface IWhatsAppMessenger {
   sendText(input: { phoneNumberId: string; to: string; text: string }): Promise<{ ok: true; messageId: string | null } | { ok: false; reason: string }>;
+  /** Reply buttons (at most three, titles ≤ 20 characters) under a body; the tap comes back as `interactive.button_reply`. */
+  sendInteractive?(input: {
+    phoneNumberId: string;
+    to: string;
+    body: string;
+    buttons: Array<{ id: string; title: string }>;
+  }): Promise<{ ok: true; messageId: string | null } | { ok: false; reason: string }>;
   /** Blue ticks and "typing…" while the answer is prepared (best effort). */
   markRead?(input: { phoneNumberId: string; messageId: string; typing: boolean }): Promise<void>;
 }
@@ -78,6 +87,8 @@ export class GoldieChannelUseCases {
     private readonly optOuts: IWhatsAppOptOuts | null = null,
     /** How long to wait for the rest of a burst before answering (0 in tests). */
     private readonly burstWaitMs: number = 0,
+    /** 0190: shared locations and the questions about them are answered by the delivery module, never the model. */
+    private readonly locationPins: Pick<LocationPinUseCases, 'handleLocation' | 'handleButton'> | null = null,
   ) {}
   private staffCache: { at: number; numbers: string[] } = { at: 0, numbers: [] };
   private async staff(): Promise<string[]> {
@@ -126,6 +137,12 @@ export class GoldieChannelUseCases {
         customer: { content: msg.text, channelMessageId: msg.messageId },
       });
       if (filed.duplicate) return 'duplicate';
+      // A shared location, or a tap on one of the location questions, is answered by the delivery module before the
+      // assistant composes anything: deterministic copy, no model call, no coordinate in the archive.
+      if (this.locationPins && (msg.location || (msg.button && isPinButton(msg.button.id)))) {
+        const handled = await this.handleLocation(filed.conversationId, msg);
+        if (handled !== 'not_handled') return handled;
+      }
       return await this.respond(filed.conversationId, msg);
     } catch (e) {
       // Filed but not answered (or not even filed): the recovery pass picks a filed message up within minutes.
@@ -157,8 +174,43 @@ export class GoldieChannelUseCases {
   }
 
   /** Decide and send Goldie's reply to a filed message; every path records an outcome on the customer's message. */
+  private async handleLocation(conversationId: string, msg: InboundText): Promise<'answered' | 'filed' | 'failed' | 'not_handled'> {
+    const pins = this.locationPins!;
+    const result = msg.location
+      ? await pins.handleLocation({ fromDigits: msg.from, wamid: msg.messageId, lat: msg.location.lat, lng: msg.location.lng, forwarded: msg.location.forwarded, at: this.now() })
+      : await pins.handleButton({ fromDigits: msg.from, buttonId: msg.button!.id, at: this.now() });
+    if (!result.reply) {
+      if (result.outcome === 'not_a_pin_button') return 'not_handled';
+      await this.archive.markCustomerMessage(msg.messageId, 'silent').catch(() => undefined);
+      this.log('GOLDIE_LOCATION_SILENT', { conversationId, outcome: result.outcome });
+      return 'filed';
+    }
+    const phoneNumberId = msg.phoneNumberId ?? this.settings().phoneNumberId;
+    if (!phoneNumberId) return 'failed';
+    const buttons = result.reply.buttons ?? [];
+    const sent =
+      buttons.length > 0 && this.whatsapp.sendInteractive
+        ? await this.whatsapp.sendInteractive({ phoneNumberId, to: msg.from, body: result.reply.text, buttons })
+        : await this.whatsapp.sendText({ phoneNumberId, to: msg.from, text: buttons.length > 0 ? numberedFallback(result.reply.text, buttons) : result.reply.text });
+    if (!sent.ok) {
+      this.log('GOLDIE_LOCATION_SEND_FAILED', { conversationId, reason: sent.reason });
+      await this.archive.markCustomerMessage(msg.messageId, 'send_failed').catch(() => undefined);
+      return 'failed';
+    }
+    await this.archive.logReply(conversationId, result.reply.text, 'location', sent.messageId, 'DELIVERY', null, null);
+    await this.archive.markCustomerMessage(msg.messageId, 'answered').catch(() => undefined);
+    this.log('GOLDIE_LOCATION_ANSWERED', { conversationId, outcome: result.outcome });
+    return 'answered';
+  }
+
   private async respond(conversationId: string, msg: InboundText): Promise<'answered' | 'filed' | 'failed'> {
     const s = this.settings();
+    // A location placeholder reaching here (the delivery module is not wired, or a recovery pass replays it) must
+    // never go to the model: the words carry nothing, and the coordinate was never archived.
+    if (msg.text.startsWith(LOCATION_PLACEHOLDER)) {
+      await this.archive.markCustomerMessage(msg.messageId, 'silent').catch(() => undefined);
+      return 'filed';
+    }
     // Blue ticks and "typing…" straight away, so the customer sees they were read (best effort, never in the way).
     const readOn = msg.phoneNumberId ?? s.phoneNumberId;
     if (readOn && this.whatsapp.markRead) void this.whatsapp.markRead({ phoneNumberId: readOn, messageId: msg.messageId, typing: true }).catch(() => undefined);

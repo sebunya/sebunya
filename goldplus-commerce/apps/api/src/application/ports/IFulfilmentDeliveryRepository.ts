@@ -14,6 +14,9 @@ export interface FulfilmentDeliveryCreate {
   deliveredQuantity: number;
   returnedQuantity: number;
   notes: string | null;
+  /** 0190: the rider's point at handover and how the attempt was recorded ('office' | 'rider_whatsapp'). */
+  handover?: { lat: number; lng: number; accuracyM: number | null } | null;
+  recordedVia?: string | null;
 }
 
 export interface IFulfilmentDeliveryRepository {

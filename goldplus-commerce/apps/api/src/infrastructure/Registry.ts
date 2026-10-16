@@ -324,7 +324,12 @@ import { DeliveryAreaResolver, DeliveryWizardAreaReader } from './delivery/Deliv
 import { DrizzleDeliveryQuotingRepository } from './db/repositories/DrizzleDeliveryQuotingRepository';
 import { DrizzleDeliveryVarianceRepository } from './db/repositories/DrizzleDeliveryVarianceRepository';
 import { DrizzleDeliveryCalibrationRepository } from './db/repositories/DrizzleDeliveryCalibrationRepository';
-import { DryRunCorridorCsvUseCase } from '../application/use-cases/delivery/DeliveryCorridorCsvUseCase';
+import { ApplyCorridorCsvUseCase, DryRunCorridorCsvUseCase, RevertCorridorBatchUseCase } from '../application/use-cases/delivery/DeliveryCorridorCsvUseCase';
+import { LocationPinUseCases } from '../application/use-cases/delivery/LocationPinUseCases';
+import { DrizzleLocationPinRepository } from './db/repositories/DrizzleLocationPinRepository';
+import { RiderUseCases } from '../application/use-cases/delivery/RiderUseCases';
+import { LadderDryRunUseCase, LadderMarginReportUseCase } from '../application/use-cases/delivery/FeeLadderUseCases';
+import { DrizzleRiderRepository } from './db/repositories/DrizzleRiderRepository';
 import {
   AcceptCalibrationProposalUseCase,
   RejectCalibrationProposalUseCase,
@@ -332,6 +337,7 @@ import {
 } from '../application/use-cases/delivery/DeliveryCalibrationUseCases';
 import {
   DeliveryFallbackRateUseCase,
+  DeliveryLocationAccuracyReportUseCase,
   DeliveryMarginReportUseCase,
   DeliveryVarianceReportUseCase,
 } from '../application/use-cases/delivery/DeliveryReportUseCases';
@@ -1453,7 +1459,23 @@ export class Registry {
   public readonly fulfilmentDeliveryRepo = new DrizzleFulfilmentDeliveryRepository();
   public readonly fulfilmentReportRepo = new DrizzleFulfilmentReportRepository();
   public readonly getDeliveryHistoryUseCase = new GetDeliveryHistoryUseCase(this.fulfilmentRepo, this.fulfilmentDeliveryRepo);
-  public readonly recordDeliveryUseCase = new RecordDeliveryUseCase(this.fulfilmentRepo, this.fulfilmentDeliveryRepo, this.auditRepo, this.orderTransitionService);
+  public readonly recordDeliveryUseCase = new RecordDeliveryUseCase(this.fulfilmentRepo, this.fulfilmentDeliveryRepo, this.auditRepo, this.orderTransitionService, {
+    // 0189: the quote capture learns the outcome. actual_minutes is dispatch → handover (one outbound leg + last
+    // mile), which is the only duration the shop observes; MODEL.md PART 4 states the comparison basis.
+    recordAttempt: async (input) => {
+      const dispatch = await this.fulfilmentDispatchRepo.getByTask(input.taskId);
+      const dispatchedAt = dispatch?.dispatchTime ?? null;
+      const actualMinutes =
+        input.deliveredAt && dispatchedAt ? Math.round(((input.deliveredAt.getTime() - dispatchedAt.getTime()) / 60_000) * 100) / 100 : null;
+      await this.deliveryCaptureRepo.upsert({
+        orderId: input.orderId,
+        ...(dispatchedAt ? { dispatchedAt } : {}),
+        ...(input.completed ? { deliveredAt: input.deliveredAt, firstAttemptSuccess: input.attempt === 1 } : {}),
+        ...(input.failedFirstAttempt ? { firstAttemptSuccess: false } : {}),
+        ...(actualMinutes !== null && actualMinutes >= 0 ? { actualMinutes } : {}),
+      });
+    },
+  });
   public readonly getFulfilmentReportUseCase = new GetFulfilmentReportUseCase(this.fulfilmentReportRepo);
 
   // Customer DNA & NBA: canonical profile projection + next-best action.
@@ -1777,8 +1799,63 @@ export class Registry {
     this.deliveryConfigRepo,
   );
 
-  // CSV round trip for the corridor table, with a mandatory dry run.
-  public readonly dryRunCorridorCsvUseCase = new DryRunCorridorCsvUseCase({
+  // CSV round trip for the corridor table, with a mandatory dry run, and (0189)
+  // the apply half: one transaction, one audit row, refused without the digest
+  // of the dry run it was shown.
+  private readonly corridorCsvRepo = {
+    // Compare-and-set per field under the corridor write lock (the parish import takes the same lock): a row that
+    // no longer carries its `from` value aborts the whole batch, so the audit row is always true.
+    applyChanges: async (changes: Array<{ areaSlug: string; field: string; from: string; to: string }>) => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      const { CorridorChangedError } = await import('../application/use-cases/delivery/DeliveryCorridorCsvUseCase');
+      const rowCount = (r: unknown) => Number((r as { count?: number })?.count ?? 0);
+      const areas = new Set<string>();
+      await db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext('delivery_corridor_apply'))`);
+        for (const ch of changes) {
+          const slug = ch.areaSlug;
+          let r: unknown;
+          switch (ch.field) {
+            case 'corridor':
+              r = await tx.execute(sql`update delivery_corridor set corridor = ${ch.to}, data_version = data_version + 1, updated_at = now()
+                where area_slug = ${slug} and corridor = ${ch.from}`);
+              break;
+            case 'distance_band':
+              r = await tx.execute(sql`update delivery_corridor set distance_band = ${ch.to}, data_version = data_version + 1, updated_at = now()
+                where area_slug = ${slug} and distance_band = ${ch.from}`);
+              break;
+            case 'access_mode':
+              r = await tx.execute(sql`update delivery_corridor set access_mode = ${ch.to}, data_version = data_version + 1, updated_at = now()
+                where area_slug = ${slug} and access_mode = ${ch.from}`);
+              break;
+            case 'serviceable':
+              r = await tx.execute(sql`update delivery_corridor set serviceable = ${ch.to === 'true'}, data_version = data_version + 1, updated_at = now()
+                where area_slug = ${slug} and serviceable = ${ch.from === 'true'}`);
+              break;
+            case 'fulfilment_mode': {
+              const to = ch.to === '(derived)' ? null : ch.to;
+              const from = ch.from === '(derived)' ? null : ch.from;
+              r = await tx.execute(sql`update delivery_corridor set fulfilment_mode = ${to}, data_version = data_version + 1, updated_at = now()
+                where area_slug = ${slug} and fulfilment_mode is not distinct from ${from}`);
+              break;
+            }
+            default:
+              throw new Error(`corridor apply: unknown field ${ch.field}`);
+          }
+          if (rowCount(r) !== 1) throw new CorridorChangedError(slug);
+          areas.add(slug);
+        }
+      });
+      return areas.size;
+    },
+    findBatch: async (batchId: string) => {
+      const rows = await this.auditRepo.findByEntity('delivery_corridor_batch', batchId);
+      const applied = rows.find((r) => r.action === 'DELIVERY_CORRIDORS_APPLIED');
+      const state = (applied as { newState?: { changes?: Array<{ areaSlug: string; field: string; from: string; to: string }>; reason?: string } } | undefined)?.newState;
+      if (!state?.changes) return null;
+      return { changes: state.changes, reason: state.reason ?? null };
+    },
     currentCorridors: async () => {
       const { db } = await import('./db/client');
       const { sql } = await import('drizzle-orm');
@@ -1799,7 +1876,10 @@ export class Registry {
         ]),
       );
     },
-  });
+  };
+  public readonly dryRunCorridorCsvUseCase = new DryRunCorridorCsvUseCase(this.corridorCsvRepo);
+  public readonly applyCorridorCsvUseCase = new ApplyCorridorCsvUseCase(this.corridorCsvRepo, this.auditRepo);
+  public readonly revertCorridorBatchUseCase = new RevertCorridorBatchUseCase(this.corridorCsvRepo, this.auditRepo);
 
   // The learning loop (PART 4). Proposes, never applies.
   public readonly deliveryCalibrationRepo = new DrizzleDeliveryCalibrationRepository();
@@ -1835,6 +1915,42 @@ export class Registry {
     () => this.deliveryConfigReader.numericValues(),
   );
   public readonly deliveryFallbackRateUseCase = new DeliveryFallbackRateUseCase(this.deliveryCalibrationRepo);
+  // 0189: how well we knew where orders were going, from the capture's own columns.
+  public readonly deliveryLocationAccuracyReportUseCase = new DeliveryLocationAccuracyReportUseCase(this.deliveryCalibrationRepo);
+
+  // 0190: WhatsApp location pins → orders (customer) and handovers (rider). Deterministic replies, no model call.
+  public readonly riderUseCases = new RiderUseCases(new DrizzleRiderRepository());
+  public readonly locationPinRepo = new DrizzleLocationPinRepository(this.deliveryConfigReader);
+  public readonly locationPinUseCases = new LocationPinUseCases(this.locationPinRepo, {
+    record: async (input) => {
+      const task = await this.fulfilmentRepo.findById(input.taskId);
+      if (!task) return { ok: false, message: 'that stop is no longer open' };
+      const common = {
+        taskId: input.taskId,
+        actorId: null as unknown as string, // a system actor: the rider is named in the notes, never as an account
+        handover: input.point ? { ...input.point, accuracyM: null } : null,
+        recordedVia: 'rider_whatsapp' as const,
+        notes: 'Recorded by the rider on WhatsApp',
+      };
+      const r =
+        input.outcome === 'delivered'
+          ? await this.recordDeliveryUseCase.execute({ ...common, outcome: 'DELIVERED', deliveredQuantity: task.itemCount, returnedQuantity: 0 })
+          : await this.recordDeliveryUseCase.execute({
+              ...common,
+              outcome: 'DELIVERY_FAILED',
+              failedReason: input.outcome === 'absent' ? 'Customer not there (rider, WhatsApp)' : 'Could not find the address (rider, WhatsApp)',
+              deliveredQuantity: 0,
+              returnedQuantity: 0,
+            });
+      return r.ok ? { ok: true } : { ok: false, message: r.message };
+    },
+    setFindDifficulty: async (taskId, difficulty) => {
+      const { db } = await import('./db/client');
+      const { sql } = await import('drizzle-orm');
+      await db.execute(sql`update fulfilment_deliveries set find_difficulty = ${difficulty}
+        where id = (select id from fulfilment_deliveries where fulfilment_task_id = ${taskId} order by attempt desc limit 1)`);
+    },
+  });
 
   // The variance write path (PART 5). decideVariance decides; these apply.
   public readonly deliveryVarianceRepo = new DrizzleDeliveryVarianceRepository();
@@ -1879,6 +1995,9 @@ export class Registry {
     this.deliveryAreaResolver,
     this.deliveryConfigReader,
   );
+  // §4.5: the ladder's dry run and margin alarm. Writes nothing; publishing goes through config draft → publish.
+  public readonly ladderDryRunUseCase = new LadderDryRunUseCase(this.deliveryQuotingRepo, this.deliveryQuotingUseCase);
+  public readonly ladderMarginReportUseCase = new LadderMarginReportUseCase(this.deliveryQuotingRepo, this.deliveryConfigReader);
 
   /**
    * The adapter checkout holds. Deliberately narrow: checkout needs a fee, a
@@ -1890,6 +2009,7 @@ export class Registry {
       deliveryArea?: string | null;
       district?: string | null;
       items: ReadonlyArray<{ productId: string; quantity: number }>;
+      point?: { lat: number; lng: number } | null;
     }) => {
       // One instant for the quote AND its capture, so the recorded hour of week is
       // the one the hour factor was applied at (the use case derives it the same way).
@@ -1925,6 +2045,12 @@ export class Registry {
           quotedFeeUgx: charge,
           expectedMinutes: q.kind === 'rider_delivery' ? q.expectedMinutes : null,
           centroidSource: q.explanation.centroidSource,
+          // 0189: how well the location was known, and the point distance the
+          // quote could have used, whether or not distance_source let it.
+          accuracyTier: q.explanation.accuracyTier,
+          centroidKm: q.explanation.centroidKm,
+          centroidExpectedErrorM: q.explanation.centroidExpectedErrorM,
+          distanceSource: q.explanation.distanceSource,
           configVersionId: q.explanation.configVersionId,
           aliasUsed: outcome.resolved?.aliasUsed ?? null,
           // 0152: what the hour and detour fits learn from. The straight line is
@@ -2866,6 +2992,7 @@ export class Registry {
     (conversation, text) => this.goldieSocialUseCases.teamReply(conversation, text),
     whatsAppDeliveryStore,
     Math.min(Math.max(Number(process.env.GOLDIE_BURST_WAIT_MS ?? 2000) || 0, 0), 10_000),
+    this.locationPinUseCases,
   );
   /** Goldie on Facebook Messenger and Instagram Direct. Off until GOLDIE_MESSENGER_ENABLED / GOLDIE_INSTAGRAM_ENABLED and a page token. */
   public readonly goldieSocialUseCases = new GoldieSocialUseCases(

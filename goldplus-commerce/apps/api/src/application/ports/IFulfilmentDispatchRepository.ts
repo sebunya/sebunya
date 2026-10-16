@@ -7,6 +7,9 @@ export interface FulfilmentDispatchCreate {
   method: FulfilmentDispatchSnapshot['method'];
   carrierName: string | null;
   riderName: string | null;
+  /** 0190: the rider's record (delivery_riders), when one was chosen. */
+  riderId?: string | null;
+  stopsOnTrip?: number | null;
   contactMasked: string | null;
   paymentPolicy: FulfilmentDispatchSnapshot['paymentPolicy'];
   trackingStatus: FulfilmentDispatchSnapshot['trackingStatus'];

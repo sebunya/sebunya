@@ -1,4 +1,5 @@
 import {
+  accuracyTierFor,
   AreaInput,
   QuoteExplanation,
   QuoteInputs,
@@ -132,7 +133,18 @@ function baseExplanation(inputs: FulfilmentQuoteInputs): QuoteExplanation {
     corridor: inputs.area?.corridor ?? null,
     band: inputs.area?.band ?? null,
     distanceSource: null,
+    feeShape: inputs.rider.feeShape === 'ladder' && inputs.rider.feeLadder && inputs.rider.feeLadder.length > 0 ? 'ladder' : 'continuous',
+    continuousFeeUgx: null,
+    ladderRungUgx: null,
+    ladderCovered: null,
     centroidSource: inputs.area?.centroidSource ?? null,
+    centroidKm: inputs.area?.centroidKm ?? null,
+    centroidExpectedErrorM: inputs.area?.centroidExpectedErrorM ?? null,
+    accuracyTier: accuracyTierFor({
+      hasPin: inputs.rider.hasPin === true,
+      centroidKm: inputs.area?.centroidKm,
+      band: inputs.area?.band,
+    }),
     oneWayKm: null,
     roundTripKm: null,
     factors: {

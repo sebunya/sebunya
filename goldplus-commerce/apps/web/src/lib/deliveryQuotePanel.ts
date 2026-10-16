@@ -21,6 +21,9 @@ export interface DeliveryQuoteRequestInput {
   deliveryArea?: string | null;
   items?: Array<{ productId: string; quantity: number }>;
   subtotalUgx?: number | null;
+  /** The customer's pin (device GPS or a pasted map link), when the picker has one. */
+  gpsLat?: number | null;
+  gpsLng?: number | null;
 }
 
 /** The request body `POST /delivery/quote` expects. Same shape the server-side render sends. */
@@ -50,6 +53,11 @@ export function buildDeliveryQuoteRequest(input: DeliveryQuoteRequestInput): Rec
   };
   const area = typeof input.deliveryArea === 'string' ? input.deliveryArea.trim() : '';
   if (area) body.deliveryArea = area;
+  // 0190: a pin the customer shared at checkout rides with the quote (PIN tier; resolves the area when none was named).
+  if (typeof input.gpsLat === 'number' && typeof input.gpsLng === 'number' && Number.isFinite(input.gpsLat) && Number.isFinite(input.gpsLng)) {
+    body.point = { lat: input.gpsLat, lng: input.gpsLng };
+    body.hasPin = true;
+  }
   return body;
 }
 

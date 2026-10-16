@@ -5,6 +5,7 @@ import {
   QuoteInputs,
   isDistanceBand,
 } from '../../../domain/delivery/DeliveryModel';
+import { parseFeeLadder, type FeeShape } from '../../../domain/delivery/DeliveryFeeLadder';
 import { LearnedFactorState } from '../../../domain/delivery/DeliveryLearnedFactor';
 import { resolveFulfilmentMode } from '../../../domain/delivery/DeliveryFulfilmentMode';
 import { FulfilmentQuote, applyFreeDeliveryThreshold, quoteFulfilment } from '../../../domain/delivery/DeliveryQuoteService';
@@ -22,7 +23,7 @@ import { AreaInput } from '../../../domain/delivery/DeliveryModel';
 export interface ResolvedArea {
   input: AreaInput;
   label: string;
-  via: 'area_slug' | 'alias' | 'exact' | 'trigram' | 'district_only' | 'cross_district_correction' | null;
+  via: 'area_slug' | 'alias' | 'exact' | 'trigram' | 'district_only' | 'cross_district_correction' | 'pin' | null;
   aliasUsed: string | null;
 }
 
@@ -31,6 +32,8 @@ export interface IAreaResolverPort {
     areaSlug?: string | null;
     deliveryArea?: string | null;
     district?: string | null;
+    /** 0190: a pin with no area named (a WhatsApp location, a map link): the nearest area point, when it is close and unambiguous. */
+    point?: { lat: number; lng: number } | null;
   }): Promise<ResolvedArea | null>;
 }
 
@@ -59,7 +62,10 @@ export interface IDeliveryQuotingRepository {
     corridor: LearnedFactorState;
     hour: LearnedFactorState;
     detour: LearnedFactorState;
+    /** Last-mile minutes learned for orders WITHOUT a pin: the model's baseline. */
     lastMile: LearnedFactorState;
+    /** §4.6: last-mile minutes learned for this area's orders WITH a pin (scope `<area>#pin`); prior until learned. */
+    lastMileWithPin?: LearnedFactorState;
     areaSampleSize: number;
     observedMinutes: { p10: number; p90: number } | null;
   }>;
@@ -97,6 +103,11 @@ export interface QuoteRequest {
   /** For the hour factor and the cutoff. Defaults to now. */
   at?: Date;
   hasPin?: boolean;
+  /** 0190: the customer's pin, when they gave one. Resolves the area when none was named; sets the PIN tier. */
+  point?: { lat: number; lng: number } | null;
+  /** The ladder dry run only: price as if these were the published fee_shape / fee_ladder. Never from a public route. */
+  feeShapeOverride?: FeeShape | null;
+  feeLadderOverride?: readonly number[] | null;
 }
 
 export type QuoteOutcome = {
@@ -116,7 +127,25 @@ export type QuoteOutcome = {
   freeDeliveryThresholdUgx: number | null;
   /** The basis the waiver (if any) was decided on. */
   thresholdBasisUgx: number;
+  /**
+   * §4.6: how much less this quote would be with a pin, when the area has
+   * learned last-mile minutes on both sides and the difference moves the fee by
+   * at least one rounding step. Null otherwise, and then no nudge is shown.
+   */
+  pinSavingUgx: number | null;
 };
+
+/**
+ * 0189: the resolver reports the area's point distance as a fact on every
+ * quote (`centroidKm`); the registry's `distance_source` decides whether the
+ * model may PRICE with it. Anything but 'measured' leaves `measuredKm` null,
+ * so loading the points changes no fee until an operator flips the key.
+ */
+export function withMeasuredDistance(area: AreaInput, distanceSource: string | null): AreaInput {
+  const km = area.centroidKm;
+  const usable = distanceSource === 'measured' && typeof km === 'number' && Number.isFinite(km) && km >= 0;
+  return { ...area, measuredKm: usable ? km : null };
+}
 
 export class DeliveryQuotingUseCase {
   constructor(
@@ -139,6 +168,7 @@ export class DeliveryQuotingUseCase {
         areaSlug: request.areaSlug ?? null,
         deliveryArea: request.deliveryArea ?? null,
         district: request.district ?? null,
+        point: request.point ?? null,
       }),
     ]);
 
@@ -207,14 +237,22 @@ export class DeliveryQuotingUseCase {
         ? request.subtotalUgx
         : request.items.reduce((n, i) => n + (classes.get(i.productId)?.priceUgx ?? 0) * i.quantity, 0);
 
+    const hasPin = request.hasPin === true || !!request.point;
+    const withPin = factors.lastMileWithPin ?? null;
+    const feeShape: FeeShape = (request.feeShapeOverride ?? raw.fee_shape) === 'ladder' ? 'ladder' : 'continuous';
+    const feeLadder = request.feeLadderOverride !== undefined ? request.feeLadderOverride : parseFeeLadder(raw.fee_ladder);
     const rider: Omit<QuoteInputs, 'area'> = {
       config: numeric,
       hasActiveOrigin: origin,
       originCode,
+      hasPin,
       corridorFactor: factors.corridor,
       hourFactor: factors.hour,
       detourFactor: factors.detour,
-      lastMileMinutes: factors.lastMile,
+      // §4.6: a pinned order is priced with the minutes pinned orders in this area actually took, once learned.
+      lastMileMinutes: hasPin && withPin && withPin.kind !== 'prior' ? withPin : factors.lastMile,
+      feeShape,
+      feeLadder,
       areaSampleSize: factors.areaSampleSize,
       observedMinutes: factors.observedMinutes,
       onTimeTargetBps: numeric.on_time_target_bps ?? null,
@@ -227,8 +265,12 @@ export class DeliveryQuotingUseCase {
       : null;
 
     const freeDeliveryThresholdUgx = zoneFreeDeliveryThreshold ?? numeric.free_delivery_threshold_ugx ?? null;
+    // 0189: the area's point distance is a fact the resolver carries on every
+    // quote; whether the model PRICES with it is the registry's decision. Off
+    // by default, so loading and checking the points moves no fee.
+    const areaForQuote = resolved ? withMeasuredDistance(resolved.input, raw.distance_source ?? null) : null;
     const unwaived = quoteFulfilment({
-      area: resolved?.input ?? null,
+      area: areaForQuote,
       mode,
       rider,
       bus: {
@@ -253,6 +295,33 @@ export class DeliveryQuotingUseCase {
     // panel that says "qualifies for free delivery" and the order agree.
     const quote = applyFreeDeliveryThreshold(unwaived, { thresholdUgx: freeDeliveryThresholdUgx, basisUgx: subtotalUgx });
 
+    // §4.6: the pin nudge is a cost-based, within-area statement or nothing. Both
+    // sides of this area's last-mile split must be learned, and the difference
+    // must move the fee by at least one rounding step after the same waiver.
+    let pinSavingUgx: number | null = null;
+    if (!hasPin && withPin && withPin.kind !== 'prior' && factors.lastMile.kind !== 'prior' && unwaived.kind === 'rider_delivery' && unwaived.feeUgx > 0) {
+      const pinned = applyFreeDeliveryThreshold(
+        quoteFulfilment({
+          area: areaForQuote,
+          mode,
+          rider: { ...rider, hasPin: true, lastMileMinutes: withPin },
+          bus: { cards, office, parcels, destinationTown: town, destinationDistrict, at, declaredValueUgx: subtotalUgx || null },
+          subtotalUgx,
+          proportionality: {
+            feeToValueRatioCeiling: numeric.fee_to_value_ratio_ceiling ?? null,
+            minOrderValueUgx: minOrderValuesFromConfig(numeric),
+            freeDeliveryThresholdUgx,
+          },
+        }),
+        { thresholdUgx: freeDeliveryThresholdUgx, basisUgx: subtotalUgx },
+      );
+      const step = numeric.fee_rounding_step_ugx ?? 0;
+      if (pinned.kind === 'rider_delivery' && quote.kind === 'rider_delivery') {
+        const diff = quote.feeUgx - pinned.feeUgx;
+        if (diff > 0 && diff >= step) pinSavingUgx = diff;
+      }
+    }
+
     return {
       quote,
       resolved,
@@ -266,6 +335,7 @@ export class DeliveryQuotingUseCase {
           ? freeDeliveryThresholdUgx
           : null,
       thresholdBasisUgx: subtotalUgx,
+      pinSavingUgx,
     };
   }
 }

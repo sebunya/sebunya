@@ -1,0 +1,42 @@
+# source=Ministry of ICT 2019 prefix table + gazetted creations 2016-2021 + EC Annual Bulletin 2025-2026 (146 districts and cities) + news-pending-gazette for July 2025 approvals
+# vintage=2025-09 licence=public-record reviewed_by=owner note=child and parent are spelled as the shop's district list spells them; a city is one family with the district around it
+child,parent,kind,year,status,source,note
+Kagadi,Kibaale,district,2016,active,gazette,
+Kakumiro,Kibaale,district,2016,active,gazette,
+Omoro,Gulu,district,2016,active,gazette,
+Rubanda,Kabale,district,2016,active,gazette,
+Namisindwa,Manafwa,district,2017,active,gazette,
+Pakwach,Nebbi,district,2017,active,gazette,
+Butebo,Pallisa,district,2017,active,gazette,
+Rukiga,Kabale,district,2017,active,gazette,
+Kyotera,Rakai,district,2017,active,gazette,
+Bunyangabu,Kabarole,district,2017,active,gazette,
+Nabilatuk,Nakapiripirit,district,2018,active,gazette,
+Bugweri,Iganga,district,2018,active,gazette,
+Kassanda,Mubende,district,2018,active,gazette,
+Kwania,Apac,district,2018,active,gazette,
+Kapelebyong,Amuria,district,2018,active,gazette,
+Kikuube,Hoima,district,2018,active,gazette,
+Obongi,Moyo,district,2019,active,gazette,
+Kazo,Kiruhura,district,2019,active,gazette,
+Rwampara,Mbarara,district,2019,active,gazette,
+Kitagwenda,Kamwenge,district,2019,active,gazette,
+Madi-Okollo,Arua,district,2019,active,gazette,
+Karenga,Kaabong,district,2019,active,gazette,
+Kalaki,Kaberamaido,district,2019,active,gazette,
+Terego,Arua,district,2020,active,gazette,
+Arua City,Arua,city,2020,active,gazette,
+Fort Portal City,Kabarole,city,2020,active,gazette,
+Gulu City,Gulu,city,2020,active,gazette,
+Hoima City,Hoima,city,2020,active,gazette,
+Jinja City,Jinja,city,2020,active,gazette,
+Lira City,Lira,city,2020,active,gazette,
+Masaka City,Masaka,city,2020,active,gazette,
+Mbale City,Mbale,city,2020,active,gazette,
+Mbarara City,Mbarara,city,2020,active,gazette,
+Soroti City,Soroti,city,2020,active,gazette,
+Mukuju,Tororo,district,2025,proposed,news-pending-gazette,deemed created July 2025; EC defers to the next election
+Mulanda,Tororo,district,2025,proposed,news-pending-gazette,deemed created July 2025
+Kisoko,Tororo,district,2025,proposed,news-pending-gazette,deemed created July 2025
+Bughendera,Bundibugyo,district,2025,proposed,news-pending-gazette,deemed created July 2025
+Tororo City,Tororo,city,2025,proposed,news-pending-gazette,approved April 2025

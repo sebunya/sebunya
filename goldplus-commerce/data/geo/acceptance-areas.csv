@@ -1,0 +1,13 @@
+# source=spec §14 acceptance check; a name resolves through the corridor area names AND the shop's aliases (ug_area_alias), so a village inside a bigger parish still prints
+# vintage=2026-10 note=Najjera, Kajjansi, Munyonyo and Mukono town are villages/wards inside larger 2016 parishes; they are listed on purpose so the gap shows
+name,district,note
+Ntinda,Kampala,
+Kabalagala,Kampala,
+Najjera,Wakiso,village inside Kira parish in 2016
+Kajjansi,Wakiso,village inside Kitende parish in 2016
+Kyengera,Wakiso,
+Kira,Wakiso,
+Bweyogerere,Wakiso,
+Nansana,Wakiso,
+Munyonyo,Kampala,inside Buziga/Bukasa parishes in 2016
+Mukono,Mukono,Mukono town = Ggulu/Ntaawo/Nsuube-Kauga wards in 2016

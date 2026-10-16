@@ -69,12 +69,15 @@ const get = async (path: string) => {
   }
 };
 
-const [queue, margin, variance, fallback] = await Promise.all([
+const [queue, margin, variance, fallback, accuracy, ladderMargin] = await Promise.all([
   get("/admin/delivery/calibration/proposals"),
   get("/admin/delivery/reports/margin"),
   get("/admin/delivery/reports/variance"),
   get("/admin/delivery/reports/fallback-rate"),
+  get("/admin/delivery/reports/location-accuracy"),
+  get("/admin/delivery/reports/ladder-margin"),
 ]);
+const pctText = (n: number | null | undefined) => (n === null || n === undefined ? "—" : `${n}%`);
 
 const ugx = (n: number | null | undefined) => (n === null || n === undefined ? "—" : `UGX ${Math.round(n).toLocaleString("en-UG", { timeZone: 'Africa/Kampala' })}`);
 ---
@@ -186,6 +189,66 @@ const ugx = (n: number | null | undefined) => (n === null || n === undefined ? "
             <tr class="border-t border-gray-100"><td class="py-2 text-xs">{r.reason}</td><td class="text-right">{r.count}</td><td class="text-right">{r.absorbedCount}</td><td class="text-right">{ugx(r.absorbedUgx)}</td><td class="text-right">{r.agreedCount}</td><td class="text-right">{r.declinedCount}</td></tr>
           ))}</tbody>
         </table>
+      )}
+    </section>
+
+    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-1">Location accuracy — how well we knew where orders were going</h3>
+      <p class="text-xs text-gray-500 mb-3">Last 28 days of captured quotes. The four numbers the address work is judged on; a blank means the fact does not exist yet, not zero.</p>
+      {accuracy ? (
+        <>
+          <dl class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+            <div class="border border-gray-100 rounded-lg p-3"><dt class="text-[10px] uppercase font-black tracking-widest text-gray-500">Quoted by the model</dt><dd class="text-lg font-black text-gray-900">{pctText(accuracy.modelPricedPct)}</dd><dd class="text-xs text-gray-500">of {accuracy.ownRiderQuotes} own-rider quotes</dd></div>
+            <div class="border border-gray-100 rounded-lg p-3"><dt class="text-[10px] uppercase font-black tracking-widest text-gray-500">Median minutes error</dt><dd class="text-lg font-black text-gray-900">{accuracy.medianAbsMinutes === null ? "—" : `${accuracy.medianAbsMinutes} min`}</dd><dd class="text-xs text-gray-500">{accuracy.minutesKnown} delivered with both times{accuracy.medianSignedMinutes === null ? "" : `; typically ${accuracy.medianSignedMinutes > 0 ? "slower" : "faster"} than quoted by ${Math.abs(accuracy.medianSignedMinutes)} min`}</dd></div>
+            <div class="border border-gray-100 rounded-lg p-3"><dt class="text-[10px] uppercase font-black tracking-widest text-gray-500">Found first time</dt><dd class="text-lg font-black text-gray-900">{pctText(accuracy.firstAttemptPct)}</dd><dd class="text-xs text-gray-500">of {accuracy.firstAttemptKnown} recorded attempts</dd></div>
+            <div class="border border-gray-100 rounded-lg p-3"><dt class="text-[10px] uppercase font-black tracking-widest text-gray-500">Areas with a point</dt><dd class="text-lg font-black text-gray-900">{accuracy.areasWithPoint} / {accuracy.areas}</dd><dd class="text-xs text-gray-500">metro areas</dd></div>
+          </dl>
+          <div class="grid md:grid-cols-2 gap-4 mt-4 text-xs text-gray-700">
+            <div>
+              <p class="font-bold text-gray-800 mb-1">How precisely the location was known</p>
+              {accuracy.tiers.length === 0 ? <p class="text-gray-500">No captures yet.</p> : (
+                <ul>{accuracy.tiers.map((t: any) => <li>{t.tier}: {t.n} ({t.pct}%)</li>)}</ul>
+              )}
+            </div>
+            <div>
+              <p class="font-bold text-gray-800 mb-1">Where the area's point came from</p>
+              {accuracy.sources.length === 0 ? <p class="text-gray-500">No captures yet.</p> : (
+                <ul>{accuracy.sources.map((s: any) => <li>{s.source}: {s.n} ({s.pct}%)</li>)}</ul>
+              )}
+            </div>
+          </div>
+          <p class="text-xs text-gray-600 mt-3">{accuracy.note}</p>
+        </>
+      ) : (
+        <p class="text-sm text-gray-500">The location accuracy report is unavailable.</p>
+      )}
+    </section>
+
+    <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8">
+      <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-1">Fee ladder — margin alarm</h3>
+      <p class="text-xs text-gray-500 mb-3">Per rung, the share of the last 28 days' orders whose modelled cost × margin was above the price. A flagged rung is the signal to add a rung there or move to continuous.</p>
+      {!ladderMargin ? (
+        <p class="text-sm text-gray-500">The ladder report is unavailable.</p>
+      ) : ladderMargin.shape !== "ladder" ? (
+        <p class="text-sm text-gray-600">{ladderMargin.note}</p>
+      ) : (
+        <>
+          <table class="w-full text-xs">
+            <thead class="text-[10px] uppercase font-black tracking-widest text-gray-500"><tr><th class="text-left py-1">Rung</th><th class="text-right py-1">Orders</th><th class="text-right py-1">Under cost</th><th class="text-right py-1">Mean headroom</th><th class="py-1"></th></tr></thead>
+            <tbody>
+              {ladderMargin.rungs.map((r: any) => (
+                <tr class={`border-t border-gray-100 ${r.alarm ? "text-red-700 font-bold" : ""}`}>
+                  <td class="py-1">{ugx(r.rungUgx)}</td>
+                  <td class="py-1 text-right">{r.orders}</td>
+                  <td class="py-1 text-right">{r.orders ? `${r.overCostPct}%` : "—"}</td>
+                  <td class="py-1 text-right">{ugx(r.meanHeadroomUgx)}</td>
+                  <td class="py-1 text-right">{r.alarm ? "ALARM" : ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p class="text-xs text-gray-600 mt-3">{ladderMargin.note}</p>
+        </>
       )}
     </section>
 

@@ -1,7 +1,8 @@
 import { sql } from 'drizzle-orm';
 import { foldUgandanOrthography, normalizeUgandaDistrict } from '@goldplus/shared';
 import { db } from '../db/client';
-import { AreaInput, DistanceBand, isDistanceBand } from '../../domain/delivery/DeliveryModel';
+import { AreaInput, DistanceBand, isCentroidSource, isDistanceBand } from '../../domain/delivery/DeliveryModel';
+import { haversineKm } from '../../domain/delivery/DeliveryOrigin';
 import type { IAreaResolverPort, ResolvedArea } from '../../application/use-cases/delivery/DeliveryQuotingUseCase';
 
 /**
@@ -35,6 +36,16 @@ interface CorridorRow {
   centroid_lng: string | null;
   centroid_source: string | null;
   centroid_sample_size: number;
+  centroid_expected_error_m: number | null;
+  area_kind?: string | null;
+}
+
+/** A national park, a lake or an island is never a door-delivery destination, whatever its band says (spec §3.3). */
+const NEVER_DOOR_DELIVERY = new Set(['reserve', 'water', 'island']);
+
+interface OriginPoint {
+  lat: number;
+  lng: number;
 }
 
 /** Re-exported for existing callers; the shape is owned by the application. */
@@ -48,13 +59,52 @@ export class DeliveryAreaResolver implements IAreaResolverPort {
    */
   private async corridorFor(areaSlug: string): Promise<CorridorRow | null> {
     const rows = (await db.execute(sql`
-      select area_slug, area, district, corridor, distance_band, access_mode, serviceable,
-             centroid_lat, centroid_lng, centroid_source, centroid_sample_size
-      from delivery_corridor where area_slug = ${areaSlug} limit 1`)) as unknown as CorridorRow[];
+      select c.area_slug, c.area, c.district, c.corridor, c.distance_band, c.access_mode, c.serviceable,
+             c.centroid_lat, c.centroid_lng, c.centroid_source, c.centroid_sample_size, c.centroid_expected_error_m,
+             u.area_kind
+      from delivery_corridor c left join ug_area u on u.area_slug = c.area_slug
+      where c.area_slug = ${areaSlug} limit 1`)) as unknown as CorridorRow[];
     return rows[0] ?? null;
   }
 
-  private toInput(slug: string, row: CorridorRow | null, district: string | null): AreaInput {
+  /**
+   * The active dispatch origin's point, read once per resolver and kept for a
+   * minute: it changes when an operator moves the hub, not per quote. Only
+   * consulted when a corridor row actually carries a centroid, so until the
+   * parish import has run this costs nothing.
+   */
+  private originCache: { at: number; point: OriginPoint | null } | null = null;
+  private async originPoint(): Promise<OriginPoint | null> {
+    const now = Date.now();
+    if (this.originCache && now - this.originCache.at < 60_000) return this.originCache.point;
+    const rows = (await db.execute(sql`
+      select latitude, longitude from delivery_origin where active = true
+      order by (role = 'primary_dispatch_hub') desc, origin_code limit 1`)) as unknown as Array<{
+      latitude: string | number;
+      longitude: string | number;
+    }>;
+    const lat = Number(rows[0]?.latitude);
+    const lng = Number(rows[0]?.longitude);
+    const point = Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+    this.originCache = { at: now, point };
+    return point;
+  }
+
+  /**
+   * One-way straight-line km from the active origin to the corridor row's
+   * centroid, or null when either is missing. A fact about the area, recorded
+   * on every quote; whether the model prices with it is the registry's call.
+   */
+  private async centroidKm(row: CorridorRow): Promise<number | null> {
+    const lat = Number(row.centroid_lat);
+    const lng = Number(row.centroid_lng);
+    if (row.centroid_lat === null || row.centroid_lng === null || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    const origin = await this.originPoint();
+    if (!origin) return null;
+    return Math.round(haversineKm(origin, { lat, lng }) * 100) / 100;
+  }
+
+  private async toInput(slug: string, row: CorridorRow | null, district: string | null): Promise<AreaInput> {
     if (!row) {
       // Resolved, but outside the metro corridor set: no corridor row means no
       // band, no access mode and no serviceability flag. Claiming any of them
@@ -78,14 +128,18 @@ export class DeliveryAreaResolver implements IAreaResolverPort {
       corridor: row.corridor,
       band,
       accessMode: row.access_mode === 'water' ? 'water' : 'road',
-      serviceable: row.serviceable,
-      // A measured centroid beats a band midpoint — but only once it exists.
-      // Distance from the origin is computed by the caller, which holds the
-      // origin; this carries the raw fact of whether one is available.
+      serviceable: row.serviceable && !NEVER_DOOR_DELIVERY.has(row.area_kind ?? ''),
+      // A measured centroid beats a band midpoint — but only once it exists,
+      // and only once the registry says to price with it. `centroidKm` is the
+      // fact; `measuredKm` is set by the quoting use case from it (0189).
       measuredKm: null,
-      centroidSource:
-        row.centroid_source === 'delivered_pins' || row.centroid_source === 'manual'
-          ? (row.centroid_source as 'delivered_pins' | 'manual')
+      centroidSource: isCentroidSource(row.centroid_source) ? row.centroid_source : null,
+      // A point whose source the model does not know is not a point the model
+      // may describe as one: no km, no AREA_POINT tier, until the source is named.
+      centroidKm: isCentroidSource(row.centroid_source) ? await this.centroidKm(row) : null,
+      centroidExpectedErrorM:
+        typeof row.centroid_expected_error_m === 'number' && Number.isFinite(row.centroid_expected_error_m)
+          ? row.centroid_expected_error_m
           : null,
     };
   }
@@ -93,7 +147,7 @@ export class DeliveryAreaResolver implements IAreaResolverPort {
   async bySlug(areaSlug: string): Promise<ResolvedArea | null> {
     const row = await this.corridorFor(areaSlug);
     if (row) {
-      return { input: this.toInput(areaSlug, row, row.district), label: `${row.area}, ${row.district}`, via: 'area_slug', aliasUsed: null };
+      return { input: await this.toInput(areaSlug, row, row.district), label: `${row.area}, ${row.district}`, via: 'area_slug', aliasUsed: null };
     }
     // Not in the corridor set. It may still be a real gazetteer area.
     const gaz = (await db.execute(sql`
@@ -104,7 +158,7 @@ export class DeliveryAreaResolver implements IAreaResolverPort {
     }>;
     if (!gaz[0]) return null;
     return {
-      input: this.toInput(areaSlug, null, gaz[0].current_district),
+      input: await this.toInput(areaSlug, null, gaz[0].current_district),
       label: gaz[0].display_label,
       via: 'area_slug',
       aliasUsed: null,
@@ -191,7 +245,7 @@ export class DeliveryAreaResolver implements IAreaResolverPort {
     aliasUsed: string | null,
   ): Promise<ResolvedArea> {
     const row = await this.corridorFor(slug);
-    return { input: this.toInput(slug, row, row?.district ?? null), label, via, aliasUsed };
+    return { input: await this.toInput(slug, row, row?.district ?? null), label, via, aliasUsed };
   }
 
   /**
@@ -202,6 +256,7 @@ export class DeliveryAreaResolver implements IAreaResolverPort {
     areaSlug?: string | null;
     deliveryArea?: string | null;
     district?: string | null;
+    point?: { lat: number; lng: number } | null;
   }): Promise<ResolvedArea | null> {
     if (input.areaSlug) {
       const bySlug = await this.bySlug(input.areaSlug);
@@ -215,9 +270,45 @@ export class DeliveryAreaResolver implements IAreaResolverPort {
     }
     if (input.district) {
       const asDistrict = await this.byText(input.district, null);
+      if (asDistrict && !asDistrict.input.districtOnly) return asDistrict;
+      // A district alone cannot be priced; a pin inside it can.
+      if (input.point) {
+        const byPin = await this.byPoint(input.point);
+        if (byPin) return byPin;
+      }
       if (asDistrict) return asDistrict;
     }
+    if (input.point) return this.byPoint(input.point);
     return null;
+  }
+
+  /**
+   * The area whose point is nearest to a pin, when that is unambiguous: the pin
+   * is within the point's expected error plus 1.5 km, and the runner-up is not
+   * within 30% of that distance. Otherwise null, and the caller asks for the
+   * area by name (contract #4: never guess a fee from a pin between two areas).
+   */
+  async byPoint(point: { lat: number; lng: number }): Promise<ResolvedArea | null> {
+    const rows = (await db.execute(sql`
+      select area_slug, centroid_lat, centroid_lng, centroid_expected_error_m
+      from delivery_corridor
+      where centroid_lat is not null and serviceable
+        and centroid_lat between ${point.lat - 0.3} and ${point.lat + 0.3}
+        and centroid_lng between ${point.lng - 0.3} and ${point.lng + 0.3}`)) as unknown as Array<{
+      area_slug: string;
+      centroid_lat: string;
+      centroid_lng: string;
+      centroid_expected_error_m: number | null;
+    }>;
+    const ranked = rows
+      .map((r) => ({ slug: r.area_slug, km: haversineKm(point, { lat: Number(r.centroid_lat), lng: Number(r.centroid_lng) }), errorM: r.centroid_expected_error_m ?? 0 }))
+      .sort((a, b) => a.km - b.km);
+    const best = ranked[0];
+    if (!best) return null;
+    if (best.km * 1000 > best.errorM + 1500) return null;
+    if (ranked[1] && ranked[1].km < best.km * 1.3) return null;
+    const resolved = await this.bySlug(best.slug);
+    return resolved ? { ...resolved, via: 'pin' } : null;
   }
 }
 

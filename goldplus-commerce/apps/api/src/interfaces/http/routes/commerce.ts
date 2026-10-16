@@ -52,16 +52,19 @@ const checkoutBodySchema = z.object({
           .trim()
           .min(1)
           .max(100)
-          .transform((value, ctx) => {
+          .transform((value) => {
+            // Canonical when the list knows it. When it does not (Uganda creates districts faster than any list is
+            // cut: 135 in 2021, 146 districts and cities in 2025, four more deemed created in July 2025), the order is
+            // still accepted with the customer's own words: delivery contract #8, a data gap never blocks a sale. The
+            // quote cannot price an unknown district, so it goes to the manual path and a person confirms the fee.
             const canonical = normalizeUgandaDistrict(value);
-            if (!canonical) {
-              ctx.addIssue({
-                code: z.ZodIssueCode.custom,
-                message: `"${value}" is not a Uganda district. Pick the district from the list.`,
-              });
-              return z.NEVER;
-            }
-            return canonical;
+            if (canonical) return canonical;
+            return value
+              .replace(/[^A-Za-z' -]/g, '')
+              .trim()
+              .replace(/\s+/g, ' ')
+              .replace(/\b\w/g, (ch) => ch.toUpperCase())
+              .slice(0, 100);
           }),
         region: z.string().trim().max(100).optional(),
         areaSlug: z.string().trim().max(160).optional(),

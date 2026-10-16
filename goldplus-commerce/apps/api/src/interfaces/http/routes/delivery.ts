@@ -75,7 +75,14 @@ routes.post('/quote', async (c) => {
   // The free-text destination is part of identity too: without it, 'Ntinda' and
   // 'Kajjansi' with the same basket shared one cached fee for sixty seconds.
   const areaText = typeof body?.deliveryArea === 'string' ? body.deliveryArea.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 120) : '';
-  const fullKey = `${key}:${areaText}:${items.map((i) => `${i.productId}x${i.quantity}`).sort().join(',')}`;
+  // 0190: a pin, to ~110 m (three decimals), is part of the quote's identity: two pins in one area must not share a fee once distance is measured.
+  const point =
+    body?.point && Number.isFinite(Number(body.point.lat)) && Number.isFinite(Number(body.point.lng))
+      && Number(body.point.lat) >= -2.5 && Number(body.point.lat) <= 5.5 && Number(body.point.lng) >= 28 && Number(body.point.lng) <= 36.5
+      ? { lat: Number(body.point.lat), lng: Number(body.point.lng) }
+      : null;
+  const pointKey = point ? `${point.lat.toFixed(3)},${point.lng.toFixed(3)}` : 'none';
+  const fullKey = `${key}:${areaText}:${pointKey}:${items.map((i) => `${i.productId}x${i.quantity}`).sort().join(',')}`;
   const hit = CACHE.get(fullKey);
   if (hit && now.getTime() - hit.at < CACHE_TTL_MS) {
     return c.json({ success: true, data: hit.body } satisfies ApiResponse<unknown>);
@@ -90,6 +97,7 @@ routes.post('/quote', async (c) => {
     subtotalUgx,
     at: now,
     hasPin: body?.hasPin === true,
+    point,
   });
 
   let presented = presentQuote(outcome.quote);
@@ -133,7 +141,12 @@ routes.post('/quote', async (c) => {
     disclaimerStage: hasFee ? 2 : 1,
     // Alongside EVERY quote, whatever the outcome.
     pickup: copy('copy_pickup_offer'),
-    pinNudge: copy('copy_pin_nudge'),
+    // §4.6: only when this area has learned the pin saving, and with the true figure in it.
+    pinNudge:
+      outcome.pinSavingUgx !== null
+        ? (copy('copy_pin_nudge') ?? '').replace(/\{\{\s*saving\s*\}\}/g, outcome.pinSavingUgx.toLocaleString('en-UG')) || null
+        : null,
+    pinSavingUgx: outcome.pinSavingUgx,
     // Business info: the one authority for the cutoff hour and closed days.
     cutoff: await registry.businessInfoService
       .getPublicConfig()
@@ -171,7 +184,8 @@ routes.get('/copy', async (c) => {
       stage1: raw.copy_estimate_stage1 ?? null,
       stage2: raw.copy_fixed_stage2 ?? null,
       pickup: raw.copy_pickup_offer ?? null,
-      pinNudge: raw.copy_pin_nudge ?? null,
+      // The template only; a page shows it solely with a saving from a quote (§4.6).
+      pinNudgeTemplate: raw.copy_pin_nudge ?? null,
       reasons: Object.fromEntries(Object.entries(REASON_COPY_KEY).map(([reason, key]) => [reason, raw[key] ?? null])),
     },
   });

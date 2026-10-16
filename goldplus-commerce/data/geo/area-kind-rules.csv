@@ -1,0 +1,10 @@
+# source=review board 2026-10-15 (domain expert + boda rider); patterns are tested against " <normalised name> " with spaces around it, first match wins
+# vintage=2026-10 note=Estate is a housing estate in Kampala (neighbourhood), T.C. is a unit word (Town Council as often as Trading Centre), both deliberately absent
+priority,pattern,kind,note
+10, (police |army )?barracks ,barracks,customer meets the rider at the barrier
+20, (university|prisons?|institutions?|hospital|college|ptc|seminary|campus) ,institution,gate must be named at checkout
+30, (mt|mount|mountain|national park|game reserve|forest reserve|forest|hunting area|grazing area|wildlife|rwenzori|elgon|bwindi|semuliki|queen elizabeth|lake mburo|kidepo|murchison|game park) ,reserve,never priced for a door
+40, islands? ,island,boat access
+50, lake ,water,
+60, trading cent(re|er) ,trading_centre,
+70, ward ,ward,

@@ -39,6 +39,13 @@ export interface DeliveryCaptureRow {
   firstAttemptSuccess: boolean | null;
   distanceTravelledKm: number | null;
   centroidSource: string | null;
+  /** 0189: PIN | AREA_POINT | BAND_MIDPOINT | DISTRICT at the moment of the quote. */
+  accuracyTier?: string | null;
+  /** 0189: one-way km from the active origin to the area's point, recorded whether or not the quote priced with it. */
+  centroidKm?: number | null;
+  centroidExpectedErrorM?: number | null;
+  /** 0189: band_midpoint | measured_centroid — which distance priced the fee, so the two populations separate. */
+  distanceSource?: string | null;
   configVersionId: string | null;
   // 0093/0094 — HOW it was priced, and by what. Added to the row type at the
   // same time as the columns; the end-to-end proof found them missing here,
@@ -136,6 +143,9 @@ export class CaptureQuoteUseCase {
     configVersionId: string | null;
     hadPin: boolean | null;
     aliasUsed: string | null;
+    accuracyTier?: string | null;
+    centroidKm?: number | null;
+    centroidExpectedErrorM?: number | null;
   }): Promise<DeliveryCaptureRow> {
     return this.captures.upsert(input);
   }

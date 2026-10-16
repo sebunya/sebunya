@@ -42,6 +42,32 @@ export class WhatsAppCloudMessenger implements IWhatsAppMessenger {
   }
 
   /** Marks the customer's message read (blue ticks) and, while Goldie prepares the answer, shows "typing…". */
+  async sendInteractive(input: { phoneNumberId: string; to: string; body: string; buttons: Array<{ id: string; title: string }> }) {
+    const token = (process.env.GOLDIE_WHATSAPP_TOKEN || '').trim() || (await this.token());
+    if (!token) return { ok: false as const, reason: 'no messaging token' };
+    if (!/^\d{5,20}$/.test(input.phoneNumberId) || !/^\d{8,15}$/.test(input.to)) return { ok: false as const, reason: 'bad number' };
+    const buttons = input.buttons.slice(0, 3).map((b) => ({ type: 'reply', reply: { id: b.id.slice(0, 256), title: b.title.slice(0, 20) } }));
+    if (buttons.length === 0) return this.sendText({ phoneNumberId: input.phoneNumberId, to: input.to, text: input.body });
+    try {
+      const res = await this.fetchImpl(`https://graph.facebook.com/${META_GRAPH_VERSION}/${input.phoneNumberId}/messages`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: input.to,
+          type: 'interactive',
+          interactive: { type: 'button', body: { text: input.body.slice(0, 1024) }, action: { buttons } },
+        }),
+        signal: AbortSignal.timeout(10_000),
+      });
+      const json = (await res.json().catch(() => null)) as { messages?: Array<{ id?: string }>; error?: { message?: string; code?: number } } | null;
+      if (!res.ok) return { ok: false as const, reason: `${res.status}${json?.error?.code ? ` ${json.error.code}` : ''} ${String(json?.error?.message ?? '').slice(0, 100)}`.trim() };
+      return { ok: true as const, messageId: json?.messages?.[0]?.id ?? null };
+    } catch (e) {
+      return { ok: false as const, reason: e instanceof Error ? e.message.slice(0, 120) : 'unreachable' };
+    }
+  }
   async markRead(input: { phoneNumberId: string; messageId: string; typing: boolean }) {
     const token = (process.env.GOLDIE_WHATSAPP_TOKEN || '').trim() || (await this.token());
     if (!token || !/^\d{5,20}$/.test(input.phoneNumberId)) return;

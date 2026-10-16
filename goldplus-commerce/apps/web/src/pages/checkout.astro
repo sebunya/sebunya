@@ -1394,12 +1394,19 @@ const checkoutSavingLabel = basketSavingLabel(
     async function refreshQuotePanel(district: string | null, area: string | null, areaSlug: string | null) {
       if (!quotePanelEl || !API_BASE) return;
       const seq = ++quoteSeq;
+      // 0190: the pin the picker holds (device GPS or a map link) goes with the quote: PIN tier, and the area when none was named.
+      let gps: { gpsLat?: number; gpsLng?: number } = {};
+      try {
+        const loc = JSON.parse(document.querySelector<HTMLInputElement>('form[action="/checkout"] .js-final-payload')?.value || 'null');
+        if (loc && typeof loc.gpsLat === 'number' && typeof loc.gpsLng === 'number') gps = { gpsLat: loc.gpsLat, gpsLng: loc.gpsLng };
+      } catch { /* no payload yet */ }
       const body = buildDeliveryQuoteRequest({
         district,
         areaSlug,
         deliveryArea: area,
         items: quoteItems,
         subtotalUgx: Number(quotePanelEl.dataset.subtotal) || 0,
+        ...gps,
       });
       let html = DELIVERY_QUOTE_UNREACHABLE_HTML;
       try {
@@ -1454,7 +1461,7 @@ const checkoutSavingLabel = basketSavingLabel(
         // A typed location: ask with the very area line the order is placed with, district or not.
         if (loc?.manual && loc.rawAddressText) { refreshEstimate(loc.district ? String(loc.district) : null, manualDeliveryAreaLine(loc.rawAddressText, loc.district), null); return; }
         if (loc?.district) { refreshEstimate(String(loc.district), loc.area ?? null, loc.areaSlug ? String(loc.areaSlug) : null); return; }
-        // Written directions or a pickup point: a place, with no district to price.
+        // Written directions or a pickup point: a place, with no district to price (a pin alone can still name the area).
         ++estimateSeq;
         setCutoffFor(null);
         renderEstimate(null, true);

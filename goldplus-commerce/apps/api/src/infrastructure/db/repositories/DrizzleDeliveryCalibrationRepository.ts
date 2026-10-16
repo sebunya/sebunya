@@ -4,7 +4,7 @@ import {
   CalibrationProposal,
   ICalibrationRepository,
 } from '../../../application/use-cases/delivery/DeliveryCalibrationUseCases';
-import { IDeliveryReportRepository } from '../../../application/use-cases/delivery/DeliveryReportUseCases';
+import { IDeliveryReportRepository, LocationAccuracyRaw } from '../../../application/use-cases/delivery/DeliveryReportUseCases';
 import { Observation } from '../../../domain/delivery/DeliveryCalibration';
 import { FactorKind } from '../../../domain/delivery/DeliveryLearnedFactor';
 
@@ -292,5 +292,36 @@ export class DrizzleDeliveryCalibrationRepository implements ICalibrationReposit
       priced_by: string | null;
       n: number;
     }>;
+  }
+
+  /** 0189: the location-accuracy facts of the last 28 days, in one row (address system spec §0). */
+  async locationAccuracy(): Promise<LocationAccuracyRaw> {
+    // One pass over the 28-day window (indexed on created_at since 0189), then two small grouped passes.
+    // Minutes and first-attempt facts are windowed on when the delivery happened, not when it was quoted, so the
+    // last days of the window are not biased by the slow orders still out; the share of model-priced quotes is
+    // measured against own-rider orders only, so a bus-parcel week cannot move it.
+    const [row] = (await db.execute(sql`
+      select
+        count(*)::int as quotes,
+        count(*) filter (where fulfilment_mode = 'own_rider' or (fulfilment_mode is null and corridor is not null))::int as own_rider_quotes,
+        count(*) filter (where priced_by = 'delivery_model')::int as model_priced,
+        count(*) filter (where expected_minutes is not null and actual_minutes is not null and delivered_at > now() - interval '28 days')::int as minutes_known,
+        percentile_cont(0.5) within group (order by abs(expected_minutes - actual_minutes))
+          filter (where expected_minutes is not null and actual_minutes is not null and delivered_at > now() - interval '28 days') as median_abs_minutes,
+        percentile_cont(0.5) within group (order by (actual_minutes - expected_minutes))
+          filter (where expected_minutes is not null and actual_minutes is not null and delivered_at > now() - interval '28 days') as median_signed_minutes,
+        count(*) filter (where first_attempt_success and delivered_at > now() - interval '28 days')::int as first_attempt_ok,
+        count(*) filter (where first_attempt_success is not null and coalesce(delivered_at, updated_at) > now() - interval '28 days')::int as first_attempt_known
+      from delivery_quote_capture
+      where created_at > now() - interval '56 days'`)) as unknown as Array<Omit<LocationAccuracyRaw, 'areas' | 'areas_with_point' | 'tiers' | 'sources'>>;
+    const [areas] = (await db.execute(sql`
+      select count(*)::int as areas, count(centroid_lat)::int as areas_with_point from delivery_corridor`)) as unknown as Array<{ areas: number; areas_with_point: number }>;
+    const tierRows = (await db.execute(sql`
+      select accuracy_tier as tier, count(*)::int as n from delivery_quote_capture
+      where created_at > now() - interval '28 days' group by accuracy_tier`)) as unknown as Array<{ tier: string | null; n: number }>;
+    const sourceRows = (await db.execute(sql`
+      select centroid_source as source, count(*)::int as n from delivery_quote_capture
+      where created_at > now() - interval '28 days' group by centroid_source`)) as unknown as Array<{ source: string | null; n: number }>;
+    return { ...row, areas: areas.areas, areas_with_point: areas.areas_with_point, tiers: tierRows, sources: sourceRows };
   }
 }
