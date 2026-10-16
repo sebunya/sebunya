@@ -1,4 +1,6 @@
 import { DISTANCE_BANDS, DistanceBand } from './DeliveryModel';
+import { ceilingForCorridor, type CorridorCeilings } from './DeliveryCorridorCeilings';
+export { parseCorridorCeilings, ceilingForCorridor, type CorridorCeilings } from './DeliveryCorridorCeilings';
 
 /**
  * How a destination is actually served (commercial constraint, 2026-08-06).
@@ -53,6 +55,8 @@ export function resolveFulfilmentMode(
     declaredMode?: FulfilmentMode | null;
   },
   ownRiderMaxBand: DistanceBand | null,
+  /** Per-road ceilings; a corridor absent here uses ownRiderMaxBand. */
+  corridorCeilings?: CorridorCeilings | null,
 ): FulfilmentMode | null {
   // An operator's explicit decision is never second-guessed by a derivation.
   if (area.declaredMode) return area.declaredMode;
@@ -67,12 +71,13 @@ export function resolveFulfilmentMode(
   if (area.accessMode === 'water') return 'pickup_only';
 
   // Nobody has said where rider service ends, so nothing may claim to be
-  // inside it. Unknown, not "everything".
-  if (ownRiderMaxBand === null) return null;
+  // inside it. Unknown, not "everything". A road's own limit counts as saying so.
+  const ceiling = ceilingForCorridor(area.corridor, ownRiderMaxBand, corridorCeilings);
+  if (ceiling === null) return null;
 
   // Beyond the rider's range, a metro area is still served — by bus, like
   // anywhere else that far out. A 6.4 hour round trip is not a delivery.
-  return isWithinRiderRange(area.band, ownRiderMaxBand) ? 'own_rider' : 'bus_parcel';
+  return isWithinRiderRange(area.band, ceiling) ? 'own_rider' : 'bus_parcel';
 }
 
 /**

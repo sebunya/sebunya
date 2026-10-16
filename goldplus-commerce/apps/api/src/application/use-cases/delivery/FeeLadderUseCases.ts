@@ -20,6 +20,23 @@ export interface IOwnRiderAreaList {
   ownRiderAreas(): Promise<Array<{ areaSlug: string; label: string }>>;
 }
 
+export interface CorridorSummaryRow {
+  corridor: string;
+  areas: number;
+  nearestBand: string;
+  farthestBand: string;
+}
+export interface ICorridorSummarySource {
+  /** Road corridors with their area counts and band range: the rows of the per-road rider-range switches. */
+  corridorSummary(): Promise<CorridorSummaryRow[]>;
+}
+export class CorridorSummaryUseCase {
+  constructor(private readonly source: ICorridorSummarySource) {}
+  execute(): Promise<CorridorSummaryRow[]> {
+    return this.source.corridorSummary();
+  }
+}
+
 export interface ILadderMarginSource {
   /** The last 28 days of own-rider captures priced by the model: the fee charged and the minutes the model expected. */
   ladderCaptures(): Promise<Array<{ quotedFeeUgx: number | null; expectedMinutes: number | null }>>;

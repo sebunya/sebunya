@@ -328,7 +328,9 @@ import { ApplyCorridorCsvUseCase, DryRunCorridorCsvUseCase, RevertCorridorBatchU
 import { LocationPinUseCases } from '../application/use-cases/delivery/LocationPinUseCases';
 import { DrizzleLocationPinRepository } from './db/repositories/DrizzleLocationPinRepository';
 import { RiderUseCases } from '../application/use-cases/delivery/RiderUseCases';
-import { LadderDryRunUseCase, LadderMarginReportUseCase } from '../application/use-cases/delivery/FeeLadderUseCases';
+import { CorridorSummaryUseCase, LadderDryRunUseCase, LadderMarginReportUseCase } from '../application/use-cases/delivery/FeeLadderUseCases';
+import { BusRateCardAdminUseCases } from '../application/use-cases/delivery/BusRateCardAdminUseCases';
+import { DrizzleBusRateCardAdminRepository } from './db/repositories/DrizzleBusRateCardAdminRepository';
 import { DrizzleRiderRepository } from './db/repositories/DrizzleRiderRepository';
 import {
   AcceptCalibrationProposalUseCase,
@@ -1920,6 +1922,8 @@ export class Registry {
 
   // 0190: WhatsApp location pins → orders (customer) and handovers (rider). Deterministic replies, no model call.
   public readonly riderUseCases = new RiderUseCases(new DrizzleRiderRepository());
+  /** Bus rate cards and parcel offices: the write path for everything beyond the rider ring (2026-10-16). */
+  public readonly busRateCardAdminUseCases = new BusRateCardAdminUseCases(new DrizzleBusRateCardAdminRepository());
   public readonly locationPinRepo = new DrizzleLocationPinRepository(this.deliveryConfigReader);
   public readonly locationPinUseCases = new LocationPinUseCases(this.locationPinRepo, {
     record: async (input) => {
@@ -1998,6 +2002,7 @@ export class Registry {
   // §4.5: the ladder's dry run and margin alarm. Writes nothing; publishing goes through config draft → publish.
   public readonly ladderDryRunUseCase = new LadderDryRunUseCase(this.deliveryQuotingRepo, this.deliveryQuotingUseCase);
   public readonly ladderMarginReportUseCase = new LadderMarginReportUseCase(this.deliveryQuotingRepo, this.deliveryConfigReader);
+  public readonly corridorSummaryUseCase = new CorridorSummaryUseCase(this.deliveryQuotingRepo);
 
   /**
    * The adapter checkout holds. Deliberately narrow: checkout needs a fee, a

@@ -230,6 +230,11 @@ run writes a row to `geo_data_source_run` (`source_name = 'nightly-area-points'`
    person) and the difference is at least one rounding step. Nothing to switch; it appears when it is true.
 3. Add riders under Delivery → Riders before relying on handovers; until then every location is a customer pin.
 
+**Added 2026-10-16 after launch:** the Control Centre has a **Switches** card (shop-wide rider band, a per-road rider band for
+each corridor, which distance the fee uses, fee shape and ladder) that previews one area per band and publishes a new version,
+and a **Bus prices** page (Delivery → Bus prices) where the negotiated per-town, per-parcel-size bus prices and the parcel
+offices are entered. Until a town has a card there, its customers see "we ship by bus but have no current price".
+
 ## Step 7 — what happens next (not in this runbook)
 
 1. Decide the fee shape (spec §12, decision 1): the ladder dry run is the tool.

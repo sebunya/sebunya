@@ -13,7 +13,7 @@ import {
   isDistanceBand,
   previewAcrossBands,
 } from '../../../domain/delivery/DeliveryModel';
-import { resolveFulfilmentMode } from '../../../domain/delivery/DeliveryFulfilmentMode';
+import { resolveFulfilmentMode, parseCorridorCeilings } from '../../../domain/delivery/DeliveryFulfilmentMode';
 import { quoteFulfilment } from '../../../domain/delivery/DeliveryQuoteService';
 
 /**
@@ -230,15 +230,16 @@ export class PreviewConfigVersionUseCase {
     // An operator raising the rider ceiling needs to watch B5 flip from bus to
     // rider in this table — that is the change they are actually approving.
     const bandOf = (b: string | null): DistanceBand | null => (b && isDistanceBand(b) ? (b as DistanceBand) : null);
+    const roadsOf = (raw: Record<string, string>) => {
+      const parsed = parseCorridorCeilings(raw.own_rider_max_band_by_corridor ?? null);
+      return parsed.ok ? parsed.ceilings : null;
+    };
     const modeFor = (area: AreaInput, config: Record<string, number>, raw: Record<string, string>) =>
-      resolveFulfilmentMode(
-        { ...area, declaredMode: null },
-        bandOf(raw.own_rider_max_band ?? null),
-      );
+      resolveFulfilmentMode({ ...area, declaredMode: null }, bandOf(raw.own_rider_max_band ?? null), roadsOf(raw));
 
     const withModes = (area: AreaInput, raw: Record<string, string>): AreaInput => ({
       ...area,
-      fulfilmentMode: resolveFulfilmentMode({ ...area, declaredMode: null }, bandOf(raw.own_rider_max_band ?? null)),
+      fulfilmentMode: resolveFulfilmentMode({ ...area, declaredMode: null }, bandOf(raw.own_rider_max_band ?? null), roadsOf(raw)),
     });
 
     const bands = previewAcrossBands(

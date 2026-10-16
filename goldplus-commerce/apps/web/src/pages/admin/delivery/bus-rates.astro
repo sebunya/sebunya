@@ -1,0 +1,198 @@
+---
+import AdminLayout from "../../../layouts/AdminLayout.astro";
+import { readSessionToken } from "../../../lib/session";
+import { apiBase } from "../../../lib/api";
+
+/**
+ * Bus prices and parcel offices (2026-10-16). Everything beyond the rider ring
+ * is a shipment to a parcel office; the price is whatever we negotiated with
+ * the bus company, per town and per parcel size. Until a town has a card here,
+ * its customers are told "we ship by bus but have no current price" and the
+ * order goes to the manual queue. A new price for the same town closes the old
+ * card and opens the next version, so any past charge can be traced.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect("/admin/login?returnTo=/admin/delivery/bus-rates", 303);
+const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+
+let notice: { kind: "success" | "error"; text: string } | null = null;
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const s = (k: string) => String(form.get(k) || "").trim();
+  const intent = s("intent");
+  try {
+    if (intent === "prices") {
+      const res = await fetch(`${apiBase}/admin/delivery/bus-rates`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          carrier: s("carrier"), destinationTown: s("town"), destinationDistrict: s("district"),
+          feeSmall: s("feeSmall"), feeMedium: s("feeMedium"), feeLarge: s("feeLarge"),
+          insurancePct: s("insurancePct"), transitDaysMin: s("transitDaysMin"), transitDaysMax: s("transitDaysMax"),
+          chargedAt: s("chargedAt"), sourceNote: s("sourceNote"),
+        }),
+      });
+      const json: any = await res.json().catch(() => null);
+      notice = json?.success
+        ? { kind: "success", text: `Saved ${json.data.cards.length} price(s) for ${s("town")}. Customers there get a bus quote from the next order.` }
+        : { kind: "error", text: json?.error?.message || "Could not save the prices." };
+    } else if (intent === "expire") {
+      const res = await fetch(`${apiBase}/admin/delivery/bus-rates/${encodeURIComponent(s("id"))}/expire`, { method: "POST", headers, body: "{}" });
+      const json: any = await res.json().catch(() => null);
+      notice = json?.success ? { kind: "success", text: "Card closed. That town has no current price for that parcel size until a new one is entered." } : { kind: "error", text: json?.error?.message || "Could not close the card." };
+    } else if (intent === "office") {
+      const res = await fetch(`${apiBase}/admin/delivery/bus-rates/offices`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          carrier: s("ocarrier"), name: s("oname"), town: s("otown"), district: s("odistrict"),
+          physicalAddress: s("oaddress"), landmarkText: s("olandmark"), phone: s("ophone"),
+          departureTimes: s("odepartures"), collectionWindow: s("ocollection"),
+        }),
+      });
+      const json: any = await res.json().catch(() => null);
+      notice = json?.success ? { kind: "success", text: `Parcel office saved: ${json.data.office.name}.` } : { kind: "error", text: json?.error?.message || "Could not save the office." };
+    } else if (intent === "office-active") {
+      const res = await fetch(`${apiBase}/admin/delivery/bus-rates/offices/${encodeURIComponent(s("id"))}/active`, { method: "POST", headers, body: JSON.stringify({ active: s("active") === "true" }) });
+      const json: any = await res.json().catch(() => null);
+      notice = json?.success ? { kind: "success", text: "Office updated." } : { kind: "error", text: json?.error?.message || "Could not update the office." };
+    }
+  } catch {
+    notice = { kind: "error", text: "The delivery service is unreachable right now." };
+  }
+}
+
+let cards: any[] = [];
+let offices: any[] = [];
+let loadFailed = false;
+try {
+  const res = await fetch(`${apiBase}/admin/delivery/bus-rates`, { headers });
+  const json: any = await res.json().catch(() => null);
+  if (json?.success) { cards = json.data.cards; offices = json.data.offices; } else loadFailed = true;
+} catch {
+  loadFailed = true;
+}
+const current = cards.filter((c) => !c.effectiveTo);
+const closed = cards.filter((c) => c.effectiveTo);
+const ugx = (n: number) => `UGX ${Math.round(n).toLocaleString("en-UG", { timeZone: "Africa/Kampala" })}`;
+const when = (d: string) => new Date(d).toLocaleDateString("en-UG", { timeZone: "Africa/Kampala" });
+const input = "w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm";
+const label = "block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1";
+---
+<AdminLayout title="Bus prices" description="Negotiated bus parcel prices and parcel offices for destinations beyond the rider ring.">
+  <div class="max-w-5xl space-y-6">
+    <nav class="text-[10px] font-black uppercase tracking-widest text-gray-500 flex gap-3">
+      <a href="/admin/delivery" class="hover:text-brand-dark">Delivery</a><span>/</span><span class="text-brand-dark">Bus prices</span>
+    </nav>
+    <div>
+      <h1 class="text-2xl font-black text-brand-dark">Bus prices and parcel offices</h1>
+      <p class="text-sm text-gray-600 mt-1">
+        Beyond the rider ring a parcel goes on a bus to an office in the customer's town and they collect it there. The price is what you
+        agreed with the bus company, per town and per parcel size. A town with no card here is told "no current price" and goes to the
+        manual queue. Nothing is ever guessed from the next town along.
+      </p>
+    </div>
+
+    {notice && (
+      <div class={`rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-red-200 bg-red-50 text-red-900"}`} role="status">{notice.text}</div>
+    )}
+    {loadFailed && <p class="text-sm text-red-800">The bus price list is unavailable right now: the delivery service did not answer.</p>}
+
+    <form method="POST" class="bg-white border border-gray-200 rounded-2xl p-5 grid gap-3 sm:grid-cols-3">
+      <input type="hidden" name="intent" value="prices" />
+      <h2 class="sm:col-span-3 text-sm font-black uppercase tracking-widest text-gray-500">Set prices for a town</h2>
+      <label class="block"><span class={label}>Bus company</span><input name="carrier" required class={input} placeholder="Link Bus" /></label>
+      <label class="block"><span class={label}>Destination town</span><input name="town" required class={input} placeholder="Mukono" /></label>
+      <label class="block"><span class={label}>District</span><input name="district" required class={input} placeholder="Mukono" /></label>
+      <label class="block"><span class={label}>Small parcel, UGX</span><input name="feeSmall" inputmode="numeric" class={input} placeholder="leave blank if not agreed" /></label>
+      <label class="block"><span class={label}>Medium parcel, UGX</span><input name="feeMedium" inputmode="numeric" class={input} /></label>
+      <label class="block"><span class={label}>Large parcel, UGX</span><input name="feeLarge" inputmode="numeric" class={input} /></label>
+      <label class="block"><span class={label}>Who pays the bus</span>
+        <select name="chargedAt" required class={input}>
+          <option value="collection">The customer, at the office when collecting</option>
+          <option value="sending">We do, at sending (goes on the order)</option>
+        </select>
+      </label>
+      <label class="block"><span class={label}>Transit days, min</span><input name="transitDaysMin" inputmode="numeric" required value="1" class={input} /></label>
+      <label class="block"><span class={label}>Transit days, max</span><input name="transitDaysMax" inputmode="numeric" required value="2" class={input} /></label>
+      <label class="block"><span class={label}>Insurance, % of value (blank = none)</span><input name="insurancePct" inputmode="decimal" class={input} /></label>
+      <label class="block sm:col-span-2"><span class={label}>Where this price came from</span><input name="sourceNote" maxlength="500" class={input} placeholder="e.g. agreed with the Namayiba office manager, 16 Oct 2026" /></label>
+      <div class="sm:col-span-3"><button type="submit" class="bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:bg-black">Save prices</button></div>
+    </form>
+
+    <div class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+      <h2 class="px-5 pt-5 text-sm font-black uppercase tracking-widest text-gray-500">Current prices</h2>
+      {!loadFailed && current.length === 0 ? (
+        <p class="p-5 text-sm text-gray-600">No bus price has been entered yet, so every destination beyond the rider ring is still "no current price". Start with the towns your recent orders went to.</p>
+      ) : !loadFailed ? (
+        <table class="w-full text-sm mt-3">
+          <thead class="bg-gray-50 text-[10px] font-black uppercase tracking-wider text-gray-500"><tr><th class="text-left px-4 py-2">Town</th><th class="text-left px-4 py-2">Bus</th><th class="text-left px-4 py-2">Parcel</th><th class="text-right px-4 py-2">Price</th><th class="text-left px-4 py-2">Paid</th><th class="text-left px-4 py-2">Days</th><th class="text-left px-4 py-2">Since</th><th class="px-4 py-2"></th></tr></thead>
+          <tbody>
+            {current.map((c) => (
+              <tr class="border-t border-gray-100">
+                <td class="px-4 py-2 font-bold text-brand-dark">{c.destinationTown}, {c.destinationDistrict}</td>
+                <td class="px-4 py-2">{c.carrier}</td>
+                <td class="px-4 py-2">{c.parcelClass}</td>
+                <td class="px-4 py-2 text-right">{ugx(c.feeUgx)}</td>
+                <td class="px-4 py-2">{c.chargedAt === "collection" ? "at collection" : "at sending"}</td>
+                <td class="px-4 py-2">{c.transitDaysMin}–{c.transitDaysMax}</td>
+                <td class="px-4 py-2">{when(c.effectiveFrom)} (v{c.version})</td>
+                <td class="px-4 py-2 text-right">
+                  <form method="POST"><input type="hidden" name="intent" value="expire" /><input type="hidden" name="id" value={c.id} />
+                    <button type="submit" class="text-[10px] font-black uppercase tracking-wider text-gray-600 hover:text-red-700">Close</button></form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
+      {closed.length > 0 && (
+        <details class="px-5 py-3 text-xs text-gray-600"><summary class="cursor-pointer font-bold">{closed.length} closed card(s), kept for the record</summary>
+          <ul class="mt-2 space-y-1">{closed.map((c) => <li>{c.destinationTown} · {c.carrier} · {c.parcelClass} · {ugx(c.feeUgx)} · {when(c.effectiveFrom)} to {when(c.effectiveTo)} (v{c.version})</li>)}</ul>
+        </details>
+      )}
+    </div>
+
+    <form method="POST" class="bg-white border border-gray-200 rounded-2xl p-5 grid gap-3 sm:grid-cols-3">
+      <input type="hidden" name="intent" value="office" />
+      <h2 class="sm:col-span-3 text-sm font-black uppercase tracking-widest text-gray-500">Parcel office in a town</h2>
+      <p class="sm:col-span-3 text-xs text-gray-500 -mt-2">Optional but worth it: the customer is told where to collect, with the landmark and hours. One office per bus company per town; saving again updates it.</p>
+      <label class="block"><span class={label}>Bus company</span><input name="ocarrier" required class={input} /></label>
+      <label class="block"><span class={label}>Office name</span><input name="oname" required class={input} placeholder="Link Bus parcel office, Mukono" /></label>
+      <label class="block"><span class={label}>Town</span><input name="otown" required class={input} /></label>
+      <label class="block"><span class={label}>District</span><input name="odistrict" required class={input} /></label>
+      <label class="block"><span class={label}>Phone</span><input name="ophone" class={input} /></label>
+      <label class="block"><span class={label}>Landmark</span><input name="olandmark" class={input} placeholder="opposite the taxi park" /></label>
+      <label class="block sm:col-span-3"><span class={label}>Address</span><input name="oaddress" class={input} /></label>
+      <label class="block"><span class={label}>Departures from Kampala</span><input name="odepartures" class={input} placeholder="07:00, 13:00" /></label>
+      <label class="block sm:col-span-2"><span class={label}>Collection hours</span><input name="ocollection" class={input} placeholder="Mon–Sat 08:00–18:00" /></label>
+      <div class="sm:col-span-3"><button type="submit" class="bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:bg-black">Save office</button></div>
+    </form>
+
+    <div class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+      <h2 class="px-5 pt-5 text-sm font-black uppercase tracking-widest text-gray-500">Parcel offices</h2>
+      {!loadFailed && offices.length === 0 ? (
+        <p class="p-5 text-sm text-gray-600">No parcel office recorded yet. Quotes still work without one; the customer just gets the town rather than the exact office.</p>
+      ) : !loadFailed ? (
+        <table class="w-full text-sm mt-3">
+          <thead class="bg-gray-50 text-[10px] font-black uppercase tracking-wider text-gray-500"><tr><th class="text-left px-4 py-2">Office</th><th class="text-left px-4 py-2">Town</th><th class="text-left px-4 py-2">Bus</th><th class="text-left px-4 py-2">Landmark</th><th class="text-left px-4 py-2">Status</th><th class="px-4 py-2"></th></tr></thead>
+          <tbody>
+            {offices.map((o) => (
+              <tr class="border-t border-gray-100">
+                <td class="px-4 py-2 font-bold text-brand-dark">{o.name}</td>
+                <td class="px-4 py-2">{o.town}, {o.district}</td>
+                <td class="px-4 py-2">{o.carrier}</td>
+                <td class="px-4 py-2 text-xs">{o.landmarkText ?? "—"}</td>
+                <td class="px-4 py-2">{o.active ? "On" : "Off"}</td>
+                <td class="px-4 py-2 text-right">
+                  <form method="POST"><input type="hidden" name="intent" value="office-active" /><input type="hidden" name="id" value={o.id} /><input type="hidden" name="active" value={o.active ? "false" : "true"} />
+                    <button type="submit" class="text-[10px] font-black uppercase tracking-wider text-gray-600 hover:text-brand-dark">{o.active ? "Switch off" : "Switch on"}</button></form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : null}
+    </div>
+  </div>
+</AdminLayout>

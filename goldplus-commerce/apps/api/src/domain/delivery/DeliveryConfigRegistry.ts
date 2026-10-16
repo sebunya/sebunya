@@ -1,3 +1,5 @@
+import { parseCorridorCeilings } from './DeliveryCorridorCeilings';
+import { parseFeeLadder } from './DeliveryFeeLadder';
 /**
  * The delivery configuration registry (brief PART 6).
  *
@@ -231,6 +233,16 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     allowedValues: ['band_midpoint', 'measured'],
     label: 'Which distance the fee is worked out from',
     help: "'band_midpoint' prices every area at the middle of its distance band, as the module has always done. 'measured' prices an area by the straight-line km to its own point (times the learned detour factor) wherever one exists, and falls back to the band midpoint where none does. Ships as 'band_midpoint': the points are loaded and checked first, and the km are recorded on every quote either way, so switching changes nothing you have not already seen in the capture.",
+  },
+  {
+    key: 'own_rider_max_band_by_corridor',
+    tier: 2,
+    type: 'string',
+    unit: null,
+    mandatory: false,
+    defaultValue: null,
+    label: 'How far out our own rider goes, per road',
+    help: "Roads where the rider goes further or less far than the shop-wide limit, as corridor=band pairs: \"jinja_rd=B5, entebbe_rd=B4\". A road not listed uses 'How far out our own rider goes'. Write 'none' for no per-road limits. Corridor codes are the ones on the corridor file (cbd, kira_rd, jinja_rd, port_bell_rd, ggaba_rd, makindye_rd, entebbe_rd, masaka_rd, rubaga_rd, hoima_rd, mityana_rd, bombo_rd, gayaza_rd).",
   },
   // ── Fee shape (§4.5) ─────────────────────────────────────────────────
   {
@@ -736,6 +748,13 @@ export function validateConfigValue(key: string, raw: string): ConfigValidation 
   }
   if (entry.type === 'string') {
     if (!raw.trim()) return { ok: false, message: `${entry.label} cannot be empty.` };
+    if (key === 'own_rider_max_band_by_corridor') {
+      const parsed = parseCorridorCeilings(raw);
+      if (!parsed.ok) return { ok: false, message: `${entry.label}: ${parsed.message}` };
+    }
+    if (key === 'fee_ladder' && raw.trim() !== '' && !parseFeeLadder(raw)) {
+      return { ok: false, message: `${entry.label} must be two to twelve whole UGX amounts, e.g. 3000, 5000, 8000.` };
+    }
     return { ok: true, value: raw.trim() };
   }
   if (entry.type === 'boolean') {

@@ -7,7 +7,7 @@ import {
 } from '../../../domain/delivery/DeliveryModel';
 import { parseFeeLadder, type FeeShape } from '../../../domain/delivery/DeliveryFeeLadder';
 import { LearnedFactorState } from '../../../domain/delivery/DeliveryLearnedFactor';
-import { resolveFulfilmentMode } from '../../../domain/delivery/DeliveryFulfilmentMode';
+import { resolveFulfilmentMode, parseCorridorCeilings } from '../../../domain/delivery/DeliveryFulfilmentMode';
 import { FulfilmentQuote, applyFreeDeliveryThreshold, quoteFulfilment } from '../../../domain/delivery/DeliveryQuoteService';
 import { BusRateCard, ParcelOffice } from '../../../domain/delivery/DeliveryBusRateCard';
 import { BasketLine, capacitiesFromConfig, planParcels } from '../../../domain/delivery/DeliveryParcelClass';
@@ -174,7 +174,8 @@ export class DeliveryQuotingUseCase {
 
     const rawCeiling = raw.own_rider_max_band ?? null;
     const ceiling: DistanceBand | null = rawCeiling && isDistanceBand(rawCeiling) ? (rawCeiling as DistanceBand) : null;
-    const mode = resolved ? resolveFulfilmentMode({ ...resolved.input, declaredMode: null }, ceiling) : null;
+    const perRoad = parseCorridorCeilings(raw.own_rider_max_band_by_corridor ?? null);
+    const mode = resolved ? resolveFulfilmentMode({ ...resolved.input, declaredMode: null }, ceiling, perRoad.ok ? perRoad.ceilings : null) : null;
 
     // Hour of week in EAT, never the server's timezone.
     const parts = toEatParts(at);
