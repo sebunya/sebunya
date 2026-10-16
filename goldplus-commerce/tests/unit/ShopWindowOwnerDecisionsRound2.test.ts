@@ -264,7 +264,8 @@ describe('round 2 deferred items in the shop window', () => {
     const form = pdp.slice(pdp.indexOf('<form id="pdp-buy"'), pdp.indexOf('</form>', pdp.indexOf('<form id="pdp-buy"')));
     expect((form.match(/min-h-12/g) ?? []).length).toBe(2);
     expect(form).not.toMatch(/\bpy-3\b/);
-    expect(pdp).toMatch(/\{canBuy && \(\s*<div class="mb-8">\s*<DeliveryQuote/);
+    // 2026-10-16: "Deliver to" sits right above the quote, inside the same canBuy block.
+    expect(pdp).toMatch(/\{canBuy && \(\s*<div class="mb-8 space-y-3">\s*<DeliverTo place=\{deliverTo\} id="pdpDeliverTo" \/>\s*<DeliveryQuote/);
   });
 
   it('the home Popular rail divides six cards evenly; the shared rail grid is unchanged', () => {

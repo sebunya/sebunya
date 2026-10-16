@@ -21,6 +21,13 @@ routes.use('*', authMiddleware);
 
 const actor = (c: { get(k: string): unknown }) => (c.get('user') as { id: string }).id;
 
+// ── Google Places spend (deep place layer) ────────────────────────────────
+routes.get('/places-usage', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
+  const registry = Registry.getInstance();
+  const data = { configured: registry.deepPlaceSearchUseCase.configured(), usage: await registry.deepPlaceSearchUseCase.usage() };
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+
 // ── Unresolved searches ──────────────────────────────────────────────────
 routes.get('/misses', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
   const data = await Registry.getInstance().listSearchMissesUseCase.execute(Number(c.req.query('limit') ?? 100));

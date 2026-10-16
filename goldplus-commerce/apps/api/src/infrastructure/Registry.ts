@@ -321,6 +321,11 @@ import {
   RecordActualRiderCostUseCase,
 } from '../application/use-cases/delivery/DeliveryCaptureUseCases';
 import { DeliveryAreaResolver, DeliveryWizardAreaReader } from './delivery/DeliveryAreaResolver';
+import { GooglePlacesProvider } from './places/GooglePlacesProvider';
+import { DrizzlePlaceMemoryReader } from './db/repositories/DrizzlePlaceMemoryReader';
+import { GetPlaceMemoryUseCase } from '../application/use-cases/delivery/GetPlaceMemoryUseCase';
+import { RedisPlaceLocationCache, RedisPlaceRequestBudget } from './places/RedisPlaceStores';
+import { DeepPlaceSearchUseCase } from '../application/use-cases/locations/DeepPlaceSearchUseCases';
 import { DrizzleDeliveryQuotingRepository } from './db/repositories/DrizzleDeliveryQuotingRepository';
 import { DrizzleDeliveryVarianceRepository } from './db/repositories/DrizzleDeliveryVarianceRepository';
 import { DrizzleDeliveryCalibrationRepository } from './db/repositories/DrizzleDeliveryCalibrationRepository';
@@ -1631,6 +1636,10 @@ export class Registry {
   public readonly customerLocationContextReader = new DrizzleCustomerLocationContextReader();
   public readonly locationSearchService = new LocationSearchService(this.locationSearchRepo, this.locationOrderDensityReader);
   public readonly searchLocationsUseCase = new SearchLocationsUseCase(this.locationSearchService, this.searchMissRecorder);
+  /** Buildings and places under our gazetteer, via Google Places (New), under a shared monthly budget (2026-10-16). */
+  /** What earlier deliveries to the same customer and area taught our riders (2026-10-16). */
+  public readonly getPlaceMemoryUseCase = new GetPlaceMemoryUseCase(new DrizzlePlaceMemoryReader());
+  public readonly deepPlaceSearchUseCase = new DeepPlaceSearchUseCase(new GooglePlacesProvider(), new RedisPlaceRequestBudget(), new RedisPlaceLocationCache());
   public readonly recordLocationSearchEventUseCase = new RecordLocationSearchEventUseCase(this.searchMissRecorder);
   public readonly resolveMapLinkUseCase = new ResolveMapLinkUseCase(new HttpShortLinkResolver());
   public readonly locationAdminRepo = new DrizzleLocationAdminRepository();

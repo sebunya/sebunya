@@ -1,5 +1,7 @@
 ---
 import DeliveryQuote from "../../components/DeliveryQuote.astro";
+import DeliverTo from "../../components/DeliverTo.astro";
+import { knownDeliveryPlace } from "../../lib/deliveryPlace";
 import { indexableCategoryHref } from '../../lib/indexableLinks';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import ProductJsonLd from '../../components/ProductJsonLd.astro';
@@ -487,6 +489,9 @@ const verdictBadge: Record<string, string> = {
 
 // No selling price = nothing to buy: checkout refuses a priceless line (PRICE_UNAVAILABLE).
 const canBuy = product?.availability.kind === 'in_stock' && pdpHasPrice;
+// "Deliver to": the area this customer told us (chosen, or their last checkout on this device), so the quote below
+// is THEIR fee, not "from …". Never inferred from the IP address.
+const deliverTo = knownDeliveryPlace(Astro.cookies, Astro.request);
 // Search snippet (2026-10-08 SEO audit: all 183 titles were the bare name and
 // every description the same template; none said Kampala, Uganda or the price,
 // which is how shoppers here search — "… price in Uganda"). Built only from
@@ -749,10 +754,13 @@ if (product) {
               Only for a product that can be bought: quoting delivery for one that
               is out of stock answers a question nobody can act on. */}
           {canBuy && (
-            <div class="mb-8">
+            <div class="mb-8 space-y-3">
+              <DeliverTo place={deliverTo} id="pdpDeliverTo" />
               <DeliveryQuote
                 stage={1}
                 compact={true}
+                areaSlug={deliverTo?.areaSlug ?? null}
+                district={deliverTo?.district ?? null}
                 items={[{ productId: product.id, quantity: 1 }]}
                 subtotalUgx={product.retailPriceUgx ?? 0}
               />

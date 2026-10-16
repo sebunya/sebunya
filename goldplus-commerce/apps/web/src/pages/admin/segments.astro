@@ -31,6 +31,9 @@ const RULE_KINDS: Array<[string, string]> = [
   ["RFM_SEGMENT", "RFM segment is (value: one or more, e.g. At Risk, Can't Lose)"],
   ["PAYMENT_HABIT", "Usually pays (value: cash on delivery, online or both)"],
   ["DISTRICT", "Most deliveries go to a district (value: the district)"],
+  ["GREATER_KAMPALA", "Most deliveries go to Greater Kampala (Kampala, Wakiso, Mukono, Mpigi)"],
+  ["AREA", "Most deliveries go to an area (value: the area, e.g. Najjera)"],
+  ["COLLECTS", "Has collected an order from a pickup point"],
 ];
 const RFM_NAMES = ["Champions", "Loyal", "Potential Loyalist", "New", "Promising", "Needs Attention", "At Risk", "Can't Lose", "Hibernating", "Lost"];
 const rfmFrom = (v: string) => v.split(",").map((x) => x.trim().toLowerCase().replace(/[’`]/g, "'")).filter(Boolean)
@@ -56,6 +59,7 @@ function definitionFrom(f: FormData) {
     else if (kind === "RFM_SEGMENT") rules.push({ kind, segments: rfmFrom(value) });
     else if (kind === "PAYMENT_HABIT") rules.push({ kind, habit: habitFrom(value) });
     else if (kind === "DISTRICT") rules.push({ kind, district: value });
+    else if (kind === "AREA") rules.push({ kind, area: value });
     else rules.push({ kind });
   }
   return { match: String(f.get("match") ?? "ALL") === "ANY" ? "ANY" : "ALL", rules };

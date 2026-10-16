@@ -14,7 +14,7 @@ export interface AddressStructuredFields {
   gpsLat?: number | null;
   gpsLng?: number | null;
   gpsAccuracyM?: number | null;
-  gpsSource?: 'device' | 'pasted_link' | 'ops_entered' | null;
+  gpsSource?: 'device' | 'pasted_link' | 'map_place' | 'ops_entered' | null;
   rawAddressText?: string | null;
   resolutionStatus?: 'resolved' | 'needs_ops_review' | 'ops_confirmed' | 'undeliverable';
   deliveryMethod?: 'door' | 'pickup_point';

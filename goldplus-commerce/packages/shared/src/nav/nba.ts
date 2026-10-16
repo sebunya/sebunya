@@ -40,6 +40,12 @@ export interface NbaContext {
   saleLive: boolean;
   /** operator-configured cutoff label for copy, e.g. "5:00pm" (default 5:00pm) */
   cutoffLabel?: string;
+  /**
+   * "Deliver to": the area the customer told us on this device (2026-10-16). With sameDay true the same-day lines
+   * name it; with sameDay false (outside Kampala & Wakiso) there is no same-day line at all, because it would be a
+   * promise this customer cannot have. Absent: the general Kampala & Wakiso lines.
+   */
+  deliverTo?: { label: string; sameDay: boolean } | null;
 }
 
 export interface NbaItem {
@@ -112,11 +118,13 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
   // Same-day is for Kampala & Wakiso only, so every same-day line names the
   // area, in the same words as the GpNav fallback list. This server list wins
   // over that fallback, so the two must say the same thing.
-  const SD = 'Kampala & Wakiso: ';
+  const place = ctx.deliverTo && ctx.deliverTo.label ? ctx.deliverTo : null;
+  const SD = place?.sameDay ? place.label + ': ' : 'Kampala & Wakiso: ';
+  const noSameDay = place ? !place.sameDay : false;
   const hm = Math.floor(ctx.minsToCutoff / 60) + 'h ' + (ctx.minsToCutoff % 60) + 'm';
 
   // Cart beats sign-in status — an anonymous visitor with items is the highest-intent person here.
-  if (ctx.cart > 0 && ctx.beforeCutoff) {
+  if (ctx.cart > 0 && ctx.beforeCutoff && !noSameDay) {
     c.push({
       id: 'cart-cutoff', score: 96,
       text: ctx.minsToCutoff <= 60
@@ -188,16 +196,16 @@ export function computeNbaCandidates(ctx: NbaContext, rates: NbaRates = DEFAULT_
   const cutoffLabel = ctx.cutoffLabel || '5:00pm';
   if (ctx.sunday) {
     c.push({ id: 'sunday', score: 40, text: 'Closed today. Orders go out again on the <b>next working day</b>', short: 'Delivery resumes <b>next working day</b>', href: R.delivery });
-  } else if (ctx.beforeCutoff) {
+  } else if (ctx.beforeCutoff && !noSameDay) {
     c.push({
       id: 'cutoff', score: ctx.minsToCutoff <= 60 ? 90 : 50, urgent: ctx.minsToCutoff <= 60,
       text: ctx.minsToCutoff <= 60
         ? SD + 'only <em>' + ctx.minsToCutoff + ' minutes</em> left to order for it to go out today'
-        : 'Order before <b>' + cutoffLabel + '</b> and it goes out today in Kampala and Wakiso',
+        : 'Order before <b>' + cutoffLabel + '</b> and it goes out today in ' + (place?.sameDay ? place.label : 'Kampala and Wakiso'),
       short: ctx.minsToCutoff <= 60 ? SD + '<em>' + ctx.minsToCutoff + ' min</em> left to go out today' : SD + 'order by <b>' + cutoffLabel + '</b>, out today',
       href: R.delivery,
     });
-  } else {
+  } else if (!noSameDay) {
     c.push({ id: 'aftercutoff', score: 44, text: "Today's run has left. Order now and it goes out <b>tomorrow morning</b>", short: 'Next delivery run is <b>tomorrow</b>', href: R.delivery });
   }
 

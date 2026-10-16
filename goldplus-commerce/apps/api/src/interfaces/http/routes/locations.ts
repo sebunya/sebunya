@@ -70,6 +70,46 @@ routes.get('/near', async (c) => {
   return c.json({ success: true, data: { areas } } satisfies ApiResponse<{ areas: typeof areas }>);
 });
 
+/**
+ * Deep place search (2026-10-16): buildings, malls, plots our gazetteer does not hold, via Google Places (New).
+ * Called by the picker only when our own search cannot answer; the use case enforces the monthly budget,
+ * the per-session cap, the cache and "Not configured". The query text goes to Google; nothing personal does.
+ */
+const deepSearchSchema = z.object({ q: z.string().min(1).max(100), session: z.string().regex(/^[A-Za-z0-9-]{16,64}$/) }).strict();
+const deepPlaceSchema = z.object({ placeId: z.string().min(10).max(300), session: z.string().regex(/^[A-Za-z0-9-]{16,64}$/) }).strict();
+
+/** Whether the deep layer exists at all, so the picker does not offer it on a site without a key. Free. */
+routes.get('/deep-status', (c) =>
+  c.json({ success: true, data: { configured: Registry.getInstance().deepPlaceSearchUseCase.configured() } }),
+);
+
+routes.post('/deep-search', async (c) => {
+  const parsed = deepSearchSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    return c.json({ success: false, error: { code: 'INVALID_BODY', message: 'Invalid body.' } } satisfies ApiResponse<never>, 400);
+  }
+  const result = await Registry.getInstance().deepPlaceSearchUseCase.suggest({ query: parsed.data.q, sessionToken: parsed.data.session });
+  return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
+});
+
+/**
+ * A chosen place → its point, for the rider only. Ends the billing session.
+ * Google Maps Platform Terms §3.2.3(c)(iv) forbid using Places latitude/longitude as input to point-in-polygon
+ * analysis, so the point is NEVER matched to one of our areas or used to price: the customer names the area
+ * with our own search, and that prices the order.
+ */
+routes.post('/deep-place', async (c) => {
+  const parsed = deepPlaceSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) {
+    return c.json({ success: false, error: { code: 'INVALID_BODY', message: 'Invalid body.' } } satisfies ApiResponse<never>, 400);
+  }
+  const found = await Registry.getInstance().deepPlaceSearchUseCase.locate({ placeId: parsed.data.placeId, sessionToken: parsed.data.session });
+  if (found.status !== 'ok') {
+    return c.json({ success: true, data: { status: found.status, point: null } });
+  }
+  return c.json({ success: true, data: { status: 'ok', point: found.point } });
+});
+
 routes.post('/search-events', async (c) => {
   const parsed = searchEventSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {

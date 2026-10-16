@@ -36,6 +36,7 @@ export type RouteFamily =
   | 'product-finder'
   | 'recommendations'
   | 'location-search'
+  | 'location-deep'
   | 'telemetry'
   | 'payment-webhook'
   | 'cart'
@@ -105,6 +106,9 @@ const POLICIES: Record<RouteFamily, FamilyPolicy> = {
   // gazetteer. STRICT on Redis outage: search degrades to the offline metro
   // index / district select, so failing closed costs nothing.
   'location-search': { family: 'location-search', limit: 300, windowMs: MINUTE, class: 'READ', outage: 'STRICT' },
+  // Deep place search spends a paid Google request per call: an honest customer makes a handful per checkout,
+  // so 20/min per client is generous for them and starves a scraper. STRICT: on outage it simply is not offered.
+  'location-deep': { family: 'location-deep', limit: 20, windowMs: MINUTE, class: 'READ', outage: 'STRICT' },
   // High-volume, low-value beacons. Per-second window matches the prior control.
   'telemetry': { family: 'telemetry', limit: 100, windowMs: 1_000, class: 'TELEMETRY', outage: 'STRICT' },
   // Provider callbacks / IPN. HMAC-authenticated separately, low volume, high
@@ -195,6 +199,7 @@ export function classifyPublicEndpoint(method: string, rawPath: string): RouteFa
   if (isUnder(path, '/recommendations')) return 'recommendations';
   if (isUnder(path, '/product-finder')) return 'product-finder';
 
+  if (isUnder(path, '/locations/deep-search') || isUnder(path, '/locations/deep-place')) return 'location-deep';
   if (isUnder(path, '/locations')) return 'location-search';
 
   // Cart mutations.

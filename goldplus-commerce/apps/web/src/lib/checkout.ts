@@ -38,7 +38,8 @@ export interface StructuredDeliveryLocation {
   gpsLat?: number;
   gpsLng?: number;
   gpsAccuracyM?: number;
-  gpsSource?: 'device' | 'pasted_link';
+  gpsSource?: 'device' | 'pasted_link' | 'map_place';
+  placeId?: string;
 }
 
 export function validateCheckoutPayload(payload: Partial<CheckoutPayload>): { valid: boolean; errors: string[] } {
@@ -126,9 +127,11 @@ export function prepareCheckoutPayload(formData: FormData, cartItems: CartItem[]
                 gpsLat: loc.gpsLat,
                 gpsLng: loc.gpsLng,
                 ...(typeof loc.gpsAccuracyM === 'number' ? { gpsAccuracyM: loc.gpsAccuracyM } : {}),
-                ...(loc.gpsSource === 'device' || loc.gpsSource === 'pasted_link' ? { gpsSource: loc.gpsSource } : {}),
+                ...(loc.gpsSource === 'device' || loc.gpsSource === 'pasted_link' || loc.gpsSource === 'map_place' ? { gpsSource: loc.gpsSource } : {}),
               }
             : {}),
+          // A Google Places pick: the place ID outlives the coordinates (purged after 29 days).
+          ...(typeof loc.placeId === 'string' && /^[A-Za-z0-9_-]{10,300}$/.test(loc.placeId) ? { placeId: loc.placeId } : {}),
         };
         return {
           customerDetails: {

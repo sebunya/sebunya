@@ -107,6 +107,8 @@ let refundsLoaded = false;
 // link to a real-format stranger's number.
 let loadError: { title: string; detail: string } | null = null;
 let fulfilmentTaskId: string | null = null;
+// Place memory: what riders learned the last times we delivered to this customer in this area (our own records).
+let placeMemory: null | { deliveredBefore: number; riderLine: string | null; handoverPin: { lat: number; lng: number; accuracyM: number | null; orderNumber: string } | null } = null;
 
 try {
   const res = await fetch(`${apiBase}/governance/admin/orders/${encodeURIComponent(String(id ?? ''))}`, {
@@ -134,6 +136,11 @@ try {
         const fj = fr.ok ? await fr.json().catch(() => null) : null;
         if (fj?.success && typeof fj.data?.id === 'string') fulfilmentTaskId = fj.data.id;
       } catch { /* the link is a convenience */ }
+      try {
+        const pr = await fetch(`${apiBase}/admin/orders/${encodeURIComponent(order.id)}/place-memory`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(3000) });
+        const pj = pr.ok ? await pr.json().catch(() => null) : null;
+        if (pj?.success && pj.data) placeMemory = pj.data;
+      } catch { /* memory is a help, never a dependency */ }
     } else {
       loadError = orderLoadError(0);
     }
@@ -577,6 +584,16 @@ const customerHref = order?.userId ? `/admin/customers/${encodeURIComponent(orde
               `Landmark/directions: ${order.deliveryAddress}`,
               (order.deliveryLocation && typeof order.deliveryLocation === 'object' && (order.deliveryLocation as any).gpsLat)
                 ? `Map pin: https://maps.google.com/?q=${(order.deliveryLocation as any).gpsLat},${(order.deliveryLocation as any).gpsLng}`
+                : null,
+              // A building the customer picked from Google Places: this link opens that exact place, and keeps working
+              // after its coordinates are purged (day 29): Google's terms let us keep the place ID.
+              (order.deliveryLocation && typeof order.deliveryLocation === 'object' && typeof (order.deliveryLocation as any).placeId === 'string')
+                ? `Building on Google Maps: https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(String(order.deliveryAddress || order.deliveryArea || 'Delivery'))}&query_place_id=${encodeURIComponent((order.deliveryLocation as any).placeId)}`
+                : null,
+              // Place memory from our own earlier deliveries here (same customer, same area).
+              placeMemory?.riderLine ? `Before: ${placeMemory.riderLine}` : null,
+              placeMemory?.handoverPin
+                ? `Where the last rider handed over (${placeMemory.handoverPin.orderNumber}): https://maps.google.com/?q=${placeMemory.handoverPin.lat},${placeMemory.handoverPin.lng}`
                 : null,
               `Items: ${(order.items || []).reduce((n: number, i: any) => n + (Number(i.quantity) || 0), 0)}`,
               order.paymentStatus === 'paid'

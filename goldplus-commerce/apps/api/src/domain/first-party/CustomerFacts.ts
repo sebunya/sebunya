@@ -16,6 +16,10 @@ export interface OrderFact {
   paymentMethod?: string | null;
   /** 0157: the delivery district recorded on the order, when there is one. */
   district?: string | null;
+  /** 2026-10-16: the delivery area label recorded on the order ("Najjera, Wakiso"), when there is one. */
+  area?: string | null;
+  /** 2026-10-16: collected from a pickup point (no delivery area). */
+  collected?: boolean;
 }
 
 export interface AbandonedBasketFact {

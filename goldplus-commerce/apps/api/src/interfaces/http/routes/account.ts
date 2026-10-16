@@ -178,7 +178,7 @@ routes.post('/addresses', async (c) => {
     gpsLat: typeof body.gpsLat === 'number' ? body.gpsLat : undefined,
     gpsLng: typeof body.gpsLng === 'number' ? body.gpsLng : undefined,
     gpsAccuracyM: typeof body.gpsAccuracyM === 'number' ? body.gpsAccuracyM : undefined,
-    gpsSource: body.gpsSource === 'device' || body.gpsSource === 'pasted_link' ? body.gpsSource : undefined,
+    gpsSource: body.gpsSource === 'device' || body.gpsSource === 'pasted_link' || body.gpsSource === 'map_place' ? body.gpsSource : undefined,
     rawAddressText: body.rawAddressText ? String(body.rawAddressText) : undefined,
     deliveryMethod: body.deliveryMethod === 'pickup_point' ? 'pickup_point' : undefined,
     pickupPointId: body.pickupPointId ? String(body.pickupPointId) : undefined,
@@ -215,7 +215,7 @@ routes.put('/addresses/:id', async (c) => {
   for (const k of ['gpsLat','gpsLng','gpsAccuracyM','snapshotDataVersion'] as const) {
     if (typeof body[k] === 'number') patch[k] = body[k];
   }
-  if (body.gpsSource === 'device' || body.gpsSource === 'pasted_link') patch.gpsSource = body.gpsSource;
+  if (body.gpsSource === 'device' || body.gpsSource === 'pasted_link' || body.gpsSource === 'map_place') patch.gpsSource = body.gpsSource;
   if (body.deliveryMethod === 'door' || body.deliveryMethod === 'pickup_point') patch.deliveryMethod = body.deliveryMethod;
   const result = await uc.execute(userId, c.req.param('id'), patch);
   if (!result.ok) {
