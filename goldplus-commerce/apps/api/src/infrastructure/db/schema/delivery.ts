@@ -266,6 +266,9 @@ export const deliveryBusRateCard = pgTable('delivery_bus_rate_card', {
   effectiveTo: timestamp('effective_to', { withTimezone: true }),
   version: integer('version').default(1).notNull(),
   sourceNote: text('source_note'),
+  /** 0192: 'taxi' | 'bus' | 'special'. */
+  carrierKind: varchar('carrier_kind', { length: 12 }).default('bus').notNull(),
+  handoverPoint: varchar('handover_point', { length: 160 }),
   createdBy: uuid('created_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({

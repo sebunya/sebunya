@@ -616,6 +616,8 @@ routes.post('/bus-rates', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PUBLIS
     carrier: String(body?.carrier ?? ''),
     destinationTown: String(body?.destinationTown ?? ''),
     destinationDistrict: String(body?.destinationDistrict ?? ''),
+    carrierKind: String(body?.carrierKind ?? 'bus'),
+    handoverPoint: body?.handoverPoint ? String(body.handoverPoint) : null,
     fees: { small: n(body?.feeSmall), medium: n(body?.feeMedium), large: n(body?.feeLarge) },
     insurancePctOfDeclaredValue: n(body?.insurancePct),
     transitDaysMin: Number(body?.transitDaysMin ?? Number.NaN),

@@ -7,7 +7,7 @@ import {
   factorFromRow,
   priorFactor,
 } from '../../../domain/delivery/DeliveryLearnedFactor';
-import { BusRateCard, ParcelOffice } from '../../../domain/delivery/DeliveryBusRateCard';
+import { BusRateCard, ParcelOffice, isCarrierKind } from '../../../domain/delivery/DeliveryBusRateCard';
 import { isShippingClass } from '../../../domain/delivery/DeliveryParcelClass';
 
 /**
@@ -165,7 +165,7 @@ export class DrizzleDeliveryQuotingRepository implements IDeliveryQuotingReposit
     const rows = (await db.execute(sql`
       select id, carrier, destination_town, destination_district, parcel_class, fee_ugx,
              insurance_pct_of_declared_value, transit_days_min, transit_days_max, charged_at,
-             effective_from, effective_to, version
+             effective_from, effective_to, version, carrier_kind, handover_point
       from delivery_bus_rate_card
       where lower(destination_town) = lower(${input.town})`)) as unknown as Array<Record<string, unknown>>;
     return rows.map((c) => ({
@@ -182,6 +182,8 @@ export class DrizzleDeliveryQuotingRepository implements IDeliveryQuotingReposit
       chargedAt: String(c.charged_at) as BusRateCard['chargedAt'],
       effectiveFrom: new Date(String(c.effective_from)),
       effectiveTo: c.effective_to === null ? null : new Date(String(c.effective_to)),
+      carrierKind: isCarrierKind(c.carrier_kind) ? c.carrier_kind : 'bus',
+      handoverPoint: c.handover_point === null || c.handover_point === undefined ? null : String(c.handover_point),
       version: Number(c.version),
     }));
   }

@@ -38,6 +38,19 @@ export const PARCEL_CLASSES = SHIPPING_CLASSES;
 /** Who pays the carrier, and when. Both are real arrangements in this market. */
 export type ChargedAt = 'sending' | 'collection';
 
+/**
+ * How a parcel travels beyond the rider ring (owner, 2026-10-16): by TAXI (a
+ * matatu from the taxi park to a stage, usually the same day, the conductor
+ * paid on collection), by BUS (a bus company's parcel office), or a SPECIAL
+ * arrangement made personally for that destination, where no price is quoted
+ * and the team confirms by phone. Never a ferry: lake areas are pickup-only.
+ */
+export const CARRIER_KINDS = ['taxi', 'bus', 'special'] as const;
+export type CarrierKind = (typeof CARRIER_KINDS)[number];
+export function isCarrierKind(v: unknown): v is CarrierKind {
+  return typeof v === 'string' && (CARRIER_KINDS as readonly string[]).includes(v);
+}
+
 export interface BusRateCard {
   id: string;
   carrier: string;
@@ -54,6 +67,10 @@ export interface BusRateCard {
   /** Null means open-ended. A past date means expired. */
   effectiveTo: Date | null;
   version: number;
+  /** Taxi, bus or special. Cards written before 0192 are buses. */
+  carrierKind?: CarrierKind;
+  /** The stage or office the customer collects from, in the carrier's words. */
+  handoverPoint?: string | null;
 }
 
 export interface ParcelOffice {
@@ -84,7 +101,9 @@ export type RateCardSelection =
       reason:
         | 'NO_CARD_FOR_DESTINATION'
         | 'ALL_CARDS_EXPIRED'
-        | 'NO_CARD_FOR_PARCEL_CLASS';
+        | 'NO_CARD_FOR_PARCEL_CLASS'
+        /** A current card says: arranged personally, no quoted price. */
+        | 'SPECIAL_ARRANGEMENT';
       /** What a human needs to go and negotiate. */
       detail: string;
     };
@@ -141,7 +160,12 @@ export function selectRateCard(
     };
   }
 
-  const sorted = [...forClass].sort((a, b) => a.feeUgx - b.feeUgx || b.version - a.version);
+  // A destination marked 'special' is served, but by a person: never a number here.
+  if (forClass.every((c) => (c.carrierKind ?? 'bus') === 'special')) {
+    return { ok: false, reason: 'SPECIAL_ARRANGEMENT', detail: `${request.destinationTown} is arranged personally; the team confirms the fee.` };
+  }
+  const priced = forClass.filter((c) => (c.carrierKind ?? 'bus') !== 'special');
+  const sorted = [...priced].sort((a, b) => a.feeUgx - b.feeUgx || b.version - a.version);
   return { ok: true, card: sorted[0] };
 }
 
@@ -157,6 +181,8 @@ export interface ShipmentQuote {
   chargedAt: ChargedAt;
   insuranceUgx: number | null;
   office: ParcelOffice | null;
+  carrierKind: CarrierKind;
+  handoverPoint: string | null;
 }
 
 /**
@@ -178,6 +204,8 @@ export function buildShipmentQuote(input: {
       : Math.round((input.declaredValueUgx * pct) / 100);
 
   return {
+    carrierKind: input.card.carrierKind ?? 'bus',
+    handoverPoint: input.card.handoverPoint ?? null,
     feeUgx: input.card.feeUgx,
     carrier: input.card.carrier,
     rateCardId: input.card.id,
@@ -199,11 +227,18 @@ export function buildShipmentQuote(input: {
  * transit range and who pays when.
  */
 export function shipmentSummary(quote: ShipmentQuote): string {
-  const days =
-    quote.transitDaysMin === quote.transitDaysMax
-      ? `${quote.transitDaysMin} day${quote.transitDaysMin === 1 ? '' : 's'}`
-      : `${quote.transitDaysMin} to ${quote.transitDaysMax} days`;
-  const where = quote.office ? `${quote.office.officeName} in ${quote.office.town}` : 'the carrier’s parcel office in your town';
-  const pay = quote.chargedAt === 'collection' ? 'You pay the carrier when you collect it.' : 'The shipping fee is paid with your order.';
-  return `We send your parcel by ${quote.carrier} to ${where}, and you collect it there. It usually takes ${days}. ${pay}`;
+  const kind = quote.carrierKind ?? 'bus';
+  const timing =
+    quote.transitDaysMax === 0
+      ? 'It usually arrives the same day.'
+      : quote.transitDaysMin === quote.transitDaysMax
+        ? `It usually takes ${quote.transitDaysMin} day${quote.transitDaysMin === 1 ? '' : 's'}.`
+        : `It usually takes ${quote.transitDaysMin} to ${quote.transitDaysMax} days.`;
+  const place =
+    quote.handoverPoint ??
+    (quote.office ? `${quote.office.officeName} in ${quote.office.town}` : kind === 'taxi' ? 'the taxi stage in your town' : 'the carrier’s parcel office in your town');
+  const who = kind === 'taxi' ? 'the conductor' : 'the carrier';
+  const pay = quote.chargedAt === 'collection' ? `You pay ${who} when you collect it.` : 'The shipping fee is paid with your order.';
+  const how = kind === 'taxi' ? `by taxi (${quote.carrier})` : `by ${quote.carrier} bus`;
+  return `We send your parcel ${how} to ${place}, and you collect it there. ${timing} ${pay}`;
 }

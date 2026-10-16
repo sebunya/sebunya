@@ -359,7 +359,9 @@ describe('the six refusals', () => {
     // customer asked about a door delivery; PARCEL_CLASS_UNKNOWN needs a basket
     // the quoting service is not given here. Both are absent by design.
     expect([...produced].sort()).toEqual(
-      [...UNAVAILABLE_REASONS].filter((r) => r !== 'CARRIER_REQUIRED' && r !== 'PARCEL_CLASS_UNKNOWN').sort(),
+      // SPECIAL_ARRANGEMENT needs a current card marked special, which this harness has no basket or cards for;
+      // it is covered in DeliveryRoadsAndBusRates.test.ts through selectRateCard.
+      [...UNAVAILABLE_REASONS].filter((r) => r !== 'CARRIER_REQUIRED' && r !== 'PARCEL_CLASS_UNKNOWN' && r !== 'SPECIAL_ARRANGEMENT').sort(),
     );
   });
 

@@ -20,6 +20,8 @@ const toCard = (c: Row): RateCardRow => ({
   effectiveTo: c.effective_to === null ? null : new Date(String(c.effective_to)),
   version: Number(c.version),
   sourceNote: c.source_note === null ? null : String(c.source_note),
+  carrierKind: (c.carrier_kind === 'taxi' || c.carrier_kind === 'special' ? c.carrier_kind : 'bus') as RateCardRow['carrierKind'],
+  handoverPoint: c.handover_point === null || c.handover_point === undefined ? null : String(c.handover_point),
 });
 
 const toOffice = (o: Row): ParcelOfficeRow => ({
@@ -37,7 +39,7 @@ const toOffice = (o: Row): ParcelOfficeRow => ({
 });
 
 const CARD_COLS = sql`id, carrier, destination_town, destination_district, parcel_class, fee_ugx, insurance_pct_of_declared_value,
-  transit_days_min, transit_days_max, charged_at, effective_from, effective_to, version, source_note`;
+  transit_days_min, transit_days_max, charged_at, effective_from, effective_to, version, source_note, carrier_kind, handover_point`;
 
 export class DrizzleBusRateCardAdminRepository implements IBusRateCardAdminRepository {
   async listCards(): Promise<RateCardRow[]> {
@@ -61,10 +63,10 @@ export class DrizzleBusRateCardAdminRepository implements IBusRateCardAdminRepos
       const [row] = rows(await tx.execute(sql`
         insert into delivery_bus_rate_card
           (carrier, destination_town, destination_district, parcel_class, fee_ugx, insurance_pct_of_declared_value,
-           transit_days_min, transit_days_max, charged_at, effective_from, effective_to, version, source_note, created_by)
+           transit_days_min, transit_days_max, charged_at, effective_from, effective_to, version, source_note, created_by, carrier_kind, handover_point)
         values (${input.carrier}, ${input.destinationTown}, ${input.destinationDistrict}, ${input.parcelClass}, ${input.feeUgx},
                 ${input.insurancePctOfDeclaredValue}, ${input.transitDaysMin}, ${input.transitDaysMax}, ${input.chargedAt},
-                ${input.now}, null, ${version}, ${input.sourceNote}, ${input.createdBy})
+                ${input.now}, null, ${version}, ${input.sourceNote}, ${input.createdBy}, ${input.carrierKind}, ${input.handoverPoint})
         returning ${CARD_COLS}`));
       return toCard(row);
     });

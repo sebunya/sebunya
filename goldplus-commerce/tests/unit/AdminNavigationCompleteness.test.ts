@@ -42,7 +42,7 @@ const EXCLUDED: Record<string, string> = {
   '/admin/fulfilment/report': 'reached from Fulfilment',
   '/admin/delivery/calibration': 'reached from the Delivery Control Centre',
   '/admin/delivery/riders': 'reached from the Delivery Control Centre (0190)',
-  '/admin/delivery/bus-rates': 'reached from the Delivery Control Centre (bus prices, 2026-10-16)',
+  '/admin/delivery/bus-rates': 'reached from the Delivery Control Centre (upcountry shipping, 2026-10-16)',
   '/admin/delivery/launch': 'reached from the Delivery Control Centre',
   '/admin/loyalty/gamification': 'reached from Loyalty & rewards',
   '/admin/batteries/catalogue': 'reached from Batteries',

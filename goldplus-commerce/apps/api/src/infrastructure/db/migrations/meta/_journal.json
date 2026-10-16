@@ -1338,6 +1338,13 @@
       "when": 1790140000068,
       "tag": "0191_dispatch_stops_on_trip",
       "breakpoints": true
+    },
+    {
+      "idx": 191,
+      "version": "5",
+      "when": 1790140000069,
+      "tag": "0192_upcountry_carrier_kind",
+      "breakpoints": true
     }
   ]
 }

@@ -27,6 +27,7 @@ if (Astro.request.method === "POST") {
         headers,
         body: JSON.stringify({
           carrier: s("carrier"), destinationTown: s("town"), destinationDistrict: s("district"),
+          carrierKind: s("carrierKind"), handoverPoint: s("handoverPoint"),
           feeSmall: s("feeSmall"), feeMedium: s("feeMedium"), feeLarge: s("feeLarge"),
           insurancePct: s("insurancePct"), transitDaysMin: s("transitDaysMin"), transitDaysMax: s("transitDaysMax"),
           chargedAt: s("chargedAt"), sourceNote: s("sourceNote"),
@@ -79,17 +80,19 @@ const when = (d: string) => new Date(d).toLocaleDateString("en-UG", { timeZone: 
 const input = "w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm";
 const label = "block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1";
 ---
-<AdminLayout title="Bus prices" description="Negotiated bus parcel prices and parcel offices for destinations beyond the rider ring.">
+<AdminLayout title="Upcountry shipping" description="How a parcel travels beyond the rider ring: by taxi, by bus, or a special arrangement, with the negotiated price per town.">
   <div class="max-w-5xl space-y-6">
     <nav class="text-[10px] font-black uppercase tracking-widest text-gray-500 flex gap-3">
-      <a href="/admin/delivery" class="hover:text-brand-dark">Delivery</a><span>/</span><span class="text-brand-dark">Bus prices</span>
+      <a href="/admin/delivery" class="hover:text-brand-dark">Delivery</a><span>/</span><span class="text-brand-dark">Upcountry shipping</span>
     </nav>
     <div>
-      <h1 class="text-2xl font-black text-brand-dark">Bus prices and parcel offices</h1>
+      <h1 class="text-2xl font-black text-brand-dark">Upcountry shipping: taxi, bus or special</h1>
       <p class="text-sm text-gray-600 mt-1">
-        Beyond the rider ring a parcel goes on a bus to an office in the customer's town and they collect it there. The price is what you
-        agreed with the bus company, per town and per parcel size. A town with no card here is told "no current price" and goes to the
-        manual queue. Nothing is ever guessed from the next town along.
+        Beyond the rider ring each destination is its own arrangement. <strong>Taxi</strong>: a matatu from the park to a stage, often the
+        same day, the conductor paid on collection. <strong>Bus</strong>: a bus company's parcel office. <strong>Special</strong>: you
+        arrange it personally and the team confirms the fee by phone, so no price is quoted. We never ship across the lake: island
+        addresses are collect-from-shop. A town with nothing here is told "no current price" and goes to the manual queue; nothing is
+        ever guessed from the next town along.
       </p>
     </div>
 
@@ -100,21 +103,29 @@ const label = "block text-[10px] font-black uppercase tracking-wider text-gray-5
 
     <form method="POST" class="bg-white border border-gray-200 rounded-2xl p-5 grid gap-3 sm:grid-cols-3">
       <input type="hidden" name="intent" value="prices" />
-      <h2 class="sm:col-span-3 text-sm font-black uppercase tracking-widest text-gray-500">Set prices for a town</h2>
-      <label class="block"><span class={label}>Bus company</span><input name="carrier" required class={input} placeholder="Link Bus" /></label>
+      <h2 class="sm:col-span-3 text-sm font-black uppercase tracking-widest text-gray-500">Set how a town is served, and the price</h2>
+      <label class="block"><span class={label}>Travels by</span>
+        <select name="carrierKind" required class={input}>
+          <option value="taxi">Taxi (matatu from the park to a stage)</option>
+          <option value="bus">Bus (a bus company's parcel office)</option>
+          <option value="special">Special arrangement (we quote by phone, no price here)</option>
+        </select>
+      </label>
+      <label class="block"><span class={label}>Taxi route or bus company</span><input name="carrier" required class={input} placeholder="Old Taxi Park – Mukono stage, or Link Bus" /></label>
+      <label class="block"><span class={label}>Stage or office the customer collects from</span><input name="handoverPoint" maxlength="160" class={input} placeholder="Mukono taxi stage, opposite Shell" /></label>
       <label class="block"><span class={label}>Destination town</span><input name="town" required class={input} placeholder="Mukono" /></label>
       <label class="block"><span class={label}>District</span><input name="district" required class={input} placeholder="Mukono" /></label>
-      <label class="block"><span class={label}>Small parcel, UGX</span><input name="feeSmall" inputmode="numeric" class={input} placeholder="leave blank if not agreed" /></label>
+      <label class="block"><span class={label}>Small parcel, UGX</span><input name="feeSmall" inputmode="numeric" class={input} placeholder="blank if not agreed; ignored for special" /></label>
       <label class="block"><span class={label}>Medium parcel, UGX</span><input name="feeMedium" inputmode="numeric" class={input} /></label>
       <label class="block"><span class={label}>Large parcel, UGX</span><input name="feeLarge" inputmode="numeric" class={input} /></label>
-      <label class="block"><span class={label}>Who pays the bus</span>
+      <label class="block"><span class={label}>Who pays the carrier</span>
         <select name="chargedAt" required class={input}>
-          <option value="collection">The customer, at the office when collecting</option>
+          <option value="collection">The customer, when collecting (conductor or office)</option>
           <option value="sending">We do, at sending (goes on the order)</option>
         </select>
       </label>
-      <label class="block"><span class={label}>Transit days, min</span><input name="transitDaysMin" inputmode="numeric" required value="1" class={input} /></label>
-      <label class="block"><span class={label}>Transit days, max</span><input name="transitDaysMax" inputmode="numeric" required value="2" class={input} /></label>
+      <label class="block"><span class={label}>Days to arrive, min (0 = same day)</span><input name="transitDaysMin" inputmode="numeric" required value="0" class={input} /></label>
+      <label class="block"><span class={label}>Days to arrive, max</span><input name="transitDaysMax" inputmode="numeric" required value="1" class={input} /></label>
       <label class="block"><span class={label}>Insurance, % of value (blank = none)</span><input name="insurancePct" inputmode="decimal" class={input} /></label>
       <label class="block sm:col-span-2"><span class={label}>Where this price came from</span><input name="sourceNote" maxlength="500" class={input} placeholder="e.g. agreed with the Namayiba office manager, 16 Oct 2026" /></label>
       <div class="sm:col-span-3"><button type="submit" class="bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:bg-black">Save prices</button></div>
@@ -123,17 +134,17 @@ const label = "block text-[10px] font-black uppercase tracking-wider text-gray-5
     <div class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
       <h2 class="px-5 pt-5 text-sm font-black uppercase tracking-widest text-gray-500">Current prices</h2>
       {!loadFailed && current.length === 0 ? (
-        <p class="p-5 text-sm text-gray-600">No bus price has been entered yet, so every destination beyond the rider ring is still "no current price". Start with the towns your recent orders went to.</p>
+        <p class="p-5 text-sm text-gray-600">Nothing entered yet, so every destination beyond the rider ring is still "no current price". Start with the towns your recent orders went to, and mark the awkward ones "special" so customers are told a person will call.</p>
       ) : !loadFailed ? (
         <table class="w-full text-sm mt-3">
-          <thead class="bg-gray-50 text-[10px] font-black uppercase tracking-wider text-gray-500"><tr><th class="text-left px-4 py-2">Town</th><th class="text-left px-4 py-2">Bus</th><th class="text-left px-4 py-2">Parcel</th><th class="text-right px-4 py-2">Price</th><th class="text-left px-4 py-2">Paid</th><th class="text-left px-4 py-2">Days</th><th class="text-left px-4 py-2">Since</th><th class="px-4 py-2"></th></tr></thead>
+          <thead class="bg-gray-50 text-[10px] font-black uppercase tracking-wider text-gray-500"><tr><th class="text-left px-4 py-2">Town</th><th class="text-left px-4 py-2">How</th><th class="text-left px-4 py-2">Parcel</th><th class="text-right px-4 py-2">Price</th><th class="text-left px-4 py-2">Paid</th><th class="text-left px-4 py-2">Days</th><th class="text-left px-4 py-2">Since</th><th class="px-4 py-2"></th></tr></thead>
           <tbody>
             {current.map((c) => (
               <tr class="border-t border-gray-100">
                 <td class="px-4 py-2 font-bold text-brand-dark">{c.destinationTown}, {c.destinationDistrict}</td>
-                <td class="px-4 py-2">{c.carrier}</td>
+                <td class="px-4 py-2">{c.carrierKind === "special" ? "special arrangement" : `${c.carrierKind}: ${c.carrier}`}{c.handoverPoint ? <span class="block text-[10px] text-gray-500">{c.handoverPoint}</span> : null}</td>
                 <td class="px-4 py-2">{c.parcelClass}</td>
-                <td class="px-4 py-2 text-right">{ugx(c.feeUgx)}</td>
+                <td class="px-4 py-2 text-right">{c.carrierKind === "special" ? "quoted by phone" : ugx(c.feeUgx)}</td>
                 <td class="px-4 py-2">{c.chargedAt === "collection" ? "at collection" : "at sending"}</td>
                 <td class="px-4 py-2">{c.transitDaysMin}–{c.transitDaysMax}</td>
                 <td class="px-4 py-2">{when(c.effectiveFrom)} (v{c.version})</td>
@@ -155,10 +166,10 @@ const label = "block text-[10px] font-black uppercase tracking-wider text-gray-5
 
     <form method="POST" class="bg-white border border-gray-200 rounded-2xl p-5 grid gap-3 sm:grid-cols-3">
       <input type="hidden" name="intent" value="office" />
-      <h2 class="sm:col-span-3 text-sm font-black uppercase tracking-widest text-gray-500">Parcel office in a town</h2>
-      <p class="sm:col-span-3 text-xs text-gray-500 -mt-2">Optional but worth it: the customer is told where to collect, with the landmark and hours. One office per bus company per town; saving again updates it.</p>
-      <label class="block"><span class={label}>Bus company</span><input name="ocarrier" required class={input} /></label>
-      <label class="block"><span class={label}>Office name</span><input name="oname" required class={input} placeholder="Link Bus parcel office, Mukono" /></label>
+      <h2 class="sm:col-span-3 text-sm font-black uppercase tracking-widest text-gray-500">Collection point in a town (bus office or taxi stage)</h2>
+      <p class="sm:col-span-3 text-xs text-gray-500 -mt-2">Optional but worth it: the customer is told where to collect, with the landmark and hours. One per carrier per town; saving again updates it.</p>
+      <label class="block"><span class={label}>Taxi route or bus company</span><input name="ocarrier" required class={input} /></label>
+      <label class="block"><span class={label}>Name of the office or stage</span><input name="oname" required class={input} placeholder="Link Bus parcel office, Mukono" /></label>
       <label class="block"><span class={label}>Town</span><input name="otown" required class={input} /></label>
       <label class="block"><span class={label}>District</span><input name="odistrict" required class={input} /></label>
       <label class="block"><span class={label}>Phone</span><input name="ophone" class={input} /></label>
@@ -170,9 +181,9 @@ const label = "block text-[10px] font-black uppercase tracking-wider text-gray-5
     </form>
 
     <div class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
-      <h2 class="px-5 pt-5 text-sm font-black uppercase tracking-widest text-gray-500">Parcel offices</h2>
+      <h2 class="px-5 pt-5 text-sm font-black uppercase tracking-widest text-gray-500">Collection points</h2>
       {!loadFailed && offices.length === 0 ? (
-        <p class="p-5 text-sm text-gray-600">No parcel office recorded yet. Quotes still work without one; the customer just gets the town rather than the exact office.</p>
+        <p class="p-5 text-sm text-gray-600">No collection point recorded yet. Quotes still work without one; the customer just gets the town rather than the exact stage or office.</p>
       ) : !loadFailed ? (
         <table class="w-full text-sm mt-3">
           <thead class="bg-gray-50 text-[10px] font-black uppercase tracking-wider text-gray-500"><tr><th class="text-left px-4 py-2">Office</th><th class="text-left px-4 py-2">Town</th><th class="text-left px-4 py-2">Bus</th><th class="text-left px-4 py-2">Landmark</th><th class="text-left px-4 py-2">Status</th><th class="px-4 py-2"></th></tr></thead>
