@@ -326,20 +326,38 @@ describe('router: WhatsApp ahead of SMS', () => {
     const sms = provider({ status: 'SENT' });
     const wa = provider({ status: 'SENT' }, true);
     const targets = await new DefaultNotificationRouter(provider({ status: 'SENT' }), wa, sms).route('CUSTOMER_ORDER_MESSAGE', orderPayload);
-    expect(targets).toHaveLength(1);
-    expect(targets[0].channel).toBe('whatsapp');
+    // WhatsApp (SMS fallback) to the phone, AND the emailed receipt to the address the customer gave (2026-10-16).
+    expect(targets.map((t) => t.channel)).toEqual(['whatsapp', 'email']);
     expect(targets[0].fallback?.channel).toBe('sms');
   });
 
   it('routes SMS exactly as before when WhatsApp cannot carry it', async () => {
     const targets = await new DefaultNotificationRouter(provider({ status: 'SENT' }), provider({ status: 'SENT' }, false), provider({ status: 'SENT' })).route('CUSTOMER_ORDER_MESSAGE', orderPayload);
-    expect(targets.map((t) => t.channel)).toEqual(['sms']);
+    expect(targets.map((t) => t.channel)).toEqual(['sms', 'email']);
     expect(targets[0].fallback).toBeUndefined();
   });
 
   it('never offers WhatsApp for a dry-run-only event', async () => {
     const targets = await new DefaultNotificationRouter(provider({ status: 'SENT' }), provider({ status: 'SENT' }, true), provider({ status: 'SENT' })).route('CUSTOMER_ORDER_MESSAGE', { ...orderPayload, dryRunOnly: true });
+    expect(targets.map((t) => t.channel)).toEqual(['sms', 'email']);
+  });
+
+  it('a customer with no email gets the phone message only; with no phone, the email only', async () => {
+    const r = () => new DefaultNotificationRouter(provider({ status: 'SENT' }), provider({ status: 'SENT' }, false), provider({ status: 'SENT' }));
+    expect((await r().route('CUSTOMER_ORDER_MESSAGE', { ...orderPayload, customerEmail: '' })).map((t) => t.channel)).toEqual(['sms']);
+    expect((await r().route('CUSTOMER_ORDER_MESSAGE', { ...orderPayload, customerPhone: '' })).map((t) => t.channel)).toEqual(['email']);
+  });
+
+  it('acknowledgements keep one channel: the email only goes when there is no phone', async () => {
+    const r = new DefaultNotificationRouter(provider({ status: 'SENT' }), provider({ status: 'SENT' }, false), provider({ status: 'SENT' }));
+    const targets = await r.route('SUPPORT_REQUEST_RECEIVED', { customerPhone: '0772123456', customerEmail: 'a@b.co', message: 'x' });
     expect(targets.map((t) => t.channel)).toEqual(['sms']);
+  });
+
+  it('every target carries the order reference from the payload', async () => {
+    const r = new DefaultNotificationRouter(provider({ status: 'SENT' }), provider({ status: 'SENT' }, false), provider({ status: 'SENT' }));
+    const targets = await r.route('CUSTOMER_ORDER_MESSAGE', { ...orderPayload, relatedEntity: 'order', relatedEntityId: '951e39e8-a0dd-4d11-81b5-1036676d4bc5' });
+    for (const t of targets) expect(t.payload.relatedEntityId).toBe('951e39e8-a0dd-4d11-81b5-1036676d4bc5');
   });
 
   it('phone verification may go by WhatsApp with SMS fallback', async () => {

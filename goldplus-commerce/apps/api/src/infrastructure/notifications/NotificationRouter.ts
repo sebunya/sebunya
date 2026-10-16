@@ -315,7 +315,11 @@ export class DefaultNotificationRouter implements INotificationRouter {
           // A dry-run-only event stays on its SMS dry run: nothing is offered to
           // a live channel for a message that must not leave the system.
           targets.push(dryRun ? sms : whatsappFirst(sms));
-        } else if (customerEmail) {
+        }
+        // 2026-10-16: the email went out only when there was NO phone, and checkout requires a phone, so no
+        // customer ever received the emailed receipt the templates were written for. A customer who gave an
+        // email gets it as well as the SMS/WhatsApp. Acknowledgements (support, quotes, dealers) keep one channel.
+        if (customerEmail && (eventType === 'CUSTOMER_ORDER_MESSAGE' || !customerPhone)) {
           targets.push({
             channel: 'email',
             provider: honourDryRun(this.emailProvider, dryRun),
