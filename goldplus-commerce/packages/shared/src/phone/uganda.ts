@@ -40,3 +40,22 @@ export function normalizeUgandanPhone(raw: string | null | undefined): Normalise
       : null;
   return { e164: `+256${national}`, warning };
 }
+
+/**
+ * Which mobile money network a Ugandan mobile number belongs to, for a HINT
+ * only (2026-10-16). Two live payments failed because an Airtel number (0705…)
+ * was charged over MTN's rails; telling the customer which network to pick on
+ * the payment form prevents that. Only allocations we are sure of are named;
+ * anything else returns null and no hint is shown. Number portability does not
+ * exist in Uganda, so the prefix decides the network.
+ */
+export type MobileMoneyNetwork = 'MTN' | 'Airtel';
+const NETWORK_BY_PREFIX: Readonly<Record<string, MobileMoneyNetwork>> = {
+  '70': 'Airtel', '74': 'Airtel', '75': 'Airtel',
+  '76': 'MTN', '77': 'MTN', '78': 'MTN',
+};
+export function mobileMoneyNetworkFor(raw: string | null | undefined): MobileMoneyNetwork | null {
+  const n = normalizeUgandanPhone(raw);
+  if (!n) return null;
+  return NETWORK_BY_PREFIX[n.e164.slice(4, 6)] ?? null;
+}
