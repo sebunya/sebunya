@@ -77,6 +77,7 @@ export class GetCustomer360UseCase {
       // A bulk quote is a BQ- reference (0153); a legacy single-product enquiry is not bulk.
       bulkQuotes: records.quotes.filter((q) => q.reference?.startsWith('BQ-')).map((q) => ({ reference: q.reference as string, createdAt: q.createdAt, lineCount: q.lineCount, totalUnits: q.totalUnits })),
       addressDistricts: records.addressDistricts,
+      areasConsidered: records.areasConsidered ?? [],
       optedInChannels: [...new Set(optedInChannels)],
       finderAnswers: records.finderSessions.map((f) => ({ at: f.at, answers: f.answers })),
     }, rfm, now);

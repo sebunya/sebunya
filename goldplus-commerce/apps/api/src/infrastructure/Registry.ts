@@ -323,6 +323,8 @@ import {
 import { DeliveryAreaResolver, DeliveryWizardAreaReader } from './delivery/DeliveryAreaResolver';
 import { GooglePlacesProvider } from './places/GooglePlacesProvider';
 import { DrizzlePlaceMemoryReader } from './db/repositories/DrizzlePlaceMemoryReader';
+import { DrizzleLocationSignalStore } from './db/repositories/DrizzleLocationSignalStore';
+import { GetDeliverToUseCase, LocationDemandReportUseCase, RecordLocationSignalUseCase } from '../application/use-cases/locations/LocationSignalUseCases';
 import { GetPlaceMemoryUseCase } from '../application/use-cases/delivery/GetPlaceMemoryUseCase';
 import { RedisPlaceLocationCache, RedisPlaceRequestBudget } from './places/RedisPlaceStores';
 import { DeepPlaceSearchUseCase } from '../application/use-cases/locations/DeepPlaceSearchUseCases';
@@ -1639,6 +1641,11 @@ export class Registry {
   /** Buildings and places under our gazetteer, via Google Places (New), under a shared monthly budget (2026-10-16). */
   /** What earlier deliveries to the same customer and area taught our riders (2026-10-16). */
   public readonly getPlaceMemoryUseCase = new GetPlaceMemoryUseCase(new DrizzlePlaceMemoryReader());
+  /** 0193: location signals — what customers tell us about where they want delivery (no coordinates). */
+  public readonly locationSignalStore = new DrizzleLocationSignalStore();
+  public readonly recordLocationSignalUseCase = new RecordLocationSignalUseCase(this.locationSignalStore);
+  public readonly getDeliverToUseCase = new GetDeliverToUseCase(this.locationSignalStore);
+  public readonly locationDemandReportUseCase = new LocationDemandReportUseCase(this.locationSignalStore);
   public readonly deepPlaceSearchUseCase = new DeepPlaceSearchUseCase(new GooglePlacesProvider(), new RedisPlaceRequestBudget(), new RedisPlaceLocationCache());
   public readonly recordLocationSearchEventUseCase = new RecordLocationSearchEventUseCase(this.searchMissRecorder);
   public readonly resolveMapLinkUseCase = new ResolveMapLinkUseCase(new HttpShortLinkResolver());
@@ -2502,7 +2509,7 @@ export class Registry {
       };
     },
   );
-  public readonly heroSignalsService = new HeroSignalsService();
+  public readonly heroSignalsService = new HeroSignalsService((profileId) => this.getDeliverToUseCase.execute({ profileId, customerId: null }));
   public readonly heroTelemetryService = new HeroTelemetryService();
 
   /** Header/nav CMS (0109/0110): the editable header document + its telemetry. */

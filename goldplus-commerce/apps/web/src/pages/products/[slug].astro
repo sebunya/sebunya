@@ -1,7 +1,7 @@
 ---
 import DeliveryQuote from "../../components/DeliveryQuote.astro";
 import DeliverTo from "../../components/DeliverTo.astro";
-import { knownDeliveryPlace } from "../../lib/deliveryPlace";
+import { resolveDeliveryPlace } from "../../lib/locationSignals";
 import { indexableCategoryHref } from '../../lib/indexableLinks';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import ProductJsonLd from '../../components/ProductJsonLd.astro';
@@ -491,7 +491,11 @@ const verdictBadge: Record<string, string> = {
 const canBuy = product?.availability.kind === 'in_stock' && pdpHasPrice;
 // "Deliver to": the area this customer told us (chosen, or their last checkout on this device), so the quote below
 // is THEIR fee, not "from …". Never inferred from the IP address.
-const deliverTo = knownDeliveryPlace(Astro.cookies, Astro.request);
+// 0193: else the area they set on another device when signed in (kept on their profile), never a guess.
+const deliverTo = canBuy
+  ? await resolveDeliveryPlace({ cookies: Astro.cookies, request: Astro.request, visit: (Astro.locals as { gpVisit?: string }).gpVisit, secure: import.meta.env.PROD })
+  : null;
+const humanVisitor = isLikelyHuman(Astro.request.headers.get('user-agent'));
 // Search snippet (2026-10-08 SEO audit: all 183 titles were the bare name and
 // every description the same template; none said Kampala, Uganda or the price,
 // which is how shoppers here search — "… price in Uganda"). Built only from
@@ -755,12 +759,13 @@ if (product) {
               is out of stock answers a question nobody can act on. */}
           {canBuy && (
             <div class="mb-8 space-y-3">
-              <DeliverTo place={deliverTo} id="pdpDeliverTo" />
+              <DeliverTo place={deliverTo} id="pdpDeliverTo" surface="pdp" />
               <DeliveryQuote
                 stage={1}
                 compact={true}
                 areaSlug={deliverTo?.areaSlug ?? null}
                 district={deliverTo?.district ?? null}
+                record={humanVisitor ? { surface: 'pdp' } : null}
                 items={[{ productId: product.id, quantity: 1 }]}
                 subtotalUgx={product.retailPriceUgx ?? 0}
               />

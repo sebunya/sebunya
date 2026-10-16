@@ -1345,6 +1345,13 @@
       "when": 1790140000069,
       "tag": "0192_upcountry_carrier_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 192,
+      "version": "5",
+      "when": 1790140000070,
+      "tag": "0193_location_signals",
+      "breakpoints": true
     }
   ]
 }

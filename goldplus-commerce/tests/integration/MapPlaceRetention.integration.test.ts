@@ -13,6 +13,8 @@ const suite = URL ? describe : describe.skip;
 suite('Google-derived coordinates are purged after 29 days (real PostgreSQL)', () => {
   let raw: any;
   const tag = randomUUID().slice(0, 8);
+  // A number no other suite uses: the pin repository suite matches open orders by phone.
+  const phone = `07${String(Math.floor(Math.random() * 1e8)).padStart(8, '0')}`;
   const slug = `test-mp-area-${tag}`;
   let userId: string;
   const orders: Record<string, string> = {};
@@ -28,7 +30,7 @@ suite('Google-derived coordinates are purged after 29 days (real PostgreSQL)', (
       values (${slug}, 'Kampala', ${`Mp Area ${tag}`}, 'kira_rd', 'B2', 'road', true, -1.900000, 29.100000, 'manual', 500)`;
     const order = async (key: string, loc: Record<string, unknown>, ageDays: number) => {
       [{ id: orders[key] }] = await raw`insert into orders (order_number, user_id, customer_name, customer_phone, delivery_area, delivery_address, delivery_location, subtotal_amount, total_amount, status, payment_status, created_at)
-        values (${`MP${tag}${key.slice(0, 4)}${ageDays}`}, ${userId}, 'Mp Tester', '0772123456', 'Kololo', 'Acacia Mall', ${raw.json(loc)}, 1000, 1000, 'processing', 'paid', ${new Date(Date.now() - ageDays * DAY)}) returning id`;
+        values (${`MP${tag}${key.slice(0, 4)}${ageDays}`}, ${userId}, 'Mp Tester', ${phone}, 'Kololo', 'Acacia Mall', ${raw.json(loc)}, 1000, 1000, 'processing', 'paid', ${new Date(Date.now() - ageDays * DAY)}) returning id`;
     };
     const place = { district: 'Kampala', gpsLat: 0.3378, gpsLng: 32.5946, gpsSource: 'map_place', placeId: 'ChIJtestPlaceId123' };
     await order('oldPlace', place, 31);
@@ -36,7 +38,7 @@ suite('Google-derived coordinates are purged after 29 days (real PostgreSQL)', (
     await order('oldDevice', { district: 'Kampala', gpsLat: 0.33, gpsLng: 32.59, gpsAccuracyM: 12, gpsSource: 'device' }, 60);
     const address = async (key: string, source: string, ageDays: number) => {
       [{ id: addrs[key] }] = await raw`insert into addresses (user_id, label, recipient_name, phone, district, area_details, gps_lat, gps_lng, gps_source, gps_captured_at)
-        values (${userId}, ${key}, 'Mp Tester', '0772123456', 'Kampala', 'Acacia Mall', 0.3378, 32.5946, ${source}, ${new Date(Date.now() - ageDays * DAY)}) returning id`;
+        values (${userId}, ${key}, 'Mp Tester', ${phone}, 'Kampala', 'Acacia Mall', 0.3378, 32.5946, ${source}, ${new Date(Date.now() - ageDays * DAY)}) returning id`;
     };
     await address('oldPlace', 'map_place', 30);
     await address('newPlace', 'map_place', 2);

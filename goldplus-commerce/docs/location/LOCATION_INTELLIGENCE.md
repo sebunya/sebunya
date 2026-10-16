@@ -56,6 +56,31 @@ customers never type postcodes (location brief) — so the "special code" is not
 5. **Google Places compliance fix.** A building picked from Google is a rider pin and a Google Maps link only; the
    customer names the area with our search, and that prices the order.
 
+## 2b. Location signals (0193) — keep what we will use, for a stated purpose, then delete it
+
+"Save as much as we can" was reframed on purpose: the Uganda DPPA requires a specific purpose, the minimum data
+for it, and a retention limit. So every signal below has a named use, no signal holds coordinates, and all are
+deleted after 13 months (nightly purge).
+
+| Signal | Captured when | Used for |
+|---|---|---|
+| `deliver_to_set` | "Deliver to" chosen (product page, cart) or an order placed | The customer's own preference on their profile: follows a signed-in customer to every device; the homepage fills its zone (same-day slide names their area, sinks outside Kampala & Wakiso) |
+| `quote_shown` | A delivery fee shown for a known area to a human visitor (product page, cart) | Demand by area; **fee shock** (many fee views, few orders); typical fee seen per area |
+| `locate_offer_chosen` / `_missed` | After "Locate me", the customer took one of the three offered areas (rank) or typed another | **Area-point quality**: the pin becomes a distance to the area's point on the server and is discarded; areas customers keep typing, or choose from far away, are flagged for a person to check |
+
+Consent decides the link: with personalisation granted a row carries the profile and customer (it personalises
+their experience and appears in Customer 360 as "areas they priced delivery to"); without it the row is anonymous
+and only counted per area. A database CHECK refuses a linked row without consent. "Deliver to" itself is kept on
+the profile either way: it is the customer's own instruction about where to deliver, and it only ever prices and
+promises for that place.
+
+Admin > Locations: "Where customers want delivery" (per area: Deliver to, fee views, orders, typical fee, Locate me
+chosen/typed, median km), with "Area points to check" and "Fee seen, few orders".
+
+Owner to note on the privacy page (legal wording is yours): delivery areas you choose and fees you are shown are
+kept up to 13 months to improve delivery and, with your personalisation consent, your experience; no locations
+(coordinates) are kept from browsing.
+
 ## 3. Smarter delivery — next steps (from our own data)
 
 - **Hour-of-week and area learning** already exists (calibration proposes, a person accepts). Feed it *place

@@ -46,6 +46,8 @@ export interface Customer360Records {
   selfReported: Array<{ orderNumber: string; answer: string | null; whatsappRef: string | null }>;
   devices: DeviceEvidence[];
   addressDistricts: string[];
+  /** 0193: consented location signals — areas priced or set as "Deliver to" (last 90 days). */
+  areasConsidered?: Array<{ label: string; times: number }>;
   segments: Array<{ id: string; key: string; name: string; firstMatchedAt: Date }>;
   privacyRequests: Array<{ reference: string; kind: string; status: string; requestedAt: Date }>;
   finderSessions: Array<{ at: Date; status: string; answers: Record<string, string> }>;

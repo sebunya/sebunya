@@ -78,6 +78,8 @@ export interface TraitInput {
   bulkQuotes: Array<{ reference: string; createdAt: Date; lineCount: number | null; totalUnits: number | null }>;
   /** Districts on the account's saved addresses (default first). */
   addressDistricts: string[];
+  /** 0193: areas the customer priced or set as "Deliver to" in the last 90 days (consented rows only). */
+  areasConsidered?: Array<{ label: string; times: number }>;
   /** Marketing channels the customer switched ON themselves. */
   optedInChannels: string[];
   /** Product-finder answers (category, problem, priority, budget), newest session first. */
@@ -110,6 +112,7 @@ export interface CustomerTraits {
   district: Trait<string>;
   deliveryArea: Trait<string>;
   deliveryPattern: Trait<DeliveryPattern>;
+  areasConsidered: Trait<Array<{ label: string; times: number }>>;
   bulkBuyer: Trait<boolean>;
   marketingOptIns: Trait<string[]>;
   statedNeeds: Trait<Record<string, string>>;
@@ -282,6 +285,11 @@ export function computeCustomerTraits(input: TraitInput, rfm: (RfmScore & { popu
       }
     : { key: 'delivery_pattern', label: 'How they receive orders', basis: 'DERIVED', value: null, evidence: 'No order yet.' };
 
+  const considered = input.areasConsidered ?? [];
+  const areasConsidered: Trait<Array<{ label: string; times: number }>> = considered.length
+    ? { key: 'areas_considered', label: 'Areas they priced delivery to', basis: 'OBSERVED', value: considered, evidence: 'Delivery fees they looked at and "Deliver to" areas they set in the last 90 days, recorded with their personalisation consent.' }
+    : { key: 'areas_considered', label: 'Areas they priced delivery to', basis: 'OBSERVED', value: null, evidence: 'None recorded, or personalisation is off for this customer.' };
+
   const bulkBuyer: Trait<boolean> = {
     key: 'bulk_buyer', label: 'Bulk buyer', basis: 'OBSERVED',
     value: input.bulkQuotes.length > 0,
@@ -301,7 +309,7 @@ export function computeCustomerTraits(input: TraitInput, rfm: (RfmScore & { popu
     ? { key: 'stated_needs', label: 'What they told the product finder', basis: 'DECLARED', value: latestFinder.answers, evidence: `Their answers in the product finder on ${latestFinder.at.toISOString().slice(0, 10)}.` }
     : { key: 'stated_needs', label: 'What they told the product finder', basis: 'DECLARED', value: null, evidence: 'No product-finder answers linked to this customer.' };
 
-  return { rfm: rfmTrait, categoryAffinity, categoriesBrowsed, brandAffinity, deviceOwned, preferredChannel, paymentHabit, district, deliveryArea, deliveryPattern, bulkBuyer, marketingOptIns, statedNeeds };
+  return { rfm: rfmTrait, categoryAffinity, categoriesBrowsed, brandAffinity, deviceOwned, preferredChannel, paymentHabit, district, deliveryArea, deliveryPattern, areasConsidered, bulkBuyer, marketingOptIns, statedNeeds };
 }
 
 /** Value numbers for the 360 header. null = not computable, never 0. */

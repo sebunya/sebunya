@@ -77,6 +77,8 @@ export interface HeroPersonalisationSignals {
   stockBySlug: Record<string, boolean>;
   /** First-party identity for a signed-in customer (null when anonymous). */
   customer?: { firstName: string | null; area: string | null } | null;
+  /** 0193: the area the visitor told us ("Deliver to"), never guessed; null when unknown. */
+  zone?: { label: string; district: string; sameDay: boolean } | null;
 }
 
 /** Presentation inputs the server cannot get from the profile: the cart, the URL and the clock. */
@@ -295,6 +297,7 @@ export class HeroContentService {
       serverCats: signals.categoryAffinity.map((a) => a.categorySlug).filter(Boolean),
       loyaltyActive: programme.loyaltyActive,
       referralEarns: programme.referralEarns,
+      outsideSameDayArea: signals.zone ? !signals.zone.sameDay : false,
     };
 
     // QA overrides (?gp=…) — the same set the client used, now applied server-side.
@@ -315,7 +318,9 @@ export class HeroContentService {
     // delivery area). Rendered as escaped text per-visitor; never shared-cached.
     const affinityCat = ctx.serverCats[0] ?? null;
     const firstName = (signals.customer?.firstName || '').trim().slice(0, 40) || null;
-    const area = (signals.customer?.area || '').trim().slice(0, 60) || null;
+    // The area the visitor told us ("Deliver to") names the same-day slide for guests too; a signed-in customer's
+    // saved-address district is the fallback.
+    const area = ((signals.zone?.sameDay ? signals.zone.label.split(',')[0] : '') || signals.customer?.area || '').trim().slice(0, 60) || null;
     const enriched = safe.map((s) => {
       const extras = { ...(s.extras ?? {}) };
       let ctaUrl = s.ctaUrl;

@@ -36,6 +36,11 @@ export interface HeroSelectionContext {
   /** category-affinity slugs the profile actually browsed, strongest first */
   serverCats: string[];
   /**
+   * 0193: the visitor told us (Deliver to) they are outside the same-day dispatch area (Kampala & Wakiso). The
+   * same-day slide then sinks: a promise they cannot have is not shown first. Unknown area: false (as before).
+   */
+  outsideSameDayArea?: boolean;
+  /**
    * The loyalty programme is running (server read). Only an explicit `false`
    * hides the points slides: a failed read leaves it undefined and keeps the
    * rail as it was, so an outage never reshuffles the hero.
@@ -73,7 +78,7 @@ export const HERO_SELECTION_RULES: Record<string, HeroSelectionRule> = {
   // Referral resonates with anyone who has already bought, even on a fresh device.
   // Never promise points the programme will not credit.
   referral: { when: (c) => (c.isReturning || c.hasOrdered) && c.loyaltyActive !== false && c.referralEarns !== false, score: (c) => (c.isRegular || c.hasOrdered ? 88 : 74) },
-  sameday: { score: (c) => (c.beforeCutoff ? 92 : 46) },
+  sameday: { score: (c) => (c.outsideSameDayArea ? 5 : c.beforeCutoff ? 92 : 46) },
   fees: { score: (c) => (c.isNew ? 80 : 62) },
   ambassador: { score: (c) => (c.isNew ? 70 : 58) },
   // Real browsing affinity lifts what's new in the visitor's categories.

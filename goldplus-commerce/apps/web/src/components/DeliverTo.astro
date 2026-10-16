@@ -9,8 +9,9 @@ import type { DeliveryPlace } from '../lib/deliveryPlace';
 interface Props {
   place: DeliveryPlace | null;
   id: string;
+  surface: 'pdp' | 'cart';
 }
-const { place, id } = Astro.props;
+const { place, id, surface } = Astro.props;
 const back = Astro.url.pathname + Astro.url.search;
 ---
 
@@ -28,7 +29,8 @@ const back = Astro.url.pathname + Astro.url.search;
   </summary>
   <form method="post" action="/deliver-to" class="js-deliver-to-form space-y-3 px-4 pb-4">
     <input type="hidden" name="back" value={back} />
-    <UgandaLocationPicker id={id} name="locationJson" label="Your area" placeholder="Search your area, e.g. Najjera, Kira, Ntinda" withPin={true} withDirections={false} deepPlaces={false} />
+    <input type="hidden" name="surface" value={surface} />
+    <UgandaLocationPicker id={id} name="locationJson" label="Your area" placeholder="Search your area, e.g. Najjera, Kira, Ntinda" withPin={true} withDirections={false} deepPlaces={false} surface={surface} />
     <noscript><button type="submit" class="rounded-lg bg-brand-charcoal px-4 py-2 text-sm font-bold text-white">Save</button></noscript>
     {place && (
       <button type="submit" name="action" value="forget" class="text-xs font-semibold text-slate-500 underline underline-offset-2">Forget my area on this device</button>

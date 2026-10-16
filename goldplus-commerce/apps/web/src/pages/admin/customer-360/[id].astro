@@ -66,6 +66,7 @@ function traitValue(t: any): string {
     case "preferred_channel": return `${words(t.value.channel)} (${t.value.orders} of ${t.value.of} orders)`;
     case "payment_habit": return `${t.value.habit === "CASH_ON_DELIVERY" ? "Cash on delivery" : t.value.habit === "ONLINE" ? "Online" : "Both"} (${t.value.cashOnDelivery} cash, ${t.value.online} online)`;
     case "bulk_buyer": return t.value ? "Yes" : "No";
+    case "areas_considered": return t.value.map((a: any) => `${a.label} (${a.times})`).join(" · ");
     case "delivery_pattern": return `${t.value.delivered} delivered (${t.value.areas} area${t.value.areas === 1 ? "" : "s"}), ${t.value.collected} collected${t.value.greaterKampalaShare !== null ? ` · ${pct(t.value.greaterKampalaShare)} to Greater Kampala` : ""}`;
     case "marketing_opt_ins": return t.value.join(", ");
     case "stated_needs": return Object.entries(t.value).map(([k, v]) => `${k}: ${v}`).join(" · ");

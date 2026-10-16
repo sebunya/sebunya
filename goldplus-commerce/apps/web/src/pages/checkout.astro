@@ -3,6 +3,7 @@ import { onSitePaymentPath } from '../lib/payOnSite';
 import { gaSessionFromCookieHeader } from '../lib/gaSession';
 import { readGuestMemory, writeGuestMemory, hasGuestMemory } from '../lib/guestMemory';
 import { knownDeliveryPlace, placeFromPayload, writeChosenPlace } from '../lib/deliveryPlace';
+import { sendLocationSignal } from '../lib/locationSignals';
 import RememberedDetails from '../components/RememberedDetails.astro';
 import { HEARD_ABOUT_OPTIONS, parseHeardAbout } from '@goldplus/shared';
 import DeliveryQuote from "../components/DeliveryQuote.astro";
@@ -530,7 +531,10 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
         // Area only (no pin, no address line); a collection is not a delivery area.
         if (!payload.customerDetails.pickupPointId) {
           const orderedTo = placeFromPayload(payload.customerDetails.deliveryLocation, 'chosen');
-          if (orderedTo) writeChosenPlace(Astro.cookies, orderedTo, import.meta.env.PROD);
+          if (orderedTo) {
+            writeChosenPlace(Astro.cookies, orderedTo, import.meta.env.PROD);
+            await sendLocationSignal({ kind: 'deliver_to_set', surface: 'checkout', areaSlug: orderedTo.areaSlug, district: orderedTo.district, label: orderedTo.label }, (Astro.locals as { gpVisit?: string }).gpVisit, Astro.request);
+          }
         }
         if (!authenticatedUserId) {
           writeGuestMemory(Astro.cookies, {
