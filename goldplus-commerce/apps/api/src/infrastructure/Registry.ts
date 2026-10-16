@@ -328,6 +328,7 @@ import { ApplyCorridorCsvUseCase, DryRunCorridorCsvUseCase, RevertCorridorBatchU
 import { LocationPinUseCases } from '../application/use-cases/delivery/LocationPinUseCases';
 import { DrizzleLocationPinRepository } from './db/repositories/DrizzleLocationPinRepository';
 import { RiderUseCases } from '../application/use-cases/delivery/RiderUseCases';
+import { isShopCollectionOperator } from '../domain/locations/CollectionPoints';
 import { CorridorSummaryUseCase, LadderDryRunUseCase, LadderMarginReportUseCase } from '../application/use-cases/delivery/FeeLadderUseCases';
 import { BusRateCardAdminUseCases } from '../application/use-cases/delivery/BusRateCardAdminUseCases';
 import { DrizzleBusRateCardAdminRepository } from './db/repositories/DrizzleBusRateCardAdminRepository';
@@ -2041,7 +2042,26 @@ export class Registry {
       district?: string | null;
       items: ReadonlyArray<{ productId: string; quantity: number }>;
       point?: { lat: number; lng: number } | null;
+      pickupPointId?: string | null;
     }) => {
+      // Collect from one of our own shops: nothing travels, so nothing is charged and nothing is quoted.
+      // Only an ACTIVE point that is one of OUR collection points qualifies; a carrier's stage or office upcountry
+      // is a shipment destination, priced by its card, never a free pickup.
+      if (input.pickupPointId) {
+        const point = (await this.managePickupPointsUseCase.list()).find((p) => p.id === input.pickupPointId);
+        if (!point || !point.active || !isShopCollectionOperator(point.operator)) {
+          throw new Error('PICKUP_POINT_UNAVAILABLE: That collection point is not available. Choose another, or ask for delivery.');
+        }
+        return {
+          feeUgx: 0,
+          freeDeliveryThresholdUgx: null,
+          feeBeforeFreeDeliveryUgx: 0,
+          confirmed: true,
+          pricedBy: 'manual' as const,
+          mayFallBackToLegacy: false,
+          capture: { fulfilmentMode: 'pickup_only', pricedBy: 'manual', quotedFeeUgx: 0 },
+        };
+      }
       // One instant for the quote AND its capture, so the recorded hour of week is
       // the one the hour factor was applied at (the use case derives it the same way).
       const at = new Date();

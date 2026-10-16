@@ -41,6 +41,8 @@ const checkoutBodySchema = z.object({
     phone: z.string().trim().min(5).max(20),
     deliveryArea: z.string().trim().min(1).max(255),
     deliveryAddress: z.string().trim().min(1).max(255),
+    // Collect from one of our own shops: the server checks it is an active shop collection point and charges no delivery.
+    pickupPointId: z.string().uuid().nullable().optional(),
     deliveryLocation: z
       .object({
         // Canonicalised against the official district list. The old location

@@ -84,6 +84,8 @@ const LEGACY_PREFIXES: ReadonlyArray<[string, CheckoutDependencyCode]> = [
   ['PROMOTION_NOT_ACTIVE', 'PROMOTION_CHANGED'],
   ['COD_NOT_AVAILABLE', 'PAY_ON_DELIVERY_UNAVAILABLE'],
   ['COD_LIMIT_EXCEEDED', 'PAY_ON_DELIVERY_UNAVAILABLE'],
+  // A collection point that is not one of our active shops (switched off, or a carrier's stage): choose another.
+  ['PICKUP_POINT_UNAVAILABLE', 'DELIVERY_NOT_SUPPORTED'],
 ];
 
 /** Typed pricing refusals (PricingEvaluationError carries its code, not a message prefix). */

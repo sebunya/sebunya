@@ -45,6 +45,8 @@ export interface CheckoutDto {
     deliveryAddress: string;
     /** Structured Uganda location from the picker (Slice 3B). */
     deliveryLocation?: OrderDeliveryLocation | null;
+    /** Collect from one of our own shops: priced at zero by the quoting port, refused if not an active shop point. */
+    pickupPointId?: string | null;
   };
   buyerType: BuyerType;
   /**
@@ -168,6 +170,8 @@ export class CheckoutUseCase {
         items: ReadonlyArray<{ productId: string; quantity: number }>;
         /** 0190: the customer's pin at checkout, when there is one (PIN tier; the area when none was named). */
         point?: { lat: number; lng: number } | null;
+        /** Collect from one of our own shops: no delivery, no fee. */
+        pickupPointId?: string | null;
       }): Promise<{
         feeUgx: number | null;
         confirmed: boolean;
@@ -269,6 +273,7 @@ export class CheckoutUseCase {
         district: dto.customerDetails.deliveryLocation?.district ?? null,
         items: dto.items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
         point: pinOf(dto.customerDetails.deliveryLocation),
+        pickupPointId: dto.customerDetails.pickupPointId ?? null,
       });
       deliveryCapture = { ...quoted.capture, pricedBy: quoted.pricedBy };
       if (!quoted.mayFallBackToLegacy) {
