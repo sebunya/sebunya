@@ -49,6 +49,10 @@ export class CustomerOutboxNotifier {
           message: message ?? undefined,
           customerPhone: phone || null,
           customerEmail: email || null,
+          // The router reads the order reference from the payload; on the row alone it was lost, and every customer
+          // message was logged against no order (found tracing GP-202610-951E39E8's receipt, 2026-10-16).
+          relatedEntity: input.relatedEntity,
+          relatedEntityId: input.relatedEntityId,
         } as never,
         idempotencyKey: input.idempotencyKey,
         status: 'pending',
