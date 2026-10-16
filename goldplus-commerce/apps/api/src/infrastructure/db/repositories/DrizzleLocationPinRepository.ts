@@ -27,7 +27,7 @@ export class DrizzleLocationPinRepository implements ILocationPinRepository {
       select o.id, o.order_number, o.user_id, o.created_at,
              o.delivery_location->>'areaSlug' as area_slug, o.delivery_area as area_label
       from orders o
-      where o.status = any(${OPEN_STATUSES})
+      where ${pgInTextList(sql`o.status`, OPEN_STATUSES)}
         and o.created_at > ${since}
         and o.order_number not like 'GP-DRAFT%'
         and ${pgInTextList(sql`regexp_replace(o.customer_phone, '\\D', '', 'g')`, spellings)}

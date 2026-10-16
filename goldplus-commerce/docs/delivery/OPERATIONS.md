@@ -303,3 +303,17 @@ block go-live:
 Everything else that was a decision in earlier versions is now either learned
 from data or a phase 2 trigger. If you find a seventh launch number or a fifth
 decision, you have modelled something that should have been fitted.
+
+## Addendum, 2026-10-16: the knobs that exist after launch
+
+| Where | What |
+|---|---|
+| Control Centre → **Switches** | shop-wide rider band, a band per road, which distance the fee uses, fee shape and ladder; preview one area per band, publish as a version |
+| Control Centre → **Corridor file** | re-band by CSV, dry run then apply, revertible batch |
+| Control Centre → **Fee ladder** | dry run of owner price points; margin alarm on the Calibration page |
+| Delivery → **Upcountry shipping** | per-town taxi / bus / special arrangement, prices per parcel size, collection points |
+| Delivery → **Riders** | the people whose WhatsApp location at the door records a handover |
+| `pnpm -F @goldplus/api geo:manual-points --apply` | hand-chosen points for areas the parish import could not place (data/geo/manual-points.csv) |
+| `goldplus-delivery-nightly.timer` | calibration proposals, pins → area points, pin purge, 02:30 Kampala |
+
+Nothing above changes a fee without a published version; every version is revertible from the Control Centre history.
