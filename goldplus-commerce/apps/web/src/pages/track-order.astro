@@ -1,4 +1,5 @@
 ---
+import { onSitePaymentPath } from '../lib/payOnSite';
 import { readClientAddress } from '../lib/forwardClient';
 import { readGuestMemory, rememberedContact } from '../lib/guestMemory';
 import RememberedDetails from '../components/RememberedDetails.astro';
@@ -73,7 +74,7 @@ if (Astro.request.method === 'POST') {
     // falls through to the lookup so the order is still shown with the reason.
     if (intent === 'pay') {
       const pay = await startPaymentByReference({ reference, contact });
-      if (pay.ok) return Astro.redirect(pay.data.redirectUrl, 303);
+      if (pay.ok) return Astro.redirect(onSitePaymentPath({ redirectUrl: pay.data.redirectUrl, orderNumber: reference, phone: contact.includes('@') ? null : contact }), 303);
       payError = pay.code === 'VERIFICATION_FAILED' || pay.code === 'TOO_MANY_REQUESTS'
         ? pay.message
         : paymentStartMessageFor(pay.code);

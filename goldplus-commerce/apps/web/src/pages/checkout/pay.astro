@@ -1,0 +1,64 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { isFramablePaymentUrl } from '../../lib/payOnSite';
+
+/**
+ * Pay for an order without leaving shopgoldplus.com (2026-10-16).
+ *
+ * Pesapal's payment page sits inside our page, under our header and with the
+ * order in view. When payment finishes Pesapal sends the whole window to our
+ * callback (redirect_mode TOP_WINDOW), which settles the payment and shows the
+ * result. A frame that will not load still has a way through: the full-page link.
+ */
+Astro.response.headers.set('Cache-Control', 'no-store');
+const ref = (Astro.url.searchParams.get('ref') ?? '').trim().slice(0, 40);
+const u = Astro.url.searchParams.get('u') ?? '';
+const netRaw = Astro.url.searchParams.get('net');
+const net = netRaw === 'MTN' || netRaw === 'Airtel' ? netRaw : null;
+
+if (!isFramablePaymentUrl(u)) {
+  return Astro.redirect(ref ? `/track-order?reference=${encodeURIComponent(ref)}` : '/track-order', 303);
+}
+---
+
+<BaseLayout robotsMeta="noindex,nofollow" title="Pay for your order">
+  <div class="bg-brand-softGrey py-6 border-b border-brand-borderGrey">
+    <div class="container mx-auto px-4 lg:px-8">
+      <h1 class="text-xl md:text-2xl font-black tracking-tight text-brand-charcoal">Pay for your order</h1>
+      {ref && <p class="text-sm text-brand-mutedGrey mt-1">Order <strong class="font-mono text-brand-charcoal whitespace-nowrap">{ref}</strong></p>}
+    </div>
+  </div>
+
+  <div class="container mx-auto px-4 lg:px-8 py-6 max-w-3xl">
+    {net && (
+      <p class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-950" role="note">
+        Your number is on {net}. Choose <strong>{net === 'MTN' ? 'MTN Mobile Money' : 'Airtel Money'}</strong> below, or the payment will fail.
+      </p>
+    )}
+    <ol class="mb-4 text-sm text-brand-charcoal space-y-1 list-decimal list-inside">
+      <li>Choose how to pay and enter your mobile money number or card.</li>
+      <li>Approve the prompt on your phone with your PIN.</li>
+      <li>Stay on this page. It moves on by itself once the payment goes through.</li>
+    </ol>
+
+    <div class="rounded-2xl border border-brand-borderGrey bg-white overflow-hidden shadow-sm">
+      <iframe
+        id="pesapal-frame"
+        src={u}
+        title="Secure payment by Pesapal"
+        class="w-full block"
+        style="height: 720px; border: 0;"
+        allow="payment"
+        referrerpolicy="strict-origin-when-cross-origin"
+      ></iframe>
+    </div>
+
+    <p class="mt-3 text-xs text-brand-mutedGrey">
+      Payment is processed securely by Pesapal, regulated by the Bank of Uganda. GoldPlus never sees your PIN or card number.
+    </p>
+    <p class="mt-2 text-xs text-brand-mutedGrey">
+      Payment form not showing? <a href={u} target="_top" rel="noopener" class="font-bold text-brand-charcoal underline">Open the payment page in full</a>.
+      {ref && <> Already paid? <a href={`/track-order?reference=${encodeURIComponent(ref)}`} class="font-bold text-brand-charcoal underline">Check your order</a> before paying again.</>}
+    </p>
+  </div>
+</BaseLayout>

@@ -317,7 +317,7 @@ describe('the checkout intent survives the payment handoff', () => {
     // who already has one being paid for.
     const redirectBranch = code.slice(
       code.indexOf('if (payRes.ok)'),
-      code.indexOf('return Astro.redirect(payRes.data.redirectUrl'),
+      code.indexOf('return Astro.redirect(onSitePaymentPath({ redirectUrl: payRes.data.redirectUrl'),
     );
     expect(redirectBranch).not.toContain('clearCheckoutIntent');
   });
@@ -325,7 +325,7 @@ describe('the checkout intent survives the payment handoff', () => {
   it('still clears the cart cookie, because the basket became an order', () => {
     const redirectBranch = code.slice(
       code.indexOf('if (payRes.ok)'),
-      code.indexOf('return Astro.redirect(payRes.data.redirectUrl'),
+      code.indexOf('return Astro.redirect(onSitePaymentPath({ redirectUrl: payRes.data.redirectUrl'),
     );
     // The cookie delete moved into clearBasketAfterOrder(), which ALSO clears
     // the server cart — the cookie alone left the basket standing after the

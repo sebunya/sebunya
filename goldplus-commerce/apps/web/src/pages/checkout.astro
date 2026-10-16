@@ -1,4 +1,5 @@
 ---
+import { onSitePaymentPath } from '../lib/payOnSite';
 import { gaSessionFromCookieHeader } from '../lib/gaSession';
 import { readGuestMemory, writeGuestMemory, hasGuestMemory } from '../lib/guestMemory';
 import RememberedDetails from '../components/RememberedDetails.astro';
@@ -580,7 +581,7 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
               // it would re-add the same items to the next checkout.
               await clearBasketAfterOrder();
               rememberPaymentOrder(dto.orderNumber);
-              return Astro.redirect(payRes.data.redirectUrl, 303);
+              return Astro.redirect(onSitePaymentPath({ redirectUrl: payRes.data.redirectUrl, orderNumber: dto.orderNumber, phone: values.phone }), 303);
            }
 
            // The order EXISTS and is payable; only the handoff failed. The intent
@@ -638,7 +639,7 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
            });
            if (payRes.ok) {
               rememberPaymentOrder(existing.orderNumber);
-              return Astro.redirect(payRes.data.redirectUrl, 303);
+              return Astro.redirect(onSitePaymentPath({ redirectUrl: payRes.data.redirectUrl, orderNumber: existing.orderNumber, phone: values.phone }), 303);
            }
            status = 'received';
            receivedActionLabel = 'Track or pay for this order';
