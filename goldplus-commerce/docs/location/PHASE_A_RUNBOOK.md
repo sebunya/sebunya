@@ -215,13 +215,10 @@ Everything below ships OFF or inert until the owner acts; no fee changes by itse
   rider shares on WhatsApp while a stop is out asks Delivered / Customer not there / Couldn't find it, records the
   attempt with the handover point, then Easy / Hard to find.
 
-**Two nightly jobs the host must run (add to the api container's timer alongside the calibration run):**
-```
-pnpm -F @goldplus/api geo:purge-pins            # deletes pins and handover points past retention, expired pending locations
-pnpm -F @goldplus/api geo:nightly-area-points   # ≥3 tight handovers or ≥5 tight customer pins → the area's point; never over 'manual'
-```
-Run both with `--dry-run` not available for purge (it only deletes expired rows); area points accept `--dry-run`.
-Each run writes a row to `geo_data_source_run` (`source_name = 'nightly-area-points'`; wide-spread areas in `params`).
+**One nightly timer the host must have (there was none for calibration either):** `ops/delivery-nightly/` installs
+`goldplus-delivery-nightly.timer` (02:30 Kampala) which runs, inside the live api container, the calibration
+proposals, then pins → area points, then the pin purge. Install per its README (three commands). Each area-point
+run writes a row to `geo_data_source_run` (`source_name = 'nightly-area-points'`; wide-spread areas in `params`).
 
 **Owner switches (Control Centre → setup, published as a version like any value):**
 1. `fee_shape = ladder` + `fee_ladder = "3000, 5000, 8000, 12000, 20000"` (your numbers). Run the **Fee ladder** dry run

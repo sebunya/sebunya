@@ -1,0 +1,13 @@
+[Unit]
+Description=GoldPlus delivery nightly: calibration proposals, pins to area points, pin purge
+After=docker.service network-online.target
+Wants=network-online.target
+OnFailure=goldplus-alert@%n.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/goldplus/app/goldplus-commerce
+ExecStart=/opt/goldplus/app/goldplus-commerce/scripts/delivery-nightly.sh timer
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=20min
