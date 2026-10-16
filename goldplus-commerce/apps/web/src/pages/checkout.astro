@@ -221,6 +221,7 @@ interface SavedAddress {
 const sessionToken = Astro.cookies.get('goldplus_session')?.value ?? null;
 let savedAddresses: SavedAddress[] = [];
 let accountEmail = '';
+let accountPhone = '';
 if (authenticatedUserId && sessionToken) {
   try {
     const [addrRes, meRes] = await Promise.all([
@@ -236,7 +237,10 @@ if (authenticatedUserId && sessionToken) {
     const addrJson: any = addrRes.ok ? await addrRes.json().catch(() => null) : null;
     const meJson: any = meRes.ok ? await meRes.json().catch(() => null) : null;
     if (addrJson?.success && Array.isArray(addrJson.data)) savedAddresses = addrJson.data;
-    if (meJson?.success) accountEmail = meJson.data?.email ?? '';
+    if (meJson?.success) {
+      accountEmail = meJson.data?.email ?? '';
+      accountPhone = meJson.data?.phone ?? '';
+    }
   } catch {
     /* prefill is a convenience, never a dependency */
   }
@@ -744,9 +748,10 @@ const errorLinks = Object.keys(FIELD_TARGET)
 if (Astro.request.method !== 'POST') {
   if (authenticatedUserId) {
     values = {
-      name: defaultAddress?.recipientName ?? '',
+      // The account has no name field: the default address's recipient, else this browser's last checkout.
+      name: defaultAddress?.recipientName || guestPrefill.name || '',
       email: accountEmail,
-      phone: defaultAddress?.phone ?? '',
+      phone: defaultAddress?.phone || accountPhone || guestPrefill.phone || '',
       locationJson: '',
       deliveryAddress: '',
     };
@@ -761,6 +766,12 @@ if (Astro.request.method !== 'POST') {
   }
 }
 
+
+// 2026-10-16: a customer we already know CONFIRMS who is buying in one line instead of re-reading three
+// filled fields. Shown only on the first view with name and phone known and nothing to correct; the fields
+// stay in the form (they submit as before) and open with Edit, or empty with "Buying for someone else?".
+const whoSummary =
+  Astro.request.method !== 'POST' && Boolean(values.name?.trim()) && Boolean(values.phone?.trim()) && !errors.name && !errors.phone && !errors.email;
 
 // Initial delivery estimate for the preselected saved address, so a returning
 // customer sees a delivery figure without touching anything. Guests get one
@@ -932,13 +943,27 @@ const checkoutSavingLabel = basketSavingLabel(
             <div class="bg-white p-6 md:p-8 rounded-2xl border border-slate-200/80">
               <h2 class="text-base md:text-lg font-black text-gray-900 mb-6 flex items-center gap-2.5">
                 <span aria-hidden="true" class="w-6 h-6 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-black">1</span>
-                Customer details
+                {whoSummary ? 'You' : 'Customer details'}
               </h2>
-              
+
+              {whoSummary && (
+                <div id="who-summary" class="mb-6 flex items-start justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                  <div class="min-w-0">
+                    <p class="font-bold text-gray-900 text-sm break-words">{values.name}</p>
+                    <p class="text-xs text-slate-600 mt-0.5 break-words">{values.phone}{values.email ? ` · ${values.email}` : ''}</p>
+                    <p class="text-xs text-slate-500 mt-1">Order updates come here on WhatsApp, or by SMS.</p>
+                    <button type="button" id="who-someone-else" class="mt-2 text-xs font-bold text-brand-charcoal underline underline-offset-4 decoration-brand-primary">Buying for someone else?</button>
+                  </div>
+                  <button type="button" id="who-edit" class="inline-flex min-h-11 flex-shrink-0 items-center rounded-lg border border-slate-300 px-4 text-xs font-black uppercase tracking-wider text-brand-charcoal hover:bg-white">Edit</button>
+                </div>
+              )}
+              <p id="who-gift-note" class="hidden mb-4 text-xs text-slate-600">Enter the details of the person receiving the order. The rider calls them, and the order stays in your account.</p>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div id="who-fields" class={`md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6${whoSummary ? ' hidden' : ''}`}>
                 <FormField id="name" name="name" label="Full name" required autocomplete="name" defaultValue={values.name} errorMessage={errors.name} />
                 <FormField id="email" name="email" label="Email" type="email" autocomplete="email" defaultValue={values.email} errorMessage={errors.email} />
                 <FormField id="phone" name="phone" label="Phone (mobile or landline)" type="tel" required inputmode="tel" autocomplete="tel" placeholder="07XX XXX XXX" helperText="With a mobile number, your order updates come on WhatsApp, or by SMS. Reply STOP on WhatsApp to get them by SMS only." defaultValue={values.phone} errorMessage={errors.phone} />
+                </div>
                 <div class="md:col-span-2 space-y-4">
                    {savedAddresses.length > 0 && (
                      <fieldset class="space-y-2">
@@ -1455,6 +1480,27 @@ const checkoutSavingLabel = basketSavingLabel(
         else if (r.checked) onPickerChange();
       }),
     );
+    // "You" summary: Edit opens the filled fields; "Buying for someone else?" opens them empty for the recipient.
+    (() => {
+      const summary = document.getElementById('who-summary');
+      const fields = document.getElementById('who-fields');
+      if (!summary || !fields) return;
+      const open = (focusId: string) => {
+        summary.classList.add('hidden');
+        fields.classList.remove('hidden');
+        document.getElementById(focusId)?.focus();
+      };
+      document.getElementById('who-edit')?.addEventListener('click', () => open('name'));
+      document.getElementById('who-someone-else')?.addEventListener('click', () => {
+        for (const id of ['name', 'phone']) {
+          const f = document.getElementById(id) as HTMLInputElement | null;
+          if (f) f.value = '';
+        }
+        document.getElementById('who-gift-note')?.classList.remove('hidden');
+        open('name');
+      });
+    })();
+
     const pickerPayload = document.querySelector<HTMLInputElement>('form[action="/checkout"] .js-final-payload');
     function onPickerChange() {
       const raw = pickerPayload?.value ?? '';

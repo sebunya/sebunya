@@ -37,3 +37,29 @@ describe('checkout location: one question, answered the easiest way first (2026-
     expect(client).toMatch(/isMetro === true \? 0 : 1/);
   });
 });
+
+describe('a customer we know confirms who is buying in one line (2026-10-16)', () => {
+  const checkout = read('apps/web/src/pages/checkout.astro');
+
+  it('collapses name, email and phone into a summary only on a clean first view with name and phone known', () => {
+    expect(checkout).toMatch(/const whoSummary =\s*Astro\.request\.method !== 'POST' && Boolean\(values\.name\?\.trim\(\)\) && Boolean\(values\.phone\?\.trim\(\)\)/);
+    expect(checkout).toMatch(/!errors\.name && !errors\.phone && !errors\.email/);
+  });
+
+  it('hides only the three contact fields, never the delivery section', () => {
+    const start = checkout.indexOf('<div id="who-fields"');
+    const block = checkout.slice(start, checkout.indexOf('</div>', start));
+    expect(block).toContain('id="name"');
+    expect(block).toContain('id="phone"');
+    expect(block).not.toContain('UgandaLocationPicker');
+  });
+
+  it('"Buying for someone else?" empties name and phone for the recipient; Edit keeps them', () => {
+    expect(checkout).toMatch(/who-someone-else[\s\S]*for \(const id of \['name', 'phone'\]\)/);
+    expect(checkout).toMatch(/who-edit'\)\?\.addEventListener\('click', \(\) => open\('name'\)\)/);
+  });
+
+  it('a signed-in customer without a saved address still gets their account phone', () => {
+    expect(checkout).toMatch(/phone: defaultAddress\?\.phone \|\| accountPhone \|\| guestPrefill\.phone/);
+  });
+});
