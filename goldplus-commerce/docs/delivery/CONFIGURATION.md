@@ -45,16 +45,17 @@ promise rather than a default.
 | `copy_unavailable_no_active_origin` | string | — | `We cannot quote delivery right now. Place your order and our` | — | When no dispatch point is active |
 | `copy_unavailable_area_unserviceable` | string | — | `We are not able to deliver to this area at the moment. You a` | — | Area we do not serve |
 | `copy_unavailable_water_access` | string | — | `This address is reached by boat, so we cannot deliver there ` | — | Lake-access areas |
+| `copy_special_arrangement` | string | — | `We arrange shipping to your area personally. Place your orde` | — | Special arrangement destination |
 | `copy_unavailable_area_unresolved` | string | — | `Place your order and our team will confirm your delivery fee` | — | Address did not resolve |
 | `copy_pickup_offer` | string | — | `Collect free from GoldPlus, 4th Floor, Zainab Aziza Building` | — | Pickup offer |
 | `copy_unavailable_area_too_coarse` | string | — | `We found your district. Choose the specific area you are in ` | — | District known, area not yet chosen |
 | `copy_variance_agreement_request` | string | — | `Your delivery address turned out to be in a different area f` | — | Asking a customer to agree a changed fee |
-| `copy_carrier_required` | string | — | `We send to your area by bus. Your parcel travels to a parcel` | — | Served by bus rather than by our rider |
-| `copy_unavailable_no_rate_card` | string | — | `We ship to your area by bus, but we do not have a current pr` | — | Bus-served, no current rate card |
+| `copy_carrier_required` | string | — | `We send to your area by taxi or bus. Your parcel travels to ` | — | Served by taxi or bus rather than by our rider |
+| `copy_unavailable_no_rate_card` | string | — | `We send to your area by taxi or bus, but we do not have a cu` | — | Taxi/bus-served, no current rate card |
 | `copy_fee_exceeds_value` | string | — | `Getting this to you costs more than the items in your basket` | — | Delivery costs more than the goods |
 | `copy_below_minimum_order` | string | — | `This order is below our minimum for this destination. You ca` | — | Order below the minimum for its destination |
 | `copy_unavailable_parcel_class_unknown` | string | — | `We ship to your area by bus. Place your order and our team w` | — | Shipping class not set for something in the basket |
-| `copy_parcel_count_notice` | string | — | `Bus parcels are charged per parcel, so a larger order can sh` | — | Explaining per-parcel charging |
+| `copy_parcel_count_notice` | string | — | `Taxis and buses charge per parcel, so a larger order can tra` | — | Explaining per-parcel charging |
 | `copy_pin_confirm` | string | — | `Is this where we deliver order {{order}}?` | — | Pin received: confirm question |
 | `copy_pin_received` | string | — | `Thanks. We have your location for order {{order}}. The rider` | — | Pin kept |
 | `copy_pin_save_ask` | string | — | `Save this spot to your address for next time?` | — | Save to address: question |
@@ -112,12 +113,13 @@ promise rather than a default.
 - **When no dispatch point is active** (`copy_unavailable_no_active_origin`) — An internal fault. Say nothing about the cause, and never quote a default.
 - **Area we do not serve** (`copy_unavailable_area_unserviceable`) — No quote at any price. Offer pickup and a different address.
 - **Lake-access areas** (`copy_unavailable_water_access`) — The 12 water areas are pickup-only. No surcharge, no road quote.
+- **Special arrangement destination** (`copy_special_arrangement`) — Shown when the destination's current card is marked 'special' on the Upcountry shipping page: served, by a person, no number quoted. The order goes to the manual queue like a missing card does.
 - **Address did not resolve** (`copy_unavailable_area_unresolved`) — A data gap never blocks a sale — the order completes through the manual path.
 - **Pickup offer** (`copy_pickup_offer`) — Shown alongside every quote. Building and floor first, then Uhuru Restaurant, then Pioneer Mall as the wider fallback.
 - **District known, area not yet chosen** (`copy_unavailable_area_too_coarse`) — NOT a refusal — the address resolved correctly, it is simply not precise enough to price. The interface offers the areas in that district. Never fall back to a district average: there is no such thing.
 - **Asking a customer to agree a changed fee** (`copy_variance_agreement_request`) — Sent only when the change is above the absorption threshold. Below it we absorb the difference silently.
-- **Served by bus rather than by our rider** (`copy_carrier_required`) — Never reads as a refusal: the customer IS served. Say shipment and collection, never delivery to the door.
-- **Bus-served, no current rate card** (`copy_unavailable_no_rate_card`) — A fact about us, not the customer — a carrier negotiation nobody has closed. It appears in an ops queue so somebody knows.
+- **Served by taxi or bus rather than by our rider** (`copy_carrier_required`) — Never reads as a refusal: the customer IS served. Say shipment and collection, never delivery to the door.
+- **Taxi/bus-served, no current rate card** (`copy_unavailable_no_rate_card`) — A fact about us, not the customer — a carrier negotiation nobody has closed. It appears in an ops queue so somebody knows.
 - **Delivery costs more than the goods** (`copy_fee_exceeds_value`) — Shown with the exact basket value that would make it proportionate. Never blocks the sale and never the pre-selected option.
 - **Order below the minimum for its destination** (`copy_below_minimum_order`) — Informative, never a block, and shown with the minimum and the shortfall.
 - **Shipping class not set for something in the basket** (`copy_unavailable_parcel_class_unknown`) — A gap in OUR product data, never the customer's fault, so the sentence says nothing about it. Ops sees the real cause in the manual queue.

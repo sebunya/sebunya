@@ -213,8 +213,9 @@ export function quoteFulfilment(inputs: FulfilmentQuoteInputs): FulfilmentQuote 
     });
     if (!selection.ok) {
       // The destination IS served — we simply have not closed a negotiation for
-      // it. CARRIER_REQUIRED would overstate what we can do today.
-      return unavailable('NO_RATE_CARD', inputs.mode, explanation);
+      // it. CARRIER_REQUIRED would overstate what we can do today. A 'special'
+      // card is a closed negotiation whose answer is "a person quotes it".
+      return unavailable(selection.reason === 'SPECIAL_ARRANGEMENT' ? 'SPECIAL_ARRANGEMENT' : 'NO_RATE_CARD', inputs.mode, explanation);
     }
     const shipment = buildShipmentQuote({
       card: selection.card,

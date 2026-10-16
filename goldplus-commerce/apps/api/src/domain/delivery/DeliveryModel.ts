@@ -136,7 +136,9 @@ export type UnavailableReason =
    * would systematically under-charge and would only surface when a carrier
    * refused the parcel at the counter.
    */
-  | 'PARCEL_CLASS_UNKNOWN';
+  | 'PARCEL_CLASS_UNKNOWN'
+  /** A current card says this destination is arranged personally; the team confirms the fee (0192). */
+  | 'SPECIAL_ARRANGEMENT';
 
 export const UNAVAILABLE_REASONS: readonly UnavailableReason[] = [
   'CONFIG_INCOMPLETE',
@@ -148,6 +150,7 @@ export const UNAVAILABLE_REASONS: readonly UnavailableReason[] = [
   'CARRIER_REQUIRED',
   'NO_RATE_CARD',
   'PARCEL_CLASS_UNKNOWN',
+  'SPECIAL_ARRANGEMENT',
 ];
 
 /** Reasons where the customer can act and immediately get a quote. */
@@ -182,6 +185,7 @@ export const REASON_COPY_KEY: Record<UnavailableReason, string> = {
   CARRIER_REQUIRED: 'copy_carrier_required',
   NO_RATE_CARD: 'copy_unavailable_no_rate_card',
   PARCEL_CLASS_UNKNOWN: 'copy_unavailable_parcel_class_unknown',
+  SPECIAL_ARRANGEMENT: 'copy_special_arrangement',
 };
 
 /* ── Rounding ───────────────────────────────────────────────────────────── */

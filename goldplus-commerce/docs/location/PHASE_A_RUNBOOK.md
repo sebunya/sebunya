@@ -232,8 +232,12 @@ run writes a row to `geo_data_source_run` (`source_name = 'nightly-area-points'`
 
 **Added 2026-10-16 after launch:** the Control Centre has a **Switches** card (shop-wide rider band, a per-road rider band for
 each corridor, which distance the fee uses, fee shape and ladder) that previews one area per band and publishes a new version,
-and a **Bus prices** page (Delivery → Bus prices) where the negotiated per-town, per-parcel-size bus prices and the parcel
-offices are entered. Until a town has a card there, its customers see "we ship by bus but have no current price".
+and an **Upcountry shipping** page (Delivery → Upcountry shipping) where each destination beyond the rider ring is set up
+as it really is: by **taxi** (matatu to a stage, often same day, conductor paid on collection), by **bus** (a bus company's
+parcel office) or **special** (arranged personally; the customer is told a person will call, no price quoted), with the
+negotiated price per parcel size and the stage or office to collect from. Never a ferry: lake areas stay collect-from-shop.
+Until a town has a card, its customers see "we send by taxi or bus but have no current price" and the order goes to the
+manual queue. Migration 0192 adds carrier_kind / handover_point to the rate card.
 
 ## Step 7 — what happens next (not in this runbook)
 

@@ -499,6 +499,17 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     help: 'The 12 water areas are pickup-only. No surcharge, no road quote.',
   },
   {
+    key: 'copy_special_arrangement',
+    tier: 1,
+    type: 'string',
+    unit: null,
+    mandatory: false,
+    defaultValue:
+      'We arrange shipping to your area personally. Place your order and our team will call you to agree how it travels and what it costs before anything is sent.',
+    label: 'Special arrangement destination',
+    help: "Shown when the destination's current card is marked 'special' on the Upcountry shipping page: served, by a person, no number quoted. The order goes to the manual queue like a missing card does.",
+  },
+  {
     key: 'copy_unavailable_area_unresolved',
     tier: 1,
     type: 'string',
@@ -554,8 +565,8 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     unit: null,
     mandatory: false,
     defaultValue:
-      'We send to your area by bus. Your parcel travels to a parcel office in your town and you collect it from there. Our rider does not come to your door outside Kampala.',
-    label: 'Served by bus rather than by our rider',
+      'We send to your area by taxi or bus. Your parcel travels to a stage or parcel office in your town and you collect it from there. Our rider does not come to your door outside Kampala.',
+    label: 'Served by taxi or bus rather than by our rider',
     help: 'Never reads as a refusal: the customer IS served. Say shipment and collection, never delivery to the door.',
   },
   {
@@ -565,8 +576,8 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     unit: null,
     mandatory: false,
     defaultValue:
-      'We ship to your area by bus, but we do not have a current price for this destination yet. Place your order and our team will confirm the shipping cost with you before we send it.',
-    label: 'Bus-served, no current rate card',
+      'We send to your area by taxi or bus, but we do not have a current price for this destination yet. Place your order and our team will confirm the shipping cost with you before we send it.',
+    label: 'Taxi/bus-served, no current rate card',
     help: 'A fact about us, not the customer — a carrier negotiation nobody has closed. It appears in an ops queue so somebody knows.',
   },
   {
@@ -608,7 +619,7 @@ export const DELIVERY_CONFIG_REGISTRY: readonly ConfigEntry[] = [
     type: 'string',
     unit: null,
     mandatory: false,
-    defaultValue: 'Bus parcels are charged per parcel, so a larger order can ship as more than one.',
+    defaultValue: 'Taxis and buses charge per parcel, so a larger order can travel as more than one.',
     label: 'Explaining per-parcel charging',
     help: 'Shown with the parcel count BEFORE the customer commits. Two parcels is two fees, and a surprise there is a dispute.',
   },

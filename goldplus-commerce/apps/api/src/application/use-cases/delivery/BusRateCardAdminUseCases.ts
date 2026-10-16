@@ -14,7 +14,7 @@
  */
 import { normalizeUgandaDistrict } from '@goldplus/shared';
 import { SHIPPING_CLASSES, type ShippingClass } from '../../../domain/delivery/DeliveryParcelClass';
-import type { ChargedAt } from '../../../domain/delivery/DeliveryBusRateCard';
+import { isCarrierKind, type CarrierKind, type ChargedAt } from '../../../domain/delivery/DeliveryBusRateCard';
 
 export interface RateCardRow {
   id: string;
@@ -31,6 +31,8 @@ export interface RateCardRow {
   effectiveTo: Date | null;
   version: number;
   sourceNote: string | null;
+  carrierKind: CarrierKind;
+  handoverPoint: string | null;
 }
 
 export interface ParcelOfficeRow {
@@ -63,6 +65,8 @@ export interface IBusRateCardAdminRepository {
     sourceNote: string | null;
     createdBy: string | null;
     now: Date;
+    carrierKind: CarrierKind;
+    handoverPoint: string | null;
   }): Promise<RateCardRow>;
   expireCard(id: string, now: Date): Promise<boolean>;
   listOffices(): Promise<ParcelOfficeRow[]>;
@@ -91,6 +95,10 @@ export class BusRateCardAdminUseCases {
     carrier: string;
     destinationTown: string;
     destinationDistrict: string;
+    /** taxi | bus | special. 'special' carries no prices: the team quotes by phone. */
+    carrierKind: string;
+    /** The stage or office the customer collects from, in the carrier's words. */
+    handoverPoint: string | null;
     fees: Partial<Record<ShippingClass, number | null>>;
     insurancePctOfDeclaredValue: number | null;
     transitDaysMin: number;
@@ -106,6 +114,7 @@ export class BusRateCardAdminUseCases {
     if (carrier.length < 2) return fail('INVALID_INPUT', 'Name the carrier (the bus company).');
     if (town.length < 2) return fail('INVALID_INPUT', 'Name the destination town, as the parcel office calls it.');
     if (!district) return fail('INVALID_INPUT', `"${input.destinationDistrict}" is not a Uganda district.`);
+    if (!isCarrierKind(input.carrierKind)) return fail('INVALID_INPUT', 'Say how it travels: taxi, bus, or a special arrangement.');
     if (input.chargedAt !== 'sending' && input.chargedAt !== 'collection') {
       return fail('INVALID_INPUT', 'Say who pays the carrier: at sending (we pay, it goes on the order) or at collection (the customer pays the office).');
     }
@@ -119,13 +128,18 @@ export class BusRateCardAdminUseCases {
       return fail('INVALID_INPUT', 'Insurance is a percentage of declared value, 0 to 100, or blank when the carrier offers no cover.');
     }
     const entries: Array<[ShippingClass, number]> = [];
-    for (const cls of SHIPPING_CLASSES) {
-      const v = input.fees[cls];
-      if (v === undefined || v === null || (typeof v === 'number' && Number.isNaN(v))) continue;
-      if (!Number.isInteger(v) || v < 0 || v > 5_000_000) return fail('INVALID_INPUT', `The ${cls} parcel price must be a whole number of shillings.`);
-      entries.push([cls, v]);
+    if (input.carrierKind === 'special') {
+      // Served by a person: one card per class so every basket resolves to "we arrange it", never to "no card".
+      for (const cls of SHIPPING_CLASSES) entries.push([cls, 0]);
+    } else {
+      for (const cls of SHIPPING_CLASSES) {
+        const v = input.fees[cls];
+        if (v === undefined || v === null || (typeof v === 'number' && Number.isNaN(v))) continue;
+        if (!Number.isInteger(v) || v < 0 || v > 5_000_000) return fail('INVALID_INPUT', `The ${cls} parcel price must be a whole number of shillings.`);
+        entries.push([cls, v]);
+      }
+      if (entries.length === 0) return fail('INVALID_INPUT', 'Enter at least one parcel price (small, medium or large).');
     }
-    if (entries.length === 0) return fail('INVALID_INPUT', 'Enter at least one parcel price (small, medium or large).');
 
     const now = input.now ?? new Date();
     const cards: RateCardRow[] = [];
@@ -144,6 +158,8 @@ export class BusRateCardAdminUseCases {
           sourceNote: input.sourceNote ? clean(input.sourceNote, 500) : null,
           createdBy: input.actorId,
           now,
+          carrierKind: input.carrierKind,
+          handoverPoint: input.handoverPoint ? clean(input.handoverPoint, 160) : null,
         }),
       );
     }
