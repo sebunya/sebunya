@@ -95,9 +95,13 @@ export class LocationSearchService {
     const rankKey = (h: AreaSearchHit): number[] => [
       saved.has(h.areaSlug) ? 0 : 1,
       ordered.has(h.areaSlug) ? 0 : 1,
+      // Greater Kampala (Kampala, Wakiso, Mukono) is one tier, ahead of upcountry, by owner direction 2026-10-16:
+      // Najjera and Kira are as much "home" as Kampala proper. Inside it, the better match wins, so "Najj" no
+      // longer puts Najjanankumbi (Kampala, a prefix) above an exact Najjera (Wakiso) just for the zone.
+      h.isMetro ? 0 : 1,
+      -(MATCH_QUALITY[h.matchType] ?? 0),
       ZONE_ORDER[h.deliveryZoneCode ?? ''] ?? 9,
       -(densityMap.get(h.areaSlug) ?? 0),
-      -(MATCH_QUALITY[h.matchType] ?? 0),
       -h.score,
     ];
     areas.sort((a, b) => {

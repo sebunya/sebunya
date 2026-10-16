@@ -221,6 +221,7 @@ interface SavedAddress {
 const sessionToken = Astro.cookies.get('goldplus_session')?.value ?? null;
 let savedAddresses: SavedAddress[] = [];
 let accountEmail = '';
+let accountPhone = '';
 if (authenticatedUserId && sessionToken) {
   try {
     const [addrRes, meRes] = await Promise.all([
@@ -236,7 +237,10 @@ if (authenticatedUserId && sessionToken) {
     const addrJson: any = addrRes.ok ? await addrRes.json().catch(() => null) : null;
     const meJson: any = meRes.ok ? await meRes.json().catch(() => null) : null;
     if (addrJson?.success && Array.isArray(addrJson.data)) savedAddresses = addrJson.data;
-    if (meJson?.success) accountEmail = meJson.data?.email ?? '';
+    if (meJson?.success) {
+      accountEmail = meJson.data?.email ?? '';
+      accountPhone = meJson.data?.phone ?? '';
+    }
   } catch {
     /* prefill is a convenience, never a dependency */
   }
@@ -744,9 +748,10 @@ const errorLinks = Object.keys(FIELD_TARGET)
 if (Astro.request.method !== 'POST') {
   if (authenticatedUserId) {
     values = {
-      name: defaultAddress?.recipientName ?? '',
+      // The account has no name field: the default address's recipient, else this browser's last checkout.
+      name: defaultAddress?.recipientName || guestPrefill.name || '',
       email: accountEmail,
-      phone: defaultAddress?.phone ?? '',
+      phone: defaultAddress?.phone || accountPhone || guestPrefill.phone || '',
       locationJson: '',
       deliveryAddress: '',
     };
@@ -761,6 +766,12 @@ if (Astro.request.method !== 'POST') {
   }
 }
 
+
+// 2026-10-16: a customer we already know CONFIRMS who is buying in one line instead of re-reading three
+// filled fields. Shown only on the first view with name and phone known and nothing to correct; the fields
+// stay in the form (they submit as before) and open with Edit, or empty with "Buying for someone else?".
+const whoSummary =
+  Astro.request.method !== 'POST' && Boolean(values.name?.trim()) && Boolean(values.phone?.trim()) && !errors.name && !errors.phone && !errors.email;
 
 // Initial delivery estimate for the preselected saved address, so a returning
 // customer sees a delivery figure without touching anything. Guests get one
@@ -932,13 +943,27 @@ const checkoutSavingLabel = basketSavingLabel(
             <div class="bg-white p-6 md:p-8 rounded-2xl border border-slate-200/80">
               <h2 class="text-base md:text-lg font-black text-gray-900 mb-6 flex items-center gap-2.5">
                 <span aria-hidden="true" class="w-6 h-6 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-black">1</span>
-                Customer details
+                {whoSummary ? 'You' : 'Customer details'}
               </h2>
-              
+
+              {whoSummary && (
+                <div id="who-summary" class="mb-6 flex items-start justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                  <div class="min-w-0">
+                    <p class="font-bold text-gray-900 text-sm break-words">{values.name}</p>
+                    <p class="text-xs text-slate-600 mt-0.5 break-words">{values.phone}{values.email ? ` · ${values.email}` : ''}</p>
+                    <p class="text-xs text-slate-500 mt-1">Order updates come here on WhatsApp, or by SMS.</p>
+                    <button type="button" id="who-someone-else" class="mt-2 text-xs font-bold text-brand-charcoal underline underline-offset-4 decoration-brand-primary">Buying for someone else?</button>
+                  </div>
+                  <button type="button" id="who-edit" class="inline-flex min-h-11 flex-shrink-0 items-center rounded-lg border border-slate-300 px-4 text-xs font-black uppercase tracking-wider text-brand-charcoal hover:bg-white">Edit</button>
+                </div>
+              )}
+              <p id="who-gift-note" class="hidden mb-4 text-xs text-slate-600">Enter the details of the person receiving the order. The rider calls them, and the order stays in your account.</p>
               <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div id="who-fields" class={`md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6${whoSummary ? ' hidden' : ''}`}>
                 <FormField id="name" name="name" label="Full name" required autocomplete="name" defaultValue={values.name} errorMessage={errors.name} />
                 <FormField id="email" name="email" label="Email" type="email" autocomplete="email" defaultValue={values.email} errorMessage={errors.email} />
                 <FormField id="phone" name="phone" label="Phone (mobile or landline)" type="tel" required inputmode="tel" autocomplete="tel" placeholder="07XX XXX XXX" helperText="With a mobile number, your order updates come on WhatsApp, or by SMS. Reply STOP on WhatsApp to get them by SMS only." defaultValue={values.phone} errorMessage={errors.phone} />
+                </div>
                 <div class="md:col-span-2 space-y-4">
                    {savedAddresses.length > 0 && (
                      <fieldset class="space-y-2">
@@ -991,16 +1016,19 @@ const checkoutSavingLabel = basketSavingLabel(
               withPin={true}
                        name="locationJson"
                        label="Delivery location"
-                       helperText="Type the area, town or district you know, for example Najjera, Seeta or Mbarara."
+                       helperText="Tap Locate me, or type your area. We price delivery as soon as we know where."
                        required={savedAddresses.length === 0}
                        defaultValue={values.locationJson}
                        errorMessage={errors.locationJson}
                      />
+                     {/* 2026-10-16: the fee, where the customer just answered. On a phone the order summary sits below
+                         the whole form, so the number they were waiting for appeared out of sight. */}
+                     <p id="location-fee-line" class="hidden -mt-1 rounded-lg bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-900" role="status" aria-live="polite"></p>
                      <FormField
                        id="deliveryAddress"
                        name="deliveryAddress"
-                       label="Exact address: estate, road, building or landmark"
-                       placeholder="e.g. Kigoowa Road, gate after Capital Shoppers"
+                       label="What should the rider look for?"
+                       placeholder="Building, gate colour, road or landmark, e.g. green gate after Capital Shoppers, Kigoowa Road"
                        required
                        defaultValue={values.deliveryAddress}
                        errorMessage={errors.deliveryAddress}
@@ -1341,8 +1369,27 @@ const checkoutSavingLabel = basketSavingLabel(
       lastLocated = located;
       if (!estimateEl || !totalEl || !totalLabelEl) return;
       renderEstimateRow(est, located);
+      renderLocationFeeLine(est, located);
       if (submitTotalEl) submitTotalEl.textContent = totalEl.textContent;
       if (submitTotalLabelEl) submitTotalLabelEl.textContent = totalLabelEl.textContent;
+    }
+
+    let feeLineHome: { parent: HTMLElement | null; next: Element | null } | null = null;
+    function renderLocationFeeLine(est: { kind: string; feeUgx: number | null } | null, located: boolean) {
+      const line = document.getElementById('location-fee-line');
+      if (!line) return;
+      let text = '';
+      if (est && est.kind === 'CONFIRMED' && est.feeUgx !== null) text = est.feeUgx === 0 ? 'No delivery fee' : `Delivery ${ugx(est.feeUgx)}`;
+      else if (est && est.kind === 'ESTIMATED' && est.feeUgx !== null) text = `Delivery about ${ugx(est.feeUgx)}, confirmed before the rider leaves`;
+      else if (located) text = 'Delivery fee confirmed by phone before dispatch';
+      // A saved address hides the new-address block the line sits in: then it shows under the saved choices.
+      const savedFieldset = document.querySelector('input.js-address-choice')?.closest('fieldset');
+      const usingSaved = Boolean(document.querySelector<HTMLInputElement>('input.js-address-choice:checked')?.value);
+      if (!feeLineHome) feeLineHome = { parent: line.parentElement, next: line.nextElementSibling };
+      if (usingSaved && savedFieldset) savedFieldset.after(line);
+      else if (feeLineHome.parent) feeLineHome.parent.insertBefore(line, feeLineHome.next);
+      line.textContent = text;
+      line.classList.toggle('hidden', !text);
     }
 
     function renderEstimateRow(est: { kind: string; feeUgx: number | null } | null, located: boolean) {
@@ -1455,6 +1502,27 @@ const checkoutSavingLabel = basketSavingLabel(
         else if (r.checked) onPickerChange();
       }),
     );
+    // "You" summary: Edit opens the filled fields; "Buying for someone else?" opens them empty for the recipient.
+    (() => {
+      const summary = document.getElementById('who-summary');
+      const fields = document.getElementById('who-fields');
+      if (!summary || !fields) return;
+      const open = (focusId: string) => {
+        summary.classList.add('hidden');
+        fields.classList.remove('hidden');
+        document.getElementById(focusId)?.focus();
+      };
+      document.getElementById('who-edit')?.addEventListener('click', () => open('name'));
+      document.getElementById('who-someone-else')?.addEventListener('click', () => {
+        for (const id of ['name', 'phone']) {
+          const f = document.getElementById(id) as HTMLInputElement | null;
+          if (f) f.value = '';
+        }
+        document.getElementById('who-gift-note')?.classList.remove('hidden');
+        open('name');
+      });
+    })();
+
     const pickerPayload = document.querySelector<HTMLInputElement>('form[action="/checkout"] .js-final-payload');
     function onPickerChange() {
       const raw = pickerPayload?.value ?? '';
@@ -1492,6 +1560,10 @@ const checkoutSavingLabel = basketSavingLabel(
     // (Called directly: re-dispatching 'change' would also fire the funnel event.)
     const savedChosenAtLoad = document.querySelector<HTMLInputElement>('input.js-address-choice:checked');
     if (pickerPayload?.value && !(savedChosenAtLoad && savedChosenAtLoad.value !== '')) onPickerChange();
+    // A saved address chosen at load: price it here too, so its fee shows beside it, not only in the summary.
+    else if (savedChosenAtLoad && savedChosenAtLoad.value !== '') {
+      refreshEstimate(savedChosenAtLoad.dataset.district ?? null, savedChosenAtLoad.dataset.area || null, savedChosenAtLoad.dataset.areaSlug || null);
+    }
 
     // ── promo code (Apply = live preview from the SAME evaluator that charges) ──
     const promoInput = document.getElementById('couponCode') as HTMLInputElement | null;

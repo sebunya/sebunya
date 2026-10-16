@@ -58,6 +58,7 @@ export class DrizzleLocationSearchRepository implements ILocationSearchRepositor
       from ug_area_alias al
       join ug_area a on a.area_slug = al.area_slug
       where al.normalised_alias = ${folded} and a.selectable = true
+      order by a.is_metro desc
       limit 8`)) as unknown as AreaRowRaw[];
     return rows.map(toHit('alias_exact'));
   }
@@ -71,6 +72,8 @@ export class DrizzleLocationSearchRepository implements ILocationSearchRepositor
         and (split_part(a.search_text, ' ', 1) = ${folded}
              or a.search_text = ${folded}
              or a.search_text like ${folded + ' %'})
+      -- Greater Kampala first, so a cap can never drop it in favour of an upcountry namesake.
+      order by a.is_metro desc
       limit 16`)) as unknown as AreaRowRaw[];
     return rows.map(toHit('area_exact'));
   }
@@ -97,14 +100,18 @@ export class DrizzleLocationSearchRepository implements ILocationSearchRepositor
     // Still a prefix match per word, so it does not degrade into substring
     // soup: "bunga" cannot reach "Busanga".
     const rows = (await db.execute(sql`
-      select ${AREA_COLS}, 0.9::float as score
-      from ug_area a
-      where a.selectable = true
-        and (a.search_text like ${folded + '%'} or a.search_text like ${'% ' + folded + '%'})
-      union
-      select ${AREA_COLS}, 0.9::float as score
-      from ug_area_alias al join ug_area a on a.area_slug = al.area_slug
-      where a.selectable = true and al.normalised_alias like ${folded + '%'}
+      select * from (
+        select ${AREA_COLS}, 0.9::float as score
+        from ug_area a
+        where a.selectable = true
+          and (a.search_text like ${folded + '%'} or a.search_text like ${'% ' + folded + '%'})
+        union
+        select ${AREA_COLS}, 0.9::float as score
+        from ug_area_alias al join ug_area a on a.area_slug = al.area_slug
+        where a.selectable = true and al.normalised_alias like ${folded + '%'}
+      ) p
+      -- Greater Kampala first (it used to be whatever the planner returned first, cut at the limit).
+      order by p.is_metro desc, p.display_label
       limit ${limit}`)) as unknown as AreaRowRaw[];
     return rows.map(toHit('prefix'));
   }
@@ -114,7 +121,7 @@ export class DrizzleLocationSearchRepository implements ILocationSearchRepositor
       select ${AREA_COLS}, similarity(a.search_text, ${folded})::float as score
       from ug_area a
       where a.selectable = true and similarity(a.search_text, ${folded}) > ${threshold}
-      order by score desc
+      order by a.is_metro desc, score desc
       limit ${limit}`)) as unknown as AreaRowRaw[];
     return rows.map(toHit('trigram'));
   }

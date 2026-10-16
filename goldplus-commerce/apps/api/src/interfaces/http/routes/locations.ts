@@ -53,6 +53,23 @@ routes.get('/search', async (c) => {
   return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
 });
 
+/**
+ * A pin → the nearest areas, for the customer to choose from (2026-10-16). Never one silent answer: on
+ * production points a single nearest-area guess was wrong for about one pin in five at 1 km from an area's
+ * centre. The pin is read, never stored here, and never echoed back; only area labels are returned.
+ */
+routes.get('/near', async (c) => {
+  const lat = Number(c.req.query('lat'));
+  const lng = Number(c.req.query('lng'));
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -2.5 || lat > 5.5 || lng < 28 || lng > 36.5) {
+    return c.json({ success: false, error: { code: 'OUTSIDE_UGANDA', message: 'That point is not in Uganda.' } } satisfies ApiResponse<never>, 400);
+  }
+  const areas = await Registry.getInstance()
+    .deliveryAreaResolver.nearestAreas({ lat, lng })
+    .catch(() => []);
+  return c.json({ success: true, data: { areas } } satisfies ApiResponse<{ areas: typeof areas }>);
+});
+
 routes.post('/search-events', async (c) => {
   const parsed = searchEventSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
