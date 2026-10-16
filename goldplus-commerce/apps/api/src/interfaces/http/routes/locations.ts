@@ -53,6 +53,27 @@ routes.get('/search', async (c) => {
   return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
 });
 
+/**
+ * A pin → the area it falls in (2026-10-16), so "Use my location" can stand on its own at checkout: the same
+ * nearest-area rule the quote applies to a WhatsApp location (close and unambiguous, else nothing). The pin is
+ * read, never stored here, and never echoed back; only the area is returned.
+ */
+routes.get('/near', async (c) => {
+  const lat = Number(c.req.query('lat'));
+  const lng = Number(c.req.query('lng'));
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -2.5 || lat > 5.5 || lng < 28 || lng > 36.5) {
+    return c.json({ success: false, error: { code: 'OUTSIDE_UGANDA', message: 'That point is not in Uganda.' } } satisfies ApiResponse<never>, 400);
+  }
+  const resolved = await Registry.getInstance()
+    .deliveryAreaResolver.forOrderLocation({ point: { lat, lng } })
+    .catch(() => null);
+  const area =
+    resolved && resolved.via === 'pin' && resolved.input.areaSlug
+      ? { areaSlug: resolved.input.areaSlug, label: resolved.label, district: resolved.input.district }
+      : null;
+  return c.json({ success: true, data: { area } } satisfies ApiResponse<{ area: typeof area }>);
+});
+
 routes.post('/search-events', async (c) => {
   const parsed = searchEventSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {

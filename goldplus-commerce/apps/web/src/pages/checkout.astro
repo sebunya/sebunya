@@ -991,7 +991,7 @@ const checkoutSavingLabel = basketSavingLabel(
               withPin={true}
                        name="locationJson"
                        label="Delivery location"
-                       helperText="Type the area, town or district you know, for example Najjera, Seeta or Mbarara."
+                       helperText="Tap Locate me, or type your area. We price delivery as soon as we know where."
                        required={savedAddresses.length === 0}
                        defaultValue={values.locationJson}
                        errorMessage={errors.locationJson}
@@ -999,8 +999,8 @@ const checkoutSavingLabel = basketSavingLabel(
                      <FormField
                        id="deliveryAddress"
                        name="deliveryAddress"
-                       label="Exact address: estate, road, building or landmark"
-                       placeholder="e.g. Kigoowa Road, gate after Capital Shoppers"
+                       label="What should the rider look for?"
+                       placeholder="Building, gate colour, road or landmark, e.g. green gate after Capital Shoppers, Kigoowa Road"
                        required
                        defaultValue={values.deliveryAddress}
                        errorMessage={errors.deliveryAddress}

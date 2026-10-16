@@ -26,6 +26,9 @@
     area?: string;
     areaSlug?: string;
     provenance?: string;
+    /** What the customer typed, when it matched an alias of this area ("Kisaasi" → Kyanja). Shown, so the answer is not a surprise. */
+    matchedAs?: string;
+    isMetro?: boolean;
   }
 
   interface PinState {
@@ -74,6 +77,10 @@
     return [...starts, ...contains].slice(0, limit);
   }
 
+  function titleCase(q: string): string {
+    return q.trim().replace(/\s+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()).slice(0, 40);
+  }
+
   /** Client-side pin parsing for the common shapes; short links go server-side. */
   function parsePinLocally(raw: string): PinState | null {
     const text = raw.trim();
@@ -100,14 +107,15 @@
     const districtSelect = el.querySelector('.js-district-select') as HTMLSelectElement | null;
     const errBox = el.querySelector('.js-err-box') as HTMLElement | null;
     const announce = el.querySelector('.js-result-announce') as HTMLElement | null;
-    const manualToggle = el.querySelector('.js-manual-toggle') as HTMLButtonElement | null;
-    const manualMode = el.querySelector('.js-manual-mode') as HTMLElement | null;
     const manualText = el.querySelector('.js-manual-text') as HTMLTextAreaElement | null;
     const manualCommit = el.querySelector('.js-manual-commit') as HTMLButtonElement | null;
     const pinGps = el.querySelector('.js-pin-gps') as HTMLButtonElement | null;
     const pinLink = el.querySelector('.js-pin-link') as HTMLInputElement | null;
     const pinStatus = el.querySelector('.js-pin-status') as HTMLElement | null;
     const commitAnnounce = el.querySelector('.js-commit-announce') as HTMLElement | null;
+    const cardAddPin = el.querySelector('.js-card-add-pin') as HTMLButtonElement | null;
+    const cardPinStatus = el.querySelector('.js-card-pin-status') as HTMLElement | null;
+    const fallbacks = el.querySelector('.js-fallbacks') as HTMLDetailsElement | null;
     if (!input || !dropdown || !payloadInput || !selectedCard || !searchContainer) return;
 
     let current: PlaceOption[] = [];
@@ -175,6 +183,7 @@
       input!.removeAttribute('aria-invalid');
       input!.classList.remove('border-red-600', 'ring-2', 'ring-red-100');
       cardPin?.classList.toggle('hidden', !pin);
+      cardAddPin?.classList.toggle('hidden', !!pin);
       if (commitAnnounce) {
         const chosen = [cardPrimary?.textContent, cardSecondary?.textContent].filter(Boolean).join(', ');
         commitAnnounce.textContent = chosen ? `Delivery location set: ${chosen}` : '';
@@ -211,6 +220,12 @@
           const distSpan = document.createElement('span');
           distSpan.className = 'text-xs text-gray-500 whitespace-nowrap';
           distSpan.textContent = opt.area ? `${opt.district} District` : 'District';
+          if (opt.matchedAs) {
+            const why = document.createElement('span');
+            why.className = 'block text-xs font-normal text-gray-600';
+            why.textContent = `includes ${opt.matchedAs}`;
+            nameSpan.appendChild(why);
+          }
           li.appendChild(nameSpan);
           li.appendChild(distSpan);
           li.addEventListener('mousedown', (e) => {
@@ -242,13 +257,19 @@
         const hits: PlaceOption[] = Array.isArray(json?.data?.hits)
           ? json.data.hits
               .filter((h: { kind: string }) => h.kind === 'area')
-              .map((h: { displayLabel: string; areaName: string; currentDistrict: string; areaSlug: string; matchType: string }) => ({
+              .map((h: { displayLabel: string; areaName: string; currentDistrict: string; areaSlug: string; matchType: string; isMetro?: boolean; score?: number }, i: number) => ({
                 label: h.displayLabel,
                 district: h.currentDistrict,
                 area: h.areaName !== h.currentDistrict ? h.areaName : undefined,
                 areaSlug: h.areaSlug,
                 provenance: h.matchType,
+                isMetro: h.isMetro === true,
+                matchedAs: String(h.matchType || '').startsWith('alias') ? titleCase(query) : undefined,
+                _order: [-(Number(h.score) || 0), h.isMetro === true ? 0 : 1, i] as number[],
               }))
+              // Equal matches: the place we deliver to by rider (metro) before the namesake upcountry.
+              .sort((a: { _order: number[] }, b: { _order: number[] }) => a._order[0] - b._order[0] || a._order[1] - b._order[1] || a._order[2] - b._order[2])
+              .map(({ _order, ...rest }: { _order: number[] } & PlaceOption) => rest)
           : [];
         // Server hits lead; local fills gaps (dedupe by label+district).
         const seen = new Set(hits.map((h) => `${h.label}|${h.district}`.toLowerCase()));
@@ -323,23 +344,23 @@
 
     districtSelect?.addEventListener('change', () => {
       const district = districtSelect.value;
-      if (district && !manualMode?.classList.contains('hidden')) return; // manual mode uses it as context
+      // With directions typed, the district is their context (committed with them); otherwise choosing it is the answer.
+      if (district && (manualText?.value.trim().length ?? 0) > 0) return;
       if (district) commit({ label: district, district });
     });
 
-    manualToggle?.addEventListener('click', () => {
-      manualMode?.classList.toggle('hidden');
-      manualText?.focus();
-    });
     manualCommit?.addEventListener('click', commitManual);
 
     // ── Pin capture (PART G.1) ─────────────────────────────────────────────
-    pinGps?.addEventListener('click', () => {
-      if (!navigator.geolocation) {
-        if (pinStatus) pinStatus.textContent = 'Location is not available on this device.';
-        return;
-      }
-      if (pinStatus) pinStatus.textContent = 'Getting your location…';
+    /**
+     * The phone's location, the easiest answer there is. Before a place is chosen it IS the answer: the area is
+     * named from the pin (GET /locations/near, the quote's own rule) and committed, so the fee shows at once.
+     * After a place is chosen it is added for the rider. The customer always sees the area and can change it.
+     */
+    function captureDevicePin(statusEl: HTMLElement | null) {
+      const say = (t: string) => { if (statusEl) statusEl.textContent = t; };
+      if (!navigator.geolocation) { say('Location is not available on this device. Search your area instead.'); return; }
+      say('Finding you…');
       navigator.geolocation.getCurrentPosition(
         (pos) => {
           pin = {
@@ -348,20 +369,46 @@
             gpsAccuracyM: Math.round(pos.coords.accuracy),
             gpsSource: 'device',
           };
-          if (pinStatus) {
-            pinStatus.textContent =
-              pos.coords.accuracy > 100
-                ? `Pin captured, but accuracy is about ${Math.round(pos.coords.accuracy)} m. Keep it if the area looks right.`
-                : 'Pin captured ✓';
-          }
-          refreshPayloadPin();
+          const rough = pos.coords.accuracy > 100 ? ` Accuracy is about ${Math.round(pos.coords.accuracy)} m.` : '';
+          void afterPin(statusEl, `Got your location ✓.${rough}`);
         },
-        () => {
-          if (pinStatus) pinStatus.textContent = 'Could not get your location. You can paste a maps link instead.';
+        (err) => {
+          say(
+            err && err.code === 1
+              ? 'Location is blocked for this site. Search your area instead, or allow location in your browser settings.'
+              : 'Could not get your location. Search your area instead.',
+          );
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+        { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 },
       );
-    });
+    }
+
+    /** A pin arrived (device or link). Nothing chosen yet: name the area from it. Something chosen: attach it. */
+    async function afterPin(statusEl: HTMLElement | null, okText: string) {
+      const say = (t: string) => { if (statusEl) statusEl.textContent = t; };
+      if (payloadInput!.value || !pin) { say(okText); refreshPayloadPin(); return; }
+      say('Finding your area…');
+      let area: { areaSlug: string; label: string; district: string | null } | null = null;
+      if (publicApiBase) {
+        try {
+          const res = await fetch(`${publicApiBase}/locations/near?lat=${pin.gpsLat}&lng=${pin.gpsLng}`, { signal: AbortSignal.timeout(5000) });
+          const json = await res.json().catch(() => null);
+          area = json?.data?.area ?? null;
+        } catch { /* the honest message below */ }
+      }
+      if (area && area.district) {
+        const name = area.label.split(',')[0].trim();
+        say('');
+        commit({ label: area.label, district: area.district, area: name !== area.district ? name : undefined, areaSlug: area.areaSlug });
+        if (cardSecondary) cardSecondary.textContent = `District: ${area.district} · from your location`;
+        return;
+      }
+      say('We have your exact location for the rider. Now type your area so we can price delivery.');
+      input!.focus();
+    }
+
+    pinGps?.addEventListener('click', () => captureDevicePin(pinStatus));
+    cardAddPin?.addEventListener('click', () => captureDevicePin(cardPinStatus));
 
     async function handlePinLink() {
       const raw = pinLink?.value.trim() ?? '';
@@ -386,8 +433,8 @@
       }
       if (parsed) {
         pin = parsed;
-        if (pinStatus) pinStatus.textContent = 'Pin captured from the link ✓';
-        refreshPayloadPin();
+        if (fallbacks) fallbacks.open = false;
+        await afterPin(pinStatus, 'Location from the link ✓');
       } else if (pinStatus) {
         pinStatus.textContent = 'That link has no readable location, the order still works without a pin.';
       }
@@ -398,6 +445,8 @@
     /** A pin captured after selection joins the already-committed payload. */
     function refreshPayloadPin() {
       cardPin?.classList.toggle('hidden', !pin);
+      cardAddPin?.classList.toggle('hidden', !!pin);
+      if (pin && cardPinStatus) cardPinStatus.textContent = '';
       if (!payloadInput!.value) return;
       try {
         const existing = JSON.parse(payloadInput!.value);
@@ -412,6 +461,10 @@
       selectedCard.classList.add('hidden');
       searchContainer.classList.remove('hidden');
       payloadInput.value = '';
+      // A new place gets its own pin: the old one could be home while the new answer is the office.
+      pin = null;
+      if (pinStatus) pinStatus.textContent = '';
+      if (cardPinStatus) cardPinStatus.textContent = '';
       if (districtSelect) districtSelect.value = '';
       input.value = '';
       input.focus();
