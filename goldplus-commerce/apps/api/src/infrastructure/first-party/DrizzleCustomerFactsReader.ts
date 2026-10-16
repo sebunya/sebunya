@@ -56,7 +56,9 @@ export class DrizzleCustomerFactsReader implements ICustomerFactsReader {
 
     const orderRows = rows(await db.execute(sql`
       select id, user_id, created_at, total_amount, status, payment_status, payment_method,
-        coalesce(nullif(delivery_location->>'district', ''), null) as district
+        coalesce(nullif(delivery_location->>'district', ''), null) as district,
+        coalesce(nullif(delivery_location->>'displayLabel', ''), nullif(delivery_area, '')) as area,
+        coalesce(delivery_area ilike 'pickup point:%', false) as collected
       from orders
       order by created_at asc limit ${MAX_ORDERS + 1}`));
     if (orderRows.length > MAX_ORDERS) throw new Error('CUSTOMER_FACTS_INPUT_EXCEEDS_BOUND');
@@ -76,6 +78,8 @@ export class DrizzleCustomerFactsReader implements ICustomerFactsReader {
         categoryIds: categoriesByOrder.get(id) ?? [],
         paymentMethod: o.payment_method ? String(o.payment_method) : null,
         district: o.district ? String(o.district) : null,
+        area: o.area && !o.collected ? String(o.area).slice(0, 120) : null,
+        collected: o.collected === true,
       };
       facts.get(owner)?.orders.push(fact);
     }

@@ -19,6 +19,7 @@
   // node:crypto and kills the client build — ledger #30).
   import { UGANDA_DISTRICTS, UGANDA_PLACE_ALIASES } from '../../../../packages/shared/src/locations/uganda';
   import { publicApiBase } from './api';
+  import { PLUS_CODE, plusCodePoint } from './plusCodeInput';
 
   interface PlaceOption {
     label: string;
@@ -125,6 +126,8 @@
   /** Client-side pin parsing for the common shapes; short links go server-side. */
   function parsePinLocally(raw: string): PinState | null {
     const text = raw.trim();
+    const fromPlusCode = plusCodePoint(text);
+    if (fromPlusCode) return { gpsLat: fromPlusCode.lat, gpsLng: fromPlusCode.lng, gpsSource: 'pasted_link' };
     const m = text.match(/(-?\d{1,2}(?:\.\d{1,10})?)\s*,\s*(-?\d{1,3}(?:\.\d{1,10})?)/);
     const fromAt = text.match(/@(-?\d{1,2}(?:\.\d+)?),(-?\d{1,3}(?:\.\d+)?)/);
     const pair = fromAt ?? m;
@@ -164,13 +167,14 @@
     let searchSeq = 0;
     let debounceTimer: number | undefined;
     let pin: PinState | null = null;
+    const withPinCapture = el.dataset.withPin === '1';
     // The deep layer: one billing session per search-and-pick, switched off for the page when the server says
     // "not configured" or the month's budget is spent.
     let deepSession = newSessionToken();
     // Off until the server says the deep layer exists (one free status call per page), so a site without a key
     // never shows the row. Shared across pickers on the page.
     let deepEnabled = false;
-    void deepConfigured().then((ok) => { deepEnabled = ok; });
+    if (el.dataset.deep !== 'off') void deepConfigured().then((ok) => { deepEnabled = ok; });
     let deepTimer: number | undefined;
     let deepSeq = 0;
     let lastDeepQuery = '';
@@ -461,6 +465,15 @@
     input.addEventListener('input', () => {
       payloadInput.value = '';
       const q = input.value.trim();
+      // A Plus Code typed or pasted into the search box is a location, not an area name: take it as a pin.
+      const coded = withPinCapture ? plusCodePoint(q) : null;
+      if (coded) {
+        if (debounceTimer) window.clearTimeout(debounceTimer);
+        pin = { gpsLat: coded.lat, gpsLng: coded.lng, gpsSource: 'pasted_link' };
+        dropdown.classList.add('hidden');
+        void afterPin(pinStatus, 'Location from the Plus Code ✓');
+        return;
+      }
       if (debounceTimer) window.clearTimeout(debounceTimer);
       if (q.length < 2) {
         dropdown.classList.add('hidden');
@@ -655,7 +668,9 @@
         if (fallbacks) fallbacks.open = false;
         await afterPin(pinStatus, 'Location from the link ✓');
       } else if (pinStatus) {
-        pinStatus.textContent = 'That link has no readable location, the order still works without a pin.';
+        pinStatus.textContent = PLUS_CODE.test(raw)
+          ? 'That short Plus Code needs its full form outside Greater Kampala (e.g. 6GGJ8H7H+M5M). Copy it from Google Maps.'
+          : 'That link has no readable location, the order still works without a pin.';
       }
     }
     pinLink?.addEventListener('change', () => void handlePinLink());

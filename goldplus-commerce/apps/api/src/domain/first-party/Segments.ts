@@ -7,6 +7,7 @@
  * be contacted or advertised to: every consumer applies its own consent gate
  * (advertising: AdvertisingConsentGate; WhatsApp: whatsapp_marketing).
  */
+import { areaNameOf, isGreaterKampala } from '../locations/GreaterKampala';
 import { CustomerFacts, classifyOrder, countedOrders, realisedSpendUgx } from './CustomerFacts';
 import { paymentHabitOf, rfmForPopulation } from './CustomerTraits';
 import type { RfmSegment } from '../customer-dna/Rfm';
@@ -32,13 +33,19 @@ export type SegmentRule =
   /** 0157: how they usually pay (two thirds or more of their orders). */
   | { kind: 'PAYMENT_HABIT'; habit: 'CASH_ON_DELIVERY' | 'ONLINE' | 'MIXED' }
   /** 0157: most of their deliveries went to this district. */
-  | { kind: 'DISTRICT'; district: string };
+  | { kind: 'DISTRICT'; district: string }
+  /** 2026-10-16: most deliveries go to Greater Kampala (Kampala, Wakiso, Mukono, Mpigi). */
+  | { kind: 'GREATER_KAMPALA' }
+  /** 2026-10-16: most deliveries go to one area, by name ("Najjera"). */
+  | { kind: 'AREA'; area: string }
+  /** 2026-10-16: has collected an order from a pickup point at least once. */
+  | { kind: 'COLLECTS' };
 
 export type SegmentRuleKind = SegmentRule['kind'];
 
 export const SEGMENT_RULE_KINDS: readonly SegmentRuleKind[] = [
   'BOUGHT_IN_CATEGORY', 'ABANDONED_BASKET', 'LIFETIME_SPEND_AT_LEAST', 'BULK_BUYER', 'REPEAT_BUYER', 'LAPSED',
-  'RFM_SEGMENT', 'PAYMENT_HABIT', 'DISTRICT',
+  'RFM_SEGMENT', 'PAYMENT_HABIT', 'DISTRICT', 'GREATER_KAMPALA', 'AREA', 'COLLECTS',
 ];
 
 export const RFM_SEGMENT_NAMES: readonly RfmSegment[] = [
@@ -134,6 +141,18 @@ export function validateSegmentDefinition(raw: unknown):
         else rules.push({ kind: 'DISTRICT', district });
         break;
       }
+      case 'GREATER_KAMPALA':
+        rules.push({ kind: 'GREATER_KAMPALA' });
+        break;
+      case 'COLLECTS':
+        rules.push({ kind: 'COLLECTS' });
+        break;
+      case 'AREA': {
+        const area = typeof r.area === 'string' ? r.area.trim() : '';
+        if (area.length < 2 || area.length > 80) errors.push(`${at}: name an area`);
+        else rules.push({ kind: 'AREA', area });
+        break;
+      }
       default:
         errors.push(`${at}: unknown rule kind`);
     }
@@ -177,6 +196,19 @@ export function evaluateRule(rule: SegmentRule, f: CustomerFacts, now: Date, ctx
       const want = rule.district.toLowerCase();
       return districts.filter((d) => d === want).length * 2 > districts.length;
     }
+    case 'GREATER_KAMPALA': {
+      const districts = countedOrders(f).filter((o) => !o.collected).map((o) => o.district).filter((d): d is string => !!d && !!d.trim());
+      if (districts.length === 0) return false;
+      return districts.filter((d) => isGreaterKampala(d)).length * 2 > districts.length;
+    }
+    case 'AREA': {
+      const areas = countedOrders(f).filter((o) => !o.collected).map((o) => areaNameOf(o.area)?.toLowerCase()).filter((a): a is string => !!a);
+      if (areas.length === 0) return false;
+      const want = rule.area.toLowerCase();
+      return areas.filter((a) => a === want).length * 2 > areas.length;
+    }
+    case 'COLLECTS':
+      return countedOrders(f).some((o) => o.collected === true);
   }
 }
 
@@ -209,6 +241,9 @@ export function describeRule(rule: SegmentRule, categoryName?: (id: string) => s
     case 'RFM_SEGMENT': return `RFM segment is ${rule.segments.join(' or ')}`;
     case 'PAYMENT_HABIT': return rule.habit === 'CASH_ON_DELIVERY' ? 'Usually pays cash on delivery' : rule.habit === 'ONLINE' ? 'Usually pays online' : 'Pays both ways';
     case 'DISTRICT': return `Most deliveries go to ${rule.district}`;
+    case 'GREATER_KAMPALA': return 'Most deliveries go to Greater Kampala (Kampala, Wakiso, Mukono, Mpigi)';
+    case 'AREA': return `Most deliveries go to ${rule.area}`;
+    case 'COLLECTS': return 'Has collected an order from a pickup point';
   }
 }
 

@@ -33,6 +33,15 @@ const KNOWN_STATUSES: OrderStatus[] = [
   'failed',
 ];
 
+/** Place memory: what riders learned the last times we delivered to this customer in this area (read-only). */
+routes.get('/:id/place-memory', requirePermissions([PERMISSIONS.ORDERS_READ]), async (c) => {
+  const id = c.req.param('id') ?? '';
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return c.json({ success: false, error: { code: 'INVALID_ID', message: 'Unknown order.' } } satisfies ApiResponse<never>, 400);
+  const data = await Registry.getInstance().getPlaceMemoryUseCase.execute(id);
+  if (!data) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'Unknown order.' } } satisfies ApiResponse<never>, 404);
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+
 routes.post('/:id/transition', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   const orderId = c.req.param('id') ?? '';
   const body = await c.req.json().catch(() => null);

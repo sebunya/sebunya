@@ -12,6 +12,8 @@
  * - RFM quintiles are relative to the customers who have ordered (the
  *   population), never fixed thresholds; a customer with no order has no RFM.
  */
+import { areaNameOf, isGreaterKampala } from '../locations/GreaterKampala';
+
 import { scoreRfm, type RfmScore } from '../customer-dna/Rfm';
 import { CustomerFacts, classifyOrder, countedOrders, realisedSpendUgx } from './CustomerFacts';
 
@@ -43,6 +45,10 @@ export interface TraitOrder {
   paymentStatus: string;
   paymentMethod: string | null;
   district: string | null;
+  /** 2026-10-16: the delivery area label on the order ("Najjera, Wakiso"); null for a collection. */
+  area?: string | null;
+  /** 2026-10-16: collected from a pickup point. */
+  collected?: boolean;
   lines: TraitOrderLine[];
   /** The channel the attribution module credited (last click), when recorded. */
   lastClickChannel: string | null;
@@ -81,6 +87,16 @@ export interface TraitInput {
 export interface AffinityItem { name: string; share: number; }
 export interface DeviceGuess { label: string; confidence: 'LIKELY' | 'POSSIBLE'; evidence: string[]; }
 export interface PaymentHabit { habit: 'CASH_ON_DELIVERY' | 'ONLINE' | 'MIXED'; cashOnDelivery: number; online: number; }
+/** How a customer receives orders, from their own orders (2026-10-16). */
+export interface DeliveryPattern {
+  delivered: number;
+  collected: number;
+  /** Distinct delivery areas: three or more often means buying for others, or for a business. */
+  areas: number;
+  /** Share of deliveries that went to Greater Kampala (Kampala, Wakiso, Mukono, Mpigi), 0–1; null with none. */
+  greaterKampalaShare: number | null;
+}
+
 export interface RfmTrait { r: number; f: number; m: number; code: string; segment: string; recencyDays: number | null; population: number; }
 
 export interface CustomerTraits {
@@ -92,6 +108,8 @@ export interface CustomerTraits {
   preferredChannel: Trait<{ channel: string; orders: number; of: number }>;
   paymentHabit: Trait<PaymentHabit>;
   district: Trait<string>;
+  deliveryArea: Trait<string>;
+  deliveryPattern: Trait<DeliveryPattern>;
   bulkBuyer: Trait<boolean>;
   marketingOptIns: Trait<string[]>;
   statedNeeds: Trait<Record<string, string>>;
@@ -239,6 +257,31 @@ export function computeCustomerTraits(input: TraitInput, rfm: (RfmScore & { popu
       ? { key: 'district', label: 'District', basis: 'DECLARED', value: input.addressDistricts[0], evidence: 'From the customer\'s saved address (no delivered order records one).' }
       : { key: 'district', label: 'District', basis: 'OBSERVED', value: null, evidence: 'No order or saved address records a district.' };
 
+  // Location, from the customer's own orders only: the area they gave, never a pin (no coordinates here at all),
+  // never anything from Google Places (Maps Platform Terms §3.2.3(c): no content created from Google Maps Content).
+  const deliveredOrders = counted.filter((o) => !o.collected);
+  const areaNames = deliveredOrders.map((o) => areaNameOf(o.area)).filter((a): a is string => !!a);
+  const topArea = mode(areaNames);
+  const deliveryArea: Trait<string> = topArea
+    ? { key: 'delivery_area', label: 'Usual delivery area', basis: 'OBSERVED', value: topArea.value, evidence: `Delivery area on ${topArea.count} of ${plural(areaNames.length, 'delivered order')} with one.` }
+    : { key: 'delivery_area', label: 'Usual delivery area', basis: 'OBSERVED', value: null, evidence: counted.length ? 'No delivered order records an area.' : 'No order yet.' };
+  const collectedCount = counted.length - deliveredOrders.length;
+  const deliveredDistricts = deliveredOrders.map((o) => o.district).filter((d): d is string => !!d && !!d.trim());
+  const deliveryPattern: Trait<DeliveryPattern> = counted.length
+    ? {
+        key: 'delivery_pattern',
+        label: 'How they receive orders',
+        basis: 'DERIVED',
+        value: {
+          delivered: deliveredOrders.length,
+          collected: collectedCount,
+          areas: new Set(areaNames.map((a) => a.toLowerCase())).size,
+          greaterKampalaShare: deliveredDistricts.length ? deliveredDistricts.filter((d) => isGreaterKampala(d)).length / deliveredDistricts.length : null,
+        },
+        evidence: `${plural(deliveredOrders.length, 'delivered order')} and ${plural(collectedCount, 'collection')}. Three or more delivery areas often means buying for others or for a business.`,
+      }
+    : { key: 'delivery_pattern', label: 'How they receive orders', basis: 'DERIVED', value: null, evidence: 'No order yet.' };
+
   const bulkBuyer: Trait<boolean> = {
     key: 'bulk_buyer', label: 'Bulk buyer', basis: 'OBSERVED',
     value: input.bulkQuotes.length > 0,
@@ -258,7 +301,7 @@ export function computeCustomerTraits(input: TraitInput, rfm: (RfmScore & { popu
     ? { key: 'stated_needs', label: 'What they told the product finder', basis: 'DECLARED', value: latestFinder.answers, evidence: `Their answers in the product finder on ${latestFinder.at.toISOString().slice(0, 10)}.` }
     : { key: 'stated_needs', label: 'What they told the product finder', basis: 'DECLARED', value: null, evidence: 'No product-finder answers linked to this customer.' };
 
-  return { rfm: rfmTrait, categoryAffinity, categoriesBrowsed, brandAffinity, deviceOwned, preferredChannel, paymentHabit, district, bulkBuyer, marketingOptIns, statedNeeds };
+  return { rfm: rfmTrait, categoryAffinity, categoriesBrowsed, brandAffinity, deviceOwned, preferredChannel, paymentHabit, district, deliveryArea, deliveryPattern, bulkBuyer, marketingOptIns, statedNeeds };
 }
 
 /** Value numbers for the 360 header. null = not computable, never 0. */

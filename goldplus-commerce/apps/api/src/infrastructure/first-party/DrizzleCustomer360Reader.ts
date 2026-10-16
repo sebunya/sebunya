@@ -76,7 +76,9 @@ export class DrizzleCustomer360Reader implements ICustomer360Reader {
     if (orderIds.length) orderMatch.push(sql`o.id in (${uuidList(orderIds)})`);
     const orderRows = orderMatch.length ? rows(await db.execute(sql`
       select o.id, o.order_number, o.created_at, o.total_amount, o.status, o.payment_status, o.payment_method, o.cart_id,
-             nullif(o.delivery_location->>'district', '') as district, o.customer_name, o.customer_phone, o.customer_email
+             nullif(o.delivery_location->>'district', '') as district, o.customer_name, o.customer_phone, o.customer_email,
+             coalesce(nullif(o.delivery_location->>'displayLabel', ''), nullif(o.delivery_area, '')) as area,
+             coalesce(o.delivery_area ilike 'pickup point:%', false) as collected
       from orders o where ${sql.join(orderMatch, sql` or `)}
       order by o.created_at desc limit ${MAX_ORDERS}`)) : [];
     const oids = orderRows.map((o) => String(o.id));
@@ -107,7 +109,8 @@ export class DrizzleCustomer360Reader implements ICustomer360Reader {
       }));
       return {
         orderId: id, orderNumber: String(o.order_number), placedAt: date(o.created_at), totalUgx: Number(o.total_amount ?? 0),
-        status: String(o.status), paymentStatus: String(o.payment_status), paymentMethod: str(o.payment_method), district: str(o.district), lines,
+        status: String(o.status), paymentStatus: String(o.payment_status), paymentMethod: str(o.payment_method), district: str(o.district),
+        area: o.collected ? null : str(o.area), collected: o.collected === true, lines,
         lastClickChannel: lastClick ? String(lastClick.channel) : null,
         selfReportedChannel: selfReported ? String(selfReported.channel) : null,
         whatsappRef: !!report?.whatsapp_ref,

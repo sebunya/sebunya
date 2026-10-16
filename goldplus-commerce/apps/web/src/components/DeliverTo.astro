@@ -1,0 +1,48 @@
+---
+import UgandaLocationPicker from './UgandaLocationPicker.astro';
+import type { DeliveryPlace } from '../lib/deliveryPlace';
+
+/**
+ * "Deliver to Najjera, Wakiso · Change" above a delivery quote (product page, cart). Choosing a place re-prices the
+ * page for it; with no place yet, one tap asks where. The area only — the exact spot is for checkout.
+ */
+interface Props {
+  place: DeliveryPlace | null;
+  id: string;
+}
+const { place, id } = Astro.props;
+const back = Astro.url.pathname + Astro.url.search;
+---
+
+<details class="js-deliver-to group rounded-xl border border-slate-200 bg-white" data-id={id}>
+  <summary class="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-2.5 text-sm">
+    {place ? (
+      <span class="min-w-0">
+        <span class="text-slate-500">Deliver to</span>
+        <span class="font-bold text-gray-900 break-words"> {place.label}</span>
+      </span>
+    ) : (
+      <span class="font-bold text-gray-900">📍 Where should we deliver? See your delivery fee</span>
+    )}
+    <span class="shrink-0 text-xs font-black uppercase tracking-wider text-brand-charcoal underline underline-offset-4 decoration-brand-primary">{place ? 'Change' : 'Choose'}</span>
+  </summary>
+  <form method="post" action="/deliver-to" class="js-deliver-to-form space-y-3 px-4 pb-4">
+    <input type="hidden" name="back" value={back} />
+    <UgandaLocationPicker id={id} name="locationJson" label="Your area" placeholder="Search your area, e.g. Najjera, Kira, Ntinda" withPin={true} withDirections={false} deepPlaces={false} />
+    <noscript><button type="submit" class="rounded-lg bg-brand-charcoal px-4 py-2 text-sm font-bold text-white">Save</button></noscript>
+    {place && (
+      <button type="submit" name="action" value="forget" class="text-xs font-semibold text-slate-500 underline underline-offset-2">Forget my area on this device</button>
+    )}
+  </form>
+</details>
+
+<script>
+  // Choosing an area saves it straight away: the picker fires 'change' on its payload when a place is committed.
+  document.querySelectorAll<HTMLFormElement>('.js-deliver-to-form').forEach((form) => {
+    if (form.dataset.wired) return;
+    form.dataset.wired = '1';
+    form.querySelector<HTMLInputElement>('.js-final-payload')?.addEventListener('change', (e) => {
+      if ((e.target as HTMLInputElement).value) form.requestSubmit();
+    });
+  });
+</script>

@@ -44,6 +44,10 @@ interface Props {
   manualLabel?: string;
   /** Note under the free-text fallback; empty string hides it. */
   manualNote?: string;
+  /** Offer written directions under "Can't find your area?" (false where only an AREA is useful, e.g. "Deliver to"). */
+  withDirections?: boolean;
+  /** Offer the paid Google Places layer for buildings (false where an area is all that is needed). */
+  deepPlaces?: boolean;
 }
 
 const {
@@ -58,6 +62,8 @@ const {
   defaultValue = '',
   errorMessage = '',
   withPin = false,
+  withDirections = true,
+  deepPlaces = true,
 } = Astro.props;
 
 const helperId = helperText ? `${id}_helper` : undefined;
@@ -84,7 +90,7 @@ if (defaultValue && defaultValue.startsWith('{')) {
 }
 ---
 
-<div class="js-uganda-location-picker space-y-2 relative" data-id={id} data-with-pin={withPin ? '1' : ''}>
+<div class="js-uganda-location-picker space-y-2 relative" data-id={id} data-with-pin={withPin ? '1' : ''} data-deep={deepPlaces ? '' : 'off'}>
   <label for={`${id}_input`} class="block text-sm font-bold text-brand-charcoal">
     {label} {required && <span class="text-red-500" aria-hidden="true">*</span>}
   </label>
@@ -185,6 +191,7 @@ if (defaultValue && defaultValue.startsWith('{')) {
             />
           </div>
         )}
+        {withDirections && (
         <div class="js-manual-mode space-y-2">
           <label class="block text-xs font-bold text-brand-charcoal" for={`${id}_manual`}>
             {manualLabel}
@@ -200,6 +207,7 @@ if (defaultValue && defaultValue.startsWith('{')) {
             Use these directions
           </button>
         </div>
+        )}
       </div>
     </details>
   </div>

@@ -2,6 +2,7 @@
 import { onSitePaymentPath } from '../lib/payOnSite';
 import { gaSessionFromCookieHeader } from '../lib/gaSession';
 import { readGuestMemory, writeGuestMemory, hasGuestMemory } from '../lib/guestMemory';
+import { knownDeliveryPlace, placeFromPayload, writeChosenPlace } from '../lib/deliveryPlace';
 import RememberedDetails from '../components/RememberedDetails.astro';
 import { HEARD_ABOUT_OPTIONS, parseHeardAbout } from '@goldplus/shared';
 import DeliveryQuote from "../components/DeliveryQuote.astro";
@@ -525,6 +526,12 @@ if (Astro.request.method === 'POST' && originDecision.allowed && checkoutIntent)
         // The order exists from this point on whatever the payment path does,
         // so the "remember for next time" work happens here, before any
         // redirect can end the render.
+        // The area just ordered to becomes this device's "Deliver to", so the next product page is priced for it.
+        // Area only (no pin, no address line); a collection is not a delivery area.
+        if (!payload.customerDetails.pickupPointId) {
+          const orderedTo = placeFromPayload(payload.customerDetails.deliveryLocation, 'chosen');
+          if (orderedTo) writeChosenPlace(Astro.cookies, orderedTo, import.meta.env.PROD);
+        }
         if (!authenticatedUserId) {
           writeGuestMemory(Astro.cookies, {
             name: values.name, email: values.email, phone: values.phone,
@@ -745,6 +752,16 @@ const errorLinks = Object.keys(FIELD_TARGET)
 // Initial GET: the form opens already filled with what the platform knows —
 // account holders from their address book, returning guests from their own
 // last checkout. Confirming beats retyping; everything stays editable.
+// The "Deliver to" area chosen on a product page or the cart opens checkout already chosen (area only, no pin).
+const deliverToAtLoad = knownDeliveryPlace(Astro.cookies, Astro.request);
+const deliverToJson = deliverToAtLoad
+  ? JSON.stringify({
+      district: deliverToAtLoad.district,
+      ...(deliverToAtLoad.label.includes(',') ? { area: deliverToAtLoad.label.split(',')[0].trim() } : {}),
+      ...(deliverToAtLoad.areaSlug ? { areaSlug: deliverToAtLoad.areaSlug } : {}),
+      displayLabel: deliverToAtLoad.label,
+    })
+  : '';
 if (Astro.request.method !== 'POST') {
   if (authenticatedUserId) {
     values = {
@@ -752,7 +769,7 @@ if (Astro.request.method !== 'POST') {
       name: defaultAddress?.recipientName || guestPrefill.name || '',
       email: accountEmail,
       phone: defaultAddress?.phone || accountPhone || guestPrefill.phone || '',
-      locationJson: '',
+      locationJson: savedAddresses.length === 0 ? deliverToJson : '',
       deliveryAddress: '',
     };
   } else {
@@ -760,7 +777,7 @@ if (Astro.request.method !== 'POST') {
       name: guestPrefill.name ?? '',
       email: guestPrefill.email ?? '',
       phone: guestPrefill.phone ?? '',
-      locationJson: guestPrefill.locationJson ?? '',
+      locationJson: guestPrefill.locationJson || deliverToJson,
       deliveryAddress: guestPrefill.deliveryAddress ?? '',
     };
   }
