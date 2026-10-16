@@ -1033,12 +1033,18 @@ const checkoutSavingLabel = basketSavingLabel(
                 <legend class="block text-sm font-bold text-brand-charcoal">How would you like to get this order?</legend>
                 <div class="flex flex-wrap gap-x-4 gap-y-2">
                   <label class="flex min-h-11 items-center gap-2 text-sm font-semibold"><input type="radio" name="deliveryMethod" value="door" checked={values.deliveryMethod !== 'pickup'} class="js-method-radio w-5 h-5 accent-[#456B00]" /> Deliver to me</label>
-                  <label class="flex min-h-11 items-center gap-2 text-sm font-semibold"><input type="radio" name="deliveryMethod" value="pickup" checked={values.deliveryMethod === 'pickup'} class="js-method-radio w-5 h-5 accent-[#456B00]" /> I'll collect from a pickup point</label>
+                  {/* Owner 2026-10-16: with one pickup point (our shop) it is simply "our GoldPlus shop" — no dropdown. */}
+                  <label class="flex min-h-11 items-center gap-2 text-sm font-semibold"><input type="radio" name="deliveryMethod" value="pickup" checked={values.deliveryMethod === 'pickup'} class="js-method-radio w-5 h-5 accent-[#456B00]" /> {pickupPoints.length === 1 ? 'I\'ll collect from our GoldPlus shop' : 'I\'ll collect from a pickup point'}</label>
                 </div>
-                <select id="pickupPointSelect" name="pickupPointId" class={`${values.deliveryMethod === 'pickup' ? '' : 'hidden '}w-full bg-white border ${errors.pickupPointId ? 'border-red-600' : 'border-brand-borderGrey'} px-3 py-2.5 rounded-lg text-base sm:text-sm font-medium outline-none focus:ring-2 focus:ring-brand-primaryInk`} aria-label="Choose a pickup point" aria-invalid={errors.pickupPointId ? 'true' : undefined} aria-describedby={errors.pickupPointId ? 'pickupPointSelect-error' : undefined}>
-                  <option value="">Choose a pickup point…</option>
+                {pickupPoints.length === 1 && (
+                  <p id="pickupPointInfo" class={`${values.deliveryMethod === 'pickup' ? '' : 'hidden '}rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700`}>
+                    <span class="font-bold text-gray-900">{pickupPoints[0].name}</span>{pickupPoints[0].physicalAddress ? `, ${pickupPoints[0].physicalAddress}` : ''}
+                  </p>
+                )}
+                <select id="pickupPointSelect" name="pickupPointId" data-single={pickupPoints.length === 1 ? '1' : undefined} class={`${values.deliveryMethod === 'pickup' && pickupPoints.length !== 1 ? '' : 'hidden '}w-full bg-white border ${errors.pickupPointId ? 'border-red-600' : 'border-brand-borderGrey'} px-3 py-2.5 rounded-lg text-base sm:text-sm font-medium outline-none focus:ring-2 focus:ring-brand-primaryInk`} aria-label="Choose a pickup point" aria-invalid={errors.pickupPointId ? 'true' : undefined} aria-describedby={errors.pickupPointId ? 'pickupPointSelect-error' : undefined}>
+                  {pickupPoints.length !== 1 && <option value="">Choose a pickup point…</option>}
                   {pickupPoints.map((p) => (
-                    <option value={p.id} selected={p.id === values.pickupPointId} data-name={p.name} data-address={p.physicalAddress ?? ''}>{p.name} ({p.operator.replace(/_/g, ' ')})</option>
+                    <option value={p.id} selected={pickupPoints.length === 1 || p.id === values.pickupPointId} data-name={p.name} data-address={p.physicalAddress ?? ''}>{p.name} ({p.operator.replace(/_/g, ' ')})</option>
                   ))}
                 </select>
                 {errors.pickupPointId && <p id="pickupPointSelect-error" class="text-xs text-red-600 font-bold">{errors.pickupPointId}</p>}
@@ -1098,12 +1104,14 @@ const checkoutSavingLabel = basketSavingLabel(
             </div>
 
             {/* One optional question, for attribution only: never required, no
-                default answer, and "prefer not to say" sends nothing. */}
+                default answer. A neutral first line; "prefer not to say" is the LAST
+                choice (owner 2026-10-16), and it and the first line both send nothing. */}
             <div class="bg-white p-6 md:p-8 rounded-2xl border border-slate-200/80">
               <label for="heardAbout" class="block text-sm font-bold text-gray-900">How did you hear about us? <span class="font-normal text-slate-500">(optional)</span></label>
               <select id="heardAbout" name="heardAbout" class="mt-2 w-full min-h-11 bg-white border border-brand-borderGrey px-3 py-2.5 rounded-lg text-base sm:text-sm font-medium outline-none focus:ring-2 focus:ring-brand-primaryInk">
-                <option value="" selected={heardAboutValue === ''}>Prefer not to say</option>
+                <option value="" selected={heardAboutValue === ''}>Choose an answer</option>
                 {HEARD_ABOUT_OPTIONS.map((o) => <option value={o.value} selected={heardAboutValue === o.value}>{o.label}</option>)}
+                <option value="">Prefer not to say</option>
               </select>
             </div>
 
@@ -1736,7 +1744,10 @@ const checkoutSavingLabel = basketSavingLabel(
     const landmarkField = document.getElementById('deliveryAddress')?.closest('div');
     function syncMethod() {
       const pickup = document.querySelector<HTMLInputElement>('input.js-method-radio:checked')?.value === 'pickup';
-      pickupSelect?.classList.toggle('hidden', !pickup);
+      // One pickup point (our shop): the select stays hidden with the shop chosen; its address shows instead.
+      const single = pickupSelect?.dataset.single === '1';
+      pickupSelect?.classList.toggle('hidden', single || !pickup);
+      document.getElementById('pickupPointInfo')?.classList.toggle('hidden', !pickup);
       pickerBlock?.classList.toggle('hidden', pickup);
       (landmarkField as HTMLElement | undefined)?.classList.toggle('hidden', pickup);
       if (pickup) applyPickupSelection();

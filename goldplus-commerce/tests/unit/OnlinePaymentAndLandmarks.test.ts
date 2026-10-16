@@ -71,3 +71,19 @@ describe('places our map does not know: no dead end, and the shop learns them', 
     expect(page).toMatch(/never "Najjera, Wakiso, Wakiso"/);
   });
 });
+
+describe('checkout small print (owner 2026-10-16)', () => {
+  const page = read('apps/web/src/pages/checkout.astro');
+  it('with one pickup point, collection is simply our GoldPlus shop: no dropdown, the shop chosen underneath', () => {
+    expect(page).toMatch(/pickupPoints\.length === 1 \? 'I\\'ll collect from our GoldPlus shop'/);
+    expect(page).toMatch(/data-single=\{pickupPoints\.length === 1 \? '1' : undefined\}/);
+    expect(page).toMatch(/selected=\{pickupPoints\.length === 1 \|\| p\.id === values\.pickupPointId\}/);
+    expect(page).toMatch(/pickupSelect\?\.classList\.toggle\('hidden', single \|\| !pickup\)/);
+  });
+  it('"How did you hear about us?" opens on a neutral line and ends with "Prefer not to say"', () => {
+    const sel = page.slice(page.indexOf('<select id="heardAbout"'), page.indexOf('</select>', page.indexOf('<select id="heardAbout"')));
+    const options = sel.match(/>([^<>{}]+)<\/option>/g) ?? [];
+    expect(options[0]).toBe('>Choose an answer</option>');
+    expect(options[options.length - 1]).toBe('>Prefer not to say</option>');
+  });
+});
