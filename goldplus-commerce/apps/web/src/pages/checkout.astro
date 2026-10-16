@@ -1448,7 +1448,9 @@ const checkoutSavingLabel = basketSavingLabel(
       let gps: { gpsLat?: number; gpsLng?: number } = {};
       try {
         const loc = JSON.parse(document.querySelector<HTMLInputElement>('form[action="/checkout"] .js-final-payload')?.value || 'null');
-        if (loc && typeof loc.gpsLat === 'number' && typeof loc.gpsLng === 'number') gps = { gpsLat: loc.gpsLat, gpsLng: loc.gpsLng };
+        // A building picked from Google Places is for the rider only, never a pricing input (Maps Platform
+        // Terms §3.2.3(c)(iv)); the area the customer chose prices it, exactly as the order will be charged.
+        if (loc && typeof loc.gpsLat === 'number' && typeof loc.gpsLng === 'number' && loc.gpsSource !== 'map_place') gps = { gpsLat: loc.gpsLat, gpsLng: loc.gpsLng };
       } catch { /* no payload yet */ }
       const body = buildDeliveryQuoteRequest({
         district,

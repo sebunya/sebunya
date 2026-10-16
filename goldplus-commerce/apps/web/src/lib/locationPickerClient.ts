@@ -174,6 +174,7 @@
     let deepTimer: number | undefined;
     let deepSeq = 0;
     let lastDeepQuery = '';
+    let pinnedPlaceName = '';
 
     function payloadWithPin(base: Record<string, unknown>): string {
       return JSON.stringify({ ...base, ...(pin ?? {}) });
@@ -188,7 +189,7 @@
         displayLabel: hasArea ? `${opt.area}, ${opt.district}` : opt.district,
       });
       if (cardPrimary) cardPrimary.textContent = opt.area ?? opt.district;
-      if (cardSecondary) cardSecondary.textContent = `District: ${opt.district} · ${opt.fromPin ? (pin?.gpsSource === 'map_place' ? 'near the place you chose' : 'near your location') : 'Uganda'}`;
+      if (cardSecondary) cardSecondary.textContent = `District: ${opt.district} · ${opt.fromPin ? 'near your location' : 'Uganda'}`;
       finishCommit();
     }
 
@@ -234,7 +235,7 @@
       input!.removeAttribute('aria-invalid');
       input!.classList.remove('border-red-600', 'ring-2', 'ring-red-100');
       cardPin?.classList.toggle('hidden', !pin);
-      if (cardPin && pin) cardPin.textContent = pin.gpsSource === 'map_place' ? `📍 ${input!.value.trim() || 'The building'} is pinned for the rider` : '📍 Your exact location is attached for the rider';
+      if (cardPin && pin) cardPin.textContent = pin.gpsSource === 'map_place' ? `📍 ${pinnedPlaceName || 'The building'} is pinned for the rider` : '📍 Your exact location is attached for the rider';
       cardAddPin?.classList.toggle('hidden', !!pin);
       if (commitAnnounce) {
         const chosen = [cardPrimary?.textContent, cardSecondary?.textContent].filter(Boolean).join(', ');
@@ -414,12 +415,17 @@
       renderResults(current);
     }
 
-    /** A building chosen: pin it, put its name where the rider reads, then offer OUR nearest areas to tap. */
+    /**
+     * A building chosen: pin it for the rider and put its name where the rider reads. Then the customer names the
+     * area with OUR search, and that prices the order. Google's point is never matched to one of our areas (Maps
+     * Platform Terms §3.2.3(c)(iv) forbid Places coordinates as input to point-in-polygon analysis). Google's own
+     * locality line is shown so the customer knows what to type; we do not search with it on their behalf.
+     */
     async function pickDeep(opt: PlaceOption) {
       if (!opt.deepPlaceId || !publicApiBase) return;
-      if (pinStatus) pinStatus.textContent = `Finding ${opt.label}…`;
+      if (pinStatus) pinStatus.textContent = `Saving ${opt.label}…`;
       dropdown!.classList.add('hidden');
-      let data: { status?: string; point?: { lat: number; lng: number } | null; areas?: Array<{ areaSlug: string; label: string; district: string; km: number }> } | null = null;
+      let data: { status?: string; point?: { lat: number; lng: number } | null } | null = null;
       try {
         const res = await fetch(`${publicApiBase}/locations/deep-place`, {
           method: 'POST',
@@ -432,13 +438,17 @@
       deepSession = newSessionToken(); // the pick ended Google's billing session
       lastDeepQuery = '';
       if (!data?.point) {
-        if (pinStatus) pinStatus.textContent = 'Could not place that building. Pick your area instead.';
+        if (pinStatus) pinStatus.textContent = 'Could not place that building. Type your area instead.';
         return;
       }
       pin = { gpsLat: Number(data.point.lat.toFixed(6)), gpsLng: Number(data.point.lng.toFixed(6)), gpsSource: 'map_place', placeId: opt.deepPlaceId };
-      input!.value = opt.label;
+      pinnedPlaceName = opt.label;
       el.dispatchEvent(new CustomEvent('gp:place-picked', { bubbles: true, detail: { name: opt.label, detail: opt.note ?? '' } }));
-      offerAreas(data.areas ?? [], pinStatus, `📍 ${opt.label} is pinned for the rider. Tap your area to see the delivery fee.`);
+      input!.value = '';
+      if (pinStatus) {
+        pinStatus.textContent = `📍 ${opt.label} is saved for the rider${opt.note ? ` (Google Maps lists it in ${opt.note})` : ''}. Now type the area it is in to see the delivery fee.`;
+      }
+      input!.focus();
     }
 
     function choose(opt: PlaceOption) {
@@ -585,8 +595,8 @@
     }
 
     /**
-     * The nearest of OUR areas to a pin, as one-tap choices (never chosen for the customer). Shared by
-     * "Locate me" and a building picked from the deep layer, so pricing always comes from our own areas.
+     * The nearest of OUR areas to the customer's OWN pin (their phone's location), as one-tap choices, never chosen
+     * for them. Never used for a Google Places point (see pickDeep).
      * No focus: on a phone it raises the keyboard over the very choices we are offering.
      */
     function offerAreas(

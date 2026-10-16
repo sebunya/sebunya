@@ -110,9 +110,15 @@ function districtFromAreaLine(area: string | null | undefined): string | null {
   return null;
 }
 
-/** The pin inside a checkout location, when it has one that lies in Uganda's bounding box. */
-function pinOf(loc: unknown): { lat: number; lng: number } | null {
-  const l = loc as { gpsLat?: unknown; gpsLng?: unknown } | null | undefined;
+/**
+ * The pin inside a checkout location, when it has one that lies in Uganda's bounding box. A building picked from
+ * Google Places (gpsSource map_place) is never a pricing input: Google Maps Platform Terms §3.2.3(c)(iv) forbid
+ * Places coordinates as input to point-in-polygon analysis, which is what resolving an area from a point is. It is
+ * kept on the order for the rider (and purged after 29 days); the customer's chosen area prices the order.
+ */
+export function pinOf(loc: unknown): { lat: number; lng: number } | null {
+  const l = loc as { gpsLat?: unknown; gpsLng?: unknown; gpsSource?: unknown } | null | undefined;
+  if (l?.gpsSource === 'map_place') return null;
   const lat = Number(l?.gpsLat);
   const lng = Number(l?.gpsLng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;

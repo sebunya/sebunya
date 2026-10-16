@@ -92,19 +92,22 @@ routes.post('/deep-search', async (c) => {
   return c.json({ success: true, data: result } satisfies ApiResponse<typeof result>);
 });
 
-/** A chosen place → its point and the nearest of OUR areas to tap (pricing stays ours). Ends the billing session. */
+/**
+ * A chosen place → its point, for the rider only. Ends the billing session.
+ * Google Maps Platform Terms §3.2.3(c)(iv) forbid using Places latitude/longitude as input to point-in-polygon
+ * analysis, so the point is NEVER matched to one of our areas or used to price: the customer names the area
+ * with our own search, and that prices the order.
+ */
 routes.post('/deep-place', async (c) => {
   const parsed = deepPlaceSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
     return c.json({ success: false, error: { code: 'INVALID_BODY', message: 'Invalid body.' } } satisfies ApiResponse<never>, 400);
   }
-  const registry = Registry.getInstance();
-  const found = await registry.deepPlaceSearchUseCase.locate({ placeId: parsed.data.placeId, sessionToken: parsed.data.session });
+  const found = await Registry.getInstance().deepPlaceSearchUseCase.locate({ placeId: parsed.data.placeId, sessionToken: parsed.data.session });
   if (found.status !== 'ok') {
-    return c.json({ success: true, data: { status: found.status, point: null, areas: [] } });
+    return c.json({ success: true, data: { status: found.status, point: null } });
   }
-  const areas = await registry.deliveryAreaResolver.nearestAreas(found.point).catch(() => []);
-  return c.json({ success: true, data: { status: 'ok', point: found.point, areas } });
+  return c.json({ success: true, data: { status: 'ok', point: found.point } });
 });
 
 routes.post('/search-events', async (c) => {

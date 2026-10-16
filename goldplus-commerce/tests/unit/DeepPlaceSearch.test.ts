@@ -161,12 +161,33 @@ describe('the Google requests are the cheapest that work', () => {
 
 describe('the picker offers Google only when ours cannot answer', () => {
   const client = read('apps/web/src/lib/locationPickerClient.ts');
-  it('stays hidden without a key, credits Google Maps, prices from our own areas, keeps the place id', () => {
+  it('stays hidden without a key, credits Google Maps, keeps the place id', () => {
     expect(client).toMatch(/let deepEnabled = false;/);
     expect(client).toMatch(/\/locations\/deep-status/);
     expect(client).toMatch(/function withDeepOffer/);
     expect(client).toMatch(/Results from Google Maps/);
-    expect(client).toMatch(/offerAreas\(data\.areas/);
     expect(client).toMatch(/gpsSource: 'map_place', placeId: opt\.deepPlaceId/);
+  });
+});
+
+describe('Maps Platform Terms §3.2.3(c)(iv): Places coordinates never feed area matching or pricing', () => {
+  it('the building pick returns a point for the rider and no areas', () => {
+    const routes = read('apps/api/src/interfaces/http/routes/locations.ts');
+    const deepPlace = routes.slice(routes.indexOf("routes.post('/deep-place'"), routes.indexOf("routes.post('/search-events'"));
+    expect(deepPlace).not.toMatch(/nearestAreas|areas/);
+  });
+
+  it('the picker never offers our areas from a Google point; the customer types the area', () => {
+    const client = read('apps/web/src/lib/locationPickerClient.ts');
+    const pick = client.slice(client.indexOf('async function pickDeep'), client.indexOf('function choose('));
+    expect(pick).not.toMatch(/offerAreas|locations\/near/);
+    expect(pick).toMatch(/Now type the area it is in/);
+  });
+
+  it('checkout never prices with a map_place point, on the server or in the live quote', async () => {
+    const { pinOf } = await import('../../apps/api/src/application/use-cases/commerce/CheckoutUseCase');
+    expect(pinOf({ gpsLat: 0.33, gpsLng: 32.59, gpsSource: 'map_place' })).toBeNull();
+    expect(pinOf({ gpsLat: 0.33, gpsLng: 32.59, gpsSource: 'device' })).toEqual({ lat: 0.33, lng: 32.59 });
+    expect(read('apps/web/src/pages/checkout.astro')).toMatch(/loc\.gpsSource !== 'map_place'\) gps = /);
   });
 });
