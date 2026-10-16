@@ -117,6 +117,14 @@ export class DrizzleDeliveryQuotingRepository implements IDeliveryQuotingReposit
     return rows.map((r) => ({ areaSlug: r.area_slug, label: `${r.area}, ${r.district}` }));
   }
 
+  /** Per-road switches: road corridors with their area counts and band range. */
+  async corridorSummary(): Promise<Array<{ corridor: string; areas: number; nearestBand: string; farthestBand: string }>> {
+    const rows = (await db.execute(sql`
+      select corridor, count(*)::int as areas, min(distance_band) as nearest_band, max(distance_band) as farthest_band
+      from delivery_corridor where access_mode = 'road' group by corridor order by corridor`)) as unknown as Array<Record<string, unknown>>;
+    return rows.map((r) => ({ corridor: String(r.corridor), areas: Number(r.areas), nearestBand: String(r.nearest_band), farthestBand: String(r.farthest_band) }));
+  }
+
   /** §4.5 margin alarm: the last 28 days of model-priced own-rider captures. */
   async ladderCaptures(): Promise<Array<{ quotedFeeUgx: number | null; expectedMinutes: number | null }>> {
     const rows = (await db.execute(sql`

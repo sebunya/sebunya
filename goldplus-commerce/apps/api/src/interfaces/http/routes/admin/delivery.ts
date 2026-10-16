@@ -127,10 +127,13 @@ routes.get('/awaiting-cost', requirePermissions([PERMISSIONS.ORDERS_READ]), asyn
 
 /** The registry itself, so the Control Centre UI can generate from it. */
 routes.get('/config-registry', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  // The live value rides with each entry so the Control Centre's switches show what is published, not the default.
+  const live = await Registry.getInstance().deliveryConfigReader.currentValues().catch(() => ({}) as Record<string, string>);
   return c.json({
     success: true,
     data: DELIVERY_CONFIG_REGISTRY.filter((e) => e.tier !== 3).map((e) => ({
       key: e.key,
+      current: live[e.key] ?? null,
       tier: e.tier,
       type: e.type,
       unit: e.unit,
@@ -588,6 +591,67 @@ routes.post('/riders', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c
 routes.post('/riders/:id/active', requirePermissions([PERMISSIONS.ORDERS_MANAGE]), async (c) => {
   const body = await c.req.json().catch(() => null);
   const r = await Registry.getInstance().riderUseCases.setActive(String(c.req.param('id') ?? ''), body?.active !== false);
+  if (!r.ok) return c.json({ success: false, error: { code: r.code, message: r.message } } satisfies ApiResponse<never>, 404);
+  return c.json({ success: true, data: { ok: true } });
+});
+
+/** Corridors with their area counts and bands: the rows of the per-road rider-range card. */
+routes.get('/corridors/summary', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_READ]), async (c) => {
+  return c.json({ success: true, data: { corridors: await Registry.getInstance().corridorSummaryUseCase.execute() } });
+});
+
+/** Bus rate cards + parcel offices (2026-10-16): list, set prices, expire, offices. */
+routes.get('/bus-rates', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_READ]), async (c) => {
+  return c.json({ success: true, data: await Registry.getInstance().busRateCardAdminUseCases.list() });
+});
+routes.post('/bus-rates', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PUBLISH]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const n = (v: unknown): number | null => {
+    const t = String(v ?? '').replace(/[,\s]/g, '');
+    if (!t) return null;
+    const x = Number(t);
+    return Number.isFinite(x) ? x : Number.NaN;
+  };
+  const r = await Registry.getInstance().busRateCardAdminUseCases.setPrices({
+    carrier: String(body?.carrier ?? ''),
+    destinationTown: String(body?.destinationTown ?? ''),
+    destinationDistrict: String(body?.destinationDistrict ?? ''),
+    fees: { small: n(body?.feeSmall), medium: n(body?.feeMedium), large: n(body?.feeLarge) },
+    insurancePctOfDeclaredValue: n(body?.insurancePct),
+    transitDaysMin: Number(body?.transitDaysMin ?? Number.NaN),
+    transitDaysMax: Number(body?.transitDaysMax ?? Number.NaN),
+    chargedAt: String(body?.chargedAt ?? ''),
+    sourceNote: body?.sourceNote ? String(body.sourceNote) : null,
+    actorId: (c.get('user') as { id: string }).id,
+  });
+  if (!r.ok) return c.json({ success: false, error: { code: r.code, message: r.message } } satisfies ApiResponse<never>, 400);
+  return c.json({ success: true, data: { cards: r.cards } }, 201);
+});
+routes.post('/bus-rates/:id/expire', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PUBLISH]), async (c) => {
+  const r = await Registry.getInstance().busRateCardAdminUseCases.expire(String(c.req.param('id') ?? ''));
+  if (!r.ok) return c.json({ success: false, error: { code: r.code, message: r.message } } satisfies ApiResponse<never>, 404);
+  return c.json({ success: true, data: { ok: true } });
+});
+routes.post('/bus-rates/offices', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PUBLISH]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const str = (k: string) => (body?.[k] ? String(body[k]) : null);
+  const r = await Registry.getInstance().busRateCardAdminUseCases.setOffice({
+    carrier: String(body?.carrier ?? ''),
+    name: String(body?.name ?? ''),
+    town: String(body?.town ?? ''),
+    district: String(body?.district ?? ''),
+    physicalAddress: str('physicalAddress'),
+    landmarkText: str('landmarkText'),
+    phone: str('phone'),
+    departureTimes: str('departureTimes'),
+    collectionWindow: str('collectionWindow'),
+  });
+  if (!r.ok) return c.json({ success: false, error: { code: r.code, message: r.message } } satisfies ApiResponse<never>, 400);
+  return c.json({ success: true, data: { office: r.office } }, 201);
+});
+routes.post('/bus-rates/offices/:id/active', requirePermissions([PERMISSIONS.DELIVERY_CONFIG_PUBLISH]), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const r = await Registry.getInstance().busRateCardAdminUseCases.setOfficeActive(String(c.req.param('id') ?? ''), body?.active !== false);
   if (!r.ok) return c.json({ success: false, error: { code: r.code, message: r.message } } satisfies ApiResponse<never>, 404);
   return c.json({ success: true, data: { ok: true } });
 });

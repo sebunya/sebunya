@@ -27,6 +27,9 @@ let corridorDryRun: any = null;
 // Fee ladder dry run (§4.5): the rungs stay in the box; the result is read-only.
 let ladderText = "";
 let ladderDryRun: any = null;
+// Switches (2026-10-16): string settings published through the same draft → preview → publish path as the numbers.
+let switchesPreview: any = null;
+let switchesVersionId = "";
 
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
@@ -64,6 +67,38 @@ if (Astro.request.method === "POST") {
         corridorDryRun = json?.success ? json.data : null;
         if (!corridorDryRun) notice = { kind: "error", text: json?.error?.message || "Could not dry-run the file." };
       }
+    } else if (intent === "switches-preview") {
+      const roads: string[] = [];
+      for (const [k, v] of form.entries()) {
+        if (k.startsWith("road:") && String(v) && String(v) !== "inherit") roads.push(`${k.slice(5)}=${String(v)}`);
+      }
+      const stringValues: Record<string, string> = {
+        own_rider_max_band: String(form.get("own_rider_max_band") || ""),
+        own_rider_max_band_by_corridor: roads.length ? roads.join(", ") : "none",
+        distance_source: String(form.get("distance_source") || ""),
+        fee_shape: String(form.get("fee_shape") || ""),
+      };
+      const ladder = String(form.get("fee_ladder") || "").trim();
+      if (ladder) stringValues.fee_ladder = ladder;
+      for (const k of Object.keys(stringValues)) if (!stringValues[k]) delete stringValues[k];
+      const draft = await fetch(`${apiBase}/admin/delivery/config/draft`, {
+        method: "POST", headers,
+        body: JSON.stringify({ values: {}, stringValues, reason: String(form.get("reason") || "").trim() || "Switches changed on the Control Centre" }),
+      });
+      const dj: any = await draft.json().catch(() => null);
+      if (!dj?.success) notice = { kind: "error", text: dj?.error?.message || "Could not draft those switches." };
+      else {
+        switchesVersionId = dj.data.versionId;
+        const pv = await fetch(`${apiBase}/admin/delivery/config/${encodeURIComponent(switchesVersionId)}/preview`, { headers });
+        const pj: any = await pv.json().catch(() => null);
+        switchesPreview = pj?.success ? pj.data : null;
+        if (!switchesPreview) notice = { kind: "error", text: pj?.error?.message || "Drafted, but the preview could not be produced." };
+      }
+    } else if (intent === "switches-publish") {
+      const id = String(form.get("versionId") || "");
+      const res = await fetch(`${apiBase}/admin/delivery/config/${encodeURIComponent(id)}/publish`, { method: "POST", headers, body: JSON.stringify({ previewConfirmed: true }) });
+      const json: any = await res.json().catch(() => null);
+      notice = json?.success ? { kind: "success", text: "Published. The switches are live on the next quote." } : { kind: "error", text: json?.error?.message || "Could not publish." };
     } else if (intent === "ladder-dry-run") {
       ladderText = String(form.get("ladder") || "");
       const res = await fetch(`${apiBase}/admin/delivery/ladder/dry-run`, { method: "POST", headers, body: JSON.stringify({ ladder: ladderText }) });
@@ -99,12 +134,20 @@ const get = async (path: string) => {
   }
 };
 
-const [setup, queues, versions, registry] = await Promise.all([
+const [setup, queues, versions, registry, corridorSummary] = await Promise.all([
   get("/admin/delivery/setup"),
   get("/admin/delivery/awaiting-cost"),
   get("/admin/delivery/config/versions"),
   get("/admin/delivery/config-registry"),
+  get("/admin/delivery/corridors/summary"),
 ]);
+const liveValue = (key: string): string => String((registry ?? []).find((e: any) => e.key === key)?.current ?? "");
+const roadCeilings: Record<string, string> = {};
+for (const part of liveValue("own_rider_max_band_by_corridor").split(/[,;]+/)) {
+  const m = /^\s*([a-z0-9_]+)\s*[=:]\s*(B[0-6])\s*$/i.exec(part);
+  if (m) roadCeilings[m[1].toLowerCase()] = m[2].toUpperCase();
+}
+const BANDS = ["B0", "B1", "B2", "B3", "B4", "B5", "B6"];
 
 // Variances waiting on a customer. NOTHING dispatches on these until answered,
 // so it sits at the top of the queues rather than in a report.
@@ -129,6 +172,9 @@ const tierLabel: Record<number, string> = { 1: "One approver", 2: "Needs a secon
         </a>
         <a href="/admin/delivery/riders" class="border border-gray-300 text-gray-700 text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:bg-gray-50">
           Riders
+        </a>
+        <a href="/admin/delivery/bus-rates" class="border border-gray-300 text-gray-700 text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:bg-gray-50">
+          Bus prices
         </a>
         <a href="/admin/delivery/launch" class="bg-brand-dark text-white text-xs font-black uppercase tracking-widest px-4 py-2.5 rounded-lg hover:bg-black">
           {setup?.quotingEnabled ? "Change the prices" : "Set up delivery pricing"}
@@ -239,6 +285,79 @@ const tierLabel: Record<number, string> = { 1: "One approver", 2: "Needs a secon
                   <li class="font-mono">{m.order_number ?? m.fulfilment_task_id} — was {m.order_status_now}, {m.payment_status}</li>
                 ))}
               </ul>
+            </div>
+          )}
+        </section>
+
+        <section class="bg-white border border-gray-200 rounded-2xl shadow-sm p-6 mb-8">
+          <h3 class="text-sm font-black uppercase tracking-widest text-gray-500 mb-1">Switches</h3>
+          <p class="text-xs text-gray-500 mb-3">
+            How far the rider goes (shop-wide and per road), which distance prices are worked out from, and the fee shape. Preview first:
+            one real area per band with the fee a customer would see. Publishing makes a new version, revertible from the history below.
+          </p>
+          <form method="POST" class="space-y-4">
+            <input type="hidden" name="intent" value="switches-preview" />
+            <div class="grid sm:grid-cols-3 gap-3">
+              <label class="block text-xs text-gray-700">Rider goes out to (shop-wide)
+                <select name="own_rider_max_band" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  <option value="">— unset —</option>
+                  {BANDS.map((b) => <option value={b} selected={liveValue("own_rider_max_band") === b}>{b}</option>)}
+                </select>
+              </label>
+              <label class="block text-xs text-gray-700">Distance the fee uses
+                <select name="distance_source" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  {["band_midpoint", "measured"].map((v) => <option value={v} selected={(liveValue("distance_source") || "band_midpoint") === v}>{v === "measured" ? "measured (each area's point)" : "band midpoint"}</option>)}
+                </select>
+              </label>
+              <label class="block text-xs text-gray-700">Fee shape
+                <select name="fee_shape" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm">
+                  {["continuous", "ladder"].map((v) => <option value={v} selected={(liveValue("fee_shape") || "continuous") === v}>{v}</option>)}
+                </select>
+              </label>
+              <label class="block text-xs text-gray-700 sm:col-span-3">Ladder rungs, UGX (only read when the shape is ladder)
+                <input name="fee_ladder" value={liveValue("fee_ladder")} placeholder="5000, 7500, 10000, 13000" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono" />
+              </label>
+            </div>
+            <div>
+              <p class="text-xs font-bold text-gray-800 mb-1">Per road: the last band a rider serves on that corridor</p>
+              <p class="text-[11px] text-gray-500 mb-2">"Same as shop-wide" leaves the road on the setting above. Areas beyond a road's limit ship by bus.</p>
+              {!corridorSummary || corridorSummary.corridors.length === 0 ? (
+                <p class="text-xs text-gray-500">The corridor list is unavailable right now.</p>
+              ) : (
+                <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {corridorSummary.corridors.map((r: any) => (
+                    <label class="flex items-center justify-between gap-2 border border-gray-200 rounded-lg px-3 py-2 text-xs">
+                      <span><span class="font-bold text-gray-800">{String(r.corridor).replace(/_rd$/, " Road").replace(/_/g, " ")}</span>
+                        <span class="block text-[10px] text-gray-500">{r.areas} areas, {r.nearestBand}–{r.farthestBand}</span></span>
+                      <select name={`road:${r.corridor}`} class="border border-gray-300 rounded-lg px-2 py-1 text-xs">
+                        <option value="inherit" selected={!roadCeilings[r.corridor]}>Same as shop-wide</option>
+                        {BANDS.map((b) => <option value={b} selected={roadCeilings[r.corridor] === b}>{b}</option>)}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div class="flex flex-wrap items-end gap-2">
+              <label class="block text-xs text-gray-700 grow">Why (kept with the version)
+                <input name="reason" required minlength="5" maxlength="200" placeholder="e.g. riders now go to Mukono town on Jinja Road" class="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-xs" />
+              </label>
+              <button type="submit" class="bg-brand-dark text-white text-[10px] font-black uppercase tracking-widest px-3 py-2.5 rounded-lg hover:bg-black">Preview</button>
+            </div>
+          </form>
+          {switchesPreview && (
+            <div class="mt-4 border border-gray-200 rounded-lg p-4">
+              <p class="text-sm font-bold text-gray-800">{switchesPreview.impactSummary}</p>
+              <table class="w-full text-xs mt-2">
+                <thead class="text-[10px] uppercase font-black tracking-widest text-gray-500"><tr><th class="text-left py-1">Band</th><th class="text-left py-1">Area</th><th class="text-right py-1">Fee</th></tr></thead>
+                <tbody>{switchesPreview.bands.map((b: any) => <tr class="border-t border-gray-100"><td class="py-1">{b.band}</td><td class="py-1">{b.areaLabel}</td><td class="py-1 text-right">{b.feeUgx === null ? (b.reason ?? "—") : ugx(b.feeUgx)}</td></tr>)}</tbody>
+              </table>
+              {switchesPreview.problems?.length > 0 && <ul class="mt-2 text-xs text-red-700">{switchesPreview.problems.map((p: any) => <li>{p.message}</li>)}</ul>}
+              <form method="POST" class="mt-3">
+                <input type="hidden" name="intent" value="switches-publish" />
+                <input type="hidden" name="versionId" value={switchesVersionId} />
+                <button type="submit" class="bg-brand-dark text-white text-[10px] font-black uppercase tracking-widest px-3 py-2.5 rounded-lg hover:bg-black">Publish these switches</button>
+              </form>
             </div>
           )}
         </section>
