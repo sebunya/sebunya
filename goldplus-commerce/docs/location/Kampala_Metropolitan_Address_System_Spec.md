@@ -1,6 +1,6 @@
 # Kampala Metropolitan Address System — specification
 
-Version 2.3, 2026-10-15 (2.1 added §0b, §4.4–4.6, §15 and Week 0; 2.2 a consistency pass against the code; 2.3 the
+Version 2.4, 2026-10-15 (2.1 added §0b, §4.4–4.6, §15 and Week 0; 2.2 a consistency pass against the code; 2.3 the
 review board addendum §16, which supersedes parts of §3–§8 as it states; nothing from 2.0 is removed). Research and design for making delivery locations, and therefore delivery fees, more
 accurate on shopgoldplus.com. Written for a coding assistant or engineer to build from. Version 1 (same day, five
 commits on PR #115) was a catalogue of data sources with a design attached; version 2 is the design, with the
@@ -929,6 +929,33 @@ news prompts a check, never a source. The yearly drift report also runs within 3
 row and a one-action revert. One CSV grammar (`packages/shared/src/csv.ts`) replaces six readers. Not yet done, noted
 for a follow-up: the quote path's eight redundant config reads per cache miss (pre-existing), a single-statement
 corridor apply, and `area_kind` read by the quote path.
+
+## 17. As built (2026-10-16): where the code departed from this document, and why
+
+Everything in §§3–8 and §16 shipped in Phase A.1 and Phase B on 2026-10-15/16 (PRs #116–#122), except as noted here.
+Where the two disagree, the code and `docs/location/PHASE_A_RUNBOOK.md` are current; this section is the list.
+
+| Spec | As built | Why |
+|---|---|---|
+| §3.1 `geo_area_point` table with a source ladder | the existing `delivery_corridor.centroid_*` columns (0092) plus `centroid_expected_error_m`, `centroid_source_ref`, `centroid_shared_polygon`, `centroid_updated_at` (0189); sources `parish_centroid`, `manual`, `delivered_pins`, `rider_handover` | one row per area already existed; a second table would have been a second truth |
+| §3.2 parish points weighted by OSM buildings | geometric parish centroid with a point guard (water, oversized, sparse) and `expected_error_m` = p90 of the polygon radius | buildings deferred; the guard and the error figure gave the same safety with no new dependency |
+| §3.2 points for every area | 317 of 362 from parishes; 17 shoreline, ambiguous or unmatched areas from `data/geo/manual-points.csv` (OpenStreetMap places, ids kept); the rest wait for a rider handover | the guarded parishes' geometric centres are in the lake; a named settlement is the honest point |
+| §3.6 `earthdistance` / cube | plain haversine in SQL and TypeScript | the extension is not trusted on the host's Postgres |
+| §4.1 `distance_source` band_midpoint → measured → road | `band_midpoint` and `measured` exist; `measured` is live since launch; `road` is not built | OSRM is Phase D |
+| §4.5 ladder | built: `fee_shape`, `fee_ladder`, dry run with ordering flags, margin alarm; launched on `continuous` | a ladder is a pricing decision for when there is margin data |
+| §4.6 pin nudge from per-tier last mile | built: `<area>#pin` scope, pinned quotes priced with it, nudge shown only with a real within-area saving | as specified |
+| §5.1 WhatsApp pin → `AttachLocationToOrderUseCase` | `LocationPinUseCases` with consent-before-store, which-order buttons, save-to-address on a second tap, far-pin care task; coordinates never in the archive | review board §16 |
+| §5.2 handover by rider link `/d/<token>` | WhatsApp location from a registered rider (`delivery_riders`, dispatch `rider_id`) with Delivered / not there / couldn't find and Easy / Hard; no link page | the link page was the fallback; riders are on WhatsApp |
+| §5.7 `rider_phone` masked | riders' numbers shown in full to admin | owner: riders are the shop's own team |
+| §7.1 unknown districts | accepted on the manual path (checkout no longer rejects them) | contract #8 |
+| §11 six numbers, one rider ceiling | eight wizard answers: the seventh question (rider limit area, which the page had omitted) and per-road ceilings `own_rider_max_band_by_corridor` (owner, 2026-10-16) | the rider's reach differs by road |
+| §11 margin | launched at 1.0: the whole fee is the rider's pay; a completed delivery records the fee as the rider cost automatically | owner's decision |
+| Upcountry "bus" | taxi, bus or special arrangement per destination (`carrier_kind`, `handover_point`, `SPECIAL_ARRANGEMENT`); never a ferry; lake areas collect-from-shop | owner, 2026-10-16: each destination is its own arrangement |
+| §10 nightly jobs | one timer, `goldplus-delivery-nightly`, 02:30 Kampala: calibration proposals, pins → area points, pin purge | one unit is easier to keep alive than three |
+
+Launch values published 2026-10-16: anchor Nangabo (80 min round trip, UGX 13,500 rider pay), 15 handling minutes,
+margin 1.0, floor UGX 5,000, rider ceiling B4 (Kitende), `distance_source = measured`. Town UGX 5,000, Ntinda 6,500,
+Kira 11,000, Nangabo 13,000; beyond the ring, taxi or bus once a destination has a card.
 
 ## Appendix A — Data sources, with what was measured (2026-10-15)
 
