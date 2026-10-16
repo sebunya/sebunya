@@ -11,6 +11,7 @@
     "geo:parish-centroids": "tsx src/scripts/geo-import-parish-centroids.ts",
     "geo:purge-pins": "tsx src/scripts/geo-purge-pins.ts",
     "geo:nightly-area-points": "tsx src/scripts/geo-nightly-area-points.ts",
+    "geo:manual-points": "tsx src/scripts/geo-apply-manual-points.ts",
     "delivery:calibrate": "tsx src/scripts/delivery-nightly-calibration.ts",
     "db:studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",

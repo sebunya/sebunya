@@ -1,0 +1,23 @@
+# Hand-chosen area points for corridor rows the parish import could not place (guarded shoreline parishes,
+# ambiguous or unmatched names). Each row names its source: an OpenStreetMap place (ODbL, (c) OpenStreetMap
+# contributors) looked up by name on Nominatim, or a point the owner set. Applied by geo:manual-points, written as
+# centroid_source = 'manual', so neither the parish import nor the nightly job overwrites it. Lake parishes get the
+# landward settlement, never the geometric centre. expected_error_m is the honest uncertainty of a place node.
+area_slug,lat,lng,expected_error_m,source_ref,note
+kampala-kiswa-10316,0.323375,32.612774,500,osm:node/582809248,"OSM suburb 'Kiswa' via Nominatim 2026-10-16; query 'Kiswa, Nakawa, Kampala'"
+wakiso-nansana-31337,0.365816,32.529226,500,osm:node/3500961528,"OSM city 'Nansana' via Nominatim 2026-10-16; query 'Nansana, Wakiso'"
+wakiso-kigungu-ward-31303,0.029153,32.437416,800,osm:relation/12006255,"OSM administrative 'Kigungu Central Subward' via Nominatim 2026-10-16; query 'Kigungu, Entebbe'"
+wakiso-nkumba-31407,0.073471,32.510959,800,osm:relation/11251254,"OSM administrative 'Nkumba Bufulu' via Nominatim 2026-10-16; query 'Nkumba, Wakiso'"
+wakiso-busabala-31348,0.209662,32.617811,800,osm:node/5163763464,"OSM village 'Busabala' via Nominatim 2026-10-16; query 'Busabala, Wakiso'"
+kampala-ggaba-10417,0.261531,32.631637,500,osm:node/2229107610,"OSM suburb 'Ggaba' via Nominatim 2026-10-16; query 'Ggaba, Kampala'"
+kampala-luzira-10313,0.297493,32.652819,500,osm:node/2229118215,"OSM suburb 'Luzira' via Nominatim 2026-10-16; query 'Luzira, Kampala'"
+wakiso-bakka-31452,0.453795,32.405021,800,osm:node/9651772020,"OSM village 'Bakka' via Nominatim 2026-10-16; query 'Bakka, Wakiso'"
+wakiso-wattuba-31331,0.437150,32.537080,800,osm:node/9636713953,"OSM village 'Wattuba' via Nominatim 2026-10-16; query 'Wattuba, Wakiso'"
+wakiso-lwemwendde-31488,0.545038,32.403137,800,osm:node/9645675510,"OSM village 'Lwemwedde' via Nominatim 2026-10-16; query 'Lwemwedde, Wakiso'"
+mpigi-gangu-31630,0.141634,32.208574,800,osm:node/9658254626,"OSM village 'Gangu Fr' via Nominatim 2026-10-16; query 'Gangu, Mpigi'"
+mpigi-lwagwa-31626,0.233598,32.224944,800,osm:node/8283030647,"OSM village 'Lwagwa' via Nominatim 2026-10-16; query 'Lwagwa, Mpigi'"
+mpigi-army-barracks-31658,-0.002014,32.015438,800,osm:node/2229122180,"OSM village 'Nkozi' via Nominatim 2026-10-16; query 'Nkozi, Mpigi'"
+wakiso-kisubi-31405,0.121738,32.536473,800,osm:way/244441024,OSM hospital 'Kisubi Hospital' via Nominatim 2026-10-16; query 'Kisubi Hospital'
+wakiso-ssala-kkona-ward-31458,0.388437,32.450017,800,osm:node/9651806050,"OSM village 'Kkona West' via Nominatim 2026-10-16; query 'Kkona, Wakiso'"
+mpigi-musaale-magala-31623,0.330485,32.300292,800,osm:node/9658394251,"OSM village 'Magala' via Nominatim 2026-10-16; query 'Magala, Mpigi'"
+wakiso-kazo-nabweru-31338,0.365617,32.557261,800,osm:node/9626425950,"OSM village 'Kazo Angola Central' via Nominatim 2026-10-16; query 'Kazo Angola, Kampala'"

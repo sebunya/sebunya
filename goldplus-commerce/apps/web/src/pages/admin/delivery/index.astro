@@ -488,7 +488,7 @@ const tierLabel: Record<number, string> = { 1: "One approver", 2: "Needs a secon
             <div class="overflow-x-auto">
               <table class="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
                 <thead class="bg-gray-50 text-[10px] uppercase font-black tracking-widest text-gray-500">
-                  <tr><th class="text-left px-3 py-2">Setting</th><th class="text-left px-3 py-2">Who can change it</th><th class="text-right px-3 py-2">Ships as</th></tr>
+                  <tr><th class="text-left px-3 py-2">Setting</th><th class="text-left px-3 py-2">Who can change it</th><th class="text-right px-3 py-2">Live now</th><th class="text-right px-3 py-2">Ships as</th></tr>
                 </thead>
                 <tbody>
                   {registry.map((e: any) => (
@@ -498,8 +498,11 @@ const tierLabel: Record<number, string> = { 1: "One approver", 2: "Needs a secon
                         <span class="block text-[11px] text-gray-500">{e.help}</span>
                       </td>
                       <td class="px-3 py-2 text-xs text-gray-600">{tierLabel[e.tier] ?? "—"}</td>
-                      <td class="px-3 py-2 text-right text-xs text-gray-600">
-                        {e.defaultValue === null ? <span class="text-amber-700 font-bold">unset</span> : String(e.defaultValue).slice(0, 40)}
+                      <td class="px-3 py-2 text-right text-xs font-bold text-gray-800">
+                        {e.current === null || e.current === undefined || e.current === "" ? <span class="text-amber-700">unset</span> : String(e.current).slice(0, 40)}
+                      </td>
+                      <td class="px-3 py-2 text-right text-xs text-gray-500">
+                        {e.defaultValue === null ? "unset" : String(e.defaultValue).slice(0, 40)}
                       </td>
                     </tr>
                   ))}

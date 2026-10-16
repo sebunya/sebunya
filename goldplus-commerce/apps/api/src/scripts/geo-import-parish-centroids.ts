@@ -48,6 +48,7 @@ import { DeliveryConfigReader } from '../infrastructure/delivery/DeliveryConfigR
 import { pgJsonb } from '../infrastructure/db/PgParams';
 import { haversineKm } from '../domain/delivery/DeliveryOrigin';
 import { DistanceBand, isDistanceBand } from '../domain/delivery/DeliveryModel';
+import { ceilingForCorridor, parseCorridorCeilings } from '../domain/delivery/DeliveryCorridorCeilings';
 import {
   AREA_KINDS,
   AreaKind,
@@ -83,6 +84,8 @@ export interface ImportOptions {
   expectedMd5?: string | null;
   expectedRows?: number | null;
   ownRiderMaxBand?: string | null;
+  /** own_rider_max_band_by_corridor, so the flip report sees each road's own limit. */
+  ownRiderMaxBandByCorridor?: string | null;
   reportPath?: string | null;
   rebandCsvPath?: string | null;
   allowance?: number;
@@ -326,6 +329,8 @@ export async function runParishCentroidImport(opts: ImportOptions): Promise<Impo
 
   const ceiling: DistanceBand | null =
     opts.ownRiderMaxBand && isDistanceBand(opts.ownRiderMaxBand) ? (opts.ownRiderMaxBand as DistanceBand) : null;
+  const parsedRoads = parseCorridorCeilings(opts.ownRiderMaxBandByCorridor ?? null);
+  const corridorCeilings = parsedRoads.ok ? parsedRoads.ceilings : null;
   const allowance = Number.isFinite(opts.allowance) && (opts.allowance as number) >= 1 ? (opts.allowance as number) : 1.3;
   const fuzzyThreshold = opts.fuzzyThreshold ?? MATCH_DEFAULTS.fuzzyThreshold;
   const fuzzyMargin = opts.fuzzyMargin ?? MATCH_DEFAULTS.fuzzyMargin;
@@ -386,7 +391,7 @@ export async function runParishCentroidImport(opts: ImportOptions): Promise<Impo
       seededBand: area.band, km, method: m.method, score: m.score, sharedPolygon: m.sharedPolygon, expectedErrorM: errorM,
       allowance: areaAllowance,
     });
-    const flip = verdict.verdict === 'suspect_band' ? fulfilmentFlip(area.band, verdict.bandAtAllowance ?? verdict.bandAtKm, ceiling) : null;
+    const flip = verdict.verdict === 'suspect_band' ? fulfilmentFlip(area.band, verdict.bandAtAllowance ?? verdict.bandAtKm, ceilingForCorridor(db.corridor, ceiling, corridorCeilings)) : null;
     if (verdict.verdict === 'consistent') counts.consistent += 1;
     else if (verdict.verdict === 'adjacent') counts.adjacent += 1;
     else if (verdict.verdict === 'suspect_match') counts.suspectMatch += 1;
@@ -591,6 +596,7 @@ async function main(): Promise<void> {
     fuzzyMargin: numberFlag('fuzzy-margin'),
     startedBy: value('by'),
     ownRiderMaxBand: values.own_rider_max_band ?? null,
+    ownRiderMaxBandByCorridor: values.own_rider_max_band_by_corridor ?? null,
   });
   console.log(
     `PARISH_CENTROIDS_OK mode=${apply ? 'apply' : 'dry-run'} run=${summary.runId ?? '-'} areas=${summary.areas} matched=${summary.matched} guarded=${summary.guarded} ambiguous=${summary.ambiguous} unmatched=${summary.unmatched} consistent=${summary.consistent} adjacent=${summary.adjacent} suspect_band=${summary.suspectBand} suspect_match=${summary.suspectMatch}`,

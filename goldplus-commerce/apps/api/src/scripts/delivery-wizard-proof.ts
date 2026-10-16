@@ -146,6 +146,7 @@ async function main() {
   }
   console.log(`\n=== 6. published ${published.version.id} ===`);
 
+  registry.deliveryConfigReader.invalidate(); // the reader keeps a 5 s snapshot; read what was just published, not the cache
   const live = await registry.deliveryConfigReader.numericValues();
   console.log(`  live values now: ${JSON.stringify(Object.fromEntries(Object.entries(live).filter(([k]) => k.includes('speed') || k.includes('rider') || k.includes('handling') || k.includes('margin') || k.includes('minimum'))))}`);
   const setupMissing = (await import('../domain/delivery/DeliveryModel')).missingLaunchKeys(live);

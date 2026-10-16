@@ -262,3 +262,16 @@ the window widens by itself until the promise holds.
 band is wrong or the address quality is poor. Route the first to a reband flag,
 the second to the location module's address review queue. Falling variance over
 time is the honest proof this is working.
+
+## 3.8 What changed at launch (2026-10-16)
+
+- **Anchor and margin.** Launched from a Nangabo trip (80 min round trip, UGX 13,500 rider pay), 15 handling
+  minutes, margin 1.0 (owner: the whole fee is the rider's pay), floor UGX 5,000, rider ceiling B4 (Kitende).
+  `distance_source = measured`: an area with a point is priced on its own distance; the 45 without one on the band
+  midpoint until `data/geo/manual-points.csv` or a rider handover gives them one.
+- **Rider cost under margin 1.0** is recorded automatically on a completed delivery (equal to the fee the order
+  charged, audited as automatic); a person can still overwrite it through the awaiting-cost queue.
+- **Per-road rider ceilings.** `own_rider_max_band_by_corridor` overrides `own_rider_max_band` for the corridors
+  it names (`jinja_rd=B5, entebbe_rd=B4`); the quote, the preview and the importer's flip report all read it.
+- **Beyond the ring is taxi, bus or special, never a ferry.** A rate card carries `carrier_kind`; a `special`
+  destination quotes nothing and the team confirms by phone (`SPECIAL_ARRANGEMENT`). Lake areas stay pickup-only.

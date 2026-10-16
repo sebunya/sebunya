@@ -1476,6 +1476,32 @@ export class Registry {
         ...(input.failedFirstAttempt ? { firstAttemptSuccess: false } : {}),
         ...(actualMinutes !== null && actualMinutes >= 0 ? { actualMinutes } : {}),
       });
+      // Owner's rule (2026-10-16): with nothing on top of cost, the whole fee is the rider's pay. So on a completed
+      // delivery under margin 1.0 the rider cost IS the fee the order charged, and the "deliveries waiting for a cost"
+      // queue would only ask a person to retype it. Recorded automatically, audited as such; a person can still
+      // overwrite it (a tip, a second trip) through the queue, and a margin above 1.0 leaves the queue as it was.
+      if (input.completed) {
+        try {
+          const numeric = await this.deliveryConfigReader.numericValues();
+          if (numeric.margin_multiplier === 1) {
+            const row = await this.deliveryCaptureRepo.findByOrderId(input.orderId);
+            const fee = row?.finalFeeUgx ?? row?.quotedFeeUgx ?? null;
+            if (row && row.actualRiderCostUgx === null && fee !== null && Number.isFinite(fee) && fee >= 0) {
+              await this.deliveryCaptureRepo.upsert({ orderId: input.orderId, actualRiderCostUgx: Math.round(fee) });
+              await new CreateAuditLogUseCase(this.auditRepo).execute({
+                actorId: null,
+                action: 'DELIVERY_ACTUAL_COST_RECORDED',
+                entity: 'delivery_quote_capture',
+                entityId: input.orderId,
+                previousState: { actualRiderCostUgx: null },
+                newState: { actualRiderCostUgx: Math.round(fee), note: 'Automatic: margin is 1.0, so the rider is paid the delivery fee.' },
+              });
+            }
+          }
+        } catch {
+          // The observation is best-effort; the queue still shows the order if this did not land.
+        }
+      }
     },
   });
   public readonly getFulfilmentReportUseCase = new GetFulfilmentReportUseCase(this.fulfilmentReportRepo);
