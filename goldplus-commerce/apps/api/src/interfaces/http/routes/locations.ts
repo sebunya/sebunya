@@ -78,6 +78,11 @@ routes.get('/near', async (c) => {
 const deepSearchSchema = z.object({ q: z.string().min(1).max(100), session: z.string().regex(/^[A-Za-z0-9-]{16,64}$/) }).strict();
 const deepPlaceSchema = z.object({ placeId: z.string().min(10).max(300), session: z.string().regex(/^[A-Za-z0-9-]{16,64}$/) }).strict();
 
+/** Whether the deep layer exists at all, so the picker does not offer it on a site without a key. Free. */
+routes.get('/deep-status', (c) =>
+  c.json({ success: true, data: { configured: Registry.getInstance().deepPlaceSearchUseCase.configured() } }),
+);
+
 routes.post('/deep-search', async (c) => {
   const parsed = deepSearchSchema.safeParse(await c.req.json().catch(() => null));
   if (!parsed.success) {
@@ -95,11 +100,11 @@ routes.post('/deep-place', async (c) => {
   }
   const registry = Registry.getInstance();
   const found = await registry.deepPlaceSearchUseCase.locate({ placeId: parsed.data.placeId, sessionToken: parsed.data.session });
-  if (found.status !== 'ok' || !('point' in found)) {
-    return c.json({ success: true, data: { status: found.status, point: null, address: null, areas: [] } });
+  if (found.status !== 'ok') {
+    return c.json({ success: true, data: { status: found.status, point: null, areas: [] } });
   }
   const areas = await registry.deliveryAreaResolver.nearestAreas(found.point).catch(() => []);
-  return c.json({ success: true, data: { status: 'ok', point: found.point, address: found.address, areas } });
+  return c.json({ success: true, data: { status: 'ok', point: found.point, areas } });
 });
 
 routes.post('/search-events', async (c) => {

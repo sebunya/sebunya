@@ -4,11 +4,11 @@
  * and .../data-fields:
  *  - POST https://places.googleapis.com/v1/places:autocomplete, headers X-Goog-Api-Key + X-Goog-FieldMask,
  *    body { input, sessionToken, includedRegionCodes, locationBias.circle{center,radius≤50000}, languageCode }.
- *  - GET https://places.googleapis.com/v1/places/{id}?sessionToken=… with FieldMask "location,shortFormattedAddress":
- *    both are Place Details ESSENTIALS fields. displayName is PRO (3× the price, half the free cap), so it is never
- *    asked for: the name already arrived with the suggestion.
+ *  - GET https://places.googleapis.com/v1/places/{id}?sessionToken=… with FieldMask "location" only: a Place Details
+ *    ESSENTIALS field. displayName is PRO (3× the price, half the free cap), so it is never asked for: the name
+ *    already arrived with the suggestion. Nothing else is asked for because nothing else is kept.
  */
-import type { IPlaceSearchProvider, PlaceSuggestion } from '../../application/ports/IPlaceSearch';
+import type { IPlaceSearchProvider, PlacePoint, PlaceSuggestion } from '../../application/ports/IPlaceSearch';
 
 const KAMPALA = { latitude: 0.3476, longitude: 32.5825 };
 
@@ -52,17 +52,17 @@ export class GooglePlacesProvider implements IPlaceSearchProvider {
       }));
   }
 
-  async locate(input: { placeId: string; sessionToken: string }): Promise<{ lat: number; lng: number; address: string | null } | null> {
+  async locate(input: { placeId: string; sessionToken: string }): Promise<PlacePoint | null> {
     const url = `https://places.googleapis.com/v1/places/${encodeURIComponent(input.placeId)}?sessionToken=${encodeURIComponent(input.sessionToken)}`;
     const res = await fetch(url, {
-      headers: { 'X-Goog-Api-Key': this.apiKey!, 'X-Goog-FieldMask': 'location,shortFormattedAddress' },
+      headers: { 'X-Goog-Api-Key': this.apiKey!, 'X-Goog-FieldMask': 'location' },
       signal: AbortSignal.timeout(3500),
     });
     if (!res.ok) throw new Error(`PLACES_DETAILS_${res.status}`);
-    const json = (await res.json()) as { location?: { latitude?: number; longitude?: number }; shortFormattedAddress?: string };
+    const json = (await res.json()) as { location?: { latitude?: number; longitude?: number } };
     const lat = Number(json.location?.latitude);
     const lng = Number(json.location?.longitude);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    return { lat, lng, address: json.shortFormattedAddress ?? null };
+    return { lat, lng };
   }
 }

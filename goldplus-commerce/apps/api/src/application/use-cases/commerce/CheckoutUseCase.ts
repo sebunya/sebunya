@@ -120,15 +120,6 @@ function pinOf(loc: unknown): { lat: number; lng: number } | null {
   return { lat, lng };
 }
 
-/** Removes Google-derived coordinates from a checkout location in place; any other pin is left alone. */
-export function stripMapPlaceCoordinates(loc: unknown): void {
-  const l = loc as Record<string, unknown> | null | undefined;
-  if (!l || l.gpsSource !== 'map_place') return;
-  delete l.gpsLat;
-  delete l.gpsLng;
-  delete l.gpsAccuracyM;
-}
-
 export class CheckoutUseCase {
   constructor(
     private readonly orderRepo: IOrderRepository,
@@ -299,11 +290,6 @@ export class CheckoutUseCase {
         freeDelivery = { thresholdUgx: threshold, feeBeforeUgx: before };
       }
     }
-
-    // A building picked from Google Places: its coordinates priced this order and are now dropped. Google's terms
-    // allow keeping a latitude/longitude for 30 days at most, and an order lives far longer; the building's NAME
-    // (in the rider line) is what the rider uses. A device or pasted pin is the customer's own and is unaffected.
-    stripMapPlaceCoordinates(dto.customerDetails.deliveryLocation);
 
     // COD controls (location brief I.2): eligibility is a ZONE attribute. Only
     // an ACTIVE zone policy gates — an unset policy blocks nothing (and cannot

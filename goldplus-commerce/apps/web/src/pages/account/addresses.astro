@@ -46,13 +46,13 @@ if (Astro.request.method === 'POST') {
             knownArea = String(loc.area || '').trim();
             areaSlug = String(loc.areaSlug || '').trim();
             if (loc.manual && loc.rawAddressText) rawAddressText = String(loc.rawAddressText).trim();
-            // A building picked from Google Places is never stored in the address book (Google allows coordinates 30 days at most).
-            if (typeof loc.gpsLat === 'number' && typeof loc.gpsLng === 'number' && loc.gpsSource !== 'map_place') {
+            // A building picked from Google Places is saved too; the nightly purge removes its coordinates after 29 days.
+            if (typeof loc.gpsLat === 'number' && typeof loc.gpsLng === 'number') {
               gps = {
                 gpsLat: loc.gpsLat,
                 gpsLng: loc.gpsLng,
                 ...(typeof loc.gpsAccuracyM === 'number' ? { gpsAccuracyM: loc.gpsAccuracyM } : {}),
-                ...(loc.gpsSource === 'device' || loc.gpsSource === 'pasted_link' ? { gpsSource: loc.gpsSource } : {}),
+                ...(loc.gpsSource === 'device' || loc.gpsSource === 'pasted_link' || loc.gpsSource === 'map_place' ? { gpsSource: loc.gpsSource } : {}),
               };
             }
           } catch { /* handled below as a missing location */ }

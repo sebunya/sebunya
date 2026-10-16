@@ -322,7 +322,7 @@ import {
 } from '../application/use-cases/delivery/DeliveryCaptureUseCases';
 import { DeliveryAreaResolver, DeliveryWizardAreaReader } from './delivery/DeliveryAreaResolver';
 import { GooglePlacesProvider } from './places/GooglePlacesProvider';
-import { RedisMonthlyRequestBudget } from './places/RedisMonthlyRequestBudget';
+import { RedisPlaceLocationCache, RedisPlaceRequestBudget } from './places/RedisPlaceStores';
 import { DeepPlaceSearchUseCase } from '../application/use-cases/locations/DeepPlaceSearchUseCases';
 import { DrizzleDeliveryQuotingRepository } from './db/repositories/DrizzleDeliveryQuotingRepository';
 import { DrizzleDeliveryVarianceRepository } from './db/repositories/DrizzleDeliveryVarianceRepository';
@@ -1635,7 +1635,7 @@ export class Registry {
   public readonly locationSearchService = new LocationSearchService(this.locationSearchRepo, this.locationOrderDensityReader);
   public readonly searchLocationsUseCase = new SearchLocationsUseCase(this.locationSearchService, this.searchMissRecorder);
   /** Buildings and places under our gazetteer, via Google Places (New), under a shared monthly budget (2026-10-16). */
-  public readonly deepPlaceSearchUseCase = new DeepPlaceSearchUseCase(new GooglePlacesProvider(), new RedisMonthlyRequestBudget());
+  public readonly deepPlaceSearchUseCase = new DeepPlaceSearchUseCase(new GooglePlacesProvider(), new RedisPlaceRequestBudget(), new RedisPlaceLocationCache());
   public readonly recordLocationSearchEventUseCase = new RecordLocationSearchEventUseCase(this.searchMissRecorder);
   public readonly resolveMapLinkUseCase = new ResolveMapLinkUseCase(new HttpShortLinkResolver());
   public readonly locationAdminRepo = new DrizzleLocationAdminRepository();

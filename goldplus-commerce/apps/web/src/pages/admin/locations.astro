@@ -147,6 +147,14 @@ const [misses, reviewQueue, landmarks, pickupPoints, zones, exceptions] = await 
   fetchList<any>("/admin/locations/data-exceptions"),
 ]);
 const fmt = new Intl.NumberFormat("en-UG");
+
+// Google Places spend for the checkout's deep place layer: this month, today, and today's paced allowance.
+let places: { configured: boolean; usage: null | { month: string; suggest: { used: number; cap: number; today: number; todayAllowance: number }; details: { used: number; cap: number; today: number; todayAllowance: number } } } | null = null;
+try {
+  const res = await fetch(`${apiBase}/admin/locations/places-usage`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(4000) });
+  const json: any = res.ok ? await res.json().catch(() => null) : null;
+  if (json?.success) places = json.data;
+} catch { /* the card says it could not be read */ }
 ---
 
 <AdminLayout title="Locations" description="Gazetteer learning loop, address review, landmarks, pickup points, zones and known data defects.">
@@ -158,6 +166,28 @@ const fmt = new Intl.NumberFormat("en-UG");
 
     {actionMessage && <div class="rounded-xl bg-green-50 border border-green-200 px-4 py-3 text-sm font-bold text-green-800">{actionMessage}</div>}
     {actionError && <div class="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm font-bold text-red-800">{actionError}</div>}
+
+    {/* 0. Google Places spend (deep place layer at checkout) */}
+    <section class="bg-white border border-gray-200 rounded-2xl overflow-hidden">
+      <div class="px-6 py-4 border-b border-gray-100 bg-gray-50">
+        <h2 class="text-[10px] font-black uppercase tracking-widest text-brand-dark">Google Places at checkout</h2>
+      </div>
+      <div class="px-6 py-4 text-sm text-gray-700 space-y-2">
+        {!places && <p>Could not read the usage counters just now.</p>}
+        {places && !places.configured && <p>Not configured. Checkout uses our own area search only. Set GOOGLE_PLACES_API_KEY on the server to add buildings and places.</p>}
+        {places?.configured && !places.usage && <p>Configured, but the usage counters are unreachable, so no Google request is being made (it fails closed).</p>}
+        {places?.configured && places.usage && (
+          <table class="w-full text-sm">
+            <thead><tr class="text-left text-[11px] uppercase tracking-widest text-gray-500"><th class="py-1">{places.usage.month}</th><th>This month</th><th>Monthly cap</th><th>Today</th><th>Today's allowance</th></tr></thead>
+            <tbody>
+              <tr class="border-t border-gray-100"><td class="py-1.5 font-bold">Suggestions</td><td>{fmt.format(places.usage.suggest.used)}</td><td>{fmt.format(places.usage.suggest.cap)}</td><td>{fmt.format(places.usage.suggest.today)}</td><td>{fmt.format(places.usage.suggest.todayAllowance)}</td></tr>
+              <tr class="border-t border-gray-100"><td class="py-1.5 font-bold">Place lookups</td><td>{fmt.format(places.usage.details.used)}</td><td>{fmt.format(places.usage.details.cap)}</td><td>{fmt.format(places.usage.details.today)}</td><td>{fmt.format(places.usage.details.todayAllowance)}</td></tr>
+            </tbody>
+          </table>
+        )}
+        <p class="text-xs text-gray-500">Google's free allowance is 10,000 a month for each line. A building already looked up in the last 30 days costs nothing.</p>
+      </div>
+    </section>
 
     {/* 1. Unresolved searches */}
     <section class="bg-white border border-gray-200 rounded-2xl overflow-hidden">

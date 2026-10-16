@@ -52,6 +52,16 @@
     return /\d/.test(t) || SPECIFIC_CUES.test(t) || t.split(/\s+/).filter(Boolean).length >= 3;
   }
 
+  let deepStatus: Promise<boolean> | null = null;
+  function deepConfigured(): Promise<boolean> {
+    if (!publicApiBase) return Promise.resolve(false);
+    deepStatus ??= fetch(`${publicApiBase}/locations/deep-status`, { signal: AbortSignal.timeout(3000) })
+      .then((r) => r.json())
+      .then((j) => j?.data?.configured === true)
+      .catch(() => false);
+    return deepStatus;
+  }
+
   function newSessionToken(): string {
     try {
       return crypto.randomUUID();
@@ -65,6 +75,8 @@
     gpsLng: number;
     gpsAccuracyM?: number;
     gpsSource: 'device' | 'pasted_link' | 'map_place';
+    /** Google place ID, kept with the order (the terms allow it) after the coordinates are purged. */
+    placeId?: string;
   }
 
   // Local fallback index — always available offline. Starts from the bundled
@@ -155,7 +167,10 @@
     // The deep layer: one billing session per search-and-pick, switched off for the page when the server says
     // "not configured" or the month's budget is spent.
     let deepSession = newSessionToken();
-    let deepEnabled = Boolean(publicApiBase);
+    // Off until the server says the deep layer exists (one free status call per page), so a site without a key
+    // never shows the row. Shared across pickers on the page.
+    let deepEnabled = false;
+    void deepConfigured().then((ok) => { deepEnabled = ok; });
     let deepTimer: number | undefined;
     let deepSeq = 0;
     let lastDeepQuery = '';
@@ -334,8 +349,12 @@
       }
       current = withDeepOffer(current, query);
       renderResults(current);
-      // Our search found nothing at all: ask the deep layer by itself, once the customer pauses.
-      if (deepEnabled && current.every((o) => o.action) && query.length >= 5) {
+      // Ask the deep layer by itself once the customer pauses, when it is the likely answer: our search found
+      // nothing, or they are clearly typing a building (the offer row is showing) with six or more characters.
+      // Each ask is one paid request; the server caps them per session and per day.
+      const offered = current.some((o) => o.action === 'deep-search');
+      const nothingOfOurs = current.every((o) => o.action);
+      if (deepEnabled && offered && ((nothingOfOurs && query.length >= 5) || query.length >= 6)) {
         if (deepTimer) window.clearTimeout(deepTimer);
         deepTimer = window.setTimeout(() => { if (input!.value.trim() === query) void runDeep(query); }, 700);
       }
@@ -383,8 +402,14 @@
         return;
       }
       const found: PlaceOption[] = places.map((p) => ({ label: p.name, district: '', note: p.detail, deepPlaceId: p.placeId }));
+      // An exact area match of ours stays on top ("Kira road": Kira first, then the buildings); otherwise the
+      // buildings lead, because that is what the customer was typing.
+      const oursExact = ['area_exact', 'alias_exact', 'group_exact'].includes(String(ours[0]?.provenance));
+      const credit: PlaceOption = { label: 'Results from Google Maps', district: '', inert: true };
       current = found.length
-        ? [...found, ...ours.slice(0, 3), { label: 'Results from Google Maps', district: '', inert: true }]
+        ? oursExact
+          ? [...ours.slice(0, 2), ...found, credit]
+          : [...found, ...ours.slice(0, 3), credit]
         : [...ours, { label: ours.length ? 'No building found. Pick an area above.' : 'No building found. Try an area name, or use Can\'t find your area.', district: '', inert: true }];
       renderResults(current);
     }
@@ -410,7 +435,7 @@
         if (pinStatus) pinStatus.textContent = 'Could not place that building. Pick your area instead.';
         return;
       }
-      pin = { gpsLat: Number(data.point.lat.toFixed(6)), gpsLng: Number(data.point.lng.toFixed(6)), gpsSource: 'map_place' };
+      pin = { gpsLat: Number(data.point.lat.toFixed(6)), gpsLng: Number(data.point.lng.toFixed(6)), gpsSource: 'map_place', placeId: opt.deepPlaceId };
       input!.value = opt.label;
       el.dispatchEvent(new CustomEvent('gp:place-picked', { bubbles: true, detail: { name: opt.label, detail: opt.note ?? '' } }));
       offerAreas(data.areas ?? [], pinStatus, `📍 ${opt.label} is pinned for the rider. Tap your area to see the delivery fee.`);

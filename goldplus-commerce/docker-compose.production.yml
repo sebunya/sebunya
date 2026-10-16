@@ -219,9 +219,11 @@ services:
       - FACEBOOK_CLIENT_ID=${FACEBOOK_CLIENT_ID:-}
       - FACEBOOK_CLIENT_SECRET=${FACEBOOK_CLIENT_SECRET:-}
       # Checkout's deep place layer (buildings, malls, plots) via Google Places API (New). Unset = "Not configured":
-      # the picker behaves exactly as without it. The cap counts every Google request, shared by both replicas.
+      # the picker behaves exactly as without it. Caps are per calendar month, shared by both replicas (Redis), paced per day.
       - GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY:-}
-      - GOOGLE_PLACES_MONTHLY_REQUEST_CAP=${GOOGLE_PLACES_MONTHLY_REQUEST_CAP:-1000}
+      # Google bills suggestions and place lookups separately, 10,000 free a month each; 9,500 leaves headroom.
+      - GOOGLE_PLACES_AUTOCOMPLETE_MONTHLY_CAP=${GOOGLE_PLACES_AUTOCOMPLETE_MONTHLY_CAP:-9500}
+      - GOOGLE_PLACES_DETAILS_MONTHLY_CAP=${GOOGLE_PLACES_DETAILS_MONTHLY_CAP:-9500}
       # Outbound governance gates (domain/notifications/OutboundGovernancePolicy).
       # Each defaults to false — silence must never read as permission — and every
       # one must be true before a real message reaches a provider. They were

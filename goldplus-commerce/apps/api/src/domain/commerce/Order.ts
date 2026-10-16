@@ -78,6 +78,12 @@ export interface OrderDeliveryLocation {
   gpsLng?: number;
   gpsAccuracyM?: number;
   gpsSource?: 'device' | 'pasted_link' | 'map_place';
+  /**
+   * A building picked from Google Places: its place ID, which Google's terms allow us to keep indefinitely. Its
+   * coordinates (gpsLat/gpsLng, source map_place) are removed by the nightly purge after 29 days (terms: 30 max);
+   * the ID keeps a "find it on Google Maps" link working after that.
+   */
+  placeId?: string;
   countyOrMunicipality?: string;
   subcountyDivisionTc?: string;
   parishWard?: string;
