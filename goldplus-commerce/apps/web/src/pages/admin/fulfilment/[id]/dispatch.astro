@@ -80,7 +80,7 @@ let loadFailed = false;
 let notFound = false;
 let permissionDenied = false;
 let apiError = "";
-let riders: Array<{ id: string; name: string; phoneMasked: string }> = [];
+let riders: Array<{ id: string; name: string; phone: string }> = [];
 try {
   const [dRes, tRes, rRes] = await Promise.all([
     fetch(`${apiBase}/admin/fulfilment/${encodeURIComponent(taskId)}/dispatch`, { headers }),
@@ -196,7 +196,7 @@ function fmt(d: string | null) { return d ? new Date(d).toLocaleString("en-UG", 
                 <label for="riderId" class="block text-[10px] font-black uppercase tracking-wider text-gray-500 mb-1.5">Rider on WhatsApp</label>
                 <select id="riderId" name="riderId" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-xs font-bold text-brand-dark">
                   <option value="">— not one of our riders —</option>
-                  {riders.map((r) => <option value={r.id}>{r.name} · {r.phoneMasked}</option>)}
+                  {riders.map((r) => <option value={r.id}>{r.name} · {r.phone}</option>)}
                 </select>
                 <p class="text-[10px] text-gray-500 mt-1">A location this rider shares on WhatsApp while the stop is out records the handover. Riders are managed under Delivery → Riders.</p>
               </div>

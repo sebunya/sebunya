@@ -5,9 +5,9 @@ import { apiBase } from "../../../lib/api";
 
 /**
  * Riders (0190): the people whose WhatsApp number turns a shared location into
- * a handover. A name and a number, nothing more. Numbers are shown masked and
+ * a handover. A name and a number, nothing more. Numbers are shown in full and
  * never leave this page; a rider who stops riding is switched off, not deleted,
- * so past handovers keep their author.
+ * so past handovers keep their author. Numbers are shown in full: riders are our own team (owner, 2026-10-16).
  */
 const token = readSessionToken(Astro.request);
 if (!token) return Astro.redirect("/admin/login?returnTo=/admin/delivery/riders", 303);
@@ -38,7 +38,7 @@ if (Astro.request.method === "POST") {
   }
 }
 
-let riders: Array<{ id: string; name: string; phoneMasked: string; active: boolean; createdAt: string }> = [];
+let riders: Array<{ id: string; name: string; phone: string; phoneMasked: string; active: boolean; createdAt: string }> = [];
 let loadFailed = false;
 try {
   const res = await fetch(`${apiBase}/admin/delivery/riders`, { headers });
@@ -58,7 +58,7 @@ try {
       <h1 class="text-2xl font-black text-brand-dark">Riders</h1>
       <p class="text-sm text-gray-600 mt-1">
         Pick a rider on the dispatch form. When that rider shares a location on WhatsApp while the stop is out, Goldie asks how
-        it went and records the handover. Numbers are shown masked and are not exported.
+        it went and records the handover. Riders are our own team, so numbers are shown in full here; they are not exported.
       </p>
     </div>
 
@@ -94,7 +94,7 @@ try {
             {riders.map((r) => (
               <tr class="border-t border-gray-100">
                 <td class="px-4 py-2.5 font-bold text-brand-dark">{r.name}</td>
-                <td class="px-4 py-2.5 font-mono text-xs">{r.phoneMasked}</td>
+                <td class="px-4 py-2.5 font-mono text-xs">{r.phone}</td>
                 <td class="px-4 py-2.5">{r.active ? "On" : "Off"}</td>
                 <td class="px-4 py-2.5 text-right">
                   <form method="POST">
