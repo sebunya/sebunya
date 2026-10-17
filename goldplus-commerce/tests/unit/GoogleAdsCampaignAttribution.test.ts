@@ -29,7 +29,7 @@ describe('which kind of Google ad sold', () => {
     expect(by(null)).toMatchObject({ type: 'UNKNOWN', typeFrom: 'unknown', orders: 1 });
     expect(by('333')).toMatchObject({ type: 'UNKNOWN', orders: 1 });
     // Spend in dollars and sales in shillings are not divided into a ROAS.
-    expect(by('444')).toMatchObject({ type: 'DEMAND_GEN', orders: 0, roas: null, spend: [{ currency: 'USD', spendMinor: 1234 }] });
+    expect(by('444')).toMatchObject({ type: 'DEMAND_GEN', orders: 0, roas: null, spend: [{ currency: 'USD', spendMinor: 1234 }] }); // no rate given: no ROAS
     expect(r.salesWithoutCampaign).toBe(1);
     expect(r.byType.map((t) => [t.label, t.orders, t.revenueUgx])).toEqual([['YouTube', 1, 55000], ['Performance Max', 1, 145000], ['YouTube & Demand Gen', 0, 0], ['Type not known', 2, 50000]]);
   });

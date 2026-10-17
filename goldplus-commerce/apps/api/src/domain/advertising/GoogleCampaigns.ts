@@ -57,21 +57,38 @@ export interface GoogleCampaignRow {
   clicks: number | null;
   orders: number;
   revenueUgx: number;
-  /** Revenue ÷ spend, only when all of the spend is in UGX and above zero; otherwise not a number we can state. */
+  /** Revenue ÷ spend in shillings: spend in UGX, or USD at the owner's stated rate; null when neither applies. */
   roas: number | null;
 }
+
+/** Shillings per US dollar the owner entered on the Google Ads card, used ONLY to state ROAS for dollar spend. */
+export type UgxPerUsd = number | null;
 
 export interface GoogleCampaignReport {
   campaigns: GoogleCampaignRow[];
   byType: Array<{ type: GoogleType; label: string; orders: number; revenueUgx: number; spend: Array<{ currency: string; spendMinor: number }>; roas: number | null }>;
   /** Google-click sales whose click did not say which campaign (clicks before 2026-10-17, or auto-tagging off). */
   salesWithoutCampaign: number;
+  /** The rate dollar spend was converted at for ROAS, or null (then ROAS is stated only for shilling spend). */
+  ugxPerUsd: UgxPerUsd;
 }
 
-const roasOf = (revenueUgx: number, spend: Array<{ currency: string; spendMinor: number }>): number | null => {
-  if (!spend.length || spend.some((s) => s.currency !== 'UGX')) return null;
-  const ugx = spend.reduce((t, s) => t + s.spendMinor / 10 ** minorDigits('UGX'), 0);
-  return ugx > 0 ? Math.round((revenueUgx / ugx) * 100) / 100 : null;
+/** Spend in shillings: UGX as is, USD at the stated rate; null when any of it is in a currency we cannot convert. */
+export function spendInUgx(spend: Array<{ currency: string; spendMinor: number }>, ugxPerUsd: UgxPerUsd): number | null {
+  let total = 0;
+  for (const s of spend) {
+    const major = s.spendMinor / 10 ** minorDigits(s.currency);
+    if (s.currency === 'UGX') total += major;
+    else if (s.currency === 'USD' && ugxPerUsd != null && ugxPerUsd >= 100) total += major * ugxPerUsd;
+    else return null;
+  }
+  return total;
+}
+
+const roasWith = (ugxPerUsd: UgxPerUsd) => (revenueUgx: number, spend: Array<{ currency: string; spendMinor: number }>): number | null => {
+  if (!spend.length) return null;
+  const ugx = spendInUgx(spend, ugxPerUsd);
+  return ugx != null && ugx > 0 ? Math.round((revenueUgx / ugx) * 100) / 100 : null;
 };
 
 const addSpend = (into: Array<{ currency: string; spendMinor: number }>, currency: string, minor: number) => {
@@ -79,7 +96,9 @@ const addSpend = (into: Array<{ currency: string; spendMinor: number }>, currenc
   if (cur) cur.spendMinor += minor; else into.push({ currency, spendMinor: minor });
 };
 
-export function googleCampaignReport(sales: GoogleSale[], spend: GoogleSpendRow[]): GoogleCampaignReport {
+export function googleCampaignReport(sales: GoogleSale[], spend: GoogleSpendRow[], ugxPerUsd: UgxPerUsd = null): GoogleCampaignReport {
+  const rate = ugxPerUsd != null && Number.isFinite(ugxPerUsd) && ugxPerUsd >= 100 ? ugxPerUsd : null;
+  const roasOf = roasWith(rate);
   const rows = new Map<string, GoogleCampaignRow>();
   const keyOf = (id: string | null, type: GoogleType) => (id ? `id:${id}` : `none:${type}`);
   const row = (id: string | null, type: GoogleType, typeFrom: GoogleCampaignRow['typeFrom']) => {
@@ -117,5 +136,5 @@ export function googleCampaignReport(sales: GoogleSale[], spend: GoogleSpendRow[
     const revenueUgx = rs.reduce((t, r) => t + r.revenueUgx, 0);
     return { type, label: GOOGLE_TYPE_LABEL[type], orders: rs.reduce((t, r) => t + r.orders, 0), revenueUgx, spend: sp, roas: roasOf(revenueUgx, sp) };
   }).filter((t) => t.orders > 0 || t.spend.length > 0);
-  return { campaigns, byType, salesWithoutCampaign };
+  return { campaigns, byType, salesWithoutCampaign, ugxPerUsd: rate };
 }

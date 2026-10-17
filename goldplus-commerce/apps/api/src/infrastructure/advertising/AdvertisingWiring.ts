@@ -89,7 +89,8 @@ export function createAdvertisingOperations(deps: {
     lock: jobs,
     customSegments,
   });
-  const spend = new AdSpendUseCases(new DrizzleSpendFactRepository(), new HttpSpendGateway(), liveCap('spend'), credentialsFor('spend'), deps.audit);
+  const spend = new AdSpendUseCases(new DrizzleSpendFactRepository(), new HttpSpendGateway(), liveCap('spend'), credentialsFor('spend'), deps.audit, undefined,
+    async () => { const r = Number((await destRepo.get('google_ads'))?.config?.ugxPerUsd); return Number.isFinite(r) && r >= 100 ? r : null; });
   // Click-to-WhatsApp adverts: the webhook's secrets are decrypted here, just in
   // time, and reach nothing but the use case that checks a signature with them.
   const whatsappAds = new WhatsAppAdsUseCases(new DrizzleWhatsAppAdReferralRepository(), async () => {
