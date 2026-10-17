@@ -40,8 +40,10 @@ const WHERE: Record<string, Record<string, string>> = {
     customerId: 'Google Ads, top right: the 10-digit customer ID (enter without dashes).',
     conversionActionId: 'Goals > Conversions > Summary > New conversion action > Import > "CRM, files or other data sources" > "Track conversions from clicks". Open it: the number after ctId= in the address bar.',
     loginCustomerId: 'Only when access is through a manager account (MCC): that account\'s 10-digit ID.',
-    apiVersion: 'Google Ads API release notes (developers.google.com/google-ads/api/docs/release-notes): the newest version, e.g. v25.',
-    secret: 'developerToken: manager account > Tools > API Center. clientId / clientSecret: Google Cloud console > APIs & Services > Credentials > Create OAuth client ID (enable the Google Ads API first). refreshToken: one OAuth consent with the scope https://www.googleapis.com/auth/adwords for the Google account that can open the ads account.',
+    leadConversionActionId: 'Optional: a second "Track conversions from clicks" action for quote requests and WhatsApp taps (value "Don\'t use a value").',
+    merchantCenterId: 'Optional: Merchant Center > the account number top right. Purchases then name their products as in the feed.',
+    apiVersion: 'Only for spend import (Google Ads API): the newest version in developers.google.com/google-ads/api/docs/release-notes. Conversions do not use it.',
+    secret: 'Conversions use the Data Manager API (no developer token). In Google Cloud (the project with "Data Manager API" enabled): IAM & Admin > Service accounts > Create; then Keys > Add key > JSON, and paste the whole file here. In Google Ads: Admin > Access and security > + > the service account\'s email, Standard access. To import spend too, add "developerToken" (manager account > Tools > API Center) to the JSON.',
   },
   linkedin: {
     secret: 'Campaign Manager > your ad account > Data > Signals Manager > Direct API > "Generate access token". It does not expire and needs no developer app; LinkedIn shows it once, so paste it here straight away.',

@@ -31,6 +31,8 @@ export interface AdPlatformDef {
   secretLabel: string;
   /** Secret format hint shown in admin (e.g. a JSON bundle). */
   secretHint?: string;
+  /** Checks a pasted secret's shape on save (null = fine). */
+  checkSecret?: (secret: string) => string | null;
   /** Per-send auth headers derived from the secret (OAuth exchange / request signing). */
   authorize?: (req: AdRequest, cfg: Record<string, string>, secret: string) => Promise<Record<string, string>>;
   /** A 2xx reply can still carry a failure (Google Ads partial failure): return it. */
@@ -163,6 +165,136 @@ async function googleAccessToken(clientId: string, clientSecret: string, refresh
   if (!res.ok || !j?.access_token) throw Object.assign(new Error(`Google OAuth refused: ${j?.error ?? res.status}`), { status: res.status });
   tokenCache.set(key, { token: j.access_token, until: Date.now() + Math.max(60, (j.expires_in ?? 3600) - 300) * 1000 });
   return j.access_token;
+}
+
+// ── Google credentials (2026-10-16) ───────────────────────────────────────────
+//
+// Conversions go through the Data Manager API (datamanager.googleapis.com, scope
+// https://www.googleapis.com/auth/datamanager). Google Ads API UploadClickConversions has refused, since
+// 15 June 2026, any developer token that had not already sent conversion uploads — this shop never had — and
+// Google points to the Data Manager API, which needs NO developer token. The secret may be:
+//   - a service-account key file, pasted as-is ({"type":"service_account","client_email",…,"private_key"}),
+//     the service account's email added as a user in Google Ads; or
+//   - {"clientId","clientSecret","refreshToken"} for a Google user whose consent included the datamanager scope.
+// Either may also carry "developerToken" (and, with a service account, nothing else is needed for spend): the
+// Google Ads API (spend import) still requires a developer token; conversions never do.
+const DATA_MANAGER_SCOPE = 'https://www.googleapis.com/auth/datamanager';
+const ADWORDS_SCOPE = 'https://www.googleapis.com/auth/adwords';
+
+export type GoogleCredentials =
+  | { kind: 'service_account'; clientEmail: string; privateKey: string; developerToken?: string }
+  | { kind: 'oauth'; clientId: string; clientSecret: string; refreshToken: string; developerToken?: string };
+
+export function parseGoogleCredentials(secret: string): GoogleCredentials {
+  let j: Record<string, unknown>;
+  try { j = JSON.parse(secret); } catch { throw new Error('Google credentials must be JSON: a service-account key file, or {"clientId","clientSecret","refreshToken"}'); }
+  const sa = (j.serviceAccount && typeof j.serviceAccount === 'object' ? j.serviceAccount : j) as Record<string, unknown>;
+  const dev = typeof j.developerToken === 'string' && j.developerToken ? { developerToken: j.developerToken } : {};
+  if (sa.type === 'service_account' && typeof sa.client_email === 'string' && typeof sa.private_key === 'string') {
+    return { kind: 'service_account', clientEmail: sa.client_email, privateKey: sa.private_key, ...dev };
+  }
+  if (typeof j.clientId === 'string' && typeof j.clientSecret === 'string' && typeof j.refreshToken === 'string') {
+    return { kind: 'oauth', clientId: j.clientId, clientSecret: j.clientSecret, refreshToken: j.refreshToken, ...dev };
+  }
+  throw new Error('Google credentials: paste the service-account key file, or {"clientId","clientSecret","refreshToken"}');
+}
+
+const b64url = (b: Buffer | string) => Buffer.from(b).toString('base64').replace(/=+$/, '').replace(/\+/g, '-').replace(/\//g, '_');
+
+/** A signed JWT for Google's token endpoint (service-account flow, RFC 7523). Pure apart from the clock. */
+export function googleServiceAccountAssertion(clientEmail: string, privateKey: string, scope: string, nowSec = Math.floor(Date.now() / 1000)): string {
+  const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+  const claims = b64url(JSON.stringify({ iss: clientEmail, scope, aud: 'https://oauth2.googleapis.com/token', iat: nowSec, exp: nowSec + 3600 }));
+  const signature = crypto.createSign('RSA-SHA256').update(`${header}.${claims}`).sign(privateKey);
+  return `${header}.${claims}.${b64url(signature)}`;
+}
+
+async function googleServiceAccountToken(clientEmail: string, privateKey: string, scope: string): Promise<string> {
+  const key = sha(`sa:${clientEmail}:${scope}`);
+  const hit = tokenCache.get(key);
+  if (hit && hit.until > Date.now()) return hit.token;
+  const res = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: googleServiceAccountAssertion(clientEmail, privateKey, scope) }), signal: AbortSignal.timeout(10_000) });
+  const j = (await res.json().catch(() => null)) as { access_token?: string; expires_in?: number; error?: string; error_description?: string } | null;
+  if (!res.ok || !j?.access_token) throw Object.assign(new Error(`Google sign-in refused: ${j?.error ?? res.status}${j?.error_description ? ` (${j.error_description})` : ''}`), { status: res.status });
+  tokenCache.set(key, { token: j.access_token, until: Date.now() + Math.max(60, (j.expires_in ?? 3600) - 300) * 1000 });
+  return j.access_token;
+}
+
+/** Bearer header for the Data Manager API (conversions, Customer Match). */
+export async function googleDataManagerHeaders(secret: string): Promise<Record<string, string>> {
+  const c = parseGoogleCredentials(secret);
+  const token = c.kind === 'service_account'
+    ? await googleServiceAccountToken(c.clientEmail, c.privateKey, DATA_MANAGER_SCOPE)
+    : await googleAccessToken(c.clientId, c.clientSecret, c.refreshToken);
+  return { Authorization: `Bearer ${token}` };
+}
+
+/** Headers for the Google Ads API (spend import): a developer token is required there, and only there. */
+export async function googleAdsApiHeaders(secret: string): Promise<Record<string, string>> {
+  const c = parseGoogleCredentials(secret);
+  if (!c.developerToken) throw Object.assign(new Error('Not configured: spend import uses the Google Ads API, which needs a developer token ("developerToken" in the credentials). Conversions do not.'), { status: null });
+  const token = c.kind === 'service_account'
+    ? await googleServiceAccountToken(c.clientEmail, c.privateKey, ADWORDS_SCOPE)
+    : await googleAccessToken(c.clientId, c.clientSecret, c.refreshToken);
+  return { Authorization: `Bearer ${token}`, 'developer-token': c.developerToken };
+}
+
+/** One Google Ads conversion as a Data Manager Event (pure). Null when there is nothing Google can match on. */
+export function googleAdsEvent(x: {
+  transactionId: string;
+  eventTimeSec: number;
+  source: 'WEB' | 'PHONE' | 'MESSAGE' | 'IN_STORE' | 'OTHER';
+  valueUgx?: number;
+  currency?: string;
+  gclid?: string; gbraid?: string; wbraid?: string;
+  hashedEmail?: string; hashedPhonePlus?: string;
+  ipAddress?: string; userAgent?: string;
+  customerType?: 'NEW' | 'RETURNING';
+  items?: Array<{ sku?: string; quantity: number; unitPrice?: number }>;
+  merchantCenterId?: string;
+}): Record<string, unknown> | null {
+  const adIdentifiers: Record<string, string> = {};
+  if (x.gclid) adIdentifiers.gclid = x.gclid;
+  if (x.gbraid) adIdentifiers.gbraid = x.gbraid;
+  if (x.wbraid) adIdentifiers.wbraid = x.wbraid;
+  // Google's emails/phones: SHA-256 hex of the normalised value (email: Google's rule; phone: E.164 with "+").
+  const userIdentifiers = [x.hashedEmail ? { emailAddress: x.hashedEmail } : null, x.hashedPhonePlus ? { phoneNumber: x.hashedPhonePlus } : null].filter(Boolean);
+  const device = { ...(x.ipAddress ? { ipAddress: x.ipAddress } : {}), ...(x.userAgent ? { userAgent: x.userAgent } : {}) };
+  // Data Manager's identifier rule: a click id, user data, or the device's IP address. None of them: nothing to send.
+  if (Object.keys(adIdentifiers).length === 0 && userIdentifiers.length === 0 && !x.ipAddress) return null;
+  const cart = (x.items ?? []).filter((i) => i.sku);
+  return {
+    transactionId: x.transactionId.slice(0, 100),
+    eventTimestamp: new Date(x.eventTimeSec * 1000).toISOString(),
+    eventSource: x.source,
+    ...(typeof x.valueUgx === 'number' ? { conversionValue: x.valueUgx, currency: x.currency ?? 'UGX' } : {}),
+    ...(Object.keys(adIdentifiers).length ? { adIdentifiers } : {}),
+    ...(userIdentifiers.length ? { userData: { userIdentifiers } } : {}),
+    ...(Object.keys(device).length ? { eventDeviceInfo: device } : {}),
+    ...(x.customerType ? { userProperties: { customerType: x.customerType } } : {}),
+    // Cart data names the products as the Merchant Center feed does (g:id is the SKU), for Shopping/PMax.
+    ...(cart.length ? { cartData: { ...(x.merchantCenterId ? { merchantId: x.merchantCenterId } : {}),
+      items: cart.map((i) => ({ merchantProductId: String(i.sku), quantity: String(Math.max(1, Math.round(i.quantity))), ...(typeof i.unitPrice === 'number' ? { unitPrice: i.unitPrice } : {}) })) } } : {}),
+  };
+}
+
+/** The events:ingest request for one Google Ads conversion action (pure). validateOnly in Test mode. */
+export function googleAdsIngestRequest(cfg: Record<string, string>, actionId: string, events: Array<Record<string, unknown>>, test: boolean): AdRequest {
+  return {
+    url: 'https://datamanager.googleapis.com/v1/events:ingest',
+    headers: { 'content-type': 'application/json' },
+    body: {
+      destinations: [{
+        operatingAccount: { accountType: 'GOOGLE_ADS', accountId: cfg.customerId },
+        ...(cfg.loginCustomerId ? { loginAccount: { accountType: 'GOOGLE_ADS', accountId: cfg.loginCustomerId } } : {}),
+        productDestinationId: actionId,
+      }],
+      encoding: 'HEX',
+      events,
+      ...(test ? { validateOnly: true } : {}),
+    },
+  };
 }
 
 const pct = (s: string) => encodeURIComponent(s).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
@@ -603,49 +735,40 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
   {
     key: 'google_ads', name: 'Google Ads (Search, Shopping, YouTube, PMax)', testable: true,
     fields: [
-      { key: 'customerId', label: 'Customer ID (10 digits, no dashes)', pattern: /^\d{10}$/, hint: 'Google Ads, top right' },
-      { key: 'conversionActionId', label: 'Conversion action ID', pattern: /^\d{4,20}$/, hint: 'Must be an IMPORT action: Goals > Conversions > New > Import > "Conversions from clicks" (ctId in its URL). A website-tag action is refused. For sales without a click id, turn on "Enhanced conversions for leads".' },
-      { key: 'leadConversionActionId', label: 'Lead conversion action ID (optional)', pattern: /^\d{4,20}$/, optional: true, hint: 'A second IMPORT action ("Conversions from clicks", category Request quote or Contact, value "Don\'t use a value") for quote requests and WhatsApp taps from Google ad clicks. Leave empty to send purchases only' },
-      { key: 'loginCustomerId', label: 'Manager account ID (if used)', pattern: /^(\d{10})?$/, hint: 'Only when access goes through an MCC', optional: true },
-      { key: 'apiVersion', label: 'Google Ads API version', pattern: /^v\d{2}$/, hint: 'The newest version in Google Ads API release notes (e.g. v24). Versions sunset about a year after release: update it when Google announces a sunset.' },
+      { key: 'customerId', label: 'Customer ID (10 digits, no dashes)', pattern: /^\d{10}$/, hint: 'Google Ads, top right (916-133-9749 is entered as 9161339749)' },
+      { key: 'conversionActionId', label: 'Purchase conversion action ID', pattern: /^\d{4,20}$/, hint: 'An IMPORT action: Goals > Conversions > New conversion action > Import > CRM, files or other data sources > Track conversions from clicks (ctId in its URL). Category Purchase, value "Use different values for each conversion", count "One". A website-tag action is refused.' },
+      { key: 'leadConversionActionId', label: 'Lead conversion action ID (optional)', pattern: /^\d{4,20}$/, optional: true, hint: 'A second IMPORT "from clicks" action (category Submit lead form or Contact, value "Don\'t use a value") for quote requests and WhatsApp taps. Leave empty to send purchases only.' },
+      { key: 'loginCustomerId', label: 'Manager account ID (if used)', pattern: /^(\d{10})?$/, hint: 'Only when access goes through a manager (MCC) account', optional: true },
+      { key: 'merchantCenterId', label: 'Merchant Center ID (optional)', pattern: /^(\d{6,15})?$/, optional: true, hint: 'With it, each purchase names its products as in the Merchant Center feed (cart data for Shopping and Performance Max).' },
+      { key: 'apiVersion', label: 'Google Ads API version (spend import only)', pattern: /^(v\d{2})?$/, optional: true, hint: 'Only for importing spend through the Google Ads API (e.g. v22). Conversions use the Data Manager API and need no version.' },
     ],
-    secretLabel: 'API credentials (JSON)',
-    secretHint: '{"developerToken":"…","clientId":"….apps.googleusercontent.com","clientSecret":"…","refreshToken":"…"}',
-    events: { purchase: 'uploadClickConversions', generate_lead: 'uploadClickConversions (lead action)' },
+    secretLabel: 'Google credentials (JSON)',
+    checkSecret(secret) { try { parseGoogleCredentials(secret); return null; } catch (err) { return String((err as Error).message); } },
+    secretHint: 'Paste the service-account key file (Google Cloud > IAM & Admin > Service accounts > Keys > Add key > JSON) and add that service account\'s email as a user in Google Ads (Admin > Access and security, Standard access). Or {"clientId","clientSecret","refreshToken"} with the Data Manager scope. Add "developerToken" only to import spend.',
+    events: { purchase: 'Data Manager events:ingest (purchase action)', generate_lead: 'Data Manager events:ingest (lead action)' },
     // A lead goes only to its own action, and only when one is saved.
     accepts(eventName, cfg) { return eventName === 'purchase' || (eventName === 'generate_lead' && !!cfg.leadConversionActionId); },
-    async authorize(_req, _cfg, secret) {
-      const c = parseJsonSecret(secret, ['developerToken', 'clientId', 'clientSecret', 'refreshToken']);
-      const token = await googleAccessToken(c.clientId, c.clientSecret, c.refreshToken);
-      return { Authorization: `Bearer ${token}`, 'developer-token': c.developerToken };
-    },
-    replyError: (j) => { const e = (j as { partialFailureError?: { message?: string } })?.partialFailureError; return e ? `partial failure: ${String(e.message ?? '').slice(0, 300)}` : null; },
+    async authorize(_req, _cfg, secret) { return googleDataManagerHeaders(secret); },
+    // Data Manager is fast-fail: a bad field rejects the whole request with an error body (sent through call()).
+    replyError: (j) => { const e = (j as { error?: { message?: string } })?.error; return e?.message ? String(e.message).slice(0, 300) : null; },
     build(e, cfg) {
       const isLead = e.event_name === 'generate_lead';
       if (e.event_name !== 'purchase' && !(isLead && cfg.leadConversionActionId)) return null;
-      const action = isLead ? cfg.leadConversionActionId : cfg.conversionActionId;
       const ud = u(e);
-      // A click id, or the hashed email/phone for enhanced conversions; neither = nothing to match.
-      const gEmail = ud.hashed_email_google ?? ud.hashed_email;
-      const userIdentifiers = [gEmail ? { hashedEmail: gEmail } : null, ud.hashed_phone_plus ? { hashedPhoneNumber: ud.hashed_phone_plus } : null].filter(Boolean);
-      if (!ud.gclid && !ud.gbraid && !ud.wbraid && userIdentifiers.length === 0) return null;
-      const t = new Date(e.event_time * 1000).toISOString().replace('T', ' ').slice(0, 19) + '+00:00';
-      const v = cfg.apiVersion;
-      return {
-        url: `https://googleads.googleapis.com/${v}/customers/${cfg.customerId}:uploadClickConversions`,
-        headers: { 'content-type': 'application/json', ...(cfg.loginCustomerId ? { 'login-customer-id': cfg.loginCustomerId } : {}) },
-        // validateOnly: Google checks the upload and records nothing (Test mode).
-        body: { partialFailure: true, ...(inTest(cfg) ? { validateOnly: true } : {}), conversions: [{
-          ...(ud.gclid ? { gclid: ud.gclid } : ud.gbraid ? { gbraid: ud.gbraid } : ud.wbraid ? { wbraid: ud.wbraid } : {}),
-          conversionAction: `customers/${cfg.customerId}/conversionActions/${action}`,
-          // Google lists UGX (Merchant Center supported currencies), so a sale
-          // keeps its shilling value. A lead states no value; its event id is
-          // the order id, so a retried upload is not counted twice.
-          conversionDateTime: t,
-          ...(isLead ? { orderId: e.event_id } : { conversionValue: value(e), currencyCode: e.ecommerce?.currency ?? 'UGX', orderId: e.ecommerce?.transaction_id }),
-          ...(userIdentifiers.length ? { userIdentifiers } : {}),
-        }] },
-      };
+      const event = googleAdsEvent({
+        transactionId: isLead ? e.event_id : String(e.ecommerce?.transaction_id ?? e.event_id),
+        eventTimeSec: e.event_time,
+        source: 'WEB',
+        ...(isLead ? {} : { valueUgx: value(e), currency: e.ecommerce?.currency ?? 'UGX' }),
+        gclid: ud.gclid, gbraid: ud.gbraid, wbraid: ud.wbraid,
+        hashedEmail: ud.hashed_email_google ?? ud.hashed_email, hashedPhonePlus: ud.hashed_phone_plus,
+        ipAddress: ud.ip_address, userAgent: ud.user_agent,
+        customerType: (ud as { customer_type?: 'NEW' | 'RETURNING' }).customer_type,
+        items: isLead ? [] : items(e).map((i) => ({ sku: (i as { item_sku?: string }).item_sku, quantity: i.quantity ?? 1, unitPrice: i.price })),
+        merchantCenterId: cfg.merchantCenterId,
+      });
+      if (!event) return null;
+      return googleAdsIngestRequest(cfg, isLead ? cfg.leadConversionActionId : cfg.conversionActionId, [event], inTest(cfg));
     },
   },
   {

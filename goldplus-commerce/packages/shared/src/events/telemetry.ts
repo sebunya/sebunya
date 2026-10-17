@@ -65,6 +65,12 @@ export const TelemetryUserDataSchema = z.object({
   // Forwarded from browser for CAPI IP/UA matching requirements
   ip_address: z.string().max(64).optional(),
   user_agent: z.string().max(1024).optional(),
+  /**
+   * 2026-10-16: the buyer is new to the shop or returning, from our own orders (no earlier paid or delivered
+   * order by the same account or phone number). Set only on a server-built purchase. Google Ads uses it for
+   * new-customer acquisition bidding (Data Manager userProperties.customerType).
+   */
+  customer_type: z.enum(['NEW', 'RETURNING']).optional(),
 });
 
 export const TelemetryItemSchema = z.object({
@@ -75,6 +81,8 @@ export const TelemetryItemSchema = z.object({
   item_category: z.string().max(255).optional(),
   item_brand:    z.string().max(255).optional(),
   item_variant:  z.string().max(255).optional(),
+  /** 2026-10-16: the SKU, which is the Merchant Center feed's g:id (Google Ads cart data). */
+  item_sku:      z.string().max(100).optional(),
 });
 
 export const TelemetryEcommerceSchema = z.object({

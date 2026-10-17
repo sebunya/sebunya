@@ -388,20 +388,24 @@ import { isNonPublicAddress } from '../../apps/api/src/infrastructure/advertisin
 
 describe('advertising: Google Ads, Microsoft, X and network postbacks', () => {
   const withClicks = { ...purchase, user_data: { ...purchase.user_data, gclid: 'Cj0KCQ', msclkid: 'ms123', twclid: 'tw123', network_click_id: 'abc-123', network_click_param: 'clickid', network_click_source: 'opera' } };
-  it('Google Ads: uploadClickConversions with gclid, UTC datetime, value, order id and enhanced-conversion identifiers', () => {
-    const r = buildAdRequest('google_ads', withClicks, { customerId: '1234567890', conversionActionId: '987654', apiVersion: 'v24' }, '{}')!;
-    expect(r.url).toBe('https://googleads.googleapis.com/v24/customers/1234567890:uploadClickConversions');
-    const c = (r.body as any).conversions[0];
-    expect(c.gclid).toBe('Cj0KCQ');
-    expect(c.conversionAction).toBe('customers/1234567890/conversionActions/987654');
-    expect(c.conversionDateTime).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\+00:00$/);
-    expect(c.userIdentifiers).toEqual([{ hashedEmail: purchase.user_data.hashed_email }, { hashedPhoneNumber: purchase.user_data.hashed_phone_plus }]);
-    expect((r.body as any).partialFailure).toBe(true);
+  it('Google Ads: Data Manager events:ingest with gclid, RFC 3339 time, value, transaction id and enhanced-conversion identifiers', () => {
+    const r = buildAdRequest('google_ads', withClicks, { customerId: '1234567890', conversionActionId: '987654' }, '{}')!;
+    expect(r.url).toBe('https://datamanager.googleapis.com/v1/events:ingest');
+    const b = r.body as any;
+    expect(b.destinations).toEqual([{ operatingAccount: { accountType: 'GOOGLE_ADS', accountId: '1234567890' }, productDestinationId: '987654' }]);
+    expect(b.encoding).toBe('HEX');
+    expect(b.validateOnly).toBeUndefined();
+    const ev = b.events[0];
+    expect(ev).toMatchObject({ adIdentifiers: { gclid: 'Cj0KCQ' }, transactionId: 'GP-1', eventSource: 'WEB', conversionValue: 145000, currency: 'UGX' });
+    expect(ev.eventTimestamp).toBe(new Date(1790000000 * 1000).toISOString());
+    expect(ev.userData.userIdentifiers).toEqual([{ emailAddress: purchase.user_data.hashed_email }, { phoneNumber: purchase.user_data.hashed_phone_plus }]);
+    expect(ev.eventDeviceInfo).toEqual({ ipAddress: '41.84.203.125', userAgent: 'UA' });
+    expect(JSON.stringify(b)).not.toMatch(/buyer@example\.com|0772/i);
   });
-  it('Google Ads: a 200 with partialFailureError is a failure', () => {
+  it('Google Ads: Data Manager rejects a whole request with an error body', () => {
     const g = AD_PLATFORMS.find((p) => p.key === 'google_ads')!;
-    expect(g.replyError!({ partialFailureError: { message: 'bad gclid' } })).toMatch(/bad gclid/);
-    expect(g.replyError!({ results: [{}] })).toBeNull();
+    expect(g.replyError!({ error: { message: 'INVALID_ARGUMENT: bad gclid' } })).toMatch(/bad gclid/);
+    expect(g.replyError!({ requestId: 'r-1' })).toBeNull();
   });
   it('Microsoft: UET event with msclkid; X: identifiers incl twclid, signed OAuth1 header', () => {
     const m = buildAdRequest('microsoft_ads', withClicks, { tagId: '12345678' }, 'MS')!;
@@ -432,9 +436,13 @@ describe('advertising: Google Ads, Microsoft, X and network postbacks', () => {
     const uc = new AdDestinationUseCases(repo as any, AD_PLATFORMS as any, { encrypt: (s: string) => s, decrypt: (s: string) => s, mask: () => 'm' }, { execute: async () => ({}) } as any);
     expect((await uc.configure('u', 'boomplay', { config: { postbackUrl: 'https://pb.boomplay.example.com/c?id={click_id}', clickParam: 'clickid', sourceMatch: 'boomplay' }, enabled: true })).ok).toBe(true);
     expect((await uc.list()).find((p) => p.key === 'boomplay')!.state).toBe('LIVE');
-    const bad = await uc.configure('u', 'google_ads', { config: { customerId: '1234567890', conversionActionId: '987654', apiVersion: 'v24' }, secret: '{"developerToken":"x","clientId":"y"}' });
+    const bad = await uc.configure('u', 'google_ads', { config: { customerId: '1234567890', conversionActionId: '987654' }, secret: '{"developerToken":"x","clientId":"y"}' });
     expect(bad).toMatchObject({ ok: false, code: 'BAD_INPUT' });
-    expect((bad as any).message).toMatch(/missing: clientSecret, refreshToken/);
+    expect((bad as any).message).toMatch(/service-account key file/);
+    // A throwaway key generated here: no key-shaped text lives in the repository (secret scanner).
+    const { privateKey } = (await import('node:crypto')).generateKeyPairSync('rsa', { modulusLength: 1024 });
+    const sa = JSON.stringify({ type: 'service_account', client_email: 'ads@goldplus.iam.gserviceaccount.com', private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString() });
+    expect((await uc.configure('u', 'google_ads', { config: { customerId: '1234567890', conversionActionId: '987654' }, secret: sa })).ok).toBe(true);
   });
 });
 
@@ -675,22 +683,23 @@ describe('Microsoft Advertising UET Conversions API contract (learn.microsoft.co
 });
 
 describe('Google Ads lead action', () => {
-  const cfg = { customerId: '1234567890', conversionActionId: '987654', apiVersion: 'v24' };
+  const cfg = { customerId: '1234567890', conversionActionId: '987654' };
   const lead = { ...purchase, event_name: 'generate_lead', ecommerce: undefined, user_data: { ...purchase.user_data, gclid: 'Cj0KCQ' } };
   it('a lead is sent only when a lead action is saved, to that action, without a value', () => {
     expect(adPlatformAccepts('google_ads', 'generate_lead', cfg)).toBe(false);
     expect(buildAdRequest('google_ads', lead, cfg, '{}')).toBeNull();
     const withLead = { ...cfg, leadConversionActionId: '555555' };
     expect(adPlatformAccepts('google_ads', 'generate_lead', withLead)).toBe(true);
-    const c = (buildAdRequest('google_ads', lead, withLead, '{}')!.body as any).conversions[0];
-    expect(c.conversionAction).toBe('customers/1234567890/conversionActions/555555');
-    expect(c.conversionValue).toBeUndefined();
-    expect(c.currencyCode).toBeUndefined();
-    expect(c.orderId).toBe(lead.event_id);
+    const b = buildAdRequest('google_ads', lead, withLead, '{}')!.body as any;
+    expect(b.destinations[0].productDestinationId).toBe('555555');
+    expect(b.events[0].conversionValue).toBeUndefined();
+    expect(b.events[0].currency).toBeUndefined();
+    expect(b.events[0].transactionId).toBe(lead.event_id);
   });
   it('a purchase keeps its shilling value (Google lists UGX) and its own action', () => {
-    const c = (buildAdRequest('google_ads', { ...purchase, user_data: { ...purchase.user_data, gclid: 'g' } }, { ...cfg, leadConversionActionId: '555555' }, '{}')!.body as any).conversions[0];
-    expect(c).toMatchObject({ conversionAction: 'customers/1234567890/conversionActions/987654', conversionValue: 145000, currencyCode: 'UGX', orderId: 'GP-1' });
+    const b = buildAdRequest('google_ads', { ...purchase, user_data: { ...purchase.user_data, gclid: 'g' } }, { ...cfg, leadConversionActionId: '555555' }, '{}')!.body as any;
+    expect(b.destinations[0].productDestinationId).toBe('987654');
+    expect(b.events[0]).toMatchObject({ conversionValue: 145000, currency: 'UGX', transactionId: 'GP-1' });
     expect(adPlatformAccepts('google_ads', 'add_to_cart', cfg)).toBe(false);
   });
 });
