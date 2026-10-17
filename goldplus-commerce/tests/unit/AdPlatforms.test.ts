@@ -439,7 +439,9 @@ describe('advertising: Google Ads, Microsoft, X and network postbacks', () => {
     const bad = await uc.configure('u', 'google_ads', { config: { customerId: '1234567890', conversionActionId: '987654' }, secret: '{"developerToken":"x","clientId":"y"}' });
     expect(bad).toMatchObject({ ok: false, code: 'BAD_INPUT' });
     expect((bad as any).message).toMatch(/service-account key file/);
-    const sa = JSON.stringify({ type: 'service_account', client_email: 'ads@goldplus.iam.gserviceaccount.com', private_key: '-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n' });
+    // A throwaway key generated here: no key-shaped text lives in the repository (secret scanner).
+    const { privateKey } = (await import('node:crypto')).generateKeyPairSync('rsa', { modulusLength: 1024 });
+    const sa = JSON.stringify({ type: 'service_account', client_email: 'ads@goldplus.iam.gserviceaccount.com', private_key: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString() });
     expect((await uc.configure('u', 'google_ads', { config: { customerId: '1234567890', conversionActionId: '987654' }, secret: sa })).ok).toBe(true);
   });
 });
