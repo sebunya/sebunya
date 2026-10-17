@@ -2,13 +2,15 @@
 --
 -- Najjera was only a seeded alias of Kira ('wakiso-kira-31340'), whose point is the Kira parish's geometric centre
 -- in Kira town: 12.29 km from the shop. Since prices follow measured distance (2026-10-16), every Najjera order was
--- priced 2.6 km too far, and "Locate me" in Najjera never offered Najjera. Najjera is a village inside Kira parish
--- (2016 parishes; data/geo/acceptance-areas.csv), so it has no parish row of its own: it gets one here.
+-- priced 2.6 km too far, and "Locate me" in Najjera never offered Najjera. Najjera (often spelled Najjeera) is a
+-- fast-growing residential and commercial neighbourhood in Kira Municipality, Wakiso District, Central Region
+-- (Buganda) — owner, 2026-10-17. The 2016 parish data has no Najjera of its own (it falls inside Kira parish there;
+-- data/geo/acceptance-areas.csv), so the parish import could not place it: it gets its own area here.
 --
--- Point: OpenStreetMap place=village 'Najjeera', node 2099385069 (ODbL, (c) OpenStreetMap contributors), via
+-- Point: the OpenStreetMap place node for 'Najjeera', node 2099385069 (tagged village there; ODbL, (c) OpenStreetMap contributors), via
 -- Nominatim 2026-10-17: 0.3873078, 32.6252306 -> 9.68 km from the shop (band B3, as Kira). A real Najjera order pin
 -- sits 0.6 km from it. Also in data/geo/manual-points.csv, so geo:manual-points re-applies the same point.
--- Everything else (zone, corridor, band, access, serviceability, fulfilment) is Kira's, the parish it lies in.
+-- Everything else (zone, corridor, band, access, serviceability, fulfilment) is Kira's: Najjera is in Kira Municipality.
 -- The 'Najjera' alias (it folds every spelling: Najjera, Najjeera, Najera, Najeera -> 'najela') now names Najjera.
 --
 -- Idempotent. Rollback: UPDATE ug_area_alias SET area_slug = 'wakiso-kira-31340' WHERE normalised_alias = 'najela';
