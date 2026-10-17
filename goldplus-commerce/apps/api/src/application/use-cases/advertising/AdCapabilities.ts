@@ -41,7 +41,7 @@ export interface CapabilityDef {
 
 const SEGMENT_LIST = new RegExp(`^(${AUDIENCE_SEGMENTS.join('|')})(,(${AUDIENCE_SEGMENTS.join('|')}))*$`);
 const audienceFields: CapabilityField[] = [
-  { key: 'segments', label: 'Lists to sync', pattern: SEGMENT_LIST, where: 'Tick the lists below; blank = all three.', optional: true },
+  { key: 'segments', label: 'Lists to sync', pattern: SEGMENT_LIST, where: 'Tick the lists below; blank = every list offered on this platform.', optional: true },
   { key: 'recentDays', label: 'Recent-buyer window (days)', pattern: /^([1-9]\d{0,2})$/, where: 'How recent a purchase keeps someone on the exclusion list. Blank = 30.', optional: true },
   { key: 'highValueMinUgx', label: 'High-value threshold (UGX lifetime spend)', pattern: /^[1-9]\d{3,11}$/, where: 'Blank = the top 20% of buyers by lifetime spend.', optional: true },
   // Owner-defined segments (first-party module, /admin/segments), by key. Read

@@ -34,7 +34,9 @@ const SEGMENTS = [
   { key: "past_buyers", label: "Past buyers" },
   { key: "recent_buyers", label: "Recent buyers (exclusion)" },
   { key: "high_value", label: "High-value seed" },
-];
+  { key: "checkout_abandoners", label: "Checkout started, not paid (Google Ads only)", platforms: ["google_ads"] },
+] as Array<{ key: string; label: string; platforms?: string[] }>;
+const segmentsOn = (p: string) => SEGMENTS.filter((s) => !s.platforms || s.platforms.includes(p));
 const byPlatform = (p: string) => (data?.preview ?? []).filter((r: any) => r.platform === p);
 ---
 <AdminLayout title="Advertising audiences" description="Customer lists for Google Customer Match, Meta Custom Audiences and TikTok, from real orders, consent-gated and hashed.">
@@ -76,13 +78,13 @@ const byPlatform = (p: string) => (data?.preview ?? []).filter((r: any) => r.pla
               <button name="intent" value="dry-run" class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-5 text-sm font-bold">Dry run (no platform call)</button>
               <button name="intent" value="sync" class="inline-flex min-h-11 items-center rounded-full bg-brand-dark px-5 text-sm font-bold text-white">Sync now</button>
             </form>
-            {(data.capabilities ?? []).filter((c: any) => c.platform === p).map((cap: any) => <AdCapabilityForm cap={cap} segments={SEGMENTS} customSegments={data.customSegments ?? []} />)}
+            {(data.capabilities ?? []).filter((c: any) => c.platform === p).map((cap: any) => <AdCapabilityForm cap={cap} segments={segmentsOn(p)} customSegments={data.customSegments ?? []} />)}
           </section>
         ))}
         <section aria-labelledby="aud-linkedin" class="mb-12 rounded-2xl border border-gray-200 bg-white p-5">
           <h3 id="aud-linkedin" class="text-lg font-black text-brand-dark mb-2">LinkedIn (file upload)</h3>
           <p class="text-sm text-gray-700 mb-3">LinkedIn builds retargeting lists from a file, not from the shop's browser. Each file holds one SHA-256 hashed email per buyer, with the same consent rule as the lists above; no plain email leaves the shop. Upload it in Campaign Manager: Plan &gt; Audiences &gt; Create audience &gt; Matched audience &gt; contact list. LinkedIn serves a list only once at least 300 members match. Download a fresh file before each upload: it is not kept up to date by itself.</p>
-          <ul class="flex flex-wrap gap-2">{SEGMENTS.map((s) => (
+          <ul class="flex flex-wrap gap-2">{SEGMENTS.filter((s) => !s.platforms).map((s) => (
             <li><a href={`/admin/advertising/linkedin-audience/${s.key}.csv`} class="inline-flex min-h-11 items-center rounded-full border border-gray-300 px-5 text-sm font-bold" download>{s.label} (.csv)</a></li>
           ))}</ul>
         </section>

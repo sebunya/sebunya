@@ -1302,6 +1302,7 @@ const checkoutSavingLabel = basketSavingLabel(
     data-subtotal={checkoutSaleSubtotal}
     data-items={JSON.stringify(cart.items.map(i => ({
       item_id:   i.productId,
+      item_sku:  i.sku || undefined,
       item_name: i.name,
       price:     i.unitPriceUgx || i.priceUgx,
       quantity:  i.quantity,

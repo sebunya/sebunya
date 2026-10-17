@@ -42,10 +42,12 @@ export class AdDestinationUseCases {
    * independent of whether the platform is switched on: verifying the domain
    * comes before sending anything.
    */
-  async siteVerification(): Promise<{ meta: string | null }> {
-    const row = (await this.repo.list()).find((r) => r.platform === 'meta');
-    const code = String(row?.config?.domainVerification ?? '');
-    return { meta: /^[a-z0-9]{20,64}$/i.test(code) ? code : null };
+  async siteVerification(): Promise<{ meta: string | null; googleAdsRemarketing: boolean }> {
+    const all = await this.list();
+    const code = String(all.find((p) => p.key === 'meta')?.row?.config?.domainVerification ?? '');
+    // Retargeting from site visits (2026-10-17): only while Google Ads is LIVE (not Test) and not switched off.
+    const g = all.find((p) => p.key === 'google_ads');
+    return { meta: /^[a-z0-9]{20,64}$/i.test(code) ? code : null, googleAdsRemarketing: g?.state === 'LIVE' && String(g.row?.config?.remarketing ?? '') !== 'off' };
   }
 
   /** Names of platforms actually receiving data (for the privacy page). */

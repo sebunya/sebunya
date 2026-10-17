@@ -140,6 +140,8 @@ export class DrizzleAudienceRepository implements AudienceSourcePort, AudienceLi
       from orders o left join order_attribution a on a.order_id = o.id
       ${linkedIdentitiesSql(sql`o.id`)}
       where o.status in ('delivered', 'completed') or (o.payment_status = 'paid' and o.status not in ('cancelled', 'failed'))
+        -- Unpaid checkouts of the last 90 days: the checkout-abandoner list (never buyers; groupBuyers ignores them).
+        or (o.payment_status in ('unpaid', 'failed', 'pending') and o.created_at > now() - interval '90 days')
       order by o.created_at limit 200000`));
     return rows.map((r) => ({
       orderId: String(r.id), userId: r.user_id ? String(r.user_id) : null, email: r.customer_email ?? null, phone: r.customer_phone ?? null,

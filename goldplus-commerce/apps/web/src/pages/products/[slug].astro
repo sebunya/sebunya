@@ -880,6 +880,7 @@ if (product) {
         class="mt-24 space-y-16"
         data-product-tracking
         data-product-id={product.id}
+        data-product-sku={hasValidSku ? product.sku : ''}
         data-product-slug={product.slug}
         data-product-name={product.name}
         data-product-image={product.primaryImageUrl ?? ''}
@@ -1043,6 +1044,7 @@ if (product) {
     const image    = root.getAttribute('data-product-image') ?? '';
     const priceRaw = root.getAttribute('data-product-price') ?? '';
     const categoryName = root.getAttribute('data-product-category') ?? '';
+    const sku      = root.getAttribute('data-product-sku') || undefined;
     const price    = priceRaw ? Number(priceRaw) : undefined;
 
     // ── 1. Capture any click IDs from URL and persist them server-side ────────
@@ -1059,6 +1061,7 @@ if (product) {
           currency: 'UGX',
           items: [{
             item_id:       id,
+            item_sku:      sku,
             item_name:     name,
             price:         price,
             quantity:      1,
@@ -1117,6 +1120,7 @@ if (product) {
             currency: 'UGX',
             items: [{
               item_id:       id,
+              item_sku:      sku,
               item_name:     name,
               price:         price,
               quantity:      1,

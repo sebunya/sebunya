@@ -80,6 +80,7 @@ or paid and not cancelled/failed.
 | Past buyers | everyone who bought | 540 days |
 | Recent buyers (exclusion) | bought in the last N days (default 30) | 30 days |
 | High-value seed | lifetime spend ≥ owner threshold, else top 20% (ties kept) | 540 days |
+| Checkout started, not paid (Google Ads only, 2026-10-17) | an unpaid/failed checkout in the last 14 days, aged over an hour, and no purchase since by the same account, email or phone | 30 days |
 
 **Owner-defined segments** (0158): the segments defined under `/admin/segments` (first-party
 module, 0155) can be ticked per platform (`customSegments`, up to 10 keys). Each becomes its own

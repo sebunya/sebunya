@@ -181,6 +181,8 @@ export type EventName =
 
 export interface TelemetryItem {
   item_id:       string;
+  /** The SKU (Merchant Center g:id): GA4 names the product by it for Google Ads dynamic retargeting. */
+  item_sku?:     string;
   item_name?:    string;
   price?:        number;
   quantity?:     number;

@@ -162,7 +162,11 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
         decision 2026-09-19: measurement is always on and runs server-side.
         The one choice a shopper makes here (preference centre, gp_consent=a0)
         is about analytics COOKIES in their browser: with it, Google's tag
-        runs cookieless. Advertising storage is off: no ad destination exists.
+        runs cookieless. Advertising signals (2026-10-17, owner: retargeting through
+        Google Ads) are granted only while the Google Ads card is Live with
+        retargeting on, so GA4 audiences can be retargeted; a shopper who turned
+        advertising off (gp_ads=0, Preference Centre) never is, and one who refused
+        analytics cookies gets no advertising cookies either.
         One visitor id for the tag AND the server (GA client_id = `_fp_cid`,
         set by our server in middleware; written here only as a fallback). */}
     {/* GTM loads after window load + idle, for every visitor (2026-10-08): the
@@ -171,16 +175,17 @@ const clarityMaskAll = !/^\/($|shop|products|categories|category|brands|blog|sea
         page-start time and dataLayer queues anything pushed meanwhile, so no event
         is lost; sales events are sent server-side regardless. */}
     {measurement.configured && (
-      <script nonce={Astro.locals.cspNonce} define:vars={{ metricsUrl: measurement.metricsUrl, gtmId: measurement.gtmId, userId: Astro.locals.gpUserId ?? null }}>
+      <script nonce={Astro.locals.cspNonce} define:vars={{ metricsUrl: measurement.metricsUrl, gtmId: measurement.gtmId, userId: Astro.locals.gpUserId ?? null, adSignals: siteVerification.googleAdsRemarketing }}>
         (function () {
         var ua = navigator.userAgent || '';
         if (navigator.webdriver === true || /HeadlessChrome|Chrome-Lighthouse|PTST|GTmetrix|Pingdom/i.test(ua)) return;
         window.dataLayer = window.dataLayer || [];
         window.gtag = window.gtag || function () { dataLayer.push(arguments); };
         var noCookies = /(?:^|; )gp_consent=a0/.test(document.cookie);
+        var ads = adSignals === true && !/(?:^|; )gp_ads=0/.test(document.cookie) ? 'granted' : 'denied';
         gtag('consent', 'default', {
           analytics_storage: noCookies ? 'denied' : 'granted',
-          ad_storage: 'denied', ad_user_data: 'denied', ad_personalization: 'denied',
+          ad_storage: noCookies ? 'denied' : ads, ad_user_data: ads, ad_personalization: ads,
           functionality_storage: 'granted', security_storage: 'granted',
         });
         var m = document.cookie.match(/(?:^|; )_fp_cid=([^;]*)/);

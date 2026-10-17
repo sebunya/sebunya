@@ -324,17 +324,17 @@ describe('advertising destinations: complete before live, tokens write-only', ()
   });
   it('Meta domain verification: saved without a token, served publicly, and only as the plain code Meta issues', async () => {
     const { uc, rows } = mk();
-    expect(await uc.siteVerification()).toEqual({ meta: null });
+    expect(await uc.siteVerification()).toEqual({ meta: null, googleAdsRemarketing: false });
     // The code can be saved before the dataset or token exist: verifying the domain comes first.
     const code = 'a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5';
     expect((await uc.configure('u', 'meta', { config: { domainVerification: code } })).ok).toBe(true);
-    expect(await uc.siteVerification()).toEqual({ meta: code });
+    expect(await uc.siteVerification()).toEqual({ meta: code, googleAdsRemarketing: false });
     expect((await uc.list()).find((p) => p.key === 'meta')!.state).toBe('NOT_CONFIGURED');   // it does not make Meta "configured"
     // Anything that is not the code is refused at the door, and never printed.
     for (const bad of ['<script>alert(1)</script>', 'short', 'has spaces in the middle of it xx', '"><meta'])
       expect(await uc.configure('u', 'meta', { config: { domainVerification: bad } }), bad).toMatchObject({ ok: false, code: 'BAD_INPUT' });
     rows.set('meta', { ...rows.get('meta'), config: { domainVerification: '"><script>' } });
-    expect(await uc.siteVerification()).toEqual({ meta: null });
+    expect(await uc.siteVerification()).toEqual({ meta: null, googleAdsRemarketing: false });
     // The storefront checks again before printing, and prints it in the head of every page.
     const fs = require('node:fs'); const path = require('node:path');
     const read = (f: string) => fs.readFileSync(path.resolve(__dirname, '../..', f), 'utf8');

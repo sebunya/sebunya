@@ -740,6 +740,7 @@ export const AD_PLATFORMS: AdPlatformDef[] = [
       { key: 'leadConversionActionId', label: 'Lead conversion action ID (optional)', pattern: /^\d{4,20}$/, optional: true, hint: 'A second IMPORT "from clicks" action (category Submit lead form or Contact, value "Don\'t use a value") for quote requests and WhatsApp taps. Leave empty to send purchases only.' },
       { key: 'loginCustomerId', label: 'Manager account ID (if used)', pattern: /^(\d{10})?$/, hint: 'Only when access goes through a manager (MCC) account', optional: true },
       { key: 'merchantCenterId', label: 'Merchant Center ID (optional)', pattern: /^(\d{6,15})?$/, optional: true, hint: 'With it, each purchase names its products as in the Merchant Center feed (cart data for Shopping and Performance Max).' },
+      { key: 'remarketing', label: 'Retargeting from site visits (on / off)', pattern: /^(on|off)?$/, optional: true, hint: 'Blank or "on": while this card is Live, the site lets Google use visits for advertising (Consent Mode ad signals), so GA4 audiences shared with this account (product viewers, cart and checkout abandoners) can be retargeted, with dynamic ads from the Merchant Center feed. "off": never. A shopper who turned advertising off is always left out.' },
       { key: 'apiVersion', label: 'Google Ads API version (spend import only)', pattern: /^(v\d{2})?$/, optional: true, hint: 'Only for importing spend through the Google Ads API (e.g. v22). Conversions use the Data Manager API and need no version.' },
     ],
     secretLabel: 'Google credentials (JSON)',
