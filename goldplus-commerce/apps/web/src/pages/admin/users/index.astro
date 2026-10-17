@@ -185,9 +185,9 @@ try {
   } else {
     const json = (await res.json()) as ApiEnvelope<UserRow[]>;
     if (json.success && Array.isArray(json.data)) rows = json.data;
+    else fetchError = json.error?.message ?? 'Unexpected response.';
     const sc = res.headers.get('X-Shopper-Accounts');
     shopperAccounts = sc != null && /^\d+$/.test(sc) ? Number(sc) : null;
-    else fetchError = json.error?.message ?? 'Unexpected response.';
   }
 } catch {
   fetchError = 'Cannot reach the users service right now.';
