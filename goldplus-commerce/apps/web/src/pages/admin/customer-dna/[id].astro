@@ -18,7 +18,21 @@ let notice: Notice | null = null;
 if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   const action = String(form.get("action") || "");
-  try {
+  // The customer's sign-in account (2026-10-17): deactivated or reactivated here, through the same audited,
+  // reason-required action the staff page uses, since customers are no longer listed among staff.
+  if (action === "set-account-active") {
+    try {
+      const active = String(form.get("active") || "") === "true";
+      const res = await fetch(`${apiBase}/admin/users/${encodeURIComponent(String(form.get("userId") || ""))}/active`, { method: "POST", headers, body: JSON.stringify({ active, reason: form.get("reason") || null }) });
+      const j = await res.json().catch(() => null);
+      notice = res.ok && j?.success
+        ? { kind: "success", text: active ? "Account reactivated: the customer can sign in again." : "Account deactivated: the customer's sessions have ended and they cannot sign in. Their orders are unchanged." }
+        : { kind: "error", text: String(j?.error?.code ?? "").startsWith("MFA_") ? `${j.error.message} Verify on Two-step verification (/admin/security/mfa), then try again. Nothing was changed.` : res.status === 403 ? "Your role cannot change sign-in accounts. Nothing was changed." : (j?.error?.message || "The change was refused.") };
+    } catch {
+      notice = { kind: "error", text: "The account service is unreachable right now. Nothing was changed." };
+    }
+  }
+  else try {
     const path = action === "nba" ? "nba" : "recompute";
     const res = await fetch(`${apiBase}/admin/customer-dna/${encodeURIComponent(canonicalId)}/${path}`, { method: "POST", headers, body: JSON.stringify({}) });
     const j = await res.json().catch(() => null);
@@ -53,6 +67,15 @@ try {
 }
 
 const profile = data?.profile;
+// The sign-in account behind this customer, if they have one. null = none or not readable; 'FORBIDDEN' = this role may not manage accounts.
+let account: { id: string; email: string; isActive: boolean; kind: 'STAFF' | 'SHOPPER'; orderCount: number; createdAt: string } | null | 'FORBIDDEN' = null;
+if (profile?.accountUserId) {
+  try {
+    const ar = await fetch(`${apiBase}/admin/users/account/${encodeURIComponent(profile.accountUserId)}`, { headers, signal: AbortSignal.timeout(4000) });
+    if (ar.status === 403) account = 'FORBIDDEN';
+    else { const aj = await ar.json().catch(() => null); account = ar.ok && aj?.success ? aj.data : null; }
+  } catch { account = null; }
+}
 const features: Feature[] = data?.features?.features ?? [];
 const lifecycle = data?.lifecycle;
 const links = data?.links ?? [];
@@ -101,6 +124,26 @@ function classChip(c: string) {
             <form method="POST"><input type="hidden" name="action" value="nba" /><button class="bg-brand-gold text-brand-dark text-xs font-black px-4 py-2.5 rounded-xl hover:opacity-90">Next-best action</button></form>
           </div>
         </div>
+
+        {profile.accountUserId && account !== null && (
+          <section aria-labelledby="signin-account" class="bg-white border border-gray-200 rounded-2xl p-6 mb-6">
+            <h3 id="signin-account" class="text-sm font-black text-brand-dark mb-2">Sign-in account</h3>
+            {account === 'FORBIDDEN' ? <p class="text-xs text-gray-600">Your role cannot manage sign-in accounts.</p> : account.kind === 'STAFF' ? (
+              <p class="text-xs text-gray-700">This customer's account is also a <strong>staff account</strong>. Manage it on <a href="/admin/users" class="font-bold underline">Staff accounts</a>.</p>
+            ) : (
+              <>
+                <p class="text-xs text-gray-700">Customer account, {account.isActive ? <strong class="text-green-700">can sign in</strong> : <strong class="text-red-700">deactivated</strong>} · {account.orderCount === 1 ? '1 order' : `${account.orderCount} orders`} while signed in. It has no back-office access.</p>
+                <form method="POST" class="mt-3 flex flex-wrap items-center gap-2">
+                  <input type="hidden" name="action" value="set-account-active" />
+                  <input type="hidden" name="userId" value={account.id} />
+                  <input type="hidden" name="active" value={account.isActive ? 'false' : 'true'} />
+                  {account.isActive && <input name="reason" required minlength="5" maxlength="300" placeholder="Reason (kept in the audit log)" class="min-w-[14rem] flex-1 rounded-lg border border-gray-200 px-2 py-2 text-xs" />}
+                  <button type="submit" class="min-h-11 rounded-xl border border-gray-300 bg-white px-4 text-xs font-black text-gray-700 hover:bg-gray-50" data-confirm={account.isActive ? 'Deactivate this customer account? Their sessions end now and they cannot sign in; their orders are unchanged.' : undefined}>{account.isActive ? 'Deactivate sign-in' : 'Reactivate sign-in'}</button>
+                </form>
+              </>
+            )}
+          </section>
+        )}
 
         <div class="grid gap-6 md:grid-cols-2 mb-6">
           <div class="bg-white border border-gray-200 rounded-2xl p-6">

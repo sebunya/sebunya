@@ -31,12 +31,21 @@ export class DrizzleAdminUserReadRepository implements IAdminUserReadRepository 
   async findAccountByEmail(email: string): Promise<AccountLookupModel | null> {
     const e = email.trim().toLowerCase();
     if (!e || e.length > 320) return null;
+    return this.account(sql`lower(u.email) = ${e}`);
+  }
+
+  async findAccountById(id: string): Promise<AccountLookupModel | null> {
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
+    return this.account(sql`u.id = ${id}::uuid`);
+  }
+
+  private async account(where: ReturnType<typeof sql>): Promise<AccountLookupModel | null> {
     const [r] = rowsOf(await db.execute(sql`
       select u.id, u.email, u.phone, u.is_active, u.created_at,
         coalesce((select array_agg(r.name order by r.name) from user_roles ur join roles r on r.id = ur.role_id where ur.user_id = u.id), '{}') as role_names,
         (select count(*)::int from orders o where o.user_id = u.id) as order_count,
         exists (select 1 from role_grant_requests g where g.user_id = u.id and g.status = 'PENDING') as pending
-      from users u where lower(u.email) = ${e} limit 1`));
+      from users u where ${where} limit 1`));
     return r ? { ...toModel(r), orderCount: Number(r.order_count ?? 0), hasPendingGrant: Boolean(r.pending) } : null;
   }
 }

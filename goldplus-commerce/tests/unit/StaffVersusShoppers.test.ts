@@ -71,6 +71,13 @@ describe('the staff list holds staff only; shoppers are counted and looked up on
     expect(page).toMatch(/name="reason" required minlength="10"/);
     expect(page).toMatch(/<input type="checkbox" required/);
     expect(page).toContain('It is their last role: they lose all back-office access');
+    // A pending full-access request may be a NEW staff member's (created with that role), not a customer's.
+    expect(page).toContain('This account has no back-office access yet: approving gives it full access (check who it is; it may be a customer');
+    expect(page).not.toContain("(it is a customer's account): approving");
+    const cust = read('apps/web/src/pages/admin/customer-dna/[id].astro');
+    expect(cust).toContain('action === "set-account-active"');
+    expect(cust).toMatch(/\/admin\/users\/account\/\$\{encodeURIComponent\(profile\.accountUserId\)\}/);
+    expect(cust).toContain('It has no back-office access.');
   });
   it('the query has no recency cap: an old administrator never falls off the list', () => {
     const repo = read('apps/api/src/infrastructure/db/repositories/DrizzleAdminUserReadRepository.ts');

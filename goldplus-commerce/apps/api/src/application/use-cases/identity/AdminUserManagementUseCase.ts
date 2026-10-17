@@ -47,11 +47,8 @@ export interface IAdminUserWriteRepository {
   rolePermissionCodes(roleName: string): Promise<string[]>;
   /** DISTINCT active users holding ANY of the roles — a user holding both counts once. */
   countActiveUsersWithAnyRole(roleNames: readonly string[]): Promise<number>;
-  /**
-   * How many roles the account holds now (0 = a shopper, or former staff). Optional only so older test fakes
-   * construct unchanged; the production repository implements it.
-   */
-  roleCount?(userId: string): Promise<number>;
+  /** How many roles the account holds now (0 = a shopper, or former staff): the first-access rule depends on it. */
+  roleCount(userId: string): Promise<number>;
 }
 
 /** The shortest reason accepted for giving a shopper (an account with no role) back-office access. */
@@ -122,7 +119,7 @@ export class AdminUserManagementUseCase {
     }
     // 2026-10-17: staff and shoppers share one table. Giving an account its FIRST role turns a customer into staff,
     // so it is never a stray click: the reason is required, and the route records it as a first grant.
-    const firstAccess = this.repo.roleCount ? (await this.repo.roleCount(args.userId)) === 0 : false;
+    const firstAccess = (await this.repo.roleCount(args.userId)) === 0;
     if (firstAccess && (args.reason ?? '').trim().length < FIRST_ACCESS_REASON_MIN) {
       return refuse('REASON_REQUIRED', `This account has no back-office access yet (it is a shopper account). Say who this person is and why they need access (at least ${FIRST_ACCESS_REASON_MIN} characters).`);
     }

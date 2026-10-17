@@ -27,4 +27,6 @@ export interface IAdminUserReadRepository {
   countShopperAccounts(): Promise<number>;
   /** The account with exactly this email (case-insensitive), or null. */
   findAccountByEmail(email: string): Promise<AccountLookupModel | null>;
+  /** One account by id (a customer page knows its account id, not its email). */
+  findAccountById(id: string): Promise<AccountLookupModel | null>;
 }

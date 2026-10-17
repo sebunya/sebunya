@@ -142,7 +142,7 @@ if (!token) {
     const n = permissionCountByRole.get(name);
     if (n === undefined) return `${name}${suffix}`;
     if (n === 0) return `${name} — no permissions yet: can sign in, opens nothing${suffix}`;
-    return `${name} — ${n} permissions${suffix}`;
+    return `${name} — ${n} ${n === 1 ? 'permission' : 'permissions'}${suffix}`;
   };
   const optionLabel = (r: { name: string; isSystem: boolean }): string => roleLabel(r.name, r.isSystem ? ' (needs approval)' : '');
   let grantRequests: any[] = [];
@@ -194,6 +194,9 @@ try {
 }
 // Grant requests name their people: an approver must see WHO gets full access.
 const emailById = new Map<string, string>(rows.map((u) => [u.id, u.email]));
+// An account on the staff list with no role yet is only there because of a pending request: approving gives it its
+// FIRST back-office access (a new staff member, or a customer's account), and the approver is told so.
+const noRoleYet = new Set(rows.filter((u) => u.roleNames.length === 0).map((u) => u.id));
 ---
 
 <AdminLayout
@@ -371,6 +374,7 @@ const emailById = new Map<string, string>(rows.map((u) => [u.id, u.email]));
               <span class="font-black">{r.roleName}</span>
               <span class="text-slate-500">Requested by {emailById.get(r.requestedBy) ?? `${String(r.requestedBy ?? '').slice(0, 8)}…`}{r.requestedAt ? ` · ${new Date(r.requestedAt).toLocaleString('en-GB', { timeZone: 'Africa/Kampala', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })} (Kampala)` : ''}</span>
               <span class="basis-full text-slate-600">Reason: {r.reason ? r.reason : 'none given'}</span>
+              {r.status === "PENDING" && noRoleYet.has(r.userId) && <span class="basis-full font-bold text-amber-800">This account has no back-office access yet: approving gives it full access (check who it is; it may be a customer's account).</span>}
               <span class={`rounded-full border px-2 py-0.5 font-black uppercase ${r.status === "PENDING" ? "border-amber-300 bg-amber-50 text-amber-800" : r.status === "APPROVED" ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-gray-200 bg-gray-100 text-gray-600"}`}>{r.status}</span>
               {r.status === "PENDING" && (
                 <form method="POST" class="ml-auto flex items-center gap-2">

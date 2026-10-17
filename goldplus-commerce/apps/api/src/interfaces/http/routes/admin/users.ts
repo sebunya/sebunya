@@ -20,6 +20,13 @@ routes.get('/', requirePermissions([PERMISSIONS.AUTH_MANAGE]), async (c) => {
   return c.json(res);
 });
 
+// One account by id, for the customer page's sign-in panel (a customer is deactivated there, not on the staff list).
+routes.get('/account/:id', requirePermissions([PERMISSIONS.AUTH_MANAGE]), async (c) => {
+  const account = await Registry.getInstance().listAdminUsersUseCase.accountById(c.req.param('id') ?? '');
+  if (!account) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'No such account.' } }, 404);
+  return c.json({ success: true, data: account });
+});
+
 // One account by its exact email (staff or shopper), for the deliberate "give an existing account access" step.
 routes.get('/lookup', requirePermissions([PERMISSIONS.AUTH_MANAGE]), async (c) => {
   const email = String(c.req.query('email') ?? '').trim();

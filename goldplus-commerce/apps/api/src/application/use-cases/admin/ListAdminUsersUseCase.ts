@@ -37,7 +37,15 @@ export class ListAdminUsersUseCase {
 
   /** One account by exact email, staff or shopper, for a deliberate first grant of back-office access. */
   async lookup(email: string): Promise<AccountLookupDto | null> {
-    const r = await this.repo.findAccountByEmail(email);
+    return this.toLookup(await this.repo.findAccountByEmail(email));
+  }
+
+  /** One account by id: the customer page's sign-in panel (deactivate a customer without listing customers as staff). */
+  async accountById(id: string): Promise<AccountLookupDto | null> {
+    return this.toLookup(await this.repo.findAccountById(id));
+  }
+
+  private toLookup(r: Awaited<ReturnType<IAdminUserReadRepository['findAccountByEmail']>>): AccountLookupDto | null {
     if (!r) return null;
     return { ...dto(r), kind: r.roleNames.length > 0 || r.hasPendingGrant ? 'STAFF' : 'SHOPPER', orderCount: r.orderCount, hasPendingGrant: r.hasPendingGrant };
   }

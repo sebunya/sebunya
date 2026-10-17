@@ -26,6 +26,7 @@ function userUc(users: Record<string, U>, roleCodes: Record<string, string[]> = 
     countActiveUsersWithAnyRole: async (roles: readonly string[]) =>
       Object.values(users).filter((u) => u.isActive && roles.some((r) => u.roles.includes(r))).length,
     rolePermissionCodes: async (r: string) => roleCodes[r] ?? [],
+    roleCount: async (id: string) => users[id]?.roles.length ?? 0,
     assignRole: async (id: string, role: string) => { users[id] ??= { isActive: true, roles: [] }; users[id].roles.push(role); return true; },
     revokeRole: async (id: string, role: string) => { const u = users[id]; if (!u) return false; const had = u.roles.includes(role); u.roles = u.roles.filter((r) => r !== role); return had; },
     setUserActive: async (id: string, active: boolean) => { if (!users[id]) return false; users[id].isActive = active; return true; },
@@ -48,15 +49,15 @@ describe('grantRole: no self-grant, and elevated custom roles need a second appr
       { sec: { isActive: true, roles: ['SECURITY_ADMIN'] }, other: { isActive: true, roles: [] } },
       { SHADOW_ADMIN: all, ACCESS_DESK: [PERMISSIONS.ROLES_MANAGE] },
     );
-    expect(await uc.grantRole({ userId: 'other', roleName: 'SHADOW_ADMIN', actorId: 'sec' })).toMatchObject({ ok: true, value: { outcome: 'PENDING_APPROVAL' } });
-    expect(await uc.grantRole({ userId: 'other', roleName: 'ACCESS_DESK', actorId: 'sec' })).toMatchObject({ ok: true, value: { outcome: 'PENDING_APPROVAL' } });
+    expect(await uc.grantRole({ userId: 'other', roleName: 'SHADOW_ADMIN', actorId: 'sec', reason: 'New colleague, confirmed by phone' })).toMatchObject({ ok: true, value: { outcome: 'PENDING_APPROVAL' } });
+    expect(await uc.grantRole({ userId: 'other', roleName: 'ACCESS_DESK', actorId: 'sec', reason: 'New colleague, confirmed by phone' })).toMatchObject({ ok: true, value: { outcome: 'PENDING_APPROVAL' } });
     expect(users.other.roles).toEqual([]);
     expect(requests.map((r) => r.roleName)).toEqual(['SHADOW_ADMIN', 'ACCESS_DESK']);
   });
 
   it('still assigns an ordinary custom role directly to someone else', async () => {
     const { uc, users } = userUc({ sec: { isActive: true, roles: [] }, other: { isActive: true, roles: [] } }, { PACKER: [PERMISSIONS.ORDERS_READ] });
-    expect(await uc.grantRole({ userId: 'other', roleName: 'PACKER', actorId: 'sec' })).toMatchObject({ ok: true, value: { outcome: 'ASSIGNED' } });
+    expect(await uc.grantRole({ userId: 'other', roleName: 'PACKER', actorId: 'sec', reason: 'New colleague, confirmed by phone' })).toMatchObject({ ok: true, value: { outcome: 'ASSIGNED' } });
     expect(users.other.roles).toContain('PACKER');
   });
 });
