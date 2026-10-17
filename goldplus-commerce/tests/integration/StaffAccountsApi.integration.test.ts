@@ -22,6 +22,12 @@ vi.mock('../../apps/api/src/interfaces/http/middleware/auth', async () => {
   };
 });
 
+// Two-step verification is its own concern (tested in the MFA suites). CI runs integration tests without the
+// NODE_ENV=test bypass, so it answered 403 here; it is stubbed like sign-in so this test checks the staff rules.
+vi.mock('../../apps/api/src/interfaces/http/middleware/requireStepUp', () => ({
+  requireStepUp: () => async (_c: any, next: any) => next(),
+}));
+
 suite('staff accounts API (real PostgreSQL, real app)', () => {
   let app: any; let raw: any; let admin: string; let fx: Fixtures;
   const tag = Date.now().toString(36);
