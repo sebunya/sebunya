@@ -47,7 +47,15 @@ export interface IAdminUserWriteRepository {
   rolePermissionCodes(roleName: string): Promise<string[]>;
   /** DISTINCT active users holding ANY of the roles — a user holding both counts once. */
   countActiveUsersWithAnyRole(roleNames: readonly string[]): Promise<number>;
+  /**
+   * How many roles the account holds now (0 = a shopper, or former staff). Optional only so older test fakes
+   * construct unchanged; the production repository implements it.
+   */
+  roleCount?(userId: string): Promise<number>;
 }
+
+/** The shortest reason accepted for giving a shopper (an account with no role) back-office access. */
+export const FIRST_ACCESS_REASON_MIN = 10;
 
 export interface PasswordHasherPort {
   hash(plaintext: string): Promise<string>;
@@ -92,7 +100,7 @@ export class AdminUserManagementUseCase {
       return refuse('WEAK_PASSWORD', 'Initial password must not contain the email name.');
     }
     if (await this.repo.findUserByEmail(email)) {
-      return refuse('DUPLICATE_EMAIL', 'A user with this email already exists.', 409);
+      return refuse('DUPLICATE_EMAIL', 'An account with this email already exists (often a shopper who signed up on the shop). Use "Give an existing account back-office access" instead.', 409);
     }
 
     const passwordHash = await this.hasher.hash(password);
@@ -108,9 +116,15 @@ export class AdminUserManagementUseCase {
     return { ok: true, value: { userId: user.id, email: user.email, roleOutcome: 'ASSIGNED' } };
   }
 
-  async grantRole(args: { userId: string; roleName: string; actorId: string; reason?: string | null }): Promise<UmOutcome<{ outcome: 'ASSIGNED' | 'PENDING_APPROVAL' }>> {
+  async grantRole(args: { userId: string; roleName: string; actorId: string; reason?: string | null }): Promise<UmOutcome<{ outcome: 'ASSIGNED' | 'PENDING_APPROVAL'; firstAccess: boolean }>> {
     if (!(await this.repo.roleExists(args.roleName))) {
       return refuse('UNKNOWN_ROLE', `No role named ${args.roleName} exists. Roles are managed in the Back Office.`);
+    }
+    // 2026-10-17: staff and shoppers share one table. Giving an account its FIRST role turns a customer into staff,
+    // so it is never a stray click: the reason is required, and the route records it as a first grant.
+    const firstAccess = this.repo.roleCount ? (await this.repo.roleCount(args.userId)) === 0 : false;
+    if (firstAccess && (args.reason ?? '').trim().length < FIRST_ACCESS_REASON_MIN) {
+      return refuse('REASON_REQUIRED', `This account has no back-office access yet (it is a shopper account). Say who this person is and why they need access (at least ${FIRST_ACCESS_REASON_MIN} characters).`);
     }
     const twoPerson = await this.needsSecondApprover(args.roleName);
     if (args.userId === args.actorId && !twoPerson) {
@@ -121,11 +135,11 @@ export class AdminUserManagementUseCase {
       // all but name — go through the two-person rule.
       const request = await this.repo.createGrantRequest({ userId: args.userId, roleName: args.roleName, requestedBy: args.actorId, reason: args.reason ?? null });
       if (!request) return refuse('DUPLICATE_PENDING', 'A pending request for this grant already exists.', 409);
-      return { ok: true, value: { outcome: 'PENDING_APPROVAL' } };
+      return { ok: true, value: { outcome: 'PENDING_APPROVAL', firstAccess } };
     }
     const assigned = await this.repo.assignRole(args.userId, args.roleName);
     if (!assigned) return refuse('UNKNOWN_ROLE', 'Role rows missing — boot sync has not run.', 500);
-    return { ok: true, value: { outcome: 'ASSIGNED' } };
+    return { ok: true, value: { outcome: 'ASSIGNED', firstAccess } };
   }
 
   async decideGrant(args: { requestId: string; decision: 'APPROVED' | 'REJECTED'; actorId: string; reason?: string | null }): Promise<UmOutcome<{ decided: string; userId: string; roleName: string }>> {

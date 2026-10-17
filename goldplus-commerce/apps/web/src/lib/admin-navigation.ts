@@ -479,7 +479,7 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
   { label: 'Points adjustments', href: '/admin/loyalty/adjustments', group: 'Marketing', status: 'working', description: 'Look up a member balance and post an audited manual adjustment.' },
   { label: 'Lifecycle', href: '/admin/lifecycle', group: 'Marketing', status: 'working', description: 'Customer lifecycle stages and automations.' },
   { label: 'Behavioural interventions', href: '/admin/behavioural-interventions', group: 'Marketing', status: 'working', description: 'Governed nudges shown to customers, with guardrails.' },
-  { label: 'Users', href: '/admin/users', group: 'System', status: 'working', description: 'Operator accounts.' },
+  { label: 'Staff accounts', href: '/admin/users', group: 'System', status: 'working', description: 'People who can sign in to the back office, and their roles. Customers are not listed here.' },
   { label: 'Roles & permissions', href: '/admin/roles', group: 'System', status: 'working', description: 'Role definitions and their permission grants.' },
   { label: 'Audit log', href: '/admin/audit', group: 'System', status: 'working', description: 'Every governed mutation, actor and before/after.' },
   { label: 'Two-step verification', href: '/admin/security/mfa', group: 'System', status: 'working', description: 'Set up and verify your authenticator — refunds, pricing approval and user or role changes ask for it.' },

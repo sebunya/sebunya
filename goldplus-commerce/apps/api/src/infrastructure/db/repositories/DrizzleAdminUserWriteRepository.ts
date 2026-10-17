@@ -65,6 +65,11 @@ export class DrizzleAdminUserWriteRepository implements IAdminUserWriteRepositor
     return Number(row?.n ?? 0);
   }
 
+  async roleCount(userId: string): Promise<number> {
+    const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(userRoles).where(eq(userRoles.userId, userId));
+    return Number(row?.n ?? 0);
+  }
+
   async findUserById(id: string): Promise<{ id: string; isActive: boolean } | null> {
     const [row] = await db.select({ id: users.id, isActive: users.isActive }).from(users).where(eq(users.id, id)).limit(1);
     return row ? { id: row.id, isActive: Boolean(row.isActive) } : null;

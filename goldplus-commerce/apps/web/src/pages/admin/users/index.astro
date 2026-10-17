@@ -91,7 +91,9 @@ if (!token) {
         });
         const json2 = await res2.json().catch(() => null);
         umNotice = res2.ok && json2?.success
-          ? { kind: "success", text: json2.data.outcome === "ASSIGNED" ? `${roleName} assigned. It applies on their next request.` : `${roleName} requested — a different administrator must approve it below.` }
+          ? { kind: "success", text: json2.data.outcome === "ASSIGNED"
+              ? (json2.data.firstAccess ? `${roleName} given. This account is now staff and appears in the list above; it applies on their next request.` : `${roleName} assigned. It applies on their next request.`)
+              : `${roleName} requested. A different administrator must approve it below.` }
           : { kind: "error", text: refusal(json2, "Role assignment refused.") };
       } else if (action === "revoke-role") {
         const id = String(form.get("id") || "");
@@ -152,6 +154,23 @@ if (!token) {
 
 let rows: UserRow[] = [];
 let fetchError: string | null = null;
+// Shopper accounts are counted, never listed (2026-10-17); null when the count could not be read.
+let shopperAccounts: number | null = null;
+
+// "Give an existing account back-office access": one account by its exact email, looked up on purpose.
+const lookupEmail = (Astro.url.searchParams.get('lookup') ?? '').trim();
+let lookup: { id: string; email: string; isActive: boolean; roleNames: string[]; createdAt: string; kind: 'STAFF' | 'SHOPPER'; orderCount: number; hasPendingGrant: boolean } | null = null;
+let lookupError: string | null = null;
+if (lookupEmail) {
+  try {
+    const lr = await fetch(`${apiBase}/admin/users/lookup?email=${encodeURIComponent(lookupEmail)}`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(4000) });
+    const lj = await lr.json().catch(() => null);
+    if (lr.ok && lj?.success) lookup = lj.data;
+    else lookupError = lj?.error?.message ?? 'The account could not be looked up.';
+  } catch {
+    lookupError = 'The account could not be looked up right now.';
+  }
+}
 
 try {
   const res = await fetch(`${apiBase}/admin/users`, { headers: { Authorization: `Bearer ${token}` } });
@@ -166,6 +185,8 @@ try {
   } else {
     const json = (await res.json()) as ApiEnvelope<UserRow[]>;
     if (json.success && Array.isArray(json.data)) rows = json.data;
+    const sc = res.headers.get('X-Shopper-Accounts');
+    shopperAccounts = sc != null && /^\d+$/.test(sc) ? Number(sc) : null;
     else fetchError = json.error?.message ?? 'Unexpected response.';
   }
 } catch {
@@ -175,18 +196,23 @@ try {
 const emailById = new Map<string, string>(rows.map((u) => [u.id, u.email]));
 ---
 
-<AdminLayout 
-  title="Operator Accounts" 
-  description="Oversee platform identities and assignments."
+<AdminLayout
+  title="Staff accounts"
+  description="People who can sign in to this back office, and what each may do."
 >
   <div class="container mx-auto px-6 lg:px-8 max-w-7xl">
     
     <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-8 gap-4 pb-6 border-b border-gray-200">
       <div>
-        <h2 class="text-2xl font-black text-brand-dark tracking-tight">System Users</h2>
-        <p class="text-sm text-gray-500 mt-1">Platform identity listings holding administrative or operational scopes.</p>
+        <h2 class="text-2xl font-black text-brand-dark tracking-tight">Staff accounts</h2>
+        <p class="text-sm text-gray-600 mt-1">People who can sign in to this back office, and the roles that decide what each may see and do. Customers' accounts are not listed here.</p>
       </div>
     </div>
+
+    <p class="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+      {shopperAccounts === null ? 'Shopper accounts are not shown here.' : `${shopperAccounts.toLocaleString('en-GB')} shopper ${shopperAccounts === 1 ? 'account is' : 'accounts are'} not shown here.`}
+      {' '}They belong to customers, who have no back-office access. To look a customer up, use <a href="/admin/customer-dna" class="font-bold underline">Customer DNA</a>.
+    </p>
 
     {fetchError && (
       <div class="mb-6">
@@ -199,8 +225,8 @@ const emailById = new Map<string, string>(rows.map((u) => [u.id, u.email]));
 
     {rows.length === 0 && !fetchError ? (
       <EmptyState
-        title="No User Records Located"
-        message="Execute console seeding to instantiate the primary supervisor record."
+        title="No staff accounts"
+        message="No account holds a back-office role. Create the first one below."
       />
     ) : rows.length > 0 ? (
       <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
@@ -208,11 +234,11 @@ const emailById = new Map<string, string>(rows.map((u) => [u.id, u.email]));
           <table class="w-full text-left border-collapse">
             <thead>
               <tr class="bg-gray-50 text-[10px] uppercase font-black text-gray-500 tracking-widest border-b border-gray-100">
-                <th class="p-6">Email Handle</th>
-                <th class="p-6">Contact Trace</th>
-                <th class="p-6">Assigned Scopes</th>
-                <th class="p-6 text-center">Account State</th>
-                <th class="p-6 text-right">Registered</th>
+                <th class="p-6">Email</th>
+                <th class="p-6">Phone</th>
+                <th class="p-6">Roles</th>
+                <th class="p-6 text-center">Status</th>
+                <th class="p-6 text-right">Joined</th>
               </tr>
             </thead>
             <tbody class="text-xs divide-y divide-gray-50">
@@ -226,7 +252,7 @@ const emailById = new Map<string, string>(rows.map((u) => [u.id, u.email]));
                   </td>
                   <td class="p-6">
                     {u.roleNames.length === 0 ? (
-                      <span class="text-[10px] text-gray-500 italic font-medium">No roles</span>
+                      <span class="text-[10px] text-amber-700 font-bold">No role yet: a full-access request is waiting for approval below</span>
                     ) : (
                       <div class="flex flex-wrap gap-1.5">
                         {u.roleNames.map((name) => (
@@ -235,7 +261,7 @@ const emailById = new Map<string, string>(rows.map((u) => [u.id, u.email]));
                             <input type="hidden" name="id" value={u.id} />
                             <input type="hidden" name="roleName" value={name} />
                             <span>{name}</span>
-                            <button type="submit" class="text-gray-600 hover:text-red-700" aria-label={`Revoke ${name}`} title={`Revoke ${name}`} data-confirm={`Revoke ${name} from this account? It stops applying on their next request.`}>&times;</button>
+                            <button type="submit" class="text-gray-600 hover:text-red-700" aria-label={`Revoke ${name}`} title={`Revoke ${name}`} data-confirm={u.roleNames.length === 1 ? `Revoke ${name}? It is their last role: they lose all back-office access on their next request, and the account leaves this list (it stays a customer account).` : `Revoke ${name} from this account? It stops applying on their next request.`}>&times;</button>
                           </form>
                         ))}
                       </div>
@@ -255,7 +281,7 @@ const emailById = new Map<string, string>(rows.map((u) => [u.id, u.email]));
                     <span class={`inline-block px-2.5 py-0.5 rounded font-black text-[9px] uppercase tracking-wide border ${
                       u.isActive ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-700 border-red-100'
                     }`}>
-                      {u.isActive ? 'Active' : 'Disabled'}
+                      {u.isActive ? 'Can sign in' : 'Deactivated'}
                     </span>
                     <form method="POST" class="mt-2 flex flex-col items-center gap-1">
                       <input type="hidden" name="action" value="set-active" />
@@ -278,10 +304,48 @@ const emailById = new Map<string, string>(rows.map((u) => [u.id, u.email]));
     ) : null}
   </div>
 
-    <section class="mt-8 rounded-2xl border border-slate-200 bg-white p-5">
-      <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">Create administrator or reviewer</h2>
-      <p class="mt-1 text-xs text-slate-500">PLATFORM_ADMINISTRATOR is never granted in one step — it becomes a request a different administrator must approve below. Initial password: min 12 chars; share it out-of-band; the user should change it at first login.</p>
-      {umNotice && <div class={`mt-3 rounded-xl px-4 py-3 text-sm font-semibold ${umNotice.kind === "success" ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"}`}>{umNotice.text}</div>}
+    {umNotice && <div role="status" class={`mt-8 rounded-xl px-4 py-3 text-sm font-semibold ${umNotice.kind === "success" ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"}`}>{umNotice.text}</div>}
+
+    <section id="existing-account" class="mt-8 rounded-2xl border border-slate-200 bg-white p-5">
+      <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">Give an existing account back-office access</h2>
+      <p class="mt-1 text-xs text-slate-600">For someone who already has an account on the shop (they signed up as a customer). Look the account up by its full email first: you will see whether it is a customer's, and their orders, before anything changes.</p>
+      <form method="GET" action="/admin/users#existing-account" class="mt-3 flex flex-wrap items-center gap-2">
+        <label for="lookup" class="sr-only">Full email address of the account</label>
+        <input id="lookup" name="lookup" type="email" required value={lookupEmail} placeholder="name@example.com" class="min-w-[16rem] flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-brand-primaryInk" />
+        <button type="submit" class="min-h-11 rounded-xl border border-gray-300 bg-white px-4 text-xs font-black uppercase tracking-wide text-gray-700 hover:bg-gray-50">Look up</button>
+      </form>
+      {lookupError && <p class="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">{lookupError}</p>}
+      {lookup && lookup.kind === 'STAFF' && (
+        <p class="mt-3 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700"><strong>{lookup.email}</strong> is already staff{lookup.roleNames.length ? ` (${lookup.roleNames.join(', ')})` : ' (a full-access request is waiting)'}. Change its roles in the list above.</p>
+      )}
+      {lookup && lookup.kind === 'SHOPPER' && (
+        <div class="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+          <p><strong>{lookup.email}</strong> is a <strong>customer account</strong>: {lookup.orderCount === 1 ? '1 order' : `${lookup.orderCount} orders`}, joined {new Date(lookup.createdAt).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala' })}{lookup.isActive ? '' : ', currently deactivated'}.</p>
+          <p class="mt-1">Giving it a role lets this person sign in to the back office with that role's permissions. Only do this for someone who works for GoldPlus, after confirming it is them (for example by phone).</p>
+          <form method="POST" action="/admin/users#existing-account" class="mt-3 grid gap-2 sm:grid-cols-2">
+            <input type="hidden" name="action" value="assign-role" />
+            <input type="hidden" name="id" value={lookup.id} />
+            <label class="text-xs font-bold">Role
+              <select name="roleName" required class="mt-1 w-full rounded-lg border border-amber-300 bg-white px-2 py-2 text-xs font-bold">
+                {roleOptions.map((r) => <option value={r.name}>{optionLabel(r)}</option>)}
+              </select>
+            </label>
+            <label class="text-xs font-bold">Who they are and why they need access (kept in the audit log)
+              <input name="reason" required minlength="10" maxlength="300" placeholder="e.g. Sarah, new packer at the shop, started today" class="mt-1 w-full rounded-lg border border-amber-300 bg-white px-2 py-2 text-xs" />
+            </label>
+            <label class="sm:col-span-2 flex items-start gap-2 text-xs font-bold">
+              <input type="checkbox" required class="mt-0.5" />
+              I have confirmed this person works for GoldPlus and that this account is theirs.
+            </label>
+            <button type="submit" class="sm:col-span-2 min-h-11 rounded-xl bg-brand-dark px-4 text-xs font-black uppercase tracking-wide text-white hover:bg-black">Give back-office access</button>
+          </form>
+        </div>
+      )}
+    </section>
+
+    <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
+      <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">Create a new staff account</h2>
+      <p class="mt-1 text-xs text-slate-600">For someone with no account yet. Full access (PLATFORM_ADMINISTRATOR) is never given in one step: it becomes a request a different administrator approves below. The first password must be at least 12 characters; give it to them in person or by phone, and they change it when they first sign in.</p>
       <form method="POST" class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-5">
         <input type="hidden" name="action" value="create-user" />
         <input name="email" type="email" required placeholder="email@shopgoldplus.com" class="sm:col-span-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs font-medium outline-none focus:border-brand-primaryInk" />
@@ -291,14 +355,14 @@ const emailById = new Map<string, string>(rows.map((u) => [u.id, u.email]));
             <option value={r.name}>{optionLabel(r)}</option>
           ))}
         </select>
-        <button type="submit" class="rounded-xl bg-brand-dark px-4 py-2.5 text-xs font-black uppercase tracking-wide text-white hover:bg-black">Create user</button>
+        <button type="submit" class="rounded-xl bg-brand-dark px-4 py-2.5 text-xs font-black uppercase tracking-wide text-white hover:bg-black">Create staff account</button>
       </form>
     </section>
 
     <section class="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
-      <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">Full-admin grant requests (maker/checker)</h2>
+      <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">Full-access requests waiting for a second administrator</h2>
       {grantRequests.length === 0 ? (
-        <p class="mt-3 text-sm font-medium text-slate-500">No grant requests — truthfully empty.</p>
+        <p class="mt-3 text-sm font-medium text-slate-500">No requests.</p>
       ) : (
         <div class="mt-3 space-y-2">
           {grantRequests.map((r: any) => (
