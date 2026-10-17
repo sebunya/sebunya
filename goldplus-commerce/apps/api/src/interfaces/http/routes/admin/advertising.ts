@@ -120,6 +120,8 @@ routes.get('/spend', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c
   const [report, imports, capabilities] = await Promise.all([ops().spend.report(c.req.query('from'), c.req.query('to')), ops().spend.recentImports(20), capView()]);
   return c.json({ success: true, data: { report, imports, capabilities: capabilities.filter((v) => v.capability === 'spend') } });
 });
+routes.get('/google-campaigns', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) =>
+  c.json({ success: true, data: await ops().spend.googleCampaigns(c.req.query('from'), c.req.query('to')) }));
 routes.post('/spend/import/:platform', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c: Context) => {
   const b = (await c.req.json().catch(() => null)) as { from?: string; to?: string } | null;
   const r = await ops().spend.importFromApi(c.req.param('platform') ?? '', 'ADMIN', actor(c), { from: b?.from, to: b?.to });

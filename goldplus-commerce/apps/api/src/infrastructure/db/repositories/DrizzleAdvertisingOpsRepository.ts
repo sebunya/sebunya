@@ -140,6 +140,8 @@ export class DrizzleAudienceRepository implements AudienceSourcePort, AudienceLi
       from orders o left join order_attribution a on a.order_id = o.id
       ${linkedIdentitiesSql(sql`o.id`)}
       where o.status in ('delivered', 'completed') or (o.payment_status = 'paid' and o.status not in ('cancelled', 'failed'))
+        -- Unpaid checkouts of the last 90 days: the checkout-abandoner list (never buyers; groupBuyers ignores them).
+        or (o.payment_status in ('unpaid', 'failed', 'pending') and o.created_at > now() - interval '90 days')
       order by o.created_at limit 200000`));
     return rows.map((r) => ({
       orderId: String(r.id), userId: r.user_id ? String(r.user_id) : null, email: r.customer_email ?? null, phone: r.customer_phone ?? null,
@@ -265,6 +267,17 @@ export class DrizzleSpendFactRepository implements SpendFactRepository {
       from media_cost_facts where spend_date between ${from}::date and ${to}::date order by spend_date desc, platform, campaign limit 5000`)).map((r) => ({
       spendDate: r.spend_date, channel: r.channel, platform: r.platform, campaign: r.campaign, campaignLabel: r.campaign_label ?? null, currency: r.currency,
       spendMinor: Number(r.spend_minor), clicks: r.clicks == null ? null : Number(r.clicks), impressions: r.impressions == null ? null : Number(r.impressions), source: r.source,
+    }));
+  }
+
+  async googleAdSales(from: string, to: string) {
+    return rowsOf(await db.execute(sql`select o.id, o.subtotal_amount, a.click_ids->>'gad_campaignid' as campaign_id, a.click_ids->>'gp_net' as network
+      from orders o join order_attribution a on a.order_id = o.id
+      where (a.click_ids ? 'gclid' or a.click_ids ? 'gbraid' or a.click_ids ? 'wbraid')
+        and (o.status in ('delivered', 'completed') or (o.payment_status = 'paid' and o.status not in ('cancelled', 'failed')))
+        and o.created_at >= ${from}::date and o.created_at < ${to}::date + 1
+      order by o.created_at limit 20000`)).map((r) => ({
+      orderId: String(r.id), valueUgx: Number(r.subtotal_amount ?? 0), campaignId: r.campaign_id ?? null, network: r.network ?? null,
     }));
   }
 

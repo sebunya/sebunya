@@ -17,12 +17,14 @@ describe('WhatsApp sales credited to the advert without the WhatsApp Business Pl
     expect(offlineSaleErrors({ ...sale }, now).join(' ')).toMatch(/phone or email, the order number, or the reference code/);
     expect(offlineSaleErrors({ ...sale, phone: '0772123456', whatsappRef: '' }, now)).toEqual([]);
   });
-  it('the click that counts happened before the sale and within 30 days of it', () => {
+  it('the click that counts happened before the sale and within 30 days of it (90 for Google)', () => {
     const saleAt = new Date('2026-10-01T10:00:00Z');
     const ids = { fbc: 'fb.1.1.abc', gclid: 'G1', ttclid: null, twclid: '' };
     expect(refClickIds({ clickedAt: '2026-09-29T10:00:00Z', ids }, saleAt)).toEqual({ fbc: 'fb.1.1.abc', gclid: 'G1' });
     expect(refClickIds({ clickedAt: '2026-10-01T10:00:01Z', ids }, saleAt)).toEqual({});                     // clicked after buying
-    expect(refClickIds({ clickedAt: new Date(saleAt.getTime() - REF_CLICK_MAX_AGE_MS - 1000), ids }, saleAt)).toEqual({});
+    // Past 30 days only Google's click id still counts (its 90-day window, 2026-10-17); past 90 nothing does.
+    expect(refClickIds({ clickedAt: new Date(saleAt.getTime() - REF_CLICK_MAX_AGE_MS - 1000), ids }, saleAt)).toEqual({ gclid: 'G1' });
+    expect(refClickIds({ clickedAt: new Date(saleAt.getTime() - 3 * REF_CLICK_MAX_AGE_MS - 1000), ids }, saleAt)).toEqual({});
     expect(refClickIds({ clickedAt: null, ids }, saleAt)).toEqual({});
     expect(refClickIds(null, saleAt)).toEqual({});
     expect(hasMatchKey('meta', { clickIds: { fbc: 'fb.1.1.abc' }, hashes: { emailSha256: null, emailGoogleSha256: null, phoneDigitsSha256: null, phonePlusSha256: null } })).toBe(true);

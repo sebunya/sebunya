@@ -4,7 +4,7 @@ import type {
 import { combineOutcomes, nextConfirmationStep } from '../../../domain/advertising/AudienceConfirmation';
 import type { ISegmentAudienceSource, SegmentRecord } from '../../ports/first-party/FirstPartyPorts';
 import { hashesForPlatform, type PlatformHashedIdentifiers } from '../../../domain/first-party/AudienceHashing';
-import { AUDIENCE_SEGMENTS, SEGMENT_INFO, groupBuyers, parseSegmentPolicy, selectSegment, type AudienceSegment, type Buyer } from '../../../domain/advertising/AudienceSegments';
+import { AUDIENCE_SEGMENTS, DEFAULT_SEGMENT_POLICY, MAX_ABANDON_DAYS, SEGMENT_INFO, checkoutAbandoners, groupBuyers, parseSegmentPolicy, segmentsFor, selectSegment, type AudienceSegment, type Buyer, type BuyerOrder } from '../../../domain/advertising/AudienceSegments';
 import { hashedContactFor, type AudiencePlatform } from '../../../domain/advertising/ContactNormalisation';
 import type { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
 import type { CapabilityView } from './AdCapabilities';
@@ -117,18 +117,21 @@ export class AudienceSyncUseCases {
 
   /** Members per segment for one platform, consent applied, hashed the platform's way. */
   private async load() {
-    const buyers = groupBuyers(await this.source.buyerOrders());
-    const refused = await this.source.refusedIdentities([...new Set(buyers.flatMap((b) => b.userIds))], [...new Set(buyers.flatMap((b) => b.fpClientIds))]);
-    return { buyers, refused };
+    const orders = await this.source.buyerOrders();
+    const buyers = groupBuyers(orders);
+    // Everyone who could be a checkout abandoner under the widest window is consent-checked too.
+    const pool = [...buyers, ...checkoutAbandoners(orders, buyers, { ...DEFAULT_SEGMENT_POLICY, abandonDays: MAX_ABANDON_DAYS }, this.now())];
+    const refused = await this.source.refusedIdentities([...new Set(pool.flatMap((b) => b.userIds))], [...new Set(pool.flatMap((b) => b.fpClientIds))]);
+    return { orders, buyers, refused };
   }
 
-  private compute(platform: AudiencePlatform, cfg: Record<string, string>, loaded: { buyers: Buyer[]; refused: { userIds: Set<string>; fpClientIds: Set<string> } }): Map<AudienceSegment, Slot> {
+  private compute(platform: AudiencePlatform, cfg: Record<string, string>, loaded: { orders: BuyerOrder[]; buyers: Buyer[]; refused: { userIds: Set<string>; fpClientIds: Set<string> } }): Map<AudienceSegment, Slot> {
     const { buyers, refused } = loaded;
     const isRefused = (b: Buyer) => b.userIds.some((u) => refused.userIds.has(u)) || b.fpClientIds.some((f) => refused.fpClientIds.has(f));
     const policy = parseSegmentPolicy(cfg);
     const out = new Map<AudienceSegment, Slot>();
-    for (const segment of AUDIENCE_SEGMENTS) {
-      const people = selectSegment(buyers, segment, policy, this.now());
+    for (const segment of segmentsFor(platform)) {
+      const people = segment === 'checkout_abandoners' ? checkoutAbandoners(loaded.orders, buyers, policy, this.now()) : selectSegment(buyers, segment, policy, this.now());
       const allowed = people.filter((b) => !isRefused(b));
       const members: HashedAudienceMember[] = [];
       let noId = 0;
@@ -164,14 +167,15 @@ export class AudienceSyncUseCases {
    */
   async linkedinContactCsv(segment: AudienceSegment): Promise<{ csv: string; eligible: number; excludedConsent: number; excludedNoEmail: number }> {
     if (!(AUDIENCE_SEGMENTS as readonly string[]).includes(segment)) throw new Error(`Unknown list: ${segment}`);
-    const slot = this.compute('meta', {}, await this.load()).get(segment)!;
+    const slot = this.compute('meta', {}, await this.load()).get(segment);
+    if (!slot) throw new Error(`Unknown list: ${segment}`);
     const emails = [...new Set(slot.members.map((m) => m.email).filter((e): e is string => !!e))];
     return { csv: ['email', ...emails].join('\n') + '\n', eligible: emails.length, excludedConsent: slot.preview.excludedConsent, excludedNoEmail: slot.preview.inSegment - slot.preview.excludedConsent - emails.length };
   }
 
-  private selectedSegments(cfg: Record<string, string>): AudienceSegment[] {
+  private selectedSegments(platform: string, cfg: Record<string, string>): AudienceSegment[] {
     const raw = (cfg.segments ?? '').split(',').filter(Boolean) as AudienceSegment[];
-    return raw.length ? AUDIENCE_SEGMENTS.filter((s) => raw.includes(s)) : [...AUDIENCE_SEGMENTS];
+    return raw.length ? segmentsFor(platform).filter((s) => raw.includes(s)) : segmentsFor(platform);
   }
 
   private selectedCustomKeys(cfg: Record<string, string>): string[] {
@@ -320,7 +324,7 @@ export class AudienceSyncUseCases {
     let slots: Slot[];
     try {
       const builtIn = this.compute(platform as AudiencePlatform, cfg, await this.load());
-      slots = [...this.selectedSegments(cfg).map((s) => builtIn.get(s)!), ...await this.customSlots(platform as AudiencePlatform, customKeys)];
+      slots = [...this.selectedSegments(platform, cfg).map((s) => builtIn.get(s)!), ...await this.customSlots(platform as AudiencePlatform, customKeys)];
     } catch {
       return [await this.log({ ...base, segment: '-', status: 'CONSENT_UNREADABLE', eligibleCount: 0, excludedConsent: 0, excludedNoIdentifier: 0, message: 'Buyers, segments or consent could not be read; nobody was uploaded.' })];
     }

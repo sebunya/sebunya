@@ -10,9 +10,14 @@ import { normaliseEmail, phoneDigitsE164 } from './ContactNormalisation';
  *
  * A qualifying order is one that became a sale: delivered or completed, or
  * paid and not cancelled/failed. A placed-but-unpaid order is not a buyer.
+ *
+ * Checkout abandoners (2026-10-17, Google Ads retargeting): people who gave
+ * their details at checkout in the last N days (default 14), did not pay, and
+ * have not bought since. Orders from the last hour are left out (they may be
+ * paying now). Google Ads only: the owner retargets through Google Ads.
  */
 
-export const AUDIENCE_SEGMENTS = ['past_buyers', 'recent_buyers', 'high_value'] as const;
+export const AUDIENCE_SEGMENTS = ['past_buyers', 'recent_buyers', 'high_value', 'checkout_abandoners'] as const;
 export type AudienceSegment = typeof AUDIENCE_SEGMENTS[number];
 
 export interface SegmentInfo {
@@ -21,13 +26,21 @@ export interface SegmentInfo {
   purpose: string;
   /** Google Customer Match membership life span (days, max 540). */
   membershipDays: number;
+  /** The only platforms this list is offered on; absent = every platform. */
+  platforms?: readonly string[];
 }
 
 export const SEGMENT_INFO: Record<AudienceSegment, SegmentInfo> = {
   past_buyers: { key: 'past_buyers', label: 'Past buyers', purpose: 'Everyone who has bought. Use for retention, or as the seed for a lookalike audience.', membershipDays: 540 },
   recent_buyers: { key: 'recent_buyers', label: 'Recent buyers (exclusion)', purpose: 'Bought in the last N days. Add as an EXCLUSION so ads are not shown to someone who has just bought.', membershipDays: 30 },
   high_value: { key: 'high_value', label: 'High-value seed', purpose: 'The buyers with the highest lifetime spend. Use as a lookalike seed.', membershipDays: 540 },
+  checkout_abandoners: { key: 'checkout_abandoners', label: 'Checkout started, not paid', purpose: 'Gave their details at checkout in the last 14 days, did not pay, and have not bought since. Retarget them with a reminder; they leave the list when they buy.', membershipDays: 30, platforms: ['google_ads'] },
 };
+
+/** The lists offered on one platform. */
+export function segmentsFor(platform: string): AudienceSegment[] {
+  return AUDIENCE_SEGMENTS.filter((s) => !SEGMENT_INFO[s].platforms || SEGMENT_INFO[s].platforms!.includes(platform));
+}
 
 export interface BuyerOrder {
   orderId: string;
@@ -68,9 +81,13 @@ export interface SegmentPolicy {
   highValueMinUgx: number | null;
   /** high_value when no threshold is set: the top fraction of buyers by lifetime spend. */
   highValueTopShare: number;
+  /** checkout_abandoners window. */
+  abandonDays: number;
 }
 
-export const DEFAULT_SEGMENT_POLICY: SegmentPolicy = { recentDays: 30, highValueMinUgx: null, highValueTopShare: 0.2 };
+export const DEFAULT_SEGMENT_POLICY: SegmentPolicy = { recentDays: 30, highValueMinUgx: null, highValueTopShare: 0.2, abandonDays: 14 };
+/** The widest abandoner window (consent is read for everyone who could be in it). */
+export const MAX_ABANDON_DAYS = 90;
 
 export function isQualifyingOrder(o: Pick<BuyerOrder, 'status' | 'paymentStatus'>): boolean {
   if (o.status === 'delivered' || o.status === 'completed') return true;
@@ -79,7 +96,31 @@ export function isQualifyingOrder(o: Pick<BuyerOrder, 'status' | 'paymentStatus'
 
 /** Groups qualifying orders into people. Deterministic: the output is sorted by key. */
 export function groupBuyers(orders: BuyerOrder[]): Buyer[] {
-  const qualifying = orders.filter(isQualifyingOrder);
+  return groupPeople(orders.filter(isQualifyingOrder));
+}
+
+/** An order placed at checkout and never paid (nor delivered): payment unpaid, failed or pending. */
+export function isUnpaidCheckout(o: Pick<BuyerOrder, 'status' | 'paymentStatus'>): boolean {
+  return !isQualifyingOrder(o) && ['unpaid', 'failed', 'pending'].includes(o.paymentStatus) && ['received', 'pending', 'cancelled', 'failed'].includes(o.status);
+}
+
+/**
+ * People with an unpaid checkout in the window who have not bought since (a purchase by the same account, email
+ * or phone at or after their last unpaid checkout takes them out). `lastPurchaseAt` here is that last checkout.
+ */
+export function checkoutAbandoners(orders: BuyerOrder[], buyers: Buyer[], policy: SegmentPolicy = DEFAULT_SEGMENT_POLICY, now: Date = new Date()): Buyer[] {
+  const days = Math.min(MAX_ABANDON_DAYS, Math.max(1, policy.abandonDays));
+  const since = now.getTime() - days * 86_400_000;
+  const until = now.getTime() - 3_600_000;
+  const people = groupPeople(orders.filter((o) => isUnpaidCheckout(o) && o.purchasedAt.getTime() >= since && o.purchasedAt.getTime() <= until));
+  const boughtAt = new Map<string, number>();
+  const keysOf = (p: Buyer) => [...p.userIds.map((u) => `u:${u}`), ...p.emails.map((e) => `e:${e}`), ...p.phones.map((x) => `p:${x}`)];
+  for (const b of buyers) for (const k of keysOf(b)) boughtAt.set(k, Math.max(boughtAt.get(k) ?? 0, b.lastPurchaseAt.getTime()));
+  return people.filter((p) => !keysOf(p).some((k) => (boughtAt.get(k) ?? 0) >= p.lastPurchaseAt.getTime()));
+}
+
+/** Groups orders into people (shared account, email or phone). Deterministic: the output is sorted by key. */
+function groupPeople(qualifying: BuyerOrder[]): Buyer[] {
   const parent = qualifying.map((_, i) => i);
   const find = (i: number): number => { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
   const union = (a: number, b: number) => { const ra = find(a), rb = find(b); if (ra !== rb) parent[Math.max(ra, rb)] = Math.min(ra, rb); };
@@ -130,10 +171,12 @@ export function selectSegment(buyers: Buyer[], segment: AudienceSegment, policy:
 /** Owner-entered policy values, validated; anything unreadable falls back to the default. */
 export function parseSegmentPolicy(cfg: Record<string, string | undefined>): SegmentPolicy {
   const days = Number(cfg.recentDays);
+  const abandon = Number(cfg.abandonDays);
   const min = cfg.highValueMinUgx != null && cfg.highValueMinUgx !== '' ? Number(cfg.highValueMinUgx) : NaN;
   return {
     recentDays: Number.isInteger(days) && days >= 1 && days <= 540 ? days : DEFAULT_SEGMENT_POLICY.recentDays,
     highValueMinUgx: Number.isInteger(min) && min > 0 ? min : null,
     highValueTopShare: DEFAULT_SEGMENT_POLICY.highValueTopShare,
+    abandonDays: Number.isInteger(abandon) && abandon >= 1 && abandon <= MAX_ABANDON_DAYS ? abandon : DEFAULT_SEGMENT_POLICY.abandonDays,
   };
 }

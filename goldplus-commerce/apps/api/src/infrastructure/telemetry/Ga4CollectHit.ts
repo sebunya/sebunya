@@ -13,6 +13,12 @@ import type { CanonicalTelemetryEvent } from '@goldplus/shared';
  * Returns null when there is no visitor id: a hit without one would invent a
  * visitor, and GA would count a user who never existed.
  */
+/** A real SKU (not a placeholder such as "Needs Business Confirmation"), else the product id. */
+export function ga4ItemId(it: { item_id: string; item_sku?: string }): string {
+  const sku = (it.item_sku ?? '').trim();
+  return /^[A-Za-z0-9][A-Za-z0-9._/-]{0,63}$/.test(sku) && !/pending/i.test(sku) ? sku : it.item_id;
+}
+
 export function ga4CollectHit(event: CanonicalTelemetryEvent, measurementId: string): URLSearchParams | null {
   const cid = event.user_data?.fp_client_id?.trim();
   if (!cid) return null;
@@ -44,7 +50,9 @@ export function ga4CollectHit(event: CanonicalTelemetryEvent, measurementId: str
     (e.items ?? []).slice(0, 200).forEach((it, i) => {
       // GA4 item encoding: key-prefixed fields joined by '~'. '~' inside a value would split it.
       const clean = (v: unknown) => String(v).replace(/~/g, '-');
-      const f = [`id${clean(it.item_id)}`];
+      // 2026-10-17: the SKU when known — the Merchant Center feed's g:id — so GA4 audiences shared with Google Ads
+      // drive dynamic retargeting (the product someone viewed). Our own records keep the product id.
+      const f = [`id${clean(ga4ItemId(it))}`];
       if (it.item_name) f.push(`nm${clean(it.item_name)}`);
       if (it.price != null) f.push(`pr${it.price}`);
       if (it.quantity != null) f.push(`qt${it.quantity}`);

@@ -1,5 +1,6 @@
 import type { PlatformCredentials, SpendFactRepository, SpendGateway, SpendImportRecord, SpendReportRow } from '../../ports/Advertising';
 import { currencyConflict, parseSpendCsv, spendFactErrors, type SpendFact } from '../../../domain/advertising/SpendFacts';
+import { googleCampaignReport, type GoogleCampaignReport } from '../../../domain/advertising/GoogleCampaigns';
 import type { CreateAuditLogUseCase } from '../audit/CreateAuditLogUseCase';
 import type { CapabilityView } from './AdCapabilities';
 
@@ -96,6 +97,14 @@ export class AdSpendUseCases {
     const f = from && /^\d{4}-\d{2}-\d{2}$/.test(from) ? from : iso(new Date(new Date(`${t}T00:00:00Z`).getTime() - 29 * DAY));
     const rows = await this.repo.report(f, t);
     return { from: f, to: t, rows, totals: spendTotals(rows) };
+  }
+
+  /** Google Ads sales and spend by campaign and type (YouTube, Search, Shopping, Performance Max, Display) for [from, to]. */
+  async googleCampaigns(from?: string, to?: string): Promise<GoogleCampaignReport & { from: string; to: string }> {
+    const t = to && /^\d{4}-\d{2}-\d{2}$/.test(to) ? to : iso(this.now());
+    const f = from && /^\d{4}-\d{2}-\d{2}$/.test(from) ? from : iso(new Date(new Date(`${t}T00:00:00Z`).getTime() - 29 * DAY));
+    const [sales, spend] = await Promise.all([this.repo.googleAdSales(f, t), this.repo.report(f, t)]);
+    return { from: f, to: t, ...googleCampaignReport(sales, spend.filter((r) => /^google( ads)?$/i.test(r.platform))) };
   }
 
   recentImports(limit = 20) { return this.repo.recentImports(limit); }
