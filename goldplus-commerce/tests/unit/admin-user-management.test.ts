@@ -39,6 +39,9 @@ class FakeRepo implements IAdminUserWriteRepository {
   async revokeRole(userId: string, roleName: string) {
     return this.roles.get(userId)?.delete(roleName) ?? false;
   }
+  async roleCount(userId: string) {
+    return this.roles.get(userId)?.size ?? 0;
+  }
   async userHasRole(userId: string, roleName: string) {
     return this.roles.get(userId)?.has(roleName) ?? false;
   }
@@ -122,7 +125,7 @@ describe('AdminUserManagementUseCase (§6 governance)', () => {
 
   it('maker/checker: the requester cannot decide their own grant; a different admin can', async () => {
     const { repo, useCase } = setup();
-    await useCase.grantRole({ userId: 'u-x', roleName: 'PLATFORM_ADMINISTRATOR', actorId: 'admin-1' });
+    await useCase.grantRole({ userId: 'u-x', roleName: 'PLATFORM_ADMINISTRATOR', actorId: 'admin-1', reason: 'New colleague, confirmed by phone' });
     const requestId = [...repo.requests.keys()][0];
     expect(await useCase.decideGrant({ requestId, decision: 'APPROVED', actorId: 'admin-1' }))
       .toMatchObject({ ok: false, code: 'MAKER_CHECKER', status: 403 });
@@ -136,8 +139,8 @@ describe('AdminUserManagementUseCase (§6 governance)', () => {
 
   it('duplicate pending requests are refused', async () => {
     const { useCase } = setup();
-    await useCase.grantRole({ userId: 'u-x', roleName: 'PLATFORM_ADMINISTRATOR', actorId: 'admin-1' });
-    expect(await useCase.grantRole({ userId: 'u-x', roleName: 'PLATFORM_ADMINISTRATOR', actorId: 'admin-1' }))
+    await useCase.grantRole({ userId: 'u-x', roleName: 'PLATFORM_ADMINISTRATOR', actorId: 'admin-1', reason: 'New colleague, confirmed by phone' });
+    expect(await useCase.grantRole({ userId: 'u-x', roleName: 'PLATFORM_ADMINISTRATOR', actorId: 'admin-1', reason: 'New colleague, confirmed by phone' }))
       .toMatchObject({ ok: false, code: 'DUPLICATE_PENDING', status: 409 });
   });
 
@@ -170,7 +173,7 @@ describe('AdminUserManagementUseCase (§6 governance)', () => {
 
   it('the requester may withdraw a PENDING request; others may not', async () => {
     const { repo, useCase } = setup();
-    await useCase.grantRole({ userId: 'u-x', roleName: 'PLATFORM_ADMINISTRATOR', actorId: 'admin-1' });
+    await useCase.grantRole({ userId: 'u-x', roleName: 'PLATFORM_ADMINISTRATOR', actorId: 'admin-1', reason: 'New colleague, confirmed by phone' });
     const requestId = [...repo.requests.keys()][0];
     expect(await useCase.withdrawGrant({ requestId, actorId: 'admin-2' }))
       .toMatchObject({ ok: false, code: 'NOT_REQUESTER', status: 403 });

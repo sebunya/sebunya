@@ -9,12 +9,31 @@ import { AdminUserDto } from '../../../../application/use-cases/admin/ListAdminU
 const routes = new Hono();
 routes.use('*', authMiddleware);
 
+// Staff accounts only (2026-10-17): an account holding a role or a pending grant. Shoppers are counted in a header,
+// never listed here, so no customer sits one click away from a back-office role.
 routes.get('/', requirePermissions([PERMISSIONS.AUTH_MANAGE]), async (c) => {
   const useCase = Registry.getInstance().listAdminUsersUseCase;
-  const data = await useCase.execute();
+  const [data, shoppers] = await Promise.all([useCase.execute(), useCase.shopperAccountCount().catch(() => null)]);
 
   const res: ApiResponse<AdminUserDto[]> = { success: true, data };
+  if (shoppers != null) c.header('X-Shopper-Accounts', String(shoppers));
   return c.json(res);
+});
+
+// One account by id, for the customer page's sign-in panel (a customer is deactivated there, not on the staff list).
+routes.get('/account/:id', requirePermissions([PERMISSIONS.AUTH_MANAGE]), async (c) => {
+  const account = await Registry.getInstance().listAdminUsersUseCase.accountById(c.req.param('id') ?? '');
+  if (!account) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'No such account.' } }, 404);
+  return c.json({ success: true, data: account });
+});
+
+// One account by its exact email (staff or shopper), for the deliberate "give an existing account access" step.
+routes.get('/lookup', requirePermissions([PERMISSIONS.AUTH_MANAGE]), async (c) => {
+  const email = String(c.req.query('email') ?? '').trim();
+  if (!email || email.length > 320 || !email.includes('@')) return c.json({ success: false, error: { code: 'BAD_INPUT', message: 'Enter the full email address of the account.' } }, 400);
+  const account = await Registry.getInstance().listAdminUsersUseCase.lookup(email);
+  if (!account) return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'No account uses that email. The person must create an account on the shop first, or create a staff account below.' } }, 404);
+  return c.json({ success: true, data: account });
 });
 
 // ---- §6 completion: governed user creation + role assignment ----------------
@@ -87,8 +106,8 @@ routes.post('/:id/roles', requirePermissions([PERMISSIONS.AUTH_MANAGE]), require
   if (!outcome.ok) return c.json({ success: false, error: { code: outcome.code, message: outcome.message } }, outcome.status as any);
   const { CreateAuditLogUseCase } = await import('../../../../application/use-cases/audit/CreateAuditLogUseCase');
   await new CreateAuditLogUseCase(registry.auditRepo).execute({
-    actorId, action: 'ADMIN_ROLE_GRANTED', entity: 'user', entityId: c.req.param('id') ?? '',
-    newState: { roleName: String(body?.roleName ?? ''), outcome: outcome.value.outcome },
+    actorId, action: outcome.value.firstAccess ? 'ADMIN_FIRST_BACK_OFFICE_ACCESS_GRANTED' : 'ADMIN_ROLE_GRANTED', entity: 'user', entityId: c.req.param('id') ?? '',
+    newState: { roleName: String(body?.roleName ?? ''), outcome: outcome.value.outcome, firstAccess: outcome.value.firstAccess, reason: typeof body?.reason === 'string' ? body.reason.slice(0, 300) : null },
   });
   return c.json({ success: true, data: outcome.value });
 });
