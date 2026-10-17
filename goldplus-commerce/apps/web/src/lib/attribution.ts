@@ -37,15 +37,33 @@ function readUtm(): Record<string, string> {
   return out;
 }
 
+/**
+ * The ad network a click id on this URL belongs to (2026-10-17). A Google ad click arrives with a gclid and no
+ * utm tags, from google.com or youtube.com: without this the last touch read it as organic search or organic
+ * social. Our server's channel report already went by the click id; the order's own source/medium now agree.
+ */
+function paidNetworkOnUrl(p: URLSearchParams): string {
+  if (p.get('gclid') || p.get('gbraid') || p.get('wbraid')) return 'google';
+  if (p.get('msclkid')) return 'microsoft';
+  if (p.get('fbclid')) return 'facebook';
+  if (p.get('ttclid')) return 'tiktok';
+  if (p.get('twclid')) return 'x';
+  if (p.get('li_fat_id')) return 'linkedin';
+  if (p.get('ScCid')) return 'snapchat';
+  if (p.get('epik')) return 'pinterest';
+  return '';
+}
+
 export function captureAttribution(): void {
   try {
     const utm = readUtm();
-    const hasUtm = Object.keys(utm).length > 0;
+    const paid = paidNetworkOnUrl(new URLSearchParams(location.search));
+    const hasUtm = Object.keys(utm).length > 0 || !!paid;
     let ref = externalReferrer();
     // No referrer, no campaign, no click id, but opened in Snapchat's own browser: a Snapchat visit.
     if (!ref && !hasUtm && !/[?&]ScCid=/.test(location.search)) { const h = inAppReferrerHost(navigator.userAgent || ''); if (h) ref = `https://${h}/`; }
     const now = new Date().toISOString();
-    const touch = { ...utm, referrer: ref, landingPath: location.pathname.slice(0, 300), at: now };
+    const touch = { ...utm, ...(paid ? { paid } : {}), referrer: ref, landingPath: location.pathname.slice(0, 300), at: now };
 
     if (!localStorage.getItem(FIRST)) localStorage.setItem(FIRST, JSON.stringify(touch));
     // Last-touch refreshes on a fresh campaign or a fresh external referral; also
@@ -98,8 +116,17 @@ export interface CheckoutAttribution {
 const CLICK_KEYS = ['gclid', 'wbraid', 'gbraid', 'ttclid', 'twclid', 'li_fat_id', 'epik', 'msclkid', 'ScCid', 'clickid', 'click_id'];
 /** What the record holds: the URL parameters above, plus Meta's click id built from `fbclid`. */
 const STORED_CLICK_KEYS = [...CLICK_KEYS, 'fbc'];
+/**
+ * What Google puts on an ad's landing URL besides the click id: the campaign (auto-tagging's gad_campaignid), the
+ * kind of placement (gad_source), and the ValueTrack {network} the owner's final URL suffix adds as gp_net (g/s
+ * Search, d Display, ytv/yts/vp YouTube, x Performance Max). Kept only with a Google click; never a click id.
+ */
+const GOOGLE_CAMPAIGN_KEYS = ['gad_campaignid', 'gad_source', 'gp_net'];
 const CLICK_STORE = '_gp_ad_click';
 const CLICK_WINDOW_MS = 30 * 864e5;
+/** Google credits a sale up to 90 days after the click (the conversion action's click-through window). */
+const GOOGLE_CLICK_WINDOW_MS = 90 * 864e5;
+const isGoogleClick = (ids: Record<string, unknown> | undefined) => !!ids && ['gclid', 'gbraid', 'wbraid'].some((k) => typeof ids[k] === 'string');
 
 /**
  * The last ad click, kept 30 days FROM THE CLICK. Called on every page (from
@@ -126,16 +153,18 @@ export function recordAdClick(): void {
       ids.fbc = prior.endsWith(`.${fbclid}`) ? prior : `fb.1.${Date.now()}.${fbclid}`;
     }
     if (Object.keys(ids).length === 0) return;
+    if (isGoogleClick(ids)) for (const k of GOOGLE_CAMPAIGN_KEYS) { const v = p.get(k); if (v && /^[A-Za-z0-9_-]{1,40}$/.test(v)) ids[k] = v; }
     localStorage.setItem(CLICK_STORE, JSON.stringify({ ids, src: (p.get('utm_source') || '').toLowerCase().slice(0, 60), at: Date.now() }));
   } catch { /* storage unavailable */ }
 }
 
-function recentClickIds(): Record<string, string> {
+function recentClickIds(withCampaign = true): Record<string, string> {
   try {
     const raw = JSON.parse(localStorage.getItem(CLICK_STORE) || '{}');
-    if (!raw.at || Date.now() - Number(raw.at) > CLICK_WINDOW_MS) return {};
+    if (!raw.at || Date.now() - Number(raw.at) > (isGoogleClick(raw.ids) ? GOOGLE_CLICK_WINDOW_MS : CLICK_WINDOW_MS)) return {};
     const out: Record<string, string> = {};
     for (const k of STORED_CLICK_KEYS) if (typeof raw.ids?.[k] === 'string') out[k] = raw.ids[k];
+    if (withCampaign && isGoogleClick(raw.ids)) for (const k of GOOGLE_CAMPAIGN_KEYS) if (typeof raw.ids?.[k] === 'string') out[k] = raw.ids[k];
     if (Object.keys(out).length && raw.src) out.src = String(raw.src);
     return out;
   } catch {
@@ -151,7 +180,7 @@ function recentClickIds(): Record<string, string> {
  * from an X ad reached the product page with no click id to report.
  */
 export function recentAdClickIds(): Record<string, string> {
-  const { src: _src, ...ids } = recentClickIds();
+  const { src: _src, ...ids } = recentClickIds(false);
   return ids;
 }
 
@@ -160,11 +189,13 @@ export function getCheckoutAttribution(): CheckoutAttribution | null {
     const last = JSON.parse(localStorage.getItem(LAST) || '{}');
     const first = JSON.parse(localStorage.getItem(FIRST) || '{}');
     const refSource = last.referrer ? sourceFromReferrer(last.referrer) : '';
-    const source = last.utm_source || refSource || null;
+    // A paid click without utm tags: the network that was paid (a Google ad watched on YouTube is youtube / cpc).
+    const paidSource = last.paid === 'google' && refSource === 'youtube' ? 'youtube' : last.paid || '';
+    const source = last.utm_source || paidSource || refSource || null;
     // A referral from a social network is organic social and one from a search
     // engine is organic search (the answers the landing-touch classifier gives),
     // not a generic referral.
-    const medium = last.utm_medium || (last.utm_source ? 'campaign' : last.referrer ? (/^(facebook|instagram|x|tiktok|youtube|snapchat)$/.test(refSource) ? 'social' : /^(google|bing|duckduckgo|yahoo|ecosia|brave|yandex)$/.test(refSource) ? 'organic' : 'referral') : null) || null;
+    const medium = last.utm_medium || (last.paid && !last.utm_source ? (/^(google|microsoft)$/.test(last.paid) ? 'cpc' : 'paid_social') : null) || (last.utm_source ? 'campaign' : last.referrer ? (/^(facebook|instagram|x|tiktok|youtube|snapchat)$/.test(refSource) ? 'social' : /^(google|bing|duckduckgo|yahoo|ecosia|brave|yandex)$/.test(refSource) ? 'organic' : 'referral') : null) || null;
     return {
       source,
       medium,

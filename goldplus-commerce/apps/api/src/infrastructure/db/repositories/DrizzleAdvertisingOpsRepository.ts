@@ -270,6 +270,17 @@ export class DrizzleSpendFactRepository implements SpendFactRepository {
     }));
   }
 
+  async googleAdSales(from: string, to: string) {
+    return rowsOf(await db.execute(sql`select o.id, o.subtotal_amount, a.click_ids->>'gad_campaignid' as campaign_id, a.click_ids->>'gp_net' as network
+      from orders o join order_attribution a on a.order_id = o.id
+      where (a.click_ids ? 'gclid' or a.click_ids ? 'gbraid' or a.click_ids ? 'wbraid')
+        and (o.status in ('delivered', 'completed') or (o.payment_status = 'paid' and o.status not in ('cancelled', 'failed')))
+        and o.created_at >= ${from}::date and o.created_at < ${to}::date + 1
+      order by o.created_at limit 20000`)).map((r) => ({
+      orderId: String(r.id), valueUgx: Number(r.subtotal_amount ?? 0), campaignId: r.campaign_id ?? null, network: r.network ?? null,
+    }));
+  }
+
   async recordImport(r: SpendImportRecord) {
     await db.execute(sql`insert into ad_spend_imports (platform, trigger, status, date_from, date_to, rows_written, message, actor_id, started_at)
       values (${r.platform.slice(0, 32)}, ${r.trigger}, ${r.status.slice(0, 24)}, ${r.dateFrom ? sql`${r.dateFrom}::date` : sql`null`}, ${r.dateTo ? sql`${r.dateTo}::date` : sql`null`},

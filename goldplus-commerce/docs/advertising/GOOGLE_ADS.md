@@ -74,3 +74,34 @@ Owner steps (once, after the conversions steps above):
 
 Google serves a retargeting list on Display/YouTube from 100 active members (Search 1,000), so lists are small at
 first; Performance Max uses them as signals from day one.
+
+## Attribution and tracking: YouTube, Search, Shopping, Performance Max (2026-10-17)
+
+What the shop records for every Google ad click (no Google Ads tag; server-side):
+
+| On the landing URL | Kept | Used for |
+|---|---|---|
+| `gclid` / `gbraid` / `wbraid` | **90 days** (Google's click-through window; other networks 30) | The conversion upload; the order's source/medium reads **google / cpc** (or **youtube / cpc** when the click came from YouTube), never "organic" |
+| `gad_campaignid` (auto-tagging adds it) | with the click | Joins the sale to its campaign and to Google's campaign type from the spend import |
+| `gp_net` = ValueTrack `{network}` (your final URL suffix) | with the click | The type when the campaign is not known from spend: `ytv`/`yts`/`vp` YouTube, `g`/`s` Search, `d` Display, `x` Performance Max |
+| `gad_source` | with the click | Kept for diagnosis |
+
+**Report:** `/admin/advertising/spend` → *Google Ads: YouTube, Search, Shopping, Performance Max*: per campaign and
+per type, orders, sales, spend, clicks and ROAS (ROAS only when spend is in UGX; the account bills in USD, so it
+says so instead of dividing shillings by dollars).
+
+**YouTube views without a click** (engaged views, view-through) cannot be seen by a server: they live in Google's
+own cookies. Google counts them through GA4.
+
+Owner steps:
+1. **Google Ads > Admin > Account settings > Auto-tagging**: on (gclid + campaign id).
+2. **Admin > Account settings > Tracking > Final URL suffix**: `gp_net={network}` (account level, so every
+   campaign carries it, YouTube included). Nothing else is needed; do not add utm tags on top of auto-tagging.
+3. **Tools > Data manager > YouTube**: link the GoldPlus YouTube channel (video ads, "viewers of your videos"
+   audiences for retargeting).
+4. **Goals > Conversions > New > Import > Google Analytics 4 > `purchase`**, as a **secondary** action named
+   "Purchase (GA4, YouTube views)": it adds engaged-view conversions for YouTube and Demand Gen. Keep
+   "Purchase (server)" the only **primary** purchase action, or each sale is counted twice.
+5. **Purchase (server)** settings: click-through window **90 days**, attribution **Data-driven**.
+6. Optional, for campaign names, types and spend in the report: the developer token for spend import (above).
+   Without it, the report still splits sales by type from `gp_net`.

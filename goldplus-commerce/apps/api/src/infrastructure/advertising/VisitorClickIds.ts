@@ -22,10 +22,14 @@ import { metaBrowserIdFromVisitor } from '../../domain/advertising/MetaIdentifie
  * the same rule the order path follows (DeliveryService.loadIdentity). Only
  * click ids are merged here, for every platform; a signed-in customer's hashed
  * contact is added for Meta alone, by VisitorContact (owner decision). A click older than the networks' own windows is of no use
- * to them, so a click id that last changed more than 30 days ago is ignored.
+ * to them, so a click id that last changed more than 30 days ago is ignored — 90 days for Google's (gclid, gbraid,
+ * wbraid), whose conversion actions credit up to 90 days after the click.
  */
 export const CLICK_ID_KEYS = ['gclid', 'wbraid', 'gbraid', 'fbc', 'fbp', 'ttclid', 'twclid', 'li_fat_id', 'epik'] as const;
 export const CLICK_ID_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+/** Google credits up to 90 days after the click (2026-10-17): its click ids are kept that long; the others 30. */
+export const GOOGLE_CLICK_ID_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
+const GOOGLE_KEYS = new Set(['gclid', 'wbraid', 'gbraid']);
 
 export type VisitorClickRecord = Partial<Record<(typeof CLICK_ID_KEYS)[number], string | null>> & { updatedAt?: Date | string | null; clickIdsAt?: Date | string | null };
 export type VisitorClickLookup = (fpClientId: string) => Promise<VisitorClickRecord | null>;
@@ -67,9 +71,10 @@ async function withGraphClickIds(event: CanonicalTelemetryEvent, lookup: Visitor
   // When the click id last changed (0165); rows older than that column fall back to the row's last touch.
   const clickedAt = rec.clickIdsAt ?? rec.updatedAt;
   const touched = clickedAt ? new Date(clickedAt).getTime() : NaN;
-  if (!Number.isFinite(touched) || now - touched > CLICK_ID_MAX_AGE_MS) return event;
+  if (!Number.isFinite(touched) || now - touched > GOOGLE_CLICK_ID_MAX_AGE_MS) return event;
   const clicks: Record<string, string> = {};
-  for (const k of CLICK_ID_KEYS) { const v = rec[k]; if (typeof v === 'string' && v.length > 0) clicks[k] = v; }
+  const fresh = now - touched <= CLICK_ID_MAX_AGE_MS;
+  for (const k of CLICK_ID_KEYS) { const v = rec[k]; if (typeof v === 'string' && v.length > 0 && (fresh || GOOGLE_KEYS.has(k))) clicks[k] = v; }
   if (Object.keys(clicks).length === 0) return event;
   return { ...event, user_data: { ...ud, ...clicks } } as CanonicalTelemetryEvent;
 }

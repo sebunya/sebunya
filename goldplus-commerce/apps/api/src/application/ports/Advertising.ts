@@ -212,6 +212,8 @@ export interface SpendFactRepository {
   /** All or nothing, in one transaction; a re-import of the same day and campaign replaces its figures. */
   upsert(facts: import('../../domain/advertising/SpendFacts').SpendFact[], actorId: string | null): Promise<{ written: number }>;
   report(from: string, to: string): Promise<SpendReportRow[]>;
+  /** Sales (paid or delivered orders placed in [from, to]) whose click was a Google ad, with the campaign and network the click named. */
+  googleAdSales(from: string, to: string): Promise<import('../../domain/advertising/GoogleCampaigns').GoogleSale[]>;
   recordImport(rec: SpendImportRecord): Promise<void>;
   recentImports(limit: number): Promise<SpendImportRecord[]>;
 }

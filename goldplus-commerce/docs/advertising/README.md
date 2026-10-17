@@ -318,7 +318,8 @@ that is not the shape Meta documents is left out rather than sent to be rejected
 
 **Identity graph.** Click ids in `first_party_identities` are last-click-wins (they were
 first-write-wins, so a returning visitor's new ad click was never stored); `click_ids_at` (0165)
-records when one last changed, and a click id older than 30 days is not used. Browsing events
+records when one last changed, and a click id older than 30 days is not used (90 days for Google's gclid,
+gbraid and wbraid, 2026-10-17: Google credits imported click conversions up to 90 days after the click). Browsing events
 are queued with the visitor id only; click ids are merged at send time and never written to the
 queue row (`infrastructure/advertising/VisitorClickIds.ts`).
 
@@ -425,7 +426,7 @@ alongside it afterwards, three pieces give the same result for adverts that send
 3. **The reference code on a recorded sale** (`ad_offline_sales.whatsapp_ref`, migration 0167; the
    "WhatsApp reference code" field on Advertising > Offline sales). The code alone is enough to
    record a sale. At send time the click ids on that visitor's record (`fbc`, `gclid`, `ttclid` …)
-   travel with the sale when the click happened before the sale and within 30 days of it, with
+   travel with the sale when the click happened before the sale and within 30 days of it (90 for Google's), with
    the visitor's `external_id` and derived `fbp` for Meta. The visitor joins the sale's consent
    subjects, so an advertising refusal still suppresses it. A code the site never issued is refused.
 

@@ -45,6 +45,12 @@ if (Astro.request.method === "POST") {
 const res = await advertisingApi(token, "GET", `/spend?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
 const data: any = res.ok ? res.data : null;
 const report = data?.report;
+// Google Ads by campaign and type (YouTube, Search, Shopping, Performance Max, Display), same range.
+const gRes = await advertisingApi(token, "GET", `/google-campaigns?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+const google: any = gRes.ok ? gRes.data : null;
+const spendText = (sp: Array<{ currency: string; spendMinor: number }>) => (sp.length ? sp.map((s) => money(s.spendMinor, s.currency)).join(" + ") : "—");
+const roasText = (r: number | null, sp: Array<{ currency: string }>) => (r != null ? `${r.toFixed(2)}×` : sp.some((s) => s.currency !== "UGX") ? "Spend not in UGX" : "—");
+const TYPE_FROM: Record<string, string> = { campaign: "Google's campaign type", network: "the ad's network", unknown: "not known" };
 const n = (v: number | null | undefined) => (v == null ? "—" : fmtInt(v));
 ---
 <AdminLayout title="Advertising spend" description="Daily spend, clicks and impressions per campaign from Google Ads and Meta, or a CSV upload.">
@@ -110,6 +116,25 @@ const n = (v: number | null | undefined) => (v == null ? "—" : fmtInt(v));
             {csvResult.dryRun ? "Checked, nothing written yet:" : "Applied:"} {csvResult.rows} rows ({csvResult.added} new, {csvResult.changed} changed, {csvResult.unchanged} unchanged).
           </div>
         ))}
+
+        <section aria-labelledby="google-campaigns" class="mb-12">
+          <h3 id="google-campaigns" class="text-lg font-black text-brand-dark mb-2">Google Ads: YouTube, Search, Shopping, Performance Max</h3>
+          <p class="text-sm text-gray-700 mb-3">Sales from Google ad clicks in this range, by campaign, beside what each campaign cost. A sale is matched to its campaign by the campaign id Google adds to the ad's link; the type comes from Google's own campaign record (spend import) or, until that exists, from the network in the link (add the final URL suffix in docs/advertising/GOOGLE_ADS.md). Sales are paid or delivered orders, merchandise value. YouTube views without a click are not here: Google counts those from GA4 (see the guide).</p>
+          {!google ? <p class="text-sm text-gray-600">Could not be read.</p> : google.campaigns.length === 0 ? <p class="text-sm text-gray-600">No data: no sale from a Google ad click and no Google spend in this range.</p> : (
+            <>
+              <ul class="mb-3 flex flex-wrap gap-3 text-sm">{google.byType.map((t: any) => <li class="rounded-xl border border-gray-200 bg-white px-4 py-2"><strong>{t.label}</strong> · {t.orders} orders · {money(t.revenueUgx, "UGX")} · spend {spendText(t.spend)} · ROAS {roasText(t.roas, t.spend)}</li>)}</ul>
+              {google.salesWithoutCampaign > 0 && <p class="text-sm text-gray-600 mb-3">{google.salesWithoutCampaign} sale(s) came from a Google click that did not name its campaign (older clicks, or auto-tagging off).</p>}
+              <div class="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+                <table class="min-w-full text-sm">
+                  <thead class="bg-gray-50 text-left text-xs uppercase text-gray-600"><tr><th class="px-3 py-2">Campaign</th><th class="px-3 py-2">Type</th><th class="px-3 py-2">Orders</th><th class="px-3 py-2">Sales</th><th class="px-3 py-2">Spend</th><th class="px-3 py-2">Clicks</th><th class="px-3 py-2">ROAS</th></tr></thead>
+                  <tbody>{google.campaigns.map((c: any) => (
+                    <tr class="border-t border-gray-100"><td class="px-3 py-2">{c.label ?? (c.campaignId ? `Campaign ${c.campaignId}` : "Campaign not named")}</td><td class="px-3 py-2" title={`From ${TYPE_FROM[c.typeFrom] ?? c.typeFrom}`}>{c.type === "UNKNOWN" ? "Not known" : c.type === "YOUTUBE" ? "YouTube" : c.type === "DEMAND_GEN" ? "YouTube & Demand Gen" : c.type === "PERFORMANCE_MAX" ? "Performance Max" : c.type.charAt(0) + c.type.slice(1).toLowerCase()}</td><td class="px-3 py-2">{c.orders}</td><td class="px-3 py-2 whitespace-nowrap">{money(c.revenueUgx, "UGX")}</td><td class="px-3 py-2 whitespace-nowrap">{spendText(c.spend)}</td><td class="px-3 py-2">{n(c.clicks)}</td><td class="px-3 py-2">{roasText(c.roas, c.spend)}</td></tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </section>
 
         <h3 class="text-lg font-black text-brand-dark mb-3">Recent imports</h3>
         {(data.imports ?? []).length === 0 ? <p class="text-sm text-gray-600 mb-12">No data: nothing has been imported yet.</p> : (

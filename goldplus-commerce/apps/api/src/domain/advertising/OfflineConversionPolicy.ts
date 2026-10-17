@@ -44,18 +44,23 @@ export function metaActionSource(source: OfflineSource, channel: OfflineChannel 
 
 /** How long before a sale an advert click may be and still be the click that led to it (the networks' own windows). */
 export const REF_CLICK_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+/** Google's click ids count for 90 days (its import-from-clicks window), 2026-10-17. */
+export const REF_GOOGLE_CLICK_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
+const GOOGLE_CLICK_KEYS = new Set(['gclid', 'gbraid', 'wbraid']);
 
 /**
  * The advert click a referenced WhatsApp sale is credited to: the click ids on
  * the record of the visitor the code was issued to, when that click happened
- * BEFORE the sale and no more than 30 days before it. A click made after the
- * sale did not lead to it; an older one is outside every network's window.
+ * BEFORE the sale and no more than 30 days before it (90 for Google's click ids).
+ * A click made after the sale did not lead to it; an older one is outside every
+ * network's window.
  */
 export function refClickIds(record: { clickedAt: Date | string | null; ids: Record<string, string | null | undefined> } | null, saleAt: Date): Record<string, string> {
   if (!record?.clickedAt) return {};
   const at = new Date(record.clickedAt).getTime();
-  if (!Number.isFinite(at) || at > saleAt.getTime() || saleAt.getTime() - at > REF_CLICK_MAX_AGE_MS) return {};
-  return Object.fromEntries(Object.entries(record.ids).filter(([, v]) => typeof v === 'string' && v.length > 0)) as Record<string, string>;
+  const age = saleAt.getTime() - at;
+  if (!Number.isFinite(at) || at > saleAt.getTime() || age > REF_GOOGLE_CLICK_MAX_AGE_MS) return {};
+  return Object.fromEntries(Object.entries(record.ids).filter(([k, v]) => typeof v === 'string' && v.length > 0 && (age <= REF_CLICK_MAX_AGE_MS || GOOGLE_CLICK_KEYS.has(k)))) as Record<string, string>;
 }
 
 /** How old an offline conversion may be when it is sent (days). */

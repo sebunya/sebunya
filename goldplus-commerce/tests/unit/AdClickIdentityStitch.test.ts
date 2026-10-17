@@ -53,6 +53,6 @@ describe('ad click id reaches the identity graph', () => {
 
   it('the recent-click reader strips utm_source: the identity endpoint takes click ids only', () => {
     const fn = attribution.slice(attribution.indexOf('export function recentAdClickIds'), attribution.indexOf('export function getCheckoutAttribution'));
-    expect(fn).toContain('const { src: _src, ...ids } = recentClickIds();');
+    expect(fn).toContain('const { src: _src, ...ids } = recentClickIds(false);'); // false: no Google campaign details either (2026-10-17)
   });
 });
