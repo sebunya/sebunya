@@ -8,4 +8,4 @@ district-name-variants.csv,district-name-variants,2026-10-01,,7,shop,2026-10-15,
 area-kind-rules.csv,area-kind-rules,2026-10-01,,7,shop,2026-10-15,
 acceptance-areas.csv,acceptance-areas,2026-10-01,,10,shop,2026-10-15,
 corridor-allowances.csv,corridor-allowances,2026-10-01,,0,shop,2026-10-15,per-corridor detour allowance for the band report; empty until the dry run's corridor names are copied in
-manual-points.csv,manual-points,2026-10-17,6ab263a37d82dcbe916448d50459372c,31,ODbL (OpenStreetMap contributors) for osm:* rows; owner for owner:* rows,2026-10-17,hand-chosen points for corridor areas the parish import could not place; applied by geo:manual-points as centroid_source=manual
+manual-points.csv,manual-points,2026-10-17,4f0f3f4fc6f5d1104f48f05ca90f56af,46,ODbL (OpenStreetMap contributors) for osm:* rows; owner for owner:* rows,2026-10-17,hand-chosen points for corridor areas the parish import could not place; applied by geo:manual-points as centroid_source=manual
