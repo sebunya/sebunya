@@ -46,3 +46,34 @@ suite('checkout abandoners from real orders (real PostgreSQL)', () => {
     expect(ab).not.toContain(paid);
   });
 });
+
+suite('Google Ads sales by campaign from real orders (real PostgreSQL)', () => {
+  let raw: any;
+  const ids: string[] = [];
+  beforeAll(async () => {
+    const { createRequire } = await import('node:module');
+    raw = createRequire(import.meta.url)('postgres')(URL_ as string, { max: 2, onnotice: () => undefined });
+  });
+  afterAll(async () => {
+    if (ids.length) { await raw`delete from order_attribution where order_id = any(${ids})`; await raw`delete from orders where id = any(${ids})`; }
+    await raw?.end({ timeout: 5 });
+  });
+  it('reads paid Google-click orders with their campaign id and network; ignores unpaid and non-Google', async () => {
+    const tag = Date.now().toString(36);
+    const mk = async (suffix: string, payment: string, status: string, clicks: Record<string, string>) => {
+      const [r] = await raw`insert into orders (order_number, customer_name, customer_phone, delivery_area, delivery_address, subtotal_amount, delivery_fee, total_amount, status, payment_status, payment_method)
+        values (${'gc' + tag + suffix}, 'IT', '0772880000', 'Kira', 'Adr', 90000, 5000, 95000, ${status}, ${payment}, 'pesapal') returning id`;
+      ids.push(r.id);
+      await raw`insert into order_attribution (order_id, order_number, click_ids) values (${r.id}, ${'gc' + tag + suffix}, ${raw.json(clicks)})`;
+      return r.id as string;
+    };
+    const yt = await mk('y', 'paid', 'processing', { gclid: 'Cj0Y', gad_campaignid: '2233445566', gp_net: 'ytv' });
+    const unpaid = await mk('u', 'unpaid', 'received', { gclid: 'Cj0U', gad_campaignid: '1' });
+    const meta = await mk('m', 'paid', 'processing', { fbc: 'fb.1.1.x' });
+    const { DrizzleSpendFactRepository } = await import('../../apps/api/src/infrastructure/db/repositories/DrizzleAdvertisingOpsRepository');
+    const today = new Date().toISOString().slice(0, 10);
+    const sales = await new DrizzleSpendFactRepository().googleAdSales(today, today);
+    expect(sales.find((s) => s.orderId === yt)).toEqual({ orderId: yt, valueUgx: 90000, campaignId: '2233445566', network: 'ytv' });
+    expect(sales.some((s) => s.orderId === unpaid || s.orderId === meta)).toBe(false);
+  });
+});
