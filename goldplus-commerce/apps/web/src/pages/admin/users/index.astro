@@ -210,7 +210,7 @@ const emailById = new Map<string, string>(rows.map((u) => [u.id, u.email]));
     </div>
 
     <p class="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-      {shopperAccounts === null ? 'Shopper accounts are not shown here.' : `${shopperAccounts.toLocaleString('en-GB')} shopper ${shopperAccounts === 1 ? 'account is' : 'accounts are'} not shown here.`}
+      {shopperAccounts === null ? 'Shopper accounts are not shown here.' : `${new Intl.NumberFormat('en-GB').format(shopperAccounts)} shopper ${shopperAccounts === 1 ? 'account is' : 'accounts are'} not shown here.`}
       {' '}They belong to customers, who have no back-office access. To look a customer up, use <a href="/admin/customer-dna" class="font-bold underline">Customer DNA</a>.
     </p>
 
