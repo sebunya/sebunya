@@ -214,7 +214,7 @@ const noRoleYet = new Set(rows.filter((u) => u.roleNames.length === 0).map((u) =
 
     <p class="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
       {shopperAccounts === null ? 'Shopper accounts are not shown here.' : `${new Intl.NumberFormat('en-GB').format(shopperAccounts)} shopper ${shopperAccounts === 1 ? 'account is' : 'accounts are'} not shown here.`}
-      {' '}They belong to customers, who have no back-office access. To look a customer up, use <a href="/admin/customer-dna" class="font-bold underline">Customer DNA</a>.
+      {' '}They belong to customers, who have no back-office access. To block a customer's sign-in, <a href="#existing-account" class="font-bold underline">find the account by email</a> below; for their profile and history, use <a href="/admin/customer-dna" class="font-bold underline">Customer DNA</a>.
     </p>
 
     {fetchError && (
@@ -310,8 +310,8 @@ const noRoleYet = new Set(rows.filter((u) => u.roleNames.length === 0).map((u) =
     {umNotice && <div role="status" class={`mt-8 rounded-xl px-4 py-3 text-sm font-semibold ${umNotice.kind === "success" ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"}`}>{umNotice.text}</div>}
 
     <section id="existing-account" class="mt-8 rounded-2xl border border-slate-200 bg-white p-5">
-      <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">Give an existing account back-office access</h2>
-      <p class="mt-1 text-xs text-slate-600">For someone who already has an account on the shop (they signed up as a customer). Look the account up by its full email first: you will see whether it is a customer's, and their orders, before anything changes.</p>
+      <h2 class="text-sm font-black uppercase tracking-widest text-slate-500">Find one account by email</h2>
+      <p class="mt-1 text-xs text-slate-600">To block a customer's sign-in, or to give someone who signed up as a customer back-office access. Enter the full email: you will see whether the account is a customer's, and their orders, before anything changes.</p>
       <form method="GET" action="/admin/users#existing-account" class="mt-3 flex flex-wrap items-center gap-2">
         <label for="lookup" class="sr-only">Full email address of the account</label>
         <input id="lookup" name="lookup" type="email" required value={lookupEmail} placeholder="name@example.com" class="min-w-[16rem] flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm outline-none focus:border-brand-primaryInk" />
@@ -323,7 +323,16 @@ const noRoleYet = new Set(rows.filter((u) => u.roleNames.length === 0).map((u) =
       )}
       {lookup && lookup.kind === 'SHOPPER' && (
         <div class="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
-          <p><strong>{lookup.email}</strong> is a <strong>customer account</strong>: {lookup.orderCount === 1 ? '1 order' : `${lookup.orderCount} orders`}, joined {new Date(lookup.createdAt).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala' })}{lookup.isActive ? '' : ', currently deactivated'}.</p>
+          <p><strong>{lookup.email}</strong> is a <strong>customer account</strong>: {lookup.orderCount === 1 ? '1 order' : `${lookup.orderCount} orders`}, joined {new Date(lookup.createdAt).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala' })}, {lookup.isActive ? 'can sign in' : 'sign-in deactivated'}. It has no back-office access.</p>
+          <form method="POST" action="/admin/users#existing-account" class="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-3">
+            <input type="hidden" name="action" value="set-active" />
+            <input type="hidden" name="id" value={lookup.id} />
+            <input type="hidden" name="active" value={lookup.isActive ? 'false' : 'true'} />
+            <span class="text-xs font-bold text-slate-700">{lookup.isActive ? "Block this customer's sign-in" : "Let this customer sign in again"}</span>
+            {lookup.isActive && <input name="reason" required minlength="5" maxlength="300" placeholder="Reason (kept in the audit log)" class="min-w-[12rem] flex-1 rounded-lg border border-gray-200 px-2 py-2 text-xs" />}
+            <button type="submit" class="min-h-11 rounded-xl border border-gray-300 bg-white px-4 text-xs font-black text-gray-700 hover:bg-gray-50" data-confirm={lookup.isActive ? "Deactivate this customer's sign-in? Their sessions end now; their orders are unchanged." : undefined}>{lookup.isActive ? 'Deactivate sign-in' : 'Reactivate sign-in'}</button>
+          </form>
+          <h3 class="mt-4 text-xs font-black uppercase tracking-widest text-amber-900">Give this account back-office access</h3>
           <p class="mt-1">Giving it a role lets this person sign in to the back office with that role's permissions. Only do this for someone who works for GoldPlus, after confirming it is them (for example by phone).</p>
           <form method="POST" action="/admin/users#existing-account" class="mt-3 grid gap-2 sm:grid-cols-2">
             <input type="hidden" name="action" value="assign-role" />

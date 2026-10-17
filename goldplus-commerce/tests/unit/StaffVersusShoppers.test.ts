@@ -67,6 +67,10 @@ describe('the staff list holds staff only; shoppers are counted and looked up on
     expect(page).toContain('Staff accounts');
     expect(page).not.toMatch(/Email Handle|Contact Trace|Assigned Scopes|Execute console seeding|System Users/);
     expect(page).toContain("They belong to customers, who have no back-office access.");
+    // Most customer accounts have no Customer DNA profile (prod 2026-10-17: 4 of 7), so blocking one must not
+    // depend on it: the exact-email lookup offers it for any customer account.
+    expect(page).toMatch(/Block this customer's sign-in/);
+    expect(page).toMatch(/<input type="hidden" name="action" value="set-active" \/>\s*<input type="hidden" name="id" value=\{lookup\.id\} \/>/);
     expect(page).toMatch(/is a <strong>customer account<\/strong>/);
     expect(page).toMatch(/name="reason" required minlength="10"/);
     expect(page).toMatch(/<input type="checkbox" required/);
