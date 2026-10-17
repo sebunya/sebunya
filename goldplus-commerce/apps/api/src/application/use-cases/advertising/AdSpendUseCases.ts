@@ -33,6 +33,8 @@ export class AdSpendUseCases {
     private readonly credentials: (platform: string) => Promise<PlatformCredentials>,
     private readonly audit: CreateAuditLogUseCase,
     private readonly now: () => Date = () => new Date(),
+    /** Shillings per US dollar from the Google Ads card (ROAS for dollar spend); null when not entered. */
+    private readonly googleUgxPerUsd: () => Promise<number | null> = async () => null,
   ) {}
 
   /** Pull one platform's daily spend for [from, to]. */
@@ -103,8 +105,8 @@ export class AdSpendUseCases {
   async googleCampaigns(from?: string, to?: string): Promise<GoogleCampaignReport & { from: string; to: string }> {
     const t = to && /^\d{4}-\d{2}-\d{2}$/.test(to) ? to : iso(this.now());
     const f = from && /^\d{4}-\d{2}-\d{2}$/.test(from) ? from : iso(new Date(new Date(`${t}T00:00:00Z`).getTime() - 29 * DAY));
-    const [sales, spend] = await Promise.all([this.repo.googleAdSales(f, t), this.repo.report(f, t)]);
-    return { from: f, to: t, ...googleCampaignReport(sales, spend.filter((r) => /^google( ads)?$/i.test(r.platform))) };
+    const [sales, spend, rate] = await Promise.all([this.repo.googleAdSales(f, t), this.repo.report(f, t), this.googleUgxPerUsd().catch(() => null)]);
+    return { from: f, to: t, ...googleCampaignReport(sales, spend.filter((r) => /^google( ads)?$/i.test(r.platform)), rate) };
   }
 
   recentImports(limit = 20) { return this.repo.recentImports(limit); }
