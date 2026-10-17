@@ -4,6 +4,8 @@ import { cleanSelection } from '../../../domain/advertising/OptimisationEvents';
 
 export interface AdPlatformInfo {
   key: string; name: string; secretLabel: string; secretHint?: string; unavailable?: string;
+  /** Checks a pasted secret's shape on save (null = fine). Platforms whose secret has several accepted shapes. */
+  checkSecret?: (secret: string) => string | null;
   fields: Array<{ key: string; label: string; pattern: RegExp; hint: string; optional?: boolean }>;
   events: Record<string, string>;
   /** Documents a test channel (0154 Test mode). */
@@ -71,8 +73,11 @@ export class AdDestinationUseCases {
     if (typeof input.secret === 'string' && input.secret.trim() && p.secretLabel) {
       if (!this.cipher) return { ok: false, code: 'NOT_CONFIGURED', message: 'Not configured: the credential vault key is not set on the server.' };
       const s = input.secret.trim();
-      if (s.length < 20 || s.length > 4000) return { ok: false, code: 'BAD_INPUT', message: `${p.secretLabel} does not look right.` };
-      if (p.secretHint?.startsWith('{')) {
+      if (s.length < 20 || s.length > 6000) return { ok: false, code: 'BAD_INPUT', message: `${p.secretLabel} does not look right.` };
+      if (p.checkSecret) {
+        const problem = p.checkSecret(s);
+        if (problem) return { ok: false, code: 'BAD_INPUT', message: `${p.secretLabel}: ${problem}` };
+      } else if (p.secretHint?.startsWith('{')) {
         // A JSON bundle: check its shape now, not at the first failed send.
         let o: Record<string, unknown> | null = null;
         try { o = JSON.parse(s); } catch { /* reported below */ }

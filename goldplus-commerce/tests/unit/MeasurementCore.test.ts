@@ -67,7 +67,8 @@ describe('GP-DLV: classification, retry and unknown outcomes', () => {
     expect(c.event_name).toBe('purchase');
     expect(c.event_id).toBe('e-1');
     expect(c.ecommerce).toMatchObject({ transaction_id: 'GP-202609-ABCD1234', value: 95000, currency: 'UGX', shipping: 5000 });
-    expect(c.ecommerce!.items![0]).toEqual({ item_id: 'p1', item_name: 'Power bank', price: 45000, quantity: 2 });
+    // 2026-10-16: the SKU rides along (the Merchant Center feed's g:id, for Google Ads cart data).
+    expect(c.ecommerce!.items![0]).toMatchObject({ item_id: 'p1', item_name: 'Power bank', price: 45000, quantity: 2 });
     expect(c.user_data).toEqual({ fp_client_id: 'fp.1.x', ip_address: '41.84.203.125' });
     const r = toCanonical(ev, 'ga4:refund', {});
     expect(r.event_name).toBe('refund');

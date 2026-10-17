@@ -7,7 +7,7 @@ import { metaActionSource } from '../../domain/advertising/OfflineConversionPoli
 import { businessMessagingPurchase } from '../../domain/advertising/WhatsAppAdReferrals';
 import { metaBrowserIdFromVisitor } from '../../domain/advertising/MetaIdentifiers';
 import { asRemoteStatus, type RemoteRequestOutcome } from '../../domain/advertising/AudienceConfirmation';
-import { META_GRAPH_VERSION, adPlatform, tiktokMoney } from './AdPlatforms';
+import { META_GRAPH_VERSION, adPlatform, tiktokMoney, googleAdsApiHeaders, googleDataManagerHeaders, googleAdsEvent, googleAdsIngestRequest } from './AdPlatforms';
 
 /**
  * The platform calls behind audiences, spend import and offline conversions
@@ -49,13 +49,17 @@ async function call(fetchImpl: Fetch, url: string, init: RequestInit, secrets: s
 
 // ── Google Ads (REST) ────────────────────────────────────────────────────────
 
+/** Google Ads API headers (spend import): developer token + OAuth. Conversions use the Data Manager API instead. */
 async function googleHeaders(creds: PlatformCredentials): Promise<Record<string, string>> {
-  const def = adPlatform('google_ads')!;
-  const auth = await def.authorize!({ url: '', headers: {} }, creds.destinationConfig, creds.destinationSecret);
+  let auth: Record<string, string>;
+  try { auth = await googleAdsApiHeaders(creds.destinationSecret); } catch (err) { throw new PlatformError(String((err as Error).message), null); }
   const d = creds.destinationConfig;
   return { 'content-type': 'application/json', ...auth, ...(d.loginCustomerId ? { 'login-customer-id': d.loginCustomerId } : {}) };
 }
-const gBase = (c: PlatformCredentials) => `https://googleads.googleapis.com/${c.destinationConfig.apiVersion}/customers/${c.destinationConfig.customerId}`;
+const gBase = (c: PlatformCredentials) => {
+  if (!/^v\d{2}$/.test(c.destinationConfig.apiVersion ?? '')) throw new PlatformError('Not configured: spend import needs the Google Ads API version on the Google Ads form (e.g. v22).', null);
+  return `https://googleads.googleapis.com/${c.destinationConfig.apiVersion}/customers/${c.destinationConfig.customerId}`;
+};
 const googleSecrets = (c: PlatformCredentials) => { try { return Object.values(JSON.parse(c.destinationSecret)).map(String); } catch { return [c.destinationSecret]; } };
 
 // ── Google Customer Match (Data Manager API) ────────────────────────────────
@@ -472,7 +476,6 @@ export class HttpSpendGateway implements SpendGateway {
 
 // ── Offline conversions ──────────────────────────────────────────────────────
 
-const googleTime = (iso: string) => new Date(iso).toISOString().replace('T', ' ').slice(0, 19) + '+00:00';
 
 /** The exact request for one offline conversion (pure; the gateway sends it). */
 export function offlineRequest(ctx: OfflineContext, creds: PlatformCredentials): { url: string; headers: Record<string, string>; body: unknown } | null {
@@ -480,16 +483,19 @@ export function offlineRequest(ctx: OfflineContext, creds: PlatformCredentials):
   const t = Math.floor(new Date(ctx.row.occurredAt).getTime() / 1000);
   const orderId = ctx.orderNumber ?? `OFFLINE-${ctx.row.sourceRef.slice(0, 8).toUpperCase()}`;
   if (ctx.row.platform === 'google_ads') {
+    // Data Manager API (UploadClickConversions refuses new developer tokens since 15 June 2026). A phone sale is
+    // PHONE, a WhatsApp sale MESSAGE; an online order recorded here keeps WEB.
     const action = creds.config.offlineConversionActionId || d.conversionActionId;
-    const ids = [h.emailGoogleSha256 ? { hashedEmail: h.emailGoogleSha256 } : null, h.phonePlusSha256 ? { hashedPhoneNumber: h.phonePlusSha256 } : null].filter(Boolean);
-    return {
-      url: `https://googleads.googleapis.com/${d.apiVersion}/customers/${d.customerId}:uploadClickConversions`, headers: {},
-      body: { partialFailure: true, ...(creds.testMode ? { validateOnly: true } : {}), conversions: [{
-        ...(c.gclid ? { gclid: c.gclid } : c.gbraid ? { gbraid: c.gbraid } : c.wbraid ? { wbraid: c.wbraid } : {}),
-        conversionAction: `customers/${d.customerId}/conversionActions/${action}`, conversionDateTime: googleTime(ctx.row.occurredAt),
-        conversionValue: ctx.valueUgx, currencyCode: 'UGX', orderId, ...(ids.length ? { userIdentifiers: ids } : {}),
-      }] },
-    };
+    const event = googleAdsEvent({
+      transactionId: orderId, eventTimeSec: t,
+      source: ctx.channel === 'WHATSAPP' ? 'MESSAGE' : ctx.channel === 'PHONE' ? 'PHONE' : 'WEB',
+      valueUgx: ctx.valueUgx, currency: 'UGX',
+      gclid: c.gclid, gbraid: c.gbraid, wbraid: c.wbraid,
+      hashedEmail: h.emailGoogleSha256 ?? undefined, hashedPhonePlus: h.phonePlusSha256 ?? undefined,
+    });
+    if (!event) return null;
+    const req = googleAdsIngestRequest(d, action, [event], !!creds.testMode);
+    return { url: req.url, headers: req.headers, body: req.body };
   }
   if (ctx.row.platform === 'meta') {
     if (creds.testMode && !d.testEventCode) return null;
@@ -540,10 +546,11 @@ export class HttpOfflineConversionGateway implements OfflineConversionGateway {
     const req = offlineRequest(ctx, creds);
     if (!req) return { status: 400, error: 'Test mode needs the test event code; nothing was sent.' };
     const secrets = ctx.row.platform === 'google_ads' ? googleSecrets(creds) : [creds.secret, creds.destinationSecret];
-    const headers = ctx.row.platform === 'google_ads' ? { ...(await googleHeaders(creds)), ...req.headers } : req.headers;
+    const headers = ctx.row.platform === 'google_ads' ? { ...(await googleDataManagerHeaders(creds.destinationSecret)), ...req.headers } : req.headers;
     try {
       const j = await call(this.fetchImpl, req.url, { method: 'POST', headers, body: JSON.stringify(req.body) }, secrets);
-      if (ctx.row.platform === 'google_ads' && j?.partialFailureError?.message) return { status: 400, error: scrub(`partial failure: ${j.partialFailureError.message}`, secrets) };
+      // Data Manager is fast-fail: a rejected event arrives as an HTTP error (call() throws); warnings come back here.
+      if (ctx.row.platform === 'google_ads' && Array.isArray(j?.fieldWarnings) && j.fieldWarnings.length) return { status: 200, error: null };
       if (ctx.row.platform === 'tiktok' && j?.code !== 0) return { status: 400, error: scrub(`TikTok code ${j?.code}: ${j?.message ?? ''}`, secrets) };
       return { status: 200, error: null };
     } catch (err) {

@@ -197,9 +197,11 @@ PENDING/LEASED/RETRY_WAIT/UNKNOWN_OUTCOME/QUARANTINED, the offline row becomes
 the online purchase (the `order_confirmed` business event id) and the order number as order id,
 so the platform's own dedupe also catches a race.
 
-- Google Ads: `customers/{id}:uploadClickConversions` with the order's gclid/gbraid/wbraid when it
-  kept one, and hashed email/phone (`userIdentifiers`, enhanced conversions for leads) otherwise;
-  conversion action = the optional offline action id, else the conversions action. 90-day window.
+- Google Ads: **Data Manager API** `POST https://datamanager.googleapis.com/v1/events:ingest` (since
+  2026-10-16; `UploadClickConversions` refuses developer tokens that had not sent conversion uploads
+  before 15 June 2026). `eventSource` PHONE / MESSAGE / WEB, the order's gclid/gbraid/wbraid when it kept
+  one, hashed email/phone (`userData`, enhanced conversions for leads); conversion action = the optional
+  offline action id, else the purchase action. 90-day window.
 - Meta: Conversions API `/{dataset}/events`, `Purchase`, `action_source` per Meta's documented
   values: COD hand-over `physical_store`, phone sale `phone_call`, WhatsApp chat sale `chat`.
   7-day window.
@@ -436,7 +438,7 @@ to `JWT_SECRET`); without either, tokens cannot be stored ("Not configured"). Op
 
 | Platform | Conversions (existing card) | Audiences | Spend | Offline |
 |---|---|---|---|---|
-| Google Ads | customer ID, conversion action ID (import/click), manager ID (optional), API version, JSON `{developerToken, clientId, clientSecret, refreshToken}` | enable the **Data Manager API** in the OAuth client's Google Cloud project; a **Data Manager refresh token** (one OAuth consent with that client for scope `https://www.googleapis.com/auth/datamanager`); tick "Customer Match terms accepted"; lists + window/threshold + your segments | uses the conversions credentials | optional offline conversion action ID |
+| Google Ads | customer ID, purchase + optional lead action IDs (import / from clicks), manager ID (optional), Merchant Center ID (optional), **service-account key JSON** (or `{clientId, clientSecret, refreshToken}` with the Data Manager scope); add `developerToken` (+ API version) only for spend import — see `docs/advertising/GOOGLE_ADS.md` | enable the **Data Manager API** in the OAuth client's Google Cloud project; a **Data Manager refresh token** (one OAuth consent with that client for scope `https://www.googleapis.com/auth/datamanager`); tick "Customer Match terms accepted"; lists + window/threshold + your segments | uses the conversions credentials | optional offline conversion action ID |
 | Meta | dataset ID, CAPI token, test event code (for Test) | ad account ID + system-user token (`ads_management`, `ads_read`); accept Custom Audience terms; lists + your segments | ad account ID (token optional: reuses the audiences token) | nothing extra |
 | TikTok | pixel code, Events API token, test event code (for Test) | advertiser ID + Marketing API access token (Audience Management scope); lists + your segments | not built (no API import requested; use CSV) | offline event set ID (+ optional token) |
 

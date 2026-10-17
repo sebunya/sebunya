@@ -39,7 +39,18 @@ const HORIZON_MS = 24 * 3600_000;
 const MAX_EVENT_AGE_MS = 7 * 24 * 3600_000;
 const adRepo = new DrizzleAdDestinationRepository();
 
-export type SinkKey = `ga4:${'purchase' | 'refund'}` | `ad:${string}:purchase`;
+export type SinkKey = `ga4:${'purchase' | 'refund'}` | `ad:${string}:purchase` | 'ad:google_ads:restate';
+
+/**
+ * A Google Ads purchase restated after money went back (2026-10-16): the same transaction (order number) with
+ * the value still kept — the confirmed value minus every refund, or 0 when the order was refunded in full. Google
+ * overwrites the recorded value (Data Manager conversion adjustments), so a repeat is harmless. Pure.
+ */
+export function googleRestatedValue(confirmedValueUgx: number, refundedUgx: number[], fullyRefunded: boolean): number {
+  if (fullyRefunded) return 0;
+  const refunded = refundedUgx.reduce((s, n) => s + (Number.isFinite(n) ? n : 0), 0);
+  return Math.max(0, Math.round(confirmedValueUgx - refunded));
+}
 
 /** Sinks whose provider dedupes on our provider_event_id, so a retry after an unknown outcome is safe. */
 export function retryIsSafeAfterUnknown(sink: string): boolean {
@@ -164,6 +175,9 @@ export async function routeBusinessEvents(): Promise<{ routed: number; intents: 
             const moneyRefunded = rows(await tx.execute(sql`select 1 from measurement.business_event
               where aggregate_type = 'order' and aggregate_id = ${ev.aggregate_id} and event_name = 'refund_confirmed' and environment = ${ev.environment} limit 1`)).length > 0;
             if (cancellationCarriesGa4Refund(ga?.state, moneyRefunded)) sinks.push({ sink: 'ga4:refund', providerEventId: `refund:${orderNumber}` });
+            // Google Ads: restate a delivered purchase when the money went back.
+            const gads = rows(await tx.execute(sql`select state from measurement.delivery_intent where event_id = ${conf.event_id}::uuid and sink_key = 'ad:google_ads:purchase'`))[0];
+            if (moneyRefunded && gads?.state === 'ACCEPTED') sinks.push({ sink: 'ad:google_ads:restate', providerEventId: `restate:${eventId}` });
           }
         }
         if (ev?.event_name === 'refund_confirmed') {
@@ -176,6 +190,8 @@ export async function routeBusinessEvents(): Promise<{ routed: number; intents: 
           const ga = conf ? rows(await tx.execute(sql`select state from measurement.delivery_intent where event_id = ${conf.event_id}::uuid and sink_key = 'ga4:purchase'`))[0] : null;
           const fullRefund = cancel ? rows(await tx.execute(sql`select 1 from measurement.delivery_intent where event_id = ${cancel.event_id}::uuid and sink_key = 'ga4:refund' and state not in ('CANCELLED','SUPPRESSED')`)).length > 0 : false;
           if (refundCarriesGa4Refund(ga?.state, fullRefund)) sinks.push({ sink: 'ga4:refund', providerEventId: `refund:${ev.payload?.refundId}` });
+          const gads = conf ? rows(await tx.execute(sql`select state from measurement.delivery_intent where event_id = ${conf.event_id}::uuid and sink_key = 'ad:google_ads:purchase'`))[0] : null;
+          if (gads?.state === 'ACCEPTED') sinks.push({ sink: 'ad:google_ads:restate', providerEventId: `restate:${eventId}` });
         }
         let n = 0;
         for (const s of sinks) {
@@ -249,7 +265,16 @@ export const buyerIsInUganda = (phone: unknown): boolean => (normalisePhoneUg(ty
 
 /** Just-in-time identity: order contact + visitor/click context. Never queued, never logged. */
 async function loadIdentity(orderId: string) {
-  const o = rows(await db.execute(sql`select user_id, customer_email, customer_phone, customer_name, delivery_location from orders where id = ${orderId}::uuid`))[0] ?? {};
+  const o = rows(await db.execute(sql`select user_id, customer_email, customer_phone, customer_name, delivery_location, created_at from orders where id = ${orderId}::uuid`))[0] ?? {};
+  // New or returning, from our own orders: any earlier paid or delivered order by the same account or the same
+  // phone number (last nine digits, so +256…, 256… and 0… agree). Google Ads new-customer acquisition reads it.
+  const phone9 = String(o.customer_phone ?? '').replace(/\D/g, '').slice(-9);
+  const earlier = o.created_at && (o.user_id || phone9.length === 9)
+    ? rows(await db.execute(sql`select 1 from orders p where p.id <> ${orderId}::uuid and p.created_at < ${o.created_at}
+        and (p.payment_status = 'paid' or p.status in ('delivered', 'completed'))
+        and (${o.user_id ? sql`p.user_id = ${o.user_id}::uuid` : sql`false`} or ${phone9.length === 9 ? sql`right(regexp_replace(coalesce(p.customer_phone, ''), '\\D', '', 'g'), 9) = ${phone9}` : sql`false`})
+        limit 1`)).length > 0
+    : null;
   const loc = (typeof o.delivery_location === 'string' ? (() => { try { return JSON.parse(o.delivery_location); } catch { return null; } })() : o.delivery_location) ?? {};
   const a = rows(await db.execute(sql`select fp_client_id, client_ip, user_agent, ga_session_id, ga_session_number, click_ids from order_attribution where order_id = ${orderId}::uuid`))[0] ?? {};
   const ck: Record<string, string> = (typeof a.click_ids === 'string' ? JSON.parse(a.click_ids) : a.click_ids) ?? {};
@@ -259,6 +284,7 @@ async function loadIdentity(orderId: string) {
     ga_session_id: a.ga_session_id ?? undefined, ga_session_number: a.ga_session_number ?? undefined,
     hashed_email: hashEmail(o.customer_email), hashed_email_google: hashEmailGoogle(o.customer_email), hashed_email_microsoft: hashEmailMicrosoft(o.customer_email),
     hashed_phone: hashPhone(o.customer_phone), hashed_phone_plus: hashPhonePlus(o.customer_phone),
+    ...(earlier === null ? {} : { customer_type: earlier ? 'RETURNING' : 'NEW' }),
     gclid: ck.gclid, gbraid: ck.gbraid, wbraid: ck.wbraid, ttclid: ck.ttclid, twclid: ck.twclid, msclkid: ck.msclkid, sccid: ck.ScCid, epik: ck.epik,
     // Meta: the click id the browser built from the landing URL's fbclid, and a
     // browser id derived from the visitor id (the shop runs no Pixel).
@@ -277,7 +303,7 @@ async function loadIdentity(orderId: string) {
 export function toCanonical(ev: { event_id: string; event_name: string; occurred_at: string | Date; payload: any }, sink: string, identity: Record<string, unknown>): CanonicalTelemetryEvent {
   const p = ev.payload ?? {};
   const isRefund = sink === 'ga4:refund';
-  const items = (p.items ?? []).map((l: any) => ({ item_id: l.productId, item_name: l.name, price: Math.round(Number(l.netLineUGX) / Math.max(1, Number(l.quantity))), quantity: Number(l.quantity) }));
+  const items = (p.items ?? []).map((l: any) => ({ item_id: l.productId, item_name: l.name, price: Math.round(Number(l.netLineUGX) / Math.max(1, Number(l.quantity))), quantity: Number(l.quantity), ...(l.sku ? { item_sku: String(l.sku) } : {}) }));
   // A partial refund carries its own amount; a cancellation refunds the order's value.
   const value = ev.event_name === 'refund_confirmed' ? Number(p.amountUGX ?? 0)
     : Number(p.netMerchandiseUGX ?? 0) + Number(p.collectedDeliveryUGX ?? 0) + Number(p.taxUGX ?? 0);
@@ -398,6 +424,21 @@ export async function deliverOne(deliveryId: string, generation: number, fetchIm
     // Never a refund of 0: without the confirmed totals there is nothing true to send.
     if (!withValue) { await finish(deliveryId, token, 'SUPPRESSED', 'NO_CONFIRMED_VALUE'); return 'SUPPRESSED'; }
     source = withValue;
+  }
+
+  if (sink === 'ad:google_ads:restate') {
+    // The order's confirmed purchase, carrying the value still kept after every refund (googleRestatedValue).
+    const orderEvents = rows(await db.execute(sql`select event_id, event_name, occurred_at, payload from measurement.business_event
+      where aggregate_type = 'order' and aggregate_id = ${ev.aggregate_id} and environment = ${ev.environment} order by occurred_at`));
+    const parse = (x: unknown) => (typeof x === 'string' ? JSON.parse(x) : x) as any;
+    const conf = orderEvents.find((x: any) => x.event_name === 'order_confirmed');
+    if (!conf) { await finish(deliveryId, token, 'SUPPRESSED', 'NO_CONFIRMED_VALUE'); return 'SUPPRESSED'; }
+    const cp = parse(conf.payload) ?? {};
+    const confirmedValue = Number(cp.netMerchandiseUGX ?? 0) + Number(cp.collectedDeliveryUGX ?? 0) + Number(cp.taxUGX ?? 0);
+    const refunds = orderEvents.filter((x: any) => x.event_name === 'refund_confirmed').map((x: any) => Number(parse(x.payload)?.amountUGX ?? 0));
+    const cancelledWithMoneyBack = orderEvents.some((x: any) => x.event_name === 'order_cancelled') && refunds.length > 0;
+    const kept = googleRestatedValue(confirmedValue, refunds, cancelledWithMoneyBack && refunds.reduce((s, n) => s + n, 0) >= confirmedValue);
+    source = { ...conf, payload: { ...cp, netMerchandiseUGX: String(kept), collectedDeliveryUGX: '0', taxUGX: '0' } };
   }
 
   const canonical = toCanonical(source, sink, identity);

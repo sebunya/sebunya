@@ -368,11 +368,20 @@ describe('platform requests', () => {
   it('offline requests: Google click/enhanced conversion, Meta action_source, TikTok offline event set; test modes', () => {
     const row = convRow({ platform: 'google_ads' });
     const g = offlineRequest(ctxOf(row, { clickIds: { gclid: 'GCLID' } }), creds({ destinationConfig: { customerId: '1234567890', conversionActionId: '777', apiVersion: 'v25' }, config: { offlineConversionActionId: '888' }, testMode: true }))!;
-    const gc = (g.body as any).conversions[0];
-    expect(g.url).toBe('https://googleads.googleapis.com/v25/customers/1234567890:uploadClickConversions');
-    expect((g.body as any).validateOnly).toBe(true);
-    expect(gc).toMatchObject({ gclid: 'GCLID', conversionAction: 'customers/1234567890/conversionActions/888', conversionDateTime: '2026-09-24 10:00:00+00:00', orderId: 'GP-100', currencyCode: 'UGX' });
-    expect(gc.userIdentifiers[0].hashedEmail).toBe('g'.repeat(64));
+    // 2026-10-16: Data Manager API (UploadClickConversions refuses new developer tokens since 15 June 2026).
+    const gb = g.body as any;
+    expect(g.url).toBe('https://datamanager.googleapis.com/v1/events:ingest');
+    expect(gb.validateOnly).toBe(true);
+    expect(gb.destinations[0]).toEqual({ operatingAccount: { accountType: 'GOOGLE_ADS', accountId: '1234567890' }, productDestinationId: '888' });
+    expect(gb.encoding).toBe('HEX');
+    const ge = gb.events[0];
+    expect(ge).toMatchObject({ adIdentifiers: { gclid: 'GCLID' }, transactionId: 'GP-100', eventTimestamp: '2026-09-24T10:00:00.000Z', currency: 'UGX', conversionValue: 150000 });
+    expect(ge.userData.userIdentifiers[0].emailAddress).toBe('g'.repeat(64));
+    // A WhatsApp sale is a messaging conversion; a phone sale a phone conversion.
+    const wa = offlineRequest(ctxOf(row, { clickIds: { gclid: 'GCLID' }, channel: 'WHATSAPP' }), creds({ destinationConfig: { customerId: '1234567890', conversionActionId: '777' } }))!;
+    expect((wa.body as any).events[0].eventSource).toBe('MESSAGE');
+    const ph = offlineRequest(ctxOf(row, { clickIds: { gclid: 'GCLID' }, channel: 'PHONE' }), creds({ destinationConfig: { customerId: '1234567890', conversionActionId: '777' } }))!;
+    expect((ph.body as any).events[0].eventSource).toBe('PHONE');
 
     const m = offlineRequest(ctxOf(convRow({ platform: 'meta', source: 'ADMIN_SALE' }), { channel: 'WHATSAPP' }), creds({ destinationConfig: { datasetId: '1234567890123' } }))!;
     const md = (m.body as any).data[0];
