@@ -405,7 +405,8 @@ describe('held 5: cash-on-delivery customers hear about their order', () => {
   it('dispatch, delivery and a shop cancellation each send their message', () => {
     expect(customerMessageForTransition('dispatched', 'administrator')).toBe('ORDER_DISPATCHED');
     expect(customerMessageForTransition('delivered', 'fulfilment_worker')).toBe('ORDER_FULFILLMENT_COMPLETED');
-    expect(customerMessageForTransition('completed', 'administrator')).toBeNull(); // a counter collection is not a delivery
+    // A counter collection is not a delivery: its own wording, the same review ask.
+    expect(customerMessageForTransition('completed', 'administrator')).toBe('ORDER_COLLECTED');
     expect(customerMessageForTransition('cancelled', 'system')).toBe('ORDER_CANCELLED_BY_SHOP');
     expect(customerMessageForTransition('cancelled', 'customer')).toBeNull();
     expect(customerMessageForTransition('processing', 'payment_provider')).toBeNull();

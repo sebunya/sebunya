@@ -24,6 +24,8 @@ export type CustomerTemplate =
   | 'ORDER_FULFILLMENT_PROCESSING'
   | 'ORDER_DISPATCHED'
   | 'ORDER_FULFILLMENT_COMPLETED'
+  | 'ORDER_COLLECTED'
+  | 'ORDER_REVIEW_REMINDER'
   | 'ORDER_CANCELLED_BY_SHOP'
   | 'PHONE_VERIFICATION'
   | 'PASSWORD_RESET'
@@ -181,6 +183,12 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
     case 'ORDER_FULFILLMENT_COMPLETED':
       // The one moment to ask for a review: the goods have just arrived. Same text, one link more.
       return `${SHOP_NAME}: your order${ref} has been delivered. Thank you. How was it? Rate it in a minute: ${reviewOrderUrl(d.orderNumber)} If anything is wrong, call ${phone}.`;
+    case 'ORDER_COLLECTED':
+      // A counter collection: "delivered" would not be true, the review ask is the same.
+      return `${SHOP_NAME}: order${ref} is complete. Thank you for shopping with us. How was it? Rate it in a minute: ${reviewOrderUrl(d.orderNumber)} If anything is wrong, call ${phone}.`;
+    case 'ORDER_REVIEW_REMINDER':
+      // Sent once, a few days after delivery or collection, only when nothing on the order is rated.
+      return `${SHOP_NAME}: how is what you bought on order${ref}? A rating helps the next shopper choose: ${reviewOrderUrl(d.orderNumber)} We will not ask again. If anything is wrong, call ${phone}.`;
     case 'ORDER_CANCELLED_BY_SHOP':
       return `${SHOP_NAME}: order${ref} has been cancelled. If you paid for it, our team arranges the refund. Call ${phone} if you have not heard from us.`;
     case 'PHONE_VERIFICATION':
@@ -321,6 +329,24 @@ export function emailCopy(template: string, d: CustomerMessageData = {}): EmailC
         body: `Your order${ref} has been delivered. Thank you for shopping with ${SHOP_NAME}. If you have a minute, rate what you bought from the order page; it helps the next shopper choose. If anything is wrong with it, call ${phone} and we will sort it out with you.`,
         cta: { label: 'See this order', url: track },
         tone: 'success',
+      };
+    case 'ORDER_COLLECTED':
+      return {
+        subject: `Your order${ref} is complete`,
+        preheader: 'Thank you for shopping with GoldPlus.',
+        headline: 'Order complete',
+        body: `Your order${ref} is complete. Thank you for shopping with ${SHOP_NAME}. If you have a minute, rate what you bought; it helps the next shopper choose. If anything is wrong with it, call ${phone} and we will sort it out with you.`,
+        cta: { label: 'Rate what you bought', url: reviewOrderUrl(d.orderNumber) },
+        tone: 'success',
+      };
+    case 'ORDER_REVIEW_REMINDER':
+      return {
+        subject: `How is what you bought on order${ref}?`,
+        preheader: 'A rating takes a minute. We will not ask again.',
+        headline: 'How is it working?',
+        body: `You have had order${ref} for a few days now. If you have a minute, rate what you bought; it helps the next shopper choose. This is the only reminder we send. If anything is wrong with it, call ${phone} and we will sort it out with you.`,
+        cta: { label: 'Rate what you bought', url: reviewOrderUrl(d.orderNumber) },
+        tone: 'neutral',
       };
     case 'ORDER_CANCELLED_BY_SHOP':
       return {
@@ -464,6 +490,8 @@ export const CUSTOMER_TRANSACTIONAL_TEMPLATES: readonly string[] = Object.freeze
   'ORDER_FULFILLMENT_PROCESSING',
   'ORDER_DISPATCHED',
   'ORDER_FULFILLMENT_COMPLETED',
+  'ORDER_COLLECTED',
+  'ORDER_REVIEW_REMINDER',
   'ORDER_CANCELLED_BY_SHOP',
   'PHONE_VERIFICATION',
   'PASSWORD_RESET',
