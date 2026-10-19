@@ -191,3 +191,17 @@ describe('Maps Platform Terms §3.2.3(c)(iv): Places coordinates never feed area
     expect(read('apps/web/src/pages/checkout.astro')).toMatch(/loc\.gpsSource !== 'map_place'\) gps = /);
   });
 });
+
+describe('"Use my location" puts the actual location (owner, 2026-10-19)', () => {
+  it('a phone fix commits in one tap as the current location; a vague fix or a Google pick does not', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('apps/web/src/lib/locationPickerClient.ts', 'utf8');
+    const after = src.slice(src.indexOf('async function afterPin'), src.indexOf('function commitCurrentLocation'));
+    expect(after).toMatch(/if \(!roughKm && pin\.gpsSource === 'device'\) \{\s*commitCurrentLocation\(areas\[0\]\)/);
+    const commit = src.slice(src.indexOf('function commitCurrentLocation'), src.indexOf('function offerAreas'));
+    expect(commit).toContain("'Your current location'");
+    expect(commit).toContain('` · within ${pin.gpsAccuracyM} m`');
+    // The rider and the customer see the real point.
+    expect(src).toContain('View on map');
+  });
+});
