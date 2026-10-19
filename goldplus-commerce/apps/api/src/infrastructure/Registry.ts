@@ -68,6 +68,8 @@ import { DrizzleCouponRepository } from './db/repositories/DrizzleCouponReposito
 import { DrizzleReviewRepository } from './db/repositories/DrizzleReviewRepository';
 import { SubmitReviewUseCase } from '../application/use-cases/reviews/SubmitReviewUseCase';
 import { GetOrderReviewEligibilityUseCase, GetProductReviewsUseCase, SubmitOrderReviewUseCase } from '../application/use-cases/reviews/OrderReviewUseCases';
+import { SendReviewRemindersUseCase } from '../application/use-cases/reviews/SendReviewRemindersUseCase';
+import { DrizzleReviewReminderCandidates } from './reviews/DrizzleReviewReminderCandidates';
 import { DrizzleCreatorRepository } from './db/repositories/DrizzleCreatorRepository';
 import { DrizzleFlashSaleRepository } from './db/repositories/DrizzleFlashSaleRepository';
 import { DrizzleSeoRepository } from './db/repositories/DrizzleSeoRepository';
@@ -2192,6 +2194,11 @@ export class Registry {
         idempotencyKey: direction === 'up' ? `tier:${userId}:${tierCode}` : `tier-down:${userId}:${tierCode}:${new Date().toISOString().slice(0, 10)}`,
         data: { tierCode, tierName, direction },
       }),
+  );
+  /** The one review reminder per order, a few days after delivery or collection. */
+  public readonly sendReviewRemindersUseCase = new SendReviewRemindersUseCase(
+    new DrizzleReviewReminderCandidates(),
+    (orderId) => this.enqueueCustomerOrderMessage(orderId, 'ORDER_REVIEW_REMINDER'),
   );
     public readonly runLoyaltyDailySweepUseCase = new RunLoyaltyDailySweepUseCase(
     this.loyaltyRepo,

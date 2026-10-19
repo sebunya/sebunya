@@ -13,13 +13,17 @@
  * Every message goes out at most once per order and template (the outbox
  * idempotency key), and CUSTOMER_ORDER_MESSAGES_LIVE=false stops them all.
  */
-export type OrderLifecycleTemplate = 'ORDER_RECEIVED_UNPAID' | 'ORDER_DISPATCHED' | 'ORDER_FULFILLMENT_COMPLETED' | 'ORDER_CANCELLED_BY_SHOP';
+export type OrderLifecycleTemplate = 'ORDER_RECEIVED_UNPAID' | 'ORDER_DISPATCHED' | 'ORDER_FULFILLMENT_COMPLETED' | 'ORDER_COLLECTED' | 'ORDER_CANCELLED_BY_SHOP';
 
 export function customerMessageForTransition(toStatus: string, actorType: string | null | undefined): OrderLifecycleTemplate | null {
   if (toStatus === 'dispatched') return 'ORDER_DISPATCHED';
   // "Has been delivered" is true only of a delivery; a counter collection
   // (processing → completed) is not one.
   if (toStatus === 'delivered') return 'ORDER_FULFILLMENT_COMPLETED';
+  // `delivered` is terminal, so `completed` is always a non-delivery closure
+  // (processing or a failed attempt, then collected). It used to send nothing,
+  // so a customer who collected was never asked to rate what they bought.
+  if (toStatus === 'completed') return 'ORDER_COLLECTED';
   // A customer who cancelled their own order does not need telling.
   if (toStatus === 'cancelled' && actorType !== 'customer') return 'ORDER_CANCELLED_BY_SHOP';
   return null;

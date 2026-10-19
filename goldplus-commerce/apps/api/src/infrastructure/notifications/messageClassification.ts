@@ -81,6 +81,10 @@ const TRANSACTIONAL_TEMPLATES = new Set([
   'CUSTOMER_ORDER_MESSAGE',
   'ORDER_DISPATCHED',
   'ORDER_CANCELLED_BY_SHOP',
+  // About the customer's own order, once each: the closing message for a
+  // counter collection and the single review reminder a few days later.
+  'ORDER_COLLECTED',
+  'ORDER_REVIEW_REMINDER',
   'SUPPORT_REQUEST_RECEIVED',
   // The copy of their Goldie chat a customer asked for, to the address they typed, seconds ago.
   'GOLDIE_TRANSCRIPT',

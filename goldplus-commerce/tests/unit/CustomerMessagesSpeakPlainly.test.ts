@@ -23,6 +23,7 @@ import { classifyMessage } from '../../apps/api/src/infrastructure/notifications
 const TEMPLATES: CustomerTemplate[] = [
   'ORDER_RECEIVED_UNPAID', 'ORDER_PAYMENT_PENDING', 'ORDER_PAYMENT_SUCCESS', 'ORDER_PAYMENT_FAILED',
   'ORDER_PAYMENT_CANCELLED', 'ORDER_FULFILLMENT_PROCESSING', 'ORDER_DISPATCHED', 'ORDER_FULFILLMENT_COMPLETED',
+  'ORDER_COLLECTED', 'ORDER_REVIEW_REMINDER',
   'ORDER_CANCELLED_BY_SHOP', 'PHONE_VERIFICATION', 'PASSWORD_RESET', 'LOYALTY_POINTS_EARNED',
   'LOYALTY_EXPIRY_WARNING', 'LOYALTY_REDEMPTION_CONFIRMED', 'LOYALTY_REDEMPTION_REVERSED', 'LOYALTY_TIER_CHANGED',
   'SUPPORT_REQUEST_RECEIVED', 'QUOTE_REQUEST_RECEIVED', 'DEALER_APPLICATION_RECEIVED', 'FAKE_REPORT_RECEIVED',
@@ -147,14 +148,18 @@ describe('the renderer and the gates agree with the wording table', () => {
   });
 });
 
-describe('the delivered message asks for a review', () => {
+describe('the closing messages ask for a review', () => {
   it('carries the review link for THIS order, still fits two segments and still ends with a person to call', () => {
     const d = { ...DATA, orderNumber: 'GP-202609-C8E8FA7B' };
-    const s = smsText('ORDER_FULFILLMENT_COMPLETED', d)!;
-    expect(s).toContain('/review?reference=GP-202609-C8E8FA7B');
-    expect(s.length).toBeLessThanOrEqual(320);
-    expect(s).toMatch(/call 0705 004545\.$/);
-    // Asked once, when the goods arrive; no other order message asks.
-    for (const t of TEMPLATES.filter((x) => x !== 'ORDER_FULFILLMENT_COMPLETED')) expect(smsText(t, d) ?? '', t).not.toContain('/review');
+    // Asked when the order closes (delivered, or collected at the counter),
+    // and once more a few days later; no other message asks.
+    const asking: CustomerTemplate[] = ['ORDER_FULFILLMENT_COMPLETED', 'ORDER_COLLECTED', 'ORDER_REVIEW_REMINDER'];
+    for (const t of asking) {
+      const s = smsText(t, d)!;
+      expect(s, t).toContain('/review?reference=GP-202609-C8E8FA7B');
+      expect(s.length, t).toBeLessThanOrEqual(320);
+      expect(s, t).toMatch(/call 0705 004545\.$/);
+    }
+    for (const t of TEMPLATES.filter((x) => !asking.includes(x))) expect(smsText(t, d) ?? '', t).not.toContain('/review');
   });
 });
