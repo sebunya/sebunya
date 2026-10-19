@@ -580,7 +580,9 @@ describe('quote requests, fake reports and dealer applications accept a phone nu
   });
 
   it('the pages no longer require it, on the server or in the browser', () => {
-    for (const [page, field] of [['apps/web/src/pages/quote-request.astro', 'email'], ['apps/web/src/pages/dealers/apply.astro', 'email'], ['apps/web/src/pages/support/fake.astro', 'reporterEmail']] as const) {
+    // The dealer page asks no email at all since 2026-10-19 (name, phone, shop and town).
+    expect(read('apps/web/src/pages/dealers/apply.astro')).not.toMatch(/name="email"|isValidEmail/);
+    for (const [page, field] of [['apps/web/src/pages/quote-request.astro', 'email'], ['apps/web/src/pages/support/fake.astro', 'reporterEmail']] as const) {
       const src = read(page);
       expect(src, page).toMatch(/\(optional\)/);
       expect(src, page).not.toMatch(/if \(!isValidEmail\(/);
