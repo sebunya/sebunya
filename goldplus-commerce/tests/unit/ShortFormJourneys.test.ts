@@ -48,3 +48,13 @@ describe('short form journeys', () => {
     for (const src of [dealer, quote, track, read('apps/web/src/pages/review.astro'), read('apps/web/src/pages/checkout.astro')]) expect(src).toMatch(/<RememberedDetails show=/);
   });
 });
+
+describe('dealer application is three fields (owner, 2026-10-19)', () => {
+  it('asks only name, phone, and shop name and town', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync('apps/web/src/pages/dealers/apply.astro', 'utf8');
+    const fields = [...src.matchAll(/<FormField[^>]*\sname="([^"]+)"/g)].map((m) => m[1]);
+    expect(fields).toEqual(['contactName', 'phone', 'shop']);
+    expect(src).not.toMatch(/UgandaLocationPicker|tinNumber"|name="email"|<details/);
+  });
+});

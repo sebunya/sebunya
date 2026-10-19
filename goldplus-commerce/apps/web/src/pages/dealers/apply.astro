@@ -1,10 +1,12 @@
 ---
 /**
- * Dealer application. Reworked 2026-10-13 for a one-minute application:
- *  - only what the team needs to call back (your name, phone, shop name, where
- *    the shop is); email, URA TIN and address detail are optional and folded
- *    away. The API never required a TIN (it stores 'PENDING'); the page did,
- *    and turned away small shops that do not have one to hand.
+ * Dealer application. Three fields (owner, 2026-10-19: "far too many fields"):
+ * your name, a phone we can call, and the shop's name and town in one line.
+ * The team asks everything else on the call. The location picker (built for
+ * delivery addresses), email, URA TIN and address detail are gone. The API
+ * still stores the line as both business name and location.
+ *
+ * Kept from 2026-10-13:
  *  - no terms checkbox: there are no published dealer terms to agree to, and
  *    the old one blocked the form with a pop-up. The one real commitment
  *    (original products, recommended prices) is stated beside the button.
@@ -18,9 +20,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import FormField from '../../components/FormField.astro';
 import FormFeedback from '../../components/FormFeedback.astro';
 import { postJson } from '../../lib/api';
-import UgandaLocationPicker from '../../components/UgandaLocationPicker.astro';
-import { formatLocationLabel } from '../../lib/location-utils';
-import { isValidEmail, isValidUgandanPhone, normalizeEmail, normalizePhone } from '../../lib/formValidation';
+import { isValidUgandanPhone, normalizePhone } from '../../lib/formValidation';
 import { readGuestMemory, hasGuestMemory } from '../../lib/guestMemory';
 import RememberedDetails from '../../components/RememberedDetails.astro';
 
@@ -29,39 +29,29 @@ let message: string | undefined;
 let reference: string | undefined;
 let values: Record<string, string> = {};
 let errors: Record<string, string> = {};
-let showMore = false;
 let remembered = false;
 
 if (Astro.request.method === 'GET') {
   const m = readGuestMemory(Astro.cookies, Astro.request);
   remembered = hasGuestMemory(m);
-  values = { contactName: m.name ?? '', phone: m.phone ?? '', email: m.email ?? '', locationJson: m.locationJson ?? '' };
+  values = { contactName: m.name ?? '', phone: m.phone ?? '' };
 }
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
-  const businessName = String(form.get('businessName') ?? '').trim();
   const contactName = String(form.get('contactName') ?? '').trim();
-  const email = normalizeEmail(String(form.get('email') ?? ''));
   const phone = normalizePhone(String(form.get('phone') ?? ''));
-  const tinNumber = String(form.get('tinNumber') ?? '').trim();
-  const locationJson = String(form.get('locationJson') ?? '').trim();
-  const shopDetails = String(form.get('shopDetails') ?? '').trim();
+  const shop = String(form.get('shop') ?? '').trim().slice(0, 200);
 
-  values = { businessName, contactName, email, phone, tinNumber, locationJson, shopDetails };
-  showMore = Boolean(email || tinNumber || shopDetails);
+  values = { contactName, phone, shop };
 
   if (!contactName) errors.contactName = 'Tell us who to ask for.';
   if (!isValidUgandanPhone(phone)) errors.phone = 'Enter a Ugandan number we can call, for example 0772 123 456.';
-  if (!businessName) errors.businessName = 'What is the shop or business called?';
-  if (!locationJson) errors.locationJson = 'Choose the area or town where the shop is.';
-  if (email && !isValidEmail(email)) { errors.email = 'That email does not look right. Check it, or leave it blank.'; showMore = true; }
+  if (!shop) errors.shop = 'For example: Namuli Phones, Kikuubo.';
 
   if (Object.keys(errors).length === 0) {
-    const formattedLoc = formatLocationLabel(locationJson);
-    const location = shopDetails ? `${formattedLoc} | DETAILS: ${shopDetails}` : formattedLoc;
     const result = await postJson('/governance/dealers/apply', {
-      businessName, contactName, email, phone, tinNumber, location,
+      businessName: shop, contactName, email: '', phone, tinNumber: '', location: shop,
     }, null, readClientAddress(Astro));
     reference = result.ok ? result.reference : undefined;
     if (result.ok) {
@@ -86,7 +76,7 @@ if (Astro.request.method === 'POST') {
     <div class="container mx-auto px-4 lg:px-8 max-w-3xl">
       <p class="text-[11px] font-black uppercase tracking-widest text-brand-primary">For shops and resellers</p>
       <h1 class="mt-2 text-3xl md:text-4xl font-black tracking-tight" style="text-wrap:balance">Sell GoldPlus in your shop</h1>
-      <p class="mt-3 text-slate-300 text-sm sm:text-base leading-relaxed">Apply in about a minute. We call you to agree wholesale prices and your first order.</p>
+      <p class="mt-3 text-slate-300 text-sm sm:text-base leading-relaxed">Three details. We call you to agree prices and your first order.</p>
       <ul class="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
         <li class="rounded-xl bg-white/5 border border-white/10 p-3"><span class="font-bold text-white">Codes buyers can check.</span> <span class="text-slate-300">Every GoldPlus product carries a verification code.</span></li>
         <li class="rounded-xl bg-white/5 border border-white/10 p-3"><span class="font-bold text-white">Wholesale prices.</span> <span class="text-slate-300">Better prices as your orders grow.</span></li>
@@ -104,26 +94,7 @@ if (Astro.request.method === 'POST') {
         <form method="POST" action="/dealers/apply" novalidate id="dealerForm" class="bg-white p-5 sm:p-8 rounded-2xl border border-slate-200 space-y-5">
           <FormField id="contactName" name="contactName" label="Your name" required defaultValue={values.contactName} autocomplete="name" errorMessage={errors.contactName} />
           <FormField id="phone" name="phone" label="Phone we can call" type="tel" required defaultValue={values.phone} autocomplete="tel" inputmode="tel" placeholder="07XX XXX XXX" errorMessage={errors.phone} />
-          <FormField id="businessName" name="businessName" label="Shop or business name" required defaultValue={values.businessName} autocomplete="organization" errorMessage={errors.businessName} />
-          <UgandaLocationPicker
-            name="locationJson"
-            label="Where is the shop?"
-            helperText="Type the area, town or district, for example Kikuubo, Ntinda or Mbarara."
-            required={true}
-            defaultValue={values.locationJson}
-            errorMessage={errors.locationJson}
-          />
-
-          <details class="group rounded-xl border border-slate-200 bg-slate-50 px-4 py-3" open={showMore}>
-            <summary class="cursor-pointer list-none text-sm font-bold text-slate-800 marker:content-none flex items-center gap-2">
-              <span aria-hidden="true" class="transition-transform group-open:rotate-90">▸</span> Add more details (optional)
-            </summary>
-            <div class="mt-4 space-y-4">
-              <FormField id="shopDetails" name="shopDetails" label="Building, street or landmark" placeholder="e.g. Shop 14, Nakasero Market, opposite the main gate" defaultValue={values.shopDetails} />
-              <FormField id="email" name="email" label="Email" type="email" defaultValue={values.email} autocomplete="email" errorMessage={errors.email} />
-              <FormField id="tinNumber" name="tinNumber" label="URA TIN, if you have one" defaultValue={values.tinNumber} placeholder="100XXXXXXXX" inputmode="numeric" />
-            </div>
-          </details>
+          <FormField id="shop" name="shop" label="Shop name and town" required defaultValue={values.shop} autocomplete="organization" placeholder="e.g. Namuli Phones, Kikuubo" errorMessage={errors.shop} />
 
           <p class="text-xs leading-relaxed text-slate-600">By applying you agree to sell only original GoldPlus products and to follow our recommended prices.</p>
           <button type="submit" id="submitBtn" class="w-full min-h-12 bg-brand-primary text-gray-950 rounded-full font-black text-sm tracking-wider uppercase outline-none focus-visible:ring-4 focus-visible:ring-brand-primaryInk active:scale-[0.99]">
@@ -141,7 +112,7 @@ if (Astro.request.method === 'POST') {
 </BaseLayout>
 
 <script>
-  import { isValidEmail, isValidUgandanPhone } from '../../lib/formValidation';
+  import { isValidUgandanPhone } from '../../lib/formValidation';
 
   const form = document.getElementById('dealerForm') as HTMLFormElement | null;
   const btn = document.getElementById('submitBtn') as HTMLButtonElement | null;
@@ -166,14 +137,11 @@ if (Astro.request.method === 'POST') {
     const ok = [
       mark('contactName', v('contactName') ? null : 'Tell us who to ask for.'),
       mark('phone', isValidUgandanPhone(v('phone')) ? null : 'Enter a Ugandan number we can call.'),
-      mark('businessName', v('businessName') ? null : 'What is the shop or business called?'),
-      mark('email', !v('email') || isValidEmail(v('email')) ? null : 'Check the email, or leave it blank.'),
+      mark('shop', v('shop') ? null : 'For example: Namuli Phones, Kikuubo.'),
     ].every(Boolean);
     if (!ok) {
       e.preventDefault();
-      const bad = form.querySelector<HTMLElement>('[aria-invalid="true"]');
-      if (bad?.closest('details')) (bad.closest('details') as HTMLDetailsElement).open = true;
-      bad?.focus();
+      form.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
       return;
     }
     if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
