@@ -2,24 +2,28 @@ import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { normalizeUgandaDistrict } from '@goldplus/shared';
 import type { IProductRepository } from '../../ports/IProductRepository';
 import type { IBulkQuoteRepository, QuoteRequestView } from '../../ports/IBulkQuoteRepository';
+import type { IBulkTermsRepository } from '../../ports/IBulkTermsRepository';
 import { toProductPublicDto } from '../../mappers/toProductPublicDto';
 import {
   BULK_BUYER_TYPES,
   MAX_BULK_LINES,
   buyerStatusCopy,
   canTransitionQuoteRequest,
+  describeLineCount,
   fingerprintSource,
   isQuoteRequestStatus,
   isValidIdempotencyKey,
   legacySummary,
   makeBulkReference,
   normaliseBulkReference,
+  parseBudget,
   parseNeededBy,
   snapshotBulkLines,
   validateBulkLines,
   type BulkBuyerType,
   type BulkQuoteLine,
   type BulkQuoteTotals,
+  type BulkUnit,
   type CatalogueEntry,
   type LineAvailability,
   type QuoteRequestStatus,
@@ -47,7 +51,12 @@ export interface BulkQuoteAcknowledger {
   }): Promise<unknown>;
 }
 
-/** What a buyer may see about their own request. No email, no notes, nothing internal. */
+/**
+ * What a buyer may see about their own request. No email, no notes, nothing
+ * internal, no stock: bulk is supplied to order. Bulk prices appear only when
+ * this request's phone was verified when it was sent (pricesShown); lines from
+ * before cartons (priceBasis 'list') carry the public retail price.
+ */
 export interface BuyerQuoteView {
   reference: string;
   status: string;
@@ -57,20 +66,29 @@ export interface BuyerQuoteView {
   businessName: string | null;
   deliveryDistrict: string | null;
   neededBy: string | null;
+  budgetUgx: number | null;
+  pricesShown: boolean;
   lines: Array<{
     lineNo: number;
     productCode: string | null;
     productName: string;
-    quantity: number;
+    unitKind: BulkUnit;
+    unitCount: number | null;
+    unitsPerCarton: number | null;
+    quantity: number | null;
+    /** "12 cartons (600 pieces)". */
+    countLabel: string;
+    aboveSelfServe: boolean;
     unitPriceUgx: number | null;
     lineTotalUgx: number | null;
-    availability: LineAvailability;
   }>;
   totals: BulkQuoteTotals;
 }
 
 export function toBuyerView(view: QuoteRequestView): BuyerQuoteView {
   const copy = buyerStatusCopy(String(view.status));
+  const showPrice = (basis: string) => basis === 'list' || view.pricesShown;
+  const anyHidden = view.lines.some((line) => !showPrice(line.priceBasis));
   return {
     reference: view.reference ?? '',
     status: String(view.status),
@@ -80,16 +98,22 @@ export function toBuyerView(view: QuoteRequestView): BuyerQuoteView {
     businessName: view.businessName,
     deliveryDistrict: view.deliveryDistrict,
     neededBy: view.neededBy,
+    budgetUgx: view.budgetUgx,
+    pricesShown: !anyHidden && view.totals.pricedLineCount > 0,
     lines: view.lines.map((line) => ({
       lineNo: line.lineNo,
       productCode: line.productCode,
       productName: line.productName,
+      unitKind: line.unitKind,
+      unitCount: line.unitCount,
+      unitsPerCarton: line.unitsPerCarton,
       quantity: line.quantity,
-      unitPriceUgx: line.unitPriceUgx,
-      lineTotalUgx: line.lineTotalUgx,
-      availability: line.availability,
+      countLabel: describeLineCount(line),
+      aboveSelfServe: line.aboveSelfServe,
+      unitPriceUgx: showPrice(line.priceBasis) ? line.unitPriceUgx : null,
+      lineTotalUgx: showPrice(line.priceBasis) ? line.lineTotalUgx : null,
     })),
-    totals: view.totals,
+    totals: anyHidden ? { ...view.totals, estimatedTotalUgx: 0, pricedLineCount: 0 } : view.totals,
   };
 }
 
@@ -105,14 +129,17 @@ const kampalaToday = (now: Date) => new Date(now.getTime() + 3 * 60 * 60 * 1000)
 export type SubmitBulkQuoteResult =
   | { ok: true; replayed: boolean; quoteId: string; request: BuyerQuoteView }
   | { ok: false; code: 'BAD_INPUT' | 'NO_LINES' | 'TOO_MANY_LINES' | 'BAD_LINE'; message: string; field?: string }
-  | { ok: false; code: 'PRODUCTS_UNAVAILABLE'; message: string; productIds: string[] }
+  | { ok: false; code: 'PRODUCTS_UNAVAILABLE' | 'COUNT_TOO_LARGE'; message: string; productIds: string[] }
   | { ok: false; code: 'IDEMPOTENCY_CONFLICT'; message: string };
 
 export class SubmitBulkQuoteUseCase {
   constructor(
     private readonly quotes: IBulkQuoteRepository,
     private readonly products: IProductRepository,
+    private readonly terms: IBulkTermsRepository,
     private readonly acknowledger: BulkQuoteAcknowledger | null,
+    /** The phone a price-access token proves (GetBulkTermsUseCase.phoneFor), or null. */
+    private readonly verifiedPhoneFor: (token: unknown) => string | null,
     private readonly clock: () => Date = () => new Date(),
     private readonly randomIndex: (n: number) => number = (n) => randomInt(n),
     private readonly newId: () => string = () => randomUUID(),
@@ -154,38 +181,63 @@ export class SubmitBulkQuoteUseCase {
     const notes = text(input.notes);
     if (!isMaxLength(notes, 2000)) return bad('Notes are limited to 2,000 characters.', 'notes');
 
-    const validated = validateBulkLines(input.lines);
-    if (!validated.ok) return { ok: false, code: validated.code, message: validated.message };
+    const budgetUgx = parseBudget(input.budgetUgx);
+    if (budgetUgx === 'INVALID') return bad('Write the budget in shillings, for example 5,000,000.', 'budgetUgx');
 
-    const requestFingerprint = sha256(fingerprintSource(phone, validated.lines));
+    // A buyer with only a budget sends no products: the team builds the list.
+    const validated = validateBulkLines(input.lines, { allowEmpty: budgetUgx !== null });
+    if (!validated.ok) return { ok: false, code: validated.code, message: validated.message };
+    if (validated.lines.length === 0 && notes.length < 5) {
+      return bad('Tell us what you sell or need, so we can build the list for your budget.', 'notes');
+    }
+
+    // Prices were shown only if this phone proved itself with the SMS code.
+    const pricesShown = this.verifiedPhoneFor(input.priceAccessToken) === phone;
+
+    const requestFingerprint = sha256(fingerprintSource(phone, validated.lines, budgetUgx));
 
     // A retry of a submission that already landed answers with the first result.
     const prior = await this.quotes.findByIdempotencyKey(idempotencyKey);
     if (prior) return this.replay(prior, requestFingerprint);
 
-    // Prices, names, codes and stock come from the catalogue, never the client.
-    const rows = await this.products.findPublicViewList({
-      ids: validated.lines.map((line) => line.productId),
-      limit: MAX_BULK_LINES,
-    });
-    const catalogue: CatalogueEntry[] = rows.map((row) => {
+    // Names, codes, carton sizes and prices come from the server, never the client.
+    const ids = validated.lines.map((line) => line.productId);
+    const [rows, termRows] = ids.length === 0
+      ? [[], []]
+      : await Promise.all([
+          this.products.findPublicViewList({ ids, limit: MAX_BULK_LINES }),
+          this.terms.findOnSale(ids),
+        ]);
+    const termsById = new Map(termRows.map((t) => [t.productId.toLowerCase(), t]));
+    const catalogue: CatalogueEntry[] = rows.flatMap((row) => {
       const dto = toProductPublicDto(row);
-      return {
+      const terms = termsById.get(dto.id.toLowerCase());
+      if (!terms) return [];
+      return [{
         productId: dto.id,
         name: dto.name,
         code: dto.sku ?? dto.modelNumber ?? null,
-        unitPriceUgx: dto.retailPriceUgx,
+        bulkUnit: terms.bulkUnit,
+        unitsPerCarton: terms.unitsPerCarton,
+        bulkPriceUgx: terms.dealerPriceUgx,
         availability: availabilityOf(dto.availability?.kind),
-      };
+      }];
     });
     const snapshot = snapshotBulkLines(validated.lines, catalogue);
     if (!snapshot.ok) {
-      return {
-        ok: false,
-        code: 'PRODUCTS_UNAVAILABLE',
-        message: 'Some products in your list are no longer on sale. Remove them and send the list again.',
-        productIds: snapshot.productIds,
-      };
+      return snapshot.code === 'PRODUCTS_UNAVAILABLE'
+        ? {
+            ok: false,
+            code: 'PRODUCTS_UNAVAILABLE',
+            message: 'Some products in your list are no longer on sale. Remove them and send the list again.',
+            productIds: snapshot.productIds,
+          }
+        : {
+            ok: false,
+            code: 'COUNT_TOO_LARGE',
+            message: 'A line is larger than we can take from this page. Lower it, and tell us the full amount in the notes.',
+            productIds: snapshot.productIds,
+          };
     }
 
     const summary = legacySummary(snapshot.lines);
@@ -211,6 +263,8 @@ export class SubmitBulkQuoteUseCase {
         quantity: summary.quantity,
         lines: snapshot.lines,
         totals: snapshot.totals,
+        budgetUgx,
+        pricesShown,
         createdAt: now,
       });
       if (outcome === 'created') {
@@ -237,6 +291,8 @@ export class SubmitBulkQuoteUseCase {
             requestFingerprint,
             lines: snapshot.lines,
             totals: snapshot.totals,
+            budgetUgx,
+            pricesShown,
             createdAt: now,
             updatedAt: null,
           }),
@@ -379,13 +435,20 @@ export const QUOTE_LINES_CSV_HEADER = [
   'buyer_type',
   'delivery_district',
   'needed_by',
+  'budget_ugx',
+  'prices_shown_to_buyer',
   'line_no',
   'product_code',
   'product_name',
-  'quantity',
-  'unit_list_price_ugx',
+  'sold_by',
+  'count',
+  'pieces_per_carton',
+  'pieces',
+  'above_500_cartons',
+  'unit_price_ugx',
+  'price_basis',
   'line_total_ugx',
-  'availability_at_request',
+  'in_shop_stock_at_request',
 ] as const;
 
 /** One row per line of every bulk request (legacy single-product rows have no lines). */
@@ -404,11 +467,18 @@ export function quoteLinesCsvRows(views: QuoteRequestView[]): Array<Array<string
         view.buyerType,
         view.deliveryDistrict,
         view.neededBy,
+        view.budgetUgx,
+        view.pricesShown ? 'yes' : 'no',
         line.lineNo,
         line.productCode,
         line.productName,
+        line.unitKind,
+        line.unitCount,
+        line.unitsPerCarton,
         line.quantity,
+        line.aboveSelfServe ? 'yes' : 'no',
         line.unitPriceUgx,
+        line.priceBasis,
         line.lineTotalUgx,
         line.availability,
       ]);

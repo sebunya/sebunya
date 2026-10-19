@@ -273,23 +273,34 @@ export async function requestOrderChange(input: { reference: string; contact?: s
   return { ok: true, text: `I've asked the team to ${CHANGE_LABEL[change]} for ${ref}${status === 'dispatched' ? ', and alerted them because it is already with the rider' : ''}. You'll hear from them shortly to confirm; until then the order stays as it is.`, links: [] };
 }
 
-/** Wholesale and business buyers: the bulk quote the bulk page sends, filed from the chat, plus a hot lead on the desk. */
-export async function bulkQuote(input: { name: string; phone?: string; email?: string; businessName?: string; buyerType?: string; lines: Array<{ productId: string; quantity: number }>; deliveryDistrict?: string; neededBy?: string; notes?: string }, ctx: CareContext): Promise<CareAnswer> {
+/**
+ * Wholesale and business buyers: the bulk request the bulk page sends, filed from the chat, plus a hot lead on the desk.
+ * A line's count is CARTONS (pieces for flash drives and memory cards), as on /bulk (docs/bulk-buying/DESIGN.md §12).
+ */
+export async function bulkQuote(input: { name: string; phone?: string; email?: string; businessName?: string; buyerType?: string; lines: Array<{ productId: string; count: number }>; deliveryDistrict?: string; neededBy?: string; notes?: string }, ctx: CareContext): Promise<CareAnswer> {
   const phone = (input.phone || (ctx.verifiedPhone ? `0${ctx.verifiedPhone.slice(-9)}` : '')).trim();
   if (!input.name || input.name.trim().length < 2) return { ok: false, text: 'What name should the quote be under?', links: [] };
   if (!phone) return { ok: false, text: 'Which phone number should the sales team use for the quote?', links: [] };
-  const lines = (input.lines ?? []).filter((l) => /^[0-9a-f-]{36}$/i.test(l.productId) && Number.isInteger(l.quantity) && l.quantity > 0).slice(0, 50);
-  if (!lines.length) return { ok: false, text: 'Tell me which products and how many of each, and I will put the quote together.', links: [] };
+  const lines = (input.lines ?? [])
+    .filter((l) => /^[0-9a-f-]{36}$/i.test(l?.productId) && Number.isInteger(l?.count) && l.count > 0)
+    .map((l) => ({ productId: l.productId, count: l.count }))
+    .slice(0, 50);
+  if (!lines.length) return { ok: false, text: 'Tell me which products and how many cartons of each (flash drives and memory cards by the piece), and I will put the request together.', links: [] };
   const buyerType = ['retail', 'wholesale', 'corporate', 'dealer'].includes(String(input.buyerType)) ? input.buyerType : 'wholesale';
-  const idem = `goldie-${(ctx.conversationKey ?? 'x').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40)}-${lines.map((l) => `${l.productId.slice(0, 8)}${l.quantity}`).join('').slice(0, 30)}`.slice(0, 80).padEnd(16, '0');
-  const r = await api<{ quoteId: string; request: { reference: string; totals: { totalUnits: number; lineCount: number } } }>('POST', '/quotes/bulk', ctx, {
+  const idem = `goldie-${(ctx.conversationKey ?? 'x').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40)}-${lines.map((l) => `${l.productId.slice(0, 8)}${l.count}`).join('').slice(0, 30)}`.slice(0, 80).padEnd(16, '0');
+  const r = await api<{ quoteId: string; request: { reference: string; totals: { totalUnits: number; totalCartons: number; lineCount: number } } }>('POST', '/quotes/bulk', ctx, {
     idempotencyKey: idem, customerName: input.name.trim(), businessName: input.businessName ?? '', phone, email: input.email ?? '', buyerType,
     deliveryDistrict: input.deliveryDistrict ?? '', neededBy: input.neededBy ?? '', notes: `From Goldie chat. ${input.notes ?? ''}`.trim(), lines,
   });
   if (!r.ok || !r.data) return { ok: false, text: r.message || "I couldn't file the quote just now. The bulk page can send it, or the team on WhatsApp.", links: [{ label: 'Bulk buying', url: `${ctx.site}/bulk` }] };
-  const units = r.data.request.totals.totalUnits;
-  await openTask(ctx, { kind: 'bulk_lead', title: `Bulk quote ${r.data.request.reference}: ${units} units from ${input.businessName || input.name}`, customerName: input.name, customerPhone: phone, customerEmail: input.email ?? null, units, detail: input.notes ?? null });
-  return { ok: true, text: `Your quote request ${r.data.request.reference} is in: ${units.toLocaleString('en-UG')} units across ${r.data.request.totals.lineCount} product${r.data.request.totals.lineCount === 1 ? '' : 's'}. Our sales team will send you the bulk price by SMS or a call, usually the same working day.`, links: [{ label: 'Check the quote', url: `${ctx.site}/bulk/status?reference=${encodeURIComponent(r.data.request.reference)}` }], facts: { reference: r.data.request.reference, units } };
+  const t = r.data.request.totals;
+  const units = t.totalUnits;
+  // Cartons when there are any; a piece-only list (flash drives, memory cards) in pieces.
+  const size = t.totalCartons > 0
+    ? `${t.totalCartons.toLocaleString('en-UG')} carton${t.totalCartons === 1 ? '' : 's'}`
+    : `${units.toLocaleString('en-UG')} piece${units === 1 ? '' : 's'}`;
+  await openTask(ctx, { kind: 'bulk_lead', title: `Bulk request ${r.data.request.reference}: ${size} from ${input.businessName || input.name}`, customerName: input.name, customerPhone: phone, customerEmail: input.email ?? null, units, detail: input.notes ?? null });
+  return { ok: true, text: `Your bulk request ${r.data.request.reference} is in: ${size} across ${t.lineCount} product${t.lineCount === 1 ? '' : 's'}. Our sales team will call you with the total at bulk price and the delivery date, usually the same working day.`, links: [{ label: 'Check the request', url: `${ctx.site}/bulk/status?reference=${encodeURIComponent(r.data.request.reference)}` }], facts: { reference: r.data.request.reference, units } };
 }
 
 /** The same tools for the paid model, in the Messages API shape. Always offered (a stable tool list keeps the prompt cache); a guest gets the sign-in answer. */
@@ -302,7 +313,7 @@ export const CARE_TOOLS = [
   { name: 'escalate_to_team', description: 'Pass the matter to a person now, with a one-line summary. Set urgent when the customer is upset or stuck about money, a missing or wrong order, a faulty product, or safety; urgent alerts the on-duty team by SMS, email and WhatsApp. Use when you cannot settle it with the tools, not for things you can answer.', input_schema: { type: 'object', properties: { summary: { type: 'string', description: 'What the customer needs and what you already know' }, urgent: { type: 'boolean' }, name: { type: 'string' }, phone: { type: 'string' }, email: { type: 'string' } }, required: ['summary'], additionalProperties: false } },
   { name: 'report_order_problem', description: 'Log a problem with a specific order (late, wrong item, damaged, missing part, payment not reflecting) for the team, after checking the order with its reference and the checkout phone or email.', input_schema: { type: 'object', properties: { reference: { type: 'string' }, contact: { type: 'string', description: 'Phone or email used at checkout (omit on WhatsApp to use their number)' }, problem: { type: 'string' } }, required: ['reference', 'problem'], additionalProperties: false } },
   { name: 'request_order_change', description: 'Ask the team to cancel or change an order (delivery address, delivery time, items). Checks the order first; a person confirms the change with the customer. Never tell the customer it is changed: say the team will confirm.', input_schema: { type: 'object', properties: { reference: { type: 'string' }, contact: { type: 'string' }, change: { type: 'string', enum: ['cancel', 'delivery_address', 'delivery_time', 'items', 'other'] }, details: { type: 'string' } }, required: ['reference', 'change'], additionalProperties: false } },
-  { name: 'bulk_quote', description: 'File a bulk or wholesale quote request for the sales team. Use productId values from search_products results and the quantities the customer gave; confirm the list with the customer before filing. Needs their name and phone (on WhatsApp their number is used).', input_schema: { type: 'object', properties: { name: { type: 'string' }, phone: { type: 'string' }, email: { type: 'string' }, businessName: { type: 'string' }, buyerType: { type: 'string', enum: ['retail', 'wholesale', 'corporate', 'dealer'] }, lines: { type: 'array', items: { type: 'object', properties: { productId: { type: 'string' }, quantity: { type: 'integer', minimum: 1 } }, required: ['productId', 'quantity'], additionalProperties: false }, maxItems: 50 }, deliveryDistrict: { type: 'string' }, neededBy: { type: 'string', description: 'YYYY-MM-DD' }, notes: { type: 'string' } }, required: ['name', 'lines'], additionalProperties: false } },
+  { name: 'bulk_quote', description: 'File a bulk or wholesale request for the sales team. Bulk is bought by the CARTON; flash drives and memory cards by the piece. Use productId values from search_products results and the number of cartons (or pieces for flash drives and memory cards) the customer gave; if they gave pieces of a carton product, ask how many cartons. Confirm the list with the customer before filing. Needs their name and phone (on WhatsApp their number is used).', input_schema: { type: 'object', properties: { name: { type: 'string' }, phone: { type: 'string' }, email: { type: 'string' }, businessName: { type: 'string' }, buyerType: { type: 'string', enum: ['retail', 'wholesale', 'corporate', 'dealer'] }, lines: { type: 'array', items: { type: 'object', properties: { productId: { type: 'string' }, count: { type: 'integer', minimum: 1, description: 'Cartons; pieces for flash drives and memory cards' } }, required: ['productId', 'count'], additionalProperties: false }, maxItems: 50 }, deliveryDistrict: { type: 'string' }, neededBy: { type: 'string', description: 'YYYY-MM-DD' }, notes: { type: 'string' } }, required: ['name', 'lines'], additionalProperties: false } },
 ] as const;
 export type CareToolName = (typeof CARE_TOOLS)[number]['name'];
 export const isCareTool = (n: string): n is CareToolName => CARE_TOOLS.some((t) => t.name === n);
@@ -323,6 +334,6 @@ export async function callCareTool(name: CareToolName, input: Record<string, unk
     case 'escalate_to_team': return escalateToTeam({ summary: s('summary') || 'Customer needs a person', urgent: input.urgent === true, name: s('name'), phone: s('phone'), email: s('email') }, ctx);
     case 'report_order_problem': return reportOrderProblem({ reference: s('reference'), contact: s('contact'), problem: s('problem') || 'Problem with the order' }, ctx);
     case 'request_order_change': return requestOrderChange({ reference: s('reference'), contact: s('contact'), change: s('change'), details: s('details') }, ctx);
-    case 'bulk_quote': return bulkQuote({ name: s('name'), phone: s('phone'), email: s('email'), businessName: s('businessName'), buyerType: s('buyerType'), lines: Array.isArray(input.lines) ? (input.lines as Array<{ productId: string; quantity: number }>) : [], deliveryDistrict: s('deliveryDistrict'), neededBy: s('neededBy'), notes: s('notes') }, ctx);
+    case 'bulk_quote': return bulkQuote({ name: s('name'), phone: s('phone'), email: s('email'), businessName: s('businessName'), buyerType: s('buyerType'), lines: Array.isArray(input.lines) ? (input.lines as Array<{ productId: string; count: number }>) : [], deliveryDistrict: s('deliveryDistrict'), neededBy: s('neededBy'), notes: s('notes') }, ctx);
   }
 }

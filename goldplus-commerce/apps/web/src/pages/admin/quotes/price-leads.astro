@@ -1,0 +1,43 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import EmptyState from '../../../components/EmptyState.astro';
+import { tryFetchAdminList } from '../../../lib/api';
+import { readSessionToken } from '../../../lib/session';
+import { kampalaDateTime } from '../../../lib/adminQuoteRequests';
+
+/**
+ * Phones that proved themselves with a texted code to see bulk prices in the
+ * last 90 days (docs/bulk-buying/DESIGN.md §12). Each is a buyer interested in
+ * bulk: someone who did not send a request is worth a call.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/quotes/price-leads', 303);
+
+const result = await tryFetchAdminList<{ phone: string; verifiedAt: string }>(
+  '/admin/quote-requests/price-leads',
+  [],
+  'Live data is unavailable right now (service unreachable or permission denied). No sample data is shown.',
+  token,
+);
+---
+
+<AdminLayout title="Bulk price leads" description="Phones that unlocked bulk prices.">
+  <div class="container mx-auto max-w-3xl px-4 lg:px-8">
+    <p class="mb-4 text-sm"><a href="/admin/quotes" class="font-bold underline underline-offset-4">All quote requests</a></p>
+    <h2 class="text-2xl font-black tracking-tight text-brand-dark">Phones that unlocked bulk prices</h2>
+    <p class="mt-1 text-sm text-gray-600">Last 90 days, newest first. Each proved the number with a texted code. Compare with the quote requests: a phone here with no request may be worth a call.</p>
+    {result.isSample && <p class="mt-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800">{result.reason}</p>}
+    {result.items.length === 0 ? (
+      <div class="mt-6"><EmptyState title="No one yet" message="When a buyer enters their phone on /bulk and types the code, the number appears here." /></div>
+    ) : (
+      <ul class="mt-6 divide-y divide-gray-100 rounded-2xl border border-gray-200 bg-white">
+        {result.items.map((lead) => (
+          <li class="flex items-center justify-between gap-3 p-4 text-sm">
+            <a class="font-mono font-bold underline" href={`tel:${lead.phone.replace(/[^0-9+]/g, '')}`}>{lead.phone}</a>
+            <span class="text-gray-600">{kampalaDateTime(lead.verifiedAt)}</span>
+          </li>
+        ))}
+      </ul>
+    )}
+  </div>
+</AdminLayout>

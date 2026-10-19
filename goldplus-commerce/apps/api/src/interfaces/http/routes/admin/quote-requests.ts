@@ -21,6 +21,51 @@ routes.get('/', requirePermissions([PERMISSIONS.QUOTES_MANAGE]), async (c) => {
   return c.json({ success: true, data: views });
 });
 
+/* Bulk terms (0195): how each product is bought in bulk and its dealer price. */
+routes.get('/bulk-terms', requirePermissions([PERMISSIONS.PRICING_READ]), async (c) => {
+  return c.json({ success: true, data: await registry.listBulkTermsUseCase.execute() });
+});
+
+routes.put('/bulk-terms/:productId', requirePermissions([PERMISSIONS.PRICING_MANAGE]), async (c) => {
+  const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+  const result = await registry.updateBulkTermsUseCase.execute({
+    productId: c.req.param('productId') ?? '',
+    bulkUnit: body?.bulkUnit,
+    unitsPerCarton: body?.unitsPerCarton,
+    dealerPriceUgx: body?.dealerPriceUgx,
+  });
+  if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } }, result.code === 'NOT_FOUND' ? 404 : 400);
+  await registry.createAuditLogUseCase.execute({
+    actorId: (c.get('user') as { id: string }).id,
+    action: 'BULK_TERMS_CHANGED',
+    entity: 'product',
+    entityId: result.before.productId,
+    previousState: { bulkUnit: result.before.bulkUnit, unitsPerCarton: result.before.unitsPerCarton, dealerPriceUgx: result.before.dealerPriceUgx },
+    newState: result.after,
+  });
+  return c.json({ success: true, data: result.after });
+});
+
+routes.post('/bulk-terms/import', requirePermissions([PERMISSIONS.PRICING_MANAGE]), async (c) => {
+  const body = (await c.req.json().catch(() => null)) as { text?: unknown; apply?: unknown } | null;
+  const result = await registry.importBulkTermsUseCase.execute({ text: body?.text, apply: body?.apply === true });
+  if (result.applied && result.appliedCount > 0) {
+    await registry.createAuditLogUseCase.execute({
+      actorId: (c.get('user') as { id: string }).id,
+      action: 'BULK_TERMS_IMPORTED',
+      entity: 'product',
+      entityId: 'bulk-terms-import',
+      newState: { applied: result.appliedCount, failed: result.failed.length, changes: result.changes.map((ch) => ({ sku: ch.sku, before: ch.before, after: ch.after })) },
+    });
+  }
+  return c.json({ success: true, data: result });
+});
+
+/** Phones that unlocked bulk prices in the last 90 days: buyers worth a call. */
+routes.get('/price-leads', requirePermissions([PERMISSIONS.QUOTES_MANAGE]), async (c) => {
+  return c.json({ success: true, data: await registry.listBulkPriceLeadsUseCase.execute() });
+});
+
 // Static path before /:id.
 routes.get('/lines.csv', requirePermissions([PERMISSIONS.QUOTES_MANAGE]), async (c) => {
   const views = await registry.listQuoteRequestsUseCase.execute();

@@ -194,7 +194,7 @@ export async function answerDeterministically(c: Classification, ci?: CareInput)
       return { intent: c.intent, text: 'Thanks for letting us know, and sorry about the trouble. The team checks the item first, then agrees the replacement or refund with you; nothing is approved in this chat. The warranty page shows what is covered and the steps. The quickest way is WhatsApp with your order number, or I can email the team this chat and they will get back to you.', products: [], links: [link('Warranty', '/warranty'), link('Returns', '/returns'), wa, team] };
     }
     case 'BULK':
-      return { intent: c.intent, text: "Good, we do bulk, and we look after our resellers. Tell me which items and roughly how many units of each, and I'll put the quote together for you right here. Prices in this chat are single-unit prices; the sales team confirms your bulk price.", products: [], links: [link('Bulk buying', '/bulk'), wa] };
+      return { intent: c.intent, text: "Good, we do bulk, and we look after our resellers. Bulk is by the carton (flash drives and memory cards by the piece). Tell me which items and how many cartons of each, and I'll put the request together right here. Prices in this chat are single-unit retail prices; to see bulk prices, open the bulk page and enter your phone.", products: [], links: [link('Bulk buying', '/bulk'), wa] };
     case 'BATTERY': {
       if (!c.query) return { intent: c.intent, text: "Let's confirm the right battery. Send me the phone's exact model, for example Tecno Spark 7, or the code on the old battery, for example BL-49FT.", products: [], links: [link('Battery finder', '/battery-finder')] };
       const out = await callTool('find_battery', { phone_or_code: c.query });

@@ -217,7 +217,7 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
     case 'SUPPORT_REQUEST_RECEIVED':
       return `${SHOP_NAME}: we have your request${d.reference ? ` (ref ${d.reference})` : ''}. Our team will call you on this number. Need us sooner? Call ${phone}.`;
     case 'QUOTE_REQUEST_RECEIVED':
-      return `${SHOP_NAME}: we have your quote request${d.reference ? ` (ref ${d.reference})` : ''}${productsWord(d.lineCount)}. Our sales team will call you to confirm what you need and give you a price. Call ${phone} anytime.`;
+      return `${SHOP_NAME}: we have your quote request${d.reference ? ` (ref ${d.reference})` : ''}${productsWord(d.lineCount)}. Our sales team will call you to confirm what you need, the total and the delivery date. Call ${phone} anytime.`;
     case 'DEALER_APPLICATION_RECEIVED':
       return `${SHOP_NAME}: we have your dealer application${d.reference ? ` (ref ${d.reference})` : ''}. Our team will review it and call you. Questions? Call ${phone}.`;
     case 'FAKE_REPORT_RECEIVED':
@@ -421,9 +421,9 @@ export function emailCopy(template: string, d: CustomerMessageData = {}): EmailC
     case 'QUOTE_REQUEST_RECEIVED':
       return {
         subject: `We have your quote request${d.reference ? ` (${d.reference})` : ''}`,
-        preheader: 'Our sales team will call you with a price.',
+        preheader: 'Our sales team will call you to confirm the total and delivery.',
         headline: 'We have your quote request',
-        body: `Thank you. Someone from our sales team will call you to confirm what you need and give you a price. A quote is an estimate, not a final bill. If you would like to talk sooner, call ${phone}.`,
+        body: `Thank you. Someone from our sales team will call you to confirm what you need, the total and the delivery date. Nothing is charged until you agree. If you would like to talk sooner, call ${phone}.`,
         cta: null,
         tone: 'neutral',
       };

@@ -7,10 +7,28 @@ export interface AdminQuoteLine {
   productId: string | null;
   productCode: string | null;
   productName: string;
-  quantity: number;
+  unitKind: 'carton' | 'piece';
+  /** Cartons or pieces as chosen; null on lines from before cartons (0195). */
+  unitCount: number | null;
+  unitsPerCarton: number | null;
+  /** Total pieces; null when the carton size was not known. */
+  quantity: number | null;
+  /** Per piece: the dealer price on bulk lines ('dealer'), retail on older lines ('list'). */
   unitPriceUgx: number | null;
   lineTotalUgx: number | null;
+  priceBasis: 'list' | 'dealer';
+  aboveSelfServe: boolean;
+  /** In the shop when asked: for the team only; bulk is supplied to order. */
   availability: string;
+}
+
+/** "12 cartons (600 pieces)", "40 pieces", "3 cartons (size to confirm)". */
+export function adminCountLabel(l: Pick<AdminQuoteLine, 'unitKind' | 'unitCount' | 'quantity'>): string {
+  const n = (v: number) => formatCount(v);
+  if (l.unitCount === null) return `${n(l.quantity ?? 0)} pieces`;
+  if (l.unitKind === 'piece') return `${n(l.unitCount)} ${l.unitCount === 1 ? 'piece' : 'pieces'}`;
+  const cartons = `${n(l.unitCount)} ${l.unitCount === 1 ? 'carton' : 'cartons'}`;
+  return l.quantity === null ? `${cartons} (size to confirm)` : `${cartons} (${n(l.quantity)} pieces)`;
 }
 
 export interface AdminQuoteRequest {
@@ -29,14 +47,17 @@ export interface AdminQuoteRequest {
   productName: string;
   quantity: string;
   lines: AdminQuoteLine[];
-  totals: { lineCount: number; totalUnits: number; estimatedTotalUgx: number; pricedLineCount: number };
+  totals: { lineCount: number; totalUnits: number; totalCartons: number; estimatedTotalUgx: number; pricedLineCount: number };
+  budgetUgx: number | null;
+  /** The buyer's phone was verified by code, so they saw these bulk prices. */
+  pricesShown: boolean;
   createdAt: string;
   updatedAt: string | null;
 }
 
 export const QUOTE_STATUS_LABEL: Record<string, string> = {
   new: 'New',
-  quoted: 'Quoted',
+  quoted: 'Confirmed to buyer',
   won: 'Won',
   lost: 'Lost',
   expired: 'Expired',

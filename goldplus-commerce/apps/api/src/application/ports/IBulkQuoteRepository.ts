@@ -25,6 +25,9 @@ export interface NewBulkQuoteRecord {
   quantity: string;
   lines: BulkQuoteLine[];
   totals: BulkQuoteTotals;
+  budgetUgx: number | null;
+  /** The buyer's phone was verified by SMS code, so they saw bulk prices. */
+  pricesShown: boolean;
   createdAt: Date;
 }
 
@@ -48,6 +51,8 @@ export interface QuoteRequestView {
   requestFingerprint: string | null;
   lines: BulkQuoteLine[];
   totals: BulkQuoteTotals;
+  budgetUgx: number | null;
+  pricesShown: boolean;
   createdAt: Date;
   updatedAt: Date | null;
 }

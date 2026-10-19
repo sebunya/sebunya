@@ -179,6 +179,10 @@ export function classifyPublicEndpoint(method: string, rawPath: string): RouteFa
   // the reference + phone lookup is an enumeration surface like order lookup.
   if (path === '/quotes/bulk') return 'quote-request';
   if (path === '/quotes/lookup') return 'order-lookup';
+  // Bulk prices behind a verified phone: sending a code costs an SMS and
+  // checking one is a guessing surface, so both get the recovery budget.
+  if (path === '/quotes/price-access/start' || path === '/quotes/price-access/verify') return 'auth-recovery';
+  if (path === '/quotes/bulk-terms') return 'order-lookup';
   // Guest order lookup (track-order page and Goldie) and its siblings that take the same reference + contact proof.
   if (post && isUnder(path, '/commerce/orders/lookup')) return 'order-lookup';
   if (path === '/governance/support/report-issue') return 'issue-report';

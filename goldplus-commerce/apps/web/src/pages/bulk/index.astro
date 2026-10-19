@@ -5,28 +5,38 @@ import { apiBase, whatsappSupportNumber } from '../../lib/api';
 import { fetchApprovedCatalogueWithStatus } from '../../lib/catalogue';
 import { getTaxonomy } from '../../lib/taxonomy';
 import { toBulkRows, filterGroups, searchTextOf } from '../../lib/bulkCatalogue';
+import { BULK_ACCESS_COOKIE, fetchBulkTerms, readAccessCookie } from '../../lib/bulkAccess';
 import { formatUgx } from '../../lib/money';
 import { productSrcset } from '../../lib/imageSrcset';
 import { UGANDA_DISTRICTS } from '@goldplus/shared';
-import { CART_LINE_QUANTITY_CAP, MAX_BULK_LINES, MAX_BULK_LINE_QUANTITY } from '../../lib/bulkList';
+import { MAX_BULK_LINES, SELF_SERVE_MAX_CARTONS, unitLabel } from '../../lib/bulkList';
 
 /**
- * Bulk order builder (docs/bulk-buying/DESIGN.md).
+ * Bulk orders by the carton (docs/bulk-buying/DESIGN.md §12).
  *
- * Every approved public product in one compact list with a quantity box each.
- * Rows are real server-rendered HTML; the client module (lib/bulkBuilderClient)
- * adds filtering, steppers, paste, the saved list and the two ways out: the
- * basket for lines of 99 or fewer, and a quote request for everything.
- *
- * Public facts only: list price and in/out of stock. No stock counts, no floor,
- * no dealer price, no cost (the rows come from lib/bulkCatalogue's BulkRow).
+ * Every product on sale in one list. Each is bought by the carton (or by the
+ * piece for flash drives and memory cards), supplied to order: no stock is
+ * shown or held. Bulk prices appear only after the visitor proves their phone
+ * with a code we text; the token sits in an httpOnly cookie and this page reads
+ * it on the server. The page therefore differs per visitor and is never cached.
+ * The client module (lib/bulkBuilderClient) adds filtering, steppers, paste,
+ * the saved list, the budget and the request.
  */
-const taxonomy = await getTaxonomy();
-const read = await fetchApprovedCatalogueWithStatus(apiBase);
-const rows = toBulkRows(read.products, taxonomy);
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+Astro.response.headers.set('Vary', 'Cookie');
+
+const accessToken = readAccessCookie(Astro.cookies.get(BULK_ACCESS_COOKIE)?.value);
+const [taxonomy, read, bulkTerms] = await Promise.all([
+  getTaxonomy(),
+  fetchApprovedCatalogueWithStatus(apiBase),
+  fetchBulkTerms(accessToken),
+]);
+// A token the API no longer accepts (expired, key changed) is forgotten.
+if (accessToken && bulkTerms.ok && !bulkTerms.pricesUnlocked) Astro.cookies.delete(BULK_ACCESS_COOKIE, { path: '/' });
+const unlocked = bulkTerms.pricesUnlocked;
+const rows = toBulkRows(read.products, taxonomy, bulkTerms.terms);
 const groups = filterGroups(rows, taxonomy);
-const partial = rows.length > 0 && !read.complete;
-if (partial || rows.length === 0) Astro.response.headers.set('Cache-Control', 'no-store');
+const partial = (rows.length > 0 && !read.complete) || (rows.length > 0 && !bulkTerms.ok);
 
 const buyerParam = Astro.url.searchParams.get('buyer');
 const initialBuyer = ['retail', 'wholesale', 'corporate', 'dealer'].includes(buyerParam ?? '') ? buyerParam : '';
@@ -41,19 +51,29 @@ const districts = [...UGANDA_DISTRICTS].sort((a, b) => a.localeCompare(b));
 const todayKampala = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
 const groupsAttr = JSON.stringify(groups.map((g) => ({ slug: g.slug, subs: g.subcategories.map((s) => ({ slug: s.slug, name: s.name, count: s.count })) })));
 const whatsappUrl = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComponent('Hello GoldPlus, I would like help with a bulk order.')}`;
+const priceLine = (row: (typeof rows)[number]) => {
+  if (!unlocked) return 'Bulk price: enter your phone above to see it';
+  if (row.bulkPriceUgx === null) return 'Bulk price on request';
+  const perPiece = `${formatUgx(row.bulkPriceUgx)} a piece`;
+  return row.bulkUnit === 'carton' && row.unitsPerCarton ? `${perPiece} · ${formatUgx(row.bulkPriceUgx * row.unitsPerCarton)} a carton` : perPiece;
+};
 ---
 
+
 <BaseLayout
-  title="Bulk order builder | GoldPlus"
-  description="Build a bulk order across every GoldPlus category: pick quantities for many products, add small quantities to your basket or send the whole list for a volume quote."
+  title="Bulk orders by the carton | GoldPlus"
+  description="Order GoldPlus products by the carton at our bulk price, or by the piece for flash drives and memory cards. Supplied to order, up to 500 cartons a product."
 >
   <div class="border-b border-slate-200 bg-slate-50">
     <div class="container mx-auto px-4 py-8 lg:px-8">
       <p class="text-xs font-black uppercase tracking-[0.18em] text-brand-primaryInk">Bulk and dealer orders</p>
-      <h1 class="mt-2 text-2xl font-black tracking-tight text-gray-950 sm:text-3xl">Bulk order builder</h1>
+      <h1 class="mt-2 text-2xl font-black tracking-tight text-gray-950 sm:text-3xl">Bulk orders by the carton</h1>
       <p class="mt-3 max-w-3xl text-sm leading-relaxed text-slate-700 sm:text-base">
-        Type a quantity next to every product you need, across all categories. Your list is saved on this device.
-        Buy up to {CART_LINE_QUANTITY_CAP} of a product straight from your basket, or send the whole list and our sales team will call you with a volume price.
+        Choose how many cartons you need of each product. Flash drives and memory cards are sold by the piece. Bulk orders are supplied to order, so they do not depend on what is in our shop today.
+        Up to {SELF_SERVE_MAX_CARTONS} cartons of a product from this page; for more, send it anyway and our team confirms supply.
+      </p>
+      <p class="mt-2 max-w-3xl text-sm text-slate-700">
+        Only have a budget? Type it in your list and tell us what you sell. Our team builds the list for you.
       </p>
       <p class="mt-2 text-sm text-slate-700">
         Already sent a list? <a class="font-bold underline underline-offset-4" href="/bulk/status">Check its status</a>.
@@ -64,14 +84,48 @@ const whatsappUrl = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComp
   <noscript>
     <div class="container mx-auto px-4 pt-6 lg:px-8">
       <p class="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-        The bulk builder needs JavaScript. You can still <a class="font-bold underline" href="/quote-request">request a quote with our simple form</a> or <a class="font-bold underline" href={whatsappUrl}>message us on WhatsApp</a>.
+        The bulk page needs JavaScript. You can still <a class="font-bold underline" href="/quote-request">request a quote with our simple form</a> or <a class="font-bold underline" href={whatsappUrl}>message us on WhatsApp</a>.
       </p>
     </div>
   </noscript>
 
-  <div class="container mx-auto px-4 pb-28 pt-6 lg:px-8 lg:pb-12" id="bulk-root" data-groups={groupsAttr}>
+  <div class="container mx-auto px-4 pb-28 pt-6 lg:px-8 lg:pb-12" id="bulk-root" data-groups={groupsAttr} data-unlocked={unlocked ? '1' : '0'}>
     {partial && <div class="mb-4"><Notice kind="warning" message="Some products could not be loaded just now, so this list may be incomplete. Please refresh the page." /></div>}
     {rows.length === 0 && <div class="mb-4"><Notice kind="warning" message="The product list is not available right now. Please try again shortly, or message us on WhatsApp." /></div>}
+
+    <section id="bulk-access" aria-labelledby="bulk-access-heading" class="mb-6 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
+      {unlocked ? (
+        <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 id="bulk-access-heading" class="text-base font-black text-gray-950">Bulk prices are on</h2>
+            <p class="text-sm text-slate-700">Shown for <span class="font-mono font-bold">{bulkTerms.maskedPhone}</span> on this device for 30 days.</p>
+          </div>
+          <button type="button" id="bulk-access-clear" class="min-h-11 self-start rounded-full border border-slate-300 px-4 text-sm font-bold text-slate-800 outline-none hover:border-slate-500 focus-visible:ring-2 focus-visible:ring-brand-primaryInk sm:self-auto">Not your number?</button>
+        </div>
+      ) : (
+        <div>
+          <h2 id="bulk-access-heading" class="text-base font-black text-gray-950">See our bulk prices</h2>
+          <p class="mt-1 text-sm text-slate-700">Enter your phone number and we will text you a 6-digit code. Prices then stay on for 30 days on this device.</p>
+          <div id="bulk-access-error" class="mt-2 text-sm font-bold text-red-700" role="alert"></div>
+          <div id="bulk-access-step-phone" class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+            <div class="sm:w-64">
+              <label for="bulk-access-phone" class="block text-sm font-bold text-gray-950">Phone number</label>
+              <input id="bulk-access-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="07XX XXX XXX" maxlength="20" class="mt-1 block min-h-11 w-full rounded-xl border border-slate-300 px-3 text-base outline-none focus-visible:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primaryInk" />
+            </div>
+            <button type="button" id="bulk-access-send" class="min-h-11 rounded-full bg-slate-900 px-5 text-sm font-bold text-white outline-none hover:bg-black focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 disabled:opacity-60">Text me a code</button>
+          </div>
+          <div id="bulk-access-step-code" class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end" hidden>
+            <div class="sm:w-48">
+              <label for="bulk-access-code" class="block text-sm font-bold text-gray-950">Code from the SMS</label>
+              <input id="bulk-access-code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="6" class="mt-1 block min-h-11 w-full rounded-xl border border-slate-300 px-3 text-center font-mono text-lg tracking-widest outline-none focus-visible:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primaryInk" />
+            </div>
+            <button type="button" id="bulk-access-verify" class="min-h-11 rounded-full bg-slate-900 px-5 text-sm font-bold text-white outline-none hover:bg-black focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 disabled:opacity-60">Show prices</button>
+            <button type="button" id="bulk-access-again" class="min-h-11 rounded-full px-3 text-sm font-bold text-slate-700 underline underline-offset-4 outline-none focus-visible:ring-2 focus-visible:ring-brand-primaryInk">Use another number</button>
+          </div>
+          <p id="bulk-access-sent" class="mt-2 text-sm text-slate-700" role="status" aria-live="polite"></p>
+        </div>
+      )}
+    </section>
 
     <div class="lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-8">
       <section aria-labelledby="bulk-products-heading" class="min-w-0">
@@ -80,8 +134,8 @@ const whatsappUrl = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComp
         <details class="mb-4 rounded-2xl border border-slate-200 bg-white">
           <summary class="flex min-h-11 cursor-pointer items-center px-4 py-3 text-sm font-bold text-gray-950">Paste a list of codes</summary>
           <div class="border-t border-slate-100 p-4">
-            <label for="bulk-paste" class="block text-sm font-bold text-gray-950">One product per line: code and quantity</label>
-            <p id="bulk-paste-help" class="mt-1 text-xs text-slate-600">For example <span class="font-mono">GP-C08, 50</span> or <span class="font-mono">GP-C08 x50</span>. You can paste two columns straight from a spreadsheet.</p>
+            <label for="bulk-paste" class="block text-sm font-bold text-gray-950">One product per line: code and number of cartons</label>
+            <p id="bulk-paste-help" class="mt-1 text-xs text-slate-600">For example <span class="font-mono">GP-C08, 5</span> or <span class="font-mono">GP-C08 x5</span>. For flash drives and memory cards the number is pieces. You can paste two columns straight from a spreadsheet.</p>
             <textarea id="bulk-paste" rows="5" aria-describedby="bulk-paste-help" class="mt-2 block w-full rounded-xl border border-slate-300 p-3 font-mono text-sm outline-none focus-visible:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primaryInk" spellcheck="false" autocapitalize="characters"></textarea>
             <button type="button" id="bulk-paste-add" class="mt-3 min-h-11 rounded-full bg-slate-900 px-5 text-sm font-bold text-white outline-none hover:bg-black focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2">Add to my list</button>
             <div id="bulk-paste-result" class="mt-3 text-sm" role="status" aria-live="polite"></div>
@@ -124,8 +178,9 @@ const whatsappUrl = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComp
               data-code={row.code ?? ''}
               data-sku={row.sku ?? ''}
               data-model={row.modelNumber ?? ''}
-              data-price={row.unitPriceUgx ?? ''}
-              data-instock={row.inStock ? '1' : '0'}
+              data-unit={row.bulkUnit}
+              data-per-carton={row.unitsPerCarton ?? ''}
+              data-price={row.bulkPriceUgx ?? ''}
               data-cat={row.categorySlug}
               data-sub={row.subcategorySlug}
               data-search={searchTextOf(row)}
@@ -143,16 +198,15 @@ const whatsappUrl = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComp
                   {row.code && (row.subcategoryName || row.categoryName) && ' · '}
                   {row.subcategoryName || row.categoryName}
                 </p>
-                <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-                  <span class="font-black text-gray-950">{row.unitPriceUgx === null ? 'Price on request' : formatUgx(row.unitPriceUgx)}</span>
-                  <span class={`rounded-full px-2 py-0.5 text-[11px] font-bold ${row.inStock ? 'bg-green-50 text-green-800' : 'bg-slate-100 text-slate-700'}`}>{row.stockLabel}</span>
-                </p>
+                <p class="mt-1 text-xs font-bold text-slate-700">{unitLabel(row)}</p>
+                <p class={`mt-0.5 text-sm ${unlocked && row.bulkPriceUgx !== null ? 'font-black text-gray-950' : 'text-slate-600'}`}>{priceLine(row)}</p>
               </div>
-              <div class="col-start-2 flex items-center gap-1 sm:col-start-3" role="group" aria-label={`Quantity of ${row.name}`}>
-                <button type="button" data-step="-1" aria-label={`One fewer ${row.name}`} class="flex h-11 w-11 items-center justify-center rounded-full border border-slate-300 bg-white text-lg font-black text-gray-950 outline-none hover:border-slate-500 focus-visible:ring-2 focus-visible:ring-brand-primaryInk">−</button>
-                <input data-qty type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="0" aria-label={`Quantity of ${row.name}`}
+              <div class="col-start-2 flex items-center gap-1 sm:col-start-3" role="group" aria-label={`${row.bulkUnit === 'piece' ? 'Pieces' : 'Cartons'} of ${row.name}`}>
+                <span class="mr-1 text-xs font-bold text-slate-600" aria-hidden="true">{row.bulkUnit === 'piece' ? 'Pieces' : 'Cartons'}</span>
+                <button type="button" data-step="-1" aria-label={`One ${row.bulkUnit === 'piece' ? 'piece' : 'carton'} fewer of ${row.name}`} class="flex h-11 w-11 items-center justify-center rounded-full border border-slate-300 bg-white text-lg font-black text-gray-950 outline-none hover:border-slate-500 focus-visible:ring-2 focus-visible:ring-brand-primaryInk">−</button>
+                <input data-qty type="text" inputmode="numeric" pattern="[0-9]*" maxlength="5" autocomplete="off" placeholder="0" aria-label={`${row.bulkUnit === 'piece' ? 'Pieces' : 'Cartons'} of ${row.name}`}
                   class="h-11 w-20 rounded-xl border border-slate-300 px-2 text-center text-base font-bold outline-none focus-visible:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primaryInk" />
-                <button type="button" data-step="1" aria-label={`One more ${row.name}`} class="flex h-11 w-11 items-center justify-center rounded-full border border-slate-300 bg-white text-lg font-black text-gray-950 outline-none hover:border-slate-500 focus-visible:ring-2 focus-visible:ring-brand-primaryInk">+</button>
+                <button type="button" data-step="1" aria-label={`One ${row.bulkUnit === 'piece' ? 'piece' : 'carton'} more of ${row.name}`} class="flex h-11 w-11 items-center justify-center rounded-full border border-slate-300 bg-white text-lg font-black text-gray-950 outline-none hover:border-slate-500 focus-visible:ring-2 focus-visible:ring-brand-primaryInk">+</button>
               </div>
             </li>
           ))}
@@ -163,26 +217,32 @@ const whatsappUrl = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComp
       <aside id="bulk-review" aria-labelledby="bulk-review-heading" tabindex="-1" class="mt-8 scroll-mt-4 outline-none lg:sticky lg:top-4 lg:mt-0 lg:max-h-[calc(100vh-2rem)] lg:self-start lg:overflow-y-auto">
         <div class="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
           <h2 id="bulk-review-heading" class="text-lg font-black text-gray-950">Your bulk list</h2>
-          <p id="bulk-summary" class="mt-1 text-sm text-slate-700">No products yet. Type a quantity next to any product.</p>
+          <p id="bulk-summary" class="mt-1 text-sm text-slate-700">No products yet. Choose cartons next to any product.</p>
           <ul id="bulk-lines" class="mt-3 divide-y divide-slate-100"></ul>
           <div id="bulk-estimate" class="mt-3 rounded-xl bg-slate-50 p-3 text-sm" hidden>
-            <p class="font-bold text-gray-950">Estimated total at list price: <span id="bulk-estimate-total"></span></p>
-            <p class="mt-1 text-slate-700">An estimate at our listed prices, not a bill. Volume pricing is confirmed by our sales team.</p>
+            {unlocked ? (
+              <>
+                <p class="font-bold text-gray-950">Total at bulk price: <span id="bulk-estimate-total"></span></p>
+                <p class="mt-1 text-slate-700">Delivery is added when our team confirms the delivery date with you.</p>
+              </>
+            ) : (
+              <p class="font-bold text-gray-950">Enter your phone at the top to see the total at bulk price.</p>
+            )}
             <p id="bulk-estimate-unpriced" class="mt-1 text-slate-700" hidden></p>
+            <p id="bulk-estimate-above" class="mt-1 text-slate-700" hidden></p>
           </div>
           <button type="button" id="bulk-clear" hidden class="mt-3 min-h-11 rounded-full border border-slate-300 px-4 text-sm font-bold text-slate-800 outline-none hover:border-slate-500 focus-visible:ring-2 focus-visible:ring-brand-primaryInk">Clear list</button>
-        </div>
 
-        <div class="mt-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5">
-          <h3 class="text-base font-black text-gray-950">Buy now at listed prices</h3>
-          <p class="mt-1 text-sm text-slate-700">Adds products with {CART_LINE_QUANTITY_CAP} or fewer to your basket. Larger quantities stay in this list for a quote.</p>
-          <button type="button" id="bulk-add-cart" disabled class="mt-3 min-h-11 w-full rounded-full bg-brand-primary px-5 text-sm font-bold text-gray-950 outline-none hover:opacity-90 focus-visible:ring-2 focus-visible:ring-brand-primaryInk focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">Add to basket</button>
-          <div id="bulk-cart-result" class="mt-3 text-sm" role="status" aria-live="polite"></div>
+          <div class="mt-4 border-t border-slate-100 pt-4">
+            <label for="bulk-budget" class="block text-sm font-bold text-gray-950">Your budget in UGX (optional)</label>
+            <input id="bulk-budget" type="text" inputmode="numeric" autocomplete="off" placeholder="e.g. 5,000,000" maxlength="16" class="mt-1 block min-h-11 w-full rounded-xl border border-slate-300 px-3 text-base outline-none focus-visible:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primaryInk" />
+            <p id="bulk-budget-status" class="mt-2 text-sm text-slate-700" aria-live="polite"></p>
+          </div>
         </div>
 
         <form id="bulk-quote-form" class="mt-4 rounded-2xl border border-slate-200 bg-white p-4 sm:p-5" novalidate>
-          <h3 class="text-base font-black text-gray-950">Ask for a volume quote</h3>
-          <p class="mt-1 text-sm text-slate-700">Send the whole list, any quantity up to {MAX_BULK_LINE_QUANTITY.toLocaleString('en-US')} a product and {MAX_BULK_LINES} products. Our sales team calls you with a price. Nothing is charged.</p>
+          <h3 class="text-base font-black text-gray-950">Send your request</h3>
+          <p class="mt-1 text-sm text-slate-700">Up to {MAX_BULK_LINES} products. Nothing is charged now: our team calls you to confirm the delivery date and delivery cost, then you pay.</p>
           <div id="bulk-form-error" class="mt-3 text-sm font-bold text-red-700" role="alert"></div>
 
           <div class="mt-3 space-y-3">
@@ -197,6 +257,7 @@ const whatsappUrl = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComp
             <div>
               <label for="bq-phone" class="block text-sm font-bold text-gray-950">Phone number</label>
               <input id="bq-phone" name="phone" type="tel" inputmode="tel" required autocomplete="tel" placeholder="07XX XXX XXX" maxlength="20" class="mt-1 block min-h-11 w-full rounded-xl border border-slate-300 px-3 text-base outline-none focus-visible:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primaryInk" />
+              {unlocked && <p class="mt-1 text-xs text-slate-600">Use <span class="font-mono">{bulkTerms.maskedPhone}</span> so your request keeps the bulk prices you see.</p>}
             </div>
             <div>
               <label for="bq-email" class="block text-sm font-bold text-gray-950">Email (optional)</label>
@@ -225,11 +286,12 @@ const whatsappUrl = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComp
               <input id="bq-needed" name="neededBy" type="date" min={todayKampala} class="mt-1 block min-h-11 w-full rounded-xl border border-slate-300 px-3 text-base outline-none focus-visible:ring-2 focus-visible:ring-brand-primaryInk" />
             </div>
             <div>
-              <label for="bq-notes" class="block text-sm font-bold text-gray-950">Notes for our sales team (optional)</label>
-              <textarea id="bq-notes" name="notes" rows="3" maxlength="2000" placeholder="Branding, packaging, delivery address, anything else" class="mt-1 block w-full rounded-xl border border-slate-300 p-3 text-base outline-none focus-visible:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primaryInk"></textarea>
+              <label for="bq-notes" class="block text-sm font-bold text-gray-950">Notes for our sales team</label>
+              <p class="text-xs text-slate-600">Optional with a list. With only a budget, tell us what you sell or need.</p>
+              <textarea id="bq-notes" name="notes" rows="3" maxlength="2000" placeholder="What you sell, delivery address, more than 500 cartons, anything else" class="mt-1 block w-full rounded-xl border border-slate-300 p-3 text-base outline-none focus-visible:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primaryInk"></textarea>
             </div>
           </div>
-          <button type="submit" id="bulk-quote-submit" class="mt-4 min-h-11 w-full rounded-full bg-slate-900 px-5 text-sm font-bold text-white outline-none hover:bg-black focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60">Send quote request</button>
+          <button type="submit" id="bulk-quote-submit" class="mt-4 min-h-11 w-full rounded-full bg-slate-900 px-5 text-sm font-bold text-white outline-none hover:bg-black focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60">Send request</button>
           <p class="mt-3 text-xs text-slate-600">We use your details only to reply about this request. See our <a class="underline" href="/privacy">privacy notice</a>.</p>
         </form>
 

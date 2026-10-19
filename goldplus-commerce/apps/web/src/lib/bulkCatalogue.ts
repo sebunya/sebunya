@@ -9,9 +9,10 @@ import {
 
 /**
  * One row of the bulk order builder (/bulk), built on the server from the
- * public catalogue. Only public facts: a list price, a yes/no stock state
- * (never a count), and the codes a buyer would type. No floor, no dealer price,
- * no cost ever reaches this shape.
+ * public catalogue and the bulk terms. How the product is bought (carton of N,
+ * or by the piece) is public. The bulk price is present only when the visitor
+ * proved their phone (lib/bulkAccess); otherwise it is null. Bulk is supplied
+ * to order, so no stock state is shown. No floor or cost reaches this shape.
  */
 export interface BulkRow {
   productId: string;
@@ -21,10 +22,10 @@ export interface BulkRow {
   code: string | null;
   sku: string | null;
   modelNumber: string | null;
-  unitPriceUgx: number | null;
-  inStock: boolean;
-  /** Pre-order / not tracked: we do not claim either way. */
-  stockLabel: 'In stock' | 'Out of stock' | 'Pre-order' | 'Ask us';
+  bulkUnit: 'carton' | 'piece';
+  unitsPerCarton: number | null;
+  /** Per piece; null when locked or not set. */
+  bulkPriceUgx: number | null;
   categorySlug: string;
   categoryName: string;
   subcategorySlug: string;
@@ -39,25 +40,21 @@ export interface BulkFilterGroup {
   subcategories: Array<{ slug: string; name: string; count: number }>;
 }
 
-export function stockLabelOf(availability: ProductPublicDto['availability'] | undefined): BulkRow['stockLabel'] {
-  switch (availability?.kind) {
-    case 'in_stock':
-      return 'In stock';
-    case 'out_of_stock':
-      return 'Out of stock';
-    case 'pre_order':
-      return 'Pre-order';
-    default:
-      return 'Ask us';
-  }
+/** A product's bulk terms as the API gives them (POST /quotes/bulk-terms). */
+export interface BulkTermsRow {
+  productId: string;
+  bulkUnit: 'carton' | 'piece';
+  unitsPerCarton: number | null;
+  bulkPriceUgx?: number | null;
 }
 
-export function toBulkRows(products: ProductPublicDto[], taxonomy: Taxonomy): BulkRow[] {
+export function toBulkRows(products: ProductPublicDto[], taxonomy: Taxonomy, terms: ReadonlyMap<string, BulkTermsRow> = new Map()): BulkRow[] {
   const clean = dedupeProductsById(getCleanCatalog(products, taxonomy)).filter(isListableProduct);
   const categorySlugByName = new Map(taxonomy.map((c) => [c.name, c.slug]));
   const rows = clean.map((p): BulkRow => {
     const subSlug = getProductSubcategory(p, taxonomy);
-    const price = typeof p.retailPriceUgx === 'number' && p.retailPriceUgx > 0 ? p.retailPriceUgx : null;
+    const t = terms.get(p.id.toLowerCase());
+    const price = typeof t?.bulkPriceUgx === 'number' && t.bulkPriceUgx > 0 ? t.bulkPriceUgx : null;
     return {
       productId: p.id,
       slug: p.slug,
@@ -65,9 +62,9 @@ export function toBulkRows(products: ProductPublicDto[], taxonomy: Taxonomy): Bu
       code: p.sku ?? p.modelNumber ?? null,
       sku: p.sku ?? null,
       modelNumber: p.modelNumber ?? null,
-      unitPriceUgx: price,
-      inStock: p.availability?.kind === 'in_stock',
-      stockLabel: stockLabelOf(p.availability),
+      bulkUnit: t?.bulkUnit === 'piece' ? 'piece' : 'carton',
+      unitsPerCarton: t?.bulkUnit === 'piece' ? null : (typeof t?.unitsPerCarton === 'number' && t.unitsPerCarton > 1 ? t.unitsPerCarton : null),
+      bulkPriceUgx: price,
       categorySlug: categorySlugByName.get(p.categoryName) ?? 'other',
       categoryName: categorySlugByName.has(p.categoryName) ? p.categoryName : 'Other',
       subcategorySlug: subSlug,

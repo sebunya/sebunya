@@ -18,7 +18,7 @@ Welcome, future AI agent. When working in this repository, you MUST follow these
 - PWA cache must EXCLUDE sensitive routes (checkout, admin, dealer).
 - NO invented product facts, fake reviews, fake ratings, or fake scarcity.
 - NO fake integrations. Disabled integrations must return "Not configured".
-- Dealer pricing and supplier costs must NEVER appear in public APIs.
+- Dealer pricing and supplier costs must NEVER appear in public APIs. One owner-approved exception (2026-10-19): the dealer price per piece, as `bulkPriceUgx`, from `POST /quotes/bulk-terms`, and only for a caller holding the token a phone earns by SMS code. See `docs/bulk-buying/DESIGN.md` §12. Supplier cost has no exception.
 - Tests and architecture checks are mandatory. Do not bypass them.
 
 ## UX & UI

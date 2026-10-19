@@ -233,19 +233,21 @@ describe('Goldie acting from the chat', () => {
     expect(isCallbackFollowUp([{ role: 'user', content: 'call me' }, { role: 'assistant', content: 'Of course. Which number should the team call you on?' }, { role: 'user', content: '0772 123 456' }])).toBe(true);
   });
 
-  it('files a bulk quote with the customer\'s lines and puts the lead on the desk', async () => {
+  it('files a bulk request in cartons and puts the lead on the desk', async () => {
     const bodies: Array<{ url: string; body: any }> = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
       bodies.push({ url, body: JSON.parse(String(init.body)) });
-      if (url.endsWith('/quotes/bulk')) return new Response(JSON.stringify({ success: true, data: { quoteId: 'q', request: { reference: 'BQ-7F3A', totals: { totalUnits: 120, lineCount: 2 } } } }), { status: 201 });
+      if (url.endsWith('/quotes/bulk')) return new Response(JSON.stringify({ success: true, data: { quoteId: 'q', request: { reference: 'BQ-7F3A', totals: { totalUnits: 6000, totalCartons: 120, lineCount: 2 } } } }), { status: 201 });
       return new Response(JSON.stringify({ success: true, data: { taskId: 't', priority: 'high', alerted: 0 } }), { status: 200 });
     }));
-    const r = await bulkQuote({ name: 'Moses', phone: '0772123456', businessName: 'Moses Phones', buyerType: 'wholesale', lines: [{ productId: '3f1c2b9a-1111-4a2b-9c3d-123456789abc', quantity: 100 }, { productId: '3f1c2b9a-2222-4a2b-9c3d-123456789abc', quantity: 20 }] }, ctx);
+    const r = await bulkQuote({ name: 'Moses', phone: '0772123456', businessName: 'Moses Phones', buyerType: 'wholesale', lines: [{ productId: '3f1c2b9a-1111-4a2b-9c3d-123456789abc', count: 100 }, { productId: '3f1c2b9a-2222-4a2b-9c3d-123456789abc', count: 20 }] }, ctx);
     expect(r.text).toMatch(/BQ-7F3A/);
-    expect(r.text).toMatch(/120 units/);
-    expect(bodies[0]!.body).toMatchObject({ customerName: 'Moses', buyerType: 'wholesale', lines: [{ quantity: 100 }, { quantity: 20 }] });
+    // Counts are cartons, as on /bulk.
+    expect(r.text).toMatch(/120 cartons across 2 products/);
+    expect(r.text).not.toMatch(/bulk price is|UGX/);
+    expect(bodies[0]!.body).toMatchObject({ customerName: 'Moses', buyerType: 'wholesale', lines: [{ count: 100 }, { count: 20 }] });
     expect(bodies[0]!.body.idempotencyKey).toMatch(/^[A-Za-z0-9_-]{16,80}$/);
-    expect(bodies[1]!.body).toMatchObject({ kind: 'bulk_lead', units: 120 });
+    expect(bodies[1]!.body).toMatchObject({ kind: 'bulk_lead', units: 6000, title: 'Bulk request BQ-7F3A: 120 cartons from Moses Phones' });
   });
 });
 

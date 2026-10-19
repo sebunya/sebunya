@@ -90,6 +90,16 @@ import {
   SubmitBulkQuoteUseCase,
   UpdateQuoteRequestStatusUseCase,
 } from '../application/use-cases/quotes/BulkQuoteUseCases';
+import { DrizzleBulkTermsRepository } from './db/repositories/DrizzleBulkTermsRepository';
+import { DrizzleBulkPriceAccessRepository } from './db/repositories/DrizzleBulkPriceAccessRepository';
+import { bulkPriceAccessCrypto } from './quotes/BulkPriceAccessCrypto';
+import {
+  GetBulkTermsUseCase,
+  ListBulkPriceLeadsUseCase,
+  StartBulkPriceAccessUseCase,
+  VerifyBulkPriceAccessUseCase,
+} from '../application/use-cases/quotes/BulkPriceAccessUseCases';
+import { ImportBulkTermsUseCase, ListBulkTermsUseCase, UpdateBulkTermsUseCase } from '../application/use-cases/quotes/BulkTermsAdminUseCases';
 import { DrizzleVerificationRepository } from './db/repositories/DrizzleVerificationRepository';
 import { DrizzleAuditRepository } from './db/repositories/DrizzleAuditRepository';
 import { DrizzlePaymentRepository } from './db/repositories/DrizzlePaymentRepository';
@@ -1680,10 +1690,22 @@ export class Registry {
   );
   /** Bulk quote requests (0153, docs/bulk-buying/DESIGN.md). */
   public readonly bulkQuoteRepo = new DrizzleBulkQuoteRepository();
+  /** Bulk by the carton at dealer price, behind a phone verified by SMS code (0195, DESIGN.md §12). */
+  public readonly bulkTermsRepo = new DrizzleBulkTermsRepository();
+  public readonly bulkPriceAccessRepo = new DrizzleBulkPriceAccessRepository();
+  public readonly getBulkTermsUseCase = new GetBulkTermsUseCase(this.bulkTermsRepo, bulkPriceAccessCrypto);
+  public readonly startBulkPriceAccessUseCase = new StartBulkPriceAccessUseCase(this.bulkPriceAccessRepo, new OutboxOtpSender(), bulkPriceAccessCrypto);
+  public readonly verifyBulkPriceAccessUseCase = new VerifyBulkPriceAccessUseCase(this.bulkPriceAccessRepo, bulkPriceAccessCrypto);
+  public readonly listBulkPriceLeadsUseCase = new ListBulkPriceLeadsUseCase(this.bulkPriceAccessRepo);
+  public readonly listBulkTermsUseCase = new ListBulkTermsUseCase(this.bulkTermsRepo);
+  public readonly updateBulkTermsUseCase = new UpdateBulkTermsUseCase(this.bulkTermsRepo);
+  public readonly importBulkTermsUseCase = new ImportBulkTermsUseCase(this.bulkTermsRepo);
   public readonly submitBulkQuoteUseCase = new SubmitBulkQuoteUseCase(
     this.bulkQuoteRepo,
     this.productRepo,
+    this.bulkTermsRepo,
     this.sendPublicFormAcknowledgementUseCase,
+    (token) => this.getBulkTermsUseCase.phoneFor(token),
   );
   public readonly lookupBulkQuoteUseCase = new LookupBulkQuoteUseCase(this.bulkQuoteRepo);
   public readonly listQuoteRequestsUseCase = new ListQuoteRequestsUseCase(this.bulkQuoteRepo);

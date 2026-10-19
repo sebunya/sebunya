@@ -41,9 +41,14 @@ function toLine(row: LineRow): BulkQuoteLine {
     productId: row.productId,
     productCode: row.productCode,
     productName: row.productName,
-    quantity: row.quantity,
+    unitKind: row.unitKind === 'carton' ? 'carton' : 'piece',
+    unitCount: row.unitCount ?? null,
+    unitsPerCarton: row.unitsPerCarton ?? null,
+    quantity: row.quantity ?? null,
     unitPriceUgx: row.unitPriceUgx === null ? null : Number(row.unitPriceUgx),
     lineTotalUgx: row.lineTotalUgx === null ? null : Number(row.lineTotalUgx),
+    priceBasis: row.priceBasis === 'dealer' ? 'dealer' : 'list',
+    aboveSelfServe: row.aboveSelfServe === true,
     availability: availabilityOf(row.availability),
   };
 }
@@ -69,7 +74,9 @@ function toView(header: HeaderRow, lines: LineRow[]): QuoteRequestView {
     requestFingerprint: header.requestFingerprint,
     lines: mapped,
     // Recomputed from the lines, which are the record; the header copy is for SQL reporting.
-    totals: mapped.length > 0 ? computed : { lineCount: 0, totalUnits: 0, estimatedTotalUgx: 0, pricedLineCount: 0 },
+    totals: mapped.length > 0 ? computed : { lineCount: 0, totalUnits: 0, totalCartons: 0, estimatedTotalUgx: 0, pricedLineCount: 0 },
+    budgetUgx: header.budgetUgx === null || header.budgetUgx === undefined ? null : Number(header.budgetUgx),
+    pricesShown: header.pricesShown === true,
     createdAt: header.createdAt,
     updatedAt: header.updatedAt ?? null,
   };
@@ -101,7 +108,11 @@ export class DrizzleBulkQuoteRepository implements IBulkQuoteRepository {
           totalUnits: record.totals.totalUnits,
           estimatedTotalUgx: record.totals.estimatedTotalUgx,
           pricedLineCount: record.totals.pricedLineCount,
+          budgetUgx: record.budgetUgx,
+          pricesShown: record.pricesShown,
         });
+        // A budget request may have no lines: the team builds the list.
+        if (record.lines.length === 0) return;
         await tx.insert(quoteRequestLines).values(
           record.lines.map((line) => ({
             quoteRequestId: record.id,
@@ -113,6 +124,11 @@ export class DrizzleBulkQuoteRepository implements IBulkQuoteRepository {
             unitPriceUgx: line.unitPriceUgx,
             lineTotalUgx: line.lineTotalUgx,
             availability: line.availability,
+            unitKind: line.unitKind,
+            unitCount: line.unitCount,
+            unitsPerCarton: line.unitsPerCarton,
+            priceBasis: line.priceBasis,
+            aboveSelfServe: line.aboveSelfServe,
             createdAt: record.createdAt,
           })),
         );
