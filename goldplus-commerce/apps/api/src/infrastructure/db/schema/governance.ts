@@ -146,6 +146,8 @@ export const bulkPriceAccess = pgTable('bulk_price_access', {
   attempts: integer('attempts').default(0).notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   verifiedAt: timestamp('verified_at', { withTimezone: true }),
+  /** 'first_visit': the number was typed, not proved (no code the first time); 'code': proved by SMS. */
+  method: varchar('method', { length: 12 }).default('code').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
   phoneCreatedIdx: index('bulk_price_access_phone_created_idx').on(table.phone, table.createdAt),

@@ -91,8 +91,15 @@ routes.post('/price-access/start', async (c) => {
   const body = await readJson(c.req.raw);
   if (!body) return c.json({ success: false, error: { code: 'BAD_JSON', message: 'Request body must be JSON.' } }, 400);
   const result = await registry.startBulkPriceAccessUseCase.execute({ phone: body.phone });
+  c.header('Cache-Control', 'no-store');
   if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } }, result.code === 'TOO_MANY_CODES' ? 429 : 400);
-  return c.json({ success: true, data: { maskedPhone: result.maskedPhone } });
+  if (result.method === 'first_visit') {
+    await registry.createAuditLogUseCase
+      .execute({ actorId: null, action: 'BULK_PRICES_UNLOCKED', entity: 'bulk_price_access', entityId: 'bulk-prices', newState: { phone: result.maskedPhone, method: 'first_visit' } })
+      .catch((err: unknown) => logger.warn({ err }, '[Quotes] audit write failed for bulk price access'));
+    return c.json({ success: true, data: { method: result.method, maskedPhone: result.maskedPhone, token: result.token, expiresAt: result.expiresAt.toISOString() } });
+  }
+  return c.json({ success: true, data: { method: result.method, maskedPhone: result.maskedPhone } });
 });
 
 routes.post('/price-access/verify', async (c) => {

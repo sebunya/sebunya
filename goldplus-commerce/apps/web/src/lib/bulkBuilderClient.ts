@@ -444,7 +444,7 @@ export function initBulkBuilder(): void {
   const sendButton = document.getElementById('bulk-access-send') as HTMLButtonElement | null;
   const verifyButton = document.getElementById('bulk-access-verify') as HTMLButtonElement | null;
 
-  async function postJson(path: string, body: unknown): Promise<{ status: number; json: { success?: boolean; data?: { maskedPhone?: string }; error?: { message?: string } } | null }> {
+  async function postJson(path: string, body: unknown): Promise<{ status: number; json: { success?: boolean; data?: { maskedPhone?: string; method?: string }; error?: { message?: string } } | null }> {
     try {
       const res = await fetch(path, {
         method: 'POST',
@@ -469,8 +469,13 @@ export function initBulkBuilder(): void {
     sendButton.disabled = true;
     const { status, json } = await postJson('/api/bulk/access/start', { phone: accessPhone.value.trim() });
     sendButton.disabled = false;
+    if (json?.success && json.data?.method === 'first_visit') {
+      // First use of this number: no code. The page renders with prices.
+      window.location.reload();
+      return;
+    }
     if (json?.success) {
-      accessSent.textContent = `We texted a code to ${json.data?.maskedPhone ?? 'your phone'}. It works for 10 minutes.`;
+      accessSent.textContent = `Welcome back. To keep prices safe, we texted a code to ${json.data?.maskedPhone ?? 'your phone'}. It works for 10 minutes.`;
       if (stepPhone) stepPhone.hidden = true;
       if (stepCode) stepCode.hidden = false;
       accessCode?.focus();

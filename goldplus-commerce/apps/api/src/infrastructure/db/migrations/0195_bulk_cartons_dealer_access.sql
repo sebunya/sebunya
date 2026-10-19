@@ -12,8 +12,9 @@
 --    cartons: allowed, the team confirms supply.
 -- 3. A request may carry a budget, and records whether the buyer was shown
 --    dealer prices (a phone verified by SMS code).
--- 4. bulk_price_access holds the SMS code challenges; a verified row is also
---    the record of who looked at dealer prices.
+-- 4. bulk_price_access holds the SMS code challenges and first visits (the
+--    first use of a number needs no code); a verified row is also the record
+--    of who looked at dealer prices.
 --
 -- Additive: every new column is nullable or defaulted, so the running code keeps
 -- working on the migrated database. The quantity check is widened (500+ cartons
@@ -84,6 +85,8 @@ CREATE TABLE IF NOT EXISTS "bulk_price_access" (
   "attempts" integer DEFAULT 0 NOT NULL,
   "expires_at" timestamptz NOT NULL,
   "verified_at" timestamptz,
+  -- 'first_visit' (typed, not proved: no code the first time a number is used) or 'code'.
+  "method" varchar(12) DEFAULT 'code' NOT NULL CHECK ("method" IN ('first_visit', 'code')),
   "created_at" timestamptz DEFAULT now() NOT NULL
 );
 --> statement-breakpoint

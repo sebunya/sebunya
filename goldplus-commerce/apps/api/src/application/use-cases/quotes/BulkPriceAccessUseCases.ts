@@ -2,7 +2,9 @@ import type { IBulkPriceAccessRepository } from '../../ports/IBulkPriceAccessRep
 import type { IBulkTermsRepository } from '../../ports/IBulkTermsRepository';
 import {
   ACCESS_CODE_TTL_MS,
+  FIRST_VISIT_TTL_MS,
   MAX_CODES_PER_PHONE_PER_HOUR,
+  accessMethodFor,
   challengeMessage,
   checkChallenge,
   issueAccessToken,
@@ -29,10 +31,13 @@ export interface CodeSender {
 const HOUR_MS = 60 * 60 * 1000;
 
 export type StartPriceAccessResult =
-  | { ok: true; maskedPhone: string }
+  /** First use of the number: prices now, for this visit, no SMS. */
+  | { ok: true; method: 'first_visit'; maskedPhone: string; token: string; expiresAt: Date }
+  /** The number was used before: a code is on its way. */
+  | { ok: true; method: 'code'; maskedPhone: string }
   | { ok: false; code: 'BAD_PHONE' | 'TOO_MANY_CODES'; message: string };
 
-/** Texts a six-digit code to the phone the buyer typed. */
+/** First use of a number: prices at once. Later uses: texts a six-digit code. */
 export class StartBulkPriceAccessUseCase {
   constructor(
     private readonly access: IBulkPriceAccessRepository,
@@ -47,13 +52,18 @@ export class StartBulkPriceAccessUseCase {
     }
     const phone = normalizePhone(input.phone);
     const now = this.clock();
+    if (accessMethodFor(await this.access.countUses(phone)) === 'first_visit') {
+      await this.access.recordFirstVisit(phone, now);
+      const issued = issueAccessToken(phone, now, (body) => this.crypto.sign(body), FIRST_VISIT_TTL_MS);
+      return { ok: true, method: 'first_visit', maskedPhone: maskPhone(phone), token: issued.token, expiresAt: issued.expiresAt };
+    }
     if ((await this.access.countSince(phone, new Date(now.getTime() - HOUR_MS))) >= MAX_CODES_PER_PHONE_PER_HOUR) {
       return { ok: false, code: 'TOO_MANY_CODES', message: 'We have sent this number several codes in the last hour. Use the latest one, or try again later.' };
     }
     const code = this.crypto.newCode();
     await this.access.create({ phone, codeHash: this.crypto.hashCode(code), expiresAt: new Date(now.getTime() + ACCESS_CODE_TTL_MS) });
     await this.sender.send(phone, code);
-    return { ok: true, maskedPhone: maskPhone(phone) };
+    return { ok: true, method: 'code', maskedPhone: maskPhone(phone) };
   }
 }
 
@@ -138,7 +148,7 @@ export class GetBulkTermsUseCase {
 
 export class ListBulkPriceLeadsUseCase {
   constructor(private readonly access: IBulkPriceAccessRepository, private readonly clock: () => Date = () => new Date()) {}
-  execute(): Promise<Array<{ phone: string; verifiedAt: Date }>> {
+  execute(): Promise<Array<{ phone: string; verifiedAt: Date; method: 'first_visit' | 'code' }>> {
     return this.access.listVerified({ since: new Date(this.clock().getTime() - 90 * 24 * HOUR_MS), limit: 200 });
   }
 }

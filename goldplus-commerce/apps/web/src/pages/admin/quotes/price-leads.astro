@@ -13,7 +13,7 @@ import { kampalaDateTime } from '../../../lib/adminQuoteRequests';
 const token = readSessionToken(Astro.request);
 if (!token) return Astro.redirect('/admin/login?returnTo=/admin/quotes/price-leads', 303);
 
-const result = await tryFetchAdminList<{ phone: string; verifiedAt: string }>(
+const result = await tryFetchAdminList<{ phone: string; verifiedAt: string; method?: 'first_visit' | 'code' }>(
   '/admin/quote-requests/price-leads',
   [],
   'Live data is unavailable right now (service unreachable or permission denied). No sample data is shown.',
@@ -25,7 +25,7 @@ const result = await tryFetchAdminList<{ phone: string; verifiedAt: string }>(
   <div class="container mx-auto max-w-3xl px-4 lg:px-8">
     <p class="mb-4 text-sm"><a href="/admin/quotes" class="font-bold underline underline-offset-4">All quote requests</a></p>
     <h2 class="text-2xl font-black tracking-tight text-brand-dark">Phones that unlocked bulk prices</h2>
-    <p class="mt-1 text-sm text-gray-600">Last 90 days, newest first. Each proved the number with a texted code. Compare with the quote requests: a phone here with no request may be worth a call.</p>
+    <p class="mt-1 text-sm text-gray-600">Last 90 days, newest first. A first visit needs no code, so that number was typed, not proved; a return visit proves it with a texted code. A phone here with no request may be worth a call.</p>
     {result.isSample && <p class="mt-4 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800">{result.reason}</p>}
     {result.items.length === 0 ? (
       <div class="mt-6"><EmptyState title="No one yet" message="When a buyer enters their phone on /bulk and types the code, the number appears here." /></div>
@@ -34,7 +34,7 @@ const result = await tryFetchAdminList<{ phone: string; verifiedAt: string }>(
         {result.items.map((lead) => (
           <li class="flex items-center justify-between gap-3 p-4 text-sm">
             <a class="font-mono font-bold underline" href={`tel:${lead.phone.replace(/[^0-9+]/g, '')}`}>{lead.phone}</a>
-            <span class="text-gray-600">{kampalaDateTime(lead.verifiedAt)}</span>
+            <span class="text-gray-600">{lead.method === 'first_visit' ? 'First visit, not proved' : 'Proved by code'} · {kampalaDateTime(lead.verifiedAt)}</span>
           </li>
         ))}
       </ul>

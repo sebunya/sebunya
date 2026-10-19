@@ -1,7 +1,10 @@
 /**
- * Who may see bulk (dealer) prices (owner, 2026-10-19): a buyer who enters a
- * phone number and proves it with the six-digit code we text to it. Proof lasts
- * 30 days on that device.
+ * Who may see bulk (dealer) prices (owner, 2026-10-19):
+ *  - the FIRST time a phone number is used, the buyer just types it and sees
+ *    prices for that visit (no SMS: the code must not lengthen a first journey);
+ *  - every LATER time, the buyer proves the number with the six-digit code we
+ *    text, and the proof lasts 30 days on that device.
+ * A first visit is not proof of the number; the team's leads list says so.
  *
  * Pure domain: the clock, the code, the keyed hash and the signature are
  * passed in, so nothing here touches crypto, the network or the database.
@@ -13,6 +16,15 @@ export const MAX_CODE_ATTEMPTS = 5;
 /** Codes one phone may be sent in an hour: an SMS costs money and annoys the owner of the number. */
 export const MAX_CODES_PER_PHONE_PER_HOUR = 3;
 export const ACCESS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/** A first visit: one sitting (a browser-session cookie), at most a day. */
+export const FIRST_VISIT_TTL_MS = 24 * 60 * 60 * 1000;
+
+export type AccessMethod = 'first_visit' | 'code';
+
+/** No code the first time a number is used; a code every time after. */
+export function accessMethodFor(previousUses: number): AccessMethod {
+  return previousUses === 0 ? 'first_visit' : 'code';
+}
 
 const TOKEN_VERSION = 'b1';
 
@@ -22,8 +34,8 @@ function tokenBody(phone: string, expiresAtMs: number): string {
 }
 
 /** A token the storefront keeps in an httpOnly cookie. `sign` is a keyed MAC (hex). */
-export function issueAccessToken(phone: string, now: Date, sign: (body: string) => string): { token: string; expiresAt: Date } {
-  const expiresAtMs = now.getTime() + ACCESS_TTL_MS;
+export function issueAccessToken(phone: string, now: Date, sign: (body: string) => string, ttlMs: number = ACCESS_TTL_MS): { token: string; expiresAt: Date } {
+  const expiresAtMs = now.getTime() + Math.min(ttlMs, ACCESS_TTL_MS);
   const body = tokenBody(phone, expiresAtMs);
   return { token: `${body}.${sign(body)}`, expiresAt: new Date(expiresAtMs) };
 }

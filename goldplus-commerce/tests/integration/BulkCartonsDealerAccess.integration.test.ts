@@ -94,7 +94,15 @@ run('bulk cartons, dealer prices and price access (real PostgreSQL)', () => {
     expect(await r.access.markVerified(open!.id, new Date())).toBe(false);
     expect((await r.access.latestOpen(phone))?.codeHash).toBe('a'.repeat(64));
     const leads = await r.access.listVerified({ since, limit: 50 });
-    expect(leads.filter((l) => l.phone === phone)).toHaveLength(1);
+    expect(leads.filter((l) => l.phone === phone)).toEqual([expect.objectContaining({ method: 'code' })]);
+    // A first visit counts as a use, is never a code to answer, and is a lead marked as such.
+    expect(await r.access.countUses(phone)).toBe(2);
+    await r.access.recordFirstVisit(phone, new Date());
+    expect(await r.access.countUses(phone)).toBe(3);
+    expect(await r.access.countSince(phone, since)).toBe(2);
+    expect((await r.access.latestOpen(phone))?.codeHash).toBe('a'.repeat(64));
+    const after = await r.access.listVerified({ since, limit: 50 });
+    expect(after.filter((l) => l.phone === phone).map((l) => l.method).sort()).toEqual(['code', 'first_visit']);
   });
 
   it('saves a request in cartons with dealer prices, and one with only a budget', async () => {

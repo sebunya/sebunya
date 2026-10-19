@@ -3,6 +3,7 @@ import { createHmac } from 'node:crypto';
 import {
   ACCESS_CODE_TTL_MS,
   ACCESS_TTL_MS,
+  FIRST_VISIT_TTL_MS,
   MAX_CODES_PER_PHONE_PER_HOUR,
   MAX_CODE_ATTEMPTS,
   checkChallenge,
@@ -59,37 +60,58 @@ describe('code challenge', () => {
   });
 });
 
-function fakeAccess(): IBulkPriceAccessRepository & { rows: Array<AccessChallenge & { phone: string; createdAt: Date }> } {
-  const rows: Array<AccessChallenge & { phone: string; createdAt: Date }> = [];
+function fakeAccess(): IBulkPriceAccessRepository & { rows: Array<AccessChallenge & { phone: string; createdAt: Date; method: 'first_visit' | 'code' }> } {
+  const rows: Array<AccessChallenge & { phone: string; createdAt: Date; method: 'first_visit' | 'code' }> = [];
   let n = 0;
   return {
     rows,
-    countSince: async (phone, since) => rows.filter((r) => r.phone === phone && r.createdAt >= since).length,
-    create: async ({ phone, codeHash, expiresAt }) => { rows.push({ id: `c${++n}`, phone, codeHash, expiresAt, attempts: 0, verifiedAt: null, createdAt: NOW }); },
-    latestOpen: async (phone) => [...rows].reverse().find((r) => r.phone === phone && !r.verifiedAt) ?? null,
+    countSince: async (phone, since) => rows.filter((r) => r.phone === phone && r.method === 'code' && r.createdAt >= since).length,
+    countUses: async (phone) => rows.filter((r) => r.phone === phone).length,
+    recordFirstVisit: async (phone, at) => { rows.push({ id: `c${++n}`, phone, codeHash: 'first-visit', expiresAt: at, attempts: 0, verifiedAt: at, createdAt: at, method: 'first_visit' }); },
+    create: async ({ phone, codeHash, expiresAt }) => { rows.push({ id: `c${++n}`, phone, codeHash, expiresAt, attempts: 0, verifiedAt: null, createdAt: NOW, method: 'code' }); },
+    latestOpen: async (phone) => [...rows].reverse().find((r) => r.phone === phone && !r.verifiedAt && r.method === 'code') ?? null,
     recordAttempt: async (id) => { const r = rows.find((x) => x.id === id)!; r.attempts += 1; return r.attempts; },
     markVerified: async (id, at) => { const r = rows.find((x) => x.id === id)!; if (r.verifiedAt) return false; r.verifiedAt = at; return true; },
-    listVerified: async () => rows.filter((r) => r.verifiedAt).map((r) => ({ phone: r.phone, verifiedAt: r.verifiedAt! })),
+    listVerified: async () => rows.filter((r) => r.verifiedAt).map((r) => ({ phone: r.phone, verifiedAt: r.verifiedAt!, method: r.method })),
   };
 }
 
 const crypto: PriceAccessCrypto = { newCode: () => '123456', hashCode: (c) => `h-${c}`, sign };
 
 describe('start and verify', () => {
-  it('texts a code to the normalised phone, then the right code earns a token for that phone', async () => {
+  it('the first time a number is used: prices for this visit, no SMS', async () => {
     const access = fakeAccess();
     const sent: Array<[string, string]> = [];
     const start = new StartBulkPriceAccessUseCase(access, { send: async (p, c) => { sent.push([p, c]); } }, crypto, () => NOW);
-    expect(await start.execute({ phone: '0772 123 456' })).toEqual({ ok: true, maskedPhone: '0772 •••456' });
+    const first = await start.execute({ phone: '0772 123 456' });
+    expect(first).toMatchObject({ ok: true, method: 'first_visit', maskedPhone: '0772 •••456' });
+    expect(sent).toEqual([]);
+    if (first.ok && first.method === 'first_visit') {
+      expect(readAccessToken(first.token, NOW, sign)).toBe(PHONE);
+      expect(first.expiresAt.getTime() - NOW.getTime()).toBe(FIRST_VISIT_TTL_MS);
+      expect(readAccessToken(first.token, new Date(NOW.getTime() + FIRST_VISIT_TTL_MS), sign)).toBeNull();
+    }
+    expect(access.rows[0]).toMatchObject({ phone: PHONE, method: 'first_visit' });
+  });
+
+  it('every later time: texts a code, then the right code earns a 30-day token', async () => {
+    const access = fakeAccess();
+    const sent: Array<[string, string]> = [];
+    const start = new StartBulkPriceAccessUseCase(access, { send: async (p, c) => { sent.push([p, c]); } }, crypto, () => NOW);
+    await start.execute({ phone: '0772 123 456' });
+    expect(await start.execute({ phone: '0772 123 456' })).toEqual({ ok: true, method: 'code', maskedPhone: '0772 •••456' });
     expect(sent).toEqual([[PHONE, '123456']]);
-    expect(access.rows[0]).toMatchObject({ phone: PHONE, codeHash: 'h-123456' });
-    expect(access.rows[0].expiresAt.getTime() - NOW.getTime()).toBe(ACCESS_CODE_TTL_MS);
+    expect(access.rows[1]).toMatchObject({ phone: PHONE, codeHash: 'h-123456', method: 'code' });
+    expect(access.rows[1].expiresAt.getTime() - NOW.getTime()).toBe(ACCESS_CODE_TTL_MS);
 
     const verify = new VerifyBulkPriceAccessUseCase(access, crypto, () => NOW);
     expect(await verify.execute({ phone: '0772123456', code: '000000' })).toMatchObject({ ok: false, code: 'WRONG_CODE' });
     const ok = await verify.execute({ phone: '0772123456', code: '123 456' });
     expect(ok.ok).toBe(true);
-    if (ok.ok) expect(readAccessToken(ok.token, NOW, sign)).toBe(PHONE);
+    if (ok.ok) {
+      expect(readAccessToken(ok.token, NOW, sign)).toBe(PHONE);
+      expect(ok.expiresAt.getTime() - NOW.getTime()).toBe(ACCESS_TTL_MS);
+    }
     // A code works once.
     expect(await verify.execute({ phone: '0772123456', code: '123456' })).toMatchObject({ ok: false, code: 'NO_CODE' });
   });
@@ -97,14 +119,17 @@ describe('start and verify', () => {
   it('caps codes per phone per hour and refuses a bad phone', async () => {
     const access = fakeAccess();
     const start = new StartBulkPriceAccessUseCase(access, { send: async () => undefined }, crypto, () => NOW);
-    for (let i = 0; i < MAX_CODES_PER_PHONE_PER_HOUR; i++) expect((await start.execute({ phone: '0772123456' })).ok).toBe(true);
+    await start.execute({ phone: '0772123456' }); // the first visit is not a code
+    for (let i = 0; i < MAX_CODES_PER_PHONE_PER_HOUR; i++) expect(await start.execute({ phone: '0772123456' })).toMatchObject({ ok: true, method: 'code' });
     expect(await start.execute({ phone: '0772123456' })).toMatchObject({ ok: false, code: 'TOO_MANY_CODES' });
     expect(await start.execute({ phone: '12' })).toMatchObject({ ok: false, code: 'BAD_PHONE' });
   });
 
   it('counts every guess, so five wrong tries end the code', async () => {
     const access = fakeAccess();
-    await new StartBulkPriceAccessUseCase(access, { send: async () => undefined }, crypto, () => NOW).execute({ phone: '0772123456' });
+    const start = new StartBulkPriceAccessUseCase(access, { send: async () => undefined }, crypto, () => NOW);
+    await start.execute({ phone: '0772123456' });
+    await start.execute({ phone: '0772123456' });
     const verify = new VerifyBulkPriceAccessUseCase(access, crypto, () => NOW);
     for (let i = 0; i < MAX_CODE_ATTEMPTS; i++) await verify.execute({ phone: '0772123456', code: '000000' });
     expect(await verify.execute({ phone: '0772123456', code: '123456' })).toMatchObject({ ok: false, code: 'TOO_MANY_ATTEMPTS' });

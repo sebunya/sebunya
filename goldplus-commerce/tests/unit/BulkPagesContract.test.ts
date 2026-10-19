@@ -68,6 +68,11 @@ describe('bulk pages disclose public facts only', () => {
     expect(verify).toMatch(/httpOnly:\s*true/);
     expect(verify).toContain("data: { maskedPhone:");
     expect(verify).not.toMatch(/data:\s*\{[^}]*token/);
+    // A first visit's token goes into a browser-session cookie (no expiry); the browser gets only the method.
+    const start = read('apps/web/src/pages/api/bulk/access/start.ts');
+    expect(start).toMatch(/cookies\.set\(BULK_ACCESS_COOKIE, token, \{ path: '\/', sameSite: 'lax', httpOnly: true/);
+    expect(start).not.toMatch(/expires:|maxAge/);
+    expect(start).not.toMatch(/data:\s*\{[^}]*token/);
     // The script never reads or sends one (a comment may mention the cookie).
     expect(read('apps/web/src/lib/bulkBuilderClient.ts')).not.toMatch(/\.token\b|token\s*:|priceAccessToken|document\.cookie/);
     // The relay adds the token from the cookie, never from the request body.
