@@ -56,7 +56,9 @@ describe('bulk pages disclose public facts only', () => {
     expect(page).toContain('fetchBulkTerms(accessToken)');
     expect(page).toContain('const unlocked = bulkTerms.pricesUnlocked;');
     expect(page).toContain("'Cache-Control', 'private, no-store'");
-    expect(page).toContain('if (!unlocked) return');
+    expect(page).toContain('if (!unlocked) return null;');
+    // Locked rows carry no price text at all, not even a pointer to the panel.
+    expect(page).not.toMatch(/Bulk price: enter your phone|see the total at bulk price/);
     // Rows take the price from the gated terms only, never the retail price.
     expect(read('apps/web/src/lib/bulkCatalogue.ts')).not.toMatch(/retailPriceUgx/);
   });

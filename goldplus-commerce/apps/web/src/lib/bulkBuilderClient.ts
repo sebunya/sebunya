@@ -270,7 +270,7 @@ export function initBulkBuilder(): void {
     } else if (status.kind === 'unmeasured') {
       budgetText.textContent = est.lineCount === 0
         ? `Budget ${formatUgx(status.budgetUgx)}. Send it with what you sell in the notes, and our team builds the list.`
-        : `Budget ${formatUgx(status.budgetUgx)}. Enter your phone at the top to measure your list against it.`;
+        : `Budget ${formatUgx(status.budgetUgx)}.`;
     } else if (status.kind === 'within') {
       budgetText.textContent = `${formatUgx(status.usedUgx)} of ${formatUgx(status.budgetUgx)} used. ${formatUgx(status.remainingUgx)} left.`;
     } else {
@@ -294,7 +294,8 @@ export function initBulkBuilder(): void {
         if (unlocked && est.estimatedTotalUgx > 0) barText.append(el('span', 'block text-xs text-slate-600', `${formatUgx(est.estimatedTotalUgx)} at bulk price`));
       }
     }
-    if (estimateBox) estimateBox.hidden = est.lineCount === 0;
+    // Locked: no price and no total; the box shows only the over-500 note, if any.
+    if (estimateBox) estimateBox.hidden = est.lineCount === 0 || (!unlocked && est.aboveSelfServeCount === 0);
     if (estimateTotal) estimateTotal.textContent = formatUgx(est.estimatedTotalUgx);
     if (estimateUnpriced) {
       const unpriced = unlocked ? est.unpricedLineCount : 0;
