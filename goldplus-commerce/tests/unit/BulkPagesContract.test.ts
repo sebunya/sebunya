@@ -4,10 +4,12 @@ import path from 'node:path';
 import { PUBLIC_FORM_BUDGETS, budgetedFormPath } from '../../apps/web/src/lib/publicFormLimiter';
 
 /**
- * Source contracts for the bulk buying pages (docs/bulk-buying/DESIGN.md).
- * The storefront pages read public facts only; nothing dealer-, cost- or
- * floor-shaped may appear in them. CSP: no inline handlers, and any inline
- * script carries the request nonce.
+ * Source contracts for the bulk buying pages (docs/bulk-buying/DESIGN.md §12).
+ * The storefront never names a dealer, cost or floor field: the bulk price
+ * arrives as `bulkPriceUgx`, only from the API's gated read, only for a phone
+ * proved by a texted code, and its token lives in an httpOnly cookie. Bulk is
+ * supplied to order: no stock state and no basket route. CSP: no inline
+ * handlers, and any inline script carries the request nonce.
  */
 const ROOT = path.resolve(__dirname, '../..');
 const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -21,13 +23,18 @@ const STOREFRONT_FILES = [
   'apps/web/src/lib/bulkCatalogue.ts',
   'apps/web/src/lib/bulkBuilderClient.ts',
   'apps/web/src/lib/bulkQuoteView.ts',
-  'apps/web/src/pages/api/bulk/cart.ts',
   'apps/web/src/pages/api/bulk/quote.ts',
+  'apps/web/src/lib/bulkAccess.ts',
+  'apps/web/src/pages/api/bulk/access/start.ts',
+  'apps/web/src/pages/api/bulk/access/verify.ts',
+  'apps/web/src/pages/api/bulk/access/clear.ts',
 ];
 const ALL_ASTRO = [
   ...STOREFRONT_FILES.filter((f) => f.endsWith('.astro')),
   'apps/web/src/pages/admin/quotes/index.astro',
   'apps/web/src/pages/admin/quotes/[id].astro',
+  'apps/web/src/pages/admin/quotes/bulk-terms.astro',
+  'apps/web/src/pages/admin/quotes/price-leads.astro',
 ];
 
 describe('bulk pages disclose public facts only', () => {
@@ -36,24 +43,49 @@ describe('bulk pages disclose public facts only', () => {
     expect(src).not.toMatch(/dealerPrice|dealer_price|costPrice|cost_price|supplierCost|floorPrice|floor_price|priceFloor/);
   });
 
-  it('the builder never prints a stock count', () => {
-    const src = read('apps/web/src/pages/bulk/index.astro');
-    expect(src).not.toMatch(/availability\.quantity|stockQuantity|\.quantity\s*\}/);
-    expect(read('apps/web/src/lib/bulkCatalogue.ts')).not.toMatch(/availability\??\.quantity/);
+  it('bulk is supplied to order: no stock state, no basket route', () => {
+    const page = read('apps/web/src/pages/bulk/index.astro');
+    expect(page).not.toMatch(/inStock|stockLabel|availability|stockQuantity|Add to basket/);
+    expect(read('apps/web/src/lib/bulkCatalogue.ts')).not.toMatch(/availability\??\./);
+    expect(read('apps/web/src/lib/bulkBuilderClient.ts')).not.toMatch(/\/api\/bulk\/cart|\/cart/);
+    expect(fs.existsSync(path.join(ROOT, 'apps/web/src/pages/api/bulk/cart.ts'))).toBe(false);
   });
 
-  it('the estimate is labelled as an estimate with volume pricing confirmed by the team', () => {
-    const src = read('apps/web/src/pages/bulk/index.astro');
-    expect(src).toContain('Estimated total at list price');
-    expect(src).toContain('Volume pricing is confirmed by our sales team');
-    expect(read('apps/web/src/components/bulk/BulkRequestSummary.astro')).toContain('not a bill');
+  it('the page shows bulk prices only when the API says the phone is verified, and is never cached', () => {
+    const page = read('apps/web/src/pages/bulk/index.astro');
+    expect(page).toContain('fetchBulkTerms(accessToken)');
+    expect(page).toContain('const unlocked = bulkTerms.pricesUnlocked;');
+    expect(page).toContain("'Cache-Control', 'private, no-store'");
+    expect(page).toContain('if (!unlocked) return null;');
+    // Locked rows carry no price text at all, not even a pointer to the panel.
+    expect(page).not.toMatch(/Bulk price: enter your phone|see the total at bulk price/);
+    // Rows take the price from the gated terms only, never the retail price.
+    expect(read('apps/web/src/lib/bulkCatalogue.ts')).not.toMatch(/retailPriceUgx/);
   });
 
-  it('the quote relay forwards ids and quantities, never a client price, name or code', () => {
+  it('the access token lives only in an httpOnly cookie; the browser never receives it', () => {
+    const verify = read('apps/web/src/pages/api/bulk/access/verify.ts');
+    expect(verify).toMatch(/httpOnly:\s*true/);
+    expect(verify).toContain("data: { maskedPhone:");
+    expect(verify).not.toMatch(/data:\s*\{[^}]*token/);
+    // A first visit's token goes into a browser-session cookie (no expiry); the browser gets only the method.
+    const start = read('apps/web/src/pages/api/bulk/access/start.ts');
+    expect(start).toMatch(/cookies\.set\(BULK_ACCESS_COOKIE, token, \{ path: '\/', sameSite: 'lax', httpOnly: true/);
+    expect(start).not.toMatch(/expires:|maxAge/);
+    expect(start).not.toMatch(/data:\s*\{[^}]*token/);
+    // The script never reads or sends one (a comment may mention the cookie).
+    expect(read('apps/web/src/lib/bulkBuilderClient.ts')).not.toMatch(/\.token\b|token\s*:|priceAccessToken|document\.cookie/);
+    // The relay adds the token from the cookie, never from the request body.
+    const relay = read('apps/web/src/pages/api/bulk/quote.ts');
+    expect(relay).toContain('readAccessCookie(cookies.get(BULK_ACCESS_COOKIE)?.value)');
+    expect(relay).not.toMatch(/raw\.priceAccessToken/);
+  });
+
+  it('the quote relay forwards ids and counts, never a client price, name or code', () => {
     const src = read('apps/web/src/pages/api/bulk/quote.ts');
-    const linesMap = src.slice(src.indexOf('body.lines ='), src.indexOf('let upstream'));
+    const linesMap = src.slice(src.indexOf('body.lines ='), src.indexOf('const accessToken'));
     expect(linesMap).toContain('productId');
-    expect(linesMap).toContain('quantity');
+    expect(linesMap).toContain('count');
     expect(linesMap).not.toMatch(/price|name|code/i);
   });
 });
@@ -77,11 +109,15 @@ describe('CSP', () => {
 });
 
 describe('abuse budgets and discovery', () => {
-  it('the quote, the status lookup and the basket add are budgeted per visitor', () => {
+  it('the request, the status lookup and both code steps are budgeted per visitor', () => {
     expect(budgetedFormPath('/api/bulk/quote')).toBe('/api/bulk/quote');
     expect(budgetedFormPath('/Bulk/Status/')).toBe('/bulk/status');
-    expect(budgetedFormPath('/api/bulk/cart')).toBe('/api/bulk/cart');
+    expect(budgetedFormPath('/api/bulk/access/start')).toBe('/api/bulk/access/start');
+    expect(budgetedFormPath('/api/bulk/access/verify')).toBe('/api/bulk/access/verify');
+    expect(budgetedFormPath('/api/bulk/cart')).toBeNull();
     expect(PUBLIC_FORM_BUDGETS['/api/bulk/quote'].limit).toBeLessThanOrEqual(PUBLIC_FORM_BUDGETS['/quote-request'].limit);
+    // Each code costs an SMS.
+    expect(PUBLIC_FORM_BUDGETS['/api/bulk/access/start'].limit).toBeLessThanOrEqual(3);
   });
 
   it('the builder is linked from the quote and dealer pages and listed in the sitemap', () => {

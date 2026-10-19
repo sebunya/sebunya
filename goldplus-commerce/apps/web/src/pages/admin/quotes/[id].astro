@@ -9,6 +9,7 @@ import {
   NEXT_QUOTE_STATUSES,
   QUOTE_STATUS_CLASS,
   QUOTE_STATUS_LABEL,
+  adminCountLabel,
   formatCount,
   kampalaDateTime,
   type AdminQuoteRequest,
@@ -94,6 +95,8 @@ const unpriced = quote ? quote.totals.lineCount - quote.totals.pricedLineCount :
               {quote.buyerType && <div><dt class="font-bold text-gray-600">Buyer type</dt><dd>{BUYER_TYPE_LABEL[quote.buyerType] ?? quote.buyerType}</dd></div>}
               <div><dt class="font-bold text-gray-600">Delivery district</dt><dd>{quote.deliveryDistrict ?? 'Not given'}</dd></div>
               <div><dt class="font-bold text-gray-600">Needed by</dt><dd>{quote.neededBy ?? 'Not given'}</dd></div>
+              {quote.budgetUgx !== null && <div><dt class="font-bold text-gray-600">Budget</dt><dd class="font-mono font-black">{formatUgx(quote.budgetUgx)}</dd></div>}
+              {quote.source === 'bulk_builder' && <div><dt class="font-bold text-gray-600">Saw bulk prices</dt><dd>{quote.pricesShown ? 'Yes: phone verified by code' : 'No: give them the total on the call'}</dd></div>}
             </dl>
             {quote.notes && (
               <>
@@ -117,9 +120,12 @@ const unpriced = quote ? quote.totals.lineCount - quote.totals.pricedLineCount :
 
           <section class="rounded-2xl border border-gray-200 bg-white p-5 lg:col-span-2" aria-labelledby="lines-heading">
             <h3 id="lines-heading" class="text-sm font-black uppercase tracking-widest text-gray-500">
-              {quote.source === 'bulk_builder' ? `${quote.totals.lineCount} products, ${formatCount(quote.totals.totalUnits)} units` : 'Request'}
+              {quote.source !== 'bulk_builder' ? 'Request' : quote.totals.lineCount === 0 ? 'Budget only' : `${quote.totals.lineCount} products${quote.totals.totalCartons ? `, ${formatCount(quote.totals.totalCartons)} cartons` : ''}${quote.totals.totalUnits ? `, ${formatCount(quote.totals.totalUnits)} pieces` : ''}`}
             </h3>
             {quote.source === 'bulk_builder' ? (
+              quote.totals.lineCount === 0 ? (
+                <p class="mt-3 text-sm text-gray-800">The buyer sent a budget{quote.budgetUgx !== null ? ` of ${formatUgx(quote.budgetUgx)}` : ''} and no list. Build the list from their notes and call them with it.</p>
+              ) : (
               <>
                 <div class="mt-3 overflow-x-auto">
                   <table class="w-full border-collapse text-left text-sm">
@@ -127,8 +133,8 @@ const unpriced = quote ? quote.totals.lineCount - quote.totals.pricedLineCount :
                       <tr class="border-b border-gray-200 text-[10px] font-black uppercase tracking-widest text-gray-500">
                         <th scope="col" class="py-2 pr-3">#</th>
                         <th scope="col" class="py-2 pr-3">Product</th>
-                        <th scope="col" class="py-2 pr-3 text-right">Qty</th>
-                        <th scope="col" class="py-2 pr-3 text-right">List price</th>
+                        <th scope="col" class="py-2 pr-3 text-right">Ordered</th>
+                        <th scope="col" class="py-2 pr-3 text-right">Price a piece</th>
                         <th scope="col" class="py-2 text-right">Line</th>
                       </tr>
                     </thead>
@@ -138,19 +144,21 @@ const unpriced = quote ? quote.totals.lineCount - quote.totals.pricedLineCount :
                           <td class="py-2 pr-3 text-gray-500">{l.lineNo}</td>
                           <td class="py-2 pr-3">
                             <div class="font-bold text-brand-dark">{l.productName}</div>
-                            <div class="text-xs text-gray-500">{l.productCode && <span class="font-mono">{l.productCode}</span>}{l.productCode && ' · '}{l.availability.replace('_', ' ')} when asked{!l.productId && ' · product since removed'}</div>
+                            <div class="text-xs text-gray-500">{l.productCode && <span class="font-mono">{l.productCode}</span>}{l.productCode && ' · '}{l.availability.replace(/_/g, ' ')} in the shop when asked{!l.productId && ' · product since removed'}</div>
+                            {l.aboveSelfServe && <div class="mt-1 text-xs font-bold text-orange-700">Over 500 cartons: confirm supply</div>}
                           </td>
-                          <td class="py-2 pr-3 text-right font-mono font-black">{formatCount(l.quantity)}</td>
-                          <td class="py-2 pr-3 text-right font-mono">{l.unitPriceUgx === null ? '—' : formatUgx(l.unitPriceUgx)}</td>
+                          <td class="py-2 pr-3 text-right font-mono font-black">{adminCountLabel(l)}</td>
+                          <td class="py-2 pr-3 text-right font-mono">{l.unitPriceUgx === null ? '—' : formatUgx(l.unitPriceUgx)}<div class="text-[10px] font-normal text-gray-500">{l.priceBasis === 'dealer' ? 'dealer' : 'retail'}</div></td>
                           <td class="py-2 text-right font-mono">{l.lineTotalUgx === null ? '—' : formatUgx(l.lineTotalUgx)}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
-                <p class="mt-4 text-sm font-bold text-brand-dark">Estimated total at list price: {formatUgx(quote.totals.estimatedTotalUgx)}</p>
-                <p class="text-xs text-gray-500">Snapshot of public list prices when the buyer asked. {unpriced > 0 ? `${unpriced} line(s) had no listed price.` : ''} The buyer was told volume pricing is confirmed by the team.</p>
+                <p class="mt-4 text-sm font-bold text-brand-dark">Total of priced lines: {formatUgx(quote.totals.estimatedTotalUgx)}{quote.budgetUgx !== null ? ` (budget ${formatUgx(quote.budgetUgx)})` : ''}</p>
+                <p class="text-xs text-gray-500">Prices as they were when the buyer sent it. {unpriced > 0 ? `${unpriced} line(s) had no dealer price or carton size: price them on the call.` : ''} Delivery is not included; agree it on the call.</p>
               </>
+              )
             ) : (
               <dl class="mt-3 space-y-2 text-sm">
                 <div><dt class="font-bold text-gray-600">Product or category</dt><dd class="break-words">{quote.productName}</dd></div>

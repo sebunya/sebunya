@@ -31,9 +31,9 @@ const whatsappUrl = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComp
   <div class="container mx-auto max-w-3xl px-4 py-10 lg:px-8">
     {request ? (
       <>
-        <h1 class="text-2xl font-black tracking-tight text-gray-950 sm:text-3xl">We have your bulk list</h1>
+        <h1 class="text-2xl font-black tracking-tight text-gray-950 sm:text-3xl">We have your bulk request</h1>
         <p class="mt-3 text-base leading-relaxed text-slate-700">
-          Keep the reference below. Our sales team will call you on the number you gave to confirm the list, the price and delivery. We have sent you a text with the reference.
+          Keep the reference below. We have also sent it to you by text.
         </p>
         <div class="mt-6"><BulkRequestSummary request={request} /></div>
         <span hidden data-lead-ref={request.reference}></span>

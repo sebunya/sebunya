@@ -44,6 +44,8 @@ const EXCLUDED: Record<string, string> = {
   '/admin/delivery/riders': 'reached from the Delivery Control Centre (0190)',
   '/admin/delivery/bus-rates': 'reached from the Delivery Control Centre (upcountry shipping, 2026-10-16)',
   '/admin/delivery/launch': 'reached from the Delivery Control Centre',
+  '/admin/quotes/bulk-terms': 'reached from Quote requests (carton sizes and dealer prices, 2026-10-19)',
+  '/admin/quotes/price-leads': 'reached from Quote requests (phones that unlocked bulk prices, 2026-10-19)',
   '/admin/loyalty/gamification': 'reached from Loyalty & rewards',
   '/admin/batteries/catalogue': 'reached from Batteries',
   '/admin/batteries/devices': 'reached from Batteries',

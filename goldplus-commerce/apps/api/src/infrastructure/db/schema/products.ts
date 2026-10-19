@@ -49,6 +49,14 @@ export const products = pgTable('products', {
    * last-writer-wins. 0 = never edited through the gallery service.
    */
   mediaRevision: integer('media_revision').default(0).notNull(),
+  /**
+   * 0195 — how the product is bought in bulk (docs/bulk-buying/DESIGN.md §12):
+   * 'carton' of units_per_carton pieces, or 'piece' (flash drives, memory
+   * cards). A NULL carton size means not entered yet; the team confirms it.
+   * Bulk orders are supplied to order and never read or hold website stock.
+   */
+  bulkUnit: varchar('bulk_unit', { length: 8 }).default('carton').notNull(),
+  unitsPerCarton: integer('units_per_carton'),
   stockQuantity: integer('stock_quantity').default(0).notNull(),
   // Inventory ledger (Section 12): reserved holds stock committed to open orders;
   // available = stock_quantity - reserved_quantity. reorder_point drives low-stock alerts.

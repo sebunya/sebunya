@@ -3,14 +3,16 @@ import { apiBase } from '../../../lib/api';
 import { readBodyCapped } from '../../../lib/boundedBody';
 import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../../../lib/requestOrigin';
 import { BULK_RECEIPT_COOKIE, encodeBulkReceipt } from '../../../lib/bulkReceipt';
+import { BULK_ACCESS_COOKIE, readAccessCookie } from '../../../lib/bulkAccess';
 
 /**
  * Same-origin relay for a bulk quote request (docs/bulk-buying/DESIGN.md).
  *
  * One fixed upstream path, a bounded body, and only the fields the builder
- * collects: never a general relay. Product ids and quantities go through; no
- * price, name or code the browser holds is forwarded, because the API takes
- * those from the catalogue itself.
+ * collects: never a general relay. Product ids and counts (cartons, or pieces)
+ * go through; no price, name or code the browser holds is forwarded, because
+ * the API takes those from the catalogue itself. The price-access token, if
+ * the buyer proved their phone, comes from its httpOnly cookie, never the page.
  *
  * On success the reference and phone are kept in an httpOnly cookie for an
  * hour so /bulk/submitted can look the request up and show its lines, without
@@ -27,6 +29,7 @@ const TEXT_FIELDS = {
   deliveryDistrict: 80,
   neededBy: 10,
   notes: 2000,
+  budgetUgx: 20,
 } as const;
 const MAX_LINES = 200;
 
@@ -52,8 +55,10 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   }
   body.lines = (Array.isArray(raw.lines) ? raw.lines : []).slice(0, MAX_LINES * 2).map((l) => ({
     productId: typeof (l as { productId?: unknown })?.productId === 'string' ? (l as { productId: string }).productId : '',
-    quantity: Number((l as { quantity?: unknown })?.quantity),
+    count: Number((l as { count?: unknown })?.count),
   }));
+  const accessToken = readAccessCookie(cookies.get(BULK_ACCESS_COOKIE)?.value);
+  if (accessToken) body.priceAccessToken = accessToken;
 
   let upstream: Response;
   try {
@@ -73,14 +78,17 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   }
 
   const payload = (await upstream.json().catch(() => null)) as
-    | { success?: boolean; data?: { request?: { reference?: unknown } }; error?: unknown }
+    | { success?: boolean; data?: { contactPhone?: unknown; request?: { reference?: unknown } }; error?: unknown }
     | null;
   if (!payload) {
     return json(502, { success: false, error: { code: 'UPSTREAM_UNAVAILABLE', message: 'We could not reach our sales system. Try again in a minute.' } });
   }
   const reference = payload.success ? payload.data?.request?.reference : null;
+  // The number the team will call: typed, or the one confirmed with the code.
+  const receiptPhone = payload.success && typeof payload.data?.contactPhone === 'string' ? payload.data.contactPhone : String(body.phone);
+  if (payload.data) delete payload.data.contactPhone;
   if (typeof reference === 'string' && reference) {
-    cookies.set(BULK_RECEIPT_COOKIE, encodeBulkReceipt({ reference, phone: String(body.phone) }), {
+    cookies.set(BULK_RECEIPT_COOKIE, encodeBulkReceipt({ reference, phone: receiptPhone }), {
       path: '/bulk',
       maxAge: 60 * 60,
       sameSite: 'lax',

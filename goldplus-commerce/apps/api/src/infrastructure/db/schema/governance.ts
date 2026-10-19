@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, timestamp, text, jsonb, index, integer, bigint, date, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, varchar, timestamp, text, jsonb, index, integer, bigint, date, uniqueIndex, boolean } from 'drizzle-orm/pg-core';
 import { products } from './products';
 
 export const dealerApplications = pgTable('dealer_applications', {
@@ -57,10 +57,14 @@ export const quoteRequests = pgTable('quote_requests', {
   deliveryDistrict: varchar('delivery_district', { length: 80 }),
   neededBy: date('needed_by'),
   lineCount: integer('line_count'),
-  totalUnits: integer('total_units'),
+  totalUnits: bigint('total_units', { mode: 'number' }),
   estimatedTotalUgx: bigint('estimated_total_ugx', { mode: 'number' }),
   pricedLineCount: integer('priced_line_count'),
   updatedAt: timestamp('updated_at', { withTimezone: true }),
+  // 0195: what the buyer can spend (may come with no lines: the team builds the
+  // list), and whether they were shown dealer prices (phone verified by code).
+  budgetUgx: bigint('budget_ugx', { mode: 'number' }),
+  pricesShown: boolean('prices_shown').default(false).notNull(),
 }, (table) => ({
   referenceUq: uniqueIndex('quote_requests_reference_uq').on(table.reference),
   idempotencyUq: uniqueIndex('quote_requests_idempotency_key_uq').on(table.idempotencyKey),
@@ -79,10 +83,19 @@ export const quoteRequestLines = pgTable('quote_request_lines', {
   productId: uuid('product_id').references(() => products.id, { onDelete: 'set null' }),
   productCode: varchar('product_code', { length: 120 }),
   productName: varchar('product_name', { length: 255 }).notNull(),
-  quantity: integer('quantity').notNull(),
+  /** Total pieces; NULL when the line is in cartons of a size not yet entered (0195). */
+  quantity: integer('quantity'),
   unitPriceUgx: bigint('unit_price_ugx', { mode: 'number' }),
   lineTotalUgx: bigint('line_total_ugx', { mode: 'number' }),
   availability: varchar('availability', { length: 16 }).default('unknown').notNull(),
+  // 0195: what the buyer chose (cartons or pieces, how many) and the carton
+  // size then; unit_price_ugx is the dealer price per piece ('dealer') on new
+  // lines, the public list price ('list') on lines from before 0195.
+  unitKind: varchar('unit_kind', { length: 8 }).default('piece').notNull(),
+  unitCount: integer('unit_count'),
+  unitsPerCarton: integer('units_per_carton'),
+  priceBasis: varchar('price_basis', { length: 8 }).default('list').notNull(),
+  aboveSelfServe: boolean('above_self_serve').default(false).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({
   requestIdx: index('quote_request_lines_request_idx').on(table.quoteRequestId),
@@ -121,3 +134,21 @@ export const fakeProductReports = pgTable('fake_product_reports', {
   loyaltyEntryId: uuid('loyalty_entry_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 });
+
+/**
+ * 0195: SMS code challenges for seeing bulk dealer prices. A verified row is
+ * also the record of which phone looked, and when.
+ */
+export const bulkPriceAccess = pgTable('bulk_price_access', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  phone: varchar('phone', { length: 20 }).notNull(),
+  codeHash: varchar('code_hash', { length: 64 }).notNull(),
+  attempts: integer('attempts').default(0).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  verifiedAt: timestamp('verified_at', { withTimezone: true }),
+  /** 'first_visit': the number was typed, not proved (no code the first time); 'code': proved by SMS. */
+  method: varchar('method', { length: 12 }).default('code').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  phoneCreatedIdx: index('bulk_price_access_phone_created_idx').on(table.phone, table.createdAt),
+}));

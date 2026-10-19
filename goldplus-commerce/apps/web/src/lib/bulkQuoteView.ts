@@ -14,16 +14,24 @@ export interface BulkQuoteBuyerView {
   businessName: string | null;
   deliveryDistrict: string | null;
   neededBy: string | null;
+  budgetUgx: number | null;
+  /** True when this request's phone was verified, so the bulk prices are shown. */
+  pricesShown: boolean;
   lines: Array<{
     lineNo: number;
     productCode: string | null;
     productName: string;
-    quantity: number;
+    unitKind: 'carton' | 'piece';
+    unitCount: number | null;
+    unitsPerCarton: number | null;
+    quantity: number | null;
+    /** "12 cartons (600 pieces)". */
+    countLabel: string;
+    aboveSelfServe: boolean;
     unitPriceUgx: number | null;
     lineTotalUgx: number | null;
-    availability: string;
   }>;
-  totals: { lineCount: number; totalUnits: number; estimatedTotalUgx: number; pricedLineCount: number };
+  totals: { lineCount: number; totalUnits: number; totalCartons: number; estimatedTotalUgx: number; pricedLineCount: number };
 }
 
 export type BulkLookupResult =
@@ -40,17 +48,4 @@ export async function lookupBulkQuote(reference: string, phone: string): Promise
   return result.code === 'NETWORK'
     ? { ok: false, message: 'We cannot reach our sales system right now. Please try again shortly.', unreachable: true }
     : { ok: false, message: result.message, unreachable: false };
-}
-
-export function availabilityLabel(value: string): string {
-  switch (value) {
-    case 'in_stock':
-      return 'In stock when you asked';
-    case 'out_of_stock':
-      return 'Out of stock when you asked';
-    case 'pre_order':
-      return 'Pre-order';
-    default:
-      return 'Stock to confirm';
-  }
 }

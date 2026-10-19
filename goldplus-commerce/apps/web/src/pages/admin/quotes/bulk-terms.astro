@@ -1,0 +1,210 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { apiBase } from '../../../lib/api';
+import { readSessionToken } from '../../../lib/session';
+import { formatUgx } from '../../../lib/money';
+import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../../../lib/requestOrigin';
+
+/**
+ * Bulk terms (docs/bulk-buying/DESIGN.md §12): how each product is bought in
+ * bulk (carton of N pieces, or by the piece) and its dealer price per piece.
+ * The dealer price is what a buyer sees on /bulk after proving their phone.
+ * Reading needs pricing.read; changing needs pricing.manage. Every change is
+ * audited on the API.
+ */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/admin/login?returnTo=/admin/quotes/bulk-terms', 303);
+Astro.response.headers.set('Cache-Control', 'no-store');
+
+interface TermsRow {
+  productId: string;
+  sku: string;
+  modelNumber: string;
+  name: string;
+  categoryName: string | null;
+  onSale: boolean;
+  bulkUnit: 'carton' | 'piece';
+  unitsPerCarton: number | null;
+  retailPriceUgx: number | null;
+  floorPriceUgx: number | null;
+  dealerPriceUgx: number | null;
+}
+interface ImportResult {
+  changes: Array<{ sku: string; before: { bulkUnit: string; unitsPerCarton: number | null; dealerPriceUgx: number | null }; after: { bulkUnit: string; unitsPerCarton: number | null; dealerPriceUgx: number | null } }>;
+  unchanged: number;
+  problems: Array<{ line: number; source: string; reason: string }>;
+  applied: boolean;
+  appliedCount: number;
+  failed: Array<{ sku: string; reason: string }>;
+}
+
+const authed = (path: string, init?: RequestInit) =>
+  fetch(`${apiBase}${path}`, { ...init, headers: { ...init?.headers, Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' } });
+
+let notice: { kind: 'ok' | 'error'; message: string } | null = null;
+let importText = '';
+let importResult: ImportResult | null = null;
+
+if (Astro.request.method === 'POST') {
+  const origin = checkRequestOrigin(Astro.request, import.meta.env as unknown as Record<string, string | undefined>);
+  if (!origin.allowed) {
+    notice = { kind: 'error', message: CROSS_SITE_MESSAGE };
+  } else {
+    const form = await Astro.request.formData();
+    const action = String(form.get('action') ?? '');
+    try {
+      if (action === 'save') {
+        const productId = String(form.get('productId') ?? '');
+        const res = await authed(`/admin/quote-requests/bulk-terms/${encodeURIComponent(productId)}`, {
+          method: 'PUT',
+          body: JSON.stringify({
+            bulkUnit: String(form.get('bulkUnit') ?? ''),
+            unitsPerCarton: String(form.get('unitsPerCarton') ?? ''),
+            dealerPriceUgx: String(form.get('dealerPriceUgx') ?? ''),
+          }),
+        });
+        const json: any = await res.json().catch(() => null);
+        notice = res.ok && json?.success
+          ? { kind: 'ok', message: `Saved ${String(form.get('sku') ?? 'the product')}.` }
+          : { kind: 'error', message: json?.error?.message ?? (res.status === 403 ? 'Changing bulk terms needs the pricing.manage permission.' : 'That change was not saved.') };
+      } else if (action === 'preview' || action === 'apply') {
+        importText = String(form.get('text') ?? '').slice(0, 200_000);
+        const res = await authed('/admin/quote-requests/bulk-terms/import', { method: 'POST', body: JSON.stringify({ text: importText, apply: action === 'apply' }) });
+        const json: any = await res.json().catch(() => null);
+        if (res.ok && json?.success) {
+          importResult = json.data as ImportResult;
+          if (importResult.applied) {
+            notice = { kind: importResult.failed.length ? 'error' : 'ok', message: `Applied ${importResult.appliedCount} change(s).${importResult.failed.length ? ` ${importResult.failed.length} failed.` : ''}` };
+            if (!importResult.failed.length) importText = '';
+          }
+        } else {
+          notice = { kind: 'error', message: json?.error?.message ?? (res.status === 403 ? 'Importing needs the pricing.manage permission.' : 'The import could not be read.') };
+        }
+      }
+    } catch {
+      notice = { kind: 'error', message: 'The API did not answer. Try again.' };
+    }
+  }
+}
+
+let rows: TermsRow[] = [];
+let loadError: string | null = null;
+try {
+  const res = await authed('/admin/quote-requests/bulk-terms');
+  const json: any = await res.json().catch(() => null);
+  if (res.ok && json?.success) rows = json.data as TermsRow[];
+  else loadError = res.status === 403 ? 'Seeing bulk terms needs the pricing.read permission.' : (json?.error?.message ?? `Bulk terms could not be loaded (API ${res.status}).`);
+} catch {
+  loadError = 'The API is unreachable right now.';
+}
+const onSale = rows.filter((r) => r.onSale);
+const missingSize = onSale.filter((r) => r.bulkUnit === 'carton' && r.unitsPerCarton === null).length;
+const missingPrice = onSale.filter((r) => r.dealerPriceUgx === null).length;
+const termsWord = (t: { bulkUnit: string; unitsPerCarton: number | null; dealerPriceUgx: number | null }) =>
+  `${t.bulkUnit === 'piece' ? 'piece' : `carton of ${t.unitsPerCarton ?? '?'}`}, ${t.dealerPriceUgx === null ? 'no dealer price' : formatUgx(t.dealerPriceUgx)}`;
+---
+
+<AdminLayout title="Bulk terms" description="Carton sizes and dealer prices for bulk orders.">
+  <div class="container mx-auto max-w-7xl px-4 lg:px-8">
+    <p class="mb-4 text-sm"><a href="/admin/quotes" class="font-bold underline underline-offset-4">All quote requests</a></p>
+    <h2 class="text-2xl font-black tracking-tight text-brand-dark">Bulk terms</h2>
+    <p class="mt-1 max-w-3xl text-sm text-gray-600">
+      How each product is bought on /bulk: by the carton (and how many pieces a carton holds) or by the piece, and the dealer price per piece.
+      Buyers see the dealer price only after proving their phone with a texted code. A product with no carton size or no dealer price can still be ordered; your team prices it on the call.
+    </p>
+    {!loadError && <p class="mt-2 text-sm font-bold text-gray-800">On sale: {onSale.length}. Missing carton size: {missingSize}. Missing dealer price: {missingPrice}.</p>}
+
+    {notice && <p role="status" class={`mt-4 rounded-xl border px-4 py-3 text-sm font-bold ${notice.kind === 'ok' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-800'}`}>{notice.message}</p>}
+    {loadError && <p role="alert" class="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-800">{loadError}</p>}
+
+    <section class="mt-6 rounded-2xl border border-gray-200 bg-white p-5" aria-labelledby="import-heading">
+      <h3 id="import-heading" class="text-base font-black text-brand-dark">Paste from a spreadsheet</h3>
+      <p class="mt-1 text-sm text-gray-600">One product per line, four columns: <span class="font-mono">SKU, sold by, pieces per carton, dealer price per piece</span>. Sold by is <span class="font-mono">carton</span> or <span class="font-mono">piece</span>. Leave a cell empty to keep what is there; write <span class="font-mono">none</span> to remove a dealer price. Preview first: nothing changes until you press Apply.</p>
+      <form method="POST" class="mt-3">
+        <label for="terms-text" class="sr-only">Bulk terms to import</label>
+        <textarea id="terms-text" name="text" rows="6" class="block w-full rounded-xl border border-gray-300 p-3 font-mono text-sm" placeholder={'SKU, sold by, pieces per carton, dealer price\nGP-CA01, carton, 50, 21000\nGP-16GB-F, piece, , 9500'}>{importText}</textarea>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <button type="submit" name="action" value="preview" class="min-h-11 rounded-full border border-gray-300 bg-white px-5 text-sm font-bold text-brand-dark hover:border-gray-500">Preview</button>
+          {importResult && !importResult.applied && importResult.changes.length > 0 && (
+            <button type="submit" name="action" value="apply" class="min-h-11 rounded-full bg-slate-900 px-5 text-sm font-bold text-white hover:bg-black">Apply {importResult.changes.length} change(s)</button>
+          )}
+        </div>
+      </form>
+      {importResult && (
+        <div class="mt-4 text-sm">
+          <p class="font-bold text-brand-dark">{importResult.applied ? 'Applied' : 'Would change'}: {importResult.changes.length}. Already the same: {importResult.unchanged}. Problems: {importResult.problems.length}.</p>
+          {importResult.changes.length > 0 && (
+            <ul class="mt-2 max-h-64 list-disc space-y-1 overflow-y-auto pl-5 text-gray-800">
+              {importResult.changes.map((ch) => <li><span class="font-mono font-bold">{ch.sku}</span>: {termsWord(ch.before)} → {termsWord(ch.after)}</li>)}
+            </ul>
+          )}
+          {importResult.problems.length > 0 && (
+            <ul class="mt-2 list-disc space-y-1 pl-5 text-red-800">
+              {importResult.problems.map((pr) => <li>Line {pr.line} <span class="font-mono">{pr.source}</span>: {pr.reason}</li>)}
+            </ul>
+          )}
+          {importResult.failed.length > 0 && (
+            <ul class="mt-2 list-disc space-y-1 pl-5 text-red-800">
+              {importResult.failed.map((f) => <li><span class="font-mono">{f.sku}</span>: {f.reason}</li>)}
+            </ul>
+          )}
+        </div>
+      )}
+    </section>
+
+    {rows.length > 0 && (
+      <section class="mt-6 overflow-hidden rounded-2xl border border-gray-200 bg-white" aria-label="Every product's bulk terms">
+        <div class="overflow-x-auto">
+          <table class="w-full border-collapse text-left text-sm">
+            <thead>
+              <tr class="border-b border-gray-100 bg-gray-50 text-[10px] font-black uppercase tracking-widest text-gray-500">
+                <th scope="col" class="p-3">Product</th>
+                <th scope="col" class="p-3 text-right">Retail / floor</th>
+                <th scope="col" class="p-3">Sold by</th>
+                <th scope="col" class="p-3">Pieces per carton</th>
+                <th scope="col" class="p-3">Dealer price a piece</th>
+                <th scope="col" class="p-3"><span class="sr-only">Save</span></th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-100">
+              {rows.map((r) => {
+                const formId = `terms-${r.productId}`;
+                return (
+                  <tr class={`align-top ${r.onSale ? '' : 'bg-gray-50 text-gray-500'}`}>
+                    <td class="p-3">
+                      <form id={formId} method="POST">
+                        <input type="hidden" name="action" value="save" />
+                        <input type="hidden" name="productId" value={r.productId} />
+                        <input type="hidden" name="sku" value={r.sku} />
+                      </form>
+                      <div class="font-bold text-brand-dark">{r.name}</div>
+                      <div class="text-xs text-gray-500"><span class="font-mono">{r.sku}</span> · {r.categoryName ?? 'No category'}{r.onSale ? '' : ' · not on sale'}</div>
+                    </td>
+                    <td class="p-3 text-right font-mono text-xs">{r.retailPriceUgx === null ? '—' : formatUgx(r.retailPriceUgx)}<div class="text-gray-500">{r.floorPriceUgx === null ? 'no floor' : `floor ${formatUgx(r.floorPriceUgx)}`}</div></td>
+                    <td class="p-3">
+                      <label class="sr-only" for={`${formId}-unit`}>Sold by for {r.sku}</label>
+                      <select id={`${formId}-unit`} form={formId} name="bulkUnit" class="min-h-11 rounded-lg border border-gray-300 bg-white px-2">
+                        <option value="carton" selected={r.bulkUnit === 'carton'}>Carton</option>
+                        <option value="piece" selected={r.bulkUnit === 'piece'}>Piece</option>
+                      </select>
+                    </td>
+                    <td class="p-3">
+                      <label class="sr-only" for={`${formId}-size`}>Pieces per carton for {r.sku}</label>
+                      <input id={`${formId}-size`} form={formId} name="unitsPerCarton" inputmode="numeric" value={r.unitsPerCarton ?? ''} placeholder={r.bulkUnit === 'piece' ? 'n/a' : 'e.g. 50'} class="min-h-11 w-24 rounded-lg border border-gray-300 px-2 font-mono" />
+                    </td>
+                    <td class="p-3">
+                      <label class="sr-only" for={`${formId}-price`}>Dealer price a piece for {r.sku}</label>
+                      <input id={`${formId}-price`} form={formId} name="dealerPriceUgx" inputmode="numeric" value={r.dealerPriceUgx ?? ''} placeholder="UGX" class="min-h-11 w-32 rounded-lg border border-gray-300 px-2 font-mono" />
+                      {r.dealerPriceUgx !== null && r.floorPriceUgx !== null && r.dealerPriceUgx < r.floorPriceUgx && <div class="mt-1 text-xs font-bold text-orange-700">Below the floor price</div>}
+                    </td>
+                    <td class="p-3"><button type="submit" form={formId} class="min-h-11 rounded-full border border-gray-300 bg-white px-4 text-sm font-bold text-brand-dark hover:border-gray-500">Save</button></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    )}
+  </div>
+</AdminLayout>

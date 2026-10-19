@@ -1,14 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
   MAX_BULK_LINES,
-  MAX_BULK_LINE_QUANTITY,
+  MAX_CARTONS_PER_LINE,
+  MAX_PIECES_PER_LINE,
   REFERENCE_ALPHABET,
+  SELF_SERVE_MAX_CARTONS,
   buyerStatusCopy,
   canTransitionQuoteRequest,
+  describeLineCount,
   fingerprintSource,
   legacySummary,
   makeBulkReference,
   normaliseBulkReference,
+  parseBudget,
   parseNeededBy,
   snapshotBulkLines,
   validateBulkLines,
@@ -27,12 +31,14 @@ import type {
   NewBulkQuoteRecord,
   QuoteRequestView,
 } from '../../apps/api/src/application/ports/IBulkQuoteRepository';
+import type { BulkTerms, IBulkTermsRepository } from '../../apps/api/src/application/ports/IBulkTermsRepository';
 import type { IProductRepository, ProductWithPrice } from '../../apps/api/src/application/ports/IProductRepository';
 import { ProductEntity } from '../../apps/api/src/domain/products/ProductEntity';
 import { smsText } from '../../apps/api/src/application/notifications/CustomerMessages';
 
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
+const F = '66666666-6666-4666-8666-666666666666';
 const GONE = '99999999-9999-4999-8999-999999999999';
 
 /* ------------------------------------------------------------------------ */
@@ -40,65 +46,104 @@ const GONE = '99999999-9999-4999-8999-999999999999';
 /* ------------------------------------------------------------------------ */
 
 describe('bulk line validation', () => {
-  it('refuses an empty list and a non-list', () => {
+  it('refuses an empty list and a non-list, unless a budget makes an empty list allowed', () => {
     expect(validateBulkLines([])).toMatchObject({ ok: false, code: 'NO_LINES' });
     expect(validateBulkLines('x')).toMatchObject({ ok: false, code: 'NO_LINES' });
     expect(validateBulkLines(null)).toMatchObject({ ok: false, code: 'NO_LINES' });
+    expect(validateBulkLines([], { allowEmpty: true })).toEqual({ ok: true, lines: [] });
+    expect(validateBulkLines(undefined, { allowEmpty: true })).toEqual({ ok: true, lines: [] });
+    expect(validateBulkLines('x', { allowEmpty: true })).toMatchObject({ ok: false, code: 'NO_LINES' });
   });
 
-  it('refuses a malformed product id or a quantity outside 1..50,000 or not whole', () => {
-    expect(validateBulkLines([{ productId: 'abc', quantity: 1 }])).toMatchObject({ ok: false, code: 'BAD_LINE' });
-    for (const quantity of [0, -1, 1.5, MAX_BULK_LINE_QUANTITY + 1, '5', null]) {
-      expect(validateBulkLines([{ productId: A, quantity }])).toMatchObject({ ok: false, code: 'BAD_LINE' });
+  it('refuses a malformed product id or a count that is not a whole number from 1', () => {
+    expect(validateBulkLines([{ productId: 'abc', count: 1 }])).toMatchObject({ ok: false, code: 'BAD_LINE' });
+    for (const count of [0, -1, 1.5, MAX_PIECES_PER_LINE + 1, '5', null]) {
+      expect(validateBulkLines([{ productId: A, count }])).toMatchObject({ ok: false, code: 'BAD_LINE' });
     }
-    expect(validateBulkLines([{ productId: A, quantity: MAX_BULK_LINE_QUANTITY }])).toMatchObject({ ok: true });
+    // The old field is not read: a v1 page cannot send pieces that become cartons.
+    expect(validateBulkLines([{ productId: A, quantity: 5 }])).toMatchObject({ ok: false, code: 'BAD_LINE' });
+    expect(validateBulkLines([{ productId: A, count: MAX_PIECES_PER_LINE }])).toMatchObject({ ok: true });
   });
 
-  it('merges repeats of one product in first-seen order and caps the sum', () => {
+  it('merges repeats of one product in first-seen order', () => {
     const r = validateBulkLines([
-      { productId: B, quantity: 3 },
-      { productId: A.toUpperCase(), quantity: 2 },
-      { productId: B, quantity: MAX_BULK_LINE_QUANTITY },
+      { productId: B, count: 3 },
+      { productId: A.toUpperCase(), count: 2 },
+      { productId: B, count: 4 },
     ]);
-    expect(r).toEqual({ ok: true, lines: [{ productId: B, quantity: MAX_BULK_LINE_QUANTITY }, { productId: A, quantity: 2 }] });
+    expect(r).toEqual({ ok: true, lines: [{ productId: B, count: 7 }, { productId: A, count: 2 }] });
   });
 
   it('caps the number of distinct products', () => {
     const many = Array.from({ length: MAX_BULK_LINES + 1 }, (_, i) => ({
       productId: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
-      quantity: 1,
+      count: 1,
     }));
     expect(validateBulkLines(many)).toMatchObject({ ok: false, code: 'TOO_MANY_LINES' });
     expect(validateBulkLines(many.slice(0, MAX_BULK_LINES))).toMatchObject({ ok: true });
   });
 });
 
-describe('snapshots come from the catalogue, never the client', () => {
+describe('snapshots: cartons, pieces and the bulk price come from the server', () => {
   const catalogue: CatalogueEntry[] = [
-    { productId: A, name: 'Fast charger', code: 'GP-C08', unitPriceUgx: 25_000, availability: 'in_stock' },
-    { productId: B, name: 'Cable', code: null, unitPriceUgx: null, availability: 'out_of_stock' },
+    { productId: A, name: 'Fast charger', code: 'GP-C08', bulkUnit: 'carton', unitsPerCarton: 50, bulkPriceUgx: 21_000, availability: 'in_stock' },
+    { productId: B, name: 'Cable', code: null, bulkUnit: 'carton', unitsPerCarton: null, bulkPriceUgx: 5_000, availability: 'out_of_stock' },
+    { productId: F, name: 'Flash Drive 16GB', code: 'GP-16GB-F', bulkUnit: 'piece', unitsPerCarton: null, bulkPriceUgx: null, availability: 'in_stock' },
   ];
 
-  it('builds each line from the catalogue entry and totals priced lines only', () => {
-    const r = snapshotBulkLines([{ productId: A, quantity: 4 }, { productId: B, quantity: 10 }], catalogue);
+  it('turns cartons into pieces, prices known pieces at the bulk price, and leaves the rest for the team', () => {
+    const r = snapshotBulkLines([{ productId: A, count: 4 }, { productId: B, count: 10 }, { productId: F, count: 300 }], catalogue);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(r.lines).toEqual([
-      { lineNo: 1, productId: A, productCode: 'GP-C08', productName: 'Fast charger', quantity: 4, unitPriceUgx: 25_000, lineTotalUgx: 100_000, availability: 'in_stock' },
-      { lineNo: 2, productId: B, productCode: null, productName: 'Cable', quantity: 10, unitPriceUgx: null, lineTotalUgx: null, availability: 'out_of_stock' },
+      { lineNo: 1, productId: A, productCode: 'GP-C08', productName: 'Fast charger', unitKind: 'carton', unitCount: 4, unitsPerCarton: 50, quantity: 200, unitPriceUgx: 21_000, lineTotalUgx: 4_200_000, priceBasis: 'dealer', aboveSelfServe: false, availability: 'in_stock' },
+      { lineNo: 2, productId: B, productCode: null, productName: 'Cable', unitKind: 'carton', unitCount: 10, unitsPerCarton: null, quantity: null, unitPriceUgx: 5_000, lineTotalUgx: null, priceBasis: 'dealer', aboveSelfServe: false, availability: 'out_of_stock' },
+      { lineNo: 3, productId: F, productCode: 'GP-16GB-F', productName: 'Flash Drive 16GB', unitKind: 'piece', unitCount: 300, unitsPerCarton: null, quantity: 300, unitPriceUgx: null, lineTotalUgx: null, priceBasis: 'dealer', aboveSelfServe: false, availability: 'in_stock' },
     ]);
-    expect(r.totals).toEqual({ lineCount: 2, totalUnits: 14, estimatedTotalUgx: 100_000, pricedLineCount: 1 });
+    expect(r.totals).toEqual({ lineCount: 3, totalUnits: 500, totalCartons: 14, estimatedTotalUgx: 4_200_000, pricedLineCount: 1 });
+  });
+
+  it('takes more than 500 cartons and flags it; refuses only a typo-sized count', () => {
+    const over = snapshotBulkLines([{ productId: A, count: SELF_SERVE_MAX_CARTONS + 1 }], catalogue);
+    expect(over.ok && over.lines[0].aboveSelfServe).toBe(true);
+    const at = snapshotBulkLines([{ productId: A, count: SELF_SERVE_MAX_CARTONS }], catalogue);
+    expect(at.ok && at.lines[0].aboveSelfServe).toBe(false);
+    expect(snapshotBulkLines([{ productId: A, count: MAX_CARTONS_PER_LINE + 1 }], catalogue)).toEqual({ ok: false, code: 'COUNT_TOO_LARGE', productIds: [A] });
+    // Pieces have their own, higher bound.
+    expect(snapshotBulkLines([{ productId: F, count: MAX_CARTONS_PER_LINE + 1 }], catalogue).ok).toBe(true);
   });
 
   it('refuses the whole request, naming every product that is not on sale', () => {
-    expect(snapshotBulkLines([{ productId: A, quantity: 1 }, { productId: GONE, quantity: 1 }], catalogue))
+    expect(snapshotBulkLines([{ productId: A, count: 1 }, { productId: GONE, count: 1 }], catalogue))
       .toEqual({ ok: false, code: 'PRODUCTS_UNAVAILABLE', productIds: [GONE] });
   });
 
-  it('keeps the legacy summary columns true', () => {
-    const r = snapshotBulkLines([{ productId: A, quantity: 4 }, { productId: B, quantity: 10 }], catalogue);
+  it('keeps the legacy summary columns true, for a list and for a budget alone', () => {
+    const r = snapshotBulkLines([{ productId: A, count: 4 }, { productId: F, count: 10 }], catalogue);
     if (!r.ok) throw new Error('expected ok');
-    expect(legacySummary(r.lines)).toEqual({ productName: 'Bulk list: Fast charger and 1 more', quantity: '14' });
+    expect(legacySummary(r.lines)).toEqual({ productName: 'Bulk list: Fast charger and 1 more', quantity: '4 cartons, 210 pieces' });
+    expect(legacySummary([])).toEqual({ productName: 'Bulk budget: the team builds the list', quantity: '0' });
+  });
+
+  it('describes a line the way a buyer says it', () => {
+    expect(describeLineCount({ unitKind: 'carton', unitCount: 12, quantity: 600 })).toBe('12 cartons (600 pieces)');
+    expect(describeLineCount({ unitKind: 'carton', unitCount: 1, quantity: null })).toBe('1 carton (carton size to confirm)');
+    expect(describeLineCount({ unitKind: 'piece', unitCount: 40, quantity: 40 })).toBe('40 pieces');
+    // A line from before cartons: pieces only.
+    expect(describeLineCount({ unitKind: 'piece', unitCount: null, quantity: 120 })).toBe('120 pieces');
+  });
+});
+
+describe('budget', () => {
+  it('reads what people type, within bounds', () => {
+    expect(parseBudget('')).toBeNull();
+    expect(parseBudget(undefined)).toBeNull();
+    expect(parseBudget('5,000,000')).toBe(5_000_000);
+    expect(parseBudget('UGX 5 000 000')).toBe(5_000_000);
+    expect(parseBudget(2_500_000)).toBe(2_500_000);
+    expect(parseBudget('500')).toBe('INVALID');
+    expect(parseBudget('lots')).toBe('INVALID');
+    expect(parseBudget('99999999999999')).toBe('INVALID');
   });
 });
 
@@ -130,7 +175,9 @@ describe('status', () => {
 
   it('tells the buyer in plain words', () => {
     expect(buyerStatusCopy('new').label).toBe('Received');
-    expect(buyerStatusCopy('quoted').label).toBe('Quote sent');
+    expect(buyerStatusCopy('quoted').label).toBe('Confirmed with you');
+    expect(buyerStatusCopy('won').label).toBe('Ordered');
+    expect(buyerStatusCopy('new').detail).toMatch(/delivery date/);
     for (const s of ['new', 'quoted', 'won', 'lost', 'expired']) expect(buyerStatusCopy(s).detail).not.toMatch(/_/);
   });
 });
@@ -150,11 +197,12 @@ describe('needed-by date', () => {
 });
 
 describe('fingerprint', () => {
-  it('ignores line order but not quantity or phone', () => {
-    const one = fingerprintSource('+256772000001', [{ productId: A, quantity: 1 }, { productId: B, quantity: 2 }]);
-    expect(fingerprintSource('+256772000001', [{ productId: B, quantity: 2 }, { productId: A, quantity: 1 }])).toBe(one);
-    expect(fingerprintSource('+256772000001', [{ productId: B, quantity: 3 }, { productId: A, quantity: 1 }])).not.toBe(one);
-    expect(fingerprintSource('+256772000002', [{ productId: A, quantity: 1 }, { productId: B, quantity: 2 }])).not.toBe(one);
+  it('ignores line order but not count, phone or budget', () => {
+    const one = fingerprintSource('+256772000001', [{ productId: A, count: 1 }, { productId: B, count: 2 }]);
+    expect(fingerprintSource('+256772000001', [{ productId: B, count: 2 }, { productId: A, count: 1 }])).toBe(one);
+    expect(fingerprintSource('+256772000001', [{ productId: B, count: 3 }, { productId: A, count: 1 }])).not.toBe(one);
+    expect(fingerprintSource('+256772000002', [{ productId: A, count: 1 }, { productId: B, count: 2 }])).not.toBe(one);
+    expect(fingerprintSource('+256772000001', [{ productId: A, count: 1 }, { productId: B, count: 2 }], 1_000_000)).not.toBe(one);
   });
 });
 
@@ -199,7 +247,7 @@ function fakeRepo(): IBulkQuoteRepository & { saved: NewBulkQuoteRecord[]; statu
     customerName: r.customerName, businessName: r.businessName, phone: r.phone, email: r.email,
     buyerType: r.buyerType, deliveryDistrict: r.deliveryDistrict, neededBy: r.neededBy, notes: r.notes,
     productName: r.productName, quantity: r.quantity, requestFingerprint: r.requestFingerprint,
-    lines: r.lines, totals: r.totals, createdAt: r.createdAt, updatedAt: null,
+    lines: r.lines, totals: r.totals, budgetUgx: r.budgetUgx, pricesShown: r.pricesShown, createdAt: r.createdAt, updatedAt: null,
   });
   const repo = {
     saved,
@@ -227,6 +275,8 @@ function fakeRepo(): IBulkQuoteRepository & { saved: NewBulkQuoteRecord[]; statu
 }
 
 const KEY = 'k_0123456789abcdef0123';
+const PHONE = '+256772123456';
+const TOKEN = 'valid-token-for-0772123456';
 const valid = () => ({
   idempotencyKey: KEY,
   customerName: 'Grace Namuli',
@@ -238,10 +288,23 @@ const valid = () => ({
   neededBy: '',
   notes: 'Branded boxes please',
   lines: [
-    { productId: A, quantity: 120, unitPriceUgx: 1, name: 'client says free' },
-    { productId: B, quantity: 5 },
+    { productId: A, count: 12, unitPriceUgx: 1, name: 'client says free' },
+    { productId: B, count: 5 },
   ],
 });
+
+function fakeTerms(rows: BulkTerms[]): IBulkTermsRepository {
+  return {
+    findOnSale: async (ids) => rows.filter((r) => !ids || ids.includes(r.productId)),
+    listForAdmin: async () => [],
+    update: async () => 'updated',
+  };
+}
+
+const TERMS: BulkTerms[] = [
+  { productId: A, bulkUnit: 'carton', unitsPerCarton: 50, dealerPriceUgx: 21_000 },
+  { productId: B, bulkUnit: 'carton', unitsPerCarton: null, dealerPriceUgx: null },
+];
 
 function setup(rows = [product(A, { sku: 'GP-C08', price: 25_000 }), product(B, { price: null, stock: 0 })]) {
   const repo = fakeRepo();
@@ -251,7 +314,9 @@ function setup(rows = [product(A, { sku: 'GP-C08', price: 25_000 }), product(B, 
   const uc = new SubmitBulkQuoteUseCase(
     repo,
     products,
+    fakeTerms(TERMS),
     { execute: async (input) => { acks.push(input as unknown as Record<string, unknown>); return 'queued'; } },
+    (token) => (token === TOKEN ? PHONE : null),
     () => new Date('2026-09-25T09:00:00Z'),
     (n) => (counter++ * 7) % n,
     () => 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -260,7 +325,7 @@ function setup(rows = [product(A, { sku: 'GP-C08', price: 25_000 }), product(B, 
 }
 
 describe('SubmitBulkQuoteUseCase', () => {
-  it('saves the request with server-side snapshots and ignores any client price or name', async () => {
+  it('saves cartons at the dealer price from the server and ignores any client price or name', async () => {
     const { repo, uc, products } = setup();
     const r = await uc.execute(valid());
     expect(r.ok).toBe(true);
@@ -268,14 +333,58 @@ describe('SubmitBulkQuoteUseCase', () => {
     expect(r.replayed).toBe(false);
     expect(products.calls[0].ids).toEqual([A, B]);
     const saved = repo.saved[0];
-    expect(saved.phone).toBe('+256772123456');
+    expect(saved.phone).toBe(PHONE);
     expect(saved.deliveryDistrict).toBe('Wakiso');
-    expect(saved.buyerType).toBe('wholesale');
-    expect(saved.lines[0]).toMatchObject({ productName: 'Product 1111', productCode: 'GP-C08', unitPriceUgx: 25_000, lineTotalUgx: 3_000_000, quantity: 120, availability: 'in_stock' });
-    expect(saved.lines[1]).toMatchObject({ unitPriceUgx: null, lineTotalUgx: null, availability: 'out_of_stock' });
-    expect(saved.totals).toEqual({ lineCount: 2, totalUnits: 125, estimatedTotalUgx: 3_000_000, pricedLineCount: 1 });
+    expect(saved.lines[0]).toMatchObject({ productName: 'Product 1111', productCode: 'GP-C08', unitKind: 'carton', unitCount: 12, unitsPerCarton: 50, quantity: 600, unitPriceUgx: 21_000, lineTotalUgx: 12_600_000, priceBasis: 'dealer' });
+    expect(saved.lines[1]).toMatchObject({ unitCount: 5, quantity: null, unitPriceUgx: null, lineTotalUgx: null });
+    expect(saved.totals).toEqual({ lineCount: 2, totalUnits: 600, totalCartons: 17, estimatedTotalUgx: 12_600_000, pricedLineCount: 1 });
     expect(r.request.reference).toMatch(/^BQ-[A-Z2-9]{6}$/);
-    expect(JSON.stringify(r.request)).not.toMatch(/floor|7000|dealer|cost/i);
+  });
+
+  it('a buyer who did not prove their phone never sees the dealer price, though the team does', async () => {
+    const { repo, uc } = setup();
+    const r = await uc.execute(valid());
+    if (!r.ok) throw new Error('expected ok');
+    expect(repo.saved[0].pricesShown).toBe(false);
+    expect(repo.saved[0].lines[0].unitPriceUgx).toBe(21_000);
+    expect(r.request.pricesShown).toBe(false);
+    expect(r.request.lines.map((l) => [l.unitPriceUgx, l.lineTotalUgx])).toEqual([[null, null], [null, null]]);
+    expect(r.request.totals.estimatedTotalUgx).toBe(0);
+    expect(JSON.stringify(r.request)).not.toMatch(/21000|12600000|floor|7000|availability|in_stock/i);
+  });
+
+  it('a token for the same phone shows the prices; a token for another phone does not', async () => {
+    const same = setup();
+    const r = await same.uc.execute({ ...valid(), priceAccessToken: TOKEN });
+    if (!r.ok) throw new Error('expected ok');
+    expect(same.repo.saved[0].pricesShown).toBe(true);
+    expect(r.request.pricesShown).toBe(true);
+    expect(r.request.lines[0]).toMatchObject({ unitPriceUgx: 21_000, lineTotalUgx: 12_600_000, countLabel: '12 cartons (600 pieces)' });
+
+    const other = setup();
+    await other.uc.execute({ ...valid(), phone: '0772 999 999', priceAccessToken: TOKEN });
+    expect(other.repo.saved[0].pricesShown).toBe(false);
+    const forged = setup();
+    await forged.uc.execute({ ...valid(), priceAccessToken: 'forged' });
+    expect(forged.repo.saved[0].pricesShown).toBe(false);
+  });
+
+  it('takes a budget alone when the notes say what to build, and refuses it without', async () => {
+    const { repo, uc, products } = setup();
+    const r = await uc.execute({ ...valid(), lines: [], budgetUgx: '5,000,000', notes: 'I sell phone accessories in Mbale' });
+    expect(r).toMatchObject({ ok: true });
+    expect(products.calls).toHaveLength(0);
+    expect(repo.saved[0]).toMatchObject({ budgetUgx: 5_000_000, lines: [], productName: 'Bulk budget: the team builds the list' });
+    const again = setup();
+    expect(await again.uc.execute({ ...valid(), lines: [], budgetUgx: '5000000', notes: '' })).toMatchObject({ code: 'BAD_INPUT', field: 'notes' });
+    expect(await again.uc.execute({ ...valid(), lines: [], notes: 'anything' })).toMatchObject({ code: 'NO_LINES' });
+    expect(await again.uc.execute({ ...valid(), budgetUgx: 'lots' })).toMatchObject({ code: 'BAD_INPUT', field: 'budgetUgx' });
+  });
+
+  it('keeps a budget sent with a list', async () => {
+    const { repo, uc } = setup();
+    await uc.execute({ ...valid(), budgetUgx: 10_000_000 });
+    expect(repo.saved[0].budgetUgx).toBe(10_000_000);
   });
 
   it('acknowledges once, with the reference and the line count, on QUOTE_REQUEST_RECEIVED', async () => {
@@ -286,9 +395,9 @@ describe('SubmitBulkQuoteUseCase', () => {
     expect(acks[0]).toMatchObject({
       eventType: 'QUOTE_REQUEST_RECEIVED',
       template: 'QUOTE_REQUEST_RECEIVED',
-      phone: '+256772123456',
+      phone: PHONE,
       relatedEntity: 'quote_request',
-      data: { reference: r.request.reference, lineCount: 2, totalUnits: 125, customerName: 'Grace Namuli' },
+      data: { reference: r.request.reference, lineCount: 2, customerName: 'Grace Namuli' },
     });
   });
 
@@ -303,17 +412,16 @@ describe('SubmitBulkQuoteUseCase', () => {
     expect(acks).toHaveLength(1);
   });
 
-  it('the same key with a different list is a conflict, not a replay', async () => {
+  it('the same key with a different list or budget is a conflict, not a replay', async () => {
     const { uc } = setup();
     await uc.execute(valid());
-    const r = await uc.execute({ ...valid(), lines: [{ productId: A, quantity: 121 }, { productId: B, quantity: 5 }] });
-    expect(r).toMatchObject({ ok: false, code: 'IDEMPOTENCY_CONFLICT' });
+    expect(await uc.execute({ ...valid(), lines: [{ productId: A, count: 13 }, { productId: B, count: 5 }] })).toMatchObject({ ok: false, code: 'IDEMPOTENCY_CONFLICT' });
+    expect(await uc.execute({ ...valid(), budgetUgx: 1_000_000 })).toMatchObject({ ok: false, code: 'IDEMPOTENCY_CONFLICT' });
   });
 
   it('a lost race on the key answers with the winner', async () => {
     const { repo, uc } = setup();
     await uc.execute(valid());
-    // Simulate the race: the pre-check misses, the insert then clashes on the key.
     const realFind = repo.findByIdempotencyKey.bind(repo);
     let calls = 0;
     repo.findByIdempotencyKey = async (key: string) => (calls++ === 0 ? null : realFind(key));
@@ -330,10 +438,10 @@ describe('SubmitBulkQuoteUseCase', () => {
     await expect(again.uc.execute(valid())).rejects.toThrow('BULK_QUOTE_REFERENCE_EXHAUSTED');
   });
 
-  it('refuses products that are not on sale and saves nothing', async () => {
+  it('refuses products that are not on sale, or a typo-sized count, and saves nothing', async () => {
     const { repo, uc, acks } = setup();
-    const r = await uc.execute({ ...valid(), lines: [{ productId: A, quantity: 1 }, { productId: GONE, quantity: 2 }] });
-    expect(r).toMatchObject({ ok: false, code: 'PRODUCTS_UNAVAILABLE', productIds: [GONE] });
+    expect(await uc.execute({ ...valid(), lines: [{ productId: A, count: 1 }, { productId: GONE, count: 2 }] })).toMatchObject({ ok: false, code: 'PRODUCTS_UNAVAILABLE', productIds: [GONE] });
+    expect(await uc.execute({ ...valid(), lines: [{ productId: A, count: MAX_CARTONS_PER_LINE + 1 }] })).toMatchObject({ ok: false, code: 'COUNT_TOO_LARGE', productIds: [A] });
     expect(repo.saved).toHaveLength(0);
     expect(acks).toHaveLength(0);
   });
@@ -352,11 +460,21 @@ describe('SubmitBulkQuoteUseCase', () => {
     expect(await uc.execute({ ...valid(), customerName: 42 })).toMatchObject({ code: 'BAD_INPUT' });
   });
 
-  it('email and business name are optional; buyer type defaults to retail', async () => {
+  it('the page sends only a name and phone: everything else is optional, buyer type defaults to wholesale', async () => {
     const { repo, uc } = setup();
-    const r = await uc.execute({ ...valid(), email: undefined, businessName: undefined, buyerType: undefined, deliveryDistrict: undefined });
+    const r = await uc.execute({ idempotencyKey: KEY, customerName: 'Grace Namuli', phone: '0772 123 456', lines: valid().lines });
     expect(r.ok).toBe(true);
-    expect(repo.saved[0]).toMatchObject({ email: '', businessName: null, buyerType: 'retail', deliveryDistrict: null });
+    expect(repo.saved[0]).toMatchObject({ email: '', businessName: null, buyerType: 'wholesale', deliveryDistrict: null, neededBy: null });
+  });
+
+  it('a buyer who confirmed their phone with the code is not asked for it again', async () => {
+    const { repo, uc } = setup();
+    const r = await uc.execute({ idempotencyKey: KEY, customerName: 'Grace Namuli', priceAccessToken: TOKEN, lines: valid().lines });
+    expect(r).toMatchObject({ ok: true, contactPhone: PHONE, request: { pricesShown: true } });
+    expect(repo.saved[0]).toMatchObject({ phone: PHONE, pricesShown: true });
+    // No phone and no valid code: the phone is required.
+    const none = setup();
+    expect(await none.uc.execute({ idempotencyKey: KEY, customerName: 'Grace', priceAccessToken: 'forged', lines: valid().lines })).toMatchObject({ code: 'BAD_INPUT', field: 'phone' });
   });
 });
 
@@ -370,8 +488,8 @@ describe('LookupBulkQuoteUseCase', () => {
     expect(hit.ok).toBe(true);
     if (hit.ok) {
       expect(hit.request.lines).toHaveLength(2);
-      // Buyer-safe: no contact details, no notes, nothing internal.
-      expect(JSON.stringify(hit.request)).not.toMatch(/Branded boxes|772123456|"email"|"notes"|"phone"|fingerprint|idempotency/i);
+      // Buyer-safe: no contact details, no notes, nothing internal, no unearned price.
+      expect(JSON.stringify(hit.request)).not.toMatch(/Branded boxes|772123456|"email"|"notes"|"phone"|fingerprint|idempotency|21000|availability/i);
     }
     const wrongPhone = await lookup.execute({ reference: r.request.reference, phone: '0772 999 999' });
     const unknown = await lookup.execute({ reference: 'BQ-ZZZZZZ', phone: '0772 123 456' });
@@ -379,6 +497,20 @@ describe('LookupBulkQuoteUseCase', () => {
     expect(wrongPhone).toEqual(unknown);
     expect(junk).toEqual(unknown);
     expect(unknown).toMatchObject({ ok: false, code: 'NOT_FOUND' });
+  });
+
+  it('an older request priced at retail still shows its prices', async () => {
+    const { repo } = setup();
+    const view: QuoteRequestView = {
+      id: 'x', reference: 'BQ-ABCDEF', source: 'bulk_builder', status: 'new', customerName: 'G', businessName: null, phone: PHONE, email: '',
+      buyerType: 'retail', deliveryDistrict: null, neededBy: null, notes: '', productName: 'p', quantity: '3', requestFingerprint: null,
+      lines: [{ lineNo: 1, productId: A, productCode: null, productName: 'p', unitKind: 'piece', unitCount: null, unitsPerCarton: null, quantity: 3, unitPriceUgx: 10_000, lineTotalUgx: 30_000, priceBasis: 'list', aboveSelfServe: false, availability: 'in_stock' }],
+      totals: { lineCount: 1, totalUnits: 3, totalCartons: 0, estimatedTotalUgx: 30_000, pricedLineCount: 1 },
+      budgetUgx: null, pricesShown: false, createdAt: new Date(), updatedAt: null,
+    };
+    repo.findByReference = async () => view;
+    const hit = await new LookupBulkQuoteUseCase(repo).execute({ reference: 'BQ-ABCDEF', phone: '0772123456' });
+    expect(hit.ok && hit.request.lines[0]).toMatchObject({ unitPriceUgx: 10_000, lineTotalUgx: 30_000, countLabel: '3 pieces' });
   });
 });
 
@@ -393,7 +525,6 @@ describe('UpdateQuoteRequestStatusUseCase', () => {
     expect(await update.execute({ id: 'not-a-uuid', status: 'quoted' })).toMatchObject({ ok: false, code: 'NOT_FOUND' });
     expect(await update.execute({ id: r.quoteId, status: 'quoted' })).toEqual({ ok: true, id: r.quoteId, from: 'new', to: 'quoted' });
     expect(await update.execute({ id: r.quoteId, status: 'won' })).toMatchObject({ ok: true, from: 'quoted', to: 'won' });
-    // A compare-and-set miss (someone else moved it) is a conflict.
     repo.updateStatus = async () => false;
     repo.statuses.set(r.quoteId, 'quoted');
     expect(await update.execute({ id: r.quoteId, status: 'lost' })).toMatchObject({ ok: false, code: 'CONFLICT' });
@@ -401,15 +532,21 @@ describe('UpdateQuoteRequestStatusUseCase', () => {
 });
 
 describe('CSV of lines', () => {
-  it('has one row per line, in header order', async () => {
+  it('has one row per line, in header order, with cartons, pieces and the price basis', async () => {
     const { repo, uc } = setup();
-    await uc.execute(valid());
+    await uc.execute({ ...valid(), budgetUgx: 20_000_000 });
     const rows = quoteLinesCsvRows(await repo.list());
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveLength(QUOTE_LINES_CSV_HEADER.length);
-    expect(rows[0][QUOTE_LINES_CSV_HEADER.indexOf('product_code')]).toBe('GP-C08');
-    expect(rows[0][QUOTE_LINES_CSV_HEADER.indexOf('quantity')]).toBe(120);
-    expect(QUOTE_LINES_CSV_HEADER.join(',')).not.toMatch(/cost|dealer|floor/);
+    const col = (name: (typeof QUOTE_LINES_CSV_HEADER)[number]) => rows[0][QUOTE_LINES_CSV_HEADER.indexOf(name)];
+    expect(col('product_code')).toBe('GP-C08');
+    expect(col('sold_by')).toBe('carton');
+    expect(col('count')).toBe(12);
+    expect(col('pieces')).toBe(600);
+    expect(col('unit_price_ugx')).toBe(21_000);
+    expect(col('price_basis')).toBe('dealer');
+    expect(col('budget_ugx')).toBe(20_000_000);
+    expect(QUOTE_LINES_CSV_HEADER.join(',')).not.toMatch(/cost|floor/);
   });
 });
 
@@ -417,6 +554,8 @@ describe('acknowledgement text', () => {
   it('the SMS names the reference and the number of products, and is unchanged without a count', () => {
     expect(smsText('QUOTE_REQUEST_RECEIVED', { reference: 'BQ-7K3M9P', lineCount: 12 })).toContain('(ref BQ-7K3M9P) for 12 products.');
     expect(smsText('QUOTE_REQUEST_RECEIVED', { reference: 'BQ-7K3M9P', lineCount: 1 })).toContain('for 1 product.');
-    expect(smsText('QUOTE_REQUEST_RECEIVED', { reference: 'X' })).toMatch(/quote request \(ref X\)\. Our sales team/);
+    expect(smsText('QUOTE_REQUEST_RECEIVED', { reference: 'X' })).toMatch(/your request \(ref X\)\. Our sales team/);
+    // A budget alone (no products) reads naturally.
+    expect(smsText('QUOTE_REQUEST_RECEIVED', { reference: 'X', lineCount: 0 })).toMatch(/your request \(ref X\)\. Our sales team/);
   });
 });

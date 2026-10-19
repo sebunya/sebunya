@@ -37,7 +37,8 @@ const openCount = result.items.filter((q) => q.status === 'new').length;
     <div class="mb-6 flex flex-col gap-4 border-b border-gray-200 pb-6 sm:flex-row sm:items-center sm:justify-between">
       <div>
         <h2 class="text-2xl font-black tracking-tight text-brand-dark">Quote requests</h2>
-        <p class="mt-1 text-sm text-gray-600">Bulk lists from the bulk builder (with a BQ reference) and single-product requests from the quote form. Every buyer was told sales will call them on the phone number shown.</p>
+        <p class="mt-1 text-sm text-gray-600">Bulk requests from /bulk (with a BQ reference: cartons at dealer price, or a budget for you to build a list) and single-product requests from the quote form. Every buyer was told sales will call them on the phone number shown to confirm the delivery date and delivery cost.</p>
+        <p class="mt-2 text-sm"><a href="/admin/quotes/bulk-terms" class="font-bold underline underline-offset-4">Bulk terms: carton sizes and dealer prices</a> · <a href="/admin/quotes/price-leads" class="font-bold underline underline-offset-4">Phones that unlocked bulk prices</a></p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
         <span class="rounded-lg border border-gray-200 bg-gray-100 px-3 py-1.5 font-mono text-xs font-bold text-gray-700">NEW: {openCount}</span>
@@ -61,8 +62,8 @@ const openCount = result.items.filter((q) => q.status === 'new').length;
                 <th scope="col" class="p-4">Request</th>
                 <th scope="col" class="p-4">Buyer</th>
                 <th scope="col" class="p-4">What</th>
-                <th scope="col" class="p-4 text-right">Units</th>
-                <th scope="col" class="p-4 text-right">Est. at list price</th>
+                <th scope="col" class="p-4 text-right">Cartons / pieces</th>
+                <th scope="col" class="p-4 text-right">Total</th>
                 <th scope="col" class="p-4">Delivery</th>
                 <th scope="col" class="p-4 text-center">Status</th>
               </tr>
@@ -86,16 +87,21 @@ const openCount = result.items.filter((q) => q.status === 'new').length;
                     <td class="p-4 text-gray-700">
                       {bulk ? (
                         <>
-                          <div class="font-bold">{q.totals.lineCount} {q.totals.lineCount === 1 ? 'product' : 'products'}</div>
+                          <div class="font-bold">{q.totals.lineCount === 0 ? 'Budget only: build the list' : `${q.totals.lineCount} ${q.totals.lineCount === 1 ? 'product' : 'products'}`}</div>
+                          {q.budgetUgx !== null && <div class="text-[11px] font-bold text-gray-700">Budget {formatUgx(q.budgetUgx)}</div>}
                           <div class="text-[11px] text-gray-500">{q.lines.slice(0, 3).map((l) => l.productName).join(', ')}{q.lines.length > 3 ? ` and ${q.lines.length - 3} more` : ''}</div>
                         </>
                       ) : (
                         <div>{q.productName}</div>
                       )}
                     </td>
-                    <td class="p-4 text-right font-mono font-black text-brand-dark">{bulk ? formatCount(q.totals.totalUnits) : q.quantity}</td>
+                    <td class="p-4 text-right font-mono font-black text-brand-dark">
+                      {bulk ? (q.totals.totalCartons > 0 ? `${formatCount(q.totals.totalCartons)} ctn` : '') : q.quantity}
+                      {bulk && q.totals.totalUnits > 0 && <div class="text-[11px] font-normal text-gray-600">{formatCount(q.totals.totalUnits)} pcs</div>}
+                    </td>
                     <td class="p-4 text-right font-mono text-gray-700">
-                      {bulk ? formatUgx(q.totals.estimatedTotalUgx) : '—'}
+                      {bulk && q.totals.lineCount > 0 ? formatUgx(q.totals.estimatedTotalUgx) : '—'}
+                      {bulk && q.lines.some((l) => l.priceBasis === 'list') && <div class="text-[10px] text-gray-500">at retail (older request)</div>}
                       {bulk && q.totals.pricedLineCount < q.totals.lineCount && <div class="text-[10px] text-gray-500">{q.totals.lineCount - q.totals.pricedLineCount} unpriced</div>}
                     </td>
                     <td class="p-4 text-gray-700">

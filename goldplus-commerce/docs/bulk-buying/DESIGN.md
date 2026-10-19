@@ -5,6 +5,8 @@ bulk buyer can check multiple products and multiple quantities across all
 product categories on the website."
 
 This document is the design and the record of what was built in the first slice.
+**Section 12 (2026-10-19) changes how bulk works; where it differs from sections
+1 to 11, section 12 is current.**
 CLAUDE.md applies throughout: Phase 1 only, no invented facts, no fake urgency or
 scarcity, dealer pricing and supplier costs never public, every mutation through
 an application use case.
@@ -237,3 +239,82 @@ including the home page, and were being edited by another change, so this slice
 does not touch them. Suggested: "Buying in bulk? Build a list" -> `/bulk` in
 "Start here", and a "Bulk orders" footer link (the footer columns are
 admin-editable, so it can also be added from the admin without a deploy).
+
+## 12. Bulk by the carton, at dealer price (2026-10-19)
+
+Owner request: customers buy bulk by the carton at the distributor price; bulk
+quantities are not tied to website stock; up to 500 cartons of a product (more
+on request); flash drives and memory cards are not bought in boxes; some
+buyers have only a total budget. "Simplify how we work."
+
+### What was wrong with the first slice
+
+1. Counts were in pieces. Buyers think in cartons, and sales re-checked every
+   multiplication.
+2. The estimate used the retail price, 30 to 45% above what a bulk buyer pays,
+   so the biggest buyers saw the most discouraging number.
+3. Stock badges and an "Add to basket" route (capped at 99) tied bulk to the
+   shop's stock, which bulk does not use.
+4. A buyer with only a budget had nowhere to say so.
+5. Every request needed a phone call to find out the price.
+
+### The model now: one list, one known price, one confirmation call
+
+| Rule | Decision |
+|---|---|
+| Unit | Each product is bought by the **carton** (`products.units_per_carton` pieces) or by the **piece** (`products.bulk_unit = 'piece'`). Migration 0195 marks every product named "Flash Drive" or "Memory Card" as piece (19 today); card readers stay carton. A carton product without a size can still be ordered; the line says "size to confirm" and is unpriced. |
+| Price | The bulk price is the **dealer price per piece**, `product_prices.dealer_price` (owner supplies the column; empty today). A line is priced only when it has a dealer price and a known number of pieces. Delivery is never in the total; the team agrees it on the call. |
+| Who sees it | Only a buyer who enters a phone. The FIRST use of a number shows prices at once for that visit (browser-session cookie, at most 24 hours, no SMS; owner: the code must not lengthen a first journey). Every LATER use of the number needs the 6-digit code we text, then lasts 30 days. Until any product has a dealer price, the page does not ask for a phone at all. The proof is a signed token (`b1.<phone>.<expiry>.<hmac>`, 30 days, key `BULK_PRICE_TOKEN_KEY` or derived from `JWT_SECRET`) kept in an httpOnly cookie `gp_bulk_access`; the browser script never sees it. The storefront renders prices on the server and marks /bulk `private, no-store`. |
+| Minimum | 1 carton per product (pieces for piece products). Smaller amounts go through the shop at retail. |
+| Maximum | Up to 500 cartons a product from the page; more is accepted and flagged `above_self_serve` ("our team confirms supply"). 10,000 cartons or 50,000 pieces a line is a typo guard, not a business limit. |
+| Stock | Bulk is supplied to order. No stock is shown or held; the basket route (`/api/bulk/cart`) is removed. The in-shop stock at request time is still recorded for the team. |
+| Budget | Optional on any request. With prices unlocked, the list shows "used / left / over". A budget with no list is accepted when the notes say what the buyer sells or needs; the team builds the list. |
+| Form | Name and phone; a buyer who unlocked prices gives only a name. Name and phone are prefilled for a returning checkout guest. A note folds away and opens by itself for a budget with no list. |
+| Statuses | new = Received; quoted = Confirmed with you (total and delivery date agreed on the call); won = Ordered; lost = Closed; expired. |
+| Buyer views | Submit response, `/bulk/submitted`, `/bulk/status`: cartons and pieces always; bulk prices only when the request's phone was the verified phone (`quote_requests.prices_shown`). Older requests priced at retail still show those prices. |
+
+### How the team works
+
+1. Enter carton sizes and dealer prices at **/admin/quotes/bulk-terms**
+   (pricing.read to see, pricing.manage to change; audited). Paste the owner's
+   spreadsheet columns `SKU, sold by, pieces per carton, dealer price per
+   piece`; Preview, then Apply. A dealer price above retail is refused; one
+   below the floor (Price A) is shown in orange.
+2. Requests arrive at **/admin/quotes** with cartons, pieces, the dealer price
+   and total at the time, the budget, whether the buyer saw prices, and the
+   over-500 flag.
+3. Call the buyer: confirm the delivery date and delivery cost (the price is
+   already agreed if they saw it). Mark the request Confirmed to buyer, then Won
+   or Lost.
+4. **/admin/quotes/price-leads**: phones that unlocked prices in 90 days. A phone
+   there with no request is worth a call.
+
+### API
+
+| Method + path | Purpose | Rate family |
+|---|---|---|
+| `POST /quotes/bulk-terms` `{ token? }` | Unit and carton size of every product on sale; `bulkPriceUgx` per piece only with a valid token. The one public read of the dealer price. | order-lookup (SSR calls are internal) |
+| `POST /quotes/price-access/start` `{ phone }` | First use of the number: returns a visit token (no SMS). Later uses: texts a code (10 minutes), at most 3 codes a phone an hour. | auth-recovery |
+| `POST /quotes/price-access/verify` `{ phone, code }` | 5 tries a code. Returns the token and the masked phone. Audited `BULK_PRICES_UNLOCKED`. | auth-recovery |
+| `POST /quotes/bulk` | Lines are `{ productId, count }` (the old `quantity` field is refused, so a cached old page cannot send pieces that become cartons); `budgetUgx`; `priceAccessToken` (added by the storefront relay from the cookie). | quote-request |
+| `GET/PUT /admin/quote-requests/bulk-terms[/:productId]`, `POST .../bulk-terms/import`, `GET .../price-leads` | Admin. | — |
+
+Storefront relays: `/api/bulk/access/start|verify|clear`, `/api/bulk/quote`
+(per-visitor budgets: 3, 10 and 5 per 10 minutes).
+
+### Data (migration 0195, additive)
+
+`products.bulk_unit` ('carton' default), `products.units_per_carton`
+(2–10,000); `product_prices.dealer_price > 0`; `quote_request_lines.unit_kind`,
+`unit_count`, `units_per_carton`, `price_basis` ('list' for older lines,
+'dealer'), `above_self_serve`, and `quantity` (pieces) becomes nullable;
+`quote_requests.budget_ugx`, `prices_shown`, `total_units` becomes bigint;
+table `bulk_price_access` (code challenges; verified rows are the leads).
+
+### Not built (each needs an owner decision)
+
+- The dealer price "logic" (for example tiers by number of cartons): the owner
+  is supplying the column; the model holds one price per piece until then.
+- Paying for a confirmed bulk order on the site, and turning a won request into
+  an order (stock, delivery, receipts).
+- Carton sizes: no product has one yet; they come with the owner's sheet.

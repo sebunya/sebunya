@@ -1,36 +1,38 @@
 /**
- * The /bulk page's browser behaviour (docs/bulk-buying/DESIGN.md).
+ * The /bulk page's browser behaviour (docs/bulk-buying/DESIGN.md §12).
  *
- * Reads the server-rendered rows as the catalogue, keeps the list in
- * localStorage, and drives the two honest routes: the basket (through
- * /api/bulk/cart) and a quote request (through /api/bulk/quote). All state
- * logic is in lib/bulkList (pure, unit-tested); this file is DOM only.
- * Every string that came from data is set with textContent, never as HTML.
+ * Reads the server-rendered rows as the catalogue, keeps the list and budget
+ * in localStorage, unlocks bulk prices with a texted code (/api/bulk/access/*),
+ * and sends the request (/api/bulk/quote). All state logic is in lib/bulkList
+ * (pure, unit-tested); this file is DOM only. Every string that came from data
+ * is set with textContent, never as HTML.
  */
 import {
   BULK_STORAGE_KEY,
-  CART_LINE_QUANTITY_CAP,
-  CART_MAX_DISTINCT_LINES,
-  MAX_BULK_LINE_QUANTITY,
+  SELF_SERVE_MAX_CARTONS,
+  budgetStatus,
   buildCodeIndex,
-  clampQuantity,
+  clampCount,
+  countLabel,
+  countOf,
   emptyState,
   estimate,
   idempotencyKeyFor,
+  maxCountFor,
   parsePaste,
   parseStoredState,
   pasteMissMessage,
-  quantityOf,
   removeLine,
   serializeState,
+  setBudget,
   setLine,
-  splitForCart,
   submissionFingerprint,
   type BulkListState,
+  type BulkUnit,
   type CatalogueItem,
 } from './bulkList';
 import { formatUgx } from './money';
-import { isValidEmail, isValidUgandanPhone } from './formValidation';
+import { isValidUgandanPhone } from './formValidation';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
@@ -57,6 +59,7 @@ export function initBulkBuilder(): void {
   const rowsList = document.getElementById('bulk-rows');
   if (!root || !rowsList) return;
 
+  const unlocked = root.dataset.unlocked === '1';
   const rows = Array.from(rowsList.querySelectorAll<HTMLLIElement>('[data-bulk-row]'));
   const catalogue = new Map<string, CatalogueItem>();
   const rowById = new Map<string, HTMLLIElement>();
@@ -65,14 +68,17 @@ export function initBulkBuilder(): void {
     const id = (d.id ?? '').toLowerCase();
     if (!id) continue;
     const price = Number(d.price);
+    const perCarton = Number(d.perCarton);
+    const bulkUnit: BulkUnit = d.unit === 'piece' ? 'piece' : 'carton';
     catalogue.set(id, {
       productId: id,
       name: d.name ?? '',
       code: d.code || null,
       sku: d.sku || null,
       modelNumber: d.model || null,
-      unitPriceUgx: d.price && Number.isFinite(price) && price > 0 ? price : null,
-      inStock: d.instock === '1',
+      bulkUnit,
+      unitsPerCarton: bulkUnit === 'carton' && d.perCarton && Number.isInteger(perCarton) && perCarton > 1 ? perCarton : null,
+      bulkPriceUgx: d.price && Number.isFinite(price) && price > 0 ? price : null,
     });
     rowById.set(id, row);
   }
@@ -119,7 +125,7 @@ export function initBulkBuilder(): void {
     for (const [id, row] of rowById) {
       const input = qtyInputOf(row);
       if (!input || document.activeElement === input) continue;
-      const q = quantityOf(state, id);
+      const q = countOf(state, id);
       input.value = q > 0 ? String(q) : '';
       row.classList.toggle('bg-lime-50', q > 0);
     }
@@ -128,39 +134,41 @@ export function initBulkBuilder(): void {
   function commitRow(id: string, value: number, announceChange: boolean): void {
     const item = catalogue.get(id);
     if (!item) return;
-    const before = quantityOf(state, id);
-    state = setLine(state, { productId: id, name: item.name, code: item.code }, value);
+    const before = countOf(state, id);
+    state = setLine(state, item, value);
     save();
-    const after = quantityOf(state, id);
+    const after = countOf(state, id);
     const row = rowById.get(id);
     if (row) row.classList.toggle('bg-lime-50', after > 0);
     renderReview();
     if (announceChange && before !== after) {
-      announce(after > 0 ? `${item.name}: ${after} in your list.` : `${item.name} removed from your list.`);
+      announce(after > 0 ? `${item.name}: ${countLabel(item, after)} in your list.` : `${item.name} removed from your list.`);
     }
   }
 
   rowsList.addEventListener('input', (event) => {
     const input = event.target as HTMLInputElement;
     if (!input.matches('[data-qty]')) return;
-    const digits = input.value.replace(/\D/g, '').slice(0, 6);
+    const digits = input.value.replace(/\D/g, '').slice(0, 5);
     if (digits !== input.value) input.value = digits;
     const row = input.closest<HTMLElement>('[data-bulk-row]');
     const id = row?.dataset.id?.toLowerCase();
-    if (!id) return;
+    const item = id ? catalogue.get(id) : undefined;
+    if (!id || !item) return;
+    const max = maxCountFor(item.bulkUnit);
     const n = digits ? Number(digits) : 0;
-    if (n > MAX_BULK_LINE_QUANTITY) input.value = String(MAX_BULK_LINE_QUANTITY);
-    commitRow(id, Math.min(n, MAX_BULK_LINE_QUANTITY), false);
+    if (n > max) input.value = String(max);
+    commitRow(id, Math.min(n, max), false);
   });
   rowsList.addEventListener('change', (event) => {
     const input = event.target as HTMLInputElement;
     if (!input.matches('[data-qty]')) return;
     const id = input.closest<HTMLElement>('[data-bulk-row]')?.dataset.id?.toLowerCase();
     if (!id) return;
-    const q = quantityOf(state, id);
+    const q = countOf(state, id);
     input.value = q > 0 ? String(q) : '';
     const item = catalogue.get(id);
-    if (item) announce(q > 0 ? `${item.name}: ${q} in your list.` : `${item.name} is not in your list.`);
+    if (item) announce(q > 0 ? `${item.name}: ${countLabel(item, q)} in your list.` : `${item.name} is not in your list.`);
   });
   rowsList.addEventListener('click', (event) => {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-step]');
@@ -169,7 +177,8 @@ export function initBulkBuilder(): void {
     const id = row?.dataset.id?.toLowerCase();
     if (!row || !id) return;
     const step = Number(button.dataset.step) || 0;
-    const next = Math.max(0, Math.min(MAX_BULK_LINE_QUANTITY, quantityOf(state, id) + step));
+    const unit = catalogue.get(id)?.bulkUnit ?? 'carton';
+    const next = Math.max(0, Math.min(maxCountFor(unit), countOf(state, id) + step));
     commitRow(id, next, true);
     const input = qtyInputOf(row);
     if (input) input.value = next > 0 ? String(next) : '';
@@ -212,7 +221,7 @@ export function initBulkBuilder(): void {
       const matches =
         (!category || d.cat === category) &&
         (!subcategory || d.sub === subcategory) &&
-        (!mine || quantityOf(state, id) > 0) &&
+        (!mine || countOf(state, id) > 0) &&
         terms.every((t, i) => hay.includes(t) || (compactTerms[i] ? compact.includes(compactTerms[i]) : false));
       row.hidden = !matches;
       if (matches) shown += 1;
@@ -236,50 +245,81 @@ export function initBulkBuilder(): void {
   const estimateBox = document.getElementById('bulk-estimate');
   const estimateTotal = document.getElementById('bulk-estimate-total');
   const estimateUnpriced = document.getElementById('bulk-estimate-unpriced');
+  const estimateAbove = document.getElementById('bulk-estimate-above');
   const clearButton = document.getElementById('bulk-clear') as HTMLButtonElement | null;
-  const addCartButton = document.getElementById('bulk-add-cart') as HTMLButtonElement | null;
   const quoteSubmit = document.getElementById('bulk-quote-submit') as HTMLButtonElement | null;
   const barText = document.getElementById('bulk-bar-text');
+  const budgetInput = document.getElementById('bulk-budget') as HTMLInputElement | null;
+  const budgetText = document.getElementById('bulk-budget-status');
 
   const isListed = (id: string) => catalogue.has(id) && !refusedIds.has(id);
+
+  function sizeWords(est: ReturnType<typeof estimate>): string {
+    const parts = [plural(est.lineCount, 'product', 'products')];
+    if (est.totalCartons > 0) parts.push(plural(est.totalCartons, 'carton', 'cartons'));
+    if (est.totalPieces > 0) parts.push(plural(est.totalPieces, 'piece', 'pieces'));
+    return parts.join(', ');
+  }
+
+  function renderBudget(est: ReturnType<typeof estimate>): void {
+    if (!budgetText) return;
+    const status = budgetStatus(state.budgetUgx, est, unlocked);
+    // A budget with no list needs a note (what they sell): open it rather than make them find it.
+    const note = document.getElementById('bq-notes-wrap') as HTMLDetailsElement | null;
+    if (note && est.lineCount === 0 && state.budgetUgx) note.open = true;
+    budgetText.className = 'mt-2 text-sm text-slate-700';
+    if (status.kind === 'none') {
+      budgetText.textContent = est.lineCount === 0 ? 'No list yet? Type a budget, say what you sell in the notes, and our team builds the list for you.' : '';
+    } else if (status.kind === 'unmeasured') {
+      budgetText.textContent = est.lineCount === 0
+        ? `Budget ${formatUgx(status.budgetUgx)}. Send it with what you sell in the notes, and our team builds the list.`
+        : `Budget ${formatUgx(status.budgetUgx)}.`;
+    } else if (status.kind === 'within') {
+      budgetText.textContent = `${formatUgx(status.usedUgx)} of ${formatUgx(status.budgetUgx)} used. ${formatUgx(status.remainingUgx)} left.`;
+    } else {
+      budgetText.className = 'mt-2 text-sm font-bold text-red-700';
+      budgetText.textContent = `${formatUgx(-status.remainingUgx)} over your budget of ${formatUgx(status.budgetUgx)}. Lower some cartons, or send it and our team will suggest a mix.`;
+    }
+  }
 
   function renderReview(): void {
     const listedCatalogue = new Map([...catalogue].filter(([id]) => !refusedIds.has(id)));
     const est = estimate(state, listedCatalogue);
 
     if (summary) {
-      summary.textContent = est.lineCount === 0
-        ? 'No products yet. Type a quantity next to any product.'
-        : `${plural(est.lineCount, 'product', 'products')}, ${plural(est.totalUnits, 'unit', 'units')}.`;
+      summary.textContent = est.lineCount === 0 ? 'No products yet. Choose cartons next to any product.' : `${sizeWords(est)}.`;
     }
     if (barText) {
       barText.textContent = '';
-      if (est.lineCount === 0) barText.append(el('span', 'font-bold', 'Your list is empty'));
+      if (est.lineCount === 0) barText.append(el('span', 'font-bold', state.budgetUgx ? `Budget ${formatUgx(state.budgetUgx)}` : 'Your list is empty'));
       else {
-        barText.append(el('span', 'font-bold', `${plural(est.lineCount, 'product', 'products')} · ${plural(est.totalUnits, 'unit', 'units')}`));
-        barText.append(el('span', 'block text-xs text-slate-600', `About ${formatUgx(est.estimatedTotalUgx)} at list price`));
+        barText.append(el('span', 'font-bold', sizeWords(est)));
+        if (unlocked && est.estimatedTotalUgx > 0) barText.append(el('span', 'block text-xs text-slate-600', `${formatUgx(est.estimatedTotalUgx)} at bulk price`));
       }
     }
-    if (estimateBox) estimateBox.hidden = est.lineCount === 0;
+    // Locked: no price and no total; the box shows only the over-500 note, if any.
+    if (estimateBox) estimateBox.hidden = est.lineCount === 0 || (!unlocked && est.aboveSelfServeCount === 0);
     if (estimateTotal) estimateTotal.textContent = formatUgx(est.estimatedTotalUgx);
     if (estimateUnpriced) {
-      const unpriced = est.unpricedLineCount;
+      const unpriced = unlocked ? est.unpricedLineCount : 0;
       estimateUnpriced.hidden = unpriced === 0;
       estimateUnpriced.textContent = unpriced > 0
-        ? `${plural(unpriced, 'product has', 'products have')} no listed price and ${unpriced === 1 ? 'is' : 'are'} not in the estimate. Our team will price ${unpriced === 1 ? 'it' : 'them'}.`
+        ? `${plural(unpriced, 'product is', 'products are')} not in the total: no bulk price or carton size yet. Our team will price ${unpriced === 1 ? 'it' : 'them'}.`
+        : '';
+    }
+    if (estimateAbove) {
+      estimateAbove.hidden = est.aboveSelfServeCount === 0;
+      estimateAbove.textContent = est.aboveSelfServeCount > 0
+        ? `${plural(est.aboveSelfServeCount, 'product is', 'products are')} over ${SELF_SERVE_MAX_CARTONS} cartons. We take it, and our team confirms supply and the delivery date.`
         : '';
     }
     if (clearButton) clearButton.hidden = est.lineCount === 0;
-    const { cartable } = splitForCart(state, listedCatalogue);
-    if (addCartButton) {
-      addCartButton.disabled = cartable.length === 0;
-      addCartButton.textContent = cartable.length === 0
-        ? 'Add to basket'
-        : `Add ${plural(Math.min(cartable.length, CART_MAX_DISTINCT_LINES), 'product', 'products')} to basket`;
-    }
     if (quoteSubmit) {
-      quoteSubmit.textContent = est.lineCount === 0 ? 'Send quote request' : `Send quote request (${plural(est.lineCount, 'product', 'products')})`;
+      quoteSubmit.textContent = est.lineCount === 0
+        ? (state.budgetUgx ? 'Send my budget' : 'Send request')
+        : `Send request (${plural(est.lineCount, 'product', 'products')})`;
     }
+    renderBudget(est);
 
     if (!linesList) return;
     linesList.textContent = '';
@@ -293,12 +333,11 @@ export function initBulkBuilder(): void {
       const meta = el('p', 'text-xs text-slate-600');
       const code = item?.code ?? line.code;
       if (code) meta.append(el('span', 'font-mono', code), document.createTextNode(' · '));
-      if (!listed) {
+      if (!listed || !item) {
         meta.append(el('span', 'font-bold text-red-700', 'No longer on sale. Remove it to send your list.'));
       } else {
-        const price = item?.unitPriceUgx ?? null;
-        meta.append(document.createTextNode(price === null ? 'Price on request' : `${formatUgx(price)} each`));
-        if (line.quantity > CART_LINE_QUANTITY_CAP) meta.append(document.createTextNode(` · over ${CART_LINE_QUANTITY_CAP}: quote only`));
+        meta.append(document.createTextNode(countLabel(item, line.count)));
+        if (item.bulkUnit === 'carton' && line.count > SELF_SERVE_MAX_CARTONS) meta.append(document.createTextNode(` · over ${SELF_SERVE_MAX_CARTONS}: team confirms supply`));
       }
       info.append(meta);
       const remove = el('button', 'min-h-11 shrink-0 rounded-full px-3 text-xs font-bold text-slate-700 underline underline-offset-4 outline-none hover:text-gray-950 focus-visible:ring-2 focus-visible:ring-brand-primaryInk', 'Remove');
@@ -317,31 +356,39 @@ export function initBulkBuilder(): void {
       top.append(info, remove);
       li.append(top);
 
-      if (listed) {
+      if (listed && item) {
         const qtyWrap = el('div', 'mt-2 flex items-center gap-2');
         const inputId = `bulk-line-${line.productId}`;
-        const label = el('label', 'text-xs font-bold text-slate-700', 'Quantity');
+        const label = el('label', 'text-xs font-bold text-slate-700', item.bulkUnit === 'piece' ? 'Pieces' : 'Cartons');
         label.htmlFor = inputId;
         const input = el('input', 'h-11 w-24 rounded-xl border border-slate-300 px-2 text-center text-base font-bold outline-none focus-visible:border-slate-900 focus-visible:ring-2 focus-visible:ring-brand-primaryInk');
         input.id = inputId;
         input.type = 'text';
         input.inputMode = 'numeric';
-        input.maxLength = 6;
-        input.value = String(line.quantity);
+        input.maxLength = 5;
+        input.value = String(line.count);
         input.autocomplete = 'off';
         input.addEventListener('change', () => {
-          const q = clampQuantity(input.value.replace(/\D/g, '')) ?? 0;
-          commitRow(line.productId, q, true);
+          const n = clampCount(input.value.replace(/\D/g, ''), item.bulkUnit) ?? 0;
+          commitRow(line.productId, n, true);
           syncRowInputs();
         });
-        const lineTotal = item?.unitPriceUgx ? el('span', 'ml-auto text-sm text-slate-800', formatUgx(item.unitPriceUgx * line.quantity)) : null;
         qtyWrap.append(label, input);
-        if (lineTotal) qtyWrap.append(lineTotal);
+        const pieces = item.bulkUnit === 'piece' ? line.count : item.unitsPerCarton ? line.count * item.unitsPerCarton : null;
+        if (unlocked && item.bulkPriceUgx && pieces !== null) qtyWrap.append(el('span', 'ml-auto text-sm text-slate-800', formatUgx(item.bulkPriceUgx * pieces)));
         li.append(qtyWrap);
       }
       linesList.append(li);
     }
   }
+
+  budgetInput?.addEventListener('change', () => {
+    state = setBudget(state, budgetInput.value);
+    budgetInput.value = state.budgetUgx ? state.budgetUgx.toLocaleString('en-US') : '';
+    save();
+    renderReview();
+  });
+  if (budgetInput && state.budgetUgx) budgetInput.value = state.budgetUgx.toLocaleString('en-US');
 
   clearButton?.addEventListener('click', () => {
     if (!window.confirm('Clear every product from your bulk list?')) return;
@@ -358,11 +405,12 @@ export function initBulkBuilder(): void {
   const pasteResult = document.getElementById('bulk-paste-result');
   document.getElementById('bulk-paste-add')?.addEventListener('click', () => {
     if (!pasteBox || !pasteResult) return;
-    const { matches, misses } = parsePaste(pasteBox.value, codeIndex);
+    const units = new Map([...catalogue].map(([id, item]) => [id, item.bulkUnit] as const));
+    const { matches, misses } = parsePaste(pasteBox.value, codeIndex, units);
     for (const m of matches) {
       const item = catalogue.get(m.productId);
       if (!item) continue;
-      state = setLine(state, { productId: m.productId, name: item.name, code: item.code }, quantityOf(state, m.productId) + m.quantity);
+      state = setLine(state, item, countOf(state, m.productId) + m.count);
     }
     save();
     syncRowInputs();
@@ -371,7 +419,7 @@ export function initBulkBuilder(): void {
 
     pasteResult.textContent = '';
     if (matches.length === 0 && misses.length === 0) {
-      pasteResult.append(el('p', 'text-slate-700', 'Paste at least one line, for example GP-C08, 50.'));
+      pasteResult.append(el('p', 'text-slate-700', 'Paste at least one line, for example GP-C08, 5.'));
       return;
     }
     if (matches.length > 0) pasteResult.append(el('p', 'font-bold text-green-800', `Added ${plural(matches.length, 'product', 'products')} to your list.`));
@@ -389,65 +437,91 @@ export function initBulkBuilder(): void {
     pasteBox.value = misses.map((m) => m.source).join('\n');
   });
 
-  // ---------------------------------------------------------------- basket
-  const cartResult = document.getElementById('bulk-cart-result');
-  addCartButton?.addEventListener('click', async () => {
-    if (!cartResult) return;
-    const listedCatalogue = new Map([...catalogue].filter(([id]) => !refusedIds.has(id)));
-    const { cartable, overCap } = splitForCart(state, listedCatalogue);
-    const batch = cartable.slice(0, CART_MAX_DISTINCT_LINES);
-    const leftOver = cartable.slice(CART_MAX_DISTINCT_LINES);
-    if (batch.length === 0) return;
-    addCartButton.disabled = true;
-    const label = addCartButton.textContent;
-    addCartButton.textContent = 'Adding to basket…';
-    cartResult.textContent = '';
+  // ---------------------------------------------------------------- access
+  const accessError = document.getElementById('bulk-access-error');
+  const accessSent = document.getElementById('bulk-access-sent');
+  const accessPhone = document.getElementById('bulk-access-phone') as HTMLInputElement | null;
+  const accessCode = document.getElementById('bulk-access-code') as HTMLInputElement | null;
+  const stepPhone = document.getElementById('bulk-access-step-phone');
+  const stepCode = document.getElementById('bulk-access-step-code');
+  const sendButton = document.getElementById('bulk-access-send') as HTMLButtonElement | null;
+  const verifyButton = document.getElementById('bulk-access-verify') as HTMLButtonElement | null;
+
+  async function postJson(path: string, body: unknown): Promise<{ status: number; json: { success?: boolean; data?: { maskedPhone?: string; method?: string }; error?: { message?: string } } | null }> {
     try {
-      const res = await fetch('/api/bulk/cart', {
+      const res = await fetch(path, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ lines: batch.map((l) => ({ productId: l.productId, quantity: l.quantity })) }),
+        body: JSON.stringify(body),
       });
-      const json = (await res.json().catch(() => null)) as
-        | { success?: boolean; data?: { results?: Array<{ productId: string; outcome: string; message?: string }>; addedCount?: number }; error?: { message?: string } }
-        | null;
-      if (res.status === 429) {
-        cartResult.append(el('p', 'font-bold text-red-700', 'You have tried several times in a short while. Wait a few minutes and try again.'));
-      } else if (!json?.success || !json.data) {
-        cartResult.append(el('p', 'font-bold text-red-700', json?.error?.message ?? 'We could not reach your basket. Try again in a minute.'));
-      } else {
-        const results = json.data.results ?? [];
-        const added = results.filter((r) => r.outcome === 'added').length;
-        if (added > 0) {
-          const p = el('p', 'font-bold text-green-800', `Added ${plural(added, 'product', 'products')} to your basket. `);
-          const link = el('a', 'underline underline-offset-4', 'Go to basket');
-          link.href = '/cart';
-          p.append(link);
-          cartResult.append(p);
-          cartResult.append(el('p', 'mt-1 text-slate-700', 'They are still in this list too. Remove them here if you do not need a quote for them.'));
-        }
-        const problems = results.filter((r) => r.outcome !== 'added');
-        if (problems.length > 0) {
-          cartResult.append(el('p', 'mt-2 font-bold text-red-700', `${plural(problems.length, 'product was', 'products were')} not added:`));
-          const ul = el('ul', 'mt-1 list-disc space-y-1 pl-5 text-slate-800');
-          for (const r of problems) ul.append(el('li', undefined, `${catalogue.get(r.productId)?.name ?? 'A product'}: ${r.message ?? 'not added'}`));
-          cartResult.append(ul);
-        }
-        announce(added > 0 ? `Added ${plural(added, 'product', 'products')} to your basket.` : 'Nothing was added to your basket.');
-      }
+      return { status: res.status, json: await res.json().catch(() => null) };
     } catch {
-      cartResult.append(el('p', 'font-bold text-red-700', 'We could not reach your basket. Check your connection and try again.'));
-    } finally {
-      addCartButton.disabled = false;
-      addCartButton.textContent = label;
+      return { status: 0, json: null };
     }
-    if (overCap.length > 0) {
-      cartResult.append(el('p', 'mt-2 text-slate-700', `${plural(overCap.length, 'product is', 'products are')} over ${CART_LINE_QUANTITY_CAP}, the basket's limit for one product. Send ${overCap.length === 1 ? 'it' : 'them'} as a quote request below.`));
+  }
+
+  sendButton?.addEventListener('click', async () => {
+    if (!accessPhone || !accessError || !accessSent) return;
+    accessError.textContent = '';
+    if (!isValidUgandanPhone(accessPhone.value.trim())) {
+      accessError.textContent = 'Enter a Ugandan phone number, for example 0772 123 456.';
+      accessPhone.focus();
+      return;
     }
-    if (leftOver.length > 0) {
-      cartResult.append(el('p', 'mt-2 text-slate-700', `The basket holds up to ${CART_MAX_DISTINCT_LINES} different products, so ${plural(leftOver.length, 'product was', 'products were')} not sent. Send the rest as a quote request.`));
+    sendButton.disabled = true;
+    const { status, json } = await postJson('/api/bulk/access/start', { phone: accessPhone.value.trim() });
+    sendButton.disabled = false;
+    if (json?.success && json.data?.method === 'first_visit') {
+      // First use of this number: no code. The page renders with prices.
+      window.location.reload();
+      return;
     }
+    if (json?.success) {
+      accessSent.textContent = `Welcome back. To keep prices safe, we texted a code to ${json.data?.maskedPhone ?? 'your phone'}. It works for 10 minutes.`;
+      if (stepPhone) stepPhone.hidden = true;
+      if (stepCode) stepCode.hidden = false;
+      accessCode?.focus();
+      return;
+    }
+    accessError.textContent = status === 0
+      ? 'We could not reach our shop just now. Check your connection and try again.'
+      : (json?.error?.message ?? 'We could not send a code just now. Try again in a minute.');
+  });
+
+  verifyButton?.addEventListener('click', async () => {
+    if (!accessPhone || !accessCode || !accessError) return;
+    accessError.textContent = '';
+    const code = accessCode.value.replace(/\D/g, '');
+    if (code.length !== 6) {
+      accessError.textContent = 'Type the six-digit code from the SMS.';
+      accessCode.focus();
+      return;
+    }
+    verifyButton.disabled = true;
+    const { status, json } = await postJson('/api/bulk/access/verify', { phone: accessPhone.value.trim(), code });
+    if (json?.success) {
+      // The token is now in an httpOnly cookie; the page renders the prices.
+      window.location.reload();
+      return;
+    }
+    verifyButton.disabled = false;
+    accessError.textContent = status === 0
+      ? 'We could not reach our shop just now. Check your connection and try again.'
+      : (json?.error?.message ?? 'That code did not work. Try again.');
+  });
+
+  document.getElementById('bulk-access-again')?.addEventListener('click', () => {
+    if (stepPhone) stepPhone.hidden = false;
+    if (stepCode) stepCode.hidden = true;
+    if (accessSent) accessSent.textContent = '';
+    if (accessError) accessError.textContent = '';
+    accessPhone?.focus();
+  });
+
+  document.getElementById('bulk-access-clear')?.addEventListener('click', async () => {
+    await postJson('/api/bulk/access/clear', {});
+    window.location.reload();
   });
 
   // ---------------------------------------------------------------- quote
@@ -456,13 +530,13 @@ export function initBulkBuilder(): void {
 
   const fieldIds: Record<string, string> = {
     customerName: 'bq-name',
-    businessName: 'bq-business',
     phone: 'bq-phone',
-    email: 'bq-email',
-    deliveryDistrict: 'bq-district',
-    neededBy: 'bq-needed',
     notes: 'bq-notes',
+    budgetUgx: 'bulk-budget',
   };
+  const notesWrap = document.getElementById('bq-notes-wrap') as HTMLDetailsElement | null;
+  /** Unlocked buyers have no phone field: the number they confirmed with the code is used. */
+  const phoneAsked = () => document.getElementById('bq-phone') !== null;
 
   function clearFieldErrors(): void {
     form?.querySelectorAll('[data-field-error]').forEach((n) => n.remove());
@@ -476,6 +550,7 @@ export function initBulkBuilder(): void {
   function fieldError(field: string, message: string): void {
     const input = document.getElementById(fieldIds[field] ?? '');
     if (!input) return;
+    if (field === 'notes' && notesWrap) notesWrap.open = true;
     const id = `${input.id}-error`;
     input.setAttribute('aria-invalid', 'true');
     input.setAttribute('aria-describedby', id);
@@ -492,13 +567,13 @@ export function initBulkBuilder(): void {
     const value = (name: string) => String(data.get(name) ?? '').trim();
     const errors: Array<[string, string]> = [];
     if (value('customerName').length < 2) errors.push(['customerName', 'Enter your name.']);
-    if (!isValidUgandanPhone(value('phone'))) errors.push(['phone', 'Enter a Ugandan phone number, for example 0772 123 456.']);
-    if (value('email') && !isValidEmail(value('email'))) errors.push(['email', 'Check the email, or leave it blank.']);
+    if (phoneAsked() && !isValidUgandanPhone(value('phone'))) errors.push(['phone', 'Enter a Ugandan phone number, for example 0772 123 456.']);
 
-    if (state.lines.length === 0) {
-      if (formError) formError.textContent = 'Your list is empty. Type a quantity next to at least one product.';
+    if (state.lines.length === 0 && !state.budgetUgx) {
+      if (formError) formError.textContent = 'Your list is empty. Choose cartons next to at least one product, or type your budget.';
       return;
     }
+    if (state.lines.length === 0 && value('notes').length < 5) errors.push(['notes', 'Tell us what you sell or need, so we can build the list for your budget.']);
     const unlisted = state.lines.filter((l) => !isListed(l.productId));
     if (unlisted.length > 0) {
       if (formError) formError.textContent = `Remove ${plural(unlisted.length, 'product that is', 'products that are')} no longer on sale, then send your list.`;
@@ -512,8 +587,8 @@ export function initBulkBuilder(): void {
       return;
     }
 
-    const lines = state.lines.map((l) => ({ productId: l.productId, quantity: l.quantity }));
-    const keyed = idempotencyKeyFor(state, submissionFingerprint(value('phone'), lines), mintKey);
+    const lines = state.lines.map((l) => ({ productId: l.productId, count: l.count }));
+    const keyed = idempotencyKeyFor(state, submissionFingerprint(value('phone') || 'confirmed', lines, state.budgetUgx), mintKey);
     state = keyed.state;
     save();
 
@@ -528,13 +603,10 @@ export function initBulkBuilder(): void {
         body: JSON.stringify({
           idempotencyKey: keyed.key,
           customerName: value('customerName'),
-          businessName: value('businessName'),
           phone: value('phone'),
-          email: value('email'),
-          buyerType: value('buyerType') || 'retail',
-          deliveryDistrict: value('deliveryDistrict'),
-          neededBy: value('neededBy'),
+          buyerType: value('buyerType'),
           notes: value('notes'),
+          budgetUgx: state.budgetUgx ? String(state.budgetUgx) : '',
           lines,
         }),
       });
