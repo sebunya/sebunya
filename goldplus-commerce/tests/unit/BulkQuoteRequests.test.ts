@@ -459,11 +459,21 @@ describe('SubmitBulkQuoteUseCase', () => {
     expect(await uc.execute({ ...valid(), customerName: 42 })).toMatchObject({ code: 'BAD_INPUT' });
   });
 
-  it('email and business name are optional; buyer type defaults to retail', async () => {
+  it('the page sends only a name and phone: everything else is optional, buyer type defaults to wholesale', async () => {
     const { repo, uc } = setup();
-    const r = await uc.execute({ ...valid(), email: undefined, businessName: undefined, buyerType: undefined, deliveryDistrict: undefined });
+    const r = await uc.execute({ idempotencyKey: KEY, customerName: 'Grace Namuli', phone: '0772 123 456', lines: valid().lines });
     expect(r.ok).toBe(true);
-    expect(repo.saved[0]).toMatchObject({ email: '', businessName: null, buyerType: 'retail', deliveryDistrict: null });
+    expect(repo.saved[0]).toMatchObject({ email: '', businessName: null, buyerType: 'wholesale', deliveryDistrict: null, neededBy: null });
+  });
+
+  it('a buyer who confirmed their phone with the code is not asked for it again', async () => {
+    const { repo, uc } = setup();
+    const r = await uc.execute({ idempotencyKey: KEY, customerName: 'Grace Namuli', priceAccessToken: TOKEN, lines: valid().lines });
+    expect(r).toMatchObject({ ok: true, contactPhone: PHONE, request: { pricesShown: true } });
+    expect(repo.saved[0]).toMatchObject({ phone: PHONE, pricesShown: true });
+    // No phone and no valid code: the phone is required.
+    const none = setup();
+    expect(await none.uc.execute({ idempotencyKey: KEY, customerName: 'Grace', priceAccessToken: 'forged', lines: valid().lines })).toMatchObject({ code: 'BAD_INPUT', field: 'phone' });
   });
 });
 

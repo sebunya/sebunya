@@ -127,7 +127,8 @@ const sha256 = (value: string) => createHash('sha256').update(value).digest('hex
 const kampalaToday = (now: Date) => new Date(now.getTime() + 3 * 60 * 60 * 1000);
 
 export type SubmitBulkQuoteResult =
-  | { ok: true; replayed: boolean; quoteId: string; request: BuyerQuoteView }
+  /** contactPhone: the number the team will call, for the submitter's own receipt (it may come from the verified code). */
+  | { ok: true; replayed: boolean; quoteId: string; contactPhone: string; request: BuyerQuoteView }
   | { ok: false; code: 'BAD_INPUT' | 'NO_LINES' | 'TOO_MANY_LINES' | 'BAD_LINE'; message: string; field?: string }
   | { ok: false; code: 'PRODUCTS_UNAVAILABLE' | 'COUNT_TOO_LARGE'; message: string; productIds: string[] }
   | { ok: false; code: 'IDEMPOTENCY_CONFLICT'; message: string };
@@ -158,15 +159,20 @@ export class SubmitBulkQuoteUseCase {
     const businessName = text(input.businessName);
     if (!isMaxLength(businessName, 160)) return bad('Business name is too long.', 'businessName');
 
-    if (!isValidUgandanPhone(input.phone)) return bad('A valid Ugandan phone number is required.', 'phone');
-    const phone = normalizePhone(input.phone);
+    // A buyer who proved their phone with the texted code is not asked for it again.
+    const verifiedPhone = this.verifiedPhoneFor(input.priceAccessToken);
+    const phoneGiven = text(input.phone) !== '';
+    if (phoneGiven && !isValidUgandanPhone(input.phone)) return bad('A valid Ugandan phone number is required.', 'phone');
+    if (!phoneGiven && !verifiedPhone) return bad('A valid Ugandan phone number is required.', 'phone');
+    const phone = phoneGiven ? normalizePhone(input.phone) : (verifiedPhone as string);
 
     const email = normalizeEmail(input.email);
     if (email && (!isValidEmail(email) || !isMaxLength(email, 255))) {
       return bad('That email address does not look right. Check it, or leave it blank.', 'email');
     }
 
-    const buyerTypeRaw = text(input.buyerType) || 'retail';
+    // Not asked on the page any more; a dealer link still says so (?buyer=dealer).
+    const buyerTypeRaw = text(input.buyerType) || 'wholesale';
     if (!(BULK_BUYER_TYPES as readonly string[]).includes(buyerTypeRaw)) return bad('Choose what best describes you.', 'buyerType');
     const buyerType = buyerTypeRaw as BulkBuyerType;
 
@@ -192,7 +198,7 @@ export class SubmitBulkQuoteUseCase {
     }
 
     // Prices were shown only if this phone proved itself with the SMS code.
-    const pricesShown = this.verifiedPhoneFor(input.priceAccessToken) === phone;
+    const pricesShown = verifiedPhone === phone;
 
     const requestFingerprint = sha256(fingerprintSource(phone, validated.lines, budgetUgx));
 
@@ -273,6 +279,7 @@ export class SubmitBulkQuoteUseCase {
           ok: true,
           replayed: false,
           quoteId: id,
+          contactPhone: phone,
           request: toBuyerView({
             id,
             reference,
@@ -315,7 +322,7 @@ export class SubmitBulkQuoteUseCase {
         message: 'Your list changed while it was being sent. Check it and send it again.',
       };
     }
-    return { ok: true, replayed: true, quoteId: prior.id, request: toBuyerView(prior) };
+    return { ok: true, replayed: true, quoteId: prior.id, contactPhone: prior.phone, request: toBuyerView(prior) };
   }
 
   private async acknowledge(input: {

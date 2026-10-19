@@ -32,7 +32,7 @@ import {
   type CatalogueItem,
 } from './bulkList';
 import { formatUgx } from './money';
-import { isValidEmail, isValidUgandanPhone } from './formValidation';
+import { isValidUgandanPhone } from './formValidation';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
@@ -521,14 +521,13 @@ export function initBulkBuilder(): void {
 
   const fieldIds: Record<string, string> = {
     customerName: 'bq-name',
-    businessName: 'bq-business',
     phone: 'bq-phone',
-    email: 'bq-email',
-    deliveryDistrict: 'bq-district',
-    neededBy: 'bq-needed',
     notes: 'bq-notes',
     budgetUgx: 'bulk-budget',
   };
+  const notesWrap = document.getElementById('bq-notes-wrap') as HTMLDetailsElement | null;
+  /** Unlocked buyers have no phone field: the number they confirmed with the code is used. */
+  const phoneAsked = () => document.getElementById('bq-phone') !== null;
 
   function clearFieldErrors(): void {
     form?.querySelectorAll('[data-field-error]').forEach((n) => n.remove());
@@ -542,6 +541,7 @@ export function initBulkBuilder(): void {
   function fieldError(field: string, message: string): void {
     const input = document.getElementById(fieldIds[field] ?? '');
     if (!input) return;
+    if (field === 'notes' && notesWrap) notesWrap.open = true;
     const id = `${input.id}-error`;
     input.setAttribute('aria-invalid', 'true');
     input.setAttribute('aria-describedby', id);
@@ -558,8 +558,7 @@ export function initBulkBuilder(): void {
     const value = (name: string) => String(data.get(name) ?? '').trim();
     const errors: Array<[string, string]> = [];
     if (value('customerName').length < 2) errors.push(['customerName', 'Enter your name.']);
-    if (!isValidUgandanPhone(value('phone'))) errors.push(['phone', 'Enter a Ugandan phone number, for example 0772 123 456.']);
-    if (value('email') && !isValidEmail(value('email'))) errors.push(['email', 'Check the email, or leave it blank.']);
+    if (phoneAsked() && !isValidUgandanPhone(value('phone'))) errors.push(['phone', 'Enter a Ugandan phone number, for example 0772 123 456.']);
 
     if (state.lines.length === 0 && !state.budgetUgx) {
       if (formError) formError.textContent = 'Your list is empty. Choose cartons next to at least one product, or type your budget.';
@@ -580,7 +579,7 @@ export function initBulkBuilder(): void {
     }
 
     const lines = state.lines.map((l) => ({ productId: l.productId, count: l.count }));
-    const keyed = idempotencyKeyFor(state, submissionFingerprint(value('phone'), lines, state.budgetUgx), mintKey);
+    const keyed = idempotencyKeyFor(state, submissionFingerprint(value('phone') || 'confirmed', lines, state.budgetUgx), mintKey);
     state = keyed.state;
     save();
 
@@ -595,12 +594,8 @@ export function initBulkBuilder(): void {
         body: JSON.stringify({
           idempotencyKey: keyed.key,
           customerName: value('customerName'),
-          businessName: value('businessName'),
           phone: value('phone'),
-          email: value('email'),
-          buyerType: value('buyerType') || 'retail',
-          deliveryDistrict: value('deliveryDistrict'),
-          neededBy: value('neededBy'),
+          buyerType: value('buyerType'),
           notes: value('notes'),
           budgetUgx: state.budgetUgx ? String(state.budgetUgx) : '',
           lines,

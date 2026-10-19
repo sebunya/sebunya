@@ -78,14 +78,17 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   }
 
   const payload = (await upstream.json().catch(() => null)) as
-    | { success?: boolean; data?: { request?: { reference?: unknown } }; error?: unknown }
+    | { success?: boolean; data?: { contactPhone?: unknown; request?: { reference?: unknown } }; error?: unknown }
     | null;
   if (!payload) {
     return json(502, { success: false, error: { code: 'UPSTREAM_UNAVAILABLE', message: 'We could not reach our sales system. Try again in a minute.' } });
   }
   const reference = payload.success ? payload.data?.request?.reference : null;
+  // The number the team will call: typed, or the one confirmed with the code.
+  const receiptPhone = payload.success && typeof payload.data?.contactPhone === 'string' ? payload.data.contactPhone : String(body.phone);
+  if (payload.data) delete payload.data.contactPhone;
   if (typeof reference === 'string' && reference) {
-    cookies.set(BULK_RECEIPT_COOKIE, encodeBulkReceipt({ reference, phone: String(body.phone) }), {
+    cookies.set(BULK_RECEIPT_COOKIE, encodeBulkReceipt({ reference, phone: receiptPhone }), {
       path: '/bulk',
       maxAge: 60 * 60,
       sameSite: 'lax',

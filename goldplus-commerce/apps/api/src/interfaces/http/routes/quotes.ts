@@ -67,7 +67,7 @@ routes.post('/bulk', async (c) => {
   }
 
   return c.json(
-    { success: true, data: { quoteId: result.quoteId, replayed: result.replayed, request: result.request } },
+    { success: true, data: { quoteId: result.quoteId, replayed: result.replayed, contactPhone: result.contactPhone, request: result.request } },
     result.replayed ? 200 : 201,
   );
 });
