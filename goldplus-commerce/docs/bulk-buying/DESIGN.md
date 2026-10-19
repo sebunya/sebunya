@@ -264,11 +264,13 @@ buyers have only a total budget. "Simplify how we work."
 |---|---|
 | Unit | Each product is bought by the **carton** (`products.units_per_carton` pieces) or by the **piece** (`products.bulk_unit = 'piece'`). Migration 0195 marks every product named "Flash Drive" or "Memory Card" as piece (19 today); card readers stay carton. A carton product without a size can still be ordered; the line says "size to confirm" and is unpriced. |
 | Price | The bulk price is the **dealer price per piece**, `product_prices.dealer_price` (owner supplies the column; empty today). A line is priced only when it has a dealer price and a known number of pieces. Delivery is never in the total; the team agrees it on the call. |
-| Who sees it | Only a buyer who enters a phone and types the 6-digit code we text (owner chose "after they enter a phone", with the code). The proof is a signed token (`b1.<phone>.<expiry>.<hmac>`, 30 days, key `BULK_PRICE_TOKEN_KEY` or derived from `JWT_SECRET`) kept in an httpOnly cookie `gp_bulk_access`; the browser script never sees it. The storefront renders prices on the server and marks /bulk `private, no-store`. |
+| Who sees it | Only a buyer who enters a phone. The FIRST use of a number shows prices at once for that visit (browser-session cookie, at most 24 hours, no SMS; owner: the code must not lengthen a first journey). Every LATER use of the number needs the 6-digit code we text, then lasts 30 days. Until any product has a dealer price, the page does not ask for a phone at all. The proof is a signed token (`b1.<phone>.<expiry>.<hmac>`, 30 days, key `BULK_PRICE_TOKEN_KEY` or derived from `JWT_SECRET`) kept in an httpOnly cookie `gp_bulk_access`; the browser script never sees it. The storefront renders prices on the server and marks /bulk `private, no-store`. |
 | Minimum | 1 carton per product (pieces for piece products). Smaller amounts go through the shop at retail. |
 | Maximum | Up to 500 cartons a product from the page; more is accepted and flagged `above_self_serve` ("our team confirms supply"). 10,000 cartons or 50,000 pieces a line is a typo guard, not a business limit. |
 | Stock | Bulk is supplied to order. No stock is shown or held; the basket route (`/api/bulk/cart`) is removed. The in-shop stock at request time is still recorded for the team. |
 | Budget | Optional on any request. With prices unlocked, the list shows "used / left / over". A budget with no list is accepted when the notes say what the buyer sells or needs; the team builds the list. |
+| Form | Name and phone; a buyer who unlocked prices gives only a name. Name and phone are prefilled for a returning checkout guest. A note folds away and opens by itself for a budget with no list. |
+| Statuses | new = Received; quoted = Confirmed with you (total and delivery date agreed on the call); won = Ordered; lost = Closed; expired. |
 | Buyer views | Submit response, `/bulk/submitted`, `/bulk/status`: cartons and pieces always; bulk prices only when the request's phone was the verified phone (`quote_requests.prices_shown`). Older requests priced at retail still show those prices. |
 
 ### How the team works
@@ -292,7 +294,7 @@ buyers have only a total budget. "Simplify how we work."
 | Method + path | Purpose | Rate family |
 |---|---|---|
 | `POST /quotes/bulk-terms` `{ token? }` | Unit and carton size of every product on sale; `bulkPriceUgx` per piece only with a valid token. The one public read of the dealer price. | order-lookup (SSR calls are internal) |
-| `POST /quotes/price-access/start` `{ phone }` | Texts a code (10 minutes). At most 3 codes a phone an hour. | auth-recovery |
+| `POST /quotes/price-access/start` `{ phone }` | First use of the number: returns a visit token (no SMS). Later uses: texts a code (10 minutes), at most 3 codes a phone an hour. | auth-recovery |
 | `POST /quotes/price-access/verify` `{ phone, code }` | 5 tries a code. Returns the token and the masked phone. Audited `BULK_PRICES_UNLOCKED`. | auth-recovery |
 | `POST /quotes/bulk` | Lines are `{ productId, count }` (the old `quantity` field is refused, so a cached old page cannot send pieces that become cartons); `budgetUgx`; `priceAccessToken` (added by the storefront relay from the cookie). | quote-request |
 | `GET/PUT /admin/quote-requests/bulk-terms[/:productId]`, `POST .../bulk-terms/import`, `GET .../price-leads` | Admin. | — |

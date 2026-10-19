@@ -110,6 +110,8 @@ export interface BulkTermsResult {
   /** Whether the caller proved a phone; prices are included only then. */
   pricesUnlocked: boolean;
   maskedPhone: string | null;
+  /** How many products have a bulk price at all (a count, never a price): 0 means there is nothing to unlock yet. */
+  pricedCount: number;
   terms: PublicBulkTerms[];
 }
 
@@ -136,6 +138,7 @@ export class GetBulkTermsUseCase {
     return {
       pricesUnlocked: phone !== null,
       maskedPhone: phone ? maskPhone(phone) : null,
+      pricedCount: rows.filter((row) => typeof row.dealerPriceUgx === 'number' && row.dealerPriceUgx > 0).length,
       terms: rows.map((row) => ({
         productId: row.productId,
         bulkUnit: row.bulkUnit,

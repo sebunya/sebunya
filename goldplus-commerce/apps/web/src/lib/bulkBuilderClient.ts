@@ -264,6 +264,9 @@ export function initBulkBuilder(): void {
   function renderBudget(est: ReturnType<typeof estimate>): void {
     if (!budgetText) return;
     const status = budgetStatus(state.budgetUgx, est, unlocked);
+    // A budget with no list needs a note (what they sell): open it rather than make them find it.
+    const note = document.getElementById('bq-notes-wrap') as HTMLDetailsElement | null;
+    if (note && est.lineCount === 0 && state.budgetUgx) note.open = true;
     budgetText.className = 'mt-2 text-sm text-slate-700';
     if (status.kind === 'none') {
       budgetText.textContent = est.lineCount === 0 ? 'No list yet? Type a budget, say what you sell in the notes, and our team builds the list for you.' : '';

@@ -297,13 +297,13 @@ export function nextQuoteRequestStatuses(from: string): readonly QuoteRequestSta
 export function buyerStatusCopy(status: string): { label: string; detail: string } {
   switch (status) {
     case 'quoted':
-      return { label: 'Quote sent', detail: 'Our sales team has sent you the final total and delivery date. Call us if you have not received it.' };
+      return { label: 'Confirmed with you', detail: 'Our sales team has agreed the total and the delivery date with you. Call us if you have not heard from us.' };
     case 'won':
-      return { label: 'Confirmed', detail: 'You confirmed this order with our sales team.' };
+      return { label: 'Ordered', detail: 'You placed this order with our sales team.' };
     case 'lost':
       return { label: 'Closed', detail: 'This request is closed. Send a new one any time.' };
     case 'expired':
-      return { label: 'Quote expired', detail: 'The price we gave has expired. Ask us for an updated quote.' };
+      return { label: 'Expired', detail: 'The price we agreed has expired. Send your list again for today\'s price.' };
     case 'new':
     default:
       return { label: 'Received', detail: 'We have your request. Our sales team will call you to confirm the delivery date and delivery cost.' };

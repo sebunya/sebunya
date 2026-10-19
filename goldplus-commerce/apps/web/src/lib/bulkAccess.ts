@@ -14,6 +14,8 @@ export interface BulkTermsRead {
   ok: boolean;
   pricesUnlocked: boolean;
   maskedPhone: string | null;
+  /** Products with a bulk price; 0 = nothing to unlock, so the page does not ask for a phone. */
+  pricedCount: number;
   terms: Map<string, BulkTermsRow>;
 }
 
@@ -23,7 +25,7 @@ export function readAccessCookie(value: string | undefined | null): string | nul
 }
 
 export async function fetchBulkTerms(token: string | null): Promise<BulkTermsRead> {
-  const empty: BulkTermsRead = { ok: false, pricesUnlocked: false, maskedPhone: null, terms: new Map() };
+  const empty: BulkTermsRead = { ok: false, pricesUnlocked: false, maskedPhone: null, pricedCount: 0, terms: new Map() };
   try {
     const res = await fetch(`${apiBase}/quotes/bulk-terms`, {
       method: 'POST',
@@ -32,14 +34,15 @@ export async function fetchBulkTerms(token: string | null): Promise<BulkTermsRea
       signal: AbortSignal.timeout(8_000),
     });
     const json = (await res.json().catch(() => null)) as
-      | { success?: boolean; data?: { pricesUnlocked?: boolean; maskedPhone?: string | null; terms?: BulkTermsRow[] } }
+      | { success?: boolean; data?: { pricesUnlocked?: boolean; maskedPhone?: string | null; pricedCount?: number; terms?: BulkTermsRow[] } }
       | null;
     if (!res.ok || !json?.success || !Array.isArray(json.data?.terms)) return empty;
     const terms = new Map<string, BulkTermsRow>();
     for (const t of json.data!.terms!) {
       if (t && typeof t.productId === 'string') terms.set(t.productId.toLowerCase(), t);
     }
-    return { ok: true, pricesUnlocked: json.data!.pricesUnlocked === true, maskedPhone: json.data!.maskedPhone ?? null, terms };
+    const pricedCount = Number(json.data!.pricedCount);
+    return { ok: true, pricesUnlocked: json.data!.pricesUnlocked === true, maskedPhone: json.data!.maskedPhone ?? null, pricedCount: Number.isFinite(pricedCount) ? pricedCount : 0, terms };
   } catch {
     return empty;
   }

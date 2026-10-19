@@ -150,6 +150,8 @@ describe('bulk terms read: the one public read of the dealer price', () => {
       expect(r).toEqual({
         pricesUnlocked: false,
         maskedPhone: null,
+        // A count of priced products (never a price): 0 tells the page not to ask for a phone.
+        pricedCount: 1,
         terms: [{ productId: 'a', bulkUnit: 'carton', unitsPerCarton: 50 }, { productId: 'f', bulkUnit: 'piece', unitsPerCarton: null }],
       });
       expect(JSON.stringify(r)).not.toMatch(/21000|Price/);

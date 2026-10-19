@@ -57,8 +57,8 @@ export interface AdminQuoteRequest {
 
 export const QUOTE_STATUS_LABEL: Record<string, string> = {
   new: 'New',
-  quoted: 'Confirmed to buyer',
-  won: 'Won',
+  quoted: 'Confirmed with buyer',
+  won: 'Ordered',
   lost: 'Lost',
   expired: 'Expired',
 };

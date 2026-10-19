@@ -175,7 +175,8 @@ describe('status', () => {
 
   it('tells the buyer in plain words', () => {
     expect(buyerStatusCopy('new').label).toBe('Received');
-    expect(buyerStatusCopy('quoted').label).toBe('Quote sent');
+    expect(buyerStatusCopy('quoted').label).toBe('Confirmed with you');
+    expect(buyerStatusCopy('won').label).toBe('Ordered');
     expect(buyerStatusCopy('new').detail).toMatch(/delivery date/);
     for (const s of ['new', 'quoted', 'won', 'lost', 'expired']) expect(buyerStatusCopy(s).detail).not.toMatch(/_/);
   });
@@ -553,8 +554,8 @@ describe('acknowledgement text', () => {
   it('the SMS names the reference and the number of products, and is unchanged without a count', () => {
     expect(smsText('QUOTE_REQUEST_RECEIVED', { reference: 'BQ-7K3M9P', lineCount: 12 })).toContain('(ref BQ-7K3M9P) for 12 products.');
     expect(smsText('QUOTE_REQUEST_RECEIVED', { reference: 'BQ-7K3M9P', lineCount: 1 })).toContain('for 1 product.');
-    expect(smsText('QUOTE_REQUEST_RECEIVED', { reference: 'X' })).toMatch(/quote request \(ref X\)\. Our sales team/);
+    expect(smsText('QUOTE_REQUEST_RECEIVED', { reference: 'X' })).toMatch(/your request \(ref X\)\. Our sales team/);
     // A budget alone (no products) reads naturally.
-    expect(smsText('QUOTE_REQUEST_RECEIVED', { reference: 'X', lineCount: 0 })).toMatch(/quote request \(ref X\)\. Our sales team/);
+    expect(smsText('QUOTE_REQUEST_RECEIVED', { reference: 'X', lineCount: 0 })).toMatch(/your request \(ref X\)\. Our sales team/);
   });
 });
