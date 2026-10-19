@@ -286,7 +286,17 @@
       input!.removeAttribute('aria-invalid');
       input!.classList.remove('border-red-600', 'ring-2', 'ring-red-100');
       cardPin?.classList.toggle('hidden', !pin);
-      if (cardPin && pin) cardPin.textContent = pin.gpsSource === 'map_place' ? `📍 ${pinnedPlaceName || 'The building'} is pinned for the rider` : '📍 Your exact location is attached for the rider';
+      if (cardPin && pin) {
+        cardPin.textContent = pin.gpsSource === 'map_place' ? `📍 ${pinnedPlaceName || 'The building'} is pinned for the rider · ` : '📍 Your exact spot goes to the rider · ';
+        // The customer sees the actual point, not only an area name.
+        const map = document.createElement('a');
+        map.href = `https://www.google.com/maps?q=${pin.gpsLat},${pin.gpsLng}`;
+        map.target = '_blank';
+        map.rel = 'noopener';
+        map.className = 'underline font-bold';
+        map.textContent = 'View on map';
+        cardPin.append(map);
+      }
       cardAddPin?.classList.toggle('hidden', !!pin);
       if (commitAnnounce) {
         const chosen = [cardPrimary?.textContent, cardSecondary?.textContent].filter(Boolean).join(', ');
@@ -690,6 +700,14 @@
         return;
       }
       const roughKm = pin.gpsAccuracyM && pin.gpsAccuracyM > 1500 ? Math.round(pin.gpsAccuracyM / 100) / 10 : null;
+      // Owner, 2026-10-19: "Use my location should put the actual location, not just a zone." A phone fix is the
+      // answer itself: commit it in one tap, priced from the nearest area, with the area shown and "Change" beside it.
+      // Only a vague fix (a laptop on Wi-Fi, km off) still asks the customer to pick, because then it is not their spot.
+      if (!roughKm && pin.gpsSource === 'device') {
+        commitCurrentLocation(areas[0]);
+        say('');
+        return;
+      }
       offerAreas(
         areas,
         statusEl,
@@ -698,6 +716,28 @@
           : 'Tap your area below. Not listed? Type it instead.',
         'you',
       );
+    }
+
+    /**
+     * "Use my location" in one tap: the customer's own phone point is the location; the nearest of our areas names
+     * it and prices it (the quote's own rule). The card says it is their current location and which area it was
+     * priced as, so a wrong area is one tap ("Change") away.
+     */
+    function commitCurrentLocation(a: { areaSlug: string; label: string; district: string; km: number }) {
+      const name = a.label.split(',')[0].trim();
+      const hasArea = name !== a.district;
+      lastOffer = null;
+      payloadInput!.value = payloadWithPin({
+        district: a.district,
+        ...(hasArea ? { area: name } : {}),
+        areaSlug: a.areaSlug,
+        displayLabel: `Current location near ${hasArea ? `${name}, ${a.district}` : a.district}`,
+      });
+      const accuracy = pin?.gpsAccuracyM ? ` · within ${pin.gpsAccuracyM} m` : '';
+      if (cardPrimary) cardPrimary.textContent = 'Your current location';
+      // "Change" sits beside the card for a wrong area; no need to say it twice.
+      if (cardSecondary) cardSecondary.textContent = `Near ${hasArea ? `${name}, ${a.district}` : a.district}${accuracy}`;
+      finishCommit();
     }
 
     /**
