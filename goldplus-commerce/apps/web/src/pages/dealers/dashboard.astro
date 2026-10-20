@@ -1,82 +1,171 @@
 ---
 import BaseLayout from "../../layouts/BaseLayout.astro";
-import { whatsappSupportNumber } from "../../lib/api";
+import { postJson, whatsappSupportNumber } from "../../lib/api";
+import { readClientAddress } from "../../lib/forwardClient";
+import { formatUgx } from "../../lib/money";
+import { orderStatusCopy, STATUS_TONE_CLASS } from "../../lib/orderStatusCopy";
 
 /**
- * Dealer portal placeholder.
+ * Dealer portal (gap analysis #16, 2026-10-20). Replaces the "no dealer backend" placeholder.
  *
- * This route previously rendered a hard-coded "Sample Dealer Store" with
- * invented figures (UGX 4,200,000 in sales, 42 stock items, account DLR-123)
- * and was publicly reachable and indexable. There is no dealer backend — no
- * dealer tables, no dealer API — so every number on it was fiction presented
- * as a real account.
- *
- * Until a real dealer portal exists this page states the truth and routes the
- * visitor to the channels that do work. It is noindex because it is an
- * account-adjacent utility page with nothing to rank for.
+ * Sign-in is the dealer's phone and an SMS code, every time (the portal never accepts the bulk-price gate's
+ * no-code first visit, because this page shows orders and amounts). The portal token lives in an httpOnly cookie
+ * for 7 days. What it shows is only that phone's own records: the dealer application, bulk quote requests with
+ * their lines, orders, and a monthly statement. Nothing here changes an order or a price.
  */
-// WhatsApp, not mailto: it is the channel a reply actually comes back on.
-const supportWhatsapp = `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComponent("Hello GoldPlus, I have a question about becoming a dealer.")}`;
+const COOKIE = "gp_dealer";
+const cookieOptions = { path: "/dealers", httpOnly: true, secure: import.meta.env.PROD, sameSite: "lax" as const, maxAge: 7 * 24 * 60 * 60 };
+
+type Account = {
+  maskedPhone: string;
+  application: { businessName: string; status: string; submittedAt: string } | null;
+  quotes: Array<{ reference: string | null; status: string; submittedAt: string; estimatedTotalUgx: number | null; lines: Array<{ productName: string; quantity: number | null; unitKind: string; unitCount: number | null; unitPriceUgx: number | null; lineTotalUgx: number | null }> }>;
+  orders: Array<{ orderNumber: string; placedAt: string; status: string; paymentStatus: string; totalUgx: number; itemCount: number }>;
+  statement: Array<{ month: string; orders: number; totalUgx: number; paidUgx: number; unpaidOpenUgx: number }>;
+};
+
+let step: "phone" | "code" | "account" = "phone";
+let phone = "";
+let maskedPhone = "";
+let error = "";
+let account: Account | null = null;
+const client = readClientAddress(Astro);
+
+async function loadAccount(token: string): Promise<boolean> {
+  const res = await postJson("/quotes/dealer-portal/account", { token }, null, client);
+  if (!res.ok) return false;
+  account = res.data as Account;
+  step = "account";
+  return true;
+}
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") ?? "");
+  phone = String(form.get("phone") ?? "").trim().slice(0, 20);
+  if (intent === "signout") {
+    Astro.cookies.delete(COOKIE, { path: "/dealers" });
+  } else if (intent === "start") {
+    const res = await postJson("/quotes/dealer-portal/start", { phone }, null, client);
+    if (res.ok) { step = "code"; maskedPhone = String((res.data as { maskedPhone?: string })?.maskedPhone ?? ""); }
+    else error = res.message ?? "We could not send a code to that number.";
+  } else if (intent === "verify") {
+    const res = await postJson("/quotes/dealer-portal/verify", { phone, code: String(form.get("code") ?? "") }, null, client);
+    if (res.ok) {
+      const token = String((res.data as { token?: string })?.token ?? "");
+      Astro.cookies.set(COOKIE, token, cookieOptions);
+      if (!(await loadAccount(token))) error = "Signed in, but your account could not be loaded. Please refresh.";
+    } else { step = "code"; error = res.message ?? "That code did not work."; }
+  }
+} else {
+  const token = Astro.cookies.get(COOKIE)?.value;
+  if (token && !(await loadAccount(token))) Astro.cookies.delete(COOKIE, { path: "/dealers" });
+}
+
+Astro.response.headers.set("Cache-Control", "private, no-store");
+const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Africa/Kampala" });
+const monthLabel = (ym: string) => new Date(`${ym}-15T00:00:00Z`).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+const APPLICATION_STATUS: Record<string, string> = { pending: "Received, not reviewed yet", under_review: "Being reviewed", approved: "Approved", rejected: "Not approved" };
+const QUOTE_STATUS: Record<string, string> = { new: "Received", quoted: "Quoted", won: "Ordered", lost: "Closed" };
+const askAbout = (ref: string | null) => `https://wa.me/${whatsappSupportNumber}?text=${encodeURIComponent(`Hello GoldPlus, I would like the same again as quote ${ref ?? ""}.`)}`;
+const input = "mt-1 w-full min-h-11 rounded-lg border border-slate-300 px-3 py-2.5 text-base outline-none focus:ring-2 focus:ring-brand-primaryInk";
 ---
 
-<BaseLayout
-  title="Dealer account | GoldPlus"
-  description="How GoldPlus dealer accounts are managed."
-  robotsMeta="noindex,follow"
->
-  <main id="main-content" class="container mx-auto max-w-3xl px-4 py-16 lg:px-8">
+<BaseLayout title="Dealer account | GoldPlus" description="Your GoldPlus dealer account: quotes, orders and statement." robotsMeta="noindex,nofollow">
+  <div class="container mx-auto max-w-5xl px-4 py-10 lg:px-8" data-dealer-portal>
     <p class="text-xs font-black uppercase tracking-[0.18em] text-brand-primaryInk">Dealers</p>
     <h1 class="mt-3 text-3xl font-black tracking-tight text-gray-900 sm:text-4xl">Dealer account</h1>
+    {error && <p role="alert" class="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{error}</p>}
 
-    <p class="mt-6 text-base leading-relaxed text-slate-700">
-      GoldPlus does not yet offer a self-service dealer portal. Dealer accounts, pricing and orders are handled
-      directly by our team, so there is no dashboard to sign in to at this address.
-    </p>
+    {step === "phone" && (
+      <form method="POST" action="/dealers/dashboard" class="mt-6 max-w-md space-y-4">
+        <input type="hidden" name="intent" value="start" />
+        <p class="text-sm text-slate-600">Sign in with the phone number you use for bulk orders and quotes. We text you a code each time.</p>
+        <label class="block"><span class="text-sm font-bold text-gray-900">Phone number</span><input name="phone" required value={phone} autocomplete="tel" inputmode="tel" class={input} /></label>
+        <button type="submit" class="inline-flex min-h-12 items-center rounded-full bg-brand-primary px-6 text-xs font-black uppercase tracking-widest text-brand-black">Text me a code</button>
+        <p class="text-xs text-slate-500">Not a dealer yet? <a href="/dealers/apply" class="font-bold underline">Apply</a>, or see <a href="/bulk" class="font-bold underline">bulk prices</a>. Need help? <a href="/support" class="font-bold underline">Contact support</a>.</p>
+      </form>
+    )}
 
-    <div class="mt-10 rounded-2xl border border-slate-200 bg-slate-50 p-6">
-      <h2 class="font-black text-gray-900">If you are already a GoldPlus dealer</h2>
-      <p class="mt-2 text-sm leading-relaxed text-slate-700">
-        Contact your usual GoldPlus representative, or reach us through support, for pricing, stock availability and
-        order status. Please have your business details ready so we can verify the account before discussing terms.
-      </p>
-      <div class="mt-5 flex flex-col gap-3 sm:flex-row">
-        <a
-          href="/support"
-          class="inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-6 py-3 text-center text-sm font-bold text-white outline-none hover:bg-black focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2"
-        >Contact support</a>
-        <a
-          href={supportWhatsapp}
-          class="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-300 bg-white px-6 py-3 text-center text-sm font-bold text-slate-900 outline-none hover:border-slate-500 focus-visible:ring-2 focus-visible:ring-brand-primaryInk"
-        >Ask on WhatsApp</a>
+    {step === "code" && (
+      <form method="POST" action="/dealers/dashboard" class="mt-6 max-w-md space-y-4">
+        <input type="hidden" name="intent" value="verify" />
+        <input type="hidden" name="phone" value={phone} />
+        <p class="text-sm text-slate-600">We texted a six-digit code to {maskedPhone || "your phone"}. It expires in 10 minutes.</p>
+        <label class="block"><span class="text-sm font-bold text-gray-900">Code</span><input name="code" required inputmode="numeric" autocomplete="one-time-code" maxlength="6" class={input} /></label>
+        <button type="submit" class="inline-flex min-h-12 items-center rounded-full bg-brand-primary px-6 text-xs font-black uppercase tracking-widest text-brand-black">Sign in</button>
+      </form>
+    )}
+
+    {step === "account" && account && (
+      <div class="mt-6 space-y-8">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <p class="text-sm text-slate-700">Signed in as <strong>{account.maskedPhone}</strong>{account.application ? <> · {account.application.businessName}</> : null}</p>
+          <form method="POST" action="/dealers/dashboard"><input type="hidden" name="intent" value="signout" /><button type="submit" class="text-sm font-bold underline">Sign out</button></form>
+        </div>
+
+        <section class="rounded-2xl border border-slate-200 bg-white p-5" aria-labelledby="dealer-app">
+          <h2 id="dealer-app" class="font-black text-gray-900">Dealer application</h2>
+          {account.application
+            ? <p class="mt-2 text-sm text-slate-700">{APPLICATION_STATUS[account.application.status] ?? account.application.status}, submitted {fmtDate(account.application.submittedAt)}.</p>
+            : <p class="mt-2 text-sm text-slate-700">No application from this number. <a href="/dealers/apply" class="font-bold underline">Apply to become a dealer</a>.</p>}
+          <p class="mt-2 text-sm"><a href="/bulk" class="font-bold underline">Bulk prices and a new quote</a></p>
+        </section>
+
+        <section class="rounded-2xl border border-slate-200 bg-white p-5" aria-labelledby="dealer-statement">
+          <h2 id="dealer-statement" class="font-black text-gray-900">Statement</h2>
+          {account.statement.length === 0 ? <p class="mt-2 text-sm text-slate-700">No orders from this number yet.</p> : (
+            <div class="mt-3 overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead><tr class="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500"><th class="py-2">Month</th><th class="py-2 text-right">Orders</th><th class="py-2 text-right">Ordered</th><th class="py-2 text-right">Paid</th><th class="py-2 text-right">Unpaid</th></tr></thead>
+                <tbody>
+                  {account.statement.map((m) => (
+                    <tr class="border-b border-slate-100"><td class="py-2">{monthLabel(m.month)}</td><td class="py-2 text-right tabular-nums">{m.orders}</td><td class="py-2 text-right tabular-nums">{formatUgx(m.totalUgx)}</td><td class="py-2 text-right tabular-nums">{formatUgx(m.paidUgx)}</td><td class={`py-2 text-right tabular-nums ${m.unpaidOpenUgx > 0 ? "font-bold text-amber-800" : ""}`}>{formatUgx(m.unpaidOpenUgx)}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+              <p class="mt-2 text-xs text-slate-500">Unpaid counts orders not paid and not cancelled. Cancelled orders count in "Ordered" only.</p>
+            </div>
+          )}
+        </section>
+
+        <section class="rounded-2xl border border-slate-200 bg-white p-5" aria-labelledby="dealer-orders">
+          <h2 id="dealer-orders" class="font-black text-gray-900">Orders</h2>
+          {account.orders.length === 0 ? <p class="mt-2 text-sm text-slate-700">No orders from this number yet.</p> : (
+            <ul class="mt-3 divide-y divide-slate-100">
+              {account.orders.map((o) => (
+                <li class="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
+                  <span><strong>{o.orderNumber}</strong> <span class="text-slate-500">· {fmtDate(o.placedAt)} · {o.itemCount} item{o.itemCount === 1 ? "" : "s"}</span></span>
+                  <span class="flex items-center gap-3">
+                    <span class={`rounded border px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest ${STATUS_TONE_CLASS[orderStatusCopy(o.status as never).tone]}`}>{orderStatusCopy(o.status as never).label}</span>
+                    <span class="font-bold tabular-nums">{formatUgx(o.totalUgx)}</span>
+                    <a href={`/track-order?reference=${encodeURIComponent(o.orderNumber)}`} class="font-bold underline">Track</a>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section class="rounded-2xl border border-slate-200 bg-white p-5" aria-labelledby="dealer-quotes">
+          <h2 id="dealer-quotes" class="font-black text-gray-900">Bulk quotes</h2>
+          {account.quotes.length === 0 ? <p class="mt-2 text-sm text-slate-700">No quote requests from this number. <a href="/bulk" class="font-bold underline">Request one</a>.</p> : (
+            <ul class="mt-3 space-y-4">
+              {account.quotes.map((q) => (
+                <li class="rounded-xl border border-slate-100 p-3">
+                  <p class="flex flex-wrap items-center justify-between gap-2 text-sm"><span><strong>{q.reference ?? "Quote"}</strong> <span class="text-slate-500">· {fmtDate(q.submittedAt)} · {QUOTE_STATUS[q.status] ?? q.status}</span></span>{q.estimatedTotalUgx !== null && <span class="font-bold tabular-nums">{formatUgx(q.estimatedTotalUgx)}</span>}</p>
+                  {q.lines.length > 0 && (
+                    <ul class="mt-2 text-xs text-slate-700">
+                      {q.lines.map((l) => <li>{l.productName}: {l.unitKind === "carton" && l.unitCount ? `${l.unitCount} carton${l.unitCount === 1 ? "" : "s"}` : l.quantity !== null ? `${l.quantity} piece${l.quantity === 1 ? "" : "s"}` : ""}{l.lineTotalUgx !== null ? ` · ${formatUgx(l.lineTotalUgx)}` : ""}</li>)}
+                    </ul>
+                  )}
+                  <a href={askAbout(q.reference)} target="_blank" rel="noopener noreferrer" class="mt-2 inline-block text-xs font-bold underline">Ask for the same again</a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
-    </div>
-
-    <div class="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
-      <h2 class="font-black text-gray-900">Send us your stock list</h2>
-      <p class="mt-2 text-sm leading-relaxed text-slate-700">
-        Order by the carton on our bulk page: how many cartons of every product you need, across all categories (flash drives and
-        memory cards by the piece). Choose "Existing GoldPlus dealer" when you send it, and our team will apply your agreed terms when they call you.
-      </p>
-      <a
-        href="/bulk?buyer=dealer"
-        class="mt-5 inline-flex min-h-11 items-center justify-center rounded-full bg-slate-900 px-6 py-3 text-center text-sm font-bold text-white outline-none hover:bg-black focus-visible:ring-2 focus-visible:ring-slate-900 focus-visible:ring-offset-2"
-      >Open the bulk page</a>
-    </div>
-
-    <div class="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
-      <h2 class="font-black text-gray-900">If you would like to become a dealer</h2>
-      <p class="mt-2 text-sm leading-relaxed text-slate-700">
-        Apply through the dealer application form. We review each application and respond with the next steps.
-      </p>
-      <a
-        href="/dealers/apply"
-        class="mt-5 inline-flex min-h-11 items-center justify-center rounded-full bg-brand-primary px-6 py-3 text-center text-sm font-bold text-gray-950 outline-none hover:opacity-90 focus-visible:ring-2 focus-visible:ring-brand-primaryInk focus-visible:ring-offset-2"
-      >Apply to become a dealer</a>
-    </div>
-
-    <p class="mt-10 text-sm text-slate-600">
-      Looking for your own orders? <a class="underline decoration-slate-300 underline-offset-4 hover:text-gray-950" href="/account/orders">Your account</a>
-      holds your order history and delivery details.
-    </p>
-  </main>
+    )}
+  </div>
 </BaseLayout>

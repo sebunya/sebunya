@@ -179,6 +179,8 @@ export function classifyPublicEndpoint(method: string, rawPath: string): RouteFa
   // the reference + phone lookup is an enumeration surface like order lookup.
   if (path === '/quotes/bulk') return 'quote-request';
   if (path === '/quotes/lookup') return 'order-lookup';
+  // The dealer portal reads a phone's orders: the order-lookup budget, per client.
+  if (isUnder(path, '/quotes/dealer-portal')) return 'order-lookup';
   // Bulk prices behind a verified phone: sending a code costs an SMS and
   // checking one is a guessing surface, so both get the recovery budget.
   if (path === '/quotes/price-access/start' || path === '/quotes/price-access/verify') return 'auth-recovery';
