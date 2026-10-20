@@ -1038,10 +1038,28 @@ routes.get('/reviews/products/:productId', async (c) => {
     c.header('Cache-Control', 'public, max-age=300');
     return c.json({ success: true, data: {
       aggregate: data.aggregate ? { count: data.aggregate.count, average: data.aggregate.average, distribution: data.aggregate.distribution } : null,
-      reviews: data.reviews.map((r) => ({ id: r.id, rating: r.rating, title: r.title, body: r.body, verified: r.isVerifiedPurchase, createdAt: r.createdAt })),
+      reviews: data.reviews.map((r) => ({ id: r.id, rating: r.rating, title: r.title, body: r.body, verified: r.isVerifiedPurchase, createdAt: r.createdAt, helpfulCount: r.helpfulCount })),
     } });
   } catch {
     return c.json({ success: true, data: { aggregate: null, reviews: [] } });
+  }
+});
+
+/**
+ * "Was this helpful?" The storefront relays the visitor's own signed visit token in x-gp-visit; it is hashed with
+ * the identity pepper before it is stored, so nothing reusable is kept. No token, no vote.
+ */
+routes.post('/reviews/:id/vote', async (c) => {
+  const voterKey = c.req.header('x-gp-visit') ?? '';
+  if (!voterKey) return c.json({ success: false, error: { code: 'NO_VISITOR', message: 'Refresh the page and try again.' } }, 400);
+  const body = await c.req.json().catch(() => null);
+  try {
+    const result = await registry.voteOnReviewUseCase.execute({ reviewId: c.req.param('id'), voterKey, vote: String(body?.vote ?? '') });
+    if (result === 'invalid') return c.json({ success: false, error: { code: 'INVALID_BODY', message: 'Invalid vote.' } }, 400);
+    if (result === 'not_found') return c.json({ success: false, error: { code: 'NOT_FOUND', message: 'That review is not available.' } }, 404);
+    return c.json({ success: true, data: { recorded: true } });
+  } catch {
+    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred.' } }, 500);
   }
 });
 

@@ -67,7 +67,7 @@ import { DrizzlePricingCapacityRepository } from './db/repositories/DrizzlePrici
 import { DrizzleCouponRepository } from './db/repositories/DrizzleCouponRepository';
 import { DrizzleReviewRepository } from './db/repositories/DrizzleReviewRepository';
 import { SubmitReviewUseCase } from '../application/use-cases/reviews/SubmitReviewUseCase';
-import { GetOrderReviewEligibilityUseCase, GetProductReviewsUseCase, SubmitOrderReviewUseCase } from '../application/use-cases/reviews/OrderReviewUseCases';
+import { GetOrderReviewEligibilityUseCase, GetProductReviewsUseCase, SubmitOrderReviewUseCase, VoteOnReviewUseCase } from '../application/use-cases/reviews/OrderReviewUseCases';
 import { SendReviewRemindersUseCase } from '../application/use-cases/reviews/SendReviewRemindersUseCase';
 import { GetSalesFunnelUseCase } from '../application/use-cases/analytics/GetSalesFunnelUseCase';
 import { DrizzleSalesFunnelReader } from './db/repositories/DrizzleSalesFunnelReader';
@@ -832,6 +832,7 @@ export class Registry {
   public readonly orderReviewEligibilityUseCase = new GetOrderReviewEligibilityUseCase(this.reviewRepo, process.env.IDENTITY_HASH_PEPPER ?? '');
   public readonly submitOrderReviewUseCase = new SubmitOrderReviewUseCase(this.reviewRepo, this.submitReviewUseCase);
   public readonly productReviewsUseCase = new GetProductReviewsUseCase(this.reviewRepo);
+  public readonly voteOnReviewUseCase = new VoteOnReviewUseCase(this.reviewRepo, process.env.IDENTITY_HASH_PEPPER ?? '');
   public readonly pricingOperationsRepo = new DrizzlePricingOperationsRepository();
   public readonly dealerRepo = new DrizzleDealerRepository();
   public readonly supportRepo = new DrizzleSupportRepository();
