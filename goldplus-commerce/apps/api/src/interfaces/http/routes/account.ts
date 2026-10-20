@@ -123,6 +123,32 @@ routes.get('/me', async (c) => {
   return c.json(res);
 });
 
+// ── Save for later (gap analysis #6) ─────────────────────────────────────
+routes.get('/saved', async (c) => {
+  const data = await Registry.getInstance().savedProductsUseCases.list(c.get('userId') as string);
+  c.header('Cache-Control', 'private, no-store');
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+
+routes.get('/saved/:productId', async (c) => {
+  const saved = await Registry.getInstance().savedProductsUseCases.isSaved(c.get('userId') as string, c.req.param('productId'));
+  c.header('Cache-Control', 'private, no-store');
+  return c.json({ success: true, data: { saved } });
+});
+
+routes.post('/saved', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const result = await Registry.getInstance().savedProductsUseCases.save(c.get('userId') as string, String(body?.productId ?? ''));
+  if (result === 'invalid') return c.json({ success: false, error: { code: 'INVALID_PRODUCT', message: 'That product cannot be saved.' } } satisfies ApiResponse<never>, 400);
+  if (result === 'full') return c.json({ success: false, error: { code: 'LIST_FULL', message: 'Your saved list is full. Remove something first.' } } satisfies ApiResponse<never>, 409);
+  return c.json({ success: true, data: { saved: true } });
+});
+
+routes.delete('/saved/:productId', async (c) => {
+  await Registry.getInstance().savedProductsUseCases.remove(c.get('userId') as string, c.req.param('productId'));
+  return c.json({ success: true, data: { saved: false } });
+});
+
 routes.get('/orders', async (c) => {
   const userId = c.get('userId') as string;
   const uc = new ListMyOrdersUseCase(Registry.getInstance().orderRepo);

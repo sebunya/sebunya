@@ -14,6 +14,7 @@ import CompleteSetupRail from '../../components/recommendations/CompleteSetupRai
 import RelatedProductsRail from '../../components/recommendations/RelatedProductsRail.astro';
 import RecentlyViewedRail from '../../components/recommendations/RecentlyViewedRail.astro';
 import { normalizeProductCategory, getCleanCatalog } from '../../lib/catalog/catalog';
+import { readSessionToken } from '../../lib/session';
 import { getProductSubcategory, pickComparisonPeers, subcategoryNameForSlug } from '../../lib/product-discovery';
 import { getTaxonomy } from '../../lib/taxonomy';
 import { previewRecommendationRules, productToRecommendationItem } from '../../lib/recommendation-display';
@@ -270,6 +271,13 @@ const chosenDeviceP = selectedDeviceParam && /^[a-z0-9-]{1,160}$/.test(selectedD
 const hasValidSku = product.sku && product.sku !== 'Needs Business Confirmation' && !product.sku.toLowerCase().includes('pending');
 const verifiedAttributes = product.attributeValues.filter((v) => v.isVerified && v.name !== 'Badge' && v.name !== 'CardShortDescription');
 
+// "Save for later" (gap analysis #6): whether this signed-in shopper already saved it. One small read, signed-in only.
+const pdpSessionToken = readSessionToken(Astro.request);
+const pdpSaved: boolean = pdpSessionToken
+  ? await fetch(`${apiBase}/account/saved/${product.id}`, { headers: { Authorization: `Bearer ${pdpSessionToken}` }, signal: AbortSignal.timeout(1500) })
+      .then(async (r) => (r.ok ? Boolean(((await r.json()) as { data?: { saved?: boolean } })?.data?.saved) : false))
+      .catch(() => false)
+  : false;
 const productSubcategory = getProductSubcategory(product, await taxonomyP);
 // "Compare with similar" (gap #11): same subcategory, nearest price, from the candidates already fetched for the rail.
 const comparePeers: ProductPublicDto[] = await fallbackCandidatesP
@@ -737,6 +745,16 @@ if (product) {
                 Buy now
               </button>
             )}
+          </form>
+
+          <form method="POST" action="/api/saved" id="save" class="-mt-3 mb-6 scroll-mt-24" data-save-for-later>
+            <input type="hidden" name="productId" value={product.id} />
+            <input type="hidden" name="op" value={pdpSaved ? 'remove' : 'add'} />
+            <input type="hidden" name="back" value={`/products/${product.slug}`} />
+            <button type="submit" aria-pressed={pdpSaved ? 'true' : 'false'} class="inline-flex min-h-11 items-center gap-2 text-sm font-bold text-gray-900 underline underline-offset-4 hover:text-black">
+              <span aria-hidden="true">{pdpSaved ? '♥' : '♡'}</span>{pdpSaved ? 'Saved for later (remove)' : 'Save for later'}
+            </button>
+            {pdpSaved && <a href="/account/saved" class="ml-3 text-sm text-slate-600 underline">See saved</a>}
           </form>
 
           {!canBuy && (

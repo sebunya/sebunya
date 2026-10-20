@@ -1,12 +1,13 @@
 ---
 interface Props {
-  active: 'overview' | 'orders' | 'loyalty' | 'rewards' | 'addresses' | 'preferences' | 'password' | 'sign-in' | 'privacy';
+  active: 'overview' | 'orders' | 'saved' | 'loyalty' | 'rewards' | 'addresses' | 'preferences' | 'password' | 'sign-in' | 'privacy';
 }
 const { active } = Astro.props;
 
 const items = [
   { key: 'overview', href: '/account', label: 'Overview' },
   { key: 'orders', href: '/account/orders', label: 'Orders' },
+  { key: 'saved', href: '/account/saved', label: 'Saved' },
   { key: 'loyalty', href: '/account/loyalty', label: 'Points' },
   { key: 'rewards', href: '/account/rewards', label: 'Rewards' },
   { key: 'addresses', href: '/account/addresses', label: 'Addresses' },

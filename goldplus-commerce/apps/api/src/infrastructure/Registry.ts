@@ -71,6 +71,8 @@ import { GetOrderReviewEligibilityUseCase, GetProductReviewsUseCase, SubmitOrder
 import { SendReviewRemindersUseCase } from '../application/use-cases/reviews/SendReviewRemindersUseCase';
 import { GetSalesFunnelUseCase } from '../application/use-cases/analytics/GetSalesFunnelUseCase';
 import { DrizzleSalesFunnelReader } from './db/repositories/DrizzleSalesFunnelReader';
+import { SavedProductsUseCases } from '../application/use-cases/account/SavedProductsUseCases';
+import { DrizzleWishlistRepository } from './db/repositories/DrizzleWishlistRepository';
 import { DrizzleReviewReminderCandidates } from './reviews/DrizzleReviewReminderCandidates';
 import { SendUnpaidOrderRemindersUseCase } from '../application/use-cases/commerce/SendUnpaidOrderRemindersUseCase';
 import { DrizzleUnpaidOrderReminderCandidates } from './commerce/DrizzleUnpaidOrderReminderCandidates';
@@ -799,6 +801,8 @@ export class Registry {
   public readonly orderRepo = new DrizzleOrderRepository();
   public readonly orderAttributionRepo = new DrizzleOrderAttributionRepository();
   public readonly productRepo = new DrizzleProductRepository();
+  /** Save for later (gap analysis #6). */
+  public readonly savedProductsUseCases = new SavedProductsUseCases(new DrizzleWishlistRepository(), this.productRepo);
   /** Once-published products that are off sale: the product page's honest 404 (no price, stock or images). */
   public readonly unlistedProductReader = new DrizzleUnlistedProductReader();
   public readonly blogRepo = new DrizzleBlogRepository();

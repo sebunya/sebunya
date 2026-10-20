@@ -1,0 +1,55 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import AccountNav from '../../components/AccountNav.astro';
+import ProductCard from '../../components/ProductCard.astro';
+import { apiBase } from '../../lib/api';
+import { readSessionToken, SESSION_COOKIE_NAME } from '../../lib/session';
+import type { ApiResponse, ProductPublicDto } from '@goldplus/shared';
+
+/** Saved for later (gap analysis #6): the signed-in customer's list, as each product is sold today. */
+const token = readSessionToken(Astro.request);
+if (!token) return Astro.redirect('/login?returnTo=/account/saved', 303);
+
+let saved: ProductPublicDto[] = [];
+let problem = '';
+try {
+  const res = await fetch(`${apiBase}/account/saved`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(6000) });
+  if (res.status === 401) {
+    Astro.cookies.delete(SESSION_COOKIE_NAME, { path: '/' });
+    return Astro.redirect('/login?returnTo=/account/saved', 303);
+  }
+  const json = res.ok ? ((await res.json()) as ApiResponse<ProductPublicDto[]>) : null;
+  if (json?.success && Array.isArray(json.data)) saved = json.data;
+  else problem = 'We could not load your saved products right now.';
+} catch {
+  problem = 'We could not load your saved products right now.';
+}
+---
+<BaseLayout title="Saved for later | GoldPlus" description="Products you saved on GoldPlus." robotsMeta="noindex,nofollow">
+  <div class="container mx-auto max-w-6xl px-4 py-10">
+    <h1 class="text-3xl font-black tracking-tight text-brand-charcoal mb-6">Saved for later</h1>
+    <AccountNav active="saved" />
+    {problem && <p role="alert" class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">{problem}</p>}
+    {!problem && saved.length === 0 && (
+      <div class="rounded-2xl border border-slate-200 bg-white p-6 text-center">
+        <p class="text-sm text-slate-700">Nothing saved yet. Press <strong>Save for later</strong> on any product to keep it here.</p>
+        <a href="/shop" class="mt-4 inline-flex min-h-11 items-center rounded-full bg-brand-charcoal px-5 text-sm font-bold text-white">Browse the shop</a>
+      </div>
+    )}
+    {saved.length > 0 && (
+      <ul class="grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3 xl:grid-cols-4" data-saved-list>
+        {saved.map((product) => (
+          <li class="flex flex-col">
+            <ProductCard product={product} />
+            <form method="POST" action="/api/saved" class="mt-2">
+              <input type="hidden" name="productId" value={product.id} />
+              <input type="hidden" name="op" value="remove" />
+              <input type="hidden" name="back" value="/account/saved" />
+              <button type="submit" class="min-h-11 w-full rounded-full border border-slate-300 px-3 text-xs font-bold text-slate-700 hover:bg-slate-50">Remove from saved</button>
+            </form>
+          </li>
+        ))}
+      </ul>
+    )}
+  </div>
+</BaseLayout>
