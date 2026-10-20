@@ -1366,6 +1366,13 @@
       "when": 1790140000072,
       "tag": "0195_bulk_cartons_dealer_access",
       "breakpoints": true
+    },
+    {
+      "idx": 195,
+      "version": "5",
+      "when": 1790140000073,
+      "tag": "0196_store_credit_gift_cards",
+      "breakpoints": true
     }
   ]
 }

@@ -30,7 +30,8 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
       result.subtotalAmount, result.deliveryFee, result.totalAmount, result.paymentStatus as PaymentStatus,
       result.status as DomainOrderStatus, result.createdAt, result.updatedAt, (result.deliveryLocation as any) ?? null,
       result.deliveryFeeConfirmed ?? false, pricing, result.userId ?? null,
-      (result as { loyaltyDiscountUgx?: number }).loyaltyDiscountUgx ?? 0, (result as { loyaltyRedemptionId?: string | null }).loyaltyRedemptionId ?? null
+      (result as { loyaltyDiscountUgx?: number }).loyaltyDiscountUgx ?? 0, (result as { loyaltyRedemptionId?: string | null }).loyaltyRedemptionId ?? null,
+      Number((result as { storeCreditAppliedUgx?: number | null }).storeCreditAppliedUgx ?? 0),
     );
   }
   async findById(id: string): Promise<Order | null> {

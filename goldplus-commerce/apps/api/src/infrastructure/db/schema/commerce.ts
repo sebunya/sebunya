@@ -102,6 +102,9 @@ export const orders = pgTable('orders', {
   // 0085: loyalty redemption applied to this order (discount is a recorded fact)
   loyaltyDiscountUgx: bigint('loyalty_discount_ugx', { mode: 'number' }).default(0).notNull(),
   loyaltyRedemptionId: uuid('loyalty_redemption_id'),
+  // 0196: store credit / gift card paying part of the order (a tender; total_amount stays the full sale).
+  storeCreditAppliedUgx: bigint('store_credit_applied_ugx', { mode: 'number' }).default(0).notNull(),
+  storeCreditInstrumentId: uuid('store_credit_instrument_id'),
   clientOrderKey: varchar('client_order_key', { length: 80 }),
   // What actually happened to stock for this order (migration 0053). Recorded on
   // the order rather than inferred from a fulfilment task, so payment and

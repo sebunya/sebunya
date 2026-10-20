@@ -66,3 +66,4 @@ export * from './seo-integrations';
 export * from './batteries';
 export * from './blog';
 export * from './assistant';
+export * from './credit';
