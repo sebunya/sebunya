@@ -11,7 +11,7 @@ import { resolveAuthenticatedUserId } from '../../lib/customerAuth';
 import { startPayment, paymentStartMessageFor, orderAwaitsPayment } from '../../lib/checkoutClient';
 import { checkRequestOrigin, CROSS_SITE_MESSAGE } from '../../lib/requestOrigin';
 import { offersOnlinePayment } from '@goldplus/shared';
-import type { OrderDetailDto, ApiResponse } from '@goldplus/shared';
+import type { OrderDetailDto, ApiResponse, ProductPublicDto } from '@goldplus/shared';
 
 const { id } = Astro.params;
 const token = readSessionToken(Astro.request);
@@ -45,6 +45,22 @@ try {
   }
 } catch {
   fetchError = 'We could not reach our order system right now. Please try again in a moment.';
+}
+
+// "Buy again" (gap analysis #13): each line's product as it is sold TODAY (current price, still listed), so the
+// cart gets today's price, never the old one. One small read per distinct product; a product no longer sold, or
+// unpriced, simply has no button.
+const currentProducts = new Map<string, ProductPublicDto>();
+if (order) {
+  const slugs = [...new Set(order.items.map((i) => i.productSlug).filter((v): v is string => Boolean(v)))].slice(0, 20);
+  await Promise.all(slugs.map(async (slug) => {
+    try {
+      const res = await fetch(`${apiBase}/products/${encodeURIComponent(slug)}`, { signal: AbortSignal.timeout(2500) });
+      const json = res.ok ? ((await res.json()) as ApiResponse<ProductPublicDto>) : null;
+      const p = json?.success ? json.data : null;
+      if (p && typeof p.retailPriceUgx === 'number' && p.retailPriceUgx > 0 && p.availability?.kind !== 'out_of_stock') currentProducts.set(slug, p);
+    } catch { /* no button for this line */ }
+  }));
 }
 
 const biz = await getBusinessInfo();
@@ -192,7 +208,7 @@ const helpHref = order
                 )}
 
                 <div class="bg-white border border-brand-borderGrey rounded-2xl overflow-hidden mb-6">
-                <ul class="divide-y divide-brand-borderGrey" aria-label="Order items">
+                <ul id="items" class="divide-y divide-brand-borderGrey scroll-mt-24" aria-label="Order items">
                     {order.items.map((item) => (
                     <li class="p-5 flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-5">
                         <div class="flex-grow min-w-0">
@@ -202,6 +218,20 @@ const helpHref = order
                             <p class="font-bold text-brand-charcoal">{item.productName}</p>
                         )}
                         <p class="text-sm text-brand-mutedGrey mt-1">Qty {item.quantity} × {formatUgx(item.unitPriceUgx)}</p>
+                        {(() => {
+                          const now = item.productSlug ? currentProducts.get(item.productSlug) : undefined;
+                          return now ? (
+                            <form method="POST" action="/cart" class="mt-2 flex flex-wrap items-center gap-2" data-buy-again>
+                              <input type="hidden" name="action" value="add" />
+                              <input type="hidden" name="productId" value={now.id} />
+                              <input type="hidden" name="slug" value={now.slug} />
+                              <input type="hidden" name="name" value={now.name} />
+                              <input type="hidden" name="categoryName" value={now.categoryName ?? ''} />
+                              <input type="hidden" name="priceUgx" value={now.retailPriceUgx ?? 0} />
+                              <button type="submit" class="inline-flex min-h-11 items-center rounded-full border border-brand-charcoal px-4 text-xs font-bold text-brand-charcoal hover:bg-brand-softGrey">Buy again</button>
+                            </form>
+                          ) : null;
+                        })()}
                         </div>
                         <p class="font-bold text-brand-charcoal whitespace-nowrap">{formatUgx(item.unitPriceUgx * item.quantity)}</p>
                     </li>
