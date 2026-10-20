@@ -85,6 +85,8 @@ const TRANSACTIONAL_TEMPLATES = new Set([
   // counter collection and the single review reminder a few days later.
   'ORDER_COLLECTED',
   'ORDER_REVIEW_REMINDER',
+  // The one reminder that an online order the customer placed is still unpaid.
+  'ORDER_PAYMENT_REMINDER',
   'SUPPORT_REQUEST_RECEIVED',
   // The copy of their Goldie chat a customer asked for, to the address they typed, seconds ago.
   'GOLDIE_TRANSCRIPT',
