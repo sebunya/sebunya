@@ -1000,6 +1000,8 @@ routes.post('/orders/lookup', async (c) => {
       subtotalUgx: order.subtotalUgx,
       deliveryFeeUgx: order.deliveryFeeUgx,
       totalUgx: order.totalUgx,
+      // 0196: the gift card / store credit part, so the page can say what is still to pay.
+      storeCreditAppliedUgx: order.storeCreditAppliedUgx,
       paymentStatus: order.paymentStatus,
       orderStatus: order.orderStatus,
       createdAt: order.createdAt,

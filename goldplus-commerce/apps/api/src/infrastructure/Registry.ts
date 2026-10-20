@@ -3064,6 +3064,7 @@ export class Registry {
    * returning internal error text on a blanket 400.
    */
   public readonly startOrderPaymentUseCase = new StartOrderPaymentUseCase({
+    settleByStoreCredit: this.settleByStoreCreditUseCase,
     idempotency: this.checkoutIdempotencyRepo,
     orders: {
       findById: async (orderId) => {

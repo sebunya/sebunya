@@ -246,6 +246,12 @@ const helpHref = order
                     <span class="font-bold text-brand-charcoal">Total</span>
                     <span class="text-xl font-black text-brand-charcoal">{formatUgx(order.totalAmountUgx)}</span>
                 </div>
+                {(order.storeCreditAppliedUgx ?? 0) > 0 && (
+                  <dl class="px-5 pb-4 bg-brand-softGrey grid grid-cols-2 gap-y-1 text-sm" data-store-credit-paid>
+                    <dt class="text-slate-600">Gift card or store credit</dt><dd class="text-right font-semibold tabular-nums">−{formatUgx(order.storeCreditAppliedUgx ?? 0)}</dd>
+                    {order.totalAmountUgx - (order.storeCreditAppliedUgx ?? 0) > 0 && (<><dt class="font-bold text-brand-charcoal">{order.paymentStatus === 'paid' ? 'Paid by Mobile Money or card' : 'To pay'}</dt><dd class="text-right font-black tabular-nums">{formatUgx(order.totalAmountUgx - (order.storeCreditAppliedUgx ?? 0))}</dd></>)}
+                  </dl>
+                )}
                 </div>
 
                 {isUnpaid && (

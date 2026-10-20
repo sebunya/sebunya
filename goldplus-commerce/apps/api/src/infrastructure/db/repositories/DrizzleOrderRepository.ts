@@ -317,6 +317,7 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
       orderNumber: row.orderNumber,
       status: row.status as OrderStatus,
       totalAmountUgx: row.totalAmount,
+      storeCreditAppliedUgx: Number(row.storeCreditAppliedUgx ?? 0),
       createdAt: row.createdAt.toISOString(),
       paymentStatus: row.paymentStatus ?? null,
       paymentMethod: row.paymentMethod ?? null,

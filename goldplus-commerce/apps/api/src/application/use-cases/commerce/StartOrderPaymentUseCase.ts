@@ -108,6 +108,8 @@ const CLOSED_ORDER_STATUSES = new Set(['cancelled', 'failed']);
 export interface StartOrderPaymentDeps {
   /** Injected so the reuse window is testable without waiting 30 minutes. */
   now?: () => Date;
+  /** 0196: settles an order store credit pays in full (SettleByStoreCreditUseCase). Optional for older suites. */
+  settleByStoreCredit?: { execute(orderId: string, traceId: string): Promise<'settled' | 'not_fully_covered' | 'already_paid' | 'not_found'> };
   idempotency: ICheckoutIdempotencyRepository;
   orders: StartPaymentOrderReader;
   attempts: PaymentAttemptReader;
@@ -224,6 +226,15 @@ export class StartOrderPaymentUseCase {
     if (reservation === 'RELEASED' && !mayProgressToPayment(reservation)) {
       this.deps.observer?.onNotPayable(orderId, command.traceId, `reservation:${reservation}`);
       return { kind: 'NOT_PAYABLE', reason: 'ORDER_HOLD_EXPIRED' };
+    }
+
+    // 0196: store credit covers the whole order, so there is nothing to send to Pesapal. Checkout settles such an
+    // order itself; if that step failed, every Pay button would otherwise refuse with NOTHING_TO_PAY for good.
+    // Finishing the settlement here makes any later "Pay" the retry.
+    if (this.deps.settleByStoreCredit && order.storeCreditAppliedUgx && order.storeCreditAppliedUgx >= order.totalUgx && order.totalUgx > 0) {
+      const settled = await this.deps.settleByStoreCredit.execute(orderId, command.traceId);
+      if (settled === 'settled' || settled === 'already_paid') return { kind: 'ALREADY_PAID', reason: 'ORDER_ALREADY_PAID' };
+      return { kind: 'NOT_PAYABLE', reason: 'ORDER_NOT_PAYABLE' };
     }
 
     // A live attempt is reused rather than re-submitted. Submitting again gave one

@@ -18,8 +18,15 @@ import { DEAD_LETTER_STATE, DEAD_LETTER_STATES } from '../../../domain/outbox/Te
 export const SECRET_PAYLOAD_EVENT_TYPES: readonly string[] = ['PHONE_VERIFICATION_REQUESTED'];
 const scrubbedPayload = () => sql`case when ${outboxEvents.eventType} in (${sql.join(SECRET_PAYLOAD_EVENT_TYPES.map((t) => sql`${t}`), sql`, `)})
   then (${outboxEvents.payload} - 'code') || jsonb_build_object('message', 'Verification code (removed once handled).')
+  when ${outboxEvents.payload} ? 'creditCode'
+  then (${outboxEvents.payload} - 'creditCode') || jsonb_build_object('message', 'Gift card / store credit code (removed once handled).', 'creditCodeRemoved', true)
   else ${outboxEvents.payload} end`;
-const notSecretPayload = () => notInArray(outboxEvents.eventType, [...SECRET_PAYLOAD_EVENT_TYPES]);
+/**
+ * 0196: a gift card / store credit code is a bearer secret that rides a shared event type (CUSTOMER_ORDER_MESSAGE),
+ * so it is recognised by its key, not its type. Never replayed: after the scrub the message has no code, and a card
+ * whose SMS failed is re-sent by staff (cancel the rest and issue a new card).
+ */
+const notSecretPayload = () => and(notInArray(outboxEvents.eventType, [...SECRET_PAYLOAD_EVENT_TYPES]), sql`not (${outboxEvents.payload} ?| array['creditCode', 'creditCodeRemoved'])`);
 
 /**
  * The read-compatible state list as a literal IN-list.
