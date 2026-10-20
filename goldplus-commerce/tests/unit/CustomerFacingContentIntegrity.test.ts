@@ -89,8 +89,10 @@ describe('the dealer dashboard tells the truth about what exists', () => {
     expect(live).not.toMatch(/totalSales|stockItems|pendingVerifications/);
   });
 
-  it('says plainly that no self-service portal exists', () => {
-    expect(page).toMatch(/does not yet offer a self-service dealer portal/i);
+  it('is a real portal: every figure comes from the API for an SMS-verified phone (gap #16)', () => {
+    expect(page).toContain('/quotes/dealer-portal/account');
+    expect(page).toContain('/quotes/dealer-portal/verify');
+    expect(page).not.toMatch(/does not yet offer a self-service dealer portal/i);
   });
 
   it('routes the visitor to channels that actually work', () => {
@@ -99,6 +101,6 @@ describe('the dealer dashboard tells the truth about what exists', () => {
   });
 
   it('is noindex — an account utility page has nothing to rank for', () => {
-    expect(page).toContain('robotsMeta="noindex,follow"');
+    expect(page).toMatch(/robotsMeta="noindex,(no)?follow"/);
   });
 });

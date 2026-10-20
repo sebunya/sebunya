@@ -79,6 +79,7 @@ import { IssueCreditUseCase, ManageCreditUseCases } from '../application/use-cas
 import { creditCodeHash, creditRandomIndexes } from './credit/CreditCodeCrypto';
 import { DrizzleCreditRepository } from './credit/DrizzleCreditRepository';
 import { SettleByStoreCreditUseCase } from '../application/use-cases/payments/SettleByStoreCreditUseCase';
+import { ProductBundlesUseCase } from '../application/use-cases/pricing/ProductBundlesUseCase';
 import { DrizzleReviewReminderCandidates } from './reviews/DrizzleReviewReminderCandidates';
 import { SendUnpaidOrderRemindersUseCase } from '../application/use-cases/commerce/SendUnpaidOrderRemindersUseCase';
 import { DrizzleUnpaidOrderReminderCandidates } from './commerce/DrizzleUnpaidOrderReminderCandidates';
@@ -106,6 +107,8 @@ import {
 } from '../application/use-cases/quotes/BulkQuoteUseCases';
 import { DrizzleBulkTermsRepository } from './db/repositories/DrizzleBulkTermsRepository';
 import { DrizzleBulkPriceAccessRepository } from './db/repositories/DrizzleBulkPriceAccessRepository';
+import { StartDealerSignInUseCase, VerifyDealerSignInUseCase, GetDealerAccountUseCase } from '../application/use-cases/dealers/DealerPortalUseCases';
+import { DrizzleDealerPortalReader } from './dealers/DrizzleDealerPortalReader';
 import { bulkPriceAccessCrypto } from './quotes/BulkPriceAccessCrypto';
 import {
   GetBulkTermsUseCase,
@@ -1255,6 +1258,11 @@ export class Registry {
     this.pricingCapacityRepo,
     this.couponRepo,
   );
+  /** Bundles on the product page (gap analysis #9): approved PRODUCT_INCLUDED promotions, priced by the evaluator. */
+  public readonly productBundlesUseCase = new ProductBundlesUseCase(this.pricingRepo, async (items) => {
+    const q = await this.evaluateCartPricingUseCase.execute({ items, couponCode: null, persist: false });
+    return { goodsUgx: q.finalTotalUgx - q.shippingUgx - q.taxUgx };
+  });
   public readonly managePromotionCapacityUseCase = new ManagePromotionCapacityUseCase(this.pricingCapacityRepo);
   public readonly redeemCouponUseCase = new RedeemCouponUseCase(this.couponRepo);
   public readonly firstOrderEligibilityUseCase = new FirstOrderEligibilityUseCase(this.couponRepo, process.env.IDENTITY_HASH_PEPPER ?? '');
@@ -1725,6 +1733,10 @@ export class Registry {
   public readonly getBulkTermsUseCase = new GetBulkTermsUseCase(this.bulkTermsRepo, bulkPriceAccessCrypto);
   public readonly startBulkPriceAccessUseCase = new StartBulkPriceAccessUseCase(this.bulkPriceAccessRepo, new OutboxOtpSender(), bulkPriceAccessCrypto);
   public readonly verifyBulkPriceAccessUseCase = new VerifyBulkPriceAccessUseCase(this.bulkPriceAccessRepo, bulkPriceAccessCrypto);
+  /** Dealer portal (gap analysis #16): always an SMS code; its own token; the phone's own records only. */
+  public readonly startDealerSignInUseCase = new StartDealerSignInUseCase(this.bulkPriceAccessRepo, new OutboxOtpSender(), bulkPriceAccessCrypto);
+  public readonly verifyDealerSignInUseCase = new VerifyDealerSignInUseCase(this.bulkPriceAccessRepo, bulkPriceAccessCrypto);
+  public readonly getDealerAccountUseCase = new GetDealerAccountUseCase(new DrizzleDealerPortalReader(), bulkPriceAccessCrypto);
   public readonly listBulkPriceLeadsUseCase = new ListBulkPriceLeadsUseCase(this.bulkPriceAccessRepo);
   public readonly listBulkTermsUseCase = new ListBulkTermsUseCase(this.bulkTermsRepo);
   public readonly updateBulkTermsUseCase = new UpdateBulkTermsUseCase(this.bulkTermsRepo);

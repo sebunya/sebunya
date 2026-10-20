@@ -181,6 +181,8 @@ export function classifyPublicEndpoint(method: string, rawPath: string): RouteFa
   if (path === '/quotes/lookup') return 'order-lookup';
   // 0196: a gift card / store credit code check is a guess at a bearer secret: the tight order-lookup budget.
   if (isUnder(path, '/commerce/credit')) return 'order-lookup';
+  // The dealer portal reads a phone's orders: the order-lookup budget, per client.
+  if (isUnder(path, '/quotes/dealer-portal')) return 'order-lookup';
   // Bulk prices behind a verified phone: sending a code costs an SMS and
   // checking one is a guessing surface, so both get the recovery budget.
   if (path === '/quotes/price-access/start' || path === '/quotes/price-access/verify') return 'auth-recovery';

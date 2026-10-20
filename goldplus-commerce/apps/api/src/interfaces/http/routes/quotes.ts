@@ -114,4 +114,32 @@ routes.post('/price-access/verify', async (c) => {
   return c.json({ success: true, data: { token: result.token, expiresAt: result.expiresAt.toISOString(), maskedPhone: result.maskedPhone } });
 });
 
+// ── Dealer portal (gap analysis #16): SMS code every time, its own token, the phone's own records ──
+routes.post('/dealer-portal/start', async (c) => {
+  const body = await readJson(c.req.raw);
+  c.header('Cache-Control', 'no-store');
+  const result = await registry.startDealerSignInUseCase.execute({ phone: body?.phone });
+  if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } }, result.code === 'TOO_MANY_CODES' ? 429 : 400);
+  return c.json({ success: true, data: { maskedPhone: result.maskedPhone } });
+});
+
+routes.post('/dealer-portal/verify', async (c) => {
+  const body = await readJson(c.req.raw);
+  c.header('Cache-Control', 'no-store');
+  const result = await registry.verifyDealerSignInUseCase.execute({ phone: body?.phone, code: body?.code });
+  if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } }, 400);
+  await registry.createAuditLogUseCase
+    .execute({ actorId: null, action: 'DEALER_PORTAL_SIGNED_IN', entity: 'dealer_portal', entityId: 'dealer-portal', newState: { phone: result.maskedPhone } })
+    .catch((err: unknown) => logger.warn({ err }, '[Quotes] audit write failed for dealer portal sign-in'));
+  return c.json({ success: true, data: { token: result.token, expiresAt: result.expiresAt.toISOString(), maskedPhone: result.maskedPhone } });
+});
+
+routes.post('/dealer-portal/account', async (c) => {
+  const body = await readJson(c.req.raw);
+  c.header('Cache-Control', 'private, no-store');
+  const result = await registry.getDealerAccountUseCase.execute({ token: body?.token });
+  if (!result.ok) return c.json({ success: false, error: { code: 'SIGN_IN_AGAIN', message: 'Sign in again with your phone.' } }, 401);
+  return c.json({ success: true, data: { maskedPhone: result.maskedPhone, ...result.account } });
+});
+
 export default routes;
