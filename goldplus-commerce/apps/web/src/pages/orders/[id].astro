@@ -237,6 +237,11 @@ const helpHref = order
                     </li>
                     ))}
                 </ul>
+                {['delivered', 'completed'].includes(order.status) && (
+                  <p class="px-5 py-3 border-t border-brand-borderGrey text-sm" data-start-return>
+                    Something wrong with an item? <a href={`/returns/start?reference=${encodeURIComponent(order.orderNumber)}`} class="font-bold underline">Return or report a problem</a>
+                  </p>
+                )}
                 <div class="p-5 bg-brand-softGrey border-t border-brand-borderGrey flex items-center justify-between">
                     <span class="font-bold text-brand-charcoal">Total</span>
                     <span class="text-xl font-black text-brand-charcoal">{formatUgx(order.totalAmountUgx)}</span>

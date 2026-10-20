@@ -71,6 +71,8 @@ import { GetOrderReviewEligibilityUseCase, GetProductReviewsUseCase, SubmitOrder
 import { SendReviewRemindersUseCase } from '../application/use-cases/reviews/SendReviewRemindersUseCase';
 import { GetSalesFunnelUseCase } from '../application/use-cases/analytics/GetSalesFunnelUseCase';
 import { DrizzleSalesFunnelReader } from './db/repositories/DrizzleSalesFunnelReader';
+import { RequestReturnUseCase } from '../application/use-cases/commerce/RequestReturnUseCase';
+import { DrizzleOrderDeliveredAt } from './commerce/DrizzleOrderDeliveredAt';
 import { DrizzleReviewReminderCandidates } from './reviews/DrizzleReviewReminderCandidates';
 import { SendUnpaidOrderRemindersUseCase } from '../application/use-cases/commerce/SendUnpaidOrderRemindersUseCase';
 import { DrizzleUnpaidOrderReminderCandidates } from './commerce/DrizzleUnpaidOrderReminderCandidates';
@@ -3094,6 +3096,8 @@ export class Registry {
       // Before the team is set up, urgent customers page the shop's own order inboxes and phone.
       fallback: { emails: String(process.env.ADMIN_ORDER_NOTIFICATION_EMAILS ?? '').split(',').map((e) => e.trim()).filter((e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)).slice(0, 5), phone: `+${DEFAULT_BUSINESS_INFO.whatsappNumber}` } },
   );
+  /** Self-service returns (gap analysis #8): a verified order's return request becomes a Care Desk task. */
+  public readonly requestReturnUseCase = new RequestReturnUseCase(new DrizzleOrderDeliveredAt(), this.careDeskUseCases);
   /** Goldie on WhatsApp (and the admin inbox's team replies). Off until GOLDIE_WHATSAPP_ENABLED=true. */
   public readonly goldieChannelUseCases = new GoldieChannelUseCases(
     this.conversationArchiveUseCases,
