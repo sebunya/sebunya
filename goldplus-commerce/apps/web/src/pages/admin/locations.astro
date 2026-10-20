@@ -19,7 +19,17 @@ if (Astro.request.method === "POST") {
   try {
     const form = await Astro.request.formData();
     const intent = String(form.get("intent") || "");
-    if (intent === "promote") {
+    if (intent === "places-probe") {
+      const res = await fetch(`${apiBase}/admin/locations/places-probe`, { method: "POST", headers: authHeaders, body: "{}", signal: AbortSignal.timeout(8000) });
+      const json: any = await res.json().catch(() => null);
+      const d = json?.data;
+      if (!res.ok || !json?.success) actionError = json?.error?.message ?? "Could not run the check.";
+      else if (d.status === "ok") actionMessage = `Google answered (${d.suggestions} suggestions for "acacia mall"). Building search is on at checkout.`;
+      else if (d.status === "refused") actionError = `Google refused: ${d.fault?.reason}${d.fault?.httpStatus ? ` (HTTP ${d.fault.httpStatus})` : ""}. See the card below for the fix.`;
+      else if (d.status === "too_soon") actionError = "Checked less than 20 seconds ago. Wait a moment and try again.";
+      else if (d.status === "budget_reached") actionError = "This month's Google allowance is used up, so no check was made.";
+      else actionError = "No Google key is set on the server.";
+    } else if (intent === "promote") {
       const res = await fetch(`${apiBase}/admin/locations/misses/promote`, {
         method: "POST",
         headers: authHeaders,
@@ -275,6 +285,13 @@ try {
               </div>
             )}
           </div>
+        )}
+        {places?.configured && (
+          <form method="POST" class="flex items-center gap-3">
+            <input type="hidden" name="intent" value="places-probe" />
+            <button type="submit" class="px-3 py-1.5 rounded-lg border border-gray-300 text-xs font-bold uppercase tracking-widest hover:bg-gray-50">Check Google now</button>
+            <span class="text-xs text-gray-500">Sends one real search to Google and shows its answer. Use it after fixing billing or the key.</span>
+          </form>
         )}
         <p class="text-xs text-gray-500">Google's free allowance is 10,000 a month for each line. A building already looked up in the last 30 days costs nothing.</p>
       </div>
