@@ -1691,6 +1691,15 @@ const checkoutSavingLabel = basketSavingLabel(
           creditCheck.disabled = false;
         }
       });
+      // 0199: "Shop with it" on an opened gift card left its code for this tab: fill the box once, and check it.
+      try {
+        const handed = sessionStorage.getItem('gp_gift_code');
+        if (handed && creditInput && !creditInput.value.trim()) {
+          creditInput.value = handed;
+          sessionStorage.removeItem('gp_gift_code');
+          creditCheck?.click();
+        }
+      } catch { /* private mode: the customer types it */ }
     }
     const promoInput = document.getElementById('couponCode') as HTMLInputElement | null;
     const promoApply = document.getElementById('promo-apply') as HTMLButtonElement | null;

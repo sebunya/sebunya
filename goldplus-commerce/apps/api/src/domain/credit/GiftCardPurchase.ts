@@ -25,6 +25,10 @@ export const GIFT_CARD_MESSAGE_MAX = 100;
 export const GIFT_CARD_FROM_MAX = 40;
 
 export type GiftCardSendTo = 'recipient' | 'buyer';
+/** The card's look, chosen by the buyer (the storefront draws each; the database checks the list). */
+export const GIFT_CARD_THEMES = ['gold', 'birthday', 'thanks', 'love', 'celebrate', 'festive'] as const;
+export type GiftCardTheme = (typeof GIFT_CARD_THEMES)[number];
+export const isGiftCardTheme = (v: unknown): v is GiftCardTheme => typeof v === 'string' && (GIFT_CARD_THEMES as readonly string[]).includes(v);
 export type GiftCardPurchaseStatus = 'awaiting_payment' | 'paid' | 'issued' | 'failed' | 'abandoned' | 'review' | 'refunded';
 
 export interface GiftCardPurchaseRequest {
@@ -38,6 +42,7 @@ export interface GiftCardPurchaseRequest {
   buyerPhone: unknown;
   buyerEmail: unknown;
   deliverOn: unknown;
+  theme?: unknown;
 }
 
 export interface CleanGiftCardPurchase {
@@ -53,6 +58,7 @@ export interface CleanGiftCardPurchase {
   buyerEmail: string | null;
   /** YYYY-MM-DD in Kampala, or null to send as soon as it is paid. */
   deliverOn: string | null;
+  theme: GiftCardTheme;
 }
 
 export type GiftCardField = 'amountUgx' | 'recipientName' | 'recipientPhone' | 'sendTo' | 'message' | 'fromName' | 'buyerName' | 'buyerPhone' | 'buyerEmail' | 'deliverOn';
@@ -160,6 +166,8 @@ export function checkGiftCardPurchase(
     value: {
       amountUgx: amount, recipientName, recipientPhone: recipientPhoneRaw || null, sendTo, message: message || null,
       fromName, buyerName, buyerPhone, buyerEmail: buyerEmail || null, deliverOn,
+      // An unknown theme is not the buyer's mistake to fix: the card simply takes the GoldPlus look.
+      theme: isGiftCardTheme(input.theme) ? input.theme : 'gold',
     },
   };
 }
@@ -175,6 +183,15 @@ export function giftCardPurchaseReference(randomIndexes: readonly number[]): str
 
 export function isGiftCardPurchaseReference(value: unknown): value is string {
   return typeof value === 'string' && /^GC-[0-9A-HJKMNP-TV-Z]{10}$/.test(value);
+}
+
+/**
+ * The same, for an SMS: plain x, never "•". One character outside the GSM alphabet turns the whole text into UCS-2
+ * (70 characters a part instead of 160), so a two-part receipt was billed as three.
+ */
+export function maskPhoneForSms(phone: string | null): string {
+  const d = lastNine(phone);
+  return d.length === 9 ? `0${d[0]}xx xxx ${d.slice(-3)}` : '';
 }
 
 /** 0772 123 456 → 07•• ••• 456: enough for the buyer to recognise the number, not enough to read it off a screen. */

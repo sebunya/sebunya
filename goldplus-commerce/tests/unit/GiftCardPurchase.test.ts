@@ -64,6 +64,13 @@ describe('gift card purchase rules (0199)', () => {
     expect(scheduledSendDue(null, NOW)).toBe(true);
   });
 
+  it('the card’s look is one of the drawn themes; anything else takes the GoldPlus look', () => {
+    const r = checkGiftCardPurchase(form({ theme: 'birthday' }), NOW);
+    expect(r.ok && r.value.theme).toBe('birthday');
+    const odd = checkGiftCardPurchase(form({ theme: '<script>' }), NOW);
+    expect(odd.ok && odd.value.theme).toBe('gold');
+  });
+
   it('references are GC- and 10 unambiguous symbols; phones are masked', () => {
     const ref = giftCardPurchaseReference([0, 1, 2, 3, 4, 5, 6, 7, 8, 31]);
     expect(ref).toBe('GC-012345678Z');
@@ -75,6 +82,8 @@ describe('gift card purchase rules (0199)', () => {
   it('the purchase form is a human form; its status is the tight lookup budget', () => {
     expect(classifyPublicEndpoint('POST', '/commerce/gift-cards/purchase')).toBe('quote-request');
     expect(classifyPublicEndpoint('GET', '/commerce/gift-cards/purchase/GC-012345678Z')).toBe('order-lookup');
+    // Opening a card is a guess at a bearer code, like the balance check.
+    expect(classifyPublicEndpoint('POST', '/commerce/gift-cards/open')).toBe('order-lookup');
   });
 });
 
@@ -83,6 +92,8 @@ describe('gift card messages (0199)', () => {
     const received = smsText('GIFT_CARD_RECEIVED', { fromName: 'Rob', giftMessage: 'Happy birthday!', valueUgx: 50_000, creditCode: 'GPGC-AAAA-BBBB-CCCC' } as never)!;
     expect(received).toContain('Rob sent you a gift card of UGX 50,000: "Happy birthday!"');
     expect(received).toContain('GPGC-AAAA-BBBB-CCCC');
+    // The card opens from a link whose #fragment carries the code (never sent to a server).
+    expect(received).toContain('/gift-card/open#GPGC-AAAA-BBBB-CCCC');
     const self = smsText('GIFT_CARD_RECEIVED', { toBuyer: true, recipientName: 'Sarah', valueUgx: 50_000, creditCode: 'GPGC-AAAA-BBBB-CCCC' } as never)!;
     expect(self).toContain('for Sarah is ready');
     const paid = smsText('GIFT_CARD_PAID', { valueUgx: 50_000, recipientName: 'Sarah', recipientPhoneMasked: '07•• ••• 222', reference: 'GC-012345678Z', deliverOnWords: 'Friday 14 November' } as never)!;
@@ -91,6 +102,24 @@ describe('gift card messages (0199)', () => {
     expect(emailCopy('GIFT_CARD_PAID', { valueUgx: 50_000, recipientName: 'Sarah', reference: 'GC-1' } as never)?.subject).toContain('Sarah');
     expect(CUSTOMER_TRANSACTIONAL_TEMPLATES).toEqual(expect.arrayContaining(['GIFT_CARD_RECEIVED', 'GIFT_CARD_PAID']));
   });
+
+  it('every gift card text stays in the GSM alphabet (one "•" made the receipt UCS-2: 3 SMS parts instead of 2)', async () => {
+    const GSM = "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà^{}\\[~]|€";
+    const h = harness();
+    const r = await h.uc.start(form({ deliverOn: '2026-11-14' }), NOW);
+    if (!r.ok) throw new Error('start');
+    h.setStatus(h.paidStatus(r.reference));
+    await h.uc.settle({ trackingId: `T-${r.reference}`, reference: r.reference, source: 'ipn' }, NOW);
+    await h.uc.sweep(new Date('2026-11-14T07:00:00Z'));
+    const texts = h.outbox.map((m) => smsText(m.template, m.data as never)!);
+    expect(texts).toHaveLength(2);
+    for (const t of texts) expect([...t].filter((c) => !GSM.includes(c))).toEqual([]);
+    expect(texts[0]).toContain('07xx xxx 222');
+    // Two parts at most for the receipt; the code text fits three even with a full 100-character message.
+    expect(texts[0].length).toBeLessThanOrEqual(306);
+    const long = smsText('GIFT_CARD_RECEIVED', { fromName: 'x'.repeat(40), giftMessage: 'y'.repeat(100), valueUgx: 500_000, creditCode: 'GPGC-AAAA-BBBB-CCCC' } as never)!;
+    expect(long.length).toBeLessThanOrEqual(459);
+  });
 });
 
 // ── The use cases, against an in-memory repository and a scripted Pesapal ──────────────────────────────
@@ -98,7 +127,7 @@ function harness(opts: { ipnId?: string | null; buyerActivity?: { started: numbe
   let paidToday = 0;
   const rows = new Map<string, GiftCardPurchaseRecord>();
   const outbox: Array<{ template: string; phone: string; data: Record<string, unknown>; key: string }> = [];
-  const cards: Array<{ id: string; purchaseId: string; issuedBy: string; reason: string; recipientPhone: string | null; status: string; balance: number; held: number; initial: number; ledger: any[] }> = [];
+  const cards: Array<{ id: string; code?: string; purchaseId: string; issuedBy: string; reason: string; recipientPhone: string | null; status: string; balance: number; held: number; initial: number; ledger: any[] }> = [];
   let pesapalStatus: any = null;
   const pesapalCalls: string[] = [];
   let seq = 0;
@@ -116,7 +145,7 @@ function harness(opts: { ipnId?: string | null; buyerActivity?: { started: numbe
     issueCard: async (i: any) => {
       const p = rows.get(i.purchaseId)!; if (p.status !== 'paid' || p.instrumentId) return null;
       const id = `c${cards.length + 1}`;
-      cards.push({ id, purchaseId: p.id, issuedBy: i.issuedBy, reason: i.reason, recipientPhone: i.recipientPhone, status: 'active', balance: p.amountUgx, held: 0, initial: p.amountUgx, ledger: [{ type: 'ISSUE', amountUgx: p.amountUgx, holdState: null }] });
+      cards.push({ id, code: i.messages[0]?.data?.creditCode, purchaseId: p.id, issuedBy: i.issuedBy, reason: i.reason, recipientPhone: i.recipientPhone, status: 'active', balance: p.amountUgx, held: 0, initial: p.amountUgx, ledger: [{ type: 'ISSUE', amountUgx: p.amountUgx, holdState: null }] });
       Object.assign(p, { status: 'issued', instrumentId: id, cardLast4: i.last4, issuedAt: i.now });
       for (const m of i.messages) outbox.push({ template: m.template, phone: m.phone, data: m.data, key: m.idempotencyKey });
       return { instrumentId: id };
@@ -125,6 +154,7 @@ function harness(opts: { ipnId?: string | null; buyerActivity?: { started: numbe
     awaitingWithTransaction: async (older: Date, newer: Date) => [...rows.values()].filter((p) => p.status === 'awaiting_payment' && p.orderTrackingId && p.createdAt <= older && p.createdAt >= newer).map((p) => ({ ...p })),
     awaitingStale: async (older: Date) => [...rows.values()].filter((p) => p.status === 'awaiting_payment' && p.createdAt < older).map((p) => ({ ...p })),
     forBuyer: async () => [],
+    faceByCodeHash: async (hash: string) => { const c = cards.find((x) => `h:${x.code}` === hash); const p = c ? rows.get(c.purchaseId) : null; return p ? { theme: p.theme, fromName: p.fromName, toName: p.recipientName, message: p.message } : null; },
     recent: async () => [],
     markRefunded: async (id: string, _n: string, o?: any) => { const p = rows.get(id)!; if (!['paid', 'issued', 'review'].includes(p.status) || (o?.unissuedOnly && p.instrumentId)) return false; p.status = 'refunded'; return true; },
   };
@@ -238,8 +268,19 @@ describe('buying a gift card online (0199)', () => {
     if (!r.ok) throw new Error('start');
     h.setStatus(h.paidStatus(r.reference));
     const s = await h.uc.publicStatus(r.reference, NOW);
-    expect(s).toEqual({ reference: r.reference, status: 'issued', amountUgx: 50_000, recipientFirstName: 'Sarah', recipientPhoneMasked: '07•• ••• 222', buyerPhoneMasked: '07•• ••• 444', sendTo: 'recipient', deliverOn: null });
+    expect(s).toEqual({ reference: r.reference, status: 'issued', amountUgx: 50_000, recipientFirstName: 'Sarah', theme: 'gold', fromName: 'Rob', message: 'Happy birthday!', recipientPhoneMasked: '07•• ••• 222', buyerPhoneMasked: '07•• ••• 444', sendTo: 'recipient', deliverOn: null });
     expect(await h.uc.publicStatus('GP-202610-ABC', NOW)).toBeNull();
+  });
+
+  it('the card opens to its face (theme, from, for, message) for whoever holds the code; nothing for another code', async () => {
+    const h = harness();
+    const r = await h.uc.start(form({ theme: 'love' }), NOW);
+    if (!r.ok) throw new Error('start');
+    h.setStatus(h.paidStatus(r.reference));
+    await h.uc.settle({ trackingId: `T-${r.reference}`, reference: r.reference, source: 'ipn' }, NOW);
+    const code = String(h.outbox.find((m) => m.template === 'GIFT_CARD_RECEIVED')!.data.creditCode);
+    expect(await h.uc.faceForCode(code)).toEqual({ theme: 'love', fromName: 'Rob', toName: 'Sarah Nakato', message: 'Happy birthday!' });
+    expect(await h.uc.faceForCode('GPGC-0000-0000-0000')).toBeNull();
   });
 
   it('refund: an untouched card is cancelled first, then Pesapal refunds; a spent card is refused', async () => {

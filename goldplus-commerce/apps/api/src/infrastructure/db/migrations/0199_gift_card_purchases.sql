@@ -6,7 +6,8 @@
 -- loyalty or revenue reporting. Once Pesapal confirms the money, the card is issued (a credit_instruments row,
 -- 0196) and its code texted in the SAME transaction that marks the purchase issued, so a paid purchase can never
 -- end with a card nobody was told about, or a code texted twice. A purchase may be scheduled for a later date
--- (a birthday): the card is issued and texted on that morning.
+-- (a birthday): the card is issued and texted on that morning. The buyer picks the card's look (theme) and writes
+-- a few words; the person it is for opens it from a link in the text and scratches it to reveal the code.
 --
 -- The code itself is never stored here; it exists only in the outbox row until the SMS is handled (0197 scrub).
 --
@@ -25,6 +26,7 @@ CREATE TABLE IF NOT EXISTS "gift_card_purchases" (
   "recipient_phone" varchar(20),
   "send_to" varchar(10) NOT NULL,
   "message" varchar(160),
+  "theme" varchar(16) DEFAULT 'gold' NOT NULL,
   "deliver_on" date,
   "status" varchar(20) DEFAULT 'awaiting_payment' NOT NULL,
   "order_tracking_id" varchar(255),
@@ -40,6 +42,7 @@ CREATE TABLE IF NOT EXISTS "gift_card_purchases" (
   CONSTRAINT "gift_card_purchases_reference_uq" UNIQUE ("reference"),
   CONSTRAINT "gift_card_purchases_amount_chk" CHECK ("amount_ugx" BETWEEN 10000 AND 500000),
   CONSTRAINT "gift_card_purchases_send_to_chk" CHECK ("send_to" in ('recipient','buyer')),
+  CONSTRAINT "gift_card_purchases_theme_chk" CHECK ("theme" in ('gold','birthday','thanks','love','celebrate','festive')),
   CONSTRAINT "gift_card_purchases_recipient_phone_chk" CHECK ("send_to" = 'buyer' OR "recipient_phone" IS NOT NULL),
   CONSTRAINT "gift_card_purchases_status_chk" CHECK ("status" in ('awaiting_payment','paid','issued','failed','abandoned','review','refunded')),
   CONSTRAINT "gift_card_purchases_issued_chk" CHECK (("status" = 'issued') = ("instrument_id" IS NOT NULL) OR "status" = 'refunded')

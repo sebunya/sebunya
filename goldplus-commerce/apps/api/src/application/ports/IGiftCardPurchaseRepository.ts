@@ -1,4 +1,12 @@
-import type { GiftCardPurchaseStatus, GiftCardSendTo } from '../../domain/credit/GiftCardPurchase';
+import type { GiftCardPurchaseStatus, GiftCardSendTo, GiftCardTheme } from '../../domain/credit/GiftCardPurchase';
+
+/** What the card looks like to the person it is for (the open page): never the buyer's details. */
+export interface GiftCardFace {
+  theme: GiftCardTheme;
+  fromName: string;
+  toName: string;
+  message: string | null;
+}
 
 /** 0199: a gift card bought online (domain/credit/GiftCardPurchase.ts). */
 export interface GiftCardPurchaseRecord {
@@ -14,6 +22,7 @@ export interface GiftCardPurchaseRecord {
   recipientPhone: string | null;
   sendTo: GiftCardSendTo;
   message: string | null;
+  theme: GiftCardTheme;
   deliverOn: string | null;
   status: GiftCardPurchaseStatus;
   orderTrackingId: string | null;
@@ -75,6 +84,8 @@ export interface IGiftCardPurchaseRepository {
   /** Awaiting payment and created before `olderThan`: closed as abandoned when there is nothing to ask. */
   awaitingStale(olderThan: Date, limit: number): Promise<GiftCardPurchaseRecord[]>;
   forBuyer(userId: string, limit: number): Promise<GiftCardPurchaseRecord[]>;
+  /** The face of the card bought online whose code hashes to this, or null (a staff-issued card has none). */
+  faceByCodeHash(codeHash: string): Promise<GiftCardFace | null>;
   recent(limit: number): Promise<GiftCardPurchaseRecord[]>;
   /**
    * Staff: the money goes back to the buyer. Paid/issued/review -> refunded. `unissuedOnly`: only while no card

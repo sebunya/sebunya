@@ -352,11 +352,25 @@ routes.post('/gift-cards/purchase', async (c) => {
   const result = await registry.giftCardPurchaseUseCases.start({
     amountUgx: body.amountUgx, recipientName: body.recipientName, recipientPhone: body.recipientPhone, sendTo: body.sendTo,
     message: body.message, fromName: body.fromName, buyerName: body.buyerName, buyerPhone: body.buyerPhone, buyerEmail: body.buyerEmail,
-    deliverOn: body.deliverOn, buyerUserId: ((c as Context).get('userId') as string | undefined) ?? null,
+    deliverOn: body.deliverOn, theme: body.theme, buyerUserId: ((c as Context).get('userId') as string | undefined) ?? null,
   });
   if (result.ok) return c.json({ success: true, data: { reference: result.reference, redirectUrl: result.redirectUrl } });
   if (result.code === 'INVALID') return c.json({ success: false, error: { code: 'INVALID', message: 'Check the highlighted fields.', fields: result.errors } }, 400);
   return c.json({ success: false, error: { code: result.code, message: result.message } }, result.code === 'LIMIT' ? 429 : 503);
+});
+
+/**
+ * 0199: open a gift card (the page the recipient's text links to): what it is worth, as /credit/check says, and the
+ * face the buyer designed for it. The holder of the code learns nothing they do not already hold.
+ */
+routes.post('/gift-cards/open', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  c.header('Cache-Control', 'no-store');
+  const checked = await registry.manageCreditUseCases.check(body?.code);
+  if (!checked.ok) return c.json({ success: false, error: { code: 'STORE_CREDIT_UNAVAILABLE', message: 'That code is not right. Check each character, or call us.' } }, 404);
+  const normalized = normalizeCreditCode(body?.code);
+  const face = normalized ? await registry.giftCardPurchaseUseCases.faceForCode(normalized.code) : null;
+  return c.json({ success: true, data: { ...checked, code: normalized?.code ?? null, face } });
 });
 
 /** 0199: where a gift card purchase stands (the reference is unguessable; nothing in full is shown, never the code). */

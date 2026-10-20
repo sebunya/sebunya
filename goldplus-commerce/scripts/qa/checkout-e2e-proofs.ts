@@ -537,7 +537,7 @@ async function giftCardPurchaseProofs(): Promise<void> {
   const buyerPhone = '0700000911';
   const buyerE164 = '+256700000911';
   const giftForm = {
-    amountPreset: 'other', amountOther: '75,000', recipientName: 'Sarah Nakato', recipientPhone: '0772 000912', sendTo: 'recipient', when: 'now',
+    amountPreset: 'other', amountOther: '75,000', theme: 'birthday', recipientName: 'Sarah Nakato', recipientPhone: '0772 000912', sendTo: 'recipient', when: 'now',
     deliverOn: '', message: 'Happy birthday, Sarah!', fromName: 'Rob', buyerName: 'Robert Harness', buyerPhone, buyerEmail: '',
   };
 
@@ -574,10 +574,28 @@ async function giftCardPurchaseProofs(): Promise<void> {
       coalesce(payload->>'message', (payload #>> '{}')::jsonb->>'message') as m from outbox_events where idempotency_key in (${`gift-card-paid:${bought?.id}`}, ${`gift-card-received:${bought?.id}`}) order by template`));
   check('two texts: the buyer’s receipt and the code to them', texts.map((t) => [t.template, t.phone]), [['GIFT_CARD_PAID', buyerE164], ['GIFT_CARD_RECEIVED', '+256772000912']]);
   check('the receipt never carries a code', /GPGC/.test(String(texts[0]?.m ?? '')), false);
-  const coded = /Rob sent you a gift card of UGX 75,000: "Happy birthday, Sarah!" Your code: GPGC-|Gift card \/ store credit code \(removed once handled\)/.test(String(texts[1]?.m ?? ''));
-  check('their text names who it is from, the message and the code (or the code was already sent and scrubbed)', coded, true);
+  const coded = /Rob sent you a gift card of UGX 75,000: "Happy birthday, Sarah!" Open it: \S+\/gift-card\/open#GPGC-\S+ Code: GPGC-|Gift card \/ store credit code \(removed once handled\)/.test(String(texts[1]?.m ?? ''));
+  check('their text names who it is from, the message, the link to open it and the code (or it was sent and scrubbed)', coded, true);
+  const [codeRow] = rowsOf(await db.execute(sql`select coalesce(payload->>'creditCode', (payload #>> '{}')::jsonb->>'creditCode') as code from outbox_events where idempotency_key = ${`gift-card-received:${bought?.id}`}`));
+  if (codeRow?.code) {
+    // What their phone does with the link: the page posts the code from the #fragment and shows the card to scratch.
+    const openJar = new Jar();
+    check('the open page loads', (await get(openJar, '/gift-card/open')).status, 200);
+    // A real browser sends `Origin: null` on a page served no-referrer, and the cross-site guard then refuses the
+    // page's own form: the auto-open from the text's link failed exactly so in Chrome before this check existed.
+    const policy = (await fetch(`${WEB}/gift-card/open`, { redirect: 'manual' })).headers.get('referrer-policy') ?? '';
+    check('the open page keeps the Origin a browser sends on its own form (not no-referrer)', /no-referrer(?!-)/.test(policy) && !/when/.test(policy), false);
+    const opened = await postForm(openJar, '/gift-card/open', { code: String(codeRow.code) });
+    check('it opens their card: the birthday design, from Rob, for Sarah, with the message', /data-theme="birthday"[\s\S]*Sarah Nakato[\s\S]*Happy birthday, Sarah![\s\S]*Rob/.test(opened.body), true);
+    check('with the code under a scratch panel', opened.body.includes('data-scratch-canvas') && opened.body.includes(String(codeRow.code)), true);
+    check('and UGX 75,000 ready to spend', /UGX\s75,000<\/strong> ready to spend/.test(opened.body), true);
+    const wrongCode = await postForm(openJar, '/gift-card/open', { code: 'GPGC-AAAA-BBBB-CCCC' });
+    check('a wrong code opens nothing', /That code is not right/.test(wrongCode.body) && !wrongCode.body.includes('data-scratch-canvas'), true);
+  } else {
+    note('the code was already sent and scrubbed from the outbox; the open page is proved by the unit suite');
+  }
   const page = await get(jar, `/gift-card/bought?ref=${encodeURIComponent(ref)}`);
-  check('the buyer’s page says it is paid and texted, with the number masked', /Thank you, it is paid[\s\S]*texted to Sarah on 07•• ••• 912/.test(page.body), true);
+  check('the buyer’s page says it is paid and texted, with the number masked', /Thank you, it is paid[\s\S]*Sarah has been texted, on 07•• ••• 912, a link to open the card/.test(page.body), true);
   const ipn = await fetch(`${process.env.E2E_API_BASE}/commerce/payments/pesapal/ipn?OrderTrackingId=${encodeURIComponent(subs[0]?.orderTrackingId ?? '')}&OrderMerchantReference=${encodeURIComponent(ref)}&OrderNotificationType=IPNCHANGE`);
   check('the IPN that follows is acknowledged', ipn.status, 200);
   check('and makes no second card', rowsOf(await db.execute(sql`select 1 from credit_instruments where reason like ${`%${ref}%`}`)).length, 1);

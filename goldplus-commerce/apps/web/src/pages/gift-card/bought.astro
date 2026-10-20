@@ -3,6 +3,7 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import { apiBase } from '../../lib/api';
 import { apiHeaders, readClientAddress } from '../../lib/forwardClient';
 import { formatUgx } from '../../lib/money';
+import GiftCardFace from '../../components/GiftCardFace.astro';
 
 /**
  * Where a gift card purchase stands (0199). Pesapal returns the buyer here (through the API, which settles first).
@@ -10,7 +11,7 @@ import { formatUgx } from '../../lib/money';
  */
 type Status = {
   reference: string; status: 'awaiting_payment' | 'paid' | 'issued' | 'failed' | 'review' | 'refunded'; amountUgx: number;
-  recipientFirstName: string; recipientPhoneMasked: string; buyerPhoneMasked: string; sendTo: 'recipient' | 'buyer'; deliverOn: string | null;
+  recipientFirstName: string; theme: string; fromName: string; message: string | null; recipientPhoneMasked: string; buyerPhoneMasked: string; sendTo: 'recipient' | 'buyer'; deliverOn: string | null;
 };
 const ref = String(Astro.url.searchParams.get('ref') ?? '').trim().toUpperCase().slice(0, 20);
 const cancelled = Astro.url.searchParams.get('cancelled') === '1';
@@ -63,17 +64,18 @@ const waiting = s?.status === 'awaiting_payment' && !cancelled;
     {s && (s.status === 'paid' || s.status === 'issued') && (
       <>
         <h1 class="text-3xl font-black tracking-tight text-gray-900">Thank you, it is paid</h1>
+        <div class="mt-6"><GiftCardFace theme={s.theme} amountUgx={s.amountUgx} toName={s.recipientFirstName} fromName={s.fromName} message={s.message} masked="GPGC-••••-••••-••••" /></div>
         <div class="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5" role="status">
           <p class="text-sm font-bold text-gray-900">Gift card for {s.recipientFirstName}</p>
           <p class="mt-1 text-2xl font-black tabular-nums text-gray-900">{formatUgx(s.amountUgx)}</p>
           <p class="mt-2 text-sm text-slate-700">
             {s.sendTo === 'buyer'
-              ? (s.status === 'issued' ? `The code has been texted to you on ${s.recipientPhoneMasked}. Give it to ${s.recipientFirstName} whenever you like.` : `The code is on its way to you on ${s.recipientPhoneMasked}.`)
+              ? (s.status === 'issued' ? `We texted you, on ${s.recipientPhoneMasked}, a link to the card and its code. Forward the link to ${s.recipientFirstName} (WhatsApp works) or give them the code yourself.` : `The link and code are on their way to you on ${s.recipientPhoneMasked}.`)
               : s.status === 'issued'
-                ? `The code has been texted to ${s.recipientFirstName} on ${s.recipientPhoneMasked}.`
+                ? `${s.recipientFirstName} has been texted, on ${s.recipientPhoneMasked}, a link to open the card and scratch it to reveal the code.`
                 : s.deliverOn
-                  ? `The code will be texted to ${s.recipientFirstName} on ${s.recipientPhoneMasked} on ${day(s.deliverOn)}, from 9am.`
-                  : `The code is on its way to ${s.recipientFirstName} on ${s.recipientPhoneMasked}.`}
+                  ? `${s.recipientFirstName} will be texted the card on ${s.recipientPhoneMasked} on ${day(s.deliverOn)}, from 9am.`
+                  : `The card is on its way to ${s.recipientFirstName} on ${s.recipientPhoneMasked}.`}
           </p>
           <p class="mt-2 text-sm text-slate-700">{s.sendTo === 'recipient' ? `Your receipt is texted to ${s.buyerPhoneMasked}. ` : ''}Reference {s.reference}.</p>
         </div>

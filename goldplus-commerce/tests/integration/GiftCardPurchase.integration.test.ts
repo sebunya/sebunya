@@ -20,7 +20,7 @@ describeIf('gift cards bought online (real PostgreSQL)', () => {
   const create = async (over: Record<string, unknown> = {}) => {
     const p = await repo.create({
       reference: ref(), amountUgx: 50_000, buyerName: 'Robert S', buyerPhone: '+256701333444', buyerEmail: null, buyerUserId: null,
-      fromName: 'Rob', recipientName: 'Sarah N', recipientPhone: '+256772111222', sendTo: 'recipient', message: 'Happy birthday!', deliverOn: null, ...over,
+      fromName: 'Rob', recipientName: 'Sarah N', recipientPhone: '+256772111222', sendTo: 'recipient', message: 'Happy birthday!', theme: 'birthday', deliverOn: null, ...over,
     });
     purchaseIds.push(p.id);
     return p;
@@ -86,6 +86,10 @@ describeIf('gift cards bought online (real PostgreSQL)', () => {
     // Not issuable again, and the database refuses an issued purchase without its card.
     expect(await issue(p.id, `GPGC-EEEE-FFFF-${tag.slice(0, 4)}`)).toBeNull();
     await expect(raw`update gift_card_purchases set instrument_id = null where id = ${p.id}`).rejects.toThrow(/gift_card_purchases_issued_chk/);
+    // The open page finds the card's face by its code's hash.
+    expect(await repo.faceByCodeHash(`h-${tag}-${winners[0] === a ? `GPGC-AAAA-BBBB-${tag.slice(0, 4)}` : `GPGC-CCCC-DDDD-${tag.slice(0, 4)}`}`))
+      .toEqual({ theme: 'birthday', fromName: 'Rob', toName: 'Sarah N', message: 'Happy birthday!' });
+    expect(await repo.faceByCodeHash('no-such-hash')).toBeNull();
   });
 
   it('the code leaves the outbox once the text is handled (the 0197 scrub covers gift cards bought online)', async () => {
@@ -123,5 +127,6 @@ describeIf('gift cards bought online (real PostgreSQL)', () => {
   it('the database refuses an amount outside 10,000–500,000 and a "send to them" with no number', async () => {
     await expect(create({ amountUgx: 600_000 })).rejects.toThrow(/gift_card_purchases_amount_chk/);
     await expect(create({ recipientPhone: null })).rejects.toThrow(/gift_card_purchases_recipient_phone_chk/);
+    await expect(create({ theme: 'neon' })).rejects.toThrow(/gift_card_purchases_theme_chk/);
   });
 });

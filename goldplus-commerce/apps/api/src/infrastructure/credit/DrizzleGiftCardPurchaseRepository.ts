@@ -16,7 +16,7 @@ function record(r: Record<string, any>): GiftCardPurchaseRecord {
   return {
     id: String(r.id), reference: r.reference, amountUgx: Number(r.amount_ugx), buyerName: r.buyer_name, buyerPhone: r.buyer_phone,
     buyerEmail: r.buyer_email ?? null, buyerUserId: r.buyer_user_id ?? null, fromName: r.from_name, recipientName: r.recipient_name,
-    recipientPhone: r.recipient_phone ?? null, sendTo: r.send_to, message: r.message ?? null, deliverOn: isoDate(r.deliver_on),
+    recipientPhone: r.recipient_phone ?? null, sendTo: r.send_to, message: r.message ?? null, theme: r.theme ?? 'gold', deliverOn: isoDate(r.deliver_on),
     status: r.status, orderTrackingId: r.order_tracking_id ?? null, redirectUrl: r.redirect_url ?? null, providerStatus: r.provider_status ?? null,
     confirmationCode: r.confirmation_code ?? null, paymentMethod: r.payment_method ?? null, instrumentId: r.instrument_id ?? null,
     cardLast4: r.card_last4 ?? null, createdAt: new Date(r.created_at), paidAt: at(r.paid_at), issuedAt: at(r.issued_at),
@@ -41,9 +41,9 @@ export class DrizzleGiftCardPurchaseRepository implements IGiftCardPurchaseRepos
   async create(input: Parameters<IGiftCardPurchaseRepository['create']>[0]): Promise<GiftCardPurchaseRecord> {
     const [r] = rowsOf(await db.execute(sql`
       insert into gift_card_purchases (reference, amount_ugx, buyer_name, buyer_phone, buyer_email, buyer_user_id, from_name,
-                                       recipient_name, recipient_phone, send_to, message, deliver_on)
+                                       recipient_name, recipient_phone, send_to, message, theme, deliver_on)
       values (${input.reference}, ${input.amountUgx}, ${input.buyerName}, ${input.buyerPhone}, ${input.buyerEmail}, ${input.buyerUserId},
-              ${input.fromName}, ${input.recipientName}, ${input.recipientPhone}, ${input.sendTo}, ${input.message}, ${input.deliverOn}::date)
+              ${input.fromName}, ${input.recipientName}, ${input.recipientPhone}, ${input.sendTo}, ${input.message}, ${input.theme}, ${input.deliverOn}::date)
       returning *`));
     return record(r);
   }
@@ -130,6 +130,12 @@ export class DrizzleGiftCardPurchaseRepository implements IGiftCardPurchaseRepos
   }
   async forBuyer(userId: string, limit: number) {
     return rowsOf(await db.execute(sql`${SELECT} where p.buyer_user_id = ${userId} and p.status in ('paid','issued','refunded','review') order by p.created_at desc limit ${limit}`)).map(record);
+  }
+  async faceByCodeHash(codeHash: string) {
+    const [r] = rowsOf(await db.execute(sql`
+      select p.theme, p.from_name, p.recipient_name, p.message from gift_card_purchases p
+        join credit_instruments i on i.id = p.instrument_id where i.code_hash = ${codeHash} limit 1`));
+    return r ? { theme: r.theme, fromName: r.from_name, toName: r.recipient_name, message: r.message ?? null } : null;
   }
   async recent(limit: number) {
     return rowsOf(await db.execute(sql`${SELECT} order by p.created_at desc limit ${limit}`)).map(record);

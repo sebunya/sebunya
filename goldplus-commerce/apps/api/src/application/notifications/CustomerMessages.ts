@@ -128,6 +128,11 @@ export function reviewOrderUrl(orderNumber: string | null | undefined): string {
   return orderNumber ? `${base}?reference=${encodeURIComponent(orderNumber)}` : base;
 }
 
+/** The page where a gift card is opened and scratched; the code travels in the #fragment, never to a server. */
+export function giftCardOpenUrl(code: string | null | undefined): string {
+  return `${publicBaseUrl()}/gift-card/open${code ? `#${code}` : ''}`;
+}
+
 export function formatUgx(amount: number | null | undefined): string {
   const n = Math.max(0, Math.round(Number(amount) || 0));
   return `UGX ${n.toLocaleString('en-UG')}`;
@@ -268,10 +273,12 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
       return `${SHOP_NAME}: you have a ${d.creditKind === 'gift_card' ? 'gift card' : 'store credit'} of ${formatUgx(d.valueUgx)}. Code: ${d.creditCode}. Use it at checkout on shopgoldplus.com or in the shop. Anyone with this code can spend it, so keep it safe. Questions? Call ${phone}.`;
     case 'GIFT_CARD_RECEIVED':
       // 0199: a gift card bought online. The code is the money, said once, to whoever holds the card.
+      // The link opens the card (scratch to reveal); the code is in the text too, for a phone without internet.
+      // The code rides the link's #fragment, which a browser never sends to any server.
       if (d.toBuyer) {
-        return `${SHOP_NAME}: your gift card of ${formatUgx(d.valueUgx)} for ${d.recipientName} is ready. Code: ${d.creditCode}. Give it to them yourself; they type it at checkout on shopgoldplus.com or show it in our shop. Anyone with the code can spend it, so keep it safe. Balance: ${publicBaseUrl()}/gift-card`;
+        return `${SHOP_NAME}: your gift card of ${formatUgx(d.valueUgx)} for ${d.recipientName} is ready. Send them this link to open it: ${giftCardOpenUrl(d.creditCode)} Code: ${d.creditCode}. Anyone with the code can spend it, so share it only with them.`;
       }
-      return `${SHOP_NAME}: ${d.fromName} sent you a gift card of ${formatUgx(d.valueUgx)}${d.giftMessage ? `: "${d.giftMessage}"` : '.'} Your code: ${d.creditCode}. Spend it at checkout on shopgoldplus.com or in our shop. Anyone with the code can spend it, so keep it safe. Balance: ${publicBaseUrl()}/gift-card`;
+      return `${SHOP_NAME}: ${d.fromName} sent you a gift card of ${formatUgx(d.valueUgx)}${d.giftMessage ? `: "${d.giftMessage}"` : '.'} Open it: ${giftCardOpenUrl(d.creditCode)} Code: ${d.creditCode}. Spend it on shopgoldplus.com or in our shop. Keep it safe: anyone with the code can spend it.`;
     case 'GIFT_CARD_PAID':
       // 0199: to the buyer when the code goes to someone else. Never the code.
       return d.deliverOnWords

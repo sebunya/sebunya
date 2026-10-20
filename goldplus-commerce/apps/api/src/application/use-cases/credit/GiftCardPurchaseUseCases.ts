@@ -5,7 +5,7 @@ import type { CreditCodeTools } from './CreditUseCases';
 import { newCreditCode } from '../../../domain/credit/CreditInstrument';
 import {
   GIFT_CARD_DAILY_STARTS_PER_BUYER, GIFT_CARD_DAILY_UGX_PER_BUYER, checkGiftCardPurchase, giftCardPurchaseReference,
-  isGiftCardPurchaseReference, maskPhone, scheduledSendDue, type GiftCardField, type GiftCardPurchaseRequest,
+  isGiftCardPurchaseReference, maskPhone, maskPhoneForSms, scheduledSendDue, type GiftCardField, type GiftCardPurchaseRequest,
 } from '../../../domain/credit/GiftCardPurchase';
 
 /**
@@ -47,6 +47,10 @@ export interface GiftCardPublicStatus {
   status: 'awaiting_payment' | 'paid' | 'issued' | 'failed' | 'review' | 'refunded';
   amountUgx: number;
   recipientFirstName: string;
+  /** The card as the buyer designed it (the buyer is the one holding this reference). */
+  theme: string;
+  fromName: string;
+  message: string | null;
   recipientPhoneMasked: string;
   buyerPhoneMasked: string;
   sendTo: 'recipient' | 'buyer';
@@ -96,7 +100,7 @@ export class GiftCardPurchaseUseCases {
           reference: giftCardPurchaseReference(this.tools.referenceIndexes()), amountUgx: v.amountUgx,
           buyerName: v.buyerName, buyerPhone, buyerEmail: v.buyerEmail, buyerUserId: input.buyerUserId ?? null,
           fromName: v.fromName, recipientName: v.recipientName, recipientPhone: v.recipientPhone ? this.tools.normalizePhone(v.recipientPhone) : null,
-          sendTo: v.sendTo, message: v.message, deliverOn: v.deliverOn,
+          sendTo: v.sendTo, message: v.message, theme: v.theme, deliverOn: v.deliverOn,
         });
       } catch (err) {
         if (!/gift_card_purchases_reference_uq|duplicate key/i.test(String((err as Error)?.message ?? err))) throw err;
@@ -189,6 +193,7 @@ export class GiftCardPurchaseUseCases {
       status: p.status === 'abandoned' ? 'failed' : p.status,
       amountUgx: p.amountUgx,
       recipientFirstName: firstName(p.recipientName),
+      theme: p.theme, fromName: p.fromName, message: p.message,
       recipientPhoneMasked: maskPhone(p.sendTo === 'recipient' ? p.recipientPhone : p.buyerPhone),
       buyerPhoneMasked: maskPhone(p.buyerPhone),
       sendTo: p.sendTo,
@@ -216,6 +221,14 @@ export class GiftCardPurchaseUseCases {
   }
 
   forBuyer(userId: string) { return this.repo.forBuyer(userId, 50); }
+
+  /**
+   * The face of a card for whoever holds its code (the open page): its look, who it is from and for, and the
+   * message. Only for a well-formed code; the holder already has the money, so this tells them nothing more.
+   */
+  async faceForCode(code: string) {
+    return this.repo.faceByCodeHash(this.tools.hash(code));
+  }
   recent(limit = 50) { return this.repo.recent(limit); }
 
   /**
@@ -307,7 +320,7 @@ export class GiftCardPurchaseUseCases {
       idempotencyKey: `gift-card-paid:${p.id}`,
       data: {
         template: 'GIFT_CARD_PAID', valueUgx: p.amountUgx, customerName: p.buyerName, recipientName: firstName(p.recipientName),
-        recipientPhoneMasked: maskPhone(p.recipientPhone), deliverOnWords: p.deliverOn ? kampalaDateWords(p.deliverOn) : null, reference: p.reference,
+        recipientPhoneMasked: maskPhoneForSms(p.recipientPhone), deliverOnWords: p.deliverOn ? kampalaDateWords(p.deliverOn) : null, reference: p.reference,
       },
     };
   }

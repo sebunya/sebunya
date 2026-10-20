@@ -67,6 +67,7 @@ export const giftCardPurchases = pgTable('gift_card_purchases', {
   recipientPhone: varchar('recipient_phone', { length: 20 }),
   sendTo: varchar('send_to', { length: 10 }).notNull(), // recipient | buyer
   message: varchar('message', { length: 160 }),
+  theme: varchar('theme', { length: 16 }).default('gold').notNull(),
   deliverOn: date('deliver_on'),
   status: varchar('status', { length: 20 }).default('awaiting_payment').notNull(),
   orderTrackingId: varchar('order_tracking_id', { length: 255 }),
