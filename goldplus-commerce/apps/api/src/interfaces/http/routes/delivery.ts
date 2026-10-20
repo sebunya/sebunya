@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { ApiResponse } from '@goldplus/shared';
 import { Registry } from '../../../infrastructure/Registry';
-import { presentQuote, businessCutoffCountdown, freeDeliveryProgress, windowSentence } from '../../../domain/delivery/DeliveryPresentation';
+import { presentQuote, businessCutoffCountdown, deliveryPromise, freeDeliveryProgress, windowSentence } from '../../../domain/delivery/DeliveryPresentation';
 import { quoteCacheKey } from '../../../domain/delivery/DeliveryQuoteCache';
 import { REASON_COPY_KEY } from '../../../domain/delivery/DeliveryModel';
 import { toEatParts, normalizeUgandaDistrict } from '@goldplus/shared';
@@ -123,6 +123,7 @@ routes.post('/quote', async (c) => {
   // amount") only when there IS a fee. It used to follow whether the request
   // named a place, so it sat under answers that carried no fee at all.
   const hasFee = presented.feeUgx !== null;
+  const biz = await registry.businessInfoService.getPublicConfig().catch(() => null);
 
   const data = {
     tone: presented.tone,
@@ -148,10 +149,11 @@ routes.post('/quote', async (c) => {
         : null,
     pinSavingUgx: outcome.pinSavingUgx,
     // Business info: the one authority for the cutoff hour and closed days.
-    cutoff: await registry.businessInfoService
-      .getPublicConfig()
-      .then((biz) => businessCutoffCountdown({ now, cutoffHour: biz.sameDayCutoffHour, closedDays: biz.closedDays }))
-      .catch(() => null),
+    cutoff: biz ? businessCutoffCountdown({ now, cutoffHour: biz.sameDayCutoffHour, closedDays: biz.closedDays }) : null,
+    // Gap analysis #4: the dispatch DATE, and an arrival window only where one is measured (contract 4 and 10).
+    promise: biz
+      ? deliveryPromise({ now, cutoffHour: biz.sameDayCutoffHour, closedDays: biz.closedDays, window: presented.window, deliveryHoursText: biz.deliveryHours ?? null })
+      : null,
     // The SAME threshold the quote waived the fee on (the zone's own when its
     // policy is active), on the same basis — "qualifies" now means free.
     freeDelivery: freeDeliveryProgress({

@@ -157,8 +157,15 @@ export function renderDeliveryQuotePanel(q: any, opts: DeliveryQuotePanelOptions
   }
   if (q.freeDelivery?.qualifies) out.push('<p class="text-[11px] font-bold text-green-700 mt-2">Your order qualifies for free delivery.</p>');
 
-  // Cut-off countdown, in East Africa Time. Absent when no cutoff is set.
-  if (q.cutoff?.sentence) out.push(`<p class="text-[11px] text-gray-600 mt-2">${e(q.cutoff.sentence)}</p>`);
+  // The dated promise (gap #4): a measured arrival window in bold where one exists, then the dispatch date with
+  // the countdown. Falls back to the countdown alone when the API sends no promise.
+  if (q.promise?.arrivalSentence) out.push(`<p class="text-xs font-bold text-brand-dark mt-2" data-arrival-window>${e(q.promise.arrivalSentence)}</p>`);
+  if (q.promise?.dispatchSentence) {
+    out.push(`<p class="text-[11px] text-gray-600 mt-1" data-dispatch-date>${e(q.promise.dispatchSentence)}</p>`);
+  } else if (q.cutoff?.sentence) {
+    // Cut-off countdown, in East Africa Time. Absent when no cutoff is set.
+    out.push(`<p class="text-[11px] text-gray-600 mt-2">${e(q.cutoff.sentence)}</p>`);
+  }
 
   // Directions to the shop, named as what it is: it opens Google Maps in a new
   // tab (announced), it is not the way to CHOOSE collection.
