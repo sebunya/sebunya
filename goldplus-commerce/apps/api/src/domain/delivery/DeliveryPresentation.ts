@@ -275,3 +275,84 @@ function windowSpan(lowMinutes: number, highMinutes: number): string {
   }
   return `${word(low)} to ${word(high)}`;
 }
+
+// ── The dated promise (gap analysis #4, 2026-10-20) ───────────────────────────
+// "Get it by Tuesday", in the contract's terms: a DISPATCH DATE always (it follows from the cut-off hour and the
+// closed days, both owner-set), and an ARRIVAL WINDOW only where one has been measured (window.kind 'hours'),
+// placed on the clock as [now + fastest, cut-off + slowest]. Both ends come from observed data and the owner's
+// cut-off; nothing is a guess (guarantees 4 and 10). No arrival window is shown when it would run past the end of
+// delivery hours, or for a next-day dispatch (when the next day's first dispatch happens is not recorded).
+
+export interface DeliveryPromise {
+  /** Kampala calendar day the order is dispatched, YYYY-MM-DD. */
+  dispatchDay: string;
+  dispatchToday: boolean;
+  dispatchSentence: string;
+  /** "Arrives today, usually between 3:15pm and 7:30pm." Null unless measured and inside delivery hours. */
+  arrivalSentence: string | null;
+}
+
+const EAT_OFFSET_MS = 3 * 60 * 60 * 1000;
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "8:30am to 8:00pm" -> minutes after midnight of the END (20:00 -> 1200), or null when it cannot be read. */
+export function deliveryHoursEndMinutes(text: string | null | undefined): number | null {
+  const times = [...String(text ?? '').toLowerCase().matchAll(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/g)];
+  const last = times.at(-1);
+  if (!last || times.length < 2) return null;
+  let h = Number(last[1]) % 12;
+  if (last[3] === 'pm') h += 12;
+  const m = Number(last[2] ?? 0);
+  return h >= 0 && h < 24 && m < 60 ? h * 60 + m : null;
+}
+
+function clock12(minutes: number): string {
+  const h24 = Math.floor(minutes / 60) % 24;
+  const m = minutes % 60;
+  const h = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${h}:${String(m).padStart(2, '0')}${h24 < 12 ? 'am' : 'pm'}`;
+}
+
+export function deliveryPromise(input: {
+  now: Date;
+  cutoffHour: number | null;
+  closedDays: readonly number[];
+  window: DeliveryWindow | null;
+  deliveryHoursText: string | null;
+}): DeliveryPromise | null {
+  if (input.cutoffHour === null || !Number.isInteger(input.cutoffHour) || input.cutoffHour < 0 || input.cutoffHour > 23) return null;
+  const eat = new Date(input.now.getTime() + EAT_OFFSET_MS);
+  const nowMin = eat.getUTCHours() * 60 + eat.getUTCMinutes();
+  const cutoffMin = input.cutoffHour * 60;
+  const openToday = !input.closedDays.includes(eat.getUTCDay());
+  const today = openToday && nowMin < cutoffMin;
+
+  let day = new Date(Date.UTC(eat.getUTCFullYear(), eat.getUTCMonth(), eat.getUTCDate()));
+  if (!today) {
+    let found = false;
+    for (let i = 1; i <= 7; i++) {
+      const d = new Date(day.getTime() + i * 86_400_000);
+      if (!input.closedDays.includes(d.getUTCDay())) { day = d; found = true; break; }
+    }
+    if (!found) return null;
+  }
+  const label = `${WEEKDAYS[day.getUTCDay()]} ${day.getUTCDate()} ${MONTHS[day.getUTCMonth()]}`;
+  const dispatchDay = day.toISOString().slice(0, 10);
+  const tomorrow = !today && day.getTime() - Date.UTC(eat.getUTCFullYear(), eat.getUTCMonth(), eat.getUTCDate()) === 86_400_000;
+  const left = cutoffMin - nowMin;
+  const leftWords = left >= 60 ? `${Math.floor(left / 60)} hour${Math.floor(left / 60) === 1 ? '' : 's'} ${left % 60} min` : `${left} min`;
+  const dispatchSentence = today
+    ? `Order within ${leftWords} and it is dispatched today, ${label}.`
+    : `Order now and it is dispatched ${tomorrow ? 'tomorrow' : 'on'} ${tomorrow ? `(${label})` : label}.`;
+
+  let arrivalSentence: string | null = null;
+  const end = deliveryHoursEndMinutes(input.deliveryHoursText);
+  if (today && input.window?.kind === 'hours' && end !== null) {
+    // Earliest: dispatched now, fastest measured trip. Latest: dispatched at the cut-off, slowest measured trip.
+    const from = Math.floor((nowMin + input.window.lowMinutes) / 15) * 15;
+    const to = Math.ceil((cutoffMin + input.window.highMinutes) / 15) * 15;
+    if (to <= end && from < to) arrivalSentence = `Arrives today, usually between ${clock12(from)} and ${clock12(to)}.`;
+  }
+  return { dispatchDay, dispatchToday: today, dispatchSentence, arrivalSentence };
+}
