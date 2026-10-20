@@ -1,5 +1,15 @@
 import type { ProductPublicDto } from '@goldplus/shared';
-import { DEFAULT_TAXONOMY, includesSearchTerm, inferSubcategory, type Taxonomy } from '@goldplus/shared';
+import {
+  DEFAULT_TAXONOMY,
+  buildSearchVocabulary,
+  expandSearchQuery,
+  includesSearchTerm,
+  inferSubcategory,
+  matchesExpandedQuery,
+  relaxSearchQuery,
+  type ExpandedSearchQuery,
+  type Taxonomy,
+} from '@goldplus/shared';
 
 /**
  * Product discovery. The taxonomy (categories, subcategories, inference keywords,
@@ -139,27 +149,53 @@ function termMatches(term: string, haystack: string): boolean {
   return Object.prototype.hasOwnProperty.call(PHONE_BRAND_LINES, term) && PHONE_BRAND_LINES[term].test(haystack);
 }
 
-export function matchesDiscoveryQuery(product: ProductPublicDto, query: string, taxonomy: Taxonomy = DEFAULT_TAXONOMY): boolean {
-  if (!query) return true;
+function discoveryHaystack(product: ProductPublicDto, taxonomy: Taxonomy): string {
   const subcategory = subcategoryNameForSlug(getProductSubcategory(product, taxonomy), taxonomy);
-  const haystack = [product.name, product.categoryName, subcategory, product.sku, product.modelNumber]
+  return [product.name, product.categoryName, subcategory, product.sku, product.modelNumber]
     .filter((value): value is string => typeof value === 'string')
     .join(' ')
     .toLocaleLowerCase('en');
-  // Every word must appear, in any order, so "bank power" finds the power bank.
-  // A one-word query is the old substring behaviour exactly, and a phrase can
-  // only match MORE than before, never less. Kept in step with the API's
-  // searchTerms so the header suggestions and this page agree.
+}
+
+/**
+ * `groups` come from expandSearchQuery (synonyms, plurals, joined words, typos). Without them every word must
+ * appear as typed, in any order, so "bank power" finds the power bank — the behaviour before 2026-10-20, kept in
+ * step with the API's searchTerms so the header suggestions and this page agree.
+ */
+export function matchesDiscoveryQuery(
+  product: ProductPublicDto,
+  query: string,
+  taxonomy: Taxonomy = DEFAULT_TAXONOMY,
+  groups?: readonly (readonly string[])[],
+): boolean {
+  if (!query) return true;
+  const haystack = discoveryHaystack(product, taxonomy);
+  const g = groups ?? query.toLocaleLowerCase('en').split(/\s+/).filter(Boolean).slice(0, 6).map((t) => [t]);
+  return matchesExpandedQuery(haystack, g, termMatches);
+}
+
+/** The words a search can match in this catalogue: names, categories, subcategories, SKUs and models. */
+export function discoveryVocabulary(products: ProductPublicDto[], taxonomy: Taxonomy = DEFAULT_TAXONOMY) {
+  return buildSearchVocabulary([
+    ...products.flatMap((p) => [p.name, p.categoryName, p.sku, p.modelNumber]),
+    ...taxonomy.flatMap((c) => [c.name, ...c.subcategories.map((sc) => sc.name)]),
+  ]);
+}
+
+export function expandDiscoveryQuery(products: ProductPublicDto[], query: string, taxonomy: Taxonomy = DEFAULT_TAXONOMY): ExpandedSearchQuery {
   const terms = query.toLocaleLowerCase('en').split(/\s+/).filter(Boolean).slice(0, 6);
-  return terms.every((term) => termMatches(term, haystack));
+  return expandSearchQuery(terms, discoveryVocabulary(products, taxonomy));
 }
 
 export function filterDiscoveryProducts(
   products: ProductPublicDto[],
   filters: { search: string; category: DiscoveryCategorySlug | ''; subcategory: DiscoverySubcategorySlug | '' },
   taxonomy: Taxonomy = DEFAULT_TAXONOMY,
+  /** Already expanded (searchDiscoveryProducts passes the relaxed query); computed here otherwise. */
+  groups?: readonly (readonly string[])[],
 ): ProductPublicDto[] {
   const categoryName = categoryNameForSlug(filters.category, taxonomy);
+  const g = filters.search ? groups ?? expandDiscoveryQuery(products, filters.search, taxonomy).groups : undefined;
   return dedupeProductsById(products)
     // Listable, not "in the taxonomy": a product filed under a category the
     // storefront does not browse by must still be findable. The category and
@@ -167,7 +203,38 @@ export function filterDiscoveryProducts(
     .filter(isListableProduct)
     .filter((product) => !categoryName || product.categoryName === categoryName)
     .filter((product) => !filters.subcategory || getProductSubcategory(product, taxonomy) === filters.subcategory)
-    .filter((product) => matchesDiscoveryQuery(product, filters.search, taxonomy));
+    .filter((product) => matchesDiscoveryQuery(product, filters.search, taxonomy, g));
+}
+
+export interface DiscoverySearchResult {
+  products: ProductPublicDto[];
+  /** What was searched for, in the catalogue's words ("power bank" for "powerbank"). */
+  searchedFor: string;
+  /** Typos fixed ("chager" -> "charger"): shown as "Showing results for …". */
+  corrections: Array<{ from: string; to: string }>;
+  /** Words dropped because nothing matched with them ("lapotp"): shown, never silent. */
+  dropped: string[];
+}
+
+/**
+ * The /shop search: the expanded query first; if that finds nothing and some words are unknown to the catalogue,
+ * the same search without them, saying which words were dropped. Never relaxes a query whose words are all known
+ * (that would show unrelated products for an honest "we don't have that").
+ */
+export function searchDiscoveryProducts(
+  products: ProductPublicDto[],
+  filters: { search: string; category: DiscoveryCategorySlug | ''; subcategory: DiscoverySubcategorySlug | '' },
+  taxonomy: Taxonomy = DEFAULT_TAXONOMY,
+): DiscoverySearchResult {
+  if (!filters.search) return { products: filterDiscoveryProducts(products, filters, taxonomy), searchedFor: '', corrections: [], dropped: [] };
+  const expanded = expandDiscoveryQuery(products, filters.search, taxonomy);
+  const strict = filterDiscoveryProducts(products, filters, taxonomy, expanded.groups);
+  const relaxed = strict.length === 0 ? relaxSearchQuery(expanded) : null;
+  if (relaxed) {
+    const wider = filterDiscoveryProducts(products, filters, taxonomy, relaxed.groups);
+    if (wider.length > 0) return { products: wider, searchedFor: relaxed.display, corrections: expanded.corrections, dropped: expanded.unknown };
+  }
+  return { products: strict, searchedFor: expanded.display, corrections: expanded.corrections, dropped: [] };
 }
 
 /**

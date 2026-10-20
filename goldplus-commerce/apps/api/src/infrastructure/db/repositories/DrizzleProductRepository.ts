@@ -3,7 +3,7 @@ import { stockStatusForLabel } from '../StockStatusSql';
 import { products, productPrices, categories } from '../schema/products';
 import { productImages, productAttributeValues, attributes as attributesTable } from '../schema/phase11';
 import { eq, inArray, and, or, ilike, gt, SQL, asc, desc, sql, type AnyColumn } from 'drizzle-orm';
-import { numericSearchTermPattern } from '@goldplus/shared';
+import { buildSearchVocabulary, expandSearchQuery, numericSearchTermPattern } from '@goldplus/shared';
 import { ProductEntity, StockStatus } from '../../../domain/products/ProductEntity';
 import { IProductRepository, ProductWithPrice } from '../../../application/ports/IProductRepository';
 import { likeContains } from '../like';
@@ -21,6 +21,9 @@ function tierColumns(t: PriceTierPatch): Partial<typeof productPrices.$inferInse
 }
 
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const VOCABULARY_TTL_MS = 5 * 60 * 1000;
+let vocabularyCache: { at: number; vocab: Map<string, number> } | null = null;
 
 export class DrizzleProductRepository implements IProductRepository {
   async findBySlug(slug: string): Promise<ProductEntity | null> {
@@ -210,6 +213,30 @@ export class DrizzleProductRepository implements IProductRepository {
     ));
   }
 
+  /**
+   * The words a search can match, for query expansion: names, SKUs, models, subcategories of approved active
+   * products, and category names. A few hundred rows; rebuilt at most every five minutes per replica, so a new
+   * product's words are searchable with typos within five minutes (exact words match at once).
+   */
+  async searchVocabulary(): Promise<Map<string, number>> {
+    if (vocabularyCache && Date.now() - vocabularyCache.at < VOCABULARY_TTL_MS) return vocabularyCache.vocab;
+    try {
+      const [rows, cats] = await Promise.all([
+        db
+          .select({ name: products.name, sku: products.sku, model: products.modelNumber, sub: products.subcategory, cat: products.categoryName })
+          .from(products)
+          .where(and(eq(products.approvalStatus, 'approved'), eq(products.active, true))),
+        db.select({ name: categories.name }).from(categories),
+      ]);
+      const vocab = buildSearchVocabulary([...rows.flatMap((r) => [r.name, r.sku, r.model, r.sub, r.cat]), ...cats.map((c) => c.name)]);
+      vocabularyCache = { at: Date.now(), vocab };
+      return vocab;
+    } catch {
+      // No vocabulary: words are matched exactly, as before expansion existed.
+      return vocabularyCache?.vocab ?? new Map();
+    }
+  }
+
   async findPublicViewBySlug(slug: string): Promise<ProductWithPrice | null> {
     const row = await db.query.products.findFirst({
       where: eq(products.slug, slug),
@@ -305,6 +332,7 @@ export class DrizzleProductRepository implements IProductRepository {
     limit?: number;
     offset?: number;
     search?: string;
+    searchGroups?: string[][];
     category?: string;
     inStock?: boolean;
     ids?: string[];
@@ -336,15 +364,19 @@ export class DrizzleProductRepository implements IProductRepository {
       conditions.push(sql`${products.stockQuantity} - ${products.reservedQuantity} > 0`);
     }
 
-    if (opts.search) {
+    if (opts.search || opts.searchGroups?.length) {
       // The autocomplete and the /shop results page must agree on what a query
       // matches, or the dropdown says "nothing found" for a term the results
       // page has products for. These are the same five fields the storefront
       // filter reads, and both are denormalised onto products, so no join.
-      // Every word must appear somewhere, in any order, so "bank power" finds
-      // the power bank; a whole-phrase match is simply the one-word case.
-      const terms = searchTerms(opts.search);
-      for (const term of terms) {
+      // Every GROUP must match somewhere, in any order, so "bank power" finds
+      // the power bank. A group's alternatives are a synonym phrase, a
+      // plural's singular, joined words split, or a typo's correction: the
+      // shared expandSearchQuery, the same expansion /shop applies.
+      const groups = opts.searchGroups?.length
+        ? opts.searchGroups
+        : expandSearchQuery(searchTerms(opts.search ?? ''), await this.searchVocabulary()).groups;
+      const fieldsMatch = (term: string): SQL | undefined => {
         const needle = likeContains(term);
         // A word that starts with a digit must not be the tail of a longer
         // number ("2gb" must not match 32GB): the shared includesSearchTerm
@@ -352,23 +384,24 @@ export class DrizzleProductRepository implements IProductRepository {
         const numeric = numericSearchTermPattern(term);
         const matches = (column: AnyColumn): SQL =>
           numeric ? sql`${column} ~* ${numeric}` : ilike(column, needle);
-        conditions.push(
-          or(
-            matches(products.name),
-            matches(products.categoryName),
-            // ...and the joined category, which is what the storefront DTO
-            // actually shows. products.category_name is a denormalised copy;
-            // matching only the copy would silently reopen the dropdown /
-            // results-page divergence the moment the two drift.
-            inArray(
-              products.categoryId,
-              db.select({ id: categories.id }).from(categories).where(matches(categories.name)),
-            ),
-            matches(products.subcategory),
-            matches(products.modelNumber),
-            matches(products.sku)
-          )
+        return or(
+          matches(products.name),
+          matches(products.categoryName),
+          // ...and the joined category, which is what the storefront DTO
+          // actually shows. products.category_name is a denormalised copy;
+          // matching only the copy would silently reopen the dropdown /
+          // results-page divergence the moment the two drift.
+          inArray(
+            products.categoryId,
+            db.select({ id: categories.id }).from(categories).where(matches(categories.name)),
+          ),
+          matches(products.subcategory),
+          matches(products.modelNumber),
+          matches(products.sku)
         );
+      };
+      for (const group of groups) {
+        conditions.push(or(...group.map(fieldsMatch)));
       }
     }
 

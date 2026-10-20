@@ -1,4 +1,4 @@
-import { includesSearchTerm } from '@goldplus/shared';
+import { includesSearchTerm, matchesExpandedQuery } from '@goldplus/shared';
 
 /**
  * Product search domain rules (Slice 4). Pure — no Hono, Drizzle, or adapters.
@@ -59,7 +59,12 @@ export interface SuggestionCandidate {
  * only three silently threw away rows it had deliberately returned, so typing
  * a category name offered nothing while the results page listed products.
  */
-export function rankSuggestions<T extends SuggestionCandidate>(query: string, candidates: T[]): T[] {
+export function rankSuggestions<T extends SuggestionCandidate>(
+  query: string,
+  candidates: T[],
+  /** The expanded query's groups: the last tier then accepts a synonym, singular, split or corrected word. */
+  groups?: readonly (readonly string[])[],
+): T[] {
   const q = normalizeSearchQuery(query);
   const terms = searchTerms(query);
   const scored = candidates.map((c) => {
@@ -74,7 +79,7 @@ export function rankSuggestions<T extends SuggestionCandidate>(query: string, ca
     else if (includesSearchTerm(name, q)) score = 2;
     // Every word present somewhere: the multi-word and category matches that
     // the whole-phrase tiers above cannot see.
-    else if (terms.length > 0 && terms.every((t) => includesSearchTerm(haystack, t))) score = 1;
+    else if (groups?.length ? matchesExpandedQuery(haystack, groups) : terms.length > 0 && terms.every((t) => includesSearchTerm(haystack, t))) score = 1;
     return { c, score };
   });
   return scored
