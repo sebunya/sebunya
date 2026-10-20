@@ -108,7 +108,10 @@ describe('one price, one stock figure', () => {
 describe('money moves once, and for the right amount', () => {
   it('a stale payment attempt is not reused after the total changes', () => {
     expect(read('apps/api/src/application/use-cases/commerce/StartOrderPaymentUseCase.ts'))
-      .toMatch(/a\.amount === order\.totalUgx/);
+      .toMatch(/a\.amount === amountDue\)/);
+    // 0196: the amount due is the total unless store credit paid part of it.
+    expect(read('apps/api/src/application/use-cases/commerce/StartOrderPaymentUseCase.ts'))
+      .toMatch(/const amountDue = order\.storeCreditAppliedUgx \? Math\.max\(0, order\.totalUgx - order\.storeCreditAppliedUgx\) : order\.totalUgx;/);
   });
 
   it('a reversal settles only what actually came back', () => {

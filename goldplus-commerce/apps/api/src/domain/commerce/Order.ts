@@ -131,8 +131,29 @@ export class Order {
      * keeps the pre-redemption quote; the pair records the difference.
      */
     public readonly loyaltyDiscountUgx: number = 0,
-    public readonly loyaltyRedemptionId: string | null = null
+    public readonly loyaltyRedemptionId: string | null = null,
+    /**
+     * Store credit or a gift card paying part of this order (gap analysis #17). A TENDER, not a discount:
+     * totalUgx stays the full sale (revenue, analytics, the money invariants), and what Pesapal is asked for is
+     * amountDueUgx. Held in the same transaction that saves the order.
+     */
+    public readonly storeCreditAppliedUgx: number = 0
   ) {}
+
+  /** What the customer still has to pay after store credit: the Pesapal amount. */
+  get amountDueUgx(): number {
+    return Math.max(0, this.totalUgx - (this.storeCreditAppliedUgx ?? 0));
+  }
+
+  /** The same order with store credit recorded (used right after the save transaction applied it). */
+  withStoreCredit(appliedUgx: number): Order {
+    return new Order(
+      this.id, this.orderNumber, this.customerName, this.customerPhone, this.customerEmail, this.deliveryArea, this.deliveryAddress,
+      this.buyerType, this.items, this.subtotalUgx, this.deliveryFeeUgx, this.totalUgx, this.paymentStatus, this.orderStatus,
+      this.createdAt, this.updatedAt, this.deliveryLocation, this.deliveryFeeConfirmed, this.pricingSnapshot, this.userId,
+      this.loyaltyDiscountUgx, this.loyaltyRedemptionId, Math.max(0, Math.min(appliedUgx, this.totalUgx)),
+    );
+  }
 
   public static create(
     id: string,

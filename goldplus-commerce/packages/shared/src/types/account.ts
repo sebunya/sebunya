@@ -84,6 +84,8 @@ export interface OrderDetailDto {
   orderNumber: string;
   status: OrderStatus;
   totalAmountUgx: number;
+  /** 0196: what a gift card / store credit paid towards the total (0 when none). The rest is what is due. */
+  storeCreditAppliedUgx?: number;
   createdAt: string;
   /** See OrderSummaryDto.paymentStatus. */
   paymentStatus?: string | null;

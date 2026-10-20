@@ -76,6 +76,8 @@ export type CheckoutErrorCode =
   | 'PAY_ON_DELIVERY_UNAVAILABLE'
   /** The points could not be used on this order. */
   | 'LOYALTY_REDEMPTION_REFUSED'
+  /** 0196: the gift card / store credit cannot pay this order (nothing was ordered or charged). */
+  | 'STORE_CREDIT_UNAVAILABLE'
   | 'ORDER_FAILED'
   | 'CHECKOUT_SESSION_UNAVAILABLE'
   | 'DB_NOT_CONFIGURED';

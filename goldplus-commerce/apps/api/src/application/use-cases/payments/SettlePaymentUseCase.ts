@@ -53,6 +53,11 @@ export interface SettlePaymentEffects {
    * The payment stands and the order proceeds; a person settles the difference. Optional so older fakes type.
    */
   flagPaidAmountMismatch?(orderId: string, paidUgx: number): Promise<void>;
+  /**
+   * 0196: the order's store credit / gift card hold becomes spent, once its payment is confirmed. Idempotent.
+   * Optional so older fakes type.
+   */
+  captureStoreCredit?(orderId: string): Promise<void>;
   /** Where a failed effect surfaces. Never silent. */
   onEffectFailed(effect: string, orderId: string, error: unknown): void;
 }
@@ -136,6 +141,8 @@ export class SettlePaymentUseCase {
         this.effects.markFulfilmentPaid(verification.orderId));
       await this.runEffect('loyalty_settlement', verification.orderId, () =>
         this.effects.settleLoyalty(verification.orderId));
+      const capture = this.effects.captureStoreCredit?.bind(this.effects);
+      if (capture) await this.runEffect('store_credit_capture', verification.orderId, () => capture(verification.orderId));
       await this.runEffect('admin_email', verification.orderId, () =>
         this.effects.enqueueAdminEmail(verification.orderId));
       await this.runEffect('fulfilment_alert', verification.orderId, () =>
@@ -173,6 +180,21 @@ export class SettlePaymentUseCase {
    * (no-op when already paid), the paid-order alert (one outbox row per
    * order and recipient) and the customer's receipt (one per order/template).
    */
+  /**
+   * 0196: the confirmed-payment effects for an order paid ENTIRELY by store credit / a gift card: there is no
+   * provider verification (so no purchase-measurement reconciliation and no paid-amount check), everything else
+   * is what a confirmed Pesapal payment runs.
+   */
+  async runCreditPaidEffects(orderId: string): Promise<void> {
+    await this.runEffect('fulfilment_payment_confirmed', orderId, () => this.effects.markFulfilmentPaid(orderId));
+    await this.runEffect('loyalty_settlement', orderId, () => this.effects.settleLoyalty(orderId));
+    const capture = this.effects.captureStoreCredit?.bind(this.effects);
+    if (capture) await this.runEffect('store_credit_capture', orderId, () => capture(orderId));
+    await this.runEffect('admin_email', orderId, () => this.effects.enqueueAdminEmail(orderId));
+    await this.runEffect('fulfilment_alert', orderId, () => this.effects.notifyFulfilmentOfPaidOrder(orderId));
+    await this.runEffect('customer_message', orderId, () => this.effects.enqueueCustomerMessage(orderId, 'ORDER_PAYMENT_SUCCESS'));
+  }
+
   async redoConfirmedEffects(orderId: string): Promise<void> {
     await this.runEffect('fulfilment_payment_confirmed', orderId, () => this.effects.markFulfilmentPaid(orderId));
     await this.runEffect('fulfilment_alert', orderId, () => this.effects.notifyFulfilmentOfPaidOrder(orderId));

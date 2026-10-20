@@ -27,6 +27,7 @@ export type CustomerTemplate =
   | 'ORDER_COLLECTED'
   | 'ORDER_REVIEW_REMINDER'
   | 'ORDER_PAYMENT_REMINDER'
+  | 'CREDIT_ISSUED'
   | 'ORDER_CANCELLED_BY_SHOP'
   | 'PHONE_VERIFICATION'
   | 'PASSWORD_RESET'
@@ -46,6 +47,9 @@ export interface CustomerMessageData {
   orderNumber?: string | null;
   totalUgx?: number | null;
   reference?: string | null;
+  /** 0196 CREDIT_ISSUED. */
+  creditKind?: 'gift_card' | 'store_credit';
+  creditCode?: string;
   code?: string | null;
   resetUrl?: string | null;
   expiresInMinutes?: number | null;
@@ -190,6 +194,9 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
     case 'ORDER_PAYMENT_REMINDER':
       // Sent once, about an hour after an online order was placed and never paid, never while a payment is clearing.
       return `${SHOP_NAME}: your order${ref} for ${formatUgx(d.totalUgx)} is saved but not paid yet. Pay with Mobile Money or card here: ${track} If you already paid, do not pay again; call ${phone}. We will not remind you again.`;
+    case 'CREDIT_ISSUED':
+      // 0196: the code is the money. Said plainly, once, to the number staff typed at issue.
+      return `${SHOP_NAME}: you have a ${d.creditKind === 'gift_card' ? 'gift card' : 'store credit'} of ${formatUgx(d.valueUgx)}. Code: ${d.creditCode}. Use it at checkout on shopgoldplus.com or in the shop. Anyone with this code can spend it, so keep it safe. Questions? Call ${phone}.`;
     case 'ORDER_REVIEW_REMINDER':
       // Sent once, a few days after delivery or collection, only when nothing on the order is rated.
       return `${SHOP_NAME}: how is what you bought on order${ref}? A rating helps the next shopper choose: ${reviewOrderUrl(d.orderNumber)} We will not ask again. If anything is wrong, call ${phone}.`;

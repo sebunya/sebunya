@@ -1,6 +1,9 @@
 import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { Registry } from '../../../infrastructure/Registry';
+import { normalizeCreditCode } from '../../../domain/credit/CreditInstrument';
+import { mayProgressToPayment } from '../../../domain/inventory/Inventory';
+import { creditCodeHash } from '../../../infrastructure/credit/CreditCodeCrypto';
 import { ApiResponse } from '@goldplus/shared';
 import { customerSessionMiddleware } from '../middleware/customerSession';
 import { createHash } from 'crypto';
@@ -97,6 +100,8 @@ const checkoutBodySchema = z.object({
   // verified principal and the signed intent id, so the caller cannot influence
   // it at all. A field accepted here would be attacker-controlled by definition.
   couponCode: z.string().trim().min(3).max(40).nullish(),
+  // 0196: a gift card or store credit code (GPGC-/GPSC-…); format-checked and hashed before checkout sees it.
+  storeCreditCode: z.string().trim().max(40).nullish(),
   previewQuoteId: z.string().uuid().nullish(),
   acceptPriceChange: z.boolean().optional(),
   redeemPoints: z.number().int().positive().max(1_000_000).optional(),
@@ -325,6 +330,15 @@ routes.get('/storefront-discount', async (c) => {
  * this reveals nothing a PDP does not. An unknown or unqualified code is a
  * truthful zero with a reason, never an error page.
  */
+/** 0196: what a gift card / store credit code is worth now. The code holder learns the balance, nothing else. */
+routes.post('/credit/check', async (c) => {
+  const body = await c.req.json().catch(() => null);
+  c.header('Cache-Control', 'no-store');
+  const result = await registry.manageCreditUseCases.check(body?.code);
+  if (!result.ok) return c.json({ success: false, error: { code: 'STORE_CREDIT_UNAVAILABLE', message: 'That code is not right. Check each character, or call us.' } }, 404);
+  return c.json({ success: true, data: result });
+});
+
 /** Bundles that include a product (gap analysis #9). Public, like the PDP itself; evaluator figures only. */
 routes.get('/bundles', async (c) => {
   const productId = String(c.req.query('productId') ?? '');
@@ -739,6 +753,16 @@ routes.post('/orders/create', async (c) => {
     }
   }
 
+  // 0196: only the keyed hash of a gift card / store credit code goes any further than this line.
+  let storeCreditCodeHash: string | null = null;
+  if (body.storeCreditCode) {
+    const parsedCode = normalizeCreditCode(body.storeCreditCode);
+    if (!parsedCode) {
+      return c.json({ success: false, error: { code: 'STORE_CREDIT_UNAVAILABLE', message: 'That gift card or credit code is not right. Check it, or remove it to pay the full amount.' }, meta: { traceId } }, 409);
+    }
+    storeCreditCodeHash = creditCodeHash(parsedCode.code);
+  }
+
   const outcome = await registry.executeCheckoutIntentUseCase.execute({
     claims,
     profileId: checkoutProfileId,
@@ -749,6 +773,7 @@ routes.post('/orders/create', async (c) => {
     buyerType: body.buyerType,
     items: body.items,
     couponCode: body.couponCode ?? null,
+    storeCreditCodeHash,
     previewQuoteId: body.previewQuoteId ?? null,
     acceptPriceChange: body.acceptPriceChange ?? false,
     redeemPoints: body.redeemPoints ?? null,
@@ -762,8 +787,21 @@ routes.post('/orders/create', async (c) => {
   });
 
   if (isCheckoutSuccess(outcome)) {
+    // 0196: credit covers the whole order: settle it now (same doors as a verified payment), then answer with
+    // the paid order. Only when the order may take payment at all (stock reserved), like an online payment.
+    let checkoutOrder = outcome.order;
+    const credited = checkoutOrder as unknown as { id: string; amountDueUgx: number; storeCreditAppliedUgx?: number; paymentStatus: string };
+    if ((credited.storeCreditAppliedUgx ?? 0) > 0 && credited.amountDueUgx === 0 && credited.paymentStatus !== 'paid' && mayProgressToPayment(outcome.reservationState)) {
+      try {
+        await registry.settleByStoreCreditUseCase.execute(credited.id, traceId);
+        checkoutOrder = (await registry.orderRepo.findById(credited.id)) ?? checkoutOrder;
+      } catch (err) {
+        // The order and its credit hold stand; the payment ops sweep and staff see an unpaid credit order.
+        logger.error({ err, orderId: credited.id, traceId }, 'STORE_CREDIT_SETTLEMENT_FAILED');
+      }
+    }
     const dto = toCheckoutResponseDto({
-      order: outcome.order,
+      order: checkoutOrder,
       reservationState: outcome.reservationState,
       deliveryFeeConfirmed: outcome.deliveryFeeConfirmed,
       idempotentReplay: outcome.idempotentReplay,
@@ -870,7 +908,7 @@ routes.post('/orders/create', async (c) => {
   // PRICE_CHANGED to ORDER_FAILED told the customer to "try again" for a
   // refusal that trying again cannot fix, and left the storefront's specific
   // wording for each of these unreachable.
-  const PUBLIC_TERMINAL_REASONS = new Set(['PRICE_CHANGED', 'PROMOTION_CHANGED', 'PRODUCT_UNAVAILABLE', 'PRICE_UNAVAILABLE', 'PROMOTION_LIMIT_REACHED', 'PAY_ON_DELIVERY_UNAVAILABLE', 'LOYALTY_REDEMPTION_REFUSED']);
+  const PUBLIC_TERMINAL_REASONS = new Set(['PRICE_CHANGED', 'PROMOTION_CHANGED', 'PRODUCT_UNAVAILABLE', 'PRICE_UNAVAILABLE', 'PROMOTION_LIMIT_REACHED', 'PAY_ON_DELIVERY_UNAVAILABLE', 'LOYALTY_REDEMPTION_REFUSED', 'STORE_CREDIT_UNAVAILABLE']);
   if (outcome.kind === 'FAILED_FINAL' && PUBLIC_TERMINAL_REASONS.has(outcome.reason)) {
     mapped = { status: 409, code: outcome.reason, message: mapped.message };
   }
@@ -962,6 +1000,8 @@ routes.post('/orders/lookup', async (c) => {
       subtotalUgx: order.subtotalUgx,
       deliveryFeeUgx: order.deliveryFeeUgx,
       totalUgx: order.totalUgx,
+      // 0196: the gift card / store credit part, so the page can say what is still to pay.
+      storeCreditAppliedUgx: order.storeCreditAppliedUgx,
       paymentStatus: order.paymentStatus,
       orderStatus: order.orderStatus,
       createdAt: order.createdAt,

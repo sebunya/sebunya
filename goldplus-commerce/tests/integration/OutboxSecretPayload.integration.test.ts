@@ -65,4 +65,21 @@ suite('outbox events that carry a verification code (real PostgreSQL)', () => {
     expect(await payloadOf(id)).toEqual({ message: 'Order GP-1 is on its way', code: 'not-a-secret' });
     expect(await repo.replayDeadLettered(id)).toBe(true);
   });
+
+  // 0196: a gift card / store credit code rides the shared CUSTOMER_ORDER_MESSAGE type, so it is found by its key.
+  const card = { template: 'CREDIT_ISSUED', creditCode: 'GPGC-7K2Q-ABCD-EF12', message: 'GoldPlus: you have a gift card of UGX 50,000. Code: GPGC-7K2Q-ABCD-EF12.', customerPhone: '+256772000000' };
+
+  it('a sent gift card message keeps no code, and a failed one cannot be replayed', async () => {
+    const sent = await leased('CUSTOMER_ORDER_MESSAGE', card);
+    expect(await repo.markProcessed(sent)).toBe(true);
+    const p = await payloadOf(sent);
+    expect(JSON.stringify(p)).not.toContain('GPGC-7K2Q');
+    expect(p.template).toBe('CREDIT_ISSUED');
+    expect(p.customerPhone).toBe('+256772000000');
+
+    const failed = await leased('CUSTOMER_ORDER_MESSAGE', card);
+    expect(await repo.markDeadLettered(failed, 'Not retryable: test')).toBe(true);
+    expect(JSON.stringify(await payloadOf(failed))).not.toContain('GPGC-7K2Q');
+    expect(await repo.replayDeadLettered(failed)).toBe(false);
+  });
 });

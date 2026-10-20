@@ -94,7 +94,7 @@ export interface PaymentAttemptReader {
 }
 
 export interface StartPaymentOrderReader {
-  findById(orderId: string): Promise<{ id: string; paymentStatus: string; totalUgx: number; orderStatus?: string } | null>;
+  findById(orderId: string): Promise<{ id: string; paymentStatus: string; totalUgx: number; orderStatus?: string; storeCreditAppliedUgx?: number } | null>;
 }
 
 /**
@@ -108,6 +108,8 @@ const CLOSED_ORDER_STATUSES = new Set(['cancelled', 'failed']);
 export interface StartOrderPaymentDeps {
   /** Injected so the reuse window is testable without waiting 30 minutes. */
   now?: () => Date;
+  /** 0196: settles an order store credit pays in full (SettleByStoreCreditUseCase). Optional for older suites. */
+  settleByStoreCredit?: { execute(orderId: string, traceId: string): Promise<'settled' | 'not_fully_covered' | 'already_paid' | 'not_found'> };
   idempotency: ICheckoutIdempotencyRepository;
   orders: StartPaymentOrderReader;
   attempts: PaymentAttemptReader;
@@ -226,6 +228,15 @@ export class StartOrderPaymentUseCase {
       return { kind: 'NOT_PAYABLE', reason: 'ORDER_HOLD_EXPIRED' };
     }
 
+    // 0196: store credit covers the whole order, so there is nothing to send to Pesapal. Checkout settles such an
+    // order itself; if that step failed, every Pay button would otherwise refuse with NOTHING_TO_PAY for good.
+    // Finishing the settlement here makes any later "Pay" the retry.
+    if (this.deps.settleByStoreCredit && order.storeCreditAppliedUgx && order.storeCreditAppliedUgx >= order.totalUgx && order.totalUgx > 0) {
+      const settled = await this.deps.settleByStoreCredit.execute(orderId, command.traceId);
+      if (settled === 'settled' || settled === 'already_paid') return { kind: 'ALREADY_PAID', reason: 'ORDER_ALREADY_PAID' };
+      return { kind: 'NOT_PAYABLE', reason: 'ORDER_NOT_PAYABLE' };
+    }
+
     // A live attempt is reused rather than re-submitted. Submitting again gave one
     // order several concurrent provider transactions, any of which could later
     // report a payment.
@@ -240,11 +251,13 @@ export class StartOrderPaymentUseCase {
       REUSABLE_ATTEMPT_STATUSES.has(a.status) ||
       (RETRY_REUSE_STATUSES.has(a.status) &&
         now.getTime() - new Date(a.createdAt).getTime() < retryReuseWindowMs());
+    // 0196: a store-credit order is sent to Pesapal for what is still due, so a reusable attempt is for that amount.
+    const amountDue = order.storeCreditAppliedUgx ? Math.max(0, order.totalUgx - order.storeCreditAppliedUgx) : order.totalUgx;
     const reusable = existing
       // Newest first: the page the customer was last on is the one to return to.
       .slice()
       .sort((x, y) => new Date(y.createdAt).getTime() - new Date(x.createdAt).getTime())
-      .find((a) => stillOpen(a) && a.redirectUrl && a.orderTrackingId && a.amount === order.totalUgx);
+      .find((a) => stillOpen(a) && a.redirectUrl && a.orderTrackingId && a.amount === amountDue);
     if (reusable) {
       await this.recordPaymentProgress(checkout.identity, orderId, command);
       return {

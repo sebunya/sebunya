@@ -1,4 +1,5 @@
 import { db } from '../client';
+import { holdStoreCreditInTx } from '../../credit/DrizzleCreditRepository';
 import { guardedMeasurementWrite, recordOrderPlaced } from '../../measurement/BusinessEventWriter';
 import { orders, orderItems , checkoutIdempotency } from '../schema/commerce';
 import { pricingQuotes, promotionRedemptions, promotionReservations } from '../schema/pricing';
@@ -30,7 +31,8 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
       result.subtotalAmount, result.deliveryFee, result.totalAmount, result.paymentStatus as PaymentStatus,
       result.status as DomainOrderStatus, result.createdAt, result.updatedAt, (result.deliveryLocation as any) ?? null,
       result.deliveryFeeConfirmed ?? false, pricing, result.userId ?? null,
-      (result as { loyaltyDiscountUgx?: number }).loyaltyDiscountUgx ?? 0, (result as { loyaltyRedemptionId?: string | null }).loyaltyRedemptionId ?? null
+      (result as { loyaltyDiscountUgx?: number }).loyaltyDiscountUgx ?? 0, (result as { loyaltyRedemptionId?: string | null }).loyaltyRedemptionId ?? null,
+      Number((result as { storeCreditAppliedUgx?: number | null }).storeCreditAppliedUgx ?? 0),
     );
   }
   async findById(id: string): Promise<Order | null> {
@@ -177,6 +179,8 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
     clientOrderKey: string | null;
     checkoutLink?: { identity: string; claimToken: string; fencingNumber: number };
     stitching?: { profileId?: string | null; cartId?: string | null } | null;
+    /** 0196: the HMAC of a store credit / gift card code to hold against this order (gap analysis #17). */
+    storeCredit?: { codeHash: string; maxUgx?: number | null } | null;
   }): Promise<{ order: Order; duplicate: boolean }> {
     // The order total may sit BELOW the quote total by exactly the loyalty
     // redemption discount (0085) — any other divergence is still a mismatch.
@@ -254,10 +258,16 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
         await tx.insert(promotionRedemptions).values(reservations.map((reservation) => ({ reservationId: reservation.id, orderId: input.order.id, redeemedAt: new Date() })));
         await tx.update(promotionReservations).set({ status: 'REDEEMED', updatedAt: new Date() }).where(inArray(promotionReservations.id, reservations.map((row) => row.id)));
       }
+      // 0196: store credit / a gift card pays part of the order. Held in THIS transaction, under the instrument's
+      // row lock, so two orders can never spend one balance and an order never exists with a hold half-written.
+      // A card that stopped being spendable since the customer checked it rolls the order back (named error).
+      const appliedCredit = input.storeCredit
+        ? await holdStoreCreditInTx(tx, { codeHash: input.storeCredit.codeHash, orderId: input.order.id, orderTotalUgx: input.order.totalUgx, maxUgx: input.storeCredit.maxUgx ?? null })
+        : 0;
       // order_created (+ order_confirmed for cash on delivery, D-006) in the
       // same transaction as the order; guarded so it never blocks checkout (D-008).
       await guardedMeasurementWrite(tx, input.order.id, 'order_placed', (sp) => recordOrderPlaced(sp, input.order.id, input.order.createdAt));
-      return { order: input.order, duplicate: false };
+      return { order: appliedCredit > 0 ? input.order.withStoreCredit(appliedCredit) : input.order, duplicate: false };
     });
   }
 
@@ -307,6 +317,7 @@ export class DrizzleOrderRepository implements ICustomerOrderRepository, ITransa
       orderNumber: row.orderNumber,
       status: row.status as OrderStatus,
       totalAmountUgx: row.totalAmount,
+      storeCreditAppliedUgx: Number(row.storeCreditAppliedUgx ?? 0),
       createdAt: row.createdAt.toISOString(),
       paymentStatus: row.paymentStatus ?? null,
       paymentMethod: row.paymentMethod ?? null,

@@ -33,6 +33,7 @@ export interface ITransactionalPricedOrderRepository extends IOrderRepository {
      * query treats it as identity.
      */
     stitching?: { profileId?: string | null; cartId?: string | null } | null;
+    storeCredit?: { codeHash: string; maxUgx?: number | null } | null;
   }): Promise<{ order: Order; duplicate: boolean }>;
 }
 
@@ -63,6 +64,8 @@ export interface CheckoutDto {
   /** Active checkout lease, so the order and its claim link commit together. */
   checkoutLink?: { identity: string; claimToken: string; fencingNumber: number };
   couponCode?: string | null;
+  /** 0196: keyed hash of a store credit / gift card code to hold against the order (gap analysis #17). */
+  storeCreditCodeHash?: string | null;
   previewQuoteId?: string | null;
   acceptPriceChange?: boolean;
   /**
@@ -460,7 +463,7 @@ export class CheckoutUseCase {
         throw err;
       });
       try {
-        const saved = await this.authoritativePricing.orders.savePricedOrder({ order, quote, reservationIds: reservation.reservations.map((item) => item.id), clientOrderKey, checkoutLink: dto.checkoutLink, stitching: dto.stitching ?? null, paymentMethod: dto.paymentMethod ?? null });
+        const saved = await this.authoritativePricing.orders.savePricedOrder({ order, quote, reservationIds: reservation.reservations.map((item) => item.id), clientOrderKey, checkoutLink: dto.checkoutLink, stitching: dto.stitching ?? null, paymentMethod: dto.paymentMethod ?? null, storeCredit: dto.storeCreditCodeHash ? { codeHash: dto.storeCreditCodeHash } : null });
         if (saved.duplicate && reservation.reservations.length) await this.authoritativePricing.capacity.release({ quoteId: quote.id });
         if (loyaltyReservation && this.loyaltyRedemption) {
           if (saved.duplicate) {

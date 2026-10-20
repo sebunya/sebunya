@@ -59,7 +59,8 @@ describe('a page paid at an amount the order no longer has', () => {
   it('production compares with the order total and opens one review task per order, never blocking the payment', () => {
     const src = readFileSync(join(__dirname, '../../apps/api/src/infrastructure/Registry.ts'), 'utf8');
     const body = src.slice(src.indexOf('flagPaidAmountMismatch: async'), src.indexOf('onEffectFailed: (effect, orderId, error)'));
-    expect(body).toMatch(/order\.totalUgx === paidUgx\) return/);
+    // 0196: what Pesapal was asked for is the amount due (total less store credit).
+    expect(body).toMatch(/order\.amountDueUgx === paidUgx\) return/);
     expect(body).toMatch(/openPaymentReviewTask\(orderId/);
     const helper = src.slice(src.indexOf('private async openPaymentReviewTask'), src.indexOf('public readonly settlePaymentUseCase'));
     expect(helper).toMatch(/lastTitled\(title\)/);

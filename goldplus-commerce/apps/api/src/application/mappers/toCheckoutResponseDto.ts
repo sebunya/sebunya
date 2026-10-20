@@ -36,6 +36,9 @@ export interface CheckoutResponseDto {
   reservationState: OrderReservationState;
   deliveryFeeConfirmed: boolean;
   totalAmount: number;
+  /** 0196: store credit / gift card applied, and what is left to pay online (total less credit). */
+  storeCreditAppliedUgx: number;
+  amountDueUgx: number;
   currency: string;
   nextAction: CheckoutNextAction;
   idempotentReplay: boolean;
@@ -59,6 +62,8 @@ export function toCheckoutResponseDto(input: {
     // The total is included because the customer is about to be asked to pay it
     // and needs to see it. It is the server's figure, never the client's.
     totalAmount: order.totalUgx,
+    storeCreditAppliedUgx: order.storeCreditAppliedUgx ?? 0,
+    amountDueUgx: order.amountDueUgx,
     currency: order.pricingSnapshot?.currency ?? 'UGX',
     nextAction: nextActionFor(reservationState, order.paymentStatus),
     idempotentReplay: input.idempotentReplay,

@@ -85,6 +85,8 @@ const TRANSACTIONAL_TEMPLATES = new Set([
   // counter collection and the single review reminder a few days later.
   'ORDER_COLLECTED',
   'ORDER_REVIEW_REMINDER',
+  // 0196: the code of a gift card or store credit issued to this customer, sent once at issue.
+  'CREDIT_ISSUED',
   // The one reminder that an online order the customer placed is still unpaid.
   'ORDER_PAYMENT_REMINDER',
   'SUPPORT_REQUEST_RECEIVED',

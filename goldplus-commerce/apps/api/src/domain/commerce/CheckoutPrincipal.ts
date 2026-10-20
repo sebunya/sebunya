@@ -146,6 +146,8 @@ export function idempotencyIdentity(
 // ---------------------------------------------------------------------------
 
 export interface CheckoutFingerprintInput {
+  /** 0196: the HMAC of a store credit / gift card code, when one is used (appended only then). */
+  storeCreditCodeHash?: string | null;
   principal: CheckoutPrincipal;
   items: ReadonlyArray<{ productId: string; quantity: number }>;
   buyerType: string;
@@ -292,6 +294,8 @@ export function checkoutFingerprint(input: CheckoutFingerprintInput): string {
     (input.promotionVersion ?? '').trim(),
     (input.stockPolicyVersion ?? '').trim(),
     (input.deliveryPolicyVersion ?? '').trim(),
+    // Appended only when present, so every fingerprint made without credit is unchanged.
+    ...(input.storeCreditCodeHash ? [`credit:${input.storeCreditCodeHash}`] : []),
   ]);
 
   return createHash('sha256').update(canonical).digest('hex');
