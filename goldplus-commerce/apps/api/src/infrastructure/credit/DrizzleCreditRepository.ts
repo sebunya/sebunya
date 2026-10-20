@@ -73,7 +73,7 @@ export class DrizzleCreditRepository implements ICreditRepository {
 
   async list(input: { limit: number; status?: string | null; kind?: CreditKind | null }): Promise<CreditInstrumentView[]> {
     const rows = rowsOf(await db.execute(sql`
-      select i.*, ${BALANCE} as balance from credit_instruments i
+      select i.*, ${BALANCE} as balance, ${HELD} as held from credit_instruments i
        where (${input.status ?? null}::text is null or i.status = ${input.status ?? null})
          and (${input.kind ?? null}::text is null or i.kind = ${input.kind ?? null})
        order by i.created_at desc limit ${Math.max(1, Math.min(input.limit, 300))}`));
@@ -90,6 +90,17 @@ export class DrizzleCreditRepository implements ICreditRepository {
         from credit_ledger l left join orders o on o.id = l.order_id
        where l.instrument_id = ${instrumentId} order by l.created_at desc limit 200`)).map((r) => ({
       type: r.type, amountUgx: Number(r.amount_ugx), holdState: r.hold_state ?? null, orderNumber: r.order_number ?? null, note: r.note ?? null, createdAt: new Date(r.created_at),
+    }));
+  }
+
+  async ledgerBetween(from: Date, to: Date, limit: number) {
+    return rowsOf(await db.execute(sql`
+      select l.type, l.amount_ugx, l.hold_state, l.note, l.created_at, o.order_number, i.kind, i.code_last4
+        from credit_ledger l join credit_instruments i on i.id = l.instrument_id left join orders o on o.id = l.order_id
+       where l.created_at >= ${from} and l.created_at < ${to}
+       order by l.created_at limit ${Math.max(1, Math.min(limit, 50_000))}`)).map((r) => ({
+      type: r.type, amountUgx: Number(r.amount_ugx), holdState: r.hold_state ?? null, orderNumber: r.order_number ?? null, note: r.note ?? null,
+      createdAt: new Date(r.created_at), kind: r.kind as CreditKind, last4: String(r.code_last4),
     }));
   }
 

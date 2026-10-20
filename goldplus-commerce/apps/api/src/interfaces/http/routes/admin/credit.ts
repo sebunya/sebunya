@@ -24,6 +24,22 @@ routes.get('/', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) => {
   return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
 });
 
+// Registered before '/:id' so 'ledger' is never read as a card id.
+routes.get('/ledger', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) => {
+  // Dates are Kampala days: from 00:00 EAT on `from` to 00:00 EAT the day after `to`.
+  const day = (v: string | undefined, plusDays = 0) => {
+    if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return null;
+    const d = new Date(`${v}T00:00:00+03:00`);
+    return Number.isNaN(d.getTime()) ? null : new Date(d.getTime() + plusDays * 86_400_000);
+  };
+  const from = day(c.req.query('from'));
+  const to = day(c.req.query('to'), 1);
+  const data = from && to ? await Registry.getInstance().manageCreditUseCases.ledgerBetween(from, to) : null;
+  if (!data) return c.json({ success: false, error: { code: 'BAD_PERIOD', message: 'Choose a from and to date, at most about a year apart.' } } satisfies ApiResponse<never>, 400);
+  c.header('Cache-Control', 'no-store');
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+
 routes.get('/:id', requirePermissions([PERMISSIONS.PAYMENTS_READ]), async (c) => {
   const id = c.req.param('id') ?? '';
   const data = UUID.test(id) ? await Registry.getInstance().manageCreditUseCases.detail(id) : null;

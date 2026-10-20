@@ -103,6 +103,12 @@ export class ManageCreditUseCases {
 
   forCustomer(userId: string): Promise<CreditInstrumentView[]> { return this.repo.forCustomer(userId); }
 
+  /** The accountant's view: every movement in [from, to), at most 50,000 rows. */
+  ledgerBetween(from: Date, to: Date) {
+    if (!(from < to) || to.getTime() - from.getTime() > 400 * 86_400_000) return Promise.resolve(null);
+    return this.repo.ledgerBetween(from, to, 50_000);
+  }
+
   /** Give back to the card part of what an order spent from it (an item returned). Never more than it spent. */
   async returnToCard(orderNumber: unknown, amountUgx: number, actorId: string, note: string) {
     const ref = typeof orderNumber === 'string' ? orderNumber.trim().toUpperCase() : '';

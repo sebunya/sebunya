@@ -39,6 +39,8 @@ export interface ICreditRepository {
   list(input: { limit: number; status?: string | null; kind?: CreditKind | null }): Promise<CreditInstrumentView[]>;
   forCustomer(userId: string): Promise<CreditInstrumentView[]>;
   ledger(instrumentId: string): Promise<CreditLedgerRow[]>;
+  /** Every card movement in a period, for the accountant (newest last). */
+  ledgerBetween(from: Date, to: Date, limit: number): Promise<Array<CreditLedgerRow & { kind: CreditKind; last4: string }>>;
   approve(id: string, approverId: string, now: Date): Promise<boolean>;
   /** Cancels what is left (a VOID entry of the remaining balance) and marks the instrument void. */
   voidInstrument(id: string, actorId: string, note: string, now: Date): Promise<number | null>;

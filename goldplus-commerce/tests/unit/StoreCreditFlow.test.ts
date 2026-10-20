@@ -142,4 +142,57 @@ describe('store credit flow (gap #17)', () => {
     expect(await m.returnToCard('nonsense', 25_000, 'staff', 'Charger returned')).toMatchObject({ ok: false });
     expect(back).toHaveLength(1);
   });
+
+  it('a cancelled order says where the card money went, and who refunds the rest', async () => {
+    const { smsText, emailCopy } = await import('../../apps/api/src/application/notifications/CustomerMessages');
+    const base = { orderNumber: 'GP-1', totalUgx: 116_500 };
+    const partPaid = smsText('ORDER_CANCELLED_BY_SHOP', { ...base, storeCreditAppliedUgx: 50_000, paymentStatus: 'paid' } as never)!;
+    expect(partPaid).toContain('The UGX 50,000 your gift card or store credit paid is back on the card already.');
+    expect(partPaid).toContain('If you paid the other UGX 66,500 by Mobile Money or card, our team arranges that refund.');
+    const fullCard = smsText('ORDER_CANCELLED_BY_SHOP', { ...base, storeCreditAppliedUgx: 116_500, paymentStatus: 'paid' } as never)!;
+    expect(fullCard).toContain('Nothing else was paid, so there is nothing more to refund.');
+    expect(fullCard).not.toContain('our team arranges');
+    const unpaid = smsText('ORDER_CANCELLED_BY_SHOP', { ...base, storeCreditAppliedUgx: 50_000, paymentStatus: 'unpaid' } as never)!;
+    expect(unpaid).toContain('reserved on your gift card or store credit is free to use again');
+    expect(smsText('ORDER_CANCELLED_BY_SHOP', base as never)).toContain('If you paid for it, our team arranges the refund.');
+    expect(emailCopy('ORDER_CANCELLED_BY_SHOP', { ...base, storeCreditAppliedUgx: 50_000, paymentStatus: 'paid' } as never)?.body).toContain('our team arranges that refund and will contact you');
+    const { cancelRefundUpdate } = await import('../../apps/api/src/application/notifications/CustomerMessages');
+    expect(cancelRefundUpdate({ ...base, storeCreditAppliedUgx: 116_500, paymentStatus: 'paid' } as never)).toBe('The UGX 116,500 your gift card or store credit paid is back on the card already. Nothing else was paid, so there is nothing more to refund.');
+    expect(cancelRefundUpdate(base as never)).toBeNull(); // the designed email keeps its own line
+    const { renderEmailTemplate, customerEmailData } = await import('../../apps/api/src/infrastructure/notifications/email/emailTemplateData');
+    const html = renderEmailTemplate('ORDER_CANCELLED_BY_SHOP', customerEmailData('ORDER_CANCELLED_BY_SHOP', {
+      customerName: 'Amina', orderNumber: 'GP-1', createdAt: new Date().toISOString(), totalUgx: 116_500, deliveryFeeUgx: 0, deliveryLocation: 'Kampala',
+      paymentStatus: 'paid', orderUrl: 'https://shopgoldplus.com/track-order', items: [], refundUpdate: cancelRefundUpdate({ ...base, storeCreditAppliedUgx: 50_000, paymentStatus: 'paid' } as never),
+    } as never)).html;
+    expect(html).toContain('is back on the card already');
+    expect(html).not.toContain('If any money was taken');
+  });
+
+  it('the accountant export: labelled movements, released holds as 0, and no cell a spreadsheet would run', async () => {
+    const realFetch = globalThis.fetch;
+    let asked = '';
+    globalThis.fetch = (async (u: string) => {
+      asked = String(u);
+      return new Response(JSON.stringify({ success: true, data: [
+        { type: 'ISSUE', amountUgx: 50_000, holdState: null, orderNumber: null, note: '=HYPERLINK("http://evil")', createdAt: '2026-10-20T07:00:00Z', kind: 'gift_card', last4: 'AB12' },
+        { type: 'HOLD', amountUgx: -20_000, holdState: 'captured', orderNumber: 'GP-1', note: 'Checkout', createdAt: '2026-10-20T08:00:00Z', kind: 'gift_card', last4: 'AB12' },
+        { type: 'HOLD', amountUgx: -5_000, holdState: 'released', orderNumber: 'GP-2', note: 'Checkout, "abandoned"', createdAt: '2026-10-20T09:00:00Z', kind: 'gift_card', last4: 'AB12' },
+      ] }), { status: 200 });
+    }) as never;
+    try {
+      const { GET } = await import('../../apps/web/src/pages/admin/credit/ledger.csv');
+      const unauth = await GET({ request: new Request('http://x/admin/credit/ledger.csv'), url: new URL('http://x/admin/credit/ledger.csv') } as never);
+      expect(unauth.status).toBe(401);
+      const res = await GET({ request: new Request('http://x/', { headers: { cookie: 'goldplus_session=t' } }), url: new URL('http://x/admin/credit/ledger.csv?from=2026-10-01&to=2026-10-31') } as never);
+      expect(asked).toContain('/admin/credit/ledger?from=2026-10-01&to=2026-10-31');
+      expect(res.headers.get('content-type')).toContain('text/csv');
+      const rows = (await res.text()).trim().split('\r\n');
+      expect(rows[0]).toBe('Date (Kampala),Card,Movement,Amount (UGX),Order,Note');
+      expect(rows[1]).toContain(`Gift card ****AB12,Issued,50000,,"'=HYPERLINK(""http://evil"")"`);
+      expect(rows[2]).toContain('Spent on an order,-20000,GP-1,Checkout');
+      expect(rows[3]).toContain(`Reserved then released,0,GP-2,"Checkout, ""abandoned"""`);
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
 });

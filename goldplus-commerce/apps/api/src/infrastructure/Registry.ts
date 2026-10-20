@@ -1,4 +1,5 @@
 import { ReholdStockOnLatePaymentUseCase } from '../application/use-cases/payments/ReholdStockOnLatePaymentUseCase';
+import { cancelRefundUpdate } from '../application/notifications/CustomerMessages';
 import './logging/appLoggerBinding';
 import { PERMISSIONS as SHARED_PERMISSIONS, toEatParts, DEFAULT_BUSINESS_INFO } from '@goldplus/shared';
 import { MeasurementOperationsUseCases } from '../application/use-cases/measurement/MeasurementOperationsUseCases';
@@ -3490,6 +3491,9 @@ export class Registry {
         // 0196: the gift card / store credit part, so payment messages and the receipt name the split.
         ...(order.storeCreditAppliedUgx > 0 ? {
           storeCreditAppliedUgx: order.storeCreditAppliedUgx,
+          ...(template === 'ORDER_CANCELLED_BY_SHOP' ? {
+            refundUpdate: cancelRefundUpdate({ totalUgx: order.totalUgx, storeCreditAppliedUgx: order.storeCreditAppliedUgx, paymentStatus: order.paymentStatus }),
+          } : {}),
           paymentMethod: order.amountDueUgx > 0
             ? `Gift card or store credit ${order.storeCreditAppliedUgx.toLocaleString('en-US')} + Mobile Money or card ${order.amountDueUgx.toLocaleString('en-US')} (UGX)`
             : 'Gift card or store credit',

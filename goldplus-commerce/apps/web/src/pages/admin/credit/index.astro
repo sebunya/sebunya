@@ -89,6 +89,8 @@ const ENTRY: Record<string, string> = { ISSUE: 'Issued', HOLD: 'Order', RETURN: 
 const isExpired = (c: any) => Boolean(c.expiresAt) && new Date(c.expiresAt).getTime() <= Date.now();
 const statusLabel = (c: any) => (c.status === 'active' && isExpired(c) ? 'Expired' : STATUS[c.status]);
 const outstanding = cards.filter((c) => c.status === 'active' && !isExpired(c)).reduce((s, c) => s + c.balanceUgx, 0);
+// Held by unpaid orders: not spendable now, but still owed (it comes back if the order is cancelled).
+const reserved = cards.filter((c) => c.status !== 'void').reduce((s, c) => s + (c.heldUgx ?? 0), 0);
 const prefillReturn = (Astro.url.searchParams.get('return') ?? '').toUpperCase().slice(0, 40);
 ---
 <AdminLayout title="Gift cards and store credit" description="Issue, approve and cancel gift cards and store credit; every movement on each card.">
@@ -105,9 +107,15 @@ const prefillReturn = (Astro.url.searchParams.get('return') ?? '').toUpperCase()
     <div class="flex flex-wrap items-end justify-between gap-3">
       <div>
         <h2 class="text-2xl font-black">Gift cards and store credit</h2>
-        <p class="text-sm text-gray-500">Spendable now across all cards: <strong>{formatUgx(outstanding)}</strong> (money the shop owes in goods).</p>
+        <p class="text-sm text-gray-500">Spendable now across all cards: <strong>{formatUgx(outstanding)}</strong>. Reserved by unpaid orders: <strong>{formatUgx(reserved)}</strong>. Together, what the shop still owes in goods: <strong>{formatUgx(outstanding + reserved)}</strong>.</p>
       </div>
     </div>
+    <form method="GET" action="/admin/credit/ledger.csv" class="flex flex-wrap items-end gap-3 text-xs" data-credit-export>
+      <label class="font-bold">From<input name="from" type="date" required class="mt-1 block border rounded-xl p-2" /></label>
+      <label class="font-bold">To<input name="to" type="date" required class="mt-1 block border rounded-xl p-2" /></label>
+      <button class="min-h-11 rounded-full border px-4 font-black uppercase">Download movements (CSV)</button>
+      <span class="text-gray-500">For the accountant: every issue, spend, give-back, correction and cancellation in the period.</span>
+    </form>
     {loadFailed && <p class="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">Cards could not be loaded. You may lack payments.read.</p>}
 
     <form method="POST" class="rounded-2xl border bg-white p-5 grid gap-3 md:grid-cols-3">

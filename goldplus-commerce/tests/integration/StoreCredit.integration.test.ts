@@ -187,4 +187,17 @@ describeIf('store credit and gift cards (real PostgreSQL)', () => {
     const ledger = await raw`select sum(amount_ugx)::int as s from measurement.commercial_entry where order_ref = ${o} and component = 'REFUND' and source_system = 'credit_ledger'`;
     expect(ledger[0].s).toBe(-60_000);
   });
+
+  it('the accountant export lists every movement of the period, oldest first', async () => {
+    const card = await issue(30_000);
+    const o = await order(10_000);
+    await holdOn(card.hash, o, 10_000);
+    await repo.captureForOrder(o, new Date());
+    const rows = await repo.ledgerBetween(new Date(Date.now() - 60_000), new Date(Date.now() + 60_000), 50_000);
+    const times = rows.map((r: any) => r.createdAt.getTime());
+    expect([...times].sort((a, b) => a - b)).toEqual(times);
+    expect(rows.some((r: any) => r.type === 'ISSUE' && r.amountUgx === 30_000 && r.kind === 'gift_card')).toBe(true);
+    expect(rows.some((r: any) => r.type === 'HOLD' && r.holdState === 'captured' && r.amountUgx === -10_000)).toBe(true);
+    void card;
+  });
 });

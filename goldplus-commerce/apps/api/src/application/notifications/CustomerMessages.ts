@@ -47,6 +47,8 @@ export interface CustomerMessageData {
   orderNumber?: string | null;
   totalUgx?: number | null;
   reference?: string | null;
+  /** The order's payment status when the message was written (order messages carry it). */
+  paymentStatus?: string | null;
   /** 0196: what a gift card / store credit paid towards the total; the rest came by Mobile Money or card. */
   storeCreditAppliedUgx?: number | null;
   /** 0196 CREDIT_ISSUED. */
@@ -165,6 +167,36 @@ function dateWord(iso: string | null | undefined): string {
  * 0196: how an order was paid when a gift card / store credit paid some or all of it. Empty when it did not, so
  * every other payment message reads exactly as before.
  */
+/**
+ * 0196: on a cancelled order, where the gift card / store credit money went. It goes back to the card by itself at
+ * the moment of cancelling (ReleaseCancelledOrderHoldsUseCase), so "our team arranges the refund" is true only for
+ * what Mobile Money or card paid. Empty when no card was used.
+ */
+export function creditBackOnCancel(d: CustomerMessageData): string {
+  const credit = Math.max(0, Number(d.storeCreditAppliedUgx ?? 0));
+  if (!credit) return '';
+  const spent = ['paid', 'reversed', 'refunded', 'partially_refunded'].includes(String(d.paymentStatus ?? ''));
+  return spent
+    ? ` The ${formatUgx(credit)} your gift card or store credit paid is back on the card already.`
+    : ` The ${formatUgx(credit)} reserved on your gift card or store credit is free to use again.`;
+}
+
+/** Who refunds what on a cancelled order: the team only refunds what Mobile Money or card paid. */
+function refundLine(d: CustomerMessageData, email: boolean): string {
+  const credit = Math.max(0, Number(d.storeCreditAppliedUgx ?? 0));
+  const contact = email ? ' and will contact you' : '';
+  if (!credit) return `If you paid for it, our team arranges the refund${contact}.`;
+  const rest = Math.max(0, Number(d.totalUgx ?? 0) - credit);
+  if (rest <= 0) return 'Nothing else was paid, so there is nothing more to refund.';
+  return `If you paid the other ${formatUgx(rest)} by Mobile Money or card, our team arranges that refund${contact}.`;
+}
+
+/** The cancellation email's refund line (the designed template's {{refund_update}}) when a gift card was used. */
+export function cancelRefundUpdate(d: CustomerMessageData): string | null {
+  const back = creditBackOnCancel(d);
+  return back ? `${back.trim()} ${refundLine(d, true)}` : null;
+}
+
 export function paidWithSplit(d: CustomerMessageData): string {
   const credit = Math.max(0, Number(d.storeCreditAppliedUgx ?? 0));
   if (!credit || !d.totalUgx) return '';
@@ -216,7 +248,7 @@ function smsTextRaw(template: string, d: CustomerMessageData = {}): string | nul
       // Sent once, a few days after delivery or collection, only when nothing on the order is rated.
       return `${SHOP_NAME}: how is what you bought on order${ref}? A rating helps the next shopper choose: ${reviewOrderUrl(d.orderNumber)} We will not ask again. If anything is wrong, call ${phone}.`;
     case 'ORDER_CANCELLED_BY_SHOP':
-      return `${SHOP_NAME}: order${ref} has been cancelled. If you paid for it, our team arranges the refund. Call ${phone} if you have not heard from us.`;
+      return `${SHOP_NAME}: order${ref} has been cancelled.${creditBackOnCancel(d)} ${refundLine(d, false)} Call ${phone} if you have not heard from us.`;
     case 'PHONE_VERIFICATION':
       return d.code
         ? `Your ${SHOP_NAME} code is ${d.code}. It expires in ${d.expiresInMinutes ?? 10} minutes. Never share this code with anyone, including us.`
@@ -389,7 +421,7 @@ export function emailCopy(template: string, d: CustomerMessageData = {}): EmailC
         subject: `Order${ref} has been cancelled`,
         preheader: 'If you paid for it, our team arranges the refund.',
         headline: 'This order was cancelled',
-        body: `Order${ref} has been cancelled. If you paid for it, our team arranges the refund and will contact you. If you have not heard from us, call ${phone}.`,
+        body: `Order${ref} has been cancelled.${creditBackOnCancel(d)} ${refundLine(d, true)} If you have not heard from us, call ${phone}.`,
         cta: { label: 'Back to the shop', url: `${publicBaseUrl()}/shop` },
         tone: 'neutral',
       };
