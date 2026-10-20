@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DeepPlaceSearchUseCase, PAUSE_REFUSED_MS, SESSION_SUGGEST_CAP } from '../../apps/api/src/application/use-cases/locations/DeepPlaceSearchUseCases';
+import { DeepPlaceSearchUseCase, PAUSE_REFUSED_MS, PROBE_GAP_MS, SESSION_SUGGEST_CAP } from '../../apps/api/src/application/use-cases/locations/DeepPlaceSearchUseCases';
 import { GooglePlacesProvider } from '../../apps/api/src/infrastructure/places/GooglePlacesProvider';
 import { dailyAllowance, PLACE_POINT_TTL_SECONDS } from '../../apps/api/src/infrastructure/places/RedisPlaceStores';
 import { classifyPublicEndpoint, publicEndpointPolicy } from '../../apps/api/src/domain/security/PublicEndpointPolicy';
@@ -285,5 +285,37 @@ describe('a refused key is named and paused, not swallowed (2026-10-20 billing h
     expect(page).toContain('data-places-health');
     const client = read('apps/web/src/lib/locationPickerClient.ts');
     expect(client).toContain('Building search is not working right now');
+  });
+});
+
+describe('"Check Google now" for staff', () => {
+  it('ignores a pause, clears it on success, and is rate limited', async () => {
+    let t = Date.parse('2026-10-20T12:00:00Z');
+    const p = provider();
+    let refuse = true;
+    const ok = p.suggest;
+    p.suggest = async (i) => { if (refuse) { p.suggestCalls++; throw new PlaceProviderError(403, 'BILLING_DISABLED', 'billing'); } return ok(i); };
+    const b = budget();
+    const uc = new DeepPlaceSearchUseCase(p, b, cache(), () => t);
+    const first = await uc.probe();
+    expect(first).toMatchObject({ status: 'refused', fault: { reason: 'BILLING_DISABLED' } });
+    expect(await uc.available()).toBe(false);
+    expect((await uc.probe()).status).toBe('too_soon');
+    refuse = false;
+    t += PROBE_GAP_MS;
+    expect(await uc.probe()).toEqual({ status: 'ok', suggestions: 1 });
+    expect(await uc.available()).toBe(true);
+    expect(b.spent.suggest).toBe(2);
+  });
+
+  it('spends nothing without a key or when the month is used up', async () => {
+    expect((await new DeepPlaceSearchUseCase(provider(false), budget(), cache()).probe()).status).toBe('not_configured');
+    const p = provider();
+    expect((await new DeepPlaceSearchUseCase(p, budget({ suggest: 0 }), cache()).probe()).status).toBe('budget_reached');
+    expect(p.suggestCalls).toBe(0);
+  });
+
+  it('only staff who manage settings can run it', () => {
+    expect(read('apps/api/src/interfaces/http/routes/admin/locations.ts')).toMatch(/places-probe', requirePermissions\(\[PERMISSIONS\.SETTINGS_MANAGE\]\)/);
   });
 });

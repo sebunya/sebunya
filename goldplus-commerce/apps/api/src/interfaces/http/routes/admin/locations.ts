@@ -32,6 +32,12 @@ routes.get('/places-usage', requirePermissions([PERMISSIONS.REPORTS_READ]), asyn
   return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
 });
 
+// One real Google request on demand, so staff see a fixed billing hold or key at once (spends one suggestion).
+routes.post('/places-probe', requirePermissions([PERMISSIONS.SETTINGS_MANAGE]), async (c) => {
+  const data = await Registry.getInstance().deepPlaceSearchUseCase.probe();
+  return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+});
+
 // ── Where customers want delivery (0193 location signals) ─────────────────
 routes.get('/demand', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
   const data = await Registry.getInstance().locationDemandReportUseCase.execute(Number(c.req.query('days') ?? 30));

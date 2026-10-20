@@ -42,6 +42,7 @@ export function normaliseDeepQuery(q: string): string {
 export const PAUSE_REFUSED_MS = 10 * 60 * 1000;
 /** Google's per-minute rate limit: a short wait. */
 export const PAUSE_RATE_LIMITED_MS = 60 * 1000;
+export const PROBE_GAP_MS = 20 * 1000;
 const REFUSED_REASONS = new Set(['API_KEY_INVALID', 'BILLING_DISABLED', 'SERVICE_DISABLED', 'API_KEY_IP_ADDRESS_BLOCKED', 'API_KEY_SERVICE_BLOCKED', 'PERMISSION_DENIED']);
 
 export function pauseFor(err: PlaceProviderError): number {
@@ -100,12 +101,39 @@ export class DeepPlaceSearchUseCase {
       await this.health.recordOk(new Date(this.now())).catch(() => undefined);
       return out;
     } catch (e) {
-      const err = e instanceof PlaceProviderError ? e : new PlaceProviderError(null, 'UNEXPECTED', String((e as Error)?.message ?? e).slice(0, 200));
-      const pause = pauseFor(err);
-      const fault: PlaceProviderFault = { at: new Date(this.now()).toISOString(), kind, httpStatus: err.httpStatus, reason: err.reason, detail: err.detail };
-      await this.health.recordFault(fault, pause ? this.now() + pause : null).catch(() => undefined);
-      this.onFault(fault, pause);
+      await this.recordFailure(kind, e);
       return null;
+    }
+  }
+
+  private async recordFailure(kind: PlaceRequestKind, e: unknown): Promise<PlaceProviderFault> {
+    const err = e instanceof PlaceProviderError ? e : new PlaceProviderError(null, 'UNEXPECTED', String((e as Error)?.message ?? e).slice(0, 200));
+    const pause = pauseFor(err);
+    const fault: PlaceProviderFault = { at: new Date(this.now()).toISOString(), kind, httpStatus: err.httpStatus, reason: err.reason, detail: err.detail };
+    await this.health.recordFault(fault, pause ? this.now() + pause : null).catch(() => undefined);
+    this.onFault(fault, pause);
+    return fault;
+  }
+
+  private lastProbeAt = 0;
+
+  /**
+   * Staff's "Check Google now" (Admin > Locations): one real suggestion request, ignoring any pause, so a fixed
+   * billing hold or key shows up at once instead of after the pause and the next customer. Spends one suggestion
+   * from the month's budget; at most one probe per PROBE_GAP_MS per replica.
+   */
+  async probe(): Promise<{ status: 'ok' | 'not_configured' | 'budget_reached' | 'too_soon' | 'refused'; suggestions?: number; fault?: PlaceProviderFault }> {
+    if (!this.provider.configured()) return { status: 'not_configured' };
+    const t = this.now();
+    if (t - this.lastProbeAt < PROBE_GAP_MS) return { status: 'too_soon' };
+    this.lastProbeAt = t;
+    if (!(await this.budget.tryConsume('suggest'))) return { status: 'budget_reached' };
+    try {
+      const places = await this.provider.suggest({ query: 'acacia mall', sessionToken: `probe-${t.toString(36)}-staff` });
+      await this.health.recordOk(new Date(this.now())).catch(() => undefined);
+      return { status: 'ok', suggestions: places.length };
+    } catch (e) {
+      return { status: 'refused', fault: await this.recordFailure('suggest', e) };
     }
   }
 
