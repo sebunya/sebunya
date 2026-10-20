@@ -94,7 +94,8 @@ describe('gift card messages (0199)', () => {
 });
 
 // ── The use cases, against an in-memory repository and a scripted Pesapal ──────────────────────────────
-function harness(opts: { ipnId?: string | null } = {}) {
+function harness(opts: { ipnId?: string | null; buyerActivity?: { started: number; paidUgx: number } } = {}) {
+  let paidToday = 0;
   const rows = new Map<string, GiftCardPurchaseRecord>();
   const outbox: Array<{ template: string; phone: string; data: Record<string, unknown>; key: string }> = [];
   const cards: Array<{ id: string; purchaseId: string; issuedBy: string; reason: string; recipientPhone: string | null; status: string; balance: number; held: number; initial: number; ledger: any[] }> = [];
@@ -108,9 +109,10 @@ function harness(opts: { ipnId?: string | null } = {}) {
     byReference: async (r: string) => copy(byRef(r)),
     byTrackingId: async (t: string) => copy([...rows.values()].find((p) => p.orderTrackingId === t) ?? null),
     recordStarted: async (id: string, t: string, u: string) => { const p = rows.get(id)!; if (!p.orderTrackingId) Object.assign(p, { orderTrackingId: t, redirectUrl: u }); },
-    buyerActivity: async () => ({ started: 0, paidUgx: 0 }),
-    markPaid: async (id: string, i: any, receipt: any) => { const p = rows.get(id)!; if (p.status !== 'awaiting_payment') return false; Object.assign(p, { status: 'paid', paidAt: i.now, confirmationCode: i.confirmationCode, paymentMethod: i.paymentMethod }); if (receipt) outbox.push({ template: receipt.template, phone: receipt.phone, data: receipt.data, key: receipt.idempotencyKey }); return true; },
-    markUnpaid: async (id: string, status: any, ps: string) => { const p = rows.get(id)!; if (p.status !== 'awaiting_payment') return false; Object.assign(p, { status, providerStatus: ps }); return true; },
+    buyerActivity: async () => opts.buyerActivity ?? { started: 0, paidUgx: 0 },
+    paidSince: async () => paidToday,
+    markPaid: async (id: string, i: any, receipt: any) => { const p = rows.get(id)!; if (!['awaiting_payment', 'failed', 'abandoned'].includes(p.status)) return false; Object.assign(p, { status: 'paid', paidAt: i.now, confirmationCode: i.confirmationCode, paymentMethod: i.paymentMethod }); if (receipt) outbox.push({ template: receipt.template, phone: receipt.phone, data: receipt.data, key: receipt.idempotencyKey }); return true; },
+    markUnpaid: async (id: string, status: any, ps: string) => { const p = rows.get(id)!; if (p.status !== 'awaiting_payment' && !(status === 'review' && ['failed', 'abandoned'].includes(p.status))) return false; Object.assign(p, { status, providerStatus: ps }); return true; },
     issueCard: async (i: any) => {
       const p = rows.get(i.purchaseId)!; if (p.status !== 'paid' || p.instrumentId) return null;
       const id = `c${cards.length + 1}`;
@@ -140,9 +142,9 @@ function harness(opts: { ipnId?: string | null } = {}) {
   const uc = new GiftCardPurchaseUseCases(repo as any, credit as any, pesapal as any, {
     hash: (c: string) => `h:${c}`, randomIndexes: () => Array.from({ length: 11 }, () => (idx++) % 32), referenceIndexes: () => Array.from({ length: 10 }, () => (idx++) % 32),
     normalizePhone: (p: string) => `+256${p.replace(/\D/g, '').slice(-9)}`,
-  }, () => ({ ipnId: opts.ipnId === undefined ? 'ipn-1' : opts.ipnId, callbackUrl: 'https://api/cb', resultPageUrl: 'https://shop/gift-card/bought' }));
+  }, () => ({ ipnId: opts.ipnId === undefined ? 'ipn-1' : opts.ipnId, callbackUrl: 'https://api/cb', resultPageUrl: 'https://shop/gift-card/bought', dailyShopCapUgx: 1_000_000 }));
   const paidStatus = (ref: string, amount = 50_000) => ({ order_tracking_id: `T-${ref}`, merchant_reference: ref, amount, currency: 'UGX', status_code: 1, payment_status_description: 'Completed', confirmation_code: 'MTN123', payment_method: 'MTN' });
-  return { uc, rows, outbox, cards, pesapalCalls, setStatus: (s: any) => { pesapalStatus = s; }, paidStatus, byRef };
+  return { uc, rows, outbox, cards, pesapalCalls, setStatus: (s: any) => { pesapalStatus = s; }, paidStatus, byRef, setPaidToday: (n: number) => { paidToday = n; } };
 }
 
 describe('buying a gift card online (0199)', () => {
@@ -266,6 +268,33 @@ describe('buying a gift card online (0199)', () => {
     expect((await h.uc.refund(r.reference, { id: 'staff', username: 's@x' }, 'Wrong person')).ok).toBe(true);
     expect((await h.uc.sweep(new Date('2026-11-14T07:00:00Z'))).issued).toBe(0);
     expect(h.cards).toHaveLength(0);
+  });
+
+  it('limits a buyer’s number per day, and pauses online sales shop-wide past the daily ceiling', async () => {
+    const busy = await harness({ buyerActivity: { started: 6, paidUgx: 0 } }).uc.start(form(), NOW);
+    expect(busy.ok === false && busy.code).toBe('LIMIT');
+    const big = await harness({ buyerActivity: { started: 1, paidUgx: 980_000 } }).uc.start(form(), NOW);
+    expect(big.ok === false && big.code).toBe('LIMIT');
+    const h = harness();
+    h.setPaidToday(980_000);
+    const shop = await h.uc.start(form(), NOW);
+    expect(shop.ok === false && shop.code === 'LIMIT' && shop.message).toMatch(/paused for today/);
+    expect(h.pesapalCalls).toHaveLength(0);
+  });
+
+  it('money Pesapal confirms after we gave up is still honoured: the card is issued (the poller never re-asks)', async () => {
+    const h = harness();
+    const r = await h.uc.start(form(), NOW);
+    if (!r.ok) throw new Error('start');
+    h.setStatus({ merchant_reference: r.reference, amount: 50_000, currency: 'UGX', status_code: 2, payment_status_description: 'Failed' });
+    await h.uc.settle({ trackingId: `T-${r.reference}`, reference: r.reference, source: 'ipn' }, NOW);
+    expect(h.byRef(r.reference)?.status).toBe('failed');
+    h.setStatus(h.paidStatus(r.reference));
+    const asked = h.pesapalCalls.length;
+    await h.uc.sweep(new Date(NOW.getTime() + 3_600_000));
+    expect(h.pesapalCalls.length).toBe(asked); // the poller leaves closed purchases alone
+    expect((await h.uc.settle({ trackingId: `T-${r.reference}`, reference: r.reference, source: 'ipn' }, NOW))?.status).toBe('issued');
+    expect(h.cards).toHaveLength(1);
   });
 
   it('the sweep closes a page never opened after a day, and an opened, unanswered one after a week', async () => {

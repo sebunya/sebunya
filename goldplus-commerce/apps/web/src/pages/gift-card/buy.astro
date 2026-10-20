@@ -47,7 +47,8 @@ if (Astro.request.method === 'POST') {
       signal: AbortSignal.timeout(20_000),
     });
     const json: any = await res.json().catch(() => null);
-    if (res.ok && json?.success && typeof json.data?.redirectUrl === 'string' && /^https:\/\//.test(json.data.redirectUrl)) {
+    // Only a real payment page: https (Pesapal), or a local test stub on this machine.
+    if (res.ok && json?.success && typeof json.data?.redirectUrl === 'string' && /^(https:\/\/|http:\/\/(127\.0\.0\.1|localhost)[:/])/.test(json.data.redirectUrl)) {
       return Astro.redirect(json.data.redirectUrl, 303);
     }
     errors = json?.error?.fields ?? {};

@@ -70,13 +70,19 @@ export class DrizzleGiftCardPurchaseRepository implements IGiftCardPurchaseRepos
     return { started: Number(r?.started ?? 0), paidUgx: Number(r?.paid ?? 0) };
   }
 
+  async paidSince(since: Date): Promise<number> {
+    const [r] = rowsOf(await db.execute(sql`select coalesce(sum(amount_ugx), 0)::bigint as paid from gift_card_purchases
+                                             where status in ('paid','issued') and paid_at >= ${since}`));
+    return Number(r?.paid ?? 0);
+  }
+
   async markPaid(id: string, input: { confirmationCode: string | null; paymentMethod: string | null; providerStatus: string; now: Date }, receipt: GiftCardOutboxMessage | null): Promise<boolean> {
     return db.transaction(async (tx) => {
       const rows = rowsOf(await tx.execute(sql`
         update gift_card_purchases
            set status = 'paid', paid_at = ${input.now}, confirmation_code = ${input.confirmationCode}, payment_method = ${input.paymentMethod},
                provider_status = ${input.providerStatus}, updated_at = now()
-         where id = ${id} and status = 'awaiting_payment'
+         where id = ${id} and status in ('awaiting_payment','failed','abandoned')
         returning id`));
       if (rows.length === 0) return false;
       if (receipt) await enqueueInTx(tx, receipt, id);
@@ -87,7 +93,7 @@ export class DrizzleGiftCardPurchaseRepository implements IGiftCardPurchaseRepos
   async markUnpaid(id: string, status: 'failed' | 'abandoned' | 'review', providerStatus: string): Promise<boolean> {
     const rows = rowsOf(await db.execute(sql`
       update gift_card_purchases set status = ${status}, provider_status = ${providerStatus.slice(0, 300)}, updated_at = now()
-       where id = ${id} and status = 'awaiting_payment' returning id`));
+       where id = ${id} and (status = 'awaiting_payment' or (${status} = 'review' and status in ('failed','abandoned'))) returning id`));
     return rows.length > 0;
   }
 

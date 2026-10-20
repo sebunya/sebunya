@@ -521,6 +521,81 @@ async function giftCardProofs(product: { id: string; priceUgx: number }): Promis
   check('no order exists', (await db.select({ id: orders.id }).from(orders).where(eq(orders.customerPhone, badPhone))).length, 0);
   check('Pesapal was never contacted', (await stubSubmissions()).length, 0);
   check('the code is kept on the form to correct', bad.body.includes('GPGC-AAAA-BBBB-CCCC'), true);
+
+  await giftCardPurchaseProofs();
+}
+
+// ---------------------------------------------------------------------------
+// 0199: a customer buys a gift card for someone else: the real form, Pesapal (stub), the return leg
+// ---------------------------------------------------------------------------
+
+async function purchaseByBuyer(phone: string): Promise<Record<string, any> | undefined> {
+  return rowsOf(await db.execute(sql`select * from gift_card_purchases where buyer_phone = ${phone} order by created_at desc limit 1`))[0];
+}
+
+async function giftCardPurchaseProofs(): Promise<void> {
+  const buyerPhone = '0700000911';
+  const buyerE164 = '+256700000911';
+  const giftForm = {
+    amountPreset: 'other', amountOther: '75,000', recipientName: 'Sarah Nakato', recipientPhone: '0772 000912', sendTo: 'recipient', when: 'now',
+    deliverOn: '', message: 'Happy birthday, Sarah!', fromName: 'Rob', buyerName: 'Robert Harness', buyerPhone, buyerEmail: '',
+  };
+
+  // -- 15. A mistake keeps everything typed; nothing is charged ----------------
+  console.log('\n--- 15. a mistake on the gift card form keeps what was typed and charges nothing');
+  await resetStub();
+  const jar = new Jar();
+  check('the buy page opens', (await get(jar, '/gift-card/buy')).status, 200);
+  const wrong = await postForm(jar, '/gift-card/buy', { ...giftForm, message: 'Send 50,000 to 0772 123 456 now' });
+  check('the page comes back (no payment redirect)', wrong.status, 200);
+  check('it says why, next to the message', /cannot carry links, web addresses or phone numbers/.test(wrong.body), true);
+  check('the name typed is still there', wrong.body.includes('Sarah Nakato'), true);
+  check('Pesapal was never contacted', (await stubSubmissions()).length, 0);
+
+  // -- 16. Paid: the card is made, its code texted to them, the buyer receipted --
+  console.log('\n--- 16. buying a gift card: pay on Pesapal, the code is texted to them, the buyer gets a receipt');
+  const buy = await postForm(jar, '/gift-card/buy', giftForm);
+  if (buy.status !== 303) note(`unexpected status ${buy.status}; body excerpt: ${excerptError(buy.body)}`);
+  check('the buyer is sent to the payment page', buy.status === 303 && (buy.location ?? '').startsWith(STUB), true);
+  const subs = (await stubSubmissions()) as Array<{ merchantReference: string; orderTrackingId: string; amount?: number }>;
+  check('one Pesapal transaction, under a GC- reference, for the card value', subs.map((x) => [/^GC-[0-9A-Z]{10}$/.test(x.merchantReference), Number(x.amount)]), [[true, 75_000]]);
+  const ref = subs[0]?.merchantReference ?? '';
+  check('no order was created for it', rowsOf(await db.execute(sql`select 1 from orders where customer_phone in (${buyerPhone}, ${buyerE164})`)).length, 0);
+  check('the purchase waits for the money', (await purchaseByBuyer(buyerE164))?.status, 'awaiting_payment');
+
+  await fetch(`${STUB}/__stub/status`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ orderTrackingId: subs[0]?.orderTrackingId, status: 'COMPLETED' }) });
+  const back = await fetch(`${process.env.E2E_API_BASE}/commerce/payments/pesapal/callback?OrderTrackingId=${encodeURIComponent(subs[0]?.orderTrackingId ?? '')}&OrderMerchantReference=${encodeURIComponent(ref)}`, { redirect: 'manual' });
+  check('Pesapal returns the buyer to the gift card page', (back.headers.get('location') ?? '').endsWith(`/gift-card/bought?ref=${ref}`), true);
+  const bought = await purchaseByBuyer(buyerE164);
+  check('the purchase is issued', bought?.status, 'issued');
+  const [card] = rowsOf(await db.execute(sql`select kind, status, initial_value_ugx, recipient_phone, (select coalesce(sum(amount_ugx), 0) from credit_ledger where instrument_id = i.id) as bal from credit_instruments i where id = ${bought?.instrument_id ?? null}`));
+  check('a spendable gift card of 75,000 exists for their number', card ? [card.kind, card.status, Number(card.initial_value_ugx), Number(card.bal), card.recipient_phone] : null, ['gift_card', 'active', 75_000, 75_000, '+256772000912']);
+  const texts = rowsOf(await db.execute(sql`select template, coalesce(payload->>'customerPhone', (payload #>> '{}')::jsonb->>'customerPhone') as phone,
+      coalesce(payload->>'message', (payload #>> '{}')::jsonb->>'message') as m from outbox_events where idempotency_key in (${`gift-card-paid:${bought?.id}`}, ${`gift-card-received:${bought?.id}`}) order by template`));
+  check('two texts: the buyer’s receipt and the code to them', texts.map((t) => [t.template, t.phone]), [['GIFT_CARD_PAID', buyerE164], ['GIFT_CARD_RECEIVED', '+256772000912']]);
+  check('the receipt never carries a code', /GPGC/.test(String(texts[0]?.m ?? '')), false);
+  const coded = /Rob sent you a gift card of UGX 75,000: "Happy birthday, Sarah!" Your code: GPGC-|Gift card \/ store credit code \(removed once handled\)/.test(String(texts[1]?.m ?? ''));
+  check('their text names who it is from, the message and the code (or the code was already sent and scrubbed)', coded, true);
+  const page = await get(jar, `/gift-card/bought?ref=${encodeURIComponent(ref)}`);
+  check('the buyer’s page says it is paid and texted, with the number masked', /Thank you, it is paid[\s\S]*texted to Sarah on 07•• ••• 912/.test(page.body), true);
+  const ipn = await fetch(`${process.env.E2E_API_BASE}/commerce/payments/pesapal/ipn?OrderTrackingId=${encodeURIComponent(subs[0]?.orderTrackingId ?? '')}&OrderMerchantReference=${encodeURIComponent(ref)}&OrderNotificationType=IPNCHANGE`);
+  check('the IPN that follows is acknowledged', ipn.status, 200);
+  check('and makes no second card', rowsOf(await db.execute(sql`select 1 from credit_instruments where reason like ${`%${ref}%`}`)).length, 1);
+
+  // -- 17. Scheduled: paid now, texted on its morning ------------------------------
+  console.log('\n--- 17. a card for a later day is paid now and not texted until that morning');
+  await resetStub();
+  const later = new Date(Date.now() + 3 * 3_600_000 + 5 * 86_400_000).toISOString().slice(0, 10);
+  const schedJar = new Jar();
+  const sched = await postForm(schedJar, '/gift-card/buy', { ...giftForm, buyerPhone: '0700000913', when: 'date', deliverOn: later });
+  check('the buyer is sent to pay', sched.status, 303);
+  const s2 = (await stubSubmissions()) as Array<{ merchantReference: string; orderTrackingId: string }>;
+  await fetch(`${STUB}/__stub/status`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ orderTrackingId: s2[0]?.orderTrackingId, status: 'COMPLETED' }) });
+  await fetch(`${process.env.E2E_API_BASE}/commerce/payments/pesapal/ipn?OrderTrackingId=${encodeURIComponent(s2[0]?.orderTrackingId ?? '')}&OrderMerchantReference=${encodeURIComponent(s2[0]?.merchantReference ?? '')}&OrderNotificationType=IPNCHANGE`);
+  const p2 = await purchaseByBuyer('+256700000913');
+  check('it is paid, with no card yet', [p2?.status, p2?.instrument_id ?? null], ['paid', null]);
+  const t2 = rowsOf(await db.execute(sql`select template from outbox_events where idempotency_key like ${`gift-card-%:${p2?.id}`}`)).map((r) => r.template);
+  check('only the buyer’s receipt is queued', t2, ['GIFT_CARD_PAID']);
 }
 
 /**

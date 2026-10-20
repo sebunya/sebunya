@@ -57,8 +57,10 @@ export interface CleanGiftCardPurchase {
 
 export type GiftCardField = 'amountUgx' | 'recipientName' | 'recipientPhone' | 'sendTo' | 'message' | 'fromName' | 'buyerName' | 'buyerPhone' | 'buyerEmail' | 'deliverOn';
 
+// Control characters (a newline would let a message forge a second line of our SMS) become spaces.
+const controlChars = (v: string) => Array.from(v, (ch) => (ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127 ? ' ' : ch)).join('');
 const text = (v: unknown, max: number): string =>
-  typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max) : '';
+  typeof v === 'string' ? controlChars(v).replace(/\s+/g, ' ').trim().slice(0, max) : '';
 
 /**
  * The buyer's words go out from GoldPlus's own SMS sender, so they must not be usable for a scam that borrows our

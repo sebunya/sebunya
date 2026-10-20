@@ -49,12 +49,14 @@ export interface IGiftCardPurchaseRepository {
   recordStarted(id: string, trackingId: string, redirectUrl: string): Promise<void>;
   /** Purchases this buyer phone (last nine digits) started, and paid in UGX, since `since`. */
   buyerActivity(buyerPhone: string, since: Date): Promise<{ started: number; paidUgx: number }>;
+  /** UGX paid for online gift cards by everyone since `since` (the shop-wide daily ceiling). */
+  paidSince(since: Date): Promise<number>;
   /**
-   * awaiting_payment -> paid, with the provider's confirmation, and (in the same transaction) the buyer's
+   * awaiting_payment (or failed / abandoned: a payment Pesapal confirms after we gave up) -> paid, with the provider's confirmation, and (in the same transaction) the buyer's
    * "payment received" message when one is given. False when the purchase was not awaiting payment (a replay).
    */
   markPaid(id: string, input: { confirmationCode: string | null; paymentMethod: string | null; providerStatus: string; now: Date }, receipt: GiftCardOutboxMessage | null): Promise<boolean>;
-  /** awaiting_payment -> failed | abandoned | review. False when it was not awaiting payment. */
+  /** awaiting_payment -> failed | abandoned | review (review also from failed / abandoned: late money that disagrees). */
   markUnpaid(id: string, status: 'failed' | 'abandoned' | 'review', providerStatus: string): Promise<boolean>;
   /**
    * paid -> issued: the card (credit_instruments + its ISSUE ledger row) and the message carrying its code, in

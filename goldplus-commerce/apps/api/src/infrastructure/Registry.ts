@@ -2821,6 +2821,7 @@ export class Registry {
       ipnId: process.env.PESAPAL_IPN_ID || null,
       callbackUrl: providerCallbackUrl(),
       resultPageUrl: `${storefrontOrigin() ?? 'http://localhost:4321'}/gift-card/bought`,
+      dailyShopCapUgx: Number(process.env.GIFT_CARD_DAILY_SHOP_CAP_UGX) > 0 ? Number(process.env.GIFT_CARD_DAILY_SHOP_CAP_UGX) : 5_000_000,
     }),
     (event, detail) => logger.info({ event, ...detail }, `[gift-card] ${event}`),
   );

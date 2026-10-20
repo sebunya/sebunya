@@ -33,6 +33,8 @@ export interface GiftCardPaymentConfig {
   callbackUrl: string;
   /** Storefront page that shows a purchase's outcome: …/gift-card/bought */
   resultPageUrl: string;
+  /** Online gift card sales across all buyers in 24 hours, in UGX, beyond which online sales pause. */
+  dailyShopCapUgx: number;
 }
 
 export type StartGiftCardResult =
@@ -57,6 +59,7 @@ const kampalaDateWords = (iso: string) =>
   new Date(`${iso}T09:00:00+03:00`).toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala', weekday: 'long', day: 'numeric', month: 'long' });
 
 export class GiftCardPurchaseUseCases {
+  private readonly lastAsked = new Map<string, number>();
   constructor(
     private readonly repo: IGiftCardPurchaseRepository,
     private readonly credit: Pick<ICreditRepository, 'findById' | 'voidInstrument' | 'ledger'>,
@@ -74,9 +77,16 @@ export class GiftCardPurchaseUseCases {
     if (!cfg.ipnId) return { ok: false, code: 'NOT_CONFIGURED', message: 'Online gift cards are not available right now. Call us to buy one.' };
 
     const buyerPhone = this.tools.normalizePhone(v.buyerPhone);
-    const activity = await this.repo.buyerActivity(buyerPhone, new Date(now.getTime() - 86_400_000));
+    const dayAgo = new Date(now.getTime() - 86_400_000);
+    const activity = await this.repo.buyerActivity(buyerPhone, dayAgo);
     if (activity.started >= GIFT_CARD_DAILY_STARTS_PER_BUYER || activity.paidUgx + v.amountUgx > GIFT_CARD_DAILY_UGX_PER_BUYER) {
       return { ok: false, code: 'LIMIT', message: 'You have bought the most gift cards we can sell to one number online in a day. Call us and we will help you with more.' };
+    }
+    // A shop-wide ceiling: gift cards are how stolen cards and phones are turned into goods, so a burst of sales
+    // pauses online sales for the day (staff can still sell at the counter) instead of running on unseen.
+    if ((await this.repo.paidSince(dayAgo)) + v.amountUgx > cfg.dailyShopCapUgx) {
+      this.log('gift_card_daily_cap_reached', { capUgx: cfg.dailyShopCapUgx });
+      return { ok: false, code: 'LIMIT', message: 'Online gift card sales are paused for today. Call us or visit the shop and we will sell you one there.' };
     }
 
     let purchase: GiftCardPurchaseRecord | null = null;
@@ -124,7 +134,10 @@ export class GiftCardPurchaseUseCases {
     const p = trackingId ? await this.repo.byTrackingId(trackingId) : null;
     if (!p || p.reference !== input.reference.trim()) return null;
     if (p.status === 'paid') await this.deliverIfDue(p, now);
-    if (p.status !== 'awaiting_payment') return this.repo.byReference(p.reference);
+    // A purchase we closed as failed/abandoned is asked again when the PROVIDER writes (IPN) or the buyer returns:
+    // a payment completed after we gave up is real money, and its card is owed. The poller never re-asks them.
+    const lateNews = (p.status === 'failed' || p.status === 'abandoned') && input.source !== 'poll';
+    if (p.status !== 'awaiting_payment' && !lateNews) return this.repo.byReference(p.reference);
 
     let s;
     try {
@@ -134,6 +147,7 @@ export class GiftCardPurchaseUseCases {
       return p;
     }
     const providerStatus = `${s.status_code} ${String(s.payment_status_description ?? '').slice(0, 80)}`.trim();
+    if (lateNews && s.status_code !== 1) return p; // still not paid: nothing to change
     if (s.merchant_reference !== p.reference || Number(s.amount) !== p.amountUgx || String(s.currency).toUpperCase() !== 'UGX') {
       // The provider disagrees with our record: a person looks before any card exists.
       await this.repo.markUnpaid(p.id, 'review', `MISMATCH ${s.merchant_reference} ${s.amount} ${s.currency} (${providerStatus})`);
@@ -163,8 +177,13 @@ export class GiftCardPurchaseUseCases {
     if (!isGiftCardPurchaseReference(reference)) return null;
     let p = await this.repo.byReference(reference);
     if (!p) return null;
-    // The buyer is looking at the page: when Pesapal has not told us yet, ask it (the same settle as the IPN).
-    if (p.status === 'awaiting_payment' && p.orderTrackingId) p = (await this.settle({ trackingId: p.orderTrackingId, reference: p.reference, source: 'callback' }, now)) ?? p;
+    // The buyer is looking at the page: when Pesapal has not told us yet, ask it (the same settle as the IPN), at
+    // most every 15 seconds per purchase however often the page is loaded.
+    if (p.status === 'awaiting_payment' && p.orderTrackingId && (this.lastAsked.get(p.reference) ?? 0) < now.getTime() - 15_000) {
+      this.lastAsked.set(p.reference, now.getTime());
+      if (this.lastAsked.size > 5_000) this.lastAsked.clear();
+      p = (await this.settle({ trackingId: p.orderTrackingId, reference: p.reference, source: 'callback' }, now)) ?? p;
+    }
     return {
       reference: p.reference,
       status: p.status === 'abandoned' ? 'failed' : p.status,

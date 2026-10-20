@@ -17,6 +17,7 @@ suite('privacy erasure (real PostgreSQL)', () => {
   let eraser: any;
   const userIds: string[] = [];
   const quoteIds: string[] = [];
+  const purchaseIds: string[] = [];
   const tag = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
   const seedCustomer = async (label: string) => {
@@ -57,6 +58,7 @@ suite('privacy erasure (real PostgreSQL)', () => {
 
   afterAll(async () => {
     if (!raw) return;
+    if (purchaseIds.length) await raw`delete from gift_card_purchases where id = any(${purchaseIds})`;
     if (cardIds.length) {
       await raw`delete from outbox_events where related_entity = 'credit_instrument' and related_entity_id = any(${cardIds})`;
       await raw.begin(async (t: any) => {
@@ -154,5 +156,27 @@ suite('privacy erasure (real PostgreSQL)', () => {
     // The card itself and its money stay: a bearer card is still owed.
     const [bal] = await raw`select coalesce(sum(amount_ugx), 0)::int as b from credit_ledger where instrument_id = ${card.id}`;
     expect(bal.b).toBe(50000);
+  });
+
+  it('0199: gift cards bought online, as buyer and as the person it was for, are exported and erased', async () => {
+    const buyer = await seedCustomer('gb');
+    const friend = await seedCustomer('gr');
+    const [p] = await raw`insert into gift_card_purchases (reference, amount_ugx, buyer_name, buyer_phone, buyer_user_id, from_name, recipient_name, recipient_phone, send_to, message, status, confirmation_code)
+              values (${`GC-P${tag}`.slice(0, 13)}, 50000, 'Jane Buyer', ${`+256${buyer.phone.slice(1)}`}, ${buyer.userId}, 'Jane', 'Friend Name', ${`+256${friend.phone.slice(1)}`}, 'recipient', 'Happy day', 'paid', 'MTN9') returning id`;
+    purchaseIds.push(p.id);
+    const asBuyer = await exporter.collect(buyer.userId);
+    expect(asBuyer.sections.giftCardsBoughtOnline).toEqual([expect.objectContaining({ you: 'bought it', yourName: 'Jane Buyer', forName: 'Friend Name', message: 'Happy day' })]);
+    const asFriend = await exporter.collect(friend.userId);
+    expect(asFriend.sections.giftCardsBoughtOnline).toEqual([expect.objectContaining({ you: 'received it', from: 'Jane', amountUgx: 50000 })]);
+    expect(JSON.stringify(asFriend.sections.giftCardsBoughtOnline)).not.toContain('Jane Buyer');
+
+    expect((await eraser.erase({ userId: buyer.userId, kind: 'ANONYMISE_HISTORY', requestId: buyer.requestId, actorId: buyer.userId, reason: 'test' })).completed).toBe(true);
+    let [row] = await raw`select buyer_name, buyer_phone, buyer_user_id, from_name, message, recipient_name, confirmation_code from gift_card_purchases where id = ${p.id}`;
+    expect(row).toMatchObject({ buyer_phone: '', buyer_user_id: null, message: null, recipient_name: 'Friend Name', confirmation_code: 'MTN9' });
+    expect(row.buyer_name).not.toBe('Jane Buyer');
+    expect((await eraser.erase({ userId: friend.userId, kind: 'ANONYMISE_HISTORY', requestId: friend.requestId, actorId: friend.userId, reason: 'test' })).completed).toBe(true);
+    [row] = await raw`select recipient_name, recipient_phone, confirmation_code from gift_card_purchases where id = ${p.id}`;
+    expect(row).toMatchObject({ recipient_phone: '', confirmation_code: 'MTN9' });
+    expect(row.recipient_name).not.toBe('Friend Name');
   });
 });
