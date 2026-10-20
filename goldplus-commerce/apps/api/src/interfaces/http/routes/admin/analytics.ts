@@ -118,6 +118,21 @@ routes.get('/payments', requirePermissions([PERMISSIONS.ANALYTICS_READ]), async 
   }
 });
 
+// ─── Sales funnel: product page → cart → order → paid (gap analysis #3) ──────
+routes.get('/funnel', requirePermissions([PERMISSIONS.ANALYTICS_READ]), async (c) => {
+  const parsed = parsePeriod(c);
+  if (!parsed.success) return c.json(invalidQuery('startDate/endDate must be YYYY-MM-DD and days must be 1-366.'), 400);
+  try {
+    const data = await Registry.getInstance().getSalesFunnelUseCase.execute(parsed.data);
+    return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
+  } catch (error) {
+    if (error instanceof Error && (error.message === 'END_BEFORE_START' || error.message === 'PERIOD_TOO_LONG')) {
+      return c.json(invalidQuery('Invalid period.'), 400);
+    }
+    throw error;
+  }
+});
+
 routes.get('/breakdowns/:dimension', requirePermissions([PERMISSIONS.ANALYTICS_READ]), async (c) => {
   const parsed = parsePeriod(c);
   if (!parsed.success) return c.json(invalidQuery('startDate/endDate must be YYYY-MM-DD and days must be 1-366.'), 400);
