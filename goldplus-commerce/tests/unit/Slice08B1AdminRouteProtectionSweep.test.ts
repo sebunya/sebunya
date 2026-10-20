@@ -244,6 +244,12 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
    */
   const classifiedAdminEndpoints = new Map<string, string>([
     [
+      'ledger.csv.ts',
+      'Gift card and store credit movements for the accountant (admin/credit). Returns a CSV, not a page: ' +
+        'with no session it answers 401 and reads nothing; with one, the API applies payments.read, so a ' +
+        'staff member without it gets a refusal, never the file.',
+    ],
+    [
       'logout.ts',
       'Sign-out endpoint. Reads no admin data and renders nothing, so it has ' +
         'no protected surface to leak; it revokes the token server-side and ' +
