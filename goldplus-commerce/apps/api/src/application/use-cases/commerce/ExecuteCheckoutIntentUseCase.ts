@@ -140,6 +140,8 @@ export interface CheckoutCommand {
   buyerType: 'retail' | 'wholesale' | 'corporate';
   items: Array<{ productId: string; quantity: number }>;
   couponCode?: string | null;
+  /** 0196: keyed hash of a store credit / gift card code (the route hashes; the raw code never travels further). */
+  storeCreditCodeHash?: string | null;
   previewQuoteId?: string | null;
   acceptPriceChange?: boolean;
   redeemPoints?: number | null;
@@ -165,6 +167,7 @@ export interface CheckoutOrderCreator {
     items: CheckoutCommand['items'];
     clientOrderKey: string | null;
     couponCode: string | null;
+    storeCreditCodeHash?: string | null;
     previewQuoteId: string | null;
     acceptPriceChange: boolean;
     checkoutLink?: LeaseToken;
@@ -230,6 +233,7 @@ export class ExecuteCheckoutIntentUseCase {
       items: command.items,
       buyerType: command.buyerType,
       couponCode: command.couponCode ?? null,
+      storeCreditCodeHash: command.storeCreditCodeHash ?? null,
       deliveryZoneKey:
         command.customerDetails.deliveryLocation?.district ?? command.customerDetails.deliveryArea,
       currency: 'UGX',
@@ -327,6 +331,7 @@ export class ExecuteCheckoutIntentUseCase {
       items: command.items,
       clientOrderKey: null,
       couponCode: command.couponCode ?? null,
+      storeCreditCodeHash: command.storeCreditCodeHash ?? null,
       previewQuoteId: command.previewQuoteId ?? null,
       acceptPriceChange: command.acceptPriceChange ?? false,
       redeemPoints: command.redeemPoints ?? null,

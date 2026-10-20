@@ -448,6 +448,7 @@ export const ADMIN_NAVIGATION_ITEMS: NavItem[] = [
   { label: 'Reports', href: '/admin/reports', group: 'Dashboard', status: 'working', description: 'Operational and commercial reports.' },
   { label: 'Product costs', href: '/admin/product-costs', group: 'Commerce', status: 'working', description: 'Enter or import effective-dated supplier costs; coverage activates profit.' },
   { label: 'Payments', href: '/admin/payments', group: 'Commerce', status: 'working', description: 'Payment attempts, reconciliation thresholds and the retry queue.' },
+  { label: 'Gift cards and store credit', href: '/admin/credit', group: 'Commerce', status: 'working', description: 'Issue, approve and cancel gift cards and store credit; every movement on each card.' },
   { label: 'Delivery zones', href: '/admin/pricing/delivery-zones', group: 'Commerce', status: 'working', description: 'Confirmed delivery fees per district; adopt estimates into zones.' },
   { label: 'Delivery Control Centre', href: '/admin/delivery', group: 'Commerce', status: 'working', description: 'Delivery quoting model, calibration and launch controls.' },
   { label: 'Locations', href: '/admin/locations', group: 'Commerce', status: 'working', description: 'The verified Uganda location dataset behind addresses and delivery.' },

@@ -25,7 +25,12 @@ export interface ReleaseCancelledOrderHoldsDeps {
    * Without this an admin cancel of a paid order kept the customer's points.
    */
   reverseRedemption?: { execute(input: { orderId: string; reason: string }): Promise<unknown> };
-  onFailed?(hold: 'inventory' | 'redemption', orderId: string, error: unknown): void;
+  onFailed?(hold: 'inventory' | 'redemption' | 'store_credit', orderId: string, error: unknown): void;
+  /**
+   * 0196: a cancelled order's store credit / gift card: a held amount is released, a spent one (the order was
+   * paid, then refunded in full and cancelled) is given back to the same card, once. Optional so older wiring types.
+   */
+  storeCredit?: { releaseOrReturnForOrder(orderId: string, note: string, now: Date): Promise<unknown> };
   /**
    * Optional together. Stock is taken off at READY_FOR_DISPATCH, and an order
    * can still be cancelled after that (a refused delivery, a packed order the
@@ -48,6 +53,10 @@ export class ReleaseCancelledOrderHoldsUseCase {
         await this.deps.reverseRedemption.execute({ orderId, reason: 'Order cancelled' });
       }
     });
+    if (this.deps.storeCredit) {
+      const credit = this.deps.storeCredit;
+      await this.isolated('store_credit', orderId, () => credit.releaseOrReturnForOrder(orderId, 'Order cancelled', new Date()));
+    }
     await this.isolated('inventory', orderId, async () => {
       const released = (await this.deps.releaseInventory.execute(orderId)) as { released?: boolean } | undefined;
       if (released?.released === false && this.deps.reservations && this.deps.onStockAlreadyTaken) {
@@ -57,7 +66,7 @@ export class ReleaseCancelledOrderHoldsUseCase {
     });
   }
 
-  private async isolated(hold: 'inventory' | 'redemption', orderId: string, run: () => Promise<unknown>): Promise<void> {
+  private async isolated(hold: 'inventory' | 'redemption' | 'store_credit', orderId: string, run: () => Promise<unknown>): Promise<void> {
     try {
       await run();
     } catch (error) {

@@ -1,0 +1,96 @@
+import type { CreditInstrumentView, ICreditRepository } from '../../ports/ICreditRepository';
+import { checkIssue, maskCreditCode, newCreditCode, normalizeCreditCode, type CreditKind } from '../../../domain/credit/CreditInstrument';
+import { isValidUgandanPhone, normalizePhone } from '../../services/validationHelpers';
+
+/**
+ * Store credit and gift cards: staff issue, approve, void and adjust; anyone holding a code may check it.
+ * (Gap analysis #17; spending is at checkout, inside the order transaction.)
+ */
+export interface CreditCodeTools {
+  hash(code: string): string;
+  randomIndexes(): number[];
+}
+export interface CreditIssuedNotifier {
+  /** Texts the code to the recipient. Only for an instrument that is spendable now. */
+  send(input: { instrumentId: string; phone: string; kind: CreditKind; valueUgx: number; code: string; recipientName: string | null }): Promise<void>;
+}
+
+const ISSUE_MESSAGES: Record<string, string> = {
+  BAD_AMOUNT: 'Enter a whole amount of at least UGX 1,000.',
+  TOO_LARGE: 'One card can hold at most UGX 5,000,000.',
+  NEEDS_REASON: 'Say why this credit is being issued (for example "Sold at the counter" or "Refund for GP-…").',
+  BAD_PHONE: 'Enter the recipient’s Ugandan phone number, or leave it empty.',
+};
+
+export class IssueCreditUseCase {
+  constructor(private readonly repo: ICreditRepository, private readonly tools: CreditCodeTools, private readonly notifier: CreditIssuedNotifier | null) {}
+
+  async execute(input: {
+    kind: CreditKind; amountUgx: number; reason: string; recipientName?: string | null; recipientPhone?: string | null;
+    actorId: string; expiresAt?: Date | null;
+  }): Promise<{ ok: true; id: string; code: string; masked: string; status: 'active' | 'pending_approval'; texted: boolean } | { ok: false; code: string; message: string }> {
+    const check = checkIssue({ amountUgx: input.amountUgx, reason: input.reason ?? '' });
+    if (!check.ok) return { ok: false, code: check.code, message: ISSUE_MESSAGES[check.code] };
+    const phoneRaw = (input.recipientPhone ?? '').trim();
+    if (phoneRaw && !isValidUgandanPhone(phoneRaw)) return { ok: false, code: 'BAD_PHONE', message: ISSUE_MESSAGES.BAD_PHONE };
+    const phone = phoneRaw ? normalizePhone(phoneRaw) : null;
+    const status = check.needsSecondApproval ? 'pending_approval' as const : 'active' as const;
+
+    // A collision of 55 random bits is not expected; the unique index would refuse one, and a new code is drawn.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const code = newCreditCode(input.kind, this.tools.randomIndexes());
+      try {
+        const { id } = await this.repo.issue({
+          kind: input.kind, codeHash: this.tools.hash(code), last4: code.slice(-4), valueUgx: input.amountUgx, reason: input.reason.trim().slice(0, 500),
+          status, recipientName: (input.recipientName ?? '').trim().slice(0, 120) || null, recipientPhone: phone, customerUserId: null,
+          sourceOrderId: null, issuedBy: input.actorId, expiresAt: input.expiresAt ?? null,
+        });
+        let texted = false;
+        if (status === 'active' && phone && this.notifier) {
+          await this.notifier.send({ instrumentId: id, phone, kind: input.kind, valueUgx: input.amountUgx, code, recipientName: input.recipientName ?? null }).then(() => { texted = true; }).catch(() => undefined);
+        }
+        return { ok: true, id, code, masked: maskCreditCode(code), status, texted };
+      } catch (err) {
+        if (!/credit_instruments_code_hash_uq|duplicate key/i.test(String((err as Error)?.message ?? err))) throw err;
+      }
+    }
+    throw new Error('CREDIT_CODE_COLLISION');
+  }
+}
+
+export class ManageCreditUseCases {
+  constructor(private readonly repo: ICreditRepository, private readonly tools: CreditCodeTools) {}
+
+  list(input: { status?: string | null; kind?: CreditKind | null; limit?: number }) { return this.repo.list({ limit: input.limit ?? 100, status: input.status ?? null, kind: input.kind ?? null }); }
+  async detail(id: string) {
+    const instrument = await this.repo.findById(id);
+    return instrument ? { instrument, ledger: await this.repo.ledger(id) } : null;
+  }
+  /** The second person, never the issuer (enforced in SQL too). */
+  approve(id: string, approverId: string) { return this.repo.approve(id, approverId, new Date()); }
+  async void(id: string, actorId: string, note: string): Promise<{ ok: boolean; voidedUgx?: number; message?: string }> {
+    if (note.trim().length < 5) return { ok: false, message: 'Say why the card is being cancelled.' };
+    const left = await this.repo.voidInstrument(id, actorId, note.trim().slice(0, 500), new Date());
+    return left === null ? { ok: false, message: 'That card is already cancelled or does not exist.' } : { ok: true, voidedUgx: left };
+  }
+  async adjust(id: string, amountUgx: number, actorId: string, note: string): Promise<{ ok: boolean; message?: string }> {
+    if (!Number.isInteger(amountUgx) || amountUgx === 0 || Math.abs(amountUgx) > 5_000_000) return { ok: false, message: 'Enter a whole, non-zero amount.' };
+    if (note.trim().length < 5) return { ok: false, message: 'Say why the balance is being changed.' };
+    return (await this.repo.adjust(id, amountUgx, actorId, note.trim().slice(0, 500)))
+      ? { ok: true }
+      : { ok: false, message: 'Not changed: the card is cancelled, or the balance would go below zero.' };
+  }
+
+  /** What a code holder may see: the kind, the last four, the spendable balance. Nothing about who holds it. */
+  async check(typed: unknown): Promise<{ ok: true; kind: CreditKind; masked: string; balanceUgx: number; usable: boolean; reason: string | null } | { ok: false }> {
+    const parsed = normalizeCreditCode(typed);
+    if (!parsed) return { ok: false };
+    const i = await this.repo.findByCodeHash(this.tools.hash(parsed.code));
+    if (!i) return { ok: false };
+    const expired = i.expiresAt !== null && i.expiresAt <= new Date();
+    const reason = i.status === 'void' ? 'This card was cancelled.' : i.status === 'pending_approval' ? 'This card is waiting for a second approval at GoldPlus.' : expired ? 'This card has expired.' : i.balanceUgx <= 0 ? 'This card has no balance left.' : null;
+    return { ok: true, kind: i.kind, masked: maskCreditCode(parsed.code), balanceUgx: i.status === 'void' || expired ? 0 : i.balanceUgx, usable: reason === null, reason };
+  }
+
+  forCustomer(userId: string): Promise<CreditInstrumentView[]> { return this.repo.forCustomer(userId); }
+}

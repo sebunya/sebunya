@@ -94,7 +94,7 @@ export interface PaymentAttemptReader {
 }
 
 export interface StartPaymentOrderReader {
-  findById(orderId: string): Promise<{ id: string; paymentStatus: string; totalUgx: number; orderStatus?: string } | null>;
+  findById(orderId: string): Promise<{ id: string; paymentStatus: string; totalUgx: number; orderStatus?: string; storeCreditAppliedUgx?: number } | null>;
 }
 
 /**
@@ -240,11 +240,13 @@ export class StartOrderPaymentUseCase {
       REUSABLE_ATTEMPT_STATUSES.has(a.status) ||
       (RETRY_REUSE_STATUSES.has(a.status) &&
         now.getTime() - new Date(a.createdAt).getTime() < retryReuseWindowMs());
+    // 0196: a store-credit order is sent to Pesapal for what is still due, so a reusable attempt is for that amount.
+    const amountDue = order.storeCreditAppliedUgx ? Math.max(0, order.totalUgx - order.storeCreditAppliedUgx) : order.totalUgx;
     const reusable = existing
       // Newest first: the page the customer was last on is the one to return to.
       .slice()
       .sort((x, y) => new Date(y.createdAt).getTime() - new Date(x.createdAt).getTime())
-      .find((a) => stillOpen(a) && a.redirectUrl && a.orderTrackingId && a.amount === order.totalUgx);
+      .find((a) => stillOpen(a) && a.redirectUrl && a.orderTrackingId && a.amount === amountDue);
     if (reusable) {
       await this.recordPaymentProgress(checkout.identity, orderId, command);
       return {

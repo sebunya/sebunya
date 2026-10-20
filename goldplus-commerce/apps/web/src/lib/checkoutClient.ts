@@ -299,11 +299,23 @@ export function customerMessageFor(result: CheckoutCallResult): {
           message: 'Your order was recorded but needs our team to review it. We will contact you.',
         };
       case 'NONE':
-        return { status: 'received', message: 'Your order is confirmed.' };
+        return {
+          status: 'received',
+          message: (result.data as { storeCreditAppliedUgx?: number }).storeCreditAppliedUgx
+            ? 'Your order is confirmed and paid in full with your gift card or store credit.'
+            : 'Your order is confirmed.',
+        };
     }
   }
 
   switch (result.code) {
+    case 'STORE_CREDIT_UNAVAILABLE':
+      // 0196: nothing was ordered or charged; the card cannot pay (wrong code, cancelled, expired, waiting for
+      // approval, or nothing left). Removing it lets the order go through for the full amount.
+      return {
+        status: 'error',
+        message: 'That gift card or store credit cannot be used. Check the code, or remove it to pay the full amount with Mobile Money or card. Nothing has been charged.',
+      };
     case 'CHECKOUT_IN_PROGRESS':
       return {
         status: 'retry',

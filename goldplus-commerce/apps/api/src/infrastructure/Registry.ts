@@ -75,6 +75,10 @@ import { GetSalesFunnelUseCase } from '../application/use-cases/analytics/GetSal
 import { DrizzleSalesFunnelReader } from './db/repositories/DrizzleSalesFunnelReader';
 import { RequestReturnUseCase } from '../application/use-cases/commerce/RequestReturnUseCase';
 import { DrizzleOrderDeliveredAt } from './commerce/DrizzleOrderDeliveredAt';
+import { IssueCreditUseCase, ManageCreditUseCases } from '../application/use-cases/credit/CreditUseCases';
+import { creditCodeHash, creditRandomIndexes } from './credit/CreditCodeCrypto';
+import { DrizzleCreditRepository } from './credit/DrizzleCreditRepository';
+import { SettleByStoreCreditUseCase } from '../application/use-cases/payments/SettleByStoreCreditUseCase';
 import { DrizzleReviewReminderCandidates } from './reviews/DrizzleReviewReminderCandidates';
 import { SendUnpaidOrderRemindersUseCase } from '../application/use-cases/commerce/SendUnpaidOrderRemindersUseCase';
 import { DrizzleUnpaidOrderReminderCandidates } from './commerce/DrizzleUnpaidOrderReminderCandidates';
@@ -803,6 +807,9 @@ export class Registry {
   public readonly orderRepo = new DrizzleOrderRepository();
   public readonly orderAttributionRepo = new DrizzleOrderAttributionRepository();
   public readonly productRepo = new DrizzleProductRepository();
+  /** 0196: store credit and gift cards (gap analysis #17). */
+  public readonly creditRepo = new DrizzleCreditRepository();
+  public readonly manageCreditUseCases = new ManageCreditUseCases(this.creditRepo, { hash: creditCodeHash, randomIndexes: creditRandomIndexes });
   /** Save for later (gap analysis #6). */
   public readonly savedProductsUseCases = new SavedProductsUseCases(new DrizzleWishlistRepository(), this.productRepo);
   /** Once-published products that are off sale: the product page's honest 404 (no price, stock or images). */
@@ -1754,6 +1761,7 @@ export class Registry {
     // An APPLIED redemption (points already spent) cannot be released; a
     // cancelled order gives them back instead, with their original expiry.
     reverseRedemption: { execute: (input) => this.reverseRedemptionUseCase.execute(input) },
+    storeCredit: this.creditRepo,
     onFailed: (hold, orderId, error) =>
       logger.error(
         { orderId, hold, err: error instanceof Error ? error.message : String(error) },
@@ -2687,6 +2695,8 @@ export class Registry {
           throw new Error(`redemption consume failed: ${result.code}`);
         }
       },
+      // 0196: the gift card / store credit hold becomes spent with the payment.
+      captureStoreCredit: async (orderId) => { await this.creditRepo.captureForOrder(orderId, new Date()); },
       enqueueCustomerMessage: (orderId, template) => this.enqueueCustomerOrderMessage(orderId, template),
       notifyFulfilmentOfPaidOrder: async (orderId: string) => {
         const r = await this.fulfilmentAlertConfig.enqueuePaidOrderAlert(orderId);
@@ -2735,8 +2745,9 @@ export class Registry {
       },
       flagPaidAmountMismatch: async (orderId, paidUgx) => {
         const order = await this.orderRepo.findById(orderId);
-        if (!order || order.totalUgx === paidUgx) return;
-        const gap = order.totalUgx - paidUgx;
+        // 0196: Pesapal is asked for the amount DUE (total less store credit), so that is what it must match.
+        if (!order || order.amountDueUgx === paidUgx) return;
+        const gap = order.amountDueUgx - paidUgx;
         logger.error({ orderId, paidUgx, orderTotalUgx: order.totalUgx }, 'PAYMENT_REVIEW_REQUIRED PAID_AMOUNT_DIFFERS_FROM_ORDER_TOTAL');
         await this.openPaymentReviewTask(orderId, (ref) => ({
           title: `Order ${ref} was paid UGX ${paidUgx.toLocaleString('en-US')} but its total is now UGX ${order.totalUgx.toLocaleString('en-US')}`,
@@ -2752,6 +2763,19 @@ export class Registry {
         ),
     },
   );
+  /** 0196: staff issue a gift card or store credit; the code is texted once to the recipient when spendable. */
+  public readonly issueCreditUseCase = new IssueCreditUseCase(this.creditRepo, { hash: creditCodeHash, randomIndexes: creditRandomIndexes }, {
+    send: async ({ instrumentId, phone, kind, valueUgx, code, recipientName }) => {
+      await this.customerOutboxNotifier.enqueue({
+        // The router sends customer messages it knows by this event type; the template names the wording.
+        eventType: 'CUSTOMER_ORDER_MESSAGE', template: 'CREDIT_ISSUED', customerPhone: phone, customerEmail: null,
+        data: { template: 'CREDIT_ISSUED', creditKind: kind, creditCode: code, valueUgx, customerName: recipientName },
+        idempotencyKey: `credit-issued:${instrumentId}`, relatedEntity: 'credit_instrument', relatedEntityId: instrumentId,
+      });
+    },
+  });
+  /** 0196: an order paid entirely by store credit / a gift card, settled through the same doors as Pesapal. */
+  public readonly settleByStoreCreditUseCase = new SettleByStoreCreditUseCase(this.orderRepo, this.orderTransitionService, this.reconcileOrderPaymentUseCase, this.settlePaymentUseCase);
 
   /**
    * The safety net. Asks the provider about every attempt still non-terminal

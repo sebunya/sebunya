@@ -70,6 +70,11 @@ export class StartPesaPalPaymentUseCase {
     if (order.paymentStatus === 'paid') {
       throw new Error('ORDER_ALREADY_PAID: This order has already been successfully paid.');
     }
+    // 0196: an order store credit covers in full has nothing to collect; it is settled by credit, never by a
+    // zero-shilling provider payment.
+    if (amountDue(order) <= 0) {
+      throw new Error('NOTHING_TO_PAY: Store credit covers this order in full.');
+    }
 
     // 3. Generate a clean URL-safe merchant reference <= 50 chars.
     // Kept under 43 so a retry suffix still fits inside the provider's limit.
@@ -124,7 +129,7 @@ export class StartPesaPalPaymentUseCase {
       attempt &&
       attempt.status === 'not_started' &&
       !attempt.orderTrackingId &&
-      attempt.amount === order.totalUgx;
+      attempt.amount === amountDue(order);
     if (attempt && !resubmittable) {
       merchantReference = `${baseReference}-${randomUUID().replace(/-/g, '').slice(0, 6)}`;
       attempt = null;
@@ -134,7 +139,8 @@ export class StartPesaPalPaymentUseCase {
       attempt = await this.paymentRepo.createPaymentAttempt({
         orderId: order.id,
         merchantReference,
-        amount: order.totalUgx,
+        // 0196: store credit pays part of the order; Pesapal is asked only for the rest.
+        amount: amountDue(order),
         currency: 'UGX',
         status: 'not_started',
       });
@@ -219,4 +225,9 @@ export class StartPesaPalPaymentUseCase {
       merchantReference: attempt.merchantReference,
     };
   }
+}
+
+/** What Pesapal is asked for: the order total less any store credit / gift card (gap analysis #17). */
+function amountDue(order: { totalUgx: number; storeCreditAppliedUgx?: number }): number {
+  return Math.max(0, order.totalUgx - (order.storeCreditAppliedUgx ?? 0));
 }

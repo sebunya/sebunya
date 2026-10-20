@@ -127,7 +127,7 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
     // 191: +1 for riders (admin/delivery/riders, 2026-10-16).
     // 192: +1 for bus prices (admin/delivery/bus-rates, 2026-10-16).
     // 194: +2 for bulk terms and bulk price leads (admin/quotes/bulk-terms, admin/quotes/price-leads, 2026-10-19).
-    expect(adminPages).toHaveLength(194);
+    expect(adminPages).toHaveLength(195); // +1 gift cards and store credit (2026-10-20)
     expect(adminPages[0]).toBe('apps/web/src/pages/admin/advertising.astro');
     expect(adminPages.at(-1)).toBe('apps/web/src/pages/admin/verification/index.astro');
   });
@@ -145,7 +145,7 @@ describe('Slice 8-B1 deny-by-default admin route protection contract', () => {
 
   it('fails closed for every non-allowlisted admin Astro page', () => {
     const protectedPages = adminPages.filter((page) => !publicAllowlist.includes(page as typeof publicAllowlist[number]));
-    expect(protectedPages).toHaveLength(193); // +2 Goldie conversations list and thread (2026-10-13); +1 WhatsApp templates (2026-10-14); +1 riders, +1 bus prices (2026-10-16); +2 bulk terms and price leads (2026-10-19)
+    expect(protectedPages).toHaveLength(194); // +1 gift cards and store credit (2026-10-20); +2 Goldie conversations list and thread (2026-10-13); +1 WhatsApp templates (2026-10-14); +1 riders, +1 bus prices (2026-10-16); +2 bulk terms and price leads (2026-10-19)
     for (const page of protectedPages) {
       const source = read(page);
       expect(source, `${page} must use the server-side session contract`).toContain('readSessionToken(Astro.request)');

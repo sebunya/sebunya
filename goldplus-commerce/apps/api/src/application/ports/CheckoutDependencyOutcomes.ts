@@ -21,6 +21,8 @@ export type CheckoutDependencyCode =
   | 'PAY_ON_DELIVERY_UNAVAILABLE'
   /** The points could not be used on this order; without them it goes through. */
   | 'LOYALTY_REDEMPTION_REFUSED'
+  /** 0196: the gift card / store credit cannot pay (unknown, void, expired, waiting for approval, or empty). */
+  | 'STORE_CREDIT_UNAVAILABLE'
   | 'DATABASE_RETRYABLE'
   | 'LEASE_LOST';
 
@@ -35,6 +37,7 @@ export const TERMINAL_DEPENDENCY_CODES: readonly CheckoutDependencyCode[] = [
   'PROMOTION_LIMIT_REACHED',
   'PAY_ON_DELIVERY_UNAVAILABLE',
   'LOYALTY_REDEMPTION_REFUSED',
+  'STORE_CREDIT_UNAVAILABLE',
 ];
 
 /**
@@ -86,6 +89,9 @@ const LEGACY_PREFIXES: ReadonlyArray<[string, CheckoutDependencyCode]> = [
   ['COD_LIMIT_EXCEEDED', 'PAY_ON_DELIVERY_UNAVAILABLE'],
   // A collection point that is not one of our active shops (switched off, or a carrier's stage): choose another.
   ['PICKUP_POINT_UNAVAILABLE', 'DELIVERY_NOT_SUPPORTED'],
+  // 0196: raised inside the order transaction when the card stopped being spendable since it was checked.
+  ['STORE_CREDIT_UNAVAILABLE', 'STORE_CREDIT_UNAVAILABLE'],
+  ['STORE_CREDIT_EMPTY', 'STORE_CREDIT_UNAVAILABLE'],
 ];
 
 /** Typed pricing refusals (PricingEvaluationError carries its code, not a message prefix). */
