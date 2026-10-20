@@ -41,7 +41,7 @@ describe('the dropdown and the results page match the same fields', () => {
 
   it('the suggestion SQL reads every field the results page reads', () => {
     const sql = read('apps/api/src/infrastructure/db/repositories/DrizzleProductRepository.ts');
-    const block = sql.slice(sql.indexOf('if (opts.search) {'), sql.indexOf('if (opts.ids &&'));
+    const block = sql.slice(sql.indexOf('if (opts.search || opts.searchGroups?.length) {'), sql.indexOf('if (opts.ids &&'));
     for (const field of ['products.name', 'products.categoryName', 'products.subcategory', 'products.modelNumber', 'products.sku']) {
       expect(block, field).toContain(field);
     }

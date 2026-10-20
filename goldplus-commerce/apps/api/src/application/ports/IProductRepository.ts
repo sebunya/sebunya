@@ -23,8 +23,15 @@ export interface IProductRepository {
     limit?: number;
     offset?: number;
     search?: string;
+    /**
+     * The expanded query (expandSearchQuery): every group must match, any alternative in a group will do. When
+     * absent, `search` is expanded by the repository itself, so every caller gets synonyms and typo fixes.
+     */
+    searchGroups?: string[][];
     category?: string;
     inStock?: boolean;
     ids?: string[];
   }): Promise<ProductWithPrice[]>;
+  /** Word -> count over what a search can match (approved, active products and their categories). Cached. */
+  searchVocabulary?(): Promise<Map<string, number>>;
 }

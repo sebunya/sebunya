@@ -28,3 +28,4 @@ export function numericSearchTermPattern(term: string): string | null {
   if (!/^[0-9]/.test(term)) return null;
   return `(^|[^0-9])${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`;
 }
+export * from './queryExpansion';

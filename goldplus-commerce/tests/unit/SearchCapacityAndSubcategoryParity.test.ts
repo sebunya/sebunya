@@ -40,7 +40,7 @@ describe('a capacity is not the tail of a bigger capacity', () => {
     expect(numericSearchTermPattern('1.5m')).toBe('(^|[^0-9])1\\.5m');
     expect(numericSearchTermPattern('card')).toBeNull();
     const src = read('apps/api/src/infrastructure/db/repositories/DrizzleProductRepository.ts');
-    const block = src.slice(src.indexOf('if (opts.search) {'), src.indexOf('if (opts.ids &&'));
+    const block = src.slice(src.indexOf('if (opts.search || opts.searchGroups?.length) {'), src.indexOf('if (opts.ids &&'));
     expect(block).toMatch(/numericSearchTermPattern\(term\)/);
     expect(block).toMatch(/~\* \$\{numeric\}/);
   });

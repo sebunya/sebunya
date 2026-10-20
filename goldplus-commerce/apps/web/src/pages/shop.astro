@@ -9,7 +9,7 @@ import { getCleanCatalog } from '../lib/catalog/catalog';
 import {
   categoryNameForSlug,
   dedupeProductsById,
-  filterDiscoveryProducts,
+  searchDiscoveryProducts,
   getProductSubcategory,
   isApprovedDiscoveryProduct,
   normalizeCategoryParam,
@@ -95,7 +95,19 @@ if (rawProducts.length === 0) {
 }
 
 const availableProducts = dedupeProductsById(getCleanCatalog(rawProducts, taxonomy)).filter(isListableProduct);
-const filteredProducts = filterDiscoveryProducts(availableProducts, { search, category, subcategory }, taxonomy);
+// Synonyms, plurals, joined words and typos (2026-10-20): "powerbank", "chager" and "earpods" used to find nothing.
+const searchResult = searchDiscoveryProducts(availableProducts, { search, category, subcategory }, taxonomy);
+const filteredProducts = searchResult.products;
+// Said, never silent: a fixed typo, or words dropped because nothing matched with them.
+const searchNote = !search || filteredProducts.length === 0
+  ? ''
+  : searchResult.dropped.length > 0
+    ? `Nothing matched every word, so these match “${searchResult.searchedFor}” (left out: ${searchResult.dropped.join(', ')}).`
+    : searchResult.corrections.length > 0
+      ? `Showing results for “${searchResult.searchedFor}”.`
+      : '';
+// A relaxed result is still a miss for what was asked, so demand for the dropped words stays visible.
+const demandResultCount = searchResult.dropped.length > 0 ? 0 : filteredProducts.length;
 // The default browse order leads with what THIS visitor has been looking at.
 // Only for a returning browser (a first visit and every crawler get the
 // standard order), only when nothing else was chosen, and `?order=standard`
@@ -169,7 +181,7 @@ if (search && !cataloguePartial && isLikelyHuman(Astro.request.headers.get('user
   fetch(`${apiBase}/products/search-events`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: search, resultCount: filteredProducts.length, rankedProductIds: products.map((product) => product.id) }),
+    body: JSON.stringify({ query: search, resultCount: demandResultCount, rankedProductIds: products.map((product) => product.id) }),
     signal: AbortSignal.timeout(500),
   }).catch(() => {});
 }
@@ -209,12 +221,13 @@ const askOnWhatsApp = search
 // The page says where the shopper is: the category (or subcategory) name, in
 // the shop's own words, rather than one heading for every shelf.
 const heading = search ? '' : subcategoryLabel || categoryLabel || 'Find a GoldPlus product';
+const resultCountLine = filteredProducts.length === 0
+  ? `Nothing matched “${search}”.`
+  : filteredProducts.length === 1
+    ? '1 product matches your search.'
+    : `${filteredProducts.length} products match your search. Browse the categories below to narrow it further.`;
 const intro = search
-  ? filteredProducts.length === 0
-    ? `Nothing matched “${search}”.`
-    : filteredProducts.length === 1
-      ? '1 product matches your search.'
-      : `${filteredProducts.length} products match your search. Browse the categories below to narrow it further.`
+  ? [searchNote, resultCountLine].filter(Boolean).join(' ')
   : selectedCategory?.description || (categoryLabel ? `Everything we sell in ${categoryLabel}.` : 'Search everything we sell, or browse by category.');
 
 // Numbered pages (first, last, and the neighbours of this one), so 141

@@ -13,7 +13,7 @@ import {
 } from '../../../domain/products/ProductSearchService';
 import type { IPricingRepository } from '../../ports/IPricingRepository';
 import { resolveStorefrontDiscount, INACTIVE_DISCOUNT } from '../../pricing/StorefrontDiscountQuery';
-import { salePriceUgx, effectiveFloorUgx, resolveGallery, includesSearchTerm, inferSubcategory, DEFAULT_TAXONOMY, type Taxonomy } from '@goldplus/shared';
+import { salePriceUgx, effectiveFloorUgx, resolveGallery, includesSearchTerm, inferSubcategory, expandSearchQuery, relaxSearchQuery, DEFAULT_TAXONOMY, type Taxonomy } from '@goldplus/shared';
 
 /** The image the card and the product page lead with, or none — the ONE cover resolver (Focus 4). */
 function primaryImageUrl(images: Array<{ url: string; displayOrder: number; isPrimary: boolean; slot?: number | null }>): string | null {
@@ -59,14 +59,29 @@ export class SuggestProductsUseCase {
     if (!isMeaningfulQuery(q)) return [];
     const limit = Math.max(1, Math.min(input.limit ?? 8, 12));
 
-    const [first, taxonomy] = await Promise.all([this.products.findPublicViewList({ search: q, limit: 24 }), this.loadTaxonomy()]);
+    // Synonyms, plurals, joined words and typos, the same expansion /shop applies; when nothing matches every
+    // word and some words are unknown to the catalogue, the rest of the query still suggests products.
+    const vocab = (await this.products.searchVocabulary?.().catch(() => null)) ?? new Map<string, number>();
+    const expanded = expandSearchQuery(searchTerms(q), vocab);
+    const [strict, taxonomy] = await Promise.all([
+      this.products.findPublicViewList({ search: q, searchGroups: expanded.groups, limit: 24 }),
+      this.loadTaxonomy(),
+    ]);
+    let used = expanded;
+    let first = strict;
+    const relaxed = strict.length === 0 && vocab.size > 0 ? relaxSearchQuery(expanded) : null;
+    if (relaxed) {
+      first = await this.products.findPublicViewList({ search: relaxed.display, searchGroups: relaxed.groups, limit: 24 });
+      used = relaxed;
+    }
     let rows = first;
     if (taxonomy && rows.length < limit) {
       // A query word that names a subcategory ("cards", "chargers") also looks
       // for that subcategory's inference keywords, the same keywords /shop uses
       // to file the product. The ranking below still requires EVERY query word
       // to appear, so this only widens the candidates, never what matches.
-      const terms = searchTerms(q).filter((t) => t.length >= 3);
+      // The expanded words too, so "earpods" reaches the Earbuds subcategory as /shop does.
+      const terms = [...new Set([...searchTerms(q), ...used.groups.flat()])].filter((t) => t.length >= 3);
       const keywords = [...new Set(
         taxonomy
           .flatMap((c) => c.subcategories)
@@ -80,7 +95,7 @@ export class SuggestProductsUseCase {
       }
     }
     const ranked = rankSuggestions(
-      q,
+      used.display,
       rows.map((r) => ({
         id: r.entity.id,
         name: r.entity.name,
@@ -93,7 +108,8 @@ export class SuggestProductsUseCase {
           .filter((v): v is string => !!v)
           .join(' ') || null,
         row: r,
-      }))
+      })),
+      used.groups,
     );
     // The same campaign price the card and the product page show. Quoting the
     // catalogue price here meant the search dropdown contradicted every other

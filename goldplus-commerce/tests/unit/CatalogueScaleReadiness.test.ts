@@ -38,7 +38,8 @@ describe('every surface that filters in the page sees the whole catalogue', () =
     const shop = read('apps/web/src/pages/shop.astro');
     const block = shop.slice(shop.indexOf('search-events') - 400, shop.indexOf('search-events') + 200);
     expect(block).not.toMatch(/await fetch\(`\$\{apiBase\}\/products\/search-events`/);
-    expect(block).toMatch(/resultCount: filteredProducts\.length/);
+    expect(block).toMatch(/resultCount: demandResultCount/);
+    expect(shop).toMatch(/const demandResultCount = searchResult\.dropped\.length > 0 \? 0 : filteredProducts\.length;/);
   });
 });
 
