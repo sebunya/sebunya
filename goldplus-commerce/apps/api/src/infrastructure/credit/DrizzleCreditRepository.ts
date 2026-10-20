@@ -121,9 +121,33 @@ export class DrizzleCreditRepository implements ICreditRepository {
   }
 
   async captureForOrder(orderId: string, now: Date): Promise<number> {
-    const r = rowsOf(await db.execute(sql`update credit_ledger set hold_state = 'captured', settled_at = ${now}
-                                           where order_id = ${orderId} and type = 'HOLD' and hold_state = 'held' returning amount_ugx`));
-    return r.reduce((s, x) => s - Number(x.amount_ugx), 0);
+    return db.transaction(async (tx) => {
+      const holds = rowsOf(await tx.execute(sql`update credit_ledger set hold_state = 'captured', settled_at = ${now}
+                                                where order_id = ${orderId} and type = 'HOLD' and hold_state = 'held' returning instrument_id, amount_ugx`));
+      let captured = holds.reduce((sum, h) => sum - Number(h.amount_ugx), 0);
+      if (!holds.length) return 0;
+      // The card is charged at most what the order costs NOW. A total lowered after the card was applied (a delivery
+      // fee corrected down) would otherwise keep the old, larger hold and spend card money on nothing.
+      const [o] = rowsOf(await tx.execute(sql`select total_amount from orders where id = ${orderId}`));
+      const excess = captured - Math.max(0, Number(o?.total_amount ?? captured));
+      if (excess > 0) {
+        await tx.execute(sql`select id from credit_instruments where id = ${holds[0].instrument_id} for update`);
+        await tx.execute(sql`insert into credit_ledger (instrument_id, type, amount_ugx, order_id, note)
+                             values (${holds[0].instrument_id}, 'RETURN', ${excess}, ${orderId}, 'Order total lowered after the card was applied')`);
+        await tx.execute(sql`update orders set store_credit_applied_ugx = ${captured - excess} where id = ${orderId}`);
+        captured -= excess;
+      }
+      return captured;
+    });
+  }
+
+  /** What an order spent from a card and has not been given back yet (captured holds less every RETURN for it). */
+  private async spentNotReturned(tx: { execute: (q: ReturnType<typeof sql>) => Promise<unknown> }, orderId: string, instrumentId: string): Promise<number> {
+    const [r] = rowsOf(await tx.execute(sql`
+      select coalesce(sum(case when type = 'HOLD' and hold_state = 'captured' then -amount_ugx else 0 end), 0)
+           - coalesce(sum(case when type = 'RETURN' then amount_ugx else 0 end), 0) as left
+        from credit_ledger where order_id = ${orderId} and instrument_id = ${instrumentId}`));
+    return Math.max(0, Number(r?.left ?? 0));
   }
 
   async releaseOrReturnForOrder(orderId: string, note: string, now: Date): Promise<{ released: number; returned: number }> {
@@ -138,15 +162,32 @@ export class DrizzleCreditRepository implements ICreditRepository {
           await tx.execute(sql`update credit_ledger set hold_state = 'released', settled_at = ${now} where id = ${h.id}`);
           released += -Number(h.amount_ugx);
         } else {
-          // Captured: the order was paid and is now cancelled (a full refund). Give the credit back, exactly once.
-          const [already] = rowsOf(await tx.execute(sql`select 1 from credit_ledger where order_id = ${orderId} and instrument_id = ${h.instrument_id} and type = 'RETURN' limit 1`));
-          if (!already) {
-            await tx.execute(sql`insert into credit_ledger (instrument_id, type, amount_ugx, order_id, note) values (${h.instrument_id}, 'RETURN', ${-Number(h.amount_ugx)}, ${orderId}, ${note})`);
-            returned += -Number(h.amount_ugx);
+          // Captured: the order was paid and is now cancelled (a full refund). Give back whatever has not been given
+          // back already: after a partial return (one item), only the rest. Running twice gives back nothing more.
+          const left = await this.spentNotReturned(tx, orderId, String(h.instrument_id));
+          if (left > 0) {
+            await tx.execute(sql`insert into credit_ledger (instrument_id, type, amount_ugx, order_id, note) values (${h.instrument_id}, 'RETURN', ${left}, ${orderId}, ${note})`);
+            returned += left;
           }
         }
       }
       return { released, returned };
+    });
+  }
+
+  async returnToCardForOrder(orderNumber: string, amountUgx: number, actorId: string, note: string): Promise<{ ok: true; instrumentId: string; leftUgx: number } | { ok: false; message: string }> {
+    if (!Number.isInteger(amountUgx) || amountUgx <= 0) return { ok: false, message: 'Enter a whole amount above zero.' };
+    return db.transaction(async (tx) => {
+      const [h] = rowsOf(await tx.execute(sql`
+        select l.instrument_id, o.id as order_id from credit_ledger l join orders o on o.id = l.order_id
+         where o.order_number = ${orderNumber} and l.type = 'HOLD' and l.hold_state = 'captured' limit 1`));
+      if (!h) return { ok: false as const, message: 'No gift card or store credit was spent on that order (or it was never paid).' };
+      await tx.execute(sql`select id from credit_instruments where id = ${h.instrument_id} for update`);
+      const left = await this.spentNotReturned(tx, String(h.order_id), String(h.instrument_id));
+      if (amountUgx > left) return { ok: false as const, message: `At most ${left.toLocaleString('en-US')} UGX can go back to the card for this order.` };
+      await tx.execute(sql`insert into credit_ledger (instrument_id, type, amount_ugx, order_id, actor_id, note)
+                           values (${h.instrument_id}, 'RETURN', ${amountUgx}, ${h.order_id}, ${actorId}, ${note})`);
+      return { ok: true as const, instrumentId: String(h.instrument_id), leftUgx: left - amountUgx };
     });
   }
 }

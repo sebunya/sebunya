@@ -250,4 +250,9 @@ if [[ $PROOF_CODE -ne 0 ]]; then
   tail -40 "$LOG_DIR/web.log" || true
 fi
 
+# E2E_HOLD_OPEN=<seconds>: keep the stack up after the proofs, to click through it in a real browser.
+if [[ -n "${E2E_HOLD_OPEN:-}" ]]; then
+  say "Holding the stack open for ${E2E_HOLD_OPEN}s: storefront http://127.0.0.1:${WEB_PORT}"
+  sleep "$E2E_HOLD_OPEN"
+fi
 exit "$PROOF_CODE"

@@ -52,6 +52,15 @@ routes.post('/', requirePermissions([PERMISSIONS.PAYMENTS_REFUND]), requireStepU
   return c.json({ success: true, data: result });
 });
 
+routes.post('/return', requirePermissions([PERMISSIONS.PAYMENTS_REFUND]), requireStepUp('payment_refund'), async (c) => {
+  const body = await c.req.json().catch(() => null);
+  const amount = Number(body?.amountUgx);
+  const result = await Registry.getInstance().manageCreditUseCases.returnToCard(body?.orderNumber, amount, actor(c), String(body?.note ?? ''));
+  if (!result.ok) return c.json({ success: false, error: { code: 'NOT_RETURNED', message: result.message } } satisfies ApiResponse<never>, 400);
+  await audit(actor(c), 'CREDIT_RETURNED', result.instrumentId, { orderNumber: String(body?.orderNumber ?? '').toUpperCase(), amountUgx: amount, note: String(body?.note ?? '').slice(0, 200) });
+  return c.json({ success: true, data: result });
+});
+
 routes.post('/:id/approve', requirePermissions([PERMISSIONS.PAYMENTS_REFUND]), requireStepUp('payment_refund'), async (c) => {
   const id = c.req.param('id') ?? '';
   const ok = UUID.test(id) && (await Registry.getInstance().manageCreditUseCases.approve(id, actor(c)));

@@ -45,6 +45,8 @@ export interface ICreditRepository {
   adjust(id: string, amountUgx: number, actorId: string, note: string): Promise<boolean>;
   /** The order's live hold becomes spent. Idempotent. */
   captureForOrder(orderId: string, now: Date): Promise<number>;
-  /** On cancel: a held hold is released; a captured one is given back as a RETURN (once). Returns UGX given back. */
+  /** On cancel: a held hold is released; a captured one gives back whatever is not yet given back. Returns UGX. */
   releaseOrReturnForOrder(orderId: string, note: string, now: Date): Promise<{ released: number; returned: number }>;
+  /** A partial refund (one item returned) of what an order spent from a card, capped at what is not yet given back. */
+  returnToCardForOrder(orderNumber: string, amountUgx: number, actorId: string, note: string): Promise<{ ok: true; instrumentId: string; leftUgx: number } | { ok: false; message: string }>;
 }

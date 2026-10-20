@@ -660,6 +660,9 @@ const customerHref = order?.userId ? `/admin/customers/${encodeURIComponent(orde
                       <span>Gift card or store credit</span>
                       <span class="font-bold">−{formatter.format(Number(order.storeCreditAppliedUgx))}</span>
                     </div>
+                    {order.paymentStatus === 'paid' && (
+                      <a class="block text-right text-[11px] font-bold underline print:hidden" href={`/admin/credit?return=${encodeURIComponent(order.orderNumber)}`}>Give part back to the card</a>
+                    )}
                     <div class="flex justify-between font-black text-sm text-brand-dark">
                       <span>{order.paymentStatus === 'paid' ? 'Paid by Mobile Money or card' : 'Still to pay'}</span>
                       <span>{formatter.format(Math.max(0, Number(order.totalUgx) - Number(order.storeCreditAppliedUgx)))}</span>

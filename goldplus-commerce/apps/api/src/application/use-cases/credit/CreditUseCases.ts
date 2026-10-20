@@ -97,4 +97,12 @@ export class ManageCreditUseCases {
   }
 
   forCustomer(userId: string): Promise<CreditInstrumentView[]> { return this.repo.forCustomer(userId); }
+
+  /** Give back to the card part of what an order spent from it (an item returned). Never more than it spent. */
+  async returnToCard(orderNumber: unknown, amountUgx: number, actorId: string, note: string) {
+    const ref = typeof orderNumber === 'string' ? orderNumber.trim().toUpperCase() : '';
+    if (!/^GP-[A-Z0-9-]{4,40}$/.test(ref)) return { ok: false as const, message: 'Type the order number (it starts with GP-).' };
+    if (note.trim().length < 5) return { ok: false as const, message: 'Say why (for example, which item came back).' };
+    return this.repo.returnToCardForOrder(ref, amountUgx, actorId, note.trim().slice(0, 500));
+  }
 }
