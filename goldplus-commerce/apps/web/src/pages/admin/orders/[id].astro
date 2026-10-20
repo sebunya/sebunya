@@ -599,7 +599,7 @@ const customerHref = order?.userId ? `/admin/customers/${encodeURIComponent(orde
               order.paymentStatus === 'paid'
                 ? 'Payment: PAID — collect nothing'
                 // 0196: a gift card / store credit already paid part of it; the rider collects only the rest.
-                : `COLLECT ON DELIVERY: UGX ${Math.max(0, Number(order.totalUgx ?? order.totalAmount ?? 0) - Number(order.storeCreditAppliedUgx ?? 0)).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}${Number(order.storeCreditAppliedUgx ?? 0) > 0 ? ` (gift card already paid UGX ${Number(order.storeCreditAppliedUgx).toLocaleString('en-UG')})` : ''}`,
+                : `COLLECT ON DELIVERY: UGX ${Math.max(0, Number(order.totalUgx ?? order.totalAmount ?? 0) - Number(order.storeCreditAppliedUgx ?? 0)).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })}${Number(order.storeCreditAppliedUgx ?? 0) > 0 ? ` (gift card already paid UGX ${Number(order.storeCreditAppliedUgx).toLocaleString('en-UG', { timeZone: 'Africa/Kampala' })})` : ''}`,
             ].filter(Boolean).join('\n')}</pre>
             <p class="text-[10px] text-gray-500 mt-2 print:hidden">The copy button places this block on the clipboard, formatted for WhatsApp.</p>
           </div>
