@@ -493,6 +493,15 @@
         if (Array.isArray(json?.data?.places)) places = json.data.places;
       } catch { /* honest line below */ }
       if (seq !== deepSeq || input!.value.trim() !== query) return;
+      if (status === 'unavailable' && !places.length) {
+        // Google refused or failed: say so, and stop offering it this visit (a dead option offered twice is worse).
+        deepEnabled = false;
+        current = ours.length
+          ? [...ours, { label: 'Building search is not working right now. Pick an area above.', district: '', inert: true }]
+          : noMatchRows(query);
+        renderResults(current);
+        return;
+      }
       if (status === 'not_configured' || status === 'budget_reached') {
         // No deep layer this visit: back to exactly what the picker said before it existed.
         deepEnabled = false;
