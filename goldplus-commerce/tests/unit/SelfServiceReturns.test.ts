@@ -55,7 +55,7 @@ describe('self-service returns (gap #8)', () => {
   it('the route uses the same order proof as tracking, and pages link to the form', () => {
     const r = (p: string) => readFileSync(new URL(`../../${p}`, import.meta.url), 'utf8');
     expect(r('apps/api/src/interfaces/http/routes/commerce.ts')).toMatch(/routes\.post\('\/orders\/return-request'[\s\S]{0,200}verifyOrderRequest\(c\)/);
-    expect(r('apps/web/src/pages/returns/index.astro')).toContain('href="/returns/start"');
+    expect(r('apps/web/src/pages/returns.astro')).toContain('href="/returns/start"');
     expect(r('apps/web/src/pages/orders/[id].astro')).toContain('/returns/start?reference=${encodeURIComponent(order.orderNumber)}');
   });
 });
