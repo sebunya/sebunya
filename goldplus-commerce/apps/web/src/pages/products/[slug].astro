@@ -222,6 +222,14 @@ const taxonomyP = settle(getTaxonomy());
 const bizP = settle(getBusinessInfo());
 // Started with the page's other parallel reads, so reviews never add a round trip.
 const productReviewsP = settle(getProductReviews(product!.id));
+// "Save for later" (gap analysis #6): whether this signed-in shopper already saved it. Signed-in only, started
+// with the other reads so it adds no round trip.
+const pdpSessionToken = readSessionToken(Astro.request);
+const pdpSavedP: Promise<boolean> = pdpSessionToken
+  ? fetch(`${apiBase}/account/saved/${product!.id}`, { headers: { Authorization: `Bearer ${pdpSessionToken}` }, signal: AbortSignal.timeout(1500) })
+      .then(async (r) => (r.ok ? Boolean(((await r.json()) as { data?: { saved?: boolean } })?.data?.saved) : false))
+      .catch(() => false)
+  : Promise.resolve(false);
 const storefrontCopyP = settle(getStorefrontCopy());
 const discountP = settle(getStorefrontDiscount());
 // The browse-rail fallback needs a handful of candidates, not the whole
@@ -271,13 +279,7 @@ const chosenDeviceP = selectedDeviceParam && /^[a-z0-9-]{1,160}$/.test(selectedD
 const hasValidSku = product.sku && product.sku !== 'Needs Business Confirmation' && !product.sku.toLowerCase().includes('pending');
 const verifiedAttributes = product.attributeValues.filter((v) => v.isVerified && v.name !== 'Badge' && v.name !== 'CardShortDescription');
 
-// "Save for later" (gap analysis #6): whether this signed-in shopper already saved it. One small read, signed-in only.
-const pdpSessionToken = readSessionToken(Astro.request);
-const pdpSaved: boolean = pdpSessionToken
-  ? await fetch(`${apiBase}/account/saved/${product.id}`, { headers: { Authorization: `Bearer ${pdpSessionToken}` }, signal: AbortSignal.timeout(1500) })
-      .then(async (r) => (r.ok ? Boolean(((await r.json()) as { data?: { saved?: boolean } })?.data?.saved) : false))
-      .catch(() => false)
-  : false;
+const pdpSaved: boolean = await pdpSavedP;
 const productSubcategory = getProductSubcategory(product, await taxonomyP);
 // "Compare with similar" (gap #11): same subcategory, nearest price, from the candidates already fetched for the rail.
 const comparePeers: ProductPublicDto[] = await fallbackCandidatesP
