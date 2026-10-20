@@ -1028,6 +1028,46 @@ routes.post('/reviews', async (c) => {
   }
 });
 
+const RETURN_REFUSALS: Record<string, string> = {
+  NOT_DELIVERED: 'A return can be started once the order has reached you.',
+  NOT_ON_ORDER: 'That item is not on this order.',
+  BAD_REASON: 'Choose a reason for the return.',
+  BAD_PREFERENCE: 'Choose how the item comes back to us.',
+  TOO_LONG: 'Keep the details under 1,000 characters.',
+  NEEDS_DETAIL: 'Tell us in a few words what is wrong, so the right person calls you.',
+  PAST_CHANGE_OF_MIND: 'A change-of-mind return is within 14 days of delivery. If the item is faulty, choose that reason instead.',
+};
+
+/** Self-service returns (gap analysis #8): the same order proof as tracking and reviews, then a Care Desk task. */
+routes.post('/orders/return-request', async (c) => {
+  try {
+    const raw = await c.req.raw.clone().json().catch(() => null);
+    const verified = await verifyOrderRequest(c);
+    if (!verified.ok) return c.json({ success: false, error: { code: verified.code, message: verified.message } }, verified.status);
+    const o = verified.order as any;
+    const result = await registry.requestReturnUseCase.execute(
+      { ...toVerifiedOrder(o), customerName: o.customerName ?? null, customerEmail: o.customerEmail ?? null },
+      { productId: String(raw?.productId ?? ''), reason: String(raw?.reason ?? ''), preference: String(raw?.preference ?? ''), detail: typeof raw?.detail === 'string' ? raw.detail : null },
+    );
+    if (!result.ok) return c.json({ success: false, error: { code: result.reason, message: RETURN_REFUSALS[result.reason] ?? 'We could not take that request.' } }, 400);
+    if (result.created) {
+      await registry.sendPublicFormAcknowledgementUseCase.execute({
+        kind: 'support_ticket',
+        eventType: 'SUPPORT_REQUEST_RECEIVED',
+        template: 'SUPPORT_REQUEST_RECEIVED',
+        phone: o.customerPhone,
+        email: o.customerEmail ?? null,
+        data: { customerName: o.customerName ?? null, reference: o.orderNumber },
+        entityId: o.id ?? o.orderNumber,
+        relatedEntity: 'order',
+      }).catch(() => undefined);
+    }
+    return c.json({ success: true, data: { received: true, alreadyOpen: !result.created } });
+  } catch {
+    return c.json({ success: false, error: { code: 'INTERNAL_ERROR', message: 'An internal error occurred.' } }, 500);
+  }
+});
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 routes.get('/reviews/products/:productId', async (c) => {
   const productId = c.req.param('productId');

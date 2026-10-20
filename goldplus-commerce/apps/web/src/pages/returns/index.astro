@@ -1,9 +1,9 @@
 ---
-import BaseLayout from '../layouts/BaseLayout.astro';
-import { policyBySlug, POLICY_STATUS_LABEL } from '../lib/legal-policies';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { policyBySlug, POLICY_STATUS_LABEL } from '../../lib/legal-policies';
 const policy = policyBySlug('returns')!;
-import CmsPolicyDocument from '../components/CmsPolicyDocument.astro';
-import { fetchPublishedPolicy } from '../lib/legalCms';
+import CmsPolicyDocument from '../../components/CmsPolicyDocument.astro';
+import { fetchPublishedPolicy } from '../../lib/legalCms';
 // Wave 2C: a PUBLISHED CMS version replaces the wording below; until one
 // exists this page is the authoritative published policy.
 const cms = await fetchPublishedPolicy('returns');
@@ -29,7 +29,7 @@ const cms = await fetchPublishedPolicy('returns');
       <div class="space-y-10 text-sm leading-relaxed text-slate-700 sm:text-base">
         <section aria-labelledby="returns-how" class="scroll-mt-24">
           <h2 id="returns-how" class="text-xl font-black text-gray-900">How to start a return</h2>
-          <p class="mt-3">Contact GoldPlus support with your order number, the product involved, and the reason for the return. The support team confirms the next steps, including whether the item should be brought to a GoldPlus location or collected.</p>
+          <p class="mt-3"><a href="/returns/start" class="font-bold underline" data-start-return>Start a return online</a> with your order number and the phone or email you used at checkout: pick the item, tell us what happened, and our team calls you. You can also contact GoldPlus support with your order number, the product involved, and the reason for the return. The support team confirms the next steps, including whether the item should be brought to a GoldPlus location or collected.</p>
           <p class="mt-3">Keep the product, its packaging and your receipt or order confirmation until the return is resolved.</p>
         </section>
         <section aria-labelledby="returns-scope" class="scroll-mt-24">
