@@ -478,6 +478,7 @@ export const MOUNTED_API_PREFIXES: readonly string[] = [
   '/admin/locations',
   '/admin/delivery',
   '/admin/payments',
+  '/admin/credit',
   '/products',
   '/recommendations',
   '/telemetry',
