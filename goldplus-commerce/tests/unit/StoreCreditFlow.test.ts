@@ -195,4 +195,43 @@ describe('store credit flow (gap #17)', () => {
       globalThis.fetch = realFetch;
     }
   });
+
+  it('card used: the holder hears when someone else spent it; the buyer is not texted twice', async () => {
+    const { NotifyCardUsedUseCase, CreditExpiryRemindersUseCase } = await import('../../apps/api/src/application/use-cases/credit/CreditUseCases');
+    const sent: any[] = [];
+    const sender = { send: async (m: any) => { sent.push(m); } };
+    const spent = (o: any) => ({ cardSpentOnOrder: async () => ({ instrumentId: 'c1', kind: 'gift_card', last4: 'AB12', recipientPhone: '+256772111222', balanceUgx: 60_000, spentUgx: 40_000, orderNumber: 'GP-1', orderPhone: '+256700000001', ...o }) });
+    expect(await new NotifyCardUsedUseCase(spent({}) as any, sender).execute('o1')).toBe('sent');
+    expect(sent[0]).toMatchObject({ template: 'CREDIT_USED', phone: '+256772111222', idempotencyKey: 'credit-used:o1' });
+    expect(await new NotifyCardUsedUseCase(spent({ orderPhone: '0772111222' }) as any, sender).execute('o2')).toBe('skipped'); // same person
+    expect(await new NotifyCardUsedUseCase(spent({ recipientPhone: null }) as any, sender).execute('o3')).toBe('skipped');
+    expect(sent).toHaveLength(1);
+
+    const { smsText } = await import('../../apps/api/src/application/notifications/CustomerMessages');
+    const used = smsText('CREDIT_USED', sent[0].data)!;
+    expect(used).toBe('GoldPlus: UGX 40,000 from your gift card ending AB12 paid for order GP-1. Left on it: UGX 60,000. Not you? Call 0705 004545.');
+    expect(used).not.toMatch(/GPGC-/); // never the code
+
+    const reminders: any[] = [];
+    const r = await new CreditExpiryRemindersUseCase({ expiringSoon: async () => [
+      { instrumentId: 'c9', kind: 'store_credit', last4: 'ZZ99', phone: '+256772000999', expiresAt: new Date('2026-10-27T20:59:59Z'), balanceUgx: 12_000 },
+    ] } as any, { send: async (m: any) => { reminders.push(m); } }).execute(new Date('2026-10-20T10:00:00Z'));
+    expect(r).toEqual({ due: 1, sent: 1 });
+    expect(reminders[0].idempotencyKey).toBe('credit-expiring:c9'); // once per card, however often the ticker runs
+    expect(smsText('CREDIT_EXPIRING', reminders[0].data)).toContain('store credit ending ZZ99 has UGX 12,000 left and ends on 27 October 2026');
+  });
+
+  it('issuing for an order fills the customer and links the account; an unknown order is refused', async () => {
+    const issued: any[] = [];
+    const repo: any = {
+      orderForCredit: async (ref: string) => (ref === 'GP-202610-ABCD' ? { id: 'o1', userId: 'u1', name: 'Amina N', phone: '+256772123456' } : null),
+      issue: async (i: any) => { issued.push(i); return { id: 'c1' }; },
+    };
+    const texts: any[] = [];
+    const uc = new IssueCreditUseCase(repo, tools, { send: async (m) => { texts.push(m); } });
+    expect(await uc.execute({ kind: 'store_credit', amountUgx: 30_000, reason: 'Refund for GP-202610-ABCD', orderNumber: 'gp-202610-abcd', actorId: 's' })).toMatchObject({ ok: true, texted: true });
+    expect(issued[0]).toMatchObject({ sourceOrderId: 'o1', customerUserId: 'u1', recipientName: 'Amina N', recipientPhone: '+256772123456' });
+    expect(texts[0]).toMatchObject({ phone: '+256772123456', recipientName: 'Amina N' });
+    expect(await uc.execute({ kind: 'store_credit', amountUgx: 30_000, reason: 'Refund', orderNumber: 'GP-NOPE', actorId: 's' })).toMatchObject({ ok: false, code: 'BAD_ORDER' });
+  });
 });

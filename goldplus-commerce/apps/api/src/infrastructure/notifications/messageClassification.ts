@@ -87,6 +87,9 @@ const TRANSACTIONAL_TEMPLATES = new Set([
   'ORDER_REVIEW_REMINDER',
   // 0196: the code of a gift card or store credit issued to this customer, sent once at issue.
   'CREDIT_ISSUED',
+  // 0196: a card spent by someone else's order, and the one reminder before a card with money left expires.
+  'CREDIT_USED',
+  'CREDIT_EXPIRING',
   // The one reminder that an online order the customer placed is still unpaid.
   'ORDER_PAYMENT_REMINDER',
   'SUPPORT_REQUEST_RECEIVED',

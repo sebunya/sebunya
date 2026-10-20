@@ -21,6 +21,7 @@ const ISSUE_MESSAGES: Record<string, string> = {
   TOO_LARGE: 'One card can hold at most UGX 5,000,000.',
   NEEDS_REASON: 'Say why this credit is being issued (for example "Sold at the counter" or "Refund for GP-…").',
   BAD_PHONE: 'Enter the recipient’s Ugandan phone number, or leave it empty.',
+  BAD_ORDER: 'No order has that number. Check it (it starts with GP-), or leave it empty.',
 };
 
 export class IssueCreditUseCase {
@@ -29,10 +30,15 @@ export class IssueCreditUseCase {
   async execute(input: {
     kind: CreditKind; amountUgx: number; reason: string; recipientName?: string | null; recipientPhone?: string | null;
     actorId: string; expiresAt?: Date | null;
+    /** Store credit for an order (a refund as credit): links the order and the customer's account, and fills their name and phone. */
+    orderNumber?: string | null;
   }): Promise<{ ok: true; id: string; code: string; masked: string; status: 'active' | 'pending_approval'; texted: boolean } | { ok: false; code: string; message: string }> {
     const check = checkIssue({ amountUgx: input.amountUgx, reason: input.reason ?? '' });
     if (!check.ok) return { ok: false, code: check.code, message: ISSUE_MESSAGES[check.code] };
-    const phoneRaw = (input.recipientPhone ?? '').trim();
+    const orderRef = (input.orderNumber ?? '').trim().toUpperCase();
+    const forOrder = orderRef ? await this.repo.orderForCredit(orderRef) : null;
+    if (orderRef && !forOrder) return { ok: false, code: 'BAD_ORDER', message: ISSUE_MESSAGES.BAD_ORDER };
+    const phoneRaw = ((input.recipientPhone ?? '').trim() || forOrder?.phone || '').trim();
     if (phoneRaw && !isValidUgandanPhone(phoneRaw)) return { ok: false, code: 'BAD_PHONE', message: ISSUE_MESSAGES.BAD_PHONE };
     const phone = phoneRaw ? normalizePhone(phoneRaw) : null;
     const status = check.needsSecondApproval ? 'pending_approval' as const : 'active' as const;
@@ -43,12 +49,12 @@ export class IssueCreditUseCase {
       try {
         const { id } = await this.repo.issue({
           kind: input.kind, codeHash: this.tools.hash(code), last4: code.slice(-4), valueUgx: input.amountUgx, reason: input.reason.trim().slice(0, 500),
-          status, recipientName: (input.recipientName ?? '').trim().slice(0, 120) || null, recipientPhone: phone, customerUserId: null,
-          sourceOrderId: null, issuedBy: input.actorId, expiresAt: input.expiresAt ?? null,
+          status, recipientName: ((input.recipientName ?? '').trim() || forOrder?.name || '').slice(0, 120) || null, recipientPhone: phone,
+          customerUserId: forOrder?.userId ?? null, sourceOrderId: forOrder?.id ?? null, issuedBy: input.actorId, expiresAt: input.expiresAt ?? null,
         });
         let texted = false;
         if (status === 'active' && phone && this.notifier) {
-          await this.notifier.send({ instrumentId: id, phone, kind: input.kind, valueUgx: input.amountUgx, code, recipientName: input.recipientName ?? null }).then(() => { texted = true; }).catch(() => undefined);
+          await this.notifier.send({ instrumentId: id, phone, kind: input.kind, valueUgx: input.amountUgx, code, recipientName: ((input.recipientName ?? '').trim() || forOrder?.name) ?? null }).then(() => { texted = true; }).catch(() => undefined);
         }
         return { ok: true, id, code, masked: maskCreditCode(code), status, texted };
       } catch (err) {
@@ -124,3 +130,51 @@ export class ManageCreditUseCases {
     return result;
   }
 }
+
+/** 0196: messages about a card that never carry its code (so nothing needs scrubbing afterwards). */
+export interface CreditNoticeSender {
+  send(input: { template: 'CREDIT_USED' | 'CREDIT_EXPIRING'; instrumentId: string; phone: string; idempotencyKey: string; data: Record<string, unknown> }): Promise<void>;
+}
+
+const sameNumber = (a: string | null, b: string | null) => {
+  const d = (s: string | null) => (s ?? '').replace(/\D/g, '').slice(-9);
+  return d(a).length === 9 && d(a) === d(b);
+};
+
+/**
+ * After a paid order spent a card: tell the card's holder when the order was someone else's (a gift card used by
+ * another person). The buyer already reads the split in their payment message, so they are not texted twice.
+ */
+export class NotifyCardUsedUseCase {
+  constructor(private readonly repo: ICreditRepository, private readonly sender: CreditNoticeSender) {}
+  async execute(orderId: string): Promise<'sent' | 'skipped'> {
+    const c = await this.repo.cardSpentOnOrder(orderId);
+    if (!c || !c.recipientPhone || c.spentUgx <= 0 || sameNumber(c.recipientPhone, c.orderPhone)) return 'skipped';
+    await this.sender.send({
+      template: 'CREDIT_USED', instrumentId: c.instrumentId, phone: c.recipientPhone, idempotencyKey: `credit-used:${orderId}`,
+      data: { template: 'CREDIT_USED', creditKind: c.kind, creditLast4: c.last4, spentUgx: c.spentUgx, balanceUgx: c.balanceUgx, orderNumber: c.orderNumber },
+    });
+    return 'sent';
+  }
+}
+
+/** The one reminder, a week before, that a card with money left is about to end. Idempotent per card. */
+export class CreditExpiryRemindersUseCase {
+  constructor(private readonly repo: ICreditRepository, private readonly sender: CreditNoticeSender) {}
+  async execute(now: Date): Promise<{ due: number; sent: number }> {
+    const due = await this.repo.expiringSoon(now, new Date(now.getTime() + 7 * 86_400_000), 200);
+    let sent = 0;
+    for (const c of due) {
+      try {
+        await this.sender.send({
+          template: 'CREDIT_EXPIRING', instrumentId: c.instrumentId, phone: c.phone, idempotencyKey: `credit-expiring:${c.instrumentId}`,
+          data: { template: 'CREDIT_EXPIRING', creditKind: c.kind, creditLast4: c.last4, balanceUgx: c.balanceUgx,
+            expiresAt: c.expiresAt.toLocaleDateString('en-GB', { timeZone: 'Africa/Kampala', day: 'numeric', month: 'long', year: 'numeric' }) },
+        });
+        sent += 1;
+      } catch { /* the next run tries again; the key keeps it to one message */ }
+    }
+    return { due: due.length, sent };
+  }
+}
+

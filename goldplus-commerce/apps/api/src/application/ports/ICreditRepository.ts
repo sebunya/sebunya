@@ -38,6 +38,12 @@ export interface ICreditRepository {
   findById(id: string): Promise<CreditInstrumentView | null>;
   list(input: { limit: number; status?: string | null; kind?: CreditKind | null }): Promise<CreditInstrumentView[]>;
   forCustomer(userId: string): Promise<CreditInstrumentView[]>;
+  /** An order a store credit is issued for (a refund as credit): its id, account and contact. */
+  orderForCredit(orderNumber: string): Promise<{ id: string; userId: string | null; name: string | null; phone: string | null } | null>;
+  /** The card a paid order spent, with what is left on it (for the "card used" message). */
+  cardSpentOnOrder(orderId: string): Promise<{ instrumentId: string; kind: CreditKind; last4: string; recipientPhone: string | null; balanceUgx: number; spentUgx: number; orderNumber: string; orderPhone: string | null } | null>;
+  /** Active cards with money left, a phone, and an expiry in (now, within]. */
+  expiringSoon(now: Date, within: Date, limit: number): Promise<Array<{ instrumentId: string; kind: CreditKind; last4: string; phone: string; expiresAt: Date; balanceUgx: number }>>;
   ledger(instrumentId: string): Promise<CreditLedgerRow[]>;
   /** Every card movement in a period, for the accountant (newest last). */
   ledgerBetween(from: Date, to: Date, limit: number): Promise<Array<CreditLedgerRow & { kind: CreditKind; last4: string }>>;

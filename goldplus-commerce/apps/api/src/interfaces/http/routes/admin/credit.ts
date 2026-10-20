@@ -60,6 +60,7 @@ routes.post('/', requirePermissions([PERMISSIONS.PAYMENTS_REFUND]), requireStepU
   const result = await Registry.getInstance().issueCreditUseCase.execute({
     kind, amountUgx: Number(body?.amountUgx), reason: String(body?.reason ?? ''), recipientName: body?.recipientName ?? null,
     recipientPhone: body?.recipientPhone ?? null, actorId: actor(c), expiresAt: expires && !Number.isNaN(expires.getTime()) ? expires : null,
+    orderNumber: typeof body?.orderNumber === 'string' ? body.orderNumber : null,
   });
   if (!result.ok) return c.json({ success: false, error: { code: result.code, message: result.message } } satisfies ApiResponse<never>, 400);
   // The code is in this response ONCE (it is stored only as a hash); never in the audit row.

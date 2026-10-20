@@ -76,7 +76,7 @@ import { GetSalesFunnelUseCase } from '../application/use-cases/analytics/GetSal
 import { DrizzleSalesFunnelReader } from './db/repositories/DrizzleSalesFunnelReader';
 import { RequestReturnUseCase } from '../application/use-cases/commerce/RequestReturnUseCase';
 import { DrizzleOrderDeliveredAt } from './commerce/DrizzleOrderDeliveredAt';
-import { IssueCreditUseCase, ManageCreditUseCases } from '../application/use-cases/credit/CreditUseCases';
+import { CreditExpiryRemindersUseCase, IssueCreditUseCase, ManageCreditUseCases, NotifyCardUsedUseCase } from '../application/use-cases/credit/CreditUseCases';
 import { creditCodeHash, creditRandomIndexes } from './credit/CreditCodeCrypto';
 import { DrizzleCreditRepository } from './credit/DrizzleCreditRepository';
 import { SettleByStoreCreditUseCase } from '../application/use-cases/payments/SettleByStoreCreditUseCase';
@@ -2714,7 +2714,11 @@ export class Registry {
         }
       },
       // 0196: the gift card / store credit hold becomes spent with the payment.
-      captureStoreCredit: async (orderId) => { await this.creditRepo.captureForOrder(orderId, new Date()); },
+      captureStoreCredit: async (orderId) => {
+        const spent = await this.creditRepo.captureForOrder(orderId, new Date());
+        // The card's holder hears when someone else's order spent it (isolated: never fails the payment effects).
+        if (spent > 0) await this.notifyCardUsedUseCase.execute(orderId).catch(() => undefined);
+      },
       enqueueCustomerMessage: (orderId, template) => this.enqueueCustomerOrderMessage(orderId, template),
       notifyFulfilmentOfPaidOrder: async (orderId: string) => {
         const r = await this.fulfilmentAlertConfig.enqueuePaidOrderAlert(orderId);
@@ -2792,6 +2796,17 @@ export class Registry {
       });
     },
   });
+  /** 0196: card messages that never carry the code (card used by someone else's order; a week before expiry). */
+  private readonly creditNoticeSender = {
+    send: async (input: { template: 'CREDIT_USED' | 'CREDIT_EXPIRING'; instrumentId: string; phone: string; idempotencyKey: string; data: Record<string, unknown> }) => {
+      await this.customerOutboxNotifier.enqueue({
+        eventType: 'CUSTOMER_ORDER_MESSAGE', template: input.template, customerPhone: input.phone, customerEmail: null, data: input.data,
+        idempotencyKey: input.idempotencyKey, relatedEntity: 'credit_instrument', relatedEntityId: input.instrumentId,
+      });
+    },
+  };
+  public readonly notifyCardUsedUseCase = new NotifyCardUsedUseCase(this.creditRepo, this.creditNoticeSender);
+  public readonly creditExpiryRemindersUseCase = new CreditExpiryRemindersUseCase(this.creditRepo, this.creditNoticeSender);
   /** 0196: an order paid entirely by store credit / a gift card, settled through the same doors as Pesapal. */
   public readonly settleByStoreCreditUseCase = new SettleByStoreCreditUseCase(this.orderRepo, this.orderTransitionService, this.reconcileOrderPaymentUseCase, this.settlePaymentUseCase);
 
