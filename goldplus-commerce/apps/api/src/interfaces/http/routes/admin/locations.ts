@@ -24,7 +24,11 @@ const actor = (c: { get(k: string): unknown }) => (c.get('user') as { id: string
 // ── Google Places spend (deep place layer) ────────────────────────────────
 routes.get('/places-usage', requirePermissions([PERMISSIONS.REPORTS_READ]), async (c) => {
   const registry = Registry.getInstance();
-  const data = { configured: registry.deepPlaceSearchUseCase.configured(), usage: await registry.deepPlaceSearchUseCase.usage() };
+  const data = {
+    configured: registry.deepPlaceSearchUseCase.configured(),
+    usage: await registry.deepPlaceSearchUseCase.usage(),
+    health: await registry.deepPlaceSearchUseCase.healthReport(),
+  };
   return c.json({ success: true, data } satisfies ApiResponse<typeof data>);
 });
 

@@ -8,9 +8,22 @@
  *  - suggestions and lookups each draw on their own month-wide budget, paced through the month and shared across
  *    replicas; a missing counter means NO call;
  *  - a place's point is kept 30 days (the terms' maximum), so a building already looked up costs nothing again;
- *  - no cache of suggestion names or addresses: the terms allow keeping place IDs and points, not other content.
+ *  - no cache of suggestion names or addresses: the terms allow keeping place IDs and points, not other content;
+ *  - a refused key (billing, API off, IP restriction) pauses every call for PAUSE_REFUSED_MS, shared across replicas,
+ *    and the reason is kept for the admin Locations page (2026-10-20: a billing hold had been invisible).
  */
-import type { IPlaceLocationCache, IPlaceRequestBudget, IPlaceSearchProvider, PlaceBudgetUsage, PlaceSuggestion } from '../../ports/IPlaceSearch';
+import {
+  PlaceProviderError,
+  type IPlaceLocationCache,
+  type IPlaceProviderHealthStore,
+  type IPlaceRequestBudget,
+  type IPlaceSearchProvider,
+  type PlaceBudgetUsage,
+  type PlaceProviderFault,
+  type PlaceProviderHealth,
+  type PlaceRequestKind,
+  type PlaceSuggestion,
+} from '../../ports/IPlaceSearch';
 
 export const SESSION_SUGGEST_CAP = 6;
 export const PLACE_ID_PATTERN = /^[A-Za-z0-9_-]{10,300}$/;
@@ -25,6 +38,29 @@ export function normaliseDeepQuery(q: string): string {
   return q.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 100);
 }
 
+/** Refusals that will refuse the next customer too: wait before asking again. */
+export const PAUSE_REFUSED_MS = 10 * 60 * 1000;
+/** Google's per-minute rate limit: a short wait. */
+export const PAUSE_RATE_LIMITED_MS = 60 * 1000;
+const REFUSED_REASONS = new Set(['API_KEY_INVALID', 'BILLING_DISABLED', 'SERVICE_DISABLED', 'API_KEY_IP_ADDRESS_BLOCKED', 'API_KEY_SERVICE_BLOCKED', 'PERMISSION_DENIED']);
+
+export function pauseFor(err: PlaceProviderError): number {
+  if (err.httpStatus === 429 || err.reason === 'RESOURCE_EXHAUSTED' || err.reason === 'RATE_LIMIT_EXCEEDED') return PAUSE_RATE_LIMITED_MS;
+  if (err.httpStatus === 401 || err.httpStatus === 403 || REFUSED_REASONS.has(err.reason)) return PAUSE_REFUSED_MS;
+  return 0; // a timeout or a 5xx is one request's bad luck
+}
+
+/** One process only; Registry passes the Redis store so both replicas share it. */
+export class InMemoryPlaceProviderHealth implements IPlaceProviderHealthStore {
+  private state: PlaceProviderHealth = { lastOkAt: null, lastFault: null, pausedUntil: null };
+  async pausedUntil() { return this.state.pausedUntil ? Date.parse(this.state.pausedUntil) : null; }
+  async recordOk(at: Date) { this.state = { ...this.state, lastOkAt: at.toISOString(), pausedUntil: null }; }
+  async recordFault(fault: PlaceProviderFault, until: number | null) {
+    this.state = { ...this.state, lastFault: fault, pausedUntil: until ? new Date(until).toISOString() : this.state.pausedUntil };
+  }
+  async read() { return this.state; }
+}
+
 const inUganda = (p: { lat: number; lng: number }) => p.lat >= -2.5 && p.lat <= 5.5 && p.lng >= 28 && p.lng <= 36.5;
 
 export class DeepPlaceSearchUseCase {
@@ -35,10 +71,42 @@ export class DeepPlaceSearchUseCase {
     private readonly budget: IPlaceRequestBudget,
     private readonly locations: IPlaceLocationCache,
     private readonly now: () => number = () => Date.now(),
+    private readonly health: IPlaceProviderHealthStore = new InMemoryPlaceProviderHealth(),
+    private readonly onFault: (fault: PlaceProviderFault, pausedMs: number) => void = () => undefined,
   ) {}
 
   configured(): boolean {
     return this.provider.configured();
+  }
+
+  /** Configured and not paused: whether the checkout picker should offer the building search at all. */
+  async available(): Promise<boolean> {
+    return this.provider.configured() && !(await this.paused());
+  }
+
+  healthReport(): Promise<PlaceProviderHealth | null> {
+    return this.health.read().catch(() => null);
+  }
+
+  private async paused(): Promise<boolean> {
+    const until = await this.health.pausedUntil().catch(() => null);
+    return until !== null && until > this.now();
+  }
+
+  /** Runs one provider call, keeping its outcome; any failure comes back as null. */
+  private async call<T>(kind: PlaceRequestKind, run: () => Promise<T>): Promise<T | null> {
+    try {
+      const out = await run();
+      await this.health.recordOk(new Date(this.now())).catch(() => undefined);
+      return out;
+    } catch (e) {
+      const err = e instanceof PlaceProviderError ? e : new PlaceProviderError(null, 'UNEXPECTED', String((e as Error)?.message ?? e).slice(0, 200));
+      const pause = pauseFor(err);
+      const fault: PlaceProviderFault = { at: new Date(this.now()).toISOString(), kind, httpStatus: err.httpStatus, reason: err.reason, detail: err.detail };
+      await this.health.recordFault(fault, pause ? this.now() + pause : null).catch(() => undefined);
+      this.onFault(fault, pause);
+      return null;
+    }
   }
 
   async suggest(input: { query: string; sessionToken: string }): Promise<DeepSearchResult> {
@@ -48,15 +116,13 @@ export class DeepPlaceSearchUseCase {
     const t = this.now();
     const session = this.sessions.get(input.sessionToken) ?? { at: t, calls: 0 };
     if (session.calls >= SESSION_SUGGEST_CAP) return { status: 'session_limit', places: [] };
+    if (await this.paused()) return { status: 'unavailable', places: [] };
     if (!(await this.budget.tryConsume('suggest'))) return { status: 'budget_reached', places: [] };
     session.calls += 1;
     this.sessions.set(input.sessionToken, session);
     this.prune(t);
-    try {
-      return { status: 'ok', places: await this.provider.suggest({ query: key, sessionToken: input.sessionToken }) };
-    } catch {
-      return { status: 'unavailable', places: [] };
-    }
+    const places = await this.call('suggest', () => this.provider.suggest({ query: key, sessionToken: input.sessionToken }));
+    return places ? { status: 'ok', places } : { status: 'unavailable', places: [] };
   }
 
   async locate(input: { placeId: string; sessionToken: string }): Promise<DeepLocateResult> {
@@ -65,15 +131,12 @@ export class DeepPlaceSearchUseCase {
     this.sessions.delete(input.sessionToken); // the customer chose: this search is over
     const cached = await this.locations.get(input.placeId).catch(() => null);
     if (cached && inUganda(cached)) return { status: 'ok', point: cached, fromCache: true };
+    if (await this.paused()) return { status: 'unavailable' };
     if (!(await this.budget.tryConsume('details'))) return { status: 'budget_reached' };
-    try {
-      const found = await this.provider.locate(input);
-      if (!found || !inUganda(found)) return { status: 'unavailable' };
-      await this.locations.put(input.placeId, found).catch(() => undefined);
-      return { status: 'ok', point: { lat: found.lat, lng: found.lng }, fromCache: false };
-    } catch {
-      return { status: 'unavailable' };
-    }
+    const found = await this.call('details', () => this.provider.locate(input));
+    if (!found || !inUganda(found)) return { status: 'unavailable' };
+    await this.locations.put(input.placeId, found).catch(() => undefined);
+    return { status: 'ok', point: { lat: found.lat, lng: found.lng }, fromCache: false };
   }
 
   usage(): Promise<PlaceBudgetUsage | null> {

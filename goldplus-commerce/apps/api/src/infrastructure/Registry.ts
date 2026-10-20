@@ -340,7 +340,7 @@ import { DrizzleNearbyDemandReader } from './db/repositories/DrizzleNearbyDemand
 import { PopularNearYouUseCase } from '../application/recommendations/PopularNearYouUseCase';
 import { GetDeliverToUseCase, LocationDemandReportUseCase, RecordLocationSignalUseCase } from '../application/use-cases/locations/LocationSignalUseCases';
 import { GetPlaceMemoryUseCase } from '../application/use-cases/delivery/GetPlaceMemoryUseCase';
-import { RedisPlaceLocationCache, RedisPlaceRequestBudget } from './places/RedisPlaceStores';
+import { RedisPlaceLocationCache, RedisPlaceProviderHealth, RedisPlaceRequestBudget } from './places/RedisPlaceStores';
 import { DeepPlaceSearchUseCase } from '../application/use-cases/locations/DeepPlaceSearchUseCases';
 import { DrizzleDeliveryQuotingRepository } from './db/repositories/DrizzleDeliveryQuotingRepository';
 import { DrizzleDeliveryVarianceRepository } from './db/repositories/DrizzleDeliveryVarianceRepository';
@@ -1664,7 +1664,14 @@ export class Registry {
   public readonly recordLocationSignalUseCase = new RecordLocationSignalUseCase(this.locationSignalStore);
   public readonly getDeliverToUseCase = new GetDeliverToUseCase(this.locationSignalStore);
   public readonly locationDemandReportUseCase = new LocationDemandReportUseCase(this.locationSignalStore);
-  public readonly deepPlaceSearchUseCase = new DeepPlaceSearchUseCase(new GooglePlacesProvider(), new RedisPlaceRequestBudget(), new RedisPlaceLocationCache());
+  public readonly deepPlaceSearchUseCase = new DeepPlaceSearchUseCase(
+    new GooglePlacesProvider(),
+    new RedisPlaceRequestBudget(),
+    new RedisPlaceLocationCache(),
+    undefined,
+    new RedisPlaceProviderHealth(),
+    (fault, pausedMs) => logger.warn({ ...fault, pausedMs }, 'PLACES_PROVIDER_FAULT'),
+  );
   public readonly recordLocationSearchEventUseCase = new RecordLocationSearchEventUseCase(this.searchMissRecorder);
   public readonly resolveMapLinkUseCase = new ResolveMapLinkUseCase(new HttpShortLinkResolver());
   public readonly locationAdminRepo = new DrizzleLocationAdminRepository();

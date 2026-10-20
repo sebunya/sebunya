@@ -79,8 +79,9 @@ const deepSearchSchema = z.object({ q: z.string().min(1).max(100), session: z.st
 const deepPlaceSchema = z.object({ placeId: z.string().min(10).max(300), session: z.string().regex(/^[A-Za-z0-9-]{16,64}$/) }).strict();
 
 /** Whether the deep layer exists at all, so the picker does not offer it on a site without a key. Free. */
-routes.get('/deep-status', (c) =>
-  c.json({ success: true, data: { configured: Registry.getInstance().deepPlaceSearchUseCase.configured() } }),
+// "configured" means "offer it now": false while Google is refusing the key, so customers are not sent to a dead search.
+routes.get('/deep-status', async (c) =>
+  c.json({ success: true, data: { configured: await Registry.getInstance().deepPlaceSearchUseCase.available() } }),
 );
 
 routes.post('/deep-search', async (c) => {

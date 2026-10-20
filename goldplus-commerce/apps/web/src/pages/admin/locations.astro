@@ -162,7 +162,21 @@ try {
 } catch { /* the section says it could not be read */ }
 
 // Google Places spend for the checkout's deep place layer: this month, today, and today's paced allowance.
-let places: { configured: boolean; usage: null | { month: string; suggest: { used: number; cap: number; today: number; todayAllowance: number }; details: { used: number; cap: number; today: number; todayAllowance: number } } } | null = null;
+let places: {
+  configured: boolean;
+  usage: null | { month: string; suggest: { used: number; cap: number; today: number; todayAllowance: number }; details: { used: number; cap: number; today: number; todayAllowance: number } };
+  health?: null | { lastOkAt: string | null; lastFault: null | { at: string; kind: string; httpStatus: number | null; reason: string; detail: string }; pausedUntil: string | null };
+} | null = null;
+// What a Google refusal means, in the words of the fix (reason codes from Google's ErrorInfo).
+const placesFix: Record<string, string> = {
+  BILLING_DISABLED: 'Billing is not active on the Google Cloud project. Pay the one-time $30 prepayment (Billing > Payment overview) or fix the card, then wait for Google to credit it.',
+  SERVICE_DISABLED: 'Places API (New) is switched off for the project. Enable it in APIs & Services > Library.',
+  API_KEY_INVALID: 'The key in GOOGLE_PLACES_API_KEY is wrong or deleted. Copy it again from APIs & Services > Credentials.',
+  API_KEY_IP_ADDRESS_BLOCKED: "The key's IP restriction does not include the server's address. Add the address Google names below.",
+  API_KEY_SERVICE_BLOCKED: "The key's API restriction leaves out Places API (New). Add it under the key's API restrictions.",
+  TIMEOUT: 'Google did not answer in time. One-off timeouts are normal; many in a row point at the server network.',
+};
+const kampala = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleString('en-GB', { timeZone: 'Africa/Kampala', dateStyle: 'medium', timeStyle: 'short' }) : 'never');
 try {
   const res = await fetch(`${apiBase}/admin/locations/places-usage`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(4000) });
   const json: any = res.ok ? await res.json().catch(() => null) : null;
@@ -248,6 +262,19 @@ try {
               <tr class="border-t border-gray-100"><td class="py-1.5 font-bold">Place lookups</td><td>{fmt.format(places.usage.details.used)}</td><td>{fmt.format(places.usage.details.cap)}</td><td>{fmt.format(places.usage.details.today)}</td><td>{fmt.format(places.usage.details.todayAllowance)}</td></tr>
             </tbody>
           </table>
+        )}
+        {places?.configured && places.health && (
+          <div class="text-sm space-y-1" data-places-health>
+            <p>Google last answered: <strong>{kampala(places.health.lastOkAt)}</strong> (Kampala time).</p>
+            {places.health.pausedUntil && <p class="text-red-700 font-bold">Paused until {kampala(places.health.pausedUntil)}: Google refused the key, so checkout is not offering building search.</p>}
+            {places.health.lastFault && (!places.health.lastOkAt || places.health.lastFault.at > places.health.lastOkAt) && (
+              <div class="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+                <p class="font-bold text-red-800">Last refusal {kampala(places.health.lastFault.at)}: {places.health.lastFault.reason}{places.health.lastFault.httpStatus ? ` (HTTP ${places.health.lastFault.httpStatus})` : ''}</p>
+                {placesFix[places.health.lastFault.reason] && <p class="text-red-800">{placesFix[places.health.lastFault.reason]}</p>}
+                {places.health.lastFault.detail && <p class="text-xs text-red-700">Google said: {places.health.lastFault.detail}</p>}
+              </div>
+            )}
+          </div>
         )}
         <p class="text-xs text-gray-500">Google's free allowance is 10,000 a month for each line. A building already looked up in the last 30 days costs nothing.</p>
       </div>

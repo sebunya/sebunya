@@ -3,7 +3,16 @@
  * no Redis means no paid call and no cached point.
  */
 import Redis from 'ioredis';
-import type { IPlaceLocationCache, IPlaceRequestBudget, PlaceBudgetUsage, PlacePoint, PlaceRequestKind } from '../../application/ports/IPlaceSearch';
+import type {
+  IPlaceLocationCache,
+  IPlaceProviderHealthStore,
+  IPlaceRequestBudget,
+  PlaceBudgetUsage,
+  PlacePoint,
+  PlaceProviderFault,
+  PlaceProviderHealth,
+  PlaceRequestKind,
+} from '../../application/ports/IPlaceSearch';
 import { logger } from '../logging/logger';
 
 /** Google Maps Platform terms: latitude/longitude may be cached for up to 30 consecutive calendar days. */
@@ -116,5 +125,51 @@ export class RedisPlaceLocationCache implements IPlaceLocationCache {
     if (!c) return;
     // EX, set once: re-reading never extends a point past 30 days from when Google gave it to us.
     await c.set(`places:point:${placeId}`, `${point.lat.toFixed(6)},${point.lng.toFixed(6)}`, 'EX', PLACE_POINT_TTL_SECONDS, 'NX').catch(() => undefined);
+  }
+}
+
+/**
+ * The provider's last answer and any pause, shared by both replicas. Kept 30 days so the admin page can say
+ * when Google last worked. No customer data: a reason, Google's sentence, and timestamps.
+ */
+export class RedisPlaceProviderHealth implements IPlaceProviderHealthStore {
+  constructor(private readonly redis: () => Redis | null = connect) {}
+
+  async pausedUntil(): Promise<number | null> {
+    const c = this.redis();
+    if (!c) return null;
+    const raw = await c.get('places:paused-until').catch(() => null);
+    const n = Number(raw);
+    return raw && Number.isFinite(n) ? n : null;
+  }
+
+  async recordOk(at: Date): Promise<void> {
+    const c = this.redis();
+    if (!c) return;
+    await c.multi().set('places:last-ok', at.toISOString(), 'EX', 30 * 24 * 60 * 60).del('places:paused-until').exec().catch(() => undefined);
+  }
+
+  async recordFault(fault: PlaceProviderFault, pauseUntilMs: number | null): Promise<void> {
+    const c = this.redis();
+    if (!c) return;
+    const m = c.multi().set('places:last-fault', JSON.stringify(fault), 'EX', 30 * 24 * 60 * 60);
+    if (pauseUntilMs) m.set('places:paused-until', String(pauseUntilMs), 'PX', Math.max(1, pauseUntilMs - Date.now()));
+    await m.exec().catch(() => undefined);
+  }
+
+  async read(): Promise<PlaceProviderHealth | null> {
+    const c = this.redis();
+    if (!c) return null;
+    try {
+      const [ok, fault, until] = await c.mget('places:last-ok', 'places:last-fault', 'places:paused-until');
+      const n = Number(until);
+      return {
+        lastOkAt: ok ?? null,
+        lastFault: fault ? (JSON.parse(fault) as PlaceProviderFault) : null,
+        pausedUntil: until && Number.isFinite(n) && n > Date.now() ? new Date(n).toISOString() : null,
+      };
+    } catch {
+      return null;
+    }
   }
 }

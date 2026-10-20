@@ -1,9 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DeepPlaceSearchUseCase, SESSION_SUGGEST_CAP } from '../../apps/api/src/application/use-cases/locations/DeepPlaceSearchUseCases';
+import { DeepPlaceSearchUseCase, PAUSE_REFUSED_MS, SESSION_SUGGEST_CAP } from '../../apps/api/src/application/use-cases/locations/DeepPlaceSearchUseCases';
 import { GooglePlacesProvider } from '../../apps/api/src/infrastructure/places/GooglePlacesProvider';
 import { dailyAllowance, PLACE_POINT_TTL_SECONDS } from '../../apps/api/src/infrastructure/places/RedisPlaceStores';
 import { classifyPublicEndpoint, publicEndpointPolicy } from '../../apps/api/src/domain/security/PublicEndpointPolicy';
+import { PlaceProviderError } from '../../apps/api/src/application/ports/IPlaceSearch';
 import type { IPlaceLocationCache, IPlaceRequestBudget, IPlaceSearchProvider, PlacePoint, PlaceRequestKind } from '../../apps/api/src/application/ports/IPlaceSearch';
 
 const SESSION = '0f1e2d3c-4b5a-6978-8a9b-0c1d2e3f4a5b';
@@ -203,5 +204,86 @@ describe('"Use my location" puts the actual location (owner, 2026-10-19)', () =>
     expect(commit).toContain('` · within ${pin.gpsAccuracyM} m`');
     // The rider and the customer see the real point.
     expect(src).toContain('View on map');
+  });
+});
+
+describe('a refused key is named and paused, not swallowed (2026-10-20 billing hold)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const billingBody = {
+    error: {
+      code: 403,
+      message: 'This API method requires billing to be enabled. Please enable billing on project #560552606263.',
+      status: 'PERMISSION_DENIED',
+      details: [{ '@type': 'type.googleapis.com/google.rpc.ErrorInfo', reason: 'BILLING_DISABLED', domain: 'googleapis.com' }],
+    },
+  };
+
+  it("reads Google's ErrorInfo reason and sentence from the error body", async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(billingBody), { status: 403 })));
+    const err = await new GooglePlacesProvider('test-key').suggest({ query: 'parliament of uganda', sessionToken: SESSION }).catch((e) => e);
+    expect(err).toBeInstanceOf(PlaceProviderError);
+    expect(err).toMatchObject({ httpStatus: 403, reason: 'BILLING_DISABLED' });
+    expect(err.detail).toContain('requires billing');
+    expect(err.detail).not.toContain('test-key');
+  });
+
+  it('falls back to the status, then the HTTP code, when Google gives no reason', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: { status: 'INVALID_ARGUMENT', message: 'x' } }), { status: 400 })));
+    await expect(new GooglePlacesProvider('k').locate({ placeId: 'ChIJabc1234567', sessionToken: SESSION })).rejects.toMatchObject({ reason: 'INVALID_ARGUMENT' });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>bad gateway</html>', { status: 502 })));
+    await expect(new GooglePlacesProvider('k').locate({ placeId: 'ChIJabc1234567', sessionToken: SESSION })).rejects.toMatchObject({ reason: 'HTTP_502', httpStatus: 502 });
+  });
+
+  function refusing(err: PlaceProviderError) {
+    const p = provider();
+    p.suggest = async () => { p.suggestCalls++; throw err; };
+    return p;
+  }
+
+  it('one refusal pauses every call, spends nothing more, and hides the option until the pause ends', async () => {
+    let t = Date.parse('2026-10-20T10:00:00Z');
+    const p = refusing(new PlaceProviderError(403, 'BILLING_DISABLED', 'billing'));
+    const b = budget();
+    const faults: string[] = [];
+    const uc = new DeepPlaceSearchUseCase(p, b, cache(), () => t, undefined, (f) => faults.push(f.reason));
+    expect(await uc.available()).toBe(true);
+    expect((await uc.suggest({ query: 'parliament of uganda', sessionToken: SESSION })).status).toBe('unavailable');
+    expect(faults).toEqual(['BILLING_DISABLED']);
+    expect(await uc.available()).toBe(false);
+    expect((await uc.suggest({ query: 'acacia mall', sessionToken: SESSION })).status).toBe('unavailable');
+    expect(p.suggestCalls).toBe(1);
+    expect(b.spent.suggest).toBe(1);
+    const h = await uc.healthReport();
+    expect(h?.lastFault).toMatchObject({ reason: 'BILLING_DISABLED', httpStatus: 403, kind: 'suggest' });
+    expect(h?.pausedUntil).toBe(new Date(t + PAUSE_REFUSED_MS).toISOString());
+    t += PAUSE_REFUSED_MS + 1;
+    expect(await uc.available()).toBe(true);
+  });
+
+  it('a timeout is one request\'s bad luck: no pause', async () => {
+    const p = refusing(new PlaceProviderError(null, 'TIMEOUT', 'slow'));
+    const uc = new DeepPlaceSearchUseCase(p, budget(), cache());
+    await uc.suggest({ query: 'acacia mall', sessionToken: SESSION });
+    expect(await uc.available()).toBe(true);
+    await uc.suggest({ query: 'acacia mall', sessionToken: SESSION });
+    expect(p.suggestCalls).toBe(2);
+  });
+
+  it('a success is recorded, so the admin page can say when Google last answered', async () => {
+    const t = Date.parse('2026-10-20T11:00:00Z');
+    const uc = new DeepPlaceSearchUseCase(provider(), budget(), cache(), () => t);
+    expect((await uc.suggest({ query: 'acacia mall', sessionToken: SESSION })).status).toBe('ok');
+    expect((await uc.healthReport())?.lastOkAt).toBe(new Date(t).toISOString());
+  });
+
+  it('deep-status offers the layer only while it is available; the admin page shows the refusal and its fix', () => {
+    const routes = read('apps/api/src/interfaces/http/routes/locations.ts');
+    expect(routes).toMatch(/deep-status[\s\S]{0,200}deepPlaceSearchUseCase\.available\(\)/);
+    const page = read('apps/web/src/pages/admin/locations.astro');
+    expect(page).toContain('BILLING_DISABLED');
+    expect(page).toContain('data-places-health');
+    const client = read('apps/web/src/lib/locationPickerClient.ts');
+    expect(client).toContain('Building search is not working right now');
   });
 });
