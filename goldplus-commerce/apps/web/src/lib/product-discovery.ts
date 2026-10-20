@@ -269,3 +269,26 @@ export function sortDiscoveryProducts(products: ProductPublicDto[], sort: Discov
     return ca - cb || sa - sb || a.name.localeCompare(b.name);
   });
 }
+
+/**
+ * Gap analysis #11 (2026-10-20): /compare existed but nothing linked to it. The product page offers "Compare with
+ * similar": this product and up to two others from the SAME subcategory (a battery is never compared with a
+ * charger), the nearest in price first, then by name so the choice is stable. Fewer than one peer: no link. Phone
+ * batteries are never offered: each fits one phone, so the battery finder is the comparison that matters.
+ */
+export function pickComparisonPeers(
+  product: ProductPublicDto,
+  candidates: ProductPublicDto[],
+  taxonomy: Taxonomy = DEFAULT_TAXONOMY,
+  limit = 2,
+): ProductPublicDto[] {
+  const sub = getProductSubcategory(product, taxonomy);
+  // A replacement battery is chosen by the phone it fits (the battery finder), never side by side with another phone's.
+  if (!sub || /batter/i.test(sub)) return [];
+  const price = (p: ProductPublicDto) => (typeof p.retailPriceUgx === 'number' && p.retailPriceUgx > 0 ? p.retailPriceUgx : null);
+  const own = price(product);
+  return dedupeProductsById(candidates)
+    .filter((p) => p.id !== product.id && isListableProduct(p) && price(p) !== null && getProductSubcategory(p, taxonomy) === sub)
+    .sort((a, b) => (own === null ? 0 : Math.abs(price(a)! - own) - Math.abs(price(b)! - own)) || a.name.localeCompare(b.name))
+    .slice(0, limit);
+}
